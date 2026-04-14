@@ -13,25 +13,49 @@ import { PrismaService } from './prisma/prisma.service';
 const DEFAULT_ADMIN_USERNAME = 'admin';
 const DEFAULT_ADMIN_PASSWORD = 'admin';
 const DEFAULT_ADMIN_FULL_NAME = 'System Administrator';
-const INSTITUTIONAL_ROLES: readonly SafariRole[] = [
-  SafariRole.OWNER,
-  SafariRole.MANAGER,
-  SafariRole.DRIVER,
-  SafariRole.CALL_CENTER,
-  SafariRole.ACCOUNTANT,
-  SafariRole.SUPERVISOR,
-  SafariRole.VIEWER,
-];
 
-async function ensureDefaultOwner(prisma: PrismaService): Promise<void> {
-  for (const roleName of INSTITUTIONAL_ROLES) {
+/** Core roles (explicit bootstrap list). `Role.name` matches `SafariRole` enum strings. */
+const REQUIRED_ROLE_NAMES = [
+  'OWNER',
+  'MANAGER',
+  'DRIVER',
+  'WORKER',
+] as const;
+
+/** Remaining institutional roles the app expects in `Role` for JWT / RBAC. */
+const ADDITIONAL_INSTITUTIONAL_ROLE_NAMES = [
+  'CALL_CENTER',
+  'ACCOUNTANT',
+  'SUPERVISOR',
+  'VIEWER',
+] as const;
+
+/**
+ * Prisma has no `safariRole` model — institutional roles live in `Role` with `name` = enum value.
+ */
+async function ensureInstitutionalRoles(prisma: PrismaService): Promise<void> {
+  await prisma.$connect();
+
+  for (const roleName of REQUIRED_ROLE_NAMES) {
     await prisma.role.upsert({
       where: { name: roleName },
       create: { name: roleName },
       update: {},
     });
+    console.log(`Role ${roleName} ensured`);
   }
 
+  for (const roleName of ADDITIONAL_INSTITUTIONAL_ROLE_NAMES) {
+    await prisma.role.upsert({
+      where: { name: roleName },
+      create: { name: roleName },
+      update: {},
+    });
+    console.log(`Role ${roleName} ensured`);
+  }
+}
+
+async function ensureDefaultOwner(prisma: PrismaService): Promise<void> {
   const ownerRole = await prisma.role.findUniqueOrThrow({
     where: { name: SafariRole.OWNER },
   });
@@ -62,6 +86,7 @@ async function bootstrap() {
   const httpAdapterHost = app.get(HttpAdapterHost);
   const prisma = app.get(PrismaService);
 
+  await ensureInstitutionalRoles(prisma);
   await ensureDefaultOwner(prisma);
 
   app.setGlobalPrefix('api');

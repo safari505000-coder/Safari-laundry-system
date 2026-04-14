@@ -47,23 +47,38 @@ const prisma_service_1 = require("./prisma/prisma.service");
 const DEFAULT_ADMIN_USERNAME = 'admin';
 const DEFAULT_ADMIN_PASSWORD = 'admin';
 const DEFAULT_ADMIN_FULL_NAME = 'System Administrator';
-const INSTITUTIONAL_ROLES = [
-    client_1.SafariRole.OWNER,
-    client_1.SafariRole.MANAGER,
-    client_1.SafariRole.DRIVER,
-    client_1.SafariRole.CALL_CENTER,
-    client_1.SafariRole.ACCOUNTANT,
-    client_1.SafariRole.SUPERVISOR,
-    client_1.SafariRole.VIEWER,
+const REQUIRED_ROLE_NAMES = [
+    'OWNER',
+    'MANAGER',
+    'DRIVER',
+    'WORKER',
 ];
-async function ensureDefaultOwner(prisma) {
-    for (const roleName of INSTITUTIONAL_ROLES) {
+const ADDITIONAL_INSTITUTIONAL_ROLE_NAMES = [
+    'CALL_CENTER',
+    'ACCOUNTANT',
+    'SUPERVISOR',
+    'VIEWER',
+];
+async function ensureInstitutionalRoles(prisma) {
+    await prisma.$connect();
+    for (const roleName of REQUIRED_ROLE_NAMES) {
         await prisma.role.upsert({
             where: { name: roleName },
             create: { name: roleName },
             update: {},
         });
+        console.log(`Role ${roleName} ensured`);
     }
+    for (const roleName of ADDITIONAL_INSTITUTIONAL_ROLE_NAMES) {
+        await prisma.role.upsert({
+            where: { name: roleName },
+            create: { name: roleName },
+            update: {},
+        });
+        console.log(`Role ${roleName} ensured`);
+    }
+}
+async function ensureDefaultOwner(prisma) {
     const ownerRole = await prisma.role.findUniqueOrThrow({
         where: { name: client_1.SafariRole.OWNER },
     });
@@ -89,6 +104,7 @@ async function bootstrap() {
     const app = await core_1.NestFactory.create(app_module_1.AppModule);
     const httpAdapterHost = app.get(core_1.HttpAdapterHost);
     const prisma = app.get(prisma_service_1.PrismaService);
+    await ensureInstitutionalRoles(prisma);
     await ensureDefaultOwner(prisma);
     app.setGlobalPrefix('api');
     app.enableCors({

@@ -108,6 +108,19 @@ async function main(): Promise<void> {
     },
   });
 
+  await prisma.role.upsert({
+    where: { name: SafariRole.WORKER },
+    create: {
+      name: SafariRole.WORKER,
+      permissions: { connect: driverPermissions.map((p) => ({ id: p.id })) },
+    },
+    update: {
+      permissions: {
+        set: driverPermissions.map((p) => ({ id: p.id })),
+      },
+    },
+  });
+
   const callCenterPermissions = await prisma.permission.findMany({
     where: { key: { in: [...CALL_CENTER_PERMISSION_KEYS] } },
   });
