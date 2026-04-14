@@ -1,0 +1,308 @@
+@import 'tailwindcss';
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/geist";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --font-sans:
+    'Cairo', 'Almarai', ui-sans-serif, system-ui, sans-serif;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@theme inline {
+  --font-heading: var(--font-sans);
+  --font-sans:
+    'Cairo', 'Almarai', 'Geist Variable', ui-sans-serif, system-ui,
+    sans-serif;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  /* Safari Executive — light shell, navy (#1e3a5f) primary */
+  --safari-navy: #1e3a5f;
+  --background: oklch(0.985 0.002 250);
+  --foreground: oklch(0.22 0.03 260);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.22 0.03 260);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.22 0.03 260);
+  --primary: oklch(0.32 0.075 255);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.96 0.01 250);
+  --secondary-foreground: oklch(0.28 0.04 260);
+  --muted: oklch(0.96 0.008 250);
+  --muted-foreground: oklch(0.48 0.02 260);
+  --accent: oklch(0.94 0.02 255);
+  --accent-foreground: oklch(0.28 0.05 260);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.91 0.01 250);
+  --input: oklch(0.91 0.01 250);
+  --ring: oklch(0.45 0.08 255);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --radius: 0.75rem;
+  --sidebar: oklch(1 0 0);
+  --sidebar-foreground: oklch(0.28 0.04 260);
+  --sidebar-primary: oklch(0.32 0.075 255);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.95 0.02 255);
+  --sidebar-accent-foreground: oklch(0.28 0.05 260);
+  --sidebar-border: oklch(0.91 0.01 250);
+  --sidebar-ring: oklch(0.45 0.08 255);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+  html[lang='ar'] {
+    font-family:
+      'Cairo',
+      'Almarai',
+      'Geist Variable',
+      ui-sans-serif,
+      system-ui,
+      sans-serif;
+  }
+}
+
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+  #pos-receipt-print,
+  #pos-receipt-print * {
+    visibility: visible !important;
+  }
+  #pos-receipt-print {
+    display: block !important;
+    position: fixed;
+    inset: 0 auto auto 0;
+    width: 80mm;
+    margin: 0;
+    padding: 2mm;
+    background: #fff;
+    color: #000;
+    z-index: 9999;
+  }
+  .pos-receipt-wrap {
+    width: 72mm;
+    margin: 0 auto;
+    font-size: 10.5px;
+    line-height: 1.32;
+    font-family: 'Cairo', 'Almarai', sans-serif;
+    text-align: right;
+  }
+  .pos-receipt-logo {
+    display: block;
+    width: 35mm;
+    height: auto;
+    margin: 0 auto 1.4mm;
+    object-fit: contain;
+  }
+  .pos-receipt-wrap h2 {
+    margin: 0;
+    text-align: center;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .pos-receipt-sub {
+    margin: 0;
+    text-align: center;
+    font-size: 9.5px;
+  }
+  .pos-receipt-meta-grid {
+    margin-top: 1.5mm;
+    border-top: 1px dashed #000;
+    border-bottom: 1px dashed #000;
+    padding: 1.2mm 0;
+  }
+  .pos-receipt-meta-grid p {
+    margin: 0 0 0.8mm;
+  }
+  .pos-customer-box {
+    border: 1px solid #000;
+    padding: 1.5mm;
+    margin-top: 1.5mm;
+  }
+  .pos-customer-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 2mm;
+    margin-bottom: 0.7mm;
+  }
+  .pos-customer-address {
+    border-top: 1px dashed #000;
+    padding-top: 0.8mm;
+    margin-top: 0.8mm;
+    word-break: break-word;
+  }
+  .pos-receipt-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 1.6mm;
+    table-layout: fixed;
+  }
+  .pos-receipt-table th {
+    border-bottom: 1px solid #000;
+    padding-bottom: 0.8mm;
+    text-align: start;
+    font-size: 9.5px;
+  }
+  .pos-receipt-table td {
+    padding: 1mm 0;
+    vertical-align: top;
+    border-bottom: 1px dashed #000;
+    font-size: 9.8px;
+  }
+  .pos-receipt-table th:nth-child(1),
+  .pos-receipt-table td:nth-child(1) {
+    width: 42%;
+  }
+  .pos-receipt-table th:nth-child(2),
+  .pos-receipt-table td:nth-child(2) {
+    width: 24%;
+    text-align: center;
+  }
+  .pos-receipt-table th:nth-child(3),
+  .pos-receipt-table td:nth-child(3) {
+    width: 17%;
+    text-align: end;
+  }
+  .pos-receipt-table th:nth-child(4),
+  .pos-receipt-table td:nth-child(4) {
+    width: 17%;
+    text-align: end;
+  }
+  .pos-receipt-qty {
+    font-size: 8.8px;
+    opacity: 0.85;
+  }
+  .pos-receipt-specs {
+    margin-top: 0.8mm;
+    font-size: 8.4px;
+    line-height: 1.3;
+  }
+  .pos-receipt-totals {
+    margin-top: 1.5mm;
+    padding-top: 1.1mm;
+    border-top: 1px dashed #000;
+  }
+  .pos-receipt-totals > div {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0.7mm;
+  }
+  .pos-receipt-totals .net {
+    font-weight: 700;
+    font-size: 11px;
+  }
+  .pos-receipt-terms {
+    margin-top: 1.4mm;
+    padding-top: 1.1mm;
+    border-top: 1px dashed #000;
+    font-size: 8px;
+    line-height: 1.4;
+  }
+  .pos-receipt-terms p {
+    margin: 0 0 0.5mm;
+  }
+  .pos-receipt-notes {
+    margin-top: 1.2mm;
+    padding-top: 1.1mm;
+    border-top: 1px dashed #000;
+    font-size: 8.6px;
+    line-height: 1.35;
+  }
+  .pos-receipt-notes p {
+    margin: 0 0 0.5mm;
+  }
+}
