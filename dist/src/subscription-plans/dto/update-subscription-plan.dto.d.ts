@@ -3,4 +3,5 @@ export declare class UpdateSubscriptionPlanDto {
     price?: number;
     creditAmount?: number;
     isActive?: boolean;
+    validityDays?: number;
 }

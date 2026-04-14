@@ -16,6 +16,7 @@ import { PosModule } from './pos/pos.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ReportsModule } from './reports/reports.module';
 import { SubscriptionPlansModule } from './subscription-plans/subscription-plans.module';
+import { SubscribersModule } from './subscribers/subscribers.module';
 import { UsersModule } from './users/users.module';
 import { WalletsModule } from './wallets/wallets.module';
 
@@ -42,6 +43,7 @@ const spaStaticModule = existsSync(webDistPath)
     PermissionsModule,
     AuditLogsModule,
     SubscriptionPlansModule,
+    SubscribersModule,
     CallCenterModule,
     LaundryPriceListModule,
     PosModule,

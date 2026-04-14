@@ -36,4 +36,11 @@ export class UpdateSubscriptionPlanDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 0 })
+  @IsPositive()
+  validityDays?: number;
 }

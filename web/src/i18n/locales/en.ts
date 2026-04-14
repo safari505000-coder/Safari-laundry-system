@@ -2,6 +2,7 @@ export const en = {
   nav: {
     dashboard: 'Dashboard',
     subscriptions: 'Subscriptions',
+    subscribers: 'Subscribers list',
     orders: 'Order history',
     shifts: 'Driver shifts',
     financials: 'Financials',
@@ -291,6 +292,24 @@ export const en = {
     lastReceiptTitle: 'Last activation receipt',
     debtLabel: 'Debt',
     noSettlements: 'No settlement entries yet for this customer.',
+    colValidity: 'Term (days)',
+    validityDays: 'Subscription term (days)',
+    validityDaysHint: 'Calendar days from each activation until expiry.',
+  },
+  subscribers: {
+    title: 'Subscribers list',
+    subtitle:
+      'Live subscriber rows from the database — refreshes automatically for call center.',
+    refresh: 'Refresh',
+    colCustomer: 'Customer name',
+    colPlan: 'Subscription type',
+    colStart: 'Start date',
+    colExpiry: 'Expiry date',
+    colRemaining: 'Remaining days',
+    colBalance: 'Remaining balance',
+    empty: 'No subscribers match yet.',
+    loading: 'Loading…',
+    unable: 'Could not load the list.',
   },
   orderStatus: {
     PENDING: 'pending',

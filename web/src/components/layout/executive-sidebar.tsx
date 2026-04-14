@@ -3,6 +3,7 @@ import {
   ChevronLeft,
   ChevronRight,
   LayoutDashboard,
+  ListOrdered,
   LogOut,
   Package,
   Sparkles,
@@ -59,6 +60,13 @@ const subscriptionsItem: NavItem = {
   roles: ['OWNER', 'CALL_CENTER'],
 };
 
+const subscribersItem: NavItem = {
+  to: '/subscribers',
+  labelKey: 'nav.subscribers',
+  icon: ListOrdered,
+  roles: ['OWNER', 'CALL_CENTER'],
+};
+
 const ordersItem: NavItem = {
   to: '/orders',
   labelKey: 'nav.orders',
@@ -103,7 +111,10 @@ const teamItem: NavItem = {
 };
 
 const navGroups: { labelKey: string; items: NavItem[] }[] = [
-  { labelKey: 'nav.groupMain', items: [dashboardItem, subscriptionsItem] },
+  {
+    labelKey: 'nav.groupMain',
+    items: [dashboardItem, subscriptionsItem, subscribersItem],
+  },
   { labelKey: 'nav.groupOperations', items: [ordersItem, shiftsItem] },
   { labelKey: 'nav.groupFinance', items: [financialsItem] },
   { labelKey: 'nav.groupSettings', items: [teamItem] },

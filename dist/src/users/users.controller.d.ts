@@ -6,8 +6,6 @@ export declare class UsersController {
     constructor(usersService: UsersService);
     create(dto: CreateUserDto): Promise<{
         id: string;
-        roleId: string;
-        branchId: string | null;
         createdAt: Date;
         updatedAt: Date;
         username: string;
@@ -16,6 +14,8 @@ export declare class UsersController {
         jobTitle: string | null;
         phone: string | null;
         safariRole: import("@prisma/client").$Enums.SafariRole;
+        roleId: string;
+        branchId: string | null;
         role: {
             id: string;
             name: string;
@@ -28,8 +28,6 @@ export declare class UsersController {
     }>;
     findAll(): Promise<{
         id: string;
-        roleId: string;
-        branchId: string | null;
         createdAt: Date;
         updatedAt: Date;
         username: string;
@@ -38,6 +36,8 @@ export declare class UsersController {
         jobTitle: string | null;
         phone: string | null;
         safariRole: import("@prisma/client").$Enums.SafariRole;
+        roleId: string;
+        branchId: string | null;
         role: {
             id: string;
             name: string;
@@ -50,8 +50,6 @@ export declare class UsersController {
     }[]>;
     findOne(id: string): Promise<{
         id: string;
-        roleId: string;
-        branchId: string | null;
         createdAt: Date;
         updatedAt: Date;
         username: string;
@@ -60,6 +58,8 @@ export declare class UsersController {
         jobTitle: string | null;
         phone: string | null;
         safariRole: import("@prisma/client").$Enums.SafariRole;
+        roleId: string;
+        branchId: string | null;
         role: {
             id: string;
             name: string;
@@ -72,8 +72,6 @@ export declare class UsersController {
     }>;
     update(id: string, dto: UpdateUserDto): Promise<{
         id: string;
-        roleId: string;
-        branchId: string | null;
         createdAt: Date;
         updatedAt: Date;
         username: string;
@@ -82,6 +80,8 @@ export declare class UsersController {
         jobTitle: string | null;
         phone: string | null;
         safariRole: import("@prisma/client").$Enums.SafariRole;
+        roleId: string;
+        branchId: string | null;
         role: {
             id: string;
             name: string;

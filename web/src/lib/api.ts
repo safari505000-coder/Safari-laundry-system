@@ -189,9 +189,21 @@ export type SubscriptionPlan = {
   name: string;
   price: string;
   creditAmount: string;
+  validityDays: number;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+};
+
+export type SubscriberListRow = {
+  customerId: string;
+  customerName: string;
+  subscriptionType: string;
+  startDate: string | null;
+  expiryDate: string | null;
+  remainingDays: number | null;
+  balance: string;
+  rowStatus: 'active_ok' | 'active_warn' | 'expired' | 'open_credit';
 };
 
 export type CallCenterPlan = {

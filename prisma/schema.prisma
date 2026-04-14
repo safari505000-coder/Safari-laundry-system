@@ -115,9 +115,13 @@ model SubscriptionPlan {
   name          String
   price         Decimal  @db.Decimal(19, 4)
   creditAmount  Decimal  @db.Decimal(19, 4)
+  /** Calendar length of the subscription window from each activation date. */
+  validityDays Int      @default(30)
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+
+  subscriberWallets CustomerWallet[] @relation("WalletSubscriptionPlan")
 }
 
 model CustomerWallet {
@@ -127,10 +131,19 @@ model CustomerWallet {
   balance    Decimal  @default(0) @db.Decimal(19, 4)
   /** Amount customer owes beyond wallet (e.g. order exceeded credit). */
   debt       Decimal  @default(0) @db.Decimal(19, 4)
+  /** Last subscription activation instant (authoritative window start when set). */
+  subscriptionActivatedAt DateTime?
+  /** End of the prepaid subscription term (exclusive calendar boundary in UTC date math). */
+  subscriptionExpiresAt   DateTime?
+  subscriptionPlanId    String?   @db.Uuid
+  subscriptionPlanName  String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  customer           Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  subscriptionPlan   SubscriptionPlan? @relation("WalletSubscriptionPlan", fields: [subscriptionPlanId], references: [id], onDelete: SetNull)
+
+  @@index([subscriptionExpiresAt])
 }
 
 model TransactionHistory {

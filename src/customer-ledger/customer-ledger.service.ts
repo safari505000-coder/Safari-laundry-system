@@ -167,11 +167,22 @@ export class CustomerLedgerService {
       rawCreditMinor > 0n ? rawCreditMinor : 0n;
     const newBalanceMinor = balanceMinor + balanceIncreaseMinor;
 
+    const activatedAt = new Date();
+    const validityDays = plan.validityDays > 0 ? plan.validityDays : 30;
+    const subscriptionExpiresAt = new Date(activatedAt.getTime());
+    subscriptionExpiresAt.setUTCDate(
+      subscriptionExpiresAt.getUTCDate() + validityDays,
+    );
+
     await tx.customerWallet.update({
       where: { id: wallet.id },
       data: {
         balance: this.decimalFromMinor(newBalanceMinor),
         debt: this.decimalFromMinor(newDebtMinor),
+        subscriptionActivatedAt: activatedAt,
+        subscriptionExpiresAt,
+        subscriptionPlanId: plan.id,
+        subscriptionPlanName: plan.name,
       },
     });
 

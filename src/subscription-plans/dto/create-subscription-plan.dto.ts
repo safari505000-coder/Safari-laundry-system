@@ -39,4 +39,14 @@ export class CreateSubscriptionPlanDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiPropertyOptional({
+    default: 30,
+    description: 'Subscription window length in calendar days from each activation',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 0 })
+  @IsPositive()
+  validityDays?: number;
 }

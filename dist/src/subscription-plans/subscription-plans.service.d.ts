@@ -14,6 +14,7 @@ export declare class SubscriptionPlansService {
         name: string;
         price: Prisma.Decimal;
         creditAmount: Prisma.Decimal;
+        validityDays: number;
         isActive: boolean;
     }, never, import("@prisma/client/runtime/client").DefaultArgs, Prisma.PrismaClientOptions>;
     update(id: string, dto: UpdateSubscriptionPlanDto): Promise<{
@@ -23,6 +24,7 @@ export declare class SubscriptionPlansService {
         name: string;
         price: Prisma.Decimal;
         creditAmount: Prisma.Decimal;
+        validityDays: number;
         isActive: boolean;
     }>;
     remove(id: string): Promise<{

@@ -25,6 +25,7 @@ const pos_module_1 = require("./pos/pos.module");
 const prisma_module_1 = require("./prisma/prisma.module");
 const reports_module_1 = require("./reports/reports.module");
 const subscription_plans_module_1 = require("./subscription-plans/subscription-plans.module");
+const subscribers_module_1 = require("./subscribers/subscribers.module");
 const users_module_1 = require("./users/users.module");
 const wallets_module_1 = require("./wallets/wallets.module");
 const webDistPath = (0, node_path_1.join)(process.cwd(), 'web', 'dist');
@@ -53,6 +54,7 @@ exports.AppModule = AppModule = __decorate([
             permissions_module_1.PermissionsModule,
             audit_logs_module_1.AuditLogsModule,
             subscription_plans_module_1.SubscriptionPlansModule,
+            subscribers_module_1.SubscribersModule,
             call_center_module_1.CallCenterModule,
             laundry_price_list_module_1.LaundryPriceListModule,
             pos_module_1.PosModule,

@@ -3,6 +3,7 @@ export const ar = {
   nav: {
     dashboard: 'لوحة التحكم',
     subscriptions: 'الاشتراكات',
+    subscribers: 'قائمة المشتركين',
     orders: 'سجل الطلبات',
     shifts: 'ورديات السائقين',
     financials: 'المالية',
@@ -292,6 +293,24 @@ export const ar = {
     lastReceiptTitle: 'إيصال آخر تفعيل',
     debtLabel: 'الذمة',
     noSettlements: 'لا توجد تسويات مسجّلة لهذا العميل بعد.',
+    colValidity: 'المدة (يوم)',
+    validityDays: 'مدة الاشتراك (أيام)',
+    validityDaysHint: 'أيام تقويمية من كل تفعيل حتى الانتهاء.',
+  },
+  subscribers: {
+    title: 'قائمة المشتركين',
+    subtitle:
+      'قائمة مباشرة من قاعدة البيانات — تُحدَّث تلقائياً لمركز الاتصال.',
+    refresh: 'تحديث',
+    colCustomer: 'اسم العميل',
+    colPlan: 'نوع الاشتراك',
+    colStart: 'تاريخ البدء',
+    colExpiry: 'تاريخ الانتهاء',
+    colRemaining: 'الأيام المتبقية',
+    colBalance: 'الرصيد المتبقي',
+    empty: 'لا يوجد مشتركون مطابقون بعد.',
+    loading: 'جارٍ التحميل…',
+    unable: 'تعذّر تحميل القائمة.',
   },
   orderStatus: {
     PENDING: 'قيد الانتظار',

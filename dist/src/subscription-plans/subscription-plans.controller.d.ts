@@ -11,6 +11,7 @@ export declare class SubscriptionPlansController {
         name: string;
         price: import("@prisma/client-runtime-utils").Decimal;
         creditAmount: import("@prisma/client-runtime-utils").Decimal;
+        validityDays: number;
         isActive: boolean;
     }, never, import("@prisma/client/runtime/client").DefaultArgs, import("@prisma/client").Prisma.PrismaClientOptions>;
     findAll(): Promise<{
@@ -20,6 +21,7 @@ export declare class SubscriptionPlansController {
         name: string;
         price: import("@prisma/client-runtime-utils").Decimal;
         creditAmount: import("@prisma/client-runtime-utils").Decimal;
+        validityDays: number;
         isActive: boolean;
     }[]>;
     findOne(id: string): Promise<{
@@ -29,6 +31,7 @@ export declare class SubscriptionPlansController {
         name: string;
         price: import("@prisma/client-runtime-utils").Decimal;
         creditAmount: import("@prisma/client-runtime-utils").Decimal;
+        validityDays: number;
         isActive: boolean;
     }>;
     update(id: string, dto: UpdateSubscriptionPlanDto): Promise<{
@@ -38,6 +41,7 @@ export declare class SubscriptionPlansController {
         name: string;
         price: import("@prisma/client-runtime-utils").Decimal;
         creditAmount: import("@prisma/client-runtime-utils").Decimal;
+        validityDays: number;
         isActive: boolean;
     }>;
     remove(id: string): Promise<{

@@ -3,4 +3,5 @@ export declare class CreateSubscriptionPlanDto {
     price: number;
     creditAmount: number;
     isActive?: boolean;
+    validityDays?: number;
 }

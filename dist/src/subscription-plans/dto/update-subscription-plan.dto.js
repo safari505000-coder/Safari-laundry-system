@@ -18,6 +18,7 @@ class UpdateSubscriptionPlanDto {
     price;
     creditAmount;
     isActive;
+    validityDays;
 }
 exports.UpdateSubscriptionPlanDto = UpdateSubscriptionPlanDto;
 __decorate([
@@ -50,4 +51,12 @@ __decorate([
     (0, class_validator_1.IsBoolean)(),
     __metadata("design:type", Boolean)
 ], UpdateSubscriptionPlanDto.prototype, "isActive", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)(),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_transformer_1.Type)(() => Number),
+    (0, class_validator_1.IsNumber)({ maxDecimalPlaces: 0 }),
+    (0, class_validator_1.IsPositive)(),
+    __metadata("design:type", Number)
+], UpdateSubscriptionPlanDto.prototype, "validityDays", void 0);
 //# sourceMappingURL=update-subscription-plan.dto.js.map

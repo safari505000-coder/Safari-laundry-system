@@ -18,6 +18,7 @@ class CreateSubscriptionPlanDto {
     price;
     creditAmount;
     isActive;
+    validityDays;
 }
 exports.CreateSubscriptionPlanDto = CreateSubscriptionPlanDto;
 __decorate([
@@ -53,4 +54,15 @@ __decorate([
     (0, class_validator_1.IsBoolean)(),
     __metadata("design:type", Boolean)
 ], CreateSubscriptionPlanDto.prototype, "isActive", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({
+        default: 30,
+        description: 'Subscription window length in calendar days from each activation',
+    }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_transformer_1.Type)(() => Number),
+    (0, class_validator_1.IsNumber)({ maxDecimalPlaces: 0 }),
+    (0, class_validator_1.IsPositive)(),
+    __metadata("design:type", Number)
+], CreateSubscriptionPlanDto.prototype, "validityDays", void 0);
 //# sourceMappingURL=create-subscription-plan.dto.js.map

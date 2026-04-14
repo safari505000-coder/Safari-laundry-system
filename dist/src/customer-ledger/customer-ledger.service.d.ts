@@ -10,9 +10,13 @@ export declare class CustomerLedgerService {
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        balance: Prisma.Decimal;
         customerId: string;
+        balance: Prisma.Decimal;
         debt: Prisma.Decimal;
+        subscriptionActivatedAt: Date | null;
+        subscriptionExpiresAt: Date | null;
+        subscriptionPlanId: string | null;
+        subscriptionPlanName: string | null;
     }>;
     applyOrderWalletSettlementForCompletedOrder(tx: PrismaTx, orderId: string, performedByUserId: string): Promise<void>;
     activateSubscriptionPlan(tx: PrismaTx, params: {

@@ -151,6 +151,7 @@ export function SubscriptionsPage() {
                         <TableHead>{t('subscriptions.colPlan')}</TableHead>
                         <TableHead>{t('subscriptions.colPay')}</TableHead>
                         <TableHead>{t('subscriptions.colCredit')}</TableHead>
+                        <TableHead>{t('subscriptions.colValidity')}</TableHead>
                         <TableHead>{t('subscriptions.colStatus')}</TableHead>
                         <TableHead className="w-[100px]" />
                       </TableRow>
@@ -164,6 +165,9 @@ export function SubscriptionsPage() {
                           </TableCell>
                           <TableCell className="tabular-nums text-emerald-700">
                             {formatKwdLabel(p.creditAmount)}
+                          </TableCell>
+                          <TableCell className="tabular-nums text-sm">
+                            {p.validityDays}
                           </TableCell>
                           <TableCell>
                             <Badge
@@ -216,13 +220,23 @@ function CreatePlanDialog({
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
   const [credit, setCredit] = useState('');
+  const [validityDays, setValidityDays] = useState('30');
   const [active, setActive] = useState(true);
   const [saving, setSaving] = useState(false);
 
   async function submit() {
     const p = Number.parseFloat(price);
     const c = Number.parseFloat(credit);
-    if (!name.trim() || !Number.isFinite(p) || p <= 0 || !Number.isFinite(c) || c <= 0) {
+    const vd = Number.parseInt(validityDays, 10);
+    if (
+      !name.trim() ||
+      !Number.isFinite(p) ||
+      p <= 0 ||
+      !Number.isFinite(c) ||
+      c <= 0 ||
+      !Number.isFinite(vd) ||
+      vd <= 0
+    ) {
       toast.error(t('subscriptions.validationPlan'));
       return;
     }
@@ -235,6 +249,7 @@ function CreatePlanDialog({
           name: name.trim(),
           price: p,
           creditAmount: c,
+          validityDays: vd,
           isActive: active,
         }),
       });
@@ -243,6 +258,7 @@ function CreatePlanDialog({
       setName('');
       setPrice('');
       setCredit('');
+      setValidityDays('30');
       setActive(true);
       onCreated();
     } catch (e) {
@@ -300,6 +316,19 @@ function CreatePlanDialog({
                 placeholder="25"
               />
             </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="pvalid">{t('subscriptions.validityDays')}</Label>
+            <Input
+              id="pvalid"
+              type="number"
+              min={1}
+              step={1}
+              value={validityDays}
+              onChange={(e) => setValidityDays(e.target.value)}
+              placeholder="30"
+            />
+            <p className="text-xs text-zinc-500">{t('subscriptions.validityDaysHint')}</p>
           </div>
           <div className="flex items-center justify-between rounded-lg border border-zinc-200 px-3 py-2">
             <Label htmlFor="pactive" className="cursor-pointer">

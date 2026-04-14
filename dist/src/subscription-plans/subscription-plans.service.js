@@ -38,6 +38,7 @@ let SubscriptionPlansService = class SubscriptionPlansService {
                 price: dto.price,
                 creditAmount: dto.creditAmount,
                 isActive: dto.isActive ?? true,
+                validityDays: dto.validityDays ?? 30,
             },
         });
     }
@@ -52,6 +53,8 @@ let SubscriptionPlansService = class SubscriptionPlansService {
             data.creditAmount = dto.creditAmount;
         if (dto.isActive !== undefined)
             data.isActive = dto.isActive;
+        if (dto.validityDays !== undefined)
+            data.validityDays = dto.validityDays;
         return this.prisma.subscriptionPlan.update({
             where: { id },
             data,

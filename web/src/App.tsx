@@ -10,6 +10,7 @@ import { FinancialsPage } from '@/pages/financials-page';
 import { LoginPage } from '@/pages/login-page';
 import { OrdersPage } from '@/pages/orders-page';
 import { ShiftsPage } from '@/pages/shifts-page';
+import { SubscribersPage } from '@/pages/subscribers-page';
 import { SubscriptionsPage } from '@/pages/subscriptions-page';
 import { TeamPage } from '@/pages/team-page';
 import { PosPage } from '@/pages/pos-page';
@@ -39,6 +40,7 @@ export default function App() {
             <Route path="/" element={<ExecutiveShell />}>
               <Route index element={<DashboardPage />} />
               <Route path="subscriptions" element={<SubscriptionsPage />} />
+              <Route path="subscribers" element={<SubscribersPage />} />
               <Route path="orders" element={<OrdersPage />} />
               <Route path="shifts" element={<ShiftsPage />} />
               <Route path="financials" element={<FinancialsPage />} />
