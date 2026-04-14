@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.PosCheckoutDto = void 0;
 const swagger_1 = require("@nestjs/swagger");
 const client_1 = require("@prisma/client");
+const class_transformer_1 = require("class-transformer");
 const class_validator_1 = require("class-validator");
 const create_order_quick_dto_1 = require("./create-order-quick.dto");
 class PosCheckoutDto extends create_order_quick_dto_1.CreateOrderQuickDto {
@@ -23,6 +24,16 @@ __decorate([
         enum: client_1.PosPaymentMethod,
         enumName: 'PosPaymentMethod',
         description: 'When prepaid balance covers the full total, defaults to SUBSCRIPTION_WALLET. Otherwise required: CASH, KNET, or PAYMENT_LINK.',
+    }),
+    (0, class_transformer_1.Transform)(({ value }) => {
+        if (value === '' || value === null || value === undefined) {
+            return undefined;
+        }
+        if (typeof value === 'string') {
+            const t = value.trim();
+            return t === '' ? undefined : t;
+        }
+        return value;
     }),
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsEnum)(client_1.PosPaymentMethod),

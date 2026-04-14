@@ -17,6 +17,12 @@ export const en = {
     collapseSidebar: 'Collapse sidebar',
     expandSidebar: 'Expand sidebar',
   },
+  errors: {
+    boundaryTitle: 'Something went wrong',
+    boundaryBody:
+      'The page hit an unexpected error. You can reload to try again. If the problem continues, contact support.',
+    retry: 'Reload page',
+  },
   language: {
     english: 'English',
     arabic: 'العربية',

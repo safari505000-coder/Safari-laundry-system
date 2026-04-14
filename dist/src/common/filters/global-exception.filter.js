@@ -13,6 +13,7 @@ exports.GlobalExceptionFilter = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@nestjs/core");
 const branding_1 = require("../constants/branding");
+const prisma_exception_util_1 = require("./prisma-exception.util");
 let GlobalExceptionFilter = class GlobalExceptionFilter {
     httpAdapterHost;
     constructor(httpAdapterHost) {
@@ -24,9 +25,12 @@ let GlobalExceptionFilter = class GlobalExceptionFilter {
         const status = exception instanceof common_1.HttpException
             ? exception.getStatus()
             : common_1.HttpStatus.INTERNAL_SERVER_ERROR;
+        if (!(exception instanceof common_1.HttpException)) {
+            (0, prisma_exception_util_1.logServerError)('GlobalExceptionFilter', exception);
+        }
         const body = exception instanceof common_1.HttpException
             ? exception.getResponse()
-            : { message: 'Internal server error' };
+            : { message: (0, prisma_exception_util_1.prismaClientMessage)(exception) };
         const meta = { application: branding_1.APP_BRAND };
         const payload = typeof body === 'string'
             ? {

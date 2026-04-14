@@ -60,7 +60,9 @@ export declare class OrdersService {
     private canViewAllOrders;
     private canStaffUpdateOrders;
     private assertDriverUser;
+    private resolvePosCheckoutPaymentMethod;
     private reconcileLineItems;
+    private mapPosCheckoutLineItems;
     private findCustomerByAnyPhone;
     private resolveQuickOrderCustomerId;
     createQuick(driverUserId: string, dto: CreateOrderQuickDto): Promise<OrderDetail>;

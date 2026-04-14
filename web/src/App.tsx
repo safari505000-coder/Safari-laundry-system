@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { ErrorBoundary } from '@/components/error-boundary';
 import { AuthProvider } from '@/contexts/auth-context';
 import { AuthLayout } from '@/components/layout/auth-layout';
 import { ExecutiveShell } from '@/components/layout/executive-shell';
@@ -25,32 +26,34 @@ function AppToaster() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route
-            element={
-              <RequireAuth>
-                <AuthLayout />
-              </RequireAuth>
-            }
-          >
-            <Route path="/pos" element={<PosPage />} />
-            <Route path="/" element={<ExecutiveShell />}>
-              <Route index element={<DashboardPage />} />
-              <Route path="subscriptions" element={<SubscriptionsPage />} />
-              <Route path="subscribers" element={<SubscribersPage />} />
-              <Route path="orders" element={<OrdersPage />} />
-              <Route path="shifts" element={<ShiftsPage />} />
-              <Route path="financials" element={<FinancialsPage />} />
-              <Route path="team" element={<TeamPage />} />
+    <ErrorBoundary>
+      <AuthProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route
+              element={
+                <RequireAuth>
+                  <AuthLayout />
+                </RequireAuth>
+              }
+            >
+              <Route path="/pos" element={<PosPage />} />
+              <Route path="/" element={<ExecutiveShell />}>
+                <Route index element={<DashboardPage />} />
+                <Route path="subscriptions" element={<SubscriptionsPage />} />
+                <Route path="subscribers" element={<SubscribersPage />} />
+                <Route path="orders" element={<OrdersPage />} />
+                <Route path="shifts" element={<ShiftsPage />} />
+                <Route path="financials" element={<FinancialsPage />} />
+                <Route path="team" element={<TeamPage />} />
+              </Route>
             </Route>
-          </Route>
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </BrowserRouter>
-      <AppToaster />
-    </AuthProvider>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </BrowserRouter>
+        <AppToaster />
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }

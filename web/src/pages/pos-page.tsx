@@ -286,10 +286,12 @@ export function PosPage() {
   const balanceNum = billing
     ? Number.parseFloat(billing.remainingBalance)
     : NaN;
+  /** If billing is unknown, assume shortfall until server confirms — always send external method when net > 0. */
   const needsExternalPayment =
-    billing !== null &&
     netAfterDiscount > 0 &&
-    (!Number.isFinite(balanceNum) || balanceNum + 1e-9 < netAfterDiscount);
+    (billing === null ||
+      !Number.isFinite(balanceNum) ||
+      balanceNum + 1e-9 < netAfterDiscount);
 
   const loadBilling = useCallback(
     async (customerId: string) => {
@@ -485,7 +487,7 @@ export function PosPage() {
       foldingStyle: c.foldingStyle,
       itemNote: c.itemNote,
     }));
-    const lineItems = cart.map((c) => ({
+    const lineItemsFull = cart.map((c) => ({
       label: c.nameAr,
       quantity: c.quantity,
       unitPrice: c.unitPrice,
@@ -506,6 +508,11 @@ export function PosPage() {
       const extMethod: PosPaymentMethod | undefined =
         needsExternalPayment ? posPaymentMethod : undefined;
 
+      /** Server requires Σ(qty×price) ≈ totalPrice; omit lines when discount breaks that equality. */
+      const MONEY_EPS = 0.005;
+      const lineItemsPayload =
+        Math.abs(total - netTotal) < MONEY_EPS ? lineItemsFull : undefined;
+
       const created = await apiJson<{
         id?: string;
         invoiceNumber?: string | null;
@@ -518,7 +525,7 @@ export function PosPage() {
           customerId: selected.id,
           customerDisplayName: selected.displayName ?? undefined,
           totalPrice: netTotal,
-          lineItems,
+          ...(lineItemsPayload ? { lineItems: lineItemsPayload } : {}),
           serviceType: 'NORMAL',
           ...(extMethod ? { posPaymentMethod: extMethod } : {}),
         }),
@@ -606,7 +613,7 @@ export function PosPage() {
   return (
     <div
       data-pos-root
-      className="flex max-h-[100dvh] min-h-[100dvh] flex-col overflow-hidden bg-muted/40"
+      className="flex max-h-[100dvh] min-h-[100dvh] max-w-[100vw] flex-col overflow-x-hidden overflow-y-hidden bg-muted/40"
       dir={rtl ? 'rtl' : 'ltr'}
     >
       <header className="z-20 shrink-0 border-b border-border bg-card px-3 py-2 shadow-sm sm:px-4">
@@ -691,8 +698,8 @@ export function PosPage() {
         : null}
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-        <main className="min-h-0 w-full overflow-y-auto border-border p-3 sm:p-4 md:w-[70%] md:max-w-[70%] md:flex-none md:border-e">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col md:flex-row">
+        <main className="min-h-0 min-w-0 w-full overflow-y-auto overflow-x-hidden border-border p-3 sm:p-4 md:w-[70%] md:max-w-[70%] md:flex-none md:border-e">
           {catalogLoading ?
             <div className="flex justify-center py-20">
               <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />
@@ -752,7 +759,7 @@ export function PosPage() {
           }
         </main>
 
-        <aside className="flex min-h-0 w-full flex-col bg-card md:w-[30%] md:max-w-[30%] md:flex-none md:border-0">
+        <aside className="flex min-h-0 min-w-0 w-full flex-col bg-card md:w-[30%] md:max-w-[30%] md:flex-none md:border-0">
           <div className="shrink-0 border-b border-border px-3 py-2.5 text-start">
             <p className="text-sm font-semibold text-foreground">
               {t('pos.cartTitle')}
@@ -862,7 +869,7 @@ export function PosPage() {
       <footer
         className="sticky bottom-0 z-20 border-t border-border bg-card/95 px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-4px_24px_rgba(0,0,0,0.06)] backdrop-blur-sm sm:px-4"
       >
-        <div className="mx-auto flex max-w-6xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mx-auto flex min-w-0 max-w-6xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-lg font-bold tabular-nums text-foreground">
             <span className="text-muted-foreground">{t('pos.totalKwd')}:</span>{' '}
             <span className="text-primary">
@@ -893,13 +900,13 @@ export function PosPage() {
                 inputMode="decimal"
               />
             </div>
-            {selected && billing && needsExternalPayment ?
+            {selected && needsExternalPayment ?
               <div className="border-t border-border pt-2">
                 <p className="mb-1 text-xs font-medium text-foreground">
                   {t('pos.payment.title')}
                 </p>
                 <select
-                  className="h-9 w-full rounded-md border border-zinc-200 bg-background px-2 text-xs font-medium"
+                  className="h-11 min-h-11 w-full touch-manipulation rounded-md border border-zinc-200 bg-background px-2 text-sm font-medium"
                   value={posPaymentMethod}
                   onChange={(e) =>
                     setPosPaymentMethod(
@@ -919,7 +926,7 @@ export function PosPage() {
             variant="outline"
             disabled={!receiptSnapshot}
             size="lg"
-            className="h-12 w-full shrink-0 text-base font-semibold sm:w-auto"
+            className="h-12 min-h-12 w-full shrink-0 touch-manipulation text-base font-semibold sm:w-auto"
             onClick={handlePrintReceipt}
           >
             Print Receipt
@@ -934,7 +941,7 @@ export function PosPage() {
               (Boolean(selected) && billingLoading)
             }
             size="lg"
-            className="h-12 w-full shrink-0 text-base font-semibold sm:w-auto sm:min-w-[200px]"
+            className="h-12 min-h-12 w-full shrink-0 touch-manipulation text-base font-semibold sm:w-auto sm:min-w-[200px]"
             onClick={() => void completePayment()}
           >
             {checkoutBusy ?

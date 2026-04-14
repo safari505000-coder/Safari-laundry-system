@@ -46,26 +46,23 @@ export class ApiError extends Error {
   }
 }
 
-function parseApiBody(text: string): {
-  data?: unknown;
-  message?: string | string[];
-} {
+function parseApiBody(text: string): Record<string, unknown> {
   if (!text.trim()) {
     return {};
   }
   try {
-    return JSON.parse(text) as { data?: unknown; message?: string | string[] };
+    return JSON.parse(text) as Record<string, unknown>;
   } catch {
     return {};
   }
 }
 
 function formatErrorMessage(
-  json: { message?: string | string[] },
+  json: Record<string, unknown>,
   status: number,
   rawText: string,
 ): string {
-  const { message } = json;
+  const message = json.message;
   if (Array.isArray(message)) {
     return message
       .map((m) => (typeof m === 'string' ? m : JSON.stringify(m)))
@@ -73,6 +70,10 @@ function formatErrorMessage(
   }
   if (typeof message === 'string' && message.length > 0) {
     return message;
+  }
+  const err = json.error;
+  if (typeof err === 'string' && err.length > 0) {
+    return err;
   }
   if (rawText.length > 0 && rawText.length < 400) {
     return rawText;

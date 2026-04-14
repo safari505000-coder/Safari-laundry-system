@@ -7,6 +7,10 @@ import {
 } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
 import { APP_BRAND } from '../constants/branding';
+import {
+  logServerError,
+  prismaClientMessage,
+} from './prisma-exception.util';
 
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
@@ -21,10 +25,14 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         ? exception.getStatus()
         : HttpStatus.INTERNAL_SERVER_ERROR;
 
+    if (!(exception instanceof HttpException)) {
+      logServerError('GlobalExceptionFilter', exception);
+    }
+
     const body =
       exception instanceof HttpException
         ? exception.getResponse()
-        : { message: 'Internal server error' };
+        : { message: prismaClientMessage(exception) };
 
     const meta = { application: APP_BRAND };
     const payload =

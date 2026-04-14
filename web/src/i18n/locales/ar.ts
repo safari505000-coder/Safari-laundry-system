@@ -18,6 +18,12 @@ export const ar = {
     collapseSidebar: 'طي القائمة',
     expandSidebar: 'توسيع القائمة',
   },
+  errors: {
+    boundaryTitle: 'حدث خطأ',
+    boundaryBody:
+      'حدث خطأ غير متوقع. يمكنك إعادة تحميل الصفحة. إذا استمرت المشكلة، تواصل مع الدعم.',
+    retry: 'إعادة التحميل',
+  },
   language: {
     english: 'English',
     arabic: 'العربية',
