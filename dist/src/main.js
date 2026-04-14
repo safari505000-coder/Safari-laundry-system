@@ -47,11 +47,25 @@ const prisma_service_1 = require("./prisma/prisma.service");
 const DEFAULT_ADMIN_USERNAME = 'admin';
 const DEFAULT_ADMIN_PASSWORD = 'admin';
 const DEFAULT_ADMIN_FULL_NAME = 'System Administrator';
+const INSTITUTIONAL_ROLES = [
+    client_1.SafariRole.OWNER,
+    client_1.SafariRole.MANAGER,
+    client_1.SafariRole.DRIVER,
+    client_1.SafariRole.CALL_CENTER,
+    client_1.SafariRole.ACCOUNTANT,
+    client_1.SafariRole.SUPERVISOR,
+    client_1.SafariRole.VIEWER,
+];
 async function ensureDefaultOwner(prisma) {
-    const ownerRole = await prisma.role.upsert({
+    for (const roleName of INSTITUTIONAL_ROLES) {
+        await prisma.role.upsert({
+            where: { name: roleName },
+            create: { name: roleName },
+            update: {},
+        });
+    }
+    const ownerRole = await prisma.role.findUniqueOrThrow({
         where: { name: client_1.SafariRole.OWNER },
-        create: { name: client_1.SafariRole.OWNER },
-        update: {},
     });
     const existingAdmin = await prisma.user.findUnique({
         where: { username: DEFAULT_ADMIN_USERNAME },

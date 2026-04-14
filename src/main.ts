@@ -13,12 +13,27 @@ import { PrismaService } from './prisma/prisma.service';
 const DEFAULT_ADMIN_USERNAME = 'admin';
 const DEFAULT_ADMIN_PASSWORD = 'admin';
 const DEFAULT_ADMIN_FULL_NAME = 'System Administrator';
+const INSTITUTIONAL_ROLES: readonly SafariRole[] = [
+  SafariRole.OWNER,
+  SafariRole.MANAGER,
+  SafariRole.DRIVER,
+  SafariRole.CALL_CENTER,
+  SafariRole.ACCOUNTANT,
+  SafariRole.SUPERVISOR,
+  SafariRole.VIEWER,
+];
 
 async function ensureDefaultOwner(prisma: PrismaService): Promise<void> {
-  const ownerRole = await prisma.role.upsert({
+  for (const roleName of INSTITUTIONAL_ROLES) {
+    await prisma.role.upsert({
+      where: { name: roleName },
+      create: { name: roleName },
+      update: {},
+    });
+  }
+
+  const ownerRole = await prisma.role.findUniqueOrThrow({
     where: { name: SafariRole.OWNER },
-    create: { name: SafariRole.OWNER },
-    update: {},
   });
 
   const existingAdmin = await prisma.user.findUnique({
