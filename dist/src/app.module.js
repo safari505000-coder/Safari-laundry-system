@@ -7,7 +7,10 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AppModule = void 0;
+const node_fs_1 = require("node:fs");
+const node_path_1 = require("node:path");
 const common_1 = require("@nestjs/common");
+const serve_static_1 = require("@nestjs/serve-static");
 const app_controller_1 = require("./app.controller");
 const app_service_1 = require("./app.service");
 const audit_logs_module_1 = require("./audit-logs/audit-logs.module");
@@ -24,6 +27,15 @@ const reports_module_1 = require("./reports/reports.module");
 const subscription_plans_module_1 = require("./subscription-plans/subscription-plans.module");
 const users_module_1 = require("./users/users.module");
 const wallets_module_1 = require("./wallets/wallets.module");
+const webDistPath = (0, node_path_1.join)(process.cwd(), 'web', 'dist');
+const spaStaticModule = (0, node_fs_1.existsSync)(webDistPath)
+    ? [
+        serve_static_1.ServeStaticModule.forRoot({
+            rootPath: webDistPath,
+            exclude: ['/api/{*any}', '/docs/{*any}'],
+        }),
+    ]
+    : [];
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -44,6 +56,7 @@ exports.AppModule = AppModule = __decorate([
             call_center_module_1.CallCenterModule,
             laundry_price_list_module_1.LaundryPriceListModule,
             pos_module_1.PosModule,
+            ...spaStaticModule,
         ],
         controllers: [app_controller_1.AppController],
         providers: [app_service_1.AppService],

@@ -1,4 +1,7 @@
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { Module } from '@nestjs/common';
+import { ServeStaticModule } from '@nestjs/serve-static';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuditLogsModule } from './audit-logs/audit-logs.module';
@@ -16,6 +19,16 @@ import { SubscriptionPlansModule } from './subscription-plans/subscription-plans
 import { UsersModule } from './users/users.module';
 import { WalletsModule } from './wallets/wallets.module';
 
+const webDistPath = join(process.cwd(), 'web', 'dist');
+const spaStaticModule = existsSync(webDistPath)
+  ? [
+      ServeStaticModule.forRoot({
+        rootPath: webDistPath,
+        exclude: ['/api/{*any}', '/docs/{*any}'],
+      }),
+    ]
+  : [];
+
 @Module({
   imports: [
     PrismaModule,
@@ -32,6 +45,7 @@ import { WalletsModule } from './wallets/wallets.module';
     CallCenterModule,
     LaundryPriceListModule,
     PosModule,
+    ...spaStaticModule,
   ],
   controllers: [AppController],
   providers: [AppService],
