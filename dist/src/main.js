@@ -1,16 +1,81 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
 require("dotenv/config");
+const bcrypt = __importStar(require("bcrypt"));
 const common_1 = require("@nestjs/common");
 const core_1 = require("@nestjs/core");
+const client_1 = require("@prisma/client");
 const swagger_1 = require("@nestjs/swagger");
 const app_module_1 = require("./app.module");
 const branding_1 = require("./common/constants/branding");
 const global_exception_filter_1 = require("./common/filters/global-exception.filter");
 const branding_response_interceptor_1 = require("./common/interceptors/branding-response.interceptor");
+const prisma_service_1 = require("./prisma/prisma.service");
+const DEFAULT_ADMIN_USERNAME = 'admin';
+const DEFAULT_ADMIN_PASSWORD = 'admin';
+const DEFAULT_ADMIN_FULL_NAME = 'System Administrator';
+async function ensureDefaultOwner(prisma) {
+    const ownerRole = await prisma.role.upsert({
+        where: { name: client_1.SafariRole.OWNER },
+        create: { name: client_1.SafariRole.OWNER },
+        update: {},
+    });
+    const existingAdmin = await prisma.user.findUnique({
+        where: { username: DEFAULT_ADMIN_USERNAME },
+        select: { id: true },
+    });
+    if (existingAdmin) {
+        return;
+    }
+    const passwordHash = await bcrypt.hash(DEFAULT_ADMIN_PASSWORD, 12);
+    await prisma.user.create({
+        data: {
+            username: DEFAULT_ADMIN_USERNAME,
+            password: passwordHash,
+            fullName: DEFAULT_ADMIN_FULL_NAME,
+            safariRole: client_1.SafariRole.OWNER,
+            roleId: ownerRole.id,
+        },
+    });
+}
 async function bootstrap() {
     const app = await core_1.NestFactory.create(app_module_1.AppModule);
     const httpAdapterHost = app.get(core_1.HttpAdapterHost);
+    const prisma = app.get(prisma_service_1.PrismaService);
+    await ensureDefaultOwner(prisma);
     app.setGlobalPrefix('api');
     app.enableCors({
         origin: (process.env.CORS_ORIGIN ?? 'http://localhost:5173,http://127.0.0.1:5173')

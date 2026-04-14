@@ -1,15 +1,53 @@
 import 'dotenv/config';
+import * as bcrypt from 'bcrypt';
 import { ValidationPipe } from '@nestjs/common';
 import { HttpAdapterHost, NestFactory } from '@nestjs/core';
+import { SafariRole } from '@prisma/client';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { APP_BRAND, APP_BRAND_ERP } from './common/constants/branding';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { BrandingResponseInterceptor } from './common/interceptors/branding-response.interceptor';
+import { PrismaService } from './prisma/prisma.service';
+
+const DEFAULT_ADMIN_USERNAME = 'admin';
+const DEFAULT_ADMIN_PASSWORD = 'admin';
+const DEFAULT_ADMIN_FULL_NAME = 'System Administrator';
+
+async function ensureDefaultOwner(prisma: PrismaService): Promise<void> {
+  const ownerRole = await prisma.role.upsert({
+    where: { name: SafariRole.OWNER },
+    create: { name: SafariRole.OWNER },
+    update: {},
+  });
+
+  const existingAdmin = await prisma.user.findUnique({
+    where: { username: DEFAULT_ADMIN_USERNAME },
+    select: { id: true },
+  });
+
+  if (existingAdmin) {
+    return;
+  }
+
+  const passwordHash = await bcrypt.hash(DEFAULT_ADMIN_PASSWORD, 12);
+  await prisma.user.create({
+    data: {
+      username: DEFAULT_ADMIN_USERNAME,
+      password: passwordHash,
+      fullName: DEFAULT_ADMIN_FULL_NAME,
+      safariRole: SafariRole.OWNER,
+      roleId: ownerRole.id,
+    },
+  });
+}
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const httpAdapterHost = app.get(HttpAdapterHost);
+  const prisma = app.get(PrismaService);
+
+  await ensureDefaultOwner(prisma);
 
   app.setGlobalPrefix('api');
 
