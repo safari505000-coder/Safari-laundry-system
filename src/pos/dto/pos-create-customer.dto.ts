@@ -57,12 +57,15 @@ export class PosCreateCustomerDto {
   @MaxLength(120)
   addressBlock?: string;
 
-  @ApiPropertyOptional({ example: 'شارع الخليج' })
-  @Transform(trimOpt)
-  @IsOptional()
+  @ApiPropertyOptional({ example: 'شارع الخليج', default: '' })
+  @Transform(({ value }: { value: unknown }) => {
+    if (value === null || value === undefined) return '';
+    if (typeof value === 'string') return value.trim();
+    return String(value).trim();
+  })
   @IsString()
   @MaxLength(200)
-  addressStreet?: string;
+  addressStreet = '';
 
   @ApiPropertyOptional({ example: 'جادة 5' })
   @Transform(trimOpt)

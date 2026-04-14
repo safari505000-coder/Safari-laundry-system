@@ -1,5 +1,5 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { LedgerTransactionType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { PosCreateCustomerDto } from './dto/pos-create-customer.dto';
 
@@ -45,6 +45,42 @@ const customerSelect = {
 @Injectable()
 export class PosService {
   constructor(private readonly prisma: PrismaService) {}
+
+  async getCustomerBillingProfile(customerId: string) {
+    const customer = await this.prisma.customer.findUnique({
+      where: { id: customerId },
+      select: { id: true },
+    });
+    if (!customer) {
+      throw new NotFoundException('Customer not found');
+    }
+    const wallet = await this.prisma.customerWallet.findUnique({
+      where: { customerId },
+    });
+    const lastActivation = await this.prisma.transactionHistory.findFirst({
+      where: {
+        customerId,
+        type: LedgerTransactionType.SUBSCRIPTION_ACTIVATION,
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { metadata: true, createdAt: true },
+    });
+    const meta = lastActivation?.metadata as
+      | { planName?: string }
+      | null
+      | undefined;
+    const balanceStr = wallet?.balance.toString() ?? '0.0000';
+    const balanceNum = Number.parseFloat(balanceStr);
+    const subscriptionActive =
+      Number.isFinite(balanceNum) && balanceNum > 0;
+    return {
+      subscriptionActive,
+      planType: meta?.planName ?? null,
+      remainingBalance: balanceStr,
+      debt: wallet?.debt.toString() ?? '0.0000',
+      lastSubscriptionAt: lastActivation?.createdAt?.toISOString() ?? null,
+    };
+  }
 
   async searchCustomers(query: string) {
     const q = query.trim();

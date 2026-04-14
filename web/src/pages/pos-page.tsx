@@ -19,8 +19,10 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import {
+  type CustomerBillingProfile,
   type CustomerSearchRow,
   type LaundryPriceListItemRow,
+  type PosPaymentMethod,
   apiJson,
   ApiError,
 } from '@/lib/api';
@@ -75,6 +77,7 @@ type ReceiptSnapshot = {
     itemNote: string;
   }>;
   total: number;
+  paymentLabel?: string;
 };
 
 type ServiceOption = {
@@ -202,6 +205,11 @@ export function PosPage() {
     'VALUE',
   );
   const [discountInput, setDiscountInput] = useState('0');
+  const [billing, setBilling] = useState<CustomerBillingProfile | null>(null);
+  const [billingLoading, setBillingLoading] = useState(false);
+  const [posPaymentMethod, setPosPaymentMethod] = useState<
+    'CASH' | 'KNET' | 'PAYMENT_LINK'
+  >('CASH');
 
   const loadCatalog = useCallback(async () => {
     if (!token) {
@@ -263,6 +271,53 @@ export function PosPage() {
     () => cart.reduce((s, l) => s + l.quantity * l.unitPrice, 0),
     [cart],
   );
+
+  const netAfterDiscount = useMemo(() => {
+    const discountRaw = Number.parseFloat(discountInput);
+    const safeDiscountInput =
+      Number.isFinite(discountRaw) && discountRaw > 0 ? discountRaw : 0;
+    const discountAmount =
+      discountType === 'PERCENTAGE' ?
+        (total * safeDiscountInput) / 100
+      : safeDiscountInput;
+    return Math.max(0, total - discountAmount);
+  }, [total, discountType, discountInput]);
+
+  const balanceNum = billing
+    ? Number.parseFloat(billing.remainingBalance)
+    : NaN;
+  const needsExternalPayment =
+    billing !== null &&
+    netAfterDiscount > 0 &&
+    (!Number.isFinite(balanceNum) || balanceNum + 1e-9 < netAfterDiscount);
+
+  const loadBilling = useCallback(
+    async (customerId: string) => {
+      if (!token) return;
+      setBillingLoading(true);
+      try {
+        const row = await apiJson<CustomerBillingProfile>(
+          `/api/pos/customers/${customerId}/billing`,
+          { token },
+        );
+        setBilling(row);
+      } catch (e) {
+        setBilling(null);
+        if (e instanceof ApiError) toast.error(e.message);
+      } finally {
+        setBillingLoading(false);
+      }
+    },
+    [token],
+  );
+
+  useEffect(() => {
+    if (!selected?.id) {
+      setBilling(null);
+      return;
+    }
+    void loadBilling(selected.id);
+  }, [selected?.id, loadBilling]);
 
   const kwdSuffix = i18n.language.startsWith('ar') ? 'د.ك' : 'KWD';
 
@@ -392,12 +447,13 @@ export function PosPage() {
           phone2: newPhone2.trim() || undefined,
           addressArea: newArea.trim() || undefined,
           addressBlock: newBlock.trim() || undefined,
-          addressStreet: newStreet.trim() || undefined,
+          addressStreet: newStreet.trim() === '' ? null : newStreet.trim(),
           addressAvenue: newAvenue.trim() || undefined,
           addressHouse: newHouse.trim() || undefined,
         }),
       });
       setSelected(row);
+      void loadBilling(row.id);
       setSearchQ('');
       setSearchHits([]);
       setNewOpen(false);
@@ -445,13 +501,16 @@ export function PosPage() {
         discountType === 'PERCENTAGE' ?
           (total * safeDiscountInput) / 100
         : safeDiscountInput;
-      const netTotal = Math.max(0, total - discountAmount);
+      const netTotal = netAfterDiscount;
+
+      const extMethod: PosPaymentMethod | undefined =
+        needsExternalPayment ? posPaymentMethod : undefined;
 
       const created = await apiJson<{
         id?: string;
         invoiceNumber?: string | null;
         createdAt?: string;
-      }>('/api/orders/quick', {
+      }>('/api/pos/checkout', {
         method: 'POST',
         token,
         body: JSON.stringify({
@@ -461,8 +520,36 @@ export function PosPage() {
           totalPrice: netTotal,
           lineItems,
           serviceType: 'NORMAL',
+          ...(extMethod ? { posPaymentMethod: extMethod } : {}),
         }),
       });
+
+      let balanceAfter = selected.wallet?.balance ?? '0.0000';
+      try {
+        const fresh = await apiJson<CustomerBillingProfile>(
+          `/api/pos/customers/${selected.id}/billing`,
+          { token },
+        );
+        setBilling(fresh);
+        balanceAfter = fresh.remainingBalance;
+        setSelected((prev) =>
+          prev && prev.id === selected.id ?
+            {
+              ...prev,
+              wallet: {
+                balance: fresh.remainingBalance,
+                debt: fresh.debt,
+              },
+            }
+          : prev,
+        );
+      } catch {
+        /* keep previous balance on receipt */
+      }
+
+      const paymentLabel = needsExternalPayment
+        ? t(`pos.pay.${posPaymentMethod}` as const)
+        : t('pos.pay.SUBSCRIPTION_WALLET');
 
       setReceiptSnapshot({
         orderNumber: created.invoiceNumber || created.id || '-',
@@ -471,7 +558,7 @@ export function PosPage() {
         employeeId: user.username,
         customerName: selected.displayName?.trim() || t('pos.receiptWalkIn'),
         customerMobile: selected.phone,
-        customerBalance: selected.wallet?.balance ?? '0.0000',
+        customerBalance: balanceAfter,
         customerAddress: [
           selected.addressArea,
           selected.addressBlock,
@@ -486,6 +573,7 @@ export function PosPage() {
         discountAmount,
         lines: receiptLines,
         total: netTotal,
+        paymentLabel,
       });
 
       toast.success(t('pos.checkout.done'));
@@ -675,6 +763,60 @@ export function PosPage() {
               })}
             </p>
           </div>
+          {selected ?
+            <div className="shrink-0 border-b border-border bg-primary/[0.06] px-3 py-3 text-start">
+              <p className="text-xs font-semibold uppercase tracking-wide text-primary">
+                {t('pos.subscription.title')}
+              </p>
+              {billingLoading || !billing ?
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {t('pos.subscription.loading')}
+                </p>
+              : <div className="mt-2 space-y-1.5 text-xs">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-muted-foreground">
+                      {billing.subscriptionActive
+                        ? t('pos.subscription.statusActive')
+                        : t('pos.subscription.statusInactive')}
+                    </span>
+                    <span className="rounded-full bg-background px-2 py-0.5 font-medium text-foreground ring-1 ring-border">
+                      {Number.parseFloat(billing.remainingBalance).toFixed(3)}{' '}
+                      {kwdSuffix}
+                    </span>
+                  </div>
+                  <p className="text-muted-foreground">
+                    <span className="font-medium text-foreground">
+                      {t('pos.subscription.plan')}:
+                    </span>{' '}
+                    {billing.planType ?? t('pos.subscription.noPlan')}
+                  </p>
+                  <p className="text-muted-foreground">
+                    <span className="font-medium text-foreground">
+                      {t('pos.subscription.balance')}:
+                    </span>{' '}
+                    {Number.parseFloat(billing.remainingBalance).toFixed(3)}{' '}
+                    {kwdSuffix}
+                  </p>
+                  <p className="text-muted-foreground">
+                    <span className="font-medium text-foreground">
+                      {t('pos.subscription.debt')}:
+                    </span>{' '}
+                    {Number.parseFloat(billing.debt).toFixed(3)} {kwdSuffix}
+                  </p>
+                  {!needsExternalPayment && netAfterDiscount > 0 && billing ?
+                    <p className="text-[11px] leading-snug text-primary">
+                      {t('pos.subscription.walletCovers')}
+                    </p>
+                  : null}
+                  {needsExternalPayment && billing ?
+                    <p className="text-[11px] leading-snug text-amber-800">
+                      {t('pos.subscription.shortfallHint')}
+                    </p>
+                  : null}
+                </div>
+              }
+            </div>
+          : null}
           <ScrollArea className="min-h-0 flex-1 md:max-h-[calc(100dvh-12rem)]">
             <div className="p-3">
               {cart.length === 0 ?
@@ -751,6 +893,26 @@ export function PosPage() {
                 inputMode="decimal"
               />
             </div>
+            {selected && billing && needsExternalPayment ?
+              <div className="border-t border-border pt-2">
+                <p className="mb-1 text-xs font-medium text-foreground">
+                  {t('pos.payment.title')}
+                </p>
+                <select
+                  className="h-9 w-full rounded-md border border-zinc-200 bg-background px-2 text-xs font-medium"
+                  value={posPaymentMethod}
+                  onChange={(e) =>
+                    setPosPaymentMethod(
+                      e.target.value as 'CASH' | 'KNET' | 'PAYMENT_LINK',
+                    )
+                  }
+                >
+                  <option value="CASH">{t('pos.payment.cash')}</option>
+                  <option value="KNET">{t('pos.payment.knet')}</option>
+                  <option value="PAYMENT_LINK">{t('pos.payment.link')}</option>
+                </select>
+              </div>
+            : null}
           </div>
           <Button
             type="button"
@@ -765,7 +927,11 @@ export function PosPage() {
           <Button
             type="button"
             disabled={
-              checkoutBusy || cart.length === 0 || !selected || total <= 0
+              checkoutBusy ||
+              cart.length === 0 ||
+              !selected ||
+              total <= 0 ||
+              (Boolean(selected) && billingLoading)
             }
             size="lg"
             className="h-12 w-full shrink-0 text-base font-semibold sm:w-auto sm:min-w-[200px]"
@@ -1041,6 +1207,11 @@ export function PosPage() {
               <span>الصافي / Net</span>
               <span>{(receiptSnapshot?.total ?? 0).toFixed(3)} KWD</span>
             </div>
+            {receiptSnapshot?.paymentLabel ?
+              <div className="mt-1 text-[9px] text-muted-foreground">
+                <strong>الدفع / Payment:</strong> {receiptSnapshot.paymentLabel}
+              </div>
+            : null}
           </div>
           <div className="pos-receipt-notes">
             <p><strong>ملاحظات:</strong></p>

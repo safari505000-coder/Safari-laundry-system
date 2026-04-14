@@ -7,6 +7,7 @@ import {
 import {
   CashStatus,
   OrderStatus,
+  PosPaymentMethod,
   SafariRole,
   ShiftStatus,
 } from '@prisma/client';
@@ -45,6 +46,51 @@ export class FinanceService {
     await this.prisma.shift.create({
       data: { driverId, status: ShiftStatus.OPEN },
     });
+  }
+
+  async getDailyPosSalesByPaymentMethod(
+    fromIso: string,
+    toIso: string,
+  ): Promise<{
+    from: string;
+    to: string;
+    rows: {
+      posPaymentMethod: PosPaymentMethod;
+      orderCount: number;
+      totalRevenue: string;
+    }[];
+  }> {
+    const from = new Date(fromIso);
+    const to = new Date(toIso);
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+      throw new BadRequestException('Invalid date range');
+    }
+    const rows = await this.prisma.order.groupBy({
+      by: ['posPaymentMethod'],
+      where: {
+        status: OrderStatus.COMPLETED,
+        completedAt: { gte: from, lte: to },
+        posPaymentMethod: { not: null },
+      },
+      _sum: { totalPrice: true },
+      _count: true,
+    });
+    return {
+      from: from.toISOString(),
+      to: to.toISOString(),
+      rows: rows
+        .filter((r): r is typeof r & { posPaymentMethod: PosPaymentMethod } =>
+          r.posPaymentMethod !== null,
+        )
+        .map((r) => ({
+          posPaymentMethod: r.posPaymentMethod,
+          orderCount: r._count,
+          totalRevenue:
+            r._sum.totalPrice !== null && r._sum.totalPrice !== undefined
+              ? r._sum.totalPrice.toString()
+              : '0',
+        })),
+    };
   }
 
   async getOwnerCustomerWalletSummary(): Promise<OwnerCustomerWalletSummaryDto> {

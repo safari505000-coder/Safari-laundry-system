@@ -38,6 +38,7 @@ let CustomerLedgerService = class CustomerLedgerService {
                 walletSettledAt: true,
                 customerId: true,
                 totalPrice: true,
+                posPaymentMethod: true,
             },
         });
         if (!o) {
@@ -56,7 +57,12 @@ let CustomerLedgerService = class CustomerLedgerService {
         const takeMinor = balanceMinor < totalMinor ? balanceMinor : totalMinor;
         const shortfallMinor = totalMinor - takeMinor;
         const newBalanceMinor = balanceMinor - takeMinor;
-        const newDebtMinor = debtMinor + shortfallMinor;
+        const externalCoversShortfall = o.posPaymentMethod === client_1.PosPaymentMethod.CASH ||
+            o.posPaymentMethod === client_1.PosPaymentMethod.KNET ||
+            o.posPaymentMethod === client_1.PosPaymentMethod.PAYMENT_LINK;
+        const newDebtMinor = externalCoversShortfall && shortfallMinor > 0n ?
+            debtMinor
+            : debtMinor + shortfallMinor;
         await tx.customerWallet.update({
             where: { id: wallet.id },
             data: {
@@ -78,7 +84,10 @@ let CustomerLedgerService = class CustomerLedgerService {
                 metadata: {
                     appliedFromWallet: (0, finance_money_1.minorToAmountString)(takeMinor),
                     orderTotal: o.totalPrice.toString(),
-                    addedToDebt: (0, finance_money_1.minorToAmountString)(shortfallMinor),
+                    addedToDebt: (0, finance_money_1.minorToAmountString)(externalCoversShortfall && shortfallMinor > 0n ? 0n : shortfallMinor),
+                    posPaymentMethod: o.posPaymentMethod ?? null,
+                    externalCoversShortfall: externalCoversShortfall && shortfallMinor > 0n ? true : false,
+                    reportingCategory: 'DAILY_SALES',
                 },
             },
         });

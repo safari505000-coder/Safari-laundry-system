@@ -26,7 +26,7 @@ class PosCreateCustomerDto {
     displayName;
     addressArea;
     addressBlock;
-    addressStreet;
+    addressStreet = '';
     addressAvenue;
     addressHouse;
 }
@@ -73,12 +73,17 @@ __decorate([
     __metadata("design:type", String)
 ], PosCreateCustomerDto.prototype, "addressBlock", void 0);
 __decorate([
-    (0, swagger_1.ApiPropertyOptional)({ example: 'شارع الخليج' }),
-    (0, class_transformer_1.Transform)(trimOpt),
-    (0, class_validator_1.IsOptional)(),
+    (0, swagger_1.ApiPropertyOptional)({ example: 'شارع الخليج', default: '' }),
+    (0, class_transformer_1.Transform)(({ value }) => {
+        if (value === null || value === undefined)
+            return '';
+        if (typeof value === 'string')
+            return value.trim();
+        return String(value).trim();
+    }),
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.MaxLength)(200),
-    __metadata("design:type", String)
+    __metadata("design:type", Object)
 ], PosCreateCustomerDto.prototype, "addressStreet", void 0);
 __decorate([
     (0, swagger_1.ApiPropertyOptional)({ example: 'جادة 5' }),

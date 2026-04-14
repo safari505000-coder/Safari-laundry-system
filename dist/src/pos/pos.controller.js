@@ -16,22 +16,33 @@ exports.PosController = void 0;
 const common_1 = require("@nestjs/common");
 const swagger_1 = require("@nestjs/swagger");
 const client_1 = require("@prisma/client");
+const current_user_decorator_1 = require("../auth/decorators/current-user.decorator");
 const roles_decorator_1 = require("../auth/decorators/roles.decorator");
 const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
 const roles_guard_1 = require("../auth/guards/roles.guard");
 const branding_1 = require("../common/constants/branding");
+const pos_checkout_dto_1 = require("../orders/dto/pos-checkout.dto");
+const orders_service_1 = require("../orders/orders.service");
 const pos_create_customer_dto_1 = require("./dto/pos-create-customer.dto");
 const pos_service_1 = require("./pos.service");
 let PosController = class PosController {
     posService;
-    constructor(posService) {
+    ordersService;
+    constructor(posService, ordersService) {
         this.posService = posService;
+        this.ordersService = ordersService;
     }
     searchCustomers(q) {
         return this.posService.searchCustomers(q ?? '');
     }
     createCustomer(dto) {
         return this.posService.createCustomer(dto);
+    }
+    getCustomerBilling(customerId) {
+        return this.posService.getCustomerBillingProfile(customerId);
+    }
+    posCheckout(dto, user) {
+        return this.ordersService.posCheckout(user.userId, dto);
     }
 };
 exports.PosController = PosController;
@@ -56,12 +67,36 @@ __decorate([
     __metadata("design:paramtypes", [pos_create_customer_dto_1.PosCreateCustomerDto]),
     __metadata("design:returntype", void 0)
 ], PosController.prototype, "createCustomer", null);
+__decorate([
+    (0, common_1.Get)('customers/:customerId/billing'),
+    (0, swagger_1.ApiOperation)({
+        summary: `Customer subscription & wallet — POS (${branding_1.APP_BRAND})`,
+        description: 'Prepaid balance (subscription credit), debt, and last activated plan name for checkout UI.',
+    }),
+    __param(0, (0, common_1.Param)('customerId', common_1.ParseUUIDPipe)),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], PosController.prototype, "getCustomerBilling", null);
+__decorate([
+    (0, common_1.Post)('checkout'),
+    (0, swagger_1.ApiOperation)({
+        summary: `Complete POS sale — wallet + payment method (${branding_1.APP_BRAND})`,
+        description: 'Creates the order, moves it to COMPLETED, runs wallet settlement, and stores PosPaymentMethod for reporting.',
+    }),
+    __param(0, (0, common_1.Body)()),
+    __param(1, (0, current_user_decorator_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [pos_checkout_dto_1.PosCheckoutDto, Object]),
+    __metadata("design:returntype", void 0)
+], PosController.prototype, "posCheckout", null);
 exports.PosController = PosController = __decorate([
     (0, swagger_1.ApiTags)('pos'),
     (0, swagger_1.ApiBearerAuth)('bearer'),
     (0, common_1.Controller)('pos'),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
     (0, roles_decorator_1.Roles)(client_1.SafariRole.DRIVER),
-    __metadata("design:paramtypes", [pos_service_1.PosService])
+    __metadata("design:paramtypes", [pos_service_1.PosService,
+        orders_service_1.OrdersService])
 ], PosController);
 //# sourceMappingURL=pos.controller.js.map

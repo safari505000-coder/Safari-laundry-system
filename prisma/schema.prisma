@@ -51,6 +51,14 @@ enum LedgerTransactionType {
   ORDER_WALLET_SETTLEMENT
 }
 
+/** POS / daily sales — how the non-wallet portion was collected (if any). */
+enum PosPaymentMethod {
+  SUBSCRIPTION_WALLET
+  CASH
+  KNET
+  PAYMENT_LINK
+}
+
 model User {
   id          String     @id @default(uuid()) @db.Uuid
   /** Unique login handle (staff ID / username). */
@@ -159,6 +167,10 @@ model Order {
   notes            String?
   customerId     String        @db.Uuid
   driverId         String?       @db.Uuid
+  /** POS checkout: how sale was recognized for reporting (wallet vs external). */
+  posPaymentMethod PosPaymentMethod?
+  /** Set when the order reaches COMPLETED (for daily sales / GL-style reporting). */
+  completedAt      DateTime?
   /** Set when wallet + debt settlement ran for this order (idempotent). */
   walletSettledAt  DateTime?
   createdAt        DateTime      @default(now())
@@ -173,6 +185,8 @@ model Order {
   @@index([status])
   @@index([invoiceNumber])
   @@index([driverId, cashStatus])
+  @@index([completedAt])
+  @@index([posPaymentMethod])
 }
 
 model Shift {

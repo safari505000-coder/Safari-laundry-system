@@ -11,6 +11,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PosService = void 0;
 const common_1 = require("@nestjs/common");
+const client_1 = require("@prisma/client");
 const prisma_service_1 = require("../prisma/prisma.service");
 function composeKuwaitAddressLine(dto) {
     const parts = [
@@ -47,6 +48,37 @@ let PosService = class PosService {
     prisma;
     constructor(prisma) {
         this.prisma = prisma;
+    }
+    async getCustomerBillingProfile(customerId) {
+        const customer = await this.prisma.customer.findUnique({
+            where: { id: customerId },
+            select: { id: true },
+        });
+        if (!customer) {
+            throw new common_1.NotFoundException('Customer not found');
+        }
+        const wallet = await this.prisma.customerWallet.findUnique({
+            where: { customerId },
+        });
+        const lastActivation = await this.prisma.transactionHistory.findFirst({
+            where: {
+                customerId,
+                type: client_1.LedgerTransactionType.SUBSCRIPTION_ACTIVATION,
+            },
+            orderBy: { createdAt: 'desc' },
+            select: { metadata: true, createdAt: true },
+        });
+        const meta = lastActivation?.metadata;
+        const balanceStr = wallet?.balance.toString() ?? '0.0000';
+        const balanceNum = Number.parseFloat(balanceStr);
+        const subscriptionActive = Number.isFinite(balanceNum) && balanceNum > 0;
+        return {
+            subscriptionActive,
+            planType: meta?.planName ?? null,
+            remainingBalance: balanceStr,
+            debt: wallet?.debt.toString() ?? '0.0000',
+            lastSubscriptionAt: lastActivation?.createdAt?.toISOString() ?? null,
+        };
     }
     async searchCustomers(query) {
         const q = query.trim();

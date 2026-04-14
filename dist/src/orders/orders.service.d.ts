@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AssignDriverDto } from './dto/assign-driver.dto';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CreateOrderQuickDto } from './dto/create-order-quick.dto';
+import { PosCheckoutDto } from './dto/pos-checkout.dto';
 import type { DriverContributionDto } from './dto/manager-dashboard.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
 declare const orderDetailSelect: {
@@ -12,6 +13,8 @@ declare const orderDetailSelect: {
     serviceType: true;
     totalPrice: true;
     cashStatus: true;
+    posPaymentMethod: true;
+    completedAt: true;
     walletSettledAt: true;
     invoiceNumber: true;
     notes: true;
@@ -59,7 +62,9 @@ export declare class OrdersService {
     private assertDriverUser;
     private reconcileLineItems;
     private findCustomerByAnyPhone;
+    private resolveQuickOrderCustomerId;
     createQuick(driverUserId: string, dto: CreateOrderQuickDto): Promise<OrderDetail>;
+    posCheckout(driverUserId: string, dto: PosCheckoutDto): Promise<OrderDetail>;
     createAsManager(dto: CreateOrderDto): Promise<OrderDetail>;
     findAllForActor(userId: string, role: string): Promise<OrderDetail[]>;
     findOneForActor(id: string, userId: string, role: string): Promise<OrderDetail>;

@@ -3,7 +3,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { LedgerTransactionType, Prisma } from '@prisma/client';
+import {
+  LedgerTransactionType,
+  PosPaymentMethod,
+  Prisma,
+} from '@prisma/client';
 import {
   minorToAmountString,
   toMinorFromFixed4,
@@ -46,6 +50,7 @@ export class CustomerLedgerService {
         walletSettledAt: true,
         customerId: true,
         totalPrice: true,
+        posPaymentMethod: true,
       },
     });
     if (!o) {
@@ -67,7 +72,14 @@ export class CustomerLedgerService {
     const takeMinor = balanceMinor < totalMinor ? balanceMinor : totalMinor;
     const shortfallMinor = totalMinor - takeMinor;
     const newBalanceMinor = balanceMinor - takeMinor;
-    const newDebtMinor = debtMinor + shortfallMinor;
+    const externalCoversShortfall =
+      o.posPaymentMethod === PosPaymentMethod.CASH ||
+      o.posPaymentMethod === PosPaymentMethod.KNET ||
+      o.posPaymentMethod === PosPaymentMethod.PAYMENT_LINK;
+    const newDebtMinor =
+      externalCoversShortfall && shortfallMinor > 0n ?
+        debtMinor
+      : debtMinor + shortfallMinor;
 
     await tx.customerWallet.update({
       where: { id: wallet.id },
@@ -91,7 +103,13 @@ export class CustomerLedgerService {
         metadata: {
           appliedFromWallet: minorToAmountString(takeMinor),
           orderTotal: o.totalPrice.toString(),
-          addedToDebt: minorToAmountString(shortfallMinor),
+          addedToDebt: minorToAmountString(
+            externalCoversShortfall && shortfallMinor > 0n ? 0n : shortfallMinor,
+          ),
+          posPaymentMethod: o.posPaymentMethod ?? null,
+          externalCoversShortfall:
+            externalCoversShortfall && shortfallMinor > 0n ? true : false,
+          reportingCategory: 'DAILY_SALES',
         },
       },
     });

@@ -34,6 +34,36 @@ let FinanceService = class FinanceService {
             data: { driverId, status: client_1.ShiftStatus.OPEN },
         });
     }
+    async getDailyPosSalesByPaymentMethod(fromIso, toIso) {
+        const from = new Date(fromIso);
+        const to = new Date(toIso);
+        if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+            throw new common_1.BadRequestException('Invalid date range');
+        }
+        const rows = await this.prisma.order.groupBy({
+            by: ['posPaymentMethod'],
+            where: {
+                status: client_1.OrderStatus.COMPLETED,
+                completedAt: { gte: from, lte: to },
+                posPaymentMethod: { not: null },
+            },
+            _sum: { totalPrice: true },
+            _count: true,
+        });
+        return {
+            from: from.toISOString(),
+            to: to.toISOString(),
+            rows: rows
+                .filter((r) => r.posPaymentMethod !== null)
+                .map((r) => ({
+                posPaymentMethod: r.posPaymentMethod,
+                orderCount: r._count,
+                totalRevenue: r._sum.totalPrice !== null && r._sum.totalPrice !== undefined
+                    ? r._sum.totalPrice.toString()
+                    : '0',
+            })),
+        };
+    }
     async getOwnerCustomerWalletSummary() {
         const agg = await this.prisma.customerWallet.aggregate({
             _sum: { balance: true, debt: true },

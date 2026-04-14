@@ -216,6 +216,20 @@ export type CustomerSearchRow = {
   wallet: { balance: string; debt: string } | null;
 };
 
+export type PosPaymentMethod =
+  | 'SUBSCRIPTION_WALLET'
+  | 'CASH'
+  | 'KNET'
+  | 'PAYMENT_LINK';
+
+export type CustomerBillingProfile = {
+  subscriptionActive: boolean;
+  planType: string | null;
+  remainingBalance: string;
+  debt: string;
+  lastSubscriptionAt: string | null;
+};
+
 export type SubscriptionActivationSettlement = {
   totalCollected: string;
   debtSettled: string;

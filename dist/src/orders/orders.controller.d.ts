@@ -19,6 +19,8 @@ export declare class OrdersController {
         cashStatus: import("@prisma/client").$Enums.CashStatus;
         invoiceNumber: string | null;
         notes: string | null;
+        posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
+        completedAt: Date | null;
         walletSettledAt: Date | null;
         customer: {
             id: string;
@@ -53,6 +55,8 @@ export declare class OrdersController {
         cashStatus: import("@prisma/client").$Enums.CashStatus;
         invoiceNumber: string | null;
         notes: string | null;
+        posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
+        completedAt: Date | null;
         walletSettledAt: Date | null;
         customer: {
             id: string;
@@ -87,6 +91,8 @@ export declare class OrdersController {
         cashStatus: import("@prisma/client").$Enums.CashStatus;
         invoiceNumber: string | null;
         notes: string | null;
+        posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
+        completedAt: Date | null;
         walletSettledAt: Date | null;
         customer: {
             id: string;
@@ -121,6 +127,8 @@ export declare class OrdersController {
         cashStatus: import("@prisma/client").$Enums.CashStatus;
         invoiceNumber: string | null;
         notes: string | null;
+        posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
+        completedAt: Date | null;
         walletSettledAt: Date | null;
         customer: {
             id: string;
@@ -155,6 +163,8 @@ export declare class OrdersController {
         cashStatus: import("@prisma/client").$Enums.CashStatus;
         invoiceNumber: string | null;
         notes: string | null;
+        posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
+        completedAt: Date | null;
         walletSettledAt: Date | null;
         customer: {
             id: string;
@@ -189,6 +199,8 @@ export declare class OrdersController {
         cashStatus: import("@prisma/client").$Enums.CashStatus;
         invoiceNumber: string | null;
         notes: string | null;
+        posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
+        completedAt: Date | null;
         walletSettledAt: Date | null;
         customer: {
             id: string;

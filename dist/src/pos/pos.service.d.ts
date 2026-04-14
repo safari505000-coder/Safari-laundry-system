@@ -4,6 +4,13 @@ import type { PosCreateCustomerDto } from './dto/pos-create-customer.dto';
 export declare class PosService {
     private readonly prisma;
     constructor(prisma: PrismaService);
+    getCustomerBillingProfile(customerId: string): Promise<{
+        subscriptionActive: boolean;
+        planType: string | null;
+        remainingBalance: string;
+        debt: string;
+        lastSubscriptionAt: string | null;
+    }>;
     searchCustomers(query: string): Promise<{
         id: string;
         createdAt: Date;

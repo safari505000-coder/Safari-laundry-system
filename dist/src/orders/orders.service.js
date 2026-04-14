@@ -13,6 +13,7 @@ exports.OrdersService = void 0;
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
 const customer_ledger_service_1 = require("../customer-ledger/customer-ledger.service");
+const finance_money_1 = require("../finance/finance-money");
 const prisma_service_1 = require("../prisma/prisma.service");
 const order_status_machine_1 = require("./order-status.machine");
 const order_total_util_1 = require("./order-total.util");
@@ -22,6 +23,8 @@ const orderDetailSelect = {
     serviceType: true,
     totalPrice: true,
     cashStatus: true,
+    posPaymentMethod: true,
+    completedAt: true,
     walletSettledAt: true,
     invoiceNumber: true,
     notes: true,
@@ -105,53 +108,53 @@ let OrdersService = class OrdersService {
             },
         });
     }
+    async resolveQuickOrderCustomerId(tx, dto, phoneCompact) {
+        if (dto.customerId) {
+            const existing = await tx.customer.findUnique({
+                where: { id: dto.customerId },
+            });
+            if (!existing) {
+                throw new common_1.NotFoundException('Customer not found');
+            }
+            const existingCompact = existing.phone.replace(/[\s-]/g, '').trim();
+            const existingCompact2 = existing.phone2?.replace(/[\s-]/g, '').trim();
+            if (existingCompact !== phoneCompact && existingCompact2 !== phoneCompact) {
+                throw new common_1.BadRequestException('customerPhone does not match the selected customer');
+            }
+            const name = dto.customerDisplayName?.trim();
+            if (name) {
+                await tx.customer.update({
+                    where: { id: existing.id },
+                    data: { displayName: name },
+                });
+            }
+            return existing.id;
+        }
+        const existingByPhone = await this.findCustomerByAnyPhone(tx, phoneCompact);
+        const customer = existingByPhone ?
+            await tx.customer.update({
+                where: { id: existingByPhone.id },
+                data: {
+                    displayName: dto.customerDisplayName?.trim() || existingByPhone.displayName,
+                    address: dto.customerAddress?.trim() || existingByPhone.address,
+                },
+            })
+            : await tx.customer.create({
+                data: {
+                    phone: phoneCompact,
+                    address: dto.customerAddress?.trim() || null,
+                    displayName: dto.customerDisplayName?.trim() || null,
+                },
+            });
+        return customer.id;
+    }
     async createQuick(driverUserId, dto) {
         await this.assertDriverUser(driverUserId);
         const serviceType = dto.serviceType ?? client_1.ServiceType.NORMAL;
         const lineCreates = this.reconcileLineItems(dto.totalPrice, dto.lineItems);
         const phoneCompact = dto.customerPhone.replace(/[\s-]/g, '').trim();
         return this.prisma.$transaction(async (tx) => {
-            let customerId;
-            if (dto.customerId) {
-                const existing = await tx.customer.findUnique({
-                    where: { id: dto.customerId },
-                });
-                if (!existing) {
-                    throw new common_1.NotFoundException('Customer not found');
-                }
-                const existingCompact = existing.phone.replace(/[\s-]/g, '').trim();
-                const existingCompact2 = existing.phone2?.replace(/[\s-]/g, '').trim();
-                if (existingCompact !== phoneCompact && existingCompact2 !== phoneCompact) {
-                    throw new common_1.BadRequestException('customerPhone does not match the selected customer');
-                }
-                customerId = existing.id;
-                const name = dto.customerDisplayName?.trim();
-                if (name) {
-                    await tx.customer.update({
-                        where: { id: customerId },
-                        data: { displayName: name },
-                    });
-                }
-            }
-            else {
-                const existingByPhone = await this.findCustomerByAnyPhone(tx, phoneCompact);
-                const customer = existingByPhone ?
-                    await tx.customer.update({
-                        where: { id: existingByPhone.id },
-                        data: {
-                            displayName: dto.customerDisplayName?.trim() || existingByPhone.displayName,
-                            address: dto.customerAddress?.trim() || existingByPhone.address,
-                        },
-                    })
-                    : await tx.customer.create({
-                        data: {
-                            phone: phoneCompact,
-                            address: dto.customerAddress?.trim() || null,
-                            displayName: dto.customerDisplayName?.trim() || null,
-                        },
-                    });
-                customerId = customer.id;
-            }
+            const customerId = await this.resolveQuickOrderCustomerId(tx, dto, phoneCompact);
             return tx.order.create({
                 data: {
                     customerId,
@@ -165,6 +168,83 @@ let OrdersService = class OrdersService {
                         ? { lineItems: { create: lineCreates } }
                         : {}),
                 },
+                select: orderDetailSelect,
+            });
+        });
+    }
+    async posCheckout(driverUserId, dto) {
+        await this.assertDriverUser(driverUserId);
+        const serviceType = dto.serviceType ?? client_1.ServiceType.NORMAL;
+        const lineCreates = this.reconcileLineItems(dto.totalPrice, dto.lineItems);
+        const phoneCompact = dto.customerPhone.replace(/[\s-]/g, '').trim();
+        return this.prisma.$transaction(async (tx) => {
+            const customerId = await this.resolveQuickOrderCustomerId(tx, dto, phoneCompact);
+            const walletRow = await tx.customerWallet.findUnique({
+                where: { customerId },
+            });
+            const balanceMinor = walletRow
+                ? (0, finance_money_1.parseFixed4ToMinor)(walletRow.balance.toFixed(4))
+                : 0n;
+            const totalMinor = (0, finance_money_1.parseFixed4ToMinor)(dto.totalPrice.toFixed(4));
+            const shortfallMinor = totalMinor > balanceMinor ? totalMinor - balanceMinor : 0n;
+            let resolvedMethod;
+            if (shortfallMinor === 0n) {
+                resolvedMethod = client_1.PosPaymentMethod.SUBSCRIPTION_WALLET;
+            }
+            else {
+                const ext = dto.posPaymentMethod;
+                const allowedExternal = [
+                    client_1.PosPaymentMethod.CASH,
+                    client_1.PosPaymentMethod.KNET,
+                    client_1.PosPaymentMethod.PAYMENT_LINK,
+                ];
+                if (!ext || !allowedExternal.includes(ext)) {
+                    throw new common_1.BadRequestException('When prepaid balance does not cover the invoice, posPaymentMethod must be CASH, KNET, or PAYMENT_LINK');
+                }
+                resolvedMethod = ext;
+            }
+            const created = await tx.order.create({
+                data: {
+                    customerId,
+                    driverId: driverUserId,
+                    serviceType,
+                    totalPrice: dto.totalPrice,
+                    status: client_1.OrderStatus.PENDING,
+                    invoiceNumber: dto.invoiceNumber?.trim() || null,
+                    notes: dto.notes?.trim() || null,
+                    ...(lineCreates?.length
+                        ? { lineItems: { create: lineCreates } }
+                        : {}),
+                },
+                select: { id: true, driverId: true },
+            });
+            if (created.driverId !== driverUserId) {
+                throw new common_1.ForbiddenException('Order must be assigned to you');
+            }
+            await tx.order.update({
+                where: { id: created.id },
+                data: { status: client_1.OrderStatus.PICKED_UP },
+            });
+            await tx.order.update({
+                where: { id: created.id },
+                data: { status: client_1.OrderStatus.IN_PROGRESS },
+            });
+            await tx.order.update({
+                where: { id: created.id },
+                data: { status: client_1.OrderStatus.OUT_FOR_DELIVERY },
+            });
+            await tx.order.update({
+                where: { id: created.id },
+                data: {
+                    status: client_1.OrderStatus.COMPLETED,
+                    cashStatus: client_1.CashStatus.PAID_TO_DRIVER,
+                    posPaymentMethod: resolvedMethod,
+                    completedAt: new Date(),
+                },
+            });
+            await this.customerLedger.applyOrderWalletSettlementForCompletedOrder(tx, created.id, driverUserId);
+            return tx.order.findUniqueOrThrow({
+                where: { id: created.id },
                 select: orderDetailSelect,
             });
         });
@@ -299,6 +379,9 @@ let OrdersService = class OrdersService {
             dto.status !== order.status &&
             order.cashStatus === client_1.CashStatus.UNPAID) {
             data.cashStatus = client_1.CashStatus.PAID_TO_DRIVER;
+        }
+        if (dto.status === client_1.OrderStatus.COMPLETED && dto.status !== order.status) {
+            data.completedAt = new Date();
         }
         return this.prisma.$transaction(async (tx) => {
             await tx.order.update({

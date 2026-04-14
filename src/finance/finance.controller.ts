@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { SafariRole } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -8,6 +8,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { APP_BRAND } from '../common/constants/branding';
 import { ConfirmHandoverDto } from './dto/confirm-handover.dto';
+import { DailyPosSalesQueryDto } from './dto/daily-pos-sales-query.dto';
 import {
   DriverBalanceResponseDto,
   HandoverResultDto,
@@ -31,6 +32,22 @@ export class FinanceController {
   })
   getOwnerCustomerWalletSummary(): Promise<OwnerCustomerWalletSummaryDto> {
     return this.financeService.getOwnerCustomerWalletSummary();
+  }
+
+  @Get('reports/daily-pos-sales')
+  @Roles(
+    SafariRole.OWNER,
+    SafariRole.MANAGER,
+    SafariRole.ACCOUNTANT,
+    SafariRole.SUPERVISOR,
+  )
+  @ApiOperation({
+    summary: `Daily POS sales by payment method (${APP_BRAND})`,
+    description:
+      'Aggregates completed POS orders with recorded PosPaymentMethod (subscription wallet, cash, KNET, payment link) for financial reporting.',
+  })
+  getDailyPosSales(@Query() q: DailyPosSalesQueryDto) {
+    return this.financeService.getDailyPosSalesByPaymentMethod(q.from, q.to);
   }
 
   @Get('driver-balance')

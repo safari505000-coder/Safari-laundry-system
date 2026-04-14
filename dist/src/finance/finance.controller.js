@@ -22,6 +22,7 @@ const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
 const roles_guard_1 = require("../auth/guards/roles.guard");
 const branding_1 = require("../common/constants/branding");
 const confirm_handover_dto_1 = require("./dto/confirm-handover.dto");
+const daily_pos_sales_query_dto_1 = require("./dto/daily-pos-sales-query.dto");
 const finance_service_1 = require("./finance.service");
 let FinanceController = class FinanceController {
     financeService;
@@ -30,6 +31,9 @@ let FinanceController = class FinanceController {
     }
     getOwnerCustomerWalletSummary() {
         return this.financeService.getOwnerCustomerWalletSummary();
+    }
+    getDailyPosSales(q) {
+        return this.financeService.getDailyPosSalesByPaymentMethod(q.from, q.to);
     }
     getDriverBalance() {
         return this.financeService.getDriverBalances();
@@ -50,6 +54,18 @@ __decorate([
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", Promise)
 ], FinanceController.prototype, "getOwnerCustomerWalletSummary", null);
+__decorate([
+    (0, common_1.Get)('reports/daily-pos-sales'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR),
+    (0, swagger_1.ApiOperation)({
+        summary: `Daily POS sales by payment method (${branding_1.APP_BRAND})`,
+        description: 'Aggregates completed POS orders with recorded PosPaymentMethod (subscription wallet, cash, KNET, payment link) for financial reporting.',
+    }),
+    __param(0, (0, common_1.Query)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [daily_pos_sales_query_dto_1.DailyPosSalesQueryDto]),
+    __metadata("design:returntype", void 0)
+], FinanceController.prototype, "getDailyPosSales", null);
 __decorate([
     (0, common_1.Get)('driver-balance'),
     (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
