@@ -1,2 +1,2 @@
-export const APP_BRAND = 'Safari Fast Group';
-export const APP_BRAND_ERP = 'Safari Fast Group ERP';
+export const APP_BRAND = 'مجموعة مصابغ سفاري السريعة';
+export const APP_BRAND_ERP = 'مجموعة مصابغ سفاري السريعة — ERP';

@@ -10,6 +10,12 @@ export declare class UsersController {
         branchId: string | null;
         createdAt: Date;
         updatedAt: Date;
+        username: string;
+        fullName: string;
+        employeeId: string | null;
+        jobTitle: string | null;
+        phone: string | null;
+        safariRole: import("@prisma/client").$Enums.SafariRole;
         role: {
             id: string;
             name: string;
@@ -19,12 +25,6 @@ export declare class UsersController {
             name: string;
             location: string;
         } | null;
-        employeeId: string | null;
-        username: string;
-        fullName: string;
-        phone: string | null;
-        jobTitle: string | null;
-        safariRole: import("@prisma/client").$Enums.SafariRole;
     }>;
     findAll(): Promise<{
         id: string;
@@ -32,6 +32,12 @@ export declare class UsersController {
         branchId: string | null;
         createdAt: Date;
         updatedAt: Date;
+        username: string;
+        fullName: string;
+        employeeId: string | null;
+        jobTitle: string | null;
+        phone: string | null;
+        safariRole: import("@prisma/client").$Enums.SafariRole;
         role: {
             id: string;
             name: string;
@@ -41,12 +47,6 @@ export declare class UsersController {
             name: string;
             location: string;
         } | null;
-        employeeId: string | null;
-        username: string;
-        fullName: string;
-        phone: string | null;
-        jobTitle: string | null;
-        safariRole: import("@prisma/client").$Enums.SafariRole;
     }[]>;
     findOne(id: string): Promise<{
         id: string;
@@ -54,6 +54,12 @@ export declare class UsersController {
         branchId: string | null;
         createdAt: Date;
         updatedAt: Date;
+        username: string;
+        fullName: string;
+        employeeId: string | null;
+        jobTitle: string | null;
+        phone: string | null;
+        safariRole: import("@prisma/client").$Enums.SafariRole;
         role: {
             id: string;
             name: string;
@@ -63,12 +69,6 @@ export declare class UsersController {
             name: string;
             location: string;
         } | null;
-        employeeId: string | null;
-        username: string;
-        fullName: string;
-        phone: string | null;
-        jobTitle: string | null;
-        safariRole: import("@prisma/client").$Enums.SafariRole;
     }>;
     update(id: string, dto: UpdateUserDto): Promise<{
         id: string;
@@ -76,6 +76,12 @@ export declare class UsersController {
         branchId: string | null;
         createdAt: Date;
         updatedAt: Date;
+        username: string;
+        fullName: string;
+        employeeId: string | null;
+        jobTitle: string | null;
+        phone: string | null;
+        safariRole: import("@prisma/client").$Enums.SafariRole;
         role: {
             id: string;
             name: string;
@@ -85,12 +91,6 @@ export declare class UsersController {
             name: string;
             location: string;
         } | null;
-        employeeId: string | null;
-        username: string;
-        fullName: string;
-        phone: string | null;
-        jobTitle: string | null;
-        safariRole: import("@prisma/client").$Enums.SafariRole;
     }>;
     remove(id: string): Promise<{
         id: string;

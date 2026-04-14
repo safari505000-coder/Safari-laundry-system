@@ -40,6 +40,7 @@ const core_1 = require("@nestjs/core");
 const client_1 = require("@prisma/client");
 const swagger_1 = require("@nestjs/swagger");
 const app_module_1 = require("./app.module");
+const ensure_default_price_list_1 = require("./bootstrap/ensure-default-price-list");
 const branding_1 = require("./common/constants/branding");
 const global_exception_filter_1 = require("./common/filters/global-exception.filter");
 const branding_response_interceptor_1 = require("./common/interceptors/branding-response.interceptor");
@@ -47,117 +48,6 @@ const prisma_service_1 = require("./prisma/prisma.service");
 const DEFAULT_ADMIN_USERNAME = 'admin';
 const DEFAULT_ADMIN_PASSWORD = 'admin';
 const DEFAULT_ADMIN_FULL_NAME = 'System Administrator';
-const BUSINESS_NAME_AR = 'مجموعة مصابغ سفاري السريعة';
-const DEFAULT_PRICE_ITEMS = [
-    {
-        code: 'OVER_COAT',
-        nameAr: 'بالطو',
-        nameEn: 'Over Coat',
-        priceNormal: 2.5,
-        priceUrgent: 3.0,
-        pricePressOnly: 0.75,
-        priceUrgentPress: 1.0,
-    },
-    {
-        code: 'JACKET',
-        nameAr: 'جاكيت',
-        nameEn: 'Jacket',
-        priceNormal: 1.75,
-        priceUrgent: 2.0,
-        pricePressOnly: 0.5,
-        priceUrgentPress: 0.75,
-    },
-    {
-        code: 'TROUSERS',
-        nameAr: 'بنطلون',
-        nameEn: 'Trousers',
-        priceNormal: 0.5,
-        priceUrgent: 0.75,
-        pricePressOnly: 0.25,
-        priceUrgentPress: 0.35,
-    },
-    {
-        code: 'SHIRT',
-        nameAr: 'قميص',
-        nameEn: 'Shirt',
-        priceNormal: 0.5,
-        priceUrgent: 0.75,
-        pricePressOnly: 0.25,
-        priceUrgentPress: 0.35,
-    },
-    {
-        code: 'SUIT',
-        nameAr: 'بدلة كاملة',
-        nameEn: 'Suit',
-        priceNormal: 2.25,
-        priceUrgent: 3.0,
-        pricePressOnly: 0.75,
-        priceUrgentPress: 1.0,
-    },
-    {
-        code: 'DISHDASHA_ORD',
-        nameAr: 'دشداشة عادي',
-        nameEn: 'Dishdasha Ord',
-        priceNormal: 0.6,
-        priceUrgent: 1.0,
-        pricePressOnly: 0.35,
-        priceUrgentPress: 0.5,
-    },
-    {
-        code: 'DISHDASHA_WOOL',
-        nameAr: 'دشداشة صوف',
-        nameEn: 'Dishdasha Wool',
-        priceNormal: 0.75,
-        priceUrgent: 1.0,
-        pricePressOnly: 0.4,
-        priceUrgentPress: 0.5,
-    },
-    {
-        code: 'GHOTRA',
-        nameAr: 'غترة / شماغ',
-        nameEn: 'Ghotra',
-        priceNormal: 0.4,
-        priceUrgent: 0.5,
-        pricePressOnly: 0.25,
-        priceUrgentPress: 0.35,
-    },
-    {
-        code: 'OCCASION_BISHT',
-        nameAr: 'بشت مناسبات',
-        nameEn: 'Occasion Bisht',
-        priceNormal: 4.0,
-        priceUrgent: 5.0,
-        pricePressOnly: 1.0,
-        priceUrgentPress: 1.5,
-    },
-    {
-        code: 'ABAYA',
-        nameAr: 'عباءة',
-        nameEn: 'Abaya',
-        priceNormal: 1.25,
-        priceUrgent: 1.5,
-        pricePressOnly: 0.5,
-        priceUrgentPress: 0.75,
-    },
-    {
-        code: 'BATANYA',
-        nameAr: 'بطانية',
-        nameEn: 'Batanya',
-        priceNormal: 1.75,
-        priceUrgent: 3.0,
-        pricePressOnly: null,
-        priceUrgentPress: null,
-    },
-    {
-        code: 'COVER',
-        nameAr: 'ديباج',
-        nameEn: 'Cover',
-        priceNormal: 2.5,
-        priceUrgent: 4.5,
-        pricePressOnly: null,
-        priceUrgentPress: null,
-    },
-];
 const REQUIRED_ROLE_NAMES = [
     'OWNER',
     'MANAGER',
@@ -211,45 +101,12 @@ async function ensureDefaultOwner(prisma) {
         },
     });
 }
-async function ensureDefaultPriceList(prisma) {
-    const codes = DEFAULT_PRICE_ITEMS.map((item) => item.code);
-    await prisma.laundryPriceListItem.deleteMany({
-        where: { code: { notIn: codes } },
-    });
-    for (const [index, item] of DEFAULT_PRICE_ITEMS.entries()) {
-        await prisma.laundryPriceListItem.upsert({
-            where: { code: item.code },
-            create: {
-                code: item.code,
-                nameAr: item.nameAr,
-                nameEn: item.nameEn,
-                sortOrder: index + 1,
-                manualEntry: false,
-                priceNormal: item.priceNormal,
-                priceUrgent: item.priceUrgent,
-                pricePressOnly: item.pricePressOnly,
-                priceUrgentPress: item.priceUrgentPress,
-            },
-            update: {
-                nameAr: item.nameAr,
-                nameEn: item.nameEn,
-                sortOrder: index + 1,
-                manualEntry: false,
-                priceNormal: item.priceNormal,
-                priceUrgent: item.priceUrgent,
-                pricePressOnly: item.pricePressOnly,
-                priceUrgentPress: item.priceUrgentPress,
-            },
-        });
-    }
-    console.log(`[${BUSINESS_NAME_AR}] Default laundry price list ensured (${DEFAULT_PRICE_ITEMS.length} items).`);
-}
 async function bootstrap() {
     const app = await core_1.NestFactory.create(app_module_1.AppModule);
     const httpAdapterHost = app.get(core_1.HttpAdapterHost);
     const prisma = app.get(prisma_service_1.PrismaService);
     await ensureInstitutionalRoles(prisma);
-    await ensureDefaultPriceList(prisma);
+    await (0, ensure_default_price_list_1.ensureDefaultPriceList)(prisma);
     await ensureDefaultOwner(prisma);
     app.setGlobalPrefix('api');
     app.enableCors({

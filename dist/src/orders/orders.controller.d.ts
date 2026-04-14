@@ -13,6 +13,13 @@ export declare class OrdersController {
         id: string;
         createdAt: Date;
         updatedAt: Date;
+        status: import("@prisma/client").$Enums.OrderStatus;
+        serviceType: import("@prisma/client").$Enums.ServiceType;
+        totalPrice: import("@prisma/client-runtime-utils").Decimal;
+        cashStatus: import("@prisma/client").$Enums.CashStatus;
+        invoiceNumber: string | null;
+        notes: string | null;
+        walletSettledAt: Date | null;
         customer: {
             id: string;
             phone: string;
@@ -20,22 +27,15 @@ export declare class OrdersController {
             displayName: string | null;
             address: string | null;
         };
-        status: import("@prisma/client").$Enums.OrderStatus;
         driver: {
             id: string;
-            employeeId: string | null;
             username: string;
             fullName: string;
-            phone: string | null;
+            employeeId: string | null;
             jobTitle: string | null;
+            phone: string | null;
             safariRole: import("@prisma/client").$Enums.SafariRole;
         } | null;
-        serviceType: import("@prisma/client").$Enums.ServiceType;
-        totalPrice: import("@prisma/client-runtime-utils").Decimal;
-        cashStatus: import("@prisma/client").$Enums.CashStatus;
-        invoiceNumber: string | null;
-        notes: string | null;
-        walletSettledAt: Date | null;
         lineItems: {
             id: string;
             label: string | null;
@@ -47,6 +47,13 @@ export declare class OrdersController {
         id: string;
         createdAt: Date;
         updatedAt: Date;
+        status: import("@prisma/client").$Enums.OrderStatus;
+        serviceType: import("@prisma/client").$Enums.ServiceType;
+        totalPrice: import("@prisma/client-runtime-utils").Decimal;
+        cashStatus: import("@prisma/client").$Enums.CashStatus;
+        invoiceNumber: string | null;
+        notes: string | null;
+        walletSettledAt: Date | null;
         customer: {
             id: string;
             phone: string;
@@ -54,22 +61,15 @@ export declare class OrdersController {
             displayName: string | null;
             address: string | null;
         };
-        status: import("@prisma/client").$Enums.OrderStatus;
         driver: {
             id: string;
-            employeeId: string | null;
             username: string;
             fullName: string;
-            phone: string | null;
+            employeeId: string | null;
             jobTitle: string | null;
+            phone: string | null;
             safariRole: import("@prisma/client").$Enums.SafariRole;
         } | null;
-        serviceType: import("@prisma/client").$Enums.ServiceType;
-        totalPrice: import("@prisma/client-runtime-utils").Decimal;
-        cashStatus: import("@prisma/client").$Enums.CashStatus;
-        invoiceNumber: string | null;
-        notes: string | null;
-        walletSettledAt: Date | null;
         lineItems: {
             id: string;
             label: string | null;
@@ -81,6 +81,13 @@ export declare class OrdersController {
         id: string;
         createdAt: Date;
         updatedAt: Date;
+        status: import("@prisma/client").$Enums.OrderStatus;
+        serviceType: import("@prisma/client").$Enums.ServiceType;
+        totalPrice: import("@prisma/client-runtime-utils").Decimal;
+        cashStatus: import("@prisma/client").$Enums.CashStatus;
+        invoiceNumber: string | null;
+        notes: string | null;
+        walletSettledAt: Date | null;
         customer: {
             id: string;
             phone: string;
@@ -88,22 +95,15 @@ export declare class OrdersController {
             displayName: string | null;
             address: string | null;
         };
-        status: import("@prisma/client").$Enums.OrderStatus;
         driver: {
             id: string;
-            employeeId: string | null;
             username: string;
             fullName: string;
-            phone: string | null;
+            employeeId: string | null;
             jobTitle: string | null;
+            phone: string | null;
             safariRole: import("@prisma/client").$Enums.SafariRole;
         } | null;
-        serviceType: import("@prisma/client").$Enums.ServiceType;
-        totalPrice: import("@prisma/client-runtime-utils").Decimal;
-        cashStatus: import("@prisma/client").$Enums.CashStatus;
-        invoiceNumber: string | null;
-        notes: string | null;
-        walletSettledAt: Date | null;
         lineItems: {
             id: string;
             label: string | null;
@@ -115,6 +115,13 @@ export declare class OrdersController {
         id: string;
         createdAt: Date;
         updatedAt: Date;
+        status: import("@prisma/client").$Enums.OrderStatus;
+        serviceType: import("@prisma/client").$Enums.ServiceType;
+        totalPrice: import("@prisma/client-runtime-utils").Decimal;
+        cashStatus: import("@prisma/client").$Enums.CashStatus;
+        invoiceNumber: string | null;
+        notes: string | null;
+        walletSettledAt: Date | null;
         customer: {
             id: string;
             phone: string;
@@ -122,22 +129,15 @@ export declare class OrdersController {
             displayName: string | null;
             address: string | null;
         };
-        status: import("@prisma/client").$Enums.OrderStatus;
         driver: {
             id: string;
-            employeeId: string | null;
             username: string;
             fullName: string;
-            phone: string | null;
+            employeeId: string | null;
             jobTitle: string | null;
+            phone: string | null;
             safariRole: import("@prisma/client").$Enums.SafariRole;
         } | null;
-        serviceType: import("@prisma/client").$Enums.ServiceType;
-        totalPrice: import("@prisma/client-runtime-utils").Decimal;
-        cashStatus: import("@prisma/client").$Enums.CashStatus;
-        invoiceNumber: string | null;
-        notes: string | null;
-        walletSettledAt: Date | null;
         lineItems: {
             id: string;
             label: string | null;
@@ -149,6 +149,13 @@ export declare class OrdersController {
         id: string;
         createdAt: Date;
         updatedAt: Date;
+        status: import("@prisma/client").$Enums.OrderStatus;
+        serviceType: import("@prisma/client").$Enums.ServiceType;
+        totalPrice: import("@prisma/client-runtime-utils").Decimal;
+        cashStatus: import("@prisma/client").$Enums.CashStatus;
+        invoiceNumber: string | null;
+        notes: string | null;
+        walletSettledAt: Date | null;
         customer: {
             id: string;
             phone: string;
@@ -156,22 +163,15 @@ export declare class OrdersController {
             displayName: string | null;
             address: string | null;
         };
-        status: import("@prisma/client").$Enums.OrderStatus;
         driver: {
             id: string;
-            employeeId: string | null;
             username: string;
             fullName: string;
-            phone: string | null;
+            employeeId: string | null;
             jobTitle: string | null;
+            phone: string | null;
             safariRole: import("@prisma/client").$Enums.SafariRole;
         } | null;
-        serviceType: import("@prisma/client").$Enums.ServiceType;
-        totalPrice: import("@prisma/client-runtime-utils").Decimal;
-        cashStatus: import("@prisma/client").$Enums.CashStatus;
-        invoiceNumber: string | null;
-        notes: string | null;
-        walletSettledAt: Date | null;
         lineItems: {
             id: string;
             label: string | null;
@@ -183,6 +183,13 @@ export declare class OrdersController {
         id: string;
         createdAt: Date;
         updatedAt: Date;
+        status: import("@prisma/client").$Enums.OrderStatus;
+        serviceType: import("@prisma/client").$Enums.ServiceType;
+        totalPrice: import("@prisma/client-runtime-utils").Decimal;
+        cashStatus: import("@prisma/client").$Enums.CashStatus;
+        invoiceNumber: string | null;
+        notes: string | null;
+        walletSettledAt: Date | null;
         customer: {
             id: string;
             phone: string;
@@ -190,22 +197,15 @@ export declare class OrdersController {
             displayName: string | null;
             address: string | null;
         };
-        status: import("@prisma/client").$Enums.OrderStatus;
         driver: {
             id: string;
-            employeeId: string | null;
             username: string;
             fullName: string;
-            phone: string | null;
+            employeeId: string | null;
             jobTitle: string | null;
+            phone: string | null;
             safariRole: import("@prisma/client").$Enums.SafariRole;
         } | null;
-        serviceType: import("@prisma/client").$Enums.ServiceType;
-        totalPrice: import("@prisma/client-runtime-utils").Decimal;
-        cashStatus: import("@prisma/client").$Enums.CashStatus;
-        invoiceNumber: string | null;
-        notes: string | null;
-        walletSettledAt: Date | null;
         lineItems: {
             id: string;
             label: string | null;

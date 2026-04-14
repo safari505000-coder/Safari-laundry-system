@@ -11,8 +11,8 @@ export declare class CustomerLedgerService {
         createdAt: Date;
         updatedAt: Date;
         balance: Prisma.Decimal;
-        debt: Prisma.Decimal;
         customerId: string;
+        debt: Prisma.Decimal;
     }>;
     applyOrderWalletSettlementForCompletedOrder(tx: PrismaTx, orderId: string, performedByUserId: string): Promise<void>;
     activateSubscriptionPlan(tx: PrismaTx, params: {

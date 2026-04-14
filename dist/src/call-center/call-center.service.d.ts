@@ -15,11 +15,11 @@ export declare class CallCenterService {
     searchCustomers(query: string): Promise<{
         id: string;
         createdAt: Date;
+        phone: string;
         wallet: {
             balance: import("@prisma/client-runtime-utils").Decimal;
             debt: import("@prisma/client-runtime-utils").Decimal;
         } | null;
-        phone: string;
         phone2: string | null;
         displayName: string | null;
         address: string | null;

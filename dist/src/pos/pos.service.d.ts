@@ -7,11 +7,11 @@ export declare class PosService {
     searchCustomers(query: string): Promise<{
         id: string;
         createdAt: Date;
+        phone: string;
         wallet: {
             balance: Prisma.Decimal;
             debt: Prisma.Decimal;
         } | null;
-        phone: string;
         phone2: string | null;
         displayName: string | null;
         address: string | null;
@@ -24,11 +24,11 @@ export declare class PosService {
     createCustomer(dto: PosCreateCustomerDto): Promise<{
         id: string;
         createdAt: Date;
+        phone: string;
         wallet: {
             balance: Prisma.Decimal;
             debt: Prisma.Decimal;
         } | null;
-        phone: string;
         phone2: string | null;
         displayName: string | null;
         address: string | null;
