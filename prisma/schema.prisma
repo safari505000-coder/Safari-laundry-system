@@ -1,0 +1,281 @@
+// Safari Fast Group — PostgreSQL schema (UUID PKs). Migrations not applied yet.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/** Institutional roles — enforced in app, permissions, and JWT guards. */
+enum SafariRole {
+  OWNER
+  MANAGER
+  DRIVER
+  CALL_CENTER
+  ACCOUNTANT
+  SUPERVISOR
+  VIEWER
+}
+
+enum OrderStatus {
+  PENDING
+  PICKED_UP
+  IN_PROGRESS
+  OUT_FOR_DELIVERY
+  COMPLETED
+  CANCELED
+}
+
+enum ServiceType {
+  EXPRESS
+  NORMAL
+}
+
+/** Cash custody for completed COD-style orders. */
+enum CashStatus {
+  UNPAID
+  PAID_TO_DRIVER
+  HANDED_OVER_TO_OFFICE
+}
+
+enum ShiftStatus {
+  OPEN
+  CLOSED
+}
+
+enum LedgerTransactionType {
+  SUBSCRIPTION_ACTIVATION
+  ORDER_WALLET_SETTLEMENT
+}
+
+model User {
+  id          String     @id @default(uuid()) @db.Uuid
+  /** Unique login handle (staff ID / username). */
+  username    String     @unique
+  password    String
+  fullName    String
+  /** Legacy corporate employee number (optional). */
+  employeeId  String?    @unique
+  /** Legacy job title (optional). */
+  jobTitle    String?
+  phone       String?    @unique
+  safariRole  SafariRole @default(DRIVER)
+  roleId      String     @db.Uuid
+  branchId    String?    @db.Uuid
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  role           Role     @relation(fields: [roleId], references: [id])
+  branch         Branch?  @relation(fields: [branchId], references: [id])
+  auditLogs          AuditLog[]
+  ordersAsDriver     Order[]  @relation("OrderDriver")
+  shiftsAsDriver        Shift[]             @relation("ShiftDriver")
+  shiftConfirmations    Shift[]             @relation("ShiftConfirmedBy")
+  ledgerTransactions    TransactionHistory[] @relation("LedgerPerformedBy")
+}
+
+model Customer {
+  id        String   @id @default(uuid()) @db.Uuid
+  phone     String
+  phone2    String?
+  /** POS / call-center display name when captured. */
+  displayName String?
+  /** Optional when captured later from the driver’s paperwork. */
+  address   String?
+  /** Kuwait-style address parts (POS). Composed line also stored in `address` when provided. */
+  addressArea    String?
+  addressBlock   String?
+  addressStreet  String?
+  addressAvenue  String?
+  addressHouse   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orders              Order[]
+  wallet              CustomerWallet?
+  transactionHistory  TransactionHistory[]
+
+  @@index([phone])
+  @@index([phone2])
+}
+
+model SubscriptionPlan {
+  id            String   @id @default(uuid()) @db.Uuid
+  name          String
+  price         Decimal  @db.Decimal(19, 4)
+  creditAmount  Decimal  @db.Decimal(19, 4)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model CustomerWallet {
+  id         String   @id @default(uuid()) @db.Uuid
+  customerId String   @unique @db.Uuid
+  /** Prepaid credit the company owes in service value. */
+  balance    Decimal  @default(0) @db.Decimal(19, 4)
+  /** Amount customer owes beyond wallet (e.g. order exceeded credit). */
+  debt       Decimal  @default(0) @db.Decimal(19, 4)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+}
+
+model TransactionHistory {
+  id              String               @id @default(uuid()) @db.Uuid
+  type            LedgerTransactionType
+  customerId      String               @db.Uuid
+  orderId         String?              @db.Uuid
+  /** Primary monetary amount for this line (order total, credit granted, etc.) */
+  amount          Decimal              @db.Decimal(19, 4)
+  balanceBefore   Decimal              @db.Decimal(19, 4)
+  balanceAfter    Decimal              @db.Decimal(19, 4)
+  debtBefore      Decimal              @db.Decimal(19, 4)
+  debtAfter       Decimal              @db.Decimal(19, 4)
+  metadata        Json?
+  performedById   String?              @db.Uuid
+  createdAt       DateTime             @default(now())
+
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  order       Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  performedBy User?    @relation("LedgerPerformedBy", fields: [performedById], references: [id], onDelete: SetNull)
+
+  @@index([customerId, createdAt])
+  @@index([orderId])
+}
+
+model Order {
+  id             String        @id @default(uuid()) @db.Uuid
+  status         OrderStatus   @default(PENDING)
+  serviceType    ServiceType   @default(NORMAL)
+  totalPrice     Decimal       @db.Decimal(19, 4)
+  cashStatus     CashStatus    @default(UNPAID)
+  /** Paper invoice reference when the driver has it; null if not yet recorded. */
+  invoiceNumber  String?
+  notes            String?
+  customerId     String        @db.Uuid
+  driverId         String?       @db.Uuid
+  /** Set when wallet + debt settlement ran for this order (idempotent). */
+  walletSettledAt  DateTime?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  customer           Customer             @relation(fields: [customerId], references: [id])
+  driver             User?                @relation("OrderDriver", fields: [driverId], references: [id])
+  lineItems          OrderLineItem[]
+  transactionHistory TransactionHistory[]
+
+  @@index([driverId])
+  @@index([status])
+  @@index([invoiceNumber])
+  @@index([driverId, cashStatus])
+}
+
+model Shift {
+  id                   String      @id @default(uuid()) @db.Uuid
+  driverId             String      @db.Uuid
+  status               ShiftStatus @default(OPEN)
+  startedAt            DateTime    @default(now())
+  endedAt              DateTime?
+  /** Cash amount the manager physically counted (optional audit). */
+  declaredHandoverTotal Decimal?   @db.Decimal(19, 4)
+  /** Ledger total: orders settled PAID_TO_DRIVER → HANDED_OVER_TO_OFFICE in this handover. */
+  systemHandoverTotal   Decimal?   @db.Decimal(19, 4)
+  ordersSettledCount    Int?
+  confirmedByManagerId  String?    @db.Uuid
+  confirmedAt           DateTime?
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+
+  driver               User  @relation("ShiftDriver", fields: [driverId], references: [id])
+  confirmedByManager   User? @relation("ShiftConfirmedBy", fields: [confirmedByManagerId], references: [id])
+
+  @@index([driverId, status])
+}
+
+model OrderLineItem {
+  id         String   @id @default(uuid()) @db.Uuid
+  orderId    String   @db.Uuid
+  label      String?
+  quantity   Decimal  @db.Decimal(12, 4)
+  unitPrice  Decimal  @db.Decimal(19, 4)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+}
+
+/** Laundry price list (PDF tariff) — KD per garment × service tier. */
+model LaundryPriceListItem {
+  id               String   @id @default(uuid()) @db.Uuid
+  code             String   @unique
+  nameAr           String
+  nameEn           String?
+  sortOrder        Int      @default(0)
+  /** When true, unit price must be entered manually (list prices are 0). */
+  manualEntry      Boolean  @default(false)
+  priceNormal      Decimal  @db.Decimal(19, 4)
+  priceUrgent      Decimal  @db.Decimal(19, 4)
+  pricePressOnly   Decimal? @db.Decimal(19, 4)
+  priceUrgentPress Decimal? @db.Decimal(19, 4)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model Role {
+  id          String       @id @default(uuid()) @db.Uuid
+  name        String       @unique
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  users       User[]
+  permissions Permission[]
+}
+
+model Permission {
+  id        String   @id @default(uuid()) @db.Uuid
+  key       String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  roles     Role[]
+}
+
+model Branch {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  location  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users     User[]
+  wallets   Wallet[]
+}
+
+model Wallet {
+  id        String   @id @default(uuid()) @db.Uuid
+  branchId  String   @db.Uuid
+  balance   Decimal  @default(0) @db.Decimal(19, 4)
+  currency  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  branch    Branch   @relation(fields: [branchId], references: [id])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String?  @db.Uuid
+  action    String
+  resource  String
+  changes   Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User?    @relation(fields: [userId], references: [id])
+}
