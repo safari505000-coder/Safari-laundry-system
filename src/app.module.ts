@@ -9,6 +9,7 @@ import { AuthModule } from './auth/auth.module';
 import { BranchesModule } from './branches/branches.module';
 import { CallCenterModule } from './call-center/call-center.module';
 import { OperatingHoursMiddleware } from './common/middleware/operating-hours.middleware';
+import { CustomersModule } from './customers/customers.module';
 import { ExpensesModule } from './expenses/expenses.module';
 import { FixedExpenseModule } from './fixed-expenses/fixed-expense.module';
 import { PayrollModule } from './payroll/payroll.module';
@@ -58,6 +59,7 @@ const spaStaticModule = existsSync(webDistPath)
     CallCenterModule,
     LaundryPriceListModule,
     PosModule,
+    CustomersModule,
     ...spaStaticModule,
   ],
   controllers: [AppController],

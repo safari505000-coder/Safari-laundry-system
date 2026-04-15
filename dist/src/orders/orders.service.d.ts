@@ -47,6 +47,7 @@ declare const orderDetailSelect: {
         select: {
             id: true;
             label: true;
+            starchOption: true;
             quantity: true;
             unitPrice: true;
         };

@@ -171,6 +171,14 @@ export type DriverBalanceResponse = {
 export type OwnerWalletSummary = {
   totalWalletLiabilities: string;
   totalCustomerDebts: string;
+  debtFromIssuedInvoices: string;
+  debtFromSubscriptionOveruse: string;
+  debtSettledBySubscriptions: string;
+  debtByBranch: string;
+  debtByDriver: string;
+  debtByOwner: string;
+  debtByCallCenter: string;
+  totalSubscriptionUsage: string;
 };
 
 export type OrderRow = {
@@ -179,6 +187,7 @@ export type OrderRow = {
   serviceType: string;
   totalPrice: string;
   cashStatus: string;
+  posPaymentMethod?: PosPaymentMethod | null;
   walletSettledAt?: string | null;
   invoiceNumber: string | null;
   notes: string | null;
@@ -243,6 +252,9 @@ export type CustomerSearchRow = {
   phone2?: string | null;
   displayName?: string | null;
   address: string | null;
+  motherContact?: string | null;
+  wifeContact?: string | null;
+  sonContact?: string | null;
   addressArea?: string | null;
   addressBlock?: string | null;
   addressStreet?: string | null;
@@ -256,7 +268,30 @@ export type PosPaymentMethod =
   | 'SUBSCRIPTION_WALLET'
   | 'CASH'
   | 'KNET'
-  | 'PAYMENT_LINK';
+  | 'PAYMENT_LINK'
+  | 'ONLINE'
+  | 'DEBT_ON_ACCOUNT';
+
+export type DailyPosSalesByPaymentMethodReport = {
+  from: string;
+  to: string;
+  rows: Array<{
+    posPaymentMethod: PosPaymentMethod;
+    orderCount: number;
+    totalRevenue: string;
+  }>;
+};
+
+export type DebtByCategoryReport = {
+  from: string;
+  to: string;
+  rows: Array<{
+    category: 'BRANCH' | 'DRIVER' | 'OWNER' | 'CALL_CENTER';
+    source: 'SUBSCRIPTION_OVERUSE' | 'INVOICE_SHORTFALL';
+    entryCount: number;
+    totalDebt: string;
+  }>;
+};
 
 /** Hosted payment URL from Kuwait Gateway when checkout uses PAYMENT_LINK. */
 export type PosPaymentLinkResult = {

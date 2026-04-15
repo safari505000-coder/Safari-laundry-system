@@ -595,37 +595,52 @@ function CallCenterActivatePanel({
                 <p className="p-3 text-sm text-zinc-500">
                   {t('subscriptions.noMatches')}
                 </p>
-              : results?.map((r) => (
-                  <button
-                    key={r.id}
-                    type="button"
-                    onClick={() => setCustomerId(r.id)}
-                    className={`w-full rounded-md px-3 py-2.5 text-start text-sm transition-colors ${
-                      customerId === r.id ?
-                        'bg-zinc-900 text-white'
-                      : 'hover:bg-white'
-                    }`}
-                  >
-                    <div className="font-medium">
-                      {r.phone}
-                      {r.phone2 ? ` · ${r.phone2}` : ''}
-                    </div>
-                    <div className="text-xs opacity-80">
-                      {r.address ?? t('subscriptions.noAddress')} ·{' '}
-                      {t('subscriptions.balance')}{' '}
-                      {r.wallet ?
-                        formatKwdLabel(r.wallet.balance)
-                      : formatKwdLabel('0.0000')}
-                      {r.wallet && Number.parseFloat(r.wallet.debt) > 0 ?
-                        <>
-                          {' '}
-                          · {t('subscriptions.debtLabel')}{' '}
-                          {formatKwdLabel(r.wallet.debt)}
-                        </>
-                      : null}
-                    </div>
-                  </button>
-                ))}
+              : results?.map((r) => {
+                  const bal = Number.parseFloat(r.wallet?.balance ?? '0');
+                  const isLowBalance = Number.isFinite(bal) && bal < 10;
+                  return (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onClick={() => setCustomerId(r.id)}
+                      className={`w-full rounded-md px-3 py-2.5 text-start text-sm transition-colors ${
+                        customerId === r.id ?
+                          'bg-zinc-900 text-white'
+                        : 'hover:bg-white'
+                      }`}
+                    >
+                      <div className="font-medium">
+                        {r.phone}
+                        {r.phone2 ? ` · ${r.phone2}` : ''}
+                      </div>
+                      <div className="text-xs opacity-80">
+                        {r.address ?? t('subscriptions.noAddress')} ·{' '}
+                        {t('subscriptions.balance')}{' '}
+                        <span className={isLowBalance ? 'font-semibold text-red-700' : ''}>
+                          {r.wallet ?
+                            formatKwdLabel(r.wallet.balance)
+                          : formatKwdLabel('0.0000')}
+                        </span>
+                        {r.wallet && Number.parseFloat(r.wallet.debt) > 0 ?
+                          <>
+                            {' '}
+                            · {t('subscriptions.debtLabel')}{' '}
+                            {formatKwdLabel(r.wallet.debt)}
+                          </>
+                        : null}
+                        {isLowBalance ?
+                          <>
+                            {' '}
+                            ·{' '}
+                            <span className="font-semibold text-red-700">
+                              {t('subscribers.lowBalanceWarn')}
+                            </span>
+                          </>
+                        : null}
+                      </div>
+                    </button>
+                  );
+                })}
             </div>
           </CardContent>
         </Card>

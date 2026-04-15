@@ -56,6 +56,7 @@ const orderDetailSelect = {
         select: {
             id: true,
             label: true,
+            starchOption: true,
             quantity: true,
             unitPrice: true,
         },
@@ -122,8 +123,17 @@ let OrdersService = class OrdersService {
         if (s === 'KNET') {
             return client_1.PosPaymentMethod.KNET;
         }
-        if (s === 'PAYMENT_LINK' || s === 'LINK' || s === 'PAYMENTLINK') {
-            return client_1.PosPaymentMethod.PAYMENT_LINK;
+        if (s === 'ONLINE' ||
+            s === 'PAYMENT_LINK' ||
+            s === 'LINK' ||
+            s === 'PAYMENTLINK') {
+            return client_1.PosPaymentMethod.ONLINE;
+        }
+        if (s === 'DEBT_ON_ACCOUNT' ||
+            s === 'ON_ACCOUNT' ||
+            s === 'DEBT' ||
+            s === 'CREDIT') {
+            return client_1.PosPaymentMethod.DEBT_ON_ACCOUNT;
         }
         return client_1.PosPaymentMethod.CASH;
     }
@@ -135,6 +145,7 @@ let OrdersService = class OrdersService {
         }
         return items.map((line) => ({
             label: line.label?.trim() || null,
+            starchOption: line.starchOption ?? 'NONE',
             quantity: line.quantity,
             unitPrice: line.unitPrice,
         }));
@@ -146,6 +157,7 @@ let OrdersService = class OrdersService {
         }
         return items.map((line) => ({
             label: line.label?.trim() || null,
+            starchOption: line.starchOption ?? 'NONE',
             quantity: Number(line.quantity),
             unitPrice: Number(line.unitPrice),
         }));
@@ -251,7 +263,7 @@ let OrdersService = class OrdersService {
                 const shortfallMinor = totalMinor > balanceMinor ? totalMinor - balanceMinor : 0n;
                 const posPaymentMethodResolved = this.resolvePosCheckoutPaymentMethod(shortfallMinor, dto.posPaymentMethod);
                 const useHostedPaymentLink = shortfallMinor > 0n &&
-                    posPaymentMethodResolved === client_1.PosPaymentMethod.PAYMENT_LINK;
+                    posPaymentMethodResolved === client_1.PosPaymentMethod.ONLINE;
                 if (useHostedPaymentLink) {
                     const created = await tx.order.create({
                         data: {
@@ -261,7 +273,7 @@ let OrdersService = class OrdersService {
                             totalPrice: totalPriceDecimal,
                             status: client_1.OrderStatus.PENDING,
                             cashStatus: client_1.CashStatus.UNPAID,
-                            posPaymentMethod: client_1.PosPaymentMethod.PAYMENT_LINK,
+                            posPaymentMethod: client_1.PosPaymentMethod.ONLINE,
                             completedAt: null,
                             invoiceNumber: dto.invoiceNumber?.trim() || null,
                             notes: dto.notes?.trim() || null,
@@ -311,7 +323,7 @@ let OrdersService = class OrdersService {
                 where: { id: orderId },
                 select: orderDetailSelect,
             });
-            if (detail.posPaymentMethod === client_1.PosPaymentMethod.PAYMENT_LINK &&
+            if (detail.posPaymentMethod === client_1.PosPaymentMethod.ONLINE &&
                 detail.status === client_1.OrderStatus.PENDING) {
                 const phone = detail.customer.phone?.trim() ||
                     detail.customer.phone2?.trim() ||

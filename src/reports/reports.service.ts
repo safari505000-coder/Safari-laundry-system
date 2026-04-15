@@ -189,6 +189,7 @@ export class ReportsService {
         driverId,
         status: OrderStatus.COMPLETED,
         cashStatus: CashStatus.PAID_TO_DRIVER,
+        posPaymentMethod: PosPaymentMethod.CASH,
       },
       select: { id: true, totalPrice: true, invoiceNumber: true, createdAt: true },
     });

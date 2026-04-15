@@ -56,10 +56,26 @@ export class FinanceController {
   @ApiOperation({
     summary: `Daily POS sales by payment method (${APP_BRAND})`,
     description:
-      'Aggregates completed POS orders with recorded PosPaymentMethod (subscription wallet, cash, KNET, payment link) for financial reporting.',
+      'Aggregates completed POS orders with recorded PosPaymentMethod (subscription wallet, cash, KNET, ONLINE, DEBT_ON_ACCOUNT) for financial reporting.',
   })
   getDailyPosSales(@Query() q: DailyPosSalesQueryDto) {
     return this.financeService.getDailyPosSalesByPaymentMethod(q.from, q.to);
+  }
+
+  @Get('reports/debt-by-category')
+  @Roles(
+    SafariRole.OWNER,
+    SafariRole.MANAGER,
+    SafariRole.ACCOUNTANT,
+    SafariRole.SUPERVISOR,
+  )
+  @ApiOperation({
+    summary: `Debt breakdown by category (${APP_BRAND})`,
+    description:
+      'Debt totals grouped by category (BRANCH, DRIVER, OWNER, CALL_CENTER) and source (SUBSCRIPTION_OVERUSE, INVOICE_SHORTFALL).',
+  })
+  getDebtByCategory(@Query() q: DailyPosSalesQueryDto) {
+    return this.financeService.getDebtBreakdownByCategory(q.from, q.to);
   }
 
   @Get('driver-balance')

@@ -11,11 +11,13 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.OrderLineItemDto = void 0;
 const swagger_1 = require("@nestjs/swagger");
+const client_1 = require("@prisma/client");
 const class_transformer_1 = require("class-transformer");
 const class_validator_1 = require("class-validator");
 class OrderLineItemDto {
     label;
     quantity;
+    starchOption;
     unitPrice;
 }
 exports.OrderLineItemDto = OrderLineItemDto;
@@ -33,6 +35,16 @@ __decorate([
     (0, class_validator_1.IsPositive)(),
     __metadata("design:type", Number)
 ], OrderLineItemDto.prototype, "quantity", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({
+        enum: client_1.StarchOption,
+        enumName: 'StarchOption',
+        description: 'Optional starch option; STARCH_25 means 25% starch (نشا 25%).',
+    }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsEnum)(client_1.StarchOption),
+    __metadata("design:type", String)
+], OrderLineItemDto.prototype, "starchOption", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)({ example: 45.25 }),
     (0, class_transformer_1.Type)(() => Number),

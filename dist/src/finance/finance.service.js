@@ -95,13 +95,117 @@ let FinanceService = class FinanceService {
         const agg = await this.prisma.customerWallet.aggregate({
             _sum: { balance: true, debt: true },
         });
+        const negativeBalanceRows = await this.prisma.customerWallet.findMany({
+            where: { balance: { lt: 0 } },
+            select: { balance: true },
+        });
+        const subscriptionDebtMinor = negativeBalanceRows.reduce((acc, row) => {
+            const x = Number.parseFloat(row.balance.toString());
+            if (!Number.isFinite(x) || x >= 0)
+                return acc;
+            return acc + Math.abs(x);
+        }, 0);
+        const txRows = await this.prisma.transactionHistory.findMany({
+            where: {
+                OR: [
+                    { type: client_1.LedgerTransactionType.ORDER_WALLET_SETTLEMENT },
+                    { type: client_1.LedgerTransactionType.SUBSCRIPTION_ACTIVATION },
+                ],
+            },
+            select: { type: true, metadata: true },
+        });
+        const debtRows = await this.prisma.debtLedgerEntry.groupBy({
+            by: ['source', 'category'],
+            _sum: { amount: true },
+        });
+        let debtFromIssuedInvoices = 0;
+        let debtFromSubscriptionOveruse = 0;
+        let debtSettledBySubscriptions = 0;
+        let debtByBranch = 0;
+        let debtByDriver = 0;
+        let debtByOwner = 0;
+        let debtByCallCenter = 0;
+        let totalSubscriptionUsage = 0;
+        for (const row of debtRows) {
+            const amount = Number.parseFloat(row._sum.amount?.toString() ?? '0');
+            if (!Number.isFinite(amount) || amount <= 0)
+                continue;
+            if (row.source === client_1.DebtSource.INVOICE_SHORTFALL) {
+                debtFromIssuedInvoices += amount;
+            }
+            else if (row.source === client_1.DebtSource.SUBSCRIPTION_OVERUSE) {
+                debtFromSubscriptionOveruse += amount;
+            }
+            if (row.category === client_1.DebtEntityCategory.BRANCH)
+                debtByBranch += amount;
+            else if (row.category === client_1.DebtEntityCategory.DRIVER)
+                debtByDriver += amount;
+            else if (row.category === client_1.DebtEntityCategory.OWNER)
+                debtByOwner += amount;
+            else if (row.category === client_1.DebtEntityCategory.CALL_CENTER) {
+                debtByCallCenter += amount;
+            }
+        }
+        for (const row of txRows) {
+            const meta = row.metadata;
+            if (row.type === client_1.LedgerTransactionType.ORDER_WALLET_SETTLEMENT) {
+                const used = Number.parseFloat(String(meta?.appliedFromWallet ?? '0'));
+                if (Number.isFinite(used) && used > 0) {
+                    totalSubscriptionUsage += used;
+                }
+                const n = Number.parseFloat(String(meta?.addedToDebt ?? '0'));
+                if (Number.isFinite(n) && n > 0 && debtFromIssuedInvoices <= 0) {
+                    debtFromIssuedInvoices += n;
+                }
+            }
+            else if (row.type === client_1.LedgerTransactionType.SUBSCRIPTION_ACTIVATION) {
+                const n = Number.parseFloat(String(meta?.debtSettled ?? '0'));
+                if (Number.isFinite(n) && n > 0)
+                    debtSettledBySubscriptions += n;
+            }
+        }
+        const standardInvoiceDebt = Number.parseFloat(agg._sum.debt !== null && agg._sum.debt !== undefined
+            ? agg._sum.debt.toString()
+            : '0');
+        const totalCustomerDebts = (standardInvoiceDebt + subscriptionDebtMinor).toFixed(4);
         return {
             totalWalletLiabilities: agg._sum.balance !== null && agg._sum.balance !== undefined
                 ? agg._sum.balance.toString()
                 : '0',
-            totalCustomerDebts: agg._sum.debt !== null && agg._sum.debt !== undefined
-                ? agg._sum.debt.toString()
-                : '0',
+            totalCustomerDebts,
+            debtFromIssuedInvoices: debtFromIssuedInvoices.toFixed(4),
+            debtFromSubscriptionOveruse: debtFromSubscriptionOveruse.toFixed(4),
+            debtSettledBySubscriptions: debtSettledBySubscriptions.toFixed(4),
+            debtByBranch: debtByBranch.toFixed(4),
+            debtByDriver: debtByDriver.toFixed(4),
+            debtByOwner: debtByOwner.toFixed(4),
+            debtByCallCenter: debtByCallCenter.toFixed(4),
+            totalSubscriptionUsage: totalSubscriptionUsage.toFixed(4),
+        };
+    }
+    async getDebtBreakdownByCategory(fromIso, toIso) {
+        const from = new Date(fromIso);
+        const to = new Date(toIso);
+        if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+            throw new common_1.BadRequestException('Invalid date range');
+        }
+        const rows = await this.prisma.debtLedgerEntry.groupBy({
+            by: ['category', 'source'],
+            where: {
+                createdAt: { gte: from, lte: to },
+            },
+            _sum: { amount: true },
+            _count: true,
+        });
+        return {
+            from: from.toISOString(),
+            to: to.toISOString(),
+            rows: rows.map((r) => ({
+                category: r.category,
+                source: r.source,
+                entryCount: r._count,
+                totalDebt: r._sum.amount?.toString() ?? '0',
+            })),
         };
     }
     async getDriverBalances() {
@@ -128,6 +232,7 @@ let FinanceService = class FinanceService {
                     driverId: d.id,
                     status: client_1.OrderStatus.COMPLETED,
                     cashStatus: client_1.CashStatus.PAID_TO_DRIVER,
+                    posPaymentMethod: client_1.PosPaymentMethod.CASH,
                 },
                 select: { totalPrice: true },
             });
@@ -160,6 +265,7 @@ let FinanceService = class FinanceService {
                     driverId: dto.driverId,
                     status: client_1.OrderStatus.COMPLETED,
                     cashStatus: client_1.CashStatus.PAID_TO_DRIVER,
+                    posPaymentMethod: client_1.PosPaymentMethod.CASH,
                 },
                 select: { id: true, totalPrice: true },
             });
@@ -208,6 +314,7 @@ let FinanceService = class FinanceService {
                 where: {
                     id: { in: ids },
                     cashStatus: client_1.CashStatus.PAID_TO_DRIVER,
+                    posPaymentMethod: client_1.PosPaymentMethod.CASH,
                 },
                 data: { cashStatus: client_1.CashStatus.HANDED_OVER_TO_OFFICE },
             });

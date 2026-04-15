@@ -80,4 +80,25 @@ export class PosCreateCustomerDto {
   @IsString()
   @MaxLength(120)
   addressHouse?: string;
+
+  @ApiPropertyOptional({ example: 'Mother: 50000001' })
+  @Transform(trimOpt)
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  motherContact?: string;
+
+  @ApiPropertyOptional({ example: 'Wife: 50000002' })
+  @Transform(trimOpt)
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  wifeContact?: string;
+
+  @ApiPropertyOptional({ example: 'Son: 50000003' })
+  @Transform(trimOpt)
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  sonContact?: string;
 }

@@ -78,6 +78,13 @@ const subscribersItem: NavItem = {
   roles: ['OWNER', 'CALL_CENTER'],
 };
 
+const customersItem: NavItem = {
+  to: '/customers',
+  labelKey: 'nav.customers',
+  icon: Users,
+  roles: ['OWNER', 'MANAGER', 'CALL_CENTER', 'SUPERVISOR', 'ACCOUNTANT', 'VIEWER'],
+};
+
 const ordersItem: NavItem = {
   to: '/orders',
   labelKey: 'nav.orders',
@@ -152,7 +159,7 @@ const teamItem: NavItem = {
 const navGroups: { labelKey: string; items: NavItem[] }[] = [
   {
     labelKey: 'nav.groupMain',
-    items: [dashboardItem, branchesItem, subscriptionsItem, subscribersItem],
+    items: [dashboardItem, branchesItem, customersItem, subscriptionsItem, subscribersItem],
   },
   { labelKey: 'nav.groupOperations', items: [ordersItem, shiftsItem] },
   {

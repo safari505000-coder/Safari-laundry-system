@@ -144,7 +144,8 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
             if (order.status !== client_1.OrderStatus.PENDING) {
                 throw new common_1.BadRequestException('Order is not awaiting gateway payment');
             }
-            if (order.posPaymentMethod !== client_1.PosPaymentMethod.PAYMENT_LINK) {
+            if (order.posPaymentMethod !== client_1.PosPaymentMethod.ONLINE &&
+                order.posPaymentMethod !== client_1.PosPaymentMethod.PAYMENT_LINK) {
                 throw new common_1.BadRequestException('Order is not a payment-link checkout');
             }
             const completedAt = new Date();

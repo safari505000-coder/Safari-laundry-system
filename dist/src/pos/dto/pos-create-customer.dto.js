@@ -29,6 +29,9 @@ class PosCreateCustomerDto {
     addressStreet = '';
     addressAvenue;
     addressHouse;
+    motherContact;
+    wifeContact;
+    sonContact;
 }
 exports.PosCreateCustomerDto = PosCreateCustomerDto;
 __decorate([
@@ -101,4 +104,28 @@ __decorate([
     (0, class_validator_1.MaxLength)(120),
     __metadata("design:type", String)
 ], PosCreateCustomerDto.prototype, "addressHouse", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ example: 'Mother: 50000001' }),
+    (0, class_transformer_1.Transform)(trimOpt),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(200),
+    __metadata("design:type", String)
+], PosCreateCustomerDto.prototype, "motherContact", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ example: 'Wife: 50000002' }),
+    (0, class_transformer_1.Transform)(trimOpt),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(200),
+    __metadata("design:type", String)
+], PosCreateCustomerDto.prototype, "wifeContact", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ example: 'Son: 50000003' }),
+    (0, class_transformer_1.Transform)(trimOpt),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(200),
+    __metadata("design:type", String)
+], PosCreateCustomerDto.prototype, "sonContact", void 0);
 //# sourceMappingURL=pos-create-customer.dto.js.map

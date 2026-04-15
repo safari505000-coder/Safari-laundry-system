@@ -1,0 +1,47 @@
+import { Body, Controller, Get, Param, Patch, Query, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { SafariRole } from '@prisma/client';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { APP_BRAND } from '../common/constants/branding';
+import { UpdateCustomerDto } from './dto/update-customer.dto';
+import { CustomersService } from './customers.service';
+
+@ApiTags('customers')
+@ApiBearerAuth('bearer')
+@Controller('customers')
+@UseGuards(JwtAuthGuard, RolesGuard)
+export class CustomersController {
+  constructor(private readonly customersService: CustomersService) {}
+
+  @Get()
+  @Roles(
+    SafariRole.OWNER,
+    SafariRole.MANAGER,
+    SafariRole.CALL_CENTER,
+    SafariRole.SUPERVISOR,
+    SafariRole.ACCOUNTANT,
+    SafariRole.VIEWER,
+  )
+  @ApiOperation({
+    summary: `Customer directory (${APP_BRAND})`,
+  })
+  list(@Query('q') q?: string) {
+    return this.customersService.list(q);
+  }
+
+  @Patch(':id')
+  @Roles(
+    SafariRole.OWNER,
+    SafariRole.MANAGER,
+    SafariRole.CALL_CENTER,
+    SafariRole.SUPERVISOR,
+  )
+  @ApiOperation({
+    summary: `Update customer contact profile (${APP_BRAND})`,
+  })
+  update(@Param('id') id: string, @Body() dto: UpdateCustomerDto) {
+    return this.customersService.update(id, dto);
+  }
+}

@@ -33,6 +33,7 @@ import {
 import { OrderDetailDialog } from '@/components/orders/order-detail-dialog';
 import { OrderIdBarcode } from '@/components/orders/order-id-barcode';
 import { OrderScanInput } from '@/components/orders/order-scan-input';
+import { TermsQr } from '@/components/common/terms-qr';
 import { SystemClosedScreen } from '@/components/system/system-closed-screen';
 import { useAppLocale } from '@/hooks/use-app-locale';
 import { LanguageToggle } from '@/components/i18n/language-toggle';
@@ -75,8 +76,9 @@ type ReceiptSnapshot = {
   customerBalance: string;
   customerAddress: string;
   serviceType: string;
-  discountType: 'VALUE' | 'PERCENTAGE';
-  discountAmount: number;
+  markupAmount: number;
+  deliveryFee: number;
+  freeDelivery: boolean;
   lines: Array<{
     label: string;
     quantity: number;
@@ -97,6 +99,9 @@ function garmentTagCount(qty: number): number {
   if (!Number.isFinite(n) || n <= 0) return 1;
   return Math.min(50, Math.max(1, Math.round(n)));
 }
+
+const DELIVERY_FEE_KD = 0.25;
+const MARKUP_RATE = 0.25;
 
 type ServiceOption = {
   key: 'NORMAL' | 'URGENT' | 'PRESS_ONLY' | 'URGENT_PRESS';
@@ -221,14 +226,11 @@ export function PosPage() {
     'SEEDA' | 'MIRZAAM' | 'MURABAA' | 'SHARSHAF' | 'TASFEET' | ''
   >('');
   const [serviceItemNote, setServiceItemNote] = useState('');
-  const [discountType, setDiscountType] = useState<'VALUE' | 'PERCENTAGE'>(
-    'VALUE',
-  );
-  const [discountInput, setDiscountInput] = useState('0');
+  const [applyMarkup, setApplyMarkup] = useState(false);
   const [billing, setBilling] = useState<CustomerBillingProfile | null>(null);
   const [billingLoading, setBillingLoading] = useState(false);
   const [posPaymentMethod, setPosPaymentMethod] = useState<
-    'CASH' | 'KNET' | 'PAYMENT_LINK'
+    'CASH' | 'KNET' | 'PAYMENT_LINK' | 'DEBT_ON_ACCOUNT'
   >('CASH');
   const [operating, setOperating] = useState<OperatingStatusPayload | null>(
     null,
@@ -332,26 +334,37 @@ export function PosPage() {
     [cart],
   );
 
-  const netAfterDiscount = useMemo(() => {
-    const discountRaw = Number.parseFloat(discountInput);
-    const safeDiscountInput =
-      Number.isFinite(discountRaw) && discountRaw > 0 ? discountRaw : 0;
-    const discountAmount =
-      discountType === 'PERCENTAGE' ?
-        (total * safeDiscountInput) / 100
-      : safeDiscountInput;
-    return Math.max(0, total - discountAmount);
-  }, [total, discountType, discountInput]);
+  const markupAmount = useMemo(
+    () => (applyMarkup ? total * MARKUP_RATE : 0),
+    [applyMarkup, total],
+  );
+
+  const subtotalAfterMarkup = useMemo(() => {
+    return Math.max(0, total + markupAmount);
+  }, [total, markupAmount]);
 
   const balanceNum = billing
     ? Number.parseFloat(billing.remainingBalance)
     : NaN;
-  /** If billing is unknown, assume shortfall until server confirms — always send external method when net > 0. */
+  const debtNum = billing ? Number.parseFloat(billing.debt) : NaN;
+  const isBalanceWarning =
+    Number.isFinite(balanceNum) && (balanceNum < 10 || balanceNum < 0);
+
+  const walletCoversNet =
+    billing !== null &&
+    Number.isFinite(balanceNum) &&
+    balanceNum + 1e-9 >= subtotalAfterMarkup;
+  /** Treat as subscription order when wallet can cover order net; delivery is free. */
+  const isSubscriptionOrder = subtotalAfterMarkup > 0 && walletCoversNet;
+  const deliveryFee = isSubscriptionOrder ? 0 : DELIVERY_FEE_KD;
+  const grandTotal = Math.max(0, subtotalAfterMarkup + deliveryFee);
+
+  /** If billing is unknown, assume shortfall until server confirms — always send external method when grand total > 0. */
   const needsExternalPayment =
-    netAfterDiscount > 0 &&
+    grandTotal > 0 &&
     (billing === null ||
       !Number.isFinite(balanceNum) ||
-      balanceNum + 1e-9 < netAfterDiscount);
+      balanceNum + 1e-9 < grandTotal);
 
   const loadBilling = useCallback(
     async (customerId: string) => {
@@ -556,14 +569,7 @@ export function PosPage() {
 
     setCheckoutBusy(true);
     try {
-      const discountRaw = Number.parseFloat(discountInput);
-      const safeDiscountInput =
-        Number.isFinite(discountRaw) && discountRaw > 0 ? discountRaw : 0;
-      const discountAmount =
-        discountType === 'PERCENTAGE' ?
-          (total * safeDiscountInput) / 100
-        : safeDiscountInput;
-      const netTotal = netAfterDiscount;
+      const netTotal = grandTotal;
 
       const extMethod: PosPaymentMethod | undefined =
         needsExternalPayment ? posPaymentMethod : undefined;
@@ -618,7 +624,11 @@ export function PosPage() {
       }
 
       const paymentLabel = needsExternalPayment
-        ? t(`pos.pay.${posPaymentMethod}` as const)
+        ? posPaymentMethod === 'PAYMENT_LINK'
+          ? t('pos.payment.online')
+          : posPaymentMethod === 'DEBT_ON_ACCOUNT'
+            ? t('pos.payment.debt')
+            : t(`pos.pay.${posPaymentMethod}` as const)
         : t('pos.pay.SUBSCRIPTION_WALLET');
 
       setReceiptSnapshot({
@@ -641,8 +651,9 @@ export function PosPage() {
           .filter(Boolean)
           .join(' · ') || selected.address || '-',
         serviceType: 'N WASH',
-        discountType,
-        discountAmount,
+        markupAmount,
+        deliveryFee,
+        freeDelivery: isSubscriptionOrder,
         lines: receiptLines,
         total: netTotal,
         paymentLabel,
@@ -907,7 +918,12 @@ export function PosPage() {
                         ? t('pos.subscription.statusActive')
                         : t('pos.subscription.statusInactive')}
                     </span>
-                    <span className="rounded-full bg-background px-2 py-0.5 font-medium text-foreground ring-1 ring-border">
+                    <span
+                      className={cn(
+                        'rounded-full bg-background px-2 py-0.5 font-medium ring-1 ring-border',
+                        isBalanceWarning && 'text-red-700 ring-red-300',
+                      )}
+                    >
                       {Number.parseFloat(billing.remainingBalance).toFixed(3)}{' '}
                       {kwdSuffix}
                     </span>
@@ -918,20 +934,35 @@ export function PosPage() {
                     </span>{' '}
                     {billing.planType ?? t('pos.subscription.noPlan')}
                   </p>
-                  <p className="text-muted-foreground">
+                  <p
+                    className={cn(
+                      'text-muted-foreground',
+                      isBalanceWarning && 'font-semibold text-red-700',
+                    )}
+                  >
                     <span className="font-medium text-foreground">
                       {t('pos.subscription.balance')}:
                     </span>{' '}
                     {Number.parseFloat(billing.remainingBalance).toFixed(3)}{' '}
                     {kwdSuffix}
                   </p>
-                  <p className="text-muted-foreground">
+                  <p
+                    className={cn(
+                      'text-muted-foreground',
+                      Number.isFinite(debtNum) && debtNum > 0 && 'font-semibold text-red-700',
+                    )}
+                  >
                     <span className="font-medium text-foreground">
                       {t('pos.subscription.debt')}:
                     </span>{' '}
                     {Number.parseFloat(billing.debt).toFixed(3)} {kwdSuffix}
                   </p>
-                  {!needsExternalPayment && netAfterDiscount > 0 && billing ?
+                  {isBalanceWarning ?
+                    <p className="text-[11px] font-semibold leading-snug text-red-700">
+                      {t('pos.balanceWarning')}
+                    </p>
+                  : null}
+                  {!needsExternalPayment && subtotalAfterMarkup > 0 && billing ?
                     <p className="text-[11px] leading-snug text-primary">
                       {t('pos.subscription.walletCovers')}
                     </p>
@@ -994,7 +1025,7 @@ export function PosPage() {
           <div className="text-lg font-bold tabular-nums text-foreground">
             <span className="text-muted-foreground">{t('pos.totalKwd')}:</span>{' '}
             <span className="text-primary">
-              {total.toLocaleString(dateLocale, {
+              {grandTotal.toLocaleString(dateLocale, {
                 minimumFractionDigits: 3,
                 maximumFractionDigits: 3,
               })}{' '}
@@ -1002,24 +1033,41 @@ export function PosPage() {
             </span>
           </div>
           <div className="flex w-full flex-col gap-2 rounded-xl border border-border bg-white p-2 sm:w-auto sm:min-w-[280px]">
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">الخصم</span>
-              <select
-                className="h-8 rounded-md border border-zinc-200 px-2 text-xs"
-                value={discountType}
-                onChange={(e) =>
-                  setDiscountType(e.target.value as 'VALUE' | 'PERCENTAGE')
-                }
-              >
-                <option value="VALUE">القيمة</option>
-                <option value="PERCENTAGE">النسبة</option>
-              </select>
-              <Input
-                value={discountInput}
-                onChange={(e) => setDiscountInput(e.target.value)}
-                className="h-8 w-20 text-center"
-                inputMode="decimal"
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={applyMarkup}
+                onChange={(e) => setApplyMarkup(e.target.checked)}
               />
+              {t('pos.applyMarkup25')}
+            </label>
+            <div className="space-y-1 border-t border-border pt-2 text-xs">
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span>{t('pos.subtotalLabel')}</span>
+                <span className="tabular-nums">
+                  {total.toFixed(3)} {kwdSuffix}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span>{t('pos.markupLabel')}</span>
+                <span className="tabular-nums">
+                  +{markupAmount.toFixed(3)} {kwdSuffix}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span>{t('pos.deliveryFeeLabel')}</span>
+                <span className="tabular-nums">
+                  {deliveryFee <= 0 ?
+                    t('pos.freeDelivery')
+                  : `${deliveryFee.toFixed(3)} ${kwdSuffix}`}
+                </span>
+              </div>
+              <div className="flex items-center justify-between border-t border-border pt-1 text-sm font-semibold text-foreground">
+                <span>{t('pos.grandTotalLabel')}</span>
+                <span className="tabular-nums">
+                  {grandTotal.toFixed(3)} {kwdSuffix}
+                </span>
+              </div>
             </div>
             {selected && needsExternalPayment ?
               <div className="border-t border-border pt-2">
@@ -1031,13 +1079,18 @@ export function PosPage() {
                   value={posPaymentMethod}
                   onChange={(e) =>
                     setPosPaymentMethod(
-                      e.target.value as 'CASH' | 'KNET' | 'PAYMENT_LINK',
+                      e.target.value as
+                        | 'CASH'
+                        | 'KNET'
+                        | 'PAYMENT_LINK'
+                        | 'DEBT_ON_ACCOUNT',
                     )
                   }
                 >
                   <option value="CASH">{t('pos.payment.cash')}</option>
                   <option value="KNET">{t('pos.payment.knet')}</option>
-                  <option value="PAYMENT_LINK">{t('pos.payment.link')}</option>
+                  <option value="PAYMENT_LINK">{t('pos.payment.online')}</option>
+                  <option value="DEBT_ON_ACCOUNT">{t('pos.payment.debt')}</option>
                 </select>
               </div>
             : null}
@@ -1070,7 +1123,7 @@ export function PosPage() {
               checkoutBusy ||
               cart.length === 0 ||
               !selected ||
-              total <= 0 ||
+              grandTotal <= 0 ||
               (Boolean(selected) && billingLoading)
             }
             size="lg"
@@ -1337,22 +1390,29 @@ export function PosPage() {
           </table>
           <div className="pos-receipt-totals">
             <div>
-              <span>Total</span>
+              <span>{t('pos.subtotalLabel')}</span>
               <span>
                 {(
                   (receiptSnapshot?.total ?? 0) +
-                  (receiptSnapshot?.discountAmount ?? 0)
+                  (receiptSnapshot?.markupAmount ?? 0) -
+                  (receiptSnapshot?.deliveryFee ?? 0)
                 ).toFixed(3)} KWD
               </span>
             </div>
             <div>
+              <span>{t('pos.markupLabel')}</span>
+              <span>+{(receiptSnapshot?.markupAmount ?? 0).toFixed(3)} KWD</span>
+            </div>
+            <div>
+              <span>{t('pos.deliveryFeeLabel')}</span>
               <span>
-                الخصم ({receiptSnapshot?.discountType === 'PERCENTAGE' ? 'النسبة' : 'القيمة'})
+                {(receiptSnapshot?.freeDelivery || (receiptSnapshot?.deliveryFee ?? 0) <= 0) ?
+                  t('pos.freeDelivery')
+                : `${(receiptSnapshot?.deliveryFee ?? 0).toFixed(3)} KWD`}
               </span>
-              <span>{(receiptSnapshot?.discountAmount ?? 0).toFixed(3)} KWD</span>
             </div>
             <div className="net">
-              <span>الصافي / Net</span>
+              <span>{t('pos.grandTotalLabel')}</span>
               <span>{(receiptSnapshot?.total ?? 0).toFixed(3)} KWD</span>
             </div>
             {receiptSnapshot?.paymentLabel ?
@@ -1382,6 +1442,10 @@ export function PosPage() {
               </p>
             </div>
           : null}
+          <div className="mt-2 flex flex-col items-center gap-1">
+            <TermsQr size={78} />
+            <p className="text-[10px] text-muted-foreground">{t('pos.termsQrCaption')}</p>
+          </div>
           <div className="pos-receipt-terms">
             <p>الشروط والأحكام:</p>
             <p>

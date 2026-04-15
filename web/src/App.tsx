@@ -19,6 +19,7 @@ import { TeamPage } from '@/pages/team-page';
 import { PayrollPage } from '@/pages/payroll-page';
 import { FixedExpensesPage } from '@/pages/fixed-expenses-page';
 import { BranchesPage } from '@/pages/branches-page';
+import { CustomersPage } from '@/pages/customers-page';
 import { PosPage } from '@/pages/pos-page';
 
 function AppToaster() {
@@ -47,6 +48,7 @@ export default function App() {
               <Route path="/" element={<ExecutiveShell />}>
                 <Route index element={<DashboardPage />} />
                 <Route path="branches" element={<BranchesPage />} />
+                <Route path="customers" element={<CustomersPage />} />
                 <Route path="subscriptions" element={<SubscriptionsPage />} />
                 <Route path="subscribers" element={<SubscribersPage />} />
                 <Route path="orders" element={<OrdersPage />} />

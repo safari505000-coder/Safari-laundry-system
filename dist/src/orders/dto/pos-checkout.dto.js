@@ -23,7 +23,7 @@ __decorate([
     (0, swagger_1.ApiPropertyOptional)({
         enum: client_1.PosPaymentMethod,
         enumName: 'PosPaymentMethod',
-        description: 'When prepaid balance covers the full total, defaults to SUBSCRIPTION_WALLET. Otherwise required: CASH, KNET, or PAYMENT_LINK.',
+        description: 'When prepaid balance covers the full total, defaults to SUBSCRIPTION_WALLET. Otherwise required: CASH, KNET, ONLINE, or DEBT_ON_ACCOUNT.',
     }),
     (0, class_transformer_1.Transform)(({ value }) => {
         if (value === '' || value === null || value === undefined) {

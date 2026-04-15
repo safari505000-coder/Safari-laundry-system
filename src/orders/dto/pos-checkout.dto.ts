@@ -10,7 +10,7 @@ export class PosCheckoutDto extends CreateOrderQuickDto {
     enum: PosPaymentMethod,
     enumName: 'PosPaymentMethod',
     description:
-      'When prepaid balance covers the full total, defaults to SUBSCRIPTION_WALLET. Otherwise required: CASH, KNET, or PAYMENT_LINK.',
+      'When prepaid balance covers the full total, defaults to SUBSCRIPTION_WALLET. Otherwise required: CASH, KNET, ONLINE, or DEBT_ON_ACCOUNT.',
   })
   @Transform(({ value }: { value: unknown }) => {
     if (value === '' || value === null || value === undefined) {

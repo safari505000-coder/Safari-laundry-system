@@ -34,6 +34,11 @@ function rowTone(status: SubscriberListRow['rowStatus']): string {
   }
 }
 
+function isCriticalBalance(balance: string): boolean {
+  const n = Number.parseFloat(balance);
+  return Number.isFinite(n) && n < 10;
+}
+
 function SubscriberCard({
   r,
   formatDate,
@@ -68,7 +73,19 @@ function SubscriberCard({
         </div>
         <div>
           <dt className="text-muted-foreground">{t('subscribers.colBalance')}</dt>
-          <dd className="tabular-nums font-semibold">{formatKwdLabel(r.balance)}</dd>
+          <dd
+            className={cn(
+              'tabular-nums font-semibold',
+              isCriticalBalance(r.balance) && 'text-red-700',
+            )}
+          >
+            {formatKwdLabel(r.balance)}
+          </dd>
+          {isCriticalBalance(r.balance) ? (
+            <div className="col-span-2 text-xs font-semibold text-red-700">
+              {t('subscribers.lowBalanceWarn')}
+            </div>
+          ) : null}
         </div>
       </dl>
     </article>
@@ -248,7 +265,12 @@ export function SubscribersPage() {
                   <TableCell className="text-end tabular-nums text-sm">
                     {r.remainingDays === null ? '—' : r.remainingDays}
                   </TableCell>
-                  <TableCell className="text-end tabular-nums text-sm font-medium">
+                  <TableCell
+                    className={cn(
+                      'text-end tabular-nums text-sm font-medium',
+                      isCriticalBalance(r.balance) && 'text-red-700',
+                    )}
+                  >
                     {formatKwdLabel(r.balance)}
                   </TableCell>
                 </TableRow>

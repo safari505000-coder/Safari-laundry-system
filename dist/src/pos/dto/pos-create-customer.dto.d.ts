@@ -7,4 +7,7 @@ export declare class PosCreateCustomerDto {
     addressStreet: string;
     addressAvenue?: string;
     addressHouse?: string;
+    motherContact?: string;
+    wifeContact?: string;
+    sonContact?: string;
 }

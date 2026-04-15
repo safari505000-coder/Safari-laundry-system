@@ -41,6 +41,7 @@ export declare class OrdersController {
         lineItems: {
             id: string;
             label: string | null;
+            starchOption: import("@prisma/client").$Enums.StarchOption;
             quantity: import("@prisma/client-runtime-utils").Decimal;
             unitPrice: import("@prisma/client-runtime-utils").Decimal;
         }[];
@@ -77,6 +78,7 @@ export declare class OrdersController {
         lineItems: {
             id: string;
             label: string | null;
+            starchOption: import("@prisma/client").$Enums.StarchOption;
             quantity: import("@prisma/client-runtime-utils").Decimal;
             unitPrice: import("@prisma/client-runtime-utils").Decimal;
         }[];
@@ -113,6 +115,7 @@ export declare class OrdersController {
         lineItems: {
             id: string;
             label: string | null;
+            starchOption: import("@prisma/client").$Enums.StarchOption;
             quantity: import("@prisma/client-runtime-utils").Decimal;
             unitPrice: import("@prisma/client-runtime-utils").Decimal;
         }[];
@@ -149,6 +152,7 @@ export declare class OrdersController {
         lineItems: {
             id: string;
             label: string | null;
+            starchOption: import("@prisma/client").$Enums.StarchOption;
             quantity: import("@prisma/client-runtime-utils").Decimal;
             unitPrice: import("@prisma/client-runtime-utils").Decimal;
         }[];
@@ -185,6 +189,7 @@ export declare class OrdersController {
         lineItems: {
             id: string;
             label: string | null;
+            starchOption: import("@prisma/client").$Enums.StarchOption;
             quantity: import("@prisma/client-runtime-utils").Decimal;
             unitPrice: import("@prisma/client-runtime-utils").Decimal;
         }[];
@@ -221,6 +226,7 @@ export declare class OrdersController {
         lineItems: {
             id: string;
             label: string | null;
+            starchOption: import("@prisma/client").$Enums.StarchOption;
             quantity: import("@prisma/client-runtime-utils").Decimal;
             unitPrice: import("@prisma/client-runtime-utils").Decimal;
         }[];

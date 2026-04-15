@@ -204,7 +204,10 @@ export class PaymentsService {
             'Order is not awaiting gateway payment',
           );
         }
-        if (order.posPaymentMethod !== PosPaymentMethod.PAYMENT_LINK) {
+        if (
+          order.posPaymentMethod !== PosPaymentMethod.ONLINE &&
+          order.posPaymentMethod !== PosPaymentMethod.PAYMENT_LINK
+        ) {
           throw new BadRequestException(
             'Order is not a payment-link checkout',
           );

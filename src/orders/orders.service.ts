@@ -65,6 +65,7 @@ const orderDetailSelect = {
     select: {
       id: true,
       label: true,
+      starchOption: true,
       quantity: true,
       unitPrice: true,
     },
@@ -75,7 +76,7 @@ export type OrderDetail = Prisma.OrderGetPayload<{
   select: typeof orderDetailSelect;
 }>;
 
-/** POS checkout may attach a hosted payment URL when using PAYMENT_LINK. */
+/** POS checkout may attach a hosted payment URL when using ONLINE. */
 export type PosCheckoutOrderDetail = OrderDetail & {
   paymentLink?: CreatePaymentLinkResult;
 };
@@ -146,7 +147,7 @@ export class OrdersService {
 
   /**
    * Wallet covers full total → SUBSCRIPTION_WALLET. Otherwise require external
-   * settlement (CASH / KNET / PAYMENT_LINK). Accepts aliases like LINK for PAYMENT_LINK.
+   * settlement (CASH / KNET / PAYMENT_LINK / DEBT_ON_ACCOUNT).
    */
   /** Maps client input to DB enum values (PostgreSQL enum is UPPERCASE). */
   private resolvePosCheckoutPaymentMethod(
@@ -164,8 +165,21 @@ export class OrdersService {
     if (s === 'KNET') {
       return PosPaymentMethod.KNET;
     }
-    if (s === 'PAYMENT_LINK' || s === 'LINK' || s === 'PAYMENTLINK') {
-      return PosPaymentMethod.PAYMENT_LINK;
+    if (
+      s === 'ONLINE' ||
+      s === 'PAYMENT_LINK' ||
+      s === 'LINK' ||
+      s === 'PAYMENTLINK'
+    ) {
+      return PosPaymentMethod.ONLINE;
+    }
+    if (
+      s === 'DEBT_ON_ACCOUNT' ||
+      s === 'ON_ACCOUNT' ||
+      s === 'DEBT' ||
+      s === 'CREDIT'
+    ) {
+      return PosPaymentMethod.DEBT_ON_ACCOUNT;
     }
     return PosPaymentMethod.CASH;
   }
@@ -183,6 +197,7 @@ export class OrdersService {
     }
     return items.map((line) => ({
       label: line.label?.trim() || null,
+      starchOption: line.starchOption ?? 'NONE',
       quantity: line.quantity,
       unitPrice: line.unitPrice,
     }));
@@ -203,6 +218,7 @@ export class OrdersService {
     }
     return items.map((line) => ({
       label: line.label?.trim() || null,
+      starchOption: line.starchOption ?? 'NONE',
       quantity: Number(line.quantity),
       unitPrice: Number(line.unitPrice),
     }));
@@ -359,7 +375,7 @@ export class OrdersService {
 
           const useHostedPaymentLink =
             shortfallMinor > 0n &&
-            posPaymentMethodResolved === PosPaymentMethod.PAYMENT_LINK;
+            posPaymentMethodResolved === PosPaymentMethod.ONLINE;
 
           if (useHostedPaymentLink) {
             const created = await tx.order.create({
@@ -370,7 +386,7 @@ export class OrdersService {
                 totalPrice: totalPriceDecimal,
                 status: OrderStatus.PENDING,
                 cashStatus: CashStatus.UNPAID,
-                posPaymentMethod: PosPaymentMethod.PAYMENT_LINK,
+                posPaymentMethod: PosPaymentMethod.ONLINE,
                 completedAt: null,
                 invoiceNumber: dto.invoiceNumber?.trim() || null,
                 notes: dto.notes?.trim() || null,
@@ -434,7 +450,7 @@ export class OrdersService {
       });
 
       if (
-        detail.posPaymentMethod === PosPaymentMethod.PAYMENT_LINK &&
+        detail.posPaymentMethod === PosPaymentMethod.ONLINE &&
         detail.status === OrderStatus.PENDING
       ) {
         const phone =

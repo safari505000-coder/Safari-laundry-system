@@ -20,6 +20,16 @@ export declare class FinanceController {
             totalRevenue: string;
         }[];
     }>;
+    getDebtByCategory(q: DailyPosSalesQueryDto): Promise<{
+        from: string;
+        to: string;
+        rows: {
+            category: import("@prisma/client").$Enums.DebtEntityCategory;
+            source: import("@prisma/client").$Enums.DebtSource;
+            entryCount: number;
+            totalDebt: string;
+        }[];
+    }>;
     getDriverBalance(): Promise<DriverBalanceResponseDto>;
     confirmHandover(dto: ConfirmHandoverDto, user: JwtUser): Promise<HandoverResultDto>;
 }

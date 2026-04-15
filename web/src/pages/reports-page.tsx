@@ -388,7 +388,8 @@ export function ReportsPage() {
                 </SelectItem>
                 <SelectItem value="CASH">CASH</SelectItem>
                 <SelectItem value="KNET">KNET</SelectItem>
-                <SelectItem value="PAYMENT_LINK">PAYMENT_LINK</SelectItem>
+                <SelectItem value="PAYMENT_LINK">ONLINE</SelectItem>
+                <SelectItem value="DEBT_ON_ACCOUNT">DEBT_ON_ACCOUNT</SelectItem>
               </SelectContent>
             </Select>
           </div>

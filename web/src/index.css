@@ -185,6 +185,7 @@ body {
     display: block;
     width: 35mm;
     height: auto;
+    max-height: 80px;
     margin: 0 auto 1.4mm;
     object-fit: contain;
   }

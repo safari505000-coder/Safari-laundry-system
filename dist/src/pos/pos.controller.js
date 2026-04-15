@@ -82,7 +82,7 @@ __decorate([
     (0, common_1.Post)('checkout'),
     (0, swagger_1.ApiOperation)({
         summary: `Complete POS sale — wallet + payment method (${branding_1.APP_BRAND})`,
-        description: 'Cash/KNET/wallet: creates COMPLETED order and wallet settlement. PAYMENT_LINK: creates PENDING order, returns paymentLink URL; gateway callback completes the sale.',
+        description: 'Cash/KNET/DEBT/wallet: creates COMPLETED order and wallet settlement. ONLINE: creates PENDING order, returns paymentLink URL; gateway callback completes the sale.',
     }),
     __param(0, (0, common_1.Body)()),
     __param(1, (0, current_user_decorator_1.CurrentUser)()),

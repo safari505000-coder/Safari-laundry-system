@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { OrderIdBarcode } from '@/components/orders/order-id-barcode';
+import { TermsQr } from '@/components/common/terms-qr';
 import {
   Table,
   TableBody,
@@ -39,6 +40,10 @@ export function OrderDetailDialog({ open, onOpenChange, order }: Props) {
           <div className="space-y-4">
             <div className="flex justify-center rounded-lg border bg-muted/30 p-3">
               <OrderIdBarcode orderId={order.id} />
+            </div>
+            <div className="flex flex-col items-center gap-1 rounded-lg border bg-muted/20 p-3">
+              <TermsQr size={90} />
+              <p className="text-xs text-muted-foreground">{t('orders.termsQrCaption')}</p>
             </div>
             <dl className="grid gap-2 text-sm">
               <div className="flex justify-between gap-2">

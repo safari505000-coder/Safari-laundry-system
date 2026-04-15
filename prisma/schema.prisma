@@ -57,6 +57,25 @@ enum PosPaymentMethod {
   CASH
   KNET
   PAYMENT_LINK
+  DEBT_ON_ACCOUNT
+  ONLINE
+}
+
+enum StarchOption {
+  NONE
+  STARCH_25
+}
+
+enum DebtSource {
+  SUBSCRIPTION_OVERUSE
+  INVOICE_SHORTFALL
+}
+
+enum DebtEntityCategory {
+  BRANCH
+  DRIVER
+  OWNER
+  CALL_CENTER
 }
 
 model User {
@@ -85,6 +104,7 @@ model User {
   ledgerTransactions    TransactionHistory[] @relation("LedgerPerformedBy")
   expensesRecorded      BranchExpense[]      @relation("ExpenseRecordedBy")
   payrolls              Payroll[]
+  debtLedgerEntries     DebtLedgerEntry[]    @relation("DebtEntryActor")
 }
 
 enum ExpenseCategory {
@@ -132,6 +152,9 @@ model Customer {
   id        String   @id @default(uuid()) @db.Uuid
   phone     String
   phone2    String?
+  motherContact String?
+  wifeContact   String?
+  sonContact    String?
   /** POS / call-center display name when captured. */
   displayName String?
   /** Optional when captured later from the driver’s paperwork. */
@@ -148,6 +171,7 @@ model Customer {
   orders              Order[]
   wallet              CustomerWallet?
   transactionHistory  TransactionHistory[]
+  debtLedgerEntries   DebtLedgerEntry[]
 
   @@index([phone])
   @@index([phone2])
@@ -236,6 +260,7 @@ model Order {
   driver             User?                @relation("OrderDriver", fields: [driverId], references: [id])
   lineItems          OrderLineItem[]
   transactionHistory TransactionHistory[]
+  debtLedgerEntries  DebtLedgerEntry[]
 
   @@index([driverId])
   @@index([status])
@@ -271,6 +296,7 @@ model OrderLineItem {
   id         String   @id @default(uuid()) @db.Uuid
   orderId    String   @db.Uuid
   label      String?
+  starchOption StarchOption @default(NONE)
   quantity   Decimal  @db.Decimal(12, 4)
   unitPrice  Decimal  @db.Decimal(19, 4)
   createdAt  DateTime @default(now())
@@ -279,6 +305,30 @@ model OrderLineItem {
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([orderId])
+}
+
+model DebtLedgerEntry {
+  id           String             @id @default(uuid()) @db.Uuid
+  customerId   String             @db.Uuid
+  orderId      String?            @db.Uuid
+  source       DebtSource
+  category     DebtEntityCategory
+  amount       Decimal            @db.Decimal(19, 4)
+  branchId     String?            @db.Uuid
+  actorUserId  String?            @db.Uuid
+  note         String?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  customer     Customer           @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  order        Order?             @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  actorUser    User?              @relation("DebtEntryActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  branch       Branch?            @relation(fields: [branchId], references: [id], onDelete: SetNull)
+
+  @@index([customerId, createdAt])
+  @@index([source, category, createdAt])
+  @@index([orderId])
+  @@index([branchId])
 }
 
 /** Laundry price list (PDF tariff) — KD per garment × service tier. */
@@ -330,6 +380,7 @@ model Branch {
   wallets               Wallet[]
   payrolls              Payroll[]
   fixedExpenseSchedules FixedExpenseSchedule[]
+  debtLedgerEntries     DebtLedgerEntry[]
 }
 
 model Payroll {

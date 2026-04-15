@@ -164,6 +164,7 @@ let ReportsService = class ReportsService {
                 driverId,
                 status: client_1.OrderStatus.COMPLETED,
                 cashStatus: client_1.CashStatus.PAID_TO_DRIVER,
+                posPaymentMethod: client_1.PosPaymentMethod.CASH,
             },
             select: { id: true, totalPrice: true, invoiceNumber: true, createdAt: true },
         });

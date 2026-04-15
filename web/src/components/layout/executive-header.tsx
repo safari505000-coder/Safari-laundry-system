@@ -11,7 +11,7 @@ export function ExecutiveHeader() {
         <img
           src="/logo.png"
           alt="Safari Fast"
-          className="h-9 w-auto max-w-[140px] object-contain"
+          className="me-2 h-11 w-auto max-h-[45px] max-w-[180px] object-contain"
         />
         <span className="hidden truncate text-sm font-semibold text-primary sm:inline">
           Safari Executive

@@ -18,6 +18,7 @@ const auth_module_1 = require("./auth/auth.module");
 const branches_module_1 = require("./branches/branches.module");
 const call_center_module_1 = require("./call-center/call-center.module");
 const operating_hours_middleware_1 = require("./common/middleware/operating-hours.middleware");
+const customers_module_1 = require("./customers/customers.module");
 const expenses_module_1 = require("./expenses/expenses.module");
 const fixed_expense_module_1 = require("./fixed-expenses/fixed-expense.module");
 const payroll_module_1 = require("./payroll/payroll.module");
@@ -72,6 +73,7 @@ exports.AppModule = AppModule = __decorate([
             call_center_module_1.CallCenterModule,
             laundry_price_list_module_1.LaundryPriceListModule,
             pos_module_1.PosModule,
+            customers_module_1.CustomersModule,
             ...spaStaticModule,
         ],
         controllers: [app_controller_1.AppController],

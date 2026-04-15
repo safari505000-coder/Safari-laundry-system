@@ -4,9 +4,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  DebtEntityCategory,
+  DebtSource,
   LedgerTransactionType,
   PosPaymentMethod,
   Prisma,
+  SafariRole,
 } from '@prisma/client';
 import {
   minorToAmountString,
@@ -43,6 +46,13 @@ export class CustomerLedgerService {
     });
   }
 
+  private resolveDebtCategory(role: SafariRole): DebtEntityCategory {
+    if (role === SafariRole.OWNER) return DebtEntityCategory.OWNER;
+    if (role === SafariRole.DRIVER) return DebtEntityCategory.DRIVER;
+    if (role === SafariRole.CALL_CENTER) return DebtEntityCategory.CALL_CENTER;
+    return DebtEntityCategory.BRANCH;
+  }
+
   /**
    * Deduct wallet balance toward the order total; any uncovered amount adds to debt.
    * Idempotent via `order.walletSettledAt`.
@@ -71,16 +81,14 @@ export class CustomerLedgerService {
       return;
     }
 
-    if (!prefetch?.skipPerformerLookup) {
-      const actor = await tx.user.findUnique({
-        where: { id: performedByUserId },
-        select: { id: true },
-      });
-      if (!actor) {
-        throw new NotFoundException(
-          'Performing user not found — cannot record wallet settlement',
-        );
-      }
+    const actor = await tx.user.findUnique({
+      where: { id: performedByUserId },
+      select: { id: true, safariRole: true, branchId: true },
+    });
+    if (!actor) {
+      throw new NotFoundException(
+        'Performing user not found — cannot record wallet settlement',
+      );
     }
 
     const totalMinor = toMinorFromFixed4(o.totalPrice);
@@ -94,15 +102,28 @@ export class CustomerLedgerService {
 
     const takeMinor = balanceMinor < totalMinor ? balanceMinor : totalMinor;
     const shortfallMinor = totalMinor - takeMinor;
-    const newBalanceMinor = balanceMinor - takeMinor;
+    const beforeSubscriptionDebtMinor = balanceMinor < 0n ? -balanceMinor : 0n;
+    const isSubscriptionWalletPayment =
+      o.posPaymentMethod === PosPaymentMethod.SUBSCRIPTION_WALLET;
+    const newBalanceMinor =
+      isSubscriptionWalletPayment ? balanceMinor - totalMinor : balanceMinor - takeMinor;
     const externalCoversShortfall =
       o.posPaymentMethod === PosPaymentMethod.CASH ||
       o.posPaymentMethod === PosPaymentMethod.KNET ||
+      o.posPaymentMethod === PosPaymentMethod.ONLINE ||
       o.posPaymentMethod === PosPaymentMethod.PAYMENT_LINK;
+    const addInvoiceDebt =
+      o.posPaymentMethod === PosPaymentMethod.DEBT_ON_ACCOUNT ||
+      (!isSubscriptionWalletPayment && !externalCoversShortfall);
     const newDebtMinor =
-      externalCoversShortfall && shortfallMinor > 0n ?
-        debtMinor
-      : debtMinor + shortfallMinor;
+      addInvoiceDebt && shortfallMinor > 0n ? debtMinor + shortfallMinor : debtMinor;
+    const afterSubscriptionDebtMinor = newBalanceMinor < 0n ? -newBalanceMinor : 0n;
+    const addedSubscriptionDebtMinor =
+      afterSubscriptionDebtMinor > beforeSubscriptionDebtMinor
+        ? afterSubscriptionDebtMinor - beforeSubscriptionDebtMinor
+        : 0n;
+    const addedInvoiceDebtMinor =
+      addInvoiceDebt && shortfallMinor > 0n ? shortfallMinor : 0n;
 
     await tx.customerWallet.update({
       where: { id: wallet.id },
@@ -126,9 +147,8 @@ export class CustomerLedgerService {
         metadata: {
           appliedFromWallet: minorToAmountString(takeMinor),
           orderTotal: o.totalPrice.toString(),
-          addedToDebt: minorToAmountString(
-            externalCoversShortfall && shortfallMinor > 0n ? 0n : shortfallMinor,
-          ),
+          addedToDebt: minorToAmountString(addedInvoiceDebtMinor),
+          addedSubscriptionDebt: minorToAmountString(addedSubscriptionDebtMinor),
           posPaymentMethod: o.posPaymentMethod ?? null,
           externalCoversShortfall:
             externalCoversShortfall && shortfallMinor > 0n ? true : false,
@@ -136,6 +156,36 @@ export class CustomerLedgerService {
         },
       },
     });
+
+    const debtCategory = this.resolveDebtCategory(actor.safariRole);
+    if (addedInvoiceDebtMinor > 0n) {
+      await tx.debtLedgerEntry.create({
+        data: {
+          customerId: o.customerId,
+          orderId,
+          source: DebtSource.INVOICE_SHORTFALL,
+          category: debtCategory,
+          amount: this.decimalFromMinor(addedInvoiceDebtMinor),
+          branchId: actor.branchId,
+          actorUserId: actor.id,
+          note: 'Invoice shortfall recorded as receivable',
+        },
+      });
+    }
+    if (addedSubscriptionDebtMinor > 0n) {
+      await tx.debtLedgerEntry.create({
+        data: {
+          customerId: o.customerId,
+          orderId,
+          source: DebtSource.SUBSCRIPTION_OVERUSE,
+          category: debtCategory,
+          amount: this.decimalFromMinor(addedSubscriptionDebtMinor),
+          branchId: actor.branchId,
+          actorUserId: actor.id,
+          note: 'Subscription balance allowed to go negative',
+        },
+      });
+    }
 
     await tx.order.updateMany({
       where: { id: orderId, walletSettledAt: null },

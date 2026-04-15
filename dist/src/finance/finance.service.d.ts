@@ -17,6 +17,16 @@ export declare class FinanceService {
         }[];
     }>;
     getOwnerCustomerWalletSummary(): Promise<OwnerCustomerWalletSummaryDto>;
+    getDebtBreakdownByCategory(fromIso: string, toIso: string): Promise<{
+        from: string;
+        to: string;
+        rows: {
+            category: import("@prisma/client").$Enums.DebtEntityCategory;
+            source: import("@prisma/client").$Enums.DebtSource;
+            entryCount: number;
+            totalDebt: string;
+        }[];
+    }>;
     getDriverBalances(): Promise<DriverBalanceResponseDto>;
     confirmHandover(managerId: string, dto: ConfirmHandoverDto): Promise<HandoverResultDto>;
 }

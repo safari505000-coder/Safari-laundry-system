@@ -14,6 +14,14 @@ const swagger_1 = require("@nestjs/swagger");
 class OwnerCustomerWalletSummaryDto {
     totalWalletLiabilities;
     totalCustomerDebts;
+    debtFromIssuedInvoices;
+    debtFromSubscriptionOveruse;
+    debtSettledBySubscriptions;
+    debtByBranch;
+    debtByDriver;
+    debtByOwner;
+    debtByCallCenter;
+    totalSubscriptionUsage;
 }
 exports.OwnerCustomerWalletSummaryDto = OwnerCustomerWalletSummaryDto;
 __decorate([
@@ -30,4 +38,48 @@ __decorate([
     }),
     __metadata("design:type", String)
 ], OwnerCustomerWalletSummaryDto.prototype, "totalCustomerDebts", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({
+        description: 'Cumulative debt additions sourced from issued invoices (ORDER_WALLET_SETTLEMENT.addedToDebt)',
+        example: '18.5000',
+    }),
+    __metadata("design:type", String)
+], OwnerCustomerWalletSummaryDto.prototype, "debtFromIssuedInvoices", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({
+        description: 'Cumulative debt additions sourced from subscription overuse (negative subscription balance)',
+        example: '5.0000',
+    }),
+    __metadata("design:type", String)
+], OwnerCustomerWalletSummaryDto.prototype, "debtFromSubscriptionOveruse", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({
+        description: 'Cumulative debt settled by subscription activations (SUBSCRIPTION_ACTIVATION.debtSettled)',
+        example: '7.0000',
+    }),
+    __metadata("design:type", String)
+], OwnerCustomerWalletSummaryDto.prototype, "debtSettledBySubscriptions", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ example: '4.2500' }),
+    __metadata("design:type", String)
+], OwnerCustomerWalletSummaryDto.prototype, "debtByBranch", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ example: '8.0000' }),
+    __metadata("design:type", String)
+], OwnerCustomerWalletSummaryDto.prototype, "debtByDriver", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ example: '1.5000' }),
+    __metadata("design:type", String)
+], OwnerCustomerWalletSummaryDto.prototype, "debtByOwner", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ example: '2.7500' }),
+    __metadata("design:type", String)
+], OwnerCustomerWalletSummaryDto.prototype, "debtByCallCenter", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({
+        description: 'Cumulative subscription wallet consumption from completed subscription-backed orders',
+        example: '64.2500',
+    }),
+    __metadata("design:type", String)
+], OwnerCustomerWalletSummaryDto.prototype, "totalSubscriptionUsage", void 0);
 //# sourceMappingURL=owner-customer-wallet-summary.dto.js.map
