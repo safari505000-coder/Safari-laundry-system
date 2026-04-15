@@ -23,29 +23,37 @@ let CustomerLedgerService = class CustomerLedgerService {
         return new client_1.Prisma.Decimal((0, finance_money_1.minorToAmountString)(minor));
     }
     async getOrCreateWalletTx(tx, customerId) {
-        let w = await tx.customerWallet.findUnique({ where: { customerId } });
-        if (!w) {
-            w = await tx.customerWallet.create({
-                data: { customerId },
-            });
-        }
-        return w;
-    }
-    async applyOrderWalletSettlementForCompletedOrder(tx, orderId, performedByUserId) {
-        const o = await tx.order.findUnique({
-            where: { id: orderId },
-            select: {
-                walletSettledAt: true,
-                customerId: true,
-                totalPrice: true,
-                posPaymentMethod: true,
-            },
+        return tx.customerWallet.upsert({
+            where: { customerId },
+            create: { customerId },
+            update: {},
         });
+    }
+    async applyOrderWalletSettlementForCompletedOrder(tx, orderId, performedByUserId, prefetch) {
+        const o = prefetch ??
+            (await tx.order.findUnique({
+                where: { id: orderId },
+                select: {
+                    walletSettledAt: true,
+                    customerId: true,
+                    totalPrice: true,
+                    posPaymentMethod: true,
+                },
+            }));
         if (!o) {
             throw new common_1.NotFoundException('Order not found');
         }
         if (o.walletSettledAt) {
             return;
+        }
+        if (!prefetch?.skipPerformerLookup) {
+            const actor = await tx.user.findUnique({
+                where: { id: performedByUserId },
+                select: { id: true },
+            });
+            if (!actor) {
+                throw new common_1.NotFoundException('Performing user not found — cannot record wallet settlement');
+            }
         }
         const totalMinor = (0, finance_money_1.toMinorFromFixed4)(o.totalPrice);
         if (totalMinor < 0n) {
@@ -91,8 +99,8 @@ let CustomerLedgerService = class CustomerLedgerService {
                 },
             },
         });
-        await tx.order.update({
-            where: { id: orderId },
+        await tx.order.updateMany({
+            where: { id: orderId, walletSettledAt: null },
             data: { walletSettledAt: new Date() },
         });
     }

@@ -137,6 +137,8 @@ async function bootstrap() {
       'bearer',
     )
     .addTag('health', `Core endpoints — ${APP_BRAND}`)
+    .addTag('system', `Public status — ${APP_BRAND} (operating hours)`)
+    .addTag('expenses', `Branch expenses — ${APP_BRAND} (MANAGER/OWNER)`)
     .addTag('auth', `Corporate authentication — ${APP_BRAND}`)
     .addTag('users', `Employee directory — ${APP_BRAND}`)
     .addTag('permissions', `Roles and permissions — ${APP_BRAND}`)
@@ -157,9 +159,16 @@ async function bootstrap() {
       `Driver point-of-sale — ${APP_BRAND} (JWT; DRIVER only — customers + checkout)`,
     )
     .addTag(
+      'payments',
+      `Kuwait Gateway webhooks — ${APP_BRAND} (public callback; signed with PAYMENTS_SECRET)`,
+    )
+    .addTag(
       'finance',
       `Cash custody & driver shifts — ${APP_BRAND} (JWT; OWNER/MANAGER)`,
     )
+    .addTag('payroll', `Payroll — ${APP_BRAND} (OWNER/MANAGER)`)
+    .addTag('fixed-expenses', `Recurring fixed costs — ${APP_BRAND}`)
+    .addTag('branches', `Branches — ${APP_BRAND}`)
     .build();
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('docs', app, document);

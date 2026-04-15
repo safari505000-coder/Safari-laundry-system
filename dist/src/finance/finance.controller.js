@@ -29,6 +29,10 @@ let FinanceController = class FinanceController {
     constructor(financeService) {
         this.financeService = financeService;
     }
+    async driverEnsureShift(user) {
+        await this.financeService.ensureOpenShiftForDriver(user.userId);
+        return { ok: true };
+    }
     getOwnerCustomerWalletSummary() {
         return this.financeService.getOwnerCustomerWalletSummary();
     }
@@ -43,6 +47,18 @@ let FinanceController = class FinanceController {
     }
 };
 exports.FinanceController = FinanceController;
+__decorate([
+    (0, common_1.Post)('driver/ensure-shift'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.DRIVER),
+    (0, swagger_1.ApiOperation)({
+        summary: `Driver — ensure open shift (auto-rollover) (${branding_1.APP_BRAND})`,
+        description: 'Driver-only. Ensures exactly one OPEN shift and auto-locks yesterday shift at 23:59:59 Kuwait when crossing midnight.',
+    }),
+    __param(0, (0, current_user_decorator_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], FinanceController.prototype, "driverEnsureShift", null);
 __decorate([
     (0, common_1.Get)('owner/customer-wallet-summary'),
     (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER),

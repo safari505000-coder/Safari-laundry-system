@@ -21,11 +21,19 @@ import { useAuth } from '@/contexts/auth-context';
 import {
   type CustomerBillingProfile,
   type CustomerSearchRow,
+  getOperatingStatus,
   type LaundryPriceListItemRow,
+  type OperatingStatusPayload,
+  type OrderRow,
+  type PosCheckoutResponse,
   type PosPaymentMethod,
   apiJson,
   ApiError,
 } from '@/lib/api';
+import { OrderDetailDialog } from '@/components/orders/order-detail-dialog';
+import { OrderIdBarcode } from '@/components/orders/order-id-barcode';
+import { OrderScanInput } from '@/components/orders/order-scan-input';
+import { SystemClosedScreen } from '@/components/system/system-closed-screen';
 import { useAppLocale } from '@/hooks/use-app-locale';
 import { LanguageToggle } from '@/components/i18n/language-toggle';
 import { Button } from '@/components/ui/button';
@@ -56,6 +64,8 @@ type CartLine = {
 };
 
 type ReceiptSnapshot = {
+  orderId: string;
+  branchLabel: string;
   orderNumber: string;
   createdAt: string;
   employeeName: string;
@@ -78,7 +88,15 @@ type ReceiptSnapshot = {
   }>;
   total: number;
   paymentLabel?: string;
+  /** True when order awaits gateway (PAYMENT_LINK path). */
+  paymentPending?: boolean;
 };
+
+function garmentTagCount(qty: number): number {
+  const n = Number(qty);
+  if (!Number.isFinite(n) || n <= 0) return 1;
+  return Math.min(50, Math.max(1, Math.round(n)));
+}
 
 type ServiceOption = {
   key: 'NORMAL' | 'URGENT' | 'PRESS_ONLY' | 'URGENT_PRESS';
@@ -182,6 +200,8 @@ export function PosPage() {
   const [savingCustomer, setSavingCustomer] = useState(false);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [receiptSnapshot, setReceiptSnapshot] = useState<ReceiptSnapshot | null>(null);
+  const [scanOrderDetail, setScanOrderDetail] = useState<OrderRow | null>(null);
+  const [scanOrderDialogOpen, setScanOrderDialogOpen] = useState(false);
   const [serviceOpen, setServiceOpen] = useState(false);
   const [serviceItem, setServiceItem] = useState<LaundryPriceListItemRow | null>(null);
   const [serviceQty, setServiceQty] = useState<
@@ -210,6 +230,46 @@ export function PosPage() {
   const [posPaymentMethod, setPosPaymentMethod] = useState<
     'CASH' | 'KNET' | 'PAYMENT_LINK'
   >('CASH');
+  const [operating, setOperating] = useState<OperatingStatusPayload | null>(
+    null,
+  );
+
+  useEffect(() => {
+    const clearPrintMode = () => {
+      document.body.classList.remove('print-tags-mode');
+    };
+    window.addEventListener('afterprint', clearPrintMode);
+    return () => window.removeEventListener('afterprint', clearPrintMode);
+  }, []);
+
+  useEffect(() => {
+    if (user?.safariRole !== 'DRIVER') return;
+    let cancelled = false;
+    void getOperatingStatus().then((r) => {
+      if (!cancelled) {
+        setOperating(r);
+      }
+    });
+    const id = window.setInterval(() => {
+      void getOperatingStatus().then((r) => {
+        if (cancelled) return;
+        setOperating((prev) => {
+          if (token && prev && prev.financialDateIso !== r.financialDateIso) {
+            toast.message(`New financial day: ${r.financialDateLabel}`);
+            void apiJson('/api/finance/driver/ensure-shift', {
+              method: 'POST',
+              token,
+            }).catch(() => {});
+          }
+          return r;
+        });
+      });
+    }, 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [user?.safariRole, token]);
 
   const loadCatalog = useCallback(async () => {
     if (!token) {
@@ -513,11 +573,9 @@ export function PosPage() {
       const lineItemsPayload =
         Math.abs(total - netTotal) < MONEY_EPS ? lineItemsFull : undefined;
 
-      const created = await apiJson<{
-        id?: string;
-        invoiceNumber?: string | null;
-        createdAt?: string;
-      }>('/api/pos/checkout', {
+      const created = await apiJson<PosCheckoutResponse>(
+        '/api/pos/checkout',
+        {
         method: 'POST',
         token,
         body: JSON.stringify({
@@ -529,7 +587,12 @@ export function PosPage() {
           serviceType: 'NORMAL',
           ...(extMethod ? { posPaymentMethod: extMethod } : {}),
         }),
-      });
+      },
+      );
+
+      const paymentLinkUrl = created.paymentLink?.url?.trim();
+      const isAwaitingGateway =
+        Boolean(paymentLinkUrl) && posPaymentMethod === 'PAYMENT_LINK';
 
       let balanceAfter = selected.wallet?.balance ?? '0.0000';
       try {
@@ -559,6 +622,8 @@ export function PosPage() {
         : t('pos.pay.SUBSCRIPTION_WALLET');
 
       setReceiptSnapshot({
+        orderId: created.id,
+        branchLabel: t('pos.branchLabelFallback'),
         orderNumber: created.invoiceNumber || created.id || '-',
         createdAt: created.createdAt || new Date().toISOString(),
         employeeName: user.fullName || user.username,
@@ -581,15 +646,28 @@ export function PosPage() {
         lines: receiptLines,
         total: netTotal,
         paymentLabel,
+        paymentPending: isAwaitingGateway,
       });
 
-      toast.success(t('pos.checkout.done'));
+      if (isAwaitingGateway && paymentLinkUrl) {
+        window.open(paymentLinkUrl, '_blank', 'noopener,noreferrer');
+        toast.success(t('pos.checkout.paymentLinkCreated'));
+      } else {
+        toast.success(t('pos.checkout.done'));
+      }
       setCart([]);
       window.setTimeout(() => {
         window.print();
       }, 120);
     } catch (e) {
-      if (e instanceof ApiError) toast.error(e.message);
+      if (e instanceof ApiError) {
+        if (e.errorCode === 'SYSTEM_CLOSED') {
+          toast.error(e.message);
+          void getOperatingStatus().then(setOperating);
+        } else {
+          toast.error(e.message);
+        }
+      }
     } finally {
       setCheckoutBusy(false);
     }
@@ -600,6 +678,16 @@ export function PosPage() {
       toast.error('No receipt ready to print yet.');
       return;
     }
+    document.body.classList.remove('print-tags-mode');
+    window.print();
+  }
+
+  function handlePrintGarmentTags() {
+    if (!receiptSnapshot?.orderId) {
+      toast.error('No receipt ready to print yet.');
+      return;
+    }
+    document.body.classList.add('print-tags-mode');
     window.print();
   }
 
@@ -610,6 +698,19 @@ export function PosPage() {
 
   const rtl = i18n.language.startsWith('ar');
 
+  if (
+    user?.safariRole === 'DRIVER' &&
+    operating &&
+    !operating.isOpen
+  ) {
+    return (
+      <SystemClosedScreen
+        kuwaitTimeLabel={operating.kuwaitTimeLabel}
+        onSignOut={signOut}
+      />
+    );
+  }
+
   return (
     <div
       data-pos-root
@@ -617,6 +718,7 @@ export function PosPage() {
       dir={rtl ? 'rtl' : 'ltr'}
     >
       <header className="z-20 shrink-0 border-b border-border bg-card px-3 py-2 shadow-sm sm:px-4">
+        <div className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <img
             src="/logo.png"
@@ -687,15 +789,34 @@ export function PosPage() {
             </Button>
           </div>
         </div>
-        {selected ?
-          <p className="mt-2 text-xs text-muted-foreground">
-            {t('pos.activeCustomer')}{' '}
-            <strong className="text-foreground">
-              {selected.displayName || t('pos.noName')} · {selected.phone}
-              {selected.phone2 ? ` · ${selected.phone2}` : ''}
-            </strong>
-          </p>
-        : null}
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+          {selected ?
+            <p>
+              {t('pos.activeCustomer')}{' '}
+              <strong className="text-foreground">
+                {selected.displayName || t('pos.noName')} · {selected.phone}
+                {selected.phone2 ? ` · ${selected.phone2}` : ''}
+              </strong>
+            </p>
+          : <span />}
+          {operating ?
+            <span className="whitespace-nowrap">
+              {t('pos.financialDate')}{' '}
+              <strong className="text-foreground">
+                {operating.financialDateLabel}
+              </strong>
+            </span>
+          : null}
+        </div>
+        <OrderScanInput
+          token={token}
+          className="w-full max-w-xl"
+          onOrderLoaded={(o) => {
+            setScanOrderDetail(o);
+            setScanOrderDialogOpen(true);
+          }}
+        />
+        </div>
       </header>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col md:flex-row">
@@ -921,16 +1042,28 @@ export function PosPage() {
               </div>
             : null}
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={!receiptSnapshot}
-            size="lg"
-            className="h-12 min-h-12 w-full shrink-0 touch-manipulation text-base font-semibold sm:w-auto"
-            onClick={handlePrintReceipt}
-          >
-            Print Receipt
-          </Button>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-stretch">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!receiptSnapshot}
+              size="lg"
+              className="h-12 min-h-12 w-full shrink-0 touch-manipulation text-base font-semibold sm:w-auto"
+              onClick={handlePrintReceipt}
+            >
+              Print Receipt
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!receiptSnapshot?.orderId}
+              size="lg"
+              className="h-12 min-h-12 w-full shrink-0 touch-manipulation text-base font-semibold sm:w-auto"
+              onClick={handlePrintGarmentTags}
+            >
+              {t('pos.printGarmentTags')}
+            </Button>
+          </div>
           <Button
             type="button"
             disabled={
@@ -1147,6 +1280,14 @@ export function PosPage() {
               ).toLocaleString(dateLocale)}
             </p>
           </div>
+          {receiptSnapshot?.paymentPending ?
+            <p
+              className="my-2 rounded border border-amber-400 bg-amber-50 px-2 py-1 text-center text-[10px] font-semibold text-amber-900"
+              dir="auto"
+            >
+              {t('pos.checkout.paymentPendingReceipt')}
+            </p>
+          : null}
           <div className="pos-customer-box">
             <div className="pos-customer-row">
               <span><strong>Name:</strong> {receiptSnapshot?.customerName ?? '-'}</span>
@@ -1230,6 +1371,17 @@ export function PosPage() {
                 </p>
               ))}
           </div>
+          {receiptSnapshot?.orderId ?
+            <div className="pos-receipt-barcode">
+              <OrderIdBarcode
+                orderId={receiptSnapshot.orderId}
+                variant="receipt"
+              />
+              <p className="pos-receipt-barcode-caption">
+                {t('pos.receiptBarcodeCaption')}
+              </p>
+            </div>
+          : null}
           <div className="pos-receipt-terms">
             <p>الشروط والأحكام:</p>
             <p>
@@ -1244,6 +1396,48 @@ export function PosPage() {
           </div>
         </div>
       </section>
+
+      {receiptSnapshot ?
+        <section id="pos-item-tags-print" className="hidden" aria-hidden>
+          <div className="pos-garment-tags-grid">
+            {receiptSnapshot.lines.flatMap((line, lineIdx) => {
+              const n = garmentTagCount(line.quantity);
+              return Array.from({ length: n }, (_, i) => (
+                <div
+                  key={`${line.label}-${lineIdx}-${i}`}
+                  className="pos-garment-tag"
+                  dir="rtl"
+                >
+                  <OrderIdBarcode
+                    orderId={receiptSnapshot.orderId}
+                    variant="receipt"
+                  />
+                  <div className="tag-meta">
+                    <div>
+                      <strong>{t('pos.tagCustomer')}</strong>{' '}
+                      {receiptSnapshot.customerName}
+                    </div>
+                    <div>
+                      <strong>{t('pos.tagBranch')}</strong>{' '}
+                      {receiptSnapshot.branchLabel}
+                    </div>
+                    <div>
+                      <strong>{t('pos.tagGarment')}</strong> {line.label}
+                      {n > 1 ? ` (${i + 1}/${n})` : ''}
+                    </div>
+                  </div>
+                </div>
+              ));
+            })}
+          </div>
+        </section>
+      : null}
+
+      <OrderDetailDialog
+        open={scanOrderDialogOpen}
+        onOpenChange={setScanOrderDialogOpen}
+        order={scanOrderDetail}
+      />
 
       <Dialog
         open={newOpen}

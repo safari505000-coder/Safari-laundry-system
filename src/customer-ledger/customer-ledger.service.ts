@@ -17,6 +17,16 @@ import type { SubscriptionActivationSettlement } from './subscription-settlement
 
 export type PrismaTx = Prisma.TransactionClient;
 
+/** When the caller already loaded order fields (e.g. POS checkout), skip extra reads inside the tx. */
+export type OrderWalletSettlementPrefetch = {
+  customerId: string;
+  totalPrice: Prisma.Decimal;
+  posPaymentMethod: PosPaymentMethod | null;
+  walletSettledAt: Date | null;
+  /** POS path: performer was validated before the transaction */
+  skipPerformerLookup?: boolean;
+};
+
 @Injectable()
 export class CustomerLedgerService {
   constructor(private readonly prisma: PrismaService) {}
@@ -26,13 +36,11 @@ export class CustomerLedgerService {
   }
 
   async getOrCreateWalletTx(tx: PrismaTx, customerId: string) {
-    let w = await tx.customerWallet.findUnique({ where: { customerId } });
-    if (!w) {
-      w = await tx.customerWallet.create({
-        data: { customerId },
-      });
-    }
-    return w;
+    return tx.customerWallet.upsert({
+      where: { customerId },
+      create: { customerId },
+      update: {},
+    });
   }
 
   /**
@@ -43,21 +51,36 @@ export class CustomerLedgerService {
     tx: PrismaTx,
     orderId: string,
     performedByUserId: string,
+    prefetch?: OrderWalletSettlementPrefetch,
   ): Promise<void> {
-    const o = await tx.order.findUnique({
-      where: { id: orderId },
-      select: {
-        walletSettledAt: true,
-        customerId: true,
-        totalPrice: true,
-        posPaymentMethod: true,
-      },
-    });
+    const o: OrderWalletSettlementPrefetch | null =
+      prefetch ??
+      (await tx.order.findUnique({
+        where: { id: orderId },
+        select: {
+          walletSettledAt: true,
+          customerId: true,
+          totalPrice: true,
+          posPaymentMethod: true,
+        },
+      }));
     if (!o) {
       throw new NotFoundException('Order not found');
     }
     if (o.walletSettledAt) {
       return;
+    }
+
+    if (!prefetch?.skipPerformerLookup) {
+      const actor = await tx.user.findUnique({
+        where: { id: performedByUserId },
+        select: { id: true },
+      });
+      if (!actor) {
+        throw new NotFoundException(
+          'Performing user not found — cannot record wallet settlement',
+        );
+      }
     }
 
     const totalMinor = toMinorFromFixed4(o.totalPrice);
@@ -114,8 +137,8 @@ export class CustomerLedgerService {
       },
     });
 
-    await tx.order.update({
-      where: { id: orderId },
+    await tx.order.updateMany({
+      where: { id: orderId, walletSettledAt: null },
       data: { walletSettledAt: new Date() },
     });
   }

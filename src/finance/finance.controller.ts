@@ -23,6 +23,18 @@ import { FinanceService } from './finance.service';
 export class FinanceController {
   constructor(private readonly financeService: FinanceService) {}
 
+  @Post('driver/ensure-shift')
+  @Roles(SafariRole.DRIVER)
+  @ApiOperation({
+    summary: `Driver — ensure open shift (auto-rollover) (${APP_BRAND})`,
+    description:
+      'Driver-only. Ensures exactly one OPEN shift and auto-locks yesterday shift at 23:59:59 Kuwait when crossing midnight.',
+  })
+  async driverEnsureShift(@CurrentUser() user: JwtUser) {
+    await this.financeService.ensureOpenShiftForDriver(user.userId);
+    return { ok: true };
+  }
+
   @Get('owner/customer-wallet-summary')
   @Roles(SafariRole.OWNER)
   @ApiOperation({

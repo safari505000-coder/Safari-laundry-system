@@ -6,6 +6,8 @@ import { Plus } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { type OrderRow, apiJson, ApiError } from '@/lib/api';
 import { CreateOrderDialog } from '@/components/orders/create-order-dialog';
+import { OrderDetailDialog } from '@/components/orders/order-detail-dialog';
+import { OrderScanInput } from '@/components/orders/order-scan-input';
 import { Button } from '@/components/ui/button';
 import { useAppLocale } from '@/hooks/use-app-locale';
 import { formatKwdLabel } from '@/lib/kwd';
@@ -47,6 +49,8 @@ export function OrdersPage() {
   const [orders, setOrders] = useState<OrderRow[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
+  const [detailOrder, setDetailOrder] = useState<OrderRow | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
 
   const loadOrders = useCallback(async () => {
     if (!token) return;
@@ -73,7 +77,7 @@ export function OrdersPage() {
     }
   }, [location.state, location.pathname, navigate]);
 
-  const canCreate = hasRole('DRIVER', 'OWNER', 'MANAGER', 'SUPERVISOR');
+  const canCreate = hasRole('DRIVER', 'MANAGER', 'CALL_CENTER');
 
   const rows =
     orders ?
@@ -92,22 +96,38 @@ export function OrdersPage() {
           </h1>
           <p className="text-sm text-zinc-500">{t('orders.subtitle')}</p>
         </div>
-        {canCreate ?
-          <Button
-            type="button"
-            className="gap-2"
-            onClick={() => setCreateOpen(true)}
-          >
-            <Plus className="h-4 w-4" aria-hidden />
-            {t('orders.create.openButton')}
-          </Button>
-        : null}
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-[280px] sm:items-end">
+          <OrderScanInput
+            token={token}
+            className="w-full"
+            onOrderLoaded={(o) => {
+              setDetailOrder(o);
+              setDetailOpen(true);
+            }}
+          />
+          {canCreate ?
+            <Button
+              type="button"
+              className="gap-2 self-stretch sm:self-end"
+              onClick={() => setCreateOpen(true)}
+            >
+              <Plus className="h-4 w-4" aria-hidden />
+              {t('orders.create.openButton')}
+            </Button>
+          : null}
+        </div>
       </header>
 
       <CreateOrderDialog
         open={createOpen}
         onOpenChange={setCreateOpen}
         onCreated={() => void loadOrders()}
+      />
+
+      <OrderDetailDialog
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
+        order={detailOrder}
       />
 
       <Card className="rounded-[20px] border-border bg-card shadow-sm">

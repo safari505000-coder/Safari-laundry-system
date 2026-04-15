@@ -1,9 +1,21 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { ExpensesModule } from '../expenses/expenses.module';
+import { FixedExpenseModule } from '../fixed-expenses/fixed-expense.module';
+import { PayrollModule } from '../payroll/payroll.module';
+import { PrismaModule } from '../prisma/prisma.module';
 import { ReportsController } from './reports.controller';
+import { ReportsService } from './reports.service';
 
 @Module({
-  imports: [AuthModule],
+  imports: [
+    AuthModule,
+    PrismaModule,
+    ExpensesModule,
+    PayrollModule,
+    FixedExpenseModule,
+  ],
   controllers: [ReportsController],
+  providers: [ReportsService],
 })
 export class ReportsModule {}

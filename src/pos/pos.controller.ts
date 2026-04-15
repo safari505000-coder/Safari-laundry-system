@@ -65,7 +65,7 @@ export class PosController {
   @ApiOperation({
     summary: `Complete POS sale — wallet + payment method (${APP_BRAND})`,
     description:
-      'Creates the order, moves it to COMPLETED, runs wallet settlement, and stores PosPaymentMethod for reporting.',
+      'Cash/KNET/wallet: creates COMPLETED order and wallet settlement. PAYMENT_LINK: creates PENDING order, returns paymentLink URL; gateway callback completes the sale.',
   })
   posCheckout(@Body() dto: PosCheckoutDto, @CurrentUser() user: JwtUser) {
     return this.ordersService.posCheckout(user.userId, dto);

@@ -141,6 +141,8 @@ async function bootstrap() {
         in: 'header',
     }, 'bearer')
         .addTag('health', `Core endpoints — ${branding_1.APP_BRAND}`)
+        .addTag('system', `Public status — ${branding_1.APP_BRAND} (operating hours)`)
+        .addTag('expenses', `Branch expenses — ${branding_1.APP_BRAND} (MANAGER/OWNER)`)
         .addTag('auth', `Corporate authentication — ${branding_1.APP_BRAND}`)
         .addTag('users', `Employee directory — ${branding_1.APP_BRAND}`)
         .addTag('permissions', `Roles and permissions — ${branding_1.APP_BRAND}`)
@@ -148,7 +150,11 @@ async function bootstrap() {
         .addTag('orders', `Order core — ${branding_1.APP_BRAND} (JWT; RBAC for create, assign, status, dashboard)`)
         .addTag('laundry-price-list', `Garment tariff (KD) — ${branding_1.APP_BRAND} (JWT; price list for order lines)`)
         .addTag('pos', `Driver point-of-sale — ${branding_1.APP_BRAND} (JWT; DRIVER only — customers + checkout)`)
+        .addTag('payments', `Kuwait Gateway webhooks — ${branding_1.APP_BRAND} (public callback; signed with PAYMENTS_SECRET)`)
         .addTag('finance', `Cash custody & driver shifts — ${branding_1.APP_BRAND} (JWT; OWNER/MANAGER)`)
+        .addTag('payroll', `Payroll — ${branding_1.APP_BRAND} (OWNER/MANAGER)`)
+        .addTag('fixed-expenses', `Recurring fixed costs — ${branding_1.APP_BRAND}`)
+        .addTag('branches', `Branches — ${branding_1.APP_BRAND}`)
         .build();
     const document = swagger_1.SwaggerModule.createDocument(app, swaggerConfig);
     swagger_1.SwaggerModule.setup('docs', app, document);

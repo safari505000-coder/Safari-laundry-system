@@ -7,9 +7,9 @@ function prismaClientMessage(error) {
     if (error instanceof client_1.Prisma.PrismaClientKnownRequestError) {
         switch (error.code) {
             case 'P2002':
-                return 'A record with this value already exists.';
+                return 'A record with this value already exists (duplicate key). If this was checkout, try again — the wallet row may have been created concurrently.';
             case 'P2003':
-                return 'A related record is missing or invalid.';
+                return 'A related record is missing or invalid (foreign key). Check customer, driver, or order links.';
             case 'P2011':
                 return 'A required field was empty.';
             case 'P2025':

@@ -25,6 +25,22 @@ import {
   sumOrderMinors,
 } from './finance-money';
 
+const KUWAIT_OFFSET_MIN = 180; // UTC+03:00, no DST.
+
+function kuwaitNow(): Date {
+  return new Date(Date.now() + KUWAIT_OFFSET_MIN * 60_000);
+}
+
+/** Midnight (00:00 Kuwait) expressed as a UTC Date. */
+function kuwaitMidnightUtc(nowUtc: Date): Date {
+  const k = new Date(nowUtc.getTime() + KUWAIT_OFFSET_MIN * 60_000);
+  const y = k.getUTCFullYear();
+  const m = k.getUTCMonth();
+  const d = k.getUTCDate();
+  const utcMs = Date.UTC(y, m, d, 0, 0, 0, 0) - KUWAIT_OFFSET_MIN * 60_000;
+  return new Date(utcMs);
+}
+
 @Injectable()
 export class FinanceService {
   constructor(private readonly prisma: PrismaService) {}
@@ -39,8 +55,24 @@ export class FinanceService {
     }
     const open = await this.prisma.shift.findFirst({
       where: { driverId, status: ShiftStatus.OPEN },
+      orderBy: { startedAt: 'desc' },
     });
     if (open) {
+      const nowUtc = new Date();
+      const midnightUtc = kuwaitMidnightUtc(nowUtc);
+      // Auto-lock any shift that spans into the new financial day.
+      if (open.startedAt.getTime() < midnightUtc.getTime()) {
+        await this.prisma.shift.update({
+          where: { id: open.id },
+          data: {
+            status: ShiftStatus.CLOSED,
+            endedAt: new Date(midnightUtc.getTime() - 1),
+          },
+        });
+        await this.prisma.shift.create({
+          data: { driverId, status: ShiftStatus.OPEN },
+        });
+      }
       return;
     }
     await this.prisma.shift.create({
@@ -118,6 +150,7 @@ export class FinanceService {
         fullName: true,
         employeeId: true,
         phone: true,
+        branchId: true,
       },
       orderBy: { username: 'asc' },
     });
@@ -142,6 +175,7 @@ export class FinanceService {
         username: d.username,
         fullName: d.fullName,
         phone: d.phone,
+        branchId: d.branchId,
         currentShiftId: shift?.id ?? null,
         shiftStartedAt: shift?.startedAt ?? null,
         heldCashTotal: minorToAmountString(heldMinor),

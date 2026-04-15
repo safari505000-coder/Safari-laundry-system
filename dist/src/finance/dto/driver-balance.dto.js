@@ -17,6 +17,7 @@ class DriverBalanceRowDto {
     username;
     fullName;
     phone;
+    branchId;
     currentShiftId;
     shiftStartedAt;
     heldCashTotal;
@@ -43,6 +44,14 @@ __decorate([
     (0, swagger_1.ApiPropertyOptional)({ nullable: true }),
     __metadata("design:type", Object)
 ], DriverBalanceRowDto.prototype, "phone", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({
+        format: 'uuid',
+        nullable: true,
+        description: 'Assigned branch (for multi-branch reporting)',
+    }),
+    __metadata("design:type", Object)
+], DriverBalanceRowDto.prototype, "branchId", void 0);
 __decorate([
     (0, swagger_1.ApiPropertyOptional)({
         format: 'uuid',

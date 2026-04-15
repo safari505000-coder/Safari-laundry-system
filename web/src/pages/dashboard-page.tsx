@@ -34,6 +34,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import type { OrderRow } from '@/lib/api';
+import { cn } from '@/lib/utils';
 
 function OrderStatusBadge({ status }: { status: string }) {
   const { t } = useTranslation();
@@ -135,7 +136,8 @@ export function DashboardPage() {
     'grid gap-4 sm:grid-cols-2 xl:grid-cols-4';
   const managerMetricsGrid = 'grid gap-4 sm:grid-cols-2';
 
-  const canCreateOrder = hasRole('DRIVER', 'OWNER', 'MANAGER', 'SUPERVISOR');
+  const isOwner = hasRole('OWNER') ?? false;
+  const canCreateOrder = hasRole('DRIVER', 'MANAGER', 'CALL_CENTER');
   const canOpenFinancials = hasRole(
     'OWNER',
     'MANAGER',
@@ -164,30 +166,37 @@ export function DashboardPage() {
         <p className="text-sm text-muted-foreground">{t('dashboard.subtitle')}</p>
       </header>
 
-      <section className="grid gap-4 sm:grid-cols-3">
-        <button
-          type="button"
-          onClick={() => {
-            if (canCreateOrder) {
-              navigate('/orders', { state: { openCreate: true } });
-            } else {
-              navigate('/orders');
-            }
-          }}
-          className="group flex flex-col gap-4 rounded-[20px] border border-border bg-card p-6 text-start shadow-sm shadow-black/[0.04] transition-all hover:-translate-y-0.5 hover:shadow-md"
-        >
-          <div className="rounded-xl bg-primary/10 p-3 text-primary transition-colors group-hover:bg-primary/15">
-            <TicketPlus className="h-6 w-6" strokeWidth={1.75} aria-hidden />
-          </div>
-          <div className="space-y-1">
-            <h2 className="text-base font-semibold text-foreground">
-              {t('dashboard.quickNewInvoice')}
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              {t('dashboard.quickNewInvoiceHint')}
-            </p>
-          </div>
-        </button>
+      <section
+        className={cn(
+          'grid gap-4',
+          isOwner ? 'sm:grid-cols-2' : 'sm:grid-cols-3',
+        )}
+      >
+        {!isOwner ?
+          <button
+            type="button"
+            onClick={() => {
+              if (canCreateOrder) {
+                navigate('/orders', { state: { openCreate: true } });
+              } else {
+                navigate('/orders');
+              }
+            }}
+            className="group flex flex-col gap-4 rounded-[20px] border border-border bg-card p-6 text-start shadow-sm shadow-black/[0.04] transition-all hover:-translate-y-0.5 hover:shadow-md"
+          >
+            <div className="rounded-xl bg-primary/10 p-3 text-primary transition-colors group-hover:bg-primary/15">
+              <TicketPlus className="h-6 w-6" strokeWidth={1.75} aria-hidden />
+            </div>
+            <div className="space-y-1">
+              <h2 className="text-base font-semibold text-foreground">
+                {t('dashboard.quickNewInvoice')}
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                {t('dashboard.quickNewInvoiceHint')}
+              </p>
+            </div>
+          </button>
+        : null}
 
         <button
           type="button"

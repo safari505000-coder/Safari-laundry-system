@@ -1,7 +1,10 @@
 import {
   Banknote,
+  Building,
+  Building2,
   ChevronLeft,
   ChevronRight,
+  FileSpreadsheet,
   LayoutDashboard,
   ListOrdered,
   LogOut,
@@ -9,6 +12,7 @@ import {
   Sparkles,
   Truck,
   Users,
+  WalletCards,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -51,6 +55,13 @@ const dashboardItem: NavItem = {
     'SUPERVISOR',
     'VIEWER',
   ],
+};
+
+const branchesItem: NavItem = {
+  to: '/branches',
+  labelKey: 'nav.branches',
+  icon: Building,
+  roles: ['OWNER'],
 };
 
 const subscriptionsItem: NavItem = {
@@ -103,6 +114,34 @@ const financialsItem: NavItem = {
   roles: ['OWNER', 'MANAGER', 'ACCOUNTANT', 'SUPERVISOR', 'VIEWER'],
 };
 
+const reportsItem: NavItem = {
+  to: '/reports',
+  labelKey: 'nav.reports',
+  icon: FileSpreadsheet,
+  roles: ['OWNER', 'MANAGER', 'ACCOUNTANT', 'SUPERVISOR', 'VIEWER'],
+};
+
+const expensesItem: NavItem = {
+  to: '/expenses',
+  labelKey: 'nav.expenses',
+  icon: WalletCards,
+  roles: ['OWNER', 'MANAGER'],
+};
+
+const payrollItem: NavItem = {
+  to: '/payroll',
+  labelKey: 'nav.payroll',
+  icon: Users,
+  roles: ['OWNER'],
+};
+
+const fixedExpensesItem: NavItem = {
+  to: '/fixed-expenses',
+  labelKey: 'nav.fixedExpenses',
+  icon: Building2,
+  roles: ['OWNER'],
+};
+
 const teamItem: NavItem = {
   to: '/team',
   labelKey: 'nav.team',
@@ -113,10 +152,19 @@ const teamItem: NavItem = {
 const navGroups: { labelKey: string; items: NavItem[] }[] = [
   {
     labelKey: 'nav.groupMain',
-    items: [dashboardItem, subscriptionsItem, subscribersItem],
+    items: [dashboardItem, branchesItem, subscriptionsItem, subscribersItem],
   },
   { labelKey: 'nav.groupOperations', items: [ordersItem, shiftsItem] },
-  { labelKey: 'nav.groupFinance', items: [financialsItem] },
+  {
+    labelKey: 'nav.groupFinance',
+    items: [
+      financialsItem,
+      reportsItem,
+      payrollItem,
+      fixedExpensesItem,
+      expensesItem,
+    ],
+  },
   { labelKey: 'nav.groupSettings', items: [teamItem] },
 ];
 
@@ -193,7 +241,7 @@ export function ExecutiveSidebar() {
   return (
     <aside
       className={cn(
-        'flex h-svh shrink-0 flex-col border-e border-border bg-card shadow-sm transition-[width] duration-200 ease-out',
+        'print:hidden flex h-svh shrink-0 flex-col border-e border-border bg-card shadow-sm transition-[width] duration-200 ease-out',
         collapsed ? 'w-[4.25rem]' : 'w-64',
       )}
     >

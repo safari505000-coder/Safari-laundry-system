@@ -62,11 +62,11 @@ export class OrdersController {
 
   @Post()
   @UseGuards(RolesGuard)
-  @Roles(SafariRole.OWNER, SafariRole.MANAGER, SafariRole.SUPERVISOR)
+  @Roles(SafariRole.MANAGER, SafariRole.CALL_CENTER)
   @ApiOperation({
     summary: `Create order — back office (${APP_BRAND})`,
     description:
-      'Same validation as driver quick create: Kuwait phone, **totalPrice > 0**, **EXPRESS|NORMAL**, optional **lineItems** with total reconciliation. Optional driver assignment.',
+      'Same validation as driver quick create: Kuwait phone, **totalPrice > 0**, **EXPRESS|NORMAL**, optional **lineItems** with total reconciliation. Optional driver assignment. Branch managers and call center only (drivers use POST /orders/quick).',
   })
   create(@Body() dto: CreateOrderDto) {
     return this.ordersService.createAsManager(dto);
@@ -97,11 +97,11 @@ export class OrdersController {
 
   @Patch(':id/assign-driver')
   @UseGuards(RolesGuard)
-  @Roles(SafariRole.OWNER, SafariRole.MANAGER, SafariRole.SUPERVISOR)
+  @Roles(SafariRole.MANAGER, SafariRole.SUPERVISOR)
   @ApiOperation({
     summary: `Assign or reassign driver (${APP_BRAND})`,
     description:
-      'OWNER/MANAGER only. Not allowed when order is COMPLETED or CANCELED.',
+      'Branch manager or supervisor. Not allowed when order is COMPLETED or CANCELED.',
   })
   assignDriver(
     @Param('id', ParseUUIDPipe) id: string,
@@ -114,7 +114,7 @@ export class OrdersController {
   @ApiOperation({
     summary: `Update order status / notes (${APP_BRAND})`,
     description:
-      '**State machine**: e.g. COMPLETED only from OUT_FOR_DELIVERY; PICKED_UP requires an assigned driver. DRIVER: own orders only. OWNER/MANAGER: any order.',
+      '**State machine**: e.g. COMPLETED only from OUT_FOR_DELIVERY; PICKED_UP requires an assigned driver. DRIVER: own orders only. MANAGER/SUPERVISOR: any order. OWNER and other roles: read-only (no updates).',
   })
   updateOrder(
     @Param('id', ParseUUIDPipe) id: string,

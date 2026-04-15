@@ -38,11 +38,14 @@ function buildUrl(path: string): string {
 
 export class ApiError extends Error {
   status: number;
+  /** Server codes e.g. SYSTEM_CLOSED (operating hours). */
+  errorCode?: string;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, errorCode?: string) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
+    this.errorCode = errorCode;
   }
 }
 
@@ -107,9 +110,12 @@ export async function apiJson<T>(
   const json = parseApiBody(rawText);
 
   if (!res.ok) {
+    const errorCode =
+      typeof json.errorCode === 'string' ? json.errorCode : undefined;
     throw new ApiError(
       formatErrorMessage(json, res.status, rawText),
       res.status,
+      errorCode,
     );
   }
 
@@ -129,12 +135,29 @@ export function postLogin(username: string, password: string) {
   });
 }
 
+export type OperatingStatusPayload = {
+  isOpen: boolean;
+  kuwaitTimeLabel: string;
+  /** Kuwait date (YYYY-MM-DD) the system considers “active” for financial grouping. */
+  financialDateIso: string;
+  financialDateLabel: string;
+  /** Default business start hour for reporting UI (Kuwait). */
+  reportingDayStartHour: number;
+  fullScreenClosedRoles: readonly string[];
+};
+
+/** Public — no JWT. Kuwait operating window for UI gates. */
+export function getOperatingStatus() {
+  return apiJson<OperatingStatusPayload>('/api/system/operating-status');
+}
+
 export type DriverBalanceRow = {
   driverId: string;
   employeeId: string | null;
   username: string;
   fullName: string;
   phone: string | null;
+  branchId: string | null;
   currentShiftId: string | null;
   shiftStartedAt: string | null;
   heldCashTotal: string;
@@ -235,6 +258,21 @@ export type PosPaymentMethod =
   | 'KNET'
   | 'PAYMENT_LINK';
 
+/** Hosted payment URL from Kuwait Gateway when checkout uses PAYMENT_LINK. */
+export type PosPaymentLinkResult = {
+  url: string;
+  reference?: string;
+};
+
+/** POS checkout order payload (unwraps API `data`). */
+export type PosCheckoutResponse = {
+  id: string;
+  invoiceNumber: string | null;
+  createdAt: string;
+  status?: string;
+  paymentLink?: PosPaymentLinkResult;
+};
+
 export type CustomerBillingProfile = {
   subscriptionActive: boolean;
   planType: string | null;
@@ -316,4 +354,167 @@ export type SettlementHistoryRow = {
   debtAfter: string;
   planName?: string;
   orderId?: string;
+};
+
+export type IssuedInvoicesReport = {
+  from: string;
+  to: string;
+  count: number;
+  rows: Array<{
+    id: string;
+    status: string;
+    serviceType: string;
+    totalPrice: string;
+    cashStatus: string;
+    invoiceNumber: string | null;
+    posPaymentMethod: string | null;
+    completedAt: string | null;
+    createdAt: string;
+    customer: { id: string; phone: string; displayName: string | null };
+    driver: {
+      id: string;
+      username: string;
+      fullName: string;
+      employeeId: string | null;
+      branchId: string | null;
+    } | null;
+  }>;
+};
+
+export type DriverLedgerReport = {
+  driver: {
+    id: string;
+    username: string;
+    fullName: string;
+    employeeId: string | null;
+    phone: string | null;
+    safariRole: string;
+    branchId: string | null;
+  };
+  owedToOfficeKd: string;
+  pendingSettlementOrderCount: number;
+  period: { from: string; to: string };
+  ordersInPeriod: Array<{
+    id: string;
+    status: string;
+    totalPrice: string;
+    cashStatus: string;
+    posPaymentMethod: string | null;
+    invoiceNumber: string | null;
+    completedAt: string | null;
+    createdAt: string;
+  }>;
+};
+
+export type DailyCashClosingReport = {
+  from: string;
+  to: string;
+  grossCashSalesKd: string;
+  expensesTotalKd: string;
+  netCashAfterExpensesKd: string;
+  cashOrderCount: number;
+};
+
+export type ExpenseRow = {
+  id: string;
+  title: string;
+  amount: string;
+  category: string;
+  note: string | null;
+  receiptImageData: string | null;
+  expenseDate: string;
+  recordedById: string;
+  branchId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  recordedBy: {
+    id: string;
+    fullName: string;
+    username: string;
+  };
+};
+
+export type BranchRow = {
+  id: string;
+  name: string;
+  location: string;
+  phone: string | null;
+  isActive: boolean;
+  updatedAt: string;
+};
+
+export type ExecutiveSummaryReport = {
+  from: string;
+  to: string;
+  branchId: string | null;
+  grossRevenueKd: string;
+  variableSoapFuelKd: string;
+  miscOperationalKd: string;
+  fixedExpensesKd: string;
+  payrollPaidKd: string;
+  totalExpensesVariableAndFixedKd: string;
+  netProfitKd: string;
+};
+
+export type LiveFeedLine = {
+  label: string | null;
+  quantity: string;
+  unitPrice: string;
+};
+
+export type LiveFeedOrder = {
+  id: string;
+  invoiceNumber: string | null;
+  createdAt: string;
+  totalPrice: string;
+  customerName: string;
+  branchName: string | null;
+  branchId: string | null;
+  lineItemCount: number;
+  lines: LiveFeedLine[];
+};
+
+export type LiveFeedResponse = {
+  orders: LiveFeedOrder[];
+};
+
+export type BranchOperationsLiveResponse = {
+  branches: { branchId: string; isLive: boolean }[];
+};
+
+export type PayrollStatus = 'PENDING' | 'PAID';
+
+export type PayrollRow = {
+  id: string;
+  userId: string;
+  branchId: string;
+  basicSalary: string;
+  allowances: string;
+  deductions: string;
+  paymentDate: string;
+  status: PayrollStatus;
+  createdAt: string;
+  updatedAt: string;
+  user: { id: string; fullName: string; username: string };
+  branch: { id: string; name: string };
+};
+
+export type FixedExpenseCategoryApi =
+  | 'RENT'
+  | 'ELECTRICITY'
+  | 'LEASE'
+  | 'OTHER';
+
+export type FixedExpenseScheduleRow = {
+  id: string;
+  branchId: string;
+  title: string;
+  category: FixedExpenseCategoryApi;
+  monthlyAmount: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  branch: { id: string; name: string };
 };

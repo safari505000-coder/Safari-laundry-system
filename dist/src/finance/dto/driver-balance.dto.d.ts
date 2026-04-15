@@ -4,6 +4,7 @@ export declare class DriverBalanceRowDto {
     username: string;
     fullName: string;
     phone: string | null;
+    branchId: string | null;
     currentShiftId: string | null;
     shiftStartedAt: Date | null;
     heldCashTotal: string;

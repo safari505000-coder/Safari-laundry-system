@@ -7,13 +7,18 @@ import { ExecutiveShell } from '@/components/layout/executive-shell';
 import { RequireAuth } from '@/components/require-auth';
 import { Toaster } from '@/components/ui/sonner';
 import { DashboardPage } from '@/pages/dashboard-page';
+import { ExpensesPage } from '@/pages/expenses-page';
 import { FinancialsPage } from '@/pages/financials-page';
+import { ReportsPage } from '@/pages/reports-page';
 import { LoginPage } from '@/pages/login-page';
 import { OrdersPage } from '@/pages/orders-page';
 import { ShiftsPage } from '@/pages/shifts-page';
 import { SubscribersPage } from '@/pages/subscribers-page';
 import { SubscriptionsPage } from '@/pages/subscriptions-page';
 import { TeamPage } from '@/pages/team-page';
+import { PayrollPage } from '@/pages/payroll-page';
+import { FixedExpensesPage } from '@/pages/fixed-expenses-page';
+import { BranchesPage } from '@/pages/branches-page';
 import { PosPage } from '@/pages/pos-page';
 
 function AppToaster() {
@@ -41,11 +46,16 @@ export default function App() {
               <Route path="/pos" element={<PosPage />} />
               <Route path="/" element={<ExecutiveShell />}>
                 <Route index element={<DashboardPage />} />
+                <Route path="branches" element={<BranchesPage />} />
                 <Route path="subscriptions" element={<SubscriptionsPage />} />
                 <Route path="subscribers" element={<SubscribersPage />} />
                 <Route path="orders" element={<OrdersPage />} />
                 <Route path="shifts" element={<ShiftsPage />} />
                 <Route path="financials" element={<FinancialsPage />} />
+                <Route path="reports" element={<ReportsPage />} />
+                <Route path="payroll" element={<PayrollPage />} />
+                <Route path="fixed-expenses" element={<FixedExpensesPage />} />
+                <Route path="expenses" element={<ExpensesPage />} />
                 <Route path="team" element={<TeamPage />} />
               </Route>
             </Route>

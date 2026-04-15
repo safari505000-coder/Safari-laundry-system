@@ -14,6 +14,18 @@ const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
 const prisma_service_1 = require("../prisma/prisma.service");
 const finance_money_1 = require("./finance-money");
+const KUWAIT_OFFSET_MIN = 180;
+function kuwaitNow() {
+    return new Date(Date.now() + KUWAIT_OFFSET_MIN * 60_000);
+}
+function kuwaitMidnightUtc(nowUtc) {
+    const k = new Date(nowUtc.getTime() + KUWAIT_OFFSET_MIN * 60_000);
+    const y = k.getUTCFullYear();
+    const m = k.getUTCMonth();
+    const d = k.getUTCDate();
+    const utcMs = Date.UTC(y, m, d, 0, 0, 0, 0) - KUWAIT_OFFSET_MIN * 60_000;
+    return new Date(utcMs);
+}
 let FinanceService = class FinanceService {
     prisma;
     constructor(prisma) {
@@ -26,8 +38,23 @@ let FinanceService = class FinanceService {
         }
         const open = await this.prisma.shift.findFirst({
             where: { driverId, status: client_1.ShiftStatus.OPEN },
+            orderBy: { startedAt: 'desc' },
         });
         if (open) {
+            const nowUtc = new Date();
+            const midnightUtc = kuwaitMidnightUtc(nowUtc);
+            if (open.startedAt.getTime() < midnightUtc.getTime()) {
+                await this.prisma.shift.update({
+                    where: { id: open.id },
+                    data: {
+                        status: client_1.ShiftStatus.CLOSED,
+                        endedAt: new Date(midnightUtc.getTime() - 1),
+                    },
+                });
+                await this.prisma.shift.create({
+                    data: { driverId, status: client_1.ShiftStatus.OPEN },
+                });
+            }
             return;
         }
         await this.prisma.shift.create({
@@ -86,6 +113,7 @@ let FinanceService = class FinanceService {
                 fullName: true,
                 employeeId: true,
                 phone: true,
+                branchId: true,
             },
             orderBy: { username: 'asc' },
         });
@@ -110,6 +138,7 @@ let FinanceService = class FinanceService {
                 username: d.username,
                 fullName: d.fullName,
                 phone: d.phone,
+                branchId: d.branchId,
                 currentShiftId: shift?.id ?? null,
                 shiftStartedAt: shift?.startedAt ?? null,
                 heldCashTotal: (0, finance_money_1.minorToAmountString)(heldMinor),

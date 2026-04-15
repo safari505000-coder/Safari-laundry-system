@@ -1,4 +1,7 @@
 import { Prisma } from '@prisma/client';
+import type { CreatePaymentLinkResult } from '../common/services/payments.service';
+import { PaymentsService } from '../common/services/payments.service';
+import { CustomerNotificationsService } from '../customer-notifications/customer-notifications.service';
 import { CustomerLedgerService } from '../customer-ledger/customer-ledger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AssignDriverDto } from './dto/assign-driver.dto';
@@ -52,10 +55,16 @@ declare const orderDetailSelect: {
 export type OrderDetail = Prisma.OrderGetPayload<{
     select: typeof orderDetailSelect;
 }>;
+export type PosCheckoutOrderDetail = OrderDetail & {
+    paymentLink?: CreatePaymentLinkResult;
+};
 export declare class OrdersService {
     private readonly prisma;
     private readonly customerLedger;
-    constructor(prisma: PrismaService, customerLedger: CustomerLedgerService);
+    private readonly paymentsService;
+    private readonly customerNotifications;
+    constructor(prisma: PrismaService, customerLedger: CustomerLedgerService, paymentsService: PaymentsService, customerNotifications: CustomerNotificationsService);
+    private queuePosInvoiceNotify;
     private isManagerOrOwner;
     private canViewAllOrders;
     private canStaffUpdateOrders;
@@ -66,7 +75,7 @@ export declare class OrdersService {
     private findCustomerByAnyPhone;
     private resolveQuickOrderCustomerId;
     createQuick(driverUserId: string, dto: CreateOrderQuickDto): Promise<OrderDetail>;
-    posCheckout(driverUserId: string, dto: PosCheckoutDto): Promise<OrderDetail>;
+    posCheckout(driverUserId: string, dto: PosCheckoutDto): Promise<PosCheckoutOrderDetail>;
     createAsManager(dto: CreateOrderDto): Promise<OrderDetail>;
     findAllForActor(userId: string, role: string): Promise<OrderDetail[]>;
     findOneForActor(id: string, userId: string, role: string): Promise<OrderDetail>;

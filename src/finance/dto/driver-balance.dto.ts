@@ -19,6 +19,13 @@ export class DriverBalanceRowDto {
   @ApiPropertyOptional({
     format: 'uuid',
     nullable: true,
+    description: 'Assigned branch (for multi-branch reporting)',
+  })
+  branchId: string | null;
+
+  @ApiPropertyOptional({
+    format: 'uuid',
+    nullable: true,
     description: 'Current OPEN shift (started at login), if any',
   })
   currentShiftId: string | null;

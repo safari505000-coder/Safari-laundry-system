@@ -83,6 +83,49 @@ model User {
   shiftsAsDriver        Shift[]             @relation("ShiftDriver")
   shiftConfirmations    Shift[]             @relation("ShiftConfirmedBy")
   ledgerTransactions    TransactionHistory[] @relation("LedgerPerformedBy")
+  expensesRecorded      BranchExpense[]      @relation("ExpenseRecordedBy")
+  payrolls              Payroll[]
+}
+
+enum ExpenseCategory {
+  SOAP
+  FUEL
+  MISC
+}
+
+enum PayrollStatus {
+  PENDING
+  PAID
+}
+
+/** Recurring branch overheads (rent, utilities) — accrued by calendar month in reports. */
+enum FixedExpenseCategory {
+  RENT
+  ELECTRICITY
+  LEASE
+  OTHER
+}
+
+/** Branch operational expenses (manager-recorded); deducted from daily cash in reports. */
+model BranchExpense {
+  id               String          @id @default(uuid()) @db.Uuid
+  title            String
+  amount           Decimal         @db.Decimal(19, 4)
+  category         ExpenseCategory
+  note             String?
+  /** Optional receipt image as data URL or short reference (keep small). */
+  receiptImageData String?         @db.Text
+  recordedById     String          @db.Uuid
+  branchId         String?         @db.Uuid
+  expenseDate      DateTime        @default(now())
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  recordedBy User @relation("ExpenseRecordedBy", fields: [recordedById], references: [id])
+
+  @@index([expenseDate])
+  @@index([recordedById])
+  @@index([branchId])
 }
 
 model Customer {
@@ -278,11 +321,53 @@ model Branch {
   id        String   @id @default(uuid()) @db.Uuid
   name      String
   location  String
+  phone     String?
+  isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users     User[]
-  wallets   Wallet[]
+  users                 User[]
+  wallets               Wallet[]
+  payrolls              Payroll[]
+  fixedExpenseSchedules FixedExpenseSchedule[]
+}
+
+model Payroll {
+  id            String        @id @default(uuid()) @db.Uuid
+  userId        String        @db.Uuid
+  branchId      String        @db.Uuid
+  basicSalary   Decimal       @db.Decimal(19, 4)
+  allowances    Decimal       @default(0) @db.Decimal(19, 4)
+  deductions    Decimal       @default(0) @db.Decimal(19, 4)
+  paymentDate   DateTime
+  status        PayrollStatus @default(PENDING)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id])
+  branch Branch @relation(fields: [branchId], references: [id])
+
+  @@index([branchId, paymentDate])
+  @@index([userId, paymentDate])
+  @@index([status])
+}
+
+model FixedExpenseSchedule {
+  id            String               @id @default(uuid()) @db.Uuid
+  branchId      String               @db.Uuid
+  title         String
+  category      FixedExpenseCategory
+  monthlyAmount Decimal              @db.Decimal(19, 4)
+  effectiveFrom DateTime             @default(now())
+  effectiveTo   DateTime?
+  isActive      Boolean              @default(true)
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  branch Branch @relation(fields: [branchId], references: [id])
+
+  @@index([branchId])
+  @@index([isActive])
 }
 
 model Wallet {

@@ -12,6 +12,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.OrdersService = void 0;
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
+const payments_service_1 = require("../common/services/payments.service");
+const customer_notifications_service_1 = require("../customer-notifications/customer-notifications.service");
 const customer_ledger_service_1 = require("../customer-ledger/customer-ledger.service");
 const finance_money_1 = require("../finance/finance-money");
 const prisma_service_1 = require("../prisma/prisma.service");
@@ -66,9 +68,27 @@ const terminalStatuses = [
 let OrdersService = class OrdersService {
     prisma;
     customerLedger;
-    constructor(prisma, customerLedger) {
+    paymentsService;
+    customerNotifications;
+    constructor(prisma, customerLedger, paymentsService, customerNotifications) {
         this.prisma = prisma;
         this.customerLedger = customerLedger;
+        this.paymentsService = paymentsService;
+        this.customerNotifications = customerNotifications;
+    }
+    queuePosInvoiceNotify(detail, phoneCompact) {
+        const phone = detail.customer.phone?.trim() ||
+            detail.customer.phone2?.trim() ||
+            phoneCompact;
+        const inv = detail.invoiceNumber?.trim() || `#${detail.id.slice(0, 8)}`;
+        const amt = detail.totalPrice.toFixed(4);
+        this.customerNotifications.notifyInvoiceIssued({
+            customerPhone: phone,
+            orderId: detail.id,
+            invoiceLabel: inv,
+            amountKd: amt,
+            paymentUrl: detail.paymentLink?.url,
+        });
     }
     isManagerOrOwner(role) {
         return role === client_1.SafariRole.OWNER || role === client_1.SafariRole.MANAGER;
@@ -81,7 +101,8 @@ let OrdersService = class OrdersService {
             role === client_1.SafariRole.VIEWER);
     }
     canStaffUpdateOrders(role) {
-        return (this.isManagerOrOwner(role) || role === client_1.SafariRole.SUPERVISOR);
+        return (role === client_1.SafariRole.MANAGER ||
+            role === client_1.SafariRole.SUPERVISOR);
     }
     async assertDriverUser(id) {
         const u = await this.prisma.user.findUnique({ where: { id } });
@@ -93,16 +114,15 @@ let OrdersService = class OrdersService {
         if (shortfallMinor === 0n) {
             return client_1.PosPaymentMethod.SUBSCRIPTION_WALLET;
         }
-        const s = String(raw ?? client_1.PosPaymentMethod.CASH)
+        const s = String(raw ?? 'CASH')
             .trim()
             .toUpperCase()
-            .replace(/-/g, '_');
+            .replace(/-/g, '_')
+            .replace(/\s+/g, '');
         if (s === 'KNET') {
             return client_1.PosPaymentMethod.KNET;
         }
-        if (s === 'PAYMENT_LINK' ||
-            s === 'LINK' ||
-            s === 'PAYMENTLINK') {
+        if (s === 'PAYMENT_LINK' || s === 'LINK' || s === 'PAYMENTLINK') {
             return client_1.PosPaymentMethod.PAYMENT_LINK;
         }
         return client_1.PosPaymentMethod.CASH;
@@ -209,10 +229,17 @@ let OrdersService = class OrdersService {
             }
             const serviceType = dto.serviceType ?? client_1.ServiceType.NORMAL;
             const lineCreates = this.mapPosCheckoutLineItems(dto.lineItems);
+            if (lineCreates) {
+                for (const line of lineCreates) {
+                    if (!(line.quantity > 0 && line.unitPrice > 0)) {
+                        throw new common_1.BadRequestException('Each line item must have a positive quantity and unit price');
+                    }
+                }
+            }
             const phoneCompact = dto.customerPhone.replace(/[\s-]/g, '').trim();
             const totalPriceNum = Number(dto.totalPrice);
             const totalPriceDecimal = new client_1.Prisma.Decimal(totalPriceNum.toFixed(4));
-            return await this.prisma.$transaction(async (tx) => {
+            const orderId = await this.prisma.$transaction(async (tx) => {
                 const customerId = await this.resolveQuickOrderCustomerId(tx, dto, phoneCompact);
                 const walletRow = await tx.customerWallet.findUnique({
                     where: { customerId },
@@ -223,6 +250,32 @@ let OrdersService = class OrdersService {
                 const totalMinor = (0, finance_money_1.parseFixed4ToMinor)(totalPriceDecimal.toFixed(4));
                 const shortfallMinor = totalMinor > balanceMinor ? totalMinor - balanceMinor : 0n;
                 const posPaymentMethodResolved = this.resolvePosCheckoutPaymentMethod(shortfallMinor, dto.posPaymentMethod);
+                const useHostedPaymentLink = shortfallMinor > 0n &&
+                    posPaymentMethodResolved === client_1.PosPaymentMethod.PAYMENT_LINK;
+                if (useHostedPaymentLink) {
+                    const created = await tx.order.create({
+                        data: {
+                            customerId,
+                            driverId: driverUserId,
+                            serviceType,
+                            totalPrice: totalPriceDecimal,
+                            status: client_1.OrderStatus.PENDING,
+                            cashStatus: client_1.CashStatus.UNPAID,
+                            posPaymentMethod: client_1.PosPaymentMethod.PAYMENT_LINK,
+                            completedAt: null,
+                            invoiceNumber: dto.invoiceNumber?.trim() || null,
+                            notes: dto.notes?.trim() || null,
+                            ...(lineCreates?.length
+                                ? { lineItems: { create: lineCreates } }
+                                : {}),
+                        },
+                        select: { id: true, driverId: true },
+                    });
+                    if (created.driverId !== driverUserId) {
+                        throw new common_1.ForbiddenException('Order must be assigned to you');
+                    }
+                    return created.id;
+                }
                 const completedAt = new Date();
                 const created = await tx.order.create({
                     data: {
@@ -230,7 +283,10 @@ let OrdersService = class OrdersService {
                         driverId: driverUserId,
                         serviceType,
                         totalPrice: totalPriceDecimal,
-                        status: client_1.OrderStatus.PENDING,
+                        status: client_1.OrderStatus.COMPLETED,
+                        cashStatus: client_1.CashStatus.PAID_TO_DRIVER,
+                        posPaymentMethod: posPaymentMethodResolved,
+                        completedAt,
                         invoiceNumber: dto.invoiceNumber?.trim() || null,
                         notes: dto.notes?.trim() || null,
                         ...(lineCreates?.length
@@ -242,33 +298,35 @@ let OrdersService = class OrdersService {
                 if (created.driverId !== driverUserId) {
                     throw new common_1.ForbiddenException('Order must be assigned to you');
                 }
-                await tx.order.update({
-                    where: { id: created.id },
-                    data: { status: client_1.OrderStatus.PICKED_UP },
+                await this.customerLedger.applyOrderWalletSettlementForCompletedOrder(tx, created.id, driverUserId, {
+                    customerId,
+                    totalPrice: totalPriceDecimal,
+                    posPaymentMethod: posPaymentMethodResolved,
+                    walletSettledAt: null,
+                    skipPerformerLookup: true,
                 });
-                await tx.order.update({
-                    where: { id: created.id },
-                    data: { status: client_1.OrderStatus.IN_PROGRESS },
-                });
-                await tx.order.update({
-                    where: { id: created.id },
-                    data: { status: client_1.OrderStatus.OUT_FOR_DELIVERY },
-                });
-                await tx.order.update({
-                    where: { id: created.id },
-                    data: {
-                        status: client_1.OrderStatus.COMPLETED,
-                        cashStatus: client_1.CashStatus.PAID_TO_DRIVER,
-                        posPaymentMethod: posPaymentMethodResolved,
-                        completedAt,
-                    },
-                });
-                await this.customerLedger.applyOrderWalletSettlementForCompletedOrder(tx, created.id, driverUserId);
-                return tx.order.findUniqueOrThrow({
-                    where: { id: created.id },
-                    select: orderDetailSelect,
-                });
+                return created.id;
+            }, { maxWait: 10_000, timeout: 15_000 });
+            const detail = await this.prisma.order.findUniqueOrThrow({
+                where: { id: orderId },
+                select: orderDetailSelect,
             });
+            if (detail.posPaymentMethod === client_1.PosPaymentMethod.PAYMENT_LINK &&
+                detail.status === client_1.OrderStatus.PENDING) {
+                const phone = detail.customer.phone?.trim() ||
+                    detail.customer.phone2?.trim() ||
+                    phoneCompact;
+                const paymentLink = await this.paymentsService.createPaymentLink({
+                    orderId: detail.id,
+                    amount: detail.totalPrice,
+                    customerPhone: phone,
+                });
+                const merged = { ...detail, paymentLink };
+                this.queuePosInvoiceNotify(merged, phoneCompact);
+                return merged;
+            }
+            this.queuePosInvoiceNotify(detail, phoneCompact);
+            return detail;
         }
         catch (error) {
             if (error instanceof client_1.Prisma.PrismaClientKnownRequestError) {
@@ -426,7 +484,7 @@ let OrdersService = class OrdersService {
                 where: { id: orderId },
                 select: orderDetailSelect,
             });
-        });
+        }, { maxWait: 10_000, timeout: 15_000 });
     }
     async getManagerDashboard() {
         const totalActiveOrders = await this.prisma.order.count({
@@ -477,6 +535,8 @@ exports.OrdersService = OrdersService;
 exports.OrdersService = OrdersService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
-        customer_ledger_service_1.CustomerLedgerService])
+        customer_ledger_service_1.CustomerLedgerService,
+        payments_service_1.PaymentsService,
+        customer_notifications_service_1.CustomerNotificationsService])
 ], OrdersService);
 //# sourceMappingURL=orders.service.js.map

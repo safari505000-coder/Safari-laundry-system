@@ -12,6 +12,9 @@ import {
   SafariRole,
   ServiceType,
 } from '@prisma/client';
+import type { CreatePaymentLinkResult } from '../common/services/payments.service';
+import { PaymentsService } from '../common/services/payments.service';
+import { CustomerNotificationsService } from '../customer-notifications/customer-notifications.service';
 import { CustomerLedgerService } from '../customer-ledger/customer-ledger.service';
 import { parseFixed4ToMinor, toMinorFromFixed4 } from '../finance/finance-money';
 import { PrismaService } from '../prisma/prisma.service';
@@ -72,6 +75,11 @@ export type OrderDetail = Prisma.OrderGetPayload<{
   select: typeof orderDetailSelect;
 }>;
 
+/** POS checkout may attach a hosted payment URL when using PAYMENT_LINK. */
+export type PosCheckoutOrderDetail = OrderDetail & {
+  paymentLink?: CreatePaymentLinkResult;
+};
+
 const terminalStatuses: OrderStatus[] = [
   OrderStatus.COMPLETED,
   OrderStatus.CANCELED,
@@ -82,7 +90,28 @@ export class OrdersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly customerLedger: CustomerLedgerService,
+    private readonly paymentsService: PaymentsService,
+    private readonly customerNotifications: CustomerNotificationsService,
   ) {}
+
+  private queuePosInvoiceNotify(
+    detail: PosCheckoutOrderDetail,
+    phoneCompact: string,
+  ): void {
+    const phone =
+      detail.customer.phone?.trim() ||
+      detail.customer.phone2?.trim() ||
+      phoneCompact;
+    const inv = detail.invoiceNumber?.trim() || `#${detail.id.slice(0, 8)}`;
+    const amt = detail.totalPrice.toFixed(4);
+    this.customerNotifications.notifyInvoiceIssued({
+      customerPhone: phone,
+      orderId: detail.id,
+      invoiceLabel: inv,
+      amountKd: amt,
+      paymentUrl: detail.paymentLink?.url,
+    });
+  }
 
   private isManagerOrOwner(role: string): boolean {
     return role === SafariRole.OWNER || role === SafariRole.MANAGER;
@@ -98,10 +127,11 @@ export class OrdersService {
     );
   }
 
-  /** Back-office roles that may change orders (excludes read-only accountant). */
+  /** Back-office roles that may change order status/notes (excludes owner read-only). */
   private canStaffUpdateOrders(role: string): boolean {
     return (
-      this.isManagerOrOwner(role) || role === SafariRole.SUPERVISOR
+      role === SafariRole.MANAGER ||
+      role === SafariRole.SUPERVISOR
     );
   }
 
@@ -118,6 +148,7 @@ export class OrdersService {
    * Wallet covers full total → SUBSCRIPTION_WALLET. Otherwise require external
    * settlement (CASH / KNET / PAYMENT_LINK). Accepts aliases like LINK for PAYMENT_LINK.
    */
+  /** Maps client input to DB enum values (PostgreSQL enum is UPPERCASE). */
   private resolvePosCheckoutPaymentMethod(
     shortfallMinor: bigint,
     raw: PosPaymentMethod | string | undefined,
@@ -125,18 +156,15 @@ export class OrdersService {
     if (shortfallMinor === 0n) {
       return PosPaymentMethod.SUBSCRIPTION_WALLET;
     }
-    const s = String(raw ?? PosPaymentMethod.CASH)
+    const s = String(raw ?? 'CASH')
       .trim()
       .toUpperCase()
-      .replace(/-/g, '_');
+      .replace(/-/g, '_')
+      .replace(/\s+/g, '');
     if (s === 'KNET') {
       return PosPaymentMethod.KNET;
     }
-    if (
-      s === 'PAYMENT_LINK' ||
-      s === 'LINK' ||
-      s === 'PAYMENTLINK'
-    ) {
+    if (s === 'PAYMENT_LINK' || s === 'LINK' || s === 'PAYMENTLINK') {
       return PosPaymentMethod.PAYMENT_LINK;
     }
     return PosPaymentMethod.CASH;
@@ -281,7 +309,7 @@ export class OrdersService {
   async posCheckout(
     driverUserId: string,
     dto: PosCheckoutDto,
-  ): Promise<OrderDetail> {
+  ): Promise<PosCheckoutOrderDetail> {
     try {
       await this.assertDriverUser(driverUserId);
       if (!Number.isFinite(dto.totalPrice) || dto.totalPrice <= 0) {
@@ -292,87 +320,139 @@ export class OrdersService {
 
       const serviceType = dto.serviceType ?? ServiceType.NORMAL;
       const lineCreates = this.mapPosCheckoutLineItems(dto.lineItems);
+      if (lineCreates) {
+        for (const line of lineCreates) {
+          if (!(line.quantity > 0 && line.unitPrice > 0)) {
+            throw new BadRequestException(
+              'Each line item must have a positive quantity and unit price',
+            );
+          }
+        }
+      }
       const phoneCompact = dto.customerPhone.replace(/[\s-]/g, '').trim();
 
       const totalPriceNum = Number(dto.totalPrice);
       const totalPriceDecimal = new Prisma.Decimal(totalPriceNum.toFixed(4));
 
-      return await this.prisma.$transaction(async (tx) => {
-        const customerId = await this.resolveQuickOrderCustomerId(
-          tx,
-          dto,
-          phoneCompact,
-        );
+      const orderId = await this.prisma.$transaction(
+        async (tx) => {
+          const customerId = await this.resolveQuickOrderCustomerId(
+            tx,
+            dto,
+            phoneCompact,
+          );
 
-        const walletRow = await tx.customerWallet.findUnique({
-          where: { customerId },
-        });
-        const balanceMinor = walletRow
-          ? toMinorFromFixed4(walletRow.balance)
-          : 0n;
-        const totalMinor = parseFixed4ToMinor(totalPriceDecimal.toFixed(4));
-        const shortfallMinor =
-          totalMinor > balanceMinor ? totalMinor - balanceMinor : 0n;
+          const walletRow = await tx.customerWallet.findUnique({
+            where: { customerId },
+          });
+          const balanceMinor = walletRow
+            ? toMinorFromFixed4(walletRow.balance)
+            : 0n;
+          const totalMinor = parseFixed4ToMinor(totalPriceDecimal.toFixed(4));
+          const shortfallMinor =
+            totalMinor > balanceMinor ? totalMinor - balanceMinor : 0n;
 
-        const posPaymentMethodResolved = this.resolvePosCheckoutPaymentMethod(
-          shortfallMinor,
-          dto.posPaymentMethod,
-        );
+          const posPaymentMethodResolved = this.resolvePosCheckoutPaymentMethod(
+            shortfallMinor,
+            dto.posPaymentMethod,
+          );
 
-        const completedAt = new Date();
+          const useHostedPaymentLink =
+            shortfallMinor > 0n &&
+            posPaymentMethodResolved === PosPaymentMethod.PAYMENT_LINK;
 
-        const created = await tx.order.create({
-          data: {
-            customerId,
-            driverId: driverUserId,
-            serviceType,
-            totalPrice: totalPriceDecimal,
-            status: OrderStatus.PENDING,
-            invoiceNumber: dto.invoiceNumber?.trim() || null,
-            notes: dto.notes?.trim() || null,
-            ...(lineCreates?.length
-              ? { lineItems: { create: lineCreates } }
-              : {}),
-          },
-          select: { id: true, driverId: true },
-        });
-        if (created.driverId !== driverUserId) {
-          throw new ForbiddenException('Order must be assigned to you');
-        }
+          if (useHostedPaymentLink) {
+            const created = await tx.order.create({
+              data: {
+                customerId,
+                driverId: driverUserId,
+                serviceType,
+                totalPrice: totalPriceDecimal,
+                status: OrderStatus.PENDING,
+                cashStatus: CashStatus.UNPAID,
+                posPaymentMethod: PosPaymentMethod.PAYMENT_LINK,
+                completedAt: null,
+                invoiceNumber: dto.invoiceNumber?.trim() || null,
+                notes: dto.notes?.trim() || null,
+                ...(lineCreates?.length
+                  ? { lineItems: { create: lineCreates } }
+                  : {}),
+              },
+              select: { id: true, driverId: true },
+            });
+            if (created.driverId !== driverUserId) {
+              throw new ForbiddenException('Order must be assigned to you');
+            }
+            return created.id;
+          }
 
-        await tx.order.update({
-          where: { id: created.id },
-          data: { status: OrderStatus.PICKED_UP },
-        });
-        await tx.order.update({
-          where: { id: created.id },
-          data: { status: OrderStatus.IN_PROGRESS },
-        });
-        await tx.order.update({
-          where: { id: created.id },
-          data: { status: OrderStatus.OUT_FOR_DELIVERY },
-        });
-        await tx.order.update({
-          where: { id: created.id },
-          data: {
-            status: OrderStatus.COMPLETED,
-            cashStatus: CashStatus.PAID_TO_DRIVER,
-            posPaymentMethod: posPaymentMethodResolved,
-            completedAt,
-          },
-        });
+          const completedAt = new Date();
 
-        await this.customerLedger.applyOrderWalletSettlementForCompletedOrder(
-          tx,
-          created.id,
-          driverUserId,
-        );
+          const created = await tx.order.create({
+            data: {
+              customerId,
+              driverId: driverUserId,
+              serviceType,
+              totalPrice: totalPriceDecimal,
+              status: OrderStatus.COMPLETED,
+              cashStatus: CashStatus.PAID_TO_DRIVER,
+              posPaymentMethod: posPaymentMethodResolved,
+              completedAt,
+              invoiceNumber: dto.invoiceNumber?.trim() || null,
+              notes: dto.notes?.trim() || null,
+              ...(lineCreates?.length
+                ? { lineItems: { create: lineCreates } }
+                : {}),
+            },
+            select: { id: true, driverId: true },
+          });
+          if (created.driverId !== driverUserId) {
+            throw new ForbiddenException('Order must be assigned to you');
+          }
 
-        return tx.order.findUniqueOrThrow({
-          where: { id: created.id },
-          select: orderDetailSelect,
-        });
+          await this.customerLedger.applyOrderWalletSettlementForCompletedOrder(
+            tx,
+            created.id,
+            driverUserId,
+            {
+              customerId,
+              totalPrice: totalPriceDecimal,
+              posPaymentMethod: posPaymentMethodResolved,
+              walletSettledAt: null,
+              skipPerformerLookup: true,
+            },
+          );
+
+          return created.id;
+        },
+        { maxWait: 10_000, timeout: 15_000 },
+      );
+
+      const detail = await this.prisma.order.findUniqueOrThrow({
+        where: { id: orderId },
+        select: orderDetailSelect,
       });
+
+      if (
+        detail.posPaymentMethod === PosPaymentMethod.PAYMENT_LINK &&
+        detail.status === OrderStatus.PENDING
+      ) {
+        const phone =
+          detail.customer.phone?.trim() ||
+          detail.customer.phone2?.trim() ||
+          phoneCompact;
+        const paymentLink = await this.paymentsService.createPaymentLink({
+          orderId: detail.id,
+          amount: detail.totalPrice,
+          customerPhone: phone,
+        });
+        const merged: PosCheckoutOrderDetail = { ...detail, paymentLink };
+        this.queuePosInvoiceNotify(merged, phoneCompact);
+        return merged;
+      }
+
+      this.queuePosInvoiceNotify(detail, phoneCompact);
+      return detail;
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
         console.error(
@@ -546,23 +626,26 @@ export class OrdersService {
       data.completedAt = new Date();
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      await tx.order.update({
-        where: { id: orderId },
-        data,
-      });
-      if (!order.walletSettledAt && willBeCompleted) {
-        await this.customerLedger.applyOrderWalletSettlementForCompletedOrder(
-          tx,
-          orderId,
-          userId,
-        );
-      }
-      return tx.order.findUniqueOrThrow({
-        where: { id: orderId },
-        select: orderDetailSelect,
-      });
-    });
+    return this.prisma.$transaction(
+      async (tx) => {
+        await tx.order.update({
+          where: { id: orderId },
+          data,
+        });
+        if (!order.walletSettledAt && willBeCompleted) {
+          await this.customerLedger.applyOrderWalletSettlementForCompletedOrder(
+            tx,
+            orderId,
+            userId,
+          );
+        }
+        return tx.order.findUniqueOrThrow({
+          where: { id: orderId },
+          select: orderDetailSelect,
+        });
+      },
+      { maxWait: 10_000, timeout: 15_000 },
+    );
   }
 
   async getManagerDashboard(): Promise<{

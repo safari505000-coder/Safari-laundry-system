@@ -9,14 +9,26 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ReportsModule = void 0;
 const common_1 = require("@nestjs/common");
 const auth_module_1 = require("../auth/auth.module");
+const expenses_module_1 = require("../expenses/expenses.module");
+const fixed_expense_module_1 = require("../fixed-expenses/fixed-expense.module");
+const payroll_module_1 = require("../payroll/payroll.module");
+const prisma_module_1 = require("../prisma/prisma.module");
 const reports_controller_1 = require("./reports.controller");
+const reports_service_1 = require("./reports.service");
 let ReportsModule = class ReportsModule {
 };
 exports.ReportsModule = ReportsModule;
 exports.ReportsModule = ReportsModule = __decorate([
     (0, common_1.Module)({
-        imports: [auth_module_1.AuthModule],
+        imports: [
+            auth_module_1.AuthModule,
+            prisma_module_1.PrismaModule,
+            expenses_module_1.ExpensesModule,
+            payroll_module_1.PayrollModule,
+            fixed_expense_module_1.FixedExpenseModule,
+        ],
         controllers: [reports_controller_1.ReportsController],
+        providers: [reports_service_1.ReportsService],
     })
 ], ReportsModule);
 //# sourceMappingURL=reports.module.js.map

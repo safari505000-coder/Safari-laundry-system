@@ -48,40 +48,5 @@ export declare class PosController {
         debt: string;
         lastSubscriptionAt: string | null;
     }>;
-    posCheckout(dto: PosCheckoutDto, user: JwtUser): Promise<{
-        id: string;
-        createdAt: Date;
-        updatedAt: Date;
-        status: import("@prisma/client").$Enums.OrderStatus;
-        serviceType: import("@prisma/client").$Enums.ServiceType;
-        totalPrice: import("@prisma/client-runtime-utils").Decimal;
-        cashStatus: import("@prisma/client").$Enums.CashStatus;
-        invoiceNumber: string | null;
-        notes: string | null;
-        posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
-        completedAt: Date | null;
-        walletSettledAt: Date | null;
-        customer: {
-            id: string;
-            phone: string;
-            phone2: string | null;
-            displayName: string | null;
-            address: string | null;
-        };
-        driver: {
-            id: string;
-            username: string;
-            fullName: string;
-            employeeId: string | null;
-            jobTitle: string | null;
-            phone: string | null;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
-        } | null;
-        lineItems: {
-            id: string;
-            label: string | null;
-            quantity: import("@prisma/client-runtime-utils").Decimal;
-            unitPrice: import("@prisma/client-runtime-utils").Decimal;
-        }[];
-    }>;
+    posCheckout(dto: PosCheckoutDto, user: JwtUser): Promise<import("../orders/orders.service").PosCheckoutOrderDetail>;
 }

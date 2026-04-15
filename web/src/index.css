@@ -305,4 +305,73 @@ body {
   .pos-receipt-notes p {
     margin: 0 0 0.5mm;
   }
+  .pos-receipt-barcode {
+    margin-top: 2mm;
+    padding-top: 1.5mm;
+    border-top: 1px dashed #000;
+    text-align: center;
+  }
+  .pos-receipt-barcode-caption {
+    margin: 0.8mm 0 0;
+    font-size: 8px;
+    text-align: center;
+  }
+  .pos-receipt-barcode svg {
+    max-width: 100%;
+    height: auto;
+  }
+
+  #pos-item-tags-print {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  body.print-tags-mode #pos-receipt-print {
+    display: none !important;
+    visibility: hidden !important;
+  }
+  body.print-tags-mode #pos-item-tags-print,
+  body.print-tags-mode #pos-item-tags-print * {
+    visibility: visible !important;
+  }
+  body.print-tags-mode #pos-item-tags-print {
+    display: block !important;
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    margin: 0;
+    padding: 3mm;
+    background: #fff;
+    color: #000;
+    z-index: 10000;
+    overflow: visible;
+  }
+  .pos-garment-tags-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3mm;
+    justify-content: flex-start;
+  }
+  .pos-garment-tag {
+    box-sizing: border-box;
+    width: 48mm;
+    min-height: 32mm;
+    padding: 2mm;
+    border: 1px solid #000;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    font-size: 9px;
+    line-height: 1.25;
+    text-align: center;
+  }
+  .pos-garment-tag .tag-meta {
+    margin-top: 1mm;
+    text-align: start;
+    font-size: 8.5px;
+    word-break: break-word;
+  }
+  .pos-garment-tag svg {
+    max-width: 100%;
+    height: auto;
+  }
 }

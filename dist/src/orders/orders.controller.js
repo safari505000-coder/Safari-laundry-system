@@ -83,10 +83,10 @@ __decorate([
 __decorate([
     (0, common_1.Post)(),
     (0, common_1.UseGuards)(roles_guard_1.RolesGuard),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.MANAGER, client_1.SafariRole.SUPERVISOR),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.MANAGER, client_1.SafariRole.CALL_CENTER),
     (0, swagger_1.ApiOperation)({
         summary: `Create order — back office (${branding_1.APP_BRAND})`,
-        description: 'Same validation as driver quick create: Kuwait phone, **totalPrice > 0**, **EXPRESS|NORMAL**, optional **lineItems** with total reconciliation. Optional driver assignment.',
+        description: 'Same validation as driver quick create: Kuwait phone, **totalPrice > 0**, **EXPRESS|NORMAL**, optional **lineItems** with total reconciliation. Optional driver assignment. Branch managers and call center only (drivers use POST /orders/quick).',
     }),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
@@ -119,10 +119,10 @@ __decorate([
 __decorate([
     (0, common_1.Patch)(':id/assign-driver'),
     (0, common_1.UseGuards)(roles_guard_1.RolesGuard),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.MANAGER, client_1.SafariRole.SUPERVISOR),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.MANAGER, client_1.SafariRole.SUPERVISOR),
     (0, swagger_1.ApiOperation)({
         summary: `Assign or reassign driver (${branding_1.APP_BRAND})`,
-        description: 'OWNER/MANAGER only. Not allowed when order is COMPLETED or CANCELED.',
+        description: 'Branch manager or supervisor. Not allowed when order is COMPLETED or CANCELED.',
     }),
     __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
     __param(1, (0, common_1.Body)()),
@@ -134,7 +134,7 @@ __decorate([
     (0, common_1.Patch)(':id'),
     (0, swagger_1.ApiOperation)({
         summary: `Update order status / notes (${branding_1.APP_BRAND})`,
-        description: '**State machine**: e.g. COMPLETED only from OUT_FOR_DELIVERY; PICKED_UP requires an assigned driver. DRIVER: own orders only. OWNER/MANAGER: any order.',
+        description: '**State machine**: e.g. COMPLETED only from OUT_FOR_DELIVERY; PICKED_UP requires an assigned driver. DRIVER: own orders only. MANAGER/SUPERVISOR: any order. OWNER and other roles: read-only (no updates).',
     }),
     __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
     __param(1, (0, common_1.Body)()),
