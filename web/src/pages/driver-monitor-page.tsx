@@ -46,9 +46,9 @@ export function DriverMonitorPage() {
             <TableBody>
               {(data?.drivers ?? []).map((d) => (
                 <TableRow key={d.driverId}>
-                  <TableCell>{d.driverName}</TableCell>
+                  <TableCell>{d.fullName}</TableCell>
                   <TableCell className="text-end">{formatKwdLabel(d.heldCashTotal)}</TableCell>
-                  <TableCell className="text-end">{d.heldBillsCount}</TableCell>
+                  <TableCell className="text-end">{d.pendingSettlementOrderCount}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
