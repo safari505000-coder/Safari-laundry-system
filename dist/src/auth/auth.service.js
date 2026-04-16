@@ -77,6 +77,9 @@ let AuthService = class AuthService {
         if (!user) {
             throw new common_1.UnauthorizedException('Invalid username or password');
         }
+        if (user.isActive === false) {
+            throw new common_1.UnauthorizedException('This account is deactivated');
+        }
         const ok = await bcrypt.compare(dto.password, user.password);
         if (!ok) {
             throw new common_1.UnauthorizedException('Invalid username or password');

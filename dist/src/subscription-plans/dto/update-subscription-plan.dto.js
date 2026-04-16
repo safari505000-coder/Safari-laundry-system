@@ -15,8 +15,8 @@ const class_transformer_1 = require("class-transformer");
 const class_validator_1 = require("class-validator");
 class UpdateSubscriptionPlanDto {
     name;
-    price;
-    creditAmount;
+    salePrice;
+    actualBalance;
     isActive;
     validityDays;
 }
@@ -36,7 +36,7 @@ __decorate([
     (0, class_validator_1.IsNumber)({ maxDecimalPlaces: 4 }),
     (0, class_validator_1.IsPositive)(),
     __metadata("design:type", Number)
-], UpdateSubscriptionPlanDto.prototype, "price", void 0);
+], UpdateSubscriptionPlanDto.prototype, "salePrice", void 0);
 __decorate([
     (0, swagger_1.ApiPropertyOptional)(),
     (0, class_validator_1.IsOptional)(),
@@ -44,7 +44,7 @@ __decorate([
     (0, class_validator_1.IsNumber)({ maxDecimalPlaces: 4 }),
     (0, class_validator_1.IsPositive)(),
     __metadata("design:type", Number)
-], UpdateSubscriptionPlanDto.prototype, "creditAmount", void 0);
+], UpdateSubscriptionPlanDto.prototype, "actualBalance", void 0);
 __decorate([
     (0, swagger_1.ApiPropertyOptional)(),
     (0, class_validator_1.IsOptional)(),

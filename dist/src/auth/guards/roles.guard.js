@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.RolesGuard = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@nestjs/core");
+const client_1 = require("@prisma/client");
 const roles_decorator_1 = require("../decorators/roles.decorator");
 let RolesGuard = class RolesGuard {
     reflector;
@@ -30,6 +31,9 @@ let RolesGuard = class RolesGuard {
             .switchToHttp()
             .getRequest();
         const role = req.user?.role;
+        if (role === client_1.SafariRole.OWNER) {
+            return true;
+        }
         if (!role || !required.includes(role)) {
             throw new common_1.ForbiddenException('Your role is not permitted to access this resource.');
         }

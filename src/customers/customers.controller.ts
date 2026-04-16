@@ -21,7 +21,6 @@ export class CustomersController {
     SafariRole.MANAGER,
     SafariRole.CALL_CENTER,
     SafariRole.SUPERVISOR,
-    SafariRole.ACCOUNTANT,
     SafariRole.VIEWER,
   )
   @ApiOperation({

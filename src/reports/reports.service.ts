@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import {
   CashStatus,
+  LedgerTransactionType,
   ExpenseCategory,
   OrderStatus,
   PosPaymentMethod,
@@ -46,6 +47,39 @@ export class ReportsService {
   private ordersForBranch(branchId?: string): Prisma.OrderWhereInput {
     if (!branchId) return {};
     return { driver: { branchId } };
+  }
+
+  private async getSubscriptionSubsidyInRange(
+    from: Date,
+    to: Date,
+    branchId?: string,
+  ): Promise<string> {
+    const rows = await this.prisma.transactionHistory.findMany({
+      where: {
+        type: LedgerTransactionType.SUBSCRIPTION_ACTIVATION,
+        createdAt: { gte: from, lte: to },
+      },
+      select: { metadata: true },
+    });
+    let sum = new Prisma.Decimal(0);
+    for (const row of rows) {
+      const meta =
+        row.metadata && typeof row.metadata === 'object' && !Array.isArray(row.metadata)
+          ? (row.metadata as Record<string, unknown>)
+          : null;
+      if (!meta) continue;
+      const attributedBranchId =
+        typeof meta.subsidyBranchId === 'string' ? meta.subsidyBranchId : null;
+      if (branchId && attributedBranchId !== branchId) continue;
+      const subsidy =
+        typeof meta.subsidy === 'string' || typeof meta.subsidy === 'number'
+          ? new Prisma.Decimal(String(meta.subsidy))
+          : new Prisma.Decimal(0);
+      if (subsidy.gt(0)) {
+        sum = sum.add(subsidy);
+      }
+    }
+    return sum.toFixed(4);
   }
 
   /**
@@ -302,6 +336,13 @@ export class ReportsService {
       to,
       branchId,
     );
+    const subscriptionSubsidyKd = await this.getSubscriptionSubsidyInRange(
+      from,
+      to,
+      branchId,
+    );
+    const enterpriseSubscriptionSubsidyKd =
+      await this.getSubscriptionSubsidyInRange(from, to);
 
     const totalNonPayrollExpensesKd = new Prisma.Decimal(variableSoapFuelKd)
       .add(new Prisma.Decimal(miscOperationalKd))
@@ -324,6 +365,8 @@ export class ReportsService {
       variableSoapFuelKd,
       miscOperationalKd,
       fixedExpensesKd,
+      subscriptionSubsidyKd,
+      enterpriseSubscriptionSubsidyKd,
       payrollPaidKd,
       /** Red card: variable (incl. misc) + fixed — excludes payroll. */
       totalExpensesVariableAndFixedKd: totalNonPayrollExpensesKd,

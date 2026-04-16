@@ -17,7 +17,7 @@ class CreateExpenseDto {
     amount;
     category;
     note;
-    receiptImageData;
+    receiptUrl;
 }
 exports.CreateExpenseDto = CreateExpenseDto;
 __decorate([
@@ -45,5 +45,5 @@ __decorate([
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.MaxLength)(500_000),
     __metadata("design:type", String)
-], CreateExpenseDto.prototype, "receiptImageData", void 0);
+], CreateExpenseDto.prototype, "receiptUrl", void 0);
 //# sourceMappingURL=create-expense.dto.js.map

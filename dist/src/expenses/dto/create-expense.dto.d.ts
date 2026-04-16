@@ -4,5 +4,5 @@ export declare class CreateExpenseDto {
     amount: number;
     category: ExpenseCategory;
     note?: string;
-    receiptImageData?: string;
+    receiptUrl?: string;
 }

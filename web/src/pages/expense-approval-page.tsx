@@ -23,8 +23,9 @@ import {
 } from '@/components/ui/table';
 
 export function ExpenseApprovalPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { token, hasRole } = useAuth();
+  const rtl = i18n.dir() === 'rtl';
   const canUse = hasRole('ACCOUNTANT', 'OWNER') ?? false;
   const [rows, setRows] = useState<ExpenseRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,7 +56,11 @@ export function ExpenseApprovalPage() {
     setBusyId(id);
     try {
       await updateExpenseStatus(token, id, status);
-      toast.success(`Expense moved to ${status}`);
+      toast.success(
+        t('expenseApproval.statusMoved', {
+          status: t(`expenseApproval.status.${status}`),
+        }),
+      );
       await load();
     } catch (e) {
       if (e instanceof ApiError) toast.error(e.message);
@@ -67,29 +72,31 @@ export function ExpenseApprovalPage() {
   if (!canUse) return <Navigate to="/" replace />;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" dir={rtl ? 'rtl' : 'ltr'}>
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">
           {t('nav.expenseVerification')}
         </h1>
         <p className="text-sm text-muted-foreground">
-          Review pending manager expenses and decide final status.
+          {t('expenseApproval.subtitle')}
         </p>
       </header>
 
       <Card>
         <CardHeader>
-          <CardTitle>Pending expense approvals</CardTitle>
+          <CardTitle>{t('expenseApproval.tableTitle')}</CardTitle>
         </CardHeader>
         <CardContent className="p-0 sm:p-6">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Branch</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead className="text-end">Amount</TableHead>
-                <TableHead>Receipt</TableHead>
-                <TableHead className="w-[360px]">Actions</TableHead>
+                <TableHead>الفرع</TableHead>
+                <TableHead>الفئة</TableHead>
+                <TableHead className={rtl ? 'text-start' : 'text-end'}>
+                  المبلغ
+                </TableHead>
+                <TableHead>الإيصال</TableHead>
+                <TableHead className="w-[360px]">الإجراءات</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -102,7 +109,7 @@ export function ExpenseApprovalPage() {
               ) : rows.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
-                    No pending expenses.
+                    {t('expenseApproval.empty')}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -110,7 +117,9 @@ export function ExpenseApprovalPage() {
                   <TableRow key={row.id}>
                     <TableCell>{row.branch?.name ?? '—'}</TableCell>
                     <TableCell>{row.category}</TableCell>
-                    <TableCell className="text-end">{formatKwdLabel(row.amount)}</TableCell>
+                    <TableCell className={rtl ? 'text-start' : 'text-end'}>
+                      {formatKwdLabel(row.amount)}
+                    </TableCell>
                     <TableCell>
                       {row.receiptUrl ? (
                         <a
@@ -119,7 +128,7 @@ export function ExpenseApprovalPage() {
                           rel="noopener noreferrer"
                           className="text-primary hover:underline"
                         >
-                          View receipt
+                          {t('expenseApproval.viewReceipt')}
                         </a>
                       ) : (
                         '—'
@@ -133,7 +142,7 @@ export function ExpenseApprovalPage() {
                           disabled={busyId === row.id}
                           onClick={() => void setStatus(row.id, 'APPROVED')}
                         >
-                          Approve
+                          {t('expenseApproval.approve')}
                         </Button>
                         <Button
                           size="sm"
@@ -141,7 +150,7 @@ export function ExpenseApprovalPage() {
                           disabled={busyId === row.id}
                           onClick={() => void setStatus(row.id, 'REJECTED')}
                         >
-                          Reject
+                          {t('expenseApproval.reject')}
                         </Button>
                         <Button
                           size="sm"
@@ -149,7 +158,7 @@ export function ExpenseApprovalPage() {
                           disabled={busyId === row.id}
                           onClick={() => void setStatus(row.id, 'AUDIT')}
                         >
-                          Transfer to Audit
+                          {t('expenseApproval.transferAudit')}
                         </Button>
                       </div>
                     </TableCell>

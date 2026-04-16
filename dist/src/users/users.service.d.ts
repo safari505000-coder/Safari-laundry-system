@@ -2,34 +2,8 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-declare const userPublicSelect: {
-    id: true;
-    username: true;
-    fullName: true;
-    employeeId: true;
-    jobTitle: true;
-    phone: true;
-    safariRole: true;
-    roleId: true;
-    branchId: true;
-    createdAt: true;
-    updatedAt: true;
-    role: {
-        select: {
-            id: true;
-            name: true;
-        };
-    };
-    branch: {
-        select: {
-            id: true;
-            name: true;
-            location: true;
-        };
-    };
-};
 export type UserPublic = Prisma.UserGetPayload<{
-    select: typeof userPublicSelect;
+    select: Prisma.UserSelect;
 }>;
 export declare class UsersService {
     private readonly prisma;
@@ -44,4 +18,3 @@ export declare class UsersService {
         deleted: boolean;
     }>;
 }
-export {};

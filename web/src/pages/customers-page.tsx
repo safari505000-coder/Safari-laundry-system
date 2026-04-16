@@ -49,7 +49,6 @@ export function CustomersPage() {
     'MANAGER',
     'CALL_CENTER',
     'SUPERVISOR',
-    'ACCOUNTANT',
     'VIEWER',
   );
   const [q, setQ] = useState('');

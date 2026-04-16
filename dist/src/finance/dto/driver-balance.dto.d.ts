@@ -17,4 +17,5 @@ export declare class HandoverResultDto {
     settledOrderCount: number;
     systemHandoverTotal: string;
     shiftId: string;
+    bankDepositReceiptUrl: string;
 }

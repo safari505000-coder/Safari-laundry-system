@@ -16,6 +16,7 @@ import {
 } from '@/lib/api';
 import { useAppLocale } from '@/hooks/use-app-locale';
 import { formatKwdLabel, subtractKwdStrings } from '@/lib/kwd';
+import { computeSubscriptionTotals } from '@/utils/finance-engine';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -151,6 +152,7 @@ export function SubscriptionsPage() {
                         <TableHead>{t('subscriptions.colPlan')}</TableHead>
                         <TableHead>{t('subscriptions.colPay')}</TableHead>
                         <TableHead>{t('subscriptions.colCredit')}</TableHead>
+                        <TableHead>الدعم</TableHead>
                         <TableHead>{t('subscriptions.colValidity')}</TableHead>
                         <TableHead>{t('subscriptions.colStatus')}</TableHead>
                         <TableHead className="w-[100px]" />
@@ -161,10 +163,18 @@ export function SubscriptionsPage() {
                         <TableRow key={p.id}>
                           <TableCell className="font-medium">{p.name}</TableCell>
                           <TableCell className="tabular-nums">
-                            {formatKwdLabel(p.price)}
+                            {formatKwdLabel(p.salePrice)}
                           </TableCell>
                           <TableCell className="tabular-nums text-emerald-700">
-                            {formatKwdLabel(p.creditAmount)}
+                            {formatKwdLabel(p.actualBalance)}
+                          </TableCell>
+                          <TableCell className="tabular-nums text-amber-700">
+                            {formatKwdLabel(
+                              computeSubscriptionTotals({
+                                salePrice: p.salePrice,
+                                actualBalance: p.actualBalance,
+                              }).subsidy.toFixed(4),
+                            )}
                           </TableCell>
                           <TableCell className="tabular-nums text-sm">
                             {p.validityDays}
@@ -218,14 +228,14 @@ function CreatePlanDialog({
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
-  const [price, setPrice] = useState('');
+  const [salePrice, setSalePrice] = useState('');
   const [credit, setCredit] = useState('');
   const [validityDays, setValidityDays] = useState('30');
   const [active, setActive] = useState(true);
   const [saving, setSaving] = useState(false);
 
   async function submit() {
-    const p = Number.parseFloat(price);
+    const p = Number.parseFloat(salePrice);
     const c = Number.parseFloat(credit);
     const vd = Number.parseInt(validityDays, 10);
     if (
@@ -247,8 +257,8 @@ function CreatePlanDialog({
         token,
         body: JSON.stringify({
           name: name.trim(),
-          price: p,
-          creditAmount: c,
+          salePrice: p,
+          actualBalance: c,
           validityDays: vd,
           isActive: active,
         }),
@@ -256,7 +266,7 @@ function CreatePlanDialog({
       toast.success(t('subscriptions.planCreated'));
       setOpen(false);
       setName('');
-      setPrice('');
+      setSalePrice('');
       setCredit('');
       setValidityDays('30');
       setActive(true);
@@ -299,8 +309,8 @@ function CreatePlanDialog({
                 type="number"
                 step="0.0001"
                 min="0"
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
+                value={salePrice}
+                onChange={(e) => setSalePrice(e.target.value)}
                 placeholder="20"
               />
             </div>
@@ -670,7 +680,7 @@ function CallCenterActivatePanel({
                   <SelectContent>
                     {plans.map((p) => (
                       <SelectItem key={p.id} value={p.id}>
-                        {p.name} — pay {p.price} → credit {p.creditAmount}
+                        {p.name} — pay {p.salePrice} → credit {p.actualBalance}
                       </SelectItem>
                     ))}
                   </SelectContent>

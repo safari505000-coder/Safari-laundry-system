@@ -9,6 +9,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.FinanceModule = void 0;
 const common_1 = require("@nestjs/common");
 const prisma_module_1 = require("../prisma/prisma.module");
+const bank_deposits_controller_1 = require("./bank-deposits.controller");
+const bank_deposits_service_1 = require("./bank-deposits.service");
 const finance_controller_1 = require("./finance.controller");
 const finance_service_1 = require("./finance.service");
 let FinanceModule = class FinanceModule {
@@ -17,9 +19,9 @@ exports.FinanceModule = FinanceModule;
 exports.FinanceModule = FinanceModule = __decorate([
     (0, common_1.Module)({
         imports: [prisma_module_1.PrismaModule],
-        controllers: [finance_controller_1.FinanceController],
-        providers: [finance_service_1.FinanceService],
-        exports: [finance_service_1.FinanceService],
+        controllers: [finance_controller_1.FinanceController, bank_deposits_controller_1.BankDepositsController],
+        providers: [finance_service_1.FinanceService, bank_deposits_service_1.BankDepositsService],
+        exports: [finance_service_1.FinanceService, bank_deposits_service_1.BankDepositsService],
     })
 ], FinanceModule);
 //# sourceMappingURL=finance.module.js.map

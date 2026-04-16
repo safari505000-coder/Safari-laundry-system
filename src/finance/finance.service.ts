@@ -23,6 +23,7 @@ import type {
   HandoverResultDto,
 } from './dto/driver-balance.dto';
 import type { OwnerCustomerWalletSummaryDto } from './dto/owner-customer-wallet-summary.dto';
+import type { UpdateDriverTrackingDto } from './dto/update-driver-tracking.dto';
 import {
   assertDeclaredMatchesLedgerMinor,
   minorToAmountString,
@@ -33,6 +34,16 @@ const KUWAIT_OFFSET_MIN = 180; // UTC+03:00, no DST.
 
 function kuwaitNow(): Date {
   return new Date(Date.now() + KUWAIT_OFFSET_MIN * 60_000);
+}
+
+function parseLatLng(input?: string | null): { lat: number; lng: number } | null {
+  if (!input) return null;
+  const parts = input.split(',').map((x) => Number.parseFloat(x.trim()));
+  if (parts.length !== 2) return null;
+  const [lat, lng] = parts;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+  return { lat, lng };
 }
 
 /** Midnight (00:00 Kuwait) expressed as a UTC Date. */
@@ -228,6 +239,8 @@ export class FinanceService {
     fromIso: string,
     toIso: string,
     category?: DebtEntityCategory,
+    branchId?: string,
+    actorUserId?: string,
   ) {
     const from = new Date(fromIso);
     const to = new Date(toIso);
@@ -237,6 +250,8 @@ export class FinanceService {
     const where: Prisma.DebtLedgerEntryWhereInput = {
       createdAt: { gte: from, lte: to },
       ...(category ? { category } : {}),
+      ...(branchId ? { branchId } : {}),
+      ...(actorUserId ? { actorUserId } : {}),
     };
     const rows = await this.prisma.debtLedgerEntry.groupBy({
       by: ['category', 'source'],
@@ -299,6 +314,81 @@ export class FinanceService {
       });
     }
     return { drivers: rows };
+  }
+
+  async getDriverMonitoring() {
+    const activeDrivers = await this.prisma.user.findMany({
+      where: {
+        safariRole: SafariRole.DRIVER,
+        shiftsAsDriver: { some: { status: ShiftStatus.OPEN } },
+      },
+      orderBy: { fullName: 'asc' },
+      select: {
+        id: true,
+        fullName: true,
+        username: true,
+        phone: true,
+        vehicleLabel: true,
+        lastKnownLocation: true,
+        branch: {
+          select: { id: true, name: true, location: true },
+        },
+      },
+    });
+    return {
+      drivers: activeDrivers.map((d) => {
+        const live = parseLatLng(d.lastKnownLocation);
+        const fallback = parseLatLng(d.branch?.location ?? null);
+        const location = live ?? fallback;
+        return {
+          driverId: d.id,
+          fullName: d.fullName,
+          username: d.username,
+          phone: d.phone,
+          vehicleLabel: d.vehicleLabel ?? 'Toyota LC300',
+          status: 'ON_SHIFT' as const,
+          source: live ? ('LIVE_GPS' as const) : ('BRANCH_FALLBACK' as const),
+          lastKnownLocation: live,
+          markerLocation: location,
+          branch: d.branch,
+        };
+      }),
+    };
+  }
+
+  async updateDriverTracking(driverId: string, dto: UpdateDriverTrackingDto) {
+    const driver = await this.prisma.user.findUnique({
+      where: { id: driverId },
+      select: { id: true, safariRole: true },
+    });
+    if (!driver || driver.safariRole !== SafariRole.DRIVER) {
+      throw new NotFoundException('Driver not found');
+    }
+    if (
+      dto.lastKnownLocation !== undefined &&
+      dto.lastKnownLocation.trim().length > 0 &&
+      !parseLatLng(dto.lastKnownLocation)
+    ) {
+      throw new BadRequestException('lastKnownLocation must be "lat,lng"');
+    }
+    return this.prisma.user.update({
+      where: { id: driverId },
+      data: {
+        ...(dto.vehicleLabel !== undefined
+          ? { vehicleLabel: dto.vehicleLabel.trim() || null }
+          : {}),
+        ...(dto.lastKnownLocation !== undefined
+          ? { lastKnownLocation: dto.lastKnownLocation.trim() || null }
+          : {}),
+      },
+      select: {
+        id: true,
+        fullName: true,
+        username: true,
+        vehicleLabel: true,
+        lastKnownLocation: true,
+      },
+    });
   }
 
   async confirmHandover(

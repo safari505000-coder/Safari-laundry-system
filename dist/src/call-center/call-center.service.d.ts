@@ -9,8 +9,8 @@ export declare class CallCenterService {
     listActiveSubscriptionPlans(): import("@prisma/client").Prisma.PrismaPromise<{
         id: string;
         name: string;
-        price: import("@prisma/client-runtime-utils").Decimal;
-        creditAmount: import("@prisma/client-runtime-utils").Decimal;
+        salePrice: import("@prisma/client-runtime-utils").Decimal;
+        actualBalance: import("@prisma/client-runtime-utils").Decimal;
     }[]>;
     searchCustomers(query: string): Promise<{
         id: string;
@@ -35,8 +35,8 @@ export declare class CallCenterService {
         plan: {
             id: string;
             name: string;
-            price: string;
-            creditAmount: string;
+            salePrice: string;
+            actualBalance: string;
         };
         wallet: {
             balance: string;

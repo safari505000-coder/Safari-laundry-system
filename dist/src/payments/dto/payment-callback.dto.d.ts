@@ -4,4 +4,5 @@ export declare class PaymentCallbackDto {
     amount?: string;
     signature?: string;
     gatewayReference?: string;
+    devMock?: boolean;
 }

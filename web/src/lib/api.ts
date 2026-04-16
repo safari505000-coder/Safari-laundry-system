@@ -168,6 +168,28 @@ export type DriverBalanceResponse = {
   drivers: DriverBalanceRow[];
 };
 
+export type DriverMonitoringRow = {
+  driverId: string;
+  fullName: string;
+  username: string;
+  phone: string | null;
+  vehicleLabel: string;
+  status: 'ON_SHIFT';
+  source: 'LIVE_GPS' | 'BRANCH_FALLBACK';
+  lastKnownLocation: { lat: number; lng: number } | null;
+  markerLocation: { lat: number; lng: number } | null;
+  branch: { id: string; name: string; location: string } | null;
+};
+
+export type DriverMonitoringResponse = {
+  drivers: DriverMonitoringRow[];
+};
+
+export type DriverTrackingUpdatePayload = {
+  vehicleLabel?: string;
+  lastKnownLocation?: string;
+};
+
 export type ConfirmHandoverResponse = {
   settledOrderCount: number;
   systemHandoverTotal: string;
@@ -404,8 +426,8 @@ export type OrderRow = {
 export type SubscriptionPlan = {
   id: string;
   name: string;
-  price: string;
-  creditAmount: string;
+  salePrice: string;
+  actualBalance: string;
   validityDays: number;
   isActive: boolean;
   createdAt: string;
@@ -426,8 +448,8 @@ export type SubscriberListRow = {
 export type CallCenterPlan = {
   id: string;
   name: string;
-  price: string;
-  creditAmount: string;
+  salePrice: string;
+  actualBalance: string;
 };
 
 export type CustomerSearchRow = {
@@ -536,8 +558,8 @@ export type ActivateSubscriptionResponse = {
   plan: {
     id: string;
     name: string;
-    price: string;
-    creditAmount: string;
+    salePrice: string;
+    actualBalance: string;
   };
   wallet: { balance: string; debt: string };
   settlement: SubscriptionActivationSettlement;
@@ -705,6 +727,8 @@ export type ExecutiveSummaryReport = {
   variableSoapFuelKd: string;
   miscOperationalKd: string;
   fixedExpensesKd: string;
+  subscriptionSubsidyKd: string;
+  enterpriseSubscriptionSubsidyKd: string;
   payrollPaidKd: string;
   totalExpensesVariableAndFixedKd: string;
   netProfitKd: string;

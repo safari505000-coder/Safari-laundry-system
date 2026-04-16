@@ -38,6 +38,14 @@ let CustomerLedgerService = class CustomerLedgerService {
             return client_1.DebtEntityCategory.CALL_CENTER;
         return client_1.DebtEntityCategory.BRANCH;
     }
+    async ensureCustomerOriginBranchTx(tx, customerId, branchId) {
+        if (!branchId)
+            return;
+        await tx.customer.updateMany({
+            where: { id: customerId, originBranchId: null },
+            data: { originBranchId: branchId },
+        });
+    }
     async applyOrderWalletSettlementForCompletedOrder(tx, orderId, performedByUserId, prefetch) {
         const o = prefetch ??
             (await tx.order.findUnique({
@@ -62,6 +70,7 @@ let CustomerLedgerService = class CustomerLedgerService {
         if (!actor) {
             throw new common_1.NotFoundException('Performing user not found — cannot record wallet settlement');
         }
+        await this.ensureCustomerOriginBranchTx(tx, o.customerId, actor.branchId);
         const totalMinor = (0, finance_money_1.toMinorFromFixed4)(o.totalPrice);
         if (totalMinor < 0n) {
             throw new common_1.BadRequestException('Order total cannot be negative');
@@ -161,15 +170,29 @@ let CustomerLedgerService = class CustomerLedgerService {
         }
         const customer = await tx.customer.findUnique({
             where: { id: params.customerId },
+            select: { id: true, originBranchId: true },
         });
         if (!customer) {
             throw new common_1.NotFoundException('Customer not found');
         }
         const wallet = await this.getOrCreateWalletTx(tx, params.customerId);
+        const actor = await tx.user.findUnique({
+            where: { id: params.performedByUserId },
+            select: { id: true, branchId: true },
+        });
+        if (!actor) {
+            throw new common_1.NotFoundException('Performing user not found');
+        }
+        await this.ensureCustomerOriginBranchTx(tx, params.customerId, actor.branchId);
+        const refreshedCustomer = await tx.customer.findUnique({
+            where: { id: params.customerId },
+            select: { originBranchId: true },
+        });
+        const subsidyBranchId = refreshedCustomer?.originBranchId ?? actor.branchId ?? null;
         const balanceMinor = (0, finance_money_1.toMinorFromFixed4)(wallet.balance);
         const debtMinor = (0, finance_money_1.toMinorFromFixed4)(wallet.debt);
-        const priceMinor = (0, finance_money_1.toMinorFromFixed4)(plan.price);
-        const creditMinor = (0, finance_money_1.toMinorFromFixed4)(plan.creditAmount);
+        const priceMinor = (0, finance_money_1.toMinorFromFixed4)(plan.salePrice);
+        const creditMinor = (0, finance_money_1.toMinorFromFixed4)(plan.actualBalance);
         if (priceMinor < 0n || creditMinor < 0n) {
             throw new common_1.BadRequestException('Plan price and credit amount must be non-negative');
         }
@@ -196,11 +219,13 @@ let CustomerLedgerService = class CustomerLedgerService {
         const totalCollectedStr = (0, finance_money_1.minorToAmountString)(priceMinor);
         const debtSettledStr = (0, finance_money_1.minorToAmountString)(debtPaidMinor);
         const creditedStr = (0, finance_money_1.minorToAmountString)(balanceIncreaseMinor);
+        const subsidyMinor = creditMinor > priceMinor ? creditMinor - priceMinor : 0n;
+        const subsidyStr = (0, finance_money_1.minorToAmountString)(subsidyMinor);
         await tx.transactionHistory.create({
             data: {
                 type: client_1.LedgerTransactionType.SUBSCRIPTION_ACTIVATION,
                 customerId: params.customerId,
-                amount: plan.creditAmount,
+                amount: plan.actualBalance,
                 balanceBefore: wallet.balance,
                 balanceAfter: this.decimalFromMinor(newBalanceMinor),
                 debtBefore: wallet.debt,
@@ -209,11 +234,13 @@ let CustomerLedgerService = class CustomerLedgerService {
                 metadata: {
                     planId: plan.id,
                     planName: plan.name,
-                    planPrice: plan.price.toString(),
-                    creditAmount: plan.creditAmount.toString(),
+                    salePrice: plan.salePrice.toString(),
+                    actualBalance: plan.actualBalance.toString(),
                     totalCollected: totalCollectedStr,
                     debtSettled: debtSettledStr,
                     creditedToBalance: creditedStr,
+                    subsidy: subsidyStr,
+                    subsidyBranchId,
                     automaticDebtSettlement: true,
                 },
             },

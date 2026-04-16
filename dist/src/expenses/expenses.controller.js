@@ -24,6 +24,7 @@ const branding_1 = require("../common/constants/branding");
 const create_expense_dto_1 = require("./dto/create-expense.dto");
 const expenses_service_1 = require("./expenses.service");
 const expenses_query_dto_1 = require("./dto/expenses-query.dto");
+const update_expense_status_dto_1 = require("./dto/update-expense-status.dto");
 let ExpensesController = class ExpensesController {
     expensesService;
     constructor(expensesService) {
@@ -33,16 +34,22 @@ let ExpensesController = class ExpensesController {
         return this.expensesService.create(user.userId, user.role, dto);
     }
     list(q, user) {
-        return this.expensesService.listForUser(user.userId, user.role, q.from, q.to, q.branchId);
+        return this.expensesService.listForUser(user.userId, user.role, q.from, q.to, q.branchId, q.status);
+    }
+    listPendingApproval(user) {
+        return this.expensesService.listPendingApproval(user.role);
+    }
+    updateStatus(id, dto, user) {
+        return this.expensesService.updateStatus(id, user.role, dto.status);
     }
 };
 exports.ExpensesController = ExpensesController;
 __decorate([
     (0, common_1.Post)(),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.MANAGER, client_1.SafariRole.OWNER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.MANAGER),
     (0, swagger_1.ApiOperation)({
         summary: `Record branch expense (${branding_1.APP_BRAND})`,
-        description: 'MANAGER or OWNER. Categories: SOAP, FUEL, MISC. Deducted from daily cash in closing reports.',
+        description: 'MANAGER only. Categories: SOAP, FUEL, MISC. New rows are PENDING_ACCOUNTANT until approved.',
     }),
     __param(0, (0, common_1.Body)()),
     __param(1, (0, current_user_decorator_1.CurrentUser)()),
@@ -52,7 +59,7 @@ __decorate([
 ], ExpensesController.prototype, "create", null);
 __decorate([
     (0, common_1.Get)(),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.MANAGER, client_1.SafariRole.OWNER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.OWNER),
     (0, swagger_1.ApiOperation)({
         summary: `List expenses in date range (${branding_1.APP_BRAND})`,
     }),
@@ -62,6 +69,30 @@ __decorate([
     __metadata("design:paramtypes", [expenses_query_dto_1.ExpensesQueryDto, Object]),
     __metadata("design:returntype", void 0)
 ], ExpensesController.prototype, "list", null);
+__decorate([
+    (0, common_1.Get)('pending-approval'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.OWNER),
+    (0, swagger_1.ApiOperation)({
+        summary: `Pending expense approvals (${branding_1.APP_BRAND})`,
+    }),
+    __param(0, (0, current_user_decorator_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", void 0)
+], ExpensesController.prototype, "listPendingApproval", null);
+__decorate([
+    (0, common_1.Patch)(':id/status'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.OWNER),
+    (0, swagger_1.ApiOperation)({
+        summary: `Approve/Reject/Audit expense (${branding_1.APP_BRAND})`,
+    }),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, common_1.Body)()),
+    __param(2, (0, current_user_decorator_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, update_expense_status_dto_1.UpdateExpenseStatusDto, Object]),
+    __metadata("design:returntype", void 0)
+], ExpensesController.prototype, "updateStatus", null);
 exports.ExpensesController = ExpensesController = __decorate([
     (0, swagger_1.ApiTags)('expenses'),
     (0, swagger_1.ApiBearerAuth)('bearer'),

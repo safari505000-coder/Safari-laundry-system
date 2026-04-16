@@ -20,6 +20,7 @@ class CreateUserDto {
     safariRole;
     phone;
     branchId;
+    isActive;
 }
 exports.CreateUserDto = CreateUserDto;
 __decorate([
@@ -71,4 +72,13 @@ __decorate([
     (0, class_validator_1.IsUUID)('4'),
     __metadata("design:type", String)
 ], CreateUserDto.prototype, "branchId", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({
+        default: true,
+        description: 'Inactive users are blocked from login immediately.',
+    }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], CreateUserDto.prototype, "isActive", void 0);
 //# sourceMappingURL=create-user.dto.js.map

@@ -20,6 +20,12 @@ export declare class PaymentsService {
     private readonly secret;
     private readonly callbackPublicUrl;
     constructor(prisma: PrismaService, customerLedger: CustomerLedgerService);
+    paymentsMockExplicit(): boolean;
+    usePlaceholderGateway(): boolean;
+    isPublicMockCheckoutAvailable(): boolean;
+    allowDevMockCallback(body: {
+        devMock?: boolean;
+    }): boolean;
     createPaymentLink(params: CreatePaymentLinkParams): Promise<CreatePaymentLinkResult>;
     private signPayload;
     verifyIntegratedCallback(dto: {
@@ -29,5 +35,6 @@ export declare class PaymentsService {
         signature?: string;
     }): boolean;
     normalizeCallbackStatus(status: string): 'success' | 'failed';
-    finalizePaidOrderFromGateway(orderId: string): Promise<void>;
+    finalizePaidOrderFromGateway(referenceId: string): Promise<void>;
+    private finalizeSinglePaidOrderFromGateway;
 }

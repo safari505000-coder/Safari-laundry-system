@@ -48,6 +48,33 @@ let ReportsService = class ReportsService {
             return {};
         return { driver: { branchId } };
     }
+    async getSubscriptionSubsidyInRange(from, to, branchId) {
+        const rows = await this.prisma.transactionHistory.findMany({
+            where: {
+                type: client_1.LedgerTransactionType.SUBSCRIPTION_ACTIVATION,
+                createdAt: { gte: from, lte: to },
+            },
+            select: { metadata: true },
+        });
+        let sum = new client_1.Prisma.Decimal(0);
+        for (const row of rows) {
+            const meta = row.metadata && typeof row.metadata === 'object' && !Array.isArray(row.metadata)
+                ? row.metadata
+                : null;
+            if (!meta)
+                continue;
+            const attributedBranchId = typeof meta.subsidyBranchId === 'string' ? meta.subsidyBranchId : null;
+            if (branchId && attributedBranchId !== branchId)
+                continue;
+            const subsidy = typeof meta.subsidy === 'string' || typeof meta.subsidy === 'number'
+                ? new client_1.Prisma.Decimal(String(meta.subsidy))
+                : new client_1.Prisma.Decimal(0);
+            if (subsidy.gt(0)) {
+                sum = sum.add(subsidy);
+            }
+        }
+        return sum.toFixed(4);
+    }
     async issuedInvoices(fromIso, toIso, driverId, posPaymentMethod, branchId) {
         const { from, to } = this.parseRange(fromIso, toIso);
         const rows = await this.prisma.order.findMany({
@@ -239,6 +266,8 @@ let ReportsService = class ReportsService {
         const miscOperationalKd = await this.expensesService.sumInRangeByCategories(from, to, [client_1.ExpenseCategory.MISC], branchId);
         const payrollPaidKd = await this.payrollService.sumPaidNetInRange(from, to, branchId);
         const fixedExpensesKd = await this.fixedExpenseService.sumAccruedInRange(from, to, branchId);
+        const subscriptionSubsidyKd = await this.getSubscriptionSubsidyInRange(from, to, branchId);
+        const enterpriseSubscriptionSubsidyKd = await this.getSubscriptionSubsidyInRange(from, to);
         const totalNonPayrollExpensesKd = new client_1.Prisma.Decimal(variableSoapFuelKd)
             .add(new client_1.Prisma.Decimal(miscOperationalKd))
             .add(new client_1.Prisma.Decimal(fixedExpensesKd))
@@ -252,6 +281,8 @@ let ReportsService = class ReportsService {
             variableSoapFuelKd,
             miscOperationalKd,
             fixedExpensesKd,
+            subscriptionSubsidyKd,
+            enterpriseSubscriptionSubsidyKd,
             payrollPaidKd,
             totalExpensesVariableAndFixedKd: totalNonPayrollExpensesKd,
             netProfitKd,

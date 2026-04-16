@@ -50,6 +50,12 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
+import {
+  computeMultiInvoiceParts,
+  computeSessionTotals,
+  DELIVERY_FEE_KD,
+  sumLinesKd,
+} from '@/utils/finance-engine';
 
 type CartLine = {
   lineKey: string;
@@ -104,114 +110,12 @@ function garmentTagCount(qty: number): number {
   return Math.min(50, Math.max(1, Math.round(n)));
 }
 
-const DELIVERY_FEE_KD = 0.25;
-
-type SubOrderFinancePart = {
-  lineSum: number;
-  deliveryForOrder: number;
-  netTotal: number;
-  needsExt: boolean;
-  receiptLines: ReceiptSnapshot['lines'];
-  lineItemsPayload:
-    | Array<{ label: string; quantity: number; unitPrice: number }>
-    | undefined;
-};
-
-/** Mirrors POS sub-order totals + wallet simulation for bundle checkout eligibility. */
-function computeMultiInvoiceParts(
-  nonEmptyOrdered: PosSubOrder[],
-  billing: CustomerBillingProfile | null,
-): {
-  parts: SubOrderFinancePart[];
-  ordersPayload: Array<{
-    totalPrice: number;
-    lineItems?: Array<{ label: string; quantity: number; unitPrice: number }>;
-  }>;
-  allNeedExternal: boolean;
-} {
-  let billingSnapshot: CustomerBillingProfile | null = billing;
-  const parts: SubOrderFinancePart[] = [];
-  const ordersPayload: Array<{
-    totalPrice: number;
-    lineItems?: Array<{ label: string; quantity: number; unitPrice: number }>;
-  }> = [];
-
-  for (let k = 0; k < nonEmptyOrdered.length; k++) {
-    const o = nonEmptyOrdered[k];
-    const lineSum = sumLinesKd(o.lines);
-    const isFirst = k === 0;
-    const bal = billingSnapshot
-      ? Number.parseFloat(billingSnapshot.remainingBalance)
-      : NaN;
-    const walletCoversLinesOnly =
-      Number.isFinite(bal) && bal + 1e-9 >= lineSum;
-    const baseDel = isFirst ? DELIVERY_FEE_KD : 0;
-    const deliveryForOrder =
-      walletCoversLinesOnly && lineSum > 0 ? 0 : baseDel;
-    const netTotal = lineSum + deliveryForOrder;
-    const needsExt =
-      netTotal > 0 &&
-      (billingSnapshot === null ||
-        !Number.isFinite(bal) ||
-        bal + 1e-9 < netTotal);
-
-    const lineItemsFull = o.lines.map((c) => ({
-      label: c.nameAr,
-      quantity: c.quantity,
-      unitPrice: c.unitPrice,
-    }));
-    const MONEY_EPS = 0.005;
-    const lineItemsPayload =
-      Math.abs(lineSum - netTotal) < MONEY_EPS ? lineItemsFull : undefined;
-
-    const receiptLines = o.lines.map((c) => ({
-      label: c.nameAr,
-      quantity: c.quantity,
-      unitPrice: c.unitPrice,
-      lineTotal: c.quantity * c.unitPrice,
-      neshaLevel: c.neshaLevel,
-      foldingStyle: c.foldingStyle,
-      itemNote: c.itemNote,
-    }));
-
-    parts.push({
-      lineSum,
-      deliveryForOrder,
-      netTotal,
-      needsExt,
-      receiptLines,
-      lineItemsPayload,
-    });
-    ordersPayload.push({
-      totalPrice: netTotal,
-      ...(lineItemsPayload ? { lineItems: lineItemsPayload } : {}),
-    });
-
-    if (!needsExt && billingSnapshot && netTotal > 0) {
-      const prev = Number.parseFloat(billingSnapshot.remainingBalance);
-      billingSnapshot = {
-        ...billingSnapshot,
-        remainingBalance: (prev - netTotal).toFixed(4),
-      };
-    }
-  }
-
-  return {
-    parts,
-    ordersPayload,
-    allNeedExternal: parts.length > 0 && parts.every((p) => p.needsExt),
-  };
-}
 
 type PosSubOrder = {
   id: string;
   kind: 'primary' | 'attached';
   lines: CartLine[];
 };
-
-function sumLinesKd(lines: CartLine[]): number {
-  return lines.reduce((s, l) => s + l.quantity * l.unitPrice, 0);
-}
 
 type ServiceOption = {
   key: 'NORMAL' | 'URGENT' | 'PRESS_ONLY' | 'URGENT_PRESS';
@@ -462,22 +366,25 @@ export function PosPage() {
   const isBalanceWarning =
     Number.isFinite(balanceNum) && (balanceNum < 10 || balanceNum < 0);
 
-  const walletCoversNet =
-    billing !== null &&
-    Number.isFinite(balanceNum) &&
-    balanceNum + 1e-9 >= combinedLineSubtotal;
-  /** Wallet covers all line items → free delivery on the charged leg (same as subscription session). */
-  const isSubscriptionOrder = combinedLineSubtotal > 0 && walletCoversNet;
-  const firstFilledSubOrderIndex = useMemo(
-    () => subOrders.findIndex((o) => sumLinesKd(o.lines) > 0),
-    [subOrders],
+  const financeTotals = useMemo(
+    () =>
+      computeSessionTotals(
+        subOrders.map((o) => ({
+          lines: o.lines.map((l) => ({
+            label: l.nameAr,
+            quantity: l.quantity,
+            unitPrice: l.unitPrice,
+            neshaLevel: l.neshaLevel,
+            foldingStyle: l.foldingStyle,
+            itemNote: l.itemNote,
+          })),
+        })),
+        billing,
+      ),
+    [subOrders, billing],
   );
-  const sessionDeliveryCharge = useMemo(() => {
-    if (combinedLineSubtotal <= 0 || firstFilledSubOrderIndex < 0) return 0;
-    if (isSubscriptionOrder) return 0;
-    return DELIVERY_FEE_KD;
-  }, [combinedLineSubtotal, firstFilledSubOrderIndex, isSubscriptionOrder]);
-  const grandTotal = Math.max(0, combinedLineSubtotal + sessionDeliveryCharge);
+  const { firstFilledSubOrderIndex, isSubscriptionOrder, sessionDeliveryCharge, grandTotal } =
+    financeTotals;
 
   /** If billing is unknown, assume shortfall until server confirms — always send external method when grand total > 0. */
   const needsExternalPayment =
@@ -738,7 +645,19 @@ export function PosPage() {
 
     setCheckoutBusy(true);
     try {
-      const bundlePrep = computeMultiInvoiceParts(nonEmptyOrdered, billing);
+      const bundlePrep = computeMultiInvoiceParts(
+        nonEmptyOrdered.map((o) => ({
+          lines: o.lines.map((l) => ({
+            label: l.nameAr,
+            quantity: l.quantity,
+            unitPrice: l.unitPrice,
+            neshaLevel: l.neshaLevel,
+            foldingStyle: l.foldingStyle,
+            itemNote: l.itemNote,
+          })),
+        })),
+        billing,
+      );
       const useBundle =
         nonEmptyOrdered.length > 1 &&
         posPaymentMethod === 'PAYMENT_LINK' &&

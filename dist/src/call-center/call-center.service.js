@@ -28,8 +28,8 @@ let CallCenterService = class CallCenterService {
             select: {
                 id: true,
                 name: true,
-                price: true,
-                creditAmount: true,
+                salePrice: true,
+                actualBalance: true,
             },
         });
     }
@@ -95,8 +95,8 @@ let CallCenterService = class CallCenterService {
                 plan: {
                     id: plan.id,
                     name: plan.name,
-                    price: plan.price.toString(),
-                    creditAmount: plan.creditAmount.toString(),
+                    salePrice: plan.salePrice.toString(),
+                    actualBalance: plan.actualBalance.toString(),
                 },
                 wallet: {
                     balance: wallet.balance.toString(),

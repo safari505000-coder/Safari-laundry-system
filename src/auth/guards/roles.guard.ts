@@ -22,8 +22,12 @@ export class RolesGuard implements CanActivate {
     }
     const req = context
       .switchToHttp()
-      .getRequest<{ user?: { role: string } }>();
+      .getRequest<{ user?: { role: string }; method?: string }>();
     const role = req.user?.role;
+    // Global OWNER bypass: full access across all guarded routes/endpoints.
+    if (role === SafariRole.OWNER) {
+      return true;
+    }
     if (!role || !required.includes(role as SafariRole)) {
       throw new ForbiddenException(
         'Your role is not permitted to access this resource.',

@@ -36,6 +36,7 @@ const subscribers_module_1 = require("./subscribers/subscribers.module");
 const users_module_1 = require("./users/users.module");
 const wallets_module_1 = require("./wallets/wallets.module");
 const webDistPath = (0, node_path_1.join)(process.cwd(), 'web', 'dist');
+const uploadsPath = (0, node_path_1.join)(process.cwd(), 'uploads');
 const spaStaticModule = (0, node_fs_1.existsSync)(webDistPath)
     ? [
         serve_static_1.ServeStaticModule.forRoot({
@@ -74,6 +75,11 @@ exports.AppModule = AppModule = __decorate([
             laundry_price_list_module_1.LaundryPriceListModule,
             pos_module_1.PosModule,
             customers_module_1.CustomersModule,
+            serve_static_1.ServeStaticModule.forRoot({
+                rootPath: uploadsPath,
+                serveRoot: '/uploads',
+                serveStaticOptions: { index: false, fallthrough: true },
+            }),
             ...spaStaticModule,
         ],
         controllers: [app_controller_1.AppController],

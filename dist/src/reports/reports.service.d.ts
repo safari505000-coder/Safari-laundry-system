@@ -11,6 +11,7 @@ export declare class ReportsService {
     constructor(prisma: PrismaService, expensesService: ExpensesService, payrollService: PayrollService, fixedExpenseService: FixedExpenseService);
     private parseRange;
     private ordersForBranch;
+    private getSubscriptionSubsidyInRange;
     issuedInvoices(fromIso: string, toIso: string, driverId?: string, posPaymentMethod?: PosPaymentMethod, branchId?: string): Promise<{
         from: string;
         to: string;
@@ -99,6 +100,8 @@ export declare class ReportsService {
         variableSoapFuelKd: string;
         miscOperationalKd: string;
         fixedExpensesKd: string;
+        subscriptionSubsidyKd: string;
+        enterpriseSubscriptionSubsidyKd: string;
         payrollPaidKd: string;
         totalExpensesVariableAndFixedKd: string;
         netProfitKd: string;

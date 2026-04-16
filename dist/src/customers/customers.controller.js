@@ -37,7 +37,7 @@ let CustomersController = class CustomersController {
 exports.CustomersController = CustomersController;
 __decorate([
     (0, common_1.Get)(),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.MANAGER, client_1.SafariRole.CALL_CENTER, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.VIEWER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.MANAGER, client_1.SafariRole.CALL_CENTER, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
     (0, swagger_1.ApiOperation)({
         summary: `Customer directory (${branding_1.APP_BRAND})`,
     }),

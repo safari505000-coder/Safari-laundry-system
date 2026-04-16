@@ -111,6 +111,14 @@ let OrdersService = class OrdersService {
             throw new common_1.ForbiddenException('The assigned user must have the DRIVER role');
         }
     }
+    async assertPosCheckoutActor(id) {
+        const u = await this.prisma.user.findUnique({ where: { id } });
+        if (!u ||
+            (u.safariRole !== client_1.SafariRole.DRIVER &&
+                u.safariRole !== client_1.SafariRole.MANAGER)) {
+            throw new common_1.ForbiddenException('POS checkout is only available to drivers and managers.');
+        }
+    }
     resolvePosCheckoutPaymentMethod(shortfallMinor, raw) {
         if (shortfallMinor === 0n) {
             return client_1.PosPaymentMethod.SUBSCRIPTION_WALLET;
@@ -235,7 +243,7 @@ let OrdersService = class OrdersService {
     }
     async posCheckout(driverUserId, dto) {
         try {
-            await this.assertDriverUser(driverUserId);
+            await this.assertPosCheckoutActor(driverUserId);
             if (!Number.isFinite(dto.totalPrice) || dto.totalPrice <= 0) {
                 throw new common_1.BadRequestException('totalPrice must be a finite positive number');
             }
@@ -333,6 +341,10 @@ let OrdersService = class OrdersService {
                     amount: detail.totalPrice,
                     customerPhone: phone,
                 });
+                await this.prisma.order.update({
+                    where: { id: detail.id },
+                    data: { posHostedPaymentUrl: paymentLink.url },
+                });
                 const merged = { ...detail, paymentLink };
                 this.queuePosInvoiceNotify(merged, phoneCompact);
                 return merged;
@@ -349,6 +361,102 @@ let OrdersService = class OrdersService {
             }
             throw error;
         }
+    }
+    async posCheckoutBundle(driverUserId, dto) {
+        await this.assertPosCheckoutActor(driverUserId);
+        const serviceType = dto.serviceType ?? client_1.ServiceType.NORMAL;
+        const phoneCompact = dto.customerPhone.replace(/[\s-]/g, '').trim();
+        const prepared = [];
+        let sumDecimal = new client_1.Prisma.Decimal(0);
+        for (const part of dto.orders) {
+            if (!Number.isFinite(part.totalPrice) || part.totalPrice <= 0) {
+                throw new common_1.BadRequestException('Each sub-order must have a positive totalPrice');
+            }
+            if (part.lineItems?.length) {
+                (0, order_total_util_1.assertLineItemsMatchTotal)(part.totalPrice, part.lineItems);
+            }
+            const lineCreates = this.mapPosCheckoutLineItems(part.lineItems);
+            if (lineCreates) {
+                for (const line of lineCreates) {
+                    if (!(line.quantity > 0 && line.unitPrice > 0)) {
+                        throw new common_1.BadRequestException('Each line item must have a positive quantity and unit price');
+                    }
+                }
+            }
+            const td = new client_1.Prisma.Decimal(Number(part.totalPrice).toFixed(4));
+            sumDecimal = sumDecimal.add(td);
+            prepared.push({ totalPriceDecimal: td, lineCreates });
+        }
+        const customerDto = {
+            customerPhone: dto.customerPhone,
+            customerId: dto.customerId,
+            customerDisplayName: dto.customerDisplayName,
+            customerAddress: dto.customerAddress,
+            totalPrice: dto.orders[0].totalPrice,
+            lineItems: dto.orders[0].lineItems,
+            serviceType: dto.serviceType,
+        };
+        const bundleId = await this.prisma.$transaction(async (tx) => {
+            const customerId = await this.resolveQuickOrderCustomerId(tx, customerDto, phoneCompact);
+            const bundle = await tx.posPaymentBundle.create({
+                data: {
+                    driverId: driverUserId,
+                    totalAmountKd: sumDecimal,
+                },
+            });
+            for (const p of prepared) {
+                const created = await tx.order.create({
+                    data: {
+                        customerId,
+                        driverId: driverUserId,
+                        serviceType,
+                        totalPrice: p.totalPriceDecimal,
+                        status: client_1.OrderStatus.PENDING,
+                        cashStatus: client_1.CashStatus.UNPAID,
+                        posPaymentMethod: client_1.PosPaymentMethod.ONLINE,
+                        completedAt: null,
+                        posPaymentBundleId: bundle.id,
+                        ...(p.lineCreates?.length ?
+                            { lineItems: { create: p.lineCreates } }
+                            : {}),
+                    },
+                    select: { id: true, driverId: true },
+                });
+                if (created.driverId !== driverUserId) {
+                    throw new common_1.ForbiddenException('Order must be assigned to you');
+                }
+            }
+            return bundle.id;
+        }, { maxWait: 10_000, timeout: 15_000 });
+        const orders = await this.prisma.order.findMany({
+            where: { posPaymentBundleId: bundleId },
+            select: orderDetailSelect,
+            orderBy: { createdAt: 'asc' },
+        });
+        if (orders.length === 0) {
+            throw new common_1.BadRequestException('Bundle orders missing after checkout');
+        }
+        const phone = orders[0].customer.phone?.trim() ||
+            orders[0].customer.phone2?.trim() ||
+            phoneCompact;
+        const paymentLink = await this.paymentsService.createPaymentLink({
+            orderId: bundleId,
+            amount: sumDecimal,
+            customerPhone: phone,
+        });
+        await this.prisma.order.updateMany({
+            where: { posPaymentBundleId: bundleId },
+            data: { posHostedPaymentUrl: paymentLink.url },
+        });
+        const notifyBase = orders[0];
+        const merged = {
+            ...notifyBase,
+            id: bundleId,
+            totalPrice: sumDecimal,
+            paymentLink,
+        };
+        this.queuePosInvoiceNotify(merged, phoneCompact);
+        return { bundleId, orders, paymentLink };
     }
     async createAsManager(dto) {
         if (dto.driverId) {
@@ -387,6 +495,46 @@ let OrdersService = class OrdersService {
                 },
                 select: orderDetailSelect,
             });
+        });
+    }
+    async listUnpaidOnlinePaymentOrders() {
+        const rows = await this.prisma.order.findMany({
+            where: {
+                status: client_1.OrderStatus.PENDING,
+                cashStatus: client_1.CashStatus.UNPAID,
+                posPaymentMethod: {
+                    in: [client_1.PosPaymentMethod.ONLINE, client_1.PosPaymentMethod.PAYMENT_LINK],
+                },
+                posHostedPaymentUrl: { not: null },
+            },
+            select: {
+                id: true,
+                totalPrice: true,
+                posHostedPaymentUrl: true,
+                customer: {
+                    select: {
+                        displayName: true,
+                        phone: true,
+                        phone2: true,
+                    },
+                },
+            },
+            orderBy: { createdAt: 'desc' },
+            take: 500,
+        });
+        return rows.map((r) => {
+            const phone = r.customer.phone?.replace(/[\s-]/g, '').trim() ||
+                r.customer.phone2?.replace(/[\s-]/g, '').trim() ||
+                '';
+            const name = r.customer.displayName?.trim() ||
+                (phone ? phone : 'Customer');
+            return {
+                orderId: r.id,
+                customerName: name,
+                customerPhone: phone,
+                amountKd: r.totalPrice.toFixed(4),
+                paymentUrl: r.posHostedPaymentUrl,
+            };
         });
     }
     async findAllForActor(userId, role) {

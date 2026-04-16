@@ -26,6 +26,7 @@ export declare class CustomerLedgerService {
         subscriptionPlanName: string | null;
     }>;
     private resolveDebtCategory;
+    private ensureCustomerOriginBranchTx;
     applyOrderWalletSettlementForCompletedOrder(tx: PrismaTx, orderId: string, performedByUserId: string, prefetch?: OrderWalletSettlementPrefetch): Promise<void>;
     activateSubscriptionPlan(tx: PrismaTx, params: {
         customerId: string;

@@ -18,6 +18,7 @@ class PaymentCallbackDto {
     amount;
     signature;
     gatewayReference;
+    devMock;
 }
 exports.PaymentCallbackDto = PaymentCallbackDto;
 __decorate([
@@ -52,4 +53,10 @@ __decorate([
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], PaymentCallbackDto.prototype, "gatewayReference", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)(),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], PaymentCallbackDto.prototype, "devMock", void 0);
 //# sourceMappingURL=payment-callback.dto.js.map

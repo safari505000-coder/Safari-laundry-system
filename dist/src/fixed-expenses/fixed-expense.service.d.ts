@@ -17,9 +17,9 @@ export declare class FixedExpenseService {
         branchId: string;
         createdAt: Date;
         updatedAt: Date;
+        isActive: boolean;
         title: string;
         category: import("@prisma/client").$Enums.FixedExpenseCategory;
-        isActive: boolean;
         monthlyAmount: Prisma.Decimal;
         effectiveFrom: Date;
         effectiveTo: Date | null;
@@ -34,9 +34,9 @@ export declare class FixedExpenseService {
         branchId: string;
         createdAt: Date;
         updatedAt: Date;
+        isActive: boolean;
         title: string;
         category: import("@prisma/client").$Enums.FixedExpenseCategory;
-        isActive: boolean;
         monthlyAmount: Prisma.Decimal;
         effectiveFrom: Date;
         effectiveTo: Date | null;

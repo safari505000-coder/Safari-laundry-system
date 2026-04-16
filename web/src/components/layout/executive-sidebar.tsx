@@ -50,7 +50,7 @@ const posItem: NavItem = {
   to: '/pos',
   labelKey: 'nav.pos',
   icon: ShoppingCart,
-  roles: ['DRIVER', 'MANAGER', 'OWNER'],
+  roles: ['DRIVER', 'MANAGER'],
 };
 
 const myDailySalesItem: NavItem = {
@@ -100,7 +100,7 @@ const customersItem: NavItem = {
   to: '/customers',
   labelKey: 'nav.customers',
   icon: Users,
-  roles: ['OWNER', 'MANAGER', 'CALL_CENTER', 'SUPERVISOR', 'ACCOUNTANT', 'VIEWER'],
+  roles: ['OWNER', 'MANAGER', 'CALL_CENTER', 'SUPERVISOR', 'VIEWER'],
 };
 
 const collectionsItem: NavItem = {
@@ -118,7 +118,7 @@ const myCashCustodyItem: NavItem = {
 };
 
 const driverMonitorItem: NavItem = {
-  to: '/driver-monitor',
+  to: '/admin/driver-monitoring',
   labelKey: 'nav.driverMonitor',
   icon: Truck,
   roles: ['CALL_CENTER', 'OWNER'],
@@ -346,6 +346,7 @@ export function ExecutiveSidebar() {
             'shrink-0',
             collapsed ? 'max-h-9 max-w-[48px] object-contain' : '',
           )}
+          compact={collapsed}
         />
         {!collapsed ?
           <div className="min-w-0 flex-1 leading-tight">

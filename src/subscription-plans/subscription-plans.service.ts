@@ -28,8 +28,8 @@ export class SubscriptionPlansService {
     return this.prisma.subscriptionPlan.create({
       data: {
         name: dto.name.trim(),
-        price: dto.price,
-        creditAmount: dto.creditAmount,
+        salePrice: dto.salePrice,
+        actualBalance: dto.actualBalance,
         isActive: dto.isActive ?? true,
         validityDays: dto.validityDays ?? 30,
       },
@@ -40,8 +40,8 @@ export class SubscriptionPlansService {
     await this.findOne(id);
     const data: Prisma.SubscriptionPlanUpdateInput = {};
     if (dto.name !== undefined) data.name = dto.name.trim();
-    if (dto.price !== undefined) data.price = dto.price;
-    if (dto.creditAmount !== undefined) data.creditAmount = dto.creditAmount;
+    if (dto.salePrice !== undefined) data.salePrice = dto.salePrice;
+    if (dto.actualBalance !== undefined) data.actualBalance = dto.actualBalance;
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
     if (dto.validityDays !== undefined) data.validityDays = dto.validityDays;
     return this.prisma.subscriptionPlan.update({

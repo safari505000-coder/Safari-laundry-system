@@ -7,8 +7,8 @@ export declare class CallCenterController {
     listPlans(): import("@prisma/client").Prisma.PrismaPromise<{
         id: string;
         name: string;
-        price: import("@prisma/client-runtime-utils").Decimal;
-        creditAmount: import("@prisma/client-runtime-utils").Decimal;
+        salePrice: import("@prisma/client-runtime-utils").Decimal;
+        actualBalance: import("@prisma/client-runtime-utils").Decimal;
     }[]>;
     searchCustomers(q: string): Promise<{
         id: string;
@@ -33,8 +33,8 @@ export declare class CallCenterController {
         plan: {
             id: string;
             name: string;
-            price: string;
-            creditAmount: string;
+            salePrice: string;
+            actualBalance: string;
         };
         wallet: {
             balance: string;

@@ -99,6 +99,8 @@ export declare class ReportsController {
         variableSoapFuelKd: string;
         miscOperationalKd: string;
         fixedExpensesKd: string;
+        subscriptionSubsidyKd: string;
+        enterpriseSubscriptionSubsidyKd: string;
         payrollPaidKd: string;
         totalExpensesVariableAndFixedKd: string;
         netProfitKd: string;

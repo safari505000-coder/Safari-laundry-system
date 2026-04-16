@@ -95,6 +95,10 @@ model User {
   /** Legacy job title (optional). */
   jobTitle    String?
   phone       String?    @unique
+  /** Optional vehicle display label for tracking UI (e.g. Toyota LC300). */
+  vehicleLabel String?
+  /** Last GPS point as "lat,lng". */
+  lastKnownLocation String?
   safariRole  SafariRole @default(DRIVER)
   /** Owner toggle: inactive users cannot sign in. */
   isActive    Boolean    @default(true)
@@ -186,9 +190,12 @@ model Customer {
   addressStreet  String?
   addressAvenue  String?
   addressHouse   String?
+  /** Immutable attribution branch set from first transaction/subscription. */
+  originBranchId String?  @db.Uuid
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  originBranch         Branch?  @relation("CustomerOriginBranch", fields: [originBranchId], references: [id], onDelete: SetNull)
   orders              Order[]
   wallet              CustomerWallet?
   transactionHistory  TransactionHistory[]
@@ -196,13 +203,16 @@ model Customer {
 
   @@index([phone])
   @@index([phone2])
+  @@index([originBranchId])
 }
 
 model SubscriptionPlan {
   id            String   @id @default(uuid()) @db.Uuid
   name          String
-  price         Decimal  @db.Decimal(19, 4)
-  creditAmount  Decimal  @db.Decimal(19, 4)
+  /** Amount paid by the customer. */
+  salePrice     Decimal  @default(0) @db.Decimal(19, 4)
+  /** Credit granted to the customer wallet. */
+  actualBalance Decimal  @default(0) @db.Decimal(19, 4)
   /** Calendar length of the subscription window from each activation date. */
   validityDays Int      @default(30)
   isActive      Boolean  @default(true)
@@ -452,6 +462,7 @@ model Branch {
   payrolls              Payroll[]
   fixedExpenseSchedules FixedExpenseSchedule[]
   debtLedgerEntries     DebtLedgerEntry[]
+  originCustomers       Customer[] @relation("CustomerOriginBranch")
 }
 
 model Payroll {

@@ -23,14 +23,14 @@ export class UpdateSubscriptionPlanDto {
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 4 })
   @IsPositive()
-  price?: number;
+  salePrice?: number;
 
   @ApiPropertyOptional()
   @IsOptional()
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 4 })
   @IsPositive()
-  creditAmount?: number;
+  actualBalance?: number;
 
   @ApiPropertyOptional()
   @IsOptional()

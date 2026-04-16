@@ -35,8 +35,27 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
         this.callbackPublicUrl = (process.env.PAYMENTS_CALLBACK_PUBLIC_URL ?? '')
             .replace(/\/$/, '');
     }
+    paymentsMockExplicit() {
+        const m = process.env.PAYMENTS_MOCK?.trim().toLowerCase();
+        return m === '1' || m === 'true' || m === 'yes';
+    }
+    usePlaceholderGateway() {
+        return !this.apiBase.trim();
+    }
+    isPublicMockCheckoutAvailable() {
+        return this.paymentsMockExplicit() || this.usePlaceholderGateway();
+    }
+    allowDevMockCallback(body) {
+        return Boolean(body.devMock) && this.isPublicMockCheckoutAvailable();
+    }
     async createPaymentLink(params) {
-        if (!this.apiBase || !this.apiKey || !this.merchantId) {
+        if (this.isPublicMockCheckoutAvailable()) {
+            const base = (process.env.PUBLIC_API_URL ?? 'http://localhost:3000').replace(/\/$/, '');
+            const url = `${base}/api/payments/mock-checkout?orderId=${encodeURIComponent(params.orderId)}`;
+            this.logger.log(`Mock payment link for ${params.orderId} (set PAYMENTS_API_BASE_URL for production gateway)`);
+            return { url, reference: 'mock' };
+        }
+        if (!this.apiKey || !this.merchantId) {
             throw new common_1.ServiceUnavailableException('Payment link is not configured (PAYMENTS_API_BASE_URL, PAYMENTS_API_KEY, PAYMENTS_MERCHANT_ID)');
         }
         const callbackUrl = this.callbackPublicUrl
@@ -121,7 +140,26 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
         }
         return 'failed';
     }
-    async finalizePaidOrderFromGateway(orderId) {
+    async finalizePaidOrderFromGateway(referenceId) {
+        const bundle = await this.prisma.posPaymentBundle.findUnique({
+            where: { id: referenceId },
+            include: {
+                orders: {
+                    where: { status: client_1.OrderStatus.PENDING },
+                    orderBy: { createdAt: 'asc' },
+                    select: { id: true },
+                },
+            },
+        });
+        if (bundle?.orders.length) {
+            for (const o of bundle.orders) {
+                await this.finalizeSinglePaidOrderFromGateway(o.id);
+            }
+            return;
+        }
+        await this.finalizeSinglePaidOrderFromGateway(referenceId);
+    }
+    async finalizeSinglePaidOrderFromGateway(orderId) {
         await this.prisma.$transaction(async (tx) => {
             const order = await tx.order.findUnique({
                 where: { id: orderId },
@@ -155,6 +193,7 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
                     status: client_1.OrderStatus.COMPLETED,
                     cashStatus: client_1.CashStatus.PAID_TO_DRIVER,
                     completedAt,
+                    posPaymentMethod: client_1.PosPaymentMethod.ONLINE,
                 },
             });
             const performerId = order.driverId;

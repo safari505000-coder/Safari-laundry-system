@@ -30,6 +30,7 @@ import { MyDailySalesPage } from '@/pages/my-daily-sales-page';
 import { MyCashCustodyPage } from '@/pages/my-cash-custody-page';
 import { DriverMonitorPage } from '@/pages/driver-monitor-page';
 import { ExpenseApprovalPage } from '@/pages/expense-approval-page';
+import { LiveMonitorPage } from '@/pages/live-monitor-page';
 
 function AppToaster() {
   const { i18n } = useTranslation();
@@ -54,6 +55,7 @@ export default function App() {
               }
             >
               <Route path="/pos" element={<PosPage />} />
+              <Route path="/admin/live-monitor" element={<LiveMonitorPage />} />
               <Route path="/" element={<ExecutiveShell />}>
                 <Route index element={<DashboardPage />} />
                 <Route path="branches" element={<BranchesPage />} />
@@ -61,7 +63,8 @@ export default function App() {
                 <Route path="collections" element={<CollectionsPage />} />
                 <Route path="my-daily-sales" element={<MyDailySalesPage />} />
                 <Route path="my-cash-custody" element={<MyCashCustodyPage />} />
-                <Route path="driver-monitor" element={<DriverMonitorPage />} />
+                <Route path="admin/driver-monitoring" element={<DriverMonitorPage />} />
+                <Route path="driver-monitor" element={<Navigate to="/admin/driver-monitoring" replace />} />
                 <Route path="subscriptions" element={<SubscriptionsPage />} />
                 <Route path="subscribers" element={<SubscribersPage />} />
                 <Route path="orders" element={<OrdersPage />} />

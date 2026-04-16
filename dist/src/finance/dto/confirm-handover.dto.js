@@ -15,6 +15,7 @@ const class_transformer_1 = require("class-transformer");
 const class_validator_1 = require("class-validator");
 class ConfirmHandoverDto {
     driverId;
+    depositReceiptUrl;
     declaredHandoverTotal;
 }
 exports.ConfirmHandoverDto = ConfirmHandoverDto;
@@ -23,6 +24,15 @@ __decorate([
     (0, class_validator_1.IsUUID)('4'),
     __metadata("design:type", String)
 ], ConfirmHandoverDto.prototype, "driverId", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({
+        description: 'Public URL path of uploaded bank deposit receipt (from POST /finance/handover/upload-receipt)',
+        example: '/uploads/handover-receipts/550e8400-e29b-41d4-a716-446655440000.jpg',
+    }),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MinLength)(8),
+    __metadata("design:type", String)
+], ConfirmHandoverDto.prototype, "depositReceiptUrl", void 0);
 __decorate([
     (0, swagger_1.ApiPropertyOptional)({
         description: 'Physical cash counted by manager; if provided, must match ledger within 0.0001 KWD',

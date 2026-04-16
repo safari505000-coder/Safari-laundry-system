@@ -83,6 +83,7 @@ __decorate([
 ], UsersController.prototype, "update", null);
 __decorate([
     (0, common_1.Delete)(':id'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER),
     (0, common_1.HttpCode)(common_1.HttpStatus.OK),
     (0, swagger_1.ApiOperation)({ summary: `Delete user (${branding_1.APP_BRAND})` }),
     __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),

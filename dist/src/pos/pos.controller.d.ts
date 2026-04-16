@@ -1,4 +1,5 @@
 import type { JwtUser } from '../auth/decorators/current-user.decorator';
+import { PosCheckoutBundleDto } from '../orders/dto/pos-checkout-bundle.dto';
 import { PosCheckoutDto } from '../orders/dto/pos-checkout.dto';
 import { OrdersService } from '../orders/orders.service';
 import { PosCreateCustomerDto } from './dto/pos-create-customer.dto';
@@ -55,4 +56,5 @@ export declare class PosController {
         lastSubscriptionAt: string | null;
     }>;
     posCheckout(dto: PosCheckoutDto, user: JwtUser): Promise<import("../orders/orders.service").PosCheckoutOrderDetail>;
+    posCheckoutBundle(dto: PosCheckoutBundleDto, user: JwtUser): Promise<import("../orders/orders.service").PosCheckoutBundleResult>;
 }

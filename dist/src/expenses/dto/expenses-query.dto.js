@@ -10,11 +10,13 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ExpensesQueryDto = void 0;
+const client_1 = require("@prisma/client");
 const class_validator_1 = require("class-validator");
 class ExpensesQueryDto {
     from;
     to;
     branchId;
+    status;
 }
 exports.ExpensesQueryDto = ExpensesQueryDto;
 __decorate([
@@ -30,4 +32,9 @@ __decorate([
     (0, class_validator_1.IsUUID)(),
     __metadata("design:type", String)
 ], ExpensesQueryDto.prototype, "branchId", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsEnum)(client_1.ExpenseStatus),
+    __metadata("design:type", String)
+], ExpensesQueryDto.prototype, "status", void 0);
 //# sourceMappingURL=expenses-query.dto.js.map

@@ -120,6 +120,13 @@ export declare class OrdersController {
             unitPrice: import("@prisma/client-runtime-utils").Decimal;
         }[];
     }[]>;
+    listCollectionsUnpaidOnline(): Promise<{
+        orderId: string;
+        customerName: string;
+        customerPhone: string;
+        amountKd: string;
+        paymentUrl: string;
+    }[]>;
     findOne(id: string, user: JwtUser): Promise<{
         id: string;
         createdAt: Date;

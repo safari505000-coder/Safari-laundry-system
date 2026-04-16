@@ -51,6 +51,7 @@ const userPublicSelect = {
     id: true,
     username: true,
     fullName: true,
+    isActive: true,
     employeeId: true,
     jobTitle: true,
     phone: true,
@@ -102,6 +103,9 @@ let UsersService = class UsersService {
                     fullName,
                     password: passwordHash,
                     safariRole: dto.safariRole,
+                    ...(dto.isActive !== undefined
+                        ? { isActive: dto.isActive }
+                        : {}),
                     roleId,
                     branchId: dto.branchId,
                     phone: dto.phone,
@@ -159,6 +163,9 @@ let UsersService = class UsersService {
             data.username = dto.username.trim();
         if (dto.phone !== undefined)
             data.phone = dto.phone;
+        if (dto.isActive !== undefined) {
+            data.isActive = dto.isActive;
+        }
         if (dto.safariRole !== undefined) {
             const roleId = await this.resolveRoleId(dto.safariRole);
             data.safariRole = dto.safariRole;
@@ -191,8 +198,41 @@ let UsersService = class UsersService {
         }
     }
     async remove(id) {
-        await this.findOne(id);
-        await this.prisma.user.delete({ where: { id } });
+        const user = await this.prisma.user.findUnique({
+            where: { id },
+            select: { id: true, safariRole: true, username: true },
+        });
+        if (!user) {
+            throw new common_1.NotFoundException('User not found');
+        }
+        if (user.safariRole === client_1.SafariRole.OWNER) {
+            throw new common_1.ForbiddenException('Owner accounts cannot be deleted');
+        }
+        const refs = await this.prisma.$transaction([
+            this.prisma.shift.count({ where: { driverId: id } }),
+            this.prisma.order.count({ where: { driverId: id } }),
+            this.prisma.bankDepositLog.count({
+                where: {
+                    OR: [{ uploadedById: id }, { verifiedByAccountantId: id }],
+                },
+            }),
+            this.prisma.branchExpense.count({ where: { recordedById: id } }),
+            this.prisma.payroll.count({ where: { userId: id } }),
+        ]);
+        const hasReferences = refs.some((n) => n > 0);
+        if (hasReferences) {
+            throw new common_1.ConflictException('Cannot delete this user because financial/operational records reference it. Deactivate the account instead.');
+        }
+        try {
+            await this.prisma.user.delete({ where: { id } });
+        }
+        catch (e) {
+            if (e instanceof client_1.Prisma.PrismaClientKnownRequestError &&
+                e.code === 'P2003') {
+                throw new common_1.ConflictException('Cannot delete this user because related records still exist. Deactivate the account instead.');
+            }
+            throw e;
+        }
         return { id, deleted: true };
     }
 };

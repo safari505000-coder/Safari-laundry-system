@@ -6,6 +6,9 @@ import {
   Body,
   Controller,
   Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   UploadedFile,
@@ -37,6 +40,7 @@ import {
   HandoverResultDto,
 } from './dto/driver-balance.dto';
 import { OwnerCustomerWalletSummaryDto } from './dto/owner-customer-wallet-summary.dto';
+import { UpdateDriverTrackingDto } from './dto/update-driver-tracking.dto';
 import { FinanceService } from './finance.service';
 
 const HANDOVER_RECEIPTS_DIR = join(
@@ -113,6 +117,8 @@ export class FinanceController {
       q.from,
       q.to,
       q.category,
+      q.branchId,
+      q.actorUserId,
     );
   }
 
@@ -187,6 +193,31 @@ export class FinanceController {
   })
   getDriverBalance(): Promise<DriverBalanceResponseDto> {
     return this.financeService.getDriverBalances();
+  }
+
+  @Get('driver-monitoring')
+  @Roles(SafariRole.OWNER, SafariRole.CALL_CENTER, SafariRole.MANAGER)
+  @ApiOperation({
+    summary: `Driver monitoring map feed (${APP_BRAND})`,
+    description:
+      'Active ON_SHIFT drivers with lastKnownLocation marker; falls back to branch location when GPS is unavailable.',
+  })
+  getDriverMonitoring() {
+    return this.financeService.getDriverMonitoring();
+  }
+
+  @Patch('driver-monitoring/:driverId')
+  @Roles(SafariRole.OWNER)
+  @ApiOperation({
+    summary: `Owner test hook — update driver map fields (${APP_BRAND})`,
+    description:
+      'OWNER only. Updates vehicleLabel and lastKnownLocation for map testing before live GPS integration.',
+  })
+  updateDriverTracking(
+    @Param('driverId', ParseUUIDPipe) driverId: string,
+    @Body() dto: UpdateDriverTrackingDto,
+  ) {
+    return this.financeService.updateDriverTracking(driverId, dto);
   }
 
   @Post('handover/confirm')

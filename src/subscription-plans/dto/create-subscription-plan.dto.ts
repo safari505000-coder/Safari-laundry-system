@@ -24,7 +24,7 @@ export class CreateSubscriptionPlanDto {
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 4 })
   @IsPositive()
-  price: number;
+  salePrice: number;
 
   @ApiProperty({
     example: 25,
@@ -33,7 +33,7 @@ export class CreateSubscriptionPlanDto {
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 4 })
   @IsPositive()
-  creditAmount: number;
+  actualBalance: number;
 
   @ApiPropertyOptional({ default: true })
   @IsOptional()

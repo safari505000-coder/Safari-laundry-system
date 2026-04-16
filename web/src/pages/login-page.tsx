@@ -2,14 +2,15 @@ import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { BrandLogo } from '@/components/layout/brand-logo';
 import { LanguageToggle } from '@/components/i18n/language-toggle';
 import { useAuth } from '@/contexts/auth-context';
 import { ApiError } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { RadioTower } from 'lucide-react';
 
 export function LoginPage() {
   const { t } = useTranslation();
@@ -21,6 +22,7 @@ export function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [forgotOpen, setForgotOpen] = useState(false);
 
   if (token && user) {
     const dest = user.safariRole === 'DRIVER' ? '/pos' : from;
@@ -44,7 +46,12 @@ export function LoginPage() {
   }
 
   return (
-    <div className="relative flex min-h-svh flex-col items-center justify-center bg-zinc-950 px-4">
+    <div className="relative flex min-h-svh flex-col items-center justify-center overflow-hidden bg-slate-950 px-4">
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute -start-24 top-10 h-72 w-72 rounded-full bg-cyan-400/20 blur-3xl animate-pulse" />
+        <div className="absolute end-0 top-1/3 h-80 w-80 rounded-full bg-indigo-500/20 blur-3xl animate-pulse" />
+        <div className="absolute bottom-0 start-1/3 h-72 w-72 rounded-full bg-fuchsia-500/15 blur-3xl animate-pulse" />
+      </div>
       <div className="absolute end-4 top-4 z-10 sm:end-6 sm:top-6">
         <LanguageToggle
           variant="outline"
@@ -52,29 +59,19 @@ export function LoginPage() {
         />
       </div>
 
-      <div className="mb-10 flex items-center gap-3 text-white">
-        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-500/15 ring-1 ring-amber-500/40">
-          <RadioTower className="h-7 w-7 text-amber-400" aria-hidden />
-        </div>
-        <div>
-          <p className="text-xs font-medium uppercase tracking-[0.25em] text-zinc-500">
-            {t('login.brand')}
-          </p>
-          <h1 className="text-xl font-bold tracking-tight">
-            {t('login.title')}
-          </h1>
-        </div>
+      <div className="z-10 mb-8 text-white">
+        <BrandLogo />
       </div>
 
-      <Card className="w-full max-w-md border-zinc-200 shadow-xl shadow-black/20">
+      <Card className="z-10 w-full max-w-md border-white/25 bg-white/12 shadow-2xl shadow-black/30 backdrop-blur-xl">
         <CardHeader className="space-y-1">
-          <CardTitle className="text-xl">{t('login.cardTitle')}</CardTitle>
-          <CardDescription>{t('login.cardDescription')}</CardDescription>
+          <CardTitle className="text-xl text-white">{t('login.cardTitle')}</CardTitle>
+          <CardDescription className="text-zinc-200">{t('login.cardDescription')}</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={onSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="username">{t('login.username')}</Label>
+              <Label htmlFor="username" className="text-zinc-100">{t('login.username')}</Label>
               <Input
                 id="username"
                 type="text"
@@ -82,12 +79,12 @@ export function LoginPage() {
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 required
-                className="bg-white"
+                className="border-white/40 bg-white/90"
                 placeholder={t('login.usernamePlaceholder')}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">{t('login.password')}</Label>
+              <Label htmlFor="password" className="text-zinc-100">{t('login.password')}</Label>
               <Input
                 id="password"
                 type="password"
@@ -95,8 +92,17 @@ export function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="bg-white"
+                className="border-white/40 bg-white/90"
               />
+            </div>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                className="text-xs text-cyan-200 underline underline-offset-2"
+                onClick={() => setForgotOpen(true)}
+              >
+                {t('login.forgotPassword')}
+              </button>
             </div>
             <Button
               type="submit"
@@ -109,9 +115,19 @@ export function LoginPage() {
           </form>
         </CardContent>
       </Card>
-      <p className="mt-8 max-w-sm text-center text-xs text-zinc-500">
-        {t('login.footer')}
+      <p className="z-10 mt-8 max-w-sm text-center text-xs text-zinc-300">
+        نظام Safari Omni © 2026 - جميع الحقوق محفوظة لمجموعة مصابغ سفاري السريعة
       </p>
+      <Dialog open={forgotOpen} onOpenChange={setForgotOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t('login.forgotModalTitle')}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {t('login.forgotModalBody')}
+          </p>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

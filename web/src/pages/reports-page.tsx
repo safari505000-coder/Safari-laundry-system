@@ -252,107 +252,129 @@ export function ReportsPage() {
       </div>
 
       {executive ?
-        <div
-          className={cn(
-            'grid gap-3 sm:grid-cols-2 print:grid-cols-2',
-            hideOwnerOnlyExecCards ? '' : 'xl:grid-cols-4',
-          )}
-        >
-          <Card
+        <div className="space-y-3">
+          <div
             className={cn(
-              'overflow-hidden border-emerald-200/80 bg-gradient-to-br from-emerald-50 to-teal-50/90 shadow-sm',
-              'dark:border-emerald-900/50 dark:from-emerald-950/50 dark:to-emerald-950/20',
+              'grid gap-3 sm:grid-cols-2 print:grid-cols-2',
+              hideOwnerOnlyExecCards ? '' : 'xl:grid-cols-4',
             )}
           >
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-sm font-semibold text-emerald-900 dark:text-emerald-100">
-                <TrendingUp className="h-4 w-4 shrink-0" aria-hidden />
-                {t('reports.execGross')}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold tabular-nums text-emerald-950 dark:text-emerald-50">
-                {formatKwdLabel(executive.grossRevenueKd)}
-              </p>
-              <p className="mt-1 text-xs text-emerald-800/80 dark:text-emerald-200/80">
-                {t('reports.execGrossHint')}
-              </p>
+            <Card
+              className={cn(
+                'overflow-hidden border-emerald-200/80 bg-gradient-to-br from-emerald-50 to-teal-50/90 shadow-sm',
+                'dark:border-emerald-900/50 dark:from-emerald-950/50 dark:to-emerald-950/20',
+              )}
+            >
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-sm font-semibold text-emerald-900 dark:text-emerald-100">
+                  <TrendingUp className="h-4 w-4 shrink-0" aria-hidden />
+                  {t('reports.execGross')}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold tabular-nums text-emerald-950 dark:text-emerald-50">
+                  {formatKwdLabel(executive.grossRevenueKd)}
+                </p>
+                <p className="mt-1 text-xs text-emerald-800/80 dark:text-emerald-200/80">
+                  {t('reports.execGrossHint')}
+                </p>
+              </CardContent>
+            </Card>
+            <Card
+              className={cn(
+                'overflow-hidden border-rose-200/80 bg-gradient-to-br from-rose-50 to-red-50/90 shadow-sm',
+                'dark:border-rose-900/50 dark:from-rose-950/50 dark:to-rose-950/20',
+              )}
+            >
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-sm font-semibold text-rose-900 dark:text-rose-100">
+                  <TrendingDown className="h-4 w-4 shrink-0" aria-hidden />
+                  {t('reports.execExpenses')}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold tabular-nums text-rose-950 dark:text-rose-50">
+                  {formatKwdLabel(executive.totalExpensesVariableAndFixedKd)}
+                </p>
+                <p className="mt-1 text-xs text-rose-800/80 dark:text-rose-200/80">
+                  {t('reports.execExpensesHint')}
+                </p>
+              </CardContent>
+            </Card>
+            {!hideOwnerOnlyExecCards ?
+              <>
+                <Card
+                  className={cn(
+                    'overflow-hidden border-sky-200/80 bg-gradient-to-br from-sky-50 to-blue-50/90 shadow-sm',
+                    'dark:border-sky-900/50 dark:from-sky-950/50 dark:to-sky-950/20',
+                  )}
+                >
+                  <CardHeader className="pb-2">
+                    <CardTitle className="flex items-center gap-2 text-sm font-semibold text-sky-900 dark:text-sky-100">
+                      <Users className="h-4 w-4 shrink-0" aria-hidden />
+                      {t('reports.execPayroll')}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-2xl font-bold tabular-nums text-sky-950 dark:text-sky-50">
+                      {formatKwdLabel(executive.payrollPaidKd)}
+                    </p>
+                    <p className="mt-1 text-xs text-sky-800/80 dark:text-sky-200/80">
+                      {t('reports.execPayrollHint')}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card
+                  className={cn(
+                    'overflow-hidden border-amber-300/90 bg-gradient-to-br from-amber-50 via-yellow-50 to-amber-100/90 shadow-md ring-1 ring-amber-200/60',
+                    'dark:border-amber-800/60 dark:from-amber-950/60 dark:via-yellow-950/40 dark:to-amber-950/30',
+                  )}
+                >
+                  <CardHeader className="pb-2">
+                    <CardTitle className="flex items-center gap-2 text-sm font-semibold text-amber-950 dark:text-amber-100">
+                      <Banknote className="h-4 w-4 shrink-0" aria-hidden />
+                      {t('reports.execNet')}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p
+                      className={cn(
+                        'text-2xl font-bold tabular-nums',
+                        Number.parseFloat(executive.netProfitKd) < 0 ?
+                          'text-destructive'
+                        : 'text-amber-950 dark:text-amber-50',
+                      )}
+                    >
+                      {formatKwdLabel(executive.netProfitKd)}
+                    </p>
+                    <p className="mt-1 text-xs text-amber-900/80 dark:text-amber-200/80">
+                      {t('reports.execNetHint')}
+                    </p>
+                  </CardContent>
+                </Card>
+              </>
+            : null}
+          </div>
+          <Card>
+            <CardContent className="pt-6">
+              <dl className="space-y-3 text-sm">
+                <div className="flex items-center justify-between rounded-lg border px-3 py-2">
+                  <dt className="font-medium">إجمالي دعم الاشتراكات</dt>
+                  <dd className="tabular-nums font-semibold">
+                    {formatKwdLabel(executive.subscriptionSubsidyKd)}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between rounded-lg border px-3 py-2">
+                  <dt className="font-medium">
+                    إجمالي دعم الاشتراكات (المكتب الرئيسي - كل الفروع)
+                  </dt>
+                  <dd className="tabular-nums font-semibold">
+                    {formatKwdLabel(executive.enterpriseSubscriptionSubsidyKd)}
+                  </dd>
+                </div>
+              </dl>
             </CardContent>
           </Card>
-          <Card
-            className={cn(
-              'overflow-hidden border-rose-200/80 bg-gradient-to-br from-rose-50 to-red-50/90 shadow-sm',
-              'dark:border-rose-900/50 dark:from-rose-950/50 dark:to-rose-950/20',
-            )}
-          >
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-sm font-semibold text-rose-900 dark:text-rose-100">
-                <TrendingDown className="h-4 w-4 shrink-0" aria-hidden />
-                {t('reports.execExpenses')}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold tabular-nums text-rose-950 dark:text-rose-50">
-                {formatKwdLabel(executive.totalExpensesVariableAndFixedKd)}
-              </p>
-              <p className="mt-1 text-xs text-rose-800/80 dark:text-rose-200/80">
-                {t('reports.execExpensesHint')}
-              </p>
-            </CardContent>
-          </Card>
-          {!hideOwnerOnlyExecCards ?
-            <>
-              <Card
-                className={cn(
-                  'overflow-hidden border-sky-200/80 bg-gradient-to-br from-sky-50 to-blue-50/90 shadow-sm',
-                  'dark:border-sky-900/50 dark:from-sky-950/50 dark:to-sky-950/20',
-                )}
-              >
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-sm font-semibold text-sky-900 dark:text-sky-100">
-                    <Users className="h-4 w-4 shrink-0" aria-hidden />
-                    {t('reports.execPayroll')}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-2xl font-bold tabular-nums text-sky-950 dark:text-sky-50">
-                    {formatKwdLabel(executive.payrollPaidKd)}
-                  </p>
-                  <p className="mt-1 text-xs text-sky-800/80 dark:text-sky-200/80">
-                    {t('reports.execPayrollHint')}
-                  </p>
-                </CardContent>
-              </Card>
-              <Card
-                className={cn(
-                  'overflow-hidden border-amber-300/90 bg-gradient-to-br from-amber-50 via-yellow-50 to-amber-100/90 shadow-md ring-1 ring-amber-200/60',
-                  'dark:border-amber-800/60 dark:from-amber-950/60 dark:via-yellow-950/40 dark:to-amber-950/30',
-                )}
-              >
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-sm font-semibold text-amber-950 dark:text-amber-100">
-                    <Banknote className="h-4 w-4 shrink-0" aria-hidden />
-                    {t('reports.execNet')}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p
-                    className={cn(
-                      'text-2xl font-bold tabular-nums',
-                      Number.parseFloat(executive.netProfitKd) < 0 ?
-                        'text-destructive'
-                      : 'text-amber-950 dark:text-amber-50',
-                    )}
-                  >
-                    {formatKwdLabel(executive.netProfitKd)}
-                  </p>
-                  <p className="mt-1 text-xs text-amber-900/80 dark:text-amber-200/80">
-                    {t('reports.execNetHint')}
-                  </p>
-                </CardContent>
-              </Card>
-            </>
-          : null}
         </div>
       : null}
 

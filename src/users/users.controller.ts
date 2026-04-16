@@ -64,6 +64,7 @@ export class UsersController {
   }
 
   @Delete(':id')
+  @Roles(SafariRole.OWNER)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: `Delete user (${APP_BRAND})` })
   remove(@Param('id', ParseUUIDPipe) id: string) {

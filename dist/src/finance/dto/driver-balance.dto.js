@@ -91,6 +91,7 @@ class HandoverResultDto {
     settledOrderCount;
     systemHandoverTotal;
     shiftId;
+    bankDepositReceiptUrl;
 }
 exports.HandoverResultDto = HandoverResultDto;
 __decorate([
@@ -107,4 +108,10 @@ __decorate([
     (0, swagger_1.ApiProperty)({ format: 'uuid' }),
     __metadata("design:type", String)
 ], HandoverResultDto.prototype, "shiftId", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({
+        description: 'Stored receipt path under /uploads (same as confirm request)',
+    }),
+    __metadata("design:type", String)
+], HandoverResultDto.prototype, "bankDepositReceiptUrl", void 0);
 //# sourceMappingURL=driver-balance.dto.js.map

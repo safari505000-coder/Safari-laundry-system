@@ -19,8 +19,8 @@ let ExpensesService = class ExpensesService {
         this.prisma = prisma;
     }
     assertCanManage(role) {
-        if (role !== client_1.SafariRole.MANAGER && role !== client_1.SafariRole.OWNER) {
-            throw new common_1.ForbiddenException('Only MANAGER or OWNER can record expenses');
+        if (role !== client_1.SafariRole.MANAGER) {
+            throw new common_1.ForbiddenException('Only MANAGER can record expenses');
         }
     }
     async create(userId, safariRole, dto) {
@@ -34,15 +34,18 @@ let ExpensesService = class ExpensesService {
                 title: dto.title.trim(),
                 amount: dto.amount.toFixed(4),
                 category: dto.category,
+                status: client_1.ExpenseStatus.PENDING_ACCOUNTANT,
                 note: dto.note?.trim() || null,
-                receiptImageData: dto.receiptImageData?.trim() || null,
+                receiptUrl: dto.receiptUrl?.trim() || null,
                 recordedById: userId,
                 branchId: u?.branchId ?? null,
             },
         });
     }
-    async listForUser(_userId, safariRole, fromIso, toIso, branchId) {
-        if (safariRole !== client_1.SafariRole.MANAGER && safariRole !== client_1.SafariRole.OWNER) {
+    async listForUser(_userId, safariRole, fromIso, toIso, branchId, status) {
+        if (safariRole !== client_1.SafariRole.MANAGER &&
+            safariRole !== client_1.SafariRole.ACCOUNTANT &&
+            safariRole !== client_1.SafariRole.OWNER) {
             throw new common_1.ForbiddenException();
         }
         const from = new Date(fromIso);
@@ -51,11 +54,49 @@ let ExpensesService = class ExpensesService {
             where: {
                 expenseDate: { gte: from, lte: to },
                 ...(branchId ? { branchId } : {}),
+                ...(status ? { status } : {}),
             },
             orderBy: { expenseDate: 'desc' },
             include: {
                 recordedBy: {
                     select: { id: true, fullName: true, username: true },
+                },
+                branch: {
+                    select: { id: true, name: true },
+                },
+            },
+        });
+    }
+    async listPendingApproval(safariRole) {
+        if (safariRole !== client_1.SafariRole.ACCOUNTANT && safariRole !== client_1.SafariRole.OWNER) {
+            throw new common_1.ForbiddenException();
+        }
+        return this.prisma.branchExpense.findMany({
+            where: { status: client_1.ExpenseStatus.PENDING_ACCOUNTANT },
+            orderBy: { expenseDate: 'desc' },
+            include: {
+                recordedBy: {
+                    select: { id: true, fullName: true, username: true },
+                },
+                branch: {
+                    select: { id: true, name: true },
+                },
+            },
+        });
+    }
+    async updateStatus(id, safariRole, status) {
+        if (safariRole !== client_1.SafariRole.ACCOUNTANT && safariRole !== client_1.SafariRole.OWNER) {
+            throw new common_1.ForbiddenException();
+        }
+        return this.prisma.branchExpense.update({
+            where: { id },
+            data: { status },
+            include: {
+                recordedBy: {
+                    select: { id: true, fullName: true, username: true },
+                },
+                branch: {
+                    select: { id: true, name: true },
                 },
             },
         });
@@ -69,6 +110,7 @@ let ExpensesService = class ExpensesService {
         const agg = await this.prisma.branchExpense.aggregate({
             where: {
                 expenseDate: { gte: from, lte: to },
+                status: client_1.ExpenseStatus.APPROVED,
                 ...this.branchWhere(branchId),
             },
             _sum: { amount: true },
@@ -82,6 +124,7 @@ let ExpensesService = class ExpensesService {
             where: {
                 expenseDate: { gte: from, lte: to },
                 category: { in: categories },
+                status: client_1.ExpenseStatus.APPROVED,
                 ...this.branchWhere(branchId),
             },
             _sum: { amount: true },

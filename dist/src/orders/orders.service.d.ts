@@ -7,6 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AssignDriverDto } from './dto/assign-driver.dto';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CreateOrderQuickDto } from './dto/create-order-quick.dto';
+import { PosCheckoutBundleDto } from './dto/pos-checkout-bundle.dto';
 import { PosCheckoutDto } from './dto/pos-checkout.dto';
 import type { DriverContributionDto } from './dto/manager-dashboard.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
@@ -59,6 +60,11 @@ export type OrderDetail = Prisma.OrderGetPayload<{
 export type PosCheckoutOrderDetail = OrderDetail & {
     paymentLink?: CreatePaymentLinkResult;
 };
+export type PosCheckoutBundleResult = {
+    bundleId: string;
+    orders: OrderDetail[];
+    paymentLink: CreatePaymentLinkResult;
+};
 export declare class OrdersService {
     private readonly prisma;
     private readonly customerLedger;
@@ -70,6 +76,7 @@ export declare class OrdersService {
     private canViewAllOrders;
     private canStaffUpdateOrders;
     private assertDriverUser;
+    private assertPosCheckoutActor;
     private resolvePosCheckoutPaymentMethod;
     private reconcileLineItems;
     private mapPosCheckoutLineItems;
@@ -77,7 +84,15 @@ export declare class OrdersService {
     private resolveQuickOrderCustomerId;
     createQuick(driverUserId: string, dto: CreateOrderQuickDto): Promise<OrderDetail>;
     posCheckout(driverUserId: string, dto: PosCheckoutDto): Promise<PosCheckoutOrderDetail>;
+    posCheckoutBundle(driverUserId: string, dto: PosCheckoutBundleDto): Promise<PosCheckoutBundleResult>;
     createAsManager(dto: CreateOrderDto): Promise<OrderDetail>;
+    listUnpaidOnlinePaymentOrders(): Promise<{
+        orderId: string;
+        customerName: string;
+        customerPhone: string;
+        amountKd: string;
+        paymentUrl: string;
+    }[]>;
     findAllForActor(userId: string, role: string): Promise<OrderDetail[]>;
     findOneForActor(id: string, userId: string, role: string): Promise<OrderDetail>;
     assignDriver(orderId: string, dto: AssignDriverDto): Promise<OrderDetail>;

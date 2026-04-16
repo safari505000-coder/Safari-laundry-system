@@ -10,8 +10,8 @@ export declare class SubscriptionPlansController {
         updatedAt: Date;
         name: string;
         isActive: boolean;
-        price: import("@prisma/client-runtime-utils").Decimal;
-        creditAmount: import("@prisma/client-runtime-utils").Decimal;
+        salePrice: import("@prisma/client-runtime-utils").Decimal;
+        actualBalance: import("@prisma/client-runtime-utils").Decimal;
         validityDays: number;
     }, never, import("@prisma/client/runtime/client").DefaultArgs, import("@prisma/client").Prisma.PrismaClientOptions>;
     findAll(): Promise<{
@@ -20,8 +20,8 @@ export declare class SubscriptionPlansController {
         updatedAt: Date;
         name: string;
         isActive: boolean;
-        price: import("@prisma/client-runtime-utils").Decimal;
-        creditAmount: import("@prisma/client-runtime-utils").Decimal;
+        salePrice: import("@prisma/client-runtime-utils").Decimal;
+        actualBalance: import("@prisma/client-runtime-utils").Decimal;
         validityDays: number;
     }[]>;
     findOne(id: string): Promise<{
@@ -30,8 +30,8 @@ export declare class SubscriptionPlansController {
         updatedAt: Date;
         name: string;
         isActive: boolean;
-        price: import("@prisma/client-runtime-utils").Decimal;
-        creditAmount: import("@prisma/client-runtime-utils").Decimal;
+        salePrice: import("@prisma/client-runtime-utils").Decimal;
+        actualBalance: import("@prisma/client-runtime-utils").Decimal;
         validityDays: number;
     }>;
     update(id: string, dto: UpdateSubscriptionPlanDto): Promise<{
@@ -40,8 +40,8 @@ export declare class SubscriptionPlansController {
         updatedAt: Date;
         name: string;
         isActive: boolean;
-        price: import("@prisma/client-runtime-utils").Decimal;
-        creditAmount: import("@prisma/client-runtime-utils").Decimal;
+        salePrice: import("@prisma/client-runtime-utils").Decimal;
+        actualBalance: import("@prisma/client-runtime-utils").Decimal;
         validityDays: number;
     }>;
     remove(id: string): Promise<{

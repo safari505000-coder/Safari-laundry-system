@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -182,8 +183,48 @@ export class UsersService {
   }
 
   async remove(id: string): Promise<{ id: string; deleted: boolean }> {
-    await this.findOne(id);
-    await this.prisma.user.delete({ where: { id } });
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      select: { id: true, safariRole: true, username: true },
+    });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    if (user.safariRole === SafariRole.OWNER) {
+      throw new ForbiddenException('Owner accounts cannot be deleted');
+    }
+
+    const refs = await this.prisma.$transaction([
+      this.prisma.shift.count({ where: { driverId: id } }),
+      this.prisma.order.count({ where: { driverId: id } }),
+      this.prisma.bankDepositLog.count({
+        where: {
+          OR: [{ uploadedById: id }, { verifiedByAccountantId: id }],
+        },
+      }),
+      this.prisma.branchExpense.count({ where: { recordedById: id } }),
+      this.prisma.payroll.count({ where: { userId: id } }),
+    ]);
+    const hasReferences = refs.some((n) => n > 0);
+    if (hasReferences) {
+      throw new ConflictException(
+        'Cannot delete this user because financial/operational records reference it. Deactivate the account instead.',
+      );
+    }
+
+    try {
+      await this.prisma.user.delete({ where: { id } });
+    } catch (e) {
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P2003'
+      ) {
+        throw new ConflictException(
+          'Cannot delete this user because related records still exist. Deactivate the account instead.',
+        );
+      }
+      throw e;
+    }
     return { id, deleted: true };
   }
 }

@@ -280,6 +280,9 @@ export function DashboardPage() {
 
   const isOwner = hasRole('OWNER') ?? false;
   const canCreateOrder = hasRole('DRIVER', 'MANAGER', 'CALL_CENTER');
+  const showNewInvoiceShortcut =
+    (hasRole('DRIVER', 'MANAGER', 'CALL_CENTER') ?? false) &&
+    !(hasRole('OWNER') ?? false);
   const canOpenFinancials = hasRole(
     'OWNER',
     'MANAGER',
@@ -378,7 +381,7 @@ export function DashboardPage() {
           isOwner ? 'sm:grid-cols-2' : 'sm:grid-cols-3',
         )}
       >
-        {!isOwner ?
+        {showNewInvoiceShortcut ?
           <button
             type="button"
             onClick={() => {

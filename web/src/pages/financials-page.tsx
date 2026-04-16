@@ -5,10 +5,12 @@ import { Navigate } from 'react-router-dom';
 import { Landmark, ReceiptText, Truck, Wallet } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import {
+  type BranchRow,
   type DebtByCategoryReport,
   type DailyPosSalesByPaymentMethodReport,
   type DriverBalanceResponse,
   type OwnerWalletSummary,
+  type TeamUserRow,
   apiJson,
   ApiError,
 } from '@/lib/api';
@@ -28,6 +30,10 @@ export function FinancialsPage() {
   );
   const [debtBreakdown, setDebtBreakdown] = useState<DebtByCategoryReport | null>(null);
   const [debtFilter, setDebtFilter] = useState<'ALL' | 'BRANCH' | 'DRIVER' | 'OWNER' | 'CALL_CENTER'>('ALL');
+  const [branches, setBranches] = useState<BranchRow[]>([]);
+  const [users, setUsers] = useState<TeamUserRow[]>([]);
+  const [debtBranchId, setDebtBranchId] = useState<string>('ALL');
+  const [debtActorUserId, setDebtActorUserId] = useState<string>('ALL');
   const [debtLoading, setDebtLoading] = useState(true);
   const [loading, setLoading] = useState(true);
 
@@ -62,6 +68,15 @@ export function FinancialsPage() {
           );
           if (!c) setWallet(w);
         }
+        const branchRows = await apiJson<BranchRow[]>('/api/branches', { token });
+        const userRows =
+          hasRole('OWNER')
+            ? await apiJson<TeamUserRow[]>('/api/users', { token })
+            : [];
+        if (!c) {
+          setBranches(branchRows);
+          setUsers(userRows);
+        }
       } catch (e) {
         if (!c && e instanceof ApiError) toast.error(e.message);
       } finally {
@@ -89,8 +104,14 @@ export function FinancialsPage() {
         to.setHours(23, 59, 59, 999);
         const catQ =
           debtFilter === 'ALL' ? '' : `&category=${encodeURIComponent(debtFilter)}`;
+        const branchQ =
+          debtBranchId !== 'ALL' ? `&branchId=${encodeURIComponent(debtBranchId)}` : '';
+        const actorQ =
+          debtActorUserId !== 'ALL'
+            ? `&actorUserId=${encodeURIComponent(debtActorUserId)}`
+            : '';
         const debt = await apiJson<DebtByCategoryReport>(
-          `/api/finance/reports/debt-by-category?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}${catQ}`,
+          `/api/finance/reports/debt-by-category?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}${catQ}${branchQ}${actorQ}`,
           { token },
         );
         if (!c) setDebtBreakdown(debt);
@@ -103,7 +124,11 @@ export function FinancialsPage() {
     return () => {
       c = true;
     };
-  }, [token, hasRole, debtFilter]);
+  }, [token, hasRole, debtFilter, debtBranchId, debtActorUserId]);
+
+  const branchUsers = users.filter(
+    (u) => debtBranchId === 'ALL' || u.branchId === debtBranchId,
+  );
 
   if (!hasRole('OWNER', 'MANAGER', 'ACCOUNTANT', 'SUPERVISOR', 'VIEWER')) {
     return <Navigate to="/" replace />;
@@ -249,6 +274,34 @@ export function FinancialsPage() {
               <option value="DRIVER">{t('financials.filterDriver')}</option>
               <option value="OWNER">{t('financials.filterOwner')}</option>
               <option value="CALL_CENTER">{t('financials.filterCallCenter')}</option>
+            </select>
+            <select
+              className="h-9 rounded-md border border-zinc-200 bg-background px-2 text-sm"
+              value={debtBranchId}
+              onChange={(e) => {
+                const next = e.target.value;
+                setDebtBranchId(next);
+                setDebtActorUserId('ALL');
+              }}
+            >
+              <option value="ALL">All branches</option>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+            <select
+              className="h-9 rounded-md border border-zinc-200 bg-background px-2 text-sm"
+              value={debtActorUserId}
+              onChange={(e) => setDebtActorUserId(e.target.value)}
+            >
+              <option value="ALL">All users</option>
+              {branchUsers.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.fullName} (@{u.username})
+                </option>
+              ))}
             </select>
           </CardTitle>
         </CardHeader>

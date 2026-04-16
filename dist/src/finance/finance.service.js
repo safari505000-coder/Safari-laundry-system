@@ -18,6 +18,19 @@ const KUWAIT_OFFSET_MIN = 180;
 function kuwaitNow() {
     return new Date(Date.now() + KUWAIT_OFFSET_MIN * 60_000);
 }
+function parseLatLng(input) {
+    if (!input)
+        return null;
+    const parts = input.split(',').map((x) => Number.parseFloat(x.trim()));
+    if (parts.length !== 2)
+        return null;
+    const [lat, lng] = parts;
+    if (!Number.isFinite(lat) || !Number.isFinite(lng))
+        return null;
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180)
+        return null;
+    return { lat, lng };
+}
 function kuwaitMidnightUtc(nowUtc) {
     const k = new Date(nowUtc.getTime() + KUWAIT_OFFSET_MIN * 60_000);
     const y = k.getUTCFullYear();
@@ -183,19 +196,23 @@ let FinanceService = class FinanceService {
             totalSubscriptionUsage: totalSubscriptionUsage.toFixed(4),
         };
     }
-    async getDebtBreakdownByCategory(fromIso, toIso) {
+    async getDebtBreakdownByCategory(fromIso, toIso, category, branchId, actorUserId) {
         const from = new Date(fromIso);
         const to = new Date(toIso);
         if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
             throw new common_1.BadRequestException('Invalid date range');
         }
+        const where = {
+            createdAt: { gte: from, lte: to },
+            ...(category ? { category } : {}),
+            ...(branchId ? { branchId } : {}),
+            ...(actorUserId ? { actorUserId } : {}),
+        };
         const rows = await this.prisma.debtLedgerEntry.groupBy({
             by: ['category', 'source'],
-            where: {
-                createdAt: { gte: from, lte: to },
-            },
+            where,
             _sum: { amount: true },
-            _count: true,
+            _count: { _all: true },
         });
         return {
             from: from.toISOString(),
@@ -203,7 +220,7 @@ let FinanceService = class FinanceService {
             rows: rows.map((r) => ({
                 category: r.category,
                 source: r.source,
-                entryCount: r._count,
+                entryCount: r._count._all,
                 totalDebt: r._sum.amount?.toString() ?? '0',
             })),
         };
@@ -252,6 +269,77 @@ let FinanceService = class FinanceService {
         }
         return { drivers: rows };
     }
+    async getDriverMonitoring() {
+        const activeDrivers = await this.prisma.user.findMany({
+            where: {
+                safariRole: client_1.SafariRole.DRIVER,
+                shiftsAsDriver: { some: { status: client_1.ShiftStatus.OPEN } },
+            },
+            orderBy: { fullName: 'asc' },
+            select: {
+                id: true,
+                fullName: true,
+                username: true,
+                phone: true,
+                vehicleLabel: true,
+                lastKnownLocation: true,
+                branch: {
+                    select: { id: true, name: true, location: true },
+                },
+            },
+        });
+        return {
+            drivers: activeDrivers.map((d) => {
+                const live = parseLatLng(d.lastKnownLocation);
+                const fallback = parseLatLng(d.branch?.location ?? null);
+                const location = live ?? fallback;
+                return {
+                    driverId: d.id,
+                    fullName: d.fullName,
+                    username: d.username,
+                    phone: d.phone,
+                    vehicleLabel: d.vehicleLabel ?? 'Toyota LC300',
+                    status: 'ON_SHIFT',
+                    source: live ? 'LIVE_GPS' : 'BRANCH_FALLBACK',
+                    lastKnownLocation: live,
+                    markerLocation: location,
+                    branch: d.branch,
+                };
+            }),
+        };
+    }
+    async updateDriverTracking(driverId, dto) {
+        const driver = await this.prisma.user.findUnique({
+            where: { id: driverId },
+            select: { id: true, safariRole: true },
+        });
+        if (!driver || driver.safariRole !== client_1.SafariRole.DRIVER) {
+            throw new common_1.NotFoundException('Driver not found');
+        }
+        if (dto.lastKnownLocation !== undefined &&
+            dto.lastKnownLocation.trim().length > 0 &&
+            !parseLatLng(dto.lastKnownLocation)) {
+            throw new common_1.BadRequestException('lastKnownLocation must be "lat,lng"');
+        }
+        return this.prisma.user.update({
+            where: { id: driverId },
+            data: {
+                ...(dto.vehicleLabel !== undefined
+                    ? { vehicleLabel: dto.vehicleLabel.trim() || null }
+                    : {}),
+                ...(dto.lastKnownLocation !== undefined
+                    ? { lastKnownLocation: dto.lastKnownLocation.trim() || null }
+                    : {}),
+            },
+            select: {
+                id: true,
+                fullName: true,
+                username: true,
+                vehicleLabel: true,
+                lastKnownLocation: true,
+            },
+        });
+    }
     async confirmHandover(managerId, dto) {
         const driver = await this.prisma.user.findUnique({
             where: { id: dto.driverId },
@@ -294,6 +382,7 @@ let FinanceService = class FinanceService {
                                 ? dto.declaredHandoverTotal.toFixed(4)
                                 : null,
                             ordersSettledCount: 0,
+                            bankDepositReceiptUrl: dto.depositReceiptUrl,
                             confirmedByManagerId: managerId,
                             confirmedAt: new Date(),
                         },
@@ -302,6 +391,7 @@ let FinanceService = class FinanceService {
                         settledOrderCount: 0,
                         systemHandoverTotal: '0.0000',
                         shiftId: shift.id,
+                        bankDepositReceiptUrl: dto.depositReceiptUrl,
                     };
                 }
                 throw new common_1.BadRequestException('No cash pending settlement and no open shift to close.');
@@ -316,7 +406,10 @@ let FinanceService = class FinanceService {
                     cashStatus: client_1.CashStatus.PAID_TO_DRIVER,
                     posPaymentMethod: client_1.PosPaymentMethod.CASH,
                 },
-                data: { cashStatus: client_1.CashStatus.HANDED_OVER_TO_OFFICE },
+                data: {
+                    cashStatus: client_1.CashStatus.HANDED_OVER_TO_OFFICE,
+                    handoverShiftId: shift.id,
+                },
             });
             if (updated.count !== pending.length) {
                 throw new common_1.ConflictException('Concurrent handover detected; not all orders could be settled. Retry.');
@@ -331,6 +424,7 @@ let FinanceService = class FinanceService {
                         ? dto.declaredHandoverTotal.toFixed(4)
                         : null,
                     ordersSettledCount: pending.length,
+                    bankDepositReceiptUrl: dto.depositReceiptUrl,
                     confirmedByManagerId: managerId,
                     confirmedAt: new Date(),
                 },
@@ -339,8 +433,62 @@ let FinanceService = class FinanceService {
                 settledOrderCount: pending.length,
                 systemHandoverTotal: (0, finance_money_1.minorToAmountString)(systemMinor),
                 shiftId: shift.id,
+                bankDepositReceiptUrl: dto.depositReceiptUrl,
             };
         });
+    }
+    async getOwnerFinancialCycleReport() {
+        const rows = await this.prisma.order.findMany({
+            where: {
+                posPaymentMethod: client_1.PosPaymentMethod.CASH,
+                handoverShiftId: { not: null },
+            },
+            orderBy: { updatedAt: 'desc' },
+            take: 1000,
+            select: {
+                id: true,
+                totalPrice: true,
+                updatedAt: true,
+                handoverShift: {
+                    select: {
+                        id: true,
+                        confirmedAt: true,
+                        confirmedByManager: {
+                            select: { id: true, fullName: true, username: true },
+                        },
+                        bankDepositLogs: {
+                            orderBy: { createdAt: 'desc' },
+                            take: 1,
+                            select: {
+                                id: true,
+                                receiptImageUrl: true,
+                                verifiedAt: true,
+                                verifiedByAccountant: {
+                                    select: { id: true, fullName: true, username: true },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        });
+        return {
+            rows: rows.map((o) => {
+                const shift = o.handoverShift;
+                const deposit = shift?.bankDepositLogs[0] ?? null;
+                return {
+                    orderId: o.id,
+                    amountKd: o.totalPrice.toString(),
+                    collectedAt: shift?.confirmedAt?.toISOString() ?? null,
+                    collectedByManager: shift?.confirmedByManager ?? null,
+                    depositLogId: deposit?.id ?? null,
+                    receiptImageUrl: deposit?.receiptImageUrl ?? null,
+                    verifiedAt: deposit?.verifiedAt?.toISOString() ?? null,
+                    verifiedByAccountant: deposit?.verifiedByAccountant ?? null,
+                    lastUpdatedAt: o.updatedAt.toISOString(),
+                };
+            }),
+        };
     }
 };
 exports.FinanceService = FinanceService;
