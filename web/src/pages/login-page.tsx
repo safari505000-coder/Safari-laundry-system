@@ -60,7 +60,7 @@ export function LoginPage() {
           <p className="text-xs font-medium uppercase tracking-[0.25em] text-zinc-500">
             {t('login.brand')}
           </p>
-          <h1 className="text-xl font-semibold tracking-tight">
+          <h1 className="text-xl font-bold tracking-tight">
             {t('login.title')}
           </h1>
         </div>
@@ -100,7 +100,8 @@ export function LoginPage() {
             </div>
             <Button
               type="submit"
-              className="w-full bg-zinc-900 text-white hover:bg-zinc-800"
+              size="lg"
+              className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
               disabled={loading}
             >
               {loading ? t('login.signingIn') : t('login.continue')}

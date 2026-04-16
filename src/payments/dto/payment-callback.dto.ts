@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, MinLength } from 'class-validator';
+import { IsBoolean, IsOptional, IsString, MinLength } from 'class-validator';
 
 /** Normalized gateway callback — align field names with Kuwait Gateway when integrating. */
 export class PaymentCallbackDto {
@@ -30,4 +30,10 @@ export class PaymentCallbackDto {
   @IsOptional()
   @IsString()
   gatewayReference?: string;
+
+  /** Dev only: when PAYMENTS_MOCK (or no gateway base URL), skip HMAC verification. */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  devMock?: boolean;
 }

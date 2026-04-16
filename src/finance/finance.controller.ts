@@ -1,6 +1,28 @@
-import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { existsSync, mkdirSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { extname, join } from 'node:path';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Post,
+  Query,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { SafariRole } from '@prisma/client';
+import { diskStorage } from 'multer';
+import type { Express } from 'express';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { JwtUser } from '../auth/decorators/current-user.decorator';
@@ -8,6 +30,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { APP_BRAND } from '../common/constants/branding';
 import { ConfirmHandoverDto } from './dto/confirm-handover.dto';
+import { DebtByCategoryQueryDto } from './dto/debt-by-category-query.dto';
 import { DailyPosSalesQueryDto } from './dto/daily-pos-sales-query.dto';
 import {
   DriverBalanceResponseDto,
@@ -15,6 +38,17 @@ import {
 } from './dto/driver-balance.dto';
 import { OwnerCustomerWalletSummaryDto } from './dto/owner-customer-wallet-summary.dto';
 import { FinanceService } from './finance.service';
+
+const HANDOVER_RECEIPTS_DIR = join(
+  process.cwd(),
+  'uploads',
+  'handover-receipts',
+);
+const HANDOVER_RECEIPT_MIMES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+]);
 
 @ApiTags('finance')
 @ApiBearerAuth('bearer')
@@ -74,14 +108,74 @@ export class FinanceController {
     description:
       'Debt totals grouped by category (BRANCH, DRIVER, OWNER, CALL_CENTER) and source (SUBSCRIPTION_OVERUSE, INVOICE_SHORTFALL).',
   })
-  getDebtByCategory(@Query() q: DailyPosSalesQueryDto) {
-    return this.financeService.getDebtBreakdownByCategory(q.from, q.to);
+  getDebtByCategory(@Query() q: DebtByCategoryQueryDto) {
+    return this.financeService.getDebtBreakdownByCategory(
+      q.from,
+      q.to,
+      q.category,
+    );
+  }
+
+  @Post('handover/upload-receipt')
+  @Roles(SafariRole.MANAGER)
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['file'],
+      properties: {
+        file: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @ApiOperation({
+    summary: `Upload bank deposit receipt image (${APP_BRAND})`,
+    description:
+      'JPEG, PNG, or WebP, max ~6MB. Returns depositReceiptUrl for POST /finance/handover/confirm.',
+  })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: (_req, _file, cb) => {
+          if (!existsSync(HANDOVER_RECEIPTS_DIR)) {
+            mkdirSync(HANDOVER_RECEIPTS_DIR, { recursive: true });
+          }
+          cb(null, HANDOVER_RECEIPTS_DIR);
+        },
+        filename: (_req, file, cb) => {
+          const ext = extname(file.originalname).toLowerCase() || '.jpg';
+          cb(null, `${randomUUID()}${ext}`);
+        },
+      }),
+      limits: { fileSize: 6 * 1024 * 1024 },
+      fileFilter: (_req, file, cb) => {
+        if (HANDOVER_RECEIPT_MIMES.has(file.mimetype)) {
+          cb(null, true);
+        } else {
+          cb(
+            new BadRequestException(
+              'Only JPEG, PNG, or WebP images are allowed',
+            ),
+            false,
+          );
+        }
+      },
+    }),
+  )
+  uploadHandoverReceipt(@UploadedFile() file: Express.Multer.File) {
+    if (!file?.filename) {
+      throw new BadRequestException('Receipt image is required');
+    }
+    return {
+      depositReceiptUrl: `/uploads/handover-receipts/${file.filename}`,
+    };
   }
 
   @Get('driver-balance')
   @Roles(
     SafariRole.OWNER,
     SafariRole.MANAGER,
+    SafariRole.CALL_CENTER,
     SafariRole.ACCOUNTANT,
     SafariRole.SUPERVISOR,
     SafariRole.VIEWER,
@@ -96,7 +190,7 @@ export class FinanceController {
   }
 
   @Post('handover/confirm')
-  @Roles(SafariRole.OWNER, SafariRole.MANAGER, SafariRole.SUPERVISOR)
+  @Roles(SafariRole.MANAGER)
   @ApiOperation({
     summary: `Confirm cash handover (${APP_BRAND})`,
     description:
@@ -107,5 +201,16 @@ export class FinanceController {
     @CurrentUser() user: JwtUser,
   ): Promise<HandoverResultDto> {
     return this.financeService.confirmHandover(user.userId, dto);
+  }
+
+  @Get('reports/financial-cycle')
+  @Roles(SafariRole.OWNER)
+  @ApiOperation({
+    summary: `Owner financial cycle report (${APP_BRAND})`,
+    description:
+      'Read-only lifecycle: CASH order → collected by manager (handover) → verified by accountant (deposit verification).',
+  })
+  getFinancialCycleReport() {
+    return this.financeService.getOwnerFinancialCycleReport();
   }
 }

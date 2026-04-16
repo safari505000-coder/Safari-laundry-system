@@ -6,7 +6,7 @@ export function BrandLogo({ className }: BrandLogoProps) {
   return (
     <img
       src="/logo.png"
-      alt="Safari Fast"
+      alt="Safari Omni"
       height={44}
       width={176}
       decoding="async"

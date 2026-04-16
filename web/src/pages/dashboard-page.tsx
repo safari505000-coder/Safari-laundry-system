@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   Landmark,
   ReceiptText,
@@ -14,9 +14,11 @@ import { useAuth } from '@/contexts/auth-context';
 import {
   type DailyPosSalesByPaymentMethodReport,
   type DriverBalanceResponse,
+  type BankDepositsListResponse,
   type OwnerWalletSummary,
   apiJson,
   ApiError,
+  getBankDeposits,
   getOperatingStatus,
 } from '@/lib/api';
 import { useAppLocale } from '@/hooks/use-app-locale';
@@ -107,6 +109,8 @@ export function DashboardPage() {
   const [selectedBreakdownDate, setSelectedBreakdownDate] = useState<string | null>(null);
   const [paySplitLoading, setPaySplitLoading] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [ownerBankDeposits, setOwnerBankDeposits] =
+    useState<BankDepositsListResponse | null>(null);
 
   const effectiveBreakdownDate = selectedBreakdownDate ?? financialDateIso;
 
@@ -231,6 +235,31 @@ export function DashboardPage() {
     };
   }, [token, financialDateIso, selectedBreakdownDate]);
 
+  useEffect(() => {
+    if (!token || !hasRole('OWNER')) return;
+    let cancelled = false;
+    const empty: BankDepositsListResponse = {
+      from: '',
+      to: '',
+      entries: [],
+    };
+    const loadDeposits = () => {
+      void getBankDeposits(token, { take: 8 })
+        .then((d) => {
+          if (!cancelled) setOwnerBankDeposits(d);
+        })
+        .catch(() => {
+          if (!cancelled) setOwnerBankDeposits(empty);
+        });
+    };
+    loadDeposits();
+    const interval = window.setInterval(loadDeposits, 15_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [token, hasRole]);
+
   const totalCashWithDrivers =
     drivers?.drivers.length ?
       sumKwdStrings(drivers.drivers.map((d) => d.heldCashTotal))
@@ -245,8 +274,9 @@ export function DashboardPage() {
     : [];
 
   const ownerMetricsGrid =
-    'grid gap-4 sm:grid-cols-2 xl:grid-cols-5';
-  const managerMetricsGrid = 'grid gap-4 sm:grid-cols-2';
+    'grid gap-4 sm:grid-cols-2 xl:grid-cols-3';
+  const managerMetricsGrid =
+    'grid gap-4 sm:grid-cols-2 lg:grid-cols-3';
 
   const isOwner = hasRole('OWNER') ?? false;
   const canCreateOrder = hasRole('DRIVER', 'MANAGER', 'CALL_CENTER');
@@ -269,7 +299,7 @@ export function DashboardPage() {
     );
   }, [orders]);
 
-  const digitalRevenue = useMemo(() => {
+  const knetRevenue = useMemo(() => {
     const totals = new Map<DashboardPayKey, number>();
     for (const row of paySplit?.rows ?? []) {
       const key = normalizePayMethod(row.posPaymentMethod);
@@ -278,7 +308,19 @@ export function DashboardPage() {
       if (!Number.isFinite(v)) continue;
       totals.set(key, (totals.get(key) ?? 0) + v);
     }
-    return formatKwdLabel(((totals.get('KNET') ?? 0) + (totals.get('ONLINE') ?? 0)).toFixed(4));
+    return formatKwdLabel((totals.get('KNET') ?? 0).toFixed(4));
+  }, [paySplit]);
+
+  const onlineRevenue = useMemo(() => {
+    const totals = new Map<DashboardPayKey, number>();
+    for (const row of paySplit?.rows ?? []) {
+      const key = normalizePayMethod(row.posPaymentMethod);
+      if (!key) continue;
+      const v = Number.parseFloat(row.totalRevenue);
+      if (!Number.isFinite(v)) continue;
+      totals.set(key, (totals.get(key) ?? 0) + v);
+    }
+    return formatKwdLabel((totals.get('ONLINE') ?? 0).toFixed(4));
   }, [paySplit]);
 
   const paymentBreakdownRows = useMemo(() => {
@@ -421,9 +463,11 @@ export function DashboardPage() {
             }
           >
             {loading ?
-              (hasRole('OWNER') ? [0, 1, 2, 3] : [0, 1]).map((i) => (
-                <Skeleton key={i} className="h-32 rounded-xl" />
-              ))
+              (hasRole('OWNER') ? [0, 1, 2, 3, 4, 5] : [0, 1, 2]).map(
+                (i) => (
+                  <Skeleton key={i} className="h-32 rounded-xl" />
+                ),
+              )
             : <>
                 <MetricCard
                   title={t('dashboard.cashTitle')}
@@ -434,9 +478,15 @@ export function DashboardPage() {
                   footer={t('dashboard.cashFooter')}
                 />
                 <MetricCard
-                  title={t('dashboard.digitalTitle')}
-                  subtitle={t('dashboard.digitalSubtitle')}
-                  value={digitalRevenue}
+                  title={t('dashboard.knetTitle')}
+                  subtitle={t('dashboard.knetSubtitle')}
+                  value={knetRevenue}
+                  icon={<Landmark className="h-4 w-4" />}
+                />
+                <MetricCard
+                  title={t('dashboard.onlineTitle')}
+                  subtitle={t('dashboard.onlineSubtitle')}
+                  value={onlineRevenue}
                   icon={<Landmark className="h-4 w-4" />}
                 />
                 {hasRole('OWNER') && wallet ?
@@ -496,6 +546,84 @@ export function DashboardPage() {
           </Card>
         : null}
       </section>
+
+      {hasRole('OWNER') && ownerBankDeposits ?
+        <section>
+          <Card className="rounded-[20px] border-border bg-card shadow-sm">
+            <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
+              <CardTitle className="text-base">
+                {t('dashboard.bankDepositsLogTitle')}
+              </CardTitle>
+              <Link
+                to="/bank-deposits"
+                className="text-sm font-medium text-primary hover:underline"
+              >
+                {t('dashboard.bankDepositsViewAll')}
+              </Link>
+            </CardHeader>
+            <CardContent className="overflow-x-auto p-0 sm:p-6 pt-0">
+              {ownerBankDeposits.entries.length === 0 ?
+                <p className="px-6 pb-6 text-sm text-muted-foreground sm:px-0">
+                  {t('dashboard.bankDepositsEmpty')}
+                </p>
+              : <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[100px]">
+                        {t('dashboard.bankDepositsColDate')}
+                      </TableHead>
+                      <TableHead className="text-end">
+                        {t('dashboard.bankDepositsColAmount')}
+                      </TableHead>
+                      <TableHead>{t('dashboard.bankDepositsColType')}</TableHead>
+                      <TableHead>{t('dashboard.bankDepositsColReceipt')}</TableHead>
+                      <TableHead>{t('dashboard.bankDepositsColVerified')}</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {ownerBankDeposits.entries.map((row) => (
+                      <TableRow key={row.id}>
+                        <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                          {new Date(row.createdAt).toLocaleString(dateLocale, {
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </TableCell>
+                        <TableCell className="text-end tabular-nums text-sm">
+                          {formatKwdLabel(row.amountKd)}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {row.depositType === 'CASH_DEPOSIT_SLIP' ?
+                            t('bankDeposits.typeCashSlip')
+                          : t('bankDeposits.typeKnetZ')}
+                        </TableCell>
+                        <TableCell>
+                          <a
+                            href={row.receiptImageUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-primary hover:underline"
+                          >
+                            {t('bankDeposits.openReceipt')}
+                          </a>
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {row.verifiedByAccountant ?
+                            <span className="text-emerald-700 dark:text-emerald-400">
+                              {t('bankDeposits.yes')} — {row.verifiedByAccountant.fullName}
+                            </span>
+                          : <span className="text-muted-foreground">{t('bankDeposits.no')}</span>}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>}
+            </CardContent>
+          </Card>
+        </section>
+      : null}
 
       <section>
         <Card className="rounded-[20px] border-border bg-card shadow-sm">

@@ -36,6 +36,9 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException('Invalid username or password');
     }
+    if ((user as { isActive?: boolean }).isActive === false) {
+      throw new UnauthorizedException('This account is deactivated');
+    }
     const ok = await bcrypt.compare(dto.password, user.password);
     if (!ok) {
       throw new UnauthorizedException('Invalid username or password');

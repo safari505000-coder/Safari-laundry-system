@@ -23,7 +23,7 @@ export class ExpensesController {
   constructor(private readonly expensesService: ExpensesService) {}
 
   @Post()
-  @Roles(SafariRole.MANAGER, SafariRole.OWNER)
+  @Roles(SafariRole.MANAGER)
   @ApiOperation({
     summary: `Record branch expense (${APP_BRAND})`,
     description:
@@ -38,7 +38,7 @@ export class ExpensesController {
   }
 
   @Get()
-  @Roles(SafariRole.MANAGER, SafariRole.OWNER)
+  @Roles(SafariRole.MANAGER, SafariRole.ACCOUNTANT, SafariRole.OWNER)
   @ApiOperation({
     summary: `List expenses in date range (${APP_BRAND})`,
   })

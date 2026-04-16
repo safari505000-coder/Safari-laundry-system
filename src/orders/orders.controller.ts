@@ -82,6 +82,18 @@ export class OrdersController {
     return this.ordersService.findAllForActor(user.userId, user.role);
   }
 
+  @Get('collections/unpaid-online')
+  @UseGuards(RolesGuard)
+  @Roles(SafariRole.CALL_CENTER, SafariRole.MANAGER, SafariRole.OWNER)
+  @ApiOperation({
+    summary: `Collections — unpaid online payment orders (${APP_BRAND})`,
+    description:
+      'PENDING orders with ONLINE payment method, UNPAID cash status, and a stored hosted payment URL. For call-center WhatsApp follow-up.',
+  })
+  listCollectionsUnpaidOnline() {
+    return this.ordersService.listUnpaidOnlinePaymentOrders();
+  }
+
   @Get(':id')
   @ApiOperation({
     summary: `Get order by id (${APP_BRAND})`,

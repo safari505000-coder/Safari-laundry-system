@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { SafariRole } from '@prisma/client';
 import {
+  IsBoolean,
   IsEnum,
   IsOptional,
   IsString,
@@ -54,4 +55,12 @@ export class CreateUserDto {
   @IsOptional()
   @IsUUID('4')
   branchId?: string;
+
+  @ApiPropertyOptional({
+    default: true,
+    description: 'Inactive users are blocked from login immediately.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
 }

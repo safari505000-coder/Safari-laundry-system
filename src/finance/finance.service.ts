@@ -11,6 +11,7 @@ import {
   LedgerTransactionType,
   OrderStatus,
   PosPaymentMethod,
+  Prisma,
   SafariRole,
   ShiftStatus,
 } from '@prisma/client';
@@ -223,19 +224,25 @@ export class FinanceService {
     };
   }
 
-  async getDebtBreakdownByCategory(fromIso: string, toIso: string) {
+  async getDebtBreakdownByCategory(
+    fromIso: string,
+    toIso: string,
+    category?: DebtEntityCategory,
+  ) {
     const from = new Date(fromIso);
     const to = new Date(toIso);
     if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
       throw new BadRequestException('Invalid date range');
     }
+    const where: Prisma.DebtLedgerEntryWhereInput = {
+      createdAt: { gte: from, lte: to },
+      ...(category ? { category } : {}),
+    };
     const rows = await this.prisma.debtLedgerEntry.groupBy({
       by: ['category', 'source'],
-      where: {
-        createdAt: { gte: from, lte: to },
-      },
+      where,
       _sum: { amount: true },
-      _count: true,
+      _count: { _all: true },
     });
     return {
       from: from.toISOString(),
@@ -243,7 +250,7 @@ export class FinanceService {
       rows: rows.map((r) => ({
         category: r.category,
         source: r.source,
-        entryCount: r._count,
+        entryCount: r._count._all,
         totalDebt: r._sum.amount?.toString() ?? '0',
       })),
     };
@@ -344,6 +351,7 @@ export class FinanceService {
                   ? dto.declaredHandoverTotal.toFixed(4)
                   : null,
               ordersSettledCount: 0,
+              bankDepositReceiptUrl: dto.depositReceiptUrl,
               confirmedByManagerId: managerId,
               confirmedAt: new Date(),
             },
@@ -352,6 +360,7 @@ export class FinanceService {
             settledOrderCount: 0,
             systemHandoverTotal: '0.0000',
             shiftId: shift.id,
+            bankDepositReceiptUrl: dto.depositReceiptUrl,
           };
         }
         throw new BadRequestException(
@@ -370,7 +379,10 @@ export class FinanceService {
           cashStatus: CashStatus.PAID_TO_DRIVER,
           posPaymentMethod: PosPaymentMethod.CASH,
         },
-        data: { cashStatus: CashStatus.HANDED_OVER_TO_OFFICE },
+        data: {
+          cashStatus: CashStatus.HANDED_OVER_TO_OFFICE,
+          handoverShiftId: shift.id,
+        },
       });
       if (updated.count !== pending.length) {
         throw new ConflictException(
@@ -388,6 +400,7 @@ export class FinanceService {
               ? dto.declaredHandoverTotal.toFixed(4)
               : null,
           ordersSettledCount: pending.length,
+          bankDepositReceiptUrl: dto.depositReceiptUrl,
           confirmedByManagerId: managerId,
           confirmedAt: new Date(),
         },
@@ -396,7 +409,66 @@ export class FinanceService {
         settledOrderCount: pending.length,
         systemHandoverTotal: minorToAmountString(systemMinor),
         shiftId: shift.id,
+        bankDepositReceiptUrl: dto.depositReceiptUrl,
       };
     });
+  }
+
+  /**
+   * OWNER: trace each CASH order through manager collection and accountant verification.
+   */
+  async getOwnerFinancialCycleReport() {
+    const rows = await this.prisma.order.findMany({
+      where: {
+        posPaymentMethod: PosPaymentMethod.CASH,
+        handoverShiftId: { not: null },
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 1000,
+      select: {
+        id: true,
+        totalPrice: true,
+        updatedAt: true,
+        handoverShift: {
+          select: {
+            id: true,
+            confirmedAt: true,
+            confirmedByManager: {
+              select: { id: true, fullName: true, username: true },
+            },
+            bankDepositLogs: {
+              orderBy: { createdAt: 'desc' },
+              take: 1,
+              select: {
+                id: true,
+                receiptImageUrl: true,
+                verifiedAt: true,
+                verifiedByAccountant: {
+                  select: { id: true, fullName: true, username: true },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return {
+      rows: rows.map((o) => {
+        const shift = o.handoverShift;
+        const deposit = shift?.bankDepositLogs[0] ?? null;
+        return {
+          orderId: o.id,
+          amountKd: o.totalPrice.toString(),
+          collectedAt: shift?.confirmedAt?.toISOString() ?? null,
+          collectedByManager: shift?.confirmedByManager ?? null,
+          depositLogId: deposit?.id ?? null,
+          receiptImageUrl: deposit?.receiptImageUrl ?? null,
+          verifiedAt: deposit?.verifiedAt?.toISOString() ?? null,
+          verifiedByAccountant: deposit?.verifiedByAccountant ?? null,
+          lastUpdatedAt: o.updatedAt.toISOString(),
+        };
+      }),
+    };
   }
 }

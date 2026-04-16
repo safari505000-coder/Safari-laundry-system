@@ -28,6 +28,7 @@ export function FinancialsPage() {
   );
   const [debtBreakdown, setDebtBreakdown] = useState<DebtByCategoryReport | null>(null);
   const [debtFilter, setDebtFilter] = useState<'ALL' | 'BRANCH' | 'DRIVER' | 'OWNER' | 'CALL_CENTER'>('ALL');
+  const [debtLoading, setDebtLoading] = useState(true);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -54,11 +55,6 @@ export function FinancialsPage() {
           { token },
         );
         if (!c) setDailySplit(split);
-        const debt = await apiJson<DebtByCategoryReport>(
-          `/api/finance/reports/debt-by-category?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`,
-          { token },
-        );
-        if (!c) setDebtBreakdown(debt);
         if (hasRole('OWNER')) {
           const w = await apiJson<OwnerWalletSummary>(
             '/api/finance/owner/customer-wallet-summary',
@@ -77,6 +73,38 @@ export function FinancialsPage() {
     };
   }, [token, hasRole]);
 
+  useEffect(() => {
+    if (
+      !token ||
+      !hasRole('OWNER', 'MANAGER', 'ACCOUNTANT', 'SUPERVISOR', 'VIEWER')
+    )
+      return;
+    let c = false;
+    (async () => {
+      setDebtLoading(true);
+      try {
+        const from = new Date();
+        from.setHours(0, 0, 0, 0);
+        const to = new Date();
+        to.setHours(23, 59, 59, 999);
+        const catQ =
+          debtFilter === 'ALL' ? '' : `&category=${encodeURIComponent(debtFilter)}`;
+        const debt = await apiJson<DebtByCategoryReport>(
+          `/api/finance/reports/debt-by-category?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}${catQ}`,
+          { token },
+        );
+        if (!c) setDebtBreakdown(debt);
+      } catch (e) {
+        if (!c && e instanceof ApiError) toast.error(e.message);
+      } finally {
+        if (!c) setDebtLoading(false);
+      }
+    })();
+    return () => {
+      c = true;
+    };
+  }, [token, hasRole, debtFilter]);
+
   if (!hasRole('OWNER', 'MANAGER', 'ACCOUNTANT', 'SUPERVISOR', 'VIEWER')) {
     return <Navigate to="/" replace />;
   }
@@ -89,18 +117,24 @@ export function FinancialsPage() {
     dailySplit?.rows.find((r) => r.posPaymentMethod === 'KNET')?.totalRevenue ??
     '0.0000';
   const onlineTotal =
-    dailySplit?.rows.find(
-      (r) => r.posPaymentMethod === 'ONLINE' || r.posPaymentMethod === 'PAYMENT_LINK',
-    )?.totalRevenue ??
-    '0.0000';
-  const debtRows =
-    debtBreakdown?.rows.filter((r) => debtFilter === 'ALL' || r.category === debtFilter) ?? [];
+    dailySplit?.rows.length ?
+      sumKwdStrings(
+        dailySplit.rows
+          .filter(
+            (r) =>
+              r.posPaymentMethod === 'ONLINE' ||
+              r.posPaymentMethod === 'PAYMENT_LINK',
+          )
+          .map((r) => r.totalRevenue),
+      )
+    : '0.0000';
+  const debtRows = debtBreakdown?.rows ?? [];
   const debtOnAccountTotal =
     dailySplit?.rows.find((r) => r.posPaymentMethod === 'DEBT_ON_ACCOUNT')
       ?.totalRevenue ?? '0.0000';
 
   const ownerGrid = 'grid gap-4 sm:grid-cols-2 xl:grid-cols-3';
-  const managerGrid = 'grid gap-4 sm:grid-cols-2';
+  const managerGrid = 'grid gap-4 sm:grid-cols-2 lg:grid-cols-3';
 
   return (
     <div className="space-y-8">
@@ -113,7 +147,7 @@ export function FinancialsPage() {
 
       {loading ?
         <div className={hasRole('OWNER') ? ownerGrid : managerGrid}>
-          {(hasRole('OWNER') ? [0, 1, 2, 3, 4, 5] : [0, 1]).map((i) => (
+          {(hasRole('OWNER') ? [0, 1, 2, 3, 4, 5] : [0, 1, 2]).map((i) => (
             <Skeleton key={i} className="h-36 rounded-xl" />
           ))}
         </div>
@@ -192,8 +226,15 @@ export function FinancialsPage() {
 
       <Card className="border-zinc-200 bg-white">
         <CardHeader>
-          <CardTitle className="flex items-center justify-between gap-2">
-            <span>{t('financials.debtReportTitle')}</span>
+          <CardTitle className="flex flex-wrap items-center justify-between gap-2">
+            <span className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-2">
+              <span>{t('financials.debtReportTitle')}</span>
+              <span className="text-xs font-normal tabular-nums text-muted-foreground">
+                {debtLoading ?
+                  '…'
+                : t('financials.debtRecordCount', { count: debtRows.length })}
+              </span>
+            </span>
             <select
               className="h-9 rounded-md border border-zinc-200 bg-background px-2 text-sm"
               value={debtFilter}
@@ -223,21 +264,27 @@ export function FinancialsPage() {
                 </tr>
               </thead>
               <tbody>
-                {debtRows.map((r, idx) => (
-                  <tr key={`${r.category}-${r.source}-${idx}`} className="border-b border-border/60">
-                    <td className="py-2 pe-2">{r.category}</td>
-                    <td className="py-2 pe-2">{r.source}</td>
-                    <td className="py-2 pe-2 text-end tabular-nums">{r.entryCount}</td>
-                    <td className="py-2 text-end tabular-nums font-semibold">{formatKwdLabel(r.totalDebt)}</td>
+                {debtLoading ?
+                  <tr>
+                    <td colSpan={4} className="py-6 text-center text-muted-foreground">
+                      …
+                    </td>
                   </tr>
-                ))}
-                {debtRows.length === 0 ? (
+                : debtRows.map((r, idx) => (
+                    <tr key={`${r.category}-${r.source}-${idx}`} className="border-b border-border/60">
+                      <td className="py-2 pe-2">{r.category}</td>
+                      <td className="py-2 pe-2">{r.source}</td>
+                      <td className="py-2 pe-2 text-end tabular-nums">{r.entryCount}</td>
+                      <td className="py-2 text-end tabular-nums font-semibold">{formatKwdLabel(r.totalDebt)}</td>
+                    </tr>
+                  ))}
+                {!debtLoading && debtRows.length === 0 ?
                   <tr>
                     <td colSpan={4} className="py-3 text-center text-muted-foreground">
                       {t('financials.noDebtRows')}
                     </td>
                   </tr>
-                ) : null}
+                : null}
               </tbody>
             </table>
           </div>

@@ -28,6 +28,7 @@ import { UsersModule } from './users/users.module';
 import { WalletsModule } from './wallets/wallets.module';
 
 const webDistPath = join(process.cwd(), 'web', 'dist');
+const uploadsPath = join(process.cwd(), 'uploads');
 const spaStaticModule = existsSync(webDistPath)
   ? [
       ServeStaticModule.forRoot({
@@ -60,6 +61,11 @@ const spaStaticModule = existsSync(webDistPath)
     LaundryPriceListModule,
     PosModule,
     CustomersModule,
+    ServeStaticModule.forRoot({
+      rootPath: uploadsPath,
+      serveRoot: '/uploads',
+      serveStaticOptions: { index: false, fallthrough: true },
+    }),
     ...spaStaticModule,
   ],
   controllers: [AppController],

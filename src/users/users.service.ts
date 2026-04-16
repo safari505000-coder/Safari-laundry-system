@@ -14,6 +14,8 @@ const userPublicSelect = {
   id: true,
   username: true,
   fullName: true,
+  // Added via migration.
+  isActive: true,
   employeeId: true,
   jobTitle: true,
   phone: true,
@@ -24,11 +26,9 @@ const userPublicSelect = {
   updatedAt: true,
   role: { select: { id: true, name: true } },
   branch: { select: { id: true, name: true, location: true } },
-} satisfies Prisma.UserSelect;
+};
 
-export type UserPublic = Prisma.UserGetPayload<{
-  select: typeof userPublicSelect;
-}>;
+export type UserPublic = Prisma.UserGetPayload<{ select: Prisma.UserSelect }>;
 
 @Injectable()
 export class UsersService {
@@ -78,11 +78,14 @@ export class UsersService {
           fullName,
           password: passwordHash,
           safariRole: dto.safariRole,
+          ...(dto.isActive !== undefined
+            ? ({ isActive: dto.isActive } as Record<string, unknown>)
+            : {}),
           roleId,
           branchId: dto.branchId,
           phone: dto.phone,
         },
-        select: userPublicSelect,
+        select: userPublicSelect as Prisma.UserSelect,
       });
     } catch (e) {
       if (
@@ -97,7 +100,7 @@ export class UsersService {
 
   async findAll(): Promise<UserPublic[]> {
     return this.prisma.user.findMany({
-      select: userPublicSelect,
+      select: userPublicSelect as Prisma.UserSelect,
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -105,7 +108,7 @@ export class UsersService {
   async findOne(id: string): Promise<UserPublic> {
     const user = await this.prisma.user.findUnique({
       where: { id },
-      select: userPublicSelect,
+      select: userPublicSelect as Prisma.UserSelect,
     });
     if (!user) {
       throw new NotFoundException('User not found');
@@ -141,6 +144,9 @@ export class UsersService {
     if (dto.fullName !== undefined) data.fullName = dto.fullName.trim();
     if (dto.username !== undefined) data.username = dto.username.trim();
     if (dto.phone !== undefined) data.phone = dto.phone;
+    if (dto.isActive !== undefined) {
+      (data as unknown as Record<string, unknown>).isActive = dto.isActive;
+    }
     if (dto.safariRole !== undefined) {
       const roleId = await this.resolveRoleId(dto.safariRole);
       data.safariRole = dto.safariRole;
@@ -162,7 +168,7 @@ export class UsersService {
       return await this.prisma.user.update({
         where: { id },
         data,
-        select: userPublicSelect,
+        select: userPublicSelect as Prisma.UserSelect,
       });
     } catch (e) {
       if (

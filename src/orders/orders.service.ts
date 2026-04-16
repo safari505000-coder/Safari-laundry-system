@@ -21,6 +21,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AssignDriverDto } from './dto/assign-driver.dto';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CreateOrderQuickDto } from './dto/create-order-quick.dto';
+import { PosCheckoutBundleDto } from './dto/pos-checkout-bundle.dto';
 import { PosCheckoutDto } from './dto/pos-checkout.dto';
 import type { DriverContributionDto } from './dto/manager-dashboard.dto';
 import type { OrderLineItemDto } from './dto/order-line-item.dto';
@@ -79,6 +80,13 @@ export type OrderDetail = Prisma.OrderGetPayload<{
 /** POS checkout may attach a hosted payment URL when using ONLINE. */
 export type PosCheckoutOrderDetail = OrderDetail & {
   paymentLink?: CreatePaymentLinkResult;
+};
+
+/** Multi-invoice POS: one gateway session for several orders. */
+export type PosCheckoutBundleResult = {
+  bundleId: string;
+  orders: OrderDetail[];
+  paymentLink: CreatePaymentLinkResult;
 };
 
 const terminalStatuses: OrderStatus[] = [
@@ -141,6 +149,20 @@ export class OrdersService {
     if (!u || u.safariRole !== SafariRole.DRIVER) {
       throw new ForbiddenException(
         'The assigned user must have the DRIVER role',
+      );
+    }
+  }
+
+  /** POS checkout actor: driver (field) or manager (in-store). */
+  private async assertPosCheckoutActor(id: string): Promise<void> {
+    const u = await this.prisma.user.findUnique({ where: { id } });
+    if (
+      !u ||
+      (u.safariRole !== SafariRole.DRIVER &&
+        u.safariRole !== SafariRole.MANAGER)
+    ) {
+      throw new ForbiddenException(
+        'POS checkout is only available to drivers and managers.',
       );
     }
   }
@@ -327,7 +349,7 @@ export class OrdersService {
     dto: PosCheckoutDto,
   ): Promise<PosCheckoutOrderDetail> {
     try {
-      await this.assertDriverUser(driverUserId);
+      await this.assertPosCheckoutActor(driverUserId);
       if (!Number.isFinite(dto.totalPrice) || dto.totalPrice <= 0) {
         throw new BadRequestException(
           'totalPrice must be a finite positive number',
@@ -462,6 +484,10 @@ export class OrdersService {
           amount: detail.totalPrice,
           customerPhone: phone,
         });
+        await this.prisma.order.update({
+          where: { id: detail.id },
+          data: { posHostedPaymentUrl: paymentLink.url },
+        });
         const merged: PosCheckoutOrderDetail = { ...detail, paymentLink };
         this.queuePosInvoiceNotify(merged, phoneCompact);
         return merged;
@@ -482,6 +508,142 @@ export class OrdersService {
       }
       throw error;
     }
+  }
+
+  /**
+   * POS multi-invoice: several orders, one hosted payment link for the sum.
+   * Gateway callback uses the bundle id as `orderId`; all linked orders finalize together.
+   */
+  async posCheckoutBundle(
+    driverUserId: string,
+    dto: PosCheckoutBundleDto,
+  ): Promise<PosCheckoutBundleResult> {
+    await this.assertPosCheckoutActor(driverUserId);
+    const serviceType = dto.serviceType ?? ServiceType.NORMAL;
+    const phoneCompact = dto.customerPhone.replace(/[\s-]/g, '').trim();
+
+    const prepared: Array<{
+      totalPriceDecimal: Prisma.Decimal;
+      lineCreates:
+        | { label: string | null; quantity: number; unitPrice: number }[]
+        | undefined;
+    }> = [];
+
+    let sumDecimal = new Prisma.Decimal(0);
+
+    for (const part of dto.orders) {
+      if (!Number.isFinite(part.totalPrice) || part.totalPrice <= 0) {
+        throw new BadRequestException(
+          'Each sub-order must have a positive totalPrice',
+        );
+      }
+      if (part.lineItems?.length) {
+        assertLineItemsMatchTotal(part.totalPrice, part.lineItems);
+      }
+      const lineCreates = this.mapPosCheckoutLineItems(part.lineItems);
+      if (lineCreates) {
+        for (const line of lineCreates) {
+          if (!(line.quantity > 0 && line.unitPrice > 0)) {
+            throw new BadRequestException(
+              'Each line item must have a positive quantity and unit price',
+            );
+          }
+        }
+      }
+      const td = new Prisma.Decimal(Number(part.totalPrice).toFixed(4));
+      sumDecimal = sumDecimal.add(td);
+      prepared.push({ totalPriceDecimal: td, lineCreates });
+    }
+
+    const customerDto = {
+      customerPhone: dto.customerPhone,
+      customerId: dto.customerId,
+      customerDisplayName: dto.customerDisplayName,
+      customerAddress: dto.customerAddress,
+      totalPrice: dto.orders[0].totalPrice,
+      lineItems: dto.orders[0].lineItems,
+      serviceType: dto.serviceType,
+    } as CreateOrderQuickDto;
+
+    const bundleId = await this.prisma.$transaction(
+      async (tx) => {
+        const customerId = await this.resolveQuickOrderCustomerId(
+          tx,
+          customerDto,
+          phoneCompact,
+        );
+
+        const bundle = await tx.posPaymentBundle.create({
+          data: {
+            driverId: driverUserId,
+            totalAmountKd: sumDecimal,
+          },
+        });
+
+        for (const p of prepared) {
+          const created = await tx.order.create({
+            data: {
+              customerId,
+              driverId: driverUserId,
+              serviceType,
+              totalPrice: p.totalPriceDecimal,
+              status: OrderStatus.PENDING,
+              cashStatus: CashStatus.UNPAID,
+              posPaymentMethod: PosPaymentMethod.ONLINE,
+              completedAt: null,
+              posPaymentBundleId: bundle.id,
+              ...(p.lineCreates?.length ?
+                { lineItems: { create: p.lineCreates } }
+              : {}),
+            },
+            select: { id: true, driverId: true },
+          });
+          if (created.driverId !== driverUserId) {
+            throw new ForbiddenException('Order must be assigned to you');
+          }
+        }
+
+        return bundle.id;
+      },
+      { maxWait: 10_000, timeout: 15_000 },
+    );
+
+    const orders = await this.prisma.order.findMany({
+      where: { posPaymentBundleId: bundleId },
+      select: orderDetailSelect,
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (orders.length === 0) {
+      throw new BadRequestException('Bundle orders missing after checkout');
+    }
+
+    const phone =
+      orders[0].customer.phone?.trim() ||
+      orders[0].customer.phone2?.trim() ||
+      phoneCompact;
+
+    const paymentLink = await this.paymentsService.createPaymentLink({
+      orderId: bundleId,
+      amount: sumDecimal,
+      customerPhone: phone,
+    });
+
+    await this.prisma.order.updateMany({
+      where: { posPaymentBundleId: bundleId },
+      data: { posHostedPaymentUrl: paymentLink.url },
+    });
+
+    const notifyBase = orders[0];
+    const merged: PosCheckoutOrderDetail = {
+      ...notifyBase,
+      id: bundleId,
+      totalPrice: sumDecimal,
+      paymentLink,
+    };
+    this.queuePosInvoiceNotify(merged, phoneCompact);
+
+    return { bundleId, orders, paymentLink };
   }
 
   /** Manager / owner intake — optional assignment to a driver. */
@@ -523,6 +685,61 @@ export class OrdersService {
         },
         select: orderDetailSelect,
       });
+    });
+  }
+
+  /**
+   * Call center / collections: pending ONLINE checkout with stored payment URL
+   * (cashStatus UNPAID). Rows disappear after gateway success + finalize.
+   */
+  async listUnpaidOnlinePaymentOrders(): Promise<
+    {
+      orderId: string;
+      customerName: string;
+      customerPhone: string;
+      amountKd: string;
+      paymentUrl: string;
+    }[]
+  > {
+    const rows = await this.prisma.order.findMany({
+      where: {
+        status: OrderStatus.PENDING,
+        cashStatus: CashStatus.UNPAID,
+        posPaymentMethod: {
+          in: [PosPaymentMethod.ONLINE, PosPaymentMethod.PAYMENT_LINK],
+        },
+        posHostedPaymentUrl: { not: null },
+      },
+      select: {
+        id: true,
+        totalPrice: true,
+        posHostedPaymentUrl: true,
+        customer: {
+          select: {
+            displayName: true,
+            phone: true,
+            phone2: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 500,
+    });
+    return rows.map((r) => {
+      const phone =
+        r.customer.phone?.replace(/[\s-]/g, '').trim() ||
+        r.customer.phone2?.replace(/[\s-]/g, '').trim() ||
+        '';
+      const name =
+        r.customer.displayName?.trim() ||
+        (phone ? phone : 'Customer');
+      return {
+        orderId: r.id,
+        customerName: name,
+        customerPhone: phone,
+        amountKd: r.totalPrice.toFixed(4),
+        paymentUrl: r.posHostedPaymentUrl as string,
+      };
     });
   }
 

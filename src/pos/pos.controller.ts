@@ -16,6 +16,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { APP_BRAND } from '../common/constants/branding';
+import { PosCheckoutBundleDto } from '../orders/dto/pos-checkout-bundle.dto';
 import { PosCheckoutDto } from '../orders/dto/pos-checkout.dto';
 import { OrdersService } from '../orders/orders.service';
 import { PosCreateCustomerDto } from './dto/pos-create-customer.dto';
@@ -25,7 +26,7 @@ import { PosService } from './pos.service';
 @ApiBearerAuth('bearer')
 @Controller('pos')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(SafariRole.DRIVER)
+@Roles(SafariRole.DRIVER, SafariRole.MANAGER)
 export class PosController {
   constructor(
     private readonly posService: PosService,
@@ -69,5 +70,18 @@ export class PosController {
   })
   posCheckout(@Body() dto: PosCheckoutDto, @CurrentUser() user: JwtUser) {
     return this.ordersService.posCheckout(user.userId, dto);
+  }
+
+  @Post('checkout-bundle')
+  @ApiOperation({
+    summary: `Multi-invoice POS — one hosted payment for several orders (${APP_BRAND})`,
+    description:
+      'Creates multiple PENDING orders linked to one PosPaymentBundle; returns a single paymentLink for the combined total. Gateway callback references the bundle id.',
+  })
+  posCheckoutBundle(
+    @Body() dto: PosCheckoutBundleDto,
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.ordersService.posCheckoutBundle(user.userId, dto);
   }
 }

@@ -52,6 +52,26 @@ export class PaymentsService {
       .replace(/\/$/, '');
   }
 
+  /** PAYMENTS_MOCK=true /1 / yes */
+  paymentsMockExplicit(): boolean {
+    const m = process.env.PAYMENTS_MOCK?.trim().toLowerCase();
+    return m === '1' || m === 'true' || m === 'yes';
+  }
+
+  /** No gateway base URL → use in-process mock checkout (local dev). */
+  usePlaceholderGateway(): boolean {
+    return !this.apiBase.trim();
+  }
+
+  /** Mock HTML page + unsigned dev callback allowed. */
+  isPublicMockCheckoutAvailable(): boolean {
+    return this.paymentsMockExplicit() || this.usePlaceholderGateway();
+  }
+
+  allowDevMockCallback(body: { devMock?: boolean }): boolean {
+    return Boolean(body.devMock) && this.isPublicMockCheckoutAvailable();
+  }
+
   /**
    * Calls Kuwait Gateway (or compatible) API to create a hosted payment URL.
    * Contract is normalized; adjust paths/body to match your provider’s docs.
@@ -59,7 +79,18 @@ export class PaymentsService {
   async createPaymentLink(
     params: CreatePaymentLinkParams,
   ): Promise<CreatePaymentLinkResult> {
-    if (!this.apiBase || !this.apiKey || !this.merchantId) {
+    if (this.isPublicMockCheckoutAvailable()) {
+      const base = (
+        process.env.PUBLIC_API_URL ?? 'http://localhost:3000'
+      ).replace(/\/$/, '');
+      const url = `${base}/api/payments/mock-checkout?orderId=${encodeURIComponent(params.orderId)}`;
+      this.logger.log(
+        `Mock payment link for ${params.orderId} (set PAYMENTS_API_BASE_URL for production gateway)`,
+      );
+      return { url, reference: 'mock' };
+    }
+
+    if (!this.apiKey || !this.merchantId) {
       throw new ServiceUnavailableException(
         'Payment link is not configured (PAYMENTS_API_BASE_URL, PAYMENTS_API_KEY, PAYMENTS_MERCHANT_ID)',
       );
@@ -177,8 +208,31 @@ export class PaymentsService {
 
   /**
    * After gateway confirms payment: complete order + wallet settlement (same as instant POS).
+   * `referenceId` may be a single order id, or a PosPaymentBundle id (multi-invoice POS).
    */
-  async finalizePaidOrderFromGateway(orderId: string): Promise<void> {
+  async finalizePaidOrderFromGateway(referenceId: string): Promise<void> {
+    const bundle = await this.prisma.posPaymentBundle.findUnique({
+      where: { id: referenceId },
+      include: {
+        orders: {
+          where: { status: OrderStatus.PENDING },
+          orderBy: { createdAt: 'asc' },
+          select: { id: true },
+        },
+      },
+    });
+
+    if (bundle?.orders.length) {
+      for (const o of bundle.orders) {
+        await this.finalizeSinglePaidOrderFromGateway(o.id);
+      }
+      return;
+    }
+
+    await this.finalizeSinglePaidOrderFromGateway(referenceId);
+  }
+
+  private async finalizeSinglePaidOrderFromGateway(orderId: string): Promise<void> {
     await this.prisma.$transaction(
       async (tx) => {
         const order = await tx.order.findUnique({
@@ -220,6 +274,7 @@ export class PaymentsService {
             status: OrderStatus.COMPLETED,
             cashStatus: CashStatus.PAID_TO_DRIVER,
             completedAt,
+            posPaymentMethod: PosPaymentMethod.ONLINE,
           },
         });
 

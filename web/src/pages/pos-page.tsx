@@ -25,6 +25,7 @@ import {
   type LaundryPriceListItemRow,
   type OperatingStatusPayload,
   type OrderRow,
+  type PosCheckoutBundleResponse,
   type PosCheckoutResponse,
   type PosPaymentMethod,
   apiJson,
@@ -76,7 +77,8 @@ type ReceiptSnapshot = {
   customerBalance: string;
   customerAddress: string;
   serviceType: string;
-  markupAmount: number;
+  /** Sum of line items before delivery (last completed order on receipt). */
+  lineItemsSubtotal: number;
   deliveryFee: number;
   freeDelivery: boolean;
   lines: Array<{
@@ -92,6 +94,8 @@ type ReceiptSnapshot = {
   paymentLabel?: string;
   /** True when order awaits gateway (PAYMENT_LINK path). */
   paymentPending?: boolean;
+  /** Attached invoice: always show delivery line as 0.000 KWD on the receipt. */
+  attachedInvoice?: boolean;
 };
 
 function garmentTagCount(qty: number): number {
@@ -101,7 +105,113 @@ function garmentTagCount(qty: number): number {
 }
 
 const DELIVERY_FEE_KD = 0.25;
-const MARKUP_RATE = 0.25;
+
+type SubOrderFinancePart = {
+  lineSum: number;
+  deliveryForOrder: number;
+  netTotal: number;
+  needsExt: boolean;
+  receiptLines: ReceiptSnapshot['lines'];
+  lineItemsPayload:
+    | Array<{ label: string; quantity: number; unitPrice: number }>
+    | undefined;
+};
+
+/** Mirrors POS sub-order totals + wallet simulation for bundle checkout eligibility. */
+function computeMultiInvoiceParts(
+  nonEmptyOrdered: PosSubOrder[],
+  billing: CustomerBillingProfile | null,
+): {
+  parts: SubOrderFinancePart[];
+  ordersPayload: Array<{
+    totalPrice: number;
+    lineItems?: Array<{ label: string; quantity: number; unitPrice: number }>;
+  }>;
+  allNeedExternal: boolean;
+} {
+  let billingSnapshot: CustomerBillingProfile | null = billing;
+  const parts: SubOrderFinancePart[] = [];
+  const ordersPayload: Array<{
+    totalPrice: number;
+    lineItems?: Array<{ label: string; quantity: number; unitPrice: number }>;
+  }> = [];
+
+  for (let k = 0; k < nonEmptyOrdered.length; k++) {
+    const o = nonEmptyOrdered[k];
+    const lineSum = sumLinesKd(o.lines);
+    const isFirst = k === 0;
+    const bal = billingSnapshot
+      ? Number.parseFloat(billingSnapshot.remainingBalance)
+      : NaN;
+    const walletCoversLinesOnly =
+      Number.isFinite(bal) && bal + 1e-9 >= lineSum;
+    const baseDel = isFirst ? DELIVERY_FEE_KD : 0;
+    const deliveryForOrder =
+      walletCoversLinesOnly && lineSum > 0 ? 0 : baseDel;
+    const netTotal = lineSum + deliveryForOrder;
+    const needsExt =
+      netTotal > 0 &&
+      (billingSnapshot === null ||
+        !Number.isFinite(bal) ||
+        bal + 1e-9 < netTotal);
+
+    const lineItemsFull = o.lines.map((c) => ({
+      label: c.nameAr,
+      quantity: c.quantity,
+      unitPrice: c.unitPrice,
+    }));
+    const MONEY_EPS = 0.005;
+    const lineItemsPayload =
+      Math.abs(lineSum - netTotal) < MONEY_EPS ? lineItemsFull : undefined;
+
+    const receiptLines = o.lines.map((c) => ({
+      label: c.nameAr,
+      quantity: c.quantity,
+      unitPrice: c.unitPrice,
+      lineTotal: c.quantity * c.unitPrice,
+      neshaLevel: c.neshaLevel,
+      foldingStyle: c.foldingStyle,
+      itemNote: c.itemNote,
+    }));
+
+    parts.push({
+      lineSum,
+      deliveryForOrder,
+      netTotal,
+      needsExt,
+      receiptLines,
+      lineItemsPayload,
+    });
+    ordersPayload.push({
+      totalPrice: netTotal,
+      ...(lineItemsPayload ? { lineItems: lineItemsPayload } : {}),
+    });
+
+    if (!needsExt && billingSnapshot && netTotal > 0) {
+      const prev = Number.parseFloat(billingSnapshot.remainingBalance);
+      billingSnapshot = {
+        ...billingSnapshot,
+        remainingBalance: (prev - netTotal).toFixed(4),
+      };
+    }
+  }
+
+  return {
+    parts,
+    ordersPayload,
+    allNeedExternal: parts.length > 0 && parts.every((p) => p.needsExt),
+  };
+}
+
+type PosSubOrder = {
+  id: string;
+  kind: 'primary' | 'attached';
+  lines: CartLine[];
+};
+
+function sumLinesKd(lines: CartLine[]): number {
+  return lines.reduce((s, l) => s + l.quantity * l.unitPrice, 0);
+}
 
 type ServiceOption = {
   key: 'NORMAL' | 'URGENT' | 'PRESS_ONLY' | 'URGENT_PRESS';
@@ -188,7 +298,10 @@ export function PosPage() {
   );
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogFailed, setCatalogFailed] = useState(false);
-  const [cart, setCart] = useState<CartLine[]>([]);
+  const [subOrders, setSubOrders] = useState<PosSubOrder[]>([
+    { id: crypto.randomUUID(), kind: 'primary', lines: [] },
+  ]);
+  const [activeSubOrderIndex, setActiveSubOrderIndex] = useState(0);
   const [searchQ, setSearchQ] = useState('');
   const [searchHits, setSearchHits] = useState<CustomerSearchRow[]>([]);
   const [searching, setSearching] = useState(false);
@@ -204,7 +317,9 @@ export function PosPage() {
   const [newHouse, setNewHouse] = useState('');
   const [savingCustomer, setSavingCustomer] = useState(false);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
-  const [receiptSnapshot, setReceiptSnapshot] = useState<ReceiptSnapshot | null>(null);
+  const [receiptSheets, setReceiptSheets] = useState<ReceiptSnapshot[] | null>(
+    null,
+  );
   const [scanOrderDetail, setScanOrderDetail] = useState<OrderRow | null>(null);
   const [scanOrderDialogOpen, setScanOrderDialogOpen] = useState(false);
   const [serviceOpen, setServiceOpen] = useState(false);
@@ -226,7 +341,6 @@ export function PosPage() {
     'SEEDA' | 'MIRZAAM' | 'MURABAA' | 'SHARSHAF' | 'TASFEET' | ''
   >('');
   const [serviceItemNote, setServiceItemNote] = useState('');
-  const [applyMarkup, setApplyMarkup] = useState(false);
   const [billing, setBilling] = useState<CustomerBillingProfile | null>(null);
   const [billingLoading, setBillingLoading] = useState(false);
   const [posPaymentMethod, setPosPaymentMethod] = useState<
@@ -301,6 +415,11 @@ export function PosPage() {
   }, [loadCatalog]);
 
   useEffect(() => {
+    setSubOrders([{ id: crypto.randomUUID(), kind: 'primary', lines: [] }]);
+    setActiveSubOrderIndex(0);
+  }, [selected?.id]);
+
+  useEffect(() => {
     const q = searchQ.trim();
     if (q.length < 2) {
       setSearchHits([]);
@@ -329,19 +448,12 @@ export function PosPage() {
     };
   }, [searchQ, token]);
 
-  const total = useMemo(
-    () => cart.reduce((s, l) => s + l.quantity * l.unitPrice, 0),
-    [cart],
-  );
+  const cart = subOrders[activeSubOrderIndex]?.lines ?? [];
 
-  const markupAmount = useMemo(
-    () => (applyMarkup ? total * MARKUP_RATE : 0),
-    [applyMarkup, total],
+  const combinedLineSubtotal = useMemo(
+    () => subOrders.reduce((s, o) => s + sumLinesKd(o.lines), 0),
+    [subOrders],
   );
-
-  const subtotalAfterMarkup = useMemo(() => {
-    return Math.max(0, total + markupAmount);
-  }, [total, markupAmount]);
 
   const balanceNum = billing
     ? Number.parseFloat(billing.remainingBalance)
@@ -353,11 +465,19 @@ export function PosPage() {
   const walletCoversNet =
     billing !== null &&
     Number.isFinite(balanceNum) &&
-    balanceNum + 1e-9 >= subtotalAfterMarkup;
-  /** Treat as subscription order when wallet can cover order net; delivery is free. */
-  const isSubscriptionOrder = subtotalAfterMarkup > 0 && walletCoversNet;
-  const deliveryFee = isSubscriptionOrder ? 0 : DELIVERY_FEE_KD;
-  const grandTotal = Math.max(0, subtotalAfterMarkup + deliveryFee);
+    balanceNum + 1e-9 >= combinedLineSubtotal;
+  /** Wallet covers all line items → free delivery on the charged leg (same as subscription session). */
+  const isSubscriptionOrder = combinedLineSubtotal > 0 && walletCoversNet;
+  const firstFilledSubOrderIndex = useMemo(
+    () => subOrders.findIndex((o) => sumLinesKd(o.lines) > 0),
+    [subOrders],
+  );
+  const sessionDeliveryCharge = useMemo(() => {
+    if (combinedLineSubtotal <= 0 || firstFilledSubOrderIndex < 0) return 0;
+    if (isSubscriptionOrder) return 0;
+    return DELIVERY_FEE_KD;
+  }, [combinedLineSubtotal, firstFilledSubOrderIndex, isSubscriptionOrder]);
+  const grandTotal = Math.max(0, combinedLineSubtotal + sessionDeliveryCharge);
 
   /** If billing is unknown, assume shortfall until server confirms — always send external method when grand total > 0. */
   const needsExternalPayment =
@@ -419,15 +539,20 @@ export function PosPage() {
   }
 
   function setQty(lineKey: string, qty: number) {
-    if (qty < 1) {
-      setCart((prev) => prev.filter((x) => x.lineKey !== lineKey));
-      return;
-    }
-    setCart((prev) =>
-      prev.map((x) =>
-        x.lineKey === lineKey ? { ...x, quantity: qty } : x,
-      ),
-    );
+    setSubOrders((prev) => {
+      const next = [...prev];
+      const i = activeSubOrderIndex;
+      if (!next[i]) return prev;
+      const lines = next[i].lines;
+      const newLines =
+        qty < 1 ?
+          lines.filter((x) => x.lineKey !== lineKey)
+        : lines.map((x) =>
+            x.lineKey === lineKey ? { ...x, quantity: qty } : x,
+          );
+      next[i] = { ...next[i], lines: newLines };
+      return next;
+    });
   }
 
   function changeServiceQty(
@@ -456,8 +581,11 @@ export function PosPage() {
     }
 
     const extrasLabel = `${serviceNesha ? ' + نشا' : ''}${serviceFolding ? ' + طي' : ''}`;
-    setCart((prev) => {
-      const next = [...prev];
+    setSubOrders((prev) => {
+      const orders = [...prev];
+      const i = activeSubOrderIndex;
+      if (!orders[i]) return prev;
+      const next = [...orders[i].lines];
       for (const line of selectedLines) {
         const lineKey =
           `${serviceItem.id}:${line.option.key}:${serviceNesha ? serviceNeshaLevel : '0%'}:${serviceFolding ? serviceFoldingStyle : ''}:${serviceItemNote.trim()}`;
@@ -486,7 +614,8 @@ export function PosPage() {
           };
         }
       }
-      return next;
+      orders[i] = { ...orders[i], lines: next };
+      return orders;
     });
     setServiceOpen(false);
     toast.success('تمت إضافة الخدمة إلى سلة الأصناف');
@@ -541,132 +670,287 @@ export function PosPage() {
     }
   }
 
+  function addAttachedOrder() {
+    setSubOrders((prev) => {
+      const next = [
+        ...prev,
+        { id: crypto.randomUUID(), kind: 'attached' as const, lines: [] },
+      ];
+      setActiveSubOrderIndex(next.length - 1);
+      return next;
+    });
+  }
+
   async function completePayment() {
     if (!token || !user) return;
     if (!selected) {
       toast.error(t('pos.checkout.pickCustomer'));
       return;
     }
-    if (cart.length === 0) {
+    const nonEmptyOrdered = subOrders.filter((o) => o.lines.length > 0);
+    if (nonEmptyOrdered.length === 0) {
       toast.error(t('pos.checkout.emptyCart'));
       return;
     }
-    const receiptLines = cart.map((c) => ({
-      label: c.nameAr,
-      quantity: c.quantity,
-      unitPrice: c.unitPrice,
-      lineTotal: c.quantity * c.unitPrice,
-      neshaLevel: c.neshaLevel,
-      foldingStyle: c.foldingStyle,
-      itemNote: c.itemNote,
-    }));
-    const lineItemsFull = cart.map((c) => ({
-      label: c.nameAr,
-      quantity: c.quantity,
-      unitPrice: c.unitPrice,
-    }));
     const phone = selected.phone.replace(/[\s-]/g, '').trim();
+
+    const customerAddressStr =
+      [
+        selected.addressArea,
+        selected.addressBlock,
+        selected.addressStreet,
+        selected.addressAvenue,
+        selected.addressHouse,
+      ]
+        .filter(Boolean)
+        .join(' · ') || selected.address || '-';
+
+    type ReceiptSheetExtras = Pick<
+      ReceiptSnapshot,
+      | 'serviceType'
+      | 'lineItemsSubtotal'
+      | 'deliveryFee'
+      | 'freeDelivery'
+      | 'lines'
+      | 'total'
+      | 'paymentLabel'
+      | 'paymentPending'
+      | 'attachedInvoice'
+    >;
+
+    const buildSheetBase = (
+      created: PosCheckoutResponse,
+      balanceAfter: string,
+      extras: ReceiptSheetExtras,
+    ): ReceiptSnapshot => ({
+      orderId: created.id,
+      orderNumber: created.invoiceNumber || created.id || '-',
+      createdAt: created.createdAt || new Date().toISOString(),
+      branchLabel: t('pos.branchLabelFallback'),
+      employeeName: user.fullName || user.username,
+      employeeId: user.username,
+      customerName: selected.displayName?.trim() || t('pos.receiptWalkIn'),
+      customerMobile: selected.phone,
+      customerBalance: balanceAfter,
+      customerAddress: customerAddressStr,
+      ...extras,
+    });
 
     setCheckoutBusy(true);
     try {
-      const netTotal = grandTotal;
+      const bundlePrep = computeMultiInvoiceParts(nonEmptyOrdered, billing);
+      const useBundle =
+        nonEmptyOrdered.length > 1 &&
+        posPaymentMethod === 'PAYMENT_LINK' &&
+        bundlePrep.allNeedExternal;
 
-      const extMethod: PosPaymentMethod | undefined =
-        needsExternalPayment ? posPaymentMethod : undefined;
-
-      /** Server requires Σ(qty×price) ≈ totalPrice; omit lines when discount breaks that equality. */
-      const MONEY_EPS = 0.005;
-      const lineItemsPayload =
-        Math.abs(total - netTotal) < MONEY_EPS ? lineItemsFull : undefined;
-
-      const created = await apiJson<PosCheckoutResponse>(
-        '/api/pos/checkout',
-        {
-        method: 'POST',
-        token,
-        body: JSON.stringify({
-          customerPhone: phone,
-          customerId: selected.id,
-          customerDisplayName: selected.displayName ?? undefined,
-          totalPrice: netTotal,
-          ...(lineItemsPayload ? { lineItems: lineItemsPayload } : {}),
-          serviceType: 'NORMAL',
-          ...(extMethod ? { posPaymentMethod: extMethod } : {}),
-        }),
-      },
-      );
-
-      const paymentLinkUrl = created.paymentLink?.url?.trim();
-      const isAwaitingGateway =
-        Boolean(paymentLinkUrl) && posPaymentMethod === 'PAYMENT_LINK';
-
-      let balanceAfter = selected.wallet?.balance ?? '0.0000';
-      try {
-        const fresh = await apiJson<CustomerBillingProfile>(
-          `/api/pos/customers/${selected.id}/billing`,
-          { token },
+      if (useBundle) {
+        const { parts, ordersPayload } = bundlePrep;
+        const bundleRes = await apiJson<PosCheckoutBundleResponse>(
+          '/api/pos/checkout-bundle',
+          {
+            method: 'POST',
+            token,
+            body: JSON.stringify({
+              customerPhone: phone,
+              customerId: selected.id,
+              customerDisplayName: selected.displayName ?? undefined,
+              customerAddress: customerAddressStr !== '-' ? customerAddressStr : undefined,
+              serviceType: 'NORMAL',
+              orders: ordersPayload,
+            }),
+          },
         );
-        setBilling(fresh);
-        balanceAfter = fresh.remainingBalance;
-        setSelected((prev) =>
-          prev && prev.id === selected.id ?
-            {
-              ...prev,
-              wallet: {
-                balance: fresh.remainingBalance,
-                debt: fresh.debt,
-              },
-            }
-          : prev,
-        );
-      } catch {
-        /* keep previous balance on receipt */
+
+        let balanceAfter = selected.wallet?.balance ?? '0.0000';
+        try {
+          const fresh = await apiJson<CustomerBillingProfile>(
+            `/api/pos/customers/${selected.id}/billing`,
+            { token },
+          );
+          balanceAfter = fresh.remainingBalance;
+          setBilling(fresh);
+          setSelected((prev) =>
+            prev && prev.id === selected.id ?
+              {
+                ...prev,
+                wallet: {
+                  balance: fresh.remainingBalance,
+                  debt: fresh.debt,
+                },
+              }
+            : prev,
+          );
+        } catch {
+          /* keep previous balance on receipt */
+        }
+
+        const paymentLinkUrl = bundleRes.paymentLink?.url?.trim();
+        if (paymentLinkUrl) {
+          window.open(paymentLinkUrl, '_blank', 'noopener,noreferrer');
+        }
+
+        const sheets: ReceiptSnapshot[] = parts.map((part, k) => {
+          const ord = bundleRes.orders[k];
+          const attached = k > 0;
+          return buildSheetBase(ord, balanceAfter, {
+            serviceType: 'N WASH',
+            lineItemsSubtotal: part.lineSum,
+            deliveryFee: attached ? 0 : part.deliveryForOrder,
+            freeDelivery: attached ? false : part.deliveryForOrder <= 0,
+            attachedInvoice: attached,
+            lines: part.receiptLines,
+            total: part.netTotal,
+            paymentLabel: t('pos.payment.online'),
+            paymentPending: Boolean(paymentLinkUrl),
+          });
+        });
+        setReceiptSheets(sheets);
+
+        toast.success(t('pos.checkout.paymentLinkCreated'));
+        setSubOrders([{ id: crypto.randomUUID(), kind: 'primary', lines: [] }]);
+        setActiveSubOrderIndex(0);
+        window.setTimeout(() => {
+          window.print();
+        }, 120);
+        return;
       }
 
-      const paymentLabel = needsExternalPayment
-        ? posPaymentMethod === 'PAYMENT_LINK'
-          ? t('pos.payment.online')
-          : posPaymentMethod === 'DEBT_ON_ACCOUNT'
-            ? t('pos.payment.debt')
+      let billingSnapshot: CustomerBillingProfile | null = billing;
+      let balanceAfter = selected.wallet?.balance ?? '0.0000';
+      const sheets: ReceiptSnapshot[] = [];
+      let sawPaymentLink = false;
+
+      for (let k = 0; k < nonEmptyOrdered.length; k++) {
+        const o = nonEmptyOrdered[k];
+        const lineSum = sumLinesKd(o.lines);
+        const isFirst = k === 0;
+        const bal = billingSnapshot
+          ? Number.parseFloat(billingSnapshot.remainingBalance)
+          : NaN;
+        const walletCoversLinesOnly =
+          Number.isFinite(bal) && bal + 1e-9 >= lineSum;
+        const baseDel = isFirst ? DELIVERY_FEE_KD : 0;
+        const deliveryForOrder =
+          walletCoversLinesOnly && lineSum > 0 ? 0 : baseDel;
+        const netTotal = lineSum + deliveryForOrder;
+        const needsExt =
+          netTotal > 0 &&
+          (billingSnapshot === null ||
+            !Number.isFinite(bal) ||
+            bal + 1e-9 < netTotal);
+        const extMethod: PosPaymentMethod | undefined = needsExt
+          ? posPaymentMethod
+          : undefined;
+
+        const lineItemsFull = o.lines.map((c) => ({
+          label: c.nameAr,
+          quantity: c.quantity,
+          unitPrice: c.unitPrice,
+        }));
+        const MONEY_EPS = 0.005;
+        const lineItemsPayload =
+          Math.abs(lineSum - netTotal) < MONEY_EPS ? lineItemsFull : undefined;
+
+        const created = await apiJson<PosCheckoutResponse>(
+          '/api/pos/checkout',
+          {
+            method: 'POST',
+            token,
+            body: JSON.stringify({
+              customerPhone: phone,
+              customerId: selected.id,
+              customerDisplayName: selected.displayName ?? undefined,
+              totalPrice: netTotal,
+              ...(lineItemsPayload ? { lineItems: lineItemsPayload } : {}),
+              serviceType: 'NORMAL',
+              ...(extMethod ? { posPaymentMethod: extMethod } : {}),
+            }),
+          },
+        );
+
+        const receiptLines = o.lines.map((c) => ({
+          label: c.nameAr,
+          quantity: c.quantity,
+          unitPrice: c.unitPrice,
+          lineTotal: c.quantity * c.unitPrice,
+          neshaLevel: c.neshaLevel,
+          foldingStyle: c.foldingStyle,
+          itemNote: c.itemNote,
+        }));
+
+        const paymentLabelForOrder =
+          needsExt ?
+            posPaymentMethod === 'PAYMENT_LINK' ?
+              t('pos.payment.online')
+            : posPaymentMethod === 'DEBT_ON_ACCOUNT' ?
+              t('pos.payment.debt')
             : t(`pos.pay.${posPaymentMethod}` as const)
-        : t('pos.pay.SUBSCRIPTION_WALLET');
+          : t('pos.pay.SUBSCRIPTION_WALLET');
 
-      setReceiptSnapshot({
-        orderId: created.id,
-        branchLabel: t('pos.branchLabelFallback'),
-        orderNumber: created.invoiceNumber || created.id || '-',
-        createdAt: created.createdAt || new Date().toISOString(),
-        employeeName: user.fullName || user.username,
-        employeeId: user.username,
-        customerName: selected.displayName?.trim() || t('pos.receiptWalkIn'),
-        customerMobile: selected.phone,
-        customerBalance: balanceAfter,
-        customerAddress: [
-          selected.addressArea,
-          selected.addressBlock,
-          selected.addressStreet,
-          selected.addressAvenue,
-          selected.addressHouse,
-        ]
-          .filter(Boolean)
-          .join(' · ') || selected.address || '-',
-        serviceType: 'N WASH',
-        markupAmount,
-        deliveryFee,
-        freeDelivery: isSubscriptionOrder,
-        lines: receiptLines,
-        total: netTotal,
-        paymentLabel,
-        paymentPending: isAwaitingGateway,
-      });
+        const attachedInvoice = nonEmptyOrdered.length > 1 && k > 0;
+        const paymentLinkUrl = created.paymentLink?.url?.trim();
+        if (paymentLinkUrl && posPaymentMethod === 'PAYMENT_LINK') {
+          sawPaymentLink = true;
+          window.open(paymentLinkUrl, '_blank', 'noopener,noreferrer');
+        }
 
-      if (isAwaitingGateway && paymentLinkUrl) {
-        window.open(paymentLinkUrl, '_blank', 'noopener,noreferrer');
+        sheets.push(
+          buildSheetBase(created, balanceAfter, {
+            serviceType: 'N WASH',
+            lineItemsSubtotal: lineSum,
+            deliveryFee: attachedInvoice ? 0 : deliveryForOrder,
+            freeDelivery: attachedInvoice ? false : deliveryForOrder <= 0,
+            attachedInvoice,
+            lines: receiptLines,
+            total: netTotal,
+            paymentLabel: paymentLabelForOrder,
+            paymentPending: Boolean(paymentLinkUrl),
+          }),
+        );
+
+        try {
+          const fresh = await apiJson<CustomerBillingProfile>(
+            `/api/pos/customers/${selected.id}/billing`,
+            { token },
+          );
+          billingSnapshot = fresh;
+          balanceAfter = fresh.remainingBalance;
+          setBilling(fresh);
+          setSelected((prev) =>
+            prev && prev.id === selected.id ?
+              {
+                ...prev,
+                wallet: {
+                  balance: fresh.remainingBalance,
+                  debt: fresh.debt,
+                },
+              }
+            : prev,
+          );
+        } catch {
+          /* keep previous balance on receipt */
+        }
+      }
+
+      if (sheets.length === 0) return;
+
+      const finalBal = balanceAfter;
+      setReceiptSheets(
+        sheets.map((s) => ({ ...s, customerBalance: finalBal })),
+      );
+
+      if (sawPaymentLink) {
         toast.success(t('pos.checkout.paymentLinkCreated'));
+      } else if (nonEmptyOrdered.length > 1) {
+        toast.success(
+          t('pos.checkout.doneMulti', { count: nonEmptyOrdered.length }),
+        );
       } else {
         toast.success(t('pos.checkout.done'));
       }
-      setCart([]);
+      setSubOrders([{ id: crypto.randomUUID(), kind: 'primary', lines: [] }]);
+      setActiveSubOrderIndex(0);
       window.setTimeout(() => {
         window.print();
       }, 120);
@@ -685,7 +969,7 @@ export function PosPage() {
   }
 
   function handlePrintReceipt() {
-    if (!receiptSnapshot) {
+    if (!receiptSheets?.length) {
       toast.error('No receipt ready to print yet.');
       return;
     }
@@ -694,7 +978,7 @@ export function PosPage() {
   }
 
   function handlePrintGarmentTags() {
-    if (!receiptSnapshot?.orderId) {
+    if (!receiptSheets?.some((s) => s.orderId)) {
       toast.error('No receipt ready to print yet.');
       return;
     }
@@ -733,7 +1017,7 @@ export function PosPage() {
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <img
             src="/logo.png"
-            alt="Safari Fast"
+            alt="Safari Omni"
             width={140}
             className="h-10 w-auto max-w-[140px] object-contain"
           />
@@ -831,7 +1115,7 @@ export function PosPage() {
       </header>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col md:flex-row">
-        <main className="min-h-0 min-w-0 w-full overflow-y-auto overflow-x-hidden border-border p-3 sm:p-4 md:w-[70%] md:max-w-[70%] md:flex-none md:border-e">
+        <main className="min-h-0 min-w-0 w-full overflow-y-auto overflow-x-hidden border-border px-3 pt-3 pb-48 sm:px-4 sm:pt-4 md:w-[70%] md:max-w-[70%] md:flex-none md:border-e md:px-4 md:pt-4 md:pb-4">
           {catalogLoading ?
             <div className="flex justify-center py-20">
               <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />
@@ -896,9 +1180,40 @@ export function PosPage() {
             <p className="text-sm font-semibold text-foreground">
               {t('pos.cartTitle')}
             </p>
-            <p className="text-xs text-muted-foreground tabular-nums">
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {subOrders.map((o, idx) => {
+                const isActive = idx === activeSubOrderIndex;
+                const pieceCount = o.lines.reduce((n, l) => n + l.quantity, 0);
+                return (
+                  <button
+                    key={o.id}
+                    type="button"
+                    onClick={() => setActiveSubOrderIndex(idx)}
+                    className={cn(
+                      'rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors',
+                      isActive ?
+                        'border-primary bg-primary text-primary-foreground'
+                      : 'border-border bg-muted/40 text-foreground hover:bg-muted/70',
+                    )}
+                  >
+                    {o.kind === 'primary' ?
+                      t('pos.multiOrder.tabPrimary', { n: idx + 1 })
+                    : t('pos.multiOrder.tabAttached', { n: idx + 1 })}
+                    {pieceCount > 0 ?
+                      <span className="ms-1 tabular-nums opacity-90">
+                        ({pieceCount})
+                      </span>
+                    : null}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-1.5 text-xs text-muted-foreground tabular-nums">
               {t('pos.cartItemsCount', {
-                count: cart.reduce((n, l) => n + l.quantity, 0),
+                count: subOrders.reduce(
+                  (n, o) => n + o.lines.reduce((m, l) => m + l.quantity, 0),
+                  0,
+                ),
               })}
             </p>
           </div>
@@ -962,7 +1277,7 @@ export function PosPage() {
                       {t('pos.balanceWarning')}
                     </p>
                   : null}
-                  {!needsExternalPayment && subtotalAfterMarkup > 0 && billing ?
+                  {!needsExternalPayment && combinedLineSubtotal > 0 && billing ?
                     <p className="text-[11px] leading-snug text-primary">
                       {t('pos.subscription.walletCovers')}
                     </p>
@@ -977,7 +1292,7 @@ export function PosPage() {
             </div>
           : null}
           <ScrollArea className="min-h-0 flex-1 md:max-h-[calc(100dvh-12rem)]">
-            <div className="p-3">
+            <div className="p-3 max-md:pb-48 md:pb-3">
               {cart.length === 0 ?
                 <p className="py-8 text-center text-sm text-muted-foreground">
                   {t('pos.cartEmpty')}
@@ -1032,34 +1347,78 @@ export function PosPage() {
               {kwdSuffix}
             </span>
           </div>
-          <div className="flex w-full flex-col gap-2 rounded-xl border border-border bg-white p-2 sm:w-auto sm:min-w-[280px]">
-            <label className="flex items-center gap-2 text-xs text-muted-foreground">
-              <input
-                type="checkbox"
-                checked={applyMarkup}
-                onChange={(e) => setApplyMarkup(e.target.checked)}
-              />
-              {t('pos.applyMarkup25')}
-            </label>
+          <div className="flex w-full flex-col gap-2 rounded-xl border border-border bg-white p-2 sm:w-auto sm:min-w-[300px]">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-10 w-full shrink-0 border-emerald-600/55 bg-emerald-50 text-emerald-950 hover:bg-emerald-100"
+              onClick={addAttachedOrder}
+              disabled={!selected}
+            >
+              <Layers className="me-2 h-4 w-4 shrink-0" aria-hidden />
+              {t('pos.multiOrder.addAttached')}
+            </Button>
+            {subOrders.some((o) => sumLinesKd(o.lines) > 0) ?
+              <div className="space-y-1.5 rounded-lg border border-border/80 bg-muted/15 p-2 text-[11px]">
+                <p className="font-semibold text-foreground">
+                  {t('pos.multiOrder.sessionSummary')}
+                </p>
+                {subOrders.map((o, idx) => {
+                  const lineSum = sumLinesKd(o.lines);
+                  if (lineSum <= 0) return null;
+                  const paysDelivery =
+                    idx === firstFilledSubOrderIndex &&
+                    !isSubscriptionOrder &&
+                    lineSum > 0;
+                  const dFee = paysDelivery ? DELIVERY_FEE_KD : 0;
+                  return (
+                    <div
+                      key={o.id}
+                      className="rounded-md border border-border/60 bg-background/80 px-2 py-1.5"
+                    >
+                      <p className="font-medium text-foreground">
+                        {o.kind === 'primary' ?
+                          t('pos.multiOrder.summaryPrimary', { n: idx + 1 })
+                        : t('pos.multiOrder.summaryAttached', { n: idx + 1 })}
+                      </p>
+                      <div className="mt-0.5 flex justify-between text-muted-foreground">
+                        <span>{t('pos.multiOrder.linesTotal')}</span>
+                        <span className="tabular-nums">
+                          {lineSum.toFixed(3)} {kwdSuffix}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>{t('pos.deliveryFeeLabel')}</span>
+                        <span
+                          className={cn(
+                            'tabular-nums',
+                            dFee <= 0 && 'text-emerald-700',
+                          )}
+                        >
+                          {dFee > 0 ?
+                            `${dFee.toFixed(3)} ${kwdSuffix}`
+                          : t('pos.multiOrder.freeDeliveryAttached')}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            : null}
             <div className="space-y-1 border-t border-border pt-2 text-xs">
               <div className="flex items-center justify-between text-muted-foreground">
                 <span>{t('pos.subtotalLabel')}</span>
                 <span className="tabular-nums">
-                  {total.toFixed(3)} {kwdSuffix}
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-muted-foreground">
-                <span>{t('pos.markupLabel')}</span>
-                <span className="tabular-nums">
-                  +{markupAmount.toFixed(3)} {kwdSuffix}
+                  {combinedLineSubtotal.toFixed(3)} {kwdSuffix}
                 </span>
               </div>
               <div className="flex items-center justify-between text-muted-foreground">
                 <span>{t('pos.deliveryFeeLabel')}</span>
                 <span className="tabular-nums">
-                  {deliveryFee <= 0 ?
+                  {sessionDeliveryCharge <= 0 ?
                     t('pos.freeDelivery')
-                  : `${deliveryFee.toFixed(3)} ${kwdSuffix}`}
+                  : `${sessionDeliveryCharge.toFixed(3)} ${kwdSuffix}`}
                 </span>
               </div>
               <div className="flex items-center justify-between border-t border-border pt-1 text-sm font-semibold text-foreground">
@@ -1099,7 +1458,7 @@ export function PosPage() {
             <Button
               type="button"
               variant="outline"
-              disabled={!receiptSnapshot}
+              disabled={!receiptSheets?.length}
               size="lg"
               className="h-12 min-h-12 w-full shrink-0 touch-manipulation text-base font-semibold sm:w-auto"
               onClick={handlePrintReceipt}
@@ -1109,7 +1468,7 @@ export function PosPage() {
             <Button
               type="button"
               variant="outline"
-              disabled={!receiptSnapshot?.orderId}
+              disabled={!receiptSheets?.some((s) => s.orderId)}
               size="lg"
               className="h-12 min-h-12 w-full shrink-0 touch-manipulation text-base font-semibold sm:w-auto"
               onClick={handlePrintGarmentTags}
@@ -1121,7 +1480,7 @@ export function PosPage() {
             type="button"
             disabled={
               checkoutBusy ||
-              cart.length === 0 ||
+              combinedLineSubtotal <= 0 ||
               !selected ||
               grandTotal <= 0 ||
               (Boolean(selected) && billingLoading)
@@ -1307,192 +1666,189 @@ export function PosPage() {
 
       <section
         id="pos-receipt-print"
-        aria-hidden={receiptSnapshot ? undefined : true}
+        aria-hidden={receiptSheets?.length ? undefined : true}
         className="hidden"
       >
-        <div className="pos-receipt-wrap" dir="rtl">
-          <img src="/logo.png" alt="Safari Fast" className="pos-receipt-logo" />
-          <h2>Safari Laundry</h2>
-          <p className="pos-receipt-sub">Farwaniya, 00</p>
-          <p className="pos-receipt-sub">
-            Shop Tel: 24899399 - Call Center: 22200299
-          </p>
-          <div className="pos-receipt-meta-grid">
-            <p><strong>INV#:</strong> {receiptSnapshot?.orderNumber ?? '-'}</p>
-            <p>
-              <strong>Employee:</strong>{' '}
-              {receiptSnapshot ?
-                `${receiptSnapshot.employeeId} / ${receiptSnapshot.employeeName}`
-              : '-'}
+        {(receiptSheets ?? []).map((sheet, sheetIdx) => (
+          <div
+            key={`${sheet.orderId}-${sheetIdx}`}
+            className="pos-receipt-wrap pos-receipt-sheet"
+            dir="rtl"
+          >
+            <img src="/logo.png" alt="Safari Omni" className="pos-receipt-logo" />
+            <h2>Safari Laundry</h2>
+            <p className="pos-receipt-sub">Farwaniya, 00</p>
+            <p className="pos-receipt-sub">
+              Shop Tel: 24899399 - Call Center: 22200299
             </p>
-            <p>
-              <strong>Date:</strong>{' '}
-              {(receiptSnapshot?.createdAt ?
-                new Date(receiptSnapshot.createdAt)
-              : new Date()
-              ).toLocaleString(dateLocale)}
-            </p>
-          </div>
-          {receiptSnapshot?.paymentPending ?
-            <p
-              className="my-2 rounded border border-amber-400 bg-amber-50 px-2 py-1 text-center text-[10px] font-semibold text-amber-900"
-              dir="auto"
-            >
-              {t('pos.checkout.paymentPendingReceipt')}
-            </p>
-          : null}
-          <div className="pos-customer-box">
-            <div className="pos-customer-row">
-              <span><strong>Name:</strong> {receiptSnapshot?.customerName ?? '-'}</span>
-              <span><strong>Mobile:</strong> {receiptSnapshot?.customerMobile ?? '-'}</span>
-            </div>
-            <div className="pos-customer-row">
-              <span>
-                <strong>Balance:</strong>{' '}
-                {Number.parseFloat(receiptSnapshot?.customerBalance ?? '0')
-                  .toFixed(3)}{' '}
-                KWD
-              </span>
-            </div>
-            <div className="pos-customer-address">
-              <strong>Address:</strong> {receiptSnapshot?.customerAddress ?? '-'}
-            </div>
-          </div>
-          <table className="pos-receipt-table">
-            <thead>
-              <tr>
-                <th>الأصناف</th>
-                <th>Type</th>
-                <th className="text-end">K.D</th>
-                <th className="text-end">F</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(receiptSnapshot?.lines ?? []).map((line, idx) => (
-                <tr key={`${line.label}-${idx}`}>
-                  <td className="pos-receipt-desc">
-                    <div>{line.label}</div>
-                    <div className="pos-receipt-qty">{line.quantity} x</div>
-                    {(line.neshaLevel !== '0%' || line.foldingStyle) ?
-                      <div className="pos-receipt-specs">
-                        <div><strong>المحددات:</strong></div>
-                        <div>NESHA: {line.neshaLevel}</div>
-                        {line.foldingStyle ? <div>Style: {line.foldingStyle}</div> : null}
-                      </div>
-                    : null}
-                  </td>
-                  <td>{receiptSnapshot?.serviceType ?? 'N WASH'}</td>
-                  <td className="text-end">{formatKwdParts(line.lineTotal).dinar}</td>
-                  <td className="text-end">{formatKwdParts(line.lineTotal).fils}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div className="pos-receipt-totals">
-            <div>
-              <span>{t('pos.subtotalLabel')}</span>
-              <span>
-                {(
-                  (receiptSnapshot?.total ?? 0) +
-                  (receiptSnapshot?.markupAmount ?? 0) -
-                  (receiptSnapshot?.deliveryFee ?? 0)
-                ).toFixed(3)} KWD
-              </span>
-            </div>
-            <div>
-              <span>{t('pos.markupLabel')}</span>
-              <span>+{(receiptSnapshot?.markupAmount ?? 0).toFixed(3)} KWD</span>
-            </div>
-            <div>
-              <span>{t('pos.deliveryFeeLabel')}</span>
-              <span>
-                {(receiptSnapshot?.freeDelivery || (receiptSnapshot?.deliveryFee ?? 0) <= 0) ?
-                  t('pos.freeDelivery')
-                : `${(receiptSnapshot?.deliveryFee ?? 0).toFixed(3)} KWD`}
-              </span>
-            </div>
-            <div className="net">
-              <span>{t('pos.grandTotalLabel')}</span>
-              <span>{(receiptSnapshot?.total ?? 0).toFixed(3)} KWD</span>
-            </div>
-            {receiptSnapshot?.paymentLabel ?
-              <div className="mt-1 text-[9px] text-muted-foreground">
-                <strong>الدفع / Payment:</strong> {receiptSnapshot.paymentLabel}
-              </div>
-            : null}
-          </div>
-          <div className="pos-receipt-notes">
-            <p><strong>ملاحظات:</strong></p>
-            {(receiptSnapshot?.lines ?? [])
-              .filter((l) => l.itemNote.trim().length > 0)
-              .map((l, i) => (
-                <p key={`${l.label}-note-${i}`}>
-                  - {l.label}: {l.itemNote}
-                </p>
-              ))}
-          </div>
-          {receiptSnapshot?.orderId ?
-            <div className="pos-receipt-barcode">
-              <OrderIdBarcode
-                orderId={receiptSnapshot.orderId}
-                variant="receipt"
-              />
-              <p className="pos-receipt-barcode-caption">
-                {t('pos.receiptBarcodeCaption')}
+            <div className="pos-receipt-meta-grid">
+              <p><strong>INV#:</strong> {sheet.orderNumber ?? '-'}</p>
+              <p>
+                <strong>Employee:</strong>{' '}
+                {`${sheet.employeeId} / ${sheet.employeeName}`}
+              </p>
+              <p>
+                <strong>Date:</strong>{' '}
+                {new Date(sheet.createdAt).toLocaleString(dateLocale)}
               </p>
             </div>
-          : null}
-          <div className="mt-2 flex flex-col items-center gap-1">
-            <TermsQr size={78} />
-            <p className="text-[10px] text-muted-foreground">{t('pos.termsQrCaption')}</p>
+            {sheet.paymentPending ?
+              <p
+                className="my-2 rounded border border-amber-400 bg-amber-50 px-2 py-1 text-center text-[10px] font-semibold text-amber-900"
+                dir="auto"
+              >
+                {t('pos.checkout.paymentPendingReceipt')}
+              </p>
+            : null}
+            <div className="pos-customer-box">
+              <div className="pos-customer-row">
+                <span><strong>Name:</strong> {sheet.customerName ?? '-'}</span>
+                <span><strong>Mobile:</strong> {sheet.customerMobile ?? '-'}</span>
+              </div>
+              <div className="pos-customer-row">
+                <span>
+                  <strong>Balance:</strong>{' '}
+                  {Number.parseFloat(sheet.customerBalance ?? '0')
+                    .toFixed(3)}{' '}
+                  KWD
+                </span>
+              </div>
+              <div className="pos-customer-address">
+                <strong>Address:</strong> {sheet.customerAddress ?? '-'}
+              </div>
+            </div>
+            <table className="pos-receipt-table">
+              <thead>
+                <tr>
+                  <th>الأصناف</th>
+                  <th>Type</th>
+                  <th className="text-end">K.D</th>
+                  <th className="text-end">F</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sheet.lines.map((line, idx) => (
+                  <tr key={`${line.label}-${idx}`}>
+                    <td className="pos-receipt-desc">
+                      <div>{line.label}</div>
+                      <div className="pos-receipt-qty">{line.quantity} x</div>
+                      {(line.neshaLevel !== '0%' || line.foldingStyle) ?
+                        <div className="pos-receipt-specs">
+                          <div><strong>المحددات:</strong></div>
+                          <div>NESHA: {line.neshaLevel}</div>
+                          {line.foldingStyle ? <div>Style: {line.foldingStyle}</div> : null}
+                        </div>
+                      : null}
+                    </td>
+                    <td>{sheet.serviceType ?? 'N WASH'}</td>
+                    <td className="text-end">{formatKwdParts(line.lineTotal).dinar}</td>
+                    <td className="text-end">{formatKwdParts(line.lineTotal).fils}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="pos-receipt-totals">
+              <div>
+                <span>{t('pos.subtotalLabel')}</span>
+                <span>
+                  {(sheet.lineItemsSubtotal ?? 0).toFixed(3)} KWD
+                </span>
+              </div>
+              <div>
+                <span>{t('pos.deliveryFeeLabel')}</span>
+                <span>
+                  {sheet.attachedInvoice ?
+                    '0.000 KWD'
+                  : (sheet.freeDelivery || (sheet.deliveryFee ?? 0) <= 0) ?
+                    t('pos.freeDelivery')
+                  : `${(sheet.deliveryFee ?? 0).toFixed(3)} KWD`}
+                </span>
+              </div>
+              <div className="net">
+                <span>{t('pos.grandTotalLabel')}</span>
+                <span>{(sheet.total ?? 0).toFixed(3)} KWD</span>
+              </div>
+              {sheet.paymentLabel ?
+                <div className="mt-1 text-[9px] text-muted-foreground">
+                  <strong>الدفع / Payment:</strong> {sheet.paymentLabel}
+                </div>
+              : null}
+            </div>
+            <div className="pos-receipt-notes">
+              <p><strong>ملاحظات:</strong></p>
+              {sheet.lines
+                .filter((l) => l.itemNote.trim().length > 0)
+                .map((l, i) => (
+                  <p key={`${l.label}-note-${i}`}>
+                    - {l.label}: {l.itemNote}
+                  </p>
+                ))}
+            </div>
+            {sheet.orderId ?
+              <div className="pos-receipt-barcode">
+                <OrderIdBarcode
+                  orderId={sheet.orderId}
+                  variant="receipt"
+                />
+                <p className="pos-receipt-barcode-caption">
+                  {t('pos.receiptBarcodeCaption')}
+                </p>
+              </div>
+            : null}
+            <div className="mt-2 flex flex-col items-center gap-1">
+              <TermsQr size={78} />
+              <p className="text-[10px] text-muted-foreground">{t('pos.termsQrCaption')}</p>
+            </div>
+            <div className="pos-receipt-terms">
+              <p>الشروط والأحكام:</p>
+              <p>
+                يبدأ المندوب في تسليم الملابس المستعجلة بعد 4 ساعات من استلامها في الأيام
+                العادية و 24 ساعة فترة الأعياد. المحل غير مسئول عن ملاحظات الخدمة بعد
+                مرور 24 ساعة من تسليم الملابس. - يبدأ تسليم الملابس للعميل بعد 5:00
+                مساءً. الماركات العالمية لها عناية مميزة وأسعار خاصة - المحل غير مسئول
+                عن فقدان المتعلقات الشخصية. المحل غير ملزم عن تخزين الملابس بعد مرور
+                30 يوما من استلامها. - قيمة تعويض الملابس التالفة تكون بنسبة 25% من
+                قيمتها شريطة تقديم الفاتورة الأصلية.
+              </p>
+            </div>
           </div>
-          <div className="pos-receipt-terms">
-            <p>الشروط والأحكام:</p>
-            <p>
-              يبدأ المندوب في تسليم الملابس المستعجلة بعد 4 ساعات من استلامها في الأيام
-              العادية و 24 ساعة فترة الأعياد. المحل غير مسئول عن ملاحظات الخدمة بعد
-              مرور 24 ساعة من تسليم الملابس. - يبدأ تسليم الملابس للعميل بعد 5:00
-              مساءً. الماركات العالمية لها عناية مميزة وأسعار خاصة - المحل غير مسئول
-              عن فقدان المتعلقات الشخصية. المحل غير ملزم عن تخزين الملابس بعد مرور
-              30 يوما من استلامها. - قيمة تعويض الملابس التالفة تكون بنسبة 25% من
-              قيمتها شريطة تقديم الفاتورة الأصلية.
-            </p>
-          </div>
-        </div>
+        ))}
       </section>
 
-      {receiptSnapshot ?
+      {receiptSheets?.length ?
         <section id="pos-item-tags-print" className="hidden" aria-hidden>
           <div className="pos-garment-tags-grid">
-            {receiptSnapshot.lines.flatMap((line, lineIdx) => {
-              const n = garmentTagCount(line.quantity);
-              return Array.from({ length: n }, (_, i) => (
-                <div
-                  key={`${line.label}-${lineIdx}-${i}`}
-                  className="pos-garment-tag"
-                  dir="rtl"
-                >
-                  <OrderIdBarcode
-                    orderId={receiptSnapshot.orderId}
-                    variant="receipt"
-                  />
-                  <div className="tag-meta">
-                    <div>
-                      <strong>{t('pos.tagCustomer')}</strong>{' '}
-                      {receiptSnapshot.customerName}
-                    </div>
-                    <div>
-                      <strong>{t('pos.tagBranch')}</strong>{' '}
-                      {receiptSnapshot.branchLabel}
-                    </div>
-                    <div>
-                      <strong>{t('pos.tagGarment')}</strong> {line.label}
-                      {n > 1 ? ` (${i + 1}/${n})` : ''}
+            {receiptSheets.flatMap((sheet, sheetIdx) =>
+              sheet.lines.flatMap((line, lineIdx) => {
+                const n = garmentTagCount(line.quantity);
+                return Array.from({ length: n }, (_, i) => (
+                  <div
+                    key={`${sheet.orderId}-${sheetIdx}-${line.label}-${lineIdx}-${i}`}
+                    className="pos-garment-tag"
+                    dir="rtl"
+                  >
+                    <OrderIdBarcode
+                      orderId={sheet.orderId}
+                      variant="receipt"
+                    />
+                    <div className="tag-meta">
+                      <div>
+                        <strong>{t('pos.tagCustomer')}</strong>{' '}
+                        {sheet.customerName}
+                      </div>
+                      <div>
+                        <strong>{t('pos.tagBranch')}</strong>{' '}
+                        {sheet.branchLabel}
+                      </div>
+                      <div>
+                        <strong>{t('pos.tagGarment')}</strong> {line.label}
+                        {n > 1 ? ` (${i + 1}/${n})` : ''}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ));
-            })}
+                ));
+              }),
+            )}
           </div>
         </section>
       : null}

@@ -168,6 +168,190 @@ export type DriverBalanceResponse = {
   drivers: DriverBalanceRow[];
 };
 
+export type ConfirmHandoverResponse = {
+  settledOrderCount: number;
+  systemHandoverTotal: string;
+  shiftId: string;
+  bankDepositReceiptUrl: string;
+};
+
+/** Multipart upload — bank deposit receipt for driver cash collection. */
+export async function uploadHandoverReceipt(
+  token: string,
+  file: File,
+): Promise<{ depositReceiptUrl: string }> {
+  const fd = new FormData();
+  fd.append('file', file);
+  const headers = new Headers();
+  headers.set('Authorization', `Bearer ${token}`);
+  let res: Response;
+  try {
+    res = await fetch(buildUrl('/api/finance/handover/upload-receipt'), {
+      method: 'POST',
+      headers,
+      body: fd,
+    });
+  } catch (e) {
+    const m = e instanceof Error ? e.message : 'Network request failed';
+    throw new ApiError(m, 0);
+  }
+  const rawText = await res.text();
+  const json = parseApiBody(rawText);
+  if (!res.ok) {
+    const errorCode =
+      typeof json.errorCode === 'string' ? json.errorCode : undefined;
+    throw new ApiError(
+      formatErrorMessage(json, res.status, rawText),
+      res.status,
+      errorCode,
+    );
+  }
+  if (json.data === undefined) {
+    throw new ApiError(
+      'Invalid API response (missing data)',
+      res.status,
+    );
+  }
+  return json.data as { depositReceiptUrl: string };
+}
+
+export function confirmHandover(
+  token: string,
+  body: {
+    driverId: string;
+    depositReceiptUrl: string;
+    declaredHandoverTotal?: number;
+  },
+) {
+  return apiJson<ConfirmHandoverResponse>('/api/finance/handover/confirm', {
+    method: 'POST',
+    body: JSON.stringify(body),
+    token,
+  });
+}
+
+export type BankDepositType = 'CASH_DEPOSIT_SLIP' | 'KNET_Z_REPORT';
+
+export type BankDepositLogEntry = {
+  id: string;
+  depositType: BankDepositType;
+  amountKd: string;
+  receiptImageUrl: string;
+  shiftId: string | null;
+  createdAt: string;
+  verifiedAt: string | null;
+  uploadedBy: { id: string; fullName: string; username: string };
+  verifiedByAccountant: {
+    id: string;
+    fullName: string;
+    username: string;
+  } | null;
+};
+
+export type BankDepositsListResponse = {
+  from: string;
+  to: string;
+  entries: BankDepositLogEntry[];
+};
+
+export function getBankDeposits(
+  token: string,
+  query?: { from?: string; to?: string; take?: number },
+) {
+  const q = new URLSearchParams();
+  if (query?.from) q.set('from', query.from);
+  if (query?.to) q.set('to', query.to);
+  if (query?.take != null) q.set('take', String(query.take));
+  const qs = q.toString();
+  return apiJson<BankDepositsListResponse>(
+    `/api/finance/bank-deposits${qs ? `?${qs}` : ''}`,
+    { token },
+  );
+}
+
+export async function uploadBankDeposit(
+  token: string,
+  params: {
+    file: File;
+    depositType: BankDepositType;
+    amount: number;
+    shiftId?: string;
+  },
+): Promise<BankDepositLogEntry> {
+  const fd = new FormData();
+  fd.append('file', params.file);
+  fd.append('depositType', params.depositType);
+  fd.append('amount', String(params.amount));
+  if (params.shiftId?.trim()) {
+    fd.append('shiftId', params.shiftId.trim());
+  }
+  const headers = new Headers();
+  headers.set('Authorization', `Bearer ${token}`);
+  let res: Response;
+  try {
+    res = await fetch(buildUrl('/api/finance/bank-deposits'), {
+      method: 'POST',
+      headers,
+      body: fd,
+    });
+  } catch (e) {
+    const m = e instanceof Error ? e.message : 'Network request failed';
+    throw new ApiError(m, 0);
+  }
+  const rawText = await res.text();
+  const json = parseApiBody(rawText);
+  if (!res.ok) {
+    const errorCode =
+      typeof json.errorCode === 'string' ? json.errorCode : undefined;
+    throw new ApiError(
+      formatErrorMessage(json, res.status, rawText),
+      res.status,
+      errorCode,
+    );
+  }
+  if (json.data === undefined) {
+    throw new ApiError(
+      'Invalid API response (missing data)',
+      res.status,
+    );
+  }
+  return json.data as BankDepositLogEntry;
+}
+
+export function verifyBankDeposit(token: string, id: string) {
+  return apiJson<BankDepositLogEntry>(
+    `/api/finance/bank-deposits/${encodeURIComponent(id)}/verify`,
+    { method: 'POST', token },
+  );
+}
+
+export type FinancialCycleRow = {
+  orderId: string;
+  amountKd: string;
+  collectedAt: string | null;
+  collectedByManager: { id: string; fullName: string; username: string } | null;
+  depositLogId: string | null;
+  receiptImageUrl: string | null;
+  verifiedAt: string | null;
+  verifiedByAccountant: {
+    id: string;
+    fullName: string;
+    username: string;
+  } | null;
+  lastUpdatedAt: string;
+};
+
+export type FinancialCycleReportResponse = {
+  rows: FinancialCycleRow[];
+};
+
+export function getFinancialCycleReport(token: string) {
+  return apiJson<FinancialCycleReportResponse>(
+    '/api/finance/reports/financial-cycle',
+    { token },
+  );
+}
+
 export type OwnerWalletSummary = {
   totalWalletLiabilities: string;
   totalCustomerDebts: string;
@@ -308,6 +492,22 @@ export type PosCheckoutResponse = {
   paymentLink?: PosPaymentLinkResult;
 };
 
+/** Call center — unpaid hosted-payment orders (`GET /api/orders/collections/unpaid-online`). */
+export type CollectionUnpaidOnlineRow = {
+  orderId: string;
+  customerName: string;
+  customerPhone: string;
+  amountKd: string;
+  paymentUrl: string;
+};
+
+/** Multi-invoice POS: one gateway session for several orders (`POST /api/pos/checkout-bundle`). */
+export type PosCheckoutBundleResponse = {
+  bundleId: string;
+  orders: PosCheckoutResponse[];
+  paymentLink: PosPaymentLinkResult;
+};
+
 export type CustomerBillingProfile = {
   subscriptionActive: boolean;
   planType: string | null;
@@ -366,6 +566,7 @@ export type TeamUserRow = {
   id: string;
   username: string;
   fullName: string;
+  isActive: boolean;
   employeeId: string | null;
   jobTitle: string | null;
   phone: string | null;

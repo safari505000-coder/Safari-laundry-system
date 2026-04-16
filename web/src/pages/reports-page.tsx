@@ -81,6 +81,8 @@ export function ReportsPage() {
     ) ?? false;
 
   const isOwner = hasRole('OWNER') ?? false;
+  /** Only OWNER can see payroll + net profit cards. */
+  const hideOwnerOnlyExecCards = !isOwner;
 
   useEffect(() => {
     if (!token || !canView) return;
@@ -250,7 +252,12 @@ export function ReportsPage() {
       </div>
 
       {executive ?
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 print:grid-cols-2">
+        <div
+          className={cn(
+            'grid gap-3 sm:grid-cols-2 print:grid-cols-2',
+            hideOwnerOnlyExecCards ? '' : 'xl:grid-cols-4',
+          )}
+        >
           <Card
             className={cn(
               'overflow-hidden border-emerald-200/80 bg-gradient-to-br from-emerald-50 to-teal-50/90 shadow-sm',
@@ -293,55 +300,59 @@ export function ReportsPage() {
               </p>
             </CardContent>
           </Card>
-          <Card
-            className={cn(
-              'overflow-hidden border-sky-200/80 bg-gradient-to-br from-sky-50 to-blue-50/90 shadow-sm',
-              'dark:border-sky-900/50 dark:from-sky-950/50 dark:to-sky-950/20',
-            )}
-          >
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-sm font-semibold text-sky-900 dark:text-sky-100">
-                <Users className="h-4 w-4 shrink-0" aria-hidden />
-                {t('reports.execPayroll')}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold tabular-nums text-sky-950 dark:text-sky-50">
-                {formatKwdLabel(executive.payrollPaidKd)}
-              </p>
-              <p className="mt-1 text-xs text-sky-800/80 dark:text-sky-200/80">
-                {t('reports.execPayrollHint')}
-              </p>
-            </CardContent>
-          </Card>
-          <Card
-            className={cn(
-              'overflow-hidden border-amber-300/90 bg-gradient-to-br from-amber-50 via-yellow-50 to-amber-100/90 shadow-md ring-1 ring-amber-200/60',
-              'dark:border-amber-800/60 dark:from-amber-950/60 dark:via-yellow-950/40 dark:to-amber-950/30',
-            )}
-          >
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-sm font-semibold text-amber-950 dark:text-amber-100">
-                <Banknote className="h-4 w-4 shrink-0" aria-hidden />
-                {t('reports.execNet')}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p
+          {!hideOwnerOnlyExecCards ?
+            <>
+              <Card
                 className={cn(
-                  'text-2xl font-bold tabular-nums',
-                  Number.parseFloat(executive.netProfitKd) < 0 ?
-                    'text-destructive'
-                  : 'text-amber-950 dark:text-amber-50',
+                  'overflow-hidden border-sky-200/80 bg-gradient-to-br from-sky-50 to-blue-50/90 shadow-sm',
+                  'dark:border-sky-900/50 dark:from-sky-950/50 dark:to-sky-950/20',
                 )}
               >
-                {formatKwdLabel(executive.netProfitKd)}
-              </p>
-              <p className="mt-1 text-xs text-amber-900/80 dark:text-amber-200/80">
-                {t('reports.execNetHint')}
-              </p>
-            </CardContent>
-          </Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-2 text-sm font-semibold text-sky-900 dark:text-sky-100">
+                    <Users className="h-4 w-4 shrink-0" aria-hidden />
+                    {t('reports.execPayroll')}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-2xl font-bold tabular-nums text-sky-950 dark:text-sky-50">
+                    {formatKwdLabel(executive.payrollPaidKd)}
+                  </p>
+                  <p className="mt-1 text-xs text-sky-800/80 dark:text-sky-200/80">
+                    {t('reports.execPayrollHint')}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card
+                className={cn(
+                  'overflow-hidden border-amber-300/90 bg-gradient-to-br from-amber-50 via-yellow-50 to-amber-100/90 shadow-md ring-1 ring-amber-200/60',
+                  'dark:border-amber-800/60 dark:from-amber-950/60 dark:via-yellow-950/40 dark:to-amber-950/30',
+                )}
+              >
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-2 text-sm font-semibold text-amber-950 dark:text-amber-100">
+                    <Banknote className="h-4 w-4 shrink-0" aria-hidden />
+                    {t('reports.execNet')}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p
+                    className={cn(
+                      'text-2xl font-bold tabular-nums',
+                      Number.parseFloat(executive.netProfitKd) < 0 ?
+                        'text-destructive'
+                      : 'text-amber-950 dark:text-amber-50',
+                    )}
+                  >
+                    {formatKwdLabel(executive.netProfitKd)}
+                  </p>
+                  <p className="mt-1 text-xs text-amber-900/80 dark:text-amber-200/80">
+                    {t('reports.execNetHint')}
+                  </p>
+                </CardContent>
+              </Card>
+            </>
+          : null}
         </div>
       : null}
 

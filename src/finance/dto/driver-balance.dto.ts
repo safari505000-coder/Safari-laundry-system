@@ -64,4 +64,9 @@ export class HandoverResultDto {
 
   @ApiProperty({ format: 'uuid' })
   shiftId: string;
+
+  @ApiProperty({
+    description: 'Stored receipt path under /uploads (same as confirm request)',
+  })
+  bankDepositReceiptUrl: string;
 }

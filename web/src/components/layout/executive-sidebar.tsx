@@ -4,11 +4,15 @@ import {
   Building2,
   ChevronLeft,
   ChevronRight,
+  CircleDollarSign,
+  FileCheck2,
   FileSpreadsheet,
   LayoutDashboard,
   ListOrdered,
   LogOut,
+  MessageSquare,
   Package,
+  ShoppingCart,
   Sparkles,
   Truck,
   Users,
@@ -40,6 +44,20 @@ type NavItem = {
   labelKey: string;
   icon: typeof LayoutDashboard;
   roles: SafariRole[];
+};
+
+const posItem: NavItem = {
+  to: '/pos',
+  labelKey: 'nav.pos',
+  icon: ShoppingCart,
+  roles: ['DRIVER', 'MANAGER', 'OWNER'],
+};
+
+const myDailySalesItem: NavItem = {
+  to: '/my-daily-sales',
+  labelKey: 'nav.myDailySales',
+  icon: LayoutDashboard,
+  roles: ['DRIVER'],
 };
 
 const dashboardItem: NavItem = {
@@ -85,6 +103,27 @@ const customersItem: NavItem = {
   roles: ['OWNER', 'MANAGER', 'CALL_CENTER', 'SUPERVISOR', 'ACCOUNTANT', 'VIEWER'],
 };
 
+const collectionsItem: NavItem = {
+  to: '/collections',
+  labelKey: 'nav.customerDebtTracker',
+  icon: MessageSquare,
+  roles: ['CALL_CENTER', 'OWNER'],
+};
+
+const myCashCustodyItem: NavItem = {
+  to: '/my-cash-custody',
+  labelKey: 'nav.myCashCustody',
+  icon: CircleDollarSign,
+  roles: ['DRIVER'],
+};
+
+const driverMonitorItem: NavItem = {
+  to: '/driver-monitor',
+  labelKey: 'nav.driverMonitor',
+  icon: Truck,
+  roles: ['CALL_CENTER', 'OWNER'],
+};
+
 const ordersItem: NavItem = {
   to: '/orders',
   labelKey: 'nav.orders',
@@ -121,18 +160,46 @@ const financialsItem: NavItem = {
   roles: ['OWNER', 'MANAGER', 'ACCOUNTANT', 'SUPERVISOR', 'VIEWER'],
 };
 
+const collectDriverCashItem: NavItem = {
+  to: '/collect-driver-cash',
+  labelKey: 'nav.staffSettlement',
+  icon: CircleDollarSign,
+  roles: ['MANAGER', 'OWNER'],
+};
+
+const bankDepositsItem: NavItem = {
+  to: '/bank-deposits',
+  labelKey: 'nav.finalSettlement',
+  icon: FileCheck2,
+  roles: ['ACCOUNTANT', 'OWNER'],
+};
+
+const depositVerificationItem: NavItem = {
+  to: '/deposit-verification',
+  labelKey: 'nav.expenseVerification',
+  icon: FileCheck2,
+  roles: ['ACCOUNTANT', 'OWNER'],
+};
+
+const financialCycleReportItem: NavItem = {
+  to: '/financial-cycle-report',
+  labelKey: 'nav.financialCycleReport',
+  icon: FileSpreadsheet,
+  roles: ['OWNER'],
+};
+
 const reportsItem: NavItem = {
   to: '/reports',
   labelKey: 'nav.reports',
   icon: FileSpreadsheet,
-  roles: ['OWNER', 'MANAGER', 'ACCOUNTANT', 'SUPERVISOR', 'VIEWER'],
+  roles: ['ACCOUNTANT', 'OWNER'],
 };
 
 const expensesItem: NavItem = {
   to: '/expenses',
   labelKey: 'nav.expenses',
   icon: WalletCards,
-  roles: ['OWNER', 'MANAGER'],
+  roles: ['MANAGER', 'OWNER'],
 };
 
 const payrollItem: NavItem = {
@@ -150,8 +217,8 @@ const fixedExpensesItem: NavItem = {
 };
 
 const teamItem: NavItem = {
-  to: '/team',
-  labelKey: 'nav.team',
+  to: '/users-management',
+  labelKey: 'nav.usersManagement',
   icon: Users,
   roles: ['OWNER'],
 };
@@ -159,13 +226,28 @@ const teamItem: NavItem = {
 const navGroups: { labelKey: string; items: NavItem[] }[] = [
   {
     labelKey: 'nav.groupMain',
-    items: [dashboardItem, branchesItem, customersItem, subscriptionsItem, subscribersItem],
+    items: [
+      posItem,
+      dashboardItem,
+      branchesItem,
+      customersItem,
+      myDailySalesItem,
+      myCashCustodyItem,
+      collectionsItem,
+      subscriptionsItem,
+      subscribersItem,
+      driverMonitorItem,
+    ],
   },
   { labelKey: 'nav.groupOperations', items: [ordersItem, shiftsItem] },
   {
     labelKey: 'nav.groupFinance',
     items: [
       financialsItem,
+      bankDepositsItem,
+      depositVerificationItem,
+      financialCycleReportItem,
+      collectDriverCashItem,
       reportsItem,
       payrollItem,
       fixedExpensesItem,

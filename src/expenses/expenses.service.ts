@@ -7,8 +7,8 @@ export class ExpensesService {
   constructor(private readonly prisma: PrismaService) {}
 
   private assertCanManage(role: SafariRole): void {
-    if (role !== SafariRole.MANAGER && role !== SafariRole.OWNER) {
-      throw new ForbiddenException('Only MANAGER or OWNER can record expenses');
+    if (role !== SafariRole.MANAGER) {
+      throw new ForbiddenException('Only MANAGER can record expenses');
     }
   }
 
@@ -48,7 +48,11 @@ export class ExpensesService {
     toIso: string,
     branchId?: string,
   ) {
-    if (safariRole !== SafariRole.MANAGER && safariRole !== SafariRole.OWNER) {
+    if (
+      safariRole !== SafariRole.MANAGER &&
+      safariRole !== SafariRole.ACCOUNTANT &&
+      safariRole !== SafariRole.OWNER
+    ) {
       throw new ForbiddenException();
     }
     const from = new Date(fromIso);

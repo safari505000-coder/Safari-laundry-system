@@ -78,6 +78,12 @@ enum DebtEntityCategory {
   CALL_CENTER
 }
 
+/** Manager shift-end bank paperwork for accountant reconciliation. */
+enum BankDepositType {
+  CASH_DEPOSIT_SLIP
+  KNET_Z_REPORT
+}
+
 model User {
   id          String     @id @default(uuid()) @db.Uuid
   /** Unique login handle (staff ID / username). */
@@ -90,6 +96,8 @@ model User {
   jobTitle    String?
   phone       String?    @unique
   safariRole  SafariRole @default(DRIVER)
+  /** Owner toggle: inactive users cannot sign in. */
+  isActive    Boolean    @default(true)
   roleId      String     @db.Uuid
   branchId    String?    @db.Uuid
   createdAt   DateTime   @default(now())
@@ -105,6 +113,9 @@ model User {
   expensesRecorded      BranchExpense[]      @relation("ExpenseRecordedBy")
   payrolls              Payroll[]
   debtLedgerEntries     DebtLedgerEntry[]    @relation("DebtEntryActor")
+  bankDepositsUploaded  BankDepositLog[]     @relation("BankDepositUploadedBy")
+  bankDepositsVerifiedAsAccountant BankDepositLog[] @relation("BankDepositVerifiedBy")
+  posPaymentBundlesLed  PosPaymentBundle[]   @relation("PosPaymentBundleDriver")
 }
 
 enum ExpenseCategory {
@@ -253,11 +264,19 @@ model Order {
   completedAt      DateTime?
   /** Set when wallet + debt settlement ran for this order (idempotent). */
   walletSettledAt  DateTime?
+  /** Multi-invoice POS: single gateway payment for several orders (see PosPaymentBundle). */
+  posPaymentBundleId String?     @db.Uuid
+  /** Hosted Kuwait Gateway (or dev mock) URL issued at checkout for ONLINE orders. */
+  posHostedPaymentUrl String?    @db.Text
+  /** Manager cash handover shift that settled this CASH order into office custody. */
+  handoverShiftId   String?      @db.Uuid
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 
   customer           Customer             @relation(fields: [customerId], references: [id])
   driver             User?                @relation("OrderDriver", fields: [driverId], references: [id])
+  posPaymentBundle   PosPaymentBundle?    @relation(fields: [posPaymentBundleId], references: [id], onDelete: SetNull)
+  handoverShift      Shift?               @relation("ShiftHandoverOrders", fields: [handoverShiftId], references: [id], onDelete: SetNull)
   lineItems          OrderLineItem[]
   transactionHistory TransactionHistory[]
   debtLedgerEntries  DebtLedgerEntry[]
@@ -268,6 +287,21 @@ model Order {
   @@index([driverId, cashStatus])
   @@index([completedAt])
   @@index([posPaymentMethod])
+  @@index([posPaymentBundleId])
+  @@index([handoverShiftId])
+}
+
+/** One hosted payment session for multiple POS orders (same customer, one gateway charge). */
+model PosPaymentBundle {
+  id            String   @id @default(uuid()) @db.Uuid
+  driverId      String   @db.Uuid
+  totalAmountKd Decimal  @db.Decimal(19, 4)
+  createdAt     DateTime @default(now())
+
+  driver User   @relation("PosPaymentBundleDriver", fields: [driverId], references: [id])
+  orders Order[]
+
+  @@index([driverId])
 }
 
 model Shift {
@@ -281,6 +315,8 @@ model Shift {
   /** Ledger total: orders settled PAID_TO_DRIVER → HANDED_OVER_TO_OFFICE in this handover. */
   systemHandoverTotal   Decimal?   @db.Decimal(19, 4)
   ordersSettledCount    Int?
+  /** Bank deposit receipt file path (e.g. /uploads/handover-receipts/...). */
+  bankDepositReceiptUrl String?
   confirmedByManagerId  String?    @db.Uuid
   confirmedAt           DateTime?
   createdAt             DateTime   @default(now())
@@ -288,8 +324,32 @@ model Shift {
 
   driver               User  @relation("ShiftDriver", fields: [driverId], references: [id])
   confirmedByManager   User? @relation("ShiftConfirmedBy", fields: [confirmedByManagerId], references: [id])
+  bankDepositLogs      BankDepositLog[]
+  handoverOrders       Order[] @relation("ShiftHandoverOrders")
 
   @@index([driverId, status])
+}
+
+model BankDepositLog {
+  id                     String          @id @default(uuid()) @db.Uuid
+  depositType            BankDepositType
+  /** Amount (KD) as declared on slip / Z-report for reconciliation. */
+  amountKd               Decimal         @db.Decimal(19, 4)
+  receiptImageUrl        String
+  shiftId                String?         @db.Uuid
+  uploadedById           String          @db.Uuid
+  verifiedByAccountantId String?        @db.Uuid
+  verifiedAt             DateTime?
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
+
+  shift                 Shift? @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+  uploadedBy            User   @relation("BankDepositUploadedBy", fields: [uploadedById], references: [id])
+  verifiedByAccountant  User?  @relation("BankDepositVerifiedBy", fields: [verifiedByAccountantId], references: [id])
+
+  @@index([createdAt])
+  @@index([uploadedById])
+  @@index([verifiedByAccountantId])
 }
 
 model OrderLineItem {

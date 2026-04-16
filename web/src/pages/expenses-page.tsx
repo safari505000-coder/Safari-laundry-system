@@ -48,8 +48,8 @@ export function ExpensesPage() {
   const [note, setNote] = useState('');
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
 
-  const canManage = hasRole('MANAGER', 'OWNER') ?? false;
-  const canView = canManage;
+  const canManage = hasRole('MANAGER') ?? false;
+  const canView = hasRole('MANAGER', 'OWNER') ?? false;
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -203,6 +203,7 @@ export function ExpensesPage() {
                   id="ex-rcpt"
                   type="file"
                   accept="image/*"
+                  required
                   onChange={(e) => onFile(e.target.files?.[0] ?? null)}
                 />
                 {receiptPreview ?

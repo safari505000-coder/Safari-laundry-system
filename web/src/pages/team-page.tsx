@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Loader2, UserPlus, Users } from 'lucide-react';
+import { Loader2, Power, Trash2, UserPlus, Users } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import {
   type SafariRole,
@@ -61,6 +61,7 @@ export function TeamPage() {
   const [password, setPassword] = useState('');
   const [safariRole, setSafariRole] = useState<SafariRole>('DRIVER');
   const [saving, setSaving] = useState(false);
+  const [actionBusyId, setActionBusyId] = useState<string | null>(null);
 
   const loadUsers = useCallback(async () => {
     if (!token) return;
@@ -138,11 +139,47 @@ export function TeamPage() {
     submitCreate();
   }
 
+  async function toggleUserActive(u: TeamUserRow) {
+    if (!token) return;
+    setActionBusyId(u.id);
+    try {
+      await apiJson<TeamUserRow>(`/api/users/${u.id}`, {
+        method: 'PATCH',
+        token,
+        body: JSON.stringify({ isActive: !u.isActive }),
+      });
+      toast.success(t('team.statusUpdated'));
+      await loadUsers();
+    } catch (e) {
+      if (e instanceof ApiError) toast.error(e.message);
+    } finally {
+      setActionBusyId(null);
+    }
+  }
+
+  async function deleteUser(u: TeamUserRow) {
+    if (!token) return;
+    if (!window.confirm(t('team.confirmDelete'))) return;
+    setActionBusyId(u.id);
+    try {
+      await apiJson<{ id: string; deleted: boolean }>(`/api/users/${u.id}`, {
+        method: 'DELETE',
+        token,
+      });
+      toast.success(t('team.deleted'));
+      await loadUsers();
+    } catch (e) {
+      if (e instanceof ApiError) toast.error(e.message);
+    } finally {
+      setActionBusyId(null);
+    }
+  }
+
   return (
     <div className="space-y-8">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
+          <h1 className="text-2xl font-bold tracking-tight text-zinc-900">
             {t('team.title')}
           </h1>
           <p className="text-sm text-zinc-500">{t('team.subtitle')}</p>
@@ -254,7 +291,7 @@ export function TeamPage() {
 
       <Card className="border-zinc-200 bg-white shadow-sm">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
+            <CardTitle className="flex items-center gap-2 text-lg font-bold">
             <Users className="h-4 w-4" />
             {t('team.directory')}
           </CardTitle>
@@ -274,6 +311,8 @@ export function TeamPage() {
                   <TableHead>{t('team.colRole')}</TableHead>
                   <TableHead>{t('team.colBranch')}</TableHead>
                   <TableHead>{t('team.colPhone')}</TableHead>
+                  <TableHead>{t('team.colStatus')}</TableHead>
+                  <TableHead className="text-end">{t('team.colActions')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -293,6 +332,41 @@ export function TeamPage() {
                     </TableCell>
                     <TableCell className="text-sm text-zinc-600">
                       {u.phone ?? '—'}
+                    </TableCell>
+                    <TableCell>
+                      <span
+                        className={
+                          u.isActive ?
+                            'rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700'
+                          : 'rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold text-rose-700'
+                        }
+                      >
+                        {u.isActive ? t('team.active') : t('team.inactive')}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-end">
+                      <div className="inline-flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="min-h-12 border-emerald-500 text-emerald-700 hover:bg-emerald-50"
+                          disabled={actionBusyId === u.id}
+                          onClick={() => void toggleUserActive(u)}
+                        >
+                          <Power className="me-1 h-4 w-4" />
+                          {u.isActive ? t('team.deactivate') : t('team.activate')}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          className="min-h-12"
+                          disabled={actionBusyId === u.id}
+                          onClick={() => void deleteUser(u)}
+                        >
+                          <Trash2 className="me-1 h-4 w-4" />
+                          {t('team.deleteUser')}
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

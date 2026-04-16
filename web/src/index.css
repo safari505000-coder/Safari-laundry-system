@@ -13,6 +13,8 @@
 body {
   margin: 0;
   font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -140,6 +142,9 @@ body {
   body {
     @apply bg-background text-foreground;
   }
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-bold tracking-tight;
+  }
   html {
     @apply font-sans;
   }
@@ -151,6 +156,12 @@ body {
       ui-sans-serif,
       system-ui,
       sans-serif;
+  }
+  [data-slot='card'] {
+    @apply rounded-2xl border border-border/70 bg-card shadow-sm;
+  }
+  [data-slot='table-container'] {
+    @apply rounded-xl border border-border/60;
   }
 }
 
@@ -180,6 +191,15 @@ body {
     line-height: 1.32;
     font-family: 'Cairo', 'Almarai', sans-serif;
     text-align: right;
+  }
+  /* Multi-invoice POS: separate physical receipt per sub-order */
+  .pos-receipt-sheet {
+    break-after: page;
+    page-break-after: always;
+  }
+  .pos-receipt-sheet:last-of-type {
+    break-after: auto;
+    page-break-after: auto;
   }
   .pos-receipt-logo {
     display: block;

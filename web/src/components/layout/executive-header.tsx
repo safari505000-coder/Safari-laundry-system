@@ -10,11 +10,11 @@ export function ExecutiveHeader() {
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <img
           src="/logo.png"
-          alt="Safari Fast"
+          alt="Safari Omni"
           className="me-2 h-11 w-auto max-h-[45px] max-w-[180px] object-contain"
         />
         <span className="hidden truncate text-sm font-semibold text-primary sm:inline">
-          Safari Executive
+          Safari Omni
         </span>
       </div>
       <div className="flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-3">
