@@ -124,6 +124,13 @@ enum ExpenseCategory {
   MISC
 }
 
+enum ExpenseStatus {
+  PENDING_ACCOUNTANT
+  APPROVED
+  REJECTED
+  AUDIT
+}
+
 enum PayrollStatus {
   PENDING
   PAID
@@ -143,9 +150,10 @@ model BranchExpense {
   title            String
   amount           Decimal         @db.Decimal(19, 4)
   category         ExpenseCategory
+  status           ExpenseStatus   @default(PENDING_ACCOUNTANT)
   note             String?
-  /** Optional receipt image as data URL or short reference (keep small). */
-  receiptImageData String?         @db.Text
+  /** Temporary local/file/data-url receipt pointer until cloud storage is configured. */
+  receiptUrl       String?         @db.Text
   recordedById     String          @db.Uuid
   branchId         String?         @db.Uuid
   expenseDate      DateTime        @default(now())
@@ -153,8 +161,10 @@ model BranchExpense {
   updatedAt        DateTime        @updatedAt
 
   recordedBy User @relation("ExpenseRecordedBy", fields: [recordedById], references: [id])
+  branch     Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
 
   @@index([expenseDate])
+  @@index([status])
   @@index([recordedById])
   @@index([branchId])
 }
@@ -437,6 +447,7 @@ model Branch {
   updatedAt DateTime @updatedAt
 
   users                 User[]
+  expenses              BranchExpense[]
   wallets               Wallet[]
   payrolls              Payroll[]
   fixedExpenseSchedules FixedExpenseSchedule[]

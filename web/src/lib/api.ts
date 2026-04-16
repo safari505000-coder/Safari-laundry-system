@@ -656,8 +656,9 @@ export type ExpenseRow = {
   title: string;
   amount: string;
   category: string;
+  status: 'PENDING_ACCOUNTANT' | 'APPROVED' | 'REJECTED' | 'AUDIT';
   note: string | null;
-  receiptImageData: string | null;
+  receiptUrl: string | null;
   expenseDate: string;
   recordedById: string;
   branchId: string | null;
@@ -668,7 +669,24 @@ export type ExpenseRow = {
     fullName: string;
     username: string;
   };
+  branch: { id: string; name: string } | null;
 };
+
+export function getPendingExpenseApprovals(token: string) {
+  return apiJson<ExpenseRow[]>('/api/expenses/pending-approval', { token });
+}
+
+export function updateExpenseStatus(
+  token: string,
+  id: string,
+  status: ExpenseRow['status'],
+) {
+  return apiJson<ExpenseRow>(`/api/expenses/${encodeURIComponent(id)}/status`, {
+    method: 'PATCH',
+    token,
+    body: JSON.stringify({ status }),
+  });
+}
 
 export type BranchRow = {
   id: string;

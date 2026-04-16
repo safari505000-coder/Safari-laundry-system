@@ -175,7 +175,7 @@ const bankDepositsItem: NavItem = {
 };
 
 const depositVerificationItem: NavItem = {
-  to: '/deposit-verification',
+  to: '/expense-approval',
   labelKey: 'nav.expenseVerification',
   icon: FileCheck2,
   roles: ['ACCOUNTANT', 'OWNER'],

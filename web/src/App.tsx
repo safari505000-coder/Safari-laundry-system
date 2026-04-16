@@ -29,6 +29,7 @@ import { PosPage } from '@/pages/pos-page';
 import { MyDailySalesPage } from '@/pages/my-daily-sales-page';
 import { MyCashCustodyPage } from '@/pages/my-cash-custody-page';
 import { DriverMonitorPage } from '@/pages/driver-monitor-page';
+import { ExpenseApprovalPage } from '@/pages/expense-approval-page';
 
 function AppToaster() {
   const { i18n } = useTranslation();
@@ -68,6 +69,7 @@ export default function App() {
                 <Route path="financials" element={<FinancialsPage />} />
                 <Route path="bank-deposits" element={<BankDepositsPage />} />
                 <Route path="deposit-verification" element={<DepositVerificationPage />} />
+                <Route path="expense-approval" element={<ExpenseApprovalPage />} />
                 <Route path="collect-driver-cash" element={<CollectDriverCashPage />} />
                 <Route path="financial-cycle-report" element={<FinancialCycleReportPage />} />
                 <Route path="reports" element={<ReportsPage />} />

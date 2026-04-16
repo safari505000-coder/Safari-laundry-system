@@ -29,5 +29,5 @@ export class CreateExpenseDto {
   @IsOptional()
   @IsString()
   @MaxLength(500_000)
-  receiptImageData?: string;
+  receiptUrl?: string;
 }

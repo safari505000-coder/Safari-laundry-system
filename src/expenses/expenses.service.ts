@@ -1,5 +1,10 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
-import { ExpenseCategory, Prisma, SafariRole } from '@prisma/client';
+import {
+  ExpenseCategory,
+  ExpenseStatus,
+  Prisma,
+  SafariRole,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -20,7 +25,7 @@ export class ExpensesService {
       amount: number;
       category: ExpenseCategory;
       note?: string;
-      receiptImageData?: string;
+      receiptUrl?: string;
     },
   ) {
     this.assertCanManage(safariRole);
@@ -33,8 +38,9 @@ export class ExpensesService {
         title: dto.title.trim(),
         amount: dto.amount.toFixed(4),
         category: dto.category,
+        status: ExpenseStatus.PENDING_ACCOUNTANT,
         note: dto.note?.trim() || null,
-        receiptImageData: dto.receiptImageData?.trim() || null,
+        receiptUrl: dto.receiptUrl?.trim() || null,
         recordedById: userId,
         branchId: u?.branchId ?? null,
       },
@@ -47,6 +53,7 @@ export class ExpensesService {
     fromIso: string,
     toIso: string,
     branchId?: string,
+    status?: ExpenseStatus,
   ) {
     if (
       safariRole !== SafariRole.MANAGER &&
@@ -61,11 +68,51 @@ export class ExpensesService {
       where: {
         expenseDate: { gte: from, lte: to },
         ...(branchId ? { branchId } : {}),
+        ...(status ? { status } : {}),
       },
       orderBy: { expenseDate: 'desc' },
       include: {
         recordedBy: {
           select: { id: true, fullName: true, username: true },
+        },
+        branch: {
+          select: { id: true, name: true },
+        },
+      },
+    });
+  }
+
+  async listPendingApproval(safariRole: SafariRole) {
+    if (safariRole !== SafariRole.ACCOUNTANT && safariRole !== SafariRole.OWNER) {
+      throw new ForbiddenException();
+    }
+    return this.prisma.branchExpense.findMany({
+      where: { status: ExpenseStatus.PENDING_ACCOUNTANT },
+      orderBy: { expenseDate: 'desc' },
+      include: {
+        recordedBy: {
+          select: { id: true, fullName: true, username: true },
+        },
+        branch: {
+          select: { id: true, name: true },
+        },
+      },
+    });
+  }
+
+  async updateStatus(id: string, safariRole: SafariRole, status: ExpenseStatus) {
+    if (safariRole !== SafariRole.ACCOUNTANT && safariRole !== SafariRole.OWNER) {
+      throw new ForbiddenException();
+    }
+    return this.prisma.branchExpense.update({
+      where: { id },
+      data: { status },
+      include: {
+        recordedBy: {
+          select: { id: true, fullName: true, username: true },
+        },
+        branch: {
+          select: { id: true, name: true },
         },
       },
     });
@@ -82,6 +129,7 @@ export class ExpensesService {
     const agg = await this.prisma.branchExpense.aggregate({
       where: {
         expenseDate: { gte: from, lte: to },
+        status: ExpenseStatus.APPROVED,
         ...this.branchWhere(branchId),
       },
       _sum: { amount: true },
@@ -101,6 +149,7 @@ export class ExpensesService {
       where: {
         expenseDate: { gte: from, lte: to },
         category: { in: categories },
+        status: ExpenseStatus.APPROVED,
         ...this.branchWhere(branchId),
       },
       _sum: { amount: true },

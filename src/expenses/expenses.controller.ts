@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -14,6 +23,7 @@ import { APP_BRAND } from '../common/constants/branding';
 import { CreateExpenseDto } from './dto/create-expense.dto';
 import { ExpensesService } from './expenses.service';
 import { ExpensesQueryDto } from './dto/expenses-query.dto';
+import { UpdateExpenseStatusDto } from './dto/update-expense-status.dto';
 
 @ApiTags('expenses')
 @ApiBearerAuth('bearer')
@@ -27,7 +37,7 @@ export class ExpensesController {
   @ApiOperation({
     summary: `Record branch expense (${APP_BRAND})`,
     description:
-      'MANAGER or OWNER. Categories: SOAP, FUEL, MISC. Deducted from daily cash in closing reports.',
+      'MANAGER only. Categories: SOAP, FUEL, MISC. New rows are PENDING_ACCOUNTANT until approved.',
   })
   create(@Body() dto: CreateExpenseDto, @CurrentUser() user: JwtUser) {
     return this.expensesService.create(
@@ -49,6 +59,33 @@ export class ExpensesController {
       q.from,
       q.to,
       q.branchId,
+      q.status,
+    );
+  }
+
+  @Get('pending-approval')
+  @Roles(SafariRole.ACCOUNTANT, SafariRole.OWNER)
+  @ApiOperation({
+    summary: `Pending expense approvals (${APP_BRAND})`,
+  })
+  listPendingApproval(@CurrentUser() user: JwtUser) {
+    return this.expensesService.listPendingApproval(user.role as SafariRole);
+  }
+
+  @Patch(':id/status')
+  @Roles(SafariRole.ACCOUNTANT, SafariRole.OWNER)
+  @ApiOperation({
+    summary: `Approve/Reject/Audit expense (${APP_BRAND})`,
+  })
+  updateStatus(
+    @Param('id') id: string,
+    @Body() dto: UpdateExpenseStatusDto,
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.expensesService.updateStatus(
+      id,
+      user.role as SafariRole,
+      dto.status,
     );
   }
 }

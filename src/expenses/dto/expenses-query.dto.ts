@@ -1,4 +1,5 @@
-import { IsISO8601, IsOptional, IsUUID } from 'class-validator';
+import { ExpenseStatus } from '@prisma/client';
+import { IsEnum, IsISO8601, IsOptional, IsUUID } from 'class-validator';
 
 export class ExpensesQueryDto {
   @IsISO8601()
@@ -10,4 +11,8 @@ export class ExpensesQueryDto {
   @IsOptional()
   @IsUUID()
   branchId?: string;
+
+  @IsOptional()
+  @IsEnum(ExpenseStatus)
+  status?: ExpenseStatus;
 }

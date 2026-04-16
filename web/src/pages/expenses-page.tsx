@@ -4,7 +4,12 @@ import { Navigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Loader2, Plus, Receipt } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
-import { type ExpenseRow, apiJson, ApiError } from '@/lib/api';
+import {
+  type BranchRow,
+  type ExpenseRow,
+  apiJson,
+  ApiError,
+} from '@/lib/api';
 import { useAppLocale } from '@/hooks/use-app-locale';
 import { formatKwdLabel } from '@/lib/kwd';
 import { Button } from '@/components/ui/button';
@@ -39,6 +44,11 @@ export function ExpensesPage() {
   const [from, setFrom] = useState(() => startOfDayIso(new Date()));
   const [to, setTo] = useState(() => endOfDayIso(new Date()));
   const [rows, setRows] = useState<ExpenseRow[] | null>(null);
+  const [branches, setBranches] = useState<BranchRow[]>([]);
+  const [selectedBranch, setSelectedBranch] = useState<string>('ALL');
+  const [statusFilter, setStatusFilter] = useState<
+    'ALL' | 'PENDING_ACCOUNTANT' | 'APPROVED' | 'REJECTED' | 'AUDIT'
+  >('ALL');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -55,11 +65,11 @@ export function ExpensesPage() {
     if (!token) return;
     setLoading(true);
     try {
-      const qs = new URLSearchParams({
-        from,
-        to,
-        ...(ownerBranchId ? { branchId: ownerBranchId } : {}),
-      });
+      const qs = new URLSearchParams({ from, to });
+      const effectiveBranch =
+        selectedBranch !== 'ALL' ? selectedBranch : ownerBranchId;
+      if (effectiveBranch) qs.set('branchId', effectiveBranch);
+      if (statusFilter !== 'ALL') qs.set('status', statusFilter);
       const data = await apiJson<ExpenseRow[]>(
         `/api/expenses?${qs.toString()}`,
         { token },
@@ -70,11 +80,18 @@ export function ExpensesPage() {
     } finally {
       setLoading(false);
     }
-  }, [token, from, to, ownerBranchId]);
+  }, [token, from, to, ownerBranchId, selectedBranch, statusFilter]);
 
   useEffect(() => {
     if (token && canView) void load();
   }, [token, canView, load]);
+
+  useEffect(() => {
+    if (!token || !hasRole('OWNER')) return;
+    void apiJson<BranchRow[]>('/api/branches', { token })
+      .then((data) => setBranches(Array.isArray(data) ? data : []))
+      .catch(() => setBranches([]));
+  }, [token, hasRole]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -94,7 +111,7 @@ export function ExpensesPage() {
           amount: n,
           category,
           ...(note.trim() ? { note: note.trim() } : {}),
-          ...(receiptPreview ? { receiptImageData: receiptPreview } : {}),
+          ...(receiptPreview ? { receiptUrl: receiptPreview } : {}),
         }),
       });
       toast.success(t('expenses.saved'));
@@ -255,6 +272,48 @@ export function ExpensesPage() {
               : null}
               {t('expenses.refresh')}
             </Button>
+            {hasRole('OWNER') ? (
+              <Select
+                value={selectedBranch}
+                onValueChange={(v) => setSelectedBranch(v ?? 'ALL')}
+              >
+                <SelectTrigger className="min-w-[180px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">All branches</SelectItem>
+                  {branches.map((b) => (
+                    <SelectItem key={b.id} value={b.id}>
+                      {b.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : null}
+            <Select
+              value={statusFilter}
+              onValueChange={(v) =>
+                setStatusFilter(
+                  v as
+                    | 'ALL'
+                    | 'PENDING_ACCOUNTANT'
+                    | 'APPROVED'
+                    | 'REJECTED'
+                    | 'AUDIT',
+                )
+              }
+            >
+              <SelectTrigger className="min-w-[180px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">All statuses</SelectItem>
+                <SelectItem value="PENDING_ACCOUNTANT">Pending</SelectItem>
+                <SelectItem value="APPROVED">Approved</SelectItem>
+                <SelectItem value="REJECTED">Rejected</SelectItem>
+                <SelectItem value="AUDIT">Audit</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </CardHeader>
         <CardContent className="overflow-x-auto">
@@ -269,6 +328,8 @@ export function ExpensesPage() {
                   <th className="py-2 pe-2">{t('expenses.colDate')}</th>
                   <th className="py-2 pe-2">{t('expenses.colTitle')}</th>
                   <th className="py-2 pe-2">{t('expenses.colCategory')}</th>
+                  <th className="py-2 pe-2">Status</th>
+                  <th className="py-2 pe-2">Branch</th>
                   <th className="py-2 pe-2">{t('expenses.colBy')}</th>
                   <th className="py-2 text-end">{t('expenses.colAmount')}</th>
                 </tr>
@@ -281,6 +342,8 @@ export function ExpensesPage() {
                     </td>
                     <td className="py-2 pe-2">{r.title}</td>
                     <td className="py-2 pe-2">{r.category}</td>
+                    <td className="py-2 pe-2">{r.status}</td>
+                    <td className="py-2 pe-2">{r.branch?.name ?? '—'}</td>
                     <td className="py-2 pe-2">{r.recordedBy.fullName}</td>
                     <td className="py-2 text-end tabular-nums">
                       {formatKwdLabel(r.amount)}
