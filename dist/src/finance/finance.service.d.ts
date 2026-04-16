@@ -1,18 +1,24 @@
-import { DebtEntityCategory, PosPaymentMethod } from '@prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
+import { DebtEntityCategory } from '@prisma/client';
 import { ConfirmHandoverDto } from './dto/confirm-handover.dto';
 import type { DriverBalanceResponseDto, HandoverResultDto } from './dto/driver-balance.dto';
 import type { OwnerCustomerWalletSummaryDto } from './dto/owner-customer-wallet-summary.dto';
 import type { UpdateDriverTrackingDto } from './dto/update-driver-tracking.dto';
+import { CashService } from './services/cash.service';
+import { DebtService } from './services/debt.service';
+import { OnlinePaymentService } from './services/online-payment.service';
+import { SubscriptionService } from './services/subscription.service';
 export declare class FinanceService {
-    private readonly prisma;
-    constructor(prisma: PrismaService);
+    private readonly cashService;
+    private readonly debtService;
+    private readonly onlinePaymentService;
+    private readonly subscriptionService;
+    constructor(cashService: CashService, debtService: DebtService, onlinePaymentService: OnlinePaymentService, subscriptionService: SubscriptionService);
     ensureOpenShiftForDriver(driverId: string): Promise<void>;
     getDailyPosSalesByPaymentMethod(fromIso: string, toIso: string): Promise<{
         from: string;
         to: string;
         rows: {
-            posPaymentMethod: PosPaymentMethod;
+            posPaymentMethod: "SUBSCRIPTION_WALLET" | "CASH" | "KNET" | "PAYMENT_LINK" | "DEBT_ON_ACCOUNT" | "ONLINE";
             orderCount: number;
             totalRevenue: string;
         }[];
@@ -81,5 +87,11 @@ export declare class FinanceService {
             } | null;
             lastUpdatedAt: string;
         }[];
+    }>;
+    getRealtimeTotals(): Promise<{
+        totalCash: string;
+        totalOnline: string;
+        totalDebt: string;
+        totalSubscriptionUsage: string;
     }>;
 }

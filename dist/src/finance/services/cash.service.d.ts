@@ -1,19 +1,12 @@
-import type { JwtUser } from '../auth/decorators/current-user.decorator';
-import { ConfirmHandoverDto } from './dto/confirm-handover.dto';
-import { DebtByCategoryQueryDto } from './dto/debt-by-category-query.dto';
-import { DailyPosSalesQueryDto } from './dto/daily-pos-sales-query.dto';
-import { DriverBalanceResponseDto, HandoverResultDto } from './dto/driver-balance.dto';
-import { OwnerCustomerWalletSummaryDto } from './dto/owner-customer-wallet-summary.dto';
-import { UpdateDriverTrackingDto } from './dto/update-driver-tracking.dto';
-import { FinanceService } from './finance.service';
-export declare class FinanceController {
-    private readonly financeService;
-    constructor(financeService: FinanceService);
-    driverEnsureShift(user: JwtUser): Promise<{
-        ok: boolean;
-    }>;
-    getOwnerCustomerWalletSummary(): Promise<OwnerCustomerWalletSummaryDto>;
-    getDailyPosSales(q: DailyPosSalesQueryDto): Promise<{
+import { PrismaService } from '../../prisma/prisma.service';
+import { ConfirmHandoverDto } from '../dto/confirm-handover.dto';
+import type { DriverBalanceResponseDto, HandoverResultDto } from '../dto/driver-balance.dto';
+import type { UpdateDriverTrackingDto } from '../dto/update-driver-tracking.dto';
+export declare class CashService {
+    private readonly prisma;
+    constructor(prisma: PrismaService);
+    ensureOpenShiftForDriver(driverId: string): Promise<void>;
+    getDailyPosSalesByPaymentMethod(fromIso: string, toIso: string): Promise<{
         from: string;
         to: string;
         rows: {
@@ -22,20 +15,8 @@ export declare class FinanceController {
             totalRevenue: string;
         }[];
     }>;
-    getDebtByCategory(q: DebtByCategoryQueryDto): Promise<{
-        from: string;
-        to: string;
-        rows: {
-            category: import("@prisma/client").$Enums.DebtEntityCategory;
-            source: import("@prisma/client").$Enums.DebtSource;
-            entryCount: number;
-            totalDebt: string;
-        }[];
-    }>;
-    uploadHandoverReceipt(file: Express.Multer.File): {
-        depositReceiptUrl: string;
-    };
-    getDriverBalance(): Promise<DriverBalanceResponseDto>;
+    getDriverBalances(): Promise<DriverBalanceResponseDto>;
+    getTotalCashWithDrivers(): Promise<string>;
     getDriverMonitoring(): Promise<{
         drivers: {
             driverId: string;
@@ -67,8 +48,8 @@ export declare class FinanceController {
         vehicleLabel: string | null;
         lastKnownLocation: string | null;
     }>;
-    confirmHandover(dto: ConfirmHandoverDto, user: JwtUser): Promise<HandoverResultDto>;
-    getFinancialCycleReport(): Promise<{
+    confirmHandover(managerId: string, dto: ConfirmHandoverDto): Promise<HandoverResultDto>;
+    getOwnerFinancialCycleReport(): Promise<{
         rows: {
             orderId: string;
             amountKd: string;
@@ -88,11 +69,5 @@ export declare class FinanceController {
             } | null;
             lastUpdatedAt: string;
         }[];
-    }>;
-    getRealtimeTotals(): Promise<{
-        totalCash: string;
-        totalOnline: string;
-        totalDebt: string;
-        totalSubscriptionUsage: string;
     }>;
 }

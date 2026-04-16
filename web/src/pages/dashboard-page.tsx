@@ -14,6 +14,7 @@ import { useAuth } from '@/contexts/auth-context';
 import {
   type DailyPosSalesByPaymentMethodReport,
   type DriverBalanceResponse,
+  type FinanceRealtimeTotals,
   type BankDepositsListResponse,
   type OwnerWalletSummary,
   apiJson,
@@ -105,6 +106,7 @@ export function DashboardPage() {
   const [paySplit, setPaySplit] = useState<DailyPosSalesByPaymentMethodReport | null>(null);
   const [financialDateIso, setFinancialDateIso] = useState<string | null>(null);
   const [financialDateLabel, setFinancialDateLabel] = useState<string | null>(null);
+  const [realtimeTotals, setRealtimeTotals] = useState<FinanceRealtimeTotals | null>(null);
   /** `null` = use active financial day (today). */
   const [selectedBreakdownDate, setSelectedBreakdownDate] = useState<string | null>(null);
   const [paySplitLoading, setPaySplitLoading] = useState(false);
@@ -159,6 +161,23 @@ export function DashboardPage() {
               { token },
             ).then((w) => {
               if (!cancelled) setWallet(w);
+            }),
+          );
+        }
+        if (
+          hasRole(
+            'OWNER',
+            'MANAGER',
+            'ACCOUNTANT',
+            'SUPERVISOR',
+            'VIEWER',
+          )
+        ) {
+          tasks.push(
+            apiJson<FinanceRealtimeTotals>('/api/finance/dashboard/realtime-totals', {
+              token,
+            }).then((v) => {
+              if (!cancelled) setRealtimeTotals(v);
             }),
           );
         }
@@ -260,10 +279,35 @@ export function DashboardPage() {
     };
   }, [token, hasRole]);
 
+  useEffect(() => {
+    if (
+      !token ||
+      !hasRole('OWNER', 'MANAGER', 'ACCOUNTANT', 'SUPERVISOR', 'VIEWER')
+    ) {
+      return;
+    }
+    let cancelled = false;
+    const refresh = () => {
+      void apiJson<FinanceRealtimeTotals>('/api/finance/dashboard/realtime-totals', {
+        token,
+      })
+        .then((v) => {
+          if (!cancelled) setRealtimeTotals(v);
+        })
+        .catch(() => {});
+    };
+    const id = window.setInterval(refresh, 10_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [token, hasRole]);
+
   const totalCashWithDrivers =
-    drivers?.drivers.length ?
-      sumKwdStrings(drivers.drivers.map((d) => d.heldCashTotal))
-    : '0.0000';
+    realtimeTotals?.totalCash ??
+    (drivers?.drivers.length
+      ? sumKwdStrings(drivers.drivers.map((d) => d.heldCashTotal))
+      : '0.0000');
 
   const feed =
     orders ?
@@ -315,6 +359,9 @@ export function DashboardPage() {
   }, [paySplit]);
 
   const onlineRevenue = useMemo(() => {
+    if (realtimeTotals?.totalOnline) {
+      return formatKwdLabel(realtimeTotals.totalOnline);
+    }
     const totals = new Map<DashboardPayKey, number>();
     for (const row of paySplit?.rows ?? []) {
       const key = normalizePayMethod(row.posPaymentMethod);
@@ -324,7 +371,25 @@ export function DashboardPage() {
       totals.set(key, (totals.get(key) ?? 0) + v);
     }
     return formatKwdLabel((totals.get('ONLINE') ?? 0).toFixed(4));
-  }, [paySplit]);
+  }, [paySplit, realtimeTotals]);
+
+  const totalDebt = useMemo(
+    () =>
+      formatKwdLabel(
+        realtimeTotals?.totalDebt ?? wallet?.totalCustomerDebts ?? '0.0000',
+      ),
+    [realtimeTotals, wallet],
+  );
+
+  const subUsage = useMemo(
+    () =>
+      formatKwdLabel(
+        realtimeTotals?.totalSubscriptionUsage ??
+          wallet?.totalSubscriptionUsage ??
+          '0.0000',
+      ),
+    [realtimeTotals, wallet],
+  );
 
   const paymentBreakdownRows = useMemo(() => {
     const labels: Array<{ key: DashboardPayKey; label: string }> = [
@@ -505,13 +570,13 @@ export function DashboardPage() {
                     <MetricCard
                       title={t('dashboard.customerDebtTitle')}
                       subtitle={t('dashboard.customerDebtSubtitle')}
-                      value={formatKwdLabel(wallet.totalCustomerDebts)}
+                      value={totalDebt}
                       icon={<ReceiptText className="h-4 w-4" />}
                     />
                     <MetricCard
                       title={t('dashboard.subscriptionUsageTitle')}
                       subtitle={t('dashboard.subscriptionUsageSubtitle')}
-                      value={formatKwdLabel(wallet.totalSubscriptionUsage)}
+                      value={subUsage}
                       icon={<Wallet className="h-4 w-4" />}
                     />
                   </>

@@ -1,0 +1,31 @@
+import { DebtEntityCategory } from '@prisma/client';
+import { PrismaService } from '../../prisma/prisma.service';
+import { SubscriptionService } from './subscription.service';
+export declare class DebtService {
+    private readonly prisma;
+    private readonly subscriptionService;
+    constructor(prisma: PrismaService, subscriptionService: SubscriptionService);
+    getOwnerCustomerWalletSummary(): Promise<{
+        totalWalletLiabilities: string;
+        totalCustomerDebts: string;
+        debtFromIssuedInvoices: string;
+        debtFromSubscriptionOveruse: string;
+        debtSettledBySubscriptions: string;
+        debtByBranch: string;
+        debtByDriver: string;
+        debtByOwner: string;
+        debtByCallCenter: string;
+        totalSubscriptionUsage: string;
+    }>;
+    getDebtBreakdownByCategory(fromIso: string, toIso: string, category?: DebtEntityCategory, branchId?: string, actorUserId?: string): Promise<{
+        from: string;
+        to: string;
+        rows: {
+            category: import("@prisma/client").$Enums.DebtEntityCategory;
+            source: import("@prisma/client").$Enums.DebtSource;
+            entryCount: number;
+            totalDebt: string;
+        }[];
+    }>;
+    getTotalDebt(): Promise<string>;
+}

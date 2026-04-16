@@ -244,4 +244,21 @@ export class FinanceController {
   getFinancialCycleReport() {
     return this.financeService.getOwnerFinancialCycleReport();
   }
+
+  @Get('dashboard/realtime-totals')
+  @Roles(
+    SafariRole.OWNER,
+    SafariRole.MANAGER,
+    SafariRole.ACCOUNTANT,
+    SafariRole.SUPERVISOR,
+    SafariRole.VIEWER,
+  )
+  @ApiOperation({
+    summary: `Realtime financial dashboard totals (${APP_BRAND})`,
+    description:
+      'Card totals for cash with drivers, online revenue, total debt, and subscription usage.',
+  })
+  getRealtimeTotals() {
+    return this.financeService.getRealtimeTotals();
+  }
 }

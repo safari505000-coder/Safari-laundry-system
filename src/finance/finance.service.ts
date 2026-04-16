@@ -1,238 +1,36 @@
-import {
-  BadRequestException,
-  ConflictException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
-import {
-  CashStatus,
-  DebtEntityCategory,
-  DebtSource,
-  LedgerTransactionType,
-  OrderStatus,
-  PosPaymentMethod,
-  Prisma,
-  SafariRole,
-  ShiftStatus,
-} from '@prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
+import { Injectable } from '@nestjs/common';
+import { DebtEntityCategory } from '@prisma/client';
 import { ConfirmHandoverDto } from './dto/confirm-handover.dto';
 import type {
   DriverBalanceResponseDto,
-  DriverBalanceRowDto,
   HandoverResultDto,
 } from './dto/driver-balance.dto';
 import type { OwnerCustomerWalletSummaryDto } from './dto/owner-customer-wallet-summary.dto';
 import type { UpdateDriverTrackingDto } from './dto/update-driver-tracking.dto';
-import {
-  assertDeclaredMatchesLedgerMinor,
-  minorToAmountString,
-  sumOrderMinors,
-} from './finance-money';
-
-const KUWAIT_OFFSET_MIN = 180; // UTC+03:00, no DST.
-
-function kuwaitNow(): Date {
-  return new Date(Date.now() + KUWAIT_OFFSET_MIN * 60_000);
-}
-
-function parseLatLng(input?: string | null): { lat: number; lng: number } | null {
-  if (!input) return null;
-  const parts = input.split(',').map((x) => Number.parseFloat(x.trim()));
-  if (parts.length !== 2) return null;
-  const [lat, lng] = parts;
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
-  return { lat, lng };
-}
-
-/** Midnight (00:00 Kuwait) expressed as a UTC Date. */
-function kuwaitMidnightUtc(nowUtc: Date): Date {
-  const k = new Date(nowUtc.getTime() + KUWAIT_OFFSET_MIN * 60_000);
-  const y = k.getUTCFullYear();
-  const m = k.getUTCMonth();
-  const d = k.getUTCDate();
-  const utcMs = Date.UTC(y, m, d, 0, 0, 0, 0) - KUWAIT_OFFSET_MIN * 60_000;
-  return new Date(utcMs);
-}
+import { CashService } from './services/cash.service';
+import { DebtService } from './services/debt.service';
+import { OnlinePaymentService } from './services/online-payment.service';
+import { SubscriptionService } from './services/subscription.service';
 
 @Injectable()
 export class FinanceService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly cashService: CashService,
+    private readonly debtService: DebtService,
+    private readonly onlinePaymentService: OnlinePaymentService,
+    private readonly subscriptionService: SubscriptionService,
+  ) {}
 
-  /**
-   * DRIVER login: ensure exactly one OPEN shift (field clock-in).
-   */
   async ensureOpenShiftForDriver(driverId: string): Promise<void> {
-    const user = await this.prisma.user.findUnique({ where: { id: driverId } });
-    if (!user || user.safariRole !== SafariRole.DRIVER) {
-      return;
-    }
-    const open = await this.prisma.shift.findFirst({
-      where: { driverId, status: ShiftStatus.OPEN },
-      orderBy: { startedAt: 'desc' },
-    });
-    if (open) {
-      const nowUtc = new Date();
-      const midnightUtc = kuwaitMidnightUtc(nowUtc);
-      // Auto-lock any shift that spans into the new financial day.
-      if (open.startedAt.getTime() < midnightUtc.getTime()) {
-        await this.prisma.shift.update({
-          where: { id: open.id },
-          data: {
-            status: ShiftStatus.CLOSED,
-            endedAt: new Date(midnightUtc.getTime() - 1),
-          },
-        });
-        await this.prisma.shift.create({
-          data: { driverId, status: ShiftStatus.OPEN },
-        });
-      }
-      return;
-    }
-    await this.prisma.shift.create({
-      data: { driverId, status: ShiftStatus.OPEN },
-    });
+    return this.cashService.ensureOpenShiftForDriver(driverId);
   }
 
-  async getDailyPosSalesByPaymentMethod(
-    fromIso: string,
-    toIso: string,
-  ): Promise<{
-    from: string;
-    to: string;
-    rows: {
-      posPaymentMethod: PosPaymentMethod;
-      orderCount: number;
-      totalRevenue: string;
-    }[];
-  }> {
-    const from = new Date(fromIso);
-    const to = new Date(toIso);
-    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
-      throw new BadRequestException('Invalid date range');
-    }
-    const rows = await this.prisma.order.groupBy({
-      by: ['posPaymentMethod'],
-      where: {
-        status: OrderStatus.COMPLETED,
-        completedAt: { gte: from, lte: to },
-        posPaymentMethod: { not: null },
-      },
-      _sum: { totalPrice: true },
-      _count: true,
-    });
-    return {
-      from: from.toISOString(),
-      to: to.toISOString(),
-      rows: rows
-        .filter((r): r is typeof r & { posPaymentMethod: PosPaymentMethod } =>
-          r.posPaymentMethod !== null,
-        )
-        .map((r) => ({
-          posPaymentMethod: r.posPaymentMethod,
-          orderCount: r._count,
-          totalRevenue:
-            r._sum.totalPrice !== null && r._sum.totalPrice !== undefined
-              ? r._sum.totalPrice.toString()
-              : '0',
-        })),
-    };
+  async getDailyPosSalesByPaymentMethod(fromIso: string, toIso: string) {
+    return this.cashService.getDailyPosSalesByPaymentMethod(fromIso, toIso);
   }
 
   async getOwnerCustomerWalletSummary(): Promise<OwnerCustomerWalletSummaryDto> {
-    const agg = await this.prisma.customerWallet.aggregate({
-      _sum: { balance: true, debt: true },
-    });
-    const negativeBalanceRows = await this.prisma.customerWallet.findMany({
-      where: { balance: { lt: 0 } },
-      select: { balance: true },
-    });
-    const subscriptionDebtMinor = negativeBalanceRows.reduce((acc, row) => {
-      const x = Number.parseFloat(row.balance.toString());
-      if (!Number.isFinite(x) || x >= 0) return acc;
-      return acc + Math.abs(x);
-    }, 0);
-    const txRows = await this.prisma.transactionHistory.findMany({
-      where: {
-        OR: [
-          { type: LedgerTransactionType.ORDER_WALLET_SETTLEMENT },
-          { type: LedgerTransactionType.SUBSCRIPTION_ACTIVATION },
-        ],
-      },
-      select: { type: true, metadata: true },
-    });
-    const debtRows = await this.prisma.debtLedgerEntry.groupBy({
-      by: ['source', 'category'],
-      _sum: { amount: true },
-    });
-    let debtFromIssuedInvoices = 0;
-    let debtFromSubscriptionOveruse = 0;
-    let debtSettledBySubscriptions = 0;
-    let debtByBranch = 0;
-    let debtByDriver = 0;
-    let debtByOwner = 0;
-    let debtByCallCenter = 0;
-    let totalSubscriptionUsage = 0;
-    for (const row of debtRows) {
-      const amount = Number.parseFloat(row._sum.amount?.toString() ?? '0');
-      if (!Number.isFinite(amount) || amount <= 0) continue;
-      if (row.source === DebtSource.INVOICE_SHORTFALL) {
-        debtFromIssuedInvoices += amount;
-      } else if (row.source === DebtSource.SUBSCRIPTION_OVERUSE) {
-        debtFromSubscriptionOveruse += amount;
-      }
-      if (row.category === DebtEntityCategory.BRANCH) debtByBranch += amount;
-      else if (row.category === DebtEntityCategory.DRIVER) debtByDriver += amount;
-      else if (row.category === DebtEntityCategory.OWNER) debtByOwner += amount;
-      else if (row.category === DebtEntityCategory.CALL_CENTER) {
-        debtByCallCenter += amount;
-      }
-    }
-    for (const row of txRows) {
-      const meta = row.metadata as
-        | {
-            addedToDebt?: unknown;
-            debtSettled?: unknown;
-            appliedFromWallet?: unknown;
-          }
-        | null
-        | undefined;
-      if (row.type === LedgerTransactionType.ORDER_WALLET_SETTLEMENT) {
-        const used = Number.parseFloat(String(meta?.appliedFromWallet ?? '0'));
-        if (Number.isFinite(used) && used > 0) {
-          totalSubscriptionUsage += used;
-        }
-        const n = Number.parseFloat(String(meta?.addedToDebt ?? '0'));
-        if (Number.isFinite(n) && n > 0 && debtFromIssuedInvoices <= 0) {
-          debtFromIssuedInvoices += n;
-        }
-      } else if (row.type === LedgerTransactionType.SUBSCRIPTION_ACTIVATION) {
-        const n = Number.parseFloat(String(meta?.debtSettled ?? '0'));
-        if (Number.isFinite(n) && n > 0) debtSettledBySubscriptions += n;
-      }
-    }
-    const standardInvoiceDebt = Number.parseFloat(
-      agg._sum.debt !== null && agg._sum.debt !== undefined
-        ? agg._sum.debt.toString()
-        : '0',
-    );
-    const totalCustomerDebts = (standardInvoiceDebt + subscriptionDebtMinor).toFixed(4);
-    return {
-      totalWalletLiabilities:
-        agg._sum.balance !== null && agg._sum.balance !== undefined
-          ? agg._sum.balance.toString()
-          : '0',
-      totalCustomerDebts,
-      debtFromIssuedInvoices: debtFromIssuedInvoices.toFixed(4),
-      debtFromSubscriptionOveruse: debtFromSubscriptionOveruse.toFixed(4),
-      debtSettledBySubscriptions: debtSettledBySubscriptions.toFixed(4),
-      debtByBranch: debtByBranch.toFixed(4),
-      debtByDriver: debtByDriver.toFixed(4),
-      debtByOwner: debtByOwner.toFixed(4),
-      debtByCallCenter: debtByCallCenter.toFixed(4),
-      totalSubscriptionUsage: totalSubscriptionUsage.toFixed(4),
-    };
+    return this.debtService.getOwnerCustomerWalletSummary();
   }
 
   async getDebtBreakdownByCategory(
@@ -242,323 +40,53 @@ export class FinanceService {
     branchId?: string,
     actorUserId?: string,
   ) {
-    const from = new Date(fromIso);
-    const to = new Date(toIso);
-    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
-      throw new BadRequestException('Invalid date range');
-    }
-    const where: Prisma.DebtLedgerEntryWhereInput = {
-      createdAt: { gte: from, lte: to },
-      ...(category ? { category } : {}),
-      ...(branchId ? { branchId } : {}),
-      ...(actorUserId ? { actorUserId } : {}),
-    };
-    const rows = await this.prisma.debtLedgerEntry.groupBy({
-      by: ['category', 'source'],
-      where,
-      _sum: { amount: true },
-      _count: { _all: true },
-    });
-    return {
-      from: from.toISOString(),
-      to: to.toISOString(),
-      rows: rows.map((r) => ({
-        category: r.category,
-        source: r.source,
-        entryCount: r._count._all,
-        totalDebt: r._sum.amount?.toString() ?? '0',
-      })),
-    };
+    return this.debtService.getDebtBreakdownByCategory(
+      fromIso,
+      toIso,
+      category,
+      branchId,
+      actorUserId,
+    );
   }
 
   async getDriverBalances(): Promise<DriverBalanceResponseDto> {
-    const drivers = await this.prisma.user.findMany({
-      where: { safariRole: SafariRole.DRIVER },
-      select: {
-        id: true,
-        username: true,
-        fullName: true,
-        employeeId: true,
-        phone: true,
-        branchId: true,
-      },
-      orderBy: { username: 'asc' },
-    });
-    const rows: DriverBalanceRowDto[] = [];
-    for (const d of drivers) {
-      const shift = await this.prisma.shift.findFirst({
-        where: { driverId: d.id, status: ShiftStatus.OPEN },
-        orderBy: { startedAt: 'desc' },
-      });
-      const pending = await this.prisma.order.findMany({
-        where: {
-          driverId: d.id,
-          status: OrderStatus.COMPLETED,
-          cashStatus: CashStatus.PAID_TO_DRIVER,
-          posPaymentMethod: PosPaymentMethod.CASH,
-        },
-        select: { totalPrice: true },
-      });
-      const heldMinor = sumOrderMinors(pending);
-      rows.push({
-        driverId: d.id,
-        employeeId: d.employeeId,
-        username: d.username,
-        fullName: d.fullName,
-        phone: d.phone,
-        branchId: d.branchId,
-        currentShiftId: shift?.id ?? null,
-        shiftStartedAt: shift?.startedAt ?? null,
-        heldCashTotal: minorToAmountString(heldMinor),
-        pendingSettlementOrderCount: pending.length,
-      });
-    }
-    return { drivers: rows };
+    return this.cashService.getDriverBalances();
   }
 
   async getDriverMonitoring() {
-    const activeDrivers = await this.prisma.user.findMany({
-      where: {
-        safariRole: SafariRole.DRIVER,
-        shiftsAsDriver: { some: { status: ShiftStatus.OPEN } },
-      },
-      orderBy: { fullName: 'asc' },
-      select: {
-        id: true,
-        fullName: true,
-        username: true,
-        phone: true,
-        vehicleLabel: true,
-        lastKnownLocation: true,
-        branch: {
-          select: { id: true, name: true, location: true },
-        },
-      },
-    });
-    return {
-      drivers: activeDrivers.map((d) => {
-        const live = parseLatLng(d.lastKnownLocation);
-        const fallback = parseLatLng(d.branch?.location ?? null);
-        const location = live ?? fallback;
-        return {
-          driverId: d.id,
-          fullName: d.fullName,
-          username: d.username,
-          phone: d.phone,
-          vehicleLabel: d.vehicleLabel ?? 'Toyota LC300',
-          status: 'ON_SHIFT' as const,
-          source: live ? ('LIVE_GPS' as const) : ('BRANCH_FALLBACK' as const),
-          lastKnownLocation: live,
-          markerLocation: location,
-          branch: d.branch,
-        };
-      }),
-    };
+    return this.cashService.getDriverMonitoring();
   }
 
   async updateDriverTracking(driverId: string, dto: UpdateDriverTrackingDto) {
-    const driver = await this.prisma.user.findUnique({
-      where: { id: driverId },
-      select: { id: true, safariRole: true },
-    });
-    if (!driver || driver.safariRole !== SafariRole.DRIVER) {
-      throw new NotFoundException('Driver not found');
-    }
-    if (
-      dto.lastKnownLocation !== undefined &&
-      dto.lastKnownLocation.trim().length > 0 &&
-      !parseLatLng(dto.lastKnownLocation)
-    ) {
-      throw new BadRequestException('lastKnownLocation must be "lat,lng"');
-    }
-    return this.prisma.user.update({
-      where: { id: driverId },
-      data: {
-        ...(dto.vehicleLabel !== undefined
-          ? { vehicleLabel: dto.vehicleLabel.trim() || null }
-          : {}),
-        ...(dto.lastKnownLocation !== undefined
-          ? { lastKnownLocation: dto.lastKnownLocation.trim() || null }
-          : {}),
-      },
-      select: {
-        id: true,
-        fullName: true,
-        username: true,
-        vehicleLabel: true,
-        lastKnownLocation: true,
-      },
-    });
+    return this.cashService.updateDriverTracking(driverId, dto);
   }
 
   async confirmHandover(
     managerId: string,
     dto: ConfirmHandoverDto,
   ): Promise<HandoverResultDto> {
-    const driver = await this.prisma.user.findUnique({
-      where: { id: dto.driverId },
-    });
-    if (!driver || driver.safariRole !== SafariRole.DRIVER) {
-      throw new NotFoundException('Driver not found');
-    }
-    return this.prisma.$transaction(async (tx) => {
-      const pending = await tx.order.findMany({
-        where: {
-          driverId: dto.driverId,
-          status: OrderStatus.COMPLETED,
-          cashStatus: CashStatus.PAID_TO_DRIVER,
-          posPaymentMethod: PosPaymentMethod.CASH,
-        },
-        select: { id: true, totalPrice: true },
-      });
-      const systemMinor = sumOrderMinors(pending);
-      if (dto.declaredHandoverTotal !== undefined) {
-        try {
-          assertDeclaredMatchesLedgerMinor(
-            systemMinor,
-            dto.declaredHandoverTotal,
-          );
-        } catch (e) {
-          throw new BadRequestException(
-            e instanceof Error ? e.message : 'Declared total mismatch',
-          );
-        }
-      }
-      const shift = await tx.shift.findFirst({
-        where: { driverId: dto.driverId, status: ShiftStatus.OPEN },
-        orderBy: { startedAt: 'desc' },
-      });
-      if (pending.length === 0) {
-        if (shift) {
-          await tx.shift.update({
-            where: { id: shift.id },
-            data: {
-              status: ShiftStatus.CLOSED,
-              endedAt: new Date(),
-              systemHandoverTotal: '0.0000',
-              declaredHandoverTotal:
-                dto.declaredHandoverTotal !== undefined
-                  ? dto.declaredHandoverTotal.toFixed(4)
-                  : null,
-              ordersSettledCount: 0,
-              bankDepositReceiptUrl: dto.depositReceiptUrl,
-              confirmedByManagerId: managerId,
-              confirmedAt: new Date(),
-            },
-          });
-          return {
-            settledOrderCount: 0,
-            systemHandoverTotal: '0.0000',
-            shiftId: shift.id,
-            bankDepositReceiptUrl: dto.depositReceiptUrl,
-          };
-        }
-        throw new BadRequestException(
-          'No cash pending settlement and no open shift to close.',
-        );
-      }
-      if (!shift) {
-        throw new BadRequestException(
-          'Ledger shows cash due but the driver has no OPEN shift. Reconcile before handover.',
-        );
-      }
-      const ids = pending.map((o) => o.id);
-      const updated = await tx.order.updateMany({
-        where: {
-          id: { in: ids },
-          cashStatus: CashStatus.PAID_TO_DRIVER,
-          posPaymentMethod: PosPaymentMethod.CASH,
-        },
-        data: {
-          cashStatus: CashStatus.HANDED_OVER_TO_OFFICE,
-          handoverShiftId: shift.id,
-        },
-      });
-      if (updated.count !== pending.length) {
-        throw new ConflictException(
-          'Concurrent handover detected; not all orders could be settled. Retry.',
-        );
-      }
-      await tx.shift.update({
-        where: { id: shift.id },
-        data: {
-          status: ShiftStatus.CLOSED,
-          endedAt: new Date(),
-          systemHandoverTotal: minorToAmountString(systemMinor),
-          declaredHandoverTotal:
-            dto.declaredHandoverTotal !== undefined
-              ? dto.declaredHandoverTotal.toFixed(4)
-              : null,
-          ordersSettledCount: pending.length,
-          bankDepositReceiptUrl: dto.depositReceiptUrl,
-          confirmedByManagerId: managerId,
-          confirmedAt: new Date(),
-        },
-      });
-      return {
-        settledOrderCount: pending.length,
-        systemHandoverTotal: minorToAmountString(systemMinor),
-        shiftId: shift.id,
-        bankDepositReceiptUrl: dto.depositReceiptUrl,
-      };
-    });
+    return this.cashService.confirmHandover(managerId, dto);
   }
 
   /**
    * OWNER: trace each CASH order through manager collection and accountant verification.
    */
   async getOwnerFinancialCycleReport() {
-    const rows = await this.prisma.order.findMany({
-      where: {
-        posPaymentMethod: PosPaymentMethod.CASH,
-        handoverShiftId: { not: null },
-      },
-      orderBy: { updatedAt: 'desc' },
-      take: 1000,
-      select: {
-        id: true,
-        totalPrice: true,
-        updatedAt: true,
-        handoverShift: {
-          select: {
-            id: true,
-            confirmedAt: true,
-            confirmedByManager: {
-              select: { id: true, fullName: true, username: true },
-            },
-            bankDepositLogs: {
-              orderBy: { createdAt: 'desc' },
-              take: 1,
-              select: {
-                id: true,
-                receiptImageUrl: true,
-                verifiedAt: true,
-                verifiedByAccountant: {
-                  select: { id: true, fullName: true, username: true },
-                },
-              },
-            },
-          },
-        },
-      },
-    });
+    return this.cashService.getOwnerFinancialCycleReport();
+  }
 
+  async getRealtimeTotals() {
+    const [cashTotal, onlineTotal, debtTotal, usage] = await Promise.all([
+      this.cashService.getTotalCashWithDrivers(),
+      this.onlinePaymentService.getTotalOnlineRevenue(),
+      this.debtService.getTotalDebt(),
+      this.subscriptionService.getUsageAndSettledDebtTotals(),
+    ]);
     return {
-      rows: rows.map((o) => {
-        const shift = o.handoverShift;
-        const deposit = shift?.bankDepositLogs[0] ?? null;
-        return {
-          orderId: o.id,
-          amountKd: o.totalPrice.toString(),
-          collectedAt: shift?.confirmedAt?.toISOString() ?? null,
-          collectedByManager: shift?.confirmedByManager ?? null,
-          depositLogId: deposit?.id ?? null,
-          receiptImageUrl: deposit?.receiptImageUrl ?? null,
-          verifiedAt: deposit?.verifiedAt?.toISOString() ?? null,
-          verifiedByAccountant: deposit?.verifiedByAccountant ?? null,
-          lastUpdatedAt: o.updatedAt.toISOString(),
-        };
-      }),
+      totalCash: cashTotal,
+      totalOnline: onlineTotal,
+      totalDebt: debtTotal,
+      totalSubscriptionUsage: usage.totalSubscriptionUsage,
     };
   }
 }

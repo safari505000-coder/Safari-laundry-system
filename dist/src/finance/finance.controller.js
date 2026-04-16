@@ -78,6 +78,9 @@ let FinanceController = class FinanceController {
     getFinancialCycleReport() {
         return this.financeService.getOwnerFinancialCycleReport();
     }
+    getRealtimeTotals() {
+        return this.financeService.getRealtimeTotals();
+    }
 };
 exports.FinanceController = FinanceController;
 __decorate([
@@ -231,6 +234,17 @@ __decorate([
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", void 0)
 ], FinanceController.prototype, "getFinancialCycleReport", null);
+__decorate([
+    (0, common_1.Get)('dashboard/realtime-totals'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
+    (0, swagger_1.ApiOperation)({
+        summary: `Realtime financial dashboard totals (${branding_1.APP_BRAND})`,
+        description: 'Card totals for cash with drivers, online revenue, total debt, and subscription usage.',
+    }),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", void 0)
+], FinanceController.prototype, "getRealtimeTotals", null);
 exports.FinanceController = FinanceController = __decorate([
     (0, swagger_1.ApiTags)('finance'),
     (0, swagger_1.ApiBearerAuth)('bearer'),

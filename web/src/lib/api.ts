@@ -168,6 +168,13 @@ export type DriverBalanceResponse = {
   drivers: DriverBalanceRow[];
 };
 
+export type FinanceRealtimeTotals = {
+  totalCash: string;
+  totalOnline: string;
+  totalDebt: string;
+  totalSubscriptionUsage: string;
+};
+
 export type DriverMonitoringRow = {
   driverId: string;
   fullName: string;

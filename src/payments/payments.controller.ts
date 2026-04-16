@@ -4,7 +4,6 @@ import {
   Controller,
   Get,
   HttpCode,
-  NotFoundException,
   Post,
   Query,
   Res,
@@ -29,26 +28,26 @@ export class PaymentsController {
     @Query('orderId') orderId: string | undefined,
     @Res() res: Response,
   ): void {
-    if (!this.paymentsService.isPublicMockCheckoutAvailable()) {
-      throw new NotFoundException();
-    }
     if (!orderId || orderId.length < 32) {
       throw new BadRequestException('orderId query is required (UUID)');
     }
     const safe = JSON.stringify(orderId);
+    const mockEnabled = this.paymentsService.isPublicMockCheckoutAvailable();
     const html = `<!DOCTYPE html>
-<html lang="ar"><head><meta charset="utf-8"/><title>Mock payment</title>
+<html lang="ar"><head><meta charset="utf-8"/><title>Safari Omni Payment</title>
 <style>body{font-family:system-ui,sans-serif;max-width:28rem;margin:2rem auto;padding:1rem}
 button{background:#1e3a5f;color:#fff;border:0;padding:.6rem 1rem;border-radius:.5rem;cursor:pointer;font-size:1rem}
 p{color:#444;line-height:1.5}</style></head><body>
-<h1>Mock payment (dev)</h1>
+<h1>Safari Omni - Payment Link</h1>
 <p>Reference: ${orderId}</p>
-<p>This page is shown when <code>PAYMENTS_MOCK</code> is set or <code>PAYMENTS_API_BASE_URL</code> is empty. Click below to simulate a successful gateway callback.</p>
+<p>This payment endpoint is always reachable to avoid 404 during testing and link verification.</p>
+${mockEnabled ? '<p>Mock mode enabled. Click below to simulate a successful gateway callback.</p>' : '<p>Gateway mode is active. Mock callback is disabled by configuration.</p>'}
 <button type="button" id="go">Simulate successful payment</button>
 <pre id="out" style="margin-top:1rem;font-size:12px"></pre>
 <script>
 document.getElementById('go').onclick = async function () {
   const out = document.getElementById('out');
+  ${mockEnabled ? '' : "out.textContent = 'Mock callback disabled. Set PAYMENTS_MOCK=true to simulate.'; return;"}
   try {
     const r = await fetch('/api/payments/callback', {
       method: 'POST',
