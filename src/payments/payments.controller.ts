@@ -65,6 +65,15 @@ document.getElementById('go').onclick = async function () {
     res.type('html').send(html);
   }
 
+  @Get('mock/checkout')
+  @ApiExcludeEndpoint()
+  mockCheckoutPageAlias(
+    @Query('orderId') orderId: string | undefined,
+    @Res() res: Response,
+  ): void {
+    this.mockCheckoutPage(orderId, res);
+  }
+
   /**
    * Public webhook — gateway posts payment result (no JWT).
    * Secured via PAYMENTS_SECRET signature on the payload.

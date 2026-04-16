@@ -59,6 +59,9 @@ document.getElementById('go').onclick = async function () {
 </body></html>`;
         res.type('html').send(html);
     }
+    mockCheckoutPageAlias(orderId, res) {
+        this.mockCheckoutPage(orderId, res);
+    }
     async callback(body) {
         if (!this.paymentsService.allowDevMockCallback(body) &&
             !this.paymentsService.verifyIntegratedCallback(body)) {
@@ -81,6 +84,15 @@ __decorate([
     __metadata("design:paramtypes", [Object, Object]),
     __metadata("design:returntype", void 0)
 ], PaymentsController.prototype, "mockCheckoutPage", null);
+__decorate([
+    (0, common_1.Get)('mock/checkout'),
+    (0, swagger_1.ApiExcludeEndpoint)(),
+    __param(0, (0, common_1.Query)('orderId')),
+    __param(1, (0, common_1.Res)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", void 0)
+], PaymentsController.prototype, "mockCheckoutPageAlias", null);
 __decorate([
     (0, common_1.Post)('callback'),
     (0, common_1.HttpCode)(200),

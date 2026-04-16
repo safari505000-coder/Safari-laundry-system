@@ -115,6 +115,23 @@ export function DashboardPage() {
     useState<BankDepositsListResponse | null>(null);
 
   const effectiveBreakdownDate = selectedBreakdownDate ?? financialDateIso;
+  const canUseRealtimeBridge = hasRole(
+    'OWNER',
+    'MANAGER',
+    'ACCOUNTANT',
+    'SUPERVISOR',
+    'VIEWER',
+  );
+
+  const fetchRealtimeTotals = useCallback(
+    async (authToken: string) => {
+      return apiJson<FinanceRealtimeTotals>(
+        '/api/finance/dashboard/realtime-totals',
+        { token: authToken },
+      );
+    },
+    [],
+  );
 
   const loadDailyPaymentSplit = useCallback(
     async (dayIso: string, authToken: string) => {
@@ -164,21 +181,17 @@ export function DashboardPage() {
             }),
           );
         }
-        if (
-          hasRole(
-            'OWNER',
-            'MANAGER',
-            'ACCOUNTANT',
-            'SUPERVISOR',
-            'VIEWER',
-          )
-        ) {
+        if (canUseRealtimeBridge) {
           tasks.push(
-            apiJson<FinanceRealtimeTotals>('/api/finance/dashboard/realtime-totals', {
-              token,
-            }).then((v) => {
-              if (!cancelled) setRealtimeTotals(v);
-            }),
+            fetchRealtimeTotals(token)
+              .then((v) => {
+                if (!cancelled) setRealtimeTotals(v);
+              })
+              .catch((e) => {
+                if (!cancelled && e instanceof ApiError) {
+                  toast.error(e.message);
+                }
+              }),
           );
         }
         tasks.push(
@@ -206,7 +219,7 @@ export function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [token, hasRole]);
+  }, [token, hasRole, canUseRealtimeBridge, fetchRealtimeTotals]);
 
   useEffect(() => {
     if (!token || !effectiveBreakdownDate) return;
@@ -280,28 +293,24 @@ export function DashboardPage() {
   }, [token, hasRole]);
 
   useEffect(() => {
-    if (
-      !token ||
-      !hasRole('OWNER', 'MANAGER', 'ACCOUNTANT', 'SUPERVISOR', 'VIEWER')
-    ) {
+    if (!token || !canUseRealtimeBridge) {
       return;
     }
     let cancelled = false;
     const refresh = () => {
-      void apiJson<FinanceRealtimeTotals>('/api/finance/dashboard/realtime-totals', {
-        token,
-      })
+      void fetchRealtimeTotals(token)
         .then((v) => {
           if (!cancelled) setRealtimeTotals(v);
         })
         .catch(() => {});
     };
+    refresh();
     const id = window.setInterval(refresh, 10_000);
     return () => {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [token, hasRole]);
+  }, [token, canUseRealtimeBridge, fetchRealtimeTotals]);
 
   const totalCashWithDrivers =
     realtimeTotals?.totalCash ??
