@@ -56,7 +56,11 @@ export class AuthService {
     if (roleName === SafariRole.DRIVER) {
       await this.financeService.ensureOpenShiftForDriver(user.id);
     }
-    const payload: JwtPayload = { sub: user.id, role: roleName };
+    const payload: JwtPayload = {
+      sub: user.id,
+      role: roleName,
+      branchId: user.branchId ?? undefined,
+    };
     const accessToken = await this.jwt.signAsync(payload);
     return {
       accessToken,
@@ -66,6 +70,7 @@ export class AuthService {
         fullName: user.fullName,
         phone: user.phone,
         safariRole: roleName,
+        branchId: user.branchId,
       },
     };
   }

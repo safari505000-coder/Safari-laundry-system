@@ -51,10 +51,9 @@ export class CreateUserDto {
   @IsString()
   phone?: string;
 
-  @ApiPropertyOptional({ format: 'uuid' })
-  @IsOptional()
+  @ApiProperty({ format: 'uuid', description: 'Mandatory branch assignment for all staff.' })
   @IsUUID('4')
-  branchId?: string;
+  branchId: string;
 
   @ApiPropertyOptional({
     default: true,

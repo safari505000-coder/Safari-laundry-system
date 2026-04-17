@@ -9,6 +9,7 @@ import { AuthModule } from './auth/auth.module';
 import { BranchesModule } from './branches/branches.module';
 import { CallCenterModule } from './call-center/call-center.module';
 import { OperatingHoursMiddleware } from './common/middleware/operating-hours.middleware';
+import { requestIdMiddleware } from './common/middleware/request-id.middleware';
 import { CustomersModule } from './customers/customers.module';
 import { ExpensesModule } from './expenses/expenses.module';
 import { FixedExpenseModule } from './fixed-expenses/fixed-expense.module';
@@ -73,6 +74,6 @@ const spaStaticModule = existsSync(webDistPath)
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(OperatingHoursMiddleware).forRoutes('*');
+    consumer.apply(requestIdMiddleware, OperatingHoursMiddleware).forRoutes('*');
   }
 }

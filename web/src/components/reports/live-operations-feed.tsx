@@ -7,19 +7,19 @@ import {
   apiJson,
   ApiError,
 } from '@/lib/api';
-import { useAppLocale } from '@/hooks/use-app-locale';
-import { useRelativeTime } from '@/hooks/use-relative-time';
+import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
+import { useRelativeTime } from '@/modules/shared/hooks/use-relative-time';
 import { formatKwdLabel } from '@/lib/kwd';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/modules/shared/components/ui/badge';
+import { Button } from '@/modules/shared/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/modules/shared/components/ui/card';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { ScrollArea } from '@/components/ui/scroll-area';
+} from '@/modules/shared/components/ui/dialog';
+import { ScrollArea } from '@/modules/shared/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 
 const POLL_MS = 12_000;
@@ -183,8 +183,8 @@ export function LiveOperationsFeed({
                         <span className="truncate">
                           {o.branchName ?
                             <span className="text-foreground/90">{o.branchName}</span>
-                          : '—'}{' '}
-                          · {o.customerName}
+                          : 'â€”'}{' '}
+                          آ· {o.customerName}
                         </span>
                       </div>
                       <div
@@ -224,8 +224,8 @@ export function LiveOperationsFeed({
             </DialogTitle>
             {detail ?
               <p className="text-xs text-muted-foreground">
-                {detail.branchName ?? '—'} · {detail.customerName} ·{' '}
-                {formatKwdLabel(detail.totalPrice)} ·{' '}
+                {detail.branchName ?? 'â€”'} آ· {detail.customerName} آ·{' '}
+                {formatKwdLabel(detail.totalPrice)} آ·{' '}
                 {new Date(detail.createdAt).toLocaleString(dateLocale)}
               </p>
             : null}
@@ -279,3 +279,4 @@ export function LiveOperationsFeed({
     </>
   );
 }
+

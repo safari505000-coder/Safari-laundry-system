@@ -10,20 +10,20 @@ import {
   apiJson,
   ApiError,
 } from '@/lib/api';
-import { useAppLocale } from '@/hooks/use-app-locale';
+import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
 import { formatKwdLabel } from '@/lib/kwd';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Button } from '@/modules/shared/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/modules/shared/components/ui/card';
+import { Input } from '@/modules/shared/components/ui/input';
+import { Label } from '@/modules/shared/components/ui/label';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
+} from '@/modules/shared/components/ui/select';
+import { Textarea } from '@/modules/shared/components/ui/textarea';
 
 function startOfDayIso(d: Date): string {
   const x = new Date(d);
@@ -343,7 +343,7 @@ export function ExpensesPage() {
                     <td className="py-2 pe-2">{r.title}</td>
                     <td className="py-2 pe-2">{r.category}</td>
                     <td className="py-2 pe-2">{r.status}</td>
-                    <td className="py-2 pe-2">{r.branch?.name ?? '—'}</td>
+                    <td className="py-2 pe-2">{r.branch?.name ?? 'â€”'}</td>
                     <td className="py-2 pe-2">{r.recordedBy.fullName}</td>
                     <td className="py-2 text-end tabular-nums">
                       {formatKwdLabel(r.amount)}
@@ -358,3 +358,4 @@ export function ExpensesPage() {
     </div>
   );
 }
+

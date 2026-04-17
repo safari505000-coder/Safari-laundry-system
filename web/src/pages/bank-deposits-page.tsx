@@ -13,18 +13,18 @@ import {
   ApiError,
 } from '@/lib/api';
 import { formatKwdLabel } from '@/lib/kwd';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Badge } from '@/modules/shared/components/ui/badge';
+import { Button } from '@/modules/shared/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/modules/shared/components/ui/card';
+import { Input } from '@/modules/shared/components/ui/input';
+import { Label } from '@/modules/shared/components/ui/label';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
+} from '@/modules/shared/components/ui/select';
 import {
   Table,
   TableBody,
@@ -32,8 +32,8 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
-import { useAppLocale } from '@/hooks/use-app-locale';
+} from '@/modules/shared/components/ui/table';
+import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
 
 export function BankDepositsPage() {
   const { t } = useTranslation();
@@ -245,7 +245,7 @@ export function BankDepositsPage() {
               {loading ?
                 <TableRow>
                   <TableCell colSpan={isAccountant ? 7 : 6} className="text-center text-muted-foreground">
-                    …
+                    â€¦
                   </TableCell>
                 </TableRow>
               : entries.length === 0 ?
@@ -295,7 +295,7 @@ export function BankDepositsPage() {
                               {t('bankDeposits.yes')}
                             </span>
                             <span className="text-muted-foreground">
-                              {' — '}
+                              {' â€” '}
                               {row.verifiedByAccountant.fullName}
                             </span>
                           </>
@@ -328,3 +328,4 @@ export function BankDepositsPage() {
     </div>
   );
 }
+

@@ -1,6 +1,7 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CurrentUser, type JwtUser } from '../auth/decorators/current-user.decorator';
 import { APP_BRAND } from '../common/constants/branding';
 import { LaundryPriceListService } from './laundry-price-list.service';
 
@@ -11,13 +12,25 @@ import { LaundryPriceListService } from './laundry-price-list.service';
 export class LaundryPriceListController {
   constructor(private readonly laundryPriceListService: LaundryPriceListService) {}
 
+  @Get('categories')
+  @ApiOperation({ summary: 'Laundry item categories (ordering / grouping)' })
+  findCategories() {
+    return this.laundryPriceListService.findCategoriesForApi();
+  }
+
   @Get()
   @ApiOperation({
     summary: `Laundry garment price list (${APP_BRAND})`,
     description:
-      'Official KD prices per item and tier (normal, urgent, press-only, urgent+press). Manual-entry items use 0.000 until staff enters price.',
+      'Official KD prices per item and tier, merged with optional branch overrides. Pass branchId query to preview another branch; otherwise the JWT user branch (when present) is used.',
   })
-  findAll() {
-    return this.laundryPriceListService.findAllForApi();
+  findAll(
+    @Query('branchId') branchId: string | undefined,
+    @CurrentUser() user: JwtUser,
+  ) {
+    const q = branchId?.trim();
+    const effective =
+      q && q.length > 0 ? q : (user.branchId ?? null);
+    return this.laundryPriceListService.findPriceListForBranch(effective);
   }
 }

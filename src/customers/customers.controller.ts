@@ -30,6 +30,23 @@ export class CustomersController {
     return this.customersService.list(q);
   }
 
+  @Get(':id/profile')
+  @Roles(
+    SafariRole.OWNER,
+    SafariRole.MANAGER,
+    SafariRole.CALL_CENTER,
+    SafariRole.SUPERVISOR,
+    SafariRole.VIEWER,
+  )
+  @ApiOperation({
+    summary: `Customer profile (core + financial snapshot) (${APP_BRAND})`,
+    description:
+      'Core profile is served by CustomerCoreService; financial snapshot is fetched via DebtService + SubscriptionService (no finance logic inside customers).',
+  })
+  getProfile(@Param('id') id: string) {
+    return this.customersService.getProfileWithFinancials(id);
+  }
+
   @Patch(':id')
   @Roles(
     SafariRole.OWNER,

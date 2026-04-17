@@ -5,8 +5,7 @@ import { IsKuwaitCustomerPhone } from '../../common/validation/kuwait-customer-p
 
 function trimOrUndefined({ value }: { value: unknown }): unknown {
   if (typeof value !== 'string') return value;
-  const t = value.trim();
-  return t.length ? t : undefined;
+  return value.trim();
 }
 
 export class UpdateCustomerDto {

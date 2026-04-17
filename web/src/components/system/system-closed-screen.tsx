@@ -1,7 +1,7 @@
-import { useTranslation } from 'react-i18next';
+﻿import { useTranslation } from 'react-i18next';
 import { LogOut, Moon } from 'lucide-react';
-import { BrandLogo } from '@/components/layout/brand-logo';
-import { Button } from '@/components/ui/button';
+import { BrandLogo } from '@/modules/shared/components/brand-logo';
+import { Button } from '@/modules/shared/components/ui/button';
 
 type Props = {
   kuwaitTimeLabel: string;
@@ -37,3 +37,4 @@ export function SystemClosedScreen({ kuwaitTimeLabel, onSignOut }: Props) {
     </div>
   );
 }
+

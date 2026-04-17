@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Navigate } from 'react-router-dom';
 import { RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
+import { Button } from '@/modules/shared/components/ui/button';
 import {
   Table,
   TableBody,
@@ -11,9 +11,9 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
+} from '@/modules/shared/components/ui/table';
 import { useAuth } from '@/contexts/auth-context';
-import { useAppLocale } from '@/hooks/use-app-locale';
+import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
 import { type SubscriberListRow, apiJson, ApiError } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { formatKwdLabel } from '@/lib/kwd';
@@ -68,7 +68,7 @@ function SubscriberCard({
         <div>
           <dt className="text-muted-foreground">{t('subscribers.colRemaining')}</dt>
           <dd className="tabular-nums font-medium">
-            {r.remainingDays === null ? '—' : r.remainingDays}
+            {r.remainingDays === null ? 'â€”' : r.remainingDays}
           </dd>
         </div>
         <div>
@@ -152,9 +152,9 @@ export function SubscribersPage() {
   }
 
   function formatDate(iso: string | null): string {
-    if (!iso) return '—';
+    if (!iso) return 'â€”';
     const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return '—';
+    if (Number.isNaN(d.getTime())) return 'â€”';
     return dateFmt.format(d);
   }
 
@@ -263,7 +263,7 @@ export function SubscribersPage() {
                     {formatDate(r.expiryDate)}
                   </TableCell>
                   <TableCell className="text-end tabular-nums text-sm">
-                    {r.remainingDays === null ? '—' : r.remainingDays}
+                    {r.remainingDays === null ? 'â€”' : r.remainingDays}
                   </TableCell>
                   <TableCell
                     className={cn(
@@ -281,3 +281,4 @@ export function SubscribersPage() {
     </div>
   );
 }
+

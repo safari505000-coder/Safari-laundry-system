@@ -14,12 +14,12 @@ import {
   apiJson,
   ApiError,
 } from '@/lib/api';
-import { useAppLocale } from '@/hooks/use-app-locale';
+import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
 import { formatKwdLabel, subtractKwdStrings } from '@/lib/kwd';
 import { computeSubscriptionTotals } from '@/utils/finance-engine';
-import { Badge } from '@/components/ui/badge';
-import { Button, buttonVariants } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/modules/shared/components/ui/badge';
+import { Button, buttonVariants } from '@/modules/shared/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/modules/shared/components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -27,20 +27,20 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+} from '@/modules/shared/components/ui/dialog';
+import { Input } from '@/modules/shared/components/ui/input';
+import { Label } from '@/modules/shared/components/ui/label';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
-import { Separator } from '@/components/ui/separator';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Switch } from '@/components/ui/switch';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+} from '@/modules/shared/components/ui/select';
+import { Separator } from '@/modules/shared/components/ui/separator';
+import { Skeleton } from '@/modules/shared/components/ui/skeleton';
+import { Switch } from '@/modules/shared/components/ui/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/modules/shared/components/ui/tabs';
 import {
   Table,
   TableBody,
@@ -48,7 +48,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
+} from '@/modules/shared/components/ui/table';
 
 export function SubscriptionsPage() {
   const { t } = useTranslation();
@@ -152,7 +152,7 @@ export function SubscriptionsPage() {
                         <TableHead>{t('subscriptions.colPlan')}</TableHead>
                         <TableHead>{t('subscriptions.colPay')}</TableHead>
                         <TableHead>{t('subscriptions.colCredit')}</TableHead>
-                        <TableHead>الدعم</TableHead>
+                        <TableHead>ط§ظ„ط¯ط¹ظ…</TableHead>
                         <TableHead>{t('subscriptions.colValidity')}</TableHead>
                         <TableHead>{t('subscriptions.colStatus')}</TableHead>
                         <TableHead className="w-[100px]" />
@@ -621,10 +621,10 @@ function CallCenterActivatePanel({
                     >
                       <div className="font-medium">
                         {r.phone}
-                        {r.phone2 ? ` · ${r.phone2}` : ''}
+                        {r.phone2 ? ` آ· ${r.phone2}` : ''}
                       </div>
                       <div className="text-xs opacity-80">
-                        {r.address ?? t('subscriptions.noAddress')} ·{' '}
+                        {r.address ?? t('subscriptions.noAddress')} آ·{' '}
                         {t('subscriptions.balance')}{' '}
                         <span className={isLowBalance ? 'font-semibold text-red-700' : ''}>
                           {r.wallet ?
@@ -634,14 +634,14 @@ function CallCenterActivatePanel({
                         {r.wallet && Number.parseFloat(r.wallet.debt) > 0 ?
                           <>
                             {' '}
-                            · {t('subscriptions.debtLabel')}{' '}
+                            آ· {t('subscriptions.debtLabel')}{' '}
                             {formatKwdLabel(r.wallet.debt)}
                           </>
                         : null}
                         {isLowBalance ?
                           <>
                             {' '}
-                            ·{' '}
+                            آ·{' '}
                             <span className="font-semibold text-red-700">
                               {t('subscribers.lowBalanceWarn')}
                             </span>
@@ -680,7 +680,7 @@ function CallCenterActivatePanel({
                   <SelectContent>
                     {plans.map((p) => (
                       <SelectItem key={p.id} value={p.id}>
-                        {p.name} — pay {p.salePrice} → credit {p.actualBalance}
+                        {p.name} â€” pay {p.salePrice} â†’ credit {p.actualBalance}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -759,7 +759,7 @@ function CallCenterActivatePanel({
                 {t('subscriptions.lastReceiptTitle')}
               </CardTitle>
               <CardDescription>
-                {lastReceipt.customer.phone} · {lastReceipt.plan.name}
+                {lastReceipt.customer.phone} آ· {lastReceipt.plan.name}
               </CardDescription>
             </div>
             <Button
@@ -787,7 +787,7 @@ function CallCenterActivatePanel({
                 <span className="text-zinc-600">
                   {t('subscriptions.invoiceDebtSettled')}
                 </span>
-                <span>− {formatKwdLabel(s.debtSettled)}</span>
+                <span>âˆ’ {formatKwdLabel(s.debtSettled)}</span>
               </div>
               <div className="flex justify-between gap-4 border-b border-zinc-200 pb-2 font-medium">
                 <span className="text-zinc-800">
@@ -827,3 +827,4 @@ function CallCenterActivatePanel({
     </div>
   );
 }
+

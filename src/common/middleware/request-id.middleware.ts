@@ -1,0 +1,23 @@
+import { randomUUID } from 'node:crypto';
+import type { NextFunction, Request, Response } from 'express';
+
+export type RequestWithId = Request & { requestId?: string };
+
+/**
+ * Ensures every API response echoes `X-Request-ID` (from client or generated)
+ * and attaches `requestId` on the request for structured logging.
+ */
+export function requestIdMiddleware(
+  req: RequestWithId,
+  res: Response,
+  next: NextFunction,
+): void {
+  const incoming = req.headers['x-request-id'];
+  const id =
+    typeof incoming === 'string' && incoming.trim().length > 0 ?
+      incoming.trim()
+    : randomUUID();
+  req.requestId = id;
+  res.setHeader('X-Request-ID', id);
+  next();
+}

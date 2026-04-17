@@ -16,6 +16,13 @@ export class LoginUserDto {
 
   @ApiProperty({ enum: SafariRole, description: 'Institutional RBAC role' })
   safariRole: SafariRole;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    format: 'uuid',
+    description: 'Branch scope for pricing / operations when applicable',
+  })
+  branchId?: string | null;
 }
 
 export class LoginResponseDto {

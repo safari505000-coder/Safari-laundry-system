@@ -84,6 +84,17 @@ enum BankDepositType {
   KNET_Z_REPORT
 }
 
+enum DepositType {
+  CASH
+  KNET
+}
+
+enum DepositStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 model User {
   id          String     @id @default(uuid()) @db.Uuid
   /** Unique login handle (staff ID / username). */
@@ -119,6 +130,8 @@ model User {
   debtLedgerEntries     DebtLedgerEntry[]    @relation("DebtEntryActor")
   bankDepositsUploaded  BankDepositLog[]     @relation("BankDepositUploadedBy")
   bankDepositsVerifiedAsAccountant BankDepositLog[] @relation("BankDepositVerifiedBy")
+  depositsRequested     Deposit[]            @relation("DepositDriver")
+  depositsAudited       Deposit[]            @relation("DepositAuditedBy")
   posPaymentBundlesLed  PosPaymentBundle[]   @relation("PosPaymentBundleDriver")
 }
 
@@ -203,6 +216,7 @@ model Customer {
 
   @@index([phone])
   @@index([phone2])
+  @@index([displayName])
   @@index([originBranchId])
 }
 
@@ -372,6 +386,26 @@ model BankDepositLog {
   @@index([verifiedByAccountantId])
 }
 
+model Deposit {
+  id           String        @id @default(uuid()) @db.Uuid
+  driverId     String        @db.Uuid
+  amount       Decimal       @db.Decimal(19, 4)
+  type         DepositType
+  receiptImage String        @db.Text
+  status       DepositStatus @default(PENDING)
+  auditComment String?
+  auditedById  String?       @db.Uuid
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  driver    User  @relation("DepositDriver", fields: [driverId], references: [id], onDelete: Cascade)
+  auditedBy User? @relation("DepositAuditedBy", fields: [auditedById], references: [id], onDelete: SetNull)
+
+  @@index([driverId, status, createdAt])
+  @@index([status, createdAt])
+  @@index([auditedById])
+}
+
 model OrderLineItem {
   id         String   @id @default(uuid()) @db.Uuid
   orderId    String   @db.Uuid
@@ -411,6 +445,19 @@ model DebtLedgerEntry {
   @@index([branchId])
 }
 
+/** Logical grouping for POS / manager item screens (not a second price source). */
+model LaundryItemCategory {
+  id        String   @id @default(uuid()) @db.Uuid
+  code      String   @unique
+  nameAr    String
+  nameEn    String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items LaundryPriceListItem[]
+}
+
 /** Laundry price list (PDF tariff) — KD per garment × service tier. */
 model LaundryPriceListItem {
   id               String   @id @default(uuid()) @db.Uuid
@@ -424,8 +471,34 @@ model LaundryPriceListItem {
   priceUrgent      Decimal  @db.Decimal(19, 4)
   pricePressOnly   Decimal? @db.Decimal(19, 4)
   priceUrgentPress Decimal? @db.Decimal(19, 4)
+  categoryId       String?  @db.Uuid
+  category         LaundryItemCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  branchOverrides  LaundryBranchItemPrice[]
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+
+  @@index([categoryId])
+}
+
+/**
+ * Optional per-branch overrides. Null field = inherit master price from LaundryPriceListItem.
+ */
+model LaundryBranchItemPrice {
+  id                     String   @id @default(uuid()) @db.Uuid
+  branchId               String   @db.Uuid
+  laundryPriceListItemId String   @db.Uuid
+  priceNormal            Decimal? @db.Decimal(19, 4)
+  priceUrgent            Decimal? @db.Decimal(19, 4)
+  pricePressOnly         Decimal? @db.Decimal(19, 4)
+  priceUrgentPress       Decimal? @db.Decimal(19, 4)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  branch Branch               @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  item   LaundryPriceListItem @relation(fields: [laundryPriceListItemId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, laundryPriceListItemId])
+  @@index([branchId])
 }
 
 model Role {
@@ -463,6 +536,7 @@ model Branch {
   fixedExpenseSchedules FixedExpenseSchedule[]
   debtLedgerEntries     DebtLedgerEntry[]
   originCustomers       Customer[] @relation("CustomerOriginBranch")
+  laundryBranchPrices   LaundryBranchItemPrice[]
 }
 
 model Payroll {

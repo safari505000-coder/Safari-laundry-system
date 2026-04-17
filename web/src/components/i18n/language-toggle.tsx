@@ -1,12 +1,12 @@
-import { Globe } from 'lucide-react';
+﻿import { Globe } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { buttonVariants } from '@/components/ui/button';
+import { buttonVariants } from '@/modules/shared/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+} from '@/modules/shared/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { type AppLocale, writeStoredLocale } from '@/i18n/constants';
 
@@ -61,3 +61,4 @@ export function LanguageToggle({
     </DropdownMenu>
   );
 }
+

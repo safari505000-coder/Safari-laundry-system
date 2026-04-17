@@ -10,7 +10,7 @@ import {
   ApiError,
 } from '@/lib/api';
 import { formatKwdLabel } from '@/lib/kwd';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/modules/shared/components/ui/card';
 import {
   Table,
   TableBody,
@@ -18,8 +18,8 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
-import { useAppLocale } from '@/hooks/use-app-locale';
+} from '@/modules/shared/components/ui/table';
+import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
 
 export function FinancialCycleReportPage() {
   const { t } = useTranslation();
@@ -77,7 +77,7 @@ export function FinancialCycleReportPage() {
             <TableBody>
               {loading ?
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground">…</TableCell>
+                  <TableCell colSpan={7} className="text-center text-muted-foreground">â€¦</TableCell>
                 </TableRow>
               : rows.length === 0 ?
                 <TableRow>
@@ -94,7 +94,7 @@ export function FinancialCycleReportPage() {
                     <TableCell>
                       {row.collectedByManager ?
                         `${row.collectedByManager.fullName} (@${row.collectedByManager.username})`
-                      : '—'}
+                      : 'â€”'}
                     </TableCell>
                     <TableCell>
                       {row.collectedAt ?
@@ -102,12 +102,12 @@ export function FinancialCycleReportPage() {
                           dateStyle: 'short',
                           timeStyle: 'short',
                         })
-                      : '—'}
+                      : 'â€”'}
                     </TableCell>
                     <TableCell>
                       {row.verifiedByAccountant ?
                         `${row.verifiedByAccountant.fullName} (@${row.verifiedByAccountant.username})`
-                      : '—'}
+                      : 'â€”'}
                     </TableCell>
                     <TableCell>
                       {row.verifiedAt ?
@@ -115,7 +115,7 @@ export function FinancialCycleReportPage() {
                           dateStyle: 'short',
                           timeStyle: 'short',
                         })
-                      : '—'}
+                      : 'â€”'}
                     </TableCell>
                     <TableCell>
                       {row.receiptImageUrl ?
@@ -128,7 +128,7 @@ export function FinancialCycleReportPage() {
                           <ExternalLink className="h-3.5 w-3.5" />
                           {t('financialCycle.openSlip')}
                         </a>
-                      : '—'}
+                      : 'â€”'}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -139,3 +139,4 @@ export function FinancialCycleReportPage() {
     </div>
   );
 }
+

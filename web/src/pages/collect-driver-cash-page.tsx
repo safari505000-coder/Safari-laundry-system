@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -12,16 +12,16 @@ import {
   uploadHandoverReceipt,
 } from '@/lib/api';
 import { formatKwdLabel } from '@/lib/kwd';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
+import { Button } from '@/modules/shared/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/modules/shared/components/ui/card';
+import { Label } from '@/modules/shared/components/ui/label';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
+} from '@/modules/shared/components/ui/select';
 
 export function CollectDriverCashPage() {
   const { t } = useTranslation();
@@ -123,7 +123,7 @@ export function CollectDriverCashPage() {
         </CardHeader>
         <CardContent className="space-y-6">
           {loading || !drivers ?
-            <p className="text-sm text-muted-foreground">…</p>
+            <p className="text-sm text-muted-foreground">â€¦</p>
           : <>
               <div className="space-y-2">
                 <Label>{t('collectDriverCash.selectDriver')}</Label>
@@ -222,3 +222,4 @@ export function CollectDriverCashPage() {
     </div>
   );
 }
+

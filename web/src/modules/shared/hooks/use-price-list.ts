@@ -1,0 +1,119 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
+import { useAuth } from '@/contexts/auth-context';
+import {
+  type LaundryItemCategoryRow,
+  type LaundryPriceListItemRow,
+  apiJson,
+  ApiError,
+} from '@/lib/api';
+
+export function buildLaundryPriceListPath(
+  branchId: string | null | undefined,
+): string {
+  if (branchId && branchId.length > 0) {
+    return `/api/laundry-price-list?branchId=${encodeURIComponent(branchId)}`;
+  }
+  return '/api/laundry-price-list';
+}
+
+/** Resolves which branch drives merged list prices (JWT default vs explicit preview). */
+export function useLaundryPricingBranchId(opts?: {
+  /** When set, overrides role-based defaults (e.g. manager branch preview). */
+  previewBranchId?: string | null;
+}): string | null {
+  const { user, ownerBranchId } = useAuth();
+  return useMemo(() => {
+    if (opts?.previewBranchId !== undefined) {
+      return opts.previewBranchId ?? null;
+    }
+    if (user?.safariRole === 'OWNER') return ownerBranchId;
+    return user?.branchId ?? null;
+  }, [
+    opts?.previewBranchId,
+    ownerBranchId,
+    user?.branchId,
+    user?.safariRole,
+  ]);
+}
+
+export type PriceListBridge = {
+  items: LaundryPriceListItemRow[];
+  categories: LaundryItemCategoryRow[];
+  loading: boolean;
+  failed: boolean;
+  reload: () => Promise<void>;
+  /** Branch used for merged pricing in this snapshot (null = master list only). */
+  branchId: string | null;
+};
+
+type UsePriceListOpts = {
+  token: string | null;
+  /** When provided, forces that branch for merged prices instead of JWT / owner picker defaults. */
+  branchId?: string | null;
+};
+
+/**
+ * Shared data bridge for `LaundryPriceListService` output (items + categories, branch merge).
+ */
+export function usePriceList(opts: UsePriceListOpts): PriceListBridge {
+  const { token } = opts;
+  const { user, ownerBranchId } = useAuth();
+  const { t } = useTranslation();
+
+  const effectiveBranchId = useMemo(() => {
+    if (opts.branchId !== undefined) return opts.branchId ?? null;
+    if (user?.safariRole === 'OWNER') return ownerBranchId;
+    return user?.branchId ?? null;
+  }, [opts.branchId, ownerBranchId, user?.branchId, user?.safariRole]);
+
+  const [items, setItems] = useState<LaundryPriceListItemRow[]>([]);
+  const [categories, setCategories] = useState<LaundryItemCategoryRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+
+  const reload = useCallback(async () => {
+    if (!token) {
+      setItems([]);
+      setCategories([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setFailed(false);
+    try {
+      const listPath = buildLaundryPriceListPath(effectiveBranchId);
+      const [listData, catData] = await Promise.all([
+        apiJson<LaundryPriceListItemRow[]>(listPath, { token }),
+        apiJson<LaundryItemCategoryRow[]>(
+          '/api/laundry-price-list/categories',
+          { token },
+        ),
+      ]);
+      setItems(Array.isArray(listData) ? listData : []);
+      setCategories(Array.isArray(catData) ? catData : []);
+    } catch (e) {
+      setItems([]);
+      setCategories([]);
+      setFailed(true);
+      if (e instanceof ApiError) toast.error(e.message);
+      else toast.error(t('pos.catalogLoadFailed'));
+    } finally {
+      setLoading(false);
+    }
+  }, [token, effectiveBranchId, t]);
+
+  useEffect(() => {
+    void reload();
+  }, [reload]);
+
+  return {
+    items,
+    categories,
+    loading,
+    failed,
+    reload,
+    branchId: effectiveBranchId,
+  };
+}

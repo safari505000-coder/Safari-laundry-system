@@ -5,16 +5,16 @@ import { toast } from 'sonner';
 import { Plus } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { type OrderRow, apiJson, ApiError } from '@/lib/api';
-import { CreateOrderDialog } from '@/components/orders/create-order-dialog';
-import { OrderDetailDialog } from '@/components/orders/order-detail-dialog';
-import { OrderScanInput } from '@/components/orders/order-scan-input';
-import { Button } from '@/components/ui/button';
-import { useAppLocale } from '@/hooks/use-app-locale';
+import { CreateOrderDialog } from '@/modules/shared/components/orders/create-order-dialog';
+import { OrderDetailDialog } from '@/modules/shared/components/orders/order-detail-dialog';
+import { OrderScanInput } from '@/modules/shared/components/orders/order-scan-input';
+import { Button } from '@/modules/shared/components/ui/button';
+import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
 import { formatKwdLabel } from '@/lib/kwd';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Skeleton } from '@/components/ui/skeleton';
+import { Badge } from '@/modules/shared/components/ui/badge';
+import { Card, CardContent } from '@/modules/shared/components/ui/card';
+import { ScrollArea } from '@/modules/shared/components/ui/scroll-area';
+import { Skeleton } from '@/modules/shared/components/ui/skeleton';
 import {
   Table,
   TableBody,
@@ -22,7 +22,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
+} from '@/modules/shared/components/ui/table';
 
 function OrderStatusBadge({ status }: { status: string }) {
   const { t } = useTranslation();
@@ -189,3 +189,4 @@ export function OrdersPage() {
     </div>
   );
 }
+

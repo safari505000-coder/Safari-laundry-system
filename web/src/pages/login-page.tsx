@@ -1,16 +1,16 @@
-import { useState, type FormEvent } from 'react';
+﻿import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { BrandLogo } from '@/components/layout/brand-logo';
+import { BrandLogo } from '@/modules/shared/components/brand-logo';
 import { LanguageToggle } from '@/components/i18n/language-toggle';
 import { useAuth } from '@/contexts/auth-context';
 import { ApiError } from '@/lib/api';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Button } from '@/modules/shared/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/modules/shared/components/ui/card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/modules/shared/components/ui/dialog';
+import { Input } from '@/modules/shared/components/ui/input';
+import { Label } from '@/modules/shared/components/ui/label';
 
 export function LoginPage() {
   const { t } = useTranslation();
@@ -116,7 +116,7 @@ export function LoginPage() {
         </CardContent>
       </Card>
       <p className="z-10 mt-8 max-w-sm text-center text-xs text-zinc-300">
-        نظام Safari Omni © 2026 - جميع الحقوق محفوظة لمجموعة مصابغ سفاري السريعة
+        ظ†ط¸ط§ظ… Safari Omni آ© 2026 - ط¬ظ…ظٹط¹ ط§ظ„ط­ظ‚ظˆظ‚ ظ…ط­ظپظˆط¸ط© ظ„ظ…ط¬ظ…ظˆط¹ط© ظ…طµط§ط¨ط؛ ط³ظپط§ط±ظٹ ط§ظ„ط³ط±ظٹط¹ط©
       </p>
       <Dialog open={forgotOpen} onOpenChange={setForgotOpen}>
         <DialogContent className="max-w-md">
@@ -131,3 +131,4 @@ export function LoginPage() {
     </div>
   );
 }
+

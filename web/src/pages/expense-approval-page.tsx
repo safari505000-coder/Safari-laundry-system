@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+﻿import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -11,8 +11,8 @@ import {
   updateExpenseStatus,
 } from '@/lib/api';
 import { formatKwdLabel } from '@/lib/kwd';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/modules/shared/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/modules/shared/components/ui/card';
 import {
   Table,
   TableBody,
@@ -20,7 +20,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
+} from '@/modules/shared/components/ui/table';
 
 export function ExpenseApprovalPage() {
   const { t, i18n } = useTranslation();
@@ -90,13 +90,13 @@ export function ExpenseApprovalPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>الفرع</TableHead>
-                <TableHead>الفئة</TableHead>
+                <TableHead>ط§ظ„ظپط±ط¹</TableHead>
+                <TableHead>ط§ظ„ظپط¦ط©</TableHead>
                 <TableHead className={rtl ? 'text-start' : 'text-end'}>
-                  المبلغ
+                  ط§ظ„ظ…ط¨ظ„ط؛
                 </TableHead>
-                <TableHead>الإيصال</TableHead>
-                <TableHead className="w-[360px]">الإجراءات</TableHead>
+                <TableHead>ط§ظ„ط¥ظٹطµط§ظ„</TableHead>
+                <TableHead className="w-[360px]">ط§ظ„ط¥ط¬ط±ط§ط،ط§طھ</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -115,7 +115,7 @@ export function ExpenseApprovalPage() {
               ) : (
                 rows.map((row) => (
                   <TableRow key={row.id}>
-                    <TableCell>{row.branch?.name ?? '—'}</TableCell>
+                    <TableCell>{row.branch?.name ?? 'â€”'}</TableCell>
                     <TableCell>{row.category}</TableCell>
                     <TableCell className={rtl ? 'text-start' : 'text-end'}>
                       {formatKwdLabel(row.amount)}
@@ -131,7 +131,7 @@ export function ExpenseApprovalPage() {
                           {t('expenseApproval.viewReceipt')}
                         </a>
                       ) : (
-                        '—'
+                        'â€”'
                       )}
                     </TableCell>
                     <TableCell>
@@ -172,3 +172,4 @@ export function ExpenseApprovalPage() {
     </div>
   );
 }
+

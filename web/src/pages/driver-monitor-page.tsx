@@ -1,14 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/auth-context';
 import { apiJson, type DriverMonitoringResponse } from '@/lib/api';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardHeader, CardTitle } from '@/modules/shared/components/ui/card';
+import { Badge } from '@/modules/shared/components/ui/badge';
+import { Button } from '@/modules/shared/components/ui/button';
+import { Input } from '@/modules/shared/components/ui/input';
+import { Label } from '@/modules/shared/components/ui/label';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -75,7 +75,7 @@ export function DriverMonitorPage() {
           `<div><strong>${d.fullName}</strong><br/>@${d.username}<br/>${d.vehicleLabel}<br/>${
             d.source === 'LIVE_GPS'
               ? 'Live GPS'
-              : `Branch: ${d.branch?.name ?? '—'}`
+              : `Branch: ${d.branch?.name ?? 'â€”'}`
           }</div>`,
         )
         .addTo(map);
@@ -96,12 +96,12 @@ export function DriverMonitorPage() {
                 <Badge variant="secondary">{d.status}</Badge>
               </div>
               <p className="text-xs text-muted-foreground">
-                @{d.username} • {d.vehicleLabel}
+                @{d.username} â€¢ {d.vehicleLabel}
               </p>
               <p className="text-xs text-muted-foreground">
                 {d.source === 'LIVE_GPS'
                   ? 'Live GPS'
-                  : `Branch fallback: ${d.branch?.name ?? '—'}`}
+                  : `Branch fallback: ${d.branch?.name ?? 'â€”'}`}
               </p>
               {hasRole('OWNER') ? (
                 <div className="mt-3 space-y-2 rounded-md border p-2">
@@ -174,3 +174,4 @@ export function DriverMonitorPage() {
     </div>
   );
 }
+

@@ -22,15 +22,15 @@ import {
   getBankDeposits,
   getOperatingStatus,
 } from '@/lib/api';
-import { useAppLocale } from '@/hooks/use-app-locale';
+import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
 import { formatKwdLabel, sumKwdStrings } from '@/lib/kwd';
 import { MetricCard } from '@/components/dashboard/metric-card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
-import { Skeleton } from '@/components/ui/skeleton';
+import { Badge } from '@/modules/shared/components/ui/badge';
+import { Button } from '@/modules/shared/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/modules/shared/components/ui/card';
+import { ScrollArea } from '@/modules/shared/components/ui/scroll-area';
+import { Separator } from '@/modules/shared/components/ui/separator';
+import { Skeleton } from '@/modules/shared/components/ui/skeleton';
 import {
   Table,
   TableBody,
@@ -38,7 +38,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
+} from '@/modules/shared/components/ui/table';
 import type { OrderRow } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
@@ -69,7 +69,7 @@ function normalizePayMethod(method: string | null): DashboardPayKey | null {
   return null;
 }
 
-/** Civil YYYY-MM-DD +/− days (Gregorian; matches Kuwait business calendar dates). */
+/** Civil YYYY-MM-DD +/âˆ’ days (Gregorian; matches Kuwait business calendar dates). */
 function addDaysIso(dateIso: string, deltaDays: number): string {
   const [y, m, d] = dateIso.split('-').map((x) => Number.parseInt(x, 10));
   const u = new Date(Date.UTC(y, m - 1, d + deltaDays));
@@ -520,7 +520,7 @@ export function DashboardPage() {
               : t('dashboard.quickTotalIncomeHintOrders')}
             </p>
             <p className="pt-2 text-xl font-bold tabular-nums text-primary">
-              {loading ? '…' : completedRevenue}
+              {loading ? 'â€¦' : completedRevenue}
             </p>
           </div>
         </button>
@@ -689,7 +689,7 @@ export function DashboardPage() {
                         <TableCell className="text-sm">
                           {row.verifiedByAccountant ?
                             <span className="text-emerald-700 dark:text-emerald-400">
-                              {t('bankDeposits.yes')} — {row.verifiedByAccountant.fullName}
+                              {t('bankDeposits.yes')} â€” {row.verifiedByAccountant.fullName}
                             </span>
                           : <span className="text-muted-foreground">{t('bankDeposits.no')}</span>}
                         </TableCell>
@@ -774,7 +774,7 @@ export function DashboardPage() {
                 {paySplitLoading ?
                   <tr>
                     <td colSpan={3} className="py-6 text-center text-muted-foreground">
-                      …
+                      â€¦
                     </td>
                   </tr>
                 : paymentBreakdownRows.map((row) => (

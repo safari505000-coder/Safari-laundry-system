@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
+﻿import type { ReactNode } from 'react';
+import { Card, CardContent, CardHeader } from '@/modules/shared/components/ui/card';
 import { cn } from '@/lib/utils';
 
 type MetricCardProps = {
@@ -55,3 +55,4 @@ export function MetricCard({
     </Card>
   );
 }
+

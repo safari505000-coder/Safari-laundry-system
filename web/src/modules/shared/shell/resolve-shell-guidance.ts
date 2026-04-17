@@ -1,0 +1,28 @@
+import type { SafariRole } from '@/lib/api';
+import { ACCOUNTANT_SHELL_GUIDANCE } from '@/modules/accountant/shell-guidance';
+import { CALL_CENTER_SHELL_GUIDANCE } from '@/modules/call-center/shell-guidance';
+import { DRIVER_SHELL_GUIDANCE } from '@/modules/driver/shell-guidance';
+import { MANAGER_SHELL_GUIDANCE } from '@/modules/manager/shell-guidance';
+
+const OWNER_SHELL_GUIDANCE =
+  'Goal: monitor filtered financial reports in read-only mode.';
+
+const FALLBACK_SHELL_GUIDANCE =
+  'Goal: follow role-specific workflow and keep data integrity.';
+
+export function shellGuidanceForRole(role?: SafariRole): string {
+  switch (role) {
+    case 'DRIVER':
+      return DRIVER_SHELL_GUIDANCE;
+    case 'MANAGER':
+      return MANAGER_SHELL_GUIDANCE;
+    case 'CALL_CENTER':
+      return CALL_CENTER_SHELL_GUIDANCE;
+    case 'ACCOUNTANT':
+      return ACCOUNTANT_SHELL_GUIDANCE;
+    case 'OWNER':
+      return OWNER_SHELL_GUIDANCE;
+    default:
+      return FALLBACK_SHELL_GUIDANCE;
+  }
+}

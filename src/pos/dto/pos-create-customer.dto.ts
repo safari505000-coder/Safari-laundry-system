@@ -8,10 +8,18 @@ import {
 } from 'class-validator';
 import { IsKuwaitCustomerPhone } from '../../common/validation/kuwait-customer-phone';
 
-function trimOpt(value: unknown): unknown {
-  if (typeof value !== 'string') return value;
-  const t = value.trim();
-  return t.length ? t : undefined;
+/** Always yields a string (empty when missing) so validation never sees non-strings. */
+function toAddressStr(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') return value.trim();
+  return String(value).trim();
+}
+
+function normalizePhone2(value: unknown): string | undefined {
+  if (value === null || value === undefined || value === '') return undefined;
+  if (typeof value !== 'string') return undefined;
+  const t = value.replace(/[\s-]/g, '').trim();
+  return t.length >= 8 ? t : undefined;
 }
 
 export class PosCreateCustomerDto {
@@ -25,9 +33,7 @@ export class PosCreateCustomerDto {
   phone: string;
 
   @ApiPropertyOptional({ example: '59990000' })
-  @Transform(({ value }: { value: unknown }) =>
-    typeof value === 'string' ? value.replace(/[\s-]/g, '').trim() : value,
-  )
+  @Transform(({ value }: { value: unknown }) => normalizePhone2(value))
   @IsOptional()
   @IsString()
   @MinLength(8)
@@ -44,59 +50,56 @@ export class PosCreateCustomerDto {
   displayName: string;
 
   @ApiPropertyOptional({ example: 'السالمية' })
-  @Transform(trimOpt)
+  @Transform(({ value }: { value: unknown }) => toAddressStr(value))
   @IsOptional()
   @IsString()
   @MaxLength(120)
   addressArea?: string;
 
   @ApiPropertyOptional({ example: '3' })
-  @Transform(trimOpt)
+  @Transform(({ value }: { value: unknown }) => toAddressStr(value))
   @IsOptional()
   @IsString()
   @MaxLength(120)
   addressBlock?: string;
 
-  @ApiPropertyOptional({ example: 'شارع الخليج', default: '' })
-  @Transform(({ value }: { value: unknown }) => {
-    if (value === null || value === undefined) return '';
-    if (typeof value === 'string') return value.trim();
-    return String(value).trim();
-  })
+  @ApiPropertyOptional({ example: 'شارع الخليج' })
+  @Transform(({ value }: { value: unknown }) => toAddressStr(value))
+  @IsOptional()
   @IsString()
   @MaxLength(200)
-  addressStreet = '';
+  addressStreet?: string;
 
   @ApiPropertyOptional({ example: 'جادة 5' })
-  @Transform(trimOpt)
+  @Transform(({ value }: { value: unknown }) => toAddressStr(value))
   @IsOptional()
   @IsString()
   @MaxLength(200)
   addressAvenue?: string;
 
   @ApiPropertyOptional({ example: 'منزل 12' })
-  @Transform(trimOpt)
+  @Transform(({ value }: { value: unknown }) => toAddressStr(value))
   @IsOptional()
   @IsString()
   @MaxLength(120)
   addressHouse?: string;
 
   @ApiPropertyOptional({ example: 'Mother: 50000001' })
-  @Transform(trimOpt)
+  @Transform(({ value }: { value: unknown }) => toAddressStr(value))
   @IsOptional()
   @IsString()
   @MaxLength(200)
   motherContact?: string;
 
   @ApiPropertyOptional({ example: 'Wife: 50000002' })
-  @Transform(trimOpt)
+  @Transform(({ value }: { value: unknown }) => toAddressStr(value))
   @IsOptional()
   @IsString()
   @MaxLength(200)
   wifeContact?: string;
 
   @ApiPropertyOptional({ example: 'Son: 50000003' })
-  @Transform(trimOpt)
+  @Transform(({ value }: { value: unknown }) => toAddressStr(value))
   @IsOptional()
   @IsString()
   @MaxLength(200)

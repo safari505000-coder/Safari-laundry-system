@@ -4,7 +4,7 @@ export type FinanceCartLine = {
   label: string;
   quantity: number;
   unitPrice: number;
-  neshaLevel: '100%' | '50%' | '0%';
+  neshaLevel: '100%' | '50%' | '25%' | '0%';
   foldingStyle: string;
   itemNote: string;
 };
@@ -27,7 +27,7 @@ export type FinancePart = {
     quantity: number;
     unitPrice: number;
     lineTotal: number;
-    neshaLevel: '100%' | '50%' | '0%';
+    neshaLevel: '100%' | '50%' | '25%' | '0%';
     foldingStyle: string;
     itemNote: string;
   }>;

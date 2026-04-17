@@ -1,929 +1,76 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
-import { toast } from 'sonner';
+import { useAuth } from '@/contexts/auth-context';
 import {
-  Bed,
-  Frame,
   Layers,
   Loader2,
   LogOut,
-  Minus,
-  PartyPopper,
   Plus,
-  Shirt,
-  Sparkles,
-  User,
-  Wind,
 } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
-import { useAuth } from '@/contexts/auth-context';
-import {
-  type CustomerBillingProfile,
-  type CustomerSearchRow,
-  getOperatingStatus,
-  type LaundryPriceListItemRow,
-  type OperatingStatusPayload,
-  type OrderRow,
-  type PosCheckoutBundleResponse,
-  type PosCheckoutResponse,
-  type PosPaymentMethod,
-  apiJson,
-  ApiError,
-} from '@/lib/api';
-import { OrderDetailDialog } from '@/components/orders/order-detail-dialog';
-import { OrderIdBarcode } from '@/components/orders/order-id-barcode';
-import { OrderScanInput } from '@/components/orders/order-scan-input';
-import { TermsQr } from '@/components/common/terms-qr';
-import { SystemClosedScreen } from '@/components/system/system-closed-screen';
-import { useAppLocale } from '@/hooks/use-app-locale';
+import { OrderScanInput } from '@/modules/shared/components/orders/order-scan-input';
 import { LanguageToggle } from '@/components/i18n/language-toggle';
-import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Button } from '@/modules/shared/components/ui/button';
+import { Input } from '@/modules/shared/components/ui/input';
+import { ScrollArea } from '@/modules/shared/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
-import {
-  computeMultiInvoiceParts,
-  computeSessionTotals,
-  DELIVERY_FEE_KD,
-  sumLinesKd,
-} from '@/utils/finance-engine';
+import { sumLinesKd, DELIVERY_FEE_KD } from '@/utils/finance-engine';
+import { usePosEngine } from '@/modules/shared/hooks/use-pos-engine';
+import { usePriceList } from '@/modules/shared/hooks/use-price-list';
+import { PosAuxiliaryUi } from '@/modules/shared/components/pos/pos-auxiliary-ui';
 
-type CartLine = {
-  lineKey: string;
-  laundryId: string;
-  code: string;
-  nameAr: string;
-  serviceKey: 'NORMAL' | 'URGENT' | 'PRESS_ONLY' | 'URGENT_PRESS';
-  serviceLabel: string;
-  neshaLevel: '100%' | '50%' | '0%';
-  foldingStyle: 'SEEDA' | 'MIRZAAM' | 'MURABAA' | 'SHARSHAF' | 'TASFEET' | '';
-  itemNote: string;
-  unitPrice: number;
-  quantity: number;
-};
-
-type ReceiptSnapshot = {
-  orderId: string;
-  branchLabel: string;
-  orderNumber: string;
-  createdAt: string;
-  employeeName: string;
-  employeeId: string;
-  customerName: string;
-  customerMobile: string;
-  customerBalance: string;
-  customerAddress: string;
-  serviceType: string;
-  /** Sum of line items before delivery (last completed order on receipt). */
-  lineItemsSubtotal: number;
-  deliveryFee: number;
-  freeDelivery: boolean;
-  lines: Array<{
-    label: string;
-    quantity: number;
-    unitPrice: number;
-    lineTotal: number;
-    neshaLevel: '100%' | '50%' | '0%';
-    foldingStyle: string;
-    itemNote: string;
-  }>;
-  total: number;
-  paymentLabel?: string;
-  /** True when order awaits gateway (PAYMENT_LINK path). */
-  paymentPending?: boolean;
-  /** Attached invoice: always show delivery line as 0.000 KWD on the receipt. */
-  attachedInvoice?: boolean;
-};
-
-function garmentTagCount(qty: number): number {
-  const n = Number(qty);
-  if (!Number.isFinite(n) || n <= 0) return 1;
-  return Math.min(50, Math.max(1, Math.round(n)));
-}
-
-
-type PosSubOrder = {
-  id: string;
-  kind: 'primary' | 'attached';
-  lines: CartLine[];
-};
-
-type ServiceOption = {
-  key: 'NORMAL' | 'URGENT' | 'PRESS_ONLY' | 'URGENT_PRESS';
-  labelAr: string;
-  price: number;
-  available: boolean;
-};
-
-const POS_VISUAL: Record<string, { Icon: LucideIcon; tone: string }> = {
-  DISHDASHA_ORD: { Icon: Shirt, tone: 'bg-violet-100 text-[#1e3a5f]' },
-  DISHDASHA_WOOL: { Icon: Shirt, tone: 'bg-slate-200 text-[#1e3a5f]' },
-  GHUTRA_SHEMAGH: { Icon: Wind, tone: 'bg-sky-100 text-[#1e3a5f]' },
-  BISHT_OCCASION: {
-    Icon: PartyPopper,
-    tone: 'bg-amber-100 text-[#1e3a5f]',
-  },
-  BLANKET_ALL: { Icon: Bed, tone: 'bg-teal-100 text-[#1e3a5f]' },
-  DYPAJ_ALL: { Icon: Layers, tone: 'bg-emerald-100 text-[#1e3a5f]' },
-  SUIT_FULL: { Icon: User, tone: 'bg-stone-200 text-[#1e3a5f]' },
-  JACKET: { Icon: Shirt, tone: 'bg-rose-100 text-[#1e3a5f]' },
-  DRESS_LADIES_OCCASION: {
-    Icon: Sparkles,
-    tone: 'bg-pink-100 text-[#1e3a5f]',
-  },
-  PARDA: { Icon: Frame, tone: 'bg-neutral-200 text-[#1e3a5f]' },
-};
-
-function defaultVisual(code: string): { Icon: LucideIcon; tone: string } {
-  return (
-    POS_VISUAL[code] ?? {
-      Icon: Sparkles,
-      tone: 'bg-slate-100 text-[#1e3a5f]',
-    }
-  );
-}
-
-function basePriceKd(item: LaundryPriceListItemRow): number {
-  return Number.parseFloat(item.priceNormal);
-}
-
-function serviceOptionsForItem(item: LaundryPriceListItemRow): ServiceOption[] {
-  const normal = Number.parseFloat(item.priceNormal);
-  const urgent = Number.parseFloat(item.priceUrgent);
-  const press = item.pricePressOnly ? Number.parseFloat(item.pricePressOnly) : NaN;
-  const urgentPress = item.priceUrgentPress ?
-      Number.parseFloat(item.priceUrgentPress)
-    : NaN;
-
-  return [
-    {
-      key: 'NORMAL',
-      labelAr: 'غسيل وكوي عادي',
-      price: normal,
-      available: Number.isFinite(normal),
-    },
-    {
-      key: 'URGENT',
-      labelAr: 'غسيل وكوي مستعجل',
-      price: urgent,
-      available: Number.isFinite(urgent),
-    },
-    {
-      key: 'PRESS_ONLY',
-      labelAr: 'كوي عادي',
-      price: press,
-      available: Number.isFinite(press),
-    },
-    {
-      key: 'URGENT_PRESS',
-      labelAr: 'كوي مستعجل',
-      price: urgentPress,
-      available: Number.isFinite(urgentPress),
-    },
-  ];
-}
-
+/** Branch / back-office POS (manager & owner). Drivers use `DriverPOS`. */
 export function PosPage() {
-  const { t, i18n } = useTranslation();
-  const navigate = useNavigate();
-  const dateLocale = useAppLocale();
-  const { token, user, logout } = useAuth();
-  const [catalogItems, setCatalogItems] = useState<LaundryPriceListItemRow[]>(
-    [],
-  );
-  const [catalogLoading, setCatalogLoading] = useState(true);
-  const [catalogFailed, setCatalogFailed] = useState(false);
-  const [subOrders, setSubOrders] = useState<PosSubOrder[]>([
-    { id: crypto.randomUUID(), kind: 'primary', lines: [] },
-  ]);
-  const [activeSubOrderIndex, setActiveSubOrderIndex] = useState(0);
-  const [searchQ, setSearchQ] = useState('');
-  const [searchHits, setSearchHits] = useState<CustomerSearchRow[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [selected, setSelected] = useState<CustomerSearchRow | null>(null);
-  const [newOpen, setNewOpen] = useState(false);
-  const [newName, setNewName] = useState('');
-  const [newPhone, setNewPhone] = useState('');
-  const [newPhone2, setNewPhone2] = useState('');
-  const [newArea, setNewArea] = useState('');
-  const [newBlock, setNewBlock] = useState('');
-  const [newStreet, setNewStreet] = useState('');
-  const [newAvenue, setNewAvenue] = useState('');
-  const [newHouse, setNewHouse] = useState('');
-  const [savingCustomer, setSavingCustomer] = useState(false);
-  const [checkoutBusy, setCheckoutBusy] = useState(false);
-  const [receiptSheets, setReceiptSheets] = useState<ReceiptSnapshot[] | null>(
-    null,
-  );
-  const [scanOrderDetail, setScanOrderDetail] = useState<OrderRow | null>(null);
-  const [scanOrderDialogOpen, setScanOrderDialogOpen] = useState(false);
-  const [serviceOpen, setServiceOpen] = useState(false);
-  const [serviceItem, setServiceItem] = useState<LaundryPriceListItemRow | null>(null);
-  const [serviceQty, setServiceQty] = useState<
-    Record<'NORMAL' | 'URGENT' | 'PRESS_ONLY' | 'URGENT_PRESS', number>
-  >({
-    NORMAL: 0,
-    URGENT: 0,
-    PRESS_ONLY: 0,
-    URGENT_PRESS: 0,
-  });
-  const [serviceNesha, setServiceNesha] = useState(false);
-  const [serviceFolding, setServiceFolding] = useState(false);
-  const [serviceNeshaLevel, setServiceNeshaLevel] = useState<'100%' | '50%' | '0%'>(
-    '0%',
-  );
-  const [serviceFoldingStyle, setServiceFoldingStyle] = useState<
-    'SEEDA' | 'MIRZAAM' | 'MURABAA' | 'SHARSHAF' | 'TASFEET' | ''
-  >('');
-  const [serviceItemNote, setServiceItemNote] = useState('');
-  const [billing, setBilling] = useState<CustomerBillingProfile | null>(null);
-  const [billingLoading, setBillingLoading] = useState(false);
-  const [posPaymentMethod, setPosPaymentMethod] = useState<
-    'CASH' | 'KNET' | 'PAYMENT_LINK' | 'DEBT_ON_ACCOUNT'
-  >('CASH');
-  const [operating, setOperating] = useState<OperatingStatusPayload | null>(
-    null,
-  );
+  const { token } = useAuth();
+  const priceList = usePriceList({ token });
+  const p = usePosEngine({ variant: 'branch', priceList });
+  const { t } = useTranslation();
 
-  useEffect(() => {
-    const clearPrintMode = () => {
-      document.body.classList.remove('print-tags-mode');
-    };
-    window.addEventListener('afterprint', clearPrintMode);
-    return () => window.removeEventListener('afterprint', clearPrintMode);
-  }, []);
-
-  useEffect(() => {
-    if (user?.safariRole !== 'DRIVER') return;
-    let cancelled = false;
-    void getOperatingStatus().then((r) => {
-      if (!cancelled) {
-        setOperating(r);
-      }
-    });
-    const id = window.setInterval(() => {
-      void getOperatingStatus().then((r) => {
-        if (cancelled) return;
-        setOperating((prev) => {
-          if (token && prev && prev.financialDateIso !== r.financialDateIso) {
-            toast.message(`New financial day: ${r.financialDateLabel}`);
-            void apiJson('/api/finance/driver/ensure-shift', {
-              method: 'POST',
-              token,
-            }).catch(() => {});
-          }
-          return r;
-        });
-      });
-    }, 60_000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(id);
-    };
-  }, [user?.safariRole, token]);
-
-  const loadCatalog = useCallback(async () => {
-    if (!token) {
-      setCatalogLoading(false);
-      return;
-    }
-    setCatalogLoading(true);
-    setCatalogFailed(false);
-    try {
-      const data = await apiJson<LaundryPriceListItemRow[]>(
-        '/api/laundry-price-list',
-        { token },
-      );
-      setCatalogItems(Array.isArray(data) ? data : []);
-    } catch (e) {
-      setCatalogItems([]);
-      setCatalogFailed(true);
-      if (e instanceof ApiError) toast.error(e.message);
-      else toast.error(t('pos.catalogLoadFailed'));
-    } finally {
-      setCatalogLoading(false);
-    }
-  }, [token, t]);
-
-  useEffect(() => {
-    void loadCatalog();
-  }, [loadCatalog]);
-
-  useEffect(() => {
-    setSubOrders([{ id: crypto.randomUUID(), kind: 'primary', lines: [] }]);
-    setActiveSubOrderIndex(0);
-  }, [selected?.id]);
-
-  useEffect(() => {
-    const q = searchQ.trim();
-    if (q.length < 2) {
-      setSearchHits([]);
-      return;
-    }
-    let cancelled = false;
-    const tmr = window.setTimeout(() => {
-      void (async () => {
-        setSearching(true);
-        try {
-          const rows = await apiJson<CustomerSearchRow[]>(
-            `/api/pos/customers/search?q=${encodeURIComponent(q)}`,
-            { token: token! },
-          );
-          if (!cancelled) setSearchHits(rows);
-        } catch (e) {
-          if (!cancelled && e instanceof ApiError) toast.error(e.message);
-        } finally {
-          if (!cancelled) setSearching(false);
-        }
-      })();
-    }, 320);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(tmr);
-    };
-  }, [searchQ, token]);
-
-  const cart = subOrders[activeSubOrderIndex]?.lines ?? [];
-
-  const combinedLineSubtotal = useMemo(
-    () => subOrders.reduce((s, o) => s + sumLinesKd(o.lines), 0),
-    [subOrders],
-  );
-
-  const balanceNum = billing
-    ? Number.parseFloat(billing.remainingBalance)
-    : NaN;
-  const debtNum = billing ? Number.parseFloat(billing.debt) : NaN;
-  const isBalanceWarning =
-    Number.isFinite(balanceNum) && (balanceNum < 10 || balanceNum < 0);
-
-  const financeTotals = useMemo(
-    () =>
-      computeSessionTotals(
-        subOrders.map((o) => ({
-          lines: o.lines.map((l) => ({
-            label: l.nameAr,
-            quantity: l.quantity,
-            unitPrice: l.unitPrice,
-            neshaLevel: l.neshaLevel,
-            foldingStyle: l.foldingStyle,
-            itemNote: l.itemNote,
-          })),
-        })),
-        billing,
-      ),
-    [subOrders, billing],
-  );
-  const { firstFilledSubOrderIndex, isSubscriptionOrder, sessionDeliveryCharge, grandTotal } =
-    financeTotals;
-
-  /** If billing is unknown, assume shortfall until server confirms — always send external method when grand total > 0. */
-  const needsExternalPayment =
-    grandTotal > 0 &&
-    (billing === null ||
-      !Number.isFinite(balanceNum) ||
-      balanceNum + 1e-9 < grandTotal);
-
-  const loadBilling = useCallback(
-    async (customerId: string) => {
-      if (!token) return;
-      setBillingLoading(true);
-      try {
-        const row = await apiJson<CustomerBillingProfile>(
-          `/api/pos/customers/${customerId}/billing`,
-          { token },
-        );
-        setBilling(row);
-      } catch (e) {
-        setBilling(null);
-        if (e instanceof ApiError) toast.error(e.message);
-      } finally {
-        setBillingLoading(false);
-      }
-    },
-    [token],
-  );
-
-  useEffect(() => {
-    if (!selected?.id) {
-      setBilling(null);
-      return;
-    }
-    void loadBilling(selected.id);
-  }, [selected?.id, loadBilling]);
-
-  const kwdSuffix = i18n.language.startsWith('ar') ? 'د.ك' : 'KWD';
-
-  function formatKwdParts(value: number): { dinar: string; fils: string } {
-    const fixed = Number.isFinite(value) ? value.toFixed(3) : '0.000';
-    const [dinar, fils = '000'] = fixed.split('.');
-    return { dinar, fils };
-  }
-
-  function openServiceModal(item: LaundryPriceListItemRow) {
-    setServiceItem(item);
-    setServiceQty({
-      NORMAL: 0,
-      URGENT: 0,
-      PRESS_ONLY: 0,
-      URGENT_PRESS: 0,
-    });
-    setServiceNesha(false);
-    setServiceFolding(false);
-    setServiceNeshaLevel('0%');
-    setServiceFoldingStyle('');
-    setServiceItemNote('');
-    setServiceOpen(true);
-  }
-
-  function setQty(lineKey: string, qty: number) {
-    setSubOrders((prev) => {
-      const next = [...prev];
-      const i = activeSubOrderIndex;
-      if (!next[i]) return prev;
-      const lines = next[i].lines;
-      const newLines =
-        qty < 1 ?
-          lines.filter((x) => x.lineKey !== lineKey)
-        : lines.map((x) =>
-            x.lineKey === lineKey ? { ...x, quantity: qty } : x,
-          );
-      next[i] = { ...next[i], lines: newLines };
-      return next;
-    });
-  }
-
-  function changeServiceQty(
-    key: 'NORMAL' | 'URGENT' | 'PRESS_ONLY' | 'URGENT_PRESS',
-    delta: number,
-  ) {
-    setServiceQty((prev) => ({
-      ...prev,
-      [key]: Math.max(0, prev[key] + delta),
-    }));
-  }
-
-  function addServiceSelectionToCart() {
-    if (!serviceItem) return;
-    const options = serviceOptionsForItem(serviceItem);
-    const selectedLines = options
-      .filter((o) => o.available && serviceQty[o.key] > 0)
-      .map((o) => ({
-        option: o,
-        quantity: serviceQty[o.key],
-      }));
-
-    if (selectedLines.length === 0) {
-      toast.error('اختر خدمة واحدة على الأقل');
-      return;
-    }
-
-    const extrasLabel = `${serviceNesha ? ' + نشا' : ''}${serviceFolding ? ' + طي' : ''}`;
-    setSubOrders((prev) => {
-      const orders = [...prev];
-      const i = activeSubOrderIndex;
-      if (!orders[i]) return prev;
-      const next = [...orders[i].lines];
-      for (const line of selectedLines) {
-        const lineKey =
-          `${serviceItem.id}:${line.option.key}:${serviceNesha ? serviceNeshaLevel : '0%'}:${serviceFolding ? serviceFoldingStyle : ''}:${serviceItemNote.trim()}`;
-        const existingIndex = next.findIndex((x) => x.lineKey === lineKey);
-        const displayName =
-          `${serviceItem.nameAr} - ${line.option.labelAr}${extrasLabel}`;
-
-        if (existingIndex === -1) {
-          next.push({
-            lineKey,
-            laundryId: serviceItem.id,
-            code: serviceItem.code,
-            nameAr: displayName,
-            serviceKey: line.option.key,
-            serviceLabel: line.option.labelAr,
-            neshaLevel: serviceNesha ? serviceNeshaLevel : '0%',
-            foldingStyle: serviceFolding ? serviceFoldingStyle : '',
-            itemNote: serviceItemNote.trim(),
-            unitPrice: line.option.price,
-            quantity: line.quantity,
-          });
-        } else {
-          next[existingIndex] = {
-            ...next[existingIndex],
-            quantity: next[existingIndex].quantity + line.quantity,
-          };
-        }
-      }
-      orders[i] = { ...orders[i], lines: next };
-      return orders;
-    });
-    setServiceOpen(false);
-    toast.success('تمت إضافة الخدمة إلى سلة الأصناف');
-  }
-
-  function resetNewCustomerForm() {
-    setNewName('');
-    setNewPhone('');
-    setNewPhone2('');
-    setNewArea('');
-    setNewBlock('');
-    setNewStreet('');
-    setNewAvenue('');
-    setNewHouse('');
-  }
-
-  async function saveNewCustomer() {
-    const name = newName.trim();
-    const phone = newPhone.replace(/[\s-]/g, '').trim();
-    if (name.length < 1 || phone.length < 8) {
-      toast.error(t('pos.newCustomer.validation'));
-      return;
-    }
-    if (!token) return;
-    setSavingCustomer(true);
-    try {
-      const row = await apiJson<CustomerSearchRow>('/api/pos/customers', {
-        method: 'POST',
-        token,
-        body: JSON.stringify({
-          displayName: name,
-          phone,
-          phone2: newPhone2.trim() || undefined,
-          addressArea: newArea.trim() || undefined,
-          addressBlock: newBlock.trim() || undefined,
-          addressStreet: newStreet.trim() === '' ? null : newStreet.trim(),
-          addressAvenue: newAvenue.trim() || undefined,
-          addressHouse: newHouse.trim() || undefined,
-        }),
-      });
-      setSelected(row);
-      void loadBilling(row.id);
-      setSearchQ('');
-      setSearchHits([]);
-      setNewOpen(false);
-      resetNewCustomerForm();
-      toast.success(t('pos.newCustomer.created'));
-    } catch (e) {
-      if (e instanceof ApiError) toast.error(e.message);
-    } finally {
-      setSavingCustomer(false);
-    }
-  }
-
-  function addAttachedOrder() {
-    setSubOrders((prev) => {
-      const next = [
-        ...prev,
-        { id: crypto.randomUUID(), kind: 'attached' as const, lines: [] },
-      ];
-      setActiveSubOrderIndex(next.length - 1);
-      return next;
-    });
-  }
-
-  async function completePayment() {
-    if (!token || !user) return;
-    if (!selected) {
-      toast.error(t('pos.checkout.pickCustomer'));
-      return;
-    }
-    const nonEmptyOrdered = subOrders.filter((o) => o.lines.length > 0);
-    if (nonEmptyOrdered.length === 0) {
-      toast.error(t('pos.checkout.emptyCart'));
-      return;
-    }
-    const phone = selected.phone.replace(/[\s-]/g, '').trim();
-
-    const customerAddressStr =
-      [
-        selected.addressArea,
-        selected.addressBlock,
-        selected.addressStreet,
-        selected.addressAvenue,
-        selected.addressHouse,
-      ]
-        .filter(Boolean)
-        .join(' · ') || selected.address || '-';
-
-    type ReceiptSheetExtras = Pick<
-      ReceiptSnapshot,
-      | 'serviceType'
-      | 'lineItemsSubtotal'
-      | 'deliveryFee'
-      | 'freeDelivery'
-      | 'lines'
-      | 'total'
-      | 'paymentLabel'
-      | 'paymentPending'
-      | 'attachedInvoice'
-    >;
-
-    const buildSheetBase = (
-      created: PosCheckoutResponse,
-      balanceAfter: string,
-      extras: ReceiptSheetExtras,
-    ): ReceiptSnapshot => ({
-      orderId: created.id,
-      orderNumber: created.invoiceNumber || created.id || '-',
-      createdAt: created.createdAt || new Date().toISOString(),
-      branchLabel: t('pos.branchLabelFallback'),
-      employeeName: user.fullName || user.username,
-      employeeId: user.username,
-      customerName: selected.displayName?.trim() || t('pos.receiptWalkIn'),
-      customerMobile: selected.phone,
-      customerBalance: balanceAfter,
-      customerAddress: customerAddressStr,
-      ...extras,
-    });
-
-    setCheckoutBusy(true);
-    try {
-      const bundlePrep = computeMultiInvoiceParts(
-        nonEmptyOrdered.map((o) => ({
-          lines: o.lines.map((l) => ({
-            label: l.nameAr,
-            quantity: l.quantity,
-            unitPrice: l.unitPrice,
-            neshaLevel: l.neshaLevel,
-            foldingStyle: l.foldingStyle,
-            itemNote: l.itemNote,
-          })),
-        })),
-        billing,
-      );
-      const useBundle =
-        nonEmptyOrdered.length > 1 &&
-        posPaymentMethod === 'PAYMENT_LINK' &&
-        bundlePrep.allNeedExternal;
-
-      if (useBundle) {
-        const { parts, ordersPayload } = bundlePrep;
-        const bundleRes = await apiJson<PosCheckoutBundleResponse>(
-          '/api/pos/checkout-bundle',
-          {
-            method: 'POST',
-            token,
-            body: JSON.stringify({
-              customerPhone: phone,
-              customerId: selected.id,
-              customerDisplayName: selected.displayName ?? undefined,
-              customerAddress: customerAddressStr !== '-' ? customerAddressStr : undefined,
-              serviceType: 'NORMAL',
-              orders: ordersPayload,
-            }),
-          },
-        );
-
-        let balanceAfter = selected.wallet?.balance ?? '0.0000';
-        try {
-          const fresh = await apiJson<CustomerBillingProfile>(
-            `/api/pos/customers/${selected.id}/billing`,
-            { token },
-          );
-          balanceAfter = fresh.remainingBalance;
-          setBilling(fresh);
-          setSelected((prev) =>
-            prev && prev.id === selected.id ?
-              {
-                ...prev,
-                wallet: {
-                  balance: fresh.remainingBalance,
-                  debt: fresh.debt,
-                },
-              }
-            : prev,
-          );
-        } catch {
-          /* keep previous balance on receipt */
-        }
-
-        const paymentLinkUrl = bundleRes.paymentLink?.url?.trim();
-        if (paymentLinkUrl) {
-          window.open(paymentLinkUrl, '_blank', 'noopener,noreferrer');
-        }
-
-        const sheets: ReceiptSnapshot[] = parts.map((part, k) => {
-          const ord = bundleRes.orders[k];
-          const attached = k > 0;
-          return buildSheetBase(ord, balanceAfter, {
-            serviceType: 'N WASH',
-            lineItemsSubtotal: part.lineSum,
-            deliveryFee: attached ? 0 : part.deliveryForOrder,
-            freeDelivery: attached ? false : part.deliveryForOrder <= 0,
-            attachedInvoice: attached,
-            lines: part.receiptLines,
-            total: part.netTotal,
-            paymentLabel: t('pos.payment.online'),
-            paymentPending: Boolean(paymentLinkUrl),
-          });
-        });
-        setReceiptSheets(sheets);
-
-        toast.success(t('pos.checkout.paymentLinkCreated'));
-        setSubOrders([{ id: crypto.randomUUID(), kind: 'primary', lines: [] }]);
-        setActiveSubOrderIndex(0);
-        window.setTimeout(() => {
-          window.print();
-        }, 120);
-        return;
-      }
-
-      let billingSnapshot: CustomerBillingProfile | null = billing;
-      let balanceAfter = selected.wallet?.balance ?? '0.0000';
-      const sheets: ReceiptSnapshot[] = [];
-      let sawPaymentLink = false;
-
-      for (let k = 0; k < nonEmptyOrdered.length; k++) {
-        const o = nonEmptyOrdered[k];
-        const lineSum = sumLinesKd(o.lines);
-        const isFirst = k === 0;
-        const bal = billingSnapshot
-          ? Number.parseFloat(billingSnapshot.remainingBalance)
-          : NaN;
-        const walletCoversLinesOnly =
-          Number.isFinite(bal) && bal + 1e-9 >= lineSum;
-        const baseDel = isFirst ? DELIVERY_FEE_KD : 0;
-        const deliveryForOrder =
-          walletCoversLinesOnly && lineSum > 0 ? 0 : baseDel;
-        const netTotal = lineSum + deliveryForOrder;
-        const needsExt =
-          netTotal > 0 &&
-          (billingSnapshot === null ||
-            !Number.isFinite(bal) ||
-            bal + 1e-9 < netTotal);
-        const extMethod: PosPaymentMethod | undefined = needsExt
-          ? posPaymentMethod
-          : undefined;
-
-        const lineItemsFull = o.lines.map((c) => ({
-          label: c.nameAr,
-          quantity: c.quantity,
-          unitPrice: c.unitPrice,
-        }));
-        const MONEY_EPS = 0.005;
-        const lineItemsPayload =
-          Math.abs(lineSum - netTotal) < MONEY_EPS ? lineItemsFull : undefined;
-
-        const created = await apiJson<PosCheckoutResponse>(
-          '/api/pos/checkout',
-          {
-            method: 'POST',
-            token,
-            body: JSON.stringify({
-              customerPhone: phone,
-              customerId: selected.id,
-              customerDisplayName: selected.displayName ?? undefined,
-              totalPrice: netTotal,
-              ...(lineItemsPayload ? { lineItems: lineItemsPayload } : {}),
-              serviceType: 'NORMAL',
-              ...(extMethod ? { posPaymentMethod: extMethod } : {}),
-            }),
-          },
-        );
-
-        const receiptLines = o.lines.map((c) => ({
-          label: c.nameAr,
-          quantity: c.quantity,
-          unitPrice: c.unitPrice,
-          lineTotal: c.quantity * c.unitPrice,
-          neshaLevel: c.neshaLevel,
-          foldingStyle: c.foldingStyle,
-          itemNote: c.itemNote,
-        }));
-
-        const paymentLabelForOrder =
-          needsExt ?
-            posPaymentMethod === 'PAYMENT_LINK' ?
-              t('pos.payment.online')
-            : posPaymentMethod === 'DEBT_ON_ACCOUNT' ?
-              t('pos.payment.debt')
-            : t(`pos.pay.${posPaymentMethod}` as const)
-          : t('pos.pay.SUBSCRIPTION_WALLET');
-
-        const attachedInvoice = nonEmptyOrdered.length > 1 && k > 0;
-        const paymentLinkUrl = created.paymentLink?.url?.trim();
-        if (paymentLinkUrl && posPaymentMethod === 'PAYMENT_LINK') {
-          sawPaymentLink = true;
-          window.open(paymentLinkUrl, '_blank', 'noopener,noreferrer');
-        }
-
-        sheets.push(
-          buildSheetBase(created, balanceAfter, {
-            serviceType: 'N WASH',
-            lineItemsSubtotal: lineSum,
-            deliveryFee: attachedInvoice ? 0 : deliveryForOrder,
-            freeDelivery: attachedInvoice ? false : deliveryForOrder <= 0,
-            attachedInvoice,
-            lines: receiptLines,
-            total: netTotal,
-            paymentLabel: paymentLabelForOrder,
-            paymentPending: Boolean(paymentLinkUrl),
-          }),
-        );
-
-        try {
-          const fresh = await apiJson<CustomerBillingProfile>(
-            `/api/pos/customers/${selected.id}/billing`,
-            { token },
-          );
-          billingSnapshot = fresh;
-          balanceAfter = fresh.remainingBalance;
-          setBilling(fresh);
-          setSelected((prev) =>
-            prev && prev.id === selected.id ?
-              {
-                ...prev,
-                wallet: {
-                  balance: fresh.remainingBalance,
-                  debt: fresh.debt,
-                },
-              }
-            : prev,
-          );
-        } catch {
-          /* keep previous balance on receipt */
-        }
-      }
-
-      if (sheets.length === 0) return;
-
-      const finalBal = balanceAfter;
-      setReceiptSheets(
-        sheets.map((s) => ({ ...s, customerBalance: finalBal })),
-      );
-
-      if (sawPaymentLink) {
-        toast.success(t('pos.checkout.paymentLinkCreated'));
-      } else if (nonEmptyOrdered.length > 1) {
-        toast.success(
-          t('pos.checkout.doneMulti', { count: nonEmptyOrdered.length }),
-        );
-      } else {
-        toast.success(t('pos.checkout.done'));
-      }
-      setSubOrders([{ id: crypto.randomUUID(), kind: 'primary', lines: [] }]);
-      setActiveSubOrderIndex(0);
-      window.setTimeout(() => {
-        window.print();
-      }, 120);
-    } catch (e) {
-      if (e instanceof ApiError) {
-        if (e.errorCode === 'SYSTEM_CLOSED') {
-          toast.error(e.message);
-          void getOperatingStatus().then(setOperating);
-        } else {
-          toast.error(e.message);
-        }
-      }
-    } finally {
-      setCheckoutBusy(false);
-    }
-  }
-
-  function handlePrintReceipt() {
-    if (!receiptSheets?.length) {
-      toast.error('No receipt ready to print yet.');
-      return;
-    }
-    document.body.classList.remove('print-tags-mode');
-    window.print();
-  }
-
-  function handlePrintGarmentTags() {
-    if (!receiptSheets?.some((s) => s.orderId)) {
-      toast.error('No receipt ready to print yet.');
-      return;
-    }
-    document.body.classList.add('print-tags-mode');
-    window.print();
-  }
-
-  function signOut() {
-    logout();
-    navigate('/login', { replace: true });
-  }
-
-  const rtl = i18n.language.startsWith('ar');
-
-  if (
-    user?.safariRole === 'DRIVER' &&
-    operating &&
-    !operating.isOpen
-  ) {
-    return (
-      <SystemClosedScreen
-        kuwaitTimeLabel={operating.kuwaitTimeLabel}
-        onSignOut={signOut}
-      />
-    );
-  }
+  const {
+    rtl,
+    searchQ,
+    setSearchQ,
+    searching,
+    searchHits,
+    selected,
+    setSelected,
+    setSearchHits,
+    setNewOpen,
+    signOut,
+    operating,
+    setScanOrderDetail,
+    setScanOrderDialogOpen,
+    catalogLoading,
+    catalogItems,
+    catalogFailed,
+    loadCatalog,
+    defaultVisual,
+    basePriceKd,
+    kwdSuffix,
+    openServiceModal,
+    subOrders,
+    activeSubOrderIndex,
+    setActiveSubOrderIndex,
+    billingLoading,
+    billing,
+    isBalanceWarning,
+    debtNum,
+    needsExternalPayment,
+    combinedLineSubtotal,
+    cart,
+    setQty,
+    firstFilledSubOrderIndex,
+    isSubscriptionOrder,
+    grandTotal,
+    dateLocale,
+    addAttachedOrder,
+    posPaymentMethod,
+    setPosPaymentMethod,
+    receiptSheets,
+    handlePrintReceipt,
+    handlePrintGarmentTags,
+    checkoutBusy,
+    sessionDeliveryCharge,
+    completePayment,
+  } = p;
 
   return (
     <div
@@ -933,103 +80,103 @@ export function PosPage() {
     >
       <header className="z-20 shrink-0 border-b border-border bg-card px-3 py-2 shadow-sm sm:px-4">
         <div className="flex flex-col gap-2">
-        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-          <img
-            src="/logo.png"
-            alt="Safari Omni"
-            width={140}
-            className="h-10 w-auto max-w-[140px] object-contain"
-          />
-          <div className="relative min-w-[160px] flex-1">
-            <Input
-              value={searchQ}
-              onChange={(e) => {
-                setSearchQ(e.target.value);
-                if (selected) setSelected(null);
-              }}
-              placeholder={t('pos.searchPlaceholder')}
-              className="bg-background pe-9 text-start"
-              autoComplete="off"
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <img
+              src="/logo.png"
+              alt="Safari Omni"
+              width={140}
+              className="h-10 w-auto max-w-[140px] object-contain"
             />
-            {searching ?
-              <Loader2 className="absolute end-2 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
-            : null}
-            {searchHits.length > 0 && !selected ?
-              <ul className="absolute start-0 end-0 top-full z-30 mt-1 max-h-48 overflow-auto rounded-lg border border-border bg-popover py-1 text-sm shadow-lg">
-                {searchHits.map((r) => (
-                  <li key={r.id}>
-                    <button
-                      type="button"
-                      className="flex w-full flex-col items-start px-3 py-2 text-start hover:bg-muted/60"
-                      onClick={() => {
-                        setSelected(r);
-                        setSearchHits([]);
-                        setSearchQ(r.phone);
-                      }}
-                    >
-                      <span className="font-medium text-foreground">
-                        {r.displayName || t('pos.noName')}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {r.phone}
-                        {r.phone2 ? ` · ${r.phone2}` : ''}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            : null}
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            className="shrink-0 border-amber-500/40 bg-amber-50 text-amber-900 hover:bg-amber-100"
-            onClick={() => setNewOpen(true)}
-            aria-label={t('pos.newCustomer.open')}
-          >
-            <Plus className="h-5 w-5" />
-          </Button>
-          <div className="ms-auto flex items-center gap-1 sm:gap-2">
-            <LanguageToggle variant="outline" className="bg-background" />
+            <div className="relative min-w-[160px] flex-1">
+              <Input
+                value={searchQ}
+                onChange={(e) => {
+                  setSearchQ(e.target.value);
+                  if (selected) setSelected(null);
+                }}
+                placeholder={t('pos.searchPlaceholder')}
+                className="bg-background pe-9 text-start"
+                autoComplete="off"
+              />
+              {searching ?
+                <Loader2 className="absolute end-2 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+              : null}
+              {searchHits.length > 0 && !selected ?
+                <ul className="absolute start-0 end-0 top-full z-30 mt-1 max-h-48 overflow-auto rounded-lg border border-border bg-popover py-1 text-sm shadow-lg">
+                  {searchHits.map((r) => (
+                    <li key={r.id}>
+                      <button
+                        type="button"
+                        className="flex w-full flex-col items-start px-3 py-2 text-start hover:bg-muted/60"
+                        onClick={() => {
+                          setSelected(r);
+                          setSearchHits([]);
+                          setSearchQ(r.phone);
+                        }}
+                      >
+                        <span className="font-medium text-foreground">
+                          {r.displayName || t('pos.noName')}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {r.phone}
+                          {r.phone2 ? ` · ${r.phone2}` : ''}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              : null}
+            </div>
             <Button
               type="button"
-              variant="ghost"
+              variant="outline"
               size="icon"
-              onClick={signOut}
-              aria-label={t('nav.signOut')}
+              className="shrink-0 border-amber-500/40 bg-amber-50 text-amber-900 hover:bg-amber-100"
+              onClick={() => setNewOpen(true)}
+              aria-label={t('pos.newCustomer.open')}
             >
-              <LogOut className="h-5 w-5" />
+              <Plus className="h-5 w-5" />
             </Button>
+            <div className="ms-auto flex items-center gap-1 sm:gap-2">
+              <LanguageToggle variant="outline" className="bg-background" />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={signOut}
+                aria-label={t('nav.signOut')}
+              >
+                <LogOut className="h-5 w-5" />
+              </Button>
+            </div>
           </div>
-        </div>
-        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-          {selected ?
-            <p>
-              {t('pos.activeCustomer')}{' '}
-              <strong className="text-foreground">
-                {selected.displayName || t('pos.noName')} · {selected.phone}
-                {selected.phone2 ? ` · ${selected.phone2}` : ''}
-              </strong>
-            </p>
-          : <span />}
-          {operating ?
-            <span className="whitespace-nowrap">
-              {t('pos.financialDate')}{' '}
-              <strong className="text-foreground">
-                {operating.financialDateLabel}
-              </strong>
-            </span>
-          : null}
-        </div>
-        <OrderScanInput
-          token={token}
-          className="w-full max-w-xl"
-          onOrderLoaded={(o) => {
-            setScanOrderDetail(o);
-            setScanOrderDialogOpen(true);
-          }}
-        />
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+            {selected ?
+              <p>
+                {t('pos.activeCustomer')}{' '}
+                <strong className="text-foreground">
+                  {selected.displayName || t('pos.noName')} · {selected.phone}
+                  {selected.phone2 ? ` · ${selected.phone2}` : ''}
+                </strong>
+              </p>
+            : <span />}
+            {operating ?
+              <span className="whitespace-nowrap">
+                {t('pos.financialDate')}{' '}
+                <strong className="text-foreground">
+                  {operating.financialDateLabel}
+                </strong>
+              </span>
+            : null}
+          </div>
+          <OrderScanInput
+            token={token}
+            className="w-full max-w-xl"
+            onOrderLoaded={(o) => {
+              setScanOrderDetail(o);
+              setScanOrderDialogOpen(true);
+            }}
+          />
         </div>
       </header>
 
@@ -1418,493 +565,7 @@ export function PosPage() {
         </div>
       </footer>
 
-      <Dialog open={serviceOpen} onOpenChange={setServiceOpen}>
-        <DialogContent
-          className="max-w-3xl border-border bg-white p-0"
-          dir={rtl ? 'rtl' : 'ltr'}
-        >
-          {serviceItem ?
-            <div className="grid gap-0 md:grid-cols-[1.55fr_1fr]">
-              <div className="space-y-4 p-5">
-                <DialogHeader className="text-start">
-                  <DialogTitle className="text-lg font-bold text-[#1e3a5f]">
-                    اختر نوع الخدمة - {serviceItem.nameAr}
-                  </DialogTitle>
-                </DialogHeader>
-
-                <div className="space-y-2">
-                  {serviceOptionsForItem(serviceItem).map((service) => (
-                    <div
-                      key={service.key}
-                      className={cn(
-                        'grid grid-cols-[1fr_auto_auto] items-center gap-3 rounded-xl border p-3',
-                        service.available ?
-                          'border-[#1e3a5f]/20 bg-white'
-                        : 'border-zinc-200 bg-zinc-100 opacity-60',
-                      )}
-                    >
-                      <div className="text-sm font-semibold text-zinc-800">
-                        {service.labelAr}
-                      </div>
-                      <div className="text-sm font-bold text-[#1e3a5f]">
-                        {service.available ? `${service.price.toFixed(3)} KWD` : '---'}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          type="button"
-                          size="icon"
-                          variant="outline"
-                          className="h-8 w-8 border-[#1e3a5f]/40"
-                          disabled={!service.available || serviceQty[service.key] === 0}
-                          onClick={() => changeServiceQty(service.key, -1)}
-                        >
-                          <Minus className="h-4 w-4" />
-                        </Button>
-                        <span className="w-7 text-center text-sm font-bold tabular-nums">
-                          {serviceQty[service.key]}
-                        </span>
-                        <Button
-                          type="button"
-                          size="icon"
-                          className="h-8 w-8 bg-[#1e3a5f] text-white hover:bg-[#17304f]"
-                          disabled={!service.available}
-                          onClick={() => changeServiceQty(service.key, 1)}
-                        >
-                          <Plus className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
-                  <p className="mb-2 text-sm font-semibold">خيارات إضافية</p>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={serviceNesha}
-                      onChange={(e) => setServiceNesha(e.target.checked)}
-                    />
-                    نشا (NESHA)
-                  </label>
-                  <div className="mt-2">
-                    <Label className="text-xs text-zinc-600">مستوى النشا</Label>
-                    <select
-                      className="mt-1 w-full rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-sm"
-                      value={serviceNeshaLevel}
-                      onChange={(e) =>
-                        setServiceNeshaLevel(
-                          e.target.value as '100%' | '50%' | '0%',
-                        )
-                      }
-                    >
-                      <option value="100%">100%</option>
-                      <option value="50%">50%</option>
-                      <option value="0%">0%</option>
-                    </select>
-                  </div>
-                  <label className="mt-2 flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={serviceFolding}
-                      onChange={(e) => setServiceFolding(e.target.checked)}
-                    />
-                    طي (Folding)
-                  </label>
-                  <div className="mt-2">
-                    <Label className="text-xs text-zinc-600">نمط الطي</Label>
-                    <select
-                      className="mt-1 w-full rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-sm"
-                      value={serviceFoldingStyle}
-                      onChange={(e) =>
-                        setServiceFoldingStyle(
-                          e.target.value as
-                            | 'SEEDA'
-                            | 'MIRZAAM'
-                            | 'MURABAA'
-                            | 'SHARSHAF'
-                            | 'TASFEET'
-                            | '',
-                        )
-                      }
-                    >
-                      <option value="">-</option>
-                      <option value="SEEDA">SEEDA</option>
-                      <option value="MIRZAAM">MIRZAAM</option>
-                      <option value="MURABAA">MURABAA</option>
-                      <option value="SHARSHAF">SHARSHAF</option>
-                      <option value="TASFEET">TASFEET</option>
-                    </select>
-                  </div>
-                  <div className="mt-2">
-                    <Label className="text-xs text-zinc-600">ملاحظات الصنف</Label>
-                    <Input
-                      value={serviceItemNote}
-                      onChange={(e) => setServiceItemNote(e.target.value)}
-                      placeholder="Enter Item Note"
-                      className="mt-1 bg-white"
-                    />
-                  </div>
-                </div>
-
-                <DialogFooter>
-                  <Button
-                    type="button"
-                    className="w-full bg-[#1e3a5f] text-white hover:bg-[#17304f]"
-                    onClick={addServiceSelectionToCart}
-                  >
-                    إضافة إلى سلة الأصناف
-                  </Button>
-                </DialogFooter>
-              </div>
-
-              <div className="flex flex-col items-center justify-center gap-4 border-t border-zinc-100 bg-zinc-50 p-5 md:border-s md:border-t-0">
-                {(() => {
-                  const { Icon, tone } = defaultVisual(serviceItem.code);
-                  return (
-                    <>
-                      <div
-                        className={cn(
-                          'flex h-28 w-28 items-center justify-center rounded-3xl',
-                          tone,
-                        )}
-                      >
-                        <Icon className="h-14 w-14" strokeWidth={1.4} />
-                      </div>
-                      <p className="text-center text-lg font-bold text-[#1e3a5f]">
-                        {serviceItem.nameAr}
-                      </p>
-                    </>
-                  );
-                })()}
-              </div>
-            </div>
-          : null}
-        </DialogContent>
-      </Dialog>
-
-      <section
-        id="pos-receipt-print"
-        aria-hidden={receiptSheets?.length ? undefined : true}
-        className="hidden"
-      >
-        {(receiptSheets ?? []).map((sheet, sheetIdx) => (
-          <div
-            key={`${sheet.orderId}-${sheetIdx}`}
-            className="pos-receipt-wrap pos-receipt-sheet"
-            dir="rtl"
-          >
-            <img src="/logo.png" alt="Safari Omni" className="pos-receipt-logo" />
-            <h2>Safari Laundry</h2>
-            <p className="pos-receipt-sub">Farwaniya, 00</p>
-            <p className="pos-receipt-sub">
-              Shop Tel: 24899399 - Call Center: 22200299
-            </p>
-            <div className="pos-receipt-meta-grid">
-              <p><strong>INV#:</strong> {sheet.orderNumber ?? '-'}</p>
-              <p>
-                <strong>Employee:</strong>{' '}
-                {`${sheet.employeeId} / ${sheet.employeeName}`}
-              </p>
-              <p>
-                <strong>Date:</strong>{' '}
-                {new Date(sheet.createdAt).toLocaleString(dateLocale)}
-              </p>
-            </div>
-            {sheet.paymentPending ?
-              <p
-                className="my-2 rounded border border-amber-400 bg-amber-50 px-2 py-1 text-center text-[10px] font-semibold text-amber-900"
-                dir="auto"
-              >
-                {t('pos.checkout.paymentPendingReceipt')}
-              </p>
-            : null}
-            <div className="pos-customer-box">
-              <div className="pos-customer-row">
-                <span><strong>Name:</strong> {sheet.customerName ?? '-'}</span>
-                <span><strong>Mobile:</strong> {sheet.customerMobile ?? '-'}</span>
-              </div>
-              <div className="pos-customer-row">
-                <span>
-                  <strong>Balance:</strong>{' '}
-                  {Number.parseFloat(sheet.customerBalance ?? '0')
-                    .toFixed(3)}{' '}
-                  KWD
-                </span>
-              </div>
-              <div className="pos-customer-address">
-                <strong>Address:</strong> {sheet.customerAddress ?? '-'}
-              </div>
-            </div>
-            <table className="pos-receipt-table">
-              <thead>
-                <tr>
-                  <th>الأصناف</th>
-                  <th>Type</th>
-                  <th className="text-end">K.D</th>
-                  <th className="text-end">F</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sheet.lines.map((line, idx) => (
-                  <tr key={`${line.label}-${idx}`}>
-                    <td className="pos-receipt-desc">
-                      <div>{line.label}</div>
-                      <div className="pos-receipt-qty">{line.quantity} x</div>
-                      {(line.neshaLevel !== '0%' || line.foldingStyle) ?
-                        <div className="pos-receipt-specs">
-                          <div><strong>المحددات:</strong></div>
-                          <div>NESHA: {line.neshaLevel}</div>
-                          {line.foldingStyle ? <div>Style: {line.foldingStyle}</div> : null}
-                        </div>
-                      : null}
-                    </td>
-                    <td>{sheet.serviceType ?? 'N WASH'}</td>
-                    <td className="text-end">{formatKwdParts(line.lineTotal).dinar}</td>
-                    <td className="text-end">{formatKwdParts(line.lineTotal).fils}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div className="pos-receipt-totals">
-              <div>
-                <span>{t('pos.subtotalLabel')}</span>
-                <span>
-                  {(sheet.lineItemsSubtotal ?? 0).toFixed(3)} KWD
-                </span>
-              </div>
-              <div>
-                <span>{t('pos.deliveryFeeLabel')}</span>
-                <span>
-                  {sheet.attachedInvoice ?
-                    '0.000 KWD'
-                  : (sheet.freeDelivery || (sheet.deliveryFee ?? 0) <= 0) ?
-                    t('pos.freeDelivery')
-                  : `${(sheet.deliveryFee ?? 0).toFixed(3)} KWD`}
-                </span>
-              </div>
-              <div className="net">
-                <span>{t('pos.grandTotalLabel')}</span>
-                <span>{(sheet.total ?? 0).toFixed(3)} KWD</span>
-              </div>
-              {sheet.paymentLabel ?
-                <div className="mt-1 text-[9px] text-muted-foreground">
-                  <strong>الدفع / Payment:</strong> {sheet.paymentLabel}
-                </div>
-              : null}
-            </div>
-            <div className="pos-receipt-notes">
-              <p><strong>ملاحظات:</strong></p>
-              {sheet.lines
-                .filter((l) => l.itemNote.trim().length > 0)
-                .map((l, i) => (
-                  <p key={`${l.label}-note-${i}`}>
-                    - {l.label}: {l.itemNote}
-                  </p>
-                ))}
-            </div>
-            {sheet.orderId ?
-              <div className="pos-receipt-barcode">
-                <OrderIdBarcode
-                  orderId={sheet.orderId}
-                  variant="receipt"
-                />
-                <p className="pos-receipt-barcode-caption">
-                  {t('pos.receiptBarcodeCaption')}
-                </p>
-              </div>
-            : null}
-            <div className="mt-2 flex flex-col items-center gap-1">
-              <TermsQr size={78} />
-              <p className="text-[10px] text-muted-foreground">{t('pos.termsQrCaption')}</p>
-            </div>
-            <div className="pos-receipt-terms">
-              <p>الشروط والأحكام:</p>
-              <p>
-                يبدأ المندوب في تسليم الملابس المستعجلة بعد 4 ساعات من استلامها في الأيام
-                العادية و 24 ساعة فترة الأعياد. المحل غير مسئول عن ملاحظات الخدمة بعد
-                مرور 24 ساعة من تسليم الملابس. - يبدأ تسليم الملابس للعميل بعد 5:00
-                مساءً. الماركات العالمية لها عناية مميزة وأسعار خاصة - المحل غير مسئول
-                عن فقدان المتعلقات الشخصية. المحل غير ملزم عن تخزين الملابس بعد مرور
-                30 يوما من استلامها. - قيمة تعويض الملابس التالفة تكون بنسبة 25% من
-                قيمتها شريطة تقديم الفاتورة الأصلية.
-              </p>
-            </div>
-          </div>
-        ))}
-      </section>
-
-      {receiptSheets?.length ?
-        <section id="pos-item-tags-print" className="hidden" aria-hidden>
-          <div className="pos-garment-tags-grid">
-            {receiptSheets.flatMap((sheet, sheetIdx) =>
-              sheet.lines.flatMap((line, lineIdx) => {
-                const n = garmentTagCount(line.quantity);
-                return Array.from({ length: n }, (_, i) => (
-                  <div
-                    key={`${sheet.orderId}-${sheetIdx}-${line.label}-${lineIdx}-${i}`}
-                    className="pos-garment-tag"
-                    dir="rtl"
-                  >
-                    <OrderIdBarcode
-                      orderId={sheet.orderId}
-                      variant="receipt"
-                    />
-                    <div className="tag-meta">
-                      <div>
-                        <strong>{t('pos.tagCustomer')}</strong>{' '}
-                        {sheet.customerName}
-                      </div>
-                      <div>
-                        <strong>{t('pos.tagBranch')}</strong>{' '}
-                        {sheet.branchLabel}
-                      </div>
-                      <div>
-                        <strong>{t('pos.tagGarment')}</strong> {line.label}
-                        {n > 1 ? ` (${i + 1}/${n})` : ''}
-                      </div>
-                    </div>
-                  </div>
-                ));
-              }),
-            )}
-          </div>
-        </section>
-      : null}
-
-      <OrderDetailDialog
-        open={scanOrderDialogOpen}
-        onOpenChange={setScanOrderDialogOpen}
-        order={scanOrderDetail}
-      />
-
-      <Dialog
-        open={newOpen}
-        onOpenChange={(o) => {
-          setNewOpen(o);
-          if (!o) resetNewCustomerForm();
-        }}
-      >
-        <DialogContent
-          className="max-h-[min(90dvh,720px)] max-w-lg overflow-y-auto"
-          dir={rtl ? 'rtl' : 'ltr'}
-        >
-          <DialogHeader className="text-start">
-            <DialogTitle>{t('pos.newCustomer.title')}</DialogTitle>
-          </DialogHeader>
-          <div className="grid gap-3 py-2">
-            <div className="space-y-1">
-              <Label htmlFor="pos-nn" className="text-start">
-                {t('pos.newCustomer.name')}
-              </Label>
-              <Input
-                id="pos-nn"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                className="bg-background text-start"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="pos-np" className="text-start">
-                {t('pos.newCustomer.mobile')}
-              </Label>
-              <Input
-                id="pos-np"
-                value={newPhone}
-                onChange={(e) => setNewPhone(e.target.value)}
-                className="bg-background text-start"
-                inputMode="tel"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="pos-np2" className="text-start">
-                {t('pos.newCustomer.mobileSecondary')}
-              </Label>
-              <Input
-                id="pos-np2"
-                value={newPhone2}
-                onChange={(e) => setNewPhone2(e.target.value)}
-                className="bg-background text-start"
-                inputMode="tel"
-              />
-            </div>
-            <p className="pt-1 text-xs font-medium text-muted-foreground">
-              {t('pos.newCustomer.addressSection')}
-            </p>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1">
-                <Label htmlFor="pos-a1" className="text-start">
-                  {t('pos.newCustomer.addressArea')}
-                </Label>
-                <Input
-                  id="pos-a1"
-                  value={newArea}
-                  onChange={(e) => setNewArea(e.target.value)}
-                  className="bg-background text-start"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="pos-a2" className="text-start">
-                  {t('pos.newCustomer.addressBlock')}
-                </Label>
-                <Input
-                  id="pos-a2"
-                  value={newBlock}
-                  onChange={(e) => setNewBlock(e.target.value)}
-                  className="bg-background text-start"
-                />
-              </div>
-              <div className="space-y-1 sm:col-span-2">
-                <Label htmlFor="pos-a3" className="text-start">
-                  {t('pos.newCustomer.addressStreet')}
-                </Label>
-                <Input
-                  id="pos-a3"
-                  value={newStreet}
-                  onChange={(e) => setNewStreet(e.target.value)}
-                  className="bg-background text-start"
-                />
-              </div>
-              <div className="space-y-1 sm:col-span-2">
-                <Label htmlFor="pos-a4" className="text-start">
-                  {t('pos.newCustomer.addressAvenue')}
-                </Label>
-                <Input
-                  id="pos-a4"
-                  value={newAvenue}
-                  onChange={(e) => setNewAvenue(e.target.value)}
-                  className="bg-background text-start"
-                />
-              </div>
-              <div className="space-y-1 sm:col-span-2">
-                <Label htmlFor="pos-a5" className="text-start">
-                  {t('pos.newCustomer.addressHouse')}
-                </Label>
-                <Input
-                  id="pos-a5"
-                  value={newHouse}
-                  onChange={(e) => setNewHouse(e.target.value)}
-                  className="bg-background text-start"
-                />
-              </div>
-            </div>
-          </div>
-          <DialogFooter className="gap-2 sm:justify-between">
-            <Button type="button" variant="outline" onClick={() => setNewOpen(false)}>
-              {t('pos.newCustomer.cancel')}
-            </Button>
-            <Button
-              type="button"
-              disabled={savingCustomer}
-              onClick={() => void saveNewCustomer()}
-            >
-              {savingCustomer ?
-                <Loader2 className="h-4 w-4 animate-spin" />
-              : t('pos.newCustomer.save')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <PosAuxiliaryUi p={p} />
     </div>
   );
 }

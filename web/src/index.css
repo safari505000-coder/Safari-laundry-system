@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap');
 @import 'tailwindcss';
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -7,7 +8,7 @@
 
 @theme {
   --font-sans:
-    'Cairo', 'Almarai', ui-sans-serif, system-ui, sans-serif;
+    'Tajawal', 'Cairo', 'Almarai', ui-sans-serif, system-ui, sans-serif;
 }
 
 body {
@@ -22,7 +23,7 @@ body {
 @theme inline {
   --font-heading: var(--font-sans);
   --font-sans:
-    'Cairo', 'Almarai', 'Geist Variable', ui-sans-serif, system-ui,
+    'Tajawal', 'Cairo', 'Almarai', 'Geist Variable', ui-sans-serif, system-ui,
     sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -150,6 +151,7 @@ body {
   }
   html[lang='ar'] {
     font-family:
+      'Tajawal',
       'Cairo',
       'Almarai',
       'Geist Variable',

@@ -12,21 +12,21 @@ import {
   ApiError,
 } from '@/lib/api';
 import { requestExecutiveSummaryRefresh } from '@/lib/executive-summary-refresh';
-import { useAppLocale } from '@/hooks/use-app-locale';
+import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
 import { formatKwdLabel, sumKwdStrings } from '@/lib/kwd';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Badge } from '@/modules/shared/components/ui/badge';
+import { Button } from '@/modules/shared/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/modules/shared/components/ui/card';
+import { Input } from '@/modules/shared/components/ui/input';
+import { Label } from '@/modules/shared/components/ui/label';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
-import { Skeleton } from '@/components/ui/skeleton';
+} from '@/modules/shared/components/ui/select';
+import { Skeleton } from '@/modules/shared/components/ui/skeleton';
 import {
   Table,
   TableBody,
@@ -34,7 +34,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
+} from '@/modules/shared/components/ui/table';
 
 function monthRangeIso(ym: string): { from: string; to: string } {
   const [ys, ms] = ym.split('-');
@@ -241,7 +241,7 @@ export function PayrollPage() {
           <CardContent>
             <p className="text-2xl font-bold tabular-nums text-primary">
               {loadingList && !payrolls ?
-                '…'
+                'â€¦'
               : formatKwdLabel(paidThisMonthKd)}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
@@ -288,7 +288,7 @@ export function PayrollPage() {
                         })}
                       </TableCell>
                       <TableCell className="text-muted-foreground">
-                        {u.branch?.name ?? '—'}
+                        {u.branch?.name ?? 'â€”'}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -321,7 +321,7 @@ export function PayrollPage() {
                 <SelectContent>
                   {eligibleStaff.map((u) => (
                     <SelectItem key={u.id} value={u.id}>
-                      {u.fullName} · {t(`roles.${u.safariRole}`)}
+                      {u.fullName} آ· {t(`roles.${u.safariRole}`)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -468,3 +468,4 @@ export function PayrollPage() {
     </div>
   );
 }
+

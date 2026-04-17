@@ -13,6 +13,8 @@ export type LoginUser = {
   fullName: string;
   phone: string | null;
   safariRole: SafariRole;
+  /** Set for branch-scoped staff; drives merged price list when using JWT defaults. */
+  branchId?: string | null;
 };
 
 export type LoginResponse = {
@@ -354,6 +356,95 @@ export function verifyBankDeposit(token: string, id: string) {
   );
 }
 
+export type DepositType = 'CASH' | 'KNET';
+export type DepositStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+export type DepositAuditRow = {
+  id: string;
+  driverId: string;
+  driverName: string;
+  amount: string;
+  type: DepositType;
+  receiptImage: string;
+  status: DepositStatus;
+  auditComment: string | null;
+  auditedBy: { id: string; fullName: string; username: string } | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type DepositsListResponse = {
+  rows: DepositAuditRow[];
+};
+
+export function getDeposits(
+  token: string,
+  query?: { status?: DepositStatus; driverId?: string; driverName?: string },
+) {
+  const q = new URLSearchParams();
+  if (query?.status) q.set('status', query.status);
+  if (query?.driverId) q.set('driverId', query.driverId);
+  if (query?.driverName?.trim()) q.set('driverName', query.driverName.trim());
+  const qs = q.toString();
+  return apiJson<DepositsListResponse>(`/api/finance/deposits${qs ? `?${qs}` : ''}`, {
+    token,
+  });
+}
+
+/** DRIVER — multipart deposit request (PENDING until accountant approves). */
+export async function uploadDriverDeposit(
+  token: string,
+  params: { file: File; type: DepositType; amount: number },
+): Promise<DepositAuditRow> {
+  const fd = new FormData();
+  fd.append('file', params.file);
+  fd.append('type', params.type);
+  fd.append('amount', String(params.amount));
+  const headers = new Headers();
+  headers.set('Authorization', `Bearer ${token}`);
+  let res: Response;
+  try {
+    res = await fetch(buildUrl('/api/finance/deposits'), {
+      method: 'POST',
+      headers,
+      body: fd,
+    });
+  } catch (e) {
+    const m = e instanceof Error ? e.message : 'Network request failed';
+    throw new ApiError(m, 0);
+  }
+  const rawText = await res.text();
+  const json = parseApiBody(rawText);
+  if (!res.ok) {
+    const errorCode =
+      typeof json.errorCode === 'string' ? json.errorCode : undefined;
+    throw new ApiError(
+      formatErrorMessage(json, res.status, rawText),
+      res.status,
+      errorCode,
+    );
+  }
+  if (json.data === undefined) {
+    throw new ApiError('Invalid API response (missing data)', res.status);
+  }
+  return json.data as DepositAuditRow;
+}
+
+export function updateDepositStatus(
+  token: string,
+  id: string,
+  body: { status: DepositStatus; auditComment?: string },
+) {
+  return apiJson<{ id: string; status: DepositStatus; auditComment: string | null; updatedAt: string }>(
+    `/api/finance/deposits/${encodeURIComponent(id)}/status`,
+    {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify(body),
+    },
+  );
+}
+
 export type FinancialCycleRow = {
   orderId: string;
   amountKd: string;
@@ -477,6 +568,40 @@ export type CustomerSearchRow = {
   wallet: { balance: string; debt: string } | null;
 };
 
+export type CustomerDirectoryRow = {
+  customer: {
+    id: string;
+    phone: string;
+    phone2?: string | null;
+    displayName?: string | null;
+    address: string | null;
+    motherContact?: string | null;
+    wifeContact?: string | null;
+    sonContact?: string | null;
+    addressArea?: string | null;
+    addressBlock?: string | null;
+    addressStreet?: string | null;
+    addressAvenue?: string | null;
+    addressHouse?: string | null;
+    createdAt: string;
+    updatedAt: string;
+  };
+  debt: {
+    walletDebt: string;
+    subscriptionOveruseDebt: string;
+    totalDebt: string;
+  };
+  subscription: {
+    walletBalance: string;
+    subscriptionPlanId: string | null;
+    subscriptionPlanName: string | null;
+    subscriptionActivatedAt: string | null;
+    subscriptionExpiresAt: string | null;
+    totalSubscriptionUsage: string;
+    debtSettledBySubscriptions: string;
+  };
+};
+
 export type PosPaymentMethod =
   | 'SUBSCRIPTION_WALLET'
   | 'CASH'
@@ -578,6 +703,14 @@ export type LaundryPriceTier =
   | 'PRESS_ONLY'
   | 'URGENT_PRESS';
 
+export type LaundryItemCategoryRow = {
+  id: string;
+  code: string;
+  nameAr: string;
+  nameEn: string | null;
+  sortOrder: number;
+};
+
 export type LaundryPriceListItemRow = {
   id: string;
   code: string;
@@ -589,6 +722,11 @@ export type LaundryPriceListItemRow = {
   priceUrgent: string;
   pricePressOnly: string | null;
   priceUrgentPress: string | null;
+  categoryId?: string | null;
+  categoryCode?: string | null;
+  categoryNameAr?: string | null;
+  categoryNameEn?: string | null;
+  categorySortOrder?: number | null;
 };
 
 export type TeamUserRow = {

@@ -11,9 +11,9 @@ import { PrismaService } from '../prisma/prisma.service';
 export class ExpensesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private assertCanManage(role: SafariRole): void {
-    if (role !== SafariRole.MANAGER) {
-      throw new ForbiddenException('Only MANAGER can record expenses');
+  private assertCanRecordExpense(role: SafariRole): void {
+    if (role !== SafariRole.MANAGER && role !== SafariRole.DRIVER) {
+      throw new ForbiddenException('Only MANAGER or DRIVER can record expenses');
     }
   }
 
@@ -28,7 +28,7 @@ export class ExpensesService {
       receiptUrl?: string;
     },
   ) {
-    this.assertCanManage(safariRole);
+    this.assertCanRecordExpense(safariRole);
     const u = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { branchId: true },
@@ -48,7 +48,7 @@ export class ExpensesService {
   }
 
   async listForUser(
-    _userId: string,
+    userId: string,
     safariRole: SafariRole,
     fromIso: string,
     toIso: string,
@@ -58,16 +58,20 @@ export class ExpensesService {
     if (
       safariRole !== SafariRole.MANAGER &&
       safariRole !== SafariRole.ACCOUNTANT &&
-      safariRole !== SafariRole.OWNER
+      safariRole !== SafariRole.OWNER &&
+      safariRole !== SafariRole.DRIVER
     ) {
       throw new ForbiddenException();
     }
     const from = new Date(fromIso);
     const to = new Date(toIso);
+    const driverOwn: Prisma.BranchExpenseWhereInput =
+      safariRole === SafariRole.DRIVER ? { recordedById: userId } : {};
     return this.prisma.branchExpense.findMany({
       where: {
         expenseDate: { gte: from, lte: to },
-        ...(branchId ? { branchId } : {}),
+        ...(safariRole === SafariRole.DRIVER ? driverOwn : {}),
+        ...(safariRole !== SafariRole.DRIVER && branchId ? { branchId } : {}),
         ...(status ? { status } : {}),
       },
       orderBy: { expenseDate: 'desc' },

@@ -22,20 +22,20 @@ import {
   apiJson,
   ApiError,
 } from '@/lib/api';
-import { useAppLocale } from '@/hooks/use-app-locale';
+import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
 import { formatKwdLabel } from '@/lib/kwd';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Button } from '@/modules/shared/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/modules/shared/components/ui/card';
+import { Input } from '@/modules/shared/components/ui/input';
+import { Label } from '@/modules/shared/components/ui/label';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+} from '@/modules/shared/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/modules/shared/components/ui/tabs';
 import { LiveOperationsFeed } from '@/components/reports/live-operations-feed';
 import { EXECUTIVE_SUMMARY_REFRESH_EVENT } from '@/lib/executive-summary-refresh';
 import { cn } from '@/lib/utils';
@@ -359,14 +359,14 @@ export function ReportsPage() {
             <CardContent className="pt-6">
               <dl className="space-y-3 text-sm">
                 <div className="flex items-center justify-between rounded-lg border px-3 py-2">
-                  <dt className="font-medium">إجمالي دعم الاشتراكات</dt>
+                  <dt className="font-medium">ط¥ط¬ظ…ط§ظ„ظٹ ط¯ط¹ظ… ط§ظ„ط§ط´طھط±ط§ظƒط§طھ</dt>
                   <dd className="tabular-nums font-semibold">
                     {formatKwdLabel(executive.subscriptionSubsidyKd)}
                   </dd>
                 </div>
                 <div className="flex items-center justify-between rounded-lg border px-3 py-2">
                   <dt className="font-medium">
-                    إجمالي دعم الاشتراكات (المكتب الرئيسي - كل الفروع)
+                    ط¥ط¬ظ…ط§ظ„ظٹ ط¯ط¹ظ… ط§ظ„ط§ط´طھط±ط§ظƒط§طھ (ط§ظ„ظ…ظƒطھط¨ ط§ظ„ط±ط¦ظٹط³ظٹ - ظƒظ„ ط§ظ„ظپط±ظˆط¹)
                   </dt>
                   <dd className="tabular-nums font-semibold">
                     {formatKwdLabel(executive.enterpriseSubscriptionSubsidyKd)}
@@ -480,8 +480,8 @@ export function ReportsPage() {
               {invoices ?
                 <>
                   <p className="mb-2 text-xs text-muted-foreground">
-                    {invoices.count} {t('reports.rows')} ·{' '}
-                    {new Date(invoices.from).toLocaleString(dateLocale)} —{' '}
+                    {invoices.count} {t('reports.rows')} آ·{' '}
+                    {new Date(invoices.from).toLocaleString(dateLocale)} â€”{' '}
                     {new Date(invoices.to).toLocaleString(dateLocale)}
                   </p>
                   <table className="w-full min-w-[640px] border-collapse text-sm">
@@ -509,10 +509,10 @@ export function ReportsPage() {
                             {r.customer.displayName ?? r.customer.phone}
                           </td>
                           <td className="py-2 pe-2">
-                            {r.driver?.fullName ?? '—'}
+                            {r.driver?.fullName ?? 'â€”'}
                           </td>
                           <td className="py-2 pe-2">
-                            {r.posPaymentMethod ?? '—'}
+                            {r.posPaymentMethod ?? 'â€”'}
                           </td>
                           <td className="py-2 pe-2">{r.status}</td>
                           <td className="py-2 text-end tabular-nums">
@@ -613,7 +613,7 @@ export function ReportsPage() {
                             {r.invoiceNumber ?? r.id.slice(0, 8)}
                           </td>
                           <td className="py-2 pe-2">
-                            {r.posPaymentMethod ?? '—'}
+                            {r.posPaymentMethod ?? 'â€”'}
                           </td>
                           <td className="py-2 pe-2">{r.cashStatus}</td>
                           <td className="py-2 text-end tabular-nums">
@@ -703,3 +703,4 @@ export function ReportsPage() {
     </div>
   );
 }
+

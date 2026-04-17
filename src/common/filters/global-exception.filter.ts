@@ -6,6 +6,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
+import type { Request } from 'express';
 import { APP_BRAND } from '../constants/branding';
 import {
   logServerError,
@@ -19,6 +20,12 @@ export class GlobalExceptionFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost): void {
     const { httpAdapter } = this.httpAdapterHost;
     const ctx = host.switchToHttp();
+    const req = ctx.getRequest<Request & { requestId?: string }>();
+    const headerId = req.headers['x-request-id'];
+    const requestId =
+      req.requestId ??
+      (typeof headerId === 'string' ? headerId : undefined) ??
+      (Array.isArray(headerId) ? headerId[0] : undefined);
 
     const status =
       exception instanceof HttpException
@@ -35,6 +42,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         : { message: prismaClientMessage(exception) };
 
     const meta = { application: APP_BRAND };
+    const rid =
+      requestId !== undefined ? { requestId: String(requestId) } : {};
     const payload =
       typeof body === 'string'
         ? {
@@ -42,12 +51,14 @@ export class GlobalExceptionFilter implements ExceptionFilter {
             statusCode: status,
             message: body,
             timestamp: new Date().toISOString(),
+            ...rid,
           }
         : {
             meta,
             statusCode: status,
             ...(typeof body === 'object' && body !== null ? body : {}),
             timestamp: new Date().toISOString(),
+            ...rid,
           };
 
     httpAdapter.reply(ctx.getResponse(), payload, status);

@@ -33,11 +33,11 @@ export class ExpensesController {
   constructor(private readonly expensesService: ExpensesService) {}
 
   @Post()
-  @Roles(SafariRole.MANAGER)
+  @Roles(SafariRole.MANAGER, SafariRole.DRIVER)
   @ApiOperation({
     summary: `Record branch expense (${APP_BRAND})`,
     description:
-      'MANAGER only. Categories: SOAP, FUEL, MISC. New rows are PENDING_ACCOUNTANT until approved.',
+      'MANAGER or DRIVER (field). Categories: SOAP, FUEL, MISC. New rows are PENDING_ACCOUNTANT until approved.',
   })
   create(@Body() dto: CreateExpenseDto, @CurrentUser() user: JwtUser) {
     return this.expensesService.create(
@@ -48,7 +48,7 @@ export class ExpensesController {
   }
 
   @Get()
-  @Roles(SafariRole.MANAGER, SafariRole.ACCOUNTANT, SafariRole.OWNER)
+  @Roles(SafariRole.MANAGER, SafariRole.ACCOUNTANT, SafariRole.OWNER, SafariRole.DRIVER)
   @ApiOperation({
     summary: `List expenses in date range (${APP_BRAND})`,
   })

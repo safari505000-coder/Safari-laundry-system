@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { CAN_MANAGE_STAFF, roleHasBuiltinCapability } from '../auth/capabilities';
 import { PrismaService } from '../prisma/prisma.service';
 import { PermissionKeyDto } from './dto/permission-key.dto';
 
@@ -85,5 +86,28 @@ export class PermissionsService {
     });
 
     return this.getRoleWithPermissions(roleId);
+  }
+
+  async roleHasCapability(
+    roleName: string | null | undefined,
+    capability: string,
+  ): Promise<boolean> {
+    if (roleHasBuiltinCapability(roleName, capability)) return true;
+    if (!roleName) return false;
+    const role = await this.prisma.role.findUnique({
+      where: { name: roleName },
+      select: {
+        permissions: {
+          where: { key: capability },
+          select: { id: true },
+          take: 1,
+        },
+      },
+    });
+    return Boolean(role?.permissions?.length);
+  }
+
+  async canManageStaff(roleName: string | null | undefined): Promise<boolean> {
+    return this.roleHasCapability(roleName, CAN_MANAGE_STAFF);
   }
 }

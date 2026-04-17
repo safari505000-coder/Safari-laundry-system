@@ -156,10 +156,11 @@ export class UsersService {
     const branchPatch = (dto as UpdateUserDto & { branchId?: string | null })
       .branchId;
     if (branchPatch !== undefined) {
+      if (branchPatch === null) {
+        throw new BadRequestException('branchId is mandatory for all staff');
+      }
       data.branch =
-        branchPatch === null
-          ? { disconnect: true }
-          : { connect: { id: branchPatch } };
+        { connect: { id: branchPatch } };
     }
     if (dto.password !== undefined) {
       data.password = await bcrypt.hash(dto.password, 12);

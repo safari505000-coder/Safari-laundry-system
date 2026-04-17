@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Navigate } from 'react-router-dom';
@@ -16,9 +16,9 @@ import {
 } from '@/lib/api';
 import { formatKwdLabel, sumKwdStrings } from '@/lib/kwd';
 import { MetricCard } from '@/components/dashboard/metric-card';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
-import { Skeleton } from '@/components/ui/skeleton';
+import { Card, CardContent, CardHeader, CardTitle } from '@/modules/shared/components/ui/card';
+import { Separator } from '@/modules/shared/components/ui/separator';
+import { Skeleton } from '@/modules/shared/components/ui/skeleton';
 
 export function FinancialsPage() {
   const { t } = useTranslation();
@@ -256,7 +256,7 @@ export function FinancialsPage() {
               <span>{t('financials.debtReportTitle')}</span>
               <span className="text-xs font-normal tabular-nums text-muted-foreground">
                 {debtLoading ?
-                  '…'
+                  'â€¦'
                 : t('financials.debtRecordCount', { count: debtRows.length })}
               </span>
             </span>
@@ -320,7 +320,7 @@ export function FinancialsPage() {
                 {debtLoading ?
                   <tr>
                     <td colSpan={4} className="py-6 text-center text-muted-foreground">
-                      …
+                      â€¦
                     </td>
                   </tr>
                 : debtRows.map((r, idx) => (
@@ -346,3 +346,4 @@ export function FinancialsPage() {
     </div>
   );
 }
+

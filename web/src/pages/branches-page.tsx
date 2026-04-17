@@ -6,27 +6,27 @@ import { Building, Loader2, Plus } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { type BranchRow, apiJson, ApiError } from '@/lib/api';
 import { requestBranchesListRefresh } from '@/lib/branch-list-refresh';
-import { useAppLocale } from '@/hooks/use-app-locale';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
+import { Badge } from '@/modules/shared/components/ui/badge';
+import { Button } from '@/modules/shared/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/modules/shared/components/ui/card';
 import {
   Dialog,
   DialogContent,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+} from '@/modules/shared/components/ui/dialog';
+import { Input } from '@/modules/shared/components/ui/input';
+import { Label } from '@/modules/shared/components/ui/label';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
-import { Skeleton } from '@/components/ui/skeleton';
+} from '@/modules/shared/components/ui/select';
+import { Skeleton } from '@/modules/shared/components/ui/skeleton';
 import {
   Table,
   TableBody,
@@ -34,7 +34,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
+} from '@/modules/shared/components/ui/table';
 
 export function BranchesPage() {
   const { t } = useTranslation();
@@ -166,7 +166,7 @@ export function BranchesPage() {
                       <span className="line-clamp-2">{b.location}</span>
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {b.phone?.trim() || '—'}
+                      {b.phone?.trim() || 'â€”'}
                     </TableCell>
                     <TableCell>
                       {b.isActive ?
@@ -272,3 +272,4 @@ export function BranchesPage() {
     </div>
   );
 }
+
