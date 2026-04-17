@@ -481,7 +481,7 @@ export function ReportsPage() {
                 <>
                   <p className="mb-2 text-xs text-muted-foreground">
                     {invoices.count} {t('reports.rows')} آ·{' '}
-                    {new Date(invoices.from).toLocaleString(dateLocale)} â€”{' '}
+                    {new Date(invoices.from).toLocaleString(dateLocale)} —{' '}
                     {new Date(invoices.to).toLocaleString(dateLocale)}
                   </p>
                   <table className="w-full min-w-[640px] border-collapse text-sm">
@@ -509,10 +509,10 @@ export function ReportsPage() {
                             {r.customer.displayName ?? r.customer.phone}
                           </td>
                           <td className="py-2 pe-2">
-                            {r.driver?.fullName ?? 'â€”'}
+                            {r.driver?.fullName ?? '—'}
                           </td>
                           <td className="py-2 pe-2">
-                            {r.posPaymentMethod ?? 'â€”'}
+                            {r.posPaymentMethod ?? '—'}
                           </td>
                           <td className="py-2 pe-2">{r.status}</td>
                           <td className="py-2 text-end tabular-nums">
@@ -613,7 +613,7 @@ export function ReportsPage() {
                             {r.invoiceNumber ?? r.id.slice(0, 8)}
                           </td>
                           <td className="py-2 pe-2">
-                            {r.posPaymentMethod ?? 'â€”'}
+                            {r.posPaymentMethod ?? '—'}
                           </td>
                           <td className="py-2 pe-2">{r.cashStatus}</td>
                           <td className="py-2 text-end tabular-nums">

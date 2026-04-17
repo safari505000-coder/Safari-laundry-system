@@ -77,7 +77,7 @@ export function FinancialCycleReportPage() {
             <TableBody>
               {loading ?
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground">â€¦</TableCell>
+                  <TableCell colSpan={7} className="text-center text-muted-foreground">...</TableCell>
                 </TableRow>
               : rows.length === 0 ?
                 <TableRow>
@@ -94,7 +94,7 @@ export function FinancialCycleReportPage() {
                     <TableCell>
                       {row.collectedByManager ?
                         `${row.collectedByManager.fullName} (@${row.collectedByManager.username})`
-                      : 'â€”'}
+                      : '—'}
                     </TableCell>
                     <TableCell>
                       {row.collectedAt ?
@@ -102,12 +102,12 @@ export function FinancialCycleReportPage() {
                           dateStyle: 'short',
                           timeStyle: 'short',
                         })
-                      : 'â€”'}
+                      : '—'}
                     </TableCell>
                     <TableCell>
                       {row.verifiedByAccountant ?
                         `${row.verifiedByAccountant.fullName} (@${row.verifiedByAccountant.username})`
-                      : 'â€”'}
+                      : '—'}
                     </TableCell>
                     <TableCell>
                       {row.verifiedAt ?
@@ -115,7 +115,7 @@ export function FinancialCycleReportPage() {
                           dateStyle: 'short',
                           timeStyle: 'short',
                         })
-                      : 'â€”'}
+                      : '—'}
                     </TableCell>
                     <TableCell>
                       {row.receiptImageUrl ?
@@ -128,7 +128,7 @@ export function FinancialCycleReportPage() {
                           <ExternalLink className="h-3.5 w-3.5" />
                           {t('financialCycle.openSlip')}
                         </a>
-                      : 'â€”'}
+                      : '—'}
                     </TableCell>
                   </TableRow>
                 ))}

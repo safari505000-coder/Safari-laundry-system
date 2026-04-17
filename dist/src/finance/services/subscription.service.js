@@ -48,6 +48,53 @@ let SubscriptionService = class SubscriptionService {
             debtSettledBySubscriptions: settled.toFixed(4),
         };
     }
+    async getCustomerSubscriptionSnapshot(customerId) {
+        const wallet = await this.prisma.customerWallet.findUnique({
+            where: { customerId },
+            select: {
+                balance: true,
+                subscriptionPlanId: true,
+                subscriptionPlanName: true,
+                subscriptionActivatedAt: true,
+                subscriptionExpiresAt: true,
+            },
+        });
+        const txRows = await this.prisma.transactionHistory.findMany({
+            where: {
+                customerId,
+                OR: [
+                    { type: client_1.LedgerTransactionType.ORDER_WALLET_SETTLEMENT },
+                    { type: client_1.LedgerTransactionType.SUBSCRIPTION_ACTIVATION },
+                ],
+            },
+            select: { type: true, metadata: true },
+            take: 5000,
+        });
+        let usage = 0;
+        let settled = 0;
+        for (const row of txRows) {
+            const meta = row.metadata;
+            if (row.type === client_1.LedgerTransactionType.ORDER_WALLET_SETTLEMENT) {
+                const n = Number.parseFloat(String(meta?.appliedFromWallet ?? '0'));
+                if (Number.isFinite(n) && n > 0)
+                    usage += n;
+            }
+            else if (row.type === client_1.LedgerTransactionType.SUBSCRIPTION_ACTIVATION) {
+                const n = Number.parseFloat(String(meta?.debtSettled ?? '0'));
+                if (Number.isFinite(n) && n > 0)
+                    settled += n;
+            }
+        }
+        return {
+            walletBalance: wallet?.balance?.toString?.() ?? '0.0000',
+            subscriptionPlanId: wallet?.subscriptionPlanId ?? null,
+            subscriptionPlanName: wallet?.subscriptionPlanName ?? null,
+            subscriptionActivatedAt: wallet?.subscriptionActivatedAt?.toISOString() ?? null,
+            subscriptionExpiresAt: wallet?.subscriptionExpiresAt?.toISOString() ?? null,
+            totalSubscriptionUsage: usage.toFixed(4),
+            debtSettledBySubscriptions: settled.toFixed(4),
+        };
+    }
 };
 exports.SubscriptionService = SubscriptionService;
 exports.SubscriptionService = SubscriptionService = __decorate([

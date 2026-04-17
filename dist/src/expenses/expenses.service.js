@@ -18,13 +18,13 @@ let ExpensesService = class ExpensesService {
     constructor(prisma) {
         this.prisma = prisma;
     }
-    assertCanManage(role) {
-        if (role !== client_1.SafariRole.MANAGER) {
-            throw new common_1.ForbiddenException('Only MANAGER can record expenses');
+    assertCanRecordExpense(role) {
+        if (role !== client_1.SafariRole.MANAGER && role !== client_1.SafariRole.DRIVER) {
+            throw new common_1.ForbiddenException('Only MANAGER or DRIVER can record expenses');
         }
     }
     async create(userId, safariRole, dto) {
-        this.assertCanManage(safariRole);
+        this.assertCanRecordExpense(safariRole);
         const u = await this.prisma.user.findUnique({
             where: { id: userId },
             select: { branchId: true },
@@ -42,18 +42,21 @@ let ExpensesService = class ExpensesService {
             },
         });
     }
-    async listForUser(_userId, safariRole, fromIso, toIso, branchId, status) {
+    async listForUser(userId, safariRole, fromIso, toIso, branchId, status) {
         if (safariRole !== client_1.SafariRole.MANAGER &&
             safariRole !== client_1.SafariRole.ACCOUNTANT &&
-            safariRole !== client_1.SafariRole.OWNER) {
+            safariRole !== client_1.SafariRole.OWNER &&
+            safariRole !== client_1.SafariRole.DRIVER) {
             throw new common_1.ForbiddenException();
         }
         const from = new Date(fromIso);
         const to = new Date(toIso);
-        return this.prisma.branchExpense.findMany({
+        const driverOwn = safariRole === client_1.SafariRole.DRIVER ? { recordedById: userId } : {};
+        const rows = await this.prisma.branchExpense.findMany({
             where: {
                 expenseDate: { gte: from, lte: to },
-                ...(branchId ? { branchId } : {}),
+                ...(safariRole === client_1.SafariRole.DRIVER ? driverOwn : {}),
+                ...(safariRole !== client_1.SafariRole.DRIVER && branchId ? { branchId } : {}),
                 ...(status ? { status } : {}),
             },
             orderBy: { expenseDate: 'desc' },
@@ -66,6 +69,7 @@ let ExpensesService = class ExpensesService {
                 },
             },
         });
+        return rows.map((row) => ({ ...row, receiptUrl: null }));
     }
     async listPendingApproval(safariRole) {
         if (safariRole !== client_1.SafariRole.ACCOUNTANT && safariRole !== client_1.SafariRole.OWNER) {

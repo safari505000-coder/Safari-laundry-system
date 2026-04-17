@@ -84,13 +84,22 @@ export function usePriceList(opts: UsePriceListOpts): PriceListBridge {
     setFailed(false);
     try {
       const listPath = buildLaundryPriceListPath(effectiveBranchId);
-      const [listData, catData] = await Promise.all([
-        apiJson<LaundryPriceListItemRow[]>(listPath, { token }),
-        apiJson<LaundryItemCategoryRow[]>(
+      const listData = await apiJson<LaundryPriceListItemRow[]>(listPath, {
+        token,
+      });
+      let catData: LaundryItemCategoryRow[] = [];
+      try {
+        catData = await apiJson<LaundryItemCategoryRow[]>(
           '/api/laundry-price-list/categories',
           { token },
-        ),
-      ]);
+        );
+      } catch (e) {
+        // Backward compatibility for environments where categories endpoint
+        // has not been deployed yet.
+        if (!(e instanceof ApiError) || e.status !== 404) {
+          throw e;
+        }
+      }
       setItems(Array.isArray(listData) ? listData : []);
       setCategories(Array.isArray(catData) ? catData : []);
     } catch (e) {

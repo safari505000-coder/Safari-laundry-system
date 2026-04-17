@@ -8,19 +8,20 @@ export declare class ExpensesController {
     constructor(expensesService: ExpensesService);
     create(dto: CreateExpenseDto, user: JwtUser): Promise<{
         id: string;
-        branchId: string | null;
         createdAt: Date;
         updatedAt: Date;
+        category: import("@prisma/client").$Enums.ExpenseCategory;
+        branchId: string | null;
         status: import("@prisma/client").$Enums.ExpenseStatus;
         amount: import("@prisma/client-runtime-utils").Decimal;
         title: string;
-        category: import("@prisma/client").$Enums.ExpenseCategory;
         note: string | null;
         receiptUrl: string | null;
         recordedById: string;
         expenseDate: Date;
     }>;
-    list(q: ExpensesQueryDto, user: JwtUser): Promise<({
+    list(q: ExpensesQueryDto, user: JwtUser): Promise<{
+        receiptUrl: null;
         branch: {
             id: string;
             name: string;
@@ -30,20 +31,18 @@ export declare class ExpensesController {
             username: string;
             fullName: string;
         };
-    } & {
         id: string;
-        branchId: string | null;
         createdAt: Date;
         updatedAt: Date;
+        category: import("@prisma/client").$Enums.ExpenseCategory;
+        branchId: string | null;
         status: import("@prisma/client").$Enums.ExpenseStatus;
         amount: import("@prisma/client-runtime-utils").Decimal;
         title: string;
-        category: import("@prisma/client").$Enums.ExpenseCategory;
         note: string | null;
-        receiptUrl: string | null;
         recordedById: string;
         expenseDate: Date;
-    })[]>;
+    }[]>;
     listPendingApproval(user: JwtUser): Promise<({
         branch: {
             id: string;
@@ -56,13 +55,13 @@ export declare class ExpensesController {
         };
     } & {
         id: string;
-        branchId: string | null;
         createdAt: Date;
         updatedAt: Date;
+        category: import("@prisma/client").$Enums.ExpenseCategory;
+        branchId: string | null;
         status: import("@prisma/client").$Enums.ExpenseStatus;
         amount: import("@prisma/client-runtime-utils").Decimal;
         title: string;
-        category: import("@prisma/client").$Enums.ExpenseCategory;
         note: string | null;
         receiptUrl: string | null;
         recordedById: string;
@@ -80,13 +79,13 @@ export declare class ExpensesController {
         };
     } & {
         id: string;
-        branchId: string | null;
         createdAt: Date;
         updatedAt: Date;
+        category: import("@prisma/client").$Enums.ExpenseCategory;
+        branchId: string | null;
         status: import("@prisma/client").$Enums.ExpenseStatus;
         amount: import("@prisma/client-runtime-utils").Decimal;
         title: string;
-        category: import("@prisma/client").$Enums.ExpenseCategory;
         note: string | null;
         receiptUrl: string | null;
         recordedById: string;

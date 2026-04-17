@@ -95,8 +95,8 @@ let CallCenterService = class CallCenterService {
                 plan: {
                     id: plan.id,
                     name: plan.name,
-                    salePrice: plan.salePrice.toString(),
-                    actualBalance: plan.actualBalance.toString(),
+                    price: plan.salePrice.toString(),
+                    creditAmount: plan.actualBalance.toString(),
                 },
                 wallet: {
                     balance: wallet.balance.toString(),

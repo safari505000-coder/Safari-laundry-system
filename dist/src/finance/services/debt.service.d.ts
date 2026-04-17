@@ -28,4 +28,13 @@ export declare class DebtService {
         }[];
     }>;
     getTotalDebt(): Promise<string>;
+    getCustomerDebtSnapshot(customerId: string): Promise<{
+        walletDebt: string;
+        subscriptionOveruseDebt: string;
+        totalDebt: string;
+    }>;
+    applyDriverDepositSettlement(driverId: string, approvedAmountKd: number): Promise<{
+        settledAmountKd: string;
+        settledOrderCount: number;
+    }>;
 }

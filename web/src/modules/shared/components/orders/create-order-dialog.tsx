@@ -223,7 +223,7 @@ export function CreateOrderDialog({ open, onOpenChange, onCreated }: Props) {
       const tierKey = row.tier as LaundryPriceTier;
       const tierLabel = t(`orders.tier.${tierKey}`);
       return {
-        label: `${item.nameAr} â€” ${tierLabel}`,
+        label: `${item.nameAr} — ${tierLabel}`,
         quantity: row.quantity,
         unitPrice: Number.parseFloat(row.unitPrice),
       };

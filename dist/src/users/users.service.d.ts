@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { PermissionsService } from '../permissions/permissions.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -7,7 +8,8 @@ export type UserPublic = Prisma.UserGetPayload<{
 }>;
 export declare class UsersService {
     private readonly prisma;
-    constructor(prisma: PrismaService);
+    private readonly permissionsService;
+    constructor(prisma: PrismaService, permissionsService: PermissionsService);
     private resolveRoleId;
     create(dto: CreateUserDto): Promise<UserPublic>;
     findAll(): Promise<UserPublic[]>;

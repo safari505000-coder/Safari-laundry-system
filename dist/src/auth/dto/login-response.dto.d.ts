@@ -5,6 +5,7 @@ export declare class LoginUserDto {
     fullName: string;
     phone: string | null;
     safariRole: SafariRole;
+    branchId?: string | null;
 }
 export declare class LoginResponseDto {
     accessToken: string;

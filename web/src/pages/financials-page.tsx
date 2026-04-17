@@ -256,7 +256,7 @@ export function FinancialsPage() {
               <span>{t('financials.debtReportTitle')}</span>
               <span className="text-xs font-normal tabular-nums text-muted-foreground">
                 {debtLoading ?
-                  'â€¦'
+                  '...'
                 : t('financials.debtRecordCount', { count: debtRows.length })}
               </span>
             </span>
@@ -320,7 +320,7 @@ export function FinancialsPage() {
                 {debtLoading ?
                   <tr>
                     <td colSpan={4} className="py-6 text-center text-muted-foreground">
-                      â€¦
+                      ...
                     </td>
                   </tr>
                 : debtRows.map((r, idx) => (

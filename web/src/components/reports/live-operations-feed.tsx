@@ -183,7 +183,7 @@ export function LiveOperationsFeed({
                         <span className="truncate">
                           {o.branchName ?
                             <span className="text-foreground/90">{o.branchName}</span>
-                          : 'â€”'}{' '}
+                          : '—'}{' '}
                           آ· {o.customerName}
                         </span>
                       </div>
@@ -224,7 +224,7 @@ export function LiveOperationsFeed({
             </DialogTitle>
             {detail ?
               <p className="text-xs text-muted-foreground">
-                {detail.branchName ?? 'â€”'} آ· {detail.customerName} آ·{' '}
+                {detail.branchName ?? '—'} آ· {detail.customerName} آ·{' '}
                 {formatKwdLabel(detail.totalPrice)} آ·{' '}
                 {new Date(detail.createdAt).toLocaleString(dateLocale)}
               </p>

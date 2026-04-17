@@ -1,49 +1,22 @@
-import type { Prisma } from '@prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
+import { DebtService } from '../finance/services/debt.service';
+import { SubscriptionService } from '../finance/services/subscription.service';
+import { CustomerCoreService } from './customer-core.service';
+import type { CustomerCoreRow } from './customer-core.service';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 export declare class CustomersService {
-    private readonly prisma;
-    constructor(prisma: PrismaService);
-    list(query?: string): Promise<{
-        id: string;
-        createdAt: Date;
-        updatedAt: Date;
-        phone: string;
-        wallet: {
-            balance: Prisma.Decimal;
-            debt: Prisma.Decimal;
-        } | null;
-        phone2: string | null;
-        motherContact: string | null;
-        wifeContact: string | null;
-        sonContact: string | null;
-        displayName: string | null;
-        address: string | null;
-        addressArea: string | null;
-        addressBlock: string | null;
-        addressStreet: string | null;
-        addressAvenue: string | null;
-        addressHouse: string | null;
-    }[]>;
-    update(id: string, dto: UpdateCustomerDto): Promise<{
-        id: string;
-        createdAt: Date;
-        updatedAt: Date;
-        phone: string;
-        wallet: {
-            balance: Prisma.Decimal;
-            debt: Prisma.Decimal;
-        } | null;
-        phone2: string | null;
-        motherContact: string | null;
-        wifeContact: string | null;
-        sonContact: string | null;
-        displayName: string | null;
-        address: string | null;
-        addressArea: string | null;
-        addressBlock: string | null;
-        addressStreet: string | null;
-        addressAvenue: string | null;
-        addressHouse: string | null;
+    private readonly core;
+    private readonly debt;
+    private readonly subscription;
+    constructor(core: CustomerCoreService, debt: DebtService, subscription: SubscriptionService);
+    list(query?: string): Promise<Array<{
+        customer: CustomerCoreRow;
+        debt: Awaited<ReturnType<DebtService['getCustomerDebtSnapshot']>>;
+        subscription: Awaited<ReturnType<SubscriptionService['getCustomerSubscriptionSnapshot']>>;
+    }>>;
+    update(id: string, dto: UpdateCustomerDto): Promise<CustomerCoreRow>;
+    getProfileWithFinancials(customerId: string): Promise<{
+        customer: CustomerCoreRow;
+        debt: Awaited<ReturnType<DebtService['getCustomerDebtSnapshot']>>;
+        subscription: Awaited<ReturnType<SubscriptionService['getCustomerSubscriptionSnapshot']>>;
     }>;
 }

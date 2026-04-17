@@ -22,6 +22,11 @@ let GlobalExceptionFilter = class GlobalExceptionFilter {
     catch(exception, host) {
         const { httpAdapter } = this.httpAdapterHost;
         const ctx = host.switchToHttp();
+        const req = ctx.getRequest();
+        const headerId = req.headers['x-request-id'];
+        const requestId = req.requestId ??
+            (typeof headerId === 'string' ? headerId : undefined) ??
+            (Array.isArray(headerId) ? headerId[0] : undefined);
         const status = exception instanceof common_1.HttpException
             ? exception.getStatus()
             : common_1.HttpStatus.INTERNAL_SERVER_ERROR;
@@ -32,18 +37,21 @@ let GlobalExceptionFilter = class GlobalExceptionFilter {
             ? exception.getResponse()
             : { message: (0, prisma_exception_util_1.prismaClientMessage)(exception) };
         const meta = { application: branding_1.APP_BRAND };
+        const rid = requestId !== undefined ? { requestId: String(requestId) } : {};
         const payload = typeof body === 'string'
             ? {
                 meta,
                 statusCode: status,
                 message: body,
                 timestamp: new Date().toISOString(),
+                ...rid,
             }
             : {
                 meta,
                 statusCode: status,
                 ...(typeof body === 'object' && body !== null ? body : {}),
                 timestamp: new Date().toISOString(),
+                ...rid,
             };
         httpAdapter.reply(ctx.getResponse(), payload, status);
     }

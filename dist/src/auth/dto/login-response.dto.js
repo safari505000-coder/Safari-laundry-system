@@ -18,6 +18,7 @@ class LoginUserDto {
     fullName;
     phone;
     safariRole;
+    branchId;
 }
 exports.LoginUserDto = LoginUserDto;
 __decorate([
@@ -40,6 +41,14 @@ __decorate([
     (0, swagger_1.ApiProperty)({ enum: client_1.SafariRole, description: 'Institutional RBAC role' }),
     __metadata("design:type", String)
 ], LoginUserDto.prototype, "safariRole", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({
+        nullable: true,
+        format: 'uuid',
+        description: 'Branch scope for pricing / operations when applicable',
+    }),
+    __metadata("design:type", Object)
+], LoginUserDto.prototype, "branchId", void 0);
 class LoginResponseDto {
     accessToken;
     user;

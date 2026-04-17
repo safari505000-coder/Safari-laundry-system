@@ -45,7 +45,7 @@ export function DriverFieldExpensesPage() {
 
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
-  const [category, setCategory] = useState<'SOAP' | 'FUEL' | 'MISC'>('FUEL');
+  const [category, setCategory] = useState<'FUEL' | 'MISC' | 'SOAP'>('FUEL');
   const [note, setNote] = useState('');
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
 
@@ -59,7 +59,11 @@ export function DriverFieldExpensesPage() {
       const data = await apiJson<ExpenseRow[]>(`/api/expenses?${qs.toString()}`, {
         token,
       });
-      setRows(Array.isArray(data) ? data : []);
+      setRows(
+        Array.isArray(data) ?
+          data.filter((row) => row && typeof row.id === 'string' && row.id.length > 0)
+        : [],
+      );
     } catch (e) {
       if (e instanceof ApiError) toast.error(e.message);
     } finally {
@@ -85,11 +89,11 @@ export function DriverFieldExpensesPage() {
         method: 'POST',
         token,
         body: JSON.stringify({
-          title: title.trim(),
-          amount: n,
-          category,
-          ...(note.trim() ? { note: note.trim() } : {}),
-          ...(receiptPreview ? { receiptUrl: receiptPreview } : {}),
+        title: title.trim(),
+        amount: n,
+        category,
+        ...(note.trim() ? { note: note.trim() } : {}),
+        ...(receiptPreview ? { receiptUrl: receiptPreview } : {}),
         }),
       });
       toast.success(t('expenses.saved'));
@@ -167,15 +171,15 @@ export function DriverFieldExpensesPage() {
                 <Label>{t('expenses.fieldCategory')}</Label>
                 <Select
                   value={category}
-                  onValueChange={(v) => setCategory(v as 'SOAP' | 'FUEL' | 'MISC')}
+                  onValueChange={(v) => setCategory(v as 'FUEL' | 'MISC' | 'SOAP')}
                 >
                   <SelectTrigger className="h-11">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="SOAP">{t('expenses.catSoap')}</SelectItem>
                     <SelectItem value="FUEL">{t('expenses.catFuel')}</SelectItem>
-                    <SelectItem value="MISC">{t('expenses.catMisc')}</SelectItem>
+                    <SelectItem value="MISC">{t('expenses.catRepair')}</SelectItem>
+                    <SelectItem value="SOAP">{t('expenses.catOther')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -203,7 +207,7 @@ export function DriverFieldExpensesPage() {
             </div>
             <Button
               type="submit"
-              disabled={saving || !receiptPreview}
+              disabled={saving}
               className="h-11 w-full gap-1.5"
             >
               {saving ?

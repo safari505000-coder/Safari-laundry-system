@@ -123,7 +123,7 @@ export function CollectDriverCashPage() {
         </CardHeader>
         <CardContent className="space-y-6">
           {loading || !drivers ?
-            <p className="text-sm text-muted-foreground">â€¦</p>
+            <p className="text-sm text-muted-foreground">...</p>
           : <>
               <div className="space-y-2">
                 <Label>{t('collectDriverCash.selectDriver')}</Label>

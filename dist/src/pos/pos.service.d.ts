@@ -20,9 +20,6 @@ export declare class PosService {
             debt: Prisma.Decimal;
         } | null;
         phone2: string | null;
-        motherContact: string | null;
-        wifeContact: string | null;
-        sonContact: string | null;
         displayName: string | null;
         address: string | null;
         addressArea: string | null;
@@ -40,9 +37,6 @@ export declare class PosService {
             debt: Prisma.Decimal;
         } | null;
         phone2: string | null;
-        motherContact: string | null;
-        wifeContact: string | null;
-        sonContact: string | null;
         displayName: string | null;
         address: string | null;
         addressArea: string | null;

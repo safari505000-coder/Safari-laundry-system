@@ -305,7 +305,7 @@ export function FixedExpensesPage() {
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
                       {new Date(r.effectiveFrom).toLocaleDateString(dateLocale)}
-                      {' â€” '}
+                      {' — '}
                       {r.effectiveTo ?
                         new Date(r.effectiveTo).toLocaleDateString(dateLocale)
                       : t('fixedExpenses.openEnded')}

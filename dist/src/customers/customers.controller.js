@@ -30,6 +30,9 @@ let CustomersController = class CustomersController {
     list(q) {
         return this.customersService.list(q);
     }
+    getProfile(id) {
+        return this.customersService.getProfileWithFinancials(id);
+    }
     update(id, dto) {
         return this.customersService.update(id, dto);
     }
@@ -46,6 +49,18 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", void 0)
 ], CustomersController.prototype, "list", null);
+__decorate([
+    (0, common_1.Get)(':id/profile'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.MANAGER, client_1.SafariRole.CALL_CENTER, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
+    (0, swagger_1.ApiOperation)({
+        summary: `Customer profile (core + financial snapshot) (${branding_1.APP_BRAND})`,
+        description: 'Core profile is served by CustomerCoreService; financial snapshot is fetched via DebtService + SubscriptionService (no finance logic inside customers).',
+    }),
+    __param(0, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], CustomersController.prototype, "getProfile", null);
 __decorate([
     (0, common_1.Patch)(':id'),
     (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.MANAGER, client_1.SafariRole.CALL_CENTER, client_1.SafariRole.SUPERVISOR),

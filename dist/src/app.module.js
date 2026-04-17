@@ -18,6 +18,7 @@ const auth_module_1 = require("./auth/auth.module");
 const branches_module_1 = require("./branches/branches.module");
 const call_center_module_1 = require("./call-center/call-center.module");
 const operating_hours_middleware_1 = require("./common/middleware/operating-hours.middleware");
+const request_id_middleware_1 = require("./common/middleware/request-id.middleware");
 const customers_module_1 = require("./customers/customers.module");
 const expenses_module_1 = require("./expenses/expenses.module");
 const fixed_expense_module_1 = require("./fixed-expenses/fixed-expense.module");
@@ -47,7 +48,7 @@ const spaStaticModule = (0, node_fs_1.existsSync)(webDistPath)
     : [];
 let AppModule = class AppModule {
     configure(consumer) {
-        consumer.apply(operating_hours_middleware_1.OperatingHoursMiddleware).forRoutes('*');
+        consumer.apply(request_id_middleware_1.requestIdMiddleware, operating_hours_middleware_1.OperatingHoursMiddleware).forRoutes('*');
     }
 };
 exports.AppModule = AppModule;

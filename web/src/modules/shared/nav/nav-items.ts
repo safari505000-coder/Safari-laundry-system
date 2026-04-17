@@ -1,6 +1,5 @@
 import {
   Banknote,
-  Building,
   Building2,
   CircleDollarSign,
   ClipboardList,
@@ -35,7 +34,7 @@ export const manageItemsItem: NavItem = {
 };
 
 export const ownerDashboardItem: NavItem = {
-  to: '/owner-dashboard',
+  to: '/owner-profit-radar',
   labelKey: 'nav.ownerDashboard',
   icon: LayoutDashboard,
   roles: ['OWNER'],
@@ -70,13 +69,6 @@ export const dashboardItem: NavItem = {
   ],
 };
 
-export const branchesItem: NavItem = {
-  to: '/branches',
-  labelKey: 'nav.branches',
-  icon: Building,
-  roles: ['OWNER'],
-};
-
 export const subscriptionsItem: NavItem = {
   to: '/subscriptions',
   labelKey: 'nav.subscriptions',
@@ -95,21 +87,21 @@ export const customersItem: NavItem = {
   to: '/customers',
   labelKey: 'nav.customers',
   icon: Users,
-  roles: ['OWNER', 'MANAGER', 'CALL_CENTER', 'SUPERVISOR', 'VIEWER'],
+  roles: ['OWNER', 'ACCOUNTANT'],
 };
 
 export const collectionsItem: NavItem = {
   to: '/collections',
   labelKey: 'nav.customerDebtTracker',
   icon: MessageSquare,
-  roles: ['CALL_CENTER', 'OWNER'],
+  roles: ['OWNER', 'ACCOUNTANT'],
 };
 
 export const whatsappToolsItem: NavItem = {
   to: '/whatsapp-tools',
   labelKey: 'nav.whatsappTools',
   icon: MessageCircle,
-  roles: ['CALL_CENTER'],
+  roles: ['OWNER', 'ACCOUNTANT'],
 };
 
 export const myCashCustodyItem: NavItem = {
@@ -177,8 +169,8 @@ export const collectDriverCashItem: NavItem = {
 };
 
 export const bankDepositsItem: NavItem = {
-  to: '/bank-deposits',
-  labelKey: 'nav.finalSettlement',
+  to: '/knet-audit',
+  labelKey: 'nav.knetAudit',
   icon: FileCheck2,
   roles: ['ACCOUNTANT', 'OWNER'],
 };
@@ -188,20 +180,6 @@ export const knetAuditItem: NavItem = {
   labelKey: 'nav.knetAudit',
   icon: FileCheck2,
   roles: ['OWNER', 'ACCOUNTANT'],
-};
-
-export const depositsAuditItem: NavItem = {
-  to: '/deposits-audit',
-  labelKey: 'nav.depositAudit',
-  icon: FileCheck2,
-  roles: ['ACCOUNTANT', 'OWNER'],
-};
-
-export const depositVerificationItem: NavItem = {
-  to: '/deposit-verification',
-  labelKey: 'nav.depositVerification',
-  icon: FileCheck2,
-  roles: ['ACCOUNTANT', 'OWNER'],
 };
 
 export const expenseApprovalItem: NavItem = {

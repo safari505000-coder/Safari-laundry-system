@@ -14,11 +14,20 @@ const swagger_1 = require("@nestjs/swagger");
 const class_transformer_1 = require("class-transformer");
 const class_validator_1 = require("class-validator");
 const kuwait_customer_phone_1 = require("../../common/validation/kuwait-customer-phone");
-function trimOpt(value) {
+function toAddressStr(value) {
+    if (value === null || value === undefined)
+        return '';
+    if (typeof value === 'string')
+        return value.trim();
+    return String(value).trim();
+}
+function normalizePhone2(value) {
+    if (value === null || value === undefined || value === '')
+        return undefined;
     if (typeof value !== 'string')
-        return value;
-    const t = value.trim();
-    return t.length ? t : undefined;
+        return undefined;
+    const t = value.replace(/[\s-]/g, '').trim();
+    return t.length >= 8 ? t : undefined;
 }
 class PosCreateCustomerDto {
     phone;
@@ -26,7 +35,7 @@ class PosCreateCustomerDto {
     displayName;
     addressArea;
     addressBlock;
-    addressStreet = '';
+    addressStreet;
     addressAvenue;
     addressHouse;
     motherContact;
@@ -44,7 +53,7 @@ __decorate([
 ], PosCreateCustomerDto.prototype, "phone", void 0);
 __decorate([
     (0, swagger_1.ApiPropertyOptional)({ example: '59990000' }),
-    (0, class_transformer_1.Transform)(({ value }) => typeof value === 'string' ? value.replace(/[\s-]/g, '').trim() : value),
+    (0, class_transformer_1.Transform)(({ value }) => normalizePhone2(value)),
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.MinLength)(8),
@@ -61,7 +70,7 @@ __decorate([
 ], PosCreateCustomerDto.prototype, "displayName", void 0);
 __decorate([
     (0, swagger_1.ApiPropertyOptional)({ example: 'السالمية' }),
-    (0, class_transformer_1.Transform)(trimOpt),
+    (0, class_transformer_1.Transform)(({ value }) => toAddressStr(value)),
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.MaxLength)(120),
@@ -69,28 +78,23 @@ __decorate([
 ], PosCreateCustomerDto.prototype, "addressArea", void 0);
 __decorate([
     (0, swagger_1.ApiPropertyOptional)({ example: '3' }),
-    (0, class_transformer_1.Transform)(trimOpt),
+    (0, class_transformer_1.Transform)(({ value }) => toAddressStr(value)),
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.MaxLength)(120),
     __metadata("design:type", String)
 ], PosCreateCustomerDto.prototype, "addressBlock", void 0);
 __decorate([
-    (0, swagger_1.ApiPropertyOptional)({ example: 'شارع الخليج', default: '' }),
-    (0, class_transformer_1.Transform)(({ value }) => {
-        if (value === null || value === undefined)
-            return '';
-        if (typeof value === 'string')
-            return value.trim();
-        return String(value).trim();
-    }),
+    (0, swagger_1.ApiPropertyOptional)({ example: 'شارع الخليج' }),
+    (0, class_transformer_1.Transform)(({ value }) => toAddressStr(value)),
+    (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.MaxLength)(200),
-    __metadata("design:type", Object)
+    __metadata("design:type", String)
 ], PosCreateCustomerDto.prototype, "addressStreet", void 0);
 __decorate([
     (0, swagger_1.ApiPropertyOptional)({ example: 'جادة 5' }),
-    (0, class_transformer_1.Transform)(trimOpt),
+    (0, class_transformer_1.Transform)(({ value }) => toAddressStr(value)),
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.MaxLength)(200),
@@ -98,7 +102,7 @@ __decorate([
 ], PosCreateCustomerDto.prototype, "addressAvenue", void 0);
 __decorate([
     (0, swagger_1.ApiPropertyOptional)({ example: 'منزل 12' }),
-    (0, class_transformer_1.Transform)(trimOpt),
+    (0, class_transformer_1.Transform)(({ value }) => toAddressStr(value)),
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.MaxLength)(120),
@@ -106,7 +110,7 @@ __decorate([
 ], PosCreateCustomerDto.prototype, "addressHouse", void 0);
 __decorate([
     (0, swagger_1.ApiPropertyOptional)({ example: 'Mother: 50000001' }),
-    (0, class_transformer_1.Transform)(trimOpt),
+    (0, class_transformer_1.Transform)(({ value }) => toAddressStr(value)),
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.MaxLength)(200),
@@ -114,7 +118,7 @@ __decorate([
 ], PosCreateCustomerDto.prototype, "motherContact", void 0);
 __decorate([
     (0, swagger_1.ApiPropertyOptional)({ example: 'Wife: 50000002' }),
-    (0, class_transformer_1.Transform)(trimOpt),
+    (0, class_transformer_1.Transform)(({ value }) => toAddressStr(value)),
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.MaxLength)(200),
@@ -122,7 +126,7 @@ __decorate([
 ], PosCreateCustomerDto.prototype, "wifeContact", void 0);
 __decorate([
     (0, swagger_1.ApiPropertyOptional)({ example: 'Son: 50000003' }),
-    (0, class_transformer_1.Transform)(trimOpt),
+    (0, class_transformer_1.Transform)(({ value }) => toAddressStr(value)),
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.MaxLength)(200),

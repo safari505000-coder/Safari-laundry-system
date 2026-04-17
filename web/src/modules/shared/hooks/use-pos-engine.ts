@@ -249,11 +249,6 @@ export function usePosEngine(opts: PosEngineOptions) {
   >('CASH');
 
   useEffect(() => {
-    if (variant !== 'driver') return;
-    setPosPaymentMethod('CASH');
-  }, [variant]);
-
-  useEffect(() => {
     const clearPrintMode = () => {
       document.body.classList.remove('print-tags-mode');
     };
@@ -328,7 +323,7 @@ export function usePosEngine(opts: PosEngineOptions) {
   );
   const grandTotal = financeTotals.grandTotal;
 
-  /** If billing is unknown, assume shortfall until server confirms â€” always send external method when grand total > 0. */
+  /** If billing is unknown, assume shortfall until server confirms — always send external method when grand total > 0. */
   const needsExternalPayment =
     grandTotal > 0 &&
     (billing === null ||
@@ -513,6 +508,10 @@ export function usePosEngine(opts: PosEngineOptions) {
         token,
         body: JSON.stringify(payload),
       });
+      if (!row || typeof row.id !== 'string' || row.id.length === 0) {
+        toast.error(t('errors.unexpected'));
+        return;
+      }
       setSelected(row);
       void loadBilling(row.id);
       setSearchQ('');
@@ -709,7 +708,7 @@ export function usePosEngine(opts: PosEngineOptions) {
           (billingSnapshot === null ||
             !Number.isFinite(bal) ||
             bal + 1e-9 < netTotal);
-        const checkoutPayMethod = variant === 'driver' ? 'CASH' : posPaymentMethod;
+        const checkoutPayMethod = posPaymentMethod;
         const extMethod: PosPaymentMethod | undefined = needsExt
           ? checkoutPayMethod
           : undefined;

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate } from 'react-router-dom';
-import { Loader2, MessageCircle, RefreshCw, Save } from 'lucide-react';
+import { CreditCard, Loader2, MessageCircle, RefreshCw, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/auth-context';
 import { type CustomerDirectoryRow, ApiError, apiJson } from '@/lib/api';
@@ -12,7 +12,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/modules/shared/compo
 import { Input } from '@/modules/shared/components/ui/input';
 import { Label } from '@/modules/shared/components/ui/label';
 import { cn } from '@/lib/utils';
-import { hasMasterIslandAccess } from '@/modules/shared/auth/is-master-access';
 
 type EditDraft = {
   displayName: string;
@@ -46,11 +45,9 @@ function toDraft(row: CustomerDirectoryRow['customer']): EditDraft {
 
 export function CustomersPage() {
   const { t } = useTranslation();
-  const { token, hasRole, user } = useAuth();
-  const allowed =
-    hasMasterIslandAccess(user) ||
-    hasRole('MANAGER', 'CALL_CENTER', 'SUPERVISOR', 'VIEWER');
-  const canWhatsAppBalance = hasMasterIslandAccess(user) || hasRole('CALL_CENTER');
+  const { token, hasRole } = useAuth();
+  const allowed = hasRole('OWNER', 'ACCOUNTANT');
+  const canWhatsAppBalance = allowed;
   const { q, setQ, rows, loading, error, reload } = useCustomersDataBridge({
     token,
   });
@@ -122,6 +119,7 @@ export function CustomersPage() {
               const balance = Number.parseFloat(r.subscription.walletBalance ?? '0');
               const isLow = Number.isFinite(balance) && balance < 10;
               const wa = customerDirectoryBalanceWhatsAppHref(r);
+              const payHref = r.debt.totalDebt !== '0.0000' ? '/collections' : null;
               return (
                 <button
                   key={r.customer.id}
@@ -145,6 +143,16 @@ export function CustomersPage() {
                           onClick={(e) => e.stopPropagation()}
                         >
                           <MessageCircle className="h-5 w-5" aria-hidden />
+                        </a>
+                      : null}
+                      {payHref ?
+                        <a
+                          href={payHref}
+                          title={t('customers.paymentLink')}
+                          className="inline-flex min-h-12 min-w-12 items-center justify-center rounded-md text-primary hover:bg-primary/10"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <CreditCard className="h-5 w-5" aria-hidden />
                         </a>
                       : null}
                       <p className={cn('text-sm tabular-nums', isLow && 'font-semibold text-red-700')}>

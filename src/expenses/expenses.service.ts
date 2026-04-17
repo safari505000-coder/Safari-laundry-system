@@ -67,7 +67,7 @@ export class ExpensesService {
     const to = new Date(toIso);
     const driverOwn: Prisma.BranchExpenseWhereInput =
       safariRole === SafariRole.DRIVER ? { recordedById: userId } : {};
-    return this.prisma.branchExpense.findMany({
+    const rows = await this.prisma.branchExpense.findMany({
       where: {
         expenseDate: { gte: from, lte: to },
         ...(safariRole === SafariRole.DRIVER ? driverOwn : {}),
@@ -84,6 +84,8 @@ export class ExpensesService {
         },
       },
     });
+    // Keep receipt images out of operational/owner performance views.
+    return rows.map((row) => ({ ...row, receiptUrl: null }));
   }
 
   async listPendingApproval(safariRole: SafariRole) {

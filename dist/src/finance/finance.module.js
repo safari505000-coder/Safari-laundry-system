@@ -12,6 +12,8 @@ const payments_module_1 = require("../payments/payments.module");
 const prisma_module_1 = require("../prisma/prisma.module");
 const bank_deposits_controller_1 = require("./bank-deposits.controller");
 const bank_deposits_service_1 = require("./bank-deposits.service");
+const deposits_controller_1 = require("./deposits.controller");
+const deposits_service_1 = require("./deposits.service");
 const finance_controller_1 = require("./finance.controller");
 const finance_service_1 = require("./finance.service");
 const cash_service_1 = require("./services/cash.service");
@@ -24,16 +26,23 @@ exports.FinanceModule = FinanceModule;
 exports.FinanceModule = FinanceModule = __decorate([
     (0, common_1.Module)({
         imports: [prisma_module_1.PrismaModule, payments_module_1.PaymentsModule],
-        controllers: [finance_controller_1.FinanceController, bank_deposits_controller_1.BankDepositsController],
+        controllers: [finance_controller_1.FinanceController, bank_deposits_controller_1.BankDepositsController, deposits_controller_1.DepositsController],
         providers: [
             finance_service_1.FinanceService,
             bank_deposits_service_1.BankDepositsService,
+            deposits_service_1.DepositsService,
             cash_service_1.CashService,
             online_payment_service_1.OnlinePaymentService,
             debt_service_1.DebtService,
             subscription_service_1.SubscriptionService,
         ],
-        exports: [finance_service_1.FinanceService, bank_deposits_service_1.BankDepositsService],
+        exports: [
+            finance_service_1.FinanceService,
+            bank_deposits_service_1.BankDepositsService,
+            deposits_service_1.DepositsService,
+            debt_service_1.DebtService,
+            subscription_service_1.SubscriptionService,
+        ],
     })
 ], FinanceModule);
 //# sourceMappingURL=finance.module.js.map

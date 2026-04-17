@@ -11,6 +11,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PermissionsService = void 0;
 const common_1 = require("@nestjs/common");
+const capabilities_1 = require("../auth/capabilities");
 const prisma_service_1 = require("../prisma/prisma.service");
 const roleWithPermissionsSelect = {
     id: true,
@@ -71,6 +72,29 @@ let PermissionsService = class PermissionsService {
             },
         });
         return this.getRoleWithPermissions(roleId);
+    }
+    async roleHasCapability(roleName, capability) {
+        if ((0, capabilities_1.roleHasBuiltinCapability)(roleName, capability))
+            return true;
+        if (!roleName)
+            return false;
+        const role = await this.prisma.role.findUnique({
+            where: { name: roleName },
+            select: {
+                permissions: {
+                    where: { key: capability },
+                    select: { id: true },
+                    take: 1,
+                },
+            },
+        });
+        return Boolean(role?.permissions?.length);
+    }
+    async canManageStaff(roleName) {
+        return this.roleHasCapability(roleName, capabilities_1.CAN_MANAGE_STAFF);
+    }
+    async canCreateCustomer(roleName) {
+        return this.roleHasCapability(roleName, capabilities_1.CREATE_CUSTOMER);
     }
 };
 exports.PermissionsService = PermissionsService;

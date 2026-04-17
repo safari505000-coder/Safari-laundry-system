@@ -67,6 +67,9 @@ export function DriverPOS() {
     isSubscriptionOrder,
     grandTotal,
     dateLocale,
+    addAttachedOrder,
+    posPaymentMethod,
+    setPosPaymentMethod,
     receiptSheets,
     handlePrintReceipt,
     handlePrintGarmentTags,
@@ -153,8 +156,9 @@ export function DriverPOS() {
               variant="outline"
               className="h-11 shrink-0 border-slate-300 bg-white px-3 text-xs font-semibold text-slate-900"
               onClick={() => navigate('/my-field-expenses')}
+              aria-label={t('dashboard.quickAddExpense')}
             >
-              {t('nav.driverFieldExpenses')}
+              {t('dashboard.quickAddExpense')}
             </Button>
             <div className="ms-auto flex items-center gap-1">
               <LanguageToggle variant="outline" className="h-11 bg-background" />
@@ -458,6 +462,41 @@ export function DriverPOS() {
               {t('pos.printGarmentTags')}
             </Button>
           </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-11 touch-manipulation text-xs"
+            onClick={addAttachedOrder}
+            disabled={!selected}
+          >
+            {t('pos.multiOrder.addAttached')}
+          </Button>
+          {selected && needsExternalPayment ?
+            <div className="space-y-1 rounded-lg border border-border/80 bg-muted/20 p-2">
+              <p className="text-[11px] font-medium text-foreground">
+                {t('pos.payment.title')}
+              </p>
+              <select
+                className="h-10 w-full rounded-md border border-zinc-200 bg-background px-2 text-xs font-medium"
+                value={posPaymentMethod}
+                onChange={(e) =>
+                  setPosPaymentMethod(
+                    e.target.value as
+                      | 'CASH'
+                      | 'KNET'
+                      | 'PAYMENT_LINK'
+                      | 'DEBT_ON_ACCOUNT',
+                  )
+                }
+              >
+                <option value="CASH">{t('pos.payment.cash')}</option>
+                <option value="KNET">{t('pos.payment.knet')}</option>
+                <option value="PAYMENT_LINK">{t('pos.payment.online')}</option>
+                <option value="DEBT_ON_ACCOUNT">{t('pos.payment.debt')}</option>
+              </select>
+            </div>
+          : null}
           <Button
             type="button"
             disabled={

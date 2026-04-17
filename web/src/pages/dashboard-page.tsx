@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router-dom';
 import {
+  Droplets,
   Landmark,
   ReceiptText,
   ScrollText,
@@ -69,7 +70,7 @@ function normalizePayMethod(method: string | null): DashboardPayKey | null {
   return null;
 }
 
-/** Civil YYYY-MM-DD +/âˆ’ days (Gregorian; matches Kuwait business calendar dates). */
+/** Civil YYYY-MM-DD +/- days (Gregorian; matches Kuwait business calendar dates). */
 function addDaysIso(dateIso: string, deltaDays: number): string {
   const [y, m, d] = dateIso.split('-').map((x) => Number.parseInt(x, 10));
   const u = new Date(Date.UTC(y, m - 1, d + deltaDays));
@@ -455,6 +456,26 @@ export function DashboardPage() {
           isOwner ? 'sm:grid-cols-2' : 'sm:grid-cols-3',
         )}
       >
+        {hasRole('DRIVER') && !hasRole('OWNER', 'MANAGER', 'ACCOUNTANT', 'SUPERVISOR', 'VIEWER') ?
+          <button
+            type="button"
+            onClick={() => navigate('/my-field-expenses')}
+            className="group flex flex-col gap-4 rounded-[20px] border border-border bg-card p-6 text-start shadow-sm shadow-black/[0.04] transition-all hover:-translate-y-0.5 hover:shadow-md"
+          >
+            <div className="rounded-xl bg-primary/10 p-3 text-primary transition-colors group-hover:bg-primary/15">
+              <Droplets className="h-6 w-6" strokeWidth={1.75} aria-hidden />
+            </div>
+            <div className="space-y-1">
+              <h2 className="text-base font-semibold text-foreground">
+                {t('dashboard.quickAddExpense')}
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                {t('dashboard.quickAddExpenseHint')}
+              </p>
+            </div>
+          </button>
+        : null}
+
         {showNewInvoiceShortcut ?
           <button
             type="button"
@@ -520,7 +541,7 @@ export function DashboardPage() {
               : t('dashboard.quickTotalIncomeHintOrders')}
             </p>
             <p className="pt-2 text-xl font-bold tabular-nums text-primary">
-              {loading ? 'â€¦' : completedRevenue}
+              {loading ? '...' : completedRevenue}
             </p>
           </div>
         </button>
@@ -689,7 +710,7 @@ export function DashboardPage() {
                         <TableCell className="text-sm">
                           {row.verifiedByAccountant ?
                             <span className="text-emerald-700 dark:text-emerald-400">
-                              {t('bankDeposits.yes')} â€” {row.verifiedByAccountant.fullName}
+                              {t('bankDeposits.yes')} — {row.verifiedByAccountant.fullName}
                             </span>
                           : <span className="text-muted-foreground">{t('bankDeposits.no')}</span>}
                         </TableCell>
@@ -774,7 +795,7 @@ export function DashboardPage() {
                 {paySplitLoading ?
                   <tr>
                     <td colSpan={3} className="py-6 text-center text-muted-foreground">
-                      â€¦
+                      ...
                     </td>
                   </tr>
                 : paymentBreakdownRows.map((row) => (

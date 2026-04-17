@@ -68,7 +68,7 @@ function SubscriberCard({
         <div>
           <dt className="text-muted-foreground">{t('subscribers.colRemaining')}</dt>
           <dd className="tabular-nums font-medium">
-            {r.remainingDays === null ? 'â€”' : r.remainingDays}
+            {r.remainingDays === null ? '—' : r.remainingDays}
           </dd>
         </div>
         <div>
@@ -152,9 +152,9 @@ export function SubscribersPage() {
   }
 
   function formatDate(iso: string | null): string {
-    if (!iso) return 'â€”';
+    if (!iso) return '—';
     const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return 'â€”';
+    if (Number.isNaN(d.getTime())) return '—';
     return dateFmt.format(d);
   }
 
@@ -263,7 +263,7 @@ export function SubscribersPage() {
                     {formatDate(r.expiryDate)}
                   </TableCell>
                   <TableCell className="text-end tabular-nums text-sm">
-                    {r.remainingDays === null ? 'â€”' : r.remainingDays}
+                    {r.remainingDays === null ? '—' : r.remainingDays}
                   </TableCell>
                   <TableCell
                     className={cn(

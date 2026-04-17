@@ -115,6 +115,63 @@ let DebtService = class DebtService {
         const s = await this.getOwnerCustomerWalletSummary();
         return s.totalCustomerDebts;
     }
+    async getCustomerDebtSnapshot(customerId) {
+        const wallet = await this.prisma.customerWallet.findUnique({
+            where: { customerId },
+            select: { balance: true, debt: true },
+        });
+        const walletDebt = Number.parseFloat(wallet?.debt?.toString?.() ?? '0');
+        const balance = Number.parseFloat(wallet?.balance?.toString?.() ?? '0');
+        const subscriptionOveruseDebt = Number.isFinite(balance) && balance < 0 ? Math.abs(balance) : 0;
+        const totalDebt = (Number.isFinite(walletDebt) ? walletDebt : 0) + subscriptionOveruseDebt;
+        return {
+            walletDebt: (Number.isFinite(walletDebt) ? walletDebt : 0).toFixed(4),
+            subscriptionOveruseDebt: subscriptionOveruseDebt.toFixed(4),
+            totalDebt: totalDebt.toFixed(4),
+        };
+    }
+    async applyDriverDepositSettlement(driverId, approvedAmountKd) {
+        const amount = Number.isFinite(approvedAmountKd) && approvedAmountKd > 0 ? approvedAmountKd : 0;
+        if (amount <= 0) {
+            return { settledAmountKd: '0.0000', settledOrderCount: 0 };
+        }
+        const pending = await this.prisma.order.findMany({
+            where: {
+                driverId,
+                status: client_1.OrderStatus.COMPLETED,
+                cashStatus: client_1.CashStatus.PAID_TO_DRIVER,
+                posPaymentMethod: client_1.PosPaymentMethod.CASH,
+            },
+            orderBy: { completedAt: 'asc' },
+            select: { id: true, totalPrice: true },
+            take: 5000,
+        });
+        let remaining = amount;
+        const settleIds = [];
+        let settledAmount = 0;
+        for (const row of pending) {
+            const v = Number.parseFloat(row.totalPrice.toString());
+            if (!Number.isFinite(v) || v <= 0)
+                continue;
+            if (v <= remaining + 0.0001) {
+                settleIds.push(row.id);
+                settledAmount += v;
+                remaining -= v;
+            }
+            if (remaining <= 0.0001)
+                break;
+        }
+        if (settleIds.length > 0) {
+            await this.prisma.order.updateMany({
+                where: { id: { in: settleIds }, cashStatus: client_1.CashStatus.PAID_TO_DRIVER },
+                data: { cashStatus: client_1.CashStatus.HANDED_OVER_TO_OFFICE },
+            });
+        }
+        return {
+            settledAmountKd: settledAmount.toFixed(4),
+            settledOrderCount: settleIds.length,
+        };
+    }
 };
 exports.DebtService = DebtService;
 exports.DebtService = DebtService = __decorate([

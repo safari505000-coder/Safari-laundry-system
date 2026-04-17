@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { Prisma, SafariRole } from '@prisma/client';
+import { PermissionsService } from '../permissions/permissions.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -33,7 +34,10 @@ export type UserPublic = Prisma.UserGetPayload<{ select: Prisma.UserSelect }>;
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly permissionsService: PermissionsService,
+  ) {}
 
   private async resolveRoleId(safariRole: SafariRole): Promise<string> {
     const role = await this.prisma.role.findUnique({

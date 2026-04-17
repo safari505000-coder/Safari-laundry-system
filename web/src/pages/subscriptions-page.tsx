@@ -680,7 +680,7 @@ function CallCenterActivatePanel({
                   <SelectContent>
                     {plans.map((p) => (
                       <SelectItem key={p.id} value={p.id}>
-                        {p.name} â€” pay {p.salePrice} â†’ credit {p.actualBalance}
+                        {p.name} — pay {p.salePrice} → credit {p.actualBalance}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -787,7 +787,7 @@ function CallCenterActivatePanel({
                 <span className="text-zinc-600">
                   {t('subscriptions.invoiceDebtSettled')}
                 </span>
-                <span>âˆ’ {formatKwdLabel(s.debtSettled)}</span>
+                <span>- {formatKwdLabel(s.debtSettled)}</span>
               </div>
               <div className="flex justify-between gap-4 border-b border-zinc-200 pb-2 font-medium">
                 <span className="text-zinc-800">

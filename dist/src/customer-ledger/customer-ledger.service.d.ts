@@ -17,8 +17,8 @@ export declare class CustomerLedgerService {
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        balance: Prisma.Decimal;
         customerId: string;
+        balance: Prisma.Decimal;
         debt: Prisma.Decimal;
         subscriptionActivatedAt: Date | null;
         subscriptionExpiresAt: Date | null;

@@ -17,8 +17,7 @@ const kuwait_customer_phone_1 = require("../../common/validation/kuwait-customer
 function trimOrUndefined({ value }) {
     if (typeof value !== 'string')
         return value;
-    const t = value.trim();
-    return t.length ? t : undefined;
+    return value.trim();
 }
 class UpdateCustomerDto {
     displayName;

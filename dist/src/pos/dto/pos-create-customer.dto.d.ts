@@ -4,7 +4,7 @@ export declare class PosCreateCustomerDto {
     displayName: string;
     addressArea?: string;
     addressBlock?: string;
-    addressStreet: string;
+    addressStreet?: string;
     addressAvenue?: string;
     addressHouse?: string;
     motherContact?: string;

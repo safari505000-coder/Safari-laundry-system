@@ -22,7 +22,10 @@ export function useCustomersDataBridge({ token }: Params) {
           `/api/customers${query.length >= 2 ? `?q=${encodeURIComponent(query)}` : ''}`,
           { token },
         );
-        setRows(data ?? []);
+        const safe = Array.isArray(data)
+          ? data.filter((r) => r?.customer && typeof r.customer.id === 'string')
+          : [];
+        setRows(safe);
       } catch (e) {
         if (e instanceof ApiError) {
           setError(e.message);

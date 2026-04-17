@@ -75,7 +75,7 @@ export function DriverMonitorPage() {
           `<div><strong>${d.fullName}</strong><br/>@${d.username}<br/>${d.vehicleLabel}<br/>${
             d.source === 'LIVE_GPS'
               ? 'Live GPS'
-              : `Branch: ${d.branch?.name ?? 'â€”'}`
+              : `Branch: ${d.branch?.name ?? '—'}`
           }</div>`,
         )
         .addTo(map);
@@ -101,7 +101,7 @@ export function DriverMonitorPage() {
               <p className="text-xs text-muted-foreground">
                 {d.source === 'LIVE_GPS'
                   ? 'Live GPS'
-                  : `Branch fallback: ${d.branch?.name ?? 'â€”'}`}
+                  : `Branch fallback: ${d.branch?.name ?? '—'}`}
               </p>
               {hasRole('OWNER') ? (
                 <div className="mt-3 space-y-2 rounded-md border p-2">

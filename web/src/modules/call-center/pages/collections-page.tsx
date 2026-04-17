@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate } from 'react-router-dom';
-import { Loader2, MessageCircle, RefreshCw } from 'lucide-react';
+import { CreditCard, Loader2, MessageCircle, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/auth-context';
 import {
@@ -20,15 +20,14 @@ import {
   TableHeader,
   TableRow,
 } from '@/modules/shared/components/ui/table';
-import { hasMasterIslandAccess } from '@/modules/shared/auth/is-master-access';
 
 /** Faster refresh for debt-radar follow-up (WhatsApp triggers). */
 const POLL_MS = 8_000;
 
 export function CollectionsPage() {
   const { t } = useTranslation();
-  const { token, hasRole, user } = useAuth();
-  const allowed = hasMasterIslandAccess(user) || hasRole('CALL_CENTER');
+  const { token, hasRole } = useAuth();
+  const allowed = hasRole('OWNER', 'ACCOUNTANT');
   const [rows, setRows] = useState<CollectionUnpaidOnlineRow[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -123,17 +122,30 @@ export function CollectionsPage() {
                 <p className="mt-2 text-lg font-bold tabular-nums text-foreground">
                   {row.amountKd} KWD
                 </p>
-                {href ?
-                  <a
-                    href={href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-4 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 active:scale-[0.99]"
-                  >
-                    <MessageCircle className="h-5 w-5 shrink-0" />
-                    {t('collections.whatsapp')}
-                  </a>
-                : <p className="mt-2 text-xs text-muted-foreground">—</p>}
+                <div className="mt-4 flex items-center gap-2">
+                  {href ?
+                    <a
+                      href={href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 active:scale-[0.99]"
+                    >
+                      <MessageCircle className="h-5 w-5 shrink-0" />
+                      {t('collections.whatsapp')}
+                    </a>
+                  : null}
+                  {row.paymentUrl ?
+                    <a
+                      href={row.paymentUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex min-h-12 min-w-12 items-center justify-center rounded-xl border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20"
+                      title={t('collections.paymentLink')}
+                    >
+                      <CreditCard className="h-5 w-5" />
+                    </a>
+                  : null}
+                </div>
               </li>
             );
           })}
@@ -150,7 +162,7 @@ export function CollectionsPage() {
               <TableHead className="text-end">
                 {t('collections.colAmount')}
               </TableHead>
-              <TableHead className="w-[140px] text-center">
+              <TableHead className="w-[220px] text-center">
                 {t('collections.colWhatsapp')}
               </TableHead>
             </TableRow>
@@ -186,17 +198,33 @@ export function CollectionsPage() {
                     {row.amountKd}
                   </TableCell>
                   <TableCell className="text-center">
-                    {href ?
-                      <a
-                        href={href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex min-h-10 min-w-[120px] items-center justify-center rounded-md bg-primary px-3 text-xs font-semibold text-primary-foreground shadow-sm hover:bg-primary/90"
-                      >
-                        <MessageCircle className="me-1.5 h-4 w-4" />
-                        {t('collections.whatsapp')}
-                      </a>
-                    : <span className="text-xs text-muted-foreground">—</span>}
+                    <div className="inline-flex items-center gap-2">
+                      {href ?
+                        <a
+                          href={href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex min-h-10 min-w-[120px] items-center justify-center rounded-md bg-primary px-3 text-xs font-semibold text-primary-foreground shadow-sm hover:bg-primary/90"
+                        >
+                          <MessageCircle className="me-1.5 h-4 w-4" />
+                          {t('collections.whatsapp')}
+                        </a>
+                      : null}
+                      {row.paymentUrl ?
+                        <a
+                          href={row.paymentUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-md border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20"
+                          title={t('collections.paymentLink')}
+                        >
+                          <CreditCard className="h-4 w-4" />
+                        </a>
+                      : null}
+                      {!href && !row.paymentUrl ?
+                        <span className="text-xs text-muted-foreground">—</span>
+                      : null}
+                    </div>
                   </TableCell>
                 </TableRow>
               );

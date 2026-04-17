@@ -343,7 +343,7 @@ export function ExpensesPage() {
                     <td className="py-2 pe-2">{r.title}</td>
                     <td className="py-2 pe-2">{r.category}</td>
                     <td className="py-2 pe-2">{r.status}</td>
-                    <td className="py-2 pe-2">{r.branch?.name ?? 'â€”'}</td>
+                    <td className="py-2 pe-2">{r.branch?.name ?? '—'}</td>
                     <td className="py-2 pe-2">{r.recordedBy.fullName}</td>
                     <td className="py-2 text-end tabular-nums">
                       {formatKwdLabel(r.amount)}

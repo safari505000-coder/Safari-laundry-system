@@ -5,6 +5,6 @@ export declare class CreateUserDto {
     password: string;
     safariRole: SafariRole;
     phone?: string;
-    branchId?: string;
+    branchId: string;
     isActive?: boolean;
 }

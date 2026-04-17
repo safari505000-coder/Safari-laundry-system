@@ -103,11 +103,11 @@ export function StaffControlReactor({ token }: Props) {
       const fn = fullName.trim();
       const un = username.trim();
       if (!canSubmit) {
-        toast.error('Please fill required fields');
+        toast.error('يرجى تعبئة الحقول المطلوبة');
         return;
       }
       if (!USERNAME_PATTERN.test(un)) {
-        toast.error('Username may contain letters, numbers, dots, dashes, and underscores');
+        toast.error('اسم المستخدم يجب أن يحتوي على أحرف/أرقام فقط');
         return;
       }
       setSaving(true);
@@ -123,7 +123,7 @@ export function StaffControlReactor({ token }: Props) {
             branchId,
           }),
         });
-        toast.success('Staff member created');
+        toast.success('تم إنشاء المستخدم بنجاح');
         setOpen(false);
         setFullName('');
         setUsername('');
@@ -143,7 +143,7 @@ export function StaffControlReactor({ token }: Props) {
     if (!token) return;
     const nextBranchId = branchDraftByUser[u.id] ?? u.branchId ?? '';
     if (!nextBranchId) {
-      toast.error('Branch assignment is mandatory');
+      toast.error('اختيار الفرع إلزامي');
       return;
     }
     setActionBusyId(u.id);
@@ -156,7 +156,7 @@ export function StaffControlReactor({ token }: Props) {
           branchId: nextBranchId,
         }),
       });
-      toast.success('Status updated');
+      toast.success('تم تحديث الحالة');
       await loadUsers();
     } catch (e) {
       if (e instanceof ApiError) toast.error(e.message);
@@ -169,7 +169,7 @@ export function StaffControlReactor({ token }: Props) {
     if (!token) return;
     const nextBranchId = branchDraftByUser[u.id] ?? '';
     if (!nextBranchId) {
-      toast.error('Branch assignment is mandatory');
+      toast.error('اختيار الفرع إلزامي');
       return;
     }
     setActionBusyId(u.id);
@@ -179,7 +179,7 @@ export function StaffControlReactor({ token }: Props) {
         token,
         body: JSON.stringify({ branchId: nextBranchId }),
       });
-      toast.success('Branch assignment saved');
+      toast.success('تم حفظ ربط الفرع');
       await loadUsers();
     } catch (e) {
       if (e instanceof ApiError) toast.error(e.message);
@@ -190,11 +190,11 @@ export function StaffControlReactor({ token }: Props) {
 
   async function resetPassword(u: TeamUserRow) {
     if (!token) return;
-    const next = window.prompt('Enter new password');
+    const next = window.prompt('أدخل كلمة المرور الجديدة');
     if (!next || next.trim().length < 1) return;
     const nextBranchId = branchDraftByUser[u.id] ?? u.branchId ?? '';
     if (!nextBranchId) {
-      toast.error('Branch assignment is mandatory');
+      toast.error('اختيار الفرع إلزامي');
       return;
     }
     setActionBusyId(u.id);
@@ -207,7 +207,7 @@ export function StaffControlReactor({ token }: Props) {
           branchId: nextBranchId,
         }),
       });
-      toast.success('Password reset completed');
+      toast.success('تمت إعادة تعيين كلمة المرور');
     } catch (e) {
       if (e instanceof ApiError) toast.error(e.message);
     } finally {
@@ -220,11 +220,11 @@ export function StaffControlReactor({ token }: Props) {
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle className="flex items-center gap-2 text-lg font-bold text-slate-950">
           <Users className="h-4 w-4" />
-          Staff Control Reactor
+          إدارة الموظفين
         </CardTitle>
         <Button className="bg-slate-900 text-white hover:bg-slate-800" onClick={() => setOpen(true)}>
           <UserPlus className="me-2 h-4 w-4" />
-          Add New User
+          إضافة مستخدم
         </Button>
       </CardHeader>
       <CardContent>
@@ -261,7 +261,7 @@ export function StaffControlReactor({ token }: Props) {
                           disabled={actionBusyId === u.id}
                         >
                           <SelectTrigger className="w-[190px] bg-white text-slate-900">
-                            <SelectValue placeholder="Select branch" />
+                            <SelectValue placeholder="اختر الفرع" />
                           </SelectTrigger>
                           <SelectContent>
                             {branches.map((b) => (
@@ -279,7 +279,7 @@ export function StaffControlReactor({ token }: Props) {
                           onClick={() => void saveBranchAssignment(u)}
                         >
                           <Save className="me-1 h-4 w-4" />
-                          Save
+                          حفظ
                         </Button>
                       </div>
                     </TableCell>
@@ -304,7 +304,7 @@ export function StaffControlReactor({ token }: Props) {
                           onClick={() => void toggleActive(u)}
                         >
                           <Power className="me-1 h-4 w-4" />
-                          {u.isActive ? 'Disable' : 'Enable'}
+                          {u.isActive ? 'تعطيل' : 'تفعيل'}
                         </Button>
                         <Button
                           size="sm"
@@ -314,7 +314,7 @@ export function StaffControlReactor({ token }: Props) {
                           onClick={() => void resetPassword(u)}
                         >
                           <RotateCcwKey className="me-1 h-4 w-4" />
-                          Reset Password
+                          إعادة تعيين كلمة المرور
                         </Button>
                       </div>
                     </TableCell>
@@ -330,26 +330,26 @@ export function StaffControlReactor({ token }: Props) {
         <DialogContent className="sm:max-w-md [font-family:'Tajawal',sans-serif]">
           <form onSubmit={onCreate}>
             <DialogHeader>
-              <DialogTitle>Add New User</DialogTitle>
+              <DialogTitle>إضافة مستخدم جديد</DialogTitle>
             </DialogHeader>
             <div className="grid gap-3 py-2">
               <div className="space-y-1.5">
-                <Label>Full name</Label>
+                <Label>الاسم الكامل</Label>
                 <Input value={fullName} onChange={(e) => setFullName(e.target.value)} />
               </div>
               <div className="space-y-1.5">
-                <Label>Username</Label>
+                <Label>اسم المستخدم</Label>
                 <Input value={username} onChange={(e) => setUsername(e.target.value)} />
               </div>
               <div className="space-y-1.5">
-                <Label>Password</Label>
+                <Label>كلمة المرور</Label>
                 <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
               </div>
               <div className="space-y-1.5">
-                <Label>Branch assignment</Label>
+                <Label>ربط الفرع</Label>
                 <Select value={branchId} onValueChange={(v) => setBranchId(v ?? '')}>
                   <SelectTrigger className="bg-white">
-                    <SelectValue placeholder="Select branch" />
+                    <SelectValue placeholder="اختر الفرع" />
                   </SelectTrigger>
                   <SelectContent>
                     {branches.map((b) => (
@@ -361,7 +361,7 @@ export function StaffControlReactor({ token }: Props) {
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label>Role</Label>
+                <Label>الدور</Label>
                 <Select value={safariRole} onValueChange={(v) => setSafariRole(v as SafariRole)}>
                   <SelectTrigger className="bg-white">
                     <SelectValue />
@@ -378,11 +378,11 @@ export function StaffControlReactor({ token }: Props) {
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-                Cancel
+                إلغاء
               </Button>
               <Button type="submit" disabled={!canSubmit || saving} className="bg-slate-900 text-white hover:bg-slate-800">
                 {saving ? <Loader2 className="me-2 h-4 w-4 animate-spin" /> : null}
-                Create
+                إنشاء
               </Button>
             </DialogFooter>
           </form>

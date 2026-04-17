@@ -12,13 +12,25 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.LaundryPriceListService = void 0;
 const common_1 = require("@nestjs/common");
 const prisma_service_1 = require("../prisma/prisma.service");
+function mergeTier(base, override) {
+    if (base == null)
+        return null;
+    if (override != null)
+        return override.toFixed(4);
+    return base.toFixed(4);
+}
+function mergeRequired(base, override) {
+    if (override != null)
+        return override.toFixed(4);
+    return base.toFixed(4);
+}
 let LaundryPriceListService = class LaundryPriceListService {
     prisma;
     constructor(prisma) {
         this.prisma = prisma;
     }
-    async findAllForApi() {
-        const rows = await this.prisma.laundryPriceListItem.findMany({
+    async findCategoriesForApi() {
+        const rows = await this.prisma.laundryItemCategory.findMany({
             orderBy: { sortOrder: 'asc' },
         });
         return rows.map((r) => ({
@@ -27,12 +39,52 @@ let LaundryPriceListService = class LaundryPriceListService {
             nameAr: r.nameAr,
             nameEn: r.nameEn,
             sortOrder: r.sortOrder,
-            manualEntry: r.manualEntry,
-            priceNormal: r.priceNormal.toFixed(4),
-            priceUrgent: r.priceUrgent.toFixed(4),
-            pricePressOnly: r.pricePressOnly?.toFixed(4) ?? null,
-            priceUrgentPress: r.priceUrgentPress?.toFixed(4) ?? null,
         }));
+    }
+    async findPriceListForBranch(branchId) {
+        const items = await this.prisma.laundryPriceListItem.findMany({
+            orderBy: { sortOrder: 'asc' },
+            include: { category: true },
+        });
+        let overrides = new Map();
+        if (branchId) {
+            const br = await this.prisma.laundryBranchItemPrice.findMany({
+                where: { branchId },
+            });
+            overrides = new Map(br.map((x) => [
+                x.laundryPriceListItemId,
+                {
+                    priceNormal: x.priceNormal,
+                    priceUrgent: x.priceUrgent,
+                    pricePressOnly: x.pricePressOnly,
+                    priceUrgentPress: x.priceUrgentPress,
+                },
+            ]));
+        }
+        return items.map((row) => this.mapItemDto(row, overrides.get(row.id)));
+    }
+    async findAllForApi() {
+        return this.findPriceListForBranch(null);
+    }
+    mapItemDto(r, ov) {
+        const c = r.category;
+        return {
+            id: r.id,
+            code: r.code,
+            nameAr: r.nameAr,
+            nameEn: r.nameEn,
+            sortOrder: r.sortOrder,
+            manualEntry: r.manualEntry,
+            priceNormal: mergeRequired(r.priceNormal, ov?.priceNormal),
+            priceUrgent: mergeRequired(r.priceUrgent, ov?.priceUrgent),
+            pricePressOnly: mergeTier(r.pricePressOnly, ov?.pricePressOnly),
+            priceUrgentPress: mergeTier(r.priceUrgentPress, ov?.priceUrgentPress),
+            categoryId: c?.id ?? null,
+            categoryCode: c?.code ?? null,
+            categoryNameAr: c?.nameAr ?? null,
+            categoryNameEn: c?.nameEn ?? null,
+            categorySortOrder: c?.sortOrder ?? null,
+        };
     }
 };
 exports.LaundryPriceListService = LaundryPriceListService;

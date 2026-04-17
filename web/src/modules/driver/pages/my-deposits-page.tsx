@@ -1,9 +1,17 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Loader2, RefreshCw, Upload } from 'lucide-react';
+import { AlertCircle, Loader2, RefreshCw, Upload, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/auth-context';
 import { RequireRoles } from '@/modules/shared/components/require-roles';
-import { ApiError, getDeposits, uploadDriverDeposit, type DepositAuditRow } from '@/lib/api';
+import {
+  ApiError,
+  apiJson,
+  getDeposits,
+  uploadDriverDeposit,
+  type DepositAuditRow,
+  type ExpenseRow,
+  type OrderRow,
+} from '@/lib/api';
 import { Button } from '@/modules/shared/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/modules/shared/components/ui/card';
 import { Input } from '@/modules/shared/components/ui/input';
@@ -12,9 +20,11 @@ import { Label } from '@/modules/shared/components/ui/label';
 function MyDepositsContent() {
   const { token } = useAuth();
   const [rows, setRows] = useState<DepositAuditRow[]>([]);
+  const [availableCash, setAvailableCash] = useState(0);
+  const [pendingDebt, setPendingDebt] = useState(0);
   const [loading, setLoading] = useState(true);
   const [amount, setAmount] = useState('');
-  const [type, setType] = useState<'CASH' | 'KNET'>('CASH');
+  const [type] = useState<'CASH'>('CASH');
   const [file, setFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -22,8 +32,36 @@ function MyDepositsContent() {
     if (!token) return;
     setLoading(true);
     try {
-      const data = await getDeposits(token);
+      const [data, orders, expenses] = await Promise.all([
+        getDeposits(token),
+        apiJson<OrderRow[]>('/api/orders', { token }),
+        apiJson<ExpenseRow[]>(`/api/expenses?from=${encodeURIComponent('1970-01-01T00:00:00.000Z')}&to=${encodeURIComponent(new Date().toISOString())}`, { token }),
+      ]);
       setRows(data.rows ?? []);
+
+      const totalCashInvoices = (orders ?? [])
+        .filter(
+          (o) =>
+            o.status === 'COMPLETED' &&
+            o.cashStatus === 'PAID_TO_DRIVER' &&
+            o.posPaymentMethod === 'CASH',
+        )
+        .reduce((sum, o) => sum + Number.parseFloat(o.totalPrice || '0'), 0);
+
+      const totalExpenses = (expenses ?? [])
+        .filter((e) => e.status === 'APPROVED' || e.status === 'AUDIT')
+        .reduce((sum, e) => sum + Number.parseFloat(e.amount || '0'), 0);
+
+      const debtTotal = (orders ?? [])
+        .filter(
+          (o) =>
+            o.status === 'COMPLETED' &&
+            o.posPaymentMethod === 'DEBT_ON_ACCOUNT',
+        )
+        .reduce((sum, o) => sum + Number.parseFloat(o.totalPrice || '0'), 0);
+
+      setAvailableCash(totalCashInvoices - totalExpenses);
+      setPendingDebt(debtTotal);
     } catch (e) {
       if (e instanceof ApiError) toast.error(e.message);
     } finally {
@@ -68,6 +106,31 @@ function MyDepositsContent() {
         </p>
       </header>
 
+      <section className="grid gap-3 sm:grid-cols-2">
+        <Card className="border-emerald-300 bg-emerald-50">
+          <CardContent className="flex items-center justify-between py-4">
+            <div>
+              <p className="text-xs font-semibold text-emerald-800">كاش متوفر</p>
+              <p className="mt-1 text-lg font-bold tabular-nums text-emerald-900">
+                {availableCash.toFixed(3)} KWD
+              </p>
+            </div>
+            <Wallet className="h-8 w-8 text-emerald-700" />
+          </CardContent>
+        </Card>
+        <Card className="border-red-300 bg-red-50">
+          <CardContent className="flex items-center justify-between py-4">
+            <div>
+              <p className="text-xs font-semibold text-red-800">مديونيات معلقة</p>
+              <p className="mt-1 text-lg font-bold tabular-nums text-red-900">
+                {pendingDebt.toFixed(3)} KWD
+              </p>
+            </div>
+            <AlertCircle className="h-8 w-8 text-red-700" />
+          </CardContent>
+        </Card>
+      </section>
+
       <Card>
         <CardHeader>
           <CardTitle>New deposit request</CardTitle>
@@ -79,10 +142,9 @@ function MyDepositsContent() {
               <select
                 className="h-10 w-full rounded-md border px-3"
                 value={type}
-                onChange={(e) => setType(e.target.value as 'CASH' | 'KNET')}
+                disabled
               >
                 <option value="CASH">CASH</option>
-                <option value="KNET">KNET</option>
               </select>
             </div>
             <div className="space-y-1">

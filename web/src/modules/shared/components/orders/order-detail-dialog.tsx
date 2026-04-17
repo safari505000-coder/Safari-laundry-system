@@ -98,7 +98,7 @@ export function OrderDetailDialog({ open, onOpenChange, order }: Props) {
                     {order.lineItems.map((li) => (
                       <TableRow key={li.id}>
                         <TableCell className="text-sm">
-                          {li.label ?? 'â€”'}
+                          {li.label ?? '—'}
                         </TableCell>
                         <TableCell className="text-end tabular-nums text-sm">
                           {li.quantity}

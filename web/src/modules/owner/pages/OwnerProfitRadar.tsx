@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, Navigate } from 'react-router-dom';
-import { ArrowRight, Building2, CircleDollarSign, Loader2, Shield } from 'lucide-react';
+import { Navigate } from 'react-router-dom';
+import { Building2, CircleDollarSign, Loader2, Shield } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/auth-context';
 import {
@@ -14,9 +14,7 @@ import {
 } from '@/lib/api';
 import { formatKwdLabel } from '@/lib/kwd';
 import { hasMasterIslandAccess } from '@/modules/shared/auth/is-master-access';
-import { usePriceList } from '@/modules/shared/hooks/use-price-list';
-import { Button, buttonVariants } from '@/modules/shared/components/ui/button';
-import { cn } from '@/lib/utils';
+import { Button } from '@/modules/shared/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/modules/shared/components/ui/card';
 import {
   Table,
@@ -27,6 +25,8 @@ import {
   TableRow,
 } from '@/modules/shared/components/ui/table';
 
+type RadarMode = 'daily' | 'monthly';
+
 type BranchPnlRow = {
   branchId: string | null;
   branchName: string;
@@ -35,13 +35,18 @@ type BranchPnlRow = {
   profit: number;
 };
 
-function kuwaitFinancialRangeIso(financialDateIso: string): { from: string; to: string } {
+function rangeForMode(financialDateIso: string, mode: RadarMode): { from: string; to: string } {
+  if (mode === 'monthly') {
+    const [y, m] = financialDateIso.split('-').map((n) => Number.parseInt(n, 10));
+    const from = new Date(Date.UTC(y, m - 1, 1, 0, 0, 0));
+    const to = new Date(Date.UTC(y, m, 0, 23, 59, 59, 999));
+    return { from: from.toISOString(), to: to.toISOString() };
+  }
   const from = new Date(`${financialDateIso}T00:00:00+03:00`);
   const to = new Date(`${financialDateIso}T23:59:59.999+03:00`);
   return { from: from.toISOString(), to: to.toISOString() };
 }
 
-/** Global profit / branch P&L — Owner island only. */
 export function OwnerProfitRadar() {
   const { t } = useTranslation();
   const { token, user } = useAuth();
@@ -49,7 +54,7 @@ export function OwnerProfitRadar() {
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<BranchPnlRow[]>([]);
   const [financialDateLabel, setFinancialDateLabel] = useState<string>('');
-  const priceList = usePriceList({ token });
+  const [mode, setMode] = useState<RadarMode>('daily');
 
   const load = useCallback(async () => {
     if (!token || !allowed) return;
@@ -57,14 +62,12 @@ export function OwnerProfitRadar() {
     try {
       const status = await getOperatingStatus();
       setFinancialDateLabel(status.financialDateLabel);
-      const { from, to } = kuwaitFinancialRangeIso(status.financialDateIso);
+      const { from, to } = rangeForMode(status.financialDateIso, mode);
       const qs = new URLSearchParams({ from, to });
 
       const [branches, invoices, expenses] = await Promise.all([
         apiJson<BranchRow[]>('/api/branches', { token }),
-        apiJson<IssuedInvoicesReport>(`/api/reports/issued-invoices?${qs.toString()}`, {
-          token,
-        }),
+        apiJson<IssuedInvoicesReport>(`/api/reports/issued-invoices?${qs.toString()}`, { token }),
         apiJson<ExpenseRow[]>(`/api/expenses?${qs.toString()}`, { token }),
       ]);
 
@@ -86,22 +89,14 @@ export function OwnerProfitRadar() {
         expensesByBranch.set(key, (expensesByBranch.get(key) ?? 0) + (Number.isFinite(amount) ? amount : 0));
       }
 
-      const keys = new Set<string | null>([
-        ...incomeByBranch.keys(),
-        ...expensesByBranch.keys(),
-      ]);
+      const keys = new Set<string | null>([...incomeByBranch.keys(), ...expensesByBranch.keys()]);
       const merged = [...keys].map((branchId) => {
         const income = incomeByBranch.get(branchId) ?? 0;
         const exp = expensesByBranch.get(branchId) ?? 0;
-        const name =
-          branchId ? (branchNameById.get(branchId) ?? t('ownerDashboard.unknownBranch')) : t('ownerDashboard.unassignedBranch');
-        return {
-          branchId,
-          branchName: name,
-          income,
-          expenses: exp,
-          profit: income - exp,
-        };
+        const name = branchId
+          ? (branchNameById.get(branchId) ?? t('ownerDashboard.unknownBranch'))
+          : t('ownerDashboard.unassignedBranch');
+        return { branchId, branchName: name, income, expenses: exp, profit: income - exp };
       });
       merged.sort((a, b) => b.profit - a.profit);
       setRows(merged);
@@ -110,7 +105,7 @@ export function OwnerProfitRadar() {
     } finally {
       setLoading(false);
     }
-  }, [allowed, t, token]);
+  }, [allowed, mode, t, token]);
 
   useEffect(() => {
     void load();
@@ -119,30 +114,25 @@ export function OwnerProfitRadar() {
   const totals = useMemo(() => {
     const income = rows.reduce((s, r) => s + r.income, 0);
     const expenses = rows.reduce((s, r) => s + r.expenses, 0);
-    return {
-      income,
-      expenses,
-      profit: income - expenses,
-    };
+    return { income, expenses, profit: income - expenses };
   }, [rows]);
-
-  const maxIncome = useMemo(
-    () => Math.max(1, ...rows.map((r) => r.income)),
-    [rows],
-  );
-  const maxExpenses = useMemo(
-    () => Math.max(1, ...rows.map((r) => r.expenses)),
-    [rows],
-  );
 
   if (!allowed) return <Navigate to="/" replace />;
 
   return (
     <div className="space-y-6 rounded-2xl bg-white p-4 text-slate-950 sm:p-6">
       <header className="space-y-2 border-b border-slate-200 pb-4">
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-950">
-          {t('ownerDashboard.title')}
-        </h1>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-950">{t('ownerDashboard.title')}</h1>
+          <div className="inline-flex rounded-md border border-slate-300 p-1">
+            <Button type="button" size="sm" variant={mode === 'daily' ? 'default' : 'ghost'} onClick={() => setMode('daily')}>
+              {t('ownerDashboard.modeDaily')}
+            </Button>
+            <Button type="button" size="sm" variant={mode === 'monthly' ? 'default' : 'ghost'} onClick={() => setMode('monthly')}>
+              {t('ownerDashboard.modeMonthly')}
+            </Button>
+          </div>
+        </div>
         <p className="text-sm text-slate-700">{t('ownerDashboard.subtitle')}</p>
         <p className="text-xs font-semibold text-slate-800">
           {t('ownerDashboard.financialDay')}: {financialDateLabel || '—'}
@@ -193,11 +183,12 @@ export function OwnerProfitRadar() {
           </Button>
         </CardHeader>
         <CardContent>
-          {loading ?
+          {loading ? (
             <div className="flex justify-center py-8">
               <Loader2 className="h-8 w-8 animate-spin text-slate-700" />
             </div>
-          : <Table>
+          ) : (
+            <Table>
               <TableHeader>
                 <TableRow className="border-slate-200">
                   <TableHead className="font-semibold text-slate-900">{t('ownerDashboard.colBranch')}</TableHead>
@@ -217,87 +208,7 @@ export function OwnerProfitRadar() {
                 ))}
               </TableBody>
             </Table>
-          }
-        </CardContent>
-      </Card>
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card className="border-slate-300 bg-white shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-base text-slate-900">{t('ownerDashboard.incomeVsExpenses')}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {rows.map((r) => (
-              <div key={`bars-${r.branchId ?? 'none'}`} className="space-y-1.5">
-                <p className="text-xs font-semibold text-slate-900">{r.branchName}</p>
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="w-16 text-[11px] font-semibold text-slate-900">{t('ownerDashboard.incomeShort')}</span>
-                    <div className="h-3 flex-1 rounded bg-slate-200">
-                      <div
-                        className="h-3 rounded bg-slate-900"
-                        style={{ width: `${Math.max(6, (r.income / maxIncome) * 100)}%` }}
-                      />
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="w-16 text-[11px] font-semibold text-slate-900">{t('ownerDashboard.expensesShort')}</span>
-                    <div className="h-3 flex-1 rounded bg-slate-200">
-                      <div
-                        className="h-3 rounded bg-slate-600"
-                        style={{ width: `${Math.max(6, (r.expenses / maxExpenses) * 100)}%` }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        <Card className="border-slate-300 bg-white shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-base text-slate-900">{t('ownerDashboard.reactorHealth')}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm text-slate-900">
-            <p>
-              {t('ownerDashboard.itemsLoaded')}: <strong>{priceList.items.length}</strong>
-            </p>
-            <p>
-              {t('ownerDashboard.categoriesLoaded')}: <strong>{priceList.categories.length}</strong>
-            </p>
-            <p>
-              {t('ownerDashboard.bridgeStatus')}:{' '}
-              <strong>{priceList.failed ? t('ownerDashboard.bridgeFailed') : t('ownerDashboard.bridgeHealthy')}</strong>
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card className="border-slate-300 bg-white shadow-sm">
-        <CardHeader>
-          <CardTitle className="text-base text-slate-900">{t('ownerDashboard.quickLinks')}</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-2 sm:grid-cols-2">
-          {[
-            { to: '/deposits-audit', label: t('ownerDashboard.linkDepositAudit') },
-            { to: '/deposit-verification', label: t('ownerDashboard.linkDepositVerification') },
-            { to: '/collections', label: t('ownerDashboard.linkCollections') },
-            { to: '/whatsapp-tools', label: t('ownerDashboard.linkWhatsappTools') },
-            { to: '/knet-audit', label: t('nav.knetAudit') },
-          ].map((link) => (
-            <Link
-              key={link.to}
-              to={link.to}
-              className={cn(
-                buttonVariants({ variant: 'outline' }),
-                'justify-between border-slate-300 text-slate-900 hover:bg-slate-100',
-              )}
-            >
-              {link.label}
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          ))}
+          )}
         </CardContent>
       </Card>
     </div>

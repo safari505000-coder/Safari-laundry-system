@@ -46,6 +46,7 @@ exports.UsersService = void 0;
 const common_1 = require("@nestjs/common");
 const bcrypt = __importStar(require("bcrypt"));
 const client_1 = require("@prisma/client");
+const permissions_service_1 = require("../permissions/permissions.service");
 const prisma_service_1 = require("../prisma/prisma.service");
 const userPublicSelect = {
     id: true,
@@ -65,8 +66,10 @@ const userPublicSelect = {
 };
 let UsersService = class UsersService {
     prisma;
-    constructor(prisma) {
+    permissionsService;
+    constructor(prisma, permissionsService) {
         this.prisma = prisma;
+        this.permissionsService = permissionsService;
     }
     async resolveRoleId(safariRole) {
         const role = await this.prisma.role.findUnique({
@@ -174,10 +177,11 @@ let UsersService = class UsersService {
         const branchPatch = dto
             .branchId;
         if (branchPatch !== undefined) {
+            if (branchPatch === null) {
+                throw new common_1.BadRequestException('branchId is mandatory for all staff');
+            }
             data.branch =
-                branchPatch === null
-                    ? { disconnect: true }
-                    : { connect: { id: branchPatch } };
+                { connect: { id: branchPatch } };
         }
         if (dto.password !== undefined) {
             data.password = await bcrypt.hash(dto.password, 12);
@@ -239,6 +243,7 @@ let UsersService = class UsersService {
 exports.UsersService = UsersService;
 exports.UsersService = UsersService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [prisma_service_1.PrismaService])
+    __metadata("design:paramtypes", [prisma_service_1.PrismaService,
+        permissions_service_1.PermissionsService])
 ], UsersService);
 //# sourceMappingURL=users.service.js.map

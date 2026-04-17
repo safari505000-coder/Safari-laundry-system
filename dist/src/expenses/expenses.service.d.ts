@@ -3,7 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 export declare class ExpensesService {
     private readonly prisma;
     constructor(prisma: PrismaService);
-    private assertCanManage;
+    private assertCanRecordExpense;
     create(userId: string, safariRole: SafariRole, dto: {
         title: string;
         amount: number;
@@ -12,19 +12,20 @@ export declare class ExpensesService {
         receiptUrl?: string;
     }): Promise<{
         id: string;
-        branchId: string | null;
         createdAt: Date;
         updatedAt: Date;
+        category: import("@prisma/client").$Enums.ExpenseCategory;
+        branchId: string | null;
         status: import("@prisma/client").$Enums.ExpenseStatus;
         amount: Prisma.Decimal;
         title: string;
-        category: import("@prisma/client").$Enums.ExpenseCategory;
         note: string | null;
         receiptUrl: string | null;
         recordedById: string;
         expenseDate: Date;
     }>;
-    listForUser(_userId: string, safariRole: SafariRole, fromIso: string, toIso: string, branchId?: string, status?: ExpenseStatus): Promise<({
+    listForUser(userId: string, safariRole: SafariRole, fromIso: string, toIso: string, branchId?: string, status?: ExpenseStatus): Promise<{
+        receiptUrl: null;
         branch: {
             id: string;
             name: string;
@@ -34,20 +35,18 @@ export declare class ExpensesService {
             username: string;
             fullName: string;
         };
-    } & {
         id: string;
-        branchId: string | null;
         createdAt: Date;
         updatedAt: Date;
+        category: import("@prisma/client").$Enums.ExpenseCategory;
+        branchId: string | null;
         status: import("@prisma/client").$Enums.ExpenseStatus;
         amount: Prisma.Decimal;
         title: string;
-        category: import("@prisma/client").$Enums.ExpenseCategory;
         note: string | null;
-        receiptUrl: string | null;
         recordedById: string;
         expenseDate: Date;
-    })[]>;
+    }[]>;
     listPendingApproval(safariRole: SafariRole): Promise<({
         branch: {
             id: string;
@@ -60,13 +59,13 @@ export declare class ExpensesService {
         };
     } & {
         id: string;
-        branchId: string | null;
         createdAt: Date;
         updatedAt: Date;
+        category: import("@prisma/client").$Enums.ExpenseCategory;
+        branchId: string | null;
         status: import("@prisma/client").$Enums.ExpenseStatus;
         amount: Prisma.Decimal;
         title: string;
-        category: import("@prisma/client").$Enums.ExpenseCategory;
         note: string | null;
         receiptUrl: string | null;
         recordedById: string;
@@ -84,13 +83,13 @@ export declare class ExpensesService {
         };
     } & {
         id: string;
-        branchId: string | null;
         createdAt: Date;
         updatedAt: Date;
+        category: import("@prisma/client").$Enums.ExpenseCategory;
+        branchId: string | null;
         status: import("@prisma/client").$Enums.ExpenseStatus;
         amount: Prisma.Decimal;
         title: string;
-        category: import("@prisma/client").$Enums.ExpenseCategory;
         note: string | null;
         receiptUrl: string | null;
         recordedById: string;

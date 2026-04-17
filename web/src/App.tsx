@@ -10,9 +10,7 @@ import { RequireAuth } from '@/components/require-auth';
 import { Toaster } from '@/modules/shared/components/ui/sonner';
 import { DashboardPage } from '@/pages/dashboard-page';
 import { ExpensesPage } from '@/pages/expenses-page';
-import { BankDepositsPage } from '@/pages/bank-deposits-page';
 import { CollectDriverCashPage } from '@/pages/collect-driver-cash-page';
-import { DepositVerificationPage } from '@/modules/accountant/pages/deposit-verification-page';
 import { FinancialsPage } from '@/pages/financials-page';
 import { FinancialCycleReportPage } from '@/pages/financial-cycle-report-page';
 import { ReportsPage } from '@/pages/reports-page';
@@ -23,7 +21,6 @@ import { SubscribersPage } from '@/pages/subscribers-page';
 import { SubscriptionsPage } from '@/pages/subscriptions-page';
 import { PayrollPage } from '@/pages/payroll-page';
 import { FixedExpensesPage } from '@/pages/fixed-expenses-page';
-import { BranchesPage } from '@/pages/branches-page';
 import { CollectionsPage } from '@/modules/call-center/pages/collections-page';
 import { CustomersPage } from '@/modules/call-center/pages/customers-page';
 import { PosRoute } from '@/pages/pos-route';
@@ -33,12 +30,12 @@ import { DriverFieldExpensesPage } from '@/modules/driver/pages/driver-field-exp
 import { DriverMonitorPage } from '@/pages/driver-monitor-page';
 import { ExpenseApprovalPage } from '@/pages/expense-approval-page';
 import { LiveMonitorPage } from '@/pages/live-monitor-page';
-import { DepositsAuditPage } from '@/modules/accountant/pages/deposits-audit-page';
 import { KnetAudit } from '@/modules/accountant/pages/KnetAudit';
 import { MyDepositsPage } from '@/modules/driver/pages/my-deposits-page';
 import { WhatsappToolsPage } from '@/modules/call-center/pages/whatsapp-tools-page';
 import { ManageItems } from '@/modules/owner/pages/ManageItems';
 import { OwnerDashboard } from '@/modules/owner/pages/OwnerDashboard';
+import { OwnerProfitRadar } from '@/modules/owner/pages/OwnerProfitRadar';
 
 function AppToaster() {
   const { i18n } = useTranslation();
@@ -83,6 +80,14 @@ export default function App() {
                   }
                 />
                 <Route
+                  path="owner-profit-radar"
+                  element={
+                    <RequireRoles roles={['OWNER']}>
+                      <OwnerProfitRadar />
+                    </RequireRoles>
+                  }
+                />
+                <Route
                   path="knet-audit"
                   element={
                     <RequireRoles roles={['OWNER', 'ACCOUNTANT']}>
@@ -90,11 +95,31 @@ export default function App() {
                     </RequireRoles>
                   }
                 />
-                <Route path="branches" element={<BranchesPage />} />
-                <Route path="customers" element={<CustomersPage />} />
-                <Route path="collections" element={<CollectionsPage />} />
+                <Route
+                  path="customers"
+                  element={
+                    <RequireRoles roles={['OWNER', 'ACCOUNTANT']}>
+                      <CustomersPage />
+                    </RequireRoles>
+                  }
+                />
+                <Route
+                  path="collections"
+                  element={
+                    <RequireRoles roles={['OWNER', 'ACCOUNTANT']}>
+                      <CollectionsPage />
+                    </RequireRoles>
+                  }
+                />
                 <Route path="my-deposits" element={<MyDepositsPage />} />
-                <Route path="whatsapp-tools" element={<WhatsappToolsPage />} />
+                <Route
+                  path="whatsapp-tools"
+                  element={
+                    <RequireRoles roles={['OWNER', 'ACCOUNTANT']}>
+                      <WhatsappToolsPage />
+                    </RequireRoles>
+                  }
+                />
                 <Route path="my-daily-sales" element={<MyDailySalesPage />} />
                 <Route path="my-cash-custody" element={<MyCashCustodyPage />} />
                 <Route path="my-field-expenses" element={<DriverFieldExpensesPage />} />
@@ -105,10 +130,7 @@ export default function App() {
                 <Route path="orders" element={<OrdersPage />} />
                 <Route path="shifts" element={<ShiftsPage />} />
                 <Route path="financials" element={<FinancialsPage />} />
-                <Route path="bank-deposits" element={<BankDepositsPage />} />
-                <Route path="deposit-verification" element={<DepositVerificationPage />} />
                 <Route path="expense-approval" element={<ExpenseApprovalPage />} />
-                <Route path="deposits-audit" element={<DepositsAuditPage />} />
                 <Route path="collect-driver-cash" element={<CollectDriverCashPage />} />
                 <Route path="financial-cycle-report" element={<FinancialCycleReportPage />} />
                 <Route path="reports" element={<ReportsPage />} />

@@ -6,4 +6,13 @@ export declare class SubscriptionService {
         totalSubscriptionUsage: string;
         debtSettledBySubscriptions: string;
     }>;
+    getCustomerSubscriptionSnapshot(customerId: string): Promise<{
+        walletBalance: string;
+        subscriptionPlanId: string | null;
+        subscriptionPlanName: string | null;
+        subscriptionActivatedAt: string | null;
+        subscriptionExpiresAt: string | null;
+        totalSubscriptionUsage: string;
+        debtSettledBySubscriptions: string;
+    }>;
 }

@@ -28,5 +28,8 @@ export declare class PermissionsService {
     getRoleWithPermissions(roleId: string): Promise<RoleWithPermissions>;
     grantToRole(roleId: string, dto: PermissionKeyDto): Promise<RoleWithPermissions>;
     revokeFromRole(roleId: string, dto: PermissionKeyDto): Promise<RoleWithPermissions>;
+    roleHasCapability(roleName: string | null | undefined, capability: string): Promise<boolean>;
+    canManageStaff(roleName: string | null | undefined): Promise<boolean>;
+    canCreateCustomer(roleName: string | null | undefined): Promise<boolean>;
 }
 export {};

@@ -46,10 +46,10 @@ let ExpensesController = class ExpensesController {
 exports.ExpensesController = ExpensesController;
 __decorate([
     (0, common_1.Post)(),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.MANAGER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.MANAGER, client_1.SafariRole.DRIVER),
     (0, swagger_1.ApiOperation)({
         summary: `Record branch expense (${branding_1.APP_BRAND})`,
-        description: 'MANAGER only. Categories: SOAP, FUEL, MISC. New rows are PENDING_ACCOUNTANT until approved.',
+        description: 'MANAGER or DRIVER (field). Categories: SOAP, FUEL, MISC. New rows are PENDING_ACCOUNTANT until approved.',
     }),
     __param(0, (0, common_1.Body)()),
     __param(1, (0, current_user_decorator_1.CurrentUser)()),
@@ -59,7 +59,7 @@ __decorate([
 ], ExpensesController.prototype, "create", null);
 __decorate([
     (0, common_1.Get)(),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.OWNER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.OWNER, client_1.SafariRole.DRIVER),
     (0, swagger_1.ApiOperation)({
         summary: `List expenses in date range (${branding_1.APP_BRAND})`,
     }),

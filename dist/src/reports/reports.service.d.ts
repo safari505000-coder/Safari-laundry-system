@@ -33,10 +33,10 @@ export declare class ReportsService {
             };
             driver: {
                 id: string;
-                branchId: string | null;
                 username: string;
                 fullName: string;
                 employeeId: string | null;
+                branchId: string | null;
             } | null;
         }[];
     }>;
@@ -60,12 +60,12 @@ export declare class ReportsService {
     driverLedger(driverId: string, fromIso: string, toIso: string, branchId?: string): Promise<{
         driver: {
             id: string;
-            branchId: string | null;
             username: string;
             fullName: string;
             employeeId: string | null;
             phone: string | null;
             safariRole: import("@prisma/client").$Enums.SafariRole;
+            branchId: string | null;
         };
         owedToOfficeKd: string;
         pendingSettlementOrderCount: number;

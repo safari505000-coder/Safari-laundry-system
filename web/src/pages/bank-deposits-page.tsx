@@ -245,7 +245,7 @@ export function BankDepositsPage() {
               {loading ?
                 <TableRow>
                   <TableCell colSpan={isAccountant ? 7 : 6} className="text-center text-muted-foreground">
-                    â€¦
+                    ...
                   </TableCell>
                 </TableRow>
               : entries.length === 0 ?
@@ -295,7 +295,7 @@ export function BankDepositsPage() {
                               {t('bankDeposits.yes')}
                             </span>
                             <span className="text-muted-foreground">
-                              {' â€” '}
+                              {' — '}
                               {row.verifiedByAccountant.fullName}
                             </span>
                           </>

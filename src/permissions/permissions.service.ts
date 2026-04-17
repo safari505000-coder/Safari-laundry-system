@@ -1,6 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { CAN_MANAGE_STAFF, roleHasBuiltinCapability } from '../auth/capabilities';
+import {
+  CAN_MANAGE_STAFF,
+  CREATE_CUSTOMER,
+  roleHasBuiltinCapability,
+} from '../auth/capabilities';
 import { PrismaService } from '../prisma/prisma.service';
 import { PermissionKeyDto } from './dto/permission-key.dto';
 
@@ -109,5 +113,9 @@ export class PermissionsService {
 
   async canManageStaff(roleName: string | null | undefined): Promise<boolean> {
     return this.roleHasCapability(roleName, CAN_MANAGE_STAFF);
+  }
+
+  async canCreateCustomer(roleName: string | null | undefined): Promise<boolean> {
+    return this.roleHasCapability(roleName, CREATE_CUSTOMER);
   }
 }

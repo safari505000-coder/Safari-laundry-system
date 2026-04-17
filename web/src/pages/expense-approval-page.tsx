@@ -115,7 +115,7 @@ export function ExpenseApprovalPage() {
               ) : (
                 rows.map((row) => (
                   <TableRow key={row.id}>
-                    <TableCell>{row.branch?.name ?? 'â€”'}</TableCell>
+                    <TableCell>{row.branch?.name ?? '—'}</TableCell>
                     <TableCell>{row.category}</TableCell>
                     <TableCell className={rtl ? 'text-start' : 'text-end'}>
                       {formatKwdLabel(row.amount)}
@@ -131,7 +131,7 @@ export function ExpenseApprovalPage() {
                           {t('expenseApproval.viewReceipt')}
                         </a>
                       ) : (
-                        'â€”'
+                        '—'
                       )}
                     </TableCell>
                     <TableCell>

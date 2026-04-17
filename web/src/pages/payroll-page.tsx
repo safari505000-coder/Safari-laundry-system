@@ -241,7 +241,7 @@ export function PayrollPage() {
           <CardContent>
             <p className="text-2xl font-bold tabular-nums text-primary">
               {loadingList && !payrolls ?
-                'â€¦'
+                '...'
               : formatKwdLabel(paidThisMonthKd)}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
@@ -288,7 +288,7 @@ export function PayrollPage() {
                         })}
                       </TableCell>
                       <TableCell className="text-muted-foreground">
-                        {u.branch?.name ?? 'â€”'}
+                        {u.branch?.name ?? '—'}
                       </TableCell>
                     </TableRow>
                   ))}

@@ -67,8 +67,7 @@ __decorate([
     __metadata("design:type", String)
 ], CreateUserDto.prototype, "phone", void 0);
 __decorate([
-    (0, swagger_1.ApiPropertyOptional)({ format: 'uuid' }),
-    (0, class_validator_1.IsOptional)(),
+    (0, swagger_1.ApiProperty)({ format: 'uuid', description: 'Mandatory branch assignment for all staff.' }),
     (0, class_validator_1.IsUUID)('4'),
     __metadata("design:type", String)
 ], CreateUserDto.prototype, "branchId", void 0);

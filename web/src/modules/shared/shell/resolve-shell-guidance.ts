@@ -5,10 +5,10 @@ import { DRIVER_SHELL_GUIDANCE } from '@/modules/driver/shell-guidance';
 import { MANAGER_SHELL_GUIDANCE } from '@/modules/manager/shell-guidance';
 
 const OWNER_SHELL_GUIDANCE =
-  'Goal: monitor filtered financial reports in read-only mode.';
+  'المالك: مراقبة الأداء المالي والربح والخسارة مع صلاحيات الإدارة العليا.';
 
 const FALLBACK_SHELL_GUIDANCE =
-  'Goal: follow role-specific workflow and keep data integrity.';
+  'اتبع صلاحيات دورك للحفاظ على سلامة البيانات.';
 
 export function shellGuidanceForRole(role?: SafariRole): string {
   switch (role) {

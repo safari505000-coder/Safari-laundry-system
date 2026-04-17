@@ -33,8 +33,8 @@ export declare class CallCenterController {
         plan: {
             id: string;
             name: string;
-            salePrice: string;
-            actualBalance: string;
+            price: string;
+            creditAmount: string;
         };
         wallet: {
             balance: string;
