@@ -69,7 +69,7 @@ let CashService = class CashService {
             data: { driverId, status: client_1.ShiftStatus.OPEN },
         });
     }
-    async getDailyPosSalesByPaymentMethod(fromIso, toIso) {
+    async getDailyPosSalesByPaymentMethod(fromIso, toIso, scopedDriverId) {
         const from = new Date(fromIso);
         const to = new Date(toIso);
         if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
@@ -81,6 +81,7 @@ let CashService = class CashService {
                 status: client_1.OrderStatus.COMPLETED,
                 completedAt: { gte: from, lte: to },
                 posPaymentMethod: { not: null },
+                ...(scopedDriverId ? { driverId: scopedDriverId } : {}),
             },
             _sum: { totalPrice: true },
             _count: true,

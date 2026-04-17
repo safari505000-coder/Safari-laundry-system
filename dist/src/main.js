@@ -39,6 +39,7 @@ const common_1 = require("@nestjs/common");
 const core_1 = require("@nestjs/core");
 const client_1 = require("@prisma/client");
 const swagger_1 = require("@nestjs/swagger");
+const express = __importStar(require("express"));
 const app_module_1 = require("./app.module");
 const ensure_default_price_list_1 = require("./bootstrap/ensure-default-price-list");
 const branding_1 = require("./common/constants/branding");
@@ -102,7 +103,11 @@ async function ensureDefaultOwner(prisma) {
     });
 }
 async function bootstrap() {
-    const app = await core_1.NestFactory.create(app_module_1.AppModule);
+    const app = await core_1.NestFactory.create(app_module_1.AppModule, {
+        bodyParser: false,
+    });
+    app.use(express.json({ limit: '1mb' }));
+    app.use(express.urlencoded({ extended: true, limit: '1mb' }));
     const httpAdapterHost = app.get(core_1.HttpAdapterHost);
     const prisma = app.get(prisma_service_1.PrismaService);
     await ensureInstitutionalRoles(prisma);
@@ -110,7 +115,8 @@ async function bootstrap() {
     await ensureDefaultOwner(prisma);
     app.setGlobalPrefix('api');
     app.enableCors({
-        origin: (process.env.CORS_ORIGIN ?? 'http://localhost:5173,http://127.0.0.1:5173')
+        origin: (process.env.CORS_ORIGIN ??
+            'http://localhost:5173,http://127.0.0.1:5173,http://localhost:5178,http://127.0.0.1:5178')
             .split(',')
             .map((o) => o.trim())
             .filter(Boolean),

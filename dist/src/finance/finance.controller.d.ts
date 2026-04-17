@@ -13,7 +13,7 @@ export declare class FinanceController {
         ok: boolean;
     }>;
     getOwnerCustomerWalletSummary(): Promise<OwnerCustomerWalletSummaryDto>;
-    getDailyPosSales(q: DailyPosSalesQueryDto): Promise<{
+    getDailyPosSales(q: DailyPosSalesQueryDto, user: JwtUser): Promise<{
         from: string;
         to: string;
         rows: {

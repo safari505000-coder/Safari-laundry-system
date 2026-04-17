@@ -26,7 +26,10 @@ import {
 import { SafariRole } from '@prisma/client';
 import { diskStorage } from 'multer';
 import type { Express } from 'express';
-import { Roles } from '../auth/decorators/roles.decorator';
+import {
+  AllowDriverDailyPosSales,
+  Roles,
+} from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { JwtUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -85,6 +88,7 @@ export class FinanceController {
   }
 
   @Get('reports/daily-pos-sales')
+  @AllowDriverDailyPosSales()
   @Roles(
     SafariRole.OWNER,
     SafariRole.MANAGER,
@@ -96,8 +100,15 @@ export class FinanceController {
     description:
       'Aggregates completed POS orders with recorded PosPaymentMethod (subscription wallet, cash, KNET, ONLINE, DEBT_ON_ACCOUNT) for financial reporting.',
   })
-  getDailyPosSales(@Query() q: DailyPosSalesQueryDto) {
-    return this.financeService.getDailyPosSalesByPaymentMethod(q.from, q.to);
+  getDailyPosSales(
+    @Query() q: DailyPosSalesQueryDto,
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.financeService.getDailyPosSalesByPaymentMethod(
+      q.from,
+      q.to,
+      user.role === SafariRole.DRIVER ? user.userId : undefined,
+    );
   }
 
   @Get('reports/debt-by-category')

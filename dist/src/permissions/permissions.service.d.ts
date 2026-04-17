@@ -25,6 +25,7 @@ export declare class PermissionsService {
         updatedAt: Date;
         key: string;
     }[]>;
+    listPermissionKeysForRoleName(roleName: string): Promise<string[]>;
     getRoleWithPermissions(roleId: string): Promise<RoleWithPermissions>;
     grantToRole(roleId: string, dto: PermissionKeyDto): Promise<RoleWithPermissions>;
     revokeFromRole(roleId: string, dto: PermissionKeyDto): Promise<RoleWithPermissions>;

@@ -2,8 +2,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { AlertCircle, Loader2, RefreshCw, Upload, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/auth-context';
+import { useSafariStream } from '@/contexts/safari-stream-context';
 import { RequireRoles } from '@/modules/shared/components/require-roles';
 import {
+  API_EXPENSES,
   ApiError,
   apiJson,
   getDeposits,
@@ -19,6 +21,7 @@ import { Label } from '@/modules/shared/components/ui/label';
 
 function MyDepositsContent() {
   const { token } = useAuth();
+  const { snapshot, refresh: refreshStream } = useSafariStream();
   const [rows, setRows] = useState<DepositAuditRow[]>([]);
   const [availableCash, setAvailableCash] = useState(0);
   const [pendingDebt, setPendingDebt] = useState(0);
@@ -35,7 +38,10 @@ function MyDepositsContent() {
       const [data, orders, expenses] = await Promise.all([
         getDeposits(token),
         apiJson<OrderRow[]>('/api/orders', { token }),
-        apiJson<ExpenseRow[]>(`/api/expenses?from=${encodeURIComponent('1970-01-01T00:00:00.000Z')}&to=${encodeURIComponent(new Date().toISOString())}`, { token }),
+        apiJson<ExpenseRow[]>(
+          `${API_EXPENSES}?from=${encodeURIComponent('1970-01-01T00:00:00.000Z')}&to=${encodeURIComponent(new Date().toISOString())}`,
+          { token },
+        ),
       ]);
       setRows(data.rows ?? []);
 
@@ -90,6 +96,7 @@ function MyDepositsContent() {
       setAmount('');
       setFile(null);
       await load();
+      await refreshStream();
     } catch (e) {
       if (e instanceof ApiError) toast.error(e.message);
     } finally {
@@ -112,8 +119,21 @@ function MyDepositsContent() {
             <div>
               <p className="text-xs font-semibold text-emerald-800">كاش متوفر</p>
               <p className="mt-1 text-lg font-bold tabular-nums text-emerald-900">
-                {availableCash.toFixed(3)} KWD
+                {(
+                  snapshot?.wallet.fieldCashAvailableKd != null ?
+                    Number.parseFloat(snapshot.wallet.fieldCashAvailableKd)
+                  : availableCash
+                ).toFixed(3)}{' '}
+                KWD
               </p>
+              {snapshot?.wallet.pendingDepositHoldKd != null &&
+              Number.parseFloat(snapshot.wallet.pendingDepositHoldKd) > 0 ?
+                <p className="mt-1 text-[10px] text-emerald-900/80">
+                  Pending deposits held:{' '}
+                  {Number.parseFloat(snapshot.wallet.pendingDepositHoldKd).toFixed(3)} KWD
+                  (SafariStream)
+                </p>
+              : null}
             </div>
             <Wallet className="h-8 w-8 text-emerald-700" />
           </CardContent>
@@ -123,7 +143,12 @@ function MyDepositsContent() {
             <div>
               <p className="text-xs font-semibold text-red-800">مديونيات معلقة</p>
               <p className="mt-1 text-lg font-bold tabular-nums text-red-900">
-                {pendingDebt.toFixed(3)} KWD
+                {(
+                  snapshot?.wallet.pendingDebtOrdersKd != null ?
+                    Number.parseFloat(snapshot.wallet.pendingDebtOrdersKd)
+                  : pendingDebt
+                ).toFixed(3)}{' '}
+                KWD
               </p>
             </div>
             <AlertCircle className="h-8 w-8 text-red-700" />

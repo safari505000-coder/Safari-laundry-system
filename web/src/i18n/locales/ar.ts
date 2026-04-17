@@ -899,7 +899,7 @@ export const ar = {
     fieldAmount: 'المبلغ (د.ك)',
     fieldCategory: 'التصنيف',
     fieldNote: 'ملاحظة',
-    fieldReceipt: 'صورة إيصال (اختياري)',
+    fieldReceipt: 'صورة إيصال (إجباري)',
     catSoap: 'صابون / مستلزمات',
     catFuel: 'وقود',
     catRepair: 'صيانة',

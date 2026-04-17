@@ -1,16 +1,30 @@
-import { ExpenseCategory, ExpenseStatus, Prisma, SafariRole } from '@prisma/client';
+import { ExpenseCategory, ExpenseMethod, ExpenseStatus, Prisma, SafariRole } from '@prisma/client';
+import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
 import { PrismaService } from '../prisma/prisma.service';
 export declare class ExpensesService {
     private readonly prisma;
-    constructor(prisma: PrismaService);
+    private readonly generalLedger;
+    constructor(prisma: PrismaService, generalLedger: GeneralLedgerService);
     private assertCanRecordExpense;
+    private computeDriverSpendableCash;
     create(userId: string, safariRole: SafariRole, dto: {
         title: string;
         amount: number;
         category: ExpenseCategory;
+        expenseMethod?: ExpenseMethod;
         note?: string;
         receiptUrl?: string;
     }): Promise<{
+        receiptUrl: null;
+        branch: {
+            id: string;
+            name: string;
+        } | null;
+        recordedBy: {
+            id: string;
+            username: string;
+            fullName: string;
+        };
         id: string;
         createdAt: Date;
         updatedAt: Date;
@@ -19,8 +33,8 @@ export declare class ExpensesService {
         status: import("@prisma/client").$Enums.ExpenseStatus;
         amount: Prisma.Decimal;
         title: string;
+        expenseMethod: import("@prisma/client").$Enums.ExpenseMethod;
         note: string | null;
-        receiptUrl: string | null;
         recordedById: string;
         expenseDate: Date;
     }>;
@@ -43,6 +57,7 @@ export declare class ExpensesService {
         status: import("@prisma/client").$Enums.ExpenseStatus;
         amount: Prisma.Decimal;
         title: string;
+        expenseMethod: import("@prisma/client").$Enums.ExpenseMethod;
         note: string | null;
         recordedById: string;
         expenseDate: Date;
@@ -66,6 +81,7 @@ export declare class ExpensesService {
         status: import("@prisma/client").$Enums.ExpenseStatus;
         amount: Prisma.Decimal;
         title: string;
+        expenseMethod: import("@prisma/client").$Enums.ExpenseMethod;
         note: string | null;
         receiptUrl: string | null;
         recordedById: string;
@@ -90,6 +106,7 @@ export declare class ExpensesService {
         status: import("@prisma/client").$Enums.ExpenseStatus;
         amount: Prisma.Decimal;
         title: string;
+        expenseMethod: import("@prisma/client").$Enums.ExpenseMethod;
         note: string | null;
         receiptUrl: string | null;
         recordedById: string;

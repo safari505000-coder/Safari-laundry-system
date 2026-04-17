@@ -6,13 +6,21 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { SafariRole } from '@prisma/client';
-import { ROLES_KEY } from '../decorators/roles.decorator';
+import { FINANCE_DAILY_POS_SALES_OWN } from '../capabilities';
+import {
+  DRIVER_FINANCE_DAILY_POS_KEY,
+  ROLES_KEY,
+} from '../decorators/roles.decorator';
+import { PermissionsService } from '../../permissions/permissions.service';
 
 @Injectable()
 export class RolesGuard implements CanActivate {
-  constructor(private readonly reflector: Reflector) {}
+  constructor(
+    private readonly reflector: Reflector,
+    private readonly permissionsService: PermissionsService,
+  ) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const required = this.reflector.getAllAndOverride<SafariRole[]>(ROLES_KEY, [
       context.getHandler(),
       context.getClass(),
@@ -26,6 +34,20 @@ export class RolesGuard implements CanActivate {
     const role = req.user?.role;
     // Global OWNER bypass: full access across all guarded routes/endpoints.
     if (role === SafariRole.OWNER) {
+      return true;
+    }
+    const driverDailyPos = this.reflector.getAllAndOverride<boolean>(
+      DRIVER_FINANCE_DAILY_POS_KEY,
+      [context.getHandler(), context.getClass()],
+    );
+    if (
+      driverDailyPos &&
+      role === SafariRole.DRIVER &&
+      (await this.permissionsService.roleHasCapability(
+        role,
+        FINANCE_DAILY_POS_SALES_OWN,
+      ))
+    ) {
       return true;
     }
     if (!role || !required.includes(role as SafariRole)) {

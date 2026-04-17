@@ -6,7 +6,7 @@ export declare class CashService {
     private readonly prisma;
     constructor(prisma: PrismaService);
     ensureOpenShiftForDriver(driverId: string): Promise<void>;
-    getDailyPosSalesByPaymentMethod(fromIso: string, toIso: string): Promise<{
+    getDailyPosSalesByPaymentMethod(fromIso: string, toIso: string, scopedDriverId?: string): Promise<{
         from: string;
         to: string;
         rows: {

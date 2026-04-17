@@ -435,11 +435,6 @@ export function DriverPOS() {
               })}
             </div>
           : null}
-          {selected && needsExternalPayment ?
-            <p className="text-center text-[11px] font-medium text-foreground">
-              {t('pos.payment.cash')} · {t('pos.payment.title')}
-            </p>
-          : null}
           <div className="grid grid-cols-2 gap-2">
             <Button
               type="button"
@@ -472,29 +467,36 @@ export function DriverPOS() {
           >
             {t('pos.multiOrder.addAttached')}
           </Button>
-          {selected && needsExternalPayment ?
+          {selected ?
             <div className="space-y-1 rounded-lg border border-border/80 bg-muted/20 p-2">
               <p className="text-[11px] font-medium text-foreground">
                 {t('pos.payment.title')}
               </p>
-              <select
-                className="h-10 w-full rounded-md border border-zinc-200 bg-background px-2 text-xs font-medium"
-                value={posPaymentMethod}
-                onChange={(e) =>
-                  setPosPaymentMethod(
-                    e.target.value as
-                      | 'CASH'
-                      | 'KNET'
-                      | 'PAYMENT_LINK'
-                      | 'DEBT_ON_ACCOUNT',
-                  )
-                }
-              >
-                <option value="CASH">{t('pos.payment.cash')}</option>
-                <option value="KNET">{t('pos.payment.knet')}</option>
-                <option value="PAYMENT_LINK">{t('pos.payment.online')}</option>
-                <option value="DEBT_ON_ACCOUNT">{t('pos.payment.debt')}</option>
-              </select>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {(
+                  [
+                    ['CASH', t('pos.payment.cash')],
+                    ['KNET', t('pos.payment.knet')],
+                    ['PAYMENT_LINK', t('pos.payment.online')],
+                    ['DEBT_ON_ACCOUNT', t('pos.payment.debt')],
+                  ] as const
+                ).map(([m, label]) => (
+                  <Button
+                    key={m}
+                    type="button"
+                    size="sm"
+                    variant={posPaymentMethod === m ? 'default' : 'outline'}
+                    className="h-11 touch-manipulation text-xs font-semibold"
+                    onClick={() =>
+                      setPosPaymentMethod(
+                        m as 'CASH' | 'KNET' | 'PAYMENT_LINK' | 'DEBT_ON_ACCOUNT',
+                      )
+                    }
+                  >
+                    {label}
+                  </Button>
+                ))}
+              </div>
             </div>
           : null}
           <Button
@@ -503,8 +505,7 @@ export function DriverPOS() {
               checkoutBusy ||
               combinedLineSubtotal <= 0 ||
               !selected ||
-              grandTotal <= 0 ||
-              (Boolean(selected) && billingLoading)
+              grandTotal <= 0
             }
             size="lg"
             className="h-12 w-full touch-manipulation text-base font-semibold"

@@ -7,6 +7,16 @@ export declare class ExpensesController {
     private readonly expensesService;
     constructor(expensesService: ExpensesService);
     create(dto: CreateExpenseDto, user: JwtUser): Promise<{
+        receiptUrl: null;
+        branch: {
+            id: string;
+            name: string;
+        } | null;
+        recordedBy: {
+            id: string;
+            username: string;
+            fullName: string;
+        };
         id: string;
         createdAt: Date;
         updatedAt: Date;
@@ -15,8 +25,8 @@ export declare class ExpensesController {
         status: import("@prisma/client").$Enums.ExpenseStatus;
         amount: import("@prisma/client-runtime-utils").Decimal;
         title: string;
+        expenseMethod: import("@prisma/client").$Enums.ExpenseMethod;
         note: string | null;
-        receiptUrl: string | null;
         recordedById: string;
         expenseDate: Date;
     }>;
@@ -39,6 +49,7 @@ export declare class ExpensesController {
         status: import("@prisma/client").$Enums.ExpenseStatus;
         amount: import("@prisma/client-runtime-utils").Decimal;
         title: string;
+        expenseMethod: import("@prisma/client").$Enums.ExpenseMethod;
         note: string | null;
         recordedById: string;
         expenseDate: Date;
@@ -62,6 +73,7 @@ export declare class ExpensesController {
         status: import("@prisma/client").$Enums.ExpenseStatus;
         amount: import("@prisma/client-runtime-utils").Decimal;
         title: string;
+        expenseMethod: import("@prisma/client").$Enums.ExpenseMethod;
         note: string | null;
         receiptUrl: string | null;
         recordedById: string;
@@ -86,6 +98,7 @@ export declare class ExpensesController {
         status: import("@prisma/client").$Enums.ExpenseStatus;
         amount: import("@prisma/client-runtime-utils").Decimal;
         title: string;
+        expenseMethod: import("@prisma/client").$Enums.ExpenseMethod;
         note: string | null;
         receiptUrl: string | null;
         recordedById: string;

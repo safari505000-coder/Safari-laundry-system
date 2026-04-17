@@ -2,6 +2,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { AuthProvider } from '@/contexts/auth-context';
+import { SafariStreamProvider } from '@/contexts/safari-stream-context';
 import { AuthLayout } from '@/modules/shared/components/shell/auth-layout';
 import { ExecutiveShell } from '@/modules/shared/components/shell/executive-shell';
 import { RequireRoles } from '@/modules/shared/components/require-roles';
@@ -49,6 +50,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <AuthProvider>
+        <SafariStreamProvider>
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
@@ -145,6 +147,7 @@ export default function App() {
           </Routes>
         </BrowserRouter>
         <AppToaster />
+        </SafariStreamProvider>
       </AuthProvider>
     </ErrorBoundary>
   );

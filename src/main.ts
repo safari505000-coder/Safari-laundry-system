@@ -2,8 +2,10 @@ import 'dotenv/config';
 import * as bcrypt from 'bcrypt';
 import { ValidationPipe } from '@nestjs/common';
 import { HttpAdapterHost, NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { SafariRole } from '@prisma/client';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import * as express from 'express';
 import { AppModule } from './app.module';
 import { ensureDefaultPriceList } from './bootstrap/ensure-default-price-list';
 import { APP_BRAND, APP_BRAND_ERP } from './common/constants/branding';
@@ -83,7 +85,12 @@ async function ensureDefaultOwner(prisma: PrismaService): Promise<void> {
 }
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  /** Default Nest/express.json limit is 100kb — fuel receipts are data URLs and exceed it, yielding a misleading 404. */
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bodyParser: false,
+  });
+  app.use(express.json({ limit: '1mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '1mb' }));
   const httpAdapterHost = app.get(HttpAdapterHost);
   const prisma = app.get(PrismaService);
 
@@ -95,7 +102,8 @@ async function bootstrap() {
 
   app.enableCors({
     origin: (
-      process.env.CORS_ORIGIN ?? 'http://localhost:5173,http://127.0.0.1:5173'
+      process.env.CORS_ORIGIN ??
+      'http://localhost:5173,http://127.0.0.1:5173,http://localhost:5178,http://127.0.0.1:5178'
     )
       .split(',')
       .map((o) => o.trim())

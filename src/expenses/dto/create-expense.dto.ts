@@ -1,4 +1,4 @@
-import { ExpenseCategory } from '@prisma/client';
+import { ExpenseCategory, ExpenseMethod } from '@prisma/client';
 import {
   IsEnum,
   IsNumber,
@@ -19,6 +19,10 @@ export class CreateExpenseDto {
 
   @IsEnum(ExpenseCategory)
   category!: ExpenseCategory;
+
+  @IsOptional()
+  @IsEnum(ExpenseMethod)
+  expenseMethod?: ExpenseMethod;
 
   @IsOptional()
   @IsString()

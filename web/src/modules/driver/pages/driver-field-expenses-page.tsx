@@ -4,7 +4,8 @@ import { Navigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Loader2, Plus, Receipt } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
-import { type ExpenseRow, apiJson, ApiError } from '@/lib/api';
+import { useSafariStream } from '@/contexts/safari-stream-context';
+import { API_EXPENSES, type ExpenseRow, apiJson, ApiError } from '@/lib/api';
 import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
 import { formatKwdLabel } from '@/lib/kwd';
 import { Button } from '@/modules/shared/components/ui/button';
@@ -37,6 +38,7 @@ export function DriverFieldExpensesPage() {
   const { t } = useTranslation();
   const dateLocale = useAppLocale();
   const { token, hasRole } = useAuth();
+  const { refresh: refreshStream } = useSafariStream();
   const [from, setFrom] = useState(() => startOfDayIso(new Date()));
   const [to, setTo] = useState(() => endOfDayIso(new Date()));
   const [rows, setRows] = useState<ExpenseRow[] | null>(null);
@@ -46,6 +48,7 @@ export function DriverFieldExpensesPage() {
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState<'FUEL' | 'MISC' | 'SOAP'>('FUEL');
+  const [expenseMethod, setExpenseMethod] = useState<'CASH' | 'PREPAID_CARD'>('CASH');
   const [note, setNote] = useState('');
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
 
@@ -56,7 +59,7 @@ export function DriverFieldExpensesPage() {
     setLoading(true);
     try {
       const qs = new URLSearchParams({ from, to });
-      const data = await apiJson<ExpenseRow[]>(`/api/expenses?${qs.toString()}`, {
+      const data = await apiJson<ExpenseRow[]>(`${API_EXPENSES}?${qs.toString()}`, {
         token,
       });
       setRows(
@@ -83,15 +86,20 @@ export function DriverFieldExpensesPage() {
       toast.error(t('expenses.invalidAmount'));
       return;
     }
+    if (category === 'FUEL' && !receiptPreview?.trim()) {
+      toast.error('صورة الوصل إجبارية لمصاريف الوقود');
+      return;
+    }
     setSaving(true);
     try {
-      await apiJson<ExpenseRow>('/api/expenses', {
+      await apiJson<ExpenseRow>(API_EXPENSES, {
         method: 'POST',
         token,
         body: JSON.stringify({
         title: title.trim(),
         amount: n,
         category,
+        expenseMethod,
         ...(note.trim() ? { note: note.trim() } : {}),
         ...(receiptPreview ? { receiptUrl: receiptPreview } : {}),
         }),
@@ -102,6 +110,7 @@ export function DriverFieldExpensesPage() {
       setNote('');
       setReceiptPreview(null);
       void load();
+      void refreshStream();
     } catch (err) {
       if (err instanceof ApiError) toast.error(err.message);
     } finally {
@@ -155,6 +164,29 @@ export function DriverFieldExpensesPage() {
                 className="h-11"
               />
             </div>
+            <div className="space-y-1.5">
+              <Label>Expense method</Label>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={expenseMethod === 'CASH' ? 'default' : 'outline'}
+                  className="h-10"
+                  onClick={() => setExpenseMethod('CASH')}
+                >
+                  CASH (field wallet + owner radar)
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={expenseMethod === 'PREPAID_CARD' ? 'default' : 'outline'}
+                  className="h-10"
+                  onClick={() => setExpenseMethod('PREPAID_CARD')}
+                >
+                  PREPAID_CARD (owner radar only)
+                </Button>
+              </div>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="df-amt">{t('expenses.fieldAmount')}</Label>
@@ -207,7 +239,7 @@ export function DriverFieldExpensesPage() {
             </div>
             <Button
               type="submit"
-              disabled={saving}
+              disabled={saving || (category === 'FUEL' && !receiptPreview)}
               className="h-11 w-full gap-1.5"
             >
               {saving ?

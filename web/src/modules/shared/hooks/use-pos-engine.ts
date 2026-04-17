@@ -261,6 +261,7 @@ export function usePosEngine(opts: PosEngineOptions) {
     setActiveSubOrderIndex(0);
   }, [selected?.id]);
 
+  /** SafariStream / POS constitution: customer search is debounced and non-blocking (payment UI stays live). */
   useEffect(() => {
     const q = searchQ.trim();
     if (q.length < 2) {
@@ -301,8 +302,16 @@ export function usePosEngine(opts: PosEngineOptions) {
     ? Number.parseFloat(billing.remainingBalance)
     : NaN;
   const debtNum = billing ? Number.parseFloat(billing.debt) : NaN;
-  const isBalanceWarning =
-    Number.isFinite(balanceNum) && (balanceNum < 10 || balanceNum < 0);
+  /** Hide low-balance alert for walk-ins (0 balance, no subscription); show for debt or active subscription with low/exhausted balance. */
+  const isBalanceWarning = (() => {
+    if (!billing || !Number.isFinite(balanceNum)) return false;
+    const balanceZero = Math.abs(balanceNum) < 1e-6;
+    const subActive = billing.subscriptionActive === true;
+    if (balanceZero && !subActive) return false;
+    if (balanceNum < -1e-9) return true;
+    if (subActive && balanceNum < 10 - 1e-9) return true;
+    return false;
+  })();
 
   const financeTotals = useMemo(
     () =>

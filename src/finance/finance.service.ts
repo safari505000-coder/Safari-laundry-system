@@ -25,8 +25,16 @@ export class FinanceService {
     return this.cashService.ensureOpenShiftForDriver(driverId);
   }
 
-  async getDailyPosSalesByPaymentMethod(fromIso: string, toIso: string) {
-    return this.cashService.getDailyPosSalesByPaymentMethod(fromIso, toIso);
+  async getDailyPosSalesByPaymentMethod(
+    fromIso: string,
+    toIso: string,
+    scopedDriverId?: string,
+  ) {
+    return this.cashService.getDailyPosSalesByPaymentMethod(
+      fromIso,
+      toIso,
+      scopedDriverId,
+    );
   }
 
   async getOwnerCustomerWalletSummary(): Promise<OwnerCustomerWalletSummaryDto> {

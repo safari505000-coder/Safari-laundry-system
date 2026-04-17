@@ -15,6 +15,7 @@ const client_1 = require("@prisma/client");
 const payments_service_1 = require("../common/services/payments.service");
 const customer_notifications_service_1 = require("../customer-notifications/customer-notifications.service");
 const customer_ledger_service_1 = require("../customer-ledger/customer-ledger.service");
+const general_ledger_service_1 = require("../general-ledger/general-ledger.service");
 const finance_money_1 = require("../finance/finance-money");
 const prisma_service_1 = require("../prisma/prisma.service");
 const order_status_machine_1 = require("./order-status.machine");
@@ -71,11 +72,13 @@ let OrdersService = class OrdersService {
     customerLedger;
     paymentsService;
     customerNotifications;
-    constructor(prisma, customerLedger, paymentsService, customerNotifications) {
+    generalLedger;
+    constructor(prisma, customerLedger, paymentsService, customerNotifications, generalLedger) {
         this.prisma = prisma;
         this.customerLedger = customerLedger;
         this.paymentsService = paymentsService;
         this.customerNotifications = customerNotifications;
+        this.generalLedger = generalLedger;
     }
     queuePosInvoiceNotify(detail, phoneCompact) {
         const phone = detail.customer.phone?.trim() ||
@@ -324,6 +327,17 @@ let OrdersService = class OrdersService {
                     posPaymentMethod: posPaymentMethodResolved,
                     walletSettledAt: null,
                     skipPerformerLookup: true,
+                });
+                await this.generalLedger.append(tx, {
+                    entryType: client_1.GeneralLedgerEntryType.POS_SALE_COMPLETED,
+                    amount: totalPriceDecimal,
+                    memo: 'POS checkout',
+                    orderId: created.id,
+                    customerId,
+                    actorUserId: driverUserId,
+                    metadata: {
+                        posPaymentMethod: posPaymentMethodResolved,
+                    },
                 });
                 return created.id;
             }, { maxWait: 10_000, timeout: 15_000 });
@@ -697,6 +711,7 @@ exports.OrdersService = OrdersService = __decorate([
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
         customer_ledger_service_1.CustomerLedgerService,
         payments_service_1.PaymentsService,
-        customer_notifications_service_1.CustomerNotificationsService])
+        customer_notifications_service_1.CustomerNotificationsService,
+        general_ledger_service_1.GeneralLedgerService])
 ], OrdersService);
 //# sourceMappingURL=orders.service.js.map

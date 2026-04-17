@@ -14,7 +14,7 @@ export declare class FinanceService {
     private readonly subscriptionService;
     constructor(cashService: CashService, debtService: DebtService, onlinePaymentService: OnlinePaymentService, subscriptionService: SubscriptionService);
     ensureOpenShiftForDriver(driverId: string): Promise<void>;
-    getDailyPosSalesByPaymentMethod(fromIso: string, toIso: string): Promise<{
+    getDailyPosSalesByPaymentMethod(fromIso: string, toIso: string, scopedDriverId?: string): Promise<{
         from: string;
         to: string;
         rows: {

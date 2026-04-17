@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { Loader2, Plus, Receipt } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import {
+  API_EXPENSES,
   type BranchRow,
   type ExpenseRow,
   apiJson,
@@ -71,7 +72,7 @@ export function ExpensesPage() {
       if (effectiveBranch) qs.set('branchId', effectiveBranch);
       if (statusFilter !== 'ALL') qs.set('status', statusFilter);
       const data = await apiJson<ExpenseRow[]>(
-        `/api/expenses?${qs.toString()}`,
+        `${API_EXPENSES}?${qs.toString()}`,
         { token },
       );
       setRows(Array.isArray(data) ? data : []);
@@ -103,7 +104,7 @@ export function ExpensesPage() {
     }
     setSaving(true);
     try {
-      await apiJson<ExpenseRow>('/api/expenses', {
+      await apiJson<ExpenseRow>(API_EXPENSES, {
         method: 'POST',
         token,
         body: JSON.stringify({

@@ -16,6 +16,7 @@ class CreateExpenseDto {
     title;
     amount;
     category;
+    expenseMethod;
     note;
     receiptUrl;
 }
@@ -34,6 +35,11 @@ __decorate([
     (0, class_validator_1.IsEnum)(client_1.ExpenseCategory),
     __metadata("design:type", String)
 ], CreateExpenseDto.prototype, "category", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsEnum)(client_1.ExpenseMethod),
+    __metadata("design:type", String)
+], CreateExpenseDto.prototype, "expenseMethod", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),

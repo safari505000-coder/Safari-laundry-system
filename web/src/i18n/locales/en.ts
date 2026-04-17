@@ -899,7 +899,7 @@ export const en = {
     fieldAmount: 'Amount (KWD)',
     fieldCategory: 'Category',
     fieldNote: 'Note',
-    fieldReceipt: 'Receipt photo (optional)',
+    fieldReceipt: 'Receipt photo (required for fuel)',
     catSoap: 'Soap / supplies',
     catFuel: 'Fuel',
     catRepair: 'Repair',

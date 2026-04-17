@@ -49,8 +49,8 @@ let FinanceController = class FinanceController {
     getOwnerCustomerWalletSummary() {
         return this.financeService.getOwnerCustomerWalletSummary();
     }
-    getDailyPosSales(q) {
-        return this.financeService.getDailyPosSalesByPaymentMethod(q.from, q.to);
+    getDailyPosSales(q, user) {
+        return this.financeService.getDailyPosSalesByPaymentMethod(q.from, q.to, user.role === client_1.SafariRole.DRIVER ? user.userId : undefined);
     }
     getDebtByCategory(q) {
         return this.financeService.getDebtBreakdownByCategory(q.from, q.to, q.category, q.branchId, q.actorUserId);
@@ -108,14 +108,16 @@ __decorate([
 ], FinanceController.prototype, "getOwnerCustomerWalletSummary", null);
 __decorate([
     (0, common_1.Get)('reports/daily-pos-sales'),
+    (0, roles_decorator_1.AllowDriverDailyPosSales)(),
     (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR),
     (0, swagger_1.ApiOperation)({
         summary: `Daily POS sales by payment method (${branding_1.APP_BRAND})`,
         description: 'Aggregates completed POS orders with recorded PosPaymentMethod (subscription wallet, cash, KNET, ONLINE, DEBT_ON_ACCOUNT) for financial reporting.',
     }),
     __param(0, (0, common_1.Query)()),
+    __param(1, (0, current_user_decorator_1.CurrentUser)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [daily_pos_sales_query_dto_1.DailyPosSalesQueryDto]),
+    __metadata("design:paramtypes", [daily_pos_sales_query_dto_1.DailyPosSalesQueryDto, Object]),
     __metadata("design:returntype", void 0)
 ], FinanceController.prototype, "getDailyPosSales", null);
 __decorate([

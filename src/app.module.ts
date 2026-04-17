@@ -21,6 +21,7 @@ import { PaymentsModule } from './payments/payments.module';
 import { PermissionsModule } from './permissions/permissions.module';
 import { PosModule } from './pos/pos.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { SafariStreamModule } from './safari-stream/safari-stream.module';
 import { ReportsModule } from './reports/reports.module';
 import { SystemModule } from './system/system.module';
 import { SubscriptionPlansModule } from './subscription-plans/subscription-plans.module';
@@ -42,8 +43,10 @@ const spaStaticModule = existsSync(webDistPath)
 @Module({
   imports: [
     PrismaModule,
+    PermissionsModule,
     FinanceModule,
     AuthModule,
+    SafariStreamModule,
     UsersModule,
     ReportsModule,
     SystemModule,
@@ -54,7 +57,6 @@ const spaStaticModule = existsSync(webDistPath)
     PaymentsModule,
     BranchesModule,
     WalletsModule,
-    PermissionsModule,
     AuditLogsModule,
     SubscriptionPlansModule,
     SubscribersModule,

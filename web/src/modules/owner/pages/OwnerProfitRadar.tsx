@@ -5,6 +5,7 @@ import { Building2, CircleDollarSign, Loader2, Shield } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/auth-context';
 import {
+  API_EXPENSES,
   type BranchRow,
   type ExpenseRow,
   type IssuedInvoicesReport,
@@ -68,7 +69,7 @@ export function OwnerProfitRadar() {
       const [branches, invoices, expenses] = await Promise.all([
         apiJson<BranchRow[]>('/api/branches', { token }),
         apiJson<IssuedInvoicesReport>(`/api/reports/issued-invoices?${qs.toString()}`, { token }),
-        apiJson<ExpenseRow[]>(`/api/expenses?${qs.toString()}`, { token }),
+        apiJson<ExpenseRow[]>(`${API_EXPENSES}?${qs.toString()}`, { token }),
       ]);
 
       const branchNameById = new Map<string, string>();

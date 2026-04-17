@@ -125,6 +125,7 @@ export declare class UsersController {
             status: import("@prisma/client").$Enums.ExpenseStatus;
             amount: import("@prisma/client-runtime-utils").Decimal;
             title: string;
+            expenseMethod: import("@prisma/client").$Enums.ExpenseMethod;
             note: string | null;
             receiptUrl: string | null;
             recordedById: string;
@@ -339,6 +340,7 @@ export declare class UsersController {
             status: import("@prisma/client").$Enums.ExpenseStatus;
             amount: import("@prisma/client-runtime-utils").Decimal;
             title: string;
+            expenseMethod: import("@prisma/client").$Enums.ExpenseMethod;
             note: string | null;
             receiptUrl: string | null;
             recordedById: string;
@@ -553,6 +555,7 @@ export declare class UsersController {
             status: import("@prisma/client").$Enums.ExpenseStatus;
             amount: import("@prisma/client-runtime-utils").Decimal;
             title: string;
+            expenseMethod: import("@prisma/client").$Enums.ExpenseMethod;
             note: string | null;
             receiptUrl: string | null;
             recordedById: string;
@@ -770,6 +773,7 @@ export declare class UsersController {
             status: import("@prisma/client").$Enums.ExpenseStatus;
             amount: import("@prisma/client-runtime-utils").Decimal;
             title: string;
+            expenseMethod: import("@prisma/client").$Enums.ExpenseMethod;
             note: string | null;
             receiptUrl: string | null;
             recordedById: string;

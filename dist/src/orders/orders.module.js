@@ -10,6 +10,7 @@ exports.OrdersModule = void 0;
 const common_1 = require("@nestjs/common");
 const auth_module_1 = require("../auth/auth.module");
 const customer_ledger_module_1 = require("../customer-ledger/customer-ledger.module");
+const general_ledger_module_1 = require("../general-ledger/general-ledger.module");
 const customer_notifications_module_1 = require("../customer-notifications/customer-notifications.module");
 const payments_module_1 = require("../payments/payments.module");
 const orders_controller_1 = require("./orders.controller");
@@ -22,6 +23,7 @@ exports.OrdersModule = OrdersModule = __decorate([
         imports: [
             auth_module_1.AuthModule,
             customer_ledger_module_1.CustomerLedgerModule,
+            general_ledger_module_1.GeneralLedgerModule,
             payments_module_1.PaymentsModule,
             customer_notifications_module_1.CustomerNotificationsModule,
         ],

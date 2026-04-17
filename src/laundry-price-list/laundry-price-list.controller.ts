@@ -1,14 +1,27 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { SafariRole } from '@prisma/client';
 import { CurrentUser, type JwtUser } from '../auth/decorators/current-user.decorator';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
 import { APP_BRAND } from '../common/constants/branding';
 import { LaundryPriceListService } from './laundry-price-list.service';
 
 @ApiTags('laundry-price-list')
 @ApiBearerAuth('bearer')
 @Controller('laundry-price-list')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(
+  SafariRole.OWNER,
+  SafariRole.MANAGER,
+  SafariRole.DRIVER,
+  SafariRole.WORKER,
+  SafariRole.CALL_CENTER,
+  SafariRole.ACCOUNTANT,
+  SafariRole.SUPERVISOR,
+  SafariRole.VIEWER,
+)
 export class LaundryPriceListController {
   constructor(private readonly laundryPriceListService: LaundryPriceListService) {}
 

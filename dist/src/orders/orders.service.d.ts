@@ -3,6 +3,7 @@ import type { CreatePaymentLinkResult } from '../common/services/payments.servic
 import { PaymentsService } from '../common/services/payments.service';
 import { CustomerNotificationsService } from '../customer-notifications/customer-notifications.service';
 import { CustomerLedgerService } from '../customer-ledger/customer-ledger.service';
+import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AssignDriverDto } from './dto/assign-driver.dto';
 import { CreateOrderDto } from './dto/create-order.dto';
@@ -70,7 +71,8 @@ export declare class OrdersService {
     private readonly customerLedger;
     private readonly paymentsService;
     private readonly customerNotifications;
-    constructor(prisma: PrismaService, customerLedger: CustomerLedgerService, paymentsService: PaymentsService, customerNotifications: CustomerNotificationsService);
+    private readonly generalLedger;
+    constructor(prisma: PrismaService, customerLedger: CustomerLedgerService, paymentsService: PaymentsService, customerNotifications: CustomerNotificationsService, generalLedger: GeneralLedgerService);
     private queuePosInvoiceNotify;
     private isManagerOrOwner;
     private canViewAllOrders;

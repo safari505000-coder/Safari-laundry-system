@@ -30,6 +30,7 @@ const payments_module_1 = require("./payments/payments.module");
 const permissions_module_1 = require("./permissions/permissions.module");
 const pos_module_1 = require("./pos/pos.module");
 const prisma_module_1 = require("./prisma/prisma.module");
+const safari_stream_module_1 = require("./safari-stream/safari-stream.module");
 const reports_module_1 = require("./reports/reports.module");
 const system_module_1 = require("./system/system.module");
 const subscription_plans_module_1 = require("./subscription-plans/subscription-plans.module");
@@ -56,8 +57,10 @@ exports.AppModule = AppModule = __decorate([
     (0, common_1.Module)({
         imports: [
             prisma_module_1.PrismaModule,
+            permissions_module_1.PermissionsModule,
             finance_module_1.FinanceModule,
             auth_module_1.AuthModule,
+            safari_stream_module_1.SafariStreamModule,
             users_module_1.UsersModule,
             reports_module_1.ReportsModule,
             system_module_1.SystemModule,
@@ -68,7 +71,6 @@ exports.AppModule = AppModule = __decorate([
             payments_module_1.PaymentsModule,
             branches_module_1.BranchesModule,
             wallets_module_1.WalletsModule,
-            permissions_module_1.PermissionsModule,
             audit_logs_module_1.AuditLogsModule,
             subscription_plans_module_1.SubscriptionPlansModule,
             subscribers_module_1.SubscribersModule,

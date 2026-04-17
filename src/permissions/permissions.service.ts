@@ -31,6 +31,15 @@ export class PermissionsService {
     });
   }
 
+  /** SafariStream / UI: permission keys attached to an institutional role name. */
+  async listPermissionKeysForRoleName(roleName: string): Promise<string[]> {
+    const r = await this.prisma.role.findUnique({
+      where: { name: roleName },
+      select: { permissions: { select: { key: true } } },
+    });
+    return (r?.permissions ?? []).map((p) => p.key);
+  }
+
   async getRoleWithPermissions(roleId: string): Promise<RoleWithPermissions> {
     const role = await this.prisma.role.findUnique({
       where: { id: roleId },

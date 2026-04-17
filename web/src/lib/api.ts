@@ -22,15 +22,38 @@ export type LoginResponse = {
   user: LoginUser;
 };
 
+/** SafariStream global context (`GET /api/safari-stream/snapshot`). */
+export type SafariStreamSnapshot = {
+  stream: string;
+  user: LoginUser;
+  wallet: {
+    fieldCashAvailableKd: string | null;
+    pendingDepositHoldKd: string | null;
+    pendingDebtOrdersKd: string | null;
+  };
+  permissions: string[];
+};
+
 export type ApiWrapped<T> = {
   meta: { application: string };
   data: T;
 };
 
+/**
+ * API origin only (e.g. `http://localhost:3000`). Do not include `/api` — every
+ * request path already starts with `/api/...`; a trailing `/api` would produce
+ * `/api/api/expenses` and Nest returns 404 (`Cannot POST /api/api/expenses`).
+ */
 function apiBase(): string {
-  const v = import.meta.env.VITE_API_URL as string | undefined;
-  return v ? v.replace(/\/$/, '') : '';
+  const raw = import.meta.env.VITE_API_URL as string | undefined;
+  if (typeof raw !== 'string' || !raw.trim()) return '';
+  let base = raw.trim().replace(/\/+$/, '');
+  base = base.replace(/\/api$/i, '');
+  return base;
 }
+
+/** Nest `ExpensesController` (`@Controller('expenses')`) + global prefix `api`. */
+export const API_EXPENSES = '/api/expenses';
 
 function buildUrl(path: string): string {
   if (path.startsWith('http')) return path;
@@ -823,6 +846,7 @@ export type ExpenseRow = {
   title: string;
   amount: string;
   category: string;
+  expenseMethod?: 'CASH' | 'PREPAID_CARD';
   status: 'PENDING_ACCOUNTANT' | 'APPROVED' | 'REJECTED' | 'AUDIT';
   note: string | null;
   receiptUrl: string | null;
@@ -840,7 +864,7 @@ export type ExpenseRow = {
 };
 
 export function getPendingExpenseApprovals(token: string) {
-  return apiJson<ExpenseRow[]>('/api/expenses/pending-approval', { token });
+  return apiJson<ExpenseRow[]>(`${API_EXPENSES}/pending-approval`, { token });
 }
 
 export function updateExpenseStatus(
@@ -848,7 +872,7 @@ export function updateExpenseStatus(
   id: string,
   status: ExpenseRow['status'],
 ) {
-  return apiJson<ExpenseRow>(`/api/expenses/${encodeURIComponent(id)}/status`, {
+  return apiJson<ExpenseRow>(`${API_EXPENSES}/${encodeURIComponent(id)}/status`, {
     method: 'PATCH',
     token,
     body: JSON.stringify({ status }),

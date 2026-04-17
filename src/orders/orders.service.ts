@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import {
   CashStatus,
+  GeneralLedgerEntryType,
   OrderStatus,
   PosPaymentMethod,
   Prisma,
@@ -16,6 +17,7 @@ import type { CreatePaymentLinkResult } from '../common/services/payments.servic
 import { PaymentsService } from '../common/services/payments.service';
 import { CustomerNotificationsService } from '../customer-notifications/customer-notifications.service';
 import { CustomerLedgerService } from '../customer-ledger/customer-ledger.service';
+import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
 import { parseFixed4ToMinor, toMinorFromFixed4 } from '../finance/finance-money';
 import { PrismaService } from '../prisma/prisma.service';
 import { AssignDriverDto } from './dto/assign-driver.dto';
@@ -101,6 +103,7 @@ export class OrdersService {
     private readonly customerLedger: CustomerLedgerService,
     private readonly paymentsService: PaymentsService,
     private readonly customerNotifications: CustomerNotificationsService,
+    private readonly generalLedger: GeneralLedgerService,
   ) {}
 
   private queuePosInvoiceNotify(
@@ -460,6 +463,18 @@ export class OrdersService {
               skipPerformerLookup: true,
             },
           );
+
+          await this.generalLedger.append(tx, {
+            entryType: GeneralLedgerEntryType.POS_SALE_COMPLETED,
+            amount: totalPriceDecimal,
+            memo: 'POS checkout',
+            orderId: created.id,
+            customerId,
+            actorUserId: driverUserId,
+            metadata: {
+              posPaymentMethod: posPaymentMethodResolved,
+            },
+          });
 
           return created.id;
         },

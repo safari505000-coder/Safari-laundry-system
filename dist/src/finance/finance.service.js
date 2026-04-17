@@ -29,8 +29,8 @@ let FinanceService = class FinanceService {
     async ensureOpenShiftForDriver(driverId) {
         return this.cashService.ensureOpenShiftForDriver(driverId);
     }
-    async getDailyPosSalesByPaymentMethod(fromIso, toIso) {
-        return this.cashService.getDailyPosSalesByPaymentMethod(fromIso, toIso);
+    async getDailyPosSalesByPaymentMethod(fromIso, toIso, scopedDriverId) {
+        return this.cashService.getDailyPosSalesByPaymentMethod(fromIso, toIso, scopedDriverId);
     }
     async getOwnerCustomerWalletSummary() {
         return this.debtService.getOwnerCustomerWalletSummary();

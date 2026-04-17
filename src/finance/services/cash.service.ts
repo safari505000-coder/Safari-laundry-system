@@ -79,7 +79,11 @@ export class CashService {
     });
   }
 
-  async getDailyPosSalesByPaymentMethod(fromIso: string, toIso: string) {
+  async getDailyPosSalesByPaymentMethod(
+    fromIso: string,
+    toIso: string,
+    scopedDriverId?: string,
+  ) {
     const from = new Date(fromIso);
     const to = new Date(toIso);
     if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
@@ -91,6 +95,7 @@ export class CashService {
         status: OrderStatus.COMPLETED,
         completedAt: { gte: from, lte: to },
         posPaymentMethod: { not: null },
+        ...(scopedDriverId ? { driverId: scopedDriverId } : {}),
       },
       _sum: { totalPrice: true },
       _count: true,

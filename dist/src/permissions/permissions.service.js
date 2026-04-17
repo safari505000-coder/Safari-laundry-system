@@ -31,6 +31,13 @@ let PermissionsService = class PermissionsService {
             select: { id: true, key: true, createdAt: true, updatedAt: true },
         });
     }
+    async listPermissionKeysForRoleName(roleName) {
+        const r = await this.prisma.role.findUnique({
+            where: { name: roleName },
+            select: { permissions: { select: { key: true } } },
+        });
+        return (r?.permissions ?? []).map((p) => p.key);
+    }
     async getRoleWithPermissions(roleId) {
         const role = await this.prisma.role.findUnique({
             where: { id: roleId },

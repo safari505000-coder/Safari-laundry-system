@@ -148,6 +148,20 @@ enum ExpenseStatus {
   AUDIT
 }
 
+/** Field / branch expense funding source — drives wallet vs owner-radar accounting. */
+enum ExpenseMethod {
+  CASH
+  PREPAID_CARD
+}
+
+/** Unified append-only ledger (Sales, Expenses, Debts, settlements). */
+enum GeneralLedgerEntryType {
+  POS_SALE_COMPLETED
+  EXPENSE_RECORDED
+  WALLET_SETTLEMENT
+  DEBT_ADJUSTMENT
+}
+
 enum PayrollStatus {
   PENDING
   PAID
@@ -167,6 +181,7 @@ model BranchExpense {
   title            String
   amount           Decimal         @db.Decimal(19, 4)
   category         ExpenseCategory
+  expenseMethod    ExpenseMethod   @default(CASH)
   status           ExpenseStatus   @default(PENDING_ACCOUNTANT)
   note             String?
   /** Temporary local/file/data-url receipt pointer until cloud storage is configured. */
@@ -598,4 +613,22 @@ model AuditLog {
   updatedAt DateTime @updatedAt
 
   user      User?    @relation(fields: [userId], references: [id])
+}
+
+model GeneralLedgerEntry {
+  id           String                 @id @default(uuid()) @db.Uuid
+  entryType    GeneralLedgerEntryType
+  amount       Decimal                @db.Decimal(19, 4)
+  memo         String?
+  metadata     Json?
+  customerId   String?                @db.Uuid
+  orderId      String?                @db.Uuid
+  expenseId    String?                @db.Uuid
+  actorUserId  String?                @db.Uuid
+  createdAt    DateTime               @default(now())
+
+  @@index([entryType, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([orderId])
+  @@index([expenseId])
 }
