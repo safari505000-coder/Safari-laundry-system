@@ -4,6 +4,7 @@ import {
   dashboardItem,
   expensesItem,
   financialsItem,
+  myCustodyItem,
   ordersItem,
   posItem,
   shiftsItem,
@@ -17,6 +18,6 @@ export const managerSidebarNavGroups: NavGroup[] = [
   { labelKey: 'nav.groupOperations', items: [shiftsItem] },
   {
     labelKey: 'nav.groupFinance',
-    items: [financialsItem, expensesItem, collectDriverCashItem],
+    items: [financialsItem, expensesItem, collectDriverCashItem, myCustodyItem],
   },
 ];

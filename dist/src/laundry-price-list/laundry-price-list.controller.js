@@ -21,6 +21,8 @@ const roles_decorator_1 = require("../auth/decorators/roles.decorator");
 const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
 const roles_guard_1 = require("../auth/guards/roles.guard");
 const branding_1 = require("../common/constants/branding");
+const update_laundry_category_dto_1 = require("./dto/update-laundry-category.dto");
+const update_laundry_price_item_dto_1 = require("./dto/update-laundry-price-item.dto");
 const laundry_price_list_service_1 = require("./laundry-price-list.service");
 let LaundryPriceListController = class LaundryPriceListController {
     laundryPriceListService;
@@ -35,10 +37,17 @@ let LaundryPriceListController = class LaundryPriceListController {
         const effective = q && q.length > 0 ? q : (user.branchId ?? null);
         return this.laundryPriceListService.findPriceListForBranch(effective);
     }
+    updateItem(id, dto) {
+        return this.laundryPriceListService.updatePriceItem(id, dto);
+    }
+    updateCategory(id, dto) {
+        return this.laundryPriceListService.updateCategory(id, dto);
+    }
 };
 exports.LaundryPriceListController = LaundryPriceListController;
 __decorate([
     (0, common_1.Get)('categories'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.MANAGER, client_1.SafariRole.DRIVER, client_1.SafariRole.WORKER, client_1.SafariRole.CALL_CENTER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
     (0, swagger_1.ApiOperation)({ summary: 'Laundry item categories (ordering / grouping)' }),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
@@ -46,6 +55,7 @@ __decorate([
 ], LaundryPriceListController.prototype, "findCategories", null);
 __decorate([
     (0, common_1.Get)(),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.MANAGER, client_1.SafariRole.DRIVER, client_1.SafariRole.WORKER, client_1.SafariRole.CALL_CENTER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
     (0, swagger_1.ApiOperation)({
         summary: `Laundry garment price list (${branding_1.APP_BRAND})`,
         description: 'Official KD prices per item and tier, merged with optional branch overrides. Pass branchId query to preview another branch; otherwise the JWT user branch (when present) is used.',
@@ -56,12 +66,36 @@ __decorate([
     __metadata("design:paramtypes", [Object, Object]),
     __metadata("design:returntype", void 0)
 ], LaundryPriceListController.prototype, "findAll", null);
+__decorate([
+    (0, common_1.Patch)('items/:id'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER),
+    (0, swagger_1.ApiOperation)({
+        summary: `Update master price item — OWNER only (${branding_1.APP_BRAND})`,
+        description: 'Partial update of the master tariff row (prices, name, sort order, category). Writes bump the catalog version exposed via SafariStream so driver devices auto-reload the POS catalog on next poll.',
+    }),
+    __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, update_laundry_price_item_dto_1.UpdateLaundryPriceItemDto]),
+    __metadata("design:returntype", void 0)
+], LaundryPriceListController.prototype, "updateItem", null);
+__decorate([
+    (0, common_1.Patch)('categories/:id'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER),
+    (0, swagger_1.ApiOperation)({
+        summary: `Update item category — OWNER only (${branding_1.APP_BRAND})`,
+    }),
+    __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, update_laundry_category_dto_1.UpdateLaundryCategoryDto]),
+    __metadata("design:returntype", void 0)
+], LaundryPriceListController.prototype, "updateCategory", null);
 exports.LaundryPriceListController = LaundryPriceListController = __decorate([
     (0, swagger_1.ApiTags)('laundry-price-list'),
     (0, swagger_1.ApiBearerAuth)('bearer'),
     (0, common_1.Controller)('laundry-price-list'),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.MANAGER, client_1.SafariRole.DRIVER, client_1.SafariRole.WORKER, client_1.SafariRole.CALL_CENTER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
     __metadata("design:paramtypes", [laundry_price_list_service_1.LaundryPriceListService])
 ], LaundryPriceListController);
 //# sourceMappingURL=laundry-price-list.controller.js.map

@@ -9,6 +9,12 @@ export declare class DriverBalanceRowDto {
     shiftStartedAt: Date | null;
     heldCashTotal: string;
     pendingSettlementOrderCount: number;
+    pendingCashKd: string;
+    pendingKnetKd: string;
+    pendingLinkKd: string;
+    pendingOnlineKd: string;
+    pendingTotalKd: string;
+    pendingInvoiceCount: number;
 }
 export declare class DriverBalanceResponseDto {
     drivers: DriverBalanceRowDto[];
@@ -17,5 +23,5 @@ export declare class HandoverResultDto {
     settledOrderCount: number;
     systemHandoverTotal: string;
     shiftId: string;
-    bankDepositReceiptUrl: string;
+    bankDepositReceiptUrl: string | null;
 }

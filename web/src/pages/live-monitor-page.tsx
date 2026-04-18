@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Navigate, useNavigate } from 'react-router-dom';
 import {
   Activity,
@@ -6,15 +7,17 @@ import {
   ArrowUpRight,
   Car,
   Clock,
+  Landmark,
   Receipt,
   Signal,
+  Wallet,
   X,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import {
   type BranchOperationsLiveResponse,
+  type DailyPosSalesByPaymentMethodReport,
   type DriverMonitoringResponse,
-  type ExecutiveSummaryReport,
   type LiveFeedResponse,
   apiJson,
 } from '@/lib/api';
@@ -23,8 +26,8 @@ import { cn } from '@/lib/utils';
 
 type MoneyPulse = {
   cashKd: number;
-  digitalKd: number;
-  newDebtKd: number;
+  knetKd: number;
+  debtKd: number;
 };
 
 function toNum(v: string | number | null | undefined): number {
@@ -32,6 +35,18 @@ function toNum(v: string | number | null | undefined): number {
   if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
+}
+
+function startOfDayIso(d: Date): string {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x.toISOString();
+}
+
+function endOfDayIso(d: Date): string {
+  const x = new Date(d);
+  x.setHours(23, 59, 59, 999);
+  return x.toISOString();
 }
 
 function Arrow({ delta }: { delta: number }) {
@@ -158,79 +173,97 @@ function BranchLoadBars({
 
 export function LiveMonitorPage() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const { token, user, hasRole } = useAuth();
 
+  /*
+   * Dastur §2.1 — Radar is the live command center. Both OWNER (wallboard)
+   * and ACCOUNTANT (bank-side reconciliation) may open it. Sales aggregates
+   * only — net profit / P&L breakdown stays on OWNER-gated surfaces.
+   */
+  /*
+   * Dastur §2.2 — Live monitor / Safari Pulse is an OWNER-only cockpit.
+   * It exposes real-time net-profit-adjacent signals that must never leak
+   * to ACCOUNTANT or any other role. Direct URL access by non-owners is
+   * bounced back to the root.
+   */
   const isOwner = hasRole('OWNER');
   if (!token || !user) return <Navigate to="/login" replace />;
   if (!isOwner) return <Navigate to="/" replace />;
 
-  const [executive, setExecutive] = useState<ExecutiveSummaryReport | null>(null);
   const [liveFeed, setLiveFeed] = useState<LiveFeedResponse | null>(null);
   const [branchesLive, setBranchesLive] = useState<BranchOperationsLiveResponse | null>(null);
   const [drivers, setDrivers] = useState<DriverMonitoringResponse | null>(null);
+  const [posSplit, setPosSplit] = useState<DailyPosSalesByPaymentMethodReport | null>(null);
 
-  const [mock, setMock] = useState(() => ({
-    processingCount: 6,
-    newDebtKd: 12.5,
-  }));
+  const [mock, setMock] = useState(() => ({ processingCount: 6 }));
 
   const prevMoneyRef = useRef<MoneyPulse | null>(null);
+
+  /*
+   * Dastur §2.2 — Radar "Ops Center" money cards must match the Unified
+   * Ledger totals. Source: /api/finance/reports/daily-pos-sales (same
+   * endpoint the Financials page uses), filtered per payment method.
+   *   CASH           → إجمالي الكاش
+   *   KNET           → إجمالي الكي نت
+   *   DEBT_ON_ACCOUNT → إجمالي الآجل/الدين
+   * No net-profit metric is displayed anywhere on this page, so
+   * accountant-level privacy is preserved by construction.
+   */
   const moneyPulse = useMemo<MoneyPulse>(() => {
-    // Realistic heuristic using existing executive summary:
-    // - cash: approximate grossRevenue * 0.35 (mocked split)
-    // - digital: approximate grossRevenue * 0.65 (mocked split)
-    const gross = toNum(executive?.grossRevenueKd);
-    const cash = gross * 0.35;
-    const digital = gross * 0.65;
+    const rows = posSplit?.rows ?? [];
+    const find = (m: string) =>
+      toNum(rows.find((r) => r.posPaymentMethod === m)?.totalRevenue);
     return {
-      cashKd: cash,
-      digitalKd: digital,
-      newDebtKd: mock.newDebtKd,
+      cashKd: find('CASH'),
+      knetKd: find('KNET'),
+      debtKd: find('DEBT_ON_ACCOUNT'),
     };
-  }, [executive, mock.newDebtKd]);
+  }, [posSplit]);
 
   const deltas = useMemo(() => {
     const prev = prevMoneyRef.current;
     return {
       cash: prev ? moneyPulse.cashKd - prev.cashKd : 0,
-      digital: prev ? moneyPulse.digitalKd - prev.digitalKd : 0,
-      debt: prev ? moneyPulse.newDebtKd - prev.newDebtKd : 0,
+      knet: prev ? moneyPulse.knetKd - prev.knetKd : 0,
+      debt: prev ? moneyPulse.debtKd - prev.debtKd : 0,
     };
   }, [moneyPulse]);
 
-  const todayIso = useMemo(() => new Date().toISOString().slice(0, 10), []);
-
   const refresh = useCallback(async () => {
-    const qs = new URLSearchParams();
-    qs.set('from', todayIso);
-    qs.set('to', todayIso);
+    const now = new Date();
+    const dayFrom = startOfDayIso(now);
+    const dayTo = endOfDayIso(now);
+    const posQs = new URLSearchParams({ from: dayFrom, to: dayTo });
 
-    const [exec, feed, bLive, drv] = await Promise.all([
-      apiJson<ExecutiveSummaryReport>(`/api/reports/executive-summary?${qs.toString()}`, { token }),
+    const [feed, bLive, drv, pos] = await Promise.all([
       apiJson<LiveFeedResponse>('/api/reports/live-feed?limit=12', { token }),
       apiJson<BranchOperationsLiveResponse>('/api/branches/operations-live', { token }),
       apiJson<DriverMonitoringResponse>('/api/finance/driver-monitoring', { token }),
+      apiJson<DailyPosSalesByPaymentMethodReport>(
+        `/api/finance/reports/daily-pos-sales?${posQs.toString()}`,
+        { token },
+      ),
     ]);
 
-    setExecutive(exec ?? null);
     setLiveFeed(feed ?? null);
     setBranchesLive(bLive ?? null);
     setDrivers(drv ?? null);
+    setPosSplit(pos ?? null);
 
-    // Update mock pulse values to simulate “pulsing” where live endpoints do not exist yet.
+    // Pulse the mocked processing counter until a real endpoint exists.
     setMock((m) => {
       const jitter = (min: number, max: number) =>
         min + Math.random() * (max - min);
-      const nextDebt = Math.max(0, +(m.newDebtKd + jitter(-3.2, 4.8)).toFixed(3));
       const nextProcessing = Math.max(
         0,
         Math.round(m.processingCount + jitter(-2, 3)),
       );
-      return { processingCount: nextProcessing, newDebtKd: nextDebt };
+      return { processingCount: nextProcessing };
     });
 
     prevMoneyRef.current = moneyPulse;
-  }, [todayIso, token, moneyPulse]);
+  }, [token, moneyPulse]);
 
   useEffect(() => {
     let cancelled = false;
@@ -304,28 +337,28 @@ export function LiveMonitorPage() {
             </h2>
             <div className="grid gap-4 md:grid-cols-3">
               <KpiCard
-                title="Today's Cash"
+                title={t('radar.totalCash')}
                 value={formatKwdLabel(moneyPulse.cashKd.toFixed(3))}
                 delta={deltas.cash}
                 accent="emerald"
                 icon={<Receipt className="h-5 w-5" aria-hidden />}
-                sub="Heuristic split from gross revenue"
+                sub={t('radar.totalCashSub')}
               />
               <KpiCard
-                title="Today's K-Net / Online"
-                value={formatKwdLabel(moneyPulse.digitalKd.toFixed(3))}
-                delta={deltas.digital}
+                title={t('radar.totalKnet')}
+                value={formatKwdLabel(moneyPulse.knetKd.toFixed(3))}
+                delta={deltas.knet}
                 accent="cyan"
-                icon={<Signal className="h-5 w-5" aria-hidden />}
-                sub="Heuristic split from gross revenue"
+                icon={<Landmark className="h-5 w-5" aria-hidden />}
+                sub={t('radar.totalKnetSub')}
               />
               <KpiCard
-                title="New Debt"
-                value={formatKwdLabel(moneyPulse.newDebtKd.toFixed(3))}
+                title={t('radar.totalDebt')}
+                value={formatKwdLabel(moneyPulse.debtKd.toFixed(3))}
                 delta={deltas.debt}
                 accent="rose"
-                icon={<Activity className="h-5 w-5" aria-hidden />}
-                sub="Mock pulse until live debt endpoint exists"
+                icon={<Wallet className="h-5 w-5" aria-hidden />}
+                sub={t('radar.totalDebtSub')}
               />
             </div>
           </div>

@@ -7,14 +7,15 @@ export class ConfirmHandoverDto {
   @IsUUID('4')
   driverId: string;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     description:
-      'Public URL path of uploaded bank deposit receipt (from POST /finance/handover/upload-receipt)',
+      'Optional — slip-first legacy flow. When provided, the custody bag is created directly in AWAITING_VERIFICATION. When omitted, the new Dastur §3 flow creates the bag in PENDING_DEPOSIT and the manager attaches the slip later via POST /api/manager-custody/:id/upload-slip.',
     example: '/uploads/handover-receipts/550e8400-e29b-41d4-a716-446655440000.jpg',
   })
+  @IsOptional()
   @IsString()
   @MinLength(8)
-  depositReceiptUrl: string;
+  depositReceiptUrl?: string;
 
   @ApiPropertyOptional({
     description:

@@ -4,7 +4,12 @@ import { Navigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Loader2, Upload } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
-import { type IssuedInvoicesReport, apiJson, ApiError } from '@/lib/api';
+import {
+  type DriverBalanceResponse,
+  type IssuedInvoicesReport,
+  apiJson,
+  ApiError,
+} from '@/lib/api';
 import { formatKwdLabel } from '@/lib/kwd';
 import { hasMasterIslandAccess } from '@/modules/shared/auth/is-master-access';
 import { Button } from '@/modules/shared/components/ui/button';
@@ -19,6 +24,13 @@ import {
   TableHeader,
   TableRow,
 } from '@/modules/shared/components/ui/table';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/modules/shared/components/ui/select';
 import { cn } from '@/lib/utils';
 
 function startOfDayIso(d: Date): string {
@@ -57,9 +69,18 @@ export function KnetAudit() {
   const [report, setReport] = useState<IssuedInvoicesReport | null>(null);
   const [csvName, setCsvName] = useState<string | null>(null);
   const [bankAmounts, setBankAmounts] = useState<number[]>([]);
+  const [driverFilter, setDriverFilter] = useState<string>('ALL');
+  const [drivers, setDrivers] = useState<DriverBalanceResponse | null>(null);
 
   const allowed =
     hasMasterIslandAccess(user) || hasRole('ACCOUNTANT');
+
+  useEffect(() => {
+    if (!token || !allowed) return;
+    void apiJson<DriverBalanceResponse>('/api/finance/driver-balance', { token })
+      .then((d) => setDrivers(d))
+      .catch(() => setDrivers(null));
+  }, [token, allowed]);
 
   const load = useCallback(async () => {
     if (!token || !allowed) return;
@@ -69,6 +90,7 @@ export function KnetAudit() {
         from,
         to,
         posPaymentMethod: 'KNET',
+        ...(driverFilter !== 'ALL' ? { driverId: driverFilter } : {}),
       });
       const data = await apiJson<IssuedInvoicesReport>(
         `/api/reports/issued-invoices?${qs.toString()}`,
@@ -80,7 +102,7 @@ export function KnetAudit() {
     } finally {
       setLoading(false);
     }
-  }, [allowed, from, to, token]);
+  }, [allowed, from, to, token, driverFilter]);
 
   const { rows, unmatchedBank } = useMemo(() => {
     if (!report) {
@@ -160,6 +182,13 @@ export function KnetAudit() {
 
   if (!allowed) return <Navigate to="/" replace />;
 
+  /*
+   * Dastur §2.2 — This page is strictly for BANK ↔ K-Net reconciliation.
+   * Cash-side metrics (Drivers' cash, Managers' pending deposits, Daily
+   * Net) belong on the Dashboard / Cash Reports and are intentionally
+   * NOT rendered here to keep the auditor's focus on KNET vs. bank CSV.
+   */
+
   return (
     <div className="space-y-6">
       <header>
@@ -191,6 +220,22 @@ export function KnetAudit() {
               onChange={(e) => setTo(new Date(e.target.value).toISOString())}
               className="w-auto"
             />
+          </div>
+          <div className="space-y-1 min-w-[200px]">
+            <Label>{t('reports.driver')}</Label>
+            <Select value={driverFilter} onValueChange={(v) => setDriverFilter(v ?? 'ALL')}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">{t('reports.all')}</SelectItem>
+                {(drivers?.drivers ?? []).map((d) => (
+                  <SelectItem key={d.driverId} value={d.driverId}>
+                    {d.fullName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <Button type="button" onClick={() => void load()} disabled={loading}>
             {loading ?

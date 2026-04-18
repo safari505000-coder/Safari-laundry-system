@@ -24,7 +24,9 @@ const expenses_module_1 = require("./expenses/expenses.module");
 const fixed_expense_module_1 = require("./fixed-expenses/fixed-expense.module");
 const payroll_module_1 = require("./payroll/payroll.module");
 const finance_module_1 = require("./finance/finance.module");
+const inventory_module_1 = require("./inventory/inventory.module");
 const laundry_price_list_module_1 = require("./laundry-price-list/laundry-price-list.module");
+const manager_custody_module_1 = require("./manager-custody/manager-custody.module");
 const orders_module_1 = require("./orders/orders.module");
 const payments_module_1 = require("./payments/payments.module");
 const permissions_module_1 = require("./permissions/permissions.module");
@@ -76,6 +78,8 @@ exports.AppModule = AppModule = __decorate([
             subscribers_module_1.SubscribersModule,
             call_center_module_1.CallCenterModule,
             laundry_price_list_module_1.LaundryPriceListModule,
+            inventory_module_1.InventoryModule,
+            manager_custody_module_1.ManagerCustodyModule,
             pos_module_1.PosModule,
             customers_module_1.CustomersModule,
             serve_static_1.ServeStaticModule.forRoot({

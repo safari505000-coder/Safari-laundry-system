@@ -22,6 +22,12 @@ class DriverBalanceRowDto {
     shiftStartedAt;
     heldCashTotal;
     pendingSettlementOrderCount;
+    pendingCashKd;
+    pendingKnetKd;
+    pendingLinkKd;
+    pendingOnlineKd;
+    pendingTotalKd;
+    pendingInvoiceCount;
 }
 exports.DriverBalanceRowDto = DriverBalanceRowDto;
 __decorate([
@@ -69,16 +75,48 @@ __decorate([
 ], DriverBalanceRowDto.prototype, "shiftStartedAt", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)({
-        description: 'Sum of COMPLETED orders with cash still with driver (PAID_TO_DRIVER)',
+        description: 'Sum of COMPLETED CASH orders with cash still with driver (PAID_TO_DRIVER). Kept for backward compatibility.',
     }),
     __metadata("design:type", String)
 ], DriverBalanceRowDto.prototype, "heldCashTotal", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)({
-        description: 'Number of such orders included in heldCashTotal',
+        description: 'Number of such cash orders included in heldCashTotal',
     }),
     __metadata("design:type", Number)
 ], DriverBalanceRowDto.prototype, "pendingSettlementOrderCount", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ description: 'Pending CASH invoices issued by driver (KD).' }),
+    __metadata("design:type", String)
+], DriverBalanceRowDto.prototype, "pendingCashKd", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ description: 'Pending K-Net invoices issued by driver (KD).' }),
+    __metadata("design:type", String)
+], DriverBalanceRowDto.prototype, "pendingKnetKd", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({
+        description: 'Pending Payment-Link invoices issued by driver (KD).',
+    }),
+    __metadata("design:type", String)
+], DriverBalanceRowDto.prototype, "pendingLinkKd", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({
+        description: 'Pending online-gateway invoices issued by driver (KD).',
+    }),
+    __metadata("design:type", String)
+], DriverBalanceRowDto.prototype, "pendingOnlineKd", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({
+        description: 'Total pending invoices (cash + knet + link + online, KD).',
+    }),
+    __metadata("design:type", String)
+], DriverBalanceRowDto.prototype, "pendingTotalKd", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({
+        description: 'Number of unverified invoices across every payment method for this driver.',
+    }),
+    __metadata("design:type", Number)
+], DriverBalanceRowDto.prototype, "pendingInvoiceCount", void 0);
 class DriverBalanceResponseDto {
     drivers;
 }
@@ -110,8 +148,10 @@ __decorate([
 ], HandoverResultDto.prototype, "shiftId", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)({
-        description: 'Stored receipt path under /uploads (same as confirm request)',
+        description: 'Stored receipt path under /uploads when a slip was attached at confirm time; null for the Dastur §3 two-step flow where the slip comes later.',
+        nullable: true,
+        required: false,
     }),
-    __metadata("design:type", String)
+    __metadata("design:type", Object)
 ], HandoverResultDto.prototype, "bankDepositReceiptUrl", void 0);
 //# sourceMappingURL=driver-balance.dto.js.map

@@ -227,12 +227,18 @@ export class ExpensesService {
     return { branchId };
   }
 
-  async sumInRange(from: Date, to: Date, branchId?: string): Promise<string> {
+  async sumInRange(
+    from: Date,
+    to: Date,
+    branchId?: string,
+    recordedById?: string,
+  ): Promise<string> {
     const agg = await this.prisma.branchExpense.aggregate({
       where: {
         expenseDate: { gte: from, lte: to },
         status: ExpenseStatus.APPROVED,
         ...this.branchWhere(branchId),
+        ...(recordedById ? { recordedById } : {}),
       },
       _sum: { amount: true },
     });
@@ -246,6 +252,7 @@ export class ExpensesService {
     to: Date,
     categories: ExpenseCategory[],
     branchId?: string,
+    recordedById?: string,
   ): Promise<string> {
     const agg = await this.prisma.branchExpense.aggregate({
       where: {
@@ -253,6 +260,7 @@ export class ExpensesService {
         category: { in: categories },
         status: ExpenseStatus.APPROVED,
         ...this.branchWhere(branchId),
+        ...(recordedById ? { recordedById } : {}),
       },
       _sum: { amount: true },
     });

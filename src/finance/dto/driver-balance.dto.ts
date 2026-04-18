@@ -38,14 +38,49 @@ export class DriverBalanceRowDto {
 
   @ApiProperty({
     description:
-      'Sum of COMPLETED orders with cash still with driver (PAID_TO_DRIVER)',
+      'Sum of COMPLETED CASH orders with cash still with driver (PAID_TO_DRIVER). Kept for backward compatibility.',
   })
   heldCashTotal: string;
 
   @ApiProperty({
-    description: 'Number of such orders included in heldCashTotal',
+    description: 'Number of such cash orders included in heldCashTotal',
   })
   pendingSettlementOrderCount: number;
+
+  /*
+   * Dastur §3 — Combined "pending invoices" (not yet accountant-verified).
+   * Includes every COMPLETED order the driver issued whose cashStatus is still
+   * PAID_TO_DRIVER, regardless of POS payment method. This is the staff-
+   * accountability liability: any invoice issued but not yet closed out
+   * against the accountant's books.
+   */
+
+  @ApiProperty({ description: 'Pending CASH invoices issued by driver (KD).' })
+  pendingCashKd: string;
+
+  @ApiProperty({ description: 'Pending K-Net invoices issued by driver (KD).' })
+  pendingKnetKd: string;
+
+  @ApiProperty({
+    description: 'Pending Payment-Link invoices issued by driver (KD).',
+  })
+  pendingLinkKd: string;
+
+  @ApiProperty({
+    description: 'Pending online-gateway invoices issued by driver (KD).',
+  })
+  pendingOnlineKd: string;
+
+  @ApiProperty({
+    description: 'Total pending invoices (cash + knet + link + online, KD).',
+  })
+  pendingTotalKd: string;
+
+  @ApiProperty({
+    description:
+      'Number of unverified invoices across every payment method for this driver.',
+  })
+  pendingInvoiceCount: number;
 }
 
 export class DriverBalanceResponseDto {
@@ -66,7 +101,10 @@ export class HandoverResultDto {
   shiftId: string;
 
   @ApiProperty({
-    description: 'Stored receipt path under /uploads (same as confirm request)',
+    description:
+      'Stored receipt path under /uploads when a slip was attached at confirm time; null for the Dastur §3 two-step flow where the slip comes later.',
+    nullable: true,
+    required: false,
   })
-  bankDepositReceiptUrl: string;
+  bankDepositReceiptUrl: string | null;
 }

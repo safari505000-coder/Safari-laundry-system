@@ -27,7 +27,7 @@ const POLL_MS = 8_000;
 export function CollectionsPage() {
   const { t } = useTranslation();
   const { token, hasRole } = useAuth();
-  const allowed = hasRole('OWNER', 'ACCOUNTANT');
+  const allowed = hasRole('OWNER');
   const [rows, setRows] = useState<CollectionUnpaidOnlineRow[]>([]);
   const [loading, setLoading] = useState(true);
 

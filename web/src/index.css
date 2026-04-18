@@ -167,13 +167,103 @@ body {
   }
 }
 
+/*
+ * Dastur §3 — Staff Debts print template.
+ * QR header, signature block, and breakdown rows only exist in print output.
+ * On screen they stay hidden so the UI stays clean.
+ */
+.sd-print-only {
+  display: none !important;
+}
+
+@page staff-debts-a4 {
+  size: A4 portrait;
+  margin: 15mm;
+}
+
 @media print {
+  /* Lock every staff-debts print job to A4 with 15mm margins. */
+  html,
+  body {
+    background: #fff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
   body * {
     visibility: hidden !important;
   }
   #pos-receipt-print,
-  #pos-receipt-print * {
+  #pos-receipt-print *,
+  #staff-debts-print-root,
+  #staff-debts-print-root * {
     visibility: visible !important;
+  }
+  #staff-debts-print-root {
+    page: staff-debts-a4;
+    position: fixed;
+    inset: 0 auto auto 0;
+    width: 100%;
+    min-height: 100vh;
+    margin: 0;
+    padding: 0;
+    background: #fff;
+    color: #000;
+    z-index: 9998;
+    font-family: 'Cairo', 'Almarai', sans-serif;
+  }
+  #staff-debts-print-root .sd-print-only {
+    display: block !important;
+  }
+  #staff-debts-print-root .sd-screen-only {
+    display: none !important;
+  }
+  #staff-debts-print-root table {
+    page-break-inside: auto;
+    width: 100%;
+    border-collapse: collapse;
+  }
+  #staff-debts-print-root table thead {
+    display: table-header-group;
+    background: #0f172a !important;
+    color: #fff !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  #staff-debts-print-root table tr {
+    page-break-inside: avoid;
+  }
+  #staff-debts-print-root table th,
+  #staff-debts-print-root table td {
+    border: 1px solid #000 !important;
+    padding: 4px 6px;
+    font-size: 11px;
+    color: #000 !important;
+  }
+  #staff-debts-print-root table th {
+    color: #fff !important;
+    font-weight: 700;
+  }
+  #staff-debts-print-root .bg-red-50\/60,
+  #staff-debts-print-root .sd-row-overdue {
+    background: #fecaca !important;
+    color: #000 !important;
+  }
+  #staff-debts-print-root .sd-badge-overdue {
+    background: #991b1b !important;
+    color: #fff !important;
+    border: 1px solid #000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  #staff-debts-print-root .sd-badge-current {
+    background: #e5e7eb !important;
+    color: #000 !important;
+    border: 1px solid #000 !important;
+  }
+  #staff-debts-print-root .sd-signature-block {
+    page-break-inside: avoid;
   }
   #pos-receipt-print {
     display: block !important;

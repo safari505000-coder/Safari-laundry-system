@@ -18,10 +18,10 @@ export declare class ExpensesController {
             fullName: string;
         };
         id: string;
+        branchId: string | null;
         createdAt: Date;
         updatedAt: Date;
         category: import("@prisma/client").$Enums.ExpenseCategory;
-        branchId: string | null;
         status: import("@prisma/client").$Enums.ExpenseStatus;
         amount: import("@prisma/client-runtime-utils").Decimal;
         title: string;
@@ -42,10 +42,10 @@ export declare class ExpensesController {
             fullName: string;
         };
         id: string;
+        branchId: string | null;
         createdAt: Date;
         updatedAt: Date;
         category: import("@prisma/client").$Enums.ExpenseCategory;
-        branchId: string | null;
         status: import("@prisma/client").$Enums.ExpenseStatus;
         amount: import("@prisma/client-runtime-utils").Decimal;
         title: string;
@@ -66,10 +66,10 @@ export declare class ExpensesController {
         };
     } & {
         id: string;
+        branchId: string | null;
         createdAt: Date;
         updatedAt: Date;
         category: import("@prisma/client").$Enums.ExpenseCategory;
-        branchId: string | null;
         status: import("@prisma/client").$Enums.ExpenseStatus;
         amount: import("@prisma/client-runtime-utils").Decimal;
         title: string;
@@ -91,10 +91,10 @@ export declare class ExpensesController {
         };
     } & {
         id: string;
+        branchId: string | null;
         createdAt: Date;
         updatedAt: Date;
         category: import("@prisma/client").$Enums.ExpenseCategory;
-        branchId: string | null;
         status: import("@prisma/client").$Enums.ExpenseStatus;
         amount: import("@prisma/client-runtime-utils").Decimal;
         title: string;

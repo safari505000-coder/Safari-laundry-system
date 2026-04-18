@@ -95,6 +95,21 @@ enum DepositStatus {
   REJECTED
 }
 
+/**
+ * Dastur §2.MANAGER / §3 — Manager custody aging.
+ * Lifecycle of a cash "bag" a Branch Manager receives from a Driver:
+ *   PENDING_DEPOSIT      → received from driver, no bank slip yet (24h clock runs)
+ *   AWAITING_VERIFICATION → manager uploaded slip, accountant to verify
+ *   VERIFIED             → accountant approved, custody closed
+ *   REJECTED             → accountant rejected slip, back under manager liability
+ */
+enum ManagerCashCustodyStatus {
+  PENDING_DEPOSIT
+  AWAITING_VERIFICATION
+  VERIFIED
+  REJECTED
+}
+
 model User {
   id          String     @id @default(uuid()) @db.Uuid
   /** Unique login handle (staff ID / username). */
@@ -133,6 +148,15 @@ model User {
   depositsRequested     Deposit[]            @relation("DepositDriver")
   depositsAudited       Deposit[]            @relation("DepositAuditedBy")
   posPaymentBundlesLed  PosPaymentBundle[]   @relation("PosPaymentBundleDriver")
+  stockMovementsRecorded StockMovement[]     @relation("StockMovementRecordedBy")
+  /** Cash "bags" the user received from drivers while acting as Branch Manager. */
+  managerCustodyBagsHeld       ManagerCashCustody[] @relation("ManagerCustodyManager")
+  /** Cash bags attributed to the user as the source driver (historical, even after handover). */
+  managerCustodyBagsHandedOver ManagerCashCustody[] @relation("ManagerCustodyDriver")
+  /** Accountant verifications on manager custody bags. */
+  managerCustodyVerifications  ManagerCashCustody[] @relation("ManagerCustodyVerifiedBy")
+  /** Accountant rejections on manager custody bags. */
+  managerCustodyRejections     ManagerCashCustody[] @relation("ManagerCustodyRejectedBy")
 }
 
 enum ExpenseCategory {
@@ -375,6 +399,7 @@ model Shift {
   confirmedByManager   User? @relation("ShiftConfirmedBy", fields: [confirmedByManagerId], references: [id])
   bankDepositLogs      BankDepositLog[]
   handoverOrders       Order[] @relation("ShiftHandoverOrders")
+  managerCustodyBags   ManagerCashCustody[] @relation("ShiftManagerCustody")
 
   @@index([driverId, status])
 }
@@ -552,6 +577,9 @@ model Branch {
   debtLedgerEntries     DebtLedgerEntry[]
   originCustomers       Customer[] @relation("CustomerOriginBranch")
   laundryBranchPrices   LaundryBranchItemPrice[]
+  stockLevels           BranchStockLevel[]
+  stockMovements        StockMovement[]
+  managerCustodyBags    ManagerCashCustody[] @relation("BranchManagerCustody")
 }
 
 model Payroll {
@@ -631,4 +659,170 @@ model GeneralLedgerEntry {
   @@index([actorUserId, createdAt])
   @@index([orderId])
   @@index([expenseId])
+}
+
+// ─── Inventory & Stock (Dastur §4 Smart Inventory) ───────────────────────────
+// Owner & Accountant consume the Smart Inventory report; Accountant records
+// stock-in movements (Qty / Cost / Supplier). Stock colours (Yellow = low, Red
+// = out) are derived on the server from `BranchStockLevel.quantityOnHand` vs
+// `reorderPoint` (branch) falling back to `StockItem.reorderPointDefault`.
+
+/** Operational supply category (cleaning, packaging, spare parts, uniforms, …). */
+model InventoryCategory {
+  id        String   @id @default(uuid()) @db.Uuid
+  code      String   @unique
+  nameAr    String
+  nameEn    String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items StockItem[]
+}
+
+/** External supplier (detergent vendors, parts wholesalers, etc.). */
+model Supplier {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  phone     String?
+  address   String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  movements StockMovement[]
+}
+
+/** Master inventory catalog — non-laundry operational supplies. */
+model StockItem {
+  id                  String   @id @default(uuid()) @db.Uuid
+  code                String   @unique
+  nameAr              String
+  nameEn              String?
+  /** Unit of measure (pcs, kg, L, box, …). */
+  unit                String   @default("pcs")
+  categoryId          String?  @db.Uuid
+  /** Default reorder threshold for branches without an override. */
+  reorderPointDefault Decimal  @default(0) @db.Decimal(19, 4)
+  /** Most recent purchase unit cost (KD) — set from the latest STOCK_IN. */
+  lastUnitCost        Decimal? @db.Decimal(19, 4)
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  category     InventoryCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  branchLevels BranchStockLevel[]
+  movements    StockMovement[]
+
+  @@index([categoryId])
+}
+
+/** Per-branch quantity on hand and optional branch-level reorder override. */
+model BranchStockLevel {
+  id             String    @id @default(uuid()) @db.Uuid
+  branchId       String    @db.Uuid
+  stockItemId    String    @db.Uuid
+  quantityOnHand Decimal   @default(0) @db.Decimal(19, 4)
+  /** Branch override for reorder threshold (null → fall back to item default). */
+  reorderPoint   Decimal?  @db.Decimal(19, 4)
+  /** Weighted moving-average unit cost, recomputed on every STOCK_IN. */
+  avgUnitCost    Decimal?  @db.Decimal(19, 4)
+  lastMovementAt DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  branch    Branch    @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  stockItem StockItem @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, stockItemId])
+  @@index([branchId])
+  @@index([stockItemId])
+}
+
+enum StockMovementType {
+  STOCK_IN
+  STOCK_OUT
+  ADJUSTMENT
+  TRANSFER_OUT
+  TRANSFER_IN
+}
+
+/**
+ * Immutable audit row for every quantity change on a `BranchStockLevel`.
+ * Qty is signed (STOCK_IN positive, STOCK_OUT / TRANSFER_OUT negative).
+ * `unitCost`/`totalCost` only set for STOCK_IN (purchase) — they drive the
+ * running moving-average cost on `BranchStockLevel.avgUnitCost`.
+ */
+model StockMovement {
+  id           String            @id @default(uuid()) @db.Uuid
+  stockItemId  String            @db.Uuid
+  branchId     String            @db.Uuid
+  type         StockMovementType
+  quantity     Decimal           @db.Decimal(19, 4)
+  unitCost     Decimal?          @db.Decimal(19, 4)
+  totalCost    Decimal?          @db.Decimal(19, 4)
+  supplierId   String?           @db.Uuid
+  recordedById String            @db.Uuid
+  /** External reference — PO number, supplier invoice, transfer ticket. */
+  reference    String?
+  note         String?
+  /** Optional uploaded delivery-note / receipt (≤ 1 MB per Dastur §1). */
+  receiptUrl   String?           @db.Text
+  createdAt    DateTime          @default(now())
+
+  stockItem  StockItem @relation(fields: [stockItemId], references: [id])
+  branch     Branch    @relation(fields: [branchId], references: [id])
+  supplier   Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  recordedBy User      @relation("StockMovementRecordedBy", fields: [recordedById], references: [id])
+
+  @@index([stockItemId])
+  @@index([branchId])
+  @@index([supplierId])
+  @@index([createdAt])
+}
+
+/**
+ * Dastur §3 — Manager Accountability.
+ * One row per "bag" of cash physically received by a Branch Manager from a Driver.
+ * - receivedFromDriverAt starts the 24h aging clock.
+ * - status drives the aging / verification lifecycle.
+ * - depositSlipUrl is the bank deposit slip photo (required to leave PENDING_DEPOSIT).
+ * - The Accountant must verify the slip to close custody (→ VERIFIED).
+ */
+model ManagerCashCustody {
+  id                     String                   @id @default(uuid()) @db.Uuid
+  managerId              String                   @db.Uuid
+  driverId               String                   @db.Uuid
+  branchId               String?                  @db.Uuid
+  /** Closed handover shift that produced this bag. */
+  shiftId                String?                  @db.Uuid
+  /** Cash amount handed over from driver to manager (KWD). */
+  amountKd               Decimal                  @db.Decimal(19, 4)
+  settledOrderCount      Int                      @default(0)
+  status                 ManagerCashCustodyStatus @default(PENDING_DEPOSIT)
+  /** Aging clock starts here. */
+  receivedFromDriverAt   DateTime                 @default(now())
+  slipUploadedAt         DateTime?
+  depositSlipUrl         String?                  @db.Text
+  verifiedByAccountantId String?                  @db.Uuid
+  verifiedAt             DateTime?
+  rejectedByAccountantId String?                  @db.Uuid
+  rejectedAt             DateTime?
+  rejectionReason        String?
+  note                   String?
+  createdAt              DateTime                 @default(now())
+  updatedAt              DateTime                 @updatedAt
+
+  manager              User    @relation("ManagerCustodyManager", fields: [managerId], references: [id], onDelete: Restrict)
+  driver               User    @relation("ManagerCustodyDriver", fields: [driverId], references: [id], onDelete: Restrict)
+  branch               Branch? @relation("BranchManagerCustody", fields: [branchId], references: [id], onDelete: SetNull)
+  shift                Shift?  @relation("ShiftManagerCustody", fields: [shiftId], references: [id], onDelete: SetNull)
+  verifiedByAccountant User?   @relation("ManagerCustodyVerifiedBy", fields: [verifiedByAccountantId], references: [id], onDelete: SetNull)
+  rejectedByAccountant User?   @relation("ManagerCustodyRejectedBy", fields: [rejectedByAccountantId], references: [id], onDelete: SetNull)
+
+  @@index([managerId, status])
+  @@index([status, receivedFromDriverAt])
+  @@index([branchId])
+  @@index([shiftId])
+  @@index([driverId])
 }

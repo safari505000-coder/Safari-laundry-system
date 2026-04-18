@@ -32,10 +32,10 @@ export declare class ReportsController {
             };
             driver: {
                 id: string;
+                branchId: string | null;
                 username: string;
                 fullName: string;
                 employeeId: string | null;
-                branchId: string | null;
             } | null;
         }[];
     }>;
@@ -59,12 +59,12 @@ export declare class ReportsController {
     driverLedger(q: DriverLedgerQueryDto): Promise<{
         driver: {
             id: string;
+            branchId: string | null;
             username: string;
             fullName: string;
             employeeId: string | null;
             phone: string | null;
             safariRole: import("@prisma/client").$Enums.SafariRole;
-            branchId: string | null;
         };
         owedToOfficeKd: string;
         pendingSettlementOrderCount: number;
@@ -95,6 +95,7 @@ export declare class ReportsController {
         from: string;
         to: string;
         branchId: string | null;
+        driverId: string | null;
         grossRevenueKd: string;
         variableSoapFuelKd: string;
         miscOperationalKd: string;
@@ -104,5 +105,21 @@ export declare class ReportsController {
         payrollPaidKd: string;
         totalExpensesVariableAndFixedKd: string;
         netProfitKd: string;
+    }>;
+    unifiedLedgerStream(q: ReportsRangeQueryDto): Promise<{
+        from: string;
+        to: string;
+        rows: {
+            id: string;
+            at: string;
+            streamType: string;
+            amountKd: string;
+            memo: string | null;
+            driverId: string | null;
+            driverName: string | null;
+            attachmentUrl: string | null;
+            refKind: "ORDER" | "EXPENSE" | "DEPOSIT";
+            refId: string;
+        }[];
     }>;
 }

@@ -15,7 +15,9 @@ import { ExpensesModule } from './expenses/expenses.module';
 import { FixedExpenseModule } from './fixed-expenses/fixed-expense.module';
 import { PayrollModule } from './payroll/payroll.module';
 import { FinanceModule } from './finance/finance.module';
+import { InventoryModule } from './inventory/inventory.module';
 import { LaundryPriceListModule } from './laundry-price-list/laundry-price-list.module';
+import { ManagerCustodyModule } from './manager-custody/manager-custody.module';
 import { OrdersModule } from './orders/orders.module';
 import { PaymentsModule } from './payments/payments.module';
 import { PermissionsModule } from './permissions/permissions.module';
@@ -62,6 +64,8 @@ const spaStaticModule = existsSync(webDistPath)
     SubscribersModule,
     CallCenterModule,
     LaundryPriceListModule,
+    InventoryModule,
+    ManagerCustodyModule,
     PosModule,
     CustomersModule,
     ServeStaticModule.forRoot({

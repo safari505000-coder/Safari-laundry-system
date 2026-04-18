@@ -11,6 +11,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.LaundryPriceListService = void 0;
 const common_1 = require("@nestjs/common");
+const client_1 = require("@prisma/client");
 const prisma_service_1 = require("../prisma/prisma.service");
 function mergeTier(base, override) {
     if (base == null)
@@ -65,6 +66,110 @@ let LaundryPriceListService = class LaundryPriceListService {
     }
     async findAllForApi() {
         return this.findPriceListForBranch(null);
+    }
+    async getCatalogVersion() {
+        const [items, cats, overrides] = await Promise.all([
+            this.prisma.laundryPriceListItem.aggregate({
+                _max: { updatedAt: true },
+            }),
+            this.prisma.laundryItemCategory.aggregate({
+                _max: { updatedAt: true },
+            }),
+            this.prisma.laundryBranchItemPrice.aggregate({
+                _max: { updatedAt: true },
+            }),
+        ]);
+        const candidates = [
+            items._max.updatedAt,
+            cats._max.updatedAt,
+            overrides._max.updatedAt,
+        ].filter((d) => d instanceof Date);
+        if (candidates.length === 0)
+            return '0';
+        const newest = candidates.reduce((a, b) => (a > b ? a : b));
+        return newest.toISOString();
+    }
+    async updatePriceItem(id, dto) {
+        const existing = await this.prisma.laundryPriceListItem.findUnique({
+            where: { id },
+        });
+        if (!existing) {
+            throw new common_1.NotFoundException('Laundry price item not found');
+        }
+        if (dto.categoryId !== undefined && dto.categoryId !== null) {
+            const cat = await this.prisma.laundryItemCategory.findUnique({
+                where: { id: dto.categoryId },
+                select: { id: true },
+            });
+            if (!cat) {
+                throw new common_1.NotFoundException('Category not found');
+            }
+        }
+        const data = {};
+        if (dto.nameAr !== undefined)
+            data.nameAr = dto.nameAr;
+        if (dto.nameEn !== undefined)
+            data.nameEn = dto.nameEn;
+        if (dto.sortOrder !== undefined)
+            data.sortOrder = dto.sortOrder;
+        if (dto.manualEntry !== undefined)
+            data.manualEntry = dto.manualEntry;
+        if (dto.priceNormal !== undefined) {
+            data.priceNormal = new client_1.Prisma.Decimal(dto.priceNormal);
+        }
+        if (dto.priceUrgent !== undefined) {
+            data.priceUrgent = new client_1.Prisma.Decimal(dto.priceUrgent);
+        }
+        if (dto.pricePressOnly !== undefined) {
+            data.pricePressOnly =
+                dto.pricePressOnly === null
+                    ? null
+                    : new client_1.Prisma.Decimal(dto.pricePressOnly);
+        }
+        if (dto.priceUrgentPress !== undefined) {
+            data.priceUrgentPress =
+                dto.priceUrgentPress === null
+                    ? null
+                    : new client_1.Prisma.Decimal(dto.priceUrgentPress);
+        }
+        if (dto.categoryId !== undefined) {
+            data.category =
+                dto.categoryId === null
+                    ? { disconnect: true }
+                    : { connect: { id: dto.categoryId } };
+        }
+        const row = await this.prisma.laundryPriceListItem.update({
+            where: { id },
+            data,
+            include: { category: true },
+        });
+        return this.mapItemDto(row);
+    }
+    async updateCategory(id, dto) {
+        const existing = await this.prisma.laundryItemCategory.findUnique({
+            where: { id },
+        });
+        if (!existing) {
+            throw new common_1.NotFoundException('Category not found');
+        }
+        const data = {};
+        if (dto.nameAr !== undefined)
+            data.nameAr = dto.nameAr;
+        if (dto.nameEn !== undefined)
+            data.nameEn = dto.nameEn;
+        if (dto.sortOrder !== undefined)
+            data.sortOrder = dto.sortOrder;
+        const row = await this.prisma.laundryItemCategory.update({
+            where: { id },
+            data,
+        });
+        return {
+            id: row.id,
+            code: row.code,
+            nameAr: row.nameAr,
+            nameEn: row.nameEn,
+            sortOrder: row.sortOrder,
+        };
     }
     mapItemDto(r, ov) {
         const c = r.category;

@@ -1,6 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { UpdateLaundryCategoryDto } from './dto/update-laundry-category.dto';
+import { UpdateLaundryPriceItemDto } from './dto/update-laundry-price-item.dto';
 
 export type LaundryItemCategoryDto = {
   id: string;
@@ -110,6 +112,122 @@ export class LaundryPriceListService {
   /** Back-compat alias — base list with no branch merge. */
   async findAllForApi(): Promise<LaundryPriceListItemDto[]> {
     return this.findPriceListForBranch(null);
+  }
+
+  /**
+   * Monotonically-increasing catalog version string.
+   * Derived from the most-recent `updatedAt` across price items, categories, and
+   * branch overrides so it survives server restarts and any backchannel DB edit.
+   * Consumed by SafariStream snapshot so Driver POS can invalidate its cached
+   * price list without a push channel (polled every 45s by the provider).
+   */
+  async getCatalogVersion(): Promise<string> {
+    const [items, cats, overrides] = await Promise.all([
+      this.prisma.laundryPriceListItem.aggregate({
+        _max: { updatedAt: true },
+      }),
+      this.prisma.laundryItemCategory.aggregate({
+        _max: { updatedAt: true },
+      }),
+      this.prisma.laundryBranchItemPrice.aggregate({
+        _max: { updatedAt: true },
+      }),
+    ]);
+    const candidates = [
+      items._max.updatedAt,
+      cats._max.updatedAt,
+      overrides._max.updatedAt,
+    ].filter((d): d is Date => d instanceof Date);
+    if (candidates.length === 0) return '0';
+    const newest = candidates.reduce((a, b) => (a > b ? a : b));
+    return newest.toISOString();
+  }
+
+  async updatePriceItem(
+    id: string,
+    dto: UpdateLaundryPriceItemDto,
+  ): Promise<LaundryPriceListItemDto> {
+    const existing = await this.prisma.laundryPriceListItem.findUnique({
+      where: { id },
+    });
+    if (!existing) {
+      throw new NotFoundException('Laundry price item not found');
+    }
+
+    if (dto.categoryId !== undefined && dto.categoryId !== null) {
+      const cat = await this.prisma.laundryItemCategory.findUnique({
+        where: { id: dto.categoryId },
+        select: { id: true },
+      });
+      if (!cat) {
+        throw new NotFoundException('Category not found');
+      }
+    }
+
+    const data: Prisma.LaundryPriceListItemUpdateInput = {};
+    if (dto.nameAr !== undefined) data.nameAr = dto.nameAr;
+    if (dto.nameEn !== undefined) data.nameEn = dto.nameEn;
+    if (dto.sortOrder !== undefined) data.sortOrder = dto.sortOrder;
+    if (dto.manualEntry !== undefined) data.manualEntry = dto.manualEntry;
+    if (dto.priceNormal !== undefined) {
+      data.priceNormal = new Prisma.Decimal(dto.priceNormal);
+    }
+    if (dto.priceUrgent !== undefined) {
+      data.priceUrgent = new Prisma.Decimal(dto.priceUrgent);
+    }
+    if (dto.pricePressOnly !== undefined) {
+      data.pricePressOnly =
+        dto.pricePressOnly === null
+          ? null
+          : new Prisma.Decimal(dto.pricePressOnly);
+    }
+    if (dto.priceUrgentPress !== undefined) {
+      data.priceUrgentPress =
+        dto.priceUrgentPress === null
+          ? null
+          : new Prisma.Decimal(dto.priceUrgentPress);
+    }
+    if (dto.categoryId !== undefined) {
+      data.category =
+        dto.categoryId === null
+          ? { disconnect: true }
+          : { connect: { id: dto.categoryId } };
+    }
+
+    const row = await this.prisma.laundryPriceListItem.update({
+      where: { id },
+      data,
+      include: { category: true },
+    });
+    return this.mapItemDto(row);
+  }
+
+  async updateCategory(
+    id: string,
+    dto: UpdateLaundryCategoryDto,
+  ): Promise<LaundryItemCategoryDto> {
+    const existing = await this.prisma.laundryItemCategory.findUnique({
+      where: { id },
+    });
+    if (!existing) {
+      throw new NotFoundException('Category not found');
+    }
+    const data: Prisma.LaundryItemCategoryUpdateInput = {};
+    if (dto.nameAr !== undefined) data.nameAr = dto.nameAr;
+    if (dto.nameEn !== undefined) data.nameEn = dto.nameEn;
+    if (dto.sortOrder !== undefined) data.sortOrder = dto.sortOrder;
+
+    const row = await this.prisma.laundryItemCategory.update({
+      where: { id },
+      data,
+    });
+    return {
+      id: row.id,
+      code: row.code,
+      nameAr: row.nameAr,
+      nameEn: row.nameEn,
+      sortOrder: row.sortOrder,
+    };
   }
 
   private mapItemDto(

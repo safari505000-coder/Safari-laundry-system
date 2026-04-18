@@ -17,6 +17,7 @@ import { FinancialCycleReportPage } from '@/pages/financial-cycle-report-page';
 import { ReportsPage } from '@/pages/reports-page';
 import { LoginPage } from '@/pages/login-page';
 import { OrdersPage } from '@/pages/orders-page';
+import { MyCustodyPage } from '@/modules/manager/pages/MyCustodyPage';
 import { ShiftsPage } from '@/modules/manager/pages/ShiftsPage';
 import { SubscribersPage } from '@/pages/subscribers-page';
 import { SubscriptionsPage } from '@/pages/subscriptions-page';
@@ -32,11 +33,17 @@ import { DriverMonitorPage } from '@/pages/driver-monitor-page';
 import { ExpenseApprovalPage } from '@/pages/expense-approval-page';
 import { LiveMonitorPage } from '@/pages/live-monitor-page';
 import { KnetAudit } from '@/modules/accountant/pages/KnetAudit';
+import AccountantInventoryReportPage from '@/modules/accountant/pages/InventoryReport';
+import AccountantStockInPage from '@/modules/accountant/pages/StockIn';
+import { UnifiedLedgerPage } from '@/pages/unified-ledger-page';
 import { MyDepositsPage } from '@/modules/driver/pages/my-deposits-page';
 import { WhatsappToolsPage } from '@/modules/call-center/pages/whatsapp-tools-page';
 import { ManageItems } from '@/modules/owner/pages/ManageItems';
 import { OwnerDashboard } from '@/modules/owner/pages/OwnerDashboard';
+import OwnerInventoryReportPage from '@/modules/owner/pages/InventoryReport';
 import { OwnerProfitRadar } from '@/modules/owner/pages/OwnerProfitRadar';
+import { ManagerCustodyAgingPage } from '@/pages/manager-custody-aging-page';
+import { StaffDebtsPage } from '@/pages/staff-debts-page';
 
 function AppToaster() {
   const { i18n } = useTranslation();
@@ -98,9 +105,33 @@ export default function App() {
                   }
                 />
                 <Route
-                  path="customers"
+                  path="owner/inventory"
+                  element={
+                    <RequireRoles roles={['OWNER']}>
+                      <OwnerInventoryReportPage />
+                    </RequireRoles>
+                  }
+                />
+                <Route
+                  path="accountant/inventory"
                   element={
                     <RequireRoles roles={['OWNER', 'ACCOUNTANT']}>
+                      <AccountantInventoryReportPage />
+                    </RequireRoles>
+                  }
+                />
+                <Route
+                  path="accountant/stock-in"
+                  element={
+                    <RequireRoles roles={['ACCOUNTANT']}>
+                      <AccountantStockInPage />
+                    </RequireRoles>
+                  }
+                />
+                <Route
+                  path="customers"
+                  element={
+                    <RequireRoles roles={['OWNER']}>
                       <CustomersPage />
                     </RequireRoles>
                   }
@@ -108,7 +139,7 @@ export default function App() {
                 <Route
                   path="collections"
                   element={
-                    <RequireRoles roles={['OWNER', 'ACCOUNTANT']}>
+                    <RequireRoles roles={['OWNER']}>
                       <CollectionsPage />
                     </RequireRoles>
                   }
@@ -131,11 +162,43 @@ export default function App() {
                 <Route path="subscribers" element={<SubscribersPage />} />
                 <Route path="orders" element={<OrdersPage />} />
                 <Route path="shifts" element={<ShiftsPage />} />
+                <Route
+                  path="manager/custody"
+                  element={
+                    <RequireRoles roles={['MANAGER']}>
+                      <MyCustodyPage />
+                    </RequireRoles>
+                  }
+                />
+                <Route
+                  path="finance/manager-custody-aging"
+                  element={
+                    <RequireRoles roles={['OWNER', 'ACCOUNTANT']}>
+                      <ManagerCustodyAgingPage />
+                    </RequireRoles>
+                  }
+                />
+                <Route
+                  path="staff-debts"
+                  element={
+                    <RequireRoles roles={['OWNER', 'ACCOUNTANT']}>
+                      <StaffDebtsPage />
+                    </RequireRoles>
+                  }
+                />
                 <Route path="financials" element={<FinancialsPage />} />
                 <Route path="expense-approval" element={<ExpenseApprovalPage />} />
                 <Route path="collect-driver-cash" element={<CollectDriverCashPage />} />
                 <Route path="financial-cycle-report" element={<FinancialCycleReportPage />} />
                 <Route path="reports" element={<ReportsPage />} />
+                <Route
+                  path="unified-ledger"
+                  element={
+                    <RequireRoles roles={['OWNER', 'ACCOUNTANT']}>
+                      <UnifiedLedgerPage />
+                    </RequireRoles>
+                  }
+                />
                 <Route path="payroll" element={<PayrollPage />} />
                 <Route path="fixed-expenses" element={<FixedExpensesPage />} />
                 <Route path="expenses" element={<ExpensesPage />} />

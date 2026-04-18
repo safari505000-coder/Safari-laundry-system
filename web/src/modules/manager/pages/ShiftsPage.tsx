@@ -9,16 +9,13 @@ import {
   type DriverBalanceRow,
   apiJson,
   ApiError,
-  confirmHandover,
-  uploadHandoverReceipt,
+  approveReceiptFromDriver,
 } from '@/lib/api';
 import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
 import { formatKwdLabel } from '@/lib/kwd';
 import { Badge } from '@/modules/shared/components/ui/badge';
 import { Button } from '@/modules/shared/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/modules/shared/components/ui/card';
-import { Input } from '@/modules/shared/components/ui/input';
-import { Label } from '@/modules/shared/components/ui/label';
 import {
   Dialog,
   DialogContent,
@@ -37,8 +34,6 @@ export function ShiftsPage() {
   const [data, setData] = useState<DriverBalanceResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [settleDriver, setSettleDriver] = useState<DriverBalanceRow | null>(null);
-  const [receiptFile, setReceiptFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const canViewStaff = hasRole(
@@ -92,33 +87,18 @@ export function ShiftsPage() {
     return () => window.clearInterval(id);
   }, [token, canViewStaff, load]);
 
-  useEffect(() => {
-    if (!receiptFile) {
-      setPreviewUrl(null);
-      return;
-    }
-    const u = URL.createObjectURL(receiptFile);
-    setPreviewUrl(u);
-    return () => {
-      URL.revokeObjectURL(u);
-    };
-  }, [receiptFile]);
-
-  async function onConfirmSettle() {
-    if (!token || !settleDriver || !receiptFile) return;
+  async function onApproveReceipt() {
+    // Dastur §3: Approve Receipt is a ONE-STEP commit — no slip required here.
+    // The 24h aging clock starts the moment this succeeds. The manager uploads
+    // the bank deposit slip from /manager/custody (MyCustodyPage).
+    if (!token || !settleDriver) return;
     setSubmitting(true);
     try {
-      const { depositReceiptUrl } = await uploadHandoverReceipt(
-        token,
-        receiptFile,
-      );
-      await confirmHandover(token, {
+      await approveReceiptFromDriver(token, {
         driverId: settleDriver.driverId,
-        depositReceiptUrl,
       });
-      toast.success(t('collectDriverCash.success'));
+      toast.success(t('managerCustody.approveReceiptSuccess'));
       setSettleDriver(null);
-      setReceiptFile(null);
       await load();
     } catch (e) {
       if (e instanceof ApiError) toast.error(e.message);
@@ -250,12 +230,9 @@ export function ShiftsPage() {
                         type="button"
                         size="sm"
                         className="ms-auto bg-slate-900 text-white hover:bg-slate-800"
-                        onClick={() => {
-                          setReceiptFile(null);
-                          setSettleDriver(d);
-                        }}
+                        onClick={() => setSettleDriver(d)}
                       >
-                        {t('shifts.settle')}
+                        {t('managerCustody.approveReceiptCta')}
                       </Button>
                     : null}
                   </div>
@@ -268,58 +245,45 @@ export function ShiftsPage() {
       <Dialog
         open={!!settleDriver}
         onOpenChange={(open) => {
-          if (!open) {
-            setSettleDriver(null);
-            setReceiptFile(null);
-          }
+          if (!open) setSettleDriver(null);
         }}
       >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{t('collectDriverCash.title')}</DialogTitle>
+            <DialogTitle>
+              {t('managerCustody.approveReceiptTitle')}
+            </DialogTitle>
           </DialogHeader>
           {settleDriver ?
             <div className="space-y-3 text-sm">
-              <p>
-                <span className="font-medium">{settleDriver.fullName}</span>
-              </p>
-              <p className="text-muted-foreground">
-                {t('collectDriverCash.ordersPending')}:{' '}
-                {settleDriver.pendingSettlementOrderCount}
-              </p>
-              <p className="text-lg font-semibold tabular-nums">
-                {formatKwdLabel(settleDriver.heldCashTotal)}
-              </p>
-              <div className="space-y-2">
-                <Label htmlFor="shift-receipt">{t('collectDriverCash.receiptLabel')}</Label>
-                <Input
-                  id="shift-receipt"
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  className="cursor-pointer"
-                  onChange={(e) => setReceiptFile(e.target.files?.[0] ?? null)}
-                />
+              <div className="rounded-lg border bg-muted/30 p-3">
+                <p className="text-xs text-muted-foreground">
+                  {t('managerCustody.colDriver')}
+                </p>
+                <p className="font-medium">{settleDriver.fullName}</p>
               </div>
-              {previewUrl ?
-                <div className="overflow-hidden rounded-lg border border-zinc-200">
-                  <img
-                    src={previewUrl}
-                    alt=""
-                    className="max-h-48 w-full object-contain bg-zinc-100"
-                  />
-                </div>
-              : null}
+              <div className="flex items-center justify-between rounded-lg border px-3 py-2">
+                <span className="text-xs text-muted-foreground">
+                  {t('managerCustody.colAmount')}
+                </span>
+                <span className="text-lg font-semibold tabular-nums">
+                  {formatKwdLabel(settleDriver.heldCashTotal)}
+                </span>
+              </div>
+              <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                {t('managerCustody.approveReceiptHint24h')}
+              </p>
             </div>
           : null}
           <DialogFooter>
             <Button
               type="button"
-              disabled={submitting || !receiptFile || !settleDriver}
-              onClick={() => void onConfirmSettle()}
+              disabled={submitting || !settleDriver}
+              onClick={() => void onApproveReceipt()}
             >
               {submitting ?
                 <Loader2 className="h-4 w-4 animate-spin" />
-              : t('collectDriverCash.submit')}
+              : t('managerCustody.approveReceiptCta')}
             </Button>
           </DialogFooter>
         </DialogContent>

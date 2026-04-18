@@ -26,10 +26,10 @@ export declare class ExpensesService {
             fullName: string;
         };
         id: string;
+        branchId: string | null;
         createdAt: Date;
         updatedAt: Date;
         category: import("@prisma/client").$Enums.ExpenseCategory;
-        branchId: string | null;
         status: import("@prisma/client").$Enums.ExpenseStatus;
         amount: Prisma.Decimal;
         title: string;
@@ -50,10 +50,10 @@ export declare class ExpensesService {
             fullName: string;
         };
         id: string;
+        branchId: string | null;
         createdAt: Date;
         updatedAt: Date;
         category: import("@prisma/client").$Enums.ExpenseCategory;
-        branchId: string | null;
         status: import("@prisma/client").$Enums.ExpenseStatus;
         amount: Prisma.Decimal;
         title: string;
@@ -74,10 +74,10 @@ export declare class ExpensesService {
         };
     } & {
         id: string;
+        branchId: string | null;
         createdAt: Date;
         updatedAt: Date;
         category: import("@prisma/client").$Enums.ExpenseCategory;
-        branchId: string | null;
         status: import("@prisma/client").$Enums.ExpenseStatus;
         amount: Prisma.Decimal;
         title: string;
@@ -99,10 +99,10 @@ export declare class ExpensesService {
         };
     } & {
         id: string;
+        branchId: string | null;
         createdAt: Date;
         updatedAt: Date;
         category: import("@prisma/client").$Enums.ExpenseCategory;
-        branchId: string | null;
         status: import("@prisma/client").$Enums.ExpenseStatus;
         amount: Prisma.Decimal;
         title: string;
@@ -113,6 +113,6 @@ export declare class ExpensesService {
         expenseDate: Date;
     }>;
     private branchWhere;
-    sumInRange(from: Date, to: Date, branchId?: string): Promise<string>;
-    sumInRangeByCategories(from: Date, to: Date, categories: ExpenseCategory[], branchId?: string): Promise<string>;
+    sumInRange(from: Date, to: Date, branchId?: string, recordedById?: string): Promise<string>;
+    sumInRangeByCategories(from: Date, to: Date, categories: ExpenseCategory[], branchId?: string, recordedById?: string): Promise<string>;
 }

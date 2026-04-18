@@ -31,8 +31,73 @@ export type SafariStreamSnapshot = {
     pendingDepositHoldKd: string | null;
     pendingDebtOrdersKd: string | null;
   };
+  institution: {
+    allDriversFieldCashKd: string;
+    allDriversPendingDepositsKd: string;
+    financialDayNetProfitKd: string;
+    financialDateIso: string;
+  } | null;
   permissions: string[];
+  /**
+   * Laundry catalog version token. Bumped when OWNER edits any item / category
+   * / branch override. `usePriceList` watches this value from the snapshot and
+   * reloads its cache when it changes — which is how Driver POS picks up price
+   * changes without a dedicated push channel.
+   */
+  priceListVersion?: string;
+  /**
+   * Dastur §3 — Manager Accountability alert surface.
+   * - fleet.*: Owner / Accountant dashboards (fleet-wide overdue count & KD).
+   * - mine.*:  Manager sidebar badge (their own pending bags + overdue count).
+   */
+  managerCustody?: {
+    fleet: {
+      pendingAmountKd: string;
+      overdueCount: number;
+      overdueAmountKd: string;
+    } | null;
+    mine: {
+      pendingCount: number;
+      pendingAmountKd: string;
+      overdueCount: number;
+    } | null;
+  };
 };
+
+export type UnifiedLedgerStreamRow = {
+  id: string;
+  at: string;
+  streamType: string;
+  amountKd: string;
+  memo: string | null;
+  driverId: string | null;
+  driverName: string | null;
+  attachmentUrl: string | null;
+  refKind: 'ORDER' | 'EXPENSE' | 'DEPOSIT';
+  refId: string;
+};
+
+export type UnifiedLedgerStreamResponse = {
+  from: string;
+  to: string;
+  rows: UnifiedLedgerStreamRow[];
+};
+
+export function getUnifiedLedgerStream(
+  token: string,
+  params: { from: string; to: string; driverId?: string; branchId?: string },
+) {
+  const qs = new URLSearchParams({
+    from: params.from,
+    to: params.to,
+  });
+  if (params.driverId) qs.set('driverId', params.driverId);
+  if (params.branchId) qs.set('branchId', params.branchId);
+  return apiJson<UnifiedLedgerStreamResponse>(
+    `/api/reports/unified-ledger-stream?${qs.toString()}`,
+    { token },
+  );
+}
 
 export type ApiWrapped<T> = {
   meta: { application: string };
@@ -176,6 +241,13 @@ export function getOperatingStatus() {
   return apiJson<OperatingStatusPayload>('/api/system/operating-status');
 }
 
+/*
+ * Dastur §3 — per-driver pending invoice aggregates returned by
+ * /api/finance/driver-balance. `heldCashTotal` is preserved for callers
+ * that only care about cash; `pending*Kd` expose the full
+ * invoice-level liability (Cash + K-Net + Link + Online) used by the
+ * Staff Debts report.
+ */
 export type DriverBalanceRow = {
   driverId: string;
   employeeId: string | null;
@@ -187,6 +259,12 @@ export type DriverBalanceRow = {
   shiftStartedAt: string | null;
   heldCashTotal: string;
   pendingSettlementOrderCount: number;
+  pendingCashKd: string;
+  pendingKnetKd: string;
+  pendingLinkKd: string;
+  pendingOnlineKd: string;
+  pendingTotalKd: string;
+  pendingInvoiceCount: number;
 };
 
 export type DriverBalanceResponse = {
@@ -273,7 +351,8 @@ export function confirmHandover(
   token: string,
   body: {
     driverId: string;
-    depositReceiptUrl: string;
+    /** Optional — when omitted the bag enters the new two-step PENDING_DEPOSIT flow. */
+    depositReceiptUrl?: string;
     declaredHandoverTotal?: number;
   },
 ) {
@@ -752,6 +831,190 @@ export type LaundryPriceListItemRow = {
   categorySortOrder?: number | null;
 };
 
+// ── Dastur §4 Smart Inventory ───────────────────────────────────────────────
+
+export type InventoryStatus = 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK';
+
+export type InventoryCategoryRow = {
+  id: string;
+  code: string;
+  nameAr: string;
+  nameEn: string | null;
+  sortOrder: number;
+};
+
+export type StockItemRow = {
+  id: string;
+  code: string;
+  nameAr: string;
+  nameEn: string | null;
+  unit: string;
+  categoryId: string | null;
+  categoryNameAr: string | null;
+  reorderPointDefault: string;
+  lastUnitCost: string | null;
+  isActive: boolean;
+};
+
+export type SupplierRow = {
+  id: string;
+  name: string;
+  phone: string | null;
+  address: string | null;
+  isActive: boolean;
+  createdAt: string;
+};
+
+export type InventoryReportRow = {
+  id: string;
+  stockItemId: string;
+  code: string;
+  nameAr: string;
+  nameEn: string | null;
+  unit: string;
+  categoryId: string | null;
+  categoryNameAr: string | null;
+  categoryNameEn: string | null;
+  branchId: string;
+  branchName: string;
+  quantityOnHand: string;
+  reorderPointEffective: string;
+  avgUnitCost: string | null;
+  lastUnitCost: string | null;
+  lastMovementAt: string | null;
+  status: InventoryStatus;
+};
+
+export type InventoryReportSummary = {
+  totalSkus: number;
+  inStock: number;
+  lowStock: number;
+  outOfStock: number;
+  inventoryValueKd: string;
+};
+
+export type InventoryReportResponse = {
+  rows: InventoryReportRow[];
+  summary: InventoryReportSummary;
+};
+
+export type InventoryReportFilters = {
+  categoryId?: string;
+  branchId?: string;
+  status?: InventoryStatus;
+};
+
+export function getInventoryReport(
+  token: string,
+  filters: InventoryReportFilters,
+) {
+  const qs = new URLSearchParams();
+  if (filters.categoryId) qs.set('categoryId', filters.categoryId);
+  if (filters.branchId) qs.set('branchId', filters.branchId);
+  if (filters.status) qs.set('status', filters.status);
+  const search = qs.toString();
+  return apiJson<InventoryReportResponse>(
+    `/api/inventory/report${search ? `?${search}` : ''}`,
+    { token },
+  );
+}
+
+export function listInventoryCategories(token: string) {
+  return apiJson<InventoryCategoryRow[]>('/api/inventory/categories', { token });
+}
+
+export function listStockItems(token: string) {
+  return apiJson<StockItemRow[]>('/api/inventory/items', { token });
+}
+
+export function listSuppliers(token: string) {
+  return apiJson<SupplierRow[]>('/api/inventory/suppliers', { token });
+}
+
+export type StockInPayload = {
+  stockItemId: string;
+  branchId: string;
+  quantity: number;
+  unitCost: number;
+  supplierId?: string;
+  supplierName?: string;
+  reference?: string;
+  note?: string;
+  receiptUrl?: string;
+};
+
+export type StockInResponse = {
+  id: string;
+  stockItemId: string;
+  branchId: string;
+  quantity: string;
+  unitCost: string | null;
+  totalCost: string | null;
+  supplierId: string | null;
+  reference: string | null;
+  newQuantityOnHand: string;
+  newAvgUnitCost: string;
+  createdAt: string;
+};
+
+export function recordStockIn(token: string, body: StockInPayload) {
+  return apiJson<StockInResponse>('/api/inventory/stock-in', {
+    method: 'POST',
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
+/** OWNER-only — partial update of a master `LaundryPriceListItem`. */
+export type UpdateLaundryPriceItemPayload = {
+  nameAr?: string;
+  nameEn?: string | null;
+  sortOrder?: number;
+  manualEntry?: boolean;
+  priceNormal?: number;
+  priceUrgent?: number;
+  pricePressOnly?: number | null;
+  priceUrgentPress?: number | null;
+  categoryId?: string | null;
+};
+
+export function updateLaundryPriceItem(
+  token: string,
+  id: string,
+  body: UpdateLaundryPriceItemPayload,
+) {
+  return apiJson<LaundryPriceListItemRow>(
+    `/api/laundry-price-list/items/${encodeURIComponent(id)}`,
+    {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify(body),
+    },
+  );
+}
+
+/** OWNER-only — partial update of a `LaundryItemCategory`. */
+export type UpdateLaundryCategoryPayload = {
+  nameAr?: string;
+  nameEn?: string | null;
+  sortOrder?: number;
+};
+
+export function updateLaundryCategory(
+  token: string,
+  id: string,
+  body: UpdateLaundryCategoryPayload,
+) {
+  return apiJson<LaundryItemCategoryRow>(
+    `/api/laundry-price-list/categories/${encodeURIComponent(id)}`,
+    {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify(body),
+    },
+  );
+}
+
 export type TeamUserRow = {
   id: string;
   username: string;
@@ -892,6 +1155,7 @@ export type ExecutiveSummaryReport = {
   from: string;
   to: string;
   branchId: string | null;
+  driverId?: string | null;
   grossRevenueKd: string;
   variableSoapFuelKd: string;
   miscOperationalKd: string;
@@ -965,3 +1229,179 @@ export type FixedExpenseScheduleRow = {
   updatedAt: string;
   branch: { id: string; name: string };
 };
+
+// ---------------------------------------------------------------------------
+// Dastur §3 — Manager Cash Custody (director-level accountability).
+// ---------------------------------------------------------------------------
+
+export type ManagerCashCustodyStatus =
+  | 'PENDING_DEPOSIT'
+  | 'AWAITING_VERIFICATION'
+  | 'VERIFIED'
+  | 'REJECTED';
+
+export type ManagerCashCustodyRow = {
+  id: string;
+  managerId: string;
+  managerName: string;
+  managerUsername: string;
+  managerPhone: string | null;
+  driverId: string;
+  driverName: string;
+  driverUsername: string;
+  branchId: string | null;
+  branchName: string | null;
+  shiftId: string | null;
+  amountKd: string;
+  settledOrderCount: number;
+  status: ManagerCashCustodyStatus;
+  receivedFromDriverAt: string;
+  slipUploadedAt: string | null;
+  depositSlipUrl: string | null;
+  verifiedAt: string | null;
+  rejectedAt: string | null;
+  rejectionReason: string | null;
+  createdAt: string;
+  ageHours: number;
+  isOverdue: boolean;
+};
+
+export type ManagerCustodyAgingSummary = {
+  pendingCount: number;
+  awaitingVerificationCount: number;
+  overdueCount: number;
+  totalPendingKd: string;
+  totalOverdueKd: string;
+  bucket: { FRESH: number; WARNING_12H: number; OVERDUE_24H: number };
+};
+
+export type ManagerCustodyAgingResponse = {
+  rows: ManagerCashCustodyRow[];
+  summary: ManagerCustodyAgingSummary;
+};
+
+/**
+ * MANAGER — approve receipt of cash from a driver.
+ * The 24h aging clock starts now. No deposit slip required at this step.
+ */
+export function approveReceiptFromDriver(
+  token: string,
+  body: {
+    driverId: string;
+    declaredHandoverTotal?: number;
+    note?: string;
+  },
+) {
+  return apiJson<ManagerCashCustodyRow>('/api/manager-custody/approve-receipt', {
+    method: 'POST',
+    body: JSON.stringify(body),
+    token,
+  });
+}
+
+/** MANAGER — list my custody bags (all statuses, most recent first). */
+export function listMyManagerCustody(token: string) {
+  return apiJson<ManagerCashCustodyRow[]>('/api/manager-custody/mine', {
+    token,
+  });
+}
+
+/** MANAGER — attach an already-uploaded deposit slip URL to a custody bag. */
+export function attachDepositSlip(
+  token: string,
+  custodyId: string,
+  body: {
+    depositSlipUrl: string;
+    declaredDepositTotal?: number;
+    note?: string;
+  },
+) {
+  return apiJson<ManagerCashCustodyRow>(
+    `/api/manager-custody/${custodyId}/upload-slip`,
+    { method: 'POST', body: JSON.stringify(body), token },
+  );
+}
+
+/** MANAGER — upload the slip image (multipart); returns the URL for attachDepositSlip. */
+export async function uploadDepositSlipImage(
+  token: string,
+  file: File,
+): Promise<{ depositSlipUrl: string }> {
+  const fd = new FormData();
+  fd.append('file', file);
+  const headers = new Headers();
+  headers.set('Authorization', `Bearer ${token}`);
+  let res: Response;
+  try {
+    res = await fetch(buildUrl('/api/manager-custody/upload-slip-image'), {
+      method: 'POST',
+      headers,
+      body: fd,
+    });
+  } catch (e) {
+    const m = e instanceof Error ? e.message : 'Network request failed';
+    throw new ApiError(m, 0);
+  }
+  const rawText = await res.text();
+  const json = parseApiBody(rawText);
+  if (!res.ok) {
+    const errorCode =
+      typeof json.errorCode === 'string' ? json.errorCode : undefined;
+    throw new ApiError(
+      formatErrorMessage(json, res.status, rawText),
+      res.status,
+      errorCode,
+    );
+  }
+  if (json.data === undefined) {
+    throw new ApiError('Invalid API response (missing data)', res.status);
+  }
+  return json.data as { depositSlipUrl: string };
+}
+
+/** ACCOUNTANT — approve deposit slip → custody VERIFIED. */
+export function verifyManagerCustody(
+  token: string,
+  custodyId: string,
+  body?: { note?: string },
+) {
+  return apiJson<ManagerCashCustodyRow>(
+    `/api/manager-custody/${custodyId}/verify`,
+    { method: 'POST', body: JSON.stringify(body ?? {}), token },
+  );
+}
+
+/** ACCOUNTANT — reject deposit slip → custody back to PENDING_DEPOSIT. */
+export function rejectManagerCustody(
+  token: string,
+  custodyId: string,
+  body: { rejectionReason: string },
+) {
+  return apiJson<ManagerCashCustodyRow>(
+    `/api/manager-custody/${custodyId}/reject`,
+    { method: 'POST', body: JSON.stringify(body), token },
+  );
+}
+
+/**
+ * OWNER / ACCOUNTANT — "Cash Held by Managers" aging report.
+ * Rows with `isOverdue === true` (>=24h, not VERIFIED) should be highlighted RED.
+ */
+export function getManagerCustodyAging(
+  token: string,
+  filters?: {
+    status?: ManagerCashCustodyStatus;
+    managerId?: string;
+    branchId?: string;
+  },
+) {
+  const q = new URLSearchParams();
+  if (filters?.status) q.set('status', filters.status);
+  if (filters?.managerId) q.set('managerId', filters.managerId);
+  if (filters?.branchId) q.set('branchId', filters.branchId);
+  const qs = q.toString();
+  return apiJson<ManagerCustodyAgingResponse>(
+    `/api/manager-custody/aging${qs ? `?${qs}` : ''}`,
+    { token },
+  );
+}

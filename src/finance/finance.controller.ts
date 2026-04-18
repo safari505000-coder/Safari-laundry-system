@@ -207,7 +207,12 @@ export class FinanceController {
   }
 
   @Get('driver-monitoring')
-  @Roles(SafariRole.OWNER, SafariRole.CALL_CENTER, SafariRole.MANAGER)
+  @Roles(
+    SafariRole.OWNER,
+    SafariRole.CALL_CENTER,
+    SafariRole.MANAGER,
+    SafariRole.ACCOUNTANT,
+  )
   @ApiOperation({
     summary: `Driver monitoring map feed (${APP_BRAND})`,
     description:

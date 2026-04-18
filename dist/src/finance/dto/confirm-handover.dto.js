@@ -25,10 +25,11 @@ __decorate([
     __metadata("design:type", String)
 ], ConfirmHandoverDto.prototype, "driverId", void 0);
 __decorate([
-    (0, swagger_1.ApiProperty)({
-        description: 'Public URL path of uploaded bank deposit receipt (from POST /finance/handover/upload-receipt)',
+    (0, swagger_1.ApiPropertyOptional)({
+        description: 'Optional — slip-first legacy flow. When provided, the custody bag is created directly in AWAITING_VERIFICATION. When omitted, the new Dastur §3 flow creates the bag in PENDING_DEPOSIT and the manager attaches the slip later via POST /api/manager-custody/:id/upload-slip.',
         example: '/uploads/handover-receipts/550e8400-e29b-41d4-a716-446655440000.jpg',
     }),
+    (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.MinLength)(8),
     __metadata("design:type", String)

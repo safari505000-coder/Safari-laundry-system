@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/auth-context';
+import { useSafariStream } from '@/contexts/safari-stream-context';
 import {
   type LaundryItemCategoryRow,
   type LaundryPriceListItemRow,
@@ -116,6 +117,25 @@ export function usePriceList(opts: UsePriceListOpts): PriceListBridge {
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  // Cross-device sync: when the OWNER edits prices, the server's
+  // `priceListVersion` (exposed via SafariStream snapshot) changes. The stream
+  // provider polls every 45s, so every session — including Driver POS — picks
+  // up the new tariff without a dedicated push channel or a manual refresh.
+  const { snapshot } = useSafariStream();
+  const lastSyncedVersionRef = useRef<string | null>(null);
+  useEffect(() => {
+    const v = snapshot?.priceListVersion;
+    if (!v) return;
+    if (lastSyncedVersionRef.current === null) {
+      lastSyncedVersionRef.current = v;
+      return;
+    }
+    if (lastSyncedVersionRef.current !== v) {
+      lastSyncedVersionRef.current = v;
+      void reload();
+    }
+  }, [snapshot?.priceListVersion, reload]);
 
   return {
     items,

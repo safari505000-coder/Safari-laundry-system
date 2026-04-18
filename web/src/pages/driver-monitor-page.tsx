@@ -22,7 +22,7 @@ export function DriverMonitorPage() {
   const [editor, setEditor] = useState<Record<string, { vehicleLabel: string; lastKnownLocation: string }>>({});
   const mapRef = useRef<HTMLDivElement | null>(null);
   const leafletMapRef = useRef<L.Map | null>(null);
-  const canUse = hasRole('CALL_CENTER', 'OWNER') ?? false;
+  const canUse = hasRole('CALL_CENTER', 'OWNER', 'ACCOUNTANT') ?? false;
 
   const load = () =>
     apiJson<DriverMonitoringResponse>('/api/finance/driver-monitoring', {

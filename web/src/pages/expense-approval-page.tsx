@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -11,6 +11,7 @@ import {
   updateExpenseStatus,
 } from '@/lib/api';
 import { formatKwdLabel } from '@/lib/kwd';
+import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
 import { Button } from '@/modules/shared/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/modules/shared/components/ui/card';
 import {
@@ -26,6 +27,7 @@ export function ExpenseApprovalPage() {
   const { t, i18n } = useTranslation();
   const { token, hasRole } = useAuth();
   const rtl = i18n.dir() === 'rtl';
+  const dateLocale = useAppLocale();
   const canUse = hasRole('ACCOUNTANT', 'OWNER') ?? false;
   const [rows, setRows] = useState<ExpenseRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -47,6 +49,18 @@ export function ExpenseApprovalPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Backend already returns `orderBy: { expenseDate: 'desc' }`; we re-sort
+  // client-side as a safety net so the view is always latest-first even if a
+  // legacy cached payload slips in.
+  const orderedRows = useMemo(
+    () =>
+      [...rows].sort(
+        (a, b) =>
+          new Date(b.expenseDate).getTime() - new Date(a.expenseDate).getTime(),
+      ),
+    [rows],
+  );
 
   const setStatus = async (
     id: string,
@@ -87,89 +101,114 @@ export function ExpenseApprovalPage() {
           <CardTitle>{t('expenseApproval.tableTitle')}</CardTitle>
         </CardHeader>
         <CardContent className="p-0 sm:p-6">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>ط§ظ„ظپط±ط¹</TableHead>
-                <TableHead>ط§ظ„ظپط¦ط©</TableHead>
-                <TableHead className={rtl ? 'text-start' : 'text-end'}>
-                  ط§ظ„ظ…ط¨ظ„ط؛
-                </TableHead>
-                <TableHead>ط§ظ„ط¥ظٹطµط§ظ„</TableHead>
-                <TableHead className="w-[360px]">ط§ظ„ط¥ط¬ط±ط§ط،ط§طھ</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={5} className="py-10 text-center">
-                    <Loader2 className="mx-auto h-5 w-5 animate-spin" />
-                  </TableCell>
+                  <TableHead className="w-[140px]">
+                    {t('expenseApproval.colDate')}
+                  </TableHead>
+                  <TableHead>{t('expenseApproval.colType')}</TableHead>
+                  <TableHead className={rtl ? 'text-start' : 'text-end'}>
+                    {t('expenseApproval.colValue')}
+                  </TableHead>
+                  <TableHead>{t('expenseApproval.colReceipt')}</TableHead>
+                  <TableHead className="w-[360px]">
+                    {t('expenseApproval.colAction')}
+                  </TableHead>
                 </TableRow>
-              ) : rows.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
-                    {t('expenseApproval.empty')}
-                  </TableCell>
-                </TableRow>
-              ) : (
-                rows.map((row) => (
-                  <TableRow key={row.id}>
-                    <TableCell>{row.branch?.name ?? '—'}</TableCell>
-                    <TableCell>{row.category}</TableCell>
-                    <TableCell className={rtl ? 'text-start' : 'text-end'}>
-                      {formatKwdLabel(row.amount)}
-                    </TableCell>
-                    <TableCell>
-                      {row.receiptUrl ? (
-                        <a
-                          href={row.receiptUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-primary hover:underline"
-                        >
-                          {t('expenseApproval.viewReceipt')}
-                        </a>
-                      ) : (
-                        '—'
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          size="sm"
-                          variant="success"
-                          disabled={busyId === row.id}
-                          onClick={() => void setStatus(row.id, 'APPROVED')}
-                        >
-                          {t('expenseApproval.approve')}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          disabled={busyId === row.id}
-                          onClick={() => void setStatus(row.id, 'REJECTED')}
-                        >
-                          {t('expenseApproval.reject')}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          disabled={busyId === row.id}
-                          onClick={() => void setStatus(row.id, 'AUDIT')}
-                        >
-                          {t('expenseApproval.transferAudit')}
-                        </Button>
-                      </div>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="py-10 text-center">
+                      <Loader2 className="mx-auto h-5 w-5 animate-spin" />
                     </TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                ) : orderedRows.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={5}
+                      className="py-10 text-center text-muted-foreground"
+                    >
+                      {t('expenseApproval.empty')}
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  orderedRows.map((row) => (
+                    <TableRow key={row.id}>
+                      <TableCell className="whitespace-nowrap tabular-nums">
+                        {new Date(row.expenseDate).toLocaleDateString(
+                          dateLocale,
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="font-medium">
+                          {t(`expenseApproval.category.${row.category}`, {
+                            defaultValue: row.category,
+                          })}
+                        </div>
+                        {row.branch?.name ? (
+                          <div className="text-xs text-muted-foreground">
+                            {row.branch.name}
+                          </div>
+                        ) : null}
+                      </TableCell>
+                      <TableCell
+                        className={`${rtl ? 'text-start' : 'text-end'} tabular-nums`}
+                      >
+                        {formatKwdLabel(row.amount)}
+                      </TableCell>
+                      <TableCell>
+                        {row.receiptUrl ? (
+                          <a
+                            href={row.receiptUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary hover:underline"
+                          >
+                            {t('expenseApproval.viewReceipt')}
+                          </a>
+                        ) : (
+                          '—'
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            size="sm"
+                            variant="success"
+                            disabled={busyId === row.id}
+                            onClick={() => void setStatus(row.id, 'APPROVED')}
+                          >
+                            {t('expenseApproval.approve')}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            disabled={busyId === row.id}
+                            onClick={() => void setStatus(row.id, 'REJECTED')}
+                          >
+                            {t('expenseApproval.reject')}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            disabled={busyId === row.id}
+                            onClick={() => void setStatus(row.id, 'AUDIT')}
+                          >
+                            {t('expenseApproval.transferAudit')}
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
     </div>
   );
 }
-

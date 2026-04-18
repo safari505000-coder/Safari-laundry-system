@@ -117,6 +117,11 @@ export function ReportsPage() {
     return list.filter((d) => d.branchId === ownerBranchId);
   }, [drivers, ownerBranchId]);
 
+  const effectiveLedgerDriverId = useMemo(
+    () => (driverFilter !== 'ALL' ? driverFilter : ledgerDriverId),
+    [driverFilter, ledgerDriverId],
+  );
+
   useEffect(() => {
     setLedgerDriverId((prev) => {
       if (driverOptions.some((d) => d.driverId === prev)) return prev;
@@ -133,6 +138,7 @@ export function ReportsPage() {
     if (!token || !canView) return;
     try {
       const qs = new URLSearchParams({ from, to, ...branchQs });
+      if (driverFilter !== 'ALL') qs.set('driverId', driverFilter);
       const data = await apiJson<ExecutiveSummaryReport>(
         `/api/reports/executive-summary?${qs.toString()}`,
         { token },
@@ -141,7 +147,7 @@ export function ReportsPage() {
     } catch (e) {
       if (e instanceof ApiError) toast.error(e.message);
     }
-  }, [token, from, to, branchQs, canView]);
+  }, [token, from, to, branchQs, canView, driverFilter]);
 
   useEffect(() => {
     void queryExecutive();
@@ -180,11 +186,11 @@ export function ReportsPage() {
   }, [token, from, to, driverFilter, payFilter, branchQs]);
 
   const queryLedger = useCallback(async () => {
-    if (!token || !ledgerDriverId) return;
+    if (!token || !effectiveLedgerDriverId) return;
     setBusy(true);
     try {
       const qs = new URLSearchParams({
-        driverId: ledgerDriverId,
+        driverId: effectiveLedgerDriverId,
         from,
         to,
         ...branchQs,
@@ -199,13 +205,14 @@ export function ReportsPage() {
     } finally {
       setBusy(false);
     }
-  }, [token, from, to, ledgerDriverId, branchQs]);
+  }, [token, from, to, effectiveLedgerDriverId, branchQs]);
 
   const queryClosing = useCallback(async () => {
     if (!token) return;
     setBusy(true);
     try {
       const qs = new URLSearchParams({ from, to, ...branchQs });
+      if (driverFilter !== 'ALL') qs.set('driverId', driverFilter);
       const data = await apiJson<DailyCashClosingReport>(
         `/api/reports/daily-cash-closing?${qs.toString()}`,
         { token },
@@ -216,7 +223,7 @@ export function ReportsPage() {
     } finally {
       setBusy(false);
     }
-  }, [token, from, to, branchQs]);
+  }, [token, from, to, branchQs, driverFilter]);
 
   if (!canView) {
     return <Navigate to="/" replace />;
@@ -246,7 +253,50 @@ export function ReportsPage() {
             onClick={() => window.print()}
           >
             <Printer className="h-4 w-4" />
-            {t('reports.printPdf')}
+            {t('reports.exportPdf')}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            disabled={!invoices?.rows.length}
+            onClick={() => {
+              if (!invoices?.rows.length) return;
+              const cell = (s: string) => `"${s.replaceAll('"', '""')}"`;
+              const header = [
+                'createdAt',
+                'invoice',
+                'customer',
+                'driver',
+                'pay',
+                'status',
+                'total',
+              ];
+              const lines = invoices.rows.map((r) =>
+                [
+                  r.createdAt,
+                  r.invoiceNumber ?? r.id,
+                  cell(r.customer.displayName ?? r.customer.phone),
+                  cell(r.driver?.fullName ?? ''),
+                  r.posPaymentMethod ?? '',
+                  r.status,
+                  r.totalPrice,
+                ].join(','),
+              );
+              const blob = new Blob([[header.join(','), ...lines].join('\n')], {
+                type: 'text/csv;charset=utf-8;',
+              });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `issued-invoices-${from.slice(0, 10)}.csv`;
+              a.click();
+              URL.revokeObjectURL(url);
+            }}
+          >
+            <FileDown className="h-4 w-4" />
+            {t('reports.exportCsv')}
           </Button>
         </div>
       </div>
@@ -355,26 +405,34 @@ export function ReportsPage() {
               </>
             : null}
           </div>
-          <Card>
-            <CardContent className="pt-6">
-              <dl className="space-y-3 text-sm">
-                <div className="flex items-center justify-between rounded-lg border px-3 py-2">
-                  <dt className="font-medium">ط¥ط¬ظ…ط§ظ„ظٹ ط¯ط¹ظ… ط§ظ„ط§ط´طھط±ط§ظƒط§طھ</dt>
-                  <dd className="tabular-nums font-semibold">
-                    {formatKwdLabel(executive.subscriptionSubsidyKd)}
-                  </dd>
-                </div>
-                <div className="flex items-center justify-between rounded-lg border px-3 py-2">
-                  <dt className="font-medium">
-                    ط¥ط¬ظ…ط§ظ„ظٹ ط¯ط¹ظ… ط§ظ„ط§ط´طھط±ط§ظƒط§طھ (ط§ظ„ظ…ظƒطھط¨ ط§ظ„ط±ط¦ظٹط³ظٹ - ظƒظ„ ط§ظ„ظپط±ظˆط¹)
-                  </dt>
-                  <dd className="tabular-nums font-semibold">
-                    {formatKwdLabel(executive.enterpriseSubscriptionSubsidyKd)}
-                  </dd>
-                </div>
-              </dl>
-            </CardContent>
-          </Card>
+          {/* Dastur §3: Net-profit breakdown (subscription subsidies) is an
+              OWNER-only view. Accountants see the operational totals above
+              (Gross + Expenses) and the tab queries below, but not the
+              high-level P&L breakdown. */}
+          {isOwner ? (
+            <Card>
+              <CardContent className="pt-6">
+                <dl className="space-y-3 text-sm">
+                  <div className="flex items-center justify-between rounded-lg border px-3 py-2">
+                    <dt className="font-medium">
+                      {t('reports.execSubscriptionSubsidy')}
+                    </dt>
+                    <dd className="tabular-nums font-semibold">
+                      {formatKwdLabel(executive.subscriptionSubsidyKd)}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between rounded-lg border px-3 py-2">
+                    <dt className="font-medium">
+                      {t('reports.execEnterpriseSubscriptionSubsidy')}
+                    </dt>
+                    <dd className="tabular-nums font-semibold">
+                      {formatKwdLabel(executive.enterpriseSubscriptionSubsidyKd)}
+                    </dd>
+                  </div>
+                </dl>
+              </CardContent>
+            </Card>
+          ) : null}
         </div>
       : null}
 
@@ -430,7 +488,11 @@ export function ReportsPage() {
             <Label>{t('reports.driver')}</Label>
             <Select
               value={driverFilter}
-              onValueChange={(v) => setDriverFilter(v ?? 'ALL')}
+              onValueChange={(v) => {
+                const x = v ?? 'ALL';
+                setDriverFilter(x);
+                if (x !== 'ALL') setLedgerDriverId(x);
+              }}
             >
               <SelectTrigger>
                 <SelectValue />
@@ -480,7 +542,7 @@ export function ReportsPage() {
               {invoices ?
                 <>
                   <p className="mb-2 text-xs text-muted-foreground">
-                    {invoices.count} {t('reports.rows')} آ·{' '}
+                    {invoices.count} {t('reports.rows')} ·{' '}
                     {new Date(invoices.from).toLocaleString(dateLocale)} —{' '}
                     {new Date(invoices.to).toLocaleString(dateLocale)}
                   </p>
@@ -529,29 +591,14 @@ export function ReportsPage() {
         </TabsContent>
 
         <TabsContent value="ledger" className="space-y-3">
+          <p className="text-xs text-muted-foreground print:hidden">
+            {t('reports.ledgerUsesDriverFilter')}
+          </p>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end print:hidden">
-            <div className="space-y-1.5 sm:min-w-[220px]">
-              <Label>{t('reports.ledgerDriver')}</Label>
-              <Select
-                value={ledgerDriverId}
-                onValueChange={(v) => setLedgerDriverId(v ?? '')}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder={t('reports.pickDriver')} />
-                </SelectTrigger>
-                <SelectContent>
-                  {driverOptions.map((d) => (
-                    <SelectItem key={d.driverId} value={d.driverId}>
-                      {d.fullName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
             <Button
               type="button"
               size="sm"
-              disabled={busy || !ledgerDriverId}
+              disabled={busy || !effectiveLedgerDriverId}
               onClick={() => void queryLedger()}
               className="gap-1.5"
             >

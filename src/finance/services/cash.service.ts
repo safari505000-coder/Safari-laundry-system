@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import {
   CashStatus,
+  ManagerCashCustodyStatus,
   OrderStatus,
   PosPaymentMethod,
   SafariRole,
@@ -137,16 +138,53 @@ export class CashService {
         where: { driverId: d.id, status: ShiftStatus.OPEN },
         orderBy: { startedAt: 'desc' },
       });
-      const pending = await this.prisma.order.findMany({
+      /*
+       * Dastur §3 — "Pending invoices" = every COMPLETED order this driver
+       * issued whose cashStatus is still PAID_TO_DRIVER (not yet closed by
+       * the accountant), split per POS payment method. CASH clears via the
+       * handover/custody flow; KNET / PAYMENT_LINK / ONLINE clear when the
+       * accountant verifies the matching bank / Z-report deposit.
+       */
+      const pendingAll = await this.prisma.order.findMany({
         where: {
           driverId: d.id,
           status: OrderStatus.COMPLETED,
           cashStatus: CashStatus.PAID_TO_DRIVER,
-          posPaymentMethod: PosPaymentMethod.CASH,
         },
-        select: { totalPrice: true },
+        select: { totalPrice: true, posPaymentMethod: true },
       });
-      const heldMinor = sumOrderMinors(pending);
+
+      const buckets = {
+        cash: [] as { totalPrice: typeof pendingAll[number]['totalPrice'] }[],
+        knet: [] as { totalPrice: typeof pendingAll[number]['totalPrice'] }[],
+        link: [] as { totalPrice: typeof pendingAll[number]['totalPrice'] }[],
+        online: [] as { totalPrice: typeof pendingAll[number]['totalPrice'] }[],
+      };
+      for (const o of pendingAll) {
+        switch (o.posPaymentMethod) {
+          case PosPaymentMethod.CASH:
+            buckets.cash.push({ totalPrice: o.totalPrice });
+            break;
+          case PosPaymentMethod.KNET:
+            buckets.knet.push({ totalPrice: o.totalPrice });
+            break;
+          case PosPaymentMethod.PAYMENT_LINK:
+            buckets.link.push({ totalPrice: o.totalPrice });
+            break;
+          case PosPaymentMethod.ONLINE:
+            buckets.online.push({ totalPrice: o.totalPrice });
+            break;
+          default:
+            break;
+        }
+      }
+
+      const cashMinor = sumOrderMinors(buckets.cash);
+      const knetMinor = sumOrderMinors(buckets.knet);
+      const linkMinor = sumOrderMinors(buckets.link);
+      const onlineMinor = sumOrderMinors(buckets.online);
+      const totalMinor = cashMinor + knetMinor + linkMinor + onlineMinor;
+
       rows.push({
         driverId: d.id,
         employeeId: d.employeeId,
@@ -156,8 +194,18 @@ export class CashService {
         branchId: d.branchId,
         currentShiftId: shift?.id ?? null,
         shiftStartedAt: shift?.startedAt ?? null,
-        heldCashTotal: minorToAmountString(heldMinor),
-        pendingSettlementOrderCount: pending.length,
+        heldCashTotal: minorToAmountString(cashMinor),
+        pendingSettlementOrderCount: buckets.cash.length,
+        pendingCashKd: minorToAmountString(cashMinor),
+        pendingKnetKd: minorToAmountString(knetMinor),
+        pendingLinkKd: minorToAmountString(linkMinor),
+        pendingOnlineKd: minorToAmountString(onlineMinor),
+        pendingTotalKd: minorToAmountString(totalMinor),
+        pendingInvoiceCount:
+          buckets.cash.length +
+          buckets.knet.length +
+          buckets.link.length +
+          buckets.online.length,
       });
     }
     return { drivers: rows };
@@ -299,7 +347,7 @@ export class CashService {
                 ? dto.declaredHandoverTotal.toFixed(4)
                 : null,
             ordersSettledCount: 0,
-            bankDepositReceiptUrl: dto.depositReceiptUrl,
+            bankDepositReceiptUrl: dto.depositReceiptUrl ?? null,
             confirmedByManagerId: managerId,
             confirmedAt: new Date(),
           },
@@ -308,7 +356,7 @@ export class CashService {
           settledOrderCount: 0,
           systemHandoverTotal: '0.0000',
           shiftId: shift.id,
-          bankDepositReceiptUrl: dto.depositReceiptUrl,
+          bankDepositReceiptUrl: dto.depositReceiptUrl ?? null,
         };
       }
       if (!shift) {
@@ -333,27 +381,53 @@ export class CashService {
           'Concurrent handover detected; not all orders could be settled. Retry.',
         );
       }
+      const systemHandoverTotal = minorToAmountString(systemMinor);
       await tx.shift.update({
         where: { id: shift.id },
         data: {
           status: ShiftStatus.CLOSED,
           endedAt: new Date(),
-          systemHandoverTotal: minorToAmountString(systemMinor),
+          systemHandoverTotal,
           declaredHandoverTotal:
             dto.declaredHandoverTotal !== undefined
               ? dto.declaredHandoverTotal.toFixed(4)
               : null,
           ordersSettledCount: pending.length,
-          bankDepositReceiptUrl: dto.depositReceiptUrl,
+          bankDepositReceiptUrl: dto.depositReceiptUrl ?? null,
           confirmedByManagerId: managerId,
           confirmedAt: new Date(),
         },
       });
+
+      // Dastur §3 — create the manager custody bag so aging can run.
+      // Slip-first legacy flow → AWAITING_VERIFICATION when a slip was provided,
+      // otherwise PENDING_DEPOSIT for the new two-step flow.
+      const manager = await tx.user.findUnique({
+        where: { id: managerId },
+        select: { branchId: true },
+      });
+      const hasSlip = Boolean(dto.depositReceiptUrl);
+      await tx.managerCashCustody.create({
+        data: {
+          managerId,
+          driverId: dto.driverId,
+          branchId: manager?.branchId ?? driver.branchId ?? null,
+          shiftId: shift.id,
+          amountKd: systemHandoverTotal,
+          settledOrderCount: pending.length,
+          status: hasSlip
+            ? ManagerCashCustodyStatus.AWAITING_VERIFICATION
+            : ManagerCashCustodyStatus.PENDING_DEPOSIT,
+          depositSlipUrl: dto.depositReceiptUrl ?? null,
+          slipUploadedAt: hasSlip ? new Date() : null,
+        },
+      });
+
       return {
         settledOrderCount: pending.length,
-        systemHandoverTotal: minorToAmountString(systemMinor),
+        systemHandoverTotal,
         shiftId: shift.id,
-        bankDepositReceiptUrl: dto.depositReceiptUrl,
+        bankDepositReceiptUrl: dto.depositReceiptUrl ?? null,
       };
     });
   }

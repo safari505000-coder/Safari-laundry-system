@@ -224,7 +224,7 @@ let ReportsService = class ReportsService {
             })),
         };
     }
-    async dailyCashClosing(fromIso, toIso, branchId) {
+    async dailyCashClosing(fromIso, toIso, branchId, driverId) {
         const { from, to } = this.parseRange(fromIso, toIso);
         const cashOrders = await this.prisma.order.findMany({
             where: {
@@ -232,11 +232,12 @@ let ReportsService = class ReportsService {
                 completedAt: { gte: from, lte: to },
                 posPaymentMethod: client_1.PosPaymentMethod.CASH,
                 ...this.ordersForBranch(branchId),
+                ...(driverId ? { driverId } : {}),
             },
             select: { totalPrice: true },
         });
         const grossMinor = (0, finance_money_1.sumOrderMinors)(cashOrders.map((o) => ({ totalPrice: o.totalPrice })));
-        const expensesTotal = await this.expensesService.sumInRange(from, to, branchId);
+        const expensesTotal = await this.expensesService.sumInRange(from, to, branchId, driverId);
         const expensesMinor = BigInt(Math.round(Number.parseFloat(expensesTotal) * 10_000));
         const netMinor = grossMinor - expensesMinor;
         return {
@@ -248,13 +249,14 @@ let ReportsService = class ReportsService {
             cashOrderCount: cashOrders.length,
         };
     }
-    async netProfitExecutive(fromIso, toIso, branchId) {
+    async netProfitExecutive(fromIso, toIso, branchId, driverId) {
         const { from, to } = this.parseRange(fromIso, toIso);
         const revenueAgg = await this.prisma.order.aggregate({
             where: {
                 status: client_1.OrderStatus.COMPLETED,
                 completedAt: { gte: from, lte: to },
                 ...this.ordersForBranch(branchId),
+                ...(driverId ? { driverId } : {}),
             },
             _sum: { totalPrice: true },
         });
@@ -262,21 +264,32 @@ let ReportsService = class ReportsService {
             revenueAgg._sum.totalPrice !== undefined
             ? revenueAgg._sum.totalPrice.toString()
             : '0';
-        const variableSoapFuelKd = await this.expensesService.sumInRangeByCategories(from, to, [client_1.ExpenseCategory.SOAP, client_1.ExpenseCategory.FUEL], branchId);
-        const miscOperationalKd = await this.expensesService.sumInRangeByCategories(from, to, [client_1.ExpenseCategory.MISC], branchId);
-        const payrollPaidKd = await this.payrollService.sumPaidNetInRange(from, to, branchId);
-        const fixedExpensesKd = await this.fixedExpenseService.sumAccruedInRange(from, to, branchId);
-        const subscriptionSubsidyKd = await this.getSubscriptionSubsidyInRange(from, to, branchId);
-        const enterpriseSubscriptionSubsidyKd = await this.getSubscriptionSubsidyInRange(from, to);
+        const variableSoapFuelKd = await this.expensesService.sumInRangeByCategories(from, to, [client_1.ExpenseCategory.SOAP, client_1.ExpenseCategory.FUEL], branchId, driverId);
+        const miscOperationalKd = await this.expensesService.sumInRangeByCategories(from, to, [client_1.ExpenseCategory.MISC], branchId, driverId);
+        const payrollPaidKd = driverId
+            ? '0.0000'
+            : await this.payrollService.sumPaidNetInRange(from, to, branchId);
+        const fixedExpensesKd = driverId
+            ? '0.0000'
+            : await this.fixedExpenseService.sumAccruedInRange(from, to, branchId);
+        const subscriptionSubsidyKd = driverId
+            ? '0.0000'
+            : await this.getSubscriptionSubsidyInRange(from, to, branchId);
+        const enterpriseSubscriptionSubsidyKd = driverId
+            ? '0.0000'
+            : await this.getSubscriptionSubsidyInRange(from, to);
         const totalNonPayrollExpensesKd = new client_1.Prisma.Decimal(variableSoapFuelKd)
             .add(new client_1.Prisma.Decimal(miscOperationalKd))
             .add(new client_1.Prisma.Decimal(fixedExpensesKd))
             .toFixed(4);
-        const netProfitKd = decSubMany(grossRevenueKd, variableSoapFuelKd, miscOperationalKd, payrollPaidKd, fixedExpensesKd);
+        const netProfitKd = driverId
+            ? decSubMany(grossRevenueKd, variableSoapFuelKd, miscOperationalKd)
+            : decSubMany(grossRevenueKd, variableSoapFuelKd, miscOperationalKd, payrollPaidKd, fixedExpensesKd);
         return {
             from: from.toISOString(),
             to: to.toISOString(),
             branchId: branchId ?? null,
+            driverId: driverId ?? null,
             grossRevenueKd,
             variableSoapFuelKd,
             miscOperationalKd,
@@ -287,6 +300,192 @@ let ReportsService = class ReportsService {
             totalExpensesVariableAndFixedKd: totalNonPayrollExpensesKd,
             netProfitKd,
         };
+    }
+    async unifiedLedgerStream(fromIso, toIso, driverId, branchId) {
+        const { from, to } = this.parseRange(fromIso, toIso);
+        const glWhere = {
+            createdAt: { gte: from, lte: to },
+            entryType: {
+                in: [
+                    client_1.GeneralLedgerEntryType.POS_SALE_COMPLETED,
+                    client_1.GeneralLedgerEntryType.EXPENSE_RECORDED,
+                ],
+            },
+        };
+        if (driverId) {
+            const [driverOrderIds, driverExpenseIds] = await Promise.all([
+                this.prisma.order.findMany({
+                    where: { driverId },
+                    select: { id: true },
+                }),
+                this.prisma.branchExpense.findMany({
+                    where: { recordedById: driverId },
+                    select: { id: true },
+                }),
+            ]);
+            const oids = driverOrderIds.map((o) => o.id);
+            const eids = driverExpenseIds.map((e) => e.id);
+            glWhere.OR = [
+                { actorUserId: driverId },
+                ...(oids.length ? [{ orderId: { in: oids } }] : []),
+                ...(eids.length ? [{ expenseId: { in: eids } }] : []),
+            ];
+        }
+        const glRows = await this.prisma.generalLedgerEntry.findMany({
+            where: glWhere,
+            orderBy: { createdAt: 'desc' },
+            take: 800,
+        });
+        const orderIds = [
+            ...new Set(glRows.map((r) => r.orderId).filter((x) => !!x)),
+        ];
+        const expenseIds = [
+            ...new Set(glRows.map((r) => r.expenseId).filter((x) => !!x)),
+        ];
+        let orders = [];
+        let expenses = [];
+        if (orderIds.length) {
+            orders = await this.prisma.order.findMany({
+                where: {
+                    id: { in: orderIds },
+                    ...this.ordersForBranch(branchId),
+                },
+                select: {
+                    id: true,
+                    driverId: true,
+                    posPaymentMethod: true,
+                    invoiceNumber: true,
+                    driver: { select: { id: true, fullName: true, branchId: true } },
+                },
+            });
+        }
+        if (expenseIds.length) {
+            expenses = await this.prisma.branchExpense.findMany({
+                where: {
+                    id: { in: expenseIds },
+                    ...this.branchWhere(branchId),
+                },
+                select: {
+                    id: true,
+                    title: true,
+                    category: true,
+                    receiptUrl: true,
+                    recordedById: true,
+                    recordedBy: { select: { fullName: true } },
+                },
+            });
+        }
+        const orderMap = new Map(orders.map((o) => [o.id, o]));
+        const expenseMap = new Map(expenses.map((e) => [e.id, e]));
+        const out = [];
+        const saleType = (m) => {
+            if (m === null || m === undefined)
+                return 'OTHER_SALE';
+            if (m === client_1.PosPaymentMethod.CASH)
+                return 'CASH_SALE';
+            if (m === client_1.PosPaymentMethod.KNET)
+                return 'KNET_SALE';
+            if (m === client_1.PosPaymentMethod.PAYMENT_LINK || m === client_1.PosPaymentMethod.ONLINE)
+                return 'ONLINE_SALE';
+            if (m === client_1.PosPaymentMethod.DEBT_ON_ACCOUNT)
+                return 'DEBT_SALE';
+            if (m === client_1.PosPaymentMethod.SUBSCRIPTION_WALLET)
+                return 'WALLET_SALE';
+            return 'OTHER_SALE';
+        };
+        for (const row of glRows) {
+            if (row.entryType === client_1.GeneralLedgerEntryType.POS_SALE_COMPLETED && row.orderId) {
+                const ord = orderMap.get(row.orderId);
+                if (!ord)
+                    continue;
+                if (branchId && ord.driver?.branchId !== branchId)
+                    continue;
+                const meta = row.metadata && typeof row.metadata === 'object' && !Array.isArray(row.metadata)
+                    ? row.metadata
+                    : {};
+                const pm = meta.posPaymentMethod;
+                const method = pm ?? ord.posPaymentMethod;
+                out.push({
+                    id: row.id,
+                    at: row.createdAt.toISOString(),
+                    streamType: saleType(method),
+                    amountKd: row.amount.toString(),
+                    memo: row.memo,
+                    driverId: ord.driverId,
+                    driverName: ord.driver?.fullName ?? null,
+                    attachmentUrl: null,
+                    refKind: 'ORDER',
+                    refId: ord.id,
+                });
+            }
+            else if (row.entryType === client_1.GeneralLedgerEntryType.EXPENSE_RECORDED &&
+                row.expenseId) {
+                const exp = expenseMap.get(row.expenseId);
+                if (!exp)
+                    continue;
+                const streamType = exp.category === client_1.ExpenseCategory.FUEL ? 'FUEL_EXPENSE' : 'OTHER_EXPENSE';
+                const attach = typeof exp.receiptUrl === 'string' && exp.receiptUrl.trim().length > 0 ?
+                    exp.receiptUrl.trim()
+                    : null;
+                out.push({
+                    id: row.id,
+                    at: row.createdAt.toISOString(),
+                    streamType,
+                    amountKd: row.amount.toString(),
+                    memo: exp.title,
+                    driverId: exp.recordedById,
+                    driverName: exp.recordedBy?.fullName ?? null,
+                    attachmentUrl: attach,
+                    refKind: 'EXPENSE',
+                    refId: exp.id,
+                });
+            }
+        }
+        const depositWhere = {
+            createdAt: { gte: from, lte: to },
+            ...(driverId ? { driverId } : {}),
+            ...(branchId ?
+                { driver: { branchId } }
+                : {}),
+        };
+        const deposits = await this.prisma.deposit.findMany({
+            where: depositWhere,
+            orderBy: { createdAt: 'desc' },
+            take: 400,
+            select: {
+                id: true,
+                amount: true,
+                createdAt: true,
+                receiptImage: true,
+                driverId: true,
+                driver: { select: { fullName: true } },
+            },
+        });
+        for (const d of deposits) {
+            out.push({
+                id: `dep-${d.id}`,
+                at: d.createdAt.toISOString(),
+                streamType: 'DEPOSIT',
+                amountKd: d.amount.toString(),
+                memo: 'Driver deposit',
+                driverId: d.driverId,
+                driverName: d.driver.fullName,
+                attachmentUrl: d.receiptImage,
+                refKind: 'DEPOSIT',
+                refId: d.id,
+            });
+        }
+        out.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
+        return {
+            from: from.toISOString(),
+            to: to.toISOString(),
+            rows: out,
+        };
+    }
+    branchWhere(branchId) {
+        if (!branchId)
+            return {};
+        return { branchId };
     }
 };
 exports.ReportsService = ReportsService;

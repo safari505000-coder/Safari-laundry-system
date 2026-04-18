@@ -47,10 +47,13 @@ let ReportsController = class ReportsController {
         return this.reportsService.driverLedger(q.driverId, q.from, q.to, q.branchId);
     }
     dailyCashClosing(q) {
-        return this.reportsService.dailyCashClosing(q.from, q.to, q.branchId);
+        return this.reportsService.dailyCashClosing(q.from, q.to, q.branchId, q.driverId);
     }
     executiveSummary(q) {
-        return this.reportsService.netProfitExecutive(q.from, q.to, q.branchId);
+        return this.reportsService.netProfitExecutive(q.from, q.to, q.branchId, q.driverId);
+    }
+    unifiedLedgerStream(q) {
+        return this.reportsService.unifiedLedgerStream(q.from, q.to, q.driverId, q.branchId);
     }
 };
 exports.ReportsController = ReportsController;
@@ -122,6 +125,18 @@ __decorate([
     __metadata("design:paramtypes", [reports_range_query_dto_1.ReportsRangeQueryDto]),
     __metadata("design:returntype", void 0)
 ], ReportsController.prototype, "executiveSummary", null);
+__decorate([
+    (0, common_1.Get)('unified-ledger-stream'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
+    (0, swagger_1.ApiOperation)({
+        summary: `Unified ledger stream (${branding_1.APP_BRAND})`,
+        description: 'POS ledger entries, driver field expenses (with receipt pointers), and driver deposits for accountant radar.',
+    }),
+    __param(0, (0, common_1.Query)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [reports_range_query_dto_1.ReportsRangeQueryDto]),
+    __metadata("design:returntype", void 0)
+], ReportsController.prototype, "unifiedLedgerStream", null);
 exports.ReportsController = ReportsController = __decorate([
     (0, swagger_1.ApiTags)('reports'),
     (0, swagger_1.ApiBearerAuth)('bearer'),

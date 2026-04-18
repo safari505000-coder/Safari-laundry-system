@@ -119,16 +119,43 @@ let CashService = class CashService {
                 where: { driverId: d.id, status: client_1.ShiftStatus.OPEN },
                 orderBy: { startedAt: 'desc' },
             });
-            const pending = await this.prisma.order.findMany({
+            const pendingAll = await this.prisma.order.findMany({
                 where: {
                     driverId: d.id,
                     status: client_1.OrderStatus.COMPLETED,
                     cashStatus: client_1.CashStatus.PAID_TO_DRIVER,
-                    posPaymentMethod: client_1.PosPaymentMethod.CASH,
                 },
-                select: { totalPrice: true },
+                select: { totalPrice: true, posPaymentMethod: true },
             });
-            const heldMinor = (0, finance_money_1.sumOrderMinors)(pending);
+            const buckets = {
+                cash: [],
+                knet: [],
+                link: [],
+                online: [],
+            };
+            for (const o of pendingAll) {
+                switch (o.posPaymentMethod) {
+                    case client_1.PosPaymentMethod.CASH:
+                        buckets.cash.push({ totalPrice: o.totalPrice });
+                        break;
+                    case client_1.PosPaymentMethod.KNET:
+                        buckets.knet.push({ totalPrice: o.totalPrice });
+                        break;
+                    case client_1.PosPaymentMethod.PAYMENT_LINK:
+                        buckets.link.push({ totalPrice: o.totalPrice });
+                        break;
+                    case client_1.PosPaymentMethod.ONLINE:
+                        buckets.online.push({ totalPrice: o.totalPrice });
+                        break;
+                    default:
+                        break;
+                }
+            }
+            const cashMinor = (0, finance_money_1.sumOrderMinors)(buckets.cash);
+            const knetMinor = (0, finance_money_1.sumOrderMinors)(buckets.knet);
+            const linkMinor = (0, finance_money_1.sumOrderMinors)(buckets.link);
+            const onlineMinor = (0, finance_money_1.sumOrderMinors)(buckets.online);
+            const totalMinor = cashMinor + knetMinor + linkMinor + onlineMinor;
             rows.push({
                 driverId: d.id,
                 employeeId: d.employeeId,
@@ -138,8 +165,17 @@ let CashService = class CashService {
                 branchId: d.branchId,
                 currentShiftId: shift?.id ?? null,
                 shiftStartedAt: shift?.startedAt ?? null,
-                heldCashTotal: (0, finance_money_1.minorToAmountString)(heldMinor),
-                pendingSettlementOrderCount: pending.length,
+                heldCashTotal: (0, finance_money_1.minorToAmountString)(cashMinor),
+                pendingSettlementOrderCount: buckets.cash.length,
+                pendingCashKd: (0, finance_money_1.minorToAmountString)(cashMinor),
+                pendingKnetKd: (0, finance_money_1.minorToAmountString)(knetMinor),
+                pendingLinkKd: (0, finance_money_1.minorToAmountString)(linkMinor),
+                pendingOnlineKd: (0, finance_money_1.minorToAmountString)(onlineMinor),
+                pendingTotalKd: (0, finance_money_1.minorToAmountString)(totalMinor),
+                pendingInvoiceCount: buckets.cash.length +
+                    buckets.knet.length +
+                    buckets.link.length +
+                    buckets.online.length,
             });
         }
         return { drivers: rows };
@@ -268,7 +304,7 @@ let CashService = class CashService {
                             ? dto.declaredHandoverTotal.toFixed(4)
                             : null,
                         ordersSettledCount: 0,
-                        bankDepositReceiptUrl: dto.depositReceiptUrl,
+                        bankDepositReceiptUrl: dto.depositReceiptUrl ?? null,
                         confirmedByManagerId: managerId,
                         confirmedAt: new Date(),
                     },
@@ -277,7 +313,7 @@ let CashService = class CashService {
                     settledOrderCount: 0,
                     systemHandoverTotal: '0.0000',
                     shiftId: shift.id,
-                    bankDepositReceiptUrl: dto.depositReceiptUrl,
+                    bankDepositReceiptUrl: dto.depositReceiptUrl ?? null,
                 };
             }
             if (!shift) {
@@ -298,26 +334,47 @@ let CashService = class CashService {
             if (updated.count !== pending.length) {
                 throw new common_1.ConflictException('Concurrent handover detected; not all orders could be settled. Retry.');
             }
+            const systemHandoverTotal = (0, finance_money_1.minorToAmountString)(systemMinor);
             await tx.shift.update({
                 where: { id: shift.id },
                 data: {
                     status: client_1.ShiftStatus.CLOSED,
                     endedAt: new Date(),
-                    systemHandoverTotal: (0, finance_money_1.minorToAmountString)(systemMinor),
+                    systemHandoverTotal,
                     declaredHandoverTotal: dto.declaredHandoverTotal !== undefined
                         ? dto.declaredHandoverTotal.toFixed(4)
                         : null,
                     ordersSettledCount: pending.length,
-                    bankDepositReceiptUrl: dto.depositReceiptUrl,
+                    bankDepositReceiptUrl: dto.depositReceiptUrl ?? null,
                     confirmedByManagerId: managerId,
                     confirmedAt: new Date(),
                 },
             });
+            const manager = await tx.user.findUnique({
+                where: { id: managerId },
+                select: { branchId: true },
+            });
+            const hasSlip = Boolean(dto.depositReceiptUrl);
+            await tx.managerCashCustody.create({
+                data: {
+                    managerId,
+                    driverId: dto.driverId,
+                    branchId: manager?.branchId ?? driver.branchId ?? null,
+                    shiftId: shift.id,
+                    amountKd: systemHandoverTotal,
+                    settledOrderCount: pending.length,
+                    status: hasSlip
+                        ? client_1.ManagerCashCustodyStatus.AWAITING_VERIFICATION
+                        : client_1.ManagerCashCustodyStatus.PENDING_DEPOSIT,
+                    depositSlipUrl: dto.depositReceiptUrl ?? null,
+                    slipUploadedAt: hasSlip ? new Date() : null,
+                },
+            });
             return {
                 settledOrderCount: pending.length,
-                systemHandoverTotal: (0, finance_money_1.minorToAmountString)(systemMinor),
+                systemHandoverTotal,
                 shiftId: shift.id,
-                bankDepositReceiptUrl: dto.depositReceiptUrl,
+                bankDepositReceiptUrl: dto.depositReceiptUrl ?? null,
             };
         });
     }

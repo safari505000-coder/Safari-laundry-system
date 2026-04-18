@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate } from 'react-router-dom';
-import { MessageCircle } from 'lucide-react';
+import { CheckCircle2, MessageCircle } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { apiJson, type OrderRow } from '@/lib/api';
 import { formatKwdLabel } from '@/lib/kwd';
@@ -52,6 +52,18 @@ export function MyCashCustodyPage() {
           <CardTitle>{t('cashCustody.tableTitle')}</CardTitle>
         </CardHeader>
         <CardContent className="p-0 sm:p-4">
+          {orders !== null && rows.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 py-10 text-center">
+              <CheckCircle2 className="h-10 w-10 text-emerald-600" aria-hidden />
+              <p className="text-base font-semibold text-emerald-700">
+                {t('cashCustody.handoverComplete')}
+              </p>
+              <p className="max-w-sm text-sm text-muted-foreground">
+                {t('cashCustody.handoverCompleteHint')}
+              </p>
+            </div>
+          ) : null}
+          {rows.length > 0 ? (
           <Table>
             <TableHeader>
               <TableRow>
@@ -83,6 +95,7 @@ export function MyCashCustodyPage() {
               })}
             </TableBody>
           </Table>
+          ) : null}
         </CardContent>
       </Card>
     </div>

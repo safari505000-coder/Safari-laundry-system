@@ -14,11 +14,11 @@ export declare class FixedExpenseService {
         effectiveTo?: string | null;
     }): Promise<{
         id: string;
+        branchId: string;
         createdAt: Date;
         updatedAt: Date;
         category: import("@prisma/client").$Enums.FixedExpenseCategory;
         isActive: boolean;
-        branchId: string;
         title: string;
         monthlyAmount: Prisma.Decimal;
         effectiveFrom: Date;
@@ -31,11 +31,11 @@ export declare class FixedExpenseService {
         };
     } & {
         id: string;
+        branchId: string;
         createdAt: Date;
         updatedAt: Date;
         category: import("@prisma/client").$Enums.FixedExpenseCategory;
         isActive: boolean;
-        branchId: string;
         title: string;
         monthlyAmount: Prisma.Decimal;
         effectiveFrom: Date;

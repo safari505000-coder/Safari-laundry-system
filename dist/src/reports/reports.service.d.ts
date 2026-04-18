@@ -33,10 +33,10 @@ export declare class ReportsService {
             };
             driver: {
                 id: string;
+                branchId: string | null;
                 username: string;
                 fullName: string;
                 employeeId: string | null;
-                branchId: string | null;
             } | null;
         }[];
     }>;
@@ -60,12 +60,12 @@ export declare class ReportsService {
     driverLedger(driverId: string, fromIso: string, toIso: string, branchId?: string): Promise<{
         driver: {
             id: string;
+            branchId: string | null;
             username: string;
             fullName: string;
             employeeId: string | null;
             phone: string | null;
             safariRole: import("@prisma/client").$Enums.SafariRole;
-            branchId: string | null;
         };
         owedToOfficeKd: string;
         pendingSettlementOrderCount: number;
@@ -84,7 +84,7 @@ export declare class ReportsService {
             completedAt: Date | null;
         }[];
     }>;
-    dailyCashClosing(fromIso: string, toIso: string, branchId?: string): Promise<{
+    dailyCashClosing(fromIso: string, toIso: string, branchId?: string, driverId?: string): Promise<{
         from: string;
         to: string;
         grossCashSalesKd: string;
@@ -92,10 +92,11 @@ export declare class ReportsService {
         netCashAfterExpensesKd: string;
         cashOrderCount: number;
     }>;
-    netProfitExecutive(fromIso: string, toIso: string, branchId?: string): Promise<{
+    netProfitExecutive(fromIso: string, toIso: string, branchId?: string, driverId?: string): Promise<{
         from: string;
         to: string;
         branchId: string | null;
+        driverId: string | null;
         grossRevenueKd: string;
         variableSoapFuelKd: string;
         miscOperationalKd: string;
@@ -106,4 +107,21 @@ export declare class ReportsService {
         totalExpensesVariableAndFixedKd: string;
         netProfitKd: string;
     }>;
+    unifiedLedgerStream(fromIso: string, toIso: string, driverId?: string, branchId?: string): Promise<{
+        from: string;
+        to: string;
+        rows: {
+            id: string;
+            at: string;
+            streamType: string;
+            amountKd: string;
+            memo: string | null;
+            driverId: string | null;
+            driverName: string | null;
+            attachmentUrl: string | null;
+            refKind: "ORDER" | "EXPENSE" | "DEPOSIT";
+            refId: string;
+        }[];
+    }>;
+    private branchWhere;
 }

@@ -2,16 +2,17 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router-dom';
 import {
+  AlertTriangle,
   Droplets,
   Landmark,
   ReceiptText,
-  ScrollText,
   TicketPlus,
   Truck,
   Wallet,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/auth-context';
+import { useSafariStream } from '@/contexts/safari-stream-context';
 import {
   type DailyPosSalesByPaymentMethodReport,
   type DriverBalanceResponse,
@@ -101,6 +102,7 @@ export function DashboardPage() {
   const navigate = useNavigate();
   const dateLocale = useAppLocale();
   const { token, hasRole } = useAuth();
+  const { snapshot } = useSafariStream();
   const [drivers, setDrivers] = useState<DriverBalanceResponse | null>(null);
   const [wallet, setWallet] = useState<OwnerWalletSummary | null>(null);
   const [orders, setOrders] = useState<OrderRow[] | null>(null);
@@ -332,6 +334,24 @@ export function DashboardPage() {
   const managerMetricsGrid =
     'grid gap-4 sm:grid-cols-2 lg:grid-cols-3';
 
+  /*
+   * Dastur §2.2 — "Money Pulse" top row for the Dashboard (مركز العمليات).
+   * Mirrors the three cards on the Radar so OWNER + ACCOUNTANT see the
+   * same real-time sales split on both surfaces. Source: same
+   * `/api/finance/reports/daily-pos-sales` payload the Radar and
+   * Financials page consume, so the Ledger totals line up by construction.
+   */
+  const moneyPulseRows = paySplit?.rows ?? [];
+  const todaysCashSalesKd =
+    moneyPulseRows.find((r) => r.posPaymentMethod === 'CASH')?.totalRevenue ??
+    '0.0000';
+  const todaysKnetSalesKd =
+    moneyPulseRows.find((r) => r.posPaymentMethod === 'KNET')?.totalRevenue ??
+    '0.0000';
+  const todaysDebtSalesKd =
+    moneyPulseRows.find((r) => r.posPaymentMethod === 'DEBT_ON_ACCOUNT')
+      ?.totalRevenue ?? '0.0000';
+
   const isOwner = hasRole('OWNER') ?? false;
   const canCreateOrder = hasRole('DRIVER', 'MANAGER', 'CALL_CENTER');
   const showNewInvoiceShortcut =
@@ -450,6 +470,61 @@ export function DashboardPage() {
         ) : null}
       </header>
 
+      {/* Dastur §3 — Owner / Accountant alert: managers holding cash >24h. */}
+      {(hasRole('OWNER', 'ACCOUNTANT') ?? false) &&
+      (snapshot?.managerCustody?.fleet?.overdueCount ?? 0) > 0 ? (
+        <Link
+          to="/finance/manager-custody-aging"
+          className="flex items-start gap-3 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-900 transition-colors hover:bg-red-100"
+        >
+          <AlertTriangle className="mt-0.5 h-4 w-4" aria-hidden />
+          <div className="flex-1">
+            <p className="font-semibold">
+              {t('managerCustody.overdueBanner', {
+                count: snapshot!.managerCustody!.fleet!.overdueCount,
+                total: formatKwdLabel(
+                  snapshot!.managerCustody!.fleet!.overdueAmountKd,
+                ),
+              })}
+            </p>
+            <p className="text-xs text-red-800/80">
+              {t('managerCustody.overdueBannerHint')}
+            </p>
+          </div>
+        </Link>
+      ) : null}
+
+      {/* Dastur §3 — Manager reminder: own pending bags. */}
+      {(hasRole('MANAGER') ?? false) &&
+      (snapshot?.managerCustody?.mine?.pendingCount ?? 0) > 0 ? (
+        <Link
+          to="/manager/custody"
+          className={cn(
+            'flex items-start gap-3 rounded-lg border px-4 py-3 text-sm transition-colors',
+            (snapshot?.managerCustody?.mine?.overdueCount ?? 0) > 0
+              ? 'border-red-300 bg-red-50 text-red-900 hover:bg-red-100'
+              : 'border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100',
+          )}
+        >
+          <AlertTriangle className="mt-0.5 h-4 w-4" aria-hidden />
+          <div className="flex-1">
+            <p className="font-semibold">
+              {t('managerCustody.myPendingBanner', {
+                count: snapshot!.managerCustody!.mine!.pendingCount,
+                total: formatKwdLabel(
+                  snapshot!.managerCustody!.mine!.pendingAmountKd,
+                ),
+              })}
+            </p>
+            <p className="text-xs opacity-80">
+              {(snapshot?.managerCustody?.mine?.overdueCount ?? 0) > 0
+                ? t('managerCustody.myPendingBannerOverdue')
+                : t('managerCustody.myPendingBannerHint')}
+            </p>
+          </div>
+        </Link>
+      ) : null}
+
       <section
         className={cn(
           'grid gap-4',
@@ -502,23 +577,11 @@ export function DashboardPage() {
           </button>
         : null}
 
-        <button
-          type="button"
-          onClick={() => navigate('/orders')}
-          className="group flex flex-col gap-4 rounded-[20px] border border-border bg-card p-6 text-start shadow-sm shadow-black/[0.04] transition-all hover:-translate-y-0.5 hover:shadow-md"
-        >
-          <div className="rounded-xl bg-primary/10 p-3 text-primary transition-colors group-hover:bg-primary/15">
-            <ScrollText className="h-6 w-6" strokeWidth={1.75} aria-hidden />
-          </div>
-          <div className="space-y-1">
-            <h2 className="text-base font-semibold text-foreground">
-              {t('dashboard.quickInvoicesData')}
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              {t('dashboard.quickInvoicesDataHint')}
-            </p>
-          </div>
-        </button>
+        {/*
+         * Dastur §2.2 — "بيانات الفواتير" now lives in the sidebar
+         * (see `invoicesDataItem`). The dashboard quick-action card is
+         * removed to avoid duplicating the navigation entry.
+         */}
 
         <button
           type="button"
@@ -547,6 +610,46 @@ export function DashboardPage() {
         </button>
       </section>
 
+      {hasRole('OWNER', 'ACCOUNTANT') ? (
+        <section className="space-y-3">
+          <div className="flex items-baseline justify-between">
+            <h2 className="text-base font-semibold text-foreground">
+              {t('radar.moneyPulseTitle')}
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              {t('radar.moneyPulseHint')}
+            </p>
+          </div>
+          {paySplitLoading && !paySplit ?
+            <div className="grid gap-4 sm:grid-cols-3">
+              {[0, 1, 2].map((i) => (
+                <Skeleton key={`pulse-${i}`} className="h-32 rounded-xl" />
+              ))}
+            </div>
+          : <div className="grid gap-4 sm:grid-cols-3">
+              <MetricCard
+                title={t('radar.totalCash')}
+                subtitle={t('radar.totalCashSub')}
+                value={formatKwdLabel(todaysCashSalesKd)}
+                icon={<ReceiptText className="h-4 w-4" />}
+                emphasis
+              />
+              <MetricCard
+                title={t('radar.totalKnet')}
+                subtitle={t('radar.totalKnetSub')}
+                value={formatKwdLabel(todaysKnetSalesKd)}
+                icon={<Landmark className="h-4 w-4" />}
+              />
+              <MetricCard
+                title={t('radar.totalDebt')}
+                subtitle={t('radar.totalDebtSub')}
+                value={formatKwdLabel(todaysDebtSalesKd)}
+                icon={<Wallet className="h-4 w-4" />}
+              />
+            </div>}
+        </section>
+      ) : null}
+
       <section className="space-y-4">
         {hasRole(
           'OWNER',
@@ -566,7 +669,66 @@ export function DashboardPage() {
                   <Skeleton key={i} className="h-32 rounded-xl" />
                 ),
               )
+            : hasRole('ACCOUNTANT') && !hasRole('OWNER') ?
+              snapshot?.institution ?
+                <>
+                  {/*
+                   * Dastur §2.2 — Accountant sees the two custody-truth cards
+                   * only: drivers' field cash + managers' pending deposits.
+                   * Net Profit (الصافي اليومي) is an OWNER-only metric and is
+                   * intentionally NOT rendered here.
+                   */}
+                  <MetricCard
+                    title={t('dashboard.instFieldCash')}
+                    subtitle={t('dashboard.instFieldCashSubtitle')}
+                    value={formatKwdLabel(
+                      snapshot.institution.allDriversFieldCashKd,
+                    )}
+                    icon={<Truck className="h-4 w-4" />}
+                    emphasis
+                  />
+                  <MetricCard
+                    title={t('dashboard.instPendingDeposits')}
+                    subtitle={t('dashboard.instPendingDepositsSubtitle')}
+                    value={formatKwdLabel(
+                      snapshot.managerCustody?.fleet?.pendingAmountKd ??
+                        snapshot.institution.allDriversPendingDepositsKd,
+                    )}
+                    icon={<Wallet className="h-4 w-4" />}
+                  />
+                </>
+              : [0, 1].map((i) => (
+                  <Skeleton key={`acct-${i}`} className="h-32 rounded-xl" />
+                ))
             : <>
+                {/*
+                 * Dastur §3 — Owner mirrors Accountant's custody truth at the top of
+                 * the metrics grid: drivers' field cash + managers' pending deposits
+                 * side-by-side. Same data sources as the Accountant branch so both
+                 * roles see the same numbers.
+                 */}
+                {hasRole('OWNER') && snapshot?.institution ? (
+                  <>
+                    <MetricCard
+                      title={t('dashboard.instFieldCash')}
+                      subtitle={t('dashboard.instFieldCashSubtitle')}
+                      value={formatKwdLabel(
+                        snapshot.institution.allDriversFieldCashKd,
+                      )}
+                      icon={<Truck className="h-4 w-4" />}
+                      emphasis
+                    />
+                    <MetricCard
+                      title={t('dashboard.instPendingDeposits')}
+                      subtitle={t('dashboard.instPendingDepositsSubtitle')}
+                      value={formatKwdLabel(
+                        snapshot.managerCustody?.fleet?.pendingAmountKd ??
+                          snapshot.institution.allDriversPendingDepositsKd,
+                      )}
+                      icon={<Wallet className="h-4 w-4" />}
+                    />
+                  </>
+                ) : null}
                 <MetricCard
                   title={t('dashboard.cashTitle')}
                   subtitle={t('dashboard.cashSubtitle')}

@@ -1,16 +1,24 @@
 import {
   Banknote,
+  BookText,
   Building2,
   CircleDollarSign,
   ClipboardList,
   Droplets,
   FileCheck2,
   FileSpreadsheet,
+  HandCoins,
+  Landmark,
   LayoutDashboard,
   ListOrdered,
   MessageCircle,
   MessageSquare,
   Package,
+  PackagePlus,
+  Radar,
+  Receipt,
+  ShieldAlert,
+  Warehouse,
   ShoppingCart,
   Sparkles,
   Truck,
@@ -87,14 +95,14 @@ export const customersItem: NavItem = {
   to: '/customers',
   labelKey: 'nav.customers',
   icon: Users,
-  roles: ['OWNER', 'ACCOUNTANT'],
+  roles: ['OWNER'],
 };
 
 export const collectionsItem: NavItem = {
   to: '/collections',
   labelKey: 'nav.customerDebtTracker',
   icon: MessageSquare,
-  roles: ['OWNER', 'ACCOUNTANT'],
+  roles: ['OWNER'],
 };
 
 export const whatsappToolsItem: NavItem = {
@@ -122,7 +130,31 @@ export const driverMonitorItem: NavItem = {
   to: '/admin/driver-monitoring',
   labelKey: 'nav.driverMonitor',
   icon: Truck,
-  roles: ['CALL_CENTER', 'OWNER'],
+  roles: ['CALL_CENTER', 'OWNER', 'ACCOUNTANT'],
+};
+
+/** Dastur §4 — Owner view of the Smart Inventory report (read-only). */
+export const ownerInventoryItem: NavItem = {
+  to: '/owner/inventory',
+  labelKey: 'nav.inventoryReport',
+  icon: Warehouse,
+  roles: ['OWNER'],
+};
+
+/** Dastur §4 — Accountant view of the Smart Inventory report (+ Stock-In access). */
+export const accountantInventoryItem: NavItem = {
+  to: '/accountant/inventory',
+  labelKey: 'nav.inventoryReport',
+  icon: Warehouse,
+  roles: ['ACCOUNTANT', 'OWNER'],
+};
+
+/** Dastur §4 — Accountant-only Stock-In form. */
+export const accountantStockInItem: NavItem = {
+  to: '/accountant/stock-in',
+  labelKey: 'nav.stockIn',
+  icon: PackagePlus,
+  roles: ['ACCOUNTANT'],
 };
 
 export const ordersItem: NavItem = {
@@ -138,6 +170,19 @@ export const ordersItem: NavItem = {
     'SUPERVISOR',
     'VIEWER',
   ],
+};
+
+/**
+ * Dastur §2.2 — Sidebar entry for the Invoices Data hub (same route as
+ * `/orders`, but surfaced to OWNER + ACCOUNTANT with a dedicated
+ * "بيانات الفواتير" label so it replaces the old Dashboard quick-action
+ * card). Keep `ordersItem` intact for MANAGER/DRIVER/CALL_CENTER flows.
+ */
+export const invoicesDataItem: NavItem = {
+  to: '/orders',
+  labelKey: 'nav.invoicesData',
+  icon: Receipt,
+  roles: ['OWNER', 'ACCOUNTANT'],
 };
 
 export const shiftsItem: NavItem = {
@@ -166,6 +211,34 @@ export const collectDriverCashItem: NavItem = {
   labelKey: 'nav.staffSettlement',
   icon: CircleDollarSign,
   roles: ['MANAGER', 'OWNER'],
+};
+
+/** Dastur §3 — Manager's own pending custody bags (slip upload). */
+export const myCustodyItem: NavItem = {
+  to: '/manager/custody',
+  labelKey: 'nav.myCustody',
+  icon: Landmark,
+  roles: ['MANAGER'],
+};
+
+/** Dastur §3 — Owner / Accountant aging report "Cash Held by Managers". */
+export const managerCustodyAgingItem: NavItem = {
+  to: '/finance/manager-custody-aging',
+  labelKey: 'nav.managerCustodyAging',
+  icon: ShieldAlert,
+  roles: ['OWNER', 'ACCOUNTANT'],
+};
+
+/**
+ * Dastur §3 — Staff Debts (internal cash liabilities). Drivers' field cash
+ * + managers' pending custody in one view. Strictly excludes client debts,
+ * expenses, and profit metrics.
+ */
+export const staffDebtsItem: NavItem = {
+  to: '/staff-debts',
+  labelKey: 'nav.staffDebts',
+  icon: HandCoins,
+  roles: ['OWNER', 'ACCOUNTANT'],
 };
 
 export const bankDepositsItem: NavItem = {
@@ -207,6 +280,34 @@ export const financialReportsItem: NavItem = {
   to: '/reports',
   labelKey: 'nav.financialReports',
   icon: FileSpreadsheet,
+  roles: ['ACCOUNTANT', 'OWNER'],
+};
+
+/**
+ * Dastur §2.1 / §2.2 — Live driver radar / Safari Pulse (map + activity).
+ * OWNER-only cockpit: surface net-profit-adjacent, real-time operational
+ * signals. ACCOUNTANT and other roles MUST NOT see this entry or reach
+ * the route; the `/admin/live-monitor` page enforces the same gate.
+ */
+export const driverAuditRadarItem: NavItem = {
+  to: '/admin/live-monitor',
+  labelKey: 'nav.driverAuditRadar',
+  icon: Radar,
+  roles: ['OWNER'],
+};
+
+/** Accountant / owner — text movement/shift logs hub (driver-centric reports). */
+export const movementLogsItem: NavItem = {
+  to: '/reports',
+  labelKey: 'nav.movementLogs',
+  icon: FileSpreadsheet,
+  roles: ['ACCOUNTANT', 'OWNER'],
+};
+
+export const unifiedLedgerItem: NavItem = {
+  to: '/unified-ledger',
+  labelKey: 'nav.unifiedLedger',
+  icon: BookText,
   roles: ['ACCOUNTANT', 'OWNER'],
 };
 

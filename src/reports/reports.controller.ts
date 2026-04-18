@@ -101,7 +101,12 @@ export class ReportsController {
     summary: `Daily cash closing — gross CASH sales minus expenses (${APP_BRAND})`,
   })
   dailyCashClosing(@Query() q: ReportsRangeQueryDto) {
-    return this.reportsService.dailyCashClosing(q.from, q.to, q.branchId);
+    return this.reportsService.dailyCashClosing(
+      q.from,
+      q.to,
+      q.branchId,
+      q.driverId,
+    );
   }
 
   @Get('executive-summary')
@@ -118,6 +123,33 @@ export class ReportsController {
       'Gross completed sales minus SOAP/FUEL/MISC variable expenses, paid payroll, and accrued fixed schedules.',
   })
   executiveSummary(@Query() q: ReportsRangeQueryDto) {
-    return this.reportsService.netProfitExecutive(q.from, q.to, q.branchId);
+    return this.reportsService.netProfitExecutive(
+      q.from,
+      q.to,
+      q.branchId,
+      q.driverId,
+    );
+  }
+
+  @Get('unified-ledger-stream')
+  @Roles(
+    SafariRole.OWNER,
+    SafariRole.MANAGER,
+    SafariRole.ACCOUNTANT,
+    SafariRole.SUPERVISOR,
+    SafariRole.VIEWER,
+  )
+  @ApiOperation({
+    summary: `Unified ledger stream (${APP_BRAND})`,
+    description:
+      'POS ledger entries, driver field expenses (with receipt pointers), and driver deposits for accountant radar.',
+  })
+  unifiedLedgerStream(@Query() q: ReportsRangeQueryDto) {
+    return this.reportsService.unifiedLedgerStream(
+      q.from,
+      q.to,
+      q.driverId,
+      q.branchId,
+    );
   }
 }
