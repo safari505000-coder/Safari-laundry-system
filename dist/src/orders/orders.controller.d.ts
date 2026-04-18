@@ -18,6 +18,9 @@ export declare class OrdersController {
         totalPrice: import("@prisma/client-runtime-utils").Decimal;
         cashStatus: import("@prisma/client").$Enums.CashStatus;
         invoiceNumber: string | null;
+        serialNumber: string | null;
+        reminderCount: number;
+        lastReminderAt: Date | null;
         notes: string | null;
         posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
         completedAt: Date | null;
@@ -55,6 +58,9 @@ export declare class OrdersController {
         totalPrice: import("@prisma/client-runtime-utils").Decimal;
         cashStatus: import("@prisma/client").$Enums.CashStatus;
         invoiceNumber: string | null;
+        serialNumber: string | null;
+        reminderCount: number;
+        lastReminderAt: Date | null;
         notes: string | null;
         posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
         completedAt: Date | null;
@@ -92,6 +98,9 @@ export declare class OrdersController {
         totalPrice: import("@prisma/client-runtime-utils").Decimal;
         cashStatus: import("@prisma/client").$Enums.CashStatus;
         invoiceNumber: string | null;
+        serialNumber: string | null;
+        reminderCount: number;
+        lastReminderAt: Date | null;
         notes: string | null;
         posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
         completedAt: Date | null;
@@ -136,6 +145,9 @@ export declare class OrdersController {
         totalPrice: import("@prisma/client-runtime-utils").Decimal;
         cashStatus: import("@prisma/client").$Enums.CashStatus;
         invoiceNumber: string | null;
+        serialNumber: string | null;
+        reminderCount: number;
+        lastReminderAt: Date | null;
         notes: string | null;
         posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
         completedAt: Date | null;
@@ -173,6 +185,9 @@ export declare class OrdersController {
         totalPrice: import("@prisma/client-runtime-utils").Decimal;
         cashStatus: import("@prisma/client").$Enums.CashStatus;
         invoiceNumber: string | null;
+        serialNumber: string | null;
+        reminderCount: number;
+        lastReminderAt: Date | null;
         notes: string | null;
         posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
         completedAt: Date | null;
@@ -210,6 +225,9 @@ export declare class OrdersController {
         totalPrice: import("@prisma/client-runtime-utils").Decimal;
         cashStatus: import("@prisma/client").$Enums.CashStatus;
         invoiceNumber: string | null;
+        serialNumber: string | null;
+        reminderCount: number;
+        lastReminderAt: Date | null;
         notes: string | null;
         posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
         completedAt: Date | null;

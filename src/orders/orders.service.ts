@@ -20,6 +20,7 @@ import { CustomerLedgerService } from '../customer-ledger/customer-ledger.servic
 import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
 import { parseFixed4ToMinor, toMinorFromFixed4 } from '../finance/finance-money';
 import { PrismaService } from '../prisma/prisma.service';
+import { SerialCounterService } from '../serials/serial-counter.service';
 import { AssignDriverDto } from './dto/assign-driver.dto';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CreateOrderQuickDto } from './dto/create-order-quick.dto';
@@ -41,7 +42,10 @@ const orderDetailSelect = {
   completedAt: true,
   walletSettledAt: true,
   invoiceNumber: true,
+  serialNumber: true,
   notes: true,
+  reminderCount: true,
+  lastReminderAt: true,
   createdAt: true,
   updatedAt: true,
   customer: {
@@ -104,6 +108,7 @@ export class OrdersService {
     private readonly paymentsService: PaymentsService,
     private readonly customerNotifications: CustomerNotificationsService,
     private readonly generalLedger: GeneralLedgerService,
+    private readonly serialCounter: SerialCounterService,
   ) {}
 
   private queuePosInvoiceNotify(
@@ -325,6 +330,10 @@ export class OrdersService {
         dto,
         phoneCompact,
       );
+      const serialNumber = await this.serialCounter.stampOrderSerial(
+        tx,
+        driverUserId,
+      );
       return tx.order.create({
         data: {
           customerId,
@@ -333,6 +342,7 @@ export class OrdersService {
           totalPrice: dto.totalPrice,
           status: OrderStatus.PENDING,
           invoiceNumber: dto.invoiceNumber?.trim() || null,
+          serialNumber,
           notes: dto.notes?.trim() || null,
           ...(lineCreates?.length
             ? { lineItems: { create: lineCreates } }
@@ -403,6 +413,10 @@ export class OrdersService {
             posPaymentMethodResolved === PosPaymentMethod.ONLINE;
 
           if (useHostedPaymentLink) {
+            const serialNumber = await this.serialCounter.stampOrderSerial(
+              tx,
+              driverUserId,
+            );
             const created = await tx.order.create({
               data: {
                 customerId,
@@ -414,6 +428,7 @@ export class OrdersService {
                 posPaymentMethod: PosPaymentMethod.ONLINE,
                 completedAt: null,
                 invoiceNumber: dto.invoiceNumber?.trim() || null,
+                serialNumber,
                 notes: dto.notes?.trim() || null,
                 ...(lineCreates?.length
                   ? { lineItems: { create: lineCreates } }
@@ -428,6 +443,10 @@ export class OrdersService {
           }
 
           const completedAt = new Date();
+          const serialNumber = await this.serialCounter.stampOrderSerial(
+            tx,
+            driverUserId,
+          );
 
           const created = await tx.order.create({
             data: {
@@ -440,6 +459,7 @@ export class OrdersService {
               posPaymentMethod: posPaymentMethodResolved,
               completedAt,
               invoiceNumber: dto.invoiceNumber?.trim() || null,
+              serialNumber,
               notes: dto.notes?.trim() || null,
               ...(lineCreates?.length
                 ? { lineItems: { create: lineCreates } }
@@ -596,6 +616,10 @@ export class OrdersService {
         });
 
         for (const p of prepared) {
+          const serialNumber = await this.serialCounter.stampOrderSerial(
+            tx,
+            driverUserId,
+          );
           const created = await tx.order.create({
             data: {
               customerId,
@@ -607,6 +631,7 @@ export class OrdersService {
               posPaymentMethod: PosPaymentMethod.ONLINE,
               completedAt: null,
               posPaymentBundleId: bundle.id,
+              serialNumber,
               ...(p.lineCreates?.length ?
                 { lineItems: { create: p.lineCreates } }
               : {}),
@@ -685,6 +710,10 @@ export class OrdersService {
               address: dto.customerAddress?.trim() || null,
             },
           });
+      const serialNumber = await this.serialCounter.stampOrderSerial(
+        tx,
+        dto.driverId ?? null,
+      );
       return tx.order.create({
         data: {
           customerId: customer.id,
@@ -693,6 +722,7 @@ export class OrdersService {
           totalPrice: dto.totalPrice,
           status: OrderStatus.PENDING,
           invoiceNumber: dto.invoiceNumber?.trim() || null,
+          serialNumber,
           notes: dto.notes?.trim() || null,
           ...(lineCreates?.length
             ? { lineItems: { create: lineCreates } }

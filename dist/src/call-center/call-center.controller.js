@@ -44,6 +44,12 @@ let CallCenterController = class CallCenterController {
     activateSubscription(dto, user) {
         return this.callCenterService.activateSubscription(user.userId, dto);
     }
+    markOrderReminderSent(orderId) {
+        return this.callCenterService.sendOrderReminder(orderId);
+    }
+    markSubscriberReminderSent(customerId) {
+        return this.callCenterService.sendSubscriberReminder(customerId);
+    }
     listSettlements(customerId) {
         return this.callCenterService.listCustomerSettlementHistory(customerId);
     }
@@ -105,6 +111,30 @@ __decorate([
     __metadata("design:paramtypes", [activate_subscription_dto_1.ActivateSubscriptionDto, Object]),
     __metadata("design:returntype", void 0)
 ], CallCenterController.prototype, "activateSubscription", null);
+__decorate([
+    (0, common_1.Post)('orders/:orderId/reminder'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.OWNER),
+    (0, swagger_1.ApiOperation)({
+        summary: `Mark a collection reminder as sent (${branding_1.APP_BRAND})`,
+        description: 'Dastur §5 (V1.5). Atomic 24h-guarded reminder counter bump for an order. Returns `{sent:true}` when the counter was incremented, or `{sent:false, nextAllowedAtIso}` when the 24h cooldown is still active.',
+    }),
+    __param(0, (0, common_1.Param)('orderId', common_1.ParseUUIDPipe)),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], CallCenterController.prototype, "markOrderReminderSent", null);
+__decorate([
+    (0, common_1.Post)('subscribers/:customerId/reminder'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.OWNER),
+    (0, swagger_1.ApiOperation)({
+        summary: `Mark a subscription renewal reminder as sent (${branding_1.APP_BRAND})`,
+        description: 'Dastur §5 (V1.5). Atomic 24h-guarded reminder counter bump for a subscriber. Counter lives on CustomerWallet; wallet is created lazily on first reminder.',
+    }),
+    __param(0, (0, common_1.Param)('customerId', common_1.ParseUUIDPipe)),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], CallCenterController.prototype, "markSubscriberReminderSent", null);
 __decorate([
     (0, common_1.Get)('customers/:customerId/settlements'),
     (0, swagger_1.ApiOperation)({

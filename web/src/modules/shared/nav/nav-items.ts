@@ -4,6 +4,7 @@ import {
   Building2,
   CircleDollarSign,
   ClipboardList,
+  Hash,
   Droplets,
   FileCheck2,
   FileSpreadsheet,
@@ -284,6 +285,17 @@ export const financialReportsItem: NavItem = {
   labelKey: 'nav.financialReports',
   icon: FileSpreadsheet,
   roles: ['ACCOUNTANT', 'OWNER'],
+};
+
+/**
+ * Dastur §1 (V1.5) — Owner-only Serial Management island: assign
+ * single-letter driver prefixes and view the live global serial log.
+ */
+export const ownerSerialsItem: NavItem = {
+  to: '/owner/serials',
+  labelKey: 'nav.ownerSerials',
+  icon: Hash,
+  roles: ['OWNER'],
 };
 
 /**

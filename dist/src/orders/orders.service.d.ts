@@ -5,6 +5,7 @@ import { CustomerNotificationsService } from '../customer-notifications/customer
 import { CustomerLedgerService } from '../customer-ledger/customer-ledger.service';
 import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { SerialCounterService } from '../serials/serial-counter.service';
 import { AssignDriverDto } from './dto/assign-driver.dto';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CreateOrderQuickDto } from './dto/create-order-quick.dto';
@@ -22,7 +23,10 @@ declare const orderDetailSelect: {
     completedAt: true;
     walletSettledAt: true;
     invoiceNumber: true;
+    serialNumber: true;
     notes: true;
+    reminderCount: true;
+    lastReminderAt: true;
     createdAt: true;
     updatedAt: true;
     customer: {
@@ -72,7 +76,8 @@ export declare class OrdersService {
     private readonly paymentsService;
     private readonly customerNotifications;
     private readonly generalLedger;
-    constructor(prisma: PrismaService, customerLedger: CustomerLedgerService, paymentsService: PaymentsService, customerNotifications: CustomerNotificationsService, generalLedger: GeneralLedgerService);
+    private readonly serialCounter;
+    constructor(prisma: PrismaService, customerLedger: CustomerLedgerService, paymentsService: PaymentsService, customerNotifications: CustomerNotificationsService, generalLedger: GeneralLedgerService, serialCounter: SerialCounterService);
     private queuePosInvoiceNotify;
     private isManagerOrOwner;
     private canViewAllOrders;

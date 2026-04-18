@@ -9,6 +9,35 @@ import type {
   DebtRecoveryDayRowDto,
   DebtRecoveryReportDto,
 } from './dto/debt-recovery-report.dto';
+import type { ReminderResultDto } from './dto/reminder-result.dto';
+
+const REMINDER_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+
+function buildReminderResult(args: {
+  sent: boolean;
+  reminderCount: number;
+  lastReminderAt: Date | null;
+  now: Date;
+}): ReminderResultDto {
+  const { sent, reminderCount, lastReminderAt, now } = args;
+  const nextAllowedAt =
+    !sent && lastReminderAt
+      ? new Date(lastReminderAt.getTime() + REMINDER_COOLDOWN_MS)
+      : null;
+  const hoursUntilNext = nextAllowedAt
+    ? Math.max(
+        0,
+        Math.ceil((nextAllowedAt.getTime() - now.getTime()) / (60 * 60 * 1000)),
+      )
+    : null;
+  return {
+    sent,
+    reminderCount,
+    lastReminderAtIso: lastReminderAt?.toISOString() ?? null,
+    nextAllowedAtIso: nextAllowedAt?.toISOString() ?? null,
+    hoursUntilNext,
+  };
+}
 
 const FOUR_DP = (d: Prisma.Decimal): string => d.toFixed(4);
 const toIsoDay = (d: Date): string => d.toISOString().slice(0, 10);
@@ -189,6 +218,110 @@ export class CallCenterService {
         planName: str('planName'),
         orderId: r.orderId ?? undefined,
       };
+    });
+  }
+
+  /**
+   * Dastur §5 (V1.5) — order/collection reminder with a 24h guard.
+   *
+   * The `updateMany({ where: { id, lastReminderAt-older-than-24h-or-null } })`
+   * is atomic at the DB layer: if another request already bumped the row in
+   * the last 24h, our WHERE clause matches zero rows and `count = 0`, so we
+   * re-read the current state and return a cooldown-only payload.
+   */
+  async sendOrderReminder(orderId: string): Promise<ReminderResultDto> {
+    const now = new Date();
+    const cutoff = new Date(now.getTime() - REMINDER_COOLDOWN_MS);
+
+    const update = await this.prisma.order.updateMany({
+      where: {
+        id: orderId,
+        OR: [
+          { lastReminderAt: null },
+          { lastReminderAt: { lt: cutoff } },
+        ],
+      },
+      data: {
+        reminderCount: { increment: 1 },
+        lastReminderAt: now,
+      },
+    });
+
+    const fresh = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: { reminderCount: true, lastReminderAt: true },
+    });
+    if (!fresh) throw new NotFoundException('Order not found');
+
+    return buildReminderResult({
+      sent: update.count > 0,
+      reminderCount: fresh.reminderCount,
+      lastReminderAt: fresh.lastReminderAt,
+      now,
+    });
+  }
+
+  /**
+   * Dastur §5 (V1.5) — subscriber reminder (subscription renewal nudge).
+   * Counter lives on CustomerWallet. Same 24h atomic guard.
+   */
+  async sendSubscriberReminder(customerId: string): Promise<ReminderResultDto> {
+    const now = new Date();
+    const cutoff = new Date(now.getTime() - REMINDER_COOLDOWN_MS);
+
+    const update = await this.prisma.customerWallet.updateMany({
+      where: {
+        customerId,
+        OR: [
+          { subscriptionLastReminderAt: null },
+          { subscriptionLastReminderAt: { lt: cutoff } },
+        ],
+      },
+      data: {
+        subscriptionReminderCount: { increment: 1 },
+        subscriptionLastReminderAt: now,
+      },
+    });
+
+    const fresh = await this.prisma.customerWallet.findUnique({
+      where: { customerId },
+      select: {
+        subscriptionReminderCount: true,
+        subscriptionLastReminderAt: true,
+      },
+    });
+    if (!fresh) {
+      // Either the customer has no wallet yet or doesn't exist at all.
+      const customer = await this.prisma.customer.findUnique({
+        where: { id: customerId },
+        select: { id: true },
+      });
+      if (!customer) throw new NotFoundException('Customer not found');
+      // No wallet — treat as a 0-count first-reminder: create wallet lazily.
+      const createdWallet = await this.prisma.customerWallet.create({
+        data: {
+          customerId,
+          subscriptionReminderCount: 1,
+          subscriptionLastReminderAt: now,
+        },
+        select: {
+          subscriptionReminderCount: true,
+          subscriptionLastReminderAt: true,
+        },
+      });
+      return buildReminderResult({
+        sent: true,
+        reminderCount: createdWallet.subscriptionReminderCount,
+        lastReminderAt: createdWallet.subscriptionLastReminderAt,
+        now,
+      });
+    }
+
+    return buildReminderResult({
+      sent: update.count > 0,
+      reminderCount: fresh.subscriptionReminderCount,
+      lastReminderAt: fresh.subscriptionLastReminderAt,
+      now,
     });
   }
 

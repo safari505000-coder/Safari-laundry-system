@@ -45,5 +45,7 @@ export declare class CallCenterController {
         };
         settlement: import("../customer-ledger/subscription-settlement.types").SubscriptionActivationSettlement;
     }>;
+    markOrderReminderSent(orderId: string): Promise<import("./dto/reminder-result.dto").ReminderResultDto>;
+    markSubscriberReminderSent(customerId: string): Promise<import("./dto/reminder-result.dto").ReminderResultDto>;
     listSettlements(customerId: string): Promise<import("./dto/settlement-history-row.dto").SettlementHistoryRowDto[]>;
 }

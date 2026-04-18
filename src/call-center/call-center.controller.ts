@@ -83,6 +83,32 @@ export class CallCenterController {
     return this.callCenterService.activateSubscription(user.userId, dto);
   }
 
+  @Post('orders/:orderId/reminder')
+  @Roles(SafariRole.CALL_CENTER, SafariRole.OWNER)
+  @ApiOperation({
+    summary: `Mark a collection reminder as sent (${APP_BRAND})`,
+    description:
+      'Dastur §5 (V1.5). Atomic 24h-guarded reminder counter bump for an order. Returns `{sent:true}` when the counter was incremented, or `{sent:false, nextAllowedAtIso}` when the 24h cooldown is still active.',
+  })
+  markOrderReminderSent(
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+  ) {
+    return this.callCenterService.sendOrderReminder(orderId);
+  }
+
+  @Post('subscribers/:customerId/reminder')
+  @Roles(SafariRole.CALL_CENTER, SafariRole.OWNER)
+  @ApiOperation({
+    summary: `Mark a subscription renewal reminder as sent (${APP_BRAND})`,
+    description:
+      'Dastur §5 (V1.5). Atomic 24h-guarded reminder counter bump for a subscriber. Counter lives on CustomerWallet; wallet is created lazily on first reminder.',
+  })
+  markSubscriberReminderSent(
+    @Param('customerId', ParseUUIDPipe) customerId: string,
+  ) {
+    return this.callCenterService.sendSubscriberReminder(customerId);
+  }
+
   @Get('customers/:customerId/settlements')
   @ApiOperation({
     summary: `Customer settlement history (${APP_BRAND})`,

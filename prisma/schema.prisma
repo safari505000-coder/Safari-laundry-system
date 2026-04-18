@@ -125,6 +125,13 @@ model User {
   vehicleLabel String?
   /** Last GPS point as "lat,lng". */
   lastKnownLocation String?
+  /**
+   * Dastur §1 (V1.5) — Owner-assigned single-letter prefix for drivers
+   * ("A", "B", ...). Combined with the global SerialCounter to stamp
+   * every outgoing order with a human-readable serial like "A-1042".
+   * Optional: non-driver users never receive one.
+   */
+  driverPrefix String?   @unique
   safariRole  SafariRole @default(DRIVER)
   /** Owner toggle: inactive users cannot sign in. */
   isActive    Boolean    @default(true)
@@ -288,6 +295,14 @@ model CustomerWallet {
   subscriptionExpiresAt   DateTime?
   subscriptionPlanId    String?   @db.Uuid
   subscriptionPlanName  String?
+  /**
+   * Dastur §5 (V1.5) — Call Center subscription-renewal reminders.
+   * `subscriptionReminderCount` increments at most once every 24h when
+   * the Call Center sends a WhatsApp/SMS nudge; `subscriptionLastReminderAt`
+   * is the guard timestamp the backend uses to enforce that window.
+   */
+  subscriptionReminderCount      Int       @default(0)
+  subscriptionLastReminderAt     DateTime?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -328,6 +343,19 @@ model Order {
   cashStatus     CashStatus    @default(UNPAID)
   /** Paper invoice reference when the driver has it; null if not yet recorded. */
   invoiceNumber  String?
+  /**
+   * Dastur §1 (V1.5) — Human-readable, globally unique order serial
+   * composed as `<driverPrefix>-<globalCounter>`. Stamped at creation
+   * time when the assigned driver has a `driverPrefix`; legacy rows
+   * (and driver-less POS tickets) stay null for backward compatibility.
+   */
+  serialNumber   String?       @unique
+  /**
+   * Dastur §5 (V1.5) — Call Center collection reminders counter.
+   * Increments at most once every 24h (see `lastReminderAt`).
+   */
+  reminderCount  Int           @default(0)
+  lastReminderAt DateTime?
   notes            String?
   customerId     String        @db.Uuid
   driverId         String?       @db.Uuid
@@ -362,6 +390,19 @@ model Order {
   @@index([posPaymentMethod])
   @@index([posPaymentBundleId])
   @@index([handoverShiftId])
+  @@index([serialNumber])
+}
+
+/**
+ * Dastur §1 (V1.5) — Global atomic counters (e.g. the single-row
+ * "ORDER_SERIAL" used to stamp Order.serialNumber). One row per key.
+ * Safely incremented inside Prisma transactions via `update({ data:
+ * { value: { increment: 1 } } })` which is row-level-locking.
+ */
+model SerialCounter {
+  key       String   @id
+  value     Int      @default(0)
+  updatedAt DateTime @updatedAt
 }
 
 /** One hosted payment session for multiple POS orders (same customer, one gateway charge). */

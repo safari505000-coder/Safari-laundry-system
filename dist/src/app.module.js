@@ -34,6 +34,7 @@ const pos_module_1 = require("./pos/pos.module");
 const prisma_module_1 = require("./prisma/prisma.module");
 const safari_stream_module_1 = require("./safari-stream/safari-stream.module");
 const reports_module_1 = require("./reports/reports.module");
+const serials_module_1 = require("./serials/serials.module");
 const system_module_1 = require("./system/system.module");
 const subscription_plans_module_1 = require("./subscription-plans/subscription-plans.module");
 const subscribers_module_1 = require("./subscribers/subscribers.module");
@@ -82,6 +83,7 @@ exports.AppModule = AppModule = __decorate([
             manager_custody_module_1.ManagerCustodyModule,
             pos_module_1.PosModule,
             customers_module_1.CustomersModule,
+            serials_module_1.SerialsModule,
             serve_static_1.ServeStaticModule.forRoot({
                 rootPath: uploadsPath,
                 serveRoot: '/uploads',

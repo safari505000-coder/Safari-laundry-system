@@ -14,6 +14,23 @@ const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
 const prisma_service_1 = require("../prisma/prisma.service");
 const customer_ledger_service_1 = require("../customer-ledger/customer-ledger.service");
+const REMINDER_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+function buildReminderResult(args) {
+    const { sent, reminderCount, lastReminderAt, now } = args;
+    const nextAllowedAt = !sent && lastReminderAt
+        ? new Date(lastReminderAt.getTime() + REMINDER_COOLDOWN_MS)
+        : null;
+    const hoursUntilNext = nextAllowedAt
+        ? Math.max(0, Math.ceil((nextAllowedAt.getTime() - now.getTime()) / (60 * 60 * 1000)))
+        : null;
+    return {
+        sent,
+        reminderCount,
+        lastReminderAtIso: lastReminderAt?.toISOString() ?? null,
+        nextAllowedAtIso: nextAllowedAt?.toISOString() ?? null,
+        hoursUntilNext,
+    };
+}
 const FOUR_DP = (d) => d.toFixed(4);
 const toIsoDay = (d) => d.toISOString().slice(0, 10);
 function parseDayUtc(iso) {
@@ -179,6 +196,90 @@ let CallCenterService = class CallCenterService {
                 planName: str('planName'),
                 orderId: r.orderId ?? undefined,
             };
+        });
+    }
+    async sendOrderReminder(orderId) {
+        const now = new Date();
+        const cutoff = new Date(now.getTime() - REMINDER_COOLDOWN_MS);
+        const update = await this.prisma.order.updateMany({
+            where: {
+                id: orderId,
+                OR: [
+                    { lastReminderAt: null },
+                    { lastReminderAt: { lt: cutoff } },
+                ],
+            },
+            data: {
+                reminderCount: { increment: 1 },
+                lastReminderAt: now,
+            },
+        });
+        const fresh = await this.prisma.order.findUnique({
+            where: { id: orderId },
+            select: { reminderCount: true, lastReminderAt: true },
+        });
+        if (!fresh)
+            throw new common_1.NotFoundException('Order not found');
+        return buildReminderResult({
+            sent: update.count > 0,
+            reminderCount: fresh.reminderCount,
+            lastReminderAt: fresh.lastReminderAt,
+            now,
+        });
+    }
+    async sendSubscriberReminder(customerId) {
+        const now = new Date();
+        const cutoff = new Date(now.getTime() - REMINDER_COOLDOWN_MS);
+        const update = await this.prisma.customerWallet.updateMany({
+            where: {
+                customerId,
+                OR: [
+                    { subscriptionLastReminderAt: null },
+                    { subscriptionLastReminderAt: { lt: cutoff } },
+                ],
+            },
+            data: {
+                subscriptionReminderCount: { increment: 1 },
+                subscriptionLastReminderAt: now,
+            },
+        });
+        const fresh = await this.prisma.customerWallet.findUnique({
+            where: { customerId },
+            select: {
+                subscriptionReminderCount: true,
+                subscriptionLastReminderAt: true,
+            },
+        });
+        if (!fresh) {
+            const customer = await this.prisma.customer.findUnique({
+                where: { id: customerId },
+                select: { id: true },
+            });
+            if (!customer)
+                throw new common_1.NotFoundException('Customer not found');
+            const createdWallet = await this.prisma.customerWallet.create({
+                data: {
+                    customerId,
+                    subscriptionReminderCount: 1,
+                    subscriptionLastReminderAt: now,
+                },
+                select: {
+                    subscriptionReminderCount: true,
+                    subscriptionLastReminderAt: true,
+                },
+            });
+            return buildReminderResult({
+                sent: true,
+                reminderCount: createdWallet.subscriptionReminderCount,
+                lastReminderAt: createdWallet.subscriptionLastReminderAt,
+                now,
+            });
+        }
+        return buildReminderResult({
+            sent: update.count > 0,
+            reminderCount: fresh.subscriptionReminderCount,
+            lastReminderAt: fresh.subscriptionLastReminderAt,
+            now,
         });
     }
     async getOperationsSummary() {

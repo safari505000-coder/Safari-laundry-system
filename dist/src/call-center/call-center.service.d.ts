@@ -5,6 +5,7 @@ import { ActivateSubscriptionDto } from './dto/activate-subscription.dto';
 import type { SettlementHistoryRowDto } from './dto/settlement-history-row.dto';
 import type { CallCenterOperationsSummaryDto } from './dto/operations-summary.dto';
 import type { DebtRecoveryReportDto } from './dto/debt-recovery-report.dto';
+import type { ReminderResultDto } from './dto/reminder-result.dto';
 export declare class CallCenterService {
     private readonly prisma;
     private readonly customerLedger;
@@ -48,6 +49,8 @@ export declare class CallCenterService {
         settlement: import("../customer-ledger/subscription-settlement.types").SubscriptionActivationSettlement;
     }>;
     listCustomerSettlementHistory(customerId: string, take?: number): Promise<SettlementHistoryRowDto[]>;
+    sendOrderReminder(orderId: string): Promise<ReminderResultDto>;
+    sendSubscriberReminder(customerId: string): Promise<ReminderResultDto>;
     getOperationsSummary(): Promise<CallCenterOperationsSummaryDto>;
     getDebtRecoveryReport(fromIso?: string, toIso?: string): Promise<DebtRecoveryReportDto>;
 }

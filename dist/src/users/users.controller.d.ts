@@ -27,6 +27,7 @@ export declare class UsersController {
         phone: string | null;
         vehicleLabel: string | null;
         lastKnownLocation: string | null;
+        driverPrefix: string | null;
         safariRole: import("@prisma/client").$Enums.SafariRole;
         isActive: boolean;
         role: {
@@ -62,6 +63,9 @@ export declare class UsersController {
             totalPrice: import("@prisma/client-runtime-utils").Decimal;
             cashStatus: import("@prisma/client").$Enums.CashStatus;
             invoiceNumber: string | null;
+            serialNumber: string | null;
+            reminderCount: number;
+            lastReminderAt: Date | null;
             notes: string | null;
             customerId: string;
             driverId: string | null;
@@ -346,6 +350,7 @@ export declare class UsersController {
         phone: string | null;
         vehicleLabel: string | null;
         lastKnownLocation: string | null;
+        driverPrefix: string | null;
         safariRole: import("@prisma/client").$Enums.SafariRole;
         isActive: boolean;
         role: {
@@ -381,6 +386,9 @@ export declare class UsersController {
             totalPrice: import("@prisma/client-runtime-utils").Decimal;
             cashStatus: import("@prisma/client").$Enums.CashStatus;
             invoiceNumber: string | null;
+            serialNumber: string | null;
+            reminderCount: number;
+            lastReminderAt: Date | null;
             notes: string | null;
             customerId: string;
             driverId: string | null;
@@ -665,6 +673,7 @@ export declare class UsersController {
         phone: string | null;
         vehicleLabel: string | null;
         lastKnownLocation: string | null;
+        driverPrefix: string | null;
         safariRole: import("@prisma/client").$Enums.SafariRole;
         isActive: boolean;
         role: {
@@ -700,6 +709,9 @@ export declare class UsersController {
             totalPrice: import("@prisma/client-runtime-utils").Decimal;
             cashStatus: import("@prisma/client").$Enums.CashStatus;
             invoiceNumber: string | null;
+            serialNumber: string | null;
+            reminderCount: number;
+            lastReminderAt: Date | null;
             notes: string | null;
             customerId: string;
             driverId: string | null;
@@ -987,6 +999,7 @@ export declare class UsersController {
         phone: string | null;
         vehicleLabel: string | null;
         lastKnownLocation: string | null;
+        driverPrefix: string | null;
         safariRole: import("@prisma/client").$Enums.SafariRole;
         isActive: boolean;
         role: {
@@ -1022,6 +1035,9 @@ export declare class UsersController {
             totalPrice: import("@prisma/client-runtime-utils").Decimal;
             cashStatus: import("@prisma/client").$Enums.CashStatus;
             invoiceNumber: string | null;
+            serialNumber: string | null;
+            reminderCount: number;
+            lastReminderAt: Date | null;
             notes: string | null;
             customerId: string;
             driverId: string | null;

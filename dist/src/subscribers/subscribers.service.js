@@ -19,6 +19,10 @@ function utcDayNumber(d) {
 function calendarDaysRemaining(expiry) {
     return Math.round((utcDayNumber(expiry) - utcDayNumber(new Date())) / 86400000);
 }
+function daysElapsedSince(from) {
+    return Math.max(0, Math.round((utcDayNumber(new Date()) - utcDayNumber(from)) / 86400000));
+}
+const REMINDER_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 function addUtcDays(from, days) {
     const out = new Date(from.getTime());
     out.setUTCDate(out.getUTCDate() + days);
@@ -55,6 +59,7 @@ let SubscribersService = class SubscribersService {
                 },
             },
         });
+        const now = Date.now();
         const planIds = new Set();
         for (const c of customers) {
             const meta = c.transactionHistory[0]?.metadata;
@@ -115,15 +120,34 @@ let SubscribersService = class SubscribersService {
             else {
                 rowStatus = 'expired';
             }
+            const activationDate = startDate ?? c.transactionHistory[0]?.createdAt ?? null;
+            const invoiceAgeDays = activationDate ? daysElapsedSince(activationDate) : null;
+            let planId = w?.subscriptionPlanId ?? null;
+            if (!planId) {
+                const metaPlanId = c.transactionHistory[0]?.metadata
+                    ?.planId;
+                if (typeof metaPlanId === 'string' && metaPlanId.length > 0) {
+                    planId = metaPlanId;
+                }
+            }
+            const lastReminderAt = w?.subscriptionLastReminderAt ?? null;
+            const reminderCount = w?.subscriptionReminderCount ?? 0;
+            const canRemindNow = !lastReminderAt || now - lastReminderAt.getTime() >= REMINDER_COOLDOWN_MS;
             rows.push({
                 customerId: c.id,
                 customerName,
+                customerPhone: c.phone ?? null,
                 subscriptionType: subscriptionType ?? '—',
+                planId,
                 startDate: startDate?.toISOString() ?? null,
                 expiryDate: expiryDate?.toISOString() ?? null,
                 remainingDays,
                 balance: balanceStr,
                 rowStatus,
+                invoiceAgeDays,
+                reminderCount,
+                lastReminderAtIso: lastReminderAt?.toISOString() ?? null,
+                canRemindNow,
             });
         }
         rows.sort((a, b) => {

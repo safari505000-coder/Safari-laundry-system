@@ -10,12 +10,30 @@ type ActivationMeta = {
 export type SubscriberListRow = {
   customerId: string;
   customerName: string;
+  /** E.164-ish compact phone (for WhatsApp/SMS deep-links). Optional. */
+  customerPhone: string | null;
   subscriptionType: string;
+  /** Plan ID used for renewal; null when we don't know the plan. */
+  planId: string | null;
   startDate: string | null;
   expiryDate: string | null;
   remainingDays: number | null;
   balance: string;
   rowStatus: 'active_ok' | 'active_warn' | 'expired' | 'open_credit';
+  /**
+   * Dastur §5 (V1.5) — days elapsed since the last activation (a.k.a.
+   * "invoice age"). Null when no activation date is known.
+   */
+  invoiceAgeDays: number | null;
+  /** Cumulative 24h-guarded reminders sent for this subscriber's wallet. */
+  reminderCount: number;
+  lastReminderAtIso: string | null;
+  /**
+   * true when no reminder has been sent OR the previous reminder is older
+   * than 24h. Mirrors the backend guard on `/reminder` so the UI can
+   * disable the button when it would be a no-op.
+   */
+  canRemindNow: boolean;
 };
 
 function utcDayNumber(d: Date): number {
@@ -25,6 +43,15 @@ function utcDayNumber(d: Date): number {
 function calendarDaysRemaining(expiry: Date): number {
   return Math.round((utcDayNumber(expiry) - utcDayNumber(new Date())) / 86400000);
 }
+
+function daysElapsedSince(from: Date): number {
+  return Math.max(
+    0,
+    Math.round((utcDayNumber(new Date()) - utcDayNumber(from)) / 86400000),
+  );
+}
+
+const REMINDER_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
 function addUtcDays(from: Date, days: number): Date {
   const out = new Date(from.getTime());
@@ -62,6 +89,8 @@ export class SubscribersService {
         },
       },
     });
+
+    const now = Date.now();
 
     const planIds = new Set<string>();
     for (const c of customers) {
@@ -135,15 +164,41 @@ export class SubscribersService {
         rowStatus = 'expired';
       }
 
+      const activationDate =
+        startDate ?? c.transactionHistory[0]?.createdAt ?? null;
+      const invoiceAgeDays = activationDate ? daysElapsedSince(activationDate) : null;
+
+      // Dastur §5 (V1.5) — resolve the plan id so the frontend can renew
+      // straight away without a second round-trip.
+      let planId: string | null = w?.subscriptionPlanId ?? null;
+      if (!planId) {
+        const metaPlanId = (c.transactionHistory[0]?.metadata as ActivationMeta | null)
+          ?.planId;
+        if (typeof metaPlanId === 'string' && metaPlanId.length > 0) {
+          planId = metaPlanId;
+        }
+      }
+
+      const lastReminderAt = w?.subscriptionLastReminderAt ?? null;
+      const reminderCount = w?.subscriptionReminderCount ?? 0;
+      const canRemindNow =
+        !lastReminderAt || now - lastReminderAt.getTime() >= REMINDER_COOLDOWN_MS;
+
       rows.push({
         customerId: c.id,
         customerName,
+        customerPhone: c.phone ?? null,
         subscriptionType: subscriptionType ?? '—',
+        planId,
         startDate: startDate?.toISOString() ?? null,
         expiryDate: expiryDate?.toISOString() ?? null,
         remainingDays,
         balance: balanceStr,
         rowStatus,
+        invoiceAgeDays,
+        reminderCount,
+        lastReminderAtIso: lastReminderAt?.toISOString() ?? null,
+        canRemindNow,
       });
     }
 

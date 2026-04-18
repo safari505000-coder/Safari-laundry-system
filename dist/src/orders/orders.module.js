@@ -13,6 +13,7 @@ const customer_ledger_module_1 = require("../customer-ledger/customer-ledger.mod
 const general_ledger_module_1 = require("../general-ledger/general-ledger.module");
 const customer_notifications_module_1 = require("../customer-notifications/customer-notifications.module");
 const payments_module_1 = require("../payments/payments.module");
+const serials_module_1 = require("../serials/serials.module");
 const orders_controller_1 = require("./orders.controller");
 const orders_service_1 = require("./orders.service");
 let OrdersModule = class OrdersModule {
@@ -26,6 +27,7 @@ exports.OrdersModule = OrdersModule = __decorate([
             general_ledger_module_1.GeneralLedgerModule,
             payments_module_1.PaymentsModule,
             customer_notifications_module_1.CustomerNotificationsModule,
+            serials_module_1.SerialsModule,
         ],
         controllers: [orders_controller_1.OrdersController],
         providers: [orders_service_1.OrdersService],

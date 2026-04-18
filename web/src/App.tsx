@@ -44,6 +44,7 @@ import { OwnerProfitRadar } from '@/modules/owner/pages/OwnerProfitRadar';
 import { ManagerCustodyAgingPage } from '@/pages/manager-custody-aging-page';
 import { StaffDebtsPage } from '@/pages/staff-debts-page';
 import { DebtRecoveryReportPage } from '@/pages/debt-recovery-report-page';
+import { OwnerSerialsPage } from '@/pages/owner-serials-page';
 
 function AppToaster() {
   const { i18n } = useTranslation();
@@ -183,6 +184,14 @@ export default function App() {
                   element={
                     <RequireRoles roles={['OWNER', 'ACCOUNTANT']}>
                       <StaffDebtsPage />
+                    </RequireRoles>
+                  }
+                />
+                <Route
+                  path="owner/serials"
+                  element={
+                    <RequireRoles roles={['OWNER']}>
+                      <OwnerSerialsPage />
                     </RequireRoles>
                   }
                 />

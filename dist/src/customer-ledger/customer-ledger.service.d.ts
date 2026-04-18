@@ -24,6 +24,8 @@ export declare class CustomerLedgerService {
         subscriptionExpiresAt: Date | null;
         subscriptionPlanId: string | null;
         subscriptionPlanName: string | null;
+        subscriptionReminderCount: number;
+        subscriptionLastReminderAt: Date | null;
     }>;
     private resolveDebtCategory;
     private ensureCustomerOriginBranchTx;

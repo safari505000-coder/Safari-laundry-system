@@ -637,12 +637,63 @@ export type SubscriptionPlan = {
 export type SubscriberListRow = {
   customerId: string;
   customerName: string;
+  /** Dastur §5 (V1.5) — phone for WhatsApp nudges (may be null). */
+  customerPhone: string | null;
   subscriptionType: string;
+  /** Dastur §5 (V1.5) — plan ID reused on Renew. Null ⇒ Renew disabled. */
+  planId: string | null;
   startDate: string | null;
   expiryDate: string | null;
   remainingDays: number | null;
   balance: string;
   rowStatus: 'active_ok' | 'active_warn' | 'expired' | 'open_credit';
+  /** Days since the subscription was last activated. Null if unknown. */
+  invoiceAgeDays: number | null;
+  /** Cumulative 24h-guarded reminders for this subscriber. */
+  reminderCount: number;
+  lastReminderAtIso: string | null;
+  /** Backend says "true" when another `/reminder` call would succeed. */
+  canRemindNow: boolean;
+};
+
+/**
+ * Dastur §5 (V1.5) — Response from
+ * POST /api/call-center/{orders|subscribers}/:id/reminder.
+ */
+export type ReminderResult = {
+  sent: boolean;
+  reminderCount: number;
+  lastReminderAtIso: string | null;
+  nextAllowedAtIso: string | null;
+  hoursUntilNext: number | null;
+};
+
+/**
+ * Dastur §1 (V1.5) — Owner Serial Management island types.
+ */
+export type DriverPrefixRow = {
+  id: string;
+  fullName: string;
+  username: string;
+  driverPrefix: string | null;
+  branchName: string | null;
+  isActive: boolean;
+};
+
+export type SerialLogRow = {
+  orderId: string;
+  serialNumber: string;
+  driverId: string | null;
+  driverName: string | null;
+  driverPrefix: string | null;
+  customerName: string | null;
+  totalPriceKd: string;
+  createdAtIso: string;
+};
+
+export type SerialLog = {
+  currentCounter: number;
+  rows: SerialLogRow[];
 };
 
 export type CallCenterPlan = {

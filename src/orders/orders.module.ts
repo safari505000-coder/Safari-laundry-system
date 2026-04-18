@@ -4,6 +4,7 @@ import { CustomerLedgerModule } from '../customer-ledger/customer-ledger.module'
 import { GeneralLedgerModule } from '../general-ledger/general-ledger.module';
 import { CustomerNotificationsModule } from '../customer-notifications/customer-notifications.module';
 import { PaymentsModule } from '../payments/payments.module';
+import { SerialsModule } from '../serials/serials.module';
 import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
 
@@ -14,6 +15,7 @@ import { OrdersService } from './orders.service';
     GeneralLedgerModule,
     PaymentsModule,
     CustomerNotificationsModule,
+    SerialsModule,
   ],
   controllers: [OrdersController],
   providers: [OrdersService],

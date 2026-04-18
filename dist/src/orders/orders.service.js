@@ -18,6 +18,7 @@ const customer_ledger_service_1 = require("../customer-ledger/customer-ledger.se
 const general_ledger_service_1 = require("../general-ledger/general-ledger.service");
 const finance_money_1 = require("../finance/finance-money");
 const prisma_service_1 = require("../prisma/prisma.service");
+const serial_counter_service_1 = require("../serials/serial-counter.service");
 const order_status_machine_1 = require("./order-status.machine");
 const order_total_util_1 = require("./order-total.util");
 const orderDetailSelect = {
@@ -30,7 +31,10 @@ const orderDetailSelect = {
     completedAt: true,
     walletSettledAt: true,
     invoiceNumber: true,
+    serialNumber: true,
     notes: true,
+    reminderCount: true,
+    lastReminderAt: true,
     createdAt: true,
     updatedAt: true,
     customer: {
@@ -73,12 +77,14 @@ let OrdersService = class OrdersService {
     paymentsService;
     customerNotifications;
     generalLedger;
-    constructor(prisma, customerLedger, paymentsService, customerNotifications, generalLedger) {
+    serialCounter;
+    constructor(prisma, customerLedger, paymentsService, customerNotifications, generalLedger, serialCounter) {
         this.prisma = prisma;
         this.customerLedger = customerLedger;
         this.paymentsService = paymentsService;
         this.customerNotifications = customerNotifications;
         this.generalLedger = generalLedger;
+        this.serialCounter = serialCounter;
     }
     queuePosInvoiceNotify(detail, phoneCompact) {
         const phone = detail.customer.phone?.trim() ||
@@ -227,6 +233,7 @@ let OrdersService = class OrdersService {
         const phoneCompact = dto.customerPhone.replace(/[\s-]/g, '').trim();
         return this.prisma.$transaction(async (tx) => {
             const customerId = await this.resolveQuickOrderCustomerId(tx, dto, phoneCompact);
+            const serialNumber = await this.serialCounter.stampOrderSerial(tx, driverUserId);
             return tx.order.create({
                 data: {
                     customerId,
@@ -235,6 +242,7 @@ let OrdersService = class OrdersService {
                     totalPrice: dto.totalPrice,
                     status: client_1.OrderStatus.PENDING,
                     invoiceNumber: dto.invoiceNumber?.trim() || null,
+                    serialNumber,
                     notes: dto.notes?.trim() || null,
                     ...(lineCreates?.length
                         ? { lineItems: { create: lineCreates } }
@@ -276,6 +284,7 @@ let OrdersService = class OrdersService {
                 const useHostedPaymentLink = shortfallMinor > 0n &&
                     posPaymentMethodResolved === client_1.PosPaymentMethod.ONLINE;
                 if (useHostedPaymentLink) {
+                    const serialNumber = await this.serialCounter.stampOrderSerial(tx, driverUserId);
                     const created = await tx.order.create({
                         data: {
                             customerId,
@@ -287,6 +296,7 @@ let OrdersService = class OrdersService {
                             posPaymentMethod: client_1.PosPaymentMethod.ONLINE,
                             completedAt: null,
                             invoiceNumber: dto.invoiceNumber?.trim() || null,
+                            serialNumber,
                             notes: dto.notes?.trim() || null,
                             ...(lineCreates?.length
                                 ? { lineItems: { create: lineCreates } }
@@ -300,6 +310,7 @@ let OrdersService = class OrdersService {
                     return created.id;
                 }
                 const completedAt = new Date();
+                const serialNumber = await this.serialCounter.stampOrderSerial(tx, driverUserId);
                 const created = await tx.order.create({
                     data: {
                         customerId,
@@ -311,6 +322,7 @@ let OrdersService = class OrdersService {
                         posPaymentMethod: posPaymentMethodResolved,
                         completedAt,
                         invoiceNumber: dto.invoiceNumber?.trim() || null,
+                        serialNumber,
                         notes: dto.notes?.trim() || null,
                         ...(lineCreates?.length
                             ? { lineItems: { create: lineCreates } }
@@ -419,6 +431,7 @@ let OrdersService = class OrdersService {
                 },
             });
             for (const p of prepared) {
+                const serialNumber = await this.serialCounter.stampOrderSerial(tx, driverUserId);
                 const created = await tx.order.create({
                     data: {
                         customerId,
@@ -430,6 +443,7 @@ let OrdersService = class OrdersService {
                         posPaymentMethod: client_1.PosPaymentMethod.ONLINE,
                         completedAt: null,
                         posPaymentBundleId: bundle.id,
+                        serialNumber,
                         ...(p.lineCreates?.length ?
                             { lineItems: { create: p.lineCreates } }
                             : {}),
@@ -494,6 +508,7 @@ let OrdersService = class OrdersService {
                         address: dto.customerAddress?.trim() || null,
                     },
                 });
+            const serialNumber = await this.serialCounter.stampOrderSerial(tx, dto.driverId ?? null);
             return tx.order.create({
                 data: {
                     customerId: customer.id,
@@ -502,6 +517,7 @@ let OrdersService = class OrdersService {
                     totalPrice: dto.totalPrice,
                     status: client_1.OrderStatus.PENDING,
                     invoiceNumber: dto.invoiceNumber?.trim() || null,
+                    serialNumber,
                     notes: dto.notes?.trim() || null,
                     ...(lineCreates?.length
                         ? { lineItems: { create: lineCreates } }
@@ -712,6 +728,7 @@ exports.OrdersService = OrdersService = __decorate([
         customer_ledger_service_1.CustomerLedgerService,
         payments_service_1.PaymentsService,
         customer_notifications_service_1.CustomerNotificationsService,
-        general_ledger_service_1.GeneralLedgerService])
+        general_ledger_service_1.GeneralLedgerService,
+        serial_counter_service_1.SerialCounterService])
 ], OrdersService);
 //# sourceMappingURL=orders.service.js.map

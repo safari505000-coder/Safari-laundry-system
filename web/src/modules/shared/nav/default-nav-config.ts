@@ -17,6 +17,7 @@ import {
   managerCustodyAgingItem,
   ownerDashboardItem,
   ownerInventoryItem,
+  ownerSerialsItem,
   myDailySalesItem,
   ordersItem,
   payrollItem,
@@ -51,7 +52,7 @@ export const defaultSidebarNavGroups: NavGroup[] = [
   },
   {
     labelKey: 'nav.groupOperations',
-    items: [invoicesDataItem, ordersItem, shiftsItem],
+    items: [invoicesDataItem, ordersItem, shiftsItem, ownerSerialsItem],
   },
   {
     labelKey: 'nav.groupFinance',

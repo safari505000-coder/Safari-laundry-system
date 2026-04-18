@@ -25,6 +25,7 @@ import { PosModule } from './pos/pos.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { SafariStreamModule } from './safari-stream/safari-stream.module';
 import { ReportsModule } from './reports/reports.module';
+import { SerialsModule } from './serials/serials.module';
 import { SystemModule } from './system/system.module';
 import { SubscriptionPlansModule } from './subscription-plans/subscription-plans.module';
 import { SubscribersModule } from './subscribers/subscribers.module';
@@ -68,6 +69,7 @@ const spaStaticModule = existsSync(webDistPath)
     ManagerCustodyModule,
     PosModule,
     CustomersModule,
+    SerialsModule,
     ServeStaticModule.forRoot({
       rootPath: uploadsPath,
       serveRoot: '/uploads',
