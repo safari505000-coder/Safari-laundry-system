@@ -23,7 +23,7 @@ export const ar = {
     finalSettlement: 'التسوية النهائية',
     depositAudit: 'مطابقة كي نت',
     knetAudit: 'مطابقة كي نت',
-    myDeposits: 'إيداعاتي',
+    myDeposits: 'عهدتي',
     driverFieldExpenses: 'الوقود وتكاليف الميدان',
     whatsappTools: 'أدوات واتساب',
     financialReports: 'التقارير المالية',
@@ -223,6 +223,53 @@ export const ar = {
     handoverComplete: 'تم التسليم بنجاح ✅',
     handoverCompleteHint:
       'لا توجد عليك مسؤولية نقدية. قام مدير الفرع باستلام الكاش منك.',
+    handoverSectionTitle: 'تسليم العهدة لمدير الفرع',
+    handoverSectionHint:
+      'ملخص الفواتير المعلقة بجميع طرق الدفع. سلّم الكاش للمدير واضغط "طلب تصفية" للتأكيد الرقمي.',
+    methodCash: 'كاش',
+    methodKnet: 'كي نت',
+    methodLink: 'رابط الدفع',
+    invoiceCountSuffix: 'فاتورة',
+    grandTotalLabel: 'الإجمالي المعلق',
+    requestSettlement: 'طلب تصفية',
+    handoverDialogTitle: 'تأكيد تسليم العهدة للمدير',
+    handoverDialogBody:
+      'أكّد أنك ستسلّم الكاش التالي لمدير الفرع الآن. عند اعتماد المدير، تُبرأ ذمّتك فوراً ويبدأ عدّاد الـ 24 ساعة لإيداع الكاش في البنك.',
+    handoverDialogHint24h:
+      'ملاحظة: التصفية الفعلية تتم عند ضغط المدير على "تأكيد الاستلام" في شاشته.',
+    handoverDialogCancel: 'إلغاء',
+    handoverDialogOk: 'فهمت — سلّمت الكاش',
+  },
+  myDeposits: {
+    title: 'عهدتي الشخصية',
+    subtitle:
+      'كشف حساب حي لذمتك المالية. كل فاتورة مذكورة هنا تنتظر تسليمك للكاش أو الإيصال إلى مدير الفرع.',
+    alert:
+      'عزيزي السائق، هذه الصفحة تمثل ذمتك المالية الحالية. كل فاتورة تصدرها تُسجل فوراً في عهدتك الشخصية وتظل "معلقة" حتى تقوم بتسليم المبالغ يدوياً لمدير الفرع ويقوم هو باعتمادها لتصفير رصيدك.',
+    methodCash: 'كاش',
+    methodKnet: 'كي نت',
+    methodLink: 'رابط الدفع',
+    invoiceCountSuffix: 'فاتورة',
+    grandTotalLabel: 'الإجمالي المعلق',
+    invoicesTitle: 'الفواتير المعلقة',
+    invoicesHint:
+      'كل الفواتير التي أصدرتها ولم تُسدد بعد إلى مدير الفرع — مرتبة حسب طريقة الدفع.',
+    invoicesEmpty: 'لا توجد فواتير معلقة عليك حالياً. ذمتك صفر ✅',
+    colCustomer: 'العميل',
+    colPhone: 'الهاتف',
+    colMethod: 'طريقة الدفع',
+    colAmount: 'المبلغ',
+    kwd: 'د.ك',
+    notifyManagerCta: 'إعلام المدير بجاهزية التصفية',
+    notifyManagerTitle: 'إعلام مدير الفرع',
+    notifyManagerBody:
+      'أكّد أنك جاهز لتسليم الكاش وإغلاق الفواتير المعلقة. سيظهر اسمك ومجموعك مباشرة في شاشة "اعتماد استلامات السائقين" لدى المدير.',
+    notifyManagerHint24h:
+      'عدّاد 24 ساعة يبدأ فقط عندما يضغط المدير على "تأكيد الاستلام" — لا حاجة لرفع أي صور من طرفك.',
+    notifyManagerOk: 'فهمت — أعلمت المدير',
+    notifyManagerSuccess:
+      'ممتاز! المدير سيرى مجموعك في قائمته. سلّمه الكاش وسيقوم بالاعتماد لتصفير ذمتك.',
+    notifyManagerCancel: 'إلغاء',
   },
   managerCustody: {
     myTitle: 'كاش بانتظار الإيداع البنكي',
@@ -296,6 +343,27 @@ export const ar = {
     myPendingBanner: '{{count}} عهدة بانتظار الإيداع — {{total}}.',
     myPendingBannerHint: 'أودع الكاش في البنك وارفع صورة الإيصال.',
     myPendingBannerOverdue: 'لديك عُهد متأخرة (>24 س). تم تنبيه المالك.',
+    handoverSectionTitle: 'اعتماد استلامات السائقين',
+    handoverSectionHint:
+      'السائقون الذين لديهم كاش ميداني بانتظار التصفية في فرعك. اعتماد الاستلام يُبرئ ذمّة السائق ويفتح عهدة جديدة لديك مع بدء عدّاد 24 ساعة للإيداع البنكي.',
+    handoverTotalAwaiting: 'إجمالي بانتظار الاستلام',
+    handoverEmpty: 'لا يوجد سائقون بانتظار تصفية كاش حالياً.',
+    confirmReceiptCta: 'تأكيد الاستلام',
+    approveReceiptInlineSuccess: 'تم استلام كاش السائق',
+    bulkDepositTitle: 'إيداع البنك / التوريد للمحاسب',
+    bulkDepositSubtitle:
+      'ارفع صورة وصل الإيداع البنكي مرة واحدة لإرسال كامل الكاش المستلم من السائقين إلى مراجعة المحاسب. ستُرفق نفس الصورة لجميع الدفعات المفتوحة تحت عهدتك.',
+    bulkHeldCash: 'إجمالي الكاش لديك',
+    bulkBagsCount: '{{count}} دفعة بانتظار الإيداع',
+    bulkSlipLabel: 'صورة وصل الإيداع البنكي',
+    bulkNoteLabel: 'ملاحظات للمحاسب (اختياري)',
+    bulkNotePlaceholder: 'رقم المرجع البنكي أو تعليق للمحاسب',
+    bulkSubmitCta: 'إرسال التوريد للمراجعة',
+    bulkNeedFile: 'يرجى رفع صورة وصل الإيداع قبل الإرسال.',
+    bulkNoBags: 'لا توجد دفعات مفتوحة حالياً بانتظار الإيداع.',
+    bulkSuccess: 'تم إرسال التوريد بنجاح ({{count}} دفعة) — بانتظار اعتماد المحاسب.',
+    bulkPartial:
+      'تم رفع {{done}} من {{total}} دفعات. أعد المحاولة للدفعات المتبقية.',
   },
   driverFieldExpenses: {
     title: 'الوقود وتكاليف الميدان',
@@ -522,6 +590,7 @@ export const ar = {
     },
   },
   pos: {
+    backToDashboard: 'العودة للرئيسية',
     searchPlaceholder: 'ابحث بالاسم أو رقم الجوال',
     newCustomer: {
       open: 'عميل جديد',

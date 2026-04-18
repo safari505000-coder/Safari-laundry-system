@@ -7,10 +7,16 @@ export function sumKwdStrings(values: string[]): string {
 
 const KWD_SUFFIX = ' د.ك';
 
-export function formatKwdLabel(s: string): string {
-  const n = Number.parseFloat(s || '0');
-  if (!Number.isFinite(n)) return `${s}${KWD_SUFFIX}`;
-  return `${n.toLocaleString('en-KW', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}${KWD_SUFFIX}`;
+/*
+ * Accepts both decimal strings (from backend DTOs) and plain numbers (from
+ * in-memory accumulators like `cashTotal + knetTotal`). The Prisma layer
+ * speaks strings, the frontend often reduces them into numbers for totals,
+ * so this helper stays permissive on purpose.
+ */
+export function formatKwdLabel(s: string | number): string {
+  const raw = typeof s === 'number' ? s : Number.parseFloat(s || '0');
+  if (!Number.isFinite(raw)) return `${String(s)}${KWD_SUFFIX}`;
+  return `${raw.toLocaleString('en-KW', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}${KWD_SUFFIX}`;
 }
 
 /** Decimal string a − b (4dp) for receipt lines. */

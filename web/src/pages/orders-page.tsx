@@ -77,7 +77,13 @@ export function OrdersPage() {
     }
   }, [location.state, location.pathname, navigate]);
 
-  const canCreate = hasRole('DRIVER', 'MANAGER', 'CALL_CENTER');
+  /*
+   * Dastur §1 — POS is the Manager's primary sales tool. The "طلب جديد"
+   * dialog stays available for DRIVER and CALL_CENTER (Call Center has no
+   * POS access, so they still need this entry point for phone orders),
+   * but is hidden for MANAGER to funnel them through /pos instead.
+   */
+  const canCreate = hasRole('DRIVER', 'CALL_CENTER');
 
   const rows =
     orders ?

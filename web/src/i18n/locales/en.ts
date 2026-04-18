@@ -22,7 +22,7 @@ export const en = {
     finalSettlement: 'Final Settlement',
     depositAudit: 'K-Net reconciliation',
     knetAudit: 'K-Net reconciliation',
-    myDeposits: 'My deposits',
+    myDeposits: 'My custody',
     driverFieldExpenses: 'Fuel & field costs',
     whatsappTools: 'WhatsApp tools',
     financialReports: 'Financial reports',
@@ -222,6 +222,53 @@ export const en = {
     handoverComplete: 'Handover Complete ✅',
     handoverCompleteHint:
       'You have no cash responsibility. The branch manager has accepted your handover.',
+    handoverSectionTitle: 'Handover to Branch Manager',
+    handoverSectionHint:
+      'Summary of pending invoices across every payment method. Hand the cash to your manager and tap "Request Settlement" to acknowledge digitally.',
+    methodCash: 'Cash',
+    methodKnet: 'K-Net',
+    methodLink: 'Payment Link',
+    invoiceCountSuffix: 'invoices',
+    grandTotalLabel: 'Pending total',
+    requestSettlement: 'Request Settlement',
+    handoverDialogTitle: 'Confirm handover to manager',
+    handoverDialogBody:
+      'Confirm you are handing the following cash to your branch manager now. When the manager approves, your balance is cleared immediately and the 24-hour bank-deposit timer starts.',
+    handoverDialogHint24h:
+      'Note: the actual settlement happens when the manager taps "Confirm Receipt" on their screen.',
+    handoverDialogCancel: 'Cancel',
+    handoverDialogOk: 'Got it — cash handed over',
+  },
+  myDeposits: {
+    title: 'My Personal Custody',
+    subtitle:
+      'A live statement of your current liability. Every invoice below is waiting for you to hand the cash or slip to the branch manager.',
+    alert:
+      'Dear driver, this page represents your current financial liability. Every invoice you issue is registered in your personal custody immediately and stays "pending" until you hand the amounts to your branch manager in person and they approve them, clearing your balance.',
+    methodCash: 'Cash',
+    methodKnet: 'K-Net',
+    methodLink: 'Payment link',
+    invoiceCountSuffix: 'invoices',
+    grandTotalLabel: 'Pending grand total',
+    invoicesTitle: 'Pending invoices',
+    invoicesHint:
+      'Every invoice you issued that is still pending on your custody — grouped by payment method.',
+    invoicesEmpty: 'No pending invoices. Your custody is clear ✅',
+    colCustomer: 'Customer',
+    colPhone: 'Phone',
+    colMethod: 'Method',
+    colAmount: 'Amount',
+    kwd: 'KWD',
+    notifyManagerCta: 'Notify Manager for Handover',
+    notifyManagerTitle: 'Notify the Branch Manager',
+    notifyManagerBody:
+      'Confirm you are ready to hand over the cash and close the pending invoices. Your name and totals will appear directly on the manager\'s "Driver Handover Approval" screen.',
+    notifyManagerHint24h:
+      'The 24-hour timer only starts once the manager presses "Confirm Receipt" — no photo uploads required from your side.',
+    notifyManagerOk: 'Got it — Manager notified',
+    notifyManagerSuccess:
+      'Great. The manager now sees your total on their screen. Hand them the cash and they will approve to zero out your custody.',
+    notifyManagerCancel: 'Cancel',
   },
   managerCustody: {
     myTitle: 'Cash Awaiting Bank Deposit',
@@ -297,6 +344,28 @@ export const en = {
     myPendingBannerHint: 'Deposit the cash at the bank and upload the slip.',
     myPendingBannerOverdue:
       'You have overdue bags (>24h). The owner has been notified.',
+    handoverSectionTitle: 'Driver Handover Approval',
+    handoverSectionHint:
+      'Drivers in your branch with field cash awaiting settlement. Confirming receipt clears the driver instantly and opens a new custody bag on you — the 24-hour bank-deposit timer starts now.',
+    handoverTotalAwaiting: 'Total awaiting receipt',
+    handoverEmpty: 'No drivers awaiting cash settlement right now.',
+    confirmReceiptCta: 'Confirm Receipt',
+    approveReceiptInlineSuccess: "Driver's cash received",
+    bulkDepositTitle: 'Bank deposit / Submit to accountant',
+    bulkDepositSubtitle:
+      'Upload the bank deposit slip once to submit all cash received from drivers for the accountant to verify. The same photo is attached to every open bag under your custody.',
+    bulkHeldCash: 'Your held cash',
+    bulkBagsCount: '{{count}} bags awaiting deposit',
+    bulkSlipLabel: 'Bank deposit slip photo',
+    bulkNoteLabel: 'Note for accountant (optional)',
+    bulkNotePlaceholder: 'Bank reference number or comment for the accountant',
+    bulkSubmitCta: 'Submit deposit for verification',
+    bulkNeedFile: 'Please upload the deposit slip photo before submitting.',
+    bulkNoBags: 'No open bags awaiting deposit right now.',
+    bulkSuccess:
+      'Deposit submitted successfully ({{count}} bags) — awaiting accountant verification.',
+    bulkPartial:
+      'Uploaded {{done}} of {{total}} bags. Please retry for the remaining ones.',
   },
   driverFieldExpenses: {
     title: 'Fuel & field costs',
@@ -523,6 +592,7 @@ export const en = {
     },
   },
   pos: {
+    backToDashboard: 'Back to Dashboard',
     searchPlaceholder: 'Search customer by name or mobile',
     newCustomer: {
       open: 'Add new customer',

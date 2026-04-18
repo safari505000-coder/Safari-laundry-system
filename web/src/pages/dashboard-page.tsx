@@ -354,8 +354,14 @@ export function DashboardPage() {
 
   const isOwner = hasRole('OWNER') ?? false;
   const canCreateOrder = hasRole('DRIVER', 'MANAGER', 'CALL_CENTER');
+  /*
+   * Dastur §1 — Managers exit the dashboard through /pos (their primary
+   * sales tool), so the "فاتورة جديدة" quick-action card is hidden for
+   * them. Drivers and Call Center still see it: Call Center has no POS
+   * access at all, and Drivers occasionally open it from here too.
+   */
   const showNewInvoiceShortcut =
-    (hasRole('DRIVER', 'MANAGER', 'CALL_CENTER') ?? false) &&
+    (hasRole('DRIVER', 'CALL_CENTER') ?? false) &&
     !(hasRole('OWNER') ?? false);
   const canOpenFinancials = hasRole(
     'OWNER',

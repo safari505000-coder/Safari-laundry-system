@@ -206,12 +206,12 @@ export const financialsItem: NavItem = {
   roles: ['OWNER', 'MANAGER', 'ACCOUNTANT', 'SUPERVISOR', 'VIEWER'],
 };
 
-export const collectDriverCashItem: NavItem = {
-  to: '/collect-driver-cash',
-  labelKey: 'nav.staffSettlement',
-  icon: CircleDollarSign,
-  roles: ['MANAGER', 'OWNER'],
-};
+/*
+ * Dastur §3 — the old "تصفية الموظفين" (collectDriverCashItem) menu item
+ * and its /collect-driver-cash page were removed: driver-receipt approval
+ * now happens inline on /manager/custody via a Confirm-Receipt button per
+ * driver. Keeping this note so the rename/removal is discoverable.
+ */
 
 /** Dastur §3 — Manager's own pending custody bags (slip upload). */
 export const myCustodyItem: NavItem = {

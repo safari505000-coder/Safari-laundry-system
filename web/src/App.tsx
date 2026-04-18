@@ -11,7 +11,6 @@ import { RequireAuth } from '@/components/require-auth';
 import { Toaster } from '@/modules/shared/components/ui/sonner';
 import { DashboardPage } from '@/pages/dashboard-page';
 import { ExpensesPage } from '@/pages/expenses-page';
-import { CollectDriverCashPage } from '@/pages/collect-driver-cash-page';
 import { FinancialsPage } from '@/pages/financials-page';
 import { FinancialCycleReportPage } from '@/pages/financial-cycle-report-page';
 import { ReportsPage } from '@/pages/reports-page';
@@ -188,7 +187,6 @@ export default function App() {
                 />
                 <Route path="financials" element={<FinancialsPage />} />
                 <Route path="expense-approval" element={<ExpenseApprovalPage />} />
-                <Route path="collect-driver-cash" element={<CollectDriverCashPage />} />
                 <Route path="financial-cycle-report" element={<FinancialCycleReportPage />} />
                 <Route path="reports" element={<ReportsPage />} />
                 <Route

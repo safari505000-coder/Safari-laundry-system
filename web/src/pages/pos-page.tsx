@@ -1,6 +1,8 @@
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/auth-context';
 import {
+  Home,
   Layers,
   Loader2,
   LogOut,
@@ -19,8 +21,14 @@ import { PosAuxiliaryUi } from '@/modules/shared/components/pos/pos-auxiliary-ui
 
 /** Branch / back-office POS (manager & owner). Drivers use `DriverPOS`. */
 export function PosPage() {
-  const { token } = useAuth();
+  const { token, hasRole } = useAuth();
   const priceList = usePriceList({ token });
+  /*
+   * Dastur §2.1 — back-office POS is shared by MANAGER + OWNER. Only these
+   * roles get the "Back to Dashboard" shortcut so they can exit the POS
+   * without fumbling through the browser back button.
+   */
+  const canExitToDashboard = hasRole('MANAGER', 'OWNER') ?? false;
   const p = usePosEngine({ variant: 'branch', priceList });
   const { t } = useTranslation();
 
@@ -138,6 +146,24 @@ export function PosPage() {
               <Plus className="h-5 w-5" />
             </Button>
             <div className="ms-auto flex items-center gap-1 sm:gap-2">
+              {canExitToDashboard ? (
+                /*
+                 * Our Button variant doesn't support `asChild`, so we render
+                 * the Link ourselves and lean on buttonVariants classes to
+                 * keep visual parity with the rest of the header cluster.
+                 */
+                <Link
+                  to="/"
+                  title={t('pos.backToDashboard')}
+                  aria-label={t('pos.backToDashboard')}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-md border border-input bg-background px-3 text-sm font-medium shadow-sm ring-offset-background transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                >
+                  <Home className="h-4 w-4" aria-hidden />
+                  <span className="hidden sm:inline">
+                    {t('pos.backToDashboard')}
+                  </span>
+                </Link>
+              ) : null}
               <LanguageToggle variant="outline" className="bg-background" />
               <Button
                 type="button"

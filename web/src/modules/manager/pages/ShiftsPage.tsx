@@ -6,23 +6,14 @@ import { Loader2, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import {
   type DriverBalanceResponse,
-  type DriverBalanceRow,
   apiJson,
   ApiError,
-  approveReceiptFromDriver,
 } from '@/lib/api';
 import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
 import { formatKwdLabel } from '@/lib/kwd';
 import { Badge } from '@/modules/shared/components/ui/badge';
 import { Button } from '@/modules/shared/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/modules/shared/components/ui/card';
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/modules/shared/components/ui/dialog';
 import { Skeleton } from '@/modules/shared/components/ui/skeleton';
 
 const POLL_MS = 12_000;
@@ -33,8 +24,6 @@ export function ShiftsPage() {
   const { token, hasRole } = useAuth();
   const [data, setData] = useState<DriverBalanceResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [settleDriver, setSettleDriver] = useState<DriverBalanceRow | null>(null);
-  const [submitting, setSubmitting] = useState(false);
 
   const canViewStaff = hasRole(
     'OWNER',
@@ -43,7 +32,11 @@ export function ShiftsPage() {
     'SUPERVISOR',
     'VIEWER',
   );
-  const canSettle = hasRole('MANAGER');
+  /*
+   * Dastur §3 — the "اعتماد الاستلام" button was removed from this page
+   * intentionally. Driver-receipt approval now happens inline on
+   * /manager/custody (MyCustodyPage). This page stays read-only.
+   */
 
   const load = useCallback(async () => {
     if (!token || !canViewStaff) return;
@@ -86,26 +79,6 @@ export function ShiftsPage() {
     }, POLL_MS);
     return () => window.clearInterval(id);
   }, [token, canViewStaff, load]);
-
-  async function onApproveReceipt() {
-    // Dastur §3: Approve Receipt is a ONE-STEP commit — no slip required here.
-    // The 24h aging clock starts the moment this succeeds. The manager uploads
-    // the bank deposit slip from /manager/custody (MyCustodyPage).
-    if (!token || !settleDriver) return;
-    setSubmitting(true);
-    try {
-      await approveReceiptFromDriver(token, {
-        driverId: settleDriver.driverId,
-      });
-      toast.success(t('managerCustody.approveReceiptSuccess'));
-      setSettleDriver(null);
-      await load();
-    } catch (e) {
-      if (e instanceof ApiError) toast.error(e.message);
-    } finally {
-      setSubmitting(false);
-    }
-  }
 
   if (
     !hasRole(
@@ -173,9 +146,6 @@ export function ShiftsPage() {
             <Skeleton className="h-36 w-full rounded-xl" />
           </>
         : drivers.map((d) => {
-            const showSettle =
-              canSettle &&
-              (d.pendingSettlementOrderCount > 0 || !!d.currentShiftId);
             return (
               <Card
                 key={d.driverId}
@@ -225,69 +195,12 @@ export function ShiftsPage() {
                         {formatKwdLabel(d.heldCashTotal)}
                       </p>
                     </div>
-                    {showSettle ?
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="ms-auto bg-slate-900 text-white hover:bg-slate-800"
-                        onClick={() => setSettleDriver(d)}
-                      >
-                        {t('managerCustody.approveReceiptCta')}
-                      </Button>
-                    : null}
                   </div>
                 </CardContent>
               </Card>
             );
           })}
       </div>
-
-      <Dialog
-        open={!!settleDriver}
-        onOpenChange={(open) => {
-          if (!open) setSettleDriver(null);
-        }}
-      >
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>
-              {t('managerCustody.approveReceiptTitle')}
-            </DialogTitle>
-          </DialogHeader>
-          {settleDriver ?
-            <div className="space-y-3 text-sm">
-              <div className="rounded-lg border bg-muted/30 p-3">
-                <p className="text-xs text-muted-foreground">
-                  {t('managerCustody.colDriver')}
-                </p>
-                <p className="font-medium">{settleDriver.fullName}</p>
-              </div>
-              <div className="flex items-center justify-between rounded-lg border px-3 py-2">
-                <span className="text-xs text-muted-foreground">
-                  {t('managerCustody.colAmount')}
-                </span>
-                <span className="text-lg font-semibold tabular-nums">
-                  {formatKwdLabel(settleDriver.heldCashTotal)}
-                </span>
-              </div>
-              <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                {t('managerCustody.approveReceiptHint24h')}
-              </p>
-            </div>
-          : null}
-          <DialogFooter>
-            <Button
-              type="button"
-              disabled={submitting || !settleDriver}
-              onClick={() => void onApproveReceipt()}
-            >
-              {submitting ?
-                <Loader2 className="h-4 w-4 animate-spin" />
-              : t('managerCustody.approveReceiptCta')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

@@ -1,7 +1,6 @@
 import type { NavGroup } from '@/modules/shared/nav/nav-types';
 import {
   bankDepositsItem,
-  collectDriverCashItem,
   customersItem,
   dashboardItem,
   driverAuditRadarItem,
@@ -17,7 +16,6 @@ import {
   managerCustodyAgingItem,
   ownerDashboardItem,
   ownerInventoryItem,
-  myCashCustodyItem,
   myDailySalesItem,
   ordersItem,
   payrollItem,
@@ -43,7 +41,6 @@ export const defaultSidebarNavGroups: NavGroup[] = [
       dashboardItem,
       customersItem,
       myDailySalesItem,
-      myCashCustodyItem,
       collectionsItem,
       subscriptionsItem,
       subscribersItem,
@@ -63,7 +60,6 @@ export const defaultSidebarNavGroups: NavGroup[] = [
       knetAuditItem,
       expenseApprovalItem,
       financialCycleReportItem,
-      collectDriverCashItem,
       managerCustodyAgingItem,
       staffDebtsItem,
       reportsItem,
