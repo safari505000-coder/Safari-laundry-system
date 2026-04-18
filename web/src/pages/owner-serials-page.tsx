@@ -1,14 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  type KeyboardEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate } from 'react-router-dom';
-import {
-  CheckCircle2,
-  Hash,
-  Loader2,
-  Pencil,
-  RefreshCw,
-  X,
-} from 'lucide-react';
+import { CheckCircle2, Hash, Loader2, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/modules/shared/components/ui/button';
 import { Input } from '@/modules/shared/components/ui/input';
@@ -46,9 +45,16 @@ export function OwnerSerialsPage() {
   const [drivers, setDrivers] = useState<DriverPrefixRow[] | null>(null);
   const [log, setLog] = useState<SerialLog | null>(null);
   const [loading, setLoading] = useState(true);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState('');
-  const [saving, setSaving] = useState(false);
+  /**
+   * V1.5.5 — per-row editor state. We keep a parallel map of the current
+   * input value for each driver row so the "Prefix" column can always be
+   * an editable Input, committing only on blur/Enter instead of on every
+   * keystroke. Avoids one PATCH per character.
+   */
+  const [pendingPrefix, setPendingPrefix] = useState<Record<string, string>>({});
+  const [savingId, setSavingId] = useState<string | null>(null);
+  /** Flashes a green check next to the input on a successful save. */
+  const [lastSavedId, setLastSavedId] = useState<string | null>(null);
 
   const dateTimeFmt = useMemo(
     () =>
@@ -86,46 +92,78 @@ export function OwnerSerialsPage() {
     void load();
   }, [load]);
 
-  const startEdit = (row: DriverPrefixRow) => {
-    setEditingId(row.id);
-    setEditValue(row.driverPrefix ?? '');
-  };
+  /**
+   * Commit the pending prefix for this driver. Called on blur and on
+   * Enter. No-ops if the value hasn't changed so tab-through doesn't
+   * generate a storm of PATCHes.
+   */
+  const commitPrefix = useCallback(
+    async (row: DriverPrefixRow) => {
+      if (!token) return;
+      const raw = (pendingPrefix[row.id] ?? row.driverPrefix ?? '').trim();
+      const normalised = raw.toUpperCase();
+      const currentSaved = (row.driverPrefix ?? '').toUpperCase();
+      if (normalised === currentSaved) {
+        return;
+      }
+      if (normalised && !/^[A-Z]$/.test(normalised)) {
+        toast.error(t('ownerSerials.invalidPrefix'));
+        setPendingPrefix((prev) => ({ ...prev, [row.id]: currentSaved }));
+        return;
+      }
+      setSavingId(row.id);
+      try {
+        const updated = await apiJson<DriverPrefixRow>(
+          `/api/owner/serials/drivers/${row.id}`,
+          {
+            method: 'PATCH',
+            token,
+            body: JSON.stringify({
+              driverPrefix: normalised.length === 1 ? normalised : null,
+            }),
+          },
+        );
+        setDrivers((prev) =>
+          prev ? prev.map((d) => (d.id === row.id ? updated : d)) : prev,
+        );
+        setPendingPrefix((prev) => {
+          const next = { ...prev };
+          delete next[row.id];
+          return next;
+        });
+        setLastSavedId(row.id);
+        window.setTimeout(() => {
+          setLastSavedId((current) => (current === row.id ? null : current));
+        }, 1200);
+        toast.success(t('ownerSerials.prefixSaved'));
+      } catch (e) {
+        if (e instanceof ApiError) toast.error(e.message);
+        // Revert the pending value to the server truth so the UI doesn't
+        // drift from the database on failure.
+        setPendingPrefix((prev) => ({ ...prev, [row.id]: currentSaved }));
+      } finally {
+        setSavingId(null);
+      }
+    },
+    [pendingPrefix, token, t],
+  );
 
-  const cancelEdit = () => {
-    setEditingId(null);
-    setEditValue('');
-  };
-
-  const commitEdit = async (userId: string) => {
-    const normalised = editValue.trim().toUpperCase();
-    if (normalised && !/^[A-Z]$/.test(normalised)) {
-      toast.error(t('ownerSerials.invalidPrefix'));
-      return;
-    }
-    if (!token) return;
-    setSaving(true);
-    try {
-      const updated = await apiJson<DriverPrefixRow>(
-        `/api/owner/serials/drivers/${userId}`,
-        {
-          method: 'PATCH',
-          token,
-          body: JSON.stringify({
-            driverPrefix: normalised.length === 1 ? normalised : null,
-          }),
-        },
-      );
-      setDrivers((prev) =>
-        prev ? prev.map((d) => (d.id === userId ? updated : d)) : prev,
-      );
-      toast.success(t('ownerSerials.prefixSaved'));
-      cancelEdit();
-    } catch (e) {
-      if (e instanceof ApiError) toast.error(e.message);
-    } finally {
-      setSaving(false);
-    }
-  };
+  const handlePrefixKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLInputElement>, row: DriverPrefixRow) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        (e.target as HTMLInputElement).blur();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        setPendingPrefix((prev) => ({
+          ...prev,
+          [row.id]: (row.driverPrefix ?? '').toUpperCase(),
+        }));
+        (e.target as HTMLInputElement).blur();
+      }
+    },
+    [],
+  );
 
   if (!isOwner) return <Navigate to="/" replace />;
 
@@ -176,101 +214,84 @@ export function OwnerSerialsPage() {
                 <TableHead className="text-center">
                   {t('ownerSerials.prefixCol')}
                 </TableHead>
-                <TableHead className="text-end">
-                  {t('ownerSerials.actionCol')}
-                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {drivers === null ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={3} className="text-center text-sm text-muted-foreground">
                     {loading ? t('ownerSerials.loading') : t('ownerSerials.unable')}
                   </TableCell>
                 </TableRow>
               ) : drivers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={3} className="text-center text-sm text-muted-foreground">
                     {t('ownerSerials.emptyDrivers')}
                   </TableCell>
                 </TableRow>
               ) : (
-                drivers.map((d) => (
-                  <TableRow key={d.id} className={cn(!d.isActive && 'opacity-60')}>
-                    <TableCell className="font-medium">
-                      {d.fullName || d.username}
-                      {!d.isActive ? (
-                        <span className="ms-2 text-[11px] text-muted-foreground">
-                          ({t('ownerSerials.inactive')})
-                        </span>
-                      ) : null}
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {d.branchName ?? '—'}
-                    </TableCell>
-                    <TableCell className="text-center text-lg font-semibold tabular-nums">
-                      {editingId === d.id ? (
-                        <Input
-                          autoFocus
-                          maxLength={1}
-                          value={editValue}
-                          onChange={(e) =>
-                            setEditValue(
-                              e.target.value.replace(/[^a-zA-Z]/g, '').toUpperCase(),
-                            )
-                          }
-                          className="mx-auto h-9 w-14 text-center font-semibold"
-                          aria-label={t('ownerSerials.prefixCol')}
-                        />
-                      ) : (
-                        d.driverPrefix ?? (
-                          <span className="text-muted-foreground">—</span>
-                        )
-                      )}
-                    </TableCell>
-                    <TableCell className="text-end">
-                      {editingId === d.id ? (
-                        <div className="flex justify-end gap-1">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="default"
-                            disabled={saving}
-                            onClick={() => void commitEdit(d.id)}
-                            aria-label={t('ownerSerials.save')}
+                drivers.map((d) => {
+                  const pending = pendingPrefix[d.id];
+                  const value =
+                    pending !== undefined ? pending : (d.driverPrefix ?? '');
+                  const rowSaving = savingId === d.id;
+                  const rowJustSaved = lastSavedId === d.id;
+                  return (
+                    <TableRow key={d.id} className={cn(!d.isActive && 'opacity-60')}>
+                      <TableCell className="font-medium">
+                        {d.fullName || d.username}
+                        {!d.isActive ? (
+                          <span className="ms-2 text-[11px] text-muted-foreground">
+                            ({t('ownerSerials.inactive')})
+                          </span>
+                        ) : null}
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {d.branchName ?? '—'}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <div className="inline-flex items-center gap-2">
+                          <Input
+                            type="text"
+                            inputMode="text"
+                            maxLength={1}
+                            value={value}
+                            placeholder="—"
+                            disabled={rowSaving}
+                            onChange={(e) =>
+                              setPendingPrefix((prev) => ({
+                                ...prev,
+                                [d.id]: e.target.value
+                                  .replace(/[^a-zA-Z]/g, '')
+                                  .toUpperCase(),
+                              }))
+                            }
+                            onBlur={() => void commitPrefix(d)}
+                            onKeyDown={(e) => handlePrefixKeyDown(e, d)}
+                            className="h-9 w-14 text-center text-lg font-semibold tabular-nums"
+                            aria-label={t('ownerSerials.prefixCol')}
+                          />
+                          <span
+                            className="inline-flex h-5 w-5 items-center justify-center"
+                            aria-live="polite"
                           >
-                            {saving ? (
-                              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                            ) : (
-                              <CheckCircle2 className="h-4 w-4" aria-hidden />
-                            )}
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            disabled={saving}
-                            onClick={cancelEdit}
-                            aria-label={t('ownerSerials.cancel')}
-                          >
-                            <X className="h-4 w-4" aria-hidden />
-                          </Button>
+                            {rowSaving ? (
+                              <Loader2
+                                className="h-4 w-4 animate-spin text-muted-foreground"
+                                aria-hidden
+                              />
+                            ) : rowJustSaved ? (
+                              <CheckCircle2
+                                className="h-4 w-4 text-emerald-600"
+                                aria-hidden
+                              />
+                            ) : null}
+                          </span>
                         </div>
-                      ) : (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          className="gap-1"
-                          onClick={() => startEdit(d)}
-                        >
-                          <Pencil className="h-4 w-4" aria-hidden />
-                          {t('ownerSerials.edit')}
-                        </Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>

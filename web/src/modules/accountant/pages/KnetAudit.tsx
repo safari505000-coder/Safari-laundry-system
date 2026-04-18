@@ -246,12 +246,14 @@ export function KnetAudit() {
               </SelectContent>
             </Select>
           </div>
-          <Button type="button" onClick={() => void load()} disabled={loading}>
-            {loading ?
-              <Loader2 className="h-4 w-4 animate-spin" />
-            : null}
-            {t('knetAudit.loadOrders')}
-          </Button>
+          {canReconcile ? (
+            <Button type="button" onClick={() => void load()} disabled={loading}>
+              {loading ?
+                <Loader2 className="h-4 w-4 animate-spin" />
+              : null}
+              {t('knetAudit.loadOrders')}
+            </Button>
+          ) : null}
         </CardContent>
       </Card>
 
