@@ -23,6 +23,7 @@ export const ar = {
     finalSettlement: 'التسوية النهائية',
     depositAudit: 'مطابقة كي نت',
     knetAudit: 'مطابقة كي نت',
+    knetAuditReport: 'تقرير مطابقة كي نت',
     myDeposits: 'عهدتي',
     driverFieldExpenses: 'الوقود وتكاليف الميدان',
     whatsappTools: 'أدوات واتساب',

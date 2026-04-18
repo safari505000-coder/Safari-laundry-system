@@ -245,18 +245,30 @@ export const staffDebtsItem: NavItem = {
   roles: ['OWNER', 'ACCOUNTANT'],
 };
 
-export const bankDepositsItem: NavItem = {
-  to: '/knet-audit',
-  labelKey: 'nav.knetAudit',
-  icon: FileCheck2,
-  roles: ['ACCOUNTANT', 'OWNER'],
-};
-
+/**
+ * Dastur V1.5.4 — the ACCOUNTANT's K-Net reconciliation workbench.
+ * Full tool: CSV upload, load orders, reconcile the bank export against
+ * issued K-Net invoices. OWNER must NOT reach this entry — they get the
+ * read-only `knetAuditReportItem` below instead.
+ */
 export const knetAuditItem: NavItem = {
   to: '/knet-audit',
   labelKey: 'nav.knetAudit',
   icon: FileCheck2,
-  roles: ['OWNER', 'ACCOUNTANT'],
+  roles: ['ACCOUNTANT'],
+};
+
+/**
+ * Dastur V1.5.4 — OWNER-only read-only view of the same K-Net audit page.
+ * Same route, but the page itself suppresses the CSV upload and any
+ * reconciliation actions when the current user lacks ACCOUNTANT. The
+ * sidebar label is "KNET Audit Report" to reflect its finished-report role.
+ */
+export const knetAuditReportItem: NavItem = {
+  to: '/knet-audit',
+  labelKey: 'nav.knetAuditReport',
+  icon: FileSpreadsheet,
+  roles: ['OWNER'],
 };
 
 export const expenseApprovalItem: NavItem = {

@@ -74,6 +74,15 @@ export function KnetAudit() {
 
   const allowed =
     hasMasterIslandAccess(user) || hasRole('ACCOUNTANT');
+  /*
+   * Dastur V1.5.4 — role separation. ACCOUNTANT gets the full workbench
+   * (CSV upload, reconciliation). OWNER (and other non-ACCOUNTANT master
+   * roles) get a strictly read-only view of the finished report. We gate
+   * the CSV upload card on this flag so the Owner cannot accidentally
+   * side-load a bank export that would flip all rows to green/yellow in
+   * their browser session — reconciliation is an accountant duty.
+   */
+  const canReconcile = hasRole('ACCOUNTANT');
 
   useEffect(() => {
     if (!token || !allowed) return;
@@ -246,26 +255,28 @@ export function KnetAudit() {
         </CardContent>
       </Card>
 
-      <Card className="border-slate-200 bg-white">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Upload className="h-4 w-4" />
-            {t('knetAudit.bankCsv')}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <Input
-            type="file"
-            accept=".csv,text/csv"
-            onChange={(e) => onCsv(e.target.files?.[0] ?? null)}
-          />
-          {csvName ?
-            <p className="text-xs text-slate-600">
-              {t('knetAudit.parsedAmounts', { count: bankAmounts.length })}
-            </p>
-          : null}
-        </CardContent>
-      </Card>
+      {canReconcile ? (
+        <Card className="border-slate-200 bg-white">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Upload className="h-4 w-4" />
+              {t('knetAudit.bankCsv')}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <Input
+              type="file"
+              accept=".csv,text/csv"
+              onChange={(e) => onCsv(e.target.files?.[0] ?? null)}
+            />
+            {csvName ?
+              <p className="text-xs text-slate-600">
+                {t('knetAudit.parsedAmounts', { count: bankAmounts.length })}
+              </p>
+            : null}
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card className="border-slate-200 bg-white">
         <CardHeader>

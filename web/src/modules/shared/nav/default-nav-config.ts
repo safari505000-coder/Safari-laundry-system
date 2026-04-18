@@ -1,12 +1,11 @@
 import type { NavGroup } from '@/modules/shared/nav/nav-types';
 import {
-  bankDepositsItem,
   customersItem,
   dashboardItem,
   debtRecoveryReportItem,
   driverAuditRadarItem,
   expenseApprovalItem,
-  knetAuditItem,
+  knetAuditReportItem,
   driverMonitorItem,
   expensesItem,
   financialCycleReportItem,
@@ -58,8 +57,7 @@ export const defaultSidebarNavGroups: NavGroup[] = [
     labelKey: 'nav.groupFinance',
     items: [
       financialsItem,
-      bankDepositsItem,
-      knetAuditItem,
+      knetAuditReportItem,
       expenseApprovalItem,
       financialCycleReportItem,
       managerCustodyAgingItem,

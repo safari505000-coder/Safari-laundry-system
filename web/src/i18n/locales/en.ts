@@ -22,6 +22,7 @@ export const en = {
     finalSettlement: 'Final Settlement',
     depositAudit: 'K-Net reconciliation',
     knetAudit: 'K-Net reconciliation',
+    knetAuditReport: 'KNET Audit Report',
     myDeposits: 'My custody',
     driverFieldExpenses: 'Fuel & field costs',
     whatsappTools: 'WhatsApp tools',
