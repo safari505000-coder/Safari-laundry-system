@@ -109,6 +109,19 @@ export class CallCenterController {
     return this.callCenterService.sendSubscriberReminder(customerId);
   }
 
+  @Post('orders/:orderId/confirm-payment')
+  @Roles(SafariRole.CALL_CENTER, SafariRole.OWNER)
+  @ApiOperation({
+    summary: `Record a manual collection confirmation (${APP_BRAND})`,
+    description:
+      'Dastur V1.5.2 — The Collection Room "Record Payment" action. A 10-second frontend safety lock gates this call. Reuses the gateway finalize path (OrderStatus→COMPLETED, cashStatus→PAID_TO_DRIVER, wallet settlement). Idempotent if the order was already settled.',
+  })
+  confirmOrderPayment(
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+  ) {
+    return this.callCenterService.confirmOrderPayment(orderId);
+  }
+
   @Get('customers/:customerId/settlements')
   @ApiOperation({
     summary: `Customer settlement history (${APP_BRAND})`,

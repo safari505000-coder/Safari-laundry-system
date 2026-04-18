@@ -50,6 +50,9 @@ let CallCenterController = class CallCenterController {
     markSubscriberReminderSent(customerId) {
         return this.callCenterService.sendSubscriberReminder(customerId);
     }
+    confirmOrderPayment(orderId) {
+        return this.callCenterService.confirmOrderPayment(orderId);
+    }
     listSettlements(customerId) {
         return this.callCenterService.listCustomerSettlementHistory(customerId);
     }
@@ -135,6 +138,18 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", void 0)
 ], CallCenterController.prototype, "markSubscriberReminderSent", null);
+__decorate([
+    (0, common_1.Post)('orders/:orderId/confirm-payment'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.OWNER),
+    (0, swagger_1.ApiOperation)({
+        summary: `Record a manual collection confirmation (${branding_1.APP_BRAND})`,
+        description: 'Dastur V1.5.2 — The Collection Room "Record Payment" action. A 10-second frontend safety lock gates this call. Reuses the gateway finalize path (OrderStatus→COMPLETED, cashStatus→PAID_TO_DRIVER, wallet settlement). Idempotent if the order was already settled.',
+    }),
+    __param(0, (0, common_1.Param)('orderId', common_1.ParseUUIDPipe)),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], CallCenterController.prototype, "confirmOrderPayment", null);
 __decorate([
     (0, common_1.Get)('customers/:customerId/settlements'),
     (0, swagger_1.ApiOperation)({

@@ -806,6 +806,20 @@ export type CollectionUnpaidOnlineRow = {
   customerPhone: string;
   amountKd: string;
   paymentUrl: string;
+  createdAtIso: string;
+  invoiceAgeDays: number;
+  reminderCount: number;
+  lastReminderAtIso: string | null;
+  canRemindNow: boolean;
+};
+
+/**
+ * Dastur V1.5.2 — Collection Room "Record Payment" response.
+ * `POST /api/call-center/orders/:orderId/confirm-payment`
+ */
+export type ConfirmOrderPaymentResult = {
+  orderId: string;
+  finalized: boolean;
 };
 
 /**

@@ -14,6 +14,7 @@ const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
 const prisma_service_1 = require("../prisma/prisma.service");
 const customer_ledger_service_1 = require("../customer-ledger/customer-ledger.service");
+const payments_service_1 = require("../common/services/payments.service");
 const REMINDER_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 function buildReminderResult(args) {
     const { sent, reminderCount, lastReminderAt, now } = args;
@@ -57,9 +58,37 @@ function extractDebtSettled(meta) {
 let CallCenterService = class CallCenterService {
     prisma;
     customerLedger;
-    constructor(prisma, customerLedger) {
+    paymentsService;
+    constructor(prisma, customerLedger, paymentsService) {
         this.prisma = prisma;
         this.customerLedger = customerLedger;
+        this.paymentsService = paymentsService;
+    }
+    async confirmOrderPayment(orderId) {
+        const order = await this.prisma.order.findUnique({
+            where: { id: orderId },
+            select: {
+                id: true,
+                status: true,
+                cashStatus: true,
+                posHostedPaymentUrl: true,
+                walletSettledAt: true,
+            },
+        });
+        if (!order) {
+            throw new common_1.NotFoundException('Order not found');
+        }
+        if (order.walletSettledAt) {
+            return { orderId, finalized: true };
+        }
+        if (order.status !== client_1.OrderStatus.PENDING) {
+            throw new common_1.BadRequestException('Order is not in a state that can be finalized');
+        }
+        if (!order.posHostedPaymentUrl) {
+            throw new common_1.BadRequestException('Order does not belong to the collections radar');
+        }
+        await this.paymentsService.finalizePaidOrderFromGateway(orderId);
+        return { orderId, finalized: true };
     }
     listActiveSubscriptionPlans() {
         return this.prisma.subscriptionPlan.findMany({
@@ -390,6 +419,7 @@ exports.CallCenterService = CallCenterService;
 exports.CallCenterService = CallCenterService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
-        customer_ledger_service_1.CustomerLedgerService])
+        customer_ledger_service_1.CustomerLedgerService,
+        payments_service_1.PaymentsService])
 ], CallCenterService);
 //# sourceMappingURL=call-center.service.js.map

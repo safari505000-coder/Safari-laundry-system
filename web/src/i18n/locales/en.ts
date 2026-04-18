@@ -200,8 +200,17 @@ export const en = {
     colPhone: 'Phone',
     colAmount: 'Amount (KD)',
     colWhatsapp: 'WhatsApp',
+    colDaysElapsed: 'Days',
+    colReminders: 'Reminders',
+    colActions: 'Actions',
     whatsapp: 'WhatsApp',
+    whatsappNoPhone: 'No WhatsApp-compatible phone on file.',
     paymentLink: 'Payment link',
+    recordPayment: 'Record Payment',
+    remindSentToast: 'Reminder logged (total: {{count}})',
+    remindCooldown:
+      'Reminder already sent. Next reminder allowed in about {{hours}}h.',
+    remindCooldownShort: 'Reminded recently (24h)',
     empty: 'No unpaid payment-link orders.',
     emptySearch: 'No rows match your search.',
     refresh: 'Refresh',
@@ -213,6 +222,16 @@ export const en = {
     kpiCollectedTodaySub: 'Customer debt settled through today (UTC day)',
     kpiPendingLinksLabel: 'Pending links',
     kpiPendingLinksSub: 'Online orders awaiting customer payment',
+    confirmDialogTitle: 'Record payment for this invoice',
+    confirmDialogDescription:
+      'Confirm that {{name}} has paid {{amount}}. This finalizes the order, settles the customer wallet, and removes the row from the collections radar.',
+    confirmWait: 'Safety lock: {{seconds}}s remaining.',
+    confirmWaitHint:
+      'Please double-check the receipt, portal, or bank notification before confirming. You cannot approve until the timer hits 0.',
+    confirmCancel: 'Cancel',
+    confirmCta: 'Confirm Collection',
+    confirmCountdown: 'Please wait… {{seconds}}s',
+    confirmSuccess: 'Payment recorded. Collections radar refreshed.',
   },
   driverDailySales: {
     title: 'My Daily Sales',
@@ -922,7 +941,7 @@ export const en = {
     unable: 'Could not load the list.',
     lowBalanceWarn: 'Low/negative balance requires follow-up.',
     searchPlaceholder: 'Search by phone number or customer name…',
-    issueCta: 'New subscription',
+    issueCta: 'Add subscription',
     issueDialogTitle: 'Issue a new subscription',
     issueDialogDescription:
       'Pick the customer and a plan — any outstanding debt is settled first, then the remainder is credited to the wallet.',
@@ -939,25 +958,29 @@ export const en = {
     issueCancel: 'Cancel',
     issueSubmit: 'Issue subscription',
     issueSuccess: 'Subscription issued and wallet updated',
-    colDaysElapsed: 'Invoice age',
-    colReminders: 'Reminders sent',
-    colActions: 'Actions',
-    remindCta: 'Remind',
-    remindSentToast: 'Reminder logged (total: {{count}})',
-    remindCooldown:
-      'A reminder was already sent in the last 24h. Next allowed in about {{hours}}h.',
-    remindCooldownShort: 'Reminded recently (24h)',
-    renewCta: 'Renew',
-    renewDialogTitle: 'Confirm subscription renewal',
-    renewDialogDescription:
-      'Plan "{{plan}}" will be re-activated for {{name}} — the same settlement logic applies (debt first, then credit).',
-    renewWait: 'Wait {{seconds}} seconds before confirming.',
-    renewWaitHint:
-      'Safety lock: the confirm button stays disabled until the countdown hits zero to prevent accidental renewals.',
-    renewCancel: 'Cancel',
-    renewConfirm: 'Approve renewal',
-    renewConfirmCountdown: 'Approve renewal ({{seconds}})',
-    renewSuccess: 'Subscription renewed',
+    manageDialogTitle: '{{name}} — manage subscription',
+    manageDialogDescription:
+      'Pick how you want to manage this account. These are the two cycle actions — new subscriptions use the "Add subscription" button at the top.',
+    manageDialogOpenHint: 'Manage subscription',
+    manageExtendTitle: 'Extend subscription',
+    manageExtendHint: 'Another cycle on the current plan ({{plan}}).',
+    manageExtendDisabled:
+      'No active plan on record for this customer — use Upgrade to start a new plan.',
+    manageUpgradeTitle: 'Upgrade subscription',
+    manageUpgradeHint: 'Switch the customer to a different plan tier.',
+    manageClose: 'Close',
+    extendDialogTitle: 'Extend current subscription',
+    extendDialogDescription:
+      'Re-issue the same plan for this customer. Same settlement logic applies: debt first, then balance credit.',
+    extendSubmit: 'Extend subscription',
+    extendSuccess: 'Subscription extended',
+    upgradeDialogTitle: 'Upgrade to another plan',
+    upgradeDialogDescription:
+      'Pick a different plan tier. The customer is already locked in; only the plan selection is open.',
+    upgradePlanHint:
+      'Upgrading re-activates with the new plan credit. Any unused balance on the previous cycle stays with the customer.',
+    upgradeSubmit: 'Upgrade subscription',
+    upgradeSuccess: 'Subscription upgraded',
   },
   ownerSerials: {
     title: 'Serial management',

@@ -135,6 +135,11 @@ export declare class OrdersController {
         customerPhone: string;
         amountKd: string;
         paymentUrl: string;
+        createdAtIso: string;
+        invoiceAgeDays: number;
+        reminderCount: number;
+        lastReminderAtIso: string | null;
+        canRemindNow: boolean;
     }[]>;
     findOne(id: string, user: JwtUser): Promise<{
         id: string;

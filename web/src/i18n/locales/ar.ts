@@ -214,6 +214,25 @@ export const ar = {
     kpiCollectedTodaySub: 'المبالغ المسوّاة من ذمم العملاء خلال اليوم الجاري',
     kpiPendingLinksLabel: 'روابط دفع معلّقة',
     kpiPendingLinksSub: 'طلبات إلكترونية بانتظار إتمام العميل للدفع',
+    colDaysElapsed: 'الأيام',
+    colReminders: 'مرات التذكير',
+    colActions: 'إجراءات',
+    whatsappNoPhone: 'لا يوجد رقم واتساب صالح لهذا العميل.',
+    recordPayment: 'تسجيل تحصيل',
+    remindSentToast: 'تم تسجيل التذكير (الإجمالي: {{count}})',
+    remindCooldown:
+      'تم إرسال تذكير خلال الـ24 ساعة الماضية. يمكن إعادة الإرسال بعد حوالي {{hours}} ساعة.',
+    remindCooldownShort: 'تم التذكير مؤخراً (24 ساعة)',
+    confirmDialogTitle: 'تسجيل تحصيل هذه الفاتورة',
+    confirmDialogDescription:
+      'أكّد أن {{name}} قد سدّد مبلغ {{amount}}. هذا الإجراء يختم الطلب ويسوّي محفظة العميل ويزيل السطر من رادار التحصيل.',
+    confirmWait: 'قفل الأمان: تبقّى {{seconds}} ثانية.',
+    confirmWaitHint:
+      'تحقّق من الإيصال أو البوابة أو إشعار البنك قبل التأكيد. زر الاعتماد مُعطَّل حتى ينتهي العدّاد.',
+    confirmCancel: 'إلغاء',
+    confirmCta: 'اعتماد التحصيل',
+    confirmCountdown: 'الرجاء الانتظار… {{seconds}}ث',
+    confirmSuccess: 'تم تسجيل التحصيل وتحديث الرادار.',
   },
   driverDailySales: {
     title: 'مبيعاتي اليومية',
@@ -919,7 +938,7 @@ export const ar = {
     unable: 'تعذّر تحميل القائمة.',
     lowBalanceWarn: 'الرصيد منخفض/سالب ويتطلب متابعة.',
     searchPlaceholder: 'ابحث برقم الهاتف أو اسم العميل…',
-    issueCta: 'اشتراك جديد',
+    issueCta: 'إضافة اشتراك',
     issueDialogTitle: 'إصدار اشتراك جديد',
     issueDialogDescription:
       'ابحث عن العميل ثم اختر الباقة — ستتم تسوية أي ذمم سابقة تلقائياً قبل إضافة الرصيد.',
@@ -955,6 +974,29 @@ export const ar = {
     renewConfirm: 'اعتماد التجديد',
     renewConfirmCountdown: 'اعتماد التجديد ({{seconds}})',
     renewSuccess: 'تم تجديد الاشتراك بنجاح',
+    manageDialogTitle: '{{name}} — إدارة الاشتراك',
+    manageDialogDescription:
+      'اختر كيف تريد إدارة هذا الحساب. هذه إجراءات الدورة — الاشتراكات الجديدة تمر عبر زر «إضافة اشتراك» في الأعلى.',
+    manageDialogOpenHint: 'إدارة الاشتراك',
+    manageExtendTitle: 'تمديد الاشتراك',
+    manageExtendHint: 'دورة جديدة على نفس الباقة ({{plan}}).',
+    manageExtendDisabled:
+      'لا توجد باقة مفعّلة حالياً لهذا العميل — استخدم «ترقية» لبدء باقة جديدة.',
+    manageUpgradeTitle: 'ترقية الاشتراك',
+    manageUpgradeHint: 'انتقال العميل إلى فئة/باقة مختلفة.',
+    manageClose: 'إغلاق',
+    extendDialogTitle: 'تمديد الاشتراك الحالي',
+    extendDialogDescription:
+      'إعادة إصدار نفس الباقة لهذا العميل. يُطبَّق نفس منطق التسوية: الدين أولاً ثم إضافة الرصيد.',
+    extendSubmit: 'تمديد الاشتراك',
+    extendSuccess: 'تم تمديد الاشتراك',
+    upgradeDialogTitle: 'ترقية إلى باقة أخرى',
+    upgradeDialogDescription:
+      'اختر باقة مختلفة. العميل مثبَّت مسبقاً، لا يتبقى إلا اختيار الباقة الجديدة.',
+    upgradePlanHint:
+      'الترقية تُعيد التفعيل برصيد الباقة الجديدة. أي رصيد متبقٍّ من الدورة السابقة يبقى للعميل.',
+    upgradeSubmit: 'ترقية الاشتراك',
+    upgradeSuccess: 'تم ترقية الاشتراك',
   },
   ownerSerials: {
     title: 'إدارة التسلسل',

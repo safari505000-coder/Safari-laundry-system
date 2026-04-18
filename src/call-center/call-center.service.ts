@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { CashStatus, LedgerTransactionType, OrderStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CustomerLedgerService } from '../customer-ledger/customer-ledger.service';
+import { PaymentsService } from '../common/services/payments.service';
 import { ActivateSubscriptionDto } from './dto/activate-subscription.dto';
 import type { SettlementHistoryRowDto } from './dto/settlement-history-row.dto';
 import type { CallCenterOperationsSummaryDto } from './dto/operations-summary.dto';
@@ -70,7 +71,55 @@ export class CallCenterService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly customerLedger: CustomerLedgerService,
+    private readonly paymentsService: PaymentsService,
   ) {}
+
+  /**
+   * Dastur V1.5.2 — Collection Room "Record Payment".
+   *
+   * The 10-second frontend safety lock gates this call. When the call-center
+   * agent confirms they have verified payment (gateway console, customer
+   * receipt photo, etc.), we reuse the same finalization pipeline that the
+   * KNET webhook calls. That keeps one single "order finalization" path in
+   * the system — wallet settlement, ledger entries, stock transitions — no
+   * duplicated logic, no drift.
+   *
+   * Returns a thin confirmation object so the UI can toast and refresh.
+   */
+  async confirmOrderPayment(orderId: string): Promise<{
+    orderId: string;
+    finalized: boolean;
+  }> {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        status: true,
+        cashStatus: true,
+        posHostedPaymentUrl: true,
+        walletSettledAt: true,
+      },
+    });
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+    if (order.walletSettledAt) {
+      // Idempotent — caller can double-click safely.
+      return { orderId, finalized: true };
+    }
+    if (order.status !== OrderStatus.PENDING) {
+      throw new BadRequestException(
+        'Order is not in a state that can be finalized',
+      );
+    }
+    if (!order.posHostedPaymentUrl) {
+      throw new BadRequestException(
+        'Order does not belong to the collections radar',
+      );
+    }
+    await this.paymentsService.finalizePaidOrderFromGateway(orderId);
+    return { orderId, finalized: true };
+  }
 
   listActiveSubscriptionPlans() {
     return this.prisma.subscriptionPlan.findMany({

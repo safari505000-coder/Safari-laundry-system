@@ -47,5 +47,9 @@ export declare class CallCenterController {
     }>;
     markOrderReminderSent(orderId: string): Promise<import("./dto/reminder-result.dto").ReminderResultDto>;
     markSubscriberReminderSent(customerId: string): Promise<import("./dto/reminder-result.dto").ReminderResultDto>;
+    confirmOrderPayment(orderId: string): Promise<{
+        orderId: string;
+        finalized: boolean;
+    }>;
     listSettlements(customerId: string): Promise<import("./dto/settlement-history-row.dto").SettlementHistoryRowDto[]>;
 }

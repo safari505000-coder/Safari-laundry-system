@@ -541,6 +541,9 @@ let OrdersService = class OrdersService {
                 id: true,
                 totalPrice: true,
                 posHostedPaymentUrl: true,
+                createdAt: true,
+                reminderCount: true,
+                lastReminderAt: true,
                 customer: {
                     select: {
                         displayName: true,
@@ -552,18 +555,31 @@ let OrdersService = class OrdersService {
             orderBy: { createdAt: 'desc' },
             take: 500,
         });
+        const now = Date.now();
+        const DAY_MS = 24 * 60 * 60 * 1000;
         return rows.map((r) => {
             const phone = r.customer.phone?.replace(/[\s-]/g, '').trim() ||
                 r.customer.phone2?.replace(/[\s-]/g, '').trim() ||
                 '';
             const name = r.customer.displayName?.trim() ||
                 (phone ? phone : 'Customer');
+            const ageMs = Math.max(0, now - r.createdAt.getTime());
+            const invoiceAgeDays = Math.floor(ageMs / DAY_MS);
+            const lastReminderMs = r.lastReminderAt?.getTime() ?? null;
+            const canRemindNow = lastReminderMs === null || now - lastReminderMs >= DAY_MS;
             return {
                 orderId: r.id,
                 customerName: name,
                 customerPhone: phone,
                 amountKd: r.totalPrice.toFixed(4),
                 paymentUrl: r.posHostedPaymentUrl,
+                createdAtIso: r.createdAt.toISOString(),
+                invoiceAgeDays,
+                reminderCount: r.reminderCount,
+                lastReminderAtIso: r.lastReminderAt
+                    ? r.lastReminderAt.toISOString()
+                    : null,
+                canRemindNow,
             };
         });
     }

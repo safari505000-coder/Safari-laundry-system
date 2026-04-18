@@ -2,11 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate } from 'react-router-dom';
 import {
-  Bell,
+  ArrowUpRight,
+  CalendarClock,
   Loader2,
   Plus,
   RefreshCw,
-  RotateCcw,
   Search,
   Sparkles,
 } from 'lucide-react';
@@ -42,7 +42,6 @@ import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
 import {
   type CallCenterPlan,
   type CustomerSearchRow,
-  type ReminderResult,
   type SubscriberListRow,
   apiJson,
   ApiError,
@@ -50,13 +49,18 @@ import {
 import { cn } from '@/lib/utils';
 import { formatKwdLabel } from '@/lib/kwd';
 
-/**
- * Dastur §5 (V1.5) — Hard safety countdown for destructive / cost-bearing
- * actions. The user cannot confirm until this hits 0.
- */
-const RENEW_CONFIRM_SECONDS = 10;
-
 const POLL_MS = 12_000;
+
+/**
+ * Dastur V1.5.2 — "Management Room" mode for the subscription issue dialog.
+ *
+ * - `new`     → blank flow, from the header "إضافة اشتراك" icon.
+ * - `extend`  → customer pre-selected, current plan pre-selected. The agent
+ *               can confirm to lay another subscription cycle on top.
+ * - `upgrade` → customer pre-selected, plan cleared so the agent must pick
+ *               a different tier.
+ */
+type IssueMode = 'new' | 'extend' | 'upgrade';
 
 function rowTone(status: SubscriberListRow['rowStatus']): string {
   switch (status) {
@@ -82,20 +86,24 @@ function normalisePhone(value: string): string {
   return value.replace(/\D+/g, '');
 }
 
+type IssuePrefill = {
+  customerId: string;
+  customerName: string;
+  customerPhone: string | null;
+  /** Only set for `extend`; cleared for `upgrade`. */
+  planId: string | null;
+};
+
 function SubscriberCard({
   r,
   formatDate,
-  canAct,
-  onRemind,
-  onRenew,
-  reminderBusy,
+  canManage,
+  onOpenAccount,
 }: {
   r: SubscriberListRow;
   formatDate: (iso: string | null) => string;
-  canAct: boolean;
-  onRemind: (r: SubscriberListRow) => void;
-  onRenew: (r: SubscriberListRow) => void;
-  reminderBusy: boolean;
+  canManage: boolean;
+  onOpenAccount: (r: SubscriberListRow) => void;
 }) {
   const { t } = useTranslation();
   return (
@@ -105,7 +113,17 @@ function SubscriberCard({
         rowTone(r.rowStatus),
       )}
     >
-      <p className="font-semibold text-foreground">{r.customerName}</p>
+      {canManage ? (
+        <button
+          type="button"
+          onClick={() => onOpenAccount(r)}
+          className="text-start font-semibold text-foreground underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none"
+        >
+          {r.customerName}
+        </button>
+      ) : (
+        <p className="font-semibold text-foreground">{r.customerName}</p>
+      )}
       <p className="mt-1 text-sm text-muted-foreground">{r.subscriptionType}</p>
       <dl className="mt-3 grid grid-cols-2 gap-x-2 gap-y-2 text-xs sm:text-sm">
         <div>
@@ -121,16 +139,6 @@ function SubscriberCard({
           <dd className="tabular-nums font-medium">
             {r.remainingDays === null ? '—' : r.remainingDays}
           </dd>
-        </div>
-        <div>
-          <dt className="text-muted-foreground">{t('subscribers.colDaysElapsed')}</dt>
-          <dd className="tabular-nums font-medium">
-            {r.invoiceAgeDays === null ? '—' : r.invoiceAgeDays}
-          </dd>
-        </div>
-        <div>
-          <dt className="text-muted-foreground">{t('subscribers.colReminders')}</dt>
-          <dd className="tabular-nums font-medium">{r.reminderCount}</dd>
         </div>
         <div>
           <dt className="text-muted-foreground">{t('subscribers.colBalance')}</dt>
@@ -149,122 +157,94 @@ function SubscriberCard({
           ) : null}
         </div>
       </dl>
-      {canAct ? (
-        <div className="mt-3 flex flex-wrap gap-2">
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="gap-1"
-            disabled={reminderBusy || !r.canRemindNow}
-            onClick={() => onRemind(r)}
-            aria-label={t('subscribers.remindCta')}
-          >
-            <Bell className="h-4 w-4" aria-hidden />
-            {t('subscribers.remindCta')}
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            className="gap-1"
-            disabled={!r.planId}
-            onClick={() => onRenew(r)}
-            aria-label={t('subscribers.renewCta')}
-          >
-            <RotateCcw className="h-4 w-4" aria-hidden />
-            {t('subscribers.renewCta')}
-          </Button>
-        </div>
-      ) : null}
     </article>
   );
 }
 
 /**
- * Dastur §5 (V1.5) — Renew confirmation with a hard 10-second countdown.
+ * Dastur V1.5.2 — Account management launcher.
  *
- * The approve button is DISABLED until the timer hits 0. Users cannot
- * bypass with keyboard focus, rapid clicks, or dialog remounts (the
- * timer state belongs to this component, which remounts with the
- * `key={customerId}` on the parent). Closing the dialog aborts.
+ * When an operator clicks the customer name in the Management Room, they
+ * are NOT collecting debt — they're managing the account. This dialog
+ * presents the two distinct management actions the owner defined:
+ *
+ *  - Extend Subscription (تمديد): another cycle on the SAME plan.
+ *  - Upgrade Subscription (ترقية): move the customer to a DIFFERENT plan.
+ *
+ * Both routes open the existing subscription activation dialog with the
+ * customer pre-selected, so there is zero new backend surface.
  */
-function RenewConfirmDialog({
+function ManageAccountDialog({
   subscriber,
   open,
   onOpenChange,
-  token,
-  onRenewed,
+  onExtend,
+  onUpgrade,
 }: {
   subscriber: SubscriberListRow | null;
   open: boolean;
   onOpenChange: (next: boolean) => void;
-  token: string;
-  onRenewed: () => void;
+  onExtend: (r: SubscriberListRow) => void;
+  onUpgrade: (r: SubscriberListRow) => void;
 }) {
   const { t } = useTranslation();
-  const [remaining, setRemaining] = useState<number>(RENEW_CONFIRM_SECONDS);
-  const [submitting, setSubmitting] = useState(false);
-
-  useEffect(() => {
-    if (!open) {
-      setRemaining(RENEW_CONFIRM_SECONDS);
-      setSubmitting(false);
-      return;
-    }
-    setRemaining(RENEW_CONFIRM_SECONDS);
-    const id = window.setInterval(() => {
-      setRemaining((n) => (n > 0 ? n - 1 : 0));
-    }, 1000);
-    return () => window.clearInterval(id);
-  }, [open, subscriber?.customerId]);
-
-  const confirmDisabled = remaining > 0 || submitting || !subscriber?.planId;
-
-  async function confirm() {
-    if (confirmDisabled || !subscriber?.planId) return;
-    setSubmitting(true);
-    try {
-      await apiJson('/api/call-center/subscriptions/activate', {
-        method: 'POST',
-        token,
-        body: JSON.stringify({
-          customerId: subscriber.customerId,
-          planId: subscriber.planId,
-        }),
-      });
-      toast.success(t('subscribers.renewSuccess'));
-      onRenewed();
-      onOpenChange(false);
-    } catch (e) {
-      if (e instanceof ApiError) toast.error(e.message);
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
+  const canExtend = Boolean(subscriber?.planId);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <RotateCcw className="h-5 w-5 text-primary" aria-hidden />
-            {t('subscribers.renewDialogTitle')}
+            <Sparkles className="h-5 w-5 text-primary" aria-hidden />
+            {t('subscribers.manageDialogTitle', {
+              name: subscriber?.customerName ?? '',
+            })}
           </DialogTitle>
           <DialogDescription>
-            {t('subscribers.renewDialogDescription', {
-              name: subscriber?.customerName ?? '',
-              plan: subscriber?.subscriptionType ?? '—',
-            })}
+            {t('subscribers.manageDialogDescription')}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="rounded-md border border-dashed border-border bg-muted/40 p-3 text-sm">
-          <p className="font-medium">
-            {t('subscribers.renewWait', { seconds: remaining })}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {t('subscribers.renewWaitHint')}
-          </p>
+        <div className="grid gap-3">
+          <button
+            type="button"
+            className="flex items-start gap-3 rounded-lg border border-border bg-card p-4 text-start transition hover:border-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={!canExtend || !subscriber}
+            onClick={() => subscriber && onExtend(subscriber)}
+          >
+            <span className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-200">
+              <CalendarClock className="h-5 w-5" aria-hidden />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-semibold">
+                {t('subscribers.manageExtendTitle')}
+              </span>
+              <span className="mt-1 block text-xs text-muted-foreground">
+                {canExtend
+                  ? t('subscribers.manageExtendHint', {
+                      plan: subscriber?.subscriptionType ?? '—',
+                    })
+                  : t('subscribers.manageExtendDisabled')}
+              </span>
+            </span>
+          </button>
+
+          <button
+            type="button"
+            className="flex items-start gap-3 rounded-lg border border-border bg-card p-4 text-start transition hover:border-primary hover:bg-primary/5"
+            onClick={() => subscriber && onUpgrade(subscriber)}
+          >
+            <span className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-200">
+              <ArrowUpRight className="h-5 w-5" aria-hidden />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-semibold">
+                {t('subscribers.manageUpgradeTitle')}
+              </span>
+              <span className="mt-1 block text-xs text-muted-foreground">
+                {t('subscribers.manageUpgradeHint')}
+              </span>
+            </span>
+          </button>
         </div>
 
         <DialogFooter>
@@ -272,23 +252,8 @@ function RenewConfirmDialog({
             type="button"
             variant="outline"
             onClick={() => onOpenChange(false)}
-            disabled={submitting}
           >
-            {t('subscribers.renewCancel')}
-          </Button>
-          <Button
-            type="button"
-            onClick={() => void confirm()}
-            disabled={confirmDisabled}
-          >
-            {submitting ? (
-              <Loader2 className="me-2 h-4 w-4 animate-spin" aria-hidden />
-            ) : (
-              <RotateCcw className="me-2 h-4 w-4" aria-hidden />
-            )}
-            {remaining > 0
-              ? t('subscribers.renewConfirmCountdown', { seconds: remaining })
-              : t('subscribers.renewConfirm')}
+            {t('subscribers.manageClose')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -298,17 +263,23 @@ function RenewConfirmDialog({
 
 /**
  * Dastur §5 — Issue-subscription dialog for Call Center operators.
+ * V1.5.2 — now reusable for Extend / Upgrade (with customer pre-selected).
+ *
  * Uses the existing `/api/call-center/*` endpoints; no new backend surface.
  */
 function IssueSubscriptionDialog({
   open,
   onOpenChange,
   token,
+  mode,
+  prefill,
   onIssued,
 }: {
   open: boolean;
   onOpenChange: (next: boolean) => void;
   token: string;
+  mode: IssueMode;
+  prefill: IssuePrefill | null;
   onIssued: () => void;
 }) {
   const { t } = useTranslation();
@@ -372,7 +343,9 @@ function IssueSubscriptionDialog({
     };
   }, [customerQuery, open, token]);
 
-  // Reset state whenever the dialog reopens — avoids leaking previous picks.
+  // Pre-fill customer + plan from the caller when the dialog opens in
+  // extend/upgrade mode. Runs once per open so that the user can still
+  // clear/replace the customer manually if they change their mind.
   useEffect(() => {
     if (!open) {
       setPlanId('');
@@ -380,8 +353,23 @@ function IssueSubscriptionDialog({
       setCustomerResults([]);
       setSelectedCustomer(null);
       setSubmitting(false);
+      return;
     }
-  }, [open]);
+    if (prefill) {
+      // Synthesize a minimal CustomerSearchRow shape from the subscriber row
+      // so the dialog shows the locked-in customer card without refetching.
+      const synthetic: CustomerSearchRow = {
+        id: prefill.customerId,
+        phone: prefill.customerPhone ?? '',
+        displayName: prefill.customerName,
+        address: null,
+        createdAt: new Date().toISOString(),
+        wallet: null,
+      };
+      setSelectedCustomer(synthetic);
+      setPlanId(prefill.planId ?? '');
+    }
+  }, [open, prefill]);
 
   const canSubmit = Boolean(planId && selectedCustomer && !submitting);
 
@@ -397,7 +385,13 @@ function IssueSubscriptionDialog({
           planId,
         }),
       });
-      toast.success(t('subscribers.issueSuccess'));
+      toast.success(
+        mode === 'extend'
+          ? t('subscribers.extendSuccess')
+          : mode === 'upgrade'
+            ? t('subscribers.upgradeSuccess')
+            : t('subscribers.issueSuccess'),
+      );
       onIssued();
       onOpenChange(false);
     } catch (e) {
@@ -407,17 +401,40 @@ function IssueSubscriptionDialog({
     }
   }
 
+  const title =
+    mode === 'extend'
+      ? t('subscribers.extendDialogTitle')
+      : mode === 'upgrade'
+        ? t('subscribers.upgradeDialogTitle')
+        : t('subscribers.issueDialogTitle');
+  const description =
+    mode === 'extend'
+      ? t('subscribers.extendDialogDescription')
+      : mode === 'upgrade'
+        ? t('subscribers.upgradeDialogDescription')
+        : t('subscribers.issueDialogDescription');
+  const submitLabel =
+    mode === 'extend'
+      ? t('subscribers.extendSubmit')
+      : mode === 'upgrade'
+        ? t('subscribers.upgradeSubmit')
+        : t('subscribers.issueSubmit');
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-primary" aria-hidden />
-            {t('subscribers.issueDialogTitle')}
+            {mode === 'extend' ? (
+              <CalendarClock className="h-5 w-5 text-emerald-600" aria-hidden />
+            ) : mode === 'upgrade' ? (
+              <ArrowUpRight className="h-5 w-5 text-amber-600" aria-hidden />
+            ) : (
+              <Sparkles className="h-5 w-5 text-primary" aria-hidden />
+            )}
+            {title}
           </DialogTitle>
-          <DialogDescription>
-            {t('subscribers.issueDialogDescription')}
-          </DialogDescription>
+          <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -528,7 +545,9 @@ function IssueSubscriptionDialog({
               </SelectContent>
             </Select>
             <p className="text-[11px] text-muted-foreground">
-              {t('subscribers.issuePlanHint')}
+              {mode === 'upgrade'
+                ? t('subscribers.upgradePlanHint')
+                : t('subscribers.issuePlanHint')}
             </p>
           </div>
         </div>
@@ -545,10 +564,14 @@ function IssueSubscriptionDialog({
           <Button type="button" onClick={() => void submit()} disabled={!canSubmit}>
             {submitting ? (
               <Loader2 className="me-2 h-4 w-4 animate-spin" aria-hidden />
+            ) : mode === 'extend' ? (
+              <CalendarClock className="me-2 h-4 w-4" aria-hidden />
+            ) : mode === 'upgrade' ? (
+              <ArrowUpRight className="me-2 h-4 w-4" aria-hidden />
             ) : (
               <Sparkles className="me-2 h-4 w-4" aria-hidden />
             )}
-            {t('subscribers.issueSubmit')}
+            {submitLabel}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -561,15 +584,22 @@ export function SubscribersPage() {
   const locale = useAppLocale();
   const { token, hasRole } = useAuth();
   const allowed = hasRole('OWNER', 'CALL_CENTER');
-  const canIssue = hasRole('CALL_CENTER', 'OWNER');
+  const canManage = hasRole('CALL_CENTER', 'OWNER');
 
   const [rows, setRows] = useState<SubscriberListRow[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
+
+  // Issue-subscription dialog state — also powers Extend/Upgrade.
   const [issueOpen, setIssueOpen] = useState(false);
-  const [renewTarget, setRenewTarget] = useState<SubscriberListRow | null>(null);
-  const [renewOpen, setRenewOpen] = useState(false);
-  const [reminderBusyId, setReminderBusyId] = useState<string | null>(null);
+  const [issueMode, setIssueMode] = useState<IssueMode>('new');
+  const [issuePrefill, setIssuePrefill] = useState<IssuePrefill | null>(null);
+
+  // Management Room "click customer name" dialog.
+  const [manageTarget, setManageTarget] = useState<SubscriberListRow | null>(
+    null,
+  );
+  const [manageOpen, setManageOpen] = useState(false);
 
   const dateFmt = useMemo(
     () =>
@@ -617,44 +647,39 @@ export function SubscribersPage() {
     return () => window.clearInterval(id);
   }, [token, allowed, load]);
 
-  /**
-   * Dastur §5 (V1.5) — fire a 24h-guarded reminder. Backend enforces the
-   * cooldown atomically; we just surface the outcome and refresh.
-   */
-  const handleRemind = useCallback(
-    async (r: SubscriberListRow) => {
-      if (!token) return;
-      setReminderBusyId(r.customerId);
-      try {
-        const res = await apiJson<ReminderResult>(
-          `/api/call-center/subscribers/${r.customerId}/reminder`,
-          { method: 'POST', token },
-        );
-        if (res.sent) {
-          toast.success(
-            t('subscribers.remindSentToast', { count: res.reminderCount }),
-          );
-        } else {
-          toast.warning(
-            t('subscribers.remindCooldown', {
-              hours: res.hoursUntilNext ?? 24,
-            }),
-          );
-        }
-        await load({ silent: true });
-      } catch (e) {
-        if (e instanceof ApiError) toast.error(e.message);
-      } finally {
-        setReminderBusyId(null);
-      }
-    },
-    [token, t, load],
-  );
+  const handleOpenAccount = useCallback((r: SubscriberListRow) => {
+    setManageTarget(r);
+    setManageOpen(true);
+  }, []);
 
-  const handleOpenRenew = useCallback((r: SubscriberListRow) => {
-    if (!r.planId) return;
-    setRenewTarget(r);
-    setRenewOpen(true);
+  const launchExtend = useCallback((r: SubscriberListRow) => {
+    setIssueMode('extend');
+    setIssuePrefill({
+      customerId: r.customerId,
+      customerName: r.customerName,
+      customerPhone: r.customerPhone ?? null,
+      planId: r.planId,
+    });
+    setManageOpen(false);
+    setIssueOpen(true);
+  }, []);
+
+  const launchUpgrade = useCallback((r: SubscriberListRow) => {
+    setIssueMode('upgrade');
+    setIssuePrefill({
+      customerId: r.customerId,
+      customerName: r.customerName,
+      customerPhone: r.customerPhone ?? null,
+      planId: null,
+    });
+    setManageOpen(false);
+    setIssueOpen(true);
+  }, []);
+
+  const launchNewIssue = useCallback(() => {
+    setIssueMode('new');
+    setIssuePrefill(null);
+    setIssueOpen(true);
   }, []);
 
   const filteredRows = useMemo(() => {
@@ -666,9 +691,6 @@ export function SubscribersPage() {
     return rows.filter((r) => {
       if (r.customerName?.toLowerCase().includes(needle)) return true;
       if (r.subscriptionType?.toLowerCase().includes(needle)) return true;
-      // `SubscriberListRow` doesn't expose the phone directly today, so we
-      // compare the digit-normalised name too — covers phone-in-name cases
-      // the backend sometimes uses for legacy customers.
       if (digits && normalisePhone(r.customerName ?? '').includes(digits)) {
         return true;
       }
@@ -697,12 +719,12 @@ export function SubscribersPage() {
           <p className="text-sm text-zinc-500">{t('subscribers.subtitle')}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {canIssue && token ? (
+          {canManage && token ? (
             <Button
               type="button"
               size="default"
               className="h-11 min-h-11 gap-2"
-              onClick={() => setIssueOpen(true)}
+              onClick={launchNewIssue}
             >
               <Plus className="h-4 w-4" aria-hidden />
               {t('subscribers.issueCta')}
@@ -755,10 +777,8 @@ export function SubscribersPage() {
                 <SubscriberCard
                   r={r}
                   formatDate={formatDate}
-                  canAct={canIssue}
-                  onRemind={(row) => void handleRemind(row)}
-                  onRenew={handleOpenRenew}
-                  reminderBusy={reminderBusyId === r.customerId}
+                  canManage={canManage}
+                  onOpenAccount={handleOpenAccount}
                 />
               </li>
             ))}
@@ -786,26 +806,15 @@ export function SubscribersPage() {
                 {t('subscribers.colRemaining')}
               </TableHead>
               <TableHead className="whitespace-nowrap text-end tabular-nums">
-                {t('subscribers.colDaysElapsed')}
-              </TableHead>
-              <TableHead className="whitespace-nowrap text-end tabular-nums">
-                {t('subscribers.colReminders')}
-              </TableHead>
-              <TableHead className="whitespace-nowrap text-end tabular-nums">
                 {t('subscribers.colBalance')}
               </TableHead>
-              {canIssue ? (
-                <TableHead className="whitespace-nowrap text-end">
-                  {t('subscribers.colActions')}
-                </TableHead>
-              ) : null}
             </TableRow>
           </TableHeader>
           <TableBody>
             {filteredRows === null ?
               <TableRow>
                 <TableCell
-                  colSpan={canIssue ? 9 : 8}
+                  colSpan={6}
                   className="text-center text-sm text-muted-foreground"
                 >
                   {loading ? t('subscribers.loading') : t('subscribers.unable')}
@@ -814,7 +823,7 @@ export function SubscribersPage() {
             : filteredRows.length === 0 ?
               <TableRow>
                 <TableCell
-                  colSpan={canIssue ? 9 : 8}
+                  colSpan={6}
                   className="text-center text-sm text-muted-foreground"
                 >
                   {query.trim() ? t('subscribers.emptySearch') : t('subscribers.empty')}
@@ -825,10 +834,21 @@ export function SubscribersPage() {
                   key={r.customerId}
                   className={cn(rowTone(r.rowStatus), 'align-middle')}
                 >
-                  <TableCell className="max-w-[10rem] font-medium">
-                    {r.customerName}
+                  <TableCell className="max-w-[14rem] font-medium">
+                    {canManage ? (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenAccount(r)}
+                        className="inline-flex items-center gap-1 text-start text-foreground underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none"
+                        title={t('subscribers.manageDialogOpenHint')}
+                      >
+                        {r.customerName}
+                      </button>
+                    ) : (
+                      r.customerName
+                    )}
                   </TableCell>
-                  <TableCell className="max-w-[8rem] text-sm">
+                  <TableCell className="max-w-[10rem] text-sm">
                     {r.subscriptionType}
                   </TableCell>
                   <TableCell className="whitespace-nowrap tabular-nums text-sm">
@@ -840,12 +860,6 @@ export function SubscribersPage() {
                   <TableCell className="text-end tabular-nums text-sm">
                     {r.remainingDays === null ? '—' : r.remainingDays}
                   </TableCell>
-                  <TableCell className="text-end tabular-nums text-sm">
-                    {r.invoiceAgeDays === null ? '—' : r.invoiceAgeDays}
-                  </TableCell>
-                  <TableCell className="text-end tabular-nums text-sm">
-                    {r.reminderCount}
-                  </TableCell>
                   <TableCell
                     className={cn(
                       'text-end tabular-nums text-sm font-medium',
@@ -854,71 +868,34 @@ export function SubscribersPage() {
                   >
                     {formatKwdLabel(r.balance)}
                   </TableCell>
-                  {canIssue ? (
-                    <TableCell className="text-end">
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          className="gap-1"
-                          disabled={
-                            reminderBusyId === r.customerId || !r.canRemindNow
-                          }
-                          onClick={() => void handleRemind(r)}
-                          aria-label={t('subscribers.remindCta')}
-                          title={
-                            r.canRemindNow
-                              ? t('subscribers.remindCta')
-                              : t('subscribers.remindCooldownShort')
-                          }
-                        >
-                          {reminderBusyId === r.customerId ? (
-                            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                          ) : (
-                            <Bell className="h-4 w-4" aria-hidden />
-                          )}
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          className="gap-1"
-                          disabled={!r.planId}
-                          onClick={() => handleOpenRenew(r)}
-                          aria-label={t('subscribers.renewCta')}
-                        >
-                          <RotateCcw className="h-4 w-4" aria-hidden />
-                          {t('subscribers.renewCta')}
-                        </Button>
-                      </div>
-                    </TableCell>
-                  ) : null}
                 </TableRow>
               ))}
           </TableBody>
         </Table>
       </div>
 
-      {canIssue && token ? (
-        <IssueSubscriptionDialog
-          open={issueOpen}
-          onOpenChange={setIssueOpen}
-          token={token}
-          onIssued={() => void load()}
+      {canManage ? (
+        <ManageAccountDialog
+          subscriber={manageTarget}
+          open={manageOpen}
+          onOpenChange={(n) => {
+            setManageOpen(n);
+            if (!n) setManageTarget(null);
+          }}
+          onExtend={launchExtend}
+          onUpgrade={launchUpgrade}
         />
       ) : null}
 
-      {canIssue && token ? (
-        <RenewConfirmDialog
-          key={renewTarget?.customerId ?? 'renew-idle'}
-          subscriber={renewTarget}
-          open={renewOpen}
-          onOpenChange={(n) => {
-            setRenewOpen(n);
-            if (!n) setRenewTarget(null);
-          }}
+      {canManage && token ? (
+        <IssueSubscriptionDialog
+          key={`${issueMode}:${issuePrefill?.customerId ?? 'new'}`}
+          open={issueOpen}
+          onOpenChange={setIssueOpen}
           token={token}
-          onRenewed={() => void load()}
+          mode={issueMode}
+          prefill={issuePrefill}
+          onIssued={() => void load()}
         />
       ) : null}
     </div>

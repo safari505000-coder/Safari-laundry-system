@@ -99,6 +99,11 @@ export declare class OrdersService {
         customerPhone: string;
         amountKd: string;
         paymentUrl: string;
+        createdAtIso: string;
+        invoiceAgeDays: number;
+        reminderCount: number;
+        lastReminderAtIso: string | null;
+        canRemindNow: boolean;
     }[]>;
     findAllForActor(userId: string, role: string): Promise<OrderDetail[]>;
     findOneForActor(id: string, userId: string, role: string): Promise<OrderDetail>;
