@@ -166,7 +166,9 @@ export function InventoryReportView({
             <Label>{t('inventory.filters.category')}</Label>
             <Select
               value={categoryId ?? ALL}
-              onValueChange={(v) => setCategoryId(v === ALL ? undefined : v)}
+              onValueChange={(v) =>
+                setCategoryId(!v || v === ALL ? undefined : v)
+              }
             >
               <SelectTrigger>
                 <SelectValue />
@@ -185,7 +187,9 @@ export function InventoryReportView({
             <Label>{t('inventory.filters.branch')}</Label>
             <Select
               value={branchId ?? ALL}
-              onValueChange={(v) => setBranchId(v === ALL ? undefined : v)}
+              onValueChange={(v) =>
+                setBranchId(!v || v === ALL ? undefined : v)
+              }
             >
               <SelectTrigger>
                 <SelectValue />

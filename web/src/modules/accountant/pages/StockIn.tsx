@@ -204,7 +204,7 @@ export default function AccountantStockInPage() {
             <form onSubmit={submit} className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-1.5 md:col-span-2">
                 <Label>{t('inventory.stockIn.item')}</Label>
-                <Select value={stockItemId} onValueChange={setStockItemId}>
+                <Select value={stockItemId} onValueChange={(v) => setStockItemId(v ?? '')}>
                   <SelectTrigger>
                     <SelectValue placeholder={t('inventory.stockIn.itemPlaceholder')} />
                   </SelectTrigger>
@@ -234,7 +234,7 @@ export default function AccountantStockInPage() {
 
               <div className="space-y-1.5">
                 <Label>{t('inventory.stockIn.branch')}</Label>
-                <Select value={branchId} onValueChange={setBranchId}>
+                <Select value={branchId} onValueChange={(v) => setBranchId(v ?? '')}>
                   <SelectTrigger>
                     <SelectValue placeholder={t('inventory.stockIn.branchPlaceholder')} />
                   </SelectTrigger>
@@ -288,7 +288,7 @@ export default function AccountantStockInPage() {
 
               <div className="space-y-1.5 md:col-span-2">
                 <Label>{t('inventory.stockIn.supplier')}</Label>
-                <Select value={supplierMode} onValueChange={setSupplierMode}>
+                <Select value={supplierMode} onValueChange={(v) => setSupplierMode(v ?? SUPPLIER_NEW)}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
