@@ -757,6 +757,35 @@ export type CollectionUnpaidOnlineRow = {
   paymentUrl: string;
 };
 
+/**
+ * Dastur §5 — Call Center Ops Dashboard (3 KPI cards).
+ * GET /api/call-center/operations-summary — CALL_CENTER + OWNER.
+ */
+export type CallCenterOperationsSummary = {
+  totalMarketDebtKd: string;
+  debtCollectedTodayKd: string;
+  pendingLinksCount: number;
+  dayIso: string;
+};
+
+/**
+ * Dastur §5 — Owner Debt Recovery Report (time-series).
+ * GET /api/call-center/debt-recovery-report — OWNER only.
+ */
+export type DebtRecoveryDayRow = {
+  dayIso: string;
+  recoveredKd: string;
+  settlementCount: number;
+  subscriptionCount: number;
+};
+
+export type DebtRecoveryReport = {
+  from: string;
+  to: string;
+  totalRecoveredKd: string;
+  days: DebtRecoveryDayRow[];
+};
+
 /** Multi-invoice POS: one gateway session for several orders (`POST /api/pos/checkout-bundle`). */
 export type PosCheckoutBundleResponse = {
   bundleId: string;

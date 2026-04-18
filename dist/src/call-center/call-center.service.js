@@ -14,6 +14,29 @@ const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
 const prisma_service_1 = require("../prisma/prisma.service");
 const customer_ledger_service_1 = require("../customer-ledger/customer-ledger.service");
+const FOUR_DP = (d) => d.toFixed(4);
+const toIsoDay = (d) => d.toISOString().slice(0, 10);
+function parseDayUtc(iso) {
+    const d = new Date(`${iso}T00:00:00.000Z`);
+    if (Number.isNaN(d.getTime())) {
+        throw new common_1.BadRequestException(`Invalid date: ${iso}`);
+    }
+    return d;
+}
+function extractDebtSettled(meta) {
+    if (!meta || typeof meta !== 'object' || Array.isArray(meta)) {
+        return new client_1.Prisma.Decimal(0);
+    }
+    const v = meta.debtSettled;
+    if (typeof v !== 'string')
+        return new client_1.Prisma.Decimal(0);
+    try {
+        return new client_1.Prisma.Decimal(v);
+    }
+    catch {
+        return new client_1.Prisma.Decimal(0);
+    }
+}
 let CallCenterService = class CallCenterService {
     prisma;
     customerLedger;
@@ -157,6 +180,109 @@ let CallCenterService = class CallCenterService {
                 orderId: r.orderId ?? undefined,
             };
         });
+    }
+    async getOperationsSummary() {
+        const now = new Date();
+        const dayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
+        const dayEnd = new Date(dayStart);
+        dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
+        const [walletDebt, todaysLedgerRows, pendingLinksCount] = await Promise.all([
+            this.prisma.customerWallet.aggregate({
+                _sum: { debt: true },
+            }),
+            this.prisma.transactionHistory.findMany({
+                where: {
+                    createdAt: { gte: dayStart, lt: dayEnd },
+                    type: {
+                        in: [
+                            client_1.LedgerTransactionType.ORDER_WALLET_SETTLEMENT,
+                            client_1.LedgerTransactionType.SUBSCRIPTION_ACTIVATION,
+                        ],
+                    },
+                },
+                select: { metadata: true },
+            }),
+            this.prisma.order.count({
+                where: {
+                    cashStatus: client_1.CashStatus.UNPAID,
+                    status: { not: client_1.OrderStatus.CANCELED },
+                    posHostedPaymentUrl: { not: null },
+                },
+            }),
+        ]);
+        const collectedToday = todaysLedgerRows.reduce((acc, r) => acc.plus(extractDebtSettled(r.metadata)), new client_1.Prisma.Decimal(0));
+        return {
+            totalMarketDebtKd: FOUR_DP(walletDebt._sum.debt ?? new client_1.Prisma.Decimal(0)),
+            debtCollectedTodayKd: FOUR_DP(collectedToday),
+            pendingLinksCount,
+            dayIso: toIsoDay(dayStart),
+        };
+    }
+    async getDebtRecoveryReport(fromIso, toIso) {
+        const todayUtc = new Date();
+        todayUtc.setUTCHours(0, 0, 0, 0);
+        const toDay = toIso ? parseDayUtc(toIso) : new Date(todayUtc);
+        const fromDay = fromIso
+            ? parseDayUtc(fromIso)
+            : (() => {
+                const d = new Date(toDay);
+                d.setUTCDate(d.getUTCDate() - 29);
+                return d;
+            })();
+        if (fromDay.getTime() > toDay.getTime()) {
+            throw new common_1.BadRequestException('`from` must be on or before `to`');
+        }
+        const windowEnd = new Date(toDay);
+        windowEnd.setUTCDate(windowEnd.getUTCDate() + 1);
+        const rows = await this.prisma.transactionHistory.findMany({
+            where: {
+                createdAt: { gte: fromDay, lt: windowEnd },
+                type: {
+                    in: [
+                        client_1.LedgerTransactionType.ORDER_WALLET_SETTLEMENT,
+                        client_1.LedgerTransactionType.SUBSCRIPTION_ACTIVATION,
+                    ],
+                },
+            },
+            select: {
+                createdAt: true,
+                type: true,
+                metadata: true,
+            },
+            orderBy: { createdAt: 'asc' },
+        });
+        const buckets = new Map();
+        for (let cursor = new Date(fromDay); cursor.getTime() <= toDay.getTime(); cursor.setUTCDate(cursor.getUTCDate() + 1)) {
+            const key = toIsoDay(cursor);
+            buckets.set(key, {
+                dayIso: key,
+                recoveredKd: '0.0000',
+                settlementCount: 0,
+                subscriptionCount: 0,
+            });
+        }
+        let total = new client_1.Prisma.Decimal(0);
+        for (const r of rows) {
+            const key = toIsoDay(r.createdAt);
+            const bucket = buckets.get(key);
+            if (!bucket)
+                continue;
+            const debtSettled = extractDebtSettled(r.metadata);
+            total = total.plus(debtSettled);
+            bucket.recoveredKd = FOUR_DP(new client_1.Prisma.Decimal(bucket.recoveredKd).plus(debtSettled));
+            if (r.type === client_1.LedgerTransactionType.ORDER_WALLET_SETTLEMENT) {
+                bucket.settlementCount += 1;
+            }
+            else {
+                bucket.subscriptionCount += 1;
+            }
+        }
+        return {
+            from: toIsoDay(fromDay),
+            to: toIsoDay(toDay),
+            totalRecoveredKd: FOUR_DP(total),
+            days: Array.from(buckets.values()),
+        };
     }
 };
 exports.CallCenterService = CallCenterService;

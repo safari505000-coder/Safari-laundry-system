@@ -1,9 +1,12 @@
 import type { JwtUser } from '../auth/decorators/current-user.decorator';
 import { CallCenterService } from './call-center.service';
 import { ActivateSubscriptionDto } from './dto/activate-subscription.dto';
+import { DebtRecoveryQueryDto } from './dto/debt-recovery-report.dto';
 export declare class CallCenterController {
     private readonly callCenterService;
     constructor(callCenterService: CallCenterService);
+    operationsSummary(): Promise<import("./dto/operations-summary.dto").CallCenterOperationsSummaryDto>;
+    debtRecoveryReport(q: DebtRecoveryQueryDto): Promise<import("./dto/debt-recovery-report.dto").DebtRecoveryReportDto>;
     listPlans(): import("@prisma/client").Prisma.PrismaPromise<{
         id: string;
         name: string;

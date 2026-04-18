@@ -10,6 +10,7 @@ import {
   HandCoins,
   Landmark,
   LayoutDashboard,
+  LineChart,
   ListOrdered,
   MessageCircle,
   MessageSquare,
@@ -95,14 +96,16 @@ export const customersItem: NavItem = {
   to: '/customers',
   labelKey: 'nav.customers',
   icon: Users,
-  roles: ['OWNER'],
+  // Dastur §5 — CALL_CENTER is the CRM island. Owner keeps full access.
+  roles: ['OWNER', 'CALL_CENTER'],
 };
 
 export const collectionsItem: NavItem = {
   to: '/collections',
   labelKey: 'nav.customerDebtTracker',
   icon: MessageSquare,
-  roles: ['OWNER'],
+  // Dastur §5 — Tahseel (debt recovery) is a CALL_CENTER core surface.
+  roles: ['OWNER', 'CALL_CENTER'],
 };
 
 export const whatsappToolsItem: NavItem = {
@@ -281,6 +284,17 @@ export const financialReportsItem: NavItem = {
   labelKey: 'nav.financialReports',
   icon: FileSpreadsheet,
   roles: ['ACCOUNTANT', 'OWNER'],
+};
+
+/**
+ * Dastur §5 — Owner-only view of Call Center debt recovery performance.
+ * Sourced from `/api/call-center/debt-recovery-report`.
+ */
+export const debtRecoveryReportItem: NavItem = {
+  to: '/owner/debt-recovery',
+  labelKey: 'nav.debtRecoveryReport',
+  icon: LineChart,
+  roles: ['OWNER'],
 };
 
 /**

@@ -43,6 +43,7 @@ import OwnerInventoryReportPage from '@/modules/owner/pages/InventoryReport';
 import { OwnerProfitRadar } from '@/modules/owner/pages/OwnerProfitRadar';
 import { ManagerCustodyAgingPage } from '@/pages/manager-custody-aging-page';
 import { StaffDebtsPage } from '@/pages/staff-debts-page';
+import { DebtRecoveryReportPage } from '@/pages/debt-recovery-report-page';
 
 function AppToaster() {
   const { i18n } = useTranslation();
@@ -130,7 +131,7 @@ export default function App() {
                 <Route
                   path="customers"
                   element={
-                    <RequireRoles roles={['OWNER']}>
+                    <RequireRoles roles={['OWNER', 'CALL_CENTER']}>
                       <CustomersPage />
                     </RequireRoles>
                   }
@@ -138,7 +139,7 @@ export default function App() {
                 <Route
                   path="collections"
                   element={
-                    <RequireRoles roles={['OWNER']}>
+                    <RequireRoles roles={['OWNER', 'CALL_CENTER']}>
                       <CollectionsPage />
                     </RequireRoles>
                   }
@@ -182,6 +183,14 @@ export default function App() {
                   element={
                     <RequireRoles roles={['OWNER', 'ACCOUNTANT']}>
                       <StaffDebtsPage />
+                    </RequireRoles>
+                  }
+                />
+                <Route
+                  path="owner/debt-recovery"
+                  element={
+                    <RequireRoles roles={['OWNER']}>
+                      <DebtRecoveryReportPage />
                     </RequireRoles>
                   }
                 />

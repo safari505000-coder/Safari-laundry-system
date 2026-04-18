@@ -46,7 +46,7 @@ function toDraft(row: CustomerDirectoryRow['customer']): EditDraft {
 export function CustomersPage() {
   const { t } = useTranslation();
   const { token, hasRole } = useAuth();
-  const allowed = hasRole('OWNER');
+  const allowed = hasRole('OWNER', 'CALL_CENTER');
   const canWhatsAppBalance = allowed;
   const { q, setQ, rows, loading, error, reload } = useCustomersDataBridge({
     token,

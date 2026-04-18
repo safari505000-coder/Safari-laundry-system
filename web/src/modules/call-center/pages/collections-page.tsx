@@ -1,10 +1,20 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate } from 'react-router-dom';
-import { CreditCard, Loader2, MessageCircle, RefreshCw } from 'lucide-react';
+import {
+  CreditCard,
+  Link2,
+  Loader2,
+  MessageCircle,
+  RefreshCw,
+  Search,
+  TrendingUp,
+  Wallet,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/auth-context';
 import {
+  type CallCenterOperationsSummary,
   type CollectionUnpaidOnlineRow,
   apiJson,
   ApiError,
@@ -12,6 +22,7 @@ import {
 import { collectionsUnpaidWhatsAppHref } from '@/modules/shared/lib/whatsapp-links';
 import { Button } from '@/modules/shared/components/ui/button';
 import { Badge } from '@/modules/shared/components/ui/badge';
+import { Input } from '@/modules/shared/components/ui/input';
 import {
   Table,
   TableBody,
@@ -20,16 +31,90 @@ import {
   TableHeader,
   TableRow,
 } from '@/modules/shared/components/ui/table';
+import { formatKwdLabel } from '@/lib/kwd';
+import { cn } from '@/lib/utils';
 
 /** Faster refresh for debt-radar follow-up (WhatsApp triggers). */
 const POLL_MS = 8_000;
 
+/** Ops KPI poll runs on the same heartbeat but can afford to drift a bit. */
+const SUMMARY_POLL_MS = 15_000;
+
+/**
+ * Normalise a phone-ish string for comparison: keep digits only so that
+ * "+965 5000 1234", "96550001234", and "50001234" all match.
+ */
+function normalisePhone(value: string): string {
+  return value.replace(/\D+/g, '');
+}
+
+type KpiTone = 'red' | 'green' | 'yellow';
+
+const KPI_TONE: Record<KpiTone, { border: string; bg: string; accent: string; icon: string }> = {
+  red: {
+    border: 'border-red-200 dark:border-red-900/60',
+    bg: 'bg-red-50/80 dark:bg-red-950/40',
+    accent: 'text-red-700 dark:text-red-200',
+    icon: 'bg-red-100 text-red-700 dark:bg-red-900/60 dark:text-red-200',
+  },
+  green: {
+    border: 'border-emerald-200 dark:border-emerald-900/60',
+    bg: 'bg-emerald-50/80 dark:bg-emerald-950/40',
+    accent: 'text-emerald-700 dark:text-emerald-200',
+    icon: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-200',
+  },
+  yellow: {
+    border: 'border-amber-200 dark:border-amber-900/60',
+    bg: 'bg-amber-50/80 dark:bg-amber-950/40',
+    accent: 'text-amber-700 dark:text-amber-200',
+    icon: 'bg-amber-100 text-amber-700 dark:bg-amber-900/60 dark:text-amber-200',
+  },
+};
+
+type KpiCardProps = {
+  tone: KpiTone;
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  sub: string;
+  loading: boolean;
+};
+
+function KpiCard({ tone, icon, label, value, sub, loading }: KpiCardProps) {
+  const c = KPI_TONE[tone];
+  return (
+    <div
+      className={cn(
+        'flex items-center gap-4 rounded-xl border p-4 shadow-sm',
+        c.border,
+        c.bg,
+      )}
+    >
+      <div className={cn('grid h-11 w-11 place-items-center rounded-lg', c.icon)}>
+        {icon}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-medium text-muted-foreground">{label}</p>
+        <p className={cn('text-2xl font-semibold tabular-nums', c.accent)}>
+          {loading ? '—' : value}
+        </p>
+        <p className="text-[11px] text-muted-foreground">{sub}</p>
+      </div>
+    </div>
+  );
+}
+
 export function CollectionsPage() {
   const { t } = useTranslation();
   const { token, hasRole } = useAuth();
-  const allowed = hasRole('OWNER');
+  const allowed = hasRole('OWNER', 'CALL_CENTER');
   const [rows, setRows] = useState<CollectionUnpaidOnlineRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [summary, setSummary] = useState<CallCenterOperationsSummary | null>(
+    null,
+  );
+  const [summaryLoading, setSummaryLoading] = useState(true);
+  const [query, setQuery] = useState('');
 
   const load = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -50,9 +135,31 @@ export function CollectionsPage() {
     [token, allowed],
   );
 
+  const loadSummary = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!token || !allowed) return;
+      if (!opts?.silent) setSummaryLoading(true);
+      try {
+        const data = await apiJson<CallCenterOperationsSummary>(
+          '/api/call-center/operations-summary',
+          { token },
+        );
+        setSummary(data);
+      } catch (e) {
+        // Non-fatal: just keep showing the last known value. The main list is
+        // what actually drives operator workflow.
+        if (e instanceof ApiError && !opts?.silent) toast.error(e.message);
+      } finally {
+        if (!opts?.silent) setSummaryLoading(false);
+      }
+    },
+    [token, allowed],
+  );
+
   useEffect(() => {
     void load();
-  }, [load]);
+    void loadSummary();
+  }, [load, loadSummary]);
 
   useEffect(() => {
     if (!token || !allowed) return;
@@ -62,9 +169,37 @@ export function CollectionsPage() {
     return () => window.clearInterval(id);
   }, [token, allowed, load]);
 
+  useEffect(() => {
+    if (!token || !allowed) return;
+    const id = window.setInterval(() => {
+      void loadSummary({ silent: true });
+    }, SUMMARY_POLL_MS);
+    return () => window.clearInterval(id);
+  }, [token, allowed, loadSummary]);
+
+  const filteredRows = useMemo(() => {
+    const q = query.trim();
+    if (!q) return rows;
+    const digits = normalisePhone(q);
+    const nameNeedle = q.toLowerCase();
+    return rows.filter((r) => {
+      if (digits && normalisePhone(r.customerPhone).includes(digits)) return true;
+      if (r.customerName?.toLowerCase().includes(nameNeedle)) return true;
+      return false;
+    });
+  }, [rows, query]);
+
   if (!allowed) {
     return <Navigate to="/" replace />;
   }
+
+  const kpiMarketDebt = summary
+    ? formatKwdLabel(summary.totalMarketDebtKd)
+    : '—';
+  const kpiCollectedToday = summary
+    ? formatKwdLabel(summary.debtCollectedTodayKd)
+    : '—';
+  const kpiPendingLinks = summary ? String(summary.pendingLinksCount) : '—';
 
   return (
     <div className="mx-auto max-w-6xl space-y-4 px-2 py-4 sm:space-y-6 sm:px-4">
@@ -75,7 +210,7 @@ export function CollectionsPage() {
               {t('collections.title')}
             </h1>
             <Badge variant="secondary" className="font-normal">
-              {rows.length} {t('collections.radarBadge')}
+              {filteredRows.length} {t('collections.radarBadge')}
             </Badge>
           </div>
           <p className="text-sm text-muted-foreground">{t('collections.subtitle')}</p>
@@ -88,7 +223,10 @@ export function CollectionsPage() {
           variant="outline"
           size="sm"
           disabled={loading}
-          onClick={() => void load({ silent: false })}
+          onClick={() => {
+            void load({ silent: false });
+            void loadSummary({ silent: false });
+          }}
         >
           {loading ?
             <Loader2 className="me-2 h-4 w-4 animate-spin" />
@@ -97,19 +235,66 @@ export function CollectionsPage() {
         </Button>
       </header>
 
+      {/* Dastur §5 — 3 KPI cards (Red / Green / Yellow). */}
+      <section
+        aria-label={t('collections.opsDashboardAria')}
+        className="grid gap-3 sm:grid-cols-3"
+      >
+        <KpiCard
+          tone="red"
+          icon={<Wallet className="h-5 w-5" aria-hidden />}
+          label={t('collections.kpiMarketDebtLabel')}
+          value={kpiMarketDebt}
+          sub={t('collections.kpiMarketDebtSub')}
+          loading={summaryLoading && !summary}
+        />
+        <KpiCard
+          tone="green"
+          icon={<TrendingUp className="h-5 w-5" aria-hidden />}
+          label={t('collections.kpiCollectedTodayLabel')}
+          value={kpiCollectedToday}
+          sub={t('collections.kpiCollectedTodaySub')}
+          loading={summaryLoading && !summary}
+        />
+        <KpiCard
+          tone="yellow"
+          icon={<Link2 className="h-5 w-5" aria-hidden />}
+          label={t('collections.kpiPendingLinksLabel')}
+          value={kpiPendingLinks}
+          sub={t('collections.kpiPendingLinksSub')}
+          loading={summaryLoading && !summary}
+        />
+      </section>
+
+      {/* Phone search — narrows the radar to a specific customer/phone. */}
+      <div className="relative">
+        <Search
+          className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+          aria-hidden
+        />
+        <Input
+          type="search"
+          inputMode="tel"
+          placeholder={t('collections.searchPlaceholder')}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          className="ps-9"
+        />
+      </div>
+
       <div className="md:hidden">
-        {loading && rows.length === 0 ?
+        {loading && filteredRows.length === 0 ?
           <div className="flex justify-center py-16">
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
         : null}
-        {!loading && rows.length === 0 ?
+        {!loading && filteredRows.length === 0 ?
           <p className="rounded-xl border border-border bg-card py-10 text-center text-sm text-muted-foreground">
-            {t('collections.empty')}
+            {query.trim() ? t('collections.emptySearch') : t('collections.empty')}
           </p>
         : null}
         <ul className="flex flex-col gap-3">
-          {rows.map((row) => {
+          {filteredRows.map((row) => {
             const href = collectionsUnpaidWhatsAppHref(row);
             return (
               <li
@@ -168,24 +353,24 @@ export function CollectionsPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {loading && rows.length === 0 ?
+            {loading && filteredRows.length === 0 ?
               <TableRow>
                 <TableCell colSpan={5} className="py-12 text-center">
                   <Loader2 className="mx-auto h-7 w-7 animate-spin text-muted-foreground" />
                 </TableCell>
               </TableRow>
             : null}
-            {!loading && rows.length === 0 ?
+            {!loading && filteredRows.length === 0 ?
               <TableRow>
                 <TableCell
                   colSpan={5}
                   className="py-10 text-center text-muted-foreground"
                 >
-                  {t('collections.empty')}
+                  {query.trim() ? t('collections.emptySearch') : t('collections.empty')}
                 </TableCell>
               </TableRow>
             : null}
-            {rows.map((row) => {
+            {filteredRows.map((row) => {
               const href = collectionsUnpaidWhatsAppHref(row);
               return (
                 <TableRow key={row.orderId}>

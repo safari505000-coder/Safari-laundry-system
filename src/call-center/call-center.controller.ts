@@ -18,6 +18,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { APP_BRAND } from '../common/constants/branding';
 import { CallCenterService } from './call-center.service';
 import { ActivateSubscriptionDto } from './dto/activate-subscription.dto';
+import { DebtRecoveryQueryDto } from './dto/debt-recovery-report.dto';
 
 @ApiTags('call-center')
 @ApiBearerAuth('bearer')
@@ -26,6 +27,28 @@ import { ActivateSubscriptionDto } from './dto/activate-subscription.dto';
 @Roles(SafariRole.CALL_CENTER)
 export class CallCenterController {
   constructor(private readonly callCenterService: CallCenterService) {}
+
+  @Get('operations-summary')
+  @Roles(SafariRole.CALL_CENTER, SafariRole.OWNER)
+  @ApiOperation({
+    summary: `Call center operations summary — 3 KPIs (${APP_BRAND})`,
+    description:
+      'RED total market debt (Σ CustomerWallet.debt), GREEN debt collected today (Σ metadata.debtSettled), YELLOW count of open UNPAID orders with a hosted payment URL awaiting action.',
+  })
+  operationsSummary() {
+    return this.callCenterService.getOperationsSummary();
+  }
+
+  @Get('debt-recovery-report')
+  @Roles(SafariRole.OWNER)
+  @ApiOperation({
+    summary: `Debt recovery over time — owner reporting (${APP_BRAND})`,
+    description:
+      'OWNER only. Daily breakdown of debt-settled KWD (from ORDER_WALLET_SETTLEMENT + SUBSCRIPTION_ACTIVATION metadata.debtSettled). Defaults to last 30 days.',
+  })
+  debtRecoveryReport(@Query() q: DebtRecoveryQueryDto) {
+    return this.callCenterService.getDebtRecoveryReport(q.from, q.to);
+  }
 
   @Get('subscription-plans')
   @ApiOperation({

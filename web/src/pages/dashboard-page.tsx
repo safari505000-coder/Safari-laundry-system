@@ -224,8 +224,18 @@ export function DashboardPage() {
     };
   }, [token, hasRole, canUseRealtimeBridge, fetchRealtimeTotals]);
 
+  // Dastur §5 — CALL_CENTER is a CRM-only island and has no access to the
+  // POS sales-by-payment-method endpoint. Mirror the backend's @Roles on
+  // /api/finance/reports/daily-pos-sales so we don't 403 on landing.
+  const canReadDailyPosSales = hasRole(
+    'OWNER',
+    'MANAGER',
+    'ACCOUNTANT',
+    'SUPERVISOR',
+  );
+
   useEffect(() => {
-    if (!token || !effectiveBreakdownDate) return;
+    if (!token || !effectiveBreakdownDate || !canReadDailyPosSales) return;
     let cancelled = false;
     void (async () => {
       setPaySplitLoading(true);
@@ -242,7 +252,7 @@ export function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [token, effectiveBreakdownDate, loadDailyPaymentSplit]);
+  }, [token, effectiveBreakdownDate, loadDailyPaymentSplit, canReadDailyPosSales]);
 
   useEffect(() => {
     if (!token) return;

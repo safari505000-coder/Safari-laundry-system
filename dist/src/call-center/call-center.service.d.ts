@@ -1,24 +1,27 @@
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CustomerLedgerService } from '../customer-ledger/customer-ledger.service';
 import { ActivateSubscriptionDto } from './dto/activate-subscription.dto';
 import type { SettlementHistoryRowDto } from './dto/settlement-history-row.dto';
+import type { CallCenterOperationsSummaryDto } from './dto/operations-summary.dto';
+import type { DebtRecoveryReportDto } from './dto/debt-recovery-report.dto';
 export declare class CallCenterService {
     private readonly prisma;
     private readonly customerLedger;
     constructor(prisma: PrismaService, customerLedger: CustomerLedgerService);
-    listActiveSubscriptionPlans(): import("@prisma/client").Prisma.PrismaPromise<{
+    listActiveSubscriptionPlans(): Prisma.PrismaPromise<{
         id: string;
         name: string;
-        salePrice: import("@prisma/client-runtime-utils").Decimal;
-        actualBalance: import("@prisma/client-runtime-utils").Decimal;
+        salePrice: Prisma.Decimal;
+        actualBalance: Prisma.Decimal;
     }[]>;
     searchCustomers(query: string): Promise<{
         id: string;
         createdAt: Date;
         phone: string;
         wallet: {
-            balance: import("@prisma/client-runtime-utils").Decimal;
-            debt: import("@prisma/client-runtime-utils").Decimal;
+            balance: Prisma.Decimal;
+            debt: Prisma.Decimal;
         } | null;
         phone2: string | null;
         displayName: string | null;
@@ -45,4 +48,6 @@ export declare class CallCenterService {
         settlement: import("../customer-ledger/subscription-settlement.types").SubscriptionActivationSettlement;
     }>;
     listCustomerSettlementHistory(customerId: string, take?: number): Promise<SettlementHistoryRowDto[]>;
+    getOperationsSummary(): Promise<CallCenterOperationsSummaryDto>;
+    getDebtRecoveryReport(fromIso?: string, toIso?: string): Promise<DebtRecoveryReportDto>;
 }

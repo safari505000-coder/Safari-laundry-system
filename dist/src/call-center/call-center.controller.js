@@ -23,10 +23,17 @@ const roles_guard_1 = require("../auth/guards/roles.guard");
 const branding_1 = require("../common/constants/branding");
 const call_center_service_1 = require("./call-center.service");
 const activate_subscription_dto_1 = require("./dto/activate-subscription.dto");
+const debt_recovery_report_dto_1 = require("./dto/debt-recovery-report.dto");
 let CallCenterController = class CallCenterController {
     callCenterService;
     constructor(callCenterService) {
         this.callCenterService = callCenterService;
+    }
+    operationsSummary() {
+        return this.callCenterService.getOperationsSummary();
+    }
+    debtRecoveryReport(q) {
+        return this.callCenterService.getDebtRecoveryReport(q.from, q.to);
     }
     listPlans() {
         return this.callCenterService.listActiveSubscriptionPlans();
@@ -42,6 +49,29 @@ let CallCenterController = class CallCenterController {
     }
 };
 exports.CallCenterController = CallCenterController;
+__decorate([
+    (0, common_1.Get)('operations-summary'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.OWNER),
+    (0, swagger_1.ApiOperation)({
+        summary: `Call center operations summary — 3 KPIs (${branding_1.APP_BRAND})`,
+        description: 'RED total market debt (Σ CustomerWallet.debt), GREEN debt collected today (Σ metadata.debtSettled), YELLOW count of open UNPAID orders with a hosted payment URL awaiting action.',
+    }),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", void 0)
+], CallCenterController.prototype, "operationsSummary", null);
+__decorate([
+    (0, common_1.Get)('debt-recovery-report'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER),
+    (0, swagger_1.ApiOperation)({
+        summary: `Debt recovery over time — owner reporting (${branding_1.APP_BRAND})`,
+        description: 'OWNER only. Daily breakdown of debt-settled KWD (from ORDER_WALLET_SETTLEMENT + SUBSCRIPTION_ACTIVATION metadata.debtSettled). Defaults to last 30 days.',
+    }),
+    __param(0, (0, common_1.Query)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [debt_recovery_report_dto_1.DebtRecoveryQueryDto]),
+    __metadata("design:returntype", void 0)
+], CallCenterController.prototype, "debtRecoveryReport", null);
 __decorate([
     (0, common_1.Get)('subscription-plans'),
     (0, swagger_1.ApiOperation)({

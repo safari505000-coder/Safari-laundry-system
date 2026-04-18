@@ -1,9 +1,26 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate } from 'react-router-dom';
-import { RefreshCw } from 'lucide-react';
+import { Loader2, Plus, RefreshCw, Search, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/modules/shared/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/modules/shared/components/ui/dialog';
+import { Input } from '@/modules/shared/components/ui/input';
+import { Label } from '@/modules/shared/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/modules/shared/components/ui/select';
 import {
   Table,
   TableBody,
@@ -14,7 +31,13 @@ import {
 } from '@/modules/shared/components/ui/table';
 import { useAuth } from '@/contexts/auth-context';
 import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
-import { type SubscriberListRow, apiJson, ApiError } from '@/lib/api';
+import {
+  type CallCenterPlan,
+  type CustomerSearchRow,
+  type SubscriberListRow,
+  apiJson,
+  ApiError,
+} from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { formatKwdLabel } from '@/lib/kwd';
 
@@ -37,6 +60,11 @@ function rowTone(status: SubscriberListRow['rowStatus']): string {
 function isCriticalBalance(balance: string): boolean {
   const n = Number.parseFloat(balance);
   return Number.isFinite(n) && n < 10;
+}
+
+/** Digits-only phone normalisation — matches the collections page helper. */
+function normalisePhone(value: string): string {
+  return value.replace(/\D+/g, '');
 }
 
 function SubscriberCard({
@@ -92,14 +120,277 @@ function SubscriberCard({
   );
 }
 
+/**
+ * Dastur §5 — Issue-subscription dialog for Call Center operators.
+ * Uses the existing `/api/call-center/*` endpoints; no new backend surface.
+ */
+function IssueSubscriptionDialog({
+  open,
+  onOpenChange,
+  token,
+  onIssued,
+}: {
+  open: boolean;
+  onOpenChange: (next: boolean) => void;
+  token: string;
+  onIssued: () => void;
+}) {
+  const { t } = useTranslation();
+  const [plans, setPlans] = useState<CallCenterPlan[] | null>(null);
+  const [planId, setPlanId] = useState<string>('');
+  const [customerQuery, setCustomerQuery] = useState('');
+  const [customerResults, setCustomerResults] = useState<CustomerSearchRow[]>(
+    [],
+  );
+  const [customerSearching, setCustomerSearching] = useState(false);
+  const [selectedCustomer, setSelectedCustomer] =
+    useState<CustomerSearchRow | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    (async () => {
+      try {
+        const rows = await apiJson<CallCenterPlan[]>(
+          '/api/call-center/subscription-plans',
+          { token },
+        );
+        if (!alive) return;
+        setPlans(rows);
+      } catch (e) {
+        if (e instanceof ApiError) toast.error(e.message);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [open, token]);
+
+  useEffect(() => {
+    if (!open) return;
+    const q = customerQuery.trim();
+    if (q.length < 2) {
+      setCustomerResults([]);
+      return;
+    }
+    let alive = true;
+    setCustomerSearching(true);
+    const timer = window.setTimeout(async () => {
+      try {
+        const rows = await apiJson<CustomerSearchRow[]>(
+          `/api/call-center/customers?q=${encodeURIComponent(q)}`,
+          { token },
+        );
+        if (!alive) return;
+        setCustomerResults(rows);
+      } catch (e) {
+        if (e instanceof ApiError) toast.error(e.message);
+      } finally {
+        if (alive) setCustomerSearching(false);
+      }
+    }, 300);
+    return () => {
+      alive = false;
+      window.clearTimeout(timer);
+    };
+  }, [customerQuery, open, token]);
+
+  // Reset state whenever the dialog reopens — avoids leaking previous picks.
+  useEffect(() => {
+    if (!open) {
+      setPlanId('');
+      setCustomerQuery('');
+      setCustomerResults([]);
+      setSelectedCustomer(null);
+      setSubmitting(false);
+    }
+  }, [open]);
+
+  const canSubmit = Boolean(planId && selectedCustomer && !submitting);
+
+  async function submit() {
+    if (!canSubmit || !selectedCustomer) return;
+    setSubmitting(true);
+    try {
+      await apiJson('/api/call-center/subscriptions/activate', {
+        method: 'POST',
+        token,
+        body: JSON.stringify({
+          customerId: selectedCustomer.id,
+          planId,
+        }),
+      });
+      toast.success(t('subscribers.issueSuccess'));
+      onIssued();
+      onOpenChange(false);
+    } catch (e) {
+      if (e instanceof ApiError) toast.error(e.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-primary" aria-hidden />
+            {t('subscribers.issueDialogTitle')}
+          </DialogTitle>
+          <DialogDescription>
+            {t('subscribers.issueDialogDescription')}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="sub-customer">
+              {t('subscribers.issueCustomerLabel')}
+            </Label>
+            {selectedCustomer ? (
+              <div className="flex items-center justify-between rounded-md border border-border bg-muted/40 p-3">
+                <div className="min-w-0">
+                  <p className="truncate font-medium">
+                    {selectedCustomer.displayName || selectedCustomer.phone}
+                  </p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {selectedCustomer.phone}
+                    {selectedCustomer.address
+                      ? ` · ${selectedCustomer.address}`
+                      : ''}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSelectedCustomer(null)}
+                >
+                  {t('subscribers.issueChangeCustomer')}
+                </Button>
+              </div>
+            ) : (
+              <>
+                <div className="relative">
+                  <Search
+                    className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                    aria-hidden
+                  />
+                  <Input
+                    id="sub-customer"
+                    type="search"
+                    inputMode="tel"
+                    placeholder={t('subscribers.issueCustomerPlaceholder')}
+                    value={customerQuery}
+                    onChange={(e) => setCustomerQuery(e.target.value)}
+                    className="ps-9"
+                  />
+                </div>
+                {customerSearching ? (
+                  <p className="text-xs text-muted-foreground">
+                    {t('subscribers.issueSearching')}
+                  </p>
+                ) : customerQuery.trim().length >= 2 &&
+                  customerResults.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    {t('subscribers.issueNoMatches')}
+                  </p>
+                ) : customerResults.length > 0 ? (
+                  <ul className="max-h-40 divide-y overflow-y-auto rounded-md border border-border">
+                    {customerResults.map((c) => (
+                      <li key={c.id}>
+                        <button
+                          type="button"
+                          className="flex w-full items-center justify-between gap-2 px-3 py-2 text-start hover:bg-accent"
+                          onClick={() => setSelectedCustomer(c)}
+                        >
+                          <span className="min-w-0">
+                            <span className="block truncate font-medium">
+                              {c.displayName || c.phone}
+                            </span>
+                            <span className="block truncate text-xs text-muted-foreground">
+                              {c.phone}
+                              {c.address ? ` · ${c.address}` : ''}
+                            </span>
+                          </span>
+                          {c.wallet ? (
+                            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                              {t('subscribers.issueDebtShort', {
+                                amount: formatKwdLabel(c.wallet.debt),
+                              })}
+                            </span>
+                          ) : null}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="sub-plan">{t('subscribers.issuePlanLabel')}</Label>
+            <Select
+              value={planId}
+              onValueChange={(v) => setPlanId(v ?? '')}
+            >
+              <SelectTrigger id="sub-plan">
+                <SelectValue
+                  placeholder={t('subscribers.issuePlanPlaceholder')}
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {(plans ?? []).map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name} — {formatKwdLabel(p.salePrice)} →{' '}
+                    {formatKwdLabel(p.actualBalance)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-[11px] text-muted-foreground">
+              {t('subscribers.issuePlanHint')}
+            </p>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={submitting}
+          >
+            {t('subscribers.issueCancel')}
+          </Button>
+          <Button type="button" onClick={() => void submit()} disabled={!canSubmit}>
+            {submitting ? (
+              <Loader2 className="me-2 h-4 w-4 animate-spin" aria-hidden />
+            ) : (
+              <Sparkles className="me-2 h-4 w-4" aria-hidden />
+            )}
+            {t('subscribers.issueSubmit')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function SubscribersPage() {
   const { t } = useTranslation();
   const locale = useAppLocale();
   const { token, hasRole } = useAuth();
   const allowed = hasRole('OWNER', 'CALL_CENTER');
+  const canIssue = hasRole('CALL_CENTER', 'OWNER');
 
   const [rows, setRows] = useState<SubscriberListRow[] | null>(null);
   const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState('');
+  const [issueOpen, setIssueOpen] = useState(false);
 
   const dateFmt = useMemo(
     () =>
@@ -147,6 +438,25 @@ export function SubscribersPage() {
     return () => window.clearInterval(id);
   }, [token, allowed, load]);
 
+  const filteredRows = useMemo(() => {
+    if (!rows) return null;
+    const q = query.trim();
+    if (!q) return rows;
+    const digits = normalisePhone(q);
+    const needle = q.toLowerCase();
+    return rows.filter((r) => {
+      if (r.customerName?.toLowerCase().includes(needle)) return true;
+      if (r.subscriptionType?.toLowerCase().includes(needle)) return true;
+      // `SubscriberListRow` doesn't expose the phone directly today, so we
+      // compare the digit-normalised name too — covers phone-in-name cases
+      // the backend sometimes uses for legacy customers.
+      if (digits && normalisePhone(r.customerName ?? '').includes(digits)) {
+        return true;
+      }
+      return false;
+    });
+  }, [rows, query]);
+
   if (!allowed) {
     return <Navigate to="/" replace />;
   }
@@ -167,33 +477,61 @@ export function SubscribersPage() {
           </h1>
           <p className="text-sm text-zinc-500">{t('subscribers.subtitle')}</p>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="default"
-          className="h-11 min-h-11 w-full touch-manipulation gap-2 sm:w-auto"
-          disabled={loading}
-          onClick={() => void load()}
-        >
-          <RefreshCw
-            className={cn('h-4 w-4', loading && 'animate-spin')}
-            aria-hidden
-          />
-          {t('subscribers.refresh')}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {canIssue && token ? (
+            <Button
+              type="button"
+              size="default"
+              className="h-11 min-h-11 gap-2"
+              onClick={() => setIssueOpen(true)}
+            >
+              <Plus className="h-4 w-4" aria-hidden />
+              {t('subscribers.issueCta')}
+            </Button>
+          ) : null}
+          <Button
+            type="button"
+            variant="outline"
+            size="default"
+            className="h-11 min-h-11 w-full touch-manipulation gap-2 sm:w-auto"
+            disabled={loading}
+            onClick={() => void load()}
+          >
+            <RefreshCw
+              className={cn('h-4 w-4', loading && 'animate-spin')}
+              aria-hidden
+            />
+            {t('subscribers.refresh')}
+          </Button>
+        </div>
       </header>
 
+      <div className="relative">
+        <Search
+          className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+          aria-hidden
+        />
+        <Input
+          type="search"
+          inputMode="tel"
+          placeholder={t('subscribers.searchPlaceholder')}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          className="ps-9"
+        />
+      </div>
+
       <section className="md:hidden">
-        {rows === null ?
+        {filteredRows === null ?
           <p className="rounded-xl border border-border bg-card p-6 text-center text-sm text-muted-foreground">
             {loading ? t('subscribers.loading') : t('subscribers.unable')}
           </p>
-        : rows.length === 0 ?
+        : filteredRows.length === 0 ?
           <p className="rounded-xl border border-border bg-card p-6 text-center text-sm text-muted-foreground">
-            {t('subscribers.empty')}
+            {query.trim() ? t('subscribers.emptySearch') : t('subscribers.empty')}
           </p>
         : <ul className="space-y-3">
-            {rows.map((r) => (
+            {filteredRows.map((r) => (
               <li key={r.customerId}>
                 <SubscriberCard r={r} formatDate={formatDate} />
               </li>
@@ -227,7 +565,7 @@ export function SubscribersPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows === null ?
+            {filteredRows === null ?
               <TableRow>
                 <TableCell
                   colSpan={6}
@@ -236,16 +574,16 @@ export function SubscribersPage() {
                   {loading ? t('subscribers.loading') : t('subscribers.unable')}
                 </TableCell>
               </TableRow>
-            : rows.length === 0 ?
+            : filteredRows.length === 0 ?
               <TableRow>
                 <TableCell
                   colSpan={6}
                   className="text-center text-sm text-muted-foreground"
                 >
-                  {t('subscribers.empty')}
+                  {query.trim() ? t('subscribers.emptySearch') : t('subscribers.empty')}
                 </TableCell>
               </TableRow>
-            : rows.map((r) => (
+            : filteredRows.map((r) => (
                 <TableRow
                   key={r.customerId}
                   className={cn(rowTone(r.rowStatus), 'align-middle')}
@@ -278,7 +616,15 @@ export function SubscribersPage() {
           </TableBody>
         </Table>
       </div>
+
+      {canIssue && token ? (
+        <IssueSubscriptionDialog
+          open={issueOpen}
+          onOpenChange={setIssueOpen}
+          token={token}
+          onIssued={() => void load()}
+        />
+      ) : null}
     </div>
   );
 }
-
