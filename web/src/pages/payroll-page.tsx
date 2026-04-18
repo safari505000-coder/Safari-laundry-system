@@ -321,7 +321,7 @@ export function PayrollPage() {
                 <SelectContent>
                   {eligibleStaff.map((u) => (
                     <SelectItem key={u.id} value={u.id}>
-                      {u.fullName} آ· {t(`roles.${u.safariRole}`)}
+                      {u.fullName} · {t(`roles.${u.safariRole}`)}
                     </SelectItem>
                   ))}
                 </SelectContent>

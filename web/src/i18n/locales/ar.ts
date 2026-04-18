@@ -38,8 +38,6 @@ export const ar = {
     payroll: 'الرواتب',
     fixedExpenses: 'المصاريف الثابتة',
     usersManagement: 'إدارة المستخدمين',
-    brandLine: 'مجموعة مصابغ سفاري السريعة',
-    brandTitle: 'Safari Omni',
     signOut: 'تسجيل الخروج',
     groupMain: 'رئيسي',
     groupFieldCosts: 'تكاليف الميدان',
@@ -441,8 +439,10 @@ export const ar = {
     toggleAria: 'تبديل اللغة',
   },
   login: {
-    brand: 'مجموعة سفاري السريعة',
-    title: 'لوحة التحكم التنفيذية',
+    brand: 'Safari Omni',
+    title: 'Safari Omni',
+    copyright:
+      'نظام Safari Omni © 2026 — جميع الحقوق محفوظة لمجموعة مصابغ سفاري السريعة.',
     cardTitle: 'تسجيل الدخول',
     cardDescription:
       'اسم المستخدم أو رقم الموظف وكلمة المرور. وصول JWT إلى واجهات نظام تخطيط الموارد.',
@@ -848,6 +848,7 @@ export const ar = {
     colPlan: 'الباقة',
     colPay: 'الدفع (د.ك)',
     colCredit: 'الرصيد (د.ك)',
+    colSubsidy: 'الدعم',
     colStatus: 'الحالة',
     active: 'نشط',
     inactive: 'غير نشط',

@@ -568,7 +568,7 @@ export function usePosEngine(opts: PosEngineOptions) {
         selected.addressHouse,
       ]
         .filter(Boolean)
-        .join(' آ· ') || selected.address || '-';
+        .join(' · ') || selected.address || '-';
 
     type ReceiptSheetExtras = Pick<
       ReceiptSnapshot,

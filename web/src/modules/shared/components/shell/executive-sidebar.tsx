@@ -109,23 +109,20 @@ export function ExecutiveSidebar() {
             'h-auto min-h-16 flex-col justify-center gap-2 px-2 py-3',
         )}
       >
+        {/**
+         * V1.5.5 — the sidebar brand is a single source of truth.
+         * `BrandLogo` already renders "Safari Omni" + tagline when
+         * expanded, so the old duplicate text block that also showed
+         * the legacy group name ("Safari Express Laundries Group") has
+         * been removed. Collapsed state keeps just the compact icon.
+         */}
         <BrandLogo
           className={cn(
-            'shrink-0',
-            collapsed ? 'max-h-9 max-w-[48px] object-contain' : '',
+            'min-w-0 flex-1',
+            collapsed ? 'max-h-9 max-w-[48px] shrink-0 object-contain' : '',
           )}
           compact={collapsed}
         />
-        {!collapsed ?
-          <div className="min-w-0 flex-1 leading-tight">
-            <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-              {t('nav.brandLine')}
-            </p>
-            <p className="truncate text-sm font-semibold text-foreground">
-              {t('nav.brandTitle')}
-            </p>
-          </div>
-        : null}
         <Button
           type="button"
           variant="ghost"

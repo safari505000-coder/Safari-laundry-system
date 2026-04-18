@@ -116,7 +116,7 @@ export function LoginPage() {
         </CardContent>
       </Card>
       <p className="z-10 mt-8 max-w-sm text-center text-xs text-zinc-300">
-        ظ†ط¸ط§ظ… Safari Omni آ© 2026 - ط¬ظ…ظٹط¹ ط§ظ„ط­ظ‚ظˆظ‚ ظ…ط­ظپظˆط¸ط© ظ„ظ…ط¬ظ…ظˆط¹ط© ظ…طµط§ط¨ط؛ ط³ظپط§ط±ظٹ ط§ظ„ط³ط±ظٹط¹ط©
+        {t('login.copyright')}
       </p>
       <Dialog open={forgotOpen} onOpenChange={setForgotOpen}>
         <DialogContent className="max-w-md">

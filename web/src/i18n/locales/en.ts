@@ -37,8 +37,6 @@ export const en = {
     payroll: 'Payroll',
     fixedExpenses: 'Fixed expenses',
     usersManagement: 'Users Management',
-    brandLine: 'Safari Express Laundries Group',
-    brandTitle: 'Safari Omni',
     signOut: 'Sign out',
     groupMain: 'Main',
     groupFieldCosts: 'Field costs',
@@ -443,8 +441,9 @@ export const en = {
     toggleAria: 'Switch language',
   },
   login: {
-    brand: 'Safari Express Laundries Group',
+    brand: 'Safari Omni',
     title: 'Safari Omni',
+    copyright: 'Safari Omni © 2026 — All rights reserved to Safari Express Laundries Group.',
     cardTitle: 'Sign in',
     cardDescription:
       'Staff username (or staff ID) and password. JWT access to ERP APIs.',
@@ -851,6 +850,7 @@ export const en = {
     colPlan: 'Plan',
     colPay: 'Pay (د.ك)',
     colCredit: 'Credit (د.ك)',
+    colSubsidy: 'Subsidy',
     colStatus: 'Status',
     active: 'Active',
     inactive: 'Inactive',

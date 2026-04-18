@@ -152,7 +152,7 @@ export function SubscriptionsPage() {
                         <TableHead>{t('subscriptions.colPlan')}</TableHead>
                         <TableHead>{t('subscriptions.colPay')}</TableHead>
                         <TableHead>{t('subscriptions.colCredit')}</TableHead>
-                        <TableHead>ط§ظ„ط¯ط¹ظ…</TableHead>
+                        <TableHead>{t('subscriptions.colSubsidy')}</TableHead>
                         <TableHead>{t('subscriptions.colValidity')}</TableHead>
                         <TableHead>{t('subscriptions.colStatus')}</TableHead>
                         <TableHead className="w-[100px]" />
@@ -621,10 +621,10 @@ function CallCenterActivatePanel({
                     >
                       <div className="font-medium">
                         {r.phone}
-                        {r.phone2 ? ` آ· ${r.phone2}` : ''}
+                        {r.phone2 ? ` · ${r.phone2}` : ''}
                       </div>
                       <div className="text-xs opacity-80">
-                        {r.address ?? t('subscriptions.noAddress')} آ·{' '}
+                        {r.address ?? t('subscriptions.noAddress')} ·{' '}
                         {t('subscriptions.balance')}{' '}
                         <span className={isLowBalance ? 'font-semibold text-red-700' : ''}>
                           {r.wallet ?
@@ -634,14 +634,14 @@ function CallCenterActivatePanel({
                         {r.wallet && Number.parseFloat(r.wallet.debt) > 0 ?
                           <>
                             {' '}
-                            آ· {t('subscriptions.debtLabel')}{' '}
+                            · {t('subscriptions.debtLabel')}{' '}
                             {formatKwdLabel(r.wallet.debt)}
                           </>
                         : null}
                         {isLowBalance ?
                           <>
                             {' '}
-                            آ·{' '}
+                            ·{' '}
                             <span className="font-semibold text-red-700">
                               {t('subscribers.lowBalanceWarn')}
                             </span>
@@ -759,7 +759,7 @@ function CallCenterActivatePanel({
                 {t('subscriptions.lastReceiptTitle')}
               </CardTitle>
               <CardDescription>
-                {lastReceipt.customer.phone} آ· {lastReceipt.plan.name}
+                {lastReceipt.customer.phone} · {lastReceipt.plan.name}
               </CardDescription>
             </div>
             <Button

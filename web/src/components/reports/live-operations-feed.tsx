@@ -184,7 +184,7 @@ export function LiveOperationsFeed({
                           {o.branchName ?
                             <span className="text-foreground/90">{o.branchName}</span>
                           : '—'}{' '}
-                          آ· {o.customerName}
+                          · {o.customerName}
                         </span>
                       </div>
                       <div
@@ -224,8 +224,8 @@ export function LiveOperationsFeed({
             </DialogTitle>
             {detail ?
               <p className="text-xs text-muted-foreground">
-                {detail.branchName ?? '—'} آ· {detail.customerName} آ·{' '}
-                {formatKwdLabel(detail.totalPrice)} آ·{' '}
+                {detail.branchName ?? '—'} · {detail.customerName} ·{' '}
+                {formatKwdLabel(detail.totalPrice)} ·{' '}
                 {new Date(detail.createdAt).toLocaleString(dateLocale)}
               </p>
             : null}

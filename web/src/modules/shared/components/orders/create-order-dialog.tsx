@@ -381,7 +381,7 @@ export function CreateOrderDialog({ open, onOpenChange, onCreated }: Props) {
                             {catalog.map((it) => (
                               <SelectItem key={it.id} value={it.id}>
                                 {it.nameAr}
-                                {it.nameEn ? ` آ· ${it.nameEn}` : ''}
+                                {it.nameEn ? ` · ${it.nameEn}` : ''}
                               </SelectItem>
                             ))}
                           </SelectContent>
