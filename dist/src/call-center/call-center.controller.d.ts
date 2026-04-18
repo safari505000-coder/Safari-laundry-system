@@ -1,6 +1,7 @@
 import type { JwtUser } from '../auth/decorators/current-user.decorator';
 import { CallCenterService } from './call-center.service';
 import { ActivateSubscriptionDto } from './dto/activate-subscription.dto';
+import { ExtendSubscriptionDto } from './dto/extend-subscription.dto';
 import { DebtRecoveryQueryDto } from './dto/debt-recovery-report.dto';
 export declare class CallCenterController {
     private readonly callCenterService;
@@ -45,11 +46,15 @@ export declare class CallCenterController {
         };
         settlement: import("../customer-ledger/subscription-settlement.types").SubscriptionActivationSettlement;
     }>;
+    extendSubscription(dto: ExtendSubscriptionDto, user: JwtUser): Promise<{
+        customerId: string;
+        extensionDays: number;
+        previousExpiresAt: string;
+        newExpiresAt: string;
+        planId: string;
+        planName: string | null;
+    }>;
     markOrderReminderSent(orderId: string): Promise<import("./dto/reminder-result.dto").ReminderResultDto>;
     markSubscriberReminderSent(customerId: string): Promise<import("./dto/reminder-result.dto").ReminderResultDto>;
-    confirmOrderPayment(orderId: string): Promise<{
-        orderId: string;
-        finalized: boolean;
-    }>;
     listSettlements(customerId: string): Promise<import("./dto/settlement-history-row.dto").SettlementHistoryRowDto[]>;
 }

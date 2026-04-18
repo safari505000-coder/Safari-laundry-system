@@ -206,7 +206,6 @@ export const en = {
     whatsapp: 'WhatsApp',
     whatsappNoPhone: 'No WhatsApp-compatible phone on file.',
     paymentLink: 'Payment link',
-    recordPayment: 'Record Payment',
     remindSentToast: 'Reminder logged (total: {{count}})',
     remindCooldown:
       'Reminder already sent. Next reminder allowed in about {{hours}}h.',
@@ -222,16 +221,6 @@ export const en = {
     kpiCollectedTodaySub: 'Customer debt settled through today (UTC day)',
     kpiPendingLinksLabel: 'Pending links',
     kpiPendingLinksSub: 'Online orders awaiting customer payment',
-    confirmDialogTitle: 'Record payment for this invoice',
-    confirmDialogDescription:
-      'Confirm that {{name}} has paid {{amount}}. This finalizes the order, settles the customer wallet, and removes the row from the collections radar.',
-    confirmWait: 'Safety lock: {{seconds}}s remaining.',
-    confirmWaitHint:
-      'Please double-check the receipt, portal, or bank notification before confirming. You cannot approve until the timer hits 0.',
-    confirmCancel: 'Cancel',
-    confirmCta: 'Confirm Collection',
-    confirmCountdown: 'Please wait… {{seconds}}s',
-    confirmSuccess: 'Payment recorded. Collections radar refreshed.',
   },
   driverDailySales: {
     title: 'My Daily Sales',
@@ -971,9 +960,14 @@ export const en = {
     manageClose: 'Close',
     extendDialogTitle: 'Extend current subscription',
     extendDialogDescription:
-      'Re-issue the same plan for this customer. Same settlement logic applies: debt first, then balance credit.',
+      'Add days to {{name}}\'s current subscription. No payment is taken — only the expiry date is pushed forward.',
+    extendPlanLabel: 'Current plan',
+    extendPlanUnknown: 'Unknown plan',
+    extendDaysLabel: 'Extension days',
+    extendDaysHint: 'Between {{min}} and {{max}} days.',
+    extendDaysInvalid: 'Please enter a whole number between {{min}} and {{max}}.',
     extendSubmit: 'Extend subscription',
-    extendSuccess: 'Subscription extended',
+    extendSuccess: 'Subscription extended by {{days}} days',
     upgradeDialogTitle: 'Upgrade to another plan',
     upgradeDialogDescription:
       'Pick a different plan tier. The customer is already locked in; only the plan selection is open.',

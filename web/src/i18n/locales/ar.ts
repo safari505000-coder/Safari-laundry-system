@@ -218,21 +218,10 @@ export const ar = {
     colReminders: 'مرات التذكير',
     colActions: 'إجراءات',
     whatsappNoPhone: 'لا يوجد رقم واتساب صالح لهذا العميل.',
-    recordPayment: 'تسجيل تحصيل',
     remindSentToast: 'تم تسجيل التذكير (الإجمالي: {{count}})',
     remindCooldown:
       'تم إرسال تذكير خلال الـ24 ساعة الماضية. يمكن إعادة الإرسال بعد حوالي {{hours}} ساعة.',
     remindCooldownShort: 'تم التذكير مؤخراً (24 ساعة)',
-    confirmDialogTitle: 'تسجيل تحصيل هذه الفاتورة',
-    confirmDialogDescription:
-      'أكّد أن {{name}} قد سدّد مبلغ {{amount}}. هذا الإجراء يختم الطلب ويسوّي محفظة العميل ويزيل السطر من رادار التحصيل.',
-    confirmWait: 'قفل الأمان: تبقّى {{seconds}} ثانية.',
-    confirmWaitHint:
-      'تحقّق من الإيصال أو البوابة أو إشعار البنك قبل التأكيد. زر الاعتماد مُعطَّل حتى ينتهي العدّاد.',
-    confirmCancel: 'إلغاء',
-    confirmCta: 'اعتماد التحصيل',
-    confirmCountdown: 'الرجاء الانتظار… {{seconds}}ث',
-    confirmSuccess: 'تم تسجيل التحصيل وتحديث الرادار.',
   },
   driverDailySales: {
     title: 'مبيعاتي اليومية',
@@ -987,9 +976,14 @@ export const ar = {
     manageClose: 'إغلاق',
     extendDialogTitle: 'تمديد الاشتراك الحالي',
     extendDialogDescription:
-      'إعادة إصدار نفس الباقة لهذا العميل. يُطبَّق نفس منطق التسوية: الدين أولاً ثم إضافة الرصيد.',
+      'إضافة أيام إلى اشتراك {{name}} الحالي. لا يُحصَّل أي مبلغ — فقط يُمدَّد تاريخ انتهاء الاشتراك.',
+    extendPlanLabel: 'الباقة الحالية',
+    extendPlanUnknown: 'باقة غير معروفة',
+    extendDaysLabel: 'أيام التمديد',
+    extendDaysHint: 'بين {{min}} و {{max}} يوماً.',
+    extendDaysInvalid: 'الرجاء إدخال عدد صحيح بين {{min}} و {{max}}.',
     extendSubmit: 'تمديد الاشتراك',
-    extendSuccess: 'تم تمديد الاشتراك',
+    extendSuccess: 'تم تمديد الاشتراك بـ {{days}} يوماً',
     upgradeDialogTitle: 'ترقية إلى باقة أخرى',
     upgradeDialogDescription:
       'اختر باقة مختلفة. العميل مثبَّت مسبقاً، لا يتبقى إلا اختيار الباقة الجديدة.',

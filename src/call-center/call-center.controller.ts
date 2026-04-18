@@ -18,6 +18,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { APP_BRAND } from '../common/constants/branding';
 import { CallCenterService } from './call-center.service';
 import { ActivateSubscriptionDto } from './dto/activate-subscription.dto';
+import { ExtendSubscriptionDto } from './dto/extend-subscription.dto';
 import { DebtRecoveryQueryDto } from './dto/debt-recovery-report.dto';
 
 @ApiTags('call-center')
@@ -83,6 +84,19 @@ export class CallCenterController {
     return this.callCenterService.activateSubscription(user.userId, dto);
   }
 
+  @Post('subscriptions/extend')
+  @ApiOperation({
+    summary: `Extend an active subscription by N days (${APP_BRAND})`,
+    description:
+      'Dastur V1.5.3 — Management Room "Extend Subscription". Pushes subscriptionExpiresAt forward by extensionDays (1..365) on the SAME plan. Does not touch wallet balance/debt. Audited via a SUBSCRIPTION_ACTIVATION row with amount=0 and metadata.extensionOnly=true.',
+  })
+  extendSubscription(
+    @Body() dto: ExtendSubscriptionDto,
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.callCenterService.extendSubscription(user.userId, dto);
+  }
+
   @Post('orders/:orderId/reminder')
   @Roles(SafariRole.CALL_CENTER, SafariRole.OWNER)
   @ApiOperation({
@@ -109,18 +123,6 @@ export class CallCenterController {
     return this.callCenterService.sendSubscriberReminder(customerId);
   }
 
-  @Post('orders/:orderId/confirm-payment')
-  @Roles(SafariRole.CALL_CENTER, SafariRole.OWNER)
-  @ApiOperation({
-    summary: `Record a manual collection confirmation (${APP_BRAND})`,
-    description:
-      'Dastur V1.5.2 — The Collection Room "Record Payment" action. A 10-second frontend safety lock gates this call. Reuses the gateway finalize path (OrderStatus→COMPLETED, cashStatus→PAID_TO_DRIVER, wallet settlement). Idempotent if the order was already settled.',
-  })
-  confirmOrderPayment(
-    @Param('orderId', ParseUUIDPipe) orderId: string,
-  ) {
-    return this.callCenterService.confirmOrderPayment(orderId);
-  }
 
   @Get('customers/:customerId/settlements')
   @ApiOperation({

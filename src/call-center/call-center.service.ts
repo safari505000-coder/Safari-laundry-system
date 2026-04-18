@@ -2,8 +2,8 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { CashStatus, LedgerTransactionType, OrderStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CustomerLedgerService } from '../customer-ledger/customer-ledger.service';
-import { PaymentsService } from '../common/services/payments.service';
 import { ActivateSubscriptionDto } from './dto/activate-subscription.dto';
+import { ExtendSubscriptionDto } from './dto/extend-subscription.dto';
 import type { SettlementHistoryRowDto } from './dto/settlement-history-row.dto';
 import type { CallCenterOperationsSummaryDto } from './dto/operations-summary.dto';
 import type {
@@ -71,55 +71,7 @@ export class CallCenterService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly customerLedger: CustomerLedgerService,
-    private readonly paymentsService: PaymentsService,
   ) {}
-
-  /**
-   * Dastur V1.5.2 — Collection Room "Record Payment".
-   *
-   * The 10-second frontend safety lock gates this call. When the call-center
-   * agent confirms they have verified payment (gateway console, customer
-   * receipt photo, etc.), we reuse the same finalization pipeline that the
-   * KNET webhook calls. That keeps one single "order finalization" path in
-   * the system — wallet settlement, ledger entries, stock transitions — no
-   * duplicated logic, no drift.
-   *
-   * Returns a thin confirmation object so the UI can toast and refresh.
-   */
-  async confirmOrderPayment(orderId: string): Promise<{
-    orderId: string;
-    finalized: boolean;
-  }> {
-    const order = await this.prisma.order.findUnique({
-      where: { id: orderId },
-      select: {
-        id: true,
-        status: true,
-        cashStatus: true,
-        posHostedPaymentUrl: true,
-        walletSettledAt: true,
-      },
-    });
-    if (!order) {
-      throw new NotFoundException('Order not found');
-    }
-    if (order.walletSettledAt) {
-      // Idempotent — caller can double-click safely.
-      return { orderId, finalized: true };
-    }
-    if (order.status !== OrderStatus.PENDING) {
-      throw new BadRequestException(
-        'Order is not in a state that can be finalized',
-      );
-    }
-    if (!order.posHostedPaymentUrl) {
-      throw new BadRequestException(
-        'Order does not belong to the collections radar',
-      );
-    }
-    await this.paymentsService.finalizePaidOrderFromGateway(orderId);
-    return { orderId, finalized: true };
-  }
 
   listActiveSubscriptionPlans() {
     return this.prisma.subscriptionPlan.findMany({
@@ -207,6 +159,95 @@ export class CallCenterService {
           debt: wallet.debt.toString(),
         },
         settlement,
+      };
+    });
+  }
+
+  /**
+   * Dastur V1.5.3 — Management Room "Extend Subscription" (تمديد).
+   *
+   * Adds N calendar days to the customer's existing `subscriptionExpiresAt`
+   * WITHOUT touching the wallet balance, debt, or any ledger amount. If the
+   * subscription has already lapsed, extension is relative to "now" so the
+   * customer gets a fresh N-day window instead of a window in the past.
+   *
+   * Guardrails:
+   *  - Wallet must exist and already have an active plan on record
+   *    (Extend makes no sense without something to extend — Upgrade is the
+   *    right flow for "no plan yet").
+   *  - Requires an existing `subscriptionExpiresAt`. Otherwise returns a
+   *    clear 400 so the frontend can route the operator to Upgrade.
+   *
+   * We record the extension as a TransactionHistory row (type
+   * SUBSCRIPTION_ACTIVATION, amount=0, metadata.extensionOnly=true) so the
+   * owner has an audit trail of every manual extension.
+   */
+  async extendSubscription(userId: string, dto: ExtendSubscriptionDto) {
+    return this.prisma.$transaction(async (tx) => {
+      const wallet = await tx.customerWallet.findUnique({
+        where: { customerId: dto.customerId },
+        select: {
+          id: true,
+          balance: true,
+          debt: true,
+          subscriptionPlanId: true,
+          subscriptionPlanName: true,
+          subscriptionActivatedAt: true,
+          subscriptionExpiresAt: true,
+        },
+      });
+      if (!wallet) {
+        throw new NotFoundException(
+          'Customer has no wallet — activate a subscription before extending.',
+        );
+      }
+      if (!wallet.subscriptionPlanId || !wallet.subscriptionExpiresAt) {
+        throw new BadRequestException(
+          'No active subscription found — use Upgrade to start a new plan.',
+        );
+      }
+
+      const now = new Date();
+      const anchor =
+        wallet.subscriptionExpiresAt.getTime() > now.getTime()
+          ? wallet.subscriptionExpiresAt
+          : now;
+      const newExpiry = new Date(anchor.getTime());
+      newExpiry.setUTCDate(newExpiry.getUTCDate() + dto.extensionDays);
+
+      await tx.customerWallet.update({
+        where: { id: wallet.id },
+        data: { subscriptionExpiresAt: newExpiry },
+      });
+
+      await tx.transactionHistory.create({
+        data: {
+          type: LedgerTransactionType.SUBSCRIPTION_ACTIVATION,
+          customerId: dto.customerId,
+          amount: new Prisma.Decimal(0),
+          balanceBefore: wallet.balance,
+          balanceAfter: wallet.balance,
+          debtBefore: wallet.debt,
+          debtAfter: wallet.debt,
+          performedById: userId,
+          metadata: {
+            extensionOnly: true,
+            extensionDays: dto.extensionDays,
+            planId: wallet.subscriptionPlanId,
+            planName: wallet.subscriptionPlanName ?? null,
+            previousExpiresAt: wallet.subscriptionExpiresAt.toISOString(),
+            newExpiresAt: newExpiry.toISOString(),
+          },
+        },
+      });
+
+      return {
+        customerId: dto.customerId,
+        extensionDays: dto.extensionDays,
+        previousExpiresAt: wallet.subscriptionExpiresAt.toISOString(),
+        newExpiresAt: newExpiry.toISOString(),
+        planId: wallet.subscriptionPlanId,
+        planName: wallet.subscriptionPlanName ?? null,
       };
     });
   }

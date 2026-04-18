@@ -42,6 +42,7 @@ import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
 import {
   type CallCenterPlan,
   type CustomerSearchRow,
+  type ExtendSubscriptionResult,
   type SubscriberListRow,
   apiJson,
   ApiError,
@@ -52,15 +53,20 @@ import { formatKwdLabel } from '@/lib/kwd';
 const POLL_MS = 12_000;
 
 /**
- * Dastur V1.5.2 — "Management Room" mode for the subscription issue dialog.
+ * Dastur V1.5.3 — Activate-dialog modes.
  *
  * - `new`     → blank flow, from the header "إضافة اشتراك" icon.
- * - `extend`  → customer pre-selected, current plan pre-selected. The agent
- *               can confirm to lay another subscription cycle on top.
  * - `upgrade` → customer pre-selected, plan cleared so the agent must pick
  *               a different tier.
+ *
+ * "Extend" is no longer an activate-dialog mode: it has its own dedicated
+ * dialog that only takes a day-count and never touches the wallet.
  */
-type IssueMode = 'new' | 'extend' | 'upgrade';
+type IssueMode = 'new' | 'upgrade';
+
+/** Upper bound matches the backend DTO guardrail. */
+const EXTEND_MAX_DAYS = 365;
+const EXTEND_MIN_DAYS = 1;
 
 function rowTone(status: SubscriberListRow['rowStatus']): string {
   switch (status) {
@@ -386,11 +392,9 @@ function IssueSubscriptionDialog({
         }),
       });
       toast.success(
-        mode === 'extend'
-          ? t('subscribers.extendSuccess')
-          : mode === 'upgrade'
-            ? t('subscribers.upgradeSuccess')
-            : t('subscribers.issueSuccess'),
+        mode === 'upgrade'
+          ? t('subscribers.upgradeSuccess')
+          : t('subscribers.issueSuccess'),
       );
       onIssued();
       onOpenChange(false);
@@ -402,32 +406,24 @@ function IssueSubscriptionDialog({
   }
 
   const title =
-    mode === 'extend'
-      ? t('subscribers.extendDialogTitle')
-      : mode === 'upgrade'
-        ? t('subscribers.upgradeDialogTitle')
-        : t('subscribers.issueDialogTitle');
+    mode === 'upgrade'
+      ? t('subscribers.upgradeDialogTitle')
+      : t('subscribers.issueDialogTitle');
   const description =
-    mode === 'extend'
-      ? t('subscribers.extendDialogDescription')
-      : mode === 'upgrade'
-        ? t('subscribers.upgradeDialogDescription')
-        : t('subscribers.issueDialogDescription');
+    mode === 'upgrade'
+      ? t('subscribers.upgradeDialogDescription')
+      : t('subscribers.issueDialogDescription');
   const submitLabel =
-    mode === 'extend'
-      ? t('subscribers.extendSubmit')
-      : mode === 'upgrade'
-        ? t('subscribers.upgradeSubmit')
-        : t('subscribers.issueSubmit');
+    mode === 'upgrade'
+      ? t('subscribers.upgradeSubmit')
+      : t('subscribers.issueSubmit');
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            {mode === 'extend' ? (
-              <CalendarClock className="h-5 w-5 text-emerald-600" aria-hidden />
-            ) : mode === 'upgrade' ? (
+            {mode === 'upgrade' ? (
               <ArrowUpRight className="h-5 w-5 text-amber-600" aria-hidden />
             ) : (
               <Sparkles className="h-5 w-5 text-primary" aria-hidden />
@@ -564,14 +560,164 @@ function IssueSubscriptionDialog({
           <Button type="button" onClick={() => void submit()} disabled={!canSubmit}>
             {submitting ? (
               <Loader2 className="me-2 h-4 w-4 animate-spin" aria-hidden />
-            ) : mode === 'extend' ? (
-              <CalendarClock className="me-2 h-4 w-4" aria-hidden />
             ) : mode === 'upgrade' ? (
               <ArrowUpRight className="me-2 h-4 w-4" aria-hidden />
             ) : (
               <Sparkles className="me-2 h-4 w-4" aria-hidden />
             )}
             {submitLabel}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * Dastur V1.5.3 — Dedicated "Extend Subscription" (تمديد) dialog.
+ *
+ * No wallet movement, no plan picker. The operator only chooses a day
+ * count (1..365) to push the existing `subscriptionExpiresAt` forward.
+ * The plan is shown read-only so it's clear which plan is being extended.
+ */
+function ExtendSubscriptionDialog({
+  subscriber,
+  open,
+  onOpenChange,
+  token,
+  onExtended,
+}: {
+  subscriber: SubscriberListRow | null;
+  open: boolean;
+  onOpenChange: (next: boolean) => void;
+  token: string;
+  onExtended: () => void;
+}) {
+  const { t } = useTranslation();
+  const [days, setDays] = useState<string>('30');
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setDays('30');
+      setSubmitting(false);
+    }
+  }, [open, subscriber?.customerId]);
+
+  const parsed = Number.parseInt(days, 10);
+  const validDays =
+    Number.isInteger(parsed) &&
+    parsed >= EXTEND_MIN_DAYS &&
+    parsed <= EXTEND_MAX_DAYS;
+  const canSubmit = Boolean(subscriber && validDays && !submitting);
+
+  const planLabel =
+    subscriber?.subscriptionType && subscriber.subscriptionType.trim().length > 0
+      ? subscriber.subscriptionType
+      : t('subscribers.extendPlanUnknown');
+
+  async function submit() {
+    if (!canSubmit || !subscriber) return;
+    setSubmitting(true);
+    try {
+      const res = await apiJson<ExtendSubscriptionResult>(
+        '/api/call-center/subscriptions/extend',
+        {
+          method: 'POST',
+          token,
+          body: JSON.stringify({
+            customerId: subscriber.customerId,
+            extensionDays: parsed,
+          }),
+        },
+      );
+      toast.success(
+        t('subscribers.extendSuccess', { days: res.extensionDays }),
+      );
+      onExtended();
+      onOpenChange(false);
+    } catch (e) {
+      if (e instanceof ApiError) toast.error(e.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <CalendarClock className="h-5 w-5 text-emerald-600" aria-hidden />
+            {t('subscribers.extendDialogTitle')}
+          </DialogTitle>
+          <DialogDescription>
+            {t('subscribers.extendDialogDescription', {
+              name: subscriber?.customerName ?? '',
+            })}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="rounded-md border border-border bg-muted/40 p-3 text-sm">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+              {t('subscribers.extendPlanLabel')}
+            </p>
+            <p className="mt-1 font-semibold text-foreground">{planLabel}</p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="extend-days">
+              {t('subscribers.extendDaysLabel')}
+            </Label>
+            <Input
+              id="extend-days"
+              type="number"
+              inputMode="numeric"
+              min={EXTEND_MIN_DAYS}
+              max={EXTEND_MAX_DAYS}
+              step={1}
+              value={days}
+              onChange={(e) => setDays(e.target.value)}
+              autoFocus
+            />
+            <p className="text-[11px] text-muted-foreground">
+              {t('subscribers.extendDaysHint', {
+                min: EXTEND_MIN_DAYS,
+                max: EXTEND_MAX_DAYS,
+              })}
+            </p>
+            {!validDays && days.trim().length > 0 ? (
+              <p className="text-xs font-medium text-red-600">
+                {t('subscribers.extendDaysInvalid', {
+                  min: EXTEND_MIN_DAYS,
+                  max: EXTEND_MAX_DAYS,
+                })}
+              </p>
+            ) : null}
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={submitting}
+          >
+            {t('subscribers.issueCancel')}
+          </Button>
+          <Button
+            type="button"
+            onClick={() => void submit()}
+            disabled={!canSubmit}
+          >
+            {submitting ? (
+              <Loader2 className="me-2 h-4 w-4 animate-spin" aria-hidden />
+            ) : (
+              <CalendarClock className="me-2 h-4 w-4" aria-hidden />
+            )}
+            {t('subscribers.extendSubmit')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -590,10 +736,16 @@ export function SubscribersPage() {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
 
-  // Issue-subscription dialog state — also powers Extend/Upgrade.
+  // Activate-subscription dialog state — powers "new" + "upgrade".
   const [issueOpen, setIssueOpen] = useState(false);
   const [issueMode, setIssueMode] = useState<IssueMode>('new');
   const [issuePrefill, setIssuePrefill] = useState<IssuePrefill | null>(null);
+
+  // Extend dialog — days-only, no wallet movement.
+  const [extendTarget, setExtendTarget] = useState<SubscriberListRow | null>(
+    null,
+  );
+  const [extendOpen, setExtendOpen] = useState(false);
 
   // Management Room "click customer name" dialog.
   const [manageTarget, setManageTarget] = useState<SubscriberListRow | null>(
@@ -653,15 +805,10 @@ export function SubscribersPage() {
   }, []);
 
   const launchExtend = useCallback((r: SubscriberListRow) => {
-    setIssueMode('extend');
-    setIssuePrefill({
-      customerId: r.customerId,
-      customerName: r.customerName,
-      customerPhone: r.customerPhone ?? null,
-      planId: r.planId,
-    });
+    // V1.5.3 — Extend routes to its own dialog (days-only, no wallet move).
+    setExtendTarget(r);
     setManageOpen(false);
-    setIssueOpen(true);
+    setExtendOpen(true);
   }, []);
 
   const launchUpgrade = useCallback((r: SubscriberListRow) => {
@@ -896,6 +1043,20 @@ export function SubscribersPage() {
           mode={issueMode}
           prefill={issuePrefill}
           onIssued={() => void load()}
+        />
+      ) : null}
+
+      {canManage && token ? (
+        <ExtendSubscriptionDialog
+          key={`extend:${extendTarget?.customerId ?? 'none'}`}
+          subscriber={extendTarget}
+          open={extendOpen}
+          onOpenChange={(n) => {
+            setExtendOpen(n);
+            if (!n) setExtendTarget(null);
+          }}
+          token={token}
+          onExtended={() => void load()}
         />
       ) : null}
     </div>

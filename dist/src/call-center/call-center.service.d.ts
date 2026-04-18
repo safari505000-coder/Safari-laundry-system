@@ -1,8 +1,8 @@
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CustomerLedgerService } from '../customer-ledger/customer-ledger.service';
-import { PaymentsService } from '../common/services/payments.service';
 import { ActivateSubscriptionDto } from './dto/activate-subscription.dto';
+import { ExtendSubscriptionDto } from './dto/extend-subscription.dto';
 import type { SettlementHistoryRowDto } from './dto/settlement-history-row.dto';
 import type { CallCenterOperationsSummaryDto } from './dto/operations-summary.dto';
 import type { DebtRecoveryReportDto } from './dto/debt-recovery-report.dto';
@@ -10,12 +10,7 @@ import type { ReminderResultDto } from './dto/reminder-result.dto';
 export declare class CallCenterService {
     private readonly prisma;
     private readonly customerLedger;
-    private readonly paymentsService;
-    constructor(prisma: PrismaService, customerLedger: CustomerLedgerService, paymentsService: PaymentsService);
-    confirmOrderPayment(orderId: string): Promise<{
-        orderId: string;
-        finalized: boolean;
-    }>;
+    constructor(prisma: PrismaService, customerLedger: CustomerLedgerService);
     listActiveSubscriptionPlans(): Prisma.PrismaPromise<{
         id: string;
         name: string;
@@ -53,6 +48,14 @@ export declare class CallCenterService {
             debt: string;
         };
         settlement: import("../customer-ledger/subscription-settlement.types").SubscriptionActivationSettlement;
+    }>;
+    extendSubscription(userId: string, dto: ExtendSubscriptionDto): Promise<{
+        customerId: string;
+        extensionDays: number;
+        previousExpiresAt: string;
+        newExpiresAt: string;
+        planId: string;
+        planName: string | null;
     }>;
     listCustomerSettlementHistory(customerId: string, take?: number): Promise<SettlementHistoryRowDto[]>;
     sendOrderReminder(orderId: string): Promise<ReminderResultDto>;

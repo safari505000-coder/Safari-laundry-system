@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate } from 'react-router-dom';
 import {
-  CheckCircle2,
   CreditCard,
   Link2,
   Loader2,
@@ -17,7 +16,6 @@ import { useAuth } from '@/contexts/auth-context';
 import {
   type CallCenterOperationsSummary,
   type CollectionUnpaidOnlineRow,
-  type ConfirmOrderPaymentResult,
   type ReminderResult,
   apiJson,
   ApiError,
@@ -28,14 +26,6 @@ import {
 } from '@/modules/shared/lib/whatsapp-links';
 import { Button } from '@/modules/shared/components/ui/button';
 import { Badge } from '@/modules/shared/components/ui/badge';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/modules/shared/components/ui/dialog';
 import { Input } from '@/modules/shared/components/ui/input';
 import {
   Table,
@@ -53,13 +43,6 @@ const POLL_MS = 8_000;
 
 /** Ops KPI poll runs on the same heartbeat but can afford to drift a bit. */
 const SUMMARY_POLL_MS = 15_000;
-
-/**
- * Dastur V1.5.2 — Collection Room safety lock. The "Record Payment" button
- * is DISABLED for this many seconds after the dialog opens so the agent
- * cannot finalize a collection by accident (muscle memory, double tap, etc.).
- */
-const CONFIRM_PAYMENT_SECONDS = 10;
 
 /**
  * Normalise a phone-ish string for comparison: keep digits only so that
@@ -125,116 +108,6 @@ function KpiCard({ tone, icon, label, value, sub, loading }: KpiCardProps) {
   );
 }
 
-/**
- * Dastur V1.5.2 — "Record Payment" confirmation with a hard 10-second
- * countdown. The confirm button is DISABLED until the timer hits 0. The
- * countdown resets on each open because the dialog mounts fresh via
- * `key={orderId}` on the parent.
- */
-function ConfirmPaymentDialog({
-  row,
-  open,
-  onOpenChange,
-  token,
-  onConfirmed,
-}: {
-  row: CollectionUnpaidOnlineRow | null;
-  open: boolean;
-  onOpenChange: (next: boolean) => void;
-  token: string;
-  onConfirmed: () => void;
-}) {
-  const { t } = useTranslation();
-  const [remaining, setRemaining] = useState<number>(CONFIRM_PAYMENT_SECONDS);
-  const [submitting, setSubmitting] = useState(false);
-
-  useEffect(() => {
-    if (!open) {
-      setRemaining(CONFIRM_PAYMENT_SECONDS);
-      setSubmitting(false);
-      return;
-    }
-    setRemaining(CONFIRM_PAYMENT_SECONDS);
-    const id = window.setInterval(() => {
-      setRemaining((n) => (n > 0 ? n - 1 : 0));
-    }, 1000);
-    return () => window.clearInterval(id);
-  }, [open, row?.orderId]);
-
-  const confirmDisabled = remaining > 0 || submitting || !row;
-
-  async function confirm() {
-    if (confirmDisabled || !row) return;
-    setSubmitting(true);
-    try {
-      await apiJson<ConfirmOrderPaymentResult>(
-        `/api/call-center/orders/${row.orderId}/confirm-payment`,
-        { method: 'POST', token },
-      );
-      toast.success(t('collections.confirmSuccess'));
-      onConfirmed();
-      onOpenChange(false);
-    } catch (e) {
-      if (e instanceof ApiError) toast.error(e.message);
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <CheckCircle2 className="h-5 w-5 text-emerald-600" aria-hidden />
-            {t('collections.confirmDialogTitle')}
-          </DialogTitle>
-          <DialogDescription>
-            {t('collections.confirmDialogDescription', {
-              name: row?.customerName ?? '',
-              amount: row ? `${row.amountKd} KWD` : '—',
-            })}
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="rounded-md border border-dashed border-border bg-muted/40 p-3 text-sm">
-          <p className="font-medium">
-            {t('collections.confirmWait', { seconds: remaining })}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {t('collections.confirmWaitHint')}
-          </p>
-        </div>
-
-        <DialogFooter>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={submitting}
-          >
-            {t('collections.confirmCancel')}
-          </Button>
-          <Button
-            type="button"
-            onClick={() => void confirm()}
-            disabled={confirmDisabled}
-          >
-            {submitting ? (
-              <Loader2 className="me-2 h-4 w-4 animate-spin" aria-hidden />
-            ) : (
-              <CheckCircle2 className="me-2 h-4 w-4" aria-hidden />
-            )}
-            {remaining > 0
-              ? t('collections.confirmCountdown', { seconds: remaining })
-              : t('collections.confirmCta')}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 export function CollectionsPage() {
   const { t } = useTranslation();
   const { token, hasRole } = useAuth();
@@ -247,9 +120,6 @@ export function CollectionsPage() {
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [reminderBusyId, setReminderBusyId] = useState<string | null>(null);
-  const [confirmTarget, setConfirmTarget] =
-    useState<CollectionUnpaidOnlineRow | null>(null);
-  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const load = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -357,11 +227,6 @@ export function CollectionsPage() {
     },
     [token, t, load],
   );
-
-  const openConfirm = useCallback((row: CollectionUnpaidOnlineRow) => {
-    setConfirmTarget(row);
-    setConfirmOpen(true);
-  }, []);
 
   const filteredRows = useMemo(() => {
     const q = query.trim();
@@ -532,16 +397,6 @@ export function CollectionsPage() {
                     )}
                     {t('collections.whatsapp')}
                   </Button>
-                  <Button
-                    type="button"
-                    size="default"
-                    variant="outline"
-                    className="min-h-12 gap-2 border-emerald-500 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
-                    onClick={() => openConfirm(row)}
-                  >
-                    <CheckCircle2 className="h-5 w-5 shrink-0" aria-hidden />
-                    {t('collections.recordPayment')}
-                  </Button>
                   {row.paymentUrl ?
                     <a
                       href={row.paymentUrl}
@@ -646,16 +501,6 @@ export function CollectionsPage() {
                         )}
                         {t('collections.whatsapp')}
                       </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="min-h-9 gap-1.5 border-emerald-500 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
-                        onClick={() => openConfirm(row)}
-                      >
-                        <CheckCircle2 className="h-4 w-4" aria-hidden />
-                        {t('collections.recordPayment')}
-                      </Button>
                       {row.paymentUrl ?
                         <a
                           href={row.paymentUrl}
@@ -676,22 +521,6 @@ export function CollectionsPage() {
         </Table>
       </div>
 
-      {token ? (
-        <ConfirmPaymentDialog
-          key={confirmTarget?.orderId ?? 'confirm-idle'}
-          row={confirmTarget}
-          open={confirmOpen}
-          onOpenChange={(n) => {
-            setConfirmOpen(n);
-            if (!n) setConfirmTarget(null);
-          }}
-          token={token}
-          onConfirmed={() => {
-            void load();
-            void loadSummary({ silent: true });
-          }}
-        />
-      ) : null}
     </div>
   );
 }

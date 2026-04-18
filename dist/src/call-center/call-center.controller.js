@@ -23,6 +23,7 @@ const roles_guard_1 = require("../auth/guards/roles.guard");
 const branding_1 = require("../common/constants/branding");
 const call_center_service_1 = require("./call-center.service");
 const activate_subscription_dto_1 = require("./dto/activate-subscription.dto");
+const extend_subscription_dto_1 = require("./dto/extend-subscription.dto");
 const debt_recovery_report_dto_1 = require("./dto/debt-recovery-report.dto");
 let CallCenterController = class CallCenterController {
     callCenterService;
@@ -44,14 +45,14 @@ let CallCenterController = class CallCenterController {
     activateSubscription(dto, user) {
         return this.callCenterService.activateSubscription(user.userId, dto);
     }
+    extendSubscription(dto, user) {
+        return this.callCenterService.extendSubscription(user.userId, dto);
+    }
     markOrderReminderSent(orderId) {
         return this.callCenterService.sendOrderReminder(orderId);
     }
     markSubscriberReminderSent(customerId) {
         return this.callCenterService.sendSubscriberReminder(customerId);
-    }
-    confirmOrderPayment(orderId) {
-        return this.callCenterService.confirmOrderPayment(orderId);
     }
     listSettlements(customerId) {
         return this.callCenterService.listCustomerSettlementHistory(customerId);
@@ -115,6 +116,18 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], CallCenterController.prototype, "activateSubscription", null);
 __decorate([
+    (0, common_1.Post)('subscriptions/extend'),
+    (0, swagger_1.ApiOperation)({
+        summary: `Extend an active subscription by N days (${branding_1.APP_BRAND})`,
+        description: 'Dastur V1.5.3 — Management Room "Extend Subscription". Pushes subscriptionExpiresAt forward by extensionDays (1..365) on the SAME plan. Does not touch wallet balance/debt. Audited via a SUBSCRIPTION_ACTIVATION row with amount=0 and metadata.extensionOnly=true.',
+    }),
+    __param(0, (0, common_1.Body)()),
+    __param(1, (0, current_user_decorator_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [extend_subscription_dto_1.ExtendSubscriptionDto, Object]),
+    __metadata("design:returntype", void 0)
+], CallCenterController.prototype, "extendSubscription", null);
+__decorate([
     (0, common_1.Post)('orders/:orderId/reminder'),
     (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.OWNER),
     (0, swagger_1.ApiOperation)({
@@ -138,18 +151,6 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", void 0)
 ], CallCenterController.prototype, "markSubscriberReminderSent", null);
-__decorate([
-    (0, common_1.Post)('orders/:orderId/confirm-payment'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.OWNER),
-    (0, swagger_1.ApiOperation)({
-        summary: `Record a manual collection confirmation (${branding_1.APP_BRAND})`,
-        description: 'Dastur V1.5.2 — The Collection Room "Record Payment" action. A 10-second frontend safety lock gates this call. Reuses the gateway finalize path (OrderStatus→COMPLETED, cashStatus→PAID_TO_DRIVER, wallet settlement). Idempotent if the order was already settled.',
-    }),
-    __param(0, (0, common_1.Param)('orderId', common_1.ParseUUIDPipe)),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String]),
-    __metadata("design:returntype", void 0)
-], CallCenterController.prototype, "confirmOrderPayment", null);
 __decorate([
     (0, common_1.Get)('customers/:customerId/settlements'),
     (0, swagger_1.ApiOperation)({

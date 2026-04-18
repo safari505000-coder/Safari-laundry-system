@@ -23,6 +23,10 @@ function daysElapsedSince(from) {
     return Math.max(0, Math.round((utcDayNumber(new Date()) - utcDayNumber(from)) / 86400000));
 }
 const REMINDER_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function looksLikeUuid(v) {
+    return typeof v === 'string' && UUID_RE.test(v.trim());
+}
 function addUtcDays(from, days) {
     const out = new Date(from.getTime());
     out.setUTCDate(out.getUTCDate() + days);
@@ -66,6 +70,9 @@ let SubscribersService = class SubscribersService {
             if (meta?.planId) {
                 planIds.add(meta.planId);
             }
+            if (c.wallet?.subscriptionPlanId) {
+                planIds.add(c.wallet.subscriptionPlanId);
+            }
         }
         const plans = planIds.size > 0 ?
             await this.prisma.subscriptionPlan.findMany({
@@ -81,12 +88,14 @@ let SubscribersService = class SubscribersService {
             const balanceNum = Number.parseFloat(balanceStr);
             let startDate = w?.subscriptionActivatedAt ?? null;
             let expiryDate = w?.subscriptionExpiresAt ?? null;
-            let subscriptionType = w?.subscriptionPlanName ??
-                (c.transactionHistory[0]?.metadata
-                    ?.planName ??
-                    null);
+            const rawWalletName = w?.subscriptionPlanName ?? null;
+            const rawMetaName = c.transactionHistory[0]?.metadata
+                ?.planName ?? null;
+            let subscriptionType = (rawWalletName && !looksLikeUuid(rawWalletName) && rawWalletName) ||
+                (rawMetaName && !looksLikeUuid(rawMetaName) && rawMetaName) ||
+                null;
             const lastAct = c.transactionHistory[0];
-            if ((!expiryDate || !startDate) && lastAct) {
+            if ((!expiryDate || !startDate || !subscriptionType) && lastAct) {
                 const meta = lastAct.metadata;
                 const plan = meta?.planId ? planMap.get(meta.planId) : undefined;
                 const vd = plan && plan.validityDays > 0 ? plan.validityDays : 30;
@@ -97,8 +106,16 @@ let SubscribersService = class SubscribersService {
                     expiryDate = addUtcDays(startDate, vd);
                 }
                 if (!subscriptionType) {
-                    subscriptionType = meta?.planName ?? plan?.name ?? null;
+                    const metaName = meta?.planName && !looksLikeUuid(meta.planName)
+                        ? meta.planName
+                        : null;
+                    subscriptionType = metaName ?? plan?.name ?? null;
                 }
+            }
+            if (!subscriptionType && w?.subscriptionPlanId) {
+                const plan = planMap.get(w.subscriptionPlanId);
+                if (plan?.name)
+                    subscriptionType = plan.name;
             }
             const customerName = [c.displayName, c.phone].find((s) => typeof s === 'string' && s.trim().length > 0) ?? c.id;
             const remainingDays = expiryDate ? calendarDaysRemaining(expiryDate) : null;

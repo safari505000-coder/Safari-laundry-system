@@ -14,7 +14,6 @@ const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
 const prisma_service_1 = require("../prisma/prisma.service");
 const customer_ledger_service_1 = require("../customer-ledger/customer-ledger.service");
-const payments_service_1 = require("../common/services/payments.service");
 const REMINDER_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 function buildReminderResult(args) {
     const { sent, reminderCount, lastReminderAt, now } = args;
@@ -58,37 +57,9 @@ function extractDebtSettled(meta) {
 let CallCenterService = class CallCenterService {
     prisma;
     customerLedger;
-    paymentsService;
-    constructor(prisma, customerLedger, paymentsService) {
+    constructor(prisma, customerLedger) {
         this.prisma = prisma;
         this.customerLedger = customerLedger;
-        this.paymentsService = paymentsService;
-    }
-    async confirmOrderPayment(orderId) {
-        const order = await this.prisma.order.findUnique({
-            where: { id: orderId },
-            select: {
-                id: true,
-                status: true,
-                cashStatus: true,
-                posHostedPaymentUrl: true,
-                walletSettledAt: true,
-            },
-        });
-        if (!order) {
-            throw new common_1.NotFoundException('Order not found');
-        }
-        if (order.walletSettledAt) {
-            return { orderId, finalized: true };
-        }
-        if (order.status !== client_1.OrderStatus.PENDING) {
-            throw new common_1.BadRequestException('Order is not in a state that can be finalized');
-        }
-        if (!order.posHostedPaymentUrl) {
-            throw new common_1.BadRequestException('Order does not belong to the collections radar');
-        }
-        await this.paymentsService.finalizePaidOrderFromGateway(orderId);
-        return { orderId, finalized: true };
     }
     listActiveSubscriptionPlans() {
         return this.prisma.subscriptionPlan.findMany({
@@ -172,6 +143,66 @@ let CallCenterService = class CallCenterService {
                     debt: wallet.debt.toString(),
                 },
                 settlement,
+            };
+        });
+    }
+    async extendSubscription(userId, dto) {
+        return this.prisma.$transaction(async (tx) => {
+            const wallet = await tx.customerWallet.findUnique({
+                where: { customerId: dto.customerId },
+                select: {
+                    id: true,
+                    balance: true,
+                    debt: true,
+                    subscriptionPlanId: true,
+                    subscriptionPlanName: true,
+                    subscriptionActivatedAt: true,
+                    subscriptionExpiresAt: true,
+                },
+            });
+            if (!wallet) {
+                throw new common_1.NotFoundException('Customer has no wallet — activate a subscription before extending.');
+            }
+            if (!wallet.subscriptionPlanId || !wallet.subscriptionExpiresAt) {
+                throw new common_1.BadRequestException('No active subscription found — use Upgrade to start a new plan.');
+            }
+            const now = new Date();
+            const anchor = wallet.subscriptionExpiresAt.getTime() > now.getTime()
+                ? wallet.subscriptionExpiresAt
+                : now;
+            const newExpiry = new Date(anchor.getTime());
+            newExpiry.setUTCDate(newExpiry.getUTCDate() + dto.extensionDays);
+            await tx.customerWallet.update({
+                where: { id: wallet.id },
+                data: { subscriptionExpiresAt: newExpiry },
+            });
+            await tx.transactionHistory.create({
+                data: {
+                    type: client_1.LedgerTransactionType.SUBSCRIPTION_ACTIVATION,
+                    customerId: dto.customerId,
+                    amount: new client_1.Prisma.Decimal(0),
+                    balanceBefore: wallet.balance,
+                    balanceAfter: wallet.balance,
+                    debtBefore: wallet.debt,
+                    debtAfter: wallet.debt,
+                    performedById: userId,
+                    metadata: {
+                        extensionOnly: true,
+                        extensionDays: dto.extensionDays,
+                        planId: wallet.subscriptionPlanId,
+                        planName: wallet.subscriptionPlanName ?? null,
+                        previousExpiresAt: wallet.subscriptionExpiresAt.toISOString(),
+                        newExpiresAt: newExpiry.toISOString(),
+                    },
+                },
+            });
+            return {
+                customerId: dto.customerId,
+                extensionDays: dto.extensionDays,
+                previousExpiresAt: wallet.subscriptionExpiresAt.toISOString(),
+                newExpiresAt: newExpiry.toISOString(),
+                planId: wallet.subscriptionPlanId,
+                planName: wallet.subscriptionPlanName ?? null,
             };
         });
     }
@@ -419,7 +450,6 @@ exports.CallCenterService = CallCenterService;
 exports.CallCenterService = CallCenterService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
-        customer_ledger_service_1.CustomerLedgerService,
-        payments_service_1.PaymentsService])
+        customer_ledger_service_1.CustomerLedgerService])
 ], CallCenterService);
 //# sourceMappingURL=call-center.service.js.map

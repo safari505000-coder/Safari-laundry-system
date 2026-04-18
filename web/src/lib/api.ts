@@ -814,12 +814,16 @@ export type CollectionUnpaidOnlineRow = {
 };
 
 /**
- * Dastur V1.5.2 — Collection Room "Record Payment" response.
- * `POST /api/call-center/orders/:orderId/confirm-payment`
+ * Dastur V1.5.3 — Management Room "Extend Subscription" response.
+ * `POST /api/call-center/subscriptions/extend`
  */
-export type ConfirmOrderPaymentResult = {
-  orderId: string;
-  finalized: boolean;
+export type ExtendSubscriptionResult = {
+  customerId: string;
+  extensionDays: number;
+  previousExpiresAt: string;
+  newExpiresAt: string;
+  planId: string;
+  planName: string | null;
 };
 
 /**
