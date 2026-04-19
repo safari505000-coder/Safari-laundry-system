@@ -1340,6 +1340,8 @@ export const ar = {
     empty: 'لا توجد بيانات لهذه الفلاتر.',
     exportCsv: 'تصدير CSV',
     exportPdf: 'طباعة / PDF',
+    exportXlsx: 'تصدير Excel',
+    exportServerPdf: 'تصدير PDF',
     ledgerUsesDriverFilter:
       'نطاق السائق يتبع القائمة أعلاه (أو «الكل» لعرض شامل).',
   },

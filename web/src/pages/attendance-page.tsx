@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import {
   Clock,
+  FileSpreadsheet,
   Fingerprint,
   Loader2,
   Pencil,
@@ -13,6 +14,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/auth-context';
 import {
   ApiError,
+  exportAttendanceXlsx,
   listAttendance,
   runAttendanceSync,
   upsertManualAttendance,
@@ -306,15 +308,35 @@ export function AttendancePage() {
               </SelectContent>
             </Select>
           </div>
-          <div className="flex items-end">
+          <div className="flex items-end gap-2">
             <Link
               to={`/attendance/print?from=${filters.from ?? ''}&to=${filters.to ?? ''}`}
               target="_blank"
-              className="inline-flex w-full items-center justify-center gap-1 rounded-md border border-slate-700 bg-transparent px-3 py-2 text-sm font-medium text-slate-100 transition hover:bg-slate-800"
+              className="inline-flex flex-1 items-center justify-center gap-1 rounded-md border border-slate-700 bg-transparent px-3 py-2 text-sm font-medium text-slate-100 transition hover:bg-slate-800"
             >
               <Printer className="ms-1 h-4 w-4" />
               طباعة A4
             </Link>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-1.5 h-[38px]"
+              disabled={!token || !rows.length}
+              onClick={async () => {
+                if (!token) return;
+                try {
+                  await exportAttendanceXlsx(token, filters);
+                } catch (e) {
+                  toast.error(
+                    e instanceof ApiError ? e.message : 'فشل تصدير Excel',
+                  );
+                }
+              }}
+            >
+              <FileSpreadsheet className="h-4 w-4" />
+              Excel
+            </Button>
           </div>
         </CardContent>
       </Card>

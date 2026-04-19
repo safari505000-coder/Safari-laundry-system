@@ -15,6 +15,7 @@ import { requestIdMiddleware } from './common/middleware/request-id.middleware';
 import { CustomersModule } from './customers/customers.module';
 import { DebtTransfersModule } from './debt-transfers/debt-transfers.module';
 import { ExpensesModule } from './expenses/expenses.module';
+import { ExportsModule } from './exports/exports.module';
 import { FixedExpenseModule } from './fixed-expenses/fixed-expense.module';
 import { PayrollModule } from './payroll/payroll.module';
 import { FinanceModule } from './finance/finance.module';
@@ -64,6 +65,7 @@ const spaStaticModule = existsSync(webDistPath)
     PaymentMethodFeesModule,
     SystemModule,
     ExpensesModule,
+    ExportsModule,
     PayrollModule,
     FixedExpenseModule,
     OrdersModule,

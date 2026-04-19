@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { FileDown, Loader2, Printer, RefreshCw } from 'lucide-react';
+import { FileDown, FileSpreadsheet, Loader2, Printer, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { can } from '@/modules/shared/auth/access-matrix';
 import {
@@ -12,6 +12,8 @@ import {
   type IssuedInvoicesReport,
   apiJson,
   ApiError,
+  exportIssuedInvoicesPdf,
+  exportIssuedInvoicesXlsx,
 } from '@/lib/api';
 import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
 import { formatKwdLabel } from '@/lib/kwd';
@@ -207,6 +209,58 @@ export function ReportsPage() {
           >
             <Printer className="h-4 w-4" />
             {t('reports.exportPdf')}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            disabled={!token || !invoices?.rows.length}
+            onClick={async () => {
+              if (!token) return;
+              try {
+                await exportIssuedInvoicesXlsx(token, {
+                  from,
+                  to,
+                  driverId:
+                    driverFilter !== 'ALL' ? driverFilter : undefined,
+                  branchId: ownerBranchId ?? undefined,
+                });
+              } catch (e) {
+                toast.error(
+                  e instanceof ApiError ? e.message : 'فشل تصدير Excel',
+                );
+              }
+            }}
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+            {t('reports.exportXlsx')}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            disabled={!token || !invoices?.rows.length}
+            onClick={async () => {
+              if (!token) return;
+              try {
+                await exportIssuedInvoicesPdf(token, {
+                  from,
+                  to,
+                  driverId:
+                    driverFilter !== 'ALL' ? driverFilter : undefined,
+                  branchId: ownerBranchId ?? undefined,
+                });
+              } catch (e) {
+                toast.error(
+                  e instanceof ApiError ? e.message : 'فشل تصدير PDF',
+                );
+              }
+            }}
+          >
+            <FileDown className="h-4 w-4" />
+            {t('reports.exportServerPdf')}
           </Button>
           <Button
             type="button"

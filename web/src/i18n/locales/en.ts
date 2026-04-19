@@ -1325,6 +1325,8 @@ export const en = {
     empty: 'No data for these filters.',
     exportCsv: 'Export CSV',
     exportPdf: 'Print / PDF',
+    exportXlsx: 'Export Excel',
+    exportServerPdf: 'Export PDF',
   },
   liveOps: {
     title: 'Live operations',

@@ -2054,6 +2054,109 @@ export function runAttendanceSync(token: string, from: string, to: string) {
 }
 
 // ---------------------------------------------------------------------------
+// Stage-B — server-side exports (Excel + PDF).
+// Downloads a binary asset and triggers the browser Save dialog. We
+// don't funnel these through `apiJson` because the response body is
+// a stream, not JSON.
+// ---------------------------------------------------------------------------
+
+async function downloadBinary(
+  path: string,
+  token: string,
+  fallbackFilename: string,
+): Promise<void> {
+  const res = await fetch(buildUrl(path), {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  if (!res.ok) {
+    const msg = await res.text().catch(() => '');
+    throw new ApiError(msg || `HTTP ${res.status}`, res.status);
+  }
+  const blob = await res.blob();
+  const disposition = res.headers.get('Content-Disposition') ?? '';
+  const match = /filename="?([^";]+)"?/i.exec(disposition);
+  const filename = match?.[1] ?? fallbackFilename;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+export type ExportInvoicesFilters = {
+  from: string;
+  to: string;
+  driverId?: string;
+  branchId?: string;
+};
+
+export function exportIssuedInvoicesXlsx(
+  token: string,
+  f: ExportInvoicesFilters,
+) {
+  return downloadBinary(
+    `/api/exports/issued-invoices.xlsx${buildQuery(f)}`,
+    token,
+    'issued-invoices.xlsx',
+  );
+}
+
+export function exportIssuedInvoicesPdf(
+  token: string,
+  f: ExportInvoicesFilters,
+) {
+  return downloadBinary(
+    `/api/exports/issued-invoices.pdf${buildQuery(f)}`,
+    token,
+    'issued-invoices.pdf',
+  );
+}
+
+export function exportUnifiedLedgerXlsx(
+  token: string,
+  f: ExportInvoicesFilters,
+) {
+  return downloadBinary(
+    `/api/exports/unified-ledger.xlsx${buildQuery(f)}`,
+    token,
+    'unified-ledger.xlsx',
+  );
+}
+
+export function exportAttendanceXlsx(
+  token: string,
+  f: { from?: string; to?: string; userId?: string; branchId?: string },
+) {
+  return downloadBinary(
+    `/api/exports/attendance.xlsx${buildQuery(f)}`,
+    token,
+    'attendance.xlsx',
+  );
+}
+
+export function exportPayrollXlsx(
+  token: string,
+  f: { from: string; to: string; branchId?: string },
+) {
+  return downloadBinary(
+    `/api/exports/payroll.xlsx${buildQuery(f)}`,
+    token,
+    'payroll.xlsx',
+  );
+}
+
+export function exportFinancialCycleXlsx(token: string, date?: string) {
+  return downloadBinary(
+    `/api/exports/financial-cycle.xlsx${buildQuery({ date })}`,
+    token,
+    'financial-cycle.xlsx',
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Stage-D — Leave requests + Employee loans.
 // ---------------------------------------------------------------------------
 

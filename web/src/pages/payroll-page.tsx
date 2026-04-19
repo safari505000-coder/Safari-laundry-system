@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Loader2, Users } from 'lucide-react';
+import { FileSpreadsheet, Loader2, Users } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import {
   type BranchRow,
@@ -10,6 +10,7 @@ import {
   type TeamUserRow,
   apiJson,
   ApiError,
+  exportPayrollXlsx,
 } from '@/lib/api';
 import { requestExecutiveSummaryRefresh } from '@/lib/executive-summary-refresh';
 import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
@@ -227,6 +228,27 @@ export function PayrollPage() {
               onChange={(e) => setMonth(e.target.value)}
             />
           </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            disabled={!token || !payrolls?.length}
+            onClick={async () => {
+              if (!token) return;
+              try {
+                const range = monthRangeIso(month);
+                await exportPayrollXlsx(token, range);
+              } catch (e) {
+                toast.error(
+                  e instanceof ApiError ? e.message : 'فشل تصدير Excel',
+                );
+              }
+            }}
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+            {t('reports.exportXlsx')}
+          </Button>
         </div>
       </header>
 

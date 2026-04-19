@@ -11,6 +11,7 @@ import {
   type UnifiedLedgerStreamRow,
   apiJson,
   ApiError,
+  exportUnifiedLedgerXlsx,
 } from '@/lib/api';
 import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
 import { formatKwdLabel } from '@/lib/kwd';
@@ -168,6 +169,26 @@ export function UnifiedLedgerPage() {
           >
             <FileSpreadsheet className="h-4 w-4" />
             {t('unifiedLedger.exportCsv')}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            disabled={!token || !rows?.length}
+            onClick={async () => {
+              if (!token) return;
+              try {
+                await exportUnifiedLedgerXlsx(token, { from, to });
+              } catch (e) {
+                toast.error(
+                  e instanceof ApiError ? e.message : 'فشل تصدير Excel',
+                );
+              }
+            }}
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+            {t('reports.exportXlsx')}
           </Button>
           <Button
             type="button"
