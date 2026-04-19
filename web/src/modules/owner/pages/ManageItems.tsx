@@ -155,7 +155,7 @@ export function ManageItems() {
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
-    if (!token || !hasRole('OWNER')) return;
+    if (!token || !hasRole('OWNER', 'GENERAL_MANAGER')) return;
     void (async () => {
       try {
         const data = await apiJson<BranchRow[]>('/api/branches', { token });
@@ -212,7 +212,7 @@ export function ManageItems() {
     return out;
   }, [priceList.categories, priceList.items, t]);
 
-  if (!hasRole('OWNER')) {
+  if (!hasRole('OWNER', 'GENERAL_MANAGER')) {
     return <Navigate to="/" replace />;
   }
 

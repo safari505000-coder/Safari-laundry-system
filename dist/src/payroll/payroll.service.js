@@ -22,7 +22,9 @@ let PayrollService = class PayrollService {
         this.prisma = prisma;
     }
     assertOwnerOrManager(role) {
-        if (role !== client_1.SafariRole.OWNER && role !== client_1.SafariRole.MANAGER) {
+        if (role !== client_1.SafariRole.OWNER &&
+            role !== client_1.SafariRole.GENERAL_MANAGER &&
+            role !== client_1.SafariRole.MANAGER) {
             throw new common_1.ForbiddenException();
         }
     }
@@ -63,6 +65,7 @@ let PayrollService = class PayrollService {
     }
     async list(actorRole, fromIso, toIso, branchId) {
         if (actorRole !== client_1.SafariRole.OWNER &&
+            actorRole !== client_1.SafariRole.GENERAL_MANAGER &&
             actorRole !== client_1.SafariRole.MANAGER &&
             actorRole !== client_1.SafariRole.ACCOUNTANT) {
             throw new common_1.ForbiddenException();

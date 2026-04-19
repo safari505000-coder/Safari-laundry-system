@@ -101,7 +101,9 @@ let OrdersService = class OrdersService {
         });
     }
     isManagerOrOwner(role) {
-        return role === client_1.SafariRole.OWNER || role === client_1.SafariRole.MANAGER;
+        return (role === client_1.SafariRole.OWNER ||
+            role === client_1.SafariRole.GENERAL_MANAGER ||
+            role === client_1.SafariRole.MANAGER);
     }
     canViewAllOrders(role) {
         return (this.isManagerOrOwner(role) ||

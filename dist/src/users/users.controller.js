@@ -34,8 +34,10 @@ let UsersController = UsersController_1 = class UsersController {
         this.permissionsService = permissionsService;
     }
     async assertCanManageStaff(user) {
-        if (user.role === client_1.SafariRole.OWNER)
+        if (user.role === client_1.SafariRole.OWNER ||
+            user.role === client_1.SafariRole.GENERAL_MANAGER) {
             return;
+        }
         const ok = await this.permissionsService.canManageStaff(user.role);
         if (!ok) {
             throw new common_1.ForbiddenException('Missing can_manage_staff capability');

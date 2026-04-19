@@ -59,7 +59,7 @@ __decorate([
 ], ExpensesController.prototype, "create", null);
 __decorate([
     (0, common_1.Get)(),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.OWNER, client_1.SafariRole.DRIVER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.DRIVER),
     (0, swagger_1.ApiOperation)({
         summary: `List expenses in date range (${branding_1.APP_BRAND})`,
     }),
@@ -71,7 +71,7 @@ __decorate([
 ], ExpensesController.prototype, "list", null);
 __decorate([
     (0, common_1.Get)('pending-approval'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.OWNER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
     (0, swagger_1.ApiOperation)({
         summary: `Pending expense approvals (${branding_1.APP_BRAND})`,
     }),
@@ -82,7 +82,7 @@ __decorate([
 ], ExpensesController.prototype, "listPendingApproval", null);
 __decorate([
     (0, common_1.Patch)(':id/status'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.OWNER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
     (0, swagger_1.ApiOperation)({
         summary: `Approve/Reject/Audit expense (${branding_1.APP_BRAND})`,
     }),

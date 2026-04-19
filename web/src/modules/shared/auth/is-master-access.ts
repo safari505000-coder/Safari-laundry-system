@@ -7,5 +7,5 @@ import type { LoginUser } from '@/lib/api';
 export function hasMasterIslandAccess(user: LoginUser | null | undefined): boolean {
   if (!user) return false;
   const r = user.safariRole as string;
-  return r === 'OWNER' || r === 'ADMIN';
+  return r === 'OWNER' || r === 'GENERAL_MANAGER' || r === 'ADMIN';
 }

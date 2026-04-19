@@ -68,7 +68,7 @@ let DepositsController = class DepositsController {
 exports.DepositsController = DepositsController;
 __decorate([
     (0, common_1.Get)(),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.DRIVER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.OWNER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.DRIVER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
     (0, swagger_1.ApiOperation)({
         summary: `Deposits audit queue (${branding_1.APP_BRAND})`,
         description: 'DRIVER sees own requests. ACCOUNTANT/OWNER can filter by status and driver.',
@@ -130,7 +130,7 @@ __decorate([
 ], DepositsController.prototype, "create", null);
 __decorate([
     (0, common_1.Patch)(':id/status'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.OWNER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
     (0, swagger_1.ApiOperation)({
         summary: `Accountant/Owner audits deposit (${branding_1.APP_BRAND})`,
         description: 'APPROVED triggers liability reduction via DebtService and updates wallet cash/bank balance.',

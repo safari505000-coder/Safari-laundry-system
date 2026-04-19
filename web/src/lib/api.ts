@@ -1,5 +1,6 @@
 export type SafariRole =
   | 'OWNER'
+  | 'GENERAL_MANAGER'
   | 'MANAGER'
   | 'DRIVER'
   | 'CALL_CENTER'

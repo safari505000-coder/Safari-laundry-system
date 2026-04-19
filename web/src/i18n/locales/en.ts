@@ -1192,6 +1192,7 @@ export const en = {
   },
   roles: {
     OWNER: 'Owner',
+    GENERAL_MANAGER: 'General manager',
     MANAGER: 'Branch Manager',
     DRIVER: 'Driver',
     CALL_CENTER: 'Call center',

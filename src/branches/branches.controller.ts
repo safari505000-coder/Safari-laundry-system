@@ -32,17 +32,18 @@ export class BranchesController {
   }
 
   @Post()
-  @Roles(SafariRole.OWNER)
+  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
   @ApiOperation({
     summary: `Create branch (${APP_BRAND})`,
-    description: 'OWNER only. New branches appear in the branch switcher when active.',
+    description:
+      'OWNER and GENERAL_MANAGER only. New branches appear in the branch switcher when active.',
   })
   create(@Body() dto: CreateBranchDto) {
     return this.branchesService.create(dto);
   }
 
   @Get('operations-live')
-  @Roles(SafariRole.OWNER)
+  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
   @ApiOperation({
     summary: `Branch live ops flags (${APP_BRAND})`,
     description:

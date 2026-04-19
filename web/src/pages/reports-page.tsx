@@ -61,7 +61,7 @@ export function ReportsPage() {
   /** Operational reports (invoices / ledger / closing). P&L lives on Financials (OWNER). */
   const canView = hasRole('OWNER', 'ACCOUNTANT') ?? false;
 
-  const isOwner = hasRole('OWNER') ?? false;
+  const isOwner = hasRole('OWNER', 'GENERAL_MANAGER') ?? false;
 
   useEffect(() => {
     if (!token || !canView) return;

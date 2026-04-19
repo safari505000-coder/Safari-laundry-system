@@ -1208,6 +1208,7 @@ export const ar = {
   },
   roles: {
     OWNER: 'مالك',
+    GENERAL_MANAGER: 'المدير العام',
     MANAGER: 'مدير فرع',
     DRIVER: 'سائق',
     CALL_CENTER: 'مركز اتصال',

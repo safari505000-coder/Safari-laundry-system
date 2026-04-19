@@ -11,6 +11,7 @@ datasource db {
 /** Institutional roles — enforced in app, permissions, and JWT guards. */
 enum SafariRole {
   OWNER
+  GENERAL_MANAGER
   MANAGER
   DRIVER
   WORKER

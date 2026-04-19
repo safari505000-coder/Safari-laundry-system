@@ -19,7 +19,11 @@ export class PayrollService {
   constructor(private readonly prisma: PrismaService) {}
 
   private assertOwnerOrManager(role: SafariRole): void {
-    if (role !== SafariRole.OWNER && role !== SafariRole.MANAGER) {
+    if (
+      role !== SafariRole.OWNER &&
+      role !== SafariRole.GENERAL_MANAGER &&
+      role !== SafariRole.MANAGER
+    ) {
       throw new ForbiddenException();
     }
   }
@@ -78,6 +82,7 @@ export class PayrollService {
   ) {
     if (
       actorRole !== SafariRole.OWNER &&
+      actorRole !== SafariRole.GENERAL_MANAGER &&
       actorRole !== SafariRole.MANAGER &&
       actorRole !== SafariRole.ACCOUNTANT
     ) {

@@ -47,7 +47,7 @@ export function DebtRecoveryReportPage() {
   const { t } = useTranslation();
   const locale = useAppLocale();
   const { token, hasRole } = useAuth();
-  const isOwner = hasRole('OWNER');
+  const isOwner = hasRole('OWNER', 'GENERAL_MANAGER');
 
   const todayIso = useMemo(() => isoDay(new Date()), []);
   const defaultFromIso = useMemo(

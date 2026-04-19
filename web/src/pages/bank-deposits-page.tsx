@@ -51,7 +51,7 @@ export function BankDepositsPage() {
   const [verifyBusyId, setVerifyBusyId] = useState<string | null>(null);
 
   const canView = hasRole('OWNER', 'ACCOUNTANT', 'MANAGER') ?? false;
-  const isOwner = hasRole('OWNER') ?? false;
+  const isOwner = hasRole('OWNER', 'GENERAL_MANAGER') ?? false;
   const isAccountant = hasRole('ACCOUNTANT') ?? false;
   const isManager = hasRole('MANAGER') ?? false;
   const ownerReadOnly = isOwner && !isAccountant && !isManager;

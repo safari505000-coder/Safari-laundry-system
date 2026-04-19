@@ -59,7 +59,12 @@ export class BankDepositsController {
   constructor(private readonly bankDepositsService: BankDepositsService) {}
 
   @Get()
-  @Roles(SafariRole.OWNER, SafariRole.ACCOUNTANT, SafariRole.MANAGER)
+  @Roles(
+    SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
+    SafariRole.ACCOUNTANT,
+    SafariRole.MANAGER,
+  )
   @ApiOperation({
     summary: `Bank deposits log (${APP_BRAND})`,
     description:

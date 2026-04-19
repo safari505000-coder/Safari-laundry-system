@@ -27,6 +27,7 @@ const REQUIRED_ROLE_NAMES = [
 
 /** Remaining institutional roles the app expects in `Role` for JWT / RBAC. */
 const ADDITIONAL_INSTITUTIONAL_ROLE_NAMES = [
+  'GENERAL_MANAGER',
   'CALL_CENTER',
   'ACCOUNTANT',
   'SUPERVISOR',

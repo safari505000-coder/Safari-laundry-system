@@ -22,6 +22,7 @@ export class PaymentMethodFeesController {
   @Get()
   @Roles(
     SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
     SafariRole.MANAGER,
     SafariRole.ACCOUNTANT,
     SafariRole.SUPERVISOR,
@@ -36,7 +37,7 @@ export class PaymentMethodFeesController {
   }
 
   @Patch()
-  @Roles(SafariRole.OWNER)
+  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
   @ApiOperation({
     summary: `Update global payment-method fee config (${APP_BRAND})`,
   })

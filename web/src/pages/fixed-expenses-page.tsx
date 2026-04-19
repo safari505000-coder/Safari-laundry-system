@@ -69,7 +69,7 @@ export function FixedExpensesPage() {
   const [effectiveTo, setEffectiveTo] = useState('');
 
   const loadBranches = useCallback(async () => {
-    if (!token || !hasRole('OWNER')) return;
+    if (!token || !hasRole('OWNER', 'GENERAL_MANAGER')) return;
     try {
       const data = await apiJson<BranchRow[]>('/api/branches', { token });
       setBranches(Array.isArray(data) ? data : []);
@@ -79,7 +79,7 @@ export function FixedExpensesPage() {
   }, [token, hasRole]);
 
   const loadSchedules = useCallback(async () => {
-    if (!token || !hasRole('OWNER')) return;
+    if (!token || !hasRole('OWNER', 'GENERAL_MANAGER')) return;
     setLoading(true);
     try {
       const data = await apiJson<FixedExpenseScheduleRow[]>(
@@ -149,7 +149,7 @@ export function FixedExpensesPage() {
     }
   }
 
-  if (!hasRole('OWNER')) {
+  if (!hasRole('OWNER', 'GENERAL_MANAGER')) {
     return <Navigate to="/" replace />;
   }
 

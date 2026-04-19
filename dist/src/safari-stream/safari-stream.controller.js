@@ -34,7 +34,7 @@ let SafariStreamController = class SafariStreamController {
 exports.SafariStreamController = SafariStreamController;
 __decorate([
     (0, common_1.Get)('snapshot'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.MANAGER, client_1.SafariRole.DRIVER, client_1.SafariRole.WORKER, client_1.SafariRole.CALL_CENTER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.DRIVER, client_1.SafariRole.WORKER, client_1.SafariRole.CALL_CENTER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
     (0, swagger_1.ApiOperation)({
         summary: `SafariStream snapshot (${branding_1.APP_BRAND})`,
         description: 'Global context pipe: authenticated user identity, institutional permission keys, and (for DRIVER) wallet / pending deposit / debt radar figures for live UI.',

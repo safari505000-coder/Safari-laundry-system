@@ -40,7 +40,7 @@ export function OwnerSerialsPage() {
   const { t } = useTranslation();
   const locale = useAppLocale();
   const { token, hasRole } = useAuth();
-  const isOwner = hasRole('OWNER');
+  const isOwner = hasRole('OWNER', 'GENERAL_MANAGER');
 
   const [drivers, setDrivers] = useState<DriverPrefixRow[] | null>(null);
   const [log, setLog] = useState<SerialLog | null>(null);

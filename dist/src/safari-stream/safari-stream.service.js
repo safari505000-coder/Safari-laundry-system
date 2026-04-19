@@ -170,6 +170,7 @@ let SafariStreamService = class SafariStreamService {
         let managerCustodyFleet = null;
         let managerCustodyMine = null;
         if (user.safariRole === client_1.SafariRole.OWNER ||
+            user.safariRole === client_1.SafariRole.GENERAL_MANAGER ||
             user.safariRole === client_1.SafariRole.ACCOUNTANT) {
             const m = await this.managerCustodyService.getStreamMetrics();
             managerCustodyFleet = {

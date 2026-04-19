@@ -23,6 +23,7 @@ export class SafariStreamController {
   @Get('snapshot')
   @Roles(
     SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
     SafariRole.MANAGER,
     SafariRole.DRIVER,
     SafariRole.WORKER,

@@ -32,6 +32,7 @@ import { cn } from '@/lib/utils';
 
 type SafariRoleName =
   | 'OWNER'
+  | 'GENERAL_MANAGER'
   | 'MANAGER'
   | 'DRIVER'
   | 'CALL_CENTER'
@@ -62,6 +63,7 @@ const managerCustodyItem: NavItem = {
 function bottomNavItemsForRole(role: SafariRoleName | undefined): NavItem[] {
   switch (role) {
     case 'OWNER':
+    case 'GENERAL_MANAGER':
       return [
         { ...financialsItem, labelKey: 'nav.financials' },
         ordersItem,

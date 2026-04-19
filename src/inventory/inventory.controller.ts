@@ -35,7 +35,7 @@ export class InventoryController {
   constructor(private readonly inventory: InventoryService) {}
 
   @Get('report')
-  @Roles(SafariRole.OWNER, SafariRole.ACCOUNTANT)
+  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.ACCOUNTANT)
   @ApiOperation({
     summary: `Smart inventory report (${APP_BRAND})`,
     description:
@@ -46,43 +46,53 @@ export class InventoryController {
   }
 
   @Get('categories')
-  @Roles(SafariRole.OWNER, SafariRole.ACCOUNTANT, SafariRole.MANAGER)
+  @Roles(
+    SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
+    SafariRole.ACCOUNTANT,
+    SafariRole.MANAGER,
+  )
   listCategories() {
     return this.inventory.listCategories();
   }
 
   @Post('categories')
-  @Roles(SafariRole.OWNER, SafariRole.ACCOUNTANT)
+  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.ACCOUNTANT)
   createCategory(@Body() dto: CreateInventoryCategoryDto) {
     return this.inventory.createCategory(dto);
   }
 
   @Get('items')
-  @Roles(SafariRole.OWNER, SafariRole.ACCOUNTANT, SafariRole.MANAGER)
+  @Roles(
+    SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
+    SafariRole.ACCOUNTANT,
+    SafariRole.MANAGER,
+  )
   listItems() {
     return this.inventory.listItems();
   }
 
   @Post('items')
-  @Roles(SafariRole.OWNER, SafariRole.ACCOUNTANT)
+  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.ACCOUNTANT)
   createItem(@Body() dto: CreateStockItemDto) {
     return this.inventory.createItem(dto);
   }
 
   @Get('suppliers')
-  @Roles(SafariRole.OWNER, SafariRole.ACCOUNTANT)
+  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.ACCOUNTANT)
   listSuppliers() {
     return this.inventory.listSuppliers();
   }
 
   @Post('suppliers')
-  @Roles(SafariRole.ACCOUNTANT)
+  @Roles(SafariRole.ACCOUNTANT, SafariRole.GENERAL_MANAGER)
   createSupplier(@Body() dto: CreateSupplierDto) {
     return this.inventory.createSupplier(dto);
   }
 
   @Post('stock-in')
-  @Roles(SafariRole.ACCOUNTANT)
+  @Roles(SafariRole.ACCOUNTANT, SafariRole.GENERAL_MANAGER)
   @ApiOperation({
     summary: `Record stock-in (ACCOUNTANT) (${APP_BRAND})`,
     description:
@@ -93,7 +103,7 @@ export class InventoryController {
   }
 
   @Get('movements')
-  @Roles(SafariRole.OWNER, SafariRole.ACCOUNTANT)
+  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.ACCOUNTANT)
   listMovements(
     @Query('branchId') branchId?: string,
     @Query('limit') limit?: string,

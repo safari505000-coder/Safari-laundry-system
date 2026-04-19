@@ -15,7 +15,7 @@ export function roleHasBuiltinCapability(
 ): boolean {
   if (!role) return false;
   if (capability === CAN_MANAGE_STAFF) {
-    return role === SafariRole.OWNER;
+    return role === SafariRole.OWNER || role === SafariRole.GENERAL_MANAGER;
   }
   if (capability === CREATE_CUSTOMER) {
     return role === SafariRole.DRIVER || role === SafariRole.MANAGER;

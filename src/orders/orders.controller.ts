@@ -35,6 +35,7 @@ export class OrdersController {
   @UseGuards(RolesGuard)
   @Roles(
     SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
     SafariRole.MANAGER,
     SafariRole.SUPERVISOR,
     SafariRole.ACCOUNTANT,
@@ -85,7 +86,11 @@ export class OrdersController {
 
   @Get('collections/unpaid-online')
   @UseGuards(RolesGuard)
-  @Roles(SafariRole.CALL_CENTER, SafariRole.OWNER)
+  @Roles(
+    SafariRole.CALL_CENTER,
+    SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
+  )
   @ApiOperation({
     summary: `Debt-Tracking — every unpaid invoice (${APP_BRAND})`,
     description:

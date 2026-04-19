@@ -111,7 +111,7 @@ export function FinancialsPage() {
   const [drillExpenses, setDrillExpenses] = useState<ExpenseRow[] | null>(null);
 
   const fetchExecutive = useCallback(async () => {
-    if (!token || !hasRole('OWNER')) return;
+    if (!token || !hasRole('OWNER', 'GENERAL_MANAGER')) return;
     setExecLoading(true);
     try {
       const qs = new URLSearchParams({ from, to });
@@ -146,7 +146,7 @@ export function FinancialsPage() {
   }, [fetchExecutive]);
 
   useEffect(() => {
-    if (!token || !hasRole('OWNER')) return;
+    if (!token || !hasRole('OWNER', 'GENERAL_MANAGER')) return;
     let c = false;
     (async () => {
       setLoading(true);
@@ -184,7 +184,7 @@ export function FinancialsPage() {
   }, [token, hasRole, from, to]);
 
   useEffect(() => {
-    if (!token || !hasRole('OWNER')) return;
+    if (!token || !hasRole('OWNER', 'GENERAL_MANAGER')) return;
     let c = false;
     (async () => {
       setDebtLoading(true);
@@ -253,7 +253,7 @@ export function FinancialsPage() {
     };
   }, [drill, token, from, to]);
 
-  if (!hasRole('OWNER')) {
+  if (!hasRole('OWNER', 'GENERAL_MANAGER')) {
     return <Navigate to="/" replace />;
   }
 

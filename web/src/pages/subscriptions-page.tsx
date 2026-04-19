@@ -53,7 +53,7 @@ import {
 export function SubscriptionsPage() {
   const { t } = useTranslation();
   const { token, hasRole } = useAuth();
-  const isOwner = hasRole('OWNER');
+  const isOwner = hasRole('OWNER', 'GENERAL_MANAGER');
   const isCallCenter = hasRole('CALL_CENTER');
 
   const [plans, setPlans] = useState<SubscriptionPlan[] | null>(null);

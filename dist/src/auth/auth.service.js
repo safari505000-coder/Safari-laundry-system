@@ -51,6 +51,7 @@ const finance_service_1 = require("../finance/finance.service");
 const prisma_service_1 = require("../prisma/prisma.service");
 const INSTITUTIONAL_ROLES = [
     client_1.SafariRole.OWNER,
+    client_1.SafariRole.GENERAL_MANAGER,
     client_1.SafariRole.MANAGER,
     client_1.SafariRole.DRIVER,
     client_1.SafariRole.WORKER,

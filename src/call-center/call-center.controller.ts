@@ -30,7 +30,11 @@ export class CallCenterController {
   constructor(private readonly callCenterService: CallCenterService) {}
 
   @Get('operations-summary')
-  @Roles(SafariRole.CALL_CENTER, SafariRole.OWNER)
+  @Roles(
+    SafariRole.CALL_CENTER,
+    SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
+  )
   @ApiOperation({
     summary: `Call center operations summary — 3 KPIs (${APP_BRAND})`,
     description:
@@ -46,7 +50,7 @@ export class CallCenterController {
   }
 
   @Get('debt-recovery-report')
-  @Roles(SafariRole.OWNER)
+  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
   @ApiOperation({
     summary: `Debt recovery over time — owner reporting (${APP_BRAND})`,
     description:

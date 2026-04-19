@@ -20,6 +20,7 @@ export class ReportsController {
   @Get('manager-summary')
   @Roles(
     SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
     SafariRole.MANAGER,
     SafariRole.SUPERVISOR,
     SafariRole.ACCOUNTANT,
@@ -41,6 +42,7 @@ export class ReportsController {
   @Get('issued-invoices')
   @Roles(
     SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
     SafariRole.MANAGER,
     SafariRole.ACCOUNTANT,
     SafariRole.SUPERVISOR,
@@ -60,7 +62,7 @@ export class ReportsController {
   }
 
   @Get('live-feed')
-  @Roles(SafariRole.OWNER)
+  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
   @ApiOperation({
     summary: `Recent invoices — live operations feed (${APP_BRAND})`,
     description:
@@ -73,6 +75,7 @@ export class ReportsController {
   @Get('driver-ledger')
   @Roles(
     SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
     SafariRole.MANAGER,
     SafariRole.ACCOUNTANT,
     SafariRole.SUPERVISOR,
@@ -93,6 +96,7 @@ export class ReportsController {
   @Get('daily-cash-closing')
   @Roles(
     SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
     SafariRole.MANAGER,
     SafariRole.ACCOUNTANT,
     SafariRole.SUPERVISOR,
@@ -110,7 +114,7 @@ export class ReportsController {
   }
 
   @Get('executive-summary')
-  @Roles(SafariRole.OWNER)
+  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
   @ApiOperation({
     summary: `Net profit & executive KPIs (${APP_BRAND})`,
     description:
@@ -126,7 +130,7 @@ export class ReportsController {
   }
 
   @Get('bank-fees-by-branch')
-  @Roles(SafariRole.OWNER)
+  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
   @ApiOperation({
     summary: `Bank fees by branch — completed sales (${APP_BRAND})`,
     description:

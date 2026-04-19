@@ -64,7 +64,7 @@ let InventoryController = class InventoryController {
 exports.InventoryController = InventoryController;
 __decorate([
     (0, common_1.Get)('report'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.ACCOUNTANT),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),
     (0, swagger_1.ApiOperation)({
         summary: `Smart inventory report (${branding_1.APP_BRAND})`,
         description: 'Multi-layer filter: category, branch, stock-status. Rows return a server-derived status (IN_STOCK / LOW_STOCK / OUT_OF_STOCK) used for the Yellow/Red colour cues in the UI.',
@@ -76,14 +76,14 @@ __decorate([
 ], InventoryController.prototype, "getReport", null);
 __decorate([
     (0, common_1.Get)('categories'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.MANAGER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.MANAGER),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", void 0)
 ], InventoryController.prototype, "listCategories", null);
 __decorate([
     (0, common_1.Post)('categories'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.ACCOUNTANT),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [create_inventory_category_dto_1.CreateInventoryCategoryDto]),
@@ -91,14 +91,14 @@ __decorate([
 ], InventoryController.prototype, "createCategory", null);
 __decorate([
     (0, common_1.Get)('items'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.MANAGER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.MANAGER),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", void 0)
 ], InventoryController.prototype, "listItems", null);
 __decorate([
     (0, common_1.Post)('items'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.ACCOUNTANT),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [create_stock_item_dto_1.CreateStockItemDto]),
@@ -106,14 +106,14 @@ __decorate([
 ], InventoryController.prototype, "createItem", null);
 __decorate([
     (0, common_1.Get)('suppliers'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.ACCOUNTANT),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", void 0)
 ], InventoryController.prototype, "listSuppliers", null);
 __decorate([
     (0, common_1.Post)('suppliers'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.ACCOUNTANT),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.GENERAL_MANAGER),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [create_supplier_dto_1.CreateSupplierDto]),
@@ -121,7 +121,7 @@ __decorate([
 ], InventoryController.prototype, "createSupplier", null);
 __decorate([
     (0, common_1.Post)('stock-in'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.ACCOUNTANT),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.GENERAL_MANAGER),
     (0, swagger_1.ApiOperation)({
         summary: `Record stock-in (ACCOUNTANT) (${branding_1.APP_BRAND})`,
         description: 'Creates a STOCK_IN movement row, increments BranchStockLevel.quantityOnHand, and updates the weighted moving-average unit cost. Auto-creates a supplier row when supplierName is provided without supplierId.',
@@ -134,7 +134,7 @@ __decorate([
 ], InventoryController.prototype, "stockIn", null);
 __decorate([
     (0, common_1.Get)('movements'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.ACCOUNTANT),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),
     __param(0, (0, common_1.Query)('branchId')),
     __param(1, (0, common_1.Query)('limit')),
     __metadata("design:type", Function),

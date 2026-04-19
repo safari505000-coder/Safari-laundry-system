@@ -48,7 +48,7 @@ export const ownerDashboardItem: NavItem = {
   to: '/financials',
   labelKey: 'nav.ownerDashboard',
   icon: LayoutDashboard,
-  roles: ['OWNER'],
+  roles: ['OWNER', 'GENERAL_MANAGER'],
 };
 
 export const myDepositsItem: NavItem = {
@@ -71,6 +71,7 @@ export const dashboardItem: NavItem = {
   icon: LayoutDashboard,
   roles: [
     'OWNER',
+    'GENERAL_MANAGER',
     'MANAGER',
     'DRIVER',
     'CALL_CENTER',
@@ -182,6 +183,7 @@ export const ordersItem: NavItem = {
   icon: Package,
   roles: [
     'OWNER',
+    'GENERAL_MANAGER',
     'MANAGER',
     'DRIVER',
     'CALL_CENTER',
@@ -201,7 +203,7 @@ export const invoicesDataItem: NavItem = {
   to: '/orders',
   labelKey: 'nav.invoicesData',
   icon: Receipt,
-  roles: ['OWNER', 'ACCOUNTANT'],
+  roles: ['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT'],
 };
 
 export const shiftsItem: NavItem = {
@@ -210,6 +212,7 @@ export const shiftsItem: NavItem = {
   icon: Truck,
   roles: [
     'OWNER',
+    'GENERAL_MANAGER',
     'MANAGER',
     'DRIVER',
     'SUPERVISOR',
@@ -222,7 +225,7 @@ export const financialsItem: NavItem = {
   to: '/financials',
   labelKey: 'nav.financials',
   icon: Banknote,
-  roles: ['OWNER'],
+  roles: ['OWNER', 'GENERAL_MANAGER'],
 };
 
 /*
@@ -245,7 +248,7 @@ export const managerCustodyAgingItem: NavItem = {
   to: '/finance/manager-custody-aging',
   labelKey: 'nav.managerCustodyAging',
   icon: ShieldAlert,
-  roles: ['OWNER', 'ACCOUNTANT'],
+  roles: ['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT'],
 };
 
 /**
@@ -257,7 +260,7 @@ export const staffDebtsItem: NavItem = {
   to: '/staff-debts',
   labelKey: 'nav.staffDebts',
   icon: HandCoins,
-  roles: ['OWNER', 'ACCOUNTANT'],
+  roles: ['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT'],
 };
 
 /**
@@ -283,35 +286,35 @@ export const knetAuditReportItem: NavItem = {
   to: '/knet-audit',
   labelKey: 'nav.knetAuditReport',
   icon: FileSpreadsheet,
-  roles: ['OWNER'],
+  roles: ['OWNER', 'GENERAL_MANAGER'],
 };
 
 export const expenseApprovalItem: NavItem = {
   to: '/expense-approval',
   labelKey: 'nav.expenseVerification',
   icon: FileCheck2,
-  roles: ['ACCOUNTANT', 'OWNER'],
+  roles: ['ACCOUNTANT', 'OWNER', 'GENERAL_MANAGER'],
 };
 
 export const financialCycleReportItem: NavItem = {
   to: '/financial-cycle-report',
   labelKey: 'nav.financialCycleReport',
   icon: FileSpreadsheet,
-  roles: ['OWNER'],
+  roles: ['OWNER', 'GENERAL_MANAGER'],
 };
 
 export const reportsItem: NavItem = {
   to: '/reports',
   labelKey: 'nav.reports',
   icon: FileSpreadsheet,
-  roles: ['ACCOUNTANT', 'OWNER'],
+  roles: ['ACCOUNTANT', 'OWNER', 'GENERAL_MANAGER'],
 };
 
 export const financialReportsItem: NavItem = {
   to: '/reports',
   labelKey: 'nav.financialReports',
   icon: FileSpreadsheet,
-  roles: ['ACCOUNTANT', 'OWNER'],
+  roles: ['ACCOUNTANT', 'OWNER', 'GENERAL_MANAGER'],
 };
 
 /**
@@ -322,7 +325,7 @@ export const ownerSerialsItem: NavItem = {
   to: '/owner/serials',
   labelKey: 'nav.ownerSerials',
   icon: Hash,
-  roles: ['OWNER'],
+  roles: ['OWNER', 'GENERAL_MANAGER'],
 };
 
 /**
@@ -333,7 +336,7 @@ export const debtRecoveryReportItem: NavItem = {
   to: '/owner/debt-recovery',
   labelKey: 'nav.debtRecoveryReport',
   icon: LineChart,
-  roles: ['OWNER'],
+  roles: ['OWNER', 'GENERAL_MANAGER'],
 };
 
 /**
@@ -354,51 +357,51 @@ export const movementLogsItem: NavItem = {
   to: '/reports',
   labelKey: 'nav.movementLogs',
   icon: FileSpreadsheet,
-  roles: ['ACCOUNTANT', 'OWNER'],
+  roles: ['ACCOUNTANT', 'OWNER', 'GENERAL_MANAGER'],
 };
 
 export const unifiedLedgerItem: NavItem = {
   to: '/unified-ledger',
   labelKey: 'nav.unifiedLedger',
   icon: BookText,
-  roles: ['ACCOUNTANT', 'OWNER'],
+  roles: ['ACCOUNTANT', 'OWNER', 'GENERAL_MANAGER'],
 };
 
 export const expensesItem: NavItem = {
   to: '/expenses',
   labelKey: 'nav.expenses',
   icon: WalletCards,
-  roles: ['MANAGER', 'OWNER'],
+  roles: ['MANAGER', 'OWNER', 'GENERAL_MANAGER'],
 };
 
 export const payrollItem: NavItem = {
   to: '/payroll',
   labelKey: 'nav.payroll',
   icon: Users,
-  roles: ['OWNER'],
+  roles: ['OWNER', 'GENERAL_MANAGER'],
 };
 
 export const fixedExpensesItem: NavItem = {
   to: '/fixed-expenses',
   labelKey: 'nav.fixedExpenses',
   icon: Building2,
-  roles: ['OWNER'],
+  roles: ['OWNER', 'GENERAL_MANAGER'],
 };
 
 export const teamItem: NavItem = {
   to: '/users-management',
   labelKey: 'nav.usersManagement',
   icon: Users,
-  roles: ['OWNER'],
+  roles: ['OWNER', 'GENERAL_MANAGER'],
 };
 
 /**
- * V18.0 — Branch management lives under the "System Settings" group.
- * OWNER-only. Matches the backend guard on POST /api/branches.
+ * V19.0 — Branch management: OWNER + GENERAL_MANAGER (second-eye). Matches the
+ * backend guard on POST /api/branches which now accepts both roles.
  */
 export const branchesItem: NavItem = {
   to: '/branches',
   labelKey: 'nav.branches',
   icon: Building2,
-  roles: ['OWNER'],
+  roles: ['OWNER', 'GENERAL_MANAGER'],
 };

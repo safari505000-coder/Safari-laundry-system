@@ -25,7 +25,7 @@ export function FinancialCycleReportPage() {
   const { t } = useTranslation();
   const dateLocale = useAppLocale();
   const { token, hasRole } = useAuth();
-  const canUse = hasRole('OWNER') ?? false;
+  const canUse = hasRole('OWNER', 'GENERAL_MANAGER') ?? false;
   const [rows, setRows] = useState<FinancialCycleRow[]>([]);
   const [loading, setLoading] = useState(true);
 

@@ -48,7 +48,13 @@ export class ExpensesController {
   }
 
   @Get()
-  @Roles(SafariRole.MANAGER, SafariRole.ACCOUNTANT, SafariRole.OWNER, SafariRole.DRIVER)
+  @Roles(
+    SafariRole.MANAGER,
+    SafariRole.ACCOUNTANT,
+    SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
+    SafariRole.DRIVER,
+  )
   @ApiOperation({
     summary: `List expenses in date range (${APP_BRAND})`,
   })
@@ -64,7 +70,7 @@ export class ExpensesController {
   }
 
   @Get('pending-approval')
-  @Roles(SafariRole.ACCOUNTANT, SafariRole.OWNER)
+  @Roles(SafariRole.ACCOUNTANT, SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
   @ApiOperation({
     summary: `Pending expense approvals (${APP_BRAND})`,
   })
@@ -73,7 +79,7 @@ export class ExpensesController {
   }
 
   @Patch(':id/status')
-  @Roles(SafariRole.ACCOUNTANT, SafariRole.OWNER)
+  @Roles(SafariRole.ACCOUNTANT, SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
   @ApiOperation({
     summary: `Approve/Reject/Audit expense (${APP_BRAND})`,
   })

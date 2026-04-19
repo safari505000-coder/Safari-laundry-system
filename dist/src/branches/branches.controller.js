@@ -51,10 +51,10 @@ __decorate([
 ], BranchesController.prototype, "list", null);
 __decorate([
     (0, common_1.Post)(),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
     (0, swagger_1.ApiOperation)({
         summary: `Create branch (${branding_1.APP_BRAND})`,
-        description: 'OWNER only. New branches appear in the branch switcher when active.',
+        description: 'OWNER and GENERAL_MANAGER only. New branches appear in the branch switcher when active.',
     }),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
@@ -63,7 +63,7 @@ __decorate([
 ], BranchesController.prototype, "create", null);
 __decorate([
     (0, common_1.Get)('operations-live'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
     (0, swagger_1.ApiOperation)({
         summary: `Branch live ops flags (${branding_1.APP_BRAND})`,
         description: 'OWNER only. True when the branch has at least one in-flight order (not COMPLETED/CANCELED) on a driver assigned to that branch.',

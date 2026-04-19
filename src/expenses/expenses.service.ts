@@ -155,6 +155,7 @@ export class ExpensesService {
       safariRole !== SafariRole.MANAGER &&
       safariRole !== SafariRole.ACCOUNTANT &&
       safariRole !== SafariRole.OWNER &&
+      safariRole !== SafariRole.GENERAL_MANAGER &&
       safariRole !== SafariRole.DRIVER
     ) {
       throw new ForbiddenException();
@@ -180,15 +181,23 @@ export class ExpensesService {
         },
       },
     });
-    // Receipt URLs: OWNER-only (Financial Island audit drill-down). Others get null.
+    // Receipt URLs: Financial-Island auditors (OWNER + GENERAL_MANAGER) can open
+    // the uploaded photo to verify the expense. Everyone else receives null.
+    const canSeeReceipt =
+      safariRole === SafariRole.OWNER ||
+      safariRole === SafariRole.GENERAL_MANAGER;
     return rows.map((row) => ({
       ...row,
-      receiptUrl: safariRole === SafariRole.OWNER ? row.receiptUrl : null,
+      receiptUrl: canSeeReceipt ? row.receiptUrl : null,
     }));
   }
 
   async listPendingApproval(safariRole: SafariRole) {
-    if (safariRole !== SafariRole.ACCOUNTANT && safariRole !== SafariRole.OWNER) {
+    if (
+      safariRole !== SafariRole.ACCOUNTANT &&
+      safariRole !== SafariRole.OWNER &&
+      safariRole !== SafariRole.GENERAL_MANAGER
+    ) {
       throw new ForbiddenException();
     }
     return this.prisma.branchExpense.findMany({
@@ -206,7 +215,11 @@ export class ExpensesService {
   }
 
   async updateStatus(id: string, safariRole: SafariRole, status: ExpenseStatus) {
-    if (safariRole !== SafariRole.ACCOUNTANT && safariRole !== SafariRole.OWNER) {
+    if (
+      safariRole !== SafariRole.ACCOUNTANT &&
+      safariRole !== SafariRole.OWNER &&
+      safariRole !== SafariRole.GENERAL_MANAGER
+    ) {
       throw new ForbiddenException();
     }
     return this.prisma.branchExpense.update({

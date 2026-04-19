@@ -34,6 +34,7 @@ export class LaundryPriceListController {
   @Get('categories')
   @Roles(
     SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
     SafariRole.MANAGER,
     SafariRole.DRIVER,
     SafariRole.WORKER,
@@ -50,6 +51,7 @@ export class LaundryPriceListController {
   @Get()
   @Roles(
     SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
     SafariRole.MANAGER,
     SafariRole.DRIVER,
     SafariRole.WORKER,
@@ -73,7 +75,7 @@ export class LaundryPriceListController {
   }
 
   @Post('items')
-  @Roles(SafariRole.OWNER)
+  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
   @ApiOperation({
     summary: `Create master price item — OWNER only (${APP_BRAND})`,
     description:
@@ -84,7 +86,7 @@ export class LaundryPriceListController {
   }
 
   @Patch('items/:id')
-  @Roles(SafariRole.OWNER)
+  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
   @ApiOperation({
     summary: `Update master price item — OWNER only (${APP_BRAND})`,
     description:
@@ -98,7 +100,7 @@ export class LaundryPriceListController {
   }
 
   @Delete('items/:id')
-  @Roles(SafariRole.OWNER)
+  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: `Delete master price item — OWNER only (${APP_BRAND})`,
@@ -110,7 +112,7 @@ export class LaundryPriceListController {
   }
 
   @Patch('categories/:id')
-  @Roles(SafariRole.OWNER)
+  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
   @ApiOperation({
     summary: `Update item category — OWNER only (${APP_BRAND})`,
   })

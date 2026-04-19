@@ -29,14 +29,14 @@ export class PayrollController {
   constructor(private readonly payrollService: PayrollService) {}
 
   @Post()
-  @Roles(SafariRole.OWNER, SafariRole.MANAGER)
+  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.MANAGER)
   @ApiOperation({ summary: `Create payroll line (${APP_BRAND})` })
   create(@Body() dto: CreatePayrollDto, @CurrentUser() user: JwtUser) {
     return this.payrollService.create(user.role as SafariRole, dto);
   }
 
   @Patch(':id/mark-paid')
-  @Roles(SafariRole.OWNER, SafariRole.MANAGER)
+  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.MANAGER)
   @ApiOperation({ summary: `Mark payroll as paid (${APP_BRAND})` })
   markPaid(
     @Param('id', ParseUUIDPipe) id: string,
@@ -46,7 +46,12 @@ export class PayrollController {
   }
 
   @Get()
-  @Roles(SafariRole.OWNER, SafariRole.MANAGER, SafariRole.ACCOUNTANT)
+  @Roles(
+    SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
+    SafariRole.MANAGER,
+    SafariRole.ACCOUNTANT,
+  )
   @ApiOperation({ summary: `List payroll in date range (${APP_BRAND})` })
   list(@Query() q: PayrollQueryDto, @CurrentUser() user: JwtUser) {
     return this.payrollService.list(

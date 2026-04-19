@@ -67,7 +67,7 @@ let CallCenterController = class CallCenterController {
 exports.CallCenterController = CallCenterController;
 __decorate([
     (0, common_1.Get)('operations-summary'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.OWNER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
     (0, swagger_1.ApiOperation)({
         summary: `Call center operations summary — 3 KPIs (${branding_1.APP_BRAND})`,
         description: 'V1.6.1 — RED total market debt (Σ unpaid non-canceled orders), GREEN debt collected today strictly between Kuwait-local 00:00 and now (Σ metadata.debtSettled), YELLOW count of open UNPAID orders with a hosted payment URL awaiting action. Pass `?branchId=<uuid>` to scope every aggregate to a single branch (driver.branchId OR customer.originBranchId when driver-less); omit for global totals.',
@@ -79,7 +79,7 @@ __decorate([
 ], CallCenterController.prototype, "operationsSummary", null);
 __decorate([
     (0, common_1.Get)('debt-recovery-report'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
     (0, swagger_1.ApiOperation)({
         summary: `Debt recovery over time — owner reporting (${branding_1.APP_BRAND})`,
         description: 'OWNER only. Daily breakdown of debt-settled KWD (from ORDER_WALLET_SETTLEMENT + SUBSCRIPTION_ACTIVATION metadata.debtSettled). Defaults to last 30 days.',

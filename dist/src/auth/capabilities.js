@@ -10,7 +10,7 @@ function roleHasBuiltinCapability(role, capability) {
     if (!role)
         return false;
     if (capability === exports.CAN_MANAGE_STAFF) {
-        return role === client_1.SafariRole.OWNER;
+        return role === client_1.SafariRole.OWNER || role === client_1.SafariRole.GENERAL_MANAGER;
     }
     if (capability === exports.CREATE_CUSTOMER) {
         return role === client_1.SafariRole.DRIVER || role === client_1.SafariRole.MANAGER;

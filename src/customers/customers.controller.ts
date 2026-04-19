@@ -18,6 +18,7 @@ export class CustomersController {
   @Get()
   @Roles(
     SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
     SafariRole.MANAGER,
     SafariRole.CALL_CENTER,
     SafariRole.SUPERVISOR,
@@ -33,6 +34,7 @@ export class CustomersController {
   @Get(':id/profile')
   @Roles(
     SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
     SafariRole.MANAGER,
     SafariRole.CALL_CENTER,
     SafariRole.SUPERVISOR,
@@ -50,6 +52,7 @@ export class CustomersController {
   @Patch(':id')
   @Roles(
     SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
     SafariRole.MANAGER,
     SafariRole.CALL_CENTER,
     SafariRole.SUPERVISOR,

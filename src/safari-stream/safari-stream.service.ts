@@ -246,6 +246,7 @@ export class SafariStreamService {
       null;
     if (
       user.safariRole === SafariRole.OWNER ||
+      user.safariRole === SafariRole.GENERAL_MANAGER ||
       user.safariRole === SafariRole.ACCOUNTANT
     ) {
       const m = await this.managerCustodyService.getStreamMetrics();

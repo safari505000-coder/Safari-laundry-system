@@ -97,7 +97,7 @@ __decorate([
 ], FinanceController.prototype, "driverEnsureShift", null);
 __decorate([
     (0, common_1.Get)('owner/customer-wallet-summary'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
     (0, swagger_1.ApiOperation)({
         summary: `Owner — customer wallet liabilities & debts (${branding_1.APP_BRAND})`,
         description: 'OWNER only. Aggregates CustomerWallet balance (prepaid credit owed) and debt across all customers.',
@@ -109,7 +109,7 @@ __decorate([
 __decorate([
     (0, common_1.Get)('reports/daily-pos-sales'),
     (0, roles_decorator_1.AllowDriverDailyPosSales)(),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR),
     (0, swagger_1.ApiOperation)({
         summary: `Daily POS sales by payment method (${branding_1.APP_BRAND})`,
         description: 'Aggregates completed POS orders with recorded PosPaymentMethod (subscription wallet, cash, KNET, ONLINE, DEBT_ON_ACCOUNT) for financial reporting.',
@@ -122,7 +122,7 @@ __decorate([
 ], FinanceController.prototype, "getDailyPosSales", null);
 __decorate([
     (0, common_1.Get)('reports/debt-by-category'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR),
     (0, swagger_1.ApiOperation)({
         summary: `Debt breakdown by category (${branding_1.APP_BRAND})`,
         description: 'Debt totals grouped by category (BRANCH, DRIVER, OWNER, CALL_CENTER) and source (SUBSCRIPTION_OVERUSE, INVOICE_SHORTFALL).',
@@ -179,7 +179,7 @@ __decorate([
 ], FinanceController.prototype, "uploadHandoverReceipt", null);
 __decorate([
     (0, common_1.Get)('driver-balance'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.MANAGER, client_1.SafariRole.CALL_CENTER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.CALL_CENTER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
     (0, swagger_1.ApiOperation)({
         summary: `Driver cash on hand (${branding_1.APP_BRAND})`,
         description: 'Per driver: sum of COMPLETED orders still PAID_TO_DRIVER (not yet handed to office), plus current OPEN shift metadata. OWNER/MANAGER only.',
@@ -190,7 +190,7 @@ __decorate([
 ], FinanceController.prototype, "getDriverBalance", null);
 __decorate([
     (0, common_1.Get)('driver-monitoring'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.CALL_CENTER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.CALL_CENTER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT),
     (0, swagger_1.ApiOperation)({
         summary: `Driver monitoring map feed (${branding_1.APP_BRAND})`,
         description: 'Active ON_SHIFT drivers with lastKnownLocation marker; falls back to branch location when GPS is unavailable.',
@@ -227,7 +227,7 @@ __decorate([
 ], FinanceController.prototype, "confirmHandover", null);
 __decorate([
     (0, common_1.Get)('reports/financial-cycle'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
     (0, swagger_1.ApiOperation)({
         summary: `Owner financial cycle report (${branding_1.APP_BRAND})`,
         description: 'Read-only lifecycle: CASH order → collected by manager (handover) → verified by accountant (deposit verification).',
@@ -238,7 +238,7 @@ __decorate([
 ], FinanceController.prototype, "getFinancialCycleReport", null);
 __decorate([
     (0, common_1.Get)('dashboard/realtime-totals'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
     (0, swagger_1.ApiOperation)({
         summary: `Realtime financial dashboard totals (${branding_1.APP_BRAND})`,
         description: 'Card totals for cash with drivers, online revenue, total debt, and subscription usage.',

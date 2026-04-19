@@ -68,7 +68,7 @@ let BankDepositsController = class BankDepositsController {
 exports.BankDepositsController = BankDepositsController;
 __decorate([
     (0, common_1.Get)(),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.MANAGER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.MANAGER),
     (0, swagger_1.ApiOperation)({
         summary: `Bank deposits log (${branding_1.APP_BRAND})`,
         description: 'OWNER: read-only monitoring. ACCOUNTANT: review list. MANAGER: see uploaded items.',

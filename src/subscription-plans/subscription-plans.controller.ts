@@ -23,7 +23,7 @@ import { SubscriptionPlansService } from './subscription-plans.service';
 @ApiBearerAuth('bearer')
 @Controller('subscription-plans')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(SafariRole.OWNER)
+@Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
 export class SubscriptionPlansController {
   constructor(
     private readonly subscriptionPlansService: SubscriptionPlansService,

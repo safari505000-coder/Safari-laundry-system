@@ -87,7 +87,7 @@ export function PayrollPage() {
   );
 
   const loadRefs = useCallback(async () => {
-    if (!token || !hasRole('OWNER')) return;
+    if (!token || !hasRole('OWNER', 'GENERAL_MANAGER')) return;
     setLoadingRefs(true);
     try {
       const [u, b] = await Promise.all([
@@ -104,7 +104,7 @@ export function PayrollPage() {
   }, [token, hasRole]);
 
   const loadPayrolls = useCallback(async () => {
-    if (!token || !hasRole('OWNER')) return;
+    if (!token || !hasRole('OWNER', 'GENERAL_MANAGER')) return;
     const { from, to } = monthRangeIso(month);
     setLoadingList(true);
     try {
@@ -203,7 +203,7 @@ export function PayrollPage() {
     }
   }
 
-  if (!hasRole('OWNER')) {
+  if (!hasRole('OWNER', 'GENERAL_MANAGER')) {
     return <Navigate to="/" replace />;
   }
 

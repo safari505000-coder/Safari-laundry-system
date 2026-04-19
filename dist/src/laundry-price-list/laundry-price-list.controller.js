@@ -54,7 +54,7 @@ let LaundryPriceListController = class LaundryPriceListController {
 exports.LaundryPriceListController = LaundryPriceListController;
 __decorate([
     (0, common_1.Get)('categories'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.MANAGER, client_1.SafariRole.DRIVER, client_1.SafariRole.WORKER, client_1.SafariRole.CALL_CENTER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.DRIVER, client_1.SafariRole.WORKER, client_1.SafariRole.CALL_CENTER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
     (0, swagger_1.ApiOperation)({ summary: 'Laundry item categories (ordering / grouping)' }),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
@@ -62,7 +62,7 @@ __decorate([
 ], LaundryPriceListController.prototype, "findCategories", null);
 __decorate([
     (0, common_1.Get)(),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.MANAGER, client_1.SafariRole.DRIVER, client_1.SafariRole.WORKER, client_1.SafariRole.CALL_CENTER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.DRIVER, client_1.SafariRole.WORKER, client_1.SafariRole.CALL_CENTER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
     (0, swagger_1.ApiOperation)({
         summary: `Laundry garment price list (${branding_1.APP_BRAND})`,
         description: 'Official KD prices per item and tier, merged with optional branch overrides. Pass branchId query to preview another branch; otherwise the JWT user branch (when present) is used.',
@@ -75,7 +75,7 @@ __decorate([
 ], LaundryPriceListController.prototype, "findAll", null);
 __decorate([
     (0, common_1.Post)('items'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
     (0, swagger_1.ApiOperation)({
         summary: `Create master price item — OWNER only (${branding_1.APP_BRAND})`,
         description: 'Creates a new laundry tariff row. Prices default to 0 when omitted so the Owner can batch-create items and price them later. The catalog version bumps automatically for live sync across Driver / POS clients.',
@@ -87,7 +87,7 @@ __decorate([
 ], LaundryPriceListController.prototype, "createItem", null);
 __decorate([
     (0, common_1.Patch)('items/:id'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
     (0, swagger_1.ApiOperation)({
         summary: `Update master price item — OWNER only (${branding_1.APP_BRAND})`,
         description: 'Partial update of the master tariff row (prices, name, sort order, category, isActive). Writes bump the catalog version exposed via SafariStream so driver devices auto-reload the POS catalog on next poll. Historical orders are never rewritten — OrderLineItem snapshots unit price and label at creation time.',
@@ -100,7 +100,7 @@ __decorate([
 ], LaundryPriceListController.prototype, "updateItem", null);
 __decorate([
     (0, common_1.Delete)('items/:id'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
     (0, common_1.HttpCode)(common_1.HttpStatus.OK),
     (0, swagger_1.ApiOperation)({
         summary: `Delete master price item — OWNER only (${branding_1.APP_BRAND})`,
@@ -113,7 +113,7 @@ __decorate([
 ], LaundryPriceListController.prototype, "deleteItem", null);
 __decorate([
     (0, common_1.Patch)('categories/:id'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
     (0, swagger_1.ApiOperation)({
         summary: `Update item category — OWNER only (${branding_1.APP_BRAND})`,
     }),

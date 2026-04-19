@@ -131,7 +131,11 @@ export class OrdersService {
   }
 
   private isManagerOrOwner(role: string): boolean {
-    return role === SafariRole.OWNER || role === SafariRole.MANAGER;
+    return (
+      role === SafariRole.OWNER ||
+      role === SafariRole.GENERAL_MANAGER ||
+      role === SafariRole.MANAGER
+    );
   }
 
   private canViewAllOrders(role: string): boolean {

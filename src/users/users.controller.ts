@@ -44,7 +44,12 @@ export class UsersController {
   ) {}
 
   private async assertCanManageStaff(user: JwtUser): Promise<void> {
-    if (user.role === SafariRole.OWNER) return;
+    if (
+      user.role === SafariRole.OWNER ||
+      user.role === SafariRole.GENERAL_MANAGER
+    ) {
+      return;
+    }
     const ok = await this.permissionsService.canManageStaff(user.role);
     if (!ok) {
       throw new ForbiddenException('Missing can_manage_staff capability');

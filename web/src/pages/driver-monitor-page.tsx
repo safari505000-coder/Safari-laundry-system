@@ -103,7 +103,7 @@ export function DriverMonitorPage() {
                   ? 'Live GPS'
                   : `Branch fallback: ${d.branch?.name ?? '—'}`}
               </p>
-              {hasRole('OWNER') ? (
+              {hasRole('OWNER', 'GENERAL_MANAGER') ? (
                 <div className="mt-3 space-y-2 rounded-md border p-2">
                   <div className="space-y-1">
                     <Label className="text-xs">Vehicle Label</Label>

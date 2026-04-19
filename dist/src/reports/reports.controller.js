@@ -62,7 +62,7 @@ let ReportsController = class ReportsController {
 exports.ReportsController = ReportsController;
 __decorate([
     (0, common_1.Get)('manager-summary'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.MANAGER, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.VIEWER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.VIEWER),
     (0, swagger_1.ApiOperation)({
         summary: `Management report summary (${branding_1.APP_BRAND})`,
         description: 'Lightweight heartbeat for dashboards.',
@@ -73,7 +73,7 @@ __decorate([
 ], ReportsController.prototype, "managerSummary", null);
 __decorate([
     (0, common_1.Get)('issued-invoices'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
     (0, swagger_1.ApiOperation)({
         summary: `Issued invoices — orders created in period (${branding_1.APP_BRAND})`,
     }),
@@ -84,7 +84,7 @@ __decorate([
 ], ReportsController.prototype, "issuedInvoices", null);
 __decorate([
     (0, common_1.Get)('live-feed'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
     (0, swagger_1.ApiOperation)({
         summary: `Recent invoices — live operations feed (${branding_1.APP_BRAND})`,
         description: 'OWNER only. Last N orders by createdAt (all branches). Lightweight vs issued-invoices report.',
@@ -96,7 +96,7 @@ __decorate([
 ], ReportsController.prototype, "liveFeed", null);
 __decorate([
     (0, common_1.Get)('driver-ledger'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
     (0, swagger_1.ApiOperation)({
         summary: `Driver cash vs office — held COD and period activity (${branding_1.APP_BRAND})`,
     }),
@@ -107,7 +107,7 @@ __decorate([
 ], ReportsController.prototype, "driverLedger", null);
 __decorate([
     (0, common_1.Get)('daily-cash-closing'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR),
     (0, swagger_1.ApiOperation)({
         summary: `Daily cash closing — gross CASH sales minus expenses (${branding_1.APP_BRAND})`,
     }),
@@ -118,7 +118,7 @@ __decorate([
 ], ReportsController.prototype, "dailyCashClosing", null);
 __decorate([
     (0, common_1.Get)('executive-summary'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
     (0, swagger_1.ApiOperation)({
         summary: `Net profit & executive KPIs (${branding_1.APP_BRAND})`,
         description: 'Gross completed sales minus bank fees (non-cash rails), SOAP/FUEL/MISC variable expenses, paid payroll, and accrued fixed schedules. Invoice totals unchanged.',
@@ -130,7 +130,7 @@ __decorate([
 ], ReportsController.prototype, "executiveSummary", null);
 __decorate([
     (0, common_1.Get)('bank-fees-by-branch'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
     (0, swagger_1.ApiOperation)({
         summary: `Bank fees by branch — completed sales (${branding_1.APP_BRAND})`,
         description: 'V8.5 reporting-layer allocation of KNET/card fees per driver branch.',

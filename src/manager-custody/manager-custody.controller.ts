@@ -174,7 +174,7 @@ export class ManagerCustodyController {
 
   // ---------------------------------------------------------- OWNER reports
   @Get('aging')
-  @Roles(SafariRole.OWNER, SafariRole.ACCOUNTANT)
+  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.ACCOUNTANT)
   @ApiOperation({
     summary: `Cash Held by Managers — aging report (${APP_BRAND})`,
     description:

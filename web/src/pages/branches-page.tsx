@@ -41,7 +41,7 @@ import { Switch } from '@/modules/shared/components/ui/switch';
 export function BranchesPage() {
   const { t } = useTranslation();
   const { token, hasRole } = useAuth();
-  const isOwner = hasRole('OWNER') ?? false;
+  const isOwner = hasRole('OWNER', 'GENERAL_MANAGER') ?? false;
 
   const [rows, setRows] = useState<BranchRow[] | null>(null);
   const [loading, setLoading] = useState(false);

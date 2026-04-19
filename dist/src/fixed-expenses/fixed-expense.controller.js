@@ -38,7 +38,7 @@ let FixedExpenseController = class FixedExpenseController {
 exports.FixedExpenseController = FixedExpenseController;
 __decorate([
     (0, common_1.Post)(),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.MANAGER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER),
     (0, swagger_1.ApiOperation)({
         summary: `Create recurring fixed expense schedule (${branding_1.APP_BRAND})`,
     }),
@@ -50,7 +50,7 @@ __decorate([
 ], FixedExpenseController.prototype, "create", null);
 __decorate([
     (0, common_1.Get)(),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
     (0, swagger_1.ApiOperation)({ summary: `List fixed expense schedules (${branding_1.APP_BRAND})` }),
     __param(0, (0, common_1.Query)('branchId')),
     __metadata("design:type", Function),

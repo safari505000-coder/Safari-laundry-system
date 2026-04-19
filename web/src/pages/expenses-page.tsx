@@ -89,7 +89,7 @@ export function ExpensesPage() {
   }, [token, canView, load]);
 
   useEffect(() => {
-    if (!token || !hasRole('OWNER')) return;
+    if (!token || !hasRole('OWNER', 'GENERAL_MANAGER')) return;
     void apiJson<BranchRow[]>('/api/branches', { token })
       .then((data) => setBranches(Array.isArray(data) ? data : []))
       .catch(() => setBranches([]));
@@ -274,7 +274,7 @@ export function ExpensesPage() {
               : null}
               {t('expenses.refresh')}
             </Button>
-            {hasRole('OWNER') ? (
+            {hasRole('OWNER', 'GENERAL_MANAGER') ? (
               <Select
                 value={selectedBranch}
                 onValueChange={(v) => setSelectedBranch(v ?? 'ALL')}

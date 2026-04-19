@@ -56,7 +56,12 @@ export class DepositsController {
   constructor(private readonly depositsService: DepositsService) {}
 
   @Get()
-  @Roles(SafariRole.DRIVER, SafariRole.ACCOUNTANT, SafariRole.OWNER)
+  @Roles(
+    SafariRole.DRIVER,
+    SafariRole.ACCOUNTANT,
+    SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
+  )
   @ApiOperation({
     summary: `Deposits audit queue (${APP_BRAND})`,
     description:
@@ -129,7 +134,7 @@ export class DepositsController {
   }
 
   @Patch(':id/status')
-  @Roles(SafariRole.ACCOUNTANT, SafariRole.OWNER)
+  @Roles(SafariRole.ACCOUNTANT, SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
   @ApiOperation({
     summary: `Accountant/Owner audits deposit (${APP_BRAND})`,
     description:

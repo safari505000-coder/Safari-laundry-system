@@ -35,7 +35,7 @@ import { SerialsService } from './serials.service';
 @ApiBearerAuth('bearer')
 @Controller('owner/serials')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(SafariRole.OWNER)
+@Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
 export class SerialsController {
   constructor(private readonly serials: SerialsService) {}
 

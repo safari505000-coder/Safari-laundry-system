@@ -77,7 +77,7 @@ export class FinanceController {
   }
 
   @Get('owner/customer-wallet-summary')
-  @Roles(SafariRole.OWNER)
+  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
   @ApiOperation({
     summary: `Owner — customer wallet liabilities & debts (${APP_BRAND})`,
     description:
@@ -91,6 +91,7 @@ export class FinanceController {
   @AllowDriverDailyPosSales()
   @Roles(
     SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
     SafariRole.MANAGER,
     SafariRole.ACCOUNTANT,
     SafariRole.SUPERVISOR,
@@ -114,6 +115,7 @@ export class FinanceController {
   @Get('reports/debt-by-category')
   @Roles(
     SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
     SafariRole.MANAGER,
     SafariRole.ACCOUNTANT,
     SafariRole.SUPERVISOR,
@@ -191,6 +193,7 @@ export class FinanceController {
   @Get('driver-balance')
   @Roles(
     SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
     SafariRole.MANAGER,
     SafariRole.CALL_CENTER,
     SafariRole.ACCOUNTANT,
@@ -209,6 +212,7 @@ export class FinanceController {
   @Get('driver-monitoring')
   @Roles(
     SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
     SafariRole.CALL_CENTER,
     SafariRole.MANAGER,
     SafariRole.ACCOUNTANT,
@@ -251,7 +255,7 @@ export class FinanceController {
   }
 
   @Get('reports/financial-cycle')
-  @Roles(SafariRole.OWNER)
+  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
   @ApiOperation({
     summary: `Owner financial cycle report (${APP_BRAND})`,
     description:
@@ -264,6 +268,7 @@ export class FinanceController {
   @Get('dashboard/realtime-totals')
   @Roles(
     SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
     SafariRole.MANAGER,
     SafariRole.ACCOUNTANT,
     SafariRole.SUPERVISOR,

@@ -10,6 +10,7 @@ import { JwtPayload } from './strategies/jwt.strategy';
 
 const INSTITUTIONAL_ROLES: readonly SafariRole[] = [
   SafariRole.OWNER,
+  SafariRole.GENERAL_MANAGER,
   SafariRole.MANAGER,
   SafariRole.DRIVER,
   SafariRole.WORKER,

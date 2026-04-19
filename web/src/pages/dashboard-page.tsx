@@ -116,7 +116,7 @@ export function DashboardPage() {
   }, [token, financialDateIso]);
 
   useEffect(() => {
-    if (!token || !hasRole('OWNER')) return;
+    if (!token || !hasRole('OWNER', 'GENERAL_MANAGER')) return;
     let cancelled = false;
     const empty: BankDepositsListResponse = {
       from: '',
@@ -153,7 +153,7 @@ export function DashboardPage() {
   const managerMetricsGrid =
     'grid gap-4 sm:grid-cols-2 lg:grid-cols-3';
 
-  const isOwner = hasRole('OWNER') ?? false;
+  const isOwner = hasRole('OWNER', 'GENERAL_MANAGER') ?? false;
   const canCreateOrder = hasRole('DRIVER', 'MANAGER', 'CALL_CENTER');
   /*
    * Dastur §1 — Managers exit the dashboard through /pos (their primary
@@ -163,9 +163,9 @@ export function DashboardPage() {
    */
   const showNewInvoiceShortcut =
     (hasRole('DRIVER', 'CALL_CENTER') ?? false) &&
-    !(hasRole('OWNER') ?? false);
+    !(hasRole('OWNER', 'GENERAL_MANAGER') ?? false);
   /** Consolidated P&L is OWNER-only (`/financials`). */
-  const canOpenFinancials = hasRole('OWNER');
+  const canOpenFinancials = hasRole('OWNER', 'GENERAL_MANAGER');
 
   return (
     <div className="space-y-10">
@@ -325,14 +325,14 @@ export function DashboardPage() {
         {hasRole('OWNER', 'ACCOUNTANT') ?
           <div
             className={
-              hasRole('OWNER') ? ownerMetricsGrid : managerMetricsGrid
+              hasRole('OWNER', 'GENERAL_MANAGER') ? ownerMetricsGrid : managerMetricsGrid
             }
           >
             {loading ?
               [0, 1].map((i) => (
                 <Skeleton key={i} className="h-32 rounded-xl" />
               ))
-            : hasRole('ACCOUNTANT') && !hasRole('OWNER') ?
+            : hasRole('ACCOUNTANT') && !hasRole('OWNER', 'GENERAL_MANAGER') ?
               snapshot?.institution ?
                 <>
                   <MetricCard
@@ -357,7 +357,7 @@ export function DashboardPage() {
               : [0, 1].map((i) => (
                   <Skeleton key={`acct-${i}`} className="h-32 rounded-xl" />
                 ))
-            : hasRole('OWNER') && snapshot?.institution ?
+            : hasRole('OWNER', 'GENERAL_MANAGER') && snapshot?.institution ?
               <>
                 <MetricCard
                   title={t('dashboard.instFieldCash')}
@@ -378,7 +378,7 @@ export function DashboardPage() {
                   icon={<Wallet className="h-4 w-4" />}
                 />
               </>
-            : hasRole('OWNER') ?
+            : hasRole('OWNER', 'GENERAL_MANAGER') ?
               [0, 1].map((i) => (
                 <Skeleton key={`own-${i}`} className="h-32 rounded-xl" />
               ))
@@ -409,7 +409,7 @@ export function DashboardPage() {
         : null}
       </section>
 
-      {hasRole('OWNER') && ownerBankDeposits ?
+      {hasRole('OWNER', 'GENERAL_MANAGER') && ownerBankDeposits ?
         <section>
           <Card className="rounded-[20px] border-border bg-card shadow-sm">
             <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">

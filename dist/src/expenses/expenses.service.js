@@ -116,6 +116,7 @@ let ExpensesService = class ExpensesService {
         if (safariRole !== client_1.SafariRole.MANAGER &&
             safariRole !== client_1.SafariRole.ACCOUNTANT &&
             safariRole !== client_1.SafariRole.OWNER &&
+            safariRole !== client_1.SafariRole.GENERAL_MANAGER &&
             safariRole !== client_1.SafariRole.DRIVER) {
             throw new common_1.ForbiddenException();
         }
@@ -139,13 +140,17 @@ let ExpensesService = class ExpensesService {
                 },
             },
         });
+        const canSeeReceipt = safariRole === client_1.SafariRole.OWNER ||
+            safariRole === client_1.SafariRole.GENERAL_MANAGER;
         return rows.map((row) => ({
             ...row,
-            receiptUrl: safariRole === client_1.SafariRole.OWNER ? row.receiptUrl : null,
+            receiptUrl: canSeeReceipt ? row.receiptUrl : null,
         }));
     }
     async listPendingApproval(safariRole) {
-        if (safariRole !== client_1.SafariRole.ACCOUNTANT && safariRole !== client_1.SafariRole.OWNER) {
+        if (safariRole !== client_1.SafariRole.ACCOUNTANT &&
+            safariRole !== client_1.SafariRole.OWNER &&
+            safariRole !== client_1.SafariRole.GENERAL_MANAGER) {
             throw new common_1.ForbiddenException();
         }
         return this.prisma.branchExpense.findMany({
@@ -162,7 +167,9 @@ let ExpensesService = class ExpensesService {
         });
     }
     async updateStatus(id, safariRole, status) {
-        if (safariRole !== client_1.SafariRole.ACCOUNTANT && safariRole !== client_1.SafariRole.OWNER) {
+        if (safariRole !== client_1.SafariRole.ACCOUNTANT &&
+            safariRole !== client_1.SafariRole.OWNER &&
+            safariRole !== client_1.SafariRole.GENERAL_MANAGER) {
             throw new common_1.ForbiddenException();
         }
         return this.prisma.branchExpense.update({

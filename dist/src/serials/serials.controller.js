@@ -74,7 +74,7 @@ exports.SerialsController = SerialsController = __decorate([
     (0, swagger_1.ApiBearerAuth)('bearer'),
     (0, common_1.Controller)('owner/serials'),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
     __metadata("design:paramtypes", [serials_service_1.SerialsService])
 ], SerialsController);
 //# sourceMappingURL=serials.controller.js.map

@@ -55,7 +55,7 @@ let PaymentMethodFeesController = class PaymentMethodFeesController {
 exports.PaymentMethodFeesController = PaymentMethodFeesController;
 __decorate([
     (0, common_1.Get)(),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR),
     (0, swagger_1.ApiOperation)({
         summary: `Read global payment-method fee config (${branding_1.APP_BRAND})`,
         description: 'Used for reporting-layer bank commission on non-cash electronic settlements.',
@@ -66,7 +66,7 @@ __decorate([
 ], PaymentMethodFeesController.prototype, "getConfig", null);
 __decorate([
     (0, common_1.Patch)(),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
     (0, swagger_1.ApiOperation)({
         summary: `Update global payment-method fee config (${branding_1.APP_BRAND})`,
     }),

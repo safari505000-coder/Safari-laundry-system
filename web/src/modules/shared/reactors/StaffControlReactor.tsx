@@ -32,6 +32,7 @@ import {
 
 const ROLE_OPTIONS: SafariRole[] = [
   'OWNER',
+  'GENERAL_MANAGER',
   'MANAGER',
   'DRIVER',
   'CALL_CENTER',

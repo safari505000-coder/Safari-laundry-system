@@ -8,7 +8,7 @@ export default function OwnerInventoryReportPage() {
   const { t } = useTranslation();
   const { token, hasRole } = useAuth();
 
-  if (!hasRole('OWNER')) return <Navigate to="/" replace />;
+  if (!hasRole('OWNER', 'GENERAL_MANAGER')) return <Navigate to="/" replace />;
   if (!token) return null;
 
   return (

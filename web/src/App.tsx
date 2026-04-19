@@ -49,12 +49,12 @@ import { BranchesPage } from '@/pages/branches-page';
 import { useAuth } from '@/contexts/auth-context';
 
 /**
- * V18.0 — OWNER's landing page is the Financial Island. All other roles keep
- * the operational dashboard as the index route.
+ * V19.0 — OWNER and GENERAL_MANAGER (the Owner's Second Eye) land on the
+ * Financial Island. All other roles keep the operational dashboard.
  */
 function IndexRoute() {
   const { hasRole } = useAuth();
-  if (hasRole('OWNER')) {
+  if (hasRole('OWNER', 'GENERAL_MANAGER')) {
     return <Navigate to="/financials" replace />;
   }
   return <DashboardPage />;
@@ -98,7 +98,7 @@ export default function App() {
                 <Route
                   path="branches"
                   element={
-                    <RequireRoles roles={['OWNER']}>
+                    <RequireRoles roles={['OWNER', 'GENERAL_MANAGER']}>
                       <BranchesPage />
                     </RequireRoles>
                   }
@@ -106,7 +106,7 @@ export default function App() {
                 <Route
                   path="manage-items"
                   element={
-                    <RequireRoles roles={['OWNER']}>
+                    <RequireRoles roles={['OWNER', 'GENERAL_MANAGER']}>
                       <ManageItems />
                     </RequireRoles>
                   }
@@ -118,7 +118,9 @@ export default function App() {
                 <Route
                   path="knet-audit"
                   element={
-                    <RequireRoles roles={['OWNER', 'ACCOUNTANT']}>
+                    <RequireRoles
+                      roles={['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT']}
+                    >
                       <KnetAudit />
                     </RequireRoles>
                   }
@@ -126,7 +128,7 @@ export default function App() {
                 <Route
                   path="owner/inventory"
                   element={
-                    <RequireRoles roles={['OWNER']}>
+                    <RequireRoles roles={['OWNER', 'GENERAL_MANAGER']}>
                       <OwnerInventoryReportPage />
                     </RequireRoles>
                   }
@@ -134,7 +136,9 @@ export default function App() {
                 <Route
                   path="accountant/inventory"
                   element={
-                    <RequireRoles roles={['OWNER', 'ACCOUNTANT']}>
+                    <RequireRoles
+                      roles={['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT']}
+                    >
                       <AccountantInventoryReportPage />
                     </RequireRoles>
                   }
@@ -150,7 +154,9 @@ export default function App() {
                 <Route
                   path="customers"
                   element={
-                    <RequireRoles roles={['OWNER', 'CALL_CENTER']}>
+                    <RequireRoles
+                      roles={['OWNER', 'GENERAL_MANAGER', 'CALL_CENTER']}
+                    >
                       <CustomersPage />
                     </RequireRoles>
                   }
@@ -158,7 +164,9 @@ export default function App() {
                 <Route
                   path="collections"
                   element={
-                    <RequireRoles roles={['OWNER', 'CALL_CENTER']}>
+                    <RequireRoles
+                      roles={['OWNER', 'GENERAL_MANAGER', 'CALL_CENTER']}
+                    >
                       <CollectionsPage />
                     </RequireRoles>
                   }
@@ -167,7 +175,9 @@ export default function App() {
                 <Route
                   path="whatsapp-tools"
                   element={
-                    <RequireRoles roles={['OWNER', 'ACCOUNTANT']}>
+                    <RequireRoles
+                      roles={['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT']}
+                    >
                       <WhatsappToolsPage />
                     </RequireRoles>
                   }
@@ -204,7 +214,9 @@ export default function App() {
                 <Route
                   path="finance/manager-custody-aging"
                   element={
-                    <RequireRoles roles={['OWNER', 'ACCOUNTANT']}>
+                    <RequireRoles
+                      roles={['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT']}
+                    >
                       <ManagerCustodyAgingPage />
                     </RequireRoles>
                   }
@@ -212,7 +224,9 @@ export default function App() {
                 <Route
                   path="staff-debts"
                   element={
-                    <RequireRoles roles={['OWNER', 'ACCOUNTANT']}>
+                    <RequireRoles
+                      roles={['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT']}
+                    >
                       <StaffDebtsPage />
                     </RequireRoles>
                   }
@@ -220,7 +234,7 @@ export default function App() {
                 <Route
                   path="owner/serials"
                   element={
-                    <RequireRoles roles={['OWNER']}>
+                    <RequireRoles roles={['OWNER', 'GENERAL_MANAGER']}>
                       <OwnerSerialsPage />
                     </RequireRoles>
                   }
@@ -228,7 +242,7 @@ export default function App() {
                 <Route
                   path="owner/debt-recovery"
                   element={
-                    <RequireRoles roles={['OWNER']}>
+                    <RequireRoles roles={['OWNER', 'GENERAL_MANAGER']}>
                       <DebtRecoveryReportPage />
                     </RequireRoles>
                   }
@@ -236,7 +250,7 @@ export default function App() {
                 <Route
                   path="financials"
                   element={
-                    <RequireRoles roles={['OWNER']}>
+                    <RequireRoles roles={['OWNER', 'GENERAL_MANAGER']}>
                       <FinancialsPage />
                     </RequireRoles>
                   }
@@ -246,7 +260,9 @@ export default function App() {
                 <Route
                   path="reports"
                   element={
-                    <RequireRoles roles={['OWNER', 'ACCOUNTANT']}>
+                    <RequireRoles
+                      roles={['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT']}
+                    >
                       <ReportsPage />
                     </RequireRoles>
                   }
@@ -254,7 +270,9 @@ export default function App() {
                 <Route
                   path="unified-ledger"
                   element={
-                    <RequireRoles roles={['OWNER', 'ACCOUNTANT']}>
+                    <RequireRoles
+                      roles={['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT']}
+                    >
                       <UnifiedLedgerPage />
                     </RequireRoles>
                   }

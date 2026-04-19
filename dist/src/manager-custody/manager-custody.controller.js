@@ -170,7 +170,7 @@ __decorate([
 ], ManagerCustodyController.prototype, "reject", null);
 __decorate([
     (0, common_1.Get)('aging'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.ACCOUNTANT),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),
     (0, swagger_1.ApiOperation)({
         summary: `Cash Held by Managers — aging report (${branding_1.APP_BRAND})`,
         description: 'Dastur §3: rows older than 24h without VERIFIED status are flagged as overdue (red in UI).',

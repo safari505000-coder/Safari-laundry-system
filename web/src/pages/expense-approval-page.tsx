@@ -27,7 +27,7 @@ export function ExpenseApprovalPage() {
   const { t } = useTranslation();
   const { token, hasRole } = useAuth();
   const dateLocale = useAppLocale();
-  const canUse = hasRole('ACCOUNTANT', 'OWNER') ?? false;
+  const canUse = hasRole('ACCOUNTANT', 'OWNER', 'GENERAL_MANAGER') ?? false;
   const [rows, setRows] = useState<ExpenseRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);

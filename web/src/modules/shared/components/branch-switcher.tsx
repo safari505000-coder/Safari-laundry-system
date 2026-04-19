@@ -30,7 +30,7 @@ export function BranchSwitcher() {
     {},
   );
 
-  const isOwner = hasRole('OWNER');
+  const isOwner = hasRole('OWNER', 'GENERAL_MANAGER');
 
   const anyBranchLive = useMemo(
     () => Object.values(liveByBranch).some(Boolean),
