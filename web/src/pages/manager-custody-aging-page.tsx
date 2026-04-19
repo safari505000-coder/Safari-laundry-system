@@ -11,6 +11,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
+import { can } from '@/modules/shared/auth/access-matrix';
 import {
   ApiError,
   getManagerCustodyAging,
@@ -68,7 +69,7 @@ type StatusFilter = ManagerCashCustodyStatus | typeof ALL_STATUSES;
 export function ManagerCustodyAgingPage() {
   const { t, i18n } = useTranslation();
   const dateLocale = useAppLocale();
-  const { token, hasRole } = useAuth();
+  const { token, user } = useAuth();
   const [data, setData] = useState<ManagerCustodyAgingResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<StatusFilter>(ALL_STATUSES);
@@ -84,8 +85,8 @@ export function ManagerCustodyAgingPage() {
   // see this aging queue just like OWNER and ACCOUNTANT. Backend already
   // allows GM on GET /manager-custody/aging; this gate was the UI lag.
   // Actions (verify/reject) remain ACCOUNTANT-only.
-  const canView = hasRole('OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT');
-  const canAct = hasRole('ACCOUNTANT');
+  const canView = can(user, 'managerCustodyAging.view');
+  const canAct = can(user, 'managerCustodyAging.act');
 
   const load = useCallback(async () => {
     if (!token || !canView) return;

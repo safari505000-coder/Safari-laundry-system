@@ -4,6 +4,7 @@ import { Link, Navigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { FileSpreadsheet, Loader2, Paperclip, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
+import { can } from '@/modules/shared/auth/access-matrix';
 import {
   getUnifiedLedgerStream,
   type DriverBalanceResponse,
@@ -88,7 +89,7 @@ function downloadCsv(filename: string, rows: UnifiedLedgerStreamRow[]) {
 export function UnifiedLedgerPage() {
   const { t } = useTranslation();
   const dateLocale = useAppLocale();
-  const { token, hasRole, ownerBranchId } = useAuth();
+  const { token, user, ownerBranchId } = useAuth();
   const [from, setFrom] = useState(() => startOfDayIso(new Date()));
   const [to, setTo] = useState(() => endOfDayIso(new Date()));
   const [driverId, setDriverId] = useState<string>('ALL');
@@ -96,7 +97,7 @@ export function UnifiedLedgerPage() {
   const [rows, setRows] = useState<UnifiedLedgerStreamRow[] | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const allowed = hasRole('ACCOUNTANT', 'OWNER') ?? false;
+  const allowed = can(user, 'unifiedLedger.view');
 
   useEffect(() => {
     if (!token || !allowed) return;

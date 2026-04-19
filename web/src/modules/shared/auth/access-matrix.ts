@@ -43,6 +43,9 @@ export const ACCESS = {
     'SUPERVISOR',
     'VIEWER',
   ],
+  // Dastur §2 V19.3 — only DRIVER issues field invoices via POST
+  // /orders/quick. Manager uses POS, CC does not create orders.
+  'orders.createQuick': ['DRIVER'] satisfies readonly SafariRole[],
   'shifts.view': [
     'OWNER',
     'GENERAL_MANAGER',
@@ -67,29 +70,47 @@ export const ACCESS = {
   'ownerDashboard.view': EXEC_PAIR,
 
   // ─── Accountant island (shared with exec pair) ────────────────────
+  // Pattern: `.view` = OWNER/GM oversight + ACCOUNTANT. `.act` / `.reconcile` /
+  // `.stockIn` = accountant-only mutation, so OWNER/GM read but never book.
   'knetAudit.view': withExec('ACCOUNTANT'),
+  'knetAudit.reconcile': ['ACCOUNTANT'] satisfies readonly SafariRole[],
   'inventoryReport.view': withExec('ACCOUNTANT'),
-  // Stock-in is an accountant-only mutation. OWNER/GM oversee via the
-  // read-only `inventoryReport.view`. Tightened from the historical
-  // "master bypass lets anyone in but the page hides the button".
   'inventoryReport.stockIn': ['ACCOUNTANT'] satisfies readonly SafariRole[],
   'unifiedLedger.view': withExec('ACCOUNTANT'),
   'reports.view': withExec('ACCOUNTANT'),
   'managerCustodyAging.view': withExec('ACCOUNTANT'),
+  'managerCustodyAging.act': ['ACCOUNTANT'] satisfies readonly SafariRole[],
   'staffDebts.view': withExec('ACCOUNTANT'),
+  'staffDebts.act': ['ACCOUNTANT'] satisfies readonly SafariRole[],
   'expenseApproval.view': withExec('ACCOUNTANT'),
+  'expenseApproval.act': ['ACCOUNTANT'] satisfies readonly SafariRole[],
   'whatsappTools.use': withExec('CALL_CENTER'),
-  'driverMonitor.view': withExec('ACCOUNTANT', 'CALL_CENTER'),
+  // Safari Pulse driver radar — OWNER only. Backend guards
+  // `/api/finance/driver-monitoring` with @Roles(OWNER), so the UI
+  // must stay locked down to match (no more CC/Accountant bypass).
+  'driverMonitor.view': ['OWNER'] satisfies readonly SafariRole[],
 
   // ─── Call centre ──────────────────────────────────────────────────
+  // `.view` = exec oversight + CC. `.manage` / `.act` = CC-only mutations
+  // where the Dustur makes CC the system of record (reminders, plan
+  // management). OWNER keeps manage on the subscriber CRM to support
+  // escalations — this mirrors the pre-refactor behaviour so we don't
+  // remove a tool the Owner actually uses.
   'customers.view': withExec('CALL_CENTER'),
+  'customers.manage': ['OWNER', 'CALL_CENTER'] satisfies readonly SafariRole[],
   'collections.view': withExec('CALL_CENTER'),
+  'collections.act': ['CALL_CENTER'] satisfies readonly SafariRole[],
   'subscriptions.view': withExec('CALL_CENTER'),
+  'subscriptions.manage': ['CALL_CENTER'] satisfies readonly SafariRole[],
   'subscribers.view': withExec('CALL_CENTER'),
+  'subscribers.manage': ['OWNER', 'CALL_CENTER'] satisfies readonly SafariRole[],
 
   // ─── Branch manager ───────────────────────────────────────────────
   'managerCustody.view': withExec('MANAGER'),
+  'managerCustody.act': ['MANAGER'] satisfies readonly SafariRole[],
   'expenses.view': withExec('MANAGER'),
+  'expenses.record': ['MANAGER'] satisfies readonly SafariRole[],
+  'pos.exitToDashboard': withExec('MANAGER'),
 
   // ─── Driver personal island ───────────────────────────────────────
   'myDeposits.view': withExec('DRIVER'),

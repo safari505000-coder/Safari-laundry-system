@@ -4,6 +4,7 @@ import { Navigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { FileDown, Loader2, Printer, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
+import { can } from '@/modules/shared/auth/access-matrix';
 import {
   type DailyCashClosingReport,
   type DriverBalanceResponse,
@@ -45,7 +46,7 @@ function endOfDayIso(d: Date): string {
 export function ReportsPage() {
   const { t } = useTranslation();
   const dateLocale = useAppLocale();
-  const { token, hasRole, ownerBranchId } = useAuth();
+  const { token, hasRole, ownerBranchId, user } = useAuth();
   const [from, setFrom] = useState(() => startOfDayIso(new Date()));
   const [to, setTo] = useState(() => endOfDayIso(new Date()));
   const [payFilter, setPayFilter] = useState<string>('ALL');
@@ -59,9 +60,10 @@ export function ReportsPage() {
   const [busy, setBusy] = useState(false);
 
   /** Operational reports (invoices / ledger / closing). P&L lives on Financials (OWNER). */
-  const canView = hasRole('OWNER', 'ACCOUNTANT') ?? false;
+  const canView = can(user, 'reports.view');
 
-  const isOwner = hasRole('OWNER', 'GENERAL_MANAGER') ?? false;
+  // Safari Pulse live feed — OWNER only at the API layer.
+  const canSeePulse = can(user, 'liveMonitor.view');
 
   useEffect(() => {
     if (!token || !canView) return;
@@ -184,7 +186,7 @@ export function ReportsPage() {
     <div
       className={cn(
         'flex flex-col gap-6 xl:flex-row xl:items-start',
-        isOwner ? 'xl:gap-8' : 'xl:gap-6',
+        canSeePulse ? 'xl:gap-8' : 'xl:gap-6',
       )}
     >
       <div className="min-w-0 flex-1 space-y-6">
@@ -554,7 +556,7 @@ export function ReportsPage() {
         </TabsContent>
       </Tabs>
       </div>
-      {isOwner && token ?
+      {canSeePulse && token ?
         <LiveOperationsFeed
           token={token}
           prominent

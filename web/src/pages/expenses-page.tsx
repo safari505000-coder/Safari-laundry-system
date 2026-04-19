@@ -4,6 +4,7 @@ import { Navigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Loader2, Plus, Receipt } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
+import { can } from '@/modules/shared/auth/access-matrix';
 import {
   API_EXPENSES,
   type BranchRow,
@@ -42,7 +43,7 @@ function endOfDayIso(d: Date): string {
 export function ExpensesPage() {
   const { t } = useTranslation();
   const dateLocale = useAppLocale();
-  const { token, hasRole, ownerBranchId } = useAuth();
+  const { token, user, hasRole, ownerBranchId } = useAuth();
   const [from, setFrom] = useState(() => startOfDayIso(new Date()));
   const [to, setTo] = useState(() => endOfDayIso(new Date()));
   const [rows, setRows] = useState<ExpenseRow[] | null>(null);
@@ -60,8 +61,8 @@ export function ExpensesPage() {
   const [note, setNote] = useState('');
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
 
-  const canManage = hasRole('MANAGER') ?? false;
-  const canView = hasRole('MANAGER', 'OWNER') ?? false;
+  const canManage = can(user, 'expenses.record');
+  const canView = can(user, 'expenses.view');
 
   const load = useCallback(async () => {
     if (!token) return;

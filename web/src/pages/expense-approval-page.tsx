@@ -4,6 +4,7 @@ import { Navigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
+import { can } from '@/modules/shared/auth/access-matrix';
 import {
   type ExpenseRow,
   ApiError,
@@ -25,9 +26,12 @@ import {
 
 export function ExpenseApprovalPage() {
   const { t } = useTranslation();
-  const { token, hasRole } = useAuth();
+  const { token, user } = useAuth();
   const dateLocale = useAppLocale();
-  const canUse = hasRole('ACCOUNTANT', 'OWNER', 'GENERAL_MANAGER') ?? false;
+  const canUse = can(user, 'expenseApproval.view');
+  // ACCOUNTANT-only mutation: OWNER/GM oversee the queue but may not
+  // approve/reject/audit expenses themselves (Dustur §4.2).
+  const canAct = can(user, 'expenseApproval.act');
   const [rows, setRows] = useState<ExpenseRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -171,32 +175,38 @@ export function ExpenseApprovalPage() {
                         )}
                       </TableCell>
                       <TableCell>
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            size="sm"
-                            variant="success"
-                            disabled={busyId === row.id}
-                            onClick={() => void setStatus(row.id, 'APPROVED')}
-                          >
-                            {t('expenseApproval.approve')}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            disabled={busyId === row.id}
-                            onClick={() => void setStatus(row.id, 'REJECTED')}
-                          >
-                            {t('expenseApproval.reject')}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            disabled={busyId === row.id}
-                            onClick={() => void setStatus(row.id, 'AUDIT')}
-                          >
-                            {t('expenseApproval.transferAudit')}
-                          </Button>
-                        </div>
+                        {canAct ? (
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              size="sm"
+                              variant="success"
+                              disabled={busyId === row.id}
+                              onClick={() => void setStatus(row.id, 'APPROVED')}
+                            >
+                              {t('expenseApproval.approve')}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              disabled={busyId === row.id}
+                              onClick={() => void setStatus(row.id, 'REJECTED')}
+                            >
+                              {t('expenseApproval.reject')}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              disabled={busyId === row.id}
+                              onClick={() => void setStatus(row.id, 'AUDIT')}
+                            >
+                              {t('expenseApproval.transferAudit')}
+                            </Button>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">
+                            —
+                          </span>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))

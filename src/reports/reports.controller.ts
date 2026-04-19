@@ -62,11 +62,11 @@ export class ReportsController {
   }
 
   @Get('live-feed')
-  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
+  @Roles(SafariRole.OWNER)
   @ApiOperation({
     summary: `Recent invoices — live operations feed (${APP_BRAND})`,
     description:
-      'OWNER only. Last N orders by createdAt (all branches). Lightweight vs issued-invoices report.',
+      'OWNER only. Safari Pulse feed (last N orders by createdAt, all branches). Locked to OWNER at the API layer regardless of UI route guards.',
   })
   liveFeed(@Query() q: LiveFeedQueryDto) {
     return this.reportsService.liveFeedRecent(q.limit ?? 10);

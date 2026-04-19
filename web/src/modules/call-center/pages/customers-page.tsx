@@ -4,6 +4,7 @@ import { Navigate } from 'react-router-dom';
 import { Loader2, RefreshCw, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/auth-context';
+import { can } from '@/modules/shared/auth/access-matrix';
 import { type CustomerDirectoryRow, ApiError, apiJson } from '@/lib/api';
 // V1.6.9 — WhatsApp / Payment-link actions were removed from this page;
 // those flows now live exclusively in the Collections island (Isolated
@@ -47,8 +48,8 @@ function toDraft(row: CustomerDirectoryRow['customer']): EditDraft {
 
 export function CustomersPage() {
   const { t } = useTranslation();
-  const { token, hasRole } = useAuth();
-  const allowed = hasRole('OWNER', 'CALL_CENTER');
+  const { token, user } = useAuth();
+  const allowed = can(user, 'customers.view');
   const { q, setQ, rows, loading, error, reload } = useCustomersDataBridge({
     token,
   });

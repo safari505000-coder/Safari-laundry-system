@@ -38,6 +38,7 @@ import {
   TableRow,
 } from '@/modules/shared/components/ui/table';
 import { useAuth } from '@/contexts/auth-context';
+import { can } from '@/modules/shared/auth/access-matrix';
 import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
 import {
   type CallCenterPlan,
@@ -730,9 +731,9 @@ function ExtendSubscriptionDialog({
 export function SubscribersPage() {
   const { t } = useTranslation();
   const locale = useAppLocale();
-  const { token, hasRole } = useAuth();
-  const allowed = hasRole('OWNER', 'CALL_CENTER');
-  const canManage = hasRole('CALL_CENTER', 'OWNER');
+  const { token, user } = useAuth();
+  const allowed = can(user, 'subscribers.view');
+  const canManage = can(user, 'subscribers.manage');
 
   const [rows, setRows] = useState<SubscriberListRow[] | null>(null);
   const [loading, setLoading] = useState(true);

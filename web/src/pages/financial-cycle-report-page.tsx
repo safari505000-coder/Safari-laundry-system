@@ -4,6 +4,7 @@ import { Navigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { ExternalLink } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
+import { can } from '@/modules/shared/auth/access-matrix';
 import {
   type FinancialCycleRow,
   getFinancialCycleReport,
@@ -24,8 +25,8 @@ import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
 export function FinancialCycleReportPage() {
   const { t } = useTranslation();
   const dateLocale = useAppLocale();
-  const { token, hasRole } = useAuth();
-  const canUse = hasRole('OWNER', 'GENERAL_MANAGER') ?? false;
+  const { token, user } = useAuth();
+  const canUse = can(user, 'financialCycleReport.view');
   const [rows, setRows] = useState<FinancialCycleRow[]>([]);
   const [loading, setLoading] = useState(true);
 

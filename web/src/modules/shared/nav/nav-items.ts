@@ -143,7 +143,7 @@ export const driverMonitorItem: NavItem = {
   to: '/admin/driver-monitoring',
   labelKey: 'nav.driverMonitor',
   icon: Truck,
-  roles: ['CALL_CENTER', 'OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT'],
+  roles: ['OWNER'],
 };
 
 /** Dastur §4 — Owner / GM view of the Smart Inventory report (read-only). */

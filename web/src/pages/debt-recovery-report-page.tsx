@@ -21,6 +21,7 @@ import {
   TableRow,
 } from '@/modules/shared/components/ui/table';
 import { useAuth } from '@/contexts/auth-context';
+import { can } from '@/modules/shared/auth/access-matrix';
 import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
 import { type DebtRecoveryReport, apiJson, ApiError } from '@/lib/api';
 import { formatKwdLabel } from '@/lib/kwd';
@@ -46,8 +47,8 @@ function subtractDays(date: Date, days: number): Date {
 export function DebtRecoveryReportPage() {
   const { t } = useTranslation();
   const locale = useAppLocale();
-  const { token, hasRole } = useAuth();
-  const isOwner = hasRole('OWNER', 'GENERAL_MANAGER');
+  const { token, user } = useAuth();
+  const isOwner = can(user, 'debtRecoveryReport.view');
 
   const todayIso = useMemo(() => isoDay(new Date()), []);
   const defaultFromIso = useMemo(

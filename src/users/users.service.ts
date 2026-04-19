@@ -187,6 +187,33 @@ export class UsersService {
     }
   }
 
+  /**
+   * Flip a user's `isActive` flag without touching role/branch/password.
+   * OWNER accounts are protected from deactivation so the Owner can
+   * never lock themselves out via a GM action. Anything else is fair
+   * game for the Owner and General Manager.
+   */
+  async setActive(
+    id: string,
+    isActive: boolean,
+  ): Promise<UserPublic> {
+    const existing = await this.prisma.user.findUnique({
+      where: { id },
+      select: { id: true, safariRole: true },
+    });
+    if (!existing) {
+      throw new NotFoundException('User not found');
+    }
+    if (existing.safariRole === SafariRole.OWNER && !isActive) {
+      throw new ForbiddenException('Owner accounts cannot be deactivated');
+    }
+    return this.prisma.user.update({
+      where: { id },
+      data: { isActive } as unknown as Prisma.UserUpdateInput,
+      select: userPublicSelect as Prisma.UserSelect,
+    });
+  }
+
   async remove(id: string): Promise<{ id: string; deleted: boolean }> {
     const user = await this.prisma.user.findUnique({
       where: { id },

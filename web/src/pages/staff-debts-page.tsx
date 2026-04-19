@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useAuth } from '@/contexts/auth-context';
+import { can } from '@/modules/shared/auth/access-matrix';
 import {
   ApiError,
   apiJson,
@@ -104,12 +105,13 @@ function isDriverOverdue(row: DriverBalanceRow, now: number): boolean {
  */
 export function StaffDebtsPage() {
   const { t } = useTranslation();
-  const { token, hasRole } = useAuth();
+  const { token, user } = useAuth();
 
   // V19.2 — GENERAL_MANAGER inherits Accountant + Owner audit scope for
-  // internal-cash liabilities. Route guard in App.tsx already allows GM;
-  // this inner gate was the reason "مديونيات الموظفين" redirected GM to /.
-  const allowed = hasRole('OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT') ?? false;
+  // internal-cash liabilities. Sole source of truth = access-matrix
+  // (`staffDebts.view`), so updates to who can see this page happen in
+  // exactly one place.
+  const allowed = can(user, 'staffDebts.view');
 
   const [drivers, setDrivers] = useState<DriverBalanceRow[] | null>(null);
   const [custody, setCustody] = useState<ManagerCashCustodyRow[] | null>(null);

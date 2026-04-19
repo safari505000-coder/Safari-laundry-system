@@ -3,6 +3,7 @@ import { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/auth-context';
+import { can } from '@/modules/shared/auth/access-matrix';
 import { apiJson, type DriverMonitoringResponse } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/modules/shared/components/ui/card';
 import { Badge } from '@/modules/shared/components/ui/badge';
@@ -16,13 +17,15 @@ const KUWAIT_CENTER: [number, number] = [29.3759, 47.9774];
 
 export function DriverMonitorPage() {
   const { t } = useTranslation();
-  const { token, hasRole } = useAuth();
+  const { token, user } = useAuth();
   const [data, setData] = useState<DriverMonitoringResponse | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [editor, setEditor] = useState<Record<string, { vehicleLabel: string; lastKnownLocation: string }>>({});
   const mapRef = useRef<HTMLDivElement | null>(null);
   const leafletMapRef = useRef<L.Map | null>(null);
-  const canUse = hasRole('CALL_CENTER', 'OWNER', 'ACCOUNTANT') ?? false;
+  // Phase 1.1 — Pulse radar is OWNER only (matches backend `@Roles(OWNER)`
+  // on `/api/finance/driver-monitoring`). CC/Accountant no longer see it.
+  const canUse = can(user, 'driverMonitor.view');
 
   const load = () =>
     apiJson<DriverMonitoringResponse>('/api/finance/driver-monitoring', {
@@ -103,7 +106,7 @@ export function DriverMonitorPage() {
                   ? 'Live GPS'
                   : `Branch fallback: ${d.branch?.name ?? '—'}`}
               </p>
-              {hasRole('OWNER', 'GENERAL_MANAGER') ? (
+              {canUse ? (
                 <div className="mt-3 space-y-2 rounded-md border p-2">
                   <div className="space-y-1">
                     <Label className="text-xs">Vehicle Label</Label>

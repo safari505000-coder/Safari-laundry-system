@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/auth-context';
+import { can } from '@/modules/shared/auth/access-matrix';
 import {
   Home,
   Layers,
@@ -21,14 +22,14 @@ import { PosAuxiliaryUi } from '@/modules/shared/components/pos/pos-auxiliary-ui
 
 /** Branch / back-office POS (manager & owner). Drivers use `DriverPOS`. */
 export function PosPage() {
-  const { token, hasRole } = useAuth();
+  const { token, user } = useAuth();
   const priceList = usePriceList({ token });
   /*
    * Dastur §2.1 — back-office POS is shared by MANAGER + OWNER. Only these
    * roles get the "Back to Dashboard" shortcut so they can exit the POS
    * without fumbling through the browser back button.
    */
-  const canExitToDashboard = hasRole('MANAGER', 'OWNER') ?? false;
+  const canExitToDashboard = can(user, 'pos.exitToDashboard');
   const p = usePosEngine({ variant: 'branch', priceList });
   const { t } = useTranslation();
 

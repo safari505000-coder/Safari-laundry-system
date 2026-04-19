@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Plus } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
+import { can } from '@/modules/shared/auth/access-matrix';
 import { type OrderRow, apiJson, ApiError } from '@/lib/api';
 import { CreateOrderDialog } from '@/modules/shared/components/orders/create-order-dialog';
 import { OrderDetailDialog } from '@/modules/shared/components/orders/order-detail-dialog';
@@ -39,7 +40,7 @@ export function OrdersPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const dateLocale = useAppLocale();
-  const { token, hasRole } = useAuth();
+  const { token, user } = useAuth();
   const [orders, setOrders] = useState<OrderRow[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
@@ -80,7 +81,7 @@ export function OrdersPage() {
    * button is therefore only shown to DRIVER (who creates field orders
    * via POST /orders/quick).
    */
-  const canCreate = hasRole('DRIVER') ?? false;
+  const canCreate = can(user, 'orders.createQuick');
 
   const rows =
     orders ?

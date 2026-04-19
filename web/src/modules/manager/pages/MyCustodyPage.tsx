@@ -14,6 +14,7 @@ import {
   Upload,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
+import { can } from '@/modules/shared/auth/access-matrix';
 import {
   ApiError,
   apiJson,
@@ -62,7 +63,7 @@ import { cn } from '@/lib/utils';
 export function MyCustodyPage() {
   const { t, i18n } = useTranslation();
   const dateLocale = useAppLocale();
-  const { token, hasRole, user } = useAuth();
+  const { token, user } = useAuth();
   const [rows, setRows] = useState<ManagerCashCustodyRow[] | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -94,8 +95,8 @@ export function MyCustodyPage() {
   const bulkPreviewRef = useRef<string | null>(null);
   const [bulkPreviewUrl, setBulkPreviewUrl] = useState<string | null>(null);
 
-  const canUse = hasRole('MANAGER', 'OWNER') ?? false;
-  const isManager = hasRole('MANAGER') ?? false;
+  const canUse = can(user, 'managerCustody.view');
+  const isManager = can(user, 'managerCustody.act');
   const managerBranchId = user?.branchId ?? null;
 
   const load = useCallback(async () => {

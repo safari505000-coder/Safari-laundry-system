@@ -210,17 +210,11 @@ export class FinanceController {
   }
 
   @Get('driver-monitoring')
-  @Roles(
-    SafariRole.OWNER,
-    SafariRole.GENERAL_MANAGER,
-    SafariRole.CALL_CENTER,
-    SafariRole.MANAGER,
-    SafariRole.ACCOUNTANT,
-  )
+  @Roles(SafariRole.OWNER)
   @ApiOperation({
     summary: `Driver monitoring map feed (${APP_BRAND})`,
     description:
-      'Active ON_SHIFT drivers with lastKnownLocation marker; falls back to branch location when GPS is unavailable.',
+      'OWNER only. Safari Pulse map feed of active ON_SHIFT drivers with lastKnownLocation markers. Locked to OWNER at the API layer regardless of UI route guards.',
   })
   getDriverMonitoring() {
     return this.financeService.getDriverMonitoring();

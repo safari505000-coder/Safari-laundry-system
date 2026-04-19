@@ -62,7 +62,7 @@ type RowStatus = 'green' | 'yellow' | 'red';
 
 export function KnetAudit() {
   const { t } = useTranslation();
-  const { token, user, hasRole } = useAuth();
+  const { token, user } = useAuth();
   const [from, setFrom] = useState(() => startOfDayIso(new Date()));
   const [to, setTo] = useState(() => endOfDayIso(new Date()));
   const [loading, setLoading] = useState(false);
@@ -81,7 +81,7 @@ export function KnetAudit() {
    * side-load a bank export that would flip all rows to green/yellow in
    * their browser session — reconciliation is an accountant duty.
    */
-  const canReconcile = hasRole('ACCOUNTANT');
+  const canReconcile = can(user, 'knetAudit.reconcile');
 
   useEffect(() => {
     if (!token || !allowed) return;

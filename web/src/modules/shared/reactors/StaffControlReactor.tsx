@@ -162,20 +162,15 @@ export function StaffControlReactor({ token }: Props) {
 
   async function toggleActive(u: TeamUserRow) {
     if (!token) return;
-    const nextBranchId = branchDraftByUser[u.id] ?? u.branchId ?? '';
-    if (!nextBranchId) {
-      toast.error('اختيار الفرع إلزامي');
-      return;
-    }
     setActionBusyId(u.id);
     try {
-      await apiJson<TeamUserRow>(`/api/users/${u.id}`, {
+      // Dedicated soft-lock endpoint (GM available, OWNER-protected).
+      // Unlike the generic `PATCH /users/:id`, this one only flips
+      // `isActive` and cannot leak into role/branch/password mutation.
+      await apiJson<TeamUserRow>(`/api/users/${u.id}/status`, {
         method: 'PATCH',
         token,
-        body: JSON.stringify({
-          isActive: !u.isActive,
-          branchId: nextBranchId,
-        }),
+        body: JSON.stringify({ isActive: !u.isActive }),
       });
       toast.success('تم تحديث الحالة');
       await loadUsers();
