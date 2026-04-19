@@ -154,15 +154,20 @@ export function DashboardPage() {
     'grid gap-4 sm:grid-cols-2 lg:grid-cols-3';
 
   const isOwner = hasRole('OWNER', 'GENERAL_MANAGER') ?? false;
-  const canCreateOrder = hasRole('DRIVER', 'MANAGER', 'CALL_CENTER');
+  const canCreateOrder = hasRole('DRIVER', 'MANAGER');
   /*
    * Dastur §1 — Managers exit the dashboard through /pos (their primary
    * sales tool), so the "فاتورة جديدة" quick-action card is hidden for
-   * them. Drivers and Call Center still see it: Call Center has no POS
-   * access at all, and Drivers occasionally open it from here too.
+   * them. Only Drivers still see the shortcut on the dashboard.
+   *
+   * Dastur §2 (V19.3) — Call Center does NOT issue invoices under any
+   * circumstance. They book subscriptions, chase debts, and operate
+   * WhatsApp outreach; they do not create orders. Any invoice that
+   * belongs to a customer must originate from the field (Driver) or the
+   * counter (Manager / POS).
    */
   const showNewInvoiceShortcut =
-    (hasRole('DRIVER', 'CALL_CENTER') ?? false) &&
+    (hasRole('DRIVER') ?? false) &&
     !(hasRole('OWNER', 'GENERAL_MANAGER') ?? false);
   /** Consolidated P&L is OWNER-only (`/financials`). */
   const canOpenFinancials = hasRole('OWNER', 'GENERAL_MANAGER');

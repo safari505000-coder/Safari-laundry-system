@@ -72,12 +72,15 @@ export function OrdersPage() {
   }, [location.state, location.pathname, navigate]);
 
   /*
-   * Dastur §1 — POS is the Manager's primary sales tool. The "طلب جديد"
-   * dialog stays available for DRIVER and CALL_CENTER (Call Center has no
-   * POS access, so they still need this entry point for phone orders),
-   * but is hidden for MANAGER to funnel them through /pos instead.
+   * Dastur §1 — POS is the Manager's primary sales tool, so "طلب جديد"
+   * is hidden for MANAGER to funnel them through /pos instead.
+   *
+   * Dastur §2 (V19.3) — Call Center does NOT issue invoices. Their job
+   * is subscriptions, collections, and WhatsApp outreach. The "طلب جديد"
+   * button is therefore only shown to DRIVER (who creates field orders
+   * via POST /orders/quick).
    */
-  const canCreate = hasRole('DRIVER', 'CALL_CENTER');
+  const canCreate = hasRole('DRIVER') ?? false;
 
   const rows =
     orders ?

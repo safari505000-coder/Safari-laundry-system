@@ -64,11 +64,11 @@ export class OrdersController {
 
   @Post()
   @UseGuards(RolesGuard)
-  @Roles(SafariRole.MANAGER, SafariRole.CALL_CENTER)
+  @Roles(SafariRole.MANAGER)
   @ApiOperation({
     summary: `Create order — back office (${APP_BRAND})`,
     description:
-      'Same validation as driver quick create: Kuwait phone, **totalPrice > 0**, **EXPRESS|NORMAL**, optional **lineItems** with total reconciliation. Optional driver assignment. Branch managers and call center only (drivers use POST /orders/quick).',
+      'Same validation as driver quick create: Kuwait phone, **totalPrice > 0**, **EXPRESS|NORMAL**, optional **lineItems** with total reconciliation. Optional driver assignment. Branch managers only — drivers use POST /orders/quick; Call Center is NOT permitted to issue invoices (Dastur §2, V19.3).',
   })
   create(@Body() dto: CreateOrderDto) {
     return this.ordersService.createAsManager(dto);
