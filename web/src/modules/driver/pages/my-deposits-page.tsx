@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
+  AlertTriangle,
   Banknote,
   CheckCircle2,
+  Clock,
   HandCoins,
   Info,
   Landmark,
-  Link2,
   Loader2,
-  MessageCircle,
   RefreshCw,
   Send,
 } from 'lucide-react';
@@ -16,13 +16,10 @@ import { toast } from 'sonner';
 import { useAuth } from '@/contexts/auth-context';
 import { RequireRoles } from '@/modules/shared/components/require-roles';
 import { ApiError, apiJson, type OrderRow } from '@/lib/api';
-import { formatKwdLabel } from '@/lib/kwd';
 import { Button } from '@/modules/shared/components/ui/button';
 import {
   Card,
   CardContent,
-  CardHeader,
-  CardTitle,
 } from '@/modules/shared/components/ui/card';
 import {
   Dialog,
@@ -31,14 +28,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/modules/shared/components/ui/dialog';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/modules/shared/components/ui/table';
 import { cn } from '@/lib/utils';
 
 /*
@@ -49,26 +38,36 @@ import { cn } from '@/lib/utils';
  * completely separate route (/manager/custody → MyCustodyPage) and is NOT
  * affected by this refactor.
  *
- * Shape of the page:
- *   1. Instruction banner — describes the driver's liability in plain Arabic.
- *   2. Method tiles (Cash / K-Net / Payment link) + grand-total strip.
- *   3. Unified invoice list across all methods.
- *   4. A single "Notify Manager for Handover" CTA — UI-only handshake.
+ * V3.8 cleanup:
+ *  - Removed the "Pending invoices" (الفواتير المعلقة) table. Invoices
+ *    are now the sole responsibility of the Field Collection Tracker
+ *    at `/driver/pending-invoices`. This page becomes a focused liability
+ *    dashboard (method tiles + grand total + handover CTA).
+ *  - Every KWD value renders at exactly 3 decimals (KWD standard).
+ *  - A status pill sits next to the "Notify Manager" button and reflects
+ *    the settlement state: Neutral / Pending / Rejected.
  *
- * Why no deposit form?
- *   Drivers hand cash physically to the branch manager; they don't submit
- *   bank slips. All slip uploads and accountant verification happen on the
- *   manager's dashboard AFTER the manager presses "Confirm Receipt" on
- *   /collect-driver-cash. The 24h aging clock starts there too — not here.
+ * V4.4 "Money Sources" directive:
+ *  - The Payment-Link tile is hidden. Link-method invoices are settled
+ *    online (customer → gateway → ledger) and never flow through the
+ *    driver's bag, so they don't belong in the driver's custody view.
+ *  - `grandTotal` now aggregates Cash + K-Net only.
  */
 
-type PendingMethod = 'CASH' | 'KNET' | 'PAYMENT_LINK';
-
-function whatsappHref(phone?: string | null): string | null {
-  if (!phone) return null;
-  const digits = phone.replace(/\D/g, '');
-  if (!digits) return null;
-  return `https://wa.me/${digits.startsWith('965') ? digits : `965${digits}`}`;
+/**
+ * V3.8 constitution: all KWD amounts on this page render with exactly
+ * three decimals (fils). Scoped to this file so we don't disturb the
+ * shared `formatKwdLabel` helper which other screens still rely on with
+ * its 2–4 dp tolerance.
+ */
+const KWD_SUFFIX = ' د.ك';
+function formatKwd3(value: string | number): string {
+  const n = typeof value === 'number' ? value : Number.parseFloat(value || '0');
+  if (!Number.isFinite(n)) return `${String(value)}${KWD_SUFFIX}`;
+  return `${n.toLocaleString('en-KW', {
+    minimumFractionDigits: 3,
+    maximumFractionDigits: 3,
+  })}${KWD_SUFFIX}`;
 }
 
 function sumTotals(list: OrderRow[]): number {
@@ -77,12 +76,71 @@ function sumTotals(list: OrderRow[]): number {
   return n;
 }
 
+/**
+ * Local settlement-status state machine.
+ *
+ * The driver→manager handover is a UI handshake only — there is no
+ * `SettlementRequest` / `DriverHandoverRequest` record on the backend
+ * today (verified: `prisma/schema.prisma` has `ManagerCashCustody.
+ * rejectionReason`, but that models the accountant→manager rejection,
+ * not the manager→driver one). Until a dedicated backing record ships
+ * we persist the "Sent" flag client-side with a 24 h TTL and auto-clear
+ * it when the driver's pending total drops to zero (the moment the
+ * manager taps "Confirm Receipt" and the orders leave PAID_TO_DRIVER).
+ *
+ * The `Rejected` branch is UI-complete; wire the manager's reason into
+ * `rejectedReason` below when the endpoint is available.
+ */
+type SettlementStatus =
+  | { kind: 'neutral' }
+  | { kind: 'pending'; sentAtIso: string }
+  | { kind: 'rejected'; reason: string };
+
+const HANDOVER_FLAG_TTL_MS = 24 * 60 * 60 * 1000;
+
+function handoverStorageKey(userId: string | undefined): string | null {
+  if (!userId) return null;
+  return `safari.driverCustody.lastHandover.${userId}`;
+}
+
+function readHandoverFlag(userId: string | undefined): string | null {
+  try {
+    const key = handoverStorageKey(userId);
+    if (!key || typeof window === 'undefined') return null;
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    const ts = Date.parse(raw);
+    if (!Number.isFinite(ts)) return null;
+    if (Date.now() - ts > HANDOVER_FLAG_TTL_MS) {
+      window.localStorage.removeItem(key);
+      return null;
+    }
+    return new Date(ts).toISOString();
+  } catch {
+    return null;
+  }
+}
+
+function writeHandoverFlag(userId: string | undefined, iso: string | null) {
+  try {
+    const key = handoverStorageKey(userId);
+    if (!key || typeof window === 'undefined') return;
+    if (iso) window.localStorage.setItem(key, iso);
+    else window.localStorage.removeItem(key);
+  } catch {
+    /* storage unavailable (private mode etc.) — silently degrade */
+  }
+}
+
 function MyCustodyContent() {
   const { t } = useTranslation();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [orders, setOrders] = useState<OrderRow[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [notifyOpen, setNotifyOpen] = useState(false);
+  const [sentAtIso, setSentAtIso] = useState<string | null>(() =>
+    readHandoverFlag(user?.id),
+  );
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -101,6 +159,10 @@ function MyCustodyContent() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    setSentAtIso(readHandoverFlag(user?.id));
+  }, [user?.id]);
+
   const pending = useMemo(
     () =>
       (orders ?? []).filter(
@@ -117,40 +179,53 @@ function MyCustodyContent() {
     () => pending.filter((o) => o.posPaymentMethod === 'KNET'),
     [pending],
   );
-  const linkRows = useMemo(
-    () => pending.filter((o) => o.posPaymentMethod === 'PAYMENT_LINK'),
-    [pending],
-  );
+  // V4.4 — "Money Sources" directive: driver custody only tracks physical
+  // money held by the driver. Payment-link invoices are settled online by
+  // the customer (gateway → ledger) and never pass through the driver's
+  // bag, so they are deliberately excluded from both the tiles and the
+  // grand total on this page. See `/driver/pending-invoices` for a full
+  // view that still lists link-method invoices for follow-up.
 
   const cashTotal = useMemo(() => sumTotals(cashRows), [cashRows]);
   const knetTotal = useMemo(() => sumTotals(knetRows), [knetRows]);
-  const linkTotal = useMemo(() => sumTotals(linkRows), [linkRows]);
-  const grandTotal = cashTotal + knetTotal + linkTotal;
-
-  /*
-   * Merge all three methods into a single chronological table for the
-   * driver's "Live Statement" view — most recent invoices first. Keep the
-   * method column so it still maps back to the three tiles above.
-   */
-  const allRows = useMemo(
-    () =>
-      [...cashRows, ...knetRows, ...linkRows].sort(
-        (a, b) =>
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-      ),
-    [cashRows, knetRows, linkRows],
-  );
+  const grandTotal = cashTotal + knetTotal;
 
   const hasAnyPending = grandTotal > 0;
 
+  useEffect(() => {
+    // Manager approved → balance cleared → retire the local "Sent" flag.
+    if (orders !== null && !hasAnyPending && sentAtIso) {
+      writeHandoverFlag(user?.id, null);
+      setSentAtIso(null);
+    }
+  }, [orders, hasAnyPending, sentAtIso, user?.id]);
+
+  // Placeholder for a future "manager rejected your handover" signal.
+  // There is no backing record today, so this stays null and the pill
+  // never flips to Rejected. Swap in the real feed when the endpoint
+  // lands (see file-header note).
+  const rejectedReason: string | null = null;
+
+  const status: SettlementStatus = rejectedReason
+    ? { kind: 'rejected', reason: rejectedReason }
+    : sentAtIso && hasAnyPending
+    ? { kind: 'pending', sentAtIso }
+    : { kind: 'neutral' };
+
   function notifyManager() {
     /*
-     * Strict "no-backend-change" constraint (current mission): this button
-     * is a pure UI handshake. The branch manager already sees the driver's
-     * live totals via /api/finance/driver-balance on their own dashboard
-     * (MyCustodyPage → "Driver Handover Approval" section). So "notifying"
-     * them really just means reassuring the driver + closing the dialog.
+     * Strict "no-backend-change" constraint: this button is a pure UI
+     * handshake. The branch manager already sees the driver's live
+     * totals via /api/finance/driver-balance on their dashboard
+     * (MyCustodyPage → "Driver Handover Approval" section). So
+     * "notifying" them really just means:
+     *   1. confirm the driver read and agrees with their totals, and
+     *   2. flip the local status pill to "Sent — Waiting for Manager"
+     *      so they don't keep tapping.
      */
+    const iso = new Date().toISOString();
+    writeHandoverFlag(user?.id, iso);
+    setSentAtIso(iso);
     toast.success(t('myDeposits.notifyManagerSuccess'));
     setNotifyOpen(false);
   }
@@ -191,7 +266,7 @@ function MyCustodyContent() {
         <p>{t('myDeposits.alert')}</p>
       </div>
 
-      <section className="grid gap-3 sm:grid-cols-3">
+      <section className="grid gap-3 sm:grid-cols-2">
         <MethodTile
           icon={<HandCoins className="h-4 w-4" aria-hidden />}
           label={t('myDeposits.methodCash')}
@@ -206,13 +281,11 @@ function MyCustodyContent() {
           count={knetRows.length}
           tone="sky"
         />
-        <MethodTile
-          icon={<Link2 className="h-4 w-4" aria-hidden />}
-          label={t('myDeposits.methodLink')}
-          total={linkTotal}
-          count={linkRows.length}
-          tone="violet"
-        />
+        {/*
+          V4.4 — "Payment Link" card intentionally hidden.
+          Link-method invoices are settled online; the driver never holds
+          that money, so it does not belong in the custody dashboard.
+        */}
       </section>
 
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-200 bg-white px-4 py-3">
@@ -220,14 +293,17 @@ function MyCustodyContent() {
           <Banknote className="h-4 w-4" aria-hidden />
           {t('myDeposits.grandTotalLabel')}
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <div className="text-lg font-semibold tabular-nums text-zinc-900">
-            {formatKwdLabel(grandTotal)}
+            {formatKwd3(grandTotal)}
           </div>
+          <SettlementStatusPill status={status} />
           <Button
             type="button"
             className="gap-1.5 bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50"
-            disabled={!hasAnyPending || orders === null}
+            disabled={
+              !hasAnyPending || orders === null || status.kind === 'pending'
+            }
             onClick={() => setNotifyOpen(true)}
           >
             <Send className="h-4 w-4" aria-hidden />
@@ -235,77 +311,6 @@ function MyCustodyContent() {
           </Button>
         </div>
       </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('myDeposits.invoicesTitle')}</CardTitle>
-          <p className="text-xs text-muted-foreground">
-            {t('myDeposits.invoicesHint')}
-          </p>
-        </CardHeader>
-        <CardContent className="p-0 sm:p-4">
-          {orders !== null && allRows.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 py-10 text-center">
-              <CheckCircle2
-                className="h-10 w-10 text-emerald-600"
-                aria-hidden
-              />
-              <p className="max-w-sm text-sm text-emerald-700">
-                {t('myDeposits.invoicesEmpty')}
-              </p>
-            </div>
-          ) : null}
-          {allRows.length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t('myDeposits.colCustomer')}</TableHead>
-                  <TableHead>{t('myDeposits.colPhone')}</TableHead>
-                  <TableHead>{t('myDeposits.colMethod')}</TableHead>
-                  <TableHead className="text-end">
-                    {t('myDeposits.colAmount')}
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {allRows.map((r) => {
-                  const phone = r.customer.phone || r.customer.phone2 || '';
-                  const href = whatsappHref(phone);
-                  return (
-                    <TableRow key={r.id}>
-                      <TableCell>
-                        {r.customer.displayName || phone || '-'}
-                      </TableCell>
-                      <TableCell>
-                        <div className="inline-flex items-center gap-2">
-                          <span>{phone || '-'}</span>
-                          {href ? (
-                            <a
-                              href={href}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-[#25D366]"
-                              aria-label="whatsapp"
-                            >
-                              <MessageCircle className="h-4 w-4" />
-                            </a>
-                          ) : null}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <MethodBadge method={r.posPaymentMethod as PendingMethod | null | undefined} />
-                      </TableCell>
-                      <TableCell className="text-end tabular-nums">
-                        {formatKwdLabel(r.totalPrice)}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          ) : null}
-        </CardContent>
-      </Card>
 
       <Dialog
         open={notifyOpen}
@@ -332,15 +337,14 @@ function MyCustodyContent() {
                 value={knetTotal}
                 count={knetRows.length}
               />
-              <DialogLine
-                label={t('myDeposits.methodLink')}
-                value={linkTotal}
-                count={linkRows.length}
-              />
+              {/*
+                V4.4 — Payment Link summary omitted. It's settled online
+                and never enters the driver→manager handover.
+              */}
               <div className="h-px bg-border" />
               <div className="flex items-center justify-between text-sm font-semibold">
                 <span>{t('myDeposits.grandTotalLabel')}</span>
-                <span>{formatKwdLabel(grandTotal)}</span>
+                <span>{formatKwd3(grandTotal)}</span>
               </div>
             </div>
             <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
@@ -366,6 +370,46 @@ function MyCustodyContent() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function SettlementStatusPill({ status }: { status: SettlementStatus }) {
+  const { t } = useTranslation();
+
+  if (status.kind === 'rejected') {
+    return (
+      <span
+        role="status"
+        className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-medium text-red-800"
+      >
+        <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
+        <span>
+          {t('myDeposits.statusRejected', { reason: status.reason })}
+        </span>
+      </span>
+    );
+  }
+
+  if (status.kind === 'pending') {
+    return (
+      <span
+        role="status"
+        className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800"
+      >
+        <Clock className="h-3.5 w-3.5" aria-hidden />
+        {t('myDeposits.statusPending')}
+      </span>
+    );
+  }
+
+  return (
+    <span
+      role="status"
+      className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-800"
+    >
+      <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
+      {t('myDeposits.statusReady')}
+    </span>
   );
 }
 
@@ -402,7 +446,7 @@ function MethodTile({
           <div>
             <p className="text-xs opacity-80">{label}</p>
             <p className="text-lg font-semibold tabular-nums text-foreground">
-              {formatKwdLabel(total)}
+              {formatKwd3(total)}
             </p>
           </div>
         </div>
@@ -432,38 +476,8 @@ function DialogLine({
           ({count} {t('myDeposits.invoiceCountSuffix')})
         </span>
       </span>
-      <span>{formatKwdLabel(value)}</span>
+      <span>{formatKwd3(value)}</span>
     </div>
-  );
-}
-
-function MethodBadge({
-  method,
-}: {
-  method?: PendingMethod | null | undefined;
-}) {
-  const { t } = useTranslation();
-  if (method === 'KNET') {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-800">
-        <Landmark className="h-3 w-3" aria-hidden />
-        {t('myDeposits.methodKnet')}
-      </span>
-    );
-  }
-  if (method === 'PAYMENT_LINK') {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-violet-800">
-        <Link2 className="h-3 w-3" aria-hidden />
-        {t('myDeposits.methodLink')}
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800">
-      <HandCoins className="h-3 w-3" aria-hidden />
-      {t('myDeposits.methodCash')}
-    </span>
   );
 }
 

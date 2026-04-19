@@ -4,4 +4,5 @@ export declare class ReminderResultDto {
     lastReminderAtIso: string | null;
     nextAllowedAtIso: string | null;
     hoursUntilNext: number | null;
+    minutesUntilNext: number | null;
 }

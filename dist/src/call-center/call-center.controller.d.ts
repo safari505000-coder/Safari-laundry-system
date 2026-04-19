@@ -6,7 +6,7 @@ import { DebtRecoveryQueryDto } from './dto/debt-recovery-report.dto';
 export declare class CallCenterController {
     private readonly callCenterService;
     constructor(callCenterService: CallCenterService);
-    operationsSummary(): Promise<import("./dto/operations-summary.dto").CallCenterOperationsSummaryDto>;
+    operationsSummary(branchId?: string): Promise<import("./dto/operations-summary.dto").CallCenterOperationsSummaryDto>;
     debtRecoveryReport(q: DebtRecoveryQueryDto): Promise<import("./dto/debt-recovery-report.dto").DebtRecoveryReportDto>;
     listPlans(): import("@prisma/client").Prisma.PrismaPromise<{
         id: string;
@@ -55,6 +55,9 @@ export declare class CallCenterController {
         planName: string | null;
     }>;
     markOrderReminderSent(orderId: string): Promise<import("./dto/reminder-result.dto").ReminderResultDto>;
+    ensureOrderPaymentLink(orderId: string): Promise<{
+        url: string;
+    }>;
     markSubscriberReminderSent(customerId: string): Promise<import("./dto/reminder-result.dto").ReminderResultDto>;
     listSettlements(customerId: string): Promise<import("./dto/settlement-history-row.dto").SettlementHistoryRowDto[]>;
 }

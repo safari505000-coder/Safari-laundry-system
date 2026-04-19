@@ -666,6 +666,12 @@ export type ReminderResult = {
   lastReminderAtIso: string | null;
   nextAllowedAtIso: string | null;
   hoursUntilNext: number | null;
+  /**
+   * V1.6.8 — minutes until the cooldown lifts. Preferred by the
+   * Collections toast because the order-reminder window is 2.5 h
+   * (9_000_000 ms). Null mirrors `hoursUntilNext` semantics.
+   */
+  minutesUntilNext: number | null;
 };
 
 /**
@@ -800,17 +806,95 @@ export type PosCheckoutResponse = {
 };
 
 /** Call center — unpaid hosted-payment orders (`GET /api/orders/collections/unpaid-online`). */
+/**
+ * V1.5.6 — every uncollected invoice, regardless of payment method.
+ * `paymentUrl` is nullable because only ONLINE/PAYMENT_LINK rows have one.
+ */
 export type CollectionUnpaidOnlineRow = {
   orderId: string;
+  /**
+   * V1.6.5 — human-readable ID: driver `serialNumber` if set, otherwise
+   * the paper `invoiceNumber`, otherwise `#<last-6 of uuid>`. Safe to
+   * render as-is in the table.
+   */
+  readableId: string;
+  /**
+   * V1.6.6 — raw paper invoice number when present (nullable). Used by
+   * the WhatsApp template's "رقم الفاتورة" line; falls back to
+   * `readableId` in the UI layer when null.
+   */
+  invoiceNumber: string | null;
   customerName: string;
   customerPhone: string;
+  /** KWD 3-decimal precision (fils), e.g. "2.400". */
   amountKd: string;
-  paymentUrl: string;
+  paymentMethod:
+    | 'SUBSCRIPTION_WALLET'
+    | 'CASH'
+    | 'KNET'
+    | 'PAYMENT_LINK'
+    | 'DEBT_ON_ACCOUNT'
+    | 'ONLINE'
+    | null;
+  paymentUrl: string | null;
   createdAtIso: string;
   invoiceAgeDays: number;
   reminderCount: number;
   lastReminderAtIso: string | null;
   canRemindNow: boolean;
+  /**
+   * V1.6.6 — itemized breakdown for the WhatsApp template's Items List.
+   * Quantity is a decimal string; prices are serialized in KWD 3dp.
+   */
+  lineItems: {
+    label: string | null;
+    quantity: string;
+    unitPriceKd: string;
+    lineTotalKd: string;
+  }[];
+};
+
+/**
+ * V3.8 — Driver island "Field Collection Tracker" row
+ * (`GET /api/orders/driver/pending-invoices`).
+ *
+ * Read-only projection of the driver's own unpaid non-canceled orders.
+ * Strictly isolated from the Call Center debt-recovery workflow —
+ * there is no `paymentUrl`, no `reminderCount`, and no WhatsApp hook.
+ */
+export type DriverPendingInvoiceRow = {
+  orderId: string;
+  /** Human-readable: serialNumber → invoiceNumber → `#<last-6 uuid>`. */
+  readableId: string;
+  invoiceNumber: string | null;
+  customerName: string;
+  customerPhone: string;
+  /** KWD 3-decimal precision (fils), e.g. "2.400". */
+  amountKd: string;
+  paymentMethod:
+    | 'SUBSCRIPTION_WALLET'
+    | 'CASH'
+    | 'KNET'
+    | 'PAYMENT_LINK'
+    | 'DEBT_ON_ACCOUNT'
+    | 'ONLINE'
+    | null;
+  /** Full free-text notes from the Order row (driver-facing). */
+  notes: string | null;
+  /** Raw Prisma OrderStatus so the UI can localise the badge label. */
+  orderStatus:
+    | 'PENDING'
+    | 'PICKED_UP'
+    | 'IN_PROGRESS'
+    | 'OUT_FOR_DELIVERY'
+    | 'COMPLETED'
+    | 'CANCELED';
+  /**
+   * true when the order is COMPLETED but cash is still UNPAID — the
+   * badge flips from "Unpaid" to "Pending Approval" in this state.
+   */
+  pendingApproval: boolean;
+  createdAtIso: string;
 };
 
 /**
@@ -834,7 +918,10 @@ export type CallCenterOperationsSummary = {
   totalMarketDebtKd: string;
   debtCollectedTodayKd: string;
   pendingLinksCount: number;
+  /** Reference day in Kuwait-local (UTC+3) timezone, YYYY-MM-DD. */
   dayIso: string;
+  /** V1.6.1 — echoed branch filter; `null` = "All Branches". */
+  branchId: string | null;
 };
 
 /**
@@ -918,6 +1005,7 @@ export type LaundryPriceListItemRow = {
   nameEn: string | null;
   sortOrder: number;
   manualEntry: boolean;
+  isActive: boolean;
   priceNormal: string;
   priceUrgent: string;
   pricePressOnly: string | null;
@@ -1069,6 +1157,7 @@ export type UpdateLaundryPriceItemPayload = {
   nameEn?: string | null;
   sortOrder?: number;
   manualEntry?: boolean;
+  isActive?: boolean;
   priceNormal?: number;
   priceUrgent?: number;
   pricePressOnly?: number | null;
@@ -1088,6 +1177,43 @@ export function updateLaundryPriceItem(
       token,
       body: JSON.stringify(body),
     },
+  );
+}
+
+/** OWNER-only — create a new master `LaundryPriceListItem`. */
+export type CreateLaundryPriceItemPayload = {
+  code: string;
+  nameAr: string;
+  nameEn?: string | null;
+  categoryId?: string | null;
+  sortOrder?: number;
+  manualEntry?: boolean;
+  priceNormal?: number;
+  priceUrgent?: number;
+  pricePressOnly?: number | null;
+  priceUrgentPress?: number | null;
+};
+
+export function createLaundryPriceItem(
+  token: string,
+  body: CreateLaundryPriceItemPayload,
+) {
+  return apiJson<LaundryPriceListItemRow>('/api/laundry-price-list/items', {
+    method: 'POST',
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * OWNER-only — hard delete a master tariff item. The server refuses with a
+ * `400` when an existing order line still references the item by label; the
+ * caller should then flip `isActive=false` via the update endpoint instead.
+ */
+export function deleteLaundryPriceItem(token: string, id: string) {
+  return apiJson<{ deletedId: string }>(
+    `/api/laundry-price-list/items/${encodeURIComponent(id)}`,
+    { method: 'DELETE', token },
   );
 }
 

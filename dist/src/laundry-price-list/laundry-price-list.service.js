@@ -68,7 +68,7 @@ let LaundryPriceListService = class LaundryPriceListService {
         return this.findPriceListForBranch(null);
     }
     async getCatalogVersion() {
-        const [items, cats, overrides] = await Promise.all([
+        const [items, cats, overrides, itemCount] = await Promise.all([
             this.prisma.laundryPriceListItem.aggregate({
                 _max: { updatedAt: true },
             }),
@@ -78,16 +78,17 @@ let LaundryPriceListService = class LaundryPriceListService {
             this.prisma.laundryBranchItemPrice.aggregate({
                 _max: { updatedAt: true },
             }),
+            this.prisma.laundryPriceListItem.count(),
         ]);
         const candidates = [
             items._max.updatedAt,
             cats._max.updatedAt,
             overrides._max.updatedAt,
         ].filter((d) => d instanceof Date);
-        if (candidates.length === 0)
-            return '0';
-        const newest = candidates.reduce((a, b) => (a > b ? a : b));
-        return newest.toISOString();
+        const stamp = candidates.length === 0
+            ? '0'
+            : candidates.reduce((a, b) => (a > b ? a : b)).toISOString();
+        return `${stamp}|${itemCount}`;
     }
     async updatePriceItem(id, dto) {
         const existing = await this.prisma.laundryPriceListItem.findUnique({
@@ -114,6 +115,8 @@ let LaundryPriceListService = class LaundryPriceListService {
             data.sortOrder = dto.sortOrder;
         if (dto.manualEntry !== undefined)
             data.manualEntry = dto.manualEntry;
+        if (dto.isActive !== undefined)
+            data.isActive = dto.isActive;
         if (dto.priceNormal !== undefined) {
             data.priceNormal = new client_1.Prisma.Decimal(dto.priceNormal);
         }
@@ -144,6 +147,65 @@ let LaundryPriceListService = class LaundryPriceListService {
             include: { category: true },
         });
         return this.mapItemDto(row);
+    }
+    async createPriceItem(dto) {
+        const code = dto.code.trim().toUpperCase();
+        const existing = await this.prisma.laundryPriceListItem.findUnique({
+            where: { code },
+            select: { id: true },
+        });
+        if (existing) {
+            throw new common_1.ConflictException('An item with this code already exists.');
+        }
+        if (dto.categoryId) {
+            const cat = await this.prisma.laundryItemCategory.findUnique({
+                where: { id: dto.categoryId },
+                select: { id: true },
+            });
+            if (!cat) {
+                throw new common_1.NotFoundException('Category not found');
+            }
+        }
+        const row = await this.prisma.laundryPriceListItem.create({
+            data: {
+                code,
+                nameAr: dto.nameAr.trim(),
+                nameEn: dto.nameEn?.trim() ?? null,
+                sortOrder: dto.sortOrder ?? 0,
+                manualEntry: dto.manualEntry ?? false,
+                priceNormal: new client_1.Prisma.Decimal(dto.priceNormal ?? 0),
+                priceUrgent: new client_1.Prisma.Decimal(dto.priceUrgent ?? 0),
+                pricePressOnly: dto.pricePressOnly == null
+                    ? null
+                    : new client_1.Prisma.Decimal(dto.pricePressOnly),
+                priceUrgentPress: dto.priceUrgentPress == null
+                    ? null
+                    : new client_1.Prisma.Decimal(dto.priceUrgentPress),
+                categoryId: dto.categoryId ?? null,
+            },
+            include: { category: true },
+        });
+        return this.mapItemDto(row);
+    }
+    async deletePriceItem(id) {
+        const existing = await this.prisma.laundryPriceListItem.findUnique({
+            where: { id },
+            select: { id: true, nameAr: true, nameEn: true },
+        });
+        if (!existing) {
+            throw new common_1.NotFoundException('Laundry price item not found');
+        }
+        const labels = [existing.nameAr, existing.nameEn].filter((l) => typeof l === 'string' && l.length > 0);
+        if (labels.length > 0) {
+            const historyHit = await this.prisma.orderLineItem.count({
+                where: { label: { in: labels } },
+            });
+            if (historyHit > 0) {
+                throw new common_1.BadRequestException('Cannot delete: existing orders reference this item. Hide it instead (deactivate).');
+            }
+        }
+        await this.prisma.laundryPriceListItem.delete({ where: { id } });
+        return { deletedId: id };
     }
     async updateCategory(id, dto) {
         const existing = await this.prisma.laundryItemCategory.findUnique({
@@ -180,6 +242,7 @@ let LaundryPriceListService = class LaundryPriceListService {
             nameEn: r.nameEn,
             sortOrder: r.sortOrder,
             manualEntry: r.manualEntry,
+            isActive: r.isActive,
             priceNormal: mergeRequired(r.priceNormal, ov?.priceNormal),
             priceUrgent: mergeRequired(r.priceUrgent, ov?.priceUrgent),
             pricePressOnly: mergeTier(r.pricePressOnly, ov?.pricePressOnly),

@@ -7,6 +7,7 @@ class ReminderResultDto {
     lastReminderAtIso;
     nextAllowedAtIso;
     hoursUntilNext;
+    minutesUntilNext;
 }
 exports.ReminderResultDto = ReminderResultDto;
 //# sourceMappingURL=reminder-result.dto.js.map

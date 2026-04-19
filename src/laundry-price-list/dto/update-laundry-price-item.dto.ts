@@ -46,6 +46,14 @@ export class UpdateLaundryPriceItemDto {
   @IsBoolean()
   manualEntry?: boolean;
 
+  @ApiPropertyOptional({
+    description:
+      'Soft-hide toggle. When false, item is excluded from POS / Driver catalogs but remains in Owner admin view. Historical orders are never affected.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+
   @ApiPropertyOptional({ description: 'KD price, up to 4 decimal places' })
   @IsOptional()
   @Type(() => Number)

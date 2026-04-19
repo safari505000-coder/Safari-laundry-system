@@ -7,6 +7,7 @@ import {
   Hash,
   Droplets,
   FileCheck2,
+  ClipboardCheck,
   FileSpreadsheet,
   HandCoins,
   Landmark,
@@ -127,6 +128,20 @@ export const driverFieldExpensesItem: NavItem = {
   to: '/my-field-expenses',
   labelKey: 'nav.driverFieldExpenses',
   icon: Droplets,
+  roles: ['DRIVER'],
+};
+
+/**
+ * V3.8 — Driver island "Field Collection Tracker" (كشف المتابعة
+ * الميدانية). READ-ONLY list of the driver's own unpaid invoices.
+ * Deliberately DRIVER-only: Call Center / Owner view the same data
+ * (and more) through the Collections island; leaking this entry to
+ * other roles would duplicate the sidebar surface.
+ */
+export const driverPendingInvoicesItem: NavItem = {
+  to: '/driver/pending-invoices',
+  labelKey: 'nav.driverPendingInvoices',
+  icon: ClipboardCheck,
   roles: ['DRIVER'],
 };
 

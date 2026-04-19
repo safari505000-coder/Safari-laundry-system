@@ -548,6 +548,12 @@ model LaundryPriceListItem {
   sortOrder        Int      @default(0)
   /** When true, unit price must be entered manually (list prices are 0). */
   manualEntry      Boolean  @default(false)
+  /**
+   * Soft-hide switch. Inactive items are excluded from POS / Driver catalogs
+   * but remain available in manager admin views so historical pricing / names
+   * never mutate under already-issued invoices.
+   */
+  isActive         Boolean  @default(true)
   priceNormal      Decimal  @db.Decimal(19, 4)
   priceUrgent      Decimal  @db.Decimal(19, 4)
   pricePressOnly   Decimal? @db.Decimal(19, 4)
@@ -559,6 +565,7 @@ model LaundryPriceListItem {
   updatedAt        DateTime @updatedAt
 
   @@index([categoryId])
+  @@index([isActive])
 }
 
 /**

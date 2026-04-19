@@ -9,8 +9,8 @@ export declare class FixedExpenseController {
         branchId: string;
         createdAt: Date;
         updatedAt: Date;
-        category: import("@prisma/client").$Enums.FixedExpenseCategory;
         isActive: boolean;
+        category: import("@prisma/client").$Enums.FixedExpenseCategory;
         title: string;
         monthlyAmount: import("@prisma/client-runtime-utils").Decimal;
         effectiveFrom: Date;
@@ -26,8 +26,8 @@ export declare class FixedExpenseController {
         branchId: string;
         createdAt: Date;
         updatedAt: Date;
-        category: import("@prisma/client").$Enums.FixedExpenseCategory;
         isActive: boolean;
+        category: import("@prisma/client").$Enums.FixedExpenseCategory;
         title: string;
         monthlyAmount: import("@prisma/client-runtime-utils").Decimal;
         effectiveFrom: Date;

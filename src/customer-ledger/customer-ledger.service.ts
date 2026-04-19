@@ -77,6 +77,14 @@ export class CustomerLedgerService {
     orderId: string,
     performedByUserId: string,
     prefetch?: OrderWalletSettlementPrefetch,
+    /**
+     * V1.6.0 — extra fields merged into the ledger row's `metadata` JSON.
+     * Used by the payment-gateway finalize path to tag rows as
+     * `debtSettlementViaLink = true` with `debtSettled` + original method,
+     * so the "Collected Today" KPI and Accountant reports can
+     * distinguish these from ordinary POS sales.
+     */
+    extraMetadata?: Record<string, Prisma.JsonValue>,
   ): Promise<void> {
     const o: OrderWalletSettlementPrefetch | null =
       prefetch ??
@@ -169,6 +177,9 @@ export class CustomerLedgerService {
           externalCoversShortfall:
             externalCoversShortfall && shortfallMinor > 0n ? true : false,
           reportingCategory: 'DAILY_SALES',
+          // Caller-supplied fields (e.g. debt-settlement tagging from the
+          // payment gateway) take precedence over the defaults above.
+          ...(extraMetadata ?? {}),
         },
       },
     });

@@ -9,31 +9,40 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.UpdateLaundryPriceItemDto = void 0;
+exports.CreateLaundryPriceItemDto = void 0;
 const swagger_1 = require("@nestjs/swagger");
 const class_transformer_1 = require("class-transformer");
 const class_validator_1 = require("class-validator");
-class UpdateLaundryPriceItemDto {
+class CreateLaundryPriceItemDto {
+    code;
     nameAr;
     nameEn;
+    categoryId;
     sortOrder;
     manualEntry;
-    isActive;
     priceNormal;
     priceUrgent;
     pricePressOnly;
     priceUrgentPress;
-    categoryId;
 }
-exports.UpdateLaundryPriceItemDto = UpdateLaundryPriceItemDto;
+exports.CreateLaundryPriceItemDto = CreateLaundryPriceItemDto;
 __decorate([
-    (0, swagger_1.ApiPropertyOptional)(),
-    (0, class_validator_1.IsOptional)(),
+    (0, swagger_1.ApiProperty)({ description: 'Stable code (e.g. ABA-001). Uppercase.' }),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MinLength)(2),
+    (0, class_validator_1.MaxLength)(40),
+    (0, class_validator_1.Matches)(/^[A-Z0-9][A-Z0-9_-]*$/u, {
+        message: 'code must be uppercase ASCII letters, digits, hyphen, or underscore',
+    }),
+    __metadata("design:type", String)
+], CreateLaundryPriceItemDto.prototype, "code", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)(),
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.MinLength)(1),
     (0, class_validator_1.MaxLength)(200),
     __metadata("design:type", String)
-], UpdateLaundryPriceItemDto.prototype, "nameAr", void 0);
+], CreateLaundryPriceItemDto.prototype, "nameAr", void 0);
 __decorate([
     (0, swagger_1.ApiPropertyOptional)({ nullable: true }),
     (0, class_validator_1.IsOptional)(),
@@ -41,7 +50,14 @@ __decorate([
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.MaxLength)(200),
     __metadata("design:type", Object)
-], UpdateLaundryPriceItemDto.prototype, "nameEn", void 0);
+], CreateLaundryPriceItemDto.prototype, "nameEn", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ nullable: true }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.ValidateIf)((_o, v) => v !== null),
+    (0, class_validator_1.IsUUID)(),
+    __metadata("design:type", Object)
+], CreateLaundryPriceItemDto.prototype, "categoryId", void 0);
 __decorate([
     (0, swagger_1.ApiPropertyOptional)(),
     (0, class_validator_1.IsOptional)(),
@@ -49,66 +65,47 @@ __decorate([
     (0, class_validator_1.IsInt)(),
     (0, class_validator_1.Min)(0),
     __metadata("design:type", Number)
-], UpdateLaundryPriceItemDto.prototype, "sortOrder", void 0);
-__decorate([
-    (0, swagger_1.ApiPropertyOptional)(),
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsBoolean)(),
-    __metadata("design:type", Boolean)
-], UpdateLaundryPriceItemDto.prototype, "manualEntry", void 0);
+], CreateLaundryPriceItemDto.prototype, "sortOrder", void 0);
 __decorate([
     (0, swagger_1.ApiPropertyOptional)({
-        description: 'Soft-hide toggle. When false, item is excluded from POS / Driver catalogs but remains in Owner admin view. Historical orders are never affected.',
+        description: 'When true the item is priced manually per order (list prices may be 0).',
     }),
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsBoolean)(),
     __metadata("design:type", Boolean)
-], UpdateLaundryPriceItemDto.prototype, "isActive", void 0);
+], CreateLaundryPriceItemDto.prototype, "manualEntry", void 0);
 __decorate([
-    (0, swagger_1.ApiPropertyOptional)({ description: 'KD price, up to 4 decimal places' }),
+    (0, swagger_1.ApiPropertyOptional)({ description: 'KD price — up to 4 decimal places' }),
     (0, class_validator_1.IsOptional)(),
     (0, class_transformer_1.Type)(() => Number),
     (0, class_validator_1.IsNumber)({ maxDecimalPlaces: 4 }),
     (0, class_validator_1.Min)(0),
     __metadata("design:type", Number)
-], UpdateLaundryPriceItemDto.prototype, "priceNormal", void 0);
+], CreateLaundryPriceItemDto.prototype, "priceNormal", void 0);
 __decorate([
-    (0, swagger_1.ApiPropertyOptional)({ description: 'KD price, up to 4 decimal places' }),
+    (0, swagger_1.ApiPropertyOptional)({ description: 'KD price — up to 4 decimal places' }),
     (0, class_validator_1.IsOptional)(),
     (0, class_transformer_1.Type)(() => Number),
     (0, class_validator_1.IsNumber)({ maxDecimalPlaces: 4 }),
     (0, class_validator_1.Min)(0),
     __metadata("design:type", Number)
-], UpdateLaundryPriceItemDto.prototype, "priceUrgent", void 0);
-__decorate([
-    (0, swagger_1.ApiPropertyOptional)({
-        nullable: true,
-        description: 'Pass null to clear; number for KD price',
-    }),
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.ValidateIf)((_o, v) => v !== null),
-    (0, class_transformer_1.Type)(() => Number),
-    (0, class_validator_1.IsNumber)({ maxDecimalPlaces: 4 }),
-    (0, class_validator_1.Min)(0),
-    __metadata("design:type", Object)
-], UpdateLaundryPriceItemDto.prototype, "pricePressOnly", void 0);
-__decorate([
-    (0, swagger_1.ApiPropertyOptional)({
-        nullable: true,
-        description: 'Pass null to clear; number for KD price',
-    }),
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.ValidateIf)((_o, v) => v !== null),
-    (0, class_transformer_1.Type)(() => Number),
-    (0, class_validator_1.IsNumber)({ maxDecimalPlaces: 4 }),
-    (0, class_validator_1.Min)(0),
-    __metadata("design:type", Object)
-], UpdateLaundryPriceItemDto.prototype, "priceUrgentPress", void 0);
+], CreateLaundryPriceItemDto.prototype, "priceUrgent", void 0);
 __decorate([
     (0, swagger_1.ApiPropertyOptional)({ nullable: true }),
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.ValidateIf)((_o, v) => v !== null),
-    (0, class_validator_1.IsUUID)(),
+    (0, class_transformer_1.Type)(() => Number),
+    (0, class_validator_1.IsNumber)({ maxDecimalPlaces: 4 }),
+    (0, class_validator_1.Min)(0),
     __metadata("design:type", Object)
-], UpdateLaundryPriceItemDto.prototype, "categoryId", void 0);
-//# sourceMappingURL=update-laundry-price-item.dto.js.map
+], CreateLaundryPriceItemDto.prototype, "pricePressOnly", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ nullable: true }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.ValidateIf)((_o, v) => v !== null),
+    (0, class_transformer_1.Type)(() => Number),
+    (0, class_validator_1.IsNumber)({ maxDecimalPlaces: 4 }),
+    (0, class_validator_1.Min)(0),
+    __metadata("design:type", Object)
+], CreateLaundryPriceItemDto.prototype, "priceUrgentPress", void 0);
+//# sourceMappingURL=create-laundry-price-item.dto.js.map

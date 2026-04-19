@@ -13,28 +13,39 @@ import { ApiProperty } from '@nestjs/swagger';
 export class CallCenterOperationsSummaryDto {
   @ApiProperty({
     description:
-      'Sum of CustomerWallet.debt across all customers (KWD, 4 decimals).',
-    example: '1234.5600',
+      'V1.6.5 — Sum of every UNPAID, non-canceled order.totalPrice (KWD, 3 decimals / fils). Identical predicate to the Debt-Tracking table so KPI === Σ(rows) to the last fils.',
+    example: '1234.560',
   })
   totalMarketDebtKd!: string;
 
   @ApiProperty({
     description:
-      'Sum of debtSettled metadata across ORDER_WALLET_SETTLEMENT + SUBSCRIPTION_ACTIVATION transactions created today (UTC day).',
-    example: '80.0000',
+      'V1.6.5 — Sum of `metadata.debtSettled` across ORDER_WALLET_SETTLEMENT rows tagged `debtSettlementViaLink: true`, created strictly between Kuwait-local 00:00 today and now. Resets at 00:00 Kuwait time. Scoped by `branchId` when provided. Serialized in KWD 3-decimal precision.',
+    example: '80.000',
   })
   debtCollectedTodayKd!: string;
 
   @ApiProperty({
     description:
-      'Count of open (non-canceled, UNPAID) orders that have a stored hosted payment URL waiting for customer action.',
+      'Count of open (non-canceled, UNPAID) orders that have a stored hosted payment URL waiting for customer action. Scoped by `branchId` when provided.',
     example: 12,
   })
   pendingLinksCount!: number;
 
   @ApiProperty({
-    description: 'Reference day (UTC ISO date, YYYY-MM-DD).',
+    description:
+      'Reference day in Asia/Kuwait (UTC+3) local timezone, ISO YYYY-MM-DD.',
     example: '2026-04-18',
   })
   dayIso!: string;
+
+  @ApiProperty({
+    description:
+      'V1.6.1 — echoed branch filter (`null` means "All Branches"). Clients use this to confirm the selection the aggregate was computed for.',
+    example: null,
+    required: false,
+    nullable: true,
+    type: String,
+  })
+  branchId!: string | null;
 }

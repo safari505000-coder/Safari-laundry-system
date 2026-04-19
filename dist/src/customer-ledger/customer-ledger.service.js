@@ -46,7 +46,7 @@ let CustomerLedgerService = class CustomerLedgerService {
             data: { originBranchId: branchId },
         });
     }
-    async applyOrderWalletSettlementForCompletedOrder(tx, orderId, performedByUserId, prefetch) {
+    async applyOrderWalletSettlementForCompletedOrder(tx, orderId, performedByUserId, prefetch, extraMetadata) {
         const o = prefetch ??
             (await tx.order.findUnique({
                 where: { id: orderId },
@@ -121,6 +121,7 @@ let CustomerLedgerService = class CustomerLedgerService {
                     posPaymentMethod: o.posPaymentMethod ?? null,
                     externalCoversShortfall: externalCoversShortfall && shortfallMinor > 0n ? true : false,
                     reportingCategory: 'DAILY_SALES',
+                    ...(extraMetadata ?? {}),
                 },
             },
         });

@@ -140,6 +140,43 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
         }
         return 'failed';
     }
+    async ensurePaymentLinkForUnpaidOrder(orderId) {
+        const order = await this.prisma.order.findUnique({
+            where: { id: orderId },
+            select: {
+                id: true,
+                status: true,
+                cashStatus: true,
+                totalPrice: true,
+                walletSettledAt: true,
+                posHostedPaymentUrl: true,
+                customer: { select: { phone: true, phone2: true } },
+            },
+        });
+        if (!order) {
+            throw new common_1.BadRequestException('Order not found');
+        }
+        if (order.status === client_1.OrderStatus.CANCELED) {
+            throw new common_1.BadRequestException('Order is canceled');
+        }
+        if (order.cashStatus !== client_1.CashStatus.UNPAID || order.walletSettledAt) {
+            throw new common_1.BadRequestException('Order is already paid');
+        }
+        if (order.posHostedPaymentUrl) {
+            return { url: order.posHostedPaymentUrl };
+        }
+        const phone = order.customer.phone?.trim() || order.customer.phone2?.trim() || '';
+        const link = await this.createPaymentLink({
+            orderId: order.id,
+            amount: order.totalPrice,
+            customerPhone: phone,
+        });
+        await this.prisma.order.update({
+            where: { id: order.id },
+            data: { posHostedPaymentUrl: link.url },
+        });
+        return link;
+    }
     async finalizePaidOrderFromGateway(referenceId) {
         const bundle = await this.prisma.posPaymentBundle.findUnique({
             where: { id: referenceId },
@@ -166,6 +203,7 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
                 select: {
                     id: true,
                     status: true,
+                    cashStatus: true,
                     walletSettledAt: true,
                     customerId: true,
                     totalPrice: true,
@@ -179,13 +217,10 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
             if (order.walletSettledAt) {
                 return;
             }
-            if (order.status !== client_1.OrderStatus.PENDING) {
-                throw new common_1.BadRequestException('Order is not awaiting gateway payment');
+            if (order.status === client_1.OrderStatus.CANCELED) {
+                throw new common_1.BadRequestException('Order is canceled — cannot finalize a link payment for it');
             }
-            if (order.posPaymentMethod !== client_1.PosPaymentMethod.ONLINE &&
-                order.posPaymentMethod !== client_1.PosPaymentMethod.PAYMENT_LINK) {
-                throw new common_1.BadRequestException('Order is not a payment-link checkout');
-            }
+            const originalMethod = order.posPaymentMethod;
             const completedAt = new Date();
             await tx.order.update({
                 where: { id: orderId },
@@ -194,21 +229,36 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
                     cashStatus: client_1.CashStatus.PAID_TO_DRIVER,
                     completedAt,
                     posPaymentMethod: client_1.PosPaymentMethod.ONLINE,
+                    walletSettledAt: null,
                 },
             });
-            const performerId = order.driverId;
+            const performerId = order.driverId ?? (await this.resolveFallbackPerformer(tx));
             if (!performerId) {
-                throw new common_1.BadRequestException('Order has no driver — cannot finalize settlement');
+                throw new common_1.BadRequestException('No performer available to attribute the link payment to');
             }
             const prefetch = {
                 customerId: order.customerId,
                 totalPrice: order.totalPrice,
-                posPaymentMethod: order.posPaymentMethod,
+                posPaymentMethod: client_1.PosPaymentMethod.ONLINE,
                 walletSettledAt: null,
                 skipPerformerLookup: true,
             };
-            await this.customerLedger.applyOrderWalletSettlementForCompletedOrder(tx, orderId, performerId, prefetch);
+            const extraMetadata = {
+                debtSettled: order.totalPrice.toString(),
+                debtSettlementViaLink: true,
+                originalPaymentMethod: originalMethod ?? null,
+                reportingCategory: 'DEBT_COLLECTION_VIA_LINK',
+            };
+            await this.customerLedger.applyOrderWalletSettlementForCompletedOrder(tx, orderId, performerId, prefetch, extraMetadata);
         }, { maxWait: 10_000, timeout: 15_000 });
+    }
+    async resolveFallbackPerformer(tx) {
+        const owner = await tx.user.findFirst({
+            where: { safariRole: client_1.SafariRole.OWNER },
+            select: { id: true },
+            orderBy: { createdAt: 'asc' },
+        });
+        return owner?.id ?? null;
     }
 };
 exports.PaymentsService = PaymentsService;

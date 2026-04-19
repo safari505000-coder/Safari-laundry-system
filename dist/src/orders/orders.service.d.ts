@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { OrderStatus, PosPaymentMethod, Prisma } from '@prisma/client';
 import type { CreatePaymentLinkResult } from '../common/services/payments.service';
 import { PaymentsService } from '../common/services/payments.service';
 import { CustomerNotificationsService } from '../customer-notifications/customer-notifications.service';
@@ -93,18 +93,62 @@ export declare class OrdersService {
     posCheckout(driverUserId: string, dto: PosCheckoutDto): Promise<PosCheckoutOrderDetail>;
     posCheckoutBundle(driverUserId: string, dto: PosCheckoutBundleDto): Promise<PosCheckoutBundleResult>;
     createAsManager(dto: CreateOrderDto): Promise<OrderDetail>;
-    listUnpaidOnlinePaymentOrders(): Promise<{
+    listUnpaidCollectionOrders(branchId?: string | null): Promise<{
         orderId: string;
+        readableId: string;
+        invoiceNumber: string | null;
         customerName: string;
         customerPhone: string;
         amountKd: string;
-        paymentUrl: string;
+        paymentMethod: PosPaymentMethod | null;
+        paymentUrl: string | null;
         createdAtIso: string;
         invoiceAgeDays: number;
         reminderCount: number;
         lastReminderAtIso: string | null;
         canRemindNow: boolean;
+        lineItems: {
+            label: string | null;
+            quantity: string;
+            unitPriceKd: string;
+            lineTotalKd: string;
+        }[];
     }[]>;
+    listUnpaidOnlinePaymentOrders(): Promise<{
+        orderId: string;
+        readableId: string;
+        invoiceNumber: string | null;
+        customerName: string;
+        customerPhone: string;
+        amountKd: string;
+        paymentMethod: PosPaymentMethod | null;
+        paymentUrl: string | null;
+        createdAtIso: string;
+        invoiceAgeDays: number;
+        reminderCount: number;
+        lastReminderAtIso: string | null;
+        canRemindNow: boolean;
+        lineItems: {
+            label: string | null;
+            quantity: string;
+            unitPriceKd: string;
+            lineTotalKd: string;
+        }[];
+    }[]>;
+    listDriverPendingInvoices(userId: string): Promise<{
+        orderId: string;
+        readableId: string;
+        invoiceNumber: string | null;
+        customerName: string;
+        customerPhone: string;
+        amountKd: string;
+        paymentMethod: PosPaymentMethod | null;
+        notes: string | null;
+        orderStatus: OrderStatus;
+        pendingApproval: boolean;
+        createdAtIso: string;
+    }[]>;
+    sumUnpaidCollectionAmount(): Promise<Prisma.Decimal>;
     findAllForActor(userId: string, role: string): Promise<OrderDetail[]>;
     findOneForActor(id: string, userId: string, role: string): Promise<OrderDetail>;
     assignDriver(orderId: string, dto: AssignDriverDto): Promise<OrderDetail>;

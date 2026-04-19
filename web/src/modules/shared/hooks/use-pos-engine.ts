@@ -34,6 +34,9 @@ import {
   computeMultiInvoiceParts,
   computeSessionTotals,
   DELIVERY_FEE_KD,
+  DELIVERY_LINE_LABEL_AR,
+  VIP_LINE_LABEL_AR,
+  VIP_SURCHARGE_KD,
   sumLinesKd,
 } from '@/utils/finance-engine';
 
@@ -95,6 +98,12 @@ export type PosSubOrder = {
   id: string;
   kind: 'primary' | 'attached';
   lines: CartLine[];
+  /**
+   * Optional VIP surcharge toggle (+1.000 KWD). Staff flips it per-invoice
+   * from the POS UI; it only bills on checkout when the sub-order has at
+   * least one garment line (VIP on an empty tab is a no-op).
+   */
+  vipEnabled?: boolean;
 };
 
 export type ServiceOption = {
@@ -325,6 +334,7 @@ export function usePosEngine(opts: PosEngineOptions) {
             foldingStyle: l.foldingStyle,
             itemNote: l.itemNote,
           })),
+          vipEnabled: o.vipEnabled ?? false,
         })),
         billing,
       ),
@@ -546,6 +556,24 @@ export function usePosEngine(opts: PosEngineOptions) {
     });
   }
 
+  /**
+   * Toggle the optional VIP surcharge (+1.000 KWD) for a specific sub-order.
+   * Passing `next` forces the value; omitting it flips the current state.
+   * VIP lives at the sub-order level (not the session) so a customer can pick
+   * VIP only for one of several invoices in the same collection trip.
+   */
+  function setVipForSubOrder(index: number, next?: boolean) {
+    setSubOrders((prev) => {
+      if (index < 0 || index >= prev.length) return prev;
+      const target = prev[index];
+      const resolved = typeof next === 'boolean' ? next : !target.vipEnabled;
+      if ((target.vipEnabled ?? false) === resolved) return prev;
+      const copy = [...prev];
+      copy[index] = { ...target, vipEnabled: resolved };
+      return copy;
+    });
+  }
+
   async function completePayment() {
     if (!token || !user) return;
     if (!selected) {
@@ -613,6 +641,7 @@ export function usePosEngine(opts: PosEngineOptions) {
             foldingStyle: l.foldingStyle,
             itemNote: l.itemNote,
           })),
+          vipEnabled: o.vipEnabled ?? false,
         })),
         billing,
       );
@@ -708,10 +737,15 @@ export function usePosEngine(opts: PosEngineOptions) {
           : NaN;
         const walletCoversLinesOnly =
           Number.isFinite(bal) && bal + 1e-9 >= lineSum;
+        // Collection-trip delivery rule:
+        //   k === 0 → 0.250 KWD (subject to subscription waiver)
+        //   k > 0  → 0.000 KWD free-tier row
         const baseDel = isFirst ? DELIVERY_FEE_KD : 0;
         const deliveryForOrder =
           walletCoversLinesOnly && lineSum > 0 ? 0 : baseDel;
-        const netTotal = lineSum + deliveryForOrder;
+        const vipSurcharge =
+          o.vipEnabled && lineSum > 0 ? VIP_SURCHARGE_KD : 0;
+        const netTotal = lineSum + deliveryForOrder + vipSurcharge;
         const needsExt =
           netTotal > 0 &&
           (billingSnapshot === null ||
@@ -722,14 +756,32 @@ export function usePosEngine(opts: PosEngineOptions) {
           ? checkoutPayMethod
           : undefined;
 
-        const lineItemsFull = o.lines.map((c) => ({
+        // Garment lines first, service rows after — keeps the Arabic receipt
+        // reading naturally. Always emit the delivery row (even at 0.000) so
+        // the backend `OrderLineItem` table has a uniform trip-fee trail.
+        const garmentLines = o.lines.map((c) => ({
           label: c.nameAr,
           quantity: c.quantity,
           unitPrice: c.unitPrice,
         }));
-        const MONEY_EPS = 0.005;
-        const lineItemsPayload =
-          Math.abs(lineSum - netTotal) < MONEY_EPS ? lineItemsFull : undefined;
+        const serviceLines: Array<{
+          label: string;
+          quantity: number;
+          unitPrice: number;
+        }> = [];
+        if (vipSurcharge > 0) {
+          serviceLines.push({
+            label: VIP_LINE_LABEL_AR,
+            quantity: 1,
+            unitPrice: VIP_SURCHARGE_KD,
+          });
+        }
+        serviceLines.push({
+          label: DELIVERY_LINE_LABEL_AR,
+          quantity: 1,
+          unitPrice: deliveryForOrder,
+        });
+        const lineItemsPayload = [...garmentLines, ...serviceLines];
 
         const created = await apiJson<PosCheckoutResponse>(
           '/api/pos/checkout',
@@ -741,7 +793,7 @@ export function usePosEngine(opts: PosEngineOptions) {
               customerId: selected.id,
               customerDisplayName: selected.displayName ?? undefined,
               totalPrice: netTotal,
-              ...(lineItemsPayload ? { lineItems: lineItemsPayload } : {}),
+              lineItems: lineItemsPayload,
               serviceType: 'NORMAL',
               ...(extMethod ? { posPaymentMethod: extMethod } : {}),
             }),
@@ -953,6 +1005,7 @@ export function usePosEngine(opts: PosEngineOptions) {
     firstFilledSubOrderIndex: financeTotals.firstFilledSubOrderIndex,
     isSubscriptionOrder: financeTotals.isSubscriptionOrder,
     sessionDeliveryCharge: financeTotals.sessionDeliveryCharge,
+    combinedVipSurcharge: financeTotals.combinedVipSurcharge,
     grandTotal: financeTotals.grandTotal,
     needsExternalPayment,
     kwdSuffix,
@@ -964,6 +1017,7 @@ export function usePosEngine(opts: PosEngineOptions) {
     resetNewCustomerForm,
     saveNewCustomer,
     addAttachedOrder,
+    setVipForSubOrder,
     completePayment,
     handlePrintReceipt,
     handlePrintGarmentTags,

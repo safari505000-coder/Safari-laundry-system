@@ -1,7 +1,12 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { CashStatus, LedgerTransactionType, OrderStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CustomerLedgerService } from '../customer-ledger/customer-ledger.service';
+import { PaymentsService } from '../common/services/payments.service';
 import { ActivateSubscriptionDto } from './dto/activate-subscription.dto';
 import { ExtendSubscriptionDto } from './dto/extend-subscription.dto';
 import type { SettlementHistoryRowDto } from './dto/settlement-history-row.dto';
@@ -12,35 +17,61 @@ import type {
 } from './dto/debt-recovery-report.dto';
 import type { ReminderResultDto } from './dto/reminder-result.dto';
 
-const REMINDER_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+/**
+ * V1.6.8 — Cooldown windows are per-feature now.
+ *
+ * - `ORDER_REMINDER_COOLDOWN_MS` (2.5 h / 9_000_000 ms) governs the
+ *   Collections-page "Send payment link" button, per Owner directive:
+ *   recall window tightened from 24 h → 2.5 h so agents can re-engage
+ *   same-day debts without bumping an arbitrary guard.
+ * - `SUBSCRIBER_REMINDER_COOLDOWN_MS` (24 h) is retained for
+ *   subscription-renewal nudges, which are a fundamentally different
+ *   flow (low-frequency, customer-friendly) and must NOT be shortened.
+ */
+const ORDER_REMINDER_COOLDOWN_MS = 2.5 * 60 * 60 * 1000; // 9_000_000 ms
+const SUBSCRIBER_REMINDER_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
 function buildReminderResult(args: {
   sent: boolean;
   reminderCount: number;
   lastReminderAt: Date | null;
   now: Date;
+  cooldownMs: number;
 }): ReminderResultDto {
-  const { sent, reminderCount, lastReminderAt, now } = args;
+  const { sent, reminderCount, lastReminderAt, now, cooldownMs } = args;
   const nextAllowedAt =
     !sent && lastReminderAt
-      ? new Date(lastReminderAt.getTime() + REMINDER_COOLDOWN_MS)
+      ? new Date(lastReminderAt.getTime() + cooldownMs)
       : null;
-  const hoursUntilNext = nextAllowedAt
-    ? Math.max(
-        0,
-        Math.ceil((nextAllowedAt.getTime() - now.getTime()) / (60 * 60 * 1000)),
-      )
+  // V1.6.8 — both resolutions are reported; minute precision is what
+  // the Collections toast needs for a 2.5 h window, while hours stays
+  // backward-compatible for the Subscribers screen and the legacy
+  // toast strings that still read `{{hours}}`.
+  const remainingMs = nextAllowedAt
+    ? Math.max(0, nextAllowedAt.getTime() - now.getTime())
     : null;
+  const minutesUntilNext =
+    remainingMs !== null ? Math.ceil(remainingMs / (60 * 1000)) : null;
+  const hoursUntilNext =
+    remainingMs !== null ? Math.ceil(remainingMs / (60 * 60 * 1000)) : null;
   return {
     sent,
     reminderCount,
     lastReminderAtIso: lastReminderAt?.toISOString() ?? null,
     nextAllowedAtIso: nextAllowedAt?.toISOString() ?? null,
     hoursUntilNext,
+    minutesUntilNext,
   };
 }
 
 const FOUR_DP = (d: Prisma.Decimal): string => d.toFixed(4);
+/**
+ * V1.6.5 — KWD standard is 3 decimal places (fils). The Collections KPI
+ * cards and the table both display 3dp, so the aggregates that feed
+ * them must serialize with the same precision. Historic reports that
+ * still expect 4dp (e.g. the Debt-Recovery report) keep using FOUR_DP.
+ */
+const KWD_DP = (d: Prisma.Decimal): string => d.toFixed(3);
 const toIsoDay = (d: Date): string => d.toISOString().slice(0, 10);
 
 /** Parse YYYY-MM-DD into UTC midnight. Invalid strings throw. */
@@ -50,6 +81,91 @@ function parseDayUtc(iso: string): Date {
     throw new BadRequestException(`Invalid date: ${iso}`);
   }
   return d;
+}
+
+/**
+ * V1.6.1 — Kuwait (Asia/Kuwait) is UTC+3 with no daylight-saving. The
+ * "Collected Today" KPI must reset at Kuwait local midnight, NOT UTC
+ * midnight, otherwise the card appears to reset at 03:00 local time.
+ * We compute the Kuwait day from a fixed offset so it's independent of
+ * wherever the Node process is running.
+ */
+const KUWAIT_OFFSET_MS = 3 * 60 * 60 * 1000;
+
+function kuwaitDayBounds(now: Date): {
+  dayStart: Date;
+  dayEnd: Date;
+  dayIsoLocal: string;
+} {
+  // Shift "now" by +3h so reading UTC components yields Kuwait-local Y/M/D.
+  const shifted = new Date(now.getTime() + KUWAIT_OFFSET_MS);
+  const y = shifted.getUTCFullYear();
+  const m = shifted.getUTCMonth();
+  const d = shifted.getUTCDate();
+  // Kuwait 00:00 local → the same calendar day at UTC 00:00 minus 3h.
+  const dayStart = new Date(Date.UTC(y, m, d) - KUWAIT_OFFSET_MS);
+  const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+  const dayIsoLocal = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  return { dayStart, dayEnd, dayIsoLocal };
+}
+
+/**
+ * V1.6.1 — Orders don't carry `branchId` directly; the fulfilling branch
+ * is the driver's branch for driver-led sales, falling back to the
+ * customer's `originBranchId` for office-only invoices (e.g. a debt
+ * paid online without a driver).
+ */
+function orderBranchWhere(
+  branchId: string | null,
+): Prisma.OrderWhereInput | undefined {
+  if (!branchId) return undefined;
+  return {
+    OR: [
+      { driver: { is: { branchId } } },
+      {
+        driverId: null,
+        customer: { is: { originBranchId: branchId } },
+      },
+    ],
+  };
+}
+
+/**
+ * V1.6.2 — "Collected Today" branch scope, per Owner directive:
+ *   "The Green Card should show collections based on the BRANCH of the
+ *    person who handled the transaction OR the branch the money belongs
+ *    to."
+ *
+ * That maps to a 4-way OR over every natural attribution path on a
+ * `TransactionHistory` row:
+ *   1. `performedBy.branchId`       — the agent/driver who booked the
+ *                                     collection (most authoritative
+ *                                     "branch that handled the money").
+ *   2. `order.driver.branchId`      — the branch whose driver served
+ *                                     this invoice.
+ *   3. `order.customer.originBranchId` — the branch that attributed the
+ *                                     customer (covers driver-less
+ *                                     office collections).
+ *   4. `customer.originBranchId`    — for SUBSCRIPTION_ACTIVATION and
+ *                                     other orderless rows.
+ *
+ * This fixes the "Red went down but Green stayed 0 under a branch
+ * filter" symptom: the settlement row often lives on a different axis
+ * than the unpaid-order row it cleared (e.g. a debt on a Branch-B
+ * customer cleared by a Branch-A owner).
+ */
+function ledgerBranchWhere(
+  branchId: string | null,
+): Prisma.TransactionHistoryWhereInput | undefined {
+  if (!branchId) return undefined;
+  return {
+    OR: [
+      { performedBy: { is: { branchId } } },
+      { order: { is: { driver: { is: { branchId } } } } },
+      { order: { is: { customer: { is: { originBranchId: branchId } } } } },
+      { customer: { is: { originBranchId: branchId } } },
+    ],
+  };
 }
 
 /** Extract `debtSettled` from a ledger row metadata blob safely. */
@@ -66,12 +182,32 @@ function extractDebtSettled(meta: Prisma.JsonValue | null): Prisma.Decimal {
   }
 }
 
+/** V1.6.4 — type-safe read of the `debtSettlementViaLink` flag. */
+function isDebtViaLinkRow(meta: Prisma.JsonValue | null): boolean {
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return false;
+  return (meta as Record<string, unknown>).debtSettlementViaLink === true;
+}
+
 @Injectable()
 export class CallCenterService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly customerLedger: CustomerLedgerService,
+    private readonly payments: PaymentsService,
   ) {}
+
+  /**
+   * V1.6.0 — on-demand payment link for ANY unpaid order (Cash, KNET,
+   * DEBT_ON_ACCOUNT, …). Called by the "Payment link" button on the
+   * Collections page so the agent does not need to pre-create links at
+   * POS time. When the callback from the gateway lands,
+   * `finalizeSinglePaidOrderFromGateway` will auto-switch the method to
+   * ONLINE and tag the row as a debt settlement via link.
+   */
+  async ensureOrderPaymentLink(orderId: string): Promise<{ url: string }> {
+    const link = await this.payments.ensurePaymentLinkForUnpaidOrder(orderId);
+    return { url: link.url };
+  }
 
   listActiveSubscriptionPlans() {
     return this.prisma.subscriptionPlan.findMany({
@@ -321,7 +457,8 @@ export class CallCenterService {
    */
   async sendOrderReminder(orderId: string): Promise<ReminderResultDto> {
     const now = new Date();
-    const cutoff = new Date(now.getTime() - REMINDER_COOLDOWN_MS);
+    // V1.6.8 — Collections recall window is 2.5 h (9_000_000 ms).
+    const cutoff = new Date(now.getTime() - ORDER_REMINDER_COOLDOWN_MS);
 
     const update = await this.prisma.order.updateMany({
       where: {
@@ -348,6 +485,7 @@ export class CallCenterService {
       reminderCount: fresh.reminderCount,
       lastReminderAt: fresh.lastReminderAt,
       now,
+      cooldownMs: ORDER_REMINDER_COOLDOWN_MS,
     });
   }
 
@@ -357,7 +495,9 @@ export class CallCenterService {
    */
   async sendSubscriberReminder(customerId: string): Promise<ReminderResultDto> {
     const now = new Date();
-    const cutoff = new Date(now.getTime() - REMINDER_COOLDOWN_MS);
+    // V1.6.8 — subscriber renewal nudges stay on the conservative 24 h
+    // window; only the Collections recall was tightened.
+    const cutoff = new Date(now.getTime() - SUBSCRIBER_REMINDER_COOLDOWN_MS);
 
     const update = await this.prisma.customerWallet.updateMany({
       where: {
@@ -404,6 +544,7 @@ export class CallCenterService {
         reminderCount: createdWallet.subscriptionReminderCount,
         lastReminderAt: createdWallet.subscriptionLastReminderAt,
         now,
+        cooldownMs: SUBSCRIBER_REMINDER_COOLDOWN_MS,
       });
     }
 
@@ -412,6 +553,7 @@ export class CallCenterService {
       reminderCount: fresh.subscriptionReminderCount,
       lastReminderAt: fresh.subscriptionLastReminderAt,
       now,
+      cooldownMs: SUBSCRIBER_REMINDER_COOLDOWN_MS,
     });
   }
 
@@ -420,61 +562,85 @@ export class CallCenterService {
    * All aggregates are "live right now" — no caching, since collection teams
    * need the latest numbers to drive outbound calls.
    */
-  async getOperationsSummary(): Promise<CallCenterOperationsSummaryDto> {
+  async getOperationsSummary(
+    branchId: string | null = null,
+  ): Promise<CallCenterOperationsSummaryDto> {
+    // V1.6.1 — strictly sum [Kuwait 00:00 today → now]. At 00:00 Kuwait
+    // local time the KPI naturally resets because `createdAt` is compared
+    // against fresh midnight bounds on every request.
     const now = new Date();
-    const dayStart = new Date(
-      Date.UTC(
-        now.getUTCFullYear(),
-        now.getUTCMonth(),
-        now.getUTCDate(),
-        0,
-        0,
-        0,
-        0,
-      ),
-    );
-    const dayEnd = new Date(dayStart);
-    dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
+    const { dayStart, dayEnd, dayIsoLocal } = kuwaitDayBounds(now);
 
-    // Two queries run in parallel — everything else is O(N) in-memory math.
-    const [walletDebt, todaysLedgerRows, pendingLinksCount] = await Promise.all([
-      // 1. Sum of all customer wallet debt (the stock of market debt).
-      this.prisma.customerWallet.aggregate({
-        _sum: { debt: true },
+    const orderBranch = orderBranchWhere(branchId);
+    const ledgerBranch = ledgerBranchWhere(branchId);
+
+    // All three aggregates run in parallel. The "market debt" aggregate is
+    // the SUM of every uncollected invoice (cashStatus UNPAID, status !=
+    // CANCELED) regardless of payment method — byte-identical to the
+    // filter used by `OrdersService.listUnpaidCollectionOrders`, so the
+    // KPI card equals the table-column sum by construction.
+    //
+    // `branchId` (when provided) scopes every aggregate the same way:
+    // driver.branchId, or customer.originBranchId for driver-less rows.
+    const [unpaidAgg, todaysLedgerRows, pendingLinksCount] = await Promise.all([
+      this.prisma.order.aggregate({
+        _sum: { totalPrice: true },
+        where: {
+          cashStatus: CashStatus.UNPAID,
+          status: { not: OrderStatus.CANCELED },
+          ...(orderBranch ?? {}),
+        },
       }),
-      // 2. Debt-settled portion of today's ORDER_WALLET_SETTLEMENT + SUBSCRIPTION_ACTIVATION.
+      // V1.6.4 — STRICT: Green card reflects ONLY Collections-page
+      // recoveries. We fetch today's ORDER_WALLET_SETTLEMENT rows for
+      // the branch scope, then filter in memory on
+      // `metadata.debtSettlementViaLink === true`. In-memory filtering
+      // avoids Prisma-version-specific quirks with JSONB boolean
+      // filters where `{ path: [...], equals: true }` can silently
+      // return zero rows on some PostgreSQL + Prisma combinations,
+      // which was the root cause of the "Red drops but Green stays 0"
+      // regression. Red card, pending-links count, and table query
+      // remain untouched.
       this.prisma.transactionHistory.findMany({
         where: {
           createdAt: { gte: dayStart, lt: dayEnd },
-          type: {
-            in: [
-              LedgerTransactionType.ORDER_WALLET_SETTLEMENT,
-              LedgerTransactionType.SUBSCRIPTION_ACTIVATION,
-            ],
-          },
+          type: LedgerTransactionType.ORDER_WALLET_SETTLEMENT,
+          ...(ledgerBranch ?? {}),
         },
-        select: { metadata: true },
+        select: { id: true, metadata: true, createdAt: true, orderId: true },
       }),
-      // 3. Count of UNPAID, non-canceled orders that already have a hosted URL.
+      // Count of UNPAID, non-canceled orders that already have a hosted URL
+      // — still a useful Call-Center workload metric on its own.
       this.prisma.order.count({
         where: {
           cashStatus: CashStatus.UNPAID,
           status: { not: OrderStatus.CANCELED },
           posHostedPaymentUrl: { not: null },
+          ...(orderBranch ?? {}),
         },
       }),
     ]);
 
-    const collectedToday = todaysLedgerRows.reduce(
+    // V1.6.4 — strict post-fetch filter: only rows where
+    // metadata.debtSettlementViaLink === true contribute to the sum.
+    const debtViaLinkRows = todaysLedgerRows.filter((r) =>
+      isDebtViaLinkRow(r.metadata),
+    );
+    const collectedToday = debtViaLinkRows.reduce(
       (acc, r) => acc.plus(extractDebtSettled(r.metadata)),
       new Prisma.Decimal(0),
     );
 
+    // V1.6.5 — 3dp serialization (KWD standard). Keep the `FOUR_DP`
+    // helper available for legacy reports that still render 4dp.
     return {
-      totalMarketDebtKd: FOUR_DP(walletDebt._sum.debt ?? new Prisma.Decimal(0)),
-      debtCollectedTodayKd: FOUR_DP(collectedToday),
+      totalMarketDebtKd: KWD_DP(
+        unpaidAgg._sum.totalPrice ?? new Prisma.Decimal(0),
+      ),
+      debtCollectedTodayKd: KWD_DP(collectedToday),
       pendingLinksCount,
-      dayIso: toIsoDay(dayStart),
+      dayIso: dayIsoLocal,
+      branchId: branchId ?? null,
     };
   }
 

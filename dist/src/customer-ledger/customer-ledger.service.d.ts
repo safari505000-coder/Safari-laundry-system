@@ -29,7 +29,7 @@ export declare class CustomerLedgerService {
     }>;
     private resolveDebtCategory;
     private ensureCustomerOriginBranchTx;
-    applyOrderWalletSettlementForCompletedOrder(tx: PrismaTx, orderId: string, performedByUserId: string, prefetch?: OrderWalletSettlementPrefetch): Promise<void>;
+    applyOrderWalletSettlementForCompletedOrder(tx: PrismaTx, orderId: string, performedByUserId: string, prefetch?: OrderWalletSettlementPrefetch, extraMetadata?: Record<string, Prisma.JsonValue>): Promise<void>;
     activateSubscriptionPlan(tx: PrismaTx, params: {
         customerId: string;
         planId: string;

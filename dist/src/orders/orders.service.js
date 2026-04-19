@@ -262,8 +262,8 @@ let OrdersService = class OrdersService {
             const lineCreates = this.mapPosCheckoutLineItems(dto.lineItems);
             if (lineCreates) {
                 for (const line of lineCreates) {
-                    if (!(line.quantity > 0 && line.unitPrice > 0)) {
-                        throw new common_1.BadRequestException('Each line item must have a positive quantity and unit price');
+                    if (!(line.quantity > 0 && line.unitPrice >= 0)) {
+                        throw new common_1.BadRequestException('Each line item must have a positive quantity and a non-negative unit price');
                     }
                 }
             }
@@ -404,8 +404,8 @@ let OrdersService = class OrdersService {
             const lineCreates = this.mapPosCheckoutLineItems(part.lineItems);
             if (lineCreates) {
                 for (const line of lineCreates) {
-                    if (!(line.quantity > 0 && line.unitPrice > 0)) {
-                        throw new common_1.BadRequestException('Each line item must have a positive quantity and unit price');
+                    if (!(line.quantity > 0 && line.unitPrice >= 0)) {
+                        throw new common_1.BadRequestException('Each line item must have a positive quantity and a non-negative unit price');
                     }
                 }
             }
@@ -527,19 +527,30 @@ let OrdersService = class OrdersService {
             });
         });
     }
-    async listUnpaidOnlinePaymentOrders() {
+    async listUnpaidCollectionOrders(branchId = null) {
+        const branchWhere = branchId
+            ? {
+                OR: [
+                    { driver: { is: { branchId } } },
+                    {
+                        driverId: null,
+                        customer: { is: { originBranchId: branchId } },
+                    },
+                ],
+            }
+            : undefined;
         const rows = await this.prisma.order.findMany({
             where: {
-                status: client_1.OrderStatus.PENDING,
                 cashStatus: client_1.CashStatus.UNPAID,
-                posPaymentMethod: {
-                    in: [client_1.PosPaymentMethod.ONLINE, client_1.PosPaymentMethod.PAYMENT_LINK],
-                },
-                posHostedPaymentUrl: { not: null },
+                status: { not: client_1.OrderStatus.CANCELED },
+                ...(branchWhere ?? {}),
             },
             select: {
                 id: true,
+                serialNumber: true,
+                invoiceNumber: true,
                 totalPrice: true,
+                posPaymentMethod: true,
                 posHostedPaymentUrl: true,
                 createdAt: true,
                 reminderCount: true,
@@ -551,12 +562,20 @@ let OrdersService = class OrdersService {
                         phone2: true,
                     },
                 },
+                lineItems: {
+                    select: {
+                        label: true,
+                        quantity: true,
+                        unitPrice: true,
+                    },
+                    orderBy: { createdAt: 'asc' },
+                },
             },
             orderBy: { createdAt: 'desc' },
-            take: 500,
         });
         const now = Date.now();
         const DAY_MS = 24 * 60 * 60 * 1000;
+        const ORDER_REMINDER_COOLDOWN_MS = 2.5 * 60 * 60 * 1000;
         return rows.map((r) => {
             const phone = r.customer.phone?.replace(/[\s-]/g, '').trim() ||
                 r.customer.phone2?.replace(/[\s-]/g, '').trim() ||
@@ -566,13 +585,29 @@ let OrdersService = class OrdersService {
             const ageMs = Math.max(0, now - r.createdAt.getTime());
             const invoiceAgeDays = Math.floor(ageMs / DAY_MS);
             const lastReminderMs = r.lastReminderAt?.getTime() ?? null;
-            const canRemindNow = lastReminderMs === null || now - lastReminderMs >= DAY_MS;
+            const canRemindNow = lastReminderMs === null ||
+                now - lastReminderMs >= ORDER_REMINDER_COOLDOWN_MS;
+            const readableId = r.serialNumber?.trim() ||
+                r.invoiceNumber?.trim() ||
+                `#${r.id.slice(-6).toUpperCase()}`;
+            const lineItems = r.lineItems.map((li) => {
+                const lineTotal = li.quantity.mul(li.unitPrice);
+                return {
+                    label: li.label,
+                    quantity: li.quantity.toString(),
+                    unitPriceKd: li.unitPrice.toFixed(3),
+                    lineTotalKd: lineTotal.toFixed(3),
+                };
+            });
             return {
                 orderId: r.id,
+                readableId,
+                invoiceNumber: r.invoiceNumber ?? null,
                 customerName: name,
                 customerPhone: phone,
-                amountKd: r.totalPrice.toFixed(4),
-                paymentUrl: r.posHostedPaymentUrl,
+                amountKd: r.totalPrice.toFixed(3),
+                paymentMethod: r.posPaymentMethod,
+                paymentUrl: r.posHostedPaymentUrl ?? null,
                 createdAtIso: r.createdAt.toISOString(),
                 invoiceAgeDays,
                 reminderCount: r.reminderCount,
@@ -580,8 +615,65 @@ let OrdersService = class OrdersService {
                     ? r.lastReminderAt.toISOString()
                     : null,
                 canRemindNow,
+                lineItems,
             };
         });
+    }
+    async listUnpaidOnlinePaymentOrders() {
+        return this.listUnpaidCollectionOrders();
+    }
+    async listDriverPendingInvoices(userId) {
+        const rows = await this.prisma.order.findMany({
+            where: {
+                driverId: userId,
+                cashStatus: client_1.CashStatus.UNPAID,
+                status: { not: client_1.OrderStatus.CANCELED },
+            },
+            select: {
+                id: true,
+                serialNumber: true,
+                invoiceNumber: true,
+                totalPrice: true,
+                posPaymentMethod: true,
+                status: true,
+                notes: true,
+                createdAt: true,
+                customer: { select: { displayName: true, phone: true, phone2: true } },
+            },
+            orderBy: { createdAt: 'desc' },
+        });
+        return rows.map((r) => {
+            const phone = r.customer.phone?.replace(/[\s-]/g, '').trim() ||
+                r.customer.phone2?.replace(/[\s-]/g, '').trim() ||
+                '';
+            const name = r.customer.displayName?.trim() || (phone ? phone : 'Customer');
+            const readableId = r.serialNumber?.trim() ||
+                r.invoiceNumber?.trim() ||
+                `#${r.id.slice(-6).toUpperCase()}`;
+            return {
+                orderId: r.id,
+                readableId,
+                invoiceNumber: r.invoiceNumber ?? null,
+                customerName: name,
+                customerPhone: phone,
+                amountKd: r.totalPrice.toFixed(3),
+                paymentMethod: r.posPaymentMethod,
+                notes: r.notes?.trim() || null,
+                orderStatus: r.status,
+                pendingApproval: r.status === client_1.OrderStatus.COMPLETED,
+                createdAtIso: r.createdAt.toISOString(),
+            };
+        });
+    }
+    async sumUnpaidCollectionAmount() {
+        const agg = await this.prisma.order.aggregate({
+            _sum: { totalPrice: true },
+            where: {
+                cashStatus: client_1.CashStatus.UNPAID,
+                status: { not: client_1.OrderStatus.CANCELED },
+            },
+        });
+        return agg._sum.totalPrice ?? new client_1.Prisma.Decimal(0);
     }
     async findAllForActor(userId, role) {
         if (this.canViewAllOrders(role)) {

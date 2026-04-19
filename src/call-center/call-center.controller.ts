@@ -34,10 +34,15 @@ export class CallCenterController {
   @ApiOperation({
     summary: `Call center operations summary — 3 KPIs (${APP_BRAND})`,
     description:
-      'RED total market debt (Σ CustomerWallet.debt), GREEN debt collected today (Σ metadata.debtSettled), YELLOW count of open UNPAID orders with a hosted payment URL awaiting action.',
+      'V1.6.1 — RED total market debt (Σ unpaid non-canceled orders), GREEN debt collected today strictly between Kuwait-local 00:00 and now (Σ metadata.debtSettled), YELLOW count of open UNPAID orders with a hosted payment URL awaiting action. Pass `?branchId=<uuid>` to scope every aggregate to a single branch (driver.branchId OR customer.originBranchId when driver-less); omit for global totals.',
   })
-  operationsSummary() {
-    return this.callCenterService.getOperationsSummary();
+  operationsSummary(@Query('branchId') branchId?: string) {
+    // Empty / sentinel values ("__ALL__") → global.
+    const raw = (branchId ?? '').trim();
+    const uuidRe =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const scoped = raw && uuidRe.test(raw) ? raw : null;
+    return this.callCenterService.getOperationsSummary(scoped);
   }
 
   @Get('debt-recovery-report')
@@ -108,6 +113,19 @@ export class CallCenterController {
     @Param('orderId', ParseUUIDPipe) orderId: string,
   ) {
     return this.callCenterService.sendOrderReminder(orderId);
+  }
+
+  @Post('orders/:orderId/payment-link')
+  @Roles(SafariRole.CALL_CENTER)
+  @ApiOperation({
+    summary: `Ensure a hosted payment link exists for an unpaid order (${APP_BRAND})`,
+    description:
+      'V1.6.0 — CALL_CENTER only. Returns the existing hosted-checkout URL if one was already minted, otherwise calls the gateway and persists a new link on the order. Works for ANY unpaid non-canceled order regardless of original payment method (Cash, KNET, DEBT_ON_ACCOUNT, PAYMENT_LINK, ONLINE). When the gateway callback later confirms payment, the order auto-switches to `posPaymentMethod=ONLINE` and the ledger row is tagged `debtSettlementViaLink=true` with `originalPaymentMethod` preserved for Accountant reports.',
+  })
+  ensureOrderPaymentLink(
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+  ) {
+    return this.callCenterService.ensureOrderPaymentLink(orderId);
   }
 
   @Post('subscribers/:customerId/reminder')

@@ -16,5 +16,8 @@ export declare class OnlinePaymentService {
     }): boolean;
     normalizeCallbackStatus(status: string): 'success' | 'failed';
     finalizePaidOrderFromGateway(referenceId: string): Promise<void>;
+    ensurePaymentLinkForUnpaidOrder(orderId: string): Promise<{
+        url: string;
+    }>;
     getTotalOnlineRevenue(): Promise<string>;
 }

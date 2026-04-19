@@ -8,6 +8,8 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SystemModule = void 0;
 const common_1 = require("@nestjs/common");
+const auth_module_1 = require("../auth/auth.module");
+const prisma_module_1 = require("../prisma/prisma.module");
 const operating_hours_service_1 = require("./operating-hours.service");
 const system_controller_1 = require("./system.controller");
 const operating_hours_middleware_1 = require("../common/middleware/operating-hours.middleware");
@@ -16,6 +18,7 @@ let SystemModule = class SystemModule {
 exports.SystemModule = SystemModule;
 exports.SystemModule = SystemModule = __decorate([
     (0, common_1.Module)({
+        imports: [auth_module_1.AuthModule, prisma_module_1.PrismaModule],
         controllers: [system_controller_1.SystemController],
         providers: [operating_hours_service_1.OperatingHoursService, operating_hours_middleware_1.OperatingHoursMiddleware],
         exports: [operating_hours_service_1.OperatingHoursService, operating_hours_middleware_1.OperatingHoursMiddleware],

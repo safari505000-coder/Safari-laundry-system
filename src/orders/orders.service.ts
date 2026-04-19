@@ -373,9 +373,13 @@ export class OrdersService {
       const lineCreates = this.mapPosCheckoutLineItems(dto.lineItems);
       if (lineCreates) {
         for (const line of lineCreates) {
-          if (!(line.quantity > 0 && line.unitPrice > 0)) {
+          // `unitPrice >= 0` (not `> 0`) so the POS engine can materialize
+          // the zero-priced `DELIVERY_INSIDE_AREA` / free-tier surcharge
+          // lines on attached invoices of the same collection trip.
+          // Quantity must still be strictly positive — a 0-qty row is bogus.
+          if (!(line.quantity > 0 && line.unitPrice >= 0)) {
             throw new BadRequestException(
-              'Each line item must have a positive quantity and unit price',
+              'Each line item must have a positive quantity and a non-negative unit price',
             );
           }
         }
@@ -578,9 +582,11 @@ export class OrdersService {
       const lineCreates = this.mapPosCheckoutLineItems(part.lineItems);
       if (lineCreates) {
         for (const line of lineCreates) {
-          if (!(line.quantity > 0 && line.unitPrice > 0)) {
+          // See note in posCheckout above — `unitPrice >= 0` to admit the
+          // free-tier `DELIVERY_INSIDE_AREA` line on attached invoices.
+          if (!(line.quantity > 0 && line.unitPrice >= 0)) {
             throw new BadRequestException(
-              'Each line item must have a positive quantity and unit price',
+              'Each line item must have a positive quantity and a non-negative unit price',
             );
           }
         }
@@ -734,35 +740,83 @@ export class OrdersService {
   }
 
   /**
-   * Call center / collections: pending ONLINE checkout with stored payment URL
-   * (cashStatus UNPAID). Rows disappear after gateway success + finalize.
+   * V1.5.6 — "Debt-Tracking Page" as a Financial Oversight Report.
+   * V1.6.5 — adds optional `branchId` scoping, a human-readable
+   * `readableId`, and 3-decimal KWD formatting (fils).
+   *
+   * Returns EVERY uncollected invoice regardless of payment method (Cash,
+   * KNET, Payment Link, Online, Wallet, Debt-on-account). Filters:
+   *
+   *   cashStatus = UNPAID  AND  status != CANCELED
+   *   AND (branch scope — see `orderBranchWhere` below)
+   *
+   * The sum of `amountKd` across the returned rows is the
+   * "Market Debt Total" surfaced on the Collections KPI card — both
+   * values are driven by the SAME predicate so they always match byte
+   * for byte, including under a branch filter.
+   *
+   * `readableId` order of preference:
+   *   1. `serialNumber`  — human-readable driver serial ("D2-1045")
+   *   2. `invoiceNumber` — paper invoice reference
+   *   3. last 6 chars of UUID, upper-cased — always present
    */
-  async listUnpaidOnlinePaymentOrders(): Promise<
+  async listUnpaidCollectionOrders(
+    branchId: string | null = null,
+  ): Promise<
     {
       orderId: string;
+      readableId: string;
+      invoiceNumber: string | null;
       customerName: string;
       customerPhone: string;
       amountKd: string;
-      paymentUrl: string;
+      paymentMethod: PosPaymentMethod | null;
+      paymentUrl: string | null;
       createdAtIso: string;
       invoiceAgeDays: number;
       reminderCount: number;
       lastReminderAtIso: string | null;
       canRemindNow: boolean;
+      // V1.6.6 — raw line items for the WhatsApp template. Quantities
+      // and unit prices are decimal strings (the Prisma convention on
+      // this project); the frontend formats them for display.
+      lineItems: {
+        label: string | null;
+        quantity: string;
+        unitPriceKd: string;
+        lineTotalKd: string;
+      }[];
     }[]
   > {
+    // Mirrors the helper in `call-center.service.ts` so the two islands
+    // stay independent yet produce identical scoping. For driver-led
+    // sales we match `driver.branchId`; for driver-less invoices (office
+    // bookings, online prepaid, etc.) we fall back to the customer's
+    // `originBranchId`. Omitting `branchId` yields the global view.
+    const branchWhere: Prisma.OrderWhereInput | undefined = branchId
+      ? {
+          OR: [
+            { driver: { is: { branchId } } },
+            {
+              driverId: null,
+              customer: { is: { originBranchId: branchId } },
+            },
+          ],
+        }
+      : undefined;
+
     const rows = await this.prisma.order.findMany({
       where: {
-        status: OrderStatus.PENDING,
         cashStatus: CashStatus.UNPAID,
-        posPaymentMethod: {
-          in: [PosPaymentMethod.ONLINE, PosPaymentMethod.PAYMENT_LINK],
-        },
-        posHostedPaymentUrl: { not: null },
+        status: { not: OrderStatus.CANCELED },
+        ...(branchWhere ?? {}),
       },
       select: {
         id: true,
+        serialNumber: true,
+        invoiceNumber: true,
         totalPrice: true,
+        posPaymentMethod: true,
         posHostedPaymentUrl: true,
         createdAt: true,
         reminderCount: true,
@@ -774,12 +828,30 @@ export class OrdersService {
             phone2: true,
           },
         },
+        // V1.6.6 — line items feed the WhatsApp template's Items List.
+        // Ordered by createdAt asc so the message renders in the same
+        // sequence the driver/agent entered them at POS time.
+        lineItems: {
+          select: {
+            label: true,
+            quantity: true,
+            unitPrice: true,
+          },
+          orderBy: { createdAt: 'asc' },
+        },
       },
       orderBy: { createdAt: 'desc' },
-      take: 500,
+      // No `take:` — the KPI card is an unbounded aggregate of the same
+      // predicate, so capping rows here would silently desync the
+      // table-footer sum from the "Market Debt Total" card.
     });
     const now = Date.now();
     const DAY_MS = 24 * 60 * 60 * 1000;
+    // V1.6.8 — Collections recall window (must stay in sync with
+    // `ORDER_REMINDER_COOLDOWN_MS` in call-center.service.ts). Drives
+    // the `canRemindNow` flag that greys out the Send-payment-link
+    // button on the table until 2.5 h after the last reminder.
+    const ORDER_REMINDER_COOLDOWN_MS = 2.5 * 60 * 60 * 1000;
     return rows.map((r) => {
       const phone =
         r.customer.phone?.replace(/[\s-]/g, '').trim() ||
@@ -792,13 +864,37 @@ export class OrdersService {
       const invoiceAgeDays = Math.floor(ageMs / DAY_MS);
       const lastReminderMs = r.lastReminderAt?.getTime() ?? null;
       const canRemindNow =
-        lastReminderMs === null || now - lastReminderMs >= DAY_MS;
+        lastReminderMs === null ||
+        now - lastReminderMs >= ORDER_REMINDER_COOLDOWN_MS;
+      const readableId =
+        r.serialNumber?.trim() ||
+        r.invoiceNumber?.trim() ||
+        `#${r.id.slice(-6).toUpperCase()}`;
+      // V1.6.6 — line items serialized in 3dp KWD to match the rest of
+      // the Collections island. `lineTotal = quantity * unitPrice` is
+      // computed server-side so the frontend just pipes strings into
+      // the WhatsApp template.
+      const lineItems = r.lineItems.map((li) => {
+        const lineTotal = li.quantity.mul(li.unitPrice);
+        return {
+          label: li.label,
+          quantity: li.quantity.toString(),
+          unitPriceKd: li.unitPrice.toFixed(3),
+          lineTotalKd: lineTotal.toFixed(3),
+        };
+      });
       return {
         orderId: r.id,
+        readableId,
+        invoiceNumber: r.invoiceNumber ?? null,
         customerName: name,
         customerPhone: phone,
-        amountKd: r.totalPrice.toFixed(4),
-        paymentUrl: r.posHostedPaymentUrl as string,
+        // V1.6.5 — KWD standard uses 3 decimal places (fils). The Red-
+        // card aggregate formats with the same precision so the table
+        // footer equals the KPI to the last fils.
+        amountKd: r.totalPrice.toFixed(3),
+        paymentMethod: r.posPaymentMethod,
+        paymentUrl: r.posHostedPaymentUrl ?? null,
         createdAtIso: r.createdAt.toISOString(),
         invoiceAgeDays,
         reminderCount: r.reminderCount,
@@ -806,8 +902,127 @@ export class OrdersService {
           ? r.lastReminderAt.toISOString()
           : null,
         canRemindNow,
+        lineItems,
       };
     });
+  }
+
+  /**
+   * @deprecated Use {@link listUnpaidCollectionOrders}. Retained as a
+   * thin alias so that legacy callers (if any) keep compiling while
+   * callers migrate to the widened, payment-method-agnostic query.
+   */
+  async listUnpaidOnlinePaymentOrders() {
+    return this.listUnpaidCollectionOrders();
+  }
+
+  /**
+   * V3.8 — Driver island: "Field Collection Tracker" (كشف المتابعة
+   * الميدانية). READ-ONLY list of the driver's own unpaid invoices so
+   * they can see what's still outstanding without ever crossing into
+   * the Call Center's debt-recovery workflow.
+   *
+   * Scope:
+   *   - `driverId === userId` (schema has no `createdById`; driver
+   *     ownership of an Order is modeled on the `OrderDriver` relation
+   *     and the existing `findAllForActor` uses the same field — see
+   *     its JSDoc: "DRIVER: only orders assigned to them (including
+   *     self-created)").
+   *   - `cashStatus === UNPAID`
+   *   - `status !== CANCELED` — canceled orders are not "pending".
+   *
+   * Sort: `createdAt DESC`.
+   *
+   * Status badge semantics — the UI renders two variants:
+   *   - **Unpaid**           → `orderStatus` is upstream of COMPLETED
+   *                            (driver hasn't delivered yet).
+   *   - **Pending Approval** → `orderStatus === COMPLETED` but cash
+   *                            hasn't been collected — the row is
+   *                            waiting on Call Center / manager action.
+   * The server returns both a machine-readable `orderStatus` and the
+   * derived `pendingApproval` flag so the frontend never needs to know
+   * the OrderStatus enum shape.
+   *
+   * Zero Call-Center interference: this endpoint does not read from
+   * `TransactionHistory`, `PaymentLink` metadata, or the collections
+   * aggregates — it is a pure `Order` projection.
+   */
+  async listDriverPendingInvoices(userId: string): Promise<
+    {
+      orderId: string;
+      readableId: string;
+      invoiceNumber: string | null;
+      customerName: string;
+      customerPhone: string;
+      amountKd: string;
+      paymentMethod: PosPaymentMethod | null;
+      notes: string | null;
+      orderStatus: OrderStatus;
+      pendingApproval: boolean;
+      createdAtIso: string;
+    }[]
+  > {
+    const rows = await this.prisma.order.findMany({
+      where: {
+        driverId: userId,
+        cashStatus: CashStatus.UNPAID,
+        status: { not: OrderStatus.CANCELED },
+      },
+      select: {
+        id: true,
+        serialNumber: true,
+        invoiceNumber: true,
+        totalPrice: true,
+        posPaymentMethod: true,
+        status: true,
+        notes: true,
+        createdAt: true,
+        customer: { select: { displayName: true, phone: true, phone2: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return rows.map((r) => {
+      const phone =
+        r.customer.phone?.replace(/[\s-]/g, '').trim() ||
+        r.customer.phone2?.replace(/[\s-]/g, '').trim() ||
+        '';
+      const name =
+        r.customer.displayName?.trim() || (phone ? phone : 'Customer');
+      const readableId =
+        r.serialNumber?.trim() ||
+        r.invoiceNumber?.trim() ||
+        `#${r.id.slice(-6).toUpperCase()}`;
+      return {
+        orderId: r.id,
+        readableId,
+        invoiceNumber: r.invoiceNumber ?? null,
+        customerName: name,
+        customerPhone: phone,
+        amountKd: r.totalPrice.toFixed(3),
+        paymentMethod: r.posPaymentMethod,
+        notes: r.notes?.trim() || null,
+        orderStatus: r.status,
+        pendingApproval: r.status === OrderStatus.COMPLETED,
+        createdAtIso: r.createdAt.toISOString(),
+      };
+    });
+  }
+
+  /**
+   * V1.5.6 — "Market Debt Total" used by Call Center KPI card.
+   * Pure SUM over the same rows that feed the Debt-Tracking table so
+   * the cell-sum and card-sum are identical by construction.
+   */
+  async sumUnpaidCollectionAmount(): Promise<Prisma.Decimal> {
+    const agg = await this.prisma.order.aggregate({
+      _sum: { totalPrice: true },
+      where: {
+        cashStatus: CashStatus.UNPAID,
+        status: { not: OrderStatus.CANCELED },
+      },
+    });
+    return agg._sum.totalPrice ?? new Prisma.Decimal(0);
   }
 
   async findAllForActor(userId: string, role: string): Promise<OrderDetail[]> {

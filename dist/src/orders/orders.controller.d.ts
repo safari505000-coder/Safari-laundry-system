@@ -129,17 +129,39 @@ export declare class OrdersController {
             unitPrice: import("@prisma/client-runtime-utils").Decimal;
         }[];
     }[]>;
-    listCollectionsUnpaidOnline(): Promise<{
+    listCollectionsUnpaidOnline(branchId?: string): Promise<{
         orderId: string;
+        readableId: string;
+        invoiceNumber: string | null;
         customerName: string;
         customerPhone: string;
         amountKd: string;
-        paymentUrl: string;
+        paymentMethod: import("@prisma/client").PosPaymentMethod | null;
+        paymentUrl: string | null;
         createdAtIso: string;
         invoiceAgeDays: number;
         reminderCount: number;
         lastReminderAtIso: string | null;
         canRemindNow: boolean;
+        lineItems: {
+            label: string | null;
+            quantity: string;
+            unitPriceKd: string;
+            lineTotalKd: string;
+        }[];
+    }[]>;
+    listDriverPendingInvoices(user: JwtUser): Promise<{
+        orderId: string;
+        readableId: string;
+        invoiceNumber: string | null;
+        customerName: string;
+        customerPhone: string;
+        amountKd: string;
+        paymentMethod: import("@prisma/client").PosPaymentMethod | null;
+        notes: string | null;
+        orderStatus: import("@prisma/client").OrderStatus;
+        pendingApproval: boolean;
+        createdAtIso: string;
     }[]>;
     findOne(id: string, user: JwtUser): Promise<{
         id: string;

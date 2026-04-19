@@ -35,6 +35,8 @@ export declare class PaymentsService {
         signature?: string;
     }): boolean;
     normalizeCallbackStatus(status: string): 'success' | 'failed';
+    ensurePaymentLinkForUnpaidOrder(orderId: string): Promise<CreatePaymentLinkResult>;
     finalizePaidOrderFromGateway(referenceId: string): Promise<void>;
     private finalizeSinglePaidOrderFromGateway;
+    private resolveFallbackPerformer;
 }

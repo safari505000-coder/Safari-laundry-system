@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate } from 'react-router-dom';
-import { CreditCard, Loader2, MessageCircle, RefreshCw, Save } from 'lucide-react';
+import { Loader2, RefreshCw, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/auth-context';
 import { type CustomerDirectoryRow, ApiError, apiJson } from '@/lib/api';
-import { customerDirectoryBalanceWhatsAppHref } from '@/modules/shared/lib/whatsapp-links';
+// V1.6.9 — WhatsApp / Payment-link actions were removed from this page;
+// those flows now live exclusively in the Collections island (Isolated
+// Islands principle). This page is now profile/data-entry only.
 import { useCustomersDataBridge } from '@/modules/shared/hooks/use-customers-data-bridge';
 import { Button } from '@/modules/shared/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/modules/shared/components/ui/card';
@@ -47,7 +49,6 @@ export function CustomersPage() {
   const { t } = useTranslation();
   const { token, hasRole } = useAuth();
   const allowed = hasRole('OWNER', 'CALL_CENTER');
-  const canWhatsAppBalance = allowed;
   const { q, setQ, rows, loading, error, reload } = useCustomersDataBridge({
     token,
   });
@@ -118,8 +119,9 @@ export function CustomersPage() {
             {rows.map((r) => {
               const balance = Number.parseFloat(r.subscription.walletBalance ?? '0');
               const isLow = Number.isFinite(balance) && balance < 10;
-              const wa = customerDirectoryBalanceWhatsAppHref(r);
-              const payHref = r.debt.totalDebt !== '0.0000' ? '/collections' : null;
+              // V1.6.9 — No more inline WhatsApp / Payment-link actions.
+              // The Collections island is the single source of truth for
+              // those flows; this row only opens the profile editor.
               return (
                 <button
                   key={r.customer.id}
@@ -132,33 +134,9 @@ export function CustomersPage() {
                 >
                   <div className="flex items-center justify-between gap-2">
                     <p className="font-medium">{r.customer.displayName || r.customer.phone}</p>
-                    <span className="flex shrink-0 items-center gap-2">
-                      {wa && canWhatsAppBalance ?
-                        <a
-                          href={wa}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          title={t('customers.whatsappBalance')}
-                          className="inline-flex min-h-12 min-w-12 items-center justify-center rounded-md text-primary hover:bg-primary/10"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <MessageCircle className="h-5 w-5" aria-hidden />
-                        </a>
-                      : null}
-                      {payHref ?
-                        <a
-                          href={payHref}
-                          title={t('customers.paymentLink')}
-                          className="inline-flex min-h-12 min-w-12 items-center justify-center rounded-md text-primary hover:bg-primary/10"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <CreditCard className="h-5 w-5" aria-hidden />
-                        </a>
-                      : null}
-                      <p className={cn('text-sm tabular-nums', isLow && 'font-semibold text-red-700')}>
-                        {r.subscription.walletBalance} KWD
-                      </p>
-                    </span>
+                    <p className={cn('shrink-0 text-sm tabular-nums', isLow && 'font-semibold text-red-700')}>
+                      {r.subscription.walletBalance} KWD
+                    </p>
                   </div>
                   <p className="text-xs text-muted-foreground">
                     {r.customer.phone}

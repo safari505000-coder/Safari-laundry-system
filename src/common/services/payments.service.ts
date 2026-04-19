@@ -10,6 +10,7 @@ import {
   OrderStatus,
   PosPaymentMethod,
   Prisma,
+  SafariRole,
 } from '@prisma/client';
 import {
   CustomerLedgerService,
@@ -207,6 +208,60 @@ export class PaymentsService {
   }
 
   /**
+   * V1.6.0 — Universal payment link for ANY unpaid non-canceled order.
+   *
+   * Returns the existing `posHostedPaymentUrl` if one was already generated
+   * (idempotent + safe to call from the "Payment link" button on the
+   * Collections page). Otherwise calls the gateway to mint a new link and
+   * persists it on the order row before returning.
+   *
+   * Does NOT flip `posPaymentMethod` yet — the method auto-switches to
+   * `ONLINE` only when the gateway callback confirms a successful payment
+   * (see `finalizeSinglePaidOrderFromGateway`). Until then the order keeps
+   * its original method so the Collections table still shows it correctly.
+   */
+  async ensurePaymentLinkForUnpaidOrder(
+    orderId: string,
+  ): Promise<CreatePaymentLinkResult> {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        status: true,
+        cashStatus: true,
+        totalPrice: true,
+        walletSettledAt: true,
+        posHostedPaymentUrl: true,
+        customer: { select: { phone: true, phone2: true } },
+      },
+    });
+    if (!order) {
+      throw new BadRequestException('Order not found');
+    }
+    if (order.status === OrderStatus.CANCELED) {
+      throw new BadRequestException('Order is canceled');
+    }
+    if (order.cashStatus !== CashStatus.UNPAID || order.walletSettledAt) {
+      throw new BadRequestException('Order is already paid');
+    }
+    if (order.posHostedPaymentUrl) {
+      return { url: order.posHostedPaymentUrl };
+    }
+    const phone =
+      order.customer.phone?.trim() || order.customer.phone2?.trim() || '';
+    const link = await this.createPaymentLink({
+      orderId: order.id,
+      amount: order.totalPrice,
+      customerPhone: phone,
+    });
+    await this.prisma.order.update({
+      where: { id: order.id },
+      data: { posHostedPaymentUrl: link.url },
+    });
+    return link;
+  }
+
+  /**
    * After gateway confirms payment: complete order + wallet settlement (same as instant POS).
    * `referenceId` may be a single order id, or a PosPaymentBundle id (multi-invoice POS).
    */
@@ -240,6 +295,7 @@ export class PaymentsService {
           select: {
             id: true,
             status: true,
+            cashStatus: true,
             walletSettledAt: true,
             customerId: true,
             totalPrice: true,
@@ -251,21 +307,26 @@ export class PaymentsService {
           throw new BadRequestException('Order not found');
         }
         if (order.walletSettledAt) {
+          // Idempotent — already settled (likely a replayed webhook).
           return;
         }
-        if (order.status !== OrderStatus.PENDING) {
+        if (order.status === OrderStatus.CANCELED) {
           throw new BadRequestException(
-            'Order is not awaiting gateway payment',
+            'Order is canceled — cannot finalize a link payment for it',
           );
         }
-        if (
-          order.posPaymentMethod !== PosPaymentMethod.ONLINE &&
-          order.posPaymentMethod !== PosPaymentMethod.PAYMENT_LINK
-        ) {
-          throw new BadRequestException(
-            'Order is not a payment-link checkout',
-          );
-        }
+
+        // V1.6.2 — every gateway-finalized order reached this point by
+        // definition from the UNPAID bucket (we passed the walletSettledAt
+        // guard and the cashStatus check upstream). That means EVERY row
+        // we write here counts as "debt collected today", regardless of
+        // whether the original method was CASH, KNET, DEBT_ON_ACCOUNT,
+        // PAYMENT_LINK, or ONLINE. Tagging was previously conditional on
+        // `originalMethod !== ONLINE && !== PAYMENT_LINK`, which silently
+        // excluded first-time POS online sales and pre-minted link orders
+        // from the Green card — that's the "Red went down but Green
+        // stayed 0" bug.
+        const originalMethod = order.posPaymentMethod;
 
         const completedAt = new Date();
         await tx.order.update({
@@ -275,22 +336,40 @@ export class PaymentsService {
             cashStatus: CashStatus.PAID_TO_DRIVER,
             completedAt,
             posPaymentMethod: PosPaymentMethod.ONLINE,
+            walletSettledAt: null,
           },
         });
 
-        const performerId = order.driverId;
+        // A driver may not exist on orders that were booked through the
+        // office (e.g. Cash-on-account invoices later paid online). Fall
+        // back to a deterministic performer so the settlement row is
+        // always attributable.
+        const performerId = order.driverId ?? (await this.resolveFallbackPerformer(tx));
         if (!performerId) {
           throw new BadRequestException(
-            'Order has no driver — cannot finalize settlement',
+            'No performer available to attribute the link payment to',
           );
         }
 
         const prefetch: OrderWalletSettlementPrefetch = {
           customerId: order.customerId,
           totalPrice: order.totalPrice,
-          posPaymentMethod: order.posPaymentMethod,
+          // Pass the *new* method so the wallet math treats this as
+          // "external covers shortfall" (matches a regular ONLINE sale).
+          posPaymentMethod: PosPaymentMethod.ONLINE,
           walletSettledAt: null,
           skipPerformerLookup: true,
+        };
+
+        const extraMetadata: Record<string, Prisma.JsonValue> = {
+          // These four keys are what the "Collected Today" KPI and the
+          // Accountant's Unified-Ledger reports read from. `debtSettled`
+          // is the magic key the green card sums; it MUST be a string so
+          // `extractDebtSettled()` picks it up.
+          debtSettled: order.totalPrice.toString(),
+          debtSettlementViaLink: true,
+          originalPaymentMethod: originalMethod ?? null,
+          reportingCategory: 'DEBT_COLLECTION_VIA_LINK',
         };
 
         await this.customerLedger.applyOrderWalletSettlementForCompletedOrder(
@@ -298,10 +377,29 @@ export class PaymentsService {
           orderId,
           performerId,
           prefetch,
+          extraMetadata,
         );
       },
       { maxWait: 10_000, timeout: 15_000 },
     );
+  }
+
+  /**
+   * V1.6.0 — when an office/call-center link payment lands for an order
+   * that was never assigned to a driver (e.g. pure debt collection on a
+   * DEBT_ON_ACCOUNT invoice), pick the first OWNER we find so the ledger
+   * row has a valid `performedById`. Deterministic and cheap — called at
+   * most once per link callback.
+   */
+  private async resolveFallbackPerformer(
+    tx: Prisma.TransactionClient,
+  ): Promise<string | null> {
+    const owner = await tx.user.findFirst({
+      where: { safariRole: SafariRole.OWNER },
+      select: { id: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    return owner?.id ?? null;
   }
 }
 

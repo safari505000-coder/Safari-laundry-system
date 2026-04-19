@@ -3,4 +3,5 @@ export declare class CallCenterOperationsSummaryDto {
     debtCollectedTodayKd: string;
     pendingLinksCount: number;
     dayIso: string;
+    branchId: string | null;
 }

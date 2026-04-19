@@ -43,8 +43,14 @@ let OrdersController = class OrdersController {
     findAll(user) {
         return this.ordersService.findAllForActor(user.userId, user.role);
     }
-    listCollectionsUnpaidOnline() {
-        return this.ordersService.listUnpaidOnlinePaymentOrders();
+    listCollectionsUnpaidOnline(branchId) {
+        const raw = (branchId ?? '').trim();
+        const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const scoped = raw && uuidRe.test(raw) ? raw : null;
+        return this.ordersService.listUnpaidCollectionOrders(scoped);
+    }
+    listDriverPendingInvoices(user) {
+        return this.ordersService.listDriverPendingInvoices(user.userId);
     }
     findOne(id, user) {
         return this.ordersService.findOneForActor(id, user.userId, user.role);
@@ -110,15 +116,29 @@ __decorate([
 __decorate([
     (0, common_1.Get)('collections/unpaid-online'),
     (0, common_1.UseGuards)(roles_guard_1.RolesGuard),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.MANAGER, client_1.SafariRole.OWNER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.OWNER),
     (0, swagger_1.ApiOperation)({
-        summary: `Collections — unpaid online payment orders (${branding_1.APP_BRAND})`,
-        description: 'PENDING orders with ONLINE payment method, UNPAID cash status, and a stored hosted payment URL. For call-center WhatsApp follow-up.',
+        summary: `Debt-Tracking — every unpaid invoice (${branding_1.APP_BRAND})`,
+        description: 'V1.6.5: Financial Oversight Report feeding the Collections debt table. Returns ALL non-canceled orders with cashStatus=UNPAID, regardless of payment method (Cash, KNET, Payment Link, Online, Wallet, Debt-on-account). Pass `?branchId=<uuid>` to scope the table to a single branch — the Red-card KPI uses the same scope so the footer sum equals the KPI to the last fils. Amounts are serialized with 3 decimals (KWD standard).',
     }),
+    __param(0, (0, common_1.Query)('branchId')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", []),
+    __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", void 0)
 ], OrdersController.prototype, "listCollectionsUnpaidOnline", null);
+__decorate([
+    (0, common_1.Get)('driver/pending-invoices'),
+    (0, common_1.UseGuards)(roles_guard_1.RolesGuard),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.DRIVER),
+    (0, swagger_1.ApiOperation)({
+        summary: `Driver Field Collection Tracker — my unpaid invoices (${branding_1.APP_BRAND})`,
+        description: 'V3.8 (Driver island): READ-ONLY list of the authenticated driver\'s own unpaid, non-canceled orders. Filter: `driverId === me` AND `cashStatus === UNPAID`. Sort: `createdAt DESC`. Amounts serialized at 3 decimals (KWD standard). Strictly isolated from the Call Center debt-recovery workflow — no WhatsApp / Payment-Link side-effects, and the aggregated KPIs in `/api/call-center/operations-summary` remain untouched.',
+    }),
+    __param(0, (0, current_user_decorator_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", void 0)
+], OrdersController.prototype, "listDriverPendingInvoices", null);
 __decorate([
     (0, common_1.Get)(':id'),
     (0, swagger_1.ApiOperation)({

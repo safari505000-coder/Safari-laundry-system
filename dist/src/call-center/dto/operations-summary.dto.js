@@ -16,34 +16,45 @@ class CallCenterOperationsSummaryDto {
     debtCollectedTodayKd;
     pendingLinksCount;
     dayIso;
+    branchId;
 }
 exports.CallCenterOperationsSummaryDto = CallCenterOperationsSummaryDto;
 __decorate([
     (0, swagger_1.ApiProperty)({
-        description: 'Sum of CustomerWallet.debt across all customers (KWD, 4 decimals).',
-        example: '1234.5600',
+        description: 'V1.6.5 — Sum of every UNPAID, non-canceled order.totalPrice (KWD, 3 decimals / fils). Identical predicate to the Debt-Tracking table so KPI === Σ(rows) to the last fils.',
+        example: '1234.560',
     }),
     __metadata("design:type", String)
 ], CallCenterOperationsSummaryDto.prototype, "totalMarketDebtKd", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)({
-        description: 'Sum of debtSettled metadata across ORDER_WALLET_SETTLEMENT + SUBSCRIPTION_ACTIVATION transactions created today (UTC day).',
-        example: '80.0000',
+        description: 'V1.6.5 — Sum of `metadata.debtSettled` across ORDER_WALLET_SETTLEMENT rows tagged `debtSettlementViaLink: true`, created strictly between Kuwait-local 00:00 today and now. Resets at 00:00 Kuwait time. Scoped by `branchId` when provided. Serialized in KWD 3-decimal precision.',
+        example: '80.000',
     }),
     __metadata("design:type", String)
 ], CallCenterOperationsSummaryDto.prototype, "debtCollectedTodayKd", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)({
-        description: 'Count of open (non-canceled, UNPAID) orders that have a stored hosted payment URL waiting for customer action.',
+        description: 'Count of open (non-canceled, UNPAID) orders that have a stored hosted payment URL waiting for customer action. Scoped by `branchId` when provided.',
         example: 12,
     }),
     __metadata("design:type", Number)
 ], CallCenterOperationsSummaryDto.prototype, "pendingLinksCount", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)({
-        description: 'Reference day (UTC ISO date, YYYY-MM-DD).',
+        description: 'Reference day in Asia/Kuwait (UTC+3) local timezone, ISO YYYY-MM-DD.',
         example: '2026-04-18',
     }),
     __metadata("design:type", String)
 ], CallCenterOperationsSummaryDto.prototype, "dayIso", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({
+        description: 'V1.6.1 — echoed branch filter (`null` means "All Branches"). Clients use this to confirm the selection the aggregate was computed for.',
+        example: null,
+        required: false,
+        nullable: true,
+        type: String,
+    }),
+    __metadata("design:type", Object)
+], CallCenterOperationsSummaryDto.prototype, "branchId", void 0);
 //# sourceMappingURL=operations-summary.dto.js.map

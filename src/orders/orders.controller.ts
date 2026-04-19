@@ -6,6 +6,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -84,14 +85,32 @@ export class OrdersController {
 
   @Get('collections/unpaid-online')
   @UseGuards(RolesGuard)
-  @Roles(SafariRole.CALL_CENTER, SafariRole.MANAGER, SafariRole.OWNER)
+  @Roles(SafariRole.CALL_CENTER, SafariRole.OWNER)
   @ApiOperation({
-    summary: `Collections — unpaid online payment orders (${APP_BRAND})`,
+    summary: `Debt-Tracking — every unpaid invoice (${APP_BRAND})`,
     description:
-      'PENDING orders with ONLINE payment method, UNPAID cash status, and a stored hosted payment URL. For call-center WhatsApp follow-up.',
+      'V1.6.5: Financial Oversight Report feeding the Collections debt table. Returns ALL non-canceled orders with cashStatus=UNPAID, regardless of payment method (Cash, KNET, Payment Link, Online, Wallet, Debt-on-account). Pass `?branchId=<uuid>` to scope the table to a single branch — the Red-card KPI uses the same scope so the footer sum equals the KPI to the last fils. Amounts are serialized with 3 decimals (KWD standard).',
   })
-  listCollectionsUnpaidOnline() {
-    return this.ordersService.listUnpaidOnlinePaymentOrders();
+  listCollectionsUnpaidOnline(@Query('branchId') branchId?: string) {
+    // V1.6.5 — mirror the operations-summary parser: empty / non-UUID
+    // values collapse to global so a stray "?branchId=" doesn't 500.
+    const raw = (branchId ?? '').trim();
+    const uuidRe =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const scoped = raw && uuidRe.test(raw) ? raw : null;
+    return this.ordersService.listUnpaidCollectionOrders(scoped);
+  }
+
+  @Get('driver/pending-invoices')
+  @UseGuards(RolesGuard)
+  @Roles(SafariRole.DRIVER)
+  @ApiOperation({
+    summary: `Driver Field Collection Tracker — my unpaid invoices (${APP_BRAND})`,
+    description:
+      'V3.8 (Driver island): READ-ONLY list of the authenticated driver\'s own unpaid, non-canceled orders. Filter: `driverId === me` AND `cashStatus === UNPAID`. Sort: `createdAt DESC`. Amounts serialized at 3 decimals (KWD standard). Strictly isolated from the Call Center debt-recovery workflow — no WhatsApp / Payment-Link side-effects, and the aggregated KPIs in `/api/call-center/operations-summary` remain untouched.',
+  })
+  listDriverPendingInvoices(@CurrentUser() user: JwtUser) {
+    return this.ordersService.listDriverPendingInvoices(user.userId);
   }
 
   @Get(':id')

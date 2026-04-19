@@ -30,8 +30,11 @@ let CallCenterController = class CallCenterController {
     constructor(callCenterService) {
         this.callCenterService = callCenterService;
     }
-    operationsSummary() {
-        return this.callCenterService.getOperationsSummary();
+    operationsSummary(branchId) {
+        const raw = (branchId ?? '').trim();
+        const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const scoped = raw && uuidRe.test(raw) ? raw : null;
+        return this.callCenterService.getOperationsSummary(scoped);
     }
     debtRecoveryReport(q) {
         return this.callCenterService.getDebtRecoveryReport(q.from, q.to);
@@ -51,6 +54,9 @@ let CallCenterController = class CallCenterController {
     markOrderReminderSent(orderId) {
         return this.callCenterService.sendOrderReminder(orderId);
     }
+    ensureOrderPaymentLink(orderId) {
+        return this.callCenterService.ensureOrderPaymentLink(orderId);
+    }
     markSubscriberReminderSent(customerId) {
         return this.callCenterService.sendSubscriberReminder(customerId);
     }
@@ -64,10 +70,11 @@ __decorate([
     (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.OWNER),
     (0, swagger_1.ApiOperation)({
         summary: `Call center operations summary — 3 KPIs (${branding_1.APP_BRAND})`,
-        description: 'RED total market debt (Σ CustomerWallet.debt), GREEN debt collected today (Σ metadata.debtSettled), YELLOW count of open UNPAID orders with a hosted payment URL awaiting action.',
+        description: 'V1.6.1 — RED total market debt (Σ unpaid non-canceled orders), GREEN debt collected today strictly between Kuwait-local 00:00 and now (Σ metadata.debtSettled), YELLOW count of open UNPAID orders with a hosted payment URL awaiting action. Pass `?branchId=<uuid>` to scope every aggregate to a single branch (driver.branchId OR customer.originBranchId when driver-less); omit for global totals.',
     }),
+    __param(0, (0, common_1.Query)('branchId')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", []),
+    __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", void 0)
 ], CallCenterController.prototype, "operationsSummary", null);
 __decorate([
@@ -139,6 +146,18 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", void 0)
 ], CallCenterController.prototype, "markOrderReminderSent", null);
+__decorate([
+    (0, common_1.Post)('orders/:orderId/payment-link'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER),
+    (0, swagger_1.ApiOperation)({
+        summary: `Ensure a hosted payment link exists for an unpaid order (${branding_1.APP_BRAND})`,
+        description: 'V1.6.0 — CALL_CENTER only. Returns the existing hosted-checkout URL if one was already minted, otherwise calls the gateway and persists a new link on the order. Works for ANY unpaid non-canceled order regardless of original payment method (Cash, KNET, DEBT_ON_ACCOUNT, PAYMENT_LINK, ONLINE). When the gateway callback later confirms payment, the order auto-switches to `posPaymentMethod=ONLINE` and the ledger row is tagged `debtSettlementViaLink=true` with `originalPaymentMethod` preserved for Accountant reports.',
+    }),
+    __param(0, (0, common_1.Param)('orderId', common_1.ParseUUIDPipe)),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], CallCenterController.prototype, "ensureOrderPaymentLink", null);
 __decorate([
     (0, common_1.Post)('subscribers/:customerId/reminder'),
     (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.OWNER),

@@ -36,6 +36,10 @@ let OnlinePaymentService = class OnlinePaymentService {
     async finalizePaidOrderFromGateway(referenceId) {
         await this.payments.finalizePaidOrderFromGateway(referenceId);
     }
+    async ensurePaymentLinkForUnpaidOrder(orderId) {
+        const link = await this.payments.ensurePaymentLinkForUnpaidOrder(orderId);
+        return { url: link.url };
+    }
     async getTotalOnlineRevenue() {
         const sum = await this.prisma.order.aggregate({
             where: {

@@ -74,6 +74,8 @@ export function DriverPOS() {
     handlePrintReceipt,
     handlePrintGarmentTags,
     checkoutBusy,
+    combinedVipSurcharge,
+    setVipForSubOrder,
     completePayment,
   } = p;
 
@@ -419,20 +421,50 @@ export function DriverPOS() {
                   !isSubscriptionOrder &&
                   lineSum > 0;
                 const dFee = paysDelivery ? DELIVERY_FEE_KD : 0;
+                const vipOn = Boolean(o.vipEnabled);
                 return (
-                  <div key={o.id} className="mt-1 flex justify-between text-muted-foreground">
-                    <span>
-                      {o.kind === 'primary' ?
-                        t('pos.multiOrder.summaryPrimary', { n: idx + 1 })
-                      : t('pos.multiOrder.summaryAttached', { n: idx + 1 })}
-                    </span>
-                    <span className="tabular-nums">
-                      {lineSum.toFixed(3)} · {t('pos.deliveryFeeLabel')}{' '}
-                      {dFee > 0 ? `${dFee.toFixed(3)}` : t('pos.multiOrder.freeDeliveryAttached')}
-                    </span>
+                  <div key={o.id} className="mt-1 space-y-1">
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>
+                        {o.kind === 'primary' ?
+                          t('pos.multiOrder.summaryPrimary', { n: idx + 1 })
+                        : t('pos.multiOrder.summaryAttached', { n: idx + 1 })}
+                      </span>
+                      <span className="tabular-nums">
+                        {lineSum.toFixed(3)} · {t('pos.deliveryFeeLabel')}{' '}
+                        {dFee > 0 ? `${dFee.toFixed(3)}` : t('pos.multiOrder.freeDeliveryAttached')}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setVipForSubOrder(idx)}
+                      aria-pressed={vipOn}
+                      className={cn(
+                        'flex w-full items-center justify-between rounded-md border px-2 py-1 text-[10px] font-medium transition',
+                        vipOn
+                          ? 'border-amber-500 bg-amber-50 text-amber-900'
+                          : 'border-border bg-background text-muted-foreground hover:bg-muted/40',
+                      )}
+                    >
+                      <span className="flex items-center gap-1">
+                        <span aria-hidden>★</span>
+                        {t('pos.vip.toggleLabel')}
+                      </span>
+                      <span className="tabular-nums">
+                        {vipOn ? `+1.000 ${kwdSuffix}` : t('pos.vip.off')}
+                      </span>
+                    </button>
                   </div>
                 );
               })}
+              {combinedVipSurcharge > 0 ?
+                <div className="mt-1 flex justify-between border-t border-border/60 pt-1 font-semibold text-amber-800">
+                  <span>{t('pos.vip.lineLabel')}</span>
+                  <span className="tabular-nums">
+                    {combinedVipSurcharge.toFixed(3)} {kwdSuffix}
+                  </span>
+                </div>
+              : null}
             </div>
           : null}
           <div className="grid grid-cols-2 gap-2">

@@ -1,51 +1,54 @@
 SYSTEM_ARCH_GUIDE.md
 
-## 1. Technical Philosophy & Architecture
-* **Islands Architecture:** Strictly isolate UI modules in `/pages/owner`, `/pages/driver`, `/pages/accountant`, etc.
-* **SafariStream:** Real-time data pipeline for prices, stock levels, and live tracking.
-* **Data Integrity:** No "Ghost" records. Every financial move must hit the `GeneralLedgerEntry`.
-* **Constraints:** JSON body limit strictly **1MB** to support Base64 receipt uploads.
+## 1. TECHNICAL PHILOSOPHY: THE "ISLANDS" ARCHITECTURE
+* **Islands Principle:** The system is divided into strictly isolated functional islands (Owner, Call Center, Driver, Manager, Accountant).
+* **No Cross-Contamination:** A logic change in the Call Center module MUST NOT impact the Driver's POS or the Accountant's ledger integrity.
+* **SafariStream Engine:** Real-time data sync for prices, tracking, and payment statuses across all islands.
 
-## 2. Role-Based Access Control (RBAC) Matrix
+---
 
-### 🔴 OWNER (The Sovereign)
-* **Full Authority:** Only role allowed to modify the Master Price List (Units & Names).
-* **Strategic Oversight:** Access to **Net Profit**, Audit Logs, and full Financial Dashboards.
-* **Live Operations:** Real-time **Driver Tracking**, monitoring **Driver Shifts**, and Managing **Subscribers List**.
-* **Smart Inventory:** Access to advanced inventory analytics with smart filtering.
+## 2. ROLE-BASED UI & ACCESS CONTROL (THE DEBT TRACKING WORKSPACE)
 
-### 🟣 ACCOUNTANT (Financial Auditor & Inventory Controller)
-* **Stock Management:** Authorized to **Add Stock (Stock-In)**, recording quantities, purchase costs, and suppliers.
-* **Operational Audit:** Access to **Live Driver Tracking** and **Shift Logs** to verify fuel expenses and payroll.
-* **Bank Reconciliation:** Upload bank statements -> Auto-match K-Net/Link transactions -> Deduct commissions.
-* **Expense Guard:** Approve expenses (Fuel/Maintenance) only with valid photo attachments.
-* **Privacy Wall:** Blocked from viewing Net Profits or Customer Personal contact data.
+### A. OWNER ISLAND (The Supervisor)
+* **UI Mode:** READ-ONLY FINANCIAL REPORT.
+* **View:** Clean tables without action buttons (WhatsApp/Payment Links).
+* **Power:** Global branch filtering to re-scope all KPIs and tables instantly.
 
-### 🟡 CALL CENTER (Customer Success & Operations)
-* **Customer Care:** Access to customer profiles and the **Subscribers List** for service renewal.
-* **Live Dispatch:** Monitor **Live Driver Tracking** and **Shift Status** (Who is currently on-shift?) to assign orders.
-* **Privacy Wall:** Blocked from all financial data (Costs, Profits, Salaries).
+### B. CALL CENTER ISLAND (The Collector)
+* **UI Mode:** ACTIVE WORKSPACE.
+* **Actions:** Full visibility of WhatsApp reminder and Payment Link buttons.
+* **Universal Links:** Capability to generate digital payment links for ANY debt (Cash, Knet, etc.).
+* **Visual Highlight:** **YELLOW BACKGROUND** on Customer Name if a payment link is currently pending (`paymentUrl != null`).
 
-### 🔵 BRANCH MANAGER (Local Operations)
-* **Stock Control:** Handle inter-branch transfers and monitor local stock levels.
-* **Yellow Alerts:** Receive notifications for low stock levels.
-* **Restricted:** No price editing or high-level financial access.
+### C. OTHER ROLES (Driver, Manager, Accountant)
+* **Access:** Strictly blocked from the Debt Tracking module to prevent data leaks.
 
-### 🟢 DRIVER (The Field Force)
-* **Strict Invoicing:** Issue invoices only at prices set by the Owner.
-* **Shift Management:** Start/End shifts with Odometer recording.
-* **Offline Resilience:** Draft invoices in low-signal areas and sync later.
+---
 
-## 3. Financial & Automation Laws
-* **Link Commission:** Automatically deduct **150 fils** per Link-paid invoice.
-* **K-Net Fees:** Auto-calculate bank fees during reconciliation as bank expenses.
-* **Unified Ledger:** All transactions must flow through the accounting core.
+## 3. THE SACRED FINANCIAL KPI RULES (COLOR-CODED)
 
-## 4. Smart Inventory & Subscribers Logic
-* **Smart Filtering:** Inventory reports must support multi-layer filtering (Category + Branch + Date + Stock Status).
-* **Stock Colors:** Visual cues: **Yellow** (Low Stock), **Red** (Out of Stock).
-* **Subscriber Management:** Centralized tracking of subscriptions, start/end dates, and payment status.
+| KPI Card | Name | Strict Logic |
+| :--- | :--- | :--- |
+| **RED** | **Total Market Debt** | Absolute Parity: Red Card Value === Σ Visible Table Rows. |
+| **GREEN** | **Collected Today** | **Debt Recovery Only:** Sum of payments where `metadata.debtSettlementViaLink === true`. Excludes regular daily sales. |
+| **YELLOW** | **Pending Links** | Count of active, unpaid payment links sent by the Call Center. |
 
-## 5. UI/UX Standards
-* **Decoupled Logic:** Use shared hooks (e.g., `use-price-list.ts`) but keep the UI views strictly separated by folder.
-* **Mobile First:** All Driver and Call Center tracking views must be optimized for speed.
+* **Reset Protocol:** All "Today" KPIs must reset at **00:00 Kuwait Local Time (UTC+3)**.
+
+---
+
+## 4. COLLECTION & SETTLEMENT LOGIC (CASH TO DIGITAL)
+1.  **Identity Flip:** When a "CASH" debt is paid via link, `paymentMethod` must auto-switch to `ONLINE`.
+2.  **Tagging:** All link settlements must be tagged in the ledger with `debtSettlementViaLink: true` for the Green Card to reflect them.
+3.  **Accounting:** Automated subtraction of gateway commissions (e.g., 0.150 KWD) to maintain ledger accuracy for the Accountant.
+
+---
+
+## 5. TECHNICAL CONSTRAINTS & PERFORMANCE
+* **Data Integrity:** Frontend visual parity must match Backend aggregate values 1:1.
+* **File Limits:** Max 1MB per image/file upload to ensure field speed.
+* **Timezone:** All daily windows are strictly Kuwait-Centric [00:00 - 23:59].
+
+---
+**DIRECTIVE FOR OPUS:**
+"This document is the system's law. Protect the islands, maintain the financial parity, and ensure the Green Card only counts recovered debt. Do not deviate."

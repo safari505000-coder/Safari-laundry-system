@@ -20,6 +20,7 @@ export declare class UsersController {
         branchId: string | null;
         createdAt: Date;
         updatedAt: Date;
+        isActive: boolean;
         username: string;
         fullName: string;
         employeeId: string | null;
@@ -29,7 +30,6 @@ export declare class UsersController {
         lastKnownLocation: string | null;
         driverPrefix: string | null;
         safariRole: import("@prisma/client").$Enums.SafariRole;
-        isActive: boolean;
         role: {
             id: string;
             createdAt: Date;
@@ -42,8 +42,8 @@ export declare class UsersController {
             updatedAt: Date;
             name: string;
             location: string;
-            phone: string | null;
             isActive: boolean;
+            phone: string | null;
         } | null;
         auditLogs: {
             id: string;
@@ -343,6 +343,7 @@ export declare class UsersController {
         branchId: string | null;
         createdAt: Date;
         updatedAt: Date;
+        isActive: boolean;
         username: string;
         fullName: string;
         employeeId: string | null;
@@ -352,7 +353,6 @@ export declare class UsersController {
         lastKnownLocation: string | null;
         driverPrefix: string | null;
         safariRole: import("@prisma/client").$Enums.SafariRole;
-        isActive: boolean;
         role: {
             id: string;
             createdAt: Date;
@@ -365,8 +365,8 @@ export declare class UsersController {
             updatedAt: Date;
             name: string;
             location: string;
-            phone: string | null;
             isActive: boolean;
+            phone: string | null;
         } | null;
         auditLogs: {
             id: string;
@@ -666,6 +666,7 @@ export declare class UsersController {
         branchId: string | null;
         createdAt: Date;
         updatedAt: Date;
+        isActive: boolean;
         username: string;
         fullName: string;
         employeeId: string | null;
@@ -675,7 +676,6 @@ export declare class UsersController {
         lastKnownLocation: string | null;
         driverPrefix: string | null;
         safariRole: import("@prisma/client").$Enums.SafariRole;
-        isActive: boolean;
         role: {
             id: string;
             createdAt: Date;
@@ -688,8 +688,8 @@ export declare class UsersController {
             updatedAt: Date;
             name: string;
             location: string;
-            phone: string | null;
             isActive: boolean;
+            phone: string | null;
         } | null;
         auditLogs: {
             id: string;
@@ -992,6 +992,7 @@ export declare class UsersController {
         branchId: string | null;
         createdAt: Date;
         updatedAt: Date;
+        isActive: boolean;
         username: string;
         fullName: string;
         employeeId: string | null;
@@ -1001,7 +1002,6 @@ export declare class UsersController {
         lastKnownLocation: string | null;
         driverPrefix: string | null;
         safariRole: import("@prisma/client").$Enums.SafariRole;
-        isActive: boolean;
         role: {
             id: string;
             createdAt: Date;
@@ -1014,8 +1014,8 @@ export declare class UsersController {
             updatedAt: Date;
             name: string;
             location: string;
-            phone: string | null;
             isActive: boolean;
+            phone: string | null;
         } | null;
         auditLogs: {
             id: string;

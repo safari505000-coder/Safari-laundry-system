@@ -1,6 +1,7 @@
 import type { NavGroup } from '@/modules/shared/nav/nav-types';
 import {
   driverFieldExpensesItem,
+  driverPendingInvoicesItem,
   myDailySalesItem,
   myDepositsItem,
   posItem,
@@ -16,7 +17,13 @@ import {
 export const driverSidebarNavGroups: NavGroup[] = [
   {
     labelKey: 'nav.groupMain',
-    items: [posItem, myDepositsItem, myDailySalesItem],
+    items: [
+      posItem,
+      myDepositsItem,
+      myDailySalesItem,
+      // V3.8 — Field Collection Tracker (read-only unpaid list).
+      driverPendingInvoicesItem,
+    ],
   },
   {
     labelKey: 'nav.groupFieldCosts',

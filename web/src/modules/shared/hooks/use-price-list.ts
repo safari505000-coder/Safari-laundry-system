@@ -53,13 +53,19 @@ type UsePriceListOpts = {
   token: string | null;
   /** When provided, forces that branch for merged prices instead of JWT / owner picker defaults. */
   branchId?: string | null;
+  /**
+   * Owner management screens flip this on so hidden (isActive=false) items
+   * remain visible for editing. POS / Driver callers leave it off and get a
+   * clean catalog that mirrors what the shop floor should see.
+   */
+  includeInactive?: boolean;
 };
 
 /**
  * Shared data bridge for `LaundryPriceListService` output (items + categories, branch merge).
  */
 export function usePriceList(opts: UsePriceListOpts): PriceListBridge {
-  const { token } = opts;
+  const { token, includeInactive = false } = opts;
   const { user, ownerBranchId } = useAuth();
   const { t } = useTranslation();
 
@@ -101,7 +107,13 @@ export function usePriceList(opts: UsePriceListOpts): PriceListBridge {
           throw e;
         }
       }
-      setItems(Array.isArray(listData) ? listData : []);
+      const rawItems = Array.isArray(listData) ? listData : [];
+      // POS / Driver see only live items; management screens opt-in via
+      // `includeInactive` so hidden rows remain visible for toggling / delete.
+      const visibleItems = includeInactive
+        ? rawItems
+        : rawItems.filter((row) => row.isActive !== false);
+      setItems(visibleItems);
       setCategories(Array.isArray(catData) ? catData : []);
     } catch (e) {
       setItems([]);
@@ -112,7 +124,7 @@ export function usePriceList(opts: UsePriceListOpts): PriceListBridge {
     } finally {
       setLoading(false);
     }
-  }, [token, effectiveBranchId, t]);
+  }, [token, effectiveBranchId, includeInactive, t]);
 
   useEffect(() => {
     void reload();

@@ -14,24 +14,30 @@ const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
 const prisma_service_1 = require("../prisma/prisma.service");
 const customer_ledger_service_1 = require("../customer-ledger/customer-ledger.service");
-const REMINDER_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+const payments_service_1 = require("../common/services/payments.service");
+const ORDER_REMINDER_COOLDOWN_MS = 2.5 * 60 * 60 * 1000;
+const SUBSCRIBER_REMINDER_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 function buildReminderResult(args) {
-    const { sent, reminderCount, lastReminderAt, now } = args;
+    const { sent, reminderCount, lastReminderAt, now, cooldownMs } = args;
     const nextAllowedAt = !sent && lastReminderAt
-        ? new Date(lastReminderAt.getTime() + REMINDER_COOLDOWN_MS)
+        ? new Date(lastReminderAt.getTime() + cooldownMs)
         : null;
-    const hoursUntilNext = nextAllowedAt
-        ? Math.max(0, Math.ceil((nextAllowedAt.getTime() - now.getTime()) / (60 * 60 * 1000)))
+    const remainingMs = nextAllowedAt
+        ? Math.max(0, nextAllowedAt.getTime() - now.getTime())
         : null;
+    const minutesUntilNext = remainingMs !== null ? Math.ceil(remainingMs / (60 * 1000)) : null;
+    const hoursUntilNext = remainingMs !== null ? Math.ceil(remainingMs / (60 * 60 * 1000)) : null;
     return {
         sent,
         reminderCount,
         lastReminderAtIso: lastReminderAt?.toISOString() ?? null,
         nextAllowedAtIso: nextAllowedAt?.toISOString() ?? null,
         hoursUntilNext,
+        minutesUntilNext,
     };
 }
 const FOUR_DP = (d) => d.toFixed(4);
+const KWD_DP = (d) => d.toFixed(3);
 const toIsoDay = (d) => d.toISOString().slice(0, 10);
 function parseDayUtc(iso) {
     const d = new Date(`${iso}T00:00:00.000Z`);
@@ -39,6 +45,42 @@ function parseDayUtc(iso) {
         throw new common_1.BadRequestException(`Invalid date: ${iso}`);
     }
     return d;
+}
+const KUWAIT_OFFSET_MS = 3 * 60 * 60 * 1000;
+function kuwaitDayBounds(now) {
+    const shifted = new Date(now.getTime() + KUWAIT_OFFSET_MS);
+    const y = shifted.getUTCFullYear();
+    const m = shifted.getUTCMonth();
+    const d = shifted.getUTCDate();
+    const dayStart = new Date(Date.UTC(y, m, d) - KUWAIT_OFFSET_MS);
+    const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+    const dayIsoLocal = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    return { dayStart, dayEnd, dayIsoLocal };
+}
+function orderBranchWhere(branchId) {
+    if (!branchId)
+        return undefined;
+    return {
+        OR: [
+            { driver: { is: { branchId } } },
+            {
+                driverId: null,
+                customer: { is: { originBranchId: branchId } },
+            },
+        ],
+    };
+}
+function ledgerBranchWhere(branchId) {
+    if (!branchId)
+        return undefined;
+    return {
+        OR: [
+            { performedBy: { is: { branchId } } },
+            { order: { is: { driver: { is: { branchId } } } } },
+            { order: { is: { customer: { is: { originBranchId: branchId } } } } },
+            { customer: { is: { originBranchId: branchId } } },
+        ],
+    };
 }
 function extractDebtSettled(meta) {
     if (!meta || typeof meta !== 'object' || Array.isArray(meta)) {
@@ -54,12 +96,23 @@ function extractDebtSettled(meta) {
         return new client_1.Prisma.Decimal(0);
     }
 }
+function isDebtViaLinkRow(meta) {
+    if (!meta || typeof meta !== 'object' || Array.isArray(meta))
+        return false;
+    return meta.debtSettlementViaLink === true;
+}
 let CallCenterService = class CallCenterService {
     prisma;
     customerLedger;
-    constructor(prisma, customerLedger) {
+    payments;
+    constructor(prisma, customerLedger, payments) {
         this.prisma = prisma;
         this.customerLedger = customerLedger;
+        this.payments = payments;
+    }
+    async ensureOrderPaymentLink(orderId) {
+        const link = await this.payments.ensurePaymentLinkForUnpaidOrder(orderId);
+        return { url: link.url };
     }
     listActiveSubscriptionPlans() {
         return this.prisma.subscriptionPlan.findMany({
@@ -260,7 +313,7 @@ let CallCenterService = class CallCenterService {
     }
     async sendOrderReminder(orderId) {
         const now = new Date();
-        const cutoff = new Date(now.getTime() - REMINDER_COOLDOWN_MS);
+        const cutoff = new Date(now.getTime() - ORDER_REMINDER_COOLDOWN_MS);
         const update = await this.prisma.order.updateMany({
             where: {
                 id: orderId,
@@ -285,11 +338,12 @@ let CallCenterService = class CallCenterService {
             reminderCount: fresh.reminderCount,
             lastReminderAt: fresh.lastReminderAt,
             now,
+            cooldownMs: ORDER_REMINDER_COOLDOWN_MS,
         });
     }
     async sendSubscriberReminder(customerId) {
         const now = new Date();
-        const cutoff = new Date(now.getTime() - REMINDER_COOLDOWN_MS);
+        const cutoff = new Date(now.getTime() - SUBSCRIBER_REMINDER_COOLDOWN_MS);
         const update = await this.prisma.customerWallet.updateMany({
             where: {
                 customerId,
@@ -333,6 +387,7 @@ let CallCenterService = class CallCenterService {
                 reminderCount: createdWallet.subscriptionReminderCount,
                 lastReminderAt: createdWallet.subscriptionLastReminderAt,
                 now,
+                cooldownMs: SUBSCRIBER_REMINDER_COOLDOWN_MS,
             });
         }
         return buildReminderResult({
@@ -340,43 +395,48 @@ let CallCenterService = class CallCenterService {
             reminderCount: fresh.subscriptionReminderCount,
             lastReminderAt: fresh.subscriptionLastReminderAt,
             now,
+            cooldownMs: SUBSCRIBER_REMINDER_COOLDOWN_MS,
         });
     }
-    async getOperationsSummary() {
+    async getOperationsSummary(branchId = null) {
         const now = new Date();
-        const dayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
-        const dayEnd = new Date(dayStart);
-        dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
-        const [walletDebt, todaysLedgerRows, pendingLinksCount] = await Promise.all([
-            this.prisma.customerWallet.aggregate({
-                _sum: { debt: true },
+        const { dayStart, dayEnd, dayIsoLocal } = kuwaitDayBounds(now);
+        const orderBranch = orderBranchWhere(branchId);
+        const ledgerBranch = ledgerBranchWhere(branchId);
+        const [unpaidAgg, todaysLedgerRows, pendingLinksCount] = await Promise.all([
+            this.prisma.order.aggregate({
+                _sum: { totalPrice: true },
+                where: {
+                    cashStatus: client_1.CashStatus.UNPAID,
+                    status: { not: client_1.OrderStatus.CANCELED },
+                    ...(orderBranch ?? {}),
+                },
             }),
             this.prisma.transactionHistory.findMany({
                 where: {
                     createdAt: { gte: dayStart, lt: dayEnd },
-                    type: {
-                        in: [
-                            client_1.LedgerTransactionType.ORDER_WALLET_SETTLEMENT,
-                            client_1.LedgerTransactionType.SUBSCRIPTION_ACTIVATION,
-                        ],
-                    },
+                    type: client_1.LedgerTransactionType.ORDER_WALLET_SETTLEMENT,
+                    ...(ledgerBranch ?? {}),
                 },
-                select: { metadata: true },
+                select: { id: true, metadata: true, createdAt: true, orderId: true },
             }),
             this.prisma.order.count({
                 where: {
                     cashStatus: client_1.CashStatus.UNPAID,
                     status: { not: client_1.OrderStatus.CANCELED },
                     posHostedPaymentUrl: { not: null },
+                    ...(orderBranch ?? {}),
                 },
             }),
         ]);
-        const collectedToday = todaysLedgerRows.reduce((acc, r) => acc.plus(extractDebtSettled(r.metadata)), new client_1.Prisma.Decimal(0));
+        const debtViaLinkRows = todaysLedgerRows.filter((r) => isDebtViaLinkRow(r.metadata));
+        const collectedToday = debtViaLinkRows.reduce((acc, r) => acc.plus(extractDebtSettled(r.metadata)), new client_1.Prisma.Decimal(0));
         return {
-            totalMarketDebtKd: FOUR_DP(walletDebt._sum.debt ?? new client_1.Prisma.Decimal(0)),
-            debtCollectedTodayKd: FOUR_DP(collectedToday),
+            totalMarketDebtKd: KWD_DP(unpaidAgg._sum.totalPrice ?? new client_1.Prisma.Decimal(0)),
+            debtCollectedTodayKd: KWD_DP(collectedToday),
             pendingLinksCount,
-            dayIso: toIsoDay(dayStart),
+            dayIso: dayIsoLocal,
+            branchId: branchId ?? null,
         };
     }
     async getDebtRecoveryReport(fromIso, toIso) {
@@ -450,6 +510,7 @@ exports.CallCenterService = CallCenterService;
 exports.CallCenterService = CallCenterService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
-        customer_ledger_service_1.CustomerLedgerService])
+        customer_ledger_service_1.CustomerLedgerService,
+        payments_service_1.PaymentsService])
 ], CallCenterService);
 //# sourceMappingURL=call-center.service.js.map

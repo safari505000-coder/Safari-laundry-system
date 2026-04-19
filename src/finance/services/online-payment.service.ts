@@ -35,6 +35,18 @@ export class OnlinePaymentService {
     await this.payments.finalizePaidOrderFromGateway(referenceId);
   }
 
+  /**
+   * V1.6.0 — call-center "Payment link" button on the Collections page.
+   * Generates (or returns the existing) hosted-checkout URL for an unpaid
+   * order regardless of its original payment method (Cash, KNET, …).
+   */
+  async ensurePaymentLinkForUnpaidOrder(
+    orderId: string,
+  ): Promise<{ url: string }> {
+    const link = await this.payments.ensurePaymentLinkForUnpaidOrder(orderId);
+    return { url: link.url };
+  }
+
   async getTotalOnlineRevenue(): Promise<string> {
     const sum = await this.prisma.order.aggregate({
       where: {

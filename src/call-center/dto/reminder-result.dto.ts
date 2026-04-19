@@ -1,5 +1,5 @@
 export class ReminderResultDto {
-  /** true when the 24-hour window elapsed and the counter was bumped. */
+  /** true when the cooldown window elapsed and the counter was bumped. */
   sent!: boolean;
   /** Post-call reminder counter value. */
   reminderCount!: number;
@@ -10,6 +10,16 @@ export class ReminderResultDto {
    * may call again. Null when `sent = true`.
    */
   nextAllowedAtIso!: string | null;
-  /** Optional payload hint: for cooldown messages in the toast. */
+  /**
+   * Ceiling-hours until the next allowed send. Kept for backward
+   * compatibility with screens that still render hours.
+   */
   hoursUntilNext!: number | null;
+  /**
+   * V1.6.8 — Ceiling-minutes until the next allowed send. Preferred by
+   * the Collections toast because the order-reminder cooldown is now
+   * 2.5 h (9_000_000 ms) — hour resolution would always round up to
+   * "3h" and be misleading.
+   */
+  minutesUntilNext!: number | null;
 }

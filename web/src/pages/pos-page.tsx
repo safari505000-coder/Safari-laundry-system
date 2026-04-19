@@ -77,6 +77,8 @@ export function PosPage() {
     handlePrintGarmentTags,
     checkoutBusy,
     sessionDeliveryCharge,
+    combinedVipSurcharge,
+    setVipForSubOrder,
     completePayment,
   } = p;
 
@@ -464,6 +466,7 @@ export function PosPage() {
                     !isSubscriptionOrder &&
                     lineSum > 0;
                   const dFee = paysDelivery ? DELIVERY_FEE_KD : 0;
+                  const vipOn = Boolean(o.vipEnabled);
                   return (
                     <div
                       key={o.id}
@@ -493,6 +496,27 @@ export function PosPage() {
                           : t('pos.multiOrder.freeDeliveryAttached')}
                         </span>
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => setVipForSubOrder(idx)}
+                        aria-pressed={vipOn}
+                        className={cn(
+                          'mt-1.5 flex w-full items-center justify-between rounded-md border px-2 py-1 text-[11px] font-medium transition',
+                          vipOn
+                            ? 'border-amber-500 bg-amber-50 text-amber-900'
+                            : 'border-border bg-background text-muted-foreground hover:bg-muted/40',
+                        )}
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <span aria-hidden>★</span>
+                          {t('pos.vip.toggleLabel')}
+                        </span>
+                        <span className="tabular-nums">
+                          {vipOn
+                            ? `+1.000 ${kwdSuffix}`
+                            : t('pos.vip.off')}
+                        </span>
+                      </button>
                     </div>
                   );
                 })}
@@ -513,6 +537,14 @@ export function PosPage() {
                   : `${sessionDeliveryCharge.toFixed(3)} ${kwdSuffix}`}
                 </span>
               </div>
+              {combinedVipSurcharge > 0 ?
+                <div className="flex items-center justify-between text-amber-800">
+                  <span>{t('pos.vip.lineLabel')}</span>
+                  <span className="tabular-nums">
+                    {combinedVipSurcharge.toFixed(3)} {kwdSuffix}
+                  </span>
+                </div>
+              : null}
               <div className="flex items-center justify-between border-t border-border pt-1 text-sm font-semibold text-foreground">
                 <span>{t('pos.grandTotalLabel')}</span>
                 <span className="tabular-nums">

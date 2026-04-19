@@ -28,6 +28,7 @@ import { PosRoute } from '@/pages/pos-route';
 import { MyDailySalesPage } from '@/modules/driver/pages/my-daily-sales-page';
 import { MyCashCustodyPage } from '@/modules/driver/pages/my-cash-custody-page';
 import { DriverFieldExpensesPage } from '@/modules/driver/pages/driver-field-expenses-page';
+import { DriverPendingInvoicesPage } from '@/modules/driver/pages/driver-pending-invoices-page';
 import { DriverMonitorPage } from '@/pages/driver-monitor-page';
 import { ExpenseApprovalPage } from '@/pages/expense-approval-page';
 import { LiveMonitorPage } from '@/pages/live-monitor-page';
@@ -157,6 +158,18 @@ export default function App() {
                 <Route path="my-daily-sales" element={<MyDailySalesPage />} />
                 <Route path="my-cash-custody" element={<MyCashCustodyPage />} />
                 <Route path="my-field-expenses" element={<DriverFieldExpensesPage />} />
+                {/* V3.8 — Driver-only Field Collection Tracker (read-only
+                    unpaid invoices). DRIVER role is enforced inside the
+                    page via `hasRole('DRIVER')`; we also gate the route
+                    here for defence-in-depth. */}
+                <Route
+                  path="driver/pending-invoices"
+                  element={
+                    <RequireRoles roles={['DRIVER']}>
+                      <DriverPendingInvoicesPage />
+                    </RequireRoles>
+                  }
+                />
                 <Route path="admin/driver-monitoring" element={<DriverMonitorPage />} />
                 <Route path="driver-monitor" element={<Navigate to="/admin/driver-monitoring" replace />} />
                 <Route path="subscriptions" element={<SubscriptionsPage />} />

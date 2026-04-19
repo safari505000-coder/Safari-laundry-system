@@ -1,6 +1,12 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { CreateLaundryPriceItemDto } from './dto/create-laundry-price-item.dto';
 import { UpdateLaundryCategoryDto } from './dto/update-laundry-category.dto';
 import { UpdateLaundryPriceItemDto } from './dto/update-laundry-price-item.dto';
 
@@ -19,6 +25,7 @@ export type LaundryPriceListItemDto = {
   nameEn: string | null;
   sortOrder: number;
   manualEntry: boolean;
+  isActive: boolean;
   priceNormal: string;
   priceUrgent: string;
   pricePressOnly: string | null;
@@ -122,7 +129,7 @@ export class LaundryPriceListService {
    * price list without a push channel (polled every 45s by the provider).
    */
   async getCatalogVersion(): Promise<string> {
-    const [items, cats, overrides] = await Promise.all([
+    const [items, cats, overrides, itemCount] = await Promise.all([
       this.prisma.laundryPriceListItem.aggregate({
         _max: { updatedAt: true },
       }),
@@ -132,15 +139,21 @@ export class LaundryPriceListService {
       this.prisma.laundryBranchItemPrice.aggregate({
         _max: { updatedAt: true },
       }),
+      this.prisma.laundryPriceListItem.count(),
     ]);
     const candidates = [
       items._max.updatedAt,
       cats._max.updatedAt,
       overrides._max.updatedAt,
     ].filter((d): d is Date => d instanceof Date);
-    if (candidates.length === 0) return '0';
-    const newest = candidates.reduce((a, b) => (a > b ? a : b));
-    return newest.toISOString();
+    const stamp =
+      candidates.length === 0
+        ? '0'
+        : candidates.reduce((a, b) => (a > b ? a : b)).toISOString();
+    // Suffix the row count so pure deletes (which can only reduce the _max
+    // updatedAt) still change the version string and propagate through
+    // SafariStream to Driver / POS clients.
+    return `${stamp}|${itemCount}`;
   }
 
   async updatePriceItem(
@@ -169,6 +182,7 @@ export class LaundryPriceListService {
     if (dto.nameEn !== undefined) data.nameEn = dto.nameEn;
     if (dto.sortOrder !== undefined) data.sortOrder = dto.sortOrder;
     if (dto.manualEntry !== undefined) data.manualEntry = dto.manualEntry;
+    if (dto.isActive !== undefined) data.isActive = dto.isActive;
     if (dto.priceNormal !== undefined) {
       data.priceNormal = new Prisma.Decimal(dto.priceNormal);
     }
@@ -200,6 +214,94 @@ export class LaundryPriceListService {
       include: { category: true },
     });
     return this.mapItemDto(row);
+  }
+
+  /**
+   * OWNER-only — create a new master tariff row.
+   *
+   * Prices default to 0 (so the row can be created first and priced later via
+   * the PATCH endpoint). The unique `code` protects against accidental double
+   * submission and keeps external references (print manifests, PDFs) stable.
+   */
+  async createPriceItem(
+    dto: CreateLaundryPriceItemDto,
+  ): Promise<LaundryPriceListItemDto> {
+    const code = dto.code.trim().toUpperCase();
+    const existing = await this.prisma.laundryPriceListItem.findUnique({
+      where: { code },
+      select: { id: true },
+    });
+    if (existing) {
+      throw new ConflictException('An item with this code already exists.');
+    }
+
+    if (dto.categoryId) {
+      const cat = await this.prisma.laundryItemCategory.findUnique({
+        where: { id: dto.categoryId },
+        select: { id: true },
+      });
+      if (!cat) {
+        throw new NotFoundException('Category not found');
+      }
+    }
+
+    const row = await this.prisma.laundryPriceListItem.create({
+      data: {
+        code,
+        nameAr: dto.nameAr.trim(),
+        nameEn: dto.nameEn?.trim() ?? null,
+        sortOrder: dto.sortOrder ?? 0,
+        manualEntry: dto.manualEntry ?? false,
+        priceNormal: new Prisma.Decimal(dto.priceNormal ?? 0),
+        priceUrgent: new Prisma.Decimal(dto.priceUrgent ?? 0),
+        pricePressOnly:
+          dto.pricePressOnly == null
+            ? null
+            : new Prisma.Decimal(dto.pricePressOnly),
+        priceUrgentPress:
+          dto.priceUrgentPress == null
+            ? null
+            : new Prisma.Decimal(dto.priceUrgentPress),
+        categoryId: dto.categoryId ?? null,
+      },
+      include: { category: true },
+    });
+    return this.mapItemDto(row);
+  }
+
+  /**
+   * OWNER-only — hard delete a master tariff row.
+   *
+   * Guarded against collateral damage: deletion is refused if any historical
+   * `OrderLineItem.label` still references the item's Arabic or English name.
+   * The UI should surface this error and offer "Hide instead" (isActive=false),
+   * which preserves historical integrity without widening the catalog.
+   */
+  async deletePriceItem(id: string): Promise<{ deletedId: string }> {
+    const existing = await this.prisma.laundryPriceListItem.findUnique({
+      where: { id },
+      select: { id: true, nameAr: true, nameEn: true },
+    });
+    if (!existing) {
+      throw new NotFoundException('Laundry price item not found');
+    }
+
+    const labels = [existing.nameAr, existing.nameEn].filter(
+      (l): l is string => typeof l === 'string' && l.length > 0,
+    );
+    if (labels.length > 0) {
+      const historyHit = await this.prisma.orderLineItem.count({
+        where: { label: { in: labels } },
+      });
+      if (historyHit > 0) {
+        throw new BadRequestException(
+          'Cannot delete: existing orders reference this item. Hide it instead (deactivate).',
+        );
+      }
+    }
+
+    await this.prisma.laundryPriceListItem.delete({ where: { id } });
+    return { deletedId: id };
   }
 
   async updateCategory(
@@ -247,6 +349,7 @@ export class LaundryPriceListService {
       nameEn: r.nameEn,
       sortOrder: r.sortOrder,
       manualEntry: r.manualEntry,
+      isActive: r.isActive,
       priceNormal: mergeRequired(r.priceNormal, ov?.priceNormal),
       priceUrgent: mergeRequired(r.priceUrgent, ov?.priceUrgent),
       pricePressOnly: mergeTier(r.pricePressOnly, ov?.pricePressOnly),
