@@ -49,6 +49,9 @@ let FinanceController = class FinanceController {
     getOwnerCustomerWalletSummary() {
         return this.financeService.getOwnerCustomerWalletSummary();
     }
+    getConsolidatedCashSnapshot() {
+        return this.financeService.getConsolidatedCashSnapshot();
+    }
     getDailyPosSales(q, user) {
         return this.financeService.getDailyPosSalesByPaymentMethod(q.from, q.to, user.role === client_1.SafariRole.DRIVER ? user.userId : undefined);
     }
@@ -106,6 +109,17 @@ __decorate([
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", Promise)
 ], FinanceController.prototype, "getOwnerCustomerWalletSummary", null);
+__decorate([
+    (0, common_1.Get)('consolidated-cash'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),
+    (0, swagger_1.ApiOperation)({
+        summary: `Consolidated cash snapshot (${branding_1.APP_BRAND})`,
+        description: 'A3.D8 — every pool of KD cash the institution currently holds: driver field cash + manager custody bags (PENDING_DEPOSIT / AWAITING_VERIFICATION) + branch wallets + unverified bank deposit logs. Used by the Owner/Accountant control-panel card so the total is the single source of truth.',
+    }),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", void 0)
+], FinanceController.prototype, "getConsolidatedCashSnapshot", null);
 __decorate([
     (0, common_1.Get)('reports/daily-pos-sales'),
     (0, roles_decorator_1.AllowDriverDailyPosSales)(),

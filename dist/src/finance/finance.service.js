@@ -11,16 +11,20 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.FinanceService = void 0;
 const common_1 = require("@nestjs/common");
+const client_1 = require("@prisma/client");
+const prisma_service_1 = require("../prisma/prisma.service");
 const cash_service_1 = require("./services/cash.service");
 const debt_service_1 = require("./services/debt.service");
 const online_payment_service_1 = require("./services/online-payment.service");
 const subscription_service_1 = require("./services/subscription.service");
 let FinanceService = class FinanceService {
+    prisma;
     cashService;
     debtService;
     onlinePaymentService;
     subscriptionService;
-    constructor(cashService, debtService, onlinePaymentService, subscriptionService) {
+    constructor(prisma, cashService, debtService, onlinePaymentService, subscriptionService) {
+        this.prisma = prisma;
         this.cashService = cashService;
         this.debtService = debtService;
         this.onlinePaymentService = onlinePaymentService;
@@ -53,6 +57,61 @@ let FinanceService = class FinanceService {
     async getOwnerFinancialCycleReport() {
         return this.cashService.getOwnerFinancialCycleReport();
     }
+    async getConsolidatedCashSnapshot() {
+        const [driverCashKd, custodyAgg, walletAgg, unverifiedAgg, distinctDriversHoldingCash,] = await Promise.all([
+            this.cashService.getTotalCashWithDrivers(),
+            this.prisma.managerCashCustody.aggregate({
+                where: {
+                    status: {
+                        in: [
+                            client_1.ManagerCashCustodyStatus.PENDING_DEPOSIT,
+                            client_1.ManagerCashCustodyStatus.AWAITING_VERIFICATION,
+                        ],
+                    },
+                },
+                _sum: { amountKd: true },
+                _count: { _all: true },
+            }),
+            this.prisma.wallet.aggregate({
+                where: { currency: 'KWD' },
+                _sum: { balance: true },
+                _count: { _all: true },
+            }),
+            this.prisma.bankDepositLog.aggregate({
+                where: { verifiedAt: null },
+                _sum: { amountKd: true },
+                _count: { _all: true },
+            }),
+            this.prisma.order.groupBy({
+                by: ['driverId'],
+                where: {
+                    status: 'COMPLETED',
+                    cashStatus: 'PAID_TO_DRIVER',
+                    posPaymentMethod: 'CASH',
+                },
+            }),
+        ]);
+        const toDec = (v) => v ? new client_1.Prisma.Decimal(v.toString()) : new client_1.Prisma.Decimal(0);
+        const driverField = new client_1.Prisma.Decimal(driverCashKd);
+        const custody = toDec(custodyAgg._sum.amountKd);
+        const wallets = toDec(walletAgg._sum.balance);
+        const unverified = toDec(unverifiedAgg._sum.amountKd);
+        const total = driverField.plus(custody).plus(wallets).plus(unverified);
+        return {
+            atIso: new Date().toISOString(),
+            driverFieldCashKd: driverField.toFixed(4),
+            managerCustodyPendingKd: custody.toFixed(4),
+            branchWalletsKd: wallets.toFixed(4),
+            unverifiedBankDepositsKd: unverified.toFixed(4),
+            totalKd: total.toFixed(4),
+            breakdown: {
+                driverCount: distinctDriversHoldingCash.length,
+                custodyBagCount: custodyAgg._count._all,
+                branchWalletCount: walletAgg._count._all,
+                unverifiedBankDepositCount: unverifiedAgg._count._all,
+            },
+        };
+    }
     async getRealtimeTotals() {
         const [cashTotal, onlineTotal, debtTotal, usage] = await Promise.all([
             this.cashService.getTotalCashWithDrivers(),
@@ -71,7 +130,8 @@ let FinanceService = class FinanceService {
 exports.FinanceService = FinanceService;
 exports.FinanceService = FinanceService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [cash_service_1.CashService,
+    __metadata("design:paramtypes", [prisma_service_1.PrismaService,
+        cash_service_1.CashService,
         debt_service_1.DebtService,
         online_payment_service_1.OnlinePaymentService,
         subscription_service_1.SubscriptionService])

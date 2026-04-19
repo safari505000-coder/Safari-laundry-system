@@ -9,6 +9,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.PayrollModule = void 0;
 const common_1 = require("@nestjs/common");
 const auth_module_1 = require("../auth/auth.module");
+const loans_module_1 = require("../loans/loans.module");
 const prisma_module_1 = require("../prisma/prisma.module");
 const payroll_controller_1 = require("./payroll.controller");
 const payroll_service_1 = require("./payroll.service");
@@ -17,7 +18,7 @@ let PayrollModule = class PayrollModule {
 exports.PayrollModule = PayrollModule;
 exports.PayrollModule = PayrollModule = __decorate([
     (0, common_1.Module)({
-        imports: [prisma_module_1.PrismaModule, auth_module_1.AuthModule],
+        imports: [prisma_module_1.PrismaModule, auth_module_1.AuthModule, (0, common_1.forwardRef)(() => loans_module_1.LoansModule)],
         controllers: [payroll_controller_1.PayrollController],
         providers: [payroll_service_1.PayrollService],
         exports: [payroll_service_1.PayrollService],

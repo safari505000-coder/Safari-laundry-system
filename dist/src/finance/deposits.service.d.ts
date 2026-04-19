@@ -1,4 +1,5 @@
 import { DepositType } from '@prisma/client';
+import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { DepositsListQueryDto } from './dto/deposits-list-query.dto';
 import { UpdateDepositStatusDto } from './dto/update-deposit-status.dto';
@@ -6,7 +7,8 @@ import { DebtService } from './services/debt.service';
 export declare class DepositsService {
     private readonly prisma;
     private readonly debtService;
-    constructor(prisma: PrismaService, debtService: DebtService);
+    private readonly generalLedger;
+    constructor(prisma: PrismaService, debtService: DebtService, generalLedger: GeneralLedgerService);
     listForUser(userId: string, role: string, query: DepositsListQueryDto): Promise<{
         rows: {
             id: string;

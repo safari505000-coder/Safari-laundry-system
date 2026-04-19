@@ -1,5 +1,7 @@
 import { PosPaymentMethod, Prisma } from '@prisma/client';
 import { CustomerLedgerService } from '../../customer-ledger/customer-ledger.service';
+import { GeneralLedgerService } from '../../general-ledger/general-ledger.service';
+import { InventoryService } from '../../inventory/inventory.service';
 import { PrismaService } from '../../prisma/prisma.service';
 export type CreatePaymentLinkParams = {
     orderId: string;
@@ -13,13 +15,15 @@ export type CreatePaymentLinkResult = {
 export declare class PaymentsService {
     private readonly prisma;
     private readonly customerLedger;
+    private readonly generalLedger;
+    private readonly inventory;
     private readonly logger;
     private readonly apiBase;
     private readonly apiKey;
     private readonly merchantId;
     private readonly secret;
     private readonly callbackPublicUrl;
-    constructor(prisma: PrismaService, customerLedger: CustomerLedgerService);
+    constructor(prisma: PrismaService, customerLedger: CustomerLedgerService, generalLedger: GeneralLedgerService, inventory: InventoryService);
     paymentsMockExplicit(): boolean;
     usePlaceholderGateway(): boolean;
     isPublicMockCheckoutAvailable(): boolean;

@@ -8,6 +8,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.FinanceModule = void 0;
 const common_1 = require("@nestjs/common");
+const general_ledger_module_1 = require("../general-ledger/general-ledger.module");
 const payments_module_1 = require("../payments/payments.module");
 const prisma_module_1 = require("../prisma/prisma.module");
 const bank_deposits_controller_1 = require("./bank-deposits.controller");
@@ -25,7 +26,7 @@ let FinanceModule = class FinanceModule {
 exports.FinanceModule = FinanceModule;
 exports.FinanceModule = FinanceModule = __decorate([
     (0, common_1.Module)({
-        imports: [prisma_module_1.PrismaModule, payments_module_1.PaymentsModule],
+        imports: [prisma_module_1.PrismaModule, payments_module_1.PaymentsModule, general_ledger_module_1.GeneralLedgerModule],
         controllers: [finance_controller_1.FinanceController, bank_deposits_controller_1.BankDepositsController, deposits_controller_1.DepositsController],
         providers: [
             finance_service_1.FinanceService,
@@ -40,6 +41,7 @@ exports.FinanceModule = FinanceModule = __decorate([
             finance_service_1.FinanceService,
             bank_deposits_service_1.BankDepositsService,
             deposits_service_1.DepositsService,
+            cash_service_1.CashService,
             debt_service_1.DebtService,
             subscription_service_1.SubscriptionService,
         ],

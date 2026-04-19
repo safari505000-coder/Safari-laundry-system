@@ -9,9 +9,9 @@ export declare class SubscriptionPlansService {
     findOne(id: string): Promise<SubscriptionPlan>;
     create(dto: CreateSubscriptionPlanDto): Prisma.Prisma__SubscriptionPlanClient<{
         id: string;
-        name: string;
         createdAt: Date;
         updatedAt: Date;
+        name: string;
         isActive: boolean;
         salePrice: Prisma.Decimal;
         actualBalance: Prisma.Decimal;
@@ -19,9 +19,9 @@ export declare class SubscriptionPlansService {
     }, never, import("@prisma/client/runtime/client").DefaultArgs, Prisma.PrismaClientOptions>;
     update(id: string, dto: UpdateSubscriptionPlanDto): Promise<{
         id: string;
-        name: string;
         createdAt: Date;
         updatedAt: Date;
+        name: string;
         isActive: boolean;
         salePrice: Prisma.Decimal;
         actualBalance: Prisma.Decimal;

@@ -34,6 +34,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 require("dotenv/config");
+const Sentry = __importStar(require("@sentry/node"));
 const bcrypt = __importStar(require("bcrypt"));
 const common_1 = require("@nestjs/common");
 const core_1 = require("@nestjs/core");
@@ -41,6 +42,16 @@ const client_1 = require("@prisma/client");
 const swagger_1 = require("@nestjs/swagger");
 const express = __importStar(require("express"));
 const app_module_1 = require("./app.module");
+const sentryDsn = process.env.SENTRY_DSN?.trim();
+if (sentryDsn) {
+    Sentry.init({
+        dsn: sentryDsn,
+        environment: process.env.NODE_ENV ?? 'development',
+        release: process.env.SENTRY_RELEASE,
+        tracesSampleRate: Number.parseFloat(process.env.SENTRY_TRACES_SAMPLE_RATE ?? '0.1'),
+    });
+    common_1.Logger.log('Sentry initialised (backend)', 'Bootstrap');
+}
 const ensure_default_price_list_1 = require("./bootstrap/ensure-default-price-list");
 const branding_1 = require("./common/constants/branding");
 const global_exception_filter_1 = require("./common/filters/global-exception.filter");

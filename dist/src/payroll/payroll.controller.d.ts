@@ -17,9 +17,9 @@ export declare class PayrollController {
         };
     } & {
         id: string;
+        branchId: string;
         createdAt: Date;
         updatedAt: Date;
-        branchId: string;
         userId: string;
         status: import("@prisma/client").$Enums.PayrollStatus;
         basicSalary: import("@prisma/client-runtime-utils").Decimal;
@@ -39,9 +39,9 @@ export declare class PayrollController {
         };
     } & {
         id: string;
+        branchId: string;
         createdAt: Date;
         updatedAt: Date;
-        branchId: string;
         userId: string;
         status: import("@prisma/client").$Enums.PayrollStatus;
         basicSalary: import("@prisma/client-runtime-utils").Decimal;
@@ -61,9 +61,9 @@ export declare class PayrollController {
         };
     } & {
         id: string;
+        branchId: string;
         createdAt: Date;
         updatedAt: Date;
-        branchId: string;
         userId: string;
         status: import("@prisma/client").$Enums.PayrollStatus;
         basicSalary: import("@prisma/client-runtime-utils").Decimal;
@@ -71,4 +71,35 @@ export declare class PayrollController {
         deductions: import("@prisma/client-runtime-utils").Decimal;
         paymentDate: Date;
     })[]>;
+    findOne(id: string, user: JwtUser): Promise<{
+        user: {
+            id: string;
+            username: string;
+            fullName: string;
+            employeeId: string | null;
+            jobTitle: string | null;
+            civilId: string | null;
+            nationality: string | null;
+            address: string | null;
+            bankName: string | null;
+            bankIban: string | null;
+            hireDate: Date | null;
+        };
+        branch: {
+            id: string;
+            name: string;
+            location: string;
+        };
+    } & {
+        id: string;
+        branchId: string;
+        createdAt: Date;
+        updatedAt: Date;
+        userId: string;
+        status: import("@prisma/client").$Enums.PayrollStatus;
+        basicSalary: import("@prisma/client-runtime-utils").Decimal;
+        allowances: import("@prisma/client-runtime-utils").Decimal;
+        deductions: import("@prisma/client-runtime-utils").Decimal;
+        paymentDate: Date;
+    }>;
 }

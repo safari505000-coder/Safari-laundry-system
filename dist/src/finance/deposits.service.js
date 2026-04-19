@@ -12,14 +12,17 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.DepositsService = void 0;
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
+const general_ledger_service_1 = require("../general-ledger/general-ledger.service");
 const prisma_service_1 = require("../prisma/prisma.service");
 const debt_service_1 = require("./services/debt.service");
 let DepositsService = class DepositsService {
     prisma;
     debtService;
-    constructor(prisma, debtService) {
+    generalLedger;
+    constructor(prisma, debtService, generalLedger) {
         this.prisma = prisma;
         this.debtService = debtService;
+        this.generalLedger = generalLedger;
     }
     async listForUser(userId, role, query) {
         const nameQ = query.driverName?.trim();
@@ -166,6 +169,21 @@ let DepositsService = class DepositsService {
                         });
                     }
                 }
+                await this.generalLedger.append(tx, {
+                    entryType: client_1.GeneralLedgerEntryType.WALLET_SETTLEMENT,
+                    amount: 0,
+                    memo: `driver-deposit:${updated.type.toLowerCase()}:approved`,
+                    actorUserId: auditorId,
+                    metadata: {
+                        source: 'DRIVER_DEPOSIT',
+                        depositId: updated.id,
+                        driverId: row.driverId,
+                        branchId,
+                        depositType: updated.type,
+                        amountKd: updated.amount.toString(),
+                        receiptImageUrl: updated.receiptImage,
+                    },
+                });
             }
             return updated;
         });
@@ -181,6 +199,7 @@ exports.DepositsService = DepositsService;
 exports.DepositsService = DepositsService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
-        debt_service_1.DebtService])
+        debt_service_1.DebtService,
+        general_ledger_service_1.GeneralLedgerService])
 ], DepositsService);
 //# sourceMappingURL=deposits.service.js.map

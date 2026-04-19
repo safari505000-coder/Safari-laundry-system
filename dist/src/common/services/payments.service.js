@@ -15,19 +15,25 @@ const node_crypto_1 = require("node:crypto");
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
 const customer_ledger_service_1 = require("../../customer-ledger/customer-ledger.service");
+const general_ledger_service_1 = require("../../general-ledger/general-ledger.service");
+const inventory_service_1 = require("../../inventory/inventory.service");
 const prisma_service_1 = require("../../prisma/prisma.service");
 let PaymentsService = PaymentsService_1 = class PaymentsService {
     prisma;
     customerLedger;
+    generalLedger;
+    inventory;
     logger = new common_1.Logger(PaymentsService_1.name);
     apiBase;
     apiKey;
     merchantId;
     secret;
     callbackPublicUrl;
-    constructor(prisma, customerLedger) {
+    constructor(prisma, customerLedger, generalLedger, inventory) {
         this.prisma = prisma;
         this.customerLedger = customerLedger;
+        this.generalLedger = generalLedger;
+        this.inventory = inventory;
         this.apiBase = (process.env.PAYMENTS_API_BASE_URL ?? '').replace(/\/$/, '');
         this.apiKey = process.env.PAYMENTS_API_KEY ?? '';
         this.merchantId = process.env.PAYMENTS_MERCHANT_ID ?? '';
@@ -250,6 +256,35 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
                 reportingCategory: 'DEBT_COLLECTION_VIA_LINK',
             };
             await this.customerLedger.applyOrderWalletSettlementForCompletedOrder(tx, orderId, performerId, prefetch, extraMetadata);
+            await this.generalLedger.append(tx, {
+                entryType: client_1.GeneralLedgerEntryType.POS_SALE_COMPLETED,
+                amount: order.totalPrice,
+                memo: 'POS checkout (hosted link)',
+                orderId,
+                customerId: order.customerId,
+                actorUserId: performerId,
+                metadata: {
+                    posPaymentMethod: client_1.PosPaymentMethod.ONLINE,
+                    originalPaymentMethod: originalMethod ?? null,
+                    source: 'GATEWAY_CALLBACK',
+                },
+            });
+            const actorRow = await tx.user.findUnique({
+                where: { id: performerId },
+                select: { branchId: true },
+            });
+            const driverRow = order.driverId
+                ? await tx.user.findUnique({
+                    where: { id: order.driverId },
+                    select: { branchId: true },
+                })
+                : null;
+            await this.inventory.applyOrderStockDecrement(tx, {
+                orderId,
+                actorUserId: performerId,
+                branchId: driverRow?.branchId ?? actorRow?.branchId ?? null,
+                reference: `GATEWAY-${orderId.slice(0, 8)}`,
+            });
         }, { maxWait: 10_000, timeout: 15_000 });
     }
     async resolveFallbackPerformer(tx) {
@@ -323,6 +358,35 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
                 reportingCategory: 'DEBT_COLLECTION_MANUAL',
             };
             await this.customerLedger.applyOrderWalletSettlementForCompletedOrder(tx, orderId, performerId, prefetch, extraMetadata);
+            await this.generalLedger.append(tx, {
+                entryType: client_1.GeneralLedgerEntryType.POS_SALE_COMPLETED,
+                amount: order.totalPrice,
+                memo: 'POS checkout (call-center manual)',
+                orderId,
+                customerId: order.customerId,
+                actorUserId: performerId,
+                metadata: {
+                    posPaymentMethod: method,
+                    originalPaymentMethod: originalMethod ?? null,
+                    source: 'CALL_CENTER_MANUAL',
+                },
+            });
+            const actorRow = await tx.user.findUnique({
+                where: { id: performerId },
+                select: { branchId: true },
+            });
+            const driverRow = order.driverId
+                ? await tx.user.findUnique({
+                    where: { id: order.driverId },
+                    select: { branchId: true },
+                })
+                : null;
+            await this.inventory.applyOrderStockDecrement(tx, {
+                orderId,
+                actorUserId: performerId,
+                branchId: driverRow?.branchId ?? actorRow?.branchId ?? null,
+                reference: `MANUAL-${orderId.slice(0, 8)}`,
+            });
             return {
                 orderId: order.id,
                 alreadySettled: false,
@@ -336,7 +400,9 @@ exports.PaymentsService = PaymentsService;
 exports.PaymentsService = PaymentsService = PaymentsService_1 = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
-        customer_ledger_service_1.CustomerLedgerService])
+        customer_ledger_service_1.CustomerLedgerService,
+        general_ledger_service_1.GeneralLedgerService,
+        inventory_service_1.InventoryService])
 ], PaymentsService);
 function normalizeKwPhone(phone) {
     const d = phone.replace(/[\s-]/g, '').trim();

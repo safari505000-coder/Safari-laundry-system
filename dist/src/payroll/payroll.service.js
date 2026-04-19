@@ -8,18 +8,24 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var __param = (this && this.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PayrollService = void 0;
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
+const loans_service_1 = require("../loans/loans.service");
 const prisma_service_1 = require("../prisma/prisma.service");
 function netPay(row) {
     return row.basicSalary.add(row.allowances).sub(row.deductions);
 }
 let PayrollService = class PayrollService {
     prisma;
-    constructor(prisma) {
+    loans;
+    constructor(prisma, loans) {
         this.prisma = prisma;
+        this.loans = loans;
     }
     assertOwnerOrManager(role) {
         if (role !== client_1.SafariRole.OWNER &&
@@ -32,21 +38,25 @@ let PayrollService = class PayrollService {
         this.assertOwnerOrManager(actorRole);
         const basic = new client_1.Prisma.Decimal(dto.basicSalary.toFixed(4));
         const allow = new client_1.Prisma.Decimal((dto.allowances ?? 0).toFixed(4));
-        const ded = new client_1.Prisma.Decimal((dto.deductions ?? 0).toFixed(4));
-        return this.prisma.payroll.create({
-            data: {
-                userId: dto.userId,
-                branchId: dto.branchId,
-                basicSalary: basic,
-                allowances: allow,
-                deductions: ded,
-                paymentDate: new Date(dto.paymentDate),
-                status: client_1.PayrollStatus.PENDING,
-            },
-            include: {
-                user: { select: { id: true, fullName: true, username: true } },
-                branch: { select: { id: true, name: true } },
-            },
+        const manualDed = new client_1.Prisma.Decimal((dto.deductions ?? 0).toFixed(4));
+        return this.prisma.$transaction(async (tx) => {
+            const loanDeduction = await this.loans.applyMonthlyDeductionForUser(dto.userId, tx);
+            const totalDed = manualDed.add(loanDeduction);
+            return tx.payroll.create({
+                data: {
+                    userId: dto.userId,
+                    branchId: dto.branchId,
+                    basicSalary: basic,
+                    allowances: allow,
+                    deductions: totalDed,
+                    paymentDate: new Date(dto.paymentDate),
+                    status: client_1.PayrollStatus.PENDING,
+                },
+                include: {
+                    user: { select: { id: true, fullName: true, username: true } },
+                    branch: { select: { id: true, name: true } },
+                },
+            });
         });
     }
     async markPaid(actorRole, id) {
@@ -84,6 +94,39 @@ let PayrollService = class PayrollService {
             },
         });
     }
+    async findOne(actorRole, actorUserId, id) {
+        const row = await this.prisma.payroll.findUnique({
+            where: { id },
+            include: {
+                user: {
+                    select: {
+                        id: true,
+                        fullName: true,
+                        username: true,
+                        employeeId: true,
+                        civilId: true,
+                        nationality: true,
+                        address: true,
+                        bankName: true,
+                        bankIban: true,
+                        hireDate: true,
+                        jobTitle: true,
+                    },
+                },
+                branch: { select: { id: true, name: true, location: true } },
+            },
+        });
+        if (!row)
+            throw new common_1.NotFoundException('Payroll not found');
+        const canReadAll = actorRole === client_1.SafariRole.OWNER ||
+            actorRole === client_1.SafariRole.GENERAL_MANAGER ||
+            actorRole === client_1.SafariRole.MANAGER ||
+            actorRole === client_1.SafariRole.ACCOUNTANT;
+        if (!canReadAll && row.userId !== actorUserId) {
+            throw new common_1.ForbiddenException();
+        }
+        return row;
+    }
     async sumPaidNetInRange(from, to, branchId) {
         const rows = await this.prisma.payroll.findMany({
             where: {
@@ -107,6 +150,8 @@ let PayrollService = class PayrollService {
 exports.PayrollService = PayrollService;
 exports.PayrollService = PayrollService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [prisma_service_1.PrismaService])
+    __param(1, (0, common_1.Inject)((0, common_1.forwardRef)(() => loans_service_1.LoansService))),
+    __metadata("design:paramtypes", [prisma_service_1.PrismaService,
+        loans_service_1.LoansService])
 ], PayrollService);
 //# sourceMappingURL=payroll.service.js.map

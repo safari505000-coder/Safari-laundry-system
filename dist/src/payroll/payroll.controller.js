@@ -38,6 +38,9 @@ let PayrollController = class PayrollController {
     list(q, user) {
         return this.payrollService.list(user.role, q.from, q.to, q.branchId);
     }
+    findOne(id, user) {
+        return this.payrollService.findOne(user.role, user.userId, id);
+    }
 };
 exports.PayrollController = PayrollController;
 __decorate([
@@ -70,6 +73,19 @@ __decorate([
     __metadata("design:paramtypes", [payroll_query_dto_1.PayrollQueryDto, Object]),
     __metadata("design:returntype", void 0)
 ], PayrollController.prototype, "list", null);
+__decorate([
+    (0, common_1.Get)(':id'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.DRIVER, client_1.SafariRole.CALL_CENTER, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
+    (0, swagger_1.ApiOperation)({
+        summary: `Fetch a single payroll row for the A4 payslip (${branding_1.APP_BRAND})`,
+        description: 'Stage-D — used by the printable payslip. Non-admin roles can only fetch their own payroll rows.',
+    }),
+    __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
+    __param(1, (0, current_user_decorator_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", void 0)
+], PayrollController.prototype, "findOne", null);
 exports.PayrollController = PayrollController = __decorate([
     (0, swagger_1.ApiTags)('payroll'),
     (0, swagger_1.ApiBearerAuth)('bearer'),

@@ -97,11 +97,14 @@ let ExpensesService = class ExpensesService {
                     : amountDec.neg();
             await this.generalLedger.append(tx, {
                 entryType: client_1.GeneralLedgerEntryType.EXPENSE_RECORDED,
-                amount: amountDec,
-                memo: row.title,
+                amount: 0,
+                memo: `expense:created:${row.title}`,
                 expenseId: row.id,
                 actorUserId: userId,
                 metadata: {
+                    event: 'CREATED',
+                    status: client_1.ExpenseStatus.PENDING_ACCOUNTANT,
+                    amountKd: amountDec.toString(),
                     category: row.category,
                     expenseMethod: method,
                     safariRole,
@@ -173,6 +176,14 @@ let ExpensesService = class ExpensesService {
             throw new common_1.ForbiddenException();
         }
         return this.prisma.$transaction(async (tx) => {
+            const previous = await tx.branchExpense.findUnique({
+                where: { id },
+                select: { status: true },
+            });
+            if (!previous) {
+                throw new common_1.BadRequestException('Expense not found');
+            }
+            const previousStatus = previous.status;
             const updated = await tx.branchExpense.update({
                 where: { id },
                 data: { status },
@@ -185,15 +196,28 @@ let ExpensesService = class ExpensesService {
                     },
                 },
             });
+            let ledgerAmount = 0;
+            let event = 'STATUS_CHANGE';
+            const wasApproved = previousStatus === client_1.ExpenseStatus.APPROVED;
+            const becameApproved = status === client_1.ExpenseStatus.APPROVED;
+            if (!wasApproved && becameApproved) {
+                ledgerAmount = updated.amount;
+                event = 'ACCRUAL';
+            }
+            else if (wasApproved && !becameApproved) {
+                ledgerAmount = updated.amount.neg();
+                event = 'REVERSAL';
+            }
             await this.generalLedger.append(tx, {
                 entryType: client_1.GeneralLedgerEntryType.EXPENSE_RECORDED,
-                amount: 0,
+                amount: ledgerAmount,
                 memo: `expense:${status.toLowerCase()}`,
                 expenseId: updated.id,
                 actorUserId,
                 metadata: {
-                    event: 'STATUS_CHANGE',
+                    event,
                     status,
+                    previousStatus,
                     amountKd: updated.amount.toString(),
                     category: updated.category,
                     expenseMethod: updated.expenseMethod,

@@ -4,4 +4,5 @@ export declare class OrderLineItemDto {
     quantity: number;
     starchOption?: StarchOption;
     unitPrice: number;
+    stockItemId?: string;
 }

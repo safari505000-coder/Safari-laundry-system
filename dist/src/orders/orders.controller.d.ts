@@ -28,9 +28,9 @@ export declare class OrdersController {
         customer: {
             id: string;
             phone: string;
+            address: string | null;
             phone2: string | null;
             displayName: string | null;
-            address: string | null;
         };
         driver: {
             id: string;
@@ -68,9 +68,9 @@ export declare class OrdersController {
         customer: {
             id: string;
             phone: string;
+            address: string | null;
             phone2: string | null;
             displayName: string | null;
-            address: string | null;
         };
         driver: {
             id: string;
@@ -108,9 +108,9 @@ export declare class OrdersController {
         customer: {
             id: string;
             phone: string;
+            address: string | null;
             phone2: string | null;
             displayName: string | null;
-            address: string | null;
         };
         driver: {
             id: string;
@@ -182,9 +182,9 @@ export declare class OrdersController {
         customer: {
             id: string;
             phone: string;
+            address: string | null;
             phone2: string | null;
             displayName: string | null;
-            address: string | null;
         };
         driver: {
             id: string;
@@ -222,9 +222,9 @@ export declare class OrdersController {
         customer: {
             id: string;
             phone: string;
+            address: string | null;
             phone2: string | null;
             displayName: string | null;
-            address: string | null;
         };
         driver: {
             id: string;
@@ -262,9 +262,9 @@ export declare class OrdersController {
         customer: {
             id: string;
             phone: string;
+            address: string | null;
             phone2: string | null;
             displayName: string | null;
-            address: string | null;
         };
         driver: {
             id: string;

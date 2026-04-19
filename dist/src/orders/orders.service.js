@@ -17,6 +17,7 @@ const customer_notifications_service_1 = require("../customer-notifications/cust
 const customer_ledger_service_1 = require("../customer-ledger/customer-ledger.service");
 const general_ledger_service_1 = require("../general-ledger/general-ledger.service");
 const finance_money_1 = require("../finance/finance-money");
+const inventory_service_1 = require("../inventory/inventory.service");
 const prisma_service_1 = require("../prisma/prisma.service");
 const serial_counter_service_1 = require("../serials/serial-counter.service");
 const order_status_machine_1 = require("./order-status.machine");
@@ -78,13 +79,15 @@ let OrdersService = class OrdersService {
     customerNotifications;
     generalLedger;
     serialCounter;
-    constructor(prisma, customerLedger, paymentsService, customerNotifications, generalLedger, serialCounter) {
+    inventory;
+    constructor(prisma, customerLedger, paymentsService, customerNotifications, generalLedger, serialCounter, inventory) {
         this.prisma = prisma;
         this.customerLedger = customerLedger;
         this.paymentsService = paymentsService;
         this.customerNotifications = customerNotifications;
         this.generalLedger = generalLedger;
         this.serialCounter = serialCounter;
+        this.inventory = inventory;
     }
     queuePosInvoiceNotify(detail, phoneCompact) {
         const phone = detail.customer.phone?.trim() ||
@@ -167,6 +170,7 @@ let OrdersService = class OrdersService {
             starchOption: line.starchOption ?? 'NONE',
             quantity: line.quantity,
             unitPrice: line.unitPrice,
+            stockItemId: line.stockItemId ?? null,
         }));
     }
     mapPosCheckoutLineItems(lineItems) {
@@ -179,6 +183,7 @@ let OrdersService = class OrdersService {
             starchOption: line.starchOption ?? 'NONE',
             quantity: Number(line.quantity),
             unitPrice: Number(line.unitPrice),
+            stockItemId: line.stockItemId ?? null,
         }));
     }
     async findCustomerByAnyPhone(tx, phoneCompact) {
@@ -352,6 +357,16 @@ let OrdersService = class OrdersService {
                     metadata: {
                         posPaymentMethod: posPaymentMethodResolved,
                     },
+                });
+                const driverRow = await tx.user.findUnique({
+                    where: { id: driverUserId },
+                    select: { branchId: true },
+                });
+                await this.inventory.applyOrderStockDecrement(tx, {
+                    orderId: created.id,
+                    actorUserId: driverUserId,
+                    branchId: driverRow?.branchId ?? null,
+                    reference: `POS-${created.id.slice(0, 8)}`,
                 });
                 return created.id;
             }, { maxWait: 10_000, timeout: 15_000 });
@@ -839,6 +854,7 @@ exports.OrdersService = OrdersService = __decorate([
         payments_service_1.PaymentsService,
         customer_notifications_service_1.CustomerNotificationsService,
         general_ledger_service_1.GeneralLedgerService,
-        serial_counter_service_1.SerialCounterService])
+        serial_counter_service_1.SerialCounterService,
+        inventory_service_1.InventoryService])
 ], OrdersService);
 //# sourceMappingURL=orders.service.js.map

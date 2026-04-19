@@ -15,13 +15,13 @@ export declare class PosService {
         id: string;
         createdAt: Date;
         phone: string;
+        address: string | null;
         wallet: {
             balance: Prisma.Decimal;
             debt: Prisma.Decimal;
         } | null;
         phone2: string | null;
         displayName: string | null;
-        address: string | null;
         addressArea: string | null;
         addressBlock: string | null;
         addressStreet: string | null;
@@ -32,13 +32,13 @@ export declare class PosService {
         id: string;
         createdAt: Date;
         phone: string;
+        address: string | null;
         wallet: {
             balance: Prisma.Decimal;
             debt: Prisma.Decimal;
         } | null;
         phone2: string | null;
         displayName: string | null;
-        address: string | null;
         addressArea: string | null;
         addressBlock: string | null;
         addressStreet: string | null;

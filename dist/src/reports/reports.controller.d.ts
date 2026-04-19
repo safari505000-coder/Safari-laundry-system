@@ -5,12 +5,6 @@ import { ReportsService } from './reports.service';
 export declare class ReportsController {
     private readonly reportsService;
     constructor(reportsService: ReportsService);
-    managerSummary(): {
-        title: string;
-        period: string;
-        branchesActive: number;
-        note: string;
-    };
     issuedInvoices(q: ReportsRangeQueryDto): Promise<{
         from: string;
         to: string;
@@ -32,10 +26,10 @@ export declare class ReportsController {
             };
             driver: {
                 id: string;
+                branchId: string | null;
                 username: string;
                 fullName: string;
                 employeeId: string | null;
-                branchId: string | null;
             } | null;
         }[];
     }>;
@@ -59,12 +53,12 @@ export declare class ReportsController {
     driverLedger(q: DriverLedgerQueryDto): Promise<{
         driver: {
             id: string;
+            branchId: string | null;
             username: string;
             fullName: string;
             employeeId: string | null;
             phone: string | null;
             safariRole: import("@prisma/client").$Enums.SafariRole;
-            branchId: string | null;
         };
         owedToOfficeKd: string;
         pendingSettlementOrderCount: number;
@@ -129,7 +123,7 @@ export declare class ReportsController {
             driverId: string | null;
             driverName: string | null;
             attachmentUrl: string | null;
-            refKind: "ORDER" | "EXPENSE" | "DEPOSIT";
+            refKind: "ORDER" | "EXPENSE" | "DEPOSIT" | "GL";
             refId: string;
         }[];
     }>;

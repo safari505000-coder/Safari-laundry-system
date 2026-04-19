@@ -5,20 +5,20 @@ export declare class BranchesController {
     constructor(branchesService: BranchesService);
     list(): import("@prisma/client").Prisma.PrismaPromise<{
         id: string;
-        name: string;
         updatedAt: Date;
+        name: string;
+        location: string;
         isActive: boolean;
         phone: string | null;
-        location: string;
     }[]>;
     create(dto: CreateBranchDto): Promise<{
         id: string;
-        name: string;
         createdAt: Date;
         updatedAt: Date;
+        name: string;
+        location: string;
         isActive: boolean;
         phone: string | null;
-        location: string;
     }>;
     operationsLive(): Promise<{
         branches: {

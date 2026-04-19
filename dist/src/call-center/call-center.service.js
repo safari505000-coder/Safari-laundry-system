@@ -422,10 +422,21 @@ let CallCenterService = class CallCenterService {
             this.prisma.transactionHistory.findMany({
                 where: {
                     createdAt: { gte: dayStart, lt: dayEnd },
-                    type: client_1.LedgerTransactionType.ORDER_WALLET_SETTLEMENT,
+                    type: {
+                        in: [
+                            client_1.LedgerTransactionType.ORDER_WALLET_SETTLEMENT,
+                            client_1.LedgerTransactionType.SUBSCRIPTION_ACTIVATION,
+                        ],
+                    },
                     ...(ledgerBranch ?? {}),
                 },
-                select: { id: true, metadata: true, createdAt: true, orderId: true },
+                select: {
+                    id: true,
+                    type: true,
+                    metadata: true,
+                    createdAt: true,
+                    orderId: true,
+                },
             }),
             this.prisma.order.count({
                 where: {
@@ -437,10 +448,12 @@ let CallCenterService = class CallCenterService {
             }),
         ]);
         const debtViaLinkRows = todaysLedgerRows.filter((r) => isDebtViaLinkRow(r.metadata));
-        const collectedToday = debtViaLinkRows.reduce((acc, r) => acc.plus(extractDebtSettled(r.metadata)), new client_1.Prisma.Decimal(0));
+        const collectedTodayViaLink = debtViaLinkRows.reduce((acc, r) => acc.plus(extractDebtSettled(r.metadata)), new client_1.Prisma.Decimal(0));
+        const recoveredToday = todaysLedgerRows.reduce((acc, r) => acc.plus(extractDebtSettled(r.metadata)), new client_1.Prisma.Decimal(0));
         return {
             totalMarketDebtKd: KWD_DP(unpaidAgg._sum.totalPrice ?? new client_1.Prisma.Decimal(0)),
-            debtCollectedTodayKd: KWD_DP(collectedToday),
+            debtCollectedTodayKd: KWD_DP(collectedTodayViaLink),
+            debtRecoveredTodayKd: KWD_DP(recoveredToday),
             pendingLinksCount,
             dayIso: dayIsoLocal,
             branchId: branchId ?? null,

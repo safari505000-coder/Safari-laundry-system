@@ -13,6 +13,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ManagerCustodyService = exports.CUSTODY_OVERDUE_MS = void 0;
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
+const cash_service_1 = require("../finance/services/cash.service");
 const general_ledger_service_1 = require("../general-ledger/general-ledger.service");
 const prisma_service_1 = require("../prisma/prisma.service");
 const finance_money_1 = require("../finance/finance-money");
@@ -20,86 +21,57 @@ exports.CUSTODY_OVERDUE_MS = 24 * 60 * 60 * 1000;
 let ManagerCustodyService = ManagerCustodyService_1 = class ManagerCustodyService {
     prisma;
     generalLedger;
+    cashService;
     logger = new common_1.Logger(ManagerCustodyService_1.name);
-    constructor(prisma, generalLedger) {
+    constructor(prisma, generalLedger, cashService) {
         this.prisma = prisma;
         this.generalLedger = generalLedger;
+        this.cashService = cashService;
     }
-    async approveReceiptFromDriver(managerId, managerBranchId, dto) {
-        const driver = await this.prisma.user.findUnique({
-            where: { id: dto.driverId },
-            select: { id: true, safariRole: true, branchId: true },
+    async approveReceiptFromDriver(managerId, _managerBranchId, dto) {
+        const result = await this.cashService.confirmHandover(managerId, {
+            driverId: dto.driverId,
+            declaredHandoverTotal: dto.declaredHandoverTotal,
         });
-        if (!driver || driver.safariRole !== client_1.SafariRole.DRIVER) {
-            throw new common_1.NotFoundException('Driver not found');
+        if (result.settledOrderCount === 0) {
+            throw new common_1.BadRequestException('No cash pending settlement for this driver.');
         }
-        const created = await this.prisma.$transaction(async (tx) => {
-            const pending = await tx.order.findMany({
-                where: {
-                    driverId: dto.driverId,
-                    status: client_1.OrderStatus.COMPLETED,
-                    cashStatus: client_1.CashStatus.PAID_TO_DRIVER,
-                    posPaymentMethod: client_1.PosPaymentMethod.CASH,
+        const bag = await this.prisma.managerCashCustody.findFirst({
+            where: {
+                managerId,
+                driverId: dto.driverId,
+                status: client_1.ManagerCashCustodyStatus.PENDING_DEPOSIT,
+            },
+            orderBy: { createdAt: 'desc' },
+            include: {
+                manager: {
+                    select: { id: true, fullName: true, username: true, phone: true },
                 },
-                select: { id: true, totalPrice: true },
-            });
-            const systemMinor = (0, finance_money_1.sumOrderMinors)(pending);
-            if (dto.declaredHandoverTotal !== undefined) {
-                try {
-                    (0, finance_money_1.assertDeclaredMatchesLedgerMinor)(systemMinor, dto.declaredHandoverTotal);
-                }
-                catch (e) {
-                    throw new common_1.BadRequestException(e instanceof Error ? e.message : 'Declared total mismatch');
-                }
-            }
-            if (pending.length === 0) {
-                throw new common_1.BadRequestException('No cash pending settlement for this driver.');
-            }
-            const shift = await tx.shift.findFirst({
-                where: { driverId: dto.driverId, status: client_1.ShiftStatus.OPEN },
-                orderBy: { startedAt: 'desc' },
-            });
-            const amountString = (0, finance_money_1.minorToAmountString)(systemMinor);
-            const ids = pending.map((o) => o.id);
-            const updated = await tx.order.updateMany({
-                where: {
-                    id: { in: ids },
-                    cashStatus: client_1.CashStatus.PAID_TO_DRIVER,
-                    posPaymentMethod: client_1.PosPaymentMethod.CASH,
-                },
-                data: {
-                    cashStatus: client_1.CashStatus.HANDED_OVER_TO_OFFICE,
-                    handoverShiftId: shift?.id ?? null,
-                },
-            });
-            if (updated.count !== pending.length) {
-                throw new common_1.ConflictException('Concurrent handover detected; not all orders could be settled. Retry.');
-            }
-            const bag = await tx.managerCashCustody.create({
-                data: {
-                    managerId,
-                    driverId: dto.driverId,
-                    branchId: managerBranchId ?? driver.branchId ?? null,
-                    shiftId: shift?.id ?? null,
-                    amountKd: amountString,
-                    settledOrderCount: pending.length,
-                    status: client_1.ManagerCashCustodyStatus.PENDING_DEPOSIT,
-                    note: dto.note?.trim() || null,
-                },
+                driver: { select: { id: true, fullName: true, username: true } },
+                branch: { select: { id: true, name: true } },
+                shift: { select: { id: true, endedAt: true, startedAt: true } },
+            },
+        });
+        if (!bag) {
+            throw new common_1.ConflictException('Handover completed but custody bag was not found. Retry.');
+        }
+        const note = dto.note?.trim() ?? '';
+        if (note.length > 0 && bag.note !== note) {
+            const updated = await this.prisma.managerCashCustody.update({
+                where: { id: bag.id },
+                data: { note },
                 include: {
                     manager: {
                         select: { id: true, fullName: true, username: true, phone: true },
                     },
-                    driver: {
-                        select: { id: true, fullName: true, username: true },
-                    },
+                    driver: { select: { id: true, fullName: true, username: true } },
                     branch: { select: { id: true, name: true } },
                     shift: { select: { id: true, endedAt: true, startedAt: true } },
                 },
             });
-            return bag;
-        });
-        return this.toRow(created);
+            return this.toRow(updated);
+        }
+        return this.toRow(bag);
     }
     async uploadDepositSlip(custodyId, managerId, dto) {
         const bag = await this.requireBag(custodyId);
@@ -396,6 +368,7 @@ exports.ManagerCustodyService = ManagerCustodyService;
 exports.ManagerCustodyService = ManagerCustodyService = ManagerCustodyService_1 = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
-        general_ledger_service_1.GeneralLedgerService])
+        general_ledger_service_1.GeneralLedgerService,
+        cash_service_1.CashService])
 ], ManagerCustodyService);
 //# sourceMappingURL=manager-custody.service.js.map

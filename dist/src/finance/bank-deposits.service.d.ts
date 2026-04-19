@@ -1,9 +1,11 @@
 import { BankDepositType } from '@prisma/client';
+import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { BankDepositsListQueryDto } from './dto/bank-deposits-list-query.dto';
 export declare class BankDepositsService {
     private readonly prisma;
-    constructor(prisma: PrismaService);
+    private readonly generalLedger;
+    constructor(prisma: PrismaService, generalLedger: GeneralLedgerService);
     list(q: BankDepositsListQueryDto): Promise<{
         from: string;
         to: string;

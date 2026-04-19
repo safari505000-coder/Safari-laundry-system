@@ -367,6 +367,8 @@ let ReportsService = class ReportsService {
                 in: [
                     client_1.GeneralLedgerEntryType.POS_SALE_COMPLETED,
                     client_1.GeneralLedgerEntryType.EXPENSE_RECORDED,
+                    client_1.GeneralLedgerEntryType.WALLET_SETTLEMENT,
+                    client_1.GeneralLedgerEntryType.DEBT_ADJUSTMENT,
                 ],
             },
         };
@@ -496,6 +498,37 @@ let ReportsService = class ReportsService {
                     attachmentUrl: attach,
                     refKind: 'EXPENSE',
                     refId: exp.id,
+                });
+            }
+            else if (row.entryType === client_1.GeneralLedgerEntryType.WALLET_SETTLEMENT) {
+                out.push({
+                    id: row.id,
+                    at: row.createdAt.toISOString(),
+                    streamType: 'CUSTODY_VERIFIED',
+                    amountKd: row.amount.toString(),
+                    memo: row.memo,
+                    driverId: null,
+                    driverName: null,
+                    attachmentUrl: null,
+                    refKind: 'GL',
+                    refId: row.id,
+                });
+            }
+            else if (row.entryType === client_1.GeneralLedgerEntryType.DEBT_ADJUSTMENT) {
+                const ordRef = row.orderId && orderMap.has(row.orderId) ? orderMap.get(row.orderId) : null;
+                if (branchId && ordRef && ordRef.driver?.branchId !== branchId)
+                    continue;
+                out.push({
+                    id: row.id,
+                    at: row.createdAt.toISOString(),
+                    streamType: 'DEBT_ADJUSTMENT',
+                    amountKd: row.amount.toString(),
+                    memo: row.memo,
+                    driverId: ordRef?.driverId ?? null,
+                    driverName: ordRef?.driver?.fullName ?? null,
+                    attachmentUrl: null,
+                    refKind: ordRef ? 'ORDER' : 'GL',
+                    refId: ordRef?.id ?? row.id,
                 });
             }
         }

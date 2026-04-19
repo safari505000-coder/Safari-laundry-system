@@ -9,6 +9,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ManagerCustodyModule = void 0;
 const common_1 = require("@nestjs/common");
 const auth_module_1 = require("../auth/auth.module");
+const finance_module_1 = require("../finance/finance.module");
 const general_ledger_module_1 = require("../general-ledger/general-ledger.module");
 const prisma_module_1 = require("../prisma/prisma.module");
 const manager_custody_controller_1 = require("./manager-custody.controller");
@@ -18,7 +19,7 @@ let ManagerCustodyModule = class ManagerCustodyModule {
 exports.ManagerCustodyModule = ManagerCustodyModule;
 exports.ManagerCustodyModule = ManagerCustodyModule = __decorate([
     (0, common_1.Module)({
-        imports: [prisma_module_1.PrismaModule, auth_module_1.AuthModule, general_ledger_module_1.GeneralLedgerModule],
+        imports: [prisma_module_1.PrismaModule, auth_module_1.AuthModule, general_ledger_module_1.GeneralLedgerModule, finance_module_1.FinanceModule],
         controllers: [manager_custody_controller_1.ManagerCustodyController],
         providers: [manager_custody_service_1.ManagerCustodyService],
         exports: [manager_custody_service_1.ManagerCustodyService],

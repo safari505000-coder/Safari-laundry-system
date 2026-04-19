@@ -12,11 +12,14 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.BankDepositsService = void 0;
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
+const general_ledger_service_1 = require("../general-ledger/general-ledger.service");
 const prisma_service_1 = require("../prisma/prisma.service");
 let BankDepositsService = class BankDepositsService {
     prisma;
-    constructor(prisma) {
+    generalLedger;
+    constructor(prisma, generalLedger) {
         this.prisma = prisma;
+        this.generalLedger = generalLedger;
     }
     async list(q) {
         const take = q.take ?? 100;
@@ -95,20 +98,38 @@ let BankDepositsService = class BankDepositsService {
         if (row.verifiedByAccountantId) {
             throw new common_1.BadRequestException('Already verified by accountant');
         }
-        const updated = await this.prisma.bankDepositLog.update({
-            where: { id },
-            data: {
-                verifiedByAccountantId: accountantId,
-                verifiedAt: new Date(),
-            },
-            include: {
-                uploadedBy: {
-                    select: { id: true, fullName: true, username: true },
+        const updated = await this.prisma.$transaction(async (tx) => {
+            const next = await tx.bankDepositLog.update({
+                where: { id },
+                data: {
+                    verifiedByAccountantId: accountantId,
+                    verifiedAt: new Date(),
                 },
-                verifiedByAccountant: {
-                    select: { id: true, fullName: true, username: true },
+                include: {
+                    uploadedBy: {
+                        select: { id: true, fullName: true, username: true },
+                    },
+                    verifiedByAccountant: {
+                        select: { id: true, fullName: true, username: true },
+                    },
                 },
-            },
+            });
+            await this.generalLedger.append(tx, {
+                entryType: client_1.GeneralLedgerEntryType.WALLET_SETTLEMENT,
+                amount: 0,
+                memo: `bank-deposit:${next.depositType.toLowerCase()}:verified`,
+                actorUserId: accountantId,
+                metadata: {
+                    source: 'BANK_DEPOSIT_LOG',
+                    bankDepositLogId: next.id,
+                    depositType: next.depositType,
+                    amountKd: next.amountKd.toString(),
+                    receiptImageUrl: next.receiptImageUrl,
+                    shiftId: next.shiftId,
+                    uploadedById: next.uploadedById,
+                },
+            });
+            return next;
         });
         return this.mapOne(updated);
     }
@@ -129,6 +150,7 @@ let BankDepositsService = class BankDepositsService {
 exports.BankDepositsService = BankDepositsService;
 exports.BankDepositsService = BankDepositsService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [prisma_service_1.PrismaService])
+    __metadata("design:paramtypes", [prisma_service_1.PrismaService,
+        general_ledger_service_1.GeneralLedgerService])
 ], BankDepositsService);
 //# sourceMappingURL=bank-deposits.service.js.map

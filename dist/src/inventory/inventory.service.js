@@ -308,11 +308,349 @@ let InventoryService = class InventoryService {
             };
         });
     }
-    async listRecentMovements(limit = 50, branchId) {
-        const rows = await this.prisma.stockMovement.findMany({
+    async stockOut(dto, userId) {
+        return this.prisma.$transaction(async (tx) => {
+            const { level, item } = await this.ensureItemAndLevel(tx, dto.stockItemId, dto.branchId);
+            const qty = new client_1.Prisma.Decimal(dto.quantity);
+            if (level.quantityOnHand.lessThan(qty)) {
+                throw new common_1.BadRequestException(`Insufficient stock at branch. Available: ${level.quantityOnHand.toFixed(4)}, requested: ${qty.toFixed(4)}.`);
+            }
+            const newQty = level.quantityOnHand.sub(qty);
+            const unitCost = level.avgUnitCost ?? item.lastUnitCost ?? null;
+            const totalCost = unitCost ? qty.mul(unitCost) : null;
+            await tx.branchStockLevel.update({
+                where: { id: level.id },
+                data: { quantityOnHand: newQty, lastMovementAt: new Date() },
+            });
+            const movement = await tx.stockMovement.create({
+                data: {
+                    stockItemId: dto.stockItemId,
+                    branchId: dto.branchId,
+                    type: client_1.StockMovementType.STOCK_OUT,
+                    quantity: qty.neg(),
+                    unitCost,
+                    totalCost: totalCost ? totalCost.neg() : null,
+                    recordedById: userId,
+                    reference: dto.reference?.trim() || null,
+                    note: dto.note?.trim() || null,
+                },
+            });
+            return this.serializeMovementResult(movement, newQty);
+        });
+    }
+    async adjust(dto, userId) {
+        if (dto.delta === 0) {
+            throw new common_1.BadRequestException('delta must not be zero.');
+        }
+        return this.prisma.$transaction(async (tx) => {
+            const { level, item } = await this.ensureItemAndLevel(tx, dto.stockItemId, dto.branchId);
+            const delta = new client_1.Prisma.Decimal(dto.delta);
+            const newQty = level.quantityOnHand.add(delta);
+            if (newQty.isNegative()) {
+                throw new common_1.BadRequestException(`Adjustment would take stock below zero (current: ${level.quantityOnHand.toFixed(4)}).`);
+            }
+            const unitCost = level.avgUnitCost ?? item.lastUnitCost ?? null;
+            const totalCost = unitCost ? delta.mul(unitCost) : null;
+            await tx.branchStockLevel.update({
+                where: { id: level.id },
+                data: { quantityOnHand: newQty, lastMovementAt: new Date() },
+            });
+            const movement = await tx.stockMovement.create({
+                data: {
+                    stockItemId: dto.stockItemId,
+                    branchId: dto.branchId,
+                    type: client_1.StockMovementType.ADJUSTMENT,
+                    quantity: delta,
+                    unitCost,
+                    totalCost,
+                    recordedById: userId,
+                    reference: dto.reference?.trim() || null,
+                    note: dto.reason.trim(),
+                },
+            });
+            return this.serializeMovementResult(movement, newQty);
+        });
+    }
+    async transfer(dto, userId) {
+        if (dto.fromBranchId === dto.toBranchId) {
+            throw new common_1.BadRequestException('fromBranchId and toBranchId must differ.');
+        }
+        return this.prisma.$transaction(async (tx) => {
+            const { level: fromLevel, item } = await this.ensureItemAndLevel(tx, dto.stockItemId, dto.fromBranchId);
+            const qty = new client_1.Prisma.Decimal(dto.quantity);
+            if (fromLevel.quantityOnHand.lessThan(qty)) {
+                throw new common_1.BadRequestException(`Insufficient stock at source branch. Available: ${fromLevel.quantityOnHand.toFixed(4)}.`);
+            }
+            const toBranch = await tx.branch.findUnique({
+                where: { id: dto.toBranchId },
+                select: { id: true },
+            });
+            if (!toBranch)
+                throw new common_1.NotFoundException('Destination branch not found.');
+            const unitCost = fromLevel.avgUnitCost ?? item.lastUnitCost ?? null;
+            const totalCost = unitCost ? qty.mul(unitCost) : null;
+            const ref = dto.reference?.trim() || `TRF-${Date.now().toString(36).toUpperCase()}`;
+            const now = new Date();
+            const newFromQty = fromLevel.quantityOnHand.sub(qty);
+            await tx.branchStockLevel.update({
+                where: { id: fromLevel.id },
+                data: { quantityOnHand: newFromQty, lastMovementAt: now },
+            });
+            const outMovement = await tx.stockMovement.create({
+                data: {
+                    stockItemId: dto.stockItemId,
+                    branchId: dto.fromBranchId,
+                    type: client_1.StockMovementType.TRANSFER_OUT,
+                    quantity: qty.neg(),
+                    unitCost,
+                    totalCost: totalCost ? totalCost.neg() : null,
+                    recordedById: userId,
+                    reference: ref,
+                    note: dto.note?.trim() || null,
+                },
+            });
+            const toExisting = await tx.branchStockLevel.findUnique({
+                where: {
+                    branchId_stockItemId: {
+                        branchId: dto.toBranchId,
+                        stockItemId: dto.stockItemId,
+                    },
+                },
+            });
+            let newToQty;
+            let newToAvg;
+            if (toExisting) {
+                const prevQty = toExisting.quantityOnHand;
+                const prevAvg = toExisting.avgUnitCost ?? new client_1.Prisma.Decimal(0);
+                newToQty = prevQty.add(qty);
+                if (unitCost && newToQty.greaterThan(0)) {
+                    const weightedPrev = prevAvg.mul(prevQty);
+                    const weightedIn = unitCost.mul(qty);
+                    newToAvg = weightedPrev.add(weightedIn).div(newToQty);
+                }
+                else {
+                    newToAvg = unitCost ?? toExisting.avgUnitCost;
+                }
+                await tx.branchStockLevel.update({
+                    where: { id: toExisting.id },
+                    data: {
+                        quantityOnHand: newToQty,
+                        avgUnitCost: newToAvg,
+                        lastMovementAt: now,
+                    },
+                });
+            }
+            else {
+                newToQty = qty;
+                newToAvg = unitCost ?? null;
+                await tx.branchStockLevel.create({
+                    data: {
+                        branchId: dto.toBranchId,
+                        stockItemId: dto.stockItemId,
+                        quantityOnHand: newToQty,
+                        avgUnitCost: newToAvg,
+                        lastMovementAt: now,
+                    },
+                });
+            }
+            const inMovement = await tx.stockMovement.create({
+                data: {
+                    stockItemId: dto.stockItemId,
+                    branchId: dto.toBranchId,
+                    type: client_1.StockMovementType.TRANSFER_IN,
+                    quantity: qty,
+                    unitCost,
+                    totalCost,
+                    recordedById: userId,
+                    reference: ref,
+                    note: dto.note?.trim() || null,
+                },
+            });
+            return {
+                reference: ref,
+                out: this.serializeMovementResult(outMovement, newFromQty),
+                in: this.serializeMovementResult(inMovement, newToQty),
+            };
+        });
+    }
+    async stocktake(dto, userId) {
+        const ref = dto.reference?.trim() || `COUNT-${Date.now().toString(36).toUpperCase()}`;
+        return this.prisma.$transaction(async (tx) => {
+            const branch = await tx.branch.findUnique({
+                where: { id: dto.branchId },
+                select: { id: true },
+            });
+            if (!branch)
+                throw new common_1.NotFoundException('Branch not found.');
+            const results = [];
+            for (const line of dto.lines) {
+                const { level, item } = await this.ensureItemAndLevel(tx, line.stockItemId, dto.branchId);
+                const counted = new client_1.Prisma.Decimal(line.countedQuantity);
+                const delta = counted.sub(level.quantityOnHand);
+                results.push({
+                    stockItemId: line.stockItemId,
+                    counted: counted.toFixed(4),
+                    previous: level.quantityOnHand.toFixed(4),
+                    delta: delta.toFixed(4),
+                    adjusted: !delta.isZero(),
+                });
+                if (delta.isZero())
+                    continue;
+                await tx.branchStockLevel.update({
+                    where: { id: level.id },
+                    data: { quantityOnHand: counted, lastMovementAt: new Date() },
+                });
+                const unitCost = level.avgUnitCost ?? item.lastUnitCost ?? null;
+                const totalCost = unitCost ? delta.mul(unitCost) : null;
+                await tx.stockMovement.create({
+                    data: {
+                        stockItemId: line.stockItemId,
+                        branchId: dto.branchId,
+                        type: client_1.StockMovementType.ADJUSTMENT,
+                        quantity: delta,
+                        unitCost,
+                        totalCost,
+                        recordedById: userId,
+                        reference: ref,
+                        note: line.note?.trim() || dto.note?.trim() || 'Physical stocktake adjustment',
+                    },
+                });
+            }
+            return {
+                reference: ref,
+                branchId: dto.branchId,
+                totalLines: dto.lines.length,
+                adjustedLines: results.filter((r) => r.adjusted).length,
+                results,
+            };
+        });
+    }
+    async applyOrderStockDecrement(tx, args) {
+        if (!args.branchId)
+            return;
+        const lines = await tx.orderLineItem.findMany({
+            where: { orderId: args.orderId, stockItemId: { not: null } },
+            select: { id: true, stockItemId: true, quantity: true, label: true },
+        });
+        if (lines.length === 0)
+            return;
+        const branch = await tx.branch.findUnique({
+            where: { id: args.branchId },
+            select: { id: true },
+        });
+        if (!branch)
+            return;
+        const reference = args.reference?.trim() || `ORDER-${args.orderId.slice(0, 8)}`;
+        for (const line of lines) {
+            if (!line.stockItemId)
+                continue;
+            const item = await tx.stockItem.findUnique({
+                where: { id: line.stockItemId },
+            });
+            if (!item)
+                continue;
+            let level = await tx.branchStockLevel.findUnique({
+                where: {
+                    branchId_stockItemId: {
+                        branchId: args.branchId,
+                        stockItemId: line.stockItemId,
+                    },
+                },
+            });
+            if (!level) {
+                level = await tx.branchStockLevel.create({
+                    data: {
+                        branchId: args.branchId,
+                        stockItemId: line.stockItemId,
+                        quantityOnHand: new client_1.Prisma.Decimal(0),
+                    },
+                });
+            }
+            const qty = new client_1.Prisma.Decimal(line.quantity);
+            const newQty = level.quantityOnHand.sub(qty);
+            const unitCost = level.avgUnitCost ?? item.lastUnitCost ?? null;
+            const totalCost = unitCost ? qty.mul(unitCost) : null;
+            await tx.branchStockLevel.update({
+                where: { id: level.id },
+                data: { quantityOnHand: newQty, lastMovementAt: new Date() },
+            });
+            await tx.stockMovement.create({
+                data: {
+                    stockItemId: line.stockItemId,
+                    branchId: args.branchId,
+                    type: client_1.StockMovementType.STOCK_OUT,
+                    quantity: qty.neg(),
+                    unitCost,
+                    totalCost: totalCost ? totalCost.neg() : null,
+                    recordedById: args.actorUserId,
+                    reference,
+                    note: line.label ?? 'POS sale',
+                },
+            });
+        }
+    }
+    async lowStock(branchId) {
+        const levels = await this.prisma.branchStockLevel.findMany({
             where: branchId ? { branchId } : undefined,
+            include: {
+                stockItem: { select: { code: true, nameAr: true, nameEn: true, unit: true, reorderPointDefault: true } },
+                branch: { select: { id: true, name: true } },
+            },
+        });
+        const rows = levels
+            .map((l) => {
+            const reorder = l.reorderPoint ?? l.stockItem.reorderPointDefault;
+            const status = deriveStatus(l.quantityOnHand, reorder);
+            return {
+                stockItemId: l.stockItemId,
+                code: l.stockItem.code,
+                nameAr: l.stockItem.nameAr,
+                nameEn: l.stockItem.nameEn,
+                unit: l.stockItem.unit,
+                branchId: l.branchId,
+                branchName: l.branch.name,
+                quantityOnHand: l.quantityOnHand.toFixed(4),
+                reorderPoint: reorder.toFixed(4),
+                status,
+            };
+        })
+            .filter((r) => r.status !== 'IN_STOCK')
+            .sort((a, b) => a.status === b.status
+            ? a.branchName.localeCompare(b.branchName)
+            : a.status === 'OUT_OF_STOCK'
+                ? -1
+                : 1);
+        return {
+            rows,
+            summary: {
+                total: rows.length,
+                outOfStock: rows.filter((r) => r.status === 'OUT_OF_STOCK').length,
+                lowStock: rows.filter((r) => r.status === 'LOW_STOCK').length,
+                generatedAt: new Date().toISOString(),
+            },
+        };
+    }
+    async listMovements(q) {
+        const where = {};
+        if (q.branchId)
+            where.branchId = q.branchId;
+        if (q.stockItemId)
+            where.stockItemId = q.stockItemId;
+        if (q.type)
+            where.type = q.type;
+        if (q.from || q.to) {
+            const createdAt = {};
+            if (q.from)
+                createdAt.gte = new Date(`${q.from}T00:00:00.000Z`);
+            if (q.to)
+                createdAt.lte = new Date(`${q.to}T23:59:59.999Z`);
+            where.createdAt = createdAt;
+        }
+        const take = Math.min(Math.max(q.limit ?? 50, 1), 500);
+        const rows = await this.prisma.stockMovement.findMany({
+            where,
             orderBy: { createdAt: 'desc' },
-            take: Math.min(Math.max(limit, 1), 200),
+            take,
             include: {
                 stockItem: { select: { code: true, nameAr: true, nameEn: true, unit: true } },
                 branch: { select: { name: true } },
@@ -335,6 +673,48 @@ let InventoryService = class InventoryService {
             receiptUrl: m.receiptUrl,
             createdAt: m.createdAt.toISOString(),
         }));
+    }
+    listRecentMovements(limit = 50, branchId) {
+        return this.listMovements({ limit, branchId });
+    }
+    async ensureItemAndLevel(tx, stockItemId, branchId) {
+        const item = await tx.stockItem.findUnique({ where: { id: stockItemId } });
+        if (!item || !item.isActive) {
+            throw new common_1.NotFoundException('Stock item not found or inactive.');
+        }
+        const branch = await tx.branch.findUnique({
+            where: { id: branchId },
+            select: { id: true },
+        });
+        if (!branch)
+            throw new common_1.NotFoundException('Branch not found.');
+        let level = await tx.branchStockLevel.findUnique({
+            where: { branchId_stockItemId: { branchId, stockItemId } },
+        });
+        if (!level) {
+            level = await tx.branchStockLevel.create({
+                data: {
+                    branchId,
+                    stockItemId,
+                    quantityOnHand: new client_1.Prisma.Decimal(0),
+                },
+            });
+        }
+        return { item, level };
+    }
+    serializeMovementResult(m, newQtyOnHand) {
+        return {
+            id: m.id,
+            stockItemId: m.stockItemId,
+            branchId: m.branchId,
+            type: m.type,
+            quantity: m.quantity.toFixed(4),
+            unitCost: m.unitCost?.toFixed(4) ?? null,
+            totalCost: m.totalCost?.toFixed(4) ?? null,
+            reference: m.reference,
+            newQuantityOnHand: newQtyOnHand.toFixed(4),
+            createdAt: m.createdAt.toISOString(),
+        };
     }
 };
 exports.InventoryService = InventoryService;

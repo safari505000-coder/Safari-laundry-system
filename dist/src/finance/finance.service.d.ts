@@ -1,4 +1,5 @@
 import { DebtEntityCategory } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
 import { ConfirmHandoverDto } from './dto/confirm-handover.dto';
 import type { DriverBalanceResponseDto, HandoverResultDto } from './dto/driver-balance.dto';
 import type { OwnerCustomerWalletSummaryDto } from './dto/owner-customer-wallet-summary.dto';
@@ -7,12 +8,27 @@ import { CashService } from './services/cash.service';
 import { DebtService } from './services/debt.service';
 import { OnlinePaymentService } from './services/online-payment.service';
 import { SubscriptionService } from './services/subscription.service';
+export type ConsolidatedCashSnapshotDto = {
+    atIso: string;
+    driverFieldCashKd: string;
+    managerCustodyPendingKd: string;
+    branchWalletsKd: string;
+    unverifiedBankDepositsKd: string;
+    totalKd: string;
+    breakdown: {
+        driverCount: number;
+        custodyBagCount: number;
+        branchWalletCount: number;
+        unverifiedBankDepositCount: number;
+    };
+};
 export declare class FinanceService {
+    private readonly prisma;
     private readonly cashService;
     private readonly debtService;
     private readonly onlinePaymentService;
     private readonly subscriptionService;
-    constructor(cashService: CashService, debtService: DebtService, onlinePaymentService: OnlinePaymentService, subscriptionService: SubscriptionService);
+    constructor(prisma: PrismaService, cashService: CashService, debtService: DebtService, onlinePaymentService: OnlinePaymentService, subscriptionService: SubscriptionService);
     ensureOpenShiftForDriver(driverId: string): Promise<void>;
     getDailyPosSalesByPaymentMethod(fromIso: string, toIso: string, scopedDriverId?: string): Promise<{
         from: string;
@@ -88,6 +104,7 @@ export declare class FinanceService {
             lastUpdatedAt: string;
         }[];
     }>;
+    getConsolidatedCashSnapshot(): Promise<ConsolidatedCashSnapshotDto>;
     getRealtimeTotals(): Promise<{
         totalCash: string;
         totalOnline: string;

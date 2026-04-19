@@ -12,6 +12,7 @@ const auth_module_1 = require("../auth/auth.module");
 const prisma_module_1 = require("../prisma/prisma.module");
 const inventory_controller_1 = require("./inventory.controller");
 const inventory_service_1 = require("./inventory.service");
+const low_stock_cron_service_1 = require("./low-stock-cron.service");
 let InventoryModule = class InventoryModule {
 };
 exports.InventoryModule = InventoryModule;
@@ -19,8 +20,8 @@ exports.InventoryModule = InventoryModule = __decorate([
     (0, common_1.Module)({
         imports: [prisma_module_1.PrismaModule, auth_module_1.AuthModule],
         controllers: [inventory_controller_1.InventoryController],
-        providers: [inventory_service_1.InventoryService],
-        exports: [inventory_service_1.InventoryService],
+        providers: [inventory_service_1.InventoryService, low_stock_cron_service_1.LowStockCronService],
+        exports: [inventory_service_1.InventoryService, low_stock_cron_service_1.LowStockCronService],
     })
 ], InventoryModule);
 //# sourceMappingURL=inventory.module.js.map

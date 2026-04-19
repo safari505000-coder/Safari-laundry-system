@@ -12,6 +12,7 @@ const auth_module_1 = require("../auth/auth.module");
 const customer_ledger_module_1 = require("../customer-ledger/customer-ledger.module");
 const general_ledger_module_1 = require("../general-ledger/general-ledger.module");
 const customer_notifications_module_1 = require("../customer-notifications/customer-notifications.module");
+const inventory_module_1 = require("../inventory/inventory.module");
 const payments_module_1 = require("../payments/payments.module");
 const serials_module_1 = require("../serials/serials.module");
 const orders_controller_1 = require("./orders.controller");
@@ -28,6 +29,7 @@ exports.OrdersModule = OrdersModule = __decorate([
             payments_module_1.PaymentsModule,
             customer_notifications_module_1.CustomerNotificationsModule,
             serials_module_1.SerialsModule,
+            inventory_module_1.InventoryModule,
         ],
         controllers: [orders_controller_1.OrdersController],
         providers: [orders_service_1.OrdersService],

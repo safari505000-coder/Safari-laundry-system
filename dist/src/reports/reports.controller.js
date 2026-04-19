@@ -29,14 +29,6 @@ let ReportsController = class ReportsController {
     constructor(reportsService) {
         this.reportsService = reportsService;
     }
-    managerSummary() {
-        return {
-            title: 'Management operations summary',
-            period: new Date().toISOString().slice(0, 10),
-            branchesActive: 0,
-            note: 'Use issued-invoices, driver-ledger, and daily-cash-closing for operational reporting.',
-        };
-    }
     issuedInvoices(q) {
         return this.reportsService.issuedInvoices(q.from, q.to, q.driverId, q.posPaymentMethod, q.branchId);
     }
@@ -61,21 +53,11 @@ let ReportsController = class ReportsController {
 };
 exports.ReportsController = ReportsController;
 __decorate([
-    (0, common_1.Get)('manager-summary'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.VIEWER),
-    (0, swagger_1.ApiOperation)({
-        summary: `Management report summary (${branding_1.APP_BRAND})`,
-        description: 'Lightweight heartbeat for dashboards.',
-    }),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", []),
-    __metadata("design:returntype", void 0)
-], ReportsController.prototype, "managerSummary", null);
-__decorate([
     (0, common_1.Get)('issued-invoices'),
     (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
     (0, swagger_1.ApiOperation)({
         summary: `Issued invoices — orders created in period (${branding_1.APP_BRAND})`,
+        description: 'A3.D6 — Time axis is Order.createdAt (invoice-issuance time). Includes canceled rows so the count ties to the serial counter. For a "completed in range" view use /reports/completed-orders which filters on Order.completedAt instead (the axis the Executive P&L uses).',
     }),
     __param(0, (0, common_1.Query)()),
     __metadata("design:type", Function),

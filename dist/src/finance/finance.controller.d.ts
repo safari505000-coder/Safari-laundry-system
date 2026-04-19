@@ -13,6 +13,7 @@ export declare class FinanceController {
         ok: boolean;
     }>;
     getOwnerCustomerWalletSummary(): Promise<OwnerCustomerWalletSummaryDto>;
+    getConsolidatedCashSnapshot(): Promise<import("./finance.service").ConsolidatedCashSnapshotDto>;
     getDailyPosSales(q: DailyPosSalesQueryDto, user: JwtUser): Promise<{
         from: string;
         to: string;
