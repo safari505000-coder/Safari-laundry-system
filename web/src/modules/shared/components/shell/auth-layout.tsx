@@ -43,7 +43,12 @@ export function AuthLayout() {
     return <Outlet />;
   }
 
-  if (pathname === '/pos' && user?.safariRole !== 'MANAGER' && user?.safariRole !== 'OWNER') {
+  // Dastur — POS is for field operators only. DRIVER already branches
+  // above into DriverPOS; here we allow MANAGER through to the back-office
+  // PosPage and bounce everyone else (including OWNER/GM) home. The server
+  // side is already guarded by `pos.use` (`RequireAccess` on /pos), this
+  // layout check is a second safety net for stale bookmarks.
+  if (pathname === '/pos' && user?.safariRole !== 'MANAGER') {
     return <Navigate to="/" replace />;
   }
 

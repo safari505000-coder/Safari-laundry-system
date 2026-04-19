@@ -61,7 +61,11 @@ export const ACCESS = {
     'ACCOUNTANT',
     'VIEWER',
   ],
-  'pos.use': withExec('MANAGER', 'DRIVER'),
+  // Dastur — invoice issuance at POS is strictly field-operator territory:
+  // DRIVER (via the field DriverPOS variant) and the branch MANAGER (via
+  // the back-office PosPage). OWNER/GENERAL_MANAGER do NOT issue invoices;
+  // they supervise through the Financial island + order reports.
+  'pos.use': ['MANAGER', 'DRIVER'] satisfies readonly SafariRole[],
 
   // ─── Executive financial island (OWNER + GM) ──────────────────────
   'financials.view': EXEC_PAIR,
@@ -120,7 +124,10 @@ export const ACCESS = {
   'managerCustody.act': ['MANAGER'] satisfies readonly SafariRole[],
   'expenses.view': withExec('MANAGER'),
   'expenses.record': ['MANAGER'] satisfies readonly SafariRole[],
-  'pos.exitToDashboard': withExec('MANAGER'),
+  // Only MANAGER needs the "Back to Dashboard" shortcut — DRIVER has no
+  // dashboard, OWNER/GM never enter POS. Keep this tight so the button
+  // never renders for roles that shouldn't see it.
+  'pos.exitToDashboard': ['MANAGER'] satisfies readonly SafariRole[],
 
   // ─── Driver personal island ───────────────────────────────────────
   'myDeposits.view': withExec('DRIVER'),

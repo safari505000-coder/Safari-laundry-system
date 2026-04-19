@@ -20,14 +20,15 @@ import { usePosEngine } from '@/modules/shared/hooks/use-pos-engine';
 import { usePriceList } from '@/modules/shared/hooks/use-price-list';
 import { PosAuxiliaryUi } from '@/modules/shared/components/pos/pos-auxiliary-ui';
 
-/** Branch / back-office POS (manager & owner). Drivers use `DriverPOS`. */
+/** Branch / back-office POS (MANAGER only). Drivers use `DriverPOS`. */
 export function PosPage() {
   const { token, user } = useAuth();
   const priceList = usePriceList({ token });
   /*
-   * Dastur §2.1 — back-office POS is shared by MANAGER + OWNER. Only these
-   * roles get the "Back to Dashboard" shortcut so they can exit the POS
-   * without fumbling through the browser back button.
+   * Dastur §2.1 — back-office POS is MANAGER-only. DRIVER has its own
+   * DriverPOS variant; OWNER/GENERAL_MANAGER do NOT issue invoices (they
+   * are gated out of `/pos` by `pos.use` + AuthLayout + PosRoute). The
+   * "Back to Dashboard" shortcut is MANAGER-specific for that reason.
    */
   const canExitToDashboard = can(user, 'pos.exitToDashboard');
   const p = usePosEngine({ variant: 'branch', priceList });
