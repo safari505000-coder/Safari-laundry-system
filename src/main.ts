@@ -1,12 +1,29 @@
 import 'dotenv/config';
+import * as Sentry from '@sentry/node';
 import * as bcrypt from 'bcrypt';
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { HttpAdapterHost, NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { SafariRole } from '@prisma/client';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as express from 'express';
 import { AppModule } from './app.module';
+
+// Dastur §8 — Sentry observability (Stage-G). Initialised before the
+// Nest factory so early bootstrap failures still get captured. No-op
+// when SENTRY_DSN is unset so local dev remains quiet.
+const sentryDsn = process.env.SENTRY_DSN?.trim();
+if (sentryDsn) {
+  Sentry.init({
+    dsn: sentryDsn,
+    environment: process.env.NODE_ENV ?? 'development',
+    release: process.env.SENTRY_RELEASE,
+    tracesSampleRate: Number.parseFloat(
+      process.env.SENTRY_TRACES_SAMPLE_RATE ?? '0.1',
+    ),
+  });
+  Logger.log('Sentry initialised (backend)', 'Bootstrap');
+}
 import { ensureDefaultPriceList } from './bootstrap/ensure-default-price-list';
 import { APP_BRAND, APP_BRAND_ERP } from './common/constants/branding';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';

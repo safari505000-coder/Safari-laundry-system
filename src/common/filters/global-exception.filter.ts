@@ -6,6 +6,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
+import * as Sentry from '@sentry/node';
 import type { Request } from 'express';
 import { APP_BRAND } from '../constants/branding';
 import {
@@ -34,6 +35,22 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     if (!(exception instanceof HttpException)) {
       logServerError('GlobalExceptionFilter', exception);
+      // Stage-G — forward uncaught errors to Sentry when configured.
+      // HttpExceptions are user-facing (validation, 404s) and are
+      // intentionally NOT reported to keep the Sentry inbox signal/noise
+      // ratio high.
+      if (Sentry.isInitialized()) {
+        Sentry.captureException(exception, {
+          tags: {
+            application: APP_BRAND,
+            requestId: requestId ? String(requestId) : 'none',
+          },
+          extra: {
+            url: req.url,
+            method: req.method,
+          },
+        });
+      }
     }
 
     const body =
