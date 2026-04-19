@@ -32,7 +32,10 @@
  *   at the staging DB and not production).
  * - Staging-first: verify the diff, then run with --apply.
  */
+import 'dotenv/config';
+import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
+import { Pool } from 'pg';
 
 type Args = {
   template: string;
@@ -74,7 +77,9 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const prisma = new PrismaClient();
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const adapter = new PrismaPg(pool);
+  const prisma = new PrismaClient({ adapter });
   try {
     const [src, dst] = await Promise.all([
       prisma.user.findUnique({
@@ -193,6 +198,7 @@ async function main(): Promise<void> {
     console.log('\nApplied. Target user is now hard-synced to the template.');
   } finally {
     await prisma.$disconnect();
+    await pool.end();
   }
 }
 
