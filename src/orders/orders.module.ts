@@ -3,6 +3,7 @@ import { AuthModule } from '../auth/auth.module';
 import { CustomerLedgerModule } from '../customer-ledger/customer-ledger.module';
 import { GeneralLedgerModule } from '../general-ledger/general-ledger.module';
 import { CustomerNotificationsModule } from '../customer-notifications/customer-notifications.module';
+import { InventoryModule } from '../inventory/inventory.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { SerialsModule } from '../serials/serials.module';
 import { OrdersController } from './orders.controller';
@@ -16,6 +17,7 @@ import { OrdersService } from './orders.service';
     PaymentsModule,
     CustomerNotificationsModule,
     SerialsModule,
+    InventoryModule,
   ],
   controllers: [OrdersController],
   providers: [OrdersService],

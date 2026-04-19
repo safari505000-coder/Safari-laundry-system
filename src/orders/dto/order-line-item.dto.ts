@@ -7,6 +7,7 @@ import {
   IsOptional,
   IsPositive,
   IsString,
+  IsUUID,
   MaxLength,
 } from 'class-validator';
 
@@ -37,4 +38,19 @@ export class OrderLineItemDto {
   @IsNumber({ maxDecimalPlaces: 4 })
   @IsPositive()
   unitPrice: number;
+
+  /**
+   * Optional inventory SKU link. When present, the completion
+   * pipeline emits a STOCK_OUT movement at the driver's branch. Kept
+   * optional so laundry-as-service rows pass through with no
+   * inventory side-effects.
+   */
+  @ApiPropertyOptional({
+    description:
+      'Optional StockItem id; when set, triggers a STOCK_OUT at order completion.',
+    example: '9b0a4c77-8cfe-4f8b-90f0-2b4e15a17ad2',
+  })
+  @IsOptional()
+  @IsUUID()
+  stockItemId?: string;
 }

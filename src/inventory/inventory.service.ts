@@ -705,6 +705,108 @@ export class InventoryService {
     });
   }
 
+  // ── Order → Inventory link ────────────────────────────────────────────────
+  /**
+   * Dastur §7 — POS → Inventory auto-decrement.
+   *
+   * Called inside an already-open transaction by the order completion
+   * pipeline (`OrdersService.posCheckout`, the gateway finalizer, and
+   * the call-center manual mark-paid). For every order line carrying
+   * an optional `stockItemId` we:
+   *
+   *   1. Upsert the destination `BranchStockLevel` (create at zero on
+   *      first sight so we never crash a POS transaction mid-commit).
+   *   2. Decrement `quantityOnHand` by the line's quantity — explicitly
+   *      allowing the column to go negative. A missing hanger should
+   *      NEVER block a sale; the low-stock cron surfaces the negative
+   *      balance for operator remediation. This is a deliberate policy
+   *      departure from manual `stockOut` (which hard-rejects).
+   *   3. Write a `STOCK_OUT` movement row (negative quantity for
+   *      arithmetic-friendly reporting) so the audit log ties 1:1 with
+   *      the order.
+   *
+   * Skips silently (no throw) when `branchId` is null — drivers without
+   * an assigned branch still sell; we just cannot attribute the consume
+   * to a physical location. This mirrors how the GL service handles
+   * missing branch metadata.
+   */
+  async applyOrderStockDecrement(
+    tx: Prisma.TransactionClient,
+    args: {
+      orderId: string;
+      actorUserId: string;
+      branchId: string | null | undefined;
+      reference?: string | null;
+    },
+  ): Promise<void> {
+    if (!args.branchId) return;
+    const lines = await tx.orderLineItem.findMany({
+      where: { orderId: args.orderId, stockItemId: { not: null } },
+      select: { id: true, stockItemId: true, quantity: true, label: true },
+    });
+    if (lines.length === 0) return;
+
+    const branch = await tx.branch.findUnique({
+      where: { id: args.branchId },
+      select: { id: true },
+    });
+    if (!branch) return;
+
+    const reference =
+      args.reference?.trim() || `ORDER-${args.orderId.slice(0, 8)}`;
+
+    for (const line of lines) {
+      if (!line.stockItemId) continue;
+      const item = await tx.stockItem.findUnique({
+        where: { id: line.stockItemId },
+      });
+      if (!item) continue;
+
+      // Upsert the branch level; never throw on missing row.
+      let level = await tx.branchStockLevel.findUnique({
+        where: {
+          branchId_stockItemId: {
+            branchId: args.branchId,
+            stockItemId: line.stockItemId,
+          },
+        },
+      });
+      if (!level) {
+        level = await tx.branchStockLevel.create({
+          data: {
+            branchId: args.branchId,
+            stockItemId: line.stockItemId,
+            quantityOnHand: new Prisma.Decimal(0),
+          },
+        });
+      }
+
+      const qty = new Prisma.Decimal(line.quantity);
+      const newQty = level.quantityOnHand.sub(qty);
+      const unitCost = level.avgUnitCost ?? item.lastUnitCost ?? null;
+      const totalCost = unitCost ? qty.mul(unitCost) : null;
+
+      await tx.branchStockLevel.update({
+        where: { id: level.id },
+        data: { quantityOnHand: newQty, lastMovementAt: new Date() },
+      });
+
+      await tx.stockMovement.create({
+        data: {
+          stockItemId: line.stockItemId,
+          branchId: args.branchId,
+          type: StockMovementType.STOCK_OUT,
+          quantity: qty.neg(),
+          unitCost,
+          totalCost: totalCost ? totalCost.neg() : null,
+          recordedById: args.actorUserId,
+          reference,
+          note: line.label ?? 'POS sale',
+        },
+      });
+    }
+  }
+
   // ── Low-stock alerts ───────────────────────────────────────────────────────
   /**
    * Snapshot of every branch-level row currently at or below reorder point

@@ -570,12 +570,23 @@ model OrderLineItem {
   starchOption StarchOption @default(NONE)
   quantity   Decimal  @db.Decimal(12, 4)
   unitPrice  Decimal  @db.Decimal(19, 4)
+  /**
+   * Optional link to an inventory SKU. When set, the order completion
+   * pipeline (`PosService.posCheckout`, gateway finalizer, call-center
+   * manual mark-paid) emits a matching `StockMovement(STOCK_OUT)` at
+   * the driver's branch so cost-of-goods reconciles with sales. Kept
+   * optional so legacy laundry line-items (garment-as-service) continue
+   * to work with no inventory coupling.
+   */
+  stockItemId String?  @db.Uuid
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order      Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  stockItem  StockItem? @relation(fields: [stockItemId], references: [id], onDelete: SetNull)
 
   @@index([orderId])
+  @@index([stockItemId])
 }
 
 model DebtLedgerEntry {
@@ -955,9 +966,10 @@ model StockItem {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
-  category     InventoryCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  branchLevels BranchStockLevel[]
-  movements    StockMovement[]
+  category       InventoryCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  branchLevels   BranchStockLevel[]
+  movements      StockMovement[]
+  orderLineItems OrderLineItem[]
 
   @@index([categoryId])
 }

@@ -19,6 +19,7 @@ import { CustomerNotificationsService } from '../customer-notifications/customer
 import { CustomerLedgerService } from '../customer-ledger/customer-ledger.service';
 import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
 import { parseFixed4ToMinor, toMinorFromFixed4 } from '../finance/finance-money';
+import { InventoryService } from '../inventory/inventory.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SerialCounterService } from '../serials/serial-counter.service';
 import { AssignDriverDto } from './dto/assign-driver.dto';
@@ -109,6 +110,7 @@ export class OrdersService {
     private readonly customerNotifications: CustomerNotificationsService,
     private readonly generalLedger: GeneralLedgerService,
     private readonly serialCounter: SerialCounterService,
+    private readonly inventory: InventoryService,
   ) {}
 
   private queuePosInvoiceNotify(
@@ -222,7 +224,12 @@ export class OrdersService {
     totalPrice: number,
     lineItems?: OrderLineItemDto[],
   ):
-    | { label: string | null; quantity: number; unitPrice: number }[]
+    | {
+        label: string | null;
+        quantity: number;
+        unitPrice: number;
+        stockItemId: string | null;
+      }[]
     | undefined {
     const items = lineItems ?? [];
     assertLineItemsMatchTotal(totalPrice, items);
@@ -234,6 +241,7 @@ export class OrdersService {
       starchOption: line.starchOption ?? 'NONE',
       quantity: line.quantity,
       unitPrice: line.unitPrice,
+      stockItemId: line.stockItemId ?? null,
     }));
   }
 
@@ -244,7 +252,12 @@ export class OrdersService {
   private mapPosCheckoutLineItems(
     lineItems?: OrderLineItemDto[],
   ):
-    | { label: string | null; quantity: number; unitPrice: number }[]
+    | {
+        label: string | null;
+        quantity: number;
+        unitPrice: number;
+        stockItemId: string | null;
+      }[]
     | undefined {
     const items = lineItems ?? [];
     if (!items.length) {
@@ -255,6 +268,7 @@ export class OrdersService {
       starchOption: line.starchOption ?? 'NONE',
       quantity: Number(line.quantity),
       unitPrice: Number(line.unitPrice),
+      stockItemId: line.stockItemId ?? null,
     }));
   }
 
@@ -504,6 +518,20 @@ export class OrdersService {
             },
           });
 
+          // Dastur §7 — POS → Inventory auto-decrement.
+          // Resolves the driver's branch lazily inside the transaction
+          // so POS keeps working for office users with no branch.
+          const driverRow = await tx.user.findUnique({
+            where: { id: driverUserId },
+            select: { branchId: true },
+          });
+          await this.inventory.applyOrderStockDecrement(tx, {
+            orderId: created.id,
+            actorUserId: driverUserId,
+            branchId: driverRow?.branchId ?? null,
+            reference: `POS-${created.id.slice(0, 8)}`,
+          });
+
           return created.id;
         },
         { maxWait: 10_000, timeout: 15_000 },
@@ -568,7 +596,12 @@ export class OrdersService {
     const prepared: Array<{
       totalPriceDecimal: Prisma.Decimal;
       lineCreates:
-        | { label: string | null; quantity: number; unitPrice: number }[]
+        | {
+            label: string | null;
+            quantity: number;
+            unitPrice: number;
+            stockItemId: string | null;
+          }[]
         | undefined;
     }> = [];
 

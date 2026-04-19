@@ -18,6 +18,7 @@ import {
   type OrderWalletSettlementPrefetch,
 } from '../../customer-ledger/customer-ledger.service';
 import { GeneralLedgerService } from '../../general-ledger/general-ledger.service';
+import { InventoryService } from '../../inventory/inventory.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
 export type CreatePaymentLinkParams = {
@@ -44,6 +45,7 @@ export class PaymentsService {
     private readonly prisma: PrismaService,
     private readonly customerLedger: CustomerLedgerService,
     private readonly generalLedger: GeneralLedgerService,
+    private readonly inventory: InventoryService,
   ) {
     this.apiBase = (process.env.PAYMENTS_API_BASE_URL ?? '').replace(
       /\/$/,
@@ -401,6 +403,26 @@ export class PaymentsService {
             source: 'GATEWAY_CALLBACK',
           },
         });
+
+        // Dastur §7 — gateway completion also emits the STOCK_OUT
+        // side-effects. For driver-less office invoices the fallback
+        // performer has no branch, so the helper silently no-ops.
+        const actorRow = await tx.user.findUnique({
+          where: { id: performerId },
+          select: { branchId: true },
+        });
+        const driverRow = order.driverId
+          ? await tx.user.findUnique({
+              where: { id: order.driverId },
+              select: { branchId: true },
+            })
+          : null;
+        await this.inventory.applyOrderStockDecrement(tx, {
+          orderId,
+          actorUserId: performerId,
+          branchId: driverRow?.branchId ?? actorRow?.branchId ?? null,
+          reference: `GATEWAY-${orderId.slice(0, 8)}`,
+        });
       },
       { maxWait: 10_000, timeout: 15_000 },
     );
@@ -558,6 +580,25 @@ export class PaymentsService {
             originalPaymentMethod: originalMethod ?? null,
             source: 'CALL_CENTER_MANUAL',
           },
+        });
+
+        // Dastur §7 — also emit STOCK_OUT on call-center manual
+        // completion. Branch priority: driver → agent → none.
+        const actorRow = await tx.user.findUnique({
+          where: { id: performerId },
+          select: { branchId: true },
+        });
+        const driverRow = order.driverId
+          ? await tx.user.findUnique({
+              where: { id: order.driverId },
+              select: { branchId: true },
+            })
+          : null;
+        await this.inventory.applyOrderStockDecrement(tx, {
+          orderId,
+          actorUserId: performerId,
+          branchId: driverRow?.branchId ?? actorRow?.branchId ?? null,
+          reference: `MANUAL-${orderId.slice(0, 8)}`,
         });
 
         return {
