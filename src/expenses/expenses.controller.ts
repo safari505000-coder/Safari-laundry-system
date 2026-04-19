@@ -92,6 +92,7 @@ export class ExpensesController {
       id,
       user.role as SafariRole,
       dto.status,
+      user.userId,
     );
   }
 }

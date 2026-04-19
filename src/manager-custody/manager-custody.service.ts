@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import {
   CashStatus,
+  GeneralLedgerEntryType,
   ManagerCashCustody,
   ManagerCashCustodyStatus,
   OrderStatus,
@@ -16,6 +17,7 @@ import {
   SafariRole,
   ShiftStatus,
 } from '@prisma/client';
+import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   assertDeclaredMatchesLedgerMinor,
@@ -83,7 +85,10 @@ export type AgingSummary = {
 @Injectable()
 export class ManagerCustodyService {
   private readonly logger = new Logger(ManagerCustodyService.name);
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly generalLedger: GeneralLedgerService,
+  ) {}
 
   /**
    * Dastur §3.DRIVER_EXIT — Manager approves receipt of cash from driver.
@@ -290,22 +295,45 @@ export class ManagerCustodyService {
         `Only bags in AWAITING_VERIFICATION can be verified (got ${bag.status}).`,
       );
     }
-    const updated = await this.prisma.managerCashCustody.update({
-      where: { id: custodyId },
-      data: {
-        status: ManagerCashCustodyStatus.VERIFIED,
-        verifiedByAccountantId: accountantId,
-        verifiedAt: new Date(),
-        note: dto.note?.trim() || bag.note,
-      },
-      include: {
-        manager: {
-          select: { id: true, fullName: true, username: true, phone: true },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const row = await tx.managerCashCustody.update({
+        where: { id: custodyId },
+        data: {
+          status: ManagerCashCustodyStatus.VERIFIED,
+          verifiedByAccountantId: accountantId,
+          verifiedAt: new Date(),
+          note: dto.note?.trim() || bag.note,
         },
-        driver: { select: { id: true, fullName: true, username: true } },
-        branch: { select: { id: true, name: true } },
-        shift: { select: { id: true, endedAt: true, startedAt: true } },
-      },
+        include: {
+          manager: {
+            select: { id: true, fullName: true, username: true, phone: true },
+          },
+          driver: { select: { id: true, fullName: true, username: true } },
+          branch: { select: { id: true, name: true } },
+          shift: { select: { id: true, endedAt: true, startedAt: true } },
+        },
+      });
+
+      // Dastur §5 — custody verification is a settlement event that the
+      // GL must record. The full bag amount leaves driver/manager custody
+      // and is confirmed as banked cash by the accountant.
+      await this.generalLedger.append(tx, {
+        entryType: GeneralLedgerEntryType.WALLET_SETTLEMENT,
+        amount: row.amountKd,
+        memo: 'manager custody verified',
+        actorUserId: accountantId,
+        metadata: {
+          event: 'CUSTODY_VERIFIED',
+          custodyId: row.id,
+          managerId: row.managerId,
+          driverId: row.driverId,
+          branchId: row.branchId,
+          shiftId: row.shiftId,
+          settledOrderCount: row.settledOrderCount,
+        },
+      });
+
+      return row;
     });
     return this.toRow(updated);
   }

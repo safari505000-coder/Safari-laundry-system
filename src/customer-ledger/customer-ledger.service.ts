@@ -6,6 +6,7 @@ import {
 import {
   DebtEntityCategory,
   DebtSource,
+  GeneralLedgerEntryType,
   LedgerTransactionType,
   PosPaymentMethod,
   Prisma,
@@ -15,6 +16,7 @@ import {
   minorToAmountString,
   toMinorFromFixed4,
 } from '../finance/finance-money';
+import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { SubscriptionActivationSettlement } from './subscription-settlement.types';
 
@@ -32,7 +34,10 @@ export type OrderWalletSettlementPrefetch = {
 
 @Injectable()
 export class CustomerLedgerService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly generalLedger: GeneralLedgerService,
+  ) {}
 
   private decimalFromMinor(minor: bigint): Prisma.Decimal {
     return new Prisma.Decimal(minorToAmountString(minor));
@@ -198,6 +203,21 @@ export class CustomerLedgerService {
           note: 'Invoice shortfall recorded as receivable',
         },
       });
+      // Dastur §5 — mirror the debt change onto the unified GL so every
+      // financial movement surfaces on one audit stream.
+      await this.generalLedger.append(tx, {
+        entryType: GeneralLedgerEntryType.DEBT_ADJUSTMENT,
+        amount: this.decimalFromMinor(addedInvoiceDebtMinor),
+        memo: 'Invoice shortfall recorded as receivable',
+        customerId: o.customerId,
+        orderId,
+        actorUserId: actor.id,
+        metadata: {
+          source: DebtSource.INVOICE_SHORTFALL,
+          category: debtCategory,
+          branchId: actor.branchId,
+        },
+      });
     }
     if (addedSubscriptionDebtMinor > 0n) {
       await tx.debtLedgerEntry.create({
@@ -210,6 +230,19 @@ export class CustomerLedgerService {
           branchId: actor.branchId,
           actorUserId: actor.id,
           note: 'Subscription balance allowed to go negative',
+        },
+      });
+      await this.generalLedger.append(tx, {
+        entryType: GeneralLedgerEntryType.DEBT_ADJUSTMENT,
+        amount: this.decimalFromMinor(addedSubscriptionDebtMinor),
+        memo: 'Subscription balance allowed to go negative',
+        customerId: o.customerId,
+        orderId,
+        actorUserId: actor.id,
+        metadata: {
+          source: DebtSource.SUBSCRIPTION_OVERUSE,
+          category: debtCategory,
+          branchId: actor.branchId,
         },
       });
     }
@@ -330,6 +363,25 @@ export class CustomerLedgerService {
         },
       },
     });
+
+    // Dastur §5 — if this activation paid down existing debt, record the
+    // reduction in the unified GL so collections/adjustments never hide.
+    if (debtPaidMinor > 0n) {
+      await this.generalLedger.append(tx, {
+        entryType: GeneralLedgerEntryType.DEBT_ADJUSTMENT,
+        amount: `-${debtSettledStr}`,
+        memo: 'Subscription activation settled existing debt',
+        customerId: params.customerId,
+        actorUserId: params.performedByUserId,
+        metadata: {
+          event: 'DEBT_SETTLED',
+          source: 'SUBSCRIPTION_ACTIVATION',
+          planId: plan.id,
+          planName: plan.name,
+          subsidyBranchId,
+        },
+      });
+    }
 
     return {
       totalCollected: totalCollectedStr,

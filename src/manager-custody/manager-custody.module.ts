@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { GeneralLedgerModule } from '../general-ledger/general-ledger.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { ManagerCustodyController } from './manager-custody.controller';
 import { ManagerCustodyService } from './manager-custody.service';
@@ -9,7 +10,7 @@ import { ManagerCustodyService } from './manager-custody.service';
  * Owns the ManagerCashCustody lifecycle (driver → manager → accountant).
  */
 @Module({
-  imports: [PrismaModule, AuthModule],
+  imports: [PrismaModule, AuthModule, GeneralLedgerModule],
   controllers: [ManagerCustodyController],
   providers: [ManagerCustodyService],
   exports: [ManagerCustodyService],

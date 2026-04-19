@@ -7,7 +7,6 @@ import {
   Clock,
   HandCoins,
   Info,
-  Landmark,
   Loader2,
   RefreshCw,
   Send,
@@ -51,7 +50,15 @@ import { cn } from '@/lib/utils';
  *  - The Payment-Link tile is hidden. Link-method invoices are settled
  *    online (customer → gateway → ledger) and never flow through the
  *    driver's bag, so they don't belong in the driver's custody view.
- *  - `grandTotal` now aggregates Cash + K-Net only.
+ *
+ * V1.7.0 Dastur clarification — "العهدة = CASH فقط":
+ *  - KNET receipts never sit in the driver's physical custody either
+ *    (funds route through the KNET terminal straight to the merchant
+ *    bank account). The KNET tile and KNET subtotal were therefore
+ *    removed from this page so the grand total no longer overstates
+ *    the cash the driver owes the branch manager.
+ *  - Reconciling KNET sales against Z-reports remains an accountant
+ *    job handled on the KNET Audit page — not here.
  */
 
 /**
@@ -185,20 +192,16 @@ function MyCustodyContent() {
     () => pending.filter((o) => o.posPaymentMethod === 'CASH'),
     [pending],
   );
-  const knetRows = useMemo(
-    () => pending.filter((o) => o.posPaymentMethod === 'KNET'),
-    [pending],
-  );
-  // V4.4 — "Money Sources" directive: driver custody only tracks physical
-  // money held by the driver. Payment-link invoices are settled online by
-  // the customer (gateway → ledger) and never pass through the driver's
-  // bag, so they are deliberately excluded from both the tiles and the
-  // grand total on this page. See `/driver/pending-invoices` for a full
-  // view that still lists link-method invoices for follow-up.
+  // V1.7.0 — Dastur "custody = CASH only". KNET receipts never sit in
+  // the driver's physical bag (funds route through the KNET terminal
+  // straight to the merchant account), so they are intentionally not
+  // aggregated into the driver's custody total any more. KNET
+  // reconciliation lives on the accountant's KNET Audit page.
+  // Payment-link invoices remain excluded for the same reason
+  // (customer → gateway → ledger, driver never holds the money).
 
   const cashTotal = useMemo(() => sumTotals(cashRows), [cashRows]);
-  const knetTotal = useMemo(() => sumTotals(knetRows), [knetRows]);
-  const grandTotal = cashTotal + knetTotal;
+  const grandTotal = cashTotal;
 
   const hasAnyPending = grandTotal > 0;
 
@@ -276,7 +279,7 @@ function MyCustodyContent() {
         <p>{t('myDeposits.alert')}</p>
       </div>
 
-      <section className="grid gap-3 sm:grid-cols-2">
+      <section className="grid gap-3 sm:grid-cols-1">
         <MethodTile
           icon={<HandCoins className="h-4 w-4" aria-hidden />}
           label={t('myDeposits.methodCash')}
@@ -284,17 +287,10 @@ function MyCustodyContent() {
           count={cashRows.length}
           tone="amber"
         />
-        <MethodTile
-          icon={<Landmark className="h-4 w-4" aria-hidden />}
-          label={t('myDeposits.methodKnet')}
-          total={knetTotal}
-          count={knetRows.length}
-          tone="sky"
-        />
         {/*
-          V4.4 — "Payment Link" card intentionally hidden.
-          Link-method invoices are settled online; the driver never holds
-          that money, so it does not belong in the custody dashboard.
+          V1.7.0 — KNET + Payment-Link tiles removed. Neither method
+          puts money in the driver's physical bag, so neither belongs
+          on the custody dashboard. See file header for rationale.
         */}
       </section>
 
@@ -342,14 +338,10 @@ function MyCustodyContent() {
                 value={cashTotal}
                 count={cashRows.length}
               />
-              <DialogLine
-                label={t('myDeposits.methodKnet')}
-                value={knetTotal}
-                count={knetRows.length}
-              />
               {/*
-                V4.4 — Payment Link summary omitted. It's settled online
-                and never enters the driver→manager handover.
+                V1.7.0 — KNET and Payment-Link lines are intentionally
+                omitted: neither method represents cash the driver is
+                about to hand to the manager.
               */}
               <div className="h-px bg-border" />
               <div className="flex items-center justify-between text-sm font-semibold">

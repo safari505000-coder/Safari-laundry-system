@@ -214,7 +214,12 @@ export class ExpensesService {
     });
   }
 
-  async updateStatus(id: string, safariRole: SafariRole, status: ExpenseStatus) {
+  async updateStatus(
+    id: string,
+    safariRole: SafariRole,
+    status: ExpenseStatus,
+    actorUserId: string,
+  ) {
     if (
       safariRole !== SafariRole.ACCOUNTANT &&
       safariRole !== SafariRole.OWNER &&
@@ -222,17 +227,42 @@ export class ExpensesService {
     ) {
       throw new ForbiddenException();
     }
-    return this.prisma.branchExpense.update({
-      where: { id },
-      data: { status },
-      include: {
-        recordedBy: {
-          select: { id: true, fullName: true, username: true },
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.branchExpense.update({
+        where: { id },
+        data: { status },
+        include: {
+          recordedBy: {
+            select: { id: true, fullName: true, username: true },
+          },
+          branch: {
+            select: { id: true, name: true },
+          },
         },
-        branch: {
-          select: { id: true, name: true },
+      });
+
+      // Dastur §5 — every financial state change must produce a GL row.
+      // The original creation entry carries the accrual amount; this second
+      // row is a zero-amount audit marker so status transitions (APPROVED /
+      // REJECTED / AUDIT) appear on the unified ledger without double-
+      // counting sums that filter by `EXPENSE_RECORDED`.
+      await this.generalLedger.append(tx, {
+        entryType: GeneralLedgerEntryType.EXPENSE_RECORDED,
+        amount: 0,
+        memo: `expense:${status.toLowerCase()}`,
+        expenseId: updated.id,
+        actorUserId,
+        metadata: {
+          event: 'STATUS_CHANGE',
+          status,
+          amountKd: updated.amount.toString(),
+          category: updated.category,
+          expenseMethod: updated.expenseMethod,
+          branchId: updated.branchId,
         },
-      },
+      });
+
+      return updated;
     });
   }
 
