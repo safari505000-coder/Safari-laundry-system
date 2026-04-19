@@ -209,6 +209,30 @@ export class CallCenterService {
     return { url: link.url };
   }
 
+  /**
+   * V1.6.9 — Call Center "تم الدفع" confirmation.
+   *
+   * Flips the order to COMPLETED + PAID_TO_DRIVER, records the method
+   * the customer actually used (CASH / KNET / PAYMENT_LINK / ONLINE),
+   * and writes an ORDER_WALLET_SETTLEMENT ledger row tagged as a
+   * manual debt collection so the Accountant's reports can distinguish
+   * these from ordinary POS sales and from gateway-confirmed payments.
+   *
+   * Idempotent: replaying the call for an already-settled order just
+   * returns a snapshot with `alreadySettled:true`.
+   */
+  async markCollectionOrderPaid(
+    orderId: string,
+    method: 'CASH' | 'KNET' | 'PAYMENT_LINK' | 'ONLINE',
+    performedByUserId: string,
+  ) {
+    return this.payments.manuallyMarkOrderPaidByMethod({
+      orderId,
+      method,
+      performedByUserId,
+    });
+  }
+
   listActiveSubscriptionPlans() {
     return this.prisma.subscriptionPlan.findMany({
       where: { isActive: true },

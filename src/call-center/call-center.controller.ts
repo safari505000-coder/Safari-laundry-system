@@ -20,6 +20,7 @@ import { CallCenterService } from './call-center.service';
 import { ActivateSubscriptionDto } from './dto/activate-subscription.dto';
 import { ExtendSubscriptionDto } from './dto/extend-subscription.dto';
 import { DebtRecoveryQueryDto } from './dto/debt-recovery-report.dto';
+import { MarkOrderPaidDto } from './dto/mark-order-paid.dto';
 
 @ApiTags('call-center')
 @ApiBearerAuth('bearer')
@@ -130,6 +131,25 @@ export class CallCenterController {
     @Param('orderId', ParseUUIDPipe) orderId: string,
   ) {
     return this.callCenterService.ensureOrderPaymentLink(orderId);
+  }
+
+  @Post('orders/:orderId/mark-paid')
+  @Roles(SafariRole.CALL_CENTER)
+  @ApiOperation({
+    summary: `Mark a collection order as manually paid (${APP_BRAND})`,
+    description:
+      'V1.6.9 — CALL_CENTER only. Confirms that the customer has paid an outstanding invoice and records the method actually used (CASH / KNET / PAYMENT_LINK / ONLINE). Flips the order to COMPLETED + PAID_TO_DRIVER, writes an ORDER_WALLET_SETTLEMENT ledger row tagged `debtSettlementViaCallCenter=true` with `originalPaymentMethod` preserved, and updates the customer wallet via the shared settlement logic. Idempotent: replaying on an already-settled order returns `{alreadySettled:true}` without side effects. Canceled orders are rejected.',
+  })
+  markCollectionOrderPaid(
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+    @Body() dto: MarkOrderPaidDto,
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.callCenterService.markCollectionOrderPaid(
+      orderId,
+      dto.paymentMethod,
+      user.userId,
+    );
   }
 
   @Post('subscribers/:customerId/reminder')

@@ -676,6 +676,28 @@ export type ReminderResult = {
 };
 
 /**
+ * V1.6.9 — "تم الدفع" confirmation.
+ *
+ * The Call Center agent picks the method the customer actually used.
+ * Subscription-wallet and debt-on-account are NOT offered here because
+ * they are closed through their own workflows (activation / POS).
+ */
+export type MarkPaidMethod = 'CASH' | 'KNET' | 'PAYMENT_LINK' | 'ONLINE';
+
+export type MarkOrderPaidResult = {
+  orderId: string;
+  alreadySettled: boolean;
+  amountKd: string;
+  posPaymentMethod:
+    | 'SUBSCRIPTION_WALLET'
+    | 'CASH'
+    | 'KNET'
+    | 'PAYMENT_LINK'
+    | 'DEBT_ON_ACCOUNT'
+    | 'ONLINE';
+};
+
+/**
  * Dastur §1 (V1.5) — Owner Serial Management island types.
  */
 export type DriverPrefixRow = {

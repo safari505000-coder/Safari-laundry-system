@@ -281,6 +281,11 @@ export const ar = {
     colActions: 'الإجراءات',
     whatsapp: 'إرسال رابط الدفع',
     paymentLink: 'رابط الدفع',
+    markPaid: 'تم الدفع',
+    markPaidTitle: 'تأكيد استلام الدفع',
+    markPaidSubtitle: 'اختر طريقة الدفع التي استخدمها العميل:',
+    markPaidToast: 'تم تسجيل الدفع بنجاح',
+    markPaidAlreadyToast: 'هذه الفاتورة مسددة مسبقاً',
     whatsappNoPhone: 'لا يوجد رقم واتساب صالح لهذا العميل.',
     remindSentToast: 'تم تسجيل التذكير (الإجمالي: {{count}})',
     remindCooldown:

@@ -270,6 +270,11 @@ export const en = {
     whatsapp: 'Send payment link',
     whatsappNoPhone: 'No WhatsApp-compatible phone on file.',
     paymentLink: 'Payment link',
+    markPaid: 'Paid',
+    markPaidTitle: 'Confirm payment received',
+    markPaidSubtitle: 'Select the method the customer actually used:',
+    markPaidToast: 'Payment recorded successfully',
+    markPaidAlreadyToast: 'This invoice was already settled',
     remindSentToast: 'Reminder logged (total: {{count}})',
     remindCooldown:
       'Payment link already sent. Next recall allowed in about {{minutes}} min.',

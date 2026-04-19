@@ -401,6 +401,136 @@ export class PaymentsService {
     });
     return owner?.id ?? null;
   }
+
+  /**
+   * V1.6.9 — Call Center "تم الدفع" manual confirmation.
+   *
+   * Mirrors `finalizeSinglePaidOrderFromGateway` except the final
+   * `posPaymentMethod` comes from the agent (CASH | KNET | PAYMENT_LINK
+   * | ONLINE) instead of being hard-coded to ONLINE, and the performer
+   * is the Call Center agent that pressed the button (falls back to the
+   * assigned driver, then the owner, so the ledger row always attributes
+   * cleanly).
+   *
+   * Idempotent: if the order was already settled (`walletSettledAt`
+   * set) we just return the current snapshot. If the order is canceled
+   * we throw — you cannot mark a canceled order as paid.
+   */
+  async manuallyMarkOrderPaidByMethod(args: {
+    orderId: string;
+    method: Exclude<
+      PosPaymentMethod,
+      'SUBSCRIPTION_WALLET' | 'DEBT_ON_ACCOUNT'
+    >;
+    performedByUserId: string;
+  }): Promise<{
+    orderId: string;
+    alreadySettled: boolean;
+    amountKd: string;
+    posPaymentMethod: PosPaymentMethod;
+  }> {
+    const { orderId, method, performedByUserId } = args;
+    return this.prisma.$transaction(
+      async (tx) => {
+        const order = await tx.order.findUnique({
+          where: { id: orderId },
+          select: {
+            id: true,
+            status: true,
+            cashStatus: true,
+            walletSettledAt: true,
+            customerId: true,
+            totalPrice: true,
+            posPaymentMethod: true,
+            driverId: true,
+          },
+        });
+        if (!order) {
+          throw new BadRequestException('Order not found');
+        }
+        if (order.status === OrderStatus.CANCELED) {
+          throw new BadRequestException(
+            'Order is canceled — cannot mark it as paid',
+          );
+        }
+        if (order.walletSettledAt) {
+          // Idempotent — the order is already settled. Return the
+          // current snapshot so the UI can refresh without error.
+          return {
+            orderId: order.id,
+            alreadySettled: true,
+            amountKd: order.totalPrice.toFixed(3),
+            posPaymentMethod:
+              order.posPaymentMethod ?? PosPaymentMethod.CASH,
+          };
+        }
+
+        const originalMethod = order.posPaymentMethod;
+        const completedAt = new Date();
+        await tx.order.update({
+          where: { id: orderId },
+          data: {
+            status: OrderStatus.COMPLETED,
+            cashStatus: CashStatus.PAID_TO_DRIVER,
+            completedAt,
+            posPaymentMethod: method,
+            walletSettledAt: null,
+          },
+        });
+
+        // Prefer the agent so the ledger row is attributable to the
+        // human who pressed the button. Fall back to the driver (if any)
+        // and finally to an owner so we never fail for driver-less
+        // DEBT_ON_ACCOUNT invoices collected by the office.
+        const performerId =
+          performedByUserId ??
+          order.driverId ??
+          (await this.resolveFallbackPerformer(tx));
+        if (!performerId) {
+          throw new BadRequestException(
+            'No performer available to attribute the manual settlement to',
+          );
+        }
+
+        const prefetch: OrderWalletSettlementPrefetch = {
+          customerId: order.customerId,
+          totalPrice: order.totalPrice,
+          // Tell the wallet math to treat the settlement as "external
+          // covers shortfall" so we do NOT add invoice debt for methods
+          // that actually close the invoice (CASH/KNET/PAYMENT_LINK/
+          // ONLINE). DEBT_ON_ACCOUNT and SUBSCRIPTION_WALLET are not in
+          // the accepted `method` set and thus can never reach here.
+          posPaymentMethod: method,
+          walletSettledAt: null,
+          skipPerformerLookup: true,
+        };
+
+        const extraMetadata: Record<string, Prisma.JsonValue> = {
+          debtSettled: order.totalPrice.toString(),
+          debtSettlementViaCallCenter: true,
+          originalPaymentMethod: originalMethod ?? null,
+          confirmedPaymentMethod: method,
+          reportingCategory: 'DEBT_COLLECTION_MANUAL',
+        };
+
+        await this.customerLedger.applyOrderWalletSettlementForCompletedOrder(
+          tx,
+          orderId,
+          performerId,
+          prefetch,
+          extraMetadata,
+        );
+
+        return {
+          orderId: order.id,
+          alreadySettled: false,
+          amountKd: order.totalPrice.toFixed(3),
+          posPaymentMethod: method,
+        };
+      },
+      { maxWait: 10_000, timeout: 15_000 },
+    );
+  }
 }
 
 function normalizeKwPhone(phone: string): string {

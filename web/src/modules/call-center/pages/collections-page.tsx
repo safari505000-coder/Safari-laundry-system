@@ -2,7 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate } from 'react-router-dom';
 import {
+  Banknote,
+  CheckCircle2,
   CreditCard,
+  Globe,
   Link2,
   Loader2,
   MessageCircle,
@@ -13,9 +16,12 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/auth-context';
+import { can } from '@/modules/shared/auth/access-matrix';
 import {
   type CallCenterOperationsSummary,
   type CollectionUnpaidOnlineRow,
+  type MarkOrderPaidResult,
+  type MarkPaidMethod,
   type ReminderResult,
   apiJson,
   ApiError,
@@ -35,6 +41,13 @@ import {
   TableHeader,
   TableRow,
 } from '@/modules/shared/components/ui/table';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/modules/shared/components/ui/dialog';
 import { cn } from '@/lib/utils';
 
 /**
@@ -128,14 +141,14 @@ function KpiCard({ tone, icon, label, value, sub, loading }: KpiCardProps) {
 
 export function CollectionsPage() {
   const { t } = useTranslation();
-  const { token, hasRole, ownerBranchId } = useAuth();
+  const { token, user, ownerBranchId } = useAuth();
   // V1.6.0 — Page access is limited to OWNER (oversight) and CALL_CENTER
   // (workspace). MANAGER, DRIVER, ACCOUNTANT, and VIEWER do not see this
   // page at all. Within the two permitted roles, only CALL_CENTER can
   // actually send WhatsApp reminders or open a hosted payment link —
   // OWNER sees the page as a read-only Financial Oversight Report.
-  const allowed = hasRole('OWNER', 'CALL_CENTER');
-  const canAct = hasRole('CALL_CENTER');
+  const allowed = can(user, 'collections.view');
+  const canAct = can(user, 'collections.act');
   const [rows, setRows] = useState<CollectionUnpaidOnlineRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<CallCenterOperationsSummary | null>(
@@ -148,6 +161,14 @@ export function CollectionsPage() {
   // We track which row is currently minting a link so the user gets a
   // spinner while the gateway call is in flight.
   const [linkBusyId, setLinkBusyId] = useState<string | null>(null);
+  // V1.6.9 — "تم الدفع" manual confirmation flow. We keep the row that
+  // the agent picked so the dialog shows the customer name + amount, and
+  // we track which method is currently submitting so the picked button
+  // shows a spinner while the others stay enabled for correction.
+  const [markPaidRow, setMarkPaidRow] = useState<CollectionUnpaidOnlineRow | null>(
+    null,
+  );
+  const [markPaidBusy, setMarkPaidBusy] = useState<MarkPaidMethod | null>(null);
 
   const load = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -347,6 +368,46 @@ export function CollectionsPage() {
       }
     },
     [token, canAct, load],
+  );
+
+  /**
+   * V1.6.9 — "تم الدفع" confirmation.
+   *
+   * The agent has just confirmed the customer paid outside the hosted
+   * gateway (cash handed to the driver, KNET terminal, manual online,
+   * or a link that was paid but the callback didn't land yet). We post
+   * the chosen method and let the backend flip the order to COMPLETED +
+   * PAID_TO_DRIVER atomically. The endpoint is idempotent so
+   * double-clicks on a slow connection are safe.
+   */
+  const handleMarkPaid = useCallback(
+    async (row: CollectionUnpaidOnlineRow, method: MarkPaidMethod) => {
+      if (!token || !canAct) return;
+      setMarkPaidBusy(method);
+      try {
+        const res = await apiJson<MarkOrderPaidResult>(
+          `/api/call-center/orders/${row.orderId}/mark-paid`,
+          {
+            method: 'POST',
+            token,
+            body: JSON.stringify({ paymentMethod: method }),
+          },
+        );
+        toast.success(
+          res.alreadySettled
+            ? t('collections.markPaidAlreadyToast')
+            : t('collections.markPaidToast'),
+        );
+        setMarkPaidRow(null);
+        await load({ silent: true });
+        await loadSummary({ silent: true });
+      } catch (e) {
+        if (e instanceof ApiError) toast.error(e.message);
+      } finally {
+        setMarkPaidBusy(null);
+      }
+    },
+    [token, canAct, t, load, loadSummary],
   );
 
   const filteredRows = useMemo(() => {
@@ -549,6 +610,20 @@ export function CollectionsPage() {
                       )}
                       {t('collections.whatsapp')}
                     </Button>
+                    {/* V1.6.9 — "تم الدفع" confirmation.
+                        Opens the payment-method picker dialog so the agent
+                        can record CASH / KNET / PAYMENT_LINK / ONLINE. */}
+                    <Button
+                      type="button"
+                      size="default"
+                      variant="outline"
+                      className="min-h-12 flex-1 gap-2 border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800/70 dark:bg-emerald-950/40 dark:text-emerald-200 dark:hover:bg-emerald-900/60"
+                      onClick={() => setMarkPaidRow(row)}
+                      title={t('collections.markPaid')}
+                    >
+                      <CheckCircle2 className="h-5 w-5 shrink-0" aria-hidden />
+                      {t('collections.markPaid')}
+                    </Button>
                     {/*
                       V1.6.7 — The standalone "Knet / Manual-Settlement"
                       open-hosted-URL button is temporarily hidden. The
@@ -704,6 +779,18 @@ export function CollectionsPage() {
                           )}
                           {t('collections.whatsapp')}
                         </Button>
+                        {/* V1.6.9 — "تم الدفع" confirmation. */}
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="min-h-9 gap-1.5 border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800/70 dark:bg-emerald-950/40 dark:text-emerald-200 dark:hover:bg-emerald-900/60"
+                          onClick={() => setMarkPaidRow(row)}
+                          title={t('collections.markPaid')}
+                        >
+                          <CheckCircle2 className="h-4 w-4" aria-hidden />
+                          {t('collections.markPaid')}
+                        </Button>
                         {/* V1.6.7 — KNET / Manual-Settlement button
                             hidden in favor of the unified WhatsApp Send-
                             Link flow. See mobile block for rationale. */}
@@ -753,6 +840,102 @@ export function CollectionsPage() {
         </Table>
       </div>
 
+      {/*
+        V1.6.9 — "تم الدفع" payment-method picker.
+
+        Opens when the agent clicks the green check button on any row.
+        Presents four large tap-friendly cards so a phone-first operator
+        can confirm the collection in one finger-touch without ambiguity.
+        The `open` state is derived from `markPaidRow` so closing the
+        dialog just clears the selected row (no orphaned state).
+      */}
+      <Dialog
+        open={markPaidRow !== null}
+        onOpenChange={(open) => {
+          if (!open) setMarkPaidRow(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t('collections.markPaidTitle')}</DialogTitle>
+            <DialogDescription>
+              {markPaidRow ? (
+                <>
+                  {t('collections.markPaidSubtitle')}
+                  <br />
+                  <span className="mt-1 block text-foreground">
+                    <span className="font-medium">
+                      {markPaidRow.customerName}
+                    </span>
+                    {' — '}
+                    <span className="font-semibold tabular-nums">
+                      {formatKwd3(markPaidRow.amountKd)}
+                    </span>
+                  </span>
+                </>
+              ) : null}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-3">
+            {(
+              [
+                {
+                  key: 'CASH',
+                  icon: <Banknote className="h-6 w-6" aria-hidden />,
+                },
+                {
+                  key: 'KNET',
+                  icon: <CreditCard className="h-6 w-6" aria-hidden />,
+                },
+                {
+                  key: 'PAYMENT_LINK',
+                  icon: <Link2 className="h-6 w-6" aria-hidden />,
+                },
+                {
+                  key: 'ONLINE',
+                  icon: <Globe className="h-6 w-6" aria-hidden />,
+                },
+              ] as const
+            ).map(({ key, icon }) => {
+              const busy = markPaidBusy === key;
+              const disabled = markPaidBusy !== null;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() =>
+                    markPaidRow && void handleMarkPaid(markPaidRow, key)
+                  }
+                  className={cn(
+                    'group relative flex min-h-[96px] flex-col items-center justify-center gap-2 rounded-xl border-2 border-border bg-card p-3 text-sm font-medium text-foreground shadow-sm transition-colors',
+                    'hover:border-emerald-400 hover:bg-emerald-50 dark:hover:border-emerald-700 dark:hover:bg-emerald-950/40',
+                    'disabled:cursor-not-allowed disabled:opacity-60',
+                    busy &&
+                      'border-emerald-500 bg-emerald-50 dark:border-emerald-600 dark:bg-emerald-950/40',
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'grid h-10 w-10 place-items-center rounded-lg bg-muted text-muted-foreground transition-colors',
+                      'group-hover:bg-emerald-100 group-hover:text-emerald-700 dark:group-hover:bg-emerald-900/60 dark:group-hover:text-emerald-200',
+                    )}
+                  >
+                    {busy ? (
+                      <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+                    ) : (
+                      icon
+                    )}
+                  </span>
+                  <span>
+                    {t(`collections.pm.${key}`, { defaultValue: key })}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
