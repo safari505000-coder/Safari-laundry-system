@@ -1,5 +1,7 @@
 import {
+  ArrowLeftRight,
   Banknote,
+  FileSignature,
   BookText,
   Building2,
   CircleDollarSign,
@@ -358,6 +360,28 @@ export const unifiedLedgerItem: NavItem = {
   labelKey: 'nav.unifiedLedger',
   icon: BookText,
   roles: ['ACCOUNTANT', 'OWNER', 'GENERAL_MANAGER'],
+};
+
+/**
+ * Dastur §5 — Debt Transfer document hub.
+ *
+ * GM / ACCOUNTANT operate the full workflow; OWNER reads the history
+ * and filters only (enforced on the page itself via `debtTransfer.*`
+ * keys — the sidebar entry just opens the page).
+ */
+export const debtTransfersItem: NavItem = {
+  to: '/finance/debt-transfers',
+  labelKey: 'nav.debtTransfers',
+  icon: ArrowLeftRight,
+  roles: ['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT'],
+};
+
+/** Driver inbox: transfers awaiting my signature (source or target). */
+export const myDebtTransfersItem: NavItem = {
+  to: '/my/debt-transfers',
+  labelKey: 'nav.debtTransfers',
+  icon: FileSignature,
+  roles: ['DRIVER'],
 };
 
 export const expensesItem: NavItem = {

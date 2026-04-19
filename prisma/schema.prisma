@@ -104,6 +104,20 @@ enum DepositStatus {
  *   VERIFIED             → accountant approved, custody closed
  *   REJECTED             → accountant rejected slip, back under manager liability
  */
+/**
+ * Dastur §5 — Debt transfer workflow states.
+ * DRAFT               → created by GM/ACCOUNTANT, still editable
+ * AWAITING_SIGNATURES → submitted, waiting on both driver signatures
+ * COMPLETED           → both signed + finalized (orders reassigned + GL posted)
+ * CANCELLED           → voided before finalization
+ */
+enum DebtTransferStatus {
+  DRAFT
+  AWAITING_SIGNATURES
+  COMPLETED
+  CANCELLED
+}
+
 enum ManagerCashCustodyStatus {
   PENDING_DEPOSIT
   AWAITING_VERIFICATION
@@ -165,6 +179,16 @@ model User {
   managerCustodyVerifications  ManagerCashCustody[] @relation("ManagerCustodyVerifiedBy")
   /** Accountant rejections on manager custody bags. */
   managerCustodyRejections     ManagerCashCustody[] @relation("ManagerCustodyRejectedBy")
+  /** Debt transfers where this user is the departing (source) driver. */
+  debtTransfersAsSource        DebtTransfer[]       @relation("DebtTransferSource")
+  /** Debt transfers where this user is the replacement (target) driver. */
+  debtTransfersAsTarget        DebtTransfer[]       @relation("DebtTransferTarget")
+  /** Debt transfers initiated by this user (GM or ACCOUNTANT). */
+  debtTransfersExecuted        DebtTransfer[]       @relation("DebtTransferExecutor")
+  /** Debt transfers cancelled by this user. */
+  debtTransfersCancelled       DebtTransfer[]       @relation("DebtTransferCanceller")
+  /** Orders whose cash responsibility was transferred FROM this driver (audit only). */
+  ordersTransferredFrom        Order[]              @relation("OrderTransferredFromDriver")
 }
 
 enum ExpenseCategory {
@@ -391,16 +415,27 @@ model Order {
   posHostedPaymentUrl String?    @db.Text
   /** Manager cash handover shift that settled this CASH order into office custody. */
   handoverShiftId   String?      @db.Uuid
+  /**
+   * Dastur §5 — Debt Transfer audit column.
+   * When a departing driver's outstanding cash is transferred to a
+   * replacement driver, the order's `driverId` is reassigned to the
+   * target driver. This column preserves the ORIGINAL driver so
+   * historical sales / commission / shift reports can still attribute
+   * the work to whoever actually issued the invoice.
+   */
+  transferredFromDriverId String? @db.Uuid
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 
   customer           Customer             @relation(fields: [customerId], references: [id])
   driver             User?                @relation("OrderDriver", fields: [driverId], references: [id])
+  transferredFromDriver User?             @relation("OrderTransferredFromDriver", fields: [transferredFromDriverId], references: [id], onDelete: SetNull)
   posPaymentBundle   PosPaymentBundle?    @relation(fields: [posPaymentBundleId], references: [id], onDelete: SetNull)
   handoverShift      Shift?               @relation("ShiftHandoverOrders", fields: [handoverShiftId], references: [id], onDelete: SetNull)
   lineItems          OrderLineItem[]
   transactionHistory TransactionHistory[]
   debtLedgerEntries  DebtLedgerEntry[]
+  debtTransferLineItems DebtTransferOrder[]
 
   @@index([driverId])
   @@index([status])
@@ -410,6 +445,7 @@ model Order {
   @@index([posPaymentMethod])
   @@index([posPaymentBundleId])
   @@index([handoverShiftId])
+  @@index([transferredFromDriverId])
   @@index([serialNumber])
 }
 
@@ -893,4 +929,73 @@ model ManagerCashCustody {
   @@index([branchId])
   @@index([shiftId])
   @@index([driverId])
+}
+
+/**
+ * Dastur §5 — Debt Transfer document.
+ *
+ * When a driver departs with outstanding cash custody (orders whose
+ * cashStatus is still PAID_TO_DRIVER), GM or ACCOUNTANT can transfer
+ * that responsibility to a replacement driver. The transfer is a
+ * formal document that requires:
+ *   1. GM / ACCOUNTANT initiates with source, target, and order list.
+ *   2. Status moves to AWAITING_SIGNATURES.
+ *   3. Source driver signs (digital acknowledgement of release).
+ *   4. Target driver signs (digital acceptance of debt).
+ *   5. Finalize: orders are reassigned (driverId = target, with
+ *      transferredFromDriverId preserved), and a pair of
+ *      DEBT_ADJUSTMENT GL entries records the ledger effect.
+ *
+ * OWNER has READ-ONLY access (reports + filtering only — cannot
+ * initiate, sign, finalize, or cancel).
+ */
+model DebtTransfer {
+  id              String             @id @default(uuid()) @db.Uuid
+  sourceDriverId  String             @db.Uuid
+  targetDriverId  String             @db.Uuid
+  totalAmount     Decimal            @db.Decimal(19, 4)
+  orderCount      Int                @default(0)
+  reason          String?            @db.Text
+  notes           String?            @db.Text
+  status          DebtTransferStatus @default(DRAFT)
+  executedById    String             @db.Uuid
+  executedByRole  SafariRole
+  sourceSignedAt  DateTime?
+  targetSignedAt  DateTime?
+  finalizedAt     DateTime?
+  cancelledAt     DateTime?
+  cancelledReason String?            @db.Text
+  cancelledById   String?            @db.Uuid
+  /** Opaque server-generated signature token printed on the receipt for tamper detection. */
+  systemSignature String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  sourceDriver User                @relation("DebtTransferSource",    fields: [sourceDriverId], references: [id], onDelete: Restrict)
+  targetDriver User                @relation("DebtTransferTarget",    fields: [targetDriverId], references: [id], onDelete: Restrict)
+  executedBy   User                @relation("DebtTransferExecutor",  fields: [executedById],   references: [id], onDelete: Restrict)
+  cancelledBy  User?               @relation("DebtTransferCanceller", fields: [cancelledById],  references: [id], onDelete: SetNull)
+  orders       DebtTransferOrder[]
+
+  @@index([sourceDriverId, createdAt])
+  @@index([targetDriverId, createdAt])
+  @@index([status, createdAt])
+  @@index([executedById, createdAt])
+  @@index([createdAt])
+}
+
+/** Line item: a single order included in a debt-transfer document. */
+model DebtTransferOrder {
+  id             String   @id @default(uuid()) @db.Uuid
+  debtTransferId String   @db.Uuid
+  orderId        String   @db.Uuid
+  /** Snapshot of the order's receivable at inclusion time (KWD). */
+  amountSnapshot Decimal  @db.Decimal(19, 4)
+  createdAt      DateTime @default(now())
+
+  debtTransfer DebtTransfer @relation(fields: [debtTransferId], references: [id], onDelete: Cascade)
+  order        Order        @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  @@index([debtTransferId])
+  @@index([orderId])
 }

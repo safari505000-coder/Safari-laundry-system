@@ -646,6 +646,209 @@ export function scanSerialGapsNow(token: string) {
   });
 }
 
+/* ── Debt Transfer (Dastur §5) ───────────────────────────────────────── */
+
+export type DebtTransferStatus =
+  | 'DRAFT'
+  | 'AWAITING_SIGNATURES'
+  | 'COMPLETED'
+  | 'CANCELLED';
+
+export type DebtTransferParticipant = {
+  id: string;
+  username: string;
+  fullName: string;
+  safariRole: SafariRole;
+  branchId?: string | null;
+};
+
+export type DebtTransferOrderLine = {
+  id: string;
+  amountSnapshot: string;
+  order: {
+    id: string;
+    invoiceNumber: string | null;
+    serialNumber: string | null;
+    status: string;
+    cashStatus: string;
+    totalPrice: string;
+    posPaymentMethod: string | null;
+    completedAt: string | null;
+    customer: {
+      id: string;
+      displayName: string | null;
+      phone: string;
+    };
+  };
+};
+
+export type DebtTransferRow = {
+  id: string;
+  status: DebtTransferStatus;
+  totalAmount: string;
+  orderCount: number;
+  reason: string | null;
+  notes: string | null;
+  sourceDriver: DebtTransferParticipant;
+  targetDriver: DebtTransferParticipant;
+  executedBy: DebtTransferParticipant;
+  executedByRole: SafariRole;
+  sourceSignedAt: string | null;
+  targetSignedAt: string | null;
+  finalizedAt: string | null;
+  cancelledAt: string | null;
+  cancelledReason: string | null;
+  cancelledBy: DebtTransferParticipant | null;
+  systemSignature: string | null;
+  createdAt: string;
+  updatedAt: string;
+  orders: DebtTransferOrderLine[];
+};
+
+export type DebtTransferListResponse = {
+  total: number;
+  limit: number;
+  offset: number;
+  rows: DebtTransferRow[];
+};
+
+export type DebtTransferListFilters = {
+  status?: DebtTransferStatus;
+  sourceDriverId?: string;
+  targetDriverId?: string;
+  executedById?: string;
+  from?: string;
+  to?: string;
+  limit?: number;
+  offset?: number;
+};
+
+export type DriverOutstanding = {
+  driverId: string;
+  orderCount: number;
+  totalAmount: string;
+  orders: Array<{
+    id: string;
+    invoiceNumber: string | null;
+    serialNumber: string | null;
+    totalPrice: string;
+    posPaymentMethod: string | null;
+    completedAt: string | null;
+    customer: {
+      id: string;
+      displayName: string | null;
+      phone: string;
+    };
+  }>;
+};
+
+export type CreateDebtTransferInput = {
+  sourceDriverId: string;
+  targetDriverId: string;
+  orderIds: string[];
+  reason?: string;
+  notes?: string;
+};
+
+function buildQuery(
+  filters: Record<string, string | number | undefined | null>,
+): string {
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(filters)) {
+    if (v !== undefined && v !== null && v !== '') {
+      params.set(k, String(v));
+    }
+  }
+  const q = params.toString();
+  return q ? `?${q}` : '';
+}
+
+export function listDebtTransfers(
+  token: string,
+  filters: DebtTransferListFilters = {},
+) {
+  return apiJson<DebtTransferListResponse>(
+    `/api/debt-transfers${buildQuery(filters)}`,
+    { token },
+  );
+}
+
+export function listMyDebtTransfers(token: string) {
+  return apiJson<{ rows: DebtTransferRow[] }>('/api/debt-transfers/mine', {
+    token,
+  });
+}
+
+export function listDebtTransferDrivers(token: string) {
+  return apiJson<{
+    drivers: Array<{
+      id: string;
+      fullName: string;
+      username: string;
+      safariRole: SafariRole;
+      branchId: string | null;
+    }>;
+  }>('/api/debt-transfers/drivers', { token });
+}
+
+export function getDebtTransfer(token: string, id: string) {
+  return apiJson<DebtTransferRow>(`/api/debt-transfers/${id}`, { token });
+}
+
+export function getDriverOutstandingOrders(token: string, driverId: string) {
+  return apiJson<DriverOutstanding>(
+    `/api/debt-transfers/drivers/${driverId}/outstanding`,
+    { token },
+  );
+}
+
+export function createDebtTransfer(
+  token: string,
+  input: CreateDebtTransferInput,
+) {
+  return apiJson<DebtTransferRow>('/api/debt-transfers', {
+    token,
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function finalizeDebtTransfer(token: string, id: string) {
+  return apiJson<DebtTransferRow>(`/api/debt-transfers/${id}/finalize`, {
+    token,
+    method: 'POST',
+    body: '{}',
+  });
+}
+
+export function cancelDebtTransfer(
+  token: string,
+  id: string,
+  reason: string | null,
+) {
+  return apiJson<DebtTransferRow>(`/api/debt-transfers/${id}/cancel`, {
+    token,
+    method: 'POST',
+    body: JSON.stringify({ reason: reason ?? undefined }),
+  });
+}
+
+export function signDebtTransferSource(token: string, id: string) {
+  return apiJson<DebtTransferRow>(`/api/debt-transfers/${id}/sign/source`, {
+    token,
+    method: 'POST',
+    body: '{}',
+  });
+}
+
+export function signDebtTransferTarget(token: string, id: string) {
+  return apiJson<DebtTransferRow>(`/api/debt-transfers/${id}/sign/target`, {
+    token,
+    method: 'POST',
+    body: '{}',
+  });
+}
+
 export type OwnerWalletSummary = {
   totalWalletLiabilities: string;
   totalCustomerDebts: string;

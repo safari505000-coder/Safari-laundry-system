@@ -10,6 +10,8 @@ import { RequireOwnerIsland } from '@/modules/owner/require-owner-island';
 import { RequireAuth } from '@/components/require-auth';
 import { Toaster } from '@/modules/shared/components/ui/sonner';
 import { DashboardPage } from '@/pages/dashboard-page';
+import { DebtTransfersPage } from '@/pages/debt-transfers-page';
+import { MyDebtTransfersPage } from '@/pages/my-debt-transfers-page';
 import { ExpensesPage } from '@/pages/expenses-page';
 import { FinancialsPage } from '@/pages/financials-page';
 import { FinancialCycleReportPage } from '@/pages/financial-cycle-report-page';
@@ -304,6 +306,22 @@ export default function App() {
                   element={
                     <RequireAccess access="financials.view">
                       <FinancialsPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="finance/debt-transfers"
+                  element={
+                    <RequireAccess access="debtTransfer.view">
+                      <DebtTransfersPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="my/debt-transfers"
+                  element={
+                    <RequireAccess access="debtTransfer.mine">
+                      <MyDebtTransfersPage />
                     </RequireAccess>
                   }
                 />

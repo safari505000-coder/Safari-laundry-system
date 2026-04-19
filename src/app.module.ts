@@ -12,6 +12,7 @@ import { CallCenterModule } from './call-center/call-center.module';
 import { OperatingHoursMiddleware } from './common/middleware/operating-hours.middleware';
 import { requestIdMiddleware } from './common/middleware/request-id.middleware';
 import { CustomersModule } from './customers/customers.module';
+import { DebtTransfersModule } from './debt-transfers/debt-transfers.module';
 import { ExpensesModule } from './expenses/expenses.module';
 import { FixedExpenseModule } from './fixed-expenses/fixed-expense.module';
 import { PayrollModule } from './payroll/payroll.module';
@@ -74,6 +75,7 @@ const spaStaticModule = existsSync(webDistPath)
     ManagerCustodyModule,
     PosModule,
     CustomersModule,
+    DebtTransfersModule,
     SerialsModule,
     ShiftsModule,
     ServeStaticModule.forRoot({

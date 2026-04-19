@@ -3,6 +3,7 @@ import {
   driverFieldExpensesItem,
   driverPendingInvoicesItem,
   myDailySalesItem,
+  myDebtTransfersItem,
   myDepositsItem,
   posItem,
 } from '@/modules/shared/nav/nav-items';
@@ -23,6 +24,8 @@ export const driverSidebarNavGroups: NavGroup[] = [
       myDailySalesItem,
       // V3.8 — Field Collection Tracker (read-only unpaid list).
       driverPendingInvoicesItem,
+      // Dastur §5 — debt-transfer signature inbox.
+      myDebtTransfersItem,
     ],
   },
   {

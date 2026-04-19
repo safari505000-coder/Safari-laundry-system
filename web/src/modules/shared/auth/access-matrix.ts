@@ -52,6 +52,36 @@ export const ACCESS = {
   // out. To grant a future role, append it here — that is the only edit
   // needed across the codebase.
   'orders.delete': ['OWNER', 'ACCOUNTANT'] satisfies readonly SafariRole[],
+
+  // ─── Debt Transfer (Dastur §5) ─────────────────────────────────────
+  // Departing-driver → replacement-driver debt handover with dual digital
+  // signatures. GM and ACCOUNTANT fully operate the workflow (create,
+  // finalize, cancel, view). OWNER sees the full history + filtering but
+  // MUST NOT initiate, sign, finalize, or cancel — the feature is
+  // deliberately kept out of executive oversight's write path so the
+  // audit chain always has an independent initiator.
+  'debtTransfer.view': [
+    'OWNER',
+    'GENERAL_MANAGER',
+    'ACCOUNTANT',
+  ] satisfies readonly SafariRole[],
+  'debtTransfer.create': [
+    'GENERAL_MANAGER',
+    'ACCOUNTANT',
+  ] satisfies readonly SafariRole[],
+  'debtTransfer.finalize': [
+    'GENERAL_MANAGER',
+    'ACCOUNTANT',
+  ] satisfies readonly SafariRole[],
+  'debtTransfer.cancel': [
+    'GENERAL_MANAGER',
+    'ACCOUNTANT',
+  ] satisfies readonly SafariRole[],
+  /** Driver (source or target) signs their half of the document. */
+  'debtTransfer.sign': ['DRIVER'] satisfies readonly SafariRole[],
+  /** Driver-facing inbox of transfers awaiting their signature. */
+  'debtTransfer.mine': ['DRIVER'] satisfies readonly SafariRole[],
+
   'shifts.view': [
     'OWNER',
     'GENERAL_MANAGER',

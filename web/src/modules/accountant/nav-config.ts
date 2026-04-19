@@ -2,6 +2,7 @@ import type { NavGroup } from '@/modules/shared/nav/nav-types';
 import {
   accountantInventoryItem,
   accountantStockInItem,
+  debtTransfersItem,
   expenseApprovalItem,
   invoicesDataItem,
   knetAuditItem,
@@ -35,6 +36,7 @@ export const accountantSidebarNavGroups: NavGroup[] = [
       expenseApprovalItem,
       managerCustodyAgingItem,
       staffDebtsItem,
+      debtTransfersItem,
     ],
   },
   {
