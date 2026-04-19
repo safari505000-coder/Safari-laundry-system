@@ -26,17 +26,6 @@ import {
   sumOrderMinors,
 } from '../finance-money';
 
-const KUWAIT_OFFSET_MIN = 180;
-
-function kuwaitMidnightUtc(nowUtc: Date): Date {
-  const k = new Date(nowUtc.getTime() + KUWAIT_OFFSET_MIN * 60_000);
-  const y = k.getUTCFullYear();
-  const m = k.getUTCMonth();
-  const d = k.getUTCDate();
-  const utcMs = Date.UTC(y, m, d, 0, 0, 0, 0) - KUWAIT_OFFSET_MIN * 60_000;
-  return new Date(utcMs);
-}
-
 function parseLatLng(input?: string | null): { lat: number; lng: number } | null {
   if (!input) return null;
   const parts = input.split(',').map((x) => Number.parseFloat(x.trim()));
@@ -51,6 +40,12 @@ function parseLatLng(input?: string | null): { lat: number; lng: number } | null
 export class CashService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * DUSTUR §2 — the financial cycle is owned by {@link ShiftCycleService} and
+   * runs automatically at 00:00 Kuwait time. This method is only a safety
+   * net for drivers that were activated mid-cycle and still have no OPEN
+   * shift; it never closes stale shifts (that is the cron's job).
+   */
   async ensureOpenShiftForDriver(driverId: string): Promise<void> {
     const user = await this.prisma.user.findUnique({ where: { id: driverId } });
     if (!user || user.safariRole !== SafariRole.DRIVER) return;
@@ -59,22 +54,8 @@ export class CashService {
       where: { driverId, status: ShiftStatus.OPEN },
       orderBy: { startedAt: 'desc' },
     });
-    if (open) {
-      const midnightUtc = kuwaitMidnightUtc(new Date());
-      if (open.startedAt.getTime() < midnightUtc.getTime()) {
-        await this.prisma.shift.update({
-          where: { id: open.id },
-          data: {
-            status: ShiftStatus.CLOSED,
-            endedAt: new Date(midnightUtc.getTime() - 1),
-          },
-        });
-        await this.prisma.shift.create({
-          data: { driverId, status: ShiftStatus.OPEN },
-        });
-      }
-      return;
-    }
+    if (open) return;
+
     await this.prisma.shift.create({
       data: { driverId, status: ShiftStatus.OPEN },
     });

@@ -580,6 +580,42 @@ export function getFinancialCycleReport(token: string) {
   );
 }
 
+// DUSTUR §2 — automatic midnight-to-midnight shift cycle (Kuwait time).
+export type ShiftCycleSnapshot = {
+  timezone: string;
+  cycleStartAt: string;
+  cycleEndAt: string;
+  nextCycleAt: string;
+  driversOnShift: number;
+  activeDriversTotal: number;
+  staleOpenShifts: number;
+};
+
+export type RecentShiftCycleRow = {
+  cycleStartAt: string;
+  cycleEndAt: string;
+  shiftsOpened: number;
+  shiftsClosed: number;
+};
+
+export function getCurrentShiftCycle(token: string) {
+  return apiJson<ShiftCycleSnapshot>('/api/shifts/cycle/current', { token });
+}
+
+export function getRecentShiftCycles(token: string, days = 7) {
+  return apiJson<RecentShiftCycleRow[]>(
+    `/api/shifts/cycle/recent?days=${encodeURIComponent(String(days))}`,
+    { token },
+  );
+}
+
+export function runShiftCycleNow(token: string) {
+  return apiJson<{ closed: number; opened: number; cycleStartAt: string }>(
+    '/api/shifts/cycle/run-now',
+    { token, method: 'POST', body: '{}' },
+  );
+}
+
 export type OwnerWalletSummary = {
   totalWalletLiabilities: string;
   totalCustomerDebts: string;

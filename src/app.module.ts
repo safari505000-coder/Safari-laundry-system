@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -27,6 +28,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { SafariStreamModule } from './safari-stream/safari-stream.module';
 import { ReportsModule } from './reports/reports.module';
 import { SerialsModule } from './serials/serials.module';
+import { ShiftsModule } from './shifts/shifts.module';
 import { SystemModule } from './system/system.module';
 import { SubscriptionPlansModule } from './subscription-plans/subscription-plans.module';
 import { SubscribersModule } from './subscribers/subscribers.module';
@@ -46,6 +48,7 @@ const spaStaticModule = existsSync(webDistPath)
 
 @Module({
   imports: [
+    ScheduleModule.forRoot(),
     PrismaModule,
     PermissionsModule,
     FinanceModule,
@@ -72,6 +75,7 @@ const spaStaticModule = existsSync(webDistPath)
     PosModule,
     CustomersModule,
     SerialsModule,
+    ShiftsModule,
     ServeStaticModule.forRoot({
       rootPath: uploadsPath,
       serveRoot: '/uploads',

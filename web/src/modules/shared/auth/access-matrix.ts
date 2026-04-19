@@ -68,6 +68,10 @@ export const ACCESS = {
   'branches.manage': EXEC_PAIR,
   'manageItems.edit': EXEC_PAIR,
   'ownerDashboard.view': EXEC_PAIR,
+  // DUSTUR §2 — financial cycle control. Snapshot is readable by everyone who
+  // sees the control panel, but the manual override is OWNER master-key only.
+  'shiftCycle.view': EXEC_PAIR,
+  'shiftCycle.runNow': ['OWNER'] satisfies readonly SafariRole[],
 
   // ─── Accountant island (shared with exec pair) ────────────────────
   // Pattern: `.view` = OWNER/GM oversight + ACCOUNTANT. `.act` / `.reconcile` /
