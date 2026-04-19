@@ -61,6 +61,7 @@ export const en = {
     fieldExpenses: 'Field expenses',
     collapseSidebar: 'Collapse sidebar',
     expandSidebar: 'Expand sidebar',
+    back: 'Back',
   },
   radar: {
     totalCash: 'Total cash',

@@ -62,6 +62,7 @@ export const ar = {
     fieldExpenses: 'مصاريف الميدان',
     collapseSidebar: 'طي القائمة',
     expandSidebar: 'توسيع القائمة',
+    back: 'رجوع',
   },
   radar: {
     totalCash: 'إجمالي الكاش',

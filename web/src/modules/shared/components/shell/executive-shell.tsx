@@ -1,10 +1,16 @@
 import { Outlet } from 'react-router-dom';
 import { ExecutiveHeader } from '@/modules/shared/components/shell/executive-header';
 import { ExecutiveSidebar } from '@/modules/shared/components/shell/executive-sidebar';
-import { MobileBottomNav } from '@/modules/shared/components/shell/mobile-bottom-nav';
 import { shellGuidanceForRole } from '@/modules/shared/shell/resolve-shell-guidance';
 import { useAuth } from '@/contexts/auth-context';
 
+/**
+ * V19.4 — `MobileBottomNav` moved up to `AuthLayout` so the bottom bar stays
+ * visible on the full-screen islands (`/pos`, `/admin/live-monitor`) that
+ * render outside `ExecutiveShell`. Before the move, switching to one of
+ * those routes would make the bar disappear and users reported it as a
+ * flickering "shows-then-hides" bug.
+ */
 export function ExecutiveShell() {
   const { user } = useAuth();
   const guidance = shellGuidanceForRole(user?.safariRole);
@@ -25,7 +31,6 @@ export function ExecutiveShell() {
           </div>
         </main>
       </div>
-      <MobileBottomNav />
     </div>
   );
 }

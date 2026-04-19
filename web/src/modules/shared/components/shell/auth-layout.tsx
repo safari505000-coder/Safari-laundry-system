@@ -1,5 +1,6 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/auth-context';
+import { MobileBottomNav } from '@/modules/shared/components/shell/mobile-bottom-nav';
 
 /**
  * Paths the DRIVER island is allowed to render. Anything outside this
@@ -37,6 +38,8 @@ export function AuthLayout() {
     if (!isDriverAllowedPath(pathname)) {
       return <Navigate to="/pos" replace />;
     }
+    // Drivers operate from full-screen island routes and the bottom nav
+    // intentionally renders `null` for them, so we skip it here too.
     return <Outlet />;
   }
 
@@ -44,5 +47,16 @@ export function AuthLayout() {
     return <Navigate to="/" replace />;
   }
 
-  return <Outlet />;
+  /*
+   * V19.4 — Render the bottom bar at the layout level so it persists
+   * across every authenticated route (including `/pos` and
+   * `/admin/live-monitor`, which bypass `ExecutiveShell`). This fixes
+   * the "tab bar shows then disappears" report on mobile.
+   */
+  return (
+    <>
+      <Outlet />
+      <MobileBottomNav />
+    </>
+  );
 }
