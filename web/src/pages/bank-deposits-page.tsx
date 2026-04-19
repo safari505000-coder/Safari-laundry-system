@@ -50,7 +50,11 @@ export function BankDepositsPage() {
   const [uploading, setUploading] = useState(false);
   const [verifyBusyId, setVerifyBusyId] = useState<string | null>(null);
 
-  const canView = hasRole('OWNER', 'ACCOUNTANT', 'MANAGER') ?? false;
+  // V19.2 — GENERAL_MANAGER sees the same bank-deposit lifecycle the
+  // OWNER sees (read-only; ACCOUNTANT keeps verify; MANAGER keeps upload).
+  // Backend: GET /finance/bank-deposits already accepts GM.
+  const canView =
+    hasRole('OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT', 'MANAGER') ?? false;
   const isOwner = hasRole('OWNER', 'GENERAL_MANAGER') ?? false;
   const isAccountant = hasRole('ACCOUNTANT') ?? false;
   const isManager = hasRole('MANAGER') ?? false;

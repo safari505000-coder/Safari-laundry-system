@@ -80,7 +80,11 @@ export function ManagerCustodyAgingPage() {
   const [submitting, setSubmitting] = useState(false);
   const pollRef = useRef<number | null>(null);
 
-  const canView = hasRole('OWNER', 'ACCOUNTANT');
+  // V19.2 — GENERAL_MANAGER inherits Accountant's audit posture, so GM must
+  // see this aging queue just like OWNER and ACCOUNTANT. Backend already
+  // allows GM on GET /manager-custody/aging; this gate was the UI lag.
+  // Actions (verify/reject) remain ACCOUNTANT-only.
+  const canView = hasRole('OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT');
   const canAct = hasRole('ACCOUNTANT');
 
   const load = useCallback(async () => {
