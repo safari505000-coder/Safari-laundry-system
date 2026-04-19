@@ -106,7 +106,10 @@ export function StaffDebtsPage() {
   const { t } = useTranslation();
   const { token, hasRole } = useAuth();
 
-  const allowed = hasRole('OWNER', 'ACCOUNTANT') ?? false;
+  // V19.2 — GENERAL_MANAGER inherits Accountant + Owner audit scope for
+  // internal-cash liabilities. Route guard in App.tsx already allows GM;
+  // this inner gate was the reason "مديونيات الموظفين" redirected GM to /.
+  const allowed = hasRole('OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT') ?? false;
 
   const [drivers, setDrivers] = useState<DriverBalanceRow[] | null>(null);
   const [custody, setCustody] = useState<ManagerCashCustodyRow[] | null>(null);
