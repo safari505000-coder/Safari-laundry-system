@@ -14,7 +14,6 @@ import {
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/auth-context';
 import { ApiError, apiJson, type OrderRow } from '@/lib/api';
-import { isVisibleOn } from '@/modules/shared/invoice/lifecycle';
 import { Button } from '@/modules/shared/components/ui/button';
 import {
   Card,
@@ -173,17 +172,17 @@ function MyCustodyContent() {
   /*
    * "Pending" = orders the driver has collected cash for but hasn't yet
    * handed to the branch manager. Per the Invoice Constitution
-   * (`@/modules/shared/invoice/lifecycle`) that is exactly the
-   * `driverMyDeposits` scope (lifecycle state PAID_TO_DRIVER). The
-   * additional `status === 'COMPLETED'` guard is preserved so a
-   * partially-progressed order (PICKED_UP / IN_PROGRESS) never
-   * surfaces here even if an upstream bug ever flips its cashStatus
-   * early.
+   * (docs/DUSTUR_TASHGHIL_SAFARI.md §3) that is exactly cashStatus ===
+   * 'PAID_TO_DRIVER'. The additional `status === 'COMPLETED'` guard is
+   * preserved so a partially-progressed order (PICKED_UP / IN_PROGRESS)
+   * never surfaces here even if an upstream bug ever flips its
+   * cashStatus early.
    */
   const pending = useMemo(
     () =>
       (orders ?? []).filter(
-        (o) => o.status === 'COMPLETED' && isVisibleOn(o, 'driverMyDeposits'),
+        (o) =>
+          o.status === 'COMPLETED' && o.cashStatus === 'PAID_TO_DRIVER',
       ),
     [orders],
   );
