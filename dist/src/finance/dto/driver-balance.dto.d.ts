@@ -22,6 +22,6 @@ export declare class DriverBalanceResponseDto {
 export declare class HandoverResultDto {
     settledOrderCount: number;
     systemHandoverTotal: string;
-    shiftId: string;
+    shiftId: string | null;
     bankDepositReceiptUrl: string | null;
 }

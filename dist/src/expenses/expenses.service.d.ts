@@ -26,10 +26,10 @@ export declare class ExpensesService {
             fullName: string;
         };
         id: string;
-        branchId: string | null;
         createdAt: Date;
         updatedAt: Date;
         category: import("@prisma/client").$Enums.ExpenseCategory;
+        branchId: string | null;
         status: import("@prisma/client").$Enums.ExpenseStatus;
         amount: Prisma.Decimal;
         title: string;
@@ -50,10 +50,10 @@ export declare class ExpensesService {
             fullName: string;
         };
         id: string;
-        branchId: string | null;
         createdAt: Date;
         updatedAt: Date;
         category: import("@prisma/client").$Enums.ExpenseCategory;
+        branchId: string | null;
         status: import("@prisma/client").$Enums.ExpenseStatus;
         amount: Prisma.Decimal;
         title: string;
@@ -74,10 +74,10 @@ export declare class ExpensesService {
         };
     } & {
         id: string;
-        branchId: string | null;
         createdAt: Date;
         updatedAt: Date;
         category: import("@prisma/client").$Enums.ExpenseCategory;
+        branchId: string | null;
         status: import("@prisma/client").$Enums.ExpenseStatus;
         amount: Prisma.Decimal;
         title: string;
@@ -87,7 +87,7 @@ export declare class ExpensesService {
         recordedById: string;
         expenseDate: Date;
     })[]>;
-    updateStatus(id: string, safariRole: SafariRole, status: ExpenseStatus): Promise<{
+    updateStatus(id: string, safariRole: SafariRole, status: ExpenseStatus, actorUserId: string): Promise<{
         branch: {
             id: string;
             name: string;
@@ -99,10 +99,10 @@ export declare class ExpensesService {
         };
     } & {
         id: string;
-        branchId: string | null;
         createdAt: Date;
         updatedAt: Date;
         category: import("@prisma/client").$Enums.ExpenseCategory;
+        branchId: string | null;
         status: import("@prisma/client").$Enums.ExpenseStatus;
         amount: Prisma.Decimal;
         title: string;

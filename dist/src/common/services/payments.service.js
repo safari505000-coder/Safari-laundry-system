@@ -260,6 +260,77 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
         });
         return owner?.id ?? null;
     }
+    async manuallyMarkOrderPaidByMethod(args) {
+        const { orderId, method, performedByUserId } = args;
+        return this.prisma.$transaction(async (tx) => {
+            const order = await tx.order.findUnique({
+                where: { id: orderId },
+                select: {
+                    id: true,
+                    status: true,
+                    cashStatus: true,
+                    walletSettledAt: true,
+                    customerId: true,
+                    totalPrice: true,
+                    posPaymentMethod: true,
+                    driverId: true,
+                },
+            });
+            if (!order) {
+                throw new common_1.BadRequestException('Order not found');
+            }
+            if (order.status === client_1.OrderStatus.CANCELED) {
+                throw new common_1.BadRequestException('Order is canceled — cannot mark it as paid');
+            }
+            if (order.walletSettledAt) {
+                return {
+                    orderId: order.id,
+                    alreadySettled: true,
+                    amountKd: order.totalPrice.toFixed(3),
+                    posPaymentMethod: order.posPaymentMethod ?? client_1.PosPaymentMethod.CASH,
+                };
+            }
+            const originalMethod = order.posPaymentMethod;
+            const completedAt = new Date();
+            await tx.order.update({
+                where: { id: orderId },
+                data: {
+                    status: client_1.OrderStatus.COMPLETED,
+                    cashStatus: client_1.CashStatus.PAID_TO_DRIVER,
+                    completedAt,
+                    posPaymentMethod: method,
+                    walletSettledAt: null,
+                },
+            });
+            const performerId = performedByUserId ??
+                order.driverId ??
+                (await this.resolveFallbackPerformer(tx));
+            if (!performerId) {
+                throw new common_1.BadRequestException('No performer available to attribute the manual settlement to');
+            }
+            const prefetch = {
+                customerId: order.customerId,
+                totalPrice: order.totalPrice,
+                posPaymentMethod: method,
+                walletSettledAt: null,
+                skipPerformerLookup: true,
+            };
+            const extraMetadata = {
+                debtSettled: order.totalPrice.toString(),
+                debtSettlementViaCallCenter: true,
+                originalPaymentMethod: originalMethod ?? null,
+                confirmedPaymentMethod: method,
+                reportingCategory: 'DEBT_COLLECTION_MANUAL',
+            };
+            await this.customerLedger.applyOrderWalletSettlementForCompletedOrder(tx, orderId, performerId, prefetch, extraMetadata);
+            return {
+                orderId: order.id,
+                alreadySettled: false,
+                amountKd: order.totalPrice.toFixed(3),
+                posPaymentMethod: method,
+            };
+        }, { maxWait: 10_000, timeout: 15_000 });
+    }
 };
 exports.PaymentsService = PaymentsService;
 exports.PaymentsService = PaymentsService = PaymentsService_1 = __decorate([

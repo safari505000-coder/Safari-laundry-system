@@ -3,6 +3,7 @@ import { CallCenterService } from './call-center.service';
 import { ActivateSubscriptionDto } from './dto/activate-subscription.dto';
 import { ExtendSubscriptionDto } from './dto/extend-subscription.dto';
 import { DebtRecoveryQueryDto } from './dto/debt-recovery-report.dto';
+import { MarkOrderPaidDto } from './dto/mark-order-paid.dto';
 export declare class CallCenterController {
     private readonly callCenterService;
     constructor(callCenterService: CallCenterService);
@@ -57,6 +58,12 @@ export declare class CallCenterController {
     markOrderReminderSent(orderId: string): Promise<import("./dto/reminder-result.dto").ReminderResultDto>;
     ensureOrderPaymentLink(orderId: string): Promise<{
         url: string;
+    }>;
+    markCollectionOrderPaid(orderId: string, dto: MarkOrderPaidDto, user: JwtUser): Promise<{
+        orderId: string;
+        alreadySettled: boolean;
+        amountKd: string;
+        posPaymentMethod: import("@prisma/client").PosPaymentMethod;
     }>;
     markSubscriberReminderSent(customerId: string): Promise<import("./dto/reminder-result.dto").ReminderResultDto>;
     listSettlements(customerId: string): Promise<import("./dto/settlement-history-row.dto").SettlementHistoryRowDto[]>;

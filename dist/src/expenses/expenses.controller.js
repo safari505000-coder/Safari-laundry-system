@@ -40,7 +40,7 @@ let ExpensesController = class ExpensesController {
         return this.expensesService.listPendingApproval(user.role);
     }
     updateStatus(id, dto, user) {
-        return this.expensesService.updateStatus(id, user.role, dto.status);
+        return this.expensesService.updateStatus(id, user.role, dto.status, user.userId);
     }
 };
 exports.ExpensesController = ExpensesController;

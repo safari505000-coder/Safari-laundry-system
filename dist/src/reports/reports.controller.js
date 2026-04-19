@@ -84,10 +84,10 @@ __decorate([
 ], ReportsController.prototype, "issuedInvoices", null);
 __decorate([
     (0, common_1.Get)('live-feed'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER),
     (0, swagger_1.ApiOperation)({
         summary: `Recent invoices — live operations feed (${branding_1.APP_BRAND})`,
-        description: 'OWNER only. Last N orders by createdAt (all branches). Lightweight vs issued-invoices report.',
+        description: 'OWNER only. Safari Pulse feed (last N orders by createdAt, all branches). Locked to OWNER at the API layer regardless of UI route guards.',
     }),
     __param(0, (0, common_1.Query)()),
     __metadata("design:type", Function),

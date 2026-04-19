@@ -10,6 +10,7 @@ exports.AppModule = void 0;
 const node_fs_1 = require("node:fs");
 const node_path_1 = require("node:path");
 const common_1 = require("@nestjs/common");
+const schedule_1 = require("@nestjs/schedule");
 const serve_static_1 = require("@nestjs/serve-static");
 const app_controller_1 = require("./app.controller");
 const app_service_1 = require("./app.service");
@@ -36,6 +37,7 @@ const prisma_module_1 = require("./prisma/prisma.module");
 const safari_stream_module_1 = require("./safari-stream/safari-stream.module");
 const reports_module_1 = require("./reports/reports.module");
 const serials_module_1 = require("./serials/serials.module");
+const shifts_module_1 = require("./shifts/shifts.module");
 const system_module_1 = require("./system/system.module");
 const subscription_plans_module_1 = require("./subscription-plans/subscription-plans.module");
 const subscribers_module_1 = require("./subscribers/subscribers.module");
@@ -60,6 +62,7 @@ exports.AppModule = AppModule;
 exports.AppModule = AppModule = __decorate([
     (0, common_1.Module)({
         imports: [
+            schedule_1.ScheduleModule.forRoot(),
             prisma_module_1.PrismaModule,
             permissions_module_1.PermissionsModule,
             finance_module_1.FinanceModule,
@@ -86,6 +89,7 @@ exports.AppModule = AppModule = __decorate([
             pos_module_1.PosModule,
             customers_module_1.CustomersModule,
             serials_module_1.SerialsModule,
+            shifts_module_1.ShiftsModule,
             serve_static_1.ServeStaticModule.forRoot({
                 rootPath: uploadsPath,
                 serveRoot: '/uploads',

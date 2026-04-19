@@ -6,9 +6,9 @@ export declare class SubscriptionPlansController {
     constructor(subscriptionPlansService: SubscriptionPlansService);
     create(dto: CreateSubscriptionPlanDto): import("@prisma/client").Prisma.Prisma__SubscriptionPlanClient<{
         id: string;
+        name: string;
         createdAt: Date;
         updatedAt: Date;
-        name: string;
         isActive: boolean;
         salePrice: import("@prisma/client-runtime-utils").Decimal;
         actualBalance: import("@prisma/client-runtime-utils").Decimal;
@@ -16,9 +16,9 @@ export declare class SubscriptionPlansController {
     }, never, import("@prisma/client/runtime/client").DefaultArgs, import("@prisma/client").Prisma.PrismaClientOptions>;
     findAll(): Promise<{
         id: string;
+        name: string;
         createdAt: Date;
         updatedAt: Date;
-        name: string;
         isActive: boolean;
         salePrice: import("@prisma/client-runtime-utils").Decimal;
         actualBalance: import("@prisma/client-runtime-utils").Decimal;
@@ -26,9 +26,9 @@ export declare class SubscriptionPlansController {
     }[]>;
     findOne(id: string): Promise<{
         id: string;
+        name: string;
         createdAt: Date;
         updatedAt: Date;
-        name: string;
         isActive: boolean;
         salePrice: import("@prisma/client-runtime-utils").Decimal;
         actualBalance: import("@prisma/client-runtime-utils").Decimal;
@@ -36,9 +36,9 @@ export declare class SubscriptionPlansController {
     }>;
     update(id: string, dto: UpdateSubscriptionPlanDto): Promise<{
         id: string;
+        name: string;
         createdAt: Date;
         updatedAt: Date;
-        name: string;
         isActive: boolean;
         salePrice: import("@prisma/client-runtime-utils").Decimal;
         actualBalance: import("@prisma/client-runtime-utils").Decimal;

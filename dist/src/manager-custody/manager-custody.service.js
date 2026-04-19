@@ -13,14 +13,17 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ManagerCustodyService = exports.CUSTODY_OVERDUE_MS = void 0;
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
+const general_ledger_service_1 = require("../general-ledger/general-ledger.service");
 const prisma_service_1 = require("../prisma/prisma.service");
 const finance_money_1 = require("../finance/finance-money");
 exports.CUSTODY_OVERDUE_MS = 24 * 60 * 60 * 1000;
 let ManagerCustodyService = ManagerCustodyService_1 = class ManagerCustodyService {
     prisma;
+    generalLedger;
     logger = new common_1.Logger(ManagerCustodyService_1.name);
-    constructor(prisma) {
+    constructor(prisma, generalLedger) {
         this.prisma = prisma;
+        this.generalLedger = generalLedger;
     }
     async approveReceiptFromDriver(managerId, managerBranchId, dto) {
         const driver = await this.prisma.user.findUnique({
@@ -49,49 +52,28 @@ let ManagerCustodyService = ManagerCustodyService_1 = class ManagerCustodyServic
                     throw new common_1.BadRequestException(e instanceof Error ? e.message : 'Declared total mismatch');
                 }
             }
+            if (pending.length === 0) {
+                throw new common_1.BadRequestException('No cash pending settlement for this driver.');
+            }
             const shift = await tx.shift.findFirst({
                 where: { driverId: dto.driverId, status: client_1.ShiftStatus.OPEN },
                 orderBy: { startedAt: 'desc' },
             });
-            if (pending.length === 0 && !shift) {
-                throw new common_1.BadRequestException('No cash pending settlement and no open shift to close.');
-            }
-            if (pending.length > 0 && !shift) {
-                throw new common_1.BadRequestException('Ledger shows cash due but the driver has no OPEN shift. Reconcile before handover.');
-            }
             const amountString = (0, finance_money_1.minorToAmountString)(systemMinor);
-            if (pending.length > 0) {
-                const ids = pending.map((o) => o.id);
-                const updated = await tx.order.updateMany({
-                    where: {
-                        id: { in: ids },
-                        cashStatus: client_1.CashStatus.PAID_TO_DRIVER,
-                        posPaymentMethod: client_1.PosPaymentMethod.CASH,
-                    },
-                    data: {
-                        cashStatus: client_1.CashStatus.HANDED_OVER_TO_OFFICE,
-                        handoverShiftId: shift.id,
-                    },
-                });
-                if (updated.count !== pending.length) {
-                    throw new common_1.ConflictException('Concurrent handover detected; not all orders could be settled. Retry.');
-                }
-            }
-            if (shift) {
-                await tx.shift.update({
-                    where: { id: shift.id },
-                    data: {
-                        status: client_1.ShiftStatus.CLOSED,
-                        endedAt: new Date(),
-                        systemHandoverTotal: amountString,
-                        declaredHandoverTotal: dto.declaredHandoverTotal !== undefined
-                            ? dto.declaredHandoverTotal.toFixed(4)
-                            : null,
-                        ordersSettledCount: pending.length,
-                        confirmedByManagerId: managerId,
-                        confirmedAt: new Date(),
-                    },
-                });
+            const ids = pending.map((o) => o.id);
+            const updated = await tx.order.updateMany({
+                where: {
+                    id: { in: ids },
+                    cashStatus: client_1.CashStatus.PAID_TO_DRIVER,
+                    posPaymentMethod: client_1.PosPaymentMethod.CASH,
+                },
+                data: {
+                    cashStatus: client_1.CashStatus.HANDED_OVER_TO_OFFICE,
+                    handoverShiftId: shift?.id ?? null,
+                },
+            });
+            if (updated.count !== pending.length) {
+                throw new common_1.ConflictException('Concurrent handover detected; not all orders could be settled. Retry.');
             }
             const bag = await tx.managerCashCustody.create({
                 data: {
@@ -170,22 +152,40 @@ let ManagerCustodyService = ManagerCustodyService_1 = class ManagerCustodyServic
         if (bag.status !== client_1.ManagerCashCustodyStatus.AWAITING_VERIFICATION) {
             throw new common_1.BadRequestException(`Only bags in AWAITING_VERIFICATION can be verified (got ${bag.status}).`);
         }
-        const updated = await this.prisma.managerCashCustody.update({
-            where: { id: custodyId },
-            data: {
-                status: client_1.ManagerCashCustodyStatus.VERIFIED,
-                verifiedByAccountantId: accountantId,
-                verifiedAt: new Date(),
-                note: dto.note?.trim() || bag.note,
-            },
-            include: {
-                manager: {
-                    select: { id: true, fullName: true, username: true, phone: true },
+        const updated = await this.prisma.$transaction(async (tx) => {
+            const row = await tx.managerCashCustody.update({
+                where: { id: custodyId },
+                data: {
+                    status: client_1.ManagerCashCustodyStatus.VERIFIED,
+                    verifiedByAccountantId: accountantId,
+                    verifiedAt: new Date(),
+                    note: dto.note?.trim() || bag.note,
                 },
-                driver: { select: { id: true, fullName: true, username: true } },
-                branch: { select: { id: true, name: true } },
-                shift: { select: { id: true, endedAt: true, startedAt: true } },
-            },
+                include: {
+                    manager: {
+                        select: { id: true, fullName: true, username: true, phone: true },
+                    },
+                    driver: { select: { id: true, fullName: true, username: true } },
+                    branch: { select: { id: true, name: true } },
+                    shift: { select: { id: true, endedAt: true, startedAt: true } },
+                },
+            });
+            await this.generalLedger.append(tx, {
+                entryType: client_1.GeneralLedgerEntryType.WALLET_SETTLEMENT,
+                amount: row.amountKd,
+                memo: 'manager custody verified',
+                actorUserId: accountantId,
+                metadata: {
+                    event: 'CUSTODY_VERIFIED',
+                    custodyId: row.id,
+                    managerId: row.managerId,
+                    driverId: row.driverId,
+                    branchId: row.branchId,
+                    shiftId: row.shiftId,
+                    settledOrderCount: row.settledOrderCount,
+                },
+            });
+            return row;
         });
         return this.toRow(updated);
     }
@@ -395,6 +395,7 @@ let ManagerCustodyService = ManagerCustodyService_1 = class ManagerCustodyServic
 exports.ManagerCustodyService = ManagerCustodyService;
 exports.ManagerCustodyService = ManagerCustodyService = ManagerCustodyService_1 = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [prisma_service_1.PrismaService])
+    __metadata("design:paramtypes", [prisma_service_1.PrismaService,
+        general_ledger_service_1.GeneralLedgerService])
 ], ManagerCustodyService);
 //# sourceMappingURL=manager-custody.service.js.map

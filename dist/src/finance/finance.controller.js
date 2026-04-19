@@ -190,10 +190,10 @@ __decorate([
 ], FinanceController.prototype, "getDriverBalance", null);
 __decorate([
     (0, common_1.Get)('driver-monitoring'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.CALL_CENTER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER),
     (0, swagger_1.ApiOperation)({
         summary: `Driver monitoring map feed (${branding_1.APP_BRAND})`,
-        description: 'Active ON_SHIFT drivers with lastKnownLocation marker; falls back to branch location when GPS is unavailable.',
+        description: 'OWNER only. Safari Pulse map feed of active ON_SHIFT drivers with lastKnownLocation markers. Locked to OWNER at the API layer regardless of UI route guards.',
     }),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),

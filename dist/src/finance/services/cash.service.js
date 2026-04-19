@@ -14,15 +14,6 @@ const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
 const prisma_service_1 = require("../../prisma/prisma.service");
 const finance_money_1 = require("../finance-money");
-const KUWAIT_OFFSET_MIN = 180;
-function kuwaitMidnightUtc(nowUtc) {
-    const k = new Date(nowUtc.getTime() + KUWAIT_OFFSET_MIN * 60_000);
-    const y = k.getUTCFullYear();
-    const m = k.getUTCMonth();
-    const d = k.getUTCDate();
-    const utcMs = Date.UTC(y, m, d, 0, 0, 0, 0) - KUWAIT_OFFSET_MIN * 60_000;
-    return new Date(utcMs);
-}
 function parseLatLng(input) {
     if (!input)
         return null;
@@ -49,22 +40,8 @@ let CashService = class CashService {
             where: { driverId, status: client_1.ShiftStatus.OPEN },
             orderBy: { startedAt: 'desc' },
         });
-        if (open) {
-            const midnightUtc = kuwaitMidnightUtc(new Date());
-            if (open.startedAt.getTime() < midnightUtc.getTime()) {
-                await this.prisma.shift.update({
-                    where: { id: open.id },
-                    data: {
-                        status: client_1.ShiftStatus.CLOSED,
-                        endedAt: new Date(midnightUtc.getTime() - 1),
-                    },
-                });
-                await this.prisma.shift.create({
-                    data: { driverId, status: client_1.ShiftStatus.OPEN },
-                });
-            }
+        if (open)
             return;
-        }
         await this.prisma.shift.create({
             data: { driverId, status: client_1.ShiftStatus.OPEN },
         });
@@ -291,33 +268,12 @@ let CashService = class CashService {
                 orderBy: { startedAt: 'desc' },
             });
             if (pending.length === 0) {
-                if (!shift) {
-                    throw new common_1.BadRequestException('No cash pending settlement and no open shift to close.');
-                }
-                await tx.shift.update({
-                    where: { id: shift.id },
-                    data: {
-                        status: client_1.ShiftStatus.CLOSED,
-                        endedAt: new Date(),
-                        systemHandoverTotal: '0.0000',
-                        declaredHandoverTotal: dto.declaredHandoverTotal !== undefined
-                            ? dto.declaredHandoverTotal.toFixed(4)
-                            : null,
-                        ordersSettledCount: 0,
-                        bankDepositReceiptUrl: dto.depositReceiptUrl ?? null,
-                        confirmedByManagerId: managerId,
-                        confirmedAt: new Date(),
-                    },
-                });
                 return {
                     settledOrderCount: 0,
                     systemHandoverTotal: '0.0000',
-                    shiftId: shift.id,
+                    shiftId: shift?.id ?? null,
                     bankDepositReceiptUrl: dto.depositReceiptUrl ?? null,
                 };
-            }
-            if (!shift) {
-                throw new common_1.BadRequestException('Ledger shows cash due but the driver has no OPEN shift. Reconcile before handover.');
             }
             const ids = pending.map((o) => o.id);
             const updated = await tx.order.updateMany({
@@ -328,28 +284,13 @@ let CashService = class CashService {
                 },
                 data: {
                     cashStatus: client_1.CashStatus.HANDED_OVER_TO_OFFICE,
-                    handoverShiftId: shift.id,
+                    handoverShiftId: shift?.id ?? null,
                 },
             });
             if (updated.count !== pending.length) {
                 throw new common_1.ConflictException('Concurrent handover detected; not all orders could be settled. Retry.');
             }
             const systemHandoverTotal = (0, finance_money_1.minorToAmountString)(systemMinor);
-            await tx.shift.update({
-                where: { id: shift.id },
-                data: {
-                    status: client_1.ShiftStatus.CLOSED,
-                    endedAt: new Date(),
-                    systemHandoverTotal,
-                    declaredHandoverTotal: dto.declaredHandoverTotal !== undefined
-                        ? dto.declaredHandoverTotal.toFixed(4)
-                        : null,
-                    ordersSettledCount: pending.length,
-                    bankDepositReceiptUrl: dto.depositReceiptUrl ?? null,
-                    confirmedByManagerId: managerId,
-                    confirmedAt: new Date(),
-                },
-            });
             const manager = await tx.user.findUnique({
                 where: { id: managerId },
                 select: { branchId: true },
@@ -360,7 +301,7 @@ let CashService = class CashService {
                     managerId,
                     driverId: dto.driverId,
                     branchId: manager?.branchId ?? driver.branchId ?? null,
-                    shiftId: shift.id,
+                    shiftId: shift?.id ?? null,
                     amountKd: systemHandoverTotal,
                     settledOrderCount: pending.length,
                     status: hasSlip
@@ -373,7 +314,7 @@ let CashService = class CashService {
             return {
                 settledOrderCount: pending.length,
                 systemHandoverTotal,
-                shiftId: shift.id,
+                shiftId: shift?.id ?? null,
                 bankDepositReceiptUrl: dto.depositReceiptUrl ?? null,
             };
         });
@@ -397,6 +338,16 @@ let CashService = class CashService {
                         confirmedByManager: {
                             select: { id: true, fullName: true, username: true },
                         },
+                        managerCustodyBags: {
+                            orderBy: { receivedFromDriverAt: 'desc' },
+                            take: 1,
+                            select: {
+                                receivedFromDriverAt: true,
+                                manager: {
+                                    select: { id: true, fullName: true, username: true },
+                                },
+                            },
+                        },
                         bankDepositLogs: {
                             orderBy: { createdAt: 'desc' },
                             take: 1,
@@ -416,12 +367,15 @@ let CashService = class CashService {
         return {
             rows: rows.map((o) => {
                 const shift = o.handoverShift;
+                const bag = shift?.managerCustodyBags[0] ?? null;
                 const deposit = shift?.bankDepositLogs[0] ?? null;
                 return {
                     orderId: o.id,
                     amountKd: o.totalPrice.toString(),
-                    collectedAt: shift?.confirmedAt?.toISOString() ?? null,
-                    collectedByManager: shift?.confirmedByManager ?? null,
+                    collectedAt: bag?.receivedFromDriverAt?.toISOString() ??
+                        shift?.confirmedAt?.toISOString() ??
+                        null,
+                    collectedByManager: bag?.manager ?? shift?.confirmedByManager ?? null,
                     depositLogId: deposit?.id ?? null,
                     receiptImageUrl: deposit?.receiptImageUrl ?? null,
                     verifiedAt: deposit?.verifiedAt?.toISOString() ?? null,

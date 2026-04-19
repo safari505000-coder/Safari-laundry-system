@@ -114,6 +114,13 @@ let CallCenterService = class CallCenterService {
         const link = await this.payments.ensurePaymentLinkForUnpaidOrder(orderId);
         return { url: link.url };
     }
+    async markCollectionOrderPaid(orderId, method, performedByUserId) {
+        return this.payments.manuallyMarkOrderPaidByMethod({
+            orderId,
+            method,
+            performedByUserId,
+        });
+    }
     listActiveSubscriptionPlans() {
         return this.prisma.subscriptionPlan.findMany({
             where: { isActive: true },

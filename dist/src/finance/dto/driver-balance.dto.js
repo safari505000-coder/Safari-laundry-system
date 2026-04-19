@@ -143,8 +143,12 @@ __decorate([
     __metadata("design:type", String)
 ], HandoverResultDto.prototype, "systemHandoverTotal", void 0);
 __decorate([
-    (0, swagger_1.ApiProperty)({ format: 'uuid' }),
-    __metadata("design:type", String)
+    (0, swagger_1.ApiPropertyOptional)({
+        format: 'uuid',
+        nullable: true,
+        description: "The driver's current OPEN shift at handover time, stamped onto orders as `handoverShiftId` for audit. Null when no shift is open — cash handover is independent of the shift cycle (Dastur §3).",
+    }),
+    __metadata("design:type", Object)
 ], HandoverResultDto.prototype, "shiftId", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)({

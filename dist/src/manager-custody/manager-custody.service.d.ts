@@ -1,4 +1,5 @@
 import { ManagerCashCustodyStatus } from '@prisma/client';
+import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ApproveReceiptFromDriverDto } from './dto/approve-receipt-from-driver.dto';
 import { ListCustodyQueryDto } from './dto/list-custody-query.dto';
@@ -42,8 +43,9 @@ export type AgingSummary = {
 };
 export declare class ManagerCustodyService {
     private readonly prisma;
+    private readonly generalLedger;
     private readonly logger;
-    constructor(prisma: PrismaService);
+    constructor(prisma: PrismaService, generalLedger: GeneralLedgerService);
     approveReceiptFromDriver(managerId: string, managerBranchId: string | null, dto: ApproveReceiptFromDriverDto): Promise<CustodyRowDto>;
     uploadDepositSlip(custodyId: string, managerId: string, dto: UploadDepositSlipDto): Promise<CustodyRowDto>;
     verifyCustody(custodyId: string, accountantId: string, dto: VerifyCustodyDto): Promise<CustodyRowDto>;

@@ -18,12 +18,14 @@ const common_1 = require("@nestjs/common");
 const swagger_1 = require("@nestjs/swagger");
 const client_1 = require("@prisma/client");
 const current_user_decorator_1 = require("../auth/decorators/current-user.decorator");
+const roles_decorator_1 = require("../auth/decorators/roles.decorator");
 const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
 const roles_guard_1 = require("../auth/guards/roles.guard");
 const branding_1 = require("../common/constants/branding");
 const permissions_service_1 = require("../permissions/permissions.service");
 const create_user_dto_1 = require("./dto/create-user.dto");
 const update_user_dto_1 = require("./dto/update-user.dto");
+const update_user_status_dto_1 = require("./dto/update-user-status.dto");
 const users_service_1 = require("./users.service");
 let UsersController = UsersController_1 = class UsersController {
     usersService;
@@ -88,8 +90,19 @@ let UsersController = UsersController_1 = class UsersController {
         }));
         return row;
     }
+    async setStatus(id, dto, user, req) {
+        const row = await this.usersService.setActive(id, dto.isActive);
+        this.logger.log(JSON.stringify({
+            event: dto.isActive ? 'staff.enable' : 'staff.disable',
+            requestId: this.requestId(req),
+            actorUserId: user.userId,
+            actorRole: user.role,
+            targetUserId: row.id,
+            targetRole: row.safariRole,
+        }));
+        return row;
+    }
     async remove(id, user, req) {
-        await this.assertCanManageStaff(user);
         const row = await this.usersService.remove(id);
         this.logger.log(JSON.stringify({
             event: 'staff.delete',
@@ -145,9 +158,29 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], UsersController.prototype, "update", null);
 __decorate([
+    (0, common_1.Patch)(':id/status'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
+    (0, swagger_1.ApiOperation)({
+        summary: `Enable / disable user (${branding_1.APP_BRAND})`,
+        description: 'OWNER + GENERAL_MANAGER only. Toggles `isActive` without touching role/branch/password. GM gets this in place of hard delete so disabled staff keep their audit trail.',
+    }),
+    (0, swagger_1.ApiBody)({ type: update_user_status_dto_1.UpdateUserStatusDto }),
+    __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
+    __param(1, (0, common_1.Body)()),
+    __param(2, (0, current_user_decorator_1.CurrentUser)()),
+    __param(3, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, update_user_status_dto_1.UpdateUserStatusDto, Object, Object]),
+    __metadata("design:returntype", Promise)
+], UsersController.prototype, "setStatus", null);
+__decorate([
     (0, common_1.Delete)(':id'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER),
     (0, common_1.HttpCode)(common_1.HttpStatus.OK),
-    (0, swagger_1.ApiOperation)({ summary: `Delete user (${branding_1.APP_BRAND})` }),
+    (0, swagger_1.ApiOperation)({
+        summary: `Delete user (${branding_1.APP_BRAND})`,
+        description: 'OWNER only. GENERAL_MANAGER must use `PATCH /users/:id/status` to disable accounts instead.',
+    }),
     __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
     __param(1, (0, current_user_decorator_1.CurrentUser)()),
     __param(2, (0, common_1.Req)()),

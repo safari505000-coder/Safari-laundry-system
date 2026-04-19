@@ -25,6 +25,7 @@ const call_center_service_1 = require("./call-center.service");
 const activate_subscription_dto_1 = require("./dto/activate-subscription.dto");
 const extend_subscription_dto_1 = require("./dto/extend-subscription.dto");
 const debt_recovery_report_dto_1 = require("./dto/debt-recovery-report.dto");
+const mark_order_paid_dto_1 = require("./dto/mark-order-paid.dto");
 let CallCenterController = class CallCenterController {
     callCenterService;
     constructor(callCenterService) {
@@ -56,6 +57,9 @@ let CallCenterController = class CallCenterController {
     }
     ensureOrderPaymentLink(orderId) {
         return this.callCenterService.ensureOrderPaymentLink(orderId);
+    }
+    markCollectionOrderPaid(orderId, dto, user) {
+        return this.callCenterService.markCollectionOrderPaid(orderId, dto.paymentMethod, user.userId);
     }
     markSubscriberReminderSent(customerId) {
         return this.callCenterService.sendSubscriberReminder(customerId);
@@ -158,6 +162,20 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", void 0)
 ], CallCenterController.prototype, "ensureOrderPaymentLink", null);
+__decorate([
+    (0, common_1.Post)('orders/:orderId/mark-paid'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER),
+    (0, swagger_1.ApiOperation)({
+        summary: `Mark a collection order as manually paid (${branding_1.APP_BRAND})`,
+        description: 'V1.6.9 — CALL_CENTER only. Confirms that the customer has paid an outstanding invoice and records the method actually used (CASH / KNET / PAYMENT_LINK / ONLINE). Flips the order to COMPLETED + PAID_TO_DRIVER, writes an ORDER_WALLET_SETTLEMENT ledger row tagged `debtSettlementViaCallCenter=true` with `originalPaymentMethod` preserved, and updates the customer wallet via the shared settlement logic. Idempotent: replaying on an already-settled order returns `{alreadySettled:true}` without side effects. Canceled orders are rejected.',
+    }),
+    __param(0, (0, common_1.Param)('orderId', common_1.ParseUUIDPipe)),
+    __param(1, (0, common_1.Body)()),
+    __param(2, (0, current_user_decorator_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, mark_order_paid_dto_1.MarkOrderPaidDto, Object]),
+    __metadata("design:returntype", void 0)
+], CallCenterController.prototype, "markCollectionOrderPaid", null);
 __decorate([
     (0, common_1.Post)('subscribers/:customerId/reminder'),
     (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.OWNER),

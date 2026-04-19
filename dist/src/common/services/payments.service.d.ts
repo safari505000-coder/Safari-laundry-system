@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { PosPaymentMethod, Prisma } from '@prisma/client';
 import { CustomerLedgerService } from '../../customer-ledger/customer-ledger.service';
 import { PrismaService } from '../../prisma/prisma.service';
 export type CreatePaymentLinkParams = {
@@ -39,4 +39,14 @@ export declare class PaymentsService {
     finalizePaidOrderFromGateway(referenceId: string): Promise<void>;
     private finalizeSinglePaidOrderFromGateway;
     private resolveFallbackPerformer;
+    manuallyMarkOrderPaidByMethod(args: {
+        orderId: string;
+        method: Exclude<PosPaymentMethod, 'SUBSCRIPTION_WALLET' | 'DEBT_ON_ACCOUNT'>;
+        performedByUserId: string;
+    }): Promise<{
+        orderId: string;
+        alreadySettled: boolean;
+        amountKd: string;
+        posPaymentMethod: PosPaymentMethod;
+    }>;
 }

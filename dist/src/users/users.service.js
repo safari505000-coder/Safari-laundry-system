@@ -201,6 +201,23 @@ let UsersService = class UsersService {
             throw e;
         }
     }
+    async setActive(id, isActive) {
+        const existing = await this.prisma.user.findUnique({
+            where: { id },
+            select: { id: true, safariRole: true },
+        });
+        if (!existing) {
+            throw new common_1.NotFoundException('User not found');
+        }
+        if (existing.safariRole === client_1.SafariRole.OWNER && !isActive) {
+            throw new common_1.ForbiddenException('Owner accounts cannot be deactivated');
+        }
+        return this.prisma.user.update({
+            where: { id },
+            data: { isActive },
+            select: userPublicSelect,
+        });
+    }
     async remove(id) {
         const user = await this.prisma.user.findUnique({
             where: { id },

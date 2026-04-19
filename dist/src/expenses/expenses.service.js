@@ -166,23 +166,41 @@ let ExpensesService = class ExpensesService {
             },
         });
     }
-    async updateStatus(id, safariRole, status) {
+    async updateStatus(id, safariRole, status, actorUserId) {
         if (safariRole !== client_1.SafariRole.ACCOUNTANT &&
             safariRole !== client_1.SafariRole.OWNER &&
             safariRole !== client_1.SafariRole.GENERAL_MANAGER) {
             throw new common_1.ForbiddenException();
         }
-        return this.prisma.branchExpense.update({
-            where: { id },
-            data: { status },
-            include: {
-                recordedBy: {
-                    select: { id: true, fullName: true, username: true },
+        return this.prisma.$transaction(async (tx) => {
+            const updated = await tx.branchExpense.update({
+                where: { id },
+                data: { status },
+                include: {
+                    recordedBy: {
+                        select: { id: true, fullName: true, username: true },
+                    },
+                    branch: {
+                        select: { id: true, name: true },
+                    },
                 },
-                branch: {
-                    select: { id: true, name: true },
+            });
+            await this.generalLedger.append(tx, {
+                entryType: client_1.GeneralLedgerEntryType.EXPENSE_RECORDED,
+                amount: 0,
+                memo: `expense:${status.toLowerCase()}`,
+                expenseId: updated.id,
+                actorUserId,
+                metadata: {
+                    event: 'STATUS_CHANGE',
+                    status,
+                    amountKd: updated.amount.toString(),
+                    category: updated.category,
+                    expenseMethod: updated.expenseMethod,
+                    branchId: updated.branchId,
                 },
-            },
+            });
+            return updated;
         });
     }
     branchWhere(branchId) {

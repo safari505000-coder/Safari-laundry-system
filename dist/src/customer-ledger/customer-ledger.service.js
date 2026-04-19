@@ -13,11 +13,14 @@ exports.CustomerLedgerService = void 0;
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
 const finance_money_1 = require("../finance/finance-money");
+const general_ledger_service_1 = require("../general-ledger/general-ledger.service");
 const prisma_service_1 = require("../prisma/prisma.service");
 let CustomerLedgerService = class CustomerLedgerService {
     prisma;
-    constructor(prisma) {
+    generalLedger;
+    constructor(prisma, generalLedger) {
         this.prisma = prisma;
+        this.generalLedger = generalLedger;
     }
     decimalFromMinor(minor) {
         return new client_1.Prisma.Decimal((0, finance_money_1.minorToAmountString)(minor));
@@ -139,6 +142,19 @@ let CustomerLedgerService = class CustomerLedgerService {
                     note: 'Invoice shortfall recorded as receivable',
                 },
             });
+            await this.generalLedger.append(tx, {
+                entryType: client_1.GeneralLedgerEntryType.DEBT_ADJUSTMENT,
+                amount: this.decimalFromMinor(addedInvoiceDebtMinor),
+                memo: 'Invoice shortfall recorded as receivable',
+                customerId: o.customerId,
+                orderId,
+                actorUserId: actor.id,
+                metadata: {
+                    source: client_1.DebtSource.INVOICE_SHORTFALL,
+                    category: debtCategory,
+                    branchId: actor.branchId,
+                },
+            });
         }
         if (addedSubscriptionDebtMinor > 0n) {
             await tx.debtLedgerEntry.create({
@@ -151,6 +167,19 @@ let CustomerLedgerService = class CustomerLedgerService {
                     branchId: actor.branchId,
                     actorUserId: actor.id,
                     note: 'Subscription balance allowed to go negative',
+                },
+            });
+            await this.generalLedger.append(tx, {
+                entryType: client_1.GeneralLedgerEntryType.DEBT_ADJUSTMENT,
+                amount: this.decimalFromMinor(addedSubscriptionDebtMinor),
+                memo: 'Subscription balance allowed to go negative',
+                customerId: o.customerId,
+                orderId,
+                actorUserId: actor.id,
+                metadata: {
+                    source: client_1.DebtSource.SUBSCRIPTION_OVERUSE,
+                    category: debtCategory,
+                    branchId: actor.branchId,
                 },
             });
         }
@@ -246,6 +275,22 @@ let CustomerLedgerService = class CustomerLedgerService {
                 },
             },
         });
+        if (debtPaidMinor > 0n) {
+            await this.generalLedger.append(tx, {
+                entryType: client_1.GeneralLedgerEntryType.DEBT_ADJUSTMENT,
+                amount: `-${debtSettledStr}`,
+                memo: 'Subscription activation settled existing debt',
+                customerId: params.customerId,
+                actorUserId: params.performedByUserId,
+                metadata: {
+                    event: 'DEBT_SETTLED',
+                    source: 'SUBSCRIPTION_ACTIVATION',
+                    planId: plan.id,
+                    planName: plan.name,
+                    subsidyBranchId,
+                },
+            });
+        }
         return {
             totalCollected: totalCollectedStr,
             debtSettled: debtSettledStr,
@@ -260,6 +305,7 @@ let CustomerLedgerService = class CustomerLedgerService {
 exports.CustomerLedgerService = CustomerLedgerService;
 exports.CustomerLedgerService = CustomerLedgerService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [prisma_service_1.PrismaService])
+    __metadata("design:paramtypes", [prisma_service_1.PrismaService,
+        general_ledger_service_1.GeneralLedgerService])
 ], CustomerLedgerService);
 //# sourceMappingURL=customer-ledger.service.js.map

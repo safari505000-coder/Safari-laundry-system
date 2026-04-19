@@ -15,6 +15,7 @@ export declare class UsersService {
     findAll(): Promise<UserPublic[]>;
     findOne(id: string): Promise<UserPublic>;
     update(id: string, dto: UpdateUserDto): Promise<UserPublic>;
+    setActive(id: string, isActive: boolean): Promise<UserPublic>;
     remove(id: string): Promise<{
         id: string;
         deleted: boolean;

@@ -1,4 +1,5 @@
 import { PosPaymentMethod, Prisma } from '@prisma/client';
+import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { SubscriptionActivationSettlement } from './subscription-settlement.types';
 export type PrismaTx = Prisma.TransactionClient;
@@ -11,14 +12,15 @@ export type OrderWalletSettlementPrefetch = {
 };
 export declare class CustomerLedgerService {
     private readonly prisma;
-    constructor(prisma: PrismaService);
+    private readonly generalLedger;
+    constructor(prisma: PrismaService, generalLedger: GeneralLedgerService);
     private decimalFromMinor;
     getOrCreateWalletTx(tx: PrismaTx, customerId: string): Promise<{
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        balance: Prisma.Decimal;
         customerId: string;
+        balance: Prisma.Decimal;
         debt: Prisma.Decimal;
         subscriptionActivatedAt: Date | null;
         subscriptionExpiresAt: Date | null;

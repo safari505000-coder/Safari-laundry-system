@@ -16,6 +16,12 @@ export declare class CallCenterService {
     ensureOrderPaymentLink(orderId: string): Promise<{
         url: string;
     }>;
+    markCollectionOrderPaid(orderId: string, method: 'CASH' | 'KNET' | 'PAYMENT_LINK' | 'ONLINE', performedByUserId: string): Promise<{
+        orderId: string;
+        alreadySettled: boolean;
+        amountKd: string;
+        posPaymentMethod: import("@prisma/client").PosPaymentMethod;
+    }>;
     listActiveSubscriptionPlans(): Prisma.PrismaPromise<{
         id: string;
         name: string;
