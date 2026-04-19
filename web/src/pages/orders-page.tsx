@@ -11,7 +11,6 @@ import { OrderScanInput } from '@/modules/shared/components/orders/order-scan-in
 import { Button } from '@/modules/shared/components/ui/button';
 import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
 import { formatKwdLabel } from '@/lib/kwd';
-import { Badge } from '@/modules/shared/components/ui/badge';
 import { Card, CardContent } from '@/modules/shared/components/ui/card';
 import { ScrollArea } from '@/modules/shared/components/ui/scroll-area';
 import { Skeleton } from '@/modules/shared/components/ui/skeleton';
@@ -23,20 +22,15 @@ import {
   TableHeader,
   TableRow,
 } from '@/modules/shared/components/ui/table';
+import { orderStatusChipClass } from '@/lib/safari-ui';
 
 function OrderStatusBadge({ status }: { status: string }) {
   const { t } = useTranslation();
   const label = t(`orderStatus.${status}`, {
     defaultValue: status.replaceAll('_', ' ').toLowerCase(),
   });
-  const variant =
-    status === 'COMPLETED' ? 'default'
-    : status === 'CANCELED' ? 'destructive'
-    : 'secondary';
   return (
-    <Badge variant={variant} className="font-normal">
-      {label}
-    </Badge>
+    <span className={orderStatusChipClass(status)}>{label}</span>
   );
 }
 
@@ -162,7 +156,7 @@ export function OrdersPage() {
                         {new Date(o.createdAt).toLocaleString(dateLocale)}
                       </TableCell>
                       <TableCell>
-                        <div className="font-medium">{o.customer.phone}</div>
+                        <div className="safari-table-primary">{o.customer.phone}</div>
                         {o.customer.address ?
                           <div className="text-xs text-zinc-500">
                             {o.customer.address}
@@ -182,7 +176,7 @@ export function OrdersPage() {
                           defaultValue: o.cashStatus.replaceAll('_', ' '),
                         })}
                       </TableCell>
-                      <TableCell className="text-end font-medium tabular-nums">
+                      <TableCell className="text-end font-semibold tabular-nums">
                         {formatKwdLabel(o.totalPrice)}
                       </TableCell>
                     </TableRow>

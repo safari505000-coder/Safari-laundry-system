@@ -9,6 +9,8 @@ type MetricCardProps = {
   icon?: ReactNode;
   emphasis?: boolean;
   footer?: ReactNode;
+  /** When set, the card is keyboard-focusable and shows a pointer cursor. */
+  onClick?: () => void;
 };
 
 export function MetricCard({
@@ -18,13 +20,28 @@ export function MetricCard({
   icon,
   emphasis,
   footer,
+  onClick,
 }: MetricCardProps) {
   return (
     <Card
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={
+        onClick ?
+          (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onClick();
+            }
+          }
+        : undefined
+      }
       className={cn(
         'rounded-[20px] border-border/80 bg-card shadow-sm shadow-black/[0.04] transition-shadow hover:shadow-md',
         emphasis &&
           'border-primary/20 ring-1 ring-primary/15 bg-gradient-to-br from-card to-primary/[0.06]',
+        onClick && 'cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring',
       )}
     >
       <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0 pb-2">

@@ -2,13 +2,15 @@ import { PosPaymentMethod } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ExpensesService } from '../expenses/expenses.service';
 import { FixedExpenseService } from '../fixed-expenses/fixed-expense.service';
+import { PaymentMethodFeesService } from '../payment-method-fees/payment-method-fees.service';
 import { PayrollService } from '../payroll/payroll.service';
 export declare class ReportsService {
     private readonly prisma;
     private readonly expensesService;
     private readonly payrollService;
     private readonly fixedExpenseService;
-    constructor(prisma: PrismaService, expensesService: ExpensesService, payrollService: PayrollService, fixedExpenseService: FixedExpenseService);
+    private readonly paymentMethodFeesService;
+    constructor(prisma: PrismaService, expensesService: ExpensesService, payrollService: PayrollService, fixedExpenseService: FixedExpenseService, paymentMethodFeesService: PaymentMethodFeesService);
     private parseRange;
     private ordersForBranch;
     private getSubscriptionSubsidyInRange;
@@ -92,12 +94,15 @@ export declare class ReportsService {
         netCashAfterExpensesKd: string;
         cashOrderCount: number;
     }>;
+    private aggregateBankFeesForCompletedOrders;
     netProfitExecutive(fromIso: string, toIso: string, branchId?: string, driverId?: string): Promise<{
         from: string;
         to: string;
         branchId: string | null;
         driverId: string | null;
         grossRevenueKd: string;
+        bankFeesTotalKd: string;
+        settledRevenueAfterBankFeesKd: string;
         variableSoapFuelKd: string;
         miscOperationalKd: string;
         fixedExpensesKd: string;
@@ -106,6 +111,15 @@ export declare class ReportsService {
         payrollPaidKd: string;
         totalExpensesVariableAndFixedKd: string;
         netProfitKd: string;
+    }>;
+    bankFeesByBranch(fromIso: string, toIso: string): Promise<{
+        from: string;
+        to: string;
+        totalBankFeesKd: string;
+        branches: {
+            branchId: string | null;
+            bankFeesKd: string;
+        }[];
     }>;
     unifiedLedgerStream(fromIso: string, toIso: string, driverId?: string, branchId?: string): Promise<{
         from: string;

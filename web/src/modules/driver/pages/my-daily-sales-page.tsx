@@ -34,7 +34,7 @@ export function MyDailySalesPage() {
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">{t('driverDailySales.goal')}</p>
-          <p className="mt-3 text-2xl font-bold text-[#1e3a5f]">{formatKwdLabel(total.toFixed(4))}</p>
+          <p className="mt-3 text-2xl font-bold text-primary">{formatKwdLabel(total.toFixed(4))}</p>
         </CardContent>
       </Card>
       <Card>

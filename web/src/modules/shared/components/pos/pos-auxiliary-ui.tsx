@@ -12,6 +12,7 @@ import {
 } from '@/modules/shared/components/ui/dialog';
 import { Input } from '@/modules/shared/components/ui/input';
 import { Label } from '@/modules/shared/components/ui/label';
+import { BRAND } from '@/lib/brand';
 import { cn } from '@/lib/utils';
 import type { PosEngineApi } from '@/modules/shared/hooks/use-pos-engine';
 
@@ -244,8 +245,13 @@ export function PosAuxiliaryUi({ p }: { p: PosEngineApi }) {
             className="pos-receipt-wrap pos-receipt-sheet"
             dir="rtl"
           >
-            <img src="/logo.png" alt="Safari Omni" className="pos-receipt-logo" />
-            <h2>Safari Laundry</h2>
+            <img
+              src="/logo.png"
+              alt={BRAND.customerAr}
+              className="pos-receipt-logo"
+            />
+            <h2>{BRAND.customerAr}</h2>
+            <p className="pos-receipt-sub">{BRAND.customerEn}</p>
             <p className="pos-receipt-sub">Farwaniya, 00</p>
             <p className="pos-receipt-sub">
               Shop Tel: 24899399 - Call Center: 22200299

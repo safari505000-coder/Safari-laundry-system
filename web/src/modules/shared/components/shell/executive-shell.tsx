@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom';
 import { ExecutiveHeader } from '@/modules/shared/components/shell/executive-header';
 import { ExecutiveSidebar } from '@/modules/shared/components/shell/executive-sidebar';
+import { MobileBottomNav } from '@/modules/shared/components/shell/mobile-bottom-nav';
 import { shellGuidanceForRole } from '@/modules/shared/shell/resolve-shell-guidance';
 import { useAuth } from '@/contexts/auth-context';
 
@@ -13,7 +14,9 @@ export function ExecutiveShell() {
       <ExecutiveSidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         <ExecutiveHeader />
-        <main className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 print:p-2 sm:p-6 lg:p-10">
+        <main
+          className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 pb-20 print:p-2 sm:p-6 md:pb-6 lg:p-10"
+        >
           <div className="mx-auto min-w-0 max-w-6xl print:max-w-none">
             <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
               {guidance}
@@ -22,6 +25,7 @@ export function ExecutiveShell() {
           </div>
         </main>
       </div>
+      <MobileBottomNav />
     </div>
   );
 }

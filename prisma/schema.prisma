@@ -206,6 +206,25 @@ enum FixedExpenseCategory {
   OTHER
 }
 
+/**
+ * V8.5 — Singleton global config for acquirer fees (reporting only).
+ * KNET uses flat + % with a selectable rule; card / payment links use %.
+ */
+enum KnetCommissionRule {
+  HIGHER_OF_FLAT_AND_PERCENT
+  FLAT_ONLY
+  PERCENT_ONLY
+}
+
+model PaymentMethodFeeConfig {
+  id                   String             @id
+  knetFlatKd           Decimal            @default(0.1000) @db.Decimal(19, 4)
+  knetPercentOfGross   Decimal            @default(0.015000) @db.Decimal(19, 6)
+  knetRule             KnetCommissionRule @default(HIGHER_OF_FLAT_AND_PERCENT)
+  cardPercentOfGross   Decimal            @default(0.025000) @db.Decimal(19, 6)
+  updatedAt            DateTime           @updatedAt
+}
+
 /** Branch operational expenses (manager-recorded); deducted from daily cash in reports. */
 model BranchExpense {
   id               String          @id @default(uuid()) @db.Uuid

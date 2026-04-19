@@ -139,7 +139,10 @@ let ExpensesService = class ExpensesService {
                 },
             },
         });
-        return rows.map((row) => ({ ...row, receiptUrl: null }));
+        return rows.map((row) => ({
+            ...row,
+            receiptUrl: safariRole === client_1.SafariRole.OWNER ? row.receiptUrl : null,
+        }));
     }
     async listPendingApproval(safariRole) {
         if (safariRole !== client_1.SafariRole.ACCOUNTANT && safariRole !== client_1.SafariRole.OWNER) {

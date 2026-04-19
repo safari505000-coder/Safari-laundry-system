@@ -13,6 +13,7 @@ import {
 } from '@/lib/api';
 import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
 import { formatKwdLabel } from '@/lib/kwd';
+import { expenseWorkflowChipClass } from '@/lib/safari-ui';
 import { Button } from '@/modules/shared/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/modules/shared/components/ui/card';
 import { Input } from '@/modules/shared/components/ui/input';
@@ -323,30 +324,36 @@ export function ExpensesPage() {
           : rows && rows.length === 0 ?
             <p className="text-sm text-muted-foreground">{t('expenses.empty')}</p>
           : (
-            <table className="w-full min-w-[560px] border-collapse text-sm">
+            <table className="safari-data-table min-w-[560px]">
               <thead>
-                <tr className="border-b text-start text-muted-foreground">
-                  <th className="py-2 pe-2">{t('expenses.colDate')}</th>
-                  <th className="py-2 pe-2">{t('expenses.colTitle')}</th>
-                  <th className="py-2 pe-2">{t('expenses.colCategory')}</th>
-                  <th className="py-2 pe-2">Status</th>
-                  <th className="py-2 pe-2">Branch</th>
-                  <th className="py-2 pe-2">{t('expenses.colBy')}</th>
-                  <th className="py-2 text-end">{t('expenses.colAmount')}</th>
+                <tr>
+                  <th>{t('expenses.colDate')}</th>
+                  <th>{t('expenses.colTitle')}</th>
+                  <th>{t('expenses.colCategory')}</th>
+                  <th>Status</th>
+                  <th>Branch</th>
+                  <th>{t('expenses.colBy')}</th>
+                  <th className="text-end">{t('expenses.colAmount')}</th>
                 </tr>
               </thead>
               <tbody>
                 {(rows ?? []).map((r) => (
-                  <tr key={r.id} className="border-b border-border/60">
-                    <td className="py-2 pe-2 whitespace-nowrap">
+                  <tr key={r.id}>
+                    <td className="whitespace-nowrap text-muted-foreground">
                       {new Date(r.expenseDate).toLocaleString(dateLocale)}
                     </td>
-                    <td className="py-2 pe-2">{r.title}</td>
-                    <td className="py-2 pe-2">{r.category}</td>
-                    <td className="py-2 pe-2">{r.status}</td>
-                    <td className="py-2 pe-2">{r.branch?.name ?? '—'}</td>
-                    <td className="py-2 pe-2">{r.recordedBy.fullName}</td>
-                    <td className="py-2 text-end tabular-nums">
+                    <td className="safari-table-primary max-w-[220px] whitespace-normal">
+                      {r.title}
+                    </td>
+                    <td>{r.category}</td>
+                    <td>
+                      <span className={expenseWorkflowChipClass(r.status)}>
+                        {r.status.replaceAll('_', ' ')}
+                      </span>
+                    </td>
+                    <td>{r.branch?.name ?? '—'}</td>
+                    <td>{r.recordedBy.fullName}</td>
+                    <td className="text-end font-semibold tabular-nums">
                       {formatKwdLabel(r.amount)}
                     </td>
                   </tr>

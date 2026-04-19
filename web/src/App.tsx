@@ -41,11 +41,24 @@ import { WhatsappToolsPage } from '@/modules/call-center/pages/whatsapp-tools-pa
 import { ManageItems } from '@/modules/owner/pages/ManageItems';
 import { OwnerDashboard } from '@/modules/owner/pages/OwnerDashboard';
 import OwnerInventoryReportPage from '@/modules/owner/pages/InventoryReport';
-import { OwnerProfitRadar } from '@/modules/owner/pages/OwnerProfitRadar';
 import { ManagerCustodyAgingPage } from '@/pages/manager-custody-aging-page';
 import { StaffDebtsPage } from '@/pages/staff-debts-page';
 import { DebtRecoveryReportPage } from '@/pages/debt-recovery-report-page';
 import { OwnerSerialsPage } from '@/pages/owner-serials-page';
+import { BranchesPage } from '@/pages/branches-page';
+import { useAuth } from '@/contexts/auth-context';
+
+/**
+ * V18.0 — OWNER's landing page is the Financial Island. All other roles keep
+ * the operational dashboard as the index route.
+ */
+function IndexRoute() {
+  const { hasRole } = useAuth();
+  if (hasRole('OWNER')) {
+    return <Navigate to="/financials" replace />;
+  }
+  return <DashboardPage />;
+}
 
 function AppToaster() {
   const { i18n } = useTranslation();
@@ -73,13 +86,21 @@ export default function App() {
               <Route path="/pos" element={<PosRoute />} />
               <Route path="/admin/live-monitor" element={<LiveMonitorPage />} />
               <Route path="/" element={<ExecutiveShell />}>
-                <Route index element={<DashboardPage />} />
+                <Route index element={<IndexRoute />} />
                 <Route
                   path="owner-dashboard"
                   element={
                     <RequireOwnerIsland>
                       <OwnerDashboard />
                     </RequireOwnerIsland>
+                  }
+                />
+                <Route
+                  path="branches"
+                  element={
+                    <RequireRoles roles={['OWNER']}>
+                      <BranchesPage />
+                    </RequireRoles>
                   }
                 />
                 <Route
@@ -92,11 +113,7 @@ export default function App() {
                 />
                 <Route
                   path="owner-profit-radar"
-                  element={
-                    <RequireRoles roles={['OWNER']}>
-                      <OwnerProfitRadar />
-                    </RequireRoles>
-                  }
+                  element={<Navigate to="/financials" replace />}
                 />
                 <Route
                   path="knet-audit"
@@ -216,10 +233,24 @@ export default function App() {
                     </RequireRoles>
                   }
                 />
-                <Route path="financials" element={<FinancialsPage />} />
+                <Route
+                  path="financials"
+                  element={
+                    <RequireRoles roles={['OWNER']}>
+                      <FinancialsPage />
+                    </RequireRoles>
+                  }
+                />
                 <Route path="expense-approval" element={<ExpenseApprovalPage />} />
                 <Route path="financial-cycle-report" element={<FinancialCycleReportPage />} />
-                <Route path="reports" element={<ReportsPage />} />
+                <Route
+                  path="reports"
+                  element={
+                    <RequireRoles roles={['OWNER', 'ACCOUNTANT']}>
+                      <ReportsPage />
+                    </RequireRoles>
+                  }
+                />
                 <Route
                   path="unified-ledger"
                   element={

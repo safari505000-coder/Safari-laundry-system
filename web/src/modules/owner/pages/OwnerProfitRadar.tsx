@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate } from 'react-router-dom';
-import { Building2, CircleDollarSign, Loader2, Shield } from 'lucide-react';
+import { Building2, CircleDollarSign, Loader2, Percent, Shield } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/auth-context';
 import {
   API_EXPENSES,
+  type BankFeesByBranchResponse,
   type BranchRow,
+  type ExecutiveSummaryReport,
   type ExpenseRow,
   type IssuedInvoicesReport,
   apiJson,
@@ -32,6 +34,7 @@ type BranchPnlRow = {
   branchId: string | null;
   branchName: string;
   income: number;
+  bankFees: number;
   expenses: number;
   profit: number;
 };
@@ -54,6 +57,7 @@ export function OwnerProfitRadar() {
   const allowed = hasMasterIslandAccess(user);
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<BranchPnlRow[]>([]);
+  const [executive, setExecutive] = useState<ExecutiveSummaryReport | null>(null);
   const [financialDateLabel, setFinancialDateLabel] = useState<string>('');
   const [mode, setMode] = useState<RadarMode>('daily');
 
@@ -66,11 +70,14 @@ export function OwnerProfitRadar() {
       const { from, to } = rangeForMode(status.financialDateIso, mode);
       const qs = new URLSearchParams({ from, to });
 
-      const [branches, invoices, expenses] = await Promise.all([
+      const [branches, invoices, expenses, exec, bankBranch] = await Promise.all([
         apiJson<BranchRow[]>('/api/branches', { token }),
         apiJson<IssuedInvoicesReport>(`/api/reports/issued-invoices?${qs.toString()}`, { token }),
         apiJson<ExpenseRow[]>(`${API_EXPENSES}?${qs.toString()}`, { token }),
+        apiJson<ExecutiveSummaryReport>(`/api/reports/executive-summary?${qs.toString()}`, { token }),
+        apiJson<BankFeesByBranchResponse>(`/api/reports/bank-fees-by-branch?${qs.toString()}`, { token }),
       ]);
+      setExecutive(exec);
 
       const branchNameById = new Map<string, string>();
       for (const b of branches) branchNameById.set(b.id, b.name);
@@ -90,14 +97,32 @@ export function OwnerProfitRadar() {
         expensesByBranch.set(key, (expensesByBranch.get(key) ?? 0) + (Number.isFinite(amount) ? amount : 0));
       }
 
-      const keys = new Set<string | null>([...incomeByBranch.keys(), ...expensesByBranch.keys()]);
+      const bankFeesByBranch = new Map<string | null, number>();
+      for (const b of bankBranch.branches) {
+        const v = Number.parseFloat(b.bankFeesKd || '0');
+        bankFeesByBranch.set(b.branchId, Number.isFinite(v) ? v : 0);
+      }
+
+      const keys = new Set<string | null>([
+        ...incomeByBranch.keys(),
+        ...expensesByBranch.keys(),
+        ...bankFeesByBranch.keys(),
+      ]);
       const merged = [...keys].map((branchId) => {
         const income = incomeByBranch.get(branchId) ?? 0;
+        const bank = bankFeesByBranch.get(branchId) ?? 0;
         const exp = expensesByBranch.get(branchId) ?? 0;
         const name = branchId
           ? (branchNameById.get(branchId) ?? t('ownerDashboard.unknownBranch'))
           : t('ownerDashboard.unassignedBranch');
-        return { branchId, branchName: name, income, expenses: exp, profit: income - exp };
+        return {
+          branchId,
+          branchName: name,
+          income,
+          bankFees: bank,
+          expenses: exp,
+          profit: income - bank - exp,
+        };
       });
       merged.sort((a, b) => b.profit - a.profit);
       setRows(merged);
@@ -113,10 +138,19 @@ export function OwnerProfitRadar() {
   }, [load]);
 
   const totals = useMemo(() => {
+    if (executive) {
+      return {
+        income: Number.parseFloat(executive.grossRevenueKd) || 0,
+        bank: Number.parseFloat(executive.bankFeesTotalKd) || 0,
+        expenses: Number.parseFloat(executive.totalExpensesVariableAndFixedKd) || 0,
+        profit: Number.parseFloat(executive.netProfitKd) || 0,
+      };
+    }
     const income = rows.reduce((s, r) => s + r.income, 0);
+    const bank = rows.reduce((s, r) => s + r.bankFees, 0);
     const expenses = rows.reduce((s, r) => s + r.expenses, 0);
-    return { income, expenses, profit: income - expenses };
-  }, [rows]);
+    return { income, bank, expenses, profit: income - bank - expenses };
+  }, [rows, executive]);
 
   if (!allowed) return <Navigate to="/" replace />;
 
@@ -140,7 +174,7 @@ export function OwnerProfitRadar() {
         </p>
       </header>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Card className="border-slate-300 bg-white shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-semibold text-slate-900">
@@ -150,6 +184,17 @@ export function OwnerProfitRadar() {
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold text-slate-950">{formatKwdLabel(totals.income.toFixed(3))}</p>
+          </CardContent>
+        </Card>
+        <Card className="border-slate-300 bg-white shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+              <Percent className="h-4 w-4 text-slate-900" />
+              {t('ownerDashboard.totalBankFees')}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold text-slate-950">{formatKwdLabel(totals.bank.toFixed(3))}</p>
           </CardContent>
         </Card>
         <Card className="border-slate-300 bg-white shadow-sm">
@@ -191,20 +236,30 @@ export function OwnerProfitRadar() {
           ) : (
             <Table>
               <TableHeader>
-                <TableRow className="border-slate-200">
-                  <TableHead className="font-semibold text-slate-900">{t('ownerDashboard.colBranch')}</TableHead>
-                  <TableHead className="text-right font-semibold text-slate-900">{t('ownerDashboard.colIncome')}</TableHead>
-                  <TableHead className="text-right font-semibold text-slate-900">{t('ownerDashboard.colExpenses')}</TableHead>
-                  <TableHead className="text-right font-semibold text-slate-900">{t('ownerDashboard.colProfit')}</TableHead>
+                <TableRow>
+                  <TableHead>{t('ownerDashboard.colBranch')}</TableHead>
+                  <TableHead className="text-end">{t('ownerDashboard.colIncome')}</TableHead>
+                  <TableHead className="text-end">{t('ownerDashboard.colBankFees')}</TableHead>
+                  <TableHead className="text-end">{t('ownerDashboard.colExpenses')}</TableHead>
+                  <TableHead className="text-end">{t('ownerDashboard.colProfit')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {rows.map((r) => (
-                  <TableRow key={r.branchId ?? 'none'} className="border-slate-100">
-                    <TableCell className="font-medium text-slate-900">{r.branchName}</TableCell>
-                    <TableCell className="text-right font-semibold text-slate-900">{formatKwdLabel(r.income.toFixed(3))}</TableCell>
-                    <TableCell className="text-right font-semibold text-slate-900">{formatKwdLabel(r.expenses.toFixed(3))}</TableCell>
-                    <TableCell className="text-right font-bold text-slate-950">{formatKwdLabel(r.profit.toFixed(3))}</TableCell>
+                  <TableRow key={r.branchId ?? 'none'}>
+                    <TableCell className="safari-table-primary">{r.branchName}</TableCell>
+                    <TableCell className="text-end font-semibold tabular-nums">
+                      {formatKwdLabel(r.income.toFixed(3))}
+                    </TableCell>
+                    <TableCell className="text-end font-semibold tabular-nums">
+                      {formatKwdLabel(r.bankFees.toFixed(3))}
+                    </TableCell>
+                    <TableCell className="text-end font-semibold tabular-nums">
+                      {formatKwdLabel(r.expenses.toFixed(3))}
+                    </TableCell>
+                    <TableCell className="text-end font-bold tabular-nums">
+                      {formatKwdLabel(r.profit.toFixed(3))}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

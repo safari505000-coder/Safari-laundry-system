@@ -28,6 +28,7 @@ const inventory_module_1 = require("./inventory/inventory.module");
 const laundry_price_list_module_1 = require("./laundry-price-list/laundry-price-list.module");
 const manager_custody_module_1 = require("./manager-custody/manager-custody.module");
 const orders_module_1 = require("./orders/orders.module");
+const payment_method_fees_module_1 = require("./payment-method-fees/payment-method-fees.module");
 const payments_module_1 = require("./payments/payments.module");
 const permissions_module_1 = require("./permissions/permissions.module");
 const pos_module_1 = require("./pos/pos.module");
@@ -66,6 +67,7 @@ exports.AppModule = AppModule = __decorate([
             safari_stream_module_1.SafariStreamModule,
             users_module_1.UsersModule,
             reports_module_1.ReportsModule,
+            payment_method_fees_module_1.PaymentMethodFeesModule,
             system_module_1.SystemModule,
             expenses_module_1.ExpensesModule,
             payroll_module_1.PayrollModule,

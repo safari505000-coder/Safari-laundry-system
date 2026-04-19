@@ -1,0 +1,21 @@
+{
+  "name": "Safari Omni — ERP",
+  "short_name": "Safari Omni",
+  "description": "Safari Omni — AI-assisted operations for Safari Express Laundries.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0F52BA",
+  "orientation": "portrait",
+  "dir": "auto",
+  "lang": "ar",
+  "icons": [
+    {
+      "src": "/safari-favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -19,6 +19,7 @@ import { InventoryModule } from './inventory/inventory.module';
 import { LaundryPriceListModule } from './laundry-price-list/laundry-price-list.module';
 import { ManagerCustodyModule } from './manager-custody/manager-custody.module';
 import { OrdersModule } from './orders/orders.module';
+import { PaymentMethodFeesModule } from './payment-method-fees/payment-method-fees.module';
 import { PaymentsModule } from './payments/payments.module';
 import { PermissionsModule } from './permissions/permissions.module';
 import { PosModule } from './pos/pos.module';
@@ -52,6 +53,7 @@ const spaStaticModule = existsSync(webDistPath)
     SafariStreamModule,
     UsersModule,
     ReportsModule,
+    PaymentMethodFeesModule,
     SystemModule,
     ExpensesModule,
     PayrollModule,

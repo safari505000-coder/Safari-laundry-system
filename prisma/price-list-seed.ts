@@ -671,4 +671,8 @@ export async function seedLaundryPriceList(
       },
     },
   });
+
+  console.info(
+    `Master laundry tariff: ${ROWS.length} price-list rows (V5.2 PDF + SERVICES extras).`,
+  );
 }

@@ -2,22 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import {
-  Banknote,
-  FileDown,
-  Loader2,
-  Printer,
-  RefreshCw,
-  TrendingDown,
-  TrendingUp,
-  Users,
-} from 'lucide-react';
+import { FileDown, Loader2, Printer, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import {
   type DailyCashClosingReport,
   type DriverBalanceResponse,
   type DriverLedgerReport,
-  type ExecutiveSummaryReport,
   type IssuedInvoicesReport,
   apiJson,
   ApiError,
@@ -37,8 +27,8 @@ import {
 } from '@/modules/shared/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/modules/shared/components/ui/tabs';
 import { LiveOperationsFeed } from '@/components/reports/live-operations-feed';
-import { EXECUTIVE_SUMMARY_REFRESH_EVENT } from '@/lib/executive-summary-refresh';
 import { cn } from '@/lib/utils';
+import { orderStatusChipClass } from '@/lib/safari-ui';
 
 function startOfDayIso(d: Date): string {
   const x = new Date(d);
@@ -66,23 +56,12 @@ export function ReportsPage() {
   const [invoices, setInvoices] = useState<IssuedInvoicesReport | null>(null);
   const [ledger, setLedger] = useState<DriverLedgerReport | null>(null);
   const [closing, setClosing] = useState<DailyCashClosingReport | null>(null);
-  const [executive, setExecutive] = useState<ExecutiveSummaryReport | null>(
-    null,
-  );
   const [busy, setBusy] = useState(false);
 
-  const canView =
-    hasRole(
-      'OWNER',
-      'MANAGER',
-      'ACCOUNTANT',
-      'SUPERVISOR',
-      'VIEWER',
-    ) ?? false;
+  /** Operational reports (invoices / ledger / closing). P&L lives on Financials (OWNER). */
+  const canView = hasRole('OWNER', 'ACCOUNTANT') ?? false;
 
   const isOwner = hasRole('OWNER') ?? false;
-  /** Only OWNER can see payroll + net profit cards. */
-  const hideOwnerOnlyExecCards = !isOwner;
 
   useEffect(() => {
     if (!token || !canView) return;
@@ -133,34 +112,6 @@ export function ReportsPage() {
       return 'ALL';
     });
   }, [driverOptions]);
-
-  const queryExecutive = useCallback(async () => {
-    if (!token || !canView) return;
-    try {
-      const qs = new URLSearchParams({ from, to, ...branchQs });
-      if (driverFilter !== 'ALL') qs.set('driverId', driverFilter);
-      const data = await apiJson<ExecutiveSummaryReport>(
-        `/api/reports/executive-summary?${qs.toString()}`,
-        { token },
-      );
-      setExecutive(data);
-    } catch (e) {
-      if (e instanceof ApiError) toast.error(e.message);
-    }
-  }, [token, from, to, branchQs, canView, driverFilter]);
-
-  useEffect(() => {
-    void queryExecutive();
-  }, [queryExecutive]);
-
-  useEffect(() => {
-    const handler = () => {
-      void queryExecutive();
-    };
-    window.addEventListener(EXECUTIVE_SUMMARY_REFRESH_EVENT, handler);
-    return () =>
-      window.removeEventListener(EXECUTIVE_SUMMARY_REFRESH_EVENT, handler);
-  }, [queryExecutive]);
 
   const queryInvoices = useCallback(async () => {
     if (!token) return;
@@ -301,141 +252,6 @@ export function ReportsPage() {
         </div>
       </div>
 
-      {executive ?
-        <div className="space-y-3">
-          <div
-            className={cn(
-              'grid gap-3 sm:grid-cols-2 print:grid-cols-2',
-              hideOwnerOnlyExecCards ? '' : 'xl:grid-cols-4',
-            )}
-          >
-            <Card
-              className={cn(
-                'overflow-hidden border-emerald-200/80 bg-gradient-to-br from-emerald-50 to-teal-50/90 shadow-sm',
-                'dark:border-emerald-900/50 dark:from-emerald-950/50 dark:to-emerald-950/20',
-              )}
-            >
-              <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-sm font-semibold text-emerald-900 dark:text-emerald-100">
-                  <TrendingUp className="h-4 w-4 shrink-0" aria-hidden />
-                  {t('reports.execGross')}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-bold tabular-nums text-emerald-950 dark:text-emerald-50">
-                  {formatKwdLabel(executive.grossRevenueKd)}
-                </p>
-                <p className="mt-1 text-xs text-emerald-800/80 dark:text-emerald-200/80">
-                  {t('reports.execGrossHint')}
-                </p>
-              </CardContent>
-            </Card>
-            <Card
-              className={cn(
-                'overflow-hidden border-rose-200/80 bg-gradient-to-br from-rose-50 to-red-50/90 shadow-sm',
-                'dark:border-rose-900/50 dark:from-rose-950/50 dark:to-rose-950/20',
-              )}
-            >
-              <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-sm font-semibold text-rose-900 dark:text-rose-100">
-                  <TrendingDown className="h-4 w-4 shrink-0" aria-hidden />
-                  {t('reports.execExpenses')}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-bold tabular-nums text-rose-950 dark:text-rose-50">
-                  {formatKwdLabel(executive.totalExpensesVariableAndFixedKd)}
-                </p>
-                <p className="mt-1 text-xs text-rose-800/80 dark:text-rose-200/80">
-                  {t('reports.execExpensesHint')}
-                </p>
-              </CardContent>
-            </Card>
-            {!hideOwnerOnlyExecCards ?
-              <>
-                <Card
-                  className={cn(
-                    'overflow-hidden border-sky-200/80 bg-gradient-to-br from-sky-50 to-blue-50/90 shadow-sm',
-                    'dark:border-sky-900/50 dark:from-sky-950/50 dark:to-sky-950/20',
-                  )}
-                >
-                  <CardHeader className="pb-2">
-                    <CardTitle className="flex items-center gap-2 text-sm font-semibold text-sky-900 dark:text-sky-100">
-                      <Users className="h-4 w-4 shrink-0" aria-hidden />
-                      {t('reports.execPayroll')}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-2xl font-bold tabular-nums text-sky-950 dark:text-sky-50">
-                      {formatKwdLabel(executive.payrollPaidKd)}
-                    </p>
-                    <p className="mt-1 text-xs text-sky-800/80 dark:text-sky-200/80">
-                      {t('reports.execPayrollHint')}
-                    </p>
-                  </CardContent>
-                </Card>
-                <Card
-                  className={cn(
-                    'overflow-hidden border-amber-300/90 bg-gradient-to-br from-amber-50 via-yellow-50 to-amber-100/90 shadow-md ring-1 ring-amber-200/60',
-                    'dark:border-amber-800/60 dark:from-amber-950/60 dark:via-yellow-950/40 dark:to-amber-950/30',
-                  )}
-                >
-                  <CardHeader className="pb-2">
-                    <CardTitle className="flex items-center gap-2 text-sm font-semibold text-amber-950 dark:text-amber-100">
-                      <Banknote className="h-4 w-4 shrink-0" aria-hidden />
-                      {t('reports.execNet')}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p
-                      className={cn(
-                        'text-2xl font-bold tabular-nums',
-                        Number.parseFloat(executive.netProfitKd) < 0 ?
-                          'text-destructive'
-                        : 'text-amber-950 dark:text-amber-50',
-                      )}
-                    >
-                      {formatKwdLabel(executive.netProfitKd)}
-                    </p>
-                    <p className="mt-1 text-xs text-amber-900/80 dark:text-amber-200/80">
-                      {t('reports.execNetHint')}
-                    </p>
-                  </CardContent>
-                </Card>
-              </>
-            : null}
-          </div>
-          {/* Dastur §3: Net-profit breakdown (subscription subsidies) is an
-              OWNER-only view. Accountants see the operational totals above
-              (Gross + Expenses) and the tab queries below, but not the
-              high-level P&L breakdown. */}
-          {isOwner ? (
-            <Card>
-              <CardContent className="pt-6">
-                <dl className="space-y-3 text-sm">
-                  <div className="flex items-center justify-between rounded-lg border px-3 py-2">
-                    <dt className="font-medium">
-                      {t('reports.execSubscriptionSubsidy')}
-                    </dt>
-                    <dd className="tabular-nums font-semibold">
-                      {formatKwdLabel(executive.subscriptionSubsidyKd)}
-                    </dd>
-                  </div>
-                  <div className="flex items-center justify-between rounded-lg border px-3 py-2">
-                    <dt className="font-medium">
-                      {t('reports.execEnterpriseSubscriptionSubsidy')}
-                    </dt>
-                    <dd className="tabular-nums font-semibold">
-                      {formatKwdLabel(executive.enterpriseSubscriptionSubsidyKd)}
-                    </dd>
-                  </div>
-                </dl>
-              </CardContent>
-            </Card>
-          ) : null}
-        </div>
-      : null}
-
       <Card className="print:shadow-none">
         <CardHeader className="pb-3">
           <CardTitle className="text-base">{t('reports.filters')}</CardTitle>
@@ -546,38 +362,38 @@ export function ReportsPage() {
                     {new Date(invoices.from).toLocaleString(dateLocale)} —{' '}
                     {new Date(invoices.to).toLocaleString(dateLocale)}
                   </p>
-                  <table className="w-full min-w-[640px] border-collapse text-sm">
+                  <table className="safari-data-table min-w-[640px]">
                     <thead>
-                      <tr className="border-b text-start text-muted-foreground">
-                        <th className="py-2 pe-2">{t('reports.colCreated')}</th>
-                        <th className="py-2 pe-2">{t('reports.colInvoice')}</th>
-                        <th className="py-2 pe-2">{t('reports.colCustomer')}</th>
-                        <th className="py-2 pe-2">{t('reports.colDriver')}</th>
-                        <th className="py-2 pe-2">{t('reports.colPay')}</th>
-                        <th className="py-2 pe-2">{t('reports.colStatus')}</th>
-                        <th className="py-2 text-end">{t('reports.colTotal')}</th>
+                      <tr>
+                        <th>{t('reports.colCreated')}</th>
+                        <th>{t('reports.colInvoice')}</th>
+                        <th>{t('reports.colCustomer')}</th>
+                        <th>{t('reports.colDriver')}</th>
+                        <th>{t('reports.colPay')}</th>
+                        <th>{t('reports.colStatus')}</th>
+                        <th className="text-end">{t('reports.colTotal')}</th>
                       </tr>
                     </thead>
                     <tbody>
                       {invoices.rows.map((r) => (
-                        <tr key={r.id} className="border-b border-border/60">
-                          <td className="py-2 pe-2 whitespace-nowrap">
+                        <tr key={r.id}>
+                          <td className="whitespace-nowrap text-muted-foreground">
                             {new Date(r.createdAt).toLocaleString(dateLocale)}
                           </td>
-                          <td className="py-2 pe-2 font-mono text-xs">
+                          <td className="font-mono text-xs safari-table-primary">
                             {r.invoiceNumber ?? r.id.slice(0, 8)}
                           </td>
-                          <td className="py-2 pe-2">
+                          <td className="max-w-[200px] whitespace-normal safari-table-primary">
                             {r.customer.displayName ?? r.customer.phone}
                           </td>
-                          <td className="py-2 pe-2">
-                            {r.driver?.fullName ?? '—'}
+                          <td>{r.driver?.fullName ?? '—'}</td>
+                          <td>{r.posPaymentMethod ?? '—'}</td>
+                          <td>
+                            <span className={orderStatusChipClass(r.status)}>
+                              {r.status.replaceAll('_', ' ')}
+                            </span>
                           </td>
-                          <td className="py-2 pe-2">
-                            {r.posPaymentMethod ?? '—'}
-                          </td>
-                          <td className="py-2 pe-2">{r.status}</td>
-                          <td className="py-2 text-end tabular-nums">
+                          <td className="text-end font-semibold tabular-nums">
                             {formatKwdLabel(r.totalPrice)}
                           </td>
                         </tr>
@@ -640,30 +456,28 @@ export function ReportsPage() {
                       </p>
                     </div>
                   </div>
-                  <table className="w-full min-w-[560px] border-collapse text-sm">
+                  <table className="safari-data-table min-w-[560px]">
                     <thead>
-                      <tr className="border-b text-start text-muted-foreground">
-                        <th className="py-2 pe-2">{t('reports.colCreated')}</th>
-                        <th className="py-2 pe-2">{t('reports.colInvoice')}</th>
-                        <th className="py-2 pe-2">{t('reports.colPay')}</th>
-                        <th className="py-2 pe-2">{t('reports.cashStatus')}</th>
-                        <th className="py-2 text-end">{t('reports.colTotal')}</th>
+                      <tr>
+                        <th>{t('reports.colCreated')}</th>
+                        <th>{t('reports.colInvoice')}</th>
+                        <th>{t('reports.colPay')}</th>
+                        <th>{t('reports.cashStatus')}</th>
+                        <th className="text-end">{t('reports.colTotal')}</th>
                       </tr>
                     </thead>
                     <tbody>
                       {ledger.ordersInPeriod.map((r) => (
-                        <tr key={r.id} className="border-b border-border/60">
-                          <td className="py-2 pe-2 whitespace-nowrap">
+                        <tr key={r.id}>
+                          <td className="whitespace-nowrap text-muted-foreground">
                             {new Date(r.createdAt).toLocaleString(dateLocale)}
                           </td>
-                          <td className="py-2 pe-2 font-mono text-xs">
+                          <td className="font-mono text-xs safari-table-primary">
                             {r.invoiceNumber ?? r.id.slice(0, 8)}
                           </td>
-                          <td className="py-2 pe-2">
-                            {r.posPaymentMethod ?? '—'}
-                          </td>
-                          <td className="py-2 pe-2">{r.cashStatus}</td>
-                          <td className="py-2 text-end tabular-nums">
+                          <td>{r.posPaymentMethod ?? '—'}</td>
+                          <td>{r.cashStatus}</td>
+                          <td className="text-end font-semibold tabular-nums">
                             {formatKwdLabel(r.totalPrice)}
                           </td>
                         </tr>

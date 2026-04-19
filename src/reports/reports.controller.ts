@@ -110,17 +110,11 @@ export class ReportsController {
   }
 
   @Get('executive-summary')
-  @Roles(
-    SafariRole.OWNER,
-    SafariRole.MANAGER,
-    SafariRole.ACCOUNTANT,
-    SafariRole.SUPERVISOR,
-    SafariRole.VIEWER,
-  )
+  @Roles(SafariRole.OWNER)
   @ApiOperation({
     summary: `Net profit & executive KPIs (${APP_BRAND})`,
     description:
-      'Gross completed sales minus SOAP/FUEL/MISC variable expenses, paid payroll, and accrued fixed schedules.',
+      'Gross completed sales minus bank fees (non-cash rails), SOAP/FUEL/MISC variable expenses, paid payroll, and accrued fixed schedules. Invoice totals unchanged.',
   })
   executiveSummary(@Query() q: ReportsRangeQueryDto) {
     return this.reportsService.netProfitExecutive(
@@ -129,6 +123,17 @@ export class ReportsController {
       q.branchId,
       q.driverId,
     );
+  }
+
+  @Get('bank-fees-by-branch')
+  @Roles(SafariRole.OWNER)
+  @ApiOperation({
+    summary: `Bank fees by branch — completed sales (${APP_BRAND})`,
+    description:
+      'V8.5 reporting-layer allocation of KNET/card fees per driver branch.',
+  })
+  bankFeesByBranch(@Query() q: ReportsRangeQueryDto) {
+    return this.reportsService.bankFeesByBranch(q.from, q.to);
   }
 
   @Get('unified-ledger-stream')

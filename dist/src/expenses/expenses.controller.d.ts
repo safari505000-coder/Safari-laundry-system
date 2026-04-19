@@ -31,7 +31,7 @@ export declare class ExpensesController {
         expenseDate: Date;
     }>;
     list(q: ExpensesQueryDto, user: JwtUser): Promise<{
-        receiptUrl: null;
+        receiptUrl: string | null;
         branch: {
             id: string;
             name: string;

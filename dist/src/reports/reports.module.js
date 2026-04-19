@@ -11,6 +11,7 @@ const common_1 = require("@nestjs/common");
 const auth_module_1 = require("../auth/auth.module");
 const expenses_module_1 = require("../expenses/expenses.module");
 const fixed_expense_module_1 = require("../fixed-expenses/fixed-expense.module");
+const payment_method_fees_module_1 = require("../payment-method-fees/payment-method-fees.module");
 const payroll_module_1 = require("../payroll/payroll.module");
 const prisma_module_1 = require("../prisma/prisma.module");
 const reports_controller_1 = require("./reports.controller");
@@ -26,6 +27,7 @@ exports.ReportsModule = ReportsModule = __decorate([
             expenses_module_1.ExpensesModule,
             payroll_module_1.PayrollModule,
             fixed_expense_module_1.FixedExpenseModule,
+            payment_method_fees_module_1.PaymentMethodFeesModule,
         ],
         controllers: [reports_controller_1.ReportsController],
         providers: [reports_service_1.ReportsService],

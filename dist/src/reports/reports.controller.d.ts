@@ -97,6 +97,8 @@ export declare class ReportsController {
         branchId: string | null;
         driverId: string | null;
         grossRevenueKd: string;
+        bankFeesTotalKd: string;
+        settledRevenueAfterBankFeesKd: string;
         variableSoapFuelKd: string;
         miscOperationalKd: string;
         fixedExpensesKd: string;
@@ -105,6 +107,15 @@ export declare class ReportsController {
         payrollPaidKd: string;
         totalExpensesVariableAndFixedKd: string;
         netProfitKd: string;
+    }>;
+    bankFeesByBranch(q: ReportsRangeQueryDto): Promise<{
+        from: string;
+        to: string;
+        totalBankFeesKd: string;
+        branches: {
+            branchId: string | null;
+            bankFeesKd: string;
+        }[];
     }>;
     unifiedLedgerStream(q: ReportsRangeQueryDto): Promise<{
         from: string;

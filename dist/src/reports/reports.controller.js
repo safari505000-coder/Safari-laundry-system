@@ -52,6 +52,9 @@ let ReportsController = class ReportsController {
     executiveSummary(q) {
         return this.reportsService.netProfitExecutive(q.from, q.to, q.branchId, q.driverId);
     }
+    bankFeesByBranch(q) {
+        return this.reportsService.bankFeesByBranch(q.from, q.to);
+    }
     unifiedLedgerStream(q) {
         return this.reportsService.unifiedLedgerStream(q.from, q.to, q.driverId, q.branchId);
     }
@@ -115,16 +118,28 @@ __decorate([
 ], ReportsController.prototype, "dailyCashClosing", null);
 __decorate([
     (0, common_1.Get)('executive-summary'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER),
     (0, swagger_1.ApiOperation)({
         summary: `Net profit & executive KPIs (${branding_1.APP_BRAND})`,
-        description: 'Gross completed sales minus SOAP/FUEL/MISC variable expenses, paid payroll, and accrued fixed schedules.',
+        description: 'Gross completed sales minus bank fees (non-cash rails), SOAP/FUEL/MISC variable expenses, paid payroll, and accrued fixed schedules. Invoice totals unchanged.',
     }),
     __param(0, (0, common_1.Query)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [reports_range_query_dto_1.ReportsRangeQueryDto]),
     __metadata("design:returntype", void 0)
 ], ReportsController.prototype, "executiveSummary", null);
+__decorate([
+    (0, common_1.Get)('bank-fees-by-branch'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER),
+    (0, swagger_1.ApiOperation)({
+        summary: `Bank fees by branch — completed sales (${branding_1.APP_BRAND})`,
+        description: 'V8.5 reporting-layer allocation of KNET/card fees per driver branch.',
+    }),
+    __param(0, (0, common_1.Query)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [reports_range_query_dto_1.ReportsRangeQueryDto]),
+    __metadata("design:returntype", void 0)
+], ReportsController.prototype, "bankFeesByBranch", null);
 __decorate([
     (0, common_1.Get)('unified-ledger-stream'),
     (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),

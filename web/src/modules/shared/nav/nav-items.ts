@@ -45,7 +45,7 @@ export const manageItemsItem: NavItem = {
 };
 
 export const ownerDashboardItem: NavItem = {
-  to: '/owner-profit-radar',
+  to: '/financials',
   labelKey: 'nav.ownerDashboard',
   icon: LayoutDashboard,
   roles: ['OWNER'],
@@ -222,7 +222,7 @@ export const financialsItem: NavItem = {
   to: '/financials',
   labelKey: 'nav.financials',
   icon: Banknote,
-  roles: ['OWNER', 'MANAGER', 'ACCOUNTANT', 'SUPERVISOR', 'VIEWER'],
+  roles: ['OWNER'],
 };
 
 /*
@@ -389,5 +389,16 @@ export const teamItem: NavItem = {
   to: '/users-management',
   labelKey: 'nav.usersManagement',
   icon: Users,
+  roles: ['OWNER'],
+};
+
+/**
+ * V18.0 — Branch management lives under the "System Settings" group.
+ * OWNER-only. Matches the backend guard on POST /api/branches.
+ */
+export const branchesItem: NavItem = {
+  to: '/branches',
+  labelKey: 'nav.branches',
+  icon: Building2,
   roles: ['OWNER'],
 };

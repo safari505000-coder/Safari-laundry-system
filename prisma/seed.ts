@@ -20,6 +20,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import * as bcrypt from 'bcrypt';
 import { Pool } from 'pg';
 import { PrismaClient, SafariRole } from '@prisma/client';
+import { CANONICAL_PAYMENT_METHOD_FEE_CONFIG } from '../src/payment-method-fees/canonical-payment-fee-config';
 import {
   ACCOUNTANT_PERMISSION_KEYS,
   ALL_PERMISSION_KEYS,
@@ -259,6 +260,20 @@ async function main(): Promise<void> {
     });
     console.info(`Seeded CALL_CENTER user: ${CALL_CENTER_USERNAME}`);
   }
+
+  const forceCanonicalFees =
+    (process.env.SEED_FORCE_CANONICAL_FEES ?? '').toLowerCase() === 'true';
+  await prisma.paymentMethodFeeConfig.upsert({
+    where: { id: 'default' },
+    create: {
+      id: 'default',
+      ...CANONICAL_PAYMENT_METHOD_FEE_CONFIG,
+    },
+    update: forceCanonicalFees ? { ...CANONICAL_PAYMENT_METHOD_FEE_CONFIG } : {},
+  });
+  console.info(
+    `Ensured payment-method fee config (V8.5 bank commission)${forceCanonicalFees ? ' — canonical values reapplied' : ''}.`,
+  );
 
   await seedLaundryPriceList(prisma);
   console.info('Seeded laundry price list (PDF tariff).');

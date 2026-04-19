@@ -2,7 +2,6 @@ import type { NavGroup } from '@/modules/shared/nav/nav-types';
 import {
   dashboardItem,
   expensesItem,
-  financialsItem,
   myCustodyItem,
   ordersItem,
   posItem,
@@ -26,6 +25,6 @@ export const managerSidebarNavGroups: NavGroup[] = [
   { labelKey: 'nav.groupOperations', items: [shiftsItem] },
   {
     labelKey: 'nav.groupFinance',
-    items: [financialsItem, expensesItem, myCustodyItem],
+    items: [expensesItem, myCustodyItem],
   },
 ];

@@ -12,6 +12,8 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { ExpensesService } from '../expenses/expenses.service';
 import { FixedExpenseService } from '../fixed-expenses/fixed-expense.service';
+import { PaymentMethodFeesService } from '../payment-method-fees/payment-method-fees.service';
+import { computeOrderBankFeeKd } from '../payment-method-fees/bank-fee.util';
 import { PayrollService } from '../payroll/payroll.service';
 import {
   minorToAmountString,
@@ -33,6 +35,7 @@ export class ReportsService {
     private readonly expensesService: ExpensesService,
     private readonly payrollService: PayrollService,
     private readonly fixedExpenseService: FixedExpenseService,
+    private readonly paymentMethodFeesService: PaymentMethodFeesService,
   ) {}
 
   private parseRange(fromIso: string, toIso: string): { from: Date; to: Date } {
@@ -306,8 +309,68 @@ export class ReportsService {
   }
 
   /**
-   * Profit engine: gross revenue (completed sales) minus variable (SOAP/FUEL + MISC),
-   * paid payroll, and accrued fixed (rent/utility schedules).
+   * V8.5 — Sum payment-rail bank fees on non-cash electronic settlements
+   * (KNET / payment link / online). Reporting only — invoice `totalPrice`
+   * rows are unchanged.
+   */
+  private async aggregateBankFeesForCompletedOrders(
+    from: Date,
+    to: Date,
+    branchId?: string,
+    driverId?: string,
+  ): Promise<{
+    totalBankFeesKd: string;
+    settledRevenueAfterBankFeesKd: string;
+    byBranch: Array<{ branchId: string | null; bankFeesKd: string }>;
+  }> {
+    const config = await this.paymentMethodFeesService.getConfig();
+    const orders = await this.prisma.order.findMany({
+      where: {
+        status: OrderStatus.COMPLETED,
+        completedAt: { gte: from, lte: to },
+        ...this.ordersForBranch(branchId),
+        ...(driverId ? { driverId } : {}),
+      },
+      select: {
+        totalPrice: true,
+        posPaymentMethod: true,
+        driver: { select: { branchId: true } },
+      },
+    });
+
+    const byBranch = new Map<string | null, Prisma.Decimal>();
+    let totalFees = new Prisma.Decimal(0);
+    let grossAll = new Prisma.Decimal(0);
+
+    for (const o of orders) {
+      const gross = new Prisma.Decimal(o.totalPrice.toString());
+      grossAll = grossAll.add(gross);
+      const fee = computeOrderBankFeeKd(gross, o.posPaymentMethod, config);
+      totalFees = totalFees.add(fee);
+      const bid = o.driver?.branchId ?? null;
+      const prev = byBranch.get(bid) ?? new Prisma.Decimal(0);
+      byBranch.set(bid, prev.add(fee));
+    }
+
+    const settled = grossAll.sub(totalFees);
+    const branchRows = [...byBranch.entries()].map(([id, v]) => ({
+      branchId: id,
+      bankFeesKd: v.toFixed(4),
+    }));
+    branchRows.sort((a, b) =>
+      (a.branchId ?? '').localeCompare(b.branchId ?? ''),
+    );
+
+    return {
+      totalBankFeesKd: totalFees.toFixed(4),
+      settledRevenueAfterBankFeesKd: settled.toFixed(4),
+      byBranch: branchRows,
+    };
+  }
+
+  /**
+   * Profit engine: gross revenue (completed sales) minus bank fees (V8.5),
+   * variable (SOAP/FUEL + MISC), paid payroll, and accrued fixed.
    */
   async netProfitExecutive(
     fromIso: string,
@@ -331,6 +394,15 @@ export class ReportsService {
       revenueAgg._sum.totalPrice !== undefined
         ? revenueAgg._sum.totalPrice.toString()
         : '0';
+
+    const bankAgg = await this.aggregateBankFeesForCompletedOrders(
+      from,
+      to,
+      branchId,
+      driverId,
+    );
+    const bankFeesTotalKd = bankAgg.totalBankFeesKd;
+    const settledRevenueAfterBankFeesKd = bankAgg.settledRevenueAfterBankFeesKd;
 
     const variableSoapFuelKd = await this.expensesService.sumInRangeByCategories(
       from,
@@ -365,9 +437,15 @@ export class ReportsService {
       .toFixed(4);
 
     const netProfitKd = driverId
-      ? decSubMany(grossRevenueKd, variableSoapFuelKd, miscOperationalKd)
+      ? decSubMany(
+          grossRevenueKd,
+          bankFeesTotalKd,
+          variableSoapFuelKd,
+          miscOperationalKd,
+        )
       : decSubMany(
           grossRevenueKd,
+          bankFeesTotalKd,
           variableSoapFuelKd,
           miscOperationalKd,
           payrollPaidKd,
@@ -380,6 +458,13 @@ export class ReportsService {
       branchId: branchId ?? null,
       driverId: driverId ?? null,
       grossRevenueKd,
+      /** V8.5 — internal bank/acquirer fees on non-cash rails (reporting only). */
+      bankFeesTotalKd,
+      /**
+       * Gross completed sales minus bank fees — “settled” revenue before
+       * soap/misc/payroll/fixed deductions.
+       */
+      settledRevenueAfterBankFeesKd,
       variableSoapFuelKd,
       miscOperationalKd,
       fixedExpensesKd,
@@ -390,6 +475,20 @@ export class ReportsService {
       totalExpensesVariableAndFixedKd: totalNonPayrollExpensesKd,
       /** Gold: full P&L after payroll (driver scope excludes payroll/fixed). */
       netProfitKd,
+    };
+  }
+
+  /**
+   * V8.5 — Per-branch bank fee allocation (completed orders), for Owner radar.
+   */
+  async bankFeesByBranch(fromIso: string, toIso: string) {
+    const { from, to } = this.parseRange(fromIso, toIso);
+    const agg = await this.aggregateBankFeesForCompletedOrders(from, to);
+    return {
+      from: from.toISOString(),
+      to: to.toISOString(),
+      totalBankFeesKd: agg.totalBankFeesKd,
+      branches: agg.byBranch,
     };
   }
 

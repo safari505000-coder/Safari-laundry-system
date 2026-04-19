@@ -180,8 +180,11 @@ export class ExpensesService {
         },
       },
     });
-    // Keep receipt images out of operational/owner performance views.
-    return rows.map((row) => ({ ...row, receiptUrl: null }));
+    // Receipt URLs: OWNER-only (Financial Island audit drill-down). Others get null.
+    return rows.map((row) => ({
+      ...row,
+      receiptUrl: safariRole === SafariRole.OWNER ? row.receiptUrl : null,
+    }));
   }
 
   async listPendingApproval(safariRole: SafariRole) {

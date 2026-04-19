@@ -39,7 +39,7 @@ export declare class ExpensesService {
         expenseDate: Date;
     }>;
     listForUser(userId: string, safariRole: SafariRole, fromIso: string, toIso: string, branchId?: string, status?: ExpenseStatus): Promise<{
-        receiptUrl: null;
+        receiptUrl: string | null;
         branch: {
             id: string;
             name: string;

@@ -1381,6 +1381,10 @@ export type ExecutiveSummaryReport = {
   branchId: string | null;
   driverId?: string | null;
   grossRevenueKd: string;
+  /** V8.5 — KNET / card-link fees (reporting only). */
+  bankFeesTotalKd: string;
+  /** Gross completed sales minus bank fees (before soap/misc/payroll/fixed). */
+  settledRevenueAfterBankFeesKd: string;
   variableSoapFuelKd: string;
   miscOperationalKd: string;
   fixedExpensesKd: string;
@@ -1389,6 +1393,32 @@ export type ExecutiveSummaryReport = {
   payrollPaidKd: string;
   totalExpensesVariableAndFixedKd: string;
   netProfitKd: string;
+};
+
+/** Safe default so the Reports executive strip (incl. Bank fees) always renders before/after API. */
+export const EMPTY_EXECUTIVE_SUMMARY_REPORT: ExecutiveSummaryReport = {
+  from: '',
+  to: '',
+  branchId: null,
+  driverId: null,
+  grossRevenueKd: '0.0000',
+  bankFeesTotalKd: '0.0000',
+  settledRevenueAfterBankFeesKd: '0.0000',
+  variableSoapFuelKd: '0.0000',
+  miscOperationalKd: '0.0000',
+  fixedExpensesKd: '0.0000',
+  subscriptionSubsidyKd: '0.0000',
+  enterpriseSubscriptionSubsidyKd: '0.0000',
+  payrollPaidKd: '0.0000',
+  totalExpensesVariableAndFixedKd: '0.0000',
+  netProfitKd: '0.0000',
+};
+
+export type BankFeesByBranchResponse = {
+  from: string;
+  to: string;
+  totalBankFeesKd: string;
+  branches: Array<{ branchId: string | null; bankFeesKd: string }>;
 };
 
 export type LiveFeedLine = {

@@ -15,6 +15,8 @@ const client_1 = require("@prisma/client");
 const prisma_service_1 = require("../prisma/prisma.service");
 const expenses_service_1 = require("../expenses/expenses.service");
 const fixed_expense_service_1 = require("../fixed-expenses/fixed-expense.service");
+const payment_method_fees_service_1 = require("../payment-method-fees/payment-method-fees.service");
+const bank_fee_util_1 = require("../payment-method-fees/bank-fee.util");
 const payroll_service_1 = require("../payroll/payroll.service");
 const finance_money_1 = require("../finance/finance-money");
 function decSubMany(base, ...subs) {
@@ -29,11 +31,13 @@ let ReportsService = class ReportsService {
     expensesService;
     payrollService;
     fixedExpenseService;
-    constructor(prisma, expensesService, payrollService, fixedExpenseService) {
+    paymentMethodFeesService;
+    constructor(prisma, expensesService, payrollService, fixedExpenseService, paymentMethodFeesService) {
         this.prisma = prisma;
         this.expensesService = expensesService;
         this.payrollService = payrollService;
         this.fixedExpenseService = fixedExpenseService;
+        this.paymentMethodFeesService = paymentMethodFeesService;
     }
     parseRange(fromIso, toIso) {
         const from = new Date(fromIso);
@@ -249,6 +253,45 @@ let ReportsService = class ReportsService {
             cashOrderCount: cashOrders.length,
         };
     }
+    async aggregateBankFeesForCompletedOrders(from, to, branchId, driverId) {
+        const config = await this.paymentMethodFeesService.getConfig();
+        const orders = await this.prisma.order.findMany({
+            where: {
+                status: client_1.OrderStatus.COMPLETED,
+                completedAt: { gte: from, lte: to },
+                ...this.ordersForBranch(branchId),
+                ...(driverId ? { driverId } : {}),
+            },
+            select: {
+                totalPrice: true,
+                posPaymentMethod: true,
+                driver: { select: { branchId: true } },
+            },
+        });
+        const byBranch = new Map();
+        let totalFees = new client_1.Prisma.Decimal(0);
+        let grossAll = new client_1.Prisma.Decimal(0);
+        for (const o of orders) {
+            const gross = new client_1.Prisma.Decimal(o.totalPrice.toString());
+            grossAll = grossAll.add(gross);
+            const fee = (0, bank_fee_util_1.computeOrderBankFeeKd)(gross, o.posPaymentMethod, config);
+            totalFees = totalFees.add(fee);
+            const bid = o.driver?.branchId ?? null;
+            const prev = byBranch.get(bid) ?? new client_1.Prisma.Decimal(0);
+            byBranch.set(bid, prev.add(fee));
+        }
+        const settled = grossAll.sub(totalFees);
+        const branchRows = [...byBranch.entries()].map(([id, v]) => ({
+            branchId: id,
+            bankFeesKd: v.toFixed(4),
+        }));
+        branchRows.sort((a, b) => (a.branchId ?? '').localeCompare(b.branchId ?? ''));
+        return {
+            totalBankFeesKd: totalFees.toFixed(4),
+            settledRevenueAfterBankFeesKd: settled.toFixed(4),
+            byBranch: branchRows,
+        };
+    }
     async netProfitExecutive(fromIso, toIso, branchId, driverId) {
         const { from, to } = this.parseRange(fromIso, toIso);
         const revenueAgg = await this.prisma.order.aggregate({
@@ -264,6 +307,9 @@ let ReportsService = class ReportsService {
             revenueAgg._sum.totalPrice !== undefined
             ? revenueAgg._sum.totalPrice.toString()
             : '0';
+        const bankAgg = await this.aggregateBankFeesForCompletedOrders(from, to, branchId, driverId);
+        const bankFeesTotalKd = bankAgg.totalBankFeesKd;
+        const settledRevenueAfterBankFeesKd = bankAgg.settledRevenueAfterBankFeesKd;
         const variableSoapFuelKd = await this.expensesService.sumInRangeByCategories(from, to, [client_1.ExpenseCategory.SOAP, client_1.ExpenseCategory.FUEL], branchId, driverId);
         const miscOperationalKd = await this.expensesService.sumInRangeByCategories(from, to, [client_1.ExpenseCategory.MISC], branchId, driverId);
         const payrollPaidKd = driverId
@@ -283,14 +329,16 @@ let ReportsService = class ReportsService {
             .add(new client_1.Prisma.Decimal(fixedExpensesKd))
             .toFixed(4);
         const netProfitKd = driverId
-            ? decSubMany(grossRevenueKd, variableSoapFuelKd, miscOperationalKd)
-            : decSubMany(grossRevenueKd, variableSoapFuelKd, miscOperationalKd, payrollPaidKd, fixedExpensesKd);
+            ? decSubMany(grossRevenueKd, bankFeesTotalKd, variableSoapFuelKd, miscOperationalKd)
+            : decSubMany(grossRevenueKd, bankFeesTotalKd, variableSoapFuelKd, miscOperationalKd, payrollPaidKd, fixedExpensesKd);
         return {
             from: from.toISOString(),
             to: to.toISOString(),
             branchId: branchId ?? null,
             driverId: driverId ?? null,
             grossRevenueKd,
+            bankFeesTotalKd,
+            settledRevenueAfterBankFeesKd,
             variableSoapFuelKd,
             miscOperationalKd,
             fixedExpensesKd,
@@ -299,6 +347,16 @@ let ReportsService = class ReportsService {
             payrollPaidKd,
             totalExpensesVariableAndFixedKd: totalNonPayrollExpensesKd,
             netProfitKd,
+        };
+    }
+    async bankFeesByBranch(fromIso, toIso) {
+        const { from, to } = this.parseRange(fromIso, toIso);
+        const agg = await this.aggregateBankFeesForCompletedOrders(from, to);
+        return {
+            from: from.toISOString(),
+            to: to.toISOString(),
+            totalBankFeesKd: agg.totalBankFeesKd,
+            branches: agg.byBranch,
         };
     }
     async unifiedLedgerStream(fromIso, toIso, driverId, branchId) {
@@ -494,6 +552,7 @@ exports.ReportsService = ReportsService = __decorate([
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
         expenses_service_1.ExpensesService,
         payroll_service_1.PayrollService,
-        fixed_expense_service_1.FixedExpenseService])
+        fixed_expense_service_1.FixedExpenseService,
+        payment_method_fees_service_1.PaymentMethodFeesService])
 ], ReportsService);
 //# sourceMappingURL=reports.service.js.map

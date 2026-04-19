@@ -98,7 +98,7 @@ export function ExecutiveSidebar() {
   return (
     <aside
       className={cn(
-        'print:hidden flex h-svh shrink-0 flex-col border-e border-border bg-card shadow-sm transition-[width] duration-200 ease-out',
+        'print:hidden hidden h-svh shrink-0 flex-col border-e border-border bg-card shadow-sm transition-[width] duration-200 ease-out md:flex',
         collapsed ? 'w-[4.25rem]' : 'w-64',
       )}
     >

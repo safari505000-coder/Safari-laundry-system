@@ -66,40 +66,49 @@ body {
 }
 
 :root {
-  /* Safari Executive — light shell, navy (#1e3a5f) primary */
-  --safari-navy: #1e3a5f;
-  --background: oklch(0.985 0.002 250);
-  --foreground: oklch(0.22 0.03 260);
+  /* Safari Omni V6.8 — Sapphire Blue (#0F52BA) primary + Gold (#D4AF37) accent on White shell.
+     Any surface-level color must come from these tokens; never hard-code hex in components. */
+  --safari-sapphire: #0F52BA;
+  --safari-sapphire-deep: #0A2A6C;
+  --safari-gold: #D4AF37;
+  --safari-gold-soft: #F3E3A3;
+  /* Legacy alias retained so any component still referencing --safari-navy
+     keeps rendering until it is migrated. Points at new sapphire. */
+  --safari-navy: var(--safari-sapphire);
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.2 0.035 260);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.22 0.03 260);
+  --card-foreground: oklch(0.2 0.035 260);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.22 0.03 260);
-  --primary: oklch(0.32 0.075 255);
+  --popover-foreground: oklch(0.2 0.035 260);
+  /* Primary — Sapphire Blue ≈ #0F52BA (deep, saturated, high contrast). */
+  --primary: oklch(0.42 0.19 260);
   --primary-foreground: oklch(0.99 0 0);
-  --secondary: oklch(0.96 0.01 250);
+  --secondary: oklch(0.96 0.012 260);
   --secondary-foreground: oklch(0.28 0.04 260);
-  --muted: oklch(0.96 0.008 250);
+  --muted: oklch(0.97 0.006 260);
   --muted-foreground: oklch(0.48 0.02 260);
-  --accent: oklch(0.94 0.02 255);
-  --accent-foreground: oklch(0.28 0.05 260);
+  /* Accent — warm Gold (#D4AF37) for focus states, stars, VIP surface cues. */
+  --accent: oklch(0.95 0.07 85);
+  --accent-foreground: oklch(0.38 0.12 85);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.91 0.01 250);
-  --input: oklch(0.91 0.01 250);
-  --ring: oklch(0.45 0.08 255);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  --border: oklch(0.91 0.012 260);
+  --input: oklch(0.91 0.012 260);
+  --ring: oklch(0.77 0.14 85);
+  --chart-1: oklch(0.42 0.19 260); /* sapphire */
+  --chart-2: oklch(0.77 0.14 85);  /* gold */
+  --chart-3: oklch(0.68 0.15 170); /* teal */
+  --chart-4: oklch(0.62 0.2 25);   /* coral */
+  --chart-5: oklch(0.55 0.08 280); /* violet */
   --radius: 0.75rem;
   --sidebar: oklch(1 0 0);
   --sidebar-foreground: oklch(0.28 0.04 260);
-  --sidebar-primary: oklch(0.32 0.075 255);
+  --sidebar-primary: oklch(0.42 0.19 260);
   --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-accent: oklch(0.95 0.02 255);
-  --sidebar-accent-foreground: oklch(0.28 0.05 260);
-  --sidebar-border: oklch(0.91 0.01 250);
-  --sidebar-ring: oklch(0.45 0.08 255);
+  --sidebar-accent: oklch(0.95 0.07 85);
+  --sidebar-accent-foreground: oklch(0.38 0.12 85);
+  --sidebar-border: oklch(0.91 0.012 260);
+  --sidebar-ring: oklch(0.77 0.14 85);
 }
 
 .dark {
@@ -164,6 +173,46 @@ body {
   }
   [data-slot='table-container'] {
     @apply rounded-xl border border-border/60;
+  }
+}
+
+@layer components {
+  /**
+   * V11.5 — Golden alignment: plain `<table>` blocks (reports, dashboard, etc.).
+   * Shadcn `Table` uses `[data-slot="table-*"]` and is styled in `table.tsx`.
+   */
+  .safari-data-table {
+    @apply w-full border-collapse text-sm;
+  }
+  .safari-data-table thead tr {
+    @apply border-b border-border/80 bg-muted/75;
+  }
+  .safari-data-table thead th {
+    @apply px-4 py-3.5 text-start text-sm font-bold text-foreground;
+  }
+  .safari-data-table tbody td {
+    @apply border-b border-border/40 px-4 py-3.5 align-middle text-sm;
+  }
+  .safari-data-table tbody tr:hover {
+    @apply bg-muted/25;
+  }
+  .safari-table-primary {
+    @apply font-semibold text-foreground;
+  }
+  .safari-status {
+    @apply inline-flex max-w-full items-center rounded-full px-2.5 py-0.5 text-xs font-semibold;
+  }
+  .safari-status--pending {
+    @apply bg-amber-100 text-amber-950 dark:bg-amber-950/45 dark:text-amber-50;
+  }
+  .safari-status--completed {
+    @apply bg-emerald-100 text-emerald-950 dark:bg-emerald-950/40 dark:text-emerald-50;
+  }
+  .safari-status--cancelled {
+    @apply bg-red-100 text-red-950 dark:bg-red-950/40 dark:text-red-50;
+  }
+  .safari-status--neutral {
+    @apply bg-muted font-medium text-muted-foreground;
   }
 }
 

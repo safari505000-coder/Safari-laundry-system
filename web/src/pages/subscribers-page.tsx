@@ -131,38 +131,40 @@ function SubscriberCard({
         <p className="font-semibold text-foreground">{r.customerName}</p>
       )}
       <p className="mt-1 text-sm text-muted-foreground">{r.subscriptionType}</p>
-      <dl className="mt-3 grid grid-cols-2 gap-x-2 gap-y-2 text-xs sm:text-sm">
-        <div>
-          <dt className="text-muted-foreground">{t('subscribers.colStart')}</dt>
-          <dd className="tabular-nums font-medium">{formatDate(r.startDate)}</dd>
-        </div>
-        <div>
-          <dt className="text-muted-foreground">{t('subscribers.colExpiry')}</dt>
-          <dd className="tabular-nums font-medium">{formatDate(r.expiryDate)}</dd>
-        </div>
-        <div>
-          <dt className="text-muted-foreground">{t('subscribers.colRemaining')}</dt>
-          <dd className="tabular-nums font-medium">
-            {r.remainingDays === null ? '—' : r.remainingDays}
-          </dd>
-        </div>
-        <div>
+      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 text-xs sm:grid-cols-4 sm:text-sm">
+        <div className="min-w-0">
           <dt className="text-muted-foreground">{t('subscribers.colBalance')}</dt>
           <dd
             className={cn(
-              'tabular-nums font-semibold',
+              'tabular-nums text-base font-bold text-foreground sm:text-sm',
               isCriticalBalance(r.balance) && 'text-red-700',
             )}
           >
             {formatKwdLabel(r.balance)}
           </dd>
-          {isCriticalBalance(r.balance) ? (
-            <div className="col-span-2 text-xs font-semibold text-red-700">
-              {t('subscribers.lowBalanceWarn')}
-            </div>
-          ) : null}
+        </div>
+        <div className="min-w-0">
+          <dt className="text-muted-foreground">{t('subscribers.colExpiry')}</dt>
+          <dd className="tabular-nums font-semibold text-foreground">
+            {formatDate(r.expiryDate)}
+          </dd>
+        </div>
+        <div className="min-w-0">
+          <dt className="text-muted-foreground">{t('subscribers.colStart')}</dt>
+          <dd className="tabular-nums font-medium">{formatDate(r.startDate)}</dd>
+        </div>
+        <div className="min-w-0">
+          <dt className="text-muted-foreground">{t('subscribers.colRemaining')}</dt>
+          <dd className="tabular-nums font-medium">
+            {r.remainingDays === null ? '—' : r.remainingDays}
+          </dd>
         </div>
       </dl>
+      {isCriticalBalance(r.balance) ? (
+        <p className="mt-2 text-xs font-semibold text-red-700">
+          {t('subscribers.lowBalanceWarn')}
+        </p>
+      ) : null}
     </article>
   );
 }

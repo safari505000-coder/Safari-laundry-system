@@ -24,9 +24,8 @@ import {
 } from '@/modules/shared/components/ui/table';
 
 export function ExpenseApprovalPage() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const { token, hasRole } = useAuth();
-  const rtl = i18n.dir() === 'rtl';
   const dateLocale = useAppLocale();
   const canUse = hasRole('ACCOUNTANT', 'OWNER') ?? false;
   const [rows, setRows] = useState<ExpenseRow[]>([]);
@@ -86,7 +85,7 @@ export function ExpenseApprovalPage() {
   if (!canUse) return <Navigate to="/" replace />;
 
   return (
-    <div className="space-y-6" dir={rtl ? 'rtl' : 'ltr'}>
+    <div className="space-y-6">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">
           {t('nav.expenseVerification')}
@@ -109,7 +108,7 @@ export function ExpenseApprovalPage() {
                     {t('expenseApproval.colDate')}
                   </TableHead>
                   <TableHead>{t('expenseApproval.colType')}</TableHead>
-                  <TableHead className={rtl ? 'text-start' : 'text-end'}>
+                  <TableHead className="text-end tabular-nums">
                     {t('expenseApproval.colValue')}
                   </TableHead>
                   <TableHead>{t('expenseApproval.colReceipt')}</TableHead>
@@ -143,7 +142,7 @@ export function ExpenseApprovalPage() {
                         )}
                       </TableCell>
                       <TableCell>
-                        <div className="font-medium">
+                        <div className="safari-table-primary">
                           {t(`expenseApproval.category.${row.category}`, {
                             defaultValue: row.category,
                           })}
@@ -154,9 +153,7 @@ export function ExpenseApprovalPage() {
                           </div>
                         ) : null}
                       </TableCell>
-                      <TableCell
-                        className={`${rtl ? 'text-start' : 'text-end'} tabular-nums`}
-                      >
+                      <TableCell className="text-end tabular-nums font-semibold">
                         {formatKwdLabel(row.amount)}
                       </TableCell>
                       <TableCell>

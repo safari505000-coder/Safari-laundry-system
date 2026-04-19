@@ -1,9 +1,9 @@
 import type { NavGroup } from '@/modules/shared/nav/nav-types';
 import {
+  branchesItem,
   customersItem,
   dashboardItem,
   debtRecoveryReportItem,
-  driverAuditRadarItem,
   expenseApprovalItem,
   knetAuditReportItem,
   driverMonitorItem,
@@ -14,7 +14,6 @@ import {
   invoicesDataItem,
   manageItemsItem,
   managerCustodyAgingItem,
-  ownerDashboardItem,
   ownerInventoryItem,
   ownerSerialsItem,
   myDailySalesItem,
@@ -30,13 +29,22 @@ import {
   teamItem,
 } from '@/modules/shared/nav/nav-items';
 
-/** Full navigation for OWNER, MANAGER, SUPERVISOR, VIEWER, WORKER, and default fallbacks. */
+/**
+ * Full navigation for OWNER, MANAGER, SUPERVISOR, VIEWER, WORKER, and default
+ * fallbacks.
+ *
+ * V18.0 — "Owner Dashboard" and "Radar" sidebar entries are retired:
+ * - OWNER's landing page now redirects straight to Financial Reports.
+ * - `/admin/live-monitor` is still accessible via the Safari Pulse button in
+ *   the executive header (same OWNER-only guard); it is no longer in the
+ *   sidebar to reduce clutter.
+ * A new "System Settings" group hosts Branch Management and Users Management.
+ */
 export const defaultSidebarNavGroups: NavGroup[] = [
   {
     labelKey: 'nav.groupMain',
     items: [
       posItem,
-      ownerDashboardItem,
       manageItemsItem,
       ownerInventoryItem,
       dashboardItem,
@@ -45,7 +53,6 @@ export const defaultSidebarNavGroups: NavGroup[] = [
       collectionsItem,
       subscriptionsItem,
       subscribersItem,
-      driverAuditRadarItem,
       driverMonitorItem,
     ],
   },
@@ -69,5 +76,8 @@ export const defaultSidebarNavGroups: NavGroup[] = [
       expensesItem,
     ],
   },
-  { labelKey: 'nav.groupSettings', items: [teamItem] },
+  {
+    labelKey: 'nav.groupSystemSettings',
+    items: [branchesItem, teamItem],
+  },
 ];

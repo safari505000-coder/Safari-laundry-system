@@ -1,4 +1,5 @@
 import type { CollectionUnpaidOnlineRow, CustomerDirectoryRow } from '@/lib/api';
+import { BRAND } from '@/lib/brand';
 
 /** Normalize Kuwait-style numbers for wa.me links. */
 export function whatsappChatNumber(phone: string): string | null {
@@ -27,6 +28,37 @@ function formatQty(q: string): string {
     .replace(/\.$/, '');
 }
 
+// ──────────────────────────────────────────────────────────────────────────
+// V7.1 — Gender-neutral, friendly Arabic templates.
+//
+// Every outbound message now uses professional plural-address Arabic
+// (بخدمتكم / ملابسكم / ثقتكم) so the wording is warm and inclusive for
+// male and female customers alike, and signs off as the Safari Omni team.
+// ──────────────────────────────────────────────────────────────────────────
+
+/** Two warm welcomes; picked deterministically per-customer (see below). */
+const GREETINGS_AR = ['حياك الله', 'نسعد بلقائك'] as const;
+
+/**
+ * Deterministic greeting picker. Using a stable hash of a per-customer seed
+ * (order id, customer id, or phone) guarantees the same customer always
+ * receives the *same* opening phrase across reminders — avoiding the
+ * "robotic churn" feeling — while different customers in a bulk blast
+ * naturally rotate between the two options.
+ */
+function pickGreeting(seed: string): (typeof GREETINGS_AR)[number] {
+  let h = 0;
+  for (let i = 0; i < seed.length; i += 1) {
+    h = (h * 31 + seed.charCodeAt(i)) | 0;
+  }
+  return GREETINGS_AR[Math.abs(h) % GREETINGS_AR.length];
+}
+
+/** First line: "حياك الله {name}" / "نسعد بلقائك {name}" + Kuwait flourish. */
+function buildGreetingLine(name: string, seed: string): string {
+  return `${pickGreeting(seed)} ${name} 🌿`;
+}
+
 /**
  * V1.6.6 — Static Arabic T&C block attached to every payment-link
  * reminder. Kept inline (not via i18n) because the WhatsApp message is
@@ -44,13 +76,21 @@ const SAFARI_WHATSAPP_TERMS_AR = [
   '6. التعويض عن التلف 25% من القيمة بشرط الفاتورة الأصلية.',
 ].join('\n');
 
+/** V7.1 — reassurance/trust line kept warm and gender-neutral. */
+const SAFARI_REASSURANCE_AR =
+  'ملابسكم في أيدٍ أمينة، وسنعتني بها بأفضل صورة — شكراً لثقتكم بنا.';
+
+/** V7.1 — signature; pulls the system name from the central brand module. */
+const SAFARI_TEAM_FOOTER_AR = `فريق ${BRAND.systemAr} 🇰🇼`;
+
 /**
- * V1.6.6 — FINAL WhatsApp template for the Collections island. Renders
- * a full Arabic invoice summary + T&Cs + secure payment link, matching
- * the "فواتير مغاسل سفاري السريعة" brief. The `paymentUrl` argument is
- * explicit (instead of reading `row.paymentUrl`) so the caller can mint
- * a fresh link on demand before sending, guaranteeing the message
- * always carries a live URL.
+ * V7.1 — WhatsApp template for the Collections island. Renders a warm
+ * greeting, gender-neutral invoice summary, legal T&Cs, and a secure
+ * payment link, signed off by the Safari Omni team.
+ *
+ * The `paymentUrl` argument is explicit (instead of reading
+ * `row.paymentUrl`) so the caller can mint a fresh link on demand before
+ * sending, guaranteeing the message always carries a live URL.
  */
 export function buildCollectionsUnpaidWhatsAppText(
   row: CollectionUnpaidOnlineRow,
@@ -59,11 +99,14 @@ export function buildCollectionsUnpaidWhatsAppText(
   const invoiceRef =
     row.invoiceNumber?.trim() || row.readableId || row.orderId.slice(-6).toUpperCase();
   const url = paymentUrl ?? row.paymentUrl ?? '';
+  const customerName = row.customerName?.trim() || 'عميلنا العزيز';
 
-  const header = [
-    'فواتير مغاسل سفاري السريعة',
-    `رقم الفاتورة: ${invoiceRef}`,
-    `العميل: ${row.customerName}`,
+  const greet = buildGreetingLine(customerName, row.orderId);
+
+  const intro = `نسعد بخدمتكم في ${BRAND.customerAr}، ونود تذكيركم بفاتورتكم التالية:`;
+
+  const metaBlock = [
+    `🏷️ رقم الفاتورة: ${invoiceRef}`,
   ].join('\n');
 
   const itemsHeader = '--- الأصناف ---';
@@ -72,28 +115,35 @@ export function buildCollectionsUnpaidWhatsAppText(
       ? row.lineItems.map((li) => {
           const name = li.label?.trim() || 'خدمة';
           const qty = formatQty(li.quantity);
-          return `${qty} x ${name} : ${li.lineTotalKd} د.ك`;
+          return `${qty} × ${name} : ${li.lineTotalKd} د.ك`;
         })
       : ['—'];
   const itemsBlock = [itemsHeader, ...itemLines, '---'].join('\n');
 
-  const totalLine = `الإجمالي: ${row.amountKd} د.ك`;
+  // WhatsApp bold uses *...* — keeping the total visually anchored.
+  const totalLine = `💰 *الإجمالي: ${row.amountKd} د.ك*`;
 
   const actionBlock = url
-    ? ['للدفع السريع عبر الرابط الآمن:', url].join('\n')
-    : 'للدفع يرجى التواصل معنا.';
+    ? ['🔒 للدفع السريع عبر الرابط الآمن:', url].join('\n')
+    : '📞 للدفع يرجى التواصل معنا.';
 
   return [
-    header,
+    greet,
+    '',
+    intro,
+    '',
+    metaBlock,
     '',
     itemsBlock,
     totalLine,
+    '',
+    SAFARI_REASSURANCE_AR,
     '',
     SAFARI_WHATSAPP_TERMS_AR,
     '',
     actionBlock,
     '',
-    'شكراً لاختياركم سفاري!',
+    SAFARI_TEAM_FOOTER_AR,
   ].join('\n');
 }
 
@@ -110,15 +160,42 @@ function customerPayPortalUrl(): string {
   return `${base}/collections`;
 }
 
-/** Pre-filled balance / payment link for directory rows (call center & owner). */
+/**
+ * V7.1 — Directory / subscription balance reminder (call center + owner).
+ * Now fully Arabic, gender-neutral, with a bolded balance line so the key
+ * number is unmistakable in the customer's WhatsApp preview. Switches
+ * label + CTA between "outstanding debt" vs. "wallet balance" modes.
+ */
 export function customerDirectoryBalanceWhatsAppHref(row: CustomerDirectoryRow): string | null {
   const n = whatsappChatNumber(row.customer.phone);
   if (!n) return null;
+
   const name = row.customer.displayName?.trim() || row.customer.phone;
   const debt = Number.parseFloat(row.debt.totalDebt ?? '0');
-  const amount =
-    Number.isFinite(debt) && debt > 0 ? row.debt.totalDebt : row.subscription.walletBalance;
+  const isDebt = Number.isFinite(debt) && debt > 0;
+  const amount = isDebt ? row.debt.totalDebt : row.subscription.walletBalance;
   const link = customerPayPortalUrl();
-  const text = `Hello ${name}, your current laundry balance is ${amount} KWD. You can pay here: ${link}`;
+
+  const greet = buildGreetingLine(name, row.customer.id ?? row.customer.phone);
+
+  const balanceLabel = isDebt ? 'الرصيد المستحق' : 'رصيد الاشتراك';
+  const balanceLine = `💳 *${balanceLabel}: ${amount} د.ك*`;
+
+  const ctaLine = isDebt
+    ? `🔒 للدفع السريع عبر الرابط الآمن:\n${link}`
+    : '✨ نتطلع لاستقبال ملابسكم قريباً وخدمتكم بأفضل صورة.';
+
+  const text = [
+    greet,
+    '',
+    `نسعد بخدمتكم في ${BRAND.customerAr}.`,
+    '',
+    balanceLine,
+    '',
+    ctaLine,
+    '',
+    SAFARI_TEAM_FOOTER_AR,
+  ].join('\n');
+
   return `https://wa.me/${n}?text=${encodeURIComponent(text)}`;
 }

@@ -4,13 +4,26 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
+  Baby,
   Bed,
+  Briefcase,
+  Circle,
+  Crown,
+  Droplets,
+  Eye,
+  Feather,
+  Flower,
   Frame,
+  Gem,
+  GraduationCap,
+  HardHat,
   Layers,
-  PartyPopper,
+  Moon,
+  Ruler,
+  ShieldCheck,
   Shirt,
   Sparkles,
-  User,
+  Square,
   Wind,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -113,30 +126,74 @@ export type ServiceOption = {
   available: boolean;
 };
 
+/**
+ * V6.8 — Minimalist line-art icon mapping for every base item in the Master
+ * tariff. Each of the 39 seed codes gets a dedicated Lucide icon + tinted
+ * tone so staff (especially drivers and new trainees) can scan the POS grid
+ * visually instead of reading Arabic labels. Keys mirror
+ * `prisma/price-list-seed.ts` ROWS exactly — do not rename a key here
+ * without updating the seed in the same commit.
+ *
+ * Services (VIP_SERVICE, DELIVERY_INSIDE_AREA) intentionally have no entry
+ * because they are not rendered in the item grid — they are injected in the
+ * footer via `finance-engine.ts`.
+ */
 const POS_VISUAL: Record<string, { Icon: LucideIcon; tone: string }> = {
-  DISHDASHA_ORD: { Icon: Shirt, tone: 'bg-violet-100 text-[#1e3a5f]' },
-  DISHDASHA_WOOL: { Icon: Shirt, tone: 'bg-slate-200 text-[#1e3a5f]' },
-  GHUTRA_SHEMAGH: { Icon: Wind, tone: 'bg-sky-100 text-[#1e3a5f]' },
-  BISHT_OCCASION: {
-    Icon: PartyPopper,
-    tone: 'bg-amber-100 text-[#1e3a5f]',
-  },
-  BLANKET_ALL: { Icon: Bed, tone: 'bg-teal-100 text-[#1e3a5f]' },
-  DYPAJ_ALL: { Icon: Layers, tone: 'bg-emerald-100 text-[#1e3a5f]' },
-  SUIT_FULL: { Icon: User, tone: 'bg-stone-200 text-[#1e3a5f]' },
-  JACKET: { Icon: Shirt, tone: 'bg-rose-100 text-[#1e3a5f]' },
-  DRESS_LADIES_OCCASION: {
-    Icon: Sparkles,
-    tone: 'bg-pink-100 text-[#1e3a5f]',
-  },
-  PARDA: { Icon: Frame, tone: 'bg-neutral-200 text-[#1e3a5f]' },
+  // MENS — 8
+  DISHDASHA_ORD: { Icon: Shirt, tone: 'bg-violet-100 text-primary' },
+  DISHDASHA_WOOL: { Icon: Shirt, tone: 'bg-slate-200 text-primary' },
+  SUIT_FULL: { Icon: Briefcase, tone: 'bg-stone-200 text-primary' },
+  MILITARY_SUIT_2PC: { Icon: ShieldCheck, tone: 'bg-emerald-100 text-primary' },
+  SHIRT: { Icon: Shirt, tone: 'bg-sky-100 text-primary' },
+  TROUSERS: { Icon: Ruler, tone: 'bg-blue-100 text-primary' },
+  GOTRA: { Icon: Wind, tone: 'bg-amber-100 text-primary' },
+  GOTRA_WHITE: { Icon: Wind, tone: 'bg-zinc-100 text-primary' },
+
+  // JACKETS_BISHT — 5
+  OVER_COAT: { Icon: Shirt, tone: 'bg-zinc-200 text-primary' },
+  JACKET: { Icon: Shirt, tone: 'bg-rose-100 text-primary' },
+  JACKET_SNAP_ON: { Icon: Shirt, tone: 'bg-orange-100 text-primary' },
+  BISHT_OCCASION: { Icon: Crown, tone: 'bg-amber-100 text-primary' },
+  BISHT_DANDER: { Icon: Crown, tone: 'bg-rose-100 text-primary' },
+
+  // LADIES — 10
+  ABAYA: { Icon: Moon, tone: 'bg-indigo-100 text-primary' },
+  CRYSTAL_ABAYA: { Icon: Gem, tone: 'bg-purple-100 text-primary' },
+  SHEILA: { Icon: Feather, tone: 'bg-pink-100 text-primary' },
+  SHAWL: { Icon: Wind, tone: 'bg-fuchsia-100 text-primary' },
+  SCARVES: { Icon: Flower, tone: 'bg-rose-100 text-primary' },
+  NIQAB: { Icon: Eye, tone: 'bg-neutral-200 text-primary' },
+  SKIRT: { Icon: Ruler, tone: 'bg-pink-100 text-primary' },
+  BLOUSE: { Icon: Shirt, tone: 'bg-pink-100 text-primary' },
+  GOWN: { Icon: Shirt, tone: 'bg-purple-100 text-primary' },
+  LADIES_DRESS: { Icon: Sparkles, tone: 'bg-pink-100 text-primary' },
+
+  // HOUSEHOLD — 10
+  FITTED_SHEET: { Icon: Bed, tone: 'bg-teal-100 text-primary' },
+  BLANKET_ALL: { Icon: Bed, tone: 'bg-cyan-100 text-primary' },
+  COVER_DEBAJ: { Icon: Layers, tone: 'bg-emerald-100 text-primary' },
+  HOTEL_MATTRESS: { Icon: Bed, tone: 'bg-amber-100 text-primary' },
+  SLIP: { Icon: Shirt, tone: 'bg-sky-100 text-primary' },
+  PILLOW: { Icon: Circle, tone: 'bg-neutral-100 text-primary' },
+  LIGHT_SHEET: { Icon: Feather, tone: 'bg-teal-100 text-primary' },
+  BATH_SHEET: { Icon: Droplets, tone: 'bg-sky-100 text-primary' },
+  PILLOW_CASE: { Icon: Square, tone: 'bg-neutral-100 text-primary' },
+  PARDA: { Icon: Frame, tone: 'bg-stone-200 text-primary' },
+
+  // MISC — 6
+  INSIDE_CLOTHES: { Icon: Shirt, tone: 'bg-slate-100 text-primary' },
+  SYRUP: { Icon: Droplets, tone: 'bg-green-100 text-primary' },
+  TAQIYA: { Icon: HardHat, tone: 'bg-neutral-200 text-primary' },
+  KABB: { Icon: GraduationCap, tone: 'bg-stone-200 text-primary' },
+  PYJAMA: { Icon: Moon, tone: 'bg-indigo-100 text-primary' },
+  BABY_CLOTHES: { Icon: Baby, tone: 'bg-pink-100 text-primary' },
 };
 
 export function defaultVisual(code: string): { Icon: LucideIcon; tone: string } {
   return (
     POS_VISUAL[code] ?? {
       Icon: Sparkles,
-      tone: 'bg-slate-100 text-[#1e3a5f]',
+      tone: 'bg-slate-100 text-primary',
     }
   );
 }

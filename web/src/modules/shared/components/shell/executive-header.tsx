@@ -6,19 +6,22 @@ import { BrandLogo } from '@/modules/shared/components/brand-logo';
 import { LanguageToggle } from '@/components/i18n/language-toggle';
 import { Button } from '@/modules/shared/components/ui/button';
 import { useAuth } from '@/contexts/auth-context';
+import { BRAND } from '@/lib/brand';
 
 export function ExecutiveHeader() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { hasRole } = useAuth();
   const isOwner = hasRole('OWNER');
+  const rtl = i18n.language?.startsWith('ar') ?? false;
+  const systemName = rtl ? BRAND.systemAr : BRAND.systemEn;
 
   return (
     <header className="print:hidden sticky top-0 z-40 flex h-14 shrink-0 items-center gap-4 border-b border-border bg-card/90 px-4 shadow-sm backdrop-blur-sm sm:px-6 lg:px-8">
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <BrandLogo className="me-2" compact />
         <span className="hidden truncate text-sm font-semibold text-primary sm:inline">
-          Safari Omni
+          {systemName}
         </span>
       </div>
       <div className="flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-3">

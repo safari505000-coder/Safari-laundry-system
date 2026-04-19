@@ -232,33 +232,22 @@ export function LiveOperationsFeed({
           </DialogHeader>
           {detail ?
             <ScrollArea className="max-h-[50vh]">
-              <table className="w-full border-collapse text-xs">
+              <table className="safari-data-table w-full text-xs [&_tbody_td]:py-2 [&_thead_th]:py-2">
                 <thead>
-                  <tr className="border-b text-start text-muted-foreground">
-                    <th className="py-1.5 pe-2 font-medium">
-                      {t('liveOps.colItem')}
-                    </th>
-                    <th className="py-1.5 pe-2 text-end font-medium">
-                      {t('liveOps.colQty')}
-                    </th>
-                    <th className="py-1.5 text-end font-medium">
-                      {t('liveOps.colPrice')}
-                    </th>
+                  <tr>
+                    <th>{t('liveOps.colItem')}</th>
+                    <th className="text-end">{t('liveOps.colQty')}</th>
+                    <th className="text-end">{t('liveOps.colPrice')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {detail.lines.map((line, idx) => (
-                    <tr
-                      key={`${detail.id}-${idx}-${line.label ?? ''}`}
-                      className="border-b border-border/50"
-                    >
-                      <td className="py-1.5 pe-2">
+                    <tr key={`${detail.id}-${idx}-${line.label ?? ''}`}>
+                      <td className="safari-table-primary whitespace-normal">
                         {line.label?.trim() || t('liveOps.unnamedLine')}
                       </td>
-                      <td className="py-1.5 pe-2 text-end tabular-nums">
-                        {line.quantity}
-                      </td>
-                      <td className="py-1.5 text-end tabular-nums">
+                      <td className="text-end tabular-nums">{line.quantity}</td>
+                      <td className="text-end font-semibold tabular-nums">
                         {formatKwdLabel(line.unitPrice)}
                       </td>
                     </tr>
