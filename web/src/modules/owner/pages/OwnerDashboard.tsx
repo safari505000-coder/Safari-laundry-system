@@ -2,7 +2,6 @@ import { useAuth } from '@/contexts/auth-context';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { type BranchRow, apiJson, ApiError } from '@/lib/api';
-import { FinancialCycleCard } from '@/modules/owner/components/FinancialCycleCard';
 import { StaffControlReactor } from '@/modules/shared/reactors/StaffControlReactor';
 import { Card, CardContent, CardHeader, CardTitle } from '@/modules/shared/components/ui/card';
 import {
@@ -15,11 +14,12 @@ import {
 } from '@/modules/shared/components/ui/table';
 
 /**
- * DUSTUR §2 — Owner dashboard = System Control Panel.
+ * Owner island — Staff & Branches management.
  *
- * Every OWNER-owned control surface lands here (financial cycle, staff control,
- * branches, and — as the remaining Dastur tasks ship — debt transfer, serial
- * gap alerts, attendance, and the unified GL snapshot).
+ * The financial cycle / control panel widgets live on the main `/financials`
+ * page (the Owner's default landing). This page is strictly for HR-style
+ * operations: staff directory, role changes, enable/disable users, and the
+ * branches registry.
  */
 export function OwnerDashboard() {
   const { token } = useAuth();
@@ -38,15 +38,13 @@ export function OwnerDashboard() {
     <div className="space-y-6">
       <header className="space-y-1">
         <h1 className="text-2xl font-extrabold text-slate-950">
-          لوحة تحكم النظام
+          إدارة الموظفين والفروع
         </h1>
         <p className="text-sm text-slate-600">
-          المصدر الوحيد لمراقبة الدورة المالية، الموظفين، والفروع — تحت إشراف
-          المالك حصراً.
+          دليل الموظفين، تغيير الأدوار، تفعيل/إيقاف الحسابات، وسجل الفروع. الدورة
+          المالية ولوحة التحكم الرئيسية في صفحة المالية.
         </p>
       </header>
-
-      <FinancialCycleCard token={token} />
 
       <StaffControlReactor token={token} />
 

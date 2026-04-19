@@ -2,7 +2,6 @@ import type { NavGroup } from '@/modules/shared/nav/nav-types';
 import {
   collectionsItem,
   customersItem,
-  driverMonitorItem,
   subscribersItem,
   whatsappToolsItem,
 } from '@/modules/shared/nav/nav-items';
@@ -11,6 +10,9 @@ import {
 // /subscriptions plan catalog) is retired from the Call Center sidebar.
 // All subscription actions are now centralized on the Subscribers page
 // behind the "Add Subscription" (إضافة اشتراك) button + per-row Renew.
+//
+// `driverMonitorItem` is OWNER-only (`access-matrix.driverMonitor.view`),
+// so it is not listed here — the role filter would strip it regardless.
 export const callCenterSidebarNavGroups: NavGroup[] = [
   {
     labelKey: 'nav.groupMain',
@@ -20,9 +22,5 @@ export const callCenterSidebarNavGroups: NavGroup[] = [
       subscribersItem,
       whatsappToolsItem,
     ],
-  },
-  {
-    labelKey: 'nav.groupDriverRadar',
-    items: [driverMonitorItem],
   },
 ];

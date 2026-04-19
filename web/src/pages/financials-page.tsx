@@ -56,6 +56,7 @@ import {
 } from '@/modules/shared/components/ui/table';
 import { EXECUTIVE_SUMMARY_REFRESH_EVENT } from '@/lib/executive-summary-refresh';
 import { cn } from '@/lib/utils';
+import { FinancialCycleCard } from '@/modules/owner/components/FinancialCycleCard';
 
 function startOfDayIso(d: Date): string {
   const x = new Date(d);
@@ -342,6 +343,10 @@ export function FinancialsPage() {
           </Button>
         </div>
       </header>
+
+      {hasRole('OWNER', 'GENERAL_MANAGER') ?
+        <FinancialCycleCard token={token} />
+      : null}
 
       <Card className="border-amber-200/80 bg-amber-50/40">
         <CardContent className="pt-4 text-sm text-zinc-700">

@@ -27,6 +27,8 @@ import {
   subscriptionsItem,
   collectionsItem,
   teamItem,
+  unifiedLedgerItem,
+  whatsappToolsItem,
 } from '@/modules/shared/nav/nav-items';
 
 /**
@@ -71,6 +73,7 @@ export const defaultSidebarNavGroups: NavGroup[] = [
       staffDebtsItem,
       debtRecoveryReportItem,
       reportsItem,
+      unifiedLedgerItem,
       payrollItem,
       fixedExpensesItem,
       expensesItem,
@@ -78,6 +81,6 @@ export const defaultSidebarNavGroups: NavGroup[] = [
   },
   {
     labelKey: 'nav.groupSystemSettings',
-    items: [branchesItem, teamItem],
+    items: [branchesItem, teamItem, whatsappToolsItem],
   },
 ];
