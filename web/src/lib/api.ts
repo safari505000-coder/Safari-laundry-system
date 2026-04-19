@@ -304,8 +304,13 @@ export type DriverTrackingUpdatePayload = {
 export type ConfirmHandoverResponse = {
   settledOrderCount: number;
   systemHandoverTotal: string;
-  shiftId: string;
-  bankDepositReceiptUrl: string;
+  /**
+   * The driver's OPEN shift at handover time (stamped as an audit link on
+   * the flipped orders). Null when no shift was open — cash handover is
+   * independent of the shift cycle per Dastur §3.
+   */
+  shiftId: string | null;
+  bankDepositReceiptUrl: string | null;
 };
 
 /** Multipart upload — bank deposit receipt for driver cash collection. */

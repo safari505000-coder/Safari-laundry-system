@@ -296,6 +296,20 @@ export class CashService {
     });
   }
 
+  /**
+   * Dastur §3 — Cash handover from driver to manager.
+   *
+   * Cash custody is INDEPENDENT of the driver's shift. This method:
+   *   • Flips every PAID_TO_DRIVER cash order to HANDED_OVER_TO_OFFICE.
+   *   • Creates a ManagerCashCustody bag so the aging clock starts.
+   *   • Stamps the driver's currently-open shift id onto the orders for
+   *     audit (`handoverShiftId`) — this is a READ-ONLY link, we never
+   *     mutate shift.status / endedAt / systemHandoverTotal here.
+   *
+   * The shift itself is owned by the financial cycle (midnight → midnight,
+   * Kuwait time) and is closed by the daily OWNER job, not by this event.
+   * Cash can sit with the manager for multiple days and be deposited later.
+   */
   async confirmHandover(
     managerId: string,
     dto: ConfirmHandoverDto,
@@ -326,44 +340,23 @@ export class CashService {
           );
         }
       }
+
+      // Informational stamp only — handover does not require an OPEN shift
+      // and does not close one when found.
       const shift = await tx.shift.findFirst({
         where: { driverId: dto.driverId, status: ShiftStatus.OPEN },
         orderBy: { startedAt: 'desc' },
       });
+
       if (pending.length === 0) {
-        if (!shift) {
-          throw new BadRequestException(
-            'No cash pending settlement and no open shift to close.',
-          );
-        }
-        await tx.shift.update({
-          where: { id: shift.id },
-          data: {
-            status: ShiftStatus.CLOSED,
-            endedAt: new Date(),
-            systemHandoverTotal: '0.0000',
-            declaredHandoverTotal:
-              dto.declaredHandoverTotal !== undefined
-                ? dto.declaredHandoverTotal.toFixed(4)
-                : null,
-            ordersSettledCount: 0,
-            bankDepositReceiptUrl: dto.depositReceiptUrl ?? null,
-            confirmedByManagerId: managerId,
-            confirmedAt: new Date(),
-          },
-        });
         return {
           settledOrderCount: 0,
           systemHandoverTotal: '0.0000',
-          shiftId: shift.id,
+          shiftId: shift?.id ?? null,
           bankDepositReceiptUrl: dto.depositReceiptUrl ?? null,
         };
       }
-      if (!shift) {
-        throw new BadRequestException(
-          'Ledger shows cash due but the driver has no OPEN shift. Reconcile before handover.',
-        );
-      }
+
       const ids = pending.map((o) => o.id);
       const updated = await tx.order.updateMany({
         where: {
@@ -373,7 +366,7 @@ export class CashService {
         },
         data: {
           cashStatus: CashStatus.HANDED_OVER_TO_OFFICE,
-          handoverShiftId: shift.id,
+          handoverShiftId: shift?.id ?? null,
         },
       });
       if (updated.count !== pending.length) {
@@ -382,26 +375,10 @@ export class CashService {
         );
       }
       const systemHandoverTotal = minorToAmountString(systemMinor);
-      await tx.shift.update({
-        where: { id: shift.id },
-        data: {
-          status: ShiftStatus.CLOSED,
-          endedAt: new Date(),
-          systemHandoverTotal,
-          declaredHandoverTotal:
-            dto.declaredHandoverTotal !== undefined
-              ? dto.declaredHandoverTotal.toFixed(4)
-              : null,
-          ordersSettledCount: pending.length,
-          bankDepositReceiptUrl: dto.depositReceiptUrl ?? null,
-          confirmedByManagerId: managerId,
-          confirmedAt: new Date(),
-        },
-      });
 
       // Dastur §3 — create the manager custody bag so aging can run.
       // Slip-first legacy flow → AWAITING_VERIFICATION when a slip was provided,
-      // otherwise PENDING_DEPOSIT for the new two-step flow.
+      // otherwise PENDING_DEPOSIT for the two-step flow.
       const manager = await tx.user.findUnique({
         where: { id: managerId },
         select: { branchId: true },
@@ -412,7 +389,7 @@ export class CashService {
           managerId,
           driverId: dto.driverId,
           branchId: manager?.branchId ?? driver.branchId ?? null,
-          shiftId: shift.id,
+          shiftId: shift?.id ?? null,
           amountKd: systemHandoverTotal,
           settledOrderCount: pending.length,
           status: hasSlip
@@ -426,13 +403,17 @@ export class CashService {
       return {
         settledOrderCount: pending.length,
         systemHandoverTotal,
-        shiftId: shift.id,
+        shiftId: shift?.id ?? null,
         bankDepositReceiptUrl: dto.depositReceiptUrl ?? null,
       };
     });
   }
 
   async getOwnerFinancialCycleReport() {
+    // Dastur §3 — handover info (who collected & when) now lives on the
+    // ManagerCashCustody bag, since cash is independent of shift lifecycle.
+    // We also carry the legacy shift fields as fallback for rows created
+    // before the decoupling migration landed.
     const rows = await this.prisma.order.findMany({
       where: {
         posPaymentMethod: PosPaymentMethod.CASH,
@@ -450,6 +431,16 @@ export class CashService {
             confirmedAt: true,
             confirmedByManager: {
               select: { id: true, fullName: true, username: true },
+            },
+            managerCustodyBags: {
+              orderBy: { receivedFromDriverAt: 'desc' },
+              take: 1,
+              select: {
+                receivedFromDriverAt: true,
+                manager: {
+                  select: { id: true, fullName: true, username: true },
+                },
+              },
             },
             bankDepositLogs: {
               orderBy: { createdAt: 'desc' },
@@ -470,12 +461,16 @@ export class CashService {
     return {
       rows: rows.map((o) => {
         const shift = o.handoverShift;
+        const bag = shift?.managerCustodyBags[0] ?? null;
         const deposit = shift?.bankDepositLogs[0] ?? null;
         return {
           orderId: o.id,
           amountKd: o.totalPrice.toString(),
-          collectedAt: shift?.confirmedAt?.toISOString() ?? null,
-          collectedByManager: shift?.confirmedByManager ?? null,
+          collectedAt:
+            bag?.receivedFromDriverAt?.toISOString() ??
+            shift?.confirmedAt?.toISOString() ??
+            null,
+          collectedByManager: bag?.manager ?? shift?.confirmedByManager ?? null,
           depositLogId: deposit?.id ?? null,
           receiptImageUrl: deposit?.receiptImageUrl ?? null,
           verifiedAt: deposit?.verifiedAt?.toISOString() ?? null,

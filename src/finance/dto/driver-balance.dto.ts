@@ -97,8 +97,13 @@ export class HandoverResultDto {
   })
   systemHandoverTotal: string;
 
-  @ApiProperty({ format: 'uuid' })
-  shiftId: string;
+  @ApiPropertyOptional({
+    format: 'uuid',
+    nullable: true,
+    description:
+      "The driver's current OPEN shift at handover time, stamped onto orders as `handoverShiftId` for audit. Null when no shift is open — cash handover is independent of the shift cycle (Dastur §3).",
+  })
+  shiftId: string | null;
 
   @ApiProperty({
     description:

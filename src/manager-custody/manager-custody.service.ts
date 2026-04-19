@@ -92,10 +92,17 @@ export class ManagerCustodyService {
 
   /**
    * Dastur §3.DRIVER_EXIT — Manager approves receipt of cash from driver.
-   * - Closes the driver's OPEN shift
-   * - Flips PAID_TO_DRIVER → HANDED_OVER_TO_OFFICE (zeros driver balance)
-   * - Creates a ManagerCashCustody row in PENDING_DEPOSIT status
-   * The 24h aging clock starts at `receivedFromDriverAt`.
+   *
+   * Cash handover is INDEPENDENT of the shift cycle:
+   *   - Flips PAID_TO_DRIVER → HANDED_OVER_TO_OFFICE (zeros driver balance).
+   *   - Creates a ManagerCashCustody row in PENDING_DEPOSIT status; the
+   *     manager can deposit days later and upload the slip separately.
+   *   - Stamps the driver's currently-open shift (if any) onto the flipped
+   *     orders as `handoverShiftId` for audit — purely informational.
+   *
+   * The shift belongs to the financial cycle (midnight → midnight, Kuwait
+   * time) and is closed by the daily OWNER job, never by this event.
+   * The 24h aging clock on the custody bag starts at `receivedFromDriverAt`.
    */
   async approveReceiptFromDriver(
     managerId: string,
@@ -135,61 +142,37 @@ export class ManagerCustodyService {
         }
       }
 
+      if (pending.length === 0) {
+        throw new BadRequestException(
+          'No cash pending settlement for this driver.',
+        );
+      }
+
+      // Informational stamp only — handover does not require an OPEN shift
+      // and does not mutate any shift state.
       const shift = await tx.shift.findFirst({
         where: { driverId: dto.driverId, status: ShiftStatus.OPEN },
         orderBy: { startedAt: 'desc' },
       });
 
-      if (pending.length === 0 && !shift) {
-        throw new BadRequestException(
-          'No cash pending settlement and no open shift to close.',
-        );
-      }
-      if (pending.length > 0 && !shift) {
-        throw new BadRequestException(
-          'Ledger shows cash due but the driver has no OPEN shift. Reconcile before handover.',
-        );
-      }
-
       const amountString = minorToAmountString(systemMinor);
 
-      if (pending.length > 0) {
-        const ids = pending.map((o) => o.id);
-        const updated = await tx.order.updateMany({
-          where: {
-            id: { in: ids },
-            cashStatus: CashStatus.PAID_TO_DRIVER,
-            posPaymentMethod: PosPaymentMethod.CASH,
-          },
-          data: {
-            cashStatus: CashStatus.HANDED_OVER_TO_OFFICE,
-            handoverShiftId: shift!.id,
-          },
-        });
-        if (updated.count !== pending.length) {
-          throw new ConflictException(
-            'Concurrent handover detected; not all orders could be settled. Retry.',
-          );
-        }
-      }
-
-      if (shift) {
-        await tx.shift.update({
-          where: { id: shift.id },
-          data: {
-            status: ShiftStatus.CLOSED,
-            endedAt: new Date(),
-            systemHandoverTotal: amountString,
-            declaredHandoverTotal:
-              dto.declaredHandoverTotal !== undefined
-                ? dto.declaredHandoverTotal.toFixed(4)
-                : null,
-            ordersSettledCount: pending.length,
-            confirmedByManagerId: managerId,
-            confirmedAt: new Date(),
-            // bankDepositReceiptUrl intentionally left null — slip comes later.
-          },
-        });
+      const ids = pending.map((o) => o.id);
+      const updated = await tx.order.updateMany({
+        where: {
+          id: { in: ids },
+          cashStatus: CashStatus.PAID_TO_DRIVER,
+          posPaymentMethod: PosPaymentMethod.CASH,
+        },
+        data: {
+          cashStatus: CashStatus.HANDED_OVER_TO_OFFICE,
+          handoverShiftId: shift?.id ?? null,
+        },
+      });
+      if (updated.count !== pending.length) {
+        throw new ConflictException(
+          'Concurrent handover detected; not all orders could be settled. Retry.',
+        );
       }
 
       const bag = await tx.managerCashCustody.create({
