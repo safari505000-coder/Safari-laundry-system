@@ -41,7 +41,7 @@ export const manageItemsItem: NavItem = {
   to: '/manage-items',
   labelKey: 'nav.manageItems',
   icon: ClipboardList,
-  roles: ['OWNER'],
+  roles: ['OWNER', 'GENERAL_MANAGER'],
 };
 
 export const ownerDashboardItem: NavItem = {
@@ -85,22 +85,22 @@ export const subscriptionsItem: NavItem = {
   to: '/subscriptions',
   labelKey: 'nav.subscriptions',
   icon: Sparkles,
-  roles: ['OWNER', 'CALL_CENTER'],
+  roles: ['OWNER', 'GENERAL_MANAGER', 'CALL_CENTER'],
 };
 
 export const subscribersItem: NavItem = {
   to: '/subscribers',
   labelKey: 'nav.subscribers',
   icon: ListOrdered,
-  roles: ['OWNER', 'CALL_CENTER'],
+  roles: ['OWNER', 'GENERAL_MANAGER', 'CALL_CENTER'],
 };
 
 export const customersItem: NavItem = {
   to: '/customers',
   labelKey: 'nav.customers',
   icon: Users,
-  // Dastur §5 — CALL_CENTER is the CRM island. Owner keeps full access.
-  roles: ['OWNER', 'CALL_CENTER'],
+  // Dastur §5 — CALL_CENTER is the CRM island. Owner + GM keep full access.
+  roles: ['OWNER', 'GENERAL_MANAGER', 'CALL_CENTER'],
 };
 
 export const collectionsItem: NavItem = {
@@ -108,21 +108,14 @@ export const collectionsItem: NavItem = {
   labelKey: 'nav.customerDebtTracker',
   icon: MessageSquare,
   // Dastur §5 — Tahseel (debt recovery) is a CALL_CENTER core surface.
-  roles: ['OWNER', 'CALL_CENTER'],
+  roles: ['OWNER', 'GENERAL_MANAGER', 'CALL_CENTER'],
 };
 
 export const whatsappToolsItem: NavItem = {
   to: '/whatsapp-tools',
   labelKey: 'nav.whatsappTools',
   icon: MessageCircle,
-  roles: ['OWNER', 'ACCOUNTANT'],
-};
-
-export const myCashCustodyItem: NavItem = {
-  to: '/my-cash-custody',
-  labelKey: 'nav.myCashCustody',
-  icon: CircleDollarSign,
-  roles: ['DRIVER'],
+  roles: ['OWNER', 'GENERAL_MANAGER', 'CALL_CENTER'],
 };
 
 export const driverFieldExpensesItem: NavItem = {
@@ -150,15 +143,15 @@ export const driverMonitorItem: NavItem = {
   to: '/admin/driver-monitoring',
   labelKey: 'nav.driverMonitor',
   icon: Truck,
-  roles: ['CALL_CENTER', 'OWNER', 'ACCOUNTANT'],
+  roles: ['CALL_CENTER', 'OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT'],
 };
 
-/** Dastur §4 — Owner view of the Smart Inventory report (read-only). */
+/** Dastur §4 — Owner / GM view of the Smart Inventory report (read-only). */
 export const ownerInventoryItem: NavItem = {
   to: '/owner/inventory',
   labelKey: 'nav.inventoryReport',
   icon: Warehouse,
-  roles: ['OWNER'],
+  roles: ['OWNER', 'GENERAL_MANAGER'],
 };
 
 /** Dastur §4 — Accountant view of the Smart Inventory report (+ Stock-In access). */
@@ -166,7 +159,7 @@ export const accountantInventoryItem: NavItem = {
   to: '/accountant/inventory',
   labelKey: 'nav.inventoryReport',
   icon: Warehouse,
-  roles: ['ACCOUNTANT', 'OWNER'],
+  roles: ['ACCOUNTANT', 'OWNER', 'GENERAL_MANAGER'],
 };
 
 /** Dastur §4 — Accountant-only Stock-In form. */
@@ -389,7 +382,7 @@ export const fixedExpensesItem: NavItem = {
 };
 
 export const teamItem: NavItem = {
-  to: '/users-management',
+  to: '/owner-dashboard',
   labelKey: 'nav.usersManagement',
   icon: Users,
   roles: ['OWNER', 'GENERAL_MANAGER'],

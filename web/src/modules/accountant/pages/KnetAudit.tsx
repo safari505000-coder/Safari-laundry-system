@@ -11,7 +11,7 @@ import {
   ApiError,
 } from '@/lib/api';
 import { formatKwdLabel } from '@/lib/kwd';
-import { hasMasterIslandAccess } from '@/modules/shared/auth/is-master-access';
+import { can } from '@/modules/shared/auth/access-matrix';
 import { Button } from '@/modules/shared/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/modules/shared/components/ui/card';
 import { Input } from '@/modules/shared/components/ui/input';
@@ -72,8 +72,7 @@ export function KnetAudit() {
   const [driverFilter, setDriverFilter] = useState<string>('ALL');
   const [drivers, setDrivers] = useState<DriverBalanceResponse | null>(null);
 
-  const allowed =
-    hasMasterIslandAccess(user) || hasRole('ACCOUNTANT');
+  const allowed = can(user, 'knetAudit.view');
   /*
    * Dastur V1.5.4 — role separation. ACCOUNTANT gets the full workbench
    * (CSV upload, reconciliation). OWNER (and other non-ACCOUNTANT master

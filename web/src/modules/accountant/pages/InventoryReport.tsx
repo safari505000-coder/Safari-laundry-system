@@ -1,23 +1,22 @@
 import { useTranslation } from 'react-i18next';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { PackagePlus } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { InventoryReportView } from '@/modules/shared/components/inventory/inventory-report-view';
 import { Button } from '@/modules/shared/components/ui/button';
-import { hasMasterIslandAccess } from '@/modules/shared/auth/is-master-access';
+import { can } from '@/modules/shared/auth/access-matrix';
 
 /** Accountant island — Smart Inventory view + quick [Stock-In] action. */
 export default function AccountantInventoryReportPage() {
   const { t } = useTranslation();
-  const { token, user, hasRole } = useAuth();
+  const { token, user } = useAuth();
   const navigate = useNavigate();
 
-  const allowed = hasRole('ACCOUNTANT') || hasMasterIslandAccess(user);
-  if (!allowed) return <Navigate to="/" replace />;
   if (!token) return null;
 
-  // Only Accountants can perform stock-in; Owner sees the report read-only.
-  const canStockIn = hasRole('ACCOUNTANT');
+  // Access to the page is already enforced by <RequireAccess access="inventoryReport.view">
+  // in App.tsx. Stock-In is a stricter capability gated by the matrix.
+  const canStockIn = can(user, 'inventoryReport.stockIn');
 
   return (
     <InventoryReportView

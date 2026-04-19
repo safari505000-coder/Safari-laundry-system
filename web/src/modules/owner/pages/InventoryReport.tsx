@@ -1,14 +1,15 @@
 import { useTranslation } from 'react-i18next';
-import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/auth-context';
 import { InventoryReportView } from '@/modules/shared/components/inventory/inventory-report-view';
 
-/** Owner island — read-only Smart Inventory view (Dastur §4). */
+/**
+ * Owner island — read-only Smart Inventory view (Dastur §4).
+ * Access is enforced at the route level via `inventoryReport.view`.
+ */
 export default function OwnerInventoryReportPage() {
   const { t } = useTranslation();
-  const { token, hasRole } = useAuth();
+  const { token } = useAuth();
 
-  if (!hasRole('OWNER', 'GENERAL_MANAGER')) return <Navigate to="/" replace />;
   if (!token) return null;
 
   return (

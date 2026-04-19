@@ -5,7 +5,7 @@ import { AuthProvider } from '@/contexts/auth-context';
 import { SafariStreamProvider } from '@/contexts/safari-stream-context';
 import { AuthLayout } from '@/modules/shared/components/shell/auth-layout';
 import { ExecutiveShell } from '@/modules/shared/components/shell/executive-shell';
-import { RequireRoles } from '@/modules/shared/components/require-roles';
+import { RequireAccess } from '@/modules/shared/components/require-access';
 import { RequireOwnerIsland } from '@/modules/owner/require-owner-island';
 import { RequireAuth } from '@/components/require-auth';
 import { Toaster } from '@/modules/shared/components/ui/sonner';
@@ -26,7 +26,6 @@ import { CollectionsPage } from '@/modules/call-center/pages/collections-page';
 import { CustomersPage } from '@/modules/call-center/pages/customers-page';
 import { PosRoute } from '@/pages/pos-route';
 import { MyDailySalesPage } from '@/modules/driver/pages/my-daily-sales-page';
-import { MyCashCustodyPage } from '@/modules/driver/pages/my-cash-custody-page';
 import { DriverFieldExpensesPage } from '@/modules/driver/pages/driver-field-expenses-page';
 import { DriverPendingInvoicesPage } from '@/modules/driver/pages/driver-pending-invoices-page';
 import { DriverMonitorPage } from '@/pages/driver-monitor-page';
@@ -83,8 +82,22 @@ export default function App() {
                 </RequireAuth>
               }
             >
-              <Route path="/pos" element={<PosRoute />} />
-              <Route path="/admin/live-monitor" element={<LiveMonitorPage />} />
+              <Route
+                path="/pos"
+                element={
+                  <RequireAccess access="pos.use">
+                    <PosRoute />
+                  </RequireAccess>
+                }
+              />
+              <Route
+                path="/admin/live-monitor"
+                element={
+                  <RequireAccess access="liveMonitor.view">
+                    <LiveMonitorPage />
+                  </RequireAccess>
+                }
+              />
               <Route path="/" element={<ExecutiveShell />}>
                 <Route index element={<IndexRoute />} />
                 <Route
@@ -98,190 +111,258 @@ export default function App() {
                 <Route
                   path="branches"
                   element={
-                    <RequireRoles roles={['OWNER', 'GENERAL_MANAGER']}>
+                    <RequireAccess access="branches.manage">
                       <BranchesPage />
-                    </RequireRoles>
+                    </RequireAccess>
                   }
                 />
                 <Route
                   path="manage-items"
                   element={
-                    <RequireRoles roles={['OWNER', 'GENERAL_MANAGER']}>
+                    <RequireAccess access="manageItems.edit">
                       <ManageItems />
-                    </RequireRoles>
+                    </RequireAccess>
                   }
-                />
-                <Route
-                  path="owner-profit-radar"
-                  element={<Navigate to="/financials" replace />}
                 />
                 <Route
                   path="knet-audit"
                   element={
-                    <RequireRoles
-                      roles={['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT']}
-                    >
+                    <RequireAccess access="knetAudit.view">
                       <KnetAudit />
-                    </RequireRoles>
+                    </RequireAccess>
                   }
                 />
                 <Route
                   path="owner/inventory"
                   element={
-                    <RequireRoles roles={['OWNER', 'GENERAL_MANAGER']}>
+                    <RequireAccess access="inventoryReport.view">
                       <OwnerInventoryReportPage />
-                    </RequireRoles>
+                    </RequireAccess>
                   }
                 />
                 <Route
                   path="accountant/inventory"
                   element={
-                    <RequireRoles
-                      roles={['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT']}
-                    >
+                    <RequireAccess access="inventoryReport.view">
                       <AccountantInventoryReportPage />
-                    </RequireRoles>
+                    </RequireAccess>
                   }
                 />
                 <Route
                   path="accountant/stock-in"
                   element={
-                    <RequireRoles roles={['ACCOUNTANT']}>
+                    <RequireAccess access="inventoryReport.stockIn">
                       <AccountantStockInPage />
-                    </RequireRoles>
+                    </RequireAccess>
                   }
                 />
                 <Route
                   path="customers"
                   element={
-                    <RequireRoles
-                      roles={['OWNER', 'GENERAL_MANAGER', 'CALL_CENTER']}
-                    >
+                    <RequireAccess access="customers.view">
                       <CustomersPage />
-                    </RequireRoles>
+                    </RequireAccess>
                   }
                 />
                 <Route
                   path="collections"
                   element={
-                    <RequireRoles
-                      roles={['OWNER', 'GENERAL_MANAGER', 'CALL_CENTER']}
-                    >
+                    <RequireAccess access="collections.view">
                       <CollectionsPage />
-                    </RequireRoles>
+                    </RequireAccess>
                   }
                 />
-                <Route path="my-deposits" element={<MyDepositsPage />} />
+                <Route
+                  path="my-deposits"
+                  element={
+                    <RequireAccess access="myDeposits.view">
+                      <MyDepositsPage />
+                    </RequireAccess>
+                  }
+                />
                 <Route
                   path="whatsapp-tools"
                   element={
-                    <RequireRoles
-                      roles={['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT']}
-                    >
+                    <RequireAccess access="whatsappTools.use">
                       <WhatsappToolsPage />
-                    </RequireRoles>
+                    </RequireAccess>
                   }
                 />
-                <Route path="my-daily-sales" element={<MyDailySalesPage />} />
-                <Route path="my-cash-custody" element={<MyCashCustodyPage />} />
-                <Route path="my-field-expenses" element={<DriverFieldExpensesPage />} />
-                {/* V3.8 — Driver-only Field Collection Tracker (read-only
-                    unpaid invoices). DRIVER role is enforced inside the
-                    page via `hasRole('DRIVER')`; we also gate the route
-                    here for defence-in-depth. */}
+                <Route
+                  path="my-daily-sales"
+                  element={
+                    <RequireAccess access="myDailySales.view">
+                      <MyDailySalesPage />
+                    </RequireAccess>
+                  }
+                />
+                {/* V19.5 — Legacy `my-cash-custody` URL kept as a 301-style
+                    redirect so old bookmarks keep working. The canonical
+                    driver custody page is `/my-deposits`. */}
+                <Route
+                  path="my-cash-custody"
+                  element={<Navigate to="/my-deposits" replace />}
+                />
+                <Route
+                  path="my-field-expenses"
+                  element={
+                    <RequireAccess access="myFieldExpenses.view">
+                      <DriverFieldExpensesPage />
+                    </RequireAccess>
+                  }
+                />
                 <Route
                   path="driver/pending-invoices"
                   element={
-                    <RequireRoles roles={['DRIVER']}>
+                    <RequireAccess access="driverPendingInvoices.view">
                       <DriverPendingInvoicesPage />
-                    </RequireRoles>
+                    </RequireAccess>
                   }
                 />
-                <Route path="admin/driver-monitoring" element={<DriverMonitorPage />} />
-                <Route path="driver-monitor" element={<Navigate to="/admin/driver-monitoring" replace />} />
-                <Route path="subscriptions" element={<SubscriptionsPage />} />
-                <Route path="subscribers" element={<SubscribersPage />} />
-                <Route path="orders" element={<OrdersPage />} />
-                <Route path="shifts" element={<ShiftsPage />} />
+                <Route
+                  path="admin/driver-monitoring"
+                  element={
+                    <RequireAccess access="driverMonitor.view">
+                      <DriverMonitorPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="subscriptions"
+                  element={
+                    <RequireAccess access="subscriptions.view">
+                      <SubscriptionsPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="subscribers"
+                  element={
+                    <RequireAccess access="subscribers.view">
+                      <SubscribersPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="orders"
+                  element={
+                    <RequireAccess access="orders.view">
+                      <OrdersPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="shifts"
+                  element={
+                    <RequireAccess access="shifts.view">
+                      <ShiftsPage />
+                    </RequireAccess>
+                  }
+                />
                 <Route
                   path="manager/custody"
                   element={
-                    <RequireRoles roles={['MANAGER']}>
+                    <RequireAccess access="managerCustody.view">
                       <MyCustodyPage />
-                    </RequireRoles>
+                    </RequireAccess>
                   }
                 />
                 <Route
                   path="finance/manager-custody-aging"
                   element={
-                    <RequireRoles
-                      roles={['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT']}
-                    >
+                    <RequireAccess access="managerCustodyAging.view">
                       <ManagerCustodyAgingPage />
-                    </RequireRoles>
+                    </RequireAccess>
                   }
                 />
                 <Route
                   path="staff-debts"
                   element={
-                    <RequireRoles
-                      roles={['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT']}
-                    >
+                    <RequireAccess access="staffDebts.view">
                       <StaffDebtsPage />
-                    </RequireRoles>
+                    </RequireAccess>
                   }
                 />
                 <Route
                   path="owner/serials"
                   element={
-                    <RequireRoles roles={['OWNER', 'GENERAL_MANAGER']}>
+                    <RequireAccess access="ownerSerials.manage">
                       <OwnerSerialsPage />
-                    </RequireRoles>
+                    </RequireAccess>
                   }
                 />
                 <Route
                   path="owner/debt-recovery"
                   element={
-                    <RequireRoles roles={['OWNER', 'GENERAL_MANAGER']}>
+                    <RequireAccess access="debtRecoveryReport.view">
                       <DebtRecoveryReportPage />
-                    </RequireRoles>
+                    </RequireAccess>
                   }
                 />
                 <Route
                   path="financials"
                   element={
-                    <RequireRoles roles={['OWNER', 'GENERAL_MANAGER']}>
+                    <RequireAccess access="financials.view">
                       <FinancialsPage />
-                    </RequireRoles>
+                    </RequireAccess>
                   }
                 />
-                <Route path="expense-approval" element={<ExpenseApprovalPage />} />
-                <Route path="financial-cycle-report" element={<FinancialCycleReportPage />} />
+                <Route
+                  path="expense-approval"
+                  element={
+                    <RequireAccess access="expenseApproval.view">
+                      <ExpenseApprovalPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="financial-cycle-report"
+                  element={
+                    <RequireAccess access="financialCycleReport.view">
+                      <FinancialCycleReportPage />
+                    </RequireAccess>
+                  }
+                />
                 <Route
                   path="reports"
                   element={
-                    <RequireRoles
-                      roles={['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT']}
-                    >
+                    <RequireAccess access="reports.view">
                       <ReportsPage />
-                    </RequireRoles>
+                    </RequireAccess>
                   }
                 />
                 <Route
                   path="unified-ledger"
                   element={
-                    <RequireRoles
-                      roles={['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT']}
-                    >
+                    <RequireAccess access="unifiedLedger.view">
                       <UnifiedLedgerPage />
-                    </RequireRoles>
+                    </RequireAccess>
                   }
                 />
-                <Route path="payroll" element={<PayrollPage />} />
-                <Route path="fixed-expenses" element={<FixedExpensesPage />} />
-                <Route path="expenses" element={<ExpensesPage />} />
-                <Route path="users-management" element={<Navigate to="/owner-dashboard" replace />} />
-                <Route path="team" element={<Navigate to="/owner-dashboard" replace />} />
+                <Route
+                  path="payroll"
+                  element={
+                    <RequireAccess access="payroll.view">
+                      <PayrollPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="fixed-expenses"
+                  element={
+                    <RequireAccess access="fixedExpenses.view">
+                      <FixedExpensesPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="expenses"
+                  element={
+                    <RequireAccess access="expenses.view">
+                      <ExpensesPage />
+                    </RequireAccess>
+                  }
+                />
               </Route>
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
@@ -293,4 +374,3 @@ export default function App() {
     </ErrorBoundary>
   );
 }
-

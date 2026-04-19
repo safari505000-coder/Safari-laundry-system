@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { NavLink } from 'react-router-dom';
 import { Menu } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
+import type { SafariRole } from '@/lib/api';
 import { getSidebarNavGroupsForRole } from '@/modules/shared/nav/resolve-sidebar-nav';
 import type { NavItem } from '@/modules/shared/nav/nav-types';
 import {
@@ -10,9 +11,11 @@ import {
   collectionsItem,
   customersItem,
   dashboardItem,
+  driverFieldExpensesItem,
   expensesItem,
   financialsItem,
   invoicesDataItem,
+  myCustodyItem,
   myDailySalesItem,
   myDepositsItem,
   ordersItem,
@@ -30,37 +33,18 @@ import {
 } from '@/modules/shared/components/ui/sheet';
 import { cn } from '@/lib/utils';
 
-type SafariRoleName =
-  | 'OWNER'
-  | 'GENERAL_MANAGER'
-  | 'MANAGER'
-  | 'DRIVER'
-  | 'CALL_CENTER'
-  | 'ACCOUNTANT'
-  | 'SUPERVISOR'
-  | 'VIEWER';
-
-const driverFieldExpensesItem: NavItem = {
-  to: '/my-field-expenses',
-  labelKey: 'nav.fieldExpenses',
-  icon: expensesItem.icon,
-  roles: ['DRIVER'],
-};
-
-const managerCustodyItem: NavItem = {
-  to: '/manager/custody',
-  labelKey: 'nav.myCustody',
-  icon: invoicesDataItem.icon,
-  roles: ['MANAGER'],
-};
-
 /**
  * V18.0 — Keeta-style bottom navigation bar. Shows the four most relevant
  * destinations per role, plus a "More" button that slides the full nav in a
  * sheet. The sidebar is hidden on mobile (<md), so this component is the
  * primary navigation on phones/tablets in portrait.
+ *
+ * All entries reference the canonical items in `nav-items.ts` so role
+ * changes only need to happen in one place. The "More" sheet is rendered
+ * from the same sidebar resolver used by desktop, which guarantees no
+ * divergence between the two surfaces.
  */
-function bottomNavItemsForRole(role: SafariRoleName | undefined): NavItem[] {
+function bottomNavItemsForRole(role: SafariRole | undefined): NavItem[] {
   switch (role) {
     case 'OWNER':
     case 'GENERAL_MANAGER':
@@ -71,7 +55,7 @@ function bottomNavItemsForRole(role: SafariRoleName | undefined): NavItem[] {
         branchesItem,
       ];
     case 'MANAGER':
-      return [dashboardItem, posItem, ordersItem, managerCustodyItem];
+      return [dashboardItem, posItem, ordersItem, myCustodyItem];
     case 'DRIVER':
       return [posItem, myDailySalesItem, myDepositsItem, driverFieldExpensesItem];
     case 'CALL_CENTER':
@@ -97,7 +81,7 @@ export function MobileBottomNav() {
   const { user, hasRole } = useAuth();
   const [moreOpen, setMoreOpen] = useState(false);
 
-  const role = user?.safariRole as SafariRoleName | undefined;
+  const role = user?.safariRole;
 
   const items = useMemo(
     () => bottomNavItemsForRole(role).filter((i) => hasRole(...i.roles)),

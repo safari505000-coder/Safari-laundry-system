@@ -14,7 +14,6 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/auth-context';
-import { RequireRoles } from '@/modules/shared/components/require-roles';
 import { ApiError, apiJson, type OrderRow } from '@/lib/api';
 import { isVisibleOn } from '@/modules/shared/invoice/lifecycle';
 import { Button } from '@/modules/shared/components/ui/button';
@@ -493,9 +492,5 @@ function DialogLine({
 }
 
 export function MyDepositsPage() {
-  return (
-    <RequireRoles roles={['DRIVER']}>
-      <MyCustodyContent />
-    </RequireRoles>
-  );
+  return <MyCustodyContent />;
 }

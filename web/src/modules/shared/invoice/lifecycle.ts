@@ -94,9 +94,6 @@ export const VISIBILITY = {
   /** Driver island — "ودائعي" (money collected, not yet handed to manager). */
   driverMyDeposits: ['PAID_TO_DRIVER'],
 
-  /** Driver island — legacy "عهدتي النقدية" (mirrors driverMyDeposits). */
-  driverMyCashCustody: ['PAID_TO_DRIVER'],
-
   /** Manager island — driver-handover queue (cash still in the manager's safe). */
   managerCustody: ['PAID_TO_DRIVER'],
 

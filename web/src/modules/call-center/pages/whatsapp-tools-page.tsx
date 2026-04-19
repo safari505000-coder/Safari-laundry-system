@@ -1,7 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { MessageCircle, Users, Wallet } from 'lucide-react';
-import { RequireRoles } from '@/modules/shared/components/require-roles';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/modules/shared/components/ui/card';
 
 function WhatsappToolsContent() {
@@ -54,9 +53,5 @@ function WhatsappToolsContent() {
 }
 
 export function WhatsappToolsPage() {
-  return (
-    <RequireRoles roles={['CALL_CENTER']}>
-      <WhatsappToolsContent />
-    </RequireRoles>
-  );
+  return <WhatsappToolsContent />;
 }
