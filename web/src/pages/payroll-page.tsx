@@ -444,19 +444,29 @@ export function PayrollPage() {
                       : <Badge variant="secondary">{t('payroll.statusPending')}</Badge>}
                     </TableCell>
                     <TableCell>
-                      {p.status === 'PENDING' ?
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          disabled={markingId === p.id}
-                          onClick={() => void markPaid(p.id)}
+                      <div className="flex items-center gap-2">
+                        {p.status === 'PENDING' ?
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={markingId === p.id}
+                            onClick={() => void markPaid(p.id)}
+                          >
+                            {markingId === p.id ?
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            : t('payroll.markPaid')}
+                          </Button>
+                        : null}
+                        <a
+                          href={`/payroll/${p.id}/print`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex h-8 items-center justify-center rounded-md border border-input bg-background px-3 text-xs font-medium shadow-sm transition hover:bg-accent"
                         >
-                          {markingId === p.id ?
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          : t('payroll.markPaid')}
-                        </Button>
-                      : null}
+                          {t('payroll.printPayslip')}
+                        </a>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

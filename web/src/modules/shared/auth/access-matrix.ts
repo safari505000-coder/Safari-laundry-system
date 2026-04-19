@@ -159,6 +159,14 @@ export const ACCESS = {
   // never renders for roles that shouldn't see it.
   'pos.exitToDashboard': ['MANAGER'] satisfies readonly SafariRole[],
 
+  // ─── HR Stage-D ───────────────────────────────────────────────────
+  // Attendance list/print — OWNER, GM, MANAGER (branch HR), ACCOUNTANT
+  // (payroll sign-off). Biometric sync + manual entry are OWNER/GM only.
+  'attendance.view': withExec('MANAGER', 'ACCOUNTANT'),
+  'attendance.manual': withExec('MANAGER', 'ACCOUNTANT'),
+  'attendance.sync': ['OWNER'] satisfies readonly SafariRole[],
+  'attendance.biometric': EXEC_PAIR,
+
   // ─── Driver personal island ───────────────────────────────────────
   'myDeposits.view': withExec('DRIVER'),
   'myDailySales.view': withExec('DRIVER'),

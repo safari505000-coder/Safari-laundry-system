@@ -1990,3 +1990,119 @@ export function getManagerCustodyAging(
     { token },
   );
 }
+
+// ---------------------------------------------------------------------------
+// Stage-D — Attendance module (DUSTUR §6).
+// ---------------------------------------------------------------------------
+
+export type AttendanceSource = 'SHIFT_AUTO' | 'BIOMETRIC' | 'MANUAL';
+
+export type AttendanceRow = {
+  id: string;
+  userId: string;
+  userName: string;
+  username: string;
+  employeeId: string | null;
+  branchId: string | null;
+  branchName: string | null;
+  /** Kuwait-local logical day YYYY-MM-DD. */
+  date: string;
+  checkInAtIso: string | null;
+  checkOutAtIso: string | null;
+  durationMinutes: number | null;
+  source: AttendanceSource;
+  externalRef: string | null;
+  note: string | null;
+};
+
+export type AttendanceFilters = {
+  from?: string;
+  to?: string;
+  userId?: string;
+  branchId?: string;
+  source?: AttendanceSource;
+};
+
+export function listAttendance(token: string, filters: AttendanceFilters = {}) {
+  const qs = buildQuery(filters);
+  return apiJson<AttendanceRow[]>(`/api/attendance${qs}`, { token });
+}
+
+export function upsertManualAttendance(
+  token: string,
+  dto: {
+    userId: string;
+    date: string;
+    checkInAt?: string;
+    checkOutAt?: string;
+    note?: string;
+  },
+) {
+  return apiJson<AttendanceRow>('/api/attendance/manual', {
+    method: 'POST',
+    token,
+    body: JSON.stringify(dto),
+  });
+}
+
+export function runAttendanceSync(token: string, from: string, to: string) {
+  const qs = buildQuery({ from, to });
+  return apiJson<{ count: number }>(`/api/attendance/sync${qs}`, {
+    method: 'POST',
+    token,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Stage-D — Payslip (single-row fetch for the A4 printable).
+// ---------------------------------------------------------------------------
+
+export type PayslipRow = {
+  id: string;
+  userId: string;
+  branchId: string;
+  basicSalary: string;
+  allowances: string;
+  deductions: string;
+  paymentDate: string;
+  status: PayrollStatus;
+  createdAt: string;
+  updatedAt: string;
+  user: {
+    id: string;
+    fullName: string;
+    username: string;
+    employeeId: string | null;
+    civilId: string | null;
+    nationality: string | null;
+    address: string | null;
+    bankName: string | null;
+    bankIban: string | null;
+    hireDate: string | null;
+    jobTitle: string | null;
+  };
+  branch: { id: string; name: string; location: string };
+};
+
+export function getPayslip(token: string, id: string) {
+  return apiJson<PayslipRow>(`/api/payroll/${id}`, { token });
+}
+
+/** Manual test hook for the biometric webhook stub (OWNER/GM). */
+export function recordBiometricAttendance(
+  token: string,
+  dto: {
+    civilId?: string;
+    externalUserRef?: string;
+    action: 'CHECK_IN' | 'CHECK_OUT';
+    atIso: string;
+    deviceId: string;
+    meta?: string;
+  },
+) {
+  return apiJson<AttendanceRow>('/api/attendance/biometric', {
+    method: 'POST',
+    token,
+    body: JSON.stringify(dto),
+  });
+}

@@ -37,6 +37,7 @@ export const ar = {
     reports: 'التقارير',
     expenses: 'المصروفات',
     payroll: 'الرواتب',
+    attendance: 'الحضور والانصراف',
     fixedExpenses: 'المصاريف الثابتة',
     usersManagement: 'إدارة المستخدمين',
     signOut: 'تسجيل الخروج',
@@ -1415,6 +1416,7 @@ export const ar = {
     statusPending: 'معلق',
     markPaid: 'تعليم كمدفوع',
     markedPaid: 'تم التعليم كمدفوع',
+    printPayslip: 'طباعة الكشف',
   },
   fixedExpenses: {
     title: 'المصاريف الثابتة',

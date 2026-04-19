@@ -1,6 +1,7 @@
 import {
   ArrowLeftRight,
   Banknote,
+  Clock,
   FileSignature,
   BookText,
   Building2,
@@ -396,6 +397,18 @@ export const payrollItem: NavItem = {
   labelKey: 'nav.payroll',
   icon: Users,
   roles: ['OWNER', 'GENERAL_MANAGER'],
+};
+
+/**
+ * Stage-D — attendance. Shared across the exec pair + branch MANAGER
+ * (branch HR) + ACCOUNTANT (payroll sign-off). Access-matrix enforces
+ * the same set via `attendance.view`.
+ */
+export const attendanceItem: NavItem = {
+  to: '/attendance',
+  labelKey: 'nav.attendance',
+  icon: Clock,
+  roles: ['OWNER', 'GENERAL_MANAGER', 'MANAGER', 'ACCOUNTANT'],
 };
 
 export const fixedExpensesItem: NavItem = {

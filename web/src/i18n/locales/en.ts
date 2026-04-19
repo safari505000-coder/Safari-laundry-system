@@ -36,6 +36,7 @@ export const en = {
     reports: 'Reports',
     expenses: 'Expenses',
     payroll: 'Payroll',
+    attendance: 'Attendance',
     fixedExpenses: 'Fixed expenses',
     usersManagement: 'Users Management',
     signOut: 'Sign out',
@@ -1398,6 +1399,7 @@ export const en = {
     statusPending: 'Pending',
     markPaid: 'Mark as paid',
     markedPaid: 'Marked as paid',
+    printPayslip: 'Print payslip',
   },
   fixedExpenses: {
     title: 'Fixed expenses',

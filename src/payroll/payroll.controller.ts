@@ -61,4 +61,31 @@ export class PayrollController {
       q.branchId,
     );
   }
+
+  @Get(':id')
+  @Roles(
+    SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
+    SafariRole.MANAGER,
+    SafariRole.ACCOUNTANT,
+    SafariRole.DRIVER,
+    SafariRole.CALL_CENTER,
+    SafariRole.SUPERVISOR,
+    SafariRole.VIEWER,
+  )
+  @ApiOperation({
+    summary: `Fetch a single payroll row for the A4 payslip (${APP_BRAND})`,
+    description:
+      'Stage-D — used by the printable payslip. Non-admin roles can only fetch their own payroll rows.',
+  })
+  findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.payrollService.findOne(
+      user.role as SafariRole,
+      user.userId,
+      id,
+    );
+  }
 }

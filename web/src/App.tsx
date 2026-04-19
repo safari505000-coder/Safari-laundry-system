@@ -12,6 +12,9 @@ import { Toaster } from '@/modules/shared/components/ui/sonner';
 import { DashboardPage } from '@/pages/dashboard-page';
 import { DebtTransfersPage } from '@/pages/debt-transfers-page';
 import { MyDebtTransfersPage } from '@/pages/my-debt-transfers-page';
+import { AttendancePage } from '@/pages/attendance-page';
+import { AttendanceReportPrintPage } from '@/pages/attendance-report-print-page';
+import { PayslipPrintPage } from '@/pages/payslip-print-page';
 import { ExpensesPage } from '@/pages/expenses-page';
 import { FinancialsPage } from '@/pages/financials-page';
 import { FinancialCycleReportPage } from '@/pages/financial-cycle-report-page';
@@ -324,6 +327,26 @@ export default function App() {
                       <MyDebtTransfersPage />
                     </RequireAccess>
                   }
+                />
+                <Route
+                  path="attendance"
+                  element={
+                    <RequireAccess access="attendance.view">
+                      <AttendancePage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="attendance/print"
+                  element={
+                    <RequireAccess access="attendance.view">
+                      <AttendanceReportPrintPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="payroll/:id/print"
+                  element={<PayslipPrintPage />}
                 />
                 <Route
                   path="expense-approval"

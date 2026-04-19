@@ -155,6 +155,20 @@ model User {
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
+  // ─── HR master-data (Stage D) ─────────────────────────────────────
+  /** Kuwaiti Civil ID — البطاقة المدنية. */
+  civilId             String?   @unique
+  nationality         String?
+  address             String?
+  bankName            String?
+  /** IBAN for salary transfers. */
+  bankIban            String?
+  hireDate            DateTime?
+  /** Monthly basic salary used to seed new payroll rows. */
+  basicMonthlySalary  Decimal?  @db.Decimal(19, 4)
+  /** Fixed monthly allowances (housing, transport, etc.) used to seed payroll. */
+  monthlyAllowances   Decimal?  @db.Decimal(19, 4)
+
   role           Role     @relation(fields: [roleId], references: [id])
   branch         Branch?  @relation(fields: [branchId], references: [id])
   auditLogs          AuditLog[]
@@ -189,6 +203,8 @@ model User {
   debtTransfersCancelled       DebtTransfer[]       @relation("DebtTransferCanceller")
   /** Orders whose cash responsibility was transferred FROM this driver (audit only). */
   ordersTransferredFrom        Order[]              @relation("OrderTransferredFromDriver")
+  /** HR — daily attendance rows for this user. */
+  attendanceLogs               AttendanceLog[]
 }
 
 enum ExpenseCategory {
@@ -684,6 +700,45 @@ model Branch {
   stockLevels           BranchStockLevel[]
   stockMovements        StockMovement[]
   managerCustodyBags    ManagerCashCustody[] @relation("BranchManagerCustody")
+  attendanceLogs        AttendanceLog[]
+}
+
+/**
+ * Stage-D — daily attendance row per (user, logical Kuwait date).
+ *
+ * `checkInAt` / `checkOutAt` are UTC timestamps; the unique `date`
+ * column is the logical Kuwait-local day so one user can't have two
+ * rows for the same day (idempotent upserts). `source` records where
+ * the row came from: SHIFT_AUTO (daily cron), BIOMETRIC (stub for
+ * fingerprint devices), or MANUAL (admin entry).
+ */
+model AttendanceLog {
+  id          String           @id @default(uuid()) @db.Uuid
+  userId      String           @db.Uuid
+  branchId    String?          @db.Uuid
+  date        DateTime         @db.Date
+  checkInAt   DateTime?
+  checkOutAt  DateTime?
+  source      AttendanceSource @default(SHIFT_AUTO)
+  /** Biometric device fingerprint / external record id (nullable). */
+  externalRef String?
+  note        String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  user   User    @relation(fields: [userId], references: [id])
+  branch Branch? @relation(fields: [branchId], references: [id])
+
+  @@unique([userId, date])
+  @@index([date])
+  @@index([branchId, date])
+  @@index([source])
+}
+
+enum AttendanceSource {
+  SHIFT_AUTO
+  BIOMETRIC
+  MANUAL
 }
 
 model Payroll {

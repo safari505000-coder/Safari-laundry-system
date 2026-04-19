@@ -5,6 +5,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { AttendanceModule } from './attendance/attendance.module';
 import { AuditLogsModule } from './audit-logs/audit-logs.module';
 import { AuthModule } from './auth/auth.module';
 import { BranchesModule } from './branches/branches.module';
@@ -34,6 +35,7 @@ import { SystemModule } from './system/system.module';
 import { SubscriptionPlansModule } from './subscription-plans/subscription-plans.module';
 import { SubscribersModule } from './subscribers/subscribers.module';
 import { UsersModule } from './users/users.module';
+import { VerifyModule } from './verify/verify.module';
 import { WalletsModule } from './wallets/wallets.module';
 
 const webDistPath = join(process.cwd(), 'web', 'dist');
@@ -78,6 +80,8 @@ const spaStaticModule = existsSync(webDistPath)
     DebtTransfersModule,
     SerialsModule,
     ShiftsModule,
+    AttendanceModule,
+    VerifyModule,
     ServeStaticModule.forRoot({
       rootPath: uploadsPath,
       serveRoot: '/uploads',

@@ -1,0 +1,362 @@
+/*
+ * Safari Omni — Digital A4 print sheet stylesheet.
+ *
+ * Used by every HR printable document (payslip, attendance report, leave
+ * request, loan acknowledgement). Always RTL, always colored, always
+ * retains the exact on-screen layout when sent to the printer.
+ */
+
+.printable-sheet {
+  --brand-primary: #0f766e;
+  --brand-accent: #14b8a6;
+  --brand-ink: #0f172a;
+  --brand-muted: #64748b;
+  --brand-border: #cbd5e1;
+  --brand-bg-soft: #f1f5f9;
+  --brand-success: #15803d;
+  --brand-danger: #b91c1c;
+
+  direction: rtl;
+  color: var(--brand-ink);
+  font-family: 'Cairo', 'Tajawal', 'IBM Plex Sans Arabic', system-ui,
+    sans-serif;
+  background: #fff;
+  width: 210mm;
+  min-height: 297mm;
+  margin: 0 auto;
+  padding: 18mm 16mm 24mm 16mm;
+  box-sizing: border-box;
+  position: relative;
+  box-shadow: 0 4px 24px rgba(15, 23, 42, 0.08);
+  border: 1px solid var(--brand-border);
+  border-radius: 4px;
+}
+
+.printable-sheet__brandbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 10mm;
+  border-bottom: 3px solid var(--brand-primary);
+}
+
+.printable-sheet__brand-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2mm;
+}
+
+.printable-sheet__brand-name {
+  font-size: 18pt;
+  font-weight: 700;
+  color: var(--brand-primary);
+  letter-spacing: -0.01em;
+}
+
+.printable-sheet__brand-legal {
+  font-size: 9pt;
+  color: var(--brand-muted);
+}
+
+.printable-sheet__brand-right {
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5mm;
+}
+
+.printable-sheet__doc-title {
+  font-size: 14pt;
+  font-weight: 700;
+  color: var(--brand-ink);
+  padding: 1.5mm 4mm;
+  background: var(--brand-bg-soft);
+  border-radius: 2mm;
+  border-inline-start: 4px solid var(--brand-accent);
+}
+
+.printable-sheet__doc-meta {
+  font-size: 9pt;
+  color: var(--brand-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.printable-sheet__body {
+  margin-top: 8mm;
+}
+
+.printable-sheet__section {
+  margin-bottom: 7mm;
+}
+
+.printable-sheet__section-title {
+  font-size: 11pt;
+  font-weight: 700;
+  color: var(--brand-primary);
+  border-bottom: 1px solid var(--brand-border);
+  padding-bottom: 1mm;
+  margin-bottom: 3mm;
+}
+
+.printable-sheet__grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3mm 8mm;
+}
+
+.printable-sheet__grid-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 3mm 6mm;
+}
+
+.printable-sheet__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5mm;
+}
+
+.printable-sheet__label {
+  font-size: 8.5pt;
+  color: var(--brand-muted);
+}
+
+.printable-sheet__value {
+  font-size: 10.5pt;
+  color: var(--brand-ink);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.printable-sheet__value--mono {
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+}
+
+.printable-sheet__value--positive {
+  color: var(--brand-success);
+}
+
+.printable-sheet__value--negative {
+  color: var(--brand-danger);
+}
+
+.printable-sheet__table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 2mm;
+  font-size: 10pt;
+}
+
+.printable-sheet__table thead th {
+  background: var(--brand-primary);
+  color: #fff;
+  padding: 2mm 3mm;
+  font-weight: 600;
+  text-align: start;
+  font-size: 9.5pt;
+}
+
+.printable-sheet__table tbody td {
+  padding: 1.5mm 3mm;
+  border-bottom: 1px solid var(--brand-border);
+  font-variant-numeric: tabular-nums;
+}
+
+.printable-sheet__table tbody tr:nth-child(even) td {
+  background: var(--brand-bg-soft);
+}
+
+.printable-sheet__table tfoot td {
+  padding: 2.5mm 3mm;
+  border-top: 2px solid var(--brand-primary);
+  font-weight: 700;
+  background: #ecfdf5;
+}
+
+.printable-sheet__totals {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2mm 6mm;
+  margin-top: 4mm;
+  padding: 4mm;
+  background: var(--brand-bg-soft);
+  border-inline-start: 4px solid var(--brand-primary);
+  border-radius: 2mm;
+}
+
+.printable-sheet__total-row {
+  display: contents;
+}
+
+.printable-sheet__total-row > dt {
+  font-size: 10pt;
+  color: var(--brand-muted);
+}
+
+.printable-sheet__total-row > dd {
+  font-size: 11pt;
+  font-weight: 700;
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.printable-sheet__total-row--grand > dt,
+.printable-sheet__total-row--grand > dd {
+  font-size: 13pt;
+  color: var(--brand-primary);
+  padding-top: 1.5mm;
+  border-top: 1.5px solid var(--brand-primary);
+}
+
+.printable-sheet__signatures {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10mm;
+  margin-top: 14mm;
+}
+
+.printable-sheet__signature-box {
+  border-top: 1px dashed var(--brand-border);
+  padding-top: 3mm;
+  text-align: center;
+}
+
+.printable-sheet__signature-label {
+  font-size: 9pt;
+  color: var(--brand-muted);
+}
+
+.printable-sheet__signature-name {
+  font-size: 10.5pt;
+  font-weight: 600;
+  margin-top: 1mm;
+}
+
+.printable-sheet__footer {
+  position: absolute;
+  bottom: 12mm;
+  inset-inline: 16mm;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 4mm;
+  border-top: 1px solid var(--brand-border);
+  font-size: 8pt;
+  color: var(--brand-muted);
+}
+
+.printable-sheet__qr {
+  display: flex;
+  align-items: center;
+  gap: 3mm;
+}
+
+.printable-sheet__qr-img {
+  width: 22mm;
+  height: 22mm;
+  padding: 1mm;
+  background: #fff;
+  border: 1px solid var(--brand-border);
+  border-radius: 1.5mm;
+}
+
+.printable-sheet__qr-info {
+  font-size: 8pt;
+  color: var(--brand-muted);
+  line-height: 1.4;
+  text-align: start;
+}
+
+.printable-sheet__qr-info strong {
+  color: var(--brand-ink);
+  font-weight: 600;
+}
+
+.printable-sheet__stamp {
+  padding: 1.5mm 4mm;
+  border-radius: 2mm;
+  font-size: 10pt;
+  font-weight: 700;
+  display: inline-block;
+}
+
+.printable-sheet__stamp--approved {
+  background: #dcfce7;
+  color: var(--brand-success);
+  border: 1.5px solid var(--brand-success);
+}
+
+.printable-sheet__stamp--rejected {
+  background: #fee2e2;
+  color: var(--brand-danger);
+  border: 1.5px solid var(--brand-danger);
+}
+
+.printable-sheet__stamp--pending {
+  background: #fef3c7;
+  color: #b45309;
+  border: 1.5px solid #b45309;
+}
+
+.printable-sheet__stamp--paid {
+  background: #cffafe;
+  color: #0e7490;
+  border: 1.5px solid #0e7490;
+}
+
+/* Screen preview: a neutral page background around the sheet. */
+.printable-sheet-viewport {
+  background: #e2e8f0;
+  padding: 8mm;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.printable-sheet-toolbar {
+  width: 210mm;
+  max-width: 100%;
+  display: flex;
+  justify-content: flex-end;
+  gap: 2mm;
+  margin-bottom: 4mm;
+}
+
+/* Print rules: one sheet per physical page, no viewport chrome. */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .printable-sheet-viewport {
+    background: #fff !important;
+    padding: 0 !important;
+  }
+
+  .printable-sheet-toolbar,
+  .print-hide {
+    display: none !important;
+  }
+
+  .printable-sheet {
+    box-shadow: none !important;
+    border: none !important;
+    margin: 0 !important;
+    page-break-after: always;
+  }
+
+  .printable-sheet:last-child {
+    page-break-after: auto;
+  }
+}

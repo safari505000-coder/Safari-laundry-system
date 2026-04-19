@@ -103,6 +103,45 @@ export class PayrollService {
     });
   }
 
+  /**
+   * Fetch a single payroll row with user + branch details, used by the
+   * A4 printable payslip page. OWNER / GM / MANAGER / ACCOUNTANT may
+   * fetch any row; employees may only fetch their own.
+   */
+  async findOne(actorRole: SafariRole, actorUserId: string, id: string) {
+    const row = await this.prisma.payroll.findUnique({
+      where: { id },
+      include: {
+        user: {
+          select: {
+            id: true,
+            fullName: true,
+            username: true,
+            employeeId: true,
+            civilId: true,
+            nationality: true,
+            address: true,
+            bankName: true,
+            bankIban: true,
+            hireDate: true,
+            jobTitle: true,
+          },
+        },
+        branch: { select: { id: true, name: true, location: true } },
+      },
+    });
+    if (!row) throw new NotFoundException('Payroll not found');
+    const canReadAll =
+      actorRole === SafariRole.OWNER ||
+      actorRole === SafariRole.GENERAL_MANAGER ||
+      actorRole === SafariRole.MANAGER ||
+      actorRole === SafariRole.ACCOUNTANT;
+    if (!canReadAll && row.userId !== actorUserId) {
+      throw new ForbiddenException();
+    }
+    return row;
+  }
+
   /** Sum of net pay for PAID payrolls with paymentDate in [from, to]. */
   async sumPaidNetInRange(
     from: Date,
