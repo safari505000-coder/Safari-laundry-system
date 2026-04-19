@@ -7,23 +7,19 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
-  CashStatus,
   GeneralLedgerEntryType,
   ManagerCashCustody,
   ManagerCashCustodyStatus,
-  OrderStatus,
-  PosPaymentMethod,
   Prisma,
   SafariRole,
-  ShiftStatus,
 } from '@prisma/client';
+import { CashService } from '../finance/services/cash.service';
 import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   assertDeclaredMatchesLedgerMinor,
   minorToAmountString,
   parseFixed4ToMinor,
-  sumOrderMinors,
 } from '../finance/finance-money';
 import { ApproveReceiptFromDriverDto } from './dto/approve-receipt-from-driver.dto';
 import { ListCustodyQueryDto } from './dto/list-custody-query.dto';
@@ -88,6 +84,7 @@ export class ManagerCustodyService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly generalLedger: GeneralLedgerService,
+    private readonly cashService: CashService,
   ) {}
 
   /**
@@ -106,101 +103,72 @@ export class ManagerCustodyService {
    */
   async approveReceiptFromDriver(
     managerId: string,
-    managerBranchId: string | null,
+    _managerBranchId: string | null,
     dto: ApproveReceiptFromDriverDto,
   ): Promise<CustodyRowDto> {
-    const driver = await this.prisma.user.findUnique({
-      where: { id: dto.driverId },
-      select: { id: true, safariRole: true, branchId: true },
+    // A3.D5 — historically there were two parallel implementations that
+    // both flipped CASH orders → HANDED_OVER_TO_OFFICE and created a
+    // ManagerCashCustody bag: CashService.confirmHandover (office / web)
+    // and this one (manager mobile). Any drift between them became a
+    // financial-integrity risk. Now we delegate to the single canonical
+    // pipeline and only augment the resulting bag with the optional
+    // free-text note that is specific to this entry point.
+    const result = await this.cashService.confirmHandover(managerId, {
+      driverId: dto.driverId,
+      declaredHandoverTotal: dto.declaredHandoverTotal,
     });
-    if (!driver || driver.safariRole !== SafariRole.DRIVER) {
-      throw new NotFoundException('Driver not found');
+
+    if (result.settledOrderCount === 0) {
+      // Preserve legacy contract for the manager mobile flow: the manager
+      // pressing the button with no pending cash is treated as an error.
+      throw new BadRequestException(
+        'No cash pending settlement for this driver.',
+      );
     }
 
-    const created = await this.prisma.$transaction(async (tx) => {
-      const pending = await tx.order.findMany({
-        where: {
-          driverId: dto.driverId,
-          status: OrderStatus.COMPLETED,
-          cashStatus: CashStatus.PAID_TO_DRIVER,
-          posPaymentMethod: PosPaymentMethod.CASH,
+    // confirmHandover does not return the bag id directly, so fetch the
+    // most recent bag for this (manager, driver) pair — it was just
+    // created inside the same request.
+    const bag = await this.prisma.managerCashCustody.findFirst({
+      where: {
+        managerId,
+        driverId: dto.driverId,
+        status: ManagerCashCustodyStatus.PENDING_DEPOSIT,
+      },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        manager: {
+          select: { id: true, fullName: true, username: true, phone: true },
         },
-        select: { id: true, totalPrice: true },
-      });
-      const systemMinor = sumOrderMinors(pending);
+        driver: { select: { id: true, fullName: true, username: true } },
+        branch: { select: { id: true, name: true } },
+        shift: { select: { id: true, endedAt: true, startedAt: true } },
+      },
+    });
+    if (!bag) {
+      throw new ConflictException(
+        'Handover completed but custody bag was not found. Retry.',
+      );
+    }
 
-      if (dto.declaredHandoverTotal !== undefined) {
-        try {
-          assertDeclaredMatchesLedgerMinor(
-            systemMinor,
-            dto.declaredHandoverTotal,
-          );
-        } catch (e) {
-          throw new BadRequestException(
-            e instanceof Error ? e.message : 'Declared total mismatch',
-          );
-        }
-      }
-
-      if (pending.length === 0) {
-        throw new BadRequestException(
-          'No cash pending settlement for this driver.',
-        );
-      }
-
-      // Informational stamp only — handover does not require an OPEN shift
-      // and does not mutate any shift state.
-      const shift = await tx.shift.findFirst({
-        where: { driverId: dto.driverId, status: ShiftStatus.OPEN },
-        orderBy: { startedAt: 'desc' },
-      });
-
-      const amountString = minorToAmountString(systemMinor);
-
-      const ids = pending.map((o) => o.id);
-      const updated = await tx.order.updateMany({
-        where: {
-          id: { in: ids },
-          cashStatus: CashStatus.PAID_TO_DRIVER,
-          posPaymentMethod: PosPaymentMethod.CASH,
-        },
-        data: {
-          cashStatus: CashStatus.HANDED_OVER_TO_OFFICE,
-          handoverShiftId: shift?.id ?? null,
-        },
-      });
-      if (updated.count !== pending.length) {
-        throw new ConflictException(
-          'Concurrent handover detected; not all orders could be settled. Retry.',
-        );
-      }
-
-      const bag = await tx.managerCashCustody.create({
-        data: {
-          managerId,
-          driverId: dto.driverId,
-          branchId: managerBranchId ?? driver.branchId ?? null,
-          shiftId: shift?.id ?? null,
-          amountKd: amountString,
-          settledOrderCount: pending.length,
-          status: ManagerCashCustodyStatus.PENDING_DEPOSIT,
-          note: dto.note?.trim() || null,
-        },
+    const note = dto.note?.trim() ?? '';
+    if (note.length > 0 && bag.note !== note) {
+      const updated = await this.prisma.managerCashCustody.update({
+        where: { id: bag.id },
+        data: { note },
         include: {
           manager: {
             select: { id: true, fullName: true, username: true, phone: true },
           },
-          driver: {
-            select: { id: true, fullName: true, username: true },
-          },
+          driver: { select: { id: true, fullName: true, username: true } },
           branch: { select: { id: true, name: true } },
           shift: { select: { id: true, endedAt: true, startedAt: true } },
         },
       });
-      return bag;
-    });
+      return this.toRow(updated);
+    }
 
-    return this.toRow(created);
+    return this.toRow(bag);
   }
 
   /** Manager uploads bank-deposit slip URL → bag moves to AWAITING_VERIFICATION. */

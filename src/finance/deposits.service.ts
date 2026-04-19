@@ -6,9 +6,11 @@ import {
 import {
   DepositStatus,
   DepositType,
+  GeneralLedgerEntryType,
   Prisma,
   SafariRole,
 } from '@prisma/client';
+import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { DepositsListQueryDto } from './dto/deposits-list-query.dto';
 import { UpdateDepositStatusDto } from './dto/update-deposit-status.dto';
@@ -19,6 +21,7 @@ export class DepositsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly debtService: DebtService,
+    private readonly generalLedger: GeneralLedgerService,
   ) {}
 
   async listForUser(
@@ -182,6 +185,30 @@ export class DepositsService {
             });
           }
         }
+
+        // A3.D3 — Approved driver deposits move real cash into the branch
+        // wallet and settle CASH order liabilities. The corresponding
+        // order-level settlement is already captured via
+        // applyDriverDepositSettlement (which flips cashStatus), but the
+        // event itself had no GL footprint. We now emit a zero-amount
+        // WALLET_SETTLEMENT audit row so the Unified Ledger stream
+        // surfaces the deposit without double-counting the underlying
+        // order totals already logged as POS_SALE_COMPLETED.
+        await this.generalLedger.append(tx, {
+          entryType: GeneralLedgerEntryType.WALLET_SETTLEMENT,
+          amount: 0,
+          memo: `driver-deposit:${updated.type.toLowerCase()}:approved`,
+          actorUserId: auditorId,
+          metadata: {
+            source: 'DRIVER_DEPOSIT',
+            depositId: updated.id,
+            driverId: row.driverId,
+            branchId,
+            depositType: updated.type,
+            amountKd: updated.amount.toString(),
+            receiptImageUrl: updated.receiptImage,
+          },
+        });
       }
       return updated;
     });

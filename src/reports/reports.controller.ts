@@ -17,27 +17,11 @@ import { ReportsService } from './reports.service';
 export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}
 
-  @Get('manager-summary')
-  @Roles(
-    SafariRole.OWNER,
-    SafariRole.GENERAL_MANAGER,
-    SafariRole.MANAGER,
-    SafariRole.SUPERVISOR,
-    SafariRole.ACCOUNTANT,
-    SafariRole.VIEWER,
-  )
-  @ApiOperation({
-    summary: `Management report summary (${APP_BRAND})`,
-    description: 'Lightweight heartbeat for dashboards.',
-  })
-  managerSummary() {
-    return {
-      title: 'Management operations summary',
-      period: new Date().toISOString().slice(0, 10),
-      branchesActive: 0,
-      note: 'Use issued-invoices, driver-ledger, and daily-cash-closing for operational reporting.',
-    };
-  }
+  // A3.D9 — previously there was a `GET /reports/manager-summary`
+  // placeholder that just echoed hard-coded zeros. It had no frontend
+  // consumer and served only as a "coming soon" stub; removed to stop
+  // misleading anyone reading the Swagger UI. Real management dashboards
+  // live at `issued-invoices`, `driver-ledger`, and `daily-cash-closing`.
 
   @Get('issued-invoices')
   @Roles(
@@ -50,6 +34,8 @@ export class ReportsController {
   )
   @ApiOperation({
     summary: `Issued invoices — orders created in period (${APP_BRAND})`,
+    description:
+      'A3.D6 — Time axis is Order.createdAt (invoice-issuance time). Includes canceled rows so the count ties to the serial counter. For a "completed in range" view use /reports/completed-orders which filters on Order.completedAt instead (the axis the Executive P&L uses).',
   })
   issuedInvoices(@Query() q: ReportsRangeQueryDto) {
     return this.reportsService.issuedInvoices(

@@ -87,7 +87,21 @@ export class ReportsService {
   }
 
   /**
-   * All orders created in the period (issued invoices), with optional filters.
+   * "Issued invoices in range" — every order whose invoice was cut
+   * during the window, regardless of whether the driver has finished
+   * delivery / handed cash yet.
+   *
+   * A3.D6 contract (explicit to avoid drift with P&L / Executive reports):
+   *   - Time axis: Order.createdAt (when the invoice was written at POS).
+   *   - NOT Order.completedAt (that one is when the driver pressed
+   *     "COMPLETED"; used by the Executive P&L because delivered
+   *     revenue is what shows up on the books).
+   *   - Canceled invoices are INCLUDED (so counts tie to the serial
+   *     counter); filter by `status` client-side if you want
+   *     COMPLETED-only.
+   *
+   * If you need a "completed in range" view use `completedOrders`
+   * instead — that report filters on `completedAt`.
    */
   async issuedInvoices(
     fromIso: string,
@@ -502,12 +516,20 @@ export class ReportsService {
     branchId?: string,
   ) {
     const { from, to } = this.parseRange(fromIso, toIso);
+    // A3.D4 — Previously this stream only surfaced POS_SALE_COMPLETED and
+    // EXPENSE_RECORDED. That made the "Unified" ledger silently hide custody
+    // verification (WALLET_SETTLEMENT) and debt adjustments (DEBT_ADJUSTMENT)
+    // that are also part of the Dastur money cycle — see
+    // docs/DUSTUR_TASHGHIL_SAFARI.md §2 and reports.service.unifiedLedgerStream
+    // tests. Now every GL entry type participates in the stream.
     const glWhere: Prisma.GeneralLedgerEntryWhereInput = {
       createdAt: { gte: from, lte: to },
       entryType: {
         in: [
           GeneralLedgerEntryType.POS_SALE_COMPLETED,
           GeneralLedgerEntryType.EXPENSE_RECORDED,
+          GeneralLedgerEntryType.WALLET_SETTLEMENT,
+          GeneralLedgerEntryType.DEBT_ADJUSTMENT,
         ],
       },
     };
@@ -601,7 +623,7 @@ export class ReportsService {
       driverId: string | null;
       driverName: string | null;
       attachmentUrl: string | null;
-      refKind: 'ORDER' | 'EXPENSE' | 'DEPOSIT';
+      refKind: 'ORDER' | 'EXPENSE' | 'DEPOSIT' | 'GL';
       refId: string;
     }> = [];
 
@@ -662,6 +684,42 @@ export class ReportsService {
           attachmentUrl: attach,
           refKind: 'EXPENSE',
           refId: exp.id,
+        });
+      } else if (row.entryType === GeneralLedgerEntryType.WALLET_SETTLEMENT) {
+        // Bank/Custody settlement event — emitted by
+        // ManagerCustodyService.verifyCustody when a bag is validated and
+        // deposited at the bank. Not tied to a single order row.
+        out.push({
+          id: row.id,
+          at: row.createdAt.toISOString(),
+          streamType: 'CUSTODY_VERIFIED',
+          amountKd: row.amount.toString(),
+          memo: row.memo,
+          driverId: null,
+          driverName: null,
+          attachmentUrl: null,
+          refKind: 'GL',
+          refId: row.id,
+        });
+      } else if (row.entryType === GeneralLedgerEntryType.DEBT_ADJUSTMENT) {
+        // Debt adjustments arise from: (a) wallet shortfall at checkout,
+        // (b) debt transfers between drivers, (c) subscription activation
+        // that pays down existing debt. Sign can be positive (debt added)
+        // or negative (debt paid down). Render memo straight through.
+        const ordRef =
+          row.orderId && orderMap.has(row.orderId) ? orderMap.get(row.orderId)! : null;
+        if (branchId && ordRef && ordRef.driver?.branchId !== branchId) continue;
+        out.push({
+          id: row.id,
+          at: row.createdAt.toISOString(),
+          streamType: 'DEBT_ADJUSTMENT',
+          amountKd: row.amount.toString(),
+          memo: row.memo,
+          driverId: ordRef?.driverId ?? null,
+          driverName: ordRef?.driver?.fullName ?? null,
+          attachmentUrl: null,
+          refKind: ordRef ? 'ORDER' : 'GL',
+          refId: ordRef?.id ?? row.id,
         });
       }
     }

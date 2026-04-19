@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { DebtEntityCategory } from '@prisma/client';
+import {
+  DebtEntityCategory,
+  ManagerCashCustodyStatus,
+  Prisma,
+} from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
 import { ConfirmHandoverDto } from './dto/confirm-handover.dto';
 import type {
   DriverBalanceResponseDto,
@@ -12,9 +17,34 @@ import { DebtService } from './services/debt.service';
 import { OnlinePaymentService } from './services/online-payment.service';
 import { SubscriptionService } from './services/subscription.service';
 
+/**
+ * A3.D8 — consolidated snapshot of every KD-denominated pool of cash
+ * the institution currently holds. Returned by
+ * GET /api/finance/consolidated-cash for the Owner dashboard.
+ */
+export type ConsolidatedCashSnapshotDto = {
+  atIso: string;
+  driverFieldCashKd: string;
+  managerCustodyPendingKd: string;
+  branchWalletsKd: string;
+  unverifiedBankDepositsKd: string;
+  totalKd: string;
+  breakdown: {
+    /** Count of drivers currently holding CASH that has not been handed over. */
+    driverCount: number;
+    /** Count of custody bags awaiting deposit or verification. */
+    custodyBagCount: number;
+    /** Count of branch wallet rows (by branchId). */
+    branchWalletCount: number;
+    /** Count of BankDepositLog rows still pending accountant verification. */
+    unverifiedBankDepositCount: number;
+  };
+};
+
 @Injectable()
 export class FinanceService {
   constructor(
+    private readonly prisma: PrismaService,
     private readonly cashService: CashService,
     private readonly debtService: DebtService,
     private readonly onlinePaymentService: OnlinePaymentService,
@@ -81,6 +111,86 @@ export class FinanceService {
    */
   async getOwnerFinancialCycleReport() {
     return this.cashService.getOwnerFinancialCycleReport();
+  }
+
+  /**
+   * A3.D8 — single endpoint that aggregates every pool of KD cash the
+   * institution holds right now. Fixes the Owner's "I have three
+   * different dashboards, all with slightly different cash totals"
+   * complaint: the Financial Cycle card, the Debt Radar, and the
+   * Executive P&L each looked at a subset. This snapshot is the sum.
+   *
+   * Sources (all KWD):
+   *   1. Driver field cash    — CASH orders PAID_TO_DRIVER
+   *   2. Manager custody      — ManagerCashCustody rows in PENDING_DEPOSIT
+   *                             or AWAITING_VERIFICATION
+   *   3. Branch wallets       — Wallet table balance (currency=KWD)
+   *   4. Unverified bank logs — BankDepositLog rows with verifiedAt IS NULL
+   */
+  async getConsolidatedCashSnapshot(): Promise<ConsolidatedCashSnapshotDto> {
+    const [
+      driverCashKd,
+      custodyAgg,
+      walletAgg,
+      unverifiedAgg,
+      distinctDriversHoldingCash,
+    ] = await Promise.all([
+      this.cashService.getTotalCashWithDrivers(),
+      this.prisma.managerCashCustody.aggregate({
+        where: {
+          status: {
+            in: [
+              ManagerCashCustodyStatus.PENDING_DEPOSIT,
+              ManagerCashCustodyStatus.AWAITING_VERIFICATION,
+            ],
+          },
+        },
+        _sum: { amountKd: true },
+        _count: { _all: true },
+      }),
+      this.prisma.wallet.aggregate({
+        where: { currency: 'KWD' },
+        _sum: { balance: true },
+        _count: { _all: true },
+      }),
+      this.prisma.bankDepositLog.aggregate({
+        where: { verifiedAt: null },
+        _sum: { amountKd: true },
+        _count: { _all: true },
+      }),
+      this.prisma.order.groupBy({
+        by: ['driverId'],
+        where: {
+          status: 'COMPLETED',
+          cashStatus: 'PAID_TO_DRIVER',
+          posPaymentMethod: 'CASH',
+        },
+      }),
+    ]);
+
+    const toDec = (v: Prisma.Decimal | null | undefined): Prisma.Decimal =>
+      v ? new Prisma.Decimal(v.toString()) : new Prisma.Decimal(0);
+
+    const driverField = new Prisma.Decimal(driverCashKd);
+    const custody = toDec(custodyAgg._sum.amountKd);
+    const wallets = toDec(walletAgg._sum.balance);
+    const unverified = toDec(unverifiedAgg._sum.amountKd);
+    const total = driverField.plus(custody).plus(wallets).plus(unverified);
+
+    return {
+      atIso: new Date().toISOString(),
+      driverFieldCashKd: driverField.toFixed(4),
+      managerCustodyPendingKd: custody.toFixed(4),
+      branchWalletsKd: wallets.toFixed(4),
+      unverifiedBankDepositsKd: unverified.toFixed(4),
+      totalKd: total.toFixed(4),
+      breakdown: {
+        driverCount: distinctDriversHoldingCash.length,
+        custodyBagCount: custodyAgg._count._all,
+        branchWalletCount: walletAgg._count._all,
+        unverifiedBankDepositCount: unverifiedAgg._count._all,
+      },
+    };
   }
 
   async getRealtimeTotals() {

@@ -27,6 +27,13 @@ export class CallCenterOperationsSummaryDto {
 
   @ApiProperty({
     description:
+      'A3.D10 — Broad "debt recovered today" metric matching the Owner Debt Recovery Report formula: sum of `metadata.debtSettled` across both ORDER_WALLET_SETTLEMENT (via link + manual call-center + driver checkout shortfall) and SUBSCRIPTION_ACTIVATION rows, today (Kuwait local). This is the value the Owner report sums per day; exposed here so both surfaces can display identical numbers for the same window.',
+    example: '95.000',
+  })
+  debtRecoveredTodayKd!: string;
+
+  @ApiProperty({
+    description:
       'Count of open (non-canceled, UNPAID) orders that have a stored hosted payment URL waiting for customer action. Scoped by `branchId` when provided.',
     example: 12,
   })

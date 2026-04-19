@@ -222,7 +222,7 @@ export function DebtTransfersPage() {
             onValueChange={(v) =>
               setFilters((f) => ({
                 ...f,
-                sourceDriverId: v === 'ALL' ? undefined : v,
+                sourceDriverId: !v || v === 'ALL' ? undefined : v,
                 offset: 0,
               }))
             }
@@ -248,7 +248,7 @@ export function DebtTransfersPage() {
             onValueChange={(v) =>
               setFilters((f) => ({
                 ...f,
-                targetDriverId: v === 'ALL' ? undefined : v,
+                targetDriverId: !v || v === 'ALL' ? undefined : v,
                 offset: 0,
               }))
             }
@@ -521,7 +521,7 @@ function CreateDebtTransferDialog({
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="flex flex-col gap-2">
               <Label>{t('debtTransfers.create.sourceDriver')}</Label>
-              <Select value={sourceId} onValueChange={setSourceId}>
+              <Select value={sourceId} onValueChange={(v) => setSourceId(v ?? '')}>
                 <SelectTrigger>
                   <SelectValue
                     placeholder={t(
@@ -540,7 +540,7 @@ function CreateDebtTransferDialog({
             </div>
             <div className="flex flex-col gap-2">
               <Label>{t('debtTransfers.create.targetDriver')}</Label>
-              <Select value={targetId} onValueChange={setTargetId}>
+              <Select value={targetId} onValueChange={(v) => setTargetId(v ?? '')}>
                 <SelectTrigger>
                   <SelectValue
                     placeholder={t(

@@ -74,7 +74,7 @@ export type UnifiedLedgerStreamRow = {
   driverId: string | null;
   driverName: string | null;
   attachmentUrl: string | null;
-  refKind: 'ORDER' | 'EXPENSE' | 'DEPOSIT';
+  refKind: 'ORDER' | 'EXPENSE' | 'DEPOSIT' | 'GL';
   refId: string;
 };
 
@@ -365,6 +365,31 @@ export function confirmHandover(
   return apiJson<ConfirmHandoverResponse>('/api/finance/handover/confirm', {
     method: 'POST',
     body: JSON.stringify(body),
+    token,
+  });
+}
+
+/**
+ * A3.D8 — Consolidated cash snapshot. Every pool of KD the institution
+ * holds summed to a single total, with a breakdown for audit.
+ */
+export type ConsolidatedCashSnapshot = {
+  atIso: string;
+  driverFieldCashKd: string;
+  managerCustodyPendingKd: string;
+  branchWalletsKd: string;
+  unverifiedBankDepositsKd: string;
+  totalKd: string;
+  breakdown: {
+    driverCount: number;
+    custodyBagCount: number;
+    branchWalletCount: number;
+    unverifiedBankDepositCount: number;
+  };
+};
+
+export function getConsolidatedCashSnapshot(token: string) {
+  return apiJson<ConsolidatedCashSnapshot>('/api/finance/consolidated-cash', {
     token,
   });
 }
@@ -1213,7 +1238,16 @@ export type ExtendSubscriptionResult = {
  */
 export type CallCenterOperationsSummary = {
   totalMarketDebtKd: string;
+  /** Narrow "collected via payment link today" — historical green KPI. */
   debtCollectedTodayKd: string;
+  /**
+   * A3.D10 — broad "debt recovered today" matching the Owner Debt
+   * Recovery Report formula (ORDER_WALLET_SETTLEMENT +
+   * SUBSCRIPTION_ACTIVATION, Kuwait-local today). Added so the Call
+   * Center and the Owner report display identical numbers for the same
+   * window.
+   */
+  debtRecoveredTodayKd: string;
   pendingLinksCount: number;
   /** Reference day in Kuwait-local (UTC+3) timezone, YYYY-MM-DD. */
   dayIso: string;

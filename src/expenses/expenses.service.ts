@@ -124,13 +124,25 @@ export class ExpensesService {
         : isDriver && method === ExpenseMethod.CASH ? amountDec.neg()
         : amountDec.neg();
 
+      // A3.D7 — An expense is only an accounting liability once the
+      // accountant approves it. Historically we posted the full amount on
+      // CREATE, which made SUM(EXPENSE_RECORDED) include PENDING rows
+      // while the Executive P&L only counts APPROVED. That silent drift
+      // could overstate expenses on the Unified Ledger by tens of dinars
+      // a day. The accrual row with the real amount is now emitted at
+      // APPROVED time (see updateStatus); this CREATED marker stays at
+      // zero so the row still appears on audit streams without
+      // double-counting.
       await this.generalLedger.append(tx, {
         entryType: GeneralLedgerEntryType.EXPENSE_RECORDED,
-        amount: amountDec,
-        memo: row.title,
+        amount: 0,
+        memo: `expense:created:${row.title}`,
         expenseId: row.id,
         actorUserId: userId,
         metadata: {
+          event: 'CREATED',
+          status: ExpenseStatus.PENDING_ACCOUNTANT,
+          amountKd: amountDec.toString(),
           category: row.category,
           expenseMethod: method,
           safariRole,
@@ -228,6 +240,15 @@ export class ExpensesService {
       throw new ForbiddenException();
     }
     return this.prisma.$transaction(async (tx) => {
+      const previous = await tx.branchExpense.findUnique({
+        where: { id },
+        select: { status: true },
+      });
+      if (!previous) {
+        throw new BadRequestException('Expense not found');
+      }
+      const previousStatus = previous.status;
+
       const updated = await tx.branchExpense.update({
         where: { id },
         data: { status },
@@ -241,20 +262,36 @@ export class ExpensesService {
         },
       });
 
-      // Dastur §5 — every financial state change must produce a GL row.
-      // The original creation entry carries the accrual amount; this second
-      // row is a zero-amount audit marker so status transitions (APPROVED /
-      // REJECTED / AUDIT) appear on the unified ledger without double-
-      // counting sums that filter by `EXPENSE_RECORDED`.
+      // A3.D7 — Accrual booking is deferred to APPROVED so
+      // SUM(EXPENSE_RECORDED) always matches Executive P&L exactly.
+      // Transitions emit:
+      //   PENDING → APPROVED   : +amount accrual
+      //   APPROVED → REJECTED  : -amount reversal (in case we ever flip
+      //                          after approval)
+      //   APPROVED → AUDIT     : 0 (audit marker, amount stays booked)
+      //   else                 : 0 (audit marker only)
+      let ledgerAmount: Prisma.Decimal | number = 0;
+      let event = 'STATUS_CHANGE';
+      const wasApproved = previousStatus === ExpenseStatus.APPROVED;
+      const becameApproved = status === ExpenseStatus.APPROVED;
+      if (!wasApproved && becameApproved) {
+        ledgerAmount = updated.amount;
+        event = 'ACCRUAL';
+      } else if (wasApproved && !becameApproved) {
+        ledgerAmount = updated.amount.neg();
+        event = 'REVERSAL';
+      }
+
       await this.generalLedger.append(tx, {
         entryType: GeneralLedgerEntryType.EXPENSE_RECORDED,
-        amount: 0,
+        amount: ledgerAmount,
         memo: `expense:${status.toLowerCase()}`,
         expenseId: updated.id,
         actorUserId,
         metadata: {
-          event: 'STATUS_CHANGE',
+          event,
           status,
+          previousStatus,
           amountKd: updated.amount.toString(),
           category: updated.category,
           expenseMethod: updated.expenseMethod,

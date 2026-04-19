@@ -57,6 +57,8 @@ function streamLabelKey(streamType: string): string {
     FUEL_EXPENSE: 'unifiedLedger.streamFuelExpense',
     OTHER_EXPENSE: 'unifiedLedger.streamOtherExpense',
     DEPOSIT: 'unifiedLedger.streamDeposit',
+    CUSTODY_VERIFIED: 'unifiedLedger.streamCustodyVerified',
+    DEBT_ADJUSTMENT: 'unifiedLedger.streamDebtAdjustment',
   };
   return map[streamType] ?? 'unifiedLedger.streamOther';
 }

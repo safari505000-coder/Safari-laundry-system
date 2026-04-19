@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { GeneralLedgerModule } from '../general-ledger/general-ledger.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { BankDepositsController } from './bank-deposits.controller';
@@ -13,7 +14,7 @@ import { OnlinePaymentService } from './services/online-payment.service';
 import { SubscriptionService } from './services/subscription.service';
 
 @Module({
-  imports: [PrismaModule, PaymentsModule],
+  imports: [PrismaModule, PaymentsModule, GeneralLedgerModule],
   controllers: [FinanceController, BankDepositsController, DepositsController],
   providers: [
     FinanceService,
@@ -28,6 +29,7 @@ import { SubscriptionService } from './services/subscription.service';
     FinanceService,
     BankDepositsService,
     DepositsService,
+    CashService,
     DebtService,
     SubscriptionService,
   ],

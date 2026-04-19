@@ -46,7 +46,7 @@ function endOfDayIso(d: Date): string {
 export function ReportsPage() {
   const { t } = useTranslation();
   const dateLocale = useAppLocale();
-  const { token, hasRole, ownerBranchId, user } = useAuth();
+  const { token, ownerBranchId, user } = useAuth();
   const [from, setFrom] = useState(() => startOfDayIso(new Date()));
   const [to, setTo] = useState(() => endOfDayIso(new Date()));
   const [payFilter, setPayFilter] = useState<string>('ALL');

@@ -668,6 +668,9 @@ export const en = {
     streamFuelExpense: 'Fuel expense',
     streamOtherExpense: 'Other expense',
     streamDeposit: 'Driver deposit',
+    streamCustodyVerified: 'Manager custody verified',
+    streamDebtAdjustment: 'Debt adjustment',
+    streamOther: 'Other',
   },
   orders: {
     title: 'Order history',

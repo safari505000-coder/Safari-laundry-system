@@ -87,6 +87,17 @@ export class FinanceController {
     return this.financeService.getOwnerCustomerWalletSummary();
   }
 
+  @Get('consolidated-cash')
+  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.ACCOUNTANT)
+  @ApiOperation({
+    summary: `Consolidated cash snapshot (${APP_BRAND})`,
+    description:
+      'A3.D8 — every pool of KD cash the institution currently holds: driver field cash + manager custody bags (PENDING_DEPOSIT / AWAITING_VERIFICATION) + branch wallets + unverified bank deposit logs. Used by the Owner/Accountant control-panel card so the total is the single source of truth.',
+  })
+  getConsolidatedCashSnapshot() {
+    return this.financeService.getConsolidatedCashSnapshot();
+  }
+
   @Get('reports/daily-pos-sales')
   @AllowDriverDailyPosSales()
   @Roles(

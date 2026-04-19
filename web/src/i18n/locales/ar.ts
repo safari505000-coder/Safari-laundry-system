@@ -666,6 +666,9 @@ export const ar = {
     streamFuelExpense: 'مصروف وقود',
     streamOtherExpense: 'مصروف آخر',
     streamDeposit: 'إيداع سائق',
+    streamCustodyVerified: 'اعتماد عهدة المدير',
+    streamDebtAdjustment: 'تسوية ديون',
+    streamOther: 'أخرى',
   },
   orders: {
     title: 'سجل الطلبات',

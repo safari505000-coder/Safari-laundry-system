@@ -56,6 +56,7 @@ import {
 } from '@/modules/shared/components/ui/table';
 import { EXECUTIVE_SUMMARY_REFRESH_EVENT } from '@/lib/executive-summary-refresh';
 import { cn } from '@/lib/utils';
+import { ConsolidatedCashCard } from '@/modules/owner/components/ConsolidatedCashCard';
 import { FinancialCycleCard } from '@/modules/owner/components/FinancialCycleCard';
 import { SerialGapCard } from '@/modules/owner/components/SerialGapCard';
 
@@ -344,6 +345,10 @@ export function FinancialsPage() {
           </Button>
         </div>
       </header>
+
+      {hasRole('OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT') ?
+        <ConsolidatedCashCard token={token} />
+      : null}
 
       {hasRole('OWNER', 'GENERAL_MANAGER') ?
         <>

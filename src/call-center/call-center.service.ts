@@ -616,22 +616,35 @@ export class CallCenterService {
         },
       }),
       // V1.6.4 — STRICT: Green card reflects ONLY Collections-page
-      // recoveries. We fetch today's ORDER_WALLET_SETTLEMENT rows for
-      // the branch scope, then filter in memory on
-      // `metadata.debtSettlementViaLink === true`. In-memory filtering
-      // avoids Prisma-version-specific quirks with JSONB boolean
-      // filters where `{ path: [...], equals: true }` can silently
-      // return zero rows on some PostgreSQL + Prisma combinations,
-      // which was the root cause of the "Red drops but Green stays 0"
-      // regression. Red card, pending-links count, and table query
-      // remain untouched.
+      // recoveries. We fetch today's ORDER_WALLET_SETTLEMENT AND
+      // SUBSCRIPTION_ACTIVATION rows for the branch scope, then filter
+      // in memory on `metadata.debtSettlementViaLink === true` for the
+      // narrow green KPI. The broader set is also used to compute the
+      // A3.D10 `debtRecoveredTodayKd` metric which matches the Owner
+      // Debt Recovery Report formula exactly (same types, same filter).
+      //
+      // In-memory filtering avoids Prisma-version-specific quirks with
+      // JSONB boolean filters where `{ path: [...], equals: true }` can
+      // silently return zero rows on some PostgreSQL + Prisma
+      // combinations.
       this.prisma.transactionHistory.findMany({
         where: {
           createdAt: { gte: dayStart, lt: dayEnd },
-          type: LedgerTransactionType.ORDER_WALLET_SETTLEMENT,
+          type: {
+            in: [
+              LedgerTransactionType.ORDER_WALLET_SETTLEMENT,
+              LedgerTransactionType.SUBSCRIPTION_ACTIVATION,
+            ],
+          },
           ...(ledgerBranch ?? {}),
         },
-        select: { id: true, metadata: true, createdAt: true, orderId: true },
+        select: {
+          id: true,
+          type: true,
+          metadata: true,
+          createdAt: true,
+          orderId: true,
+        },
       }),
       // Count of UNPAID, non-canceled orders that already have a hosted URL
       // — still a useful Call-Center workload metric on its own.
@@ -645,12 +658,23 @@ export class CallCenterService {
       }),
     ]);
 
-    // V1.6.4 — strict post-fetch filter: only rows where
+    // V1.6.4 — narrow green card: only rows where
     // metadata.debtSettlementViaLink === true contribute to the sum.
     const debtViaLinkRows = todaysLedgerRows.filter((r) =>
       isDebtViaLinkRow(r.metadata),
     );
-    const collectedToday = debtViaLinkRows.reduce(
+    const collectedTodayViaLink = debtViaLinkRows.reduce(
+      (acc, r) => acc.plus(extractDebtSettled(r.metadata)),
+      new Prisma.Decimal(0),
+    );
+
+    // A3.D10 — broad recovery total matching the Debt Recovery Report.
+    // Same inputs (ORDER_WALLET_SETTLEMENT + SUBSCRIPTION_ACTIVATION),
+    // same reducer (`extractDebtSettled`), just a different time window
+    // (Kuwait-local today instead of caller-supplied range). Surfacing
+    // this alongside the narrow value fixes the "same name, two
+    // formulas" disconnection flagged in the dastur audit.
+    const recoveredToday = todaysLedgerRows.reduce(
       (acc, r) => acc.plus(extractDebtSettled(r.metadata)),
       new Prisma.Decimal(0),
     );
@@ -661,7 +685,8 @@ export class CallCenterService {
       totalMarketDebtKd: KWD_DP(
         unpaidAgg._sum.totalPrice ?? new Prisma.Decimal(0),
       ),
-      debtCollectedTodayKd: KWD_DP(collectedToday),
+      debtCollectedTodayKd: KWD_DP(collectedTodayViaLink),
+      debtRecoveredTodayKd: KWD_DP(recoveredToday),
       pendingLinksCount,
       dayIso: dayIsoLocal,
       branchId: branchId ?? null,

@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import {
   CashStatus,
+  GeneralLedgerEntryType,
   OrderStatus,
   PosPaymentMethod,
   Prisma,
@@ -16,6 +17,7 @@ import {
   CustomerLedgerService,
   type OrderWalletSettlementPrefetch,
 } from '../../customer-ledger/customer-ledger.service';
+import { GeneralLedgerService } from '../../general-ledger/general-ledger.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
 export type CreatePaymentLinkParams = {
@@ -41,6 +43,7 @@ export class PaymentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly customerLedger: CustomerLedgerService,
+    private readonly generalLedger: GeneralLedgerService,
   ) {
     this.apiBase = (process.env.PAYMENTS_API_BASE_URL ?? '').replace(
       /\/$/,
@@ -379,6 +382,25 @@ export class PaymentsService {
           prefetch,
           extraMetadata,
         );
+
+        // A3.D1 — every gateway-finalized order is a real revenue event
+        // and must land in the GL just like instant POS checkout. Without
+        // this append, the Unified Ledger stream silently undercounts
+        // revenue vs. the Executive P&L (which reads `Order.totalPrice`
+        // on `completedAt`). See docs/DUSTUR_TASHGHIL_SAFARI.md §1.
+        await this.generalLedger.append(tx, {
+          entryType: GeneralLedgerEntryType.POS_SALE_COMPLETED,
+          amount: order.totalPrice,
+          memo: 'POS checkout (hosted link)',
+          orderId,
+          customerId: order.customerId,
+          actorUserId: performerId,
+          metadata: {
+            posPaymentMethod: PosPaymentMethod.ONLINE,
+            originalPaymentMethod: originalMethod ?? null,
+            source: 'GATEWAY_CALLBACK',
+          },
+        });
       },
       { maxWait: 10_000, timeout: 15_000 },
     );
@@ -520,6 +542,23 @@ export class PaymentsService {
           prefetch,
           extraMetadata,
         );
+
+        // A3.D1 — Call-Center "mark as paid" is also a real revenue event;
+        // mirror the GL write that instant POS checkout performs so the
+        // Unified Ledger + Executive P&L stay aligned.
+        await this.generalLedger.append(tx, {
+          entryType: GeneralLedgerEntryType.POS_SALE_COMPLETED,
+          amount: order.totalPrice,
+          memo: 'POS checkout (call-center manual)',
+          orderId,
+          customerId: order.customerId,
+          actorUserId: performerId,
+          metadata: {
+            posPaymentMethod: method,
+            originalPaymentMethod: originalMethod ?? null,
+            source: 'CALL_CENTER_MANUAL',
+          },
+        });
 
         return {
           orderId: order.id,

@@ -3,13 +3,21 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { BankDepositType, Prisma } from '@prisma/client';
+import {
+  BankDepositType,
+  GeneralLedgerEntryType,
+  Prisma,
+} from '@prisma/client';
+import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { BankDepositsListQueryDto } from './dto/bank-deposits-list-query.dto';
 
 @Injectable()
 export class BankDepositsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly generalLedger: GeneralLedgerService,
+  ) {}
 
   async list(q: BankDepositsListQueryDto) {
     const take = q.take ?? 100;
@@ -96,20 +104,50 @@ export class BankDepositsService {
     if (row.verifiedByAccountantId) {
       throw new BadRequestException('Already verified by accountant');
     }
-    const updated = await this.prisma.bankDepositLog.update({
-      where: { id },
-      data: {
-        verifiedByAccountantId: accountantId,
-        verifiedAt: new Date(),
-      },
-      include: {
-        uploadedBy: {
-          select: { id: true, fullName: true, username: true },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const next = await tx.bankDepositLog.update({
+        where: { id },
+        data: {
+          verifiedByAccountantId: accountantId,
+          verifiedAt: new Date(),
         },
-        verifiedByAccountant: {
-          select: { id: true, fullName: true, username: true },
+        include: {
+          uploadedBy: {
+            select: { id: true, fullName: true, username: true },
+          },
+          verifiedByAccountant: {
+            select: { id: true, fullName: true, username: true },
+          },
         },
-      },
+      });
+
+      // A3.D2 — Every accountant-verified deposit (whether through the
+      // ManagerCashCustody bag workflow or this legacy receipt-only log)
+      // must leave an audit trail on the GL so the Unified Ledger shows
+      // a complete picture of money hitting the bank. The amount is
+      // intentionally posted as zero: the real cash settlement row is
+      // booked by ManagerCashCustody.verifyCustody for the normal flow,
+      // and for orphan receipts (no custody bag) the metadata still
+      // preserves the full amount for manual reconciliation. This
+      // prevents double-counting in SUM(WALLET_SETTLEMENT) while keeping
+      // the row visible.
+      await this.generalLedger.append(tx, {
+        entryType: GeneralLedgerEntryType.WALLET_SETTLEMENT,
+        amount: 0,
+        memo: `bank-deposit:${next.depositType.toLowerCase()}:verified`,
+        actorUserId: accountantId,
+        metadata: {
+          source: 'BANK_DEPOSIT_LOG',
+          bankDepositLogId: next.id,
+          depositType: next.depositType,
+          amountKd: next.amountKd.toString(),
+          receiptImageUrl: next.receiptImageUrl,
+          shiftId: next.shiftId,
+          uploadedById: next.uploadedById,
+        },
+      });
+
+      return next;
     });
     return this.mapOne(updated);
   }
