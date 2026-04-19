@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Loader2, Power, RotateCcwKey, Save, UserPlus, Users } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import type { BranchRow, SafariRole, TeamUserRow } from '@/lib/api';
 import { apiJson, ApiError } from '@/lib/api';
 import { Button } from '@/modules/shared/components/ui/button';
@@ -48,6 +49,7 @@ type Props = {
 };
 
 export function StaffControlReactor({ token }: Props) {
+  const { t } = useTranslation();
   const [users, setUsers] = useState<TeamUserRow[]>([]);
   const [branches, setBranches] = useState<BranchRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -65,6 +67,24 @@ export function StaffControlReactor({ token }: Props) {
   const canSubmit = useMemo(
     () => fullName.trim().length >= 2 && username.trim().length >= 2 && password.length >= 1 && branchId.length > 0,
     [branchId, fullName, password.length, username],
+  );
+
+  // V19.0 — resolve branch UUID → human name so the Select trigger never falls
+  // back to the raw id. If branches haven't loaded yet the placeholder shows.
+  const branchNameById = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const b of branches) map[b.id] = b.name;
+    return map;
+  }, [branches]);
+
+  // V19.0 — Arabic-first role label (with English fallback via i18n) so the
+  // dropdown reads "مدير عام" instead of "GENERAL_MANAGER".
+  const roleLabel = useCallback(
+    (role: SafariRole): string => {
+      const translated = t(`roles.${role}`, { defaultValue: '' });
+      return translated && translated !== `roles.${role}` ? translated : role;
+    },
+    [t],
   );
 
   const loadUsers = useCallback(async () => {
@@ -251,7 +271,7 @@ export function StaffControlReactor({ token }: Props) {
                   <TableRow key={u.id}>
                     <TableCell className="font-semibold text-slate-900">{u.fullName}</TableCell>
                     <TableCell className="text-slate-800">@{u.username}</TableCell>
-                    <TableCell className="text-slate-800">{u.safariRole}</TableCell>
+                    <TableCell className="text-slate-800">{roleLabel(u.safariRole)}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <Select
@@ -262,7 +282,11 @@ export function StaffControlReactor({ token }: Props) {
                           disabled={actionBusyId === u.id}
                         >
                           <SelectTrigger className="w-[190px] bg-white text-slate-900">
-                            <SelectValue placeholder="اختر الفرع" />
+                            {branchDraftByUser[u.id] && branchNameById[branchDraftByUser[u.id]!] ? (
+                              <span>{branchNameById[branchDraftByUser[u.id]!]}</span>
+                            ) : (
+                              <SelectValue placeholder="اختر الفرع" />
+                            )}
                           </SelectTrigger>
                           <SelectContent>
                             {branches.map((b) => (
@@ -347,10 +371,14 @@ export function StaffControlReactor({ token }: Props) {
                 <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
               </div>
               <div className="space-y-1.5">
-                <Label>ربط الفرع</Label>
+                <Label>ربط الفرع (اسم الفرع)</Label>
                 <Select value={branchId} onValueChange={(v) => setBranchId(v ?? '')}>
                   <SelectTrigger className="bg-white">
-                    <SelectValue placeholder="اختر الفرع" />
+                    {branchId && branchNameById[branchId] ? (
+                      <span className="text-slate-900">{branchNameById[branchId]}</span>
+                    ) : (
+                      <SelectValue placeholder="اختر الفرع" />
+                    )}
                   </SelectTrigger>
                   <SelectContent>
                     {branches.map((b) => (
@@ -365,12 +393,12 @@ export function StaffControlReactor({ token }: Props) {
                 <Label>الدور</Label>
                 <Select value={safariRole} onValueChange={(v) => setSafariRole(v as SafariRole)}>
                   <SelectTrigger className="bg-white">
-                    <SelectValue />
+                    <span className="text-slate-900">{roleLabel(safariRole)}</span>
                   </SelectTrigger>
                   <SelectContent>
                     {ROLE_OPTIONS.map((r) => (
                       <SelectItem key={r} value={r}>
-                        {r}
+                        {roleLabel(r)}
                       </SelectItem>
                     ))}
                   </SelectContent>

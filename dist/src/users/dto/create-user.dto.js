@@ -13,6 +13,17 @@ exports.CreateUserDto = void 0;
 const swagger_1 = require("@nestjs/swagger");
 const client_1 = require("@prisma/client");
 const class_validator_1 = require("class-validator");
+const SAFARI_ROLE_VALUES = [
+    'OWNER',
+    'GENERAL_MANAGER',
+    'MANAGER',
+    'DRIVER',
+    'WORKER',
+    'CALL_CENTER',
+    'ACCOUNTANT',
+    'SUPERVISOR',
+    'VIEWER',
+];
 class CreateUserDto {
     fullName;
     username;
@@ -52,9 +63,11 @@ __decorate([
         enum: client_1.SafariRole,
         enumName: 'SafariRole',
         example: client_1.SafariRole.DRIVER,
-        description: 'OWNER · MANAGER · SUPERVISOR: operations · VIEWER · ACCOUNTANT: read-only/finance · DRIVER · CALL_CENTER',
+        description: 'OWNER · GENERAL_MANAGER (Owner proxy) · MANAGER · SUPERVISOR: operations · VIEWER · ACCOUNTANT: read-only/finance · DRIVER · CALL_CENTER',
     }),
-    (0, class_validator_1.IsEnum)(client_1.SafariRole),
+    (0, class_validator_1.IsIn)(SAFARI_ROLE_VALUES, {
+        message: `safariRole must be one of: ${SAFARI_ROLE_VALUES.join(', ')}`,
+    }),
     __metadata("design:type", String)
 ], CreateUserDto.prototype, "safariRole", void 0);
 __decorate([

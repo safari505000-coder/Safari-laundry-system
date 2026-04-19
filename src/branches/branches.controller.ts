@@ -18,6 +18,7 @@ export class BranchesController {
   @Get()
   @Roles(
     SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
     SafariRole.MANAGER,
     SafariRole.ACCOUNTANT,
     SafariRole.SUPERVISOR,
@@ -25,7 +26,8 @@ export class BranchesController {
   )
   @ApiOperation({
     summary: `List branches (${APP_BRAND})`,
-    description: 'OWNER uses this for the branch switcher on reports.',
+    description:
+      'OWNER / GENERAL_MANAGER use this for the branch switcher on reports and for the branch picker in the user-management dialog.',
   })
   list() {
     return this.branchesService.listAll();

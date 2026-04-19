@@ -2,13 +2,28 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { SafariRole } from '@prisma/client';
 import {
   IsBoolean,
-  IsEnum,
+  IsIn,
   IsOptional,
   IsString,
   IsUUID,
   Matches,
   MinLength,
 } from 'class-validator';
+
+// V19.0: explicit allow-list so validation does not depend on Prisma client
+// regeneration timing on a given deploy target. GENERAL_MANAGER is a
+// first-class tier (Owner's strategic proxy) and MUST be accepted.
+const SAFARI_ROLE_VALUES: SafariRole[] = [
+  'OWNER',
+  'GENERAL_MANAGER',
+  'MANAGER',
+  'DRIVER',
+  'WORKER',
+  'CALL_CENTER',
+  'ACCOUNTANT',
+  'SUPERVISOR',
+  'VIEWER',
+];
 
 export class CreateUserDto {
   @ApiProperty({ example: 'Ahmad Ali', description: 'Full name as shown in the app' })
@@ -38,9 +53,11 @@ export class CreateUserDto {
     enumName: 'SafariRole',
     example: SafariRole.DRIVER,
     description:
-      'OWNER · MANAGER · SUPERVISOR: operations · VIEWER · ACCOUNTANT: read-only/finance · DRIVER · CALL_CENTER',
+      'OWNER · GENERAL_MANAGER (Owner proxy) · MANAGER · SUPERVISOR: operations · VIEWER · ACCOUNTANT: read-only/finance · DRIVER · CALL_CENTER',
   })
-  @IsEnum(SafariRole)
+  @IsIn(SAFARI_ROLE_VALUES, {
+    message: `safariRole must be one of: ${SAFARI_ROLE_VALUES.join(', ')}`,
+  })
   safariRole: SafariRole;
 
   @ApiPropertyOptional({

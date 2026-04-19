@@ -40,10 +40,10 @@ let BranchesController = class BranchesController {
 exports.BranchesController = BranchesController;
 __decorate([
     (0, common_1.Get)(),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
     (0, swagger_1.ApiOperation)({
         summary: `List branches (${branding_1.APP_BRAND})`,
-        description: 'OWNER uses this for the branch switcher on reports.',
+        description: 'OWNER / GENERAL_MANAGER use this for the branch switcher on reports and for the branch picker in the user-management dialog.',
     }),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
