@@ -41,6 +41,7 @@ var __importStar = (this && this.__importStar) || (function () {
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var AuthService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AuthService = void 0;
 const common_1 = require("@nestjs/common");
@@ -49,6 +50,7 @@ const bcrypt = __importStar(require("bcrypt"));
 const client_1 = require("@prisma/client");
 const finance_service_1 = require("../finance/finance.service");
 const prisma_service_1 = require("../prisma/prisma.service");
+const kuwait_time_1 = require("../common/time/kuwait-time");
 const INSTITUTIONAL_ROLES = [
     client_1.SafariRole.OWNER,
     client_1.SafariRole.GENERAL_MANAGER,
@@ -60,10 +62,16 @@ const INSTITUTIONAL_ROLES = [
     client_1.SafariRole.SUPERVISOR,
     client_1.SafariRole.VIEWER,
 ];
-let AuthService = class AuthService {
+const FIELD_OPERATOR_ROLES = [
+    client_1.SafariRole.DRIVER,
+    client_1.SafariRole.MANAGER,
+];
+const FIELD_OPERATOR_WINDOW_START_HOUR = 7;
+let AuthService = AuthService_1 = class AuthService {
     prisma;
     jwt;
     financeService;
+    logger = new common_1.Logger(AuthService_1.name);
     constructor(prisma, jwt, financeService) {
         this.prisma = prisma;
         this.jwt = jwt;
@@ -88,6 +96,19 @@ let AuthService = class AuthService {
         const roleName = user.role.name;
         if (!INSTITUTIONAL_ROLES.includes(roleName)) {
             throw new common_1.UnauthorizedException('Account role is not authorized');
+        }
+        if (FIELD_OPERATOR_ROLES.includes(roleName)) {
+            const hour = (0, kuwait_time_1.kuwaitHour)(new Date());
+            if (hour < FIELD_OPERATOR_WINDOW_START_HOUR) {
+                this.recordOutsideHoursAudit(user.id, roleName, hour).catch((err) => {
+                    this.logger.warn(`[AUTH] failed to record OUTSIDE_WORKING_HOURS audit for ${user.id}: ${String(err)}`);
+                });
+                throw new common_1.UnauthorizedException({
+                    statusCode: 401,
+                    message: 'Login is allowed only between 07:00 and 23:59 Kuwait time for drivers and branch managers.',
+                    errorCode: 'OUTSIDE_WORKING_HOURS',
+                });
+            }
         }
         if (user.safariRole !== roleName) {
             await this.prisma.user.update({
@@ -116,9 +137,26 @@ let AuthService = class AuthService {
             },
         };
     }
+    async recordOutsideHoursAudit(userId, role, kuwaitHourValue) {
+        await this.prisma.auditLog.create({
+            data: {
+                userId,
+                action: 'OUTSIDE_WORKING_HOURS',
+                resource: '/api/auth/login',
+                changes: {
+                    role,
+                    kuwaitHour: kuwaitHourValue,
+                    kuwaitTime: new Date().toLocaleString('en-GB', {
+                        timeZone: 'Asia/Kuwait',
+                        hour12: false,
+                    }),
+                },
+            },
+        });
+    }
 };
 exports.AuthService = AuthService;
-exports.AuthService = AuthService = __decorate([
+exports.AuthService = AuthService = AuthService_1 = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
         jwt_1.JwtService,

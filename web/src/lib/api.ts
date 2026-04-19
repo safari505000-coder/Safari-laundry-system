@@ -616,6 +616,36 @@ export function runShiftCycleNow(token: string) {
   );
 }
 
+// Dastur §3.8 — order-serial gap monitor (Owner Serials island).
+export type SerialGapReport = {
+  scannedAtIso: string;
+  currentCounter: number;
+  presentCount: number;
+  gapCount: number;
+  firstGaps: number[];
+  allGapsTruncated: boolean;
+};
+
+export type SerialGapLatest = {
+  latest: {
+    report: SerialGapReport;
+    hadGaps: boolean;
+    recordedAtIso: string;
+  } | null;
+};
+
+export function getLatestSerialGapReport(token: string) {
+  return apiJson<SerialGapLatest>('/api/owner/serials/gaps', { token });
+}
+
+export function scanSerialGapsNow(token: string) {
+  return apiJson<SerialGapReport>('/api/owner/serials/gaps/scan-now', {
+    token,
+    method: 'POST',
+    body: '{}',
+  });
+}
+
 export type OwnerWalletSummary = {
   totalWalletLiabilities: string;
   totalCustomerDebts: string;

@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   Patch,
+  Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -22,14 +23,17 @@ import {
   SerialLogDto,
   SetDriverPrefixDto,
 } from './dto/serials.dto';
+import { SerialGapService, type GapReport } from './serial-gap.service';
 import { SerialsService } from './serials.service';
 
 /**
- * Dastur §1 (V1.5) — Owner-only serial management island.
+ * Dastur §1 (V1.5) + §3.8 — Owner-only serial management island.
  *
- * - `GET  /owner/serials/drivers`     list drivers + current prefixes
+ * - `GET  /owner/serials/drivers`      list drivers + current prefixes
  * - `PATCH /owner/serials/drivers/:id` set/clear a driver's single-letter prefix
- * - `GET  /owner/serials/log`         recent orders with stamped serials
+ * - `GET  /owner/serials/log`          recent orders with stamped serials
+ * - `GET  /owner/serials/gaps`         latest gap scan (audit-backed)
+ * - `POST /owner/serials/gaps/scan-now` force a fresh scan (OWNER only)
  */
 @ApiTags('owner-serials')
 @ApiBearerAuth('bearer')
@@ -37,7 +41,10 @@ import { SerialsService } from './serials.service';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
 export class SerialsController {
-  constructor(private readonly serials: SerialsService) {}
+  constructor(
+    private readonly serials: SerialsService,
+    private readonly gaps: SerialGapService,
+  ) {}
 
   @Get('drivers')
   @ApiOperation({
@@ -65,5 +72,24 @@ export class SerialsController {
   getSerialLog(@Query('limit') limit?: string): Promise<SerialLogDto> {
     const parsed = limit ? Number.parseInt(limit, 10) : 50;
     return this.serials.getSerialLog(Number.isFinite(parsed) ? parsed : 50);
+  }
+
+  @Get('gaps')
+  @ApiOperation({
+    summary: `Latest order-serial gap scan (${APP_BRAND})`,
+  })
+  async getLatestGapReport(): Promise<{
+    latest: Awaited<ReturnType<SerialGapService['latestReport']>>;
+  }> {
+    return { latest: await this.gaps.latestReport() };
+  }
+
+  @Post('gaps/scan-now')
+  @Roles(SafariRole.OWNER)
+  @ApiOperation({
+    summary: `Force a fresh order-serial gap scan (OWNER only, ${APP_BRAND})`,
+  })
+  scanGapsNow(): Promise<GapReport> {
+    return this.gaps.scanNow();
   }
 }

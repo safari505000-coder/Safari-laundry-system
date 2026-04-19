@@ -571,6 +571,8 @@ export const en = {
     footer: 'Authorized personnel only. Sessions use secure JWT bearer tokens.',
     signedIn: 'Signed in',
     signInError: 'Unable to sign in',
+    outsideWorkingHours:
+      'Login is restricted to 07:00–23:59 Kuwait time for drivers and branch managers.',
   },
   dashboard: {
     title: 'Command center',

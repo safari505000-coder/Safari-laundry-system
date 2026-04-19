@@ -11,6 +11,7 @@ const common_1 = require("@nestjs/common");
 const auth_module_1 = require("../auth/auth.module");
 const prisma_module_1 = require("../prisma/prisma.module");
 const serial_counter_service_1 = require("./serial-counter.service");
+const serial_gap_service_1 = require("./serial-gap.service");
 const serials_controller_1 = require("./serials.controller");
 const serials_service_1 = require("./serials.service");
 let SerialsModule = class SerialsModule {
@@ -20,7 +21,7 @@ exports.SerialsModule = SerialsModule = __decorate([
     (0, common_1.Module)({
         imports: [prisma_module_1.PrismaModule, auth_module_1.AuthModule],
         controllers: [serials_controller_1.SerialsController],
-        providers: [serials_service_1.SerialsService, serial_counter_service_1.SerialCounterService],
+        providers: [serials_service_1.SerialsService, serial_counter_service_1.SerialCounterService, serial_gap_service_1.SerialGapService],
         exports: [serial_counter_service_1.SerialCounterService],
     })
 ], SerialsModule);

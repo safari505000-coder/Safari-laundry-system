@@ -7,6 +7,8 @@ export declare class AuthService {
     private readonly prisma;
     private readonly jwt;
     private readonly financeService;
+    private readonly logger;
     constructor(prisma: PrismaService, jwt: JwtService, financeService: FinanceService);
     login(dto: LoginDto): Promise<LoginResponseDto>;
+    private recordOutsideHoursAudit;
 }

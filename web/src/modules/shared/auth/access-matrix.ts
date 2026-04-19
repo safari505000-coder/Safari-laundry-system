@@ -46,6 +46,12 @@ export const ACCESS = {
   // Dastur §2 V19.3 — only DRIVER issues field invoices via POST
   // /orders/quick. Manager uses POS, CC does not create orders.
   'orders.createQuick': ['DRIVER'] satisfies readonly SafariRole[],
+  // Dastur §2 — invoice hard-delete is a *last resort* destructive action.
+  // Owner keeps it as the master key; the Accountant owns it day-to-day as
+  // the book-keeper. Any other role (including GM) is intentionally shut
+  // out. To grant a future role, append it here — that is the only edit
+  // needed across the codebase.
+  'orders.delete': ['OWNER', 'ACCOUNTANT'] satisfies readonly SafariRole[],
   'shifts.view': [
     'OWNER',
     'GENERAL_MANAGER',

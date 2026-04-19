@@ -37,8 +37,13 @@ export function LoginPage() {
       toast.success(t('login.signedIn'));
       navigate(me.safariRole === 'DRIVER' ? '/pos' : from, { replace: true });
     } catch (err) {
-      const msg =
-        err instanceof ApiError ? err.message : t('login.signInError');
+      let msg = t('login.signInError');
+      if (err instanceof ApiError) {
+        msg =
+          err.errorCode === 'OUTSIDE_WORKING_HOURS' ?
+            t('login.outsideWorkingHours')
+          : err.message;
+      }
       toast.error(msg);
     } finally {
       setLoading(false);

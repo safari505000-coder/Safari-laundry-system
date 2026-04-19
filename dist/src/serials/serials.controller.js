@@ -21,11 +21,14 @@ const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
 const roles_guard_1 = require("../auth/guards/roles.guard");
 const branding_1 = require("../common/constants/branding");
 const serials_dto_1 = require("./dto/serials.dto");
+const serial_gap_service_1 = require("./serial-gap.service");
 const serials_service_1 = require("./serials.service");
 let SerialsController = class SerialsController {
     serials;
-    constructor(serials) {
+    gaps;
+    constructor(serials, gaps) {
         this.serials = serials;
+        this.gaps = gaps;
     }
     listDrivers() {
         return this.serials.listDrivers();
@@ -36,6 +39,12 @@ let SerialsController = class SerialsController {
     getSerialLog(limit) {
         const parsed = limit ? Number.parseInt(limit, 10) : 50;
         return this.serials.getSerialLog(Number.isFinite(parsed) ? parsed : 50);
+    }
+    async getLatestGapReport() {
+        return { latest: await this.gaps.latestReport() };
+    }
+    scanGapsNow() {
+        return this.gaps.scanNow();
     }
 };
 exports.SerialsController = SerialsController;
@@ -69,12 +78,32 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
 ], SerialsController.prototype, "getSerialLog", null);
+__decorate([
+    (0, common_1.Get)('gaps'),
+    (0, swagger_1.ApiOperation)({
+        summary: `Latest order-serial gap scan (${branding_1.APP_BRAND})`,
+    }),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], SerialsController.prototype, "getLatestGapReport", null);
+__decorate([
+    (0, common_1.Post)('gaps/scan-now'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER),
+    (0, swagger_1.ApiOperation)({
+        summary: `Force a fresh order-serial gap scan (OWNER only, ${branding_1.APP_BRAND})`,
+    }),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], SerialsController.prototype, "scanGapsNow", null);
 exports.SerialsController = SerialsController = __decorate([
     (0, swagger_1.ApiTags)('owner-serials'),
     (0, swagger_1.ApiBearerAuth)('bearer'),
     (0, common_1.Controller)('owner/serials'),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
     (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
-    __metadata("design:paramtypes", [serials_service_1.SerialsService])
+    __metadata("design:paramtypes", [serials_service_1.SerialsService,
+        serial_gap_service_1.SerialGapService])
 ], SerialsController);
 //# sourceMappingURL=serials.controller.js.map
