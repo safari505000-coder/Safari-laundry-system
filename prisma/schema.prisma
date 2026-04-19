@@ -205,6 +205,10 @@ model User {
   ordersTransferredFrom        Order[]              @relation("OrderTransferredFromDriver")
   /** HR — daily attendance rows for this user. */
   attendanceLogs               AttendanceLog[]
+  leaveRequests                LeaveRequest[]    @relation("LeaveRequestUser")
+  leaveApprovals               LeaveRequest[]    @relation("LeaveRequestApprover")
+  employeeLoans                EmployeeLoan[]    @relation("EmployeeLoanUser")
+  loanApprovals                EmployeeLoan[]    @relation("EmployeeLoanApprover")
 }
 
 enum ExpenseCategory {
@@ -739,6 +743,88 @@ enum AttendanceSource {
   SHIFT_AUTO
   BIOMETRIC
   MANUAL
+}
+
+/**
+ * Stage-D — leave request workflow.
+ *
+ * Employees submit a PENDING request; OWNER / GM / MANAGER / ACCOUNTANT
+ * approve or reject. The approver's id + timestamp is stamped for
+ * audit, and the A4 printable form carries a verification QR.
+ */
+model LeaveRequest {
+  id             String      @id @default(uuid()) @db.Uuid
+  userId         String      @db.Uuid
+  type           LeaveType
+  startDate      DateTime    @db.Date
+  endDate        DateTime    @db.Date
+  daysCount      Int
+  reason         String?
+  status         LeaveStatus @default(PENDING)
+  approvedById   String?     @db.Uuid
+  approvedAt     DateTime?
+  rejectedReason String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  user       User  @relation(fields: [userId], references: [id], name: "LeaveRequestUser")
+  approvedBy User? @relation(fields: [approvedById], references: [id], name: "LeaveRequestApprover")
+
+  @@index([userId, startDate])
+  @@index([status])
+  @@index([startDate])
+}
+
+enum LeaveType {
+  ANNUAL
+  SICK
+  UNPAID
+  EMERGENCY
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+/**
+ * Stage-D — employee loans (سلف الموظفين).
+ *
+ * Approved loans enter the ACTIVE state with `remaining` tracking the
+ * outstanding balance. Each monthly payroll run is expected to
+ * decrement `remaining` by `monthlyDeduction` — the automatic hook
+ * lives on PayrollService.create (§D.5).
+ */
+model EmployeeLoan {
+  id                String     @id @default(uuid()) @db.Uuid
+  userId            String     @db.Uuid
+  amount            Decimal    @db.Decimal(19, 4)
+  installmentCount  Int
+  monthlyDeduction  Decimal    @db.Decimal(19, 4)
+  remaining         Decimal    @db.Decimal(19, 4)
+  reason            String?
+  status            LoanStatus @default(PENDING)
+  approvedById      String?    @db.Uuid
+  approvedAt        DateTime?
+  rejectedReason    String?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  user       User  @relation(fields: [userId], references: [id], name: "EmployeeLoanUser")
+  approvedBy User? @relation(fields: [approvedById], references: [id], name: "EmployeeLoanApprover")
+
+  @@index([userId])
+  @@index([status])
+}
+
+enum LoanStatus {
+  PENDING
+  APPROVED
+  ACTIVE
+  SETTLED
+  REJECTED
 }
 
 model Payroll {

@@ -2054,6 +2054,183 @@ export function runAttendanceSync(token: string, from: string, to: string) {
 }
 
 // ---------------------------------------------------------------------------
+// Stage-D — Leave requests + Employee loans.
+// ---------------------------------------------------------------------------
+
+export type LeaveType = 'ANNUAL' | 'SICK' | 'UNPAID' | 'EMERGENCY';
+export type LeaveStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+
+export type LeaveRow = {
+  id: string;
+  userId: string;
+  type: LeaveType;
+  startDate: string;
+  endDate: string;
+  daysCount: number;
+  reason: string | null;
+  status: LeaveStatus;
+  approvedById: string | null;
+  approvedAt: string | null;
+  rejectedReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+  user: {
+    id: string;
+    fullName: string;
+    username: string;
+    employeeId: string | null;
+    civilId: string | null;
+    jobTitle: string | null;
+    branch: { id: string; name: string } | null;
+  };
+  approvedBy: {
+    id: string;
+    fullName: string;
+    username: string;
+  } | null;
+};
+
+export type LeaveFilters = {
+  status?: LeaveStatus;
+  type?: LeaveType;
+  userId?: string;
+  from?: string;
+  to?: string;
+};
+
+export function listLeaves(token: string, filters: LeaveFilters = {}) {
+  return apiJson<LeaveRow[]>(`/api/leaves${buildQuery(filters)}`, { token });
+}
+
+export function listMyLeaves(token: string) {
+  return apiJson<LeaveRow[]>('/api/leaves/mine', { token });
+}
+
+export function getLeave(token: string, id: string) {
+  return apiJson<LeaveRow>(`/api/leaves/${id}`, { token });
+}
+
+export function createLeave(
+  token: string,
+  dto: { type: LeaveType; startDate: string; endDate: string; reason?: string },
+) {
+  return apiJson<LeaveRow>('/api/leaves', {
+    method: 'POST',
+    token,
+    body: JSON.stringify(dto),
+  });
+}
+
+export function approveLeave(token: string, id: string) {
+  return apiJson<LeaveRow>(`/api/leaves/${id}/approve`, {
+    method: 'PATCH',
+    token,
+  });
+}
+
+export function rejectLeave(token: string, id: string, reason: string) {
+  return apiJson<LeaveRow>(`/api/leaves/${id}/reject`, {
+    method: 'PATCH',
+    token,
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export function cancelLeave(token: string, id: string) {
+  return apiJson<LeaveRow>(`/api/leaves/${id}/cancel`, {
+    method: 'PATCH',
+    token,
+  });
+}
+
+// ─── Employee loans ─────────────────────────────────────────────────────
+
+export type LoanStatusApi =
+  | 'PENDING'
+  | 'APPROVED'
+  | 'ACTIVE'
+  | 'SETTLED'
+  | 'REJECTED';
+
+export type LoanRow = {
+  id: string;
+  userId: string;
+  amount: string;
+  installmentCount: number;
+  monthlyDeduction: string;
+  remaining: string;
+  reason: string | null;
+  status: LoanStatusApi;
+  approvedById: string | null;
+  approvedAt: string | null;
+  rejectedReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+  user: {
+    id: string;
+    fullName: string;
+    username: string;
+    employeeId: string | null;
+    civilId: string | null;
+    jobTitle: string | null;
+    branch: { id: string; name: string } | null;
+  };
+  approvedBy: {
+    id: string;
+    fullName: string;
+    username: string;
+  } | null;
+};
+
+export type LoanFilters = {
+  status?: LoanStatusApi;
+  userId?: string;
+};
+
+export function listLoans(token: string, filters: LoanFilters = {}) {
+  return apiJson<LoanRow[]>(`/api/loans${buildQuery(filters)}`, { token });
+}
+
+export function listMyLoans(token: string) {
+  return apiJson<LoanRow[]>('/api/loans/mine', { token });
+}
+
+export function getLoan(token: string, id: string) {
+  return apiJson<LoanRow>(`/api/loans/${id}`, { token });
+}
+
+export function createLoan(
+  token: string,
+  dto: {
+    userId?: string;
+    amount: number;
+    installmentCount: number;
+    reason?: string;
+  },
+) {
+  return apiJson<LoanRow>('/api/loans', {
+    method: 'POST',
+    token,
+    body: JSON.stringify(dto),
+  });
+}
+
+export function approveLoan(token: string, id: string) {
+  return apiJson<LoanRow>(`/api/loans/${id}/approve`, {
+    method: 'PATCH',
+    token,
+  });
+}
+
+export function rejectLoan(token: string, id: string, reason: string) {
+  return apiJson<LoanRow>(`/api/loans/${id}/reject`, {
+    method: 'PATCH',
+    token,
+    body: JSON.stringify({ reason }),
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Stage-D — Payslip (single-row fetch for the A4 printable).
 // ---------------------------------------------------------------------------
 

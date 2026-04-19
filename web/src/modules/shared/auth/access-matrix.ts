@@ -167,6 +167,37 @@ export const ACCESS = {
   'attendance.sync': ['OWNER'] satisfies readonly SafariRole[],
   'attendance.biometric': EXEC_PAIR,
 
+  // Leave requests — every role can submit (see `hr.leaves.mine` on the
+  // frontend list filter), but only OWNER/GM/MANAGER/ACCOUNTANT can
+  // approve or reject.
+  'hr.leaves.view': withExec('MANAGER', 'ACCOUNTANT'),
+  'hr.leaves.approve': withExec('MANAGER', 'ACCOUNTANT'),
+  'hr.leaves.mine': [
+    'OWNER',
+    'GENERAL_MANAGER',
+    'MANAGER',
+    'ACCOUNTANT',
+    'DRIVER',
+    'CALL_CENTER',
+    'SUPERVISOR',
+    'VIEWER',
+  ] satisfies readonly SafariRole[],
+
+  // Employee loans — same approver set as leaves. Drivers and other
+  // staff can submit a request for themselves.
+  'hr.loans.view': withExec('ACCOUNTANT'),
+  'hr.loans.approve': withExec('ACCOUNTANT'),
+  'hr.loans.mine': [
+    'OWNER',
+    'GENERAL_MANAGER',
+    'MANAGER',
+    'ACCOUNTANT',
+    'DRIVER',
+    'CALL_CENTER',
+    'SUPERVISOR',
+    'VIEWER',
+  ] satisfies readonly SafariRole[],
+
   // ─── Driver personal island ───────────────────────────────────────
   'myDeposits.view': withExec('DRIVER'),
   'myDailySales.view': withExec('DRIVER'),

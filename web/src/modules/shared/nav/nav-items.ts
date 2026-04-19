@@ -1,6 +1,8 @@
 import {
   ArrowLeftRight,
   Banknote,
+  BanknoteArrowUp,
+  CalendarDays,
   Clock,
   FileSignature,
   BookText,
@@ -409,6 +411,48 @@ export const attendanceItem: NavItem = {
   labelKey: 'nav.attendance',
   icon: Clock,
   roles: ['OWNER', 'GENERAL_MANAGER', 'MANAGER', 'ACCOUNTANT'],
+};
+
+/**
+ * Stage-D — Leave requests. Visible to every role (employees manage
+ * their own requests; approvers see the full queue). Auth gating is
+ * role-based, but the page itself switches between "mine" and "all"
+ * depending on `hr.leaves.approve`.
+ */
+export const leavesItem: NavItem = {
+  to: '/leaves',
+  labelKey: 'nav.leaves',
+  icon: CalendarDays,
+  roles: [
+    'OWNER',
+    'GENERAL_MANAGER',
+    'MANAGER',
+    'ACCOUNTANT',
+    'DRIVER',
+    'CALL_CENTER',
+    'SUPERVISOR',
+    'VIEWER',
+  ],
+};
+
+/**
+ * Stage-D — Employee loans. Same audience as `leavesItem`; the
+ * approver actions are gated inside the page via `hr.loans.approve`.
+ */
+export const loansItem: NavItem = {
+  to: '/loans',
+  labelKey: 'nav.loans',
+  icon: BanknoteArrowUp,
+  roles: [
+    'OWNER',
+    'GENERAL_MANAGER',
+    'MANAGER',
+    'ACCOUNTANT',
+    'DRIVER',
+    'CALL_CENTER',
+    'SUPERVISOR',
+    'VIEWER',
+  ],
 };
 
 export const fixedExpensesItem: NavItem = {

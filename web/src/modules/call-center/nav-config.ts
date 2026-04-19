@@ -2,6 +2,8 @@ import type { NavGroup } from '@/modules/shared/nav/nav-types';
 import {
   collectionsItem,
   customersItem,
+  leavesItem,
+  loansItem,
   subscribersItem,
   whatsappToolsItem,
 } from '@/modules/shared/nav/nav-items';
@@ -22,5 +24,10 @@ export const callCenterSidebarNavGroups: NavGroup[] = [
       subscribersItem,
       whatsappToolsItem,
     ],
+  },
+  // Stage-D — Self-service HR for call-center staff.
+  {
+    labelKey: 'nav.groupHr',
+    items: [leavesItem, loansItem],
   },
 ];

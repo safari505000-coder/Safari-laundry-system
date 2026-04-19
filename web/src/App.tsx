@@ -15,6 +15,10 @@ import { MyDebtTransfersPage } from '@/pages/my-debt-transfers-page';
 import { AttendancePage } from '@/pages/attendance-page';
 import { AttendanceReportPrintPage } from '@/pages/attendance-report-print-page';
 import { PayslipPrintPage } from '@/pages/payslip-print-page';
+import { LeavesPage } from '@/pages/leaves-page';
+import { LeaveRequestPrintPage } from '@/pages/leave-request-print-page';
+import { LoansPage } from '@/pages/loans-page';
+import { LoanPrintPage } from '@/pages/loan-print-page';
 import { ExpensesPage } from '@/pages/expenses-page';
 import { FinancialsPage } from '@/pages/financials-page';
 import { FinancialCycleReportPage } from '@/pages/financial-cycle-report-page';
@@ -347,6 +351,38 @@ export default function App() {
                 <Route
                   path="payroll/:id/print"
                   element={<PayslipPrintPage />}
+                />
+                <Route
+                  path="leaves"
+                  element={
+                    <RequireAccess access="hr.leaves.mine">
+                      <LeavesPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="leaves/:id/print"
+                  element={
+                    <RequireAccess access="hr.leaves.mine">
+                      <LeaveRequestPrintPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="loans"
+                  element={
+                    <RequireAccess access="hr.loans.mine">
+                      <LoansPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="loans/:id/print"
+                  element={
+                    <RequireAccess access="hr.loans.mine">
+                      <LoanPrintPage />
+                    </RequireAccess>
+                  }
                 />
                 <Route
                   path="expense-approval"

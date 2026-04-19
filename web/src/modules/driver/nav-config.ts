@@ -2,6 +2,8 @@ import type { NavGroup } from '@/modules/shared/nav/nav-types';
 import {
   driverFieldExpensesItem,
   driverPendingInvoicesItem,
+  leavesItem,
+  loansItem,
   myDailySalesItem,
   myDebtTransfersItem,
   myDepositsItem,
@@ -31,5 +33,11 @@ export const driverSidebarNavGroups: NavGroup[] = [
   {
     labelKey: 'nav.groupFieldCosts',
     items: [driverFieldExpensesItem],
+  },
+  // Stage-D — Self-service HR. Drivers see only their own leave and
+  // loan rows; approver actions are gated inside each page.
+  {
+    labelKey: 'nav.groupHr',
+    items: [leavesItem, loansItem],
   },
 ];

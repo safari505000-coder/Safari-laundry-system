@@ -61,4 +61,64 @@ export class VerifyService {
       },
     };
   }
+
+  async verifyLeave(id: string): Promise<VerifyResult> {
+    const row = await this.prisma.leaveRequest.findUnique({
+      where: { id },
+      include: {
+        user: {
+          select: { fullName: true, username: true, employeeId: true },
+        },
+      },
+    });
+    if (!row) throw new NotFoundException('Leave request not found');
+    return {
+      docType: 'leave_request',
+      docId: row.id,
+      valid: true,
+      issuedAtIso: row.createdAt.toISOString(),
+      issuedTo: {
+        fullName: row.user.fullName,
+        username: row.user.username,
+        employeeId: row.user.employeeId,
+      },
+      summary: {
+        type: row.type,
+        startDate: row.startDate.toISOString().slice(0, 10),
+        endDate: row.endDate.toISOString().slice(0, 10),
+        daysCount: row.daysCount,
+        status: row.status,
+      },
+    };
+  }
+
+  async verifyLoan(id: string): Promise<VerifyResult> {
+    const row = await this.prisma.employeeLoan.findUnique({
+      where: { id },
+      include: {
+        user: {
+          select: { fullName: true, username: true, employeeId: true },
+        },
+      },
+    });
+    if (!row) throw new NotFoundException('Loan not found');
+    return {
+      docType: 'employee_loan',
+      docId: row.id,
+      valid: true,
+      issuedAtIso: row.createdAt.toISOString(),
+      issuedTo: {
+        fullName: row.user.fullName,
+        username: row.user.username,
+        employeeId: row.user.employeeId,
+      },
+      summary: {
+        amountKd: row.amount.toFixed(3),
+        installmentCount: row.installmentCount,
+        monthlyDeductionKd: row.monthlyDeduction.toFixed(3),
+        remainingKd: row.remaining.toFixed(3),
+        status: row.status,
+      },
+    };
+  }
 }

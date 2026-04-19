@@ -1,9 +1,12 @@
 import {
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import { PayrollStatus, Prisma, SafariRole } from '@prisma/client';
+import { LoansService } from '../loans/loans.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 function netPay(row: {
@@ -16,7 +19,11 @@ function netPay(row: {
 
 @Injectable()
 export class PayrollService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(forwardRef(() => LoansService))
+    private readonly loans: LoansService,
+  ) {}
 
   private assertOwnerOrManager(role: SafariRole): void {
     if (
@@ -42,21 +49,34 @@ export class PayrollService {
     this.assertOwnerOrManager(actorRole);
     const basic = new Prisma.Decimal(dto.basicSalary.toFixed(4));
     const allow = new Prisma.Decimal((dto.allowances ?? 0).toFixed(4));
-    const ded = new Prisma.Decimal((dto.deductions ?? 0).toFixed(4));
-    return this.prisma.payroll.create({
-      data: {
-        userId: dto.userId,
-        branchId: dto.branchId,
-        basicSalary: basic,
-        allowances: allow,
-        deductions: ded,
-        paymentDate: new Date(dto.paymentDate),
-        status: PayrollStatus.PENDING,
-      },
-      include: {
-        user: { select: { id: true, fullName: true, username: true } },
-        branch: { select: { id: true, name: true } },
-      },
+    const manualDed = new Prisma.Decimal((dto.deductions ?? 0).toFixed(4));
+
+    // DUSTUR §D.5 — apply active-loan monthly installments as extra
+    // deductions in the same DB transaction so the payroll row and
+    // the loan balance updates are atomic. The driver/manager only
+    // inputs the manual deductions; the automated loan slice is
+    // layered on top.
+    return this.prisma.$transaction(async (tx) => {
+      const loanDeduction = await this.loans.applyMonthlyDeductionForUser(
+        dto.userId,
+        tx,
+      );
+      const totalDed = manualDed.add(loanDeduction);
+      return tx.payroll.create({
+        data: {
+          userId: dto.userId,
+          branchId: dto.branchId,
+          basicSalary: basic,
+          allowances: allow,
+          deductions: totalDed,
+          paymentDate: new Date(dto.paymentDate),
+          status: PayrollStatus.PENDING,
+        },
+        include: {
+          user: { select: { id: true, fullName: true, username: true } },
+          branch: { select: { id: true, name: true } },
+        },
+      });
     });
   }
 

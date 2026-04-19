@@ -32,4 +32,24 @@ export class VerifyController {
   verifyPayslip(@Param('id') id: string) {
     return this.verify.verifyPayslip(id);
   }
+
+  @Get('leave_request/:id')
+  @ApiOperation({
+    summary: 'Verify a printed leave request',
+    description:
+      'Stage-D — returns { valid, issuedTo, summary } for the leave request referenced by the QR on the printed A4 form.',
+  })
+  verifyLeave(@Param('id') id: string) {
+    return this.verify.verifyLeave(id);
+  }
+
+  @Get('employee_loan/:id')
+  @ApiOperation({
+    summary: 'Verify a printed employee loan',
+    description:
+      'Stage-D — returns { valid, issuedTo, summary } for the loan acknowledgement referenced by the QR on the printed A4 form.',
+  })
+  verifyLoan(@Param('id') id: string) {
+    return this.verify.verifyLoan(id);
+  }
 }

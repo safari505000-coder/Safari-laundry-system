@@ -1,7 +1,10 @@
 import type { NavGroup } from '@/modules/shared/nav/nav-types';
 import {
+  attendanceItem,
   dashboardItem,
   expensesItem,
+  leavesItem,
+  loansItem,
   myCustodyItem,
   ordersItem,
   posItem,
@@ -26,5 +29,11 @@ export const managerSidebarNavGroups: NavGroup[] = [
   {
     labelKey: 'nav.groupFinance',
     items: [expensesItem, myCustodyItem],
+  },
+  // Stage-D — branch HR. Manager approves leaves/loans for own team
+  // via access-matrix; attendance view covers daily presence.
+  {
+    labelKey: 'nav.groupHr',
+    items: [attendanceItem, leavesItem, loansItem],
   },
 ];

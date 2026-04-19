@@ -2,12 +2,16 @@ import type { NavGroup } from '@/modules/shared/nav/nav-types';
 import {
   accountantInventoryItem,
   accountantStockInItem,
+  attendanceItem,
   debtTransfersItem,
   expenseApprovalItem,
   invoicesDataItem,
   knetAuditItem,
+  leavesItem,
+  loansItem,
   managerCustodyAgingItem,
   movementLogsItem,
+  payrollItem,
   shiftsItem,
   staffDebtsItem,
   unifiedLedgerItem,
@@ -42,5 +46,11 @@ export const accountantSidebarNavGroups: NavGroup[] = [
   {
     labelKey: 'nav.groupOperations',
     items: [invoicesDataItem, accountantInventoryItem, accountantStockInItem],
+  },
+  // Stage-D — Payroll / HR workbench. Accountant approves leaves,
+  // loans and signs off payslips; attendance view is read-only audit.
+  {
+    labelKey: 'nav.groupHr',
+    items: [payrollItem, attendanceItem, leavesItem, loansItem],
   },
 ];

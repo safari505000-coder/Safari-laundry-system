@@ -2,6 +2,8 @@ import type { NavGroup } from '@/modules/shared/nav/nav-types';
 import {
   attendanceItem,
   branchesItem,
+  leavesItem,
+  loansItem,
   customersItem,
   dashboardItem,
   debtRecoveryReportItem,
@@ -75,6 +77,8 @@ export const defaultSidebarNavGroups: NavGroup[] = [
       unifiedLedgerItem,
       payrollItem,
       attendanceItem,
+      leavesItem,
+      loansItem,
       fixedExpensesItem,
       expensesItem,
     ],

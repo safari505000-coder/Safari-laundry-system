@@ -20,6 +20,8 @@ import { PayrollModule } from './payroll/payroll.module';
 import { FinanceModule } from './finance/finance.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { LaundryPriceListModule } from './laundry-price-list/laundry-price-list.module';
+import { LeavesModule } from './leaves/leaves.module';
+import { LoansModule } from './loans/loans.module';
 import { ManagerCustodyModule } from './manager-custody/manager-custody.module';
 import { OrdersModule } from './orders/orders.module';
 import { PaymentMethodFeesModule } from './payment-method-fees/payment-method-fees.module';
@@ -81,6 +83,8 @@ const spaStaticModule = existsSync(webDistPath)
     SerialsModule,
     ShiftsModule,
     AttendanceModule,
+    LeavesModule,
+    LoansModule,
     VerifyModule,
     ServeStaticModule.forRoot({
       rootPath: uploadsPath,
