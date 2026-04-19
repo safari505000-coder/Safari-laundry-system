@@ -43,6 +43,10 @@ import { LiveMonitorPage } from '@/pages/live-monitor-page';
 import { KnetAudit } from '@/modules/accountant/pages/KnetAudit';
 import AccountantInventoryReportPage from '@/modules/accountant/pages/InventoryReport';
 import AccountantStockInPage from '@/modules/accountant/pages/StockIn';
+import InventoryCatalogPage from '@/pages/inventory-catalog-page';
+import InventoryOperationsPage from '@/pages/inventory-operations-page';
+import InventoryMovementsPage from '@/pages/inventory-movements-page';
+import InventoryLowStockPage from '@/pages/inventory-low-stock-page';
 import { UnifiedLedgerPage } from '@/pages/unified-ledger-page';
 import { MyDepositsPage } from '@/modules/driver/pages/my-deposits-page';
 import { WhatsappToolsPage } from '@/modules/call-center/pages/whatsapp-tools-page';
@@ -162,6 +166,38 @@ export default function App() {
                   element={
                     <RequireAccess access="inventoryReport.stockIn">
                       <AccountantStockInPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="inventory/catalog"
+                  element={
+                    <RequireAccess access="inventory.catalog.view">
+                      <InventoryCatalogPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="inventory/operations"
+                  element={
+                    <RequireAccess access="inventory.stockOut">
+                      <InventoryOperationsPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="inventory/movements"
+                  element={
+                    <RequireAccess access="inventory.movements.view">
+                      <InventoryMovementsPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="inventory/low-stock"
+                  element={
+                    <RequireAccess access="inventory.lowStock.view">
+                      <InventoryLowStockPage />
                     </RequireAccess>
                   }
                 />

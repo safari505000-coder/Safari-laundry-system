@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2, Package, RefreshCw } from 'lucide-react';
+import { Download, Loader2, Package, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   ApiError,
   apiJson,
+  exportInventoryReportXlsx,
   listInventoryCategories,
   type BranchRow,
   type InventoryCategoryRow,
@@ -116,6 +117,22 @@ export function InventoryReportView({
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {headerActions}
+          <Button
+            type="button"
+            variant="outline"
+            onClick={async () => {
+              try {
+                await exportInventoryReportXlsx(token, filters);
+              } catch (e) {
+                if (e instanceof ApiError) toast.error(e.message);
+              }
+            }}
+            disabled={loading}
+            className="gap-2"
+          >
+            <Download className="h-4 w-4" />
+            {t('inventory.exportXlsx')}
+          </Button>
           <Button
             type="button"
             variant="outline"

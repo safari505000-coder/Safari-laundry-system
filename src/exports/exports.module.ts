@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AttendanceModule } from '../attendance/attendance.module';
 import { AuthModule } from '../auth/auth.module';
 import { FinanceModule } from '../finance/finance.module';
+import { InventoryModule } from '../inventory/inventory.module';
 import { PayrollModule } from '../payroll/payroll.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { ReportsModule } from '../reports/reports.module';
@@ -16,6 +17,7 @@ import { ExportsService } from './exports.service';
     AttendanceModule,
     PayrollModule,
     FinanceModule,
+    InventoryModule,
   ],
   controllers: [ExportsController],
   providers: [ExportsService],

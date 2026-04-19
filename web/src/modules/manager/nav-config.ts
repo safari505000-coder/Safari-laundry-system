@@ -3,6 +3,7 @@ import {
   attendanceItem,
   dashboardItem,
   expensesItem,
+  inventoryOperationsItem,
   leavesItem,
   loansItem,
   myCustodyItem,
@@ -29,6 +30,13 @@ export const managerSidebarNavGroups: NavGroup[] = [
   {
     labelKey: 'nav.groupFinance',
     items: [expensesItem, myCustodyItem],
+  },
+  // Stage-E — manager can record stock consumption only (no cost-bearing
+  // ops). The operations tab auto-disables Adjust/Transfer/Stocktake via
+  // the access matrix.
+  {
+    labelKey: 'nav.groupInventory',
+    items: [inventoryOperationsItem],
   },
   // Stage-D — branch HR. Manager approves leaves/loans for own team
   // via access-matrix; attendance view covers daily presence.

@@ -1482,6 +1482,242 @@ export function recordStockIn(token: string, body: StockInPayload) {
   });
 }
 
+export type StockMovementType =
+  | 'STOCK_IN'
+  | 'STOCK_OUT'
+  | 'ADJUSTMENT'
+  | 'TRANSFER_OUT'
+  | 'TRANSFER_IN';
+
+export type StockOutPayload = {
+  stockItemId: string;
+  branchId: string;
+  quantity: number;
+  reference?: string;
+  note?: string;
+};
+
+export type StockAdjustmentPayload = {
+  stockItemId: string;
+  branchId: string;
+  delta: number;
+  reason: string;
+  reference?: string;
+};
+
+export type StockTransferPayload = {
+  stockItemId: string;
+  fromBranchId: string;
+  toBranchId: string;
+  quantity: number;
+  reference?: string;
+  note?: string;
+};
+
+export type StocktakeLinePayload = {
+  stockItemId: string;
+  countedQuantity: number;
+  note?: string;
+};
+
+export type StocktakePayload = {
+  branchId: string;
+  reference?: string;
+  note?: string;
+  lines: StocktakeLinePayload[];
+};
+
+export type StockMovementResult = {
+  id: string;
+  stockItemId: string;
+  branchId: string;
+  type: StockMovementType;
+  quantity: string;
+  unitCost: string | null;
+  totalCost: string | null;
+  reference: string | null;
+  newQuantityOnHand: string;
+  createdAt: string;
+};
+
+export function recordStockOut(token: string, body: StockOutPayload) {
+  return apiJson<StockMovementResult>('/api/inventory/stock-out', {
+    method: 'POST',
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
+export function recordStockAdjustment(token: string, body: StockAdjustmentPayload) {
+  return apiJson<StockMovementResult>('/api/inventory/adjust', {
+    method: 'POST',
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
+export function recordStockTransfer(token: string, body: StockTransferPayload) {
+  return apiJson<{
+    reference: string;
+    out: StockMovementResult;
+    in: StockMovementResult;
+  }>('/api/inventory/transfer', {
+    method: 'POST',
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
+export function submitStocktake(token: string, body: StocktakePayload) {
+  return apiJson<{
+    reference: string;
+    branchId: string;
+    totalLines: number;
+    adjustedLines: number;
+    results: Array<{
+      stockItemId: string;
+      counted: string;
+      previous: string;
+      delta: string;
+      adjusted: boolean;
+    }>;
+  }>('/api/inventory/stocktake', {
+    method: 'POST',
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
+export type StockMovementRow = {
+  id: string;
+  type: StockMovementType;
+  stockItem: { code: string; nameAr: string; nameEn: string | null; unit: string };
+  branchName: string;
+  supplierName: string | null;
+  recordedBy: { fullName: string; username: string } | null;
+  quantity: string;
+  unitCost: string | null;
+  totalCost: string | null;
+  reference: string | null;
+  note: string | null;
+  receiptUrl: string | null;
+  createdAt: string;
+};
+
+export type ListStockMovementsFilters = {
+  branchId?: string;
+  stockItemId?: string;
+  type?: StockMovementType;
+  from?: string;
+  to?: string;
+  limit?: number;
+};
+
+export function listStockMovements(
+  token: string,
+  filters: ListStockMovementsFilters = {},
+) {
+  const qs = new URLSearchParams();
+  if (filters.branchId) qs.set('branchId', filters.branchId);
+  if (filters.stockItemId) qs.set('stockItemId', filters.stockItemId);
+  if (filters.type) qs.set('type', filters.type);
+  if (filters.from) qs.set('from', filters.from);
+  if (filters.to) qs.set('to', filters.to);
+  if (filters.limit) qs.set('limit', String(filters.limit));
+  const search = qs.toString();
+  return apiJson<StockMovementRow[]>(
+    `/api/inventory/movements${search ? `?${search}` : ''}`,
+    { token },
+  );
+}
+
+export type LowStockRow = {
+  stockItemId: string;
+  code: string;
+  nameAr: string;
+  nameEn: string | null;
+  unit: string;
+  branchId: string;
+  branchName: string;
+  quantityOnHand: string;
+  reorderPoint: string;
+  status: 'LOW_STOCK' | 'OUT_OF_STOCK';
+};
+
+export type LowStockResponse = {
+  rows: LowStockRow[];
+  summary: {
+    total: number;
+    outOfStock: number;
+    lowStock: number;
+    generatedAt: string;
+  };
+};
+
+export function getLowStock(token: string, branchId?: string) {
+  const qs = branchId ? `?branchId=${encodeURIComponent(branchId)}` : '';
+  return apiJson<LowStockResponse>(`/api/inventory/low-stock${qs}`, { token });
+}
+
+export function getLowStockLatestSnapshot(token: string) {
+  return apiJson<{
+    hadAlerts: boolean;
+    recordedAtIso: string;
+    report: LowStockResponse;
+  } | null>('/api/inventory/low-stock/latest', { token });
+}
+
+export type CreateInventoryCategoryPayload = {
+  code: string;
+  nameAr: string;
+  nameEn?: string | null;
+  sortOrder?: number;
+};
+
+export function createInventoryCategory(
+  token: string,
+  body: CreateInventoryCategoryPayload,
+) {
+  return apiJson<InventoryCategoryRow>('/api/inventory/categories', {
+    method: 'POST',
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
+export type CreateStockItemPayload = {
+  code: string;
+  nameAr: string;
+  nameEn?: string | null;
+  unit?: string;
+  categoryId?: string | null;
+  reorderPointDefault?: number;
+  isActive?: boolean;
+};
+
+export function createStockItem(token: string, body: CreateStockItemPayload) {
+  return apiJson<StockItemRow>('/api/inventory/items', {
+    method: 'POST',
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
+export type CreateSupplierPayload = {
+  name: string;
+  phone?: string;
+  address?: string;
+  isActive?: boolean;
+};
+
+export function createSupplier(token: string, body: CreateSupplierPayload) {
+  return apiJson<SupplierRow>('/api/inventory/suppliers', {
+    method: 'POST',
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
 /** OWNER-only — partial update of a master `LaundryPriceListItem`. */
 export type UpdateLaundryPriceItemPayload = {
   nameAr?: string;
@@ -2153,6 +2389,28 @@ export function exportFinancialCycleXlsx(token: string, date?: string) {
     `/api/exports/financial-cycle.xlsx${buildQuery({ date })}`,
     token,
     'financial-cycle.xlsx',
+  );
+}
+
+export function exportInventoryReportXlsx(
+  token: string,
+  f: InventoryReportFilters,
+) {
+  return downloadBinary(
+    `/api/exports/inventory.xlsx${buildQuery(f)}`,
+    token,
+    'inventory.xlsx',
+  );
+}
+
+export function exportStockMovementsXlsx(
+  token: string,
+  f: ListStockMovementsFilters,
+) {
+  return downloadBinary(
+    `/api/exports/stock-movements.xlsx${buildQuery(f)}`,
+    token,
+    'stock-movements.xlsx',
   );
 }
 

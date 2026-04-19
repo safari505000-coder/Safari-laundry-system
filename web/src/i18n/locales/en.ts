@@ -13,6 +13,11 @@ export const en = {
     manageItems: 'Items & pricing',
     inventoryReport: 'Inventory report',
     stockIn: 'Stock-in',
+    inventoryCatalog: 'Inventory catalog',
+    inventoryOperations: 'Inventory operations',
+    inventoryMovements: 'Stock movements',
+    inventoryLowStock: 'Low-stock alerts',
+    groupInventory: 'Inventory & Supply Chain',
     collections: 'Invoice collections',
     customerDebtTracker: 'Customer Debt Tracker',
     driverMonitor: 'Driver Monitor',
@@ -1526,6 +1531,7 @@ export const en = {
   },
   inventory: {
     refresh: 'Refresh',
+    exportXlsx: 'Export Excel',
     loadFailed: 'Could not load the inventory report.',
     report: {
       title: 'Smart inventory',

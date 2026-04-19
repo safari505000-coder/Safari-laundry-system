@@ -14,6 +14,10 @@ import {
   financialCycleReportItem,
   financialsItem,
   fixedExpensesItem,
+  inventoryCatalogItem,
+  inventoryLowStockItem,
+  inventoryMovementsItem,
+  inventoryOperationsItem,
   invoicesDataItem,
   manageItemsItem,
   managerCustodyAgingItem,
@@ -61,6 +65,15 @@ export const defaultSidebarNavGroups: NavGroup[] = [
   {
     labelKey: 'nav.groupOperations',
     items: [invoicesDataItem, ordersItem, shiftsItem, ownerSerialsItem],
+  },
+  {
+    labelKey: 'nav.groupInventory',
+    items: [
+      inventoryLowStockItem,
+      inventoryMovementsItem,
+      inventoryOperationsItem,
+      inventoryCatalogItem,
+    ],
   },
   {
     labelKey: 'nav.groupFinance',

@@ -17,8 +17,14 @@ import { CreateInventoryCategoryDto } from './dto/create-inventory-category.dto'
 import { CreateStockItemDto } from './dto/create-stock-item.dto';
 import { CreateSupplierDto } from './dto/create-supplier.dto';
 import { InventoryReportQueryDto } from './dto/inventory-report-query.dto';
+import { ListMovementsQueryDto } from './dto/list-movements-query.dto';
+import { StockAdjustmentDto } from './dto/stock-adjustment.dto';
 import { StockInDto } from './dto/stock-in.dto';
+import { StockOutDto } from './dto/stock-out.dto';
+import { StockTransferDto } from './dto/stock-transfer.dto';
+import { StocktakeDto } from './dto/stocktake.dto';
 import { InventoryService } from './inventory.service';
+import { LowStockCronService } from './low-stock-cron.service';
 
 /**
  * Dastur §4 — Smart Inventory & Stock-In.
@@ -32,7 +38,10 @@ import { InventoryService } from './inventory.service';
 @Controller('inventory')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class InventoryController {
-  constructor(private readonly inventory: InventoryService) {}
+  constructor(
+    private readonly inventory: InventoryService,
+    private readonly lowStockCron: LowStockCronService,
+  ) {}
 
   @Get('report')
   @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.ACCOUNTANT)
@@ -104,14 +113,76 @@ export class InventoryController {
 
   @Get('movements')
   @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.ACCOUNTANT)
-  listMovements(
-    @Query('branchId') branchId?: string,
-    @Query('limit') limit?: string,
-  ) {
-    const n = limit ? Number(limit) : 50;
-    return this.inventory.listRecentMovements(
-      Number.isFinite(n) ? n : 50,
-      branchId?.trim() || undefined,
-    );
+  @ApiOperation({
+    summary: 'List stock movements (audit)',
+    description:
+      'Filter by branch, item, type, and/or date range. Returns the most recent movements first, capped at 500 rows.',
+  })
+  listMovements(@Query() q: ListMovementsQueryDto) {
+    return this.inventory.listMovements(q);
+  }
+
+  @Post('stock-out')
+  @Roles(SafariRole.ACCOUNTANT, SafariRole.GENERAL_MANAGER, SafariRole.MANAGER)
+  @ApiOperation({
+    summary: 'Record stock consumption (STOCK_OUT)',
+    description:
+      'Decrements BranchStockLevel.quantityOnHand and writes a StockMovement(STOCK_OUT) with negative quantity. Rejects below-zero writes.',
+  })
+  stockOut(@Body() dto: StockOutDto, @CurrentUser() user: JwtUser) {
+    return this.inventory.stockOut(dto, user.userId);
+  }
+
+  @Post('adjust')
+  @Roles(SafariRole.ACCOUNTANT, SafariRole.GENERAL_MANAGER)
+  @ApiOperation({
+    summary: 'Signed stock adjustment (ADJUSTMENT)',
+    description:
+      'Applies a signed delta (breakage / count correction / write-off). Reason is mandatory and stored on the movement.',
+  })
+  adjust(@Body() dto: StockAdjustmentDto, @CurrentUser() user: JwtUser) {
+    return this.inventory.adjust(dto, user.userId);
+  }
+
+  @Post('transfer')
+  @Roles(SafariRole.ACCOUNTANT, SafariRole.GENERAL_MANAGER)
+  @ApiOperation({
+    summary: 'Transfer stock between two branches',
+    description:
+      'Atomic TRANSFER_OUT + TRANSFER_IN pair sharing one reference. The destination branch cost is weighted-averaged.',
+  })
+  transfer(@Body() dto: StockTransferDto, @CurrentUser() user: JwtUser) {
+    return this.inventory.transfer(dto, user.userId);
+  }
+
+  @Post('stocktake')
+  @Roles(SafariRole.ACCOUNTANT, SafariRole.GENERAL_MANAGER)
+  @ApiOperation({
+    summary: 'Submit a physical stocktake',
+    description:
+      'For each line, computes counted − system delta and emits one ADJUSTMENT per non-zero delta. Zero-delta lines are ignored.',
+  })
+  stocktake(@Body() dto: StocktakeDto, @CurrentUser() user: JwtUser) {
+    return this.inventory.stocktake(dto, user.userId);
+  }
+
+  @Get('low-stock')
+  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.ACCOUNTANT)
+  @ApiOperation({
+    summary: 'Low-stock & out-of-stock snapshot',
+    description:
+      'Returns every branch-level row at or below its reorder point, sorted OUT_OF_STOCK first. Powers the owner widget and the nightly alert cron.',
+  })
+  lowStock(@Query('branchId') branchId?: string) {
+    return this.inventory.lowStock(branchId?.trim() || undefined);
+  }
+
+  @Get('low-stock/latest')
+  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.ACCOUNTANT)
+  @ApiOperation({
+    summary: 'Last persisted low-stock snapshot (cached by the 06:00 cron).',
+  })
+  lowStockLatest() {
+    return this.lowStockCron.latestSnapshot();
   }
 }

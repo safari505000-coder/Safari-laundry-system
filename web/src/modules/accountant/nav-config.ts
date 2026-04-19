@@ -5,6 +5,10 @@ import {
   attendanceItem,
   debtTransfersItem,
   expenseApprovalItem,
+  inventoryCatalogItem,
+  inventoryLowStockItem,
+  inventoryMovementsItem,
+  inventoryOperationsItem,
   invoicesDataItem,
   knetAuditItem,
   leavesItem,
@@ -46,6 +50,15 @@ export const accountantSidebarNavGroups: NavGroup[] = [
   {
     labelKey: 'nav.groupOperations',
     items: [invoicesDataItem, accountantInventoryItem, accountantStockInItem],
+  },
+  {
+    labelKey: 'nav.groupInventory',
+    items: [
+      inventoryLowStockItem,
+      inventoryOperationsItem,
+      inventoryMovementsItem,
+      inventoryCatalogItem,
+    ],
   },
   // Stage-D — Payroll / HR workbench. Accountant approves leaves,
   // loans and signs off payslips; attendance view is read-only audit.

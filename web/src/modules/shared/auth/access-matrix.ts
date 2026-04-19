@@ -120,6 +120,18 @@ export const ACCESS = {
   'knetAudit.reconcile': ['ACCOUNTANT'] satisfies readonly SafariRole[],
   'inventoryReport.view': withExec('ACCOUNTANT'),
   'inventoryReport.stockIn': ['ACCOUNTANT'] satisfies readonly SafariRole[],
+  // Stage-E — Inventory & Supply Chain writes and oversight screens.
+  // View keys get the exec pair (OWNER/GM) + ACCOUNTANT as the custodians of
+  // the inventory ledger; MANAGER can consume stock but cannot adjust or
+  // transfer cost-bearing balances.
+  'inventory.catalog.view': withExec('ACCOUNTANT'),
+  'inventory.catalog.manage': ['ACCOUNTANT'] satisfies readonly SafariRole[],
+  'inventory.movements.view': withExec('ACCOUNTANT'),
+  'inventory.stockOut': ['ACCOUNTANT', 'MANAGER'] satisfies readonly SafariRole[],
+  'inventory.adjust': ['ACCOUNTANT'] satisfies readonly SafariRole[],
+  'inventory.transfer': ['ACCOUNTANT'] satisfies readonly SafariRole[],
+  'inventory.stocktake': ['ACCOUNTANT'] satisfies readonly SafariRole[],
+  'inventory.lowStock.view': withExec('ACCOUNTANT'),
   'unifiedLedger.view': withExec('ACCOUNTANT'),
   'reports.view': withExec('ACCOUNTANT'),
   'managerCustodyAging.view': withExec('ACCOUNTANT'),

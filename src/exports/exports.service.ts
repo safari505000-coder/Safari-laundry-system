@@ -6,6 +6,9 @@ import { SafariRole } from '@prisma/client';
 import { AttendanceService } from '../attendance/attendance.service';
 import type { ListAttendanceQueryDto } from '../attendance/dto/list-attendance-query.dto';
 import { FinanceService } from '../finance/finance.service';
+import type { InventoryReportQueryDto } from '../inventory/dto/inventory-report-query.dto';
+import { InventoryService } from '../inventory/inventory.service';
+import type { ListMovementsQueryDto } from '../inventory/dto/list-movements-query.dto';
 import { PayrollService } from '../payroll/payroll.service';
 import { ReportsService } from '../reports/reports.service';
 
@@ -45,6 +48,7 @@ export class ExportsService {
     private readonly attendance: AttendanceService,
     private readonly payroll: PayrollService,
     private readonly finance: FinanceService,
+    private readonly inventory: InventoryService,
   ) {}
 
   // ─── Excel reports ──────────────────────────────────────────────────
@@ -254,6 +258,83 @@ export class ExportsService {
           value: data.reduce((s, x) => s + x.net, 0),
         },
       ],
+    });
+  }
+
+  async inventoryReportXlsx(filters: InventoryReportQueryDto) {
+    const report = await this.inventory.report(filters);
+    const cols: ExcelCol[] = [
+      { header: 'الكود', key: 'code', width: 14 },
+      { header: 'الصنف', key: 'nameAr', width: 28 },
+      { header: 'الفئة', key: 'categoryNameAr', width: 18 },
+      { header: 'الفرع', key: 'branchName', width: 18 },
+      { header: 'الوحدة', key: 'unit', width: 10 },
+      { header: 'الكمية', key: 'quantityOnHand', width: 14, money: true },
+      { header: 'نقطة إعادة الطلب', key: 'reorderPointEffective', width: 18, money: true },
+      { header: 'متوسط التكلفة', key: 'avgUnitCost', width: 16, money: true },
+      { header: 'الحالة', key: 'status', width: 14 },
+    ];
+    const data = report.rows.map((r) => ({
+      code: r.code,
+      nameAr: r.nameAr,
+      categoryNameAr: r.categoryNameAr ?? '—',
+      branchName: r.branchName,
+      unit: r.unit,
+      quantityOnHand: Number(r.quantityOnHand),
+      reorderPointEffective: Number(r.reorderPointEffective),
+      avgUnitCost: r.avgUnitCost ? Number(r.avgUnitCost) : 0,
+      status: r.status,
+    }));
+    return this.buildWorkbook({
+      title: 'Inventory',
+      subtitle: `${report.summary.totalSkus} SKU-branches · ${report.summary.outOfStock} نفد · ${report.summary.lowStock} منخفض · قيمة ${report.summary.inventoryValueKd} د.ك`,
+      cols,
+      data,
+      totals: [
+        {
+          col: 'quantityOnHand',
+          label: 'إجمالي الكمية',
+          value: data.reduce((s, x) => s + x.quantityOnHand, 0),
+        },
+      ],
+    });
+  }
+
+  async stockMovementsXlsx(q: ListMovementsQueryDto) {
+    const rows = await this.inventory.listMovements(q);
+    const cols: ExcelCol[] = [
+      { header: 'التاريخ', key: 'createdAt', width: 20 },
+      { header: 'النوع', key: 'type', width: 14 },
+      { header: 'الكود', key: 'code', width: 14 },
+      { header: 'الصنف', key: 'nameAr', width: 26 },
+      { header: 'الفرع', key: 'branchName', width: 18 },
+      { header: 'الكمية', key: 'quantity', width: 12, money: true },
+      { header: 'التكلفة/الوحدة', key: 'unitCost', width: 14, money: true },
+      { header: 'الإجمالي', key: 'totalCost', width: 14, money: true },
+      { header: 'المورد', key: 'supplierName', width: 20 },
+      { header: 'المرجع', key: 'reference', width: 18 },
+      { header: 'سجّل بواسطة', key: 'recordedBy', width: 20 },
+      { header: 'ملاحظة', key: 'note', width: 30 },
+    ];
+    const data = rows.map((m) => ({
+      createdAt: new Date(m.createdAt).toLocaleString('ar-KW'),
+      type: m.type,
+      code: m.stockItem.code,
+      nameAr: m.stockItem.nameAr,
+      branchName: m.branchName,
+      quantity: Number(m.quantity),
+      unitCost: m.unitCost ? Number(m.unitCost) : 0,
+      totalCost: m.totalCost ? Number(m.totalCost) : 0,
+      supplierName: m.supplierName ?? '—',
+      reference: m.reference ?? '—',
+      recordedBy: m.recordedBy?.fullName ?? '—',
+      note: m.note ?? '',
+    }));
+    return this.buildWorkbook({
+      title: 'Stock movements',
+      subtitle: `${data.length} حركة`,
+      cols,
+      data,
     });
   }
 

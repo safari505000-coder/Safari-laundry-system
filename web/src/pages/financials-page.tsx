@@ -58,6 +58,7 @@ import { EXECUTIVE_SUMMARY_REFRESH_EVENT } from '@/lib/executive-summary-refresh
 import { cn } from '@/lib/utils';
 import { ConsolidatedCashCard } from '@/modules/owner/components/ConsolidatedCashCard';
 import { FinancialCycleCard } from '@/modules/owner/components/FinancialCycleCard';
+import { LowStockCard } from '@/modules/owner/components/LowStockCard';
 import { SerialGapCard } from '@/modules/owner/components/SerialGapCard';
 
 function startOfDayIso(d: Date): string {
@@ -354,6 +355,7 @@ export function FinancialsPage() {
         <>
           <FinancialCycleCard token={token} />
           <SerialGapCard token={token} />
+          <LowStockCard token={token} />
         </>
       : null}
 

@@ -19,6 +19,8 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { ListAttendanceQueryDto } from '../attendance/dto/list-attendance-query.dto';
+import { InventoryReportQueryDto } from '../inventory/dto/inventory-report-query.dto';
+import { ListMovementsQueryDto } from '../inventory/dto/list-movements-query.dto';
 import { ExportsService } from './exports.service';
 
 /**
@@ -183,6 +185,52 @@ export class ExportsController {
       to,
       branchId,
     );
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${filename}"`,
+    );
+    return new StreamableFile(stream);
+  }
+
+  @Get('inventory.xlsx')
+  @Roles(
+    SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
+    SafariRole.ACCOUNTANT,
+  )
+  @ApiOperation({ summary: 'Export the smart inventory report as Excel' })
+  async inventoryReportXlsx(
+    @Query() q: InventoryReportQueryDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { stream, filename } = await this.exports.inventoryReportXlsx(q);
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${filename}"`,
+    );
+    return new StreamableFile(stream);
+  }
+
+  @Get('stock-movements.xlsx')
+  @Roles(
+    SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
+    SafariRole.ACCOUNTANT,
+  )
+  @ApiOperation({ summary: 'Export stock movements audit as Excel' })
+  async stockMovementsXlsx(
+    @Query() q: ListMovementsQueryDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { stream, filename } = await this.exports.stockMovementsXlsx(q);
     res.setHeader(
       'Content-Type',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

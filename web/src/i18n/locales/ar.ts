@@ -14,6 +14,11 @@ export const ar = {
     manageItems: 'الأصناف والأسعار',
     inventoryReport: 'تقرير المخزون',
     stockIn: 'إدخال مخزون',
+    inventoryCatalog: 'كتالوج المخزون',
+    inventoryOperations: 'عمليات المخزون',
+    inventoryMovements: 'سجل الحركات',
+    inventoryLowStock: 'تنبيهات المخزون',
+    groupInventory: 'المخزون والتوريد',
     collections: 'تحصيل الفواتير',
     customerDebtTracker: 'متابعة ديون العملاء',
     driverMonitor: 'مراقبة السائقين',
@@ -1542,6 +1547,7 @@ export const ar = {
   },
   inventory: {
     refresh: 'تحديث',
+    exportXlsx: 'تصدير Excel',
     loadFailed: 'تعذر تحميل تقرير المخزون.',
     report: {
       title: 'المخزون الذكي',

@@ -1,4 +1,5 @@
 import {
+  AlertTriangle,
   ArrowLeftRight,
   Banknote,
   BanknoteArrowUp,
@@ -10,6 +11,7 @@ import {
   CircleDollarSign,
   ClipboardList,
   Hash,
+  History,
   Droplets,
   FileCheck2,
   ClipboardCheck,
@@ -25,6 +27,7 @@ import {
   PackagePlus,
   Radar,
   Receipt,
+  Settings,
   ShieldAlert,
   Warehouse,
   ShoppingCart,
@@ -173,6 +176,38 @@ export const accountantStockInItem: NavItem = {
   labelKey: 'nav.stockIn',
   icon: PackagePlus,
   roles: ['ACCOUNTANT'],
+};
+
+/** Stage-E — inventory catalog maintenance (items, categories, suppliers). */
+export const inventoryCatalogItem: NavItem = {
+  to: '/inventory/catalog',
+  labelKey: 'nav.inventoryCatalog',
+  icon: Settings,
+  roles: ['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT'],
+};
+
+/** Stage-E — stock-out / adjustment / transfer / stocktake workbench. */
+export const inventoryOperationsItem: NavItem = {
+  to: '/inventory/operations',
+  labelKey: 'nav.inventoryOperations',
+  icon: ArrowLeftRight,
+  roles: ['ACCOUNTANT', 'MANAGER'],
+};
+
+/** Stage-E — full stock movements audit log. */
+export const inventoryMovementsItem: NavItem = {
+  to: '/inventory/movements',
+  labelKey: 'nav.inventoryMovements',
+  icon: History,
+  roles: ['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT'],
+};
+
+/** Stage-E — live low-stock/out-of-stock list. */
+export const inventoryLowStockItem: NavItem = {
+  to: '/inventory/low-stock',
+  labelKey: 'nav.inventoryLowStock',
+  icon: AlertTriangle,
+  roles: ['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT'],
 };
 
 export const ordersItem: NavItem = {
