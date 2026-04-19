@@ -124,6 +124,15 @@ export function StaffDebtsPage() {
   const [nameFilter, setNameFilter] = useState<string>(
     () => searchParams.get('name') || '',
   );
+  /*
+   * V19.4 — Employee selector (GM + Accountant feature).
+   * Encoded as 'ALL' | 'driver:<driverId>' | 'manager:<managerId>'. When a
+   * specific employee is picked, the branch dropdown auto-hides (the
+   * employee's branch is already implied).
+   */
+  const [employeeFilter, setEmployeeFilter] = useState<string>(
+    () => searchParams.get('employee') || 'ALL',
+  );
   const [statusFilter, setStatusFilter] = useState<DebtStatus>(() => {
     const raw = (searchParams.get('status') || 'ALL').toUpperCase();
     return raw === 'OVERDUE' || raw === 'CURRENT' ? (raw as DebtStatus) : 'ALL';
@@ -138,9 +147,11 @@ export function StaffDebtsPage() {
     const next = new URLSearchParams();
     if (branchFilter && branchFilter !== 'ALL') next.set('branch', branchFilter);
     if (nameFilter.trim()) next.set('name', nameFilter.trim());
+    if (employeeFilter && employeeFilter !== 'ALL')
+      next.set('employee', employeeFilter);
     if (statusFilter !== 'ALL') next.set('status', statusFilter);
     setSearchParams(next, { replace: true });
-  }, [branchFilter, nameFilter, statusFilter, setSearchParams]);
+  }, [branchFilter, nameFilter, employeeFilter, statusFilter, setSearchParams]);
 
   const load = useCallback(async () => {
     if (!token || !allowed) return;
@@ -179,10 +190,120 @@ export function StaffDebtsPage() {
 
   const trimmedName = nameFilter.trim().toLocaleLowerCase();
 
+  /*
+   * V19.4 — Decode employeeFilter once so downstream logic doesn't repeat
+   * the string split. 'ALL' → no employee constraint; otherwise one of
+   * { kind: 'driver' | 'manager', id }.
+   */
+  const employeePick = useMemo<
+    { kind: 'driver' | 'manager'; id: string } | null
+  >(() => {
+    if (!employeeFilter || employeeFilter === 'ALL') return null;
+    const [kind, id] = employeeFilter.split(':');
+    if ((kind === 'driver' || kind === 'manager') && id) {
+      return { kind, id };
+    }
+    return null;
+  }, [employeeFilter]);
+
+  /*
+   * V19.4 — Unified employee picker. Drivers with pending balance and
+   * unique managers with open custody are merged, deduped by (kind, id),
+   * and narrowed to the active branch if one is selected. This is what
+   * populates the "الموظف" dropdown; when a branch is picked, only
+   * employees belonging to that branch remain, exactly as requested.
+   */
+  type EmployeeOption = {
+    value: string;
+    label: string;
+    branchId: string | null;
+    kind: 'driver' | 'manager';
+  };
+
+  const employeeOptions = useMemo<EmployeeOption[]>(() => {
+    const seen = new Set<string>();
+    const out: EmployeeOption[] = [];
+    for (const d of drivers ?? []) {
+      if (driverPendingTotalKd(d) <= 0) continue;
+      const value = `driver:${d.driverId}`;
+      if (seen.has(value)) continue;
+      seen.add(value);
+      out.push({
+        value,
+        label: d.fullName,
+        branchId: d.branchId,
+        kind: 'driver',
+      });
+    }
+    for (const c of custody ?? []) {
+      const value = `manager:${c.managerId}`;
+      if (seen.has(value)) continue;
+      seen.add(value);
+      out.push({
+        value,
+        label: c.managerName,
+        branchId: c.branchId,
+        kind: 'manager',
+      });
+    }
+    const scoped =
+      branchFilter !== 'ALL'
+        ? out.filter((o) => o.branchId === branchFilter)
+        : out;
+    return scoped.sort((a, b) => a.label.localeCompare(b.label, 'ar'));
+  }, [drivers, custody, branchFilter]);
+
+  const selectedEmployee = useMemo<EmployeeOption | null>(() => {
+    if (!employeePick) return null;
+    return (
+      employeeOptions.find((o) => o.value === employeeFilter) ??
+      // fall back: the employee may belong to a branch that has since
+      // been excluded by the branch filter; look them up globally so
+      // the picked row still renders correctly.
+      (() => {
+        for (const d of drivers ?? []) {
+          if (employeePick.kind === 'driver' && d.driverId === employeePick.id)
+            return {
+              value: employeeFilter,
+              label: d.fullName,
+              branchId: d.branchId,
+              kind: 'driver' as const,
+            };
+        }
+        for (const c of custody ?? []) {
+          if (
+            employeePick.kind === 'manager' &&
+            c.managerId === employeePick.id
+          )
+            return {
+              value: employeeFilter,
+              label: c.managerName,
+              branchId: c.branchId,
+              kind: 'manager' as const,
+            };
+        }
+        return null;
+      })()
+    );
+  }, [employeeOptions, employeeFilter, employeePick, drivers, custody]);
+
+  /*
+   * V19.4 — When an employee is picked, hide the branch select entirely
+   * (the employee's branch is implicit). Accountant/GM still see the
+   * branch on each row in the table, so no information is lost.
+   */
+  const showBranchFilter = !employeePick;
+
   const driverRows = useMemo(() => {
     const list = (drivers ?? []).filter((d) => driverPendingTotalKd(d) > 0);
     return list.filter((d) => {
-      if (branchFilter !== 'ALL' && d.branchId !== branchFilter) return false;
+      // Employee lock trumps every other filter in its own section.
+      if (employeePick) {
+        if (employeePick.kind !== 'driver') return false;
+        if (d.driverId !== employeePick.id) return false;
+      } else if (branchFilter !== 'ALL' && d.branchId !== branchFilter) {
+        return false;
+      }
       if (trimmedName && !d.fullName.toLocaleLowerCase().includes(trimmedName))
         return false;
       const overdue = isDriverOverdue(d, now);
@@ -190,11 +311,16 @@ export function StaffDebtsPage() {
       if (statusFilter === 'CURRENT' && overdue) return false;
       return true;
     });
-  }, [drivers, branchFilter, trimmedName, statusFilter, now]);
+  }, [drivers, branchFilter, employeePick, trimmedName, statusFilter, now]);
 
   const managerRows = useMemo(() => {
     return (custody ?? []).filter((c) => {
-      if (branchFilter !== 'ALL' && c.branchId !== branchFilter) return false;
+      if (employeePick) {
+        if (employeePick.kind !== 'manager') return false;
+        if (c.managerId !== employeePick.id) return false;
+      } else if (branchFilter !== 'ALL' && c.branchId !== branchFilter) {
+        return false;
+      }
       if (
         trimmedName &&
         !c.managerName.toLocaleLowerCase().includes(trimmedName)
@@ -204,7 +330,7 @@ export function StaffDebtsPage() {
       if (statusFilter === 'CURRENT' && c.isOverdue) return false;
       return true;
     });
-  }, [custody, branchFilter, trimmedName, statusFilter]);
+  }, [custody, branchFilter, employeePick, trimmedName, statusFilter]);
 
   const driverTotal = useMemo(
     () => driverRows.reduce((sum, r) => sum + driverPendingTotalKd(r), 0),
@@ -243,14 +369,29 @@ export function StaffDebtsPage() {
     const params = new URLSearchParams();
     if (branchFilter && branchFilter !== 'ALL') params.set('branch', branchFilter);
     if (nameFilter.trim()) params.set('name', nameFilter.trim());
+    if (employeeFilter && employeeFilter !== 'ALL')
+      params.set('employee', employeeFilter);
     if (statusFilter !== 'ALL') params.set('status', statusFilter);
     const qs = params.toString();
     return `${window.location.origin}/staff-debts${qs ? `?${qs}` : ''}`;
-  }, [branchFilter, nameFilter, statusFilter]);
+  }, [branchFilter, nameFilter, employeeFilter, statusFilter]);
 
   const appliedFiltersLabel = useMemo(() => {
     const parts: string[] = [];
-    if (branchFilter && branchFilter !== 'ALL') {
+    /*
+     * V19.4 — When an employee is locked, their own label replaces the
+     * branch line on the printed header (the employee's branch is
+     * already implied and shown per-row in the table).
+     */
+    if (selectedEmployee) {
+      const kindLabel =
+        selectedEmployee.kind === 'driver'
+          ? t('staffDebts.employeeKindDriver')
+          : t('staffDebts.employeeKindManager');
+      parts.push(
+        `${t('staffDebts.filterEmployee')}: ${selectedEmployee.label} (${kindLabel})`,
+      );
+    } else if (branchFilter && branchFilter !== 'ALL') {
       parts.push(
         `${t('staffDebts.filterBranch')}: ${
           branchNameById.get(branchFilter) ?? branchFilter
@@ -271,7 +412,14 @@ export function StaffDebtsPage() {
     }
     if (parts.length === 0) return t('staffDebts.statusAll');
     return parts.join(' · ');
-  }, [branchFilter, nameFilter, statusFilter, branchNameById, t]);
+  }, [
+    branchFilter,
+    nameFilter,
+    statusFilter,
+    selectedEmployee,
+    branchNameById,
+    t,
+  ]);
 
   const generatedAtLabel = useMemo(
     () => new Date(now).toLocaleString(),
@@ -390,22 +538,82 @@ export function StaffDebtsPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {/*
+           * V19.4 — Branch select is hidden when a specific employee is
+           * picked, because the employee's branch is already implied and
+           * rendered on every row. Picking a branch resets the employee
+           * filter so the two pickers never disagree.
+           */}
+          {showBranchFilter ? (
+            <div className="space-y-1.5">
+              <Label htmlFor="sd-branch">{t('staffDebts.filterBranch')}</Label>
+              <Select
+                value={branchFilter}
+                onValueChange={(v) => {
+                  setBranchFilter(v ?? 'ALL');
+                  setEmployeeFilter('ALL');
+                }}
+              >
+                <SelectTrigger id="sd-branch">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">
+                    {t('staffDebts.allBranches')}
+                  </SelectItem>
+                  {(branches ?? []).map((b) => (
+                    <SelectItem key={b.id} value={b.id}>
+                      {b.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
+          {/*
+           * V19.4 — Employee dropdown. Populated from drivers with pending
+           * balance + managers with open custody, narrowed to the active
+           * branch when one is set. Selecting a specific employee hides
+           * the branch picker above.
+           */}
           <div className="space-y-1.5">
-            <Label htmlFor="sd-branch">{t('staffDebts.filterBranch')}</Label>
+            <Label htmlFor="sd-employee">
+              {t('staffDebts.filterEmployee')}
+            </Label>
             <Select
-              value={branchFilter}
-              onValueChange={(v) => setBranchFilter(v ?? 'ALL')}
+              value={employeeFilter}
+              onValueChange={(v) => setEmployeeFilter(v ?? 'ALL')}
             >
-              <SelectTrigger id="sd-branch">
-                <SelectValue />
+              <SelectTrigger id="sd-employee">
+                <SelectValue
+                  placeholder={t('staffDebts.filterEmployeePlaceholder')}
+                />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="ALL">{t('staffDebts.allBranches')}</SelectItem>
-                {(branches ?? []).map((b) => (
-                  <SelectItem key={b.id} value={b.id}>
-                    {b.name}
-                  </SelectItem>
-                ))}
+                <SelectItem value="ALL">
+                  {t('staffDebts.allEmployees')}
+                </SelectItem>
+                {employeeOptions.map((o) => {
+                  const branchLabel = o.branchId
+                    ? branchNameById.get(o.branchId) ?? ''
+                    : '';
+                  const kindLabel =
+                    o.kind === 'driver'
+                      ? t('staffDebts.employeeKindDriver')
+                      : t('staffDebts.employeeKindManager');
+                  return (
+                    <SelectItem key={o.value} value={o.value}>
+                      <span className="flex flex-col">
+                        <span>{o.label}</span>
+                        <span className="text-xs text-slate-500">
+                          {[kindLabel, branchLabel]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </span>
+                      </span>
+                    </SelectItem>
+                  );
+                })}
               </SelectContent>
             </Select>
           </div>
