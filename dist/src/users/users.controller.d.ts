@@ -20,6 +20,34 @@ export declare class UsersController {
         branchId: string | null;
         createdAt: Date;
         updatedAt: Date;
+        role: {
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            name: string;
+        };
+        _count: {
+            role: number;
+            branch: number;
+            auditLogs: number;
+            ordersAsDriver: number;
+            shiftsAsDriver: number;
+            shiftConfirmations: number;
+            ledgerTransactions: number;
+            expensesRecorded: number;
+            payrolls: number;
+            debtLedgerEntries: number;
+            bankDepositsUploaded: number;
+            bankDepositsVerifiedAsAccountant: number;
+            depositsRequested: number;
+            depositsAudited: number;
+            posPaymentBundlesLed: number;
+            stockMovementsRecorded: number;
+            managerCustodyBagsHeld: number;
+            managerCustodyBagsHandedOver: number;
+            managerCustodyVerifications: number;
+            managerCustodyRejections: number;
+        };
         isActive: boolean;
         username: string;
         fullName: string;
@@ -30,12 +58,6 @@ export declare class UsersController {
         lastKnownLocation: string | null;
         driverPrefix: string | null;
         safariRole: import("@prisma/client").$Enums.SafariRole;
-        role: {
-            id: string;
-            createdAt: Date;
-            updatedAt: Date;
-            name: string;
-        };
         branch: {
             id: string;
             createdAt: Date;
@@ -313,28 +335,6 @@ export declare class UsersController {
             rejectedAt: Date | null;
             rejectionReason: string | null;
         }[];
-        _count: {
-            role: number;
-            branch: number;
-            auditLogs: number;
-            ordersAsDriver: number;
-            shiftsAsDriver: number;
-            shiftConfirmations: number;
-            ledgerTransactions: number;
-            expensesRecorded: number;
-            payrolls: number;
-            debtLedgerEntries: number;
-            bankDepositsUploaded: number;
-            bankDepositsVerifiedAsAccountant: number;
-            depositsRequested: number;
-            depositsAudited: number;
-            posPaymentBundlesLed: number;
-            stockMovementsRecorded: number;
-            managerCustodyBagsHeld: number;
-            managerCustodyBagsHandedOver: number;
-            managerCustodyVerifications: number;
-            managerCustodyRejections: number;
-        };
     }>;
     findAll(user: JwtUser): Promise<{
         id: string;
@@ -343,6 +343,34 @@ export declare class UsersController {
         branchId: string | null;
         createdAt: Date;
         updatedAt: Date;
+        role: {
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            name: string;
+        };
+        _count: {
+            role: number;
+            branch: number;
+            auditLogs: number;
+            ordersAsDriver: number;
+            shiftsAsDriver: number;
+            shiftConfirmations: number;
+            ledgerTransactions: number;
+            expensesRecorded: number;
+            payrolls: number;
+            debtLedgerEntries: number;
+            bankDepositsUploaded: number;
+            bankDepositsVerifiedAsAccountant: number;
+            depositsRequested: number;
+            depositsAudited: number;
+            posPaymentBundlesLed: number;
+            stockMovementsRecorded: number;
+            managerCustodyBagsHeld: number;
+            managerCustodyBagsHandedOver: number;
+            managerCustodyVerifications: number;
+            managerCustodyRejections: number;
+        };
         isActive: boolean;
         username: string;
         fullName: string;
@@ -353,12 +381,6 @@ export declare class UsersController {
         lastKnownLocation: string | null;
         driverPrefix: string | null;
         safariRole: import("@prisma/client").$Enums.SafariRole;
-        role: {
-            id: string;
-            createdAt: Date;
-            updatedAt: Date;
-            name: string;
-        };
         branch: {
             id: string;
             createdAt: Date;
@@ -636,28 +658,6 @@ export declare class UsersController {
             rejectedAt: Date | null;
             rejectionReason: string | null;
         }[];
-        _count: {
-            role: number;
-            branch: number;
-            auditLogs: number;
-            ordersAsDriver: number;
-            shiftsAsDriver: number;
-            shiftConfirmations: number;
-            ledgerTransactions: number;
-            expensesRecorded: number;
-            payrolls: number;
-            debtLedgerEntries: number;
-            bankDepositsUploaded: number;
-            bankDepositsVerifiedAsAccountant: number;
-            depositsRequested: number;
-            depositsAudited: number;
-            posPaymentBundlesLed: number;
-            stockMovementsRecorded: number;
-            managerCustodyBagsHeld: number;
-            managerCustodyBagsHandedOver: number;
-            managerCustodyVerifications: number;
-            managerCustodyRejections: number;
-        };
     }[]>;
     findOne(id: string, user: JwtUser): Promise<{
         id: string;
@@ -666,6 +666,34 @@ export declare class UsersController {
         branchId: string | null;
         createdAt: Date;
         updatedAt: Date;
+        role: {
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            name: string;
+        };
+        _count: {
+            role: number;
+            branch: number;
+            auditLogs: number;
+            ordersAsDriver: number;
+            shiftsAsDriver: number;
+            shiftConfirmations: number;
+            ledgerTransactions: number;
+            expensesRecorded: number;
+            payrolls: number;
+            debtLedgerEntries: number;
+            bankDepositsUploaded: number;
+            bankDepositsVerifiedAsAccountant: number;
+            depositsRequested: number;
+            depositsAudited: number;
+            posPaymentBundlesLed: number;
+            stockMovementsRecorded: number;
+            managerCustodyBagsHeld: number;
+            managerCustodyBagsHandedOver: number;
+            managerCustodyVerifications: number;
+            managerCustodyRejections: number;
+        };
         isActive: boolean;
         username: string;
         fullName: string;
@@ -676,12 +704,6 @@ export declare class UsersController {
         lastKnownLocation: string | null;
         driverPrefix: string | null;
         safariRole: import("@prisma/client").$Enums.SafariRole;
-        role: {
-            id: string;
-            createdAt: Date;
-            updatedAt: Date;
-            name: string;
-        };
         branch: {
             id: string;
             createdAt: Date;
@@ -959,28 +981,6 @@ export declare class UsersController {
             rejectedAt: Date | null;
             rejectionReason: string | null;
         }[];
-        _count: {
-            role: number;
-            branch: number;
-            auditLogs: number;
-            ordersAsDriver: number;
-            shiftsAsDriver: number;
-            shiftConfirmations: number;
-            ledgerTransactions: number;
-            expensesRecorded: number;
-            payrolls: number;
-            debtLedgerEntries: number;
-            bankDepositsUploaded: number;
-            bankDepositsVerifiedAsAccountant: number;
-            depositsRequested: number;
-            depositsAudited: number;
-            posPaymentBundlesLed: number;
-            stockMovementsRecorded: number;
-            managerCustodyBagsHeld: number;
-            managerCustodyBagsHandedOver: number;
-            managerCustodyVerifications: number;
-            managerCustodyRejections: number;
-        };
     }>;
     update(id: string, dto: UpdateUserDto, user: JwtUser, req: {
         headers?: Record<string, unknown>;
@@ -992,6 +992,34 @@ export declare class UsersController {
         branchId: string | null;
         createdAt: Date;
         updatedAt: Date;
+        role: {
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            name: string;
+        };
+        _count: {
+            role: number;
+            branch: number;
+            auditLogs: number;
+            ordersAsDriver: number;
+            shiftsAsDriver: number;
+            shiftConfirmations: number;
+            ledgerTransactions: number;
+            expensesRecorded: number;
+            payrolls: number;
+            debtLedgerEntries: number;
+            bankDepositsUploaded: number;
+            bankDepositsVerifiedAsAccountant: number;
+            depositsRequested: number;
+            depositsAudited: number;
+            posPaymentBundlesLed: number;
+            stockMovementsRecorded: number;
+            managerCustodyBagsHeld: number;
+            managerCustodyBagsHandedOver: number;
+            managerCustodyVerifications: number;
+            managerCustodyRejections: number;
+        };
         isActive: boolean;
         username: string;
         fullName: string;
@@ -1002,12 +1030,6 @@ export declare class UsersController {
         lastKnownLocation: string | null;
         driverPrefix: string | null;
         safariRole: import("@prisma/client").$Enums.SafariRole;
-        role: {
-            id: string;
-            createdAt: Date;
-            updatedAt: Date;
-            name: string;
-        };
         branch: {
             id: string;
             createdAt: Date;
@@ -1285,28 +1307,6 @@ export declare class UsersController {
             rejectedAt: Date | null;
             rejectionReason: string | null;
         }[];
-        _count: {
-            role: number;
-            branch: number;
-            auditLogs: number;
-            ordersAsDriver: number;
-            shiftsAsDriver: number;
-            shiftConfirmations: number;
-            ledgerTransactions: number;
-            expensesRecorded: number;
-            payrolls: number;
-            debtLedgerEntries: number;
-            bankDepositsUploaded: number;
-            bankDepositsVerifiedAsAccountant: number;
-            depositsRequested: number;
-            depositsAudited: number;
-            posPaymentBundlesLed: number;
-            stockMovementsRecorded: number;
-            managerCustodyBagsHeld: number;
-            managerCustodyBagsHandedOver: number;
-            managerCustodyVerifications: number;
-            managerCustodyRejections: number;
-        };
     }>;
     remove(id: string, user: JwtUser, req: {
         headers?: Record<string, unknown>;

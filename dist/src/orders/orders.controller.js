@@ -92,10 +92,10 @@ __decorate([
 __decorate([
     (0, common_1.Post)(),
     (0, common_1.UseGuards)(roles_guard_1.RolesGuard),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.MANAGER, client_1.SafariRole.CALL_CENTER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.MANAGER),
     (0, swagger_1.ApiOperation)({
         summary: `Create order — back office (${branding_1.APP_BRAND})`,
-        description: 'Same validation as driver quick create: Kuwait phone, **totalPrice > 0**, **EXPRESS|NORMAL**, optional **lineItems** with total reconciliation. Optional driver assignment. Branch managers and call center only (drivers use POST /orders/quick).',
+        description: 'Same validation as driver quick create: Kuwait phone, **totalPrice > 0**, **EXPRESS|NORMAL**, optional **lineItems** with total reconciliation. Optional driver assignment. Branch managers only — drivers use POST /orders/quick; Call Center is NOT permitted to issue invoices (Dastur §2, V19.3).',
     }),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),

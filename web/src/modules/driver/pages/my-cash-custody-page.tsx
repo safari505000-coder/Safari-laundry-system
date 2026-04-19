@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { apiJson, type OrderRow } from '@/lib/api';
+import { isVisibleOn } from '@/modules/shared/invoice/lifecycle';
 import { formatKwdLabel } from '@/lib/kwd';
 import { Button } from '@/modules/shared/components/ui/button';
 import {
@@ -77,10 +78,19 @@ export function MyCashCustodyPage() {
     void apiJson<OrderRow[]>('/api/orders', { token }).then(setOrders);
   }, [token]);
 
+  /*
+   * Route through the Invoice Constitution
+   * (`@/modules/shared/invoice/lifecycle`) instead of an inline
+   * `cashStatus === '…'` check. The `driverMyCashCustody` scope maps
+   * to lifecycle state PAID_TO_DRIVER, mirroring the newer
+   * `driverMyDeposits` screen — both surfaces therefore show the same
+   * set of invoices without divergent string literals.
+   */
   const pending = useMemo(
     () =>
       (orders ?? []).filter(
-        (o) => o.status === 'COMPLETED' && o.cashStatus === 'PAID_TO_DRIVER',
+        (o) =>
+          o.status === 'COMPLETED' && isVisibleOn(o, 'driverMyCashCustody'),
       ),
     [orders],
   );
