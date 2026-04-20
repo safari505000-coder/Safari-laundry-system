@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { BrandLogo } from '@/modules/shared/components/brand-logo';
 import { getSidebarNavGroupsForRole } from '@/modules/shared/nav/resolve-sidebar-nav';
+import type { NavGroupTone } from '@/modules/shared/nav/nav-types';
 import { useAuth } from '@/contexts/auth-context';
 import { Avatar, AvatarFallback } from '@/modules/shared/components/ui/avatar';
 import { Button, buttonVariants } from '@/modules/shared/components/ui/button';
@@ -33,6 +34,40 @@ function navClass(active: boolean, collapsed: boolean) {
     : 'text-muted-foreground hover:bg-muted hover:text-foreground',
   );
 }
+
+/**
+ * V19.3 — Group label tone classes. Rendered as a tiny dot + coloured
+ * caption next to the uppercase group name so the six OWNER islands
+ * (finance/hr/inventory/customers/payment/admin) read at a glance in
+ * both light and dark themes. Semantic Tailwind tones keep the accent
+ * readable on every theme variant we ship.
+ */
+const GROUP_TONE_CLASSES: Record<NavGroupTone, { dot: string; text: string }> = {
+  blue: {
+    dot: 'bg-sky-500',
+    text: 'text-sky-700 dark:text-sky-300',
+  },
+  green: {
+    dot: 'bg-emerald-500',
+    text: 'text-emerald-700 dark:text-emerald-300',
+  },
+  orange: {
+    dot: 'bg-orange-500',
+    text: 'text-orange-700 dark:text-orange-300',
+  },
+  purple: {
+    dot: 'bg-violet-500',
+    text: 'text-violet-700 dark:text-violet-300',
+  },
+  red: {
+    dot: 'bg-rose-500',
+    text: 'text-rose-700 dark:text-rose-300',
+  },
+  gray: {
+    dot: 'bg-zinc-400',
+    text: 'text-muted-foreground',
+  },
+};
 
 export function ExecutiveSidebar() {
   const { t, i18n } = useTranslation();
@@ -141,12 +176,32 @@ export function ExecutiveSidebar() {
       </div>
 
       <nav className="flex flex-1 flex-col gap-4 overflow-y-auto p-2">
-        {filteredGroups.map((group) => (
+        {filteredGroups.map((group) => {
+          const tone = group.tone ? GROUP_TONE_CLASSES[group.tone] : null;
+          return (
           <div key={group.labelKey} className="space-y-0.5">
             {!collapsed ?
-              <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">
+              <p
+                className={cn(
+                  'flex items-center gap-1.5 px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider',
+                  tone ? tone.text : 'text-muted-foreground/80',
+                )}
+              >
+                {tone ?
+                  <span
+                    aria-hidden
+                    className={cn('h-1.5 w-1.5 rounded-full', tone.dot)}
+                  />
+                : null}
                 {t(group.labelKey)}
               </p>
+            : tone ?
+              <div className="flex justify-center pb-1">
+                <span
+                  aria-hidden
+                  className={cn('h-1.5 w-1.5 rounded-full', tone.dot)}
+                />
+              </div>
             : null}
             {group.items.map(({ to, labelKey, icon: Icon }) => (
               <NavLink
@@ -161,7 +216,8 @@ export function ExecutiveSidebar() {
               </NavLink>
             ))}
           </div>
-        ))}
+          );
+        })}
       </nav>
 
       <div className="border-t border-border p-2">

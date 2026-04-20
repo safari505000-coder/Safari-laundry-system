@@ -5,7 +5,7 @@ import { Menu } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import type { SafariRole } from '@/lib/api';
 import { getSidebarNavGroupsForRole } from '@/modules/shared/nav/resolve-sidebar-nav';
-import type { NavItem } from '@/modules/shared/nav/nav-types';
+import type { NavGroupTone, NavItem } from '@/modules/shared/nav/nav-types';
 import {
   branchesItem,
   collectionsItem,
@@ -32,6 +32,20 @@ import {
   SheetTrigger,
 } from '@/modules/shared/components/ui/sheet';
 import { cn } from '@/lib/utils';
+
+/**
+ * V19.3 — Tone classes shared with the desktop sidebar. Keeps the mobile
+ * "More" sheet aligned with the six coloured OWNER islands so users get
+ * the same visual hierarchy on phones as on desktop.
+ */
+const GROUP_TONE_CLASSES: Record<NavGroupTone, { dot: string; text: string }> = {
+  blue: { dot: 'bg-sky-500', text: 'text-sky-700 dark:text-sky-300' },
+  green: { dot: 'bg-emerald-500', text: 'text-emerald-700 dark:text-emerald-300' },
+  orange: { dot: 'bg-orange-500', text: 'text-orange-700 dark:text-orange-300' },
+  purple: { dot: 'bg-violet-500', text: 'text-violet-700 dark:text-violet-300' },
+  red: { dot: 'bg-rose-500', text: 'text-rose-700 dark:text-rose-300' },
+  gray: { dot: 'bg-zinc-400', text: 'text-muted-foreground' },
+};
 
 /**
  * V18.0 — Keeta-style bottom navigation bar. Shows the four most relevant
@@ -147,9 +161,22 @@ export function MobileBottomNav() {
             <SheetTitle>{t('nav.more', 'More')}</SheetTitle>
           </SheetHeader>
           <div className="flex flex-col gap-4 p-4 pb-8">
-            {fullNavGroups.map((group) => (
+            {fullNavGroups.map((group) => {
+              const tone = group.tone ? GROUP_TONE_CLASSES[group.tone] : null;
+              return (
               <div key={group.labelKey} className="space-y-1">
-                <p className="px-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <p
+                  className={cn(
+                    'flex items-center gap-1.5 px-1 text-[11px] font-semibold uppercase tracking-wider',
+                    tone ? tone.text : 'text-muted-foreground',
+                  )}
+                >
+                  {tone ?
+                    <span
+                      aria-hidden
+                      className={cn('h-1.5 w-1.5 rounded-full', tone.dot)}
+                    />
+                  : null}
                   {t(group.labelKey)}
                 </p>
                 <div className="grid grid-cols-2 gap-2">
@@ -174,7 +201,8 @@ export function MobileBottomNav() {
                   ))}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </SheetContent>
       </Sheet>

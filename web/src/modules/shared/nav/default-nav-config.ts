@@ -2,109 +2,131 @@ import type { NavGroup } from '@/modules/shared/nav/nav-types';
 import {
   attendanceItem,
   branchesItem,
-  leavesItem,
-  loansItem,
+  collectionsItem,
   customersItem,
   dashboardItem,
   debtRecoveryReportItem,
-  expenseApprovalItem,
-  knetAuditReportItem,
+  debtTransfersItem,
   driverMonitorItem,
+  expenseApprovalItem,
   expensesItem,
   financialCycleReportItem,
   financialsItem,
   fixedExpensesItem,
+  insightsAiItem,
   inventoryCatalogItem,
   inventoryLowStockItem,
   inventoryMovementsItem,
-  inventoryOperationsItem,
-  insightsAiItem,
   invoicesDataItem,
+  knetAuditReportItem,
+  leavesItem,
+  loansItem,
   manageItemsItem,
   managerCustodyAgingItem,
   ownerInventoryItem,
   ownerSerialsItem,
-  ordersItem,
   payrollItem,
   purchaseOrdersItem,
-  staffDebtsItem,
   reportsItem,
   shiftsItem,
+  staffDebtsItem,
   subscribersItem,
   subscriptionsItem,
-  collectionsItem,
-  debtTransfersItem,
   teamItem,
   unifiedLedgerItem,
   whatsappToolsItem,
 } from '@/modules/shared/nav/nav-items';
 
 /**
- * Executive sidebar for OWNER (and, via resolve-sidebar-nav, for
- * GENERAL_MANAGER — see §3.9 unification). SUPERVISOR / VIEWER / WORKER /
- * fallbacks also land here.
+ * V19.3 — OWNER + GENERAL_MANAGER sidebar, reorganised into six semantic
+ * islands with matching tone hints so the hierarchy reads at a glance:
  *
- * Dastur rules encoded by omission:
- *   • No `posItem` — POS is MANAGER/DRIVER territory (pos.use matrix).
- *   • No driver-personal items (myDeposits, myDailySales, myFieldExpenses).
- *   • `driverMonitorItem` has `roles: ['OWNER']` so the role filter hides
- *     it from GM automatically — that's the "minus Pulse" half of F.
+ *   1. Home                    (dashboard entry)
+ *   2. 📊 Finance & Reports    (blue)
+ *   3. 👥 Human Resources      (green)
+ *   4. 📦 Inventory & Ops      (orange)
+ *   5. 👨‍💼 Customers & Subs    (purple)
+ *   6. 💳 Payment & Collection (red)
+ *   7. ⚙️ Admin & Settings     (gray)
+ *
+ * Dastur rules still encoded by omission:
+ *   • No `posItem` / driver-personal items (MANAGER/DRIVER territory).
+ *   • `driverMonitorItem.roles = ['OWNER']` — GM loses Pulse via filter.
+ *   • Hard-delete actions continue to be gated by the access matrix.
+ *
+ * Note: the legacy OWNER layout duplicated `/orders` (as both
+ * `ordersItem` and `invoicesDataItem`). We keep only `invoicesDataItem`
+ * under "Payment & Collection" so the sidebar does not present two
+ * entries for the same route.
  */
 export const defaultSidebarNavGroups: NavGroup[] = [
   {
     labelKey: 'nav.groupMain',
-    items: [
-      manageItemsItem,
-      ownerInventoryItem,
-      dashboardItem,
-      customersItem,
-      collectionsItem,
-      subscriptionsItem,
-      subscribersItem,
-      driverMonitorItem,
-    ],
-  },
-  {
-    labelKey: 'nav.groupOperations',
-    items: [invoicesDataItem, ordersItem, shiftsItem, ownerSerialsItem],
-  },
-  {
-    labelKey: 'nav.groupInventory',
-    items: [
-      inventoryLowStockItem,
-      inventoryMovementsItem,
-      inventoryOperationsItem,
-      inventoryCatalogItem,
-      purchaseOrdersItem,
-    ],
-  },
-  {
-    labelKey: 'nav.groupIntelligence',
-    items: [insightsAiItem],
+    items: [dashboardItem],
   },
   {
     labelKey: 'nav.groupFinance',
+    tone: 'blue',
     items: [
       financialsItem,
-      knetAuditReportItem,
-      expenseApprovalItem,
-      financialCycleReportItem,
-      managerCustodyAgingItem,
-      staffDebtsItem,
-      debtRecoveryReportItem,
-      debtTransfersItem,
       reportsItem,
+      financialCycleReportItem,
+      knetAuditReportItem,
       unifiedLedgerItem,
-      payrollItem,
-      attendanceItem,
-      leavesItem,
-      loansItem,
+      insightsAiItem,
+      expenseApprovalItem,
+      debtTransfersItem,
       fixedExpensesItem,
       expensesItem,
     ],
   },
   {
-    labelKey: 'nav.groupSystemSettings',
-    items: [branchesItem, teamItem, whatsappToolsItem],
+    labelKey: 'nav.groupHr',
+    tone: 'green',
+    items: [payrollItem, attendanceItem, leavesItem, loansItem],
+  },
+  {
+    labelKey: 'nav.groupInventoryOps',
+    tone: 'orange',
+    items: [
+      manageItemsItem,
+      ownerInventoryItem,
+      ownerSerialsItem,
+      inventoryLowStockItem,
+      inventoryMovementsItem,
+      inventoryCatalogItem,
+      purchaseOrdersItem,
+    ],
+  },
+  {
+    labelKey: 'nav.groupCustomersSubs',
+    tone: 'purple',
+    items: [
+      customersItem,
+      collectionsItem,
+      subscriptionsItem,
+      subscribersItem,
+    ],
+  },
+  {
+    labelKey: 'nav.groupPaymentCollection',
+    tone: 'red',
+    items: [
+      invoicesDataItem,
+      debtRecoveryReportItem,
+      managerCustodyAgingItem,
+      staffDebtsItem,
+    ],
+  },
+  {
+    labelKey: 'nav.groupAdminSettings',
+    tone: 'gray',
+    items: [
+      teamItem,
+      branchesItem,
+      driverMonitorItem,
+      shiftsItem,
+      whatsappToolsItem,
+    ],
   },
 ];
