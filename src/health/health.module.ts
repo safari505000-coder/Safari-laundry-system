@@ -3,15 +3,20 @@ import { TerminusModule } from '@nestjs/terminus';
 import { PrismaModule } from '../prisma/prisma.module';
 import { HealthController } from './health.controller';
 import { PrismaHealthIndicator } from './prisma.health';
+import { VersionController } from './version.controller';
 
 /**
- * Stage-G — public /api/health endpoint for uptime monitoring and
- * container liveness probes. Uses `@nestjs/terminus` for the standard
- * health-check envelope plus a lightweight Prisma DB ping.
+ * Stage-G — public infrastructure endpoints:
+ *   • /api/health  — liveness probe (@nestjs/terminus + Prisma ping)
+ *   • /api/version — build identity (package.json version + CI-injected
+ *                    git SHA / build time)
+ *
+ * Both routes are deliberately auth-free so uptime monitors and
+ * deployment verifiers can hit them without a pre-shared secret.
  */
 @Module({
   imports: [TerminusModule, PrismaModule],
-  controllers: [HealthController],
+  controllers: [HealthController, VersionController],
   providers: [PrismaHealthIndicator],
 })
 export class HealthModule {}
