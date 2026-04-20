@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { PosPaymentMethod, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CustomerLedgerService } from '../customer-ledger/customer-ledger.service';
 import { PaymentsService } from '../common/services/payments.service';
@@ -10,6 +10,7 @@ import type { DebtRecoveryReportDto } from './dto/debt-recovery-report.dto';
 import type { ReminderResultDto } from './dto/reminder-result.dto';
 import type { SubscriptionRolloverPreviewDto } from './dto/subscription-rollover-preview.dto';
 import type { CustomerSubscriptionRowDto } from './dto/customer-subscription.dto';
+import type { RecordPartialDebtPaymentDto } from './dto/record-partial-debt-payment.dto';
 export declare class CallCenterService {
     private readonly prisma;
     private readonly customerLedger;
@@ -22,7 +23,7 @@ export declare class CallCenterService {
         orderId: string;
         alreadySettled: boolean;
         amountKd: string;
-        posPaymentMethod: import("@prisma/client").PosPaymentMethod;
+        posPaymentMethod: PosPaymentMethod;
     }>;
     listActiveSubscriptionPlans(): Prisma.PrismaPromise<{
         id: string;
@@ -77,4 +78,14 @@ export declare class CallCenterService {
     getDebtRecoveryReport(fromIso?: string, toIso?: string): Promise<DebtRecoveryReportDto>;
     previewSubscriptionRollover(customerId: string): Promise<SubscriptionRolloverPreviewDto>;
     listCustomerSubscriptionChain(customerId: string): Promise<CustomerSubscriptionRowDto[]>;
+    recordPartialDebtPayment(customerId: string, dto: RecordPartialDebtPaymentDto, performedByUserId: string): Promise<{
+        amountCollectedKd: string;
+        discountAppliedKd: string;
+        totalReducedKd: string;
+        previousDebtKd: string;
+        newDebtKd: string;
+        walletBalanceKd: string;
+        paymentMethod: PosPaymentMethod;
+    }>;
+    private mapSubscriptionChainRows;
 }

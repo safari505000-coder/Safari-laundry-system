@@ -4,6 +4,7 @@ import { ActivateSubscriptionDto } from './dto/activate-subscription.dto';
 import { ExtendSubscriptionDto } from './dto/extend-subscription.dto';
 import { DebtRecoveryQueryDto } from './dto/debt-recovery-report.dto';
 import { MarkOrderPaidDto } from './dto/mark-order-paid.dto';
+import { RecordPartialDebtPaymentDto } from './dto/record-partial-debt-payment.dto';
 export declare class CallCenterController {
     private readonly callCenterService;
     constructor(callCenterService: CallCenterService);
@@ -68,5 +69,14 @@ export declare class CallCenterController {
     markSubscriberReminderSent(customerId: string): Promise<import("./dto/reminder-result.dto").ReminderResultDto>;
     listSettlements(customerId: string): Promise<import("./dto/settlement-history-row.dto").SettlementHistoryRowDto[]>;
     previewSubscriptionRollover(customerId: string): Promise<import("./dto/subscription-rollover-preview.dto").SubscriptionRolloverPreviewDto>;
+    recordPartialDebtPayment(customerId: string, dto: RecordPartialDebtPaymentDto, user: JwtUser): Promise<{
+        amountCollectedKd: string;
+        discountAppliedKd: string;
+        totalReducedKd: string;
+        previousDebtKd: string;
+        newDebtKd: string;
+        walletBalanceKd: string;
+        paymentMethod: import("@prisma/client").PosPaymentMethod;
+    }>;
     listCustomerSubscriptionChain(customerId: string): Promise<import("./dto/customer-subscription.dto").CustomerSubscriptionRowDto[]>;
 }

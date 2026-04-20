@@ -365,6 +365,116 @@ let CustomerLedgerService = class CustomerLedgerService {
             carriedBalanceKd: carriedBalanceStr,
         };
     }
+    async recordPartialDebtPayment(params) {
+        return this.prisma.$transaction(async (tx) => {
+            const customer = await tx.customer.findUnique({
+                where: { id: params.customerId },
+                select: { id: true, originBranchId: true },
+            });
+            if (!customer) {
+                throw new common_1.NotFoundException('Customer not found');
+            }
+            const actor = await tx.user.findUnique({
+                where: { id: params.performedByUserId },
+                select: { id: true, safariRole: true, branchId: true },
+            });
+            if (!actor) {
+                throw new common_1.NotFoundException('Performing user not found');
+            }
+            const wallet = await this.getOrCreateWalletTx(tx, params.customerId);
+            const amountMinor = (0, finance_money_1.toMinorFromFixed4)(new client_1.Prisma.Decimal(params.amountKd));
+            const discountMinor = params.discountKd !== undefined
+                ? (0, finance_money_1.toMinorFromFixed4)(new client_1.Prisma.Decimal(params.discountKd))
+                : 0n;
+            const totalMinor = amountMinor + discountMinor;
+            const debtMinor = (0, finance_money_1.toMinorFromFixed4)(wallet.debt);
+            if (amountMinor < 0n || discountMinor < 0n) {
+                throw new common_1.BadRequestException('Amount and discount must both be non-negative');
+            }
+            if (totalMinor === 0n) {
+                throw new common_1.BadRequestException('At least one of amount or discount must be greater than zero');
+            }
+            if (totalMinor > debtMinor) {
+                throw new common_1.BadRequestException('Amount + discount cannot exceed current customer debt');
+            }
+            const newDebtMinor = debtMinor - totalMinor;
+            const amountStr = (0, finance_money_1.minorToAmountString)(amountMinor);
+            const discountStr = (0, finance_money_1.minorToAmountString)(discountMinor);
+            const totalStr = (0, finance_money_1.minorToAmountString)(totalMinor);
+            const newDebtStr = (0, finance_money_1.minorToAmountString)(newDebtMinor);
+            await tx.customerWallet.update({
+                where: { id: wallet.id },
+                data: { debt: this.decimalFromMinor(newDebtMinor) },
+            });
+            await tx.transactionHistory.create({
+                data: {
+                    type: client_1.LedgerTransactionType.ORDER_WALLET_SETTLEMENT,
+                    customerId: params.customerId,
+                    orderId: null,
+                    subscriptionId: null,
+                    amount: this.decimalFromMinor(totalMinor),
+                    balanceBefore: wallet.balance,
+                    balanceAfter: wallet.balance,
+                    debtBefore: wallet.debt,
+                    debtAfter: this.decimalFromMinor(newDebtMinor),
+                    performedById: params.performedByUserId,
+                    metadata: {
+                        debtPaymentOnly: true,
+                        debtSettled: amountStr,
+                        debtDiscount: discountStr,
+                        debtReduced: totalStr,
+                        posPaymentMethod: params.paymentMethod,
+                        reportingCategory: 'DEBT_COLLECTION_CC',
+                        note: params.note ?? null,
+                    },
+                },
+            });
+            const branchId = customer.originBranchId ?? actor.branchId ?? null;
+            const category = this.resolveDebtCategory(actor.safariRole);
+            if (amountMinor > 0n) {
+                await this.generalLedger.append(tx, {
+                    entryType: client_1.GeneralLedgerEntryType.DEBT_ADJUSTMENT,
+                    amount: `-${amountStr}`,
+                    memo: 'Partial debt payment collected via Call Center',
+                    customerId: params.customerId,
+                    actorUserId: params.performedByUserId,
+                    metadata: {
+                        event: 'DEBT_COLLECTED',
+                        source: 'CC_PARTIAL_DEBT_PAYMENT',
+                        posPaymentMethod: params.paymentMethod,
+                        category,
+                        branchId,
+                        note: params.note ?? null,
+                    },
+                });
+            }
+            if (discountMinor > 0n) {
+                await this.generalLedger.append(tx, {
+                    entryType: client_1.GeneralLedgerEntryType.DEBT_ADJUSTMENT,
+                    amount: `-${discountStr}`,
+                    memo: 'Goodwill debt discount granted via Call Center',
+                    customerId: params.customerId,
+                    actorUserId: params.performedByUserId,
+                    metadata: {
+                        event: 'DEBT_DISCOUNTED',
+                        source: 'CC_PARTIAL_DEBT_PAYMENT',
+                        category,
+                        branchId,
+                        note: params.note ?? null,
+                    },
+                });
+            }
+            return {
+                amountCollectedKd: amountStr,
+                discountAppliedKd: discountStr,
+                totalReducedKd: totalStr,
+                previousDebtKd: wallet.debt.toString(),
+                newDebtKd: newDebtStr,
+                walletBalanceKd: wallet.balance.toString(),
+                paymentMethod: params.paymentMethod,
+            };
+        });
+    }
 };
 exports.CustomerLedgerService = CustomerLedgerService;
 exports.CustomerLedgerService = CustomerLedgerService = __decorate([

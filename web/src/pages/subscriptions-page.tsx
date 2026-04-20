@@ -10,6 +10,8 @@ import {
   type CallCenterPlan,
   type CustomerSearchRow,
   type CustomerSubscriptionRow,
+  type RecordPartialDebtPaymentRequest,
+  type RecordPartialDebtPaymentResponse,
   type SettlementHistoryRow,
   type SubscriptionPlan,
   type SubscriptionRolloverPreview,
@@ -800,6 +802,33 @@ function CallCenterActivatePanel({
         </Card>
       </div>
 
+      {customerId && selectedCustomer?.wallet ?
+        <DebtSettlementCard
+          token={token}
+          customerId={customerId}
+          walletDebtKd={selectedCustomer.wallet.debt}
+          walletBalanceKd={selectedCustomer.wallet.balance}
+          onSettled={(res) => {
+            setResults((prev) =>
+              prev ?
+                prev.map((r) =>
+                  r.id === customerId ?
+                    {
+                      ...r,
+                      wallet: {
+                        balance: res.walletBalanceKd,
+                        debt: res.newDebtKd,
+                      },
+                    }
+                  : r,
+                )
+              : prev,
+            );
+            setSettlementReload((x) => x + 1);
+          }}
+        />
+      : null}
+
       {customerId ?
         <Card className="border-border bg-card shadow-sm">
           <CardHeader>
@@ -1026,6 +1055,209 @@ function RolloverConfirmDialog(props: {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * V19.4 — CC pack #1. Partial debt payment card.
+ *
+ * Shown only when the selected customer has a positive debt balance.
+ * The operator types the cash actually collected + an optional
+ * goodwill discount, picks the method used, and submits — the server
+ * validates that (amount + discount) ≤ current debt so the UI can
+ * stay forgiving and just echo the server's error text on 400.
+ *
+ * Kept as a simple inline card (not a dialog) because the CC agent is
+ * already on this customer's panel; an extra click would just add
+ * friction mid-call.
+ */
+function DebtSettlementCard(props: {
+  token: string;
+  customerId: string;
+  walletDebtKd: string;
+  walletBalanceKd: string;
+  onSettled: (res: RecordPartialDebtPaymentResponse) => void;
+}) {
+  const { t } = useTranslation();
+  const { token, customerId, walletDebtKd, walletBalanceKd, onSettled } = props;
+  const [amount, setAmount] = useState('');
+  const [discount, setDiscount] = useState('');
+  const [method, setMethod] =
+    useState<RecordPartialDebtPaymentRequest['paymentMethod']>('CASH');
+  const [note, setNote] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const debtNum = Number.parseFloat(walletDebtKd) || 0;
+  if (debtNum <= 0) return null;
+
+  const amountNum = Number.parseFloat(amount || '0') || 0;
+  const discountNum = Number.parseFloat(discount || '0') || 0;
+  const totalReduction = amountNum + discountNum;
+  const remaining = Math.max(0, debtNum - totalReduction);
+  const overCap = totalReduction > debtNum + 1e-9;
+  const disabled =
+    submitting ||
+    overCap ||
+    totalReduction <= 0 ||
+    amountNum < 0 ||
+    discountNum < 0;
+
+  async function submit() {
+    if (disabled) return;
+    setSubmitting(true);
+    try {
+      const body: RecordPartialDebtPaymentRequest = {
+        amountKd: amountNum.toFixed(4),
+        paymentMethod: method,
+      };
+      if (discountNum > 0) body.discountKd = discountNum.toFixed(4);
+      if (note.trim()) body.note = note.trim();
+      const res = await apiJson<RecordPartialDebtPaymentResponse>(
+        `/api/call-center/customers/${customerId}/partial-debt-payment`,
+        { method: 'POST', token, body: JSON.stringify(body) },
+      );
+      toast.success(
+        t('subscriptions.debtPaySuccess', {
+          collected: formatKwdLabel(res.amountCollectedKd),
+          discount: formatKwdLabel(res.discountAppliedKd),
+          remaining: formatKwdLabel(res.newDebtKd),
+        }),
+      );
+      setAmount('');
+      setDiscount('');
+      setNote('');
+      onSettled(res);
+    } catch (e) {
+      if (e instanceof ApiError) toast.error(e.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Card className="border-red-200 bg-red-50/40 shadow-sm dark:border-red-900/60 dark:bg-red-950/20">
+      <CardHeader>
+        <CardTitle className="text-base text-red-700 dark:text-red-300">
+          {t('subscriptions.debtPayTitle')}
+        </CardTitle>
+        <CardDescription>
+          {t('subscriptions.debtPayHint', {
+            debt: formatKwdLabel(walletDebtKd),
+            balance: formatKwdLabel(walletBalanceKd),
+          })}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="debt-amount">
+              {t('subscriptions.debtPayAmountLabel')}
+            </Label>
+            <Input
+              id="debt-amount"
+              inputMode="decimal"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="0.000"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="debt-discount">
+              {t('subscriptions.debtPayDiscountLabel')}
+            </Label>
+            <Input
+              id="debt-discount"
+              inputMode="decimal"
+              value={discount}
+              onChange={(e) => setDiscount(e.target.value)}
+              placeholder="0.000"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>{t('subscriptions.debtPayMethodLabel')}</Label>
+            <Select
+              value={method}
+              onValueChange={(v) =>
+                setMethod(
+                  v as RecordPartialDebtPaymentRequest['paymentMethod'],
+                )
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="CASH">
+                  {t('subscriptions.debtPayMethodCash')}
+                </SelectItem>
+                <SelectItem value="KNET">
+                  {t('subscriptions.debtPayMethodKnet')}
+                </SelectItem>
+                <SelectItem value="PAYMENT_LINK">
+                  {t('subscriptions.debtPayMethodLink')}
+                </SelectItem>
+                <SelectItem value="ONLINE">
+                  {t('subscriptions.debtPayMethodOnline')}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="debt-note">
+            {t('subscriptions.debtPayNoteLabel')}
+          </Label>
+          <Input
+            id="debt-note"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder={t('subscriptions.debtPayNotePlaceholder')}
+            maxLength={240}
+          />
+        </div>
+        <div className="grid grid-cols-1 gap-3 rounded-md border border-dashed border-red-300 bg-card px-3 py-2 text-sm tabular-nums md:grid-cols-3 dark:border-red-900/60">
+          <div>
+            <div className="text-xs text-muted-foreground">
+              {t('subscriptions.debtPayTotalReduction')}
+            </div>
+            <div className="font-medium text-foreground">
+              {formatKwdLabel(totalReduction.toFixed(4))}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-muted-foreground">
+              {t('subscriptions.debtPayRemaining')}
+            </div>
+            <div className="font-medium text-foreground">
+              {formatKwdLabel(remaining.toFixed(4))}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-muted-foreground">
+              {t('subscriptions.debtPayCurrentDebt')}
+            </div>
+            <div className="font-medium text-foreground">
+              {formatKwdLabel(walletDebtKd)}
+            </div>
+          </div>
+        </div>
+        {overCap ?
+          <p className="text-xs text-red-700 dark:text-red-300">
+            {t('subscriptions.debtPayOverCap')}
+          </p>
+        : null}
+        <Button
+          type="button"
+          className="bg-red-600 text-white hover:bg-red-700"
+          disabled={disabled}
+          onClick={() => void submit()}
+        >
+          {submitting ?
+            t('subscriptions.debtPaySubmitting')
+          : t('subscriptions.debtPaySubmit')}
+        </Button>
+      </CardContent>
+    </Card>
   );
 }
 

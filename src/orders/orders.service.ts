@@ -814,6 +814,13 @@ export class OrdersService {
       reminderCount: number;
       lastReminderAtIso: string | null;
       canRemindNow: boolean;
+      // V19.4 — CC pack #5. Contextual identity for the WhatsApp
+      // template + CC dashboard: which branch the sale came from and
+      // which driver handled the delivery. Nullable because legacy
+      // office bookings may lack a driver, and customers created
+      // before origin-branch tracking may lack a branch.
+      branchName: string | null;
+      driverName: string | null;
       // V1.6.6 — raw line items for the WhatsApp template. Quantities
       // and unit prices are decimal strings (the Prisma convention on
       // this project); the frontend formats them for display.
@@ -863,6 +870,17 @@ export class OrdersService {
             displayName: true,
             phone: true,
             phone2: true,
+            originBranch: { select: { name: true } },
+          },
+        },
+        // V19.4 — CC pack #5. Driver + branch identity for the
+        // WhatsApp template and the debt dashboard. Prefer the
+        // driver's own branch; fall back to the customer's origin
+        // branch when the invoice was created without a driver.
+        driver: {
+          select: {
+            fullName: true,
+            branch: { select: { name: true } },
           },
         },
         // V1.6.6 — line items feed the WhatsApp template's Items List.
@@ -920,6 +938,14 @@ export class OrdersService {
           lineTotalKd: lineTotal.toFixed(3),
         };
       });
+      // V19.4 — CC pack #5. Driver's branch is authoritative; fall
+      // back to the customer's origin branch for driver-less (office
+      // booking / online prepaid) orders.
+      const branchName =
+        r.driver?.branch?.name?.trim() ||
+        r.customer.originBranch?.name?.trim() ||
+        null;
+      const driverName = r.driver?.fullName?.trim() || null;
       return {
         orderId: r.id,
         readableId,
@@ -939,6 +965,8 @@ export class OrdersService {
           ? r.lastReminderAt.toISOString()
           : null,
         canRemindNow,
+        branchName,
+        driverName,
         lineItems,
       };
     });

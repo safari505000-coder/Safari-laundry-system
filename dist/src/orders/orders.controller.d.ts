@@ -143,6 +143,8 @@ export declare class OrdersController {
         reminderCount: number;
         lastReminderAtIso: string | null;
         canRemindNow: boolean;
+        branchName: string | null;
+        driverName: string | null;
         lineItems: {
             label: string | null;
             quantity: string;

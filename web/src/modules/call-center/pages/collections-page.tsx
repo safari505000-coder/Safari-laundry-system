@@ -566,6 +566,11 @@ export function CollectionsPage() {
                   {row.customerName}
                 </p>
                 <p className="text-sm tabular-nums text-muted-foreground">{row.customerPhone}</p>
+                {row.branchName || row.driverName ?
+                  <p className="text-xs text-muted-foreground">
+                    {[row.branchName, row.driverName].filter(Boolean).join(' · ')}
+                  </p>
+                : null}
                 <p className="mt-2 text-lg font-bold tabular-nums text-foreground">
                   {formatKwd3(row.amountKd)}
                 </p>
@@ -732,7 +737,12 @@ export function CollectionsPage() {
                     {row.readableId}
                   </TableCell>
                   <TableCell className="font-medium text-foreground">
-                    {row.customerName}
+                    <div>{row.customerName}</div>
+                    {row.branchName || row.driverName ?
+                      <div className="mt-0.5 text-xs font-normal text-muted-foreground">
+                        {[row.branchName, row.driverName].filter(Boolean).join(' · ')}
+                      </div>
+                    : null}
                   </TableCell>
                   <TableCell className="tabular-nums">{row.customerPhone}</TableCell>
                   <TableCell>

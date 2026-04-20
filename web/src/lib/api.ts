@@ -1165,6 +1165,16 @@ export type CollectionUnpaidOnlineRow = {
   lastReminderAtIso: string | null;
   canRemindNow: boolean;
   /**
+   * V19.4 — CC pack #5. Branch + driver names enrich the WhatsApp
+   * template and the Collections table so the customer sees which
+   * branch the debt originated from and the agent can cross-check
+   * the driver who delivered the order. Nullable because legacy
+   * office bookings may lack a driver, and older customers may
+   * predate `originBranchId` tracking.
+   */
+  branchName: string | null;
+  driverName: string | null;
+  /**
    * V1.6.6 — itemized breakdown for the WhatsApp template's Items List.
    * Quantity is a decimal string; prices are serialized in KWD 3dp.
    */
@@ -1310,6 +1320,35 @@ export type SubscriptionActivationSettlement = {
    * Signed string (4dp). + credit carried, - debt carried, '0.0000' none.
    */
   carriedBalanceKd?: string;
+};
+
+/**
+ * V19.4 — CC pack #1. Request body for
+ * `POST /api/call-center/customers/:id/partial-debt-payment`.
+ *
+ * `discountKd` is optional — omit (or send '0') for a straight
+ * collection. The server enforces `amount + discount <= wallet.debt`
+ * and rejects an all-zero pair.
+ */
+export type RecordPartialDebtPaymentRequest = {
+  amountKd: string;
+  discountKd?: string;
+  paymentMethod: 'CASH' | 'KNET' | 'PAYMENT_LINK' | 'ONLINE';
+  note?: string;
+};
+
+/**
+ * V19.4 — CC pack #1. Response from the partial-debt-payment endpoint;
+ * the UI toast renders the breakdown and refreshes the wallet snapshot.
+ */
+export type RecordPartialDebtPaymentResponse = {
+  amountCollectedKd: string;
+  discountAppliedKd: string;
+  totalReducedKd: string;
+  previousDebtKd: string;
+  newDebtKd: string;
+  walletBalanceKd: string;
+  paymentMethod: 'CASH' | 'KNET' | 'PAYMENT_LINK' | 'ONLINE';
 };
 
 /**

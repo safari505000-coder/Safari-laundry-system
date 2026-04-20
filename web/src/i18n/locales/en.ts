@@ -1129,6 +1129,27 @@ export const en = {
       CUT_OFF: 'Cut off',
       CANCELLED: 'Cancelled',
     },
+    debtPayTitle: 'Partial debt payment',
+    debtPayHint:
+      'Current debt {{debt}} — wallet balance {{balance}}. Enter cash collected plus an optional goodwill discount.',
+    debtPayAmountLabel: 'Amount collected (KD)',
+    debtPayDiscountLabel: 'Discount (optional, KD)',
+    debtPayMethodLabel: 'Payment method',
+    debtPayMethodCash: 'Cash',
+    debtPayMethodKnet: 'KNET',
+    debtPayMethodLink: 'Payment link',
+    debtPayMethodOnline: 'Online',
+    debtPayNoteLabel: 'Note (optional)',
+    debtPayNotePlaceholder: 'e.g. customer promised second half next week',
+    debtPayTotalReduction: 'Total debt reduction',
+    debtPayRemaining: 'Remaining after payment',
+    debtPayCurrentDebt: 'Current debt',
+    debtPayOverCap:
+      'Amount + discount cannot exceed the current outstanding debt.',
+    debtPaySubmit: 'Record payment',
+    debtPaySubmitting: 'Recording…',
+    debtPaySuccess:
+      'Collected {{collected}} · discount {{discount}} · remaining debt {{remaining}}.',
   },
   subscribers: {
     title: 'Subscribers list',

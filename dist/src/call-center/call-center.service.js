@@ -622,6 +622,20 @@ let CallCenterService = class CallCenterService {
             });
             ordersBySub.set(o.subscriptionId, list);
         }
+        return this.mapSubscriptionChainRows(subs, ordersBySub);
+    }
+    async recordPartialDebtPayment(customerId, dto, performedByUserId) {
+        const method = dto.paymentMethod;
+        return this.customerLedger.recordPartialDebtPayment({
+            customerId,
+            amountKd: dto.amountKd,
+            discountKd: dto.discountKd,
+            paymentMethod: method,
+            performedByUserId,
+            note: dto.note,
+        });
+    }
+    mapSubscriptionChainRows(subs, ordersBySub) {
         return subs.map((s) => ({
             id: s.id,
             status: s.status,

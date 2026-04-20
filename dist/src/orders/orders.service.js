@@ -577,6 +577,13 @@ let OrdersService = class OrdersService {
                         displayName: true,
                         phone: true,
                         phone2: true,
+                        originBranch: { select: { name: true } },
+                    },
+                },
+                driver: {
+                    select: {
+                        fullName: true,
+                        branch: { select: { name: true } },
                     },
                 },
                 lineItems: {
@@ -616,6 +623,10 @@ let OrdersService = class OrdersService {
                     lineTotalKd: lineTotal.toFixed(3),
                 };
             });
+            const branchName = r.driver?.branch?.name?.trim() ||
+                r.customer.originBranch?.name?.trim() ||
+                null;
+            const driverName = r.driver?.fullName?.trim() || null;
             return {
                 orderId: r.id,
                 readableId,
@@ -632,6 +643,8 @@ let OrdersService = class OrdersService {
                     ? r.lastReminderAt.toISOString()
                     : null,
                 canRemindNow,
+                branchName,
+                driverName,
                 lineItems,
             };
         });

@@ -26,6 +26,7 @@ const activate_subscription_dto_1 = require("./dto/activate-subscription.dto");
 const extend_subscription_dto_1 = require("./dto/extend-subscription.dto");
 const debt_recovery_report_dto_1 = require("./dto/debt-recovery-report.dto");
 const mark_order_paid_dto_1 = require("./dto/mark-order-paid.dto");
+const record_partial_debt_payment_dto_1 = require("./dto/record-partial-debt-payment.dto");
 let CallCenterController = class CallCenterController {
     callCenterService;
     constructor(callCenterService) {
@@ -69,6 +70,9 @@ let CallCenterController = class CallCenterController {
     }
     previewSubscriptionRollover(customerId) {
         return this.callCenterService.previewSubscriptionRollover(customerId);
+    }
+    recordPartialDebtPayment(customerId, dto, user) {
+        return this.callCenterService.recordPartialDebtPayment(customerId, dto, user.userId);
     }
     listCustomerSubscriptionChain(customerId) {
         return this.callCenterService.listCustomerSubscriptionChain(customerId);
@@ -216,6 +220,19 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", void 0)
 ], CallCenterController.prototype, "previewSubscriptionRollover", null);
+__decorate([
+    (0, common_1.Post)('customers/:customerId/partial-debt-payment'),
+    (0, swagger_1.ApiOperation)({
+        summary: `Partial debt payment + optional discount (${branding_1.APP_BRAND})`,
+        description: 'V19.4 CC pack #1. Collects a subset of the customer\'s outstanding debt, with an optional goodwill discount applied on top. The collected portion counts in the daily "Collected Today" KPI; the discount portion is written to the ledger as a separate GL entry (DEBT_DISCOUNTED) so it never inflates collection figures. Amount + discount together must not exceed the current wallet debt. Runs in a single transaction: wallet, TransactionHistory, and GL rows succeed or fail together.',
+    }),
+    __param(0, (0, common_1.Param)('customerId', common_1.ParseUUIDPipe)),
+    __param(1, (0, common_1.Body)()),
+    __param(2, (0, current_user_decorator_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, record_partial_debt_payment_dto_1.RecordPartialDebtPaymentDto, Object]),
+    __metadata("design:returntype", void 0)
+], CallCenterController.prototype, "recordPartialDebtPayment", null);
 __decorate([
     (0, common_1.Get)('customers/:customerId/subscriptions'),
     (0, swagger_1.ApiOperation)({

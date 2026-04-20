@@ -105,8 +105,21 @@ export function buildCollectionsUnpaidWhatsAppText(
 
   const intro = `نسعد بخدمتكم في ${BRAND.customerAr}، ونود تذكيركم بفاتورتكم التالية:`;
 
+  // V19.4 — CC pack #5. Surface the branch and driver identity so
+  // the customer instantly recognises the origin of the invoice and
+  // can ask for the same driver on follow-up. Silently omitted when
+  // either field is missing to keep the message clean for legacy
+  // rows that never had branch/driver attribution.
+  const originLines: string[] = [];
+  if (row.branchName && row.branchName.trim()) {
+    originLines.push(`🏬 الفرع: ${row.branchName.trim()}`);
+  }
+  if (row.driverName && row.driverName.trim()) {
+    originLines.push(`🚗 السائق: ${row.driverName.trim()}`);
+  }
   const metaBlock = [
     `🏷️ رقم الفاتورة: ${invoiceRef}`,
+    ...originLines,
   ].join('\n');
 
   const itemsHeader = '--- الأصناف ---';

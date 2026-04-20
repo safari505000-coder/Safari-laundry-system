@@ -37,4 +37,20 @@ export declare class CustomerLedgerService {
         planId: string;
         performedByUserId: string;
     }): Promise<SubscriptionActivationSettlement>;
+    recordPartialDebtPayment(params: {
+        customerId: string;
+        amountKd: string;
+        discountKd?: string;
+        paymentMethod: PosPaymentMethod;
+        performedByUserId: string;
+        note?: string;
+    }): Promise<{
+        amountCollectedKd: string;
+        discountAppliedKd: string;
+        totalReducedKd: string;
+        previousDebtKd: string;
+        newDebtKd: string;
+        walletBalanceKd: string;
+        paymentMethod: PosPaymentMethod;
+    }>;
 }

@@ -21,6 +21,7 @@ import { ActivateSubscriptionDto } from './dto/activate-subscription.dto';
 import { ExtendSubscriptionDto } from './dto/extend-subscription.dto';
 import { DebtRecoveryQueryDto } from './dto/debt-recovery-report.dto';
 import { MarkOrderPaidDto } from './dto/mark-order-paid.dto';
+import { RecordPartialDebtPaymentDto } from './dto/record-partial-debt-payment.dto';
 
 @ApiTags('call-center')
 @ApiBearerAuth('bearer')
@@ -188,6 +189,24 @@ export class CallCenterController {
     @Param('customerId', ParseUUIDPipe) customerId: string,
   ) {
     return this.callCenterService.previewSubscriptionRollover(customerId);
+  }
+
+  @Post('customers/:customerId/partial-debt-payment')
+  @ApiOperation({
+    summary: `Partial debt payment + optional discount (${APP_BRAND})`,
+    description:
+      'V19.4 CC pack #1. Collects a subset of the customer\'s outstanding debt, with an optional goodwill discount applied on top. The collected portion counts in the daily "Collected Today" KPI; the discount portion is written to the ledger as a separate GL entry (DEBT_DISCOUNTED) so it never inflates collection figures. Amount + discount together must not exceed the current wallet debt. Runs in a single transaction: wallet, TransactionHistory, and GL rows succeed or fail together.',
+  })
+  recordPartialDebtPayment(
+    @Param('customerId', ParseUUIDPipe) customerId: string,
+    @Body() dto: RecordPartialDebtPaymentDto,
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.callCenterService.recordPartialDebtPayment(
+      customerId,
+      dto,
+      user.userId,
+    );
   }
 
   @Get('customers/:customerId/subscriptions')

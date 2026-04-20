@@ -8,6 +8,7 @@ import {
   CustomerSubscriptionStatus,
   LedgerTransactionType,
   OrderStatus,
+  PosPaymentMethod,
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -27,6 +28,7 @@ import type {
   CustomerSubscriptionRowDto,
   SubscriptionInvoiceRowDto,
 } from './dto/customer-subscription.dto';
+import type { RecordPartialDebtPaymentDto } from './dto/record-partial-debt-payment.dto';
 
 /**
  * V1.6.8 — Cooldown windows are per-feature now.
@@ -926,6 +928,49 @@ export class CallCenterService {
       ordersBySub.set(o.subscriptionId, list);
     }
 
+    return this.mapSubscriptionChainRows(subs, ordersBySub);
+  }
+
+  /**
+   * V19.4 — CC pack #1. Thin delegate to the ledger service so the
+   * controller layer stays transport-only. Returns the post-settlement
+   * wallet + a breakdown so the UI toast can say "3.000 د.ك collected,
+   * 0.500 د.ك discounted, debt now 2.500 د.ك".
+   */
+  async recordPartialDebtPayment(
+    customerId: string,
+    dto: RecordPartialDebtPaymentDto,
+    performedByUserId: string,
+  ) {
+    const method = dto.paymentMethod as PosPaymentMethod;
+    return this.customerLedger.recordPartialDebtPayment({
+      customerId,
+      amountKd: dto.amountKd,
+      discountKd: dto.discountKd,
+      paymentMethod: method,
+      performedByUserId,
+      note: dto.note,
+    });
+  }
+
+  /** Shared mapper so #2 chain list + #12 single-detail stay DRY. */
+  private mapSubscriptionChainRows(
+    subs: Array<{
+      id: string;
+      status: CustomerSubscriptionStatus;
+      planNameSnapshot: string;
+      planSalePriceSnapshot: Prisma.Decimal;
+      planActualBalanceSnapshot: Prisma.Decimal;
+      planValidityDaysSnapshot: number;
+      carriedBalanceKd: Prisma.Decimal;
+      parentSubscriptionId: string | null;
+      activatedAt: Date;
+      expiresAt: Date;
+      closedAt: Date | null;
+      closedReason: string | null;
+    }>,
+    ordersBySub: Map<string, SubscriptionInvoiceRowDto[]>,
+  ): CustomerSubscriptionRowDto[] {
     return subs.map<CustomerSubscriptionRowDto>((s) => ({
       id: s.id,
       status: s.status,
