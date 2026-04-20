@@ -6,6 +6,7 @@ import {
 import {
   CashStatus,
   CustomerSubscriptionStatus,
+  GeneralLedgerEntryType,
   LedgerTransactionType,
   OrderStatus,
   PosPaymentMethod,
@@ -46,6 +47,12 @@ import type {
   DebtConversionOptionsResponseDto,
   DebtConversionPlanOptionDto,
 } from './dto/debt-conversion-options.dto';
+import type {
+  DailyCollectionsReconciliationQueryDto,
+  DailyCollectionsReconciliationResponseDto,
+  ReconciliationCheckDto,
+  ReconciliationStatus,
+} from './dto/daily-collections-reconciliation.dto';
 
 /**
  * V1.6.8 — Cooldown windows are per-feature now.
@@ -1485,6 +1492,202 @@ export class CallCenterService {
       },
       byAgent,
       events,
+    };
+  }
+
+  /**
+   * V19.5 — CC reconciliation guard. Re-aggregates "Collected Today"
+   * KPI totals from BOTH `TransactionHistory` (the read-side) and
+   * `GeneralLedgerEntry` (the write-side), then reports the delta.
+   *
+   * Why both sides? Every debt-reducing write runs inside a Prisma
+   * transaction that touches `CustomerWallet`, `TransactionHistory`,
+   * AND `GeneralLedgerEntry` atomically (see
+   * `CustomerLedgerService.recordPartialDebtPayment` for the reference
+   * implementation). In normal operation the two ledgers cannot drift
+   * — but if a future code path accidentally writes to one and not the
+   * other (e.g. a migration script, a hot patch, a partial rollback),
+   * this check is the canary.
+   *
+   * Three symmetrical checks, one per source pair:
+   *   1. Partial debt collected (CC pack #1 cash portion)
+   *        TH  = Σ metadata.debtSettled     where debtPaymentOnly=true
+   *        GL  = Σ |amount|                 where entryType=DEBT_ADJUSTMENT
+   *                                         AND metadata.event=DEBT_COLLECTED
+   *                                         AND metadata.source=CC_PARTIAL_DEBT_PAYMENT
+   *   2. Partial debt discount (CC pack #1 goodwill portion)
+   *        TH  = Σ metadata.debtDiscount    where debtPaymentOnly=true
+   *        GL  = Σ |amount|                 where entryType=DEBT_ADJUSTMENT
+   *                                         AND metadata.event=DEBT_DISCOUNTED
+   *                                         AND metadata.source=CC_PARTIAL_DEBT_PAYMENT
+   *   3. Order-level debt settlement via link / call-center-manual
+   *        TH  = Σ metadata.debtSettled     where orderId IS NOT NULL
+   *                                         AND  (debtSettlementViaLink=true
+   *                                              OR reportingCategory=DEBT_COLLECTION_MANUAL)
+   *        GL  = Σ POS_SALE_COMPLETED.amount for the same set of orderIds
+   *
+   * Any check whose |delta| ≥ 0.001 KWD flips `overallStatus` to DRIFT
+   * so the UI badge and the daily cron can raise an alert. 0.0005 is
+   * rounded-away-from-zero noise from 4dp→3dp tile rendering; 0.001
+   * is the smallest real money delta.
+   */
+  async getDailyCollectionsReconciliation(
+    params: DailyCollectionsReconciliationQueryDto,
+  ): Promise<DailyCollectionsReconciliationResponseDto> {
+    const { dayStart, dayEnd, dayIsoLocal } = params.date
+      ? (() => {
+          const { dayStart, dayEnd } = kuwaitDayFromIso(params.date!);
+          return { dayStart, dayEnd, dayIsoLocal: params.date! };
+        })()
+      : kuwaitDayBounds(new Date());
+
+    // ─── TransactionHistory side ────────────────────────────────
+    const thRows = await this.prisma.transactionHistory.findMany({
+      where: {
+        createdAt: { gte: dayStart, lt: dayEnd },
+        type: LedgerTransactionType.ORDER_WALLET_SETTLEMENT,
+      },
+      select: { id: true, orderId: true, metadata: true },
+    });
+
+    let thPartialCollected = new Prisma.Decimal(0);
+    let thPartialDiscount = new Prisma.Decimal(0);
+    let thOrderViaLinkCollected = new Prisma.Decimal(0);
+    const thOrderViaLinkOrderIds = new Set<string>();
+
+    for (const r of thRows) {
+      const debtSettled = extractDebtSettled(r.metadata);
+      const debtDiscount = extractDebtDiscount(r.metadata);
+      if (isPartialDebtPaymentRow(r.metadata)) {
+        thPartialCollected = thPartialCollected.plus(debtSettled);
+        thPartialDiscount = thPartialDiscount.plus(debtDiscount);
+        continue;
+      }
+      // Order-level debt settlement: via-link OR call-center-manual.
+      if (!r.orderId || debtSettled.lte(0)) continue;
+      const viaLink = isDebtViaLinkRow(r.metadata);
+      const reportingCategory = readMetaString(
+        r.metadata,
+        'reportingCategory',
+      );
+      const manual = reportingCategory === 'DEBT_COLLECTION_MANUAL';
+      if (!viaLink && !manual) continue;
+      thOrderViaLinkCollected = thOrderViaLinkCollected.plus(debtSettled);
+      thOrderViaLinkOrderIds.add(r.orderId);
+    }
+
+    // ─── GeneralLedger side ─────────────────────────────────────
+    // DEBT_ADJUSTMENT rows carry `metadata.event` and `metadata.source`
+    // on every write-site (see the `.append(...)` call-sites). We
+    // filter via JSON-path so we stop at exactly the rows the two CC
+    // flows produce and ignore unrelated DEBT_ADJUSTMENT writes
+    // (e.g. INVOICE_SHORTFALL which is a debt ADDITION, not a reduction).
+    const glDebtAdjustments = await this.prisma.generalLedgerEntry.findMany({
+      where: {
+        createdAt: { gte: dayStart, lt: dayEnd },
+        entryType: GeneralLedgerEntryType.DEBT_ADJUSTMENT,
+      },
+      select: { amount: true, metadata: true },
+    });
+
+    let glPartialCollected = new Prisma.Decimal(0);
+    let glPartialDiscount = new Prisma.Decimal(0);
+    for (const e of glDebtAdjustments) {
+      const event = readMetaString(e.metadata, 'event');
+      const source = readMetaString(e.metadata, 'source');
+      if (source !== 'CC_PARTIAL_DEBT_PAYMENT') continue;
+      const abs = e.amount.isNegative() ? e.amount.neg() : e.amount;
+      if (event === 'DEBT_COLLECTED') {
+        glPartialCollected = glPartialCollected.plus(abs);
+      } else if (event === 'DEBT_DISCOUNTED') {
+        glPartialDiscount = glPartialDiscount.plus(abs);
+      }
+    }
+
+    // For the order-level check we match by orderId because the GL row
+    // stores the full order total (`POS_SALE_COMPLETED.amount`) which
+    // is the same number `metadata.debtSettled` holds on the mirror TH
+    // row (gateway flow writes both from `order.totalPrice`).
+    let glOrderViaLinkCollected = new Prisma.Decimal(0);
+    if (thOrderViaLinkOrderIds.size > 0) {
+      const glOrderRows = await this.prisma.generalLedgerEntry.findMany({
+        where: {
+          createdAt: { gte: dayStart, lt: dayEnd },
+          entryType: GeneralLedgerEntryType.POS_SALE_COMPLETED,
+          orderId: { in: Array.from(thOrderViaLinkOrderIds) },
+        },
+        select: { amount: true },
+      });
+      for (const e of glOrderRows) {
+        glOrderViaLinkCollected = glOrderViaLinkCollected.plus(e.amount);
+      }
+    }
+
+    // ─── Deltas + status ────────────────────────────────────────
+    const DRIFT_THRESHOLD = new Prisma.Decimal('0.001');
+    const classify = (delta: Prisma.Decimal): ReconciliationStatus => {
+      const abs = delta.isNegative() ? delta.neg() : delta;
+      return abs.gte(DRIFT_THRESHOLD) ? 'DRIFT' : 'MATCH';
+    };
+
+    const d1 = glPartialCollected.minus(thPartialCollected);
+    const d2 = glPartialDiscount.minus(thPartialDiscount);
+    const d3 = glOrderViaLinkCollected.minus(thOrderViaLinkCollected);
+
+    const checks: ReconciliationCheckDto[] = [
+      {
+        id: 'partialDebtCollected',
+        status: classify(d1),
+        transactionHistoryKd: FOUR_DP(thPartialCollected),
+        generalLedgerKd: FOUR_DP(glPartialCollected),
+        deltaKd: FOUR_DP(d1),
+        note: 'TH(debtPaymentOnly=true).debtSettled vs GL(DEBT_ADJUSTMENT.event=DEBT_COLLECTED, source=CC_PARTIAL_DEBT_PAYMENT)',
+      },
+      {
+        id: 'partialDebtDiscount',
+        status: classify(d2),
+        transactionHistoryKd: FOUR_DP(thPartialDiscount),
+        generalLedgerKd: FOUR_DP(glPartialDiscount),
+        deltaKd: FOUR_DP(d2),
+        note: 'TH(debtPaymentOnly=true).debtDiscount vs GL(DEBT_ADJUSTMENT.event=DEBT_DISCOUNTED, source=CC_PARTIAL_DEBT_PAYMENT)',
+      },
+      {
+        id: 'orderViaLinkCollected',
+        status: classify(d3),
+        transactionHistoryKd: FOUR_DP(thOrderViaLinkCollected),
+        generalLedgerKd: FOUR_DP(glOrderViaLinkCollected),
+        deltaKd: FOUR_DP(d3),
+        note: 'TH(orderId set, debtSettlementViaLink OR reportingCategory=DEBT_COLLECTION_MANUAL).debtSettled vs GL(POS_SALE_COMPLETED) joined by orderId',
+      },
+    ];
+
+    const overallStatus: ReconciliationStatus = checks.some(
+      (c) => c.status === 'DRIFT',
+    )
+      ? 'DRIFT'
+      : 'MATCH';
+
+    return {
+      dayIsoLocal,
+      dayStartIso: dayStart.toISOString(),
+      dayEndIso: dayEnd.toISOString(),
+      overallStatus,
+      checks,
+      totals: {
+        transactionHistory: {
+          collectedKd: FOUR_DP(
+            thPartialCollected.plus(thOrderViaLinkCollected),
+          ),
+          discountKd: FOUR_DP(thPartialDiscount),
+        },
+        generalLedger: {
+          collectedKd: FOUR_DP(
+            glPartialCollected.plus(glOrderViaLinkCollected),
+          ),
+          discountKd: FOUR_DP(glPartialDiscount),
+        },
+      },
+      generatedAtIso: new Date().toISOString(),
     };
   }
 

@@ -24,6 +24,7 @@ import { MarkOrderPaidDto } from './dto/mark-order-paid.dto';
 import { RecordPartialDebtPaymentDto } from './dto/record-partial-debt-payment.dto';
 import { CustomerLedgerQueryDto } from './dto/customer-ledger.dto';
 import { DailyCollectionsQueryDto } from './dto/daily-collections.dto';
+import { DailyCollectionsReconciliationQueryDto } from './dto/daily-collections-reconciliation.dto';
 // CC pack #9 — the response shape is declared for the OpenAPI client but
 // the DTO has no request body (pure GET path param), so we import only
 // where needed in the return type of the service.
@@ -259,6 +260,24 @@ export class CallCenterController {
   })
   getDailyCollections(@Query() q: DailyCollectionsQueryDto) {
     return this.callCenterService.getDailyCollections(q);
+  }
+
+  @Get('daily-collections/reconciliation')
+  @Roles(
+    SafariRole.CALL_CENTER,
+    SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
+    SafariRole.ACCOUNTANT,
+  )
+  @ApiOperation({
+    summary: `Daily collector reconciliation — TH ↔ GL validator (${APP_BRAND})`,
+    description:
+      "V19.5 — read-time validator that re-aggregates today's debt collections from both TransactionHistory (UI source) and GeneralLedgerEntry (accounting source) and reports the delta. At steady state the two MUST agree because every write runs through a single Prisma transaction that updates both. The daily 23:59 Kuwait cron calls this endpoint and logs a Sentry warning if `overallStatus=DRIFT`; the Collections page shows a ✓/⚠ badge alongside the KPI tiles.",
+  })
+  getDailyCollectionsReconciliation(
+    @Query() q: DailyCollectionsReconciliationQueryDto,
+  ) {
+    return this.callCenterService.getDailyCollectionsReconciliation(q);
   }
 
   @Get('customers/:customerId/debt-conversion-options')

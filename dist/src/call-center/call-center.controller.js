@@ -29,6 +29,7 @@ const mark_order_paid_dto_1 = require("./dto/mark-order-paid.dto");
 const record_partial_debt_payment_dto_1 = require("./dto/record-partial-debt-payment.dto");
 const customer_ledger_dto_1 = require("./dto/customer-ledger.dto");
 const daily_collections_dto_1 = require("./dto/daily-collections.dto");
+const daily_collections_reconciliation_dto_1 = require("./dto/daily-collections-reconciliation.dto");
 let CallCenterController = class CallCenterController {
     callCenterService;
     constructor(callCenterService) {
@@ -84,6 +85,9 @@ let CallCenterController = class CallCenterController {
     }
     getDailyCollections(q) {
         return this.callCenterService.getDailyCollections(q);
+    }
+    getDailyCollectionsReconciliation(q) {
+        return this.callCenterService.getDailyCollectionsReconciliation(q);
     }
     getDebtConversionOptions(customerId) {
         return this.callCenterService.getDebtConversionOptions(customerId);
@@ -280,6 +284,18 @@ __decorate([
     __metadata("design:paramtypes", [daily_collections_dto_1.DailyCollectionsQueryDto]),
     __metadata("design:returntype", void 0)
 ], CallCenterController.prototype, "getDailyCollections", null);
+__decorate([
+    (0, common_1.Get)('daily-collections/reconciliation'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),
+    (0, swagger_1.ApiOperation)({
+        summary: `Daily collector reconciliation — TH ↔ GL validator (${branding_1.APP_BRAND})`,
+        description: "V19.5 — read-time validator that re-aggregates today's debt collections from both TransactionHistory (UI source) and GeneralLedgerEntry (accounting source) and reports the delta. At steady state the two MUST agree because every write runs through a single Prisma transaction that updates both. The daily 23:59 Kuwait cron calls this endpoint and logs a Sentry warning if `overallStatus=DRIFT`; the Collections page shows a ✓/⚠ badge alongside the KPI tiles.",
+    }),
+    __param(0, (0, common_1.Query)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [daily_collections_reconciliation_dto_1.DailyCollectionsReconciliationQueryDto]),
+    __metadata("design:returntype", void 0)
+], CallCenterController.prototype, "getDailyCollectionsReconciliation", null);
 __decorate([
     (0, common_1.Get)('customers/:customerId/debt-conversion-options'),
     (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),

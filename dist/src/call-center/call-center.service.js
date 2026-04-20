@@ -1036,6 +1036,134 @@ let CallCenterService = class CallCenterService {
             events,
         };
     }
+    async getDailyCollectionsReconciliation(params) {
+        const { dayStart, dayEnd, dayIsoLocal } = params.date
+            ? (() => {
+                const { dayStart, dayEnd } = kuwaitDayFromIso(params.date);
+                return { dayStart, dayEnd, dayIsoLocal: params.date };
+            })()
+            : kuwaitDayBounds(new Date());
+        const thRows = await this.prisma.transactionHistory.findMany({
+            where: {
+                createdAt: { gte: dayStart, lt: dayEnd },
+                type: client_1.LedgerTransactionType.ORDER_WALLET_SETTLEMENT,
+            },
+            select: { id: true, orderId: true, metadata: true },
+        });
+        let thPartialCollected = new client_1.Prisma.Decimal(0);
+        let thPartialDiscount = new client_1.Prisma.Decimal(0);
+        let thOrderViaLinkCollected = new client_1.Prisma.Decimal(0);
+        const thOrderViaLinkOrderIds = new Set();
+        for (const r of thRows) {
+            const debtSettled = extractDebtSettled(r.metadata);
+            const debtDiscount = extractDebtDiscount(r.metadata);
+            if (isPartialDebtPaymentRow(r.metadata)) {
+                thPartialCollected = thPartialCollected.plus(debtSettled);
+                thPartialDiscount = thPartialDiscount.plus(debtDiscount);
+                continue;
+            }
+            if (!r.orderId || debtSettled.lte(0))
+                continue;
+            const viaLink = isDebtViaLinkRow(r.metadata);
+            const reportingCategory = readMetaString(r.metadata, 'reportingCategory');
+            const manual = reportingCategory === 'DEBT_COLLECTION_MANUAL';
+            if (!viaLink && !manual)
+                continue;
+            thOrderViaLinkCollected = thOrderViaLinkCollected.plus(debtSettled);
+            thOrderViaLinkOrderIds.add(r.orderId);
+        }
+        const glDebtAdjustments = await this.prisma.generalLedgerEntry.findMany({
+            where: {
+                createdAt: { gte: dayStart, lt: dayEnd },
+                entryType: client_1.GeneralLedgerEntryType.DEBT_ADJUSTMENT,
+            },
+            select: { amount: true, metadata: true },
+        });
+        let glPartialCollected = new client_1.Prisma.Decimal(0);
+        let glPartialDiscount = new client_1.Prisma.Decimal(0);
+        for (const e of glDebtAdjustments) {
+            const event = readMetaString(e.metadata, 'event');
+            const source = readMetaString(e.metadata, 'source');
+            if (source !== 'CC_PARTIAL_DEBT_PAYMENT')
+                continue;
+            const abs = e.amount.isNegative() ? e.amount.neg() : e.amount;
+            if (event === 'DEBT_COLLECTED') {
+                glPartialCollected = glPartialCollected.plus(abs);
+            }
+            else if (event === 'DEBT_DISCOUNTED') {
+                glPartialDiscount = glPartialDiscount.plus(abs);
+            }
+        }
+        let glOrderViaLinkCollected = new client_1.Prisma.Decimal(0);
+        if (thOrderViaLinkOrderIds.size > 0) {
+            const glOrderRows = await this.prisma.generalLedgerEntry.findMany({
+                where: {
+                    createdAt: { gte: dayStart, lt: dayEnd },
+                    entryType: client_1.GeneralLedgerEntryType.POS_SALE_COMPLETED,
+                    orderId: { in: Array.from(thOrderViaLinkOrderIds) },
+                },
+                select: { amount: true },
+            });
+            for (const e of glOrderRows) {
+                glOrderViaLinkCollected = glOrderViaLinkCollected.plus(e.amount);
+            }
+        }
+        const DRIFT_THRESHOLD = new client_1.Prisma.Decimal('0.001');
+        const classify = (delta) => {
+            const abs = delta.isNegative() ? delta.neg() : delta;
+            return abs.gte(DRIFT_THRESHOLD) ? 'DRIFT' : 'MATCH';
+        };
+        const d1 = glPartialCollected.minus(thPartialCollected);
+        const d2 = glPartialDiscount.minus(thPartialDiscount);
+        const d3 = glOrderViaLinkCollected.minus(thOrderViaLinkCollected);
+        const checks = [
+            {
+                id: 'partialDebtCollected',
+                status: classify(d1),
+                transactionHistoryKd: FOUR_DP(thPartialCollected),
+                generalLedgerKd: FOUR_DP(glPartialCollected),
+                deltaKd: FOUR_DP(d1),
+                note: 'TH(debtPaymentOnly=true).debtSettled vs GL(DEBT_ADJUSTMENT.event=DEBT_COLLECTED, source=CC_PARTIAL_DEBT_PAYMENT)',
+            },
+            {
+                id: 'partialDebtDiscount',
+                status: classify(d2),
+                transactionHistoryKd: FOUR_DP(thPartialDiscount),
+                generalLedgerKd: FOUR_DP(glPartialDiscount),
+                deltaKd: FOUR_DP(d2),
+                note: 'TH(debtPaymentOnly=true).debtDiscount vs GL(DEBT_ADJUSTMENT.event=DEBT_DISCOUNTED, source=CC_PARTIAL_DEBT_PAYMENT)',
+            },
+            {
+                id: 'orderViaLinkCollected',
+                status: classify(d3),
+                transactionHistoryKd: FOUR_DP(thOrderViaLinkCollected),
+                generalLedgerKd: FOUR_DP(glOrderViaLinkCollected),
+                deltaKd: FOUR_DP(d3),
+                note: 'TH(orderId set, debtSettlementViaLink OR reportingCategory=DEBT_COLLECTION_MANUAL).debtSettled vs GL(POS_SALE_COMPLETED) joined by orderId',
+            },
+        ];
+        const overallStatus = checks.some((c) => c.status === 'DRIFT')
+            ? 'DRIFT'
+            : 'MATCH';
+        return {
+            dayIsoLocal,
+            dayStartIso: dayStart.toISOString(),
+            dayEndIso: dayEnd.toISOString(),
+            overallStatus,
+            checks,
+            totals: {
+                transactionHistory: {
+                    collectedKd: FOUR_DP(thPartialCollected.plus(thOrderViaLinkCollected)),
+                    discountKd: FOUR_DP(thPartialDiscount),
+                },
+                generalLedger: {
+                    collectedKd: FOUR_DP(glPartialCollected.plus(glOrderViaLinkCollected)),
+                    discountKd: FOUR_DP(glPartialDiscount),
+                },
+            },
+            generatedAtIso: new Date().toISOString(),
+        };
+    }
     async getDebtConversionOptions(customerId) {
         const customer = await this.prisma.customer.findUnique({
             where: { id: customerId },

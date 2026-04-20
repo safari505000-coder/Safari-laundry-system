@@ -5,10 +5,11 @@ import { PaymentsModule } from '../payments/payments.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { CallCenterController } from './call-center.controller';
 import { CallCenterService } from './call-center.service';
+import { DailyCollectionsReconciliationCronService } from './daily-collections-reconciliation.cron';
 
 @Module({
   imports: [PrismaModule, AuthModule, CustomerLedgerModule, PaymentsModule],
   controllers: [CallCenterController],
-  providers: [CallCenterService],
+  providers: [CallCenterService, DailyCollectionsReconciliationCronService],
 })
 export class CallCenterModule {}

@@ -2,8 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   CircleDollarSign,
+  CheckCircle2,
   Loader2,
   RefreshCw,
+  ShieldAlert,
   User,
   Users,
 } from 'lucide-react';
@@ -12,6 +14,7 @@ import {
   ApiError,
   apiJson,
   type DailyCollectionsResponse,
+  type DailyCollectionsReconciliationResponse,
 } from '@/lib/api';
 import { formatKwdLabel } from '@/lib/kwd';
 import { Button } from '@/modules/shared/components/ui/button';
@@ -39,6 +42,8 @@ const MAX_DEFAULT = 10;
 export function DailyCollectorPanel({ token }: Props) {
   const { t, i18n } = useTranslation();
   const [data, setData] = useState<DailyCollectionsResponse | null>(null);
+  const [recon, setRecon] =
+    useState<DailyCollectionsReconciliationResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [showAll, setShowAll] = useState(false);
 
@@ -46,13 +51,29 @@ export function DailyCollectorPanel({ token }: Props) {
     if (!token) return;
     setLoading(true);
     try {
-      const res = await apiJson<DailyCollectionsResponse>(
-        '/api/call-center/daily-collections',
-        { token },
-      );
-      setData(res);
-    } catch (e) {
-      if (e instanceof ApiError) toast.error(e.message);
+      // V19.5 — fire both requests in parallel so the drift badge is
+      // in sync with the tiles it annotates. Reconciliation failure is
+      // non-fatal: the main panel still renders, the badge just hides.
+      const [main, reconRes] = await Promise.allSettled([
+        apiJson<DailyCollectionsResponse>(
+          '/api/call-center/daily-collections',
+          { token },
+        ),
+        apiJson<DailyCollectionsReconciliationResponse>(
+          '/api/call-center/daily-collections/reconciliation',
+          { token },
+        ),
+      ]);
+      if (main.status === 'fulfilled') {
+        setData(main.value);
+      } else if (main.reason instanceof ApiError) {
+        toast.error(main.reason.message);
+      }
+      if (reconRes.status === 'fulfilled') {
+        setRecon(reconRes.value);
+      } else {
+        setRecon(null);
+      }
     } finally {
       setLoading(false);
     }
@@ -79,7 +100,7 @@ export function DailyCollectorPanel({ token }: Props) {
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <CircleDollarSign
             className="h-5 w-5 text-emerald-600"
             aria-hidden
@@ -92,6 +113,7 @@ export function DailyCollectorPanel({ token }: Props) {
               {data.dayIsoLocal}
             </span>
           ) : null}
+          {recon ? <ReconciliationBadge recon={recon} /> : null}
         </div>
         <Button
           type="button"
@@ -290,6 +312,56 @@ function TotalTile({
       </p>
       <p className="mt-1 text-lg font-semibold tabular-nums">{value}</p>
     </div>
+  );
+}
+
+/**
+ * V19.5 — TH ↔ GL reconciliation badge.
+ *
+ * Surfaces the output of `/api/call-center/daily-collections/reconciliation`
+ * next to the panel title. When MATCH it's a quiet green check; when DRIFT
+ * it turns into a red warning with a tooltip listing every failing check
+ * and its signed delta, so an agent or supervisor can tell instantly
+ * whether the tiles they're looking at agree with the General Ledger.
+ */
+function ReconciliationBadge({
+  recon,
+}: {
+  recon: DailyCollectionsReconciliationResponse;
+}) {
+  const { t } = useTranslation();
+  const isMatch = recon.overallStatus === 'MATCH';
+  const driftChecks = recon.checks.filter((c) => c.status === 'DRIFT');
+  const tooltip = isMatch
+    ? t('dailyCollector.reconciliation.matchTooltip')
+    : driftChecks
+        .map((c) => `${c.id}: Δ=${c.deltaKd} KWD`)
+        .join('\n');
+
+  return (
+    <span
+      title={tooltip}
+      className={cn(
+        'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium',
+        isMatch
+          ? 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200'
+          : 'border-red-300 bg-red-50 text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200',
+      )}
+      aria-label={
+        isMatch
+          ? t('dailyCollector.reconciliation.match')
+          : t('dailyCollector.reconciliation.drift')
+      }
+    >
+      {isMatch ? (
+        <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
+      ) : (
+        <ShieldAlert className="h-3.5 w-3.5" aria-hidden />
+      )}
+      {isMatch
+        ? t('dailyCollector.reconciliation.match')
+        : t('dailyCollector.reconciliation.drift')}
+    </span>
   );
 }
 

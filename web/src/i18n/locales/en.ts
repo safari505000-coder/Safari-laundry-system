@@ -293,6 +293,12 @@ export const en = {
       PAYMENT_LINK: 'Payment link',
       ONLINE: 'Online',
     },
+    reconciliation: {
+      match: 'Matched',
+      drift: 'Drift',
+      matchTooltip:
+        'Every number on the tiles above matches the General Ledger (TH ↔ GL).',
+    },
   },
   collections: {
     title: 'Debt-tracking report',

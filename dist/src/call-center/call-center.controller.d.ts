@@ -7,6 +7,7 @@ import { MarkOrderPaidDto } from './dto/mark-order-paid.dto';
 import { RecordPartialDebtPaymentDto } from './dto/record-partial-debt-payment.dto';
 import { CustomerLedgerQueryDto } from './dto/customer-ledger.dto';
 import { DailyCollectionsQueryDto } from './dto/daily-collections.dto';
+import { DailyCollectionsReconciliationQueryDto } from './dto/daily-collections-reconciliation.dto';
 export declare class CallCenterController {
     private readonly callCenterService;
     constructor(callCenterService: CallCenterService);
@@ -83,5 +84,6 @@ export declare class CallCenterController {
     listCustomerSubscriptionChain(customerId: string): Promise<import("./dto/customer-subscription.dto").CustomerSubscriptionRowDto[]>;
     getCustomerLedger(customerId: string, q: CustomerLedgerQueryDto): Promise<import("./dto/customer-ledger.dto").CustomerLedgerResponseDto>;
     getDailyCollections(q: DailyCollectionsQueryDto): Promise<import("./dto/daily-collections.dto").DailyCollectionsResponseDto>;
+    getDailyCollectionsReconciliation(q: DailyCollectionsReconciliationQueryDto): Promise<import("./dto/daily-collections-reconciliation.dto").DailyCollectionsReconciliationResponseDto>;
     getDebtConversionOptions(customerId: string): Promise<import("./dto/debt-conversion-options.dto").DebtConversionOptionsResponseDto>;
 }

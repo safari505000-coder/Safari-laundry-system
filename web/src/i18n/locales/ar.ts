@@ -293,6 +293,12 @@ export const ar = {
       PAYMENT_LINK: 'رابط دفع',
       ONLINE: 'أونلاين',
     },
+    reconciliation: {
+      match: 'مطابقة',
+      drift: 'تباين',
+      matchTooltip:
+        'كل رقم في البطاقات أعلاه مطابق لسجلات دفتر الأستاذ العام (TH ↔ GL).',
+    },
   },
   collections: {
     title: 'تقرير تتبع الديون',

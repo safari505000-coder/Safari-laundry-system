@@ -14,6 +14,7 @@ import type { RecordPartialDebtPaymentDto } from './dto/record-partial-debt-paym
 import type { CustomerLedgerQueryDto, CustomerLedgerResponseDto } from './dto/customer-ledger.dto';
 import type { DailyCollectionsQueryDto, DailyCollectionsResponseDto } from './dto/daily-collections.dto';
 import type { DebtConversionOptionsResponseDto } from './dto/debt-conversion-options.dto';
+import type { DailyCollectionsReconciliationQueryDto, DailyCollectionsReconciliationResponseDto } from './dto/daily-collections-reconciliation.dto';
 export declare class CallCenterService {
     private readonly prisma;
     private readonly customerLedger;
@@ -92,6 +93,7 @@ export declare class CallCenterService {
     }>;
     getCustomerLedger(customerId: string, filters: CustomerLedgerQueryDto): Promise<CustomerLedgerResponseDto>;
     getDailyCollections(params: DailyCollectionsQueryDto): Promise<DailyCollectionsResponseDto>;
+    getDailyCollectionsReconciliation(params: DailyCollectionsReconciliationQueryDto): Promise<DailyCollectionsReconciliationResponseDto>;
     getDebtConversionOptions(customerId: string): Promise<DebtConversionOptionsResponseDto>;
     private mapSubscriptionChainRows;
 }

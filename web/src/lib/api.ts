@@ -1568,6 +1568,30 @@ export type DailyCollectionsResponse = {
   events: DailyCollectionEvent[];
 };
 
+// V19.5 — CC reconciliation guard (TransactionHistory ↔ GeneralLedger).
+// The Daily Collector Panel renders a ✓/⚠ badge based on `overallStatus`.
+export type ReconciliationCheck = {
+  id: string;
+  status: 'MATCH' | 'DRIFT';
+  transactionHistoryKd: string;
+  generalLedgerKd: string;
+  deltaKd: string;
+  note: string;
+};
+
+export type DailyCollectionsReconciliationResponse = {
+  dayIsoLocal: string;
+  dayStartIso: string;
+  dayEndIso: string;
+  overallStatus: 'MATCH' | 'DRIFT';
+  checks: ReconciliationCheck[];
+  totals: {
+    transactionHistory: { collectedKd: string; discountKd: string };
+    generalLedger: { collectedKd: string; discountKd: string };
+  };
+  generatedAtIso: string;
+};
+
 // V19.4 CC pack #9 — "Convert debt → subscription" preview.
 // Every monetary field is a 4dp-formatted string (internal KWD precision).
 // The UI can render at 3dp by trimming the trailing zero.
