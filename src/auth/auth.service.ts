@@ -34,6 +34,17 @@ const FIELD_OPERATOR_ROLES: readonly SafariRole[] = [
 ];
 const FIELD_OPERATOR_WINDOW_START_HOUR = 7;
 
+/**
+ * Escape hatch for diagnostics: when `AUTH_BYPASS_WORKING_HOURS=1` the
+ * `[00:00, 07:00)` Kuwait login gate is waived for DRIVER/MANAGER. Every
+ * bypassed login is still logged as a warning so the trail is auditable.
+ * Default is OFF — production must not ship with this flag enabled.
+ */
+function isWorkingHoursBypassed(): boolean {
+  const raw = (process.env.AUTH_BYPASS_WORKING_HOURS ?? '').trim().toLowerCase();
+  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+}
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -66,7 +77,8 @@ export class AuthService {
     }
     if (FIELD_OPERATOR_ROLES.includes(roleName)) {
       const hour = kuwaitHour(new Date());
-      if (hour < FIELD_OPERATOR_WINDOW_START_HOUR) {
+      const bypass = isWorkingHoursBypassed();
+      if (hour < FIELD_OPERATOR_WINDOW_START_HOUR && !bypass) {
         this.recordOutsideHoursAudit(user.id, roleName, hour).catch((err) => {
           this.logger.warn(
             `[AUTH] failed to record OUTSIDE_WORKING_HOURS audit for ${user.id}: ${String(err)}`,
@@ -78,6 +90,12 @@ export class AuthService {
             'Login is allowed only between 07:00 and 23:59 Kuwait time for drivers and branch managers.',
           errorCode: 'OUTSIDE_WORKING_HOURS',
         });
+      }
+      if (hour < FIELD_OPERATOR_WINDOW_START_HOUR && bypass) {
+        this.logger.warn(
+          `[AUTH] working-hours bypass active — ${roleName} ${user.username} ` +
+            `logged in at Kuwait hour ${hour}. Disable AUTH_BYPASS_WORKING_HOURS after diagnostics.`,
+        );
       }
     }
     if (user.safariRole !== roleName) {
