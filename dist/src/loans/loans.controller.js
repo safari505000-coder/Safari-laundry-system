@@ -51,7 +51,7 @@ let LoansController = class LoansController {
 exports.LoansController = LoansController;
 __decorate([
     (0, common_1.Post)(),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.DRIVER, client_1.SafariRole.CALL_CENTER, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.DRIVER, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
     (0, swagger_1.ApiOperation)({ summary: `Create loan request (${branding_1.APP_BRAND})` }),
     __param(0, (0, common_1.Body)()),
     __param(1, (0, current_user_decorator_1.CurrentUser)()),
@@ -71,7 +71,7 @@ __decorate([
 ], LoansController.prototype, "list", null);
 __decorate([
     (0, common_1.Get)('mine'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.DRIVER, client_1.SafariRole.CALL_CENTER, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.DRIVER, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
     (0, swagger_1.ApiOperation)({ summary: `My loans (${branding_1.APP_BRAND})` }),
     __param(0, (0, current_user_decorator_1.CurrentUser)()),
     __metadata("design:type", Function),
@@ -80,7 +80,7 @@ __decorate([
 ], LoansController.prototype, "mine", null);
 __decorate([
     (0, common_1.Get)(':id'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.DRIVER, client_1.SafariRole.CALL_CENTER, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.DRIVER, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
     (0, swagger_1.ApiOperation)({ summary: `Fetch single loan row (${branding_1.APP_BRAND})` }),
     __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
     __param(1, (0, current_user_decorator_1.CurrentUser)()),

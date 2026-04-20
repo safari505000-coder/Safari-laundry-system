@@ -37,19 +37,39 @@ let SubscribersService = class SubscribersService {
     constructor(prisma) {
         this.prisma = prisma;
     }
-    async list() {
-        const customers = await this.prisma.customer.findMany({
-            where: {
-                OR: [
-                    {
-                        transactionHistory: {
-                            some: { type: client_1.LedgerTransactionType.SUBSCRIPTION_ACTIVATION },
-                        },
+    async list(q) {
+        const needle = q?.trim() ?? '';
+        const hasNeedle = needle.length > 0;
+        const digits = hasNeedle ? needle.replace(/\D+/g, '') : '';
+        const subscriptionWhere = {
+            OR: [
+                {
+                    transactionHistory: {
+                        some: { type: client_1.LedgerTransactionType.SUBSCRIPTION_ACTIVATION },
                     },
-                    { wallet: { subscriptionActivatedAt: { not: null } } },
-                    { wallet: { subscriptionExpiresAt: { not: null } } },
+                },
+                { wallet: { subscriptionActivatedAt: { not: null } } },
+                { wallet: { subscriptionExpiresAt: { not: null } } },
+            ],
+        };
+        const where = hasNeedle ?
+            {
+                AND: [
+                    subscriptionWhere,
+                    {
+                        OR: [
+                            { displayName: { contains: needle, mode: 'insensitive' } },
+                            { phone: { contains: needle, mode: 'insensitive' } },
+                            ...(digits.length > 0
+                                ? [{ phone: { contains: digits } }]
+                                : []),
+                        ],
+                    },
                 ],
-            },
+            }
+            : subscriptionWhere;
+        const customers = await this.prisma.customer.findMany({
+            where,
             select: {
                 id: true,
                 phone: true,

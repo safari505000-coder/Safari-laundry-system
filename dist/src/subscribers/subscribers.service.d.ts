@@ -18,5 +18,5 @@ export type SubscriberListRow = {
 export declare class SubscribersService {
     private readonly prisma;
     constructor(prisma: PrismaService);
-    list(): Promise<SubscriberListRow[]>;
+    list(q?: string): Promise<SubscriberListRow[]>;
 }

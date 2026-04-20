@@ -76,19 +76,59 @@ function addUtcDays(from: Date, days: number): Date {
 export class SubscribersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async list(): Promise<SubscriberListRow[]> {
-    const customers = await this.prisma.customer.findMany({
-      where: {
-        OR: [
-          {
-            transactionHistory: {
-              some: { type: LedgerTransactionType.SUBSCRIPTION_ACTIVATION },
-            },
+  /**
+   * V19.4 — `q` is an optional needle (phone or display name). When
+   * supplied we AND-combine it with the existing "has a subscription
+   * anywhere" filter so the CC agent gets a narrow list without
+   * breaking the legacy "show all subscribers" call (no arg).
+   *
+   * We match the needle three ways inside Postgres `ILIKE`:
+   *   • displayName    contains needle (case-insensitive)
+   *   • phone          contains needle
+   *   • phone (digits) contains needle's digit-only variant — handled
+   *                    in JS after the fetch because Prisma doesn't
+   *                    ship a server-side regex-replace. Cheap because
+   *                    the ILIKE filter already collapses the result set.
+   */
+  async list(q?: string): Promise<SubscriberListRow[]> {
+    const needle = q?.trim() ?? '';
+    const hasNeedle = needle.length > 0;
+    const digits = hasNeedle ? needle.replace(/\D+/g, '') : '';
+
+    const subscriptionWhere: {
+      OR: Array<Record<string, unknown>>;
+    } = {
+      OR: [
+        {
+          transactionHistory: {
+            some: { type: LedgerTransactionType.SUBSCRIPTION_ACTIVATION },
           },
-          { wallet: { subscriptionActivatedAt: { not: null } } },
-          { wallet: { subscriptionExpiresAt: { not: null } } },
-        ],
-      },
+        },
+        { wallet: { subscriptionActivatedAt: { not: null } } },
+        { wallet: { subscriptionExpiresAt: { not: null } } },
+      ],
+    };
+
+    const where =
+      hasNeedle ?
+        {
+          AND: [
+            subscriptionWhere,
+            {
+              OR: [
+                { displayName: { contains: needle, mode: 'insensitive' as const } },
+                { phone: { contains: needle, mode: 'insensitive' as const } },
+                ...(digits.length > 0
+                  ? [{ phone: { contains: digits } }]
+                  : []),
+              ],
+            },
+          ],
+        }
+      : subscriptionWhere;
+
+    const customers = await this.prisma.customer.findMany({
+      where,
       select: {
         id: true,
         phone: true,

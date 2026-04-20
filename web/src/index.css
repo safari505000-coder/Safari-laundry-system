@@ -380,6 +380,19 @@ body {
     justify-content: space-between;
     gap: 2mm;
     margin-bottom: 0.7mm;
+    flex-wrap: wrap;
+  }
+  /*
+    V19.4 — CC pack #7. Debt chip on the printed receipt. The box is
+    monochrome-by-default for thermal printer compatibility, but colour
+    laser printers render the red border to flag outstanding debt at a
+    glance. `@media print` already covers this block.
+  */
+  .pos-customer-debt {
+    display: inline-block;
+    padding: 0 1mm;
+    border: 1px solid #c00;
+    color: #c00;
   }
   .pos-customer-address {
     border-top: 1px dashed #000;

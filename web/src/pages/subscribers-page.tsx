@@ -832,6 +832,13 @@ export function SubscribersPage() {
     setIssueOpen(true);
   }, []);
 
+  // V19.4 — CC pack point #3: "قائمة المشتركين برقم التلفون".
+  // Previously the digit path only searched inside `customerName`, so a
+  // query of "97700000" against a row whose name is "عبدالله" and
+  // phone is "97700000" would silently fail. Now we normalise both the
+  // customerPhone column and customerName, and we also match the phone
+  // against the raw lowercase needle (for partial-digit typing like
+  // "770"). Keeps existing name / subscription-type behaviour.
   const filteredRows = useMemo(() => {
     if (!rows) return null;
     const q = query.trim();
@@ -841,8 +848,10 @@ export function SubscribersPage() {
     return rows.filter((r) => {
       if (r.customerName?.toLowerCase().includes(needle)) return true;
       if (r.subscriptionType?.toLowerCase().includes(needle)) return true;
-      if (digits && normalisePhone(r.customerName ?? '').includes(digits)) {
-        return true;
+      if (r.customerPhone?.toLowerCase().includes(needle)) return true;
+      if (digits) {
+        if (normalisePhone(r.customerPhone ?? '').includes(digits)) return true;
+        if (normalisePhone(r.customerName ?? '').includes(digits)) return true;
       }
       return false;
     });

@@ -8,6 +8,9 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var __param = (this && this.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SubscribersController = void 0;
 const common_1 = require("@nestjs/common");
@@ -17,14 +20,15 @@ const roles_decorator_1 = require("../auth/decorators/roles.decorator");
 const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
 const roles_guard_1 = require("../auth/guards/roles.guard");
 const branding_1 = require("../common/constants/branding");
+const list_subscribers_query_dto_1 = require("./dto/list-subscribers-query.dto");
 const subscribers_service_1 = require("./subscribers.service");
 let SubscribersController = class SubscribersController {
     subscribersService;
     constructor(subscribersService) {
         this.subscribersService = subscribersService;
     }
-    list() {
-        return this.subscribersService.list();
+    list(query) {
+        return this.subscribersService.list(query.q);
     }
 };
 exports.SubscribersController = SubscribersController;
@@ -33,10 +37,12 @@ __decorate([
     (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.CALL_CENTER),
     (0, swagger_1.ApiOperation)({
         summary: `Subscriber list (${branding_1.APP_BRAND})`,
-        description: 'Live list of customers with subscription history or an active subscription window. OWNER and CALL_CENTER.',
+        description: 'Live list of customers with subscription history or an active subscription window. ' +
+            'Accepts optional `?q=` to search by phone or display name (V19.4 CC pack #3).',
     }),
+    __param(0, (0, common_1.Query)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", []),
+    __metadata("design:paramtypes", [list_subscribers_query_dto_1.ListSubscribersQueryDto]),
     __metadata("design:returntype", Promise)
 ], SubscribersController.prototype, "list", null);
 exports.SubscribersController = SubscribersController = __decorate([

@@ -45,6 +45,11 @@ import { LoansService } from './loans.service';
 export class LoansController {
   constructor(private readonly loans: LoansService) {}
 
+  // V19.4 — CALL_CENTER removed from every /api/loans route. Loans are
+  // no longer part of the call-centre surface (nav pruned + access-
+  // matrix `hr.loans.mine` tightened). Keeping the role on the backend
+  // would let a CC JWT still POST/GET loans via direct curl; that is
+  // the exact gap we are closing.
   @Post()
   @Roles(
     SafariRole.OWNER,
@@ -52,7 +57,6 @@ export class LoansController {
     SafariRole.MANAGER,
     SafariRole.ACCOUNTANT,
     SafariRole.DRIVER,
-    SafariRole.CALL_CENTER,
     SafariRole.SUPERVISOR,
     SafariRole.VIEWER,
   )
@@ -79,7 +83,6 @@ export class LoansController {
     SafariRole.MANAGER,
     SafariRole.ACCOUNTANT,
     SafariRole.DRIVER,
-    SafariRole.CALL_CENTER,
     SafariRole.SUPERVISOR,
     SafariRole.VIEWER,
   )
@@ -95,7 +98,6 @@ export class LoansController {
     SafariRole.MANAGER,
     SafariRole.ACCOUNTANT,
     SafariRole.DRIVER,
-    SafariRole.CALL_CENTER,
     SafariRole.SUPERVISOR,
     SafariRole.VIEWER,
   )

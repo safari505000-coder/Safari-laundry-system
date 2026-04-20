@@ -199,13 +199,16 @@ export const ACCESS = {
   // staff can submit a request for themselves.
   'hr.loans.view': withExec('ACCOUNTANT'),
   'hr.loans.approve': withExec('ACCOUNTANT'),
+  // V19.4 — CALL_CENTER removed per the "CC cleanup" product decision:
+  // loans/advances are handled by HR + accountant; the call-centre agent
+  // should not see loan balances or submit requests from the CC shell.
+  // Deep links to /loans from any CC session now resolve to 403.
   'hr.loans.mine': [
     'OWNER',
     'GENERAL_MANAGER',
     'MANAGER',
     'ACCOUNTANT',
     'DRIVER',
-    'CALL_CENTER',
     'SUPERVISOR',
     'VIEWER',
   ] satisfies readonly SafariRole[],

@@ -275,6 +275,13 @@ export function PosAuxiliaryUi({ p }: { p: PosEngineApi }) {
                 {t('pos.checkout.paymentPendingReceipt')}
               </p>
             : null}
+            {/*
+              V19.4 — CC pack #7 ("المديونية في الفاتورة للعميل").
+              Debt line is conditional so historical zero-debt receipts
+              keep their existing layout (no empty row, no extra spacing).
+              We only render the red debt chip when the parsed decimal is
+              strictly positive — NaN and 0.000 both hide the row.
+            */}
             <div className="pos-customer-box">
               <div className="pos-customer-row">
                 <span><strong>Name:</strong> {sheet.customerName ?? '-'}</span>
@@ -287,6 +294,17 @@ export function PosAuxiliaryUi({ p }: { p: PosEngineApi }) {
                     .toFixed(3)}{' '}
                   {rtl ? 'د.ك' : 'KWD'}
                 </span>
+                {(() => {
+                  const debt = Number.parseFloat(sheet.customerDebt ?? '0');
+                  if (!Number.isFinite(debt) || debt <= 0) return null;
+                  return (
+                    <span className="pos-customer-debt">
+                      <strong>{rtl ? 'المديونية:' : 'Debt:'}</strong>{' '}
+                      {debt.toFixed(3)}{' '}
+                      {rtl ? 'د.ك' : 'KWD'}
+                    </span>
+                  );
+                })()}
               </div>
               <div className="pos-customer-address">
                 <strong>Address:</strong> {sheet.customerAddress ?? '-'}

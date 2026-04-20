@@ -77,6 +77,20 @@ export type ReceiptSnapshot = {
   customerName: string;
   customerMobile: string;
   customerBalance: string;
+  /**
+   * V19.4 — CC pack #7 ("المديونية في الفاتورة للعميل").
+   *
+   * Outstanding debt on the customer's wallet AFTER this checkout has
+   * been applied. Captured at the same moment we refresh
+   * `customerBalance` from `/api/pos/customers/:id/billing`. The print
+   * template hides this line when the string parses to zero (or NaN)
+   * so existing zero-debt receipts keep the old layout.
+   *
+   * Stored as a string (same format as `customerBalance`) to preserve
+   * the server's decimal precision; the UI parses with parseFloat when
+   * it needs to decide whether to render.
+   */
+  customerDebt: string;
   customerAddress: string;
   serviceType: string;
   /** Sum of line items before delivery (last completed order on receipt). */
@@ -671,6 +685,7 @@ export function usePosEngine(opts: PosEngineOptions) {
     const buildSheetBase = (
       created: PosCheckoutResponse,
       balanceAfter: string,
+      debtAfter: string,
       extras: ReceiptSheetExtras,
     ): ReceiptSnapshot => ({
       orderId: created.id,
@@ -682,6 +697,7 @@ export function usePosEngine(opts: PosEngineOptions) {
       customerName: selected.displayName?.trim() || t('pos.receiptWalkIn'),
       customerMobile: selected.phone,
       customerBalance: balanceAfter,
+      customerDebt: debtAfter,
       customerAddress: customerAddressStr,
       ...extras,
     });
@@ -727,12 +743,18 @@ export function usePosEngine(opts: PosEngineOptions) {
         );
 
         let balanceAfter = selected.wallet?.balance ?? '0.0000';
+        // V19.4 — CC pack #7. Mirror the same stale→fresh refresh
+        // pattern we use for `balanceAfter` so the printed receipt
+        // shows the debt AFTER this bundle has been applied, not the
+        // pre-checkout value.
+        let debtAfter = selected.wallet?.debt ?? '0.0000';
         try {
           const fresh = await apiJson<CustomerBillingProfile>(
             `/api/pos/customers/${selected.id}/billing`,
             { token },
           );
           balanceAfter = fresh.remainingBalance;
+          debtAfter = fresh.debt;
           setBilling(fresh);
           setSelected((prev) =>
             prev && prev.id === selected.id ?
@@ -757,7 +779,7 @@ export function usePosEngine(opts: PosEngineOptions) {
         const sheets: ReceiptSnapshot[] = parts.map((part, k) => {
           const ord = bundleRes.orders[k];
           const attached = k > 0;
-          return buildSheetBase(ord, balanceAfter, {
+          return buildSheetBase(ord, balanceAfter, debtAfter, {
             serviceType: 'NORMAL',
             lineItemsSubtotal: part.lineSum,
             deliveryFee: attached ? 0 : part.deliveryForOrder,
@@ -782,6 +804,10 @@ export function usePosEngine(opts: PosEngineOptions) {
 
       let billingSnapshot: CustomerBillingProfile | null = billing;
       let balanceAfter = selected.wallet?.balance ?? '0.0000';
+      // V19.4 — CC pack #7. Track debt alongside balance so each sheet
+      // in a multi-sub-order checkout can show the live debt value.
+      let debtAfter =
+        billingSnapshot?.debt ?? selected.wallet?.debt ?? '0.0000';
       const sheets: ReceiptSnapshot[] = [];
       let sawPaymentLink = false;
 
@@ -884,7 +910,7 @@ export function usePosEngine(opts: PosEngineOptions) {
         }
 
         sheets.push(
-          buildSheetBase(created, balanceAfter, {
+          buildSheetBase(created, balanceAfter, debtAfter, {
             serviceType: 'NORMAL',
             lineItemsSubtotal: lineSum,
             deliveryFee: attachedInvoice ? 0 : deliveryForOrder,
@@ -904,6 +930,7 @@ export function usePosEngine(opts: PosEngineOptions) {
           );
           billingSnapshot = fresh;
           balanceAfter = fresh.remainingBalance;
+          debtAfter = fresh.debt;
           setBilling(fresh);
           setSelected((prev) =>
             prev && prev.id === selected.id ?
@@ -924,8 +951,13 @@ export function usePosEngine(opts: PosEngineOptions) {
       if (sheets.length === 0) return;
 
       const finalBal = balanceAfter;
+      const finalDebt = debtAfter;
       setReceiptSheets(
-        sheets.map((s) => ({ ...s, customerBalance: finalBal })),
+        sheets.map((s) => ({
+          ...s,
+          customerBalance: finalBal,
+          customerDebt: finalDebt,
+        })),
       );
 
       if (sawPaymentLink) {
