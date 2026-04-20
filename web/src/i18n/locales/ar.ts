@@ -561,6 +561,13 @@ export const ar = {
     switch: 'اللغة',
     toggleAria: 'تبديل اللغة',
   },
+  theme: {
+    label: 'المظهر',
+    light: 'فاتح',
+    dark: 'داكن',
+    system: 'حسب النظام',
+    toggleAria: 'تبديل المظهر',
+  },
   login: {
     brand: 'Safari Omni',
     title: 'Safari Omni',

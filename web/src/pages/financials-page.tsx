@@ -592,11 +592,11 @@ export function FinancialsPage() {
             </>}
         </div>}
 
-      <Card className="border-zinc-200 bg-white">
+      <Card>
         <CardHeader>
           <CardTitle className="text-base">{t('financials.notesTitle')}</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3 text-sm text-zinc-600">
+        <CardContent className="space-y-3 text-sm text-muted-foreground">
           <p>{t('financials.notesP1')}</p>
           {wallet ?
             <p>
@@ -615,7 +615,7 @@ export function FinancialsPage() {
         </CardContent>
       </Card>
 
-      <Card className="border-zinc-200 bg-white">
+      <Card>
         <CardHeader>
           <CardTitle className="flex flex-wrap items-center justify-between gap-2">
             <span className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-2">
@@ -627,7 +627,7 @@ export function FinancialsPage() {
               </span>
             </span>
             <select
-              className="h-9 rounded-md border border-zinc-200 bg-background px-2 text-sm"
+              className="h-9 rounded-md border border-border bg-background px-2 text-sm"
               value={debtFilter}
               onChange={(e) =>
                 setDebtFilter(

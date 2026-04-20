@@ -54,14 +54,14 @@ export function ConsolidatedCashCard({ token }: Props) {
   }, [load]);
 
   return (
-    <Card className="border-slate-300 bg-white shadow-sm">
+    <Card className="shadow-sm">
       <CardHeader className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
-          <CardTitle className="flex items-center gap-2 text-base font-bold text-slate-950">
+          <CardTitle className="flex items-center gap-2 text-base font-bold text-foreground">
             <Wallet className="h-4 w-4 text-emerald-600" />
             إجمالي النقد في النظام الآن
           </CardTitle>
-          <p className="text-xs text-slate-600">
+          <p className="text-xs text-muted-foreground">
             مجموع كل أوعية الكاش: ميدان السائقين + عهدة المدراء + محافظ الفروع
             + إيداعات مصرفية بانتظار الاعتماد.
           </p>
@@ -82,11 +82,11 @@ export function ConsolidatedCashCard({ token }: Props) {
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="text-sm text-slate-700">
+      <CardContent className="text-sm text-foreground">
         {loading && !data ? (
-          <p className="text-slate-500">جاري التحميل…</p>
+          <p className="text-muted-foreground">جاري التحميل…</p>
         ) : data == null ? (
-          <p className="text-slate-500">لا توجد بيانات متاحة حالياً.</p>
+          <p className="text-muted-foreground">لا توجد بيانات متاحة حالياً.</p>
         ) : (
           <div className="space-y-4">
             <div className="rounded-lg bg-emerald-50 px-4 py-3">
@@ -137,12 +137,12 @@ function Pool({
   value: string;
 }) {
   return (
-    <div className="rounded-md border border-slate-200 bg-slate-50/60 p-3">
-      <dt className="text-xs text-slate-500">{label}</dt>
-      <dd className="mt-1 font-mono text-base font-semibold tabular-nums text-slate-900">
+    <div className="rounded-md border border-border bg-muted/30 p-3">
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="mt-1 font-mono text-base font-semibold tabular-nums text-foreground">
         {formatKwdLabel(value)}
       </dd>
-      <p className="mt-0.5 text-[11px] text-slate-500">{sub}</p>
+      <p className="mt-0.5 text-[11px] text-muted-foreground">{sub}</p>
     </div>
   );
 }

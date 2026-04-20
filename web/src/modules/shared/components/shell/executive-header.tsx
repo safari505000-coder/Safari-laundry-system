@@ -4,6 +4,7 @@ import { Activity, ArrowLeft, ArrowRight } from 'lucide-react';
 import { BranchSwitcher } from '@/modules/shared/components/branch-switcher';
 import { BrandLogo } from '@/modules/shared/components/brand-logo';
 import { LanguageToggle } from '@/components/i18n/language-toggle';
+import { ThemeToggle } from '@/modules/shared/theme/theme-toggle';
 import { Button } from '@/modules/shared/components/ui/button';
 import { useAuth } from '@/contexts/auth-context';
 import { BRAND } from '@/lib/brand';
@@ -70,6 +71,7 @@ export function ExecutiveHeader() {
           {t('language.switch')}
         </span>
         <LanguageToggle variant="outline" className="bg-background" />
+        <ThemeToggle variant="outline" className="bg-background" />
       </div>
     </header>
   );

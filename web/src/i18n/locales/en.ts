@@ -564,6 +564,13 @@ export const en = {
     switch: 'Language',
     toggleAria: 'Switch language',
   },
+  theme: {
+    label: 'Theme',
+    light: 'Light',
+    dark: 'Dark',
+    system: 'System',
+    toggleAria: 'Toggle theme',
+  },
   login: {
     brand: 'Safari Omni',
     title: 'Safari Omni',

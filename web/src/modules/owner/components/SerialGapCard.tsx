@@ -74,7 +74,7 @@ export function SerialGapCard({ token }: Props) {
   const report = data?.report;
   const badgeClass =
     data == null ?
-      'bg-slate-200 text-slate-700'
+      'bg-muted text-muted-foreground'
     : data.hadGaps ?
       'bg-rose-100 text-rose-900'
     : 'bg-emerald-100 text-emerald-900';
@@ -86,13 +86,13 @@ export function SerialGapCard({ token }: Props) {
     : 'تسلسل سليم';
 
   return (
-    <Card className="border-slate-300 bg-white shadow-sm">
+    <Card className="shadow-sm">
       <CardHeader className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
-          <CardTitle className="text-base font-bold text-slate-950">
+          <CardTitle className="text-base font-bold text-foreground">
             مراقبة تسلسل الفواتير
           </CardTitle>
-          <p className="text-xs text-slate-600">
+          <p className="text-xs text-muted-foreground">
             فحص يومي تلقائي 00:05 بتوقيت الكويت. أي فجوة = فاتورة محذوفة من
             قاعدة البيانات وتستوجب تحقيقاً.
           </p>
@@ -115,36 +115,36 @@ export function SerialGapCard({ token }: Props) {
           : null}
         </div>
       </CardHeader>
-      <CardContent className="text-sm text-slate-700">
+      <CardContent className="text-sm text-foreground">
         {loading ?
-          <p className="text-slate-500">جاري التحميل…</p>
+          <p className="text-muted-foreground">جاري التحميل…</p>
         : data == null ?
-          <p className="text-slate-500">
+          <p className="text-muted-foreground">
             لم يتم توثيق أي فحص حتى الآن. سيبدأ الفحص التلقائي في 00:05 بتوقيت
             الكويت، أو اضغط "فحص الآن" لتشغيله يدوياً.
           </p>
         : <div className="space-y-2">
             <dl className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-4">
               <div>
-                <dt className="text-xs text-slate-500">آخر فحص</dt>
+                <dt className="text-xs text-muted-foreground">آخر فحص</dt>
                 <dd className="font-semibold tabular-nums">
                   {kwFormatter.format(new Date(data.recordedAtIso))}
                 </dd>
               </div>
               <div>
-                <dt className="text-xs text-slate-500">العدّاد الحالي</dt>
+                <dt className="text-xs text-muted-foreground">العدّاد الحالي</dt>
                 <dd className="font-semibold tabular-nums">
                   {report?.currentCounter ?? 0}
                 </dd>
               </div>
               <div>
-                <dt className="text-xs text-slate-500">الفواتير المسجّلة</dt>
+                <dt className="text-xs text-muted-foreground">الفواتير المسجّلة</dt>
                 <dd className="font-semibold tabular-nums">
                   {report?.presentCount ?? 0}
                 </dd>
               </div>
               <div>
-                <dt className="text-xs text-slate-500">الفجوات</dt>
+                <dt className="text-xs text-muted-foreground">الفجوات</dt>
                 <dd className="font-semibold tabular-nums">
                   {report?.gapCount ?? 0}
                 </dd>

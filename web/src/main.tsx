@@ -4,6 +4,14 @@ import * as Sentry from '@sentry/react';
 import './i18n';
 import './index.css';
 import App from './App.tsx';
+import {
+  bootstrapTheme,
+  ThemeProvider,
+} from '@/modules/shared/theme/theme-provider';
+
+// Apply the stored theme class on <html> BEFORE React renders so the
+// first paint is already in the right palette — no flash.
+bootstrapTheme();
 
 const sentryDsn = import.meta.env.VITE_SENTRY_DSN;
 if (typeof sentryDsn === 'string' && sentryDsn.length > 0) {
@@ -16,6 +24,8 @@ if (typeof sentryDsn === 'string' && sentryDsn.length > 0) {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <ThemeProvider>
+      <App />
+    </ThemeProvider>
   </StrictMode>,
 );

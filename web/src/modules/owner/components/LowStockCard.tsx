@@ -60,7 +60,7 @@ export function LowStockCard({ token }: Props) {
   const rows = snapshot?.report.rows ?? [];
   const badgeClass =
     snapshot == null
-      ? 'bg-slate-200 text-slate-700'
+      ? 'bg-muted text-muted-foreground'
       : hadAlerts
         ? 'bg-rose-100 text-rose-900'
         : 'bg-emerald-100 text-emerald-900';
@@ -72,13 +72,13 @@ export function LowStockCard({ token }: Props) {
         : 'المخزون سليم';
 
   return (
-    <Card className="border-slate-300 bg-white shadow-sm">
+    <Card className="shadow-sm">
       <CardHeader className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
-          <CardTitle className="text-base font-bold text-slate-950">
+          <CardTitle className="text-base font-bold text-foreground">
             تنبيهات المخزون المنخفض
           </CardTitle>
-          <p className="text-xs text-slate-600">
+          <p className="text-xs text-muted-foreground">
             فحص يومي تلقائي 06:00 بتوقيت الكويت لكل فرع/صنف يقع عند أو تحت
             نقطة إعادة الطلب.
           </p>
@@ -94,11 +94,11 @@ export function LowStockCard({ token }: Props) {
           </Link>
         </div>
       </CardHeader>
-      <CardContent className="text-sm text-slate-700">
+      <CardContent className="text-sm text-foreground">
         {loading ? (
-          <p className="text-slate-500">جاري التحميل…</p>
+          <p className="text-muted-foreground">جاري التحميل…</p>
         ) : snapshot == null ? (
-          <p className="text-slate-500">
+          <p className="text-muted-foreground">
             لم يتم توثيق أي فحص حتى الآن. سيبدأ الفحص التلقائي في 06:00
             بتوقيت الكويت.
           </p>
@@ -106,19 +106,19 @@ export function LowStockCard({ token }: Props) {
           <div className="space-y-2">
             <dl className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3">
               <div>
-                <dt className="text-xs text-slate-500">آخر فحص</dt>
+                <dt className="text-xs text-muted-foreground">آخر فحص</dt>
                 <dd className="font-semibold tabular-nums">
                   {kwFormatter.format(new Date(snapshot.recordedAtIso))}
                 </dd>
               </div>
               <div>
-                <dt className="text-xs text-slate-500">نفذ من المخزون</dt>
+                <dt className="text-xs text-muted-foreground">نفذ من المخزون</dt>
                 <dd className="font-semibold tabular-nums text-rose-700">
                   {summary?.outOfStock ?? 0}
                 </dd>
               </div>
               <div>
-                <dt className="text-xs text-slate-500">منخفض</dt>
+                <dt className="text-xs text-muted-foreground">منخفض</dt>
                 <dd className="font-semibold tabular-nums text-amber-700">
                   {summary?.lowStock ?? 0}
                 </dd>

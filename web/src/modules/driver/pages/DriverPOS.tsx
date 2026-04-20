@@ -4,6 +4,7 @@ import { Loader2, LogOut, Plus } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { OrderScanInput } from '@/modules/shared/components/orders/order-scan-input';
 import { LanguageToggle } from '@/components/i18n/language-toggle';
+import { ThemeToggle } from '@/modules/shared/theme/theme-toggle';
 import { SystemClosedScreen } from '@/components/system/system-closed-screen';
 import { Button } from '@/modules/shared/components/ui/button';
 import { Input } from '@/modules/shared/components/ui/input';
@@ -164,6 +165,7 @@ export function DriverPOS() {
             </Button>
             <div className="ms-auto flex items-center gap-1">
               <LanguageToggle variant="outline" className="h-11 bg-background" />
+              <ThemeToggle variant="outline" className="h-11 bg-background" />
               <Button
                 type="button"
                 variant="ghost"

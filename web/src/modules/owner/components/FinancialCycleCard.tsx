@@ -141,9 +141,9 @@ export function FinancialCycleCard({ token }: Props) {
     : '—';
 
   return (
-    <Card className="border-slate-300 bg-white shadow-sm">
+    <Card className="shadow-sm">
       <CardHeader className="flex flex-row items-center justify-between gap-3">
-        <CardTitle className="text-lg font-bold text-slate-950">
+        <CardTitle className="text-lg font-bold text-foreground">
           الدورة المالية (12:00 — 12:00 بتوقيت الكويت)
         </CardTitle>
         <div className="flex items-center gap-2">
@@ -193,27 +193,27 @@ export function FinancialCycleCard({ token }: Props) {
         </div>
 
         {snapshot && snapshot.staleOpenShifts > 0 && (
-          <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-100">
             يوجد {snapshot.staleOpenShifts} شفت مفتوح من دورة سابقة لم يُغلق.
             اضغط "تشغيل الدورة الآن" لإغلاقها يدوياً.
           </div>
         )}
 
         <div>
-          <h3 className="mb-2 text-sm font-bold text-slate-950">
+          <h3 className="mb-2 text-sm font-bold text-foreground">
             آخر 7 دورات
           </h3>
-          <div className="overflow-x-auto rounded-xl border border-slate-200">
+          <div className="overflow-x-auto rounded-xl border border-border">
             <Table>
               <TableHeader>
-                <TableRow className="bg-slate-100/90 hover:bg-slate-100/90">
-                  <TableHead className="font-bold text-slate-950">
+                <TableRow className="bg-muted/70 hover:bg-muted/70">
+                  <TableHead className="font-bold text-foreground">
                     التاريخ
                   </TableHead>
-                  <TableHead className="font-bold text-slate-950">
+                  <TableHead className="font-bold text-foreground">
                     شفتات مفتوحة
                   </TableHead>
-                  <TableHead className="font-bold text-slate-950">
+                  <TableHead className="font-bold text-foreground">
                     شفتات مغلقة
                   </TableHead>
                 </TableRow>
@@ -221,13 +221,13 @@ export function FinancialCycleCard({ token }: Props) {
               <TableBody>
                 {recent.map((row) => (
                   <TableRow key={row.cycleStartAt}>
-                    <TableCell className="font-semibold text-slate-900">
+                    <TableCell className="font-semibold text-foreground">
                       {formatKuwaitDate(row.cycleStartAt)}
                     </TableCell>
-                    <TableCell className="text-slate-800">
+                    <TableCell className="text-foreground/90">
                       {row.shiftsOpened}
                     </TableCell>
-                    <TableCell className="text-slate-800">
+                    <TableCell className="text-foreground/90">
                       {row.shiftsClosed}
                     </TableCell>
                   </TableRow>
@@ -236,7 +236,7 @@ export function FinancialCycleCard({ token }: Props) {
                   <TableRow>
                     <TableCell
                       colSpan={3}
-                      className="text-center text-slate-600"
+                      className="text-center text-muted-foreground"
                     >
                       لا توجد بيانات لعرضها
                     </TableCell>
@@ -266,13 +266,13 @@ function StatTile({
     <div
       className={`rounded-xl border px-4 py-3 ${
         highlight
-          ? 'border-amber-300 bg-amber-50'
-          : 'border-slate-200 bg-slate-50'
+          ? 'border-amber-300 bg-amber-50 dark:border-amber-800/60 dark:bg-amber-950/30'
+          : 'border-border bg-muted/40'
       }`}
     >
-      <div className="text-xs font-semibold text-slate-600">{label}</div>
+      <div className="text-xs font-semibold text-muted-foreground">{label}</div>
       <div
-        className={`mt-1 text-base font-bold text-slate-950 ${
+        className={`mt-1 text-base font-bold text-foreground ${
           mono ? 'font-mono' : ''
         }`}
       >

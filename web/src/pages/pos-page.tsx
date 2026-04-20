@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { OrderScanInput } from '@/modules/shared/components/orders/order-scan-input';
 import { LanguageToggle } from '@/components/i18n/language-toggle';
+import { ThemeToggle } from '@/modules/shared/theme/theme-toggle';
 import { Button } from '@/modules/shared/components/ui/button';
 import { Input } from '@/modules/shared/components/ui/input';
 import { ScrollArea } from '@/modules/shared/components/ui/scroll-area';
@@ -169,6 +170,7 @@ export function PosPage() {
                 </Link>
               ) : null}
               <LanguageToggle variant="outline" className="bg-background" />
+              <ThemeToggle variant="outline" className="bg-background" />
               <Button
                 type="button"
                 variant="ghost"
