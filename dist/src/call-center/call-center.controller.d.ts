@@ -83,4 +83,5 @@ export declare class CallCenterController {
     listCustomerSubscriptionChain(customerId: string): Promise<import("./dto/customer-subscription.dto").CustomerSubscriptionRowDto[]>;
     getCustomerLedger(customerId: string, q: CustomerLedgerQueryDto): Promise<import("./dto/customer-ledger.dto").CustomerLedgerResponseDto>;
     getDailyCollections(q: DailyCollectionsQueryDto): Promise<import("./dto/daily-collections.dto").DailyCollectionsResponseDto>;
+    getDebtConversionOptions(customerId: string): Promise<import("./dto/debt-conversion-options.dto").DebtConversionOptionsResponseDto>;
 }

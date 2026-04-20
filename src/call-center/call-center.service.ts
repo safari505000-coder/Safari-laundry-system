@@ -42,6 +42,10 @@ import type {
   DailyCollectionEventDto,
   DailyCollectionsAgentTotalsDto,
 } from './dto/daily-collections.dto';
+import type {
+  DebtConversionOptionsResponseDto,
+  DebtConversionPlanOptionDto,
+} from './dto/debt-conversion-options.dto';
 
 /**
  * V1.6.8 — Cooldown windows are per-feature now.
@@ -1481,6 +1485,99 @@ export class CallCenterService {
       },
       byAgent,
       events,
+    };
+  }
+
+  /**
+   * V19.4 — CC pack #9. Preview what each active subscription plan
+   * would do to a customer's debt + wallet if activated right now.
+   *
+   * The arithmetic here MUST stay byte-identical to the atomic
+   * `CustomerLedgerService.activateSubscriptionPlan` flow, otherwise
+   * the preview and the committed result will disagree and the agent
+   * will lose trust. That's why we re-derive from the same inputs:
+   *   debtToSettle = min(currentDebt, planSalePrice)
+   *   creditedToBalance = max(0, planActualBalance − debtToSettle)
+   *   newBalance = currentBalance + creditedToBalance
+   *   newDebt = currentDebt − debtToSettle
+   *   subsidy = max(0, planActualBalance − planSalePrice)
+   * No persistence, no transaction — pure read.
+   */
+  async getDebtConversionOptions(
+    customerId: string,
+  ): Promise<DebtConversionOptionsResponseDto> {
+    const customer = await this.prisma.customer.findUnique({
+      where: { id: customerId },
+      select: {
+        id: true,
+        wallet: { select: { balance: true, debt: true } },
+      },
+    });
+    if (!customer) {
+      throw new NotFoundException('Customer not found');
+    }
+
+    const plans = await this.prisma.subscriptionPlan.findMany({
+      where: { isActive: true },
+      orderBy: [{ salePrice: 'asc' }, { name: 'asc' }],
+      select: {
+        id: true,
+        name: true,
+        salePrice: true,
+        actualBalance: true,
+        validityDays: true,
+      },
+    });
+
+    const currentBalance =
+      customer.wallet?.balance ?? new Prisma.Decimal(0);
+    const currentDebt = customer.wallet?.debt ?? new Prisma.Decimal(0);
+    const zero = new Prisma.Decimal(0);
+
+    const options: DebtConversionPlanOptionDto[] = plans.map((p) => {
+      // Avoid floating-point drift: all four arithmetic operations
+      // happen through Prisma.Decimal, which is the same code-path
+      // `activateSubscriptionPlan` uses under the hood.
+      const debtToSettle = currentDebt.lt(p.salePrice)
+        ? currentDebt
+        : p.salePrice;
+      const remainingDebt = currentDebt.minus(debtToSettle);
+      const rawCredit = p.actualBalance.minus(debtToSettle);
+      const creditedToBalance = rawCredit.gt(0) ? rawCredit : zero;
+      const projectedBalance = currentBalance.plus(creditedToBalance);
+      const subsidy = p.actualBalance.gt(p.salePrice)
+        ? p.actualBalance.minus(p.salePrice)
+        : zero;
+
+      const convertsDebt = debtToSettle.gt(0);
+      const clearsAllDebt = currentDebt.gt(0) && remainingDebt.lte(0);
+      const recommended =
+        currentDebt.gt(0) && p.actualBalance.gte(currentDebt);
+
+      return {
+        planId: p.id,
+        planName: p.name,
+        planValidityDays: p.validityDays,
+        cashRequiredKd: FOUR_DP(p.salePrice),
+        planActualBalanceKd: FOUR_DP(p.actualBalance),
+        debtToSettleKd: FOUR_DP(debtToSettle),
+        remainingDebtKd: FOUR_DP(remainingDebt),
+        creditedToBalanceKd: FOUR_DP(creditedToBalance),
+        projectedWalletBalanceKd: FOUR_DP(projectedBalance),
+        projectedWalletDebtKd: FOUR_DP(remainingDebt),
+        subsidyKd: FOUR_DP(subsidy),
+        convertsDebt,
+        clearsAllDebt,
+        recommended,
+      };
+    });
+
+    return {
+      customerId: customer.id,
+      currentDebtKd: FOUR_DP(currentDebt),
+      currentBalanceKd: FOUR_DP(currentBalance),
+      hasDebt: currentDebt.gt(0),
+      options,
     };
   }
 

@@ -1238,6 +1238,31 @@ export const ar = {
     managePayDebtTitle: 'تسديد جزء من المديونية',
     managePayDebtHint:
       'المديونية الحالية: {{debt}}. سجّل دفعة جزئية مع خصم اختياري.',
+    manageConvertDebtTitle: 'تحويل المديونية إلى اشتراك',
+    manageConvertDebtHint:
+      'المديونية الحالية: {{debt}}. استعرض الخطط التي تطفئ المديونية عند التفعيل.',
+    convertDebtDialogTitle: 'تحويل مديونية {{name}} إلى اشتراك',
+    convertDebtDialogDescription:
+      'اختر خطة اشتراك؛ ستُعرض لك تمامًا كيف سيُسوّى الدين عند التفعيل (يسدَّد أولًا من سعر الخطة ثم يُضاف الفائض كرصيد).',
+    convertDebtLoading: 'جارِ تحميل الخطط…',
+    convertDebtEmpty: 'تعذّر تحميل خيارات التحويل.',
+    convertDebtNoDebt: 'لا توجد مديونية حالية على هذا العميل.',
+    convertDebtNoPlans: 'لا توجد خطط اشتراك مفعّلة حاليًا.',
+    convertDebtCurrentDebt: 'المديونية الحالية',
+    convertDebtCurrentBalance: 'الرصيد الحالي',
+    convertDebtRecommended: 'يطفئ المديونية',
+    convertDebtValidity: '{{days}} يوم',
+    convertDebtCashRequired: 'المطلوب نقدًا',
+    convertDebtPlanBalance: 'رصيد الخطة',
+    convertDebtDebtCleared: 'يُسدَّد من المديونية',
+    convertDebtRemaining: 'المتبقي من المديونية',
+    convertDebtCreditedToBalance: 'يُضاف إلى الرصيد',
+    convertDebtProjectedBalance: 'الرصيد بعد التفعيل',
+    convertDebtCancel: 'إلغاء',
+    convertDebtSubmit: 'تفعيل وتحويل المديونية',
+    convertDebtSubmitting: 'جارِ التفعيل…',
+    convertDebtSuccess:
+      'تم تفعيل الخطة {{plan}}: سُدِّد {{cleared}} من المديونية، والمتبقي {{remaining}}.',
     manageClose: 'إغلاق',
     debtPayTitle: 'تسديد جزء من المديونية',
     debtPayHint:

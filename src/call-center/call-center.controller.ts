@@ -24,6 +24,9 @@ import { MarkOrderPaidDto } from './dto/mark-order-paid.dto';
 import { RecordPartialDebtPaymentDto } from './dto/record-partial-debt-payment.dto';
 import { CustomerLedgerQueryDto } from './dto/customer-ledger.dto';
 import { DailyCollectionsQueryDto } from './dto/daily-collections.dto';
+// CC pack #9 — the response shape is declared for the OpenAPI client but
+// the DTO has no request body (pure GET path param), so we import only
+// where needed in the return type of the service.
 
 @ApiTags('call-center')
 @ApiBearerAuth('bearer')
@@ -256,5 +259,23 @@ export class CallCenterController {
   })
   getDailyCollections(@Query() q: DailyCollectionsQueryDto) {
     return this.callCenterService.getDailyCollections(q);
+  }
+
+  @Get('customers/:customerId/debt-conversion-options')
+  @Roles(
+    SafariRole.CALL_CENTER,
+    SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
+    SafariRole.ACCOUNTANT,
+  )
+  @ApiOperation({
+    summary: `Convert debt \u2192 subscription preview (${APP_BRAND})`,
+    description:
+      "V19.4 CC pack #9. Read-only, zero-side-effect preview for the Call Center: given a customer with outstanding debt, computes what every active subscription plan would do if activated right now \u2014 how much of the plan price clears debt, how much is added as prepaid balance, whether the plan fully kills the debt. Arithmetic is byte-identical to `activateSubscriptionPlan` so the UI never disagrees with what actually gets booked when the agent clicks \"activate\".",
+  })
+  getDebtConversionOptions(
+    @Param('customerId', ParseUUIDPipe) customerId: string,
+  ) {
+    return this.callCenterService.getDebtConversionOptions(customerId);
   }
 }

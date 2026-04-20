@@ -2,8 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate } from 'react-router-dom';
 import {
+  ArrowLeftRight,
   ArrowUpRight,
   CalendarClock,
+  CheckCircle2,
   CircleDollarSign,
   Loader2,
   Plus,
@@ -44,6 +46,8 @@ import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
 import {
   type CallCenterPlan,
   type CustomerSearchRow,
+  type DebtConversionOptionsResponse,
+  type DebtConversionPlanOption,
   type ExtendSubscriptionResult,
   type RecordPartialDebtPaymentRequest,
   type RecordPartialDebtPaymentResponse,
@@ -193,6 +197,7 @@ function ManageAccountDialog({
   onExtend,
   onUpgrade,
   onPayDebt,
+  onConvertDebt,
 }: {
   subscriber: SubscriberListRow | null;
   open: boolean;
@@ -200,6 +205,7 @@ function ManageAccountDialog({
   onExtend: (r: SubscriberListRow) => void;
   onUpgrade: (r: SubscriberListRow) => void;
   onPayDebt: (r: SubscriberListRow) => void;
+  onConvertDebt: (r: SubscriberListRow) => void;
 }) {
   const { t } = useTranslation();
   const canExtend = Boolean(subscriber?.planId);
@@ -281,6 +287,31 @@ function ManageAccountDialog({
                 </span>
                 <span className="mt-1 block text-xs text-muted-foreground">
                   {t('subscribers.managePayDebtHint', {
+                    debt: formatKwdLabel(subscriber.debt),
+                  })}
+                </span>
+              </span>
+            </button>
+          ) : null}
+
+          {/* V19.4 — CC pack #9. Convert debt → subscription. Shown only
+              when the customer still has debt; otherwise the action has
+              no business meaning and would just be noise in the hub. */}
+          {hasDebt && subscriber ? (
+            <button
+              type="button"
+              className="flex items-start gap-3 rounded-lg border border-indigo-200 bg-indigo-50/60 p-4 text-start transition hover:border-indigo-400 hover:bg-indigo-100/70 dark:border-indigo-900/60 dark:bg-indigo-950/20 dark:hover:bg-indigo-950/40"
+              onClick={() => onConvertDebt(subscriber)}
+            >
+              <span className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-200">
+                <ArrowLeftRight className="h-5 w-5" aria-hidden />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block font-semibold">
+                  {t('subscribers.manageConvertDebtTitle')}
+                </span>
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  {t('subscribers.manageConvertDebtHint', {
                     debt: formatKwdLabel(subscriber.debt),
                   })}
                 </span>
@@ -844,6 +875,286 @@ function DebtPaymentDialog({
 }
 
 /**
+ * V19.4 — CC pack #9. "Convert debt → subscription" dialog.
+ *
+ * The Call Center agent opens this from the Manage-Account hub when
+ * the customer has outstanding debt. We fetch
+ * `/api/call-center/customers/:id/debt-conversion-options`, which
+ * previews — for every active plan — exactly what activating it would
+ * do to the wallet (debt cleared vs. remaining, cash required,
+ * projected prepaid balance, goodwill subsidy).
+ *
+ * The preview arithmetic is *byte-identical* to the committed
+ * `activateSubscriptionPlan` flow on the backend, so the agent never
+ * sees a number here that disagrees with the receipt after confirm.
+ *
+ * Plans flagged `recommended` (plan.actualBalance ≥ currentDebt) are
+ * visually highlighted because those are the ones that fully kill the
+ * debt in a single activation — which is the whole point of the
+ * "convert debt" workflow.
+ */
+function DebtConvertDialog({
+  subscriber,
+  open,
+  onOpenChange,
+  token,
+  onConverted,
+}: {
+  subscriber: SubscriberListRow | null;
+  open: boolean;
+  onOpenChange: (next: boolean) => void;
+  token: string;
+  onConverted: () => void;
+}) {
+  const { t } = useTranslation();
+  const [loading, setLoading] = useState(false);
+  const [data, setData] = useState<DebtConversionOptionsResponse | null>(null);
+  const [selectedPlanId, setSelectedPlanId] = useState<string>('');
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!open || !subscriber) {
+      setData(null);
+      setSelectedPlanId('');
+      return;
+    }
+    let alive = true;
+    setLoading(true);
+    (async () => {
+      try {
+        const res = await apiJson<DebtConversionOptionsResponse>(
+          `/api/call-center/customers/${subscriber.customerId}/debt-conversion-options`,
+          { token },
+        );
+        if (!alive) return;
+        setData(res);
+        // Pre-select the cheapest "recommended" plan to save the agent a
+        // click in the common case. If none clear all debt, leave empty
+        // so the agent has to make a conscious choice.
+        const firstRec = res.options.find((o) => o.recommended);
+        setSelectedPlanId(firstRec?.planId ?? '');
+      } catch (e) {
+        if (e instanceof ApiError) toast.error(e.message);
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [open, subscriber, token]);
+
+  const selected = useMemo<DebtConversionPlanOption | null>(() => {
+    if (!data || !selectedPlanId) return null;
+    return data.options.find((o) => o.planId === selectedPlanId) ?? null;
+  }, [data, selectedPlanId]);
+
+  const disabled = submitting || !subscriber || !selected;
+
+  async function submit() {
+    if (disabled || !subscriber || !selected) return;
+    setSubmitting(true);
+    try {
+      await apiJson('/api/call-center/subscriptions/activate', {
+        method: 'POST',
+        token,
+        body: JSON.stringify({
+          customerId: subscriber.customerId,
+          planId: selected.planId,
+        }),
+      });
+      toast.success(
+        t('subscribers.convertDebtSuccess', {
+          plan: selected.planName,
+          cleared: formatKwdLabel(selected.debtToSettleKd),
+          remaining: formatKwdLabel(selected.remainingDebtKd),
+        }),
+      );
+      onConverted();
+      onOpenChange(false);
+    } catch (e) {
+      if (e instanceof ApiError) toast.error(e.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <ArrowLeftRight className="h-5 w-5 text-indigo-600" aria-hidden />
+            {t('subscribers.convertDebtDialogTitle', {
+              name: subscriber?.customerName ?? '',
+            })}
+          </DialogTitle>
+          <DialogDescription>
+            {t('subscribers.convertDebtDialogDescription')}
+          </DialogDescription>
+        </DialogHeader>
+
+        {loading ? (
+          <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
+            <Loader2 className="me-2 h-4 w-4 animate-spin" aria-hidden />
+            {t('subscribers.convertDebtLoading')}
+          </div>
+        ) : !data ? (
+          <p className="py-4 text-sm text-muted-foreground">
+            {t('subscribers.convertDebtEmpty')}
+          </p>
+        ) : !data.hasDebt ? (
+          <div className="rounded-md border border-emerald-200 bg-emerald-50/70 p-3 text-sm text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-100">
+            {t('subscribers.convertDebtNoDebt')}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="rounded-md border border-border bg-muted/40 p-3 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-medium">
+                  {t('subscribers.convertDebtCurrentDebt')}
+                </span>
+                <span className="tabular-nums font-semibold text-red-700">
+                  {formatKwdLabel(data.currentDebtKd)}
+                </span>
+              </div>
+              <div className="mt-1 flex flex-wrap items-center justify-between gap-2 text-muted-foreground">
+                <span>{t('subscribers.convertDebtCurrentBalance')}</span>
+                <span className="tabular-nums">
+                  {formatKwdLabel(data.currentBalanceKd)}
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              {data.options.length === 0 ? (
+                <p className="rounded-md border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
+                  {t('subscribers.convertDebtNoPlans')}
+                </p>
+              ) : (
+                data.options.map((opt) => {
+                  const isSelected = opt.planId === selectedPlanId;
+                  return (
+                    <button
+                      key={opt.planId}
+                      type="button"
+                      onClick={() => setSelectedPlanId(opt.planId)}
+                      className={cn(
+                        'w-full rounded-lg border p-3 text-start transition',
+                        isSelected
+                          ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/40'
+                          : 'border-border bg-card hover:border-indigo-300 hover:bg-indigo-50/40 dark:hover:bg-indigo-950/20',
+                        opt.recommended &&
+                          !isSelected &&
+                          'border-emerald-300 bg-emerald-50/40 dark:border-emerald-900/40 dark:bg-emerald-950/15',
+                      )}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold">{opt.planName}</span>
+                          {opt.recommended ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-100">
+                              <CheckCircle2 className="h-3 w-3" aria-hidden />
+                              {t('subscribers.convertDebtRecommended')}
+                            </span>
+                          ) : null}
+                        </div>
+                        <span className="text-xs text-muted-foreground tabular-nums">
+                          {t('subscribers.convertDebtValidity', {
+                            days: opt.planValidityDays,
+                          })}
+                        </span>
+                      </div>
+                      <div className="mt-2 grid gap-x-4 gap-y-1 text-xs sm:grid-cols-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">
+                            {t('subscribers.convertDebtCashRequired')}
+                          </span>
+                          <span className="tabular-nums font-medium">
+                            {formatKwdLabel(opt.cashRequiredKd)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">
+                            {t('subscribers.convertDebtPlanBalance')}
+                          </span>
+                          <span className="tabular-nums">
+                            {formatKwdLabel(opt.planActualBalanceKd)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">
+                            {t('subscribers.convertDebtDebtCleared')}
+                          </span>
+                          <span className="tabular-nums font-medium text-emerald-700 dark:text-emerald-300">
+                            −{formatKwdLabel(opt.debtToSettleKd)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">
+                            {t('subscribers.convertDebtRemaining')}
+                          </span>
+                          <span
+                            className={cn(
+                              'tabular-nums font-medium',
+                              Number.parseFloat(opt.remainingDebtKd) > 0
+                                ? 'text-red-700 dark:text-red-300'
+                                : 'text-emerald-700 dark:text-emerald-300',
+                            )}
+                          >
+                            {formatKwdLabel(opt.remainingDebtKd)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">
+                            {t('subscribers.convertDebtCreditedToBalance')}
+                          </span>
+                          <span className="tabular-nums">
+                            {formatKwdLabel(opt.creditedToBalanceKd)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">
+                            {t('subscribers.convertDebtProjectedBalance')}
+                          </span>
+                          <span className="tabular-nums font-medium">
+                            {formatKwdLabel(opt.projectedWalletBalanceKd)}
+                          </span>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+          >
+            {t('subscribers.convertDebtCancel')}
+          </Button>
+          <Button
+            type="button"
+            className="bg-indigo-600 text-white hover:bg-indigo-700"
+            disabled={disabled}
+            onClick={() => void submit()}
+          >
+            {submitting
+              ? t('subscribers.convertDebtSubmitting')
+              : t('subscribers.convertDebtSubmit')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
  * Dastur V1.5.3 — Dedicated "Extend Subscription" (تمديد) dialog.
  *
  * No wallet movement, no plan picker. The operator only chooses a day
@@ -1028,6 +1339,12 @@ export function SubscribersPage() {
   const [debtTarget, setDebtTarget] = useState<SubscriberListRow | null>(null);
   const [debtOpen, setDebtOpen] = useState(false);
 
+  // V19.4 — CC pack #9. "Convert debt → subscription" preview dialog,
+  // also launched from the Manage hub when debt > 0.
+  const [convertTarget, setConvertTarget] =
+    useState<SubscriberListRow | null>(null);
+  const [convertOpen, setConvertOpen] = useState(false);
+
   const dateFmt = useMemo(
     () =>
       new Intl.DateTimeFormat(locale, {
@@ -1090,6 +1407,12 @@ export function SubscribersPage() {
     setDebtTarget(r);
     setManageOpen(false);
     setDebtOpen(true);
+  }, []);
+
+  const launchConvertDebt = useCallback((r: SubscriberListRow) => {
+    setConvertTarget(r);
+    setManageOpen(false);
+    setConvertOpen(true);
   }, []);
 
   const launchUpgrade = useCallback((r: SubscriberListRow) => {
@@ -1322,6 +1645,7 @@ export function SubscribersPage() {
           onExtend={launchExtend}
           onUpgrade={launchUpgrade}
           onPayDebt={launchPayDebt}
+          onConvertDebt={launchConvertDebt}
         />
       ) : null}
 
@@ -1336,6 +1660,20 @@ export function SubscribersPage() {
           }}
           token={token}
           onSettled={() => void load()}
+        />
+      ) : null}
+
+      {canManage && token ? (
+        <DebtConvertDialog
+          key={`convert:${convertTarget?.customerId ?? 'none'}`}
+          subscriber={convertTarget}
+          open={convertOpen}
+          onOpenChange={(n) => {
+            setConvertOpen(n);
+            if (!n) setConvertTarget(null);
+          }}
+          token={token}
+          onConverted={() => void load()}
         />
       ) : null}
 

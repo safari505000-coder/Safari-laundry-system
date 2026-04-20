@@ -1568,6 +1568,34 @@ export type DailyCollectionsResponse = {
   events: DailyCollectionEvent[];
 };
 
+// V19.4 CC pack #9 — "Convert debt → subscription" preview.
+// Every monetary field is a 4dp-formatted string (internal KWD precision).
+// The UI can render at 3dp by trimming the trailing zero.
+export type DebtConversionPlanOption = {
+  planId: string;
+  planName: string;
+  planValidityDays: number;
+  cashRequiredKd: string;
+  planActualBalanceKd: string;
+  debtToSettleKd: string;
+  remainingDebtKd: string;
+  creditedToBalanceKd: string;
+  projectedWalletBalanceKd: string;
+  projectedWalletDebtKd: string;
+  subsidyKd: string;
+  convertsDebt: boolean;
+  clearsAllDebt: boolean;
+  recommended: boolean;
+};
+
+export type DebtConversionOptionsResponse = {
+  customerId: string;
+  currentDebtKd: string;
+  currentBalanceKd: string;
+  hasDebt: boolean;
+  options: DebtConversionPlanOption[];
+};
+
 export type ActivateSubscriptionResponse = {
   customer: {
     id: string;

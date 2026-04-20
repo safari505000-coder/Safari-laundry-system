@@ -1036,6 +1036,70 @@ let CallCenterService = class CallCenterService {
             events,
         };
     }
+    async getDebtConversionOptions(customerId) {
+        const customer = await this.prisma.customer.findUnique({
+            where: { id: customerId },
+            select: {
+                id: true,
+                wallet: { select: { balance: true, debt: true } },
+            },
+        });
+        if (!customer) {
+            throw new common_1.NotFoundException('Customer not found');
+        }
+        const plans = await this.prisma.subscriptionPlan.findMany({
+            where: { isActive: true },
+            orderBy: [{ salePrice: 'asc' }, { name: 'asc' }],
+            select: {
+                id: true,
+                name: true,
+                salePrice: true,
+                actualBalance: true,
+                validityDays: true,
+            },
+        });
+        const currentBalance = customer.wallet?.balance ?? new client_1.Prisma.Decimal(0);
+        const currentDebt = customer.wallet?.debt ?? new client_1.Prisma.Decimal(0);
+        const zero = new client_1.Prisma.Decimal(0);
+        const options = plans.map((p) => {
+            const debtToSettle = currentDebt.lt(p.salePrice)
+                ? currentDebt
+                : p.salePrice;
+            const remainingDebt = currentDebt.minus(debtToSettle);
+            const rawCredit = p.actualBalance.minus(debtToSettle);
+            const creditedToBalance = rawCredit.gt(0) ? rawCredit : zero;
+            const projectedBalance = currentBalance.plus(creditedToBalance);
+            const subsidy = p.actualBalance.gt(p.salePrice)
+                ? p.actualBalance.minus(p.salePrice)
+                : zero;
+            const convertsDebt = debtToSettle.gt(0);
+            const clearsAllDebt = currentDebt.gt(0) && remainingDebt.lte(0);
+            const recommended = currentDebt.gt(0) && p.actualBalance.gte(currentDebt);
+            return {
+                planId: p.id,
+                planName: p.name,
+                planValidityDays: p.validityDays,
+                cashRequiredKd: FOUR_DP(p.salePrice),
+                planActualBalanceKd: FOUR_DP(p.actualBalance),
+                debtToSettleKd: FOUR_DP(debtToSettle),
+                remainingDebtKd: FOUR_DP(remainingDebt),
+                creditedToBalanceKd: FOUR_DP(creditedToBalance),
+                projectedWalletBalanceKd: FOUR_DP(projectedBalance),
+                projectedWalletDebtKd: FOUR_DP(remainingDebt),
+                subsidyKd: FOUR_DP(subsidy),
+                convertsDebt,
+                clearsAllDebt,
+                recommended,
+            };
+        });
+        return {
+            customerId: customer.id,
+            currentDebtKd: FOUR_DP(currentDebt),
+            currentBalanceKd: FOUR_DP(currentBalance),
+            hasDebt: currentDebt.gt(0),
+            options,
+        };
+    }
     mapSubscriptionChainRows(subs, ordersBySub) {
         return subs.map((s) => ({
             id: s.id,

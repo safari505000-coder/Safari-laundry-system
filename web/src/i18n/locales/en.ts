@@ -1224,6 +1224,31 @@ export const en = {
     managePayDebtTitle: 'Pay part of debt',
     managePayDebtHint:
       'Outstanding debt: {{debt}}. Record a partial payment with an optional discount.',
+    manageConvertDebtTitle: 'Convert debt to subscription',
+    manageConvertDebtHint:
+      'Outstanding debt: {{debt}}. Preview which plans clear this debt on activation.',
+    convertDebtDialogTitle: "Convert {{name}}'s debt into a subscription",
+    convertDebtDialogDescription:
+      "Pick a plan — we'll show exactly how the debt gets settled on activation (plan price pays the debt first, the remainder is added as prepaid balance).",
+    convertDebtLoading: 'Loading plan options…',
+    convertDebtEmpty: 'Could not load conversion options.',
+    convertDebtNoDebt: 'This customer has no outstanding debt.',
+    convertDebtNoPlans: 'No active subscription plans available right now.',
+    convertDebtCurrentDebt: 'Current debt',
+    convertDebtCurrentBalance: 'Current balance',
+    convertDebtRecommended: 'clears debt',
+    convertDebtValidity: '{{days}} days',
+    convertDebtCashRequired: 'Cash required',
+    convertDebtPlanBalance: 'Plan balance',
+    convertDebtDebtCleared: 'Debt settled',
+    convertDebtRemaining: 'Remaining debt',
+    convertDebtCreditedToBalance: 'Credited to balance',
+    convertDebtProjectedBalance: 'Balance after activation',
+    convertDebtCancel: 'Cancel',
+    convertDebtSubmit: 'Activate & convert debt',
+    convertDebtSubmitting: 'Activating…',
+    convertDebtSuccess:
+      'Plan {{plan}} activated: {{cleared}} of debt settled, {{remaining}} still owed.',
     manageClose: 'Close',
     debtPayTitle: 'Partial debt payment',
     debtPayHint:

@@ -85,6 +85,9 @@ let CallCenterController = class CallCenterController {
     getDailyCollections(q) {
         return this.callCenterService.getDailyCollections(q);
     }
+    getDebtConversionOptions(customerId) {
+        return this.callCenterService.getDebtConversionOptions(customerId);
+    }
 };
 exports.CallCenterController = CallCenterController;
 __decorate([
@@ -277,6 +280,18 @@ __decorate([
     __metadata("design:paramtypes", [daily_collections_dto_1.DailyCollectionsQueryDto]),
     __metadata("design:returntype", void 0)
 ], CallCenterController.prototype, "getDailyCollections", null);
+__decorate([
+    (0, common_1.Get)('customers/:customerId/debt-conversion-options'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),
+    (0, swagger_1.ApiOperation)({
+        summary: `Convert debt \u2192 subscription preview (${branding_1.APP_BRAND})`,
+        description: "V19.4 CC pack #9. Read-only, zero-side-effect preview for the Call Center: given a customer with outstanding debt, computes what every active subscription plan would do if activated right now \u2014 how much of the plan price clears debt, how much is added as prepaid balance, whether the plan fully kills the debt. Arithmetic is byte-identical to `activateSubscriptionPlan` so the UI never disagrees with what actually gets booked when the agent clicks \"activate\".",
+    }),
+    __param(0, (0, common_1.Param)('customerId', common_1.ParseUUIDPipe)),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], CallCenterController.prototype, "getDebtConversionOptions", null);
 exports.CallCenterController = CallCenterController = __decorate([
     (0, swagger_1.ApiTags)('call-center'),
     (0, swagger_1.ApiBearerAuth)('bearer'),
