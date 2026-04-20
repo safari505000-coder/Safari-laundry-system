@@ -446,7 +446,7 @@ export function PosPage() {
               {kwdSuffix}
             </span>
           </div>
-          <div className="flex w-full flex-col gap-2 rounded-xl border border-border bg-white p-2 sm:w-auto sm:min-w-[300px]">
+          <div className="flex w-full flex-col gap-2 rounded-xl border border-border bg-card p-2 sm:w-auto sm:min-w-[300px]">
             <Button
               type="button"
               variant="outline"

@@ -234,7 +234,7 @@ export function MyDebtTransfersPage() {
                   </>
                 ) : null}
               </div>
-              <div className="rounded border">
+              <div className="overflow-x-auto rounded border">
                 <table className="w-full text-sm">
                   <tbody>
                     {active.orders.map((line) => (

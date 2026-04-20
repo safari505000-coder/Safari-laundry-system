@@ -799,7 +799,7 @@ function DebtTransferDetail({
         <h3 className="mb-2 text-sm font-medium uppercase text-muted-foreground">
           {t('debtTransfers.detail.orders')}
         </h3>
-        <div className="rounded border">
+        <div className="overflow-x-auto rounded border">
           <table className="w-full text-sm">
             <tbody>
               {row.orders.map((line) => (
