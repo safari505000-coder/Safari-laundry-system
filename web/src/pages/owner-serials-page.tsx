@@ -171,11 +171,11 @@ export function OwnerSerialsPage() {
     <div className="min-w-0 space-y-4 sm:space-y-6">
       <header className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight text-zinc-900 sm:text-2xl">
+          <h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
             <Hash className="h-5 w-5 text-primary" aria-hidden />
             {t('ownerSerials.title')}
           </h1>
-          <p className="text-sm text-zinc-500">{t('ownerSerials.subtitle')}</p>
+          <p className="text-sm text-muted-foreground">{t('ownerSerials.subtitle')}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {log ? (
@@ -202,7 +202,7 @@ export function OwnerSerialsPage() {
       </header>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
-        <section className="min-w-0 overflow-x-auto rounded-xl border border-zinc-200 bg-white p-3 shadow-sm dark:border-border dark:bg-card lg:col-span-2">
+        <section className="min-w-0 overflow-x-auto rounded-xl border border-border bg-card p-3 shadow-sm lg:col-span-2">
           <h2 className="mb-2 text-sm font-semibold">
             {t('ownerSerials.driversHeading')}
           </h2>
@@ -297,7 +297,7 @@ export function OwnerSerialsPage() {
           </Table>
         </section>
 
-        <section className="min-w-0 overflow-x-auto rounded-xl border border-zinc-200 bg-white p-3 shadow-sm dark:border-border dark:bg-card lg:col-span-3">
+        <section className="min-w-0 overflow-x-auto rounded-xl border border-border bg-card p-3 shadow-sm lg:col-span-3">
           <h2 className="mb-2 text-sm font-semibold">
             {t('ownerSerials.logHeading')}
           </h2>

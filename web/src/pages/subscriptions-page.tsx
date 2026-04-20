@@ -105,18 +105,18 @@ export function SubscriptionsPage() {
   return (
     <div className="space-y-8">
       <header>
-        <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
           {t('subscriptions.title')}
         </h1>
-        <p className="text-sm text-zinc-500">{t('subscriptions.subtitle')}</p>
+        <p className="text-sm text-muted-foreground">{t('subscriptions.subtitle')}</p>
       </header>
 
       <Tabs defaultValue={defaultTab} className="space-y-6">
         <TabsList
           className={
             isOwner && isCallCenter ?
-              'grid w-full max-w-md grid-cols-2 bg-zinc-100/80'
-            : 'grid w-full max-w-md grid-cols-1 bg-zinc-100/80'
+              'grid w-full max-w-md grid-cols-2 bg-muted'
+            : 'grid w-full max-w-md grid-cols-1 bg-muted'
           }
         >
           {isOwner ?
@@ -134,12 +134,12 @@ export function SubscriptionsPage() {
         {isOwner ?
           <TabsContent value="plans" className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-sm text-zinc-600">
+              <p className="text-sm text-muted-foreground">
                 {t('subscriptions.ownerHint')}
               </p>
               <CreatePlanDialog token={token!} onCreated={loadOwnerPlans} />
             </div>
-            <Card className="border-zinc-200 bg-white shadow-sm">
+            <Card className="border-border bg-card shadow-sm">
               <CardContent className="p-0">
                 {loadingPlans && !plans ?
                   <div className="p-6 space-y-2">
@@ -282,7 +282,7 @@ function CreatePlanDialog({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
         className={buttonVariants({
-          className: 'bg-zinc-900 text-white hover:bg-zinc-800',
+          className: 'bg-primary text-primary-foreground hover:bg-primary/90',
         })}
       >
         {t('subscriptions.newPlan')}
@@ -338,9 +338,9 @@ function CreatePlanDialog({
               onChange={(e) => setValidityDays(e.target.value)}
               placeholder="30"
             />
-            <p className="text-xs text-zinc-500">{t('subscriptions.validityDaysHint')}</p>
+            <p className="text-xs text-muted-foreground">{t('subscriptions.validityDaysHint')}</p>
           </div>
-          <div className="flex items-center justify-between rounded-lg border border-zinc-200 px-3 py-2">
+          <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
             <Label htmlFor="pactive" className="cursor-pointer">
               {t('subscriptions.activeInCatalog')}
             </Label>
@@ -578,7 +578,7 @@ function CallCenterActivatePanel({
         `}
       </style>
       <div className="grid gap-6 lg:grid-cols-2">
-        <Card className="border-zinc-200 bg-white shadow-sm">
+        <Card className="border-border bg-card shadow-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <Search className="h-4 w-4" />
@@ -593,16 +593,16 @@ function CallCenterActivatePanel({
               placeholder={t('subscriptions.searchPh')}
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              className="bg-white"
+              className="bg-card"
             />
             {searching ?
-              <p className="text-xs text-zinc-500">
+              <p className="text-xs text-muted-foreground">
                 {t('subscriptions.searching')}
               </p>
             : null}
-            <div className="max-h-64 space-y-1 overflow-auto rounded-lg border border-zinc-100 bg-zinc-50/50 p-1">
+            <div className="max-h-64 space-y-1 overflow-auto rounded-lg border border-border bg-muted/40 p-1">
               {results?.length === 0 ?
-                <p className="p-3 text-sm text-zinc-500">
+                <p className="p-3 text-sm text-muted-foreground">
                   {t('subscriptions.noMatches')}
                 </p>
               : results?.map((r) => {
@@ -615,8 +615,8 @@ function CallCenterActivatePanel({
                       onClick={() => setCustomerId(r.id)}
                       className={`w-full rounded-md px-3 py-2.5 text-start text-sm transition-colors ${
                         customerId === r.id ?
-                          'bg-zinc-900 text-white'
-                        : 'hover:bg-white'
+                          'bg-primary text-primary-foreground'
+                        : 'hover:bg-card'
                       }`}
                     >
                       <div className="font-medium">
@@ -655,7 +655,7 @@ function CallCenterActivatePanel({
           </CardContent>
         </Card>
 
-        <Card className="border-zinc-200 bg-white shadow-sm ring-1 ring-amber-500/15">
+        <Card className="border-border bg-card shadow-sm ring-1 ring-amber-500/15">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <Gift className="h-4 w-4 text-amber-600" />
@@ -674,7 +674,7 @@ function CallCenterActivatePanel({
                   value={planId}
                   onValueChange={(v) => setPlanId(v ?? '')}
                 >
-                  <SelectTrigger className="bg-white">
+                  <SelectTrigger className="bg-card">
                     <SelectValue placeholder={t('subscriptions.choosePlan')} />
                   </SelectTrigger>
                   <SelectContent>
@@ -687,15 +687,15 @@ function CallCenterActivatePanel({
                 </Select>}
             </div>
             {selectedCustomer ?
-              <div className="rounded-lg border border-zinc-200 bg-zinc-50/80 p-3 text-sm">
-                <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+              <div className="rounded-lg border border-border bg-muted/50 p-3 text-sm">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   {t('subscriptions.selected')}
                 </p>
-                <p className="font-medium text-zinc-900">
+                <p className="font-medium text-foreground">
                   {selectedCustomer.phone}
                 </p>
               </div>
-            : <p className="text-sm text-zinc-500">
+            : <p className="text-sm text-muted-foreground">
                 {t('subscriptions.selectCustomerHint')}
               </p>}
             <Separator />
@@ -713,7 +713,7 @@ function CallCenterActivatePanel({
       </div>
 
       {customerId ?
-        <Card className="border-zinc-200 bg-white shadow-sm">
+        <Card className="border-border bg-card shadow-sm">
           <CardHeader>
             <CardTitle className="text-base">
               {t('subscriptions.settlementHistoryTitle')}
@@ -726,16 +726,16 @@ function CallCenterActivatePanel({
             {settlementsLoading ?
               <Skeleton className="h-16 w-full" />
             : settlements?.length === 0 ?
-              <p className="text-sm text-zinc-500">
+              <p className="text-sm text-muted-foreground">
                 {t('subscriptions.noSettlements')}
               </p>
-            : <ul className="space-y-2 text-sm text-zinc-700">
+            : <ul className="space-y-2 text-sm text-foreground/80">
                 {settlements?.map((row) => (
                   <li
                     key={row.id}
-                    className="rounded-lg border border-zinc-100 bg-zinc-50/80 px-3 py-2"
+                    className="rounded-lg border border-border bg-muted/50 px-3 py-2"
                   >
-                    <p className="text-xs text-zinc-500">
+                    <p className="text-xs text-muted-foreground">
                       {new Date(row.createdAt).toLocaleString(dateLocale)}
                     </p>
                     <p>
@@ -751,7 +751,7 @@ function CallCenterActivatePanel({
       {lastReceipt && s ?
         <Card
           id="print-subscription-invoice"
-          className="border-zinc-200 bg-white shadow-sm"
+          className="border-border bg-card shadow-sm"
         >
           <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
             <div>
@@ -773,52 +773,52 @@ function CallCenterActivatePanel({
             </Button>
           </CardHeader>
           <CardContent className="space-y-4 text-sm">
-            <div className="rounded-lg border border-zinc-200 bg-zinc-50/80 p-4 space-y-2 tabular-nums">
-              <p className="font-medium text-zinc-900">
+            <div className="rounded-lg border border-border bg-muted/50 p-4 space-y-2 tabular-nums">
+              <p className="font-medium text-foreground">
                 {t('subscriptions.invoiceTitle')}
               </p>
-              <div className="flex justify-between gap-4 border-b border-zinc-200 pb-2">
-                <span className="text-zinc-600">
+              <div className="flex justify-between gap-4 border-b border-border pb-2">
+                <span className="text-muted-foreground">
                   {t('subscriptions.invoiceTotalReceived')}
                 </span>
                 <span>{formatKwdLabel(s.totalCollected)}</span>
               </div>
-              <div className="flex justify-between gap-4 border-b border-zinc-200 pb-2">
-                <span className="text-zinc-600">
+              <div className="flex justify-between gap-4 border-b border-border pb-2">
+                <span className="text-muted-foreground">
                   {t('subscriptions.invoiceDebtSettled')}
                 </span>
                 <span>- {formatKwdLabel(s.debtSettled)}</span>
               </div>
-              <div className="flex justify-between gap-4 border-b border-zinc-200 pb-2 font-medium">
-                <span className="text-zinc-800">
+              <div className="flex justify-between gap-4 border-b border-border pb-2 font-medium">
+                <span className="text-foreground/90">
                   {t('subscriptions.invoiceNetAfterDebt')}
                 </span>
                 <span>= {formatKwdLabel(netAfterDebt)}</span>
               </div>
-              <div className="flex justify-between gap-4 border-b border-zinc-200 pb-2">
-                <span className="text-zinc-600">
+              <div className="flex justify-between gap-4 border-b border-border pb-2">
+                <span className="text-muted-foreground">
                   {t('subscriptions.invoiceAddedToBalance')}
                 </span>
                 <span>{formatKwdLabel(s.creditedToBalance)}</span>
               </div>
               <div className="flex justify-between gap-4 pt-1">
-                <span className="text-zinc-600">
+                <span className="text-muted-foreground">
                   {t('subscriptions.invoiceClosingBalance')}
                 </span>
-                <span className="font-semibold text-zinc-900">
+                <span className="font-semibold text-foreground">
                   {formatKwdLabel(s.newBalance)}
                 </span>
               </div>
               <div className="flex justify-between gap-4">
-                <span className="text-zinc-600">
+                <span className="text-muted-foreground">
                   {t('subscriptions.invoiceClosingDebt')}
                 </span>
-                <span className="font-semibold text-zinc-900">
+                <span className="font-semibold text-foreground">
                   {formatKwdLabel(s.newDebt)}
                 </span>
               </div>
             </div>
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs text-muted-foreground">
               {t('subscriptions.invoiceEquationNote')}
             </p>
           </CardContent>

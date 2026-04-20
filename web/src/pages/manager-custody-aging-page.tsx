@@ -181,10 +181,10 @@ export function ManagerCustodyAgingPage() {
     <div className="space-y-6" dir={isRtl ? 'rtl' : 'ltr'}>
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
             {t('managerCustody.agingTitle')}
           </h1>
-          <p className="text-sm text-zinc-500">
+          <p className="text-sm text-muted-foreground">
             {t('managerCustody.agingSubtitle')}
           </p>
         </div>
@@ -253,7 +253,7 @@ export function ManagerCustodyAgingPage() {
                 'h-4 w-4',
                 (summary?.overdueCount ?? 0) > 0
                   ? 'text-red-600'
-                  : 'text-zinc-400',
+                  : 'text-muted-foreground/70',
               )}
               aria-hidden
             />
@@ -263,7 +263,7 @@ export function ManagerCustodyAgingPage() {
           tone={(summary?.overdueCount ?? 0) > 0 ? 'danger' : 'default'}
         />
         <SummaryTile
-          icon={<Clock className="h-4 w-4 text-zinc-600" aria-hidden />}
+          icon={<Clock className="h-4 w-4 text-muted-foreground" aria-hidden />}
           label={t('managerCustody.tileOverdueKd')}
           value={formatKwdLabel(summary?.totalOverdueKd ?? '0')}
           tone={(summary?.overdueCount ?? 0) > 0 ? 'danger' : 'default'}
@@ -284,9 +284,9 @@ export function ManagerCustodyAgingPage() {
         </div>
       ) : null}
 
-      <Card className="border-zinc-200 bg-white shadow-sm">
+      <Card className="border-border bg-card shadow-sm">
         <CardHeader className="pb-2">
-          <CardTitle className="text-base font-medium text-zinc-900">
+          <CardTitle className="text-base font-medium text-foreground">
             {t('managerCustody.tableTitle')}
           </CardTitle>
         </CardHeader>
@@ -298,7 +298,7 @@ export function ManagerCustodyAgingPage() {
               <Skeleton className="h-9 w-full rounded" />
             </div>
           ) : rows.length === 0 ? (
-            <p className="py-8 text-center text-sm text-zinc-500">
+            <p className="py-8 text-center text-sm text-muted-foreground">
               {t('managerCustody.empty')}
             </p>
           ) : (
@@ -356,7 +356,7 @@ export function ManagerCustodyAgingPage() {
                             'tabular-nums',
                             r.isOverdue
                               ? 'font-semibold text-red-700'
-                              : 'text-zinc-700',
+                              : 'text-foreground/80',
                           )}
                         >
                           {t('managerCustody.age', { hours: r.ageHours })}
@@ -441,11 +441,11 @@ export function ManagerCustodyAgingPage() {
                 })}
               </p>
               {verifyTarget.depositSlipUrl ? (
-                <div className="overflow-hidden rounded-lg border border-zinc-200">
+                <div className="overflow-hidden rounded-lg border border-border">
                   <img
                     src={verifyTarget.depositSlipUrl}
                     alt=""
-                    className="max-h-60 w-full bg-zinc-100 object-contain"
+                    className="max-h-60 w-full bg-muted object-contain"
                   />
                 </div>
               ) : null}
@@ -556,7 +556,7 @@ function SummaryTile({
         'border shadow-sm',
         tone === 'danger'
           ? 'border-red-200 bg-red-50/60'
-          : 'border-zinc-200 bg-white',
+          : 'border-border bg-card',
       )}
     >
       <CardContent className="flex items-center gap-3 py-4">

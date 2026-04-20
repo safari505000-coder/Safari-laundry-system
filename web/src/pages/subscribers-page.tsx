@@ -863,10 +863,10 @@ export function SubscribersPage() {
     <div className="min-w-0 space-y-4 sm:space-y-6">
       <header className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <h1 className="text-xl font-semibold tracking-tight text-zinc-900 sm:text-2xl">
+          <h1 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
             {t('subscribers.title')}
           </h1>
-          <p className="text-sm text-zinc-500">{t('subscribers.subtitle')}</p>
+          <p className="text-sm text-muted-foreground">{t('subscribers.subtitle')}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {canManage && token ? (
@@ -936,7 +936,7 @@ export function SubscribersPage() {
         }
       </section>
 
-      <div className="hidden min-w-0 overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-border dark:bg-card md:block">
+      <div className="hidden min-w-0 overflow-x-auto rounded-xl border border-border bg-card shadow-sm md:block">
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">

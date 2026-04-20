@@ -497,11 +497,11 @@ export function StaffDebtsPage() {
 
       <header className="sd-screen-only flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight text-slate-900">
+          <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight text-foreground">
             <HandCoins className="h-6 w-6 text-primary" aria-hidden />
             {t('staffDebts.title')}
           </h1>
-          <p className="text-sm text-slate-600">{t('staffDebts.subtitle')}</p>
+          <p className="text-sm text-muted-foreground">{t('staffDebts.subtitle')}</p>
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -533,7 +533,7 @@ export function StaffDebtsPage() {
       </header>
 
       {/* Filters — interactive; hidden in print (summary appears in print header) */}
-      <Card className="sd-screen-only border-slate-200 bg-white">
+      <Card className="sd-screen-only border-border bg-card">
         <CardHeader className="pb-3">
           <CardTitle className="text-base">
             {t('staffDebts.filtersTitle')}
@@ -607,7 +607,7 @@ export function StaffDebtsPage() {
                     <SelectItem key={o.value} value={o.value}>
                       <span className="flex flex-col">
                         <span>{o.label}</span>
-                        <span className="text-xs text-slate-500">
+                        <span className="text-xs text-muted-foreground">
                           {[kindLabel, branchLabel]
                             .filter(Boolean)
                             .join(' · ')}
@@ -653,47 +653,47 @@ export function StaffDebtsPage() {
       </Card>
 
       {/* SECTION A — Drivers (Combined Pending Invoices: Cash + K-Net + Link + Online) */}
-      <Card className="border-slate-200 bg-white">
+      <Card className="border-border bg-card">
         <CardHeader className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <CardTitle className="flex items-center gap-2 text-base">
               <Truck className="h-4 w-4 text-primary" aria-hidden />
               {t('staffDebts.driversSectionTitle')}
             </CardTitle>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-muted-foreground">
               {t('staffDebts.driversSectionHintCombined')}
             </p>
           </div>
           <div className="flex flex-col items-end gap-1">
-            <p className="text-sm font-semibold tabular-nums text-slate-700">
+            <p className="text-sm font-semibold tabular-nums text-foreground/80">
               {t('staffDebts.sectionTotal')}:{' '}
-              <span className="text-slate-900">
+              <span className="text-foreground">
                 {formatKwdLabel(driverTotal.toFixed(4))}
               </span>
             </p>
-            <p className="flex flex-wrap justify-end gap-x-3 text-xs tabular-nums text-slate-500">
+            <p className="flex flex-wrap justify-end gap-x-3 text-xs tabular-nums text-muted-foreground">
               <span>
                 {t('staffDebts.methodCash')}:{' '}
-                <span className="text-slate-800">
+                <span className="text-foreground/90">
                   {formatKwdLabel(driverBreakdownTotals.cash.toFixed(4))}
                 </span>
               </span>
               <span>
                 {t('staffDebts.methodKnet')}:{' '}
-                <span className="text-slate-800">
+                <span className="text-foreground/90">
                   {formatKwdLabel(driverBreakdownTotals.knet.toFixed(4))}
                 </span>
               </span>
               <span>
                 {t('staffDebts.methodLink')}:{' '}
-                <span className="text-slate-800">
+                <span className="text-foreground/90">
                   {formatKwdLabel(driverBreakdownTotals.link.toFixed(4))}
                 </span>
               </span>
               {driverBreakdownTotals.online > 0 ? (
                 <span>
                   {t('staffDebts.methodOnline')}:{' '}
-                  <span className="text-slate-800">
+                  <span className="text-foreground/90">
                     {formatKwdLabel(driverBreakdownTotals.online.toFixed(4))}
                   </span>
                 </span>
@@ -707,7 +707,7 @@ export function StaffDebtsPage() {
               <Skeleton className="h-24 w-full rounded" />
             </div>
           ) : driverRows.length === 0 ? (
-            <p className="p-6 text-sm text-slate-500">
+            <p className="p-6 text-sm text-muted-foreground">
               {t('staffDebts.driversEmptyCombined')}
             </p>
           ) : (
@@ -754,7 +754,7 @@ export function StaffDebtsPage() {
                         <TableCell className="sd-screen-only w-8 align-top">
                           <button
                             type="button"
-                            className="rounded p-1 hover:bg-slate-100"
+                            className="rounded p-1 hover:bg-muted"
                             aria-label={
                               isOpen
                                 ? t('staffDebts.collapse')
@@ -775,11 +775,11 @@ export function StaffDebtsPage() {
                         </TableCell>
                         <TableCell className="font-medium">
                           {d.fullName}
-                          <span className="block text-xs text-slate-400">
+                          <span className="block text-xs text-muted-foreground/70">
                             @{d.username}
                           </span>
                         </TableCell>
-                        <TableCell className="text-sm text-slate-700">
+                        <TableCell className="text-sm text-foreground/80">
                           {d.branchId
                             ? branchNameById.get(d.branchId) ?? '—'
                             : '—'}
@@ -794,31 +794,31 @@ export function StaffDebtsPage() {
                           {d.pendingInvoiceCount}
                         </TableCell>
                         <TableCell
-                          className="whitespace-normal text-xs text-slate-700"
+                          className="whitespace-normal text-xs text-foreground/80"
                           title={breakdownTitle}
                         >
                           <span className="inline-flex flex-wrap gap-x-2 gap-y-1 tabular-nums">
                             <span>
-                              <span className="text-slate-500">
+                              <span className="text-muted-foreground">
                                 {t('staffDebts.methodCash')}:
                               </span>{' '}
                               {formatKwdLabel(cash.toFixed(4))}
                             </span>
                             <span>
-                              <span className="text-slate-500">
+                              <span className="text-muted-foreground">
                                 {t('staffDebts.methodKnet')}:
                               </span>{' '}
                               {formatKwdLabel(knet.toFixed(4))}
                             </span>
                             <span>
-                              <span className="text-slate-500">
+                              <span className="text-muted-foreground">
                                 {t('staffDebts.methodLink')}:
                               </span>{' '}
                               {formatKwdLabel(link.toFixed(4))}
                             </span>
                             {online > 0 ? (
                               <span>
-                                <span className="text-slate-500">
+                                <span className="text-muted-foreground">
                                   {t('staffDebts.methodOnline')}:
                                 </span>{' '}
                                 {formatKwdLabel(online.toFixed(4))}
@@ -841,7 +841,7 @@ export function StaffDebtsPage() {
                         </TableCell>
                       </TableRow>
                       {isOpen ? (
-                        <TableRow className="sd-screen-only bg-slate-50/70">
+                        <TableRow className="sd-screen-only bg-muted/50">
                           <TableCell />
                           <TableCell colSpan={6} className="py-3">
                             <div className="grid gap-2 sm:grid-cols-4">
@@ -875,20 +875,20 @@ export function StaffDebtsPage() {
       </Card>
 
       {/* SECTION B — Managers */}
-      <Card className="border-slate-200 bg-white">
+      <Card className="border-border bg-card">
         <CardHeader className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <CardTitle className="flex items-center gap-2 text-base">
               <Users className="h-4 w-4 text-primary" aria-hidden />
               {t('staffDebts.managersSectionTitle')}
             </CardTitle>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-muted-foreground">
               {t('staffDebts.managersSectionHint')}
             </p>
           </div>
-          <p className="text-sm font-semibold tabular-nums text-slate-700">
+          <p className="text-sm font-semibold tabular-nums text-foreground/80">
             {t('staffDebts.sectionTotal')}:{' '}
-            <span className="text-slate-900">
+            <span className="text-foreground">
               {formatKwdLabel(managerTotal.toFixed(4))}
             </span>
           </p>
@@ -899,7 +899,7 @@ export function StaffDebtsPage() {
               <Skeleton className="h-24 w-full rounded" />
             </div>
           ) : managerRows.length === 0 ? (
-            <p className="p-6 text-sm text-slate-500">
+            <p className="p-6 text-sm text-muted-foreground">
               {t('staffDebts.managersEmpty')}
             </p>
           ) : (
@@ -925,11 +925,11 @@ export function StaffDebtsPage() {
                   >
                     <TableCell className="font-medium">
                       {c.managerName}
-                      <span className="block text-xs text-slate-400">
+                      <span className="block text-xs text-muted-foreground/70">
                         @{c.managerUsername}
                       </span>
                     </TableCell>
-                    <TableCell className="text-sm text-slate-700">
+                    <TableCell className="text-sm text-foreground/80">
                       {c.branchName ?? '—'}
                     </TableCell>
                     <TableCell className="text-end tabular-nums">
@@ -1007,9 +1007,9 @@ export function StaffDebtsPage() {
  */
 function BreakdownItem({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded border border-slate-200 bg-white px-3 py-2 text-xs">
-      <div className="text-slate-500">{label}</div>
-      <div className="mt-1 font-semibold tabular-nums text-slate-900">
+    <div className="rounded border border-border bg-card px-3 py-2 text-xs">
+      <div className="text-muted-foreground">{label}</div>
+      <div className="mt-1 font-semibold tabular-nums text-foreground">
         {formatKwdLabel(value.toFixed(4))}
       </div>
     </div>
