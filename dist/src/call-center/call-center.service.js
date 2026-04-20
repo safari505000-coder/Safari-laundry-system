@@ -1198,9 +1198,9 @@ let CallCenterService = class CallCenterService {
         const currentDebt = customer.wallet?.debt ?? new client_1.Prisma.Decimal(0);
         const zero = new client_1.Prisma.Decimal(0);
         const options = plans.map((p) => {
-            const debtToSettle = currentDebt.lt(p.salePrice)
+            const debtToSettle = currentDebt.lt(p.actualBalance)
                 ? currentDebt
-                : p.salePrice;
+                : p.actualBalance;
             const remainingDebt = currentDebt.minus(debtToSettle);
             const rawCredit = p.actualBalance.minus(debtToSettle);
             const creditedToBalance = rawCredit.gt(0) ? rawCredit : zero;

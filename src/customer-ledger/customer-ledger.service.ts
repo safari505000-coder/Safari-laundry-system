@@ -331,8 +331,39 @@ export class CustomerLedgerService {
       throw new BadRequestException('Plan price and credit amount must be non-negative');
     }
 
+    // V19.7.2 — guard against misconfigured plans that have salePrice=0
+    // AND actualBalance=0. Without this check, activation "succeeds" but
+    // leaves debt and balance untouched, so the operator sees a green
+    // toast while the numbers on the subscriber list never change. That
+    // exact symptom ("ترقية الاشتراك مو شغال / ولاتخصم / تحويل المديونية
+    // مايخصم المتبقي") was traced to the seed plan "اشتراك 20" having
+    // price=0 and credit=0 in the DB. Refusing activation up-front with
+    // a clear message tells the Owner to fix the plan pricing instead
+    // of letting the number drift silently.
+    if (priceMinor === 0n && creditMinor === 0n) {
+      throw new BadRequestException(
+        `Subscription plan "${plan.name}" is misconfigured: both sale price and credit amount are 0. Ask the Owner to set them in Subscription Plans before activating.`,
+      );
+    }
+
+    // V19.7.3 — Owner directive: the subscription's CREDIT amount
+    // (`actualBalance`) is what reduces existing debt, NOT the sale
+    // price. Previous logic "debtPaid = min(debt, salePrice)" produced
+    // counter-intuitive numbers in the "Convert debt → subscription"
+    // flow (owner said: "مو يخصم قيمة الاشتراك بس المبلغ المضاف إلى
+    // الاشتراك يخصم من المديونية"). Under the new rule the full
+    // plan value handed to the customer is applied against outstanding
+    // debt first; only whatever remains after debt is cleared lands in
+    // the wallet.
+    //
+    // Example (plan 20/25 cash/credit, customer owes 100):
+    //   OLD: debtPaid=20 → newDebt=80, wallet +5
+    //   NEW: debtPaid=25 → newDebt=75, wallet +0
+    //
+    // Behavior for debt-free customers is unchanged: debtPaid=0, the
+    // full credit still lands in the wallet.
     const debtPaidMinor =
-      debtMinor < priceMinor ? debtMinor : priceMinor;
+      debtMinor < creditMinor ? debtMinor : creditMinor;
     const newDebtMinor = debtMinor - debtPaidMinor;
     const rawCreditMinor = creditMinor - debtPaidMinor;
     const balanceIncreaseMinor =

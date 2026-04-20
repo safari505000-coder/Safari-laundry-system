@@ -242,7 +242,10 @@ let CustomerLedgerService = class CustomerLedgerService {
         if (priceMinor < 0n || creditMinor < 0n) {
             throw new common_1.BadRequestException('Plan price and credit amount must be non-negative');
         }
-        const debtPaidMinor = debtMinor < priceMinor ? debtMinor : priceMinor;
+        if (priceMinor === 0n && creditMinor === 0n) {
+            throw new common_1.BadRequestException(`Subscription plan "${plan.name}" is misconfigured: both sale price and credit amount are 0. Ask the Owner to set them in Subscription Plans before activating.`);
+        }
+        const debtPaidMinor = debtMinor < creditMinor ? debtMinor : creditMinor;
         const newDebtMinor = debtMinor - debtPaidMinor;
         const rawCreditMinor = creditMinor - debtPaidMinor;
         const balanceIncreaseMinor = rawCreditMinor > 0n ? rawCreditMinor : 0n;

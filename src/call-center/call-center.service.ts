@@ -1813,12 +1813,16 @@ export class CallCenterService {
     const zero = new Prisma.Decimal(0);
 
     const options: DebtConversionPlanOptionDto[] = plans.map((p) => {
-      // Avoid floating-point drift: all four arithmetic operations
-      // happen through Prisma.Decimal, which is the same code-path
-      // `activateSubscriptionPlan` uses under the hood.
-      const debtToSettle = currentDebt.lt(p.salePrice)
+      // V19.7.3 — mirror `activateSubscriptionPlan`: the CREDIT amount
+      // (`actualBalance`), not the sale price, is what offsets
+      // existing debt. Keeping this read-only preview in lock-step
+      // with the write path is critical — any drift between the
+      // dialog's projected numbers and the post-commit numbers would
+      // re-introduce the exact "Convert" bug the owner just flagged.
+      // All arithmetic stays on Prisma.Decimal to avoid FP drift.
+      const debtToSettle = currentDebt.lt(p.actualBalance)
         ? currentDebt
-        : p.salePrice;
+        : p.actualBalance;
       const remainingDebt = currentDebt.minus(debtToSettle);
       const rawCredit = p.actualBalance.minus(debtToSettle);
       const creditedToBalance = rawCredit.gt(0) ? rawCredit : zero;
