@@ -9,8 +9,10 @@ import {
   type ActivateSubscriptionResponse,
   type CallCenterPlan,
   type CustomerSearchRow,
+  type CustomerSubscriptionRow,
   type SettlementHistoryRow,
   type SubscriptionPlan,
+  type SubscriptionRolloverPreview,
   apiJson,
   ApiError,
 } from '@/lib/api';
@@ -460,6 +462,16 @@ function CallCenterActivatePanel({
   const [settlementReload, setSettlementReload] = useState(0);
   const [lastReceipt, setLastReceipt] =
     useState<ActivateSubscriptionResponse | null>(null);
+  // V19.4 — CC pack #2. Rollover-confirmation modal state. `preview`
+  // is loaded BEFORE the POST so the operator can see the signed carry
+  // amount and abort. `confirming` is the modal's own spinner so the
+  // main panel doesn't lock up while the preview is being fetched.
+  const [rolloverPreview, setRolloverPreview] =
+    useState<SubscriptionRolloverPreview | null>(null);
+  const [rolloverOpen, setRolloverOpen] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [chain, setChain] = useState<CustomerSubscriptionRow[] | null>(null);
+  const [chainLoading, setChainLoading] = useState(false);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebounced(q.trim()), 350);
@@ -518,11 +530,65 @@ function CallCenterActivatePanel({
 
   const selectedCustomer = results?.find((r) => r.id === customerId);
 
-  async function activate() {
+  const refreshSubscriptionChain = useCallback(async () => {
+    if (!customerId) {
+      setChain(null);
+      return;
+    }
+    setChainLoading(true);
+    try {
+      const rows = await apiJson<CustomerSubscriptionRow[]>(
+        `/api/call-center/customers/${customerId}/subscriptions`,
+        { token },
+      );
+      setChain(rows);
+    } catch (e) {
+      if (e instanceof ApiError) toast.error(e.message);
+    } finally {
+      setChainLoading(false);
+    }
+  }, [customerId, token]);
+
+  useEffect(() => {
+    void refreshSubscriptionChain();
+  }, [refreshSubscriptionChain, settlementReload]);
+
+  /**
+   * V19.4 — CC pack #2. Step 1 of the activation flow: pull the
+   * rollover preview from the backend (no side effects) and open the
+   * confirmation dialog. If the customer has NO predecessor we still
+   * show the dialog, but phrased as "first subscription" so the
+   * operator has one uniform action per activation — reduces training
+   * surface and removes the branch where an accidental double-click
+   * could skip straight to POST.
+   */
+  async function requestActivate() {
     if (!customerId || !planId) {
       toast.error(t('subscriptions.selectCustomerPlan'));
       return;
     }
+    setPreviewLoading(true);
+    try {
+      const preview = await apiJson<SubscriptionRolloverPreview>(
+        `/api/call-center/customers/${customerId}/subscription-rollover-preview`,
+        { token },
+      );
+      setRolloverPreview(preview);
+      setRolloverOpen(true);
+    } catch (e) {
+      if (e instanceof ApiError) toast.error(e.message);
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
+  /**
+   * V19.4 — CC pack #2. Step 2: the actual POST. Kept separate from
+   * `requestActivate` so the dialog "Cancel" button is a pure UI
+   * action; the only side-effectful path is "Confirm".
+   */
+  async function confirmActivate() {
+    if (!customerId || !planId) return;
     setActivating(true);
     try {
       const res = await apiJson<ActivateSubscriptionResponse>(
@@ -553,6 +619,8 @@ function CallCenterActivatePanel({
       );
       void onReloadPlans();
       setPlanId('');
+      setRolloverOpen(false);
+      setRolloverPreview(null);
     } catch (e) {
       if (e instanceof ApiError) toast.error(e.message);
     } finally {
@@ -701,13 +769,33 @@ function CallCenterActivatePanel({
             <Separator />
             <Button
               className="w-full bg-amber-600 text-white hover:bg-amber-700"
-              disabled={activating || !customerId || !planId}
-              onClick={() => void activate()}
+              disabled={previewLoading || activating || !customerId || !planId}
+              onClick={() => void requestActivate()}
             >
-              {activating ?
+              {previewLoading ?
+                t('subscriptions.loadingPreview')
+              : activating ?
                 t('subscriptions.activating')
               : t('subscriptions.activateBtn')}
             </Button>
+            <RolloverConfirmDialog
+              open={rolloverOpen}
+              onOpenChange={(next) => {
+                if (!next) {
+                  setRolloverOpen(false);
+                  setRolloverPreview(null);
+                }
+              }}
+              preview={rolloverPreview}
+              planName={
+                plans.find((p) => p.id === planId)?.name ?? ''
+              }
+              planSalePrice={
+                plans.find((p) => p.id === planId)?.salePrice ?? '0'
+              }
+              busy={activating}
+              onConfirm={() => void confirmActivate()}
+            />
           </CardContent>
         </Card>
       </div>
@@ -824,7 +912,252 @@ function CallCenterActivatePanel({
           </CardContent>
         </Card>
       : null}
+
+      {customerId ?
+        <SubscriptionTimelineCard
+          loading={chainLoading}
+          chain={chain}
+          locale={dateLocale}
+          onRefresh={() => void refreshSubscriptionChain()}
+        />
+      : null}
     </div>
   );
 }
+
+/**
+ * V19.4 — CC pack #2. "Are you sure?" dialog shown before the POST.
+ * Displays the signed carry-forward with intent-coloured highlighting
+ * (credit green, debt red, none neutral), the previous plan name, and
+ * the new plan being activated. The primary action is deliberately
+ * labelled "Activate and roll over" when `hasPrevious` is true so the
+ * operator is never surprised by the chain linkage after the fact.
+ */
+function RolloverConfirmDialog(props: {
+  open: boolean;
+  onOpenChange: (next: boolean) => void;
+  preview: SubscriptionRolloverPreview | null;
+  planName: string;
+  planSalePrice: string;
+  busy: boolean;
+  onConfirm: () => void;
+}) {
+  const { t } = useTranslation();
+  const { open, onOpenChange, preview, planName, planSalePrice, busy, onConfirm } =
+    props;
+  const carried = preview?.carriedBalanceKd ?? '0';
+  const carriedNum = Number.parseFloat(carried);
+  const isCredit = carriedNum > 0;
+  const isDebt = carriedNum < 0;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{t('subscriptions.rolloverTitle')}</DialogTitle>
+        </DialogHeader>
+        {!preview ?
+          <p className="text-sm text-muted-foreground">
+            {t('subscriptions.loadingPreview')}
+          </p>
+        : preview.hasPrevious ?
+          <div className="space-y-4 text-sm">
+            <p className="text-muted-foreground">
+              {t('subscriptions.rolloverFromPlan', {
+                planName: preview.previousPlanName ?? '—',
+              })}
+            </p>
+            <div
+              className={`rounded-md border p-3 tabular-nums ${
+                isCredit ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
+                : isDebt ? 'border-rose-300 bg-rose-50 text-rose-900'
+                : 'border-border bg-muted/40 text-foreground'
+              }`}
+            >
+              <p className="text-xs font-medium uppercase tracking-wide">
+                {isCredit ?
+                  t('subscriptions.rolloverCreditLabel')
+                : isDebt ?
+                  t('subscriptions.rolloverDebtLabel')
+                : t('subscriptions.rolloverEvenLabel')}
+              </p>
+              <p className="text-xl font-semibold">
+                {formatKwdLabel(Math.abs(carriedNum).toFixed(4))}
+              </p>
+            </div>
+            <div className="rounded-md border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
+              {t('subscriptions.rolloverNewPlan', {
+                planName,
+                salePrice: formatKwdLabel(planSalePrice),
+              })}
+            </div>
+          </div>
+        : <div className="space-y-3 text-sm">
+            <p className="text-muted-foreground">
+              {t('subscriptions.rolloverFirstTime')}
+            </p>
+            <div className="rounded-md border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
+              {t('subscriptions.rolloverNewPlan', {
+                planName,
+                salePrice: formatKwdLabel(planSalePrice),
+              })}
+            </div>
+          </div>
+        }
+        <DialogFooter className="gap-2">
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={busy}
+          >
+            {t('subscriptions.rolloverCancel')}
+          </Button>
+          <Button
+            className="bg-amber-600 text-white hover:bg-amber-700"
+            disabled={busy || !preview}
+            onClick={onConfirm}
+          >
+            {busy ?
+              t('subscriptions.activating')
+            : preview?.hasPrevious ?
+              t('subscriptions.rolloverConfirmWithRollover')
+            : t('subscriptions.rolloverConfirmFirst')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * V19.4 — CC pack #11 + #12. Collapsible timeline of the customer's
+ * subscription chain with the invoices issued under each window. Shows
+ * the signed rollover amount and highlights the currently-ACTIVE row
+ * so the operator can eyeball "where is the customer today?" without
+ * scrolling.
+ */
+function SubscriptionTimelineCard(props: {
+  loading: boolean;
+  chain: CustomerSubscriptionRow[] | null;
+  locale: string;
+  onRefresh: () => void;
+}) {
+  const { t } = useTranslation();
+  const { loading, chain, locale, onRefresh } = props;
+  return (
+    <Card className="border-border bg-card shadow-sm">
+      <CardHeader className="flex flex-row items-start justify-between gap-2">
+        <div>
+          <CardTitle className="text-base">
+            {t('subscriptions.timelineTitle')}
+          </CardTitle>
+          <CardDescription>
+            {t('subscriptions.timelineHint')}
+          </CardDescription>
+        </div>
+        <Button variant="outline" size="sm" onClick={onRefresh}>
+          {t('subscriptions.timelineRefresh')}
+        </Button>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {loading ?
+          <Skeleton className="h-24 w-full" />
+        : !chain || chain.length === 0 ?
+          <p className="text-sm text-muted-foreground">
+            {t('subscriptions.timelineEmpty')}
+          </p>
+        : <ul className="space-y-4 text-sm">
+            {chain.map((s) => (
+              <li
+                key={s.id}
+                className={`rounded-lg border p-3 ${
+                  s.status === 'ACTIVE' ?
+                    'border-emerald-300 bg-emerald-50'
+                  : 'border-border bg-muted/40'
+                }`}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="font-medium text-foreground">
+                      {s.planNameSnapshot}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(s.activatedAtIso).toLocaleDateString(locale)}
+                      {' → '}
+                      {new Date(s.expiresAtIso).toLocaleDateString(locale)}
+                    </p>
+                  </div>
+                  <Badge
+                    variant={s.status === 'ACTIVE' ? 'default' : 'secondary'}
+                  >
+                    {t(`subscriptions.status.${s.status}`, s.status)}
+                  </Badge>
+                </div>
+                <div className="mt-2 grid gap-1 text-xs tabular-nums text-muted-foreground sm:grid-cols-3">
+                  <span>
+                    {t('subscriptions.timelineCarried')}:{' '}
+                    <span
+                      className={
+                        Number.parseFloat(s.carriedBalanceKd) > 0 ?
+                          'text-emerald-700'
+                        : Number.parseFloat(s.carriedBalanceKd) < 0 ?
+                          'text-rose-700'
+                        : 'text-foreground'
+                      }
+                    >
+                      {formatKwdLabel(s.carriedBalanceKd)}
+                    </span>
+                  </span>
+                  <span>
+                    {t('subscriptions.timelinePaid')}:{' '}
+                    {formatKwdLabel(s.planSalePriceSnapshot)}
+                  </span>
+                  <span>
+                    {t('subscriptions.timelineCredited')}:{' '}
+                    {formatKwdLabel(s.planActualBalanceSnapshot)}
+                  </span>
+                </div>
+                {s.invoices.length > 0 ?
+                  <div className="mt-2 rounded-md border border-border/60 bg-card p-2 text-xs">
+                    <p className="mb-1 font-medium text-foreground/80">
+                      {t('subscriptions.timelineInvoices')} ({s.invoices.length})
+                    </p>
+                    <ul className="space-y-1">
+                      {s.invoices.slice(0, 5).map((inv) => (
+                        <li
+                          key={inv.orderId}
+                          className="flex justify-between gap-2 tabular-nums text-muted-foreground"
+                        >
+                          <span>
+                            {inv.invoiceNumber ?? inv.orderId.slice(0, 8)}
+                            {' · '}
+                            {new Date(inv.createdAtIso).toLocaleDateString(
+                              locale,
+                            )}
+                          </span>
+                          <span>
+                            {formatKwdLabel(inv.totalPriceKd)}{' · '}
+                            {inv.status}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                    {s.invoices.length > 5 ?
+                      <p className="mt-1 text-[10px] text-muted-foreground">
+                        {t('subscriptions.timelineMore', {
+                          count: s.invoices.length - 5,
+                        })}
+                      </p>
+                    : null}
+                  </div>
+                : null}
+              </li>
+            ))}
+          </ul>
+        }
+      </CardContent>
+    </Card>
+  );
+}
+
 

@@ -120,6 +120,7 @@ export declare class UsersController {
             posHostedPaymentUrl: string | null;
             handoverShiftId: string | null;
             transferredFromDriverId: string | null;
+            subscriptionId: string | null;
         }[];
         shiftsAsDriver: {
             id: string;
@@ -155,6 +156,7 @@ export declare class UsersController {
             id: string;
             createdAt: Date;
             customerId: string;
+            subscriptionId: string | null;
             type: import("@prisma/client").$Enums.LedgerTransactionType;
             orderId: string | null;
             amount: import("@prisma/client-runtime-utils").Decimal;
@@ -505,6 +507,7 @@ export declare class UsersController {
             posHostedPaymentUrl: string | null;
             handoverShiftId: string | null;
             transferredFromDriverId: string | null;
+            subscriptionId: string | null;
         }[];
         attendanceLogs: {
             id: string;
@@ -686,6 +689,7 @@ export declare class UsersController {
             posHostedPaymentUrl: string | null;
             handoverShiftId: string | null;
             transferredFromDriverId: string | null;
+            subscriptionId: string | null;
         }[];
         shiftsAsDriver: {
             id: string;
@@ -721,6 +725,7 @@ export declare class UsersController {
             id: string;
             createdAt: Date;
             customerId: string;
+            subscriptionId: string | null;
             type: import("@prisma/client").$Enums.LedgerTransactionType;
             orderId: string | null;
             amount: import("@prisma/client-runtime-utils").Decimal;
@@ -1071,6 +1076,7 @@ export declare class UsersController {
             posHostedPaymentUrl: string | null;
             handoverShiftId: string | null;
             transferredFromDriverId: string | null;
+            subscriptionId: string | null;
         }[];
         attendanceLogs: {
             id: string;
@@ -1252,6 +1258,7 @@ export declare class UsersController {
             posHostedPaymentUrl: string | null;
             handoverShiftId: string | null;
             transferredFromDriverId: string | null;
+            subscriptionId: string | null;
         }[];
         shiftsAsDriver: {
             id: string;
@@ -1287,6 +1294,7 @@ export declare class UsersController {
             id: string;
             createdAt: Date;
             customerId: string;
+            subscriptionId: string | null;
             type: import("@prisma/client").$Enums.LedgerTransactionType;
             orderId: string | null;
             amount: import("@prisma/client-runtime-utils").Decimal;
@@ -1637,6 +1645,7 @@ export declare class UsersController {
             posHostedPaymentUrl: string | null;
             handoverShiftId: string | null;
             transferredFromDriverId: string | null;
+            subscriptionId: string | null;
         }[];
         attendanceLogs: {
             id: string;
@@ -1821,6 +1830,7 @@ export declare class UsersController {
             posHostedPaymentUrl: string | null;
             handoverShiftId: string | null;
             transferredFromDriverId: string | null;
+            subscriptionId: string | null;
         }[];
         shiftsAsDriver: {
             id: string;
@@ -1856,6 +1866,7 @@ export declare class UsersController {
             id: string;
             createdAt: Date;
             customerId: string;
+            subscriptionId: string | null;
             type: import("@prisma/client").$Enums.LedgerTransactionType;
             orderId: string | null;
             amount: import("@prisma/client-runtime-utils").Decimal;
@@ -2206,6 +2217,7 @@ export declare class UsersController {
             posHostedPaymentUrl: string | null;
             handoverShiftId: string | null;
             transferredFromDriverId: string | null;
+            subscriptionId: string | null;
         }[];
         attendanceLogs: {
             id: string;
@@ -2390,6 +2402,7 @@ export declare class UsersController {
             posHostedPaymentUrl: string | null;
             handoverShiftId: string | null;
             transferredFromDriverId: string | null;
+            subscriptionId: string | null;
         }[];
         shiftsAsDriver: {
             id: string;
@@ -2425,6 +2438,7 @@ export declare class UsersController {
             id: string;
             createdAt: Date;
             customerId: string;
+            subscriptionId: string | null;
             type: import("@prisma/client").$Enums.LedgerTransactionType;
             orderId: string | null;
             amount: import("@prisma/client-runtime-utils").Decimal;
@@ -2775,6 +2789,7 @@ export declare class UsersController {
             posHostedPaymentUrl: string | null;
             handoverShiftId: string | null;
             transferredFromDriverId: string | null;
+            subscriptionId: string | null;
         }[];
         attendanceLogs: {
             id: string;

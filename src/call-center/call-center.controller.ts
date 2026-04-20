@@ -177,4 +177,28 @@ export class CallCenterController {
   ) {
     return this.callCenterService.listCustomerSettlementHistory(customerId);
   }
+
+  @Get('customers/:customerId/subscription-rollover-preview')
+  @ApiOperation({
+    summary: `Preview subscription rollover (${APP_BRAND})`,
+    description:
+      'V19.4 CC pack #2 — read-only snapshot of what the next subscription activation will carry forward. Returns `hasPrevious:false` for first-time activations. The UI uses this to power the "are you sure?" confirmation modal before POST /subscriptions/activate. No side effects.',
+  })
+  previewSubscriptionRollover(
+    @Param('customerId', ParseUUIDPipe) customerId: string,
+  ) {
+    return this.callCenterService.previewSubscriptionRollover(customerId);
+  }
+
+  @Get('customers/:customerId/subscriptions')
+  @ApiOperation({
+    summary: `Customer subscription chain (${APP_BRAND})`,
+    description:
+      'V19.4 CC pack #11 + #12 — full chain of subscriptions for a customer, most-recent first, with every invoice issued while each subscription window was ACTIVE. Powers the call-center subscriptions timeline.',
+  })
+  listCustomerSubscriptionChain(
+    @Param('customerId', ParseUUIDPipe) customerId: string,
+  ) {
+    return this.callCenterService.listCustomerSubscriptionChain(customerId);
+  }
 }

@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  CustomerSubscriptionStatus,
   DebtEntityCategory,
   DebtSource,
   GeneralLedgerEntryType,
@@ -162,11 +163,34 @@ export class CustomerLedgerService {
       },
     });
 
+    // V19.4 — CC pack #11. Tag the order + its ledger row with the
+    // currently-active CustomerSubscription (if any) so the customer
+    // statement can group invoices by subscription. Nullable by design:
+    // walk-in / ad-hoc invoices never had a subscription and must still
+    // work. We pick the ACTIVE row; an expired or rolled-over row is
+    // ignored because the invoice is being settled "under" the window
+    // the customer is currently sitting on.
+    const activeSubscription = await tx.customerSubscription.findFirst({
+      where: {
+        customerId: o.customerId,
+        status: CustomerSubscriptionStatus.ACTIVE,
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+    });
+    if (activeSubscription) {
+      await tx.order.update({
+        where: { id: orderId },
+        data: { subscriptionId: activeSubscription.id },
+      });
+    }
+
     await tx.transactionHistory.create({
       data: {
         type: LedgerTransactionType.ORDER_WALLET_SETTLEMENT,
         customerId: o.customerId,
         orderId,
+        subscriptionId: activeSubscription?.id ?? null,
         amount: o.totalPrice,
         balanceBefore: wallet.balance,
         balanceAfter: this.decimalFromMinor(newBalanceMinor),
@@ -182,6 +206,7 @@ export class CustomerLedgerService {
           externalCoversShortfall:
             externalCoversShortfall && shortfallMinor > 0n ? true : false,
           reportingCategory: 'DAILY_SALES',
+          subscriptionId: activeSubscription?.id ?? null,
           // Caller-supplied fields (e.g. debt-settlement tagging from the
           // payment gateway) take precedence over the defaults above.
           ...(extraMetadata ?? {}),
@@ -321,6 +346,60 @@ export class CustomerLedgerService {
       subscriptionExpiresAt.getUTCDate() + validityDays,
     );
 
+    // V19.4 — CC pack #2/#11/#12: per-subscription ledger.
+    //
+    // Close the predecessor (if any) and open a new CustomerSubscription
+    // row BEFORE we mutate the wallet. The carried balance snapshots the
+    // *pre-activation* wallet state so the operator can later see
+    // exactly what the customer was holding when the rollover happened
+    // — including whether it was prepaid credit (+) or outstanding
+    // debt (-). Option 2-A: even if the previous subscription has been
+    // expired for months, we still roll its ledger forward; this keeps
+    // old debts visible instead of quietly forgiving them.
+    const previousSubscription = await tx.customerSubscription.findFirst({
+      where: {
+        customerId: params.customerId,
+        status: {
+          in: [
+            CustomerSubscriptionStatus.ACTIVE,
+            CustomerSubscriptionStatus.EXPIRED,
+          ],
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const carriedBalanceMinor = balanceMinor - debtMinor;
+    const carriedBalanceStr = minorToAmountString(carriedBalanceMinor);
+    const carriedBalanceDecimal = new Prisma.Decimal(carriedBalanceStr);
+
+    const newSubscription = await tx.customerSubscription.create({
+      data: {
+        customerId: params.customerId,
+        planId: plan.id,
+        status: CustomerSubscriptionStatus.ACTIVE,
+        planNameSnapshot: plan.name,
+        planSalePriceSnapshot: plan.salePrice,
+        planActualBalanceSnapshot: plan.actualBalance,
+        planValidityDaysSnapshot: validityDays,
+        carriedBalanceKd: carriedBalanceDecimal,
+        parentSubscriptionId: previousSubscription?.id ?? null,
+        activatedAt,
+        expiresAt: subscriptionExpiresAt,
+      },
+    });
+
+    if (previousSubscription) {
+      await tx.customerSubscription.update({
+        where: { id: previousSubscription.id },
+        data: {
+          status: CustomerSubscriptionStatus.ROLLED_OVER,
+          closedAt: activatedAt,
+          closedReason: 'ROLLOVER',
+        },
+      });
+    }
+
     await tx.customerWallet.update({
       where: { id: wallet.id },
       data: {
@@ -343,6 +422,7 @@ export class CustomerLedgerService {
       data: {
         type: LedgerTransactionType.SUBSCRIPTION_ACTIVATION,
         customerId: params.customerId,
+        subscriptionId: newSubscription.id,
         amount: plan.actualBalance,
         balanceBefore: wallet.balance,
         balanceAfter: this.decimalFromMinor(newBalanceMinor),
@@ -360,6 +440,8 @@ export class CustomerLedgerService {
           subsidy: subsidyStr,
           subsidyBranchId,
           automaticDebtSettlement: true,
+          rolledOverFromSubscriptionId: previousSubscription?.id ?? null,
+          carriedBalanceKd: carriedBalanceStr,
         },
       },
     });
@@ -379,6 +461,8 @@ export class CustomerLedgerService {
           planId: plan.id,
           planName: plan.name,
           subsidyBranchId,
+          subscriptionId: newSubscription.id,
+          rolledOverFromSubscriptionId: previousSubscription?.id ?? null,
         },
       });
     }
@@ -391,6 +475,9 @@ export class CustomerLedgerService {
       previousDebt: wallet.debt.toString(),
       newBalance: minorToAmountString(newBalanceMinor),
       newDebt: minorToAmountString(newDebtMinor),
+      subscriptionId: newSubscription.id,
+      rolledOverFromSubscriptionId: previousSubscription?.id ?? null,
+      carriedBalanceKd: carriedBalanceStr,
     };
   }
 }

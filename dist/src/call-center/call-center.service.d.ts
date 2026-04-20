@@ -8,6 +8,8 @@ import type { SettlementHistoryRowDto } from './dto/settlement-history-row.dto';
 import type { CallCenterOperationsSummaryDto } from './dto/operations-summary.dto';
 import type { DebtRecoveryReportDto } from './dto/debt-recovery-report.dto';
 import type { ReminderResultDto } from './dto/reminder-result.dto';
+import type { SubscriptionRolloverPreviewDto } from './dto/subscription-rollover-preview.dto';
+import type { CustomerSubscriptionRowDto } from './dto/customer-subscription.dto';
 export declare class CallCenterService {
     private readonly prisma;
     private readonly customerLedger;
@@ -73,4 +75,6 @@ export declare class CallCenterService {
     sendSubscriberReminder(customerId: string): Promise<ReminderResultDto>;
     getOperationsSummary(branchId?: string | null): Promise<CallCenterOperationsSummaryDto>;
     getDebtRecoveryReport(fromIso?: string, toIso?: string): Promise<DebtRecoveryReportDto>;
+    previewSubscriptionRollover(customerId: string): Promise<SubscriptionRolloverPreviewDto>;
+    listCustomerSubscriptionChain(customerId: string): Promise<CustomerSubscriptionRowDto[]>;
 }

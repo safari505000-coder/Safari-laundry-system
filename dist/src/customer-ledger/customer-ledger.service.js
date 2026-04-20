@@ -105,11 +105,26 @@ let CustomerLedgerService = class CustomerLedgerService {
                 debt: this.decimalFromMinor(newDebtMinor),
             },
         });
+        const activeSubscription = await tx.customerSubscription.findFirst({
+            where: {
+                customerId: o.customerId,
+                status: client_1.CustomerSubscriptionStatus.ACTIVE,
+            },
+            orderBy: { createdAt: 'desc' },
+            select: { id: true },
+        });
+        if (activeSubscription) {
+            await tx.order.update({
+                where: { id: orderId },
+                data: { subscriptionId: activeSubscription.id },
+            });
+        }
         await tx.transactionHistory.create({
             data: {
                 type: client_1.LedgerTransactionType.ORDER_WALLET_SETTLEMENT,
                 customerId: o.customerId,
                 orderId,
+                subscriptionId: activeSubscription?.id ?? null,
                 amount: o.totalPrice,
                 balanceBefore: wallet.balance,
                 balanceAfter: this.decimalFromMinor(newBalanceMinor),
@@ -124,6 +139,7 @@ let CustomerLedgerService = class CustomerLedgerService {
                     posPaymentMethod: o.posPaymentMethod ?? null,
                     externalCoversShortfall: externalCoversShortfall && shortfallMinor > 0n ? true : false,
                     reportingCategory: 'DAILY_SALES',
+                    subscriptionId: activeSubscription?.id ?? null,
                     ...(extraMetadata ?? {}),
                 },
             },
@@ -235,6 +251,46 @@ let CustomerLedgerService = class CustomerLedgerService {
         const validityDays = plan.validityDays > 0 ? plan.validityDays : 30;
         const subscriptionExpiresAt = new Date(activatedAt.getTime());
         subscriptionExpiresAt.setUTCDate(subscriptionExpiresAt.getUTCDate() + validityDays);
+        const previousSubscription = await tx.customerSubscription.findFirst({
+            where: {
+                customerId: params.customerId,
+                status: {
+                    in: [
+                        client_1.CustomerSubscriptionStatus.ACTIVE,
+                        client_1.CustomerSubscriptionStatus.EXPIRED,
+                    ],
+                },
+            },
+            orderBy: { createdAt: 'desc' },
+        });
+        const carriedBalanceMinor = balanceMinor - debtMinor;
+        const carriedBalanceStr = (0, finance_money_1.minorToAmountString)(carriedBalanceMinor);
+        const carriedBalanceDecimal = new client_1.Prisma.Decimal(carriedBalanceStr);
+        const newSubscription = await tx.customerSubscription.create({
+            data: {
+                customerId: params.customerId,
+                planId: plan.id,
+                status: client_1.CustomerSubscriptionStatus.ACTIVE,
+                planNameSnapshot: plan.name,
+                planSalePriceSnapshot: plan.salePrice,
+                planActualBalanceSnapshot: plan.actualBalance,
+                planValidityDaysSnapshot: validityDays,
+                carriedBalanceKd: carriedBalanceDecimal,
+                parentSubscriptionId: previousSubscription?.id ?? null,
+                activatedAt,
+                expiresAt: subscriptionExpiresAt,
+            },
+        });
+        if (previousSubscription) {
+            await tx.customerSubscription.update({
+                where: { id: previousSubscription.id },
+                data: {
+                    status: client_1.CustomerSubscriptionStatus.ROLLED_OVER,
+                    closedAt: activatedAt,
+                    closedReason: 'ROLLOVER',
+                },
+            });
+        }
         await tx.customerWallet.update({
             where: { id: wallet.id },
             data: {
@@ -255,6 +311,7 @@ let CustomerLedgerService = class CustomerLedgerService {
             data: {
                 type: client_1.LedgerTransactionType.SUBSCRIPTION_ACTIVATION,
                 customerId: params.customerId,
+                subscriptionId: newSubscription.id,
                 amount: plan.actualBalance,
                 balanceBefore: wallet.balance,
                 balanceAfter: this.decimalFromMinor(newBalanceMinor),
@@ -272,6 +329,8 @@ let CustomerLedgerService = class CustomerLedgerService {
                     subsidy: subsidyStr,
                     subsidyBranchId,
                     automaticDebtSettlement: true,
+                    rolledOverFromSubscriptionId: previousSubscription?.id ?? null,
+                    carriedBalanceKd: carriedBalanceStr,
                 },
             },
         });
@@ -288,6 +347,8 @@ let CustomerLedgerService = class CustomerLedgerService {
                     planId: plan.id,
                     planName: plan.name,
                     subsidyBranchId,
+                    subscriptionId: newSubscription.id,
+                    rolledOverFromSubscriptionId: previousSubscription?.id ?? null,
                 },
             });
         }
@@ -299,6 +360,9 @@ let CustomerLedgerService = class CustomerLedgerService {
             previousDebt: wallet.debt.toString(),
             newBalance: (0, finance_money_1.minorToAmountString)(newBalanceMinor),
             newDebt: (0, finance_money_1.minorToAmountString)(newDebtMinor),
+            subscriptionId: newSubscription.id,
+            rolledOverFromSubscriptionId: previousSubscription?.id ?? null,
+            carriedBalanceKd: carriedBalanceStr,
         };
     }
 };

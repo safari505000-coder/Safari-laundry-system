@@ -6,4 +6,7 @@ export type SubscriptionActivationSettlement = {
     previousDebt: string;
     newBalance: string;
     newDebt: string;
+    subscriptionId: string;
+    rolledOverFromSubscriptionId: string | null;
+    carriedBalanceKd: string;
 };

@@ -466,6 +466,8 @@ AttendanceModule, LeavesModule, LoansModule, VerifyModule, HealthModule
 | `/api/insights/driver-scorecard`   | GET        | `insights.driverScorecard.view`     | أداء السائقين                |
 | `/api/exports/orders.xlsx`         | GET        | `reports.view`                      | تصدير فواتير Excel           |
 | `/api/exports/payroll.pdf`         | GET        | `payroll.view`                      | كشف رواتب PDF                |
+| `/api/call-center/customers/:id/subscription-rollover-preview` | GET | CALL_CENTER | V19.4 — معاينة ترحيل الاشتراك قبل POST (hasPrevious + carriedBalanceKd) |
+| `/api/call-center/customers/:id/subscriptions`                 | GET | CALL_CENTER | V19.4 — سلسلة اشتراكات العميل مع فواتير كل اشتراك |
 
 
 ---

@@ -525,6 +525,119 @@ let CallCenterService = class CallCenterService {
             days: Array.from(buckets.values()),
         };
     }
+    async previewSubscriptionRollover(customerId) {
+        const customer = await this.prisma.customer.findUnique({
+            where: { id: customerId },
+            select: { id: true },
+        });
+        if (!customer) {
+            throw new common_1.NotFoundException('Customer not found');
+        }
+        const [wallet, previous] = await Promise.all([
+            this.prisma.customerWallet.findUnique({
+                where: { customerId },
+                select: { balance: true, debt: true },
+            }),
+            this.prisma.customerSubscription.findFirst({
+                where: {
+                    customerId,
+                    status: {
+                        in: [
+                            client_1.CustomerSubscriptionStatus.ACTIVE,
+                            client_1.CustomerSubscriptionStatus.EXPIRED,
+                        ],
+                    },
+                },
+                orderBy: { createdAt: 'desc' },
+                select: {
+                    id: true,
+                    planNameSnapshot: true,
+                    activatedAt: true,
+                    expiresAt: true,
+                },
+            }),
+        ]);
+        const balance = wallet?.balance ?? new client_1.Prisma.Decimal(0);
+        const debt = wallet?.debt ?? new client_1.Prisma.Decimal(0);
+        const carried = balance.minus(debt);
+        if (!previous) {
+            return {
+                hasPrevious: false,
+                currentWalletBalanceKd: balance.toFixed(4),
+                currentWalletDebtKd: debt.toFixed(4),
+            };
+        }
+        return {
+            hasPrevious: true,
+            carriedBalanceKd: carried.toFixed(4),
+            previousPlanName: previous.planNameSnapshot,
+            previousActivatedAtIso: previous.activatedAt.toISOString(),
+            previousExpiresAtIso: previous.expiresAt.toISOString(),
+            currentWalletBalanceKd: balance.toFixed(4),
+            currentWalletDebtKd: debt.toFixed(4),
+        };
+    }
+    async listCustomerSubscriptionChain(customerId) {
+        const customer = await this.prisma.customer.findUnique({
+            where: { id: customerId },
+            select: { id: true },
+        });
+        if (!customer) {
+            throw new common_1.NotFoundException('Customer not found');
+        }
+        const subs = await this.prisma.customerSubscription.findMany({
+            where: { customerId },
+            orderBy: { activatedAt: 'desc' },
+        });
+        if (subs.length === 0)
+            return [];
+        const ids = subs.map((s) => s.id);
+        const orders = await this.prisma.order.findMany({
+            where: { subscriptionId: { in: ids } },
+            orderBy: { createdAt: 'desc' },
+            select: {
+                id: true,
+                subscriptionId: true,
+                invoiceNumber: true,
+                totalPrice: true,
+                status: true,
+                cashStatus: true,
+                createdAt: true,
+                completedAt: true,
+            },
+        });
+        const ordersBySub = new Map();
+        for (const o of orders) {
+            if (!o.subscriptionId)
+                continue;
+            const list = ordersBySub.get(o.subscriptionId) ?? [];
+            list.push({
+                orderId: o.id,
+                invoiceNumber: o.invoiceNumber ?? undefined,
+                totalPriceKd: o.totalPrice.toFixed(4),
+                status: o.status,
+                cashStatus: o.cashStatus,
+                createdAtIso: o.createdAt.toISOString(),
+                completedAtIso: o.completedAt?.toISOString(),
+            });
+            ordersBySub.set(o.subscriptionId, list);
+        }
+        return subs.map((s) => ({
+            id: s.id,
+            status: s.status,
+            planNameSnapshot: s.planNameSnapshot,
+            planSalePriceSnapshot: s.planSalePriceSnapshot.toFixed(4),
+            planActualBalanceSnapshot: s.planActualBalanceSnapshot.toFixed(4),
+            planValidityDaysSnapshot: s.planValidityDaysSnapshot,
+            carriedBalanceKd: s.carriedBalanceKd.toFixed(4),
+            parentSubscriptionId: s.parentSubscriptionId ?? undefined,
+            activatedAtIso: s.activatedAt.toISOString(),
+            expiresAtIso: s.expiresAt.toISOString(),
+            closedAtIso: s.closedAt?.toISOString(),
+            closedReason: s.closedReason ?? undefined,
+            invoices: ordersBySub.get(s.id) ?? [],
+        }));
+    }
 };
 exports.CallCenterService = CallCenterService;
 exports.CallCenterService = CallCenterService = __decorate([

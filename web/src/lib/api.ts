@@ -1296,6 +1296,66 @@ export type SubscriptionActivationSettlement = {
   previousDebt: string;
   newBalance: string;
   newDebt: string;
+  /**
+   * V19.4 — CC pack #2. Identifier of the freshly-opened
+   * `CustomerSubscription` row; undefined on legacy clients that haven't
+   * been redeployed after the rollover migration.
+   */
+  subscriptionId?: string;
+  /**
+   * Predecessor subscription id when a rollover happened, null otherwise.
+   */
+  rolledOverFromSubscriptionId?: string | null;
+  /**
+   * Signed string (4dp). + credit carried, - debt carried, '0.0000' none.
+   */
+  carriedBalanceKd?: string;
+};
+
+/**
+ * V19.4 — CC pack #2. Read-only preview shape returned by
+ * `GET /api/call-center/customers/:id/subscription-rollover-preview`.
+ */
+export type SubscriptionRolloverPreview = {
+  hasPrevious: boolean;
+  carriedBalanceKd?: string;
+  previousPlanName?: string;
+  previousActivatedAtIso?: string;
+  previousExpiresAtIso?: string;
+  currentWalletBalanceKd?: string;
+  currentWalletDebtKd?: string;
+};
+
+/**
+ * V19.4 — CC pack #11/#12. One entry in a customer's subscription chain.
+ */
+export type CustomerSubscriptionRow = {
+  id: string;
+  status:
+    | 'ACTIVE'
+    | 'EXPIRED'
+    | 'ROLLED_OVER'
+    | 'CUT_OFF'
+    | 'CANCELLED';
+  planNameSnapshot: string;
+  planSalePriceSnapshot: string;
+  planActualBalanceSnapshot: string;
+  planValidityDaysSnapshot: number;
+  carriedBalanceKd: string;
+  parentSubscriptionId?: string;
+  activatedAtIso: string;
+  expiresAtIso: string;
+  closedAtIso?: string;
+  closedReason?: string;
+  invoices: Array<{
+    orderId: string;
+    invoiceNumber?: string;
+    totalPriceKd: string;
+    status: string;
+    cashStatus: string;
+    createdAtIso: string;
+    completedAtIso?: string;
+  }>;
 };
 
 export type ActivateSubscriptionResponse = {

@@ -57,6 +57,26 @@ enum LedgerTransactionType {
 }
 
 /**
+ * V19.4 — CC pack #2/#11/#12. Lifecycle of an individual subscription
+ * instance (distinct from the plan catalogue entry). Each row in
+ * `CustomerSubscription` walks through these states linearly:
+ * ACTIVE        activatedAt set, expiresAt in future, current wallet plan
+ * EXPIRED       expiresAt passed, never rolled over nor cancelled
+ * ROLLED_OVER   replaced by a newer activation; balance carried forward
+ * (positive = credit carried, negative = debt carried)
+ * CUT_OFF       operator-closed after a non-payment policy trigger
+ * CANCELLED     administrative cancellation (refund / fraud / duplicate)
+ * No state skips directly back to ACTIVE — a new row is always created.
+ */
+enum CustomerSubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  ROLLED_OVER
+  CUT_OFF
+  CANCELLED
+}
+
+/**
  * POS / daily sales — how the non-wallet portion was collected (if any).
  */
 enum PosPaymentMethod {
@@ -177,6 +197,7 @@ model User {
 
   // ─── HR master-data (Stage D) ─────────────────────────────────────
   /**
+   * /**
    * /** Kuwaiti Civil ID — البطاقة المدنية.
    */
   civilId            String?   @unique
@@ -387,11 +408,12 @@ model Customer {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  originBranch       Branch?              @relation("CustomerOriginBranch", fields: [originBranchId], references: [id], onDelete: SetNull)
+  originBranch       Branch?                @relation("CustomerOriginBranch", fields: [originBranchId], references: [id], onDelete: SetNull)
   orders             Order[]
   wallet             CustomerWallet?
   transactionHistory TransactionHistory[]
   debtLedgerEntries  DebtLedgerEntry[]
+  subscriptions      CustomerSubscription[]
 
   @@index([phone])
   @@index([phone2])
@@ -418,7 +440,8 @@ model SubscriptionPlan {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  subscriberWallets CustomerWallet[] @relation("WalletSubscriptionPlan")
+  subscriberWallets     CustomerWallet[]       @relation("WalletSubscriptionPlan")
+  customerSubscriptions CustomerSubscription[] @relation("SubscriptionPlanInstances")
 }
 
 model CustomerWallet {
@@ -459,29 +482,110 @@ model CustomerWallet {
   @@index([subscriptionExpiresAt])
 }
 
+/**
+ * V19.4 — CC pack #2, #11, #12. An isolated ledger instance for a
+ * single subscription purchase. Previously the system kept one row
+ * per customer on `CustomerWallet` and each new activation *overwrote*
+ * the plan fields; history lived only in `TransactionHistory`. That
+ * worked for "what's my current balance" but broke the call-centre
+ * use-cases the operators actually need:
+ * • "أرني كل اشتراكاتي السابقة" (per-instance statement)
+ * • "كم كان رصيدي لمّا انتهى الاشتراك الأسبق؟" (carried balance)
+ * • "هذه الفاتورة تحت أي اشتراك قُطعت؟" (invoice→subscription link)
+ * `CustomerWallet` stays as the live "sum" snapshot (fast reads for
+ * POS). `CustomerSubscription` is the append-only audit trail and the
+ * source of truth for history. Each activation now closes the prior
+ * row (status = ROLLED_OVER) and inserts a new one whose
+ * `carriedBalanceKd` carries the signed wallet delta forward, so the
+ * operator can see *why* the new wallet started with a non-zero
+ * balance or debt.
+ * Plan fields are snapshotted (name, sale price, actual balance,
+ * validity days) because `SubscriptionPlan` rows can be renamed or
+ * deactivated; historical statements must render stable labels.
+ */
+model CustomerSubscription {
+  id         String                     @id @default(uuid()) @db.Uuid
+  customerId String                     @db.Uuid
+  planId     String?                    @db.Uuid
+  status     CustomerSubscriptionStatus @default(ACTIVE)
+
+  // Snapshots taken at activation time so historical displays are stable
+  // even if the plan is renamed, re-priced, or soft-deleted afterwards.
+  planNameSnapshot          String
+  planSalePriceSnapshot     Decimal @db.Decimal(19, 4)
+  planActualBalanceSnapshot Decimal @db.Decimal(19, 4)
+  planValidityDaysSnapshot  Int
+
+  /**
+   * Signed delta carried into this subscription from the predecessor:
+   * + = prior prepaid balance migrated forward (good for customer)
+   * - = prior outstanding debt migrated forward (owed at start)
+   * 0 = first subscription ever, or predecessor was exactly even
+   */
+  carriedBalanceKd Decimal @default(0) @db.Decimal(19, 4)
+
+  /**
+   * Chain linkage. Strictly linear 1:1 — each subscription has at most
+   * one predecessor, and at most one successor (found via the reverse
+   * `successor` backref). We only persist the backward pointer because
+   * the forward direction is derivable; keeping both would risk the
+   * two columns drifting out of sync under concurrent updates.
+   */
+  parentSubscriptionId String? @unique @db.Uuid
+
+  activatedAt  DateTime
+  expiresAt    DateTime
+  closedAt     DateTime?
+  closedReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  customer  Customer              @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  plan      SubscriptionPlan?     @relation("SubscriptionPlanInstances", fields: [planId], references: [id], onDelete: SetNull)
+  parent    CustomerSubscription? @relation("SubscriptionChain", fields: [parentSubscriptionId], references: [id], onDelete: SetNull)
+  successor CustomerSubscription? @relation("SubscriptionChain")
+
+  orders             Order[]              @relation("OrderSubscription")
+  transactionHistory TransactionHistory[] @relation("TransactionSubscription")
+
+  @@index([customerId, createdAt])
+  @@index([customerId, status])
+  @@index([expiresAt])
+}
+
 model TransactionHistory {
-  id            String                @id @default(uuid()) @db.Uuid
-  type          LedgerTransactionType
-  customerId    String                @db.Uuid
-  orderId       String?               @db.Uuid
+  id             String                @id @default(uuid()) @db.Uuid
+  type           LedgerTransactionType
+  customerId     String                @db.Uuid
+  orderId        String?               @db.Uuid
+  /**
+   * V19.4 — optional link to the CustomerSubscription instance this
+   * transaction belongs to (activation, order-settlement under a given
+   * plan, rollover carry, etc.). Nullable for backward compatibility
+   * with rows written before the per-subscription ledger existed.
+   */
+  subscriptionId String?               @db.Uuid
   /**
    * Primary monetary amount for this line (order total, credit granted, etc.)
    */
-  amount        Decimal               @db.Decimal(19, 4)
-  balanceBefore Decimal               @db.Decimal(19, 4)
-  balanceAfter  Decimal               @db.Decimal(19, 4)
-  debtBefore    Decimal               @db.Decimal(19, 4)
-  debtAfter     Decimal               @db.Decimal(19, 4)
-  metadata      Json?
-  performedById String?               @db.Uuid
-  createdAt     DateTime              @default(now())
+  amount         Decimal               @db.Decimal(19, 4)
+  balanceBefore  Decimal               @db.Decimal(19, 4)
+  balanceAfter   Decimal               @db.Decimal(19, 4)
+  debtBefore     Decimal               @db.Decimal(19, 4)
+  debtAfter      Decimal               @db.Decimal(19, 4)
+  metadata       Json?
+  performedById  String?               @db.Uuid
+  createdAt      DateTime              @default(now())
 
-  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  order       Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
-  performedBy User?    @relation("LedgerPerformedBy", fields: [performedById], references: [id], onDelete: SetNull)
+  customer     Customer              @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  order        Order?                @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  performedBy  User?                 @relation("LedgerPerformedBy", fields: [performedById], references: [id], onDelete: SetNull)
+  subscription CustomerSubscription? @relation("TransactionSubscription", fields: [subscriptionId], references: [id], onDelete: SetNull)
 
   @@index([customerId, createdAt])
   @@index([orderId])
+  @@index([subscriptionId])
 }
 
 model Order {
@@ -543,14 +647,24 @@ model Order {
    * the work to whoever actually issued the invoice.
    */
   transferredFromDriverId String?           @db.Uuid
+  /**
+   * V19.4 — CC pack #11. Points at the `CustomerSubscription` instance
+   * that was active when this invoice was opened. Nullable so non-
+   * subscription invoices (walk-ins, ad-hoc POS tickets) still work.
+   * Populated at checkout time so the customer statement can group
+   * invoices by subscription without having to reason about time
+   * windows + plan overwrites.
+   */
+  subscriptionId          String?           @db.Uuid
   createdAt               DateTime          @default(now())
   updatedAt               DateTime          @updatedAt
 
-  customer              Customer             @relation(fields: [customerId], references: [id])
-  driver                User?                @relation("OrderDriver", fields: [driverId], references: [id])
-  transferredFromDriver User?                @relation("OrderTransferredFromDriver", fields: [transferredFromDriverId], references: [id], onDelete: SetNull)
-  posPaymentBundle      PosPaymentBundle?    @relation(fields: [posPaymentBundleId], references: [id], onDelete: SetNull)
-  handoverShift         Shift?               @relation("ShiftHandoverOrders", fields: [handoverShiftId], references: [id], onDelete: SetNull)
+  customer              Customer              @relation(fields: [customerId], references: [id])
+  driver                User?                 @relation("OrderDriver", fields: [driverId], references: [id])
+  transferredFromDriver User?                 @relation("OrderTransferredFromDriver", fields: [transferredFromDriverId], references: [id], onDelete: SetNull)
+  posPaymentBundle      PosPaymentBundle?     @relation(fields: [posPaymentBundleId], references: [id], onDelete: SetNull)
+  handoverShift         Shift?                @relation("ShiftHandoverOrders", fields: [handoverShiftId], references: [id], onDelete: SetNull)
+  subscription          CustomerSubscription? @relation("OrderSubscription", fields: [subscriptionId], references: [id], onDelete: SetNull)
   lineItems             OrderLineItem[]
   transactionHistory    TransactionHistory[]
   debtLedgerEntries     DebtLedgerEntry[]
@@ -566,6 +680,7 @@ model Order {
   @@index([handoverShiftId])
   @@index([transferredFromDriverId])
   @@index([serialNumber])
+  @@index([subscriptionId])
 }
 
 /**

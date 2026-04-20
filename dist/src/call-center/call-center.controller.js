@@ -67,6 +67,12 @@ let CallCenterController = class CallCenterController {
     listSettlements(customerId) {
         return this.callCenterService.listCustomerSettlementHistory(customerId);
     }
+    previewSubscriptionRollover(customerId) {
+        return this.callCenterService.previewSubscriptionRollover(customerId);
+    }
+    listCustomerSubscriptionChain(customerId) {
+        return this.callCenterService.listCustomerSubscriptionChain(customerId);
+    }
 };
 exports.CallCenterController = CallCenterController;
 __decorate([
@@ -199,6 +205,28 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", void 0)
 ], CallCenterController.prototype, "listSettlements", null);
+__decorate([
+    (0, common_1.Get)('customers/:customerId/subscription-rollover-preview'),
+    (0, swagger_1.ApiOperation)({
+        summary: `Preview subscription rollover (${branding_1.APP_BRAND})`,
+        description: 'V19.4 CC pack #2 — read-only snapshot of what the next subscription activation will carry forward. Returns `hasPrevious:false` for first-time activations. The UI uses this to power the "are you sure?" confirmation modal before POST /subscriptions/activate. No side effects.',
+    }),
+    __param(0, (0, common_1.Param)('customerId', common_1.ParseUUIDPipe)),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], CallCenterController.prototype, "previewSubscriptionRollover", null);
+__decorate([
+    (0, common_1.Get)('customers/:customerId/subscriptions'),
+    (0, swagger_1.ApiOperation)({
+        summary: `Customer subscription chain (${branding_1.APP_BRAND})`,
+        description: 'V19.4 CC pack #11 + #12 — full chain of subscriptions for a customer, most-recent first, with every invoice issued while each subscription window was ACTIVE. Powers the call-center subscriptions timeline.',
+    }),
+    __param(0, (0, common_1.Param)('customerId', common_1.ParseUUIDPipe)),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], CallCenterController.prototype, "listCustomerSubscriptionChain", null);
 exports.CallCenterController = CallCenterController = __decorate([
     (0, swagger_1.ApiTags)('call-center'),
     (0, swagger_1.ApiBearerAuth)('bearer'),

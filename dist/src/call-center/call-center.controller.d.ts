@@ -67,4 +67,6 @@ export declare class CallCenterController {
     }>;
     markSubscriberReminderSent(customerId: string): Promise<import("./dto/reminder-result.dto").ReminderResultDto>;
     listSettlements(customerId: string): Promise<import("./dto/settlement-history-row.dto").SettlementHistoryRowDto[]>;
+    previewSubscriptionRollover(customerId: string): Promise<import("./dto/subscription-rollover-preview.dto").SubscriptionRolloverPreviewDto>;
+    listCustomerSubscriptionChain(customerId: string): Promise<import("./dto/customer-subscription.dto").CustomerSubscriptionRowDto[]>;
 }
