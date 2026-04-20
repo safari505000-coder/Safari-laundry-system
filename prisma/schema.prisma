@@ -8,7 +8,9 @@ datasource db {
   provider = "postgresql"
 }
 
-/** Institutional roles — enforced in app, permissions, and JWT guards. */
+/**
+ * Institutional roles — enforced in app, permissions, and JWT guards.
+ */
 enum SafariRole {
   OWNER
   GENERAL_MANAGER
@@ -35,7 +37,9 @@ enum ServiceType {
   NORMAL
 }
 
-/** Cash custody for completed COD-style orders. */
+/**
+ * Cash custody for completed COD-style orders.
+ */
 enum CashStatus {
   UNPAID
   PAID_TO_DRIVER
@@ -52,7 +56,9 @@ enum LedgerTransactionType {
   ORDER_WALLET_SETTLEMENT
 }
 
-/** POS / daily sales — how the non-wallet portion was collected (if any). */
+/**
+ * POS / daily sales — how the non-wallet portion was collected (if any).
+ */
 enum PosPaymentMethod {
   SUBSCRIPTION_WALLET
   CASH
@@ -79,7 +85,9 @@ enum DebtEntityCategory {
   CALL_CENTER
 }
 
-/** Manager shift-end bank paperwork for accountant reconciliation. */
+/**
+ * Manager shift-end bank paperwork for accountant reconciliation.
+ */
 enum BankDepositType {
   CASH_DEPOSIT_SLIP
   KNET_Z_REPORT
@@ -99,10 +107,10 @@ enum DepositStatus {
 /**
  * Dastur §2.MANAGER / §3 — Manager custody aging.
  * Lifecycle of a cash "bag" a Branch Manager receives from a Driver:
- *   PENDING_DEPOSIT      → received from driver, no bank slip yet (24h clock runs)
- *   AWAITING_VERIFICATION → manager uploaded slip, accountant to verify
- *   VERIFIED             → accountant approved, custody closed
- *   REJECTED             → accountant rejected slip, back under manager liability
+ * PENDING_DEPOSIT      → received from driver, no bank slip yet (24h clock runs)
+ * AWAITING_VERIFICATION → manager uploaded slip, accountant to verify
+ * VERIFIED             → accountant approved, custody closed
+ * REJECTED             → accountant rejected slip, back under manager liability
  */
 /**
  * Dastur §5 — Debt transfer workflow states.
@@ -126,19 +134,29 @@ enum ManagerCashCustodyStatus {
 }
 
 model User {
-  id          String     @id @default(uuid()) @db.Uuid
-  /** Unique login handle (staff ID / username). */
-  username    String     @unique
-  password    String
-  fullName    String
-  /** Legacy corporate employee number (optional). */
-  employeeId  String?    @unique
-  /** Legacy job title (optional). */
-  jobTitle    String?
-  phone       String?    @unique
-  /** Optional vehicle display label for tracking UI (e.g. Toyota LC300). */
-  vehicleLabel String?
-  /** Last GPS point as "lat,lng". */
+  id                String     @id @default(uuid()) @db.Uuid
+  /**
+   * Unique login handle (staff ID / username).
+   */
+  username          String     @unique
+  password          String
+  fullName          String
+  /**
+   * Legacy corporate employee number (optional).
+   */
+  employeeId        String?    @unique
+  /**
+   * Legacy job title (optional).
+   */
+  jobTitle          String?
+  phone             String?    @unique
+  /**
+   * Optional vehicle display label for tracking UI (e.g. Toyota LC300).
+   */
+  vehicleLabel      String?
+  /**
+   * Last GPS point as "lat,lng".
+   */
   lastKnownLocation String?
   /**
    * Dastur §1 (V1.5) — Owner-assigned single-letter prefix for drivers
@@ -146,69 +164,102 @@ model User {
    * every outgoing order with a human-readable serial like "A-1042".
    * Optional: non-driver users never receive one.
    */
-  driverPrefix String?   @unique
-  safariRole  SafariRole @default(DRIVER)
-  /** Owner toggle: inactive users cannot sign in. */
-  isActive    Boolean    @default(true)
-  roleId      String     @db.Uuid
-  branchId    String?    @db.Uuid
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  driverPrefix      String?    @unique
+  safariRole        SafariRole @default(DRIVER)
+  /**
+   * Owner toggle: inactive users cannot sign in.
+   */
+  isActive          Boolean    @default(true)
+  roleId            String     @db.Uuid
+  branchId          String?    @db.Uuid
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
 
   // ─── HR master-data (Stage D) ─────────────────────────────────────
-  /** Kuwaiti Civil ID — البطاقة المدنية. */
-  civilId             String?   @unique
-  nationality         String?
-  address             String?
-  bankName            String?
-  /** IBAN for salary transfers. */
-  bankIban            String?
-  hireDate            DateTime?
-  /** Monthly basic salary used to seed new payroll rows. */
-  basicMonthlySalary  Decimal?  @db.Decimal(19, 4)
-  /** Fixed monthly allowances (housing, transport, etc.) used to seed payroll. */
-  monthlyAllowances   Decimal?  @db.Decimal(19, 4)
+  /**
+   * /** Kuwaiti Civil ID — البطاقة المدنية.
+   */
+  civilId            String?   @unique
+  nationality        String?
+  address            String?
+  bankName           String?
+  /**
+   * IBAN for salary transfers.
+   */
+  bankIban           String?
+  hireDate           DateTime?
+  /**
+   * Monthly basic salary used to seed new payroll rows.
+   */
+  basicMonthlySalary Decimal?  @db.Decimal(19, 4)
+  /**
+   * Fixed monthly allowances (housing, transport, etc.) used to seed payroll.
+   */
+  monthlyAllowances  Decimal?  @db.Decimal(19, 4)
 
-  role           Role     @relation(fields: [roleId], references: [id])
-  branch         Branch?  @relation(fields: [branchId], references: [id])
-  auditLogs          AuditLog[]
-  ordersAsDriver     Order[]  @relation("OrderDriver")
-  shiftsAsDriver        Shift[]             @relation("ShiftDriver")
-  shiftConfirmations    Shift[]             @relation("ShiftConfirmedBy")
-  ledgerTransactions    TransactionHistory[] @relation("LedgerPerformedBy")
-  expensesRecorded      BranchExpense[]      @relation("ExpenseRecordedBy")
-  payrolls              Payroll[]
-  debtLedgerEntries     DebtLedgerEntry[]    @relation("DebtEntryActor")
-  bankDepositsUploaded  BankDepositLog[]     @relation("BankDepositUploadedBy")
-  bankDepositsVerifiedAsAccountant BankDepositLog[] @relation("BankDepositVerifiedBy")
-  depositsRequested     Deposit[]            @relation("DepositDriver")
-  depositsAudited       Deposit[]            @relation("DepositAuditedBy")
-  posPaymentBundlesLed  PosPaymentBundle[]   @relation("PosPaymentBundleDriver")
-  stockMovementsRecorded StockMovement[]     @relation("StockMovementRecordedBy")
-  /** Cash "bags" the user received from drivers while acting as Branch Manager. */
-  managerCustodyBagsHeld       ManagerCashCustody[] @relation("ManagerCustodyManager")
-  /** Cash bags attributed to the user as the source driver (historical, even after handover). */
-  managerCustodyBagsHandedOver ManagerCashCustody[] @relation("ManagerCustodyDriver")
-  /** Accountant verifications on manager custody bags. */
-  managerCustodyVerifications  ManagerCashCustody[] @relation("ManagerCustodyVerifiedBy")
-  /** Accountant rejections on manager custody bags. */
-  managerCustodyRejections     ManagerCashCustody[] @relation("ManagerCustodyRejectedBy")
-  /** Debt transfers where this user is the departing (source) driver. */
-  debtTransfersAsSource        DebtTransfer[]       @relation("DebtTransferSource")
-  /** Debt transfers where this user is the replacement (target) driver. */
-  debtTransfersAsTarget        DebtTransfer[]       @relation("DebtTransferTarget")
-  /** Debt transfers initiated by this user (GM or ACCOUNTANT). */
-  debtTransfersExecuted        DebtTransfer[]       @relation("DebtTransferExecutor")
-  /** Debt transfers cancelled by this user. */
-  debtTransfersCancelled       DebtTransfer[]       @relation("DebtTransferCanceller")
-  /** Orders whose cash responsibility was transferred FROM this driver (audit only). */
-  ordersTransferredFrom        Order[]              @relation("OrderTransferredFromDriver")
-  /** HR — daily attendance rows for this user. */
-  attendanceLogs               AttendanceLog[]
-  leaveRequests                LeaveRequest[]    @relation("LeaveRequestUser")
-  leaveApprovals               LeaveRequest[]    @relation("LeaveRequestApprover")
-  employeeLoans                EmployeeLoan[]    @relation("EmployeeLoanUser")
-  loanApprovals                EmployeeLoan[]    @relation("EmployeeLoanApprover")
+  role                             Role                   @relation(fields: [roleId], references: [id])
+  branch                           Branch?                @relation(fields: [branchId], references: [id])
+  auditLogs                        AuditLog[]
+  ordersAsDriver                   Order[]                @relation("OrderDriver")
+  shiftsAsDriver                   Shift[]                @relation("ShiftDriver")
+  shiftConfirmations               Shift[]                @relation("ShiftConfirmedBy")
+  ledgerTransactions               TransactionHistory[]   @relation("LedgerPerformedBy")
+  expensesRecorded                 BranchExpense[]        @relation("ExpenseRecordedBy")
+  payrolls                         Payroll[]
+  debtLedgerEntries                DebtLedgerEntry[]      @relation("DebtEntryActor")
+  bankDepositsUploaded             BankDepositLog[]       @relation("BankDepositUploadedBy")
+  bankDepositsVerifiedAsAccountant BankDepositLog[]       @relation("BankDepositVerifiedBy")
+  depositsRequested                Deposit[]              @relation("DepositDriver")
+  depositsAudited                  Deposit[]              @relation("DepositAuditedBy")
+  posPaymentBundlesLed             PosPaymentBundle[]     @relation("PosPaymentBundleDriver")
+  stockMovementsRecorded           StockMovement[]        @relation("StockMovementRecordedBy")
+  purchaseOrdersCreated            PurchaseOrder[]        @relation("PurchaseOrderCreatedBy")
+  purchaseOrdersApproved           PurchaseOrder[]        @relation("PurchaseOrderApprovedBy")
+  purchaseOrderReceipts            PurchaseOrderReceipt[] @relation("PurchaseOrderReceivedBy")
+  /**
+   * Cash "bags" the user received from drivers while acting as Branch Manager.
+   */
+  managerCustodyBagsHeld           ManagerCashCustody[]   @relation("ManagerCustodyManager")
+  /**
+   * Cash bags attributed to the user as the source driver (historical, even after handover).
+   */
+  managerCustodyBagsHandedOver     ManagerCashCustody[]   @relation("ManagerCustodyDriver")
+  /**
+   * Accountant verifications on manager custody bags.
+   */
+  managerCustodyVerifications      ManagerCashCustody[]   @relation("ManagerCustodyVerifiedBy")
+  /**
+   * Accountant rejections on manager custody bags.
+   */
+  managerCustodyRejections         ManagerCashCustody[]   @relation("ManagerCustodyRejectedBy")
+  /**
+   * Debt transfers where this user is the departing (source) driver.
+   */
+  debtTransfersAsSource            DebtTransfer[]         @relation("DebtTransferSource")
+  /**
+   * Debt transfers where this user is the replacement (target) driver.
+   */
+  debtTransfersAsTarget            DebtTransfer[]         @relation("DebtTransferTarget")
+  /**
+   * Debt transfers initiated by this user (GM or ACCOUNTANT).
+   */
+  debtTransfersExecuted            DebtTransfer[]         @relation("DebtTransferExecutor")
+  /**
+   * Debt transfers cancelled by this user.
+   */
+  debtTransfersCancelled           DebtTransfer[]         @relation("DebtTransferCanceller")
+  /**
+   * Orders whose cash responsibility was transferred FROM this driver (audit only).
+   */
+  ordersTransferredFrom            Order[]                @relation("OrderTransferredFromDriver")
+  /**
+   * HR — daily attendance rows for this user.
+   */
+  attendanceLogs                   AttendanceLog[]
+  leaveRequests                    LeaveRequest[]         @relation("LeaveRequestUser")
+  leaveApprovals                   LeaveRequest[]         @relation("LeaveRequestApprover")
+  employeeLoans                    EmployeeLoan[]         @relation("EmployeeLoanUser")
+  loanApprovals                    EmployeeLoan[]         @relation("EmployeeLoanApprover")
 }
 
 enum ExpenseCategory {
@@ -224,13 +275,17 @@ enum ExpenseStatus {
   AUDIT
 }
 
-/** Field / branch expense funding source — drives wallet vs owner-radar accounting. */
+/**
+ * Field / branch expense funding source — drives wallet vs owner-radar accounting.
+ */
 enum ExpenseMethod {
   CASH
   PREPAID_CARD
 }
 
-/** Unified append-only ledger (Sales, Expenses, Debts, settlements). */
+/**
+ * Unified append-only ledger (Sales, Expenses, Debts, settlements).
+ */
 enum GeneralLedgerEntryType {
   POS_SALE_COMPLETED
   EXPENSE_RECORDED
@@ -243,7 +298,9 @@ enum PayrollStatus {
   PAID
 }
 
-/** Recurring branch overheads (rent, utilities) — accrued by calendar month in reports. */
+/**
+ * Recurring branch overheads (rent, utilities) — accrued by calendar month in reports.
+ */
 enum FixedExpenseCategory {
   RENT
   ELECTRICITY
@@ -262,32 +319,36 @@ enum KnetCommissionRule {
 }
 
 model PaymentMethodFeeConfig {
-  id                   String             @id
-  knetFlatKd           Decimal            @default(0.1000) @db.Decimal(19, 4)
-  knetPercentOfGross   Decimal            @default(0.015000) @db.Decimal(19, 6)
-  knetRule             KnetCommissionRule @default(HIGHER_OF_FLAT_AND_PERCENT)
-  cardPercentOfGross   Decimal            @default(0.025000) @db.Decimal(19, 6)
-  updatedAt            DateTime           @updatedAt
+  id                 String             @id
+  knetFlatKd         Decimal            @default(0.1000) @db.Decimal(19, 4)
+  knetPercentOfGross Decimal            @default(0.015000) @db.Decimal(19, 6)
+  knetRule           KnetCommissionRule @default(HIGHER_OF_FLAT_AND_PERCENT)
+  cardPercentOfGross Decimal            @default(0.025000) @db.Decimal(19, 6)
+  updatedAt          DateTime           @updatedAt
 }
 
-/** Branch operational expenses (manager-recorded); deducted from daily cash in reports. */
+/**
+ * Branch operational expenses (manager-recorded); deducted from daily cash in reports.
+ */
 model BranchExpense {
-  id               String          @id @default(uuid()) @db.Uuid
-  title            String
-  amount           Decimal         @db.Decimal(19, 4)
-  category         ExpenseCategory
-  expenseMethod    ExpenseMethod   @default(CASH)
-  status           ExpenseStatus   @default(PENDING_ACCOUNTANT)
-  note             String?
-  /** Temporary local/file/data-url receipt pointer until cloud storage is configured. */
-  receiptUrl       String?         @db.Text
-  recordedById     String          @db.Uuid
-  branchId         String?         @db.Uuid
-  expenseDate      DateTime        @default(now())
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
+  id            String          @id @default(uuid()) @db.Uuid
+  title         String
+  amount        Decimal         @db.Decimal(19, 4)
+  category      ExpenseCategory
+  expenseMethod ExpenseMethod   @default(CASH)
+  status        ExpenseStatus   @default(PENDING_ACCOUNTANT)
+  note          String?
+  /**
+   * Temporary local/file/data-url receipt pointer until cloud storage is configured.
+   */
+  receiptUrl    String?         @db.Text
+  recordedById  String          @db.Uuid
+  branchId      String?         @db.Uuid
+  expenseDate   DateTime        @default(now())
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
 
-  recordedBy User @relation("ExpenseRecordedBy", fields: [recordedById], references: [id])
+  recordedBy User    @relation("ExpenseRecordedBy", fields: [recordedById], references: [id])
   branch     Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
 
   @@index([expenseDate])
@@ -297,32 +358,40 @@ model BranchExpense {
 }
 
 model Customer {
-  id        String   @id @default(uuid()) @db.Uuid
-  phone     String
-  phone2    String?
-  motherContact String?
-  wifeContact   String?
-  sonContact    String?
-  /** POS / call-center display name when captured. */
-  displayName String?
-  /** Optional when captured later from the driver’s paperwork. */
-  address   String?
-  /** Kuwait-style address parts (POS). Composed line also stored in `address` when provided. */
+  id             String   @id @default(uuid()) @db.Uuid
+  phone          String
+  phone2         String?
+  motherContact  String?
+  wifeContact    String?
+  sonContact     String?
+  /**
+   * POS / call-center display name when captured.
+   */
+  displayName    String?
+  /**
+   * Optional when captured later from the driver’s paperwork.
+   */
+  address        String?
+  /**
+   * Kuwait-style address parts (POS). Composed line also stored in `address` when provided.
+   */
   addressArea    String?
   addressBlock   String?
   addressStreet  String?
   addressAvenue  String?
   addressHouse   String?
-  /** Immutable attribution branch set from first transaction/subscription. */
+  /**
+   * Immutable attribution branch set from first transaction/subscription.
+   */
   originBranchId String?  @db.Uuid
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  originBranch         Branch?  @relation("CustomerOriginBranch", fields: [originBranchId], references: [id], onDelete: SetNull)
-  orders              Order[]
-  wallet              CustomerWallet?
-  transactionHistory  TransactionHistory[]
-  debtLedgerEntries   DebtLedgerEntry[]
+  originBranch       Branch?              @relation("CustomerOriginBranch", fields: [originBranchId], references: [id], onDelete: SetNull)
+  orders             Order[]
+  wallet             CustomerWallet?
+  transactionHistory TransactionHistory[]
+  debtLedgerEntries  DebtLedgerEntry[]
 
   @@index([phone])
   @@index([phone2])
@@ -333,12 +402,18 @@ model Customer {
 model SubscriptionPlan {
   id            String   @id @default(uuid()) @db.Uuid
   name          String
-  /** Amount paid by the customer. */
+  /**
+   * Amount paid by the customer.
+   */
   salePrice     Decimal  @default(0) @db.Decimal(19, 4)
-  /** Credit granted to the customer wallet. */
+  /**
+   * Credit granted to the customer wallet.
+   */
   actualBalance Decimal  @default(0) @db.Decimal(19, 4)
-  /** Calendar length of the subscription window from each activation date. */
-  validityDays Int      @default(30)
+  /**
+   * Calendar length of the subscription window from each activation date.
+   */
+  validityDays  Int      @default(30)
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -347,49 +422,59 @@ model SubscriptionPlan {
 }
 
 model CustomerWallet {
-  id         String   @id @default(uuid()) @db.Uuid
-  customerId String   @unique @db.Uuid
-  /** Prepaid credit the company owes in service value. */
-  balance    Decimal  @default(0) @db.Decimal(19, 4)
-  /** Amount customer owes beyond wallet (e.g. order exceeded credit). */
-  debt       Decimal  @default(0) @db.Decimal(19, 4)
-  /** Last subscription activation instant (authoritative window start when set). */
-  subscriptionActivatedAt DateTime?
-  /** End of the prepaid subscription term (exclusive calendar boundary in UTC date math). */
-  subscriptionExpiresAt   DateTime?
-  subscriptionPlanId    String?   @db.Uuid
-  subscriptionPlanName  String?
+  id                         String    @id @default(uuid()) @db.Uuid
+  customerId                 String    @unique @db.Uuid
+  /**
+   * Prepaid credit the company owes in service value.
+   */
+  balance                    Decimal   @default(0) @db.Decimal(19, 4)
+  /**
+   * Amount customer owes beyond wallet (e.g. order exceeded credit).
+   */
+  debt                       Decimal   @default(0) @db.Decimal(19, 4)
+  /**
+   * Last subscription activation instant (authoritative window start when set).
+   */
+  subscriptionActivatedAt    DateTime?
+  /**
+   * End of the prepaid subscription term (exclusive calendar boundary in UTC date math).
+   */
+  subscriptionExpiresAt      DateTime?
+  subscriptionPlanId         String?   @db.Uuid
+  subscriptionPlanName       String?
   /**
    * Dastur §5 (V1.5) — Call Center subscription-renewal reminders.
    * `subscriptionReminderCount` increments at most once every 24h when
    * the Call Center sends a WhatsApp/SMS nudge; `subscriptionLastReminderAt`
    * is the guard timestamp the backend uses to enforce that window.
    */
-  subscriptionReminderCount      Int       @default(0)
-  subscriptionLastReminderAt     DateTime?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  subscriptionReminderCount  Int       @default(0)
+  subscriptionLastReminderAt DateTime?
+  createdAt                  DateTime  @default(now())
+  updatedAt                  DateTime  @updatedAt
 
-  customer           Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  subscriptionPlan   SubscriptionPlan? @relation("WalletSubscriptionPlan", fields: [subscriptionPlanId], references: [id], onDelete: SetNull)
+  customer         Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  subscriptionPlan SubscriptionPlan? @relation("WalletSubscriptionPlan", fields: [subscriptionPlanId], references: [id], onDelete: SetNull)
 
   @@index([subscriptionExpiresAt])
 }
 
 model TransactionHistory {
-  id              String               @id @default(uuid()) @db.Uuid
-  type            LedgerTransactionType
-  customerId      String               @db.Uuid
-  orderId         String?              @db.Uuid
-  /** Primary monetary amount for this line (order total, credit granted, etc.) */
-  amount          Decimal              @db.Decimal(19, 4)
-  balanceBefore   Decimal              @db.Decimal(19, 4)
-  balanceAfter    Decimal              @db.Decimal(19, 4)
-  debtBefore      Decimal              @db.Decimal(19, 4)
-  debtAfter       Decimal              @db.Decimal(19, 4)
-  metadata        Json?
-  performedById   String?              @db.Uuid
-  createdAt       DateTime             @default(now())
+  id            String                @id @default(uuid()) @db.Uuid
+  type          LedgerTransactionType
+  customerId    String                @db.Uuid
+  orderId       String?               @db.Uuid
+  /**
+   * Primary monetary amount for this line (order total, credit granted, etc.)
+   */
+  amount        Decimal               @db.Decimal(19, 4)
+  balanceBefore Decimal               @db.Decimal(19, 4)
+  balanceAfter  Decimal               @db.Decimal(19, 4)
+  debtBefore    Decimal               @db.Decimal(19, 4)
+  debtAfter     Decimal               @db.Decimal(19, 4)
+  metadata      Json?
+  performedById String?               @db.Uuid
+  createdAt     DateTime              @default(now())
 
   customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
   order       Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
@@ -400,41 +485,55 @@ model TransactionHistory {
 }
 
 model Order {
-  id             String        @id @default(uuid()) @db.Uuid
-  status         OrderStatus   @default(PENDING)
-  serviceType    ServiceType   @default(NORMAL)
-  totalPrice     Decimal       @db.Decimal(19, 4)
-  cashStatus     CashStatus    @default(UNPAID)
-  /** Paper invoice reference when the driver has it; null if not yet recorded. */
-  invoiceNumber  String?
+  id                      String            @id @default(uuid()) @db.Uuid
+  status                  OrderStatus       @default(PENDING)
+  serviceType             ServiceType       @default(NORMAL)
+  totalPrice              Decimal           @db.Decimal(19, 4)
+  cashStatus              CashStatus        @default(UNPAID)
+  /**
+   * Paper invoice reference when the driver has it; null if not yet recorded.
+   */
+  invoiceNumber           String?
   /**
    * Dastur §1 (V1.5) — Human-readable, globally unique order serial
    * composed as `<driverPrefix>-<globalCounter>`. Stamped at creation
    * time when the assigned driver has a `driverPrefix`; legacy rows
    * (and driver-less POS tickets) stay null for backward compatibility.
    */
-  serialNumber   String?       @unique
+  serialNumber            String?           @unique
   /**
    * Dastur §5 (V1.5) — Call Center collection reminders counter.
    * Increments at most once every 24h (see `lastReminderAt`).
    */
-  reminderCount  Int           @default(0)
-  lastReminderAt DateTime?
-  notes            String?
-  customerId     String        @db.Uuid
-  driverId         String?       @db.Uuid
-  /** POS checkout: how sale was recognized for reporting (wallet vs external). */
-  posPaymentMethod PosPaymentMethod?
-  /** Set when the order reaches COMPLETED (for daily sales / GL-style reporting). */
-  completedAt      DateTime?
-  /** Set when wallet + debt settlement ran for this order (idempotent). */
-  walletSettledAt  DateTime?
-  /** Multi-invoice POS: single gateway payment for several orders (see PosPaymentBundle). */
-  posPaymentBundleId String?     @db.Uuid
-  /** Hosted Kuwait Gateway (or dev mock) URL issued at checkout for ONLINE orders. */
-  posHostedPaymentUrl String?    @db.Text
-  /** Manager cash handover shift that settled this CASH order into office custody. */
-  handoverShiftId   String?      @db.Uuid
+  reminderCount           Int               @default(0)
+  lastReminderAt          DateTime?
+  notes                   String?
+  customerId              String            @db.Uuid
+  driverId                String?           @db.Uuid
+  /**
+   * POS checkout: how sale was recognized for reporting (wallet vs external).
+   */
+  posPaymentMethod        PosPaymentMethod?
+  /**
+   * Set when the order reaches COMPLETED (for daily sales / GL-style reporting).
+   */
+  completedAt             DateTime?
+  /**
+   * Set when wallet + debt settlement ran for this order (idempotent).
+   */
+  walletSettledAt         DateTime?
+  /**
+   * Multi-invoice POS: single gateway payment for several orders (see PosPaymentBundle).
+   */
+  posPaymentBundleId      String?           @db.Uuid
+  /**
+   * Hosted Kuwait Gateway (or dev mock) URL issued at checkout for ONLINE orders.
+   */
+  posHostedPaymentUrl     String?           @db.Text
+  /**
+   * Manager cash handover shift that settled this CASH order into office custody.
+   */
+  handoverShiftId         String?           @db.Uuid
   /**
    * Dastur §5 — Debt Transfer audit column.
    * When a departing driver's outstanding cash is transferred to a
@@ -443,18 +542,18 @@ model Order {
    * historical sales / commission / shift reports can still attribute
    * the work to whoever actually issued the invoice.
    */
-  transferredFromDriverId String? @db.Uuid
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
+  transferredFromDriverId String?           @db.Uuid
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
 
-  customer           Customer             @relation(fields: [customerId], references: [id])
-  driver             User?                @relation("OrderDriver", fields: [driverId], references: [id])
-  transferredFromDriver User?             @relation("OrderTransferredFromDriver", fields: [transferredFromDriverId], references: [id], onDelete: SetNull)
-  posPaymentBundle   PosPaymentBundle?    @relation(fields: [posPaymentBundleId], references: [id], onDelete: SetNull)
-  handoverShift      Shift?               @relation("ShiftHandoverOrders", fields: [handoverShiftId], references: [id], onDelete: SetNull)
-  lineItems          OrderLineItem[]
-  transactionHistory TransactionHistory[]
-  debtLedgerEntries  DebtLedgerEntry[]
+  customer              Customer             @relation(fields: [customerId], references: [id])
+  driver                User?                @relation("OrderDriver", fields: [driverId], references: [id])
+  transferredFromDriver User?                @relation("OrderTransferredFromDriver", fields: [transferredFromDriverId], references: [id], onDelete: SetNull)
+  posPaymentBundle      PosPaymentBundle?    @relation(fields: [posPaymentBundleId], references: [id], onDelete: SetNull)
+  handoverShift         Shift?               @relation("ShiftHandoverOrders", fields: [handoverShiftId], references: [id], onDelete: SetNull)
+  lineItems             OrderLineItem[]
+  transactionHistory    TransactionHistory[]
+  debtLedgerEntries     DebtLedgerEntry[]
   debtTransferLineItems DebtTransferOrder[]
 
   @@index([driverId])
@@ -481,42 +580,50 @@ model SerialCounter {
   updatedAt DateTime @updatedAt
 }
 
-/** One hosted payment session for multiple POS orders (same customer, one gateway charge). */
+/**
+ * One hosted payment session for multiple POS orders (same customer, one gateway charge).
+ */
 model PosPaymentBundle {
   id            String   @id @default(uuid()) @db.Uuid
   driverId      String   @db.Uuid
   totalAmountKd Decimal  @db.Decimal(19, 4)
   createdAt     DateTime @default(now())
 
-  driver User   @relation("PosPaymentBundleDriver", fields: [driverId], references: [id])
+  driver User    @relation("PosPaymentBundleDriver", fields: [driverId], references: [id])
   orders Order[]
 
   @@index([driverId])
 }
 
 model Shift {
-  id                   String      @id @default(uuid()) @db.Uuid
-  driverId             String      @db.Uuid
-  status               ShiftStatus @default(OPEN)
-  startedAt            DateTime    @default(now())
-  endedAt              DateTime?
-  /** Cash amount the manager physically counted (optional audit). */
-  declaredHandoverTotal Decimal?   @db.Decimal(19, 4)
-  /** Ledger total: orders settled PAID_TO_DRIVER → HANDED_OVER_TO_OFFICE in this handover. */
-  systemHandoverTotal   Decimal?   @db.Decimal(19, 4)
+  id                    String      @id @default(uuid()) @db.Uuid
+  driverId              String      @db.Uuid
+  status                ShiftStatus @default(OPEN)
+  startedAt             DateTime    @default(now())
+  endedAt               DateTime?
+  /**
+   * Cash amount the manager physically counted (optional audit).
+   */
+  declaredHandoverTotal Decimal?    @db.Decimal(19, 4)
+  /**
+   * Ledger total: orders settled PAID_TO_DRIVER → HANDED_OVER_TO_OFFICE in this handover.
+   */
+  systemHandoverTotal   Decimal?    @db.Decimal(19, 4)
   ordersSettledCount    Int?
-  /** Bank deposit receipt file path (e.g. /uploads/handover-receipts/...). */
+  /**
+   * Bank deposit receipt file path (e.g. /uploads/handover-receipts/...).
+   */
   bankDepositReceiptUrl String?
-  confirmedByManagerId  String?    @db.Uuid
+  confirmedByManagerId  String?     @db.Uuid
   confirmedAt           DateTime?
-  createdAt             DateTime   @default(now())
-  updatedAt             DateTime   @updatedAt
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
 
-  driver               User  @relation("ShiftDriver", fields: [driverId], references: [id])
-  confirmedByManager   User? @relation("ShiftConfirmedBy", fields: [confirmedByManagerId], references: [id])
-  bankDepositLogs      BankDepositLog[]
-  handoverOrders       Order[] @relation("ShiftHandoverOrders")
-  managerCustodyBags   ManagerCashCustody[] @relation("ShiftManagerCustody")
+  driver             User                 @relation("ShiftDriver", fields: [driverId], references: [id])
+  confirmedByManager User?                @relation("ShiftConfirmedBy", fields: [confirmedByManagerId], references: [id])
+  bankDepositLogs    BankDepositLog[]
+  handoverOrders     Order[]              @relation("ShiftHandoverOrders")
+  managerCustodyBags ManagerCashCustody[] @relation("ShiftManagerCustody")
 
   @@index([driverId, status])
 }
@@ -524,19 +631,21 @@ model Shift {
 model BankDepositLog {
   id                     String          @id @default(uuid()) @db.Uuid
   depositType            BankDepositType
-  /** Amount (KD) as declared on slip / Z-report for reconciliation. */
+  /**
+   * Amount (KD) as declared on slip / Z-report for reconciliation.
+   */
   amountKd               Decimal         @db.Decimal(19, 4)
   receiptImageUrl        String
   shiftId                String?         @db.Uuid
   uploadedById           String          @db.Uuid
-  verifiedByAccountantId String?        @db.Uuid
+  verifiedByAccountantId String?         @db.Uuid
   verifiedAt             DateTime?
   createdAt              DateTime        @default(now())
   updatedAt              DateTime        @updatedAt
 
-  shift                 Shift? @relation(fields: [shiftId], references: [id], onDelete: SetNull)
-  uploadedBy            User   @relation("BankDepositUploadedBy", fields: [uploadedById], references: [id])
-  verifiedByAccountant  User?  @relation("BankDepositVerifiedBy", fields: [verifiedByAccountantId], references: [id])
+  shift                Shift? @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+  uploadedBy           User   @relation("BankDepositUploadedBy", fields: [uploadedById], references: [id])
+  verifiedByAccountant User?  @relation("BankDepositVerifiedBy", fields: [verifiedByAccountantId], references: [id])
 
   @@index([createdAt])
   @@index([uploadedById])
@@ -564,12 +673,12 @@ model Deposit {
 }
 
 model OrderLineItem {
-  id         String   @id @default(uuid()) @db.Uuid
-  orderId    String   @db.Uuid
-  label      String?
+  id           String       @id @default(uuid()) @db.Uuid
+  orderId      String       @db.Uuid
+  label        String?
   starchOption StarchOption @default(NONE)
-  quantity   Decimal  @db.Decimal(12, 4)
-  unitPrice  Decimal  @db.Decimal(19, 4)
+  quantity     Decimal      @db.Decimal(12, 4)
+  unitPrice    Decimal      @db.Decimal(19, 4)
   /**
    * Optional link to an inventory SKU. When set, the order completion
    * pipeline (`PosService.posCheckout`, gateway finalizer, call-center
@@ -578,34 +687,34 @@ model OrderLineItem {
    * optional so legacy laundry line-items (garment-as-service) continue
    * to work with no inventory coupling.
    */
-  stockItemId String?  @db.Uuid
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  stockItemId  String?      @db.Uuid
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 
-  order      Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  stockItem  StockItem? @relation(fields: [stockItemId], references: [id], onDelete: SetNull)
+  order     Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  stockItem StockItem? @relation(fields: [stockItemId], references: [id], onDelete: SetNull)
 
   @@index([orderId])
   @@index([stockItemId])
 }
 
 model DebtLedgerEntry {
-  id           String             @id @default(uuid()) @db.Uuid
-  customerId   String             @db.Uuid
-  orderId      String?            @db.Uuid
-  source       DebtSource
-  category     DebtEntityCategory
-  amount       Decimal            @db.Decimal(19, 4)
-  branchId     String?            @db.Uuid
-  actorUserId  String?            @db.Uuid
-  note         String?
-  createdAt    DateTime           @default(now())
-  updatedAt    DateTime           @updatedAt
+  id          String             @id @default(uuid()) @db.Uuid
+  customerId  String             @db.Uuid
+  orderId     String?            @db.Uuid
+  source      DebtSource
+  category    DebtEntityCategory
+  amount      Decimal            @db.Decimal(19, 4)
+  branchId    String?            @db.Uuid
+  actorUserId String?            @db.Uuid
+  note        String?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
 
-  customer     Customer           @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  order        Order?             @relation(fields: [orderId], references: [id], onDelete: SetNull)
-  actorUser    User?              @relation("DebtEntryActor", fields: [actorUserId], references: [id], onDelete: SetNull)
-  branch       Branch?            @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  customer  Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  order     Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  actorUser User?    @relation("DebtEntryActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  branch    Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
 
   @@index([customerId, createdAt])
   @@index([source, category, createdAt])
@@ -613,7 +722,9 @@ model DebtLedgerEntry {
   @@index([branchId])
 }
 
-/** Logical grouping for POS / manager item screens (not a second price source). */
+/**
+ * Logical grouping for POS / manager item screens (not a second price source).
+ */
 model LaundryItemCategory {
   id        String   @id @default(uuid()) @db.Uuid
   code      String   @unique
@@ -626,30 +737,34 @@ model LaundryItemCategory {
   items LaundryPriceListItem[]
 }
 
-/** Laundry price list (PDF tariff) — KD per garment × service tier. */
+/**
+ * Laundry price list (PDF tariff) — KD per garment × service tier.
+ */
 model LaundryPriceListItem {
-  id               String   @id @default(uuid()) @db.Uuid
-  code             String   @unique
+  id               String                   @id @default(uuid()) @db.Uuid
+  code             String                   @unique
   nameAr           String
   nameEn           String?
-  sortOrder        Int      @default(0)
-  /** When true, unit price must be entered manually (list prices are 0). */
-  manualEntry      Boolean  @default(false)
+  sortOrder        Int                      @default(0)
+  /**
+   * When true, unit price must be entered manually (list prices are 0).
+   */
+  manualEntry      Boolean                  @default(false)
   /**
    * Soft-hide switch. Inactive items are excluded from POS / Driver catalogs
    * but remain available in manager admin views so historical pricing / names
    * never mutate under already-issued invoices.
    */
-  isActive         Boolean  @default(true)
-  priceNormal      Decimal  @db.Decimal(19, 4)
-  priceUrgent      Decimal  @db.Decimal(19, 4)
-  pricePressOnly   Decimal? @db.Decimal(19, 4)
-  priceUrgentPress Decimal? @db.Decimal(19, 4)
-  categoryId       String?  @db.Uuid
-  category         LaundryItemCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  isActive         Boolean                  @default(true)
+  priceNormal      Decimal                  @db.Decimal(19, 4)
+  priceUrgent      Decimal                  @db.Decimal(19, 4)
+  pricePressOnly   Decimal?                 @db.Decimal(19, 4)
+  priceUrgentPress Decimal?                 @db.Decimal(19, 4)
+  categoryId       String?                  @db.Uuid
+  category         LaundryItemCategory?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   branchOverrides  LaundryBranchItemPrice[]
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
 
   @@index([categoryId])
   @@index([isActive])
@@ -677,10 +792,10 @@ model LaundryBranchItemPrice {
 }
 
 model Role {
-  id          String       @id @default(uuid()) @db.Uuid
-  name        String       @unique
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   users       User[]
   permissions Permission[]
@@ -692,7 +807,7 @@ model Permission {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  roles     Role[]
+  roles Role[]
 }
 
 model Branch {
@@ -710,17 +825,17 @@ model Branch {
   payrolls              Payroll[]
   fixedExpenseSchedules FixedExpenseSchedule[]
   debtLedgerEntries     DebtLedgerEntry[]
-  originCustomers       Customer[] @relation("CustomerOriginBranch")
+  originCustomers       Customer[]               @relation("CustomerOriginBranch")
   laundryBranchPrices   LaundryBranchItemPrice[]
   stockLevels           BranchStockLevel[]
   stockMovements        StockMovement[]
-  managerCustodyBags    ManagerCashCustody[] @relation("BranchManagerCustody")
+  managerCustodyBags    ManagerCashCustody[]     @relation("BranchManagerCustody")
   attendanceLogs        AttendanceLog[]
+  purchaseOrders        PurchaseOrder[]
 }
 
 /**
  * Stage-D — daily attendance row per (user, logical Kuwait date).
- *
  * `checkInAt` / `checkOutAt` are UTC timestamps; the unique `date`
  * column is the logical Kuwait-local day so one user can't have two
  * rows for the same day (idempotent upserts). `source` records where
@@ -735,7 +850,9 @@ model AttendanceLog {
   checkInAt   DateTime?
   checkOutAt  DateTime?
   source      AttendanceSource @default(SHIFT_AUTO)
-  /** Biometric device fingerprint / external record id (nullable). */
+  /**
+   * Biometric device fingerprint / external record id (nullable).
+   */
   externalRef String?
   note        String?
   createdAt   DateTime         @default(now())
@@ -758,7 +875,6 @@ enum AttendanceSource {
 
 /**
  * Stage-D — leave request workflow.
- *
  * Employees submit a PENDING request; OWNER / GM / MANAGER / ACCOUNTANT
  * approve or reject. The approver's id + timestamp is stamped for
  * audit, and the A4 printable form carries a verification QR.
@@ -802,26 +918,25 @@ enum LeaveStatus {
 
 /**
  * Stage-D — employee loans (سلف الموظفين).
- *
  * Approved loans enter the ACTIVE state with `remaining` tracking the
  * outstanding balance. Each monthly payroll run is expected to
  * decrement `remaining` by `monthlyDeduction` — the automatic hook
  * lives on PayrollService.create (§D.5).
  */
 model EmployeeLoan {
-  id                String     @id @default(uuid()) @db.Uuid
-  userId            String     @db.Uuid
-  amount            Decimal    @db.Decimal(19, 4)
-  installmentCount  Int
-  monthlyDeduction  Decimal    @db.Decimal(19, 4)
-  remaining         Decimal    @db.Decimal(19, 4)
-  reason            String?
-  status            LoanStatus @default(PENDING)
-  approvedById      String?    @db.Uuid
-  approvedAt        DateTime?
-  rejectedReason    String?
-  createdAt         DateTime   @default(now())
-  updatedAt         DateTime   @updatedAt
+  id               String     @id @default(uuid()) @db.Uuid
+  userId           String     @db.Uuid
+  amount           Decimal    @db.Decimal(19, 4)
+  installmentCount Int
+  monthlyDeduction Decimal    @db.Decimal(19, 4)
+  remaining        Decimal    @db.Decimal(19, 4)
+  reason           String?
+  status           LoanStatus @default(PENDING)
+  approvedById     String?    @db.Uuid
+  approvedAt       DateTime?
+  rejectedReason   String?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
 
   user       User  @relation(fields: [userId], references: [id], name: "EmployeeLoanUser")
   approvedBy User? @relation(fields: [approvedById], references: [id], name: "EmployeeLoanApprover")
@@ -839,16 +954,16 @@ enum LoanStatus {
 }
 
 model Payroll {
-  id            String        @id @default(uuid()) @db.Uuid
-  userId        String        @db.Uuid
-  branchId      String        @db.Uuid
-  basicSalary   Decimal       @db.Decimal(19, 4)
-  allowances    Decimal       @default(0) @db.Decimal(19, 4)
-  deductions    Decimal       @default(0) @db.Decimal(19, 4)
-  paymentDate   DateTime
-  status        PayrollStatus @default(PENDING)
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  id          String        @id @default(uuid()) @db.Uuid
+  userId      String        @db.Uuid
+  branchId    String        @db.Uuid
+  basicSalary Decimal       @db.Decimal(19, 4)
+  allowances  Decimal       @default(0) @db.Decimal(19, 4)
+  deductions  Decimal       @default(0) @db.Decimal(19, 4)
+  paymentDate DateTime
+  status      PayrollStatus @default(PENDING)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
 
   user   User   @relation(fields: [userId], references: [id])
   branch Branch @relation(fields: [branchId], references: [id])
@@ -884,7 +999,7 @@ model Wallet {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  branch    Branch   @relation(fields: [branchId], references: [id])
+  branch Branch @relation(fields: [branchId], references: [id])
 }
 
 model AuditLog {
@@ -896,20 +1011,20 @@ model AuditLog {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user      User?    @relation(fields: [userId], references: [id])
+  user User? @relation(fields: [userId], references: [id])
 }
 
 model GeneralLedgerEntry {
-  id           String                 @id @default(uuid()) @db.Uuid
-  entryType    GeneralLedgerEntryType
-  amount       Decimal                @db.Decimal(19, 4)
-  memo         String?
-  metadata     Json?
-  customerId   String?                @db.Uuid
-  orderId      String?                @db.Uuid
-  expenseId    String?                @db.Uuid
-  actorUserId  String?                @db.Uuid
-  createdAt    DateTime               @default(now())
+  id          String                 @id @default(uuid()) @db.Uuid
+  entryType   GeneralLedgerEntryType
+  amount      Decimal                @db.Decimal(19, 4)
+  memo        String?
+  metadata    Json?
+  customerId  String?                @db.Uuid
+  orderId     String?                @db.Uuid
+  expenseId   String?                @db.Uuid
+  actorUserId String?                @db.Uuid
+  createdAt   DateTime               @default(now())
 
   @@index([entryType, createdAt])
   @@index([actorUserId, createdAt])
@@ -923,7 +1038,9 @@ model GeneralLedgerEntry {
 // = out) are derived on the server from `BranchStockLevel.quantityOnHand` vs
 // `reorderPoint` (branch) falling back to `StockItem.reorderPointDefault`.
 
-/** Operational supply category (cleaning, packaging, spare parts, uniforms, …). */
+/**
+ * Operational supply category (cleaning, packaging, spare parts, uniforms, …).
+ */
 model InventoryCategory {
   id        String   @id @default(uuid()) @db.Uuid
   code      String   @unique
@@ -936,7 +1053,9 @@ model InventoryCategory {
   items StockItem[]
 }
 
-/** External supplier (detergent vendors, parts wholesalers, etc.). */
+/**
+ * External supplier (detergent vendors, parts wholesalers, etc.).
+ */
 model Supplier {
   id        String   @id @default(uuid()) @db.Uuid
   name      String
@@ -946,43 +1065,60 @@ model Supplier {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  movements StockMovement[]
+  movements      StockMovement[]
+  purchaseOrders PurchaseOrder[]
 }
 
-/** Master inventory catalog — non-laundry operational supplies. */
+/**
+ * Master inventory catalog — non-laundry operational supplies.
+ */
 model StockItem {
   id                  String   @id @default(uuid()) @db.Uuid
   code                String   @unique
   nameAr              String
   nameEn              String?
-  /** Unit of measure (pcs, kg, L, box, …). */
+  /**
+   * Unit of measure (pcs, kg, L, box, …).
+   */
   unit                String   @default("pcs")
   categoryId          String?  @db.Uuid
-  /** Default reorder threshold for branches without an override. */
+  /**
+   * Default reorder threshold for branches without an override.
+   */
   reorderPointDefault Decimal  @default(0) @db.Decimal(19, 4)
-  /** Most recent purchase unit cost (KD) — set from the latest STOCK_IN. */
+  /**
+   * Most recent purchase unit cost (KD) — set from the latest STOCK_IN.
+   */
   lastUnitCost        Decimal? @db.Decimal(19, 4)
   isActive            Boolean  @default(true)
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
-  category       InventoryCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  branchLevels   BranchStockLevel[]
-  movements      StockMovement[]
-  orderLineItems OrderLineItem[]
+  category                  InventoryCategory?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  branchLevels              BranchStockLevel[]
+  movements                 StockMovement[]
+  orderLineItems            OrderLineItem[]
+  purchaseOrderLines        PurchaseOrderLine[]
+  purchaseOrderReceiptLines PurchaseOrderReceiptLine[]
 
   @@index([categoryId])
 }
 
-/** Per-branch quantity on hand and optional branch-level reorder override. */
+/**
+ * Per-branch quantity on hand and optional branch-level reorder override.
+ */
 model BranchStockLevel {
   id             String    @id @default(uuid()) @db.Uuid
   branchId       String    @db.Uuid
   stockItemId    String    @db.Uuid
   quantityOnHand Decimal   @default(0) @db.Decimal(19, 4)
-  /** Branch override for reorder threshold (null → fall back to item default). */
+  /**
+   * Branch override for reorder threshold (null → fall back to item default).
+   */
   reorderPoint   Decimal?  @db.Decimal(19, 4)
-  /** Weighted moving-average unit cost, recomputed on every STOCK_IN. */
+  /**
+   * Weighted moving-average unit cost, recomputed on every STOCK_IN.
+   */
   avgUnitCost    Decimal?  @db.Decimal(19, 4)
   lastMovementAt DateTime?
   createdAt      DateTime  @default(now())
@@ -1020,10 +1156,14 @@ model StockMovement {
   totalCost    Decimal?          @db.Decimal(19, 4)
   supplierId   String?           @db.Uuid
   recordedById String            @db.Uuid
-  /** External reference — PO number, supplier invoice, transfer ticket. */
+  /**
+   * External reference — PO number, supplier invoice, transfer ticket.
+   */
   reference    String?
   note         String?
-  /** Optional uploaded delivery-note / receipt (≤ 1 MB per Dastur §1). */
+  /**
+   * Optional uploaded delivery-note / receipt (≤ 1 MB per Dastur §1).
+   */
   receiptUrl   String?           @db.Text
   createdAt    DateTime          @default(now())
 
@@ -1036,6 +1176,124 @@ model StockMovement {
   @@index([branchId])
   @@index([supplierId])
   @@index([createdAt])
+}
+
+// ╭──────────────────────────────────────────────────────────────╮
+// │ Stage-F Cosmetic — Purchase Order workflow                   │
+// │ supplier → PO (DRAFT → SENT → PARTIALLY_RECEIVED → RECEIVED) │
+// │ Each receipt generates StockMovement rows via InventoryService │
+// ╰──────────────────────────────────────────────────────────────╯
+
+enum PurchaseOrderStatus {
+  DRAFT
+  SENT
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+/**
+ * A purchase order raised against a Supplier for a specific Branch.
+ * Totals are denormalised on creation; on every receipt the service
+ * recomputes `quantityReceived` on lines and transitions the overall
+ * `status` (SENT → PARTIALLY_RECEIVED → RECEIVED).
+ */
+model PurchaseOrder {
+  id              String              @id @default(uuid()) @db.Uuid
+  /**
+   * Human-readable serial: PO-YYYYMMDD-NNNN.
+   */
+  poNumber        String              @unique
+  supplierId      String              @db.Uuid
+  /**
+   * Branch that will receive the goods.
+   */
+  branchId        String              @db.Uuid
+  status          PurchaseOrderStatus @default(DRAFT)
+  /**
+   * Total KD value (sum of line totals). Computed at create/update time.
+   */
+  totalKd         Decimal             @default(0) @db.Decimal(19, 4)
+  notes           String?
+  expectedAt      DateTime?
+  createdById     String              @db.Uuid
+  approvedById    String?             @db.Uuid
+  approvedAt      DateTime?
+  cancelledAt     DateTime?
+  cancelledReason String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  supplier   Supplier               @relation(fields: [supplierId], references: [id])
+  branch     Branch                 @relation(fields: [branchId], references: [id])
+  createdBy  User                   @relation("PurchaseOrderCreatedBy", fields: [createdById], references: [id])
+  approvedBy User?                  @relation("PurchaseOrderApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  lines      PurchaseOrderLine[]
+  receipts   PurchaseOrderReceipt[]
+
+  @@index([supplierId])
+  @@index([branchId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model PurchaseOrderLine {
+  id               String   @id @default(uuid()) @db.Uuid
+  purchaseOrderId  String   @db.Uuid
+  stockItemId      String   @db.Uuid
+  quantityOrdered  Decimal  @db.Decimal(19, 4)
+  quantityReceived Decimal  @default(0) @db.Decimal(19, 4)
+  unitCost         Decimal  @db.Decimal(19, 4)
+  lineTotal        Decimal  @db.Decimal(19, 4)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  purchaseOrder PurchaseOrder              @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  stockItem     StockItem                  @relation(fields: [stockItemId], references: [id])
+  receiptLines  PurchaseOrderReceiptLine[]
+
+  @@index([purchaseOrderId])
+  @@index([stockItemId])
+}
+
+/**
+ * One physical delivery against a PurchaseOrder. A PO can have many
+ * receipts (partial deliveries). Each receipt creates a StockMovement
+ * per received line via `InventoryService.stockIn(...)`.
+ */
+model PurchaseOrderReceipt {
+  id              String   @id @default(uuid()) @db.Uuid
+  purchaseOrderId String   @db.Uuid
+  receivedById    String   @db.Uuid
+  note            String?
+  createdAt       DateTime @default(now())
+
+  purchaseOrder PurchaseOrder              @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  receivedBy    User                       @relation("PurchaseOrderReceivedBy", fields: [receivedById], references: [id])
+  lines         PurchaseOrderReceiptLine[]
+
+  @@index([purchaseOrderId])
+}
+
+model PurchaseOrderReceiptLine {
+  id                  String  @id @default(uuid()) @db.Uuid
+  receiptId           String  @db.Uuid
+  purchaseOrderLineId String  @db.Uuid
+  stockItemId         String  @db.Uuid
+  quantityReceived    Decimal @db.Decimal(19, 4)
+  unitCost            Decimal @db.Decimal(19, 4)
+  /**
+   * StockMovement row this receipt line created.
+   */
+  stockMovementId     String? @db.Uuid
+
+  receipt           PurchaseOrderReceipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  purchaseOrderLine PurchaseOrderLine    @relation(fields: [purchaseOrderLineId], references: [id])
+  stockItem         StockItem            @relation(fields: [stockItemId], references: [id])
+
+  @@index([receiptId])
+  @@index([purchaseOrderLineId])
+  @@index([stockItemId])
 }
 
 /**
@@ -1051,13 +1309,19 @@ model ManagerCashCustody {
   managerId              String                   @db.Uuid
   driverId               String                   @db.Uuid
   branchId               String?                  @db.Uuid
-  /** Closed handover shift that produced this bag. */
+  /**
+   * Closed handover shift that produced this bag.
+   */
   shiftId                String?                  @db.Uuid
-  /** Cash amount handed over from driver to manager (KWD). */
+  /**
+   * Cash amount handed over from driver to manager (KWD).
+   */
   amountKd               Decimal                  @db.Decimal(19, 4)
   settledOrderCount      Int                      @default(0)
   status                 ManagerCashCustodyStatus @default(PENDING_DEPOSIT)
-  /** Aging clock starts here. */
+  /**
+   * Aging clock starts here.
+   */
   receivedFromDriverAt   DateTime                 @default(now())
   slipUploadedAt         DateTime?
   depositSlipUrl         String?                  @db.Text
@@ -1086,19 +1350,17 @@ model ManagerCashCustody {
 
 /**
  * Dastur §5 — Debt Transfer document.
- *
  * When a driver departs with outstanding cash custody (orders whose
  * cashStatus is still PAID_TO_DRIVER), GM or ACCOUNTANT can transfer
  * that responsibility to a replacement driver. The transfer is a
  * formal document that requires:
- *   1. GM / ACCOUNTANT initiates with source, target, and order list.
- *   2. Status moves to AWAITING_SIGNATURES.
- *   3. Source driver signs (digital acknowledgement of release).
- *   4. Target driver signs (digital acceptance of debt).
- *   5. Finalize: orders are reassigned (driverId = target, with
- *      transferredFromDriverId preserved), and a pair of
- *      DEBT_ADJUSTMENT GL entries records the ledger effect.
- *
+ * 1. GM / ACCOUNTANT initiates with source, target, and order list.
+ * 2. Status moves to AWAITING_SIGNATURES.
+ * 3. Source driver signs (digital acknowledgement of release).
+ * 4. Target driver signs (digital acceptance of debt).
+ * 5. Finalize: orders are reassigned (driverId = target, with
+ * transferredFromDriverId preserved), and a pair of
+ * DEBT_ADJUSTMENT GL entries records the ledger effect.
  * OWNER has READ-ONLY access (reports + filtering only — cannot
  * initiate, sign, finalize, or cancel).
  */
@@ -1119,15 +1381,17 @@ model DebtTransfer {
   cancelledAt     DateTime?
   cancelledReason String?            @db.Text
   cancelledById   String?            @db.Uuid
-  /** Opaque server-generated signature token printed on the receipt for tamper detection. */
+  /**
+   * Opaque server-generated signature token printed on the receipt for tamper detection.
+   */
   systemSignature String?
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
 
-  sourceDriver User                @relation("DebtTransferSource",    fields: [sourceDriverId], references: [id], onDelete: Restrict)
-  targetDriver User                @relation("DebtTransferTarget",    fields: [targetDriverId], references: [id], onDelete: Restrict)
-  executedBy   User                @relation("DebtTransferExecutor",  fields: [executedById],   references: [id], onDelete: Restrict)
-  cancelledBy  User?               @relation("DebtTransferCanceller", fields: [cancelledById],  references: [id], onDelete: SetNull)
+  sourceDriver User                @relation("DebtTransferSource", fields: [sourceDriverId], references: [id], onDelete: Restrict)
+  targetDriver User                @relation("DebtTransferTarget", fields: [targetDriverId], references: [id], onDelete: Restrict)
+  executedBy   User                @relation("DebtTransferExecutor", fields: [executedById], references: [id], onDelete: Restrict)
+  cancelledBy  User?               @relation("DebtTransferCanceller", fields: [cancelledById], references: [id], onDelete: SetNull)
   orders       DebtTransferOrder[]
 
   @@index([sourceDriverId, createdAt])
@@ -1137,12 +1401,16 @@ model DebtTransfer {
   @@index([createdAt])
 }
 
-/** Line item: a single order included in a debt-transfer document. */
+/**
+ * Line item: a single order included in a debt-transfer document.
+ */
 model DebtTransferOrder {
   id             String   @id @default(uuid()) @db.Uuid
   debtTransferId String   @db.Uuid
   orderId        String   @db.Uuid
-  /** Snapshot of the order's receivable at inclusion time (KWD). */
+  /**
+   * Snapshot of the order's receivable at inclusion time (KWD).
+   */
   amountSnapshot Decimal  @db.Decimal(19, 4)
   createdAt      DateTime @default(now())
 

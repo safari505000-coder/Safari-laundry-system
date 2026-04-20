@@ -31,6 +31,7 @@ const finance_module_1 = require("./finance/finance.module");
 const health_module_1 = require("./health/health.module");
 const insights_module_1 = require("./insights/insights.module");
 const inventory_module_1 = require("./inventory/inventory.module");
+const purchase_orders_module_1 = require("./purchase-orders/purchase-orders.module");
 const laundry_price_list_module_1 = require("./laundry-price-list/laundry-price-list.module");
 const leaves_module_1 = require("./leaves/leaves.module");
 const loans_module_1 = require("./loans/loans.module");
@@ -94,6 +95,7 @@ exports.AppModule = AppModule = __decorate([
             call_center_module_1.CallCenterModule,
             laundry_price_list_module_1.LaundryPriceListModule,
             inventory_module_1.InventoryModule,
+            purchase_orders_module_1.PurchaseOrdersModule,
             insights_module_1.InsightsModule,
             manager_custody_module_1.ManagerCustodyModule,
             pos_module_1.PosModule,

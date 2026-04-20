@@ -17,6 +17,7 @@ export const en = {
     inventoryOperations: 'Inventory operations',
     inventoryMovements: 'Stock movements',
     inventoryLowStock: 'Low-stock alerts',
+    purchaseOrders: 'Purchase orders',
     groupInventory: 'Inventory & Supply Chain',
     collections: 'Invoice collections',
     customerDebtTracker: 'Customer Debt Tracker',

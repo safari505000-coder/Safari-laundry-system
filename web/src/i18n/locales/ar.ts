@@ -18,6 +18,7 @@ export const ar = {
     inventoryOperations: 'عمليات المخزون',
     inventoryMovements: 'سجل الحركات',
     inventoryLowStock: 'تنبيهات المخزون',
+    purchaseOrders: 'أوامر الشراء',
     groupInventory: 'المخزون والتوريد',
     collections: 'تحصيل الفواتير',
     customerDebtTracker: 'متابعة ديون العملاء',

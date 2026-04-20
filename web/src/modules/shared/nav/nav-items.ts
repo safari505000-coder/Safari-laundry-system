@@ -11,6 +11,7 @@ import {
   Building2,
   CircleDollarSign,
   ClipboardList,
+  FileText,
   Hash,
   History,
   Droplets,
@@ -209,6 +210,14 @@ export const inventoryLowStockItem: NavItem = {
   labelKey: 'nav.inventoryLowStock',
   icon: AlertTriangle,
   roles: ['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT'],
+};
+
+/** Stage-F Cosmetic — Purchase Orders (supplier → PO → receive). */
+export const purchaseOrdersItem: NavItem = {
+  to: '/purchase-orders',
+  labelKey: 'nav.purchaseOrders',
+  icon: FileText,
+  roles: ['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT', 'MANAGER'],
 };
 
 export const ordersItem: NavItem = {

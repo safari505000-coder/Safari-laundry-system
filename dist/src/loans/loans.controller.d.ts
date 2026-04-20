@@ -30,9 +30,9 @@ export declare class LoansController {
         userId: string;
         status: import("@prisma/client").$Enums.LoanStatus;
         amount: import("@prisma/client-runtime-utils").Decimal;
-        reason: string | null;
         approvedById: string | null;
         approvedAt: Date | null;
+        reason: string | null;
         rejectedReason: string | null;
         installmentCount: number;
         monthlyDeduction: import("@prisma/client-runtime-utils").Decimal;
@@ -63,9 +63,9 @@ export declare class LoansController {
         userId: string;
         status: import("@prisma/client").$Enums.LoanStatus;
         amount: import("@prisma/client-runtime-utils").Decimal;
-        reason: string | null;
         approvedById: string | null;
         approvedAt: Date | null;
+        reason: string | null;
         rejectedReason: string | null;
         installmentCount: number;
         monthlyDeduction: import("@prisma/client-runtime-utils").Decimal;
@@ -96,9 +96,9 @@ export declare class LoansController {
         userId: string;
         status: import("@prisma/client").$Enums.LoanStatus;
         amount: import("@prisma/client-runtime-utils").Decimal;
-        reason: string | null;
         approvedById: string | null;
         approvedAt: Date | null;
+        reason: string | null;
         rejectedReason: string | null;
         installmentCount: number;
         monthlyDeduction: import("@prisma/client-runtime-utils").Decimal;
@@ -129,9 +129,9 @@ export declare class LoansController {
         userId: string;
         status: import("@prisma/client").$Enums.LoanStatus;
         amount: import("@prisma/client-runtime-utils").Decimal;
-        reason: string | null;
         approvedById: string | null;
         approvedAt: Date | null;
+        reason: string | null;
         rejectedReason: string | null;
         installmentCount: number;
         monthlyDeduction: import("@prisma/client-runtime-utils").Decimal;
@@ -162,9 +162,9 @@ export declare class LoansController {
         userId: string;
         status: import("@prisma/client").$Enums.LoanStatus;
         amount: import("@prisma/client-runtime-utils").Decimal;
-        reason: string | null;
         approvedById: string | null;
         approvedAt: Date | null;
+        reason: string | null;
         rejectedReason: string | null;
         installmentCount: number;
         monthlyDeduction: import("@prisma/client-runtime-utils").Decimal;
@@ -195,9 +195,9 @@ export declare class LoansController {
         userId: string;
         status: import("@prisma/client").$Enums.LoanStatus;
         amount: import("@prisma/client-runtime-utils").Decimal;
-        reason: string | null;
         approvedById: string | null;
         approvedAt: Date | null;
+        reason: string | null;
         rejectedReason: string | null;
         installmentCount: number;
         monthlyDeduction: import("@prisma/client-runtime-utils").Decimal;

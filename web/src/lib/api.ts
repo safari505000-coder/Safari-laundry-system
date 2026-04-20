@@ -2758,3 +2758,153 @@ export function recordBiometricAttendance(
     body: JSON.stringify(dto),
   });
 }
+
+// ---------------------------------------------------------------------------
+// Stage-F Cosmetic — Purchase Order workflow.
+// ---------------------------------------------------------------------------
+
+export type PurchaseOrderStatus =
+  | 'DRAFT'
+  | 'SENT'
+  | 'PARTIALLY_RECEIVED'
+  | 'RECEIVED'
+  | 'CANCELLED';
+
+export type PurchaseOrderListRow = {
+  id: string;
+  poNumber: string;
+  status: PurchaseOrderStatus;
+  supplierId: string;
+  supplierName: string;
+  branchId: string;
+  branchName: string;
+  totalKd: string;
+  expectedAt: string | null;
+  createdAt: string;
+  createdById: string;
+  createdByName: string;
+  lineCount: number;
+  receivedRatio: number;
+};
+
+export type PurchaseOrderListResponse = {
+  rows: PurchaseOrderListRow[];
+  total: number;
+};
+
+export type PurchaseOrderDetail = PurchaseOrderListRow & {
+  notes: string | null;
+  cancelledReason: string | null;
+  approvedAt: string | null;
+  lines: Array<{
+    id: string;
+    stockItemId: string;
+    stockItemCode: string;
+    stockItemName: string;
+    unit: string;
+    quantityOrdered: string;
+    quantityReceived: string;
+    unitCost: string;
+    lineTotal: string;
+  }>;
+  receipts: Array<{
+    id: string;
+    receivedAt: string;
+    receivedByName: string;
+    note: string | null;
+    lines: Array<{
+      id: string;
+      stockItemId: string;
+      stockItemName: string;
+      quantityReceived: string;
+      unitCost: string;
+    }>;
+  }>;
+};
+
+export type CreatePurchaseOrderBody = {
+  supplierId: string;
+  branchId: string;
+  lines: Array<{
+    stockItemId: string;
+    quantityOrdered: number;
+    unitCost: number;
+  }>;
+  expectedAt?: string;
+  notes?: string;
+};
+
+export type ReceivePurchaseOrderBody = {
+  lines: Array<{
+    purchaseOrderLineId: string;
+    quantityReceived: number;
+    unitCost?: number;
+  }>;
+  note?: string;
+};
+
+export type PurchaseOrdersQuery = {
+  status?: PurchaseOrderStatus;
+  supplierId?: string;
+  branchId?: string;
+  fromIso?: string;
+  toIso?: string;
+  limit?: number;
+  offset?: number;
+};
+
+export function listPurchaseOrders(
+  token: string,
+  q: PurchaseOrdersQuery = {},
+) {
+  return apiJson<PurchaseOrderListResponse>(
+    `/api/purchase-orders${buildQuery(q)}`,
+    { token },
+  );
+}
+
+export function getPurchaseOrder(token: string, id: string) {
+  return apiJson<PurchaseOrderDetail>(`/api/purchase-orders/${id}`, { token });
+}
+
+export function createPurchaseOrder(
+  token: string,
+  body: CreatePurchaseOrderBody,
+) {
+  return apiJson<PurchaseOrderDetail>('/api/purchase-orders', {
+    method: 'POST',
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
+export function sendPurchaseOrder(token: string, id: string) {
+  return apiJson<PurchaseOrderDetail>(`/api/purchase-orders/${id}/send`, {
+    method: 'POST',
+    token,
+  });
+}
+
+export function cancelPurchaseOrder(
+  token: string,
+  id: string,
+  reason?: string,
+) {
+  return apiJson<PurchaseOrderDetail>(`/api/purchase-orders/${id}/cancel`, {
+    method: 'POST',
+    token,
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export function receivePurchaseOrder(
+  token: string,
+  id: string,
+  body: ReceivePurchaseOrderBody,
+) {
+  return apiJson<PurchaseOrderDetail>(`/api/purchase-orders/${id}/receive`, {
+    method: 'POST',
+    token,
+    body: JSON.stringify(body),
+  });
+}

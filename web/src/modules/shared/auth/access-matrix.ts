@@ -220,6 +220,15 @@ export const ACCESS = {
   'insights.driverScorecard.view': withExec('MANAGER'),
   'insights.executive.view': EXEC_PAIR,
 
+  // ─── Stage-F Cosmetic — Purchase Order workflow ──────────────────
+  // Full control: OWNER / GM / Accountant. Branch Manager gets read-
+  // only so they see what's arriving before it lands at the branch.
+  'purchaseOrders.view': withExec('ACCOUNTANT', 'MANAGER'),
+  'purchaseOrders.create': withExec('ACCOUNTANT'),
+  'purchaseOrders.send': withExec('ACCOUNTANT'),
+  'purchaseOrders.cancel': withExec('ACCOUNTANT'),
+  'purchaseOrders.receive': withExec('ACCOUNTANT'),
+
   // ─── Driver personal island ───────────────────────────────────────
   'myDeposits.view': withExec('DRIVER'),
   'myDailySales.view': withExec('DRIVER'),

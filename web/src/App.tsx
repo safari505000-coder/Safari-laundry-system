@@ -48,6 +48,7 @@ import InventoryCatalogPage from '@/pages/inventory-catalog-page';
 import InventoryOperationsPage from '@/pages/inventory-operations-page';
 import InventoryMovementsPage from '@/pages/inventory-movements-page';
 import InventoryLowStockPage from '@/pages/inventory-low-stock-page';
+import PurchaseOrdersPage from '@/pages/purchase-orders-page';
 import { UnifiedLedgerPage } from '@/pages/unified-ledger-page';
 import { MyDepositsPage } from '@/modules/driver/pages/my-deposits-page';
 import { WhatsappToolsPage } from '@/modules/call-center/pages/whatsapp-tools-page';
@@ -199,6 +200,14 @@ export default function App() {
                   element={
                     <RequireAccess access="inventory.lowStock.view">
                       <InventoryLowStockPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="purchase-orders"
+                  element={
+                    <RequireAccess access="purchaseOrders.view">
+                      <PurchaseOrdersPage />
                     </RequireAccess>
                   }
                 />

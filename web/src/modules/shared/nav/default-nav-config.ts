@@ -26,6 +26,7 @@ import {
   ownerSerialsItem,
   ordersItem,
   payrollItem,
+  purchaseOrdersItem,
   staffDebtsItem,
   reportsItem,
   shiftsItem,
@@ -74,6 +75,7 @@ export const defaultSidebarNavGroups: NavGroup[] = [
       inventoryMovementsItem,
       inventoryOperationsItem,
       inventoryCatalogItem,
+      purchaseOrdersItem,
     ],
   },
   {
