@@ -27,6 +27,8 @@ const extend_subscription_dto_1 = require("./dto/extend-subscription.dto");
 const debt_recovery_report_dto_1 = require("./dto/debt-recovery-report.dto");
 const mark_order_paid_dto_1 = require("./dto/mark-order-paid.dto");
 const record_partial_debt_payment_dto_1 = require("./dto/record-partial-debt-payment.dto");
+const customer_ledger_dto_1 = require("./dto/customer-ledger.dto");
+const daily_collections_dto_1 = require("./dto/daily-collections.dto");
 let CallCenterController = class CallCenterController {
     callCenterService;
     constructor(callCenterService) {
@@ -76,6 +78,12 @@ let CallCenterController = class CallCenterController {
     }
     listCustomerSubscriptionChain(customerId) {
         return this.callCenterService.listCustomerSubscriptionChain(customerId);
+    }
+    getCustomerLedger(customerId, q) {
+        return this.callCenterService.getCustomerLedger(customerId, q);
+    }
+    getDailyCollections(q) {
+        return this.callCenterService.getDailyCollections(q);
     }
 };
 exports.CallCenterController = CallCenterController;
@@ -244,6 +252,31 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", void 0)
 ], CallCenterController.prototype, "listCustomerSubscriptionChain", null);
+__decorate([
+    (0, common_1.Get)('customers/:customerId/ledger'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),
+    (0, swagger_1.ApiOperation)({
+        summary: `Customer 360 ledger — invoices + timeline + cut-off markers (${branding_1.APP_BRAND})`,
+        description: 'V19.4 CC pack #8 + #10 + #11. Unified read-only snapshot for a single customer: wallet header, active subscription (if any), full invoice list with payment method + cut-off flag, chronological ledger events with running balance. Accepts optional Kuwait-local YYYY-MM-DD `from`/`to` bounds and `limit`/`offset`. Wide RBAC so Owner/GM/Accountant can audit without impersonating a CC agent.',
+    }),
+    __param(0, (0, common_1.Param)('customerId', common_1.ParseUUIDPipe)),
+    __param(1, (0, common_1.Query)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, customer_ledger_dto_1.CustomerLedgerQueryDto]),
+    __metadata("design:returntype", void 0)
+], CallCenterController.prototype, "getCustomerLedger", null);
+__decorate([
+    (0, common_1.Get)('daily-collections'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),
+    (0, swagger_1.ApiOperation)({
+        summary: `Daily collector feed — today's debt reductions (${branding_1.APP_BRAND})`,
+        description: 'V19.4 CC pack #4. Lists every debt-reducing ledger row written between Kuwait 00:00 and 24:00 (default today) with per-agent totals. Includes CC #1 partial debt payments, "mark paid via link" settlements, and any order settlement that reduced debt. Pass `?agentId=<uuid>` for a per-collector view; supervisors see everyone when omitted.',
+    }),
+    __param(0, (0, common_1.Query)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [daily_collections_dto_1.DailyCollectionsQueryDto]),
+    __metadata("design:returntype", void 0)
+], CallCenterController.prototype, "getDailyCollections", null);
 exports.CallCenterController = CallCenterController = __decorate([
     (0, swagger_1.ApiTags)('call-center'),
     (0, swagger_1.ApiBearerAuth)('bearer'),

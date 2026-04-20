@@ -14,7 +14,14 @@ import { Button } from '@/modules/shared/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/modules/shared/components/ui/card';
 import { Input } from '@/modules/shared/components/ui/input';
 import { Label } from '@/modules/shared/components/ui/label';
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from '@/modules/shared/components/ui/tabs';
 import { cn } from '@/lib/utils';
+import { CustomerLedgerPanel } from '@/modules/call-center/components/customer-ledger-panel';
 
 type EditDraft = {
   displayName: string;
@@ -150,40 +157,69 @@ export function CustomersPage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>{t('customers.editTitle')}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {!draft ? (
-              <p className="text-sm text-muted-foreground">{t('customers.selectHint')}</p>
-            ) : (
-              <>
-                <div className="space-y-1"><Label>{t('customers.name')}</Label><Input value={draft.displayName} onChange={(e) => setDraft({ ...draft, displayName: e.target.value })} /></div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="space-y-1"><Label>{t('customers.phone')}</Label><Input value={draft.phone} onChange={(e) => setDraft({ ...draft, phone: e.target.value })} /></div>
-                  <div className="space-y-1"><Label>{t('customers.phone2')}</Label><Input value={draft.phone2} onChange={(e) => setDraft({ ...draft, phone2: e.target.value })} /></div>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="space-y-1"><Label>{t('customers.addressArea')}</Label><Input value={draft.addressArea} onChange={(e) => setDraft({ ...draft, addressArea: e.target.value })} /></div>
-                  <div className="space-y-1"><Label>{t('customers.addressBlock')}</Label><Input value={draft.addressBlock} onChange={(e) => setDraft({ ...draft, addressBlock: e.target.value })} /></div>
-                </div>
-                <div className="space-y-1"><Label>{t('customers.addressStreet')}</Label><Input value={draft.addressStreet} onChange={(e) => setDraft({ ...draft, addressStreet: e.target.value })} /></div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="space-y-1"><Label>{t('customers.addressAvenue')}</Label><Input value={draft.addressAvenue} onChange={(e) => setDraft({ ...draft, addressAvenue: e.target.value })} /></div>
-                  <div className="space-y-1"><Label>{t('customers.addressHouse')}</Label><Input value={draft.addressHouse} onChange={(e) => setDraft({ ...draft, addressHouse: e.target.value })} /></div>
-                </div>
-                <div className="space-y-1"><Label>{t('customers.motherContact')}</Label><Input value={draft.motherContact} onChange={(e) => setDraft({ ...draft, motherContact: e.target.value })} /></div>
-                <div className="space-y-1"><Label>{t('customers.wifeContact')}</Label><Input value={draft.wifeContact} onChange={(e) => setDraft({ ...draft, wifeContact: e.target.value })} /></div>
-                <div className="space-y-1"><Label>{t('customers.sonContact')}</Label><Input value={draft.sonContact} onChange={(e) => setDraft({ ...draft, sonContact: e.target.value })} /></div>
-                <Button type="button" onClick={() => void save()} disabled={saving}>
-                  {saving ? <Loader2 className="me-2 h-4 w-4 animate-spin" /> : <Save className="me-2 h-4 w-4" />}
-                  {t('customers.save')}
-                </Button>
-              </>
-            )}
-          </CardContent>
-        </Card>
+        <Tabs defaultValue="profile">
+          <Card>
+            <CardHeader className="gap-3">
+              <CardTitle>
+                {activeRow?.customer.displayName ||
+                  activeRow?.customer.phone ||
+                  t('customers.editTitle')}
+              </CardTitle>
+              <TabsList variant="line" className="w-full">
+                <TabsTrigger value="profile">
+                  {t('customers.tabProfile')}
+                </TabsTrigger>
+                <TabsTrigger value="ledger" disabled={!activeId}>
+                  {t('customers.tabLedger')}
+                </TabsTrigger>
+              </TabsList>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <TabsContent value="profile">
+                {!draft ? (
+                  <p className="text-sm text-muted-foreground">{t('customers.selectHint')}</p>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="space-y-1"><Label>{t('customers.name')}</Label><Input value={draft.displayName} onChange={(e) => setDraft({ ...draft, displayName: e.target.value })} /></div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1"><Label>{t('customers.phone')}</Label><Input value={draft.phone} onChange={(e) => setDraft({ ...draft, phone: e.target.value })} /></div>
+                      <div className="space-y-1"><Label>{t('customers.phone2')}</Label><Input value={draft.phone2} onChange={(e) => setDraft({ ...draft, phone2: e.target.value })} /></div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1"><Label>{t('customers.addressArea')}</Label><Input value={draft.addressArea} onChange={(e) => setDraft({ ...draft, addressArea: e.target.value })} /></div>
+                      <div className="space-y-1"><Label>{t('customers.addressBlock')}</Label><Input value={draft.addressBlock} onChange={(e) => setDraft({ ...draft, addressBlock: e.target.value })} /></div>
+                    </div>
+                    <div className="space-y-1"><Label>{t('customers.addressStreet')}</Label><Input value={draft.addressStreet} onChange={(e) => setDraft({ ...draft, addressStreet: e.target.value })} /></div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1"><Label>{t('customers.addressAvenue')}</Label><Input value={draft.addressAvenue} onChange={(e) => setDraft({ ...draft, addressAvenue: e.target.value })} /></div>
+                      <div className="space-y-1"><Label>{t('customers.addressHouse')}</Label><Input value={draft.addressHouse} onChange={(e) => setDraft({ ...draft, addressHouse: e.target.value })} /></div>
+                    </div>
+                    <div className="space-y-1"><Label>{t('customers.motherContact')}</Label><Input value={draft.motherContact} onChange={(e) => setDraft({ ...draft, motherContact: e.target.value })} /></div>
+                    <div className="space-y-1"><Label>{t('customers.wifeContact')}</Label><Input value={draft.wifeContact} onChange={(e) => setDraft({ ...draft, wifeContact: e.target.value })} /></div>
+                    <div className="space-y-1"><Label>{t('customers.sonContact')}</Label><Input value={draft.sonContact} onChange={(e) => setDraft({ ...draft, sonContact: e.target.value })} /></div>
+                    <Button type="button" onClick={() => void save()} disabled={saving}>
+                      {saving ? <Loader2 className="me-2 h-4 w-4 animate-spin" /> : <Save className="me-2 h-4 w-4" />}
+                      {t('customers.save')}
+                    </Button>
+                  </div>
+                )}
+              </TabsContent>
+              <TabsContent value="ledger">
+                {activeId ? (
+                  <CustomerLedgerPanel
+                    key={activeId}
+                    customerId={activeId}
+                    token={token}
+                  />
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    {t('customers.selectHint')}
+                  </p>
+                )}
+              </TabsContent>
+            </CardContent>
+          </Card>
+        </Tabs>
       </div>
     </div>
   );

@@ -29,6 +29,19 @@ import type {
   SubscriptionInvoiceRowDto,
 } from './dto/customer-subscription.dto';
 import type { RecordPartialDebtPaymentDto } from './dto/record-partial-debt-payment.dto';
+import type {
+  CustomerLedgerQueryDto,
+  CustomerLedgerEventDto,
+  CustomerLedgerEventKind,
+  CustomerLedgerInvoiceDto,
+  CustomerLedgerResponseDto,
+} from './dto/customer-ledger.dto';
+import type {
+  DailyCollectionsQueryDto,
+  DailyCollectionsResponseDto,
+  DailyCollectionEventDto,
+  DailyCollectionsAgentTotalsDto,
+} from './dto/daily-collections.dto';
 
 /**
  * V1.6.8 — Cooldown windows are per-feature now.
@@ -199,6 +212,55 @@ function extractDebtSettled(meta: Prisma.JsonValue | null): Prisma.Decimal {
 function isDebtViaLinkRow(meta: Prisma.JsonValue | null): boolean {
   if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return false;
   return (meta as Record<string, unknown>).debtSettlementViaLink === true;
+}
+
+/**
+ * V19.4 — CC pack #1 flag introduced by
+ * `CustomerLedgerService.recordPartialDebtPayment`. Distinguishes a
+ * customer-level partial debt collection (no orderId) from an order
+ * settlement that happens to touch debt.
+ */
+function isPartialDebtPaymentRow(meta: Prisma.JsonValue | null): boolean {
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return false;
+  return (meta as Record<string, unknown>).debtPaymentOnly === true;
+}
+
+/** Extract `debtDiscount` (CC #1 discount portion) from metadata. */
+function extractDebtDiscount(meta: Prisma.JsonValue | null): Prisma.Decimal {
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) {
+    return new Prisma.Decimal(0);
+  }
+  const v = (meta as Record<string, unknown>).debtDiscount;
+  if (typeof v !== 'string') return new Prisma.Decimal(0);
+  try {
+    return new Prisma.Decimal(v);
+  } catch {
+    return new Prisma.Decimal(0);
+  }
+}
+
+/** Safe read of string metadata fields (payment method, note, etc.). */
+function readMetaString(
+  meta: Prisma.JsonValue | null,
+  key: string,
+): string | null {
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return null;
+  const v = (meta as Record<string, unknown>)[key];
+  return typeof v === 'string' && v.length > 0 ? v : null;
+}
+
+/**
+ * V19.4 — CC pack #8/#10/#11. Convert a Kuwait-local YYYY-MM-DD into
+ * UTC instants [dayStart, dayEnd) that match the server's other
+ * Kuwait-bounded aggregates (debt recovery, operations summary, etc.).
+ * Accepts an `end` flag to return the end of the day (useful when the
+ * caller wants an inclusive upper bound across a range of days).
+ */
+function kuwaitDayFromIso(iso: string): { dayStart: Date; dayEnd: Date } {
+  const base = parseDayUtc(iso);
+  const dayStart = new Date(base.getTime() - KUWAIT_OFFSET_MS);
+  const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+  return { dayStart, dayEnd };
 }
 
 @Injectable()
@@ -951,6 +1013,475 @@ export class CallCenterService {
       performedByUserId,
       note: dto.note,
     });
+  }
+
+  /**
+   * V19.4 — CC pack #8 + #10 + #11. Unified "customer 360" ledger.
+   *
+   * One endpoint powers three Call-Center surfaces:
+   *   • #8  Customer report — all invoices + how each was paid.
+   *   • #10 Account statement — events with running balance, cut-off chip
+   *         for invoices issued against a CUT_OFF subscription.
+   *   • #11 Unified timeline — chronological TransactionHistory stream
+   *         linking subscriptions, order settlements, and CC partial
+   *         debt payments.
+   *
+   * We deliberately DO NOT fold DebtTransfer rows into the customer
+   * stream: those are driver-attribution events that never change the
+   * customer's wallet or debt. The agent is meant to see their
+   * financial lifecycle, not internal hand-offs.
+   */
+  async getCustomerLedger(
+    customerId: string,
+    filters: CustomerLedgerQueryDto,
+  ): Promise<CustomerLedgerResponseDto> {
+    const customer = await this.prisma.customer.findUnique({
+      where: { id: customerId },
+      select: {
+        id: true,
+        displayName: true,
+        phone: true,
+        phone2: true,
+        originBranchId: true,
+        originBranch: { select: { id: true, name: true } },
+        wallet: {
+          select: { balance: true, debt: true },
+        },
+      },
+    });
+    if (!customer) {
+      throw new NotFoundException('Customer not found');
+    }
+
+    // Most-recent subscription regardless of status → powers both the
+    // "active subscription" card (if status === ACTIVE) and the CUT_OFF
+    // banner (#10). The unique index on customerId + createdAt makes
+    // this query O(1).
+    const latestSub = await this.prisma.customerSubscription.findFirst({
+      where: { customerId },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        status: true,
+        planNameSnapshot: true,
+        planSalePriceSnapshot: true,
+        planActualBalanceSnapshot: true,
+        planValidityDaysSnapshot: true,
+        carriedBalanceKd: true,
+        parentSubscriptionId: true,
+        activatedAt: true,
+        expiresAt: true,
+        closedAt: true,
+        closedReason: true,
+      },
+    });
+
+    const fromIso = filters.from ?? null;
+    const toIso = filters.to ?? null;
+    const dateRange: { gte?: Date; lt?: Date } = {};
+    if (fromIso) dateRange.gte = kuwaitDayFromIso(fromIso).dayStart;
+    if (toIso) dateRange.lt = kuwaitDayFromIso(toIso).dayEnd;
+
+    const take = Math.min(Math.max(filters.limit ?? 200, 1), 500);
+    const skip = Math.max(filters.offset ?? 0, 0);
+
+    const [events, invoices] = await Promise.all([
+      this.prisma.transactionHistory.findMany({
+        where: {
+          customerId,
+          ...(dateRange.gte || dateRange.lt
+            ? { createdAt: dateRange }
+            : {}),
+        },
+        orderBy: { createdAt: 'desc' },
+        take,
+        skip,
+        select: {
+          id: true,
+          type: true,
+          amount: true,
+          balanceBefore: true,
+          balanceAfter: true,
+          debtBefore: true,
+          debtAfter: true,
+          createdAt: true,
+          metadata: true,
+          orderId: true,
+          subscriptionId: true,
+          order: {
+            select: {
+              id: true,
+              serialNumber: true,
+              invoiceNumber: true,
+              posPaymentMethod: true,
+            },
+          },
+          subscription: {
+            select: {
+              id: true,
+              planNameSnapshot: true,
+              status: true,
+            },
+          },
+          performedBy: {
+            select: { id: true, fullName: true, safariRole: true },
+          },
+        },
+      }),
+      this.prisma.order.findMany({
+        where: {
+          customerId,
+          ...(dateRange.gte || dateRange.lt
+            ? { createdAt: dateRange }
+            : {}),
+        },
+        orderBy: { createdAt: 'desc' },
+        take,
+        skip,
+        select: {
+          id: true,
+          serialNumber: true,
+          invoiceNumber: true,
+          totalPrice: true,
+          status: true,
+          cashStatus: true,
+          posPaymentMethod: true,
+          createdAt: true,
+          completedAt: true,
+          subscriptionId: true,
+          subscription: {
+            select: {
+              id: true,
+              planNameSnapshot: true,
+              status: true,
+            },
+          },
+          driver: {
+            select: {
+              id: true,
+              fullName: true,
+              branch: { select: { id: true, name: true } },
+            },
+          },
+        },
+      }),
+    ]);
+
+    const mappedEvents: CustomerLedgerEventDto[] = events.map((e) => {
+      let kind: CustomerLedgerEventKind;
+      if (e.type === LedgerTransactionType.SUBSCRIPTION_ACTIVATION) {
+        kind = 'SUBSCRIPTION_ACTIVATION';
+      } else if (isPartialDebtPaymentRow(e.metadata)) {
+        kind = 'PARTIAL_DEBT_PAYMENT';
+      } else if (e.orderId) {
+        kind = 'ORDER_SETTLEMENT';
+      } else {
+        // Fallback for legacy rows with ORDER_WALLET_SETTLEMENT type but
+        // no orderId — treat as a generic carry/rollover for display.
+        kind = 'SUBSCRIPTION_ROLLOVER_CARRY';
+      }
+
+      const debtSettled = extractDebtSettled(e.metadata);
+      const debtDiscount = extractDebtDiscount(e.metadata);
+      const rawMethod =
+        readMetaString(e.metadata, 'posPaymentMethod') ??
+        readMetaString(e.metadata, 'paymentMethod') ??
+        e.order?.posPaymentMethod ??
+        null;
+      const paymentMethod =
+        rawMethod && (Object.values(PosPaymentMethod) as string[]).includes(rawMethod)
+          ? (rawMethod as PosPaymentMethod)
+          : null;
+
+      return {
+        id: e.id,
+        atIso: e.createdAt.toISOString(),
+        rawType: e.type,
+        kind,
+        amountKd: FOUR_DP(e.amount),
+        balanceBeforeKd: FOUR_DP(e.balanceBefore),
+        balanceAfterKd: FOUR_DP(e.balanceAfter),
+        debtBeforeKd: FOUR_DP(e.debtBefore),
+        debtAfterKd: FOUR_DP(e.debtAfter),
+        debtSettledKd: FOUR_DP(debtSettled),
+        debtDiscountKd: FOUR_DP(debtDiscount),
+        paymentMethod,
+        orderId: e.orderId,
+        orderSerial: e.order?.serialNumber ?? e.order?.invoiceNumber ?? null,
+        subscriptionId: e.subscriptionId,
+        subscriptionLabel: e.subscription?.planNameSnapshot ?? null,
+        performedByUserId: e.performedBy?.id ?? null,
+        performedByName: e.performedBy?.fullName ?? null,
+        performedByRole: e.performedBy?.safariRole ?? null,
+        note: readMetaString(e.metadata, 'note'),
+      };
+    });
+
+    const mappedInvoices: CustomerLedgerInvoiceDto[] = invoices.map((o) => {
+      const openDebt =
+        o.status !== OrderStatus.CANCELED &&
+        o.cashStatus === CashStatus.UNPAID;
+      return {
+        id: o.id,
+        serial: o.serialNumber ?? o.invoiceNumber ?? null,
+        createdAtIso: o.createdAt.toISOString(),
+        completedAtIso: o.completedAt?.toISOString() ?? null,
+        totalKd: FOUR_DP(o.totalPrice),
+        status: o.status,
+        cashStatus: o.cashStatus,
+        paymentMethod: o.posPaymentMethod ?? null,
+        driverName: o.driver?.fullName ?? null,
+        branchName: o.driver?.branch?.name ?? null,
+        subscriptionId: o.subscriptionId,
+        subscriptionStatus: o.subscription?.status ?? null,
+        subscriptionLabel: o.subscription?.planNameSnapshot ?? null,
+        issuedWhileCutOff:
+          o.subscription?.status === CustomerSubscriptionStatus.CUT_OFF,
+        openDebt,
+      };
+    });
+
+    const totalCollected = mappedEvents.reduce(
+      (acc, e) => acc.plus(new Prisma.Decimal(e.debtSettledKd)),
+      new Prisma.Decimal(0),
+    );
+    const totalDiscounted = mappedEvents.reduce(
+      (acc, e) => acc.plus(new Prisma.Decimal(e.debtDiscountKd)),
+      new Prisma.Decimal(0),
+    );
+    const openInvoiceCount = mappedInvoices.filter((i) => i.openDebt).length;
+
+    return {
+      customer: {
+        id: customer.id,
+        displayName: customer.displayName ?? null,
+        phone: customer.phone ?? null,
+        phone2: customer.phone2 ?? null,
+        originBranchId: customer.originBranchId ?? null,
+        originBranchName: customer.originBranch?.name ?? null,
+        walletBalanceKd: FOUR_DP(
+          customer.wallet?.balance ?? new Prisma.Decimal(0),
+        ),
+        walletDebtKd: FOUR_DP(customer.wallet?.debt ?? new Prisma.Decimal(0)),
+      },
+      activeSubscription:
+        latestSub && latestSub.status === CustomerSubscriptionStatus.ACTIVE
+          ? {
+              id: latestSub.id,
+              status: latestSub.status,
+              planNameSnapshot: latestSub.planNameSnapshot,
+              planSalePriceKd: FOUR_DP(latestSub.planSalePriceSnapshot),
+              planActualBalanceKd: FOUR_DP(
+                latestSub.planActualBalanceSnapshot,
+              ),
+              planValidityDays: latestSub.planValidityDaysSnapshot,
+              carriedBalanceKd: FOUR_DP(latestSub.carriedBalanceKd),
+              parentSubscriptionId: latestSub.parentSubscriptionId,
+              activatedAtIso: latestSub.activatedAt.toISOString(),
+              expiresAtIso: latestSub.expiresAt.toISOString(),
+              closedAtIso: latestSub.closedAt?.toISOString() ?? null,
+              closedReason: latestSub.closedReason ?? null,
+            }
+          : null,
+      isCutOff: latestSub?.status === CustomerSubscriptionStatus.CUT_OFF,
+      fromIso,
+      toIso,
+      events: mappedEvents,
+      invoices: mappedInvoices,
+      totals: {
+        eventCount: mappedEvents.length,
+        invoiceCount: mappedInvoices.length,
+        openInvoiceCount,
+        totalCollectedKd: FOUR_DP(totalCollected),
+        totalDiscountedKd: FOUR_DP(totalDiscounted),
+      },
+    };
+  }
+
+  /**
+   * V19.4 — CC pack #4. "Daily collector" feed powering the Collections
+   * page panel. Returns every debt-reducing ledger event written between
+   * Kuwait 00:00 and 24:00 for the requested day, regardless of source:
+   *   • CC #1 partial debt payments        (metadata.debtPaymentOnly)
+   *   • "Mark paid via link" flows         (metadata.debtSettlementViaLink)
+   *   • Normal order settlements that cleared debt (metadata.debtSettled > 0)
+   *
+   * Rows with a zero `debtSettled` (pure wallet-paid orders where no
+   * outstanding debt was reduced) are filtered out — they don't belong
+   * on a COLLECTION dashboard.
+   */
+  async getDailyCollections(
+    params: DailyCollectionsQueryDto,
+  ): Promise<DailyCollectionsResponseDto> {
+    const { dayStart, dayEnd, dayIsoLocal } = params.date
+      ? (() => {
+          const { dayStart, dayEnd } = kuwaitDayFromIso(params.date!);
+          return { dayStart, dayEnd, dayIsoLocal: params.date! };
+        })()
+      : kuwaitDayBounds(new Date());
+
+    const rows = await this.prisma.transactionHistory.findMany({
+      where: {
+        createdAt: { gte: dayStart, lt: dayEnd },
+        type: LedgerTransactionType.ORDER_WALLET_SETTLEMENT,
+        ...(params.agentId ? { performedById: params.agentId } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        createdAt: true,
+        amount: true,
+        metadata: true,
+        debtAfter: true,
+        customer: {
+          select: { id: true, displayName: true, phone: true },
+        },
+        order: {
+          select: {
+            id: true,
+            serialNumber: true,
+            invoiceNumber: true,
+            posPaymentMethod: true,
+            driver: {
+              select: {
+                id: true,
+                fullName: true,
+                branch: { select: { id: true, name: true } },
+              },
+            },
+          },
+        },
+        performedBy: {
+          select: { id: true, fullName: true, safariRole: true },
+        },
+      },
+    });
+
+    const events: DailyCollectionEventDto[] = rows
+      .map((r): DailyCollectionEventDto | null => {
+        const debtSettled = extractDebtSettled(r.metadata);
+        const debtDiscount = extractDebtDiscount(r.metadata);
+        if (debtSettled.lte(0) && debtDiscount.lte(0)) return null;
+
+        const partial = isPartialDebtPaymentRow(r.metadata);
+        const kind: DailyCollectionEventDto['kind'] = partial
+          ? 'PARTIAL_DEBT_PAYMENT'
+          : 'FULL_ORDER_SETTLEMENT';
+
+        const rawMethod =
+          readMetaString(r.metadata, 'posPaymentMethod') ??
+          readMetaString(r.metadata, 'paymentMethod') ??
+          r.order?.posPaymentMethod ??
+          null;
+        const paymentMethod =
+          rawMethod &&
+          (Object.values(PosPaymentMethod) as string[]).includes(rawMethod)
+            ? (rawMethod as PosPaymentMethod)
+            : null;
+
+        return {
+          id: r.id,
+          atIso: r.createdAt.toISOString(),
+          customerId: r.customer.id,
+          customerName: r.customer.displayName ?? null,
+          customerPhone: r.customer.phone ?? null,
+          orderId: r.order?.id ?? null,
+          orderSerial:
+            r.order?.serialNumber ?? r.order?.invoiceNumber ?? null,
+          amountCollectedKd: FOUR_DP(debtSettled),
+          discountAppliedKd: FOUR_DP(debtDiscount),
+          paymentMethod,
+          kind,
+          performedByUserId: r.performedBy?.id ?? null,
+          performedByName: r.performedBy?.fullName ?? null,
+          performedByRole: r.performedBy?.safariRole ?? null,
+          branchName: r.order?.driver?.branch?.name ?? null,
+          driverName: r.order?.driver?.fullName ?? null,
+          note: readMetaString(r.metadata, 'note'),
+          customerDebtAfterKd: FOUR_DP(r.debtAfter),
+        };
+      })
+      .filter((e): e is DailyCollectionEventDto => e !== null);
+
+    const totalCollected = events.reduce(
+      (acc, e) => acc.plus(new Prisma.Decimal(e.amountCollectedKd)),
+      new Prisma.Decimal(0),
+    );
+    const totalDiscount = events.reduce(
+      (acc, e) => acc.plus(new Prisma.Decimal(e.discountAppliedKd)),
+      new Prisma.Decimal(0),
+    );
+    const uniqueCustomers = new Set(events.map((e) => e.customerId)).size;
+
+    // Group by agent (null agent bucket kept — legacy rows without a
+    // performedById still need to appear).
+    const byAgentMap = new Map<
+      string,
+      {
+        agentId: string | null;
+        agentName: string | null;
+        agentRole: DailyCollectionEventDto['performedByRole'];
+        eventCount: number;
+        customers: Set<string>;
+        collected: Prisma.Decimal;
+        discount: Prisma.Decimal;
+      }
+    >();
+    for (const e of events) {
+      const key = e.performedByUserId ?? '__unattributed__';
+      const existing = byAgentMap.get(key);
+      if (existing) {
+        existing.eventCount += 1;
+        existing.customers.add(e.customerId);
+        existing.collected = existing.collected.plus(
+          new Prisma.Decimal(e.amountCollectedKd),
+        );
+        existing.discount = existing.discount.plus(
+          new Prisma.Decimal(e.discountAppliedKd),
+        );
+      } else {
+        byAgentMap.set(key, {
+          agentId: e.performedByUserId,
+          agentName: e.performedByName,
+          agentRole: e.performedByRole,
+          eventCount: 1,
+          customers: new Set<string>([e.customerId]),
+          collected: new Prisma.Decimal(e.amountCollectedKd),
+          discount: new Prisma.Decimal(e.discountAppliedKd),
+        });
+      }
+    }
+    const byAgent: DailyCollectionsAgentTotalsDto[] = Array.from(
+      byAgentMap.values(),
+    )
+      .map((v) => ({
+        agentId: v.agentId,
+        agentName: v.agentName,
+        agentRole: v.agentRole,
+        eventCount: v.eventCount,
+        uniqueCustomers: v.customers.size,
+        collectedKd: FOUR_DP(v.collected),
+        discountKd: FOUR_DP(v.discount),
+      }))
+      .sort((a, b) =>
+        new Prisma.Decimal(b.collectedKd).comparedTo(
+          new Prisma.Decimal(a.collectedKd),
+        ),
+      );
+
+    return {
+      dayIsoLocal,
+      dayStartIso: dayStart.toISOString(),
+      dayEndIso: dayEnd.toISOString(),
+      totals: {
+        eventCount: events.length,
+        uniqueCustomers,
+        collectedKd: FOUR_DP(totalCollected),
+        discountKd: FOUR_DP(totalDiscount),
+      },
+      byAgent,
+      events,
+    };
   }
 
   /** Shared mapper so #2 chain list + #12 single-detail stay DRY. */

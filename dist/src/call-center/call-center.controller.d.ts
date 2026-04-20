@@ -5,6 +5,8 @@ import { ExtendSubscriptionDto } from './dto/extend-subscription.dto';
 import { DebtRecoveryQueryDto } from './dto/debt-recovery-report.dto';
 import { MarkOrderPaidDto } from './dto/mark-order-paid.dto';
 import { RecordPartialDebtPaymentDto } from './dto/record-partial-debt-payment.dto';
+import { CustomerLedgerQueryDto } from './dto/customer-ledger.dto';
+import { DailyCollectionsQueryDto } from './dto/daily-collections.dto';
 export declare class CallCenterController {
     private readonly callCenterService;
     constructor(callCenterService: CallCenterService);
@@ -79,4 +81,6 @@ export declare class CallCenterController {
         paymentMethod: import("@prisma/client").PosPaymentMethod;
     }>;
     listCustomerSubscriptionChain(customerId: string): Promise<import("./dto/customer-subscription.dto").CustomerSubscriptionRowDto[]>;
+    getCustomerLedger(customerId: string, q: CustomerLedgerQueryDto): Promise<import("./dto/customer-ledger.dto").CustomerLedgerResponseDto>;
+    getDailyCollections(q: DailyCollectionsQueryDto): Promise<import("./dto/daily-collections.dto").DailyCollectionsResponseDto>;
 }

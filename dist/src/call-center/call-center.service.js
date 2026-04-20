@@ -101,6 +101,37 @@ function isDebtViaLinkRow(meta) {
         return false;
     return meta.debtSettlementViaLink === true;
 }
+function isPartialDebtPaymentRow(meta) {
+    if (!meta || typeof meta !== 'object' || Array.isArray(meta))
+        return false;
+    return meta.debtPaymentOnly === true;
+}
+function extractDebtDiscount(meta) {
+    if (!meta || typeof meta !== 'object' || Array.isArray(meta)) {
+        return new client_1.Prisma.Decimal(0);
+    }
+    const v = meta.debtDiscount;
+    if (typeof v !== 'string')
+        return new client_1.Prisma.Decimal(0);
+    try {
+        return new client_1.Prisma.Decimal(v);
+    }
+    catch {
+        return new client_1.Prisma.Decimal(0);
+    }
+}
+function readMetaString(meta, key) {
+    if (!meta || typeof meta !== 'object' || Array.isArray(meta))
+        return null;
+    const v = meta[key];
+    return typeof v === 'string' && v.length > 0 ? v : null;
+}
+function kuwaitDayFromIso(iso) {
+    const base = parseDayUtc(iso);
+    const dayStart = new Date(base.getTime() - KUWAIT_OFFSET_MS);
+    const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+    return { dayStart, dayEnd };
+}
 let CallCenterService = class CallCenterService {
     prisma;
     customerLedger;
@@ -634,6 +665,376 @@ let CallCenterService = class CallCenterService {
             performedByUserId,
             note: dto.note,
         });
+    }
+    async getCustomerLedger(customerId, filters) {
+        const customer = await this.prisma.customer.findUnique({
+            where: { id: customerId },
+            select: {
+                id: true,
+                displayName: true,
+                phone: true,
+                phone2: true,
+                originBranchId: true,
+                originBranch: { select: { id: true, name: true } },
+                wallet: {
+                    select: { balance: true, debt: true },
+                },
+            },
+        });
+        if (!customer) {
+            throw new common_1.NotFoundException('Customer not found');
+        }
+        const latestSub = await this.prisma.customerSubscription.findFirst({
+            where: { customerId },
+            orderBy: { createdAt: 'desc' },
+            select: {
+                id: true,
+                status: true,
+                planNameSnapshot: true,
+                planSalePriceSnapshot: true,
+                planActualBalanceSnapshot: true,
+                planValidityDaysSnapshot: true,
+                carriedBalanceKd: true,
+                parentSubscriptionId: true,
+                activatedAt: true,
+                expiresAt: true,
+                closedAt: true,
+                closedReason: true,
+            },
+        });
+        const fromIso = filters.from ?? null;
+        const toIso = filters.to ?? null;
+        const dateRange = {};
+        if (fromIso)
+            dateRange.gte = kuwaitDayFromIso(fromIso).dayStart;
+        if (toIso)
+            dateRange.lt = kuwaitDayFromIso(toIso).dayEnd;
+        const take = Math.min(Math.max(filters.limit ?? 200, 1), 500);
+        const skip = Math.max(filters.offset ?? 0, 0);
+        const [events, invoices] = await Promise.all([
+            this.prisma.transactionHistory.findMany({
+                where: {
+                    customerId,
+                    ...(dateRange.gte || dateRange.lt
+                        ? { createdAt: dateRange }
+                        : {}),
+                },
+                orderBy: { createdAt: 'desc' },
+                take,
+                skip,
+                select: {
+                    id: true,
+                    type: true,
+                    amount: true,
+                    balanceBefore: true,
+                    balanceAfter: true,
+                    debtBefore: true,
+                    debtAfter: true,
+                    createdAt: true,
+                    metadata: true,
+                    orderId: true,
+                    subscriptionId: true,
+                    order: {
+                        select: {
+                            id: true,
+                            serialNumber: true,
+                            invoiceNumber: true,
+                            posPaymentMethod: true,
+                        },
+                    },
+                    subscription: {
+                        select: {
+                            id: true,
+                            planNameSnapshot: true,
+                            status: true,
+                        },
+                    },
+                    performedBy: {
+                        select: { id: true, fullName: true, safariRole: true },
+                    },
+                },
+            }),
+            this.prisma.order.findMany({
+                where: {
+                    customerId,
+                    ...(dateRange.gte || dateRange.lt
+                        ? { createdAt: dateRange }
+                        : {}),
+                },
+                orderBy: { createdAt: 'desc' },
+                take,
+                skip,
+                select: {
+                    id: true,
+                    serialNumber: true,
+                    invoiceNumber: true,
+                    totalPrice: true,
+                    status: true,
+                    cashStatus: true,
+                    posPaymentMethod: true,
+                    createdAt: true,
+                    completedAt: true,
+                    subscriptionId: true,
+                    subscription: {
+                        select: {
+                            id: true,
+                            planNameSnapshot: true,
+                            status: true,
+                        },
+                    },
+                    driver: {
+                        select: {
+                            id: true,
+                            fullName: true,
+                            branch: { select: { id: true, name: true } },
+                        },
+                    },
+                },
+            }),
+        ]);
+        const mappedEvents = events.map((e) => {
+            let kind;
+            if (e.type === client_1.LedgerTransactionType.SUBSCRIPTION_ACTIVATION) {
+                kind = 'SUBSCRIPTION_ACTIVATION';
+            }
+            else if (isPartialDebtPaymentRow(e.metadata)) {
+                kind = 'PARTIAL_DEBT_PAYMENT';
+            }
+            else if (e.orderId) {
+                kind = 'ORDER_SETTLEMENT';
+            }
+            else {
+                kind = 'SUBSCRIPTION_ROLLOVER_CARRY';
+            }
+            const debtSettled = extractDebtSettled(e.metadata);
+            const debtDiscount = extractDebtDiscount(e.metadata);
+            const rawMethod = readMetaString(e.metadata, 'posPaymentMethod') ??
+                readMetaString(e.metadata, 'paymentMethod') ??
+                e.order?.posPaymentMethod ??
+                null;
+            const paymentMethod = rawMethod && Object.values(client_1.PosPaymentMethod).includes(rawMethod)
+                ? rawMethod
+                : null;
+            return {
+                id: e.id,
+                atIso: e.createdAt.toISOString(),
+                rawType: e.type,
+                kind,
+                amountKd: FOUR_DP(e.amount),
+                balanceBeforeKd: FOUR_DP(e.balanceBefore),
+                balanceAfterKd: FOUR_DP(e.balanceAfter),
+                debtBeforeKd: FOUR_DP(e.debtBefore),
+                debtAfterKd: FOUR_DP(e.debtAfter),
+                debtSettledKd: FOUR_DP(debtSettled),
+                debtDiscountKd: FOUR_DP(debtDiscount),
+                paymentMethod,
+                orderId: e.orderId,
+                orderSerial: e.order?.serialNumber ?? e.order?.invoiceNumber ?? null,
+                subscriptionId: e.subscriptionId,
+                subscriptionLabel: e.subscription?.planNameSnapshot ?? null,
+                performedByUserId: e.performedBy?.id ?? null,
+                performedByName: e.performedBy?.fullName ?? null,
+                performedByRole: e.performedBy?.safariRole ?? null,
+                note: readMetaString(e.metadata, 'note'),
+            };
+        });
+        const mappedInvoices = invoices.map((o) => {
+            const openDebt = o.status !== client_1.OrderStatus.CANCELED &&
+                o.cashStatus === client_1.CashStatus.UNPAID;
+            return {
+                id: o.id,
+                serial: o.serialNumber ?? o.invoiceNumber ?? null,
+                createdAtIso: o.createdAt.toISOString(),
+                completedAtIso: o.completedAt?.toISOString() ?? null,
+                totalKd: FOUR_DP(o.totalPrice),
+                status: o.status,
+                cashStatus: o.cashStatus,
+                paymentMethod: o.posPaymentMethod ?? null,
+                driverName: o.driver?.fullName ?? null,
+                branchName: o.driver?.branch?.name ?? null,
+                subscriptionId: o.subscriptionId,
+                subscriptionStatus: o.subscription?.status ?? null,
+                subscriptionLabel: o.subscription?.planNameSnapshot ?? null,
+                issuedWhileCutOff: o.subscription?.status === client_1.CustomerSubscriptionStatus.CUT_OFF,
+                openDebt,
+            };
+        });
+        const totalCollected = mappedEvents.reduce((acc, e) => acc.plus(new client_1.Prisma.Decimal(e.debtSettledKd)), new client_1.Prisma.Decimal(0));
+        const totalDiscounted = mappedEvents.reduce((acc, e) => acc.plus(new client_1.Prisma.Decimal(e.debtDiscountKd)), new client_1.Prisma.Decimal(0));
+        const openInvoiceCount = mappedInvoices.filter((i) => i.openDebt).length;
+        return {
+            customer: {
+                id: customer.id,
+                displayName: customer.displayName ?? null,
+                phone: customer.phone ?? null,
+                phone2: customer.phone2 ?? null,
+                originBranchId: customer.originBranchId ?? null,
+                originBranchName: customer.originBranch?.name ?? null,
+                walletBalanceKd: FOUR_DP(customer.wallet?.balance ?? new client_1.Prisma.Decimal(0)),
+                walletDebtKd: FOUR_DP(customer.wallet?.debt ?? new client_1.Prisma.Decimal(0)),
+            },
+            activeSubscription: latestSub && latestSub.status === client_1.CustomerSubscriptionStatus.ACTIVE
+                ? {
+                    id: latestSub.id,
+                    status: latestSub.status,
+                    planNameSnapshot: latestSub.planNameSnapshot,
+                    planSalePriceKd: FOUR_DP(latestSub.planSalePriceSnapshot),
+                    planActualBalanceKd: FOUR_DP(latestSub.planActualBalanceSnapshot),
+                    planValidityDays: latestSub.planValidityDaysSnapshot,
+                    carriedBalanceKd: FOUR_DP(latestSub.carriedBalanceKd),
+                    parentSubscriptionId: latestSub.parentSubscriptionId,
+                    activatedAtIso: latestSub.activatedAt.toISOString(),
+                    expiresAtIso: latestSub.expiresAt.toISOString(),
+                    closedAtIso: latestSub.closedAt?.toISOString() ?? null,
+                    closedReason: latestSub.closedReason ?? null,
+                }
+                : null,
+            isCutOff: latestSub?.status === client_1.CustomerSubscriptionStatus.CUT_OFF,
+            fromIso,
+            toIso,
+            events: mappedEvents,
+            invoices: mappedInvoices,
+            totals: {
+                eventCount: mappedEvents.length,
+                invoiceCount: mappedInvoices.length,
+                openInvoiceCount,
+                totalCollectedKd: FOUR_DP(totalCollected),
+                totalDiscountedKd: FOUR_DP(totalDiscounted),
+            },
+        };
+    }
+    async getDailyCollections(params) {
+        const { dayStart, dayEnd, dayIsoLocal } = params.date
+            ? (() => {
+                const { dayStart, dayEnd } = kuwaitDayFromIso(params.date);
+                return { dayStart, dayEnd, dayIsoLocal: params.date };
+            })()
+            : kuwaitDayBounds(new Date());
+        const rows = await this.prisma.transactionHistory.findMany({
+            where: {
+                createdAt: { gte: dayStart, lt: dayEnd },
+                type: client_1.LedgerTransactionType.ORDER_WALLET_SETTLEMENT,
+                ...(params.agentId ? { performedById: params.agentId } : {}),
+            },
+            orderBy: { createdAt: 'desc' },
+            select: {
+                id: true,
+                createdAt: true,
+                amount: true,
+                metadata: true,
+                debtAfter: true,
+                customer: {
+                    select: { id: true, displayName: true, phone: true },
+                },
+                order: {
+                    select: {
+                        id: true,
+                        serialNumber: true,
+                        invoiceNumber: true,
+                        posPaymentMethod: true,
+                        driver: {
+                            select: {
+                                id: true,
+                                fullName: true,
+                                branch: { select: { id: true, name: true } },
+                            },
+                        },
+                    },
+                },
+                performedBy: {
+                    select: { id: true, fullName: true, safariRole: true },
+                },
+            },
+        });
+        const events = rows
+            .map((r) => {
+            const debtSettled = extractDebtSettled(r.metadata);
+            const debtDiscount = extractDebtDiscount(r.metadata);
+            if (debtSettled.lte(0) && debtDiscount.lte(0))
+                return null;
+            const partial = isPartialDebtPaymentRow(r.metadata);
+            const kind = partial
+                ? 'PARTIAL_DEBT_PAYMENT'
+                : 'FULL_ORDER_SETTLEMENT';
+            const rawMethod = readMetaString(r.metadata, 'posPaymentMethod') ??
+                readMetaString(r.metadata, 'paymentMethod') ??
+                r.order?.posPaymentMethod ??
+                null;
+            const paymentMethod = rawMethod &&
+                Object.values(client_1.PosPaymentMethod).includes(rawMethod)
+                ? rawMethod
+                : null;
+            return {
+                id: r.id,
+                atIso: r.createdAt.toISOString(),
+                customerId: r.customer.id,
+                customerName: r.customer.displayName ?? null,
+                customerPhone: r.customer.phone ?? null,
+                orderId: r.order?.id ?? null,
+                orderSerial: r.order?.serialNumber ?? r.order?.invoiceNumber ?? null,
+                amountCollectedKd: FOUR_DP(debtSettled),
+                discountAppliedKd: FOUR_DP(debtDiscount),
+                paymentMethod,
+                kind,
+                performedByUserId: r.performedBy?.id ?? null,
+                performedByName: r.performedBy?.fullName ?? null,
+                performedByRole: r.performedBy?.safariRole ?? null,
+                branchName: r.order?.driver?.branch?.name ?? null,
+                driverName: r.order?.driver?.fullName ?? null,
+                note: readMetaString(r.metadata, 'note'),
+                customerDebtAfterKd: FOUR_DP(r.debtAfter),
+            };
+        })
+            .filter((e) => e !== null);
+        const totalCollected = events.reduce((acc, e) => acc.plus(new client_1.Prisma.Decimal(e.amountCollectedKd)), new client_1.Prisma.Decimal(0));
+        const totalDiscount = events.reduce((acc, e) => acc.plus(new client_1.Prisma.Decimal(e.discountAppliedKd)), new client_1.Prisma.Decimal(0));
+        const uniqueCustomers = new Set(events.map((e) => e.customerId)).size;
+        const byAgentMap = new Map();
+        for (const e of events) {
+            const key = e.performedByUserId ?? '__unattributed__';
+            const existing = byAgentMap.get(key);
+            if (existing) {
+                existing.eventCount += 1;
+                existing.customers.add(e.customerId);
+                existing.collected = existing.collected.plus(new client_1.Prisma.Decimal(e.amountCollectedKd));
+                existing.discount = existing.discount.plus(new client_1.Prisma.Decimal(e.discountAppliedKd));
+            }
+            else {
+                byAgentMap.set(key, {
+                    agentId: e.performedByUserId,
+                    agentName: e.performedByName,
+                    agentRole: e.performedByRole,
+                    eventCount: 1,
+                    customers: new Set([e.customerId]),
+                    collected: new client_1.Prisma.Decimal(e.amountCollectedKd),
+                    discount: new client_1.Prisma.Decimal(e.discountAppliedKd),
+                });
+            }
+        }
+        const byAgent = Array.from(byAgentMap.values())
+            .map((v) => ({
+            agentId: v.agentId,
+            agentName: v.agentName,
+            agentRole: v.agentRole,
+            eventCount: v.eventCount,
+            uniqueCustomers: v.customers.size,
+            collectedKd: FOUR_DP(v.collected),
+            discountKd: FOUR_DP(v.discount),
+        }))
+            .sort((a, b) => new client_1.Prisma.Decimal(b.collectedKd).comparedTo(new client_1.Prisma.Decimal(a.collectedKd)));
+        return {
+            dayIsoLocal,
+            dayStartIso: dayStart.toISOString(),
+            dayEndIso: dayEnd.toISOString(),
+            totals: {
+                eventCount: events.length,
+                uniqueCustomers,
+                collectedKd: FOUR_DP(totalCollected),
+                discountKd: FOUR_DP(totalDiscount),
+            },
+            byAgent,
+            events,
+        };
     }
     mapSubscriptionChainRows(subs, ordersBySub) {
         return subs.map((s) => ({

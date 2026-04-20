@@ -11,6 +11,8 @@ import type { ReminderResultDto } from './dto/reminder-result.dto';
 import type { SubscriptionRolloverPreviewDto } from './dto/subscription-rollover-preview.dto';
 import type { CustomerSubscriptionRowDto } from './dto/customer-subscription.dto';
 import type { RecordPartialDebtPaymentDto } from './dto/record-partial-debt-payment.dto';
+import type { CustomerLedgerQueryDto, CustomerLedgerResponseDto } from './dto/customer-ledger.dto';
+import type { DailyCollectionsQueryDto, DailyCollectionsResponseDto } from './dto/daily-collections.dto';
 export declare class CallCenterService {
     private readonly prisma;
     private readonly customerLedger;
@@ -87,5 +89,7 @@ export declare class CallCenterService {
         walletBalanceKd: string;
         paymentMethod: PosPaymentMethod;
     }>;
+    getCustomerLedger(customerId: string, filters: CustomerLedgerQueryDto): Promise<CustomerLedgerResponseDto>;
+    getDailyCollections(params: DailyCollectionsQueryDto): Promise<DailyCollectionsResponseDto>;
     private mapSubscriptionChainRows;
 }

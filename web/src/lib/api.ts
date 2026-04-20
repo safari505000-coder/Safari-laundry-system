@@ -1403,6 +1403,171 @@ export type CustomerSubscriptionRow = {
   }>;
 };
 
+/**
+ * V19.4 — CC pack #8 + #10 + #11. Unified "customer 360" ledger.
+ * Feeds the Customers-page Ledger tab (timeline + invoices + cut-off
+ * banner) with a single round-trip.
+ */
+export type CustomerLedgerEventKind =
+  | 'SUBSCRIPTION_ACTIVATION'
+  | 'SUBSCRIPTION_ROLLOVER_CARRY'
+  | 'ORDER_SETTLEMENT'
+  | 'PARTIAL_DEBT_PAYMENT';
+
+export type CustomerLedgerEvent = {
+  id: string;
+  atIso: string;
+  rawType: 'SUBSCRIPTION_ACTIVATION' | 'ORDER_WALLET_SETTLEMENT';
+  kind: CustomerLedgerEventKind;
+  amountKd: string;
+  balanceBeforeKd: string;
+  balanceAfterKd: string;
+  debtBeforeKd: string;
+  debtAfterKd: string;
+  debtSettledKd: string;
+  debtDiscountKd: string;
+  paymentMethod:
+    | 'SUBSCRIPTION_WALLET'
+    | 'CASH'
+    | 'KNET'
+    | 'PAYMENT_LINK'
+    | 'ONLINE'
+    | null;
+  orderId: string | null;
+  orderSerial: string | null;
+  subscriptionId: string | null;
+  subscriptionLabel: string | null;
+  performedByUserId: string | null;
+  performedByName: string | null;
+  performedByRole: string | null;
+  note: string | null;
+};
+
+export type CustomerLedgerInvoice = {
+  id: string;
+  serial: string | null;
+  createdAtIso: string;
+  completedAtIso: string | null;
+  totalKd: string;
+  status: string;
+  cashStatus: string;
+  paymentMethod:
+    | 'SUBSCRIPTION_WALLET'
+    | 'CASH'
+    | 'KNET'
+    | 'PAYMENT_LINK'
+    | 'ONLINE'
+    | null;
+  driverName: string | null;
+  branchName: string | null;
+  subscriptionId: string | null;
+  subscriptionStatus:
+    | 'ACTIVE'
+    | 'EXPIRED'
+    | 'ROLLED_OVER'
+    | 'CUT_OFF'
+    | 'CANCELLED'
+    | null;
+  subscriptionLabel: string | null;
+  issuedWhileCutOff: boolean;
+  openDebt: boolean;
+};
+
+export type CustomerLedgerResponse = {
+  customer: {
+    id: string;
+    displayName: string | null;
+    phone: string | null;
+    phone2: string | null;
+    originBranchId: string | null;
+    originBranchName: string | null;
+    walletBalanceKd: string;
+    walletDebtKd: string;
+  };
+  activeSubscription: {
+    id: string;
+    status: 'ACTIVE' | 'EXPIRED' | 'ROLLED_OVER' | 'CUT_OFF' | 'CANCELLED';
+    planNameSnapshot: string;
+    planSalePriceKd: string;
+    planActualBalanceKd: string;
+    planValidityDays: number;
+    carriedBalanceKd: string;
+    parentSubscriptionId: string | null;
+    activatedAtIso: string;
+    expiresAtIso: string;
+    closedAtIso: string | null;
+    closedReason: string | null;
+  } | null;
+  isCutOff: boolean;
+  fromIso: string | null;
+  toIso: string | null;
+  events: CustomerLedgerEvent[];
+  invoices: CustomerLedgerInvoice[];
+  totals: {
+    eventCount: number;
+    invoiceCount: number;
+    openInvoiceCount: number;
+    totalCollectedKd: string;
+    totalDiscountedKd: string;
+  };
+};
+
+/**
+ * V19.4 — CC pack #4. Daily collector feed for the Collections page
+ * activity panel. Covers every debt-reducing event in the Kuwait-local
+ * day window (partial debt payments + full settlements + mark-paid-via-link).
+ */
+export type DailyCollectionEvent = {
+  id: string;
+  atIso: string;
+  customerId: string;
+  customerName: string | null;
+  customerPhone: string | null;
+  orderId: string | null;
+  orderSerial: string | null;
+  amountCollectedKd: string;
+  discountAppliedKd: string;
+  paymentMethod:
+    | 'SUBSCRIPTION_WALLET'
+    | 'CASH'
+    | 'KNET'
+    | 'PAYMENT_LINK'
+    | 'ONLINE'
+    | null;
+  kind: 'PARTIAL_DEBT_PAYMENT' | 'FULL_ORDER_SETTLEMENT';
+  performedByUserId: string | null;
+  performedByName: string | null;
+  performedByRole: string | null;
+  branchName: string | null;
+  driverName: string | null;
+  note: string | null;
+  customerDebtAfterKd: string;
+};
+
+export type DailyCollectionsAgentTotal = {
+  agentId: string | null;
+  agentName: string | null;
+  agentRole: string | null;
+  eventCount: number;
+  uniqueCustomers: number;
+  collectedKd: string;
+  discountKd: string;
+};
+
+export type DailyCollectionsResponse = {
+  dayIsoLocal: string;
+  dayStartIso: string;
+  dayEndIso: string;
+  totals: {
+    eventCount: number;
+    uniqueCustomers: number;
+    collectedKd: string;
+    discountKd: string;
+  };
+  byAgent: DailyCollectionsAgentTotal[];
+  events: DailyCollectionEvent[];
+};
+
 export type ActivateSubscriptionResponse = {
   customer: {
     id: string;

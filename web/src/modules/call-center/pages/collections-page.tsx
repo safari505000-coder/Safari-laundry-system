@@ -49,6 +49,7 @@ import {
   DialogTitle,
 } from '@/modules/shared/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import { DailyCollectorPanel } from '@/modules/call-center/components/daily-collector-panel';
 
 /**
  * V1.6.5 — KWD standard = 3 decimal places (fils). The Collections
@@ -497,6 +498,14 @@ export function CollectionsPage() {
           loading={summaryLoading && !summary}
         />
       </section>
+
+      {/*
+       * V19.4 — CC pack #4. Daily collector feed. Lists today's debt-
+       * reducing events across every agent with per-agent totals so a
+       * supervisor / CC lead can answer "من حصّل ماذا اليوم؟" in one
+       * glance, without leaving the Collections page.
+       */}
+      <DailyCollectorPanel token={token} />
 
       {/* Phone search — narrows the radar to a specific customer/phone. */}
       <div className="relative">

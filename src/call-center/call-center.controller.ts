@@ -22,6 +22,8 @@ import { ExtendSubscriptionDto } from './dto/extend-subscription.dto';
 import { DebtRecoveryQueryDto } from './dto/debt-recovery-report.dto';
 import { MarkOrderPaidDto } from './dto/mark-order-paid.dto';
 import { RecordPartialDebtPaymentDto } from './dto/record-partial-debt-payment.dto';
+import { CustomerLedgerQueryDto } from './dto/customer-ledger.dto';
+import { DailyCollectionsQueryDto } from './dto/daily-collections.dto';
 
 @ApiTags('call-center')
 @ApiBearerAuth('bearer')
@@ -219,5 +221,40 @@ export class CallCenterController {
     @Param('customerId', ParseUUIDPipe) customerId: string,
   ) {
     return this.callCenterService.listCustomerSubscriptionChain(customerId);
+  }
+
+  @Get('customers/:customerId/ledger')
+  @Roles(
+    SafariRole.CALL_CENTER,
+    SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
+    SafariRole.ACCOUNTANT,
+  )
+  @ApiOperation({
+    summary: `Customer 360 ledger — invoices + timeline + cut-off markers (${APP_BRAND})`,
+    description:
+      'V19.4 CC pack #8 + #10 + #11. Unified read-only snapshot for a single customer: wallet header, active subscription (if any), full invoice list with payment method + cut-off flag, chronological ledger events with running balance. Accepts optional Kuwait-local YYYY-MM-DD `from`/`to` bounds and `limit`/`offset`. Wide RBAC so Owner/GM/Accountant can audit without impersonating a CC agent.',
+  })
+  getCustomerLedger(
+    @Param('customerId', ParseUUIDPipe) customerId: string,
+    @Query() q: CustomerLedgerQueryDto,
+  ) {
+    return this.callCenterService.getCustomerLedger(customerId, q);
+  }
+
+  @Get('daily-collections')
+  @Roles(
+    SafariRole.CALL_CENTER,
+    SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
+    SafariRole.ACCOUNTANT,
+  )
+  @ApiOperation({
+    summary: `Daily collector feed — today's debt reductions (${APP_BRAND})`,
+    description:
+      'V19.4 CC pack #4. Lists every debt-reducing ledger row written between Kuwait 00:00 and 24:00 (default today) with per-agent totals. Includes CC #1 partial debt payments, "mark paid via link" settlements, and any order settlement that reduced debt. Pass `?agentId=<uuid>` for a per-collector view; supervisors see everyone when omitted.',
+  })
+  getDailyCollections(@Query() q: DailyCollectionsQueryDto) {
+    return this.callCenterService.getDailyCollections(q);
   }
 }
