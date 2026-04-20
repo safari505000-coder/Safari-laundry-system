@@ -35,6 +35,10 @@ import {
 } from '@/modules/shared/components/ui/card';
 import { Label } from '@/modules/shared/components/ui/label';
 import {
+  StatTile,
+  type StatTileTone,
+} from '@/modules/shared/components/ui/stat-tile';
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -202,35 +206,41 @@ function CashForecastCard({ token, days }: { token: string; days: number }) {
         ) : data ? (
           <>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-              <KpiTile
+              <StatTile
                 label="متوسط الإيراد اليومي"
                 value={`${data.summary.avgDailyRevenue.toFixed(3)} د.ك`}
-                tone="emerald"
+                tone="success"
+                size="compact"
               />
-              <KpiTile
+              <StatTile
                 label="متوسط المصروف اليومي"
                 value={`${data.summary.avgDailyExpense.toFixed(3)} د.ك`}
-                tone="rose"
+                tone="danger"
+                size="compact"
               />
-              <KpiTile
+              <StatTile
                 label="متوسط صافي الكاش"
                 value={`${data.summary.avgDailyNet.toFixed(3)} د.ك`}
-                tone={data.summary.avgDailyNet >= 0 ? 'emerald' : 'rose'}
+                tone={toNetTone(data.summary.avgDailyNet)}
+                size="compact"
               />
-              <KpiTile
+              <StatTile
                 label={`إيراد متوقع (${data.horizonDays} يوم)`}
                 value={`${data.summary.forecastTotalRevenue.toFixed(3)} د.ك`}
-                tone="emerald"
+                tone="success"
+                size="compact"
               />
-              <KpiTile
+              <StatTile
                 label={`مصروف متوقع (${data.horizonDays} يوم)`}
                 value={`${data.summary.forecastTotalExpense.toFixed(3)} د.ك`}
-                tone="rose"
+                tone="danger"
+                size="compact"
               />
-              <KpiTile
+              <StatTile
                 label={`صافي متوقع (${data.horizonDays} يوم)`}
                 value={`${data.summary.forecastTotalNet.toFixed(3)} د.ك`}
-                tone={data.summary.forecastTotalNet >= 0 ? 'emerald' : 'rose'}
+                tone={toNetTone(data.summary.forecastTotalNet)}
+                size="compact"
               />
             </div>
 
@@ -553,15 +563,9 @@ function ScorePill({ score }: { score: number }) {
 
 // ─── small visual helpers ──────────────────────────────────────────
 
-function KpiTile({ label, value, tone }: { label: string; value: string; tone: 'emerald' | 'rose' | 'slate' }) {
-  const bg = tone === 'emerald' ? 'bg-emerald-50' : tone === 'rose' ? 'bg-rose-50' : 'bg-slate-50';
-  const txt = tone === 'emerald' ? 'text-emerald-900' : tone === 'rose' ? 'text-rose-900' : 'text-slate-900';
-  return (
-    <div className={`rounded-lg border p-3 ${bg}`}>
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className={`text-lg font-semibold ${txt}`}>{value}</div>
-    </div>
-  );
+/** Map a signed net-cash figure to a StatTile tone. */
+function toNetTone(net: number): StatTileTone {
+  return net >= 0 ? 'success' : 'danger';
 }
 
 /**

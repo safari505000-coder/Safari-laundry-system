@@ -15,6 +15,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/modules/shared/components/ui/card';
+import { StatTile } from '@/modules/shared/components/ui/stat-tile';
 import {
   Table,
   TableBody,
@@ -184,10 +185,10 @@ export function FinancialCycleCard({ token }: Props) {
           <StatTile
             label="سواق مفتوحة شفتاتهم / الإجمالي النشط"
             value={coverage}
-            highlight={
-              snapshot
-                ? snapshot.driversOnShift < snapshot.activeDriversTotal
-                : false
+            tone={
+              snapshot && snapshot.driversOnShift < snapshot.activeDriversTotal
+                ? 'highlight'
+                : 'neutral'
             }
           />
         </div>
@@ -251,33 +252,3 @@ export function FinancialCycleCard({ token }: Props) {
   );
 }
 
-function StatTile({
-  label,
-  value,
-  mono,
-  highlight,
-}: {
-  label: string;
-  value: string;
-  mono?: boolean;
-  highlight?: boolean;
-}) {
-  return (
-    <div
-      className={`rounded-xl border px-4 py-3 ${
-        highlight
-          ? 'border-amber-300 bg-amber-50 dark:border-amber-800/60 dark:bg-amber-950/30'
-          : 'border-border bg-muted/40'
-      }`}
-    >
-      <div className="text-xs font-semibold text-muted-foreground">{label}</div>
-      <div
-        className={`mt-1 text-base font-bold text-foreground ${
-          mono ? 'font-mono' : ''
-        }`}
-      >
-        {value}
-      </div>
-    </div>
-  );
-}

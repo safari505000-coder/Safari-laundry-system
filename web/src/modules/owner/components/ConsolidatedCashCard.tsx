@@ -13,6 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/modules/shared/components/ui/card';
+import { StatTile } from '@/modules/shared/components/ui/stat-tile';
 import { formatKwdLabel } from '@/lib/kwd';
 
 type Props = {
@@ -89,16 +90,18 @@ export function ConsolidatedCashCard({ token }: Props) {
           <p className="text-muted-foreground">لا توجد بيانات متاحة حالياً.</p>
         ) : (
           <div className="space-y-4">
-            <div className="rounded-lg bg-emerald-50 px-4 py-3">
-              <p className="text-xs text-emerald-800">الإجمالي العام</p>
-              <p className="font-mono text-2xl font-bold tabular-nums text-emerald-950">
+            <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 dark:border-emerald-800/60 dark:bg-emerald-950/30">
+              <p className="text-xs text-emerald-800 dark:text-emerald-200/80">
+                الإجمالي العام
+              </p>
+              <p className="font-mono text-2xl font-bold tabular-nums text-emerald-950 dark:text-emerald-100">
                 {formatKwdLabel(data.totalKd)}
               </p>
-              <p className="mt-1 text-[11px] text-emerald-700">
+              <p className="mt-1 text-[11px] text-emerald-700 dark:text-emerald-200/60">
                 آخر تحديث: {kwFormatter.format(new Date(data.atIso))}
               </p>
             </div>
-            <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <Pool
                 label="مع السائقين (ميدان)"
                 sub={`${data.breakdown.driverCount} سائق`}
@@ -119,7 +122,7 @@ export function ConsolidatedCashCard({ token }: Props) {
                 sub={`${data.breakdown.unverifiedBankDepositCount} إيصال`}
                 value={data.unverifiedBankDepositsKd}
               />
-            </dl>
+            </div>
           </div>
         )}
       </CardContent>
@@ -137,12 +140,12 @@ function Pool({
   value: string;
 }) {
   return (
-    <div className="rounded-md border border-border bg-muted/30 p-3">
-      <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="mt-1 font-mono text-base font-semibold tabular-nums text-foreground">
-        {formatKwdLabel(value)}
-      </dd>
-      <p className="mt-0.5 text-[11px] text-muted-foreground">{sub}</p>
-    </div>
+    <StatTile
+      label={label}
+      value={formatKwdLabel(value)}
+      sub={sub}
+      mono
+      size="compact"
+    />
   );
 }
