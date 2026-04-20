@@ -9,6 +9,7 @@ import {
   inventoryLowStockItem,
   inventoryMovementsItem,
   inventoryOperationsItem,
+  insightsAiItem,
   invoicesDataItem,
   knetAuditItem,
   leavesItem,
@@ -65,5 +66,12 @@ export const accountantSidebarNavGroups: NavGroup[] = [
   {
     labelKey: 'nav.groupHr',
     items: [payrollItem, attendanceItem, leavesItem, loansItem],
+  },
+  // Stage-C — AI insights (financial tabs only for accountant; the
+  // executive-weekly and driver-scorecard tabs hide themselves via
+  // the access matrix).
+  {
+    labelKey: 'nav.groupIntelligence',
+    items: [insightsAiItem],
   },
 ];

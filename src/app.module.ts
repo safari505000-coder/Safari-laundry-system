@@ -20,6 +20,7 @@ import { FixedExpenseModule } from './fixed-expenses/fixed-expense.module';
 import { PayrollModule } from './payroll/payroll.module';
 import { FinanceModule } from './finance/finance.module';
 import { HealthModule } from './health/health.module';
+import { InsightsModule } from './insights/insights.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { LaundryPriceListModule } from './laundry-price-list/laundry-price-list.module';
 import { LeavesModule } from './leaves/leaves.module';
@@ -79,6 +80,7 @@ const spaStaticModule = existsSync(webDistPath)
     CallCenterModule,
     LaundryPriceListModule,
     InventoryModule,
+    InsightsModule,
     ManagerCustodyModule,
     PosModule,
     CustomersModule,

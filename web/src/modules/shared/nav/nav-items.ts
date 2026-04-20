@@ -3,6 +3,7 @@ import {
   ArrowLeftRight,
   Banknote,
   BanknoteArrowUp,
+  BrainCircuit,
   CalendarDays,
   Clock,
   FileSignature,
@@ -513,4 +514,18 @@ export const branchesItem: NavItem = {
   labelKey: 'nav.branches',
   icon: Building2,
   roles: ['OWNER', 'GENERAL_MANAGER'],
+};
+
+/**
+ * Stage-C — AI / BI insights dashboard. OWNER/GM see everything
+ * (including the executive weekly PDF archive); ACCOUNTANT reaches the
+ * financial tabs (cash forecast + anomalies); MANAGER reaches the
+ * driver scorecard tab. The page itself hides tabs based on
+ * `access-matrix.ts`, so every role sees only what it can consume.
+ */
+export const insightsAiItem: NavItem = {
+  to: '/insights/ai',
+  labelKey: 'nav.insightsAi',
+  icon: BrainCircuit,
+  roles: ['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT', 'MANAGER'],
 };

@@ -3,6 +3,7 @@ import {
   attendanceItem,
   dashboardItem,
   expensesItem,
+  insightsAiItem,
   inventoryOperationsItem,
   leavesItem,
   loansItem,
@@ -43,5 +44,11 @@ export const managerSidebarNavGroups: NavGroup[] = [
   {
     labelKey: 'nav.groupHr',
     items: [attendanceItem, leavesItem, loansItem],
+  },
+  // Stage-C — AI insights. Manager only unlocks the driver scorecard
+  // tab; financial tabs and executive PDF are hidden via access-matrix.
+  {
+    labelKey: 'nav.groupIntelligence',
+    items: [insightsAiItem],
   },
 ];

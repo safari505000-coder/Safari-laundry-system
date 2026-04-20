@@ -65,6 +65,8 @@ export const ar = {
     ownerSerials: 'إدارة التسلسل',
     debtTransfers: 'تحويل المديونيات',
     groupFinance: 'المالية والتقارير',
+    groupIntelligence: 'الذكاء والتحليلات',
+    insightsAi: 'تحليلات AI',
     groupSettings: 'الإعدادات',
     groupSystemSettings: 'إعدادات النظام',
     more: 'المزيد',

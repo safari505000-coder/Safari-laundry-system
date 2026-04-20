@@ -210,6 +210,16 @@ export const ACCESS = {
     'VIEWER',
   ] satisfies readonly SafariRole[],
 
+  // ─── Stage-C — AI / BI insights ──────────────────────────────────
+  // Financial views (cash forecast, anomalies) are shared with the
+  // accountant; driver scorecard is a branch-ops KPI so MANAGER also
+  // gets it. The weekly executive PDF archive is exec-pair only.
+  'insights.view': withExec('ACCOUNTANT', 'MANAGER'),
+  'insights.cashForecast.view': withExec('ACCOUNTANT'),
+  'insights.anomalies.view': withExec('ACCOUNTANT'),
+  'insights.driverScorecard.view': withExec('MANAGER'),
+  'insights.executive.view': EXEC_PAIR,
+
   // ─── Driver personal island ───────────────────────────────────────
   'myDeposits.view': withExec('DRIVER'),
   'myDailySales.view': withExec('DRIVER'),

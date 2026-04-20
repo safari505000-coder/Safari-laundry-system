@@ -64,6 +64,8 @@ export const en = {
     ownerSerials: 'Serial management',
     debtTransfers: 'Debt transfers',
     groupFinance: 'Finance & reporting',
+    groupIntelligence: 'Intelligence & analytics',
+    insightsAi: 'AI insights',
     groupSettings: 'Settings',
     groupSystemSettings: 'System settings',
     more: 'More',

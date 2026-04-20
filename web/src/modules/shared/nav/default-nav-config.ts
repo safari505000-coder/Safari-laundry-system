@@ -18,6 +18,7 @@ import {
   inventoryLowStockItem,
   inventoryMovementsItem,
   inventoryOperationsItem,
+  insightsAiItem,
   invoicesDataItem,
   manageItemsItem,
   managerCustodyAgingItem,
@@ -74,6 +75,10 @@ export const defaultSidebarNavGroups: NavGroup[] = [
       inventoryOperationsItem,
       inventoryCatalogItem,
     ],
+  },
+  {
+    labelKey: 'nav.groupIntelligence',
+    items: [insightsAiItem],
   },
   {
     labelKey: 'nav.groupFinance',

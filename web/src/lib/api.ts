@@ -2415,6 +2415,120 @@ export function exportStockMovementsXlsx(
 }
 
 // ---------------------------------------------------------------------------
+// Stage-C — AI / BI insights.
+// ---------------------------------------------------------------------------
+
+export type CashForecastPoint = {
+  date: string;
+  revenue: number;
+  expense: number;
+  netCash: number;
+};
+
+export type CashForecastResponse = {
+  windowDays: number;
+  horizonDays: number;
+  historical: CashForecastPoint[];
+  forecast: CashForecastPoint[];
+  summary: {
+    avgDailyRevenue: number;
+    avgDailyExpense: number;
+    avgDailyNet: number;
+    forecastTotalRevenue: number;
+    forecastTotalExpense: number;
+    forecastTotalNet: number;
+  };
+};
+
+export type AnomalyPoint = {
+  date: string;
+  value: number;
+  orders?: number;
+};
+
+export type AnomalyFlag = {
+  date: string;
+  value: number;
+  expected: number;
+  zScore: number;
+  direction: 'HIGH' | 'LOW';
+};
+
+export type AnomaliesResponse = {
+  windowDays: number;
+  zThreshold: number;
+  revenue: { series: AnomalyPoint[]; anomalies: AnomalyFlag[] };
+  expense: { series: AnomalyPoint[]; anomalies: AnomalyFlag[] };
+};
+
+export type DriverScoreRow = {
+  driverId: string;
+  fullName: string;
+  branchName: string | null;
+  trips: number;
+  revenueKd: number;
+  revenuePerTripKd: number;
+  avgTurnaroundHours: number;
+  score: number;
+};
+
+export type DriverScorecardResponse = {
+  periodDays: number;
+  drivers: DriverScoreRow[];
+};
+
+export type WeeklyReportEntry = {
+  key: string;
+  filename: string;
+  sizeBytes: number;
+  generatedAt: string;
+  periodFrom?: string;
+  periodTo?: string;
+};
+
+export function getCashForecast(token: string, days = 30) {
+  return apiJson<CashForecastResponse>(
+    `/api/insights/cash-forecast${buildQuery({ days })}`,
+    { token },
+  );
+}
+
+export function getAnomalies(token: string, days = 30) {
+  return apiJson<AnomaliesResponse>(
+    `/api/insights/anomalies${buildQuery({ days })}`,
+    { token },
+  );
+}
+
+export function getDriverScorecard(token: string, days = 30) {
+  return apiJson<DriverScorecardResponse>(
+    `/api/insights/driver-scorecard${buildQuery({ days })}`,
+    { token },
+  );
+}
+
+export function listWeeklyReports(token: string) {
+  return apiJson<WeeklyReportEntry[]>(`/api/insights/executive/weekly`, {
+    token,
+  });
+}
+
+export function regenerateWeeklyReport(token: string) {
+  return apiJson<WeeklyReportEntry>(
+    `/api/insights/executive/weekly/regenerate`,
+    { method: 'POST', token },
+  );
+}
+
+export function downloadWeeklyReport(token: string, key: string) {
+  return downloadBinary(
+    `/api/insights/executive/weekly/${encodeURIComponent(key)}`,
+    token,
+    `${key}.pdf`,
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Stage-D — Leave requests + Employee loans.
 // ---------------------------------------------------------------------------
 

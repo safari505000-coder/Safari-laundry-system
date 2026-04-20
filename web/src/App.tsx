@@ -21,6 +21,7 @@ import { LoansPage } from '@/pages/loans-page';
 import { LoanPrintPage } from '@/pages/loan-print-page';
 import { ExpensesPage } from '@/pages/expenses-page';
 import { FinancialsPage } from '@/pages/financials-page';
+import { InsightsAiPage } from '@/pages/insights-ai-page';
 import { FinancialCycleReportPage } from '@/pages/financial-cycle-report-page';
 import { ReportsPage } from '@/pages/reports-page';
 import { LoginPage } from '@/pages/login-page';
@@ -349,6 +350,14 @@ export default function App() {
                   element={
                     <RequireAccess access="financials.view">
                       <FinancialsPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="insights/ai"
+                  element={
+                    <RequireAccess access="insights.view">
+                      <InsightsAiPage />
                     </RequireAccess>
                   }
                 />
