@@ -101,6 +101,14 @@ function isDebtViaLinkRow(meta) {
         return false;
     return meta.debtSettlementViaLink === true;
 }
+function isCollectionsGreenCardRow(meta) {
+    if (!meta || typeof meta !== 'object' || Array.isArray(meta))
+        return false;
+    const m = meta;
+    return (m.debtSettlementViaLink === true ||
+        m.debtSettlementViaCallCenter === true ||
+        m.debtPaymentOnly === true);
+}
 function isPartialDebtPaymentRow(meta) {
     if (!meta || typeof meta !== 'object' || Array.isArray(meta))
         return false;
@@ -478,7 +486,7 @@ let CallCenterService = class CallCenterService {
                 },
             }),
         ]);
-        const debtViaLinkRows = todaysLedgerRows.filter((r) => isDebtViaLinkRow(r.metadata));
+        const debtViaLinkRows = todaysLedgerRows.filter((r) => isCollectionsGreenCardRow(r.metadata));
         const collectedTodayViaLink = debtViaLinkRows.reduce((acc, r) => acc.plus(extractDebtSettled(r.metadata)), new client_1.Prisma.Decimal(0));
         const recoveredToday = todaysLedgerRows.reduce((acc, r) => acc.plus(extractDebtSettled(r.metadata)), new client_1.Prisma.Decimal(0));
         return {

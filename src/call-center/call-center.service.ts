@@ -226,6 +226,33 @@ function isDebtViaLinkRow(meta: Prisma.JsonValue | null): boolean {
 }
 
 /**
+ * V19.6 — "Collections-page recovery" predicate. The green KPI card on
+ * the Debt-Tracking report must reflect EVERY action a CC agent takes
+ * to bring in debt today, not just gateway link callbacks. That includes:
+ *
+ *   • `debtSettlementViaLink   = true`  → gateway callback finalize
+ *     (`PaymentsService.finalizeSinglePaidOrderFromGateway`)
+ *   • `debtSettlementViaCallCenter = true` → the "تم الدفع" icon on the
+ *     Collections table (`PaymentsService.manuallyMarkOrderPaidByMethod`)
+ *   • `debtPaymentOnly         = true`  → CC #1 partial debt payment
+ *     (`CustomerLedgerService.recordPartialDebtPayment`)
+ *
+ * Before V19.6 the green card filtered strictly on `debtSettlementViaLink`,
+ * so manual "Mark paid" and partial collections never moved the card —
+ * which is exactly the mismatch the Owner hit against the Daily Collector
+ * panel (Daily Collector sees all three; green card saw only one).
+ */
+function isCollectionsGreenCardRow(meta: Prisma.JsonValue | null): boolean {
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return false;
+  const m = meta as Record<string, unknown>;
+  return (
+    m.debtSettlementViaLink === true ||
+    m.debtSettlementViaCallCenter === true ||
+    m.debtPaymentOnly === true
+  );
+}
+
+/**
  * V19.4 — CC pack #1 flag introduced by
  * `CustomerLedgerService.recordPartialDebtPayment`. Distinguishes a
  * customer-level partial debt collection (no orderId) from an order
@@ -744,10 +771,14 @@ export class CallCenterService {
       }),
     ]);
 
-    // V1.6.4 — narrow green card: only rows where
-    // metadata.debtSettlementViaLink === true contribute to the sum.
+    // V19.6 — green card: now covers EVERY Collections-page recovery
+    // action, not just gateway link callbacks. See `isCollectionsGreenCardRow`
+    // for the three signals. This fixes the Owner-reported bug where the
+    // "تم الدفع" icon settled an order (TH + GL both written correctly)
+    // but the green card stayed flat because it filtered on the wrong
+    // boolean.
     const debtViaLinkRows = todaysLedgerRows.filter((r) =>
-      isDebtViaLinkRow(r.metadata),
+      isCollectionsGreenCardRow(r.metadata),
     );
     const collectedTodayViaLink = debtViaLinkRows.reduce(
       (acc, r) => acc.plus(extractDebtSettled(r.metadata)),
