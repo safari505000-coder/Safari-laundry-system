@@ -241,7 +241,7 @@ let CallCenterService = class CallCenterService {
                 },
                 settlement,
             };
-        });
+        }, { maxWait: 10_000, timeout: 15_000 });
     }
     async extendSubscription(userId, dto) {
         return this.prisma.$transaction(async (tx) => {
@@ -301,7 +301,7 @@ let CallCenterService = class CallCenterService {
                 planId: wallet.subscriptionPlanId,
                 planName: wallet.subscriptionPlanName ?? null,
             };
-        });
+        }, { maxWait: 10_000, timeout: 15_000 });
     }
     async listCustomerSettlementHistory(customerId, take = 40) {
         const customer = await this.prisma.customer.findUnique({

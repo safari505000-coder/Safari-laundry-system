@@ -411,45 +411,56 @@ export class CallCenterService {
   }
 
   async activateSubscription(userId: string, dto: ActivateSubscriptionDto) {
-    return this.prisma.$transaction(async (tx) => {
-      const settlement = await this.customerLedger.activateSubscriptionPlan(tx, {
-        customerId: dto.customerId,
-        planId: dto.planId,
-        performedByUserId: userId,
-      });
-      const [customer, plan, wallet] = await Promise.all([
-        tx.customer.findUniqueOrThrow({
-          where: { id: dto.customerId },
-          select: {
-            id: true,
-            phone: true,
-            phone2: true,
-            address: true,
-            displayName: true,
+    // V19.7.1 — lift Prisma's default 5 s transaction budget. The
+    // `activateSubscriptionPlan` flow performs ~12 sequential DB calls
+    // (wallet resolve, branch origin, per-subscription ledger close +
+    // open, wallet update, TH insert, GL append) followed by 3 post-
+    // commit lookups here. On a warm DB the chain is ~300 ms, but with
+    // connection pool contention or cold caches it crosses 5 s and
+    // Prisma aborts with P2028. Aligns with the 10/15 s budget already
+    // used by Orders and Payments for the same 3-table atomic write.
+    return this.prisma.$transaction(
+      async (tx) => {
+        const settlement = await this.customerLedger.activateSubscriptionPlan(tx, {
+          customerId: dto.customerId,
+          planId: dto.planId,
+          performedByUserId: userId,
+        });
+        const [customer, plan, wallet] = await Promise.all([
+          tx.customer.findUniqueOrThrow({
+            where: { id: dto.customerId },
+            select: {
+              id: true,
+              phone: true,
+              phone2: true,
+              address: true,
+              displayName: true,
+            },
+          }),
+          tx.subscriptionPlan.findUniqueOrThrow({
+            where: { id: dto.planId },
+          }),
+          tx.customerWallet.findUniqueOrThrow({
+            where: { customerId: dto.customerId },
+          }),
+        ]);
+        return {
+          customer,
+          plan: {
+            id: plan.id,
+            name: plan.name,
+            price: plan.salePrice.toString(),
+            creditAmount: plan.actualBalance.toString(),
           },
-        }),
-        tx.subscriptionPlan.findUniqueOrThrow({
-          where: { id: dto.planId },
-        }),
-        tx.customerWallet.findUniqueOrThrow({
-          where: { customerId: dto.customerId },
-        }),
-      ]);
-      return {
-        customer,
-        plan: {
-          id: plan.id,
-          name: plan.name,
-          price: plan.salePrice.toString(),
-          creditAmount: plan.actualBalance.toString(),
-        },
-        wallet: {
-          balance: wallet.balance.toString(),
-          debt: wallet.debt.toString(),
-        },
-        settlement,
-      };
-    });
+          wallet: {
+            balance: wallet.balance.toString(),
+            debt: wallet.debt.toString(),
+          },
+          settlement,
+        };
+      },
+      { maxWait: 10_000, timeout: 15_000 },
+    );
   }
 
   /**
@@ -472,73 +483,80 @@ export class CallCenterService {
    * owner has an audit trail of every manual extension.
    */
   async extendSubscription(userId: string, dto: ExtendSubscriptionDto) {
-    return this.prisma.$transaction(async (tx) => {
-      const wallet = await tx.customerWallet.findUnique({
-        where: { customerId: dto.customerId },
-        select: {
-          id: true,
-          balance: true,
-          debt: true,
-          subscriptionPlanId: true,
-          subscriptionPlanName: true,
-          subscriptionActivatedAt: true,
-          subscriptionExpiresAt: true,
-        },
-      });
-      if (!wallet) {
-        throw new NotFoundException(
-          'Customer has no wallet — activate a subscription before extending.',
-        );
-      }
-      if (!wallet.subscriptionPlanId || !wallet.subscriptionExpiresAt) {
-        throw new BadRequestException(
-          'No active subscription found — use Upgrade to start a new plan.',
-        );
-      }
-
-      const now = new Date();
-      const anchor =
-        wallet.subscriptionExpiresAt.getTime() > now.getTime()
-          ? wallet.subscriptionExpiresAt
-          : now;
-      const newExpiry = new Date(anchor.getTime());
-      newExpiry.setUTCDate(newExpiry.getUTCDate() + dto.extensionDays);
-
-      await tx.customerWallet.update({
-        where: { id: wallet.id },
-        data: { subscriptionExpiresAt: newExpiry },
-      });
-
-      await tx.transactionHistory.create({
-        data: {
-          type: LedgerTransactionType.SUBSCRIPTION_ACTIVATION,
-          customerId: dto.customerId,
-          amount: new Prisma.Decimal(0),
-          balanceBefore: wallet.balance,
-          balanceAfter: wallet.balance,
-          debtBefore: wallet.debt,
-          debtAfter: wallet.debt,
-          performedById: userId,
-          metadata: {
-            extensionOnly: true,
-            extensionDays: dto.extensionDays,
-            planId: wallet.subscriptionPlanId,
-            planName: wallet.subscriptionPlanName ?? null,
-            previousExpiresAt: wallet.subscriptionExpiresAt.toISOString(),
-            newExpiresAt: newExpiry.toISOString(),
+    // V19.7.1 — same reasoning as `activateSubscription`: wallet read +
+    // update + TransactionHistory insert is usually fast but shares the
+    // same connection pool, so we use the codebase-wide 10/15 s budget
+    // to avoid P2028 during mid-call contention.
+    return this.prisma.$transaction(
+      async (tx) => {
+        const wallet = await tx.customerWallet.findUnique({
+          where: { customerId: dto.customerId },
+          select: {
+            id: true,
+            balance: true,
+            debt: true,
+            subscriptionPlanId: true,
+            subscriptionPlanName: true,
+            subscriptionActivatedAt: true,
+            subscriptionExpiresAt: true,
           },
-        },
-      });
+        });
+        if (!wallet) {
+          throw new NotFoundException(
+            'Customer has no wallet — activate a subscription before extending.',
+          );
+        }
+        if (!wallet.subscriptionPlanId || !wallet.subscriptionExpiresAt) {
+          throw new BadRequestException(
+            'No active subscription found — use Upgrade to start a new plan.',
+          );
+        }
 
-      return {
-        customerId: dto.customerId,
-        extensionDays: dto.extensionDays,
-        previousExpiresAt: wallet.subscriptionExpiresAt.toISOString(),
-        newExpiresAt: newExpiry.toISOString(),
-        planId: wallet.subscriptionPlanId,
-        planName: wallet.subscriptionPlanName ?? null,
-      };
-    });
+        const now = new Date();
+        const anchor =
+          wallet.subscriptionExpiresAt.getTime() > now.getTime()
+            ? wallet.subscriptionExpiresAt
+            : now;
+        const newExpiry = new Date(anchor.getTime());
+        newExpiry.setUTCDate(newExpiry.getUTCDate() + dto.extensionDays);
+
+        await tx.customerWallet.update({
+          where: { id: wallet.id },
+          data: { subscriptionExpiresAt: newExpiry },
+        });
+
+        await tx.transactionHistory.create({
+          data: {
+            type: LedgerTransactionType.SUBSCRIPTION_ACTIVATION,
+            customerId: dto.customerId,
+            amount: new Prisma.Decimal(0),
+            balanceBefore: wallet.balance,
+            balanceAfter: wallet.balance,
+            debtBefore: wallet.debt,
+            debtAfter: wallet.debt,
+            performedById: userId,
+            metadata: {
+              extensionOnly: true,
+              extensionDays: dto.extensionDays,
+              planId: wallet.subscriptionPlanId,
+              planName: wallet.subscriptionPlanName ?? null,
+              previousExpiresAt: wallet.subscriptionExpiresAt.toISOString(),
+              newExpiresAt: newExpiry.toISOString(),
+            },
+          },
+        });
+
+        return {
+          customerId: dto.customerId,
+          extensionDays: dto.extensionDays,
+          previousExpiresAt: wallet.subscriptionExpiresAt.toISOString(),
+          newExpiresAt: newExpiry.toISOString(),
+          planId: wallet.subscriptionPlanId,
+          planName: wallet.subscriptionPlanName ?? null,
+        };
+      },
+      { maxWait: 10_000, timeout: 15_000 },
+    );
   }
 
   async listCustomerSettlementHistory(

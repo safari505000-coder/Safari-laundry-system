@@ -520,137 +520,147 @@ export class CustomerLedgerService {
     walletBalanceKd: string;
     paymentMethod: PosPaymentMethod;
   }> {
-    return this.prisma.$transaction(async (tx) => {
-      const customer = await tx.customer.findUnique({
-        where: { id: params.customerId },
-        select: { id: true, originBranchId: true },
-      });
-      if (!customer) {
-        throw new NotFoundException('Customer not found');
-      }
-      const actor = await tx.user.findUnique({
-        where: { id: params.performedByUserId },
-        select: { id: true, safariRole: true, branchId: true },
-      });
-      if (!actor) {
-        throw new NotFoundException('Performing user not found');
-      }
+    // V19.7.1 — lift Prisma's default 5 s transaction budget. The
+    // partial-debt-payment flow writes 3–4 rows (wallet update,
+    // TransactionHistory insert, plus 1–2 GeneralLedger appends for
+    // collection and optional discount). On a warm DB it's well under a
+    // second, but connection-pool contention was causing P2028 aborts
+    // mid-call. Aligns with the 10/15 s budget used elsewhere for the
+    // same atomic 3-table invariant.
+    return this.prisma.$transaction(
+      async (tx) => {
+        const customer = await tx.customer.findUnique({
+          where: { id: params.customerId },
+          select: { id: true, originBranchId: true },
+        });
+        if (!customer) {
+          throw new NotFoundException('Customer not found');
+        }
+        const actor = await tx.user.findUnique({
+          where: { id: params.performedByUserId },
+          select: { id: true, safariRole: true, branchId: true },
+        });
+        if (!actor) {
+          throw new NotFoundException('Performing user not found');
+        }
 
-      const wallet = await this.getOrCreateWalletTx(tx, params.customerId);
-      const amountMinor = toMinorFromFixed4(
-        new Prisma.Decimal(params.amountKd),
-      );
-      const discountMinor =
-        params.discountKd !== undefined
-          ? toMinorFromFixed4(new Prisma.Decimal(params.discountKd))
-          : 0n;
-      const totalMinor = amountMinor + discountMinor;
-      const debtMinor = toMinorFromFixed4(wallet.debt);
-
-      if (amountMinor < 0n || discountMinor < 0n) {
-        throw new BadRequestException(
-          'Amount and discount must both be non-negative',
+        const wallet = await this.getOrCreateWalletTx(tx, params.customerId);
+        const amountMinor = toMinorFromFixed4(
+          new Prisma.Decimal(params.amountKd),
         );
-      }
-      if (totalMinor === 0n) {
-        throw new BadRequestException(
-          'At least one of amount or discount must be greater than zero',
-        );
-      }
-      if (totalMinor > debtMinor) {
-        throw new BadRequestException(
-          'Amount + discount cannot exceed current customer debt',
-        );
-      }
+        const discountMinor =
+          params.discountKd !== undefined
+            ? toMinorFromFixed4(new Prisma.Decimal(params.discountKd))
+            : 0n;
+        const totalMinor = amountMinor + discountMinor;
+        const debtMinor = toMinorFromFixed4(wallet.debt);
 
-      const newDebtMinor = debtMinor - totalMinor;
-      const amountStr = minorToAmountString(amountMinor);
-      const discountStr = minorToAmountString(discountMinor);
-      const totalStr = minorToAmountString(totalMinor);
-      const newDebtStr = minorToAmountString(newDebtMinor);
+        if (amountMinor < 0n || discountMinor < 0n) {
+          throw new BadRequestException(
+            'Amount and discount must both be non-negative',
+          );
+        }
+        if (totalMinor === 0n) {
+          throw new BadRequestException(
+            'At least one of amount or discount must be greater than zero',
+          );
+        }
+        if (totalMinor > debtMinor) {
+          throw new BadRequestException(
+            'Amount + discount cannot exceed current customer debt',
+          );
+        }
 
-      await tx.customerWallet.update({
-        where: { id: wallet.id },
-        data: { debt: this.decimalFromMinor(newDebtMinor) },
-      });
+        const newDebtMinor = debtMinor - totalMinor;
+        const amountStr = minorToAmountString(amountMinor);
+        const discountStr = minorToAmountString(discountMinor);
+        const totalStr = minorToAmountString(totalMinor);
+        const newDebtStr = minorToAmountString(newDebtMinor);
 
-      // V19.4 — CC pack #1. Re-use ORDER_WALLET_SETTLEMENT so existing
-      // debt-recovery aggregations naturally pick up the collected
-      // portion via metadata.debtSettled. No orderId because this row
-      // is customer-level, not invoice-level.
-      await tx.transactionHistory.create({
-        data: {
-          type: LedgerTransactionType.ORDER_WALLET_SETTLEMENT,
-          customerId: params.customerId,
-          orderId: null,
-          subscriptionId: null,
-          amount: this.decimalFromMinor(totalMinor),
-          balanceBefore: wallet.balance,
-          balanceAfter: wallet.balance,
-          debtBefore: wallet.debt,
-          debtAfter: this.decimalFromMinor(newDebtMinor),
-          performedById: params.performedByUserId,
-          metadata: {
-            debtPaymentOnly: true,
-            debtSettled: amountStr,
-            debtDiscount: discountStr,
-            debtReduced: totalStr,
-            posPaymentMethod: params.paymentMethod,
-            reportingCategory: 'DEBT_COLLECTION_CC',
-            note: params.note ?? null,
-          },
-        },
-      });
+        await tx.customerWallet.update({
+          where: { id: wallet.id },
+          data: { debt: this.decimalFromMinor(newDebtMinor) },
+        });
 
-      const branchId = customer.originBranchId ?? actor.branchId ?? null;
-      const category = this.resolveDebtCategory(actor.safariRole);
-
-      // Cash receipt GL entry — counts in "Collected Today" KPIs.
-      if (amountMinor > 0n) {
-        await this.generalLedger.append(tx, {
-          entryType: GeneralLedgerEntryType.DEBT_ADJUSTMENT,
-          amount: `-${amountStr}`,
-          memo: 'Partial debt payment collected via Call Center',
-          customerId: params.customerId,
-          actorUserId: params.performedByUserId,
-          metadata: {
-            event: 'DEBT_COLLECTED',
-            source: 'CC_PARTIAL_DEBT_PAYMENT',
-            posPaymentMethod: params.paymentMethod,
-            category,
-            branchId,
-            note: params.note ?? null,
+        // V19.4 — CC pack #1. Re-use ORDER_WALLET_SETTLEMENT so existing
+        // debt-recovery aggregations naturally pick up the collected
+        // portion via metadata.debtSettled. No orderId because this row
+        // is customer-level, not invoice-level.
+        await tx.transactionHistory.create({
+          data: {
+            type: LedgerTransactionType.ORDER_WALLET_SETTLEMENT,
+            customerId: params.customerId,
+            orderId: null,
+            subscriptionId: null,
+            amount: this.decimalFromMinor(totalMinor),
+            balanceBefore: wallet.balance,
+            balanceAfter: wallet.balance,
+            debtBefore: wallet.debt,
+            debtAfter: this.decimalFromMinor(newDebtMinor),
+            performedById: params.performedByUserId,
+            metadata: {
+              debtPaymentOnly: true,
+              debtSettled: amountStr,
+              debtDiscount: discountStr,
+              debtReduced: totalStr,
+              posPaymentMethod: params.paymentMethod,
+              reportingCategory: 'DEBT_COLLECTION_CC',
+              note: params.note ?? null,
+            },
           },
         });
-      }
 
-      // Discount GL entry — separate so it never pollutes collections.
-      if (discountMinor > 0n) {
-        await this.generalLedger.append(tx, {
-          entryType: GeneralLedgerEntryType.DEBT_ADJUSTMENT,
-          amount: `-${discountStr}`,
-          memo: 'Goodwill debt discount granted via Call Center',
-          customerId: params.customerId,
-          actorUserId: params.performedByUserId,
-          metadata: {
-            event: 'DEBT_DISCOUNTED',
-            source: 'CC_PARTIAL_DEBT_PAYMENT',
-            category,
-            branchId,
-            note: params.note ?? null,
-          },
-        });
-      }
+        const branchId = customer.originBranchId ?? actor.branchId ?? null;
+        const category = this.resolveDebtCategory(actor.safariRole);
 
-      return {
-        amountCollectedKd: amountStr,
-        discountAppliedKd: discountStr,
-        totalReducedKd: totalStr,
-        previousDebtKd: wallet.debt.toString(),
-        newDebtKd: newDebtStr,
-        walletBalanceKd: wallet.balance.toString(),
-        paymentMethod: params.paymentMethod,
-      };
-    });
+        // Cash receipt GL entry — counts in "Collected Today" KPIs.
+        if (amountMinor > 0n) {
+          await this.generalLedger.append(tx, {
+            entryType: GeneralLedgerEntryType.DEBT_ADJUSTMENT,
+            amount: `-${amountStr}`,
+            memo: 'Partial debt payment collected via Call Center',
+            customerId: params.customerId,
+            actorUserId: params.performedByUserId,
+            metadata: {
+              event: 'DEBT_COLLECTED',
+              source: 'CC_PARTIAL_DEBT_PAYMENT',
+              posPaymentMethod: params.paymentMethod,
+              category,
+              branchId,
+              note: params.note ?? null,
+            },
+          });
+        }
+
+        // Discount GL entry — separate so it never pollutes collections.
+        if (discountMinor > 0n) {
+          await this.generalLedger.append(tx, {
+            entryType: GeneralLedgerEntryType.DEBT_ADJUSTMENT,
+            amount: `-${discountStr}`,
+            memo: 'Goodwill debt discount granted via Call Center',
+            customerId: params.customerId,
+            actorUserId: params.performedByUserId,
+            metadata: {
+              event: 'DEBT_DISCOUNTED',
+              source: 'CC_PARTIAL_DEBT_PAYMENT',
+              category,
+              branchId,
+              note: params.note ?? null,
+            },
+          });
+        }
+
+        return {
+          amountCollectedKd: amountStr,
+          discountAppliedKd: discountStr,
+          totalReducedKd: totalStr,
+          previousDebtKd: wallet.debt.toString(),
+          newDebtKd: newDebtStr,
+          walletBalanceKd: wallet.balance.toString(),
+          paymentMethod: params.paymentMethod,
+        };
+      },
+      { maxWait: 10_000, timeout: 15_000 },
+    );
   }
 }

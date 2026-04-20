@@ -473,7 +473,7 @@ let CustomerLedgerService = class CustomerLedgerService {
                 walletBalanceKd: wallet.balance.toString(),
                 paymentMethod: params.paymentMethod,
             };
-        });
+        }, { maxWait: 10_000, timeout: 15_000 });
     }
 };
 exports.CustomerLedgerService = CustomerLedgerService;
