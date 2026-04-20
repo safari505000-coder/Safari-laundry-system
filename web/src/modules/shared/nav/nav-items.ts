@@ -91,11 +91,14 @@ export const dashboardItem: NavItem = {
   ],
 };
 
+// V19.4 — CC cleanup. `/subscriptions` is now the plan-catalog page for
+// executives only. CALL_CENTER was removed from the role list so the
+// nav never surfaces this link to agents (they use `/subscribers`).
 export const subscriptionsItem: NavItem = {
   to: '/subscriptions',
   labelKey: 'nav.subscriptions',
   icon: Sparkles,
-  roles: ['OWNER', 'GENERAL_MANAGER', 'CALL_CENTER'],
+  roles: ['OWNER', 'GENERAL_MANAGER'],
 };
 
 export const subscribersItem: NavItem = {

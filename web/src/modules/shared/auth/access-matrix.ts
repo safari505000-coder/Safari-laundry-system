@@ -156,8 +156,13 @@ export const ACCESS = {
   'customers.manage': ['OWNER', 'CALL_CENTER'] satisfies readonly SafariRole[],
   'collections.view': withExec('CALL_CENTER'),
   'collections.act': ['CALL_CENTER'] satisfies readonly SafariRole[],
-  'subscriptions.view': withExec('CALL_CENTER'),
-  'subscriptions.manage': ['CALL_CENTER'] satisfies readonly SafariRole[],
+  // V19.4 CC cleanup — `/subscriptions` is now the plan-catalog page for
+  // executives only. Every Call-Center activation / debt / extend /
+  // rollover / history surface lives on `/subscribers` and `/customers`.
+  // Leaving CC access here would mean two entry points for the same
+  // workflow (the "old system" the user kept seeing), so we narrow it.
+  'subscriptions.view': [...EXEC_PAIR] satisfies readonly SafariRole[],
+  'subscriptions.manage': [...EXEC_PAIR] satisfies readonly SafariRole[],
   'subscribers.view': withExec('CALL_CENTER'),
   'subscribers.manage': ['OWNER', 'CALL_CENTER'] satisfies readonly SafariRole[],
 

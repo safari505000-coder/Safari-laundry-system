@@ -22,7 +22,7 @@ import {
   posItem,
   reportsItem,
   subscribersItem,
-  subscriptionsItem,
+  whatsappToolsItem,
 } from '@/modules/shared/nav/nav-items';
 import {
   Sheet,
@@ -73,7 +73,11 @@ function bottomNavItemsForRole(role: SafariRole | undefined): NavItem[] {
     case 'DRIVER':
       return [posItem, myDailySalesItem, myDepositsItem, driverFieldExpensesItem];
     case 'CALL_CENTER':
-      return [customersItem, collectionsItem, subscribersItem, subscriptionsItem];
+      // V19.4 — CC cleanup. The fourth slot used to point at
+      // `/subscriptions` (plan catalog), but CALL_CENTER no longer has
+      // access to that page. WhatsApp tools is the next-most-used CC
+      // surface on mobile, so it takes the slot instead.
+      return [customersItem, collectionsItem, subscribersItem, whatsappToolsItem];
     case 'ACCOUNTANT':
       return [dashboardItem, reportsItem, invoicesDataItem, expensesItem];
     case 'SUPERVISOR':
