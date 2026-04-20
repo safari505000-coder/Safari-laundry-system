@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { toast } from 'sonner';
 import {
   Clock,
   FileSpreadsheet,
@@ -12,8 +11,8 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/auth-context';
+import { notify } from '@/lib/notify';
 import {
-  ApiError,
   exportAttendanceXlsx,
   listAttendance,
   runAttendanceSync,
@@ -22,6 +21,7 @@ import {
   type AttendanceRow,
   type AttendanceSource,
 } from '@/lib/api';
+import { TableBodySkeleton } from '@/modules/shared/components/ui/skeleton-helpers';
 import { Badge } from '@/modules/shared/components/ui/badge';
 import { Button } from '@/modules/shared/components/ui/button';
 import {
@@ -129,7 +129,7 @@ export function AttendancePage() {
       const data = await listAttendance(token, filters);
       setRows(data);
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : 'فشل تحميل الحضور');
+      notify.error(e, { fallback: 'فشل تحميل الحضور' });
     } finally {
       setLoading(false);
     }
@@ -152,10 +152,10 @@ export function AttendancePage() {
         from.toISOString(),
         to.toISOString(),
       );
-      toast.success(`تم تحديث ${res.count} سجل حضور`);
+      notify.success(`تم تحديث ${res.count} سجل حضور`);
       await load();
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : 'فشلت المزامنة');
+      notify.error(e, { fallback: 'فشلت المزامنة' });
     } finally {
       setSyncing(false);
     }
@@ -164,7 +164,7 @@ export function AttendancePage() {
   const onManualSave = useCallback(async () => {
     if (!token) return;
     if (!manualForm.userId) {
-      toast.error('اختر الموظف أولاً');
+      notify.error('اختر الموظف أولاً');
       return;
     }
     setManualSaving(true);
@@ -182,11 +182,11 @@ export function AttendancePage() {
           : undefined,
         note: manualForm.note || undefined,
       });
-      toast.success('تم حفظ السجل');
+      notify.success('تم حفظ السجل');
       setManualOpen(false);
       await load();
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : 'فشل الحفظ');
+      notify.error(e, { fallback: 'فشل الحفظ' });
     } finally {
       setManualSaving(false);
     }
@@ -328,9 +328,7 @@ export function AttendancePage() {
                 try {
                   await exportAttendanceXlsx(token, filters);
                 } catch (e) {
-                  toast.error(
-                    e instanceof ApiError ? e.message : 'فشل تصدير Excel',
-                  );
+                  notify.error(e, { fallback: 'فشل تصدير Excel' });
                 }
               }}
             >
@@ -360,11 +358,7 @@ export function AttendancePage() {
             </thead>
             <tbody>
               {loading ? (
-                <tr>
-                  <td colSpan={7} className="p-8 text-center text-slate-400">
-                    <Loader2 className="mx-auto h-5 w-5 animate-spin" />
-                  </td>
-                </tr>
+                <TableBodySkeleton rows={6} columns={7} />
               ) : rows.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="p-8 text-center text-slate-400">

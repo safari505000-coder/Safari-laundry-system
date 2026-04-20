@@ -42,26 +42,28 @@ export function MyDailySalesPage() {
           <CardTitle>{t('driverDailySales.tableTitle')}</CardTitle>
         </CardHeader>
         <CardContent className="p-0 sm:p-4">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t('driverDailySales.colCustomer')}</TableHead>
-                <TableHead>{t('driverDailySales.colPhone')}</TableHead>
-                <TableHead>{t('driverDailySales.colDate')}</TableHead>
-                <TableHead className="text-end">{t('driverDailySales.colAmount')}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((r) => (
-                <TableRow key={r.id}>
-                  <TableCell>{r.customer.displayName || r.customer.phone}</TableCell>
-                  <TableCell>{r.customer.phone || r.customer.phone2 || '-'}</TableCell>
-                  <TableCell>{new Date(r.createdAt).toLocaleString(locale)}</TableCell>
-                  <TableCell className="text-end">{formatKwdLabel(r.totalPrice)}</TableCell>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t('driverDailySales.colCustomer')}</TableHead>
+                  <TableHead>{t('driverDailySales.colPhone')}</TableHead>
+                  <TableHead className="whitespace-nowrap">{t('driverDailySales.colDate')}</TableHead>
+                  <TableHead className="text-end">{t('driverDailySales.colAmount')}</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {rows.map((r) => (
+                  <TableRow key={r.id}>
+                    <TableCell>{r.customer.displayName || r.customer.phone}</TableCell>
+                    <TableCell>{r.customer.phone || r.customer.phone2 || '-'}</TableCell>
+                    <TableCell className="whitespace-nowrap">{new Date(r.createdAt).toLocaleString(locale)}</TableCell>
+                    <TableCell className="text-end whitespace-nowrap">{formatKwdLabel(r.totalPrice)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
     </div>

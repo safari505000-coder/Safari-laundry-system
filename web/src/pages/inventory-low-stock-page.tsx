@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
-import { toast } from 'sonner';
 import { useAuth } from '@/contexts/auth-context';
+import { notify } from '@/lib/notify';
 import {
-  ApiError,
   apiJson,
   getLowStock,
   type BranchRow,
@@ -24,6 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/modules/shared/components/ui/select';
+import { TableSkeleton } from '@/modules/shared/components/ui/skeleton-helpers';
 
 const ANY = '__any__';
 
@@ -55,7 +55,7 @@ export default function InventoryLowStockPage() {
       const res = await getLowStock(token, branchId === ANY ? undefined : branchId);
       setData(res);
     } catch (e) {
-      if (e instanceof ApiError) toast.error(e.message);
+      notify.error(e);
     } finally {
       setLoading(false);
     }
@@ -68,7 +68,7 @@ export default function InventoryLowStockPage() {
         const br = await apiJson<BranchRow[]>('/api/branches', { token });
         setBranches(br.filter((b) => b.isActive));
       } catch (e) {
-        if (e instanceof ApiError) toast.error(e.message);
+        notify.error(e);
       }
     })();
   }, [token]);
@@ -133,8 +133,8 @@ export default function InventoryLowStockPage() {
       <Card>
         <CardContent className="p-0">
           {loading ? (
-            <div className="flex items-center justify-center py-10">
-              <Loader2 className="h-5 w-5 animate-spin" />
+            <div className="p-3">
+              <TableSkeleton rows={6} columns={5} withHeader={false} />
             </div>
           ) : (
             <div className="overflow-x-auto">

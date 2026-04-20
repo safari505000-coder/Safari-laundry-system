@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { toast } from 'sonner';
 import {
   BanknoteArrowUp,
   CheckCircle2,
@@ -11,8 +10,8 @@ import {
   XCircle,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
+import { notify } from '@/lib/notify';
 import {
-  ApiError,
   approveLoan,
   createLoan,
   listLoans,
@@ -23,6 +22,7 @@ import {
   type LoanStatusApi,
 } from '@/lib/api';
 import { can } from '@/modules/shared/auth/access-matrix';
+import { TableBodySkeleton } from '@/modules/shared/components/ui/skeleton-helpers';
 import { Badge } from '@/modules/shared/components/ui/badge';
 import { Button } from '@/modules/shared/components/ui/button';
 import {
@@ -102,7 +102,7 @@ export function LoansPage() {
         : await listMyLoans(token);
       setRows(data);
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : 'فشل تحميل السُلف');
+      notify.error(e, { fallback: 'فشل تحميل السُلف' });
     } finally {
       setLoading(false);
     }
@@ -131,11 +131,11 @@ export function LoansPage() {
     const amount = Number(form.amount);
     const installmentCount = Number(form.installmentCount);
     if (!Number.isFinite(amount) || amount <= 0) {
-      toast.error('المبلغ غير صحيح');
+      notify.error('المبلغ غير صحيح');
       return;
     }
     if (!Number.isInteger(installmentCount) || installmentCount <= 0) {
-      toast.error('عدد الأقساط غير صحيح');
+      notify.error('عدد الأقساط غير صحيح');
       return;
     }
     setSaving(true);
@@ -145,12 +145,12 @@ export function LoansPage() {
         installmentCount,
         reason: form.reason || undefined,
       });
-      toast.success('تم إنشاء طلب السلفة');
+      notify.success('تم إنشاء طلب السلفة');
       setCreateOpen(false);
       setForm({ amount: '', installmentCount: '3', reason: '' });
       await load();
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : 'فشل إنشاء الطلب');
+      notify.error(e, { fallback: 'فشل إنشاء الطلب' });
     } finally {
       setSaving(false);
     }
@@ -162,10 +162,10 @@ export function LoansPage() {
       setActionBusy(id);
       try {
         await approveLoan(token, id);
-        toast.success('تم اعتماد السلفة');
+        notify.success('تم اعتماد السلفة');
         await load();
       } catch (e) {
-        toast.error(e instanceof ApiError ? e.message : 'فشل الاعتماد');
+        notify.error(e, { fallback: 'فشل الاعتماد' });
       } finally {
         setActionBusy(null);
       }
@@ -176,18 +176,18 @@ export function LoansPage() {
   const onReject = useCallback(async () => {
     if (!token || !rejectFor) return;
     if (!rejectReason.trim()) {
-      toast.error('سبب الرفض مطلوب');
+      notify.error('سبب الرفض مطلوب');
       return;
     }
     setActionBusy(rejectFor.id);
     try {
       await rejectLoan(token, rejectFor.id, rejectReason.trim());
-      toast.success('تم رفض السلفة');
+      notify.success('تم رفض السلفة');
       setRejectFor(null);
       setRejectReason('');
       await load();
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : 'فشل الرفض');
+      notify.error(e, { fallback: 'فشل الرفض' });
     } finally {
       setActionBusy(null);
     }
@@ -299,14 +299,7 @@ export function LoansPage() {
             </thead>
             <tbody>
               {loading ? (
-                <tr>
-                  <td
-                    colSpan={isApprover ? 8 : 7}
-                    className="p-8 text-center text-slate-400"
-                  >
-                    <Loader2 className="mx-auto h-5 w-5 animate-spin" />
-                  </td>
-                </tr>
+                <TableBodySkeleton rows={5} columns={isApprover ? 8 : 7} />
               ) : rows.length === 0 ? (
                 <tr>
                   <td

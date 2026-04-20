@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { toast } from 'sonner';
 import { Plus } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
+import { notify } from '@/lib/notify';
 import { can } from '@/modules/shared/auth/access-matrix';
-import { type OrderRow, apiJson, ApiError } from '@/lib/api';
+import { type OrderRow, apiJson } from '@/lib/api';
 import { CreateOrderDialog } from '@/modules/shared/components/orders/create-order-dialog';
 import { OrderDetailDialog } from '@/modules/shared/components/orders/order-detail-dialog';
 import { OrderScanInput } from '@/modules/shared/components/orders/order-scan-input';
@@ -54,7 +54,7 @@ export function OrdersPage() {
       const data = await apiJson<OrderRow[]>('/api/orders', { token });
       setOrders(data);
     } catch (e) {
-      if (e instanceof ApiError) toast.error(e.message);
+      notify.error(e);
     } finally {
       setLoading(false);
     }

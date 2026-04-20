@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { toast } from 'sonner';
 import {
   CalendarDays,
   CheckCircle2,
@@ -11,8 +10,8 @@ import {
   XCircle,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
+import { notify } from '@/lib/notify';
 import {
-  ApiError,
   approveLeave,
   cancelLeave,
   createLeave,
@@ -25,6 +24,7 @@ import {
   type LeaveType,
 } from '@/lib/api';
 import { can } from '@/modules/shared/auth/access-matrix';
+import { TableBodySkeleton } from '@/modules/shared/components/ui/skeleton-helpers';
 import { Badge } from '@/modules/shared/components/ui/badge';
 import { Button } from '@/modules/shared/components/ui/button';
 import {
@@ -107,7 +107,7 @@ export function LeavesPage() {
         : await listMyLeaves(token);
       setRows(data);
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : 'فشل تحميل الإجازات');
+      notify.error(e, { fallback: 'فشل تحميل الإجازات' });
     } finally {
       setLoading(false);
     }
@@ -139,12 +139,12 @@ export function LeavesPage() {
         endDate: form.endDate,
         reason: form.reason || undefined,
       });
-      toast.success('تم إنشاء الطلب');
+      notify.success('تم إنشاء الطلب');
       setCreateOpen(false);
       setForm((f) => ({ ...f, reason: '' }));
       await load();
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : 'فشل إنشاء الطلب');
+      notify.error(e, { fallback: 'فشل إنشاء الطلب' });
     } finally {
       setSaving(false);
     }
@@ -156,10 +156,10 @@ export function LeavesPage() {
       setActionBusy(id);
       try {
         await approveLeave(token, id);
-        toast.success('تم اعتماد الطلب');
+        notify.success('تم اعتماد الطلب');
         await load();
       } catch (e) {
-        toast.error(e instanceof ApiError ? e.message : 'فشل الاعتماد');
+        notify.error(e, { fallback: 'فشل الاعتماد' });
       } finally {
         setActionBusy(null);
       }
@@ -170,18 +170,18 @@ export function LeavesPage() {
   const onReject = useCallback(async () => {
     if (!token || !rejectFor) return;
     if (!rejectReason.trim()) {
-      toast.error('سبب الرفض مطلوب');
+      notify.error('سبب الرفض مطلوب');
       return;
     }
     setActionBusy(rejectFor.id);
     try {
       await rejectLeave(token, rejectFor.id, rejectReason.trim());
-      toast.success('تم رفض الطلب');
+      notify.success('تم رفض الطلب');
       setRejectFor(null);
       setRejectReason('');
       await load();
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : 'فشل الرفض');
+      notify.error(e, { fallback: 'فشل الرفض' });
     } finally {
       setActionBusy(null);
     }
@@ -193,10 +193,10 @@ export function LeavesPage() {
       setActionBusy(id);
       try {
         await cancelLeave(token, id);
-        toast.success('تم إلغاء الطلب');
+        notify.success('تم إلغاء الطلب');
         await load();
       } catch (e) {
-        toast.error(e instanceof ApiError ? e.message : 'فشل الإلغاء');
+        notify.error(e, { fallback: 'فشل الإلغاء' });
       } finally {
         setActionBusy(null);
       }
@@ -349,14 +349,7 @@ export function LeavesPage() {
             </thead>
             <tbody>
               {loading ? (
-                <tr>
-                  <td
-                    colSpan={isApprover ? 8 : 7}
-                    className="p-8 text-center text-slate-400"
-                  >
-                    <Loader2 className="mx-auto h-5 w-5 animate-spin" />
-                  </td>
-                </tr>
+                <TableBodySkeleton rows={5} columns={isApprover ? 8 : 7} />
               ) : rows.length === 0 ? (
                 <tr>
                   <td

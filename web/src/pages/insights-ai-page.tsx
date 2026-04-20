@@ -11,10 +11,9 @@ import {
   TrendingUp,
   Truck,
 } from 'lucide-react';
-import { toast } from 'sonner';
 import { useAuth } from '@/contexts/auth-context';
+import { notify } from '@/lib/notify';
 import {
-  ApiError,
   downloadWeeklyReport,
   getAnomalies,
   getCashForecast,
@@ -48,6 +47,12 @@ import {
   TabsList,
   TabsTrigger,
 } from '@/modules/shared/components/ui/tabs';
+import {
+  ChartSkeleton,
+  KpiRowSkeleton,
+  ListItemSkeleton,
+  TableSkeleton,
+} from '@/modules/shared/components/ui/skeleton-helpers';
 import { can } from '@/modules/shared/auth/access-matrix';
 
 /**
@@ -161,7 +166,7 @@ function CashForecastCard({ token, days }: { token: string; days: number }) {
       const res = await getCashForecast(token, days);
       setData(res);
     } catch (e) {
-      if (e instanceof ApiError) toast.error(e.message);
+      notify.error(e);
     } finally {
       setLoading(false);
     }
@@ -189,8 +194,10 @@ function CashForecastCard({ token, days }: { token: string; days: number }) {
       </CardHeader>
       <CardContent className="space-y-4">
         {loading && !data ? (
-          <div className="flex h-40 items-center justify-center text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin" />
+          <div className="space-y-4">
+            <KpiRowSkeleton count={6} className="md:grid-cols-3" />
+            <ChartSkeleton height={180} />
+            <ChartSkeleton height={180} />
           </div>
         ) : data ? (
           <>
@@ -261,7 +268,7 @@ function AnomaliesCard({ token, days }: { token: string; days: number }) {
       const res = await getAnomalies(token, days);
       setData(res);
     } catch (e) {
-      if (e instanceof ApiError) toast.error(e.message);
+      notify.error(e);
     } finally {
       setLoading(false);
     }
@@ -289,8 +296,9 @@ function AnomaliesCard({ token, days }: { token: string; days: number }) {
       </CardHeader>
       <CardContent className="space-y-4">
         {loading && !data ? (
-          <div className="flex h-24 items-center justify-center text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin" />
+          <div className="grid gap-4 md:grid-cols-2">
+            <ChartSkeleton height={120} />
+            <ChartSkeleton height={120} />
           </div>
         ) : data ? (
           <div className="grid gap-4 md:grid-cols-2">
@@ -362,7 +370,7 @@ function ExecutiveReportCard({ token }: { token: string }) {
       const res = await listWeeklyReports(token);
       setEntries(res);
     } catch (e) {
-      if (e instanceof ApiError) toast.error(e.message);
+      notify.error(e);
     } finally {
       setLoading(false);
     }
@@ -376,10 +384,10 @@ function ExecutiveReportCard({ token }: { token: string }) {
     setBusy(true);
     try {
       const entry = await regenerateWeeklyReport(token);
-      toast.success(`تم تحديث تقرير ${entry.key}`);
+      notify.success(`تم تحديث تقرير ${entry.key}`);
       await load();
     } catch (e) {
-      if (e instanceof ApiError) toast.error(e.message);
+      notify.error(e);
     } finally {
       setBusy(false);
     }
@@ -389,7 +397,7 @@ function ExecutiveReportCard({ token }: { token: string }) {
     try {
       await downloadWeeklyReport(token, key);
     } catch (e) {
-      if (e instanceof ApiError) toast.error(e.message);
+      notify.error(e);
     }
   };
 
@@ -417,9 +425,7 @@ function ExecutiveReportCard({ token }: { token: string }) {
       </CardHeader>
       <CardContent>
         {loading && entries.length === 0 ? (
-          <div className="flex h-24 items-center justify-center text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin" />
-          </div>
+          <ListItemSkeleton count={3} />
         ) : entries.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             لا توجد تقارير بعد — اضغط "إعادة توليد الأسبوع الحالي" لتوليد أول تقرير.
@@ -459,7 +465,7 @@ function DriverScorecardCard({ token, days }: { token: string; days: number }) {
       const res = await getDriverScorecard(token, days);
       setData(res);
     } catch (e) {
-      if (e instanceof ApiError) toast.error(e.message);
+      notify.error(e);
     } finally {
       setLoading(false);
     }
@@ -489,9 +495,7 @@ function DriverScorecardCard({ token, days }: { token: string; days: number }) {
       </CardHeader>
       <CardContent>
         {loading && !data ? (
-          <div className="flex h-32 items-center justify-center text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin" />
-          </div>
+          <TableSkeleton rows={6} columns={8} withHeader={false} />
         ) : drivers.length === 0 ? (
           <p className="text-sm text-muted-foreground">لا توجد رحلات مكتملة خلال الفترة.</p>
         ) : (

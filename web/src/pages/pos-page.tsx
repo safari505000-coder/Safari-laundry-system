@@ -236,7 +236,7 @@ export function PosPage() {
                 {t('pos.retry')}
               </Button>
             </div>
-          : <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          : <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
               {catalogItems.map((item) => {
                 const { Icon, tone } = defaultVisual(item.code);
                 const price = basePriceKd(item);
@@ -407,7 +407,8 @@ export function PosPage() {
                         <input
                           type="number"
                           min={1}
-                          className="mx-1 w-12 rounded-md border border-border bg-background px-1 py-0.5 text-center text-xs"
+                          inputMode="numeric"
+                          className="mx-1 w-14 rounded-md border border-border bg-background px-1 py-1 text-center text-sm tabular-nums"
                           value={line.quantity}
                           onChange={(e) =>
                             setQty(

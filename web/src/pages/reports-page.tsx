@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate } from 'react-router-dom';
-import { toast } from 'sonner';
 import { FileDown, FileSpreadsheet, Loader2, Printer, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
+import { notify } from '@/lib/notify';
 import { can } from '@/modules/shared/auth/access-matrix';
 import {
   type DailyCashClosingReport,
@@ -11,7 +11,6 @@ import {
   type DriverLedgerReport,
   type IssuedInvoicesReport,
   apiJson,
-  ApiError,
   exportIssuedInvoicesPdf,
   exportIssuedInvoicesXlsx,
 } from '@/lib/api';
@@ -134,7 +133,7 @@ export function ReportsPage() {
       );
       setInvoices(data);
     } catch (e) {
-      if (e instanceof ApiError) toast.error(e.message);
+      notify.error(e);
     } finally {
       setBusy(false);
     }
@@ -156,7 +155,7 @@ export function ReportsPage() {
       );
       setLedger(data);
     } catch (e) {
-      if (e instanceof ApiError) toast.error(e.message);
+      notify.error(e);
     } finally {
       setBusy(false);
     }
@@ -174,7 +173,7 @@ export function ReportsPage() {
       );
       setClosing(data);
     } catch (e) {
-      if (e instanceof ApiError) toast.error(e.message);
+      notify.error(e);
     } finally {
       setBusy(false);
     }
@@ -227,9 +226,7 @@ export function ReportsPage() {
                   branchId: ownerBranchId ?? undefined,
                 });
               } catch (e) {
-                toast.error(
-                  e instanceof ApiError ? e.message : 'فشل تصدير Excel',
-                );
+                notify.error(e, { fallback: 'فشل تصدير Excel' });
               }
             }}
           >
@@ -253,9 +250,7 @@ export function ReportsPage() {
                   branchId: ownerBranchId ?? undefined,
                 });
               } catch (e) {
-                toast.error(
-                  e instanceof ApiError ? e.message : 'فشل تصدير PDF',
-                );
+                notify.error(e, { fallback: 'فشل تصدير PDF' });
               }
             }}
           >
