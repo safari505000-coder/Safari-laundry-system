@@ -101,13 +101,11 @@ function isDebtViaLinkRow(meta) {
         return false;
     return meta.debtSettlementViaLink === true;
 }
-function isCollectionsGreenCardRow(meta) {
+function isManualCallCenterCollectionRow(meta) {
     if (!meta || typeof meta !== 'object' || Array.isArray(meta))
         return false;
     const m = meta;
-    return (m.debtSettlementViaLink === true ||
-        m.debtSettlementViaCallCenter === true ||
-        m.debtPaymentOnly === true);
+    return (m.debtSettlementViaCallCenter === true || m.debtPaymentOnly === true);
 }
 function isPartialDebtPaymentRow(meta) {
     if (!meta || typeof meta !== 'object' || Array.isArray(meta))
@@ -486,8 +484,8 @@ let CallCenterService = class CallCenterService {
                 },
             }),
         ]);
-        const debtViaLinkRows = todaysLedgerRows.filter((r) => isCollectionsGreenCardRow(r.metadata));
-        const collectedTodayViaLink = debtViaLinkRows.reduce((acc, r) => acc.plus(extractDebtSettled(r.metadata)), new client_1.Prisma.Decimal(0));
+        const manualCollectionRows = todaysLedgerRows.filter((r) => isManualCallCenterCollectionRow(r.metadata));
+        const collectedTodayViaLink = manualCollectionRows.reduce((acc, r) => acc.plus(extractDebtSettled(r.metadata)), new client_1.Prisma.Decimal(0));
         const recoveredToday = todaysLedgerRows.reduce((acc, r) => acc.plus(extractDebtSettled(r.metadata)), new client_1.Prisma.Decimal(0));
         return {
             totalMarketDebtKd: KWD_DP(unpaidAgg._sum.totalPrice ?? new client_1.Prisma.Decimal(0)),
@@ -959,6 +957,8 @@ let CallCenterService = class CallCenterService {
             const debtSettled = extractDebtSettled(r.metadata);
             const debtDiscount = extractDebtDiscount(r.metadata);
             if (debtSettled.lte(0) && debtDiscount.lte(0))
+                return null;
+            if (!isManualCallCenterCollectionRow(r.metadata))
                 return null;
             const partial = isPartialDebtPaymentRow(r.metadata);
             const kind = partial

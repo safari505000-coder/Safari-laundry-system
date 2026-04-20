@@ -237,18 +237,34 @@ function isDebtViaLinkRow(meta: Prisma.JsonValue | null): boolean {
  *   • `debtPaymentOnly         = true`  → CC #1 partial debt payment
  *     (`CustomerLedgerService.recordPartialDebtPayment`)
  *
- * Before V19.6 the green card filtered strictly on `debtSettlementViaLink`,
- * so manual "Mark paid" and partial collections never moved the card —
- * which is exactly the mismatch the Owner hit against the Daily Collector
- * panel (Daily Collector sees all three; green card saw only one).
+ * V19.7 — scope narrowed per Owner directive: the "المحصل اليومي"
+ * card + panel must reflect ONLY invoices the CC agent actively
+ * recovered themselves. Gateway-callback link payments are a
+ * customer-self-service event and should land in reports, not in the
+ * CC dashboard. Driver-led POS completions were never in scope.
+ *
+ * Inclusion set:
+ *   • `debtSettlementViaCallCenter === true` — agent pressed the
+ *     "تم الدفع" icon on the Collections table to confirm that the
+ *     customer paid (CASH/KNET at the venue, or via a link that
+ *     already completed on the gateway but needs manual acknowledgement).
+ *   • `debtPaymentOnly === true` — agent recorded a CC #1 partial
+ *     debt payment with optional goodwill discount.
+ *
+ * Exclusion set:
+ *   • `debtSettlementViaLink === true` alone (gateway auto-callback,
+ *     performer is the fallback owner, no human CC action at settle-time).
+ *   • Any other TH row with `debtSettled > 0` but neither flag
+ *     (regular driver-led wallet settlements, subscription activations,
+ *     etc. — those already flow through the Recovery Report).
  */
-function isCollectionsGreenCardRow(meta: Prisma.JsonValue | null): boolean {
+function isManualCallCenterCollectionRow(
+  meta: Prisma.JsonValue | null,
+): boolean {
   if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return false;
   const m = meta as Record<string, unknown>;
   return (
-    m.debtSettlementViaLink === true ||
-    m.debtSettlementViaCallCenter === true ||
-    m.debtPaymentOnly === true
+    m.debtSettlementViaCallCenter === true || m.debtPaymentOnly === true
   );
 }
 
@@ -771,16 +787,15 @@ export class CallCenterService {
       }),
     ]);
 
-    // V19.6 — green card: now covers EVERY Collections-page recovery
-    // action, not just gateway link callbacks. See `isCollectionsGreenCardRow`
-    // for the three signals. This fixes the Owner-reported bug where the
-    // "تم الدفع" icon settled an order (TH + GL both written correctly)
-    // but the green card stayed flat because it filtered on the wrong
-    // boolean.
-    const debtViaLinkRows = todaysLedgerRows.filter((r) =>
-      isCollectionsGreenCardRow(r.metadata),
+    // V19.7 — green card is strictly "manually collected by the CC
+    // today". Gateway-callback auto-settlements are a customer-self-
+    // service event and no longer count here (they still count in
+    // `debtRecoveredTodayKd` and the Owner Debt Recovery Report).
+    // See `isManualCallCenterCollectionRow` for the exact signals.
+    const manualCollectionRows = todaysLedgerRows.filter((r) =>
+      isManualCallCenterCollectionRow(r.metadata),
     );
-    const collectedTodayViaLink = debtViaLinkRows.reduce(
+    const collectedTodayViaLink = manualCollectionRows.reduce(
       (acc, r) => acc.plus(extractDebtSettled(r.metadata)),
       new Prisma.Decimal(0),
     );
@@ -1342,15 +1357,20 @@ export class CallCenterService {
 
   /**
    * V19.4 — CC pack #4. "Daily collector" feed powering the Collections
-   * page panel. Returns every debt-reducing ledger event written between
-   * Kuwait 00:00 and 24:00 for the requested day, regardless of source:
-   *   • CC #1 partial debt payments        (metadata.debtPaymentOnly)
-   *   • "Mark paid via link" flows         (metadata.debtSettlementViaLink)
-   *   • Normal order settlements that cleared debt (metadata.debtSettled > 0)
+   * page panel. Returns debt-reducing ledger events written between
+   * Kuwait 00:00 and 24:00 for the requested day.
    *
-   * Rows with a zero `debtSettled` (pure wallet-paid orders where no
-   * outstanding debt was reduced) are filtered out — they don't belong
-   * on a COLLECTION dashboard.
+   * V19.7 — scope narrowed to "manually collected by the Call Center":
+   *   • CC #1 partial debt payments            (metadata.debtPaymentOnly)
+   *   • "تم الدفع" manual confirmations         (metadata.debtSettlementViaCallCenter)
+   *
+   * Excluded (still land in the Recovery Report):
+   *   • Pure gateway-callback link payments    (metadata.debtSettlementViaLink
+   *     without any manual flag — customer self-service)
+   *   • Driver-led wallet settlements with debt
+   *
+   * Rows with a zero `debtSettled` AND zero `debtDiscount` are always
+   * filtered out — they don't belong on a COLLECTION dashboard.
    */
   async getDailyCollections(
     params: DailyCollectionsQueryDto,
@@ -1404,6 +1424,12 @@ export class CallCenterService {
         const debtSettled = extractDebtSettled(r.metadata);
         const debtDiscount = extractDebtDiscount(r.metadata);
         if (debtSettled.lte(0) && debtDiscount.lte(0)) return null;
+
+        // V19.7 — narrow to manual CC collections per Owner directive.
+        // Gateway auto-callbacks and driver-led settlements are excluded
+        // from this panel (they still feed the Recovery Report and the
+        // broader `debtRecoveredTodayKd`).
+        if (!isManualCallCenterCollectionRow(r.metadata)) return null;
 
         const partial = isPartialDebtPaymentRow(r.metadata);
         const kind: DailyCollectionEventDto['kind'] = partial
