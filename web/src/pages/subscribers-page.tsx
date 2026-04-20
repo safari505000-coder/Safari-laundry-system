@@ -4,6 +4,7 @@ import { Navigate } from 'react-router-dom';
 import {
   ArrowUpRight,
   CalendarClock,
+  CircleDollarSign,
   Loader2,
   Plus,
   RefreshCw,
@@ -44,6 +45,8 @@ import {
   type CallCenterPlan,
   type CustomerSearchRow,
   type ExtendSubscriptionResult,
+  type RecordPartialDebtPaymentRequest,
+  type RecordPartialDebtPaymentResponse,
   type SubscriberListRow,
   apiJson,
   ApiError,
@@ -189,15 +192,23 @@ function ManageAccountDialog({
   onOpenChange,
   onExtend,
   onUpgrade,
+  onPayDebt,
 }: {
   subscriber: SubscriberListRow | null;
   open: boolean;
   onOpenChange: (next: boolean) => void;
   onExtend: (r: SubscriberListRow) => void;
   onUpgrade: (r: SubscriberListRow) => void;
+  onPayDebt: (r: SubscriberListRow) => void;
 }) {
   const { t } = useTranslation();
   const canExtend = Boolean(subscriber?.planId);
+  // V19.4 — CC pack #1. Hide the debt action when the customer has
+  // no outstanding debt; keeping the button visible-but-disabled
+  // would just add visual noise mid-call. Guarded with Number.parse
+  // so legacy rows without a `debt` field collapse to "no debt".
+  const debtAmount = Number.parseFloat(subscriber?.debt ?? '0') || 0;
+  const hasDebt = debtAmount > 0;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
@@ -254,6 +265,28 @@ function ManageAccountDialog({
               </span>
             </span>
           </button>
+
+          {hasDebt && subscriber ? (
+            <button
+              type="button"
+              className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50/60 p-4 text-start transition hover:border-red-400 hover:bg-red-100/70 dark:border-red-900/60 dark:bg-red-950/20 dark:hover:bg-red-950/40"
+              onClick={() => onPayDebt(subscriber)}
+            >
+              <span className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-200">
+                <CircleDollarSign className="h-5 w-5" aria-hidden />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block font-semibold">
+                  {t('subscribers.managePayDebtTitle')}
+                </span>
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  {t('subscribers.managePayDebtHint', {
+                    debt: formatKwdLabel(subscriber.debt),
+                  })}
+                </span>
+              </span>
+            </button>
+          ) : null}
         </div>
 
         <DialogFooter>
@@ -577,6 +610,240 @@ function IssueSubscriptionDialog({
 }
 
 /**
+ * V19.4 — CC pack #1. Partial debt payment dialog.
+ *
+ * Opened from the Manage-Account dialog when the customer has debt > 0.
+ * The agent types the cash collected, an optional goodwill discount,
+ * and the payment method; the server validates `amount + discount
+ * <= wallet.debt` and writes a TransactionHistory + two GL entries
+ * (see `CustomerLedgerService.recordPartialDebtPayment`).
+ *
+ * Intentionally kept as a separate dialog rather than inline inside
+ * the Manage dialog because:
+ *   1. The Manage dialog is a hub — stacking a form inside it would
+ *      force the agent to scroll between actions mid-call.
+ *   2. Dialog-within-dialog gives a clear Back button and preserves
+ *      the context ("we were managing X, now collecting debt on X").
+ */
+function DebtPaymentDialog({
+  subscriber,
+  open,
+  onOpenChange,
+  token,
+  onSettled,
+}: {
+  subscriber: SubscriberListRow | null;
+  open: boolean;
+  onOpenChange: (next: boolean) => void;
+  token: string;
+  onSettled: () => void;
+}) {
+  const { t } = useTranslation();
+  const [amount, setAmount] = useState('');
+  const [discount, setDiscount] = useState('');
+  const [method, setMethod] =
+    useState<RecordPartialDebtPaymentRequest['paymentMethod']>('CASH');
+  const [note, setNote] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!open) {
+      setAmount('');
+      setDiscount('');
+      setMethod('CASH');
+      setNote('');
+    }
+  }, [open]);
+
+  const debtNum = Number.parseFloat(subscriber?.debt ?? '0') || 0;
+  const amountNum = Number.parseFloat(amount || '0') || 0;
+  const discountNum = Number.parseFloat(discount || '0') || 0;
+  const totalReduction = amountNum + discountNum;
+  const remaining = Math.max(0, debtNum - totalReduction);
+  const overCap = totalReduction > debtNum + 1e-9;
+  const disabled =
+    submitting ||
+    overCap ||
+    totalReduction <= 0 ||
+    amountNum < 0 ||
+    discountNum < 0;
+
+  async function submit() {
+    if (!subscriber || disabled) return;
+    setSubmitting(true);
+    try {
+      const body: RecordPartialDebtPaymentRequest = {
+        amountKd: amountNum.toFixed(4),
+        paymentMethod: method,
+      };
+      if (discountNum > 0) body.discountKd = discountNum.toFixed(4);
+      if (note.trim()) body.note = note.trim();
+      const res = await apiJson<RecordPartialDebtPaymentResponse>(
+        `/api/call-center/customers/${subscriber.customerId}/partial-debt-payment`,
+        { method: 'POST', token, body: JSON.stringify(body) },
+      );
+      toast.success(
+        t('subscribers.debtPaySuccess', {
+          collected: formatKwdLabel(res.amountCollectedKd),
+          discount: formatKwdLabel(res.discountAppliedKd),
+          remaining: formatKwdLabel(res.newDebtKd),
+        }),
+      );
+      onOpenChange(false);
+      onSettled();
+    } catch (e) {
+      if (e instanceof ApiError) toast.error(e.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-red-700 dark:text-red-300">
+            <CircleDollarSign className="h-5 w-5" aria-hidden />
+            {t('subscribers.debtPayTitle')}
+          </DialogTitle>
+          <DialogDescription>
+            {t('subscribers.debtPayHint', {
+              name: subscriber?.customerName ?? '',
+              debt: formatKwdLabel(subscriber?.debt ?? '0'),
+            })}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-4 py-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="debt-amount">
+                {t('subscribers.debtPayAmountLabel')}
+              </Label>
+              <Input
+                id="debt-amount"
+                inputMode="decimal"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="0.000"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="debt-discount">
+                {t('subscribers.debtPayDiscountLabel')}
+              </Label>
+              <Input
+                id="debt-discount"
+                inputMode="decimal"
+                value={discount}
+                onChange={(e) => setDiscount(e.target.value)}
+                placeholder="0.000"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>{t('subscribers.debtPayMethodLabel')}</Label>
+            <Select
+              value={method}
+              onValueChange={(v) =>
+                setMethod(
+                  v as RecordPartialDebtPaymentRequest['paymentMethod'],
+                )
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="CASH">
+                  {t('subscribers.debtPayMethodCash')}
+                </SelectItem>
+                <SelectItem value="KNET">
+                  {t('subscribers.debtPayMethodKnet')}
+                </SelectItem>
+                <SelectItem value="PAYMENT_LINK">
+                  {t('subscribers.debtPayMethodLink')}
+                </SelectItem>
+                <SelectItem value="ONLINE">
+                  {t('subscribers.debtPayMethodOnline')}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="debt-note">
+              {t('subscribers.debtPayNoteLabel')}
+            </Label>
+            <Input
+              id="debt-note"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder={t('subscribers.debtPayNotePlaceholder')}
+              maxLength={240}
+            />
+          </div>
+
+          <div className="grid grid-cols-3 gap-3 rounded-md border border-dashed border-red-300 bg-muted/40 px-3 py-2 text-sm tabular-nums dark:border-red-900/60">
+            <div>
+              <div className="text-[11px] text-muted-foreground">
+                {t('subscribers.debtPayTotalReduction')}
+              </div>
+              <div className="font-medium text-foreground">
+                {formatKwdLabel(totalReduction.toFixed(4))}
+              </div>
+            </div>
+            <div>
+              <div className="text-[11px] text-muted-foreground">
+                {t('subscribers.debtPayRemaining')}
+              </div>
+              <div className="font-medium text-foreground">
+                {formatKwdLabel(remaining.toFixed(4))}
+              </div>
+            </div>
+            <div>
+              <div className="text-[11px] text-muted-foreground">
+                {t('subscribers.debtPayCurrentDebt')}
+              </div>
+              <div className="font-medium text-foreground">
+                {formatKwdLabel(subscriber?.debt ?? '0')}
+              </div>
+            </div>
+          </div>
+          {overCap ? (
+            <p className="text-xs text-red-700 dark:text-red-300">
+              {t('subscribers.debtPayOverCap')}
+            </p>
+          ) : null}
+        </div>
+
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={submitting}
+          >
+            {t('subscribers.manageClose')}
+          </Button>
+          <Button
+            type="button"
+            className="bg-red-600 text-white hover:bg-red-700"
+            disabled={disabled}
+            onClick={() => void submit()}
+          >
+            {submitting
+              ? t('subscribers.debtPaySubmitting')
+              : t('subscribers.debtPaySubmit')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
  * Dastur V1.5.3 — Dedicated "Extend Subscription" (تمديد) dialog.
  *
  * No wallet movement, no plan picker. The operator only chooses a day
@@ -756,6 +1023,11 @@ export function SubscribersPage() {
   );
   const [manageOpen, setManageOpen] = useState(false);
 
+  // V19.4 — CC pack #1. Partial-debt-payment dialog launched from the
+  // Manage dialog when the customer has debt > 0.
+  const [debtTarget, setDebtTarget] = useState<SubscriberListRow | null>(null);
+  const [debtOpen, setDebtOpen] = useState(false);
+
   const dateFmt = useMemo(
     () =>
       new Intl.DateTimeFormat(locale, {
@@ -812,6 +1084,12 @@ export function SubscribersPage() {
     setExtendTarget(r);
     setManageOpen(false);
     setExtendOpen(true);
+  }, []);
+
+  const launchPayDebt = useCallback((r: SubscriberListRow) => {
+    setDebtTarget(r);
+    setManageOpen(false);
+    setDebtOpen(true);
   }, []);
 
   const launchUpgrade = useCallback((r: SubscriberListRow) => {
@@ -1043,6 +1321,21 @@ export function SubscribersPage() {
           }}
           onExtend={launchExtend}
           onUpgrade={launchUpgrade}
+          onPayDebt={launchPayDebt}
+        />
+      ) : null}
+
+      {canManage && token ? (
+        <DebtPaymentDialog
+          key={`debt:${debtTarget?.customerId ?? 'none'}`}
+          subscriber={debtTarget}
+          open={debtOpen}
+          onOpenChange={(n) => {
+            setDebtOpen(n);
+            if (!n) setDebtTarget(null);
+          }}
+          token={token}
+          onSettled={() => void load()}
         />
       ) : null}
 

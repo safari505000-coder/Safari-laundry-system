@@ -1195,7 +1195,31 @@ export const en = {
       'No active plan on record for this customer — use Upgrade to start a new plan.',
     manageUpgradeTitle: 'Upgrade subscription',
     manageUpgradeHint: 'Switch the customer to a different plan tier.',
+    managePayDebtTitle: 'Pay part of debt',
+    managePayDebtHint:
+      'Outstanding debt: {{debt}}. Record a partial payment with an optional discount.',
     manageClose: 'Close',
+    debtPayTitle: 'Partial debt payment',
+    debtPayHint:
+      '{{name}} owes {{debt}}. Enter cash collected and an optional goodwill discount.',
+    debtPayAmountLabel: 'Amount collected (KD)',
+    debtPayDiscountLabel: 'Discount (optional, KD)',
+    debtPayMethodLabel: 'Payment method',
+    debtPayMethodCash: 'Cash',
+    debtPayMethodKnet: 'KNET',
+    debtPayMethodLink: 'Payment link',
+    debtPayMethodOnline: 'Online',
+    debtPayNoteLabel: 'Note (optional)',
+    debtPayNotePlaceholder: 'e.g. customer promised second half next week',
+    debtPayTotalReduction: 'Total reduction',
+    debtPayRemaining: 'Remaining',
+    debtPayCurrentDebt: 'Current debt',
+    debtPayOverCap:
+      'Amount + discount cannot exceed the current outstanding debt.',
+    debtPaySubmit: 'Record payment',
+    debtPaySubmitting: 'Recording…',
+    debtPaySuccess:
+      'Collected {{collected}} · discount {{discount}} · remaining debt {{remaining}}.',
     extendDialogTitle: 'Extend current subscription',
     extendDialogDescription:
       'Add days to {{name}}\'s current subscription. No payment is taken — only the expiry date is pushed forward.',

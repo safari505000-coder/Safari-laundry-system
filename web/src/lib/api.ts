@@ -946,6 +946,12 @@ export type SubscriberListRow = {
   expiryDate: string | null;
   remainingDays: number | null;
   balance: string;
+  /**
+   * V19.4 — CC pack #1. Customer's current outstanding debt (KWD 4dp).
+   * Drives the "Pay part of debt" card in the Manage-Account dialog;
+   * when "0.0000" the card is hidden.
+   */
+  debt: string;
   rowStatus: 'active_ok' | 'active_warn' | 'expired' | 'open_credit';
   /** Days since the subscription was last activated. Null if unknown. */
   invoiceAgeDays: number | null;

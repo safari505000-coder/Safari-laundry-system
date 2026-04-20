@@ -106,6 +106,7 @@ let SubscribersService = class SubscribersService {
             const w = c.wallet;
             const balanceStr = w?.balance.toString() ?? '0.0000';
             const balanceNum = Number.parseFloat(balanceStr);
+            const debtStr = w?.debt.toString() ?? '0.0000';
             let startDate = w?.subscriptionActivatedAt ?? null;
             let expiryDate = w?.subscriptionExpiresAt ?? null;
             const rawWalletName = w?.subscriptionPlanName ?? null;
@@ -180,6 +181,7 @@ let SubscribersService = class SubscribersService {
                 expiryDate: expiryDate?.toISOString() ?? null,
                 remainingDays,
                 balance: balanceStr,
+                debt: debtStr,
                 rowStatus,
                 invoiceAgeDays,
                 reminderCount,

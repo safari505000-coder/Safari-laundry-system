@@ -19,6 +19,14 @@ export type SubscriberListRow = {
   expiryDate: string | null;
   remainingDays: number | null;
   balance: string;
+  /**
+   * V19.4 — CC pack #1. Outstanding debt the customer still owes,
+   * surfaced next to `balance` so the Call-Center manage dialog can
+   * conditionally render the "Pay part of debt" card without an extra
+   * round-trip. KWD 4dp like the wallet (e.g. "2.5000"). Defaults to
+   * "0.0000" when the customer has no wallet row yet.
+   */
+  debt: string;
   rowStatus: 'active_ok' | 'active_warn' | 'expired' | 'open_credit';
   /**
    * Dastur §5 (V1.5) — days elapsed since the last activation (a.k.a.
@@ -174,6 +182,7 @@ export class SubscribersService {
       const w = c.wallet;
       const balanceStr = w?.balance.toString() ?? '0.0000';
       const balanceNum = Number.parseFloat(balanceStr);
+      const debtStr = w?.debt.toString() ?? '0.0000';
 
       let startDate: Date | null = w?.subscriptionActivatedAt ?? null;
       let expiryDate: Date | null = w?.subscriptionExpiresAt ?? null;
@@ -270,6 +279,7 @@ export class SubscribersService {
         expiryDate: expiryDate?.toISOString() ?? null,
         remainingDays,
         balance: balanceStr,
+        debt: debtStr,
         rowStatus,
         invoiceAgeDays,
         reminderCount,
