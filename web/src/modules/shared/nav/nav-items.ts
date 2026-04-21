@@ -442,6 +442,21 @@ export const financialReportsItem: NavItem = {
 };
 
 /**
+ * V19.9.7 — Unified "Financial reports" hub entry for OWNER / GM.
+ *
+ * Replaces six separate finance entries (P&L, operational reports,
+ * financial cycle, KNET audit, unified ledger, AI insights) with a
+ * single hub that nests them as internal tabs. The underlying routes
+ * remain registered so deep links keep working.
+ */
+export const financialReportsHubItem: NavItem = {
+  to: '/reports-hub',
+  labelKey: 'nav.financialReports',
+  icon: FileSpreadsheet,
+  roles: ['OWNER', 'GENERAL_MANAGER'],
+};
+
+/**
  * Dastur §1 (V1.5) — Owner-only Serial Management island: assign
  * single-letter driver prefixes and view the live global serial log.
  */

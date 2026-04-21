@@ -27,6 +27,7 @@ import { FinancialsPage } from '@/pages/financials-page';
 import { InsightsAiPage } from '@/pages/insights-ai-page';
 import { FinancialCycleReportPage } from '@/pages/financial-cycle-report-page';
 import { ReportsPage } from '@/pages/reports-page';
+import { FinancialReportsHubPage } from '@/pages/financial-reports-hub-page';
 import { LoginPage } from '@/pages/login-page';
 import { OrdersPage } from '@/pages/orders-page';
 import { MyCustodyPage } from '@/modules/manager/pages/MyCustodyPage';
@@ -547,6 +548,14 @@ export default function App() {
                   element={
                     <RequireAccess access="reports.view">
                       <ReportsPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="reports-hub"
+                  element={
+                    <RequireAccess access="reports.view">
+                      <FinancialReportsHubPage />
                     </RequireAccess>
                   }
                 />
