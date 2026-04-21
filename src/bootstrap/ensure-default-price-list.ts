@@ -114,29 +114,39 @@ export const DEFAULT_PRICE_ITEMS: readonly DefaultPriceItem[] = [
   },
 ];
 
+/**
+ * Fresh-install safety net.
+ *
+ * Historically this function was the ONLY place that populated
+ * `LaundryPriceListItem`, so it both inserted the bundled defaults AND
+ * deleted anything else to keep the table in lock-step with its own
+ * 11-row list.
+ *
+ * Since V19.10 the master tariff (41 rows, 8 categories) lives in
+ * `prisma/price-list-seed.ts::seedLaundryPriceList` and is the one and
+ * only source of truth. Running both in parallel caused a destructive
+ * race where every backend boot would silently shrink the DB back down
+ * to the 11 baseline codes (and, because the baseline uses different
+ * codes like `TROUSERS_SHIRT` vs the tariff's `TROUSERS`, orphaning
+ * half of them with no category).
+ *
+ * New behaviour: this function only seeds when the price-list table is
+ * completely empty (brand-new DB / CI container). Once `seedLaundryPriceList`
+ * has run, or an Owner has populated the table any other way, we return
+ * immediately so no rows are touched.
+ */
 export async function ensureDefaultPriceList(
   prisma: PrismaClient,
 ): Promise<void> {
-  const codes = DEFAULT_PRICE_ITEMS.map((item) => item.code);
-  await prisma.laundryPriceListItem.deleteMany({
-    where: { code: { notIn: codes } },
-  });
+  const existing = await prisma.laundryPriceListItem.count();
+  if (existing > 0) {
+    return;
+  }
 
   for (const [index, item] of DEFAULT_PRICE_ITEMS.entries()) {
-    await prisma.laundryPriceListItem.upsert({
-      where: { code: item.code },
-      create: {
+    await prisma.laundryPriceListItem.create({
+      data: {
         code: item.code,
-        nameAr: item.nameAr,
-        nameEn: item.nameEn,
-        sortOrder: index + 1,
-        manualEntry: false,
-        priceNormal: item.priceNormal,
-        priceUrgent: item.priceUrgent,
-        pricePressOnly: item.pricePressOnly,
-        priceUrgentPress: item.priceUrgentPress,
-      },
-      update: {
         nameAr: item.nameAr,
         nameEn: item.nameEn,
         sortOrder: index + 1,
@@ -150,6 +160,6 @@ export async function ensureDefaultPriceList(
   }
 
   console.log(
-    `[${BUSINESS_NAME_AR}] Default laundry price list ensured (${DEFAULT_PRICE_ITEMS.length} items).`,
+    `[${BUSINESS_NAME_AR}] Fresh DB detected — bootstrap seed inserted ${DEFAULT_PRICE_ITEMS.length} baseline items. Run 'npm run db:seed' for the full V19.10 tariff.`,
   );
 }

@@ -21,12 +21,6 @@ export declare class UsersController {
         branchId: string | null;
         createdAt: Date;
         updatedAt: Date;
-        role: {
-            id: string;
-            createdAt: Date;
-            updatedAt: Date;
-            name: string;
-        };
         _count: {
             role: number;
             branch: number;
@@ -64,6 +58,12 @@ export declare class UsersController {
             invoiceAuditEntries: number;
         };
         isActive: boolean;
+        role: {
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            name: string;
+        };
         username: string;
         fullName: string;
         employeeId: string | null;
@@ -606,12 +606,6 @@ export declare class UsersController {
         branchId: string | null;
         createdAt: Date;
         updatedAt: Date;
-        role: {
-            id: string;
-            createdAt: Date;
-            updatedAt: Date;
-            name: string;
-        };
         _count: {
             role: number;
             branch: number;
@@ -649,6 +643,12 @@ export declare class UsersController {
             invoiceAuditEntries: number;
         };
         isActive: boolean;
+        role: {
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            name: string;
+        };
         username: string;
         fullName: string;
         employeeId: string | null;
@@ -1191,12 +1191,6 @@ export declare class UsersController {
         branchId: string | null;
         createdAt: Date;
         updatedAt: Date;
-        role: {
-            id: string;
-            createdAt: Date;
-            updatedAt: Date;
-            name: string;
-        };
         _count: {
             role: number;
             branch: number;
@@ -1234,6 +1228,12 @@ export declare class UsersController {
             invoiceAuditEntries: number;
         };
         isActive: boolean;
+        role: {
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            name: string;
+        };
         username: string;
         fullName: string;
         employeeId: string | null;
@@ -1779,12 +1779,6 @@ export declare class UsersController {
         branchId: string | null;
         createdAt: Date;
         updatedAt: Date;
-        role: {
-            id: string;
-            createdAt: Date;
-            updatedAt: Date;
-            name: string;
-        };
         _count: {
             role: number;
             branch: number;
@@ -1822,6 +1816,12 @@ export declare class UsersController {
             invoiceAuditEntries: number;
         };
         isActive: boolean;
+        role: {
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            name: string;
+        };
         username: string;
         fullName: string;
         employeeId: string | null;
@@ -2367,12 +2367,6 @@ export declare class UsersController {
         branchId: string | null;
         createdAt: Date;
         updatedAt: Date;
-        role: {
-            id: string;
-            createdAt: Date;
-            updatedAt: Date;
-            name: string;
-        };
         _count: {
             role: number;
             branch: number;
@@ -2410,6 +2404,12 @@ export declare class UsersController {
             invoiceAuditEntries: number;
         };
         isActive: boolean;
+        role: {
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            name: string;
+        };
         username: string;
         fullName: string;
         employeeId: string | null;

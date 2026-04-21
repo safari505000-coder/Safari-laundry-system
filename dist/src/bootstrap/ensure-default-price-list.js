@@ -105,25 +105,14 @@ exports.DEFAULT_PRICE_ITEMS = [
     },
 ];
 async function ensureDefaultPriceList(prisma) {
-    const codes = exports.DEFAULT_PRICE_ITEMS.map((item) => item.code);
-    await prisma.laundryPriceListItem.deleteMany({
-        where: { code: { notIn: codes } },
-    });
+    const existing = await prisma.laundryPriceListItem.count();
+    if (existing > 0) {
+        return;
+    }
     for (const [index, item] of exports.DEFAULT_PRICE_ITEMS.entries()) {
-        await prisma.laundryPriceListItem.upsert({
-            where: { code: item.code },
-            create: {
+        await prisma.laundryPriceListItem.create({
+            data: {
                 code: item.code,
-                nameAr: item.nameAr,
-                nameEn: item.nameEn,
-                sortOrder: index + 1,
-                manualEntry: false,
-                priceNormal: item.priceNormal,
-                priceUrgent: item.priceUrgent,
-                pricePressOnly: item.pricePressOnly,
-                priceUrgentPress: item.priceUrgentPress,
-            },
-            update: {
                 nameAr: item.nameAr,
                 nameEn: item.nameEn,
                 sortOrder: index + 1,
@@ -135,6 +124,6 @@ async function ensureDefaultPriceList(prisma) {
             },
         });
     }
-    console.log(`[${exports.BUSINESS_NAME_AR}] Default laundry price list ensured (${exports.DEFAULT_PRICE_ITEMS.length} items).`);
+    console.log(`[${exports.BUSINESS_NAME_AR}] Fresh DB detected — bootstrap seed inserted ${exports.DEFAULT_PRICE_ITEMS.length} baseline items. Run 'npm run db:seed' for the full V19.10 tariff.`);
 }
 //# sourceMappingURL=ensure-default-price-list.js.map

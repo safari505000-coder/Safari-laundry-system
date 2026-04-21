@@ -3,13 +3,17 @@ import type { PrismaClient } from '@prisma/client';
 import { Prisma } from '@prisma/client';
 
 /**
- * Safari Fast Group — MASTER price list seed (Constitution V5.2).
+ * Safari Fast Group — MASTER price list seed (Constitution V5.2, V19.10
+ * category refresh).
  *
  * Source of truth = the official printed tariff PDF. The seed is idempotent
  * and is invoked on every `prisma db seed` (which fires automatically via
  * `npm start`). On each run:
- *   1. The six categories (MENS, JACKETS_BISHT, LADIES, HOUSEHOLD, MISC,
- *      SERVICES) are upserted by `code`.
+ *   1. The eight categories below are upserted by `code`. The V19.10 rework
+ *      splits the legacy "JACKETS_BISHT" / "MISC" buckets into narrower
+ *      groups that mirror the printed tariff's visual flow (everyday men's
+ *      items → national dress → small accessories → household linens →
+ *      formal occasion wear → ladies' wear → unisex → extras).
  *   2. Every tariff row is upserted by `code`. Prices are stored with up to
  *      4-decimal precision; the POS / Driver UIs always render 3-decimal KWD.
  *   3. Any item whose `code` is NOT listed here is deleted (this is how
@@ -18,7 +22,8 @@ import { Prisma } from '@prisma/client';
  *      rows snapshot their own `label` string, so they survive unchanged.
  *   4. Any category whose `code` is NOT listed here is deleted; items have
  *      already been reparented above, and `LaundryPriceListItem.categoryId`
- *      uses ON DELETE SET NULL, so nothing can break.
+ *      uses ON DELETE SET NULL, so nothing can break. Legacy codes removed
+ *      on this pass: MENS, JACKETS_BISHT, MISC (contents redistributed).
  *
  * Pricing grid (maps PDF columns → schema columns):
  *   priceNormal      ← Wash+Iron  / Wash
@@ -36,36 +41,53 @@ const CATEGORIES: Array<{
   nameEn: string;
   sortOrder: number;
 }> = [
-  { code: 'MENS', nameAr: 'ملابس رجالية', nameEn: "Men's Items", sortOrder: 10 },
   {
-    code: 'JACKETS_BISHT',
-    nameAr: 'الجواكيت والبشوت',
-    nameEn: 'Jackets & Bisht',
+    code: 'MENS_ESSENTIALS',
+    nameAr: 'ملابس رجالية أساسية',
+    nameEn: "Men's Essentials",
+    sortOrder: 10,
+  },
+  {
+    code: 'MENS_NATIONAL',
+    nameAr: 'الزي الوطني الرجالي',
+    nameEn: 'National Dress (Men)',
     sortOrder: 20,
+  },
+  {
+    code: 'ACCESSORIES_SMALL',
+    nameAr: 'إكسسوارات وقطع صغيرة',
+    nameEn: 'Small Accessories',
+    sortOrder: 30,
+  },
+  {
+    code: 'HOUSEHOLD_LINENS',
+    nameAr: 'المفروشات والبياضات',
+    nameEn: 'Household & Linens',
+    sortOrder: 40,
+  },
+  {
+    code: 'FORMAL_WEAR',
+    nameAr: 'ملابس رسمية وبشوت',
+    nameEn: 'Formal Wear & Bisht',
+    sortOrder: 50,
   },
   {
     code: 'LADIES',
     nameAr: 'ملابس نسائية',
     nameEn: "Ladies' Wear",
-    sortOrder: 30,
+    sortOrder: 60,
   },
   {
-    code: 'HOUSEHOLD',
-    nameAr: 'المفروشات والقطع المنزلية',
-    nameEn: 'Household',
-    sortOrder: 40,
-  },
-  {
-    code: 'MISC',
-    nameAr: 'إكسسوارات وقطع منوعة',
-    nameEn: 'Miscellaneous',
-    sortOrder: 50,
+    code: 'UNISEX',
+    nameAr: 'ملابس متعددة الاستخدام',
+    nameEn: 'Unisex',
+    sortOrder: 70,
   },
   {
     code: 'SERVICES',
     nameAr: 'خدمات إضافية',
     nameEn: 'Extras',
-    sortOrder: 60,
+    sortOrder: 80,
   },
 ];
 
@@ -84,106 +106,15 @@ type Row = {
 
 const ROWS: Row[] = [
   // ──────────────────────────────────────────────────────────────────────────
-  // ١. MEN'S ITEMS
-  // ──────────────────────────────────────────────────────────────────────────
-  {
-    code: 'DISHDASHA_ORD',
-    nameAr: 'دشداشة عادي',
-    nameEn: 'Dishdasha (ordinary)',
-    sortOrder: 10,
-    categoryCode: 'MENS',
-    priceNormal: '0.6000',
-    priceUrgent: '1.0000',
-    pricePressOnly: '0.3500',
-    priceUrgentPress: '0.5000',
-  },
-  {
-    code: 'DISHDASHA_WOOL',
-    nameAr: 'دشداشة صوف',
-    nameEn: 'Dishdasha (wool)',
-    sortOrder: 20,
-    categoryCode: 'MENS',
-    priceNormal: '0.7500',
-    priceUrgent: '1.0000',
-    pricePressOnly: '0.4000',
-    priceUrgentPress: '0.5000',
-  },
-  {
-    code: 'SUIT_FULL',
-    nameAr: 'بدلة كاملة',
-    nameEn: 'Suit',
-    sortOrder: 30,
-    categoryCode: 'MENS',
-    priceNormal: '2.2500',
-    priceUrgent: '3.0000',
-    pricePressOnly: '0.7500',
-    priceUrgentPress: '1.0000',
-  },
-  {
-    code: 'MILITARY_SUIT_2PC',
-    nameAr: 'بدلة عسكرية',
-    nameEn: 'Military suit (2pc)',
-    sortOrder: 40,
-    categoryCode: 'MENS',
-    priceNormal: '1.0000',
-    priceUrgent: '1.5000',
-    pricePressOnly: '0.5000',
-    priceUrgentPress: '0.7500',
-  },
-  {
-    code: 'SHIRT',
-    nameAr: 'قميص',
-    nameEn: 'Shirt',
-    sortOrder: 50,
-    categoryCode: 'MENS',
-    priceNormal: '0.5000',
-    priceUrgent: '0.7500',
-    pricePressOnly: '0.2500',
-    priceUrgentPress: '0.3500',
-  },
-  {
-    code: 'TROUSERS',
-    nameAr: 'بنطلون',
-    nameEn: 'Trousers',
-    sortOrder: 60,
-    categoryCode: 'MENS',
-    priceNormal: '0.5000',
-    priceUrgent: '0.7500',
-    pricePressOnly: '0.2500',
-    priceUrgentPress: '0.3500',
-  },
-  {
-    code: 'GOTRA',
-    nameAr: 'غترة شماغ',
-    nameEn: 'Gotra',
-    sortOrder: 70,
-    categoryCode: 'MENS',
-    priceNormal: '0.4000',
-    priceUrgent: '0.5000',
-    pricePressOnly: '0.2500',
-    priceUrgentPress: '0.3500',
-  },
-  {
-    code: 'GOTRA_WHITE',
-    nameAr: 'غترة بيضاء',
-    nameEn: 'White Gotra',
-    sortOrder: 80,
-    categoryCode: 'MENS',
-    priceNormal: '0.4000',
-    priceUrgent: '0.5000',
-    pricePressOnly: '0.2500',
-    priceUrgentPress: '0.3500',
-  },
-
-  // ──────────────────────────────────────────────────────────────────────────
-  // ٢. JACKETS & BISHT
+  // ١. MEN'S ESSENTIALS — everyday outerwear, suits, and shirt/trouser combos
+  //    (matches the top block of the printed tariff photo)
   // ──────────────────────────────────────────────────────────────────────────
   {
     code: 'OVER_COAT',
     nameAr: 'بالطو',
     nameEn: 'Over Coat',
-    sortOrder: 90,
-    categoryCode: 'JACKETS_BISHT',
+    sortOrder: 10,
+    categoryCode: 'MENS_ESSENTIALS',
     priceNormal: '2.5000',
     priceUrgent: '3.0000',
     pricePressOnly: '0.7500',
@@ -193,8 +124,8 @@ const ROWS: Row[] = [
     code: 'JACKET',
     nameAr: 'جاكيت',
     nameEn: 'Jacket',
-    sortOrder: 100,
-    categoryCode: 'JACKETS_BISHT',
+    sortOrder: 20,
+    categoryCode: 'MENS_ESSENTIALS',
     priceNormal: '1.7500',
     priceUrgent: '2.0000',
     pricePressOnly: '0.5000',
@@ -204,19 +135,286 @@ const ROWS: Row[] = [
     code: 'JACKET_SNAP_ON',
     nameAr: 'جاكيت بكبوس',
     nameEn: 'Snap-on Jacket',
-    sortOrder: 110,
-    categoryCode: 'JACKETS_BISHT',
+    sortOrder: 30,
+    categoryCode: 'MENS_ESSENTIALS',
     priceNormal: '1.0000',
     priceUrgent: '1.5000',
     pricePressOnly: '0.5000',
     priceUrgentPress: '0.7500',
   },
   {
+    code: 'TROUSERS',
+    nameAr: 'بنطلون',
+    nameEn: 'Trousers',
+    sortOrder: 40,
+    categoryCode: 'MENS_ESSENTIALS',
+    priceNormal: '0.5000',
+    priceUrgent: '0.7500',
+    pricePressOnly: '0.2500',
+    priceUrgentPress: '0.3500',
+  },
+  {
+    code: 'SHIRT',
+    nameAr: 'قميص',
+    nameEn: 'Shirt',
+    sortOrder: 50,
+    categoryCode: 'MENS_ESSENTIALS',
+    priceNormal: '0.5000',
+    priceUrgent: '0.7500',
+    pricePressOnly: '0.2500',
+    priceUrgentPress: '0.3500',
+  },
+  {
+    code: 'SUIT_FULL',
+    nameAr: 'بدلة كاملة',
+    nameEn: 'Suit',
+    sortOrder: 60,
+    categoryCode: 'MENS_ESSENTIALS',
+    priceNormal: '2.2500',
+    priceUrgent: '3.0000',
+    pricePressOnly: '0.7500',
+    priceUrgentPress: '1.0000',
+  },
+  {
+    code: 'MILITARY_SUIT_2PC',
+    nameAr: 'بدلة عسكرية',
+    nameEn: 'Military suit (2pc)',
+    sortOrder: 70,
+    categoryCode: 'MENS_ESSENTIALS',
+    priceNormal: '1.0000',
+    priceUrgent: '1.5000',
+    pricePressOnly: '0.5000',
+    priceUrgentPress: '0.7500',
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // ٢. MEN'S NATIONAL DRESS — Kuwaiti dishdasha + gotra variants
+  // ──────────────────────────────────────────────────────────────────────────
+  {
+    code: 'DISHDASHA_WOOL',
+    nameAr: 'دشداشة صوف',
+    nameEn: 'Dishdasha (wool)',
+    sortOrder: 80,
+    categoryCode: 'MENS_NATIONAL',
+    priceNormal: '0.7500',
+    priceUrgent: '1.0000',
+    pricePressOnly: '0.4000',
+    priceUrgentPress: '0.5000',
+  },
+  {
+    code: 'DISHDASHA_ORD',
+    nameAr: 'دشداشة عادي',
+    nameEn: 'Dishdasha (ordinary)',
+    sortOrder: 90,
+    categoryCode: 'MENS_NATIONAL',
+    priceNormal: '0.6000',
+    priceUrgent: '1.0000',
+    pricePressOnly: '0.3500',
+    priceUrgentPress: '0.5000',
+  },
+  {
+    code: 'GOTRA',
+    nameAr: 'غترة شماغ',
+    nameEn: 'Gotra',
+    sortOrder: 100,
+    categoryCode: 'MENS_NATIONAL',
+    priceNormal: '0.4000',
+    priceUrgent: '0.5000',
+    pricePressOnly: '0.2500',
+    priceUrgentPress: '0.3500',
+  },
+  {
+    code: 'GOTRA_WHITE',
+    nameAr: 'غترة بيضاء',
+    nameEn: 'White Gotra',
+    sortOrder: 110,
+    categoryCode: 'MENS_NATIONAL',
+    priceNormal: '0.4000',
+    priceUrgent: '0.5000',
+    pricePressOnly: '0.2500',
+    priceUrgentPress: '0.3500',
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // ٣. SMALL ACCESSORIES — inner layers, socks, caps (everything tiny enough
+  //    to not sit neatly in any other bucket)
+  // ──────────────────────────────────────────────────────────────────────────
+  {
+    // Press tiers intentionally 0.0000 (explicitly listed by the tariff as
+    // zero — NOT null) so they appear as "no-cost press" line-items rather
+    // than hidden tiers.
+    code: 'SYRUP',
+    nameAr: 'شراب/دلاق',
+    nameEn: 'Syrup (Socks)',
+    sortOrder: 120,
+    categoryCode: 'ACCESSORIES_SMALL',
+    priceNormal: '0.1000',
+    priceUrgent: '0.2000',
+    pricePressOnly: '0.0000',
+    priceUrgentPress: '0.0000',
+  },
+  {
+    code: 'INSIDE_CLOTHES',
+    nameAr: 'ملابس داخلية',
+    nameEn: 'Inside Clothes',
+    sortOrder: 130,
+    categoryCode: 'ACCESSORIES_SMALL',
+    priceNormal: '0.3000',
+    priceUrgent: '0.4000',
+    pricePressOnly: '0.2000',
+    priceUrgentPress: '0.3000',
+  },
+  {
+    code: 'TAQIYA',
+    nameAr: 'طاقية',
+    nameEn: 'Taqiya',
+    sortOrder: 140,
+    categoryCode: 'ACCESSORIES_SMALL',
+    priceNormal: '0.1000',
+    priceUrgent: '0.1500',
+    pricePressOnly: '0.5000',
+    priceUrgentPress: '0.1000',
+  },
+  {
+    code: 'KABB',
+    nameAr: 'كاب',
+    nameEn: 'Kabb',
+    sortOrder: 150,
+    categoryCode: 'ACCESSORIES_SMALL',
+    priceNormal: '0.2500',
+    priceUrgent: '0.3500',
+    pricePressOnly: '0.1000',
+    priceUrgentPress: '0.1500',
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // ٤. HOUSEHOLD & LINENS — bedding, towels, curtains
+  // ──────────────────────────────────────────────────────────────────────────
+  {
+    code: 'FITTED_SHEET',
+    nameAr: 'شرشف سميك',
+    nameEn: 'Fitted Sheet',
+    sortOrder: 160,
+    categoryCode: 'HOUSEHOLD_LINENS',
+    priceNormal: '1.0000',
+    priceUrgent: '1.5000',
+    pricePressOnly: '0.5000',
+    priceUrgentPress: '0.7500',
+  },
+  {
+    // Wash-only tariff: press tiers null per PDF.
+    code: 'BLANKET_ALL',
+    nameAr: 'بطانية جميع الأحجام',
+    nameEn: 'Batanya (Blanket)',
+    sortOrder: 170,
+    categoryCode: 'HOUSEHOLD_LINENS',
+    priceNormal: '1.7500',
+    priceUrgent: '3.0000',
+    pricePressOnly: null,
+    priceUrgentPress: null,
+  },
+  {
+    code: 'COVER_DEBAJ',
+    nameAr: 'ديباج جميع الأحجام',
+    nameEn: 'Cover (Debaj)',
+    sortOrder: 180,
+    categoryCode: 'HOUSEHOLD_LINENS',
+    priceNormal: '2.5000',
+    priceUrgent: '4.5000',
+    pricePressOnly: null,
+    priceUrgentPress: null,
+  },
+  {
+    code: 'HOTEL_MATTRESS',
+    nameAr: 'فرشة فندقية',
+    nameEn: 'Hotel Mattress',
+    sortOrder: 190,
+    categoryCode: 'HOUSEHOLD_LINENS',
+    priceNormal: '4.0000',
+    priceUrgent: '6.0000',
+    pricePressOnly: null,
+    priceUrgentPress: null,
+  },
+  {
+    code: 'SLIP',
+    nameAr: 'سليب باق',
+    nameEn: 'Slip',
+    sortOrder: 200,
+    categoryCode: 'HOUSEHOLD_LINENS',
+    priceNormal: '0.5000',
+    priceUrgent: '0.7500',
+    pricePressOnly: null,
+    priceUrgentPress: null,
+  },
+  {
+    code: 'PILLOW',
+    nameAr: 'مخدة',
+    nameEn: 'Pillow',
+    sortOrder: 210,
+    categoryCode: 'HOUSEHOLD_LINENS',
+    priceNormal: '0.5000',
+    priceUrgent: '0.7500',
+    pricePressOnly: null,
+    priceUrgentPress: null,
+  },
+  {
+    code: 'LIGHT_SHEET',
+    nameAr: 'شرشف خفيف',
+    nameEn: 'Light Sheet',
+    sortOrder: 220,
+    categoryCode: 'HOUSEHOLD_LINENS',
+    priceNormal: '0.5000',
+    priceUrgent: '0.7500',
+    pricePressOnly: '0.2500',
+    priceUrgentPress: '0.3500',
+  },
+  {
+    code: 'BATH_SHEET',
+    nameAr: 'بشكير حمام',
+    nameEn: 'Bath Sheet',
+    sortOrder: 230,
+    categoryCode: 'HOUSEHOLD_LINENS',
+    priceNormal: '0.5000',
+    priceUrgent: '0.7500',
+    pricePressOnly: '0.3500',
+    priceUrgentPress: '0.4500',
+  },
+  {
+    code: 'PILLOW_CASE',
+    nameAr: 'وجه مخدة',
+    nameEn: 'Pillow Case',
+    sortOrder: 240,
+    categoryCode: 'HOUSEHOLD_LINENS',
+    priceNormal: '0.2500',
+    priceUrgent: '0.5000',
+    pricePressOnly: '0.1500',
+    priceUrgentPress: '0.2000',
+  },
+  {
+    // Quote-based — manualEntry=true (see LADIES_DRESS note below).
+    code: 'PARDA',
+    nameAr: 'باردا بجميع أنواعها',
+    nameEn: 'Parda (Curtains)',
+    sortOrder: 250,
+    categoryCode: 'HOUSEHOLD_LINENS',
+    manualEntry: true,
+    priceNormal: '0.0000',
+    priceUrgent: '0.0000',
+    pricePressOnly: null,
+    priceUrgentPress: null,
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // ٥. FORMAL WEAR & BISHT — ceremonial / occasion garments (bisht + abaya
+  //    family). Kept distinct from day-to-day ladies' wear for accounting
+  //    reports and for the POS "occasion pricing" filter.
+  // ──────────────────────────────────────────────────────────────────────────
+  {
     code: 'BISHT_OCCASION',
     nameAr: 'بشت مناسبات',
     nameEn: 'Occasion Bisht',
-    sortOrder: 120,
-    categoryCode: 'JACKETS_BISHT',
+    sortOrder: 260,
+    categoryCode: 'FORMAL_WEAR',
     priceNormal: '4.0000',
     priceUrgent: '5.0000',
     pricePressOnly: '1.0000',
@@ -226,23 +424,19 @@ const ROWS: Row[] = [
     code: 'BISHT_DANDER',
     nameAr: 'بشت وبر',
     nameEn: 'Dander Bisht',
-    sortOrder: 130,
-    categoryCode: 'JACKETS_BISHT',
+    sortOrder: 270,
+    categoryCode: 'FORMAL_WEAR',
     priceNormal: '3.5000',
     priceUrgent: '4.5000',
     pricePressOnly: '2.0000',
     priceUrgentPress: '2.5000',
   },
-
-  // ──────────────────────────────────────────────────────────────────────────
-  // ٣. LADIES' WEAR
-  // ──────────────────────────────────────────────────────────────────────────
   {
     code: 'ABAYA',
     nameAr: 'عباءة',
     nameEn: 'Abaya',
-    sortOrder: 140,
-    categoryCode: 'LADIES',
+    sortOrder: 280,
+    categoryCode: 'FORMAL_WEAR',
     priceNormal: '1.2500',
     priceUrgent: '1.5000',
     pricePressOnly: '0.5000',
@@ -252,18 +446,23 @@ const ROWS: Row[] = [
     code: 'CRYSTAL_ABAYA',
     nameAr: 'عباءة مطرز/كريستال',
     nameEn: 'Crystal Abaya',
-    sortOrder: 150,
-    categoryCode: 'LADIES',
+    sortOrder: 290,
+    categoryCode: 'FORMAL_WEAR',
     priceNormal: '3.0000',
     priceUrgent: '3.5000',
     pricePressOnly: '1.5000',
     priceUrgentPress: '2.0000',
   },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // ٦. LADIES' WEAR — scarves, tops, skirts, gowns, and the quote-based
+  //    occasion dress
+  // ──────────────────────────────────────────────────────────────────────────
   {
     code: 'SHEILA',
     nameAr: 'شيلا',
     nameEn: 'Sheila',
-    sortOrder: 160,
+    sortOrder: 300,
     categoryCode: 'LADIES',
     priceNormal: '0.3500',
     priceUrgent: '0.5000',
@@ -274,7 +473,7 @@ const ROWS: Row[] = [
     code: 'SHAWL',
     nameAr: 'شال',
     nameEn: 'Shawl',
-    sortOrder: 170,
+    sortOrder: 310,
     categoryCode: 'LADIES',
     priceNormal: '0.5000',
     priceUrgent: '0.7500',
@@ -285,7 +484,7 @@ const ROWS: Row[] = [
     code: 'SCARVES',
     nameAr: 'طرحة',
     nameEn: 'Scarves',
-    sortOrder: 180,
+    sortOrder: 320,
     categoryCode: 'LADIES',
     priceNormal: '0.2500',
     priceUrgent: '0.4000',
@@ -296,7 +495,7 @@ const ROWS: Row[] = [
     code: 'NIQAB',
     nameAr: 'نقاب',
     nameEn: 'Niqab',
-    sortOrder: 190,
+    sortOrder: 330,
     categoryCode: 'LADIES',
     priceNormal: '0.1500',
     priceUrgent: '0.2500',
@@ -307,7 +506,7 @@ const ROWS: Row[] = [
     code: 'SKIRT',
     nameAr: 'تنورة',
     nameEn: 'Skirt',
-    sortOrder: 200,
+    sortOrder: 340,
     categoryCode: 'LADIES',
     priceNormal: '0.5000',
     priceUrgent: '0.7500',
@@ -318,7 +517,7 @@ const ROWS: Row[] = [
     code: 'BLOUSE',
     nameAr: 'بلوزة',
     nameEn: 'Blouse',
-    sortOrder: 210,
+    sortOrder: 350,
     categoryCode: 'LADIES',
     priceNormal: '0.5000',
     priceUrgent: '0.7500',
@@ -329,7 +528,7 @@ const ROWS: Row[] = [
     code: 'GOWN',
     nameAr: 'قميص نوم',
     nameEn: 'Gown',
-    sortOrder: 220,
+    sortOrder: 360,
     categoryCode: 'LADIES',
     priceNormal: '0.5000',
     priceUrgent: '0.7500',
@@ -343,7 +542,7 @@ const ROWS: Row[] = [
     code: 'LADIES_DRESS',
     nameAr: 'فستان',
     nameEn: 'Ladies Dress',
-    sortOrder: 230,
+    sortOrder: 370,
     categoryCode: 'LADIES',
     manualEntry: true,
     priceNormal: '0.0000',
@@ -353,178 +552,15 @@ const ROWS: Row[] = [
   },
 
   // ──────────────────────────────────────────────────────────────────────────
-  // ٤. HOUSEHOLD
+  // ٧. UNISEX — garments that legitimately belong to neither men's nor
+  //    ladies' buckets (pyjamas, baby clothing)
   // ──────────────────────────────────────────────────────────────────────────
-  {
-    code: 'FITTED_SHEET',
-    nameAr: 'شرشف سميك',
-    nameEn: 'Fitted Sheet',
-    sortOrder: 240,
-    categoryCode: 'HOUSEHOLD',
-    priceNormal: '1.0000',
-    priceUrgent: '1.5000',
-    pricePressOnly: '0.5000',
-    priceUrgentPress: '0.7500',
-  },
-  {
-    // Wash-only tariff: press tiers null per PDF.
-    code: 'BLANKET_ALL',
-    nameAr: 'بطانية جميع الأحجام',
-    nameEn: 'Batanya (Blanket)',
-    sortOrder: 250,
-    categoryCode: 'HOUSEHOLD',
-    priceNormal: '1.7500',
-    priceUrgent: '3.0000',
-    pricePressOnly: null,
-    priceUrgentPress: null,
-  },
-  {
-    code: 'COVER_DEBAJ',
-    nameAr: 'ديباج جميع الأحجام',
-    nameEn: 'Cover (Debaj)',
-    sortOrder: 260,
-    categoryCode: 'HOUSEHOLD',
-    priceNormal: '2.5000',
-    priceUrgent: '4.5000',
-    pricePressOnly: null,
-    priceUrgentPress: null,
-  },
-  {
-    code: 'HOTEL_MATTRESS',
-    nameAr: 'فرشة فندقية',
-    nameEn: 'Hotel Mattress',
-    sortOrder: 270,
-    categoryCode: 'HOUSEHOLD',
-    priceNormal: '4.0000',
-    priceUrgent: '6.0000',
-    pricePressOnly: null,
-    priceUrgentPress: null,
-  },
-  {
-    code: 'SLIP',
-    nameAr: 'سليب باق',
-    nameEn: 'Slip',
-    sortOrder: 280,
-    categoryCode: 'HOUSEHOLD',
-    priceNormal: '0.5000',
-    priceUrgent: '0.7500',
-    pricePressOnly: null,
-    priceUrgentPress: null,
-  },
-  {
-    code: 'PILLOW',
-    nameAr: 'مخدة',
-    nameEn: 'Pillow',
-    sortOrder: 290,
-    categoryCode: 'HOUSEHOLD',
-    priceNormal: '0.5000',
-    priceUrgent: '0.7500',
-    pricePressOnly: null,
-    priceUrgentPress: null,
-  },
-  {
-    code: 'LIGHT_SHEET',
-    nameAr: 'شرشف خفيف',
-    nameEn: 'Light Sheet',
-    sortOrder: 300,
-    categoryCode: 'HOUSEHOLD',
-    priceNormal: '0.5000',
-    priceUrgent: '0.7500',
-    pricePressOnly: '0.2500',
-    priceUrgentPress: '0.3500',
-  },
-  {
-    code: 'BATH_SHEET',
-    nameAr: 'بشكير حمام',
-    nameEn: 'Bath Sheet',
-    sortOrder: 310,
-    categoryCode: 'HOUSEHOLD',
-    priceNormal: '0.5000',
-    priceUrgent: '0.7500',
-    pricePressOnly: '0.3500',
-    priceUrgentPress: '0.4500',
-  },
-  {
-    code: 'PILLOW_CASE',
-    nameAr: 'وجه مخدة',
-    nameEn: 'Pillow Case',
-    sortOrder: 320,
-    categoryCode: 'HOUSEHOLD',
-    priceNormal: '0.2500',
-    priceUrgent: '0.5000',
-    pricePressOnly: '0.1500',
-    priceUrgentPress: '0.2000',
-  },
-  {
-    // Quote-based — manualEntry=true (see LADIES_DRESS note above).
-    code: 'PARDA',
-    nameAr: 'باردا بجميع أنواعها',
-    nameEn: 'Parda (Curtains)',
-    sortOrder: 330,
-    categoryCode: 'HOUSEHOLD',
-    manualEntry: true,
-    priceNormal: '0.0000',
-    priceUrgent: '0.0000',
-    pricePressOnly: null,
-    priceUrgentPress: null,
-  },
-
-  // ──────────────────────────────────────────────────────────────────────────
-  // ٥. MISCELLANEOUS
-  // ──────────────────────────────────────────────────────────────────────────
-  {
-    code: 'INSIDE_CLOTHES',
-    nameAr: 'ملابس داخلية',
-    nameEn: 'Inside Clothes',
-    sortOrder: 340,
-    categoryCode: 'MISC',
-    priceNormal: '0.3000',
-    priceUrgent: '0.4000',
-    pricePressOnly: '0.2000',
-    priceUrgentPress: '0.3000',
-  },
-  {
-    // Press tiers intentionally 0.0000 (explicitly listed by the tariff as
-    // zero — NOT null) so they appear as "no-cost press" line-items rather
-    // than hidden tiers.
-    code: 'SYRUP',
-    nameAr: 'شراب/دلاق',
-    nameEn: 'Syrup (Socks)',
-    sortOrder: 350,
-    categoryCode: 'MISC',
-    priceNormal: '0.1000',
-    priceUrgent: '0.2000',
-    pricePressOnly: '0.0000',
-    priceUrgentPress: '0.0000',
-  },
-  {
-    code: 'TAQIYA',
-    nameAr: 'طاقية',
-    nameEn: 'Taqiya',
-    sortOrder: 360,
-    categoryCode: 'MISC',
-    priceNormal: '0.1000',
-    priceUrgent: '0.1500',
-    pricePressOnly: '0.5000',
-    priceUrgentPress: '0.1000',
-  },
-  {
-    code: 'KABB',
-    nameAr: 'كاب',
-    nameEn: 'Kabb',
-    sortOrder: 370,
-    categoryCode: 'MISC',
-    priceNormal: '0.2500',
-    priceUrgent: '0.3500',
-    pricePressOnly: '0.1000',
-    priceUrgentPress: '0.1500',
-  },
   {
     code: 'PYJAMA',
     nameAr: 'بيجاما',
     nameEn: 'Pyjama',
     sortOrder: 380,
-    categoryCode: 'MISC',
+    categoryCode: 'UNISEX',
     priceNormal: '0.7500',
     priceUrgent: '1.0000',
     pricePressOnly: '0.5000',
@@ -535,7 +571,7 @@ const ROWS: Row[] = [
     nameAr: 'ملابس بيبي',
     nameEn: 'Baby Clothes',
     sortOrder: 390,
-    categoryCode: 'MISC',
+    categoryCode: 'UNISEX',
     priceNormal: '0.4000',
     priceUrgent: '0.5500',
     pricePressOnly: '0.3000',
@@ -543,7 +579,7 @@ const ROWS: Row[] = [
   },
 
   // ──────────────────────────────────────────────────────────────────────────
-  // ٦. EXTRAS — flat surcharges (no press tiers; same price on both columns)
+  // ٨. EXTRAS — flat surcharges (no press tiers; same price on both columns)
   //
   // These two rows are NOT part of the "39 base items" tariff — they are
   // service / fee rows that the POS engine injects on demand:
@@ -580,7 +616,7 @@ const ROWS: Row[] = [
 export async function seedLaundryPriceList(
   prisma: PrismaClient,
 ): Promise<void> {
-  // 1. Upsert the six V5.2 categories (idempotent on `code`).
+  // 1. Upsert the eight V19.10 categories (idempotent on `code`).
   const catIds = new Map<string, string>();
   for (const c of CATEGORIES) {
     const row = await prisma.laundryItemCategory.upsert({
