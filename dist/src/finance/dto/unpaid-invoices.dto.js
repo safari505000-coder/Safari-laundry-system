@@ -190,6 +190,7 @@ class UnpaidInvoicesKpisDto {
     openInvoiceCount;
     customerCount;
     openCustomerCount;
+    totalInvoicesKd;
     totalDebtKd;
     openDebtKd;
     avgDebtPerInvoiceKd;
@@ -211,6 +212,12 @@ __decorate([
     (0, swagger_1.ApiProperty)(),
     __metadata("design:type", Number)
 ], UnpaidInvoicesKpisDto.prototype, "openCustomerCount", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({
+        description: 'Sum of invoice totals (Order.totalPrice) across every row in scope.',
+    }),
+    __metadata("design:type", String)
+], UnpaidInvoicesKpisDto.prototype, "totalInvoicesKd", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)(),
     __metadata("design:type", String)

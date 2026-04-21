@@ -2017,6 +2017,8 @@ export const en = {
     kpiOpenCustomers: 'Customers with debt',
     kpiOpenCustomersHint: 'Total customers in scope: {{total}}',
     kpiTotalDebt: 'Total debt in range',
+    kpiTotalInvoices: 'Total invoices amount',
+    kpiTotalInvoicesHint: '{{count}} invoice(s) in scope',
     kpiAvgDebt: 'Avg. debt per invoice',
     tableTitle: 'Invoices',
     col: {
@@ -2047,6 +2049,7 @@ export const en = {
     printInvoices: 'Invoices',
     printOpenInvoices: 'Open',
     printTotalDebt: 'Total debt',
+    printTotalInvoices: 'Total invoices amount',
     printOpenDebt: 'Open debt',
     printFooter:
       'Internal report. Generated digitally by the Safari ERP system.',

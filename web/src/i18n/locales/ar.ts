@@ -2024,6 +2024,8 @@ export const ar = {
     kpiOpenCustomers: 'عملاء مدينون',
     kpiOpenCustomersHint: 'إجمالي العملاء في النطاق: {{total}}',
     kpiTotalDebt: 'إجمالي الديون في النطاق',
+    kpiTotalInvoices: 'إجمالي مبلغ الفواتير',
+    kpiTotalInvoicesHint: '{{count}} فاتورة ضمن النطاق',
     kpiAvgDebt: 'متوسط الدين بالفاتورة',
     tableTitle: 'الفواتير',
     col: {
@@ -2054,6 +2056,7 @@ export const ar = {
     printInvoices: 'عدد الفواتير',
     printOpenInvoices: 'المتبقية',
     printTotalDebt: 'إجمالي الديون',
+    printTotalInvoices: 'إجمالي مبلغ الفواتير',
     printOpenDebt: 'الدين المفتوح',
     printFooter:
       'هذا المستند تقرير داخلي. تم توليده رقمياً من نظام سفاري ERP.',

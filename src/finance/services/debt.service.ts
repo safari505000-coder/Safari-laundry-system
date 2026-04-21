@@ -385,6 +385,7 @@ export class DebtService {
     const finalRows: UnpaidInvoiceRowDto[] = [];
     let totalDebt = 0;
     let openDebt = 0;
+    let totalInvoices = 0;
     let openInvoiceCount = 0;
     const openCustomers = new Set<string>();
     for (const [, v] of byOrder) {
@@ -393,6 +394,8 @@ export class DebtService {
       v.row.currentCustomerDebtKd = open.toFixed(4);
       v.row.isOpen = open > 0.0001;
       totalDebt += v.debtSum;
+      const invTotal = Number.parseFloat(v.row.invoiceTotalKd);
+      if (Number.isFinite(invTotal)) totalInvoices += invTotal;
       if (v.row.isOpen) {
         openDebt += v.debtSum;
         openInvoiceCount += 1;
@@ -420,6 +423,7 @@ export class DebtService {
         openInvoiceCount,
         customerCount,
         openCustomerCount: openCustomers.size,
+        totalInvoicesKd: totalInvoices.toFixed(4),
         totalDebtKd: totalDebt.toFixed(4),
         openDebtKd: openDebt.toFixed(4),
         avgDebtPerInvoiceKd: avgDebtPerInvoice.toFixed(4),

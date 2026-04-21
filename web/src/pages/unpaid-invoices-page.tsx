@@ -462,9 +462,20 @@ export function UnpaidInvoicesPage() {
         />
         <KpiCard
           tone="blue"
-          label={t('unpaidInvoices.kpiTotalDebt', 'Total debt in range')}
-          value={formatKwdLabel(kpis?.totalDebtKd ?? '0')}
+          label={t(
+            'unpaidInvoices.kpiTotalInvoices',
+            'Total invoices amount',
+          )}
+          value={formatKwdLabel(kpis?.totalInvoicesKd ?? '0')}
           icon={<WalletIcon className="h-4 w-4" />}
+          deltaBadge={
+            <span className="text-[10px] text-muted-foreground tabular-nums">
+              {t('unpaidInvoices.kpiTotalInvoicesHint', {
+                defaultValue: '{{count}} invoice(s) in scope',
+                count: kpis?.invoiceCount ?? 0,
+              })}
+            </span>
+          }
         />
         <KpiCard
           tone="green"
@@ -801,8 +812,8 @@ function printReport(args: {
         <div class="v">${money(kpis?.openDebtKd)} KD</div>
       </div>
       <div class="kpi">
-        <div class="k">${esc(t('unpaidInvoices.printTotalDebt', 'Total debt'))}</div>
-        <div class="v">${money(kpis?.totalDebtKd)} KD</div>
+        <div class="k">${esc(t('unpaidInvoices.printTotalInvoices', 'Total invoices amount'))}</div>
+        <div class="v">${money(kpis?.totalInvoicesKd)} KD</div>
       </div>
       <div class="kpi">
         <div class="k">${esc(t('unpaidInvoices.printInvoices', 'Invoices'))}</div>

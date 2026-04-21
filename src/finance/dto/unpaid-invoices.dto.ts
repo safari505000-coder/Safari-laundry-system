@@ -155,6 +155,11 @@ export class UnpaidInvoicesKpisDto {
   @ApiProperty() openInvoiceCount: number;
   @ApiProperty() customerCount: number;
   @ApiProperty() openCustomerCount: number;
+  @ApiProperty({
+    description:
+      'Sum of invoice totals (Order.totalPrice) across every row in scope.',
+  })
+  totalInvoicesKd: string;
   @ApiProperty() totalDebtKd: string;
   @ApiProperty() openDebtKd: string;
   @ApiProperty() avgDebtPerInvoiceKd: string;

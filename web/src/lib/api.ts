@@ -704,6 +704,7 @@ export type UnpaidInvoicesKpis = {
   openInvoiceCount: number;
   customerCount: number;
   openCustomerCount: number;
+  totalInvoicesKd: string;
   totalDebtKd: string;
   openDebtKd: string;
   avgDebtPerInvoiceKd: string;
