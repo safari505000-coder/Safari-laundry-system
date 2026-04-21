@@ -15,6 +15,10 @@ import type {
   DriverCashTraceResponseDto,
 } from './dto/driver-cash-trace.dto';
 import type { OwnerCustomerWalletSummaryDto } from './dto/owner-customer-wallet-summary.dto';
+import type {
+  UnpaidInvoicesQueryDto,
+  UnpaidInvoicesResponseDto,
+} from './dto/unpaid-invoices.dto';
 import type { UpdateDriverTrackingDto } from './dto/update-driver-tracking.dto';
 import { CashService } from './services/cash.service';
 import { DebtService } from './services/debt.service';
@@ -124,6 +128,15 @@ export class FinanceService {
     query: DriverCashTraceQueryDto,
   ): Promise<DriverCashTraceResponseDto> {
     return this.cashService.getDriverCashTrace(query);
+  }
+
+  /**
+   * V19.10 — "Unpaid invoices list" (قائمة مديونيات الفواتير).
+   */
+  async getUnpaidInvoices(
+    query: UnpaidInvoicesQueryDto,
+  ): Promise<UnpaidInvoicesResponseDto> {
+    return this.debtService.getUnpaidInvoices(query);
   }
 
   /**

@@ -22,6 +22,7 @@ import {
   shiftsItem,
   staffDebtsItem,
   unifiedLedgerItem,
+  unpaidInvoicesItem,
   vehicleExpensesApprovalItem,
   vehicleExpensesReportItem,
 } from '@/modules/shared/nav/nav-items';
@@ -59,6 +60,7 @@ export const accountantSidebarNavGroups: NavGroup[] = [
       invoicesDataItem,
       managerCustodyAgingItem,
       driverCashTraceItem,
+      unpaidInvoicesItem,
       staffDebtsItem,
     ],
   },

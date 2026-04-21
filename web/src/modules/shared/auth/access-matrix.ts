@@ -102,6 +102,14 @@ export const ACCESS = {
   'financials.view': EXEC_PAIR,
   'financialCycleReport.view': EXEC_PAIR,
   'driverCashTrace.view': withExec('ACCOUNTANT'),
+  // V19.10 — "Unpaid invoices list" page (قائمة مديونيات الفواتير).
+  // Accessible to exec pair, accountant, and call-centre (pair) because
+  // the operators chasing debt collection live in those roles.
+  'unpaidInvoices.view': withExec(
+    'ACCOUNTANT',
+    'CALL_CENTER',
+    'CALL_CENTER_SUPERVISOR',
+  ),
   'ownerSerials.manage': EXEC_PAIR,
   'debtRecoveryReport.view': EXEC_PAIR,
   'liveMonitor.view': ['OWNER'] satisfies readonly SafariRole[],

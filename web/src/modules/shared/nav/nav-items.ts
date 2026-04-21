@@ -434,6 +434,21 @@ export const driverCashTraceItem: NavItem = {
   roles: ['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT'],
 };
 
+// V19.10 — "قائمة مديونيات الفواتير". Every invoice that still carries
+// outstanding customer debt, with filters + a printable statement.
+export const unpaidInvoicesItem: NavItem = {
+  to: '/unpaid-invoices',
+  labelKey: 'nav.unpaidInvoices',
+  icon: FileSignature,
+  roles: [
+    'OWNER',
+    'GENERAL_MANAGER',
+    'ACCOUNTANT',
+    'CALL_CENTER',
+    'CALL_CENTER_SUPERVISOR',
+  ],
+};
+
 export const reportsItem: NavItem = {
   to: '/reports',
   labelKey: 'nav.reports',

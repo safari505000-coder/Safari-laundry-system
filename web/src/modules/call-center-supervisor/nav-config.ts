@@ -6,6 +6,7 @@ import {
   collectionsItem,
   customersItem,
   subscribersItem,
+  unpaidInvoicesItem,
   whatsappToolsItem,
 } from '@/modules/shared/nav/nav-items';
 
@@ -26,7 +27,7 @@ export const callCenterSupervisorSidebarNavGroups: NavGroup[] = [
   },
   {
     ...G.invoices,
-    items: [allInvoicesItem],
+    items: [allInvoicesItem, unpaidInvoicesItem],
   },
   {
     ...G.finance,

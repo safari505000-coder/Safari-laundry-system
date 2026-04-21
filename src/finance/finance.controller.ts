@@ -48,6 +48,10 @@ import {
 } from './dto/driver-cash-trace.dto';
 import { OwnerCustomerWalletSummaryDto } from './dto/owner-customer-wallet-summary.dto';
 import { UpdateDriverTrackingDto } from './dto/update-driver-tracking.dto';
+import {
+  UnpaidInvoicesQueryDto,
+  UnpaidInvoicesResponseDto,
+} from './dto/unpaid-invoices.dto';
 import { FinanceService } from './finance.service';
 
 const HANDOVER_RECEIPTS_DIR = join(
@@ -290,6 +294,25 @@ export class FinanceController {
     @Query() query: DriverCashTraceQueryDto,
   ): Promise<DriverCashTraceResponseDto> {
     return this.financeService.getDriverCashTrace(query);
+  }
+
+  @Get('reports/unpaid-invoices')
+  @Roles(
+    SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
+    SafariRole.ACCOUNTANT,
+    SafariRole.CALL_CENTER,
+    SafariRole.CALL_CENTER_SUPERVISOR,
+  )
+  @ApiOperation({
+    summary: `Unpaid invoices list (${APP_BRAND})`,
+    description:
+      'V19.10 — aggregates every invoice that contributed to outstanding customer debt (INVOICE_SHORTFALL entries), joined with current wallet balance. Supports filters by date, branch, issuing employee and customer phone.',
+  })
+  getUnpaidInvoices(
+    @Query() query: UnpaidInvoicesQueryDto,
+  ): Promise<UnpaidInvoicesResponseDto> {
+    return this.financeService.getUnpaidInvoices(query);
   }
 
   @Get('dashboard/realtime-totals')

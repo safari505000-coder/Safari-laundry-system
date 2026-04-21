@@ -676,6 +676,70 @@ export function getDriverCashTrace(
   );
 }
 
+// V19.10 — Unpaid invoices list (قائمة مديونيات الفواتير).
+export type UnpaidInvoiceRow = {
+  orderId: string;
+  serialNumber: string | null;
+  invoiceNumber: string | null;
+  issuedAt: string;
+  customerId: string;
+  customerName: string;
+  customerPhone: string | null;
+  customerPhone2: string | null;
+  branchId: string | null;
+  branchName: string | null;
+  actorUserId: string | null;
+  actorUserName: string | null;
+  actorUserRole: string | null;
+  invoiceTotalKd: string;
+  debtAmountKd: string;
+  entryCount: number;
+  currentCustomerDebtKd: string;
+  isOpen: boolean;
+  lastEntryAt: string;
+};
+
+export type UnpaidInvoicesKpis = {
+  invoiceCount: number;
+  openInvoiceCount: number;
+  customerCount: number;
+  openCustomerCount: number;
+  totalDebtKd: string;
+  openDebtKd: string;
+  avgDebtPerInvoiceKd: string;
+};
+
+export type UnpaidInvoicesResponse = {
+  from: string | null;
+  to: string | null;
+  kpis: UnpaidInvoicesKpis;
+  rows: UnpaidInvoiceRow[];
+};
+
+export function getUnpaidInvoices(
+  token: string,
+  params: {
+    from?: string;
+    to?: string;
+    branchId?: string;
+    actorUserId?: string;
+    customerPhone?: string;
+  },
+) {
+  const search = new URLSearchParams();
+  if (params.from) search.set('from', params.from);
+  if (params.to) search.set('to', params.to);
+  if (params.branchId) search.set('branchId', params.branchId);
+  if (params.actorUserId) search.set('actorUserId', params.actorUserId);
+  if (params.customerPhone)
+    search.set('customerPhone', params.customerPhone);
+  const qs = search.toString();
+  return apiJson<UnpaidInvoicesResponse>(
+    `/api/finance/reports/unpaid-invoices${qs ? `?${qs}` : ''}`,
+    { token },
+  );
+}
+
 // DUSTUR §2 — automatic midnight-to-midnight shift cycle (Kuwait time).
 export type ShiftCycleSnapshot = {
   timezone: string;
