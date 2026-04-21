@@ -179,6 +179,90 @@ function customerPayPortalUrl(): string {
  * number is unmistakable in the customer's WhatsApp preview. Switches
  * label + CTA between "outstanding debt" vs. "wallet balance" modes.
  */
+/**
+ * V19.8.5 — Customer statement (كشف حساب) share template.
+ *
+ * Drives the "Send via WhatsApp" button in the Customer 360 panel.
+ * We never ship the full ledger over WhatsApp (privacy + size limits
+ * of wa.me URLs); instead the message is a concise, friendly summary
+ * the customer can read in-line plus a short line telling them the
+ * Call Center can send a branded PDF if they need full detail.
+ */
+export type CustomerStatementWhatsAppArgs = {
+  customerName: string | null;
+  customerPhone: string;
+  customerId: string;
+  walletBalanceKd: string;
+  walletDebtKd: string;
+  invoiceCount: number;
+  openInvoiceCount: number;
+  activeSubscription: {
+    planName: string;
+    expiresAtIso: string;
+    walletBalanceKd: string;
+  } | null;
+  from?: string | null;
+  to?: string | null;
+};
+
+export function buildCustomerStatementWhatsAppText(
+  a: CustomerStatementWhatsAppArgs,
+): string {
+  const name = a.customerName?.trim() || a.customerPhone;
+  const greet = buildGreetingLine(name, a.customerId);
+
+  const rangeLine =
+    a.from && a.to
+      ? `📅 الفترة: من ${a.from} إلى ${a.to}`
+      : a.from
+        ? `📅 الفترة: من ${a.from}`
+        : a.to
+          ? `📅 الفترة: حتى ${a.to}`
+          : '📅 الفترة: كامل السجل';
+
+  const balanceLines = [
+    `💰 الرصيد الحالي: *${a.walletBalanceKd} د.ك*`,
+    `📉 المديونية الحالية: *${a.walletDebtKd} د.ك*`,
+    `📄 عدد الفواتير: ${a.invoiceCount} (غير مسدّدة: ${a.openInvoiceCount})`,
+  ];
+
+  const subLines = a.activeSubscription
+    ? [
+        '',
+        '🎫 *الاشتراك الحالي:*',
+        `• الباقة: ${a.activeSubscription.planName}`,
+        `• تاريخ الانتهاء: ${a.activeSubscription.expiresAtIso.slice(0, 10)}`,
+        `• الرصيد المتبقي في الاشتراك: ${a.activeSubscription.walletBalanceKd} د.ك`,
+      ]
+    : [];
+
+  return [
+    greet,
+    '',
+    `نسعد بخدمتكم في ${BRAND.customerAr} — فيما يلي ملخّص كشف حسابكم:`,
+    '',
+    rangeLine,
+    '',
+    '📊 *الملخص المالي:*',
+    ...balanceLines,
+    ...subLines,
+    '',
+    'لاستلام نسخة مفصّلة (PDF مختوم رقمياً) يُرجى إبلاغنا وسنرسلها فوراً.',
+    '📞 مركز خدمة العملاء: 22200299',
+    '',
+    SAFARI_TEAM_FOOTER_AR,
+  ].join('\n');
+}
+
+export function customerStatementWhatsAppHref(
+  a: CustomerStatementWhatsAppArgs,
+): string | null {
+  const n = whatsappChatNumber(a.customerPhone);
+  if (!n) return null;
+  const text = buildCustomerStatementWhatsAppText(a);
+  return `https://wa.me/${n}?text=${encodeURIComponent(text)}`;
+}
+
 export function customerDirectoryBalanceWhatsAppHref(row: CustomerDirectoryRow): string | null {
   const n = whatsappChatNumber(row.customer.phone);
   if (!n) return null;

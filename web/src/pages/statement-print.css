@@ -353,6 +353,46 @@
   font-weight: 700;
 }
 
+/*
+ * V19.8.5 — the shared PrintableSheet pins its footer to the bottom
+ * of the A4 viewport with `position: absolute`, which worked fine for
+ * single-page HR forms but collided with the long multi-page customer
+ * statement (the cert note and the QR stamp / copyright crashed into
+ * each other, see screenshot feedback). Inside `.stmt-print-wrap` we
+ * opt into a flowing layout: the sheet grows with content and the
+ * footer drops naturally at the end.
+ */
+.stmt-print-wrap .printable-sheet {
+  min-height: auto;
+  padding-bottom: 8mm;
+}
+
+.stmt-print-wrap .printable-sheet__footer {
+  position: static;
+  inset: auto;
+  margin-top: 10mm;
+  padding: 4mm 0 0 0;
+  gap: 6mm;
+}
+
+.stmt-print-wrap .printable-sheet__footer > div:last-child {
+  text-align: end;
+  line-height: 1.5;
+}
+
+@media print {
+  .stmt-print-wrap .printable-sheet {
+    padding-bottom: 8mm !important;
+  }
+  .stmt-print-wrap .printable-sheet__footer {
+    position: static !important;
+    inset: auto !important;
+    margin-top: 8mm;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}
+
 /* ── Print hardening ───────────────────────────────────────── */
 
 @media print {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/auth-context';
 import {
   ApiError,
@@ -93,22 +93,33 @@ const EVENT_KIND_AR: Record<string, string> = {
 
 export function StatementPrintPage() {
   const { customerId = '' } = useParams<{ customerId: string }>();
+  const [search] = useSearchParams();
   const { token } = useAuth();
   const [data, setData] = useState<CustomerLedgerResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const autoPrintedRef = useRef(false);
 
+  // V19.8.5 — optional Kuwait-local date range. When present, forwards
+  // to the ledger endpoint (which already honors `from` / `to`) and
+  // the printed subtitle tells the customer which window they're
+  // looking at.
+  const from = search.get('from')?.trim() || '';
+  const to = search.get('to')?.trim() || '';
+
   useEffect(() => {
     if (!token || !customerId) return;
+    const params = new URLSearchParams({ limit: '500' });
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
     apiJson<CustomerLedgerResponse>(
-      `/api/call-center/customers/${customerId}/ledger?limit=500`,
+      `/api/call-center/customers/${customerId}/ledger?${params.toString()}`,
       { token },
     )
       .then(setData)
       .catch((e) =>
         setError(e instanceof ApiError ? e.message : 'تعذّر تحميل الكشف'),
       );
-  }, [token, customerId]);
+  }, [token, customerId, from, to]);
 
   // Auto-trigger the browser print dialog once the statement renders so
   // the Call Center flow ("print this for the customer") stays single-
@@ -166,6 +177,18 @@ export function StatementPrintPage() {
   const balK = Number.parseFloat(data.customer.walletBalanceKd) || 0;
   const docNumber = `STMT-${data.customer.id.slice(0, 8).toUpperCase()}`;
 
+  // V19.8.5 — show the active date window in the subtitle so the
+  // printed sheet is self-explanatory. Falls back to "all history"
+  // when no filters are set.
+  const rangeLabel = from && to
+    ? `من ${from} إلى ${to}`
+    : from
+      ? `من ${from}`
+      : to
+        ? `حتى ${to}`
+        : 'كامل السجل';
+  const subtitle = `${customerName} — ${customerPhone} • ${rangeLabel}`;
+
   const status: {
     label: string;
     kind: 'approved' | 'rejected' | 'pending' | 'paid';
@@ -176,13 +199,14 @@ export function StatementPrintPage() {
       : { label: 'حساب متوازن', kind: 'approved' };
 
   return (
+    <div className="stmt-print-wrap">
     <PrintableSheet
       docType="STATEMENT"
       docId={data.customer.id}
       docNumber={docNumber}
       issuedAtIso={issuedAtIso}
       title="كشف حساب العميل"
-      subtitle={`${customerName} — ${customerPhone}`}
+      subtitle={subtitle}
       status={status}
     >
       {/* ─── 1. Customer identity card ─────────────────────────── */}
@@ -358,6 +382,7 @@ export function StatementPrintPage() {
         </p>
       </section>
     </PrintableSheet>
+    </div>
   );
 }
 

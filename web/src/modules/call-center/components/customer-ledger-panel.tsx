@@ -29,6 +29,7 @@ import {
   TabsTrigger,
 } from '@/modules/shared/components/ui/tabs';
 import { cn } from '@/lib/utils';
+import { StatementDialog } from './statement-dialog';
 
 type Props = {
   customerId: string;
@@ -48,6 +49,8 @@ export function CustomerLedgerPanel({ customerId, token }: Props) {
   const isAr = i18n.language.startsWith('ar');
   const [data, setData] = useState<CustomerLedgerResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  // V19.8.5 — statement export dialog (date filter + print / WhatsApp).
+  const [statementOpen, setStatementOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (!token || !customerId) return;
@@ -136,15 +139,8 @@ export function CustomerLedgerPanel({ customerId, token }: Props) {
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => {
-              if (!customerId) return;
-              window.open(
-                `/customers/${customerId}/statement/print`,
-                '_blank',
-                'noopener,noreferrer',
-              );
-            }}
-            disabled={!customerId}
+            onClick={() => setStatementOpen(true)}
+            disabled={!customerId || !data}
           >
             <Printer className="h-4 w-4" />
             <span className="ms-2">
@@ -456,6 +452,14 @@ export function CustomerLedgerPanel({ customerId, token }: Props) {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* V19.8.5 — Date-filter + Print/WhatsApp export dialog. */}
+      <StatementDialog
+        open={statementOpen}
+        onOpenChange={setStatementOpen}
+        customerId={customerId}
+        ledger={data}
+      />
     </div>
   );
 }
