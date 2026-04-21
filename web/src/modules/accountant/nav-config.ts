@@ -18,7 +18,6 @@ import {
   leavesItem,
   loansItem,
   managerCustodyAgingItem,
-  movementLogsItem,
   payrollItem,
   shiftsItem,
   staffDebtsItem,
@@ -39,7 +38,7 @@ import {
 export const accountantSidebarNavGroups: NavGroup[] = [
   {
     labelKey: 'nav.groupDriverRadar',
-    items: [movementLogsItem, unifiedLedgerItem, shiftsItem],
+    items: [unifiedLedgerItem, shiftsItem],
   },
   {
     labelKey: 'nav.groupAudit',

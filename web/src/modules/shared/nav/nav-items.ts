@@ -448,14 +448,6 @@ export const driverAuditRadarItem: NavItem = {
   roles: ['OWNER'],
 };
 
-/** Accountant / owner — text movement/shift logs hub (driver-centric reports). */
-export const movementLogsItem: NavItem = {
-  to: '/reports',
-  labelKey: 'nav.movementLogs',
-  icon: FileSpreadsheet,
-  roles: ['ACCOUNTANT', 'OWNER', 'GENERAL_MANAGER'],
-};
-
 export const unifiedLedgerItem: NavItem = {
   to: '/unified-ledger',
   labelKey: 'nav.unifiedLedger',
