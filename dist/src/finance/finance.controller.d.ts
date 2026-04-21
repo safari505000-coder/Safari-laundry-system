@@ -6,6 +6,7 @@ import { DriverBalanceResponseDto, HandoverResultDto } from './dto/driver-balanc
 import { DriverCashTraceQueryDto, DriverCashTraceResponseDto } from './dto/driver-cash-trace.dto';
 import { OwnerCustomerWalletSummaryDto } from './dto/owner-customer-wallet-summary.dto';
 import { UpdateDriverTrackingDto } from './dto/update-driver-tracking.dto';
+import { UnpaidInvoicesQueryDto, UnpaidInvoicesResponseDto } from './dto/unpaid-invoices.dto';
 import { FinanceService } from './finance.service';
 export declare class FinanceController {
     private readonly financeService;
@@ -92,6 +93,7 @@ export declare class FinanceController {
         }[];
     }>;
     getDriverCashTrace(query: DriverCashTraceQueryDto): Promise<DriverCashTraceResponseDto>;
+    getUnpaidInvoices(query: UnpaidInvoicesQueryDto): Promise<UnpaidInvoicesResponseDto>;
     getRealtimeTotals(): Promise<{
         totalCash: string;
         totalOnline: string;

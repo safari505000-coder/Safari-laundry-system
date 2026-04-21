@@ -6,6 +6,7 @@ import {
   OrderStatus,
   PosPaymentMethod,
   Prisma,
+  SafariRole,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SubscriptionService } from './subscription.service';
@@ -223,9 +224,18 @@ export class DebtService {
 
     const phone = (query.customerPhone ?? '').replace(/\D+/g, '').trim();
 
+    // V19.10 — scope to invoices actually issued by field staff. Only
+    // DRIVER and MANAGER (branch manager) create invoices from the POS;
+    // Call Center never issues invoices, and OWNER/GM/ACCOUNTANT adjustments
+    // should not leak into this operational list.
     const where: Prisma.DebtLedgerEntryWhereInput = {
       source: DebtSource.INVOICE_SHORTFALL,
       orderId: { not: null },
+      actorUser: {
+        is: {
+          safariRole: { in: [SafariRole.DRIVER, SafariRole.MANAGER] },
+        },
+      },
       ...(from || to
         ? {
             createdAt: {

@@ -4,6 +4,7 @@ import { ConfirmHandoverDto } from './dto/confirm-handover.dto';
 import type { DriverBalanceResponseDto, HandoverResultDto } from './dto/driver-balance.dto';
 import type { DriverCashTraceQueryDto, DriverCashTraceResponseDto } from './dto/driver-cash-trace.dto';
 import type { OwnerCustomerWalletSummaryDto } from './dto/owner-customer-wallet-summary.dto';
+import type { UnpaidInvoicesQueryDto, UnpaidInvoicesResponseDto } from './dto/unpaid-invoices.dto';
 import type { UpdateDriverTrackingDto } from './dto/update-driver-tracking.dto';
 import { CashService } from './services/cash.service';
 import { DebtService } from './services/debt.service';
@@ -106,6 +107,7 @@ export declare class FinanceService {
         }[];
     }>;
     getDriverCashTrace(query: DriverCashTraceQueryDto): Promise<DriverCashTraceResponseDto>;
+    getUnpaidInvoices(query: UnpaidInvoicesQueryDto): Promise<UnpaidInvoicesResponseDto>;
     getConsolidatedCashSnapshot(): Promise<ConsolidatedCashSnapshotDto>;
     getRealtimeTotals(): Promise<{
         totalCash: string;

@@ -172,6 +172,185 @@ let DebtService = class DebtService {
             settledOrderCount: settleIds.length,
         };
     }
+    async getUnpaidInvoices(query) {
+        const from = query.from ? new Date(query.from) : null;
+        const to = query.to ? new Date(query.to) : null;
+        if (from && Number.isNaN(from.getTime())) {
+            throw new common_1.BadRequestException('Invalid `from` date');
+        }
+        if (to && Number.isNaN(to.getTime())) {
+            throw new common_1.BadRequestException('Invalid `to` date');
+        }
+        const phone = (query.customerPhone ?? '').replace(/\D+/g, '').trim();
+        const where = {
+            source: client_1.DebtSource.INVOICE_SHORTFALL,
+            orderId: { not: null },
+            actorUser: {
+                is: {
+                    safariRole: { in: [client_1.SafariRole.DRIVER, client_1.SafariRole.MANAGER] },
+                },
+            },
+            ...(from || to
+                ? {
+                    createdAt: {
+                        ...(from ? { gte: from } : {}),
+                        ...(to ? { lte: to } : {}),
+                    },
+                }
+                : {}),
+            ...(query.branchId ? { branchId: query.branchId } : {}),
+            ...(query.actorUserId ? { actorUserId: query.actorUserId } : {}),
+            ...(phone
+                ? {
+                    customer: {
+                        OR: [{ phone: { contains: phone } }, { phone2: { contains: phone } }],
+                    },
+                }
+                : {}),
+        };
+        const entries = await this.prisma.debtLedgerEntry.findMany({
+            where,
+            orderBy: { createdAt: 'desc' },
+            take: 20_000,
+            select: {
+                id: true,
+                amount: true,
+                createdAt: true,
+                orderId: true,
+                customerId: true,
+                branchId: true,
+                actorUserId: true,
+                customer: {
+                    select: {
+                        id: true,
+                        displayName: true,
+                        phone: true,
+                        phone2: true,
+                    },
+                },
+                branch: {
+                    select: { id: true, name: true },
+                },
+                actorUser: {
+                    select: {
+                        id: true,
+                        fullName: true,
+                        username: true,
+                        safariRole: true,
+                    },
+                },
+                order: {
+                    select: {
+                        id: true,
+                        serialNumber: true,
+                        invoiceNumber: true,
+                        totalPrice: true,
+                        createdAt: true,
+                        completedAt: true,
+                    },
+                },
+            },
+        });
+        const byOrder = new Map();
+        for (const e of entries) {
+            if (!e.orderId || !e.order)
+                continue;
+            const amount = Number.parseFloat(e.amount.toString());
+            if (!Number.isFinite(amount) || amount <= 0)
+                continue;
+            const existing = byOrder.get(e.orderId);
+            if (existing) {
+                existing.debtSum += amount;
+                existing.row.entryCount += 1;
+                if (new Date(e.createdAt) > new Date(existing.row.lastEntryAt)) {
+                    existing.row.lastEntryAt = e.createdAt.toISOString();
+                }
+                continue;
+            }
+            const actorRole = e.actorUser?.safariRole != null
+                ? String(e.actorUser.safariRole)
+                : null;
+            byOrder.set(e.orderId, {
+                debtSum: amount,
+                row: {
+                    orderId: e.order.id,
+                    serialNumber: e.order.serialNumber ?? null,
+                    invoiceNumber: e.order.invoiceNumber ?? null,
+                    issuedAt: (e.order.completedAt ?? e.order.createdAt).toISOString(),
+                    customerId: e.customer.id,
+                    customerName: e.customer.displayName ?? e.customer.phone ?? '—',
+                    customerPhone: e.customer.phone ?? null,
+                    customerPhone2: e.customer.phone2 ?? null,
+                    branchId: e.branch?.id ?? null,
+                    branchName: e.branch?.name ?? null,
+                    actorUserId: e.actorUser?.id ?? null,
+                    actorUserName: e.actorUser?.fullName ?? null,
+                    actorUserRole: actorRole,
+                    invoiceTotalKd: e.order.totalPrice.toString(),
+                    debtAmountKd: '0',
+                    entryCount: 1,
+                    currentCustomerDebtKd: '0',
+                    isOpen: true,
+                    lastEntryAt: e.createdAt.toISOString(),
+                },
+            });
+        }
+        const customerIds = Array.from(new Set(Array.from(byOrder.values()).map((x) => x.row.customerId)));
+        const wallets = customerIds.length
+            ? await this.prisma.customerWallet.findMany({
+                where: { customerId: { in: customerIds } },
+                select: { customerId: true, balance: true, debt: true },
+            })
+            : [];
+        const walletByCustomer = new Map();
+        for (const w of wallets) {
+            const debt = Number.parseFloat(w.debt?.toString() ?? '0');
+            const balance = Number.parseFloat(w.balance?.toString() ?? '0');
+            const negBalance = balance < 0 ? -balance : 0;
+            const openKd = (Number.isFinite(debt) && debt > 0 ? debt : 0) + negBalance;
+            walletByCustomer.set(w.customerId, { openKd });
+        }
+        const finalRows = [];
+        let totalDebt = 0;
+        let openDebt = 0;
+        let openInvoiceCount = 0;
+        const openCustomers = new Set();
+        for (const [, v] of byOrder) {
+            v.row.debtAmountKd = v.debtSum.toFixed(4);
+            const open = walletByCustomer.get(v.row.customerId)?.openKd ?? 0;
+            v.row.currentCustomerDebtKd = open.toFixed(4);
+            v.row.isOpen = open > 0.0001;
+            totalDebt += v.debtSum;
+            if (v.row.isOpen) {
+                openDebt += v.debtSum;
+                openInvoiceCount += 1;
+                openCustomers.add(v.row.customerId);
+            }
+            finalRows.push(v.row);
+        }
+        finalRows.sort((a, b) => {
+            if (a.isOpen !== b.isOpen)
+                return a.isOpen ? -1 : 1;
+            return new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime();
+        });
+        const invoiceCount = finalRows.length;
+        const customerCount = new Set(finalRows.map((r) => r.customerId)).size;
+        const avgDebtPerInvoice = invoiceCount > 0 ? totalDebt / invoiceCount : 0;
+        return {
+            from: from ? from.toISOString() : null,
+            to: to ? to.toISOString() : null,
+            kpis: {
+                invoiceCount,
+                openInvoiceCount,
+                customerCount,
+                openCustomerCount: openCustomers.size,
+                totalDebtKd: totalDebt.toFixed(4),
+                openDebtKd: openDebt.toFixed(4),
+                avgDebtPerInvoiceKd: avgDebtPerInvoice.toFixed(4),
+            },
+            rows: finalRows,
+        };
+    }
 };
 exports.DebtService = DebtService;
 exports.DebtService = DebtService = __decorate([

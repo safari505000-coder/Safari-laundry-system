@@ -1,6 +1,7 @@
 import { DebtEntityCategory } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SubscriptionService } from './subscription.service';
+import type { UnpaidInvoicesQueryDto, UnpaidInvoicesResponseDto } from '../dto/unpaid-invoices.dto';
 export declare class DebtService {
     private readonly prisma;
     private readonly subscriptionService;
@@ -37,4 +38,5 @@ export declare class DebtService {
         settledAmountKd: string;
         settledOrderCount: number;
     }>;
+    getUnpaidInvoices(query: UnpaidInvoicesQueryDto): Promise<UnpaidInvoicesResponseDto>;
 }

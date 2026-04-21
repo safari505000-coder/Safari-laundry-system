@@ -584,8 +584,17 @@ function printReport(args: {
   };
 }) {
   const { t, locale, rows, kpis, filters } = args;
-  const w = window.open('', '_blank', 'noopener,noreferrer,width=960,height=720');
-  if (!w) return;
+  // NOTE: do NOT pass `noopener`/`noreferrer` in the features string —
+  // Chromium returns `null` from `window.open()` in that case, so we
+  // lose the handle to the new window and the whole print flow goes
+  // silent. We need the handle to write the document and trigger print.
+  const w = window.open('', '_blank', 'width=1100,height=800');
+  if (!w) {
+    toast.error(
+      t('unpaidInvoices.popupBlocked', 'السماح بالنوافذ المنبثقة مطلوب للطباعة.'),
+    );
+    return;
+  }
 
   const esc = (s: string | null | undefined) =>
     (s ?? '—').replace(
@@ -826,12 +835,26 @@ function printReport(args: {
     </table>
 
     <footer>${esc(t('unpaidInvoices.printFooter', ''))}</footer>
+    <div class="no-print" style="margin-top:16px;text-align:center;">
+      <button id="__print"
+        style="padding:8px 20px;font:600 12px 'Cairo',sans-serif;border:1px solid #0f172a;background:#0f172a;color:#fff;border-radius:6px;cursor:pointer;">
+        ${esc(t('unpaidInvoices.print', 'طباعة'))}
+      </button>
+    </div>
   </div>
   <script>
-    window.addEventListener('load', () => {
-      setTimeout(() => { window.focus(); window.print(); }, 150);
-    });
+    (function(){
+      var b = document.getElementById('__print');
+      if (b) b.addEventListener('click', function(){ window.focus(); window.print(); });
+      // Auto-trigger once fonts + layout settle. setTimeout is more
+      // reliable than 'load' here because document.write() can fire
+      // load before our script runs.
+      setTimeout(function(){ try { window.focus(); window.print(); } catch(e){} }, 400);
+    })();
   </script>
+  <style media="print">
+    .no-print { display: none !important; }
+  </style>
 </body>
 </html>`;
 

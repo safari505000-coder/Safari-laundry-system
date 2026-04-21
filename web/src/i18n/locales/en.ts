@@ -41,7 +41,7 @@ export const en = {
     depositVerification: 'Deposit verification',
     financialCycleReport: 'Financial cycle report',
     driverCashTrace: 'Driver cash trace',
-    unpaidInvoices: 'Unpaid invoices list',
+    unpaidInvoices: 'Driver & branch unpaid invoices',
     collectDriverCash: 'Collect driver cash',
     bankDeposits: 'Bank deposits log',
     reports: 'Reports',
@@ -1995,18 +1995,18 @@ export const en = {
     },
   },
   unpaidInvoices: {
-    title: 'Unpaid invoices list',
+    title: 'Unpaid invoices — drivers & branch managers',
     subtitle:
-      'Every invoice that has not been fully collected, with the customer, issuing employee, branch and outstanding amount.',
+      'Invoices issued by drivers and branch managers that have not been fully collected. Call Center and accounting adjustments are excluded.',
     filterDebtWindow: 'Debt creation window',
     filterFrom: 'From',
     filterTo: 'To',
     filterBranch: 'Branch',
-    filterActor: 'Issuing employee',
+    filterActor: 'Driver / branch manager',
     filterPhone: 'Customer phone',
     filterPhonePh: 'e.g. 9XXXXXXX',
     allBranches: 'All branches',
-    allActors: 'All employees',
+    allActors: 'All (drivers & managers)',
     scopeLabel: 'Scope',
     scopeOnlyOpen: 'Open only',
     scopeAll: 'All (incl. settled)',
@@ -2035,9 +2035,9 @@ export const en = {
     statusClosed: 'Settled',
     noInvoices: 'No invoices match the current filters.',
     loadError: 'Could not load the unpaid invoices list.',
-    printTitle: 'Unpaid invoices list',
+    printTitle: 'Unpaid invoices — drivers & branch managers',
     printSubtitle:
-      'Detailed report of customer invoices still open, with range totals.',
+      'Invoices issued by drivers and branch managers that remain uncollected.',
     printGeneratedAt: 'Generated',
     printBranch: 'Branch',
     printActor: 'Employee',
@@ -2051,6 +2051,8 @@ export const en = {
     printFooter:
       'Internal report. Generated digitally by the Safari ERP system.',
     printNoRows: 'No invoices match the filters.',
+    popupBlocked:
+      'The browser blocked the print window. Allow pop-ups for this site and try again.',
   },
   inventory: {
     refresh: 'Refresh',

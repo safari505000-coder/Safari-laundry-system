@@ -42,7 +42,7 @@ export const ar = {
     depositVerification: 'اعتماد الإيداعات',
     financialCycleReport: 'تقرير الدورة المالية',
     driverCashTrace: 'سير كاش السائقين',
-    unpaidInvoices: 'قائمة مديونيات الفواتير',
+    unpaidInvoices: 'مديونيات السائقين والأفرع',
     collectDriverCash: 'تحصيل كاش السائق',
     bankDeposits: 'سجل الإيداعات البنكية',
     reports: 'التقارير',
@@ -2002,18 +2002,18 @@ export const ar = {
     },
   },
   unpaidInvoices: {
-    title: 'قائمة مديونيات الفواتير',
+    title: 'مديونيات الفواتير — السائقون والأفرع',
     subtitle:
-      'كل فاتورة مُصدَرة لم يُستكمل تحصيلها، مع تفاصيل العميل والموظف المُصدِر والفرع والمبلغ المتبقي.',
+      'الفواتير الصادرة من السائقين ومدراء الأفرع ولم يُستكمل تحصيلها. لا تشمل فواتير الكول سنتر أو الحركات المحاسبية.',
     filterDebtWindow: 'نطاق إنشاء الدَّين',
     filterFrom: 'من',
     filterTo: 'إلى',
     filterBranch: 'الفرع',
-    filterActor: 'الموظف المُصدِر',
+    filterActor: 'السائق / مدير الفرع',
     filterPhone: 'هاتف العميل',
     filterPhonePh: 'مثال: 9XXXXXXX',
     allBranches: 'كل الفروع',
-    allActors: 'كل الموظفين',
+    allActors: 'الكل (سائقين ومدراء)',
     scopeLabel: 'العرض',
     scopeOnlyOpen: 'المتبقي فقط',
     scopeAll: 'الكل (مع المسدَّد)',
@@ -2042,9 +2042,9 @@ export const ar = {
     statusClosed: 'مسدَّد',
     noInvoices: 'لا توجد فواتير ضمن المعايير الحالية.',
     loadError: 'تعذَّر تحميل قائمة المديونيات.',
-    printTitle: 'قائمة مديونيات الفواتير',
+    printTitle: 'مديونيات الفواتير — السائقون والأفرع',
     printSubtitle:
-      'تقرير تفصيلي لفواتير العملاء غير المحصَّلة مع إجماليات المدة.',
+      'الفواتير الصادرة من السائقين ومدراء الأفرع ولم يُستكمل تحصيلها.',
     printGeneratedAt: 'تاريخ التقرير',
     printBranch: 'الفرع',
     printActor: 'الموظف',
@@ -2058,6 +2058,8 @@ export const ar = {
     printFooter:
       'هذا المستند تقرير داخلي. تم توليده رقمياً من نظام سفاري ERP.',
     printNoRows: 'لا توجد فواتير مطابقة للمعايير.',
+    popupBlocked:
+      'المتصفح حجب نافذة الطباعة. فعّل السماح بالنوافذ المنبثقة لهذا الموقع ثم أعد المحاولة.',
   },
   inventory: {
     refresh: 'تحديث',
