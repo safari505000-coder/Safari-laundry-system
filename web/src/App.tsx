@@ -115,6 +115,21 @@ export default function App() {
                   </RequireAccess>
                 }
               />
+              {/* V19.8.7 — printable customer statement (كشف حساب)
+                  renders as a full-screen island (no ExecutiveShell).
+                  The shell's <main> wrapper uses overflow-y-auto which
+                  traps the A4 sheet into a scrollable viewport at
+                  print time and the browser emits 15+ blank pages.
+                  Keeping this route at AuthLayout level bypasses the
+                  sidebar + header + overflow stack entirely. */}
+              <Route
+                path="/customers/:customerId/statement/print"
+                element={
+                  <RequireAccess access="subscribers.view">
+                    <StatementPrintPage />
+                  </RequireAccess>
+                }
+              />
               <Route path="/" element={<ExecutiveShell />}>
                 <Route index element={<IndexRoute />} />
                 <Route
@@ -321,17 +336,6 @@ export default function App() {
                   element={
                     <RequireAccess access="orders.view">
                       <InvoicePrintPage />
-                    </RequireAccess>
-                  }
-                />
-                {/* V19.8.4 — printable customer statement (كشف حساب).
-                    Same RBAC as the Subscribers / Collections pages
-                    where the Customer 360 panel is opened from. */}
-                <Route
-                  path="customers/:customerId/statement/print"
-                  element={
-                    <RequireAccess access="subscribers.view">
-                      <StatementPrintPage />
                     </RequireAccess>
                   }
                 />

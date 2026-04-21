@@ -383,6 +383,14 @@
 @media print {
   .stmt-print-wrap .printable-sheet {
     padding-bottom: 8mm !important;
+    /*
+     * V19.8.7 — the base .printable-sheet rule forces `min-height:
+     * 297mm` so single-page HR forms always fill an A4 sheet. For
+     * the multi-page customer statement this leaves a full blank
+     * page at the tail when content lands on page N mid-flow. Let
+     * the sheet grow naturally and stop when the last row prints.
+     */
+    min-height: auto !important;
   }
   .stmt-print-wrap .printable-sheet__footer {
     position: static !important;
@@ -390,6 +398,16 @@
     margin-top: 8mm;
     break-inside: avoid;
     page-break-inside: avoid;
+  }
+  /*
+   * V19.8.7 — some browsers still render a sliver of the outer
+   * viewport (100vh) before the sheet. Collapse it so printing
+   * starts at the first row of content, not with a blank preamble.
+   */
+  .stmt-print-wrap.printable-sheet-viewport,
+  .stmt-print-wrap .printable-sheet-viewport {
+    min-height: 0 !important;
+    padding: 0 !important;
   }
 }
 
