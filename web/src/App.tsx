@@ -70,17 +70,16 @@ import { StaffDebtsPage } from '@/pages/staff-debts-page';
 import { DebtRecoveryReportPage } from '@/pages/debt-recovery-report-page';
 import { OwnerSerialsPage } from '@/pages/owner-serials-page';
 import { BranchesPage } from '@/pages/branches-page';
-import { useAuth } from '@/contexts/auth-context';
-
 /**
  * V19.0 — OWNER and GENERAL_MANAGER (the Owner's Second Eye) land on the
  * Financial Island. All other roles keep the operational dashboard.
  */
 function IndexRoute() {
-  const { hasRole } = useAuth();
-  if (hasRole('OWNER', 'GENERAL_MANAGER')) {
-    return <Navigate to="/financials" replace />;
-  }
+  // V19.9.7 — OWNER / GM now land on the interactive executive
+  // dashboard (cash-flow / money movement / debts / net profit) that
+  // DashboardPage renders for them. The old redirect to /financials
+  // is removed so the dashboard entry point is real work, not a
+  // pass-through.
   return <DashboardPage />;
 }
 
