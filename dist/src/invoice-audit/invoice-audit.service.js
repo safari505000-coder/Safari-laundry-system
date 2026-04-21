@@ -28,8 +28,8 @@ let InvoiceAuditService = class InvoiceAuditService {
         const filsStr = d.mul(1000).toFixed(0);
         return BigInt(filsStr);
     }
-    buildSnapshot(order) {
-        return {
+    buildSnapshot(order, lineItems) {
+        const snap = {
             id: order.id,
             status: order.status,
             cashStatus: order.cashStatus,
@@ -43,6 +43,19 @@ let InvoiceAuditService = class InvoiceAuditService {
             createdAt: order.createdAt.toISOString(),
             completedAt: order.completedAt ? order.completedAt.toISOString() : null,
         };
+        if (lineItems) {
+            snap.lineItems = lineItems
+                .map((li) => ({
+                id: li.id,
+                label: li.label,
+                starchOption: li.starchOption,
+                quantity: li.quantity.toFixed(4),
+                unitPrice: li.unitPrice.toFixed(4),
+                lineTotal: li.quantity.mul(li.unitPrice).toFixed(4),
+            }))
+                .sort((a, b) => a.id.localeCompare(b.id));
+        }
+        return snap;
     }
     diffSnapshots(before, after) {
         const keys = new Set([
@@ -121,10 +134,11 @@ let InvoiceAuditService = class InvoiceAuditService {
             'totalPrice',
             'posPaymentMethod',
             'notes',
+            'lineItems',
         ];
         const hasChange = keys.some((k) => dto[k] !== undefined);
         if (!hasChange) {
-            throw new common_1.BadRequestException('At least one of totalPrice, posPaymentMethod, notes must be supplied.');
+            throw new common_1.BadRequestException('At least one of totalPrice, posPaymentMethod, notes, lineItems must be supplied.');
         }
         return this.prisma.$transaction(async (tx) => {
             const order = await tx.order.findUnique({
@@ -154,10 +168,68 @@ let InvoiceAuditService = class InvoiceAuditService {
             if (!(0, kuwait_time_1.isSameKuwaitDay)(order.createdAt, now)) {
                 throw new common_1.BadRequestException('Same-day edit window expired — this invoice was issued on a prior Kuwait-local day.');
             }
-            const before = this.buildSnapshot(order);
-            const newTotal = dto.totalPrice !== undefined
-                ? new client_1.Prisma.Decimal(dto.totalPrice)
-                : order.totalPrice;
+            const existingLines = await tx.orderLineItem.findMany({
+                where: { orderId: order.id },
+                select: {
+                    id: true,
+                    label: true,
+                    starchOption: true,
+                    quantity: true,
+                    unitPrice: true,
+                },
+            });
+            const before = this.buildSnapshot(order, existingLines);
+            let computedTotal = null;
+            if (dto.lineItems !== undefined) {
+                const payloadIds = new Set(dto.lineItems
+                    .map((li) => li.id)
+                    .filter((v) => typeof v === 'string'));
+                const toDelete = existingLines
+                    .filter((l) => !payloadIds.has(l.id))
+                    .map((l) => l.id);
+                if (toDelete.length > 0) {
+                    await tx.orderLineItem.deleteMany({
+                        where: { id: { in: toDelete } },
+                    });
+                }
+                let runningTotal = new client_1.Prisma.Decimal(0);
+                for (const li of dto.lineItems) {
+                    const qty = new client_1.Prisma.Decimal(li.quantity);
+                    const unit = new client_1.Prisma.Decimal(li.unitPrice);
+                    if (qty.lt(0) || unit.lt(0)) {
+                        throw new common_1.BadRequestException('Line-item quantity and unitPrice must be non-negative.');
+                    }
+                    runningTotal = runningTotal.add(qty.mul(unit));
+                    if (li.id) {
+                        await tx.orderLineItem.update({
+                            where: { id: li.id },
+                            data: {
+                                label: li.label ?? null,
+                                starchOption: li.starchOption ?? client_1.StarchOption.NONE,
+                                quantity: qty,
+                                unitPrice: unit,
+                            },
+                        });
+                    }
+                    else {
+                        await tx.orderLineItem.create({
+                            data: {
+                                orderId: order.id,
+                                label: li.label ?? null,
+                                starchOption: li.starchOption ?? client_1.StarchOption.NONE,
+                                quantity: qty,
+                                unitPrice: unit,
+                            },
+                        });
+                    }
+                }
+                computedTotal = runningTotal;
+            }
+            const newTotal = computedTotal !== null
+                ? computedTotal
+                : dto.totalPrice !== undefined
+                    ? new client_1.Prisma.Decimal(dto.totalPrice)
+                    : order.totalPrice;
             if (newTotal.lt(0)) {
                 throw new common_1.BadRequestException('totalPrice cannot be negative.');
             }
@@ -226,7 +298,17 @@ let InvoiceAuditService = class InvoiceAuditService {
                     completedAt: true,
                 },
             });
-            const after = this.buildSnapshot(refreshed);
+            const refreshedLines = await tx.orderLineItem.findMany({
+                where: { orderId: order.id },
+                select: {
+                    id: true,
+                    label: true,
+                    starchOption: true,
+                    quantity: true,
+                    unitPrice: true,
+                },
+            });
+            const after = this.buildSnapshot(refreshed, refreshedLines);
             const changedFields = this.diffSnapshots(before, after);
             const actor = await tx.user.findUniqueOrThrow({
                 where: { id: actorId },

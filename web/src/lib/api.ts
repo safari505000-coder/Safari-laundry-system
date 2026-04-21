@@ -3304,6 +3304,15 @@ export function receivePurchaseOrder(
 
 export type InvoiceAuditAction = 'EDIT' | 'VOID';
 
+export type EditInvoiceLineItemInput = {
+  /** Present → update that existing line. Absent → insert a new line. */
+  id?: string;
+  label?: string;
+  starchOption?: 'NONE' | 'STARCH_25';
+  quantity: string;
+  unitPrice: string;
+};
+
 export type EditInvoiceBody = {
   totalPrice?: string;
   posPaymentMethod?:
@@ -3315,6 +3324,13 @@ export type EditInvoiceBody = {
     | 'SUBSCRIPTION_WALLET';
   notes?: string;
   reason?: string;
+  /**
+   * V19.9.1 — full replacement set. When provided, the backend diffs
+   * against existing rows (add / update / delete) and recomputes
+   * `totalPrice` from Σ(qty × unitPrice) so the header ties to the
+   * line breakdown.
+   */
+  lineItems?: EditInvoiceLineItemInput[];
 };
 
 export type EditInvoiceResult = {

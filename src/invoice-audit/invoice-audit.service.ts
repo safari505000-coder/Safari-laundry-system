@@ -12,6 +12,7 @@ import {
   PosPaymentMethod,
   Prisma,
   SafariRole,
+  StarchOption,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
@@ -60,21 +61,30 @@ export class InvoiceAuditService {
     return BigInt(filsStr);
   }
 
-  private buildSnapshot(order: {
-    id: string;
-    status: OrderStatus;
-    cashStatus: CashStatus;
-    posPaymentMethod: PosPaymentMethod | null;
-    totalPrice: Prisma.Decimal;
-    notes: string | null;
-    customerId: string;
-    driverId: string | null;
-    invoiceNumber: string | null;
-    serialNumber: string | null;
-    createdAt: Date;
-    completedAt: Date | null;
-  }): Prisma.JsonObject {
-    return {
+  private buildSnapshot(
+    order: {
+      id: string;
+      status: OrderStatus;
+      cashStatus: CashStatus;
+      posPaymentMethod: PosPaymentMethod | null;
+      totalPrice: Prisma.Decimal;
+      notes: string | null;
+      customerId: string;
+      driverId: string | null;
+      invoiceNumber: string | null;
+      serialNumber: string | null;
+      createdAt: Date;
+      completedAt: Date | null;
+    },
+    lineItems?: Array<{
+      id: string;
+      label: string | null;
+      starchOption: StarchOption;
+      quantity: Prisma.Decimal;
+      unitPrice: Prisma.Decimal;
+    }>,
+  ): Prisma.JsonObject {
+    const snap: Prisma.JsonObject = {
       id: order.id,
       status: order.status,
       cashStatus: order.cashStatus,
@@ -88,6 +98,21 @@ export class InvoiceAuditService {
       createdAt: order.createdAt.toISOString(),
       completedAt: order.completedAt ? order.completedAt.toISOString() : null,
     };
+    if (lineItems) {
+      snap.lineItems = lineItems
+        .map((li) => ({
+          id: li.id,
+          label: li.label,
+          starchOption: li.starchOption,
+          quantity: li.quantity.toFixed(4),
+          unitPrice: li.unitPrice.toFixed(4),
+          lineTotal: li.quantity.mul(li.unitPrice).toFixed(4),
+        }))
+        // Stable ordering inside the snapshot so diffs don't flag
+        // purely cosmetic row reordering as a "changed field".
+        .sort((a, b) => a.id.localeCompare(b.id));
+    }
+    return snap;
   }
 
   private diffSnapshots(
@@ -217,11 +242,12 @@ export class InvoiceAuditService {
       'totalPrice',
       'posPaymentMethod',
       'notes',
+      'lineItems',
     ];
     const hasChange = keys.some((k) => dto[k] !== undefined);
     if (!hasChange) {
       throw new BadRequestException(
-        'At least one of totalPrice, posPaymentMethod, notes must be supplied.',
+        'At least one of totalPrice, posPaymentMethod, notes, lineItems must be supplied.',
       );
     }
 
@@ -258,11 +284,86 @@ export class InvoiceAuditService {
           );
         }
 
-        const before = this.buildSnapshot(order);
+        const existingLines = await tx.orderLineItem.findMany({
+          where: { orderId: order.id },
+          select: {
+            id: true,
+            label: true,
+            starchOption: true,
+            quantity: true,
+            unitPrice: true,
+          },
+        });
+        const before = this.buildSnapshot(order, existingLines);
+
+        // ── Line-item mutation ───────────────────────────────────
+        // When `dto.lineItems` is provided, diff against existing:
+        //   • matching id  → update
+        //   • no id        → insert
+        //   • existing id not referenced in payload → delete
+        // Then recompute `totalPrice = Σ(qty × unitPrice)`; the
+        // caller's `dto.totalPrice` is ignored in this mode so the
+        // header never drifts from the line breakdown.
+        let computedTotal: Prisma.Decimal | null = null;
+        if (dto.lineItems !== undefined) {
+          const payloadIds = new Set(
+            dto.lineItems
+              .map((li) => li.id)
+              .filter((v): v is string => typeof v === 'string'),
+          );
+          const toDelete = existingLines
+            .filter((l) => !payloadIds.has(l.id))
+            .map((l) => l.id);
+          if (toDelete.length > 0) {
+            await tx.orderLineItem.deleteMany({
+              where: { id: { in: toDelete } },
+            });
+          }
+
+          let runningTotal = new Prisma.Decimal(0);
+          for (const li of dto.lineItems) {
+            const qty = new Prisma.Decimal(li.quantity);
+            const unit = new Prisma.Decimal(li.unitPrice);
+            if (qty.lt(0) || unit.lt(0)) {
+              throw new BadRequestException(
+                'Line-item quantity and unitPrice must be non-negative.',
+              );
+            }
+            runningTotal = runningTotal.add(qty.mul(unit));
+            if (li.id) {
+              await tx.orderLineItem.update({
+                where: { id: li.id },
+                data: {
+                  label: li.label ?? null,
+                  starchOption: li.starchOption ?? StarchOption.NONE,
+                  quantity: qty,
+                  unitPrice: unit,
+                },
+              });
+            } else {
+              await tx.orderLineItem.create({
+                data: {
+                  orderId: order.id,
+                  label: li.label ?? null,
+                  starchOption: li.starchOption ?? StarchOption.NONE,
+                  quantity: qty,
+                  unitPrice: unit,
+                },
+              });
+            }
+          }
+          computedTotal = runningTotal;
+        }
+
+        // When line items were rewritten, the header total is forced
+        // to Σ(lines). Otherwise the caller's `totalPrice` still wins
+        // (legacy header-only edit path).
         const newTotal =
-          dto.totalPrice !== undefined
-            ? new Prisma.Decimal(dto.totalPrice)
-            : order.totalPrice;
+          computedTotal !== null
+            ? computedTotal
+            : dto.totalPrice !== undefined
+              ? new Prisma.Decimal(dto.totalPrice)
+              : order.totalPrice;
         if (newTotal.lt(0)) {
           throw new BadRequestException('totalPrice cannot be negative.');
         }
@@ -344,7 +445,17 @@ export class InvoiceAuditService {
             completedAt: true,
           },
         });
-        const after = this.buildSnapshot(refreshed);
+        const refreshedLines = await tx.orderLineItem.findMany({
+          where: { orderId: order.id },
+          select: {
+            id: true,
+            label: true,
+            starchOption: true,
+            quantity: true,
+            unitPrice: true,
+          },
+        });
+        const after = this.buildSnapshot(refreshed, refreshedLines);
         const changedFields = this.diffSnapshots(before, after);
         const actor = await tx.user.findUniqueOrThrow({
           where: { id: actorId },
