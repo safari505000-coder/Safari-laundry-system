@@ -961,6 +961,12 @@ function DebtConvertDialog({
         body: JSON.stringify({
           customerId: subscriber.customerId,
           planId: selected.planId,
+          // V19.7.4 — owner directive: only the Convert flow opts in to
+          // FIFO-close the customer's unpaid invoices. Regular Upgrade
+          // (the other caller above) intentionally leaves invoices
+          // open so the debt-tracking list still reflects original
+          // receivables for follow-up.
+          autoCloseInvoices: true,
         }),
       });
       toast.success(

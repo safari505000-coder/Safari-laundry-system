@@ -208,6 +208,7 @@ let CallCenterService = class CallCenterService {
                 customerId: dto.customerId,
                 planId: dto.planId,
                 performedByUserId: userId,
+                autoCloseInvoices: dto.autoCloseInvoices === true,
             });
             const [customer, plan, wallet] = await Promise.all([
                 tx.customer.findUniqueOrThrow({

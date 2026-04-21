@@ -337,6 +337,35 @@ let CustomerLedgerService = class CustomerLedgerService {
                 },
             },
         });
+        const closedInvoiceIds = [];
+        if (params.autoCloseInvoices === true && debtPaidMinor > 0n) {
+            const candidates = await tx.order.findMany({
+                where: {
+                    customerId: params.customerId,
+                    cashStatus: client_1.CashStatus.UNPAID,
+                    status: client_1.OrderStatus.COMPLETED,
+                    walletSettledAt: { not: null },
+                },
+                select: { id: true, totalPrice: true },
+                orderBy: { createdAt: 'asc' },
+            });
+            let remainingMinor = debtPaidMinor;
+            for (const inv of candidates) {
+                if (remainingMinor <= 0n)
+                    break;
+                const invMinor = (0, finance_money_1.toMinorFromFixed4)(inv.totalPrice);
+                if (invMinor <= 0n)
+                    continue;
+                if (invMinor > remainingMinor)
+                    continue;
+                await tx.order.update({
+                    where: { id: inv.id },
+                    data: { cashStatus: client_1.CashStatus.PAID_TO_DRIVER },
+                });
+                closedInvoiceIds.push(inv.id);
+                remainingMinor -= invMinor;
+            }
+        }
         if (debtPaidMinor > 0n) {
             await this.generalLedger.append(tx, {
                 entryType: client_1.GeneralLedgerEntryType.DEBT_ADJUSTMENT,
@@ -352,6 +381,8 @@ let CustomerLedgerService = class CustomerLedgerService {
                     subsidyBranchId,
                     subscriptionId: newSubscription.id,
                     rolledOverFromSubscriptionId: previousSubscription?.id ?? null,
+                    autoClosedInvoiceIds: closedInvoiceIds,
+                    autoClosedInvoiceCount: closedInvoiceIds.length,
                 },
             });
         }
@@ -366,6 +397,7 @@ let CustomerLedgerService = class CustomerLedgerService {
             subscriptionId: newSubscription.id,
             rolledOverFromSubscriptionId: previousSubscription?.id ?? null,
             carriedBalanceKd: carriedBalanceStr,
+            closedInvoiceIds,
         };
     }
     async recordPartialDebtPayment(params) {

@@ -36,6 +36,7 @@ export declare class CustomerLedgerService {
         customerId: string;
         planId: string;
         performedByUserId: string;
+        autoCloseInvoices?: boolean;
     }): Promise<SubscriptionActivationSettlement>;
     recordPartialDebtPayment(params: {
         customerId: string;

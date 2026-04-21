@@ -27,4 +27,15 @@ export type SubscriptionActivationSettlement = {
    * an exactly balanced predecessor.
    */
   carriedBalanceKd: string;
+  /**
+   * V19.7.4 — populated only when the caller opted in to
+   * `autoCloseInvoices` (i.e. the "Convert debt → subscription"
+   * path). Lists the `Order.id`s whose `cashStatus` was flipped to
+   * `PAID_TO_DRIVER` via FIFO allocation of the debt-settled amount,
+   * so the UI can invalidate its debt-tracking cache and the audit
+   * trail has a concrete before/after for each closed invoice.
+   * Empty array when the flag was off, the debt reduction was zero,
+   * or no invoice was fully covered.
+   */
+  closedInvoiceIds: string[];
 };

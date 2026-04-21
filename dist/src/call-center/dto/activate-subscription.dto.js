@@ -15,6 +15,7 @@ const class_validator_1 = require("class-validator");
 class ActivateSubscriptionDto {
     customerId;
     planId;
+    autoCloseInvoices;
 }
 exports.ActivateSubscriptionDto = ActivateSubscriptionDto;
 __decorate([
@@ -27,4 +28,10 @@ __decorate([
     (0, class_validator_1.IsUUID)('4'),
     __metadata("design:type", String)
 ], ActivateSubscriptionDto.prototype, "planId", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ default: false }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], ActivateSubscriptionDto.prototype, "autoCloseInvoices", void 0);
 //# sourceMappingURL=activate-subscription.dto.js.map

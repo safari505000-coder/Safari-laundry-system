@@ -9,4 +9,5 @@ export type SubscriptionActivationSettlement = {
     subscriptionId: string;
     rolledOverFromSubscriptionId: string | null;
     carriedBalanceKd: string;
+    closedInvoiceIds: string[];
 };

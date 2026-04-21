@@ -4,11 +4,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  CashStatus,
   CustomerSubscriptionStatus,
   DebtEntityCategory,
   DebtSource,
   GeneralLedgerEntryType,
   LedgerTransactionType,
+  OrderStatus,
   PosPaymentMethod,
   Prisma,
   SafariRole,
@@ -289,6 +291,13 @@ export class CustomerLedgerService {
       customerId: string;
       planId: string;
       performedByUserId: string;
+      /**
+       * V19.7.4 — "Convert debt → subscription" opt-in: FIFO-close
+       * the customer's unpaid invoices using the debt-settled portion
+       * of this activation. Default false keeps the regular Upgrade
+       * flow unchanged (invoices stay open as receivables).
+       */
+      autoCloseInvoices?: boolean;
     },
   ): Promise<SubscriptionActivationSettlement> {
     const plan = await tx.subscriptionPlan.findUnique({
@@ -477,6 +486,57 @@ export class CustomerLedgerService {
       },
     });
 
+    // V19.7.4 — FIFO invoice auto-closure (Owner directive, opt-in via
+    // `autoCloseInvoices`). Context: `wallet.debt` is the aggregate
+    // receivable, while `Order.cashStatus=UNPAID` is the per-invoice
+    // status. Before this change the "Convert debt → subscription" flow
+    // reduced the aggregate but left the underlying invoices flagged
+    // UNPAID, so the debt-tracking list kept showing receivables whose
+    // total no longer matched `wallet.debt`. Owner asked: "إذا
+    // انخصمت تحذف فواتيره من قائمة متابعة المديونية صحيح" — yes, but
+    // only for the Convert flow (regular Upgrade keeps invoices open).
+    //
+    // Algorithm: walk completed+unpaid invoices oldest-first and mark
+    // any fully covered by `debtPaidMinor` as PAID_TO_DRIVER. We do not
+    // split a single invoice (no partial allocation) so the audit trail
+    // remains clean. We also do NOT re-run wallet settlement — the
+    // wallet update above already absorbed these invoices' receivables
+    // via the original `applyOrderWalletSettlementForCompletedOrder`
+    // call; double-counting would leave the wallet off by 2×.
+    // We filter on `status = COMPLETED AND walletSettledAt != null` to
+    // guarantee each candidate was the thing that *added* to
+    // `wallet.debt` — in-flight UNPAID orders haven't contributed yet
+    // and must not be closed prematurely.
+    const closedInvoiceIds: string[] = [];
+    if (params.autoCloseInvoices === true && debtPaidMinor > 0n) {
+      const candidates = await tx.order.findMany({
+        where: {
+          customerId: params.customerId,
+          cashStatus: CashStatus.UNPAID,
+          status: OrderStatus.COMPLETED,
+          walletSettledAt: { not: null },
+        },
+        select: { id: true, totalPrice: true },
+        orderBy: { createdAt: 'asc' },
+      });
+      let remainingMinor = debtPaidMinor;
+      for (const inv of candidates) {
+        if (remainingMinor <= 0n) break;
+        const invMinor = toMinorFromFixed4(inv.totalPrice);
+        if (invMinor <= 0n) continue;
+        // Only close invoices we can cover in full. A partial close
+        // would require mutating `totalPrice` or introducing a
+        // "partiallyPaid" state the rest of the system doesn't model.
+        if (invMinor > remainingMinor) continue;
+        await tx.order.update({
+          where: { id: inv.id },
+          data: { cashStatus: CashStatus.PAID_TO_DRIVER },
+        });
+        closedInvoiceIds.push(inv.id);
+        remainingMinor -= invMinor;
+      }
+    }
+
     // Dastur §5 — if this activation paid down existing debt, record the
     // reduction in the unified GL so collections/adjustments never hide.
     if (debtPaidMinor > 0n) {
@@ -494,6 +554,11 @@ export class CustomerLedgerService {
           subsidyBranchId,
           subscriptionId: newSubscription.id,
           rolledOverFromSubscriptionId: previousSubscription?.id ?? null,
+          // V19.7.4 — audit trail: which invoices were FIFO-closed by
+          // this activation. Empty array when `autoCloseInvoices` was
+          // off or no invoice was fully covered.
+          autoClosedInvoiceIds: closedInvoiceIds,
+          autoClosedInvoiceCount: closedInvoiceIds.length,
         },
       });
     }
@@ -509,6 +574,7 @@ export class CustomerLedgerService {
       subscriptionId: newSubscription.id,
       rolledOverFromSubscriptionId: previousSubscription?.id ?? null,
       carriedBalanceKd: carriedBalanceStr,
+      closedInvoiceIds,
     };
   }
 
