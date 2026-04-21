@@ -141,6 +141,25 @@ async function main(): Promise<void> {
     },
   });
 
+  // V19.9 — CALL_CENTER_SUPERVISOR inherits the full CC permission set.
+  // Supervisor-only capabilities (invoice edit/void, team reports) are
+  // gated by SafariRole in @Roles() decorators rather than in the
+  // permission table, so we can safely share the CC permission bundle.
+  await prisma.role.upsert({
+    where: { name: SafariRole.CALL_CENTER_SUPERVISOR },
+    create: {
+      name: SafariRole.CALL_CENTER_SUPERVISOR,
+      permissions: {
+        connect: callCenterPermissions.map((p) => ({ id: p.id })),
+      },
+    },
+    update: {
+      permissions: {
+        set: callCenterPermissions.map((p) => ({ id: p.id })),
+      },
+    },
+  });
+
   const accountantPermissions = await prisma.permission.findMany({
     where: { key: { in: [...ACCOUNTANT_PERMISSION_KEYS] } },
   });
