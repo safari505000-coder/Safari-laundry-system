@@ -343,8 +343,7 @@ let CustomerLedgerService = class CustomerLedgerService {
                 where: {
                     customerId: params.customerId,
                     cashStatus: client_1.CashStatus.UNPAID,
-                    status: client_1.OrderStatus.COMPLETED,
-                    walletSettledAt: { not: null },
+                    status: { not: client_1.OrderStatus.CANCELED },
                 },
                 select: { id: true, totalPrice: true },
                 orderBy: { createdAt: 'asc' },

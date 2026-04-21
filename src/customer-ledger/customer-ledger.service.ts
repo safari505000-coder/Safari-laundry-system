@@ -503,18 +503,26 @@ export class CustomerLedgerService {
     // wallet update above already absorbed these invoices' receivables
     // via the original `applyOrderWalletSettlementForCompletedOrder`
     // call; double-counting would leave the wallet off by 2×.
-    // We filter on `status = COMPLETED AND walletSettledAt != null` to
-    // guarantee each candidate was the thing that *added* to
-    // `wallet.debt` — in-flight UNPAID orders haven't contributed yet
-    // and must not be closed prematurely.
+    //
+    // V19.8.2 — the candidate predicate now EXACTLY mirrors the red
+    // "إجمالي الديون السوقية" tile (UNPAID AND NOT CANCELED) so every
+    // invoice the tile counts is fair game for FIFO closure, including
+    // legacy orders seeded with `status=PENDING` and
+    // `walletSettledAt=NULL` whose receivables were already captured
+    // in `wallet.debt` at import/migration time. Earlier we required
+    // `status=COMPLETED AND walletSettledAt != null`, which excluded
+    // the entire legacy set and left the red tile stuck even after
+    // the wallet-level debt had been paid down by the activation. The
+    // no-double-count guarantee still holds: flipping `cashStatus` to
+    // PAID_TO_DRIVER is a pure status flag change and does NOT touch
+    // the wallet balance again.
     const closedInvoiceIds: string[] = [];
     if (params.autoCloseInvoices === true && debtPaidMinor > 0n) {
       const candidates = await tx.order.findMany({
         where: {
           customerId: params.customerId,
           cashStatus: CashStatus.UNPAID,
-          status: OrderStatus.COMPLETED,
-          walletSettledAt: { not: null },
+          status: { not: OrderStatus.CANCELED },
         },
         select: { id: true, totalPrice: true },
         orderBy: { createdAt: 'asc' },
