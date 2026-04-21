@@ -8,8 +8,8 @@ export declare class SubscriptionPlansController {
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        name: string;
         isActive: boolean;
+        name: string;
         salePrice: import("@prisma/client-runtime-utils").Decimal;
         actualBalance: import("@prisma/client-runtime-utils").Decimal;
         validityDays: number;
@@ -18,8 +18,8 @@ export declare class SubscriptionPlansController {
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        name: string;
         isActive: boolean;
+        name: string;
         salePrice: import("@prisma/client-runtime-utils").Decimal;
         actualBalance: import("@prisma/client-runtime-utils").Decimal;
         validityDays: number;
@@ -28,8 +28,8 @@ export declare class SubscriptionPlansController {
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        name: string;
         isActive: boolean;
+        name: string;
         salePrice: import("@prisma/client-runtime-utils").Decimal;
         actualBalance: import("@prisma/client-runtime-utils").Decimal;
         validityDays: number;
@@ -38,8 +38,8 @@ export declare class SubscriptionPlansController {
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        name: string;
         isActive: boolean;
+        name: string;
         salePrice: import("@prisma/client-runtime-utils").Decimal;
         actualBalance: import("@prisma/client-runtime-utils").Decimal;
         validityDays: number;

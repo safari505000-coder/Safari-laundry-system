@@ -21,6 +21,7 @@ const SAFARI_ROLE_VALUES = [
     'WORKER',
     'CALL_CENTER',
     'CALL_CENTER_SUPERVISOR',
+    'FLEET_SUPERVISOR',
     'ACCOUNTANT',
     'SUPERVISOR',
     'VIEWER',
@@ -64,7 +65,7 @@ __decorate([
         enum: client_1.SafariRole,
         enumName: 'SafariRole',
         example: client_1.SafariRole.DRIVER,
-        description: 'OWNER · GENERAL_MANAGER (Owner proxy) · MANAGER · SUPERVISOR: operations · VIEWER · ACCOUNTANT: read-only/finance · DRIVER · CALL_CENTER · CALL_CENTER_SUPERVISOR (full CC + same-day invoice edit/void + team performance reports)',
+        description: 'OWNER · GENERAL_MANAGER (Owner proxy) · MANAGER · SUPERVISOR: operations · VIEWER · ACCOUNTANT: read-only/finance · DRIVER · CALL_CENTER · CALL_CENTER_SUPERVISOR (full CC + same-day invoice edit/void + team performance reports) · FLEET_SUPERVISOR (vehicle expenses with mandatory receipt → accountant approval)',
     }),
     (0, class_validator_1.IsIn)(SAFARI_ROLE_VALUES, {
         message: `safariRole must be one of: ${SAFARI_ROLE_VALUES.join(', ')}`,

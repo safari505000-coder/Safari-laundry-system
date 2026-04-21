@@ -6,19 +6,19 @@ export declare class BranchesController {
     list(): import("@prisma/client").Prisma.PrismaPromise<{
         id: string;
         updatedAt: Date;
-        name: string;
-        location: string;
         isActive: boolean;
+        name: string;
         phone: string | null;
+        location: string;
     }[]>;
     create(dto: CreateBranchDto): Promise<{
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        name: string;
-        location: string;
         isActive: boolean;
+        name: string;
         phone: string | null;
+        location: string;
     }>;
     operationsLive(): Promise<{
         branches: {

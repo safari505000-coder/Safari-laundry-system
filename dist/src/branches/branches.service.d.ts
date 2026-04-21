@@ -5,10 +5,10 @@ export declare class BranchesService {
     listAll(): import("@prisma/client").Prisma.PrismaPromise<{
         id: string;
         updatedAt: Date;
-        name: string;
-        location: string;
         isActive: boolean;
+        name: string;
         phone: string | null;
+        location: string;
     }[]>;
     create(dto: {
         name: string;
@@ -19,10 +19,10 @@ export declare class BranchesService {
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        name: string;
-        location: string;
         isActive: boolean;
+        name: string;
         phone: string | null;
+        location: string;
     }>;
     operationsLiveByBranch(): Promise<{
         branches: {

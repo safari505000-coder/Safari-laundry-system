@@ -46,6 +46,11 @@ const REQUIRED_ROLE_NAMES = [
 const ADDITIONAL_INSTITUTIONAL_ROLE_NAMES = [
   'GENERAL_MANAGER',
   'CALL_CENTER',
+  // V19.9 — CALL_CENTER_SUPERVISOR must exist as a `Role` row on every
+  // fresh deploy so `users.service.resolveRoleId` can resolve the FK.
+  'CALL_CENTER_SUPERVISOR',
+  // V19.10 — FLEET_SUPERVISOR (مسؤول السيارات). Same requirement.
+  'FLEET_SUPERVISOR',
   'ACCOUNTANT',
   'SUPERVISOR',
   'VIEWER',

@@ -51,6 +51,7 @@ const system_module_1 = require("./system/system.module");
 const subscription_plans_module_1 = require("./subscription-plans/subscription-plans.module");
 const subscribers_module_1 = require("./subscribers/subscribers.module");
 const users_module_1 = require("./users/users.module");
+const vehicle_expenses_module_1 = require("./vehicle-expenses/vehicle-expenses.module");
 const verify_module_1 = require("./verify/verify.module");
 const wallets_module_1 = require("./wallets/wallets.module");
 const webDistPath = (0, node_path_1.join)(process.cwd(), 'web', 'dist');
@@ -108,6 +109,7 @@ exports.AppModule = AppModule = __decorate([
             attendance_module_1.AttendanceModule,
             leaves_module_1.LeavesModule,
             loans_module_1.LoansModule,
+            vehicle_expenses_module_1.VehicleExpensesModule,
             verify_module_1.VerifyModule,
             health_module_1.HealthModule,
             serve_static_1.ServeStaticModule.forRoot({

@@ -3,6 +3,7 @@ import { ACCOUNTANT_SHELL_GUIDANCE } from '@/modules/accountant/shell-guidance';
 import { CALL_CENTER_SHELL_GUIDANCE } from '@/modules/call-center/shell-guidance';
 import { CALL_CENTER_SUPERVISOR_SHELL_GUIDANCE } from '@/modules/call-center-supervisor/shell-guidance';
 import { DRIVER_SHELL_GUIDANCE } from '@/modules/driver/shell-guidance';
+import { FLEET_SUPERVISOR_SHELL_GUIDANCE } from '@/modules/fleet-supervisor/shell-guidance';
 import { MANAGER_SHELL_GUIDANCE } from '@/modules/manager/shell-guidance';
 
 const OWNER_SHELL_GUIDANCE =
@@ -21,6 +22,8 @@ export function shellGuidanceForRole(role?: SafariRole): string {
       return CALL_CENTER_SHELL_GUIDANCE;
     case 'CALL_CENTER_SUPERVISOR':
       return CALL_CENTER_SUPERVISOR_SHELL_GUIDANCE;
+    case 'FLEET_SUPERVISOR':
+      return FLEET_SUPERVISOR_SHELL_GUIDANCE;
     case 'ACCOUNTANT':
       return ACCOUNTANT_SHELL_GUIDANCE;
     case 'OWNER':

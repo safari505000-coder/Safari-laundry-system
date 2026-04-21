@@ -21,6 +21,8 @@ import {
   shiftsItem,
   staffDebtsItem,
   unifiedLedgerItem,
+  vehicleExpensesApprovalItem,
+  vehicleExpensesReportItem,
 } from '@/modules/shared/nav/nav-items';
 
 /**
@@ -44,6 +46,8 @@ export const accountantSidebarNavGroups: NavGroup[] = [
       knetAuditItem,
       invoiceAuditItem,
       expenseApprovalItem,
+      vehicleExpensesApprovalItem,
+      vehicleExpensesReportItem,
       debtTransfersItem,
       insightsAiItem,
     ],

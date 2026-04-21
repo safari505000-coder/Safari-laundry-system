@@ -23,6 +23,13 @@ enum SafariRole {
   // immutable audit trail and access to CC agent performance reports.
   // Every guard that accepts CALL_CENTER MUST also accept this role.
   CALL_CENTER_SUPERVISOR
+  // V19.10 — Fleet Supervisor (مسؤول السيارات). Logs vehicle fuel /
+  // repair / maintenance expenses with a MANDATORY receipt photo; every
+  // row starts at PENDING_ACCOUNTANT and only the Accountant (with
+  // OWNER / GM as audit viewers) can approve or reject. Reporting
+  // surfaces aggregate by vehicle, expense type, and month for OWNER +
+  // ACCOUNTANT oversight.
+  FLEET_SUPERVISOR
   ACCOUNTANT
   SUPERVISOR
   VIEWER
@@ -300,6 +307,13 @@ model User {
    * this user. Back-relation of `InvoiceAuditLog.actor`.
    */
   invoiceAuditEntries              InvoiceAuditLog[]      @relation("InvoiceAuditActor")
+  /**
+   * V19.10 — Fleet expense submissions authored by this user
+   * (FLEET_SUPERVISOR) and review actions (APPROVED / REJECTED) taken
+   * by this user (ACCOUNTANT / OWNER / GENERAL_MANAGER).
+   */
+  vehicleExpensesSubmitted         VehicleExpense[]       @relation("VehicleExpenseSubmittedBy")
+  vehicleExpensesReviewed          VehicleExpense[]       @relation("VehicleExpenseReviewedBy")
 }
 
 enum ExpenseCategory {
@@ -395,6 +409,71 @@ model BranchExpense {
   @@index([status])
   @@index([recordedById])
   @@index([branchId])
+}
+
+/**
+ * V19.10 — Fleet / vehicle expense (مصروفات السيارات).
+ *
+ * Logged by the FLEET_SUPERVISOR with a MANDATORY receipt photo
+ * (data URL — same transport as fuel receipts on BranchExpense). Flows
+ * through the same PENDING → APPROVED / REJECTED gate as branch
+ * expenses, but stays in its own table so vehicle-specific columns
+ * (plate, odometer, vendor, repair type) can drive per-vehicle
+ * reports without polluting the generic branch-expense stream.
+ */
+enum VehicleExpenseStatus {
+  PENDING_ACCOUNTANT
+  APPROVED
+  REJECTED
+}
+
+enum VehicleExpenseType {
+  FUEL
+  OIL_CHANGE
+  TIRES
+  MECHANICAL_REPAIR
+  ELECTRICAL_REPAIR
+  BODY_REPAIR
+  AC_REPAIR
+  WASHING
+  REGISTRATION
+  INSURANCE
+  SPARE_PARTS
+  OTHER
+}
+
+model VehicleExpense {
+  id              String               @id @default(uuid()) @db.Uuid
+  vehiclePlate    String               @db.VarChar(32)
+  vehicleLabel    String?              @db.VarChar(120)
+  expenseType     VehicleExpenseType
+  amount          Decimal              @db.Decimal(19, 4)
+  odometerKm      Int?
+  vendorName      String?              @db.VarChar(160)
+  description     String?              @db.Text
+  status          VehicleExpenseStatus @default(PENDING_ACCOUNTANT)
+  /**
+   * Required receipt: data URL (jpeg/png) captured at submission time.
+   * Same transport pattern as BranchExpense.receiptUrl so the 1mb
+   * express.json cap covers it. TEXT because data URLs outrun VARCHAR.
+   */
+  receiptUrl      String               @db.Text
+  submittedById   String               @db.Uuid
+  reviewedById    String?              @db.Uuid
+  reviewedAt      DateTime?
+  rejectionReason String?              @db.Text
+  expenseDate     DateTime             @default(now())
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  submittedBy User  @relation("VehicleExpenseSubmittedBy", fields: [submittedById], references: [id])
+  reviewedBy  User? @relation("VehicleExpenseReviewedBy", fields: [reviewedById], references: [id])
+
+  @@index([status])
+  @@index([expenseDate])
+  @@index([submittedById])
+  @@index([vehiclePlate])
+  @@index([expenseType])
 }
 
 model Customer {

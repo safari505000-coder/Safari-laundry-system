@@ -43,6 +43,9 @@ import { DriverFieldExpensesPage } from '@/modules/driver/pages/driver-field-exp
 import { DriverPendingInvoicesPage } from '@/modules/driver/pages/driver-pending-invoices-page';
 import { DriverMonitorPage } from '@/pages/driver-monitor-page';
 import { ExpenseApprovalPage } from '@/pages/expense-approval-page';
+import { VehicleExpensesMinePage } from '@/pages/vehicle-expenses-mine-page';
+import { VehicleExpensesApprovalPage } from '@/pages/vehicle-expenses-approval-page';
+import { VehicleExpensesReportPage } from '@/pages/vehicle-expenses-report-page';
 import { LiveMonitorPage } from '@/pages/live-monitor-page';
 import { KnetAudit } from '@/modules/accountant/pages/KnetAudit';
 import AccountantInventoryReportPage from '@/modules/accountant/pages/InventoryReport';
@@ -504,6 +507,30 @@ export default function App() {
                   element={
                     <RequireAccess access="expenseApproval.view">
                       <ExpenseApprovalPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="vehicle-expenses"
+                  element={
+                    <RequireAccess access="vehicleExpenses.mine">
+                      <VehicleExpensesMinePage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="vehicle-expenses/approval"
+                  element={
+                    <RequireAccess access="vehicleExpenses.approval.view">
+                      <VehicleExpensesApprovalPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="vehicle-expenses/report"
+                  element={
+                    <RequireAccess access="vehicleExpenses.report.view">
+                      <VehicleExpensesReportPage />
                     </RequireAccess>
                   }
                 />

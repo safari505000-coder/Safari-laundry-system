@@ -25,9 +25,9 @@ export declare class PayrollService {
         };
     } & {
         id: string;
-        branchId: string;
         createdAt: Date;
         updatedAt: Date;
+        branchId: string;
         userId: string;
         status: import("@prisma/client").$Enums.PayrollStatus;
         basicSalary: Prisma.Decimal;
@@ -47,9 +47,9 @@ export declare class PayrollService {
         };
     } & {
         id: string;
-        branchId: string;
         createdAt: Date;
         updatedAt: Date;
+        branchId: string;
         userId: string;
         status: import("@prisma/client").$Enums.PayrollStatus;
         basicSalary: Prisma.Decimal;
@@ -69,9 +69,9 @@ export declare class PayrollService {
         };
     } & {
         id: string;
-        branchId: string;
         createdAt: Date;
         updatedAt: Date;
+        branchId: string;
         userId: string;
         status: import("@prisma/client").$Enums.PayrollStatus;
         basicSalary: Prisma.Decimal;
@@ -100,9 +100,9 @@ export declare class PayrollService {
         };
     } & {
         id: string;
-        branchId: string;
         createdAt: Date;
         updatedAt: Date;
+        branchId: string;
         userId: string;
         status: import("@prisma/client").$Enums.PayrollStatus;
         basicSalary: Prisma.Decimal;

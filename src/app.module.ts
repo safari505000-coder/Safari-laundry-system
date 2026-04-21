@@ -42,6 +42,7 @@ import { SystemModule } from './system/system.module';
 import { SubscriptionPlansModule } from './subscription-plans/subscription-plans.module';
 import { SubscribersModule } from './subscribers/subscribers.module';
 import { UsersModule } from './users/users.module';
+import { VehicleExpensesModule } from './vehicle-expenses/vehicle-expenses.module';
 import { VerifyModule } from './verify/verify.module';
 import { WalletsModule } from './wallets/wallets.module';
 
@@ -94,6 +95,7 @@ const spaStaticModule = existsSync(webDistPath)
     AttendanceModule,
     LeavesModule,
     LoansModule,
+    VehicleExpensesModule,
     VerifyModule,
     HealthModule,
     ServeStaticModule.forRoot({

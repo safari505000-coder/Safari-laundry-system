@@ -5,6 +5,7 @@ export type SafariRole =
   | 'DRIVER'
   | 'CALL_CENTER'
   | 'CALL_CENTER_SUPERVISOR'
+  | 'FLEET_SUPERVISOR'
   | 'ACCOUNTANT'
   | 'SUPERVISOR'
   | 'VIEWER';
@@ -2320,6 +2321,161 @@ export function updateExpenseStatus(
     token,
     body: JSON.stringify({ status }),
   });
+}
+
+// ─── V19.10 — Fleet Supervisor / Vehicle Expenses ───────────────────
+// Mounts on Nest `VehicleExpensesController` (`@Controller('vehicle-expenses')`).
+export const API_VEHICLE_EXPENSES = '/api/vehicle-expenses';
+
+export type VehicleExpenseStatus =
+  | 'PENDING_ACCOUNTANT'
+  | 'APPROVED'
+  | 'REJECTED';
+
+export type VehicleExpenseType =
+  | 'FUEL'
+  | 'OIL_CHANGE'
+  | 'TIRES'
+  | 'MECHANICAL_REPAIR'
+  | 'ELECTRICAL_REPAIR'
+  | 'BODY_REPAIR'
+  | 'AC_REPAIR'
+  | 'WASHING'
+  | 'REGISTRATION'
+  | 'INSURANCE'
+  | 'SPARE_PARTS'
+  | 'OTHER';
+
+export type VehicleExpenseRow = {
+  id: string;
+  vehiclePlate: string;
+  vehicleLabel: string | null;
+  expenseType: VehicleExpenseType;
+  amount: string;
+  odometerKm: number | null;
+  vendorName: string | null;
+  description: string | null;
+  status: VehicleExpenseStatus;
+  receiptUrl: string;
+  submittedById: string;
+  reviewedById: string | null;
+  reviewedAt: string | null;
+  rejectionReason: string | null;
+  expenseDate: string;
+  createdAt: string;
+  updatedAt: string;
+  submittedBy: {
+    id: string;
+    fullName: string;
+    username: string;
+  };
+  reviewedBy: {
+    id: string;
+    fullName: string;
+    username: string;
+  } | null;
+};
+
+export type VehicleExpenseCreateBody = {
+  vehiclePlate: string;
+  vehicleLabel?: string;
+  expenseType: VehicleExpenseType;
+  amount: number;
+  odometerKm?: number;
+  vendorName?: string;
+  description?: string;
+  expenseDate?: string;
+  receiptUrl: string;
+};
+
+export type VehicleExpenseReport = {
+  from: string;
+  to: string;
+  totalKd: string;
+  count: number;
+  byVehicle: Array<{
+    vehiclePlate: string;
+    vehicleLabel: string | null;
+    amountKd: string;
+    count: number;
+  }>;
+  byType: Array<{
+    expenseType: VehicleExpenseType;
+    amountKd: string;
+    count: number;
+  }>;
+  byMonth: Array<{
+    month: string;
+    amountKd: string;
+    count: number;
+  }>;
+};
+
+export function createVehicleExpense(
+  token: string,
+  body: VehicleExpenseCreateBody,
+) {
+  return apiJson<VehicleExpenseRow>(API_VEHICLE_EXPENSES, {
+    method: 'POST',
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
+export function listVehicleExpenses(
+  token: string,
+  params?: {
+    from?: string;
+    to?: string;
+    status?: VehicleExpenseStatus;
+    expenseType?: VehicleExpenseType;
+    vehiclePlate?: string;
+  },
+) {
+  const qs = new URLSearchParams();
+  if (params?.from) qs.set('from', params.from);
+  if (params?.to) qs.set('to', params.to);
+  if (params?.status) qs.set('status', params.status);
+  if (params?.expenseType) qs.set('expenseType', params.expenseType);
+  if (params?.vehiclePlate) qs.set('vehiclePlate', params.vehiclePlate);
+  const qstr = qs.toString();
+  return apiJson<VehicleExpenseRow[]>(
+    `${API_VEHICLE_EXPENSES}${qstr ? `?${qstr}` : ''}`,
+    { token },
+  );
+}
+
+export function getPendingVehicleExpenseApprovals(token: string) {
+  return apiJson<VehicleExpenseRow[]>(
+    `${API_VEHICLE_EXPENSES}/pending-approval`,
+    { token },
+  );
+}
+
+export function updateVehicleExpenseStatus(
+  token: string,
+  id: string,
+  payload: { status: VehicleExpenseStatus; rejectionReason?: string },
+) {
+  return apiJson<VehicleExpenseRow>(
+    `${API_VEHICLE_EXPENSES}/${encodeURIComponent(id)}/status`,
+    {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function getVehicleExpenseReport(
+  token: string,
+  params: { from: string; to: string },
+) {
+  const qs = new URLSearchParams({ from: params.from, to: params.to });
+  return apiJson<VehicleExpenseReport>(
+    `${API_VEHICLE_EXPENSES}/report?${qs.toString()}`,
+    { token },
+  );
 }
 
 export type BranchRow = {

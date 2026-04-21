@@ -35,6 +35,9 @@ import {
   Truck,
   Users,
   WalletCards,
+  Car,
+  Fuel,
+  Wrench,
 } from 'lucide-react';
 import type { NavItem } from '@/modules/shared/nav/nav-types';
 
@@ -388,6 +391,33 @@ export const expenseApprovalItem: NavItem = {
   labelKey: 'nav.expenseVerification',
   icon: FileCheck2,
   roles: ['ACCOUNTANT', 'OWNER', 'GENERAL_MANAGER'],
+};
+
+/**
+ * V19.10 — Fleet Supervisor (مسؤول السيارات). Three surfaces:
+ *   • `vehicleExpensesMineItem`      — submit + own history (supervisor).
+ *   • `vehicleExpensesApprovalItem`  — accountant queue (approve/reject).
+ *   • `vehicleExpensesReportItem`    — owner + accountant report (aggregates).
+ */
+export const vehicleExpensesMineItem: NavItem = {
+  to: '/vehicle-expenses',
+  labelKey: 'nav.vehicleExpenses',
+  icon: Car,
+  roles: ['FLEET_SUPERVISOR'],
+};
+
+export const vehicleExpensesApprovalItem: NavItem = {
+  to: '/vehicle-expenses/approval',
+  labelKey: 'nav.vehicleExpensesApproval',
+  icon: Wrench,
+  roles: ['ACCOUNTANT', 'OWNER', 'GENERAL_MANAGER'],
+};
+
+export const vehicleExpensesReportItem: NavItem = {
+  to: '/vehicle-expenses/report',
+  labelKey: 'nav.vehicleExpensesReport',
+  icon: Fuel,
+  roles: ['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT'],
 };
 
 export const financialCycleReportItem: NavItem = {

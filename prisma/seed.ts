@@ -160,6 +160,29 @@ async function main(): Promise<void> {
     },
   });
 
+  // V19.10 — FLEET_SUPERVISOR (مسؤول السيارات). Permission-table access
+  // is intentionally minimal — this rank is scoped to /api/vehicle-expenses
+  // and the cross-cutting rails (branch:read, wallet:read, audit:read)
+  // that the sidebar pages rely on. Route-level RBAC lives in the
+  // controller via @Roles(FLEET_SUPERVISOR).
+  const fleetSupervisorPermissions = await prisma.permission.findMany({
+    where: { key: { in: ['branch:read', 'wallet:read', 'audit:read'] } },
+  });
+  await prisma.role.upsert({
+    where: { name: SafariRole.FLEET_SUPERVISOR },
+    create: {
+      name: SafariRole.FLEET_SUPERVISOR,
+      permissions: {
+        connect: fleetSupervisorPermissions.map((p) => ({ id: p.id })),
+      },
+    },
+    update: {
+      permissions: {
+        set: fleetSupervisorPermissions.map((p) => ({ id: p.id })),
+      },
+    },
+  });
+
   const accountantPermissions = await prisma.permission.findMany({
     where: { key: { in: [...ACCOUNTANT_PERMISSION_KEYS] } },
   });

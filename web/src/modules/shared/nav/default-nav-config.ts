@@ -36,6 +36,8 @@ import {
   subscriptionsItem,
   teamItem,
   unifiedLedgerItem,
+  vehicleExpensesApprovalItem,
+  vehicleExpensesReportItem,
   whatsappToolsItem,
 } from '@/modules/shared/nav/nav-items';
 
@@ -73,6 +75,8 @@ export const defaultSidebarNavGroups: NavGroup[] = [
       unifiedLedgerItem,
       insightsAiItem,
       expenseApprovalItem,
+      vehicleExpensesApprovalItem,
+      vehicleExpensesReportItem,
       debtTransfersItem,
       fixedExpensesItem,
       expensesItem,

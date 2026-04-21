@@ -3,6 +3,7 @@ import { accountantSidebarNavGroups } from '@/modules/accountant/nav-config';
 import { callCenterSidebarNavGroups } from '@/modules/call-center/nav-config';
 import { callCenterSupervisorSidebarNavGroups } from '@/modules/call-center-supervisor/nav-config';
 import { driverSidebarNavGroups } from '@/modules/driver/nav-config';
+import { fleetSupervisorSidebarNavGroups } from '@/modules/fleet-supervisor/nav-config';
 import { managerSidebarNavGroups } from '@/modules/manager/nav-config';
 import { defaultSidebarNavGroups } from '@/modules/shared/nav/default-nav-config';
 import type { NavGroup } from '@/modules/shared/nav/nav-types';
@@ -28,6 +29,8 @@ export function getSidebarNavGroupsForRole(
       return callCenterSidebarNavGroups;
     case 'CALL_CENTER_SUPERVISOR':
       return callCenterSupervisorSidebarNavGroups;
+    case 'FLEET_SUPERVISOR':
+      return fleetSupervisorSidebarNavGroups;
     case 'MANAGER':
       return managerSidebarNavGroups;
     default:

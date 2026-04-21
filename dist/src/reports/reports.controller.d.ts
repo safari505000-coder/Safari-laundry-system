@@ -26,10 +26,10 @@ export declare class ReportsController {
             };
             driver: {
                 id: string;
-                branchId: string | null;
                 username: string;
                 fullName: string;
                 employeeId: string | null;
+                branchId: string | null;
             } | null;
         }[];
     }>;
@@ -53,12 +53,12 @@ export declare class ReportsController {
     driverLedger(q: DriverLedgerQueryDto): Promise<{
         driver: {
             id: string;
-            branchId: string | null;
             username: string;
             fullName: string;
             employeeId: string | null;
             phone: string | null;
             safariRole: import("@prisma/client").$Enums.SafariRole;
+            branchId: string | null;
         };
         owedToOfficeKd: string;
         pendingSettlementOrderCount: number;

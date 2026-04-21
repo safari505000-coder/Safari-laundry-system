@@ -141,6 +141,21 @@ export const ACCESS = {
   'staffDebts.act': ['ACCOUNTANT'] satisfies readonly SafariRole[],
   'expenseApproval.view': withExec('ACCOUNTANT'),
   'expenseApproval.act': ['ACCOUNTANT'] satisfies readonly SafariRole[],
+
+  // ─── V19.10 — Fleet Supervisor (مسؤول السيارات) ───────────────────
+  // Fleet Supervisor submits vehicle expenses (receipt mandatory) and
+  // reviews their own submission history. Accountant approves / rejects
+  // the queue with an optional rejection reason (required when reject).
+  // Owner / GM / Accountant consume the aggregated per-vehicle report.
+  'vehicleExpenses.submit': [
+    'FLEET_SUPERVISOR',
+  ] satisfies readonly SafariRole[],
+  'vehicleExpenses.mine': [
+    'FLEET_SUPERVISOR',
+  ] satisfies readonly SafariRole[],
+  'vehicleExpenses.approval.view': withExec('ACCOUNTANT'),
+  'vehicleExpenses.approval.act': ['ACCOUNTANT'] satisfies readonly SafariRole[],
+  'vehicleExpenses.report.view': withExec('ACCOUNTANT'),
   'whatsappTools.use': withExec('CALL_CENTER', 'CALL_CENTER_SUPERVISOR'),
   // Safari Pulse driver radar — OWNER only. Backend guards
   // `/api/finance/driver-monitoring` with @Roles(OWNER), so the UI
