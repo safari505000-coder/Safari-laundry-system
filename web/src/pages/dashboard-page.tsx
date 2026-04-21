@@ -21,6 +21,7 @@ import {
 import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
 import { formatKwdLabel } from '@/lib/kwd';
 import { MetricCard } from '@/components/dashboard/metric-card';
+import { ExecInteractiveDashboard } from '@/components/dashboard/exec-interactive-dashboard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/modules/shared/components/ui/card';
 import { ScrollArea } from '@/modules/shared/components/ui/scroll-area';
 import { Separator } from '@/modules/shared/components/ui/separator';
@@ -171,6 +172,15 @@ export function DashboardPage() {
     !(hasRole('OWNER', 'GENERAL_MANAGER') ?? false);
   /** Consolidated P&L is OWNER-only (`/financials`). */
   const canOpenFinancials = hasRole('OWNER', 'GENERAL_MANAGER');
+
+  // V19.9.7 — OWNER / GM get the interactive executive dashboard
+  // (cash-flow, money movement, debts, net profit) instead of the
+  // operational greeting view. Every other role keeps the original
+  // dashboard below because its signals (workspace tiles, order
+  // feed, pending-bag banners) are tailored to their daily job.
+  if (hasRole('OWNER', 'GENERAL_MANAGER')) {
+    return <ExecInteractiveDashboard />;
+  }
 
   return (
     <div className="space-y-10">
