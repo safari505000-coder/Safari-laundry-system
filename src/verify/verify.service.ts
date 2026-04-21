@@ -15,7 +15,12 @@ import { PrismaService } from '../prisma/prisma.service';
  * what is printed" checks only.
  */
 export type VerifyResult = {
-  docType: 'payslip' | 'attendance_report' | 'leave_request' | 'employee_loan';
+  docType:
+    | 'payslip'
+    | 'attendance_report'
+    | 'leave_request'
+    | 'employee_loan'
+    | 'statement';
   docId: string;
   valid: boolean;
   issuedAtIso: string;
@@ -88,6 +93,53 @@ export class VerifyService {
         endDate: row.endDate.toISOString().slice(0, 10),
         daysCount: row.daysCount,
         status: row.status,
+      },
+    };
+  }
+
+  /**
+   * V19.8.4 — verify the digital stamp on a printed customer
+   * statement (كشف حساب). `id` is the customer UUID embedded in the
+   * QR at print time. We expose only the headline balance / debt /
+   * active-subscription snapshot — the same numbers the printed page
+   * already shows — so an auditor can cross-check authenticity without
+   * seeing anything sensitive (no invoices, no transaction history).
+   */
+  async verifyStatement(id: string): Promise<VerifyResult> {
+    const row = await this.prisma.customer.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        displayName: true,
+        phone: true,
+        createdAt: true,
+        wallet: {
+          select: {
+            balance: true,
+            debt: true,
+            subscriptionPlanName: true,
+            subscriptionExpiresAt: true,
+          },
+        },
+      },
+    });
+    if (!row) throw new NotFoundException('Customer not found');
+    return {
+      docType: 'statement',
+      docId: row.id,
+      valid: true,
+      issuedAtIso: new Date().toISOString(),
+      issuedTo: {
+        fullName: row.displayName ?? '—',
+        username: row.phone ?? '—',
+        employeeId: null,
+      },
+      summary: {
+        walletBalanceKd: row.wallet?.balance.toFixed(3) ?? '0.000',
+        walletDebtKd: row.wallet?.debt.toFixed(3) ?? '0.000',
+        activePlan: row.wallet?.subscriptionPlanName ?? null,
+        activePlanExpiresIso:
+          row.wallet?.subscriptionExpiresAt?.toISOString() ?? null,
       },
     };
   }

@@ -20,6 +20,7 @@ import { LeaveRequestPrintPage } from '@/pages/leave-request-print-page';
 import { LoansPage } from '@/pages/loans-page';
 import { LoanPrintPage } from '@/pages/loan-print-page';
 import { InvoicePrintPage } from '@/pages/invoice-print-page';
+import { StatementPrintPage } from '@/pages/statement-print-page';
 import { ExpensesPage } from '@/pages/expenses-page';
 import { FinancialsPage } from '@/pages/financials-page';
 import { InsightsAiPage } from '@/pages/insights-ai-page';
@@ -320,6 +321,17 @@ export default function App() {
                   element={
                     <RequireAccess access="orders.view">
                       <InvoicePrintPage />
+                    </RequireAccess>
+                  }
+                />
+                {/* V19.8.4 — printable customer statement (كشف حساب).
+                    Same RBAC as the Subscribers / Collections pages
+                    where the Customer 360 panel is opened from. */}
+                <Route
+                  path="customers/:customerId/statement/print"
+                  element={
+                    <RequireAccess access="subscribers.view">
+                      <StatementPrintPage />
                     </RequireAccess>
                   }
                 />

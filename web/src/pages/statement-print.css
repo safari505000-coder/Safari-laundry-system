@@ -1,0 +1,382 @@
+/*
+ * V19.8.4 — customer statement extras.
+ *
+ * Layered on top of `printable.css` (the shared A4 sheet). Only adds
+ * the statement-specific bits: money-flow snapshot tiles, timeline
+ * row visuals, activation breakdown card, closed-invoice mini-table.
+ * Everything respects the same Safari brand tokens so the printed
+ * output looks like a first-class financial document next to the HR
+ * forms.
+ */
+
+.statement-print-loading,
+.statement-print-error {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Cairo', 'Tajawal', sans-serif;
+  font-size: 14px;
+  color: #0f172a;
+  background: #f1f5f9;
+}
+
+.statement-print-error {
+  color: #b91c1c;
+}
+
+/* ── Snapshot tiles (balance / debt / open invoices) ───────── */
+
+.stmt-snapshot-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4mm;
+  margin-bottom: 3mm;
+}
+
+.stmt-snapshot-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 1mm;
+  padding: 4mm;
+  border-radius: 2mm;
+  background: #f8fafc;
+  border-inline-start: 4px solid #64748b;
+}
+
+.stmt-snapshot-label {
+  font-size: 8.5pt;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.stmt-snapshot-value {
+  font-size: 14pt;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #0f172a;
+}
+
+.stmt-snapshot-sub {
+  font-size: 7.5pt;
+  color: #94a3b8;
+}
+
+.stmt-tone-balance {
+  background: linear-gradient(135deg, #ecfdf5, #f0fdf4);
+  border-inline-start-color: #15803d;
+}
+.stmt-tone-balance .stmt-snapshot-value {
+  color: #14532d;
+}
+
+.stmt-tone-debt {
+  background: linear-gradient(135deg, #fef2f2, #fee2e2);
+  border-inline-start-color: #b91c1c;
+}
+.stmt-tone-debt .stmt-snapshot-value {
+  color: #7f1d1d;
+}
+
+.stmt-tone-clear {
+  background: linear-gradient(135deg, #f0fdf4, #ecfdf5);
+  border-inline-start-color: #0f766e;
+}
+.stmt-tone-clear .stmt-snapshot-value {
+  color: #14532d;
+}
+
+.stmt-tone-info {
+  background: linear-gradient(135deg, #eff6ff, #f0f9ff);
+  border-inline-start-color: #1d4ed8;
+}
+.stmt-tone-info .stmt-snapshot-value {
+  color: #1e3a8a;
+}
+
+/* ── Active subscription card ──────────────────────────────── */
+
+.stmt-sub-card {
+  margin-top: 3mm;
+  padding: 4mm;
+  border-radius: 2mm;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.04);
+}
+
+.stmt-sub-card-head {
+  display: flex;
+  align-items: center;
+  gap: 3mm;
+  margin-bottom: 3mm;
+  padding-bottom: 2mm;
+  border-bottom: 1px dashed #cbd5e1;
+}
+
+.stmt-sub-badge {
+  display: inline-block;
+  padding: 1mm 3mm;
+  border-radius: 1.5mm;
+  background: #0f766e;
+  color: #ffffff;
+  font-size: 8.5pt;
+  font-weight: 600;
+}
+
+.stmt-sub-title {
+  font-size: 12pt;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.stmt-sub-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2mm 4mm;
+}
+
+.stmt-sub-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5mm;
+}
+
+/* ── Events table (main timeline) ──────────────────────────── */
+
+.stmt-events-table .stmt-num {
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+  white-space: nowrap;
+}
+
+.stmt-event-date {
+  font-size: 8.8pt;
+  color: #475569;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.stmt-event-kind {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.stmt-event-plan {
+  color: #64748b;
+  font-size: 9pt;
+}
+
+.stmt-event-head td {
+  background: #eff6ff !important;
+  border-bottom: none !important;
+  font-weight: 600;
+}
+
+/* ── Activation breakdown panel (inside an expanded row) ───── */
+
+.stmt-event-detail td {
+  padding: 0 !important;
+  background: #ffffff !important;
+  border-bottom: 2px solid #0f766e !important;
+}
+
+.stmt-breakdown {
+  margin: 0;
+  padding: 4mm 4mm 4mm 6mm;
+  background: linear-gradient(180deg, #eff6ff 0%, #ffffff 100%);
+  border-inline-start: 3px solid #0f766e;
+}
+
+.stmt-breakdown-title {
+  font-size: 10pt;
+  font-weight: 700;
+  color: #0f766e;
+  margin-bottom: 2.5mm;
+  display: flex;
+  align-items: center;
+  gap: 2mm;
+}
+
+.stmt-breakdown-title::before {
+  content: '◆';
+  color: #14b8a6;
+  font-size: 8pt;
+}
+
+.stmt-breakdown-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.5mm 4mm;
+  margin: 0 0 3mm;
+}
+
+.stmt-bd-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.2mm 2.5mm;
+  background: #ffffff;
+  border-radius: 1.5mm;
+  border: 1px solid #e2e8f0;
+}
+
+.stmt-bd-row > dt {
+  font-size: 8.8pt;
+  color: #475569;
+  margin: 0;
+}
+
+.stmt-bd-row > dd {
+  margin: 0;
+  font-size: 10pt;
+  font-weight: 700;
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+}
+
+.stmt-bd-info > dd {
+  color: #1d4ed8;
+}
+
+.stmt-bd-success {
+  background: #ecfdf5;
+  border-color: #86efac;
+}
+.stmt-bd-success > dd {
+  color: #14532d;
+}
+
+/* ── Closed invoices mini-table ────────────────────────────── */
+
+.stmt-closed-block {
+  margin-top: 2mm;
+  padding-top: 2.5mm;
+  border-top: 1px dashed #0f766e;
+}
+
+.stmt-closed-title {
+  font-size: 9pt;
+  font-weight: 600;
+  color: #0f766e;
+  margin-bottom: 1.5mm;
+}
+
+.stmt-closed-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 9pt;
+  background: #ffffff;
+  border-radius: 1.5mm;
+  overflow: hidden;
+  border: 1px solid #cbd5e1;
+}
+
+.stmt-closed-table thead th {
+  background: #0f766e;
+  color: #ffffff;
+  padding: 1.2mm 2mm;
+  text-align: start;
+  font-weight: 600;
+  font-size: 8.5pt;
+}
+
+.stmt-closed-table tbody td {
+  padding: 1mm 2mm;
+  border-bottom: 1px solid #e2e8f0;
+  font-variant-numeric: tabular-nums;
+}
+
+.stmt-closed-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.stmt-closed-table tfoot td {
+  padding: 1.4mm 2mm;
+  background: #ecfdf5;
+  border-top: 1.5px solid #0f766e;
+  color: #14532d;
+}
+
+.stmt-closed-note {
+  margin-top: 1.5mm;
+  padding: 1.5mm 2.5mm;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 1.5mm;
+  color: #92400e;
+  font-size: 8.8pt;
+}
+
+/* ── Invoice listing tweaks ────────────────────────────────── */
+
+.stmt-invoice-open td {
+  background: #fef2f2 !important;
+  color: #7f1d1d;
+}
+
+.stmt-pay-method {
+  margin-inline-start: 1mm;
+  color: #64748b;
+  font-size: 8.5pt;
+}
+
+.stmt-empty {
+  padding: 4mm;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 10pt;
+  background: #f8fafc;
+  border-radius: 2mm;
+  border: 1px dashed #cbd5e1;
+}
+
+/* ── Certification note (bottom of the sheet) ──────────────── */
+
+.stmt-cert-note {
+  margin-top: 8mm;
+  padding: 4mm 5mm;
+  background: linear-gradient(135deg, #f8fafc, #ffffff);
+  border: 1px solid #cbd5e1;
+  border-radius: 2mm;
+  font-size: 9.5pt;
+  line-height: 1.7;
+  color: #334155;
+}
+
+.stmt-cert-note p {
+  margin: 0;
+}
+
+.stmt-cert-note strong {
+  color: #0f766e;
+  font-weight: 700;
+}
+
+/* ── Print hardening ───────────────────────────────────────── */
+
+@media print {
+  .stmt-snapshot-tile,
+  .stmt-sub-card,
+  .stmt-breakdown,
+  .stmt-closed-table,
+  .stmt-cert-note,
+  .stmt-bd-success,
+  .stmt-invoice-open td,
+  .stmt-closed-note {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .stmt-event-detail td {
+    border-bottom: 2px solid #0f766e !important;
+  }
+
+  /* Keep each activation breakdown + its closed invoices together
+     on the same page whenever possible. */
+  .stmt-event-head,
+  .stmt-event-detail {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}

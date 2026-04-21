@@ -1358,6 +1358,7 @@ export const en = {
   customerLedger: {
     empty: 'No data yet.',
     refresh: 'Refresh',
+    printStatement: 'Print statement',
     walletBalance: 'Balance',
     walletDebt: 'Debt',
     cutOffBadge: 'Account cut-off',

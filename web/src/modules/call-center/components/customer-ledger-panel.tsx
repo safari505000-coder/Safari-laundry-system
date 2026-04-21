@@ -126,20 +126,46 @@ export function CustomerLedgerPanel({ customerId, token }: Props) {
             </span>
           ) : null}
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => void load()}
-          disabled={loading}
-        >
-          {loading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <RefreshCw className="h-4 w-4" />
-          )}
-          <span className="ms-2">{t('customerLedger.refresh')}</span>
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* V19.8.4 — open the A4 "كشف حساب العميل" in a new tab.
+              Same payload the panel already has, rendered as a
+              branded sheet with digital QR stamp, auto-triggers the
+              browser print dialog on load. RBAC is re-checked on the
+              target route so link-sharing is safe. */}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              if (!customerId) return;
+              window.open(
+                `/customers/${customerId}/statement/print`,
+                '_blank',
+                'noopener,noreferrer',
+              );
+            }}
+            disabled={!customerId}
+          >
+            <Printer className="h-4 w-4" />
+            <span className="ms-2">
+              {t('customerLedger.printStatement')}
+            </span>
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => void load()}
+            disabled={loading}
+          >
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            <span className="ms-2">{t('customerLedger.refresh')}</span>
+          </Button>
+        </div>
       </div>
 
       {data.activeSubscription ? (

@@ -18,7 +18,12 @@ export type DocumentType =
   // V19.7.5 — printable POS invoice opened from the Customer 360
   // ledger ("عرض صورة الفاتورة"). Same Safari-brand A4 sheet as the
   // HR forms so auditors and customers recognise the format instantly.
-  | 'INVOICE';
+  | 'INVOICE'
+  // V19.8.4 — printable customer statement (كشف حساب العميل). Full
+  // financial history with an embedded money-flow breakdown for each
+  // subscription activation so customers see exactly where their
+  // renewal money went.
+  | 'STATEMENT';
 
 export type DocumentQRProps = {
   docType: DocumentType;
@@ -59,6 +64,7 @@ export function DocumentQR({
     LEAVE_REQUEST: 'طلب إجازة',
     EMPLOYEE_LOAN: 'إقرار سلفة',
     INVOICE: 'فاتورة',
+    STATEMENT: 'كشف حساب',
   };
 
   return (

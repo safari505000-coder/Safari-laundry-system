@@ -30,6 +30,9 @@ let VerifyController = class VerifyController {
     verifyLoan(id) {
         return this.verify.verifyLoan(id);
     }
+    verifyStatement(id) {
+        return this.verify.verifyStatement(id);
+    }
 };
 exports.VerifyController = VerifyController;
 __decorate([
@@ -65,6 +68,17 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", void 0)
 ], VerifyController.prototype, "verifyLoan", null);
+__decorate([
+    (0, common_1.Get)('statement/:id'),
+    (0, swagger_1.ApiOperation)({
+        summary: 'Verify a printed customer statement',
+        description: 'V19.8.4 — returns { valid, issuedTo, summary } for the customer statement referenced by the QR at the bottom of the printed A4 page.',
+    }),
+    __param(0, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], VerifyController.prototype, "verifyStatement", null);
 exports.VerifyController = VerifyController = __decorate([
     (0, swagger_1.ApiTags)('verify'),
     (0, common_1.Controller)('verify'),

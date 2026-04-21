@@ -52,4 +52,14 @@ export class VerifyController {
   verifyLoan(@Param('id') id: string) {
     return this.verify.verifyLoan(id);
   }
+
+  @Get('statement/:id')
+  @ApiOperation({
+    summary: 'Verify a printed customer statement',
+    description:
+      'V19.8.4 — returns { valid, issuedTo, summary } for the customer statement referenced by the QR at the bottom of the printed A4 page.',
+  })
+  verifyStatement(@Param('id') id: string) {
+    return this.verify.verifyStatement(id);
+  }
 }

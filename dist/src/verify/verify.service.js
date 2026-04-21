@@ -78,6 +78,44 @@ let VerifyService = class VerifyService {
             },
         };
     }
+    async verifyStatement(id) {
+        const row = await this.prisma.customer.findUnique({
+            where: { id },
+            select: {
+                id: true,
+                displayName: true,
+                phone: true,
+                createdAt: true,
+                wallet: {
+                    select: {
+                        balance: true,
+                        debt: true,
+                        subscriptionPlanName: true,
+                        subscriptionExpiresAt: true,
+                    },
+                },
+            },
+        });
+        if (!row)
+            throw new common_1.NotFoundException('Customer not found');
+        return {
+            docType: 'statement',
+            docId: row.id,
+            valid: true,
+            issuedAtIso: new Date().toISOString(),
+            issuedTo: {
+                fullName: row.displayName ?? '—',
+                username: row.phone ?? '—',
+                employeeId: null,
+            },
+            summary: {
+                walletBalanceKd: row.wallet?.balance.toFixed(3) ?? '0.000',
+                walletDebtKd: row.wallet?.debt.toFixed(3) ?? '0.000',
+                activePlan: row.wallet?.subscriptionPlanName ?? null,
+                activePlanExpiresIso: row.wallet?.subscriptionExpiresAt?.toISOString() ?? null,
+            },
+        };
+    }
     async verifyLoan(id) {
         const row = await this.prisma.employeeLoan.findUnique({
             where: { id },

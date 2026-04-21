@@ -1371,6 +1371,7 @@ export const ar = {
   customerLedger: {
     empty: 'لا توجد بيانات بعد.',
     refresh: 'تحديث',
+    printStatement: 'طباعة كشف حساب',
     walletBalance: 'الرصيد',
     walletDebt: 'المديونية',
     cutOffBadge: 'حساب مقطوع',
