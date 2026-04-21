@@ -19,12 +19,41 @@ import type {
   DriverBalanceRowDto,
   HandoverResultDto,
 } from '../dto/driver-balance.dto';
+import type {
+  DriverCashTraceBagDto,
+  DriverCashTraceDriverDto,
+  DriverCashTraceQueryDto,
+  DriverCashTraceResponseDto,
+} from '../dto/driver-cash-trace.dto';
 import type { UpdateDriverTrackingDto } from '../dto/update-driver-tracking.dto';
 import {
   assertDeclaredMatchesLedgerMinor,
   minorToAmountString,
   sumOrderMinors,
 } from '../finance-money';
+
+function sumKd(values: string[]): string {
+  let total = 0;
+  for (const v of values) {
+    const n = Number(v);
+    if (Number.isFinite(n)) total += n;
+  }
+  return total.toFixed(4);
+}
+
+function zeroKpis() {
+  return {
+    totalCollectedKd: '0.0000',
+    totalHandedToManagerKd: '0.0000',
+    totalAtBankKd: '0.0000',
+    totalPendingWithDriverKd: '0.0000',
+    totalPendingAtManagerKd: '0.0000',
+    totalAwaitingVerificationKd: '0.0000',
+    totalRejectedKd: '0.0000',
+    totalCollectedOrderCount: 0,
+    totalBagCount: 0,
+  };
+}
 
 function parseLatLng(input?: string | null): { lat: number; lng: number } | null {
   if (!input) return null;
@@ -388,6 +417,211 @@ export class CashService {
         bankDepositReceiptUrl: dto.depositReceiptUrl ?? null,
       };
     });
+  }
+
+  /**
+   * V19.10 — "Driver Cash Trace" report.
+   *
+   * Answers the owner's question:
+   *   "How much cash did each driver physically collect in <window>,
+   *    did they hand it to a branch manager, and did it reach the bank?"
+   *
+   * Per driver, we return:
+   *   - collectedKd              — sum of COMPLETED CASH orders whose
+   *     `completedAt` lies in [from, to].
+   *   - handedToManagerKd        — sum of ManagerCashCustody rows with
+   *     `receivedFromDriverAt` in [from, to], regardless of status.
+   *   - pendingWithDriverKd      — `max(0, collected - handed)`. This
+   *     is the cash the driver still physically holds for work done in
+   *     the window.
+   *   - atBankKd                 — VERIFIED custody bags.
+   *   - pendingAtManagerKd       — PENDING_DEPOSIT custody bags.
+   *   - awaitingVerificationKd   — AWAITING_VERIFICATION custody bags.
+   *   - rejectedKd               — REJECTED custody bags (back under
+   *     manager liability; Dastur §3).
+   *
+   * The per-bag detail list is returned too, so the UI can show exactly
+   * which handover event belongs to which day / which manager. This is
+   * what lets the owner select a specific day and see the trail.
+   */
+  async getDriverCashTrace(
+    query: DriverCashTraceQueryDto,
+  ): Promise<DriverCashTraceResponseDto> {
+    const from = new Date(query.from);
+    const to = new Date(query.to);
+
+    // 1) Drivers in scope -------------------------------------------------
+    const driversRaw = await this.prisma.user.findMany({
+      where: {
+        safariRole: SafariRole.DRIVER,
+        ...(query.driverId ? { id: query.driverId } : {}),
+        ...(query.branchId ? { branchId: query.branchId } : {}),
+      },
+      select: {
+        id: true,
+        username: true,
+        fullName: true,
+        branchId: true,
+        branch: { select: { id: true, name: true } },
+      },
+      orderBy: { fullName: 'asc' },
+    });
+    if (driversRaw.length === 0) {
+      return {
+        range: { from: from.toISOString(), to: to.toISOString() },
+        kpis: zeroKpis(),
+        drivers: [],
+      };
+    }
+    const driverIds = driversRaw.map((d) => d.id);
+
+    // 2) Cash collected per driver in window (COMPLETED + CASH) ----------
+    const collectedAgg = await this.prisma.order.groupBy({
+      by: ['driverId'],
+      where: {
+        driverId: { in: driverIds },
+        posPaymentMethod: PosPaymentMethod.CASH,
+        status: OrderStatus.COMPLETED,
+        completedAt: { gte: from, lte: to },
+      },
+      _sum: { totalPrice: true },
+      _count: { _all: true },
+    });
+    const collectedByDriver = new Map<
+      string,
+      { kd: string; count: number }
+    >();
+    for (const row of collectedAgg) {
+      if (!row.driverId) continue;
+      collectedByDriver.set(row.driverId, {
+        kd: row._sum.totalPrice?.toString() ?? '0',
+        count: row._count._all,
+      });
+    }
+
+    // 3) Custody bags for these drivers in window ------------------------
+    const bags = await this.prisma.managerCashCustody.findMany({
+      where: {
+        driverId: { in: driverIds },
+        receivedFromDriverAt: { gte: from, lte: to },
+        ...(query.branchId ? { branchId: query.branchId } : {}),
+      },
+      select: {
+        id: true,
+        driverId: true,
+        managerId: true,
+        branchId: true,
+        amountKd: true,
+        settledOrderCount: true,
+        status: true,
+        receivedFromDriverAt: true,
+        slipUploadedAt: true,
+        verifiedAt: true,
+        rejectedAt: true,
+        rejectionReason: true,
+        manager: { select: { id: true, username: true, fullName: true } },
+        branch: { select: { id: true, name: true } },
+      },
+      orderBy: { receivedFromDriverAt: 'asc' },
+    });
+    const bagsByDriver = new Map<string, DriverCashTraceBagDto[]>();
+    for (const bag of bags) {
+      const list = bagsByDriver.get(bag.driverId) ?? [];
+      list.push({
+        id: bag.id,
+        amountKd: bag.amountKd.toString(),
+        settledOrderCount: bag.settledOrderCount,
+        status: bag.status,
+        managerId: bag.manager?.id ?? null,
+        managerName: bag.manager?.fullName ?? null,
+        managerUsername: bag.manager?.username ?? null,
+        branchId: bag.branch?.id ?? null,
+        branchName: bag.branch?.name ?? null,
+        receivedFromDriverAt: bag.receivedFromDriverAt.toISOString(),
+        slipUploadedAt: bag.slipUploadedAt?.toISOString() ?? null,
+        verifiedAt: bag.verifiedAt?.toISOString() ?? null,
+        rejectedAt: bag.rejectedAt?.toISOString() ?? null,
+        rejectionReason: bag.rejectionReason ?? null,
+      });
+      bagsByDriver.set(bag.driverId, list);
+    }
+
+    // 4) Per-driver rollup -----------------------------------------------
+    const drivers: DriverCashTraceDriverDto[] = driversRaw.map((d) => {
+      const collected = collectedByDriver.get(d.id) ?? { kd: '0', count: 0 };
+      const list = bagsByDriver.get(d.id) ?? [];
+
+      const handedToManagerKd = sumKd(list.map((b) => b.amountKd));
+      const atBankKd = sumKd(
+        list.filter((b) => b.status === 'VERIFIED').map((b) => b.amountKd),
+      );
+      const pendingAtManagerKd = sumKd(
+        list
+          .filter((b) => b.status === 'PENDING_DEPOSIT')
+          .map((b) => b.amountKd),
+      );
+      const awaitingVerificationKd = sumKd(
+        list
+          .filter((b) => b.status === 'AWAITING_VERIFICATION')
+          .map((b) => b.amountKd),
+      );
+      const rejectedKd = sumKd(
+        list.filter((b) => b.status === 'REJECTED').map((b) => b.amountKd),
+      );
+
+      const diff = Number(collected.kd) - Number(handedToManagerKd);
+      const pendingWithDriverKd = diff > 0 ? diff.toFixed(4) : '0.0000';
+
+      return {
+        driverId: d.id,
+        username: d.username,
+        fullName: d.fullName,
+        branchId: d.branch?.id ?? null,
+        branchName: d.branch?.name ?? null,
+        collectedKd: collected.kd,
+        collectedOrderCount: collected.count,
+        handedToManagerKd,
+        handedToManagerBagCount: list.length,
+        pendingWithDriverKd,
+        atBankKd,
+        pendingAtManagerKd,
+        awaitingVerificationKd,
+        rejectedKd,
+        bags: list,
+      };
+    });
+
+    // Drop drivers with zero activity to keep the table scannable.
+    const active = drivers.filter(
+      (d) =>
+        Number(d.collectedKd) > 0 ||
+        d.bags.length > 0 ||
+        d.collectedOrderCount > 0,
+    );
+
+    // 5) Totals ----------------------------------------------------------
+    const kpis = {
+      totalCollectedKd: sumKd(active.map((d) => d.collectedKd)),
+      totalHandedToManagerKd: sumKd(active.map((d) => d.handedToManagerKd)),
+      totalAtBankKd: sumKd(active.map((d) => d.atBankKd)),
+      totalPendingWithDriverKd: sumKd(active.map((d) => d.pendingWithDriverKd)),
+      totalPendingAtManagerKd: sumKd(active.map((d) => d.pendingAtManagerKd)),
+      totalAwaitingVerificationKd: sumKd(
+        active.map((d) => d.awaitingVerificationKd),
+      ),
+      totalRejectedKd: sumKd(active.map((d) => d.rejectedKd)),
+      totalCollectedOrderCount: active.reduce(
+        (n, d) => n + d.collectedOrderCount,
+        0,
+      ),
+      totalBagCount: active.reduce((n, d) => n + d.bags.length, 0),
+    };
+
+    return {
+      range: { from: from.toISOString(), to: to.toISOString() },
+      kpis,
+      drivers: active,
+    };
   }
 
   async getOwnerFinancialCycleReport() {

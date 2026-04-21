@@ -26,6 +26,7 @@ import { ExpensesPage } from '@/pages/expenses-page';
 import { FinancialsPage } from '@/pages/financials-page';
 import { InsightsAiPage } from '@/pages/insights-ai-page';
 import { FinancialCycleReportPage } from '@/pages/financial-cycle-report-page';
+import { DriverCashTracePage } from '@/pages/driver-cash-trace-page';
 import { ReportsPage } from '@/pages/reports-page';
 import { FinancialReportsHubPage } from '@/pages/financial-reports-hub-page';
 import { LoginPage } from '@/pages/login-page';
@@ -539,6 +540,14 @@ export default function App() {
                   element={
                     <RequireAccess access="financialCycleReport.view">
                       <FinancialCycleReportPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="driver-cash-trace"
+                  element={
+                    <RequireAccess access="driverCashTrace.view">
+                      <DriverCashTracePage />
                     </RequireAccess>
                   }
                 />

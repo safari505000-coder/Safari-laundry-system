@@ -6,6 +6,7 @@ import {
   allInvoicesItem,
   attendanceItem,
   debtTransfersItem,
+  driverCashTraceItem,
   expenseApprovalItem,
   inventoryCatalogItem,
   inventoryLowStockItem,
@@ -57,6 +58,7 @@ export const accountantSidebarNavGroups: NavGroup[] = [
     items: [
       invoicesDataItem,
       managerCustodyAgingItem,
+      driverCashTraceItem,
       staffDebtsItem,
     ],
   },

@@ -10,6 +10,10 @@ import type {
   DriverBalanceResponseDto,
   HandoverResultDto,
 } from './dto/driver-balance.dto';
+import type {
+  DriverCashTraceQueryDto,
+  DriverCashTraceResponseDto,
+} from './dto/driver-cash-trace.dto';
 import type { OwnerCustomerWalletSummaryDto } from './dto/owner-customer-wallet-summary.dto';
 import type { UpdateDriverTrackingDto } from './dto/update-driver-tracking.dto';
 import { CashService } from './services/cash.service';
@@ -111,6 +115,15 @@ export class FinanceService {
    */
   async getOwnerFinancialCycleReport() {
     return this.cashService.getOwnerFinancialCycleReport();
+  }
+
+  /**
+   * V19.10 — per-driver cash trace: collected → manager custody → bank.
+   */
+  async getDriverCashTrace(
+    query: DriverCashTraceQueryDto,
+  ): Promise<DriverCashTraceResponseDto> {
+    return this.cashService.getDriverCashTrace(query);
   }
 
   /**

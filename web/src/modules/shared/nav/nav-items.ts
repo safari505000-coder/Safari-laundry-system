@@ -427,6 +427,13 @@ export const financialCycleReportItem: NavItem = {
   roles: ['OWNER', 'GENERAL_MANAGER'],
 };
 
+export const driverCashTraceItem: NavItem = {
+  to: '/driver-cash-trace',
+  labelKey: 'nav.driverCashTrace',
+  icon: Truck,
+  roles: ['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT'],
+};
+
 export const reportsItem: NavItem = {
   to: '/reports',
   labelKey: 'nav.reports',

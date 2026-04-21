@@ -42,6 +42,10 @@ import {
   DriverBalanceResponseDto,
   HandoverResultDto,
 } from './dto/driver-balance.dto';
+import {
+  DriverCashTraceQueryDto,
+  DriverCashTraceResponseDto,
+} from './dto/driver-cash-trace.dto';
 import { OwnerCustomerWalletSummaryDto } from './dto/owner-customer-wallet-summary.dto';
 import { UpdateDriverTrackingDto } from './dto/update-driver-tracking.dto';
 import { FinanceService } from './finance.service';
@@ -269,6 +273,23 @@ export class FinanceController {
   })
   getFinancialCycleReport() {
     return this.financeService.getOwnerFinancialCycleReport();
+  }
+
+  @Get('reports/driver-cash-trace')
+  @Roles(
+    SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
+    SafariRole.ACCOUNTANT,
+  )
+  @ApiOperation({
+    summary: `Driver cash trace report (${APP_BRAND})`,
+    description:
+      'V19.10 — trace each KD from driver collection through manager custody to verified bank deposit, for a given date window.',
+  })
+  getDriverCashTrace(
+    @Query() query: DriverCashTraceQueryDto,
+  ): Promise<DriverCashTraceResponseDto> {
+    return this.financeService.getDriverCashTrace(query);
   }
 
   @Get('dashboard/realtime-totals')

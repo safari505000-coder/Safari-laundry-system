@@ -607,6 +607,75 @@ export function getFinancialCycleReport(token: string) {
   );
 }
 
+// V19.10 — per-driver cash trace (collected → manager custody → bank).
+export type DriverCashTraceBag = {
+  id: string;
+  amountKd: string;
+  settledOrderCount: number;
+  status:
+    | 'PENDING_DEPOSIT'
+    | 'AWAITING_VERIFICATION'
+    | 'VERIFIED'
+    | 'REJECTED';
+  managerId: string | null;
+  managerName: string | null;
+  managerUsername: string | null;
+  branchId: string | null;
+  branchName: string | null;
+  receivedFromDriverAt: string;
+  slipUploadedAt: string | null;
+  verifiedAt: string | null;
+  rejectedAt: string | null;
+  rejectionReason: string | null;
+};
+
+export type DriverCashTraceDriver = {
+  driverId: string;
+  username: string;
+  fullName: string;
+  branchId: string | null;
+  branchName: string | null;
+  collectedKd: string;
+  collectedOrderCount: number;
+  handedToManagerKd: string;
+  handedToManagerBagCount: number;
+  pendingWithDriverKd: string;
+  atBankKd: string;
+  pendingAtManagerKd: string;
+  awaitingVerificationKd: string;
+  rejectedKd: string;
+  bags: DriverCashTraceBag[];
+};
+
+export type DriverCashTraceResponse = {
+  range: { from: string; to: string };
+  kpis: {
+    totalCollectedKd: string;
+    totalHandedToManagerKd: string;
+    totalAtBankKd: string;
+    totalPendingWithDriverKd: string;
+    totalPendingAtManagerKd: string;
+    totalAwaitingVerificationKd: string;
+    totalRejectedKd: string;
+    totalCollectedOrderCount: number;
+    totalBagCount: number;
+  };
+  drivers: DriverCashTraceDriver[];
+};
+
+export function getDriverCashTrace(
+  token: string,
+  params: { from: string; to: string; driverId?: string; branchId?: string },
+) {
+  const search = new URLSearchParams({ from: params.from, to: params.to });
+  if (params.driverId) search.set('driverId', params.driverId);
+  if (params.branchId) search.set('branchId', params.branchId);
+  return apiJson<DriverCashTraceResponse>(
+    `/api/finance/reports/driver-cash-trace?${search.toString()}`,
+    { token },
+  );
+}
+
 // DUSTUR §2 — automatic midnight-to-midnight shift cycle (Kuwait time).
 export type ShiftCycleSnapshot = {
   timezone: string;

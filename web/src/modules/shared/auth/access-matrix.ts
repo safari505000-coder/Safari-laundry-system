@@ -101,6 +101,7 @@ export const ACCESS = {
   // ─── Executive financial island (OWNER + GM) ──────────────────────
   'financials.view': EXEC_PAIR,
   'financialCycleReport.view': EXEC_PAIR,
+  'driverCashTrace.view': withExec('ACCOUNTANT'),
   'ownerSerials.manage': EXEC_PAIR,
   'debtRecoveryReport.view': EXEC_PAIR,
   'liveMonitor.view': ['OWNER'] satisfies readonly SafariRole[],
