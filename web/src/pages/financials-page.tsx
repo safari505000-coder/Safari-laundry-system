@@ -39,7 +39,6 @@ import { Separator } from '@/modules/shared/components/ui/separator';
 import { Skeleton } from '@/modules/shared/components/ui/skeleton';
 import { Button } from '@/modules/shared/components/ui/button';
 import { Input } from '@/modules/shared/components/ui/input';
-import { Label } from '@/modules/shared/components/ui/label';
 import {
   Dialog,
   DialogContent,
@@ -60,6 +59,11 @@ import { ConsolidatedCashCard } from '@/modules/owner/components/ConsolidatedCas
 import { FinancialCycleCard } from '@/modules/owner/components/FinancialCycleCard';
 import { LowStockCard } from '@/modules/owner/components/LowStockCard';
 import { SerialGapCard } from '@/modules/owner/components/SerialGapCard';
+import {
+  FilterBar,
+  FilterField,
+  PageHeader,
+} from '@/modules/shared/components/page';
 
 function startOfDayIso(d: Date): string {
   const x = new Date(d);
@@ -298,39 +302,15 @@ export function FinancialsPage() {
     [];
 
   return (
-    <div className="space-y-8">
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
-            {t('financials.title')}
-          </h1>
-          <p className="text-sm text-zinc-500">{t('financials.subtitle')}</p>
-        </div>
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="space-y-1">
-            <Label htmlFor="fin-from" className="text-xs">
-              {t('financials.rangeFrom')}
-            </Label>
-            <Input
-              id="fin-from"
-              type="datetime-local"
-              value={from.slice(0, 16)}
-              onChange={(e) => setFrom(new Date(e.target.value).toISOString())}
-              className="h-9 w-[11.5rem]"
-            />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="fin-to" className="text-xs">
-              {t('financials.rangeTo')}
-            </Label>
-            <Input
-              id="fin-to"
-              type="datetime-local"
-              value={to.slice(0, 16)}
-              onChange={(e) => setTo(new Date(e.target.value).toISOString())}
-              className="h-9 w-[11.5rem]"
-            />
-          </div>
+    <div className="space-y-6">
+      <PageHeader
+        title={t('financials.title')}
+        subtitle={t('financials.subtitle')}
+        tone="blue"
+      />
+
+      <FilterBar
+        actions={
           <Button
             type="button"
             variant="outline"
@@ -344,8 +324,27 @@ export function FinancialsPage() {
             : <RefreshCw className="h-4 w-4" />}
             {t('financials.refreshExec')}
           </Button>
-        </div>
-      </header>
+        }
+      >
+        <FilterField label={t('financials.rangeFrom')}>
+          <Input
+            id="fin-from"
+            type="datetime-local"
+            value={from.slice(0, 16)}
+            onChange={(e) => setFrom(new Date(e.target.value).toISOString())}
+            className="h-9 w-[11.5rem]"
+          />
+        </FilterField>
+        <FilterField label={t('financials.rangeTo')}>
+          <Input
+            id="fin-to"
+            type="datetime-local"
+            value={to.slice(0, 16)}
+            onChange={(e) => setTo(new Date(e.target.value).toISOString())}
+            className="h-9 w-[11.5rem]"
+          />
+        </FilterField>
+      </FilterBar>
 
       {hasRole('OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT') ?
         <ConsolidatedCashCard token={token} />
