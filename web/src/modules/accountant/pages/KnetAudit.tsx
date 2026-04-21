@@ -33,15 +33,23 @@ import {
 } from '@/modules/shared/components/ui/select';
 import { cn } from '@/lib/utils';
 
-function startOfDayIso(d: Date): string {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x.toISOString();
-}
-
 function endOfDayIso(d: Date): string {
   const x = new Date(d);
   x.setHours(23, 59, 59, 999);
+  return x.toISOString();
+}
+
+/**
+ * V19.9.3 — default the audit window to the last 30 days instead of
+ * "today only". KNET reconciliation is retrospective work; opening on
+ * an empty table whenever a day has no K-Net made the accountant
+ * think the page was broken. Thirty days also matches the typical
+ * bank-statement export cycle accountants reconcile against.
+ */
+function startOfDayIsoDaysAgo(daysAgo: number): string {
+  const x = new Date();
+  x.setDate(x.getDate() - daysAgo);
+  x.setHours(0, 0, 0, 0);
   return x.toISOString();
 }
 
@@ -63,7 +71,7 @@ type RowStatus = 'green' | 'yellow' | 'red';
 export function KnetAudit() {
   const { t } = useTranslation();
   const { token, user } = useAuth();
-  const [from, setFrom] = useState(() => startOfDayIso(new Date()));
+  const [from, setFrom] = useState(() => startOfDayIsoDaysAgo(30));
   const [to, setTo] = useState(() => endOfDayIso(new Date()));
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState<IssuedInvoicesReport | null>(null);
@@ -280,13 +288,38 @@ export function KnetAudit() {
       ) : null}
 
       <Card className="border-slate-200 bg-white">
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base">{t('knetAudit.matchTable')}</CardTitle>
+          <span className="text-xs text-slate-500 tabular-nums">
+            عدد العمليات: <b className="text-slate-800">{rows.length}</b>
+          </span>
         </CardHeader>
         <CardContent className="p-0">
           {loading && !report ?
             <p className="p-6 text-sm text-slate-500">{t('knetAudit.loading')}</p>
-          : (
+          : rows.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 p-10 text-center">
+              <p className="text-sm font-medium text-slate-700">
+                لا توجد عمليات كي نت في الفترة المحددة
+              </p>
+              <p className="max-w-md text-xs leading-relaxed text-slate-500">
+                جرّب توسعة النطاق الزمني من الأعلى (تاريخ «من» أقدم)، أو
+                تأكّد أن هناك فواتير طريقة دفعها «كي نت» فعلياً ضمن هذه
+                الفترة. النطاق الافتراضي يُعرض عليك آخر 30 يوماً.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setFrom(startOfDayIsoDaysAgo(90));
+                  setTo(endOfDayIso(new Date()));
+                }}
+              >
+                توسعة إلى آخر 90 يوم
+              </Button>
+            </div>
+          ) : (
             <Table>
               <TableHeader>
                 <TableRow>
