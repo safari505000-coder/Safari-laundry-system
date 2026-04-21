@@ -30,7 +30,9 @@
     "db:seed": "prisma db seed",
     "seed:price-list": "tsx scripts/seed-price-list.ts",
     "web:dev": "npm run dev --prefix web",
-    "web:build": "npm run build --prefix web"
+    "web:build": "npm run build --prefix web",
+    "check": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/safety-check.ps1 full",
+    "check:precommit": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/safety-check.ps1 precommit"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
