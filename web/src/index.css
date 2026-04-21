@@ -246,7 +246,20 @@ body {
   #pos-receipt-print,
   #pos-receipt-print *,
   #staff-debts-print-root,
-  #staff-debts-print-root * {
+  #staff-debts-print-root *,
+  /*
+   * V19.8.8 — Every A4 printable that routes through the shared
+   * `PrintableSheet` component (HR payslip, attendance, leave, loan,
+   * customer statement) must be included in this visibility
+   * whitelist. The global `body *` rule above is a nuclear hammer
+   * intended for the POS 80mm roll and the staff-debts A4 snapshot;
+   * without adding `.printable-sheet` here the statement renders an
+   * empty roll of blank pages (user feedback: "يطلع صفحات بيضه").
+   */
+  .printable-sheet,
+  .printable-sheet *,
+  .printable-sheet-toolbar,
+  .printable-sheet-toolbar * {
     visibility: visible !important;
   }
   #staff-debts-print-root {
