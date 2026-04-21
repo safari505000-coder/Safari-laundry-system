@@ -223,13 +223,15 @@ export function ExecInteractiveDashboard() {
       agg[r.category] = (agg[r.category] ?? 0) + num(r.totalDebt);
     }
     const total = Object.values(agg).reduce((a, b) => a + b, 0) || 0.01;
-    return (['BRANCH', 'DRIVER', 'OWNER', 'CALL_CENTER'] as const).map(
-      (cat) => ({
-        category: cat,
-        amount: agg[cat] ?? 0,
-        pct: ((agg[cat] ?? 0) / total) * 100,
-      }),
-    );
+    // V19.10 — only BRANCH and DRIVER issue invoices, so they are the
+    // only entities that can accumulate customer debt worth tracking
+    // here. OWNER / CALL_CENTER buckets always sum to zero in practice
+    // and were only adding visual noise to the breakdown.
+    return (['BRANCH', 'DRIVER'] as const).map((cat) => ({
+      category: cat,
+      amount: agg[cat] ?? 0,
+      pct: ((agg[cat] ?? 0) / total) * 100,
+    }));
   }, [debts]);
 
   const fieldCashRows = useMemo(() => {
@@ -456,22 +458,14 @@ export function ExecInteractiveDashboard() {
                   label={t(
                     r.category === 'BRANCH'
                       ? 'dashboard.debtsBranch'
-                      : r.category === 'DRIVER'
-                        ? 'dashboard.debtsDriver'
-                        : r.category === 'OWNER'
-                          ? 'dashboard.debtsOwner'
-                          : 'dashboard.debtsCallCenter',
+                      : 'dashboard.debtsDriver',
                   )}
                   amount={formatKwdLabel(r.amount.toFixed(3))}
                   pct={r.pct}
                   barClass={
                     r.category === 'BRANCH'
                       ? 'bg-sky-500/80'
-                      : r.category === 'DRIVER'
-                        ? 'bg-orange-500/80'
-                        : r.category === 'OWNER'
-                          ? 'bg-violet-500/80'
-                          : 'bg-emerald-500/80'
+                      : 'bg-orange-500/80'
                   }
                   to="/financials"
                 />

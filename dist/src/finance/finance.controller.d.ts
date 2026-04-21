@@ -3,6 +3,7 @@ import { ConfirmHandoverDto } from './dto/confirm-handover.dto';
 import { DebtByCategoryQueryDto } from './dto/debt-by-category-query.dto';
 import { DailyPosSalesQueryDto } from './dto/daily-pos-sales-query.dto';
 import { DriverBalanceResponseDto, HandoverResultDto } from './dto/driver-balance.dto';
+import { DriverCashTraceQueryDto, DriverCashTraceResponseDto } from './dto/driver-cash-trace.dto';
 import { OwnerCustomerWalletSummaryDto } from './dto/owner-customer-wallet-summary.dto';
 import { UpdateDriverTrackingDto } from './dto/update-driver-tracking.dto';
 import { FinanceService } from './finance.service';
@@ -90,6 +91,7 @@ export declare class FinanceController {
             lastUpdatedAt: string;
         }[];
     }>;
+    getDriverCashTrace(query: DriverCashTraceQueryDto): Promise<DriverCashTraceResponseDto>;
     getRealtimeTotals(): Promise<{
         totalCash: string;
         totalOnline: string;

@@ -30,8 +30,8 @@ export declare class ExpensesService {
         createdAt: Date;
         updatedAt: Date;
         category: import("@prisma/client").$Enums.ExpenseCategory;
-        status: import("@prisma/client").$Enums.ExpenseStatus;
         amount: Prisma.Decimal;
+        status: import("@prisma/client").$Enums.ExpenseStatus;
         title: string;
         expenseMethod: import("@prisma/client").$Enums.ExpenseMethod;
         note: string | null;
@@ -54,8 +54,8 @@ export declare class ExpensesService {
         createdAt: Date;
         updatedAt: Date;
         category: import("@prisma/client").$Enums.ExpenseCategory;
-        status: import("@prisma/client").$Enums.ExpenseStatus;
         amount: Prisma.Decimal;
+        status: import("@prisma/client").$Enums.ExpenseStatus;
         title: string;
         expenseMethod: import("@prisma/client").$Enums.ExpenseMethod;
         note: string | null;
@@ -78,8 +78,8 @@ export declare class ExpensesService {
         createdAt: Date;
         updatedAt: Date;
         category: import("@prisma/client").$Enums.ExpenseCategory;
-        status: import("@prisma/client").$Enums.ExpenseStatus;
         amount: Prisma.Decimal;
+        status: import("@prisma/client").$Enums.ExpenseStatus;
         title: string;
         expenseMethod: import("@prisma/client").$Enums.ExpenseMethod;
         note: string | null;
@@ -103,8 +103,8 @@ export declare class ExpensesService {
         createdAt: Date;
         updatedAt: Date;
         category: import("@prisma/client").$Enums.ExpenseCategory;
-        status: import("@prisma/client").$Enums.ExpenseStatus;
         amount: Prisma.Decimal;
+        status: import("@prisma/client").$Enums.ExpenseStatus;
         title: string;
         expenseMethod: import("@prisma/client").$Enums.ExpenseMethod;
         note: string | null;

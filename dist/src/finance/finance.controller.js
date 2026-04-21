@@ -29,6 +29,7 @@ const branding_1 = require("../common/constants/branding");
 const confirm_handover_dto_1 = require("./dto/confirm-handover.dto");
 const debt_by_category_query_dto_1 = require("./dto/debt-by-category-query.dto");
 const daily_pos_sales_query_dto_1 = require("./dto/daily-pos-sales-query.dto");
+const driver_cash_trace_dto_1 = require("./dto/driver-cash-trace.dto");
 const update_driver_tracking_dto_1 = require("./dto/update-driver-tracking.dto");
 const finance_service_1 = require("./finance.service");
 const HANDOVER_RECEIPTS_DIR = (0, node_path_1.join)(process.cwd(), 'uploads', 'handover-receipts');
@@ -80,6 +81,9 @@ let FinanceController = class FinanceController {
     }
     getFinancialCycleReport() {
         return this.financeService.getOwnerFinancialCycleReport();
+    }
+    getDriverCashTrace(query) {
+        return this.financeService.getDriverCashTrace(query);
     }
     getRealtimeTotals() {
         return this.financeService.getRealtimeTotals();
@@ -250,6 +254,18 @@ __decorate([
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", void 0)
 ], FinanceController.prototype, "getFinancialCycleReport", null);
+__decorate([
+    (0, common_1.Get)('reports/driver-cash-trace'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),
+    (0, swagger_1.ApiOperation)({
+        summary: `Driver cash trace report (${branding_1.APP_BRAND})`,
+        description: 'V19.10 — trace each KD from driver collection through manager custody to verified bank deposit, for a given date window.',
+    }),
+    __param(0, (0, common_1.Query)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [driver_cash_trace_dto_1.DriverCashTraceQueryDto]),
+    __metadata("design:returntype", Promise)
+], FinanceController.prototype, "getDriverCashTrace", null);
 __decorate([
     (0, common_1.Get)('dashboard/realtime-totals'),
     (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),

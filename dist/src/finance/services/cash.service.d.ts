@@ -1,6 +1,7 @@
 import { PrismaService } from '../../prisma/prisma.service';
 import { ConfirmHandoverDto } from '../dto/confirm-handover.dto';
 import type { DriverBalanceResponseDto, HandoverResultDto } from '../dto/driver-balance.dto';
+import type { DriverCashTraceQueryDto, DriverCashTraceResponseDto } from '../dto/driver-cash-trace.dto';
 import type { UpdateDriverTrackingDto } from '../dto/update-driver-tracking.dto';
 export declare class CashService {
     private readonly prisma;
@@ -49,6 +50,7 @@ export declare class CashService {
         lastKnownLocation: string | null;
     }>;
     confirmHandover(managerId: string, dto: ConfirmHandoverDto): Promise<HandoverResultDto>;
+    getDriverCashTrace(query: DriverCashTraceQueryDto): Promise<DriverCashTraceResponseDto>;
     getOwnerFinancialCycleReport(): Promise<{
         rows: {
             orderId: string;

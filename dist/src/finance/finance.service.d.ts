@@ -2,6 +2,7 @@ import { DebtEntityCategory } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConfirmHandoverDto } from './dto/confirm-handover.dto';
 import type { DriverBalanceResponseDto, HandoverResultDto } from './dto/driver-balance.dto';
+import type { DriverCashTraceQueryDto, DriverCashTraceResponseDto } from './dto/driver-cash-trace.dto';
 import type { OwnerCustomerWalletSummaryDto } from './dto/owner-customer-wallet-summary.dto';
 import type { UpdateDriverTrackingDto } from './dto/update-driver-tracking.dto';
 import { CashService } from './services/cash.service';
@@ -104,6 +105,7 @@ export declare class FinanceService {
             lastUpdatedAt: string;
         }[];
     }>;
+    getDriverCashTrace(query: DriverCashTraceQueryDto): Promise<DriverCashTraceResponseDto>;
     getConsolidatedCashSnapshot(): Promise<ConsolidatedCashSnapshotDto>;
     getRealtimeTotals(): Promise<{
         totalCash: string;

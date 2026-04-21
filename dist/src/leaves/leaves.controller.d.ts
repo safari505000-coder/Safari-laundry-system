@@ -28,8 +28,8 @@ export declare class LeavesController {
         createdAt: Date;
         updatedAt: Date;
         userId: string;
-        status: import("@prisma/client").$Enums.LeaveStatus;
         type: import("@prisma/client").$Enums.LeaveType;
+        status: import("@prisma/client").$Enums.LeaveStatus;
         approvedById: string | null;
         approvedAt: Date | null;
         reason: string | null;
@@ -61,8 +61,8 @@ export declare class LeavesController {
         createdAt: Date;
         updatedAt: Date;
         userId: string;
-        status: import("@prisma/client").$Enums.LeaveStatus;
         type: import("@prisma/client").$Enums.LeaveType;
+        status: import("@prisma/client").$Enums.LeaveStatus;
         approvedById: string | null;
         approvedAt: Date | null;
         reason: string | null;
@@ -94,8 +94,8 @@ export declare class LeavesController {
         createdAt: Date;
         updatedAt: Date;
         userId: string;
-        status: import("@prisma/client").$Enums.LeaveStatus;
         type: import("@prisma/client").$Enums.LeaveType;
+        status: import("@prisma/client").$Enums.LeaveStatus;
         approvedById: string | null;
         approvedAt: Date | null;
         reason: string | null;
@@ -127,8 +127,8 @@ export declare class LeavesController {
         createdAt: Date;
         updatedAt: Date;
         userId: string;
-        status: import("@prisma/client").$Enums.LeaveStatus;
         type: import("@prisma/client").$Enums.LeaveType;
+        status: import("@prisma/client").$Enums.LeaveStatus;
         approvedById: string | null;
         approvedAt: Date | null;
         reason: string | null;
@@ -160,8 +160,8 @@ export declare class LeavesController {
         createdAt: Date;
         updatedAt: Date;
         userId: string;
-        status: import("@prisma/client").$Enums.LeaveStatus;
         type: import("@prisma/client").$Enums.LeaveType;
+        status: import("@prisma/client").$Enums.LeaveStatus;
         approvedById: string | null;
         approvedAt: Date | null;
         reason: string | null;
@@ -193,8 +193,8 @@ export declare class LeavesController {
         createdAt: Date;
         updatedAt: Date;
         userId: string;
-        status: import("@prisma/client").$Enums.LeaveStatus;
         type: import("@prisma/client").$Enums.LeaveType;
+        status: import("@prisma/client").$Enums.LeaveStatus;
         approvedById: string | null;
         approvedAt: Date | null;
         reason: string | null;
@@ -226,8 +226,8 @@ export declare class LeavesController {
         createdAt: Date;
         updatedAt: Date;
         userId: string;
-        status: import("@prisma/client").$Enums.LeaveStatus;
         type: import("@prisma/client").$Enums.LeaveType;
+        status: import("@prisma/client").$Enums.LeaveStatus;
         approvedById: string | null;
         approvedAt: Date | null;
         reason: string | null;

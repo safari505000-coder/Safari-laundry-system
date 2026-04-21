@@ -14,6 +14,28 @@ const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
 const prisma_service_1 = require("../../prisma/prisma.service");
 const finance_money_1 = require("../finance-money");
+function sumKd(values) {
+    let total = 0;
+    for (const v of values) {
+        const n = Number(v);
+        if (Number.isFinite(n))
+            total += n;
+    }
+    return total.toFixed(4);
+}
+function zeroKpis() {
+    return {
+        totalCollectedKd: '0.0000',
+        totalHandedToManagerKd: '0.0000',
+        totalAtBankKd: '0.0000',
+        totalPendingWithDriverKd: '0.0000',
+        totalPendingAtManagerKd: '0.0000',
+        totalAwaitingVerificationKd: '0.0000',
+        totalRejectedKd: '0.0000',
+        totalCollectedOrderCount: 0,
+        totalBagCount: 0,
+    };
+}
 function parseLatLng(input) {
     if (!input)
         return null;
@@ -318,6 +340,149 @@ let CashService = class CashService {
                 bankDepositReceiptUrl: dto.depositReceiptUrl ?? null,
             };
         });
+    }
+    async getDriverCashTrace(query) {
+        const from = new Date(query.from);
+        const to = new Date(query.to);
+        const driversRaw = await this.prisma.user.findMany({
+            where: {
+                safariRole: client_1.SafariRole.DRIVER,
+                ...(query.driverId ? { id: query.driverId } : {}),
+                ...(query.branchId ? { branchId: query.branchId } : {}),
+            },
+            select: {
+                id: true,
+                username: true,
+                fullName: true,
+                branchId: true,
+                branch: { select: { id: true, name: true } },
+            },
+            orderBy: { fullName: 'asc' },
+        });
+        if (driversRaw.length === 0) {
+            return {
+                range: { from: from.toISOString(), to: to.toISOString() },
+                kpis: zeroKpis(),
+                drivers: [],
+            };
+        }
+        const driverIds = driversRaw.map((d) => d.id);
+        const collectedAgg = await this.prisma.order.groupBy({
+            by: ['driverId'],
+            where: {
+                driverId: { in: driverIds },
+                posPaymentMethod: client_1.PosPaymentMethod.CASH,
+                status: client_1.OrderStatus.COMPLETED,
+                completedAt: { gte: from, lte: to },
+            },
+            _sum: { totalPrice: true },
+            _count: { _all: true },
+        });
+        const collectedByDriver = new Map();
+        for (const row of collectedAgg) {
+            if (!row.driverId)
+                continue;
+            collectedByDriver.set(row.driverId, {
+                kd: row._sum.totalPrice?.toString() ?? '0',
+                count: row._count._all,
+            });
+        }
+        const bags = await this.prisma.managerCashCustody.findMany({
+            where: {
+                driverId: { in: driverIds },
+                receivedFromDriverAt: { gte: from, lte: to },
+                ...(query.branchId ? { branchId: query.branchId } : {}),
+            },
+            select: {
+                id: true,
+                driverId: true,
+                managerId: true,
+                branchId: true,
+                amountKd: true,
+                settledOrderCount: true,
+                status: true,
+                receivedFromDriverAt: true,
+                slipUploadedAt: true,
+                verifiedAt: true,
+                rejectedAt: true,
+                rejectionReason: true,
+                manager: { select: { id: true, username: true, fullName: true } },
+                branch: { select: { id: true, name: true } },
+            },
+            orderBy: { receivedFromDriverAt: 'asc' },
+        });
+        const bagsByDriver = new Map();
+        for (const bag of bags) {
+            const list = bagsByDriver.get(bag.driverId) ?? [];
+            list.push({
+                id: bag.id,
+                amountKd: bag.amountKd.toString(),
+                settledOrderCount: bag.settledOrderCount,
+                status: bag.status,
+                managerId: bag.manager?.id ?? null,
+                managerName: bag.manager?.fullName ?? null,
+                managerUsername: bag.manager?.username ?? null,
+                branchId: bag.branch?.id ?? null,
+                branchName: bag.branch?.name ?? null,
+                receivedFromDriverAt: bag.receivedFromDriverAt.toISOString(),
+                slipUploadedAt: bag.slipUploadedAt?.toISOString() ?? null,
+                verifiedAt: bag.verifiedAt?.toISOString() ?? null,
+                rejectedAt: bag.rejectedAt?.toISOString() ?? null,
+                rejectionReason: bag.rejectionReason ?? null,
+            });
+            bagsByDriver.set(bag.driverId, list);
+        }
+        const drivers = driversRaw.map((d) => {
+            const collected = collectedByDriver.get(d.id) ?? { kd: '0', count: 0 };
+            const list = bagsByDriver.get(d.id) ?? [];
+            const handedToManagerKd = sumKd(list.map((b) => b.amountKd));
+            const atBankKd = sumKd(list.filter((b) => b.status === 'VERIFIED').map((b) => b.amountKd));
+            const pendingAtManagerKd = sumKd(list
+                .filter((b) => b.status === 'PENDING_DEPOSIT')
+                .map((b) => b.amountKd));
+            const awaitingVerificationKd = sumKd(list
+                .filter((b) => b.status === 'AWAITING_VERIFICATION')
+                .map((b) => b.amountKd));
+            const rejectedKd = sumKd(list.filter((b) => b.status === 'REJECTED').map((b) => b.amountKd));
+            const diff = Number(collected.kd) - Number(handedToManagerKd);
+            const pendingWithDriverKd = diff > 0 ? diff.toFixed(4) : '0.0000';
+            return {
+                driverId: d.id,
+                username: d.username,
+                fullName: d.fullName,
+                branchId: d.branch?.id ?? null,
+                branchName: d.branch?.name ?? null,
+                collectedKd: collected.kd,
+                collectedOrderCount: collected.count,
+                handedToManagerKd,
+                handedToManagerBagCount: list.length,
+                pendingWithDriverKd,
+                atBankKd,
+                pendingAtManagerKd,
+                awaitingVerificationKd,
+                rejectedKd,
+                bags: list,
+            };
+        });
+        const active = drivers.filter((d) => Number(d.collectedKd) > 0 ||
+            d.bags.length > 0 ||
+            d.collectedOrderCount > 0);
+        const kpis = {
+            totalCollectedKd: sumKd(active.map((d) => d.collectedKd)),
+            totalHandedToManagerKd: sumKd(active.map((d) => d.handedToManagerKd)),
+            totalAtBankKd: sumKd(active.map((d) => d.atBankKd)),
+            totalPendingWithDriverKd: sumKd(active.map((d) => d.pendingWithDriverKd)),
+            totalPendingAtManagerKd: sumKd(active.map((d) => d.pendingAtManagerKd)),
+            totalAwaitingVerificationKd: sumKd(active.map((d) => d.awaitingVerificationKd)),
+            totalRejectedKd: sumKd(active.map((d) => d.rejectedKd)),
+            totalCollectedOrderCount: active.reduce((n, d) => n + d.collectedOrderCount, 0),
+            totalBagCount: active.reduce((n, d) => n + d.bags.length, 0),
+        };
+        return {
+            range: { from: from.toISOString(), to: to.toISOString() },
+            kpis,
+            drivers: active,
+        };
     }
     async getOwnerFinancialCycleReport() {
         const rows = await this.prisma.order.findMany({

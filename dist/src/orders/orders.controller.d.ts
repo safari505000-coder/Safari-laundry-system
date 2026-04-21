@@ -13,6 +13,13 @@ export declare class OrdersController {
         id: string;
         createdAt: Date;
         updatedAt: Date;
+        customer: {
+            id: string;
+            phone: string;
+            address: string | null;
+            phone2: string | null;
+            displayName: string | null;
+        };
         status: import("@prisma/client").$Enums.OrderStatus;
         serviceType: import("@prisma/client").$Enums.ServiceType;
         totalPrice: import("@prisma/client-runtime-utils").Decimal;
@@ -25,13 +32,6 @@ export declare class OrdersController {
         posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
         completedAt: Date | null;
         walletSettledAt: Date | null;
-        customer: {
-            id: string;
-            phone: string;
-            address: string | null;
-            phone2: string | null;
-            displayName: string | null;
-        };
         driver: {
             id: string;
             username: string;
@@ -57,6 +57,13 @@ export declare class OrdersController {
         id: string;
         createdAt: Date;
         updatedAt: Date;
+        customer: {
+            id: string;
+            phone: string;
+            address: string | null;
+            phone2: string | null;
+            displayName: string | null;
+        };
         status: import("@prisma/client").$Enums.OrderStatus;
         serviceType: import("@prisma/client").$Enums.ServiceType;
         totalPrice: import("@prisma/client-runtime-utils").Decimal;
@@ -69,13 +76,6 @@ export declare class OrdersController {
         posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
         completedAt: Date | null;
         walletSettledAt: Date | null;
-        customer: {
-            id: string;
-            phone: string;
-            address: string | null;
-            phone2: string | null;
-            displayName: string | null;
-        };
         driver: {
             id: string;
             username: string;
@@ -101,6 +101,13 @@ export declare class OrdersController {
         id: string;
         createdAt: Date;
         updatedAt: Date;
+        customer: {
+            id: string;
+            phone: string;
+            address: string | null;
+            phone2: string | null;
+            displayName: string | null;
+        };
         status: import("@prisma/client").$Enums.OrderStatus;
         serviceType: import("@prisma/client").$Enums.ServiceType;
         totalPrice: import("@prisma/client-runtime-utils").Decimal;
@@ -113,13 +120,6 @@ export declare class OrdersController {
         posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
         completedAt: Date | null;
         walletSettledAt: Date | null;
-        customer: {
-            id: string;
-            phone: string;
-            address: string | null;
-            phone2: string | null;
-            displayName: string | null;
-        };
         driver: {
             id: string;
             username: string;
@@ -181,6 +181,13 @@ export declare class OrdersController {
         id: string;
         createdAt: Date;
         updatedAt: Date;
+        customer: {
+            id: string;
+            phone: string;
+            address: string | null;
+            phone2: string | null;
+            displayName: string | null;
+        };
         status: import("@prisma/client").$Enums.OrderStatus;
         serviceType: import("@prisma/client").$Enums.ServiceType;
         totalPrice: import("@prisma/client-runtime-utils").Decimal;
@@ -193,13 +200,6 @@ export declare class OrdersController {
         posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
         completedAt: Date | null;
         walletSettledAt: Date | null;
-        customer: {
-            id: string;
-            phone: string;
-            address: string | null;
-            phone2: string | null;
-            displayName: string | null;
-        };
         driver: {
             id: string;
             username: string;
@@ -225,6 +225,13 @@ export declare class OrdersController {
         id: string;
         createdAt: Date;
         updatedAt: Date;
+        customer: {
+            id: string;
+            phone: string;
+            address: string | null;
+            phone2: string | null;
+            displayName: string | null;
+        };
         status: import("@prisma/client").$Enums.OrderStatus;
         serviceType: import("@prisma/client").$Enums.ServiceType;
         totalPrice: import("@prisma/client-runtime-utils").Decimal;
@@ -237,13 +244,6 @@ export declare class OrdersController {
         posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
         completedAt: Date | null;
         walletSettledAt: Date | null;
-        customer: {
-            id: string;
-            phone: string;
-            address: string | null;
-            phone2: string | null;
-            displayName: string | null;
-        };
         driver: {
             id: string;
             username: string;
@@ -269,6 +269,13 @@ export declare class OrdersController {
         id: string;
         createdAt: Date;
         updatedAt: Date;
+        customer: {
+            id: string;
+            phone: string;
+            address: string | null;
+            phone2: string | null;
+            displayName: string | null;
+        };
         status: import("@prisma/client").$Enums.OrderStatus;
         serviceType: import("@prisma/client").$Enums.ServiceType;
         totalPrice: import("@prisma/client-runtime-utils").Decimal;
@@ -281,13 +288,6 @@ export declare class OrdersController {
         posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
         completedAt: Date | null;
         walletSettledAt: Date | null;
-        customer: {
-            id: string;
-            phone: string;
-            address: string | null;
-            phone2: string | null;
-            displayName: string | null;
-        };
         driver: {
             id: string;
             username: string;

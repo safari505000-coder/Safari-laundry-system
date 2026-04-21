@@ -57,6 +57,9 @@ let FinanceService = class FinanceService {
     async getOwnerFinancialCycleReport() {
         return this.cashService.getOwnerFinancialCycleReport();
     }
+    async getDriverCashTrace(query) {
+        return this.cashService.getDriverCashTrace(query);
+    }
     async getConsolidatedCashSnapshot() {
         const [driverCashKd, custodyAgg, walletAgg, unverifiedAgg, distinctDriversHoldingCash,] = await Promise.all([
             this.cashService.getTotalCashWithDrivers(),

@@ -21,9 +21,9 @@ export declare class VehicleExpensesController {
         id: string;
         createdAt: Date;
         updatedAt: Date;
+        amount: import("@prisma/client-runtime-utils").Decimal;
         vehicleLabel: string | null;
         status: import("@prisma/client").$Enums.VehicleExpenseStatus;
-        amount: import("@prisma/client-runtime-utils").Decimal;
         receiptUrl: string;
         expenseDate: Date;
         rejectionReason: string | null;
@@ -51,9 +51,9 @@ export declare class VehicleExpensesController {
         id: string;
         createdAt: Date;
         updatedAt: Date;
+        amount: import("@prisma/client-runtime-utils").Decimal;
         vehicleLabel: string | null;
         status: import("@prisma/client").$Enums.VehicleExpenseStatus;
-        amount: import("@prisma/client-runtime-utils").Decimal;
         receiptUrl: string;
         expenseDate: Date;
         rejectionReason: string | null;
@@ -81,9 +81,9 @@ export declare class VehicleExpensesController {
         id: string;
         createdAt: Date;
         updatedAt: Date;
+        amount: import("@prisma/client-runtime-utils").Decimal;
         vehicleLabel: string | null;
         status: import("@prisma/client").$Enums.VehicleExpenseStatus;
-        amount: import("@prisma/client-runtime-utils").Decimal;
         receiptUrl: string;
         expenseDate: Date;
         rejectionReason: string | null;
@@ -133,9 +133,9 @@ export declare class VehicleExpensesController {
         id: string;
         createdAt: Date;
         updatedAt: Date;
+        amount: import("@prisma/client-runtime-utils").Decimal;
         vehicleLabel: string | null;
         status: import("@prisma/client").$Enums.VehicleExpenseStatus;
-        amount: import("@prisma/client-runtime-utils").Decimal;
         receiptUrl: string;
         expenseDate: Date;
         rejectionReason: string | null;

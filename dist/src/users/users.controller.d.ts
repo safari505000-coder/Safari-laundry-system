@@ -105,6 +105,8 @@ export declare class UsersController {
             id: string;
             createdAt: Date;
             updatedAt: Date;
+            customerId: string;
+            subscriptionId: string | null;
             status: import("@prisma/client").$Enums.OrderStatus;
             serviceType: import("@prisma/client").$Enums.ServiceType;
             totalPrice: import("@prisma/client-runtime-utils").Decimal;
@@ -114,7 +116,6 @@ export declare class UsersController {
             reminderCount: number;
             lastReminderAt: Date | null;
             notes: string | null;
-            customerId: string;
             driverId: string | null;
             posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
             completedAt: Date | null;
@@ -123,7 +124,6 @@ export declare class UsersController {
             posHostedPaymentUrl: string | null;
             handoverShiftId: string | null;
             transferredFromDriverId: string | null;
-            subscriptionId: string | null;
         }[];
         shiftsAsDriver: {
             id: string;
@@ -158,10 +158,10 @@ export declare class UsersController {
         ledgerTransactions: {
             id: string;
             createdAt: Date;
-            customerId: string;
-            subscriptionId: string | null;
             type: import("@prisma/client").$Enums.LedgerTransactionType;
+            customerId: string;
             orderId: string | null;
+            subscriptionId: string | null;
             amount: import("@prisma/client-runtime-utils").Decimal;
             balanceBefore: import("@prisma/client-runtime-utils").Decimal;
             balanceAfter: import("@prisma/client-runtime-utils").Decimal;
@@ -176,8 +176,8 @@ export declare class UsersController {
             createdAt: Date;
             updatedAt: Date;
             category: import("@prisma/client").$Enums.ExpenseCategory;
-            status: import("@prisma/client").$Enums.ExpenseStatus;
             amount: import("@prisma/client-runtime-utils").Decimal;
+            status: import("@prisma/client").$Enums.ExpenseStatus;
             title: string;
             expenseMethod: import("@prisma/client").$Enums.ExpenseMethod;
             note: string | null;
@@ -238,10 +238,10 @@ export declare class UsersController {
             id: string;
             createdAt: Date;
             updatedAt: Date;
-            status: import("@prisma/client").$Enums.DepositStatus;
-            driverId: string;
             type: import("@prisma/client").$Enums.DepositType;
             amount: import("@prisma/client-runtime-utils").Decimal;
+            status: import("@prisma/client").$Enums.DepositStatus;
+            driverId: string;
             receiptImage: string;
             auditComment: string | null;
             auditedById: string | null;
@@ -250,10 +250,10 @@ export declare class UsersController {
             id: string;
             createdAt: Date;
             updatedAt: Date;
-            status: import("@prisma/client").$Enums.DepositStatus;
-            driverId: string;
             type: import("@prisma/client").$Enums.DepositType;
             amount: import("@prisma/client-runtime-utils").Decimal;
+            status: import("@prisma/client").$Enums.DepositStatus;
+            driverId: string;
             receiptImage: string;
             auditComment: string | null;
             auditedById: string | null;
@@ -492,6 +492,8 @@ export declare class UsersController {
             id: string;
             createdAt: Date;
             updatedAt: Date;
+            customerId: string;
+            subscriptionId: string | null;
             status: import("@prisma/client").$Enums.OrderStatus;
             serviceType: import("@prisma/client").$Enums.ServiceType;
             totalPrice: import("@prisma/client-runtime-utils").Decimal;
@@ -501,7 +503,6 @@ export declare class UsersController {
             reminderCount: number;
             lastReminderAt: Date | null;
             notes: string | null;
-            customerId: string;
             driverId: string | null;
             posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
             completedAt: Date | null;
@@ -510,7 +511,6 @@ export declare class UsersController {
             posHostedPaymentUrl: string | null;
             handoverShiftId: string | null;
             transferredFromDriverId: string | null;
-            subscriptionId: string | null;
         }[];
         attendanceLogs: {
             id: string;
@@ -530,8 +530,8 @@ export declare class UsersController {
             createdAt: Date;
             updatedAt: Date;
             userId: string;
-            status: import("@prisma/client").$Enums.LeaveStatus;
             type: import("@prisma/client").$Enums.LeaveType;
+            status: import("@prisma/client").$Enums.LeaveStatus;
             approvedById: string | null;
             approvedAt: Date | null;
             reason: string | null;
@@ -545,8 +545,8 @@ export declare class UsersController {
             createdAt: Date;
             updatedAt: Date;
             userId: string;
-            status: import("@prisma/client").$Enums.LeaveStatus;
             type: import("@prisma/client").$Enums.LeaveType;
+            status: import("@prisma/client").$Enums.LeaveStatus;
             approvedById: string | null;
             approvedAt: Date | null;
             reason: string | null;
@@ -560,8 +560,8 @@ export declare class UsersController {
             createdAt: Date;
             updatedAt: Date;
             userId: string;
-            status: import("@prisma/client").$Enums.LoanStatus;
             amount: import("@prisma/client-runtime-utils").Decimal;
+            status: import("@prisma/client").$Enums.LoanStatus;
             approvedById: string | null;
             approvedAt: Date | null;
             reason: string | null;
@@ -575,8 +575,8 @@ export declare class UsersController {
             createdAt: Date;
             updatedAt: Date;
             userId: string;
-            status: import("@prisma/client").$Enums.LoanStatus;
             amount: import("@prisma/client-runtime-utils").Decimal;
+            status: import("@prisma/client").$Enums.LoanStatus;
             approvedById: string | null;
             approvedAt: Date | null;
             reason: string | null;
@@ -604,9 +604,9 @@ export declare class UsersController {
             id: string;
             createdAt: Date;
             updatedAt: Date;
+            amount: import("@prisma/client-runtime-utils").Decimal;
             vehicleLabel: string | null;
             status: import("@prisma/client").$Enums.VehicleExpenseStatus;
-            amount: import("@prisma/client-runtime-utils").Decimal;
             receiptUrl: string;
             expenseDate: Date;
             rejectionReason: string | null;
@@ -623,9 +623,9 @@ export declare class UsersController {
             id: string;
             createdAt: Date;
             updatedAt: Date;
+            amount: import("@prisma/client-runtime-utils").Decimal;
             vehicleLabel: string | null;
             status: import("@prisma/client").$Enums.VehicleExpenseStatus;
-            amount: import("@prisma/client-runtime-utils").Decimal;
             receiptUrl: string;
             expenseDate: Date;
             rejectionReason: string | null;
@@ -730,6 +730,8 @@ export declare class UsersController {
             id: string;
             createdAt: Date;
             updatedAt: Date;
+            customerId: string;
+            subscriptionId: string | null;
             status: import("@prisma/client").$Enums.OrderStatus;
             serviceType: import("@prisma/client").$Enums.ServiceType;
             totalPrice: import("@prisma/client-runtime-utils").Decimal;
@@ -739,7 +741,6 @@ export declare class UsersController {
             reminderCount: number;
             lastReminderAt: Date | null;
             notes: string | null;
-            customerId: string;
             driverId: string | null;
             posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
             completedAt: Date | null;
@@ -748,7 +749,6 @@ export declare class UsersController {
             posHostedPaymentUrl: string | null;
             handoverShiftId: string | null;
             transferredFromDriverId: string | null;
-            subscriptionId: string | null;
         }[];
         shiftsAsDriver: {
             id: string;
@@ -783,10 +783,10 @@ export declare class UsersController {
         ledgerTransactions: {
             id: string;
             createdAt: Date;
-            customerId: string;
-            subscriptionId: string | null;
             type: import("@prisma/client").$Enums.LedgerTransactionType;
+            customerId: string;
             orderId: string | null;
+            subscriptionId: string | null;
             amount: import("@prisma/client-runtime-utils").Decimal;
             balanceBefore: import("@prisma/client-runtime-utils").Decimal;
             balanceAfter: import("@prisma/client-runtime-utils").Decimal;
@@ -801,8 +801,8 @@ export declare class UsersController {
             createdAt: Date;
             updatedAt: Date;
             category: import("@prisma/client").$Enums.ExpenseCategory;
-            status: import("@prisma/client").$Enums.ExpenseStatus;
             amount: import("@prisma/client-runtime-utils").Decimal;
+            status: import("@prisma/client").$Enums.ExpenseStatus;
             title: string;
             expenseMethod: import("@prisma/client").$Enums.ExpenseMethod;
             note: string | null;
@@ -863,10 +863,10 @@ export declare class UsersController {
             id: string;
             createdAt: Date;
             updatedAt: Date;
-            status: import("@prisma/client").$Enums.DepositStatus;
-            driverId: string;
             type: import("@prisma/client").$Enums.DepositType;
             amount: import("@prisma/client-runtime-utils").Decimal;
+            status: import("@prisma/client").$Enums.DepositStatus;
+            driverId: string;
             receiptImage: string;
             auditComment: string | null;
             auditedById: string | null;
@@ -875,10 +875,10 @@ export declare class UsersController {
             id: string;
             createdAt: Date;
             updatedAt: Date;
-            status: import("@prisma/client").$Enums.DepositStatus;
-            driverId: string;
             type: import("@prisma/client").$Enums.DepositType;
             amount: import("@prisma/client-runtime-utils").Decimal;
+            status: import("@prisma/client").$Enums.DepositStatus;
+            driverId: string;
             receiptImage: string;
             auditComment: string | null;
             auditedById: string | null;
@@ -1117,6 +1117,8 @@ export declare class UsersController {
             id: string;
             createdAt: Date;
             updatedAt: Date;
+            customerId: string;
+            subscriptionId: string | null;
             status: import("@prisma/client").$Enums.OrderStatus;
             serviceType: import("@prisma/client").$Enums.ServiceType;
             totalPrice: import("@prisma/client-runtime-utils").Decimal;
@@ -1126,7 +1128,6 @@ export declare class UsersController {
             reminderCount: number;
             lastReminderAt: Date | null;
             notes: string | null;
-            customerId: string;
             driverId: string | null;
             posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
             completedAt: Date | null;
@@ -1135,7 +1136,6 @@ export declare class UsersController {
             posHostedPaymentUrl: string | null;
             handoverShiftId: string | null;
             transferredFromDriverId: string | null;
-            subscriptionId: string | null;
         }[];
         attendanceLogs: {
             id: string;
@@ -1155,8 +1155,8 @@ export declare class UsersController {
             createdAt: Date;
             updatedAt: Date;
             userId: string;
-            status: import("@prisma/client").$Enums.LeaveStatus;
             type: import("@prisma/client").$Enums.LeaveType;
+            status: import("@prisma/client").$Enums.LeaveStatus;
             approvedById: string | null;
             approvedAt: Date | null;
             reason: string | null;
@@ -1170,8 +1170,8 @@ export declare class UsersController {
             createdAt: Date;
             updatedAt: Date;
             userId: string;
-            status: import("@prisma/client").$Enums.LeaveStatus;
             type: import("@prisma/client").$Enums.LeaveType;
+            status: import("@prisma/client").$Enums.LeaveStatus;
             approvedById: string | null;
             approvedAt: Date | null;
             reason: string | null;
@@ -1185,8 +1185,8 @@ export declare class UsersController {
             createdAt: Date;
             updatedAt: Date;
             userId: string;
-            status: import("@prisma/client").$Enums.LoanStatus;
             amount: import("@prisma/client-runtime-utils").Decimal;
+            status: import("@prisma/client").$Enums.LoanStatus;
             approvedById: string | null;
             approvedAt: Date | null;
             reason: string | null;
@@ -1200,8 +1200,8 @@ export declare class UsersController {
             createdAt: Date;
             updatedAt: Date;
             userId: string;
-            status: import("@prisma/client").$Enums.LoanStatus;
             amount: import("@prisma/client-runtime-utils").Decimal;
+            status: import("@prisma/client").$Enums.LoanStatus;
             approvedById: string | null;
             approvedAt: Date | null;
             reason: string | null;
@@ -1229,9 +1229,9 @@ export declare class UsersController {
             id: string;
             createdAt: Date;
             updatedAt: Date;
+            amount: import("@prisma/client-runtime-utils").Decimal;
             vehicleLabel: string | null;
             status: import("@prisma/client").$Enums.VehicleExpenseStatus;
-            amount: import("@prisma/client-runtime-utils").Decimal;
             receiptUrl: string;
             expenseDate: Date;
             rejectionReason: string | null;
@@ -1248,9 +1248,9 @@ export declare class UsersController {
             id: string;
             createdAt: Date;
             updatedAt: Date;
+            amount: import("@prisma/client-runtime-utils").Decimal;
             vehicleLabel: string | null;
             status: import("@prisma/client").$Enums.VehicleExpenseStatus;
-            amount: import("@prisma/client-runtime-utils").Decimal;
             receiptUrl: string;
             expenseDate: Date;
             rejectionReason: string | null;
@@ -1355,6 +1355,8 @@ export declare class UsersController {
             id: string;
             createdAt: Date;
             updatedAt: Date;
+            customerId: string;
+            subscriptionId: string | null;
             status: import("@prisma/client").$Enums.OrderStatus;
             serviceType: import("@prisma/client").$Enums.ServiceType;
             totalPrice: import("@prisma/client-runtime-utils").Decimal;
@@ -1364,7 +1366,6 @@ export declare class UsersController {
             reminderCount: number;
             lastReminderAt: Date | null;
             notes: string | null;
-            customerId: string;
             driverId: string | null;
             posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
             completedAt: Date | null;
@@ -1373,7 +1374,6 @@ export declare class UsersController {
             posHostedPaymentUrl: string | null;
             handoverShiftId: string | null;
             transferredFromDriverId: string | null;
-            subscriptionId: string | null;
         }[];
         shiftsAsDriver: {
             id: string;
@@ -1408,10 +1408,10 @@ export declare class UsersController {
         ledgerTransactions: {
             id: string;
             createdAt: Date;
-            customerId: string;
-            subscriptionId: string | null;
             type: import("@prisma/client").$Enums.LedgerTransactionType;
+            customerId: string;
             orderId: string | null;
+            subscriptionId: string | null;
             amount: import("@prisma/client-runtime-utils").Decimal;
             balanceBefore: import("@prisma/client-runtime-utils").Decimal;
             balanceAfter: import("@prisma/client-runtime-utils").Decimal;
@@ -1426,8 +1426,8 @@ export declare class UsersController {
             createdAt: Date;
             updatedAt: Date;
             category: import("@prisma/client").$Enums.ExpenseCategory;
-            status: import("@prisma/client").$Enums.ExpenseStatus;
             amount: import("@prisma/client-runtime-utils").Decimal;
+            status: import("@prisma/client").$Enums.ExpenseStatus;
             title: string;
             expenseMethod: import("@prisma/client").$Enums.ExpenseMethod;
             note: string | null;
@@ -1488,10 +1488,10 @@ export declare class UsersController {
             id: string;
             createdAt: Date;
             updatedAt: Date;
-            status: import("@prisma/client").$Enums.DepositStatus;
-            driverId: string;
             type: import("@prisma/client").$Enums.DepositType;
             amount: import("@prisma/client-runtime-utils").Decimal;
+            status: import("@prisma/client").$Enums.DepositStatus;
+            driverId: string;
             receiptImage: string;
             auditComment: string | null;
             auditedById: string | null;
@@ -1500,10 +1500,10 @@ export declare class UsersController {
             id: string;
             createdAt: Date;
             updatedAt: Date;
-            status: import("@prisma/client").$Enums.DepositStatus;
-            driverId: string;
             type: import("@prisma/client").$Enums.DepositType;
             amount: import("@prisma/client-runtime-utils").Decimal;
+            status: import("@prisma/client").$Enums.DepositStatus;
+            driverId: string;
             receiptImage: string;
             auditComment: string | null;
             auditedById: string | null;
@@ -1742,6 +1742,8 @@ export declare class UsersController {
             id: string;
             createdAt: Date;
             updatedAt: Date;
+            customerId: string;
+            subscriptionId: string | null;
             status: import("@prisma/client").$Enums.OrderStatus;
             serviceType: import("@prisma/client").$Enums.ServiceType;
             totalPrice: import("@prisma/client-runtime-utils").Decimal;
@@ -1751,7 +1753,6 @@ export declare class UsersController {
             reminderCount: number;
             lastReminderAt: Date | null;
             notes: string | null;
-            customerId: string;
             driverId: string | null;
             posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
             completedAt: Date | null;
@@ -1760,7 +1761,6 @@ export declare class UsersController {
             posHostedPaymentUrl: string | null;
             handoverShiftId: string | null;
             transferredFromDriverId: string | null;
-            subscriptionId: string | null;
         }[];
         attendanceLogs: {
             id: string;
@@ -1780,8 +1780,8 @@ export declare class UsersController {
             createdAt: Date;
             updatedAt: Date;
             userId: string;
-            status: import("@prisma/client").$Enums.LeaveStatus;
             type: import("@prisma/client").$Enums.LeaveType;
+            status: import("@prisma/client").$Enums.LeaveStatus;
             approvedById: string | null;
             approvedAt: Date | null;
             reason: string | null;
@@ -1795,8 +1795,8 @@ export declare class UsersController {
             createdAt: Date;
             updatedAt: Date;
             userId: string;
-            status: import("@prisma/client").$Enums.LeaveStatus;
             type: import("@prisma/client").$Enums.LeaveType;
+            status: import("@prisma/client").$Enums.LeaveStatus;
             approvedById: string | null;
             approvedAt: Date | null;
             reason: string | null;
@@ -1810,8 +1810,8 @@ export declare class UsersController {
             createdAt: Date;
             updatedAt: Date;
             userId: string;
-            status: import("@prisma/client").$Enums.LoanStatus;
             amount: import("@prisma/client-runtime-utils").Decimal;
+            status: import("@prisma/client").$Enums.LoanStatus;
             approvedById: string | null;
             approvedAt: Date | null;
             reason: string | null;
@@ -1825,8 +1825,8 @@ export declare class UsersController {
             createdAt: Date;
             updatedAt: Date;
             userId: string;
-            status: import("@prisma/client").$Enums.LoanStatus;
             amount: import("@prisma/client-runtime-utils").Decimal;
+            status: import("@prisma/client").$Enums.LoanStatus;
             approvedById: string | null;
             approvedAt: Date | null;
             reason: string | null;
@@ -1854,9 +1854,9 @@ export declare class UsersController {
             id: string;
             createdAt: Date;
             updatedAt: Date;
+            amount: import("@prisma/client-runtime-utils").Decimal;
             vehicleLabel: string | null;
             status: import("@prisma/client").$Enums.VehicleExpenseStatus;
-            amount: import("@prisma/client-runtime-utils").Decimal;
             receiptUrl: string;
             expenseDate: Date;
             rejectionReason: string | null;
@@ -1873,9 +1873,9 @@ export declare class UsersController {
             id: string;
             createdAt: Date;
             updatedAt: Date;
+            amount: import("@prisma/client-runtime-utils").Decimal;
             vehicleLabel: string | null;
             status: import("@prisma/client").$Enums.VehicleExpenseStatus;
-            amount: import("@prisma/client-runtime-utils").Decimal;
             receiptUrl: string;
             expenseDate: Date;
             rejectionReason: string | null;
@@ -1983,6 +1983,8 @@ export declare class UsersController {
             id: string;
             createdAt: Date;
             updatedAt: Date;
+            customerId: string;
+            subscriptionId: string | null;
             status: import("@prisma/client").$Enums.OrderStatus;
             serviceType: import("@prisma/client").$Enums.ServiceType;
             totalPrice: import("@prisma/client-runtime-utils").Decimal;
@@ -1992,7 +1994,6 @@ export declare class UsersController {
             reminderCount: number;
             lastReminderAt: Date | null;
             notes: string | null;
-            customerId: string;
             driverId: string | null;
             posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
             completedAt: Date | null;
@@ -2001,7 +2002,6 @@ export declare class UsersController {
             posHostedPaymentUrl: string | null;
             handoverShiftId: string | null;
             transferredFromDriverId: string | null;
-            subscriptionId: string | null;
         }[];
         shiftsAsDriver: {
             id: string;
@@ -2036,10 +2036,10 @@ export declare class UsersController {
         ledgerTransactions: {
             id: string;
             createdAt: Date;
-            customerId: string;
-            subscriptionId: string | null;
             type: import("@prisma/client").$Enums.LedgerTransactionType;
+            customerId: string;
             orderId: string | null;
+            subscriptionId: string | null;
             amount: import("@prisma/client-runtime-utils").Decimal;
             balanceBefore: import("@prisma/client-runtime-utils").Decimal;
             balanceAfter: import("@prisma/client-runtime-utils").Decimal;
@@ -2054,8 +2054,8 @@ export declare class UsersController {
             createdAt: Date;
             updatedAt: Date;
             category: import("@prisma/client").$Enums.ExpenseCategory;
-            status: import("@prisma/client").$Enums.ExpenseStatus;
             amount: import("@prisma/client-runtime-utils").Decimal;
+            status: import("@prisma/client").$Enums.ExpenseStatus;
             title: string;
             expenseMethod: import("@prisma/client").$Enums.ExpenseMethod;
             note: string | null;
@@ -2116,10 +2116,10 @@ export declare class UsersController {
             id: string;
             createdAt: Date;
             updatedAt: Date;
-            status: import("@prisma/client").$Enums.DepositStatus;
-            driverId: string;
             type: import("@prisma/client").$Enums.DepositType;
             amount: import("@prisma/client-runtime-utils").Decimal;
+            status: import("@prisma/client").$Enums.DepositStatus;
+            driverId: string;
             receiptImage: string;
             auditComment: string | null;
             auditedById: string | null;
@@ -2128,10 +2128,10 @@ export declare class UsersController {
             id: string;
             createdAt: Date;
             updatedAt: Date;
-            status: import("@prisma/client").$Enums.DepositStatus;
-            driverId: string;
             type: import("@prisma/client").$Enums.DepositType;
             amount: import("@prisma/client-runtime-utils").Decimal;
+            status: import("@prisma/client").$Enums.DepositStatus;
+            driverId: string;
             receiptImage: string;
             auditComment: string | null;
             auditedById: string | null;
@@ -2370,6 +2370,8 @@ export declare class UsersController {
             id: string;
             createdAt: Date;
             updatedAt: Date;
+            customerId: string;
+            subscriptionId: string | null;
             status: import("@prisma/client").$Enums.OrderStatus;
             serviceType: import("@prisma/client").$Enums.ServiceType;
             totalPrice: import("@prisma/client-runtime-utils").Decimal;
@@ -2379,7 +2381,6 @@ export declare class UsersController {
             reminderCount: number;
             lastReminderAt: Date | null;
             notes: string | null;
-            customerId: string;
             driverId: string | null;
             posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
             completedAt: Date | null;
@@ -2388,7 +2389,6 @@ export declare class UsersController {
             posHostedPaymentUrl: string | null;
             handoverShiftId: string | null;
             transferredFromDriverId: string | null;
-            subscriptionId: string | null;
         }[];
         attendanceLogs: {
             id: string;
@@ -2408,8 +2408,8 @@ export declare class UsersController {
             createdAt: Date;
             updatedAt: Date;
             userId: string;
-            status: import("@prisma/client").$Enums.LeaveStatus;
             type: import("@prisma/client").$Enums.LeaveType;
+            status: import("@prisma/client").$Enums.LeaveStatus;
             approvedById: string | null;
             approvedAt: Date | null;
             reason: string | null;
@@ -2423,8 +2423,8 @@ export declare class UsersController {
             createdAt: Date;
             updatedAt: Date;
             userId: string;
-            status: import("@prisma/client").$Enums.LeaveStatus;
             type: import("@prisma/client").$Enums.LeaveType;
+            status: import("@prisma/client").$Enums.LeaveStatus;
             approvedById: string | null;
             approvedAt: Date | null;
             reason: string | null;
@@ -2438,8 +2438,8 @@ export declare class UsersController {
             createdAt: Date;
             updatedAt: Date;
             userId: string;
-            status: import("@prisma/client").$Enums.LoanStatus;
             amount: import("@prisma/client-runtime-utils").Decimal;
+            status: import("@prisma/client").$Enums.LoanStatus;
             approvedById: string | null;
             approvedAt: Date | null;
             reason: string | null;
@@ -2453,8 +2453,8 @@ export declare class UsersController {
             createdAt: Date;
             updatedAt: Date;
             userId: string;
-            status: import("@prisma/client").$Enums.LoanStatus;
             amount: import("@prisma/client-runtime-utils").Decimal;
+            status: import("@prisma/client").$Enums.LoanStatus;
             approvedById: string | null;
             approvedAt: Date | null;
             reason: string | null;
@@ -2482,9 +2482,9 @@ export declare class UsersController {
             id: string;
             createdAt: Date;
             updatedAt: Date;
+            amount: import("@prisma/client-runtime-utils").Decimal;
             vehicleLabel: string | null;
             status: import("@prisma/client").$Enums.VehicleExpenseStatus;
-            amount: import("@prisma/client-runtime-utils").Decimal;
             receiptUrl: string;
             expenseDate: Date;
             rejectionReason: string | null;
@@ -2501,9 +2501,9 @@ export declare class UsersController {
             id: string;
             createdAt: Date;
             updatedAt: Date;
+            amount: import("@prisma/client-runtime-utils").Decimal;
             vehicleLabel: string | null;
             status: import("@prisma/client").$Enums.VehicleExpenseStatus;
-            amount: import("@prisma/client-runtime-utils").Decimal;
             receiptUrl: string;
             expenseDate: Date;
             rejectionReason: string | null;
@@ -2611,6 +2611,8 @@ export declare class UsersController {
             id: string;
             createdAt: Date;
             updatedAt: Date;
+            customerId: string;
+            subscriptionId: string | null;
             status: import("@prisma/client").$Enums.OrderStatus;
             serviceType: import("@prisma/client").$Enums.ServiceType;
             totalPrice: import("@prisma/client-runtime-utils").Decimal;
@@ -2620,7 +2622,6 @@ export declare class UsersController {
             reminderCount: number;
             lastReminderAt: Date | null;
             notes: string | null;
-            customerId: string;
             driverId: string | null;
             posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
             completedAt: Date | null;
@@ -2629,7 +2630,6 @@ export declare class UsersController {
             posHostedPaymentUrl: string | null;
             handoverShiftId: string | null;
             transferredFromDriverId: string | null;
-            subscriptionId: string | null;
         }[];
         shiftsAsDriver: {
             id: string;
@@ -2664,10 +2664,10 @@ export declare class UsersController {
         ledgerTransactions: {
             id: string;
             createdAt: Date;
-            customerId: string;
-            subscriptionId: string | null;
             type: import("@prisma/client").$Enums.LedgerTransactionType;
+            customerId: string;
             orderId: string | null;
+            subscriptionId: string | null;
             amount: import("@prisma/client-runtime-utils").Decimal;
             balanceBefore: import("@prisma/client-runtime-utils").Decimal;
             balanceAfter: import("@prisma/client-runtime-utils").Decimal;
@@ -2682,8 +2682,8 @@ export declare class UsersController {
             createdAt: Date;
             updatedAt: Date;
             category: import("@prisma/client").$Enums.ExpenseCategory;
-            status: import("@prisma/client").$Enums.ExpenseStatus;
             amount: import("@prisma/client-runtime-utils").Decimal;
+            status: import("@prisma/client").$Enums.ExpenseStatus;
             title: string;
             expenseMethod: import("@prisma/client").$Enums.ExpenseMethod;
             note: string | null;
@@ -2744,10 +2744,10 @@ export declare class UsersController {
             id: string;
             createdAt: Date;
             updatedAt: Date;
-            status: import("@prisma/client").$Enums.DepositStatus;
-            driverId: string;
             type: import("@prisma/client").$Enums.DepositType;
             amount: import("@prisma/client-runtime-utils").Decimal;
+            status: import("@prisma/client").$Enums.DepositStatus;
+            driverId: string;
             receiptImage: string;
             auditComment: string | null;
             auditedById: string | null;
@@ -2756,10 +2756,10 @@ export declare class UsersController {
             id: string;
             createdAt: Date;
             updatedAt: Date;
-            status: import("@prisma/client").$Enums.DepositStatus;
-            driverId: string;
             type: import("@prisma/client").$Enums.DepositType;
             amount: import("@prisma/client-runtime-utils").Decimal;
+            status: import("@prisma/client").$Enums.DepositStatus;
+            driverId: string;
             receiptImage: string;
             auditComment: string | null;
             auditedById: string | null;
@@ -2998,6 +2998,8 @@ export declare class UsersController {
             id: string;
             createdAt: Date;
             updatedAt: Date;
+            customerId: string;
+            subscriptionId: string | null;
             status: import("@prisma/client").$Enums.OrderStatus;
             serviceType: import("@prisma/client").$Enums.ServiceType;
             totalPrice: import("@prisma/client-runtime-utils").Decimal;
@@ -3007,7 +3009,6 @@ export declare class UsersController {
             reminderCount: number;
             lastReminderAt: Date | null;
             notes: string | null;
-            customerId: string;
             driverId: string | null;
             posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
             completedAt: Date | null;
@@ -3016,7 +3017,6 @@ export declare class UsersController {
             posHostedPaymentUrl: string | null;
             handoverShiftId: string | null;
             transferredFromDriverId: string | null;
-            subscriptionId: string | null;
         }[];
         attendanceLogs: {
             id: string;
@@ -3036,8 +3036,8 @@ export declare class UsersController {
             createdAt: Date;
             updatedAt: Date;
             userId: string;
-            status: import("@prisma/client").$Enums.LeaveStatus;
             type: import("@prisma/client").$Enums.LeaveType;
+            status: import("@prisma/client").$Enums.LeaveStatus;
             approvedById: string | null;
             approvedAt: Date | null;
             reason: string | null;
@@ -3051,8 +3051,8 @@ export declare class UsersController {
             createdAt: Date;
             updatedAt: Date;
             userId: string;
-            status: import("@prisma/client").$Enums.LeaveStatus;
             type: import("@prisma/client").$Enums.LeaveType;
+            status: import("@prisma/client").$Enums.LeaveStatus;
             approvedById: string | null;
             approvedAt: Date | null;
             reason: string | null;
@@ -3066,8 +3066,8 @@ export declare class UsersController {
             createdAt: Date;
             updatedAt: Date;
             userId: string;
-            status: import("@prisma/client").$Enums.LoanStatus;
             amount: import("@prisma/client-runtime-utils").Decimal;
+            status: import("@prisma/client").$Enums.LoanStatus;
             approvedById: string | null;
             approvedAt: Date | null;
             reason: string | null;
@@ -3081,8 +3081,8 @@ export declare class UsersController {
             createdAt: Date;
             updatedAt: Date;
             userId: string;
-            status: import("@prisma/client").$Enums.LoanStatus;
             amount: import("@prisma/client-runtime-utils").Decimal;
+            status: import("@prisma/client").$Enums.LoanStatus;
             approvedById: string | null;
             approvedAt: Date | null;
             reason: string | null;
@@ -3110,9 +3110,9 @@ export declare class UsersController {
             id: string;
             createdAt: Date;
             updatedAt: Date;
+            amount: import("@prisma/client-runtime-utils").Decimal;
             vehicleLabel: string | null;
             status: import("@prisma/client").$Enums.VehicleExpenseStatus;
-            amount: import("@prisma/client-runtime-utils").Decimal;
             receiptUrl: string;
             expenseDate: Date;
             rejectionReason: string | null;
@@ -3129,9 +3129,9 @@ export declare class UsersController {
             id: string;
             createdAt: Date;
             updatedAt: Date;
+            amount: import("@prisma/client-runtime-utils").Decimal;
             vehicleLabel: string | null;
             status: import("@prisma/client").$Enums.VehicleExpenseStatus;
-            amount: import("@prisma/client-runtime-utils").Decimal;
             receiptUrl: string;
             expenseDate: Date;
             rejectionReason: string | null;

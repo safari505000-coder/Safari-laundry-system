@@ -58,17 +58,17 @@ export declare class DebtTransfersController {
                 order: {
                     totalPrice: string;
                     id: string;
+                    customer: {
+                        id: string;
+                        phone: string;
+                        displayName: string | null;
+                    };
                     status: import("@prisma/client").$Enums.OrderStatus;
                     cashStatus: import("@prisma/client").$Enums.CashStatus;
                     invoiceNumber: string | null;
                     serialNumber: string | null;
                     posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
                     completedAt: Date | null;
-                    customer: {
-                        id: string;
-                        phone: string;
-                        displayName: string | null;
-                    };
                 };
             }[];
         }[];
@@ -122,17 +122,17 @@ export declare class DebtTransfersController {
                 order: {
                     totalPrice: string;
                     id: string;
+                    customer: {
+                        id: string;
+                        phone: string;
+                        displayName: string | null;
+                    };
                     status: import("@prisma/client").$Enums.OrderStatus;
                     cashStatus: import("@prisma/client").$Enums.CashStatus;
                     invoiceNumber: string | null;
                     serialNumber: string | null;
                     posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
                     completedAt: Date | null;
-                    customer: {
-                        id: string;
-                        phone: string;
-                        displayName: string | null;
-                    };
                 };
             }[];
         }[];
@@ -153,15 +153,15 @@ export declare class DebtTransfersController {
         orders: {
             totalPrice: string;
             id: string;
-            invoiceNumber: string | null;
-            serialNumber: string | null;
-            posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
-            completedAt: Date | null;
             customer: {
                 id: string;
                 phone: string;
                 displayName: string | null;
             };
+            invoiceNumber: string | null;
+            serialNumber: string | null;
+            posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
+            completedAt: Date | null;
         }[];
     }>;
     findOne(id: string, user: JwtUser): Promise<{
@@ -212,17 +212,17 @@ export declare class DebtTransfersController {
             order: {
                 totalPrice: string;
                 id: string;
+                customer: {
+                    id: string;
+                    phone: string;
+                    displayName: string | null;
+                };
                 status: import("@prisma/client").$Enums.OrderStatus;
                 cashStatus: import("@prisma/client").$Enums.CashStatus;
                 invoiceNumber: string | null;
                 serialNumber: string | null;
                 posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
                 completedAt: Date | null;
-                customer: {
-                    id: string;
-                    phone: string;
-                    displayName: string | null;
-                };
             };
         }[];
     }>;
@@ -274,17 +274,17 @@ export declare class DebtTransfersController {
             order: {
                 totalPrice: string;
                 id: string;
+                customer: {
+                    id: string;
+                    phone: string;
+                    displayName: string | null;
+                };
                 status: import("@prisma/client").$Enums.OrderStatus;
                 cashStatus: import("@prisma/client").$Enums.CashStatus;
                 invoiceNumber: string | null;
                 serialNumber: string | null;
                 posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
                 completedAt: Date | null;
-                customer: {
-                    id: string;
-                    phone: string;
-                    displayName: string | null;
-                };
             };
         }[];
     }>;
@@ -336,17 +336,17 @@ export declare class DebtTransfersController {
             order: {
                 totalPrice: string;
                 id: string;
+                customer: {
+                    id: string;
+                    phone: string;
+                    displayName: string | null;
+                };
                 status: import("@prisma/client").$Enums.OrderStatus;
                 cashStatus: import("@prisma/client").$Enums.CashStatus;
                 invoiceNumber: string | null;
                 serialNumber: string | null;
                 posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
                 completedAt: Date | null;
-                customer: {
-                    id: string;
-                    phone: string;
-                    displayName: string | null;
-                };
             };
         }[];
     }>;
@@ -398,17 +398,17 @@ export declare class DebtTransfersController {
             order: {
                 totalPrice: string;
                 id: string;
+                customer: {
+                    id: string;
+                    phone: string;
+                    displayName: string | null;
+                };
                 status: import("@prisma/client").$Enums.OrderStatus;
                 cashStatus: import("@prisma/client").$Enums.CashStatus;
                 invoiceNumber: string | null;
                 serialNumber: string | null;
                 posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
                 completedAt: Date | null;
-                customer: {
-                    id: string;
-                    phone: string;
-                    displayName: string | null;
-                };
             };
         }[];
     }>;
@@ -460,17 +460,17 @@ export declare class DebtTransfersController {
             order: {
                 totalPrice: string;
                 id: string;
+                customer: {
+                    id: string;
+                    phone: string;
+                    displayName: string | null;
+                };
                 status: import("@prisma/client").$Enums.OrderStatus;
                 cashStatus: import("@prisma/client").$Enums.CashStatus;
                 invoiceNumber: string | null;
                 serialNumber: string | null;
                 posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
                 completedAt: Date | null;
-                customer: {
-                    id: string;
-                    phone: string;
-                    displayName: string | null;
-                };
             };
         }[];
     }>;
@@ -522,17 +522,17 @@ export declare class DebtTransfersController {
             order: {
                 totalPrice: string;
                 id: string;
+                customer: {
+                    id: string;
+                    phone: string;
+                    displayName: string | null;
+                };
                 status: import("@prisma/client").$Enums.OrderStatus;
                 cashStatus: import("@prisma/client").$Enums.CashStatus;
                 invoiceNumber: string | null;
                 serialNumber: string | null;
                 posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
                 completedAt: Date | null;
-                customer: {
-                    id: string;
-                    phone: string;
-                    displayName: string | null;
-                };
             };
         }[];
     }>;

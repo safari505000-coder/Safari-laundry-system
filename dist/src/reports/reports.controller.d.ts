@@ -13,17 +13,17 @@ export declare class ReportsController {
             totalPrice: string;
             id: string;
             createdAt: Date;
+            customer: {
+                id: string;
+                phone: string;
+                displayName: string | null;
+            };
             status: import("@prisma/client").$Enums.OrderStatus;
             serviceType: import("@prisma/client").$Enums.ServiceType;
             cashStatus: import("@prisma/client").$Enums.CashStatus;
             invoiceNumber: string | null;
             posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
             completedAt: Date | null;
-            customer: {
-                id: string;
-                phone: string;
-                displayName: string | null;
-            };
             driver: {
                 id: string;
                 branchId: string | null;
