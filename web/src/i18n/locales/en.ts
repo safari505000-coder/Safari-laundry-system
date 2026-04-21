@@ -1375,8 +1375,9 @@ export const en = {
     },
     printPdf: 'Print / PDF',
     sendWhatsApp: 'Send via WhatsApp',
-    preparingLink: 'Preparing link…',
-    shareLinkFailed: 'Could not prepare the share link. Please try again.',
+    pdfToastTitle: 'PDF ready to send on WhatsApp',
+    pdfToastBody:
+      'From the print dialog pick "Save as PDF", then drag the file into the customer\'s WhatsApp chat window. No link in the message — only the PDF attachment.',
     cancel: 'Cancel',
     noPhone: 'Customer has no phone on file for WhatsApp.',
     invalidPhone: 'Customer phone number is not valid for WhatsApp.',

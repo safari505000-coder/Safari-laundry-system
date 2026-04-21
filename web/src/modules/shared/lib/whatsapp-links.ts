@@ -245,27 +245,19 @@ export function buildCustomerStatementWhatsAppText(
       ]
     : [];
 
-  // V19.8.9 — When a share URL is available we pivot the closing call
-  // to action from "ask us for a PDF" to "open this link on your
-  // phone". The URL renders the exact same A4 statement the agent
-  // saw, with the digital seal, and supports the browser's native
-  // "Save as PDF" — which gives the customer the actual PDF file
-  // they wanted without WhatsApp Business API overhead.
-  const ctaBlock = a.shareUrl
-    ? [
-        '🔎 *لعرض كشف الحساب الكامل (بإمكانك حفظه PDF من متصفحك):*',
-        a.shareUrl,
-        '',
-        '⏳ الرابط صالح لمدة 7 أيام من وقت الإرسال.',
-      ]
-    : [
-        'لاستلام نسخة مفصّلة (PDF مختوم رقمياً) يُرجى إبلاغنا وسنرسلها فوراً.',
-      ];
+  // V19.8.10 — The Call Center flow now attaches the statement as a
+  // real PDF file (dragged into WhatsApp Web by the agent after the
+  // browser downloads it). We must NEVER include a link back to our
+  // own site in the outbound message — the customer should see only
+  // the PDF attachment plus this short Arabic cover note. `shareUrl`
+  // stays on the type for backwards compatibility but is ignored
+  // here on purpose.
+  void a.shareUrl;
 
   return [
     greet,
     '',
-    `نسعد بخدمتكم في ${BRAND.customerAr} — فيما يلي ملخّص كشف حسابكم:`,
+    `نسعد بخدمتكم في ${BRAND.customerAr} — مرفق لكم كشف حسابكم بصيغة PDF:`,
     '',
     rangeLine,
     '',
@@ -273,7 +265,7 @@ export function buildCustomerStatementWhatsAppText(
     ...balanceLines,
     ...subLines,
     '',
-    ...ctaBlock,
+    'لأي استفسار يُرجى التواصل على:',
     '📞 مركز خدمة العملاء: 22200299',
     '',
     SAFARI_TEAM_FOOTER_AR,
