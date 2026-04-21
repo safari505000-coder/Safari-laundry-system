@@ -1371,6 +1371,7 @@ export const en = {
     viewInvoice: 'View printable invoice',
     chipCutOff: 'Issued while cut-off',
     chipDiscount: 'Discount',
+    chipDebtSettled: 'Settled from debt',
     colAmount: 'Amount',
     colBalanceAfter: 'Balance after',
     colDebtAfter: 'Debt after',
@@ -1400,6 +1401,19 @@ export const en = {
       SUBSCRIPTION_ROLLOVER_CARRY: 'Subscription carry-over',
       ORDER_SETTLEMENT: 'Order settlement',
       PARTIAL_DEBT_PAYMENT: 'Partial debt payment',
+    },
+    activationBreakdown: {
+      title: 'Subscription money-flow breakdown',
+      paid: 'Paid by customer',
+      credit: 'Credit added to plan',
+      subsidy: 'Branch subsidy',
+      debtSettled: 'Deducted from prior debt',
+      credited: 'Added to wallet balance',
+      carried: 'Carried over from previous plan',
+      closedInvoicesTitle: 'Prior invoices auto-closed ({{count}})',
+      closedInvoicesTotal: 'Total of closed invoices',
+      debtSettledNoInvoices:
+        'Amount was deducted from the wallet debt total — no individual invoices were fully retired.',
     },
   },
   orderStatus: {

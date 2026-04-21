@@ -303,6 +303,23 @@ function readMetaString(
 }
 
 /**
+ * V19.8.3 — pull a list of stringy IDs out of a metadata blob. Used to
+ * recover `autoClosedInvoiceIds` (written by the activation path in
+ * V19.7.4) when rendering the customer statement. Silently tolerates
+ * missing / malformed entries — a single bad element must not break
+ * the whole customer ledger fetch.
+ */
+function readMetaStringArray(
+  meta: Prisma.JsonValue | null,
+  key: string,
+): string[] {
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return [];
+  const v = (meta as Record<string, unknown>)[key];
+  if (!Array.isArray(v)) return [];
+  return v.filter((x): x is string => typeof x === 'string' && x.length > 0);
+}
+
+/**
  * V19.4 — CC pack #8/#10/#11. Convert a Kuwait-local YYYY-MM-DD into
  * UTC instants [dayStart, dayEnd) that match the server's other
  * Kuwait-bounded aggregates (debt recovery, operations summary, etc.).
@@ -1251,6 +1268,45 @@ export class CallCenterService {
       }),
     ]);
 
+    // V19.8.3 — batch-fetch every invoice the activation rows auto-closed
+    // so the customer statement can spell out "these old invoices were
+    // paid from your new subscription credit". We union all
+    // `autoClosedInvoiceIds` across activation events into a single
+    // query instead of N+1-ing per row.
+    const allClosedIds = Array.from(
+      new Set(
+        events.flatMap((e) =>
+          e.type === LedgerTransactionType.SUBSCRIPTION_ACTIVATION
+            ? readMetaStringArray(e.metadata, 'autoClosedInvoiceIds')
+            : [],
+        ),
+      ),
+    );
+    const closedOrdersById = new Map<
+      string,
+      { id: string; serial: string | null; totalKd: string; createdAtIso: string }
+    >();
+    if (allClosedIds.length > 0) {
+      const closedOrders = await this.prisma.order.findMany({
+        where: { id: { in: allClosedIds } },
+        select: {
+          id: true,
+          serialNumber: true,
+          invoiceNumber: true,
+          totalPrice: true,
+          createdAt: true,
+        },
+      });
+      for (const o of closedOrders) {
+        closedOrdersById.set(o.id, {
+          id: o.id,
+          serial: o.serialNumber ?? o.invoiceNumber ?? null,
+          totalKd: FOUR_DP(o.totalPrice),
+          createdAtIso: o.createdAt.toISOString(),
+        });
+      }
+    }
+
     const mappedEvents: CustomerLedgerEventDto[] = events.map((e) => {
       let kind: CustomerLedgerEventKind;
       if (e.type === LedgerTransactionType.SUBSCRIPTION_ACTIVATION) {
@@ -1277,6 +1333,69 @@ export class CallCenterService {
           ? (rawMethod as PosPaymentMethod)
           : null;
 
+      // V19.8.3 — activation-only enrichment. `activationBreakdown`
+      // surfaces each leg of the money flow (what the customer paid,
+      // what the branch subsidized, what went to debt, what is
+      // usable credit). `closedInvoices` lists the old receivables
+      // that got retired by the FIFO auto-closure from V19.7.4.
+      let activationBreakdown:
+        | {
+            totalCollectedKd: string;
+            actualBalanceKd: string;
+            subsidyKd: string;
+            debtSettledKd: string;
+            creditedToBalanceKd: string;
+            carriedBalanceKd: string;
+          }
+        | null = null;
+      let closedInvoicesForEvent: Array<{
+        id: string;
+        serial: string | null;
+        totalKd: string;
+        createdAtIso: string;
+      }> = [];
+      if (kind === 'SUBSCRIPTION_ACTIVATION') {
+        activationBreakdown = {
+          totalCollectedKd: FOUR_DP(
+            new Prisma.Decimal(
+              readMetaString(e.metadata, 'totalCollected') ?? '0',
+            ),
+          ),
+          actualBalanceKd: FOUR_DP(
+            new Prisma.Decimal(
+              readMetaString(e.metadata, 'actualBalance') ?? '0',
+            ),
+          ),
+          subsidyKd: FOUR_DP(
+            new Prisma.Decimal(readMetaString(e.metadata, 'subsidy') ?? '0'),
+          ),
+          debtSettledKd: FOUR_DP(debtSettled),
+          creditedToBalanceKd: FOUR_DP(
+            new Prisma.Decimal(
+              readMetaString(e.metadata, 'creditedToBalance') ?? '0',
+            ),
+          ),
+          carriedBalanceKd: FOUR_DP(
+            new Prisma.Decimal(
+              readMetaString(e.metadata, 'carriedBalanceKd') ?? '0',
+            ),
+          ),
+        };
+        const ids = readMetaStringArray(e.metadata, 'autoClosedInvoiceIds');
+        closedInvoicesForEvent = ids
+          .map((id) => closedOrdersById.get(id))
+          .filter(
+            (
+              o,
+            ): o is {
+              id: string;
+              serial: string | null;
+              totalKd: string;
+              createdAtIso: string;
+            } => !!o,
+          );
+      }
+
       return {
         id: e.id,
         atIso: e.createdAt.toISOString(),
@@ -1298,6 +1417,8 @@ export class CallCenterService {
         performedByName: e.performedBy?.fullName ?? null,
         performedByRole: e.performedBy?.safariRole ?? null,
         note: readMetaString(e.metadata, 'note'),
+        activationBreakdown,
+        closedInvoices: closedInvoicesForEvent,
       };
     });
 

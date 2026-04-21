@@ -30,6 +30,20 @@ export declare class CustomerLedgerSubscriptionDto {
     closedReason: string | null;
 }
 export type CustomerLedgerEventKind = 'SUBSCRIPTION_ACTIVATION' | 'SUBSCRIPTION_ROLLOVER_CARRY' | 'ORDER_SETTLEMENT' | 'PARTIAL_DEBT_PAYMENT';
+export declare class CustomerLedgerActivationBreakdownDto {
+    totalCollectedKd: string;
+    actualBalanceKd: string;
+    subsidyKd: string;
+    debtSettledKd: string;
+    creditedToBalanceKd: string;
+    carriedBalanceKd: string;
+}
+export declare class CustomerLedgerClosedInvoiceDto {
+    id: string;
+    serial: string | null;
+    totalKd: string;
+    createdAtIso: string;
+}
 export declare class CustomerLedgerEventDto {
     id: string;
     atIso: string;
@@ -51,6 +65,8 @@ export declare class CustomerLedgerEventDto {
     performedByName: string | null;
     performedByRole: SafariRole | null;
     note: string | null;
+    activationBreakdown: CustomerLedgerActivationBreakdownDto | null;
+    closedInvoices: CustomerLedgerClosedInvoiceDto[];
 }
 export declare class CustomerLedgerInvoiceDto {
     id: string;

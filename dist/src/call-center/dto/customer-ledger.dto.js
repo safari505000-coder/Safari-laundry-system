@@ -9,7 +9,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CustomerLedgerResponseDto = exports.CustomerLedgerInvoiceDto = exports.CustomerLedgerEventDto = exports.CustomerLedgerSubscriptionDto = exports.CustomerLedgerHeaderDto = exports.CustomerLedgerQueryDto = void 0;
+exports.CustomerLedgerResponseDto = exports.CustomerLedgerInvoiceDto = exports.CustomerLedgerEventDto = exports.CustomerLedgerClosedInvoiceDto = exports.CustomerLedgerActivationBreakdownDto = exports.CustomerLedgerSubscriptionDto = exports.CustomerLedgerHeaderDto = exports.CustomerLedgerQueryDto = void 0;
 const swagger_1 = require("@nestjs/swagger");
 const class_validator_1 = require("class-validator");
 const class_transformer_1 = require("class-transformer");
@@ -159,6 +159,62 @@ __decorate([
     (0, swagger_1.ApiProperty)({ nullable: true }),
     __metadata("design:type", Object)
 ], CustomerLedgerSubscriptionDto.prototype, "closedReason", void 0);
+class CustomerLedgerActivationBreakdownDto {
+    totalCollectedKd;
+    actualBalanceKd;
+    subsidyKd;
+    debtSettledKd;
+    creditedToBalanceKd;
+    carriedBalanceKd;
+}
+exports.CustomerLedgerActivationBreakdownDto = CustomerLedgerActivationBreakdownDto;
+__decorate([
+    (0, swagger_1.ApiProperty)({ example: '40.0000' }),
+    __metadata("design:type", String)
+], CustomerLedgerActivationBreakdownDto.prototype, "totalCollectedKd", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ example: '60.0000' }),
+    __metadata("design:type", String)
+], CustomerLedgerActivationBreakdownDto.prototype, "actualBalanceKd", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ example: '20.0000' }),
+    __metadata("design:type", String)
+], CustomerLedgerActivationBreakdownDto.prototype, "subsidyKd", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ example: '60.0000' }),
+    __metadata("design:type", String)
+], CustomerLedgerActivationBreakdownDto.prototype, "debtSettledKd", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ example: '0.0000' }),
+    __metadata("design:type", String)
+], CustomerLedgerActivationBreakdownDto.prototype, "creditedToBalanceKd", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ example: '0.0000' }),
+    __metadata("design:type", String)
+], CustomerLedgerActivationBreakdownDto.prototype, "carriedBalanceKd", void 0);
+class CustomerLedgerClosedInvoiceDto {
+    id;
+    serial;
+    totalKd;
+    createdAtIso;
+}
+exports.CustomerLedgerClosedInvoiceDto = CustomerLedgerClosedInvoiceDto;
+__decorate([
+    (0, swagger_1.ApiProperty)(),
+    __metadata("design:type", String)
+], CustomerLedgerClosedInvoiceDto.prototype, "id", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ nullable: true }),
+    __metadata("design:type", Object)
+], CustomerLedgerClosedInvoiceDto.prototype, "serial", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ example: '0.6000' }),
+    __metadata("design:type", String)
+], CustomerLedgerClosedInvoiceDto.prototype, "totalKd", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)(),
+    __metadata("design:type", String)
+], CustomerLedgerClosedInvoiceDto.prototype, "createdAtIso", void 0);
 class CustomerLedgerEventDto {
     id;
     atIso;
@@ -180,6 +236,8 @@ class CustomerLedgerEventDto {
     performedByName;
     performedByRole;
     note;
+    activationBreakdown;
+    closedInvoices;
 }
 exports.CustomerLedgerEventDto = CustomerLedgerEventDto;
 __decorate([
@@ -269,6 +327,17 @@ __decorate([
     (0, swagger_1.ApiProperty)({ nullable: true }),
     __metadata("design:type", Object)
 ], CustomerLedgerEventDto.prototype, "note", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({
+        type: CustomerLedgerActivationBreakdownDto,
+        nullable: true,
+    }),
+    __metadata("design:type", Object)
+], CustomerLedgerEventDto.prototype, "activationBreakdown", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ type: [CustomerLedgerClosedInvoiceDto] }),
+    __metadata("design:type", Array)
+], CustomerLedgerEventDto.prototype, "closedInvoices", void 0);
 class CustomerLedgerInvoiceDto {
     id;
     serial;

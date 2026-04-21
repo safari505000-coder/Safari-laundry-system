@@ -1384,6 +1384,7 @@ export const ar = {
     viewInvoice: 'عرض صورة الفاتورة',
     chipCutOff: 'صُدرت أثناء القطع',
     chipDiscount: 'خصم',
+    chipDebtSettled: 'سُدّد من المديونية',
     colAmount: 'المبلغ',
     colBalanceAfter: 'الرصيد بعد',
     colDebtAfter: 'المديونية بعد',
@@ -1413,6 +1414,19 @@ export const ar = {
       SUBSCRIPTION_ROLLOVER_CARRY: 'ترحيل اشتراك',
       ORDER_SETTLEMENT: 'تسوية فاتورة',
       PARTIAL_DEBT_PAYMENT: 'تسديد جزء من المديونية',
+    },
+    activationBreakdown: {
+      title: 'تفصيل الحركة المالية للاشتراك',
+      paid: 'مدفوع من العميل',
+      credit: 'قيمة الرصيد المضاف للاشتراك',
+      subsidy: 'دعم الفرع',
+      debtSettled: 'خُصم من المديونية السابقة',
+      credited: 'أُضيف لرصيد المحفظة',
+      carried: 'رصيد مرحّل من الاشتراك السابق',
+      closedInvoicesTitle: 'فواتير سابقة تم سدادها تلقائياً ({{count}})',
+      closedInvoicesTotal: 'إجمالي الفواتير المسدّدة',
+      debtSettledNoInvoices:
+        'المبلغ خُصم من إجمالي المديونية في المحفظة — لم تُقفل فواتير بعينها بشكل كامل.',
     },
   },
   orderStatus: {

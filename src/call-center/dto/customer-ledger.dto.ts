@@ -97,6 +97,31 @@ export type CustomerLedgerEventKind =
   | 'ORDER_SETTLEMENT'
   | 'PARTIAL_DEBT_PAYMENT';
 
+/**
+ * V19.8.3 — detailed breakdown for a SUBSCRIPTION_ACTIVATION event.
+ * Answers the customer's question: "I paid for a renewal — why is my
+ * balance lower than the plan's value?" by spelling out every piece
+ * of the money flow: what the customer paid, what the branch
+ * subsidized, what went against old debt (with invoice numbers), and
+ * what landed in the wallet as usable credit.
+ */
+export class CustomerLedgerActivationBreakdownDto {
+  @ApiProperty({ example: '40.0000' }) totalCollectedKd!: string;
+  @ApiProperty({ example: '60.0000' }) actualBalanceKd!: string;
+  @ApiProperty({ example: '20.0000' }) subsidyKd!: string;
+  @ApiProperty({ example: '60.0000' }) debtSettledKd!: string;
+  @ApiProperty({ example: '0.0000' }) creditedToBalanceKd!: string;
+  @ApiProperty({ example: '0.0000' }) carriedBalanceKd!: string;
+}
+
+/** V19.8.3 — an invoice that was auto-closed by FIFO during an activation. */
+export class CustomerLedgerClosedInvoiceDto {
+  @ApiProperty() id!: string;
+  @ApiProperty({ nullable: true }) serial!: string | null;
+  @ApiProperty({ example: '0.6000' }) totalKd!: string;
+  @ApiProperty() createdAtIso!: string;
+}
+
 export class CustomerLedgerEventDto {
   @ApiProperty() id!: string;
   @ApiProperty() atIso!: string;
@@ -135,6 +160,26 @@ export class CustomerLedgerEventDto {
   performedByRole!: SafariRole | null;
 
   @ApiProperty({ nullable: true }) note!: string | null;
+
+  /**
+   * V19.8.3 — populated only when `kind === 'SUBSCRIPTION_ACTIVATION'`.
+   * Drives the "خصم من المديونية السابقة" card on the customer's
+   * statement so they can see exactly where their money went.
+   */
+  @ApiProperty({
+    type: CustomerLedgerActivationBreakdownDto,
+    nullable: true,
+  })
+  activationBreakdown!: CustomerLedgerActivationBreakdownDto | null;
+
+  /**
+   * V19.8.3 — invoices the activation auto-closed via FIFO. Empty
+   * array for non-activation rows, for activations that ran before
+   * V19.7.4 (no metadata yet), and for activations that didn't settle
+   * any single invoice in full.
+   */
+  @ApiProperty({ type: [CustomerLedgerClosedInvoiceDto] })
+  closedInvoices!: CustomerLedgerClosedInvoiceDto[];
 }
 
 export class CustomerLedgerInvoiceDto {

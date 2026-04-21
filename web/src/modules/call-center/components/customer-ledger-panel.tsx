@@ -13,7 +13,13 @@ import {
   Wallet,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { ApiError, apiJson, type CustomerLedgerResponse } from '@/lib/api';
+import {
+  ApiError,
+  apiJson,
+  type CustomerLedgerActivationBreakdown,
+  type CustomerLedgerClosedInvoice,
+  type CustomerLedgerResponse,
+} from '@/lib/api';
 import { formatKwdLabel } from '@/lib/kwd';
 import { Button } from '@/modules/shared/components/ui/button';
 import {
@@ -304,6 +310,7 @@ export function CustomerLedgerPanel({ customerId, token }: Props) {
                   e.kind === 'SUBSCRIPTION_ACTIVATION' ||
                   Number.parseFloat(e.amountKd) < 0;
                 const Icon = isCredit ? ArrowUpCircle : ArrowDownCircle;
+                const isActivation = e.kind === 'SUBSCRIPTION_ACTIVATION';
                 return (
                   <li
                     key={e.id}
@@ -355,6 +362,12 @@ export function CustomerLedgerPanel({ customerId, token }: Props) {
                               {formatKwdLabel(e.debtDiscountKd)}
                             </StatusChip>
                           ) : null}
+                          {Number.parseFloat(e.debtSettledKd) > 0 ? (
+                            <StatusChip tone="success">
+                              {t('customerLedger.chipDebtSettled')}:{' '}
+                              {formatKwdLabel(e.debtSettledKd)}
+                            </StatusChip>
+                          ) : null}
                         </div>
                         <div className="mt-2 grid gap-1 text-xs text-muted-foreground sm:grid-cols-3">
                           <span>
@@ -383,6 +396,21 @@ export function CustomerLedgerPanel({ customerId, token }: Props) {
                             </span>
                           </span>
                         </div>
+                        {/* V19.8.3 — activation breakdown. Spells out every
+                            leg of the money flow so a customer asking
+                            "جددت اشتراكي ليش رصيدي صفر؟" gets an
+                            unambiguous answer right here in the
+                            statement: how much they paid, how much of
+                            that hit the wallet, how much was taken to
+                            settle old invoices, and exactly WHICH
+                            invoices were retired. */}
+                        {isActivation && e.activationBreakdown ? (
+                          <ActivationBreakdownBlock
+                            breakdown={e.activationBreakdown}
+                            closedInvoices={e.closedInvoices}
+                            fmtDate={fmtDate}
+                          />
+                        ) : null}
                         {e.performedByName ? (
                           <p className="mt-1 text-xs text-muted-foreground">
                             {t('customerLedger.by')}: {e.performedByName}
@@ -402,6 +430,153 @@ export function CustomerLedgerPanel({ customerId, token }: Props) {
           )}
         </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+/**
+ * V19.8.3 — "Where did my renewal money go?" card. Rendered inline
+ * inside a SUBSCRIPTION_ACTIVATION timeline row. Shows a 3-row money
+ * flow (paid → credit → splits into debt settlement + usable balance)
+ * followed by the exact list of old invoices the activation retired
+ * via FIFO auto-closure. The block is self-contained so the same
+ * markup works whether the activation was new, a renewal, or a
+ * debt-to-subscription conversion.
+ */
+function ActivationBreakdownBlock({
+  breakdown,
+  closedInvoices,
+  fmtDate,
+}: {
+  breakdown: CustomerLedgerActivationBreakdown;
+  closedInvoices: CustomerLedgerClosedInvoice[];
+  fmtDate: Intl.DateTimeFormat;
+}) {
+  const { t } = useTranslation();
+  const paid = Number.parseFloat(breakdown.totalCollectedKd) || 0;
+  const credit = Number.parseFloat(breakdown.actualBalanceKd) || 0;
+  const subsidy = Number.parseFloat(breakdown.subsidyKd) || 0;
+  const settled = Number.parseFloat(breakdown.debtSettledKd) || 0;
+  const credited = Number.parseFloat(breakdown.creditedToBalanceKd) || 0;
+  const carried = Number.parseFloat(breakdown.carriedBalanceKd) || 0;
+  const closedTotal = closedInvoices.reduce(
+    (sum, inv) => sum + (Number.parseFloat(inv.totalKd) || 0),
+    0,
+  );
+  return (
+    <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50/40 p-3 text-xs dark:border-blue-900/50 dark:bg-blue-950/20">
+      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-blue-900 dark:text-blue-100">
+        {t('customerLedger.activationBreakdown.title')}
+      </p>
+      <div className="grid gap-1.5 sm:grid-cols-2">
+        <BreakdownRow
+          label={t('customerLedger.activationBreakdown.paid')}
+          value={formatKwdLabel(paid)}
+          tone="default"
+        />
+        <BreakdownRow
+          label={t('customerLedger.activationBreakdown.credit')}
+          value={formatKwdLabel(credit)}
+          tone="info"
+        />
+        {subsidy > 0 ? (
+          <BreakdownRow
+            label={t('customerLedger.activationBreakdown.subsidy')}
+            value={formatKwdLabel(subsidy)}
+            tone="muted"
+          />
+        ) : null}
+        {settled > 0 ? (
+          <BreakdownRow
+            label={t('customerLedger.activationBreakdown.debtSettled')}
+            value={formatKwdLabel(settled)}
+            tone="success"
+          />
+        ) : null}
+        {credited > 0 ? (
+          <BreakdownRow
+            label={t('customerLedger.activationBreakdown.credited')}
+            value={formatKwdLabel(credited)}
+            tone="default"
+          />
+        ) : null}
+        {carried !== 0 ? (
+          <BreakdownRow
+            label={t('customerLedger.activationBreakdown.carried')}
+            value={formatKwdLabel(carried)}
+            tone={carried < 0 ? 'danger' : 'muted'}
+          />
+        ) : null}
+      </div>
+      {closedInvoices.length > 0 ? (
+        <div className="mt-3 border-t border-blue-200 pt-2 dark:border-blue-900/50">
+          <p className="mb-1.5 text-[11px] font-semibold text-blue-900 dark:text-blue-100">
+            {t('customerLedger.activationBreakdown.closedInvoicesTitle', {
+              count: closedInvoices.length,
+            })}
+          </p>
+          <ul className="space-y-1">
+            {closedInvoices.map((inv) => (
+              <li
+                key={inv.id}
+                className="flex items-center justify-between gap-2 rounded border border-blue-100/60 bg-white/60 px-2 py-1 dark:border-blue-900/40 dark:bg-blue-950/30"
+              >
+                <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <FileText className="h-3 w-3" aria-hidden />
+                  <span className="font-medium text-foreground">
+                    {inv.serial
+                      ? `#${inv.serial}`
+                      : t('customerLedger.invoice')}
+                  </span>
+                  <span>·</span>
+                  <span>{fmtDate.format(new Date(inv.createdAtIso))}</span>
+                </span>
+                <span className="font-medium tabular-nums text-emerald-700 dark:text-emerald-300">
+                  {formatKwdLabel(inv.totalKd)}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1.5 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+            <span>
+              {t('customerLedger.activationBreakdown.closedInvoicesTotal')}
+            </span>
+            <span className="font-semibold tabular-nums text-emerald-700 dark:text-emerald-300">
+              {formatKwdLabel(closedTotal)}
+            </span>
+          </p>
+        </div>
+      ) : settled > 0 ? (
+        <p className="mt-2 border-t border-blue-200 pt-2 text-[11px] text-muted-foreground dark:border-blue-900/50">
+          {t('customerLedger.activationBreakdown.debtSettledNoInvoices')}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function BreakdownRow({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone: 'default' | 'info' | 'success' | 'danger' | 'muted';
+}) {
+  const palette: Record<typeof tone, string> = {
+    default: 'text-foreground',
+    info: 'text-blue-700 dark:text-blue-300',
+    success: 'text-emerald-700 dark:text-emerald-300',
+    danger: 'text-red-700 dark:text-red-300',
+    muted: 'text-muted-foreground',
+  };
+  return (
+    <div className="flex items-center justify-between gap-2 rounded bg-white/50 px-2 py-1 dark:bg-blue-950/30">
+      <span className="text-[11px] text-muted-foreground">{label}</span>
+      <span className={cn('font-semibold tabular-nums', palette[tone])}>
+        {value}
+      </span>
     </div>
   );
 }

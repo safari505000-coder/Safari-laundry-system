@@ -132,6 +132,14 @@ function readMetaString(meta, key) {
     const v = meta[key];
     return typeof v === 'string' && v.length > 0 ? v : null;
 }
+function readMetaStringArray(meta, key) {
+    if (!meta || typeof meta !== 'object' || Array.isArray(meta))
+        return [];
+    const v = meta[key];
+    if (!Array.isArray(v))
+        return [];
+    return v.filter((x) => typeof x === 'string' && x.length > 0);
+}
 function kuwaitDayFromIso(iso) {
     const base = parseDayUtc(iso);
     const dayStart = new Date(base.getTime() - KUWAIT_OFFSET_MS);
@@ -797,6 +805,30 @@ let CallCenterService = class CallCenterService {
                 },
             }),
         ]);
+        const allClosedIds = Array.from(new Set(events.flatMap((e) => e.type === client_1.LedgerTransactionType.SUBSCRIPTION_ACTIVATION
+            ? readMetaStringArray(e.metadata, 'autoClosedInvoiceIds')
+            : [])));
+        const closedOrdersById = new Map();
+        if (allClosedIds.length > 0) {
+            const closedOrders = await this.prisma.order.findMany({
+                where: { id: { in: allClosedIds } },
+                select: {
+                    id: true,
+                    serialNumber: true,
+                    invoiceNumber: true,
+                    totalPrice: true,
+                    createdAt: true,
+                },
+            });
+            for (const o of closedOrders) {
+                closedOrdersById.set(o.id, {
+                    id: o.id,
+                    serial: o.serialNumber ?? o.invoiceNumber ?? null,
+                    totalKd: FOUR_DP(o.totalPrice),
+                    createdAtIso: o.createdAt.toISOString(),
+                });
+            }
+        }
         const mappedEvents = events.map((e) => {
             let kind;
             if (e.type === client_1.LedgerTransactionType.SUBSCRIPTION_ACTIVATION) {
@@ -820,6 +852,22 @@ let CallCenterService = class CallCenterService {
             const paymentMethod = rawMethod && Object.values(client_1.PosPaymentMethod).includes(rawMethod)
                 ? rawMethod
                 : null;
+            let activationBreakdown = null;
+            let closedInvoicesForEvent = [];
+            if (kind === 'SUBSCRIPTION_ACTIVATION') {
+                activationBreakdown = {
+                    totalCollectedKd: FOUR_DP(new client_1.Prisma.Decimal(readMetaString(e.metadata, 'totalCollected') ?? '0')),
+                    actualBalanceKd: FOUR_DP(new client_1.Prisma.Decimal(readMetaString(e.metadata, 'actualBalance') ?? '0')),
+                    subsidyKd: FOUR_DP(new client_1.Prisma.Decimal(readMetaString(e.metadata, 'subsidy') ?? '0')),
+                    debtSettledKd: FOUR_DP(debtSettled),
+                    creditedToBalanceKd: FOUR_DP(new client_1.Prisma.Decimal(readMetaString(e.metadata, 'creditedToBalance') ?? '0')),
+                    carriedBalanceKd: FOUR_DP(new client_1.Prisma.Decimal(readMetaString(e.metadata, 'carriedBalanceKd') ?? '0')),
+                };
+                const ids = readMetaStringArray(e.metadata, 'autoClosedInvoiceIds');
+                closedInvoicesForEvent = ids
+                    .map((id) => closedOrdersById.get(id))
+                    .filter((o) => !!o);
+            }
             return {
                 id: e.id,
                 atIso: e.createdAt.toISOString(),
@@ -841,6 +889,8 @@ let CallCenterService = class CallCenterService {
                 performedByName: e.performedBy?.fullName ?? null,
                 performedByRole: e.performedBy?.safariRole ?? null,
                 note: readMetaString(e.metadata, 'note'),
+                activationBreakdown,
+                closedInvoices: closedInvoicesForEvent,
             };
         });
         const mappedInvoices = invoices.map((o) => {

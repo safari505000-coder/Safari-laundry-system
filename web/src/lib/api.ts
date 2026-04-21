@@ -1425,6 +1425,22 @@ export type CustomerLedgerEventKind =
   | 'ORDER_SETTLEMENT'
   | 'PARTIAL_DEBT_PAYMENT';
 
+export type CustomerLedgerActivationBreakdown = {
+  totalCollectedKd: string;
+  actualBalanceKd: string;
+  subsidyKd: string;
+  debtSettledKd: string;
+  creditedToBalanceKd: string;
+  carriedBalanceKd: string;
+};
+
+export type CustomerLedgerClosedInvoice = {
+  id: string;
+  serial: string | null;
+  totalKd: string;
+  createdAtIso: string;
+};
+
 export type CustomerLedgerEvent = {
   id: string;
   atIso: string;
@@ -1452,6 +1468,8 @@ export type CustomerLedgerEvent = {
   performedByName: string | null;
   performedByRole: string | null;
   note: string | null;
+  activationBreakdown: CustomerLedgerActivationBreakdown | null;
+  closedInvoices: CustomerLedgerClosedInvoice[];
 };
 
 export type CustomerLedgerInvoice = {
