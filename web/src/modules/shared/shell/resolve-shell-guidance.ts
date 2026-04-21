@@ -27,6 +27,9 @@ export function shellGuidanceForRole(role?: SafariRole): string {
     case 'ACCOUNTANT':
       return ACCOUNTANT_SHELL_GUIDANCE;
     case 'OWNER':
+    case 'GENERAL_MANAGER':
+      // GM shares the Owner's executive shell guidance (Dastur §3.9 —
+      // "Owner's Second Eye").
       return OWNER_SHELL_GUIDANCE;
     default:
       return FALLBACK_SHELL_GUIDANCE;
