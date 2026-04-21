@@ -17,10 +17,13 @@ import {
  * <html> element and remember the user preference.
  *
  * Three modes are supported:
- *   - `light` — force the light palette.
+ *   - `light` (default) — force the light palette. This is the shipped
+ *     default across every Safari role per the owner's 2026-04 product
+ *     call: the operational UI is designed for a bright retail / cash
+ *     floor context, so dark mode is opt-in rather than opt-out.
  *   - `dark`  — force the dark palette.
- *   - `system` (default) — follow `prefers-color-scheme` and react to
- *     live OS changes via `matchMedia`.
+ *   - `system` — follow `prefers-color-scheme` and react to live OS
+ *     changes via `matchMedia`.
  *
  * The provider synchronously applies the right class on mount (before
  * React commits) via a `useLayoutEffect`-equivalent to avoid a flash
@@ -33,6 +36,29 @@ export type ResolvedTheme = 'light' | 'dark';
 
 const STORAGE_KEY = 'safari_erp_theme';
 const DARK_QUERY = '(prefers-color-scheme: dark)';
+const DEFAULT_THEME: ThemeMode = 'light';
+
+/**
+ * One-shot migration stamp. When the owner flipped the shipped default
+ * to `'light'` (2026-04), devices that had already been running with
+ * the old `'system'` default would keep resolving to the OS palette —
+ * which on Arabic-Windows installs is overwhelmingly dark. To make
+ * sure every role lands on light mode after the upgrade we reset the
+ * stored preference to `'light'` once and mark that migration done,
+ * so a user who later picks `dark` or `system` explicitly is never
+ * reset again.
+ */
+const LIGHT_MIGRATION_KEY = 'safari_erp_theme_migrated_to_light_v1';
+
+function runLightModeMigration(): void {
+  try {
+    if (localStorage.getItem(LIGHT_MIGRATION_KEY) === '1') return;
+    localStorage.setItem(STORAGE_KEY, DEFAULT_THEME);
+    localStorage.setItem(LIGHT_MIGRATION_KEY, '1');
+  } catch {
+    /* ignore — private-mode / storage disabled */
+  }
+}
 
 type ThemeContextValue = {
   /** What the user picked (light / dark / system). */
@@ -53,7 +79,7 @@ function readStoredTheme(): ThemeMode {
   } catch {
     /* ignore */
   }
-  return 'system';
+  return DEFAULT_THEME;
 }
 
 function writeStoredTheme(theme: ThemeMode): void {
@@ -164,11 +190,12 @@ export function useTheme(): ThemeContextValue {
  */
 export function bootstrapTheme(): void {
   try {
+    runLightModeMigration();
     const stored = localStorage.getItem(STORAGE_KEY);
     const mode: ThemeMode =
       stored === 'light' || stored === 'dark' || stored === 'system'
         ? stored
-        : 'system';
+        : DEFAULT_THEME;
     const resolved: ResolvedTheme =
       mode === 'system'
         ? window.matchMedia(DARK_QUERY).matches
