@@ -237,26 +237,25 @@ function isDebtViaLinkRow(meta: Prisma.JsonValue | null): boolean {
  *   • `debtPaymentOnly         = true`  → CC #1 partial debt payment
  *     (`CustomerLedgerService.recordPartialDebtPayment`)
  *
- * V19.7 — scope narrowed per Owner directive: the "المحصل اليومي"
- * card + panel must reflect ONLY invoices the CC agent actively
- * recovered themselves. Gateway-callback link payments are a
- * customer-self-service event and should land in reports, not in the
- * CC dashboard. Driver-led POS completions were never in scope.
+ * V19.8 — the CC dashboard now renders the two views side by side:
  *
- * Inclusion set:
- *   • `debtSettlementViaCallCenter === true` — agent pressed the
- *     "تم الدفع" icon on the Collections table to confirm that the
- *     customer paid (CASH/KNET at the venue, or via a link that
- *     already completed on the gateway but needs manual acknowledgement).
- *   • `debtPaymentOnly === true` — agent recorded a CC #1 partial
- *     debt payment with optional goodwill discount.
+ *   Top KPI tile (`debtCollectedTodayKd`, green card beside the red
+ *   "إجمالي الديون السوقية"): BROAD. Sums every ORDER_WALLET_SETTLEMENT
+ *   today with `debtSettled > 0` so the green number mirrors the
+ *   movement of the red number — manual CC clicks, link callbacks,
+ *   driver-led POS completions, AND CC partial debt payments all count.
+ *   Subscription-activation debt settlement is intentionally excluded
+ *   (that flow converts debt → wallet balance and is surfaced via
+ *   `debtRecoveredTodayKd` + the Owner Debt Recovery Report).
  *
- * Exclusion set:
- *   • `debtSettlementViaLink === true` alone (gateway auto-callback,
- *     performer is the fallback owner, no human CC action at settle-time).
- *   • Any other TH row with `debtSettled > 0` but neither flag
- *     (regular driver-led wallet settlements, subscription activations,
- *     etc. — those already flow through the Recovery Report).
+ *   Bottom "Daily Collector" panel (`getDailyCollections`): NARROW. Only
+ *   the two events a CC agent actively performs — `debtSettlementViaCallCenter`
+ *   (the "تم الدفع" icon) and `debtPaymentOnly` (partial debt payment) —
+ *   are listed and counted per-agent so a supervisor can tell who
+ *   collected what by hand.
+ *
+ * `isManualCallCenterCollectionRow` stays the narrow predicate used by
+ * the bottom panel; the top tile now reduces the broader set directly.
  */
 function isManualCallCenterCollectionRow(
   meta: Prisma.JsonValue | null,
@@ -806,25 +805,34 @@ export class CallCenterService {
       }),
     ]);
 
-    // V19.7 — green card is strictly "manually collected by the CC
-    // today". Gateway-callback auto-settlements are a customer-self-
-    // service event and no longer count here (they still count in
-    // `debtRecoveredTodayKd` and the Owner Debt Recovery Report).
-    // See `isManualCallCenterCollectionRow` for the exact signals.
-    const manualCollectionRows = todaysLedgerRows.filter((r) =>
-      isManualCallCenterCollectionRow(r.metadata),
-    );
-    const collectedTodayViaLink = manualCollectionRows.reduce(
-      (acc, r) => acc.plus(extractDebtSettled(r.metadata)),
-      new Prisma.Decimal(0),
-    );
-
-    // A3.D10 — broad recovery total matching the Debt Recovery Report.
-    // Same inputs (ORDER_WALLET_SETTLEMENT + SUBSCRIPTION_ACTIVATION),
-    // same reducer (`extractDebtSettled`), just a different time window
-    // (Kuwait-local today instead of caller-supplied range). Surfacing
-    // this alongside the narrow value fixes the "same name, two
-    // formulas" disconnection flagged in the dastur audit.
+    // V19.8.1 — Owner directive: the green KPI card beside the red
+    // "إجمالي الديون السوقية" tile must mirror the *entire* debt-
+    // tracking list. Any event today that reduced the red tile must
+    // count here so the two numbers move together.
+    //
+    // Inclusion (today's TH rows with debtSettled > 0):
+    //   • Manual CC "تم الدفع"        (`debtSettlementViaCallCenter`)
+    //   • Gateway link auto-callback  (`debtSettlementViaLink`)
+    //   • Driver-led POS completion   (ORDER_WALLET_SETTLEMENT, orderId set)
+    //   • CC partial debt payment     (`debtPaymentOnly`, orderId null)
+    //   • Subscription activation that settled debt via the V19.7.4
+    //     FIFO auto-closure flow (the "Convert debt → subscription"
+    //     path flips invoices from UNPAID → PAID_TO_DRIVER so the red
+    //     tile drops — the green tile must mirror that drop).
+    //
+    // Excluded rows (intentional):
+    //   • TH rows with debtSettled == 0 (no debt movement at all).
+    //
+    // The narrower "manual-only" total still powers the bottom
+    // "Daily Collector" panel — see `getDailyCollections()` — so a
+    // supervisor can still tell at a glance who collected what by
+    // hand, without conflating the two views.
+    // V19.8.1 — single reducer now feeds both exposed totals. The
+    // dashboard tile (`debtCollectedTodayKd`) and the Debt Recovery
+    // Report quick-view (`debtRecoveredTodayKd`) are identical by
+    // definition: every row that reduced customer debt today, no
+    // matter the channel, counts toward both. Keeping the two field
+    // names for API backwards-compatibility with existing dashboards.
     const recoveredToday = todaysLedgerRows.reduce(
       (acc, r) => acc.plus(extractDebtSettled(r.metadata)),
       new Prisma.Decimal(0),
@@ -836,7 +844,7 @@ export class CallCenterService {
       totalMarketDebtKd: KWD_DP(
         unpaidAgg._sum.totalPrice ?? new Prisma.Decimal(0),
       ),
-      debtCollectedTodayKd: KWD_DP(collectedTodayViaLink),
+      debtCollectedTodayKd: KWD_DP(recoveredToday),
       debtRecoveredTodayKd: KWD_DP(recoveredToday),
       pendingLinksCount,
       dayIso: dayIsoLocal,

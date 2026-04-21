@@ -336,7 +336,7 @@ export const en = {
     kpiMarketDebtLabel: 'Total market debt',
     kpiMarketDebtSub: 'Sum of every uncollected invoice across all payment methods',
     kpiCollectedTodayLabel: 'Collected today',
-    kpiCollectedTodaySub: 'Debts recovered today by the Call Center',
+    kpiCollectedTodaySub: 'Debts recovered today across every payment channel',
     kpiPendingLinksLabel: 'Pending links',
     kpiPendingLinksSub: 'Online orders awaiting customer payment',
     pendingLinkHint: 'A payment link is pending for this customer',

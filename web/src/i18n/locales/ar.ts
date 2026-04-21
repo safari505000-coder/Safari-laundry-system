@@ -321,7 +321,7 @@ export const ar = {
     kpiMarketDebtLabel: 'إجمالي الديون السوقية',
     kpiMarketDebtSub: 'مجموع كل فاتورة غير محصَّلة عبر جميع وسائل الدفع',
     kpiCollectedTodayLabel: 'المحصَّل اليوم',
-    kpiCollectedTodaySub: 'مديونيات تم تحصيلها اليوم عبر الكول سنتر',
+    kpiCollectedTodaySub: 'مديونيات تم تحصيلها اليوم عبر كل وسائل الدفع',
     kpiPendingLinksLabel: 'روابط دفع معلّقة',
     kpiPendingLinksSub: 'طلبات إلكترونية بانتظار إتمام العميل للدفع',
     pendingLinkHint: 'يوجد رابط دفع قيد الانتظار لهذا العميل',

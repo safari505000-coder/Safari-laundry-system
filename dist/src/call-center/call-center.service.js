@@ -485,12 +485,10 @@ let CallCenterService = class CallCenterService {
                 },
             }),
         ]);
-        const manualCollectionRows = todaysLedgerRows.filter((r) => isManualCallCenterCollectionRow(r.metadata));
-        const collectedTodayViaLink = manualCollectionRows.reduce((acc, r) => acc.plus(extractDebtSettled(r.metadata)), new client_1.Prisma.Decimal(0));
         const recoveredToday = todaysLedgerRows.reduce((acc, r) => acc.plus(extractDebtSettled(r.metadata)), new client_1.Prisma.Decimal(0));
         return {
             totalMarketDebtKd: KWD_DP(unpaidAgg._sum.totalPrice ?? new client_1.Prisma.Decimal(0)),
-            debtCollectedTodayKd: KWD_DP(collectedTodayViaLink),
+            debtCollectedTodayKd: KWD_DP(recoveredToday),
             debtRecoveredTodayKd: KWD_DP(recoveredToday),
             pendingLinksCount,
             dayIso: dayIsoLocal,
