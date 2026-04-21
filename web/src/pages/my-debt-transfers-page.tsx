@@ -154,7 +154,7 @@ export function MyDebtTransfersPage() {
                 </CardHeader>
                 <CardContent className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
                   <div>
-                    {new Date(r.createdAt).toLocaleString()} ·{' '}
+                    {new Date(r.createdAt).toLocaleString('en-GB')} ·{' '}
                     {r.orderCount} {t('debtTransfers.table.orders')}
                   </div>
                   <div className="flex gap-2">

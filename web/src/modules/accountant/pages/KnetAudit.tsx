@@ -346,7 +346,7 @@ export function KnetAudit() {
                       </span>
                     </TableCell>
                     <TableCell className="font-mono text-xs">{r.id.slice(0, 8)}…</TableCell>
-                    <TableCell className="text-sm">{new Date(r.at).toLocaleString()}</TableCell>
+                    <TableCell className="text-sm">{new Date(r.at).toLocaleString('en-GB')}</TableCell>
                     <TableCell>{r.customer}</TableCell>
                     <TableCell className="text-end tabular-nums">
                       {formatKwdLabel(r.amount.toFixed(3))}

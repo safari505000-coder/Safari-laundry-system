@@ -375,7 +375,7 @@ function EditInvoiceDialog({
   };
 
   const fmtKd = (n: number) =>
-    n.toLocaleString(undefined, {
+    n.toLocaleString('en-GB', {
       minimumFractionDigits: 3,
       maximumFractionDigits: 3,
     });

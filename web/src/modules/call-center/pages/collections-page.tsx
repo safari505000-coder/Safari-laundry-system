@@ -64,7 +64,7 @@ const KWD_SUFFIX = ' د.ك';
 function formatKwd3(value: string | number): string {
   const raw = typeof value === 'number' ? value : Number.parseFloat(value || '0');
   if (!Number.isFinite(raw)) return `${String(value)}${KWD_SUFFIX}`;
-  return `${raw.toLocaleString('en-KW', {
+  return `${raw.toLocaleString('en-GB', {
     minimumFractionDigits: 3,
     maximumFractionDigits: 3,
   })}${KWD_SUFFIX}`;

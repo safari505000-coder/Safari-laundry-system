@@ -323,10 +323,10 @@ export function InventoryReportView({
                       </TableCell>
                       <TableCell className="text-sm">{r.branchName}</TableCell>
                       <TableCell className="text-end font-mono">
-                        {Number(r.quantityOnHand).toLocaleString()}
+                        {Number(r.quantityOnHand).toLocaleString('en-GB')}
                       </TableCell>
                       <TableCell className="text-end font-mono text-muted-foreground">
-                        {Number(r.reorderPointEffective).toLocaleString()}
+                        {Number(r.reorderPointEffective).toLocaleString('en-GB')}
                       </TableCell>
                       <TableCell className="text-end font-mono">
                         {r.avgUnitCost

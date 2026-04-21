@@ -40,7 +40,7 @@ const MAX_DEFAULT = 10;
  * post-settlement debt remainder for traceability.
  */
 export function DailyCollectorPanel({ token }: Props) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const [data, setData] = useState<DailyCollectionsResponse | null>(null);
   const [recon, setRecon] =
     useState<DailyCollectionsReconciliationResponse | null>(null);
@@ -83,7 +83,8 @@ export function DailyCollectorPanel({ token }: Props) {
     void load();
   }, [load]);
 
-  const locale = i18n.language.startsWith('ar') ? 'ar-KW' : 'en-KW';
+  // V19.9.4 — always use Latin digits + English date format (en-GB).
+  const locale = 'en-GB';
   const fmtTime = useMemo(
     () =>
       new Intl.DateTimeFormat(locale, {

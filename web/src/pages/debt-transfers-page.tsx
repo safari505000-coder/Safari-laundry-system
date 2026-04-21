@@ -338,7 +338,7 @@ export function DebtTransfersPage() {
                   rows.map((r) => (
                     <tr key={r.id} className="border-t border-border/40">
                       <td className="p-3">
-                        {new Date(r.createdAt).toLocaleDateString()}
+                        {new Date(r.createdAt).toLocaleDateString('en-GB')}
                       </td>
                       <td className="p-3">{r.sourceDriver.fullName}</td>
                       <td className="p-3">{r.targetDriver.fullName}</td>
@@ -746,7 +746,7 @@ function DebtTransferDetail({
         />
         <KV
           label={t('debtTransfers.detail.created')}
-          value={new Date(row.createdAt).toLocaleString()}
+          value={new Date(row.createdAt).toLocaleString('en-GB')}
         />
         {row.reason ? (
           <KV label={t('debtTransfers.detail.reason')} value={row.reason} />
@@ -757,13 +757,13 @@ function DebtTransferDetail({
         {row.finalizedAt ? (
           <KV
             label={t('debtTransfers.detail.finalized')}
-            value={new Date(row.finalizedAt).toLocaleString()}
+            value={new Date(row.finalizedAt).toLocaleString('en-GB')}
           />
         ) : null}
         {row.cancelledAt ? (
           <KV
             label={t('debtTransfers.detail.cancelled')}
-            value={`${new Date(row.cancelledAt).toLocaleString()}${
+            value={`${new Date(row.cancelledAt).toLocaleString('en-GB')}${
               row.cancelledReason ? ` — ${row.cancelledReason}` : ''
             }`}
           />
@@ -929,7 +929,7 @@ function SignatureCard({
     >
       <div className="text-xs uppercase text-muted-foreground">{label}</div>
       <div className="mt-1 font-mono text-sm">
-        {signedAt ? new Date(signedAt).toLocaleString() : pendingLabel}
+        {signedAt ? new Date(signedAt).toLocaleString('en-GB') : pendingLabel}
       </div>
     </div>
   );

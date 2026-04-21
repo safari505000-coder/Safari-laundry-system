@@ -810,7 +810,7 @@ export function FinancialsPage() {
                     {drillInvoices.rows.slice(0, 200).map((r) => (
                       <TableRow key={r.id}>
                         <TableCell className="whitespace-nowrap text-xs">
-                          {new Date(r.createdAt).toLocaleString()}
+                          {new Date(r.createdAt).toLocaleString('en-GB')}
                         </TableCell>
                         <TableCell className="text-sm">
                           {r.invoiceNumber ?? r.id}
@@ -898,7 +898,7 @@ export function FinancialsPage() {
                     {approvedExpenses.map((r) => (
                       <TableRow key={r.id}>
                         <TableCell className="whitespace-nowrap text-xs">
-                          {new Date(r.expenseDate).toLocaleString()}
+                          {new Date(r.expenseDate).toLocaleString('en-GB')}
                         </TableCell>
                         <TableCell className="text-sm">{r.title}</TableCell>
                         <TableCell className="text-sm">

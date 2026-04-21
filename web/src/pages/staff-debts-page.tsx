@@ -424,7 +424,7 @@ export function StaffDebtsPage() {
   ]);
 
   const generatedAtLabel = useMemo(
-    () => new Date(now).toLocaleString(),
+    () => new Date(now).toLocaleString('en-GB'),
     [now],
   );
 

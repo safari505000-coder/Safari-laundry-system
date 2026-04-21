@@ -464,7 +464,7 @@ export function CreateOrderDialog({ open, onOpenChange, onCreated }: Props) {
 
             <p className="mt-2 text-sm font-medium tabular-nums text-zinc-800">
               {t('orders.create.total')}{' '}
-              {orderTotal.toLocaleString(undefined, {
+              {orderTotal.toLocaleString('en-GB', {
                 minimumFractionDigits: 3,
                 maximumFractionDigits: 4,
               })}{' '}

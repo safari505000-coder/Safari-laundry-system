@@ -325,7 +325,7 @@ export function LiveMonitorPage() {
           </div>
           <div className="flex items-center gap-2 text-xs text-slate-400">
             <Clock className="h-4 w-4" aria-hidden />
-            <span className="tabular-nums">{new Date().toLocaleTimeString()}</span>
+            <span className="tabular-nums">{new Date().toLocaleTimeString('en-GB')}</span>
           </div>
         </div>
 
