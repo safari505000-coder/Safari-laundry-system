@@ -17,6 +17,7 @@ const INSTITUTIONAL_ROLES: readonly SafariRole[] = [
   SafariRole.WORKER,
   SafariRole.CALL_CENTER,
   SafariRole.CALL_CENTER_SUPERVISOR,
+  SafariRole.FLEET_SUPERVISOR,
   SafariRole.ACCOUNTANT,
   SafariRole.SUPERVISOR,
   SafariRole.VIEWER,

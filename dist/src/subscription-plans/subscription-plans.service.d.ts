@@ -11,8 +11,8 @@ export declare class SubscriptionPlansService {
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        isActive: boolean;
         name: string;
+        isActive: boolean;
         salePrice: Prisma.Decimal;
         actualBalance: Prisma.Decimal;
         validityDays: number;
@@ -21,8 +21,8 @@ export declare class SubscriptionPlansService {
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        isActive: boolean;
         name: string;
+        isActive: boolean;
         salePrice: Prisma.Decimal;
         actualBalance: Prisma.Decimal;
         validityDays: number;

@@ -10,10 +10,10 @@ export declare class DebtTransfersService {
     listDrivers(): Promise<{
         drivers: {
             id: string;
+            branchId: string | null;
             username: string;
             fullName: string;
             safariRole: import("@prisma/client").$Enums.SafariRole;
-            branchId: string | null;
         }[];
     }>;
     getDriverOutstandingOrders(driverId: string): Promise<{
@@ -43,17 +43,17 @@ export declare class DebtTransfersService {
         notes: string | null;
         sourceDriver: {
             id: string;
+            branchId: string | null;
             username: string;
             fullName: string;
             safariRole: import("@prisma/client").$Enums.SafariRole;
-            branchId: string | null;
         };
         targetDriver: {
             id: string;
+            branchId: string | null;
             username: string;
             fullName: string;
             safariRole: import("@prisma/client").$Enums.SafariRole;
-            branchId: string | null;
         };
         executedBy: {
             id: string;
@@ -105,17 +105,17 @@ export declare class DebtTransfersService {
         notes: string | null;
         sourceDriver: {
             id: string;
+            branchId: string | null;
             username: string;
             fullName: string;
             safariRole: import("@prisma/client").$Enums.SafariRole;
-            branchId: string | null;
         };
         targetDriver: {
             id: string;
+            branchId: string | null;
             username: string;
             fullName: string;
             safariRole: import("@prisma/client").$Enums.SafariRole;
-            branchId: string | null;
         };
         executedBy: {
             id: string;
@@ -167,17 +167,17 @@ export declare class DebtTransfersService {
         notes: string | null;
         sourceDriver: {
             id: string;
+            branchId: string | null;
             username: string;
             fullName: string;
             safariRole: import("@prisma/client").$Enums.SafariRole;
-            branchId: string | null;
         };
         targetDriver: {
             id: string;
+            branchId: string | null;
             username: string;
             fullName: string;
             safariRole: import("@prisma/client").$Enums.SafariRole;
-            branchId: string | null;
         };
         executedBy: {
             id: string;
@@ -229,17 +229,17 @@ export declare class DebtTransfersService {
         notes: string | null;
         sourceDriver: {
             id: string;
+            branchId: string | null;
             username: string;
             fullName: string;
             safariRole: import("@prisma/client").$Enums.SafariRole;
-            branchId: string | null;
         };
         targetDriver: {
             id: string;
+            branchId: string | null;
             username: string;
             fullName: string;
             safariRole: import("@prisma/client").$Enums.SafariRole;
-            branchId: string | null;
         };
         executedBy: {
             id: string;
@@ -291,17 +291,17 @@ export declare class DebtTransfersService {
         notes: string | null;
         sourceDriver: {
             id: string;
+            branchId: string | null;
             username: string;
             fullName: string;
             safariRole: import("@prisma/client").$Enums.SafariRole;
-            branchId: string | null;
         };
         targetDriver: {
             id: string;
+            branchId: string | null;
             username: string;
             fullName: string;
             safariRole: import("@prisma/client").$Enums.SafariRole;
-            branchId: string | null;
         };
         executedBy: {
             id: string;
@@ -354,17 +354,17 @@ export declare class DebtTransfersService {
             notes: string | null;
             sourceDriver: {
                 id: string;
+                branchId: string | null;
                 username: string;
                 fullName: string;
                 safariRole: import("@prisma/client").$Enums.SafariRole;
-                branchId: string | null;
             };
             targetDriver: {
                 id: string;
+                branchId: string | null;
                 username: string;
                 fullName: string;
                 safariRole: import("@prisma/client").$Enums.SafariRole;
-                branchId: string | null;
             };
             executedBy: {
                 id: string;
@@ -417,17 +417,17 @@ export declare class DebtTransfersService {
         notes: string | null;
         sourceDriver: {
             id: string;
+            branchId: string | null;
             username: string;
             fullName: string;
             safariRole: import("@prisma/client").$Enums.SafariRole;
-            branchId: string | null;
         };
         targetDriver: {
             id: string;
+            branchId: string | null;
             username: string;
             fullName: string;
             safariRole: import("@prisma/client").$Enums.SafariRole;
-            branchId: string | null;
         };
         executedBy: {
             id: string;
@@ -483,17 +483,17 @@ export declare class DebtTransfersService {
             notes: string | null;
             sourceDriver: {
                 id: string;
+                branchId: string | null;
                 username: string;
                 fullName: string;
                 safariRole: import("@prisma/client").$Enums.SafariRole;
-                branchId: string | null;
             };
             targetDriver: {
                 id: string;
+                branchId: string | null;
                 username: string;
                 fullName: string;
                 safariRole: import("@prisma/client").$Enums.SafariRole;
-                branchId: string | null;
             };
             executedBy: {
                 id: string;

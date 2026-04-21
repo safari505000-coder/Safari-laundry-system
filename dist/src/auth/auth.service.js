@@ -59,6 +59,7 @@ const INSTITUTIONAL_ROLES = [
     client_1.SafariRole.WORKER,
     client_1.SafariRole.CALL_CENTER,
     client_1.SafariRole.CALL_CENTER_SUPERVISOR,
+    client_1.SafariRole.FLEET_SUPERVISOR,
     client_1.SafariRole.ACCOUNTANT,
     client_1.SafariRole.SUPERVISOR,
     client_1.SafariRole.VIEWER,
