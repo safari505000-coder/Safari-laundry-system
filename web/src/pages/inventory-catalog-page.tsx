@@ -240,7 +240,12 @@ export default function InventoryCatalogPage() {
                       <Label>الفئة</Label>
                       <Select value={iCategory} onValueChange={(v) => setICategory(v ?? NO_CATEGORY)}>
                         <SelectTrigger>
-                          <SelectValue />
+                          <SelectValue placeholder="— بدون فئة —">
+                            {iCategory === NO_CATEGORY
+                              ? '— بدون فئة —'
+                              : (categories.find((c) => c.id === iCategory)
+                                  ?.nameAr ?? '— بدون فئة —')}
+                          </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value={NO_CATEGORY}>— بدون فئة —</SelectItem>

@@ -489,7 +489,13 @@ export function ReportsPage() {
               }}
             >
               <SelectTrigger>
-                <SelectValue />
+                <SelectValue placeholder={t('reports.all')}>
+                  {driverFilter === 'ALL'
+                    ? t('reports.all')
+                    : (driverOptions.find(
+                        (d) => d.driverId === driverFilter,
+                      )?.fullName ?? t('reports.all'))}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">{t('reports.all')}</SelectItem>

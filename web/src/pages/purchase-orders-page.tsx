@@ -757,7 +757,12 @@ function CreatePoDialog({
               <Label>المورد</Label>
               <Select value={supplierId} onValueChange={(v) => setSupplierId(v ?? '')}>
                 <SelectTrigger>
-                  <SelectValue placeholder="اختر المورد" />
+                  <SelectValue placeholder="اختر المورد">
+                    {supplierId
+                      ? (suppliers.find((s) => s.id === supplierId)?.name ??
+                        'اختر المورد')
+                      : null}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {suppliers.map((s) => (
@@ -772,7 +777,12 @@ function CreatePoDialog({
               <Label>الفرع المستلم</Label>
               <Select value={branchId} onValueChange={(v) => setBranchId(v ?? '')}>
                 <SelectTrigger>
-                  <SelectValue placeholder="اختر الفرع" />
+                  <SelectValue placeholder="اختر الفرع">
+                    {branchId
+                      ? (branches.find((b) => b.id === branchId)?.name ??
+                        'اختر الفرع')
+                      : null}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {branches.map((b) => (
@@ -819,7 +829,18 @@ function CreatePoDialog({
                       }
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="اختر صنف" />
+                        <SelectValue placeholder="اختر صنف">
+                          {line.stockItemId
+                            ? (() => {
+                                const it = items.find(
+                                  (it) => it.id === line.stockItemId,
+                                );
+                                return it
+                                  ? `${it.nameAr} (${it.code})`
+                                  : 'اختر صنف';
+                              })()
+                            : null}
+                        </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
                         {items.map((it) => (

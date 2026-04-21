@@ -680,7 +680,12 @@ function IssueSubscriptionDialog({
               <SelectTrigger id="sub-plan">
                 <SelectValue
                   placeholder={t('subscribers.issuePlanPlaceholder')}
-                />
+                >
+                  {planId
+                    ? ((plans ?? []).find((p) => p.id === planId)?.name ??
+                      t('subscribers.issuePlanPlaceholder'))
+                    : null}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {(plans ?? []).map((p) => (

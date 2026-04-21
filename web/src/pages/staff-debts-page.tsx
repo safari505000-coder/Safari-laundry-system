@@ -557,7 +557,12 @@ export function StaffDebtsPage() {
                 }}
               >
                 <SelectTrigger id="sd-branch">
-                  <SelectValue />
+                  <SelectValue placeholder={t('staffDebts.allBranches')}>
+                    {branchFilter === 'ALL'
+                      ? t('staffDebts.allBranches')
+                      : ((branches ?? []).find((b) => b.id === branchFilter)
+                          ?.name ?? t('staffDebts.allBranches'))}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="ALL">
@@ -589,7 +594,12 @@ export function StaffDebtsPage() {
               <SelectTrigger id="sd-employee">
                 <SelectValue
                   placeholder={t('staffDebts.filterEmployeePlaceholder')}
-                />
+                >
+                  {employeeFilter === 'ALL'
+                    ? t('staffDebts.allEmployees')
+                    : (employeeOptions.find((o) => o.value === employeeFilter)
+                        ?.label ?? t('staffDebts.filterEmployeePlaceholder'))}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">

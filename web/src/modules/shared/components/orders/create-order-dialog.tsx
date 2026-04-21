@@ -375,7 +375,18 @@ export function CreateOrderDialog({ open, onOpenChange, onCreated }: Props) {
                               placeholder={
                                 t('orders.create.pickItem') ?? undefined
                               }
-                            />
+                            >
+                              {row.itemId
+                                ? (() => {
+                                    const it = catalog.find(
+                                      (it) => it.id === row.itemId,
+                                    );
+                                    return it
+                                      ? `${it.nameAr}${it.nameEn ? ` · ${it.nameEn}` : ''}`
+                                      : (t('orders.create.pickItem') ?? '');
+                                  })()
+                                : null}
+                            </SelectValue>
                           </SelectTrigger>
                           <SelectContent>
                             {catalog.map((it) => (

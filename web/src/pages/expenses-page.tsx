@@ -281,7 +281,12 @@ export function ExpensesPage() {
                 onValueChange={(v) => setSelectedBranch(v ?? 'ALL')}
               >
                 <SelectTrigger className="min-w-[180px]">
-                  <SelectValue />
+                  <SelectValue placeholder="All branches">
+                    {selectedBranch === 'ALL'
+                      ? 'All branches'
+                      : (branches.find((b) => b.id === selectedBranch)?.name ??
+                        'All branches')}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="ALL">All branches</SelectItem>

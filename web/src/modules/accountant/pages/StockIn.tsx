@@ -206,7 +206,16 @@ export default function AccountantStockInPage() {
                 <Label>{t('inventory.stockIn.item')}</Label>
                 <Select value={stockItemId} onValueChange={(v) => setStockItemId(v ?? '')}>
                   <SelectTrigger>
-                    <SelectValue placeholder={t('inventory.stockIn.itemPlaceholder')} />
+                    <SelectValue placeholder={t('inventory.stockIn.itemPlaceholder')}>
+                      {stockItemId
+                        ? (() => {
+                            const it = items.find((it) => it.id === stockItemId);
+                            return it
+                              ? pickName(it.nameAr, it.nameEn)
+                              : t('inventory.stockIn.itemPlaceholder');
+                          })()
+                        : null}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {items.map((it) => {
@@ -236,7 +245,12 @@ export default function AccountantStockInPage() {
                 <Label>{t('inventory.stockIn.branch')}</Label>
                 <Select value={branchId} onValueChange={(v) => setBranchId(v ?? '')}>
                   <SelectTrigger>
-                    <SelectValue placeholder={t('inventory.stockIn.branchPlaceholder')} />
+                    <SelectValue placeholder={t('inventory.stockIn.branchPlaceholder')}>
+                      {branchId
+                        ? (branches.find((b) => b.id === branchId)?.name ??
+                          t('inventory.stockIn.branchPlaceholder'))
+                        : null}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {branches.map((b) => (
@@ -290,7 +304,12 @@ export default function AccountantStockInPage() {
                 <Label>{t('inventory.stockIn.supplier')}</Label>
                 <Select value={supplierMode} onValueChange={(v) => setSupplierMode(v ?? SUPPLIER_NEW)}>
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue placeholder={t('inventory.stockIn.newSupplier')}>
+                      {supplierMode === SUPPLIER_NEW
+                        ? t('inventory.stockIn.newSupplier')
+                        : (suppliers.find((s) => s.id === supplierMode)?.name ??
+                          t('inventory.stockIn.newSupplier'))}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value={SUPPLIER_NEW}>

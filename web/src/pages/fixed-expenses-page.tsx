@@ -221,7 +221,12 @@ export function FixedExpensesPage() {
                 disabled={!branches?.length}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder={t('fixedExpenses.pickBranch')} />
+                  <SelectValue placeholder={t('fixedExpenses.pickBranch')}>
+                    {branchId
+                      ? ((branches ?? []).find((b) => b.id === branchId)
+                          ?.name ?? t('fixedExpenses.pickBranch'))
+                      : null}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {(branches ?? []).map((b) => (

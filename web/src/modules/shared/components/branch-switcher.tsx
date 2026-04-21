@@ -104,6 +104,15 @@ export function BranchSwitcher() {
   if (!isOwner) return null;
 
   const value = ownerBranchId ?? ALL_VALUE;
+  // V19.10 — compute the display text ourselves so Radix never falls
+  // back to rendering the raw UUID when the Select mounts before the
+  // branches API responds (visible as "__ALL__" or "…-429b-8bfa-…" in
+  // the header previously).
+  const selectedLabel =
+    value === ALL_VALUE
+      ? t('branchSwitcher.all')
+      : (activeBranches.find((b) => b.id === value)?.name ??
+        t('branchSwitcher.placeholder'));
 
   return (
     <div className="flex min-w-0 max-w-[min(100%,15rem)] flex-col gap-0.5 sm:max-w-[16rem]">
@@ -132,7 +141,9 @@ export function BranchSwitcher() {
               <span className="flex items-center gap-1 text-muted-foreground">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
               </span>
-            : <SelectValue placeholder={t('branchSwitcher.placeholder')} />}
+            : <SelectValue placeholder={t('branchSwitcher.placeholder')}>
+                <span className="min-w-0 truncate">{selectedLabel}</span>
+              </SelectValue>}
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={ALL_VALUE}>{t('branchSwitcher.all')}</SelectItem>

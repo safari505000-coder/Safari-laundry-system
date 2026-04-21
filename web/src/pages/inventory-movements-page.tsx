@@ -169,7 +169,11 @@ export default function InventoryMovementsPage() {
               <Label>الفرع</Label>
               <Select value={branchId} onValueChange={(v) => setBranchId(v ?? ANY)}>
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="الكل">
+                    {branchId === ANY
+                      ? 'الكل'
+                      : (branches.find((b) => b.id === branchId)?.name ?? 'الكل')}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={ANY}>الكل</SelectItem>
@@ -185,7 +189,14 @@ export default function InventoryMovementsPage() {
               <Label>الصنف</Label>
               <Select value={stockItemId} onValueChange={(v) => setStockItemId(v ?? ANY)}>
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="الكل">
+                    {stockItemId === ANY
+                      ? 'الكل'
+                      : (() => {
+                          const it = items.find((i) => i.id === stockItemId);
+                          return it ? `${it.nameAr} · ${it.code}` : 'الكل';
+                        })()}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={ANY}>الكل</SelectItem>

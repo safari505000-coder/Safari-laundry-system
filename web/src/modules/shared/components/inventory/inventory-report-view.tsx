@@ -188,7 +188,16 @@ export function InventoryReportView({
               }
             >
               <SelectTrigger>
-                <SelectValue />
+                <SelectValue placeholder={t('inventory.filters.all')}>
+                  {!categoryId
+                    ? t('inventory.filters.all')
+                    : (() => {
+                        const c = categories.find((c) => c.id === categoryId);
+                        return c
+                          ? pickName(c.nameAr, c.nameEn)
+                          : t('inventory.filters.all');
+                      })()}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={ALL}>{t('inventory.filters.all')}</SelectItem>
@@ -209,7 +218,12 @@ export function InventoryReportView({
               }
             >
               <SelectTrigger>
-                <SelectValue />
+                <SelectValue placeholder={t('inventory.filters.all')}>
+                  {!branchId
+                    ? t('inventory.filters.all')
+                    : (branches.find((b) => b.id === branchId)?.name ??
+                      t('inventory.filters.all'))}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={ALL}>{t('inventory.filters.all')}</SelectItem>

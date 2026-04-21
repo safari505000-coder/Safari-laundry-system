@@ -247,7 +247,22 @@ export function DriverCashTracePage() {
             onValueChange={(v) => setBranchId(v ?? ALL_BRANCHES)}
           >
             <SelectTrigger className="h-9 w-48">
-              <SelectValue />
+              {/*
+               * V19.10 — explicit display so Radix never falls back to
+               * rendering the raw UUID when branches load asynchronously
+               * after the Select first mounts.
+               */}
+              <SelectValue
+                placeholder={t(
+                  'driverCashTrace.allBranches',
+                  'All branches',
+                )}
+              >
+                {branchId === ALL_BRANCHES
+                  ? t('driverCashTrace.allBranches', 'All branches')
+                  : (branches?.find((b) => b.id === branchId)?.name ??
+                    t('driverCashTrace.allBranches', 'All branches'))}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={ALL_BRANCHES}>

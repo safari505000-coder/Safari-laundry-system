@@ -114,7 +114,11 @@ export default function InventoryLowStockPage() {
               <Label>الفرع</Label>
               <Select value={branchId} onValueChange={(v) => setBranchId(v ?? ANY)}>
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="الكل">
+                    {branchId === ANY
+                      ? 'الكل'
+                      : (branches.find((b) => b.id === branchId)?.name ?? 'الكل')}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={ANY}>الكل</SelectItem>

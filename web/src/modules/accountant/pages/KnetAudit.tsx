@@ -246,7 +246,13 @@ export function KnetAudit() {
             onValueChange={(v) => setDriverFilter(v ?? 'ALL')}
           >
             <SelectTrigger>
-              <SelectValue />
+              <SelectValue placeholder={t('reports.all')}>
+                {driverFilter === 'ALL'
+                  ? t('reports.all')
+                  : ((drivers?.drivers ?? []).find(
+                      (d) => d.driverId === driverFilter,
+                    )?.fullName ?? t('reports.all'))}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">{t('reports.all')}</SelectItem>

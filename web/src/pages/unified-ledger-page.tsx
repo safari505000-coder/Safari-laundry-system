@@ -233,7 +233,12 @@ export function UnifiedLedgerPage() {
             <Label>{t('reports.driver')}</Label>
             <Select value={driverId} onValueChange={(v) => setDriverId(v ?? 'ALL')}>
               <SelectTrigger>
-                <SelectValue />
+                <SelectValue placeholder={t('reports.all')}>
+                  {driverId === 'ALL'
+                    ? t('reports.all')
+                    : (driverOptions.find((d) => d.driverId === driverId)
+                        ?.fullName ?? t('reports.all'))}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">{t('reports.all')}</SelectItem>
