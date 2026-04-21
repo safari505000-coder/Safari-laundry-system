@@ -1952,6 +1952,7 @@ export const en = {
     allBranches: 'All branches',
     searchDriver: 'Driver',
     searchDriverPh: 'Filter by name or username…',
+    allDrivers: 'All drivers',
     kpiCollected: 'Collected from customers',
     kpiCollectedHint: '{{count}} order(s) in window',
     kpiHandedToManager: 'Handed to manager',

@@ -1960,6 +1960,7 @@ export const ar = {
     allBranches: 'كل الفروع',
     searchDriver: 'السائق',
     searchDriverPh: 'بحث بالاسم أو اسم المستخدم…',
+    allDrivers: 'كل السائقين',
     kpiCollected: 'محصّل من العملاء',
     kpiCollectedHint: 'عدد الفواتير في المدة: {{count}}',
     kpiHandedToManager: 'تم تسليمه لمدير الفرع',

@@ -64,6 +64,7 @@ import {
 import { cn } from '@/lib/utils';
 
 const ALL_BRANCHES = 'ALL' as const;
+const ALL_DRIVERS = 'ALL' as const;
 
 type QuickRange = 'today' | 'yesterday' | '7d' | '30d';
 
@@ -122,7 +123,8 @@ export function DriverCashTracePage() {
   const [fromDate, setFromDate] = useState<string>(initial.from);
   const [toDate, setToDate] = useState<string>(initial.to);
   const [branchId, setBranchId] = useState<string>(ALL_BRANCHES);
-  const [driverQuery, setDriverQuery] = useState<string>('');
+  const [selectedDriverId, setSelectedDriverId] =
+    useState<string>(ALL_DRIVERS);
   const [branches, setBranches] = useState<BranchRow[] | null>(null);
   const [data, setData] = useState<DriverCashTraceResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -177,16 +179,32 @@ export function DriverCashTracePage() {
         })
       : '—';
 
+  // V19.10 — sorted driver list for the picker. Sorted by name for
+  // a stable, scannable dropdown even when the backend returns them
+  // by activity.
+  const driverOptions = useMemo(() => {
+    const arr = [...(data?.drivers ?? [])];
+    arr.sort((a, b) =>
+      a.fullName.localeCompare(b.fullName, undefined, { sensitivity: 'base' }),
+    );
+    return arr;
+  }, [data]);
+
+  // If the currently-selected driver drops out of the response
+  // (e.g. user changed the date range), fall back to "all drivers"
+  // so the Select never shows a stale id.
+  useEffect(() => {
+    if (selectedDriverId === ALL_DRIVERS) return;
+    if (!data) return;
+    const exists = data.drivers.some((d) => d.driverId === selectedDriverId);
+    if (!exists) setSelectedDriverId(ALL_DRIVERS);
+  }, [data, selectedDriverId]);
+
   const filteredDrivers = useMemo(() => {
     if (!data) return [];
-    const q = driverQuery.trim().toLowerCase();
-    if (!q) return data.drivers;
-    return data.drivers.filter(
-      (d) =>
-        d.fullName.toLowerCase().includes(q) ||
-        d.username.toLowerCase().includes(q),
-    );
-  }, [data, driverQuery]);
+    if (selectedDriverId === ALL_DRIVERS) return data.drivers;
+    return data.drivers.filter((d) => d.driverId === selectedDriverId);
+  }, [data, selectedDriverId]);
 
   return (
     <div className="space-y-5">
@@ -277,15 +295,38 @@ export function DriverCashTracePage() {
           </Select>
         </FilterField>
         <FilterField label={t('driverCashTrace.searchDriver', 'Driver')}>
-          <Input
-            placeholder={t(
-              'driverCashTrace.searchDriverPh',
-              'Filter by name or username\u2026',
-            )}
-            value={driverQuery}
-            onChange={(e) => setDriverQuery(e.target.value)}
-            className="h-9 w-56"
-          />
+          <Select
+            value={selectedDriverId}
+            onValueChange={(v) => setSelectedDriverId(v ?? ALL_DRIVERS)}
+          >
+            <SelectTrigger className="h-9 w-56">
+              <SelectValue
+                placeholder={t('driverCashTrace.allDrivers', 'All drivers')}
+              >
+                {selectedDriverId === ALL_DRIVERS
+                  ? t('driverCashTrace.allDrivers', 'All drivers')
+                  : (driverOptions.find(
+                      (d) => d.driverId === selectedDriverId,
+                    )?.fullName ??
+                    t('driverCashTrace.allDrivers', 'All drivers'))}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_DRIVERS}>
+                {t('driverCashTrace.allDrivers', 'All drivers')}
+              </SelectItem>
+              {driverOptions.map((d) => (
+                <SelectItem key={d.driverId} value={d.driverId}>
+                  <span className="flex flex-col">
+                    <span>{d.fullName}</span>
+                    <span className="text-xs text-muted-foreground">
+                      @{d.username}
+                    </span>
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </FilterField>
         <FilterField label={t('reports.quickRange', 'Quick range')}>
           <div className="flex flex-wrap gap-1.5">
