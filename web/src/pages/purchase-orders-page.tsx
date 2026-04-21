@@ -407,7 +407,7 @@ export default function PurchaseOrdersPage() {
                         {Math.round(r.receivedRatio * 100)}%
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
-                        {new Date(r.createdAt).toLocaleDateString('ar-KW')}
+                        {new Date(r.createdAt).toLocaleDateString('en-GB')}
                       </TableCell>
                       <TableCell className="text-end">
                         <Button
@@ -562,7 +562,7 @@ export default function PurchaseOrdersPage() {
                         >
                           <div className="flex items-center justify-between text-xs text-muted-foreground">
                             <span>
-                              {new Date(r.receivedAt).toLocaleString('ar-KW')}
+                              {new Date(r.receivedAt).toLocaleString('en-GB')}
                             </span>
                             <span>بواسطة: {r.receivedByName}</span>
                           </div>

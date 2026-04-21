@@ -102,7 +102,7 @@ export function LoanPrintPage() {
           />
           <Field
             label="تاريخ الطلب"
-            value={new Date(row.createdAt).toLocaleDateString('ar-KW')}
+            value={new Date(row.createdAt).toLocaleDateString('en-GB')}
           />
         </div>
       </section>

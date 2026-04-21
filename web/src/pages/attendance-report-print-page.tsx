@@ -18,7 +18,7 @@ import { PrintableSheet } from '@/modules/shared/print';
 
 function fmtTime(iso: string | null): string {
   if (!iso) return '—';
-  return new Date(iso).toLocaleTimeString('ar-KW', {
+  return new Date(iso).toLocaleTimeString('en-GB', {
     hour: '2-digit',
     minute: '2-digit',
   });
@@ -75,7 +75,7 @@ export function AttendanceReportPrintPage() {
     const from = filters.from ? new Date(filters.from) : undefined;
     const to = filters.to ? new Date(filters.to) : undefined;
     if (from && to) {
-      return `${from.toLocaleDateString('ar-KW')} — ${to.toLocaleDateString('ar-KW')}`;
+      return `${from.toLocaleDateString('en-GB')} — ${to.toLocaleDateString('en-GB')}`;
     }
     return 'آخر 30 يوم';
   }, [filters]);

@@ -82,7 +82,7 @@ export function LeaveRequestPrintPage() {
           <Field label="عدد الأيام" value={String(row.daysCount)} />
           <Field
             label="تاريخ تقديم الطلب"
-            value={new Date(row.createdAt).toLocaleDateString('ar-KW')}
+            value={new Date(row.createdAt).toLocaleDateString('en-GB')}
           />
           <Field
             label="الحالة الحالية"
@@ -127,7 +127,7 @@ export function LeaveRequestPrintPage() {
               }
               value={
                 row.approvedAt
-                  ? new Date(row.approvedAt).toLocaleString('ar-KW')
+                  ? new Date(row.approvedAt).toLocaleString('en-GB')
                   : '—'
               }
             />

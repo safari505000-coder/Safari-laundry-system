@@ -33,18 +33,18 @@ const KD_FMT_4 = (v: string | number | null | undefined) => {
 
 function formatDateTime(iso: string): string {
   const d = new Date(iso);
-  return `${d.toLocaleDateString('ar-KW', {
+  return `${d.toLocaleDateString('en-GB', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
-  })} — ${d.toLocaleTimeString('ar-KW', {
+  })} — ${d.toLocaleTimeString('en-GB', {
     hour: '2-digit',
     minute: '2-digit',
   })}`;
 }
 
 function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('ar-KW', {
+  return new Date(iso).toLocaleDateString('en-GB', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',

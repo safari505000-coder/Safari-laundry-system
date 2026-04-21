@@ -94,7 +94,7 @@ export function DocumentQR({
         {issuedAtIso ? (
           <div>
             تاريخ الإصدار:{' '}
-            <strong>{new Date(issuedAtIso).toLocaleDateString('ar-KW')}</strong>
+            <strong>{new Date(issuedAtIso).toLocaleDateString('en-GB')}</strong>
           </div>
         ) : null}
         <div>امسح للتحقق</div>

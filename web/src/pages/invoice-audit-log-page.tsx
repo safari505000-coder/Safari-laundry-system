@@ -218,7 +218,7 @@ export function InvoiceAuditLogPage() {
                 <>
                   <TableRow key={r.id}>
                     <TableCell className="whitespace-nowrap text-xs">
-                      {new Date(r.createdAt).toLocaleString('ar-KW')}
+                      {new Date(r.createdAt).toLocaleString('en-GB')}
                     </TableCell>
                     <TableCell>
                       {r.action === 'EDIT' ? (

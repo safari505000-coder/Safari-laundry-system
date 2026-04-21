@@ -104,8 +104,8 @@ export function PrintableSheet({
               <div className="printable-sheet__doc-meta">{subtitle}</div>
             ) : null}
             <div className="printable-sheet__doc-meta">
-              تاريخ الإصدار: {issued.toLocaleDateString('ar-KW')} —{' '}
-              {issued.toLocaleTimeString('ar-KW', {
+              تاريخ الإصدار: {issued.toLocaleDateString('en-GB')} —{' '}
+              {issued.toLocaleTimeString('en-GB', {
                 hour: '2-digit',
                 minute: '2-digit',
               })}

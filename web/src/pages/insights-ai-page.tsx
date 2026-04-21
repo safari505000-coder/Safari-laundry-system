@@ -447,7 +447,7 @@ function ExecutiveReportCard({ token }: { token: string }) {
                 <div>
                   <div className="text-sm font-medium">{e.key}</div>
                   <div className="text-xs text-muted-foreground">
-                    {new Date(e.generatedAt).toLocaleString('ar-KW')} · {(e.sizeBytes / 1024).toFixed(1)} KB
+                    {new Date(e.generatedAt).toLocaleString('en-GB')} · {(e.sizeBytes / 1024).toFixed(1)} KB
                   </div>
                 </div>
                 <Button variant="outline" size="sm" onClick={() => void download(e.key)} className="gap-2">

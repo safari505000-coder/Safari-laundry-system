@@ -46,8 +46,7 @@ type Props = {
  * The cut-off banner + `issuedWhileCutOff` chip together deliver #10.
  */
 export function CustomerLedgerPanel({ customerId, token }: Props) {
-  const { t, i18n } = useTranslation();
-  const isAr = i18n.language.startsWith('ar');
+  const { t } = useTranslation();
   const [data, setData] = useState<CustomerLedgerResponse | null>(null);
   const [loading, setLoading] = useState(false);
   // V19.8.5 — statement export dialog (date filter + print / WhatsApp).
@@ -73,7 +72,9 @@ export function CustomerLedgerPanel({ customerId, token }: Props) {
     void load();
   }, [load]);
 
-  const locale = isAr ? 'ar-KW' : 'en-KW';
+  // V19.9.4 — numbers and dates are always rendered with Latin digits
+  // and English date format regardless of UI language; see `useAppLocale`.
+  const locale = 'en-GB';
   const fmtDateTime = useMemo(
     () =>
       new Intl.DateTimeFormat(locale, {

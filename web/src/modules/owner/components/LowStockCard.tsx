@@ -18,7 +18,7 @@ type Props = {
   token: string | null;
 };
 
-const kwFormatter = new Intl.DateTimeFormat('ar-KW', {
+const kwFormatter = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Asia/Kuwait',
   dateStyle: 'medium',
   timeStyle: 'short',

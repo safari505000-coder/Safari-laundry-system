@@ -366,7 +366,7 @@ export function LeavesPage() {
                     className="border-t border-slate-800 hover:bg-slate-800/30"
                   >
                     <td className="p-3 text-slate-300">
-                      {new Date(r.createdAt).toLocaleDateString('ar-KW')}
+                      {new Date(r.createdAt).toLocaleDateString('en-GB')}
                     </td>
                     {isApprover ? (
                       <td className="p-3">

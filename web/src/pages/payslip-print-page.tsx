@@ -17,14 +17,14 @@ import { PrintableSheet } from '@/modules/shared/print';
 const KD = (s: string) => {
   const n = Number.parseFloat(s);
   if (!Number.isFinite(n)) return s;
-  return n.toLocaleString('ar-KW', {
+  return n.toLocaleString('en-GB', {
     minimumFractionDigits: 3,
     maximumFractionDigits: 3,
   });
 };
 
 function hijriMonth(iso: string): string {
-  return new Date(iso).toLocaleDateString('ar-KW', {
+  return new Date(iso).toLocaleDateString('en-GB', {
     year: 'numeric',
     month: 'long',
   });
@@ -127,7 +127,7 @@ export function PayslipPrintPage() {
             label="تاريخ التعيين"
             value={
               row.user.hireDate
-                ? new Date(row.user.hireDate).toLocaleDateString('ar-KW')
+                ? new Date(row.user.hireDate).toLocaleDateString('en-GB')
                 : '—'
             }
           />
@@ -167,7 +167,7 @@ export function PayslipPrintPage() {
             <tr>
               <td>صافي الراتب المستحق</td>
               <td style={{ textAlign: 'end' }}>
-                {net.toLocaleString('ar-KW', {
+                {net.toLocaleString('en-GB', {
                   minimumFractionDigits: 3,
                   maximumFractionDigits: 3,
                 })}
@@ -182,7 +182,7 @@ export function PayslipPrintPage() {
         <div className="printable-sheet__grid-3">
           <Field
             label="تاريخ الاستحقاق"
-            value={new Date(row.paymentDate).toLocaleDateString('ar-KW')}
+            value={new Date(row.paymentDate).toLocaleDateString('en-GB')}
           />
           <Field label="الحالة" value={row.status === 'PAID' ? 'مدفوع' : 'معلق'} />
           <Field label="البنك" value={row.user.bankName ?? '—'} />

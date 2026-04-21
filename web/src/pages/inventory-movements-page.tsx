@@ -49,7 +49,7 @@ const TYPE_CLASSES: Record<StockMovementType, string> = {
   TRANSFER_OUT: 'bg-indigo-100 text-indigo-900',
 };
 
-const kwDt = new Intl.DateTimeFormat('ar-KW', {
+const kwDt = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Asia/Kuwait',
   dateStyle: 'short',
   timeStyle: 'short',
