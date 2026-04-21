@@ -30,6 +30,7 @@ import {
 } from '@/modules/shared/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import { StatementDialog } from './statement-dialog';
+import { InvoiceSupervisorActions } from '@/modules/shared/components/orders/invoice-supervisor-actions';
 
 type Props = {
   customerId: string;
@@ -267,6 +268,20 @@ export function CustomerLedgerPanel({ customerId, token }: Props) {
                         >
                           <Printer className="h-4 w-4" aria-hidden />
                         </a>
+                        {/* V19.9 — CALL_CENTER_SUPERVISOR only: edit (same-day) / void.
+                            The component internally checks RBAC via `can()`, so
+                            it renders nothing for agents, accountants, etc. */}
+                        <InvoiceSupervisorActions
+                          order={{
+                            id: inv.id,
+                            createdAtIso: inv.createdAtIso,
+                            status: inv.status,
+                            totalKd: inv.totalKd,
+                            paymentMethod: inv.paymentMethod,
+                          }}
+                          onChanged={() => void load()}
+                          compact
+                        />
                       </div>
                     </div>
                     <div className="mt-2 flex flex-wrap gap-1.5">

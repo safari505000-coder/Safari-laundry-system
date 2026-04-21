@@ -67,6 +67,12 @@ const orderDetailSelect = {
       jobTitle: true,
       phone: true,
       safariRole: true,
+      // V19.9 — surface the issuing driver's branch so the Call-Center
+      // "All Invoices" browser can render an aggregated table without
+      // a secondary fetch. Any consumer that already destructures the
+      // driver object is forward-compatible (extra property is
+      // additive).
+      branch: { select: { id: true, name: true } },
     },
   },
   lineItems: {

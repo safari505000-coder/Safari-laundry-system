@@ -1,5 +1,6 @@
 import type { NavGroup } from '@/modules/shared/nav/nav-types';
 import {
+  allInvoicesItem,
   collectionsItem,
   customersItem,
   leavesItem,
@@ -34,6 +35,13 @@ export const callCenterSidebarNavGroups: NavGroup[] = [
       subscribersItem,
       whatsappToolsItem,
     ],
+  },
+  // V19.9 — dedicated "الفواتير" group so the unified invoice browser
+  // sits in its own row instead of being buried between customers and
+  // collections.
+  {
+    labelKey: 'nav.groupInvoices',
+    items: [allInvoicesItem],
   },
   // Stage-D — Self-service HR for call-center staff (leaves only).
   {

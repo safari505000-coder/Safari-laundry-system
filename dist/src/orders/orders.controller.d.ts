@@ -40,6 +40,10 @@ export declare class OrdersController {
             jobTitle: string | null;
             phone: string | null;
             safariRole: import("@prisma/client").$Enums.SafariRole;
+            branch: {
+                id: string;
+                name: string;
+            } | null;
         } | null;
         lineItems: {
             id: string;
@@ -80,6 +84,10 @@ export declare class OrdersController {
             jobTitle: string | null;
             phone: string | null;
             safariRole: import("@prisma/client").$Enums.SafariRole;
+            branch: {
+                id: string;
+                name: string;
+            } | null;
         } | null;
         lineItems: {
             id: string;
@@ -120,6 +128,10 @@ export declare class OrdersController {
             jobTitle: string | null;
             phone: string | null;
             safariRole: import("@prisma/client").$Enums.SafariRole;
+            branch: {
+                id: string;
+                name: string;
+            } | null;
         } | null;
         lineItems: {
             id: string;
@@ -196,6 +208,10 @@ export declare class OrdersController {
             jobTitle: string | null;
             phone: string | null;
             safariRole: import("@prisma/client").$Enums.SafariRole;
+            branch: {
+                id: string;
+                name: string;
+            } | null;
         } | null;
         lineItems: {
             id: string;
@@ -236,6 +252,10 @@ export declare class OrdersController {
             jobTitle: string | null;
             phone: string | null;
             safariRole: import("@prisma/client").$Enums.SafariRole;
+            branch: {
+                id: string;
+                name: string;
+            } | null;
         } | null;
         lineItems: {
             id: string;
@@ -276,6 +296,10 @@ export declare class OrdersController {
             jobTitle: string | null;
             phone: string | null;
             safariRole: import("@prisma/client").$Enums.SafariRole;
+            branch: {
+                id: string;
+                name: string;
+            } | null;
         } | null;
         lineItems: {
             id: string;

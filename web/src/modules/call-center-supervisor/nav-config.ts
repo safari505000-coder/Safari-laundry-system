@@ -1,5 +1,6 @@
 import type { NavGroup } from '@/modules/shared/nav/nav-types';
 import {
+  allInvoicesItem,
   ccPerformanceItem,
   collectionsItem,
   customersItem,
@@ -26,6 +27,10 @@ export const callCenterSupervisorSidebarNavGroups: NavGroup[] = [
       subscribersItem,
       whatsappToolsItem,
     ],
+  },
+  {
+    labelKey: 'nav.groupInvoices',
+    items: [allInvoicesItem],
   },
   {
     labelKey: 'nav.groupIntelligence',

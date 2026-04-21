@@ -84,7 +84,14 @@ export function OrderDetailDialog({ open, onOpenChange, order, onChanged }: Prop
               </div>
             </dl>
             <InvoiceSupervisorActions
-              order={order}
+              order={{
+                id: order.id,
+                createdAtIso: order.createdAt,
+                status: order.status,
+                totalKd: order.totalPrice,
+                paymentMethod: order.posPaymentMethod ?? null,
+                notes: order.notes ?? null,
+              }}
               onChanged={() => {
                 onChanged?.();
                 onOpenChange(false);

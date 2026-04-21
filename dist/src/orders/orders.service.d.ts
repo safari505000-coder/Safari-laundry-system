@@ -48,6 +48,12 @@ declare const orderDetailSelect: {
             jobTitle: true;
             phone: true;
             safariRole: true;
+            branch: {
+                select: {
+                    id: true;
+                    name: true;
+                };
+            };
         };
     };
     lineItems: {

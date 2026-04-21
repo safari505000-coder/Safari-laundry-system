@@ -55,6 +55,7 @@ import PurchaseOrdersPage from '@/pages/purchase-orders-page';
 import { UnifiedLedgerPage } from '@/pages/unified-ledger-page';
 import { CcPerformancePage } from '@/pages/cc-performance-page';
 import { InvoiceAuditLogPage } from '@/pages/invoice-audit-log-page';
+import { AllInvoicesPage } from '@/pages/all-invoices-page';
 import { MyDepositsPage } from '@/modules/driver/pages/my-deposits-page';
 import { WhatsappToolsPage } from '@/modules/call-center/pages/whatsapp-tools-page';
 import { ManageItems } from '@/modules/owner/pages/ManageItems';
@@ -351,6 +352,18 @@ export default function App() {
                   element={
                     <RequireAccess access="orders.view">
                       <InvoicePrintPage />
+                    </RequireAccess>
+                  }
+                />
+                {/* V19.9 — "كل الفواتير" unified browser with phone
+                    search, issuer, branch, status, printable image,
+                    and supervisor edit/void actions. Shared by CC,
+                    CC supervisor, accountant, OWNER, and GM. */}
+                <Route
+                  path="invoices"
+                  element={
+                    <RequireAccess access="invoices.browseAll">
+                      <AllInvoicesPage />
                     </RequireAccess>
                   }
                 />

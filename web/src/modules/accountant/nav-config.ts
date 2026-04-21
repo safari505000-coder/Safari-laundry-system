@@ -2,6 +2,7 @@ import type { NavGroup } from '@/modules/shared/nav/nav-types';
 import {
   accountantInventoryItem,
   accountantStockInItem,
+  allInvoicesItem,
   attendanceItem,
   debtTransfersItem,
   expenseApprovalItem,
@@ -52,8 +53,16 @@ export const accountantSidebarNavGroups: NavGroup[] = [
     ],
   },
   {
+    labelKey: 'nav.groupInvoices',
+    items: [allInvoicesItem],
+  },
+  {
     labelKey: 'nav.groupOperations',
-    items: [invoicesDataItem, accountantInventoryItem, accountantStockInItem],
+    items: [
+      invoicesDataItem,
+      accountantInventoryItem,
+      accountantStockInItem,
+    ],
   },
   {
     labelKey: 'nav.groupInventory',

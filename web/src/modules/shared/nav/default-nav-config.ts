@@ -17,6 +17,7 @@ import {
   inventoryCatalogItem,
   inventoryLowStockItem,
   inventoryMovementsItem,
+  allInvoicesItem,
   invoicesDataItem,
   invoiceAuditItem,
   ccPerformanceItem,
@@ -109,6 +110,14 @@ export const defaultSidebarNavGroups: NavGroup[] = [
       subscriptionsItem,
       subscribersItem,
     ],
+  },
+  // V19.9 — dedicated "الفواتير" group (kept separate from the red
+  // payment/collection bucket so the unified invoice browser sits
+  // alone instead of being confused with debt-specific tooling).
+  {
+    labelKey: 'nav.groupInvoices',
+    tone: 'blue',
+    items: [allInvoicesItem],
   },
   {
     labelKey: 'nav.groupPaymentCollection',

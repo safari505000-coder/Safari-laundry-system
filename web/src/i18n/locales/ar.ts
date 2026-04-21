@@ -60,6 +60,8 @@ export const ar = {
     invoicesData: 'بيانات الفواتير',
     ccPerformance: 'أداء الكول سنتر',
     invoiceAudit: 'سجل تعديل وإلغاء الفواتير',
+    allInvoices: 'كل الفواتير',
+    groupInvoices: 'الفواتير',
     unifiedLedger: 'الدفتر الموحد',
     myCustody: 'كاش بانتظار الإيداع',
     managerCustodyAging: 'الكاش المحتجز لدى المدراء',

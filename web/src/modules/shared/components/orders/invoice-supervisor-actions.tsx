@@ -19,12 +19,26 @@ import {
   editInvoiceSameDay,
   voidInvoice,
   type EditInvoiceBody,
-  type OrderRow,
 } from '@/lib/api';
 
+/**
+ * Minimal shape the supervisor actions need. Callers may pass a full
+ * OrderRow, a CustomerLedgerInvoice, or any ad-hoc shape as long as
+ * `id`, `createdAtIso`, `status`, `totalKd` are present.
+ */
+export type InvoiceSupervisorTarget = {
+  id: string;
+  createdAtIso: string;
+  status: string;
+  totalKd: string;
+  paymentMethod?: EditInvoiceBody['posPaymentMethod'] | null;
+  notes?: string | null;
+};
+
 type Props = {
-  order: OrderRow;
+  order: InvoiceSupervisorTarget;
   onChanged?: () => void;
+  compact?: boolean;
 };
 
 /**
@@ -33,7 +47,11 @@ type Props = {
  * on an earlier Kuwait-local day (same-day window only). Void is
  * available as long as the order is not already CANCELED.
  */
-export function InvoiceSupervisorActions({ order, onChanged }: Props) {
+export function InvoiceSupervisorActions({
+  order,
+  onChanged,
+  compact,
+}: Props) {
   const { user } = useAuth();
   const canEdit = can(user, 'invoices.editSameDay');
   const canVoid = can(user, 'invoices.void');
@@ -41,19 +59,20 @@ export function InvoiceSupervisorActions({ order, onChanged }: Props) {
   const [voidOpen, setVoidOpen] = useState(false);
 
   const isSameDay = useMemo(() => {
-    const d1 = new Date(order.createdAt);
+    const d1 = new Date(order.createdAtIso);
     const d2 = new Date();
     const fmt = (d: Date) => {
       const kuwait = new Date(d.getTime() + 3 * 60 * 60 * 1000);
       return kuwait.toISOString().slice(0, 10);
     };
     return fmt(d1) === fmt(d2);
-  }, [order.createdAt]);
+  }, [order.createdAtIso]);
 
   const alreadyCanceled = order.status === 'CANCELED';
 
   if (!canEdit && !canVoid) return null;
   if (alreadyCanceled) {
+    if (compact) return null;
     return (
       <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-950/30">
         هذه الفاتورة ملغية — لا يمكن التعديل عليها.
@@ -61,34 +80,43 @@ export function InvoiceSupervisorActions({ order, onChanged }: Props) {
     );
   }
 
+  const size = compact ? 'icon' : 'sm';
+
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-wrap gap-1">
       {canEdit ? (
         <Button
           variant="outline"
-          size="sm"
-          onClick={() => setEditOpen(true)}
+          size={size}
+          onClick={(e) => {
+            e.stopPropagation();
+            setEditOpen(true);
+          }}
           disabled={!isSameDay}
           title={
             !isSameDay
               ? 'التعديل مسموح في نفس اليوم فقط'
               : 'تعديل الفاتورة'
           }
-          className="gap-1"
+          className={compact ? 'h-8 w-8' : 'gap-1'}
         >
           <Pencil className="h-3.5 w-3.5" />
-          تعديل
+          {compact ? null : <span>تعديل</span>}
         </Button>
       ) : null}
       {canVoid ? (
         <Button
           variant="destructive"
-          size="sm"
-          onClick={() => setVoidOpen(true)}
-          className="gap-1"
+          size={size}
+          onClick={(e) => {
+            e.stopPropagation();
+            setVoidOpen(true);
+          }}
+          title="إلغاء الفاتورة"
+          className={compact ? 'h-8 w-8' : 'gap-1'}
         >
           <XCircle className="h-3.5 w-3.5" />
-          إلغاء الفاتورة
+          {compact ? null : <span>إلغاء الفاتورة</span>}
         </Button>
       ) : null}
 
@@ -116,14 +144,14 @@ function EditInvoiceDialog({
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  order: OrderRow;
+  order: InvoiceSupervisorTarget;
   onChanged?: () => void;
 }) {
   const { token } = useAuth();
-  const [totalPrice, setTotalPrice] = useState(order.totalPrice);
+  const [totalPrice, setTotalPrice] = useState(order.totalKd);
   const [posPaymentMethod, setPosPaymentMethod] = useState<
     EditInvoiceBody['posPaymentMethod'] | ''
-  >(order.posPaymentMethod ?? '');
+  >(order.paymentMethod ?? '');
   const [notes, setNotes] = useState(order.notes ?? '');
   const [reason, setReason] = useState('');
   const [saving, setSaving] = useState(false);
@@ -131,8 +159,8 @@ function EditInvoiceDialog({
   const submit = async () => {
     if (!token) return;
     const body: EditInvoiceBody = {};
-    if (totalPrice !== order.totalPrice) body.totalPrice = totalPrice;
-    if (posPaymentMethod && posPaymentMethod !== order.posPaymentMethod)
+    if (totalPrice !== order.totalKd) body.totalPrice = totalPrice;
+    if (posPaymentMethod && posPaymentMethod !== order.paymentMethod)
       body.posPaymentMethod = posPaymentMethod || undefined;
     if (notes !== (order.notes ?? '')) body.notes = notes;
     if (reason.trim()) body.reason = reason.trim();
@@ -238,7 +266,7 @@ function VoidInvoiceDialog({
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  order: OrderRow;
+  order: InvoiceSupervisorTarget;
   onChanged?: () => void;
 }) {
   const { token } = useAuth();

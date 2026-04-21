@@ -188,6 +188,17 @@ export const ACCESS = {
     'CALL_CENTER_SUPERVISOR',
   ] satisfies readonly SafariRole[],
   'invoices.void': ['CALL_CENTER_SUPERVISOR'] satisfies readonly SafariRole[],
+  // V19.9 — unified "All Invoices" browser (phone search + issuer +
+  // branch + status + printable image). Intentionally separate from
+  // `orders.view` which is the operations hub: this list is optimized
+  // for the CC front-desk workflow ("pull up a customer by phone").
+  'invoices.browseAll': [
+    'OWNER',
+    'GENERAL_MANAGER',
+    'CALL_CENTER',
+    'CALL_CENTER_SUPERVISOR',
+    'ACCOUNTANT',
+  ] satisfies readonly SafariRole[],
   'invoiceAudit.view': withExec('ACCOUNTANT'),
   // Team performance dashboard — supervisor runs it day-to-day; exec
   // pair read it alongside the debt-recovery report.

@@ -922,6 +922,7 @@ export type OrderRow = {
     jobTitle: string | null;
     phone: string | null;
     safariRole: string;
+    branch: { id: string; name: string } | null;
   } | null;
   lineItems: {
     id: string;

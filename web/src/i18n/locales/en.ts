@@ -59,6 +59,8 @@ export const en = {
     invoicesData: 'Invoices data',
     ccPerformance: 'Call center performance',
     invoiceAudit: 'Invoice edit/void log',
+    allInvoices: 'All invoices',
+    groupInvoices: 'Invoices',
     unifiedLedger: 'Unified ledger',
     myCustody: 'Cash awaiting deposit',
     managerCustodyAging: 'Cash held by managers',

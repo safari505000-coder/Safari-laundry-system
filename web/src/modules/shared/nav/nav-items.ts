@@ -280,6 +280,28 @@ export const invoiceAuditItem: NavItem = {
   roles: ['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT'],
 };
 
+/**
+ * V19.9 — "كل الفواتير" unified invoice browser.
+ *
+ * A phone-first search over every issued invoice with issuer, branch,
+ * status, and the printable invoice image. Shared by CC agents,
+ * supervisors, and accountants so all three have a single surface for
+ * "pull up a customer's history" instead of hopping between Customer
+ * 360 and the operations Orders page.
+ */
+export const allInvoicesItem: NavItem = {
+  to: '/invoices',
+  labelKey: 'nav.allInvoices',
+  icon: FileText,
+  roles: [
+    'OWNER',
+    'GENERAL_MANAGER',
+    'CALL_CENTER',
+    'CALL_CENTER_SUPERVISOR',
+    'ACCOUNTANT',
+  ],
+};
+
 export const shiftsItem: NavItem = {
   to: '/shifts',
   labelKey: 'nav.shifts',
