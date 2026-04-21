@@ -12,6 +12,7 @@ import {
   PosPaymentMethod,
   Prisma,
 } from '@prisma/client';
+import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { CustomerLedgerService } from '../customer-ledger/customer-ledger.service';
 import { PaymentsService } from '../common/services/payments.service';
@@ -339,7 +340,75 @@ export class CallCenterService {
     private readonly prisma: PrismaService,
     private readonly customerLedger: CustomerLedgerService,
     private readonly payments: PaymentsService,
+    private readonly jwt: JwtService,
   ) {}
+
+  /**
+   * V19.8.9 — Issue a short-lived, signed share link for a customer's
+   * statement so the Call Center can forward it over WhatsApp. The
+   * token embeds `customerId` plus optional `from` / `to` Kuwait-local
+   * filters and lives for 7 days (long enough for a customer to act
+   * on a reminder, short enough that an accidentally-leaked URL
+   * expires on its own). Holder of the URL does NOT get access to
+   * anything else: every call to `getPublicStatement(token)` is
+   * verified and scoped back to the embedded customer.
+   */
+  async createStatementShareToken(
+    customerId: string,
+    params: { from?: string | null; to?: string | null; publicBaseUrl: string },
+  ): Promise<{ token: string; shareUrl: string; expiresAtIso: string }> {
+    const customer = await this.prisma.customer.findUnique({
+      where: { id: customerId },
+      select: { id: true },
+    });
+    if (!customer) {
+      throw new NotFoundException('Customer not found');
+    }
+    const payload = {
+      purpose: 'STATEMENT_SHARE' as const,
+      customerId,
+      from: params.from || undefined,
+      to: params.to || undefined,
+    };
+    const token = await this.jwt.signAsync(payload, { expiresIn: '7d' });
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const base = params.publicBaseUrl.replace(/\/$/, '');
+    const shareUrl = `${base}/public/statement/${token}`;
+    return {
+      token,
+      shareUrl,
+      expiresAtIso: expiresAt.toISOString(),
+    };
+  }
+
+  /**
+   * V19.8.9 — Resolve a share token into the same ledger payload the
+   * authenticated endpoint returns. Verifies the signature, the
+   * `purpose` claim, and re-scopes the request to the embedded
+   * `customerId` so a leaked/malformed token cannot be used to peek
+   * at other customers' data by swapping IDs in the URL.
+   */
+  async getPublicStatement(token: string): Promise<CustomerLedgerResponseDto> {
+    let payload: {
+      purpose?: string;
+      customerId?: string;
+      from?: string;
+      to?: string;
+    };
+    try {
+      payload = await this.jwt.verifyAsync(token);
+    } catch {
+      throw new NotFoundException('رابط الكشف غير صالح أو منتهي الصلاحية');
+    }
+    if (payload.purpose !== 'STATEMENT_SHARE' || !payload.customerId) {
+      throw new NotFoundException('رابط الكشف غير صالح');
+    }
+    return this.getCustomerLedger(payload.customerId, {
+      from: payload.from,
+      to: payload.to,
+      limit: 500,
+    });
+  }
 
   /**
    * V1.6.0 — on-demand payment link for ANY unpaid order (Cash, KNET,

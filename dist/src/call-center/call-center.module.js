@@ -15,13 +15,14 @@ const prisma_module_1 = require("../prisma/prisma.module");
 const call_center_controller_1 = require("./call-center.controller");
 const call_center_service_1 = require("./call-center.service");
 const daily_collections_reconciliation_cron_1 = require("./daily-collections-reconciliation.cron");
+const public_statement_controller_1 = require("./public-statement.controller");
 let CallCenterModule = class CallCenterModule {
 };
 exports.CallCenterModule = CallCenterModule;
 exports.CallCenterModule = CallCenterModule = __decorate([
     (0, common_1.Module)({
         imports: [prisma_module_1.PrismaModule, auth_module_1.AuthModule, customer_ledger_module_1.CustomerLedgerModule, payments_module_1.PaymentsModule],
-        controllers: [call_center_controller_1.CallCenterController],
+        controllers: [call_center_controller_1.CallCenterController, public_statement_controller_1.PublicStatementController],
         providers: [call_center_service_1.CallCenterService, daily_collections_reconciliation_cron_1.DailyCollectionsReconciliationCronService],
     })
 ], CallCenterModule);

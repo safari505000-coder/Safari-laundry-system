@@ -20,20 +20,10 @@ import './statement-print.css';
  * typography) so a printed copy looks official next to a payslip or a
  * leave form.
  *
- * Sections, in order:
- *   1. Customer header (name, phone, branch of origin).
- *   2. Financial snapshot (wallet balance + active plan + debt tile).
- *   3. Transaction ledger — every TH event in the window, with an
- *      inline "money flow" card on each SUBSCRIPTION_ACTIVATION row
- *      and the list of invoices the activation auto-closed (V19.8.3).
- *   4. Invoice listing — every order on the account with cash status.
- *
- * Auth: reuses the existing `/api/call-center/customers/:id/ledger`
- * endpoint (backend RBAC already restricts visibility to OWNER / GM /
- * MANAGER / CALL_CENTER / ACCOUNTANT / SUPERVISOR / VIEWER). The page
- * is not public — the QR at the bottom resolves through
- * `/api/verify/statement/:id` which only returns what the sheet
- * already prints (never the timeline).
+ * V19.8.9 — The render body is extracted into `StatementSheet` below
+ * so both the authenticated Call-Center flow and the public shared
+ * link (`/public/statement/:token`) can render byte-identical output
+ * without duplicating the JSX.
  */
 
 const KD_FMT_4 = (v: string | number | null | undefined) => {
@@ -91,6 +81,249 @@ const EVENT_KIND_AR: Record<string, string> = {
   PARTIAL_DEBT_PAYMENT: 'تسديد جزء من المديونية',
 };
 
+// ────────────────────────────────────────────────────────────────────
+// Shared A4 body — used by both the authenticated CC flow and the
+// public share link. Caller supplies the already-fetched
+// `CustomerLedgerResponse`, the window label, and a back-button
+// handler; everything else is presentational.
+// ────────────────────────────────────────────────────────────────────
+
+export function StatementSheet({
+  data,
+  rangeLabel,
+  onBack,
+}: {
+  data: CustomerLedgerResponse;
+  rangeLabel: string;
+  onBack?: () => void;
+}) {
+  const totals = useMemo(() => {
+    let totalInvoiced = 0;
+    let totalPaid = 0;
+    let totalOpenDebt = 0;
+    for (const inv of data.invoices) {
+      if (inv.status === 'CANCELED') continue;
+      const v = Number.parseFloat(inv.totalKd) || 0;
+      totalInvoiced += v;
+      if (inv.openDebt) totalOpenDebt += v;
+      else totalPaid += v;
+    }
+    return { totalInvoiced, totalPaid, totalOpenDebt };
+  }, [data]);
+
+  const issuedAtIso = new Date().toISOString();
+  const customerName = data.customer.displayName ?? '—';
+  const customerPhone = data.customer.phone ?? '—';
+  const branchName = data.customer.originBranchName ?? '—';
+  const sub = data.activeSubscription;
+  const debtK = Number.parseFloat(data.customer.walletDebtKd) || 0;
+  const balK = Number.parseFloat(data.customer.walletBalanceKd) || 0;
+  const docNumber = `STMT-${data.customer.id.slice(0, 8).toUpperCase()}`;
+
+  const subtitle = `${customerName} — ${customerPhone} • ${rangeLabel}`;
+
+  const status: {
+    label: string;
+    kind: 'approved' | 'rejected' | 'pending' | 'paid';
+  } = debtK > 0
+    ? { label: `مديونية: ${formatKwdLabel(debtK)}`, kind: 'rejected' }
+    : balK > 0
+      ? { label: `رصيد: ${formatKwdLabel(balK)}`, kind: 'paid' }
+      : { label: 'حساب متوازن', kind: 'approved' };
+
+  return (
+    <div className="stmt-print-wrap">
+      <PrintableSheet
+        docType="STATEMENT"
+        docId={data.customer.id}
+        docNumber={docNumber}
+        issuedAtIso={issuedAtIso}
+        title="كشف حساب العميل"
+        subtitle={subtitle}
+        status={status}
+        onBack={onBack}
+      >
+        {/* ─── 1. Customer identity card ─────────────────────────── */}
+        <section className="printable-sheet__section">
+          <h3 className="printable-sheet__section-title">بيانات العميل</h3>
+          <div className="printable-sheet__grid-3">
+            <div className="printable-sheet__field">
+              <span className="printable-sheet__label">الاسم</span>
+              <span className="printable-sheet__value">{customerName}</span>
+            </div>
+            <div className="printable-sheet__field">
+              <span className="printable-sheet__label">رقم الهاتف</span>
+              <span className="printable-sheet__value">{customerPhone}</span>
+            </div>
+            <div className="printable-sheet__field">
+              <span className="printable-sheet__label">الفرع الأصلي</span>
+              <span className="printable-sheet__value">{branchName}</span>
+            </div>
+          </div>
+        </section>
+
+        {/* ─── 2. Financial snapshot ─────────────────────────────── */}
+        <section className="printable-sheet__section">
+          <h3 className="printable-sheet__section-title">الملخص المالي</h3>
+          <div className="stmt-snapshot-grid">
+            <div className="stmt-snapshot-tile stmt-tone-balance">
+              <span className="stmt-snapshot-label">الرصيد الحالي</span>
+              <span className="stmt-snapshot-value">{formatKwdLabel(balK)}</span>
+            </div>
+            <div
+              className={`stmt-snapshot-tile ${debtK > 0 ? 'stmt-tone-debt' : 'stmt-tone-clear'}`}
+            >
+              <span className="stmt-snapshot-label">المديونية الحالية</span>
+              <span className="stmt-snapshot-value">{formatKwdLabel(debtK)}</span>
+            </div>
+            <div className="stmt-snapshot-tile stmt-tone-info">
+              <span className="stmt-snapshot-label">الفواتير المفتوحة</span>
+              <span className="stmt-snapshot-value">
+                {formatKwdLabel(totals.totalOpenDebt)}
+              </span>
+              <span className="stmt-snapshot-sub">
+                من إجمالي {formatKwdLabel(totals.totalInvoiced)}
+              </span>
+            </div>
+          </div>
+
+          {sub ? (
+            <div className="stmt-sub-card">
+              <div className="stmt-sub-card-head">
+                <span className="stmt-sub-badge">الاشتراك الحالي</span>
+                <span className="stmt-sub-title">{sub.planNameSnapshot}</span>
+              </div>
+              <div className="stmt-sub-grid">
+                <div>
+                  <span className="printable-sheet__label">تاريخ التفعيل</span>
+                  <span className="printable-sheet__value">
+                    {formatDate(sub.activatedAtIso)}
+                  </span>
+                </div>
+                <div>
+                  <span className="printable-sheet__label">تاريخ الانتهاء</span>
+                  <span className="printable-sheet__value">
+                    {formatDate(sub.expiresAtIso)}
+                  </span>
+                </div>
+                <div>
+                  <span className="printable-sheet__label">قيمة الرصيد</span>
+                  <span className="printable-sheet__value">
+                    {KD_FMT_4(sub.planActualBalanceKd)}
+                  </span>
+                </div>
+                <div>
+                  <span className="printable-sheet__label">مدة الاشتراك</span>
+                  <span className="printable-sheet__value">
+                    {sub.planValidityDays} يوماً
+                  </span>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </section>
+
+        {/* ─── 3. Financial transactions (the star of the show) ──── */}
+        <section className="printable-sheet__section">
+          <h3 className="printable-sheet__section-title">
+            الحركة المالية ({data.events.length})
+          </h3>
+          {data.events.length === 0 ? (
+            <p className="stmt-empty">لا توجد حركة مالية مسجّلة.</p>
+          ) : (
+            <table className="printable-sheet__table stmt-events-table">
+              <thead>
+                <tr>
+                  <th style={{ width: '24%' }}>التاريخ</th>
+                  <th style={{ width: '24%' }}>نوع الحركة</th>
+                  <th style={{ width: '14%' }}>المبلغ</th>
+                  <th style={{ width: '14%' }}>الرصيد بعد</th>
+                  <th style={{ width: '14%' }}>المديونية بعد</th>
+                  <th style={{ width: '10%' }}>المرجع</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.events.map((e) => (
+                  <EventRows key={e.id} event={e} />
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
+
+        {/* ─── 4. Invoice listing ─────────────────────────────────── */}
+        <section className="printable-sheet__section">
+          <h3 className="printable-sheet__section-title">
+            الفواتير ({data.invoices.length})
+          </h3>
+          {data.invoices.length === 0 ? (
+            <p className="stmt-empty">لا توجد فواتير مسجّلة.</p>
+          ) : (
+            <table className="printable-sheet__table">
+              <thead>
+                <tr>
+                  <th style={{ width: '18%' }}>رقم الفاتورة</th>
+                  <th style={{ width: '22%' }}>التاريخ</th>
+                  <th style={{ width: '20%' }}>حالة الطلب</th>
+                  <th style={{ width: '20%' }}>حالة الدفع</th>
+                  <th style={{ width: '20%', textAlign: 'end' }}>المبلغ</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.invoices.map((inv) => (
+                  <tr
+                    key={inv.id}
+                    className={inv.openDebt ? 'stmt-invoice-open' : undefined}
+                  >
+                    <td>#{inv.serial ?? inv.id.slice(0, 8)}</td>
+                    <td>
+                      {formatDate(inv.completedAtIso ?? inv.createdAtIso)}
+                    </td>
+                    <td>{ORDER_STATUS_AR[inv.status] ?? inv.status}</td>
+                    <td>
+                      {CASH_STATUS_AR[inv.cashStatus] ?? inv.cashStatus}
+                      {inv.paymentMethod ? (
+                        <span className="stmt-pay-method">
+                          ({METHOD_AR[inv.paymentMethod] ?? inv.paymentMethod})
+                        </span>
+                      ) : null}
+                    </td>
+                    <td style={{ textAlign: 'end' }}>
+                      <strong>{KD_FMT_4(inv.totalKd)}</strong>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={4}>إجمالي الفواتير غير المسدّدة</td>
+                  <td style={{ textAlign: 'end', color: '#b91c1c' }}>
+                    {formatKwdLabel(totals.totalOpenDebt)}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          )}
+        </section>
+
+        {/* ─── 5. Certification line (looks good next to the QR) ── */}
+        <section className="stmt-cert-note">
+          <p>
+            نُفيدكم بأن هذا الكشف يمثّل الحركات المالية المسجّلة في نظامنا حتى
+            لحظة الطباعة أعلاه. لأي استفسار، يُرجى التواصل مع مركز خدمة
+            العملاء على <strong>22200299</strong>. يُمكن التحقق من صحّة هذا
+            المستند بمسح الرمز المرفق أدناه.
+          </p>
+        </section>
+      </PrintableSheet>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Authenticated Call-Center flow (token + auto-print).
+// ────────────────────────────────────────────────────────────────────
+
 export function StatementPrintPage() {
   const { customerId = '' } = useParams<{ customerId: string }>();
   const [search] = useSearchParams();
@@ -99,10 +332,6 @@ export function StatementPrintPage() {
   const [error, setError] = useState<string | null>(null);
   const autoPrintedRef = useRef(false);
 
-  // V19.8.5 — optional Kuwait-local date range. When present, forwards
-  // to the ledger endpoint (which already honors `from` / `to`) and
-  // the printed subtitle tells the customer which window they're
-  // looking at.
   const from = search.get('from')?.trim() || '';
   const to = search.get('to')?.trim() || '';
 
@@ -121,10 +350,6 @@ export function StatementPrintPage() {
       );
   }, [token, customerId, from, to]);
 
-  // Auto-trigger the browser print dialog once the statement renders so
-  // the Call Center flow ("print this for the customer") stays single-
-  // click. The `autoPrintedRef` guard prevents React Strict-Mode's
-  // double-invocation in dev from firing `window.print()` twice.
   useEffect(() => {
     if (!data || autoPrintedRef.current) return;
     autoPrintedRef.current = true;
@@ -138,21 +363,6 @@ export function StatementPrintPage() {
     return () => window.clearTimeout(id);
   }, [data]);
 
-  const totals = useMemo(() => {
-    if (!data) return null;
-    let totalInvoiced = 0;
-    let totalPaid = 0;
-    let totalOpenDebt = 0;
-    for (const inv of data.invoices) {
-      if (inv.status === 'CANCELED') continue;
-      const v = Number.parseFloat(inv.totalKd) || 0;
-      totalInvoiced += v;
-      if (inv.openDebt) totalOpenDebt += v;
-      else totalPaid += v;
-    }
-    return { totalInvoiced, totalPaid, totalOpenDebt };
-  }, [data]);
-
   if (error) {
     return (
       <div className="statement-print-error" dir="rtl">
@@ -160,7 +370,7 @@ export function StatementPrintPage() {
       </div>
     );
   }
-  if (!data || !totals) {
+  if (!data) {
     return (
       <div className="statement-print-loading" dir="rtl">
         جارٍ تحميل الكشف…
@@ -168,42 +378,18 @@ export function StatementPrintPage() {
     );
   }
 
-  const issuedAtIso = new Date().toISOString();
-  const customerName = data.customer.displayName ?? '—';
-  const customerPhone = data.customer.phone ?? '—';
-  const branchName = data.customer.originBranchName ?? '—';
-  const sub = data.activeSubscription;
-  const debtK = Number.parseFloat(data.customer.walletDebtKd) || 0;
-  const balK = Number.parseFloat(data.customer.walletBalanceKd) || 0;
-  const docNumber = `STMT-${data.customer.id.slice(0, 8).toUpperCase()}`;
+  const rangeLabel =
+    from && to
+      ? `من ${from} إلى ${to}`
+      : from
+        ? `من ${from}`
+        : to
+          ? `حتى ${to}`
+          : 'كامل السجل';
 
-  // V19.8.5 — show the active date window in the subtitle so the
-  // printed sheet is self-explanatory. Falls back to "all history"
-  // when no filters are set.
-  const rangeLabel = from && to
-    ? `من ${from} إلى ${to}`
-    : from
-      ? `من ${from}`
-      : to
-        ? `حتى ${to}`
-        : 'كامل السجل';
-  const subtitle = `${customerName} — ${customerPhone} • ${rangeLabel}`;
-
-  const status: {
-    label: string;
-    kind: 'approved' | 'rejected' | 'pending' | 'paid';
-  } = debtK > 0
-    ? { label: `مديونية: ${formatKwdLabel(debtK)}`, kind: 'rejected' }
-    : balK > 0
-      ? { label: `رصيد: ${formatKwdLabel(balK)}`, kind: 'paid' }
-      : { label: 'حساب متوازن', kind: 'approved' };
-
-  // V19.8.6 — the statement page is opened via `window.open(..., '_blank')`
-  // from the Customer 360 panel, so the browser history on this tab is
-  // empty and the default `navigate(-1)` back handler in PrintableSheet
-  // is a no-op (user feedback: "زر الرجوع مو شغال"). Fall back to
-  // closing the tab when there is nothing to go back to; only scripts
-  // that opened the tab can close it, which matches this flow exactly.
+  // V19.8.6 — opened via window.open so browser history may be empty;
+  // navigate(-1) is a no-op. Close the tab when there is nothing to
+  // go back to.
   const handleBack = () => {
     if (window.history.length > 1) {
       window.history.back();
@@ -212,193 +398,7 @@ export function StatementPrintPage() {
     }
   };
 
-  return (
-    <div className="stmt-print-wrap">
-    <PrintableSheet
-      docType="STATEMENT"
-      docId={data.customer.id}
-      docNumber={docNumber}
-      issuedAtIso={issuedAtIso}
-      title="كشف حساب العميل"
-      subtitle={subtitle}
-      status={status}
-      onBack={handleBack}
-    >
-      {/* ─── 1. Customer identity card ─────────────────────────── */}
-      <section className="printable-sheet__section">
-        <h3 className="printable-sheet__section-title">بيانات العميل</h3>
-        <div className="printable-sheet__grid-3">
-          <div className="printable-sheet__field">
-            <span className="printable-sheet__label">الاسم</span>
-            <span className="printable-sheet__value">{customerName}</span>
-          </div>
-          <div className="printable-sheet__field">
-            <span className="printable-sheet__label">رقم الهاتف</span>
-            <span className="printable-sheet__value">{customerPhone}</span>
-          </div>
-          <div className="printable-sheet__field">
-            <span className="printable-sheet__label">الفرع الأصلي</span>
-            <span className="printable-sheet__value">{branchName}</span>
-          </div>
-        </div>
-      </section>
-
-      {/* ─── 2. Financial snapshot ─────────────────────────────── */}
-      <section className="printable-sheet__section">
-        <h3 className="printable-sheet__section-title">الملخص المالي</h3>
-        <div className="stmt-snapshot-grid">
-          <div className="stmt-snapshot-tile stmt-tone-balance">
-            <span className="stmt-snapshot-label">الرصيد الحالي</span>
-            <span className="stmt-snapshot-value">{formatKwdLabel(balK)}</span>
-          </div>
-          <div
-            className={`stmt-snapshot-tile ${debtK > 0 ? 'stmt-tone-debt' : 'stmt-tone-clear'}`}
-          >
-            <span className="stmt-snapshot-label">المديونية الحالية</span>
-            <span className="stmt-snapshot-value">{formatKwdLabel(debtK)}</span>
-          </div>
-          <div className="stmt-snapshot-tile stmt-tone-info">
-            <span className="stmt-snapshot-label">الفواتير المفتوحة</span>
-            <span className="stmt-snapshot-value">
-              {formatKwdLabel(totals.totalOpenDebt)}
-            </span>
-            <span className="stmt-snapshot-sub">
-              من إجمالي {formatKwdLabel(totals.totalInvoiced)}
-            </span>
-          </div>
-        </div>
-
-        {sub ? (
-          <div className="stmt-sub-card">
-            <div className="stmt-sub-card-head">
-              <span className="stmt-sub-badge">الاشتراك الحالي</span>
-              <span className="stmt-sub-title">{sub.planNameSnapshot}</span>
-            </div>
-            <div className="stmt-sub-grid">
-              <div>
-                <span className="printable-sheet__label">تاريخ التفعيل</span>
-                <span className="printable-sheet__value">
-                  {formatDate(sub.activatedAtIso)}
-                </span>
-              </div>
-              <div>
-                <span className="printable-sheet__label">تاريخ الانتهاء</span>
-                <span className="printable-sheet__value">
-                  {formatDate(sub.expiresAtIso)}
-                </span>
-              </div>
-              <div>
-                <span className="printable-sheet__label">قيمة الرصيد</span>
-                <span className="printable-sheet__value">
-                  {KD_FMT_4(sub.planActualBalanceKd)}
-                </span>
-              </div>
-              <div>
-                <span className="printable-sheet__label">مدة الاشتراك</span>
-                <span className="printable-sheet__value">
-                  {sub.planValidityDays} يوماً
-                </span>
-              </div>
-            </div>
-          </div>
-        ) : null}
-      </section>
-
-      {/* ─── 3. Financial transactions (the star of the show) ──── */}
-      <section className="printable-sheet__section">
-        <h3 className="printable-sheet__section-title">
-          الحركة المالية ({data.events.length})
-        </h3>
-        {data.events.length === 0 ? (
-          <p className="stmt-empty">لا توجد حركة مالية مسجّلة.</p>
-        ) : (
-          <table className="printable-sheet__table stmt-events-table">
-            <thead>
-              <tr>
-                <th style={{ width: '24%' }}>التاريخ</th>
-                <th style={{ width: '24%' }}>نوع الحركة</th>
-                <th style={{ width: '14%' }}>المبلغ</th>
-                <th style={{ width: '14%' }}>الرصيد بعد</th>
-                <th style={{ width: '14%' }}>المديونية بعد</th>
-                <th style={{ width: '10%' }}>المرجع</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.events.map((e) => (
-                <EventRows key={e.id} event={e} />
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
-
-      {/* ─── 4. Invoice listing ─────────────────────────────────── */}
-      <section className="printable-sheet__section">
-        <h3 className="printable-sheet__section-title">
-          الفواتير ({data.invoices.length})
-        </h3>
-        {data.invoices.length === 0 ? (
-          <p className="stmt-empty">لا توجد فواتير مسجّلة.</p>
-        ) : (
-          <table className="printable-sheet__table">
-            <thead>
-              <tr>
-                <th style={{ width: '18%' }}>رقم الفاتورة</th>
-                <th style={{ width: '22%' }}>التاريخ</th>
-                <th style={{ width: '20%' }}>حالة الطلب</th>
-                <th style={{ width: '20%' }}>حالة الدفع</th>
-                <th style={{ width: '20%', textAlign: 'end' }}>المبلغ</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.invoices.map((inv) => (
-                <tr
-                  key={inv.id}
-                  className={inv.openDebt ? 'stmt-invoice-open' : undefined}
-                >
-                  <td>#{inv.serial ?? inv.id.slice(0, 8)}</td>
-                  <td>
-                    {formatDate(inv.completedAtIso ?? inv.createdAtIso)}
-                  </td>
-                  <td>{ORDER_STATUS_AR[inv.status] ?? inv.status}</td>
-                  <td>
-                    {CASH_STATUS_AR[inv.cashStatus] ?? inv.cashStatus}
-                    {inv.paymentMethod ? (
-                      <span className="stmt-pay-method">
-                        ({METHOD_AR[inv.paymentMethod] ?? inv.paymentMethod})
-                      </span>
-                    ) : null}
-                  </td>
-                  <td style={{ textAlign: 'end' }}>
-                    <strong>{KD_FMT_4(inv.totalKd)}</strong>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td colSpan={4}>إجمالي الفواتير غير المسدّدة</td>
-                <td style={{ textAlign: 'end', color: '#b91c1c' }}>
-                  {formatKwdLabel(totals.totalOpenDebt)}
-                </td>
-              </tr>
-            </tfoot>
-          </table>
-        )}
-      </section>
-
-      {/* ─── 5. Certification line (looks good next to the QR) ── */}
-      <section className="stmt-cert-note">
-        <p>
-          نُفيدكم بأن هذا الكشف يمثّل الحركات المالية المسجّلة في نظامنا حتى
-          لحظة الطباعة أعلاه. لأي استفسار، يُرجى التواصل مع مركز خدمة
-          العملاء على <strong>22200299</strong>. يُمكن التحقق من صحّة هذا
-          المستند بمسح الرمز المرفق أدناه.
-        </p>
-      </section>
-    </PrintableSheet>
-    </div>
-  );
+  return <StatementSheet data={data} rangeLabel={rangeLabel} onBack={handleBack} />;
 }
 
 /**

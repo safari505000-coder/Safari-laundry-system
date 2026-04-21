@@ -21,6 +21,7 @@ import { LoansPage } from '@/pages/loans-page';
 import { LoanPrintPage } from '@/pages/loan-print-page';
 import { InvoicePrintPage } from '@/pages/invoice-print-page';
 import { StatementPrintPage } from '@/pages/statement-print-page';
+import { PublicStatementPage } from '@/pages/public-statement-page';
 import { ExpensesPage } from '@/pages/expenses-page';
 import { FinancialsPage } from '@/pages/financials-page';
 import { InsightsAiPage } from '@/pages/insights-ai-page';
@@ -92,6 +93,18 @@ export default function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            {/*
+              V19.8.9 — Public customer statement view.
+              Rendered for a link the Call Center sends over WhatsApp.
+              The `:token` is a short-lived JWT that embeds the customer
+              id; the backend re-scopes every request to that customer so
+              no login is required here by design. This route MUST stay
+              outside any auth gate.
+            */}
+            <Route
+              path="/public/statement/:token"
+              element={<PublicStatementPage />}
+            />
             <Route
               element={
                 <RequireAuth>

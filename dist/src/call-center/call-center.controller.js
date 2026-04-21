@@ -83,6 +83,21 @@ let CallCenterController = class CallCenterController {
     getCustomerLedger(customerId, q) {
         return this.callCenterService.getCustomerLedger(customerId, q);
     }
+    async createStatementShareLink(customerId, q, req) {
+        const proto = req.headers['x-forwarded-proto'] ??
+            req.protocol ??
+            'http';
+        const host = req.headers['x-forwarded-host'] ??
+            req.headers.host ??
+            'localhost:3000';
+        const publicBaseUrl = process.env.PUBLIC_WEB_APP_URL?.replace(/\/$/, '') ||
+            `${proto}://${host}`;
+        return this.callCenterService.createStatementShareToken(customerId, {
+            from: q.from ?? null,
+            to: q.to ?? null,
+            publicBaseUrl,
+        });
+    }
     getDailyCollections(q) {
         return this.callCenterService.getDailyCollections(q);
     }
@@ -272,6 +287,20 @@ __decorate([
     __metadata("design:paramtypes", [String, customer_ledger_dto_1.CustomerLedgerQueryDto]),
     __metadata("design:returntype", void 0)
 ], CallCenterController.prototype, "getCustomerLedger", null);
+__decorate([
+    (0, common_1.Post)('customers/:customerId/statement-share-link'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),
+    (0, swagger_1.ApiOperation)({
+        summary: `Mint a public share link for the customer statement (${branding_1.APP_BRAND})`,
+        description: 'V19.8.9 — returns a signed, 7-day-lived URL that renders the customer\'s A4 statement in a login-less view. The agent pastes this URL into WhatsApp; wa.me cannot attach binary files, so we send a viewable page the customer can print/save as PDF from their phone instead. Optional `from`/`to` Kuwait-local dates scope the statement range embedded in the token.',
+    }),
+    __param(0, (0, common_1.Param)('customerId', common_1.ParseUUIDPipe)),
+    __param(1, (0, common_1.Query)()),
+    __param(2, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, customer_ledger_dto_1.CustomerLedgerQueryDto, Object]),
+    __metadata("design:returntype", Promise)
+], CallCenterController.prototype, "createStatementShareLink", null);
 __decorate([
     (0, common_1.Get)('daily-collections'),
     (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),

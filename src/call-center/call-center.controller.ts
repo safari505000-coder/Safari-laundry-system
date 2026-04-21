@@ -6,8 +6,10 @@ import {
   ParseUUIDPipe,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { SafariRole } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -244,6 +246,43 @@ export class CallCenterController {
     @Query() q: CustomerLedgerQueryDto,
   ) {
     return this.callCenterService.getCustomerLedger(customerId, q);
+  }
+
+  @Post('customers/:customerId/statement-share-link')
+  @Roles(
+    SafariRole.CALL_CENTER,
+    SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
+    SafariRole.ACCOUNTANT,
+  )
+  @ApiOperation({
+    summary: `Mint a public share link for the customer statement (${APP_BRAND})`,
+    description:
+      'V19.8.9 — returns a signed, 7-day-lived URL that renders the customer\'s A4 statement in a login-less view. The agent pastes this URL into WhatsApp; wa.me cannot attach binary files, so we send a viewable page the customer can print/save as PDF from their phone instead. Optional `from`/`to` Kuwait-local dates scope the statement range embedded in the token.',
+  })
+  async createStatementShareLink(
+    @Param('customerId', ParseUUIDPipe) customerId: string,
+    @Query() q: CustomerLedgerQueryDto,
+    @Req() req: Request,
+  ) {
+    const proto =
+      (req.headers['x-forwarded-proto'] as string | undefined) ??
+      req.protocol ??
+      'http';
+    const host = (req.headers['x-forwarded-host'] as string | undefined) ??
+      req.headers.host ??
+      'localhost:3000';
+    // Prefer an explicit PUBLIC_WEB_APP_URL when configured (e.g. behind a
+    // reverse proxy / CDN) so the link points at the customer-facing
+    // origin; fall back to the request origin otherwise.
+    const publicBaseUrl =
+      process.env.PUBLIC_WEB_APP_URL?.replace(/\/$/, '') ||
+      `${proto}://${host}`;
+    return this.callCenterService.createStatementShareToken(customerId, {
+      from: q.from ?? null,
+      to: q.to ?? null,
+      publicBaseUrl,
+    });
   }
 
   @Get('daily-collections')

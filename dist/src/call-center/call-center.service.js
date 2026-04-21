@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.CallCenterService = void 0;
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
+const jwt_1 = require("@nestjs/jwt");
 const prisma_service_1 = require("../prisma/prisma.service");
 const customer_ledger_service_1 = require("../customer-ledger/customer-ledger.service");
 const payments_service_1 = require("../common/services/payments.service");
@@ -150,10 +151,53 @@ let CallCenterService = class CallCenterService {
     prisma;
     customerLedger;
     payments;
-    constructor(prisma, customerLedger, payments) {
+    jwt;
+    constructor(prisma, customerLedger, payments, jwt) {
         this.prisma = prisma;
         this.customerLedger = customerLedger;
         this.payments = payments;
+        this.jwt = jwt;
+    }
+    async createStatementShareToken(customerId, params) {
+        const customer = await this.prisma.customer.findUnique({
+            where: { id: customerId },
+            select: { id: true },
+        });
+        if (!customer) {
+            throw new common_1.NotFoundException('Customer not found');
+        }
+        const payload = {
+            purpose: 'STATEMENT_SHARE',
+            customerId,
+            from: params.from || undefined,
+            to: params.to || undefined,
+        };
+        const token = await this.jwt.signAsync(payload, { expiresIn: '7d' });
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        const base = params.publicBaseUrl.replace(/\/$/, '');
+        const shareUrl = `${base}/public/statement/${token}`;
+        return {
+            token,
+            shareUrl,
+            expiresAtIso: expiresAt.toISOString(),
+        };
+    }
+    async getPublicStatement(token) {
+        let payload;
+        try {
+            payload = await this.jwt.verifyAsync(token);
+        }
+        catch {
+            throw new common_1.NotFoundException('رابط الكشف غير صالح أو منتهي الصلاحية');
+        }
+        if (payload.purpose !== 'STATEMENT_SHARE' || !payload.customerId) {
+            throw new common_1.NotFoundException('رابط الكشف غير صالح');
+        }
+        return this.getCustomerLedger(payload.customerId, {
+            from: payload.from,
+            to: payload.to,
+            limit: 500,
+        });
     }
     async ensureOrderPaymentLink(orderId) {
         const link = await this.payments.ensurePaymentLinkForUnpaidOrder(orderId);
@@ -1308,6 +1352,7 @@ exports.CallCenterService = CallCenterService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
         customer_ledger_service_1.CustomerLedgerService,
-        payments_service_1.PaymentsService])
+        payments_service_1.PaymentsService,
+        jwt_1.JwtService])
 ], CallCenterService);
 //# sourceMappingURL=call-center.service.js.map

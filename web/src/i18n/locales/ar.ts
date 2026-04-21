@@ -1388,6 +1388,8 @@ export const ar = {
     },
     printPdf: 'طباعة / PDF',
     sendWhatsApp: 'إرسال عبر واتساب',
+    preparingLink: 'جارٍ تجهيز الرابط…',
+    shareLinkFailed: 'تعذّر إنشاء رابط الكشف. حاول مرة أخرى.',
     cancel: 'إلغاء',
     noPhone: 'لا يوجد رقم هاتف للعميل لإرسال واتساب.',
     invalidPhone: 'رقم الهاتف غير صالح لإرسال واتساب.',

@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MessageCircle, Printer, X } from 'lucide-react';
+import { Loader2, MessageCircle, Printer, X } from 'lucide-react';
 import { toast } from 'sonner';
+import { createCustomerStatementShareLink } from '@/lib/api';
 import type { CustomerLedgerResponse } from '@/lib/api';
+import { useAuth } from '@/contexts/auth-context';
 import { Button } from '@/modules/shared/components/ui/button';
 import {
   Dialog,
@@ -97,9 +99,11 @@ export function StatementDialog({
   ledger,
 }: Props) {
   const { t } = useTranslation();
+  const { token } = useAuth();
   const [preset, setPreset] = useState<Preset>('ALL');
   const [from, setFrom] = useState<string>('');
   const [to, setTo] = useState<string>('');
+  const [isSharing, setIsSharing] = useState(false);
 
   const effectiveRange = useMemo(() => {
     switch (preset) {
@@ -137,35 +141,59 @@ export function StatementDialog({
     onOpenChange(false);
   };
 
-  const handleWhatsApp = () => {
+  const handleWhatsApp = async () => {
     if (!ledger || !ledger.customer.phone) {
       toast.error(t('statementDialog.noPhone'));
       return;
     }
-    const href = customerStatementWhatsAppHref({
-      customerId: ledger.customer.id,
-      customerName: ledger.customer.displayName,
-      customerPhone: ledger.customer.phone,
-      walletBalanceKd: ledger.customer.walletBalanceKd,
-      walletDebtKd: ledger.customer.walletDebtKd,
-      invoiceCount: ledger.totals.invoiceCount,
-      openInvoiceCount: ledger.totals.openInvoiceCount,
-      activeSubscription: ledger.activeSubscription
-        ? {
-            planName: ledger.activeSubscription.planNameSnapshot,
-            expiresAtIso: ledger.activeSubscription.expiresAtIso,
-            walletBalanceKd: ledger.customer.walletBalanceKd,
-          }
-        : null,
-      from: effectiveRange.from,
-      to: effectiveRange.to,
-    });
-    if (!href) {
-      toast.error(t('statementDialog.invalidPhone'));
-      return;
+    if (isSharing) return;
+    setIsSharing(true);
+    // V19.8.9 — wa.me cannot attach binary files. Instead of sending
+    // only a text summary, we mint a short-lived signed URL on the
+    // backend that renders the full customer statement in a
+    // login-less public view. The WhatsApp message includes that
+    // URL so the customer can open it on any device and save as
+    // PDF from their browser's print dialog.
+    try {
+      const share = await createCustomerStatementShareLink(
+        token,
+        customerId,
+        { from: effectiveRange.from, to: effectiveRange.to },
+      );
+      const href = customerStatementWhatsAppHref({
+        customerId: ledger.customer.id,
+        customerName: ledger.customer.displayName,
+        customerPhone: ledger.customer.phone,
+        walletBalanceKd: ledger.customer.walletBalanceKd,
+        walletDebtKd: ledger.customer.walletDebtKd,
+        invoiceCount: ledger.totals.invoiceCount,
+        openInvoiceCount: ledger.totals.openInvoiceCount,
+        activeSubscription: ledger.activeSubscription
+          ? {
+              planName: ledger.activeSubscription.planNameSnapshot,
+              expiresAtIso: ledger.activeSubscription.expiresAtIso,
+              walletBalanceKd: ledger.customer.walletBalanceKd,
+            }
+          : null,
+        from: effectiveRange.from,
+        to: effectiveRange.to,
+        shareUrl: share.shareUrl,
+      });
+      if (!href) {
+        toast.error(t('statementDialog.invalidPhone'));
+        return;
+      }
+      window.open(href, '_blank', 'noopener,noreferrer');
+      onOpenChange(false);
+    } catch (err) {
+      const msg =
+        err instanceof Error
+          ? err.message
+          : t('statementDialog.shareLinkFailed');
+      toast.error(msg);
+    } finally {
+      setIsSharing(false);
     }
-    window.open(href, '_blank', 'noopener,noreferrer');
-    onOpenChange(false);
   };
 
   const presets: { id: Preset; label: string }[] = [
@@ -277,12 +305,18 @@ export function StatementDialog({
               type="button"
               variant="outline"
               onClick={handleWhatsApp}
-              disabled={!phoneHref}
+              disabled={!phoneHref || isSharing}
               className="border-emerald-300 bg-emerald-50 text-emerald-900 hover:bg-emerald-100 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-100"
             >
-              <MessageCircle className="h-4 w-4" />
+              {isSharing ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <MessageCircle className="h-4 w-4" />
+              )}
               <span className="ms-2">
-                {t('statementDialog.sendWhatsApp')}
+                {isSharing
+                  ? t('statementDialog.preparingLink')
+                  : t('statementDialog.sendWhatsApp')}
               </span>
             </Button>
             <Button type="button" onClick={handlePrint}>

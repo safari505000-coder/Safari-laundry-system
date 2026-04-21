@@ -1375,6 +1375,8 @@ export const en = {
     },
     printPdf: 'Print / PDF',
     sendWhatsApp: 'Send via WhatsApp',
+    preparingLink: 'Preparing link…',
+    shareLinkFailed: 'Could not prepare the share link. Please try again.',
     cancel: 'Cancel',
     noPhone: 'Customer has no phone on file for WhatsApp.',
     invalidPhone: 'Customer phone number is not valid for WhatsApp.',

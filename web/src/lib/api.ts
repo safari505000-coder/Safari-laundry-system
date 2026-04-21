@@ -1542,6 +1542,42 @@ export type CustomerLedgerResponse = {
 };
 
 /**
+ * V19.8.9 — Response for
+ * `POST /api/call-center/customers/:id/statement-share-link`.
+ * A signed URL (7-day TTL) the Call Center forwards over WhatsApp so
+ * the customer can view and save their statement as PDF from their
+ * own device (wa.me itself cannot attach files).
+ */
+export type CustomerStatementShareLink = {
+  token: string;
+  shareUrl: string;
+  expiresAtIso: string;
+};
+
+export function createCustomerStatementShareLink(
+  token: string | null,
+  customerId: string,
+  params: { from?: string | null; to?: string | null },
+): Promise<CustomerStatementShareLink> {
+  const q = new URLSearchParams();
+  if (params.from) q.set('from', params.from);
+  if (params.to) q.set('to', params.to);
+  const qs = q.toString();
+  return apiJson<CustomerStatementShareLink>(
+    `/api/call-center/customers/${customerId}/statement-share-link${qs ? `?${qs}` : ''}`,
+    { method: 'POST', token },
+  );
+}
+
+export function getPublicCustomerStatement(
+  shareToken: string,
+): Promise<CustomerLedgerResponse> {
+  return apiJson<CustomerLedgerResponse>(
+    `/api/public/statement/${encodeURIComponent(shareToken)}`,
+  );
+}
+
+/**
  * V19.4 — CC pack #4. Daily collector feed for the Collections page
  * activity panel. Covers every debt-reducing event in the Kuwait-local
  * day window (partial debt payments + full settlements + mark-paid-via-link).

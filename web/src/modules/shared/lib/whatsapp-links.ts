@@ -203,6 +203,15 @@ export type CustomerStatementWhatsAppArgs = {
   } | null;
   from?: string | null;
   to?: string | null;
+  /**
+   * V19.8.9 — Optional signed public URL where the customer can open
+   * the full A4 statement on any device (no login required) and save
+   * it as PDF from their browser. When provided the message becomes
+   * "hit this link to view your full statement"; when omitted we
+   * fall back to the legacy concise summary so the function keeps
+   * working for any caller that has not been migrated yet.
+   */
+  shareUrl?: string | null;
 };
 
 export function buildCustomerStatementWhatsAppText(
@@ -236,6 +245,23 @@ export function buildCustomerStatementWhatsAppText(
       ]
     : [];
 
+  // V19.8.9 — When a share URL is available we pivot the closing call
+  // to action from "ask us for a PDF" to "open this link on your
+  // phone". The URL renders the exact same A4 statement the agent
+  // saw, with the digital seal, and supports the browser's native
+  // "Save as PDF" — which gives the customer the actual PDF file
+  // they wanted without WhatsApp Business API overhead.
+  const ctaBlock = a.shareUrl
+    ? [
+        '🔎 *لعرض كشف الحساب الكامل (بإمكانك حفظه PDF من متصفحك):*',
+        a.shareUrl,
+        '',
+        '⏳ الرابط صالح لمدة 7 أيام من وقت الإرسال.',
+      ]
+    : [
+        'لاستلام نسخة مفصّلة (PDF مختوم رقمياً) يُرجى إبلاغنا وسنرسلها فوراً.',
+      ];
+
   return [
     greet,
     '',
@@ -247,7 +273,7 @@ export function buildCustomerStatementWhatsAppText(
     ...balanceLines,
     ...subLines,
     '',
-    'لاستلام نسخة مفصّلة (PDF مختوم رقمياً) يُرجى إبلاغنا وسنرسلها فوراً.',
+    ...ctaBlock,
     '📞 مركز خدمة العملاء: 22200299',
     '',
     SAFARI_TEAM_FOOTER_AR,

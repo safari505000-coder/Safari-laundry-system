@@ -1,4 +1,5 @@
 import { PosPaymentMethod, Prisma } from '@prisma/client';
+import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { CustomerLedgerService } from '../customer-ledger/customer-ledger.service';
 import { PaymentsService } from '../common/services/payments.service';
@@ -19,7 +20,18 @@ export declare class CallCenterService {
     private readonly prisma;
     private readonly customerLedger;
     private readonly payments;
-    constructor(prisma: PrismaService, customerLedger: CustomerLedgerService, payments: PaymentsService);
+    private readonly jwt;
+    constructor(prisma: PrismaService, customerLedger: CustomerLedgerService, payments: PaymentsService, jwt: JwtService);
+    createStatementShareToken(customerId: string, params: {
+        from?: string | null;
+        to?: string | null;
+        publicBaseUrl: string;
+    }): Promise<{
+        token: string;
+        shareUrl: string;
+        expiresAtIso: string;
+    }>;
+    getPublicStatement(token: string): Promise<CustomerLedgerResponseDto>;
     ensureOrderPaymentLink(orderId: string): Promise<{
         url: string;
     }>;

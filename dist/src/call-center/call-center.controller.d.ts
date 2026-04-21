@@ -1,3 +1,4 @@
+import type { Request } from 'express';
 import type { JwtUser } from '../auth/decorators/current-user.decorator';
 import { CallCenterService } from './call-center.service';
 import { ActivateSubscriptionDto } from './dto/activate-subscription.dto';
@@ -83,6 +84,11 @@ export declare class CallCenterController {
     }>;
     listCustomerSubscriptionChain(customerId: string): Promise<import("./dto/customer-subscription.dto").CustomerSubscriptionRowDto[]>;
     getCustomerLedger(customerId: string, q: CustomerLedgerQueryDto): Promise<import("./dto/customer-ledger.dto").CustomerLedgerResponseDto>;
+    createStatementShareLink(customerId: string, q: CustomerLedgerQueryDto, req: Request): Promise<{
+        token: string;
+        shareUrl: string;
+        expiresAtIso: string;
+    }>;
     getDailyCollections(q: DailyCollectionsQueryDto): Promise<import("./dto/daily-collections.dto").DailyCollectionsResponseDto>;
     getDailyCollectionsReconciliation(q: DailyCollectionsReconciliationQueryDto): Promise<import("./dto/daily-collections-reconciliation.dto").DailyCollectionsReconciliationResponseDto>;
     getDebtConversionOptions(customerId: string): Promise<import("./dto/debt-conversion-options.dto").DebtConversionOptionsResponseDto>;

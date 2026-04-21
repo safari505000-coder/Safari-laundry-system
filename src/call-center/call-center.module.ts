@@ -6,10 +6,11 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { CallCenterController } from './call-center.controller';
 import { CallCenterService } from './call-center.service';
 import { DailyCollectionsReconciliationCronService } from './daily-collections-reconciliation.cron';
+import { PublicStatementController } from './public-statement.controller';
 
 @Module({
   imports: [PrismaModule, AuthModule, CustomerLedgerModule, PaymentsModule],
-  controllers: [CallCenterController],
+  controllers: [CallCenterController, PublicStatementController],
   providers: [CallCenterService, DailyCollectionsReconciliationCronService],
 })
 export class CallCenterModule {}
