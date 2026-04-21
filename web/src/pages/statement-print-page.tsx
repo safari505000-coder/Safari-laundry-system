@@ -198,6 +198,20 @@ export function StatementPrintPage() {
       ? { label: `رصيد: ${formatKwdLabel(balK)}`, kind: 'paid' }
       : { label: 'حساب متوازن', kind: 'approved' };
 
+  // V19.8.6 — the statement page is opened via `window.open(..., '_blank')`
+  // from the Customer 360 panel, so the browser history on this tab is
+  // empty and the default `navigate(-1)` back handler in PrintableSheet
+  // is a no-op (user feedback: "زر الرجوع مو شغال"). Fall back to
+  // closing the tab when there is nothing to go back to; only scripts
+  // that opened the tab can close it, which matches this flow exactly.
+  const handleBack = () => {
+    if (window.history.length > 1) {
+      window.history.back();
+    } else {
+      window.close();
+    }
+  };
+
   return (
     <div className="stmt-print-wrap">
     <PrintableSheet
@@ -208,6 +222,7 @@ export function StatementPrintPage() {
       title="كشف حساب العميل"
       subtitle={subtitle}
       status={status}
+      onBack={handleBack}
     >
       {/* ─── 1. Customer identity card ─────────────────────────── */}
       <section className="printable-sheet__section">
