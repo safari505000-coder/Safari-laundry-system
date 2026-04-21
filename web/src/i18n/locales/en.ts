@@ -1233,6 +1233,12 @@ export const en = {
     manageConvertDebtTitle: 'Convert debt to subscription',
     manageConvertDebtHint:
       'Outstanding debt: {{debt}}. Preview which plans clear this debt on activation.',
+    manageStatementTitle: 'Customer account statement',
+    manageStatementHint:
+      "Full read-only view: wallet, active subscription, every invoice + timeline — with a button to open each invoice's printable A4.",
+    statementDialogTitle: 'Statement — {{name}}',
+    statementDialogDescription:
+      'Read-only reference. For changes use the account-management actions (Extend / Upgrade / Pay / Convert).',
     convertDebtDialogTitle: "Convert {{name}}'s debt into a subscription",
     convertDebtDialogDescription:
       "Pick a plan — we'll show exactly how the debt gets settled on activation (plan price pays the debt first, the remainder is added as prepaid balance).",
@@ -1362,6 +1368,7 @@ export const en = {
     noInvoices: 'No invoices for this customer in the selected range.',
     noEvents: 'No ledger activity for this customer in the selected range.',
     invoice: 'Invoice',
+    viewInvoice: 'View printable invoice',
     chipCutOff: 'Issued while cut-off',
     chipDiscount: 'Discount',
     colAmount: 'Amount',

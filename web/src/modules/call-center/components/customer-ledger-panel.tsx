@@ -7,6 +7,7 @@ import {
   FileText,
   History,
   Loader2,
+  Printer,
   RefreshCw,
   ScissorsLineDashed,
   Wallet,
@@ -216,9 +217,29 @@ export function CustomerLedgerPanel({ customerId, token }: Props) {
                           </p>
                         ) : null}
                       </div>
-                      <p className="shrink-0 text-base font-semibold tabular-nums">
-                        {formatKwdLabel(inv.totalKd)}
-                      </p>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <p className="text-base font-semibold tabular-nums">
+                          {formatKwdLabel(inv.totalKd)}
+                        </p>
+                        {/* V19.7.5 — "عرض صورة الفاتورة". Opens the
+                            printable A4 invoice in a new tab so the
+                            operator keeps the Customer 360 dialog
+                            open for the rest of the call. RBAC is
+                            enforced on /api/orders/:id, so this
+                            link is safe to render unconditionally. */}
+                        <a
+                          href={`/invoices/${inv.id}/print`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={t('customerLedger.viewInvoice') ?? ''}
+                          aria-label={
+                            t('customerLedger.viewInvoice') ?? undefined
+                          }
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition hover:border-primary hover:bg-primary/5 hover:text-primary"
+                        >
+                          <Printer className="h-4 w-4" aria-hidden />
+                        </a>
+                      </div>
                     </div>
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       <StatusChip

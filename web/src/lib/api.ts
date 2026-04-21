@@ -896,6 +896,13 @@ export type OrderRow = {
   posPaymentMethod?: PosPaymentMethod | null;
   walletSettledAt?: string | null;
   invoiceNumber: string | null;
+  // V19.7.5 — serialNumber + completedAt are already returned by
+  // `/api/orders/:id` (see `orderDetailSelect` in orders.service.ts).
+  // Surfacing them on the type so the invoice-print page can render a
+  // human-readable document number + completion timestamp without a
+  // bespoke DTO.
+  serialNumber?: string | null;
+  completedAt?: string | null;
   notes: string | null;
   createdAt: string;
   updatedAt: string;
@@ -920,6 +927,10 @@ export type OrderRow = {
     label: string | null;
     quantity: string;
     unitPrice: string;
+    // Starch preference is optional per-line metadata captured at the
+    // POS; the invoice page prints it as a small chip next to the
+    // item so the customer can verify their request.
+    starchOption?: string | null;
   }[];
 };
 

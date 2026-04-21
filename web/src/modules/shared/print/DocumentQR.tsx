@@ -14,7 +14,11 @@ export type DocumentType =
   | 'PAYSLIP'
   | 'ATTENDANCE_REPORT'
   | 'LEAVE_REQUEST'
-  | 'EMPLOYEE_LOAN';
+  | 'EMPLOYEE_LOAN'
+  // V19.7.5 — printable POS invoice opened from the Customer 360
+  // ledger ("عرض صورة الفاتورة"). Same Safari-brand A4 sheet as the
+  // HR forms so auditors and customers recognise the format instantly.
+  | 'INVOICE';
 
 export type DocumentQRProps = {
   docType: DocumentType;
@@ -54,6 +58,7 @@ export function DocumentQR({
     ATTENDANCE_REPORT: 'تقرير حضور',
     LEAVE_REQUEST: 'طلب إجازة',
     EMPLOYEE_LOAN: 'إقرار سلفة',
+    INVOICE: 'فاتورة',
   };
 
   return (

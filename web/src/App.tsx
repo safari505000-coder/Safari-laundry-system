@@ -19,6 +19,7 @@ import { LeavesPage } from '@/pages/leaves-page';
 import { LeaveRequestPrintPage } from '@/pages/leave-request-print-page';
 import { LoansPage } from '@/pages/loans-page';
 import { LoanPrintPage } from '@/pages/loan-print-page';
+import { InvoicePrintPage } from '@/pages/invoice-print-page';
 import { ExpensesPage } from '@/pages/expenses-page';
 import { FinancialsPage } from '@/pages/financials-page';
 import { InsightsAiPage } from '@/pages/insights-ai-page';
@@ -303,6 +304,22 @@ export default function App() {
                   element={
                     <RequireAccess access="orders.view">
                       <OrdersPage />
+                    </RequireAccess>
+                  }
+                />
+                {/* V19.7.5 — printable POS invoice ("صورة الفاتورة")
+                    opened from the Customer 360 ledger panel. Gated
+                    by orders.view so it inherits the same RBAC as
+                    the Orders page: DRIVER/CALL_CENTER/OWNER/GM/
+                    MANAGER/ACCOUNTANT/SUPERVISOR/VIEWER. The backend
+                    endpoint `/api/orders/:id` applies an additional
+                    driver-self-only check, so a driver cannot print
+                    another driver's invoice even via this route. */}
+                <Route
+                  path="invoices/:orderId/print"
+                  element={
+                    <RequireAccess access="orders.view">
+                      <InvoicePrintPage />
                     </RequireAccess>
                   }
                 />

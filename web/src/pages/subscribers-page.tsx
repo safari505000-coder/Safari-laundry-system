@@ -7,12 +7,14 @@ import {
   CalendarClock,
   CheckCircle2,
   CircleDollarSign,
+  FileText,
   Loader2,
   Plus,
   RefreshCw,
   Search,
   Sparkles,
 } from 'lucide-react';
+import { CustomerLedgerPanel } from '@/modules/call-center/components/customer-ledger-panel';
 import { toast } from 'sonner';
 import { Button } from '@/modules/shared/components/ui/button';
 import {
@@ -198,6 +200,7 @@ function ManageAccountDialog({
   onUpgrade,
   onPayDebt,
   onConvertDebt,
+  onStatement,
 }: {
   subscriber: SubscriberListRow | null;
   open: boolean;
@@ -206,6 +209,7 @@ function ManageAccountDialog({
   onUpgrade: (r: SubscriberListRow) => void;
   onPayDebt: (r: SubscriberListRow) => void;
   onConvertDebt: (r: SubscriberListRow) => void;
+  onStatement: (r: SubscriberListRow) => void;
 }) {
   const { t } = useTranslation();
   const canExtend = Boolean(subscriber?.planId);
@@ -318,8 +322,88 @@ function ManageAccountDialog({
               </span>
             </button>
           ) : null}
+
+          {/* V19.7.5 — "كشف حساب العميل". Always available regardless
+              of debt or plan state; the agent should be able to review
+              the full customer timeline + every invoice before taking
+              any action. Reuses the Customer 360 ledger panel, which
+              also exposes per-invoice "عرض صورة الفاتورة" links. */}
+          {subscriber ? (
+            <button
+              type="button"
+              className="flex items-start gap-3 rounded-lg border border-sky-200 bg-sky-50/60 p-4 text-start transition hover:border-sky-400 hover:bg-sky-100/70 dark:border-sky-900/60 dark:bg-sky-950/20 dark:hover:bg-sky-950/40"
+              onClick={() => onStatement(subscriber)}
+            >
+              <span className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-sky-100 text-sky-700 dark:bg-sky-950/60 dark:text-sky-200">
+                <FileText className="h-5 w-5" aria-hidden />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block font-semibold">
+                  {t('subscribers.manageStatementTitle')}
+                </span>
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  {t('subscribers.manageStatementHint')}
+                </span>
+              </span>
+            </button>
+          ) : null}
         </div>
 
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+          >
+            {t('subscribers.manageClose')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * V19.7.5 — Customer account statement ("كشف حساب العميل"). Thin
+ * wrapper around the Customer 360 ledger panel so the Subscribers page
+ * can offer a full statement view (wallet + active subscription +
+ * every invoice with per-row "view invoice image" buttons + chronological
+ * timeline) without duplicating the Collections page's dedicated
+ * surface. Kept read-only: all mutations still go through the
+ * purpose-built dialogs (Extend/Upgrade/PayDebt/Convert).
+ */
+function StatementDialog({
+  subscriber,
+  open,
+  onOpenChange,
+  token,
+}: {
+  subscriber: SubscriberListRow | null;
+  open: boolean;
+  onOpenChange: (next: boolean) => void;
+  token: string | null;
+}) {
+  const { t } = useTranslation();
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-4xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <FileText className="h-5 w-5 text-sky-600" aria-hidden />
+            {t('subscribers.statementDialogTitle', {
+              name: subscriber?.customerName ?? '',
+            })}
+          </DialogTitle>
+          <DialogDescription>
+            {t('subscribers.statementDialogDescription')}
+          </DialogDescription>
+        </DialogHeader>
+        {subscriber ? (
+          <CustomerLedgerPanel
+            customerId={subscriber.customerId}
+            token={token}
+          />
+        ) : null}
         <DialogFooter>
           <Button
             type="button"
@@ -1351,6 +1435,12 @@ export function SubscribersPage() {
     useState<SubscriberListRow | null>(null);
   const [convertOpen, setConvertOpen] = useState(false);
 
+  // V19.7.5 — Customer account statement dialog (كشف حساب).
+  // Always available from the Manage hub regardless of debt or plan.
+  const [statementTarget, setStatementTarget] =
+    useState<SubscriberListRow | null>(null);
+  const [statementOpen, setStatementOpen] = useState(false);
+
   const dateFmt = useMemo(
     () =>
       new Intl.DateTimeFormat(locale, {
@@ -1419,6 +1509,12 @@ export function SubscribersPage() {
     setConvertTarget(r);
     setManageOpen(false);
     setConvertOpen(true);
+  }, []);
+
+  const launchStatement = useCallback((r: SubscriberListRow) => {
+    setStatementTarget(r);
+    setManageOpen(false);
+    setStatementOpen(true);
   }, []);
 
   const launchUpgrade = useCallback((r: SubscriberListRow) => {
@@ -1652,6 +1748,19 @@ export function SubscribersPage() {
           onUpgrade={launchUpgrade}
           onPayDebt={launchPayDebt}
           onConvertDebt={launchConvertDebt}
+          onStatement={launchStatement}
+        />
+      ) : null}
+
+      {canManage ? (
+        <StatementDialog
+          subscriber={statementTarget}
+          open={statementOpen}
+          onOpenChange={(n) => {
+            setStatementOpen(n);
+            if (!n) setStatementTarget(null);
+          }}
+          token={token}
         />
       ) : null}
 

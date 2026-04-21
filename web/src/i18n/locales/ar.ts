@@ -1247,6 +1247,12 @@ export const ar = {
     manageConvertDebtTitle: 'تحويل المديونية إلى اشتراك',
     manageConvertDebtHint:
       'المديونية الحالية: {{debt}}. استعرض الخطط التي تطفئ المديونية عند التفعيل.',
+    manageStatementTitle: 'كشف حساب العميل',
+    manageStatementHint:
+      'كل ما حصل مع العميل: المحفظة، الاشتراك، الفواتير، المعاملات الزمنية، مع إمكانية عرض صورة كل فاتورة.',
+    statementDialogTitle: 'كشف حساب — {{name}}',
+    statementDialogDescription:
+      'عرض مرجعي للقراءة فقط. للتعديلات استخدم إجراءات إدارة الحساب (تمديد / ترقية / تسديد / تحويل).',
     convertDebtDialogTitle: 'تحويل مديونية {{name}} إلى اشتراك',
     convertDebtDialogDescription:
       'اختر خطة اشتراك؛ ستُعرض لك تمامًا كيف سيُسوّى الدين عند التفعيل (يسدَّد أولًا من سعر الخطة ثم يُضاف الفائض كرصيد).',
@@ -1375,6 +1381,7 @@ export const ar = {
     noInvoices: 'لا توجد فواتير لهذا العميل في النطاق المحدد.',
     noEvents: 'لا توجد حركة مالية لهذا العميل في النطاق المحدد.',
     invoice: 'فاتورة',
+    viewInvoice: 'عرض صورة الفاتورة',
     chipCutOff: 'صُدرت أثناء القطع',
     chipDiscount: 'خصم',
     colAmount: 'المبلغ',
