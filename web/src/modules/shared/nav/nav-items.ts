@@ -2,9 +2,7 @@ import {
   AlertTriangle,
   ArrowLeftRight,
   Banknote,
-  BanknoteArrowUp,
   BrainCircuit,
-  CalendarDays,
   Clock,
   FileSignature,
   BookText,
@@ -503,48 +501,15 @@ export const attendanceItem: NavItem = {
   roles: ['OWNER', 'GENERAL_MANAGER', 'MANAGER', 'ACCOUNTANT'],
 };
 
-/**
- * Stage-D — Leave requests. Visible to every role (employees manage
- * their own requests; approvers see the full queue). Auth gating is
- * role-based, but the page itself switches between "mine" and "all"
- * depending on `hr.leaves.approve`.
+/*
+ * V19.9.5 — `leavesItem` and `loansItem` (HR self-service) were
+ * removed from the sidebar taxonomy per owner directive. The
+ * pages (/leaves, /loans) and their backend endpoints stay live
+ * and remain reachable by direct URL so any in-flight HR records
+ * can still be viewed / closed out. When the HR roadmap is frozen
+ * we can delete the routes + pages entirely (see Phase 4 of the
+ * sidebar-refresh plan).
  */
-export const leavesItem: NavItem = {
-  to: '/leaves',
-  labelKey: 'nav.leaves',
-  icon: CalendarDays,
-  roles: [
-    'OWNER',
-    'GENERAL_MANAGER',
-    'MANAGER',
-    'ACCOUNTANT',
-    'DRIVER',
-    'CALL_CENTER',
-    'CALL_CENTER_SUPERVISOR',
-    'SUPERVISOR',
-    'VIEWER',
-  ],
-};
-
-/**
- * Stage-D — Employee loans. Same audience as `leavesItem`; the
- * approver actions are gated inside the page via `hr.loans.approve`.
- */
-export const loansItem: NavItem = {
-  to: '/loans',
-  labelKey: 'nav.loans',
-  icon: BanknoteArrowUp,
-  roles: [
-    'OWNER',
-    'GENERAL_MANAGER',
-    'MANAGER',
-    'ACCOUNTANT',
-    'DRIVER',
-    'CALL_CENTER',
-    'SUPERVISOR',
-    'VIEWER',
-  ],
-};
 
 export const fixedExpensesItem: NavItem = {
   to: '/fixed-expenses',

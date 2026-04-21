@@ -1,14 +1,30 @@
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Activity, ArrowLeft, ArrowRight } from 'lucide-react';
 import { BranchSwitcher } from '@/modules/shared/components/branch-switcher';
-import { BrandLogo } from '@/modules/shared/components/brand-logo';
 import { LanguageToggle } from '@/components/i18n/language-toggle';
 import { ThemeToggle } from '@/modules/shared/theme/theme-toggle';
 import { Button } from '@/modules/shared/components/ui/button';
 import { useAuth } from '@/contexts/auth-context';
-import { BRAND } from '@/lib/brand';
 
+/**
+ * V19.9.5 — Slim executive header.
+ *
+ * The sidebar already carries the brand mark, so the header no
+ * longer duplicates it; it just reserves space for the three
+ * contextual slots we actually need:
+ *
+ *   1. left:   mobile back button (only off-index) + page chrome slot
+ *   2. center: a live clock (Kuwait time, minute precision, Latin
+ *              digits per the V19.9.4 locale policy)
+ *   3. right:  Safari Pulse shortcut (OWNER only) · branch switcher
+ *              · language toggle · theme toggle
+ *
+ * The arrow direction still flips in RTL; everything else uses
+ * `dir`-aware flex (gap + ms-/me- utilities) so we don't need the
+ * old `startsWith('ar')` branching outside the arrow icon.
+ */
 export function ExecutiveHeader() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
@@ -16,14 +32,19 @@ export function ExecutiveHeader() {
   const { hasRole } = useAuth();
   const isOwner = hasRole('OWNER');
   const rtl = i18n.language?.startsWith('ar') ?? false;
-  const systemName = rtl ? BRAND.systemAr : BRAND.systemEn;
 
-  /*
-   * V19.4 — Mobile-only "exit page" button. On pages other than the
-   * index route we let the user back out one step; on the index route
-   * the arrow is hidden to avoid a dead button. In RTL the arrow
-   * naturally flips direction (ArrowRight instead of ArrowLeft).
-   */
+  const [clock, setClock] = useState(() => new Date());
+  useEffect(() => {
+    const id = window.setInterval(() => setClock(new Date()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
+  const clockLabel = clock.toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'Asia/Kuwait',
+  });
+
   const isIndex = pathname === '/';
   const BackIcon = rtl ? ArrowRight : ArrowLeft;
   const goBack = () => {
@@ -35,26 +56,29 @@ export function ExecutiveHeader() {
   };
 
   return (
-    <header className="print:hidden sticky top-0 z-40 flex h-14 shrink-0 items-center gap-4 border-b border-border bg-card/90 px-4 shadow-sm backdrop-blur-sm sm:px-6 lg:px-8">
-      {!isIndex ? (
-        <Button
-          type="button"
-          size="icon"
-          variant="ghost"
-          aria-label={t('nav.back', 'رجوع')}
-          className="h-9 w-9 shrink-0 md:hidden"
-          onClick={goBack}
+    <header className="print:hidden sticky top-0 z-40 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-card/90 px-4 shadow-sm backdrop-blur-sm sm:px-6 lg:px-8">
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        {!isIndex ? (
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            aria-label={t('nav.back', 'رجوع')}
+            className="h-9 w-9 shrink-0 md:hidden"
+            onClick={goBack}
+          >
+            <BackIcon className="h-5 w-5" aria-hidden />
+          </Button>
+        ) : null}
+        <span
+          className="hidden rounded-md bg-muted/60 px-2 py-1 font-mono text-xs tabular-nums text-muted-foreground md:inline"
+          aria-label="current time"
+          title="Kuwait time"
         >
-          <BackIcon className="h-5 w-5" aria-hidden />
-        </Button>
-      ) : null}
-      <div className="flex min-w-0 flex-1 items-center gap-3">
-        <BrandLogo className="me-2" compact />
-        <span className="hidden truncate text-sm font-semibold text-primary sm:inline">
-          {systemName}
+          {clockLabel}
         </span>
       </div>
-      <div className="flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-3">
+      <div className="flex min-w-0 shrink-0 items-center gap-2 sm:gap-3">
         {isOwner ? (
           <Button
             type="button"
@@ -67,9 +91,6 @@ export function ExecutiveHeader() {
           </Button>
         ) : null}
         <BranchSwitcher />
-        <span className="hidden text-xs font-medium text-muted-foreground sm:inline">
-          {t('language.switch')}
-        </span>
         <LanguageToggle variant="outline" className="bg-background" />
         <ThemeToggle variant="outline" className="bg-background" />
       </div>

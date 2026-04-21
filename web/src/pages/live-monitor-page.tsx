@@ -55,7 +55,19 @@ function Arrow({ delta }: { delta: number }) {
   return <span className="h-5 w-5" aria-hidden />;
 }
 
-function KpiCard({
+/**
+ * V19.9.5 — Deliberate divergence from `@/modules/shared/components/page/KpiCard`.
+ *
+ * The shared primitive renders a white / light-theme card with a
+ * muted label + dark value — perfect for finance, invoices, inventory
+ * screens. This page is a fullscreen TV wallboard ("Safari Pulse")
+ * with its own design language: black glassmorphism, neon accents,
+ * ticking 9-second refresh. Forcing the light primitive here would
+ * break the cockpit identity. The local `WallboardTile` keeps its
+ * dark theme and accepts a delta arrow that the shared primitive
+ * doesn't expose.
+ */
+function WallboardTile({
   title,
   value,
   delta,
@@ -197,6 +209,18 @@ export function LiveMonitorPage() {
   const [posSplit, setPosSplit] = useState<DailyPosSalesByPaymentMethodReport | null>(null);
 
   const [mock, setMock] = useState(() => ({ processingCount: 6 }));
+  const [clockTick, setClockTick] = useState(() => new Date());
+  useEffect(() => {
+    const id = window.setInterval(() => setClockTick(new Date()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
+  const clockLabel = clockTick.toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+    timeZone: 'Asia/Kuwait',
+  });
 
   const prevMoneyRef = useRef<MoneyPulse | null>(null);
 
@@ -325,7 +349,7 @@ export function LiveMonitorPage() {
           </div>
           <div className="flex items-center gap-2 text-xs text-slate-400">
             <Clock className="h-4 w-4" aria-hidden />
-            <span className="tabular-nums">{new Date().toLocaleTimeString('en-GB')}</span>
+            <span className="tabular-nums">{clockLabel}</span>
           </div>
         </div>
 
@@ -336,7 +360,7 @@ export function LiveMonitorPage() {
               The Money Pulse
             </h2>
             <div className="grid gap-4 md:grid-cols-3">
-              <KpiCard
+              <WallboardTile
                 title={t('radar.totalCash')}
                 value={formatKwdLabel(moneyPulse.cashKd.toFixed(3))}
                 delta={deltas.cash}
@@ -344,7 +368,7 @@ export function LiveMonitorPage() {
                 icon={<Receipt className="h-5 w-5" aria-hidden />}
                 sub={t('radar.totalCashSub')}
               />
-              <KpiCard
+              <WallboardTile
                 title={t('radar.totalKnet')}
                 value={formatKwdLabel(moneyPulse.knetKd.toFixed(3))}
                 delta={deltas.knet}
@@ -352,7 +376,7 @@ export function LiveMonitorPage() {
                 icon={<Landmark className="h-5 w-5" aria-hidden />}
                 sub={t('radar.totalKnetSub')}
               />
-              <KpiCard
+              <WallboardTile
                 title={t('radar.totalDebt')}
                 value={formatKwdLabel(moneyPulse.debtKd.toFixed(3))}
                 delta={deltas.debt}
@@ -369,14 +393,14 @@ export function LiveMonitorPage() {
               The Laundry Pulse
             </h2>
             <div className="grid gap-4 md:grid-cols-2">
-              <KpiCard
+              <WallboardTile
                 title="Orders received today"
                 value={String(receivedToday)}
                 delta={0}
                 accent="indigo"
                 icon={<Receipt className="h-5 w-5" aria-hidden />}
               />
-              <KpiCard
+              <WallboardTile
                 title="Orders in processing"
                 value={String(processing)}
                 delta={0}
@@ -396,7 +420,7 @@ export function LiveMonitorPage() {
               The Fleet Pulse
             </h2>
             <div className="grid gap-4">
-              <KpiCard
+              <WallboardTile
                 title="Active drivers (online)"
                 value={String(activeDrivers)}
                 delta={0}
@@ -404,7 +428,7 @@ export function LiveMonitorPage() {
                 icon={<Car className="h-5 w-5" aria-hidden />}
                 sub="From /api/finance/driver-monitoring"
               />
-              <KpiCard
+              <WallboardTile
                 title="Drivers on delivery"
                 value={String(driversOnDelivery)}
                 delta={0}
@@ -412,7 +436,7 @@ export function LiveMonitorPage() {
                 icon={<Signal className="h-5 w-5" aria-hidden />}
                 sub="Estimated ratio (mock)"
               />
-              <KpiCard
+              <WallboardTile
                 title="Average delivery status (ETA)"
                 value={avgEta ? `${avgEta}m` : '—'}
                 delta={0}

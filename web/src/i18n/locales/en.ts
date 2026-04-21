@@ -51,7 +51,7 @@ export const en = {
     signOut: 'Sign out',
     groupMain: 'Main',
     groupFieldCosts: 'Field costs',
-    groupOperations: 'Operations',
+    groupOperations: 'Field operations',
     groupDriverRadar: 'Driver audit radar',
     groupAudit: 'Bank & approvals',
     driverAuditRadar: 'Radar',

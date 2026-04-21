@@ -1,4 +1,5 @@
 import type { NavGroup } from '@/modules/shared/nav/nav-types';
+import { G } from '@/modules/shared/nav/nav-groups';
 import {
   accountantInventoryItem,
   accountantStockInItem,
@@ -15,8 +16,6 @@ import {
   invoicesDataItem,
   invoiceAuditItem,
   knetAuditItem,
-  leavesItem,
-  loansItem,
   managerCustodyAgingItem,
   payrollItem,
   shiftsItem,
@@ -24,48 +23,44 @@ import {
   unifiedLedgerItem,
 } from '@/modules/shared/nav/nav-items';
 
-/*
- * Dastur §2.2 — Accountant workspace is strictly liability-only.
- * The "الرادار / نبض سفاري" (Live Monitor / Safari Pulse) entry is
- * intentionally omitted here: that island is OWNER-only and exposes
- * signals the ACCOUNTANT must never see. Keep this file clean of any
- * radar/pulse import to guarantee total invisibility of that surface.
+/**
+ * V19.9.5 — ACCOUNTANT sidebar on canonical shells.
  *
- * Also excluded: `driverMonitorItem` — its `roles` array is `['OWNER']`
- * only (see access-matrix `driverMonitor.view`), so leaving it here was
- * dead weight that the role filter would strip at runtime anyway.
+ * Dastur §2.2 still encoded by omission: no Live Monitor / Safari
+ * Pulse (OWNER-only cockpit), no /collect-driver-cash (merged), no
+ * HR self-service (/leaves, /loans stripped from sidebar). The
+ * duplicate inventory group from the pre-refresh layout was merged
+ * into a single `groupInventoryOps` so everyone sees the same bucket.
  */
 export const accountantSidebarNavGroups: NavGroup[] = [
   {
-    labelKey: 'nav.groupDriverRadar',
-    items: [unifiedLedgerItem, shiftsItem],
-  },
-  {
-    labelKey: 'nav.groupAudit',
-    items: [
-      knetAuditItem,
-      invoiceAuditItem,
-      expenseApprovalItem,
-      managerCustodyAgingItem,
-      staffDebtsItem,
-      debtTransfersItem,
-    ],
-  },
-  {
-    labelKey: 'nav.groupInvoices',
+    ...G.invoices,
     items: [allInvoicesItem],
   },
   {
-    labelKey: 'nav.groupOperations',
+    ...G.finance,
     items: [
-      invoicesDataItem,
-      accountantInventoryItem,
-      accountantStockInItem,
+      unifiedLedgerItem,
+      knetAuditItem,
+      invoiceAuditItem,
+      expenseApprovalItem,
+      debtTransfersItem,
+      insightsAiItem,
     ],
   },
   {
-    labelKey: 'nav.groupInventory',
+    ...G.paymentCollection,
     items: [
+      invoicesDataItem,
+      managerCustodyAgingItem,
+      staffDebtsItem,
+    ],
+  },
+  {
+    ...G.inventoryOps,
+    items: [
+      accountantInventoryItem,
+      accountantStockInItem,
       inventoryLowStockItem,
       inventoryOperationsItem,
       inventoryMovementsItem,
@@ -73,17 +68,12 @@ export const accountantSidebarNavGroups: NavGroup[] = [
       purchaseOrdersItem,
     ],
   },
-  // Stage-D — Payroll / HR workbench. Accountant approves leaves,
-  // loans and signs off payslips; attendance view is read-only audit.
   {
-    labelKey: 'nav.groupHr',
-    items: [payrollItem, attendanceItem, leavesItem, loansItem],
+    ...G.operations,
+    items: [shiftsItem],
   },
-  // Stage-C — AI insights (financial tabs only for accountant; the
-  // executive-weekly and driver-scorecard tabs hide themselves via
-  // the access matrix).
   {
-    labelKey: 'nav.groupIntelligence',
-    items: [insightsAiItem],
+    ...G.adminSettings,
+    items: [payrollItem, attendanceItem],
   },
 ];

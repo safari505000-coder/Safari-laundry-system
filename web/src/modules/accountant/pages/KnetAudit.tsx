@@ -13,17 +13,14 @@ import {
 import { formatKwdLabel } from '@/lib/kwd';
 import { can } from '@/modules/shared/auth/access-matrix';
 import { Button } from '@/modules/shared/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/modules/shared/components/ui/card';
-import { Input } from '@/modules/shared/components/ui/input';
-import { Label } from '@/modules/shared/components/ui/label';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/modules/shared/components/ui/table';
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from '@/modules/shared/components/ui/card';
+import { Input } from '@/modules/shared/components/ui/input';
+import { TableCell, TableRow } from '@/modules/shared/components/ui/table';
 import {
   Select,
   SelectContent,
@@ -31,6 +28,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/modules/shared/components/ui/select';
+import {
+  DataTableShell,
+  FilterBar,
+  FilterField,
+  PageHeader,
+} from '@/modules/shared/components/page';
 import { cn } from '@/lib/utils';
 
 function endOfDayIso(d: Date): string {
@@ -206,63 +209,56 @@ export function KnetAudit() {
    */
 
   return (
-    <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-          {t('knetAudit.title')}
-        </h1>
-        <p className="text-sm text-slate-600">{t('knetAudit.subtitle')}</p>
-      </header>
+    <div className="space-y-5">
+      <PageHeader
+        title={t('knetAudit.title')}
+        subtitle={t('knetAudit.subtitle')}
+        tone="blue"
+      />
 
-      <Card className="border-slate-200 bg-white">
-        <CardHeader>
-          <CardTitle className="text-base">{t('knetAudit.filters')}</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-wrap items-end gap-3">
-          <div className="space-y-1">
-            <Label>{t('knetAudit.from')}</Label>
-            <Input
-              type="datetime-local"
-              value={from.slice(0, 16)}
-              onChange={(e) => setFrom(new Date(e.target.value).toISOString())}
-              className="w-auto"
-            />
-          </div>
-          <div className="space-y-1">
-            <Label>{t('knetAudit.to')}</Label>
-            <Input
-              type="datetime-local"
-              value={to.slice(0, 16)}
-              onChange={(e) => setTo(new Date(e.target.value).toISOString())}
-              className="w-auto"
-            />
-          </div>
-          <div className="space-y-1 min-w-[200px]">
-            <Label>{t('reports.driver')}</Label>
-            <Select value={driverFilter} onValueChange={(v) => setDriverFilter(v ?? 'ALL')}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">{t('reports.all')}</SelectItem>
-                {(drivers?.drivers ?? []).map((d) => (
-                  <SelectItem key={d.driverId} value={d.driverId}>
-                    {d.fullName}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          {canReconcile ? (
+      <FilterBar
+        actions={
+          canReconcile ? (
             <Button type="button" onClick={() => void load()} disabled={loading}>
-              {loading ?
-                <Loader2 className="h-4 w-4 animate-spin" />
-              : null}
+              {loading ? <Loader2 className="me-2 h-4 w-4 animate-spin" /> : null}
               {t('knetAudit.loadOrders')}
             </Button>
-          ) : null}
-        </CardContent>
-      </Card>
+          ) : null
+        }
+      >
+        <FilterField label={t('knetAudit.from')}>
+          <Input
+            type="datetime-local"
+            value={from.slice(0, 16)}
+            onChange={(e) => setFrom(new Date(e.target.value).toISOString())}
+          />
+        </FilterField>
+        <FilterField label={t('knetAudit.to')}>
+          <Input
+            type="datetime-local"
+            value={to.slice(0, 16)}
+            onChange={(e) => setTo(new Date(e.target.value).toISOString())}
+          />
+        </FilterField>
+        <FilterField label={t('reports.driver')} className="min-w-[12rem]">
+          <Select
+            value={driverFilter}
+            onValueChange={(v) => setDriverFilter(v ?? 'ALL')}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">{t('reports.all')}</SelectItem>
+              {(drivers?.drivers ?? []).map((d) => (
+                <SelectItem key={d.driverId} value={d.driverId}>
+                  {d.fullName}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FilterField>
+      </FilterBar>
 
       {canReconcile ? (
         <Card className="border-slate-200 bg-white">
@@ -287,77 +283,82 @@ export function KnetAudit() {
         </Card>
       ) : null}
 
-      <Card className="border-slate-200 bg-white">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-base">{t('knetAudit.matchTable')}</CardTitle>
-          <span className="text-xs text-slate-500 tabular-nums">
-            عدد العمليات: <b className="text-slate-800">{rows.length}</b>
-          </span>
-        </CardHeader>
-        <CardContent className="p-0">
-          {loading && !report ?
-            <p className="p-6 text-sm text-slate-500">{t('knetAudit.loading')}</p>
-          : rows.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 p-10 text-center">
-              <p className="text-sm font-medium text-slate-700">
-                لا توجد عمليات كي نت في الفترة المحددة
-              </p>
-              <p className="max-w-md text-xs leading-relaxed text-slate-500">
-                جرّب توسعة النطاق الزمني من الأعلى (تاريخ «من» أقدم)، أو
-                تأكّد أن هناك فواتير طريقة دفعها «كي نت» فعلياً ضمن هذه
-                الفترة. النطاق الافتراضي يُعرض عليك آخر 30 يوماً.
-              </p>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setFrom(startOfDayIsoDaysAgo(90));
-                  setTo(endOfDayIso(new Date()));
-                }}
+      <div className="flex items-center justify-between px-1">
+        <h2 className="text-sm font-semibold text-foreground">
+          {t('knetAudit.matchTable')}
+        </h2>
+        <span className="text-xs text-muted-foreground tabular-nums">
+          عدد العمليات: <b className="text-foreground">{rows.length}</b>
+        </span>
+      </div>
+
+      <DataTableShell
+        columns={[
+          { key: 'status', label: t('knetAudit.colStatus') },
+          { key: 'order', label: t('knetAudit.colOrder') },
+          { key: 'at', label: t('knetAudit.colWhen') },
+          { key: 'customer', label: t('knetAudit.colCustomer') },
+          {
+            key: 'amount',
+            label: t('knetAudit.colAmount'),
+            align: 'end',
+            numeric: true,
+          },
+        ]}
+        loading={loading && !report}
+        loadingState={t('knetAudit.loading')}
+        empty={rows.length === 0}
+        emptyState={
+          <div className="flex flex-col items-center gap-2 py-6 text-center">
+            <p className="text-sm font-medium text-foreground">
+              لا توجد عمليات كي نت في الفترة المحددة
+            </p>
+            <p className="max-w-md text-xs leading-relaxed text-muted-foreground">
+              جرّب توسعة النطاق الزمني من الأعلى (تاريخ «من» أقدم)، أو
+              تأكّد أن هناك فواتير طريقة دفعها «كي نت» فعلياً ضمن هذه
+              الفترة. النطاق الافتراضي يُعرض عليك آخر 30 يوماً.
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setFrom(startOfDayIsoDaysAgo(90));
+                setTo(endOfDayIso(new Date()));
+              }}
+            >
+              توسعة إلى آخر 90 يوم
+            </Button>
+          </div>
+        }
+      >
+        {rows.map((r) => (
+          <TableRow key={r.id}>
+            <TableCell>
+              <span
+                className={cn(
+                  'inline-flex rounded-full px-2 py-0.5 text-xs font-semibold',
+                  r.status === 'green' && 'bg-emerald-100 text-emerald-900',
+                  r.status === 'yellow' && 'bg-amber-100 text-amber-950',
+                  r.status === 'red' && 'bg-red-100 text-red-900',
+                )}
               >
-                توسعة إلى آخر 90 يوم
-              </Button>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t('knetAudit.colStatus')}</TableHead>
-                  <TableHead>{t('knetAudit.colOrder')}</TableHead>
-                  <TableHead>{t('knetAudit.colWhen')}</TableHead>
-                  <TableHead>{t('knetAudit.colCustomer')}</TableHead>
-                  <TableHead className="text-end">{t('knetAudit.colAmount')}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((r) => (
-                  <TableRow key={r.id}>
-                    <TableCell>
-                      <span
-                        className={cn(
-                          'inline-flex rounded-full px-2 py-0.5 text-xs font-semibold',
-                          r.status === 'green' && 'bg-emerald-100 text-emerald-900',
-                          r.status === 'yellow' && 'bg-amber-100 text-amber-950',
-                          r.status === 'red' && 'bg-red-100 text-red-900',
-                        )}
-                      >
-                        {t(`knetAudit.status.${r.status}`)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="font-mono text-xs">{r.id.slice(0, 8)}…</TableCell>
-                    <TableCell className="text-sm">{new Date(r.at).toLocaleString('en-GB')}</TableCell>
-                    <TableCell>{r.customer}</TableCell>
-                    <TableCell className="text-end tabular-nums">
-                      {formatKwdLabel(r.amount.toFixed(3))}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+                {t(`knetAudit.status.${r.status}`)}
+              </span>
+            </TableCell>
+            <TableCell className="font-mono text-xs">
+              {r.id.slice(0, 8)}…
+            </TableCell>
+            <TableCell className="text-sm">
+              {new Date(r.at).toLocaleString('en-GB')}
+            </TableCell>
+            <TableCell>{r.customer}</TableCell>
+            <TableCell className="text-end tabular-nums">
+              {formatKwdLabel(r.amount.toFixed(3))}
+            </TableCell>
+          </TableRow>
+        ))}
+      </DataTableShell>
 
       {unmatchedBank.length > 0 ?
         <Card className="border-amber-200 bg-amber-50/80">

@@ -1,51 +1,33 @@
 import type { NavGroup } from '@/modules/shared/nav/nav-types';
+import { G } from '@/modules/shared/nav/nav-groups';
 import {
   allInvoicesItem,
   collectionsItem,
   customersItem,
-  leavesItem,
   subscribersItem,
   whatsappToolsItem,
 } from '@/modules/shared/nav/nav-items';
 
-// Dastur §5 (V1.5) — the legacy "Subscriptions List" (nav.subscriptions →
-// /subscriptions plan catalog) is retired from the Call Center sidebar.
-// All subscription actions are now centralized on the Subscribers page
-// behind the "Add Subscription" (إضافة اشتراك) button + per-row Renew.
-//
-// V19.4 — point #6 of the CC pack: "إزالة الإيجارات والسلف من الكول سنتر".
-// `fixedExpensesItem` (rents) was never in the CC sidebar. `loansItem`
-// was here as self-service HR but is now removed per product call: the
-// call-centre agent is an operational front-line role, not an HR self-
-// service surface. Access is also revoked at the matrix level
-// (`hr.loans.mine` no longer lists `CALL_CENTER`) so deep links to
-// `/loans` return 403 instead of quietly working.
-//
-// `leavesItem` stays — leave requests are still a legitimate CC ask
-// because schedules change per day; only loans/rents were deprecated.
-//
-// `driverMonitorItem` is OWNER-only (`access-matrix.driverMonitor.view`),
-// so it is not listed here — the role filter would strip it regardless.
+/**
+ * V19.9.5 — CALL_CENTER sidebar on canonical shells.
+ *
+ * Historic notes kept for discoverability:
+ *  - Legacy "Subscriptions List" (/subscriptions catalog) retired;
+ *    all subscription flows live on /subscribers.
+ *  - `fixedExpensesItem` (rents) was never in CC.
+ *  - `loansItem` removed (V19.4) — CC is an operational role, not
+ *    an HR self-service surface. Access matrix still revokes
+ *    `hr.loans.mine` for CALL_CENTER so deep links to /loans 403.
+ *  - `leavesItem` also removed now (V19.9.5) per owner directive;
+ *    HR self-service is off every sidebar.
+ */
 export const callCenterSidebarNavGroups: NavGroup[] = [
   {
-    labelKey: 'nav.groupMain',
-    items: [
-      customersItem,
-      collectionsItem,
-      subscribersItem,
-      whatsappToolsItem,
-    ],
+    ...G.main,
+    items: [customersItem, collectionsItem, subscribersItem, whatsappToolsItem],
   },
-  // V19.9 — dedicated "الفواتير" group so the unified invoice browser
-  // sits in its own row instead of being buried between customers and
-  // collections.
   {
-    labelKey: 'nav.groupInvoices',
+    ...G.invoices,
     items: [allInvoicesItem],
-  },
-  // Stage-D — Self-service HR for call-center staff (leaves only).
-  {
-    labelKey: 'nav.groupHr',
-    items: [leavesItem],
   },
 ];

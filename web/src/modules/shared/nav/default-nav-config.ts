@@ -1,4 +1,5 @@
 import type { NavGroup } from '@/modules/shared/nav/nav-types';
+import { G } from '@/modules/shared/nav/nav-groups';
 import {
   attendanceItem,
   branchesItem,
@@ -22,8 +23,6 @@ import {
   invoiceAuditItem,
   ccPerformanceItem,
   knetAuditReportItem,
-  leavesItem,
-  loansItem,
   manageItemsItem,
   managerCustodyAgingItem,
   ownerInventoryItem,
@@ -41,35 +40,31 @@ import {
 } from '@/modules/shared/nav/nav-items';
 
 /**
- * V19.3 — OWNER + GENERAL_MANAGER sidebar, reorganised into six semantic
- * islands with matching tone hints so the hierarchy reads at a glance:
+ * V19.9.5 — OWNER + GENERAL_MANAGER (default) sidebar.
  *
- *   1. Home                    (dashboard entry)
- *   2. 📊 Finance & Reports    (blue)
- *   3. 👥 Human Resources      (green)
- *   4. 📦 Inventory & Ops      (orange)
- *   5. 👨‍💼 Customers & Subs    (purple)
- *   6. 💳 Payment & Collection (red)
- *   7. ⚙️ Admin & Settings     (gray)
+ * Consumes the canonical group shells from `nav-groups.ts` so every
+ * role renders the SAME group labels and tones in the SAME order.
+ * Owner populates every shell except Field Operations (which is
+ * driver-specific) and Main stays unadorned.
  *
- * Dastur rules still encoded by omission:
- *   • No `posItem` / driver-personal items (MANAGER/DRIVER territory).
- *   • `driverMonitorItem.roles = ['OWNER']` — GM loses Pulse via filter.
- *   • Hard-delete actions continue to be gated by the access matrix.
- *
- * Note: the legacy OWNER layout duplicated `/orders` (as both
- * `ordersItem` and `invoicesDataItem`). We keep only `invoicesDataItem`
- * under "Payment & Collection" so the sidebar does not present two
- * entries for the same route.
+ * HR self-service (`leavesItem`, `loansItem`) no longer ship in any
+ * sidebar; payroll + attendance migrated into Admin & Settings.
  */
 export const defaultSidebarNavGroups: NavGroup[] = [
   {
-    labelKey: 'nav.groupMain',
+    ...G.main,
     items: [dashboardItem],
   },
   {
-    labelKey: 'nav.groupFinance',
-    tone: 'blue',
+    ...G.customersSubs,
+    items: [customersItem, collectionsItem, subscriptionsItem, subscribersItem],
+  },
+  {
+    ...G.invoices,
+    items: [allInvoicesItem],
+  },
+  {
+    ...G.finance,
     items: [
       financialsItem,
       reportsItem,
@@ -84,13 +79,18 @@ export const defaultSidebarNavGroups: NavGroup[] = [
     ],
   },
   {
-    labelKey: 'nav.groupHr',
-    tone: 'green',
-    items: [payrollItem, attendanceItem, leavesItem, loansItem],
+    ...G.paymentCollection,
+    items: [
+      invoicesDataItem,
+      invoiceAuditItem,
+      ccPerformanceItem,
+      debtRecoveryReportItem,
+      managerCustodyAgingItem,
+      staffDebtsItem,
+    ],
   },
   {
-    labelKey: 'nav.groupInventoryOps',
-    tone: 'orange',
+    ...G.inventoryOps,
     items: [
       manageItemsItem,
       ownerInventoryItem,
@@ -102,44 +102,15 @@ export const defaultSidebarNavGroups: NavGroup[] = [
     ],
   },
   {
-    labelKey: 'nav.groupCustomersSubs',
-    tone: 'purple',
-    items: [
-      customersItem,
-      collectionsItem,
-      subscriptionsItem,
-      subscribersItem,
-    ],
-  },
-  // V19.9 — dedicated "الفواتير" group (kept separate from the red
-  // payment/collection bucket so the unified invoice browser sits
-  // alone instead of being confused with debt-specific tooling).
-  {
-    labelKey: 'nav.groupInvoices',
-    tone: 'blue',
-    items: [allInvoicesItem],
-  },
-  {
-    labelKey: 'nav.groupPaymentCollection',
-    tone: 'red',
-    items: [
-      invoicesDataItem,
-      invoiceAuditItem,
-      ccPerformanceItem,
-      debtRecoveryReportItem,
-      managerCustodyAgingItem,
-      staffDebtsItem,
-    ],
-  },
-  {
-    labelKey: 'nav.groupAdminSettings',
-    tone: 'gray',
+    ...G.adminSettings,
     items: [
       teamItem,
       branchesItem,
       driverMonitorItem,
       shiftsItem,
       whatsappToolsItem,
+      payrollItem,
+      attendanceItem,
     ],
   },
 ];

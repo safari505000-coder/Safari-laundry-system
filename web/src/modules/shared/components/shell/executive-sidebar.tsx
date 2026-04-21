@@ -25,47 +25,70 @@ import { cn } from '@/lib/utils';
 
 const SIDEBAR_COLLAPSED_KEY = 'executive-sidebar-collapsed';
 
+/**
+ * V19.9.5 — Sidebar row styling.
+ *
+ * Active state gets (1) a subtle primary wash, (2) the active colour
+ * on the icon + label, and (3) an inline-start 3-px bar so the eye
+ * locks onto the current section even before reading the label. Hover
+ * stays soft (`muted/60`) to avoid the previous "too dark" jump.
+ */
 function navClass(active: boolean, collapsed: boolean) {
   return cn(
-    'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors',
+    'group/nav relative flex items-center gap-3 rounded-xl px-3 py-2 text-[13px] font-medium transition-colors',
     collapsed && 'justify-center px-0',
     active ?
-      'bg-primary/12 text-primary'
-    : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+      'bg-primary/10 text-primary'
+    : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
   );
 }
 
 /**
- * V19.3 — Group label tone classes. Rendered as a tiny dot + coloured
- * caption next to the uppercase group name so the six OWNER islands
- * (finance/hr/inventory/customers/payment/admin) read at a glance in
- * both light and dark themes. Semantic Tailwind tones keep the accent
- * readable on every theme variant we ship.
+ * V19.9.5 — Group tone classes.
+ *
+ * Each canonical group (`nav-groups.ts`) picks a tone; the sidebar
+ * renders it as:
+ *  - a tiny coloured dot next to the group caption,
+ *  - the label text in the same hue,
+ *  - a 3-px inline-start bar on the active item (so the active row
+ *    carries its group's colour as a secondary anchor).
+ *
+ * Tones are Tailwind semantic colours so they read in both light and
+ * dark themes without per-mode overrides.
  */
-const GROUP_TONE_CLASSES: Record<NavGroupTone, { dot: string; text: string }> = {
+const GROUP_TONE_CLASSES: Record<
+  NavGroupTone,
+  { dot: string; text: string; bar: string }
+> = {
   blue: {
     dot: 'bg-sky-500',
     text: 'text-sky-700 dark:text-sky-300',
+    bar: 'bg-sky-500',
   },
   green: {
     dot: 'bg-emerald-500',
     text: 'text-emerald-700 dark:text-emerald-300',
+    bar: 'bg-emerald-500',
   },
   orange: {
     dot: 'bg-orange-500',
     text: 'text-orange-700 dark:text-orange-300',
+    bar: 'bg-orange-500',
   },
   purple: {
     dot: 'bg-violet-500',
     text: 'text-violet-700 dark:text-violet-300',
+    bar: 'bg-violet-500',
   },
   red: {
     dot: 'bg-rose-500',
     text: 'text-rose-700 dark:text-rose-300',
+    bar: 'bg-rose-500',
   },
   gray: {
     dot: 'bg-zinc-400',
     text: 'text-muted-foreground',
+    bar: 'bg-zinc-400',
   },
 };
 
@@ -175,47 +198,73 @@ export function ExecutiveSidebar() {
         </Button>
       </div>
 
-      <nav className="flex flex-1 flex-col gap-4 overflow-y-auto p-2">
-        {filteredGroups.map((group) => {
+      <nav className="flex flex-1 flex-col gap-5 overflow-y-auto p-2">
+        {filteredGroups.map((group, groupIndex) => {
           const tone = group.tone ? GROUP_TONE_CLASSES[group.tone] : null;
+          const isFirst = groupIndex === 0;
           return (
-          <div key={group.labelKey} className="space-y-0.5">
-            {!collapsed ?
-              <p
-                className={cn(
-                  'flex items-center gap-1.5 px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider',
-                  tone ? tone.text : 'text-muted-foreground/80',
-                )}
-              >
-                {tone ?
+            <div
+              key={group.labelKey}
+              className={cn(
+                'space-y-px',
+                collapsed && !isFirst && 'border-t border-border/60 pt-2',
+              )}
+            >
+              {!collapsed ?
+                <p
+                  className={cn(
+                    'flex items-center gap-1.5 px-3 pb-1.5 text-[11px] font-semibold',
+                    tone ? tone.text : 'text-muted-foreground/80',
+                  )}
+                >
+                  {tone ?
+                    <span
+                      aria-hidden
+                      className={cn('h-1.5 w-1.5 rounded-full', tone.dot)}
+                    />
+                  : null}
+                  {t(group.labelKey)}
+                </p>
+              : tone ?
+                <div className="flex justify-center pb-1">
                   <span
                     aria-hidden
                     className={cn('h-1.5 w-1.5 rounded-full', tone.dot)}
                   />
-                : null}
-                {t(group.labelKey)}
-              </p>
-            : tone ?
-              <div className="flex justify-center pb-1">
-                <span
-                  aria-hidden
-                  className={cn('h-1.5 w-1.5 rounded-full', tone.dot)}
-                />
-              </div>
-            : null}
-            {group.items.map(({ to, labelKey, icon: Icon }) => (
-              <NavLink
-                key={to}
-                to={to}
-                end={to === '/'}
-                title={collapsed ? t(labelKey) : undefined}
-                className={({ isActive }) => navClass(isActive, collapsed)}
-              >
-                <Icon className="h-[18px] w-[18px] shrink-0 opacity-90" aria-hidden />
-                {!collapsed ? <span>{t(labelKey)}</span> : null}
-              </NavLink>
-            ))}
-          </div>
+                </div>
+              : null}
+              {group.items.map(({ to, labelKey, icon: Icon }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  end={to === '/'}
+                  title={collapsed ? t(labelKey) : undefined}
+                  className={({ isActive }) => navClass(isActive, collapsed)}
+                >
+                  {({ isActive }) => (
+                    <>
+                      {isActive && tone && !collapsed ?
+                        <span
+                          aria-hidden
+                          className={cn(
+                            'absolute inset-y-1.5 w-[3px] rounded-full start-0',
+                            tone.bar,
+                          )}
+                        />
+                      : null}
+                      <Icon
+                        className={cn(
+                          'h-[18px] w-[18px] shrink-0',
+                          isActive ? 'opacity-100' : 'opacity-75',
+                        )}
+                        aria-hidden
+                      />
+                      {!collapsed ? <span>{t(labelKey)}</span> : null}
+                    </>
+                  )}
+                </NavLink>
+              ))}
+            </div>
           );
         })}
       </nav>

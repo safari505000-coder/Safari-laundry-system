@@ -52,7 +52,7 @@ export const ar = {
     signOut: 'تسجيل الخروج',
     groupMain: 'رئيسي',
     groupFieldCosts: 'تكاليف الميدان',
-    groupOperations: 'العمليات',
+    groupOperations: 'العمليات الميدانية',
     groupDriverRadar: 'رادار السائقين',
     groupAudit: 'المصرف والاعتمادات',
     driverAuditRadar: 'الرادار',
