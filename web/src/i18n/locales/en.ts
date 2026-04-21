@@ -111,12 +111,12 @@ export const en = {
     statusCurrent: 'Current',
     driversSectionTitle: 'Drivers',
     driversSectionHint:
-      "Current field-cash balance per driver (liability before handover to a manager).",
+      "Current field-cash balance per driver (liability before handover to a branch manager).",
     driversEmpty: 'No driver debts match the current filters.',
     managersSectionTitle: 'Branch managers',
     managersSectionHint:
-      'Pending cash custody per manager, awaiting accountant verification.',
-    managersEmpty: 'No pending manager custody matches the current filters.',
+      'Pending cash custody per branch manager, awaiting accountant verification.',
+    managersEmpty: 'No pending branch-manager custody matches the current filters.',
     colName: 'Name',
     colBranch: 'Branch',
     colDriverHeldCash: 'Field cash (KD)',
@@ -453,9 +453,9 @@ export const en = {
     myTitle: 'Cash Awaiting Bank Deposit',
     mySubtitle:
       'Cash you received from drivers that still needs to be deposited at the bank. Upload the deposit slip to clear each bag.',
-    agingTitle: 'Cash Held by Managers',
+    agingTitle: 'Cash Held by Branch Managers',
     agingSubtitle:
-      'Live aging of cash in manager custody. Bags held for more than 24 hours are highlighted in red.',
+      'Live aging of cash in branch-manager custody. Bags held for more than 24 hours are highlighted in red.',
     refresh: 'Refresh',
     empty: 'No cash custody bags yet.',
     tableTitle: 'Custody bags',
@@ -463,7 +463,7 @@ export const en = {
     tileAwaiting: 'Awaiting verification',
     tileOverdue: 'Overdue (>24h)',
     tileOverdueKd: 'Overdue amount',
-    colManager: 'Manager',
+    colManager: 'Branch Manager',
     colDriver: 'Driver',
     colBranch: 'Branch',
     colAmount: 'Amount',
@@ -561,10 +561,10 @@ export const en = {
   verification: {
     title: 'Deposit verification',
     subtitle:
-      'Accountant review queue for manager-uploaded slips before treasury acceptance.',
+      'Accountant review queue for branch-manager-uploaded slips before treasury acceptance.',
     tableTitle: 'Pending deposit verifications',
     colDate: 'Submitted at',
-    colManager: 'Collected by manager',
+    colManager: 'Collected by branch manager',
     colAmount: 'Amount',
     colReceipt: 'Slip',
     colAction: 'Action',
@@ -577,11 +577,11 @@ export const en = {
   financialCycle: {
     title: 'Financial cycle report',
     subtitle:
-      'Read-only chain per payment: order → manager collection → accountant verification.',
+      'Read-only chain per payment: order → branch manager collection → accountant verification.',
     tableTitle: 'Order payment journey',
     colOrder: 'Order ID',
     colAmount: 'Amount',
-    colCollectedBy: 'Collected by manager',
+    colCollectedBy: 'Collected by branch manager',
     colCollectedAt: 'Collected at',
     colVerifiedBy: 'Verified by accountant',
     colVerifiedAt: 'Verified at',
@@ -723,7 +723,7 @@ export const en = {
     streamFuelExpense: 'Fuel expense',
     streamOtherExpense: 'Other expense',
     streamDeposit: 'Driver deposit',
-    streamCustodyVerified: 'Manager custody verified',
+    streamCustodyVerified: 'Branch manager custody verified',
     streamDebtAdjustment: 'Debt adjustment',
     streamOther: 'Other',
   },
@@ -1741,7 +1741,7 @@ export const en = {
     openCollections: 'Open debt tracking',
   },
   expenseApproval: {
-    subtitle: 'Review pending manager expenses and decide final status.',
+    subtitle: 'Review pending branch-manager expenses and decide final status.',
     tableTitle: 'Pending expense approvals',
     colDate: 'Date',
     colType: 'Type',
