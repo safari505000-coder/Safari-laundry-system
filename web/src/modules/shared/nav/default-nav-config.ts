@@ -18,6 +18,8 @@ import {
   inventoryLowStockItem,
   inventoryMovementsItem,
   invoicesDataItem,
+  invoiceAuditItem,
+  ccPerformanceItem,
   knetAuditReportItem,
   leavesItem,
   loansItem,
@@ -113,6 +115,8 @@ export const defaultSidebarNavGroups: NavGroup[] = [
     tone: 'red',
     items: [
       invoicesDataItem,
+      invoiceAuditItem,
+      ccPerformanceItem,
       debtRecoveryReportItem,
       managerCustodyAgingItem,
       staffDebtsItem,

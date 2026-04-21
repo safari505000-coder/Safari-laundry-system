@@ -53,6 +53,8 @@ import InventoryMovementsPage from '@/pages/inventory-movements-page';
 import InventoryLowStockPage from '@/pages/inventory-low-stock-page';
 import PurchaseOrdersPage from '@/pages/purchase-orders-page';
 import { UnifiedLedgerPage } from '@/pages/unified-ledger-page';
+import { CcPerformancePage } from '@/pages/cc-performance-page';
+import { InvoiceAuditLogPage } from '@/pages/invoice-audit-log-page';
 import { MyDepositsPage } from '@/modules/driver/pages/my-deposits-page';
 import { WhatsappToolsPage } from '@/modules/call-center/pages/whatsapp-tools-page';
 import { ManageItems } from '@/modules/owner/pages/ManageItems';
@@ -537,6 +539,22 @@ export default function App() {
                   element={
                     <RequireAccess access="expenses.view">
                       <ExpensesPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="cc-performance"
+                  element={
+                    <RequireAccess access="ccPerformance.view">
+                      <CcPerformancePage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="invoice-audit"
+                  element={
+                    <RequireAccess access="invoiceAudit.view">
+                      <InvoiceAuditLogPage />
                     </RequireAccess>
                   }
                 />

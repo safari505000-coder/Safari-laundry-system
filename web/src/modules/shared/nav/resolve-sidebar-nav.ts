@@ -1,6 +1,7 @@
 import type { SafariRole } from '@/lib/api';
 import { accountantSidebarNavGroups } from '@/modules/accountant/nav-config';
 import { callCenterSidebarNavGroups } from '@/modules/call-center/nav-config';
+import { callCenterSupervisorSidebarNavGroups } from '@/modules/call-center-supervisor/nav-config';
 import { driverSidebarNavGroups } from '@/modules/driver/nav-config';
 import { managerSidebarNavGroups } from '@/modules/manager/nav-config';
 import { defaultSidebarNavGroups } from '@/modules/shared/nav/default-nav-config';
@@ -25,6 +26,8 @@ export function getSidebarNavGroupsForRole(
       return accountantSidebarNavGroups;
     case 'CALL_CENTER':
       return callCenterSidebarNavGroups;
+    case 'CALL_CENTER_SUPERVISOR':
+      return callCenterSupervisorSidebarNavGroups;
     case 'MANAGER':
       return managerSidebarNavGroups;
     default:

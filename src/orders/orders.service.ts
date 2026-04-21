@@ -144,6 +144,7 @@ export class OrdersService {
     return (
       this.isManagerOrOwner(role) ||
       role === SafariRole.CALL_CENTER ||
+      role === SafariRole.CALL_CENTER_SUPERVISOR ||
       role === SafariRole.ACCOUNTANT ||
       role === SafariRole.SUPERVISOR ||
       role === SafariRole.VIEWER

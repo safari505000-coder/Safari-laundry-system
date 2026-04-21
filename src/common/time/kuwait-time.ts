@@ -41,3 +41,27 @@ export function kuwaitHour(nowUtc: Date): number {
   const k = new Date(nowUtc.getTime() + KUWAIT_OFFSET_MIN * 60_000);
   return k.getUTCHours();
 }
+
+/**
+ * Returns the Kuwait-local calendar date for `nowUtc` formatted as
+ * `YYYY-MM-DD`. V19.9 — used as the indexable key on InvoiceAuditLog
+ * so date-range reports can run as simple equality lookups without a
+ * timezone-aware WHERE.
+ */
+export function kuwaitDayIso(nowUtc: Date): string {
+  const k = new Date(nowUtc.getTime() + KUWAIT_OFFSET_MIN * 60_000);
+  const y = k.getUTCFullYear();
+  const m = String(k.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(k.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+/**
+ * True when `a` and `b` fall on the same Kuwait-local calendar day.
+ * V19.9 — gate for the Call-Center Supervisor's same-day invoice
+ * edit. Identity is symmetrical and timezone-correct across DST-free
+ * Asia/Kuwait.
+ */
+export function isSameKuwaitDay(a: Date, b: Date): boolean {
+  return kuwaitDayIso(a) === kuwaitDayIso(b);
+}

@@ -1,6 +1,7 @@
 import type { SafariRole } from '@/lib/api';
 import { ACCOUNTANT_SHELL_GUIDANCE } from '@/modules/accountant/shell-guidance';
 import { CALL_CENTER_SHELL_GUIDANCE } from '@/modules/call-center/shell-guidance';
+import { CALL_CENTER_SUPERVISOR_SHELL_GUIDANCE } from '@/modules/call-center-supervisor/shell-guidance';
 import { DRIVER_SHELL_GUIDANCE } from '@/modules/driver/shell-guidance';
 import { MANAGER_SHELL_GUIDANCE } from '@/modules/manager/shell-guidance';
 
@@ -18,6 +19,8 @@ export function shellGuidanceForRole(role?: SafariRole): string {
       return MANAGER_SHELL_GUIDANCE;
     case 'CALL_CENTER':
       return CALL_CENTER_SHELL_GUIDANCE;
+    case 'CALL_CENTER_SUPERVISOR':
+      return CALL_CENTER_SUPERVISOR_SHELL_GUIDANCE;
     case 'ACCOUNTANT':
       return ACCOUNTANT_SHELL_GUIDANCE;
     case 'OWNER':

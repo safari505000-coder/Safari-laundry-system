@@ -85,6 +85,7 @@ export const dashboardItem: NavItem = {
     'MANAGER',
     'DRIVER',
     'CALL_CENTER',
+    'CALL_CENTER_SUPERVISOR',
     'ACCOUNTANT',
     'SUPERVISOR',
     'VIEWER',
@@ -105,15 +106,16 @@ export const subscribersItem: NavItem = {
   to: '/subscribers',
   labelKey: 'nav.subscribers',
   icon: ListOrdered,
-  roles: ['OWNER', 'GENERAL_MANAGER', 'CALL_CENTER'],
+  roles: ['OWNER', 'GENERAL_MANAGER', 'CALL_CENTER', 'CALL_CENTER_SUPERVISOR'],
 };
 
 export const customersItem: NavItem = {
   to: '/customers',
   labelKey: 'nav.customers',
   icon: Users,
-  // Dastur §5 — CALL_CENTER is the CRM island. Owner + GM keep full access.
-  roles: ['OWNER', 'GENERAL_MANAGER', 'CALL_CENTER'],
+  // Dastur §5 — CALL_CENTER + CC supervisor are the CRM island.
+  // Owner + GM keep full access.
+  roles: ['OWNER', 'GENERAL_MANAGER', 'CALL_CENTER', 'CALL_CENTER_SUPERVISOR'],
 };
 
 export const collectionsItem: NavItem = {
@@ -121,14 +123,15 @@ export const collectionsItem: NavItem = {
   labelKey: 'nav.customerDebtTracker',
   icon: MessageSquare,
   // Dastur §5 — Tahseel (debt recovery) is a CALL_CENTER core surface.
-  roles: ['OWNER', 'GENERAL_MANAGER', 'CALL_CENTER'],
+  // The supervisor mirrors the same access (and then some).
+  roles: ['OWNER', 'GENERAL_MANAGER', 'CALL_CENTER', 'CALL_CENTER_SUPERVISOR'],
 };
 
 export const whatsappToolsItem: NavItem = {
   to: '/whatsapp-tools',
   labelKey: 'nav.whatsappTools',
   icon: MessageCircle,
-  roles: ['OWNER', 'GENERAL_MANAGER', 'CALL_CENTER'],
+  roles: ['OWNER', 'GENERAL_MANAGER', 'CALL_CENTER', 'CALL_CENTER_SUPERVISOR'],
 };
 
 export const driverFieldExpensesItem: NavItem = {
@@ -233,6 +236,7 @@ export const ordersItem: NavItem = {
     'MANAGER',
     'DRIVER',
     'CALL_CENTER',
+    'CALL_CENTER_SUPERVISOR',
     'ACCOUNTANT',
     'SUPERVISOR',
     'VIEWER',
@@ -249,6 +253,30 @@ export const invoicesDataItem: NavItem = {
   to: '/orders',
   labelKey: 'nav.invoicesData',
   icon: Receipt,
+  roles: ['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT'],
+};
+
+/**
+ * V19.9 — CC Supervisor pack. Performance leaderboard per CC agent
+ * (collections, debt settled, activations, distinct customers). Also
+ * exposed to OWNER + GENERAL_MANAGER because they audit the team.
+ */
+export const ccPerformanceItem: NavItem = {
+  to: '/cc-performance',
+  labelKey: 'nav.ccPerformance',
+  icon: LineChart,
+  roles: ['OWNER', 'GENERAL_MANAGER', 'CALL_CENTER_SUPERVISOR'],
+};
+
+/**
+ * V19.9 — Invoice audit trail. Owner + GM + Accountant consume this
+ * read-only report of every supervisor-initiated edit / void with
+ * before/after snapshots and reason text.
+ */
+export const invoiceAuditItem: NavItem = {
+  to: '/invoice-audit',
+  labelKey: 'nav.invoiceAudit',
+  icon: FileSignature,
   roles: ['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT'],
 };
 
@@ -478,6 +506,7 @@ export const leavesItem: NavItem = {
     'ACCOUNTANT',
     'DRIVER',
     'CALL_CENTER',
+    'CALL_CENTER_SUPERVISOR',
     'SUPERVISOR',
     'VIEWER',
   ],

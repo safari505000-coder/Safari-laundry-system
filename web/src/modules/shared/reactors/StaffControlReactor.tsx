@@ -37,6 +37,7 @@ const ROLE_OPTIONS: SafariRole[] = [
   'MANAGER',
   'DRIVER',
   'CALL_CENTER',
+  'CALL_CENTER_SUPERVISOR',
   'ACCOUNTANT',
   'SUPERVISOR',
   'VIEWER',

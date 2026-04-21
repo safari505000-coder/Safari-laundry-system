@@ -35,13 +35,14 @@ import { DailyCollectionsReconciliationQueryDto } from './dto/daily-collections-
 @ApiBearerAuth('bearer')
 @Controller('call-center')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(SafariRole.CALL_CENTER)
+@Roles(SafariRole.CALL_CENTER, SafariRole.CALL_CENTER_SUPERVISOR)
 export class CallCenterController {
   constructor(private readonly callCenterService: CallCenterService) {}
 
   @Get('operations-summary')
   @Roles(
     SafariRole.CALL_CENTER,
+    SafariRole.CALL_CENTER_SUPERVISOR,
     SafariRole.OWNER,
     SafariRole.GENERAL_MANAGER,
   )
@@ -117,7 +118,7 @@ export class CallCenterController {
   }
 
   @Post('orders/:orderId/reminder')
-  @Roles(SafariRole.CALL_CENTER, SafariRole.OWNER)
+  @Roles(SafariRole.CALL_CENTER, SafariRole.CALL_CENTER_SUPERVISOR, SafariRole.OWNER)
   @ApiOperation({
     summary: `Mark a collection reminder as sent (${APP_BRAND})`,
     description:
@@ -130,7 +131,7 @@ export class CallCenterController {
   }
 
   @Post('orders/:orderId/payment-link')
-  @Roles(SafariRole.CALL_CENTER)
+  @Roles(SafariRole.CALL_CENTER, SafariRole.CALL_CENTER_SUPERVISOR)
   @ApiOperation({
     summary: `Ensure a hosted payment link exists for an unpaid order (${APP_BRAND})`,
     description:
@@ -143,7 +144,7 @@ export class CallCenterController {
   }
 
   @Post('orders/:orderId/mark-paid')
-  @Roles(SafariRole.CALL_CENTER)
+  @Roles(SafariRole.CALL_CENTER, SafariRole.CALL_CENTER_SUPERVISOR)
   @ApiOperation({
     summary: `Mark a collection order as manually paid (${APP_BRAND})`,
     description:
@@ -162,7 +163,7 @@ export class CallCenterController {
   }
 
   @Post('subscribers/:customerId/reminder')
-  @Roles(SafariRole.CALL_CENTER, SafariRole.OWNER)
+  @Roles(SafariRole.CALL_CENTER, SafariRole.CALL_CENTER_SUPERVISOR, SafariRole.OWNER)
   @ApiOperation({
     summary: `Mark a subscription renewal reminder as sent (${APP_BRAND})`,
     description:
@@ -232,6 +233,7 @@ export class CallCenterController {
   @Get('customers/:customerId/ledger')
   @Roles(
     SafariRole.CALL_CENTER,
+    SafariRole.CALL_CENTER_SUPERVISOR,
     SafariRole.OWNER,
     SafariRole.GENERAL_MANAGER,
     SafariRole.ACCOUNTANT,
@@ -251,6 +253,7 @@ export class CallCenterController {
   @Post('customers/:customerId/statement-share-link')
   @Roles(
     SafariRole.CALL_CENTER,
+    SafariRole.CALL_CENTER_SUPERVISOR,
     SafariRole.OWNER,
     SafariRole.GENERAL_MANAGER,
     SafariRole.ACCOUNTANT,
@@ -288,6 +291,7 @@ export class CallCenterController {
   @Get('daily-collections')
   @Roles(
     SafariRole.CALL_CENTER,
+    SafariRole.CALL_CENTER_SUPERVISOR,
     SafariRole.OWNER,
     SafariRole.GENERAL_MANAGER,
     SafariRole.ACCOUNTANT,
@@ -304,6 +308,7 @@ export class CallCenterController {
   @Get('daily-collections/reconciliation')
   @Roles(
     SafariRole.CALL_CENTER,
+    SafariRole.CALL_CENTER_SUPERVISOR,
     SafariRole.OWNER,
     SafariRole.GENERAL_MANAGER,
     SafariRole.ACCOUNTANT,
@@ -322,6 +327,7 @@ export class CallCenterController {
   @Get('customers/:customerId/debt-conversion-options')
   @Roles(
     SafariRole.CALL_CENTER,
+    SafariRole.CALL_CENTER_SUPERVISOR,
     SafariRole.OWNER,
     SafariRole.GENERAL_MANAGER,
     SafariRole.ACCOUNTANT,

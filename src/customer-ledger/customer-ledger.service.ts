@@ -57,7 +57,11 @@ export class CustomerLedgerService {
   private resolveDebtCategory(role: SafariRole): DebtEntityCategory {
     if (role === SafariRole.OWNER) return DebtEntityCategory.OWNER;
     if (role === SafariRole.DRIVER) return DebtEntityCategory.DRIVER;
-    if (role === SafariRole.CALL_CENTER) return DebtEntityCategory.CALL_CENTER;
+    if (
+      role === SafariRole.CALL_CENTER ||
+      role === SafariRole.CALL_CENTER_SUPERVISOR
+    )
+      return DebtEntityCategory.CALL_CENTER;
     return DebtEntityCategory.BRANCH;
   }
 

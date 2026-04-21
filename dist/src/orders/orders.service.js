@@ -111,6 +111,7 @@ let OrdersService = class OrdersService {
     canViewAllOrders(role) {
         return (this.isManagerOrOwner(role) ||
             role === client_1.SafariRole.CALL_CENTER ||
+            role === client_1.SafariRole.CALL_CENTER_SUPERVISOR ||
             role === client_1.SafariRole.ACCOUNTANT ||
             role === client_1.SafariRole.SUPERVISOR ||
             role === client_1.SafariRole.VIEWER);

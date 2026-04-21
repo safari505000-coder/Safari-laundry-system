@@ -34,7 +34,7 @@ let SubscribersController = class SubscribersController {
 exports.SubscribersController = SubscribersController;
 __decorate([
     (0, common_1.Get)(),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.CALL_CENTER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.CALL_CENTER, client_1.SafariRole.CALL_CENTER_SUPERVISOR),
     (0, swagger_1.ApiOperation)({
         summary: `Subscriber list (${branding_1.APP_BRAND})`,
         description: 'Live list of customers with subscription history or an active subscription window. ' +

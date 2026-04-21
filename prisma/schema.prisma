@@ -18,6 +18,11 @@ enum SafariRole {
   DRIVER
   WORKER
   CALL_CENTER
+  // V19.9 — Call Center Supervisor (مسؤول الكول سنتر). Inherits every
+  // CALL_CENTER capability PLUS same-day invoice edit/void with an
+  // immutable audit trail and access to CC agent performance reports.
+  // Every guard that accepts CALL_CENTER MUST also accept this role.
+  CALL_CENTER_SUPERVISOR
   ACCOUNTANT
   SUPERVISOR
   VIEWER
@@ -30,6 +35,15 @@ enum OrderStatus {
   OUT_FOR_DELIVERY
   COMPLETED
   CANCELED
+}
+
+// V19.9 — Invoice audit trail actions. Every EDIT or VOID by a Call-
+// Center Supervisor writes one immutable InvoiceAuditLog row capturing
+// the before/after snapshot and the actor. The report surface (Owner /
+// GM / Accountant) reads from this table exclusively.
+enum InvoiceAuditAction {
+  EDIT
+  VOID
 }
 
 enum ServiceType {
@@ -281,6 +295,11 @@ model User {
   leaveApprovals                   LeaveRequest[]         @relation("LeaveRequestApprover")
   employeeLoans                    EmployeeLoan[]         @relation("EmployeeLoanUser")
   loanApprovals                    EmployeeLoan[]         @relation("EmployeeLoanApprover")
+  /**
+   * V19.9 — Call-Center Supervisor invoice edits/voids authored by
+   * this user. Back-relation of `InvoiceAuditLog.actor`.
+   */
+  invoiceAuditEntries              InvoiceAuditLog[]      @relation("InvoiceAuditActor")
 }
 
 enum ExpenseCategory {
@@ -669,6 +688,13 @@ model Order {
   transactionHistory    TransactionHistory[]
   debtLedgerEntries     DebtLedgerEntry[]
   debtTransferLineItems DebtTransferOrder[]
+  /**
+   * V19.9 — audit trail of Call-Center Supervisor same-day edits and
+   * soft-voids. Read via /api/orders/audit-log (Owner/GM/Accountant
+   * only) and referenced in the invoice print page as a footer chip
+   * when the order has been edited.
+   */
+  auditLogs             InvoiceAuditLog[]
 
   @@index([driverId])
   @@index([status])
@@ -1534,4 +1560,52 @@ model DebtTransferOrder {
 
   @@index([debtTransferId])
   @@index([orderId])
+}
+
+/**
+ * V19.9 — Call-Center Supervisor invoice audit trail.
+ *
+ * Every same-day EDIT and every VOID performed by a CALL_CENTER_SUPERVISOR
+ * writes exactly one row. Rows are immutable — the report surface
+ * (Owner / GM / Accountant at /reports/invoice-audit) is read-only
+ * and never PATCHes or DELETEs.
+ *
+ * `beforeSnapshot` / `afterSnapshot` hold a normalized JSON mirror of
+ * the order at those two instants (see `buildInvoiceAuditSnapshot` in
+ * the orders service). `changedFields` is the flat list of top-level
+ * keys that actually changed between the two snapshots, cached here so
+ * the UI does not have to diff JSON client-side.
+ *
+ * `financialImpactFils` is the signed delta applied to GL revenue by
+ * this action, in fils, positive = revenue added, negative = revenue
+ * removed. Sum(financialImpactFils) over any day MUST equal the delta
+ * between the old and new GL running totals — the reconciliation cron
+ * enforces this as a post-write invariant.
+ *
+ * `kuwaitDay` (char(10)) is the Kuwait-local YYYY-MM-DD key computed at
+ * write time so range queries can use a simple equality index without
+ * a timezone-aware WHERE.
+ */
+model InvoiceAuditLog {
+  id                  String             @id @default(uuid()) @db.Uuid
+  orderId             String             @db.Uuid
+  action              InvoiceAuditAction
+  actorId             String             @db.Uuid
+  actorRole           SafariRole
+  actorName           String
+  beforeSnapshot      Json
+  afterSnapshot       Json
+  changedFields       String[]           @default([])
+  reason              String?            @db.Text
+  financialImpactFils BigInt             @default(0)
+  kuwaitDay           String             @db.Char(10)
+  createdAt           DateTime           @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  actor User  @relation("InvoiceAuditActor", fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([orderId])
+  @@index([actorId])
+  @@index([kuwaitDay])
+  @@index([action, createdAt])
 }

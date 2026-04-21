@@ -4,6 +4,7 @@ export type SafariRole =
   | 'MANAGER'
   | 'DRIVER'
   | 'CALL_CENTER'
+  | 'CALL_CENTER_SUPERVISOR'
   | 'ACCOUNTANT'
   | 'SUPERVISOR'
   | 'VIEWER';
@@ -3295,3 +3296,163 @@ export function receivePurchaseOrder(
     body: JSON.stringify(body),
   });
 }
+
+/* -----------------------------------------------------------------
+ * V19.9 — CALL_CENTER_SUPERVISOR invoice edit/void + reports.
+ * ---------------------------------------------------------------- */
+
+export type InvoiceAuditAction = 'EDIT' | 'VOID';
+
+export type EditInvoiceBody = {
+  totalPrice?: string;
+  posPaymentMethod?:
+    | 'CASH'
+    | 'KNET'
+    | 'PAYMENT_LINK'
+    | 'ONLINE'
+    | 'DEBT_ON_ACCOUNT'
+    | 'SUBSCRIPTION_WALLET';
+  notes?: string;
+  reason?: string;
+};
+
+export type EditInvoiceResult = {
+  orderId: string;
+  auditId: string;
+  changedFields: string[];
+  newTotal: string;
+  newPaymentMethod: EditInvoiceBody['posPaymentMethod'] | null;
+};
+
+export function editInvoiceSameDay(
+  token: string,
+  orderId: string,
+  body: EditInvoiceBody,
+) {
+  return apiJson<EditInvoiceResult>(`/api/invoice-audit/orders/${orderId}`, {
+    method: 'PATCH',
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
+export type VoidInvoiceResult = {
+  orderId: string;
+  auditId: string;
+  reversedAmount: string;
+  reason: string;
+};
+
+export function voidInvoice(
+  token: string,
+  orderId: string,
+  reason: string,
+) {
+  return apiJson<VoidInvoiceResult>(
+    `/api/invoice-audit/orders/${orderId}/void`,
+    {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ reason }),
+    },
+  );
+}
+
+export type InvoiceAuditLogRow = {
+  id: string;
+  orderId: string;
+  action: InvoiceAuditAction;
+  actor: { id: string; fullName: string; safariRole: SafariRole };
+  actorRoleAtTime: SafariRole;
+  actorNameAtTime: string;
+  reason: string | null;
+  changedFields: string[];
+  financialImpactKd: string;
+  beforeSnapshot: Record<string, unknown>;
+  afterSnapshot: Record<string, unknown>;
+  kuwaitDay: string;
+  createdAt: string;
+  order: {
+    id: string;
+    serialNumber: string | null;
+    invoiceNumber: string | null;
+    totalPriceKd: string;
+    status: string;
+    customer: {
+      id: string;
+      displayName: string | null;
+      phone: string | null;
+    } | null;
+  } | null;
+};
+
+export type InvoiceAuditLogResponse = {
+  rows: InvoiceAuditLogRow[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export type InvoiceAuditLogQuery = {
+  from?: string;
+  to?: string;
+  action?: InvoiceAuditAction;
+  actorId?: string;
+  limit?: number;
+  offset?: number;
+};
+
+export function listInvoiceAuditLog(
+  token: string,
+  query: InvoiceAuditLogQuery,
+) {
+  const q = new URLSearchParams();
+  if (query.from) q.set('from', query.from);
+  if (query.to) q.set('to', query.to);
+  if (query.action) q.set('action', query.action);
+  if (query.actorId) q.set('actorId', query.actorId);
+  if (query.limit !== undefined) q.set('limit', String(query.limit));
+  if (query.offset !== undefined) q.set('offset', String(query.offset));
+  const qs = q.toString();
+  return apiJson<InvoiceAuditLogResponse>(
+    `/api/invoice-audit/log${qs ? `?${qs}` : ''}`,
+    { token },
+  );
+}
+
+export type CcPerformanceAgent = {
+  agentId: string;
+  agentName: string;
+  role: SafariRole;
+  collectedKd: string;
+  debtSettledKd: string;
+  activationsCount: number;
+  customersServed: number;
+};
+
+export type CcPerformanceResponse = {
+  from: string;
+  to: string;
+  agents: CcPerformanceAgent[];
+  totals: {
+    collectedKd: string;
+    debtSettledKd: string;
+    activationsCount: number;
+    customersServed: number;
+  };
+};
+
+export function getCcPerformance(
+  token: string,
+  query: { from?: string; to?: string },
+) {
+  const q = new URLSearchParams();
+  if (query.from) q.set('from', query.from);
+  if (query.to) q.set('to', query.to);
+  const qs = q.toString();
+  return apiJson<CcPerformanceResponse>(
+    `/api/invoice-audit/cc-performance${qs ? `?${qs}` : ''}`,
+    { token },
+  );
+}
+

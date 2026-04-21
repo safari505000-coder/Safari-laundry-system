@@ -12,6 +12,7 @@ import {
   insightsAiItem,
   purchaseOrdersItem,
   invoicesDataItem,
+  invoiceAuditItem,
   knetAuditItem,
   leavesItem,
   loansItem,
@@ -43,6 +44,7 @@ export const accountantSidebarNavGroups: NavGroup[] = [
     labelKey: 'nav.groupAudit',
     items: [
       knetAuditItem,
+      invoiceAuditItem,
       expenseApprovalItem,
       managerCustodyAgingItem,
       staffDebtsItem,

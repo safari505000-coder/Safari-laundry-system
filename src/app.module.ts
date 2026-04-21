@@ -10,6 +10,7 @@ import { AuditLogsModule } from './audit-logs/audit-logs.module';
 import { AuthModule } from './auth/auth.module';
 import { BranchesModule } from './branches/branches.module';
 import { CallCenterModule } from './call-center/call-center.module';
+import { InvoiceAuditModule } from './invoice-audit/invoice-audit.module';
 import { OperatingHoursMiddleware } from './common/middleware/operating-hours.middleware';
 import { requestIdMiddleware } from './common/middleware/request-id.middleware';
 import { CustomersModule } from './customers/customers.module';
@@ -79,6 +80,7 @@ const spaStaticModule = existsSync(webDistPath)
     SubscriptionPlansModule,
     SubscribersModule,
     CallCenterModule,
+    InvoiceAuditModule,
     LaundryPriceListModule,
     InventoryModule,
     PurchaseOrdersModule,

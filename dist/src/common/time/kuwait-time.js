@@ -4,6 +4,8 @@ exports.KUWAIT_TIMEZONE = exports.KUWAIT_OFFSET_MIN = void 0;
 exports.kuwaitMidnightUtc = kuwaitMidnightUtc;
 exports.nextKuwaitMidnightUtc = nextKuwaitMidnightUtc;
 exports.kuwaitHour = kuwaitHour;
+exports.kuwaitDayIso = kuwaitDayIso;
+exports.isSameKuwaitDay = isSameKuwaitDay;
 exports.KUWAIT_OFFSET_MIN = 180;
 exports.KUWAIT_TIMEZONE = 'Asia/Kuwait';
 function kuwaitMidnightUtc(nowUtc) {
@@ -21,5 +23,15 @@ function nextKuwaitMidnightUtc(nowUtc) {
 function kuwaitHour(nowUtc) {
     const k = new Date(nowUtc.getTime() + exports.KUWAIT_OFFSET_MIN * 60_000);
     return k.getUTCHours();
+}
+function kuwaitDayIso(nowUtc) {
+    const k = new Date(nowUtc.getTime() + exports.KUWAIT_OFFSET_MIN * 60_000);
+    const y = k.getUTCFullYear();
+    const m = String(k.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(k.getUTCDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+}
+function isSameKuwaitDay(a, b) {
+    return kuwaitDayIso(a) === kuwaitDayIso(b);
 }
 //# sourceMappingURL=kuwait-time.js.map

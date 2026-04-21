@@ -21,6 +21,7 @@ export class CustomersController {
     SafariRole.GENERAL_MANAGER,
     SafariRole.MANAGER,
     SafariRole.CALL_CENTER,
+    SafariRole.CALL_CENTER_SUPERVISOR,
     SafariRole.SUPERVISOR,
     SafariRole.VIEWER,
   )
@@ -37,6 +38,7 @@ export class CustomersController {
     SafariRole.GENERAL_MANAGER,
     SafariRole.MANAGER,
     SafariRole.CALL_CENTER,
+    SafariRole.CALL_CENTER_SUPERVISOR,
     SafariRole.SUPERVISOR,
     SafariRole.VIEWER,
   )
@@ -55,6 +57,7 @@ export class CustomersController {
     SafariRole.GENERAL_MANAGER,
     SafariRole.MANAGER,
     SafariRole.CALL_CENTER,
+    SafariRole.CALL_CENTER_SUPERVISOR,
     SafariRole.SUPERVISOR,
   )
   @ApiOperation({

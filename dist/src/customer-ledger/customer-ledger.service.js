@@ -37,7 +37,8 @@ let CustomerLedgerService = class CustomerLedgerService {
             return client_1.DebtEntityCategory.OWNER;
         if (role === client_1.SafariRole.DRIVER)
             return client_1.DebtEntityCategory.DRIVER;
-        if (role === client_1.SafariRole.CALL_CENTER)
+        if (role === client_1.SafariRole.CALL_CENTER ||
+            role === client_1.SafariRole.CALL_CENTER_SUPERVISOR)
             return client_1.DebtEntityCategory.CALL_CENTER;
         return client_1.DebtEntityCategory.BRANCH;
     }

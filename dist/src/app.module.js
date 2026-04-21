@@ -19,6 +19,7 @@ const audit_logs_module_1 = require("./audit-logs/audit-logs.module");
 const auth_module_1 = require("./auth/auth.module");
 const branches_module_1 = require("./branches/branches.module");
 const call_center_module_1 = require("./call-center/call-center.module");
+const invoice_audit_module_1 = require("./invoice-audit/invoice-audit.module");
 const operating_hours_middleware_1 = require("./common/middleware/operating-hours.middleware");
 const request_id_middleware_1 = require("./common/middleware/request-id.middleware");
 const customers_module_1 = require("./customers/customers.module");
@@ -93,6 +94,7 @@ exports.AppModule = AppModule = __decorate([
             subscription_plans_module_1.SubscriptionPlansModule,
             subscribers_module_1.SubscribersModule,
             call_center_module_1.CallCenterModule,
+            invoice_audit_module_1.InvoiceAuditModule,
             laundry_price_list_module_1.LaundryPriceListModule,
             inventory_module_1.InventoryModule,
             purchase_orders_module_1.PurchaseOrdersModule,

@@ -20,6 +20,7 @@ const SAFARI_ROLE_VALUES: SafariRole[] = [
   'DRIVER',
   'WORKER',
   'CALL_CENTER',
+  'CALL_CENTER_SUPERVISOR',
   'ACCOUNTANT',
   'SUPERVISOR',
   'VIEWER',
@@ -53,7 +54,7 @@ export class CreateUserDto {
     enumName: 'SafariRole',
     example: SafariRole.DRIVER,
     description:
-      'OWNER · GENERAL_MANAGER (Owner proxy) · MANAGER · SUPERVISOR: operations · VIEWER · ACCOUNTANT: read-only/finance · DRIVER · CALL_CENTER',
+      'OWNER · GENERAL_MANAGER (Owner proxy) · MANAGER · SUPERVISOR: operations · VIEWER · ACCOUNTANT: read-only/finance · DRIVER · CALL_CENTER · CALL_CENTER_SUPERVISOR (full CC + same-day invoice edit/void + team performance reports)',
   })
   @IsIn(SAFARI_ROLE_VALUES, {
     message: `safariRole must be one of: ${SAFARI_ROLE_VALUES.join(', ')}`,

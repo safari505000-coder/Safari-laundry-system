@@ -61,6 +61,7 @@ export declare class UsersController {
             leaveApprovals: number;
             employeeLoans: number;
             loanApprovals: number;
+            invoiceAuditEntries: number;
         };
         isActive: boolean;
         username: string;
@@ -581,6 +582,21 @@ export declare class UsersController {
             installmentCount: number;
             monthlyDeduction: import("@prisma/client-runtime-utils").Decimal;
             remaining: import("@prisma/client-runtime-utils").Decimal;
+        }[];
+        invoiceAuditEntries: {
+            id: string;
+            createdAt: Date;
+            action: import("@prisma/client").$Enums.InvoiceAuditAction;
+            orderId: string;
+            reason: string | null;
+            actorId: string;
+            actorRole: import("@prisma/client").$Enums.SafariRole;
+            actorName: string;
+            beforeSnapshot: import("@prisma/client/runtime/client").JsonValue;
+            afterSnapshot: import("@prisma/client/runtime/client").JsonValue;
+            changedFields: string[];
+            financialImpactFils: bigint;
+            kuwaitDay: string;
         }[];
     }>;
     findAll(user: JwtUser): Promise<{
@@ -630,6 +646,7 @@ export declare class UsersController {
             leaveApprovals: number;
             employeeLoans: number;
             loanApprovals: number;
+            invoiceAuditEntries: number;
         };
         isActive: boolean;
         username: string;
@@ -1150,6 +1167,21 @@ export declare class UsersController {
             installmentCount: number;
             monthlyDeduction: import("@prisma/client-runtime-utils").Decimal;
             remaining: import("@prisma/client-runtime-utils").Decimal;
+        }[];
+        invoiceAuditEntries: {
+            id: string;
+            createdAt: Date;
+            action: import("@prisma/client").$Enums.InvoiceAuditAction;
+            orderId: string;
+            reason: string | null;
+            actorId: string;
+            actorRole: import("@prisma/client").$Enums.SafariRole;
+            actorName: string;
+            beforeSnapshot: import("@prisma/client/runtime/client").JsonValue;
+            afterSnapshot: import("@prisma/client/runtime/client").JsonValue;
+            changedFields: string[];
+            financialImpactFils: bigint;
+            kuwaitDay: string;
         }[];
     }[]>;
     findOne(id: string, user: JwtUser): Promise<{
@@ -1199,6 +1231,7 @@ export declare class UsersController {
             leaveApprovals: number;
             employeeLoans: number;
             loanApprovals: number;
+            invoiceAuditEntries: number;
         };
         isActive: boolean;
         username: string;
@@ -1719,6 +1752,21 @@ export declare class UsersController {
             installmentCount: number;
             monthlyDeduction: import("@prisma/client-runtime-utils").Decimal;
             remaining: import("@prisma/client-runtime-utils").Decimal;
+        }[];
+        invoiceAuditEntries: {
+            id: string;
+            createdAt: Date;
+            action: import("@prisma/client").$Enums.InvoiceAuditAction;
+            orderId: string;
+            reason: string | null;
+            actorId: string;
+            actorRole: import("@prisma/client").$Enums.SafariRole;
+            actorName: string;
+            beforeSnapshot: import("@prisma/client/runtime/client").JsonValue;
+            afterSnapshot: import("@prisma/client/runtime/client").JsonValue;
+            changedFields: string[];
+            financialImpactFils: bigint;
+            kuwaitDay: string;
         }[];
     }>;
     update(id: string, dto: UpdateUserDto, user: JwtUser, req: {
@@ -1771,6 +1819,7 @@ export declare class UsersController {
             leaveApprovals: number;
             employeeLoans: number;
             loanApprovals: number;
+            invoiceAuditEntries: number;
         };
         isActive: boolean;
         username: string;
@@ -2291,6 +2340,21 @@ export declare class UsersController {
             installmentCount: number;
             monthlyDeduction: import("@prisma/client-runtime-utils").Decimal;
             remaining: import("@prisma/client-runtime-utils").Decimal;
+        }[];
+        invoiceAuditEntries: {
+            id: string;
+            createdAt: Date;
+            action: import("@prisma/client").$Enums.InvoiceAuditAction;
+            orderId: string;
+            reason: string | null;
+            actorId: string;
+            actorRole: import("@prisma/client").$Enums.SafariRole;
+            actorName: string;
+            beforeSnapshot: import("@prisma/client/runtime/client").JsonValue;
+            afterSnapshot: import("@prisma/client/runtime/client").JsonValue;
+            changedFields: string[];
+            financialImpactFils: bigint;
+            kuwaitDay: string;
         }[];
     }>;
     setStatus(id: string, dto: UpdateUserStatusDto, user: JwtUser, req: {
@@ -2343,6 +2407,7 @@ export declare class UsersController {
             leaveApprovals: number;
             employeeLoans: number;
             loanApprovals: number;
+            invoiceAuditEntries: number;
         };
         isActive: boolean;
         username: string;
@@ -2863,6 +2928,21 @@ export declare class UsersController {
             installmentCount: number;
             monthlyDeduction: import("@prisma/client-runtime-utils").Decimal;
             remaining: import("@prisma/client-runtime-utils").Decimal;
+        }[];
+        invoiceAuditEntries: {
+            id: string;
+            createdAt: Date;
+            action: import("@prisma/client").$Enums.InvoiceAuditAction;
+            orderId: string;
+            reason: string | null;
+            actorId: string;
+            actorRole: import("@prisma/client").$Enums.SafariRole;
+            actorName: string;
+            beforeSnapshot: import("@prisma/client/runtime/client").JsonValue;
+            afterSnapshot: import("@prisma/client/runtime/client").JsonValue;
+            changedFields: string[];
+            financialImpactFils: bigint;
+            kuwaitDay: string;
         }[];
     }>;
     remove(id: string, user: JwtUser, req: {

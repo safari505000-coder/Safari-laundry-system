@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from '@/modules/shared/components/ui/dialog';
 import { OrderIdBarcode } from '@/modules/shared/components/orders/order-id-barcode';
+import { InvoiceSupervisorActions } from '@/modules/shared/components/orders/invoice-supervisor-actions';
 import { TermsQr } from '@/components/common/terms-qr';
 import {
   Table,
@@ -24,9 +25,10 @@ type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   order: OrderRow | null;
+  onChanged?: () => void;
 };
 
-export function OrderDetailDialog({ open, onOpenChange, order }: Props) {
+export function OrderDetailDialog({ open, onOpenChange, order, onChanged }: Props) {
   const { t } = useTranslation();
   const dateLocale = useAppLocale();
 
@@ -81,6 +83,13 @@ export function OrderDetailDialog({ open, onOpenChange, order }: Props) {
                 </dd>
               </div>
             </dl>
+            <InvoiceSupervisorActions
+              order={order}
+              onChanged={() => {
+                onChanged?.();
+                onOpenChange(false);
+              }}
+            />
             {order.lineItems.length > 0 ?
               <div>
                 <p className="mb-2 text-xs font-medium text-muted-foreground">

@@ -391,7 +391,7 @@ export function DashboardPage() {
           </div>
         : null}
 
-        {hasRole('CALL_CENTER', 'DRIVER') &&
+        {hasRole('CALL_CENTER', 'CALL_CENTER_SUPERVISOR', 'DRIVER') &&
         !hasRole(
           'OWNER',
           'MANAGER',
@@ -406,7 +406,7 @@ export function DashboardPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="text-sm text-muted-foreground">
-              {hasRole('CALL_CENTER') ?
+              {hasRole('CALL_CENTER', 'CALL_CENTER_SUPERVISOR') ?
                 <p>{t('dashboard.workspaceCallCenter')}</p>
               : <p>{t('dashboard.workspaceDriver')}</p>}
             </CardContent>

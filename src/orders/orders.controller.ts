@@ -88,6 +88,7 @@ export class OrdersController {
   @UseGuards(RolesGuard)
   @Roles(
     SafariRole.CALL_CENTER,
+    SafariRole.CALL_CENTER_SUPERVISOR,
     SafariRole.OWNER,
     SafariRole.GENERAL_MANAGER,
   )

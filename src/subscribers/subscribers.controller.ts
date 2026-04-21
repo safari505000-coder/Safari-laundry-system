@@ -17,7 +17,12 @@ export class SubscribersController {
   constructor(private readonly subscribersService: SubscribersService) {}
 
   @Get()
-  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.CALL_CENTER)
+  @Roles(
+    SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
+    SafariRole.CALL_CENTER,
+    SafariRole.CALL_CENTER_SUPERVISOR,
+  )
   @ApiOperation({
     summary: `Subscriber list (${APP_BRAND})`,
     description:

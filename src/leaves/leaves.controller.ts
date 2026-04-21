@@ -54,6 +54,7 @@ export class LeavesController {
     SafariRole.ACCOUNTANT,
     SafariRole.DRIVER,
     SafariRole.CALL_CENTER,
+    SafariRole.CALL_CENTER_SUPERVISOR,
     SafariRole.SUPERVISOR,
     SafariRole.VIEWER,
   )
@@ -82,6 +83,7 @@ export class LeavesController {
     SafariRole.ACCOUNTANT,
     SafariRole.DRIVER,
     SafariRole.CALL_CENTER,
+    SafariRole.CALL_CENTER_SUPERVISOR,
     SafariRole.SUPERVISOR,
     SafariRole.VIEWER,
   )
@@ -98,6 +100,7 @@ export class LeavesController {
     SafariRole.ACCOUNTANT,
     SafariRole.DRIVER,
     SafariRole.CALL_CENTER,
+    SafariRole.CALL_CENTER_SUPERVISOR,
     SafariRole.SUPERVISOR,
     SafariRole.VIEWER,
   )
@@ -153,6 +156,7 @@ export class LeavesController {
     SafariRole.ACCOUNTANT,
     SafariRole.DRIVER,
     SafariRole.CALL_CENTER,
+    SafariRole.CALL_CENTER_SUPERVISOR,
     SafariRole.SUPERVISOR,
     SafariRole.VIEWER,
   )

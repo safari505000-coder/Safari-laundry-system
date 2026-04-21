@@ -132,6 +132,7 @@ export function OrdersPage() {
         open={detailOpen}
         onOpenChange={setDetailOpen}
         order={detailOrder}
+        onChanged={() => void loadOrders()}
       />
 
       <Card className="rounded-[20px] border-border bg-card shadow-sm">
@@ -155,7 +156,14 @@ export function OrdersPage() {
                 </TableHeader>
                 <TableBody>
                   {rows.map((o) => (
-                    <TableRow key={o.id}>
+                    <TableRow
+                      key={o.id}
+                      className="cursor-pointer"
+                      onClick={() => {
+                        setDetailOrder(o);
+                        setDetailOpen(true);
+                      }}
+                    >
                       <TableCell className="whitespace-nowrap text-xs text-zinc-500">
                         {new Date(o.createdAt).toLocaleString(dateLocale)}
                       </TableCell>

@@ -39,6 +39,7 @@ export const ACCESS = {
     'MANAGER',
     'DRIVER',
     'CALL_CENTER',
+    'CALL_CENTER_SUPERVISOR',
     'ACCOUNTANT',
     'SUPERVISOR',
     'VIEWER',
@@ -140,7 +141,7 @@ export const ACCESS = {
   'staffDebts.act': ['ACCOUNTANT'] satisfies readonly SafariRole[],
   'expenseApproval.view': withExec('ACCOUNTANT'),
   'expenseApproval.act': ['ACCOUNTANT'] satisfies readonly SafariRole[],
-  'whatsappTools.use': withExec('CALL_CENTER'),
+  'whatsappTools.use': withExec('CALL_CENTER', 'CALL_CENTER_SUPERVISOR'),
   // Safari Pulse driver radar — OWNER only. Backend guards
   // `/api/finance/driver-monitoring` with @Roles(OWNER), so the UI
   // must stay locked down to match (no more CC/Accountant bypass).
@@ -152,10 +153,17 @@ export const ACCESS = {
   // management). OWNER keeps manage on the subscriber CRM to support
   // escalations — this mirrors the pre-refactor behaviour so we don't
   // remove a tool the Owner actually uses.
-  'customers.view': withExec('CALL_CENTER'),
-  'customers.manage': ['OWNER', 'CALL_CENTER'] satisfies readonly SafariRole[],
-  'collections.view': withExec('CALL_CENTER'),
-  'collections.act': ['CALL_CENTER'] satisfies readonly SafariRole[],
+  'customers.view': withExec('CALL_CENTER', 'CALL_CENTER_SUPERVISOR'),
+  'customers.manage': [
+    'OWNER',
+    'CALL_CENTER',
+    'CALL_CENTER_SUPERVISOR',
+  ] satisfies readonly SafariRole[],
+  'collections.view': withExec('CALL_CENTER', 'CALL_CENTER_SUPERVISOR'),
+  'collections.act': [
+    'CALL_CENTER',
+    'CALL_CENTER_SUPERVISOR',
+  ] satisfies readonly SafariRole[],
   // V19.4 CC cleanup — `/subscriptions` is now the plan-catalog page for
   // executives only. Every Call-Center activation / debt / extend /
   // rollover / history surface lives on `/subscribers` and `/customers`.
@@ -163,8 +171,27 @@ export const ACCESS = {
   // workflow (the "old system" the user kept seeing), so we narrow it.
   'subscriptions.view': [...EXEC_PAIR] satisfies readonly SafariRole[],
   'subscriptions.manage': [...EXEC_PAIR] satisfies readonly SafariRole[],
-  'subscribers.view': withExec('CALL_CENTER'),
-  'subscribers.manage': ['OWNER', 'CALL_CENTER'] satisfies readonly SafariRole[],
+  'subscribers.view': withExec('CALL_CENTER', 'CALL_CENTER_SUPERVISOR'),
+  'subscribers.manage': [
+    'OWNER',
+    'CALL_CENTER',
+    'CALL_CENTER_SUPERVISOR',
+  ] satisfies readonly SafariRole[],
+
+  // ─── Call-Center Supervisor (V19.9) ───────────────────────────────
+  // Same-day full invoice edit (amounts, methods, items) with a forced
+  // audit log entry, and soft-void (status=VOIDED + GL reversal +
+  // wallet refund). Destructive and NOT available to ordinary CC
+  // agents — supervisor only. The audit report itself lives with the
+  // exec pair + accountant as the independent review layer.
+  'invoices.editSameDay': [
+    'CALL_CENTER_SUPERVISOR',
+  ] satisfies readonly SafariRole[],
+  'invoices.void': ['CALL_CENTER_SUPERVISOR'] satisfies readonly SafariRole[],
+  'invoiceAudit.view': withExec('ACCOUNTANT'),
+  // Team performance dashboard — supervisor runs it day-to-day; exec
+  // pair read it alongside the debt-recovery report.
+  'ccPerformance.view': withExec('CALL_CENTER_SUPERVISOR'),
 
   // ─── Branch manager ───────────────────────────────────────────────
   'managerCustody.view': withExec('MANAGER'),
@@ -196,6 +223,7 @@ export const ACCESS = {
     'ACCOUNTANT',
     'DRIVER',
     'CALL_CENTER',
+    'CALL_CENTER_SUPERVISOR',
     'SUPERVISOR',
     'VIEWER',
   ] satisfies readonly SafariRole[],
