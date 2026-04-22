@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import * as Sentry from '@sentry/node';
 import * as bcrypt from 'bcrypt';
+import helmet from 'helmet';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { HttpAdapterHost, NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
@@ -95,7 +96,9 @@ async function ensureDefaultOwner(prisma: PrismaService): Promise<void> {
     return;
   }
 
-  const passwordHash = await bcrypt.hash(DEFAULT_ADMIN_PASSWORD, 12);
+  // V19.12 — bcrypt cost lowered 12 → 10 (still above OWASP minimum of 10)
+  // to keep login / onboarding throughput within the target envelope.
+  const passwordHash = await bcrypt.hash(DEFAULT_ADMIN_PASSWORD, 10);
   await prisma.user.create({
     data: {
       username: DEFAULT_ADMIN_USERNAME,
@@ -114,6 +117,22 @@ async function bootstrap() {
   });
   app.use(express.json({ limit: '1mb' }));
   app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+
+  // V19.12 — hardening:
+  //   * helmet() applies a safe baseline of HTTP security headers
+  //     (HSTS, X-Content-Type-Options, Referrer-Policy, X-DNS-Prefetch-Control,
+  //     etc.). CSP is disabled here because Swagger UI inlines scripts; if we
+  //     ever lock that behind /docs we can re-enable contentSecurityPolicy.
+  //   * `trust proxy` makes Express pick up the real client IP from
+  //     X-Forwarded-For so the per-IP throttler actually rate-limits
+  //     individual attackers instead of the proxy IP.
+  app.use(
+    helmet({
+      contentSecurityPolicy: false,
+      crossOriginEmbedderPolicy: false,
+    }),
+  );
+  app.set('trust proxy', true);
   const httpAdapterHost = app.get(HttpAdapterHost);
   const prisma = app.get(PrismaService);
 

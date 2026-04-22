@@ -28,9 +28,15 @@ export class LoginUserDto {
 export class LoginResponseDto {
   @ApiProperty({
     description:
-      'Bearer token — use Authorization: Bearer <token> for protected routes (e.g. management reports)',
+      'Short-lived bearer token (default 15 min) — use Authorization: Bearer <token> for protected routes (e.g. management reports)',
   })
   accessToken: string;
+
+  @ApiProperty({
+    description:
+      'Opaque refresh token (default 7 days). Send to POST /api/auth/refresh-token to get a fresh access token without re-hashing the password.',
+  })
+  refreshToken: string;
 
   @ApiProperty({ type: LoginUserDto })
   user: LoginUserDto;

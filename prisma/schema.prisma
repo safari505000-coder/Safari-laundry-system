@@ -332,6 +332,43 @@ model User {
    */
   vehicleExpensesSubmitted         VehicleExpense[]       @relation("VehicleExpenseSubmittedBy")
   vehicleExpensesReviewed          VehicleExpense[]       @relation("VehicleExpenseReviewedBy")
+  /**
+   * V19.12 — refresh-token rotation (access token short-lived, refresh token
+   * long-lived and single-use with revocation audit). Back-relation of
+   * `RefreshToken.user`.
+   */
+  refreshTokens                    RefreshToken[]         @relation("RefreshTokenUser")
+}
+
+/**
+ * V19.12 — opaque refresh tokens for the new rotation-based auth flow.
+ * We store the SHA-256 of the token (never the token itself) so a DB
+ * leak does not grant session takeover. Each row is single-use: on
+ * redemption we stamp `usedAt` and issue a fresh row; a second redemption
+ * attempt (token replay) revokes the entire token family.
+ */
+model RefreshToken {
+  id              String    @id @default(uuid()) @db.Uuid
+  userId          String    @db.Uuid
+  /** SHA-256 hex of the raw token — never store the token itself. */
+  tokenHash       String    @unique
+  /** Expiry hard-stop, enforced on redemption. */
+  expiresAt       DateTime
+  /** Set when this token is redeemed by /refresh-token; second use is replay. */
+  usedAt          DateTime?
+  /** Explicit revocation (logout, password change, replay detected). */
+  revokedAt       DateTime?
+  /** Chain pointer — every rotation increments the generation id. */
+  replacedById    String?   @db.Uuid
+  createdAt       DateTime  @default(now())
+  /** Optional client fingerprint — request-scoped, for audit only. */
+  userAgent       String?
+  ip              String?
+
+  user            User      @relation("RefreshTokenUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 enum ExpenseCategory {

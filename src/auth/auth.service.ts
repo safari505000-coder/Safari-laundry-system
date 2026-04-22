@@ -1,12 +1,18 @@
-import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import * as bcrypt from 'bcrypt';
 import { SafariRole } from '@prisma/client';
+import * as crypto from 'node:crypto';
 import { FinanceService } from '../finance/finance.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { kuwaitHour } from '../common/time/kuwait-time';
+import { BcryptService } from './bcrypt.service';
 import { LoginDto } from './dto/login.dto';
 import { LoginResponseDto } from './dto/login-response.dto';
+import { RefreshTokenResponseDto } from './dto/refresh-token.dto';
 import { JwtPayload } from './strategies/jwt.strategy';
 
 const INSTITUTIONAL_ROLES: readonly SafariRole[] = [
@@ -23,28 +29,33 @@ const INSTITUTIONAL_ROLES: readonly SafariRole[] = [
   SafariRole.VIEWER,
 ];
 
-/**
- * Field-operator working hours (Asia/Kuwait). Drivers and branch managers can
- * only authenticate between 07:00 and 23:59; the system rejects any attempt
- * in [00:00, 07:00). Executive/back-office roles (OWNER, GENERAL_MANAGER,
- * ACCOUNTANT, CALL_CENTER, SUPERVISOR, VIEWER, WORKER) are not affected —
- * the `OperatingHoursMiddleware` still governs which mutations they can run.
- */
 const FIELD_OPERATOR_ROLES: readonly SafariRole[] = [
   SafariRole.DRIVER,
   SafariRole.MANAGER,
 ];
 const FIELD_OPERATOR_WINDOW_START_HOUR = 7;
 
-/**
- * Escape hatch for diagnostics: when `AUTH_BYPASS_WORKING_HOURS=1` the
- * `[00:00, 07:00)` Kuwait login gate is waived for DRIVER/MANAGER. Every
- * bypassed login is still logged as a warning so the trail is auditable.
- * Default is OFF — production must not ship with this flag enabled.
- */
+/** V19.12 — short access token, long refresh token (both driven by env). */
+// Cast to `any` because @nestjs/jwt exposes `StringValue` (branded `ms` type)
+// and refuses a plain `string`. At runtime it's the same value.
+const ACCESS_TOKEN_TTL: any = process.env.AUTH_ACCESS_TOKEN_TTL ?? '15m';
+const REFRESH_TOKEN_DAYS = Number.parseInt(
+  process.env.AUTH_REFRESH_TOKEN_DAYS ?? '7',
+  10,
+);
+
 function isWorkingHoursBypassed(): boolean {
   const raw = (process.env.AUTH_BYPASS_WORKING_HOURS ?? '').trim().toLowerCase();
   return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+}
+
+function sha256Hex(input: string): string {
+  return crypto.createHash('sha256').update(input).digest('hex');
+}
+
+function generateRefreshTokenRaw(): string {
+  // 48 random bytes → 64-char base64url; gives ~384 bits of entropy.
+  return crypto.randomBytes(48).toString('base64url');
 }
 
 @Injectable()
@@ -55,6 +66,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly financeService: FinanceService,
+    private readonly bcryptService: BcryptService,
   ) {}
 
   async login(dto: LoginDto): Promise<LoginResponseDto> {
@@ -69,7 +81,7 @@ export class AuthService {
     if ((user as { isActive?: boolean }).isActive === false) {
       throw new UnauthorizedException('This account is deactivated');
     }
-    const ok = await bcrypt.compare(dto.password, user.password);
+    const ok = await this.bcryptService.compare(dto.password, user.password);
     if (!ok) {
       throw new UnauthorizedException('Invalid username or password');
     }
@@ -114,9 +126,14 @@ export class AuthService {
       role: roleName,
       branchId: user.branchId ?? undefined,
     };
-    const accessToken = await this.jwt.signAsync(payload);
+    const accessToken = await this.jwt.signAsync(payload, {
+      expiresIn: ACCESS_TOKEN_TTL,
+    });
+    const refreshToken = await this.issueRefreshToken(user.id);
+
     return {
       accessToken,
+      refreshToken,
       user: {
         id: user.id,
         username: user.username,
@@ -129,10 +146,107 @@ export class AuthService {
   }
 
   /**
-   * Fire-and-forget audit entry for drivers/managers who attempt to log in
-   * outside the 07:00–23:59 Kuwait window. Lets the OWNER dashboard surface
-   * the count of rejected attempts without interfering with the login path.
+   * V19.12 — refresh-token rotation.
+   *   1. Look up stored hash; reject if missing / expired / revoked.
+   *   2. If the token was already used → REPLAY: revoke the entire family
+   *      for this user (logout-all-sessions defence).
+   *   3. Otherwise stamp `usedAt`, issue a fresh refresh token row linked via
+   *      `replacedById`, and return a fresh access token with no bcrypt.
    */
+  async refreshAccessToken(
+    rawToken: string,
+  ): Promise<RefreshTokenResponseDto> {
+    const tokenHash = sha256Hex(rawToken);
+    const row = await this.prisma.refreshToken.findUnique({
+      where: { tokenHash },
+      include: { user: { include: { role: true } } },
+    });
+    if (!row) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+    if (row.revokedAt) {
+      throw new UnauthorizedException('Refresh token revoked');
+    }
+    if (row.expiresAt <= new Date()) {
+      throw new UnauthorizedException('Refresh token expired');
+    }
+    if (row.usedAt) {
+      // replay detected — revoke every outstanding token for this user
+      await this.prisma.refreshToken.updateMany({
+        where: { userId: row.userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      this.logger.warn(
+        `[AUTH] refresh-token replay detected for user ${row.userId}; revoking all sessions.`,
+      );
+      throw new UnauthorizedException('Refresh token replay detected');
+    }
+
+    const user = row.user;
+    if ((user as { isActive?: boolean }).isActive === false) {
+      await this.prisma.refreshToken.update({
+        where: { id: row.id },
+        data: { revokedAt: new Date() },
+      });
+      throw new UnauthorizedException('This account is deactivated');
+    }
+
+    const roleName = user.role.name as SafariRole;
+    const payload: JwtPayload = {
+      sub: user.id,
+      role: roleName,
+      branchId: user.branchId ?? undefined,
+    };
+    const accessToken = await this.jwt.signAsync(payload, {
+      expiresIn: ACCESS_TOKEN_TTL,
+    });
+    const newRaw = generateRefreshTokenRaw();
+    const newHash = sha256Hex(newRaw);
+    const newExpiresAt = new Date(
+      Date.now() + REFRESH_TOKEN_DAYS * 24 * 60 * 60 * 1000,
+    );
+
+    await this.prisma.$transaction([
+      this.prisma.refreshToken.create({
+        data: {
+          userId: user.id,
+          tokenHash: newHash,
+          expiresAt: newExpiresAt,
+        },
+      }),
+      this.prisma.refreshToken.update({
+        where: { id: row.id },
+        data: {
+          usedAt: new Date(),
+        },
+      }),
+    ]);
+
+    return { accessToken, refreshToken: newRaw };
+  }
+
+  async revokeRefreshToken(rawToken: string): Promise<void> {
+    const tokenHash = sha256Hex(rawToken);
+    await this.prisma.refreshToken
+      .updateMany({
+        where: { tokenHash, revokedAt: null },
+        data: { revokedAt: new Date() },
+      })
+      .catch(() => undefined);
+  }
+
+  private async issueRefreshToken(userId: string): Promise<string> {
+    const raw = generateRefreshTokenRaw();
+    const hash = sha256Hex(raw);
+    const expiresAt = new Date(
+      Date.now() + REFRESH_TOKEN_DAYS * 24 * 60 * 60 * 1000,
+    );
+    await this.prisma.refreshToken.create({
+      data: { userId, tokenHash: hash, expiresAt },
+    });
+    return raw;
+  }
+
   private async recordOutsideHoursAudit(
     userId: string,
     role: SafariRole,

@@ -1,0 +1,65 @@
+config:
+  target: "http://localhost:3001"
+  processor: "../scripts/processor.js"
+  http:
+    timeout: 60
+    pool: 256
+  phases:
+    - name: "100-inv-min"
+      duration: 60
+      arrivalRate: 2            # ~120/min
+    - name: "500-inv-min"
+      duration: 60
+      arrivalRate: 9            # ~540/min
+    - name: "1000-inv-min"
+      duration: 60
+      arrivalRate: 17           # ~1020/min
+    - name: "2000-inv-min"
+      duration: 60
+      arrivalRate: 34           # ~2040/min
+  ensure:
+    thresholds:
+      - http.response_time.p95: 500
+      - errors.ETIMEDOUT: 0
+  plugins:
+    metrics-by-endpoint:
+      useOnlyRequestNames: true
+
+scenarios:
+  - name: invoice-lifecycle
+    weight: 100
+    beforeScenario:
+      - "setDriverCredentials"
+      - "setRandomCustomer"
+      - "setInvoiceNumber"
+    flow:
+      # 1) Driver logs in (creates or reuses shift).
+      - post:
+          name: "POST /api/auth/login (driver)"
+          url: "/api/auth/login"
+          json:
+            username: "{{ driverUsername }}"
+            password: "{{ driverPassword }}"
+          afterResponse: "captureAccessToken"
+      # 2) Driver creates the invoice via /orders/quick.
+      - post:
+          name: "POST /api/orders/quick (invoice)"
+          url: "/api/orders/quick"
+          headers:
+            Authorization: "Bearer {{ accessToken }}"
+          json:
+            customerPhone: "{{ customerPhone }}"
+            customerId: "{{ customerId }}"
+            totalPrice: "{{ totalPrice }}"
+            invoiceNumber: "{{ invoiceNumber }}"
+            serviceType: "NORMAL"
+          afterResponse: "captureOrderId"
+      # 3) Customer pays via KNET — Payment gateway callback.
+      - post:
+          name: "POST /api/payments/callback (KNET)"
+          url: "/api/payments/callback"
+          json:
+            orderId: "{{ orderId }}"
+            status: "success"
+            amount: "{{ totalPrice }}"
+            devMock: true

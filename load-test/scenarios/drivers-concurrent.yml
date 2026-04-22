@@ -1,0 +1,69 @@
+config:
+  target: "http://localhost:3001"
+  processor: "../scripts/processor.js"
+  http:
+    timeout: 30
+    pool: 512
+  phases:
+    - name: ramp-50
+      duration: 30
+      arrivalRate: 10
+      maxVusers: 50
+    - name: hold-100
+      duration: 30
+      arrivalRate: 20
+      maxVusers: 100
+    - name: hold-250
+      duration: 30
+      arrivalRate: 50
+      maxVusers: 250
+    - name: hold-500
+      duration: 30
+      arrivalRate: 100
+      maxVusers: 500
+    - name: hold-1000
+      duration: 30
+      arrivalRate: 200
+      maxVusers: 1000
+    # V19.12 stretch target after bcrypt worker-pool fix.
+    - name: hold-1500
+      duration: 45
+      arrivalRate: 300
+      maxVusers: 1500
+  ensure:
+    thresholds:
+      - http.response_time.p95: 500
+      - http.codes.201: 1
+  plugins:
+    metrics-by-endpoint:
+      useOnlyRequestNames: true
+
+scenarios:
+  - name: driver-daily-flow
+    weight: 100
+    beforeScenario:
+      - "setDriverCredentials"
+      - "setRandomCustomer"
+    flow:
+      - post:
+          name: "POST /api/auth/login (driver)"
+          url: "/api/auth/login"
+          json:
+            username: "{{ driverUsername }}"
+            password: "{{ driverPassword }}"
+          afterResponse: "captureAccessToken"
+      - get:
+          name: "GET /api/orders/driver/pending-invoices"
+          url: "/api/orders/driver/pending-invoices"
+          headers:
+            Authorization: "Bearer {{ accessToken }}"
+      - post:
+          name: "POST /api/orders/quick"
+          url: "/api/orders/quick"
+          headers:
+            Authorization: "Bearer {{ accessToken }}"
+          json:
+            customerPhone: "{{ customerPhone }}"
+            customerId: "{{ customerId }}"
+            totalPrice: "{{ totalPrice }}"
+            serviceType: "NORMAL"

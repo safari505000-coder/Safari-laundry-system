@@ -1,0 +1,69 @@
+config:
+  target: "http://localhost:3001"
+  processor: "../scripts/processor.js"
+  http:
+    timeout: 30
+    pool: 64
+  phases:
+    - name: smoke
+      duration: 10
+      arrivalRate: 5
+      maxVusers: 30
+  plugins:
+    metrics-by-endpoint:
+      useOnlyRequestNames: true
+
+scenarios:
+  - name: driver-smoke
+    weight: 60
+    beforeScenario:
+      - "setDriverCredentials"
+      - "setRandomCustomer"
+    flow:
+      - post:
+          name: "login-driver"
+          url: "/api/auth/login"
+          json:
+            username: "{{ driverUsername }}"
+            password: "{{ driverPassword }}"
+          afterResponse: "captureAccessToken"
+      - post:
+          name: "create-order"
+          url: "/api/orders/quick"
+          headers:
+            Authorization: "Bearer {{ accessToken }}"
+          json:
+            customerPhone: "{{ customerPhone }}"
+            customerId: "{{ customerId }}"
+            totalPrice: "{{ totalPrice }}"
+            serviceType: "NORMAL"
+          afterResponse: "captureOrderId"
+      - post:
+          name: "payment-callback"
+          url: "/api/payments/callback"
+          json:
+            orderId: "{{ orderId }}"
+            status: "success"
+            amount: "{{ totalPrice }}"
+            devMock: true
+
+  - name: report-poll
+    weight: 40
+    flow:
+      - post:
+          name: "login-admin"
+          url: "/api/auth/login"
+          json:
+            username: "admin"
+            password: "admin"
+          afterResponse: "captureAccessToken"
+      - get:
+          name: "open-debt-by-issuer"
+          url: "/api/finance/reports/open-debt-by-issuer"
+          headers:
+            Authorization: "Bearer {{ accessToken }}"
+      - get:
+          name: "unpaid-invoices"
+          url: "/api/finance/reports/unpaid-invoices"
+          headers:
+            Authorization: "Bearer {{ accessToken }}"
