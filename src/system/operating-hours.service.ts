@@ -3,7 +3,7 @@ import { Injectable } from '@nestjs/common';
 const KUWAIT_TZ = 'Asia/Kuwait';
 const KUWAIT_OFFSET_MIN = 180; // UTC+03:00, no DST.
 
-/** Business window: [startHour, endHour) Kuwait time — default 07:00–23:00 (last minute 22:59). */
+/** Business window: [startHour, endHour) Kuwait time — default 07:00–24:00 (ends at midnight). */
 @Injectable()
 export class OperatingHoursService {
   isLockEnabled(): boolean {
@@ -25,18 +25,28 @@ export class OperatingHoursService {
     return hour * 60 + minute;
   }
 
-  isWithinOperatingWindow(): boolean {
-    const startH = Number.parseInt(
+  /**
+   * Resolved [start, end) window in hours. Exposed so the middleware's
+   * 403 payload can spell out the real configured limits instead of the
+   * previously hard-coded "07:00 and 23:00" string.
+   */
+  getWindowHours(): { startHour: number; endHour: number } {
+    const startHour = Number.parseInt(
       process.env.OPERATING_HOURS_KUWAIT_START_HOUR ?? '7',
       10,
     );
-    const endH = Number.parseInt(
-      process.env.OPERATING_HOURS_KUWAIT_END_HOUR ?? '23',
+    const endHour = Number.parseInt(
+      process.env.OPERATING_HOURS_KUWAIT_END_HOUR ?? '24',
       10,
     );
+    return { startHour, endHour };
+  }
+
+  isWithinOperatingWindow(): boolean {
+    const { startHour, endHour } = this.getWindowHours();
     const mins = this.getKuwaitClockMinutes();
-    const start = startH * 60;
-    const end = endH * 60;
+    const start = startHour * 60;
+    const end = endHour * 60;
     return mins >= start && mins < end;
   }
 

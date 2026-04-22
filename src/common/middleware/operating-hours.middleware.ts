@@ -87,11 +87,12 @@ export class OperatingHoursMiddleware implements NestMiddleware {
       return;
     }
 
+    const { startHour, endHour } = this.hours.getWindowHours();
+    const fmt = (h: number) => `${String(h % 24).padStart(2, '0')}:00`;
     res.status(403).json({
       meta: { application: APP_BRAND },
       statusCode: 403,
-      message:
-        'Operations are only allowed between 07:00 and 23:00 Kuwait time (Safari Express operating hours).',
+      message: `Operations are only allowed between ${fmt(startHour)} and ${fmt(endHour)} Kuwait time (Safari Express operating hours).`,
       errorCode: 'SYSTEM_CLOSED',
       timestamp: new Date().toISOString(),
     });
