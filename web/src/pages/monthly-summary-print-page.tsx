@@ -45,6 +45,8 @@ type RowFormula = Pick<
   | 'collectedRevenueKd'
   | 'uncollectedRevenueKd'
   | 'debtPaymentsReceivedKd'
+  | 'outstandingInvoiceDebtKd'
+  | 'outstandingSubscriptionDebtKd'
   | 'outstandingDebtKd'
 >;
 
@@ -190,8 +192,30 @@ function CollectionsTable({ row }: { row: RowFormula }) {
         <tr>
           <td className="msp-table__label">
             {t(
+              'monthlySummary.lineOutstandingInvoiceDebt',
+              'متبقي ديون الفواتير (كل الفترات)',
+            )}
+          </td>
+          <td className="msp-table__value is-neg">
+            {formatKwdLabel(row.outstandingInvoiceDebtKd)}
+          </td>
+        </tr>
+        <tr>
+          <td className="msp-table__label">
+            {t(
+              'monthlySummary.lineOutstandingSubscriptionDebt',
+              'متبقي ديون الاشتراك / الزيادة (كل الفترات)',
+            )}
+          </td>
+          <td className="msp-table__value is-neg">
+            {formatKwdLabel(row.outstandingSubscriptionDebtKd)}
+          </td>
+        </tr>
+        <tr>
+          <td className="msp-table__label">
+            {t(
               'monthlySummary.lineOutstandingDebt',
-              'إجمالي المديونية المتبقية — جميع الفترات (الرصيد الحالي للمجموعة)',
+              'إجمالي المديونية المتبقية (مجموع الفرعين)',
             )}
           </td>
           <td className="msp-table__value is-neg">

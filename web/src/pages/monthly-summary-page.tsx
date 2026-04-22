@@ -7,6 +7,7 @@ import {
   Building2,
   CheckCircle2,
   Droplets,
+  FileText,
   HandCoins,
   Landmark,
   Loader2,
@@ -83,6 +84,8 @@ type RowFormula = Pick<
   | 'collectedRevenueKd'
   | 'uncollectedRevenueKd'
   | 'debtPaymentsReceivedKd'
+  | 'outstandingInvoiceDebtKd'
+  | 'outstandingSubscriptionDebtKd'
   | 'outstandingDebtKd'
 >;
 
@@ -239,22 +242,22 @@ function LineRow({ item }: { item: LineItem }) {
 }
 
 /**
- * V19.14 — Collections strip. Four tiles:
- *   • this period's invoices already paid (green)
- *   • cash collected THIS period against OLD debts (sky — "الأشهر اللي فاتت")
- *   • this period's invoices still on debt (amber)
- *   • total open customer debt right now (red)
+ * V19.15 — Collections strip: period flows + debt split (invoice / sub / total).
  */
 function CollectionsStrip({
   collected,
   debtPayments,
   uncollected,
-  outstanding,
+  outstandingInvoice,
+  outstandingSubscription,
+  outstandingTotal,
 }: {
   collected: string;
   debtPayments: string;
   uncollected: string;
-  outstanding: string;
+  outstandingInvoice: string;
+  outstandingSubscription: string;
+  outstandingTotal: string;
 }) {
   const { t } = useTranslation();
   const tiles: Array<{
@@ -292,11 +295,26 @@ function CollectionsStrip({
       tone: 'amber',
     },
     {
-      key: 'outstanding',
+      key: 'outInv',
+      labelKey: 'monthlySummary.lineOutstandingInvoiceDebt',
+      fallback: 'متبقي ديون الفواتير (كل الفترات)',
+      value: outstandingInvoice,
+      icon: FileText,
+      tone: 'red',
+    },
+    {
+      key: 'outSub',
+      labelKey: 'monthlySummary.lineOutstandingSubscriptionDebt',
+      fallback: 'متبقي ديون الاشتراك / الزيادة (كل الفترات)',
+      value: outstandingSubscription,
+      icon: HandCoins,
+      tone: 'red',
+    },
+    {
+      key: 'outTotal',
       labelKey: 'monthlySummary.lineOutstandingDebt',
-      fallback:
-        'إجمالي المديونية المتبقية — جميع الفترات (الرصيد الحالي للمجموعة)',
-      value: outstanding,
+      fallback: 'إجمالي المديونية المتبقية (مجموع الفرعين)',
+      value: outstandingTotal,
       icon: Landmark,
       tone: 'red',
     },
@@ -318,7 +336,7 @@ function CollectionsStrip({
       <div className="mb-2 text-xs font-semibold text-muted-foreground">
         {t('monthlySummary.collectionsHeading', 'ملخّص التحصيل')}
       </div>
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {tiles.map((tile) => {
           const Icon = tile.icon;
           return (
@@ -419,7 +437,9 @@ export function SummaryCard({
           collected={row.collectedRevenueKd}
           debtPayments={row.debtPaymentsReceivedKd}
           uncollected={row.uncollectedRevenueKd}
-          outstanding={row.outstandingDebtKd}
+          outstandingInvoice={row.outstandingInvoiceDebtKd}
+          outstandingSubscription={row.outstandingSubscriptionDebtKd}
+          outstandingTotal={row.outstandingDebtKd}
         />
       </CardContent>
     </Card>

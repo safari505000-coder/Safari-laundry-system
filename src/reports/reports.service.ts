@@ -586,35 +586,59 @@ export class ReportsService {
   }
 
   /**
-   * V19.14 — Current outstanding customer debt (point-in-time snapshot).
+   * V19.15 — Outstanding debt split (invoices vs subscriptions).
    *
-   * **All periods** — no `from` / `to` filter on the ledger. It is the
-   * group's live open receivables from the unified debt book:
-   *   SUM(INVOICE_SHORTFALL + SUBSCRIPTION_OVERUSE) − SUM(PAYMENT)
-   *
-   * Per-branch scope filters DebtLedgerEntry.branchId. Rows with a
-   * null branch (legacy / cross-branch adjustments) are excluded
-   * from branch totals but included in the consolidated figure.
+   * Per customer: waterfall PAYMENT onto INVOICE_SHORTFALL then
+   * SUBSCRIPTION_OVERUSE; sum positive remainders. Matches collections
+   * red-card totals while exposing composition. Branch scope unchanged.
    */
-  private async computeOutstandingDebt(branchId?: string): Promise<string> {
-    const grouped = await this.prisma.debtLedgerEntry.groupBy({
-      by: ['source'],
+  private async computeOutstandingDebtBreakdown(branchId?: string): Promise<{
+    outstandingInvoiceDebtKd: string;
+    outstandingSubscriptionDebtKd: string;
+    outstandingDebtKd: string;
+  }> {
+    const rows = await this.prisma.debtLedgerEntry.groupBy({
+      by: ['customerId', 'source'],
       where: branchId ? { branchId } : {},
       _sum: { amount: true },
     });
-    let owed = new Prisma.Decimal(0);
-    let paid = new Prisma.Decimal(0);
-    for (const g of grouped) {
-      const amount = new Prisma.Decimal(g._sum.amount?.toString() ?? '0');
-      if (g.source === 'PAYMENT') {
-        paid = paid.add(amount);
-      } else {
-        // INVOICE_SHORTFALL + SUBSCRIPTION_OVERUSE
-        owed = owed.add(amount);
-      }
+    const z = new Prisma.Decimal(0);
+    type Bucket = {
+      inv: Prisma.Decimal;
+      sub: Prisma.Decimal;
+      pay: Prisma.Decimal;
+    };
+    const byCustomer = new Map<string, Bucket>();
+    for (const r of rows) {
+      const amt = new Prisma.Decimal(r._sum.amount?.toString() ?? '0');
+      const cur = byCustomer.get(r.customerId) ?? {
+        inv: new Prisma.Decimal(0),
+        sub: new Prisma.Decimal(0),
+        pay: new Prisma.Decimal(0),
+      };
+      if (r.source === DebtSource.INVOICE_SHORTFALL) cur.inv = cur.inv.add(amt);
+      else if (r.source === DebtSource.SUBSCRIPTION_OVERUSE)
+        cur.sub = cur.sub.add(amt);
+      else if (r.source === DebtSource.PAYMENT) cur.pay = cur.pay.add(amt);
+      byCustomer.set(r.customerId, cur);
     }
-    const open = owed.sub(paid);
-    return (open.isNegative() ? new Prisma.Decimal(0) : open).toFixed(4);
+    let openInv = z;
+    let openSub = z;
+    for (const { inv, sub, pay } of byCustomer.values()) {
+      const invPaid = inv.lessThanOrEqualTo(pay) ? inv : pay;
+      const payAfterInv = pay.sub(invPaid);
+      const subPaid = sub.lessThanOrEqualTo(payAfterInv) ? sub : payAfterInv;
+      const remInv = inv.sub(invPaid);
+      const remSub = sub.sub(subPaid);
+      if (remInv.gt(0)) openInv = openInv.add(remInv);
+      if (remSub.gt(0)) openSub = openSub.add(remSub);
+    }
+    const total = openInv.add(openSub);
+    return {
+      outstandingInvoiceDebtKd: openInv.toFixed(4),
+      outstandingSubscriptionDebtKd: openSub.toFixed(4),
+      outstandingDebtKd: total.toFixed(4),
+    };
   }
 
   /**
@@ -630,7 +654,8 @@ export class ReportsService {
    *   • `collectedRevenueKd`       — this period's invoices paid when issued
    *   • `debtPaymentsReceivedKd`   — cash collected this period against OLD debts
    *   • `uncollectedRevenueKd`     — this period's invoices still on debt
-   *   • `outstandingDebtKd`        — total open customer debt right now
+   *   • `outstandingInvoiceDebtKd` / `outstandingSubscriptionDebtKd` — V19.15
+   *   • `outstandingDebtKd`        — their sum (per-customer waterfall)
    */
   async monthlySummary(fromIso: string, toIso: string) {
     const { from, to } = this.parseRange(fromIso, toIso);
@@ -639,7 +664,7 @@ export class ReportsService {
       branches,
       consolidatedCollections,
       consolidatedDebtPayments,
-      outstandingDebtKd,
+      consolidatedDebtOpen,
     ] = await Promise.all([
       this.netProfitExecutive(fromIso, toIso),
       this.prisma.branch.findMany({
@@ -649,7 +674,7 @@ export class ReportsService {
       }),
       this.computeCollectionsForRange(from, to),
       this.computeDebtPaymentsInRange(from, to),
-      this.computeOutstandingDebt(),
+      this.computeOutstandingDebtBreakdown(),
     ]);
 
     /**
@@ -671,11 +696,11 @@ export class ReportsService {
 
     const perBranch = await Promise.all(
       branches.map(async (b) => {
-        const [row, coll, debtPayments, openDebt] = await Promise.all([
+        const [row, coll, debtPayments, open] = await Promise.all([
           this.netProfitExecutive(fromIso, toIso, b.id),
           this.computeCollectionsForRange(from, to, b.id),
           this.computeDebtPaymentsInRange(from, to, b.id),
-          this.computeOutstandingDebt(b.id),
+          this.computeOutstandingDebtBreakdown(b.id),
         ]);
         return {
           branchId: b.id,
@@ -696,7 +721,9 @@ export class ReportsService {
           collectedRevenueKd: coll.collectedRevenueKd,
           uncollectedRevenueKd: coll.uncollectedRevenueKd,
           debtPaymentsReceivedKd: debtPayments,
-          outstandingDebtKd: openDebt,
+          outstandingInvoiceDebtKd: open.outstandingInvoiceDebtKd,
+          outstandingSubscriptionDebtKd: open.outstandingSubscriptionDebtKd,
+          outstandingDebtKd: open.outstandingDebtKd,
         };
       }),
     );
@@ -722,7 +749,11 @@ export class ReportsService {
         collectedRevenueKd: consolidatedCollections.collectedRevenueKd,
         uncollectedRevenueKd: consolidatedCollections.uncollectedRevenueKd,
         debtPaymentsReceivedKd: consolidatedDebtPayments,
-        outstandingDebtKd,
+        outstandingInvoiceDebtKd:
+          consolidatedDebtOpen.outstandingInvoiceDebtKd,
+        outstandingSubscriptionDebtKd:
+          consolidatedDebtOpen.outstandingSubscriptionDebtKd,
+        outstandingDebtKd: consolidatedDebtOpen.outstandingDebtKd,
       },
       branches: perBranch,
     };

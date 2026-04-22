@@ -2743,6 +2743,11 @@ export type MonthlySummaryBranchRow = {
    * strictly before report `from`. Excludes customer-level PAYMENT rows.
    */
   debtPaymentsReceivedKd: string;
+  /** V19.15 — open debt from INVOICE_SHORTFALL after per-customer PAYMENT waterfall. */
+  outstandingInvoiceDebtKd: string;
+  /** V19.15 — open debt from SUBSCRIPTION_OVERUSE after waterfall. */
+  outstandingSubscriptionDebtKd: string;
+  /** Sum of the two; matches collections red-card style total. */
   outstandingDebtKd: string;
 };
 
