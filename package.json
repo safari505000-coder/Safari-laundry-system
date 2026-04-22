@@ -13,7 +13,7 @@
     "prebuild": "prisma generate",
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
-    "start": "npx prisma db seed && node dist/src/main.js",
+    "start": "npx prisma migrate deploy && npx prisma db seed && node dist/src/main.js",
     "start:dev": "nest start --watch",
     "dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
