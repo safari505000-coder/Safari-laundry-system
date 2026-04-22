@@ -2738,7 +2738,10 @@ export type MonthlySummaryBranchRow = {
   /** V19.14 — collections health surfaced per branch. */
   collectedRevenueKd: string;
   uncollectedRevenueKd: string;
-  /** V19.14.1 — cash collected in range against PRIOR outstanding debts. */
+  /**
+   * V19.14.2 — PAYMENT ledger rows in range whose debt is on invoices
+   * completed before the report start, or customer-level (no orderId).
+   */
   debtPaymentsReceivedKd: string;
   outstandingDebtKd: string;
 };

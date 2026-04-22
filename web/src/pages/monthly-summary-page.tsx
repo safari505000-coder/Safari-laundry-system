@@ -276,7 +276,8 @@ function CollectionsStrip({
     {
       key: 'priorDebt',
       labelKey: 'monthlySummary.lineDebtPayments',
-      fallback: 'تحصيل ديون أشهر سابقة (خلال الفترة)',
+      fallback:
+        'تحصيل ديون على فواتير اكتملت قبل بداية الفترة (سُدّت خلال الفترة)',
       value: debtPayments,
       icon: PiggyBank,
       tone: 'sky',

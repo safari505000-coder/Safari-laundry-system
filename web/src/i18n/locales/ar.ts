@@ -1062,7 +1062,8 @@ export const ar = {
     lineSubsidy: 'دعم الاشتراكات (يُخصم من الأرباح)',
     collectionsHeading: 'ملخّص التحصيل',
     lineCollected: 'المحصّل من فواتير هذا الشهر',
-    lineDebtPayments: 'تحصيل ديون أشهر سابقة (خلال الفترة)',
+    lineDebtPayments:
+      'تحصيل ديون على فواتير اكتملت قبل بداية الفترة (سُدّت خلال الفترة)',
     lineUncollected: 'غير المحصّل (فواتير الفترة)',
     lineOutstandingDebt: 'إجمالي المديونية المتبقية',
     rangeLabel: 'الفترة',

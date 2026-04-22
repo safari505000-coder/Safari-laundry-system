@@ -169,7 +169,7 @@ function CollectionsTable({ row }: { row: RowFormula }) {
           <td className="msp-table__label">
             {t(
               'monthlySummary.lineDebtPayments',
-              'تحصيل ديون أشهر سابقة (خلال الفترة)',
+              'تحصيل ديون على فواتير اكتملت قبل بداية الفترة (سُدّت خلال الفترة)',
             )}
           </td>
           <td className="msp-table__value is-sky">

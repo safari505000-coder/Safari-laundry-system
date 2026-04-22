@@ -540,36 +540,50 @@ export class ReportsService {
   }
 
   /**
-   * V19.14 — Cash collected in the range from prior debt settlements.
+   * V19.14.2 — Cash collected *during* [from, to] that retires debt on
+   * invoices that were **completed before** `from` (strictly earlier),
+   * plus customer-level PAYMENT rows (`orderId` null) which are always
+   * backlog collections (CC partial pay, residual subscription closes,
+   * etc.).
    *
-   * Every `DebtLedgerEntry` with source = PAYMENT represents money
-   * the company received against an outstanding customer balance
-   * (field drivers visiting customers, payment-link settlements on
-   * old invoices, accountant write-ins from deposits, etc.).
+   * V19.14.1 naïvely summed every PAYMENT in the window — that wrongly
+   * included wallet / CC settlements on **same-month** debt invoices
+   * (e.g. April invoice paid in April via call-center), which inflated
+   * "أشهر سابقة" and confused owners who just started a clean month.
    *
-   * Summing these within the window gives the owner a clean answer
-   * to "how much of this month's cash came in from COLLECTING OLD
-   * DEBT" — this complements `collectedRevenueKd` which only counts
-   * this period's invoices that were paid when they were issued.
-   *
-   * Driver scope is not applicable (payments aren't attributed to a
-   * driver directly; we scope by branch via `DebtLedgerEntry.branchId`).
+   * This filter aligns the Arabic label with the math: only money that
+   * closes receivables from **prior** completed invoices counts here.
    */
   private async computeDebtPaymentsInRange(
     from: Date,
     to: Date,
     branchId?: string,
   ): Promise<string> {
-    const agg = await this.prisma.debtLedgerEntry.aggregate({
+    const payments = await this.prisma.debtLedgerEntry.findMany({
       where: {
         source: DebtSource.PAYMENT,
         createdAt: { gte: from, lte: to },
         ...(branchId ? { branchId } : {}),
       },
-      _sum: { amount: true },
+      select: {
+        amount: true,
+        orderId: true,
+        order: { select: { completedAt: true } },
+      },
     });
-    const total = new Prisma.Decimal(agg._sum.amount?.toString() ?? '0');
-    return total.toFixed(4);
+    let sum = new Prisma.Decimal(0);
+    for (const p of payments) {
+      const amt = new Prisma.Decimal(p.amount.toString());
+      if (!p.orderId) {
+        sum = sum.add(amt);
+        continue;
+      }
+      const completedAt = p.order?.completedAt;
+      if (completedAt && completedAt < from) {
+        sum = sum.add(amt);
+      }
+    }
+    return sum.toFixed(4);
   }
 
   /**

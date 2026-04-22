@@ -1065,7 +1065,8 @@ export const en = {
     lineSubsidy: 'Subscription subsidy (deducted from profit)',
     collectionsHeading: 'Collections snapshot',
     lineCollected: 'Collected on this period’s invoices',
-    lineDebtPayments: 'Prior-month debt collected (in period)',
+    lineDebtPayments:
+      'Debt collected on invoices completed before this period (paid in period)',
     lineUncollected: 'Uncollected (this period)',
     lineOutstandingDebt: 'Total outstanding debt',
     rangeLabel: 'Period',
