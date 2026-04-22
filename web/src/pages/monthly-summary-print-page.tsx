@@ -42,6 +42,9 @@ type RowFormula = Pick<
   | 'totalExpensesVariableAndFixedKd'
   | 'subscriptionSubsidyKd'
   | 'netProfitKd'
+  | 'collectedRevenueKd'
+  | 'uncollectedRevenueKd'
+  | 'outstandingDebtKd'
 >;
 
 function formatArabicDate(iso: string): string {
@@ -135,6 +138,52 @@ function PnlTable({ row }: { row: RowFormula }) {
           </td>
           <td className="msp-table__value">
             {formatKwdLabel(row.netProfitKd)}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  );
+}
+
+/**
+ * V19.14 — Collections snapshot strip (collected / uncollected /
+ * outstanding debt). Kept as a plain table so the print layout stays
+ * consistent with the P&L block above; toned cells are driven by
+ * simple CSS classes handled in monthly-summary-print.css.
+ */
+function CollectionsTable({ row }: { row: RowFormula }) {
+  const { t } = useTranslation();
+  return (
+    <table className="msp-table msp-table--collections">
+      <tbody>
+        <tr>
+          <td className="msp-table__label">
+            {t('monthlySummary.lineCollected', 'المحصّل من الفترة')}
+          </td>
+          <td className="msp-table__value is-pos">
+            {formatKwdLabel(row.collectedRevenueKd)}
+          </td>
+        </tr>
+        <tr>
+          <td className="msp-table__label">
+            {t(
+              'monthlySummary.lineUncollected',
+              'غير المحصّل (فواتير الفترة)',
+            )}
+          </td>
+          <td className="msp-table__value is-warn">
+            {formatKwdLabel(row.uncollectedRevenueKd)}
+          </td>
+        </tr>
+        <tr>
+          <td className="msp-table__label">
+            {t(
+              'monthlySummary.lineOutstandingDebt',
+              'إجمالي المديونية المتبقية',
+            )}
+          </td>
+          <td className="msp-table__value is-neg">
+            {formatKwdLabel(row.outstandingDebtKd)}
           </td>
         </tr>
       </tbody>
@@ -382,6 +431,10 @@ export function MonthlySummaryPrintPage() {
             {t('monthlySummary.consolidatedTitle', 'الإجمالي — جميع الفروع')}
           </h2>
           <PnlTable row={c} />
+          <h3 className="monthly-summary-print__subheading">
+            {t('monthlySummary.collectionsHeading', 'ملخّص التحصيل')}
+          </h3>
+          <CollectionsTable row={c} />
         </section>
 
         {summary.branches.length > 0 ? (
@@ -396,6 +449,7 @@ export function MonthlySummaryPrintPage() {
                     {b.branchName}
                   </h3>
                   <PnlTable row={b} />
+                  <CollectionsTable row={b} />
                 </div>
               ))}
             </div>

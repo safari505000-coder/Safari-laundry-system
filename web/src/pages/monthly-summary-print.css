@@ -259,6 +259,35 @@ html.dark .monthly-summary-print {
   color: #dc2626;
 }
 
+/* V19.14 — Collections snapshot styling. */
+.msp-table__value.is-pos {
+  color: #047857;
+}
+
+.msp-table__value.is-warn {
+  color: #b45309;
+}
+
+.msp-table--collections {
+  margin-top: 4px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.msp-table--collections td {
+  padding: 6px 10px;
+}
+
+.monthly-summary-print__subheading {
+  font-size: 12px;
+  font-weight: 700;
+  color: #334155;
+  margin: 14px 0 6px 0;
+  padding-bottom: 4px;
+  border-bottom: 1px dashed #e5e7eb;
+}
+
 .msp-table__net {
   background: #fef3c7;
 }
@@ -458,6 +487,14 @@ html.dark .monthly-summary-print {
   .msp-table__value.is-neg,
   .msp-list td.is-neg {
     color: #dc2626 !important;
+  }
+
+  .msp-table__value.is-pos {
+    color: #047857 !important;
+  }
+
+  .msp-table__value.is-warn {
+    color: #b45309 !important;
   }
 
   .msp-table__net {

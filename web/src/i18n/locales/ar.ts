@@ -564,6 +564,10 @@ export const ar = {
     colDriver: 'اسم السائق',
     colCash: 'إجمالي النقد',
     colBills: 'عدد الفواتير',
+    emptyOnShift: 'لا يوجد سائقون في وردية نشطة حاليًا.',
+    pendingTitle: 'جارٍ تجهيز التغذية المباشرة',
+    pendingDescription:
+      'ظهرت الصفحة مجددًا لمركز الاتصال والمدير العام، لكن تغذية البيانات المباشرة ما زالت متاحة لحساب المالك فقط. سيتم ربط API مخصص لهذا الدور قريبًا.',
   },
   verification: {
     title: 'اعتماد الإيداعات',
@@ -1056,6 +1060,10 @@ export const ar = {
     linePayroll: 'رواتب مدفوعة',
     lineExpensesTotal: 'إجمالي المصروفات (بدون رواتب)',
     lineSubsidy: 'دعم الاشتراكات (يُخصم من الأرباح)',
+    collectionsHeading: 'ملخّص التحصيل',
+    lineCollected: 'المحصّل من الفترة',
+    lineUncollected: 'غير المحصّل (فواتير الفترة)',
+    lineOutstandingDebt: 'إجمالي المديونية المتبقية',
     rangeLabel: 'الفترة',
     generatedAt: 'تم التوليد',
     printLoading: 'جاري تحضير الملف للطباعة...',

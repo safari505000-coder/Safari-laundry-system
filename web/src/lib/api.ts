@@ -2735,6 +2735,10 @@ export type MonthlySummaryBranchRow = {
   totalExpensesVariableAndFixedKd: string;
   subscriptionSubsidyKd: string;
   netProfitKd: string;
+  /** V19.14 — collections health surfaced per branch. */
+  collectedRevenueKd: string;
+  uncollectedRevenueKd: string;
+  outstandingDebtKd: string;
 };
 
 export type MonthlySummaryReport = {

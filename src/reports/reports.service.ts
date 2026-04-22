@@ -493,6 +493,85 @@ export class ReportsService {
   }
 
   /**
+   * V19.14 — Collection breakdown for completed orders in a range.
+   *
+   * Splits gross revenue into what was actually collected (any cash
+   * status other than UNPAID — the customer paid in some form: cash
+   * with the driver, card terminal, online, subscription wallet, or
+   * the manager already handed it over to the office) vs what is
+   * still on the customer's debt (UNPAID: `DEBT_ON_ACCOUNT` orders
+   * + any completed invoice that never cleared its balance).
+   *
+   * Driver-scope excludes subscription-wallet debits because the
+   * field drivers never "collect" those — the wallet is already
+   * settled at POS time.
+   */
+  private async computeCollectionsForRange(
+    from: Date,
+    to: Date,
+    branchId?: string,
+  ): Promise<{
+    collectedRevenueKd: string;
+    uncollectedRevenueKd: string;
+  }> {
+    const rows = await this.prisma.order.findMany({
+      where: {
+        status: OrderStatus.COMPLETED,
+        completedAt: { gte: from, lte: to },
+        ...this.ordersForBranch(branchId),
+      },
+      select: { totalPrice: true, cashStatus: true },
+    });
+    let collected = new Prisma.Decimal(0);
+    let uncollected = new Prisma.Decimal(0);
+    for (const o of rows) {
+      const amount = new Prisma.Decimal(o.totalPrice.toString());
+      if (o.cashStatus === CashStatus.UNPAID) {
+        uncollected = uncollected.add(amount);
+      } else {
+        collected = collected.add(amount);
+      }
+    }
+    return {
+      collectedRevenueKd: collected.toFixed(4),
+      uncollectedRevenueKd: uncollected.toFixed(4),
+    };
+  }
+
+  /**
+   * V19.14 — Current outstanding customer debt (point-in-time snapshot).
+   *
+   * This is NOT limited to the reporting window — it's whatever
+   * customers still owe the company as of right now. Mirrors the
+   * red KPI on the Finance Overview:
+   *   SUM(INVOICE_SHORTFALL + SUBSCRIPTION_OVERUSE) − SUM(PAYMENT)
+   *
+   * Per-branch scope filters DebtLedgerEntry.branchId. Rows with a
+   * null branch (legacy / cross-branch adjustments) are excluded
+   * from branch totals but included in the consolidated figure.
+   */
+  private async computeOutstandingDebt(branchId?: string): Promise<string> {
+    const grouped = await this.prisma.debtLedgerEntry.groupBy({
+      by: ['source'],
+      where: branchId ? { branchId } : {},
+      _sum: { amount: true },
+    });
+    let owed = new Prisma.Decimal(0);
+    let paid = new Prisma.Decimal(0);
+    for (const g of grouped) {
+      const amount = new Prisma.Decimal(g._sum.amount?.toString() ?? '0');
+      if (g.source === 'PAYMENT') {
+        paid = paid.add(amount);
+      } else {
+        // INVOICE_SHORTFALL + SUBSCRIPTION_OVERUSE
+        owed = owed.add(amount);
+      }
+    }
+    const open = owed.sub(paid);
+    return (open.isNegative() ? new Prisma.Decimal(0) : open).toFixed(4);
+  }
+
+  /**
    * V19.13 — Monthly summary: one consolidated P&L + a row per branch.
    *
    * The consolidated block is identical to `netProfitExecutive(from, to)`
@@ -500,16 +579,25 @@ export class ReportsService {
    * that branch's drivers. All rows share identical field names so the
    * frontend can render a single table and a stack of branch cards from
    * the same DTO.
+   *
+   * V19.14 — Also surfaces collection health:
+   *   • `collectedRevenueKd`   — gross that already reached the group
+   *   • `uncollectedRevenueKd` — gross still sitting on customer debt (this period)
+   *   • `outstandingDebtKd`    — total open customer debt right now
    */
   async monthlySummary(fromIso: string, toIso: string) {
-    const [consolidated, branches] = await Promise.all([
-      this.netProfitExecutive(fromIso, toIso),
-      this.prisma.branch.findMany({
-        where: { isActive: true },
-        orderBy: { name: 'asc' },
-        select: { id: true, name: true },
-      }),
-    ]);
+    const { from, to } = this.parseRange(fromIso, toIso);
+    const [consolidated, branches, consolidatedCollections, outstandingDebtKd] =
+      await Promise.all([
+        this.netProfitExecutive(fromIso, toIso),
+        this.prisma.branch.findMany({
+          where: { isActive: true },
+          orderBy: { name: 'asc' },
+          select: { id: true, name: true },
+        }),
+        this.computeCollectionsForRange(from, to),
+        this.computeOutstandingDebt(),
+      ]);
 
     /**
      * V19.13.1 — subscription subsidy (`دعم الاشتراكات`) is a real
@@ -530,7 +618,11 @@ export class ReportsService {
 
     const perBranch = await Promise.all(
       branches.map(async (b) => {
-        const row = await this.netProfitExecutive(fromIso, toIso, b.id);
+        const [row, coll, openDebt] = await Promise.all([
+          this.netProfitExecutive(fromIso, toIso, b.id),
+          this.computeCollectionsForRange(from, to, b.id),
+          this.computeOutstandingDebt(b.id),
+        ]);
         return {
           branchId: b.id,
           branchName: b.name,
@@ -547,6 +639,9 @@ export class ReportsService {
             row.netProfitKd,
             row.subscriptionSubsidyKd,
           ),
+          collectedRevenueKd: coll.collectedRevenueKd,
+          uncollectedRevenueKd: coll.uncollectedRevenueKd,
+          outstandingDebtKd: openDebt,
         };
       }),
     );
@@ -569,6 +664,9 @@ export class ReportsService {
           consolidated.netProfitKd,
           consolidated.subscriptionSubsidyKd,
         ),
+        collectedRevenueKd: consolidatedCollections.collectedRevenueKd,
+        uncollectedRevenueKd: consolidatedCollections.uncollectedRevenueKd,
+        outstandingDebtKd,
       },
       branches: perBranch,
     };

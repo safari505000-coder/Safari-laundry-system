@@ -567,6 +567,10 @@ export const en = {
     colDriver: 'Driver Name',
     colCash: 'Total Cash Held',
     colBills: 'No. of Bills',
+    emptyOnShift: 'No active drivers on shift right now.',
+    pendingTitle: 'Live feed is being wired up',
+    pendingDescription:
+      'The page is back in the sidebar for Call Center and General Manager, but the live data feed is still only available for the Owner account. A dedicated API for this role will be connected soon.',
   },
   verification: {
     title: 'Deposit verification',
@@ -1059,6 +1063,10 @@ export const en = {
     linePayroll: 'Payroll (paid)',
     lineExpensesTotal: 'Total expenses (excl. payroll)',
     lineSubsidy: 'Subscription subsidy (deducted from profit)',
+    collectionsHeading: 'Collections snapshot',
+    lineCollected: 'Collected in period',
+    lineUncollected: 'Uncollected (this period)',
+    lineOutstandingDebt: 'Total outstanding debt',
     rangeLabel: 'Period',
     generatedAt: 'Generated',
     printLoading: 'Preparing document for print...',

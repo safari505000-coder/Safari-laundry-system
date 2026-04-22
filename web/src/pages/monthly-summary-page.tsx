@@ -2,10 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import {
+  AlertTriangle,
   Banknote,
   Building2,
+  CheckCircle2,
   Droplets,
   HandCoins,
+  Landmark,
   Loader2,
   Printer,
   Receipt,
@@ -76,6 +79,9 @@ type RowFormula = Pick<
   | 'totalExpensesVariableAndFixedKd'
   | 'subscriptionSubsidyKd'
   | 'netProfitKd'
+  | 'collectedRevenueKd'
+  | 'uncollectedRevenueKd'
+  | 'outstandingDebtKd'
 >;
 
 type LineItem = {
@@ -230,6 +236,99 @@ function LineRow({ item }: { item: LineItem }) {
   );
 }
 
+/**
+ * V19.14 — Collections strip. Shows the three fields the owner asked
+ * for at a glance: how much of this period's invoices is already in
+ * the till (green), how much is still uncollected from this period
+ * (amber), and the grand total the company is still owed by every
+ * customer right now (red). Placed below the P&L list so the card
+ * still reads P&L-first, collections-next.
+ */
+function CollectionsStrip({
+  collected,
+  uncollected,
+  outstanding,
+}: {
+  collected: string;
+  uncollected: string;
+  outstanding: string;
+}) {
+  const { t } = useTranslation();
+  const tiles: Array<{
+    key: string;
+    labelKey: string;
+    fallback: string;
+    value: string;
+    icon: typeof Banknote;
+    tone: 'green' | 'amber' | 'red';
+  }> = [
+    {
+      key: 'collected',
+      labelKey: 'monthlySummary.lineCollected',
+      fallback: 'المحصّل من الفترة',
+      value: collected,
+      icon: CheckCircle2,
+      tone: 'green',
+    },
+    {
+      key: 'uncollected',
+      labelKey: 'monthlySummary.lineUncollected',
+      fallback: 'غير المحصّل (فواتير الفترة)',
+      value: uncollected,
+      icon: AlertTriangle,
+      tone: 'amber',
+    },
+    {
+      key: 'outstanding',
+      labelKey: 'monthlySummary.lineOutstandingDebt',
+      fallback: 'إجمالي المديونية المتبقية',
+      value: outstanding,
+      icon: Landmark,
+      tone: 'red',
+    },
+  ];
+  const toneClass = (tone: 'green' | 'amber' | 'red') => {
+    if (tone === 'green') {
+      return 'border-emerald-300/60 bg-emerald-50 text-emerald-900 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200';
+    }
+    if (tone === 'amber') {
+      return 'border-amber-300/60 bg-amber-50 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200';
+    }
+    return 'border-rose-300/60 bg-rose-50 text-rose-900 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200';
+  };
+  return (
+    <div className="mt-3">
+      <div className="mb-2 text-xs font-semibold text-muted-foreground">
+        {t('monthlySummary.collectionsHeading', 'ملخّص التحصيل')}
+      </div>
+      <div className="grid gap-2 sm:grid-cols-3">
+        {tiles.map((tile) => {
+          const Icon = tile.icon;
+          return (
+            <div
+              key={tile.key}
+              className={cn(
+                'flex items-start gap-2 rounded-lg border px-3 py-2',
+                toneClass(tile.tone),
+              )}
+            >
+              <Icon className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+              <div className="min-w-0">
+                <div className="truncate text-[11px] font-medium opacity-80">
+                  {t(tile.labelKey, tile.fallback)}
+                </div>
+                <div className="text-sm font-bold tabular-nums">
+                  {formatKwdLabel(tile.value)}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /** Net-profit hero row — gold if positive, red if negative. */
 function NetProfitRow({ value }: { value: string }) {
   const { t } = useTranslation();
@@ -299,6 +398,11 @@ export function SummaryCard({
         </ul>
         <Separator className="my-3" />
         <NetProfitRow value={row.netProfitKd} />
+        <CollectionsStrip
+          collected={row.collectedRevenueKd}
+          uncollected={row.uncollectedRevenueKd}
+          outstanding={row.outstandingDebtKd}
+        />
       </CardContent>
     </Card>
   );
