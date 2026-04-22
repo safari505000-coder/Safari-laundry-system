@@ -2689,6 +2689,33 @@ export type BankFeesByBranchResponse = {
   branches: Array<{ branchId: string | null; bankFeesKd: string }>;
 };
 
+/**
+ * V19.13 — Monthly summary: one consolidated P&L + a row per branch.
+ * Feeds the "الملخص الشهري" screen; all fields mirror
+ * `ExecutiveSummaryReport` so cards render from the same helpers.
+ */
+export type MonthlySummaryBranchRow = {
+  branchId: string;
+  branchName: string;
+  grossRevenueKd: string;
+  bankFeesTotalKd: string;
+  settledRevenueAfterBankFeesKd: string;
+  variableSoapFuelKd: string;
+  miscOperationalKd: string;
+  fixedExpensesKd: string;
+  payrollPaidKd: string;
+  totalExpensesVariableAndFixedKd: string;
+  subscriptionSubsidyKd: string;
+  netProfitKd: string;
+};
+
+export type MonthlySummaryReport = {
+  from: string;
+  to: string;
+  consolidated: Omit<MonthlySummaryBranchRow, 'branchId' | 'branchName'>;
+  branches: MonthlySummaryBranchRow[];
+};
+
 export type LiveFeedLine = {
   label: string | null;
   quantity: string;

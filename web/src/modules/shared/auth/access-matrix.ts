@@ -101,6 +101,9 @@ export const ACCESS = {
   // ─── Executive financial island (OWNER + GM) ──────────────────────
   'financials.view': EXEC_PAIR,
   'financialCycleReport.view': EXEC_PAIR,
+  // V19.13 — "الملخص الشهري". OWNER + GM only; the backend at
+  // /api/reports/monthly-summary mirrors this role set.
+  'monthlySummary.view': EXEC_PAIR,
   'driverCashTrace.view': withExec('ACCOUNTANT'),
   // V19.10 — "Unpaid invoices list" page (قائمة مديونيات الفواتير).
   // Accessible to exec pair, accountant, and call-centre (pair) because

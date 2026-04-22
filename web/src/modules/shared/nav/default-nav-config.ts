@@ -14,6 +14,7 @@ import {
   expensesItem,
   financialReportsHubItem,
   fixedExpensesItem,
+  monthlySummaryItem,
   inventoryCatalogItem,
   inventoryLowStockItem,
   inventoryMovementsItem,
@@ -65,6 +66,7 @@ export const defaultSidebarNavGroups: NavGroup[] = [
   {
     ...G.finance,
     items: [
+      monthlySummaryItem,
       financialReportsHubItem,
       expenseApprovalItem,
       vehicleExpensesApprovalItem,

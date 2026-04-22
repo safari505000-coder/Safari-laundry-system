@@ -493,6 +493,88 @@ export class ReportsService {
   }
 
   /**
+   * V19.13 — Monthly summary: one consolidated P&L + a row per branch.
+   *
+   * The consolidated block is identical to `netProfitExecutive(from, to)`
+   * with no branch filter; each branch row is the same shape scoped to
+   * that branch's drivers. All rows share identical field names so the
+   * frontend can render a single table and a stack of branch cards from
+   * the same DTO.
+   */
+  async monthlySummary(fromIso: string, toIso: string) {
+    const [consolidated, branches] = await Promise.all([
+      this.netProfitExecutive(fromIso, toIso),
+      this.prisma.branch.findMany({
+        where: { isActive: true },
+        orderBy: { name: 'asc' },
+        select: { id: true, name: true },
+      }),
+    ]);
+
+    /**
+     * V19.13.1 — subscription subsidy (`دعم الاشتراكات`) is a real
+     * deduction from net profit: it represents the discount the group
+     * grants to subsidised subscriptions, so leaving it out of the
+     * monthly net overstates what the owner actually pocketed. We
+     * subtract it here (after the base formula computed by
+     * `netProfitExecutive`) instead of mutating the shared executive
+     * endpoint — the financials page keeps its own presentation
+     * contract, and the monthly summary owns this nuance.
+     */
+    const netWithSubsidy = (base: string, subsidy: string): string => {
+      const n =
+        Number.parseFloat(base || '0') - Number.parseFloat(subsidy || '0');
+      if (!Number.isFinite(n)) return base;
+      return n.toFixed(4);
+    };
+
+    const perBranch = await Promise.all(
+      branches.map(async (b) => {
+        const row = await this.netProfitExecutive(fromIso, toIso, b.id);
+        return {
+          branchId: b.id,
+          branchName: b.name,
+          grossRevenueKd: row.grossRevenueKd,
+          bankFeesTotalKd: row.bankFeesTotalKd,
+          settledRevenueAfterBankFeesKd: row.settledRevenueAfterBankFeesKd,
+          variableSoapFuelKd: row.variableSoapFuelKd,
+          miscOperationalKd: row.miscOperationalKd,
+          fixedExpensesKd: row.fixedExpensesKd,
+          payrollPaidKd: row.payrollPaidKd,
+          totalExpensesVariableAndFixedKd: row.totalExpensesVariableAndFixedKd,
+          subscriptionSubsidyKd: row.subscriptionSubsidyKd,
+          netProfitKd: netWithSubsidy(
+            row.netProfitKd,
+            row.subscriptionSubsidyKd,
+          ),
+        };
+      }),
+    );
+
+    return {
+      from: consolidated.from,
+      to: consolidated.to,
+      consolidated: {
+        grossRevenueKd: consolidated.grossRevenueKd,
+        bankFeesTotalKd: consolidated.bankFeesTotalKd,
+        settledRevenueAfterBankFeesKd: consolidated.settledRevenueAfterBankFeesKd,
+        variableSoapFuelKd: consolidated.variableSoapFuelKd,
+        miscOperationalKd: consolidated.miscOperationalKd,
+        fixedExpensesKd: consolidated.fixedExpensesKd,
+        payrollPaidKd: consolidated.payrollPaidKd,
+        totalExpensesVariableAndFixedKd:
+          consolidated.totalExpensesVariableAndFixedKd,
+        subscriptionSubsidyKd: consolidated.subscriptionSubsidyKd,
+        netProfitKd: netWithSubsidy(
+          consolidated.netProfitKd,
+          consolidated.subscriptionSubsidyKd,
+        ),
+      },
+      branches: perBranch,
+    };
+  }
+
+  /**
    * V8.5 — Per-branch bank fee allocation (completed orders), for Owner radar.
    */
   async bankFeesByBranch(fromIso: string, toIso: string) {

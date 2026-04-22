@@ -1,0 +1,545 @@
+/* V19.13.2 — Monthly Summary printable sheet — pure HTML tables.
+ *
+ * Kept intentionally lightweight: no Tailwind JIT lookups, no icons
+ * inside rows, no nested card components. This is what let the
+ * browser print preview render instantly (the earlier version
+ * spun for seconds while it rasterised hundreds of <svg> icons).
+ *
+ * V19.13.3 — force light color-scheme + explicit colors so dark
+ * theme never leaks in: when the parent app is in dark mode, the
+ * printed PDF would otherwise be light text on white paper (the
+ * browser strips dark backgrounds at print time) → blank output.
+ * Every text color below is stated with an explicit hex so nothing
+ * inherits the dark CSS variables.
+ */
+
+/* V19.13.3 — force light mode on this print island regardless of
+ * parent theme. We win against Tailwind's `dark` class because the
+ * `.monthly-summary-print` selector appears BOTH when the parent
+ * <html> has `.dark` and when it doesn't, and we explicitly reset
+ * every CSS variable Tailwind might have swapped. */
+html[data-print-mode='light'],
+html[data-print-mode='light'] body,
+html.dark .monthly-summary-print,
+html.dark .monthly-summary-print *,
+.monthly-summary-print,
+.monthly-summary-print * {
+  color-scheme: light !important;
+}
+
+/* Reset Tailwind theme tokens this subtree would inherit, so nothing
+ * reads a "foreground = white" / "background = near-black" token. */
+.monthly-summary-print,
+html.dark .monthly-summary-print {
+  --background: 0 0% 100%;
+  --foreground: 222 47% 11%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
+  --primary: 222 47% 11%;
+  --primary-foreground: 210 40% 98%;
+  --secondary: 210 40% 96%;
+  --secondary-foreground: 222 47% 11%;
+  --muted: 210 40% 96%;
+  --muted-foreground: 215 16% 47%;
+  --accent: 210 40% 96%;
+  --accent-foreground: 222 47% 11%;
+  --border: 214 32% 91%;
+  --input: 214 32% 91%;
+  background: #fff !important;
+  color: #111827 !important;
+}
+
+.monthly-summary-print {
+  min-height: 100vh;
+  background: #f3f4f6;
+  padding: 16px;
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    'Noto Sans Arabic',
+    sans-serif;
+  color: #111827;
+}
+
+/* Hard reset so dark-theme CSS variables from the app don't bleed
+ * into the sheet. Every element under the print wrapper defaults
+ * to dark text on white unless explicitly overridden below. */
+.monthly-summary-print,
+.monthly-summary-print * {
+  color: inherit;
+}
+
+.monthly-summary-print,
+.monthly-summary-print__sheet,
+.monthly-summary-print p,
+.monthly-summary-print span,
+.monthly-summary-print td,
+.monthly-summary-print th,
+.monthly-summary-print h1,
+.monthly-summary-print h2,
+.monthly-summary-print h3 {
+  color: #111827;
+}
+
+.monthly-summary-print__sheet {
+  max-width: 960px;
+  margin: 0 auto;
+  background: #fff;
+  color: #111827;
+  padding: 24px 28px;
+  border-radius: 10px;
+  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.08);
+}
+
+/* --- Toolbar (non-printable) ------------------------------------- */
+.monthly-summary-print__toolbar {
+  max-width: 960px;
+  margin: 0 auto 12px auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.04);
+}
+
+.msp-toolbar__hint {
+  font-size: 12px;
+  color: #475569;
+}
+
+.msp-toolbar__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #2563eb;
+  color: #fff;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.msp-toolbar__btn:hover {
+  background: #1d4ed8;
+}
+
+/* --- Header ------------------------------------------------------- */
+.monthly-summary-print__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 2px solid #e5e7eb;
+  padding-bottom: 14px;
+  margin-bottom: 18px;
+}
+
+.monthly-summary-print__brand {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #1e40af;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.monthly-summary-print__title {
+  font-size: 20px;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0;
+}
+
+.monthly-summary-print__range {
+  font-size: 12px;
+  color: #475569;
+  margin-top: 6px;
+}
+
+.monthly-summary-print__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
+  min-width: 200px;
+}
+
+.monthly-summary-print__metric {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 5px 10px;
+  min-width: 180px;
+}
+
+.monthly-summary-print__metric-label {
+  font-size: 10px;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.monthly-summary-print__metric-value {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+}
+
+.monthly-summary-print__generated {
+  font-size: 10px;
+  color: #94a3b8;
+}
+
+/* --- Sections ---------------------------------------------------- */
+.monthly-summary-print__section {
+  margin-top: 18px;
+}
+
+.monthly-summary-print__section-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+  border-left: 4px solid #2563eb;
+  padding-inline-start: 10px;
+  margin: 0 0 8px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.monthly-summary-print__chip {
+  font-size: 11px;
+  background: #fee2e2;
+  color: #991b1b;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-weight: 700;
+}
+
+/* --- P&L table --------------------------------------------------- */
+.msp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.msp-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.msp-table__label {
+  color: #334155;
+}
+
+.msp-table__value {
+  text-align: end;
+  font-weight: 600;
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.msp-table__value.is-neg {
+  color: #dc2626;
+}
+
+.msp-table__net {
+  background: #fef3c7;
+}
+
+.msp-table__net .msp-table__label,
+.msp-table__net .msp-table__value {
+  font-weight: 800;
+  color: #92400e;
+  font-size: 13.5px;
+}
+
+/* --- Branches grid ---------------------------------------------- */
+.monthly-summary-print__branches {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.monthly-summary-print__branch-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 10px 12px;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.monthly-summary-print__branch-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 6px 0;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.monthly-summary-print__branch-card .msp-table td {
+  padding: 4px 8px;
+  font-size: 11.5px;
+}
+
+/* --- Expenses / Payroll list tables ------------------------------ */
+.msp-list {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+}
+
+.msp-list thead th {
+  background: #f1f5f9;
+  color: #334155;
+  text-align: start;
+  font-weight: 700;
+  padding: 6px 8px;
+  border-bottom: 1px solid #cbd5e1;
+}
+
+.msp-list th.num,
+.msp-list td.num {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.msp-list td {
+  padding: 5px 8px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.msp-list tr:nth-child(even) td {
+  background: #fafafa;
+}
+
+.msp-list td.is-neg {
+  color: #dc2626;
+}
+
+.msp-empty {
+  font-size: 12px;
+  color: #64748b;
+  padding: 20px;
+  text-align: center;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+}
+
+/* --- Footer ------------------------------------------------------- */
+.monthly-summary-print__footer {
+  margin-top: 20px;
+  padding-top: 10px;
+  border-top: 1px solid #e5e7eb;
+  font-size: 10px;
+  color: #94a3b8;
+  text-align: center;
+}
+
+/* --- Status message ---------------------------------------------- */
+.msp-message {
+  padding: 48px 24px;
+  text-align: center;
+  color: #475569;
+}
+
+.msp-message h1 {
+  font-size: 20px;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0 0 8px 0;
+}
+
+.msp-message--error {
+  color: #b91c1c;
+}
+
+/* --- Page-break utility ------------------------------------------
+ *
+ * V19.13.2 — intentionally soft. We DO NOT force each section onto
+ * its own page: short reports (few expenses, few payroll rows)
+ * would produce a blank cover page + two near-empty pages. Instead
+ * we only ask the browser to avoid splitting a single section in
+ * the middle, and let content flow naturally.
+ */
+.page-break {
+  break-before: auto;
+  page-break-before: auto;
+}
+
+/* ================================================================
+ * Print media — minimal resets so the browser doesn't repaint
+ * anything other than the sheet body.
+ * ============================================================== */
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+
+  /* Preserve our explicit colors (red negatives, amber net row,
+   * gray backgrounds on zebra rows, etc.) instead of the default
+   * "economy" pass where Chrome/Edge bleach everything. */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  html,
+  html.dark,
+  body,
+  #root {
+    background: #fff !important;
+    color: #111827 !important;
+    color-scheme: light !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Tailwind tokens — neutralise dark mode at print time. */
+  html.dark .monthly-summary-print,
+  html.dark {
+    --background: 0 0% 100% !important;
+    --foreground: 222 47% 11% !important;
+    --card: 0 0% 100% !important;
+    --card-foreground: 222 47% 11% !important;
+    --muted-foreground: 215 16% 47% !important;
+    --border: 214 32% 91% !important;
+  }
+
+  /* Explicit defensive overrides — if any dark-mode rule from the
+   * app tries to set white/light text on this tree at print time,
+   * we force it back to the printable hex. */
+  .monthly-summary-print,
+  .monthly-summary-print * {
+    color: inherit !important;
+  }
+
+  .monthly-summary-print,
+  .monthly-summary-print__sheet,
+  .monthly-summary-print p,
+  .monthly-summary-print span,
+  .monthly-summary-print td,
+  .monthly-summary-print th,
+  .monthly-summary-print h1,
+  .monthly-summary-print h2,
+  .monthly-summary-print h3 {
+    color: #111827 !important;
+    background: transparent !important;
+  }
+
+  /* Re-apply the accent colors AFTER the blanket override. */
+  .monthly-summary-print__brand {
+    color: #1e40af !important;
+  }
+
+  .msp-table__value.is-neg,
+  .msp-list td.is-neg {
+    color: #dc2626 !important;
+  }
+
+  .msp-table__net {
+    background: #fef3c7 !important;
+  }
+
+  .msp-table__net .msp-table__label,
+  .msp-table__net .msp-table__value {
+    color: #92400e !important;
+  }
+
+  .monthly-summary-print__chip {
+    background: #fee2e2 !important;
+    color: #991b1b !important;
+  }
+
+  .msp-list thead th {
+    background: #f1f5f9 !important;
+    color: #334155 !important;
+  }
+
+  .msp-list tr:nth-child(even) td {
+    background: #fafafa !important;
+  }
+
+  .monthly-summary-print__generated,
+  .monthly-summary-print__footer {
+    color: #64748b !important;
+  }
+
+  /* V19.13.2 — `min-height: 100vh` was the primary reason the first
+     print attempts produced pages of pure white: each print "page"
+     has its own viewport, and an outer 100vh block would push all
+     real content below the fold on page 1. We reset it here. */
+  .monthly-summary-print {
+    background: #fff !important;
+    padding: 0 !important;
+    min-height: 0 !important;
+    height: auto !important;
+  }
+
+  .monthly-summary-print__sheet {
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+    min-height: 0 !important;
+    background: #fff !important;
+  }
+
+  .no-print,
+  .monthly-summary-print__toolbar {
+    display: none !important;
+  }
+
+  /* Tighter spacing — A4 with 12mm margins is already tight. */
+  .monthly-summary-print__header {
+    padding-bottom: 10px;
+    margin-bottom: 12px;
+  }
+
+  .monthly-summary-print__section {
+    margin-top: 12px;
+    break-inside: avoid-page;
+    page-break-inside: avoid;
+  }
+
+  /* Tables: keep header visible across pages, avoid mid-row splits. */
+  thead {
+    display: table-header-group;
+  }
+
+  tr,
+  .monthly-summary-print__branch-card {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Long expense/payroll lists SHOULD paginate naturally. */
+  .msp-list {
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+}

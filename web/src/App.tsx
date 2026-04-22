@@ -24,6 +24,8 @@ import { StatementPrintPage } from '@/pages/statement-print-page';
 import { PublicStatementPage } from '@/pages/public-statement-page';
 import { ExpensesPage } from '@/pages/expenses-page';
 import { FinancialsPage } from '@/pages/financials-page';
+import { MonthlySummaryPage } from '@/pages/monthly-summary-page';
+import { MonthlySummaryPrintPage } from '@/pages/monthly-summary-print-page';
 import { InsightsAiPage } from '@/pages/insights-ai-page';
 import { FinancialCycleReportPage } from '@/pages/financial-cycle-report-page';
 import { DriverCashTracePage } from '@/pages/driver-cash-trace-page';
@@ -148,6 +150,18 @@ export default function App() {
                 element={
                   <RequireAccess access="subscribers.view">
                     <StatementPrintPage />
+                  </RequireAccess>
+                }
+              />
+              {/* V19.13.1 — Monthly summary printable sheet. Mounted
+                  at AuthLayout level for the same reason as the
+                  customer statement print page: the shell's
+                  overflow-y-auto wrapper breaks browser print. */}
+              <Route
+                path="/monthly-summary/print"
+                element={
+                  <RequireAccess access="monthlySummary.view">
+                    <MonthlySummaryPrintPage />
                   </RequireAccess>
                 }
               />
@@ -425,6 +439,14 @@ export default function App() {
                   element={
                     <RequireAccess access="financials.view">
                       <FinancialsPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="monthly-summary"
+                  element={
+                    <RequireAccess access="monthlySummary.view">
+                      <MonthlySummaryPage />
                     </RequireAccess>
                   }
                 />

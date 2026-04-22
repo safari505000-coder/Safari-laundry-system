@@ -115,6 +115,17 @@ export class ReportsController {
     );
   }
 
+  @Get('monthly-summary')
+  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
+  @ApiOperation({
+    summary: `Monthly summary — consolidated P&L + per-branch rows (${APP_BRAND})`,
+    description:
+      'V19.13 — Single endpoint feeding the "الملخص الشهري" screen. Returns one consolidated block (all branches) and an array with the same metrics scoped to every active branch. OWNER + GENERAL_MANAGER only — executive oversight, not an accountant tool. Shares the same math as /reports/executive-summary so reconciliation is guaranteed.',
+  })
+  monthlySummary(@Query() q: ReportsRangeQueryDto) {
+    return this.reportsService.monthlySummary(q.from, q.to);
+  }
+
   @Get('bank-fees-by-branch')
   @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
   @ApiOperation({

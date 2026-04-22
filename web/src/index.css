@@ -259,7 +259,18 @@ body {
   .printable-sheet,
   .printable-sheet *,
   .printable-sheet-toolbar,
-  .printable-sheet-toolbar * {
+  .printable-sheet-toolbar *,
+  /*
+   * V19.13.4 — Monthly Summary print page (/monthly-summary/print).
+   * Does not use the shared `PrintableSheet` component because the
+   * report needs its own layout (consolidated P&L + per-branch cards
+   * + expenses/payroll tables). Without whitelisting its root here,
+   * the nuclear `body * { visibility: hidden }` above hides every
+   * row → prints come out completely blank. This was the real
+   * cause of the "صفحات فاضية" regression, not dark mode / layout.
+   */
+  .monthly-summary-print,
+  .monthly-summary-print * {
     visibility: visible !important;
   }
   #staff-debts-print-root {

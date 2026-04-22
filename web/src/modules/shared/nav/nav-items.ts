@@ -4,6 +4,7 @@ import {
   Banknote,
   BrainCircuit,
   Clock,
+  CalendarRange,
   FileSignature,
   BookText,
   Building2,
@@ -322,6 +323,21 @@ export const financialsItem: NavItem = {
   to: '/financials',
   labelKey: 'nav.financials',
   icon: Banknote,
+  roles: ['OWNER', 'GENERAL_MANAGER'],
+};
+
+/**
+ * V19.13 — "الملخص الشهري" (Monthly Summary).
+ *
+ * A single page that rolls up the whole P&L for a chosen period:
+ * one consolidated block covering all branches + a per-branch card
+ * for each active branch. OWNER + GENERAL_MANAGER only — this is an
+ * executive oversight surface, not a day-to-day accountant tool.
+ */
+export const monthlySummaryItem: NavItem = {
+  to: '/monthly-summary',
+  labelKey: 'nav.monthlySummary',
+  icon: CalendarRange,
   roles: ['OWNER', 'GENERAL_MANAGER'],
 };
 
