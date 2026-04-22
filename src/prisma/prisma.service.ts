@@ -68,15 +68,36 @@ export class PrismaService
     this.pool = pool;
 
     // Guard the base (non-transactional) delegate on `this`.
-    const baseGuarded = guardAppendOnlyDelegate(
-      super.debtLedgerEntry as unknown as object,
-      'DebtLedgerEntry',
+    //
+    // Prisma 7 installs each model delegate as an OWN property of
+    // `this` during `super()` — not on the prototype — so we must
+    // read it as `this.debtLedgerEntry` (via getOwnPropertyDescriptor
+    // to avoid hitting the shadowing getter we're about to install).
+    // `super.debtLedgerEntry` resolves against the prototype chain and
+    // returns `undefined`, which used to crash the Proxy constructor.
+    const rawDesc = Object.getOwnPropertyDescriptor(
+      this,
+      'debtLedgerEntry',
     );
-    Object.defineProperty(this, 'debtLedgerEntry', {
-      configurable: true,
-      enumerable: true,
-      get: () => baseGuarded,
-    });
+    const rawDelegate = (rawDesc?.value ??
+      (this as unknown as { debtLedgerEntry: unknown }).debtLedgerEntry) as
+      | object
+      | undefined;
+    if (rawDelegate && typeof rawDelegate === 'object') {
+      const baseGuarded = guardAppendOnlyDelegate(
+        rawDelegate,
+        'DebtLedgerEntry',
+      );
+      Object.defineProperty(this, 'debtLedgerEntry', {
+        configurable: true,
+        enumerable: true,
+        get: () => baseGuarded,
+      });
+    } else {
+      PrismaService.logger.warn(
+        'DebtLedgerEntry delegate unavailable at construction — append-only guard NOT installed on base client',
+      );
+    }
 
     // Wrap `$transaction` so interactive callbacks receive a tx client
     // whose `debtLedgerEntry` delegate is also guarded. The batch form

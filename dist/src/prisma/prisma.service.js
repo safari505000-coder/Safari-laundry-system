@@ -49,12 +49,20 @@ let PrismaService = class PrismaService extends client_1.PrismaClient {
         const options = { adapter: new adapter_pg_1.PrismaPg(pool) };
         super(options);
         this.pool = pool;
-        const baseGuarded = guardAppendOnlyDelegate(super.debtLedgerEntry, 'DebtLedgerEntry');
-        Object.defineProperty(this, 'debtLedgerEntry', {
-            configurable: true,
-            enumerable: true,
-            get: () => baseGuarded,
-        });
+        const rawDesc = Object.getOwnPropertyDescriptor(this, 'debtLedgerEntry');
+        const rawDelegate = (rawDesc?.value ??
+            this.debtLedgerEntry);
+        if (rawDelegate && typeof rawDelegate === 'object') {
+            const baseGuarded = guardAppendOnlyDelegate(rawDelegate, 'DebtLedgerEntry');
+            Object.defineProperty(this, 'debtLedgerEntry', {
+                configurable: true,
+                enumerable: true,
+                get: () => baseGuarded,
+            });
+        }
+        else {
+            PrismaService_1.logger.warn('DebtLedgerEntry delegate unavailable at construction — append-only guard NOT installed on base client');
+        }
         const originalTransaction = super.$transaction.bind(this);
         Object.defineProperty(this, '$transaction', {
             configurable: true,
