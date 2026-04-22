@@ -1737,6 +1737,34 @@ export function getPublicCustomerStatement(
 }
 
 /**
+ * V1.7.0 — Public payment status for the customer-facing
+ * /payment/success and /payment/failed return pages. No auth —
+ * the customer holding the UPayments return URL polls this every
+ * few seconds until `isPaid` flips to `true` (gateway callback
+ * has finalized the order on the server).
+ */
+export type PublicPaymentStatus = {
+  orderId: string;
+  status:
+    | 'PENDING'
+    | 'PICKED_UP'
+    | 'IN_PROGRESS'
+    | 'OUT_FOR_DELIVERY'
+    | 'COMPLETED'
+    | 'CANCELED';
+  isPaid: boolean;
+  amountKd: string;
+};
+
+export function getPublicPaymentStatus(
+  orderId: string,
+): Promise<PublicPaymentStatus> {
+  return apiJson<PublicPaymentStatus>(
+    `/api/payments/status/${encodeURIComponent(orderId)}`,
+  );
+}
+
+/**
  * V19.4 — CC pack #4. Daily collector feed for the Collections page
  * activity panel. Covers every debt-reducing event in the Kuwait-local
  * day window (partial debt payments + full settlements + mark-paid-via-link).
