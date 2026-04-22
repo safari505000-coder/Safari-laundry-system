@@ -204,6 +204,42 @@ let CustomerLedgerService = class CustomerLedgerService {
             where: { id: orderId, walletSettledAt: null },
             data: { walletSettledAt: new Date() },
         });
+        const debtSettledRaw = extraMetadata !== undefined ? extraMetadata.debtSettled : null;
+        if (typeof debtSettledRaw === 'string') {
+            const settledMinor = (0, finance_money_1.toMinorFromFixed4)(new client_1.Prisma.Decimal(debtSettledRaw));
+            if (settledMinor > 0n) {
+                await tx.debtLedgerEntry.create({
+                    data: {
+                        customerId: o.customerId,
+                        orderId,
+                        source: client_1.DebtSource.PAYMENT,
+                        category: debtCategory,
+                        amount: this.decimalFromMinor(settledMinor),
+                        branchId: actor.branchId,
+                        actorUserId: actor.id,
+                        note: 'Invoice debt settled (wallet settlement)',
+                    },
+                });
+                await this.generalLedger.append(tx, {
+                    entryType: client_1.GeneralLedgerEntryType.DEBT_ADJUSTMENT,
+                    amount: `-${(0, finance_money_1.minorToAmountString)(settledMinor)}`,
+                    memo: 'Debt payment recorded on unified ledger',
+                    customerId: o.customerId,
+                    orderId,
+                    actorUserId: actor.id,
+                    metadata: {
+                        source: client_1.DebtSource.PAYMENT,
+                        category: debtCategory,
+                        branchId: actor.branchId,
+                        trigger: extraMetadata?.debtSettlementViaCallCenter === true
+                            ? 'CALL_CENTER_MANUAL'
+                            : extraMetadata?.debtSettlementViaLink === true
+                                ? 'PAYMENT_LINK_CALLBACK'
+                                : 'WALLET_SETTLEMENT',
+                    },
+                });
+            }
+        }
     }
     async activateSubscriptionPlan(tx, params) {
         const plan = await tx.subscriptionPlan.findUnique({
@@ -225,7 +261,7 @@ let CustomerLedgerService = class CustomerLedgerService {
         const wallet = await this.getOrCreateWalletTx(tx, params.customerId);
         const actor = await tx.user.findUnique({
             where: { id: params.performedByUserId },
-            select: { id: true, branchId: true },
+            select: { id: true, branchId: true, safariRole: true },
         });
         if (!actor) {
             throw new common_1.NotFoundException('Performing user not found');
@@ -385,6 +421,45 @@ let CustomerLedgerService = class CustomerLedgerService {
                     autoClosedInvoiceCount: closedInvoiceIds.length,
                 },
             });
+            const category = this.resolveDebtCategory(actor.safariRole);
+            let coveredMinor = 0n;
+            for (const invoiceId of closedInvoiceIds) {
+                const inv = await tx.order.findUnique({
+                    where: { id: invoiceId },
+                    select: { totalPrice: true },
+                });
+                if (!inv)
+                    continue;
+                const invMinor = (0, finance_money_1.toMinorFromFixed4)(inv.totalPrice);
+                await tx.debtLedgerEntry.create({
+                    data: {
+                        customerId: params.customerId,
+                        orderId: invoiceId,
+                        source: client_1.DebtSource.PAYMENT,
+                        category,
+                        amount: inv.totalPrice,
+                        branchId: subsidyBranchId,
+                        actorUserId: params.performedByUserId,
+                        note: 'Invoice closed by subscription activation (FIFO)',
+                    },
+                });
+                coveredMinor += invMinor;
+            }
+            const residualMinor = debtPaidMinor - coveredMinor;
+            if (residualMinor > 0n) {
+                await tx.debtLedgerEntry.create({
+                    data: {
+                        customerId: params.customerId,
+                        orderId: null,
+                        source: client_1.DebtSource.PAYMENT,
+                        category,
+                        amount: this.decimalFromMinor(residualMinor),
+                        branchId: subsidyBranchId,
+                        actorUserId: params.performedByUserId,
+                        note: 'Residual debt cleared by subscription activation',
+                    },
+                });
+            }
         }
         return {
             totalCollected: totalCollectedStr,
@@ -480,6 +555,18 @@ let CustomerLedgerService = class CustomerLedgerService {
                         category,
                         branchId,
                         note: params.note ?? null,
+                    },
+                });
+                await tx.debtLedgerEntry.create({
+                    data: {
+                        customerId: params.customerId,
+                        orderId: null,
+                        source: client_1.DebtSource.PAYMENT,
+                        category,
+                        amount: this.decimalFromMinor(amountMinor),
+                        branchId,
+                        actorUserId: params.performedByUserId,
+                        note: params.note ?? 'Partial debt payment collected via Call Center',
                     },
                 });
             }

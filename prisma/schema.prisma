@@ -114,9 +114,23 @@ enum StarchOption {
   STARCH_25
 }
 
+/**
+ * V19.11 — DebtLedgerEntry is the unified accounting book:
+ *   • SUBSCRIPTION_OVERUSE, INVOICE_SHORTFALL  (+) debt created
+ *   • PAYMENT                                  (−) debt settled
+ *
+ * `amount` is ALWAYS a positive decimal. The sign is implied by the
+ * source (creation vs settlement). The "open" balance per order /
+ * customer is therefore:
+ *   SUM(INVOICE_SHORTFALL + SUBSCRIPTION_OVERUSE) − SUM(PAYMENT)
+ *
+ * The table is append-only by convention and enforced at the service
+ * layer (a Prisma middleware rejects update / delete / deleteMany).
+ */
 enum DebtSource {
   SUBSCRIPTION_OVERUSE
   INVOICE_SHORTFALL
+  PAYMENT
 }
 
 enum DebtEntityCategory {
@@ -928,6 +942,14 @@ model DebtLedgerEntry {
   branchId    String?            @db.Uuid
   actorUserId String?            @db.Uuid
   note        String?
+  /// V19.11 — optional FK to the debt-creating entry this PAYMENT
+  /// settles (FIFO allocation). `null` for the creation sources and
+  /// for lump-sum payments that aren't tied to a specific invoice.
+  refEntryId  String?            @db.Uuid
+  /// V19.11 — idempotency / cross-reference key for backfill and
+  /// dual-write. E.g. TransactionHistory.id of the settlement row
+  /// that produced this PAYMENT entry. Enforced unique when present.
+  sourceRef   String?
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
 
@@ -935,11 +957,15 @@ model DebtLedgerEntry {
   order     Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
   actorUser User?    @relation("DebtEntryActor", fields: [actorUserId], references: [id], onDelete: SetNull)
   branch    Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  refEntry  DebtLedgerEntry? @relation("DebtLedgerEntryRef", fields: [refEntryId], references: [id], onDelete: SetNull)
+  refChildren DebtLedgerEntry[] @relation("DebtLedgerEntryRef")
 
+  @@unique([sourceRef])
   @@index([customerId, createdAt])
   @@index([source, category, createdAt])
   @@index([orderId])
   @@index([branchId])
+  @@index([refEntryId])
 }
 
 /**

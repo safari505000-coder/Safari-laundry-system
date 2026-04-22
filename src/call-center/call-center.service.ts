@@ -6,6 +6,7 @@ import {
 import {
   CashStatus,
   CustomerSubscriptionStatus,
+  DebtSource,
   GeneralLedgerEntryType,
   LedgerTransactionType,
   OrderStatus,
@@ -829,58 +830,44 @@ export class CallCenterService {
     const { dayStart, dayEnd, dayIsoLocal } = kuwaitDayBounds(now);
 
     const orderBranch = orderBranchWhere(branchId);
-    const ledgerBranch = ledgerBranchWhere(branchId);
 
-    // All three aggregates run in parallel. The "market debt" aggregate is
-    // the SUM of every uncollected invoice (cashStatus UNPAID, status !=
-    // CANCELED) regardless of payment method — byte-identical to the
-    // filter used by `OrdersService.listUnpaidCollectionOrders`, so the
-    // KPI card equals the table-column sum by construction.
+    // V19.11 — KPI math now comes from DebtLedgerEntry (the unified
+    // accounting book), not `Order.cashStatus` or TransactionHistory
+    // metadata. This gives a single source of truth so numbers match
+    // across /collections and /unpaid-invoices:
     //
-    // `branchId` (when provided) scopes every aggregate the same way:
-    // driver.branchId, or customer.originBranchId for driver-less rows.
-    const [unpaidAgg, todaysLedgerRows, pendingLinksCount] = await Promise.all([
-      this.prisma.order.aggregate({
-        _sum: { totalPrice: true },
+    //   Red card  (totalMarketDebtKd)     = Σ max(SUM(INVOICE_SHORTFALL
+    //                                              + SUBSCRIPTION_OVERUSE)
+    //                                            − SUM(PAYMENT), 0)
+    //                                        grouped by customer.
+    //   Green card (debtCollectedTodayKd) = SUM(PAYMENT entries created
+    //                                            today within Kuwait day
+    //                                            window).
+    //
+    // `branchId` scope (when provided) matches the debt-creating branch
+    // for the red card (the branch that issued the unpaid receivable)
+    // and the branch field on the PAYMENT row for the green card (the
+    // operator's branch that recorded the settlement).
+    const ledgerBranchFilter = branchId ? { branchId } : {};
+
+    const [ledgerTotals, todaysPayments, pendingLinksCount] = await Promise.all([
+      this.prisma.debtLedgerEntry.groupBy({
+        by: ['customerId', 'source'],
         where: {
-          cashStatus: CashStatus.UNPAID,
-          status: { not: OrderStatus.CANCELED },
-          ...(orderBranch ?? {}),
+          ...ledgerBranchFilter,
         },
+        _sum: { amount: true },
       }),
-      // V1.6.4 — STRICT: Green card reflects ONLY Collections-page
-      // recoveries. We fetch today's ORDER_WALLET_SETTLEMENT AND
-      // SUBSCRIPTION_ACTIVATION rows for the branch scope, then filter
-      // in memory on `metadata.debtSettlementViaLink === true` for the
-      // narrow green KPI. The broader set is also used to compute the
-      // A3.D10 `debtRecoveredTodayKd` metric which matches the Owner
-      // Debt Recovery Report formula exactly (same types, same filter).
-      //
-      // In-memory filtering avoids Prisma-version-specific quirks with
-      // JSONB boolean filters where `{ path: [...], equals: true }` can
-      // silently return zero rows on some PostgreSQL + Prisma
-      // combinations.
-      this.prisma.transactionHistory.findMany({
+      this.prisma.debtLedgerEntry.aggregate({
         where: {
+          source: DebtSource.PAYMENT,
           createdAt: { gte: dayStart, lt: dayEnd },
-          type: {
-            in: [
-              LedgerTransactionType.ORDER_WALLET_SETTLEMENT,
-              LedgerTransactionType.SUBSCRIPTION_ACTIVATION,
-            ],
-          },
-          ...(ledgerBranch ?? {}),
+          ...ledgerBranchFilter,
         },
-        select: {
-          id: true,
-          type: true,
-          metadata: true,
-          createdAt: true,
-          orderId: true,
-        },
+        _sum: { amount: true },
       }),
-      // Count of UNPAID, non-canceled orders that already have a hosted URL
-      // — still a useful Call-Center workload metric on its own.
+      // Workload signal still meaningful: how many open invoices already
+      // have a hosted link minted. Orders is still the right source here.
       this.prisma.order.count({
         where: {
           cashStatus: CashStatus.UNPAID,
@@ -891,45 +878,29 @@ export class CallCenterService {
       }),
     ]);
 
-    // V19.8.1 — Owner directive: the green KPI card beside the red
-    // "إجمالي الديون السوقية" tile must mirror the *entire* debt-
-    // tracking list. Any event today that reduced the red tile must
-    // count here so the two numbers move together.
-    //
-    // Inclusion (today's TH rows with debtSettled > 0):
-    //   • Manual CC "تم الدفع"        (`debtSettlementViaCallCenter`)
-    //   • Gateway link auto-callback  (`debtSettlementViaLink`)
-    //   • Driver-led POS completion   (ORDER_WALLET_SETTLEMENT, orderId set)
-    //   • CC partial debt payment     (`debtPaymentOnly`, orderId null)
-    //   • Subscription activation that settled debt via the V19.7.4
-    //     FIFO auto-closure flow (the "Convert debt → subscription"
-    //     path flips invoices from UNPAID → PAID_TO_DRIVER so the red
-    //     tile drops — the green tile must mirror that drop).
-    //
-    // Excluded rows (intentional):
-    //   • TH rows with debtSettled == 0 (no debt movement at all).
-    //
-    // The narrower "manual-only" total still powers the bottom
-    // "Daily Collector" panel — see `getDailyCollections()` — so a
-    // supervisor can still tell at a glance who collected what by
-    // hand, without conflating the two views.
-    // V19.8.1 — single reducer now feeds both exposed totals. The
-    // dashboard tile (`debtCollectedTodayKd`) and the Debt Recovery
-    // Report quick-view (`debtRecoveredTodayKd`) are identical by
-    // definition: every row that reduced customer debt today, no
-    // matter the channel, counts toward both. Keeping the two field
-    // names for API backwards-compatibility with existing dashboards.
-    const recoveredToday = todaysLedgerRows.reduce(
-      (acc, r) => acc.plus(extractDebtSettled(r.metadata)),
-      new Prisma.Decimal(0),
-    );
+    // Per-customer (debt − payment), clamped at 0. Any residual
+    // over-payment for a customer does NOT offset other customers'
+    // open debt in the red-card total — it just means their row is 0.
+    const perCustomer = new Map<string, { debt: Prisma.Decimal; payment: Prisma.Decimal }>();
+    for (const g of ledgerTotals) {
+      const cur =
+        perCustomer.get(g.customerId) ??
+        { debt: new Prisma.Decimal(0), payment: new Prisma.Decimal(0) };
+      const amt = g._sum.amount ?? new Prisma.Decimal(0);
+      if (g.source === DebtSource.PAYMENT) cur.payment = cur.payment.plus(amt);
+      else cur.debt = cur.debt.plus(amt);
+      perCustomer.set(g.customerId, cur);
+    }
+    let openDebt = new Prisma.Decimal(0);
+    for (const { debt, payment } of perCustomer.values()) {
+      const diff = debt.minus(payment);
+      if (diff.gt(0)) openDebt = openDebt.plus(diff);
+    }
 
-    // V1.6.5 — 3dp serialization (KWD standard). Keep the `FOUR_DP`
-    // helper available for legacy reports that still render 4dp.
+    const recoveredToday = todaysPayments._sum.amount ?? new Prisma.Decimal(0);
+
     return {
-      totalMarketDebtKd: KWD_DP(
-        unpaidAgg._sum.totalPrice ?? new Prisma.Decimal(0),
-      ),
+      totalMarketDebtKd: KWD_DP(openDebt),
       debtCollectedTodayKd: KWD_DP(recoveredToday),
       debtRecoveredTodayKd: KWD_DP(recoveredToday),
       pendingLinksCount,

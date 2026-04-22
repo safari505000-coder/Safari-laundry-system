@@ -302,7 +302,7 @@ export class DebtService {
       },
     });
 
-    // 2) Aggregate per-invoice
+    // 2) Aggregate per-invoice from SHORTFALL entries
     const byOrder = new Map<
       string,
       {
@@ -320,8 +320,6 @@ export class DebtService {
       if (existing) {
         existing.debtSum += amount;
         existing.row.entryCount += 1;
-        // Keep the earliest issued-at (the invoice date) but the latest
-        // lastEntryAt so operators see the most recent shortfall.
         if (new Date(e.createdAt) > new Date(existing.row.lastEntryAt)) {
           existing.row.lastEntryAt = e.createdAt.toISOString();
         }
@@ -359,29 +357,54 @@ export class DebtService {
       });
     }
 
-    // 3) Pull current wallet state for every customer that shows up
+    // 3) V19.11 — pull PAYMENT entries for every order in scope AND
+    //    every customer in scope. This turns the ledger into the single
+    //    source of truth: per-invoice open = SUM(shortfall) − SUM(PAYMENT),
+    //    per-customer open = SUM(shortfall+overuse) − SUM(PAYMENT).
+    const orderIds = Array.from(byOrder.keys());
     const customerIds = Array.from(
-      new Set(
-        Array.from(byOrder.values()).map((x) => x.row.customerId),
-      ),
+      new Set(Array.from(byOrder.values()).map((x) => x.row.customerId)),
     );
-    const wallets = customerIds.length
-      ? await this.prisma.customerWallet.findMany({
-          where: { customerId: { in: customerIds } },
-          select: { customerId: true, balance: true, debt: true },
-        })
-      : [];
-    const walletByCustomer = new Map<string, { openKd: number }>();
-    for (const w of wallets) {
-      const debt = Number.parseFloat(w.debt?.toString() ?? '0');
-      const balance = Number.parseFloat(w.balance?.toString() ?? '0');
-      const negBalance = balance < 0 ? -balance : 0;
-      const openKd =
-        (Number.isFinite(debt) && debt > 0 ? debt : 0) + negBalance;
-      walletByCustomer.set(w.customerId, { openKd });
+
+    const [paymentsByOrder, customerLedgerTotals] = await Promise.all([
+      orderIds.length
+        ? this.prisma.debtLedgerEntry.groupBy({
+            by: ['orderId'],
+            where: {
+              source: DebtSource.PAYMENT,
+              orderId: { in: orderIds },
+            },
+            _sum: { amount: true },
+          })
+        : Promise.resolve([]),
+      customerIds.length
+        ? this.prisma.debtLedgerEntry.groupBy({
+            by: ['customerId', 'source'],
+            where: { customerId: { in: customerIds } },
+            _sum: { amount: true },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    const paidByOrder = new Map<string, number>();
+    for (const g of paymentsByOrder) {
+      if (!g.orderId) continue;
+      const paid = Number.parseFloat(g._sum.amount?.toString() ?? '0');
+      paidByOrder.set(g.orderId, Number.isFinite(paid) ? paid : 0);
     }
 
-    // 4) Finalize numbers & decide open/closed
+    type CustomerTotals = { debt: number; payment: number };
+    const perCustomer = new Map<string, CustomerTotals>();
+    for (const g of customerLedgerTotals) {
+      const cur = perCustomer.get(g.customerId) ?? { debt: 0, payment: 0 };
+      const v = Number.parseFloat(g._sum.amount?.toString() ?? '0');
+      if (!Number.isFinite(v)) continue;
+      if (g.source === DebtSource.PAYMENT) cur.payment += v;
+      else cur.debt += v;
+      perCustomer.set(g.customerId, cur);
+    }
+
+    // 4) Finalize: per-invoice open-debt from the ledger, not the wallet.
     const finalRows: UnpaidInvoiceRowDto[] = [];
     let totalDebt = 0;
     let openDebt = 0;
@@ -390,14 +413,20 @@ export class DebtService {
     const openCustomers = new Set<string>();
     for (const [, v] of byOrder) {
       v.row.debtAmountKd = v.debtSum.toFixed(4);
-      const open = walletByCustomer.get(v.row.customerId)?.openKd ?? 0;
-      v.row.currentCustomerDebtKd = open.toFixed(4);
-      v.row.isOpen = open > 0.0001;
+      const paidForOrder = paidByOrder.get(v.row.orderId) ?? 0;
+      const perOrderOpen = Math.max(v.debtSum - paidForOrder, 0);
+      const custTotals = perCustomer.get(v.row.customerId) ?? {
+        debt: 0,
+        payment: 0,
+      };
+      const custOpen = Math.max(custTotals.debt - custTotals.payment, 0);
+      v.row.currentCustomerDebtKd = custOpen.toFixed(4);
+      v.row.isOpen = perOrderOpen > 0.0001;
       totalDebt += v.debtSum;
       const invTotal = Number.parseFloat(v.row.invoiceTotalKd);
       if (Number.isFinite(invTotal)) totalInvoices += invTotal;
       if (v.row.isOpen) {
-        openDebt += v.debtSum;
+        openDebt += perOrderOpen;
         openInvoiceCount += 1;
         openCustomers.add(v.row.customerId);
       }

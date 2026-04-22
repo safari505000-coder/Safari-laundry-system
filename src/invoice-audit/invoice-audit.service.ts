@@ -143,11 +143,13 @@ export class InvoiceAuditService {
   private async reverseWalletForOrder(
     tx: Prisma.TransactionClient,
     order: {
+      id?: string;
       customerId: string;
       totalPrice: Prisma.Decimal;
       posPaymentMethod: PosPaymentMethod | null;
       walletSettledAt: Date | null;
     },
+    actorUserId?: string,
   ): Promise<void> {
     if (!order.walletSettledAt) return;
     const wallet = await tx.customerWallet.findUnique({
@@ -157,7 +159,6 @@ export class InvoiceAuditService {
     if (!wallet) return;
     const method = order.posPaymentMethod;
     if (method === PosPaymentMethod.DEBT_ON_ACCOUNT) {
-      // Subtract debt; clamp at zero so we never flip to negative.
       const newDebt = wallet.debt.sub(order.totalPrice);
       await tx.customerWallet.update({
         where: { id: wallet.id },
@@ -165,15 +166,30 @@ export class InvoiceAuditService {
           debt: newDebt.lt(0) ? new Prisma.Decimal(0) : newDebt,
         },
       });
+
+      // V19.11 — mirror the reversal in the unified DebtLedgerEntry as a
+      // PAYMENT row so the /unpaid-invoices and /collections reports stop
+      // counting the voided invoice as open. Without this mirror, ledger
+      // open-debt drifts from wallet.debt over time.
+      if (order.id) {
+        await tx.debtLedgerEntry.create({
+          data: {
+            customerId: order.customerId,
+            orderId: order.id,
+            source: 'PAYMENT',
+            category: 'BRANCH',
+            amount: order.totalPrice,
+            actorUserId: actorUserId ?? null,
+            note: 'Debt reversed by invoice void / edit (supervisor)',
+          },
+        });
+      }
     } else if (method === PosPaymentMethod.SUBSCRIPTION_WALLET) {
-      // Refund the balance the subscription spent on this invoice.
       await tx.customerWallet.update({
         where: { id: wallet.id },
         data: { balance: wallet.balance.add(order.totalPrice) },
       });
     }
-    // External tenders (CASH / KNET / PAYMENT_LINK / ONLINE) have no
-    // wallet effect; the cash/card was collected outside the ledger.
   }
 
   /**
@@ -186,11 +202,13 @@ export class InvoiceAuditService {
   private async applyWalletForOrder(
     tx: Prisma.TransactionClient,
     order: {
+      id?: string;
       customerId: string;
       totalPrice: Prisma.Decimal;
       posPaymentMethod: PosPaymentMethod | null;
       walletSettledAt: Date | null;
     },
+    actorUserId?: string,
   ): Promise<void> {
     if (!order.walletSettledAt) return;
     const method = order.posPaymentMethod;
@@ -208,8 +226,24 @@ export class InvoiceAuditService {
         where: { id: wallet.id },
         data: { debt: wallet.debt.add(order.totalPrice) },
       });
+
+      // V19.11 — edit flow writes back a new INVOICE_SHORTFALL so the
+      // ledger mirrors the restored wallet.debt. Pair with the PAYMENT
+      // row emitted during the prior `reverseWalletForOrder` call.
+      if (order.id) {
+        await tx.debtLedgerEntry.create({
+          data: {
+            customerId: order.customerId,
+            orderId: order.id,
+            source: 'INVOICE_SHORTFALL',
+            category: 'BRANCH',
+            amount: order.totalPrice,
+            actorUserId: actorUserId ?? null,
+            note: 'Debt re-applied by invoice edit (new amount/method)',
+          },
+        });
+      }
     } else {
-      // SUBSCRIPTION_WALLET: spend balance on the invoice.
       const newBalance = wallet.balance.sub(order.totalPrice);
       await tx.customerWallet.update({
         where: { id: wallet.id },
@@ -371,7 +405,11 @@ export class InvoiceAuditService {
         const newNotes = dto.notes !== undefined ? dto.notes : order.notes;
 
         // 1) Reverse the old wallet effect BEFORE mutating the order.
-        await this.reverseWalletForOrder(tx, order);
+        await this.reverseWalletForOrder(
+          tx,
+          { ...order, id: order.id },
+          actorId,
+        );
 
         // 2) Mutate the order itself.
         await tx.order.update({
@@ -384,12 +422,17 @@ export class InvoiceAuditService {
         });
 
         // 3) Re-apply wallet effect with the new amount/method.
-        await this.applyWalletForOrder(tx, {
-          customerId: order.customerId,
-          totalPrice: newTotal,
-          posPaymentMethod: newMethod,
-          walletSettledAt: order.walletSettledAt,
-        });
+        await this.applyWalletForOrder(
+          tx,
+          {
+            id: order.id,
+            customerId: order.customerId,
+            totalPrice: newTotal,
+            posPaymentMethod: newMethod,
+            walletSettledAt: order.walletSettledAt,
+          },
+          actorId,
+        );
 
         // 4) GL impact: reverse the old sale, post the new sale. This
         // keeps the books balanced whether or not the totalPrice or
@@ -538,7 +581,7 @@ export class InvoiceAuditService {
         const before = this.buildSnapshot(order);
 
         // 1) Reverse wallet side-effect (debt / subscription balance).
-        await this.reverseWalletForOrder(tx, order);
+        await this.reverseWalletForOrder(tx, order, actorId);
 
         // 2) Flip status to CANCELED (soft-void) and drop the settled
         // timestamp so any re-run of settlement math is a no-op.
