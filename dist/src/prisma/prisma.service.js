@@ -25,14 +25,18 @@ const APPEND_ONLY_FORBIDDEN = [
 ];
 function guardAppendOnlyDelegate(delegate, label) {
     return new Proxy(delegate, {
-        get(target, prop, receiver) {
+        get(target, prop) {
             if (typeof prop === 'string' &&
                 APPEND_ONLY_FORBIDDEN.includes(prop)) {
                 return () => {
                     throw new common_1.ForbiddenException(`${label} is append-only — \`${prop}\` is not allowed`);
                 };
             }
-            return Reflect.get(target, prop, receiver);
+            const value = Reflect.get(target, prop, target);
+            if (typeof value === 'function') {
+                return value.bind(target);
+            }
+            return value;
         },
     });
 }
@@ -49,46 +53,7 @@ let PrismaService = class PrismaService extends client_1.PrismaClient {
         const options = { adapter: new adapter_pg_1.PrismaPg(pool) };
         super(options);
         this.pool = pool;
-        const rawDesc = Object.getOwnPropertyDescriptor(this, 'debtLedgerEntry');
-        const rawDelegate = (rawDesc?.value ??
-            this.debtLedgerEntry);
-        if (rawDelegate && typeof rawDelegate === 'object') {
-            const baseGuarded = guardAppendOnlyDelegate(rawDelegate, 'DebtLedgerEntry');
-            Object.defineProperty(this, 'debtLedgerEntry', {
-                configurable: true,
-                enumerable: true,
-                get: () => baseGuarded,
-            });
-        }
-        else {
-            PrismaService_1.logger.warn('DebtLedgerEntry delegate unavailable at construction — append-only guard NOT installed on base client');
-        }
-        const originalTransaction = super.$transaction.bind(this);
-        Object.defineProperty(this, '$transaction', {
-            configurable: true,
-            value: (...args) => {
-                const first = args[0];
-                if (typeof first === 'function') {
-                    const userCallback = first;
-                    const wrappedCallback = (tx) => {
-                        const txRec = tx;
-                        const innerDelegate = txRec.debtLedgerEntry;
-                        if (innerDelegate && typeof innerDelegate === 'object') {
-                            const guarded = guardAppendOnlyDelegate(innerDelegate, 'DebtLedgerEntry');
-                            Object.defineProperty(txRec, 'debtLedgerEntry', {
-                                configurable: true,
-                                enumerable: true,
-                                value: guarded,
-                            });
-                        }
-                        return userCallback(tx);
-                    };
-                    return originalTransaction(wrappedCallback, ...args.slice(1));
-                }
-                return originalTransaction(...args);
-            },
-        });
-        PrismaService_1.logger.log('DebtLedgerEntry append-only guard active (update/delete/upsert blocked)');
+        PrismaService_1.logger.log('DebtLedgerEntry append-only enforcement = DB trigger only (app-layer Proxy disabled for Prisma 7 compatibility)');
     }
     async onModuleInit() {
         await this.$connect();

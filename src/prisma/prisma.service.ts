@@ -29,7 +29,7 @@ const APPEND_ONLY_FORBIDDEN = [
 
 function guardAppendOnlyDelegate<T extends object>(delegate: T, label: string): T {
   return new Proxy(delegate, {
-    get(target, prop, receiver) {
+    get(target, prop) {
       if (
         typeof prop === 'string' &&
         (APPEND_ONLY_FORBIDDEN as readonly string[]).includes(prop)
@@ -40,7 +40,17 @@ function guardAppendOnlyDelegate<T extends object>(delegate: T, label: string): 
           );
         };
       }
-      return Reflect.get(target, prop, receiver);
+      // IMPORTANT: read the property with `target` as the receiver (not the
+      // Proxy) and bind any returned methods back to `target`. Prisma 7's
+      // generated delegates use private class fields (`#state`) for their
+      // internal query state; if we let `this` fall through as the Proxy,
+      // those private reads throw "Transaction already closed: A query
+      // cannot be executed on a committed transaction" at first call.
+      const value = Reflect.get(target, prop, target) as unknown;
+      if (typeof value === 'function') {
+        return (value as (...args: unknown[]) => unknown).bind(target);
+      }
+      return value;
     },
   });
 }
@@ -67,84 +77,27 @@ export class PrismaService
     super(options);
     this.pool = pool;
 
-    // Guard the base (non-transactional) delegate on `this`.
+    // V19.11.5 — the runtime Proxy-based append-only guard on
+    // `debtLedgerEntry` broke Prisma 7's driver-adapter batching
+    // ("Transaction already closed: A batch query cannot be executed
+    // on a committed transaction") because parallel delegate calls
+    // behind a Proxy lose internal query-engine state that Prisma
+    // reads via private class fields (`#state`).
     //
-    // Prisma 7 installs each model delegate as an OWN property of
-    // `this` during `super()` — not on the prototype — so we must
-    // read it as `this.debtLedgerEntry` (via getOwnPropertyDescriptor
-    // to avoid hitting the shadowing getter we're about to install).
-    // `super.debtLedgerEntry` resolves against the prototype chain and
-    // returns `undefined`, which used to crash the Proxy constructor.
-    const rawDesc = Object.getOwnPropertyDescriptor(
-      this,
-      'debtLedgerEntry',
-    );
-    const rawDelegate = (rawDesc?.value ??
-      (this as unknown as { debtLedgerEntry: unknown }).debtLedgerEntry) as
-      | object
-      | undefined;
-    if (rawDelegate && typeof rawDelegate === 'object') {
-      const baseGuarded = guardAppendOnlyDelegate(
-        rawDelegate,
-        'DebtLedgerEntry',
-      );
-      Object.defineProperty(this, 'debtLedgerEntry', {
-        configurable: true,
-        enumerable: true,
-        get: () => baseGuarded,
-      });
-    } else {
-      PrismaService.logger.warn(
-        'DebtLedgerEntry delegate unavailable at construction — append-only guard NOT installed on base client',
-      );
-    }
-
-    // Wrap `$transaction` so interactive callbacks receive a tx client
-    // whose `debtLedgerEntry` delegate is also guarded. The batch form
-    // `$transaction(Promise[])` is left untouched — those Promises were
-    // already built on the guarded top-level delegate.
-    const originalTransaction = super.$transaction.bind(this) as (
-      ...args: unknown[]
-    ) => Promise<unknown>;
-    Object.defineProperty(this, '$transaction', {
-      configurable: true,
-      value: (
-        ...args: Parameters<PrismaClient['$transaction']>
-      ): ReturnType<PrismaClient['$transaction']> => {
-        const first = args[0];
-        if (typeof first === 'function') {
-          const userCallback = first as (tx: unknown) => Promise<unknown>;
-          const wrappedCallback = (tx: unknown) => {
-            const txRec = tx as Record<string, unknown>;
-            const innerDelegate = txRec.debtLedgerEntry as unknown as
-              | object
-              | undefined;
-            if (innerDelegate && typeof innerDelegate === 'object') {
-              const guarded = guardAppendOnlyDelegate(
-                innerDelegate,
-                'DebtLedgerEntry',
-              );
-              Object.defineProperty(txRec, 'debtLedgerEntry', {
-                configurable: true,
-                enumerable: true,
-                value: guarded,
-              });
-            }
-            return userCallback(tx);
-          };
-          return originalTransaction(
-            wrappedCallback,
-            ...args.slice(1),
-          ) as ReturnType<PrismaClient['$transaction']>;
-        }
-        return originalTransaction(...args) as ReturnType<
-          PrismaClient['$transaction']
-        >;
-      },
-    });
-
+    // The ledger is still append-only in practice:
+    //   * every writer goes through `ledger.service.ts` which only
+    //     calls `create` / `createMany` on this delegate, and
+    //   * the DB-level trigger shipping in migration
+    //     `20260422_append_only_debt_ledger_trigger.sql` blocks
+    //     UPDATE/DELETE/TRUNCATE at the Postgres layer — the
+    //     belt-and-suspenders we always wanted.
+    //
+    // Once we have a Proxy strategy that doesn't fight the driver
+    // adapter's batching (e.g. a Prisma `$extends` client extension),
+    // we can re-add an app-layer guard. Until then, the DB trigger
+    // is the source of truth.
     PrismaService.logger.log(
-      'DebtLedgerEntry append-only guard active (update/delete/upsert blocked)',
+      'DebtLedgerEntry append-only enforcement = DB trigger only (app-layer Proxy disabled for Prisma 7 compatibility)',
     );
   }
 
