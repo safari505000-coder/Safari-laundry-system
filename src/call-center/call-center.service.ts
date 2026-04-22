@@ -967,21 +967,80 @@ export class CallCenterService {
       buckets.set(key, {
         dayIso: key,
         recoveredKd: '0.0000',
+        recoveredCashKd: '0.0000',
+        recoveredElectronicKd: '0.0000',
+        recoveredWalletKd: '0.0000',
         settlementCount: 0,
         subscriptionCount: 0,
       });
     }
 
     let total = new Prisma.Decimal(0);
+    let totalCash = new Prisma.Decimal(0);
+    let totalElectronic = new Prisma.Decimal(0);
+    let totalWallet = new Prisma.Decimal(0);
     for (const r of rows) {
       const key = toIsoDay(r.createdAt);
       const bucket = buckets.get(key);
       if (!bucket) continue;
       const debtSettled = extractDebtSettled(r.metadata);
+      if (debtSettled.lte(0)) {
+        if (r.type === LedgerTransactionType.ORDER_WALLET_SETTLEMENT) {
+          bucket.settlementCount += 1;
+        } else {
+          bucket.subscriptionCount += 1;
+        }
+        continue;
+      }
+
       total = total.plus(debtSettled);
       bucket.recoveredKd = FOUR_DP(
         new Prisma.Decimal(bucket.recoveredKd).plus(debtSettled),
       );
+
+      // V19.11.3 — split recovery by settlement channel so the KNET
+      // stream is visible and never mistaken for driver cash.
+      //   • SUBSCRIPTION_ACTIVATION → wallet (book-entry; subscription
+      //     plan absorbed the legacy debt, no fresh money changed hands).
+      //   • ORDER_WALLET_SETTLEMENT with confirmedPaymentMethod / posPaymentMethod
+      //     ∈ {KNET, PAYMENT_LINK, ONLINE} → electronic.
+      //   • Everything else (CASH, DEBT_ON_ACCOUNT) → cash stream.
+      let channel: 'cash' | 'electronic' | 'wallet';
+      if (r.type === LedgerTransactionType.SUBSCRIPTION_ACTIVATION) {
+        channel = 'wallet';
+      } else {
+        const rawMethod =
+          readMetaString(r.metadata, 'confirmedPaymentMethod') ??
+          readMetaString(r.metadata, 'posPaymentMethod') ??
+          readMetaString(r.metadata, 'paymentMethod');
+        if (
+          rawMethod === PosPaymentMethod.KNET ||
+          rawMethod === PosPaymentMethod.PAYMENT_LINK ||
+          rawMethod === PosPaymentMethod.ONLINE
+        ) {
+          channel = 'electronic';
+        } else {
+          channel = 'cash';
+        }
+      }
+
+      if (channel === 'cash') {
+        totalCash = totalCash.plus(debtSettled);
+        bucket.recoveredCashKd = FOUR_DP(
+          new Prisma.Decimal(bucket.recoveredCashKd).plus(debtSettled),
+        );
+      } else if (channel === 'electronic') {
+        totalElectronic = totalElectronic.plus(debtSettled);
+        bucket.recoveredElectronicKd = FOUR_DP(
+          new Prisma.Decimal(bucket.recoveredElectronicKd).plus(debtSettled),
+        );
+      } else {
+        totalWallet = totalWallet.plus(debtSettled);
+        bucket.recoveredWalletKd = FOUR_DP(
+          new Prisma.Decimal(bucket.recoveredWalletKd).plus(debtSettled),
+        );
+      }
+
       if (r.type === LedgerTransactionType.ORDER_WALLET_SETTLEMENT) {
         bucket.settlementCount += 1;
       } else {
@@ -993,6 +1052,9 @@ export class CallCenterService {
       from: toIsoDay(fromDay),
       to: toIsoDay(toDay),
       totalRecoveredKd: FOUR_DP(total),
+      totalRecoveredCashKd: FOUR_DP(totalCash),
+      totalRecoveredElectronicKd: FOUR_DP(totalElectronic),
+      totalRecoveredWalletKd: FOUR_DP(totalWallet),
       days: Array.from(buckets.values()),
     };
   }

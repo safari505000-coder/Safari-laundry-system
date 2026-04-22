@@ -42,6 +42,9 @@ let FinanceService = class FinanceService {
     async getDebtBreakdownByCategory(fromIso, toIso, category, branchId, actorUserId) {
         return this.debtService.getDebtBreakdownByCategory(fromIso, toIso, category, branchId, actorUserId);
     }
+    async getOpenDebtByIssuer(branchId) {
+        return this.debtService.getOpenDebtByIssuer(branchId);
+    }
     async getDriverBalances() {
         return this.cashService.getDriverBalances();
     }

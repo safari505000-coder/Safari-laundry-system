@@ -693,6 +693,8 @@ export type UnpaidInvoiceRow = {
   actorUserRole: string | null;
   invoiceTotalKd: string;
   debtAmountKd: string;
+  paidKd: string;
+  remainingKd: string;
   entryCount: number;
   currentCustomerDebtKd: string;
   isOpen: boolean;
@@ -706,6 +708,7 @@ export type UnpaidInvoicesKpis = {
   openCustomerCount: number;
   totalInvoicesKd: string;
   totalDebtKd: string;
+  totalPaidKd: string;
   openDebtKd: string;
   avgDebtPerInvoiceKd: string;
 };
@@ -1264,6 +1267,25 @@ export type DebtByCategoryReport = {
     entryCount: number;
     totalDebt: string;
   }>;
+};
+
+/**
+ * V19.11.4 — NET open debt grouped by the invoice's original issuer.
+ * Σ rows[].openDebtKd === /unpaid-invoices openDebtKd === /collections
+ * totalMarketDebtKd, so the dashboard's distribution chart reconciles
+ * with every other debt screen.
+ */
+export type OpenDebtByIssuerReport = {
+  rows: Array<{
+    issuer: 'DRIVER' | 'BRANCH' | 'OTHER';
+    openDebtKd: string;
+    openInvoiceCount: number;
+    openCustomerCount: number;
+  }>;
+  totalOpenDebtKd: string;
+  openInvoiceCount: number;
+  openCustomerCount: number;
+  computedAt: string;
 };
 
 /** Hosted payment URL from Kuwait Gateway when checkout uses PAYMENT_LINK. */

@@ -15,6 +15,7 @@ const client_1 = require("@prisma/client");
 const payments_service_1 = require("../common/services/payments.service");
 const customer_notifications_service_1 = require("../customer-notifications/customer-notifications.service");
 const customer_ledger_service_1 = require("../customer-ledger/customer-ledger.service");
+const cash_status_for_method_1 = require("../common/utils/cash-status-for-method");
 const general_ledger_service_1 = require("../general-ledger/general-ledger.service");
 const finance_money_1 = require("../finance/finance-money");
 const inventory_service_1 = require("../inventory/inventory.service");
@@ -327,7 +328,7 @@ let OrdersService = class OrdersService {
                         serviceType,
                         totalPrice: totalPriceDecimal,
                         status: client_1.OrderStatus.COMPLETED,
-                        cashStatus: client_1.CashStatus.PAID_TO_DRIVER,
+                        cashStatus: (0, cash_status_for_method_1.cashStatusForPaymentMethod)(posPaymentMethodResolved),
                         posPaymentMethod: posPaymentMethodResolved,
                         completedAt,
                         invoiceNumber: dto.invoiceNumber?.trim() || null,
@@ -767,6 +768,7 @@ let OrdersService = class OrdersService {
                 driverId: true,
                 status: true,
                 cashStatus: true,
+                posPaymentMethod: true,
                 walletSettledAt: true,
                 customerId: true,
                 totalPrice: true,
@@ -797,7 +799,7 @@ let OrdersService = class OrdersService {
         if (dto.status === client_1.OrderStatus.COMPLETED &&
             dto.status !== order.status &&
             order.cashStatus === client_1.CashStatus.UNPAID) {
-            data.cashStatus = client_1.CashStatus.PAID_TO_DRIVER;
+            data.cashStatus = (0, cash_status_for_method_1.cashStatusForPaymentMethod)(order.posPaymentMethod);
         }
         if (dto.status === client_1.OrderStatus.COMPLETED && dto.status !== order.status) {
             data.completedAt = new Date();

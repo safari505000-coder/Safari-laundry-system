@@ -70,7 +70,7 @@ let InvoiceAuditService = class InvoiceAuditService {
         }
         return changed;
     }
-    async reverseWalletForOrder(tx, order) {
+    async reverseWalletForOrder(tx, order, actorUserId) {
         if (!order.walletSettledAt)
             return;
         const wallet = await tx.customerWallet.findUnique({
@@ -88,6 +88,19 @@ let InvoiceAuditService = class InvoiceAuditService {
                     debt: newDebt.lt(0) ? new client_1.Prisma.Decimal(0) : newDebt,
                 },
             });
+            if (order.id) {
+                await tx.debtLedgerEntry.create({
+                    data: {
+                        customerId: order.customerId,
+                        orderId: order.id,
+                        source: 'PAYMENT',
+                        category: 'BRANCH',
+                        amount: order.totalPrice,
+                        actorUserId: actorUserId ?? null,
+                        note: 'Debt reversed by invoice void / edit (supervisor)',
+                    },
+                });
+            }
         }
         else if (method === client_1.PosPaymentMethod.SUBSCRIPTION_WALLET) {
             await tx.customerWallet.update({
@@ -96,7 +109,7 @@ let InvoiceAuditService = class InvoiceAuditService {
             });
         }
     }
-    async applyWalletForOrder(tx, order) {
+    async applyWalletForOrder(tx, order, actorUserId) {
         if (!order.walletSettledAt)
             return;
         const method = order.posPaymentMethod;
@@ -114,6 +127,19 @@ let InvoiceAuditService = class InvoiceAuditService {
                 where: { id: wallet.id },
                 data: { debt: wallet.debt.add(order.totalPrice) },
             });
+            if (order.id) {
+                await tx.debtLedgerEntry.create({
+                    data: {
+                        customerId: order.customerId,
+                        orderId: order.id,
+                        source: 'INVOICE_SHORTFALL',
+                        category: 'BRANCH',
+                        amount: order.totalPrice,
+                        actorUserId: actorUserId ?? null,
+                        note: 'Debt re-applied by invoice edit (new amount/method)',
+                    },
+                });
+            }
         }
         else {
             const newBalance = wallet.balance.sub(order.totalPrice);
@@ -235,7 +261,7 @@ let InvoiceAuditService = class InvoiceAuditService {
             }
             const newMethod = dto.posPaymentMethod ?? order.posPaymentMethod;
             const newNotes = dto.notes !== undefined ? dto.notes : order.notes;
-            await this.reverseWalletForOrder(tx, order);
+            await this.reverseWalletForOrder(tx, { ...order, id: order.id }, actorId);
             await tx.order.update({
                 where: { id: order.id },
                 data: {
@@ -245,11 +271,12 @@ let InvoiceAuditService = class InvoiceAuditService {
                 },
             });
             await this.applyWalletForOrder(tx, {
+                id: order.id,
                 customerId: order.customerId,
                 totalPrice: newTotal,
                 posPaymentMethod: newMethod,
                 walletSettledAt: order.walletSettledAt,
-            });
+            }, actorId);
             const delta = newTotal.sub(order.totalPrice);
             if (!delta.isZero() || newMethod !== order.posPaymentMethod) {
                 await this.generalLedger.append(tx, {
@@ -369,7 +396,7 @@ let InvoiceAuditService = class InvoiceAuditService {
                 throw new common_1.BadRequestException('Invoice is already voided.');
             }
             const before = this.buildSnapshot(order);
-            await this.reverseWalletForOrder(tx, order);
+            await this.reverseWalletForOrder(tx, order, actorId);
             await tx.order.update({
                 where: { id: order.id },
                 data: {

@@ -28,6 +28,7 @@ const roles_guard_1 = require("../auth/guards/roles.guard");
 const branding_1 = require("../common/constants/branding");
 const confirm_handover_dto_1 = require("./dto/confirm-handover.dto");
 const debt_by_category_query_dto_1 = require("./dto/debt-by-category-query.dto");
+const open_debt_by_issuer_dto_1 = require("./dto/open-debt-by-issuer.dto");
 const daily_pos_sales_query_dto_1 = require("./dto/daily-pos-sales-query.dto");
 const driver_cash_trace_dto_1 = require("./dto/driver-cash-trace.dto");
 const update_driver_tracking_dto_1 = require("./dto/update-driver-tracking.dto");
@@ -59,6 +60,9 @@ let FinanceController = class FinanceController {
     }
     getDebtByCategory(q) {
         return this.financeService.getDebtBreakdownByCategory(q.from, q.to, q.category, q.branchId, q.actorUserId);
+    }
+    getOpenDebtByIssuer(q) {
+        return this.financeService.getOpenDebtByIssuer(q.branchId);
     }
     uploadHandoverReceipt(file) {
         if (!file?.filename) {
@@ -154,6 +158,18 @@ __decorate([
     __metadata("design:paramtypes", [debt_by_category_query_dto_1.DebtByCategoryQueryDto]),
     __metadata("design:returntype", void 0)
 ], FinanceController.prototype, "getDebtByCategory", null);
+__decorate([
+    (0, common_1.Get)('reports/open-debt-by-issuer'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.CALL_CENTER, client_1.SafariRole.CALL_CENTER_SUPERVISOR),
+    (0, swagger_1.ApiOperation)({
+        summary: `NET open debt grouped by invoice issuer (${branding_1.APP_BRAND})`,
+        description: 'Live snapshot. Per-customer FIFO allocation of PAYMENT entries against INVOICE_SHORTFALL. Σ rows equals /unpaid-invoices openDebtKd and /collections totalMarketDebtKd.',
+    }),
+    __param(0, (0, common_1.Query)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [open_debt_by_issuer_dto_1.OpenDebtByIssuerQueryDto]),
+    __metadata("design:returntype", Promise)
+], FinanceController.prototype, "getOpenDebtByIssuer", null);
 __decorate([
     (0, common_1.Post)('handover/upload-receipt'),
     (0, roles_decorator_1.Roles)(client_1.SafariRole.MANAGER),

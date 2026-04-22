@@ -18,6 +18,7 @@ const customer_ledger_service_1 = require("../../customer-ledger/customer-ledger
 const general_ledger_service_1 = require("../../general-ledger/general-ledger.service");
 const inventory_service_1 = require("../../inventory/inventory.service");
 const prisma_service_1 = require("../../prisma/prisma.service");
+const cash_status_for_method_1 = require("../utils/cash-status-for-method");
 let PaymentsService = PaymentsService_1 = class PaymentsService {
     prisma;
     customerLedger;
@@ -232,7 +233,7 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
                 where: { id: orderId },
                 data: {
                     status: client_1.OrderStatus.COMPLETED,
-                    cashStatus: client_1.CashStatus.PAID_TO_DRIVER,
+                    cashStatus: (0, cash_status_for_method_1.cashStatusForPaymentMethod)(client_1.PosPaymentMethod.ONLINE),
                     completedAt,
                     posPaymentMethod: client_1.PosPaymentMethod.ONLINE,
                     walletSettledAt: null,
@@ -331,7 +332,7 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
                 where: { id: orderId },
                 data: {
                     status: client_1.OrderStatus.COMPLETED,
-                    cashStatus: client_1.CashStatus.PAID_TO_DRIVER,
+                    cashStatus: (0, cash_status_for_method_1.cashStatusForPaymentMethod)(method),
                     completedAt,
                     posPaymentMethod: method,
                     walletSettledAt: null,

@@ -24,6 +24,27 @@ export class DebtRecoveryDayRowDto {
   @ApiProperty({ example: '120.5000' })
   recoveredKd!: string;
 
+  @ApiProperty({
+    example: '70.0000',
+    description:
+      'V19.11.3 — Portion recovered as CASH (driver-collected). Bucketed via TransactionHistory.metadata.posPaymentMethod.',
+  })
+  recoveredCashKd!: string;
+
+  @ApiProperty({
+    example: '40.5000',
+    description:
+      'V19.11.3 — Portion recovered electronically (KNET + PAYMENT_LINK + ONLINE). Money never touched a driver.',
+  })
+  recoveredElectronicKd!: string;
+
+  @ApiProperty({
+    example: '10.0000',
+    description:
+      'V19.11.3 — Portion covered from customer wallet / subscription balance — a book entry, not cash.',
+  })
+  recoveredWalletKd!: string;
+
   @ApiProperty({ example: 4 })
   settlementCount!: number;
 
@@ -40,6 +61,15 @@ export class DebtRecoveryReportDto {
 
   @ApiProperty({ example: '2350.7500' })
   totalRecoveredKd!: string;
+
+  @ApiProperty({ example: '1200.0000' })
+  totalRecoveredCashKd!: string;
+
+  @ApiProperty({ example: '900.7500' })
+  totalRecoveredElectronicKd!: string;
+
+  @ApiProperty({ example: '250.0000' })
+  totalRecoveredWalletKd!: string;
 
   @ApiProperty({ type: [DebtRecoveryDayRowDto] })
   days!: DebtRecoveryDayRowDto[];

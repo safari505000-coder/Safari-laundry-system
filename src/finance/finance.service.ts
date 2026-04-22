@@ -95,6 +95,10 @@ export class FinanceService {
     );
   }
 
+  async getOpenDebtByIssuer(branchId?: string) {
+    return this.debtService.getOpenDebtByIssuer(branchId);
+  }
+
   async getDriverBalances(): Promise<DriverBalanceResponseDto> {
     return this.cashService.getDriverBalances();
   }

@@ -591,19 +591,63 @@ let CallCenterService = class CallCenterService {
             buckets.set(key, {
                 dayIso: key,
                 recoveredKd: '0.0000',
+                recoveredCashKd: '0.0000',
+                recoveredElectronicKd: '0.0000',
+                recoveredWalletKd: '0.0000',
                 settlementCount: 0,
                 subscriptionCount: 0,
             });
         }
         let total = new client_1.Prisma.Decimal(0);
+        let totalCash = new client_1.Prisma.Decimal(0);
+        let totalElectronic = new client_1.Prisma.Decimal(0);
+        let totalWallet = new client_1.Prisma.Decimal(0);
         for (const r of rows) {
             const key = toIsoDay(r.createdAt);
             const bucket = buckets.get(key);
             if (!bucket)
                 continue;
             const debtSettled = extractDebtSettled(r.metadata);
+            if (debtSettled.lte(0)) {
+                if (r.type === client_1.LedgerTransactionType.ORDER_WALLET_SETTLEMENT) {
+                    bucket.settlementCount += 1;
+                }
+                else {
+                    bucket.subscriptionCount += 1;
+                }
+                continue;
+            }
             total = total.plus(debtSettled);
             bucket.recoveredKd = FOUR_DP(new client_1.Prisma.Decimal(bucket.recoveredKd).plus(debtSettled));
+            let channel;
+            if (r.type === client_1.LedgerTransactionType.SUBSCRIPTION_ACTIVATION) {
+                channel = 'wallet';
+            }
+            else {
+                const rawMethod = readMetaString(r.metadata, 'confirmedPaymentMethod') ??
+                    readMetaString(r.metadata, 'posPaymentMethod') ??
+                    readMetaString(r.metadata, 'paymentMethod');
+                if (rawMethod === client_1.PosPaymentMethod.KNET ||
+                    rawMethod === client_1.PosPaymentMethod.PAYMENT_LINK ||
+                    rawMethod === client_1.PosPaymentMethod.ONLINE) {
+                    channel = 'electronic';
+                }
+                else {
+                    channel = 'cash';
+                }
+            }
+            if (channel === 'cash') {
+                totalCash = totalCash.plus(debtSettled);
+                bucket.recoveredCashKd = FOUR_DP(new client_1.Prisma.Decimal(bucket.recoveredCashKd).plus(debtSettled));
+            }
+            else if (channel === 'electronic') {
+                totalElectronic = totalElectronic.plus(debtSettled);
+                bucket.recoveredElectronicKd = FOUR_DP(new client_1.Prisma.Decimal(bucket.recoveredElectronicKd).plus(debtSettled));
+            }
+            else {
+                totalWallet = totalWallet.plus(debtSettled);
+                bucket.recoveredWalletKd = FOUR_DP(new client_1.Prisma.Decimal(bucket.recoveredWalletKd).plus(debtSettled));
+            }
             if (r.type === client_1.LedgerTransactionType.ORDER_WALLET_SETTLEMENT) {
                 bucket.settlementCount += 1;
             }
@@ -615,6 +659,9 @@ let CallCenterService = class CallCenterService {
             from: toIsoDay(fromDay),
             to: toIsoDay(toDay),
             totalRecoveredKd: FOUR_DP(total),
+            totalRecoveredCashKd: FOUR_DP(totalCash),
+            totalRecoveredElectronicKd: FOUR_DP(totalElectronic),
+            totalRecoveredWalletKd: FOUR_DP(totalWallet),
             days: Array.from(buckets.values()),
         };
     }

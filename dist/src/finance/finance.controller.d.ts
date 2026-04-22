@@ -1,6 +1,7 @@
 import type { JwtUser } from '../auth/decorators/current-user.decorator';
 import { ConfirmHandoverDto } from './dto/confirm-handover.dto';
 import { DebtByCategoryQueryDto } from './dto/debt-by-category-query.dto';
+import { OpenDebtByIssuerQueryDto, OpenDebtByIssuerResponseDto } from './dto/open-debt-by-issuer.dto';
 import { DailyPosSalesQueryDto } from './dto/daily-pos-sales-query.dto';
 import { DriverBalanceResponseDto, HandoverResultDto } from './dto/driver-balance.dto';
 import { DriverCashTraceQueryDto, DriverCashTraceResponseDto } from './dto/driver-cash-trace.dto';
@@ -20,7 +21,7 @@ export declare class FinanceController {
         from: string;
         to: string;
         rows: {
-            posPaymentMethod: "SUBSCRIPTION_WALLET" | "CASH" | "KNET" | "PAYMENT_LINK" | "DEBT_ON_ACCOUNT" | "ONLINE";
+            posPaymentMethod: "KNET" | "PAYMENT_LINK" | "ONLINE" | "SUBSCRIPTION_WALLET" | "CASH" | "DEBT_ON_ACCOUNT";
             orderCount: number;
             totalRevenue: string;
         }[];
@@ -35,6 +36,7 @@ export declare class FinanceController {
             totalDebt: string;
         }[];
     }>;
+    getOpenDebtByIssuer(q: OpenDebtByIssuerQueryDto): Promise<OpenDebtByIssuerResponseDto>;
     uploadHandoverReceipt(file: Express.Multer.File): {
         depositReceiptUrl: string;
     };

@@ -35,6 +35,9 @@ __decorate([
 class DebtRecoveryDayRowDto {
     dayIso;
     recoveredKd;
+    recoveredCashKd;
+    recoveredElectronicKd;
+    recoveredWalletKd;
     settlementCount;
     subscriptionCount;
 }
@@ -48,6 +51,27 @@ __decorate([
     __metadata("design:type", String)
 ], DebtRecoveryDayRowDto.prototype, "recoveredKd", void 0);
 __decorate([
+    (0, swagger_1.ApiProperty)({
+        example: '70.0000',
+        description: 'V19.11.3 — Portion recovered as CASH (driver-collected). Bucketed via TransactionHistory.metadata.posPaymentMethod.',
+    }),
+    __metadata("design:type", String)
+], DebtRecoveryDayRowDto.prototype, "recoveredCashKd", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({
+        example: '40.5000',
+        description: 'V19.11.3 — Portion recovered electronically (KNET + PAYMENT_LINK + ONLINE). Money never touched a driver.',
+    }),
+    __metadata("design:type", String)
+], DebtRecoveryDayRowDto.prototype, "recoveredElectronicKd", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({
+        example: '10.0000',
+        description: 'V19.11.3 — Portion covered from customer wallet / subscription balance — a book entry, not cash.',
+    }),
+    __metadata("design:type", String)
+], DebtRecoveryDayRowDto.prototype, "recoveredWalletKd", void 0);
+__decorate([
     (0, swagger_1.ApiProperty)({ example: 4 }),
     __metadata("design:type", Number)
 ], DebtRecoveryDayRowDto.prototype, "settlementCount", void 0);
@@ -59,6 +83,9 @@ class DebtRecoveryReportDto {
     from;
     to;
     totalRecoveredKd;
+    totalRecoveredCashKd;
+    totalRecoveredElectronicKd;
+    totalRecoveredWalletKd;
     days;
 }
 exports.DebtRecoveryReportDto = DebtRecoveryReportDto;
@@ -74,6 +101,18 @@ __decorate([
     (0, swagger_1.ApiProperty)({ example: '2350.7500' }),
     __metadata("design:type", String)
 ], DebtRecoveryReportDto.prototype, "totalRecoveredKd", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ example: '1200.0000' }),
+    __metadata("design:type", String)
+], DebtRecoveryReportDto.prototype, "totalRecoveredCashKd", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ example: '900.7500' }),
+    __metadata("design:type", String)
+], DebtRecoveryReportDto.prototype, "totalRecoveredElectronicKd", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ example: '250.0000' }),
+    __metadata("design:type", String)
+], DebtRecoveryReportDto.prototype, "totalRecoveredWalletKd", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)({ type: [DebtRecoveryDayRowDto] }),
     __metadata("design:type", Array)

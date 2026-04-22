@@ -7,8 +7,8 @@ export declare class BranchesService {
         updatedAt: Date;
         name: string;
         location: string;
-        isActive: boolean;
         phone: string | null;
+        isActive: boolean;
     }[]>;
     create(dto: {
         name: string;
@@ -21,8 +21,8 @@ export declare class BranchesService {
         updatedAt: Date;
         name: string;
         location: string;
-        isActive: boolean;
         phone: string | null;
+        isActive: boolean;
     }>;
     operationsLiveByBranch(): Promise<{
         branches: {

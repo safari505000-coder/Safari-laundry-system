@@ -17,9 +17,9 @@ import { useAuth } from '@/contexts/auth-context';
 import { useSafariStream } from '@/contexts/safari-stream-context';
 import {
   type DailyPosSalesByPaymentMethodReport,
-  type DebtByCategoryReport,
   type DriverBalanceResponse,
   type ExecutiveSummaryReport,
+  type OpenDebtByIssuerReport,
   type OwnerWalletSummary,
   apiJson,
   ApiError,
@@ -97,7 +97,7 @@ export function ExecInteractiveDashboard() {
   const [paySplit, setPaySplit] =
     useState<DailyPosSalesByPaymentMethodReport | null>(null);
   const [wallet, setWallet] = useState<OwnerWalletSummary | null>(null);
-  const [debts, setDebts] = useState<DebtByCategoryReport | null>(null);
+  const [debts, setDebts] = useState<OpenDebtByIssuerReport | null>(null);
   const [drivers, setDrivers] = useState<DriverBalanceResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -125,8 +125,13 @@ export function ExecInteractiveDashboard() {
           '/api/finance/owner/customer-wallet-summary',
           { token },
         ).catch(() => null),
-        apiJson<DebtByCategoryReport>(
-          `/api/finance/reports/debt-by-category?${qs}`,
+        // V19.11.4 — live snapshot of NET open debt (payments already
+        // deducted, FIFO-allocated per customer). This is the SAME
+        // number that powers /unpaid-invoices and /collections, so the
+        // pie reconciles with every other debt screen. Date window is
+        // irrelevant for an open-balance snapshot, so we ignore it here.
+        apiJson<OpenDebtByIssuerReport>(
+          `/api/finance/reports/open-debt-by-issuer`,
           { token },
         ).catch(() => null),
         apiJson<DriverBalanceResponse>('/api/finance/driver-balance', {
@@ -218,19 +223,19 @@ export function ExecInteractiveDashboard() {
 
   const debtRows = useMemo(() => {
     if (!debts) return [];
-    const agg: Record<string, number> = {};
+    const agg: Record<'BRANCH' | 'DRIVER', number> = { BRANCH: 0, DRIVER: 0 };
     for (const r of debts.rows) {
-      agg[r.category] = (agg[r.category] ?? 0) + num(r.totalDebt);
+      if (r.issuer === 'BRANCH') agg.BRANCH += num(r.openDebtKd);
+      else if (r.issuer === 'DRIVER') agg.DRIVER += num(r.openDebtKd);
+      // "OTHER" (OWNER / CALL_CENTER adjustments) intentionally hidden
+      // — only field staff actually originate invoices worth displaying
+      // in the distribution chart.
     }
-    const total = Object.values(agg).reduce((a, b) => a + b, 0) || 0.01;
-    // V19.10 — only BRANCH and DRIVER issue invoices, so they are the
-    // only entities that can accumulate customer debt worth tracking
-    // here. OWNER / CALL_CENTER buckets always sum to zero in practice
-    // and were only adding visual noise to the breakdown.
+    const total = agg.BRANCH + agg.DRIVER || 0.01;
     return (['BRANCH', 'DRIVER'] as const).map((cat) => ({
       category: cat,
-      amount: agg[cat] ?? 0,
-      pct: ((agg[cat] ?? 0) / total) * 100,
+      amount: agg[cat],
+      pct: (agg[cat] / total) * 100,
     }));
   }, [debts]);
 

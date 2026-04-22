@@ -65,6 +65,10 @@ enum CashStatus {
   UNPAID
   PAID_TO_DRIVER
   HANDED_OVER_TO_OFFICE
+  // V19.11.3 — POS paid with KNET: the money never sits with the driver
+  // and never needs a manager handover. Terminal-settled electronically,
+  // already posted as POS_SALE_COMPLETED with posPaymentMethod=KNET.
+  PAID_ONLINE
 }
 
 enum ShiftStatus {

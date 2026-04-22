@@ -21,6 +21,8 @@ export declare class UnpaidInvoiceRowDto {
     actorUserRole: string | null;
     invoiceTotalKd: string;
     debtAmountKd: string;
+    paidKd: string;
+    remainingKd: string;
     entryCount: number;
     currentCustomerDebtKd: string;
     isOpen: boolean;
@@ -33,6 +35,7 @@ export declare class UnpaidInvoicesKpisDto {
     openCustomerCount: number;
     totalInvoicesKd: string;
     totalDebtKd: string;
+    totalPaidKd: string;
     openDebtKd: string;
     avgDebtPerInvoiceKd: string;
 }

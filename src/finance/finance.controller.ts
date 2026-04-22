@@ -37,6 +37,10 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { APP_BRAND } from '../common/constants/branding';
 import { ConfirmHandoverDto } from './dto/confirm-handover.dto';
 import { DebtByCategoryQueryDto } from './dto/debt-by-category-query.dto';
+import {
+  OpenDebtByIssuerQueryDto,
+  OpenDebtByIssuerResponseDto,
+} from './dto/open-debt-by-issuer.dto';
 import { DailyPosSalesQueryDto } from './dto/daily-pos-sales-query.dto';
 import {
   DriverBalanceResponseDto,
@@ -152,6 +156,27 @@ export class FinanceController {
       q.branchId,
       q.actorUserId,
     );
+  }
+
+  @Get('reports/open-debt-by-issuer')
+  @Roles(
+    SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
+    SafariRole.MANAGER,
+    SafariRole.ACCOUNTANT,
+    SafariRole.SUPERVISOR,
+    SafariRole.CALL_CENTER,
+    SafariRole.CALL_CENTER_SUPERVISOR,
+  )
+  @ApiOperation({
+    summary: `NET open debt grouped by invoice issuer (${APP_BRAND})`,
+    description:
+      'Live snapshot. Per-customer FIFO allocation of PAYMENT entries against INVOICE_SHORTFALL. Σ rows equals /unpaid-invoices openDebtKd and /collections totalMarketDebtKd.',
+  })
+  getOpenDebtByIssuer(
+    @Query() q: OpenDebtByIssuerQueryDto,
+  ): Promise<OpenDebtByIssuerResponseDto> {
+    return this.financeService.getOpenDebtByIssuer(q.branchId);
   }
 
   @Post('handover/upload-receipt')

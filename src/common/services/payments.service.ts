@@ -20,6 +20,7 @@ import {
 import { GeneralLedgerService } from '../../general-ledger/general-ledger.service';
 import { InventoryService } from '../../inventory/inventory.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { cashStatusForPaymentMethod } from '../utils/cash-status-for-method';
 
 export type CreatePaymentLinkParams = {
   orderId: string;
@@ -338,7 +339,9 @@ export class PaymentsService {
           where: { id: orderId },
           data: {
             status: OrderStatus.COMPLETED,
-            cashStatus: CashStatus.PAID_TO_DRIVER,
+            // V19.11.3 — hosted link is settled by the gateway; the
+            // driver never touches the money, so don't mark it as cash.
+            cashStatus: cashStatusForPaymentMethod(PosPaymentMethod.ONLINE),
             completedAt,
             posPaymentMethod: PosPaymentMethod.ONLINE,
             walletSettledAt: null,
@@ -515,7 +518,9 @@ export class PaymentsService {
           where: { id: orderId },
           data: {
             status: OrderStatus.COMPLETED,
-            cashStatus: CashStatus.PAID_TO_DRIVER,
+            // V19.11.3 — KNET / PAYMENT_LINK / ONLINE close electronically;
+            // only CASH keeps the legacy PAID_TO_DRIVER state.
+            cashStatus: cashStatusForPaymentMethod(method),
             completedAt,
             posPaymentMethod: method,
             walletSettledAt: null,

@@ -81,6 +81,8 @@ class UnpaidInvoiceRowDto {
     actorUserRole;
     invoiceTotalKd;
     debtAmountKd;
+    paidKd;
+    remainingKd;
     entryCount;
     currentCustomerDebtKd;
     isOpen;
@@ -159,10 +161,22 @@ __decorate([
 ], UnpaidInvoiceRowDto.prototype, "invoiceTotalKd", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)({
-        description: 'Sum of DebtLedgerEntry.amount for this invoice (KWD).',
+        description: 'Raw invoice shortfall recorded as INVOICE_SHORTFALL in DebtLedgerEntry (KWD, fixed-4).',
     }),
     __metadata("design:type", String)
 ], UnpaidInvoiceRowDto.prototype, "debtAmountKd", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({
+        description: 'V19.11.2 — Σ DebtLedgerEntry PAYMENT rows attributed to this specific invoice (KWD, fixed-4). Customer-level PAYMENTs (orderId=null) are FIFO-allocated across the customer\'s open invoices; their share surfaces here too.',
+    }),
+    __metadata("design:type", String)
+], UnpaidInvoiceRowDto.prototype, "paidKd", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({
+        description: 'V19.11.2 — Remaining open amount on this specific invoice after per-order and FIFO customer-level payments are applied (KWD, fixed-4). `max(debtAmountKd − paidKd, 0)`.',
+    }),
+    __metadata("design:type", String)
+], UnpaidInvoiceRowDto.prototype, "remainingKd", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)({
         description: 'Number of DebtLedgerEntry rows rolled into this invoice.',
@@ -171,13 +185,13 @@ __decorate([
 ], UnpaidInvoiceRowDto.prototype, "entryCount", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)({
-        description: "Customer's current open wallet debt (KWD, fixed-4).",
+        description: "Customer's current open debt across all their invoices (KWD, fixed-4).",
     }),
     __metadata("design:type", String)
 ], UnpaidInvoiceRowDto.prototype, "currentCustomerDebtKd", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)({
-        description: '`true` when the customer still has open debt (wallet.debt > 0 OR wallet.balance < 0).',
+        description: '`true` when this invoice still has a non-zero remaining balance after payment allocation.',
     }),
     __metadata("design:type", Boolean)
 ], UnpaidInvoiceRowDto.prototype, "isOpen", void 0);
@@ -192,6 +206,7 @@ class UnpaidInvoicesKpisDto {
     openCustomerCount;
     totalInvoicesKd;
     totalDebtKd;
+    totalPaidKd;
     openDebtKd;
     avgDebtPerInvoiceKd;
 }
@@ -219,11 +234,21 @@ __decorate([
     __metadata("design:type", String)
 ], UnpaidInvoicesKpisDto.prototype, "totalInvoicesKd", void 0);
 __decorate([
-    (0, swagger_1.ApiProperty)(),
+    (0, swagger_1.ApiProperty)({
+        description: 'Σ of raw INVOICE_SHORTFALL across every row (before subtracting payments).',
+    }),
     __metadata("design:type", String)
 ], UnpaidInvoicesKpisDto.prototype, "totalDebtKd", void 0);
 __decorate([
-    (0, swagger_1.ApiProperty)(),
+    (0, swagger_1.ApiProperty)({
+        description: 'V19.11.2 — Σ of payments applied to the shown invoices (per-order PAYMENT + FIFO share of customer-level PAYMENT).',
+    }),
+    __metadata("design:type", String)
+], UnpaidInvoicesKpisDto.prototype, "totalPaidKd", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({
+        description: 'Σ of remaining open amounts. Matches /collections totalMarketDebtKd.',
+    }),
     __metadata("design:type", String)
 ], UnpaidInvoicesKpisDto.prototype, "openDebtKd", void 0);
 __decorate([

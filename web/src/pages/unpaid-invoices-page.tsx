@@ -228,8 +228,14 @@ export function UnpaidInvoicesPage() {
       numeric: true,
     },
     {
-      key: 'debt',
-      label: t('unpaidInvoices.col.debt', 'Outstanding'),
+      key: 'paid',
+      label: t('unpaidInvoices.col.paid', 'Paid'),
+      align: 'end',
+      numeric: true,
+    },
+    {
+      key: 'remaining',
+      label: t('unpaidInvoices.col.remaining', 'Remaining'),
       align: 'end',
       numeric: true,
     },
@@ -430,7 +436,7 @@ export function UnpaidInvoicesPage() {
         </FilterField>
       </FilterBar>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <KpiCard
           tone="red"
           label={t('unpaidInvoices.kpiOpenDebt', 'Open debt')}
@@ -442,6 +448,19 @@ export function UnpaidInvoicesPage() {
                 defaultValue: 'Invoices: {{open}} / {{total}}',
                 open: kpis?.openInvoiceCount ?? 0,
                 total: kpis?.invoiceCount ?? 0,
+              })}
+            </span>
+          }
+        />
+        <KpiCard
+          tone="green"
+          label={t('unpaidInvoices.kpiTotalPaid', 'Collected')}
+          value={formatKwdLabel(kpis?.totalPaidKd ?? '0')}
+          icon={<CheckCircle2 className="h-4 w-4" />}
+          deltaBadge={
+            <span className="text-[10px] text-muted-foreground tabular-nums">
+              {t('unpaidInvoices.kpiTotalPaidHint', {
+                defaultValue: 'Payments attributed to these invoices',
               })}
             </span>
           }
@@ -557,8 +576,11 @@ export function UnpaidInvoicesPage() {
               <TableCell className="text-end tabular-nums">
                 {formatKwdLabel(r.invoiceTotalKd)}
               </TableCell>
+              <TableCell className="text-end tabular-nums text-emerald-600 dark:text-emerald-400">
+                {formatKwdLabel(r.paidKd)}
+              </TableCell>
               <TableCell className="text-end font-semibold tabular-nums text-red-600 dark:text-red-400">
-                {formatKwdLabel(r.debtAmountKd)}
+                {formatKwdLabel(r.remainingKd)}
               </TableCell>
               <TableCell className="text-end tabular-nums text-muted-foreground">
                 {formatKwdLabel(r.currentCustomerDebtKd)}
@@ -665,12 +687,13 @@ function printReport(args: {
         <td>${esc(r.branchName)}</td>
         <td>${esc(r.actorUserName)}</td>
         <td class="num">${money(r.invoiceTotalKd)}</td>
-        <td class="num open">${money(r.debtAmountKd)}</td>
+        <td class="num paid">${money(r.paidKd)}</td>
+        <td class="num open">${money(r.remainingKd)}</td>
         <td class="num muted">${money(r.currentCustomerDebtKd)}</td>
       </tr>`,
           )
           .join('')
-      : `<tr><td colspan="10" class="empty">${esc(t('unpaidInvoices.printNoRows', 'No rows.'))}</td></tr>`;
+      : `<tr><td colspan="11" class="empty">${esc(t('unpaidInvoices.printNoRows', 'No rows.'))}</td></tr>`;
 
   const html = `<!doctype html>
 <html lang="ar" dir="rtl">
@@ -733,7 +756,7 @@ function printReport(args: {
     .filters .v { font-weight: 600; }
     .kpis {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0,1fr));
+      grid-template-columns: repeat(5, minmax(0,1fr));
       gap: 8px;
       margin-bottom: 12px;
     }
@@ -771,6 +794,7 @@ function printReport(args: {
     td.num, th.num { text-align: end; font-variant-numeric: tabular-nums; }
     td.mono { font-variant-numeric: tabular-nums; }
     td.open { color: var(--red); font-weight: 700; }
+    td.paid { color: #047857; font-weight: 600; }
     td.muted { color: var(--muted); }
     td.empty { text-align: center; color: var(--muted); padding: 16px; }
     footer {
@@ -812,6 +836,10 @@ function printReport(args: {
         <div class="v">${money(kpis?.openDebtKd)} KD</div>
       </div>
       <div class="kpi">
+        <div class="k">${esc(t('unpaidInvoices.printTotalPaid', 'Collected'))}</div>
+        <div class="v">${money(kpis?.totalPaidKd)} KD</div>
+      </div>
+      <div class="kpi">
         <div class="k">${esc(t('unpaidInvoices.printTotalInvoices', 'Total invoices amount'))}</div>
         <div class="v">${money(kpis?.totalInvoicesKd)} KD</div>
       </div>
@@ -836,7 +864,8 @@ function printReport(args: {
           <th>${esc(t('unpaidInvoices.col.branch', 'Branch'))}</th>
           <th>${esc(t('unpaidInvoices.col.actor', 'Issuer'))}</th>
           <th class="num">${esc(t('unpaidInvoices.col.invoiceTotal', 'Invoice total'))}</th>
-          <th class="num">${esc(t('unpaidInvoices.col.debt', 'Outstanding'))}</th>
+          <th class="num">${esc(t('unpaidInvoices.col.paid', 'Paid'))}</th>
+          <th class="num">${esc(t('unpaidInvoices.col.remaining', 'Remaining'))}</th>
           <th class="num">${esc(t('unpaidInvoices.col.currentCustomerDebt', 'Customer debt'))}</th>
         </tr>
       </thead>

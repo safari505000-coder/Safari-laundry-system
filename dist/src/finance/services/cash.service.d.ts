@@ -11,7 +11,7 @@ export declare class CashService {
         from: string;
         to: string;
         rows: {
-            posPaymentMethod: "SUBSCRIPTION_WALLET" | "CASH" | "KNET" | "PAYMENT_LINK" | "DEBT_ON_ACCOUNT" | "ONLINE";
+            posPaymentMethod: "KNET" | "PAYMENT_LINK" | "ONLINE" | "SUBSCRIPTION_WALLET" | "CASH" | "DEBT_ON_ACCOUNT";
             orderCount: number;
             totalRevenue: string;
         }[];

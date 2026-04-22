@@ -8,8 +8,8 @@ export declare class BranchesController {
         updatedAt: Date;
         name: string;
         location: string;
-        isActive: boolean;
         phone: string | null;
+        isActive: boolean;
     }[]>;
     create(dto: CreateBranchDto): Promise<{
         id: string;
@@ -17,8 +17,8 @@ export declare class BranchesController {
         updatedAt: Date;
         name: string;
         location: string;
-        isActive: boolean;
         phone: string | null;
+        isActive: boolean;
     }>;
     operationsLive(): Promise<{
         branches: {

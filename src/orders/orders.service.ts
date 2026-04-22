@@ -17,6 +17,7 @@ import type { CreatePaymentLinkResult } from '../common/services/payments.servic
 import { PaymentsService } from '../common/services/payments.service';
 import { CustomerNotificationsService } from '../customer-notifications/customer-notifications.service';
 import { CustomerLedgerService } from '../customer-ledger/customer-ledger.service';
+import { cashStatusForPaymentMethod } from '../common/utils/cash-status-for-method';
 import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
 import { parseFixed4ToMinor, toMinorFromFixed4 } from '../finance/finance-money';
 import { InventoryService } from '../inventory/inventory.service';
@@ -484,7 +485,9 @@ export class OrdersService {
               serviceType,
               totalPrice: totalPriceDecimal,
               status: OrderStatus.COMPLETED,
-              cashStatus: CashStatus.PAID_TO_DRIVER,
+              // V19.11.3 — KNET and other electronic methods go straight
+              // to PAID_ONLINE so they never appear in driver-cash trails.
+              cashStatus: cashStatusForPaymentMethod(posPaymentMethodResolved),
               posPaymentMethod: posPaymentMethodResolved,
               completedAt,
               invoiceNumber: dto.invoiceNumber?.trim() || null,
@@ -1174,6 +1177,7 @@ export class OrdersService {
         driverId: true,
         status: true,
         cashStatus: true,
+        posPaymentMethod: true,
         walletSettledAt: true,
         customerId: true,
         totalPrice: true,
@@ -1207,7 +1211,7 @@ export class OrdersService {
       dto.status !== order.status &&
       order.cashStatus === CashStatus.UNPAID
     ) {
-      data.cashStatus = CashStatus.PAID_TO_DRIVER;
+      data.cashStatus = cashStatusForPaymentMethod(order.posPaymentMethod);
     }
     if (dto.status === OrderStatus.COMPLETED && dto.status !== order.status) {
       data.completedAt = new Date();

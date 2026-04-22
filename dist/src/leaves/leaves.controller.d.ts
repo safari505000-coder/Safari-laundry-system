@@ -30,9 +30,9 @@ export declare class LeavesController {
         userId: string;
         type: import("@prisma/client").$Enums.LeaveType;
         status: import("@prisma/client").$Enums.LeaveStatus;
+        reason: string | null;
         approvedById: string | null;
         approvedAt: Date | null;
-        reason: string | null;
         startDate: Date;
         endDate: Date;
         daysCount: number;
@@ -63,9 +63,9 @@ export declare class LeavesController {
         userId: string;
         type: import("@prisma/client").$Enums.LeaveType;
         status: import("@prisma/client").$Enums.LeaveStatus;
+        reason: string | null;
         approvedById: string | null;
         approvedAt: Date | null;
-        reason: string | null;
         startDate: Date;
         endDate: Date;
         daysCount: number;
@@ -96,9 +96,9 @@ export declare class LeavesController {
         userId: string;
         type: import("@prisma/client").$Enums.LeaveType;
         status: import("@prisma/client").$Enums.LeaveStatus;
+        reason: string | null;
         approvedById: string | null;
         approvedAt: Date | null;
-        reason: string | null;
         startDate: Date;
         endDate: Date;
         daysCount: number;
@@ -129,9 +129,9 @@ export declare class LeavesController {
         userId: string;
         type: import("@prisma/client").$Enums.LeaveType;
         status: import("@prisma/client").$Enums.LeaveStatus;
+        reason: string | null;
         approvedById: string | null;
         approvedAt: Date | null;
-        reason: string | null;
         startDate: Date;
         endDate: Date;
         daysCount: number;
@@ -162,9 +162,9 @@ export declare class LeavesController {
         userId: string;
         type: import("@prisma/client").$Enums.LeaveType;
         status: import("@prisma/client").$Enums.LeaveStatus;
+        reason: string | null;
         approvedById: string | null;
         approvedAt: Date | null;
-        reason: string | null;
         startDate: Date;
         endDate: Date;
         daysCount: number;
@@ -195,9 +195,9 @@ export declare class LeavesController {
         userId: string;
         type: import("@prisma/client").$Enums.LeaveType;
         status: import("@prisma/client").$Enums.LeaveStatus;
+        reason: string | null;
         approvedById: string | null;
         approvedAt: Date | null;
-        reason: string | null;
         startDate: Date;
         endDate: Date;
         daysCount: number;
@@ -228,9 +228,9 @@ export declare class LeavesController {
         userId: string;
         type: import("@prisma/client").$Enums.LeaveType;
         status: import("@prisma/client").$Enums.LeaveStatus;
+        reason: string | null;
         approvedById: string | null;
         approvedAt: Date | null;
-        reason: string | null;
         startDate: Date;
         endDate: Date;
         daysCount: number;

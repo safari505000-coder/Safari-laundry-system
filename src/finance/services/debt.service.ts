@@ -15,6 +15,10 @@ import type {
   UnpaidInvoicesQueryDto,
   UnpaidInvoicesResponseDto,
 } from '../dto/unpaid-invoices.dto';
+import type {
+  OpenDebtByIssuerResponseDto,
+  OpenDebtByIssuerRowDto,
+} from '../dto/open-debt-by-issuer.dto';
 
 @Injectable()
 export class DebtService {
@@ -349,6 +353,8 @@ export class DebtService {
           actorUserRole: actorRole,
           invoiceTotalKd: e.order.totalPrice.toString(),
           debtAmountKd: '0',
+          paidKd: '0',
+          remainingKd: '0',
           entryCount: 1,
           currentCustomerDebtKd: '0',
           isOpen: true,
@@ -357,10 +363,12 @@ export class DebtService {
       });
     }
 
-    // 3) V19.11 — pull PAYMENT entries for every order in scope AND
-    //    every customer in scope. This turns the ledger into the single
-    //    source of truth: per-invoice open = SUM(shortfall) − SUM(PAYMENT),
-    //    per-customer open = SUM(shortfall+overuse) − SUM(PAYMENT).
+    // 3) V19.11.1 — pull both per-order PAYMENTs AND customer-wide totals.
+    //    Customer-level PAYMENT rows (orderId=null, produced by CC partial-
+    //    debt-payment or subscription FIFO residual) don't map to a
+    //    specific invoice, so we allocate them FIFO against the customer's
+    //    oldest unpaid invoices before deciding which ones are "open".
+    //    This is the single source of truth shared with /collections.
     const orderIds = Array.from(byOrder.keys());
     const customerIds = Array.from(
       new Set(Array.from(byOrder.values()).map((x) => x.row.customerId)),
@@ -404,33 +412,79 @@ export class DebtService {
       perCustomer.set(g.customerId, cur);
     }
 
-    // 4) Finalize: per-invoice open-debt from the ledger, not the wallet.
+    // Remaining UNALLOCATED customer-wide open debt for each customer.
+    // This is whatever the customer still owes after their per-order
+    // payments are fully applied to the orders they target — i.e. the
+    // pool that customer-level PAYMENT rows still need to absorb.
+    const customerUnallocated = new Map<string, number>();
+    for (const cid of customerIds) {
+      const totals = perCustomer.get(cid) ?? { debt: 0, payment: 0 };
+      customerUnallocated.set(cid, Math.max(totals.debt - totals.payment, 0));
+    }
+
+    // Group orders by customer, sort oldest-first for FIFO allocation.
+    const ordersByCustomer = new Map<string, Array<(typeof byOrder extends Map<unknown, infer V> ? V : never)>>();
+    for (const v of byOrder.values()) {
+      const arr = ordersByCustomer.get(v.row.customerId) ?? [];
+      arr.push(v);
+      ordersByCustomer.set(v.row.customerId, arr);
+    }
+    for (const arr of ordersByCustomer.values()) {
+      arr.sort(
+        (a, b) =>
+          new Date(a.row.issuedAt).getTime() -
+          new Date(b.row.issuedAt).getTime(),
+      );
+    }
+
+    // 4) Finalize. Per-invoice open-debt = shortfall − per-order PAYMENT
+    //    − FIFO share of customer-level PAYMENTs. The SUM matches the
+    //    /collections red card by construction.
     const finalRows: UnpaidInvoiceRowDto[] = [];
     let totalDebt = 0;
+    let totalPaid = 0;
     let openDebt = 0;
     let totalInvoices = 0;
     let openInvoiceCount = 0;
     const openCustomers = new Set<string>();
-    for (const [, v] of byOrder) {
-      v.row.debtAmountKd = v.debtSum.toFixed(4);
-      const paidForOrder = paidByOrder.get(v.row.orderId) ?? 0;
-      const perOrderOpen = Math.max(v.debtSum - paidForOrder, 0);
-      const custTotals = perCustomer.get(v.row.customerId) ?? {
-        debt: 0,
-        payment: 0,
-      };
+    for (const [cid, arr] of ordersByCustomer) {
+      const custTotals = perCustomer.get(cid) ?? { debt: 0, payment: 0 };
       const custOpen = Math.max(custTotals.debt - custTotals.payment, 0);
-      v.row.currentCustomerDebtKd = custOpen.toFixed(4);
-      v.row.isOpen = perOrderOpen > 0.0001;
-      totalDebt += v.debtSum;
-      const invTotal = Number.parseFloat(v.row.invoiceTotalKd);
-      if (Number.isFinite(invTotal)) totalInvoices += invTotal;
-      if (v.row.isOpen) {
-        openDebt += perOrderOpen;
-        openInvoiceCount += 1;
-        openCustomers.add(v.row.customerId);
+      let remainingCustomerOpen = custOpen;
+      for (const v of arr) {
+        const paidForOrder = paidByOrder.get(v.row.orderId) ?? 0;
+        const perOrderNet = Math.max(v.debtSum - paidForOrder, 0);
+        // This invoice's share of the customer's remaining open pool,
+        // FIFO-allocated from the oldest invoice first.
+        const shareOfCustomerOpen = Math.min(perOrderNet, remainingCustomerOpen);
+        remainingCustomerOpen -= shareOfCustomerOpen;
+
+        // V19.11.2 — `paidKd` is everything that offsets this invoice:
+        //   (a) per-order PAYMENT rows attributed directly to it, plus
+        //   (b) its FIFO share of customer-level (orderId=null) PAYMENTs.
+        //   `remainingKd` is therefore `max(shortfall − paidKd, 0)` which
+        //   is what the collector still has to chase for THIS invoice.
+        const perOrderFifoShare = perOrderNet - shareOfCustomerOpen;
+        const invoicePaid = paidForOrder + perOrderFifoShare;
+        const invoiceRemaining = shareOfCustomerOpen;
+
+        v.row.debtAmountKd = v.debtSum.toFixed(4);
+        v.row.paidKd = invoicePaid.toFixed(4);
+        v.row.remainingKd = invoiceRemaining.toFixed(4);
+        v.row.currentCustomerDebtKd = custOpen.toFixed(4);
+        v.row.isOpen = shareOfCustomerOpen > 0.0001;
+
+        totalDebt += v.debtSum;
+        totalPaid += invoicePaid;
+        const invTotal = Number.parseFloat(v.row.invoiceTotalKd);
+        if (Number.isFinite(invTotal)) totalInvoices += invTotal;
+        if (v.row.isOpen) {
+          openDebt += invoiceRemaining;
+          openInvoiceCount += 1;
+          openCustomers.add(v.row.customerId);
+        }
+        finalRows.push(v.row);
       }
-      finalRows.push(v.row);
     }
 
     // 5) Sort: open invoices first, newest issuedAt first
@@ -454,10 +508,187 @@ export class DebtService {
         openCustomerCount: openCustomers.size,
         totalInvoicesKd: totalInvoices.toFixed(4),
         totalDebtKd: totalDebt.toFixed(4),
+        totalPaidKd: totalPaid.toFixed(4),
         openDebtKd: openDebt.toFixed(4),
         avgDebtPerInvoiceKd: avgDebtPerInvoice.toFixed(4),
       },
       rows: finalRows,
+    };
+  }
+
+  /**
+   * V19.11.4 — NET open debt, grouped by the invoice's original issuer
+   * (DRIVER / BRANCH / OTHER). Used by the exec dashboard
+   * "توزيع الديون" chart so it agrees with /unpaid-invoices and
+   * /collections to the last fils.
+   *
+   * Algorithm mirrors getUnpaidInvoices(): we include INVOICE_SHORTFALL
+   * entries from every role (not just DRIVER+MANAGER) so every field
+   * invoice shows up in exactly one bucket. FIFO allocation of
+   * customer-wide PAYMENTs keeps the sum equal to the red KPI.
+   */
+  async getOpenDebtByIssuer(
+    branchId?: string,
+  ): Promise<OpenDebtByIssuerResponseDto> {
+    const where: Prisma.DebtLedgerEntryWhereInput = {
+      source: DebtSource.INVOICE_SHORTFALL,
+      orderId: { not: null },
+      ...(branchId ? { branchId } : {}),
+    };
+
+    const entries = await this.prisma.debtLedgerEntry.findMany({
+      where,
+      select: {
+        orderId: true,
+        customerId: true,
+        amount: true,
+        createdAt: true,
+        actorUser: { select: { safariRole: true } },
+      },
+      take: 20_000,
+    });
+
+    type O = {
+      orderId: string;
+      customerId: string;
+      debt: number;
+      createdAt: Date;
+      issuerRole: SafariRole | null;
+    };
+    const byOrder = new Map<string, O>();
+    for (const e of entries) {
+      if (!e.orderId) continue;
+      const amt = Number.parseFloat(e.amount.toString());
+      if (!Number.isFinite(amt) || amt <= 0) continue;
+      const existing = byOrder.get(e.orderId);
+      if (existing) {
+        existing.debt += amt;
+        continue;
+      }
+      byOrder.set(e.orderId, {
+        orderId: e.orderId,
+        customerId: e.customerId,
+        debt: amt,
+        createdAt: e.createdAt,
+        issuerRole: e.actorUser?.safariRole ?? null,
+      });
+    }
+
+    const orders = Array.from(byOrder.values());
+    if (orders.length === 0) {
+      return {
+        rows: [
+          { issuer: 'DRIVER', openDebtKd: '0.0000', openInvoiceCount: 0, openCustomerCount: 0 },
+          { issuer: 'BRANCH', openDebtKd: '0.0000', openInvoiceCount: 0, openCustomerCount: 0 },
+          { issuer: 'OTHER', openDebtKd: '0.0000', openInvoiceCount: 0, openCustomerCount: 0 },
+        ],
+        totalOpenDebtKd: '0.0000',
+        openInvoiceCount: 0,
+        openCustomerCount: 0,
+        computedAt: new Date().toISOString(),
+      };
+    }
+
+    const customerIds = Array.from(new Set(orders.map((o) => o.customerId)));
+    const [paymentsByOrder, perCustomerTotals] = await Promise.all([
+      this.prisma.debtLedgerEntry.groupBy({
+        by: ['orderId'],
+        where: {
+          source: DebtSource.PAYMENT,
+          orderId: { in: orders.map((o) => o.orderId) },
+        },
+        _sum: { amount: true },
+      }),
+      this.prisma.debtLedgerEntry.groupBy({
+        by: ['customerId', 'source'],
+        where: { customerId: { in: customerIds } },
+        _sum: { amount: true },
+      }),
+    ]);
+
+    const paidByOrder = new Map<string, number>();
+    for (const g of paymentsByOrder) {
+      if (!g.orderId) continue;
+      paidByOrder.set(
+        g.orderId,
+        Number.parseFloat(g._sum.amount?.toString() ?? '0'),
+      );
+    }
+
+    const perCustomer = new Map<string, { debt: number; payment: number }>();
+    for (const g of perCustomerTotals) {
+      const cur = perCustomer.get(g.customerId) ?? { debt: 0, payment: 0 };
+      const v = Number.parseFloat(g._sum.amount?.toString() ?? '0');
+      if (!Number.isFinite(v)) continue;
+      if (g.source === DebtSource.PAYMENT) cur.payment += v;
+      else cur.debt += v;
+      perCustomer.set(g.customerId, cur);
+    }
+
+    const ordersByCustomer = new Map<string, O[]>();
+    for (const o of orders) {
+      const arr = ordersByCustomer.get(o.customerId) ?? [];
+      arr.push(o);
+      ordersByCustomer.set(o.customerId, arr);
+    }
+
+    const buckets: Record<
+      'DRIVER' | 'BRANCH' | 'OTHER',
+      { open: number; invoices: number; customers: Set<string> }
+    > = {
+      DRIVER: { open: 0, invoices: 0, customers: new Set() },
+      BRANCH: { open: 0, invoices: 0, customers: new Set() },
+      OTHER: { open: 0, invoices: 0, customers: new Set() },
+    };
+    let totalOpen = 0;
+    let totalInvoices = 0;
+    const allOpenCustomers = new Set<string>();
+
+    for (const [cid, arr] of ordersByCustomer) {
+      arr.sort(
+        (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+      );
+      const totals = perCustomer.get(cid) ?? { debt: 0, payment: 0 };
+      let pool = Math.max(totals.debt - totals.payment, 0);
+      for (const o of arr) {
+        const paid = paidByOrder.get(o.orderId) ?? 0;
+        const perOrderNet = Math.max(o.debt - paid, 0);
+        const share = Math.min(perOrderNet, pool);
+        pool -= share;
+        if (share <= 0.0001) continue;
+
+        const bucketKey: 'DRIVER' | 'BRANCH' | 'OTHER' =
+          o.issuerRole === SafariRole.DRIVER
+            ? 'DRIVER'
+            : o.issuerRole === SafariRole.MANAGER ||
+                o.issuerRole === SafariRole.SUPERVISOR
+              ? 'BRANCH'
+              : 'OTHER';
+        const b = buckets[bucketKey];
+        b.open += share;
+        b.invoices += 1;
+        b.customers.add(cid);
+        totalOpen += share;
+        totalInvoices += 1;
+        allOpenCustomers.add(cid);
+      }
+    }
+
+    const rows: OpenDebtByIssuerRowDto[] = (
+      ['DRIVER', 'BRANCH', 'OTHER'] as const
+    ).map((k) => ({
+      issuer: k,
+      openDebtKd: buckets[k].open.toFixed(4),
+      openInvoiceCount: buckets[k].invoices,
+      openCustomerCount: buckets[k].customers.size,
+    }));
+
+    return {
+      rows,
+      totalOpenDebtKd: totalOpen.toFixed(4),
+      openInvoiceCount: totalInvoices,
+      openCustomerCount: allOpenCustomers.size,
+      computedAt: new Date().toISOString(),
     };
   }
 }
