@@ -30,6 +30,7 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
     merchantId;
     secret;
     callbackPublicUrl;
+    webAppUrl;
     constructor(prisma, customerLedger, generalLedger, inventory) {
         this.prisma = prisma;
         this.customerLedger = customerLedger;
@@ -41,6 +42,7 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
         this.secret = process.env.PAYMENTS_SECRET ?? '';
         this.callbackPublicUrl = (process.env.PAYMENTS_CALLBACK_PUBLIC_URL ?? '')
             .replace(/\/$/, '');
+        this.webAppUrl = (process.env.PUBLIC_WEB_APP_URL ?? 'http://localhost:5173').replace(/\/$/, '');
     }
     paymentsMockExplicit() {
         const m = process.env.PAYMENTS_MOCK?.trim().toLowerCase();
@@ -59,31 +61,66 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
         if (this.isPublicMockCheckoutAvailable()) {
             const base = (process.env.PUBLIC_API_URL ?? 'http://localhost:3000').replace(/\/$/, '');
             const url = `${base}/api/payments/mock-checkout?orderId=${encodeURIComponent(params.orderId)}`;
-            this.logger.log(`Mock payment link for ${params.orderId} (set PAYMENTS_API_BASE_URL for production gateway)`);
-            return { url, reference: 'mock' };
+            this.logger.log(`Mock payment link for ${params.orderId} (set PAYMENTS_API_BASE_URL for UPayments)`);
+            return { url, reference: 'mock', trackId: `mock-${params.orderId}` };
         }
-        if (!this.apiKey || !this.merchantId) {
-            throw new common_1.ServiceUnavailableException('Payment link is not configured (PAYMENTS_API_BASE_URL, PAYMENTS_API_KEY, PAYMENTS_MERCHANT_ID)');
+        if (!this.apiKey) {
+            throw new common_1.ServiceUnavailableException('Payment link is not configured (PAYMENTS_API_KEY missing)');
         }
-        const callbackUrl = this.callbackPublicUrl
+        const notificationUrl = this.callbackPublicUrl
             ? `${this.callbackPublicUrl}/api/payments/callback`
             : `${process.env.PUBLIC_API_URL ?? 'http://localhost:3000'}/api/payments/callback`;
+        const returnUrl = `${this.webAppUrl}/payment/success?orderId=${encodeURIComponent(params.orderId)}`;
+        const cancelUrl = `${this.webAppUrl}/payment/failed?orderId=${encodeURIComponent(params.orderId)}`;
+        const amount = Number(params.amount.toFixed(3));
+        if (!Number.isFinite(amount) || amount <= 0) {
+            throw new common_1.BadRequestException('Invalid order amount for payment link');
+        }
+        const customerName = (params.customerName?.trim() || 'Safari Customer').slice(0, 100);
+        const customerEmail = (params.customerEmail?.trim() ||
+            `noreply+${params.orderId.slice(0, 8)}@safariomni.com`).slice(0, 120);
+        const customerMobile = normalizeKwPhone(params.customerPhone || '');
+        const customerUniqueId = (params.customerUniqueId?.trim() || params.orderId).slice(0, 20);
+        const customerExtraData = `orderId=${params.orderId}`;
         const body = {
-            merchantId: this.merchantId,
-            reference: params.orderId,
-            orderId: params.orderId,
-            amount: params.amount.toFixed(4),
-            currency: 'KWD',
-            customerPhone: normalizeKwPhone(params.customerPhone),
-            callbackUrl,
+            products: [
+                {
+                    name: 'Safari Omni Order',
+                    description: `Order ${params.orderId.slice(0, 8)}`,
+                    price: amount,
+                    quantity: 1,
+                },
+            ],
+            order: {
+                id: params.orderId,
+                reference: params.orderId.slice(0, 30),
+                description: 'Safari Omni order payment',
+                currency: 'KWD',
+                amount,
+            },
+            paymentGateway: { src: '' },
+            language: 'en',
+            reference: { id: `o${params.orderId.replace(/-/g, '')}`.slice(0, 35) },
+            customer: {
+                uniqueId: customerUniqueId,
+                name: customerName,
+                email: customerEmail,
+                mobile: customerMobile,
+            },
+            returnUrl,
+            cancelUrl,
+            notificationUrl,
+            customerExtraData,
+            paymentLinkExpiryInMinutes: 60 * 24 * 7,
         };
-        const res = await fetch(`${this.apiBase}/v1/payment-links`, {
+        const chargeUrl = `${this.apiBase}/api/v1/charge`;
+        this.logger.log(`UPayments /charge → ${chargeUrl} (order=${params.orderId}, amount=${amount})`);
+        const res = await fetch(chargeUrl, {
             method: 'POST',
             headers: {
+                Accept: 'application/json',
                 'Content-Type': 'application/json',
                 Authorization: `Bearer ${this.apiKey}`,
-                'X-Merchant-Id': this.merchantId,
-                'X-Signature': this.signPayload(JSON.stringify(body)),
             },
             body: JSON.stringify(body),
         });
@@ -93,19 +130,53 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
             json = text ? JSON.parse(text) : {};
         }
         catch {
-            throw new common_1.BadRequestException('Payments gateway returned a non-JSON response');
+            this.logger.error(`UPayments non-JSON response (status=${res.status}, ct=${res.headers.get('content-type')}): ${text.slice(0, 300)}`);
+            throw new common_1.BadRequestException('UPayments gateway returned a non-JSON response');
         }
-        if (!res.ok) {
-            throw new common_1.BadRequestException(`Payments gateway error (${res.status}): ${text.slice(0, 500)}`);
+        if (!res.ok || json.status === false) {
+            const msg = json.message ?? text.slice(0, 500);
+            this.logger.error(`UPayments /charge failed (${res.status}) for ${params.orderId}: ${msg}`);
+            throw new common_1.BadRequestException(`Payments gateway error (${res.status}): ${msg}`);
         }
-        const url = json.url ?? json.link;
+        const url = json.data?.link;
+        const trackId = json.data?.trackId;
         if (!url || typeof url !== 'string') {
-            throw new common_1.BadRequestException('Payments gateway response missing payment URL');
+            throw new common_1.BadRequestException('UPayments response missing `data.link`');
         }
         return {
             url,
-            reference: json.reference ?? json.id,
+            reference: trackId,
+            trackId: trackId ?? undefined,
         };
+    }
+    async fetchGatewayStatus(trackId) {
+        if (this.usePlaceholderGateway()) {
+            return { ok: false, data: {}, raw: null };
+        }
+        if (!this.apiKey) {
+            throw new common_1.ServiceUnavailableException('Payment inquiry is not configured (PAYMENTS_API_KEY missing)');
+        }
+        const res = await fetch(`${this.apiBase}/api/v1/get-payment-status/${encodeURIComponent(trackId)}`, {
+            method: 'GET',
+            headers: {
+                Accept: 'application/json',
+                Authorization: `Bearer ${this.apiKey}`,
+            },
+        });
+        const text = await res.text();
+        let json;
+        try {
+            json = text ? JSON.parse(text) : {};
+        }
+        catch {
+            this.logger.error(`UPayments inquiry returned non-JSON (${res.status}): ${text.slice(0, 200)}`);
+            return { ok: false, data: {}, raw: text };
+        }
+        if (!res.ok || json.status === false || !json.data) {
+            this.logger.warn(`UPayments inquiry failed for ${trackId}: ${json.message ?? text.slice(0, 200)}`);
+            return { ok: false, data: json.data ?? {}, raw: json };
+        }
+        return { ok: true, data: json.data, raw: json };
     }
     signPayload(payload) {
         return (0, node_crypto_1.createHmac)('sha256', this.secret || this.apiKey)
@@ -142,7 +213,8 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
         if (s === 'success' ||
             s === 'paid' ||
             s === 'completed' ||
-            s === 'captured') {
+            s === 'captured' ||
+            s === 'authorized') {
             return 'success';
         }
         return 'failed';
@@ -157,7 +229,10 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
                 totalPrice: true,
                 walletSettledAt: true,
                 posHostedPaymentUrl: true,
-                customer: { select: { phone: true, phone2: true } },
+                posGatewayTrackId: true,
+                customer: {
+                    select: { id: true, phone: true, phone2: true, displayName: true },
+                },
             },
         });
         if (!order) {
@@ -170,21 +245,44 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
             throw new common_1.BadRequestException('Order is already paid');
         }
         if (order.posHostedPaymentUrl) {
-            return { url: order.posHostedPaymentUrl };
+            return {
+                url: order.posHostedPaymentUrl,
+                trackId: order.posGatewayTrackId ?? undefined,
+            };
         }
         const phone = order.customer.phone?.trim() || order.customer.phone2?.trim() || '';
         const link = await this.createPaymentLink({
             orderId: order.id,
             amount: order.totalPrice,
             customerPhone: phone,
+            customerName: order.customer.displayName ?? undefined,
+            customerUniqueId: order.customer.id.slice(0, 20),
         });
         await this.prisma.order.update({
             where: { id: order.id },
-            data: { posHostedPaymentUrl: link.url },
+            data: {
+                posHostedPaymentUrl: link.url,
+                posGatewayTrackId: link.trackId ?? null,
+                posGatewayMetadata: {
+                    charge: {
+                        provider: 'upayments',
+                        trackId: link.trackId ?? null,
+                        link: link.url,
+                        createdAt: new Date().toISOString(),
+                    },
+                },
+            },
         });
         return link;
     }
-    async finalizePaidOrderFromGateway(referenceId) {
+    async findOrderByTrackId(trackId) {
+        const row = await this.prisma.order.findFirst({
+            where: { posGatewayTrackId: trackId },
+            select: { id: true },
+        });
+        return row?.id ?? null;
+    }
+    async finalizePaidOrderFromGateway(referenceId, gatewayMetadata) {
         const bundle = await this.prisma.posPaymentBundle.findUnique({
             where: { id: referenceId },
             include: {
@@ -197,13 +295,13 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
         });
         if (bundle?.orders.length) {
             for (const o of bundle.orders) {
-                await this.finalizeSinglePaidOrderFromGateway(o.id);
+                await this.finalizeSinglePaidOrderFromGateway(o.id, gatewayMetadata);
             }
             return;
         }
-        await this.finalizeSinglePaidOrderFromGateway(referenceId);
+        await this.finalizeSinglePaidOrderFromGateway(referenceId, gatewayMetadata);
     }
-    async finalizeSinglePaidOrderFromGateway(orderId) {
+    async finalizeSinglePaidOrderFromGateway(orderId, gatewayMetadata) {
         await this.prisma.$transaction(async (tx) => {
             const order = await tx.order.findUnique({
                 where: { id: orderId },
@@ -216,6 +314,7 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
                     totalPrice: true,
                     posPaymentMethod: true,
                     driverId: true,
+                    posGatewayMetadata: true,
                 },
             });
             if (!order) {
@@ -229,6 +328,7 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
             }
             const originalMethod = order.posPaymentMethod;
             const completedAt = new Date();
+            const mergedGatewayMetadata = mergeGatewayMetadata(order.posGatewayMetadata, gatewayMetadata, completedAt);
             await tx.order.update({
                 where: { id: orderId },
                 data: {
@@ -237,6 +337,9 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
                     completedAt,
                     posPaymentMethod: client_1.PosPaymentMethod.ONLINE,
                     walletSettledAt: null,
+                    ...(mergedGatewayMetadata
+                        ? { posGatewayMetadata: mergedGatewayMetadata }
+                        : {}),
                 },
             });
             const performerId = order.driverId ?? (await this.resolveFallbackPerformer(tx));
@@ -407,6 +510,9 @@ exports.PaymentsService = PaymentsService = PaymentsService_1 = __decorate([
 ], PaymentsService);
 function normalizeKwPhone(phone) {
     const d = phone.replace(/[\s-]/g, '').trim();
+    if (!d) {
+        return '';
+    }
     if (d.startsWith('+')) {
         return d;
     }
@@ -416,6 +522,21 @@ function normalizeKwPhone(phone) {
     if (d.length === 8) {
         return `+965${d}`;
     }
-    return d.startsWith('+') ? d : `+${d}`;
+    return `+${d}`;
+}
+function mergeGatewayMetadata(existing, incoming, at) {
+    if (incoming === undefined || incoming === null) {
+        return null;
+    }
+    const base = existing && typeof existing === 'object' && !Array.isArray(existing)
+        ? existing
+        : {};
+    return {
+        ...base,
+        callback: {
+            receivedAt: at.toISOString(),
+            payload: incoming,
+        },
+    };
 }
 //# sourceMappingURL=payments.service.js.map

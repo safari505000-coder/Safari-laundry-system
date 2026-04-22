@@ -7,10 +7,27 @@ export type CreatePaymentLinkParams = {
     orderId: string;
     amount: Prisma.Decimal;
     customerPhone: string;
+    customerName?: string;
+    customerEmail?: string;
+    customerUniqueId?: string;
 };
 export type CreatePaymentLinkResult = {
     url: string;
     reference?: string;
+    trackId?: string;
+};
+type UPaymentsInquiryData = {
+    trackId?: string;
+    paymentId?: string;
+    result?: string;
+    transactionId?: string;
+    reference?: string;
+    amount?: string | number;
+    customerExtraData?: string;
+    order?: {
+        id?: string;
+        reference?: string;
+    };
 };
 export declare class PaymentsService {
     private readonly prisma;
@@ -23,6 +40,7 @@ export declare class PaymentsService {
     private readonly merchantId;
     private readonly secret;
     private readonly callbackPublicUrl;
+    private readonly webAppUrl;
     constructor(prisma: PrismaService, customerLedger: CustomerLedgerService, generalLedger: GeneralLedgerService, inventory: InventoryService);
     paymentsMockExplicit(): boolean;
     usePlaceholderGateway(): boolean;
@@ -31,6 +49,11 @@ export declare class PaymentsService {
         devMock?: boolean;
     }): boolean;
     createPaymentLink(params: CreatePaymentLinkParams): Promise<CreatePaymentLinkResult>;
+    fetchGatewayStatus(trackId: string): Promise<{
+        ok: boolean;
+        data: UPaymentsInquiryData;
+        raw: unknown;
+    }>;
     private signPayload;
     verifyIntegratedCallback(dto: {
         orderId: string;
@@ -40,7 +63,8 @@ export declare class PaymentsService {
     }): boolean;
     normalizeCallbackStatus(status: string): 'success' | 'failed';
     ensurePaymentLinkForUnpaidOrder(orderId: string): Promise<CreatePaymentLinkResult>;
-    finalizePaidOrderFromGateway(referenceId: string): Promise<void>;
+    findOrderByTrackId(trackId: string): Promise<string | null>;
+    finalizePaidOrderFromGateway(referenceId: string, gatewayMetadata?: Prisma.InputJsonValue): Promise<void>;
     private finalizeSinglePaidOrderFromGateway;
     private resolveFallbackPerformer;
     manuallyMarkOrderPaidByMethod(args: {
@@ -54,3 +78,4 @@ export declare class PaymentsService {
         posPaymentMethod: PosPaymentMethod;
     }>;
 }
+export {};

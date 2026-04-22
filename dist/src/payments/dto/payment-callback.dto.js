@@ -13,6 +13,14 @@ exports.PaymentCallbackDto = void 0;
 const swagger_1 = require("@nestjs/swagger");
 const class_validator_1 = require("class-validator");
 class PaymentCallbackDto {
+    trackId;
+    TrackID;
+    paymentId;
+    result;
+    tranId;
+    reference;
+    auth;
+    customerExtraData;
     orderId;
     status;
     amount;
@@ -22,15 +30,65 @@ class PaymentCallbackDto {
 }
 exports.PaymentCallbackDto = PaymentCallbackDto;
 __decorate([
-    (0, swagger_1.ApiProperty)({ format: 'uuid' }),
+    (0, swagger_1.ApiPropertyOptional)({ description: 'UPayments charge trackId' }),
+    (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
-    (0, class_validator_1.MinLength)(1),
+    __metadata("design:type", String)
+], PaymentCallbackDto.prototype, "trackId", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ description: 'Alias: TrackID (upper-case variant)' }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], PaymentCallbackDto.prototype, "TrackID", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)(),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], PaymentCallbackDto.prototype, "paymentId", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ description: 'UPayments result code (CAPTURED, FAILED, …)' }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], PaymentCallbackDto.prototype, "result", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ description: 'Gateway transaction id' }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], PaymentCallbackDto.prototype, "tranId", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ description: 'Merchant reference echoed by gateway' }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], PaymentCallbackDto.prototype, "reference", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ description: 'Auth code returned on success' }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], PaymentCallbackDto.prototype, "auth", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({
+        description: 'Opaque data we echoed at charge time. Contains `orderId=<uuid>`.',
+    }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], PaymentCallbackDto.prototype, "customerExtraData", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ description: 'Internal order UUID (legacy contract)' }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], PaymentCallbackDto.prototype, "orderId", void 0);
 __decorate([
-    (0, swagger_1.ApiProperty)({ example: 'success', description: 'Gateway payment outcome' }),
+    (0, swagger_1.ApiPropertyOptional)({ description: 'Gateway outcome string (legacy contract)' }),
+    (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
-    (0, class_validator_1.MinLength)(1),
     __metadata("design:type", String)
 ], PaymentCallbackDto.prototype, "status", void 0);
 __decorate([
@@ -41,14 +99,16 @@ __decorate([
 ], PaymentCallbackDto.prototype, "amount", void 0);
 __decorate([
     (0, swagger_1.ApiPropertyOptional)({
-        description: 'HMAC-SHA256 hex of `${orderId}|${status}|${amount}` with PAYMENTS_SECRET',
+        description: 'HMAC-SHA256 hex of `${orderId}|${status}|${amount}` with PAYMENTS_SECRET (legacy only)',
     }),
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], PaymentCallbackDto.prototype, "signature", void 0);
 __decorate([
-    (0, swagger_1.ApiPropertyOptional)(),
+    (0, swagger_1.ApiPropertyOptional)({
+        description: 'Optional gateway-side reference (legacy).',
+    }),
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)

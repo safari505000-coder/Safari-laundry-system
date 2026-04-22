@@ -1,4 +1,4 @@
-﻿import { useTranslation } from 'react-i18next';
+import { useTranslation } from 'react-i18next';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { AuthProvider } from '@/contexts/auth-context';
@@ -22,6 +22,10 @@ import { LoanPrintPage } from '@/pages/loan-print-page';
 import { InvoicePrintPage } from '@/pages/invoice-print-page';
 import { StatementPrintPage } from '@/pages/statement-print-page';
 import { PublicStatementPage } from '@/pages/public-statement-page';
+import {
+  PaymentFailedPage,
+  PaymentSuccessPage,
+} from '@/pages/payment-result-page';
 import { ExpensesPage } from '@/pages/expenses-page';
 import { FinancialsPage } from '@/pages/financials-page';
 import { MonthlySummaryPage } from '@/pages/monthly-summary-page';
@@ -115,6 +119,19 @@ export default function App() {
               path="/public/statement/:token"
               element={<PublicStatementPage />}
             />
+            {/*
+              V1.7.0 — Customer return pages for UPayments hosted
+              checkout. `returnUrl` (success) and `cancelUrl`
+              (failure) configured in payments.service.ts send the
+              shopper's browser back to these public routes; each
+              page polls the public status endpoint every 3s and
+              flips to "paid" as soon as the server-side webhook
+              has finalized the order. Public on purpose — the
+              customer must be able to see the result on their
+              phone without logging into the ERP.
+            */}
+            <Route path="/payment/success" element={<PaymentSuccessPage />} />
+            <Route path="/payment/failed" element={<PaymentFailedPage />} />
             <Route
               element={
                 <RequireAuth>

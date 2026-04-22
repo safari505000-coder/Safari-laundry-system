@@ -26,11 +26,32 @@ export type CreatePaymentLinkParams = {
   orderId: string;
   amount: Prisma.Decimal;
   customerPhone: string;
+  customerName?: string;
+  customerEmail?: string;
+  customerUniqueId?: string;
 };
 
 export type CreatePaymentLinkResult = {
   url: string;
   reference?: string;
+  trackId?: string;
+};
+
+/**
+ * V1.7.0 — Shape of the `data` block UPayments returns from
+ * `GET /api/v1/get-payment-status/{trackId}`. Trimmed to the fields
+ * we actually consume; extra fields (auth, tranId, postDate, etc.)
+ * are kept around in `posGatewayMetadata` for audit but never read.
+ */
+type UPaymentsInquiryData = {
+  trackId?: string;
+  paymentId?: string;
+  result?: string;
+  transactionId?: string;
+  reference?: string;
+  amount?: string | number;
+  customerExtraData?: string;
+  order?: { id?: string; reference?: string };
 };
 
 @Injectable()
@@ -41,6 +62,7 @@ export class PaymentsService {
   private readonly merchantId: string;
   private readonly secret: string;
   private readonly callbackPublicUrl: string;
+  private readonly webAppUrl: string;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -57,6 +79,9 @@ export class PaymentsService {
     this.secret = process.env.PAYMENTS_SECRET ?? '';
     this.callbackPublicUrl = (process.env.PAYMENTS_CALLBACK_PUBLIC_URL ?? '')
       .replace(/\/$/, '');
+    this.webAppUrl = (
+      process.env.PUBLIC_WEB_APP_URL ?? 'http://localhost:5173'
+    ).replace(/\/$/, '');
   }
 
   /** PAYMENTS_MOCK=true /1 / yes */
@@ -80,8 +105,15 @@ export class PaymentsService {
   }
 
   /**
-   * Calls Kuwait Gateway (or compatible) API to create a hosted payment URL.
-   * Contract is normalized; adjust paths/body to match your provider’s docs.
+   * V1.7.0 — UPayments `POST /api/v1/charge` (UInterfaceV2).
+   *
+   * Creates a hosted payment link that shows every channel enabled
+   * on the merchant's UPayments account (KNET, Visa/MasterCard,
+   * Apple Pay, Google Pay, Samsung Pay). Falls through to an in-
+   * process mock checkout page when `PAYMENTS_API_BASE_URL` is unset
+   * or `PAYMENTS_MOCK=true`.
+   *
+   * Docs: https://developers.upayments.com/reference/addcharge
    */
   async createPaymentLink(
     params: CreatePaymentLinkParams,
@@ -92,82 +124,217 @@ export class PaymentsService {
       ).replace(/\/$/, '');
       const url = `${base}/api/payments/mock-checkout?orderId=${encodeURIComponent(params.orderId)}`;
       this.logger.log(
-        `Mock payment link for ${params.orderId} (set PAYMENTS_API_BASE_URL for production gateway)`,
+        `Mock payment link for ${params.orderId} (set PAYMENTS_API_BASE_URL for UPayments)`,
       );
-      return { url, reference: 'mock' };
+      return { url, reference: 'mock', trackId: `mock-${params.orderId}` };
     }
 
-    if (!this.apiKey || !this.merchantId) {
+    if (!this.apiKey) {
       throw new ServiceUnavailableException(
-        'Payment link is not configured (PAYMENTS_API_BASE_URL, PAYMENTS_API_KEY, PAYMENTS_MERCHANT_ID)',
+        'Payment link is not configured (PAYMENTS_API_KEY missing)',
       );
     }
 
-    const callbackUrl = this.callbackPublicUrl
+    const notificationUrl = this.callbackPublicUrl
       ? `${this.callbackPublicUrl}/api/payments/callback`
       : `${process.env.PUBLIC_API_URL ?? 'http://localhost:3000'}/api/payments/callback`;
+    const returnUrl = `${this.webAppUrl}/payment/success?orderId=${encodeURIComponent(params.orderId)}`;
+    const cancelUrl = `${this.webAppUrl}/payment/failed?orderId=${encodeURIComponent(params.orderId)}`;
+
+    // UPayments mandates numeric amount with up to 3 decimals (KWD fils).
+    // We pass as Number to match their schema; the authoritative
+    // amount is always re-read from the DB at finalize time, so tiny
+    // rounding drift here never silently mismatches revenue.
+    const amount = Number(params.amount.toFixed(3));
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new BadRequestException('Invalid order amount for payment link');
+    }
+
+    const customerName =
+      (params.customerName?.trim() || 'Safari Customer').slice(0, 100);
+    const customerEmail =
+      (params.customerEmail?.trim() ||
+        `noreply+${params.orderId.slice(0, 8)}@safariomni.com`).slice(0, 120);
+    const customerMobile = normalizeKwPhone(params.customerPhone || '');
+    const customerUniqueId = (
+      params.customerUniqueId?.trim() || params.orderId
+    ).slice(0, 20);
+
+    // `customerExtraData` is echoed back verbatim by UPayments in
+    // webhook + inquiry responses. We stuff our orderId there so we
+    // can correlate the webhook to the internal order even if the
+    // `order.id` field is ever dropped from the callback payload.
+    const customerExtraData = `orderId=${params.orderId}`;
 
     const body = {
-      merchantId: this.merchantId,
-      reference: params.orderId,
-      orderId: params.orderId,
-      amount: params.amount.toFixed(4),
-      currency: 'KWD',
-      customerPhone: normalizeKwPhone(params.customerPhone),
-      callbackUrl,
+      products: [
+        {
+          name: 'Safari Omni Order',
+          description: `Order ${params.orderId.slice(0, 8)}`,
+          price: amount,
+          quantity: 1,
+        },
+      ],
+      order: {
+        id: params.orderId,
+        reference: params.orderId.slice(0, 30),
+        description: 'Safari Omni order payment',
+        currency: 'KWD',
+        amount,
+      },
+      // Empty `src` tells UPayments to surface every payment method
+      // enabled on the merchant account (KNET + cards + wallets).
+      paymentGateway: { src: '' },
+      language: 'en',
+      // `reference.id` is capped at 35 chars by UPayments — a plain
+      // UUID is 36. Drop the dashes and prefix with `o` so the value
+      // still round-trips uniquely (32 hex chars, always < 35) and
+      // our correlation by `customerExtraData` is unaffected.
+      reference: { id: `o${params.orderId.replace(/-/g, '')}`.slice(0, 35) },
+      customer: {
+        uniqueId: customerUniqueId,
+        name: customerName,
+        email: customerEmail,
+        mobile: customerMobile,
+      },
+      returnUrl,
+      cancelUrl,
+      notificationUrl,
+      customerExtraData,
+      // 7 days — gives the customer time to open the WhatsApp link
+      // later (debt collection reminders often sit in a chat for a
+      // day or two before the customer pays). Under UPayments' max.
+      paymentLinkExpiryInMinutes: 60 * 24 * 7,
     };
 
-    const res = await fetch(`${this.apiBase}/v1/payment-links`, {
+    const chargeUrl = `${this.apiBase}/api/v1/charge`;
+    this.logger.log(
+      `UPayments /charge → ${chargeUrl} (order=${params.orderId}, amount=${amount})`,
+    );
+    const res = await fetch(chargeUrl, {
       method: 'POST',
       headers: {
+        // UPayments returns its HTML landing page unless Accept is
+        // explicitly set to JSON — the Content-Type on its own is not
+        // enough (see developers.upayments.com → "Test Mode").
+        Accept: 'application/json',
         'Content-Type': 'application/json',
         Authorization: `Bearer ${this.apiKey}`,
-        'X-Merchant-Id': this.merchantId,
-        'X-Signature': this.signPayload(JSON.stringify(body)),
       },
       body: JSON.stringify(body),
     });
 
     const text = await res.text();
-    let json: { url?: string; link?: string; reference?: string; id?: string };
+    let json: {
+      status?: boolean;
+      message?: string;
+      data?: { link?: string; trackId?: string };
+    };
     try {
       json = text ? (JSON.parse(text) as typeof json) : {};
     } catch {
+      this.logger.error(
+        `UPayments non-JSON response (status=${res.status}, ct=${res.headers.get('content-type')}): ${text.slice(0, 300)}`,
+      );
       throw new BadRequestException(
-        'Payments gateway returned a non-JSON response',
+        'UPayments gateway returned a non-JSON response',
       );
     }
 
-    if (!res.ok) {
+    if (!res.ok || json.status === false) {
+      const msg = json.message ?? text.slice(0, 500);
+      this.logger.error(
+        `UPayments /charge failed (${res.status}) for ${params.orderId}: ${msg}`,
+      );
       throw new BadRequestException(
-        `Payments gateway error (${res.status}): ${text.slice(0, 500)}`,
+        `Payments gateway error (${res.status}): ${msg}`,
       );
     }
 
-    const url = json.url ?? json.link;
+    const url = json.data?.link;
+    const trackId = json.data?.trackId;
     if (!url || typeof url !== 'string') {
       throw new BadRequestException(
-        'Payments gateway response missing payment URL',
+        'UPayments response missing `data.link`',
       );
     }
 
     return {
       url,
-      reference: json.reference ?? json.id,
+      reference: trackId,
+      trackId: trackId ?? undefined,
     };
   }
 
-  /** HMAC for outbound requests (if gateway requires it). */
+  /**
+   * V1.7.0 — Server-to-Server inquiry. Called from the webhook
+   * handler so we never trust the webhook body blindly; the
+   * authoritative payment state is whatever UPayments reports for
+   * this `trackId` via its own authenticated endpoint.
+   *
+   * Docs: `GET /api/v1/get-payment-status/{trackId}` (UInterfaceV2).
+   */
+  async fetchGatewayStatus(
+    trackId: string,
+  ): Promise<{ ok: boolean; data: UPaymentsInquiryData; raw: unknown }> {
+    if (this.usePlaceholderGateway()) {
+      // Dev / mock — no external call. Caller decides what to do
+      // with the empty payload; the mock-callback path uses the
+      // webhook body directly instead.
+      return { ok: false, data: {}, raw: null };
+    }
+    if (!this.apiKey) {
+      throw new ServiceUnavailableException(
+        'Payment inquiry is not configured (PAYMENTS_API_KEY missing)',
+      );
+    }
+    const res = await fetch(
+      `${this.apiBase}/api/v1/get-payment-status/${encodeURIComponent(trackId)}`,
+      {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+      },
+    );
+    const text = await res.text();
+    let json: {
+      status?: boolean;
+      message?: string;
+      data?: UPaymentsInquiryData;
+    };
+    try {
+      json = text ? (JSON.parse(text) as typeof json) : {};
+    } catch {
+      this.logger.error(
+        `UPayments inquiry returned non-JSON (${res.status}): ${text.slice(0, 200)}`,
+      );
+      return { ok: false, data: {}, raw: text };
+    }
+    if (!res.ok || json.status === false || !json.data) {
+      this.logger.warn(
+        `UPayments inquiry failed for ${trackId}: ${json.message ?? text.slice(0, 200)}`,
+      );
+      return { ok: false, data: json.data ?? {}, raw: json };
+    }
+    return { ok: true, data: json.data, raw: json };
+  }
+
+  /**
+   * Legacy HMAC signer. Kept only so the callback signature check
+   * remains functional for gateways that continue to sign webhooks
+   * `hex(HMAC_SHA256(secret, "${orderId}|${status}|${amount}"))`.
+   * UPayments does NOT use this scheme — for UPayments we rely on
+   * the Server-to-Server inquiry in `fetchGatewayStatus`.
+   */
   private signPayload(payload: string): string {
     return createHmac('sha256', this.secret || this.apiKey)
       .update(payload)
       .digest('hex');
   }
 
-  /**
-   * Verifies callback `signature` = HMAC-SHA256(secret, `${orderId}|${status}|${amount}`) hex.
-   * Align with Kuwait Gateway docs when integrating production.
-   */
+  /** Back-compat: still honoured for non-UPayments gateways + devMock. */
   verifyIntegratedCallback(dto: {
     orderId: string;
     status: string;
@@ -200,13 +367,22 @@ export class PaymentsService {
     }
   }
 
+  /**
+   * V1.7.0 — UPayments result mapping.
+   *
+   * `CAPTURED` / `AUTHORIZED` / `SUCCESS` = money captured → success.
+   * Everything else (CANCELED, DECLINED, FAILED, TIMEOUT, …) = failed.
+   * Case-insensitive so we don't get caught by provider casing
+   * quirks.
+   */
   normalizeCallbackStatus(status: string): 'success' | 'failed' {
     const s = status.trim().toLowerCase();
     if (
       s === 'success' ||
       s === 'paid' ||
       s === 'completed' ||
-      s === 'captured'
+      s === 'captured' ||
+      s === 'authorized'
     ) {
       return 'success';
     }
@@ -219,7 +395,8 @@ export class PaymentsService {
    * Returns the existing `posHostedPaymentUrl` if one was already generated
    * (idempotent + safe to call from the "Payment link" button on the
    * Collections page). Otherwise calls the gateway to mint a new link and
-   * persists it on the order row before returning.
+   * persists it on the order row (including `posGatewayTrackId` for
+   * later webhook correlation) before returning.
    *
    * Does NOT flip `posPaymentMethod` yet — the method auto-switches to
    * `ONLINE` only when the gateway callback confirms a successful payment
@@ -238,7 +415,10 @@ export class PaymentsService {
         totalPrice: true,
         walletSettledAt: true,
         posHostedPaymentUrl: true,
-        customer: { select: { phone: true, phone2: true } },
+        posGatewayTrackId: true,
+        customer: {
+          select: { id: true, phone: true, phone2: true, displayName: true },
+        },
       },
     });
     if (!order) {
@@ -251,7 +431,10 @@ export class PaymentsService {
       throw new BadRequestException('Order is already paid');
     }
     if (order.posHostedPaymentUrl) {
-      return { url: order.posHostedPaymentUrl };
+      return {
+        url: order.posHostedPaymentUrl,
+        trackId: order.posGatewayTrackId ?? undefined,
+      };
     }
     const phone =
       order.customer.phone?.trim() || order.customer.phone2?.trim() || '';
@@ -259,19 +442,50 @@ export class PaymentsService {
       orderId: order.id,
       amount: order.totalPrice,
       customerPhone: phone,
+      customerName: order.customer.displayName ?? undefined,
+      customerUniqueId: order.customer.id.slice(0, 20),
     });
     await this.prisma.order.update({
       where: { id: order.id },
-      data: { posHostedPaymentUrl: link.url },
+      data: {
+        posHostedPaymentUrl: link.url,
+        posGatewayTrackId: link.trackId ?? null,
+        posGatewayMetadata: {
+          charge: {
+            provider: 'upayments',
+            trackId: link.trackId ?? null,
+            link: link.url,
+            createdAt: new Date().toISOString(),
+          },
+        } as Prisma.InputJsonValue,
+      },
     });
     return link;
   }
 
   /**
+   * V1.7.0 — Helper for the webhook handler. Looks up the order row
+   * tied to the given `trackId` (fast path: indexed column) so the
+   * controller can finalize without an extra Prisma call.
+   */
+  async findOrderByTrackId(trackId: string): Promise<string | null> {
+    const row = await this.prisma.order.findFirst({
+      where: { posGatewayTrackId: trackId },
+      select: { id: true },
+    });
+    return row?.id ?? null;
+  }
+
+  /**
    * After gateway confirms payment: complete order + wallet settlement (same as instant POS).
    * `referenceId` may be a single order id, or a PosPaymentBundle id (multi-invoice POS).
+   * `gatewayMetadata` (optional) is merged into `Order.posGatewayMetadata`
+   * as a `callback.*` sub-tree for audit.
    */
-  async finalizePaidOrderFromGateway(referenceId: string): Promise<void> {
+  async finalizePaidOrderFromGateway(
+    referenceId: string,
+    gatewayMetadata?: Prisma.InputJsonValue,
+  ): Promise<void> {
     const bundle = await this.prisma.posPaymentBundle.findUnique({
       where: { id: referenceId },
       include: {
@@ -285,15 +499,18 @@ export class PaymentsService {
 
     if (bundle?.orders.length) {
       for (const o of bundle.orders) {
-        await this.finalizeSinglePaidOrderFromGateway(o.id);
+        await this.finalizeSinglePaidOrderFromGateway(o.id, gatewayMetadata);
       }
       return;
     }
 
-    await this.finalizeSinglePaidOrderFromGateway(referenceId);
+    await this.finalizeSinglePaidOrderFromGateway(referenceId, gatewayMetadata);
   }
 
-  private async finalizeSinglePaidOrderFromGateway(orderId: string): Promise<void> {
+  private async finalizeSinglePaidOrderFromGateway(
+    orderId: string,
+    gatewayMetadata?: Prisma.InputJsonValue,
+  ): Promise<void> {
     await this.prisma.$transaction(
       async (tx) => {
         const order = await tx.order.findUnique({
@@ -307,6 +524,7 @@ export class PaymentsService {
             totalPrice: true,
             posPaymentMethod: true,
             driverId: true,
+            posGatewayMetadata: true,
           },
         });
         if (!order) {
@@ -335,6 +553,11 @@ export class PaymentsService {
         const originalMethod = order.posPaymentMethod;
 
         const completedAt = new Date();
+        const mergedGatewayMetadata = mergeGatewayMetadata(
+          order.posGatewayMetadata,
+          gatewayMetadata,
+          completedAt,
+        );
         await tx.order.update({
           where: { id: orderId },
           data: {
@@ -345,6 +568,9 @@ export class PaymentsService {
             completedAt,
             posPaymentMethod: PosPaymentMethod.ONLINE,
             walletSettledAt: null,
+            ...(mergedGatewayMetadata
+              ? { posGatewayMetadata: mergedGatewayMetadata }
+              : {}),
           },
         });
 
@@ -620,6 +846,9 @@ export class PaymentsService {
 
 function normalizeKwPhone(phone: string): string {
   const d = phone.replace(/[\s-]/g, '').trim();
+  if (!d) {
+    return '';
+  }
   if (d.startsWith('+')) {
     return d;
   }
@@ -629,5 +858,33 @@ function normalizeKwPhone(phone: string): string {
   if (d.length === 8) {
     return `+965${d}`;
   }
-  return d.startsWith('+') ? d : `+${d}`;
+  return `+${d}`;
+}
+
+/**
+ * V1.7.0 — merge the existing `Order.posGatewayMetadata` JSON (if
+ * any) with the new callback payload, preserving the `charge.*`
+ * branch added at link creation and appending a `callback.*` branch
+ * with an ISO timestamp. Silently coerces unexpected shapes to a
+ * plain object so we never store corrupt JSON.
+ */
+function mergeGatewayMetadata(
+  existing: Prisma.JsonValue | null | undefined,
+  incoming: Prisma.InputJsonValue | undefined,
+  at: Date,
+): Prisma.InputJsonValue | null {
+  if (incoming === undefined || incoming === null) {
+    return null;
+  }
+  const base =
+    existing && typeof existing === 'object' && !Array.isArray(existing)
+      ? (existing as Record<string, Prisma.JsonValue>)
+      : {};
+  return {
+    ...base,
+    callback: {
+      receivedAt: at.toISOString(),
+      payload: incoming,
+    },
+  } as Prisma.InputJsonValue;
 }

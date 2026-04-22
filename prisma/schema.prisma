@@ -788,6 +788,22 @@ model Order {
    */
   posHostedPaymentUrl     String?           @db.Text
   /**
+   * V1.7.0 — UPayments (or compatible provider) `trackId` returned by
+   * the `/api/v1/charge` call. Persisted so we can re-query the gateway
+   * for the authoritative payment status at callback time (Server-to-
+   * Server inquiry), instead of trusting the webhook body blindly.
+   * Also used by the customer-facing `/payment/success` page to poll
+   * for settlement confirmation.
+   */
+  posGatewayTrackId       String?           @db.Text
+  /**
+   * V1.7.0 — Raw provider responses + webhook payloads for this order
+   * (charge creation, callback bodies, inquiry results). Opaque JSON
+   * kept for audit + support tickets. Never queried for business logic
+   * — authoritative state lives on `Order` + `GeneralLedgerEntry`.
+   */
+  posGatewayMetadata      Json?
+  /**
    * Manager cash handover shift that settled this CASH order into office custody.
    */
   handoverShiftId         String?           @db.Uuid
@@ -841,6 +857,7 @@ model Order {
   @@index([transferredFromDriverId])
   @@index([serialNumber])
   @@index([subscriptionId])
+  @@index([posGatewayTrackId])
 }
 
 /**
