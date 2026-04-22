@@ -48,20 +48,6 @@ export class ReportsService {
     return { from, to };
   }
 
-  /**
-   * YYYY-MM-DD in Asia/Kuwait — matches how owners reason about
-   * "قبل 1 ابريل" instead of comparing raw UTC instants to `from`
-   * (which is often Mar 31 21:00Z when the UI picked Apr 1 00:00 local).
-   */
-  private kuwaitCalendarDateKey(d: Date): string {
-    return new Intl.DateTimeFormat('sv-SE', {
-      timeZone: 'Asia/Kuwait',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(d);
-  }
-
   /** Completed sales attributed to drivers of this branch (driver.branchId). */
   private ordersForBranch(branchId?: string): Prisma.OrderWhereInput {
     if (!branchId) return {};
@@ -554,17 +540,17 @@ export class ReportsService {
   }
 
   /**
-   * V19.14.3 — Cash collected *during* [from, to] on **invoices** (orders)
-   * whose **Kuwait calendar completion date** is strictly before the
-   * Kuwait calendar date of the report `from` instant.
+   * V19.14.3 — Cash collected *during* [from, to] that retires debt on
+   * **a specific invoice** whose `completedAt` is **strictly before**
+   * `from`.
    *
-   * Fixes two owner-reported mismatches:
-   *   1. UTC vs Kuwait — `from` is often Mar 31 21:00Z for "1 Apr" picks;
-   *      comparing `completedAt < from` treated some Mar 31 Kuwait
-   *      completions incorrectly relative to "أبريل".
-   *   2. `orderId` null PAYMENT rows (CC lump-sum, subscription residual)
-   *      are NOT tied to a specific prior invoice — they no longer inflate
-   *      a line whose label promises "فواتير اكتملت قبل بداية الفترة".
+   * Customer-level PAYMENT rows (`orderId` null) — CC partial pay,
+   * residual subscription chunks, etc. — are **excluded** from this
+   * KPI. They are not "فواتير قبل الفترة" and were wrongly inflating
+   * the tile when the owner had zero pre-period invoices.
+   *
+   * If we need those amounts surfaced later, add a separate field
+   * (e.g. unallocatedDebtPaymentsKd) instead of mixing them here.
    */
   private async computeDebtPaymentsInRange(
     from: Date,
@@ -575,6 +561,7 @@ export class ReportsService {
       where: {
         source: DebtSource.PAYMENT,
         createdAt: { gte: from, lte: to },
+        orderId: { not: null },
         ...(branchId ? { branchId } : {}),
       },
       select: {
@@ -583,13 +570,11 @@ export class ReportsService {
         order: { select: { completedAt: true } },
       },
     });
-    const periodStartKey = this.kuwaitCalendarDateKey(from);
     let sum = new Prisma.Decimal(0);
     for (const p of payments) {
       if (!p.orderId) continue;
       const completedAt = p.order?.completedAt;
-      if (!completedAt) continue;
-      if (this.kuwaitCalendarDateKey(completedAt) < periodStartKey) {
+      if (completedAt && completedAt < from) {
         sum = sum.add(new Prisma.Decimal(p.amount.toString()));
       }
     }
