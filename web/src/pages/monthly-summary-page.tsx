@@ -285,7 +285,8 @@ function CollectionsStrip({
     {
       key: 'uncollected',
       labelKey: 'monthlySummary.lineUncollected',
-      fallback: 'غير المحصّل (فواتير الفترة)',
+      fallback:
+        'غير المحصّل — فواتير الفترة فقط (مكتملة وما زالت على الدين)',
       value: uncollected,
       icon: AlertTriangle,
       tone: 'amber',
@@ -293,7 +294,8 @@ function CollectionsStrip({
     {
       key: 'outstanding',
       labelKey: 'monthlySummary.lineOutstandingDebt',
-      fallback: 'إجمالي المديونية المتبقية',
+      fallback:
+        'إجمالي المديونية المتبقية — جميع الفترات (الرصيد الحالي للمجموعة)',
       value: outstanding,
       icon: Landmark,
       tone: 'red',

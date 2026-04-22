@@ -1067,8 +1067,10 @@ export const en = {
     lineCollected: 'Collected on this period’s invoices',
     lineDebtPayments:
       'Debt collected on invoices completed before this period (paid in period)',
-    lineUncollected: 'Uncollected (this period)',
-    lineOutstandingDebt: 'Total outstanding debt',
+    lineUncollected:
+      'Uncollected — this period only (completed invoices still on debt)',
+    lineOutstandingDebt:
+      'Total outstanding debt — all periods (current group balance)',
     rangeLabel: 'Period',
     generatedAt: 'Generated',
     printLoading: 'Preparing document for print...',

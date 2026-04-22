@@ -496,6 +496,10 @@ export class ReportsService {
   /**
    * V19.14 — Collection breakdown for completed orders in a range.
    *
+   * Scope is **only** invoices whose `completedAt` falls in [from, to]
+   * (the report period). Splits that slice into collected vs still
+   * uncollected (`cashStatus === UNPAID`).
+   *
    * Splits gross revenue into what was actually collected (any cash
    * status other than UNPAID — the customer paid in some form: cash
    * with the driver, card terminal, online, subscription wallet, or
@@ -584,9 +588,8 @@ export class ReportsService {
   /**
    * V19.14 — Current outstanding customer debt (point-in-time snapshot).
    *
-   * This is NOT limited to the reporting window — it's whatever
-   * customers still owe the company as of right now. Mirrors the
-   * red KPI on the Finance Overview:
+   * **All periods** — no `from` / `to` filter on the ledger. It is the
+   * group's live open receivables from the unified debt book:
    *   SUM(INVOICE_SHORTFALL + SUBSCRIPTION_OVERUSE) − SUM(PAYMENT)
    *
    * Per-branch scope filters DebtLedgerEntry.branchId. Rows with a

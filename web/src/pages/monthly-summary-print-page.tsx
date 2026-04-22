@@ -180,7 +180,7 @@ function CollectionsTable({ row }: { row: RowFormula }) {
           <td className="msp-table__label">
             {t(
               'monthlySummary.lineUncollected',
-              'غير المحصّل (فواتير الفترة)',
+              'غير المحصّل — فواتير الفترة فقط (مكتملة وما زالت على الدين)',
             )}
           </td>
           <td className="msp-table__value is-warn">
@@ -191,7 +191,7 @@ function CollectionsTable({ row }: { row: RowFormula }) {
           <td className="msp-table__label">
             {t(
               'monthlySummary.lineOutstandingDebt',
-              'إجمالي المديونية المتبقية',
+              'إجمالي المديونية المتبقية — جميع الفترات (الرصيد الحالي للمجموعة)',
             )}
           </td>
           <td className="msp-table__value is-neg">
