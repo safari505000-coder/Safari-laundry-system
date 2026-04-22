@@ -273,6 +273,30 @@ body {
   .monthly-summary-print * {
     visibility: visible !important;
   }
+  /*
+   * V19.13.5 — Defensive: pull the Monthly Summary sheet out of the
+   * normal document flow the same way `#pos-receipt-print` and
+   * `#staff-debts-print-root` do. The nuclear `body * { visibility:
+   * hidden }` above keeps every ancestor (body, #root, AuthLayout
+   * wrappers) invisible; even though the descendants are re-made
+   * visible, some browsers (Edge + certain Chrome builds) still drop
+   * the subtree because the hidden ancestors' layout boxes clip
+   * their content. Printing from a fixed-position root bypasses the
+   * ancestor clipping entirely, matching what already works for POS
+   * receipts and staff debts.
+   */
+  .monthly-summary-print {
+    position: fixed !important;
+    inset: 0 auto auto 0 !important;
+    width: 100% !important;
+    min-height: 100vh !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    color: #111827 !important;
+    z-index: 9997 !important;
+    overflow: visible !important;
+  }
   #staff-debts-print-root {
     page: staff-debts-a4;
     position: fixed;
