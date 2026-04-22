@@ -46,11 +46,12 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AuthService = void 0;
 const common_1 = require("@nestjs/common");
 const jwt_1 = require("@nestjs/jwt");
-const bcrypt = __importStar(require("bcrypt"));
 const client_1 = require("@prisma/client");
+const crypto = __importStar(require("node:crypto"));
 const finance_service_1 = require("../finance/finance.service");
 const prisma_service_1 = require("../prisma/prisma.service");
 const kuwait_time_1 = require("../common/time/kuwait-time");
+const bcrypt_service_1 = require("./bcrypt.service");
 const INSTITUTIONAL_ROLES = [
     client_1.SafariRole.OWNER,
     client_1.SafariRole.GENERAL_MANAGER,
@@ -69,19 +70,29 @@ const FIELD_OPERATOR_ROLES = [
     client_1.SafariRole.MANAGER,
 ];
 const FIELD_OPERATOR_WINDOW_START_HOUR = 7;
+const ACCESS_TOKEN_TTL = process.env.AUTH_ACCESS_TOKEN_TTL ?? '15m';
+const REFRESH_TOKEN_DAYS = Number.parseInt(process.env.AUTH_REFRESH_TOKEN_DAYS ?? '7', 10);
 function isWorkingHoursBypassed() {
     const raw = (process.env.AUTH_BYPASS_WORKING_HOURS ?? '').trim().toLowerCase();
     return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+}
+function sha256Hex(input) {
+    return crypto.createHash('sha256').update(input).digest('hex');
+}
+function generateRefreshTokenRaw() {
+    return crypto.randomBytes(48).toString('base64url');
 }
 let AuthService = AuthService_1 = class AuthService {
     prisma;
     jwt;
     financeService;
+    bcryptService;
     logger = new common_1.Logger(AuthService_1.name);
-    constructor(prisma, jwt, financeService) {
+    constructor(prisma, jwt, financeService, bcryptService) {
         this.prisma = prisma;
         this.jwt = jwt;
         this.financeService = financeService;
+        this.bcryptService = bcryptService;
     }
     async login(dto) {
         const username = dto.username.trim();
@@ -95,7 +106,7 @@ let AuthService = AuthService_1 = class AuthService {
         if (user.isActive === false) {
             throw new common_1.UnauthorizedException('This account is deactivated');
         }
-        const ok = await bcrypt.compare(dto.password, user.password);
+        const ok = await this.bcryptService.compare(dto.password, user.password);
         if (!ok) {
             throw new common_1.UnauthorizedException('Invalid username or password');
         }
@@ -135,9 +146,13 @@ let AuthService = AuthService_1 = class AuthService {
             role: roleName,
             branchId: user.branchId ?? undefined,
         };
-        const accessToken = await this.jwt.signAsync(payload);
+        const accessToken = await this.jwt.signAsync(payload, {
+            expiresIn: ACCESS_TOKEN_TTL,
+        });
+        const refreshToken = await this.issueRefreshToken(user.id);
         return {
             accessToken,
+            refreshToken,
             user: {
                 id: user.id,
                 username: user.username,
@@ -147,6 +162,84 @@ let AuthService = AuthService_1 = class AuthService {
                 branchId: user.branchId,
             },
         };
+    }
+    async refreshAccessToken(rawToken) {
+        const tokenHash = sha256Hex(rawToken);
+        const row = await this.prisma.refreshToken.findUnique({
+            where: { tokenHash },
+            include: { user: { include: { role: true } } },
+        });
+        if (!row) {
+            throw new common_1.UnauthorizedException('Invalid refresh token');
+        }
+        if (row.revokedAt) {
+            throw new common_1.UnauthorizedException('Refresh token revoked');
+        }
+        if (row.expiresAt <= new Date()) {
+            throw new common_1.UnauthorizedException('Refresh token expired');
+        }
+        if (row.usedAt) {
+            await this.prisma.refreshToken.updateMany({
+                where: { userId: row.userId, revokedAt: null },
+                data: { revokedAt: new Date() },
+            });
+            this.logger.warn(`[AUTH] refresh-token replay detected for user ${row.userId}; revoking all sessions.`);
+            throw new common_1.UnauthorizedException('Refresh token replay detected');
+        }
+        const user = row.user;
+        if (user.isActive === false) {
+            await this.prisma.refreshToken.update({
+                where: { id: row.id },
+                data: { revokedAt: new Date() },
+            });
+            throw new common_1.UnauthorizedException('This account is deactivated');
+        }
+        const roleName = user.role.name;
+        const payload = {
+            sub: user.id,
+            role: roleName,
+            branchId: user.branchId ?? undefined,
+        };
+        const accessToken = await this.jwt.signAsync(payload, {
+            expiresIn: ACCESS_TOKEN_TTL,
+        });
+        const newRaw = generateRefreshTokenRaw();
+        const newHash = sha256Hex(newRaw);
+        const newExpiresAt = new Date(Date.now() + REFRESH_TOKEN_DAYS * 24 * 60 * 60 * 1000);
+        await this.prisma.$transaction([
+            this.prisma.refreshToken.create({
+                data: {
+                    userId: user.id,
+                    tokenHash: newHash,
+                    expiresAt: newExpiresAt,
+                },
+            }),
+            this.prisma.refreshToken.update({
+                where: { id: row.id },
+                data: {
+                    usedAt: new Date(),
+                },
+            }),
+        ]);
+        return { accessToken, refreshToken: newRaw };
+    }
+    async revokeRefreshToken(rawToken) {
+        const tokenHash = sha256Hex(rawToken);
+        await this.prisma.refreshToken
+            .updateMany({
+            where: { tokenHash, revokedAt: null },
+            data: { revokedAt: new Date() },
+        })
+            .catch(() => undefined);
+    }
+    async issueRefreshToken(userId) {
+        const raw = generateRefreshTokenRaw();
+        const hash = sha256Hex(raw);
+        const expiresAt = new Date(Date.now() + REFRESH_TOKEN_DAYS * 24 * 60 * 60 * 1000);
+        await this.prisma.refreshToken.create({
+            data: { userId, tokenHash: hash, expiresAt },
+        });
+        return raw;
     }
     async recordOutsideHoursAudit(userId, role, kuwaitHourValue) {
         await this.prisma.auditLog.create({
@@ -171,6 +264,7 @@ exports.AuthService = AuthService = AuthService_1 = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
         jwt_1.JwtService,
-        finance_service_1.FinanceService])
+        finance_service_1.FinanceService,
+        bcrypt_service_1.BcryptService])
 ], AuthService);
 //# sourceMappingURL=auth.service.js.map

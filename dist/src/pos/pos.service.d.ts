@@ -16,10 +16,6 @@ export declare class PosService {
         createdAt: Date;
         phone: string;
         address: string | null;
-        wallet: {
-            balance: Prisma.Decimal;
-            debt: Prisma.Decimal;
-        } | null;
         phone2: string | null;
         displayName: string | null;
         addressArea: string | null;
@@ -27,16 +23,16 @@ export declare class PosService {
         addressStreet: string | null;
         addressAvenue: string | null;
         addressHouse: string | null;
+        wallet: {
+            balance: Prisma.Decimal;
+            debt: Prisma.Decimal;
+        } | null;
     }[]>;
     createCustomer(dto: PosCreateCustomerDto): Promise<{
         id: string;
         createdAt: Date;
         phone: string;
         address: string | null;
-        wallet: {
-            balance: Prisma.Decimal;
-            debt: Prisma.Decimal;
-        } | null;
         phone2: string | null;
         displayName: string | null;
         addressArea: string | null;
@@ -44,5 +40,9 @@ export declare class PosService {
         addressStreet: string | null;
         addressAvenue: string | null;
         addressHouse: string | null;
+        wallet: {
+            balance: Prisma.Decimal;
+            debt: Prisma.Decimal;
+        } | null;
     }>;
 }

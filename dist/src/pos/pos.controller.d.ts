@@ -13,10 +13,6 @@ export declare class PosController {
         createdAt: Date;
         phone: string;
         address: string | null;
-        wallet: {
-            balance: import("@prisma/client-runtime-utils").Decimal;
-            debt: import("@prisma/client-runtime-utils").Decimal;
-        } | null;
         phone2: string | null;
         displayName: string | null;
         addressArea: string | null;
@@ -24,16 +20,16 @@ export declare class PosController {
         addressStreet: string | null;
         addressAvenue: string | null;
         addressHouse: string | null;
+        wallet: {
+            balance: import("@prisma/client-runtime-utils").Decimal;
+            debt: import("@prisma/client-runtime-utils").Decimal;
+        } | null;
     }[]>;
     createCustomer(dto: PosCreateCustomerDto): Promise<{
         id: string;
         createdAt: Date;
         phone: string;
         address: string | null;
-        wallet: {
-            balance: import("@prisma/client-runtime-utils").Decimal;
-            debt: import("@prisma/client-runtime-utils").Decimal;
-        } | null;
         phone2: string | null;
         displayName: string | null;
         addressArea: string | null;
@@ -41,6 +37,10 @@ export declare class PosController {
         addressStreet: string | null;
         addressAvenue: string | null;
         addressHouse: string | null;
+        wallet: {
+            balance: import("@prisma/client-runtime-utils").Decimal;
+            debt: import("@prisma/client-runtime-utils").Decimal;
+        } | null;
     }>;
     getCustomerBilling(customerId: string): Promise<{
         subscriptionActive: boolean;

@@ -9,5 +9,6 @@ export declare class LoginUserDto {
 }
 export declare class LoginResponseDto {
     accessToken: string;
+    refreshToken: string;
     user: LoginUserDto;
 }

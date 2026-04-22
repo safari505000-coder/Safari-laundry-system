@@ -52,12 +52,12 @@ export declare class CallCenterService {
         createdAt: Date;
         phone: string;
         address: string | null;
+        phone2: string | null;
+        displayName: string | null;
         wallet: {
             balance: Prisma.Decimal;
             debt: Prisma.Decimal;
         } | null;
-        phone2: string | null;
-        displayName: string | null;
     }[]>;
     activateSubscription(userId: string, dto: ActivateSubscriptionDto): Promise<{
         customer: {

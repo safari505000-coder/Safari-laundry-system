@@ -35,15 +35,15 @@ export declare class OrdersController {
         driver: {
             id: string;
             username: string;
-            fullName: string;
-            employeeId: string | null;
-            jobTitle: string | null;
             phone: string | null;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
             branch: {
                 id: string;
                 name: string;
             } | null;
+            employeeId: string | null;
+            fullName: string;
+            jobTitle: string | null;
+            safariRole: import("@prisma/client").$Enums.SafariRole;
         } | null;
         lineItems: {
             id: string;
@@ -79,15 +79,15 @@ export declare class OrdersController {
         driver: {
             id: string;
             username: string;
-            fullName: string;
-            employeeId: string | null;
-            jobTitle: string | null;
             phone: string | null;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
             branch: {
                 id: string;
                 name: string;
             } | null;
+            employeeId: string | null;
+            fullName: string;
+            jobTitle: string | null;
+            safariRole: import("@prisma/client").$Enums.SafariRole;
         } | null;
         lineItems: {
             id: string;
@@ -123,15 +123,15 @@ export declare class OrdersController {
         driver: {
             id: string;
             username: string;
-            fullName: string;
-            employeeId: string | null;
-            jobTitle: string | null;
             phone: string | null;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
             branch: {
                 id: string;
                 name: string;
             } | null;
+            employeeId: string | null;
+            fullName: string;
+            jobTitle: string | null;
+            safariRole: import("@prisma/client").$Enums.SafariRole;
         } | null;
         lineItems: {
             id: string;
@@ -203,15 +203,15 @@ export declare class OrdersController {
         driver: {
             id: string;
             username: string;
-            fullName: string;
-            employeeId: string | null;
-            jobTitle: string | null;
             phone: string | null;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
             branch: {
                 id: string;
                 name: string;
             } | null;
+            employeeId: string | null;
+            fullName: string;
+            jobTitle: string | null;
+            safariRole: import("@prisma/client").$Enums.SafariRole;
         } | null;
         lineItems: {
             id: string;
@@ -247,15 +247,15 @@ export declare class OrdersController {
         driver: {
             id: string;
             username: string;
-            fullName: string;
-            employeeId: string | null;
-            jobTitle: string | null;
             phone: string | null;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
             branch: {
                 id: string;
                 name: string;
             } | null;
+            employeeId: string | null;
+            fullName: string;
+            jobTitle: string | null;
+            safariRole: import("@prisma/client").$Enums.SafariRole;
         } | null;
         lineItems: {
             id: string;
@@ -291,15 +291,15 @@ export declare class OrdersController {
         driver: {
             id: string;
             username: string;
-            fullName: string;
-            employeeId: string | null;
-            jobTitle: string | null;
             phone: string | null;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
             branch: {
                 id: string;
                 name: string;
             } | null;
+            employeeId: string | null;
+            fullName: string;
+            jobTitle: string | null;
+            safariRole: import("@prisma/client").$Enums.SafariRole;
         } | null;
         lineItems: {
             id: string;

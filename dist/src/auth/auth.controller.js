@@ -15,10 +15,12 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AuthController = void 0;
 const common_1 = require("@nestjs/common");
 const swagger_1 = require("@nestjs/swagger");
+const throttler_1 = require("@nestjs/throttler");
 const branding_1 = require("../common/constants/branding");
 const auth_service_1 = require("./auth.service");
 const login_dto_1 = require("./dto/login.dto");
 const login_response_dto_1 = require("./dto/login-response.dto");
+const refresh_token_dto_1 = require("./dto/refresh-token.dto");
 let AuthController = class AuthController {
     authService;
     constructor(authService) {
@@ -27,13 +29,26 @@ let AuthController = class AuthController {
     login(dto) {
         return this.authService.login(dto);
     }
+    refresh(dto) {
+        return this.authService.refreshAccessToken(dto.refreshToken);
+    }
+    async logout(dto) {
+        await this.authService.revokeRefreshToken(dto.refreshToken);
+    }
 };
 exports.AuthController = AuthController;
 __decorate([
     (0, common_1.Post)('login'),
+    (0, throttler_1.Throttle)({
+        default: {
+            limit: Number.parseInt(process.env.AUTH_LOGIN_THROTTLE_LIMIT ?? '', 10) || 5,
+            ttl: Number.parseInt(process.env.AUTH_LOGIN_THROTTLE_TTL_MS ?? '', 10) ||
+                60_000,
+        },
+    }),
     (0, swagger_1.ApiOperation)({
         summary: `Corporate login (${branding_1.APP_BRAND})`,
-        description: 'Authenticate with staff username and password. Returns a JWT for Bearer authorization. Initial OWNER is created by `npm run db:seed` (default username `admin`; override with SEED_ADMIN_USERNAME).',
+        description: 'Authenticate with staff username and password. Returns a short-lived access token (15 min) and an opaque refresh token. Initial OWNER is created by `npm run db:seed` (default username `admin`; override with SEED_ADMIN_USERNAME).',
     }),
     (0, swagger_1.ApiOkResponse)({ type: login_response_dto_1.LoginResponseDto }),
     (0, swagger_1.ApiUnauthorizedResponse)({ description: 'Invalid credentials' }),
@@ -43,6 +58,35 @@ __decorate([
     __metadata("design:paramtypes", [login_dto_1.LoginDto]),
     __metadata("design:returntype", Promise)
 ], AuthController.prototype, "login", null);
+__decorate([
+    (0, common_1.Post)('refresh-token'),
+    (0, common_1.HttpCode)(200),
+    (0, swagger_1.ApiOperation)({
+        summary: `Refresh access token (${branding_1.APP_BRAND})`,
+        description: 'Exchange a valid refresh token for a fresh access token. The refresh token is rotated (single-use) — on replay the entire token family for this user is revoked.',
+    }),
+    (0, swagger_1.ApiOkResponse)({ type: refresh_token_dto_1.RefreshTokenResponseDto }),
+    (0, swagger_1.ApiUnauthorizedResponse)({
+        description: 'Refresh token invalid, expired, revoked, or replayed',
+    }),
+    (0, swagger_1.ApiBadRequestResponse)({ description: 'Validation failed' }),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [refresh_token_dto_1.RefreshTokenRequestDto]),
+    __metadata("design:returntype", Promise)
+], AuthController.prototype, "refresh", null);
+__decorate([
+    (0, common_1.Post)('logout'),
+    (0, common_1.HttpCode)(204),
+    (0, swagger_1.ApiOperation)({
+        summary: `Revoke refresh token (${branding_1.APP_BRAND})`,
+        description: 'Best-effort revocation of the supplied refresh token. Always returns 204 so malformed tokens do not reveal whether they existed.',
+    }),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [refresh_token_dto_1.RefreshTokenRequestDto]),
+    __metadata("design:returntype", Promise)
+], AuthController.prototype, "logout", null);
 exports.AuthController = AuthController = __decorate([
     (0, swagger_1.ApiTags)('auth'),
     (0, common_1.Controller)('auth'),

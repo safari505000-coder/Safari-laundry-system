@@ -51,15 +51,22 @@ __decorate([
 ], LoginUserDto.prototype, "branchId", void 0);
 class LoginResponseDto {
     accessToken;
+    refreshToken;
     user;
 }
 exports.LoginResponseDto = LoginResponseDto;
 __decorate([
     (0, swagger_1.ApiProperty)({
-        description: 'Bearer token — use Authorization: Bearer <token> for protected routes (e.g. management reports)',
+        description: 'Short-lived bearer token (default 15 min) — use Authorization: Bearer <token> for protected routes (e.g. management reports)',
     }),
     __metadata("design:type", String)
 ], LoginResponseDto.prototype, "accessToken", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({
+        description: 'Opaque refresh token (default 7 days). Send to POST /api/auth/refresh-token to get a fresh access token without re-hashing the password.',
+    }),
+    __metadata("design:type", String)
+], LoginResponseDto.prototype, "refreshToken", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)({ type: LoginUserDto }),
     __metadata("design:type", LoginUserDto)

@@ -9,14 +9,14 @@ export declare class LeavesController {
         user: {
             id: string;
             username: string;
-            fullName: string;
-            employeeId: string | null;
-            jobTitle: string | null;
-            civilId: string | null;
             branch: {
                 id: string;
                 name: string;
             } | null;
+            employeeId: string | null;
+            civilId: string | null;
+            fullName: string;
+            jobTitle: string | null;
         };
         approvedBy: {
             id: string;
@@ -42,14 +42,14 @@ export declare class LeavesController {
         user: {
             id: string;
             username: string;
-            fullName: string;
-            employeeId: string | null;
-            jobTitle: string | null;
-            civilId: string | null;
             branch: {
                 id: string;
                 name: string;
             } | null;
+            employeeId: string | null;
+            civilId: string | null;
+            fullName: string;
+            jobTitle: string | null;
         };
         approvedBy: {
             id: string;
@@ -75,14 +75,14 @@ export declare class LeavesController {
         user: {
             id: string;
             username: string;
-            fullName: string;
-            employeeId: string | null;
-            jobTitle: string | null;
-            civilId: string | null;
             branch: {
                 id: string;
                 name: string;
             } | null;
+            employeeId: string | null;
+            civilId: string | null;
+            fullName: string;
+            jobTitle: string | null;
         };
         approvedBy: {
             id: string;
@@ -108,14 +108,14 @@ export declare class LeavesController {
         user: {
             id: string;
             username: string;
-            fullName: string;
-            employeeId: string | null;
-            jobTitle: string | null;
-            civilId: string | null;
             branch: {
                 id: string;
                 name: string;
             } | null;
+            employeeId: string | null;
+            civilId: string | null;
+            fullName: string;
+            jobTitle: string | null;
         };
         approvedBy: {
             id: string;
@@ -141,14 +141,14 @@ export declare class LeavesController {
         user: {
             id: string;
             username: string;
-            fullName: string;
-            employeeId: string | null;
-            jobTitle: string | null;
-            civilId: string | null;
             branch: {
                 id: string;
                 name: string;
             } | null;
+            employeeId: string | null;
+            civilId: string | null;
+            fullName: string;
+            jobTitle: string | null;
         };
         approvedBy: {
             id: string;
@@ -174,14 +174,14 @@ export declare class LeavesController {
         user: {
             id: string;
             username: string;
-            fullName: string;
-            employeeId: string | null;
-            jobTitle: string | null;
-            civilId: string | null;
             branch: {
                 id: string;
                 name: string;
             } | null;
+            employeeId: string | null;
+            civilId: string | null;
+            fullName: string;
+            jobTitle: string | null;
         };
         approvedBy: {
             id: string;
@@ -207,14 +207,14 @@ export declare class LeavesController {
         user: {
             id: string;
             username: string;
-            fullName: string;
-            employeeId: string | null;
-            jobTitle: string | null;
-            civilId: string | null;
             branch: {
                 id: string;
                 name: string;
             } | null;
+            employeeId: string | null;
+            civilId: string | null;
+            fullName: string;
+            jobTitle: string | null;
         };
         approvedBy: {
             id: string;

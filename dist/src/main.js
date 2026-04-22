@@ -32,10 +32,14 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 require("dotenv/config");
 const Sentry = __importStar(require("@sentry/node"));
 const bcrypt = __importStar(require("bcrypt"));
+const helmet_1 = __importDefault(require("helmet"));
 const common_1 = require("@nestjs/common");
 const core_1 = require("@nestjs/core");
 const client_1 = require("@prisma/client");
@@ -105,7 +109,7 @@ async function ensureDefaultOwner(prisma) {
     if (existingAdmin) {
         return;
     }
-    const passwordHash = await bcrypt.hash(DEFAULT_ADMIN_PASSWORD, 12);
+    const passwordHash = await bcrypt.hash(DEFAULT_ADMIN_PASSWORD, 10);
     await prisma.user.create({
         data: {
             username: DEFAULT_ADMIN_USERNAME,
@@ -122,6 +126,11 @@ async function bootstrap() {
     });
     app.use(express.json({ limit: '1mb' }));
     app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+    app.use((0, helmet_1.default)({
+        contentSecurityPolicy: false,
+        crossOriginEmbedderPolicy: false,
+    }));
+    app.set('trust proxy', true);
     const httpAdapterHost = app.get(core_1.HttpAdapterHost);
     const prisma = app.get(prisma_service_1.PrismaService);
     await ensureInstitutionalRoles(prisma);

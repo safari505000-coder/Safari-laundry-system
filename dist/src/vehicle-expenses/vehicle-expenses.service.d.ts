@@ -28,8 +28,8 @@ export declare class VehicleExpensesService {
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        amount: Prisma.Decimal;
         vehicleLabel: string | null;
+        amount: Prisma.Decimal;
         status: import("@prisma/client").$Enums.VehicleExpenseStatus;
         receiptUrl: string;
         expenseDate: Date;
@@ -64,8 +64,8 @@ export declare class VehicleExpensesService {
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        amount: Prisma.Decimal;
         vehicleLabel: string | null;
+        amount: Prisma.Decimal;
         status: import("@prisma/client").$Enums.VehicleExpenseStatus;
         receiptUrl: string;
         expenseDate: Date;
@@ -94,8 +94,8 @@ export declare class VehicleExpensesService {
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        amount: Prisma.Decimal;
         vehicleLabel: string | null;
+        amount: Prisma.Decimal;
         status: import("@prisma/client").$Enums.VehicleExpenseStatus;
         receiptUrl: string;
         expenseDate: Date;
@@ -127,8 +127,8 @@ export declare class VehicleExpensesService {
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        amount: Prisma.Decimal;
         vehicleLabel: string | null;
+        amount: Prisma.Decimal;
         status: import("@prisma/client").$Enums.VehicleExpenseStatus;
         receiptUrl: string;
         expenseDate: Date;

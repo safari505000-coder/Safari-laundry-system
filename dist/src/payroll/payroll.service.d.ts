@@ -14,14 +14,14 @@ export declare class PayrollService {
         deductions?: number;
         paymentDate: string;
     }): Promise<{
+        branch: {
+            id: string;
+            name: string;
+        };
         user: {
             id: string;
             username: string;
             fullName: string;
-        };
-        branch: {
-            id: string;
-            name: string;
         };
     } & {
         id: string;
@@ -36,14 +36,14 @@ export declare class PayrollService {
         paymentDate: Date;
     }>;
     markPaid(actorRole: SafariRole, id: string): Promise<{
+        branch: {
+            id: string;
+            name: string;
+        };
         user: {
             id: string;
             username: string;
             fullName: string;
-        };
-        branch: {
-            id: string;
-            name: string;
         };
     } & {
         id: string;
@@ -58,14 +58,14 @@ export declare class PayrollService {
         paymentDate: Date;
     }>;
     list(actorRole: SafariRole, fromIso: string, toIso: string, branchId?: string): Promise<({
+        branch: {
+            id: string;
+            name: string;
+        };
         user: {
             id: string;
             username: string;
             fullName: string;
-        };
-        branch: {
-            id: string;
-            name: string;
         };
     } & {
         id: string;
@@ -80,23 +80,23 @@ export declare class PayrollService {
         paymentDate: Date;
     })[]>;
     findOne(actorRole: SafariRole, actorUserId: string, id: string): Promise<{
+        branch: {
+            id: string;
+            name: string;
+            location: string;
+        };
         user: {
             id: string;
             username: string;
-            fullName: string;
             employeeId: string | null;
-            jobTitle: string | null;
             civilId: string | null;
+            fullName: string;
+            jobTitle: string | null;
             nationality: string | null;
             address: string | null;
             bankName: string | null;
             bankIban: string | null;
             hireDate: Date | null;
-        };
-        branch: {
-            id: string;
-            name: string;
-            location: string;
         };
     } & {
         id: string;

@@ -37,8 +37,8 @@ export declare class ReportsService {
                 id: string;
                 branchId: string | null;
                 username: string;
-                fullName: string;
                 employeeId: string | null;
+                fullName: string;
             } | null;
         }[];
     }>;
@@ -64,9 +64,9 @@ export declare class ReportsService {
             id: string;
             branchId: string | null;
             username: string;
-            fullName: string;
-            employeeId: string | null;
             phone: string | null;
+            employeeId: string | null;
+            fullName: string;
             safariRole: import("@prisma/client").$Enums.SafariRole;
         };
         owedToOfficeKd: string;

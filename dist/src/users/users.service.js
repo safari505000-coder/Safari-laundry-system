@@ -98,7 +98,7 @@ let UsersService = class UsersService {
             }
         }
         const roleId = await this.resolveRoleId(dto.safariRole);
-        const passwordHash = await bcrypt.hash(dto.password, 12);
+        const passwordHash = await bcrypt.hash(dto.password, 10);
         try {
             return await this.prisma.user.create({
                 data: {
@@ -184,7 +184,7 @@ let UsersService = class UsersService {
                 { connect: { id: branchPatch } };
         }
         if (dto.password !== undefined) {
-            data.password = await bcrypt.hash(dto.password, 12);
+            data.password = await bcrypt.hash(dto.password, 10);
         }
         try {
             return await this.prisma.user.update({
