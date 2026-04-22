@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import {
   CashStatus,
+  DebtSource,
   GeneralLedgerEntryType,
   LedgerTransactionType,
   ExpenseCategory,
@@ -539,6 +540,39 @@ export class ReportsService {
   }
 
   /**
+   * V19.14 — Cash collected in the range from prior debt settlements.
+   *
+   * Every `DebtLedgerEntry` with source = PAYMENT represents money
+   * the company received against an outstanding customer balance
+   * (field drivers visiting customers, payment-link settlements on
+   * old invoices, accountant write-ins from deposits, etc.).
+   *
+   * Summing these within the window gives the owner a clean answer
+   * to "how much of this month's cash came in from COLLECTING OLD
+   * DEBT" — this complements `collectedRevenueKd` which only counts
+   * this period's invoices that were paid when they were issued.
+   *
+   * Driver scope is not applicable (payments aren't attributed to a
+   * driver directly; we scope by branch via `DebtLedgerEntry.branchId`).
+   */
+  private async computeDebtPaymentsInRange(
+    from: Date,
+    to: Date,
+    branchId?: string,
+  ): Promise<string> {
+    const agg = await this.prisma.debtLedgerEntry.aggregate({
+      where: {
+        source: DebtSource.PAYMENT,
+        createdAt: { gte: from, lte: to },
+        ...(branchId ? { branchId } : {}),
+      },
+      _sum: { amount: true },
+    });
+    const total = new Prisma.Decimal(agg._sum.amount?.toString() ?? '0');
+    return total.toFixed(4);
+  }
+
+  /**
    * V19.14 — Current outstanding customer debt (point-in-time snapshot).
    *
    * This is NOT limited to the reporting window — it's whatever
@@ -581,23 +615,30 @@ export class ReportsService {
    * the same DTO.
    *
    * V19.14 — Also surfaces collection health:
-   *   • `collectedRevenueKd`   — gross that already reached the group
-   *   • `uncollectedRevenueKd` — gross still sitting on customer debt (this period)
-   *   • `outstandingDebtKd`    — total open customer debt right now
+   *   • `collectedRevenueKd`       — this period's invoices paid when issued
+   *   • `debtPaymentsReceivedKd`   — cash collected this period against OLD debts
+   *   • `uncollectedRevenueKd`     — this period's invoices still on debt
+   *   • `outstandingDebtKd`        — total open customer debt right now
    */
   async monthlySummary(fromIso: string, toIso: string) {
     const { from, to } = this.parseRange(fromIso, toIso);
-    const [consolidated, branches, consolidatedCollections, outstandingDebtKd] =
-      await Promise.all([
-        this.netProfitExecutive(fromIso, toIso),
-        this.prisma.branch.findMany({
-          where: { isActive: true },
-          orderBy: { name: 'asc' },
-          select: { id: true, name: true },
-        }),
-        this.computeCollectionsForRange(from, to),
-        this.computeOutstandingDebt(),
-      ]);
+    const [
+      consolidated,
+      branches,
+      consolidatedCollections,
+      consolidatedDebtPayments,
+      outstandingDebtKd,
+    ] = await Promise.all([
+      this.netProfitExecutive(fromIso, toIso),
+      this.prisma.branch.findMany({
+        where: { isActive: true },
+        orderBy: { name: 'asc' },
+        select: { id: true, name: true },
+      }),
+      this.computeCollectionsForRange(from, to),
+      this.computeDebtPaymentsInRange(from, to),
+      this.computeOutstandingDebt(),
+    ]);
 
     /**
      * V19.13.1 — subscription subsidy (`دعم الاشتراكات`) is a real
@@ -618,9 +659,10 @@ export class ReportsService {
 
     const perBranch = await Promise.all(
       branches.map(async (b) => {
-        const [row, coll, openDebt] = await Promise.all([
+        const [row, coll, debtPayments, openDebt] = await Promise.all([
           this.netProfitExecutive(fromIso, toIso, b.id),
           this.computeCollectionsForRange(from, to, b.id),
+          this.computeDebtPaymentsInRange(from, to, b.id),
           this.computeOutstandingDebt(b.id),
         ]);
         return {
@@ -641,6 +683,7 @@ export class ReportsService {
           ),
           collectedRevenueKd: coll.collectedRevenueKd,
           uncollectedRevenueKd: coll.uncollectedRevenueKd,
+          debtPaymentsReceivedKd: debtPayments,
           outstandingDebtKd: openDebt,
         };
       }),
@@ -666,6 +709,7 @@ export class ReportsService {
         ),
         collectedRevenueKd: consolidatedCollections.collectedRevenueKd,
         uncollectedRevenueKd: consolidatedCollections.uncollectedRevenueKd,
+        debtPaymentsReceivedKd: consolidatedDebtPayments,
         outstandingDebtKd,
       },
       branches: perBranch,

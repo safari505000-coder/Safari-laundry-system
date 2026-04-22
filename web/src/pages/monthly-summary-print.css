@@ -264,6 +264,10 @@ html.dark .monthly-summary-print {
   color: #047857;
 }
 
+.msp-table__value.is-sky {
+  color: #0369a1;
+}
+
 .msp-table__value.is-warn {
   color: #b45309;
 }
@@ -491,6 +495,10 @@ html.dark .monthly-summary-print {
 
   .msp-table__value.is-pos {
     color: #047857 !important;
+  }
+
+  .msp-table__value.is-sky {
+    color: #0369a1 !important;
   }
 
   .msp-table__value.is-warn {

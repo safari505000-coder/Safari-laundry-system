@@ -10,6 +10,7 @@ import {
   HandCoins,
   Landmark,
   Loader2,
+  PiggyBank,
   Printer,
   Receipt,
   RefreshCw,
@@ -81,6 +82,7 @@ type RowFormula = Pick<
   | 'netProfitKd'
   | 'collectedRevenueKd'
   | 'uncollectedRevenueKd'
+  | 'debtPaymentsReceivedKd'
   | 'outstandingDebtKd'
 >;
 
@@ -237,19 +239,20 @@ function LineRow({ item }: { item: LineItem }) {
 }
 
 /**
- * V19.14 — Collections strip. Shows the three fields the owner asked
- * for at a glance: how much of this period's invoices is already in
- * the till (green), how much is still uncollected from this period
- * (amber), and the grand total the company is still owed by every
- * customer right now (red). Placed below the P&L list so the card
- * still reads P&L-first, collections-next.
+ * V19.14 — Collections strip. Four tiles:
+ *   • this period's invoices already paid (green)
+ *   • cash collected THIS period against OLD debts (sky — "الأشهر اللي فاتت")
+ *   • this period's invoices still on debt (amber)
+ *   • total open customer debt right now (red)
  */
 function CollectionsStrip({
   collected,
+  debtPayments,
   uncollected,
   outstanding,
 }: {
   collected: string;
+  debtPayments: string;
   uncollected: string;
   outstanding: string;
 }) {
@@ -260,15 +263,23 @@ function CollectionsStrip({
     fallback: string;
     value: string;
     icon: typeof Banknote;
-    tone: 'green' | 'amber' | 'red';
+    tone: 'green' | 'sky' | 'amber' | 'red';
   }> = [
     {
       key: 'collected',
       labelKey: 'monthlySummary.lineCollected',
-      fallback: 'المحصّل من الفترة',
+      fallback: 'المحصّل من فواتير هذا الشهر',
       value: collected,
       icon: CheckCircle2,
       tone: 'green',
+    },
+    {
+      key: 'priorDebt',
+      labelKey: 'monthlySummary.lineDebtPayments',
+      fallback: 'تحصيل ديون أشهر سابقة (خلال الفترة)',
+      value: debtPayments,
+      icon: PiggyBank,
+      tone: 'sky',
     },
     {
       key: 'uncollected',
@@ -287,9 +298,12 @@ function CollectionsStrip({
       tone: 'red',
     },
   ];
-  const toneClass = (tone: 'green' | 'amber' | 'red') => {
+  const toneClass = (tone: 'green' | 'sky' | 'amber' | 'red') => {
     if (tone === 'green') {
       return 'border-emerald-300/60 bg-emerald-50 text-emerald-900 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200';
+    }
+    if (tone === 'sky') {
+      return 'border-sky-300/60 bg-sky-50 text-sky-900 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-200';
     }
     if (tone === 'amber') {
       return 'border-amber-300/60 bg-amber-50 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200';
@@ -301,7 +315,7 @@ function CollectionsStrip({
       <div className="mb-2 text-xs font-semibold text-muted-foreground">
         {t('monthlySummary.collectionsHeading', 'ملخّص التحصيل')}
       </div>
-      <div className="grid gap-2 sm:grid-cols-3">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         {tiles.map((tile) => {
           const Icon = tile.icon;
           return (
@@ -400,6 +414,7 @@ export function SummaryCard({
         <NetProfitRow value={row.netProfitKd} />
         <CollectionsStrip
           collected={row.collectedRevenueKd}
+          debtPayments={row.debtPaymentsReceivedKd}
           uncollected={row.uncollectedRevenueKd}
           outstanding={row.outstandingDebtKd}
         />

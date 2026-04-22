@@ -44,6 +44,7 @@ type RowFormula = Pick<
   | 'netProfitKd'
   | 'collectedRevenueKd'
   | 'uncollectedRevenueKd'
+  | 'debtPaymentsReceivedKd'
   | 'outstandingDebtKd'
 >;
 
@@ -158,10 +159,21 @@ function CollectionsTable({ row }: { row: RowFormula }) {
       <tbody>
         <tr>
           <td className="msp-table__label">
-            {t('monthlySummary.lineCollected', 'المحصّل من الفترة')}
+            {t('monthlySummary.lineCollected', 'المحصّل من فواتير هذا الشهر')}
           </td>
           <td className="msp-table__value is-pos">
             {formatKwdLabel(row.collectedRevenueKd)}
+          </td>
+        </tr>
+        <tr>
+          <td className="msp-table__label">
+            {t(
+              'monthlySummary.lineDebtPayments',
+              'تحصيل ديون أشهر سابقة (خلال الفترة)',
+            )}
+          </td>
+          <td className="msp-table__value is-sky">
+            {formatKwdLabel(row.debtPaymentsReceivedKd)}
           </td>
         </tr>
         <tr>
