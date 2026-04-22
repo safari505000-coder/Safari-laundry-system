@@ -2739,8 +2739,8 @@ export type MonthlySummaryBranchRow = {
   collectedRevenueKd: string;
   uncollectedRevenueKd: string;
   /**
-   * V19.14.2 — PAYMENT ledger rows in range whose debt is on invoices
-   * completed before the report start, or customer-level (no orderId).
+   * V19.14.3 — PAYMENT in range on orders whose Kuwait completion date
+   * is before the report period’s Kuwait start date (invoice-linked only).
    */
   debtPaymentsReceivedKd: string;
   outstandingDebtKd: string;

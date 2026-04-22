@@ -48,6 +48,20 @@ export class ReportsService {
     return { from, to };
   }
 
+  /**
+   * YYYY-MM-DD in Asia/Kuwait — matches how owners reason about
+   * "قبل 1 ابريل" instead of comparing raw UTC instants to `from`
+   * (which is often Mar 31 21:00Z when the UI picked Apr 1 00:00 local).
+   */
+  private kuwaitCalendarDateKey(d: Date): string {
+    return new Intl.DateTimeFormat('sv-SE', {
+      timeZone: 'Asia/Kuwait',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(d);
+  }
+
   /** Completed sales attributed to drivers of this branch (driver.branchId). */
   private ordersForBranch(branchId?: string): Prisma.OrderWhereInput {
     if (!branchId) return {};
@@ -540,19 +554,17 @@ export class ReportsService {
   }
 
   /**
-   * V19.14.2 — Cash collected *during* [from, to] that retires debt on
-   * invoices that were **completed before** `from` (strictly earlier),
-   * plus customer-level PAYMENT rows (`orderId` null) which are always
-   * backlog collections (CC partial pay, residual subscription closes,
-   * etc.).
+   * V19.14.3 — Cash collected *during* [from, to] on **invoices** (orders)
+   * whose **Kuwait calendar completion date** is strictly before the
+   * Kuwait calendar date of the report `from` instant.
    *
-   * V19.14.1 naïvely summed every PAYMENT in the window — that wrongly
-   * included wallet / CC settlements on **same-month** debt invoices
-   * (e.g. April invoice paid in April via call-center), which inflated
-   * "أشهر سابقة" and confused owners who just started a clean month.
-   *
-   * This filter aligns the Arabic label with the math: only money that
-   * closes receivables from **prior** completed invoices counts here.
+   * Fixes two owner-reported mismatches:
+   *   1. UTC vs Kuwait — `from` is often Mar 31 21:00Z for "1 Apr" picks;
+   *      comparing `completedAt < from` treated some Mar 31 Kuwait
+   *      completions incorrectly relative to "أبريل".
+   *   2. `orderId` null PAYMENT rows (CC lump-sum, subscription residual)
+   *      are NOT tied to a specific prior invoice — they no longer inflate
+   *      a line whose label promises "فواتير اكتملت قبل بداية الفترة".
    */
   private async computeDebtPaymentsInRange(
     from: Date,
@@ -571,16 +583,14 @@ export class ReportsService {
         order: { select: { completedAt: true } },
       },
     });
+    const periodStartKey = this.kuwaitCalendarDateKey(from);
     let sum = new Prisma.Decimal(0);
     for (const p of payments) {
-      const amt = new Prisma.Decimal(p.amount.toString());
-      if (!p.orderId) {
-        sum = sum.add(amt);
-        continue;
-      }
+      if (!p.orderId) continue;
       const completedAt = p.order?.completedAt;
-      if (completedAt && completedAt < from) {
-        sum = sum.add(amt);
+      if (!completedAt) continue;
+      if (this.kuwaitCalendarDateKey(completedAt) < periodStartKey) {
+        sum = sum.add(new Prisma.Decimal(p.amount.toString()));
       }
     }
     return sum.toFixed(4);
