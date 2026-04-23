@@ -22,6 +22,7 @@ const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
 const roles_guard_1 = require("../auth/guards/roles.guard");
 const branding_1 = require("../common/constants/branding");
 const create_loan_dto_1 = require("./dto/create-loan.dto");
+const deduct_loan_dto_1 = require("./dto/deduct-loan.dto");
 const list_loans_query_dto_1 = require("./dto/list-loans-query.dto");
 const loans_service_1 = require("./loans.service");
 let LoansController = class LoansController {
@@ -46,6 +47,9 @@ let LoansController = class LoansController {
     }
     reject(id, dto, user) {
         return this.loans.reject(user.role, user.userId, id, dto.reason);
+    }
+    deduct(id, dto, user) {
+        return this.loans.deductManual(user.role, id, dto.amount, dto.note);
     }
 };
 exports.LoansController = LoansController;
@@ -109,6 +113,20 @@ __decorate([
     __metadata("design:paramtypes", [String, create_loan_dto_1.RejectLoanDto, Object]),
     __metadata("design:returntype", void 0)
 ], LoansController.prototype, "reject", null);
+__decorate([
+    (0, common_1.Post)(':id/deduct'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
+    (0, swagger_1.ApiOperation)({
+        summary: `Manually deduct an instalment from an ACTIVE loan (${branding_1.APP_BRAND})`,
+        description: 'OWNER + GENERAL_MANAGER only. Clamps to remaining and marks SETTLED when it reaches zero. Replaces the old payroll-embedded auto-deduction.',
+    }),
+    __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
+    __param(1, (0, common_1.Body)()),
+    __param(2, (0, current_user_decorator_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, deduct_loan_dto_1.DeductLoanDto, Object]),
+    __metadata("design:returntype", void 0)
+], LoansController.prototype, "deduct", null);
 exports.LoansController = LoansController = __decorate([
     (0, swagger_1.ApiTags)('loans'),
     (0, swagger_1.ApiBearerAuth)('bearer'),

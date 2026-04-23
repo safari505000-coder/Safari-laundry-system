@@ -1,14 +1,11 @@
 import {
   ForbiddenException,
-  Inject,
   Injectable,
   NotFoundException,
-  forwardRef,
 } from '@nestjs/common';
 import { PayrollStatus, Prisma, SafariRole } from '@prisma/client';
 import { CommissionPayoutsService } from '../commissions/commission-payouts.service';
 import { DebtHoldsService } from '../debt-holds/debt-holds.service';
-import { LoansService } from '../loans/loans.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
@@ -41,8 +38,6 @@ function netPay(row: {
 export class PayrollService {
   constructor(
     private readonly prisma: PrismaService,
-    @Inject(forwardRef(() => LoansService))
-    private readonly loans: LoansService,
     private readonly commissionPayouts: CommissionPayoutsService,
     private readonly debtHolds: DebtHoldsService,
   ) {}
@@ -73,32 +68,30 @@ export class PayrollService {
     const allow = new Prisma.Decimal((dto.allowances ?? 0).toFixed(4));
     const manualDed = new Prisma.Decimal((dto.deductions ?? 0).toFixed(4));
 
-    // DUSTUR §D.5 — apply active-loan monthly installments as extra
-    // deductions in the same DB transaction so the payroll row and
-    // the loan balance updates are atomic. The driver/manager only
-    // inputs the manual deductions; the automated loan slice is
-    // layered on top.
+    // V19.19 — loans are NO LONGER auto-deducted from payroll. The
+    // Owner explicitly moved loan repayment outside the salary cycle
+    // ("السلفة تكون عند المدير العام يدوي وتنشال من كل رتب") so a
+    // re-run of the same month's payroll cannot take the instalment
+    // twice. Loan deduction is now a standalone POST /api/loans/:id/
+    // deduct action by OWNER / GM, mirroring the debt-hold release
+    // voucher flow. `deductions` here reflects ONLY the manual number
+    // the approver typed on the payroll form.
     //
-    // V19.16 — we also run three new ledgers inside the same
-    // transaction:
+    // V19.16 — we still run three ledgers inside the same transaction:
     //   1. Commission: sum of RELEASED CommissionPayouts up to cut time
     //      flows into `commissionAmount`; the matching rows are stamped
     //      PAID + payrollId before we return so replaying the cut
     //      cannot double-pay.
     //   2. Debt-hold release: any previously-HELD DebtHold whose
     //      underlying customer debt is now cleared is marked RELEASED
-    //      and surfaced via `debtReleaseAmount` (positive line).
+    //      (amount is exposed via the Debt Holds page — NOT added to
+    //      this payroll row).
     //   3. Debt-hold snapshot: if the policy is ACTIVE and the employee
     //      still has open customer debt, a fresh HELD slip is persisted
     //      and reflected in `debtHoldAmount` (negative line).
     const paymentDate = new Date(dto.paymentDate);
     return this.prisma.$transaction(async (tx) => {
-      // Loan slice (existing behaviour).
-      const loanDeduction = await this.loans.applyMonthlyDeductionForUser(
-        dto.userId,
-        tx,
-      );
-      const totalDed = manualDed.add(loanDeduction);
+      const totalDed = manualDed;
 
       // V19.16 — commission roll-up: pull RELEASED payouts earned up to
       // this cut date. We read them here BEFORE creating the payroll row

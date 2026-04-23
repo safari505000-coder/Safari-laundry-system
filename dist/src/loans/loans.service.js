@@ -138,27 +138,42 @@ let LoansService = class LoansService {
             include: LOAN_INCLUDE,
         });
     }
-    async applyMonthlyDeductionForUser(userId, prismaTx) {
-        const client = prismaTx ?? this.prisma;
-        const active = await client.employeeLoan.findMany({
-            where: { userId, status: client_1.LoanStatus.ACTIVE },
-        });
-        let total = new client_1.Prisma.Decimal(0);
-        for (const loan of active) {
-            const deduction = client_1.Prisma.Decimal.min(loan.monthlyDeduction, loan.remaining);
-            if (deduction.lte(0))
-                continue;
+    async deductManual(actorRole, loanId, amountKd, note) {
+        if (actorRole !== client_1.SafariRole.OWNER &&
+            actorRole !== client_1.SafariRole.GENERAL_MANAGER) {
+            throw new common_1.ForbiddenException('Manual loan deductions are OWNER / GM only');
+        }
+        if (!Number.isFinite(amountKd) || amountKd <= 0) {
+            throw new common_1.BadRequestException('Amount must be a positive number');
+        }
+        const requested = new client_1.Prisma.Decimal(amountKd.toFixed(4));
+        return this.prisma.$transaction(async (tx) => {
+            const loan = await tx.employeeLoan.findUnique({ where: { id: loanId } });
+            if (!loan)
+                throw new common_1.NotFoundException('Loan not found');
+            if (loan.status !== client_1.LoanStatus.ACTIVE) {
+                throw new common_1.BadRequestException('Only ACTIVE loans can be deducted manually');
+            }
+            const deduction = client_1.Prisma.Decimal.min(requested, loan.remaining);
+            if (deduction.lte(0)) {
+                throw new common_1.BadRequestException('Loan already settled');
+            }
             const nextRemaining = loan.remaining.sub(deduction);
-            await client.employeeLoan.update({
+            const nextStatus = nextRemaining.lte(0)
+                ? client_1.LoanStatus.SETTLED
+                : loan.status;
+            const trailLine = `\n\n[${new Date().toISOString().slice(0, 10)}] خصم يدوي ${deduction.toFixed(3)} د.ك${note ? ` — ${note.slice(0, 200)}` : ''}`;
+            const nextReason = (loan.reason ?? '') + trailLine;
+            return tx.employeeLoan.update({
                 where: { id: loan.id },
                 data: {
                     remaining: nextRemaining,
-                    status: nextRemaining.lte(0) ? client_1.LoanStatus.SETTLED : loan.status,
+                    status: nextStatus,
+                    reason: nextReason,
                 },
+                include: LOAN_INCLUDE,
             });
-            total = total.add(deduction);
-        }
-        return total;
+        });
     }
 };
 exports.LoansService = LoansService;

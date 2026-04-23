@@ -3585,6 +3585,24 @@ export function rejectLoan(token: string, id: string, reason: string) {
   });
 }
 
+/**
+ * V19.19 — manual loan deduction by OWNER / GM. Payroll no longer
+ * auto-deducts loan instalments; every repayment is posted explicitly
+ * here so it can't be taken twice if the same month's payroll is re-run.
+ */
+export function deductLoan(
+  token: string,
+  id: string,
+  amount: number,
+  note?: string,
+) {
+  return apiJson<LoanRow>(`/api/loans/${id}/deduct`, {
+    method: 'POST',
+    token,
+    body: JSON.stringify({ amount, ...(note ? { note } : {}) }),
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Stage-D — Payslip (single-row fetch for the A4 printable).
 // ---------------------------------------------------------------------------

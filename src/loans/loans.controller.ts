@@ -25,6 +25,7 @@ import {
   CreateLoanDto,
   RejectLoanDto,
 } from './dto/create-loan.dto';
+import { DeductLoanDto } from './dto/deduct-loan.dto';
 import { ListLoansQueryDto } from './dto/list-loans-query.dto';
 import { LoansService } from './loans.service';
 
@@ -140,6 +141,35 @@ export class LoansController {
       user.userId,
       id,
       dto.reason,
+    );
+  }
+
+  /**
+   * V19.19 — OWNER / GM post a manual deduction against an ACTIVE loan.
+   * This replaces the automatic payroll-time deduction so salaries are
+   * always clean and loan repayments never get taken twice if the same
+   * month's payroll is re-run.
+   *
+   * Roles are DELIBERATELY narrower than /approve: accountants cannot
+   * mutate the `remaining` balance here; only the Owner or GM.
+   */
+  @Post(':id/deduct')
+  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
+  @ApiOperation({
+    summary: `Manually deduct an instalment from an ACTIVE loan (${APP_BRAND})`,
+    description:
+      'OWNER + GENERAL_MANAGER only. Clamps to remaining and marks SETTLED when it reaches zero. Replaces the old payroll-embedded auto-deduction.',
+  })
+  deduct(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: DeductLoanDto,
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.loans.deductManual(
+      user.role as SafariRole,
+      id,
+      dto.amount,
+      dto.note,
     );
   }
 }

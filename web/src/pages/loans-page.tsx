@@ -4,6 +4,7 @@ import {
   BanknoteArrowUp,
   CheckCircle2,
   Loader2,
+  Minus,
   Plus,
   Printer,
   RefreshCw,
@@ -14,6 +15,7 @@ import { notify } from '@/lib/notify';
 import {
   approveLoan,
   createLoan,
+  deductLoan,
   listLoans,
   listMyLoans,
   rejectLoan,
@@ -51,10 +53,13 @@ import { Textarea } from '@/modules/shared/components/ui/textarea';
 
 /**
  * Stage-D — Employee loans. Self-service portal that flips into an
- * approver workbench when the user has `hr.loans.approve`. Approved
- * loans drop to ACTIVE immediately (their `remaining` balance is
- * eaten down automatically by the monthly payroll deduction — see
- * `PayrollService.create` + `LoansService.applyMonthlyDeductionForUser`).
+ * approver workbench when the user has `hr.loans.approve`.
+ *
+ * V19.19 — approved loans go to ACTIVE but are NO LONGER eaten down
+ * automatically by payroll. Repayment is now a standalone OWNER/GM
+ * action via the "خصم يدوي" dialog below (POST /api/loans/:id/deduct).
+ * This mirrors the debt-hold voucher flow and prevents double-deduction
+ * when the same month's payroll is re-run.
  */
 
 const STATUS_TONE: Record<LoanStatusApi, string> = {
@@ -68,7 +73,7 @@ const STATUS_TONE: Record<LoanStatusApi, string> = {
 const STATUS_LABEL: Record<LoanStatusApi, string> = {
   PENDING: 'بانتظار الاعتماد',
   APPROVED: 'معتمدة',
-  ACTIVE: 'جارية الخصم',
+  ACTIVE: 'جارية',
   SETTLED: 'مسدّدة',
   REJECTED: 'مرفوضة',
 };
@@ -76,6 +81,7 @@ const STATUS_LABEL: Record<LoanStatusApi, string> = {
 export function LoansPage() {
   const { user, token } = useAuth();
   const isApprover = can(user, 'hr.loans.approve');
+  const canDeduct = can(user, 'hr.loans.deduct');
 
   const [rows, setRows] = useState<LoanRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -92,6 +98,11 @@ export function LoansPage() {
   const [actionBusy, setActionBusy] = useState<string | null>(null);
   const [rejectFor, setRejectFor] = useState<LoanRow | null>(null);
   const [rejectReason, setRejectReason] = useState('');
+
+  // V19.19 — manual deduction dialog state (OWNER / GM only).
+  const [deductFor, setDeductFor] = useState<LoanRow | null>(null);
+  const [deductAmount, setDeductAmount] = useState('');
+  const [deductNote, setDeductNote] = useState('');
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -192,6 +203,40 @@ export function LoansPage() {
       setActionBusy(null);
     }
   }, [token, rejectFor, rejectReason, load]);
+
+  const onDeduct = useCallback(async () => {
+    if (!token || !deductFor) return;
+    const amount = Number(deductAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      notify.error('المبلغ غير صحيح');
+      return;
+    }
+    const remaining = Number(deductFor.remaining);
+    if (amount > remaining + 0.0005) {
+      notify.error(
+        `المبلغ يتجاوز المتبقي (${remaining.toFixed(3)} د.ك)`,
+      );
+      return;
+    }
+    setActionBusy(deductFor.id);
+    try {
+      await deductLoan(
+        token,
+        deductFor.id,
+        amount,
+        deductNote.trim() || undefined,
+      );
+      notify.success('تم تسجيل الخصم اليدوي');
+      setDeductFor(null);
+      setDeductAmount('');
+      setDeductNote('');
+      await load();
+    } catch (e) {
+      notify.error(e, { fallback: 'فشل تسجيل الخصم' });
+    } finally {
+      setActionBusy(null);
+    }
+  }, [token, deductFor, deductAmount, deductNote, load]);
 
   const monthlyPreview = useMemo(() => {
     const a = Number(form.amount);
@@ -351,6 +396,7 @@ export function LoansPage() {
                               className="h-7 text-emerald-300 border-emerald-500/40"
                               disabled={actionBusy === r.id}
                               onClick={() => void onApprove(r.id)}
+                              title="اعتماد"
                             >
                               <CheckCircle2 className="h-3.5 w-3.5" />
                             </Button>
@@ -363,10 +409,30 @@ export function LoansPage() {
                                 setRejectFor(r);
                                 setRejectReason('');
                               }}
+                              title="رفض"
                             >
                               <XCircle className="h-3.5 w-3.5" />
                             </Button>
                           </>
+                        ) : null}
+                        {canDeduct && r.status === 'ACTIVE' ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-sky-300 border-sky-500/40"
+                            disabled={actionBusy === r.id}
+                            onClick={() => {
+                              setDeductFor(r);
+                              setDeductAmount(
+                                Number(r.monthlyDeduction).toFixed(3),
+                              );
+                              setDeductNote('');
+                            }}
+                            title="خصم يدوي"
+                          >
+                            <Minus className="h-3.5 w-3.5" />
+                            <span className="ms-1 text-xs">خصم</span>
+                          </Button>
                         ) : null}
                         <Link
                           to={`/loans/${r.id}/print`}
@@ -479,6 +545,102 @@ export function LoansPage() {
               disabled={actionBusy !== null}
             >
               رفض
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* V19.19 — Manual deduction dialog (OWNER / GM only) */}
+      <Dialog
+        open={deductFor !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeductFor(null);
+            setDeductAmount('');
+            setDeductNote('');
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>خصم يدوي من السلفة</DialogTitle>
+          </DialogHeader>
+          {deductFor ? (
+            <div className="space-y-3">
+              <div className="rounded-md border border-slate-700 bg-slate-800/40 p-3 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">الموظف</span>
+                  <span className="text-slate-100">
+                    {deductFor.user.fullName}
+                  </span>
+                </div>
+                <div className="mt-1 flex items-center justify-between">
+                  <span className="text-slate-400">أصل السلفة</span>
+                  <span className="font-mono tabular-nums text-slate-200">
+                    {Number(deductFor.amount).toFixed(3)} د.ك
+                  </span>
+                </div>
+                <div className="mt-1 flex items-center justify-between">
+                  <span className="text-slate-400">المتبقي حالياً</span>
+                  <span className="font-mono tabular-nums text-amber-300">
+                    {Number(deductFor.remaining).toFixed(3)} د.ك
+                  </span>
+                </div>
+                <div className="mt-1 flex items-center justify-between">
+                  <span className="text-slate-400">القسط الشهري المقترح</span>
+                  <span className="font-mono tabular-nums text-slate-300">
+                    {Number(deductFor.monthlyDeduction).toFixed(3)} د.ك
+                  </span>
+                </div>
+              </div>
+              <div>
+                <Label>المبلغ المخصوم (د.ك)</Label>
+                <Input
+                  type="number"
+                  step="0.001"
+                  min="0"
+                  max={Number(deductFor.remaining).toFixed(3)}
+                  value={deductAmount}
+                  onChange={(e) => setDeductAmount(e.target.value)}
+                />
+                <p className="mt-1 text-xs text-slate-500">
+                  الحد الأقصى: {Number(deductFor.remaining).toFixed(3)} د.ك
+                </p>
+              </div>
+              <div>
+                <Label>ملاحظة (اختياري)</Label>
+                <Textarea
+                  rows={2}
+                  placeholder="مثال: كاش مستلم — إيصال رقم 482"
+                  value={deductNote}
+                  onChange={(e) => setDeductNote(e.target.value)}
+                />
+              </div>
+              <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
+                الخصم خارج دورة الراتب — لن يظهر كخصم في مسير الرواتب.
+                يُنزل فقط من المتبقي، ويُختم «مسدّدة» تلقائياً عند الصفر.
+              </div>
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDeductFor(null);
+                setDeductAmount('');
+                setDeductNote('');
+              }}
+            >
+              إلغاء
+            </Button>
+            <Button
+              onClick={() => void onDeduct()}
+              disabled={actionBusy !== null}
+            >
+              {actionBusy !== null ? (
+                <Loader2 className="ms-1 h-4 w-4 animate-spin" />
+              ) : null}
+              تأكيد الخصم
             </Button>
           </DialogFooter>
         </DialogContent>

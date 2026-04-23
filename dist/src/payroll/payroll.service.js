@@ -8,16 +8,12 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
-var __param = (this && this.__param) || function (paramIndex, decorator) {
-    return function (target, key) { decorator(target, key, paramIndex); }
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PayrollService = void 0;
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
 const commission_payouts_service_1 = require("../commissions/commission-payouts.service");
 const debt_holds_service_1 = require("../debt-holds/debt-holds.service");
-const loans_service_1 = require("../loans/loans.service");
 const prisma_service_1 = require("../prisma/prisma.service");
 function netPay(row) {
     const commission = row.commissionAmount ?? new client_1.Prisma.Decimal(0);
@@ -32,12 +28,10 @@ function netPay(row) {
 }
 let PayrollService = class PayrollService {
     prisma;
-    loans;
     commissionPayouts;
     debtHolds;
-    constructor(prisma, loans, commissionPayouts, debtHolds) {
+    constructor(prisma, commissionPayouts, debtHolds) {
         this.prisma = prisma;
-        this.loans = loans;
         this.commissionPayouts = commissionPayouts;
         this.debtHolds = debtHolds;
     }
@@ -55,8 +49,7 @@ let PayrollService = class PayrollService {
         const manualDed = new client_1.Prisma.Decimal((dto.deductions ?? 0).toFixed(4));
         const paymentDate = new Date(dto.paymentDate);
         return this.prisma.$transaction(async (tx) => {
-            const loanDeduction = await this.loans.applyMonthlyDeductionForUser(dto.userId, tx);
-            const totalDed = manualDed.add(loanDeduction);
+            const totalDed = manualDed;
             const commissionSnapshot = await this.commissionPayouts.sumReleasedForUser(dto.userId, paymentDate);
             const commission = new client_1.Prisma.Decimal(commissionSnapshot.sumKd);
             await this.debtHolds.releaseSettledHolds(dto.userId, tx);
@@ -208,9 +201,7 @@ let PayrollService = class PayrollService {
 exports.PayrollService = PayrollService;
 exports.PayrollService = PayrollService = __decorate([
     (0, common_1.Injectable)(),
-    __param(1, (0, common_1.Inject)((0, common_1.forwardRef)(() => loans_service_1.LoansService))),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
-        loans_service_1.LoansService,
         commission_payouts_service_1.CommissionPayoutsService,
         debt_holds_service_1.DebtHoldsService])
 ], PayrollService);

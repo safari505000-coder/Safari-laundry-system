@@ -1,14 +1,12 @@
 import { Prisma, SafariRole } from '@prisma/client';
 import { CommissionPayoutsService } from '../commissions/commission-payouts.service';
 import { DebtHoldsService } from '../debt-holds/debt-holds.service';
-import { LoansService } from '../loans/loans.service';
 import { PrismaService } from '../prisma/prisma.service';
 export declare class PayrollService {
     private readonly prisma;
-    private readonly loans;
     private readonly commissionPayouts;
     private readonly debtHolds;
-    constructor(prisma: PrismaService, loans: LoansService, commissionPayouts: CommissionPayoutsService, debtHolds: DebtHoldsService);
+    constructor(prisma: PrismaService, commissionPayouts: CommissionPayoutsService, debtHolds: DebtHoldsService);
     private assertOwnerOrManager;
     create(actorRole: SafariRole, dto: {
         userId: string;

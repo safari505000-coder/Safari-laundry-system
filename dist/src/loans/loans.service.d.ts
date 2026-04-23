@@ -39,6 +39,6 @@ export declare class LoansService {
     findOne(actorRole: SafariRole, actorUserId: string, id: string): Promise<LoanRow>;
     approve(actorRole: SafariRole, actorUserId: string, id: string): Promise<LoanRow>;
     reject(actorRole: SafariRole, actorUserId: string, id: string, reason: string): Promise<LoanRow>;
-    applyMonthlyDeductionForUser(userId: string, prismaTx?: Prisma.TransactionClient): Promise<Prisma.Decimal>;
+    deductManual(actorRole: SafariRole, loanId: string, amountKd: number, note?: string): Promise<LoanRow>;
 }
 export {};

@@ -291,6 +291,12 @@ export const ACCESS = {
   // staff can submit a request for themselves.
   'hr.loans.view': withExec('ACCOUNTANT'),
   'hr.loans.approve': withExec('ACCOUNTANT'),
+  // V19.19 — manual loan deduction. DELIBERATELY tighter than
+  // `hr.loans.approve`: the Owner asked that only OWNER + GENERAL_MANAGER
+  // be able to actually take money off a loan balance, so the Accountant
+  // (who can approve requests) cannot mutate `remaining` here. This is
+  // the UI counterpart of `POST /api/loans/:id/deduct`.
+  'hr.loans.deduct': ['OWNER', 'GENERAL_MANAGER'] satisfies readonly SafariRole[],
   // V19.4 — CALL_CENTER removed per the "CC cleanup" product decision:
   // loans/advances are handled by HR + accountant; the call-centre agent
   // should not see loan balances or submit requests from the CC shell.

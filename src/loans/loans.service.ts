@@ -173,37 +173,76 @@ export class LoansService {
   }
 
   /**
-   * Deduct this month's installment from every ACTIVE loan owned by
-   * `userId`. Called from PayrollService.create when a new payroll row
-   * is booked. Returns the total KD to add to that payroll's
-   * `deductions` column. Any loan whose remaining would hit zero is
-   * marked SETTLED.
+   * V19.19 — manual loan deduction by OWNER / GENERAL_MANAGER.
+   *
+   * The previous `applyMonthlyDeductionForUser` path (which payroll
+   * called automatically inside `PayrollService.create`) was removed
+   * because it could double-deduct an instalment when the same month's
+   * payroll was run twice. The Owner explicitly asked that loans be
+   * handled OUTSIDE the payroll cycle so salary goes out clean and the
+   * loan repayment is a standalone manual event — mirroring the debt-
+   * hold "release then disburse" split.
+   *
+   * This handler clamps the requested amount to `remaining`, drops
+   * `remaining` accordingly, and auto-flips `status` to SETTLED when it
+   * reaches zero. No new table is added: the audit trail is the
+   * `remaining` delta + `updatedAt` on EmployeeLoan, plus the optional
+   * note surfaced on the loan row.
    */
-  async applyMonthlyDeductionForUser(
-    userId: string,
-    prismaTx?: Prisma.TransactionClient,
-  ): Promise<Prisma.Decimal> {
-    const client = prismaTx ?? this.prisma;
-    const active = await client.employeeLoan.findMany({
-      where: { userId, status: LoanStatus.ACTIVE },
-    });
-    let total = new Prisma.Decimal(0);
-    for (const loan of active) {
-      const deduction = Prisma.Decimal.min(
-        loan.monthlyDeduction,
-        loan.remaining,
+  async deductManual(
+    actorRole: SafariRole,
+    loanId: string,
+    amountKd: number,
+    note?: string,
+  ): Promise<LoanRow> {
+    if (
+      actorRole !== SafariRole.OWNER &&
+      actorRole !== SafariRole.GENERAL_MANAGER
+    ) {
+      throw new ForbiddenException(
+        'Manual loan deductions are OWNER / GM only',
       );
-      if (deduction.lte(0)) continue;
+    }
+    if (!Number.isFinite(amountKd) || amountKd <= 0) {
+      throw new BadRequestException('Amount must be a positive number');
+    }
+    const requested = new Prisma.Decimal(amountKd.toFixed(4));
+
+    return this.prisma.$transaction(async (tx) => {
+      const loan = await tx.employeeLoan.findUnique({ where: { id: loanId } });
+      if (!loan) throw new NotFoundException('Loan not found');
+      if (loan.status !== LoanStatus.ACTIVE) {
+        throw new BadRequestException(
+          'Only ACTIVE loans can be deducted manually',
+        );
+      }
+      const deduction = Prisma.Decimal.min(requested, loan.remaining);
+      if (deduction.lte(0)) {
+        throw new BadRequestException('Loan already settled');
+      }
       const nextRemaining = loan.remaining.sub(deduction);
-      await client.employeeLoan.update({
+      const nextStatus = nextRemaining.lte(0)
+        ? LoanStatus.SETTLED
+        : loan.status;
+
+      // We keep a lightweight trail inside `rejectedReason` would be
+      // confusing; instead we append a dated note to `reason` so the
+      // approver can see what was paid manually without a new table.
+      // Example: "original reason\n\n[2026-04-23] خصم يدوي 12.500 KD — cash"
+      const trailLine = `\n\n[${new Date().toISOString().slice(0, 10)}] خصم يدوي ${deduction.toFixed(
+        3,
+      )} د.ك${note ? ` — ${note.slice(0, 200)}` : ''}`;
+      const nextReason = (loan.reason ?? '') + trailLine;
+
+      return tx.employeeLoan.update({
         where: { id: loan.id },
         data: {
           remaining: nextRemaining,
-          status: nextRemaining.lte(0) ? LoanStatus.SETTLED : loan.status,
+          status: nextStatus,
+          reason: nextReason,
         },
+        include: LOAN_INCLUDE,
       });
-      total = total.add(deduction);
-    }
-    return total;
+    });
   }
 }
