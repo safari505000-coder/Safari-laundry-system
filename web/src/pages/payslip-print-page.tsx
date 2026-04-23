@@ -60,12 +60,29 @@ export function PayslipPrintPage() {
     };
   }, [token, id]);
 
-  const { basic, net } = useMemo(() => {
-    if (!row) return { basic: 0, net: 0 };
+  const { basic, net, commission, debtHold, debtRelease } = useMemo(() => {
+    if (!row) {
+      return { basic: 0, net: 0, commission: 0, debtHold: 0, debtRelease: 0 };
+    }
     const b = Number.parseFloat(row.basicSalary);
     const a = Number.parseFloat(row.allowances);
     const d = Number.parseFloat(row.deductions);
-    return { basic: b, net: b + a - d };
+    const c = Number.parseFloat(row.commissionAmount ?? '0');
+    const h = Number.parseFloat(row.debtHoldAmount ?? '0');
+    const r = Number.parseFloat(row.debtReleaseAmount ?? '0');
+    return {
+      basic: b,
+      commission: Number.isFinite(c) ? c : 0,
+      debtHold: Number.isFinite(h) ? h : 0,
+      debtRelease: Number.isFinite(r) ? r : 0,
+      net:
+        b +
+        a +
+        (Number.isFinite(c) ? c : 0) +
+        (Number.isFinite(r) ? r : 0) -
+        d -
+        (Number.isFinite(h) ? h : 0),
+    };
   }, [row]);
 
   if (loading) {
@@ -156,12 +173,36 @@ export function PayslipPrintPage() {
                 +{KD(row.allowances)}
               </td>
             </tr>
+            {commission > 0 && (
+              <tr>
+                <td>العمولة</td>
+                <td style={{ textAlign: 'end', color: '#15803d' }}>
+                  +{KD(row.commissionAmount ?? '0')}
+                </td>
+              </tr>
+            )}
+            {debtRelease > 0 && (
+              <tr>
+                <td>تحرير محجوز المديونية</td>
+                <td style={{ textAlign: 'end', color: '#15803d' }}>
+                  +{KD(row.debtReleaseAmount ?? '0')}
+                </td>
+              </tr>
+            )}
             <tr>
               <td>الاستقطاعات</td>
               <td style={{ textAlign: 'end', color: '#b91c1c' }}>
                 −{KD(row.deductions)}
               </td>
             </tr>
+            {debtHold > 0 && (
+              <tr>
+                <td>محجوز المديونية (معلّق حتى التحصيل)</td>
+                <td style={{ textAlign: 'end', color: '#b45309' }}>
+                  −{KD(row.debtHoldAmount ?? '0')}
+                </td>
+              </tr>
+            )}
           </tbody>
           <tfoot>
             <tr>

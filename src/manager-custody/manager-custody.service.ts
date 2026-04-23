@@ -340,6 +340,75 @@ export class ManagerCustodyService {
   }
 
   /**
+   * V19.17 — Driver-facing "my cash-handover receipts" list.
+   *
+   * Returns every ManagerCashCustody bag attributed to `driverId` as
+   * the originating driver (i.e. every formal cash handover they
+   * performed to a branch manager). Drivers call this to enumerate
+   * their own receipts and open each one as a formal printable
+   * voucher (سند استلام رسمي). The payload is the same `CustodyRowDto`
+   * used by the manager + owner views; RBAC is applied at the
+   * controller level (SafariRole.DRIVER with `userId === driverId`).
+   */
+  async listByDriver(driverId: string): Promise<CustodyRowDto[]> {
+    const rows = await this.prisma.managerCashCustody.findMany({
+      where: { driverId },
+      orderBy: { receivedFromDriverAt: 'desc' },
+      take: 200,
+      include: {
+        manager: {
+          select: { id: true, fullName: true, username: true, phone: true },
+        },
+        driver: { select: { id: true, fullName: true, username: true } },
+        branch: { select: { id: true, name: true } },
+        shift: { select: { id: true, endedAt: true, startedAt: true } },
+      },
+    });
+    return rows.map((r) => this.toRow(r));
+  }
+
+  /**
+   * V19.17 — single-bag lookup used by the printable receipt page.
+   * Access control: the requester must be either the driver who
+   * handed the cash over, the manager who received it, or a
+   * privileged back-office role (ACCOUNTANT / GENERAL_MANAGER /
+   * OWNER). Anyone else is denied, even if they guessed the UUID.
+   */
+  async findByIdForReceipt(
+    custodyId: string,
+    actorUserId: string,
+    actorRole: SafariRole,
+  ): Promise<CustodyRowDto> {
+    const bag = await this.prisma.managerCashCustody.findUnique({
+      where: { id: custodyId },
+      include: {
+        manager: {
+          select: { id: true, fullName: true, username: true, phone: true },
+        },
+        driver: { select: { id: true, fullName: true, username: true } },
+        branch: { select: { id: true, name: true } },
+        shift: { select: { id: true, endedAt: true, startedAt: true } },
+      },
+    });
+    if (!bag) throw new NotFoundException('Custody bag not found.');
+
+    const privileged: SafariRole[] = [
+      SafariRole.OWNER,
+      SafariRole.GENERAL_MANAGER,
+      SafariRole.ACCOUNTANT,
+    ];
+    const isPrivileged = privileged.includes(actorRole);
+    const isDriver = bag.driverId === actorUserId;
+    const isManager = bag.managerId === actorUserId;
+    if (!isPrivileged && !isDriver && !isManager) {
+      throw new ForbiddenException(
+        'You are not authorised to read this cash-handover receipt.',
+      );
+    }
+    return this.toRow(bag);
+  }
+
+  /**
    * Owner / Accountant aging view — "Cash Held by Managers".
    * Returns unsettled bags (PENDING_DEPOSIT or AWAITING_VERIFICATION) with age +
    * a roll-up summary (overdue >24h highlighted in the UI).

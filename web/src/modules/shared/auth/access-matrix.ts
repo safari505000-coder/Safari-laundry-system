@@ -118,6 +118,16 @@ export const ACCESS = {
   'liveMonitor.view': ['OWNER'] satisfies readonly SafariRole[],
   'payroll.view': EXEC_PAIR,
   'fixedExpenses.view': EXEC_PAIR,
+  // V19.16 — System settings dashboard + sub-pages. OWNER/GM only for
+  // all the system-wide knobs (master toggles, commission rules, debt
+  // hold policy). The two ledger reports (commission payouts + debt
+  // holds) are open to ACCOUNTANT/MANAGER as well because they need
+  // visibility for payroll sign-off.
+  'settings.dashboard.view': EXEC_PAIR,
+  'settings.commissionRules.manage': EXEC_PAIR,
+  'settings.debtHoldPolicy.manage': EXEC_PAIR,
+  'commissionPayouts.view': withExec('ACCOUNTANT', 'MANAGER'),
+  'debtHolds.view': withExec('ACCOUNTANT', 'MANAGER'),
   'branches.manage': EXEC_PAIR,
   'manageItems.edit': EXEC_PAIR,
   'ownerDashboard.view': EXEC_PAIR,
@@ -140,7 +150,10 @@ export const ACCESS = {
   'inventory.catalog.view': withExec('ACCOUNTANT'),
   'inventory.catalog.manage': ['ACCOUNTANT'] satisfies readonly SafariRole[],
   'inventory.movements.view': withExec('ACCOUNTANT'),
-  'inventory.stockOut': ['ACCOUNTANT', 'MANAGER'] satisfies readonly SafariRole[],
+  'inventory.stockOut': [
+    'ACCOUNTANT',
+    'MANAGER',
+  ] satisfies readonly SafariRole[],
   'inventory.adjust': ['ACCOUNTANT'] satisfies readonly SafariRole[],
   'inventory.transfer': ['ACCOUNTANT'] satisfies readonly SafariRole[],
   'inventory.stocktake': ['ACCOUNTANT'] satisfies readonly SafariRole[],
@@ -162,17 +175,25 @@ export const ACCESS = {
   'vehicleExpenses.submit': [
     'FLEET_SUPERVISOR',
   ] satisfies readonly SafariRole[],
-  'vehicleExpenses.mine': [
-    'FLEET_SUPERVISOR',
-  ] satisfies readonly SafariRole[],
+  'vehicleExpenses.mine': ['FLEET_SUPERVISOR'] satisfies readonly SafariRole[],
   'vehicleExpenses.approval.view': withExec('ACCOUNTANT'),
-  'vehicleExpenses.approval.act': ['ACCOUNTANT'] satisfies readonly SafariRole[],
+  'vehicleExpenses.approval.act': [
+    'ACCOUNTANT',
+  ] satisfies readonly SafariRole[],
   'vehicleExpenses.report.view': withExec('ACCOUNTANT'),
   'whatsappTools.use': withExec('CALL_CENTER', 'CALL_CENTER_SUPERVISOR'),
-  // Safari Pulse driver radar — OWNER only. Backend guards
-  // `/api/finance/driver-monitoring` with @Roles(OWNER), so the UI
-  // must stay locked down to match (no more CC/Accountant bypass).
-  'driverMonitor.view': ['OWNER'] satisfies readonly SafariRole[],
+  // V19.14 — Driver tracking screen.
+  //
+  // UI access is opened for OWNER + GENERAL_MANAGER + CALL_CENTER +
+  // CALL_CENTER_SUPERVISOR so the map surface is visible again in
+  // their sidebars (it was hidden for everyone except OWNER after
+  // Phase 1.1). The backend endpoint `/api/finance/driver-monitoring`
+  // is still guarded with `@Roles(OWNER)` at the controller layer —
+  // that is intentional: non-OWNER roles will see the screen shell +
+  // map placeholder without live data until a dedicated read-only
+  // endpoint is wired for them. The page handles the 403 response
+  // gracefully and shows a "coming soon" card instead of a crash.
+  'driverMonitor.view': withExec('CALL_CENTER', 'CALL_CENTER_SUPERVISOR'),
 
   // ─── Call centre ──────────────────────────────────────────────────
   // `.view` = exec oversight + CC. `.manage` / `.act` = CC-only mutations
@@ -308,6 +329,19 @@ export const ACCESS = {
   'myDailySales.view': withExec('DRIVER'),
   'myFieldExpenses.view': withExec('DRIVER'),
   'driverPendingInvoices.view': withExec('DRIVER'),
+  // V19.17 — driver's "سندات الاستلام" inbox. The printable voucher
+  // itself (`/my-cash-receipts/:id/print`) is opened by the driver,
+  // the manager who received the cash, or back-office audit roles
+  // (Accountant / GM / Owner) — all of whom can reach it via this
+  // same access key because the backend re-checks authorisation on
+  // a per-row basis before returning the receipt.
+  'myCashReceipts.view': withExec(
+    'DRIVER',
+    'MANAGER',
+    'ACCOUNTANT',
+    'GENERAL_MANAGER',
+    'OWNER',
+  ),
 } as const satisfies Record<string, readonly SafariRole[]>;
 
 export type AccessKey = keyof typeof ACCESS;

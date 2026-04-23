@@ -16,6 +16,10 @@ export declare class UsersService {
     findOne(id: string): Promise<UserPublic>;
     update(id: string, dto: UpdateUserDto): Promise<UserPublic>;
     setActive(id: string, isActive: boolean): Promise<UserPublic>;
+    updateSalaryDefaults(id: string, dto: {
+        basicMonthlySalary?: number | null;
+        monthlyAllowances?: number | null;
+    }): Promise<UserPublic>;
     remove(id: string): Promise<{
         id: string;
         deleted: boolean;

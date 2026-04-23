@@ -95,6 +95,76 @@ html.dark .monthly-summary-print {
   box-shadow: 0 4px 20px rgba(15, 23, 42, 0.08);
 }
 
+/* --- Cover vs appendix (print pack structure) --------------------- */
+.msp-cover__hint {
+  font-size: 11px;
+  color: #64748b;
+  margin: 8px 0 0 0;
+  line-height: 1.4;
+}
+
+.msp-section__intro {
+  font-size: 11.5px;
+  color: #475569;
+  margin: 0 0 10px 0;
+  line-height: 1.45;
+}
+
+.msp-runhead {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  background: #f8fafc;
+}
+
+.msp-runhead__brand {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #1e40af;
+  font-weight: 700;
+}
+
+.msp-runhead__title {
+  font-size: 13px;
+  font-weight: 800;
+  color: #0f172a;
+  margin-top: 4px;
+}
+
+.msp-runhead__range {
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 4px;
+}
+
+.msp-inventory-branch {
+  margin-top: 14px;
+  break-inside: auto;
+  page-break-inside: auto;
+}
+
+.msp-inventory-branch__title {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 6px 0;
+  padding: 6px 8px;
+  background: #eff6ff;
+  border-radius: 6px;
+  border: 1px solid #bfdbfe;
+}
+
+.msp-list--inventory {
+  margin-bottom: 4px;
+}
+
+.msp-code {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 /* --- Toolbar (non-printable) ------------------------------------- */
 .monthly-summary-print__toolbar {
   max-width: 960px;
@@ -418,14 +488,29 @@ html.dark .monthly-summary-print {
   page-break-before: auto;
 }
 
+.msp-section--cover-only {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
 /* ================================================================
  * Print media — minimal resets so the browser doesn't repaint
  * anything other than the sheet body.
  * ============================================================== */
 @media print {
+  /*
+   * ترقيم الصفحات: مدعوم في Firefox وبعض محركات PDF؛ Chrome/Edge قد يتجاهل
+   * صناديق الهامش — يمكن تفعيل «رأس وتذييل» من حوار الطباعة كبديل.
+   */
   @page {
-    size: A4;
-    margin: 12mm;
+    size: A4 portrait;
+    margin: 12mm 12mm 16mm 12mm;
+    @bottom-center {
+      content: 'صفحة ' counter(page);
+      font-size: 9pt;
+      color: #64748b;
+      font-family: 'Noto Sans Arabic', 'Segoe UI', system-ui, sans-serif;
+    }
   }
 
   /* Preserve our explicit colors (red negatives, amber net row,
@@ -567,8 +652,29 @@ html.dark .monthly-summary-print {
 
   .monthly-summary-print__section {
     margin-top: 12px;
-    break-inside: avoid-page;
+  }
+
+  .msp-section--cover-only {
+    break-inside: avoid;
     page-break-inside: avoid;
+  }
+
+  .msp-section--flow {
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+
+  .msp-cover {
+    break-after: page;
+    page-break-after: always;
+  }
+
+  .msp-appendix {
+    break-before: auto;
+  }
+
+  .monthly-summary-print__branches {
+    grid-template-columns: 1fr;
   }
 
   /* Tables: keep header visible across pages, avoid mid-row splits. */
@@ -576,7 +682,11 @@ html.dark .monthly-summary-print {
     display: table-header-group;
   }
 
-  tr,
+  tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
   .monthly-summary-print__branch-card {
     break-inside: avoid;
     page-break-inside: avoid;
@@ -586,5 +696,25 @@ html.dark .monthly-summary-print {
   .msp-list {
     break-inside: auto;
     page-break-inside: auto;
+  }
+
+  .msp-list--inventory {
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+
+  .msp-cover__footer {
+    margin-top: 16px;
+  }
+
+  .msp-appendix__footer {
+    margin-top: 24px;
+    break-inside: avoid;
+  }
+
+  .msp-runhead {
+    break-after: avoid;
+    page-break-after: avoid;
+    background: #f1f5f9 !important;
   }
 }

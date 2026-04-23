@@ -1,4 +1,4 @@
-import { ManagerCashCustodyStatus } from '@prisma/client';
+import { ManagerCashCustodyStatus, SafariRole } from '@prisma/client';
 import { CashService } from '../finance/services/cash.service';
 import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -53,6 +53,8 @@ export declare class ManagerCustodyService {
     verifyCustody(custodyId: string, accountantId: string, dto: VerifyCustodyDto): Promise<CustodyRowDto>;
     rejectCustody(custodyId: string, accountantId: string, dto: RejectCustodyDto): Promise<CustodyRowDto>;
     listMine(managerId: string): Promise<CustodyRowDto[]>;
+    listByDriver(driverId: string): Promise<CustodyRowDto[]>;
+    findByIdForReceipt(custodyId: string, actorUserId: string, actorRole: SafariRole): Promise<CustodyRowDto>;
     listAging(query: ListCustodyQueryDto): Promise<{
         rows: CustodyRowDto[];
         summary: AgingSummary;

@@ -116,6 +116,73 @@ let VerifyService = class VerifyService {
             },
         };
     }
+    async verifyDebtHold(id) {
+        const row = await this.prisma.debtHold.findUnique({
+            where: { id },
+            include: {
+                employee: {
+                    select: { fullName: true, username: true, employeeId: true },
+                },
+            },
+        });
+        if (!row)
+            throw new common_1.NotFoundException('Debt hold not found');
+        const stage = row.disbursedAt
+            ? 'DISBURSED'
+            : row.status === 'RELEASED'
+                ? 'PENDING_DISBURSE'
+                : row.status;
+        return {
+            docType: 'debt_hold',
+            docId: row.id,
+            valid: true,
+            issuedAtIso: row.createdAt.toISOString(),
+            issuedTo: {
+                fullName: row.employee.fullName,
+                username: row.employee.username,
+                employeeId: row.employee.employeeId,
+            },
+            summary: {
+                stage,
+                debtKd: row.debtAmount.toFixed(3),
+                holdKd: row.holdAmount.toFixed(3),
+                releasedKd: row.releasedAmount.toFixed(3),
+                releaseDateIso: row.releaseDate?.toISOString() ?? null,
+                disbursedAtIso: row.disbursedAt?.toISOString() ?? null,
+            },
+        };
+    }
+    async verifyCashReceipt(id) {
+        const row = await this.prisma.managerCashCustody.findUnique({
+            where: { id },
+            include: {
+                driver: { select: { fullName: true, username: true, employeeId: true } },
+                manager: { select: { fullName: true, username: true } },
+                branch: { select: { name: true } },
+            },
+        });
+        if (!row)
+            throw new common_1.NotFoundException('Cash receipt not found');
+        return {
+            docType: 'cash_receipt',
+            docId: row.id,
+            valid: true,
+            issuedAtIso: row.receivedFromDriverAt.toISOString(),
+            issuedTo: {
+                fullName: row.driver.fullName,
+                username: row.driver.username,
+                employeeId: row.driver.employeeId,
+            },
+            summary: {
+                amountKd: row.amountKd.toFixed(3),
+                settledOrderCount: row.settledOrderCount,
+                managerName: row.manager.fullName,
+                managerUsername: row.manager.username,
+                branch: row.branch?.name ?? null,
+                status: row.status,
+            },
+        };
+    }
     async verifyLoan(id) {
         const row = await this.prisma.employeeLoan.findUnique({
             where: { id },

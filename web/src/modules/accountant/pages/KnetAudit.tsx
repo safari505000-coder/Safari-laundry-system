@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { Loader2, Upload } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import {
-  type DriverBalanceResponse,
+  type BranchRow,
   type IssuedInvoicesReport,
   apiJson,
   ApiError,
@@ -80,8 +80,19 @@ export function KnetAudit() {
   const [report, setReport] = useState<IssuedInvoicesReport | null>(null);
   const [csvName, setCsvName] = useState<string | null>(null);
   const [bankAmounts, setBankAmounts] = useState<number[]>([]);
-  const [driverFilter, setDriverFilter] = useState<string>('ALL');
-  const [drivers, setDrivers] = useState<DriverBalanceResponse | null>(null);
+  /*
+   * V19.18 — KNET audit is now scoped by BRANCH, not by driver.
+   *
+   * KNET terminals are assigned to branches (المحل / المحطة), not to
+   * individual drivers. Two drivers on the same branch share the same
+   * terminal, and many bank CSV exports are per-terminal. Filtering
+   * by driver (as we did before) produced a smaller set than the bank
+   * statement row-count on the same day and confused the accountant
+   * into thinking money was missing. We filter by branch so the
+   * row-count matches the bank terminal statement directly.
+   */
+  const [branchFilter, setBranchFilter] = useState<string>('ALL');
+  const [branches, setBranches] = useState<BranchRow[] | null>(null);
 
   const allowed = can(user, 'knetAudit.view');
   /*
@@ -96,9 +107,9 @@ export function KnetAudit() {
 
   useEffect(() => {
     if (!token || !allowed) return;
-    void apiJson<DriverBalanceResponse>('/api/finance/driver-balance', { token })
-      .then((d) => setDrivers(d))
-      .catch(() => setDrivers(null));
+    void apiJson<BranchRow[]>('/api/branches', { token })
+      .then((rows) => setBranches(rows))
+      .catch(() => setBranches(null));
   }, [token, allowed]);
 
   const load = useCallback(async () => {
@@ -109,7 +120,7 @@ export function KnetAudit() {
         from,
         to,
         posPaymentMethod: 'KNET',
-        ...(driverFilter !== 'ALL' ? { driverId: driverFilter } : {}),
+        ...(branchFilter !== 'ALL' ? { branchId: branchFilter } : {}),
       });
       const data = await apiJson<IssuedInvoicesReport>(
         `/api/reports/issued-invoices?${qs.toString()}`,
@@ -121,7 +132,7 @@ export function KnetAudit() {
     } finally {
       setLoading(false);
     }
-  }, [allowed, from, to, token, driverFilter]);
+  }, [allowed, from, to, token, branchFilter]);
 
   const { rows, unmatchedBank } = useMemo(() => {
     if (!report) {
@@ -240,27 +251,33 @@ export function KnetAudit() {
             onChange={(e) => setTo(new Date(e.target.value).toISOString())}
           />
         </FilterField>
-        <FilterField label={t('reports.driver')} className="min-w-[12rem]">
+        {/*
+         * V19.18 — filter by BRANCH (not driver). KNET terminals are
+         * branch-scoped; all drivers on a branch share one terminal,
+         * so this matches the way the bank reports come in.
+         */}
+        <FilterField label="الفرع" className="min-w-[12rem]">
           <Select
-            value={driverFilter}
-            onValueChange={(v) => setDriverFilter(v ?? 'ALL')}
+            value={branchFilter}
+            onValueChange={(v) => setBranchFilter(v ?? 'ALL')}
           >
             <SelectTrigger>
-              <SelectValue placeholder={t('reports.all')}>
-                {driverFilter === 'ALL'
-                  ? t('reports.all')
-                  : ((drivers?.drivers ?? []).find(
-                      (d) => d.driverId === driverFilter,
-                    )?.fullName ?? t('reports.all'))}
+              <SelectValue placeholder="كل الفروع">
+                {branchFilter === 'ALL'
+                  ? 'كل الفروع'
+                  : ((branches ?? []).find((b) => b.id === branchFilter)
+                      ?.name ?? 'كل الفروع')}
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="ALL">{t('reports.all')}</SelectItem>
-              {(drivers?.drivers ?? []).map((d) => (
-                <SelectItem key={d.driverId} value={d.driverId}>
-                  {d.fullName}
-                </SelectItem>
-              ))}
+              <SelectItem value="ALL">كل الفروع</SelectItem>
+              {(branches ?? [])
+                .filter((b) => b.isActive)
+                .map((b) => (
+                  <SelectItem key={b.id} value={b.id}>
+                    {b.name}
+                  </SelectItem>
+                ))}
             </SelectContent>
           </Select>
         </FilterField>

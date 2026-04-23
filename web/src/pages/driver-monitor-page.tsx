@@ -1,11 +1,15 @@
-﻿import { useEffect, useMemo, useState } from 'react';
-import { useRef } from 'react';
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/auth-context';
 import { can } from '@/modules/shared/auth/access-matrix';
-import { apiJson, type DriverMonitoringResponse } from '@/lib/api';
-import { Card, CardContent, CardHeader, CardTitle } from '@/modules/shared/components/ui/card';
+import { ApiError, apiJson, type DriverMonitoringResponse } from '@/lib/api';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from '@/modules/shared/components/ui/card';
 import { Badge } from '@/modules/shared/components/ui/badge';
 import { Button } from '@/modules/shared/components/ui/button';
 import { Input } from '@/modules/shared/components/ui/input';
@@ -15,42 +19,93 @@ import 'leaflet/dist/leaflet.css';
 
 const KUWAIT_CENTER: [number, number] = [29.3759, 47.9774];
 
+/**
+ * V19.14 — Driver tracking screen.
+ *
+ * Previously locked to OWNER only (Phase 1.1). Re-opened for OWNER +
+ * GENERAL_MANAGER + CALL_CENTER + CALL_CENTER_SUPERVISOR so the map
+ * shell is visible on their sidebars again.
+ *
+ * API access split:
+ *   • OWNER              → full live feed via `/api/finance/driver-monitoring`
+ *                          (live markers + inline editor for vehicle label
+ *                          and last-known location test hook).
+ *   • GM / CC / CC_SUP   → UI shell only. The backend still enforces
+ *                          `@Roles(OWNER)` on the endpoint, so loading
+ *                          returns 403. We catch that quietly and render
+ *                          a "coming soon" placeholder until a dedicated
+ *                          read-only endpoint is wired for these roles.
+ *
+ * Keeping the backend guard untouched is deliberate: the Owner's Pulse
+ * radar and the future CC dispatch feed are different products with
+ * different rate-limits, field filtering, and retention rules.
+ */
 export function DriverMonitorPage() {
   const { t } = useTranslation();
   const { token, user } = useAuth();
+  const canUse = can(user, 'driverMonitor.view');
+  const isOwner = user?.safariRole === 'OWNER';
+
   const [data, setData] = useState<DriverMonitoringResponse | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
-  const [editor, setEditor] = useState<Record<string, { vehicleLabel: string; lastKnownLocation: string }>>({});
+  const [editor, setEditor] = useState<
+    Record<string, { vehicleLabel: string; lastKnownLocation: string }>
+  >({});
+  // 403 = backend endpoint is OWNER-only; non-OWNER roles expect this
+  // until the dedicated feed is wired. Anything else is a real error.
+  const [feedLocked, setFeedLocked] = useState(false);
+  const [feedError, setFeedError] = useState<string | null>(null);
+
   const mapRef = useRef<HTMLDivElement | null>(null);
   const leafletMapRef = useRef<L.Map | null>(null);
-  // Phase 1.1 — Pulse radar is OWNER only (matches backend `@Roles(OWNER)`
-  // on `/api/finance/driver-monitoring`). CC/Accountant no longer see it.
-  const canUse = can(user, 'driverMonitor.view');
 
-  const load = () =>
-    apiJson<DriverMonitoringResponse>('/api/finance/driver-monitoring', {
-      token: token ?? undefined,
-    }).then((res) => {
+  const load = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res = await apiJson<DriverMonitoringResponse>(
+        '/api/finance/driver-monitoring',
+        { token },
+      );
       setData(res);
-      const next: Record<string, { vehicleLabel: string; lastKnownLocation: string }> = {};
+      setFeedLocked(false);
+      setFeedError(null);
+      const next: Record<
+        string,
+        { vehicleLabel: string; lastKnownLocation: string }
+      > = {};
       for (const d of res.drivers) {
         next[d.driverId] = {
           vehicleLabel: d.vehicleLabel ?? '',
-          lastKnownLocation:
-            d.lastKnownLocation ? `${d.lastKnownLocation.lat},${d.lastKnownLocation.lng}` : '',
+          lastKnownLocation: d.lastKnownLocation
+            ? `${d.lastKnownLocation.lat},${d.lastKnownLocation.lng}`
+            : '',
         };
       }
       setEditor(next);
-    });
+    } catch (err) {
+      if (
+        err instanceof ApiError &&
+        (err.status === 403 || err.status === 401)
+      ) {
+        // Expected for GM / CC / CC_SUP — the backend endpoint is still
+        // OWNER-gated. Swallow silently so the placeholder renders.
+        setFeedLocked(true);
+        setFeedError(null);
+        setData(null);
+        return;
+      }
+      setFeedError(err instanceof Error ? err.message : String(err));
+      setData(null);
+    }
+  }, [token]);
 
   useEffect(() => {
     if (!token || !canUse) return;
     void load();
-  }, [token, canUse]);
+  }, [token, canUse, load]);
 
-  if (!canUse) return <Navigate to="/" replace />;
+  const drivers = useMemo(() => data?.drivers ?? [], [data]);
 
-  const drivers = data?.drivers ?? [];
   const mapCenter = useMemo<[number, number]>(() => {
     const first = drivers.find((d) => d.markerLocation)?.markerLocation;
     return first ? [first.lat, first.lng] : KUWAIT_CENTER;
@@ -85,6 +140,8 @@ export function DriverMonitorPage() {
     }
   }, [drivers, mapCenter]);
 
+  if (!canUse) return <Navigate to="/" replace />;
+
   return (
     <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
       <Card className="h-[70vh] overflow-hidden">
@@ -92,6 +149,20 @@ export function DriverMonitorPage() {
           <CardTitle>{t('driverMonitor.title')}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 overflow-auto">
+          {feedLocked ? (
+            <div className="rounded-lg border border-dashed p-4 text-sm">
+              <p className="font-medium">{t('driverMonitor.pendingTitle')}</p>
+              <p className="mt-2 text-muted-foreground">
+                {t('driverMonitor.pendingDescription')}
+              </p>
+            </div>
+          ) : null}
+          {feedError ? (
+            <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+              {feedError}
+            </div>
+          ) : null}
+
           {drivers.map((d) => (
             <div key={d.driverId} className="rounded-lg border p-3">
               <div className="flex items-center justify-between gap-2">
@@ -99,14 +170,14 @@ export function DriverMonitorPage() {
                 <Badge variant="secondary">{d.status}</Badge>
               </div>
               <p className="text-xs text-muted-foreground">
-                @{d.username} â€¢ {d.vehicleLabel}
+                @{d.username} • {d.vehicleLabel}
               </p>
               <p className="text-xs text-muted-foreground">
                 {d.source === 'LIVE_GPS'
                   ? 'Live GPS'
                   : `Branch fallback: ${d.branch?.name ?? '—'}`}
               </p>
-              {canUse ? (
+              {isOwner ? (
                 <div className="mt-3 space-y-2 rounded-md border p-2">
                   <div className="space-y-1">
                     <Label className="text-xs">Vehicle Label</Label>
@@ -116,7 +187,10 @@ export function DriverMonitorPage() {
                         setEditor((prev) => ({
                           ...prev,
                           [d.driverId]: {
-                            ...(prev[d.driverId] ?? { vehicleLabel: '', lastKnownLocation: '' }),
+                            ...(prev[d.driverId] ?? {
+                              vehicleLabel: '',
+                              lastKnownLocation: '',
+                            }),
                             vehicleLabel: e.target.value,
                           },
                         }))
@@ -125,14 +199,19 @@ export function DriverMonitorPage() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">Last Known Location (lat,lng)</Label>
+                    <Label className="text-xs">
+                      Last Known Location (lat,lng)
+                    </Label>
                     <Input
                       value={editor[d.driverId]?.lastKnownLocation ?? ''}
                       onChange={(e) =>
                         setEditor((prev) => ({
                           ...prev,
                           [d.driverId]: {
-                            ...(prev[d.driverId] ?? { vehicleLabel: '', lastKnownLocation: '' }),
+                            ...(prev[d.driverId] ?? {
+                              vehicleLabel: '',
+                              lastKnownLocation: '',
+                            }),
                             lastKnownLocation: e.target.value,
                           },
                         }))
@@ -146,14 +225,19 @@ export function DriverMonitorPage() {
                     onClick={() => {
                       if (!token) return;
                       setSavingId(d.driverId);
-                      void apiJson(`/api/finance/driver-monitoring/${d.driverId}`, {
-                        method: 'PATCH',
-                        token,
-                        body: JSON.stringify({
-                          vehicleLabel: editor[d.driverId]?.vehicleLabel ?? '',
-                          lastKnownLocation: editor[d.driverId]?.lastKnownLocation ?? '',
-                        }),
-                      })
+                      void apiJson(
+                        `/api/finance/driver-monitoring/${d.driverId}`,
+                        {
+                          method: 'PATCH',
+                          token,
+                          body: JSON.stringify({
+                            vehicleLabel:
+                              editor[d.driverId]?.vehicleLabel ?? '',
+                            lastKnownLocation:
+                              editor[d.driverId]?.lastKnownLocation ?? '',
+                          }),
+                        },
+                      )
                         .then(() => load())
                         .finally(() => setSavingId(null));
                     }}
@@ -164,8 +248,11 @@ export function DriverMonitorPage() {
               ) : null}
             </div>
           ))}
-          {drivers.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No active drivers (ON_SHIFT).</p>
+
+          {!feedLocked && !feedError && drivers.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              {t('driverMonitor.emptyOnShift')}
+            </p>
           ) : null}
         </CardContent>
       </Card>
@@ -177,4 +264,3 @@ export function DriverMonitorPage() {
     </div>
   );
 }
-

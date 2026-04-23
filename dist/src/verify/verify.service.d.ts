@@ -1,6 +1,6 @@
 import { PrismaService } from '../prisma/prisma.service';
 export type VerifyResult = {
-    docType: 'payslip' | 'attendance_report' | 'leave_request' | 'employee_loan' | 'statement';
+    docType: 'payslip' | 'attendance_report' | 'leave_request' | 'employee_loan' | 'statement' | 'debt_hold' | 'cash_receipt';
     docId: string;
     valid: boolean;
     issuedAtIso: string;
@@ -17,5 +17,7 @@ export declare class VerifyService {
     verifyPayslip(id: string): Promise<VerifyResult>;
     verifyLeave(id: string): Promise<VerifyResult>;
     verifyStatement(id: string): Promise<VerifyResult>;
+    verifyDebtHold(id: string): Promise<VerifyResult>;
+    verifyCashReceipt(id: string): Promise<VerifyResult>;
     verifyLoan(id: string): Promise<VerifyResult>;
 }

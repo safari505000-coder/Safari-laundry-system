@@ -1,10 +1,14 @@
 import { Prisma, SafariRole } from '@prisma/client';
+import { CommissionPayoutsService } from '../commissions/commission-payouts.service';
+import { DebtHoldsService } from '../debt-holds/debt-holds.service';
 import { LoansService } from '../loans/loans.service';
 import { PrismaService } from '../prisma/prisma.service';
 export declare class PayrollService {
     private readonly prisma;
     private readonly loans;
-    constructor(prisma: PrismaService, loans: LoansService);
+    private readonly commissionPayouts;
+    private readonly debtHolds;
+    constructor(prisma: PrismaService, loans: LoansService, commissionPayouts: CommissionPayoutsService, debtHolds: DebtHoldsService);
     private assertOwnerOrManager;
     create(actorRole: SafariRole, dto: {
         userId: string;
@@ -33,6 +37,9 @@ export declare class PayrollService {
         basicSalary: Prisma.Decimal;
         allowances: Prisma.Decimal;
         deductions: Prisma.Decimal;
+        commissionAmount: Prisma.Decimal;
+        debtHoldAmount: Prisma.Decimal;
+        debtReleaseAmount: Prisma.Decimal;
         paymentDate: Date;
     }>;
     markPaid(actorRole: SafariRole, id: string): Promise<{
@@ -55,6 +62,9 @@ export declare class PayrollService {
         basicSalary: Prisma.Decimal;
         allowances: Prisma.Decimal;
         deductions: Prisma.Decimal;
+        commissionAmount: Prisma.Decimal;
+        debtHoldAmount: Prisma.Decimal;
+        debtReleaseAmount: Prisma.Decimal;
         paymentDate: Date;
     }>;
     list(actorRole: SafariRole, fromIso: string, toIso: string, branchId?: string): Promise<({
@@ -77,6 +87,9 @@ export declare class PayrollService {
         basicSalary: Prisma.Decimal;
         allowances: Prisma.Decimal;
         deductions: Prisma.Decimal;
+        commissionAmount: Prisma.Decimal;
+        debtHoldAmount: Prisma.Decimal;
+        debtReleaseAmount: Prisma.Decimal;
         paymentDate: Date;
     })[]>;
     findOne(actorRole: SafariRole, actorUserId: string, id: string): Promise<{
@@ -108,6 +121,9 @@ export declare class PayrollService {
         basicSalary: Prisma.Decimal;
         allowances: Prisma.Decimal;
         deductions: Prisma.Decimal;
+        commissionAmount: Prisma.Decimal;
+        debtHoldAmount: Prisma.Decimal;
+        debtReleaseAmount: Prisma.Decimal;
         paymentDate: Date;
     }>;
     sumPaidNetInRange(from: Date, to: Date, branchId?: string): Promise<string>;

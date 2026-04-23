@@ -201,6 +201,49 @@ let ManagerCustodyService = ManagerCustodyService_1 = class ManagerCustodyServic
         });
         return rows.map((r) => this.toRow(r));
     }
+    async listByDriver(driverId) {
+        const rows = await this.prisma.managerCashCustody.findMany({
+            where: { driverId },
+            orderBy: { receivedFromDriverAt: 'desc' },
+            take: 200,
+            include: {
+                manager: {
+                    select: { id: true, fullName: true, username: true, phone: true },
+                },
+                driver: { select: { id: true, fullName: true, username: true } },
+                branch: { select: { id: true, name: true } },
+                shift: { select: { id: true, endedAt: true, startedAt: true } },
+            },
+        });
+        return rows.map((r) => this.toRow(r));
+    }
+    async findByIdForReceipt(custodyId, actorUserId, actorRole) {
+        const bag = await this.prisma.managerCashCustody.findUnique({
+            where: { id: custodyId },
+            include: {
+                manager: {
+                    select: { id: true, fullName: true, username: true, phone: true },
+                },
+                driver: { select: { id: true, fullName: true, username: true } },
+                branch: { select: { id: true, name: true } },
+                shift: { select: { id: true, endedAt: true, startedAt: true } },
+            },
+        });
+        if (!bag)
+            throw new common_1.NotFoundException('Custody bag not found.');
+        const privileged = [
+            client_1.SafariRole.OWNER,
+            client_1.SafariRole.GENERAL_MANAGER,
+            client_1.SafariRole.ACCOUNTANT,
+        ];
+        const isPrivileged = privileged.includes(actorRole);
+        const isDriver = bag.driverId === actorUserId;
+        const isManager = bag.managerId === actorUserId;
+        if (!isPrivileged && !isDriver && !isManager) {
+            throw new common_1.ForbiddenException('You are not authorised to read this cash-handover receipt.');
+        }
+        return this.toRow(bag);
+    }
     async listAging(query) {
         const where = {};
         if (query.status) {

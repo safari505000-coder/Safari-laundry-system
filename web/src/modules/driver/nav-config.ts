@@ -3,6 +3,7 @@ import { G } from '@/modules/shared/nav/nav-groups';
 import {
   driverFieldExpensesItem,
   driverPendingInvoicesItem,
+  myCashReceiptsItem,
   myDailySalesItem,
   myDebtTransfersItem,
   myDepositsItem,
@@ -24,6 +25,7 @@ export const driverSidebarNavGroups: NavGroup[] = [
     items: [
       posItem,
       myDepositsItem,
+      myCashReceiptsItem,
       myDailySalesItem,
       driverPendingInvoicesItem,
       myDebtTransfersItem,

@@ -120,14 +120,12 @@ enum StarchOption {
 
 /**
  * V19.11 — DebtLedgerEntry is the unified accounting book:
- *   • SUBSCRIPTION_OVERUSE, INVOICE_SHORTFALL  (+) debt created
- *   • PAYMENT                                  (−) debt settled
- *
+ * • SUBSCRIPTION_OVERUSE, INVOICE_SHORTFALL  (+) debt created
+ * • PAYMENT                                  (−) debt settled
  * `amount` is ALWAYS a positive decimal. The sign is implied by the
  * source (creation vs settlement). The "open" balance per order /
  * customer is therefore:
- *   SUM(INVOICE_SHORTFALL + SUBSCRIPTION_OVERUSE) − SUM(PAYMENT)
- *
+ * SUM(INVOICE_SHORTFALL + SUBSCRIPTION_OVERUSE) − SUM(PAYMENT)
  * The table is append-only by convention and enforced at the service
  * layer (a Prisma middleware rejects update / delete / deleteMany).
  */
@@ -237,6 +235,7 @@ model User {
   // ─── HR master-data (Stage D) ─────────────────────────────────────
   /**
    * /**
+   * /**
    * /** Kuwaiti Civil ID — البطاقة المدنية.
    */
   civilId            String?   @unique
@@ -338,6 +337,21 @@ model User {
    * `RefreshToken.user`.
    */
   refreshTokens                    RefreshToken[]         @relation("RefreshTokenUser")
+  /**
+   * V19.16 — commission payouts earned by this user (SALE or COLLECTION).
+   * Back-relation of `CommissionPayout.earner`.
+   */
+  commissionPayouts                CommissionPayout[]     @relation("CommissionEarner")
+  /**
+   * V19.16 — salary debt-hold slips tied to this employee's outstanding
+   * customer debt. Back-relation of `DebtHold.employee`.
+   */
+  debtHolds                        DebtHold[]             @relation("DebtHoldEmployee")
+  /**
+   * V19.17 — debt-hold release vouchers this user stamped as disbursed.
+   * Back-relation of `DebtHold.disbursedBy`.
+   */
+  debtHoldsDisbursed               DebtHold[]             @relation("DebtHoldDisbursedBy")
 }
 
 /**
@@ -348,24 +362,36 @@ model User {
  * attempt (token replay) revokes the entire token family.
  */
 model RefreshToken {
-  id              String    @id @default(uuid()) @db.Uuid
-  userId          String    @db.Uuid
-  /** SHA-256 hex of the raw token — never store the token itself. */
-  tokenHash       String    @unique
-  /** Expiry hard-stop, enforced on redemption. */
-  expiresAt       DateTime
-  /** Set when this token is redeemed by /refresh-token; second use is replay. */
-  usedAt          DateTime?
-  /** Explicit revocation (logout, password change, replay detected). */
-  revokedAt       DateTime?
-  /** Chain pointer — every rotation increments the generation id. */
-  replacedById    String?   @db.Uuid
-  createdAt       DateTime  @default(now())
-  /** Optional client fingerprint — request-scoped, for audit only. */
-  userAgent       String?
-  ip              String?
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @db.Uuid
+  /**
+   * SHA-256 hex of the raw token — never store the token itself.
+   */
+  tokenHash    String    @unique
+  /**
+   * Expiry hard-stop, enforced on redemption.
+   */
+  expiresAt    DateTime
+  /**
+   * Set when this token is redeemed by /refresh-token; second use is replay.
+   */
+  usedAt       DateTime?
+  /**
+   * Explicit revocation (logout, password change, replay detected).
+   */
+  revokedAt    DateTime?
+  /**
+   * Chain pointer — every rotation increments the generation id.
+   */
+  replacedById String?   @db.Uuid
+  createdAt    DateTime  @default(now())
+  /**
+   * Optional client fingerprint — request-scoped, for audit only.
+   */
+  userAgent    String?
+  ip           String?
 
-  user            User      @relation("RefreshTokenUser", fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation("RefreshTokenUser", fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([expiresAt])
@@ -468,7 +494,6 @@ model BranchExpense {
 
 /**
  * V19.10 — Fleet / vehicle expense (مصروفات السيارات).
- *
  * Logged by the FLEET_SUPERVISOR with a MANDATORY receipt photo
  * (data URL — same transport as fuel receipts on BranchExpense). Flows
  * through the same PENDING → APPROVED / REJECTED gate as branch
@@ -845,6 +870,11 @@ model Order {
    * when the order has been edited.
    */
   auditLogs             InvoiceAuditLog[]
+  /**
+   * V19.16 — commission payouts attributed to this order (SALE mode).
+   * Back-relation of `CommissionPayout.sourceOrder`.
+   */
+  commissionPayouts     CommissionPayout[]    @relation("OrderCommissionPayouts")
 
   @@index([driverId])
   @@index([status])
@@ -1011,12 +1041,17 @@ model DebtLedgerEntry {
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
 
-  customer  Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  order     Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
-  actorUser User?    @relation("DebtEntryActor", fields: [actorUserId], references: [id], onDelete: SetNull)
-  branch    Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  refEntry  DebtLedgerEntry? @relation("DebtLedgerEntryRef", fields: [refEntryId], references: [id], onDelete: SetNull)
-  refChildren DebtLedgerEntry[] @relation("DebtLedgerEntryRef")
+  customer          Customer           @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  order             Order?             @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  actorUser         User?              @relation("DebtEntryActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  branch            Branch?            @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  refEntry          DebtLedgerEntry?   @relation("DebtLedgerEntryRef", fields: [refEntryId], references: [id], onDelete: SetNull)
+  refChildren       DebtLedgerEntry[]  @relation("DebtLedgerEntryRef")
+  /**
+   * V19.16 — commission payouts generated from this PAYMENT entry
+   * (COLLECTION mode). Back-relation of `CommissionPayout.sourceDebtEntry`.
+   */
+  commissionPayouts CommissionPayout[] @relation("DebtEntryCommissionPayouts")
 
   @@unique([sourceRef])
   @@index([customerId, createdAt])
@@ -1258,19 +1293,45 @@ enum LoanStatus {
 }
 
 model Payroll {
-  id          String        @id @default(uuid()) @db.Uuid
-  userId      String        @db.Uuid
-  branchId    String        @db.Uuid
-  basicSalary Decimal       @db.Decimal(19, 4)
-  allowances  Decimal       @default(0) @db.Decimal(19, 4)
-  deductions  Decimal       @default(0) @db.Decimal(19, 4)
-  paymentDate DateTime
-  status      PayrollStatus @default(PENDING)
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id                String        @id @default(uuid()) @db.Uuid
+  userId            String        @db.Uuid
+  branchId          String        @db.Uuid
+  basicSalary       Decimal       @db.Decimal(19, 4)
+  allowances        Decimal       @default(0) @db.Decimal(19, 4)
+  deductions        Decimal       @default(0) @db.Decimal(19, 4)
+  /**
+   * V19.16 — sum of `CommissionPayout.amount` released during this pay
+   * run. Displayed as a dedicated payslip line; NEVER folded into
+   * `allowances` (DUSTUR §E.x: commission is tracked in its own ledger).
+   * Purely informational on the Payroll row — authoritative state lives
+   * on `CommissionPayout.payrollId`.
+   */
+  commissionAmount  Decimal       @default(0) @db.Decimal(19, 4)
+  /**
+   * V19.16 — amount withheld this run due to open customer debt
+   * attributed to the employee. Subtracted from net pay but shown as a
+   * separate line, not aggregated into `deductions`. Mirrored on
+   * `DebtHold.holdAmount` for the matching HELD rows of this payroll.
+   */
+  debtHoldAmount    Decimal       @default(0) @db.Decimal(19, 4)
+  /**
+   * V19.16 — amount released back to the employee this run because the
+   * previously-held customer debt has been collected. Added to net pay
+   * as a separate positive line.
+   */
+  debtReleaseAmount Decimal       @default(0) @db.Decimal(19, 4)
+  paymentDate       DateTime
+  status            PayrollStatus @default(PENDING)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
 
-  user   User   @relation(fields: [userId], references: [id])
-  branch Branch @relation(fields: [branchId], references: [id])
+  user              User               @relation(fields: [userId], references: [id])
+  branch            Branch             @relation(fields: [branchId], references: [id])
+  /**
+   * V19.16 — back-relations for the split payslip bands.
+   */
+  commissionPayouts CommissionPayout[]
+  debtHolds         DebtHold[]
 
   @@index([branchId, paymentDate])
   @@index([userId, paymentDate])
@@ -1727,24 +1788,20 @@ model DebtTransferOrder {
 
 /**
  * V19.9 — Call-Center Supervisor invoice audit trail.
- *
  * Every same-day EDIT and every VOID performed by a CALL_CENTER_SUPERVISOR
  * writes exactly one row. Rows are immutable — the report surface
  * (Owner / GM / Accountant at /reports/invoice-audit) is read-only
  * and never PATCHes or DELETEs.
- *
  * `beforeSnapshot` / `afterSnapshot` hold a normalized JSON mirror of
  * the order at those two instants (see `buildInvoiceAuditSnapshot` in
  * the orders service). `changedFields` is the flat list of top-level
  * keys that actually changed between the two snapshots, cached here so
  * the UI does not have to diff JSON client-side.
- *
  * `financialImpactFils` is the signed delta applied to GL revenue by
  * this action, in fils, positive = revenue added, negative = revenue
  * removed. Sum(financialImpactFils) over any day MUST equal the delta
  * between the old and new GL running totals — the reconciliation cron
  * enforces this as a post-write invariant.
- *
  * `kuwaitDay` (char(10)) is the Kuwait-local YYYY-MM-DD key computed at
  * write time so range queries can use a simple equality index without
  * a timezone-aware WHERE.
@@ -1771,4 +1828,305 @@ model InvoiceAuditLog {
   @@index([actorId])
   @@index([kuwaitDay])
   @@index([action, createdAt])
+}
+
+// ────────────────────────────────────────────────────────────────────
+// V19.16 — Commission, Debt-Hold & System Toggles
+// ────────────────────────────────────────────────────────────────────
+
+/**
+ * V19.16 — whether a commission rule fires on sale creation (SALE) or
+ * only after the invoice is collected (COLLECTION). A single rule is
+ * never both; Owner creates two rules if both behaviours are desired.
+ */
+enum CommissionMode {
+  SALE
+  COLLECTION
+}
+
+/**
+ * V19.16 — "أساس الحساب" dropdown. Picks which monetary base the
+ * `percentage` is applied to at earning time.
+ * - ORDER_TOTAL          : raw `Order.totalPrice`.
+ * - INVOICE_TOTAL        : same as ORDER_TOTAL today; reserved for a
+ * future invoice-vs-order split (V19.17+).
+ * - NET_AFTER_KNET       : `Order.totalPrice` minus the KNET/card fee
+ * allocated to this order (see
+ * `PaymentMethodFeeConfig`). Applies only
+ * when `posPaymentMethod` is a card method.
+ * - EXCLUDE_SUBSCRIPTIONS: zero out commission for orders backed by a
+ * `CustomerSubscription` (so recurring plan
+ * draw-downs don't earn a fresh commission).
+ */
+enum CommissionCalculationBase {
+  ORDER_TOTAL
+  INVOICE_TOTAL
+  NET_AFTER_KNET
+  EXCLUDE_SUBSCRIPTIONS
+}
+
+/**
+ * V19.16 — when a PENDING payout transitions to RELEASED (eligible for
+ * the next cut-run).
+ * - IMMEDIATE        : as soon as the triggering event lands.
+ * - AFTER_COLLECTION : only after the matching invoice is fully
+ * collected (open debt = 0 for the order).
+ * - END_OF_MONTH     : at the Kuwait-local month boundary.
+ */
+enum CommissionPayoutTiming {
+  IMMEDIATE
+  AFTER_COLLECTION
+  END_OF_MONTH
+}
+
+/**
+ * V19.16 — lifecycle of a single CommissionPayout row.
+ * PENDING   → created by the earning hook, not yet eligible for pay.
+ * RELEASED  → release condition (timing) is met; waiting for payroll.
+ * PAID      → stamped on `payrollId` and surfaced on the commission
+ * report; informational only on the Payroll row.
+ * CANCELLED → reversed (e.g. order voided, debt payment refunded).
+ */
+enum CommissionPayoutStatus {
+  PENDING
+  RELEASED
+  PAID
+  CANCELLED
+}
+
+/**
+ * V19.16 — Owner-configurable commission rules. A rule is scoped to an
+ * optional `SafariRole` (null = applies to all qualifying users). The
+ * backend picks the most-specific active rule per (mode, role) at
+ * earning time; when two rules tie on specificity the most recently
+ * updated one wins. Stored in its own ledger so commission is NEVER
+ * silently folded into `Payroll.allowances`.
+ */
+model CommissionRule {
+  id               String                    @id @default(uuid()) @db.Uuid
+  name             String
+  isActive         Boolean                   @default(true)
+  role             SafariRole?
+  mode             CommissionMode
+  calculationBase  CommissionCalculationBase @default(ORDER_TOTAL)
+  /**
+   * Percentage expressed as a plain number, not a fraction — e.g.
+   * `5.0000` means 5%. We store 4 decimal digits so Owner can express
+   * fine-grained rates like 2.5% or 0.75%.
+   */
+  percentage       Decimal                   @db.Decimal(7, 4)
+  /**
+   * Orders whose `calculationBase` total is below this threshold are
+   * skipped entirely — no PENDING payout is created.
+   */
+  minInvoiceAmount Decimal                   @default(0) @db.Decimal(19, 4)
+  payoutTiming     CommissionPayoutTiming    @default(IMMEDIATE)
+  /**
+   * When true, a RELEASED payout is auto-CANCELLED if the earner has
+   * open customer debt at payroll-cut time (i.e. the commission is
+   * forfeited while the driver is in debt). Independent of DebtHold.
+   */
+  linkedToDebt     Boolean                   @default(false)
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
+
+  payouts CommissionPayout[]
+
+  @@index([isActive, role])
+  @@index([mode])
+}
+
+/**
+ * V19.16 — one payout row per (rule × source × earner). The source is
+ * either an `Order` (SALE mode) or a `DebtLedgerEntry` PAYMENT
+ * (COLLECTION mode); exactly one of the two FKs is set. Payouts stay
+ * PENDING until the rule's `payoutTiming` is satisfied, flip to
+ * RELEASED, then PAID when attached to a `Payroll` row via `payrollId`.
+ * Unique indexes prevent double-earning: the same order / debt entry
+ * can produce at most one payout per (earner, rule, mode).
+ */
+model CommissionPayout {
+  id                String                 @id @default(uuid()) @db.Uuid
+  ruleId            String                 @db.Uuid
+  earnerUserId      String                 @db.Uuid
+  mode              CommissionMode
+  /**
+   * The monetary base the rule's percentage was applied to (resolved
+   * from `calculationBase` at earning time). Stored verbatim so the
+   * commission report can always recompute `amount = basisAmount * pct`
+   * without re-querying the source order.
+   */
+  basisAmount       Decimal                @db.Decimal(19, 4)
+  percentage        Decimal                @db.Decimal(7, 4)
+  amount            Decimal                @db.Decimal(19, 4)
+  status            CommissionPayoutStatus @default(PENDING)
+  sourceOrderId     String?                @db.Uuid
+  sourceDebtEntryId String?                @db.Uuid
+  payrollId         String?                @db.Uuid
+  earnedAt          DateTime               @default(now())
+  releasedAt        DateTime?
+  paidAt            DateTime?
+  cancelledAt       DateTime?
+  cancelReason      String?
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  rule            CommissionRule   @relation(fields: [ruleId], references: [id])
+  earner          User             @relation("CommissionEarner", fields: [earnerUserId], references: [id])
+  sourceOrder     Order?           @relation("OrderCommissionPayouts", fields: [sourceOrderId], references: [id], onDelete: SetNull)
+  sourceDebtEntry DebtLedgerEntry? @relation("DebtEntryCommissionPayouts", fields: [sourceDebtEntryId], references: [id], onDelete: SetNull)
+  payroll         Payroll?         @relation(fields: [payrollId], references: [id], onDelete: SetNull)
+
+  @@unique([sourceOrderId, ruleId, earnerUserId], name: "uniq_commission_payout_per_order")
+  @@unique([sourceDebtEntryId, ruleId, earnerUserId], name: "uniq_commission_payout_per_debt_entry")
+  @@index([earnerUserId, earnedAt])
+  @@index([status])
+  @@index([ruleId])
+  @@index([payrollId])
+}
+
+/**
+ * V19.16 — salary debt-hold lifecycle.
+ * HELD     : debt-hold policy was ON at the payroll cut; the
+ * `holdAmount` is parked on the Payroll row but not yet
+ * paid out.
+ * RELEASED : the underlying customer debt has been collected (FIFO
+ * waterfall); the slip is eligible for a release entry in
+ * the next payroll run.
+ */
+enum DebtHoldStatus {
+  HELD
+  RELEASED
+}
+
+/**
+ * V19.16 — policy dial for computing `holdAmount` when the Owner
+ * enables debt-holds.
+ * FULL  : hold the entire open customer-debt total per employee.
+ * FIXED : cap the hold at `DebtHoldPolicy.fixedAmount` regardless of
+ * the actual debt. Useful when Owner wants a predictable slice
+ * off payroll instead of a variable one.
+ */
+enum DebtHoldMode {
+  FULL
+  FIXED
+}
+
+/**
+ * V19.16 — per-employee, per-payroll-run snapshot of the debt-hold
+ * applied against their net pay. `debtAmount` is the live customer-debt
+ * total at cut time; `holdAmount` is the slice actually withheld (may
+ * equal the full debt or be capped by policy). When the matching
+ * customer debt is collected, the row flips to RELEASED and the next
+ * payroll run adds an equal positive line via `Payroll.debtReleaseAmount`.
+ * Never merged into `Payroll.deductions` — it's always shown as a
+ * dedicated payslip band so the employee can see what's being held.
+ */
+model DebtHold {
+  id             String         @id @default(uuid()) @db.Uuid
+  employeeUserId String         @db.Uuid
+  /**
+   * The payroll run that withheld this slip. Nullable during the brief
+   * window between computing the hold and persisting the Payroll row.
+   */
+  payrollId      String?        @db.Uuid
+  debtAmount     Decimal        @db.Decimal(19, 4)
+  holdAmount     Decimal        @db.Decimal(19, 4)
+  /**
+   * Amount already surfaced on a subsequent Payroll's
+   * `debtReleaseAmount` line. Tracked so a partial collection doesn't
+   * double-release.
+   */
+  releasedAmount Decimal        @default(0) @db.Decimal(19, 4)
+  status         DebtHoldStatus @default(HELD)
+  releaseDate    DateTime?
+  /**
+   * V19.17 — The release is now a voucher-style disbursement decoupled
+   * from the payroll cycle. Once a hold is RELEASED the admin still
+   * has to pay the employee (cash, bank transfer, …) and stamp the
+   * row via `markDisbursed`. `disbursedAt` tracks when that happened;
+   * `disbursedById` captures the actor for the audit trail.
+   */
+  disbursedAt    DateTime?
+  disbursedById  String?        @db.Uuid
+  note           String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  employee    User     @relation("DebtHoldEmployee", fields: [employeeUserId], references: [id])
+  payroll     Payroll? @relation(fields: [payrollId], references: [id], onDelete: SetNull)
+  disbursedBy User?    @relation("DebtHoldDisbursedBy", fields: [disbursedById], references: [id], onDelete: SetNull)
+
+  @@index([employeeUserId, status])
+  @@index([payrollId])
+  @@index([status, disbursedAt])
+}
+
+/**
+ * V19.16 — singleton Owner-facing knob that governs how `DebtHold`
+ * rows are computed at payroll cut. The `id` is the literal string
+ * `"singleton"` so we get upsert-by-id semantics without a separate
+ * "which row is active" column. When `isActive=false` no holds are
+ * created; existing HELD rows are still tracked for release.
+ */
+model DebtHoldPolicy {
+  id          String       @id @default("singleton")
+  isActive    Boolean      @default(false)
+  holdMode    DebtHoldMode @default(FULL)
+  fixedAmount Decimal?     @db.Decimal(19, 4)
+  updatedAt   DateTime     @updatedAt
+}
+
+/**
+ * V19.17 — singleton payroll-level settings surfaced on the Owner
+ * Settings Dashboard. These knobs are independent from the `PAYROLL`
+ * master toggle (which only switches the payroll feature on/off) — they
+ * tune *how* payroll behaves when enabled.
+ *
+ * • `payDayOfMonth` — default day the Owner cuts monthly payroll (1–28
+ *   to avoid month-end drift). Purely informational today; the actual
+ *   run is still triggered by OWNER/GM from `/payroll`, but the value
+ *   is used to pre-fill the payment date and drives future automation
+ *   work (cron-triggered auto-cuts).
+ * • `autoDeductLoans` — when true, any OUTSTANDING employee loan
+ *   instalments due up to the payroll payment date are auto-applied as
+ *   `deductions` on the generated Payroll row (mirrors existing
+ *   behaviour; the toggle just exposes it to the Owner).
+ * • `linkWithAttendance` — when true, late-entries + unapproved
+ *   absences logged on the Attendance module deduct proportional
+ *   amounts from the salary. Off by default so existing payroll runs
+ *   do not suddenly surface retroactive cuts.
+ */
+model PayrollSettings {
+  id                 String   @id @default("singleton")
+  payDayOfMonth      Int      @default(1)
+  autoDeductLoans    Boolean  @default(true)
+  linkWithAttendance Boolean  @default(false)
+  updatedAt          DateTime @updatedAt
+}
+
+/**
+ * V19.16 — master ON/OFF registry for top-level subsystems. Controllers
+ * consult `SystemToggle` before running the logic they gate (commission
+ * hooks, debt-hold policy, payroll cuts, loan disbursement, attendance
+ * capture). Missing row = treated as enabled (fail-open) for backwards
+ * compatibility with the pre-V19.16 behaviour.
+ */
+enum SystemToggleKey {
+  COMMISSION
+  DEBT_HOLD
+  PAYROLL
+  LOANS
+  ATTENDANCE
+}
+
+model SystemToggle {
+  key       SystemToggleKey @id
+  isEnabled Boolean         @default(true)
+  /**
+   * Optional actor audit: the user id that last flipped the toggle.
+   * Kept loose (no FK) so toggles can be seeded without a real user.
+   */
+  updatedBy String?         @db.Uuid
+  updatedAt DateTime        @updatedAt
 }

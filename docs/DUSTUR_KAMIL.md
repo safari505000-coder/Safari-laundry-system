@@ -2,10 +2,13 @@
 
 ## Safari‑ERP — Complete System Constitution (V19.3)
 
-<!-- ════════════════════════════════════════════════════════════════ -->
-<!--  لوحة حالة الدستور — يُحدَّث هذا القسم فقط (ما فوقه أو ما تحته)    -->
-<!--  قبل بدء أي جلسة عمل جديدة. لا يُحذف ولا يُختصر — هو ذاكرة النظام. -->
-<!-- ════════════════════════════════════════════════════════════════ -->
+
+
+
+
+
+
+
 
 > ### 📍 حالة الدستور — آخر تحديث: **2026-04-19**
 >
@@ -14,16 +17,18 @@
 >
 > #### ✅ المُكتمل منذ كتابة الدستور (بعد `8fc5be2`)
 >
-> | # | العمل | Commit |
-> |---|---|---|
-> | 1 | إضافة `/api/version` endpoint علني + Canary smoke S1b | `8ea4ce0` |
-> | 2 | CC Phase-1 (نقاط 3، 6، 7): بحث بالهاتف، إخفاء الإيجارات/السلف، عرض المديونية في الفاتورة | `47cf6d1` |
-> | 3 | CC #2 + #11 + #12: لدجر اشتراك لكل تفعيل مع سلسلة رولأوفر (`CustomerSubscription`) | `7d5af94` |
-> | 4 | CC #1 + #5: تسديد جزئي مع خصم + اسم الفرع والسائق في الحمولات | `c18786e` |
-> | 5 | نقل تسديد المديونية إلى صفحة المشتركين (مكان عمل الموظف الفعلي) | `3a2900b` |
-> | 6 | CC #4 + #8 + #10 + #11: لدجر العميل 360° + لوحة المحصل اليومي | `978213e` |
-> | 7 | CC #9: معاينة تحويل المديونية إلى اشتراك | `dd6a9fc` |
-> | 8 | **V19.5 — حارس المطابقة**: endpoint `GET /daily-collections/reconciliation` + cron يومي 23:59 Asia/Kuwait + شارة ✓/⚠ على لوحة المحصل | (هذا الـ commit) |
+>
+> | #   | العمل                                                                                                                                | Commit           |
+> | --- | ------------------------------------------------------------------------------------------------------------------------------------ | ---------------- |
+> | 1   | إضافة `/api/version` endpoint علني + Canary smoke S1b                                                                                | `8ea4ce0`        |
+> | 2   | CC Phase-1 (نقاط 3، 6، 7): بحث بالهاتف، إخفاء الإيجارات/السلف، عرض المديونية في الفاتورة                                             | `47cf6d1`        |
+> | 3   | CC #2 + #11 + #12: لدجر اشتراك لكل تفعيل مع سلسلة رولأوفر (`CustomerSubscription`)                                                   | `7d5af94`        |
+> | 4   | CC #1 + #5: تسديد جزئي مع خصم + اسم الفرع والسائق في الحمولات                                                                        | `c18786e`        |
+> | 5   | نقل تسديد المديونية إلى صفحة المشتركين (مكان عمل الموظف الفعلي)                                                                      | `3a2900b`        |
+> | 6   | CC #4 + #8 + #10 + #11: لدجر العميل 360° + لوحة المحصل اليومي                                                                        | `978213e`        |
+> | 7   | CC #9: معاينة تحويل المديونية إلى اشتراك                                                                                             | `dd6a9fc`        |
+> | 8   | **V19.5 — حارس المطابقة**: endpoint `GET /daily-collections/reconciliation` + cron يومي 23:59 Asia/Kuwait + شارة ✓/⚠ على لوحة المحصل | (هذا الـ commit) |
+>
 >
 > #### 🎯 قائمة الـ12 نقطة للكول سنتر — **مُقفلة بالكامل**
 >
@@ -403,7 +408,7 @@
 
 ### 6.2 فصل العهدة عن الوردية
 
-- **الوردية** تُغلق تلقائياً منتصف الليل عبر `ShiftCycleService` (Cron `0 0 * * `*).
+- **الوردية** تُغلق تلقائياً منتصف الليل عبر `ShiftCycleService` (Cron `0 0 * `* *).
 - **تسليم الكاش** حدث مستقل: `ManagerCashCustody` يفتح للمدير عند قبض أول سائق، يُغلق عند تسليمه للبنك أو المحاسب.
 - بذلك لا يتعرقل إغلاق الوردية لانتظار تسليم الكاش.
 
@@ -498,25 +503,25 @@ AttendanceModule, LeavesModule, LoansModule, VerifyModule, HealthModule
 ### أمثلة نقاط النهاية الحساسة
 
 
-| Endpoint                           | الطريقة    | الحارس                              | الغرض                        |
-| ---------------------------------- | ---------- | ----------------------------------- | ---------------------------- |
-| `/api/auth/login`                  | POST       | —                                   | تسجيل دخول + فحص ساعات العمل |
-| `/api/health`                      | GET        | Public                              | Health check                 |
-| `/api/version`                     | GET        | Public                              | هوية البناء (version, gitCommit, buildTime, node, env, uptime) |
-| `/api/verify/:type/:id`            | GET        | Public                              | التحقق من نموذج مطبوع عبر QR |
-| `/api/orders`                      | POST/PATCH | JwtAuth + Roles                     | إدارة الفواتير               |
-| `/api/orders/:id`                  | DELETE     | `orders.delete` (OWNER, ACCOUNTANT) | حذف فاتورة                   |
-| `/api/debt-transfers`              | POST       | `debtTransfer.create`               | إنشاء تحويل مديونية          |
-| `/api/debt-transfers/:id/sign`     | POST       | `debtTransfer.sign`                 | توقيع السائق                 |
-| `/api/purchase-orders`             | POST       | `purchaseOrders.create`             | إنشاء PO                     |
-| `/api/purchase-orders/:id/receive` | POST       | `purchaseOrders.receive`            | استلام بضاعة                 |
-| `/api/insights/cash-forecast`      | GET        | `insights.cashForecast.view`        | توقع نقدي                    |
-| `/api/insights/anomalies`          | GET        | `insights.anomalies.view`           | رصد الشذوذ                   |
-| `/api/insights/driver-scorecard`   | GET        | `insights.driverScorecard.view`     | أداء السائقين                |
-| `/api/exports/orders.xlsx`         | GET        | `reports.view`                      | تصدير فواتير Excel           |
-| `/api/exports/payroll.pdf`         | GET        | `payroll.view`                      | كشف رواتب PDF                |
-| `/api/call-center/customers/:id/subscription-rollover-preview` | GET | CALL_CENTER | V19.4 — معاينة ترحيل الاشتراك قبل POST (hasPrevious + carriedBalanceKd) |
-| `/api/call-center/customers/:id/subscriptions`                 | GET | CALL_CENTER | V19.4 — سلسلة اشتراكات العميل مع فواتير كل اشتراك |
+| Endpoint                                                       | الطريقة    | الحارس                              | الغرض                                                                   |
+| -------------------------------------------------------------- | ---------- | ----------------------------------- | ----------------------------------------------------------------------- |
+| `/api/auth/login`                                              | POST       | —                                   | تسجيل دخول + فحص ساعات العمل                                            |
+| `/api/health`                                                  | GET        | Public                              | Health check                                                            |
+| `/api/version`                                                 | GET        | Public                              | هوية البناء (version, gitCommit, buildTime, node, env, uptime)          |
+| `/api/verify/:type/:id`                                        | GET        | Public                              | التحقق من نموذج مطبوع عبر QR                                            |
+| `/api/orders`                                                  | POST/PATCH | JwtAuth + Roles                     | إدارة الفواتير                                                          |
+| `/api/orders/:id`                                              | DELETE     | `orders.delete` (OWNER, ACCOUNTANT) | حذف فاتورة                                                              |
+| `/api/debt-transfers`                                          | POST       | `debtTransfer.create`               | إنشاء تحويل مديونية                                                     |
+| `/api/debt-transfers/:id/sign`                                 | POST       | `debtTransfer.sign`                 | توقيع السائق                                                            |
+| `/api/purchase-orders`                                         | POST       | `purchaseOrders.create`             | إنشاء PO                                                                |
+| `/api/purchase-orders/:id/receive`                             | POST       | `purchaseOrders.receive`            | استلام بضاعة                                                            |
+| `/api/insights/cash-forecast`                                  | GET        | `insights.cashForecast.view`        | توقع نقدي                                                               |
+| `/api/insights/anomalies`                                      | GET        | `insights.anomalies.view`           | رصد الشذوذ                                                              |
+| `/api/insights/driver-scorecard`                               | GET        | `insights.driverScorecard.view`     | أداء السائقين                                                           |
+| `/api/exports/orders.xlsx`                                     | GET        | `reports.view`                      | تصدير فواتير Excel                                                      |
+| `/api/exports/payroll.pdf`                                     | GET        | `payroll.view`                      | كشف رواتب PDF                                                           |
+| `/api/call-center/customers/:id/subscription-rollover-preview` | GET        | CALL_CENTER                         | V19.4 — معاينة ترحيل الاشتراك قبل POST (hasPrevious + carriedBalanceKd) |
+| `/api/call-center/customers/:id/subscriptions`                 | GET        | CALL_CENTER                         | V19.4 — سلسلة اشتراكات العميل مع فواتير كل اشتراك                       |
 
 
 ---

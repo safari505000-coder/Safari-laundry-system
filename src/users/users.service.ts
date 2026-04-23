@@ -26,6 +26,9 @@ const userPublicSelect = {
   branchId: true,
   createdAt: true,
   updatedAt: true,
+  // V19.17 — salary defaults surfaced for the payroll registry page.
+  basicMonthlySalary: true,
+  monthlyAllowances: true,
   role: { select: { id: true, name: true } },
   branch: { select: { id: true, name: true, location: true } },
 };
@@ -210,6 +213,41 @@ export class UsersService {
     return this.prisma.user.update({
       where: { id },
       data: { isActive } as unknown as Prisma.UserUpdateInput,
+      select: userPublicSelect as Prisma.UserSelect,
+    });
+  }
+
+  /**
+   * V19.17 — Dedicated endpoint for the payroll registry page.
+   * Updates the two salary defaults (`basicMonthlySalary`,
+   * `monthlyAllowances`) that seed every payroll row for this user.
+   * Kept separate from the generic `update()` so the audit trail
+   * clearly distinguishes "HR change" vs. "payroll rate change".
+   *
+   * Null/undefined values clear the default (fall back to the
+   * explicitly entered payroll row amounts).
+   */
+  async updateSalaryDefaults(
+    id: string,
+    dto: { basicMonthlySalary?: number | null; monthlyAllowances?: number | null },
+  ): Promise<UserPublic> {
+    await this.findOne(id);
+    const data: Prisma.UserUpdateInput = {};
+    if (dto.basicMonthlySalary !== undefined) {
+      data.basicMonthlySalary =
+        dto.basicMonthlySalary === null
+          ? null
+          : new Prisma.Decimal(dto.basicMonthlySalary.toFixed(4));
+    }
+    if (dto.monthlyAllowances !== undefined) {
+      data.monthlyAllowances =
+        dto.monthlyAllowances === null
+          ? null
+          : new Prisma.Decimal(dto.monthlyAllowances.toFixed(4));
+    }
+    return this.prisma.user.update({
+      where: { id },
+      data,
       select: userPublicSelect as Prisma.UserSelect,
     });
   }

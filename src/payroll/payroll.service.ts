@@ -6,15 +6,35 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { PayrollStatus, Prisma, SafariRole } from '@prisma/client';
+import { CommissionPayoutsService } from '../commissions/commission-payouts.service';
+import { DebtHoldsService } from '../debt-holds/debt-holds.service';
 import { LoansService } from '../loans/loans.service';
 import { PrismaService } from '../prisma/prisma.service';
 
+/**
+ * V19.16 — net pay math. Commission is added ON TOP of base + allowances;
+ * the debt-hold slice is subtracted; and the release line is added back
+ * when previously-withheld debt has been collected.
+ *
+ *   net = basic + allowances + commission + debtRelease − deductions − debtHold
+ */
 function netPay(row: {
   basicSalary: Prisma.Decimal;
   allowances: Prisma.Decimal;
   deductions: Prisma.Decimal;
+  commissionAmount?: Prisma.Decimal | null;
+  debtHoldAmount?: Prisma.Decimal | null;
+  debtReleaseAmount?: Prisma.Decimal | null;
 }): Prisma.Decimal {
-  return row.basicSalary.add(row.allowances).sub(row.deductions);
+  const commission = row.commissionAmount ?? new Prisma.Decimal(0);
+  const hold = row.debtHoldAmount ?? new Prisma.Decimal(0);
+  const release = row.debtReleaseAmount ?? new Prisma.Decimal(0);
+  return row.basicSalary
+    .add(row.allowances)
+    .add(commission)
+    .add(release)
+    .sub(row.deductions)
+    .sub(hold);
 }
 
 @Injectable()
@@ -23,6 +43,8 @@ export class PayrollService {
     private readonly prisma: PrismaService,
     @Inject(forwardRef(() => LoansService))
     private readonly loans: LoansService,
+    private readonly commissionPayouts: CommissionPayoutsService,
+    private readonly debtHolds: DebtHoldsService,
   ) {}
 
   private assertOwnerOrManager(role: SafariRole): void {
@@ -56,20 +78,88 @@ export class PayrollService {
     // the loan balance updates are atomic. The driver/manager only
     // inputs the manual deductions; the automated loan slice is
     // layered on top.
+    //
+    // V19.16 — we also run three new ledgers inside the same
+    // transaction:
+    //   1. Commission: sum of RELEASED CommissionPayouts up to cut time
+    //      flows into `commissionAmount`; the matching rows are stamped
+    //      PAID + payrollId before we return so replaying the cut
+    //      cannot double-pay.
+    //   2. Debt-hold release: any previously-HELD DebtHold whose
+    //      underlying customer debt is now cleared is marked RELEASED
+    //      and surfaced via `debtReleaseAmount` (positive line).
+    //   3. Debt-hold snapshot: if the policy is ACTIVE and the employee
+    //      still has open customer debt, a fresh HELD slip is persisted
+    //      and reflected in `debtHoldAmount` (negative line).
+    const paymentDate = new Date(dto.paymentDate);
     return this.prisma.$transaction(async (tx) => {
+      // Loan slice (existing behaviour).
       const loanDeduction = await this.loans.applyMonthlyDeductionForUser(
         dto.userId,
         tx,
       );
       const totalDed = manualDed.add(loanDeduction);
-      return tx.payroll.create({
+
+      // V19.16 — commission roll-up: pull RELEASED payouts earned up to
+      // this cut date. We read them here BEFORE creating the payroll row
+      // so we know the total in advance; the mark-paid update runs after
+      // the row exists so we can stamp the correct `payrollId`.
+      const commissionSnapshot =
+        await this.commissionPayouts.sumReleasedForUser(
+          dto.userId,
+          paymentDate,
+        );
+      const commission = new Prisma.Decimal(commissionSnapshot.sumKd);
+
+      // V19.17 — auto-flip HELD→RELEASED for any slips whose underlying
+      // customer debt has been collected. We still call this so statuses
+      // stay accurate, but the returned amount is NO LONGER bundled into
+      // the payroll. Release is now a voucher-style disbursement handled
+      // by `DebtHoldsService.markDisbursed` from the Debt-Holds page,
+      // matching the Owner workflow (salary pays out first; release is
+      // stamped on its own schedule).
+      await this.debtHolds.releaseSettledHolds(dto.userId, tx);
+      const debtRelease = new Prisma.Decimal(0);
+
+      // V19.16 — fresh debt-hold for the current open customer debt.
+      const newHoldSnap = await this.debtHolds.buildHoldSnapshotForPayroll(
+        dto.userId,
+      );
+      const autoHold = newHoldSnap
+        ? newHoldSnap.holdAmount
+        : new Prisma.Decimal(0);
+
+      // V19.17 — absorb any pending manual (unlinked) HELD slips for
+      // this employee. These were created via the "حجز يدوي" dialog
+      // before the payroll existed; we fold their sum into
+      // `debtHoldAmount` and stamp each row with the new payroll id so
+      // the saved payslip reflects the actual deduction instead of
+      // showing "—" while the ledger silently withholds the cash.
+      const untiedHolds = await tx.debtHold.findMany({
+        where: {
+          employeeUserId: dto.userId,
+          status: 'HELD',
+          payrollId: null,
+        },
+        select: { id: true, holdAmount: true },
+      });
+      const untiedSum = untiedHolds.reduce(
+        (acc, h) => acc.add(new Prisma.Decimal(h.holdAmount.toString())),
+        new Prisma.Decimal(0),
+      );
+      const debtHold = autoHold.add(untiedSum);
+
+      const payroll = await tx.payroll.create({
         data: {
           userId: dto.userId,
           branchId: dto.branchId,
           basicSalary: basic,
           allowances: allow,
           deductions: totalDed,
-          paymentDate: new Date(dto.paymentDate),
+          commissionAmount: commission.toFixed(4),
+          debtHoldAmount: debtHold.toFixed(4),
+          debtReleaseAmount: debtRelease.toFixed(4),
+          paymentDate,
           status: PayrollStatus.PENDING,
         },
         include: {
@@ -77,6 +167,42 @@ export class PayrollService {
           branch: { select: { id: true, name: true } },
         },
       });
+
+      // Stamp matched commission rows as PAID on this payroll id. This
+      // runs after the Payroll row exists so the foreign key is valid.
+      if (commissionSnapshot.payoutIds.length > 0) {
+        await this.commissionPayouts.markPaidForPayroll(
+          commissionSnapshot.payoutIds,
+          payroll.id,
+          tx,
+        );
+      }
+
+      // Persist the fresh auto-hold slip tied to this payroll (if any).
+      if (newHoldSnap) {
+        await this.debtHolds.persistHold(
+          {
+            employeeUserId: dto.userId,
+            payrollId: payroll.id,
+            debtAmount: newHoldSnap.debtAmount,
+            holdAmount: newHoldSnap.holdAmount,
+            holdMode: newHoldSnap.holdMode,
+          },
+          tx,
+        );
+      }
+
+      // Link every absorbed manual hold to the new payroll so the
+      // payslip audit trail points back to exactly which holds were
+      // applied this run. Batched update keeps this O(1) round trip.
+      if (untiedHolds.length > 0) {
+        await tx.debtHold.updateMany({
+          where: { id: { in: untiedHolds.map((h) => h.id) } },
+          data: { payrollId: payroll.id },
+        });
+      }
+
+      return payroll;
     });
   }
 
@@ -178,6 +304,9 @@ export class PayrollService {
         basicSalary: true,
         allowances: true,
         deductions: true,
+        commissionAmount: true,
+        debtHoldAmount: true,
+        debtReleaseAmount: true,
       },
     });
     let total = new Prisma.Decimal(0);

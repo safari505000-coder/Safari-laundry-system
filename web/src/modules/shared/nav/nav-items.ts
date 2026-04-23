@@ -3,6 +3,7 @@ import {
   ArrowLeftRight,
   Banknote,
   BrainCircuit,
+  Briefcase,
   Clock,
   CalendarRange,
   FileSignature,
@@ -28,6 +29,7 @@ import {
   PackagePlus,
   Radar,
   Receipt,
+  ReceiptText,
   Settings,
   ShieldAlert,
   Warehouse,
@@ -67,6 +69,19 @@ export const myDepositsItem: NavItem = {
   to: '/my-deposits',
   labelKey: 'nav.myDeposits',
   icon: CircleDollarSign,
+  roles: ['DRIVER'],
+};
+
+/**
+ * V19.17 — Driver's "سندات الاستلام" list (every formal cash-handover
+ * voucher a branch manager has issued to them). Sits next to the
+ * live custody page so the driver can always jump from "what I still
+ * owe" to "what I've already handed over and been credited for".
+ */
+export const myCashReceiptsItem: NavItem = {
+  to: '/my-cash-receipts',
+  labelKey: 'nav.myCashReceipts',
+  icon: ReceiptText,
   roles: ['DRIVER'],
 };
 
@@ -161,7 +176,11 @@ export const driverMonitorItem: NavItem = {
   to: '/admin/driver-monitoring',
   labelKey: 'nav.driverMonitor',
   icon: Truck,
-  roles: ['OWNER'],
+  // V19.14 — visible to the executive pair + Call Center so the
+  // driver map returns to their sidebars. Live data still flows only
+  // for OWNER until the dedicated CC/GM endpoint is wired; see the
+  // comment on `driverMonitor.view` in access-matrix.ts.
+  roles: ['OWNER', 'GENERAL_MANAGER', 'CALL_CENTER', 'CALL_CENTER_SUPERVISOR'],
 };
 
 /** Dastur §4 — Owner / GM view of the Smart Inventory report (read-only). */
@@ -572,6 +591,35 @@ export const payrollItem: NavItem = {
   roles: ['OWNER', 'GENERAL_MANAGER'],
 };
 
+// V19.16 — Settings dashboard + commission / debt-hold surfaces.
+export const systemSettingsItem: NavItem = {
+  to: '/settings/dashboard',
+  labelKey: 'nav.systemSettings',
+  icon: Settings,
+  roles: ['OWNER', 'GENERAL_MANAGER'],
+};
+
+export const commissionRulesItem: NavItem = {
+  to: '/settings/commission-rules',
+  labelKey: 'nav.commissionRules',
+  icon: HandCoins,
+  roles: ['OWNER', 'GENERAL_MANAGER'],
+};
+
+export const commissionPayoutsItem: NavItem = {
+  to: '/commission-payouts',
+  labelKey: 'nav.commissionPayouts',
+  icon: CircleDollarSign,
+  roles: ['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT', 'MANAGER'],
+};
+
+export const debtHoldsItem: NavItem = {
+  to: '/debt-holds',
+  labelKey: 'nav.debtHolds',
+  icon: ShieldAlert,
+  roles: ['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT', 'MANAGER'],
+};
+
 /**
  * Stage-D — attendance. Shared across the exec pair + branch MANAGER
  * (branch HR) + ACCOUNTANT (payroll sign-off). Access-matrix enforces
@@ -606,6 +654,21 @@ export const teamItem: NavItem = {
   labelKey: 'nav.usersManagement',
   icon: Users,
   roles: ['OWNER', 'GENERAL_MANAGER'],
+};
+
+/**
+ * V19.17 — "Staff Affairs" hub. Standalone page distinct from
+ * `teamItem` (which handles user accounts + branch registry). This
+ * hub bundles the operational HR surfaces (payroll, attendance,
+ * commission payouts, debt holds, commission rules, system settings)
+ * behind internal tabs with a print button that prints the currently
+ * active tab.
+ */
+export const staffHubItem: NavItem = {
+  to: '/staff-hub',
+  labelKey: 'nav.staffHub',
+  icon: Briefcase,
+  roles: ['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT', 'MANAGER'],
 };
 
 /**

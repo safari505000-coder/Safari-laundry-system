@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Navigate } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   AlertTriangle,
@@ -10,6 +10,7 @@ import {
   HandCoins,
   Landmark,
   Loader2,
+  Printer,
   RefreshCw,
   Upload,
 } from 'lucide-react';
@@ -29,7 +30,10 @@ import {
 import { formatKwdLabel } from '@/lib/kwd';
 import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
 import { Badge } from '@/modules/shared/components/ui/badge';
-import { Button } from '@/modules/shared/components/ui/button';
+import {
+  Button,
+  buttonVariants,
+} from '@/modules/shared/components/ui/button';
 import {
   Card,
   CardContent,
@@ -632,6 +636,21 @@ function CustodyCard({
               {t('managerCustody.closed')}
             </Badge>
           ) : null}
+          {/* V19.17 — same "سند استلام" voucher the driver sees. Opens
+              the shared printable A4 sheet (RBAC is re-enforced on
+              the backend for each bag). */}
+          <Link
+            to={`/my-cash-receipts/${row.id}/print`}
+            target="_blank"
+            rel="noreferrer"
+            className={cn(
+              buttonVariants({ size: 'sm', variant: 'outline' }),
+              'gap-1',
+            )}
+          >
+            <Printer className="h-3.5 w-3.5" />
+            {t('managerCustody.printReceipt')}
+          </Link>
         </div>
       </CardContent>
       {row.status === 'REJECTED' && row.rejectionReason ? (

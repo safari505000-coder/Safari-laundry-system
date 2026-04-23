@@ -14,10 +14,12 @@ export declare class ManagerCustodyController {
     };
     uploadSlip(id: string, dto: UploadDepositSlipDto, user: JwtUser): Promise<import("./manager-custody.service").CustodyRowDto>;
     listMine(user: JwtUser): Promise<import("./manager-custody.service").CustodyRowDto[]>;
+    listDriverMine(user: JwtUser): Promise<import("./manager-custody.service").CustodyRowDto[]>;
     verify(id: string, dto: VerifyCustodyDto, user: JwtUser): Promise<import("./manager-custody.service").CustodyRowDto>;
     reject(id: string, dto: RejectCustodyDto, user: JwtUser): Promise<import("./manager-custody.service").CustodyRowDto>;
     aging(q: ListCustodyQueryDto): Promise<{
         rows: import("./manager-custody.service").CustodyRowDto[];
         summary: import("./manager-custody.service").AgingSummary;
     }>;
+    findOne(id: string, user: JwtUser): Promise<import("./manager-custody.service").CustodyRowDto>;
 }

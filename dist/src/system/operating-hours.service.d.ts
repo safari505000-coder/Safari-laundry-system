@@ -1,6 +1,10 @@
 export declare class OperatingHoursService {
     isLockEnabled(): boolean;
     getKuwaitClockMinutes(): number;
+    getWindowHours(): {
+        startHour: number;
+        endHour: number;
+    };
     isWithinOperatingWindow(): boolean;
     getStatusPayload(): {
         isOpen: boolean;

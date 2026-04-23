@@ -20,7 +20,9 @@ export type VerifyResult = {
     | 'attendance_report'
     | 'leave_request'
     | 'employee_loan'
-    | 'statement';
+    | 'statement'
+    | 'debt_hold'
+    | 'cash_receipt';
   docId: string;
   valid: boolean;
   issuedAtIso: string;
@@ -140,6 +142,90 @@ export class VerifyService {
         activePlan: row.wallet?.subscriptionPlanName ?? null,
         activePlanExpiresIso:
           row.wallet?.subscriptionExpiresAt?.toISOString() ?? null,
+      },
+    };
+  }
+
+  /**
+   * V19.17 — verify the digital stamp on a printed debt-hold voucher
+   * (إيصال تحرير/صرف محجوز). `id` is the DebtHold row UUID embedded in
+   * the QR at print time. We expose only the stage, amounts, and the
+   * employee the voucher was issued to — exactly what is already
+   * printed on the A4 sheet, so an auditor can cross-check a signed
+   * voucher against the live system without needing a login.
+   */
+  async verifyDebtHold(id: string): Promise<VerifyResult> {
+    const row = await this.prisma.debtHold.findUnique({
+      where: { id },
+      include: {
+        employee: {
+          select: { fullName: true, username: true, employeeId: true },
+        },
+      },
+    });
+    if (!row) throw new NotFoundException('Debt hold not found');
+    const stage = row.disbursedAt
+      ? 'DISBURSED'
+      : row.status === 'RELEASED'
+      ? 'PENDING_DISBURSE'
+      : row.status;
+    return {
+      docType: 'debt_hold',
+      docId: row.id,
+      valid: true,
+      issuedAtIso: row.createdAt.toISOString(),
+      issuedTo: {
+        fullName: row.employee.fullName,
+        username: row.employee.username,
+        employeeId: row.employee.employeeId,
+      },
+      summary: {
+        stage,
+        debtKd: row.debtAmount.toFixed(3),
+        holdKd: row.holdAmount.toFixed(3),
+        releasedKd: row.releasedAmount.toFixed(3),
+        releaseDateIso: row.releaseDate?.toISOString() ?? null,
+        disbursedAtIso: row.disbursedAt?.toISOString() ?? null,
+      },
+    };
+  }
+
+  /**
+   * V19.17 — verify the digital stamp on a printed driver
+   * cash-handover receipt (سند استلام كاش). `id` is the
+   * `ManagerCashCustody` row UUID embedded in the QR at print time.
+   * We expose only the amount, the parties, and the receipt date —
+   * exactly the headline already printed on the A4 voucher — so an
+   * auditor can confirm a signed paper receipt matches the live
+   * system without needing a login.
+   */
+  async verifyCashReceipt(id: string): Promise<VerifyResult> {
+    const row = await this.prisma.managerCashCustody.findUnique({
+      where: { id },
+      include: {
+        driver: { select: { fullName: true, username: true, employeeId: true } },
+        manager: { select: { fullName: true, username: true } },
+        branch: { select: { name: true } },
+      },
+    });
+    if (!row) throw new NotFoundException('Cash receipt not found');
+    return {
+      docType: 'cash_receipt',
+      docId: row.id,
+      valid: true,
+      issuedAtIso: row.receivedFromDriverAt.toISOString(),
+      issuedTo: {
+        fullName: row.driver.fullName,
+        username: row.driver.username,
+        employeeId: row.driver.employeeId,
+      },
+      summary: {
+        amountKd: row.amountKd.toFixed(3),
+        settledOrderCount: row.settledOrderCount,
+        managerName: row.manager.fullName,
+        managerUsername: row.manager.username,
+        branch: row.branch?.name ?? null,
+        status: row.status,
       },
     };
   }

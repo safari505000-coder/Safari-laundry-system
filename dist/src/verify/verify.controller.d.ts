@@ -6,4 +6,6 @@ export declare class VerifyController {
     verifyLeave(id: string): Promise<import("./verify.service").VerifyResult>;
     verifyLoan(id: string): Promise<import("./verify.service").VerifyResult>;
     verifyStatement(id: string): Promise<import("./verify.service").VerifyResult>;
+    verifyDebtHold(id: string): Promise<import("./verify.service").VerifyResult>;
+    verifyCashReceipt(id: string): Promise<import("./verify.service").VerifyResult>;
 }

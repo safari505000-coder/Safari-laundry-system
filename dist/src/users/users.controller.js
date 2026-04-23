@@ -24,6 +24,7 @@ const roles_guard_1 = require("../auth/guards/roles.guard");
 const branding_1 = require("../common/constants/branding");
 const permissions_service_1 = require("../permissions/permissions.service");
 const create_user_dto_1 = require("./dto/create-user.dto");
+const update_salary_defaults_dto_1 = require("./dto/update-salary-defaults.dto");
 const update_user_dto_1 = require("./dto/update-user.dto");
 const update_user_status_dto_1 = require("./dto/update-user-status.dto");
 const users_service_1 = require("./users.service");
@@ -102,6 +103,17 @@ let UsersController = UsersController_1 = class UsersController {
         }));
         return row;
     }
+    async updateSalaryDefaults(id, dto, user, req) {
+        const row = await this.usersService.updateSalaryDefaults(id, dto);
+        this.logger.log(JSON.stringify({
+            event: 'staff.salary_defaults',
+            requestId: this.requestId(req),
+            actorUserId: user.userId,
+            actorRole: user.role,
+            targetUserId: row.id,
+        }));
+        return row;
+    }
     async remove(id, user, req) {
         const row = await this.usersService.remove(id);
         this.logger.log(JSON.stringify({
@@ -173,6 +185,22 @@ __decorate([
     __metadata("design:paramtypes", [String, update_user_status_dto_1.UpdateUserStatusDto, Object, Object]),
     __metadata("design:returntype", Promise)
 ], UsersController.prototype, "setStatus", null);
+__decorate([
+    (0, common_1.Patch)(':id/salary-defaults'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
+    (0, swagger_1.ApiOperation)({
+        summary: `Update salary defaults (${branding_1.APP_BRAND})`,
+        description: 'OWNER + GENERAL_MANAGER only. Updates `basicMonthlySalary` + `monthlyAllowances` on the user record; used by the payroll registry page as the seed for each monthly payroll run.',
+    }),
+    (0, swagger_1.ApiBody)({ type: update_salary_defaults_dto_1.UpdateSalaryDefaultsDto }),
+    __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
+    __param(1, (0, common_1.Body)()),
+    __param(2, (0, current_user_decorator_1.CurrentUser)()),
+    __param(3, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, update_salary_defaults_dto_1.UpdateSalaryDefaultsDto, Object, Object]),
+    __metadata("design:returntype", Promise)
+], UsersController.prototype, "updateSalaryDefaults", null);
 __decorate([
     (0, common_1.Delete)(':id'),
     (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER),

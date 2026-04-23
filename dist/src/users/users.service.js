@@ -61,6 +61,8 @@ const userPublicSelect = {
     branchId: true,
     createdAt: true,
     updatedAt: true,
+    basicMonthlySalary: true,
+    monthlyAllowances: true,
     role: { select: { id: true, name: true } },
     branch: { select: { id: true, name: true, location: true } },
 };
@@ -215,6 +217,27 @@ let UsersService = class UsersService {
         return this.prisma.user.update({
             where: { id },
             data: { isActive },
+            select: userPublicSelect,
+        });
+    }
+    async updateSalaryDefaults(id, dto) {
+        await this.findOne(id);
+        const data = {};
+        if (dto.basicMonthlySalary !== undefined) {
+            data.basicMonthlySalary =
+                dto.basicMonthlySalary === null
+                    ? null
+                    : new client_1.Prisma.Decimal(dto.basicMonthlySalary.toFixed(4));
+        }
+        if (dto.monthlyAllowances !== undefined) {
+            data.monthlyAllowances =
+                dto.monthlyAllowances === null
+                    ? null
+                    : new client_1.Prisma.Decimal(dto.monthlyAllowances.toFixed(4));
+        }
+        return this.prisma.user.update({
+            where: { id },
+            data,
             select: userPublicSelect,
         });
     }

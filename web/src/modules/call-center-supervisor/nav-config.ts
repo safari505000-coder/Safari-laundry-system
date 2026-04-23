@@ -5,6 +5,7 @@ import {
   ccPerformanceItem,
   collectionsItem,
   customersItem,
+  driverMonitorItem,
   subscribersItem,
   unpaidInvoicesItem,
   whatsappToolsItem,
@@ -32,5 +33,12 @@ export const callCenterSupervisorSidebarNavGroups: NavGroup[] = [
   {
     ...G.finance,
     items: [ccPerformanceItem],
+  },
+  // V19.14 — mirrors CALL_CENTER; supervisor also needs field-ops
+  // visibility. Live data is OWNER-only until a dedicated endpoint
+  // is wired.
+  {
+    ...G.operations,
+    items: [driverMonitorItem],
   },
 ];

@@ -9,6 +9,7 @@ import {
   PosPaymentMethod,
   Prisma,
   SafariRole,
+  StockMovementType,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ExpensesService } from '../expenses/expenses.service';
@@ -665,6 +666,7 @@ export class ReportsService {
       consolidatedCollections,
       consolidatedDebtPayments,
       consolidatedDebtOpen,
+      inventoryConsumption,
     ] = await Promise.all([
       this.netProfitExecutive(fromIso, toIso),
       this.prisma.branch.findMany({
@@ -675,6 +677,7 @@ export class ReportsService {
       this.computeCollectionsForRange(from, to),
       this.computeDebtPaymentsInRange(from, to),
       this.computeOutstandingDebtBreakdown(),
+      this.computeMonthlyInventoryConsumption(from, to),
     ]);
 
     /**
@@ -756,7 +759,94 @@ export class ReportsService {
         outstandingDebtKd: consolidatedDebtOpen.outstandingDebtKd,
       },
       branches: perBranch,
+      inventoryConsumption,
     };
+  }
+
+  /**
+   * V19.16 — Stock-out (field consumption) totals per branch × item for the
+   * monthly summary print pack. Quantities in DB are negative for STOCK_OUT;
+   * we return positive `quantityConsumed` for readability.
+   */
+  private async computeMonthlyInventoryConsumption(from: Date, to: Date) {
+    const groups = await this.prisma.stockMovement.groupBy({
+      by: ['branchId', 'stockItemId'],
+      where: {
+        type: StockMovementType.STOCK_OUT,
+        createdAt: { gte: from, lte: to },
+      },
+      _sum: { quantity: true },
+      _count: true,
+    });
+
+    if (!groups.length) {
+      return { branches: [] as const };
+    }
+
+    const branchIds = [...new Set(groups.map((g) => g.branchId))];
+    const stockItemIds = [...new Set(groups.map((g) => g.stockItemId))];
+
+    const [branchRows, items] = await Promise.all([
+      this.prisma.branch.findMany({
+        where: { id: { in: branchIds } },
+        select: { id: true, name: true },
+      }),
+      this.prisma.stockItem.findMany({
+        where: { id: { in: stockItemIds } },
+        select: { id: true, code: true, nameAr: true, unit: true },
+      }),
+    ]);
+
+    const branchNameById = new Map(branchRows.map((b) => [b.id, b.name]));
+    const itemById = new Map(items.map((i) => [i.id, i]));
+
+    type Line = {
+      stockItemId: string;
+      code: string;
+      nameAr: string;
+      unit: string;
+      quantityConsumed: string;
+      movementCount: number;
+    };
+
+    const linesByBranch = new Map<string, Line[]>();
+
+    for (const g of groups) {
+      const item = itemById.get(g.stockItemId);
+      if (!item) continue;
+      const sumQty = g._sum.quantity;
+      const quantityConsumed = sumQty
+        ? new Prisma.Decimal(sumQty).neg().toFixed(4)
+        : '0.0000';
+      const rawCount = g._count as number | { _all?: number };
+      const movementCount =
+        typeof rawCount === 'number' ? rawCount : (rawCount._all ?? 0);
+
+      const line: Line = {
+        stockItemId: g.stockItemId,
+        code: item.code,
+        nameAr: item.nameAr,
+        unit: item.unit,
+        quantityConsumed,
+        movementCount,
+      };
+      const list = linesByBranch.get(g.branchId) ?? [];
+      list.push(line);
+      linesByBranch.set(g.branchId, list);
+    }
+
+    const branches = branchIds
+      .map((branchId) => ({
+        branchId,
+        branchName: branchNameById.get(branchId) ?? branchId,
+        lines: (linesByBranch.get(branchId) ?? []).sort((a, b) =>
+          a.nameAr.localeCompare(b.nameAr, 'ar'),
+        ),
+      }))
+      .filter((b) => b.lines.length > 0)
+      .sort((a, b) => a.branchName.localeCompare(b.branchName, 'ar'));
+
+    return { branches };
   }
 
   /**

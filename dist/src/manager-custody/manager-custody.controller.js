@@ -54,6 +54,9 @@ let ManagerCustodyController = class ManagerCustodyController {
     listMine(user) {
         return this.svc.listMine(user.userId);
     }
+    listDriverMine(user) {
+        return this.svc.listByDriver(user.userId);
+    }
     verify(id, dto, user) {
         return this.svc.verifyCustody(id, user.userId, dto);
     }
@@ -62,6 +65,9 @@ let ManagerCustodyController = class ManagerCustodyController {
     }
     aging(q) {
         return this.svc.listAging(q);
+    }
+    findOne(id, user) {
+        return this.svc.findByIdForReceipt(id, user.userId, user.role);
     }
 };
 exports.ManagerCustodyController = ManagerCustodyController;
@@ -144,6 +150,18 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], ManagerCustodyController.prototype, "listMine", null);
 __decorate([
+    (0, common_1.Get)('driver/mine'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.DRIVER),
+    (0, swagger_1.ApiOperation)({
+        summary: `Driver — my cash-handover receipts (${branding_1.APP_BRAND})`,
+        description: 'Returns every handover the driver performed to a branch manager, regardless of the deposit status on the manager side. The driver opens each row as a formal A4 voucher from /my-cash-receipts/:id/print.',
+    }),
+    __param(0, (0, current_user_decorator_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", void 0)
+], ManagerCustodyController.prototype, "listDriverMine", null);
+__decorate([
     (0, common_1.Post)(':id/verify'),
     (0, roles_decorator_1.Roles)(client_1.SafariRole.ACCOUNTANT),
     (0, swagger_1.ApiOperation)({
@@ -180,6 +198,19 @@ __decorate([
     __metadata("design:paramtypes", [list_custody_query_dto_1.ListCustodyQueryDto]),
     __metadata("design:returntype", void 0)
 ], ManagerCustodyController.prototype, "aging", null);
+__decorate([
+    (0, common_1.Get)(':id'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.DRIVER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.OWNER),
+    (0, swagger_1.ApiOperation)({
+        summary: `Single cash-handover receipt (${branding_1.APP_BRAND})`,
+        description: 'Backs the printable voucher page. The driver who handed over, the manager who received, and the back-office audit roles (Accountant / GM / Owner) are the only principals allowed through.',
+    }),
+    __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
+    __param(1, (0, current_user_decorator_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", void 0)
+], ManagerCustodyController.prototype, "findOne", null);
 exports.ManagerCustodyController = ManagerCustodyController = __decorate([
     (0, swagger_1.ApiTags)('manager-custody'),
     (0, swagger_1.ApiBearerAuth)('bearer'),

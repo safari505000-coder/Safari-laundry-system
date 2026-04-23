@@ -43,6 +43,11 @@ import { ShiftsPage } from '@/modules/manager/pages/ShiftsPage';
 import { SubscribersPage } from '@/pages/subscribers-page';
 import { SubscriptionsPage } from '@/pages/subscriptions-page';
 import { PayrollPage } from '@/pages/payroll-page';
+import { SystemSettingsPage } from '@/pages/system-settings-page';
+import { CommissionRulesPage } from '@/pages/commission-rules-page';
+import { CommissionPayoutsPage } from '@/pages/commission-payouts-page';
+import { DebtHoldsPage } from '@/pages/debt-holds-page';
+import { StaffHubPage } from '@/pages/staff-hub-page';
 import { FixedExpensesPage } from '@/pages/fixed-expenses-page';
 import { CollectionsPage } from '@/modules/call-center/pages/collections-page';
 import { CustomersPage } from '@/modules/call-center/pages/customers-page';
@@ -69,6 +74,8 @@ import { CcPerformancePage } from '@/pages/cc-performance-page';
 import { InvoiceAuditLogPage } from '@/pages/invoice-audit-log-page';
 import { AllInvoicesPage } from '@/pages/all-invoices-page';
 import { MyDepositsPage } from '@/modules/driver/pages/my-deposits-page';
+import { MyCashReceiptsPage } from '@/modules/driver/pages/my-cash-receipts-page';
+import { CashReceiptPrintPage } from '@/pages/cash-receipt-print-page';
 import { WhatsappToolsPage } from '@/modules/call-center/pages/whatsapp-tools-page';
 import { ManageItems } from '@/modules/owner/pages/ManageItems';
 import { OwnerDashboard } from '@/modules/owner/pages/OwnerDashboard';
@@ -190,6 +197,14 @@ export default function App() {
                     <RequireOwnerIsland>
                       <OwnerDashboard />
                     </RequireOwnerIsland>
+                  }
+                />
+                <Route
+                  path="staff-hub"
+                  element={
+                    <RequireAccess access="attendance.view">
+                      <StaffHubPage />
+                    </RequireAccess>
                   }
                 />
                 <Route
@@ -326,6 +341,27 @@ export default function App() {
                 <Route
                   path="my-cash-custody"
                   element={<Navigate to="/my-deposits" replace />}
+                />
+                {/* V19.17 — Driver "سندات الاستلام" inbox + per-row
+                    printable voucher. The print route is opened in a
+                    new tab from both the driver inbox and any admin
+                    custody view; RBAC on the backend enforces who
+                    can actually fetch each row. */}
+                <Route
+                  path="my-cash-receipts"
+                  element={
+                    <RequireAccess access="myCashReceipts.view">
+                      <MyCashReceiptsPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="my-cash-receipts/:id/print"
+                  element={
+                    <RequireAccess access="myCashReceipts.view">
+                      <CashReceiptPrintPage />
+                    </RequireAccess>
+                  }
                 />
                 <Route
                   path="my-field-expenses"
@@ -628,6 +664,38 @@ export default function App() {
                   element={
                     <RequireAccess access="payroll.view">
                       <PayrollPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="settings/dashboard"
+                  element={
+                    <RequireAccess access="settings.dashboard.view">
+                      <SystemSettingsPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="settings/commission-rules"
+                  element={
+                    <RequireAccess access="settings.commissionRules.manage">
+                      <CommissionRulesPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="commission-payouts"
+                  element={
+                    <RequireAccess access="commissionPayouts.view">
+                      <CommissionPayoutsPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="debt-holds"
+                  element={
+                    <RequireAccess access="debtHolds.view">
+                      <DebtHoldsPage />
                     </RequireAccess>
                   }
                 />

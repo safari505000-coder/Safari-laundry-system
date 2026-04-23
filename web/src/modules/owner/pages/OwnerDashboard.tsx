@@ -38,11 +38,12 @@ export function OwnerDashboard() {
     <div className="space-y-6">
       <header className="space-y-1">
         <h1 className="text-2xl font-extrabold text-foreground">
-          إدارة الموظفين والفروع
+          إدارة المستخدمين والفروع
         </h1>
         <p className="text-sm text-muted-foreground">
-          دليل الموظفين، تغيير الأدوار، تفعيل/إيقاف الحسابات، وسجل الفروع. الدورة
-          المالية ولوحة التحكم الرئيسية في صفحة المالية.
+          دليل المستخدمين، تغيير الأدوار، تفعيل/إيقاف الحسابات، وسجل الفروع.
+          شؤون الموظفين التشغيلية (الرواتب، الحضور، العمولة، المحجوز) في
+          صفحة "شؤون الموظفين".
         </p>
       </header>
 

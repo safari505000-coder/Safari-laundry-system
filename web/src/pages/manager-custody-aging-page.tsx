@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Navigate } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   AlertTriangle,
   CheckCircle2,
   Clock,
   Loader2,
+  Printer,
   RefreshCw,
   XCircle,
 } from 'lucide-react';
@@ -24,7 +25,10 @@ import {
 import { formatKwdLabel } from '@/lib/kwd';
 import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
 import { Badge } from '@/modules/shared/components/ui/badge';
-import { Button } from '@/modules/shared/components/ui/button';
+import {
+  Button,
+  buttonVariants,
+} from '@/modules/shared/components/ui/button';
 import {
   Card,
   CardContent,
@@ -382,6 +386,24 @@ export function ManagerCustodyAgingPage() {
                               {t('managerCustody.viewSlip')}
                             </a>
                           ) : null}
+                          {/* V19.17 — shared "سند استلام" voucher.
+                              Same print route as the driver's inbox;
+                              the backend enforces RBAC per bag. */}
+                          <Link
+                            to={`/my-cash-receipts/${r.id}/print`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className={cn(
+                              buttonVariants({
+                                size: 'sm',
+                                variant: 'outline',
+                              }),
+                              'gap-1',
+                            )}
+                          >
+                            <Printer className="h-3.5 w-3.5" />
+                            {t('managerCustody.printReceipt')}
+                          </Link>
                           {canAct &&
                           r.status === 'AWAITING_VERIFICATION' ? (
                             <>

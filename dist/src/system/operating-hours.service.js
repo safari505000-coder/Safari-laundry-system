@@ -29,12 +29,16 @@ let OperatingHoursService = class OperatingHoursService {
         const minute = Number(parts.find((p) => p.type === 'minute')?.value ?? '0');
         return hour * 60 + minute;
     }
+    getWindowHours() {
+        const startHour = Number.parseInt(process.env.OPERATING_HOURS_KUWAIT_START_HOUR ?? '7', 10);
+        const endHour = Number.parseInt(process.env.OPERATING_HOURS_KUWAIT_END_HOUR ?? '24', 10);
+        return { startHour, endHour };
+    }
     isWithinOperatingWindow() {
-        const startH = Number.parseInt(process.env.OPERATING_HOURS_KUWAIT_START_HOUR ?? '7', 10);
-        const endH = Number.parseInt(process.env.OPERATING_HOURS_KUWAIT_END_HOUR ?? '23', 10);
+        const { startHour, endHour } = this.getWindowHours();
         const mins = this.getKuwaitClockMinutes();
-        const start = startH * 60;
-        const end = endH * 60;
+        const start = startHour * 60;
+        const end = endHour * 60;
         return mins >= start && mins < end;
     }
     getStatusPayload() {

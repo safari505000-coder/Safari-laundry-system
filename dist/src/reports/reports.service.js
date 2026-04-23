@@ -349,6 +349,232 @@ let ReportsService = class ReportsService {
             netProfitKd,
         };
     }
+    async computeCollectionsForRange(from, to, branchId) {
+        const rows = await this.prisma.order.findMany({
+            where: {
+                status: client_1.OrderStatus.COMPLETED,
+                completedAt: { gte: from, lte: to },
+                ...this.ordersForBranch(branchId),
+            },
+            select: { totalPrice: true, cashStatus: true },
+        });
+        let collected = new client_1.Prisma.Decimal(0);
+        let uncollected = new client_1.Prisma.Decimal(0);
+        for (const o of rows) {
+            const amount = new client_1.Prisma.Decimal(o.totalPrice.toString());
+            if (o.cashStatus === client_1.CashStatus.UNPAID) {
+                uncollected = uncollected.add(amount);
+            }
+            else {
+                collected = collected.add(amount);
+            }
+        }
+        return {
+            collectedRevenueKd: collected.toFixed(4),
+            uncollectedRevenueKd: uncollected.toFixed(4),
+        };
+    }
+    async computeDebtPaymentsInRange(from, to, branchId) {
+        const payments = await this.prisma.debtLedgerEntry.findMany({
+            where: {
+                source: client_1.DebtSource.PAYMENT,
+                createdAt: { gte: from, lte: to },
+                orderId: { not: null },
+                ...(branchId ? { branchId } : {}),
+            },
+            select: {
+                amount: true,
+                orderId: true,
+                order: { select: { completedAt: true } },
+            },
+        });
+        let sum = new client_1.Prisma.Decimal(0);
+        for (const p of payments) {
+            if (!p.orderId)
+                continue;
+            const completedAt = p.order?.completedAt;
+            if (completedAt && completedAt < from) {
+                sum = sum.add(new client_1.Prisma.Decimal(p.amount.toString()));
+            }
+        }
+        return sum.toFixed(4);
+    }
+    async computeOutstandingDebtBreakdown(branchId) {
+        const rows = await this.prisma.debtLedgerEntry.groupBy({
+            by: ['customerId', 'source'],
+            where: branchId ? { branchId } : {},
+            _sum: { amount: true },
+        });
+        const z = new client_1.Prisma.Decimal(0);
+        const byCustomer = new Map();
+        for (const r of rows) {
+            const amt = new client_1.Prisma.Decimal(r._sum.amount?.toString() ?? '0');
+            const cur = byCustomer.get(r.customerId) ?? {
+                inv: new client_1.Prisma.Decimal(0),
+                sub: new client_1.Prisma.Decimal(0),
+                pay: new client_1.Prisma.Decimal(0),
+            };
+            if (r.source === client_1.DebtSource.INVOICE_SHORTFALL)
+                cur.inv = cur.inv.add(amt);
+            else if (r.source === client_1.DebtSource.SUBSCRIPTION_OVERUSE)
+                cur.sub = cur.sub.add(amt);
+            else if (r.source === client_1.DebtSource.PAYMENT)
+                cur.pay = cur.pay.add(amt);
+            byCustomer.set(r.customerId, cur);
+        }
+        let openInv = z;
+        let openSub = z;
+        for (const { inv, sub, pay } of byCustomer.values()) {
+            const invPaid = inv.lessThanOrEqualTo(pay) ? inv : pay;
+            const payAfterInv = pay.sub(invPaid);
+            const subPaid = sub.lessThanOrEqualTo(payAfterInv) ? sub : payAfterInv;
+            const remInv = inv.sub(invPaid);
+            const remSub = sub.sub(subPaid);
+            if (remInv.gt(0))
+                openInv = openInv.add(remInv);
+            if (remSub.gt(0))
+                openSub = openSub.add(remSub);
+        }
+        const total = openInv.add(openSub);
+        return {
+            outstandingInvoiceDebtKd: openInv.toFixed(4),
+            outstandingSubscriptionDebtKd: openSub.toFixed(4),
+            outstandingDebtKd: total.toFixed(4),
+        };
+    }
+    async monthlySummary(fromIso, toIso) {
+        const { from, to } = this.parseRange(fromIso, toIso);
+        const [consolidated, branches, consolidatedCollections, consolidatedDebtPayments, consolidatedDebtOpen, inventoryConsumption,] = await Promise.all([
+            this.netProfitExecutive(fromIso, toIso),
+            this.prisma.branch.findMany({
+                where: { isActive: true },
+                orderBy: { name: 'asc' },
+                select: { id: true, name: true },
+            }),
+            this.computeCollectionsForRange(from, to),
+            this.computeDebtPaymentsInRange(from, to),
+            this.computeOutstandingDebtBreakdown(),
+            this.computeMonthlyInventoryConsumption(from, to),
+        ]);
+        const netWithSubsidy = (base, subsidy) => {
+            const n = Number.parseFloat(base || '0') - Number.parseFloat(subsidy || '0');
+            if (!Number.isFinite(n))
+                return base;
+            return n.toFixed(4);
+        };
+        const perBranch = await Promise.all(branches.map(async (b) => {
+            const [row, coll, debtPayments, open] = await Promise.all([
+                this.netProfitExecutive(fromIso, toIso, b.id),
+                this.computeCollectionsForRange(from, to, b.id),
+                this.computeDebtPaymentsInRange(from, to, b.id),
+                this.computeOutstandingDebtBreakdown(b.id),
+            ]);
+            return {
+                branchId: b.id,
+                branchName: b.name,
+                grossRevenueKd: row.grossRevenueKd,
+                bankFeesTotalKd: row.bankFeesTotalKd,
+                settledRevenueAfterBankFeesKd: row.settledRevenueAfterBankFeesKd,
+                variableSoapFuelKd: row.variableSoapFuelKd,
+                miscOperationalKd: row.miscOperationalKd,
+                fixedExpensesKd: row.fixedExpensesKd,
+                payrollPaidKd: row.payrollPaidKd,
+                totalExpensesVariableAndFixedKd: row.totalExpensesVariableAndFixedKd,
+                subscriptionSubsidyKd: row.subscriptionSubsidyKd,
+                netProfitKd: netWithSubsidy(row.netProfitKd, row.subscriptionSubsidyKd),
+                collectedRevenueKd: coll.collectedRevenueKd,
+                uncollectedRevenueKd: coll.uncollectedRevenueKd,
+                debtPaymentsReceivedKd: debtPayments,
+                outstandingInvoiceDebtKd: open.outstandingInvoiceDebtKd,
+                outstandingSubscriptionDebtKd: open.outstandingSubscriptionDebtKd,
+                outstandingDebtKd: open.outstandingDebtKd,
+            };
+        }));
+        return {
+            from: consolidated.from,
+            to: consolidated.to,
+            consolidated: {
+                grossRevenueKd: consolidated.grossRevenueKd,
+                bankFeesTotalKd: consolidated.bankFeesTotalKd,
+                settledRevenueAfterBankFeesKd: consolidated.settledRevenueAfterBankFeesKd,
+                variableSoapFuelKd: consolidated.variableSoapFuelKd,
+                miscOperationalKd: consolidated.miscOperationalKd,
+                fixedExpensesKd: consolidated.fixedExpensesKd,
+                payrollPaidKd: consolidated.payrollPaidKd,
+                totalExpensesVariableAndFixedKd: consolidated.totalExpensesVariableAndFixedKd,
+                subscriptionSubsidyKd: consolidated.subscriptionSubsidyKd,
+                netProfitKd: netWithSubsidy(consolidated.netProfitKd, consolidated.subscriptionSubsidyKd),
+                collectedRevenueKd: consolidatedCollections.collectedRevenueKd,
+                uncollectedRevenueKd: consolidatedCollections.uncollectedRevenueKd,
+                debtPaymentsReceivedKd: consolidatedDebtPayments,
+                outstandingInvoiceDebtKd: consolidatedDebtOpen.outstandingInvoiceDebtKd,
+                outstandingSubscriptionDebtKd: consolidatedDebtOpen.outstandingSubscriptionDebtKd,
+                outstandingDebtKd: consolidatedDebtOpen.outstandingDebtKd,
+            },
+            branches: perBranch,
+            inventoryConsumption,
+        };
+    }
+    async computeMonthlyInventoryConsumption(from, to) {
+        const groups = await this.prisma.stockMovement.groupBy({
+            by: ['branchId', 'stockItemId'],
+            where: {
+                type: client_1.StockMovementType.STOCK_OUT,
+                createdAt: { gte: from, lte: to },
+            },
+            _sum: { quantity: true },
+            _count: true,
+        });
+        if (!groups.length) {
+            return { branches: [] };
+        }
+        const branchIds = [...new Set(groups.map((g) => g.branchId))];
+        const stockItemIds = [...new Set(groups.map((g) => g.stockItemId))];
+        const [branchRows, items] = await Promise.all([
+            this.prisma.branch.findMany({
+                where: { id: { in: branchIds } },
+                select: { id: true, name: true },
+            }),
+            this.prisma.stockItem.findMany({
+                where: { id: { in: stockItemIds } },
+                select: { id: true, code: true, nameAr: true, unit: true },
+            }),
+        ]);
+        const branchNameById = new Map(branchRows.map((b) => [b.id, b.name]));
+        const itemById = new Map(items.map((i) => [i.id, i]));
+        const linesByBranch = new Map();
+        for (const g of groups) {
+            const item = itemById.get(g.stockItemId);
+            if (!item)
+                continue;
+            const sumQty = g._sum.quantity;
+            const quantityConsumed = sumQty
+                ? new client_1.Prisma.Decimal(sumQty).neg().toFixed(4)
+                : '0.0000';
+            const rawCount = g._count;
+            const movementCount = typeof rawCount === 'number' ? rawCount : (rawCount._all ?? 0);
+            const line = {
+                stockItemId: g.stockItemId,
+                code: item.code,
+                nameAr: item.nameAr,
+                unit: item.unit,
+                quantityConsumed,
+                movementCount,
+            };
+            const list = linesByBranch.get(g.branchId) ?? [];
+            list.push(line);
+            linesByBranch.set(g.branchId, list);
+        }
+        const branches = branchIds
+            .map((branchId) => ({
+            branchId,
+            branchName: branchNameById.get(branchId) ?? branchId,
+            lines: (linesByBranch.get(branchId) ?? []).sort((a, b) => a.nameAr.localeCompare(b.nameAr, 'ar')),
+        }))
+            .filter((b) => b.lines.length > 0)
+            .sort((a, b) => a.branchName.localeCompare(b.branchName, 'ar'));
+        return { branches };
+    }
     async bankFeesByBranch(fromIso, toIso) {
         const { from, to } = this.parseRange(fromIso, toIso);
         const agg = await this.aggregateBankFeesForCompletedOrders(from, to);

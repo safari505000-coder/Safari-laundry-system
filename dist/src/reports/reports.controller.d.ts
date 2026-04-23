@@ -102,6 +102,64 @@ export declare class ReportsController {
         totalExpensesVariableAndFixedKd: string;
         netProfitKd: string;
     }>;
+    monthlySummary(q: ReportsRangeQueryDto): Promise<{
+        from: string;
+        to: string;
+        consolidated: {
+            grossRevenueKd: string;
+            bankFeesTotalKd: string;
+            settledRevenueAfterBankFeesKd: string;
+            variableSoapFuelKd: string;
+            miscOperationalKd: string;
+            fixedExpensesKd: string;
+            payrollPaidKd: string;
+            totalExpensesVariableAndFixedKd: string;
+            subscriptionSubsidyKd: string;
+            netProfitKd: string;
+            collectedRevenueKd: string;
+            uncollectedRevenueKd: string;
+            debtPaymentsReceivedKd: string;
+            outstandingInvoiceDebtKd: string;
+            outstandingSubscriptionDebtKd: string;
+            outstandingDebtKd: string;
+        };
+        branches: {
+            branchId: string;
+            branchName: string;
+            grossRevenueKd: string;
+            bankFeesTotalKd: string;
+            settledRevenueAfterBankFeesKd: string;
+            variableSoapFuelKd: string;
+            miscOperationalKd: string;
+            fixedExpensesKd: string;
+            payrollPaidKd: string;
+            totalExpensesVariableAndFixedKd: string;
+            subscriptionSubsidyKd: string;
+            netProfitKd: string;
+            collectedRevenueKd: string;
+            uncollectedRevenueKd: string;
+            debtPaymentsReceivedKd: string;
+            outstandingInvoiceDebtKd: string;
+            outstandingSubscriptionDebtKd: string;
+            outstandingDebtKd: string;
+        }[];
+        inventoryConsumption: {
+            branches: readonly [];
+        } | {
+            branches: {
+                branchId: string;
+                branchName: string;
+                lines: {
+                    stockItemId: string;
+                    code: string;
+                    nameAr: string;
+                    unit: string;
+                    quantityConsumed: string;
+                    movementCount: number;
+                }[];
+            }[];
+        };
+    }>;
     bankFeesByBranch(q: ReportsRangeQueryDto): Promise<{
         from: string;
         to: string;

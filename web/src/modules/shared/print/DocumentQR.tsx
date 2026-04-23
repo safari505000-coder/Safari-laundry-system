@@ -23,7 +23,17 @@ export type DocumentType =
   // financial history with an embedded money-flow breakdown for each
   // subscription activation so customers see exactly where their
   // renewal money went.
-  | 'STATEMENT';
+  | 'STATEMENT'
+  // V19.17 — standalone debt-hold voucher printed the moment the
+  // Owner/GM releases or disburses a hold. Auditors scan the QR to
+  // confirm the hold exists, what stage it's at, and how much was
+  // released / disbursed — no login required.
+  | 'DEBT_HOLD'
+  // V19.17 — formal cash-handover receipt (سند استلام كاش) issued to
+  // a driver after a branch manager approves receipt of the driver's
+  // CASH custody. Auditors scan the QR to confirm the bag UUID, the
+  // amount, and the parties without logging in.
+  | 'CASH_RECEIPT';
 
 export type DocumentQRProps = {
   docType: DocumentType;
@@ -65,6 +75,8 @@ export function DocumentQR({
     EMPLOYEE_LOAN: 'إقرار سلفة',
     INVOICE: 'فاتورة',
     STATEMENT: 'كشف حساب',
+    DEBT_HOLD: 'محجوز مديونية',
+    CASH_RECEIPT: 'سند استلام كاش',
   };
 
   return (

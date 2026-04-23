@@ -1,7 +1,6 @@
 import type { NavGroup } from '@/modules/shared/nav/nav-types';
 import { G } from '@/modules/shared/nav/nav-groups';
 import {
-  attendanceItem,
   branchesItem,
   collectionsItem,
   customersItem,
@@ -26,10 +25,10 @@ import {
   managerCustodyAgingItem,
   ownerInventoryItem,
   ownerSerialsItem,
-  payrollItem,
   purchaseOrdersItem,
   shiftsItem,
   staffDebtsItem,
+  staffHubItem,
   subscribersItem,
   subscriptionsItem,
   teamItem,
@@ -102,15 +101,19 @@ export const defaultSidebarNavGroups: NavGroup[] = [
     ],
   },
   {
+    // V19.17 — Staff/HR operational surfaces (payroll, attendance,
+    // commission payouts, debt holds, commission rules, system
+    // settings) live as internal tabs on the dedicated `staffHubItem`
+    // page (`/staff-hub`). The `teamItem` (`/owner-dashboard`) stays
+    // focused on user accounts + branch registry only.
     ...G.adminSettings,
     items: [
       teamItem,
+      staffHubItem,
       branchesItem,
       driverMonitorItem,
       shiftsItem,
       whatsappToolsItem,
-      payrollItem,
-      attendanceItem,
     ],
   },
 ];

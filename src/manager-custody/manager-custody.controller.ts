@@ -145,6 +145,24 @@ export class ManagerCustodyController {
     return this.svc.listMine(user.userId);
   }
 
+  // -------------------------------------------------- DRIVER self-service ops
+  /**
+   * V19.17 — Driver self-service list of formal cash handover
+   * receipts. Each row maps 1:1 with a ManagerCashCustody bag that
+   * the driver handed over to a branch manager and can be opened as
+   * a printable voucher (سند استلام رسمي) from the driver's sidebar.
+   */
+  @Get('driver/mine')
+  @Roles(SafariRole.DRIVER)
+  @ApiOperation({
+    summary: `Driver — my cash-handover receipts (${APP_BRAND})`,
+    description:
+      'Returns every handover the driver performed to a branch manager, regardless of the deposit status on the manager side. The driver opens each row as a formal A4 voucher from /my-cash-receipts/:id/print.',
+  })
+  listDriverMine(@CurrentUser() user: JwtUser) {
+    return this.svc.listByDriver(user.userId);
+  }
+
   // --------------------------------------------------------- ACCOUNTANT ops
   @Post(':id/verify')
   @Roles(SafariRole.ACCOUNTANT)
@@ -182,5 +200,41 @@ export class ManagerCustodyController {
   })
   aging(@Query() q: ListCustodyQueryDto) {
     return this.svc.listAging(q);
+  }
+
+  /**
+   * V19.17 — single receipt fetch for the printable voucher.
+   *
+   * IMPORTANT: this route uses a bare `:id` segment and must stay LAST
+   * in the file. NestJS matches `@Get()` handlers in declaration order,
+   * so if `:id` is defined before `mine` / `driver/mine` / `aging`,
+   * any request to those static paths gets swallowed by `:id` and
+   * rejected by `ParseUUIDPipe` as "uuid is expected".
+   *
+   * Access control is enforced inside the service (driver-self,
+   * manager-self, or privileged back-office roles only).
+   */
+  @Get(':id')
+  @Roles(
+    SafariRole.DRIVER,
+    SafariRole.MANAGER,
+    SafariRole.ACCOUNTANT,
+    SafariRole.GENERAL_MANAGER,
+    SafariRole.OWNER,
+  )
+  @ApiOperation({
+    summary: `Single cash-handover receipt (${APP_BRAND})`,
+    description:
+      'Backs the printable voucher page. The driver who handed over, the manager who received, and the back-office audit roles (Accountant / GM / Owner) are the only principals allowed through.',
+  })
+  findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.svc.findByIdForReceipt(
+      id,
+      user.userId,
+      user.role as SafariRole,
+    );
   }
 }

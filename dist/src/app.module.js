@@ -19,6 +19,8 @@ const audit_logs_module_1 = require("./audit-logs/audit-logs.module");
 const auth_module_1 = require("./auth/auth.module");
 const branches_module_1 = require("./branches/branches.module");
 const call_center_module_1 = require("./call-center/call-center.module");
+const commissions_module_1 = require("./commissions/commissions.module");
+const debt_holds_module_1 = require("./debt-holds/debt-holds.module");
 const invoice_audit_module_1 = require("./invoice-audit/invoice-audit.module");
 const operating_hours_middleware_1 = require("./common/middleware/operating-hours.middleware");
 const request_id_middleware_1 = require("./common/middleware/request-id.middleware");
@@ -48,6 +50,7 @@ const reports_module_1 = require("./reports/reports.module");
 const serials_module_1 = require("./serials/serials.module");
 const shifts_module_1 = require("./shifts/shifts.module");
 const system_module_1 = require("./system/system.module");
+const system_settings_module_1 = require("./system-settings/system-settings.module");
 const subscription_plans_module_1 = require("./subscription-plans/subscription-plans.module");
 const subscribers_module_1 = require("./subscribers/subscribers.module");
 const users_module_1 = require("./users/users.module");
@@ -83,6 +86,9 @@ exports.AppModule = AppModule = __decorate([
             reports_module_1.ReportsModule,
             payment_method_fees_module_1.PaymentMethodFeesModule,
             system_module_1.SystemModule,
+            system_settings_module_1.SystemSettingsModule,
+            commissions_module_1.CommissionsModule,
+            debt_holds_module_1.DebtHoldsModule,
             expenses_module_1.ExpensesModule,
             exports_module_1.ExportsModule,
             payroll_module_1.PayrollModule,

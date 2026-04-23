@@ -2395,7 +2395,71 @@ export type TeamUserRow = {
   updatedAt: string;
   role: { id: string; name: string };
   branch: { id: string; name: string; location: string } | null;
+  /** V19.17 — salary defaults surfaced by the payroll registry page. */
+  basicMonthlySalary?: string | null;
+  monthlyAllowances?: string | null;
 };
+
+/**
+ * V19.17 — Patch salary defaults on a user. OWNER + GM only. Pass
+ * `null` to clear a default, `undefined` to keep it unchanged.
+ */
+export function updateSalaryDefaults(
+  token: string,
+  userId: string,
+  dto: {
+    basicMonthlySalary?: number | null;
+    monthlyAllowances?: number | null;
+  },
+) {
+  return apiJson<TeamUserRow>(`/api/users/${userId}/salary-defaults`, {
+    method: 'PATCH',
+    token,
+    body: JSON.stringify(dto),
+  });
+}
+
+/**
+ * V19.17 — manual debt hold creation (Owner/GM). Passing `payrollId`
+ * ties the hold directly to an existing payslip and increments that
+ * row's `debtHoldAmount` on the server in one transaction; omitting
+ * it leaves the hold unlinked so the NEXT payroll run absorbs it.
+ */
+export function createManualDebtHold(
+  token: string,
+  dto: {
+    employeeUserId: string;
+    holdAmount: number;
+    note?: string;
+    payrollId?: string;
+  },
+) {
+  return apiJson<DebtHoldRow>('/api/debt-holds/manual', {
+    method: 'POST',
+    token,
+    body: JSON.stringify(dto),
+  });
+}
+
+/** V19.17 — force-release a debt hold (Owner/GM). */
+export function releaseDebtHold(token: string, id: string) {
+  return apiJson<DebtHoldRow>(`/api/debt-holds/${id}/release`, {
+    method: 'POST',
+    token,
+  });
+}
+
+/**
+ * V19.17 — stamp a RELEASED hold as actually paid out to the
+ * employee (voucher disbursement). Admin-only. Release runs on its
+ * own schedule, independent of the payroll cycle.
+ */
+export function disburseDebtHold(token: string, id: string) {
+  return apiJson<DebtHoldRow>(`/api/debt-holds/${id}/disburse`, {
+    method: 'POST',
+    token,
+  });
+}
 
 export type SettlementHistoryRow = {
   id: string;
@@ -2751,11 +2815,28 @@ export type MonthlySummaryBranchRow = {
   outstandingDebtKd: string;
 };
 
+/** V19.16 — STOCK_OUT aggregates for monthly summary print (consumption). */
+export type MonthlySummaryInventoryLine = {
+  stockItemId: string;
+  code: string;
+  nameAr: string;
+  unit: string;
+  quantityConsumed: string;
+  movementCount: number;
+};
+
+export type MonthlySummaryInventoryBranch = {
+  branchId: string;
+  branchName: string;
+  lines: MonthlySummaryInventoryLine[];
+};
+
 export type MonthlySummaryReport = {
   from: string;
   to: string;
   consolidated: Omit<MonthlySummaryBranchRow, 'branchId' | 'branchName'>;
   branches: MonthlySummaryBranchRow[];
+  inventoryConsumption: { branches: MonthlySummaryInventoryBranch[] };
 };
 
 export type LiveFeedLine = {
@@ -2793,6 +2874,12 @@ export type PayrollRow = {
   basicSalary: string;
   allowances: string;
   deductions: string;
+  /** V19.16 — released commission paid in this run (informational). */
+  commissionAmount: string;
+  /** V19.16 — slice withheld this run for open customer debt. */
+  debtHoldAmount: string;
+  /** V19.16 — previously-held debt released back to the employee. */
+  debtReleaseAmount: string;
   paymentDate: string;
   status: PayrollStatus;
   createdAt: string;
@@ -2895,6 +2982,29 @@ export function listMyManagerCustody(token: string) {
   return apiJson<ManagerCashCustodyRow[]>('/api/manager-custody/mine', {
     token,
   });
+}
+
+/**
+ * V19.17 — DRIVER — list every formal cash-handover receipt issued to
+ * me by a branch manager (past and present). Powers the driver's
+ * "سندات الاستلام" page and the per-receipt printable voucher.
+ */
+export function listMyDriverCashReceipts(token: string) {
+  return apiJson<ManagerCashCustodyRow[]>('/api/manager-custody/driver/mine', {
+    token,
+  });
+}
+
+/**
+ * V19.17 — fetch a single cash-handover receipt for the printable
+ * voucher. Access is enforced server-side (driver-self, manager-self,
+ * or back-office audit roles).
+ */
+export function getCashReceipt(token: string, custodyId: string) {
+  return apiJson<ManagerCashCustodyRow>(
+    `/api/manager-custody/${custodyId}`,
+    { token },
+  );
 }
 
 /** MANAGER — attach an already-uploaded deposit slip URL to a custody bag. */
@@ -3486,6 +3596,10 @@ export type PayslipRow = {
   basicSalary: string;
   allowances: string;
   deductions: string;
+  /** V19.16 — new bands surfaced on the payslip; see PayrollRow. */
+  commissionAmount: string;
+  debtHoldAmount: string;
+  debtReleaseAmount: string;
   paymentDate: string;
   status: PayrollStatus;
   createdAt: string;
@@ -3854,3 +3968,326 @@ export function getCcPerformance(
   );
 }
 
+// ---------------------------------------------------------------------------
+// V19.16 — Commission, Debt-Hold & System Settings (Owner / Admin).
+// ---------------------------------------------------------------------------
+
+export type SystemToggleKey =
+  | 'COMMISSION'
+  | 'DEBT_HOLD'
+  | 'PAYROLL'
+  | 'LOANS'
+  | 'ATTENDANCE';
+
+export type SystemToggleRow = {
+  key: SystemToggleKey;
+  isEnabled: boolean;
+  updatedAt: string | null;
+  updatedBy: string | null;
+};
+
+export function listSystemToggles(token: string) {
+  return apiJson<SystemToggleRow[]>('/api/system-settings/toggles', { token });
+}
+
+export function setSystemToggle(
+  token: string,
+  dto: { key: SystemToggleKey; isEnabled: boolean },
+) {
+  return apiJson<SystemToggleRow>('/api/system-settings/toggles', {
+    method: 'PATCH',
+    token,
+    body: JSON.stringify(dto),
+  });
+}
+
+export type DebtHoldMode = 'FULL' | 'FIXED';
+
+export type DebtHoldPolicy = {
+  id: string;
+  isActive: boolean;
+  holdMode: DebtHoldMode;
+  fixedAmount: string | null;
+  updatedAt: string;
+};
+
+export function getDebtHoldPolicy(token: string) {
+  return apiJson<DebtHoldPolicy>('/api/system-settings/debt-hold-policy', {
+    token,
+  });
+}
+
+export function updateDebtHoldPolicy(
+  token: string,
+  dto: {
+    isActive: boolean;
+    holdMode: DebtHoldMode;
+    fixedAmount?: number;
+  },
+) {
+  return apiJson<DebtHoldPolicy>('/api/system-settings/debt-hold-policy', {
+    method: 'PUT',
+    token,
+    body: JSON.stringify(dto),
+  });
+}
+
+export type PayrollSettings = {
+  id: string;
+  payDayOfMonth: number;
+  autoDeductLoans: boolean;
+  linkWithAttendance: boolean;
+  updatedAt: string;
+};
+
+export function getPayrollSettings(token: string) {
+  return apiJson<PayrollSettings>('/api/system-settings/payroll-settings', {
+    token,
+  });
+}
+
+export function updatePayrollSettings(
+  token: string,
+  dto: {
+    payDayOfMonth: number;
+    autoDeductLoans: boolean;
+    linkWithAttendance: boolean;
+  },
+) {
+  return apiJson<PayrollSettings>('/api/system-settings/payroll-settings', {
+    method: 'PUT',
+    token,
+    body: JSON.stringify(dto),
+  });
+}
+
+export type CommissionMode = 'SALE' | 'COLLECTION';
+export type CommissionCalculationBase =
+  | 'ORDER_TOTAL'
+  | 'INVOICE_TOTAL'
+  | 'NET_AFTER_KNET'
+  | 'EXCLUDE_SUBSCRIPTIONS';
+export type CommissionPayoutTiming =
+  | 'IMMEDIATE'
+  | 'AFTER_COLLECTION'
+  | 'END_OF_MONTH';
+export type CommissionPayoutStatus =
+  | 'PENDING'
+  | 'RELEASED'
+  | 'PAID'
+  | 'CANCELLED';
+
+export type CommissionRuleRow = {
+  id: string;
+  name: string;
+  isActive: boolean;
+  role: SafariRole | null;
+  mode: CommissionMode;
+  calculationBase: CommissionCalculationBase;
+  percentage: string;
+  minInvoiceAmount: string;
+  payoutTiming: CommissionPayoutTiming;
+  linkedToDebt: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export function listCommissionRules(
+  token: string,
+  query?: { mode?: CommissionMode },
+) {
+  const q = new URLSearchParams();
+  if (query?.mode) q.set('mode', query.mode);
+  const qs = q.toString();
+  return apiJson<CommissionRuleRow[]>(
+    `/api/commission-rules${qs ? `?${qs}` : ''}`,
+    { token },
+  );
+}
+
+export type CommissionRuleInput = {
+  name: string;
+  isActive?: boolean;
+  role?: SafariRole | null;
+  mode: CommissionMode;
+  calculationBase?: CommissionCalculationBase;
+  percentage: number;
+  minInvoiceAmount?: number;
+  payoutTiming?: CommissionPayoutTiming;
+  linkedToDebt?: boolean;
+};
+
+export function createCommissionRule(token: string, dto: CommissionRuleInput) {
+  return apiJson<CommissionRuleRow>('/api/commission-rules', {
+    method: 'POST',
+    token,
+    body: JSON.stringify(dto),
+  });
+}
+
+export function updateCommissionRule(
+  token: string,
+  id: string,
+  dto: Partial<CommissionRuleInput>,
+) {
+  return apiJson<CommissionRuleRow>(`/api/commission-rules/${id}`, {
+    method: 'PATCH',
+    token,
+    body: JSON.stringify(dto),
+  });
+}
+
+export function deleteCommissionRule(token: string, id: string) {
+  return apiJson<CommissionRuleRow>(`/api/commission-rules/${id}`, {
+    method: 'DELETE',
+    token,
+  });
+}
+
+/**
+ * V19.17 — Dashboard-level "default rule" (role = null). Returns null
+ * when none has been saved yet.
+ */
+export function getDefaultCommissionRule(token: string) {
+  return apiJson<CommissionRuleRow | null>(
+    '/api/commission-rules/default',
+    { token },
+  );
+}
+
+export function upsertDefaultCommissionRule(
+  token: string,
+  dto: CommissionRuleInput,
+) {
+  return apiJson<CommissionRuleRow>('/api/commission-rules/default', {
+    method: 'PUT',
+    token,
+    body: JSON.stringify(dto),
+  });
+}
+
+export type CommissionPayoutRow = {
+  id: string;
+  ruleId: string;
+  earnerUserId: string;
+  mode: CommissionMode;
+  basisAmount: string;
+  percentage: string;
+  amount: string;
+  status: CommissionPayoutStatus;
+  sourceOrderId: string | null;
+  sourceDebtEntryId: string | null;
+  payrollId: string | null;
+  earnedAt: string;
+  releasedAt: string | null;
+  paidAt: string | null;
+  cancelledAt: string | null;
+  cancelReason: string | null;
+  rule: {
+    id: string;
+    name: string;
+    mode: CommissionMode;
+    percentage: string;
+    payoutTiming: CommissionPayoutTiming;
+    calculationBase: CommissionCalculationBase;
+  };
+  earner: { id: string; fullName: string; username: string };
+  sourceOrder: {
+    id: string;
+    serialNumber: string | null;
+    invoiceNumber: string | null;
+  } | null;
+};
+
+export type CommissionPayoutsTotals = {
+  earnerUserId: string;
+  pendingKd: string;
+  releasedKd: string;
+  paidKd: string;
+  cancelledKd: string;
+};
+
+export type CommissionPayoutsResponse = {
+  rows: CommissionPayoutRow[];
+  totals: CommissionPayoutsTotals[];
+};
+
+export function listCommissionPayouts(
+  token: string,
+  query: {
+    from: string;
+    to: string;
+    earnerUserId?: string;
+    status?: CommissionPayoutStatus;
+  },
+) {
+  const q = new URLSearchParams({ from: query.from, to: query.to });
+  if (query.earnerUserId) q.set('earnerUserId', query.earnerUserId);
+  if (query.status) q.set('status', query.status);
+  return apiJson<CommissionPayoutsResponse>(
+    `/api/commission-payouts?${q.toString()}`,
+    { token },
+  );
+}
+
+export type DebtHoldStatus = 'HELD' | 'RELEASED';
+
+export type DebtHoldRow = {
+  id: string;
+  employeeUserId: string;
+  payrollId: string | null;
+  debtAmount: string;
+  holdAmount: string;
+  releasedAmount: string;
+  status: DebtHoldStatus;
+  releaseDate: string | null;
+  disbursedAt: string | null;
+  disbursedById: string | null;
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
+  employee: { id: string; fullName: string; username: string };
+  payroll: {
+    id: string;
+    paymentDate: string;
+    status: PayrollStatus;
+  } | null;
+  disbursedBy:
+    | { id: string; fullName: string; username: string }
+    | null;
+};
+
+export function listDebtHolds(
+  token: string,
+  query: {
+    from?: string;
+    to?: string;
+    employeeUserId?: string;
+    status?: DebtHoldStatus;
+  },
+) {
+  const q = new URLSearchParams();
+  if (query.from) q.set('from', query.from);
+  if (query.to) q.set('to', query.to);
+  if (query.employeeUserId) q.set('employeeUserId', query.employeeUserId);
+  if (query.status) q.set('status', query.status);
+  const qs = q.toString();
+  return apiJson<DebtHoldRow[]>(
+    `/api/debt-holds${qs ? `?${qs}` : ''}`,
+    { token },
+  );
+}
+
+export type DebtHoldPreview = {
+  isPolicyActive: boolean;
+  debtKd: string;
+  holdKd: string;
+  holdMode: DebtHoldMode | null;
+};
+
+export function previewDebtHold(token: string, employeeUserId: string) {
+  return apiJson<DebtHoldPreview>(
+    `/api/debt-holds/preview/${employeeUserId}`,
+    { token },
+  );
+}

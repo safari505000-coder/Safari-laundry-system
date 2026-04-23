@@ -28,6 +28,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { APP_BRAND } from '../common/constants/branding';
 import { PermissionsService } from '../permissions/permissions.service';
 import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateSalaryDefaultsDto } from './dto/update-salary-defaults.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 import { UsersService } from './users.service';
@@ -167,6 +168,39 @@ export class UsersController {
         actorRole: user.role,
         targetUserId: row.id,
         targetRole: row.safariRole,
+      }),
+    );
+    return row;
+  }
+
+  /**
+   * V19.17 — Payroll registry: update the per-employee salary defaults
+   * (`basicMonthlySalary` + `monthlyAllowances`) that seed future
+   * payroll rows. Restricted to OWNER + GENERAL_MANAGER so branch
+   * managers cannot escalate their own rate.
+   */
+  @Patch(':id/salary-defaults')
+  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
+  @ApiOperation({
+    summary: `Update salary defaults (${APP_BRAND})`,
+    description:
+      'OWNER + GENERAL_MANAGER only. Updates `basicMonthlySalary` + `monthlyAllowances` on the user record; used by the payroll registry page as the seed for each monthly payroll run.',
+  })
+  @ApiBody({ type: UpdateSalaryDefaultsDto })
+  async updateSalaryDefaults(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateSalaryDefaultsDto,
+    @CurrentUser() user: JwtUser,
+    @Req() req: { headers?: Record<string, unknown>; id?: string },
+  ) {
+    const row = await this.usersService.updateSalaryDefaults(id, dto);
+    this.logger.log(
+      JSON.stringify({
+        event: 'staff.salary_defaults',
+        requestId: this.requestId(req),
+        actorUserId: user.userId,
+        actorRole: user.role,
+        targetUserId: row.id,
       }),
     );
     return row;

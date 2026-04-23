@@ -10,6 +10,8 @@ import { AuditLogsModule } from './audit-logs/audit-logs.module';
 import { AuthModule } from './auth/auth.module';
 import { BranchesModule } from './branches/branches.module';
 import { CallCenterModule } from './call-center/call-center.module';
+import { CommissionsModule } from './commissions/commissions.module';
+import { DebtHoldsModule } from './debt-holds/debt-holds.module';
 import { InvoiceAuditModule } from './invoice-audit/invoice-audit.module';
 import { OperatingHoursMiddleware } from './common/middleware/operating-hours.middleware';
 import { requestIdMiddleware } from './common/middleware/request-id.middleware';
@@ -39,6 +41,7 @@ import { ReportsModule } from './reports/reports.module';
 import { SerialsModule } from './serials/serials.module';
 import { ShiftsModule } from './shifts/shifts.module';
 import { SystemModule } from './system/system.module';
+import { SystemSettingsModule } from './system-settings/system-settings.module';
 import { SubscriptionPlansModule } from './subscription-plans/subscription-plans.module';
 import { SubscribersModule } from './subscribers/subscribers.module';
 import { UsersModule } from './users/users.module';
@@ -69,6 +72,9 @@ const spaStaticModule = existsSync(webDistPath)
     ReportsModule,
     PaymentMethodFeesModule,
     SystemModule,
+    SystemSettingsModule,
+    CommissionsModule,
+    DebtHoldsModule,
     ExpensesModule,
     ExportsModule,
     PayrollModule,

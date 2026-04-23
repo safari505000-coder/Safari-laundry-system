@@ -50,7 +50,14 @@ function payrollNetKd(row: PayrollRow): string {
   const b = Number.parseFloat(row.basicSalary);
   const a = Number.parseFloat(row.allowances);
   const d = Number.parseFloat(row.deductions);
-  const n = b + a - d;
+  // V19.16 — commission + debt-release are additions; debt-hold is
+  // a separate deduction. They mirror the backend `PayrollService.netPay`
+  // helper so totals match the payslip exactly.
+  const c = Number.parseFloat(row.commissionAmount ?? '0');
+  const h = Number.parseFloat(row.debtHoldAmount ?? '0');
+  const r = Number.parseFloat(row.debtReleaseAmount ?? '0');
+  const safe = (n: number) => (Number.isFinite(n) ? n : 0);
+  const n = safe(b) + safe(a) + safe(c) + safe(r) - safe(d) - safe(h);
   if (!Number.isFinite(n)) return '0.0000';
   return n.toFixed(4);
 }
@@ -440,6 +447,9 @@ export function PayrollPage() {
                   <TableHead>{t('payroll.colPaidOn')}</TableHead>
                   <TableHead>{t('payroll.colName')}</TableHead>
                   <TableHead>{t('payroll.colBranch')}</TableHead>
+                  <TableHead className="text-end">العمولة</TableHead>
+                  <TableHead className="text-end">محجوز</TableHead>
+                  <TableHead className="text-end">تحرير</TableHead>
                   <TableHead className="text-end">{t('payroll.colNet')}</TableHead>
                   <TableHead>{t('payroll.colStatus')}</TableHead>
                   <TableHead className="w-[120px]" />
@@ -457,7 +467,22 @@ export function PayrollPage() {
                     <TableCell className="text-muted-foreground">
                       {p.branch.name}
                     </TableCell>
-                    <TableCell className="text-end tabular-nums">
+                    <TableCell className="text-end tabular-nums text-emerald-600">
+                      {Number.parseFloat(p.commissionAmount ?? '0') > 0
+                        ? formatKwdLabel(p.commissionAmount ?? '0')
+                        : '—'}
+                    </TableCell>
+                    <TableCell className="text-end tabular-nums text-amber-600">
+                      {Number.parseFloat(p.debtHoldAmount ?? '0') > 0
+                        ? formatKwdLabel(p.debtHoldAmount ?? '0')
+                        : '—'}
+                    </TableCell>
+                    <TableCell className="text-end tabular-nums text-emerald-600">
+                      {Number.parseFloat(p.debtReleaseAmount ?? '0') > 0
+                        ? formatKwdLabel(p.debtReleaseAmount ?? '0')
+                        : '—'}
+                    </TableCell>
+                    <TableCell className="text-end tabular-nums font-semibold">
                       {formatKwdLabel(payrollNetKd(p))}
                     </TableCell>
                     <TableCell>

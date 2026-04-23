@@ -225,6 +225,40 @@ body {
   display: none !important;
 }
 
+/*
+ * V19.17 — Debt-hold voucher. The Owner/GM clicks «تحرير» or «صرف» on
+ * the Debt Holds page and we auto-open the native print dialog with a
+ * standalone A4 voucher the employee signs. The voucher is rendered
+ * into `#debt-hold-voucher-root` at the bottom of the page; `display:
+ * none` keeps it out of the on-screen layout while the `@media print`
+ * block below surfaces it as a fixed A4 sheet.
+ */
+#debt-hold-voucher-root {
+  display: none;
+}
+
+/*
+ * V19.17 — Debt-hold register snapshot. Printed when the Owner clicks
+ * «طباعة السجل» at the top of the Debt Holds page. The banner is
+ * hidden on screen (we already show the page header + filter widgets)
+ * and surfaces only inside the print snapshot to stamp the applied
+ * filters + timestamp. Everything inside `.print-hide` is stripped
+ * from that snapshot so the report looks clean on paper.
+ */
+.debt-holds-print-banner {
+  display: none;
+}
+
+@page debt-hold-voucher-a4 {
+  size: A4 portrait;
+  margin: 15mm;
+}
+
+@page debt-holds-register-a4 {
+  size: A4 landscape;
+  margin: 12mm;
+}
+
 @page staff-debts-a4 {
   size: A4 portrait;
   margin: 15mm;
@@ -270,8 +304,165 @@ body {
    * cause of the "صفحات فاضية" regression, not dark mode / layout.
    */
   .monthly-summary-print,
-  .monthly-summary-print * {
+  .monthly-summary-print *,
+  /*
+   * V19.17 — HR Hub print window. `/owner-dashboard` bundles staff,
+   * payroll, attendance, commission and debt-hold views behind tabs.
+   * The print button triggers `window.print()` and we surface only
+   * the currently-active tab content wrapped in `#hr-hub-print-root`.
+   * Whitelisting here so the nuclear `body * { visibility: hidden }`
+   * does not wipe it to blank pages.
+   */
+  #hr-hub-print-root,
+  #hr-hub-print-root *,
+  /*
+   * V19.17 — Debt-hold voucher auto-print (صفحة محجوز المديونية). The
+   * voucher is a standalone A4 page handed to the employee the moment
+   * the Owner/GM clicks «تحرير» or «صرف». Surface its subtree past the
+   * nuclear `body * { visibility: hidden }` above so the employee gets
+   * a signed receipt instead of a blank sheet.
+   */
+  #debt-hold-voucher-root,
+  #debt-hold-voucher-root *,
+  /*
+   * V19.17 — Debt-hold register snapshot (page-level print from the
+   * Debt Holds page). Whitelist its subtree so the per-employee
+   * summary + detail table survive the nuclear visibility hammer;
+   * the banner + `.print-hide` rules take care of layout polish.
+   */
+  #debt-holds-print-root,
+  #debt-holds-print-root * {
     visibility: visible !important;
+  }
+  #hr-hub-print-root {
+    position: fixed !important;
+    inset: 0 auto auto 0 !important;
+    width: 100% !important;
+    min-height: 100vh !important;
+    margin: 0 !important;
+    padding: 12mm !important;
+    background: #fff !important;
+    color: #111827 !important;
+    z-index: 9996 !important;
+    overflow: visible !important;
+    font-family: 'Cairo', 'Almarai', sans-serif;
+  }
+  #hr-hub-print-root .print-hide,
+  #hr-hub-print-root [data-hub-print-hide="true"] {
+    display: none !important;
+  }
+  /*
+   * V19.17 — Unified payroll page print rules (rewritten for a
+   * consistent A4 invoice-style layout). The on-screen page exposes
+   * editable inputs, save buttons, action columns and tinted totals;
+   * none of that belongs on a printed payroll sheet. These rules:
+   *
+   *   1. Strip all buttons, inline form controls, auto-computed
+   *      placeholders and the action column (via
+   *      `data-row-actions="true"`).
+   *   2. Flatten the remaining inputs into plain-text values so a
+   *      draft row prints just like a committed one.
+   *   3. Pin the 7 payroll columns to fixed percentage widths so
+   *      every branch card — and every page — renders with identical
+   *      column alignment. Without this the Arabic content forced the
+   *      first column to wrap unpredictably between branches.
+   *   4. Collapse the 6-cell totals grid into a compact 3-column band
+   *      so it always fits on the first printed line.
+   *   5. Neutralise the card shadows / tinted backgrounds that do not
+   *      translate to paper.
+   */
+  #hr-hub-print-root .payroll-unified-root button,
+  #hr-hub-print-root .payroll-unified-root [data-row-actions="true"] {
+    display: none !important;
+  }
+  #hr-hub-print-root .payroll-unified-root input {
+    border: none !important;
+    background: transparent !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    width: auto !important;
+    text-align: inherit !important;
+    color: inherit !important;
+    font: inherit !important;
+  }
+  #hr-hub-print-root .payroll-unified-root input[type='number']::-webkit-inner-spin-button,
+  #hr-hub-print-root .payroll-unified-root input[type='number']::-webkit-outer-spin-button {
+    -webkit-appearance: none !important;
+    margin: 0 !important;
+  }
+  /* Force a predictable 3-column totals band across every print run */
+  #hr-hub-print-root .payroll-unified-root .grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 6px !important;
+  }
+  #hr-hub-print-root .payroll-unified-root table {
+    width: 100% !important;
+    table-layout: fixed !important;
+    border-collapse: collapse !important;
+    font-size: 11px !important;
+  }
+  /*
+   * Column widths. With `table-layout: fixed` specifying only the
+   * first column's width lets the browser distribute the remaining
+   * space evenly among the other columns. This gracefully handles
+   * the 7-col layout (typical V19.17+ runs) and the historical 8-col
+   * layout that re-exposes the تحرير column for old data.
+   */
+  #hr-hub-print-root .payroll-unified-root table th:first-child,
+  #hr-hub-print-root .payroll-unified-root table td:first-child { width: 24% !important; }
+  #hr-hub-print-root .payroll-unified-root th,
+  #hr-hub-print-root .payroll-unified-root td {
+    border: 1px solid #d1d5db !important;
+    padding: 4px 6px !important;
+    line-height: 1.3 !important;
+    word-break: break-word !important;
+    vertical-align: middle !important;
+    background: #fff !important;
+  }
+  #hr-hub-print-root .payroll-unified-root th {
+    background: #f3f4f6 !important;
+    font-weight: 700 !important;
+    text-align: center !important;
+  }
+  #hr-hub-print-root .payroll-unified-root tr {
+    background: #fff !important;
+  }
+  #hr-hub-print-root .payroll-unified-root .payroll-preview-note {
+    display: none !important;
+  }
+  /*
+   * Unsaved-row placeholders ("تلقائي") shouldn't print as editorial
+   * text — swap them for a neutral em-dash so draft rows still align
+   * with saved rows in the same column.
+   */
+  #hr-hub-print-root .payroll-unified-root .payroll-auto-cell {
+    font-size: 0 !important;
+    color: transparent !important;
+  }
+  #hr-hub-print-root .payroll-unified-root .payroll-auto-cell::after {
+    content: '—';
+    font-size: 11px !important;
+    color: #9ca3af !important;
+  }
+  #hr-hub-print-root .payroll-unified-root [data-card] {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    box-shadow: none !important;
+    border: 1px solid #e5e7eb !important;
+    margin-bottom: 8mm !important;
+    background: #fff !important;
+  }
+  /*
+   * `overflow-x-auto` wrappers clip the table on paper. Relax them so
+   * the browser flows the table naturally across the page.
+   */
+  #hr-hub-print-root .payroll-unified-root .overflow-x-auto {
+    overflow: visible !important;
+  }
+  /* Kill the hover / muted-row tints that look grubby on paper. */
+  #hr-hub-print-root .payroll-unified-root .bg-muted\/10,
+  #hr-hub-print-root .payroll-unified-root [class*='bg-muted'] {
+    background: #fff !important;
   }
   /*
    * V19.13.5 — Defensive: pull the Monthly Summary sheet out of the
@@ -596,5 +787,402 @@ body {
   .pos-garment-tag svg {
     max-width: 100%;
     height: auto;
+  }
+
+  /*
+   * V19.17 — Debt-hold voucher (/debt-holds → «تحرير» / «صرف»).
+   * Pulled out of the regular flow (fixed) so the nuclear ancestor
+   * clipping from `body * { visibility: hidden }` cannot black-hole
+   * the voucher. Mirrors the staff-debts + monthly-summary approach.
+   */
+  #debt-hold-voucher-root {
+    display: block !important;
+    page: debt-hold-voucher-a4;
+    position: fixed;
+    inset: 0 auto auto 0;
+    width: 100%;
+    min-height: 100vh;
+    margin: 0;
+    padding: 0;
+    background: #fff !important;
+    color: #111827 !important;
+    z-index: 9999;
+    font-family: 'Cairo', 'Almarai', sans-serif;
+    direction: rtl;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  #debt-hold-voucher-root .voucher-sheet {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 100vh;
+    padding: 6mm 8mm;
+    color: #111827 !important;
+  }
+  #debt-hold-voucher-root .voucher-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8mm;
+    padding-bottom: 4mm;
+    margin-bottom: 5mm;
+    border-bottom: 2px solid #0f172a;
+  }
+  #debt-hold-voucher-root .voucher-brand {
+    font-size: 16pt;
+    font-weight: 800;
+    color: #0f172a !important;
+  }
+  #debt-hold-voucher-root .voucher-brand-sub {
+    font-size: 10pt;
+    color: #475569 !important;
+    margin-top: 1mm;
+  }
+  #debt-hold-voucher-root .voucher-title-block {
+    text-align: end;
+  }
+  #debt-hold-voucher-root .voucher-title {
+    font-size: 15pt;
+    font-weight: 800;
+    color: #0f172a !important;
+  }
+  #debt-hold-voucher-root .voucher-subtitle {
+    font-size: 9.5pt;
+    color: #475569 !important;
+    margin-top: 1mm;
+  }
+  #debt-hold-voucher-root .voucher-meta {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 3mm;
+    background: #f8fafc !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 2mm;
+    padding: 3mm 4mm;
+    margin-bottom: 5mm;
+    font-size: 10pt;
+  }
+  #debt-hold-voucher-root .voucher-meta span {
+    color: #64748b !important;
+    margin-inline-end: 1.5mm;
+  }
+  #debt-hold-voucher-root .voucher-meta strong {
+    color: #0f172a !important;
+    font-weight: 700;
+  }
+  #debt-hold-voucher-root .voucher-section {
+    margin-bottom: 5mm;
+  }
+  #debt-hold-voucher-root .voucher-section-title {
+    font-size: 11pt;
+    font-weight: 800;
+    color: #0f172a !important;
+    border-bottom: 1px solid #cbd5f5;
+    padding-bottom: 1mm;
+    margin-bottom: 2.5mm;
+  }
+  #debt-hold-voucher-root .voucher-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 2.5mm 5mm;
+    font-size: 10.5pt;
+  }
+  #debt-hold-voucher-root .voucher-grid span {
+    color: #64748b !important;
+    margin-inline-end: 1.5mm;
+  }
+  #debt-hold-voucher-root .voucher-grid strong {
+    color: #0f172a !important;
+  }
+  #debt-hold-voucher-root .voucher-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 10.5pt;
+  }
+  #debt-hold-voucher-root .voucher-table th,
+  #debt-hold-voucher-root .voucher-table td {
+    border: 1px solid #cbd5f5 !important;
+    padding: 2mm 3mm;
+    text-align: start;
+    vertical-align: middle;
+  }
+  #debt-hold-voucher-root .voucher-table th {
+    background: #f1f5f9 !important;
+    color: #0f172a !important;
+    font-weight: 700;
+    width: 42%;
+  }
+  #debt-hold-voucher-root .voucher-table-highlight th,
+  #debt-hold-voucher-root .voucher-table-highlight td {
+    background: #ecfeff !important;
+    color: #0e7490 !important;
+    font-weight: 800;
+  }
+  #debt-hold-voucher-root .voucher-paragraph {
+    font-size: 10pt;
+    line-height: 1.75;
+    color: #334155 !important;
+    background: #fafafa !important;
+    border: 1px dashed #cbd5f5 !important;
+    padding: 3mm 4mm;
+    border-radius: 2mm;
+  }
+  #debt-hold-voucher-root .voucher-signatures {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8mm;
+    margin-top: 12mm;
+    page-break-inside: avoid;
+  }
+  #debt-hold-voucher-root .voucher-sig-label {
+    font-size: 10pt;
+    color: #475569 !important;
+    margin-bottom: 12mm;
+  }
+  #debt-hold-voucher-root .voucher-sig-line {
+    border-top: 1px solid #0f172a;
+    height: 0;
+  }
+  #debt-hold-voucher-root .voucher-footer {
+    margin-top: 10mm;
+    padding-top: 3mm;
+    border-top: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 5mm;
+    font-size: 8.5pt;
+    color: #64748b !important;
+    /*
+     * DocumentQR lives inside `.voucher-footer-stamp`. Its internal
+     * classes (`.printable-sheet__qr*`) rely on CSS vars normally
+     * scoped to `.printable-sheet`. Re-declare them here so the
+     * digital stamp renders identically outside the PrintableSheet
+     * (which this voucher deliberately does not use).
+     */
+    --brand-ink: #0f172a;
+    --brand-muted: #64748b;
+    --brand-border: #cbd5e1;
+  }
+  #debt-hold-voucher-root .voucher-footer-stamp {
+    flex: 0 0 auto;
+  }
+  #debt-hold-voucher-root .voucher-footer-meta {
+    flex: 1 1 auto;
+    text-align: end;
+    line-height: 1.55;
+  }
+  #debt-hold-voucher-root .printable-sheet__qr {
+    display: flex;
+    align-items: center;
+    gap: 2.5mm;
+  }
+  #debt-hold-voucher-root .printable-sheet__qr-img {
+    width: 20mm !important;
+    height: 20mm !important;
+    padding: 1mm;
+    background: #fff !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 1.5mm;
+  }
+  #debt-hold-voucher-root .printable-sheet__qr-info {
+    font-size: 7.5pt;
+    color: #64748b !important;
+    line-height: 1.4;
+    text-align: start;
+  }
+  #debt-hold-voucher-root .printable-sheet__qr-info strong {
+    color: #0f172a !important;
+    font-weight: 700;
+  }
+
+  /*
+   * V19.17 — Debt-hold register snapshot styles. Page-level print
+   * triggered by the «طباعة السجل» button in the page header. The
+   * user wanted the landscape A4 look + the filter banner stamped
+   * on every snapshot so an audit copy can be reconciled later.
+   */
+  #debt-holds-print-root {
+    page: debt-holds-register-a4;
+    position: fixed !important;
+    inset: 0 auto auto 0 !important;
+    width: 100% !important;
+    min-height: 100vh !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    color: #111827 !important;
+    z-index: 9996 !important;
+    font-family: 'Cairo', 'Almarai', sans-serif;
+    direction: rtl;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    overflow: visible !important;
+  }
+  #debt-holds-print-root .print-hide,
+  #debt-holds-print-root .print-hide * {
+    display: none !important;
+    visibility: hidden !important;
+  }
+  #debt-holds-print-root .debt-holds-print-banner {
+    display: flex !important;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8mm;
+    padding: 4mm 5mm;
+    margin-bottom: 6mm;
+    border: 2px solid #0f172a !important;
+    border-radius: 2mm;
+    background: #f8fafc !important;
+    color: #111827 !important;
+    font-size: 10pt;
+  }
+  #debt-holds-print-root .debt-holds-print-org {
+    font-size: 14pt;
+    font-weight: 800;
+    color: #0f172a !important;
+  }
+  #debt-holds-print-root .debt-holds-print-sub {
+    font-size: 10pt;
+    color: #475569 !important;
+    margin-top: 1mm;
+  }
+  #debt-holds-print-root .debt-holds-print-meta {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 2mm 6mm;
+    text-align: end;
+    font-size: 9.5pt;
+  }
+  #debt-holds-print-root .debt-holds-print-meta span {
+    color: #64748b !important;
+    margin-inline-end: 1.5mm;
+  }
+  #debt-holds-print-root .debt-holds-print-meta strong {
+    color: #0f172a !important;
+    font-weight: 700;
+  }
+  /* Tighten cards for the paper */
+  #debt-holds-print-root [data-slot='card'],
+  #debt-holds-print-root .rounded-xl.border {
+    box-shadow: none !important;
+    border: 1px solid #cbd5e1 !important;
+    background: #fff !important;
+    margin-bottom: 4mm !important;
+  }
+  /*
+   * Force the 3-up totals grid (محجوز / جاهز / مصروف) + the per-
+   * employee summary card to render side-by-side on the landscape
+   * sheet. Without this the Tailwind `md:grid-cols-3` breakpoint
+   * doesn't fire during print because Chrome renders at ~794px.
+   */
+  #debt-holds-print-root .grid {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 3mm !important;
+  }
+  #debt-holds-print-root [data-slot='card-content'] {
+    padding: 3mm 4mm !important;
+  }
+  #debt-holds-print-root [data-slot='card-header'] {
+    padding: 3mm 4mm 1mm !important;
+  }
+  #debt-holds-print-root [data-slot='card-title'] {
+    font-size: 11pt !important;
+    font-weight: 700 !important;
+  }
+  /* Totals card numbers: keep colours but shrink the big display */
+  #debt-holds-print-root .text-xl {
+    font-size: 13pt !important;
+  }
+  #debt-holds-print-root .text-2xl {
+    font-size: 15pt !important;
+  }
+  #debt-holds-print-root table {
+    width: 100% !important;
+    table-layout: fixed !important;
+    border-collapse: collapse !important;
+    font-size: 9.5pt !important;
+  }
+  #debt-holds-print-root th,
+  #debt-holds-print-root td {
+    border: 1px solid #cbd5e1 !important;
+    padding: 2mm 2.5mm !important;
+    background: #fff !important;
+    vertical-align: middle !important;
+    word-break: break-word !important;
+  }
+  #debt-holds-print-root th {
+    background: #f1f5f9 !important;
+    font-weight: 700 !important;
+    text-align: center !important;
+  }
+  /*
+   * Hide inline action buttons — the paper copy is an audit snapshot,
+   * not a control surface. We also hide the entire «إجراء» column
+   * (marked with `data-action-col`) so the remaining columns reclaim
+   * that horizontal space and stop overlapping on the landscape A4
+   * sheet (user feedback: تفاصيل الجدول مزدحم).
+   */
+  #debt-holds-print-root button {
+    display: none !important;
+  }
+  #debt-holds-print-root th[data-action-col='true'],
+  #debt-holds-print-root td[data-action-col='true'] {
+    display: none !important;
+  }
+  #debt-holds-print-root [data-slot='badge'] {
+    border: 1px solid #cbd5e1 !important;
+    background: #fff !important;
+    color: #0f172a !important;
+    font-size: 8.5pt !important;
+    padding: 0.5mm 2mm !important;
+  }
+  /*
+   * Explicit column widths for the details table. Without this the
+   * fixed-layout engine gives each of the 8 remaining columns ~12.5%
+   * which makes the Arabic date headers wrap onto each other. The
+   * widths below total 100% and are tuned for landscape A4.
+   */
+  #debt-holds-print-root .debt-holds-details-table {
+    table-layout: fixed !important;
+  }
+  #debt-holds-print-root .debt-holds-details-table th:nth-child(1),
+  #debt-holds-print-root .debt-holds-details-table td:nth-child(1) {
+    width: 14% !important; /* الموظف */
+  }
+  #debt-holds-print-root .debt-holds-details-table th:nth-child(2),
+  #debt-holds-print-root .debt-holds-details-table td:nth-child(2) {
+    width: 10% !important; /* المرحلة */
+  }
+  #debt-holds-print-root .debt-holds-details-table th:nth-child(3),
+  #debt-holds-print-root .debt-holds-details-table td:nth-child(3),
+  #debt-holds-print-root .debt-holds-details-table th:nth-child(4),
+  #debt-holds-print-root .debt-holds-details-table td:nth-child(4) {
+    width: 11% !important; /* المديونية / المحجوز */
+  }
+  #debt-holds-print-root .debt-holds-details-table th:nth-child(5),
+  #debt-holds-print-root .debt-holds-details-table td:nth-child(5),
+  #debt-holds-print-root .debt-holds-details-table th:nth-child(6),
+  #debt-holds-print-root .debt-holds-details-table td:nth-child(6),
+  #debt-holds-print-root .debt-holds-details-table th:nth-child(7),
+  #debt-holds-print-root .debt-holds-details-table td:nth-child(7) {
+    width: 10% !important; /* 3 date columns */
+    font-size: 8.5pt !important;
+  }
+  #debt-holds-print-root .debt-holds-details-table th:nth-child(8),
+  #debt-holds-print-root .debt-holds-details-table td:nth-child(8) {
+    width: 14% !important; /* ملاحظة */
+  }
+  /*
+   * Safety guard: when the voucher is mounted (auto-print after
+   * تحرير / صرف) we must NOT print the register underneath it. Hide
+   * the register entirely whenever `#debt-hold-voucher-root` is in
+   * the DOM so the browser snapshot is the voucher alone.
+   */
+  body:has(#debt-hold-voucher-root) #debt-holds-print-root,
+  body:has(#debt-hold-voucher-root) #debt-holds-print-root * {
+    display: none !important;
+    visibility: hidden !important;
   }
 }

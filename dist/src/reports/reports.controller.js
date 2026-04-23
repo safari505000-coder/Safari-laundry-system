@@ -44,6 +44,9 @@ let ReportsController = class ReportsController {
     executiveSummary(q) {
         return this.reportsService.netProfitExecutive(q.from, q.to, q.branchId, q.driverId);
     }
+    monthlySummary(q) {
+        return this.reportsService.monthlySummary(q.from, q.to);
+    }
     bankFeesByBranch(q) {
         return this.reportsService.bankFeesByBranch(q.from, q.to);
     }
@@ -110,6 +113,18 @@ __decorate([
     __metadata("design:paramtypes", [reports_range_query_dto_1.ReportsRangeQueryDto]),
     __metadata("design:returntype", void 0)
 ], ReportsController.prototype, "executiveSummary", null);
+__decorate([
+    (0, common_1.Get)('monthly-summary'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
+    (0, swagger_1.ApiOperation)({
+        summary: `Monthly summary — consolidated P&L + per-branch rows (${branding_1.APP_BRAND})`,
+        description: 'V19.13 — Single endpoint feeding the "الملخص الشهري" screen. Returns one consolidated block (all branches) and an array with the same metrics scoped to every active branch. OWNER + GENERAL_MANAGER only — executive oversight, not an accountant tool. Shares the same math as /reports/executive-summary so reconciliation is guaranteed.',
+    }),
+    __param(0, (0, common_1.Query)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [reports_range_query_dto_1.ReportsRangeQueryDto]),
+    __metadata("design:returntype", void 0)
+], ReportsController.prototype, "monthlySummary", null);
 __decorate([
     (0, common_1.Get)('bank-fees-by-branch'),
     (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),

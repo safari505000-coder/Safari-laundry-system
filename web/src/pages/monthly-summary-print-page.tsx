@@ -400,6 +400,8 @@ export function MonthlySummaryPrintPage() {
 
   const c = summary.consolidated;
 
+  const inv = summary.inventoryConsumption?.branches ?? [];
+
   return (
     <div className="monthly-summary-print">
       <div className="monthly-summary-print__toolbar no-print">
@@ -425,74 +427,119 @@ export function MonthlySummaryPrintPage() {
       </div>
 
       <div className="monthly-summary-print__sheet">
-        <header className="monthly-summary-print__header">
-          <div>
-            <div className="monthly-summary-print__brand">{brandName}</div>
-            <h1 className="monthly-summary-print__title">
-              {t('monthlySummary.title', 'الملخص الشهري')}
-            </h1>
-            <p className="monthly-summary-print__range">
-              {t('monthlySummary.rangeLabel', 'الفترة')}:{' '}
-              <span dir="ltr">
-                {formatArabicDate(from)} → {formatArabicDate(to)}
-              </span>
-            </p>
-          </div>
-          <div className="monthly-summary-print__meta">
-            <div className="monthly-summary-print__metric">
-              <span className="monthly-summary-print__metric-label">
-                {t('monthlySummary.lineGross', 'إجمالي الإيرادات')}
-              </span>
-              <span className="monthly-summary-print__metric-value">
-                {formatKwdLabel(c.grossRevenueKd)}
-              </span>
+        {/* صفحة 1 — ملخص الفترة (إجمالي المجموعة + التحصيل فقط) */}
+        <div className="msp-cover">
+          <header className="monthly-summary-print__header">
+            <div>
+              <div className="monthly-summary-print__brand">{brandName}</div>
+              <h1 className="monthly-summary-print__title">
+                {t('monthlySummary.title', 'الملخص الشهري')}
+              </h1>
+              <p className="monthly-summary-print__range">
+                {t('monthlySummary.rangeLabel', 'الفترة')}:{' '}
+                <span dir="ltr">
+                  {formatArabicDate(from)} → {formatArabicDate(to)}
+                </span>
+              </p>
+              <p className="msp-cover__hint">
+                {t(
+                  'monthlySummary.printDetailsFollow',
+                  'التقارير التفصيلية والجداول الطويلة تبدأ من الصفحة التالية.',
+                )}
+              </p>
             </div>
-            <div className="monthly-summary-print__metric">
-              <span className="monthly-summary-print__metric-label">
-                {t('monthlySummary.netProfit', 'صافي الربح')}
-              </span>
-              <span className="monthly-summary-print__metric-value">
-                {formatKwdLabel(c.netProfitKd)}
-              </span>
+            <div className="monthly-summary-print__meta">
+              <div className="monthly-summary-print__metric">
+                <span className="monthly-summary-print__metric-label">
+                  {t('monthlySummary.lineGross', 'إجمالي الإيرادات')}
+                </span>
+                <span className="monthly-summary-print__metric-value">
+                  {formatKwdLabel(c.grossRevenueKd)}
+                </span>
+              </div>
+              <div className="monthly-summary-print__metric">
+                <span className="monthly-summary-print__metric-label">
+                  {t('monthlySummary.netProfit', 'صافي الربح')}
+                </span>
+                <span className="monthly-summary-print__metric-value">
+                  {formatKwdLabel(c.netProfitKd)}
+                </span>
+              </div>
+              <div className="monthly-summary-print__generated">
+                {t('monthlySummary.generatedAt', 'تم التوليد')}:{' '}
+                {generatedAt.toLocaleString('en-GB')}
+              </div>
             </div>
-            <div className="monthly-summary-print__generated">
-              {t('monthlySummary.generatedAt', 'تم التوليد')}:{' '}
-              {generatedAt.toLocaleString('en-GB')}
-            </div>
-          </div>
-        </header>
+          </header>
 
-        <section className="monthly-summary-print__section">
-          <h2 className="monthly-summary-print__section-title">
-            {t('monthlySummary.consolidatedTitle', 'الإجمالي — جميع الفروع')}
-          </h2>
-          <PnlTable row={c} />
-          <h3 className="monthly-summary-print__subheading">
-            {t('monthlySummary.collectionsHeading', 'ملخّص التحصيل')}
-          </h3>
-          <CollectionsTable row={c} />
-        </section>
-
-        {summary.branches.length > 0 ? (
-          <section className="monthly-summary-print__section">
+          <section className="monthly-summary-print__section msp-section--cover-only">
             <h2 className="monthly-summary-print__section-title">
-              {t('monthlySummary.branchesHeading', 'تقارير الفروع')}
+              {t('monthlySummary.periodSummaryTitle', 'ملخص الفترة — الإجمالي')}
             </h2>
-            <div className="monthly-summary-print__branches">
-              {summary.branches.map((b) => (
-                <div key={b.branchId} className="monthly-summary-print__branch-card">
-                  <h3 className="monthly-summary-print__branch-title">
-                    {b.branchName}
-                  </h3>
-                  <PnlTable row={b} />
-                  <CollectionsTable row={b} />
-                </div>
-              ))}
-            </div>
+            <p className="msp-section__intro">
+              {t(
+                'monthlySummary.periodSummaryIntro',
+                'أداء المجموعة خلال الفترة: الأرباح والمصروفات وملخص التحصيل.',
+              )}
+            </p>
+            <PnlTable row={c} />
+            <h3 className="monthly-summary-print__subheading">
+              {t('monthlySummary.collectionsHeading', 'ملخّص التحصيل')}
+            </h3>
+            <CollectionsTable row={c} />
           </section>
-        ) : null}
 
-        <section className="monthly-summary-print__section page-break">
+          <footer className="monthly-summary-print__footer msp-cover__footer">
+            <span>
+              {t(
+                'monthlySummary.printFooter',
+                'تقرير تم توليده آلياً من نظام سفاري للمحاسبة — للاستخدام الداخلي.',
+              )}
+            </span>
+          </footer>
+        </div>
+
+        {/* الملحق — تفاصيل حسب الفرع ثم مصروفات ورواتب ومخزون */}
+        <div className="msp-appendix">
+          <div className="msp-runhead">
+            <div className="msp-runhead__brand">{brandName}</div>
+            <div className="msp-runhead__title">
+              {t('monthlySummary.detailedReportsTitle', 'التقارير التفصيلية')}
+            </div>
+            <div className="msp-runhead__range" dir="ltr">
+              {formatArabicDate(from)} → {formatArabicDate(to)}
+            </div>
+          </div>
+
+          {summary.branches.length > 0 ? (
+            <section className="monthly-summary-print__section msp-section--flow">
+              <h2 className="monthly-summary-print__section-title">
+                {t('monthlySummary.branchesHeading', 'تقارير الفروع')}
+              </h2>
+              <p className="msp-section__intro">
+                {t(
+                  'monthlySummary.branchesPrintIntro',
+                  'تفصيل الأرباح والتحصيل لكل فرع — نفس بنية ملخص الفترة أعلاه.',
+                )}
+              </p>
+              <div className="monthly-summary-print__branches">
+                {summary.branches.map((b) => (
+                  <div
+                    key={b.branchId}
+                    className="monthly-summary-print__branch-card"
+                  >
+                    <h3 className="monthly-summary-print__branch-title">
+                      {b.branchName}
+                    </h3>
+                    <PnlTable row={b} />
+                    <CollectionsTable row={b} />
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+        <section className="monthly-summary-print__section msp-section--flow">
           <h2 className="monthly-summary-print__section-title">
             {t('monthlySummary.tabs.expenses', 'المصروفات')}{' '}
             <span className="monthly-summary-print__chip">
@@ -537,7 +584,7 @@ export function MonthlySummaryPrintPage() {
           )}
         </section>
 
-        <section className="monthly-summary-print__section page-break">
+        <section className="monthly-summary-print__section msp-section--flow">
           <h2 className="monthly-summary-print__section-title">
             {t('monthlySummary.tabs.payroll', 'الرواتب')}{' '}
             <span className="monthly-summary-print__chip">
@@ -598,7 +645,72 @@ export function MonthlySummaryPrintPage() {
           )}
         </section>
 
-        <footer className="monthly-summary-print__footer">
+        <section className="monthly-summary-print__section msp-section--flow">
+          <h2 className="monthly-summary-print__section-title">
+            {t(
+              'monthlySummary.inventoryConsumptionTitle',
+              'استهلاك المخزون (صرف ميداني)',
+            )}
+          </h2>
+          <p className="msp-section__intro">
+            {t(
+              'monthlySummary.inventoryConsumptionIntro',
+              'مجموع حركات «صرف مخزون» لكل صنف خلال الفترة، معزولة حسب الفرع. إن امتد الجدول يُكمل تلقائياً على الصفحات التالية.',
+            )}
+          </p>
+          {inv.length === 0 ? (
+            <p className="msp-empty">
+              {t(
+                'monthlySummary.noInventoryConsumption',
+                'لا توجد حركات صرف مخزون مسجلة للفترة.',
+              )}
+            </p>
+          ) : (
+            inv.map((block) => (
+              <div
+                key={block.branchId}
+                className="msp-inventory-branch"
+              >
+                <h3 className="msp-inventory-branch__title">
+                  {block.branchName}
+                </h3>
+                <table className="msp-list msp-list--inventory">
+                  <thead>
+                    <tr>
+                      <th>{t('monthlySummary.col.itemCode', 'الرمز')}</th>
+                      <th>{t('monthlySummary.col.itemName', 'الصنف')}</th>
+                      <th>{t('monthlySummary.col.unit', 'الوحدة')}</th>
+                      <th className="num">
+                        {t(
+                          'monthlySummary.col.qtyConsumed',
+                          'الكمية المستهلكة',
+                        )}
+                      </th>
+                      <th className="num">
+                        {t('monthlySummary.col.movements', 'عدد الحركات')}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {block.lines.map((line) => (
+                      <tr key={line.stockItemId}>
+                        <td className="msp-code" dir="ltr">
+                          {line.code}
+                        </td>
+                        <td>{line.nameAr}</td>
+                        <td>{line.unit}</td>
+                        <td className="num">{line.quantityConsumed}</td>
+                        <td className="num">{line.movementCount}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ))
+          )}
+        </section>
+
+        <footer className="monthly-summary-print__footer msp-appendix__footer">
           <span>
             {t(
               'monthlySummary.printFooter',
@@ -606,6 +718,7 @@ export function MonthlySummaryPrintPage() {
             )}
           </span>
         </footer>
+        </div>
       </div>
     </div>
   );

@@ -62,4 +62,24 @@ export class VerifyController {
   verifyStatement(@Param('id') id: string) {
     return this.verify.verifyStatement(id);
   }
+
+  @Get('debt_hold/:id')
+  @ApiOperation({
+    summary: 'Verify a printed debt-hold voucher',
+    description:
+      'V19.17 — returns { valid, issuedTo, summary } for the debt-hold voucher (تحرير/صرف) referenced by the QR at the bottom of the A4 voucher. No secrets exposed: only the stage + amounts + employee already printed on the page.',
+  })
+  verifyDebtHold(@Param('id') id: string) {
+    return this.verify.verifyDebtHold(id);
+  }
+
+  @Get('cash_receipt/:id')
+  @ApiOperation({
+    summary: 'Verify a printed driver cash-handover receipt',
+    description:
+      'V19.17 — returns { valid, issuedTo, summary } for the formal cash handover receipt (سند استلام كاش) the manager issued to a driver. The QR at the bottom of the A4 voucher encodes the ManagerCashCustody row UUID.',
+  })
+  verifyCashReceipt(@Param('id') id: string) {
+    return this.verify.verifyCashReceipt(id);
+  }
 }

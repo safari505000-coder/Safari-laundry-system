@@ -33,6 +33,12 @@ let VerifyController = class VerifyController {
     verifyStatement(id) {
         return this.verify.verifyStatement(id);
     }
+    verifyDebtHold(id) {
+        return this.verify.verifyDebtHold(id);
+    }
+    verifyCashReceipt(id) {
+        return this.verify.verifyCashReceipt(id);
+    }
 };
 exports.VerifyController = VerifyController;
 __decorate([
@@ -79,6 +85,28 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", void 0)
 ], VerifyController.prototype, "verifyStatement", null);
+__decorate([
+    (0, common_1.Get)('debt_hold/:id'),
+    (0, swagger_1.ApiOperation)({
+        summary: 'Verify a printed debt-hold voucher',
+        description: 'V19.17 — returns { valid, issuedTo, summary } for the debt-hold voucher (تحرير/صرف) referenced by the QR at the bottom of the A4 voucher. No secrets exposed: only the stage + amounts + employee already printed on the page.',
+    }),
+    __param(0, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], VerifyController.prototype, "verifyDebtHold", null);
+__decorate([
+    (0, common_1.Get)('cash_receipt/:id'),
+    (0, swagger_1.ApiOperation)({
+        summary: 'Verify a printed driver cash-handover receipt',
+        description: 'V19.17 — returns { valid, issuedTo, summary } for the formal cash handover receipt (سند استلام كاش) the manager issued to a driver. The QR at the bottom of the A4 voucher encodes the ManagerCashCustody row UUID.',
+    }),
+    __param(0, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], VerifyController.prototype, "verifyCashReceipt", null);
 exports.VerifyController = VerifyController = __decorate([
     (0, swagger_1.ApiTags)('verify'),
     (0, common_1.Controller)('verify'),

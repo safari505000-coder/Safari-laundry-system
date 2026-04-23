@@ -15,17 +15,31 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.PayrollService = void 0;
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
+const commission_payouts_service_1 = require("../commissions/commission-payouts.service");
+const debt_holds_service_1 = require("../debt-holds/debt-holds.service");
 const loans_service_1 = require("../loans/loans.service");
 const prisma_service_1 = require("../prisma/prisma.service");
 function netPay(row) {
-    return row.basicSalary.add(row.allowances).sub(row.deductions);
+    const commission = row.commissionAmount ?? new client_1.Prisma.Decimal(0);
+    const hold = row.debtHoldAmount ?? new client_1.Prisma.Decimal(0);
+    const release = row.debtReleaseAmount ?? new client_1.Prisma.Decimal(0);
+    return row.basicSalary
+        .add(row.allowances)
+        .add(commission)
+        .add(release)
+        .sub(row.deductions)
+        .sub(hold);
 }
 let PayrollService = class PayrollService {
     prisma;
     loans;
-    constructor(prisma, loans) {
+    commissionPayouts;
+    debtHolds;
+    constructor(prisma, loans, commissionPayouts, debtHolds) {
         this.prisma = prisma;
         this.loans = loans;
+        this.commissionPayouts = commissionPayouts;
+        this.debtHolds = debtHolds;
     }
     assertOwnerOrManager(role) {
         if (role !== client_1.SafariRole.OWNER &&
@@ -39,17 +53,39 @@ let PayrollService = class PayrollService {
         const basic = new client_1.Prisma.Decimal(dto.basicSalary.toFixed(4));
         const allow = new client_1.Prisma.Decimal((dto.allowances ?? 0).toFixed(4));
         const manualDed = new client_1.Prisma.Decimal((dto.deductions ?? 0).toFixed(4));
+        const paymentDate = new Date(dto.paymentDate);
         return this.prisma.$transaction(async (tx) => {
             const loanDeduction = await this.loans.applyMonthlyDeductionForUser(dto.userId, tx);
             const totalDed = manualDed.add(loanDeduction);
-            return tx.payroll.create({
+            const commissionSnapshot = await this.commissionPayouts.sumReleasedForUser(dto.userId, paymentDate);
+            const commission = new client_1.Prisma.Decimal(commissionSnapshot.sumKd);
+            await this.debtHolds.releaseSettledHolds(dto.userId, tx);
+            const debtRelease = new client_1.Prisma.Decimal(0);
+            const newHoldSnap = await this.debtHolds.buildHoldSnapshotForPayroll(dto.userId);
+            const autoHold = newHoldSnap
+                ? newHoldSnap.holdAmount
+                : new client_1.Prisma.Decimal(0);
+            const untiedHolds = await tx.debtHold.findMany({
+                where: {
+                    employeeUserId: dto.userId,
+                    status: 'HELD',
+                    payrollId: null,
+                },
+                select: { id: true, holdAmount: true },
+            });
+            const untiedSum = untiedHolds.reduce((acc, h) => acc.add(new client_1.Prisma.Decimal(h.holdAmount.toString())), new client_1.Prisma.Decimal(0));
+            const debtHold = autoHold.add(untiedSum);
+            const payroll = await tx.payroll.create({
                 data: {
                     userId: dto.userId,
                     branchId: dto.branchId,
                     basicSalary: basic,
                     allowances: allow,
                     deductions: totalDed,
-                    paymentDate: new Date(dto.paymentDate),
+                    commissionAmount: commission.toFixed(4),
+                    debtHoldAmount: debtHold.toFixed(4),
+                    debtReleaseAmount: debtRelease.toFixed(4),
+                    paymentDate,
                     status: client_1.PayrollStatus.PENDING,
                 },
                 include: {
@@ -57,6 +93,25 @@ let PayrollService = class PayrollService {
                     branch: { select: { id: true, name: true } },
                 },
             });
+            if (commissionSnapshot.payoutIds.length > 0) {
+                await this.commissionPayouts.markPaidForPayroll(commissionSnapshot.payoutIds, payroll.id, tx);
+            }
+            if (newHoldSnap) {
+                await this.debtHolds.persistHold({
+                    employeeUserId: dto.userId,
+                    payrollId: payroll.id,
+                    debtAmount: newHoldSnap.debtAmount,
+                    holdAmount: newHoldSnap.holdAmount,
+                    holdMode: newHoldSnap.holdMode,
+                }, tx);
+            }
+            if (untiedHolds.length > 0) {
+                await tx.debtHold.updateMany({
+                    where: { id: { in: untiedHolds.map((h) => h.id) } },
+                    data: { payrollId: payroll.id },
+                });
+            }
+            return payroll;
         });
     }
     async markPaid(actorRole, id) {
@@ -138,6 +193,9 @@ let PayrollService = class PayrollService {
                 basicSalary: true,
                 allowances: true,
                 deductions: true,
+                commissionAmount: true,
+                debtHoldAmount: true,
+                debtReleaseAmount: true,
             },
         });
         let total = new client_1.Prisma.Decimal(0);
@@ -152,6 +210,8 @@ exports.PayrollService = PayrollService = __decorate([
     (0, common_1.Injectable)(),
     __param(1, (0, common_1.Inject)((0, common_1.forwardRef)(() => loans_service_1.LoansService))),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
-        loans_service_1.LoansService])
+        loans_service_1.LoansService,
+        commission_payouts_service_1.CommissionPayoutsService,
+        debt_holds_service_1.DebtHoldsService])
 ], PayrollService);
 //# sourceMappingURL=payroll.service.js.map

@@ -4,6 +4,7 @@ import { buttonVariants } from '@/modules/shared/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -67,26 +68,28 @@ export function ThemeToggle({
         <TriggerIcon className="size-4" aria-hidden />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-[11rem]">
-        <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">
-          {t('theme.label')}
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        {OPTIONS.map(({ id, labelKey, Icon }) => {
-          const active = theme === id;
-          return (
-            <DropdownMenuItem
-              key={id}
-              onClick={() => setTheme(id)}
-              className={cn('gap-2', active && 'bg-accent/60')}
-            >
-              <Icon className="size-4" aria-hidden />
-              <span className="flex-1">{t(labelKey)}</span>
-              {active ? (
-                <Check className="size-4 text-primary" aria-hidden />
-              ) : null}
-            </DropdownMenuItem>
-          );
-        })}
+        <DropdownMenuGroup>
+          <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">
+            {t('theme.label')}
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {OPTIONS.map(({ id, labelKey, Icon }) => {
+            const active = theme === id;
+            return (
+              <DropdownMenuItem
+                key={id}
+                onClick={() => setTheme(id)}
+                className={cn('gap-2', active && 'bg-accent/60')}
+              >
+                <Icon className="size-4" aria-hidden />
+                <span className="flex-1">{t(labelKey)}</span>
+                {active ? (
+                  <Check className="size-4 text-primary" aria-hidden />
+                ) : null}
+              </DropdownMenuItem>
+            );
+          })}
+        </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   );

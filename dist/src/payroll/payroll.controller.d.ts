@@ -25,6 +25,9 @@ export declare class PayrollController {
         basicSalary: import("@prisma/client-runtime-utils").Decimal;
         allowances: import("@prisma/client-runtime-utils").Decimal;
         deductions: import("@prisma/client-runtime-utils").Decimal;
+        commissionAmount: import("@prisma/client-runtime-utils").Decimal;
+        debtHoldAmount: import("@prisma/client-runtime-utils").Decimal;
+        debtReleaseAmount: import("@prisma/client-runtime-utils").Decimal;
         paymentDate: Date;
     }>;
     markPaid(id: string, user: JwtUser): Promise<{
@@ -47,6 +50,9 @@ export declare class PayrollController {
         basicSalary: import("@prisma/client-runtime-utils").Decimal;
         allowances: import("@prisma/client-runtime-utils").Decimal;
         deductions: import("@prisma/client-runtime-utils").Decimal;
+        commissionAmount: import("@prisma/client-runtime-utils").Decimal;
+        debtHoldAmount: import("@prisma/client-runtime-utils").Decimal;
+        debtReleaseAmount: import("@prisma/client-runtime-utils").Decimal;
         paymentDate: Date;
     }>;
     list(q: PayrollQueryDto, user: JwtUser): Promise<({
@@ -69,6 +75,9 @@ export declare class PayrollController {
         basicSalary: import("@prisma/client-runtime-utils").Decimal;
         allowances: import("@prisma/client-runtime-utils").Decimal;
         deductions: import("@prisma/client-runtime-utils").Decimal;
+        commissionAmount: import("@prisma/client-runtime-utils").Decimal;
+        debtHoldAmount: import("@prisma/client-runtime-utils").Decimal;
+        debtReleaseAmount: import("@prisma/client-runtime-utils").Decimal;
         paymentDate: Date;
     })[]>;
     findOne(id: string, user: JwtUser): Promise<{
@@ -100,6 +109,9 @@ export declare class PayrollController {
         basicSalary: import("@prisma/client-runtime-utils").Decimal;
         allowances: import("@prisma/client-runtime-utils").Decimal;
         deductions: import("@prisma/client-runtime-utils").Decimal;
+        commissionAmount: import("@prisma/client-runtime-utils").Decimal;
+        debtHoldAmount: import("@prisma/client-runtime-utils").Decimal;
+        debtReleaseAmount: import("@prisma/client-runtime-utils").Decimal;
         paymentDate: Date;
     }>;
 }

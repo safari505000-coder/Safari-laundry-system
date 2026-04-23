@@ -4,6 +4,7 @@ import {
   allInvoicesItem,
   collectionsItem,
   customersItem,
+  driverMonitorItem,
   subscribersItem,
   unpaidInvoicesItem,
   whatsappToolsItem,
@@ -30,5 +31,14 @@ export const callCenterSidebarNavGroups: NavGroup[] = [
   {
     ...G.invoices,
     items: [allInvoicesItem, unpaidInvoicesItem],
+  },
+  // V19.14 — driver tracking map. Call Center supervises field ops, so
+  // seeing which drivers are on shift / where they were last anchored
+  // is part of their daily loop. Backend feed is still OWNER-only; the
+  // page renders a read-only placeholder for CC until the dedicated
+  // endpoint ships (see access-matrix.ts → driverMonitor.view).
+  {
+    ...G.operations,
+    items: [driverMonitorItem],
   },
 ];
