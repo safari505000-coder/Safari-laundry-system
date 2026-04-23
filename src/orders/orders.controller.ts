@@ -20,6 +20,7 @@ import { APP_BRAND } from '../common/constants/branding';
 import { AssignDriverDto } from './dto/assign-driver.dto';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CreateOrderQuickDto } from './dto/create-order-quick.dto';
+import { ListOrdersQueryDto } from './dto/list-orders-query.dto';
 import { ManagerDashboardDto } from './dto/manager-dashboard.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
 import { OrdersService } from './orders.service';
@@ -76,12 +77,33 @@ export class OrdersController {
 
   @Get()
   @ApiOperation({
-    summary: `List orders (${APP_BRAND})`,
+    summary: `List invoices (${APP_BRAND})`,
     description:
-      'OWNER/MANAGER: entire fleet. DRIVER: only orders assigned to them (including self-created).',
+      'V19.22.5 — Invoices page. **OWNER / GENERAL_MANAGER / CC / ACCOUNTANT**: entire fleet. **MANAGER**: branch-scoped (orders whose assigned driver belongs to the manager\'s branch). **DRIVER**: own rows only. Query params (`driverId`, `status`, `posPaymentMethod`, `cashStatus`, `from`, `to`, `q`) layer on top of the role/branch scope.',
   })
-  findAll(@CurrentUser() user: JwtUser) {
-    return this.ordersService.findAllForActor(user.userId, user.role);
+  findAll(
+    @CurrentUser() user: JwtUser,
+    @Query() filters: ListOrdersQueryDto,
+  ) {
+    return this.ordersService.findAllForActor(
+      user.userId,
+      user.role,
+      user.branchId,
+      filters,
+    );
+  }
+
+  @Get('branch-drivers')
+  @ApiOperation({
+    summary: `Drivers for Invoices-page filter (${APP_BRAND})`,
+    description:
+      'V19.22.5 — Lightweight dropdown source for the Invoices-page driver filter. MANAGER: only drivers attached to their branch. OWNER / GM / CC / ACCOUNTANT: every active DRIVER. Sorted by fullName. DRIVER role receives an empty list (their filter hides the driver dropdown).',
+  })
+  listBranchDrivers(@CurrentUser() user: JwtUser) {
+    return this.ordersService.listInvoiceFilterDrivers(
+      user.role,
+      user.branchId,
+    );
   }
 
   @Get('collections/unpaid-online')
@@ -107,13 +129,29 @@ export class OrdersController {
     return this.ordersService.listUnpaidCollectionOrders(scoped);
   }
 
+  @Get('stale-quick-risks')
+  @UseGuards(RolesGuard)
+  @Roles(
+    SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
+    SafariRole.ACCOUNTANT,
+  )
+  @ApiOperation({
+    summary: `Stale Quick-Capture accountability risks (${APP_BRAND})`,
+    description:
+      'V19.22.4 — Accountant/Owner watchdog. Returns every Order still in PENDING + UNPAID state **>24h** after creation via the driver Quick-Capture flow. These invoices have a permanent serialNumber but no settlement trail — the driver may already be holding customer cash. Sort: oldest-first. Amounts serialized to KWD 3-decimal.',
+  })
+  listStaleQuickOrderRisks() {
+    return this.ordersService.listStaleQuickOrderRisks();
+  }
+
   @Get('driver/pending-invoices')
   @UseGuards(RolesGuard)
   @Roles(SafariRole.DRIVER)
   @ApiOperation({
     summary: `Driver Field Collection Tracker — my unpaid invoices (${APP_BRAND})`,
     description:
-      'V3.8 (Driver island): READ-ONLY list of the authenticated driver\'s own unpaid, non-canceled orders. Filter: `driverId === me` AND `cashStatus === UNPAID`. Sort: `createdAt DESC`. Amounts serialized at 3 decimals (KWD standard). Strictly isolated from the Call Center debt-recovery workflow — no WhatsApp / Payment-Link side-effects, and the aggregated KPIs in `/api/call-center/operations-summary` remain untouched.',
+      'V3.8 (Driver island): READ-ONLY list of the authenticated driver\'s own non-canceled orders that still need field follow-up. Filter: `driverId === me` AND (`cashStatus === UNPAID` OR (`posPaymentMethod === DEBT_ON_ACCOUNT` AND FIFO ledger allocation says the invoice still has open debt)). DEBT invoices vanish the moment the customer settles through any channel (hosted link, CC partial-debt payment, office cash recorded by the Accountant) so drivers never chase already-settled paper. Sort: `createdAt DESC`. Amounts serialized at 3 decimals (KWD standard). Strictly isolated from the Call Center debt-recovery workflow — no WhatsApp / Payment-Link side-effects, and the aggregated KPIs in `/api/call-center/operations-summary` remain untouched.',
   })
   listDriverPendingInvoices(@CurrentUser() user: JwtUser) {
     return this.ordersService.listDriverPendingInvoices(user.userId);

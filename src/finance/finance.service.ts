@@ -103,8 +103,8 @@ export class FinanceService {
     return this.cashService.getDriverBalances();
   }
 
-  async getDriverMonitoring() {
-    return this.cashService.getDriverMonitoring();
+  async getDriverMonitoring(branchId: string | null = null) {
+    return this.cashService.getDriverMonitoring(branchId);
   }
 
   async updateDriverTracking(driverId: string, dto: UpdateDriverTrackingDto) {

@@ -15,6 +15,7 @@ import { MyDebtTransfersPage } from '@/pages/my-debt-transfers-page';
 import { AttendancePage } from '@/pages/attendance-page';
 import { AttendanceReportPrintPage } from '@/pages/attendance-report-print-page';
 import { PayslipPrintPage } from '@/pages/payslip-print-page';
+import { PayrollRosterPrintPage } from '@/pages/payroll-roster-print-page';
 import { LeavesPage } from '@/pages/leaves-page';
 import { LeaveRequestPrintPage } from '@/pages/leave-request-print-page';
 import { LoansPage } from '@/pages/loans-page';
@@ -39,6 +40,9 @@ import { FinancialReportsHubPage } from '@/pages/financial-reports-hub-page';
 import { LoginPage } from '@/pages/login-page';
 import { OrdersPage } from '@/pages/orders-page';
 import { MyCustodyPage } from '@/modules/manager/pages/MyCustodyPage';
+import { MyDocumentsPage } from '@/modules/manager/pages/MyDocumentsPage';
+import { ExpenseVoucherPrintPage } from '@/modules/manager/pages/ExpenseVoucherPrintPage';
+import { DriverOversightPage } from '@/modules/manager/pages/DriverOversightPage';
 import { ShiftsPage } from '@/modules/manager/pages/ShiftsPage';
 import { SubscribersPage } from '@/pages/subscribers-page';
 import { SubscriptionsPage } from '@/pages/subscriptions-page';
@@ -456,6 +460,30 @@ export default function App() {
                   }
                 />
                 <Route
+                  path="manager/my-documents"
+                  element={
+                    <RequireAccess access="managerDocuments.view">
+                      <MyDocumentsPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="my-documents/expense/:id/print"
+                  element={
+                    <RequireAccess access="managerDocuments.view">
+                      <ExpenseVoucherPrintPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="manager/driver-oversight"
+                  element={
+                    <RequireAccess access="driverOversight.view">
+                      <DriverOversightPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
                   path="finance/manager-custody-aging"
                   element={
                     <RequireAccess access="managerCustodyAging.view">
@@ -546,6 +574,21 @@ export default function App() {
                 <Route
                   path="payroll/:id/print"
                   element={<PayslipPrintPage />}
+                />
+                {/*
+                  V19.21 — Monthly payroll roster (مسير الرواتب الشهري).
+                  Opens in a new tab from the unified payroll page and
+                  auto-prints once data loads. Reuses the same payroll
+                  read guard — only roles that can view the unified
+                  page should be able to print its roster.
+                */}
+                <Route
+                  path="payroll/roster/print"
+                  element={
+                    <RequireAccess access="payroll.view">
+                      <PayrollRosterPrintPage />
+                    </RequireAccess>
+                  }
                 />
                 <Route
                   path="leaves"

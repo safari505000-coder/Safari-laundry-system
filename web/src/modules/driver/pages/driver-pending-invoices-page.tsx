@@ -70,6 +70,43 @@ function formatPaymentMethod(
   return translated === key ? pm : translated;
 }
 
+/**
+ * V19.22.3 — Two-state badge resolver (Owner-approved simplification).
+ *
+ * The Field Collection Tracker shows exactly two tones:
+ *   - `pendingLink` (blue) → a hosted payment link is live and the
+ *     customer can still pay within the 24h validity window.
+ *   - `unpaid`      (red)  → EVERYTHING ELSE. Expired links,
+ *     DEBT_ON_ACCOUNT invoices, cash arrears awaiting office
+ *     handover — they all demand the same real-world action:
+ *     the driver (or Call Center) chases the customer and, once
+ *     cash is in hand, the Call Center manually converts the
+ *     order to CASH in the POS.
+ *
+ * The previous `pendingApproval` tone was removed because "نبانتظار
+ * الاعتماد" misled the driver into waiting for a non-existent
+ * approval step. Nobody "approves" an open debt — it stays open
+ * until the customer actually pays.
+ */
+type BadgeTone = 'pendingLink' | 'unpaid';
+function resolveBadgeTone(
+  row: Pick<DriverPendingInvoiceRow, 'linkStatus'>,
+): BadgeTone {
+  return row.linkStatus === 'PENDING' ? 'pendingLink' : 'unpaid';
+}
+
+const BADGE_CLASSNAMES: Record<BadgeTone, string> = {
+  pendingLink:
+    'border-sky-200 bg-sky-50 text-sky-800 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-200',
+  unpaid:
+    'border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200',
+};
+
+const BADGE_I18N_KEY: Record<BadgeTone, string> = {
+  pendingLink: 'driverPending.badgePendingLink',
+  unpaid: 'driverPending.badgeUnpaid',
+};
+
 export function DriverPendingInvoicesPage() {
   const { t } = useTranslation();
   const { hasRole, token } = useAuth();
@@ -200,18 +237,17 @@ export function DriverPendingInvoicesPage() {
                     >
                       {row.readableId}
                     </span>
-                    <Badge
-                      variant={row.pendingApproval ? 'secondary' : 'outline'}
-                      className={
-                        row.pendingApproval
-                          ? 'border-amber-200 bg-amber-100 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200'
-                          : 'border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200'
-                      }
-                    >
-                      {row.pendingApproval
-                        ? t('driverPending.badgePendingApproval')
-                        : t('driverPending.badgeUnpaid')}
-                    </Badge>
+                    {(() => {
+                      const tone = resolveBadgeTone(row);
+                      return (
+                        <Badge
+                          variant={tone === 'unpaid' ? 'outline' : 'secondary'}
+                          className={BADGE_CLASSNAMES[tone]}
+                        >
+                          {t(BADGE_I18N_KEY[tone])}
+                        </Badge>
+                      );
+                    })()}
                   </div>
                   <p className="mt-1 font-semibold text-foreground">
                     {row.customerName}
@@ -296,20 +332,19 @@ export function DriverPendingInvoicesPage() {
                         {row.notes ?? '—'}
                       </TableCell>
                       <TableCell>
-                        <Badge
-                          variant={
-                            row.pendingApproval ? 'secondary' : 'outline'
-                          }
-                          className={
-                            row.pendingApproval
-                              ? 'border-amber-200 bg-amber-100 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200'
-                              : 'border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200'
-                          }
-                        >
-                          {row.pendingApproval
-                            ? t('driverPending.badgePendingApproval')
-                            : t('driverPending.badgeUnpaid')}
-                        </Badge>
+                        {(() => {
+                          const tone = resolveBadgeTone(row);
+                          return (
+                            <Badge
+                              variant={
+                                tone === 'unpaid' ? 'outline' : 'secondary'
+                              }
+                              className={BADGE_CLASSNAMES[tone]}
+                            >
+                              {t(BADGE_I18N_KEY[tone])}
+                            </Badge>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
                         {new Date(row.createdAtIso).toLocaleString(locale)}

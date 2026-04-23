@@ -18,6 +18,9 @@ import {
  * Statement on /my-deposits. Route stays alive in App.tsx for
  * backwards-compat deep links. HR self-service (/leaves, /loans)
  * removed from sidebar per owner directive (V19.9.5).
+ *
+ * V19.22 — «إضافة مصروف» (/my-field-expenses) في المجموعة الرئيسية
+ * مع أيقونة CirclePlus؛ لم تعد تحت «العمليات الميدانية» فقط.
  */
 export const driverSidebarNavGroups: NavGroup[] = [
   {
@@ -27,12 +30,9 @@ export const driverSidebarNavGroups: NavGroup[] = [
       myDepositsItem,
       myCashReceiptsItem,
       myDailySalesItem,
+      driverFieldExpensesItem,
       driverPendingInvoicesItem,
       myDebtTransfersItem,
     ],
-  },
-  {
-    ...G.operations,
-    items: [driverFieldExpensesItem],
   },
 ];

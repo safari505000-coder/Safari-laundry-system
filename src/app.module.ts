@@ -30,6 +30,8 @@ import { LaundryPriceListModule } from './laundry-price-list/laundry-price-list.
 import { LeavesModule } from './leaves/leaves.module';
 import { LoansModule } from './loans/loans.module';
 import { ManagerCustodyModule } from './manager-custody/manager-custody.module';
+import { DriverOversightModule } from './driver-oversight/driver-oversight.module';
+import { ManagerDocumentsModule } from './manager-documents/manager-documents.module';
 import { OrdersModule } from './orders/orders.module';
 import { PaymentMethodFeesModule } from './payment-method-fees/payment-method-fees.module';
 import { PaymentsModule } from './payments/payments.module';
@@ -93,6 +95,8 @@ const spaStaticModule = existsSync(webDistPath)
     PurchaseOrdersModule,
     InsightsModule,
     ManagerCustodyModule,
+    ManagerDocumentsModule,
+    DriverOversightModule,
     PosModule,
     CustomersModule,
     DebtTransfersModule,

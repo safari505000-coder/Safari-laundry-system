@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
@@ -22,7 +23,14 @@ export type VerifyResult = {
     | 'employee_loan'
     | 'statement'
     | 'debt_hold'
-    | 'cash_receipt';
+    | 'cash_receipt'
+    /**
+     * V19.21 — whole monthly payroll roster (مسير الرواتب الشهري).
+     * Unlike a payslip, this stamp isn't tied to a single row; the
+     * QR encodes the month (and optional branch scope) so the
+     * auditor gets the same totals that were printed on the sheet.
+     */
+    | 'payroll_roster';
   docId: string;
   valid: boolean;
   issuedAtIso: string;
@@ -226,6 +234,122 @@ export class VerifyService {
         managerUsername: row.manager.username,
         branch: row.branch?.name ?? null,
         status: row.status,
+      },
+    };
+  }
+
+  /**
+   * V19.21 — verify the digital stamp on a printed monthly payroll
+   * roster (مسير الرواتب الشهري). The QR embeds a token shaped like
+   * `YYYY-MM` or `YYYY-MM_<branchId>` so a single scan returns the
+   * same aggregate numbers that were printed on the sheet (employee
+   * count, gross, deductions, net) — no per-employee detail is
+   * leaked. Identical in spirit to `verifyStatement`: the stamp
+   * proves "this month's roster exists and matches what was printed
+   * at the time" without requiring a login.
+   *
+   * Token format:
+   *   - `2026-04`              → unscoped roster (all branches)
+   *   - `2026-04_<uuid>`       → scoped to a specific branch
+   *
+   * The roster isn't a persistent DB row, so we always return
+   * `valid: true` as long as the month parses — otherwise a 404.
+   * The totals are computed live from the payroll table so the QR
+   * is a real-time cross-check.
+   */
+  async verifyPayrollRoster(token: string): Promise<VerifyResult> {
+    const [ym, branchScope] = token.split('_');
+    if (!ym || !/^\d{4}-\d{2}$/.test(ym)) {
+      throw new NotFoundException('Invalid roster token');
+    }
+    const [ys, ms] = ym.split('-');
+    const y = Number.parseInt(ys ?? '0', 10);
+    const m = Number.parseInt(ms ?? '1', 10);
+    if (!y || !m || m < 1 || m > 12) {
+      throw new NotFoundException('Invalid roster month');
+    }
+    const from = new Date(Date.UTC(y, m - 1, 1, 0, 0, 0, 0));
+    const to = new Date(Date.UTC(y, m, 0, 23, 59, 59, 999));
+
+    const where: {
+      paymentDate: { gte: Date; lte: Date };
+      branchId?: string;
+    } = { paymentDate: { gte: from, lte: to } };
+    if (branchScope) where.branchId = branchScope;
+
+    const rows = await this.prisma.payroll.findMany({
+      where,
+      select: {
+        basicSalary: true,
+        allowances: true,
+        commissionAmount: true,
+        debtReleaseAmount: true,
+        debtHoldAmount: true,
+        loanDeduction: true,
+        deductions: true,
+        status: true,
+      },
+    });
+
+    let basic = new Prisma.Decimal(0);
+    let allow = new Prisma.Decimal(0);
+    let commission = new Prisma.Decimal(0);
+    let release = new Prisma.Decimal(0);
+    let hold = new Prisma.Decimal(0);
+    let loan = new Prisma.Decimal(0);
+    let deductions = new Prisma.Decimal(0);
+    let paidCount = 0;
+    for (const r of rows) {
+      basic = basic.add(r.basicSalary);
+      allow = allow.add(r.allowances);
+      commission = commission.add(r.commissionAmount);
+      release = release.add(r.debtReleaseAmount);
+      hold = hold.add(r.debtHoldAmount);
+      loan = loan.add(r.loanDeduction);
+      deductions = deductions.add(r.deductions);
+      if (r.status === 'PAID') paidCount += 1;
+    }
+    const net = basic
+      .add(allow)
+      .add(commission)
+      .add(release)
+      .sub(deductions)
+      .sub(hold)
+      .sub(loan);
+
+    let branchLabel: string | null = null;
+    if (branchScope) {
+      const b = await this.prisma.branch.findUnique({
+        where: { id: branchScope },
+        select: { name: true },
+      });
+      branchLabel = b?.name ?? null;
+    }
+
+    return {
+      docType: 'payroll_roster',
+      docId: token,
+      valid: true,
+      issuedAtIso: new Date().toISOString(),
+      issuedTo: {
+        fullName: branchLabel ?? 'جميع الفروع',
+        username: ym,
+        employeeId: null,
+      },
+      summary: {
+        yearMonth: ym,
+        branchId: branchScope ?? null,
+        branch: branchLabel,
+        employeeCount: rows.length,
+        paidCount,
+        basicKd: basic.toFixed(3),
+        allowancesKd: allow.toFixed(3),
+        commissionKd: commission.toFixed(3),
+        debtReleaseKd: release.toFixed(3),
+        debtHoldKd: hold.toFixed(3),
+        loanKd: loan.toFixed(3),
+        deductionsKd: deductions.toFixed(3),
+        netKd: net.toFixed(3),
       },
     };
   }

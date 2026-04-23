@@ -5,7 +5,7 @@ import {
   useState,
   type FormEvent,
 } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   AlertTriangle,
@@ -16,6 +16,8 @@ import {
   Loader2,
   PlayCircle,
   Plus,
+  Printer,
+  RefreshCw,
   Save,
   ShieldAlert,
 } from 'lucide-react';
@@ -26,6 +28,7 @@ import {
   createManualDebtHold,
   exportPayrollXlsx,
   listDebtHolds,
+  recalcPayrollLoan,
   updateSalaryDefaults,
   type BranchRow,
   type DebtHoldRow,
@@ -103,13 +106,17 @@ function f(n: string | null | undefined): number {
 }
 
 function payrollNet(row: PayrollRow): number {
+  // V19.20 — mirrors backend `PayrollService.netPay`. The loan
+  // instalment is subtracted alongside deductions + debt-hold so the
+  // grid, totals, and the A4 payslip all agree to 4 decimals.
   return (
     f(row.basicSalary) +
     f(row.allowances) +
     f(row.commissionAmount) +
     f(row.debtReleaseAmount) -
     f(row.deductions) -
-    f(row.debtHoldAmount)
+    f(row.debtHoldAmount) -
+    f(row.loanDeduction)
   );
 }
 
@@ -123,10 +130,25 @@ export function PayrollUnifiedPage() {
   const { token, hasRole } = useAuth();
   const isAdmin = hasRole('OWNER', 'GENERAL_MANAGER');
 
+  // V19.22 — keep the selected month in the URL (?ym=YYYY-MM) so the
+  // Staff Hub print button can read it and open the dedicated roster
+  // route on the exact month the user is looking at, and so the
+  // month is bookmarkable / restorable on refresh.
+  const [searchParams, setSearchParams] = useSearchParams();
   const [month, setMonth] = useState(() => {
+    const fromUrl = searchParams.get('ym');
+    if (fromUrl && /^\d{4}-\d{2}$/.test(fromUrl)) return fromUrl;
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   });
+
+  useEffect(() => {
+    const current = searchParams.get('ym');
+    if (current === month) return;
+    const next = new URLSearchParams(searchParams);
+    next.set('ym', month);
+    setSearchParams(next, { replace: true });
+  }, [month, searchParams, setSearchParams]);
 
   const [payrolls, setPayrolls] = useState<PayrollRow[] | null>(null);
   const [users, setUsers] = useState<TeamUserRow[] | null>(null);
@@ -135,6 +157,9 @@ export function PayrollUnifiedPage() {
   const [loading, setLoading] = useState(true);
   const [savingUserId, setSavingUserId] = useState<string | null>(null);
   const [bulkSaving, setBulkSaving] = useState(false);
+  // V19.20 — "إعادة حساب القسط" button tracks the payroll id being
+  // recalculated so the button spinner matches the row in flight.
+  const [recalcingId, setRecalcingId] = useState<string | null>(null);
 
   // Per-row edit buffer keyed by userId. Populated lazily on first
   // keystroke from the defaults so we don't have to instantiate a
@@ -233,6 +258,8 @@ export function PayrollUnifiedPage() {
       commission: sumKwdStrings(rows.map((p) => p.commissionAmount ?? '0')),
       hold: sumKwdStrings(rows.map((p) => p.debtHoldAmount ?? '0')),
       release: sumKwdStrings(rows.map((p) => p.debtReleaseAmount ?? '0')),
+      // V19.20 — total scheduled loan instalments booked this month.
+      loan: sumKwdStrings(rows.map((p) => p.loanDeduction ?? '0')),
       deductions: sumKwdStrings(rows.map((p) => p.deductions)),
       net: sumKwdStrings(rows.map((p) => payrollNet(p).toFixed(4))),
     };
@@ -248,6 +275,12 @@ export function PayrollUnifiedPage() {
     () => (payrolls ?? []).some((p) => f(p.debtReleaseAmount) > 0),
     [payrolls],
   );
+
+  // V19.20 — «قسط سلفة» is a first-class payslip band now, so the
+  // column is always rendered. Owner feedback: hiding it when the
+  // current page has no loans made users think the feature was
+  // broken. Empty rows render "—" and the totals chip shows 0.000.
+  const hasAnyLoan = true;
 
   function getBuffer(u: TeamUserRow): EditBuffer {
     const b = buffers[u.id];
@@ -354,6 +387,37 @@ export function PayrollUnifiedPage() {
     }
   }
 
+  /**
+   * V19.20 — trigger "إعادة حساب القسط" on a PENDING payroll row to
+   * pull the scheduled loan instalment in. Idempotent on the server
+   * (only touches loans with a NULL high-water mark), so double-
+   * clicks are safe. The optimistic state update replaces the row
+   * in-place with the response so totals + Net reflect the change
+   * without a full reload.
+   */
+  async function handleRecalcLoan(row: PayrollRow) {
+    if (!token) return;
+    setRecalcingId(row.id);
+    try {
+      const updated = await recalcPayrollLoan(token, row.id);
+      setPayrolls((prev) =>
+        (prev ?? []).map((p) => (p.id === row.id ? updated : p)),
+      );
+      const added = f(updated.loanDeduction) - f(row.loanDeduction);
+      if (added > 0.0005) {
+        toast.success(
+          `تم حساب قسط السلفة (${added.toFixed(3)} د.ك) لـ ${row.user.fullName}`,
+        );
+      } else {
+        toast.info('لا توجد أقساط متبقية غير محتسبة لهذا الموظف');
+      }
+    } catch (e) {
+      if (e instanceof ApiError) toast.error(e.message);
+    } finally {
+      setRecalcingId(null);
+    }
+  }
+
   async function handleBulkSave() {
     if (!token || !isAdmin) return;
     const eligible = (users ?? []).filter((u) => {
@@ -442,6 +506,27 @@ export function PayrollUnifiedPage() {
             <FileSpreadsheet className="me-1 size-4" />
             تصدير Excel
           </Button>
+          {/*
+            V19.21 — "طباعة المسير الرسمي" opens a dedicated A4 print
+            route (brand header + QR stamp + signature boxes) in a new
+            tab. It auto-triggers window.print() once data loads, so
+            the Owner gets a clean printable roster in two clicks.
+          */}
+          <Button
+            variant="outline"
+            onClick={() => {
+              const qs = new URLSearchParams({ ym: month });
+              window.open(
+                `/payroll/roster/print?${qs.toString()}`,
+                '_blank',
+                'noopener,noreferrer',
+              );
+            }}
+            disabled={loading || (payrolls?.length ?? 0) === 0}
+          >
+            <Printer className="me-1 size-4" />
+            طباعة المسير الرسمي
+          </Button>
           <Button
             onClick={handleBulkSave}
             disabled={bulkSaving || loading || pendingCount === 0}
@@ -503,6 +588,13 @@ export function PayrollUnifiedPage() {
             value={formatKwdLabel(grandTotals.hold)}
             tone="warn"
           />
+          {hasAnyLoan && (
+            <TotalCell
+              label="قسط السلفة"
+              value={formatKwdLabel(grandTotals.loan)}
+              tone="warn"
+            />
+          )}
           <TotalCell
             label="الخصومات"
             value={formatKwdLabel(grandTotals.deductions)}
@@ -580,6 +672,9 @@ export function PayrollUnifiedPage() {
                           <TableHead className="text-end">تحرير</TableHead>
                         )}
                         <TableHead className="text-end">المحجوز</TableHead>
+                        {hasAnyLoan && (
+                          <TableHead className="text-end">قسط سلفة</TableHead>
+                        )}
                         <TableHead className="text-end">الصافي</TableHead>
                         <TableHead
                           className="text-end"
@@ -600,6 +695,9 @@ export function PayrollUnifiedPage() {
                               row={saved}
                               heldAmount={heldByUser.get(u.id) ?? 0}
                               showReleaseColumn={hasAnyRelease}
+                              showLoanColumn={hasAnyLoan}
+                              recalcing={recalcingId === saved.id}
+                              onRecalcLoan={() => void handleRecalcLoan(saved)}
                               onOpenHold={() =>
                                 setHoldDialogFor({
                                   user: u,
@@ -617,6 +715,7 @@ export function PayrollUnifiedPage() {
                             preview={previewNet(u)}
                             heldAmount={heldByUser.get(u.id) ?? 0}
                             showReleaseColumn={hasAnyRelease}
+                            showLoanColumn={hasAnyLoan}
                             saving={savingUserId === u.id || bulkSaving}
                             onChange={(field, value) =>
                               setBufferValue(u.id, field, value)
@@ -681,12 +780,18 @@ function SavedRow({
   row,
   heldAmount,
   showReleaseColumn,
+  showLoanColumn,
+  recalcing,
+  onRecalcLoan,
   onOpenHold,
 }: {
   user: TeamUserRow;
   row: PayrollRow;
   heldAmount: number;
   showReleaseColumn: boolean;
+  showLoanColumn: boolean;
+  recalcing: boolean;
+  onRecalcLoan: () => void;
   onOpenHold: () => void;
 }) {
   return (
@@ -721,6 +826,13 @@ function SavedRow({
           ? '−' + formatKwdLabel(row.debtHoldAmount ?? '0')
           : '—'}
       </TableCell>
+      {showLoanColumn && (
+        <TableCell className="text-end tabular-nums text-rose-600">
+          {f(row.loanDeduction) > 0
+            ? '−' + formatKwdLabel(row.loanDeduction ?? '0')
+            : '—'}
+        </TableCell>
+      )}
       <TableCell className="text-end tabular-nums font-bold">
         {formatKwdLabel(payrollNet(row).toFixed(4))}
       </TableCell>
@@ -730,6 +842,28 @@ function SavedRow({
             <CheckCircle2 className="me-1 size-3" />
             مسجّل
           </Badge>
+          {/*
+            V19.20 — "إعادة حساب القسط" pulls the scheduled monthly
+            instalment into a payroll that was created before the
+            loan hook existed. Only shown for PENDING rows; once the
+            payroll is PAID the figures are frozen by policy.
+          */}
+          {row.status === 'PENDING' ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onRecalcLoan}
+              disabled={recalcing}
+              title="إعادة حساب قسط السلفة من الجدول"
+            >
+              {recalcing ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <RefreshCw className="size-4" />
+              )}
+              <span className="ms-1 hidden sm:inline">إعادة حساب القسط</span>
+            </Button>
+          ) : null}
           <Button size="sm" variant="outline" onClick={onOpenHold}>
             <ShieldAlert className="size-4" />
             <span className="ms-1 hidden sm:inline">حجز يدوي</span>
@@ -754,6 +888,7 @@ function EditableRow({
   preview,
   heldAmount,
   showReleaseColumn,
+  showLoanColumn,
   saving,
   onChange,
   onSave,
@@ -764,6 +899,7 @@ function EditableRow({
   preview: number;
   heldAmount: number;
   showReleaseColumn: boolean;
+  showLoanColumn: boolean;
   saving: boolean;
   onChange: (field: keyof EditBuffer, value: string) => void;
   onSave: () => void;
@@ -822,6 +958,11 @@ function EditableRow({
       <TableCell className="payroll-auto-cell text-end text-xs text-muted-foreground">
         تلقائي
       </TableCell>
+      {showLoanColumn && (
+        <TableCell className="payroll-auto-cell text-end text-xs text-muted-foreground">
+          تلقائي
+        </TableCell>
+      )}
       <TableCell className="text-end tabular-nums font-bold">
         {formatKwdLabel(preview.toFixed(4))}
         <div className="payroll-preview-note text-xs font-normal text-muted-foreground">

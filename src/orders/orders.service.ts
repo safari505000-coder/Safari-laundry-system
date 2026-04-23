@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import {
   CashStatus,
+  DebtSource,
   GeneralLedgerEntryType,
   OrderStatus,
   PosPaymentMethod,
@@ -33,6 +34,31 @@ import type { OrderLineItemDto } from './dto/order-line-item.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
 import { assertOrderStatusTransition } from './order-status.machine';
 import { assertLineItemsMatchTotal } from './order-total.util';
+
+/**
+ * V19.22.2 — Payment-link validity window (milliseconds).
+ *
+ * MUST stay in sync with
+ * `PaymentsService.paymentLinkExpiryInMinutes` (see
+ * `src/common/services/payments.service.ts`). UPayments enforces the
+ * same ceiling, so the Field Collection Tracker's PENDING / EXPIRED
+ * badges reflect what the gateway will actually accept.
+ */
+const PAYMENT_LINK_VALIDITY_HOURS = 24;
+const PAYMENT_LINK_VALIDITY_MS = PAYMENT_LINK_VALIDITY_HOURS * 60 * 60 * 1000;
+
+/**
+ * V19.22.4 — Stale Quick-Capture threshold (milliseconds).
+ *
+ * Any Order that has been sitting in PENDING + UNPAID state longer
+ * than this is surfaced to the Accountant as an
+ * accountability risk. Consumed by
+ * `OrdersService.listStaleQuickOrderRisks()` and the daily
+ * `StaleQuickOrdersCron` audit job.
+ */
+export const STALE_QUICK_ORDER_THRESHOLD_HOURS = 24;
+export const STALE_QUICK_ORDER_THRESHOLD_MS =
+  STALE_QUICK_ORDER_THRESHOLD_HOURS * 60 * 60 * 1000;
 
 const orderDetailSelect = {
   id: true,
@@ -360,6 +386,17 @@ export class OrdersService {
         tx,
         driverUserId,
       );
+      // V19.22.4 — Normalize the declared payment method. Quick
+      // capture is "I'll settle this through channel X later" — not
+      // "cash has already been received". So the cashStatus stays
+      // UNPAID at creation; the actual settlement flips it via
+      // POS checkout (or a subsequent status transition to
+      // COMPLETED that auto-invokes `cashStatusForPaymentMethod`).
+      const posPaymentMethodNormalized =
+        dto.posPaymentMethod === PosPaymentMethod.PAYMENT_LINK
+          ? PosPaymentMethod.ONLINE
+          : dto.posPaymentMethod;
+
       return tx.order.create({
         data: {
           customerId,
@@ -370,6 +407,7 @@ export class OrdersService {
           invoiceNumber: dto.invoiceNumber?.trim() || null,
           serialNumber,
           notes: dto.notes?.trim() || null,
+          posPaymentMethod: posPaymentMethodNormalized,
           ...(lineCreates?.length
             ? { lineItems: { create: lineCreates } }
             : {}),
@@ -1003,20 +1041,35 @@ export class OrdersService {
    *     and the existing `findAllForActor` uses the same field — see
    *     its JSDoc: "DRIVER: only orders assigned to them (including
    *     self-created)").
-   *   - `cashStatus === UNPAID`
+   *   - `cashStatus === UNPAID` (pending hosted payment link) OR
+   *     `posPaymentMethod === DEBT_ON_ACCOUNT` AND the ledger's FIFO
+   *     allocation shows the invoice still has open debt. Debt invoices
+   *     stay `cashStatus = PAID_TO_DRIVER` because the driver signed for
+   *     the paper trail; the field-tracker is the only surface that
+   *     reunites "pending link" + "open debt" for the driver in one view
+   *     and drops invoices the instant the customer settles through ANY
+   *     channel (hosted link, CC partial payment, office cash recorded
+   *     by the Accountant). See {@link resolveOpenDebtOrderIds}.
    *   - `status !== CANCELED` — canceled orders are not "pending".
    *
    * Sort: `createdAt DESC`.
    *
-   * Status badge semantics — the UI renders two variants:
-   *   - **Unpaid**           → `orderStatus` is upstream of COMPLETED
-   *                            (driver hasn't delivered yet).
-   *   - **Pending Approval** → `orderStatus === COMPLETED` but cash
-   *                            hasn't been collected — the row is
-   *                            waiting on Call Center / manager action.
-   * The server returns both a machine-readable `orderStatus` and the
-   * derived `pendingApproval` flag so the frontend never needs to know
-   * the OrderStatus enum shape.
+   * Status badge semantics — the UI renders only two variants
+   * (V19.22.3, simplified by the Owner):
+   *   - **Pending payment** (blue) → a hosted payment-link is live
+   *     and the customer can still pay within the 24h validity
+   *     window (`linkStatus === 'PENDING'`).
+   *   - **Unpaid**          (red)  → everything else. Debt-on-account
+   *     invoices, expired links, and classic cash-arrears all show
+   *     the SAME red badge because the real-world action is
+   *     identical: the driver (or Call Center) chases the cash, and
+   *     the Call Center manually converts any collected cash to
+   *     CASH in the POS when it arrives.
+   *
+   * The previous "Pending Approval" badge was removed — it misled
+   * the driver into thinking someone else was about to close the
+   * row automatically. In practice, nobody "approves" a debt until
+   * the customer actually pays.
    *
    * Zero Call-Center interference: this endpoint does not read from
    * `TransactionHistory`, `PaymentLink` metadata, or the collections
@@ -1033,15 +1086,32 @@ export class OrdersService {
       paymentMethod: PosPaymentMethod | null;
       notes: string | null;
       orderStatus: OrderStatus;
-      pendingApproval: boolean;
+      /**
+       * V19.22.2 — Payment-link lifecycle for the Field Collection
+       * Tracker badges:
+       *   - 'PENDING'  → link was issued and is still within its
+       *     24-hour validity window (customer can still pay).
+       *   - 'EXPIRED'  → link was issued but the 24h window elapsed
+       *     without payment (driver must chase the customer again).
+       *   - null       → this row is not a payment-link invoice
+       *     (CASH / KNET / DEBT_ON_ACCOUNT are represented by the
+       *     default Unpaid badge).
+       * Validity mirrors
+       * `PaymentsService.paymentLinkExpiryInMinutes` so the
+       * server-side promise matches what UPayments actually enforces.
+       */
+      linkStatus: 'PENDING' | 'EXPIRED' | null;
       createdAtIso: string;
     }[]
   > {
     const rows = await this.prisma.order.findMany({
       where: {
         driverId: userId,
-        cashStatus: CashStatus.UNPAID,
         status: { not: OrderStatus.CANCELED },
+        OR: [
+          { cashStatus: CashStatus.UNPAID },
+          { posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT },
+        ],
       },
       select: {
         id: true,
@@ -1049,15 +1119,45 @@ export class OrdersService {
         invoiceNumber: true,
         totalPrice: true,
         posPaymentMethod: true,
+        cashStatus: true,
         status: true,
         notes: true,
         createdAt: true,
+        customerId: true,
+        posHostedPaymentUrl: true,
         customer: { select: { displayName: true, phone: true, phone2: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
 
-    return rows.map((r) => {
+    // V1.6.10 — DEBT_ON_ACCOUNT invoices must disappear from the driver's
+    // tracker once the customer settles the debt (through any channel:
+    // hosted payment link, office cash recorded by accountant, CC partial
+    // debt payment, etc.). We reuse the Accountant-canonical FIFO
+    // allocation from DebtService: per-customer, oldest-first, with
+    // per-order direct PAYMENTs + a FIFO share of customer-level
+    // (orderId=null) PAYMENTs. An invoice is "still open" iff its FIFO
+    // share of the customer's remaining unallocated debt is > 0 fils.
+    // The UNPAID-cashStatus branch (pending hosted link) is always kept
+    // regardless of ledger state because its own settlement flips the
+    // cashStatus back to PAID_ONLINE at the gateway callback.
+    const debtCandidates = rows.filter(
+      (r) => r.posPaymentMethod === PosPaymentMethod.DEBT_ON_ACCOUNT,
+    );
+    const openDebtOrderIds = await this.resolveOpenDebtOrderIds(
+      debtCandidates.map((r) => ({ orderId: r.id, customerId: r.customerId })),
+    );
+
+    const filtered = rows.filter((r) => {
+      if (r.cashStatus === CashStatus.UNPAID) return true;
+      if (r.posPaymentMethod === PosPaymentMethod.DEBT_ON_ACCOUNT) {
+        return openDebtOrderIds.has(r.id);
+      }
+      return false;
+    });
+
+    const now = Date.now();
+    return filtered.map((r) => {
       const phone =
         r.customer.phone?.replace(/[\s-]/g, '').trim() ||
         r.customer.phone2?.replace(/[\s-]/g, '').trim() ||
@@ -1068,6 +1168,26 @@ export class OrdersService {
         r.serialNumber?.trim() ||
         r.invoiceNumber?.trim() ||
         `#${r.id.slice(-6).toUpperCase()}`;
+
+      // V19.22.2 — payment-link lifecycle (24h validity).
+      // An "ONLINE" order that still has an UNPAID cashStatus and a
+      // stored hosted-link URL is either still actionable by the
+      // customer (PENDING) or past its window (EXPIRED). For rows
+      // without a hosted link URL (pure CASH / KNET / DEBT_ON_ACCOUNT)
+      // we leave linkStatus null — the UI falls back to the classic
+      // Unpaid / Pending-Approval badges.
+      let linkStatus: 'PENDING' | 'EXPIRED' | null = null;
+      if (
+        r.posPaymentMethod === PosPaymentMethod.ONLINE &&
+        r.cashStatus === CashStatus.UNPAID &&
+        typeof r.posHostedPaymentUrl === 'string' &&
+        r.posHostedPaymentUrl.length > 0
+      ) {
+        const ageMs = now - r.createdAt.getTime();
+        linkStatus =
+          ageMs <= PAYMENT_LINK_VALIDITY_MS ? 'PENDING' : 'EXPIRED';
+      }
+
       return {
         orderId: r.id,
         readableId,
@@ -1078,10 +1198,275 @@ export class OrdersService {
         paymentMethod: r.posPaymentMethod,
         notes: r.notes?.trim() || null,
         orderStatus: r.status,
-        pendingApproval: r.status === OrderStatus.COMPLETED,
+        linkStatus,
         createdAtIso: r.createdAt.toISOString(),
       };
     });
+  }
+
+  /**
+   * V19.22.5 — Drivers dropdown source for the Invoices-page filter.
+   *
+   * MANAGER: only drivers attached to their own branch.
+   * OWNER / GM / ACCOUNTANT / CC: every DRIVER-role user in the
+   * system (status != RESIGNED) so they can filter the full fleet.
+   *
+   * DRIVER: not called (the Invoices page for the driver island
+   * doesn't expose a driver filter — drivers see their own rows).
+   */
+  async listInvoiceFilterDrivers(
+    role: string,
+    branchId: string | null,
+  ): Promise<
+    { id: string; fullName: string; username: string; branchName: string | null }[]
+  > {
+    const where: Prisma.UserWhereInput = {
+      role: { name: SafariRole.DRIVER },
+      isActive: true,
+    };
+    if (role === SafariRole.MANAGER) {
+      if (!branchId) return [];
+      where.branchId = branchId;
+    }
+    const rows = await this.prisma.user.findMany({
+      where,
+      select: {
+        id: true,
+        fullName: true,
+        username: true,
+        branch: { select: { name: true } },
+      },
+      orderBy: { fullName: 'asc' },
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      fullName: r.fullName,
+      username: r.username,
+      branchName: r.branch?.name ?? null,
+    }));
+  }
+
+  /**
+   * V19.22.4 — Stale quick-capture watchdog for the Accountant.
+   *
+   * Lists every Order that was created via the driver's Quick Capture
+   * flow (`POST /orders/quick`) and has been sitting in PENDING +
+   * UNPAID state for longer than 24 hours. These rows are the
+   * highest-risk accountability bucket in the system:
+   *
+   *   • The paper trail proves an invoice was "issued" (serialNumber
+   *     was stamped by SerialCounter → permanent, unique).
+   *   • The customer may already have handed cash to the driver.
+   *   • But POS checkout was never completed, so the ledger has
+   *     zero record of the cash receiving.
+   *
+   * Running the watchdog daily (via `StaleQuickOrdersCron`) + exposing
+   * this read endpoint on the Accountant dashboard closes the loop:
+   * the Accountant sees exactly which driver has dangling invoices
+   * and can call them to settle the same day.
+   *
+   * Returns oldest-first so the most overdue rows surface at the top.
+   * Amounts are serialized to KWD 3-decimal (fils) strings.
+   */
+  async listStaleQuickOrderRisks(): Promise<
+    {
+      orderId: string;
+      readableId: string;
+      driverName: string;
+      driverPhone: string | null;
+      customerName: string;
+      customerPhone: string;
+      amountKd: string;
+      paymentMethod: PosPaymentMethod | null;
+      ageHours: number;
+      createdAtIso: string;
+    }[]
+  > {
+    const cutoff = new Date(Date.now() - STALE_QUICK_ORDER_THRESHOLD_MS);
+    const rows = await this.prisma.order.findMany({
+      where: {
+        status: OrderStatus.PENDING,
+        cashStatus: CashStatus.UNPAID,
+        createdAt: { lt: cutoff },
+        driverId: { not: null },
+      },
+      select: {
+        id: true,
+        serialNumber: true,
+        invoiceNumber: true,
+        totalPrice: true,
+        posPaymentMethod: true,
+        createdAt: true,
+        driver: {
+          select: { id: true, fullName: true, phone: true },
+        },
+        customer: {
+          select: { displayName: true, phone: true, phone2: true },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const now = Date.now();
+    return rows.map((r) => {
+      const phone =
+        r.customer.phone?.replace(/[\s-]/g, '').trim() ||
+        r.customer.phone2?.replace(/[\s-]/g, '').trim() ||
+        '';
+      const customerName =
+        r.customer.displayName?.trim() || (phone ? phone : 'Customer');
+      const driverName = r.driver?.fullName?.trim() || '—';
+      const readableId =
+        r.serialNumber?.trim() ||
+        r.invoiceNumber?.trim() ||
+        `#${r.id.slice(-6).toUpperCase()}`;
+      const ageHours = Math.round(
+        (now - r.createdAt.getTime()) / (60 * 60 * 1000),
+      );
+      return {
+        orderId: r.id,
+        readableId,
+        driverName,
+        driverPhone: r.driver?.phone ?? null,
+        customerName,
+        customerPhone: phone,
+        amountKd: r.totalPrice.toFixed(3),
+        paymentMethod: r.posPaymentMethod,
+        ageHours,
+        createdAtIso: r.createdAt.toISOString(),
+      };
+    });
+  }
+
+  /**
+   * Given a set of candidate `(orderId, customerId)` tuples representing
+   * DEBT_ON_ACCOUNT orders, return the subset of orderIds that are STILL
+   * open after FIFO-allocating the customer's payments across ALL of
+   * their SHORTFALL invoices (not just the ones in the candidate list).
+   *
+   * Used by the Driver Field Collection Tracker so settled debts vanish
+   * from the driver's list the moment the ledger says the customer is
+   * current. The algorithm mirrors
+   * `DebtService.getUnpaidInvoices()` (the Accountant's canonical source
+   * of truth) to guarantee both surfaces agree on "is this invoice still
+   * open?" without physically sharing code paths.
+   */
+  private async resolveOpenDebtOrderIds(
+    candidates: { orderId: string; customerId: string }[],
+  ): Promise<Set<string>> {
+    const openIds = new Set<string>();
+    if (candidates.length === 0) return openIds;
+
+    const customerIds = Array.from(
+      new Set(candidates.map((c) => c.customerId)),
+    );
+
+    // 1) Every SHORTFALL entry for the affected customers — we need the
+    //    FULL picture (other drivers' invoices too) so FIFO allocation
+    //    applies to the correct oldest-first order across all of them.
+    const shortfallEntries = await this.prisma.debtLedgerEntry.findMany({
+      where: {
+        source: DebtSource.INVOICE_SHORTFALL,
+        customerId: { in: customerIds },
+        orderId: { not: null },
+      },
+      select: {
+        orderId: true,
+        customerId: true,
+        amount: true,
+        order: {
+          select: { id: true, createdAt: true, completedAt: true },
+        },
+      },
+    });
+
+    type Agg = {
+      orderId: string;
+      customerId: string;
+      issuedAt: Date;
+      shortfall: number;
+      paid: number;
+    };
+    const perOrder = new Map<string, Agg>();
+    for (const e of shortfallEntries) {
+      if (!e.orderId || !e.order) continue;
+      const amount = Number.parseFloat(e.amount.toString());
+      if (!Number.isFinite(amount)) continue;
+      const cur = perOrder.get(e.orderId);
+      if (cur) {
+        cur.shortfall += amount;
+      } else {
+        perOrder.set(e.orderId, {
+          orderId: e.orderId,
+          customerId: e.customerId,
+          issuedAt: e.order.completedAt ?? e.order.createdAt,
+          shortfall: amount,
+          paid: 0,
+        });
+      }
+    }
+
+    const allOrderIds = Array.from(perOrder.keys());
+    if (allOrderIds.length === 0) return openIds;
+
+    // 2) Per-order direct PAYMENTs.
+    const perOrderPayments = await this.prisma.debtLedgerEntry.groupBy({
+      by: ['orderId'],
+      where: {
+        source: DebtSource.PAYMENT,
+        orderId: { in: allOrderIds },
+      },
+      _sum: { amount: true },
+    });
+    for (const g of perOrderPayments) {
+      if (!g.orderId) continue;
+      const paid = Number.parseFloat(g._sum.amount?.toString() ?? '0');
+      const cur = perOrder.get(g.orderId);
+      if (cur && Number.isFinite(paid)) cur.paid = paid;
+    }
+
+    // 3) Customer-wide totals to derive the still-unallocated pool.
+    const customerTotals = await this.prisma.debtLedgerEntry.groupBy({
+      by: ['customerId', 'source'],
+      where: { customerId: { in: customerIds } },
+      _sum: { amount: true },
+    });
+    const debtByCust = new Map<string, number>();
+    const paidByCust = new Map<string, number>();
+    for (const g of customerTotals) {
+      const v = Number.parseFloat(g._sum.amount?.toString() ?? '0');
+      if (!Number.isFinite(v)) continue;
+      if (g.source === DebtSource.PAYMENT) {
+        paidByCust.set(g.customerId, (paidByCust.get(g.customerId) ?? 0) + v);
+      } else {
+        debtByCust.set(g.customerId, (debtByCust.get(g.customerId) ?? 0) + v);
+      }
+    }
+
+    // 4) Bucket the aggregated per-order rows by customer, oldest-first,
+    //    and allocate customer-level open-pool FIFO. An invoice is open
+    //    iff its FIFO share is materially positive (>0.0001 KWD, same
+    //    tolerance as DebtService to stay in lock-step).
+    const byCustomer = new Map<string, Agg[]>();
+    for (const agg of perOrder.values()) {
+      const arr = byCustomer.get(agg.customerId) ?? [];
+      arr.push(agg);
+      byCustomer.set(agg.customerId, arr);
+    }
+    for (const [cid, arr] of byCustomer) {
+      arr.sort((a, b) => a.issuedAt.getTime() - b.issuedAt.getTime());
+      const debtTotal = debtByCust.get(cid) ?? 0;
+      const paidTotal = paidByCust.get(cid) ?? 0;
+      let remainingOpen = Math.max(debtTotal - paidTotal, 0);
+      for (const item of arr) {
+        const perOrderNet = Math.max(item.shortfall - item.paid, 0);
+        const share = Math.min(perOrderNet, remainingOpen);
+        if (share > 0.0001) openIds.add(item.orderId);
+        remainingOpen -= share;
+      }
+    }
+
+    return openIds;
   }
 
   /**
@@ -1100,21 +1485,86 @@ export class OrdersService {
     return agg._sum.totalPrice ?? new Prisma.Decimal(0);
   }
 
-  async findAllForActor(userId: string, role: string): Promise<OrderDetail[]> {
-    if (this.canViewAllOrders(role)) {
-      return this.prisma.order.findMany({
-        select: orderDetailSelect,
-        orderBy: { createdAt: 'desc' },
-      });
-    }
+  async findAllForActor(
+    userId: string,
+    role: string,
+    branchId: string | null,
+    filters: {
+      driverId?: string;
+      status?: OrderStatus;
+      posPaymentMethod?: PosPaymentMethod;
+      cashStatus?: CashStatus;
+      from?: string;
+      to?: string;
+      q?: string;
+    } = {},
+  ): Promise<OrderDetail[]> {
+    const where: Prisma.OrderWhereInput = {};
+
+    // V19.22.5 — Branch scoping (Dastur §11).
+    // MANAGER sees ONLY invoices belonging to their branch — both
+    // rows issued by the branch itself AND rows issued by drivers
+    // assigned to that branch. Exec pair (OWNER/GM) + CC keep
+    // full-fleet visibility. DRIVER is locked to their own rows.
     if (role === SafariRole.DRIVER) {
-      return this.prisma.order.findMany({
-        where: { driverId: userId },
-        select: orderDetailSelect,
-        orderBy: { createdAt: 'desc' },
-      });
+      where.driverId = userId;
+    } else if (role === SafariRole.MANAGER) {
+      if (!branchId) {
+        return [];
+      }
+      where.driver = { branchId };
+    } else if (!this.canViewAllOrders(role)) {
+      return [];
     }
-    return [];
+
+    // Explicit driver filter (used by Invoices page dropdown).
+    if (filters.driverId) {
+      if (role === SafariRole.DRIVER && filters.driverId !== userId) {
+        return [];
+      }
+      where.driverId = filters.driverId;
+      // Reset the relational predicate — the explicit driverId is
+      // strictly stronger than the branch scope.
+      delete (where as { driver?: unknown }).driver;
+    }
+
+    if (filters.status) {
+      where.status = filters.status;
+    }
+    if (filters.posPaymentMethod) {
+      where.posPaymentMethod = filters.posPaymentMethod;
+    }
+    if (filters.cashStatus) {
+      where.cashStatus = filters.cashStatus;
+    }
+
+    // Date range: interpret "from" / "to" as Kuwait-local dates if
+    // passed bare YYYY-MM-DD, otherwise as full ISO timestamps. We
+    // don't force-set time zones here because the frontend already
+    // sends inclusive bounds.
+    if (filters.from || filters.to) {
+      where.createdAt = {
+        ...(filters.from ? { gte: new Date(filters.from) } : {}),
+        ...(filters.to ? { lte: new Date(filters.to) } : {}),
+      };
+    }
+
+    if (filters.q && filters.q.trim().length > 0) {
+      const q = filters.q.trim();
+      where.OR = [
+        { invoiceNumber: { contains: q, mode: 'insensitive' } },
+        { serialNumber: { contains: q, mode: 'insensitive' } },
+        { customer: { phone: { contains: q } } },
+        { customer: { phone2: { contains: q } } },
+        { customer: { displayName: { contains: q, mode: 'insensitive' } } },
+      ];
+    }
+
+    return this.prisma.order.findMany({
+      where,
+      select: orderDetailSelect,
+      orderBy: { createdAt: 'desc' },
+    });
   }
 
   async findOneForActor(

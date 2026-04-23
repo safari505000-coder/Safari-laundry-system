@@ -6,14 +6,16 @@ import {
 import { PayrollStatus, Prisma, SafariRole } from '@prisma/client';
 import { CommissionPayoutsService } from '../commissions/commission-payouts.service';
 import { DebtHoldsService } from '../debt-holds/debt-holds.service';
+import { LoansService } from '../loans/loans.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
- * V19.16 — net pay math. Commission is added ON TOP of base + allowances;
- * the debt-hold slice is subtracted; and the release line is added back
- * when previously-withheld debt has been collected.
+ * V19.20 — net pay math. Commission + debt-release are additions;
+ * deductions, debt-hold, AND the booked monthly loan instalment are
+ * subtractions.
  *
- *   net = basic + allowances + commission + debtRelease − deductions − debtHold
+ *   net = basic + allowances + commission + debtRelease
+ *         − deductions − debtHold − loanDeduction
  */
 function netPay(row: {
   basicSalary: Prisma.Decimal;
@@ -22,16 +24,29 @@ function netPay(row: {
   commissionAmount?: Prisma.Decimal | null;
   debtHoldAmount?: Prisma.Decimal | null;
   debtReleaseAmount?: Prisma.Decimal | null;
+  loanDeduction?: Prisma.Decimal | null;
 }): Prisma.Decimal {
   const commission = row.commissionAmount ?? new Prisma.Decimal(0);
   const hold = row.debtHoldAmount ?? new Prisma.Decimal(0);
   const release = row.debtReleaseAmount ?? new Prisma.Decimal(0);
+  const loan = row.loanDeduction ?? new Prisma.Decimal(0);
   return row.basicSalary
     .add(row.allowances)
     .add(commission)
     .add(release)
     .sub(row.deductions)
-    .sub(hold);
+    .sub(hold)
+    .sub(loan);
+}
+
+/**
+ * V19.20 — derive the idempotency key "YYYY-MM" used by the loan
+ * booking helper. The `paymentDate` is the authoritative source for
+ * which pay-month this row represents, so we anchor to it (UTC slice
+ * to stay stable across tz hops).
+ */
+function yearMonthOf(d: Date): string {
+  return d.toISOString().slice(0, 7);
 }
 
 @Injectable()
@@ -40,6 +55,7 @@ export class PayrollService {
     private readonly prisma: PrismaService,
     private readonly commissionPayouts: CommissionPayoutsService,
     private readonly debtHolds: DebtHoldsService,
+    private readonly loans: LoansService,
   ) {}
 
   private assertOwnerOrManager(role: SafariRole): void {
@@ -68,14 +84,16 @@ export class PayrollService {
     const allow = new Prisma.Decimal((dto.allowances ?? 0).toFixed(4));
     const manualDed = new Prisma.Decimal((dto.deductions ?? 0).toFixed(4));
 
-    // V19.19 — loans are NO LONGER auto-deducted from payroll. The
-    // Owner explicitly moved loan repayment outside the salary cycle
-    // ("السلفة تكون عند المدير العام يدوي وتنشال من كل رتب") so a
-    // re-run of the same month's payroll cannot take the instalment
-    // twice. Loan deduction is now a standalone POST /api/loans/:id/
-    // deduct action by OWNER / GM, mirroring the debt-hold release
-    // voucher flow. `deductions` here reflects ONLY the manual number
-    // the approver typed on the payroll form.
+    // V19.20 — loans are BACK on the payslip (Owner's latest ask:
+    // "يختار جدول الاقساط من شهر الي 12 شهر وتذكر خصم القسط في مسيرة
+    // الرواتب") but SAFELY: the monthly instalment is booked via
+    // `LoansService.bookPayrollInstalmentsFor`, which observes each
+    // loan's `lastDeductionYearMonth` and refuses to take the same
+    // YYYY-MM twice. Re-running April's payroll after a fix therefore
+    // produces `loanDeduction = 0` on the replay — fixing the V19.18
+    // double-deduction bug without hiding the line from the employee.
+    // `deductions` still holds only the manual figure the approver
+    // typed; `loanDeduction` is its own band.
     //
     // V19.16 — we still run three ledgers inside the same transaction:
     //   1. Commission: sum of RELEASED CommissionPayouts up to cut time
@@ -90,8 +108,19 @@ export class PayrollService {
     //      still has open customer debt, a fresh HELD slip is persisted
     //      and reflected in `debtHoldAmount` (negative line).
     const paymentDate = new Date(dto.paymentDate);
+    const yearMonth = yearMonthOf(paymentDate);
     return this.prisma.$transaction(async (tx) => {
       const totalDed = manualDed;
+
+      // V19.20 — book the scheduled loan instalment for this pay
+      // month. Idempotent via EmployeeLoan.lastDeductionYearMonth so a
+      // re-run of the same month returns 0. Runs BEFORE the payroll
+      // row is created so we can persist the figure on it.
+      const loanDeduction = await this.loans.bookPayrollInstalmentsFor(
+        dto.userId,
+        yearMonth,
+        tx,
+      );
 
       // V19.16 — commission roll-up: pull RELEASED payouts earned up to
       // this cut date. We read them here BEFORE creating the payroll row
@@ -152,6 +181,7 @@ export class PayrollService {
           commissionAmount: commission.toFixed(4),
           debtHoldAmount: debtHold.toFixed(4),
           debtReleaseAmount: debtRelease.toFixed(4),
+          loanDeduction: loanDeduction.toFixed(4),
           paymentDate,
           status: PayrollStatus.PENDING,
         },
@@ -196,6 +226,65 @@ export class PayrollService {
       }
 
       return payroll;
+    });
+  }
+
+  /**
+   * V19.20 — safe loan backfill for a single PENDING payroll row.
+   *
+   * Pre-V19.20 payrolls were created before the loan→payroll hook
+   * existed, so they carry `loanDeduction = 0` even for employees
+   * with ACTIVE loans. Rather than force the Owner to delete and
+   * recreate (which would also blow away commission stamps and the
+   * debt-hold snapshot), this endpoint pulls the missed instalment
+   * in via `recalcUnbookedInstalmentsFor` — which only touches loans
+   * whose `lastDeductionYearMonth IS NULL`. The returned Decimal is
+   * ADDED to the existing `loanDeduction` so repeated clicks are a
+   * no-op (the first click stamps the high-water mark, subsequent
+   * clicks find nothing to book).
+   *
+   * Guard rails:
+   *   - PENDING only. PAID payrolls are immutable — the cash has
+   *     already left the company, the payslip is printed and signed.
+   *   - OWNER / GM / MANAGER (same set as `create`) — payroll
+   *     actions carry the same trust boundary as creating the row.
+   */
+  async recalcLoanDeduction(actorRole: SafariRole, id: string) {
+    this.assertOwnerOrManager(actorRole);
+    return this.prisma.$transaction(async (tx) => {
+      const row = await tx.payroll.findUnique({ where: { id } });
+      if (!row) throw new NotFoundException('Payroll not found');
+      if (row.status !== PayrollStatus.PENDING) {
+        throw new ForbiddenException(
+          'Only PENDING payrolls can be recalculated',
+        );
+      }
+      const yearMonth = yearMonthOf(row.paymentDate);
+      const newlyBooked = await this.loans.recalcUnbookedInstalmentsFor(
+        row.userId,
+        yearMonth,
+        tx,
+      );
+      if (newlyBooked.lte(0)) {
+        // Nothing to book — return the row as-is so the UI can
+        // surface a neutral "no missing instalments" message.
+        return tx.payroll.findUniqueOrThrow({
+          where: { id },
+          include: {
+            user: { select: { id: true, fullName: true, username: true } },
+            branch: { select: { id: true, name: true } },
+          },
+        });
+      }
+      const nextLoan = row.loanDeduction.add(newlyBooked);
+      return tx.payroll.update({
+        where: { id },
+        data: { loanDeduction: nextLoan },
+        include: {
+          user: { select: { id: true, fullName: true, username: true } },
+          branch: { select: { id: true, name: true } },
+        },
+      });
     });
   }
 
@@ -300,6 +389,7 @@ export class PayrollService {
         commissionAmount: true,
         debtHoldAmount: true,
         debtReleaseAmount: true,
+        loanDeduction: true,
       },
     });
     let total = new Prisma.Decimal(0);

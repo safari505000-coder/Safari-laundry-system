@@ -37,6 +37,15 @@ export type PrintableSheetProps = {
   children: ReactNode;
   /** Optional back navigation (defaults to router back). */
   onBack?: () => void;
+  /**
+   * V19.21 — optional modifier class appended to `.printable-sheet`.
+   * Used by the monthly payroll roster to switch the page to A4
+   * landscape (`.printable-sheet--roster`) and by future printables
+   * that need non-default paper / layout tweaks. Kept as a simple
+   * className pass-through so the consumer owns the selector and
+   * we don't need to teach `PrintableSheet` about every variant.
+   */
+  sheetClassName?: string;
 };
 
 export function PrintableSheet({
@@ -49,6 +58,7 @@ export function PrintableSheet({
   status,
   children,
   onBack,
+  sheetClassName,
 }: PrintableSheetProps) {
   const navigate = useNavigate();
 
@@ -61,8 +71,16 @@ export function PrintableSheet({
   const handleBack = useCallback(() => {
     if (onBack) {
       onBack();
-    } else {
+      return;
+    }
+    // `navigate(-1)` is a no-op when the page was opened in a new tab
+    // (no history stack). Fall back to home instead of a dead click.
+    const canGoBack =
+      typeof window !== 'undefined' && window.history.length > 1;
+    if (canGoBack) {
       navigate(-1);
+    } else {
+      navigate('/', { replace: true });
     }
   }, [onBack, navigate]);
 
@@ -82,7 +100,13 @@ export function PrintableSheet({
         </Button>
       </div>
 
-      <article className="printable-sheet">
+      <article
+        className={
+          sheetClassName
+            ? `printable-sheet ${sheetClassName}`
+            : 'printable-sheet'
+        }
+      >
         <header className="printable-sheet__brandbar">
           <div className="printable-sheet__brand-left">
             <div className="printable-sheet__brand-name">{BRAND.systemAr}</div>

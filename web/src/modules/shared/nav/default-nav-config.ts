@@ -35,7 +35,6 @@ import {
   unpaidInvoicesItem,
   vehicleExpensesApprovalItem,
   vehicleExpensesReportItem,
-  whatsappToolsItem,
 } from '@/modules/shared/nav/nav-items';
 
 /**
@@ -113,7 +112,6 @@ export const defaultSidebarNavGroups: NavGroup[] = [
       branchesItem,
       driverMonitorItem,
       shiftsItem,
-      whatsappToolsItem,
     ],
   },
 ];

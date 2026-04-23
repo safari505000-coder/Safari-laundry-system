@@ -60,9 +60,16 @@ export function PayslipPrintPage() {
     };
   }, [token, id]);
 
-  const { basic, net, commission, debtHold, debtRelease } = useMemo(() => {
+  const { basic, net, commission, debtHold, debtRelease, loanDed } = useMemo(() => {
     if (!row) {
-      return { basic: 0, net: 0, commission: 0, debtHold: 0, debtRelease: 0 };
+      return {
+        basic: 0,
+        net: 0,
+        commission: 0,
+        debtHold: 0,
+        debtRelease: 0,
+        loanDed: 0,
+      };
     }
     const b = Number.parseFloat(row.basicSalary);
     const a = Number.parseFloat(row.allowances);
@@ -70,18 +77,18 @@ export function PayslipPrintPage() {
     const c = Number.parseFloat(row.commissionAmount ?? '0');
     const h = Number.parseFloat(row.debtHoldAmount ?? '0');
     const r = Number.parseFloat(row.debtReleaseAmount ?? '0');
+    // V19.20 — the scheduled loan instalment is its own band so the
+    // employee can see exactly how much of the month's drop was the
+    // loan vs a generic "deductions" figure.
+    const l = Number.parseFloat(row.loanDeduction ?? '0');
+    const safe = (n: number) => (Number.isFinite(n) ? n : 0);
     return {
       basic: b,
-      commission: Number.isFinite(c) ? c : 0,
-      debtHold: Number.isFinite(h) ? h : 0,
-      debtRelease: Number.isFinite(r) ? r : 0,
-      net:
-        b +
-        a +
-        (Number.isFinite(c) ? c : 0) +
-        (Number.isFinite(r) ? r : 0) -
-        d -
-        (Number.isFinite(h) ? h : 0),
+      commission: safe(c),
+      debtHold: safe(h),
+      debtRelease: safe(r),
+      loanDed: safe(l),
+      net: b + a + safe(c) + safe(r) - d - safe(h) - safe(l),
     };
   }, [row]);
 
@@ -200,6 +207,14 @@ export function PayslipPrintPage() {
                 <td>محجوز المديونية (معلّق حتى التحصيل)</td>
                 <td style={{ textAlign: 'end', color: '#b45309' }}>
                   −{KD(row.debtHoldAmount ?? '0')}
+                </td>
+              </tr>
+            )}
+            {loanDed > 0 && (
+              <tr>
+                <td>قسط السلفة الشهري</td>
+                <td style={{ textAlign: 'end', color: '#b91c1c' }}>
+                  −{KD(row.loanDeduction ?? '0')}
                 </td>
               </tr>
             )}

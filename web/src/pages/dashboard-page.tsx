@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
+  ChevronDown,
+  ChevronUp,
   Droplets,
   TicketPlus,
   Truck,
@@ -13,10 +15,12 @@ import { useAuth } from '@/contexts/auth-context';
 import { useSafariStream } from '@/contexts/safari-stream-context';
 import {
   type BankDepositsListResponse,
+  type StaleQuickOrderRiskRow,
   apiJson,
   ApiError,
   getBankDeposits,
   getOperatingStatus,
+  getStaleQuickOrderRisks,
 } from '@/lib/api';
 import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
 import { formatKwdLabel } from '@/lib/kwd';
@@ -58,6 +62,11 @@ export function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [ownerBankDeposits, setOwnerBankDeposits] =
     useState<BankDepositsListResponse | null>(null);
+  // Dastur §10 — Accountant watchdog for dangling Quick-Capture invoices.
+  const [staleQuickRisks, setStaleQuickRisks] = useState<
+    StaleQuickOrderRiskRow[] | null
+  >(null);
+  const [staleQuickExpanded, setStaleQuickExpanded] = useState(false);
 
   useEffect(() => {
     if (!token) return;
@@ -115,6 +124,34 @@ export function DashboardPage() {
       window.clearInterval(id);
     };
   }, [token, financialDateIso]);
+
+  // Dastur §10 — poll stale Quick-Capture risks every 60s for roles that
+  // are allowed to see the watchdog (Accountant + exec pair). The live
+  // feed complements the daily `StaleQuickOrdersCron` AuditLog trail.
+  useEffect(() => {
+    if (
+      !token ||
+      !(hasRole('OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT') ?? false)
+    ) {
+      return;
+    }
+    let cancelled = false;
+    const loadRisks = () => {
+      void getStaleQuickOrderRisks(token)
+        .then((rows) => {
+          if (!cancelled) setStaleQuickRisks(rows);
+        })
+        .catch(() => {
+          if (!cancelled) setStaleQuickRisks([]);
+        });
+    };
+    loadRisks();
+    const interval = window.setInterval(loadRisks, 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [token, hasRole]);
 
   useEffect(() => {
     if (!token || !hasRole('OWNER', 'GENERAL_MANAGER')) return;
@@ -219,6 +256,99 @@ export function DashboardPage() {
             </p>
           </div>
         </Link>
+      ) : null}
+
+      {/* Dastur §10 — Accountant watchdog: dangling Quick-Capture > 24h. */}
+      {(hasRole('OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT') ?? false) &&
+      (staleQuickRisks?.length ?? 0) > 0 ? (
+        <div className="rounded-lg border border-red-300 bg-red-50 text-sm text-red-900 transition-colors">
+          <button
+            type="button"
+            onClick={() => setStaleQuickExpanded((v) => !v)}
+            className="flex w-full items-start gap-3 px-4 py-3 text-start hover:bg-red-100"
+            aria-expanded={staleQuickExpanded}
+          >
+            <AlertTriangle className="mt-0.5 h-4 w-4" aria-hidden />
+            <div className="flex-1">
+              <p className="font-semibold">
+                {t('staleQuickRisks.banner', {
+                  count: staleQuickRisks!.length,
+                  total: formatKwdLabel(
+                    staleQuickRisks!.reduce(
+                      (s, r) => s + Number.parseFloat(r.amountKd),
+                      0,
+                    ),
+                  ),
+                })}
+              </p>
+              <p className="text-xs text-red-800/80">
+                {t('staleQuickRisks.bannerHint')}
+              </p>
+            </div>
+            {staleQuickExpanded ? (
+              <ChevronUp className="mt-0.5 h-4 w-4" aria-hidden />
+            ) : (
+              <ChevronDown className="mt-0.5 h-4 w-4" aria-hidden />
+            )}
+          </button>
+          {staleQuickExpanded ? (
+            <div className="border-t border-red-200 bg-white/60 px-2 pb-2 pt-1">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-red-900">
+                      {t('staleQuickRisks.colInvoice')}
+                    </TableHead>
+                    <TableHead className="text-red-900">
+                      {t('staleQuickRisks.colDriver')}
+                    </TableHead>
+                    <TableHead className="text-red-900">
+                      {t('staleQuickRisks.colCustomer')}
+                    </TableHead>
+                    <TableHead className="text-red-900">
+                      {t('staleQuickRisks.colMethod')}
+                    </TableHead>
+                    <TableHead className="text-end text-red-900">
+                      {t('staleQuickRisks.colAge')}
+                    </TableHead>
+                    <TableHead className="text-end text-red-900">
+                      {t('staleQuickRisks.colAmount')}
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {staleQuickRisks!.map((r) => (
+                    <TableRow key={r.orderId}>
+                      <TableCell className="font-mono text-xs">
+                        {r.readableId}
+                      </TableCell>
+                      <TableCell>{r.driverName}</TableCell>
+                      <TableCell className="text-xs">
+                        <div>{r.customerName}</div>
+                        {r.customerPhone ? (
+                          <div className="text-zinc-500">{r.customerPhone}</div>
+                        ) : null}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {r.paymentMethod
+                          ? t(`staleQuickRisks.pm.${r.paymentMethod}`, {
+                              defaultValue: r.paymentMethod,
+                            })
+                          : t('staleQuickRisks.pm.NULL')}
+                      </TableCell>
+                      <TableCell className="text-end tabular-nums">
+                        {t('staleQuickRisks.ageHours', { hours: r.ageHours })}
+                      </TableCell>
+                      <TableCell className="text-end font-semibold tabular-nums">
+                        {formatKwdLabel(Number.parseFloat(r.amountKd))}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          ) : null}
+        </div>
       ) : null}
 
       {/* Dastur §3 — Manager reminder: own pending bags. */}

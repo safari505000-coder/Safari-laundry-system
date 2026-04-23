@@ -14,7 +14,7 @@ import {
   FileText,
   Hash,
   History,
-  Droplets,
+  CirclePlus,
   FileCheck2,
   ClipboardCheck,
   FileSpreadsheet,
@@ -151,10 +151,11 @@ export const whatsappToolsItem: NavItem = {
   roles: ['OWNER', 'GENERAL_MANAGER', 'CALL_CENTER', 'CALL_CENTER_SUPERVISOR'],
 };
 
+/** DRIVER — تسجيل وقود/تكاليف ميدان (نفس المسار؛ الأيقونة + التسمية للقائمة الرئيسية). */
 export const driverFieldExpensesItem: NavItem = {
   to: '/my-field-expenses',
   labelKey: 'nav.driverFieldExpenses',
-  icon: Droplets,
+  icon: CirclePlus,
   roles: ['DRIVER'],
 };
 
@@ -372,6 +373,31 @@ export const myCustodyItem: NavItem = {
   to: '/manager/custody',
   labelKey: 'nav.myCustody',
   icon: Landmark,
+  roles: ['MANAGER'],
+};
+
+/**
+ * V19.22.5 — Branch Manager "My Documents" island. Unified inbox for
+ * every Accountant-approved document (custody receipts + expense
+ * vouchers) with per-row print buttons.
+ */
+export const myDocumentsItem: NavItem = {
+  to: '/manager/my-documents',
+  labelKey: 'nav.myDocuments',
+  icon: FileCheck2,
+  roles: ['MANAGER'],
+};
+
+/**
+ * V19.22.5 — Branch Manager "Driver Oversight" island. Colourful
+ * card list of the branch's drivers with today's performance and
+ * risk flags; the map view lives on /admin/driver-monitoring and is
+ * shared with CC + CC Supervisor.
+ */
+export const driverOversightItem: NavItem = {
+  to: '/manager/driver-oversight',
+  labelKey: 'nav.driverOversight',
+  icon: Radar,
   roles: ['MANAGER'],
 };
 

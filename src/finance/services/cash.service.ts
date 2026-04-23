@@ -233,11 +233,14 @@ export class CashService {
     return minorToAmountString(sumOrderMinors(rows));
   }
 
-  async getDriverMonitoring() {
+  async getDriverMonitoring(branchId: string | null = null) {
     const activeDrivers = await this.prisma.user.findMany({
       where: {
         safariRole: SafariRole.DRIVER,
         shiftsAsDriver: { some: { status: ShiftStatus.OPEN } },
+        // V19.22.5 — Branch-scoped map for MANAGER. OWNER / CC / GM
+        // pass `null` here and get the full fleet.
+        ...(branchId ? { branchId } : {}),
       },
       orderBy: { fullName: 'asc' },
       select: {

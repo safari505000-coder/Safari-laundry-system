@@ -24,6 +24,14 @@ import { useAuth } from '@/contexts/auth-context';
  * The arrow direction still flips in RTL; everything else uses
  * `dir`-aware flex (gap + ms-/me- utilities) so we don't need the
  * old `startsWith('ar')` branching outside the arrow icon.
+ *
+ * V19.15 — On mobile, a floating drawer trigger (hamburger) is
+ * rendered by `MobileBottomNav` at the reading-start corner with
+ * `z-50`. To keep that button from visually crashing into the back
+ * button / page chrome slot, the header reserves 3rem of leading
+ * space (`ps-14`) on narrow viewports. Desktop (`md` and up) stays
+ * on its original 1rem/1.5rem/2rem scale, since the drawer trigger
+ * isn't rendered there.
  */
 export function ExecutiveHeader() {
   const { t, i18n } = useTranslation();
@@ -56,7 +64,7 @@ export function ExecutiveHeader() {
   };
 
   return (
-    <header className="print:hidden sticky top-0 z-40 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-card/90 px-4 shadow-sm backdrop-blur-sm sm:px-6 lg:px-8">
+    <header className="print:hidden sticky top-0 z-40 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-card/90 py-0 pe-4 ps-14 shadow-sm backdrop-blur-sm sm:pe-6 sm:ps-6 md:ps-4 lg:pe-8 lg:ps-8">
       <div className="flex min-w-0 flex-1 items-center gap-2">
         {!isIndex ? (
           <Button

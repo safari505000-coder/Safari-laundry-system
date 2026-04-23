@@ -7,7 +7,6 @@ import {
   driverMonitorItem,
   subscribersItem,
   unpaidInvoicesItem,
-  whatsappToolsItem,
 } from '@/modules/shared/nav/nav-items';
 
 /**
@@ -22,11 +21,16 @@ import {
  *    `hr.loans.mine` for CALL_CENTER so deep links to /loans 403.
  *  - `leavesItem` also removed now (V19.9.5) per owner directive;
  *    HR self-service is off every sidebar.
+ *  - `whatsappToolsItem` removed per owner directive ahead of the CC
+ *    mobile redesign. WhatsApp outreach still happens per-row in the
+ *    Collections page + the statement dialog, so the standalone hub
+ *    page stopped earning its sidebar slot. The route itself remains
+ *    registered in App.tsx for deep-linking, but no nav points at it.
  */
 export const callCenterSidebarNavGroups: NavGroup[] = [
   {
     ...G.main,
-    items: [customersItem, collectionsItem, subscribersItem, whatsappToolsItem],
+    items: [customersItem, collectionsItem, subscribersItem],
   },
   {
     ...G.invoices,

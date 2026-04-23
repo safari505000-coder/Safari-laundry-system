@@ -1398,12 +1398,194 @@ export type DriverPendingInvoiceRow = {
     | 'COMPLETED'
     | 'CANCELED';
   /**
-   * true when the order is COMPLETED but cash is still UNPAID — the
-   * badge flips from "Unpaid" to "Pending Approval" in this state.
+   * V19.22.2 — hosted payment-link lifecycle.
+   * - `PENDING`  → link issued, still within 24h validity window.
+   * - `EXPIRED`  → link issued but window elapsed without payment.
+   * - `null`     → this row is not a payment-link invoice (falls
+   *   back to the classic Unpaid badge).
+   *
+   * V19.22.3 — simplified badges: `linkStatus === 'PENDING'` is the
+   * ONLY signal that flips the badge from red (Unpaid) to blue
+   * (Pending payment). All other combinations render as Unpaid.
    */
-  pendingApproval: boolean;
+  linkStatus: 'PENDING' | 'EXPIRED' | null;
   createdAtIso: string;
 };
+
+/**
+ * Dastur §10 (V19.22.4) — Stale Quick-Capture accountability risks.
+ * One row per Order that was created via `POST /orders/quick` and has
+ * been sitting in PENDING + UNPAID state for longer than 24 hours —
+ * the highest-risk accountability bucket (permanent serialNumber but
+ * no settlement trail). Visible to OWNER / GENERAL_MANAGER /
+ * ACCOUNTANT via `GET /api/orders/stale-quick-risks`.
+ */
+export type StaleQuickOrderRiskRow = {
+  orderId: string;
+  readableId: string;
+  driverName: string;
+  driverPhone: string | null;
+  customerName: string;
+  customerPhone: string;
+  /** KWD 3-decimal precision (fils), e.g. "2.400". */
+  amountKd: string;
+  paymentMethod:
+    | 'SUBSCRIPTION_WALLET'
+    | 'CASH'
+    | 'KNET'
+    | 'PAYMENT_LINK'
+    | 'DEBT_ON_ACCOUNT'
+    | 'ONLINE'
+    | null;
+  /** Whole hours since creation (rounded). */
+  ageHours: number;
+  createdAtIso: string;
+};
+
+export async function getStaleQuickOrderRisks(
+  token: string,
+): Promise<StaleQuickOrderRiskRow[]> {
+  return apiJson<StaleQuickOrderRiskRow[]>('/api/orders/stale-quick-risks', {
+    token,
+  });
+}
+
+/**
+ * V19.22.5 — Branch Manager "My Documents" island.
+ * Matches `GET /api/manager/my-documents` (service:
+ * `ManagerDocumentsService.listForManager`).
+ */
+export type ManagerDocumentKind = 'CUSTODY_RECEIPT' | 'EXPENSE_VOUCHER';
+
+export type ManagerDocumentRow = {
+  kind: ManagerDocumentKind;
+  id: string;
+  date: string;
+  amountKd: string;
+  title: string;
+  subtitle: string | null;
+  status: string;
+  printPath: string;
+};
+
+export async function getManagerDocuments(
+  token: string,
+): Promise<ManagerDocumentRow[]> {
+  return apiJson<ManagerDocumentRow[]>('/api/manager/my-documents', { token });
+}
+
+export type ManagerExpenseVoucher = {
+  id: string;
+  title: string;
+  amountKd: string;
+  category: string;
+  expenseMethod: string;
+  note: string | null;
+  expenseDate: string;
+  approvedAt: string;
+  status: string;
+  recordedBy: {
+    id: string;
+    fullName: string;
+    username: string;
+  };
+  branch: { id: string; name: string } | null;
+};
+
+export async function getManagerExpenseVoucher(
+  token: string,
+  id: string,
+): Promise<ManagerExpenseVoucher> {
+  return apiJson<ManagerExpenseVoucher>(
+    `/api/manager/my-documents/expense/${id}`,
+    { token },
+  );
+}
+
+/**
+ * V19.22.5 — Branch Manager "Driver Oversight" island.
+ * Matches `GET /api/manager/driver-oversight` (service:
+ * `DriverOversightService.listForBranchManager`).
+ */
+export type DriverOversightShiftStatus = 'ON_SHIFT' | 'OFF';
+
+export type DriverOversightCard = {
+  driverId: string;
+  fullName: string;
+  username: string;
+  phone: string | null;
+  branch: { id: string; name: string } | null;
+  shiftStatus: DriverOversightShiftStatus;
+  shiftStartedAt: string | null;
+  ordersTodayCount: number;
+  cashTodayKd: string;
+  pendingInvoicesCount: number;
+  heldCashKd: string;
+  staleQuickCount: number;
+  staleQuickKd: string;
+  atRisk: boolean;
+};
+
+export async function getDriverOversight(
+  token: string,
+): Promise<DriverOversightCard[]> {
+  return apiJson<DriverOversightCard[]>('/api/manager/driver-oversight', {
+    token,
+  });
+}
+
+/**
+ * V19.22.5 — Invoices page branch-drivers dropdown.
+ * Matches `GET /api/orders/branch-drivers` (service:
+ * `listInvoiceFilterDrivers`). MANAGER → drivers of their branch only;
+ * OWNER / GM / CC / ACCOUNTANT → every active DRIVER.
+ */
+export type InvoiceFilterDriverRow = {
+  id: string;
+  fullName: string;
+  username: string;
+  branchName: string | null;
+};
+
+export async function getInvoiceFilterDrivers(
+  token: string,
+): Promise<InvoiceFilterDriverRow[]> {
+  return apiJson<InvoiceFilterDriverRow[]>('/api/orders/branch-drivers', {
+    token,
+  });
+}
+
+/**
+ * V19.22.5 — Query parameters understood by `GET /api/orders` when
+ * called from the Invoices page. Empty / undefined values are
+ * stripped before the request; the server applies role-based
+ * scoping on top of these filters (MANAGER → branch only).
+ */
+export type InvoiceListFilters = {
+  driverId?: string;
+  status?: string;
+  posPaymentMethod?: string;
+  cashStatus?: string;
+  from?: string;
+  to?: string;
+  q?: string;
+};
+
+export async function getInvoices(
+  token: string,
+  filters: InvoiceListFilters = {},
+): Promise<OrderRow[]> {
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(filters)) {
+    if (typeof v === 'string' && v.trim().length > 0) {
+      params.set(k, v.trim());
+    }
+  }
+  const qs = params.toString();
+  return apiJson<OrderRow[]>(qs ? `/api/orders?${qs}` : '/api/orders', {
+    token,
+  });
+}
 
 /**
  * Dastur V1.5.3 — Management Room "Extend Subscription" response.
@@ -2735,6 +2917,31 @@ export type BranchRow = {
   updatedAt: string;
 };
 
+/**
+ * V19.21 — partial update payload. All fields optional so the Owner
+ * can flip `isActive` alone without re-submitting the name/location.
+ * Mirrors `UpdateBranchDto` on the backend.
+ */
+export type UpdateBranchInput = {
+  name?: string;
+  location?: string;
+  phone?: string;
+  isActive?: boolean;
+};
+
+/** V19.21 — OWNER / GM edit a branch. See BranchesController PATCH. */
+export function updateBranch(
+  token: string,
+  id: string,
+  dto: UpdateBranchInput,
+) {
+  return apiJson<BranchRow>(`/api/branches/${id}`, {
+    method: 'PATCH',
+    token,
+    body: JSON.stringify(dto),
+  });
+}
+
 export type ExecutiveSummaryReport = {
   from: string;
   to: string;
@@ -2880,6 +3087,13 @@ export type PayrollRow = {
   debtHoldAmount: string;
   /** V19.16 — previously-held debt released back to the employee. */
   debtReleaseAmount: string;
+  /**
+   * V19.20 — scheduled monthly loan instalment consumed by this
+   * payroll run. Shown as a dedicated deducted line on the payslip
+   * and subtracted from net. Idempotent per YYYY-MM on the server,
+   * so re-saving the same month leaves the already-booked figure.
+   */
+  loanDeduction: string;
   paymentDate: string;
   status: PayrollStatus;
   createdAt: string;
@@ -3618,6 +3832,8 @@ export type PayslipRow = {
   commissionAmount: string;
   debtHoldAmount: string;
   debtReleaseAmount: string;
+  /** V19.20 — scheduled loan instalment consumed by this payroll. */
+  loanDeduction: string;
   paymentDate: string;
   status: PayrollStatus;
   createdAt: string;
@@ -3640,6 +3856,19 @@ export type PayslipRow = {
 
 export function getPayslip(token: string, id: string) {
   return apiJson<PayslipRow>(`/api/payroll/${id}`, { token });
+}
+
+/**
+ * V19.20 — backfill the scheduled loan instalment on a PENDING
+ * payroll that was created before the loan→payroll hook existed.
+ * The server only touches loans whose high-water mark is NULL, so
+ * repeated clicks are a safe no-op.
+ */
+export function recalcPayrollLoan(token: string, id: string) {
+  return apiJson<PayrollRow>(`/api/payroll/${id}/recalc-loan`, {
+    method: 'POST',
+    token,
+  });
 }
 
 /** Manual test hook for the biometric webhook stub (OWNER/GM). */

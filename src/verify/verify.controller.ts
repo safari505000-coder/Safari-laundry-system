@@ -82,4 +82,22 @@ export class VerifyController {
   verifyCashReceipt(@Param('id') id: string) {
     return this.verify.verifyCashReceipt(id);
   }
+
+  /**
+   * V19.21 — verify the QR stamped on a printed monthly payroll
+   * roster. The `token` param is the text embedded in the QR at
+   * print time: `YYYY-MM` for an unscoped roster or
+   * `YYYY-MM_<branchId>` for a branch-scoped one. Returns the same
+   * aggregate totals that were printed on the sheet so an auditor
+   * can confirm the run against the live DB with one scan.
+   */
+  @Get('payroll_roster/:token')
+  @ApiOperation({
+    summary: 'Verify a printed monthly payroll roster',
+    description:
+      'V19.21 — returns { valid, issuedTo, summary } for the monthly payroll roster (مسير الرواتب الشهري). Token is "YYYY-MM" or "YYYY-MM_<branchId>". Summary fields mirror the printed totals; no per-employee detail is exposed.',
+  })
+  verifyPayrollRoster(@Param('token') token: string) {
+    return this.verify.verifyPayrollRoster(token);
+  }
 }

@@ -1,0 +1,107 @@
+import { CommissionMode } from '@prisma/client';
+import type { JwtUser } from '../auth/decorators/current-user.decorator';
+import { CommissionRulesService } from './commission-rules.service';
+import { CreateCommissionRuleDto } from './dto/create-commission-rule.dto';
+import { UpdateCommissionRuleDto } from './dto/update-commission-rule.dto';
+export declare class CommissionRulesController {
+    private readonly service;
+    constructor(service: CommissionRulesService);
+    list(user: JwtUser, mode?: CommissionMode): Promise<{
+        role: import("@prisma/client").$Enums.SafariRole | null;
+        id: string;
+        createdAt: Date;
+        name: string;
+        updatedAt: Date;
+        isActive: boolean;
+        mode: import("@prisma/client").$Enums.CommissionMode;
+        calculationBase: import("@prisma/client").$Enums.CommissionCalculationBase;
+        percentage: import("@prisma/client-runtime-utils").Decimal;
+        minInvoiceAmount: import("@prisma/client-runtime-utils").Decimal;
+        payoutTiming: import("@prisma/client").$Enums.CommissionPayoutTiming;
+        linkedToDebt: boolean;
+    }[]>;
+    getDefault(user: JwtUser): Promise<{
+        role: import("@prisma/client").$Enums.SafariRole | null;
+        id: string;
+        createdAt: Date;
+        name: string;
+        updatedAt: Date;
+        isActive: boolean;
+        mode: import("@prisma/client").$Enums.CommissionMode;
+        calculationBase: import("@prisma/client").$Enums.CommissionCalculationBase;
+        percentage: import("@prisma/client-runtime-utils").Decimal;
+        minInvoiceAmount: import("@prisma/client-runtime-utils").Decimal;
+        payoutTiming: import("@prisma/client").$Enums.CommissionPayoutTiming;
+        linkedToDebt: boolean;
+    } | null>;
+    upsertDefault(dto: CreateCommissionRuleDto, user: JwtUser): Promise<{
+        role: import("@prisma/client").$Enums.SafariRole | null;
+        id: string;
+        createdAt: Date;
+        name: string;
+        updatedAt: Date;
+        isActive: boolean;
+        mode: import("@prisma/client").$Enums.CommissionMode;
+        calculationBase: import("@prisma/client").$Enums.CommissionCalculationBase;
+        percentage: import("@prisma/client-runtime-utils").Decimal;
+        minInvoiceAmount: import("@prisma/client-runtime-utils").Decimal;
+        payoutTiming: import("@prisma/client").$Enums.CommissionPayoutTiming;
+        linkedToDebt: boolean;
+    }>;
+    findOne(id: string, user: JwtUser): Promise<{
+        role: import("@prisma/client").$Enums.SafariRole | null;
+        id: string;
+        createdAt: Date;
+        name: string;
+        updatedAt: Date;
+        isActive: boolean;
+        mode: import("@prisma/client").$Enums.CommissionMode;
+        calculationBase: import("@prisma/client").$Enums.CommissionCalculationBase;
+        percentage: import("@prisma/client-runtime-utils").Decimal;
+        minInvoiceAmount: import("@prisma/client-runtime-utils").Decimal;
+        payoutTiming: import("@prisma/client").$Enums.CommissionPayoutTiming;
+        linkedToDebt: boolean;
+    }>;
+    create(dto: CreateCommissionRuleDto, user: JwtUser): Promise<{
+        role: import("@prisma/client").$Enums.SafariRole | null;
+        id: string;
+        createdAt: Date;
+        name: string;
+        updatedAt: Date;
+        isActive: boolean;
+        mode: import("@prisma/client").$Enums.CommissionMode;
+        calculationBase: import("@prisma/client").$Enums.CommissionCalculationBase;
+        percentage: import("@prisma/client-runtime-utils").Decimal;
+        minInvoiceAmount: import("@prisma/client-runtime-utils").Decimal;
+        payoutTiming: import("@prisma/client").$Enums.CommissionPayoutTiming;
+        linkedToDebt: boolean;
+    }>;
+    update(id: string, dto: UpdateCommissionRuleDto, user: JwtUser): Promise<{
+        role: import("@prisma/client").$Enums.SafariRole | null;
+        id: string;
+        createdAt: Date;
+        name: string;
+        updatedAt: Date;
+        isActive: boolean;
+        mode: import("@prisma/client").$Enums.CommissionMode;
+        calculationBase: import("@prisma/client").$Enums.CommissionCalculationBase;
+        percentage: import("@prisma/client-runtime-utils").Decimal;
+        minInvoiceAmount: import("@prisma/client-runtime-utils").Decimal;
+        payoutTiming: import("@prisma/client").$Enums.CommissionPayoutTiming;
+        linkedToDebt: boolean;
+    }>;
+    remove(id: string, user: JwtUser): Promise<{
+        role: import("@prisma/client").$Enums.SafariRole | null;
+        id: string;
+        createdAt: Date;
+        name: string;
+        updatedAt: Date;
+        isActive: boolean;
+        mode: import("@prisma/client").$Enums.CommissionMode;
+        calculationBase: import("@prisma/client").$Enums.CommissionCalculationBase;
+        percentage: import("@prisma/client-runtime-utils").Decimal;
+        minInvoiceAmount: import("@prisma/client-runtime-utils").Decimal;
+        payoutTiming: import("@prisma/client").$Enums.CommissionPayoutTiming;
+        linkedToDebt: boolean;
+    }>;
+}

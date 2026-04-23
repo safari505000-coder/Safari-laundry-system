@@ -1,9 +1,20 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+} from 'react';
 import { useTranslation } from 'react-i18next';
-import { Building2, Loader2, Plus } from 'lucide-react';
+import { Building2, Loader2, Pencil, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/auth-context';
-import { apiJson, ApiError, type BranchRow } from '@/lib/api';
+import {
+  apiJson,
+  ApiError,
+  updateBranch,
+  type BranchRow,
+} from '@/lib/api';
 import { requestBranchesListRefresh } from '@/lib/branch-list-refresh';
 import { Button } from '@/modules/shared/components/ui/button';
 import {
@@ -37,6 +48,12 @@ import { Switch } from '@/modules/shared/components/ui/switch';
  * Surfaces the full branch list and the "Add branch" action the user asked
  * to have restored. POST /api/branches is already gated to OWNER on the
  * backend; we also hide the page via nav config + route guard.
+ *
+ * V19.21 — Owner asked for inline branch editing too
+ * ("تعديل بيانات فرع"). One dialog now serves both Add and Edit:
+ * when `editingId` is null we POST /api/branches, otherwise we PATCH
+ * /api/branches/:id with only the fields present. Same form UI and
+ * validation either way so there's nothing new to learn.
  */
 export function BranchesPage() {
   const { t } = useTranslation();
@@ -47,6 +64,7 @@ export function BranchesPage() {
   const [loading, setLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [location, setLocation] = useState('');
   const [phone, setPhone] = useState('');
@@ -76,10 +94,25 @@ export function BranchesPage() {
   );
 
   function resetForm() {
+    setEditingId(null);
     setName('');
     setLocation('');
     setPhone('');
     setIsActive(true);
+  }
+
+  function openCreate() {
+    resetForm();
+    setDialogOpen(true);
+  }
+
+  function openEdit(row: BranchRow) {
+    setEditingId(row.id);
+    setName(row.name);
+    setLocation(row.location);
+    setPhone(row.phone ?? '');
+    setIsActive(row.isActive);
+    setDialogOpen(true);
   }
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
@@ -93,17 +126,27 @@ export function BranchesPage() {
     }
     setSubmitting(true);
     try {
-      await apiJson('/api/branches', {
-        token,
-        method: 'POST',
-        body: JSON.stringify({
+      if (editingId) {
+        await updateBranch(token, editingId, {
           name: trimmedName,
           location: trimmedLocation,
-          phone: phone.trim() || undefined,
+          phone: phone.trim(),
           isActive,
-        }),
-      });
-      toast.success(t('branchesPage.created'));
+        });
+        toast.success(t('branchesPage.updated'));
+      } else {
+        await apiJson('/api/branches', {
+          token,
+          method: 'POST',
+          body: JSON.stringify({
+            name: trimmedName,
+            location: trimmedLocation,
+            phone: phone.trim() || undefined,
+            isActive,
+          }),
+        });
+        toast.success(t('branchesPage.created'));
+      }
       resetForm();
       setDialogOpen(false);
       load();
@@ -124,6 +167,13 @@ export function BranchesPage() {
     );
   }
 
+  const dialogTitle = editingId
+    ? t('branchesPage.editBranch')
+    : t('branchesPage.addBranch');
+  const submitLabel = editingId
+    ? t('branchesPage.saveEdit')
+    : t('branchesPage.save');
+
   return (
     <div className="space-y-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
@@ -135,13 +185,7 @@ export function BranchesPage() {
             {t('branchesPage.subtitle')}
           </p>
         </div>
-        <Button
-          type="button"
-          onClick={() => {
-            resetForm();
-            setDialogOpen(true);
-          }}
-        >
+        <Button type="button" onClick={openCreate}>
           <Plus className="me-2 h-4 w-4" aria-hidden />
           {t('branchesPage.addBranch')}
         </Button>
@@ -166,13 +210,16 @@ export function BranchesPage() {
                   <TableHead>{t('branchesPage.colLocation')}</TableHead>
                   <TableHead>{t('branchesPage.colPhone')}</TableHead>
                   <TableHead>{t('branchesPage.colStatus')}</TableHead>
+                  <TableHead className="text-end">
+                    {t('branchesPage.colActions')}
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {sortedRows.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={4}
+                      colSpan={5}
                       className="py-10 text-center text-sm text-muted-foreground"
                     >
                       {loading
@@ -205,6 +252,18 @@ export function BranchesPage() {
                             : t('branchesPage.inactive')}
                         </span>
                       </TableCell>
+                      <TableCell className="text-end">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openEdit(b)}
+                          aria-label={t('branchesPage.edit')}
+                        >
+                          <Pencil className="me-1 h-3.5 w-3.5" aria-hidden />
+                          {t('branchesPage.edit')}
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))
                 )}
@@ -214,10 +273,16 @@ export function BranchesPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog
+        open={dialogOpen}
+        onOpenChange={(open) => {
+          setDialogOpen(open);
+          if (!open) resetForm();
+        }}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{t('branchesPage.addBranch')}</DialogTitle>
+            <DialogTitle>{dialogTitle}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
@@ -287,7 +352,7 @@ export function BranchesPage() {
                 {submitting ? (
                   <Loader2 className="me-2 h-4 w-4 animate-spin" aria-hidden />
                 ) : null}
-                {t('branchesPage.save')}
+                {submitLabel}
               </Button>
             </DialogFooter>
           </form>

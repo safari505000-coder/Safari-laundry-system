@@ -255,14 +255,22 @@ export class FinanceController {
   }
 
   @Get('driver-monitoring')
-  @Roles(SafariRole.OWNER)
+  @Roles(
+    SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
+    SafariRole.MANAGER,
+    SafariRole.CALL_CENTER,
+    SafariRole.CALL_CENTER_SUPERVISOR,
+  )
   @ApiOperation({
     summary: `Driver monitoring map feed (${APP_BRAND})`,
     description:
-      'OWNER only. Safari Pulse map feed of active ON_SHIFT drivers with lastKnownLocation markers. Locked to OWNER at the API layer regardless of UI route guards.',
+      'V19.22.5 — Safari Pulse map feed of active ON_SHIFT drivers with lastKnownLocation markers. Scope:\n  - OWNER / GENERAL_MANAGER / CALL_CENTER / CALL_CENTER_SUPERVISOR: full fleet.\n  - MANAGER: branch-scoped (`driver.branchId == JwtUser.branchId`).\nBranch scoping is enforced at the API layer; UI route guards are advisory.',
   })
-  getDriverMonitoring() {
-    return this.financeService.getDriverMonitoring();
+  getDriverMonitoring(@CurrentUser() user: JwtUser) {
+    const scopedBranchId =
+      user.role === SafariRole.MANAGER ? user.branchId : null;
+    return this.financeService.getDriverMonitoring(scopedBranchId);
   }
 
   @Patch('driver-monitoring/:driverId')

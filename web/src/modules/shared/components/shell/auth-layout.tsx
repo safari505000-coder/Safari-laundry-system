@@ -11,6 +11,13 @@ import { MobileBottomNav } from '@/modules/shared/components/shell/mobile-bottom
  * Field Collection Tracker `/driver/pending-invoices`) do not require
  * another edit to this file. Without the prefix branch, clicking the
  * sidebar entry bounced drivers straight to `/pos`.
+ *
+ * V19.22.1 — added `/my-cash-receipts` (سندات الاستلام، + printable
+ * voucher subroute `:id/print`) and `/my/debt-transfers` (Driver inbox
+ * of debt-transfer documents awaiting their signature, Dastur §5).
+ * Both entries already appear in the driver sidebar but were missing
+ * here, which silently bounced the driver to `/pos` before
+ * `RequireAccess` could even run.
  */
 const DRIVER_EXACT_PATHS = new Set([
   '/pos',
@@ -18,9 +25,15 @@ const DRIVER_EXACT_PATHS = new Set([
   '/my-cash-custody',
   '/my-deposits',
   '/my-field-expenses',
+  '/my-cash-receipts',
+  '/my/debt-transfers',
 ]);
 
-const DRIVER_PATH_PREFIXES = ['/driver/'];
+const DRIVER_PATH_PREFIXES = [
+  '/driver/',
+  '/my-cash-receipts/',
+  '/my/debt-transfers/',
+];
 
 function isDriverAllowedPath(pathname: string): boolean {
   if (DRIVER_EXACT_PATHS.has(pathname)) return true;

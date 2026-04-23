@@ -10,6 +10,16 @@ import {
   ApiError,
 } from '@/lib/api';
 
+/** POS / Driver — keep row unless explicitly soft-hidden (`isActive=false`). */
+export function rowShowsInLiveCatalog(row: LaundryPriceListItemRow): boolean {
+  const v = row.isActive as unknown;
+  if (v === false || v === 0) return false;
+  if (typeof v === 'string' && v.trim().toLowerCase() === 'false') {
+    return false;
+  }
+  return true;
+}
+
 export function buildLaundryPriceListPath(
   branchId: string | null | undefined,
 ): string {
@@ -29,7 +39,9 @@ export function useLaundryPricingBranchId(opts?: {
     if (opts?.previewBranchId !== undefined) {
       return opts.previewBranchId ?? null;
     }
-    if (user?.safariRole === 'OWNER') return ownerBranchId;
+    if (user?.safariRole === 'OWNER' || user?.safariRole === 'GENERAL_MANAGER') {
+      return ownerBranchId;
+    }
     return user?.branchId ?? null;
   }, [
     opts?.previewBranchId,
@@ -67,18 +79,37 @@ type UsePriceListOpts = {
 export function usePriceList(opts: UsePriceListOpts): PriceListBridge {
   const { token, includeInactive = false } = opts;
   const { user, ownerBranchId } = useAuth();
+  const { snapshot } = useSafariStream();
   const { t } = useTranslation();
 
-  const effectiveBranchId = useMemo(() => {
+  /*
+   * The backend accepts `?branchId=` ONLY for OWNER / GENERAL_MANAGER (preview).
+   * For MANAGER / DRIVER / others, the branch is taken from the JWT, so we must
+   * NOT send the query parameter — otherwise the server rejects the request
+   * with "branchId query parameter is only allowed for OWNER or GENERAL_MANAGER".
+   * `queryBranchId` is what we put on the URL; `null` means omit it.
+   */
+  const queryBranchId = useMemo<string | null>(() => {
     if (opts.branchId !== undefined) return opts.branchId ?? null;
-    if (user?.safariRole === 'OWNER') return ownerBranchId;
+    if (user?.safariRole === 'OWNER' || user?.safariRole === 'GENERAL_MANAGER') {
+      return ownerBranchId;
+    }
+    return null;
+  }, [opts.branchId, ownerBranchId, user?.safariRole]);
+
+  /** Branch actually used for merged pricing — for UI surfaces and callers. */
+  const effectiveBranchId = useMemo(() => {
+    if (queryBranchId !== null) return queryBranchId;
     return user?.branchId ?? null;
-  }, [opts.branchId, ownerBranchId, user?.branchId, user?.safariRole]);
+  }, [queryBranchId, user?.branchId]);
 
   const [items, setItems] = useState<LaundryPriceListItemRow[]>([]);
   const [categories, setCategories] = useState<LaundryItemCategoryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+
+  const lastCatalogVersionRef = useRef<string | null>(null);
+  const lastStreamPriceListVRef = useRef<string | null>(null);
 
   const reload = useCallback(async () => {
     if (!token) {
@@ -90,7 +121,7 @@ export function usePriceList(opts: UsePriceListOpts): PriceListBridge {
     setLoading(true);
     setFailed(false);
     try {
-      const listPath = buildLaundryPriceListPath(effectiveBranchId);
+      const listPath = buildLaundryPriceListPath(queryBranchId);
       const listData = await apiJson<LaundryPriceListItemRow[]>(listPath, {
         token,
       });
@@ -112,9 +143,18 @@ export function usePriceList(opts: UsePriceListOpts): PriceListBridge {
       // `includeInactive` so hidden rows remain visible for toggling / delete.
       const visibleItems = includeInactive
         ? rawItems
-        : rawItems.filter((row) => row.isActive !== false);
+        : rawItems.filter(rowShowsInLiveCatalog);
       setItems(visibleItems);
       setCategories(Array.isArray(catData) ? catData : []);
+      try {
+        const { version } = await apiJson<{ version: string }>(
+          '/api/laundry-price-list/catalog-version',
+          { token },
+        );
+        if (version) lastCatalogVersionRef.current = version;
+      } catch {
+        /* keep prior ref — poll will recover */
+      }
     } catch (e) {
       setItems([]);
       setCategories([]);
@@ -124,30 +164,72 @@ export function usePriceList(opts: UsePriceListOpts): PriceListBridge {
     } finally {
       setLoading(false);
     }
-  }, [token, effectiveBranchId, includeInactive, t]);
+  }, [token, queryBranchId, includeInactive, t]);
 
   useEffect(() => {
     void reload();
   }, [reload]);
 
-  // Cross-device sync: when the OWNER edits prices, the server's
-  // `priceListVersion` (exposed via SafariStream snapshot) changes. The stream
-  // provider polls every 45s, so every session — including Driver POS — picks
-  // up the new tariff without a dedicated push channel or a manual refresh.
-  const { snapshot } = useSafariStream();
-  const lastSyncedVersionRef = useRef<string | null>(null);
+  // Cross-device sync: `getCatalogVersion()` on the server moves whenever the
+  // owner edits the master tariff, categories, or branch overrides. We poll a
+  // **light** `/catalog-version` endpoint so Driver + branch Manager POS pick
+  // up catalog changes within a few seconds, and on tab focus.
+  const checkCatalogVersion = useCallback(async () => {
+    if (!token) return;
+    try {
+      const { version } = await apiJson<{ version: string }>(
+        '/api/laundry-price-list/catalog-version',
+        { token },
+      );
+      if (!version) return;
+      if (lastCatalogVersionRef.current === null) {
+        lastCatalogVersionRef.current = version;
+        return;
+      }
+      if (lastCatalogVersionRef.current !== version) {
+        lastCatalogVersionRef.current = version;
+        void reload();
+      }
+    } catch {
+      // Silent — the list from the last full `reload()` stays; user can refresh manually.
+    }
+  }, [token, reload]);
+
   useEffect(() => {
+    if (!token) return;
+    const POLL_MS = 10_000;
+    void checkCatalogVersion();
+    const id = window.setInterval(() => {
+      void checkCatalogVersion();
+    }, POLL_MS);
+    return () => window.clearInterval(id);
+  }, [token, checkCatalogVersion]);
+
+  // Same version string as `GET /catalog-version`, embedded in SafariStream.
+  // When Owner/GM saves in «إدارة الأصناف», `refreshStream()` bumps this
+  // immediately in-session so Driver / Manager POS reload without waiting
+  // only on the lightweight poll.
+  useEffect(() => {
+    if (!token) return;
     const v = snapshot?.priceListVersion;
     if (!v) return;
-    if (lastSyncedVersionRef.current === null) {
-      lastSyncedVersionRef.current = v;
+    if (lastStreamPriceListVRef.current === null) {
+      lastStreamPriceListVRef.current = v;
       return;
     }
-    if (lastSyncedVersionRef.current !== v) {
-      lastSyncedVersionRef.current = v;
+    if (lastStreamPriceListVRef.current !== v) {
+      lastStreamPriceListVRef.current = v;
       void reload();
     }
-  }, [snapshot?.priceListVersion, reload]);
+  }, [token, snapshot?.priceListVersion, reload]);
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === 'visible') void checkCatalogVersion();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [checkCatalogVersion]);
 
   return {
     items,

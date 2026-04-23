@@ -59,6 +59,18 @@ function formatKd(v: string): string {
   });
 }
 
+/** All calendar columns in the details grid use en-GB (dd/mm/yyyy). */
+function formatDateEn(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+}
+
 /**
  * V19.17 — auto-print voucher rendered off-screen whenever the user
  * triggers «تحرير» or «صرف» on a hold. The voucher is hidden on the
@@ -234,8 +246,10 @@ export function DebtHoldsPage() {
   // Only OWNER + GM may force-release / disburse; ACCOUNTANT/MANAGER
   // see holds in read-only mode to avoid arbitrary disbursement paths.
   const canRelease = hasRole('OWNER', 'GENERAL_MANAGER');
-  const [releasingId, setReleasingId] = useState<string | null>(null);
-  const [disbursingId, setDisbursingId] = useState<string | null>(null);
+  // V19.22 — per-row release/disburse handlers were retired in favor
+  // of the bulk flows (handleReleaseAllFor, handleDisburseAllFor,
+  // handleDisburseAllGlobal). Bulk locks live in their own state
+  // (disbursingAll / bulkBusyFor) so no per-id lock is needed here.
   /**
    * V19.17 — auto-print voucher state. We stage the hold + kind here so
    * that the <DebtHoldVoucher /> mounts into the DOM, the effect below
@@ -338,47 +352,12 @@ export function DebtHoldsPage() {
     void load();
   }, [load]);
 
-  const handleRelease = useCallback(
-    async (id: string) => {
-      if (!token || !canRelease) return;
-      setReleasingId(id);
-      try {
-        const updated = await releaseDebtHold(token, id);
-        setRows((current) =>
-          (current ?? []).map((r) => (r.id === id ? updated : r)),
-        );
-        toast.success(
-          'تم تحرير المحجوز — سيتم فتح إيصال الطباعة تلقائياً',
-        );
-        setVoucher({ hold: updated, kind: 'RELEASE' });
-      } catch (e) {
-        if (e instanceof ApiError) toast.error(e.message);
-      } finally {
-        setReleasingId(null);
-      }
-    },
-    [token, canRelease],
-  );
-
-  const handleDisburse = useCallback(
-    async (id: string) => {
-      if (!token || !canRelease) return;
-      setDisbursingId(id);
-      try {
-        const updated = await disburseDebtHold(token, id);
-        setRows((current) =>
-          (current ?? []).map((r) => (r.id === id ? updated : r)),
-        );
-        toast.success('تم تسجيل الصرف — سيتم فتح إيصال الطباعة تلقائياً');
-        setVoucher({ hold: updated, kind: 'DISBURSE' });
-      } catch (e) {
-        if (e instanceof ApiError) toast.error(e.message);
-      } finally {
-        setDisbursingId(null);
-      }
-    },
-    [token, canRelease],
-  );
+  // V19.22 — per-row handleRelease / handleDisburse were retired in
+  // favor of the bulk "release all for employee" / "disburse all" flows
+  // (see handleReleaseAllFor + handleDisburseAllFor + the global
+  // handleDisburseAllGlobal below). The underlying API helpers
+  // releaseDebtHold / disburseDebtHold are still imported for those
+  // bulk handlers to call per-row inside a loop.
 
   const totals = useMemo(() => {
     let held = 0;
@@ -521,7 +500,54 @@ export function DebtHoldsPage() {
     }
   }, []);
 
+  const pendingDisburseIds = useMemo(
+    () =>
+      (rows ?? [])
+        .filter((r) => r.status === 'RELEASED' && !r.disbursedAt)
+        .map((r) => r.id),
+    [rows],
+  );
+
+  const [disbursingAll, setDisbursingAll] = useState(false);
+
+  const handleDisburseAllGlobal = useCallback(async () => {
+    if (!token || !canRelease || pendingDisburseIds.length === 0) return;
+    if (
+      !window.confirm(
+        `تأكيد صرف ${pendingDisburseIds.length} مبلغ(ات) مُحرَّر (جاهز للصرف) لجميع الموظفين في القائمة الحالية؟`,
+      )
+    ) {
+      return;
+    }
+    setDisbursingAll(true);
+    try {
+      let lastUpdated: DebtHoldRow | null = null;
+      for (const id of pendingDisburseIds) {
+        const updated = await disburseDebtHold(token, id);
+        lastUpdated = updated;
+        setRows((current) =>
+          (current ?? []).map((r) => (r.id === id ? updated : r)),
+        );
+      }
+      toast.success(
+        `تم تسجيل صرف ${pendingDisburseIds.length} محجوز — سيتم فتح إيصال الطباعة تلقائياً`,
+      );
+      if (lastUpdated) {
+        setVoucher({ hold: lastUpdated, kind: 'DISBURSE' });
+      }
+      void load();
+    } catch (e) {
+      if (e instanceof ApiError) toast.error(e.message);
+    } finally {
+      setDisbursingAll(false);
+    }
+  }, [token, canRelease, pendingDisburseIds, load]);
+
+  /** «التفاصيل»: اختياري الموظف + مديونية + محجوز + 3 تواريخ + ملاحظة. */
+  const detailsColCount = (isAdmin ? 1 : 0) + 6;
+
   return (
+    <>
     <div className="space-y-6 p-4 md:p-6" id="debt-holds-print-root">
       <header className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
@@ -546,7 +572,32 @@ export function DebtHoldsPage() {
             {canRelease ? ' فقط المالك والمدير العام يستطيعان التنفيذ.' : ''}
           </p>
         </div>
-        <div className="flex items-center gap-2 print-hide">
+        <div className="flex flex-wrap items-center gap-2 print-hide">
+          {canRelease && (
+            <Button
+              onClick={() => void handleDisburseAllGlobal()}
+              disabled={
+                disbursingAll ||
+                bulkBusyFor !== null ||
+                loading ||
+                pendingDisburseIds.length === 0
+              }
+              className="bg-sky-600 hover:bg-sky-700"
+              title="صرف كل المبالغ «جاهز للصرف» الظاهرة في الجدول أدناه"
+            >
+              {disbursingAll ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Banknote className="size-4" />
+              )}
+              <span className="ms-1">
+                صرف الكل
+                {pendingDisburseIds.length > 0
+                  ? ` (${pendingDisburseIds.length})`
+                  : ''}
+              </span>
+            </Button>
+          )}
           <Button
             variant="outline"
             onClick={handlePagePrint}
@@ -871,27 +922,7 @@ export function DebtHoldsPage() {
             <Table className="debt-holds-details-table">
               <TableHeader>
                 <TableRow>
-                  {/*
-                   * V19.17 — column order tuned for one-glance action:
-                   *   employee → action → stage → amounts → dates → note
-                   * Previously the action column was the very last cell in
-                   * the row, which pushed it past the visible area on
-                   * 1280-wide monitors (user feedback: "وين زر تحرير
-                   * الحجز حسب المؤظف"). Keeping the action right after
-                   * the employee name guarantees the release / disburse
-                   * button is always in the same horizontal band as the
-                   * name, no matter how many optional columns render.
-                   */}
                   {isAdmin && <TableHead>الموظف</TableHead>}
-                  {canRelease && (
-                    <TableHead
-                      className="text-center"
-                      data-action-col="true"
-                    >
-                      إجراء
-                    </TableHead>
-                  )}
-                  <TableHead>المرحلة</TableHead>
                   <TableHead className="text-center">
                     المديونية (د.ك)
                   </TableHead>
@@ -906,9 +937,56 @@ export function DebtHoldsPage() {
               </TableHeader>
               <TableBody>
                 {rows.map((r) => {
-                  const isHeld = r.status === 'HELD';
-                  const isPending =
-                    r.status === 'RELEASED' && !r.disbursedAt;
+                  const isDisbursed = !!r.disbursedAt;
+
+                  if (isDisbursed) {
+                    return (
+                      <TableRow
+                        key={r.id}
+                        className="bg-emerald-50/50 dark:bg-emerald-950/20"
+                        data-debt-hold-simplified="true"
+                      >
+                        <TableCell colSpan={detailsColCount}>
+                          <div className="flex flex-wrap items-center justify-between gap-3 pe-1">
+                            <div className="min-w-0">
+                              {isAdmin ? (
+                                <span className="font-semibold text-foreground">
+                                  {user?.id === r.employeeUserId
+                                    ? `${r.employee.fullName} (أنت)`
+                                    : r.employee.fullName}
+                                </span>
+                              ) : (
+                                <span className="font-medium text-foreground">
+                                  {r.employee.fullName}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge className="bg-emerald-600 hover:bg-emerald-700">
+                                مصروف
+                              </Badge>
+                              <span className="text-sm font-mono tabular-nums text-foreground">
+                                {formatDateEn(r.disbursedAt)}
+                              </span>
+                              {canRelease && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() =>
+                                    setVoucher({ hold: r, kind: 'DISBURSE' })
+                                  }
+                                  title="إعادة طباعة إيصال الصرف"
+                                >
+                                  <Printer className="size-4" />
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  }
+
                   return (
                     <TableRow key={r.id}>
                       {isAdmin && (
@@ -918,104 +996,22 @@ export function DebtHoldsPage() {
                             : r.employee.fullName}
                         </TableCell>
                       )}
-                      {canRelease && (
-                        <TableCell data-action-col="true">
-                          {isHeld ? (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => void handleRelease(r.id)}
-                              disabled={releasingId === r.id}
-                            >
-                              {releasingId === r.id ? (
-                                <Loader2 className="size-4 animate-spin" />
-                              ) : (
-                                <Undo2 className="size-4" />
-                              )}
-                              <span className="ms-1">تحرير</span>
-                            </Button>
-                          ) : isPending ? (
-                            <div className="flex items-center gap-1.5">
-                              <Button
-                                size="sm"
-                                onClick={() => void handleDisburse(r.id)}
-                                disabled={disbursingId === r.id}
-                                className="bg-sky-600 hover:bg-sky-700"
-                              >
-                                {disbursingId === r.id ? (
-                                  <Loader2 className="size-4 animate-spin" />
-                                ) : (
-                                  <Banknote className="size-4" />
-                                )}
-                                <span className="ms-1">صرف</span>
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() =>
-                                  setVoucher({ hold: r, kind: 'RELEASE' })
-                                }
-                                title="إعادة طباعة إيصال التحرير"
-                              >
-                                <Printer className="size-4" />
-                              </Button>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-xs text-muted-foreground">
-                                {r.disbursedBy?.fullName
-                                  ? `صرفه ${r.disbursedBy.fullName}`
-                                  : '—'}
-                              </span>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() =>
-                                  setVoucher({ hold: r, kind: 'DISBURSE' })
-                                }
-                                title="إعادة طباعة إيصال الصرف"
-                              >
-                                <Printer className="size-4" />
-                              </Button>
-                            </div>
-                          )}
-                        </TableCell>
-                      )}
-                      <TableCell>
-                        {isHeld ? (
-                          <Badge variant="secondary">محجوز</Badge>
-                        ) : isPending ? (
-                          <Badge className="bg-sky-600 hover:bg-sky-700">
-                            جاهز للصرف
-                          </Badge>
-                        ) : (
-                          <Badge className="bg-emerald-600 hover:bg-emerald-700">
-                            مصروف
-                          </Badge>
-                        )}
-                      </TableCell>
                       <TableCell className="text-center font-mono">
                         {formatKd(r.debtAmount)}
                       </TableCell>
                       <TableCell className="text-center font-mono font-semibold text-amber-600">
                         {formatKd(r.holdAmount)}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="font-mono text-sm tabular-nums">
                         {r.payroll
-                          ? new Date(
-                              r.payroll.paymentDate,
-                            ).toLocaleDateString('ar-KW')
-                          : new Date(r.createdAt).toLocaleDateString('ar-KW')}
+                          ? formatDateEn(r.payroll.paymentDate)
+                          : formatDateEn(r.createdAt)}
                       </TableCell>
-                      <TableCell>
-                        {r.releaseDate
-                          ? new Date(r.releaseDate).toLocaleDateString('ar-KW')
-                          : '—'}
+                      <TableCell className="font-mono text-sm tabular-nums">
+                        {formatDateEn(r.releaseDate)}
                       </TableCell>
-                      <TableCell>
-                        {r.disbursedAt
-                          ? new Date(r.disbursedAt).toLocaleDateString('ar-KW')
-                          : '—'}
+                      <TableCell className="font-mono text-sm tabular-nums">
+                        {formatDateEn(r.disbursedAt)}
                       </TableCell>
                       <TableCell className="max-w-[160px] truncate text-xs text-muted-foreground">
                         {r.note ?? '—'}
@@ -1029,8 +1025,17 @@ export function DebtHoldsPage() {
         </CardContent>
       </Card>
 
-      {voucher && <DebtHoldVoucher hold={voucher.hold} kind={voucher.kind} />}
     </div>
+    {/*
+      V19.22 — MUST be a *sibling* of `#debt-holds-print-root`, not a child.
+      If it stays inside, `body:has(#debt-hold-voucher-root) #debt-holds-print-root *`
+      matches the voucher node and sets `display: none` on it (higher
+      specificity than `#debt-hold-voucher-root { display: block }` in
+      some builds) → print preview is a blank A4. Moving it out leaves
+      the auto-print إيصال visible while the register is suppressed.
+    */}
+    {voucher && <DebtHoldVoucher hold={voucher.hold} kind={voucher.kind} />}
+    </>
   );
 }
 

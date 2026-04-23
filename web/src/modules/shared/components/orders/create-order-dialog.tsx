@@ -40,6 +40,25 @@ type LineState = {
   priceReadOnly: boolean;
 };
 
+// Dastur §10 — Declared settlement channel for driver Quick-Capture.
+// `PAYMENT_LINK` is the frontend label; the API normalizes it to
+// `ONLINE` because the two are the same underlying mechanism (UPayments
+// hosted link). `SUBSCRIPTION_WALLET` is intentionally excluded — wallet
+// settlement requires a balance lookup that only the full POS checkout
+// flow performs.
+type QuickPaymentMethod =
+  | 'CASH'
+  | 'KNET'
+  | 'PAYMENT_LINK'
+  | 'DEBT_ON_ACCOUNT';
+
+const QUICK_PAYMENT_METHODS: QuickPaymentMethod[] = [
+  'CASH',
+  'KNET',
+  'PAYMENT_LINK',
+  'DEBT_ON_ACCOUNT',
+];
+
 function tiersForItem(item: LaundryPriceListItemRow): LaundryPriceTier[] {
   const t: LaundryPriceTier[] = ['NORMAL', 'URGENT'];
   if (item.pricePressOnly != null) t.push('PRESS_ONLY');
@@ -98,6 +117,8 @@ export function CreateOrderDialog({ open, onOpenChange, onCreated }: Props) {
   const [serviceType, setServiceType] = useState<'NORMAL' | 'EXPRESS'>(
     'NORMAL',
   );
+  const [posPaymentMethod, setPosPaymentMethod] =
+    useState<QuickPaymentMethod | ''>('');
   const [lines, setLines] = useState<LineState[]>([emptyLine()]);
 
   const isDriver = user?.safariRole === 'DRIVER';
@@ -185,6 +206,7 @@ export function CreateOrderDialog({ open, onOpenChange, onCreated }: Props) {
     setPhone('');
     setAddress('');
     setServiceType('NORMAL');
+    setPosPaymentMethod('');
     setLines([emptyLine()]);
   }
 
@@ -217,6 +239,13 @@ export function CreateOrderDialog({ open, onOpenChange, onCreated }: Props) {
       toast.error(t('orders.create.totalInvalid'));
       return;
     }
+    // Dastur §10 — driver quick capture must declare how the invoice
+    // will be settled. Closes the old accountability gap where orders
+    // sat as posPaymentMethod=null forever.
+    if (isDriver && !posPaymentMethod) {
+      toast.error(t('orders.create.pmRequired'));
+      return;
+    }
 
     const linePayload = lines.map((row) => {
       const item = itemsById.get(row.itemId)!;
@@ -229,13 +258,16 @@ export function CreateOrderDialog({ open, onOpenChange, onCreated }: Props) {
       };
     });
 
-    const body = {
+    const body: Record<string, unknown> = {
       customerPhone: normalizedPhone,
       customerAddress: address.trim() || undefined,
       serviceType,
       totalPrice: orderTotal,
       lineItems: linePayload,
     };
+    if (isDriver && posPaymentMethod) {
+      body.posPaymentMethod = posPaymentMethod;
+    }
 
     const path = isDriver ? '/api/orders/quick' : '/api/orders';
 
@@ -318,6 +350,38 @@ export function CreateOrderDialog({ open, onOpenChange, onCreated }: Props) {
                   </SelectContent>
                 </Select>
               </div>
+              {isDriver ? (
+                <div className="space-y-2">
+                  <Label>
+                    {t('orders.create.pm.label')}
+                    <span className="ms-1 text-red-500">*</span>
+                  </Label>
+                  <Select
+                    value={posPaymentMethod || undefined}
+                    onValueChange={(v) =>
+                      setPosPaymentMethod(v as QuickPaymentMethod)
+                    }
+                  >
+                    <SelectTrigger className="bg-white">
+                      <SelectValue
+                        placeholder={
+                          t('orders.create.pm.placeholder') ?? undefined
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {QUICK_PAYMENT_METHODS.map((pm) => (
+                        <SelectItem key={pm} value={pm}>
+                          {t(`orders.create.pm.${pm}`)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-zinc-500">
+                    {t('orders.create.pm.hint')}
+                  </p>
+                </div>
+              ) : null}
             </div>
 
             <div className="mt-4 space-y-3">

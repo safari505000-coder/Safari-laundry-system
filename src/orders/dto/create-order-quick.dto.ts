@@ -1,10 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ServiceType } from '@prisma/client';
+import { PosPaymentMethod, ServiceType } from '@prisma/client';
 import { Transform, Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
   IsEnum,
+  IsIn,
+  IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
@@ -14,6 +16,24 @@ import {
   MinLength,
   ValidateNested,
 } from 'class-validator';
+
+/**
+ * V19.22.4 — Payment-method subset allowed on the *driver's quick
+ * capture* form. `SUBSCRIPTION_WALLET` is intentionally excluded
+ * because wallet settlement requires a balance lookup + ledger write
+ * that only the full POS-checkout path is authorized to perform.
+ *
+ * The TypeScript property type stays as the full `PosPaymentMethod`
+ * enum so `PosCheckoutDto` (which extends this class) can remain
+ * compatible; narrowing is enforced at runtime through `@IsIn`.
+ */
+const QUICK_PAYMENT_METHODS: PosPaymentMethod[] = [
+  PosPaymentMethod.CASH,
+  PosPaymentMethod.KNET,
+  PosPaymentMethod.PAYMENT_LINK,
+  PosPaymentMethod.ONLINE,
+  PosPaymentMethod.DEBT_ON_ACCOUNT,
+];
 import { IsKuwaitCustomerPhone } from '../../common/validation/kuwait-customer-phone';
 import { OrderLineItemDto } from './order-line-item.dto';
 
@@ -103,4 +123,37 @@ export class CreateOrderQuickDto {
   @ValidateNested({ each: true })
   @Type(() => OrderLineItemDto)
   lineItems?: OrderLineItemDto[];
+
+  /**
+   * V19.22.4 — REQUIRED on the Quick-Capture path. Every field
+   * invoice must declare its intended settlement channel upfront,
+   * closing the historical accountability gap where orders created
+   * on the field without a payment method sat as
+   * `posPaymentMethod=null` forever. The value is stamped on the
+   * `Order` row at creation; the actual cashStatus transition still
+   * happens via POS checkout (or a subsequent status update to
+   * `COMPLETED`, which auto-flips cashStatus via
+   * `cashStatusForPaymentMethod`).
+   *
+   * Allowed: CASH, KNET, PAYMENT_LINK, ONLINE, DEBT_ON_ACCOUNT.
+   * Excluded: SUBSCRIPTION_WALLET — requires a wallet-balance check
+   * that only the full POS-checkout path performs.
+   *
+   * Typed as optional at the TypeScript level so `PosCheckoutDto`
+   * (which also extends this class but needs wallet auto-resolution)
+   * remains compatible; required-ness is enforced at runtime via
+   * `@IsNotEmpty`.
+   */
+  @ApiProperty({
+    enum: QUICK_PAYMENT_METHODS,
+    enumName: 'QuickPaymentMethod',
+    description:
+      'Required. Declared settlement channel — one of CASH, KNET, PAYMENT_LINK, ONLINE, DEBT_ON_ACCOUNT.',
+  })
+  @IsNotEmpty({ message: 'posPaymentMethod is required' })
+  @IsIn(QUICK_PAYMENT_METHODS, {
+    message:
+      'posPaymentMethod must be CASH, KNET, PAYMENT_LINK, ONLINE, or DEBT_ON_ACCOUNT',
+  })
+  posPaymentMethod?: PosPaymentMethod;
 }

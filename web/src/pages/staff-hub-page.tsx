@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { Printer } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
@@ -26,11 +26,23 @@ import { SystemSettingsPage } from '@/pages/system-settings-page';
  * debt-hold and master-settings views.
  *
  * Tab state is reflected in the URL (`?tab=<key>`), enabling
- * bookmarkable deep-links. The "Print" button in the header calls
- * `window.print()` — the global print stylesheet (see `index.css`)
- * pulls `#hr-hub-print-root` to fixed position and whitelists only its
- * subtree, so the printed output matches exactly the currently-open
- * tab's content with hub chrome (title header + tabs) hidden.
+ * bookmarkable deep-links.
+ *
+ * V19.22 — Print behaviour was restructured. Previously the Print
+ * button (and raw Ctrl+P) just fired `window.print()` and let the
+ * browser render whatever was in `#hr-hub-print-root`, which meant
+ * the payroll tab printed with tight `@media print` hacks and NO
+ * digital stamp (QR). Now:
+ *   • On the PAYROLL tab, both the Print button and Ctrl+P are
+ *     intercepted and route to the dedicated `/payroll/roster/print`
+ *     page (A4 landscape, brand header, QR stamp, signature boxes)
+ *     with `?ym=<YYYY-MM>` carried over from the unified page.
+ *   • On every other tab we still call `window.print()` because
+ *     those surfaces have their own in-place print CSS and no
+ *     dedicated A4 route yet.
+ * That way the Owner always gets a stamped, verifiable document
+ * for payroll — whether they click the button or use the keyboard
+ * shortcut.
  */
 
 type TabKey =
@@ -92,9 +104,48 @@ export function StaffHubPage() {
     [searchParams, setSearchParams],
   );
 
+  // V19.22 — When the payroll tab is active, redirect every print
+  // attempt (button click OR Ctrl+P / Cmd+P) to the dedicated A4
+  // landscape roster page so the output always carries the QR
+  // stamp. `ym` is read from the URL (the unified page syncs it).
+  const openPayrollRosterPrint = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const ym = searchParams.get('ym') ?? '';
+    const qs = new URLSearchParams();
+    if (ym) qs.set('ym', ym);
+    window.open(
+      `/payroll/roster/print${qs.toString() ? `?${qs.toString()}` : ''}`,
+      '_blank',
+      'noopener,noreferrer',
+    );
+  }, [searchParams]);
+
   const handlePrint = useCallback(() => {
+    if (activeTab === 'payroll') {
+      openPayrollRosterPrint();
+      return;
+    }
     if (typeof window !== 'undefined') window.print();
-  }, []);
+  }, [activeTab, openPayrollRosterPrint]);
+
+  // Intercept Ctrl+P (or Cmd+P on macOS) while on the payroll tab
+  // and reroute to the dedicated roster page. We only swallow the
+  // event on that tab — other tabs keep native browser print.
+  useEffect(() => {
+    if (activeTab !== 'payroll') return undefined;
+    const onKey = (e: KeyboardEvent) => {
+      const isPrintCombo =
+        (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key === 'p';
+      if (!isPrintCombo) return;
+      e.preventDefault();
+      e.stopPropagation();
+      openPayrollRosterPrint();
+    };
+    window.addEventListener('keydown', onKey, { capture: true });
+    return () => {
+      window.removeEventListener('keydown', onKey, { capture: true });
+    };
+  }, [activeTab, openPayrollRosterPrint]);
 
   // OWNER/GM see everything. ACCOUNTANT + MANAGER reach the hub for
   // commission-payouts / debt-holds / attendance views they're already
@@ -121,7 +172,9 @@ export function StaffHubPage() {
         </div>
         <Button onClick={handlePrint} variant="default">
           <Printer className="ms-1 h-4 w-4" />
-          طباعة {TAB_LABEL[activeTab]}
+          {activeTab === 'payroll'
+            ? 'طباعة المسير الرسمي (A4 أفقي + ختم رقمي)'
+            : `طباعة ${TAB_LABEL[activeTab]}`}
         </Button>
       </header>
 

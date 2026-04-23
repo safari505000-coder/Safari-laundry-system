@@ -1274,6 +1274,14 @@ model EmployeeLoan {
   approvedById     String?    @db.Uuid
   approvedAt       DateTime?
   rejectedReason   String?
+  /**
+   * V19.20 — last "YYYY-MM" the payroll engine booked an instalment
+   * against this loan. Used as an idempotency key inside
+   * `PayrollService.create`: re-running the same month's payroll
+   * observes this field and SKIPS the deduction so an instalment can
+   * never be taken twice. NULL = never deducted via payroll yet.
+   */
+  lastDeductionYearMonth String? @db.VarChar(7)
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
 
@@ -1320,6 +1328,15 @@ model Payroll {
    * as a separate positive line.
    */
   debtReleaseAmount Decimal       @default(0) @db.Decimal(19, 4)
+  /**
+   * V19.20 — sum of employee-loan instalments booked against this
+   * payroll run. Shown as a dedicated payslip line and subtracted from
+   * net pay. Idempotency is enforced upstream via
+   * `EmployeeLoan.lastDeductionYearMonth` so re-running the same
+   * month's payroll produces `loanDeduction = 0` on the replay (the
+   * scheduled instalment was already consumed on the first run).
+   */
+  loanDeduction     Decimal       @default(0) @db.Decimal(19, 4)
   paymentDate       DateTime
   status            PayrollStatus @default(PENDING)
   createdAt         DateTime      @default(now())

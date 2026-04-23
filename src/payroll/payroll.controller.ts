@@ -45,6 +45,31 @@ export class PayrollController {
     return this.payrollService.markPaid(user.role as SafariRole, id);
   }
 
+  /**
+   * V19.20 — backfill the loan instalment on a PENDING payroll that
+   * was created before the loan→payroll hook existed. Idempotent:
+   * only consumes instalments from loans whose
+   * `lastDeductionYearMonth IS NULL`. See
+   * `LoansService.recalcUnbookedInstalmentsFor` for the reasoning on
+   * why we refuse to backdate the high-water mark.
+   */
+  @Post(':id/recalc-loan')
+  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.MANAGER)
+  @ApiOperation({
+    summary: `Recalculate loan instalment for a pending payroll (${APP_BRAND})`,
+    description:
+      'Pulls the scheduled monthly instalment(s) into this payroll row for loans that have never been consumed by a payroll. Only touches PENDING rows.',
+  })
+  recalcLoan(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.payrollService.recalcLoanDeduction(
+      user.role as SafariRole,
+      id,
+    );
+  }
+
   @Get()
   @Roles(
     SafariRole.OWNER,

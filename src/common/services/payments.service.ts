@@ -201,10 +201,14 @@ export class PaymentsService {
       cancelUrl,
       notificationUrl,
       customerExtraData,
-      // 7 days — gives the customer time to open the WhatsApp link
-      // later (debt collection reminders often sit in a chat for a
-      // day or two before the customer pays). Under UPayments' max.
-      paymentLinkExpiryInMinutes: 60 * 24 * 7,
+      // V19.22.2 — 24h window. Keeps the driver's Field Collection
+      // Tracker badge truthful: a link shown as "قيد الانتظار" must
+      // still be payable on the gateway. If the customer hasn't paid
+      // within 24 hours, the driver must chase them in person or
+      // the Call Center re-issues a fresh link through the Call
+      // Center island. Must remain in sync with
+      // `PAYMENT_LINK_VALIDITY_HOURS` in `orders.service.ts`.
+      paymentLinkExpiryInMinutes: 60 * 24,
     };
 
     const chargeUrl = `${this.apiBase}/api/v1/charge`;

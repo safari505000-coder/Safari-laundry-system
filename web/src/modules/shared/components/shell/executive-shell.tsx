@@ -18,8 +18,14 @@ import { useAuth } from '@/contexts/auth-context';
  *    breakpoint so dense finance/invoice screens have more horizontal
  *    runway without changing card widths.
  *
+ * V19.15 — Mobile navigation migrated from a bottom tab bar to a
+ * side drawer (rendered inside `MobileBottomNav` for backwards-compat
+ * naming). The drawer's trigger is a floating button at the
+ * reading-start corner, so the `<main>` wrapper no longer needs the
+ * `pb-20` safe-area padding that used to sit under the old bar.
+ *
  * Note: `MobileBottomNav` still lives on `AuthLayout` so full-screen
- * islands (/pos, /admin/live-monitor) keep the bar visible.
+ * islands (/pos, /admin/live-monitor) keep the drawer trigger visible.
  */
 function guidanceDismissKey(role: string | undefined | null): string {
   return `executive-shell-guidance-dismissed:${role ?? 'anon'}`;
@@ -64,7 +70,7 @@ export function ExecutiveShell() {
       <div className="flex min-w-0 flex-1 flex-col">
         <ExecutiveHeader />
         <main
-          className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 pb-20 print:p-2 sm:p-6 md:pb-6 lg:p-8"
+          className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 print:p-2 sm:p-6 lg:p-8"
         >
           <div className="mx-auto min-w-0 max-w-6xl print:max-w-none">
             {!dismissed && guidance ? (

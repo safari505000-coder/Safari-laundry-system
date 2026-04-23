@@ -22,7 +22,14 @@ export class PosCheckoutDto extends CreateOrderQuickDto {
     }
     return value;
   })
+  // V19.22.4 — Parent (`CreateOrderQuickDto`) now declares
+  // `posPaymentMethod` as a required field at the runtime level.
+  // POS checkout overrides that semantics because wallet-settled
+  // orders auto-resolve the method to SUBSCRIPTION_WALLET inside
+  // `OrdersService.resolvePosCheckoutPaymentMethod`. `declare`
+  // keeps TypeScript compatible with the parent's property shape
+  // while replacing its class-validator decorators below.
   @IsOptional()
   @IsEnum(PosPaymentMethod)
-  posPaymentMethod?: PosPaymentMethod;
+  declare posPaymentMethod?: PosPaymentMethod;
 }

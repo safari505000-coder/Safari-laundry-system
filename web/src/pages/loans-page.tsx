@@ -145,8 +145,12 @@ export function LoansPage() {
       notify.error('المبلغ غير صحيح');
       return;
     }
-    if (!Number.isInteger(installmentCount) || installmentCount <= 0) {
-      notify.error('عدد الأقساط غير صحيح');
+    if (
+      !Number.isInteger(installmentCount) ||
+      installmentCount < 1 ||
+      installmentCount > 12
+    ) {
+      notify.error('عدد الأقساط يجب أن يكون بين 1 و 12 شهراً');
       return;
     }
     setSaving(true);
@@ -473,18 +477,33 @@ export function LoansPage() {
             </div>
             <div>
               <Label>عدد الأقساط الشهرية</Label>
-              <Input
-                type="number"
-                step="1"
-                min="1"
+              {/*
+                V19.20 — fixed dropdown 1..12 months per Owner spec
+                ("يختار جدول الاقساط من شهر الي 12 شهر"). The server
+                validates the same range in CreateLoanDto. Each
+                instalment is booked on the corresponding month's
+                payroll via PayrollService + lastDeductionYearMonth.
+              */}
+              <Select
                 value={form.installmentCount}
-                onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    installmentCount: e.target.value,
-                  }))
+                onValueChange={(v) =>
+                  setForm((f) => ({ ...f, installmentCount: v ?? '1' }))
                 }
-              />
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="اختر عدد الأشهر" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
+                    <SelectItem key={n} value={String(n)}>
+                      {n === 1 ? 'شهر واحد' : `${n} أشهر`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="mt-1 text-xs text-slate-500">
+                يُخصم القسط شهرياً من مسير الراتب حتى يُسدَّد كامل المبلغ.
+              </p>
             </div>
             {monthlyPreview ? (
               <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">

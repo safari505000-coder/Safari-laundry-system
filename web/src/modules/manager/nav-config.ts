@@ -3,10 +3,12 @@ import { G } from '@/modules/shared/nav/nav-groups';
 import {
   attendanceItem,
   dashboardItem,
+  driverOversightItem,
   expensesItem,
   insightsAiItem,
   inventoryOperationsItem,
   myCustodyItem,
+  myDocumentsItem,
   ordersItem,
   posItem,
   shiftsItem,
@@ -26,15 +28,18 @@ export const managerSidebarNavGroups: NavGroup[] = [
   },
   {
     ...G.finance,
-    items: [expensesItem, myCustodyItem],
+    items: [expensesItem, myCustodyItem, myDocumentsItem],
   },
   {
     ...G.inventoryOps,
     items: [inventoryOperationsItem],
   },
   {
+    // V19.22.5 — Driver Oversight + Shifts are both operational,
+    // branch-scoped monitoring surfaces — grouped together so the
+    // manager sees them side-by-side.
     ...G.operations,
-    items: [shiftsItem],
+    items: [driverOversightItem, shiftsItem],
   },
   {
     ...G.adminSettings,

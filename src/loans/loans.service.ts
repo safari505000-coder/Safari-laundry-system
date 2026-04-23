@@ -56,8 +56,18 @@ export class LoansService {
     actorUserId: string,
     dto: CreateLoanDto,
   ): Promise<LoanRow> {
-    if (dto.installmentCount < 1) {
-      throw new BadRequestException('installmentCount must be >= 1');
+    // V19.20 — enforce the 1..12 schedule at the service layer too;
+    // DTO validation is the primary gate but this keeps the invariant
+    // if the service is ever invoked outside the HTTP pipeline (jobs,
+    // seeds, tests).
+    if (
+      !Number.isInteger(dto.installmentCount) ||
+      dto.installmentCount < 1 ||
+      dto.installmentCount > 12
+    ) {
+      throw new BadRequestException(
+        'installmentCount must be an integer between 1 and 12',
+      );
     }
     const amount = new Prisma.Decimal(dto.amount.toFixed(4));
     const monthly = amount.div(dto.installmentCount).toDecimalPlaces(4);
@@ -244,5 +254,140 @@ export class LoansService {
         include: LOAN_INCLUDE,
       });
     });
+  }
+
+  /**
+   * V19.20 — book the scheduled instalment(s) for a single employee
+   * inside an on-going payroll transaction.
+   *
+   * Called from `PayrollService.create` for every payroll row. The
+   * user requested ("يختار جدول الاقساط من شهر الي 12 شهر وتذكر خصم
+   * القسط في مسيرة الرواتب") that the monthly instalment reappears
+   * as a deducted line on the payslip — but this MUST NOT re-trigger
+   * the V19.19 double-deduction bug if the same month's payroll is
+   * re-run. Idempotency is enforced by comparing the target
+   * `yearMonth` (YYYY-MM, derived from `paymentDate`) against
+   * `EmployeeLoan.lastDeductionYearMonth`:
+   *
+   *   - Same yearMonth  → skip (the instalment was already consumed).
+   *   - Different / NULL → deduct `monthlyDeduction` (clamped to
+   *                        `remaining`), flip to SETTLED at zero, and
+   *                        stamp `lastDeductionYearMonth = yearMonth`.
+   *
+   * Returns the **Decimal sum** actually deducted this run so the
+   * payroll row can persist it as `loanDeduction` and show it on the
+   * payslip. The sum is capped at the aggregate remaining balances,
+   * so partial final instalments always reconcile.
+   *
+   * Manual OWNER/GM deductions (`deductManual`) remain orthogonal:
+   * they reduce `remaining` directly and do NOT update
+   * `lastDeductionYearMonth`, so a manual payment mid-month is an
+   * EXTRA pay-down, not a replacement of the scheduled instalment.
+   * This matches the Owner's mental model where the manual channel
+   * is for ad-hoc repayments (cash handover, settlement) while the
+   * payslip line is the routine monthly instalment.
+   */
+  async bookPayrollInstalmentsFor(
+    userId: string,
+    yearMonth: string,
+    tx: Prisma.TransactionClient,
+  ): Promise<Prisma.Decimal> {
+    if (!/^\d{4}-\d{2}$/.test(yearMonth)) {
+      throw new BadRequestException('yearMonth must match YYYY-MM');
+    }
+    const active = await tx.employeeLoan.findMany({
+      where: {
+        userId,
+        status: LoanStatus.ACTIVE,
+        remaining: { gt: 0 },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    let total = new Prisma.Decimal(0);
+    for (const loan of active) {
+      if (loan.lastDeductionYearMonth === yearMonth) continue;
+      const cap = loan.remaining;
+      if (cap.lte(0)) continue;
+      const monthly = loan.monthlyDeduction;
+      const deduction = Prisma.Decimal.min(monthly, cap);
+      if (deduction.lte(0)) continue;
+      const nextRemaining = cap.sub(deduction);
+      const nextStatus = nextRemaining.lte(0)
+        ? LoanStatus.SETTLED
+        : loan.status;
+      await tx.employeeLoan.update({
+        where: { id: loan.id },
+        data: {
+          remaining: nextRemaining,
+          status: nextStatus,
+          lastDeductionYearMonth: yearMonth,
+        },
+      });
+      total = total.add(deduction);
+    }
+    return total;
+  }
+
+  /**
+   * V19.20 — safe backfill for payrolls created BEFORE this version.
+   *
+   * Old payroll rows sit with `loanDeduction = 0` even for employees
+   * with ACTIVE loans, because `PayrollService.create` didn't book
+   * instalments at the time. The Owner can click "إعادة حساب القسط"
+   * on a PENDING row to pull the missed instalment in. This helper
+   * is DIFFERENT from `bookPayrollInstalmentsFor`: it will ONLY touch
+   * loans whose `lastDeductionYearMonth IS NULL`, i.e. loans that
+   * have never had a scheduled instalment consumed by any payroll.
+   *
+   * Why the stricter filter? `lastDeductionYearMonth` is a simple
+   * high-water mark, not a calendar. If a loan shows "2026-04" it
+   * means April already took its cut. Letting a recalc stamp it back
+   * to "2026-03" would both (a) reset the high-water mark, opening
+   * the door to re-taking April on the next "recalc" click, and (b)
+   * deduct an additional instalment against `remaining` that wasn't
+   * scheduled. Refusing to backdate keeps the ledger monotonic.
+   *
+   * Implication: if payroll was mistakenly run for a later month
+   * first, the user must correct forward (SETTLED-then-reissue or
+   * manual deduct + credit note), not via this helper.
+   */
+  async recalcUnbookedInstalmentsFor(
+    userId: string,
+    yearMonth: string,
+    tx: Prisma.TransactionClient,
+  ): Promise<Prisma.Decimal> {
+    if (!/^\d{4}-\d{2}$/.test(yearMonth)) {
+      throw new BadRequestException('yearMonth must match YYYY-MM');
+    }
+    const active = await tx.employeeLoan.findMany({
+      where: {
+        userId,
+        status: LoanStatus.ACTIVE,
+        remaining: { gt: 0 },
+        lastDeductionYearMonth: null,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    let total = new Prisma.Decimal(0);
+    for (const loan of active) {
+      const cap = loan.remaining;
+      if (cap.lte(0)) continue;
+      const deduction = Prisma.Decimal.min(loan.monthlyDeduction, cap);
+      if (deduction.lte(0)) continue;
+      const nextRemaining = cap.sub(deduction);
+      const nextStatus = nextRemaining.lte(0)
+        ? LoanStatus.SETTLED
+        : loan.status;
+      await tx.employeeLoan.update({
+        where: { id: loan.id },
+        data: {
+          remaining: nextRemaining,
+          status: nextStatus,
+          lastDeductionYearMonth: yearMonth,
+        },
+      });
+      total = total.add(deduction);
+    }
+    return total;
   }
 }

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -49,6 +50,31 @@ export class LaundryPriceListController {
     return this.laundryPriceListService.findCategoriesForApi();
   }
 
+  @Get('catalog-version')
+  @Roles(
+    SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
+    SafariRole.MANAGER,
+    SafariRole.DRIVER,
+    SafariRole.WORKER,
+    SafariRole.CALL_CENTER,
+    SafariRole.CALL_CENTER_SUPERVISOR,
+    SafariRole.ACCOUNTANT,
+    SafariRole.SUPERVISOR,
+    SafariRole.VIEWER,
+  )
+  @ApiOperation({
+    summary: `Monotonic catalog version — POS / Driver cache invalidation (${APP_BRAND})`,
+    description:
+      'Lightweight: same `version` string as `SafariStreamSnapshot.priceListVersion`. ' +
+      'Client POS polls this on a short interval so Driver and branch Manager stations ' +
+      'reload the merged tariff without waiting for the full SafariStream snapshot (45s).',
+  })
+  async catalogVersion() {
+    const version = await this.laundryPriceListService.getCatalogVersion();
+    return { version };
+  }
+
   @Get()
   @Roles(
     SafariRole.OWNER,
@@ -65,14 +91,33 @@ export class LaundryPriceListController {
   @ApiOperation({
     summary: `Laundry garment price list (${APP_BRAND})`,
     description:
-      'Official KD prices per item and tier, merged with optional branch overrides. Pass branchId query to preview another branch; otherwise the JWT user branch (when present) is used.',
+      'Official KD prices per item and tier, merged with optional `LaundryBranchItemPrice` overrides. ' +
+      '`DRIVER` and `MANAGER` must have `branchId` on their user (JWT) so POS loads the same catalog as their branch; ' +
+      'optional `branchId` query is for OWNER/GENERAL_MANAGER preview only.',
   })
   findAll(
     @Query('branchId') branchId: string | undefined,
     @CurrentUser() user: JwtUser,
   ) {
     const q = branchId?.trim();
+    if (
+      q &&
+      user.role !== SafariRole.OWNER &&
+      user.role !== SafariRole.GENERAL_MANAGER
+    ) {
+      throw new BadRequestException(
+        'branchId query parameter is only allowed for OWNER or GENERAL_MANAGER.',
+      );
+    }
     const effective = q && q.length > 0 ? q : (user.branchId ?? null);
+    if (
+      (user.role === SafariRole.DRIVER || user.role === SafariRole.MANAGER) &&
+      !effective
+    ) {
+      throw new BadRequestException(
+        'DRIVER and MANAGER accounts must be assigned to a branch to load the merged price list.',
+      );
+    }
     return this.laundryPriceListService.findPriceListForBranch(effective);
   }
 
@@ -92,7 +137,7 @@ export class LaundryPriceListController {
   @ApiOperation({
     summary: `Update master price item — OWNER only (${APP_BRAND})`,
     description:
-      'Partial update of the master tariff row (prices, name, sort order, category, isActive). Writes bump the catalog version exposed via SafariStream so driver devices auto-reload the POS catalog on next poll. Historical orders are never rewritten — OrderLineItem snapshots unit price and label at creation time.',
+      'Partial update of the master tariff row (prices, name, sort order, category, isActive). Writes bump the catalog version (`GET /catalog-version` and SafariStream) so Driver / Manager POS pollers reload the catalog. Historical orders are never rewritten — OrderLineItem snapshots unit price and label at creation time.',
   })
   updateItem(
     @Param('id', ParseUUIDPipe) id: string,

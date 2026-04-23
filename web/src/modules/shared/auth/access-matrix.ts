@@ -139,6 +139,11 @@ export const ACCESS = {
   // ─── Accountant island (shared with exec pair) ────────────────────
   // Pattern: `.view` = OWNER/GM oversight + ACCOUNTANT. `.act` / `.reconcile` /
   // `.stockIn` = accountant-only mutation, so OWNER/GM read but never book.
+  // Dastur §10 (V19.22.4) — Accountant watchdog for dangling Quick-Capture
+  // invoices (PENDING + UNPAID > 24h). Read-only telemetry: the
+  // Accountant sees the list and chases the driver; no mutation key is
+  // needed because the fix is always "complete POS checkout or void".
+  'staleQuickRisks.view': withExec('ACCOUNTANT'),
   'knetAudit.view': withExec('ACCOUNTANT'),
   'knetAudit.reconcile': ['ACCOUNTANT'] satisfies readonly SafariRole[],
   'inventoryReport.view': withExec('ACCOUNTANT'),
@@ -193,7 +198,16 @@ export const ACCESS = {
   // map placeholder without live data until a dedicated read-only
   // endpoint is wired for them. The page handles the 403 response
   // gracefully and shows a "coming soon" card instead of a crash.
-  'driverMonitor.view': withExec('CALL_CENTER', 'CALL_CENTER_SUPERVISOR'),
+  // V19.22.5 — Branch Manager added so the "Driver Oversight" island
+  // can link to the map view without a second-class redirect.
+  // Backend `GET /api/finance/driver-monitoring` still filters by
+  // OWNER-only today; when the map endpoint becomes branch-aware the
+  // Manager will see their branch only.
+  'driverMonitor.view': withExec(
+    'CALL_CENTER',
+    'CALL_CENTER_SUPERVISOR',
+    'MANAGER',
+  ),
 
   // ─── Call centre ──────────────────────────────────────────────────
   // `.view` = exec oversight + CC. `.manage` / `.act` = CC-only mutations
@@ -257,6 +271,15 @@ export const ACCESS = {
   'managerCustody.act': ['MANAGER'] satisfies readonly SafariRole[],
   'expenses.view': withExec('MANAGER'),
   'expenses.record': ['MANAGER'] satisfies readonly SafariRole[],
+  // V19.22.5 — Branch-Manager islands.
+  // * `managerDocuments.view`: unified inbox of Accountant-approved
+  //   documents (cash-handover receipts + branch-expense vouchers).
+  //   MANAGER owns the page; OWNER keeps read via withExec() so an
+  //   auditor can spot-check.
+  // * `driverOversight.view`: branch-scoped driver monitoring cards
+  //   (today's orders / cash / pending / risks).
+  'managerDocuments.view': withExec('MANAGER'),
+  'driverOversight.view': withExec('MANAGER'),
   // Only MANAGER needs the "Back to Dashboard" shortcut — DRIVER has no
   // dashboard, OWNER/GM never enter POS. Keep this tight so the button
   // never renders for roles that shouldn't see it.

@@ -8,6 +8,7 @@ import {
   Loader2,
   LogOut,
   Plus,
+  Star,
 } from 'lucide-react';
 import { OrderScanInput } from '@/modules/shared/components/orders/order-scan-input';
 import { LanguageToggle } from '@/components/i18n/language-toggle';
@@ -506,15 +507,25 @@ export function PosPage() {
                         onClick={() => setVipForSubOrder(idx)}
                         aria-pressed={vipOn}
                         className={cn(
-                          'mt-1.5 flex w-full items-center justify-between rounded-md border px-2 py-1 text-[11px] font-medium transition',
+                          'mt-1.5 flex w-full items-center justify-between rounded-md border px-2 py-1.5 text-[11px] font-semibold transition',
                           vipOn
-                            ? 'border-amber-500 bg-amber-50 text-amber-900'
-                            : 'border-border bg-background text-muted-foreground hover:bg-muted/40',
+                            ? 'border-amber-500 bg-amber-50 text-amber-900 shadow-[0_0_0_2px_rgba(245,158,11,0.15)]'
+                            : 'border-border bg-background text-muted-foreground hover:border-amber-300 hover:bg-amber-50/50 hover:text-amber-800',
                         )}
                       >
                         <span className="flex items-center gap-1.5">
-                          <span aria-hidden>★</span>
-                          {t('pos.vip.toggleLabel')}
+                          <Star
+                            className={cn(
+                              'h-3.5 w-3.5 transition',
+                              vipOn
+                                ? 'fill-amber-500 text-amber-500'
+                                : 'text-muted-foreground',
+                            )}
+                            strokeWidth={vipOn ? 0 : 1.75}
+                          />
+                          <span className="tracking-wide">
+                            {t('pos.vip.toggleLabel')}
+                          </span>
                         </span>
                         <span className="tabular-nums">
                           {vipOn

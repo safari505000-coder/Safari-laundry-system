@@ -133,9 +133,9 @@ const EMPTY_CREATE: CreateDraft = {
  *    touching historical orders (those snapshot price + label at write time)
  *  • Hard-delete rows when no `OrderLineItem.label` still references them
  *
- * Every successful write bumps `priceListVersion` on the backend; the
- * `usePriceList` hook subscribes to that signal via `useSafariStream`, so
- * driver POS devices reload their catalog on the next ≤45 s tick.
+ * Every successful write bumps the server catalog version; `usePriceList`
+ * polls `GET /catalog-version` on a short interval and on tab focus, so
+ * Driver and branch Manager POS reload the merged list without a manual refresh.
  */
 export function ManageItems() {
   const { t } = useTranslation();
@@ -177,39 +177,76 @@ export function ManageItems() {
     includeInactive: true,
   });
 
+  /**
+   * Group every price row exactly once. The old path iterated only
+   * `categories` × `byId` — if `/categories` was empty, timed out, or
+   * drifted from items, most rows never rendered (users saw e.g. 39 of
+   * 50). We always bucket by `categoryId` on the item, then order
+   * sections by category `sortOrder` with fallbacks from each row’s
+   * denormalized `categoryName*`.
+   */
   const sections = useMemo(() => {
-    const byId = new Map<string, typeof priceList.items>();
-    for (const it of priceList.items) {
-      const id = it.categoryId ?? '';
-      if (!byId.has(id)) byId.set(id, []);
-      byId.get(id)!.push(it);
+    const items = priceList.items;
+    const cats = priceList.categories;
+    const catById = new Map(cats.map((c) => [c.id, c]));
+
+    const groups = new Map<string, LaundryPriceListItemRow[]>();
+    for (const it of items) {
+      const k = it.categoryId && it.categoryId.length > 0 ? it.categoryId : '';
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k)!.push(it);
     }
-    const ordered = [...priceList.categories].sort(
-      (a, b) => a.sortOrder - b.sortOrder,
-    );
-    const out: Array<{
+
+    const toSection = (
+      catId: string,
+      rows: LaundryPriceListItemRow[],
+    ): {
+      sectionKey: string;
       title: string;
       subtitle?: string | null;
-      items: typeof priceList.items;
-    }> = [];
-    for (const c of ordered) {
-      const rows = byId.get(c.id);
-      if (rows?.length) {
-        out.push({
-          title: c.nameAr,
-          subtitle: c.nameEn,
-          items: [...rows].sort((a, b) => a.sortOrder - b.sortOrder),
-        });
+      items: LaundryPriceListItemRow[];
+    } => {
+      const sorted = [...rows].sort(
+        (a, b) => a.sortOrder - b.sortOrder || a.code.localeCompare(b.code),
+      );
+      if (catId === '') {
+        return {
+          sectionKey: '__uncat__',
+          title: t('manageItems.uncategorized'),
+          items: sorted,
+        };
+      }
+      const c = catById.get(catId);
+      const first = rows[0];
+      return {
+        sectionKey: catId,
+        title: c?.nameAr ?? first?.categoryNameAr ?? catId,
+        subtitle: c?.nameEn ?? first?.categoryNameEn ?? null,
+        items: sorted,
+      };
+    };
+
+    const orderedKeys: string[] = [];
+    const used = new Set<string>();
+    for (const c of [...cats].sort((a, b) => a.sortOrder - b.sortOrder)) {
+      if (groups.has(c.id) && (groups.get(c.id)?.length ?? 0) > 0) {
+        orderedKeys.push(c.id);
+        used.add(c.id);
       }
     }
-    const ungrouped = byId.get('');
-    if (ungrouped?.length) {
-      out.push({
-        title: t('manageItems.uncategorized'),
-        items: [...ungrouped].sort((a, b) => a.sortOrder - b.sortOrder),
-      });
+    for (const k of groups.keys()) {
+      if (!used.has(k)) {
+        orderedKeys.push(k);
+      }
     }
-    return out;
+    const withUncatLast = [
+      ...orderedKeys.filter((k) => k !== ''),
+      ...orderedKeys.filter((k) => k === ''),
+    ];
+
+    return withUncatLast
+      .map((k) => toSection(k, groups.get(k) ?? []))
+      .filter((s) => s.items.length > 0);
   }, [priceList.categories, priceList.items, t]);
 
   if (!hasRole('OWNER', 'GENERAL_MANAGER')) {
@@ -278,8 +315,8 @@ export function ManageItems() {
       setEditingId(null);
       setDraft(null);
       await priceList.reload();
-      // Nudge the stream snapshot so Driver POS tabs pick up the new
-      // priceListVersion on their next tick (without waiting for the 45s poll).
+      // Nudge SafariStream (dashboard, wallet radar) in other tabs; catalog
+      // sync for Driver/Manager is via `usePriceList` catalog-version poll.
       void refreshStream();
     } catch (e) {
       if (e instanceof ApiError) toast.error(e.message);
@@ -397,6 +434,11 @@ export function ManageItems() {
             {t('manageItems.title')}
           </h1>
           <p className="text-sm text-slate-600">{t('manageItems.subtitle')}</p>
+          {!priceList.loading && !priceList.failed ? (
+            <p className="mt-1 text-sm font-medium tabular-nums text-slate-800">
+              {t('manageItems.totalCount', { count: priceList.items.length })}
+            </p>
+          ) : null}
         </div>
         {/*
           V5.0 — Add / Edit / Delete surfaces are the OWNER master-control
@@ -488,7 +530,7 @@ export function ManageItems() {
             </p>
           : <div className="space-y-10">
               {sections.map((sec) => (
-                <section key={sec.title} className="space-y-3">
+                <section key={sec.sectionKey} className="space-y-3">
                   <div className="border-l-4 border-slate-800 ps-3">
                     <h2 className="text-base font-semibold text-slate-900">
                       {sec.title}

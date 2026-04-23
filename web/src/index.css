@@ -290,6 +290,19 @@ body {
    * without adding `.printable-sheet` here the statement renders an
    * empty roll of blank pages (user feedback: "يطلع صفحات بيضه").
    */
+  /*
+   * V19.22 — `PrintableSheet` wraps the article in
+   * `.printable-sheet-viewport`. The inner `.printable-sheet` was
+   * always whitelisted, but Chrome/Edge still paint a **blank** PDF
+   * when every ancestor of the sheet is `visibility: hidden` (see
+   * V19.13.5 monthly-summary fix). Whitelist the viewport so the
+   * entire subtree is explicitly visible, then (below) we pull the
+   * viewport to `position: fixed` like the debt voucher / staff-debts
+   * roots. Without both steps `/payroll/roster/print` opens the print
+   * dialog on empty white pages even though 3+ pages of layout exist.
+   */
+  .printable-sheet-viewport,
+  .printable-sheet-viewport *,
   .printable-sheet,
   .printable-sheet *,
   .printable-sheet-toolbar,
@@ -346,6 +359,26 @@ body {
     z-index: 9996 !important;
     overflow: visible !important;
     font-family: 'Cairo', 'Almarai', sans-serif;
+  }
+  /*
+   * V19.22 — Standalone A4 pages that use `PrintableSheet` (payslip,
+   * loan ack, /payroll/roster/print, …) live under #root. Reposition
+   * the outer viewport the same way as `.monthly-summary-print` and
+   * `#debt-hold-voucher-root` so hidden ancestors do not "black-hole"
+   * the paint tree in the print compositor.
+   */
+  .printable-sheet-viewport {
+    position: fixed !important;
+    inset: 0 auto auto 0 !important;
+    width: 100% !important;
+    min-height: 100vh !important;
+    margin: 0 !important;
+    background: #fff !important;
+    color: #111827 !important;
+    z-index: 9997 !important;
+    overflow: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
   #hr-hub-print-root .print-hide,
   #hr-hub-print-root [data-hub-print-hide="true"] {
@@ -404,25 +437,44 @@ body {
   /*
    * Column widths. With `table-layout: fixed` specifying only the
    * first column's width lets the browser distribute the remaining
-   * space evenly among the other columns. This gracefully handles
-   * the 7-col layout (typical V19.17+ runs) and the historical 8-col
-   * layout that re-exposes the تحرير column for old data.
+   * space evenly among the numeric columns. Employee column takes
+   * 22% so up to 8 numeric columns (الأساسي, البدلات, الخصم,
+   * العمولة, تحرير, المحجوز, قسط سلفة, الصافي) each land around
+   * ~9.75% which is comfortable for 3-decimal KWD figures.
    */
   #hr-hub-print-root .payroll-unified-root table th:first-child,
-  #hr-hub-print-root .payroll-unified-root table td:first-child { width: 24% !important; }
+  #hr-hub-print-root .payroll-unified-root table td:first-child { width: 22% !important; }
   #hr-hub-print-root .payroll-unified-root th,
   #hr-hub-print-root .payroll-unified-root td {
     border: 1px solid #d1d5db !important;
-    padding: 4px 6px !important;
-    line-height: 1.3 !important;
+    padding: 3px 4px !important;
+    line-height: 1.25 !important;
     word-break: break-word !important;
     vertical-align: middle !important;
     background: #fff !important;
+  }
+  /*
+   * Numeric columns: center-align and collapse whitespace so long
+   * "−10.000 د.ك" labels fit on one line without wrapping. The
+   * first column (employee) stays right-aligned in Arabic flow.
+   */
+  #hr-hub-print-root .payroll-unified-root td:not(:first-child),
+  #hr-hub-print-root .payroll-unified-root th:not(:first-child) {
+    text-align: center !important;
+    white-space: nowrap !important;
+    font-variant-numeric: tabular-nums !important;
+    letter-spacing: -0.01em !important;
+  }
+  /* Shrink the role pill under the employee name so it never wraps. */
+  #hr-hub-print-root .payroll-unified-root td:first-child .text-xs {
+    font-size: 9px !important;
+    color: #6b7280 !important;
   }
   #hr-hub-print-root .payroll-unified-root th {
     background: #f3f4f6 !important;
     font-weight: 700 !important;
     text-align: center !important;
+    font-size: 10.5px !important;
   }
   #hr-hub-print-root .payroll-unified-root tr {
     background: #fff !important;
@@ -1139,40 +1191,39 @@ body {
     padding: 0.5mm 2mm !important;
   }
   /*
-   * Explicit column widths for the details table. Without this the
-   * fixed-layout engine gives each of the 8 remaining columns ~12.5%
-   * which makes the Arabic date headers wrap onto each other. The
-   * widths below total 100% and are tuned for landscape A4.
+   * Details table (V19.22): اختياري الموظف + مبالغ + 3 تواريخ (en-GB) +
+   * ملاحظة — no إجراء/مرحلة columns. Widths tuned for landscape A4.
    */
   #debt-holds-print-root .debt-holds-details-table {
     table-layout: fixed !important;
   }
   #debt-holds-print-root .debt-holds-details-table th:nth-child(1),
   #debt-holds-print-root .debt-holds-details-table td:nth-child(1) {
-    width: 14% !important; /* الموظف */
+    width: 16% !important; /* موظف أو أول عمود مبالغ */
   }
   #debt-holds-print-root .debt-holds-details-table th:nth-child(2),
   #debt-holds-print-root .debt-holds-details-table td:nth-child(2) {
-    width: 10% !important; /* المرحلة */
+    width: 10% !important;
   }
   #debt-holds-print-root .debt-holds-details-table th:nth-child(3),
-  #debt-holds-print-root .debt-holds-details-table td:nth-child(3),
-  #debt-holds-print-root .debt-holds-details-table th:nth-child(4),
-  #debt-holds-print-root .debt-holds-details-table td:nth-child(4) {
-    width: 11% !important; /* المديونية / المحجوز */
+  #debt-holds-print-root .debt-holds-details-table td:nth-child(3) {
+    width: 10% !important;
   }
+  #debt-holds-print-root .debt-holds-details-table th:nth-child(4),
+  #debt-holds-print-root .debt-holds-details-table td:nth-child(4),
   #debt-holds-print-root .debt-holds-details-table th:nth-child(5),
   #debt-holds-print-root .debt-holds-details-table td:nth-child(5),
   #debt-holds-print-root .debt-holds-details-table th:nth-child(6),
-  #debt-holds-print-root .debt-holds-details-table td:nth-child(6),
-  #debt-holds-print-root .debt-holds-details-table th:nth-child(7),
-  #debt-holds-print-root .debt-holds-details-table td:nth-child(7) {
-    width: 10% !important; /* 3 date columns */
+  #debt-holds-print-root .debt-holds-details-table td:nth-child(6) {
+    width: 9% !important;
     font-size: 8.5pt !important;
   }
-  #debt-holds-print-root .debt-holds-details-table th:nth-child(8),
-  #debt-holds-print-root .debt-holds-details-table td:nth-child(8) {
-    width: 14% !important; /* ملاحظة */
+  #debt-holds-print-root .debt-holds-details-table th:nth-child(7),
+  #debt-holds-print-root .debt-holds-details-table td:nth-child(7) {
+    width: 30% !important; /* ملاحظة (أو دمج صف سطر واحد) */
+  }
+  #debt-holds-print-root .debt-holds-details-table tr[data-debt-hold-simplified='true'] td:only-child {
+    width: 100% !important;
   }
   /*
    * Safety guard: when the voucher is mounted (auto-print after

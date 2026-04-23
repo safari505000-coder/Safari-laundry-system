@@ -1,29 +1,10 @@
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { NavLink } from 'react-router-dom';
-import { Menu } from 'lucide-react';
+import { LogOut, Menu } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
-import type { SafariRole } from '@/lib/api';
 import { getSidebarNavGroupsForRole } from '@/modules/shared/nav/resolve-sidebar-nav';
-import type { NavGroupTone, NavItem } from '@/modules/shared/nav/nav-types';
-import {
-  branchesItem,
-  collectionsItem,
-  customersItem,
-  dashboardItem,
-  driverFieldExpensesItem,
-  expensesItem,
-  financialsItem,
-  invoicesDataItem,
-  myCustodyItem,
-  myDailySalesItem,
-  myDepositsItem,
-  ordersItem,
-  posItem,
-  reportsItem,
-  subscribersItem,
-  whatsappToolsItem,
-} from '@/modules/shared/nav/nav-items';
+import type { NavGroupTone } from '@/modules/shared/nav/nav-types';
 import {
   Sheet,
   SheetContent,
@@ -34,9 +15,9 @@ import {
 import { cn } from '@/lib/utils';
 
 /**
- * V19.3 — Tone classes shared with the desktop sidebar. Keeps the mobile
- * "More" sheet aligned with the six coloured OWNER islands so users get
- * the same visual hierarchy on phones as on desktop.
+ * V19.15 — Tone → color map. Mirrors the dots used in `ExecutiveSidebar`
+ * so the mobile drawer feels like a faithful miniature of the desktop
+ * sidebar rather than a separate UI tree.
  */
 const GROUP_TONE_CLASSES: Record<NavGroupTone, { dot: string; text: string }> = {
   blue: { dot: 'bg-sky-500', text: 'text-sky-700 dark:text-sky-300' },
@@ -48,68 +29,47 @@ const GROUP_TONE_CLASSES: Record<NavGroupTone, { dot: string; text: string }> = 
 };
 
 /**
- * V18.0 — Keeta-style bottom navigation bar. Shows the four most relevant
- * destinations per role, plus a "More" button that slides the full nav in a
- * sheet. The sidebar is hidden on mobile (<md), so this component is the
- * primary navigation on phones/tablets in portrait.
+ * V19.15 — Mobile nav is a **side drawer** (reading-start side) instead
+ * of the previous 4-slot bottom tab bar.
  *
- * All entries reference the canonical items in `nav-items.ts` so role
- * changes only need to happen in one place. The "More" sheet is rendered
- * from the same sidebar resolver used by desktop, which guarantees no
- * divergence between the two surfaces.
+ * Why this changed:
+ *  - The bottom bar only fit 4 destinations + a "More" overlay, which
+ *    meant half the app was always one extra tap away. CC, MANAGER and
+ *    ACCOUNTANT sidebars each have 6–8 real daily surfaces.
+ *  - A side drawer displays every nav group at once with proper tone
+ *    tinting, matching the desktop sidebar's hierarchy. Operators who
+ *    already know the desktop app find their entries immediately.
+ *  - Removing the bar frees ~56px of vertical space on every screen —
+ *    an extra card or two fits on each list view without scrolling.
+ *
+ * Implementation:
+ *  - Trigger is a fixed floating button anchored to the reading-start
+ *    corner (top-start). `z-50` so it sits above the sticky header;
+ *    the header itself reserves `ps-14` on mobile so the existing
+ *    back button stays reachable.
+ *  - The sheet itself uses the shared Radix-style primitive. We pass
+ *    `side="right"` in Arabic (so the drawer slides from the user's
+ *    reading start) and `side="left"` in English.
+ *  - DRIVER role still returns `null` — drivers drive from full-screen
+ *    island pages (POS, pending invoices, etc.) that ship their own
+ *    in-page navigation. The role doesn't render the executive shell
+ *    at all, so no trigger is needed there either.
+ *  - File name kept as `mobile-bottom-nav.tsx` + export kept as
+ *    `MobileBottomNav` on purpose: `AuthLayout` imports this name and
+ *    renaming the module across the tree was more churn than the name
+ *    inaccuracy is worth. The export still represents "the mobile
+ *    navigation surface for this role", it just isn't a bottom bar
+ *    anymore.
  */
-function bottomNavItemsForRole(role: SafariRole | undefined): NavItem[] {
-  switch (role) {
-    case 'OWNER':
-    case 'GENERAL_MANAGER':
-      return [
-        { ...financialsItem, labelKey: 'nav.financials' },
-        ordersItem,
-        subscribersItem,
-        branchesItem,
-      ];
-    case 'MANAGER':
-      return [dashboardItem, posItem, ordersItem, myCustodyItem];
-    case 'DRIVER':
-      return [posItem, myDailySalesItem, myDepositsItem, driverFieldExpensesItem];
-    case 'CALL_CENTER':
-    case 'CALL_CENTER_SUPERVISOR':
-      // V19.4 — CC cleanup. The fourth slot used to point at
-      // `/subscriptions` (plan catalog), but CALL_CENTER no longer has
-      // access to that page. WhatsApp tools is the next-most-used CC
-      // surface on mobile, so it takes the slot instead. The supervisor
-      // uses the same four most-accessed surfaces as an ordinary agent
-      // on mobile; their extra reports live in the "More" drawer.
-      return [customersItem, collectionsItem, subscribersItem, whatsappToolsItem];
-    case 'ACCOUNTANT':
-      return [dashboardItem, reportsItem, invoicesDataItem, expensesItem];
-    case 'SUPERVISOR':
-    case 'VIEWER':
-    default:
-      return [dashboardItem, ordersItem, reportsItem, invoicesDataItem];
-  }
-}
-
-function tabClass(active: boolean) {
-  return cn(
-    'flex min-w-0 flex-1 flex-col items-center justify-center gap-1 px-1 py-1.5 text-[10px] font-medium transition-colors',
-    active ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
-  );
-}
-
 export function MobileBottomNav() {
-  const { t } = useTranslation();
-  const { user, hasRole } = useAuth();
-  const [moreOpen, setMoreOpen] = useState(false);
+  const { t, i18n } = useTranslation();
+  const { user, hasRole, logout } = useAuth();
+  const [open, setOpen] = useState(false);
 
   const role = user?.safariRole;
+  const rtl = i18n.language?.startsWith('ar') ?? false;
 
-  const items = useMemo(
-    () => bottomNavItemsForRole(role).filter((i) => hasRole(...i.roles)),
-    [role, hasRole],
-  );
-
-  const fullNavGroups = useMemo(() => {
+  const navGroups = useMemo(() => {
     const groups = getSidebarNavGroupsForRole(role);
     return groups
       .map((g) => ({
@@ -121,98 +81,124 @@ export function MobileBottomNav() {
 
   if (!user) return null;
   if (role === 'DRIVER') {
-    /*
-     * Drivers operate from the POS / full-screen islands and don't render
-     * `ExecutiveShell`, so the main bottom nav doesn't apply to them. The
-     * driver bottom actions live inside their own pages.
-     */
+    // Drivers use full-screen island pages (POS etc.) with their own
+    // in-page navigation; no shell chrome to attach the trigger to.
     return null;
   }
 
-  return (
-    <nav
-      className={cn(
-        'print:hidden md:hidden',
-        'fixed inset-x-0 bottom-0 z-40 flex h-14 items-stretch border-t border-border bg-card/95 shadow-[0_-2px_10px_rgba(0,0,0,0.06)] backdrop-blur-sm',
-        'supports-[padding:env(safe-area-inset-bottom)]:pb-[env(safe-area-inset-bottom)]',
-      )}
-      aria-label={t('nav.bottomNav', 'Navigation')}
-    >
-      {items.map(({ to, labelKey, icon: Icon }) => (
-        <NavLink
-          key={to}
-          to={to}
-          end={to === '/'}
-          className={({ isActive }) => tabClass(isActive)}
-        >
-          <Icon className="h-[20px] w-[20px]" aria-hidden />
-          <span className="w-full truncate text-center">{t(labelKey)}</span>
-        </NavLink>
-      ))}
+  const displayName = user.fullName?.trim() || user.username;
+  const userInitial = (displayName || '?').trim().charAt(0).toUpperCase();
 
-      <Sheet open={moreOpen} onOpenChange={setMoreOpen}>
-        <SheetTrigger
-          className={tabClass(false)}
-          aria-label={t('nav.more', 'More')}
-        >
-          <Menu className="h-[20px] w-[20px]" aria-hidden />
-          <span className="w-full truncate text-center">
-            {t('nav.more', 'More')}
-          </span>
-        </SheetTrigger>
-        <SheetContent
-          side="bottom"
-          className="max-h-[85vh] overflow-y-auto rounded-t-2xl p-0"
-        >
-          <SheetHeader className="border-b border-border">
-            <SheetTitle>{t('nav.more', 'More')}</SheetTitle>
-          </SheetHeader>
-          <div className="flex flex-col gap-4 p-4 pb-8">
-            {fullNavGroups.map((group) => {
-              const tone = group.tone ? GROUP_TONE_CLASSES[group.tone] : null;
-              return (
-              <div key={group.labelKey} className="space-y-1">
-                <p
-                  className={cn(
-                    'flex items-center gap-1.5 px-1 text-[11px] font-semibold uppercase tracking-wider',
-                    tone ? tone.text : 'text-muted-foreground',
-                  )}
-                >
-                  {tone ?
-                    <span
-                      aria-hidden
-                      className={cn('h-1.5 w-1.5 rounded-full', tone.dot)}
-                    />
-                  : null}
-                  {t(group.labelKey)}
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  {group.items.map(({ to, labelKey, icon: Icon }) => (
-                    <NavLink
-                      key={to}
-                      to={to}
-                      end={to === '/'}
-                      onClick={() => setMoreOpen(false)}
-                      className={({ isActive }) =>
-                        cn(
-                          'flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2.5 text-sm font-medium transition-colors',
-                          isActive
-                            ? 'border-primary/40 bg-primary/10 text-primary'
-                            : 'text-foreground hover:bg-muted',
-                        )
-                      }
-                    >
-                      <Icon className="h-4 w-4 opacity-80" aria-hidden />
-                      <span className="truncate">{t(labelKey)}</span>
-                    </NavLink>
-                  ))}
-                </div>
+  return (
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger
+        aria-label={t('nav.openMenu', 'فتح القائمة')}
+        className={cn(
+          'print:hidden md:hidden',
+          'fixed top-2.5 start-3 z-50 inline-flex h-10 w-10 items-center justify-center',
+          'rounded-xl border border-border/60 bg-card/95 text-foreground shadow-md backdrop-blur-sm',
+          'transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60',
+          'supports-[padding:env(safe-area-inset-top)]:top-[calc(env(safe-area-inset-top)+0.5rem)]',
+        )}
+      >
+        <Menu className="h-5 w-5" aria-hidden />
+      </SheetTrigger>
+
+      <SheetContent
+        side={rtl ? 'right' : 'left'}
+        className="w-[86vw] max-w-sm p-0"
+      >
+        <div className="flex h-full flex-col">
+          {/* User identity header */}
+          <SheetHeader className="border-b border-border bg-emerald-50/70 px-4 pb-4 pt-5 dark:bg-emerald-950/30">
+            <div className="flex items-center gap-3">
+              <div
+                aria-hidden
+                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-base font-semibold text-white shadow-sm"
+              >
+                {userInitial}
               </div>
-              );
-            })}
+              <div className="min-w-0 flex-1 text-start">
+                <SheetTitle className="truncate text-start text-base font-semibold">
+                  {displayName}
+                </SheetTitle>
+                <p className="truncate text-xs text-muted-foreground">
+                  {role}
+                </p>
+              </div>
+            </div>
+          </SheetHeader>
+
+          {/* Grouped nav items */}
+          <nav
+            aria-label={t('nav.bottomNav', 'Navigation')}
+            className="flex-1 overflow-y-auto p-3"
+          >
+            <div className="flex flex-col gap-4">
+              {navGroups.map((group) => {
+                const tone = group.tone
+                  ? GROUP_TONE_CLASSES[group.tone]
+                  : GROUP_TONE_CLASSES.gray;
+                return (
+                  <div key={group.labelKey} className="space-y-1">
+                    <p
+                      className={cn(
+                        'flex items-center gap-1.5 px-2 text-[11px] font-semibold uppercase tracking-wider',
+                        tone.text,
+                      )}
+                    >
+                      <span
+                        aria-hidden
+                        className={cn('h-1.5 w-1.5 rounded-full', tone.dot)}
+                      />
+                      {t(group.labelKey)}
+                    </p>
+                    <div className="flex flex-col">
+                      {group.items.map(({ to, labelKey, icon: Icon }) => (
+                        <NavLink
+                          key={to}
+                          to={to}
+                          end={to === '/'}
+                          onClick={() => setOpen(false)}
+                          className={({ isActive }) =>
+                            cn(
+                              'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+                              isActive
+                                ? 'bg-primary/10 text-primary'
+                                : 'text-foreground hover:bg-muted',
+                            )
+                          }
+                        >
+                          <Icon
+                            className="h-4 w-4 shrink-0 opacity-80"
+                            aria-hidden
+                          />
+                          <span className="truncate">{t(labelKey)}</span>
+                        </NavLink>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </nav>
+
+          {/* Footer — sign out */}
+          <div className="border-t border-border p-3">
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                logout();
+              }}
+              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <LogOut className="h-4 w-4 shrink-0 opacity-70" aria-hidden />
+              <span>{t('nav.signOut', 'تسجيل الخروج')}</span>
+            </button>
           </div>
-        </SheetContent>
-      </Sheet>
-    </nav>
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }

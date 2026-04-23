@@ -33,7 +33,23 @@ export type DocumentType =
   // a driver after a branch manager approves receipt of the driver's
   // CASH custody. Auditors scan the QR to confirm the bag UUID, the
   // amount, and the parties without logging in.
-  | 'CASH_RECEIPT';
+  | 'CASH_RECEIPT'
+  // V19.22.5 — branch-expense voucher (سند مصروف معتمد). Printed by
+  // a Branch Manager from the "My Documents" island once the
+  // Accountant flips BranchExpense.status from PENDING_ACCOUNTANT to
+  // APPROVED. The QR resolves to the standard verify endpoint;
+  // auditors scan to confirm the branch, category, and amount
+  // without logging in.
+  | 'EXPENSE_VOUCHER'
+  /**
+   * V19.21 — printable monthly payroll roster (مسير الرواتب
+   * الشهري). The QR encodes a month token (and optional branch
+   * scope) rather than a single row UUID, so `buildVerifyUrl`
+   * passes it straight through to the verify endpoint. Auditors
+   * scan once and get the same totals that were printed on the
+   * sheet — no login required.
+   */
+  | 'PAYROLL_ROSTER';
 
 export type DocumentQRProps = {
   docType: DocumentType;
@@ -77,6 +93,8 @@ export function DocumentQR({
     STATEMENT: 'كشف حساب',
     DEBT_HOLD: 'محجوز مديونية',
     CASH_RECEIPT: 'سند استلام كاش',
+    PAYROLL_ROSTER: 'مسير رواتب',
+    EXPENSE_VOUCHER: 'سند صرف مصروف',
   };
 
   return (

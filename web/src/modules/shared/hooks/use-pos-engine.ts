@@ -145,7 +145,7 @@ export type ServiceOption = {
  * tariff. Each of the 39 seed codes gets a dedicated Lucide icon + tinted
  * tone so staff (especially drivers and new trainees) can scan the POS grid
  * visually instead of reading Arabic labels. Keys mirror
- * `prisma/price-list-seed.ts` ROWS exactly — do not rename a key here
+ * `src/bootstrap/laundry-price-list.seed.ts` ROWS exactly — do not rename a key here
  * without updating the seed in the same commit.
  *
  * Services (VIP_SERVICE, DELIVERY_INSIDE_AREA) intentionally have no entry

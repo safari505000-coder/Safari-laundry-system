@@ -54,6 +54,13 @@
 > - أذونات الأدوار: المصدر الوحيد هو `web/src/modules/shared/auth/access-matrix.ts` + `@Roles()` على الـ controllers. ممنوع قرار صلاحية خارجهما.
 > - **كل كتابة تنقص/تزيد الدين لازم تتم داخل Prisma transaction تُحدِّث `CustomerWallet` + `TransactionHistory` + `GeneralLedgerEntry` معًا** (انظر `CustomerLedgerService.recordPartialDebtPayment` كمرجع). حارس المطابقة في `/daily-collections/reconciliation` يكتشف أي مسار يكسر هذه القاعدة.
 >
+> #### 📱 V19.15 — تنقّل الموبايل كدرج جانبي
+>
+> - الشريط السفلي القديم (4 تبويبات + "المزيد") انسحب لصالح **درج جانبي** ينفتح من جهة قراءة المستخدم (يمين في العربية، يسار في الإنجليزية). التطبيق `web/src/modules/shared/components/shell/mobile-bottom-nav.tsx` (الاسم محفوظ للتوافق مع `AuthLayout`) يُصدِر الآن زر هامبرغر عائم `z-50` + درج فيه كل مجموعات السايدبار بنفس ترتيبها وألوانها على الديسكتوب.
+> - نتيجة: كل صفحات الدور ظاهرة بنقرة واحدة (مو نقرتين عبر "المزيد")، و~56px من الارتفاع رجعت للمحتوى بعدما انحذف الشريط السفلي. الـ`<main>` في `ExecutiveShell` انحذف منه `pb-20` و الهيدر حجز `ps-14` على الموبايل عشان زر الهامبرغر لا يصطدم بزر الرجوع.
+> - دور `DRIVER` يبقى يُرجع `null` — السائق يشتغل من شاشات جزيرة بملء الشاشة (POS وغيره) فيها تنقل داخلي مخصّص، فلا يحتاج درجاً عاماً.
+> - سايدبار `CALL_CENTER` اتنظف كذلك: **أدوات واتساب** اتحذفت من السايدبار/السوبروايزر/OWNER-GM (V19.15)، الراوت باقٍ في `App.tsx` لأي روابط عميقة قديمة، ومكانها في البوتوم-نڤ القديم (والدرج الجديد) أخذه `unpaid-invoices` الأكثر استعمالاً يومياً. الواتساب ما راح — أزرار الواتساب لكل عميل/فاتورة باقية في `/collections` و Statement Dialog كما هي.
+>
 > ـــــ نهاية لوحة الحالة ـــــ
 
 > **هذا الدستور هو المرجع النهائي للنظام.**
@@ -142,7 +149,7 @@
 | `ACCOUNTANT`         | محاسب الأصول — دفتر الأستاذ، K‑NET، الاعتمادات    | Finance + Inventory Stock-In + Reports + HR view                               |
 | `MANAGER`            | مدير فرع                                          | POS + Custody + Expenses + Attendance + Leaves/Loans                           |
 | `DRIVER`             | سائق ميداني                                       | POS Field + My Deposits + My Sales + Field Expenses + Debt Transfer signatures |
-| `CALL_CENTER`        | مركز الاتصال                                      | Customers + Collections + Subscriptions + WhatsApp Tools                       |
+| `CALL_CENTER`        | مركز الاتصال                                      | Customers + Collections + Subscribers + Unpaid Invoices + Driver Monitor       |
 | `SUPERVISOR`         | مراقب                                             | View-only على العمليات                                                         |
 | `VIEWER`             | مُطّلع                                            | View-only مقيد                                                                 |
 | `WORKER`             | عامل ميداني (محجوز للتوسعة)                       | محدود جداً                                                                     |

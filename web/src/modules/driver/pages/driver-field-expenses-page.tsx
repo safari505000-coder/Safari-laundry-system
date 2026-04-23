@@ -2,11 +2,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Loader2, Plus, Receipt } from 'lucide-react';
+import { Loader2, Receipt } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { useSafariStream } from '@/contexts/safari-stream-context';
 import { API_EXPENSES, type ExpenseRow, apiJson, ApiError } from '@/lib/api';
-import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
 import { formatKwdLabel } from '@/lib/kwd';
 import { Button } from '@/modules/shared/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/modules/shared/components/ui/card';
@@ -21,33 +20,54 @@ import {
 } from '@/modules/shared/components/ui/select';
 import { Textarea } from '@/modules/shared/components/ui/textarea';
 
-function startOfDayIso(d: Date): string {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x.toISOString();
+const KUWAIT_TZ = 'Asia/Kuwait';
+const KUWAIT_OFFSET = '+03:00';
+
+function getKuwaitYmd(d: Date): { year: string; month: string; day: string } {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: KUWAIT_TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(d);
+  const map = Object.fromEntries(parts.map((p) => [p.type, p.value])) as Record<
+    string,
+    string
+  >;
+  return { year: map.year, month: map.month, day: map.day };
 }
 
-function endOfDayIso(d: Date): string {
-  const x = new Date(d);
-  x.setHours(23, 59, 59, 999);
-  return x.toISOString();
+function startOfKuwaitDayLocal(d: Date): string {
+  const { year, month, day } = getKuwaitYmd(d);
+  return `${year}-${month}-${day}T00:00`;
+}
+
+function endOfKuwaitDayLocal(d: Date): string {
+  const { year, month, day } = getKuwaitYmd(d);
+  return `${year}-${month}-${day}T23:59`;
+}
+
+/** Parse a naive "YYYY-MM-DDTHH:MM" string as Kuwait local time and return UTC ISO. */
+function kuwaitLocalToUtcIso(localMinuteStr: string): string {
+  return new Date(`${localMinuteStr}:00${KUWAIT_OFFSET}`).toISOString();
 }
 
 /** Driver fuel / misc field expenses (pending accountant review). */
 export function DriverFieldExpensesPage() {
   const { t } = useTranslation();
-  const dateLocale = useAppLocale();
   const { token, hasRole } = useAuth();
   const { refresh: refreshStream } = useSafariStream();
-  const [from, setFrom] = useState(() => startOfDayIso(new Date()));
-  const [to, setTo] = useState(() => endOfDayIso(new Date()));
+  // Filters track Kuwait-local minute strings ("YYYY-MM-DDTHH:MM") so the
+  // picker shows Kuwait wall-clock time regardless of the device timezone.
+  const [from, setFrom] = useState(() => startOfKuwaitDayLocal(new Date()));
+  const [to, setTo] = useState(() => endOfKuwaitDayLocal(new Date()));
+  const todayKuwaitStart = startOfKuwaitDayLocal(new Date());
   const [rows, setRows] = useState<ExpenseRow[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
-  const [category, setCategory] = useState<'FUEL' | 'MISC' | 'SOAP'>('FUEL');
+  const [category, setCategory] = useState<'MISC' | 'SOAP'>('MISC');
   const [expenseMethod, setExpenseMethod] = useState<'CASH' | 'PREPAID_CARD'>('CASH');
   const [note, setNote] = useState('');
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
@@ -58,7 +78,10 @@ export function DriverFieldExpensesPage() {
     if (!token) return;
     setLoading(true);
     try {
-      const qs = new URLSearchParams({ from, to });
+      const qs = new URLSearchParams({
+        from: kuwaitLocalToUtcIso(from),
+        to: kuwaitLocalToUtcIso(to),
+      });
       const data = await apiJson<ExpenseRow[]>(`${API_EXPENSES}?${qs.toString()}`, {
         token,
       });
@@ -86,26 +109,26 @@ export function DriverFieldExpensesPage() {
       toast.error(t('expenses.invalidAmount'));
       return;
     }
-    if (category === 'FUEL' && !receiptPreview?.trim()) {
-      toast.error('صورة الوصل إجبارية لمصاريف الوقود');
+    if (!receiptPreview?.trim()) {
+      toast.error('صورة الإيصال إجبارية');
       return;
     }
     setSaving(true);
     try {
+      const autoTitle = category === 'SOAP' ? 'صابون' : 'متنوع';
       await apiJson<ExpenseRow>(API_EXPENSES, {
         method: 'POST',
         token,
         body: JSON.stringify({
-        title: title.trim(),
-        amount: n,
-        category,
-        expenseMethod,
-        ...(note.trim() ? { note: note.trim() } : {}),
-        ...(receiptPreview ? { receiptUrl: receiptPreview } : {}),
+          title: autoTitle,
+          amount: n,
+          category,
+          expenseMethod,
+          ...(note.trim() ? { note: note.trim() } : {}),
+          ...(receiptPreview ? { receiptUrl: receiptPreview } : {}),
         }),
       });
       toast.success(t('expenses.saved'));
-      setTitle('');
       setAmount('');
       setNote('');
       setReceiptPreview(null);
@@ -145,27 +168,10 @@ export function DriverFieldExpensesPage() {
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Plus className="h-4 w-4" />
-            {t('expenses.new')}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
+        <CardContent className="pt-6">
           <form onSubmit={submit} className="grid gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="df-title">{t('expenses.fieldTitle')}</Label>
-              <Input
-                id="df-title"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                required
-                maxLength={200}
-                className="h-11"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Expense method</Label>
+              <Label>{t('expenses.fieldMethod')}</Label>
               <div className="flex flex-wrap gap-2">
                 <Button
                   type="button"
@@ -174,7 +180,7 @@ export function DriverFieldExpensesPage() {
                   className="h-10"
                   onClick={() => setExpenseMethod('CASH')}
                 >
-                  CASH (field wallet + owner radar)
+                  {t('expenses.methodCash')}
                 </Button>
                 <Button
                   type="button"
@@ -183,7 +189,7 @@ export function DriverFieldExpensesPage() {
                   className="h-10"
                   onClick={() => setExpenseMethod('PREPAID_CARD')}
                 >
-                  PREPAID_CARD (owner radar only)
+                  {t('expenses.methodPrepaidCard')}
                 </Button>
               </div>
             </div>
@@ -203,15 +209,14 @@ export function DriverFieldExpensesPage() {
                 <Label>{t('expenses.fieldCategory')}</Label>
                 <Select
                   value={category}
-                  onValueChange={(v) => setCategory(v as 'FUEL' | 'MISC' | 'SOAP')}
+                  onValueChange={(v) => setCategory(v as 'MISC' | 'SOAP')}
                 >
                   <SelectTrigger className="h-11">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="FUEL">{t('expenses.catFuel')}</SelectItem>
-                    <SelectItem value="MISC">{t('expenses.catRepair')}</SelectItem>
-                    <SelectItem value="SOAP">{t('expenses.catOther')}</SelectItem>
+                    <SelectItem value="MISC">{t('expenses.catMisc')}</SelectItem>
+                    <SelectItem value="SOAP">{t('expenses.catSoap')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -239,7 +244,7 @@ export function DriverFieldExpensesPage() {
             </div>
             <Button
               type="submit"
-              disabled={saving || (category === 'FUEL' && !receiptPreview)}
+              disabled={saving || !receiptPreview}
               className="h-11 w-full gap-1.5"
             >
               {saving ?
@@ -257,14 +262,28 @@ export function DriverFieldExpensesPage() {
           <div className="flex flex-wrap gap-2">
             <Input
               type="datetime-local"
-              value={from.slice(0, 16)}
-              onChange={(e) => setFrom(new Date(e.target.value).toISOString())}
+              dir="ltr"
+              lang="en"
+              min={todayKuwaitStart}
+              value={from}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (!v) return;
+                setFrom(v < todayKuwaitStart ? todayKuwaitStart : v);
+              }}
               className="h-10 w-auto min-w-0 flex-1"
             />
             <Input
               type="datetime-local"
-              value={to.slice(0, 16)}
-              onChange={(e) => setTo(new Date(e.target.value).toISOString())}
+              dir="ltr"
+              lang="en"
+              min={todayKuwaitStart}
+              value={to}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (!v) return;
+                setTo(v < todayKuwaitStart ? todayKuwaitStart : v);
+              }}
               className="h-10 w-auto min-w-0 flex-1"
             />
             <Button
@@ -297,8 +316,12 @@ export function DriverFieldExpensesPage() {
                   <div className="min-w-0 flex-1">
                     <p className="font-medium">{r.title}</p>
                     <p className="text-xs text-muted-foreground">
-                      {new Date(r.expenseDate).toLocaleString(dateLocale)} · {r.category} ·{' '}
-                      {r.status}
+                      {new Date(r.expenseDate).toLocaleString('en-GB', {
+                        timeZone: KUWAIT_TZ,
+                        dateStyle: 'short',
+                        timeStyle: 'short',
+                      })}{' '}
+                      · {r.category} · {r.status}
                     </p>
                   </div>
                   <span className="tabular-nums font-semibold">{formatKwdLabel(r.amount)}</span>

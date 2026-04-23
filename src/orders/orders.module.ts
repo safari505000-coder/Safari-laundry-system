@@ -8,6 +8,7 @@ import { PaymentsModule } from '../payments/payments.module';
 import { SerialsModule } from '../serials/serials.module';
 import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
+import { StaleQuickOrdersCronService } from './stale-quick-orders.cron';
 
 @Module({
   imports: [
@@ -20,7 +21,7 @@ import { OrdersService } from './orders.service';
     InventoryModule,
   ],
   controllers: [OrdersController],
-  providers: [OrdersService],
+  providers: [OrdersService, StaleQuickOrdersCronService],
   exports: [OrdersService],
 })
 export class OrdersModule {}
