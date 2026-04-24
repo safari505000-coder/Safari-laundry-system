@@ -811,9 +811,6 @@ export function usePosEngine(opts: PosEngineOptions) {
         }
 
         const paymentLinkUrl = bundleRes.paymentLink?.url?.trim();
-        if (paymentLinkUrl) {
-          window.open(paymentLinkUrl, '_blank', 'noopener,noreferrer');
-        }
 
         const sheets: ReceiptSnapshot[] = parts.map((part, k) => {
           const ord = bundleRes.orders[k];
@@ -945,7 +942,6 @@ export function usePosEngine(opts: PosEngineOptions) {
         const paymentLinkUrl = created.paymentLink?.url?.trim();
         if (paymentLinkUrl && checkoutPayMethod === 'PAYMENT_LINK') {
           sawPaymentLink = true;
-          window.open(paymentLinkUrl, '_blank', 'noopener,noreferrer');
         }
 
         sheets.push(

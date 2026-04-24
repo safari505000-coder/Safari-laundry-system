@@ -1057,7 +1057,7 @@
       working: 'Processing…',
       done: 'Order saved',
       paymentLinkCreated:
-        'Payment link opened — customer completes payment on their phone.',
+        'Payment link and receipt were sent to the customer’s phone. They pay via UPayments on their device — print the slip for your copy only.',
       paymentPendingReceipt:
         'Payment pending — order completes after gateway confirms.',
       multiOrderNoPaymentLink:

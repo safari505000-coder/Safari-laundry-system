@@ -23,6 +23,7 @@ export declare class CustomerNotificationsService implements OnModuleInit {
     private readonly logger;
     onModuleInit(): void;
     notifyInvoiceIssued(params: InvoiceIssuedNotifyParams): void;
+    deliverInvoiceIssuedNow(params: InvoiceIssuedNotifyParams): Promise<void>;
     notifyInvoiceEditedForIssuer(params: InvoiceEditedIssuerNotifyParams): void;
     private deliver;
     private deliverIssuerEdit;

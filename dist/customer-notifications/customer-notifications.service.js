@@ -22,7 +22,8 @@ function buildInvoiceIssuedMessage(params) {
     lines.push('ملابسكم في أيدٍ أمينة، وسنعتني بها بأفضل صورة — شكراً لثقتكم بنا.');
     if (params.paymentUrl) {
         lines.push('');
-        lines.push('🔒 للدفع السريع عبر الرابط الآمن:');
+        lines.push('📱 رابط الدفع + نسخة الفاتورة تُرسل لجوالكم (واتساب) — للدفع من هنا:');
+        lines.push('🔒 رابط UPayments:');
         lines.push(params.paymentUrl);
     }
     if (params.invoiceShareItems && params.invoiceShareItems.length > 0) {
@@ -101,6 +102,9 @@ let CustomerNotificationsService = CustomerNotificationsService_1 = class Custom
         setImmediate(() => {
             void this.deliver(params).catch((e) => this.logger.warn(`Invoice notify failed: ${e}`));
         });
+    }
+    async deliverInvoiceIssuedNow(params) {
+        await this.deliver(params);
     }
     notifyInvoiceEditedForIssuer(params) {
         setImmediate(() => {

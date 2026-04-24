@@ -98,9 +98,10 @@ export declare class OrdersService {
     private readonly serialCounter;
     private readonly inventory;
     private readonly jwt;
+    private readonly log;
     constructor(prisma: PrismaService, customerLedger: CustomerLedgerService, paymentsService: PaymentsService, customerNotifications: CustomerNotificationsService, generalLedger: GeneralLedgerService, serialCounter: SerialCounterService, inventory: InventoryService, jwt: JwtService);
     private resolveInvoiceShareForNotify;
-    private queuePosInvoiceNotify;
+    private posInvoiceNotifyToCustomer;
     private isManagerOrOwner;
     private canViewAllOrders;
     private canStaffUpdateOrders;

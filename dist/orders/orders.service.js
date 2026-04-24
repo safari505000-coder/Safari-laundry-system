@@ -8,6 +8,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var OrdersService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.OrdersService = exports.STALE_QUICK_ORDER_THRESHOLD_MS = exports.STALE_QUICK_ORDER_THRESHOLD_HOURS = void 0;
 const common_1 = require("@nestjs/common");
@@ -80,7 +81,7 @@ const terminalStatuses = [
     client_1.OrderStatus.COMPLETED,
     client_1.OrderStatus.CANCELED,
 ];
-let OrdersService = class OrdersService {
+let OrdersService = OrdersService_1 = class OrdersService {
     prisma;
     customerLedger;
     paymentsService;
@@ -89,6 +90,7 @@ let OrdersService = class OrdersService {
     serialCounter;
     inventory;
     jwt;
+    log = new common_1.Logger(OrdersService_1.name);
     constructor(prisma, customerLedger, paymentsService, customerNotifications, generalLedger, serialCounter, inventory, jwt) {
         this.prisma = prisma;
         this.customerLedger = customerLedger;
@@ -112,28 +114,26 @@ let OrdersService = class OrdersService {
         const { shareUrl } = await this.mintInvoiceShareLink(orderId, base);
         return shareUrl;
     }
-    queuePosInvoiceNotify(detail, phoneCompact) {
-        void (async () => {
-            const phone = detail.customer.phone?.trim() ||
-                detail.customer.phone2?.trim() ||
-                phoneCompact;
-            const inv = detail.invoiceNumber?.trim() || `#${detail.id.slice(0, 8)}`;
-            const amt = detail.totalPrice.toFixed(4);
-            let invoiceShareUrl;
-            try {
-                invoiceShareUrl = await this.resolveInvoiceShareForNotify(detail.id);
-            }
-            catch {
-            }
-            this.customerNotifications.notifyInvoiceIssued({
-                customerPhone: phone,
-                orderId: detail.id,
-                invoiceLabel: inv,
-                amountKd: amt,
-                paymentUrl: detail.paymentLink?.url,
-                invoiceShareUrl,
-            });
-        })();
+    async posInvoiceNotifyToCustomer(detail, phoneCompact) {
+        const phone = detail.customer.phone?.trim() ||
+            detail.customer.phone2?.trim() ||
+            phoneCompact;
+        const inv = detail.invoiceNumber?.trim() || `#${detail.id.slice(0, 8)}`;
+        const amt = detail.totalPrice.toFixed(4);
+        let invoiceShareUrl;
+        try {
+            invoiceShareUrl = await this.resolveInvoiceShareForNotify(detail.id);
+        }
+        catch {
+        }
+        await this.customerNotifications.deliverInvoiceIssuedNow({
+            customerPhone: phone,
+            orderId: detail.id,
+            invoiceLabel: inv,
+            amountKd: amt,
+            paymentUrl: detail.paymentLink?.url,
+            invoiceShareUrl,
+        });
     }
     isManagerOrOwner(role) {
         return (role === client_1.SafariRole.OWNER ||
@@ -426,10 +426,10 @@ let OrdersService = class OrdersService {
                     data: { posHostedPaymentUrl: paymentLink.url },
                 });
                 const merged = { ...detail, paymentLink };
-                this.queuePosInvoiceNotify(merged, phoneCompact);
+                await this.posInvoiceNotifyToCustomer(merged, phoneCompact);
                 return merged;
             }
-            this.queuePosInvoiceNotify(detail, phoneCompact);
+            void this.posInvoiceNotifyToCustomer(detail, phoneCompact).catch((e) => this.log.warn(`pos invoice notify: ${e}`));
             return detail;
         }
         catch (error) {
@@ -530,7 +530,7 @@ let OrdersService = class OrdersService {
             where: { posPaymentBundleId: bundleId },
             data: { posHostedPaymentUrl: paymentLink.url },
         });
-        void (async () => {
+        {
             const base = process.env.PUBLIC_WEB_APP_URL?.trim().replace(/\/$/, '');
             const invoiceShareItems = [];
             if (base) {
@@ -547,7 +547,7 @@ let OrdersService = class OrdersService {
                 }
             }
             const first = orders[0];
-            this.customerNotifications.notifyInvoiceIssued({
+            await this.customerNotifications.deliverInvoiceIssuedNow({
                 customerPhone: phone,
                 orderId: first.id,
                 invoiceLabel: orders.length > 1 ?
@@ -557,7 +557,7 @@ let OrdersService = class OrdersService {
                 paymentUrl: paymentLink.url,
                 invoiceShareItems: invoiceShareItems.length > 0 ? invoiceShareItems : undefined,
             });
-        })();
+        }
         return { bundleId, orders, paymentLink };
     }
     async createAsManager(dto) {
@@ -1209,7 +1209,7 @@ let OrdersService = class OrdersService {
     }
 };
 exports.OrdersService = OrdersService;
-exports.OrdersService = OrdersService = __decorate([
+exports.OrdersService = OrdersService = OrdersService_1 = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
         customer_ledger_service_1.CustomerLedgerService,

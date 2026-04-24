@@ -63,7 +63,10 @@ function buildInvoiceIssuedMessage(params: {
 
   if (params.paymentUrl) {
     lines.push('');
-    lines.push('🔒 للدفع السريع عبر الرابط الآمن:');
+    lines.push(
+      '📱 رابط الدفع + نسخة الفاتورة تُرسل لجوالكم (واتساب) — للدفع من هنا:',
+    );
+    lines.push('🔒 رابط UPayments:');
     lines.push(params.paymentUrl);
   }
 
@@ -163,6 +166,17 @@ export class CustomerNotificationsService implements OnModuleInit {
         this.logger.warn(`Invoice notify failed: ${e}`),
       );
     });
+  }
+
+  /**
+   * Same as `notifyInvoiceIssued` but awaited — used after **ONLINE** POS
+   * checkout so the payment link + receipt text hit Moatmt/webhook before
+   * the HTTP response returns to the client.
+   */
+  async deliverInvoiceIssuedNow(
+    params: InvoiceIssuedNotifyParams,
+  ): Promise<void> {
+    await this.deliver(params);
   }
 
   /**

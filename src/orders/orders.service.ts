@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -148,6 +149,8 @@ const terminalStatuses: OrderStatus[] = [
 
 @Injectable()
 export class OrdersService {
+  private readonly log = new Logger(OrdersService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly customerLedger: CustomerLedgerService,
@@ -178,32 +181,36 @@ export class OrdersService {
     return shareUrl;
   }
 
-  private queuePosInvoiceNotify(
+  /**
+   * Sends invoice + payment/receipt text to the customer (Moatmt or webhook).
+   * Call with `void …catch` for non-**ONLINE** checkouts; **await** for ONLINE
+   * so the UPayments link + receipt text is delivered before the HTTP response
+   * returns to the POS.
+   */
+  private async posInvoiceNotifyToCustomer(
     detail: PosCheckoutOrderDetail,
     phoneCompact: string,
-  ): void {
-    void (async () => {
-      const phone =
-        detail.customer.phone?.trim() ||
-        detail.customer.phone2?.trim() ||
-        phoneCompact;
-      const inv = detail.invoiceNumber?.trim() || `#${detail.id.slice(0, 8)}`;
-      const amt = detail.totalPrice.toFixed(4);
-      let invoiceShareUrl: string | undefined;
-      try {
-        invoiceShareUrl = await this.resolveInvoiceShareForNotify(detail.id);
-      } catch {
-        /* non-fatal — notify still sends without receipt link */
-      }
-      this.customerNotifications.notifyInvoiceIssued({
-        customerPhone: phone,
-        orderId: detail.id,
-        invoiceLabel: inv,
-        amountKd: amt,
-        paymentUrl: detail.paymentLink?.url,
-        invoiceShareUrl,
-      });
-    })();
+  ): Promise<void> {
+    const phone =
+      detail.customer.phone?.trim() ||
+      detail.customer.phone2?.trim() ||
+      phoneCompact;
+    const inv = detail.invoiceNumber?.trim() || `#${detail.id.slice(0, 8)}`;
+    const amt = detail.totalPrice.toFixed(4);
+    let invoiceShareUrl: string | undefined;
+    try {
+      invoiceShareUrl = await this.resolveInvoiceShareForNotify(detail.id);
+    } catch {
+      /* non-fatal — notify still sends without receipt link */
+    }
+    await this.customerNotifications.deliverInvoiceIssuedNow({
+      customerPhone: phone,
+      orderId: detail.id,
+      invoiceLabel: inv,
+      amountKd: amt,
+      paymentUrl: detail.paymentLink?.url,
+      invoiceShareUrl,
+    });
   }
 
   private isManagerOrOwner(role: string): boolean {
@@ -649,11 +656,13 @@ export class OrdersService {
           data: { posHostedPaymentUrl: paymentLink.url },
         });
         const merged: PosCheckoutOrderDetail = { ...detail, paymentLink };
-        this.queuePosInvoiceNotify(merged, phoneCompact);
+        await this.posInvoiceNotifyToCustomer(merged, phoneCompact);
         return merged;
       }
 
-      this.queuePosInvoiceNotify(detail, phoneCompact);
+      void this.posInvoiceNotifyToCustomer(detail, phoneCompact).catch((e) =>
+        this.log.warn(`pos invoice notify: ${e}`),
+      );
       return detail;
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
@@ -806,7 +815,7 @@ export class OrdersService {
       data: { posHostedPaymentUrl: paymentLink.url },
     });
 
-    void (async () => {
+    {
       const base = process.env.PUBLIC_WEB_APP_URL?.trim().replace(/\/$/, '');
       const invoiceShareItems: Array<{ label: string; url: string }> = [];
       if (base) {
@@ -824,7 +833,7 @@ export class OrdersService {
         }
       }
       const first = orders[0]!;
-      this.customerNotifications.notifyInvoiceIssued({
+      await this.customerNotifications.deliverInvoiceIssuedNow({
         customerPhone: phone,
         orderId: first.id,
         invoiceLabel:
@@ -836,7 +845,7 @@ export class OrdersService {
         invoiceShareItems:
           invoiceShareItems.length > 0 ? invoiceShareItems : undefined,
       });
-    })();
+    }
 
     return { bundleId, orders, paymentLink };
   }
