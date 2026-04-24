@@ -297,6 +297,9 @@ let OrdersService = OrdersService_1 = class OrdersService {
     }
     async posCheckout(driverUserId, dto) {
         try {
+            if (driverUserId == null || String(driverUserId).trim() === '') {
+                throw new common_1.BadRequestException('posCheckout: missing driver/manager id from session');
+            }
             await this.assertPosCheckoutActor(driverUserId);
             if (!Number.isFinite(dto.totalPrice) || dto.totalPrice <= 0) {
                 throw new common_1.BadRequestException('totalPrice must be a finite positive number');
@@ -347,6 +350,9 @@ let OrdersService = OrdersService_1 = class OrdersService {
                         },
                         select: { id: true, driverId: true },
                     });
+                    if (created == null) {
+                        throw new common_1.InternalServerErrorException('posCheckout: order.create (ONLINE) returned no row — check DB and line items');
+                    }
                     if (created.driverId !== driverUserId) {
                         throw new common_1.ForbiddenException('Order must be assigned to you');
                     }
@@ -373,6 +379,9 @@ let OrdersService = OrdersService_1 = class OrdersService {
                     },
                     select: { id: true, driverId: true },
                 });
+                if (created == null) {
+                    throw new common_1.InternalServerErrorException('posCheckout: order.create (completed) returned no row — check DB and line items');
+                }
                 if (created.driverId !== driverUserId) {
                     throw new common_1.ForbiddenException('Order must be assigned to you');
                 }
@@ -440,6 +449,9 @@ let OrdersService = OrdersService_1 = class OrdersService {
         }
     }
     async posCheckoutBundle(driverUserId, dto) {
+        if (driverUserId == null || String(driverUserId).trim() === '') {
+            throw new common_1.BadRequestException('posCheckoutBundle: missing driver/manager id from session');
+        }
         await this.assertPosCheckoutActor(driverUserId);
         const serviceType = dto.serviceType ?? client_1.ServiceType.NORMAL;
         const phoneCompact = dto.customerPhone.replace(/[\s-]/g, '').trim();
@@ -501,6 +513,9 @@ let OrdersService = OrdersService_1 = class OrdersService {
                     },
                     select: { id: true, driverId: true },
                 });
+                if (created == null) {
+                    throw new common_1.InternalServerErrorException('posCheckoutBundle: order.create returned no row — check DB and line items');
+                }
                 if (created.driverId !== driverUserId) {
                     throw new common_1.ForbiddenException('Order must be assigned to you');
                 }

@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ForbiddenException,
+  InternalServerErrorException,
   Injectable,
   Logger,
   NotFoundException,
@@ -476,6 +477,11 @@ export class OrdersService {
     dto: PosCheckoutDto,
   ): Promise<PosCheckoutOrderDetail> {
     try {
+      if (driverUserId == null || String(driverUserId).trim() === '') {
+        throw new BadRequestException(
+          'posCheckout: missing driver/manager id from session',
+        );
+      }
       await this.assertPosCheckoutActor(driverUserId);
       if (!Number.isFinite(dto.totalPrice) || dto.totalPrice <= 0) {
         throw new BadRequestException(
@@ -554,6 +560,11 @@ export class OrdersService {
               },
               select: { id: true, driverId: true },
             });
+            if (created == null) {
+              throw new InternalServerErrorException(
+                'posCheckout: order.create (ONLINE) returned no row — check DB and line items',
+              );
+            }
             if (created.driverId !== driverUserId) {
               throw new ForbiddenException('Order must be assigned to you');
             }
@@ -587,6 +598,11 @@ export class OrdersService {
             },
             select: { id: true, driverId: true },
           });
+          if (created == null) {
+            throw new InternalServerErrorException(
+              'posCheckout: order.create (completed) returned no row — check DB and line items',
+            );
+          }
           if (created.driverId !== driverUserId) {
             throw new ForbiddenException('Order must be assigned to you');
           }
@@ -690,6 +706,11 @@ export class OrdersService {
     driverUserId: string,
     dto: PosCheckoutBundleDto,
   ): Promise<PosCheckoutBundleResult> {
+    if (driverUserId == null || String(driverUserId).trim() === '') {
+      throw new BadRequestException(
+        'posCheckoutBundle: missing driver/manager id from session',
+      );
+    }
     await this.assertPosCheckoutActor(driverUserId);
     const serviceType = dto.serviceType ?? ServiceType.NORMAL;
     const phoneCompact = dto.customerPhone.replace(/[\s-]/g, '').trim();
@@ -782,6 +803,11 @@ export class OrdersService {
             },
             select: { id: true, driverId: true },
           });
+          if (created == null) {
+            throw new InternalServerErrorException(
+              'posCheckoutBundle: order.create returned no row — check DB and line items',
+            );
+          }
           if (created.driverId !== driverUserId) {
             throw new ForbiddenException('Order must be assigned to you');
           }

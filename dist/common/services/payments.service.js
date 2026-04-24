@@ -132,15 +132,30 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
         };
         const chargeUrl = `${this.apiBase}/api/v1/charge`;
         this.logger.log(`UPayments /charge → ${chargeUrl} (order=${params.orderId}, amount=${amount})`);
-        const res = await fetch(chargeUrl, {
-            method: 'POST',
-            headers: {
-                Accept: 'application/json',
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${this.apiKey}`,
-            },
-            body: JSON.stringify(body),
-        });
+        const upaymentsFetchTimeoutMs = Number(process.env.PAYMENTS_UPAYMENTS_TIMEOUT_MS?.trim() || '60000');
+        let res;
+        try {
+            res = await fetch(chargeUrl, {
+                method: 'POST',
+                signal: AbortSignal.timeout(Number.isFinite(upaymentsFetchTimeoutMs) && upaymentsFetchTimeoutMs > 0
+                    ? upaymentsFetchTimeoutMs
+                    : 60_000),
+                headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${this.apiKey}`,
+                },
+                body: JSON.stringify(body),
+            });
+        }
+        catch (e) {
+            const root = e instanceof Error && e.cause
+                ? String(e.cause)
+                : '';
+            const msg = e instanceof Error ? `${e.message}${root ? ` ${root}` : ''}` : String(e);
+            this.logger.error(`UPayments /charge fetch failed: ${msg}`);
+            throw new common_1.ServiceUnavailableException('Cannot reach UPayments (network error or timeout). Check internet, firewall, and PAYMENTS_API_BASE_URL. For local dev without gateway access, set PAYMENTS_MOCK=true in .env.');
+        }
         const text = await res.text();
         let json;
         try {
@@ -173,13 +188,26 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
         if (!this.apiKey) {
             throw new common_1.ServiceUnavailableException('Payment inquiry is not configured (PAYMENTS_API_KEY missing)');
         }
-        const res = await fetch(`${this.apiBase}/api/v1/get-payment-status/${encodeURIComponent(trackId)}`, {
-            method: 'GET',
-            headers: {
-                Accept: 'application/json',
-                Authorization: `Bearer ${this.apiKey}`,
-            },
-        });
+        const statusUrl = `${this.apiBase}/api/v1/get-payment-status/${encodeURIComponent(trackId)}`;
+        const upaymentsFetchTimeoutMs = Number(process.env.PAYMENTS_UPAYMENTS_TIMEOUT_MS?.trim() || '60000');
+        let res;
+        try {
+            res = await fetch(statusUrl, {
+                method: 'GET',
+                signal: AbortSignal.timeout(Number.isFinite(upaymentsFetchTimeoutMs) && upaymentsFetchTimeoutMs > 0
+                    ? upaymentsFetchTimeoutMs
+                    : 60_000),
+                headers: {
+                    Accept: 'application/json',
+                    Authorization: `Bearer ${this.apiKey}`,
+                },
+            });
+        }
+        catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            this.logger.error(`UPayments get-payment-status fetch failed: ${msg}`);
+            return { ok: false, data: {}, raw: { fetchError: msg } };
+        }
         const text = await res.text();
         let json;
         try {
