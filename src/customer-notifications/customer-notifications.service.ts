@@ -58,6 +58,40 @@ function normalizeMoatmtAccessToken(raw: string | undefined): string {
 /**
  * Log-safe copy of the JSON body: never print full `access_token` or full `instance_id`.
  */
+/**
+ * Moatmt docs: send `access_token` + `instance_id` in the POST URL (query) *and* in the JSON
+ * body (snake_case) for maximum compatibility with their gateway.
+ */
+function moatmtUrlWithAuthQuery(
+  pathUrl: string,
+  accessToken: string,
+  instanceId: string,
+): string {
+  const u = new URL(pathUrl);
+  u.searchParams.set('access_token', accessToken);
+  u.searchParams.set('instance_id', instanceId);
+  return u.toString();
+}
+
+function redactMoatmtUrlForLog(u: string): string {
+  try {
+    const url = new URL(u);
+    if (url.searchParams.has('access_token')) {
+      url.searchParams.set('access_token', '***');
+    }
+    if (url.searchParams.has('instance_id')) {
+      const id = url.searchParams.get('instance_id') ?? '';
+      url.searchParams.set(
+        'instance_id',
+        id.length <= 6 ? '***' : `${id.slice(0, 2)}…${id.slice(-2)}(len${id.length})`,
+      );
+    }
+    return url.toString();
+  } catch {
+    return u;
+  }
+}
+
 function redactMoatmtPayloadForLog(
   body: Record<string, string>,
 ): string {
@@ -514,8 +548,18 @@ export class CustomerNotificationsService implements OnModuleInit {
     kind: 'text' | 'media',
   ): Promise<boolean> {
     const to965 = body.number;
+    const omitQuery =
+      process.env.MOATMT_OMIT_QUERY_AUTH?.trim() === '1' ||
+      process.env.MOATMT_OMIT_QUERY_AUTH?.trim() === 'true';
+    const finalUrl = omitQuery
+      ? url
+      : moatmtUrlWithAuthQuery(
+          url,
+          body.access_token,
+          body.instance_id,
+        );
     this.logger.log(
-      `[Moatmt] request → ${kind} | url=${url} | to=${mask965ForLog(String(to965))} | ` +
+      `[Moatmt] request → ${kind} | url=${redactMoatmtUrlForLog(finalUrl)} | to=${mask965ForLog(String(to965))} | ` +
         `body=${redactMoatmtPayloadForLog(body)}`,
     );
     type MoatmtResult = Awaited<
@@ -526,29 +570,35 @@ export class CustomerNotificationsService implements OnModuleInit {
       run: () => Promise<MoatmtResult>;
     }> = [
       {
-        label: 'json+Bearer',
-        run: () => this.moatmpFetch(url, body, { encoding: 'json' }),
+        // Moatmt: snake_case in JSON, Content-Type application/json, token in body + often in query.
+        label: 'json (query+body, Content-Type only)',
+        run: () =>
+          this.moatmpFetch(finalUrl, body, { encoding: 'json-moatmt' }),
+      },
+      {
+        label: 'json (query+body) + Authorization: Bearer',
+        run: () => this.moatmpFetch(finalUrl, body, { encoding: 'json' }),
       },
     ];
     if (process.env.MOATMT_FORCE_FORM?.trim() === '1') {
       attempts.length = 0;
       attempts.push({
         label: 'form (MOATMT_FORCE_FORM=1)',
-        run: () => this.moatmpFetch(url, body, { encoding: 'form' }),
+        run: () => this.moatmpFetch(finalUrl, body, { encoding: 'form' }),
       });
     } else {
       attempts.push(
         {
-          label: 'form-urlencoded (no header)',
-          run: () => this.moatmpFetch(url, body, { encoding: 'form' }),
+          label: 'form-urlencoded (query+body)',
+          run: () => this.moatmpFetch(finalUrl, body, { encoding: 'form' }),
         },
         {
           label: 'form-urlencoded+Bearer',
-          run: () => this.moatmpFetch(url, body, { encoding: 'form-bearer' }),
+          run: () => this.moatmpFetch(finalUrl, body, { encoding: 'form-bearer' }),
         },
         {
-          label: 'json body only (no Bearer)',
-          run: () => this.moatmpFetch(url, body, { encoding: 'json-no-bearer' }),
+          label: 'json body (no query auth, no Bearer)',
+          run: () => this.moatmpFetch(url, body, { encoding: 'json-moatmt' }),
         },
       );
     }
@@ -606,12 +656,18 @@ export class CustomerNotificationsService implements OnModuleInit {
   private async moatmpFetch(
     url: string,
     body: Record<string, string>,
-    opts: { encoding: 'json' | 'form' | 'form-bearer' | 'json-no-bearer' },
+    opts: {
+      encoding: 'json' | 'form' | 'form-bearer' | 'json-moatmt';
+    },
   ): Promise<{ ok: boolean; status: number; text: string; exn?: string }> {
     const accessToken = body.access_token ?? '';
     let headers: Record<string, string> = {};
     let reqBody: string;
-    if (opts.encoding === 'json') {
+    if (opts.encoding === 'json-moatmt') {
+      // Moatmt: only this header for JSON; keys in body are snake_case (access_token, instance_id, …).
+      headers = { 'Content-Type': 'application/json' };
+      reqBody = JSON.stringify(body);
+    } else if (opts.encoding === 'json') {
       headers = {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${accessToken}`,
@@ -624,7 +680,7 @@ export class CustomerNotificationsService implements OnModuleInit {
         p.set(k, v);
       }
       reqBody = p.toString();
-    } else if (opts.encoding === 'form-bearer') {
+    } else {
       headers = {
         'Content-Type': 'application/x-www-form-urlencoded',
         Authorization: `Bearer ${accessToken}`,
@@ -634,9 +690,6 @@ export class CustomerNotificationsService implements OnModuleInit {
         p.set(k, v);
       }
       reqBody = p.toString();
-    } else {
-      headers = { 'Content-Type': 'application/json' };
-      reqBody = JSON.stringify(body);
     }
     try {
       const res = await fetch(url, { method: 'POST', headers, body: reqBody });

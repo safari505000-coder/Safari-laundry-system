@@ -52,6 +52,28 @@ function normalizeMoatmtAccessToken(raw) {
     }
     return t.replace(/^TOKEN\s*=\s*/i, '').trim();
 }
+function moatmtUrlWithAuthQuery(pathUrl, accessToken, instanceId) {
+    const u = new URL(pathUrl);
+    u.searchParams.set('access_token', accessToken);
+    u.searchParams.set('instance_id', instanceId);
+    return u.toString();
+}
+function redactMoatmtUrlForLog(u) {
+    try {
+        const url = new URL(u);
+        if (url.searchParams.has('access_token')) {
+            url.searchParams.set('access_token', '***');
+        }
+        if (url.searchParams.has('instance_id')) {
+            const id = url.searchParams.get('instance_id') ?? '';
+            url.searchParams.set('instance_id', id.length <= 6 ? '***' : `${id.slice(0, 2)}…${id.slice(-2)}(len${id.length})`);
+        }
+        return url.toString();
+    }
+    catch {
+        return u;
+    }
+}
 function redactMoatmtPayloadForLog(body) {
     const o = { ...body };
     if (o.access_token) {
@@ -335,31 +357,40 @@ let CustomerNotificationsService = class CustomerNotificationsService {
     }
     async moatmpPostOne(url, body, kind) {
         const to965 = body.number;
-        this.logger.log(`[Moatmt] request → ${kind} | url=${url} | to=${mask965ForLog(String(to965))} | ` +
+        const omitQuery = process.env.MOATMT_OMIT_QUERY_AUTH?.trim() === '1' ||
+            process.env.MOATMT_OMIT_QUERY_AUTH?.trim() === 'true';
+        const finalUrl = omitQuery
+            ? url
+            : moatmtUrlWithAuthQuery(url, body.access_token, body.instance_id);
+        this.logger.log(`[Moatmt] request → ${kind} | url=${redactMoatmtUrlForLog(finalUrl)} | to=${mask965ForLog(String(to965))} | ` +
             `body=${redactMoatmtPayloadForLog(body)}`);
         const attempts = [
             {
-                label: 'json+Bearer',
-                run: () => this.moatmpFetch(url, body, { encoding: 'json' }),
+                label: 'json (query+body, Content-Type only)',
+                run: () => this.moatmpFetch(finalUrl, body, { encoding: 'json-moatmt' }),
+            },
+            {
+                label: 'json (query+body) + Authorization: Bearer',
+                run: () => this.moatmpFetch(finalUrl, body, { encoding: 'json' }),
             },
         ];
         if (process.env.MOATMT_FORCE_FORM?.trim() === '1') {
             attempts.length = 0;
             attempts.push({
                 label: 'form (MOATMT_FORCE_FORM=1)',
-                run: () => this.moatmpFetch(url, body, { encoding: 'form' }),
+                run: () => this.moatmpFetch(finalUrl, body, { encoding: 'form' }),
             });
         }
         else {
             attempts.push({
-                label: 'form-urlencoded (no header)',
-                run: () => this.moatmpFetch(url, body, { encoding: 'form' }),
+                label: 'form-urlencoded (query+body)',
+                run: () => this.moatmpFetch(finalUrl, body, { encoding: 'form' }),
             }, {
                 label: 'form-urlencoded+Bearer',
-                run: () => this.moatmpFetch(url, body, { encoding: 'form-bearer' }),
+                run: () => this.moatmpFetch(finalUrl, body, { encoding: 'form-bearer' }),
             }, {
-                label: 'json body only (no Bearer)',
-                run: () => this.moatmpFetch(url, body, { encoding: 'json-no-bearer' }),
+                label: 'json body (no query auth, no Bearer)',
+                run: () => this.moatmpFetch(url, body, { encoding: 'json-moatmt' }),
             });
         }
         for (let i = 0; i < attempts.length; i++) {
@@ -398,7 +429,11 @@ let CustomerNotificationsService = class CustomerNotificationsService {
         const accessToken = body.access_token ?? '';
         let headers = {};
         let reqBody;
-        if (opts.encoding === 'json') {
+        if (opts.encoding === 'json-moatmt') {
+            headers = { 'Content-Type': 'application/json' };
+            reqBody = JSON.stringify(body);
+        }
+        else if (opts.encoding === 'json') {
             headers = {
                 'Content-Type': 'application/json',
                 Authorization: `Bearer ${accessToken}`,
@@ -413,7 +448,7 @@ let CustomerNotificationsService = class CustomerNotificationsService {
             }
             reqBody = p.toString();
         }
-        else if (opts.encoding === 'form-bearer') {
+        else {
             headers = {
                 'Content-Type': 'application/x-www-form-urlencoded',
                 Authorization: `Bearer ${accessToken}`,
@@ -423,10 +458,6 @@ let CustomerNotificationsService = class CustomerNotificationsService {
                 p.set(k, v);
             }
             reqBody = p.toString();
-        }
-        else {
-            headers = { 'Content-Type': 'application/json' };
-            reqBody = JSON.stringify(body);
         }
         try {
             const res = await fetch(url, { method: 'POST', headers, body: reqBody });
