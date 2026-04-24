@@ -10,6 +10,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.CustomerNotificationsService = void 0;
 const common_1 = require("@nestjs/common");
 const branding_1 = require("../common/constants/branding");
+const kuwait_customer_phone_1 = require("../common/validation/kuwait-customer-phone");
 function buildInvoiceIssuedMessage(params) {
     const lines = [];
     lines.push('حياك الله! 🌿');
@@ -65,22 +66,6 @@ function buildInvoiceEditedIssuerMessage(params) {
     lines.push('');
     lines.push(`فريق ${branding_1.BRAND_SYSTEM_AR} 🇰🇼`);
     return lines.join('\n');
-}
-function kuwaitPhoneDigitsForWhatsApp(phone) {
-    const d = phone.replace(/[\s\-+]/g, '');
-    if (d.length === 8 && /^[569]\d{7}$/.test(d)) {
-        return `965${d}`;
-    }
-    if (d.length === 11 && d.startsWith('965') && /^965[569]\d{7}$/.test(d)) {
-        return d;
-    }
-    if (d.length === 12 && d.startsWith('00965') && /^00965[569]\d{7}$/.test(d)) {
-        return d.slice(2);
-    }
-    if (d.length > 0 && d.startsWith('965') && d.length >= 11) {
-        return d;
-    }
-    return null;
 }
 let CustomerNotificationsService = CustomerNotificationsService_1 = class CustomerNotificationsService {
     logger = new common_1.Logger(CustomerNotificationsService_1.name);
@@ -188,9 +173,14 @@ let CustomerNotificationsService = CustomerNotificationsService_1 = class Custom
         if (!accessToken || !instanceId) {
             return false;
         }
-        const number = kuwaitPhoneDigitsForWhatsApp(rawPhone);
-        if (!number) {
+        const digits = (0, kuwait_customer_phone_1.kuwaitPhoneDigitsForMoatmt)(rawPhone);
+        if (!digits) {
             this.logger.warn(`Moatmt send skipped: could not parse Kuwait mobile from value ending …${rawPhone.slice(-4)}`);
+            return false;
+        }
+        const numberInt = Number(digits);
+        if (!Number.isFinite(numberInt) || numberInt < 1e7) {
+            this.logger.warn(`Moatmt send skipped: invalid number digits from phone`);
             return false;
         }
         const base = (process.env.MOATMT_API_BASE_URL?.trim() || 'https://moatmt.sa/api').replace(/\/$/, '');
@@ -200,7 +190,7 @@ let CustomerNotificationsService = CustomerNotificationsService_1 = class Custom
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    number,
+                    number: numberInt,
                     type: 'text',
                     message,
                     instance_id: instanceId,

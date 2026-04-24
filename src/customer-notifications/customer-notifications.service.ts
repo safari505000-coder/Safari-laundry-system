@@ -3,6 +3,7 @@ import {
   BRAND_CUSTOMER_AR,
   BRAND_SYSTEM_AR,
 } from '../common/constants/branding';
+import { kuwaitPhoneDigitsForMoatmt } from '../common/validation/kuwait-customer-phone';
 
 export type InvoiceIssuedNotifyParams = {
   customerPhone: string;
@@ -115,24 +116,6 @@ function buildInvoiceEditedIssuerMessage(params: {
   lines.push('');
   lines.push(`فريق ${BRAND_SYSTEM_AR} 🇰🇼`);
   return lines.join('\n');
-}
-
-/** Digits only for API `number` (Moatmt expects Kuwait mobile as 965 + 8 digits). */
-function kuwaitPhoneDigitsForWhatsApp(phone: string): string | null {
-  const d = phone.replace(/[\s\-+]/g, '');
-  if (d.length === 8 && /^[569]\d{7}$/.test(d)) {
-    return `965${d}`;
-  }
-  if (d.length === 11 && d.startsWith('965') && /^965[569]\d{7}$/.test(d)) {
-    return d;
-  }
-  if (d.length === 12 && d.startsWith('00965') && /^00965[569]\d{7}$/.test(d)) {
-    return d.slice(2);
-  }
-  if (d.length > 0 && d.startsWith('965') && d.length >= 11) {
-    return d;
-  }
-  return null;
 }
 
 @Injectable()
@@ -298,11 +281,17 @@ export class CustomerNotificationsService implements OnModuleInit {
     if (!accessToken || !instanceId) {
       return false;
     }
-    const number = kuwaitPhoneDigitsForWhatsApp(rawPhone);
-    if (!number) {
+    const digits = kuwaitPhoneDigitsForMoatmt(rawPhone);
+    if (!digits) {
       this.logger.warn(
         `Moatmt send skipped: could not parse Kuwait mobile from value ending …${rawPhone.slice(-4)}`,
       );
+      return false;
+    }
+    // Moatmt docs: `number` is int (e.g. 965XXXXXXXX). Sending a string can fail validation.
+    const numberInt = Number(digits);
+    if (!Number.isFinite(numberInt) || numberInt < 1e7) {
+      this.logger.warn(`Moatmt send skipped: invalid number digits from phone`);
       return false;
     }
     const base = (
@@ -314,7 +303,7 @@ export class CustomerNotificationsService implements OnModuleInit {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          number,
+          number: numberInt,
           type: 'text',
           message,
           instance_id: instanceId,

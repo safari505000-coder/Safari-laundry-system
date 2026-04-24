@@ -22,6 +22,7 @@ import { PaymentsService } from '../common/services/payments.service';
 import { CustomerNotificationsService } from '../customer-notifications/customer-notifications.service';
 import { CustomerLedgerService } from '../customer-ledger/customer-ledger.service';
 import { cashStatusForPaymentMethod } from '../common/utils/cash-status-for-method';
+import { resolveCustomerPhoneForNotify } from '../common/validation/kuwait-customer-phone';
 import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
 import { parseFixed4ToMinor, toMinorFromFixed4 } from '../finance/finance-money';
 import { InventoryService } from '../inventory/inventory.service';
@@ -191,10 +192,11 @@ export class OrdersService {
     detail: PosCheckoutOrderDetail,
     phoneCompact: string,
   ): Promise<void> {
-    const phone =
-      detail.customer.phone?.trim() ||
-      detail.customer.phone2?.trim() ||
-      phoneCompact;
+    const phone = resolveCustomerPhoneForNotify(
+      detail.customer.phone,
+      detail.customer.phone2,
+      phoneCompact,
+    );
     const inv = detail.invoiceNumber?.trim() || `#${detail.id.slice(0, 8)}`;
     const amt = detail.totalPrice.toFixed(4);
     let invoiceShareUrl: string | undefined;
@@ -642,10 +644,11 @@ export class OrdersService {
         detail.posPaymentMethod === PosPaymentMethod.ONLINE &&
         detail.status === OrderStatus.PENDING
       ) {
-        const phone =
-          detail.customer.phone?.trim() ||
-          detail.customer.phone2?.trim() ||
-          phoneCompact;
+        const phone = resolveCustomerPhoneForNotify(
+          detail.customer.phone,
+          detail.customer.phone2,
+          phoneCompact,
+        );
         const paymentLink = await this.paymentsService.createPaymentLink({
           orderId: detail.id,
           amount: detail.totalPrice,
@@ -799,10 +802,11 @@ export class OrdersService {
       throw new BadRequestException('Bundle orders missing after checkout');
     }
 
-    const phone =
-      orders[0].customer.phone?.trim() ||
-      orders[0].customer.phone2?.trim() ||
-      phoneCompact;
+    const phone = resolveCustomerPhoneForNotify(
+      orders[0].customer.phone,
+      orders[0].customer.phone2,
+      phoneCompact,
+    );
 
     const paymentLink = await this.paymentsService.createPaymentLink({
       orderId: bundleId,

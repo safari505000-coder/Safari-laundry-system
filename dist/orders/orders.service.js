@@ -18,6 +18,7 @@ const payments_service_1 = require("../common/services/payments.service");
 const customer_notifications_service_1 = require("../customer-notifications/customer-notifications.service");
 const customer_ledger_service_1 = require("../customer-ledger/customer-ledger.service");
 const cash_status_for_method_1 = require("../common/utils/cash-status-for-method");
+const kuwait_customer_phone_1 = require("../common/validation/kuwait-customer-phone");
 const general_ledger_service_1 = require("../general-ledger/general-ledger.service");
 const finance_money_1 = require("../finance/finance-money");
 const inventory_service_1 = require("../inventory/inventory.service");
@@ -115,9 +116,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
         return shareUrl;
     }
     async posInvoiceNotifyToCustomer(detail, phoneCompact) {
-        const phone = detail.customer.phone?.trim() ||
-            detail.customer.phone2?.trim() ||
-            phoneCompact;
+        const phone = (0, kuwait_customer_phone_1.resolveCustomerPhoneForNotify)(detail.customer.phone, detail.customer.phone2, phoneCompact);
         const inv = detail.invoiceNumber?.trim() || `#${detail.id.slice(0, 8)}`;
         const amt = detail.totalPrice.toFixed(4);
         let invoiceShareUrl;
@@ -413,9 +412,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
             });
             if (detail.posPaymentMethod === client_1.PosPaymentMethod.ONLINE &&
                 detail.status === client_1.OrderStatus.PENDING) {
-                const phone = detail.customer.phone?.trim() ||
-                    detail.customer.phone2?.trim() ||
-                    phoneCompact;
+                const phone = (0, kuwait_customer_phone_1.resolveCustomerPhoneForNotify)(detail.customer.phone, detail.customer.phone2, phoneCompact);
                 const paymentLink = await this.paymentsService.createPaymentLink({
                     orderId: detail.id,
                     amount: detail.totalPrice,
@@ -518,9 +515,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
         if (orders.length === 0) {
             throw new common_1.BadRequestException('Bundle orders missing after checkout');
         }
-        const phone = orders[0].customer.phone?.trim() ||
-            orders[0].customer.phone2?.trim() ||
-            phoneCompact;
+        const phone = (0, kuwait_customer_phone_1.resolveCustomerPhoneForNotify)(orders[0].customer.phone, orders[0].customer.phone2, phoneCompact);
         const paymentLink = await this.paymentsService.createPaymentLink({
             orderId: bundleId,
             amount: sumDecimal,
