@@ -31,4 +31,6 @@ export declare class CustomerNotificationsService implements OnModuleInit {
     private buildMoatmtIssuerEditMediaPayload;
     private buildMoatmtMediaCaptionForInvoice;
     private trySendMoatmt;
+    private moatmpPostOne;
+    private moatmpResponseLooksLikeError;
 }

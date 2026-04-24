@@ -352,7 +352,8 @@ export class CustomerNotificationsService implements OnModuleInit {
 
   /**
    * Moatmt POST /api/send — `MOATMT_ACCESS_TOKEN` + `MOATMT_INSTANCE_ID` set.
-   * `number` as string, e.g. `"965XXXXXXXX"`. `media` → type `media` + `media_url` + `filename`.
+   * `number` as string, e.g. `"965XXXXXXXX"`. Optional `media` first; on failure
+   * we **fall back to text** (share URLs are often HTML, not a fetchable file).
    */
   private async trySendMoatmt(
     rawPhone: string,
@@ -375,43 +376,91 @@ export class CustomerNotificationsService implements OnModuleInit {
       process.env.MOATMT_API_BASE_URL?.trim() || 'https://moatmt.sa/api'
     ).replace(/\/$/, '');
     const url = `${base}/send`;
-    const body = media
-      ? {
-          number: digits,
-          type: 'media' as const,
-          message: media.caption,
-          media_url: media.mediaUrl,
-          filename: media.filename,
-          instance_id: instanceId,
-          access_token: accessToken,
-        }
-      : {
-          number: digits,
-          type: 'text' as const,
-          message: textMessage,
-          instance_id: instanceId,
-          access_token: accessToken,
-        };
+
+    if (media) {
+      const mediaBody = {
+        number: digits,
+        type: 'media' as const,
+        message: media.caption,
+        media_url: media.mediaUrl,
+        filename: media.filename,
+        instance_id: instanceId,
+        access_token: accessToken,
+      };
+      if (await this.moatmpPostOne(url, mediaBody, rawPhone, 'media')) {
+        return true;
+      }
+      this.logger.warn(
+        'Moatmt: media send failed; falling back to type=text (full invoice message).',
+      );
+    }
+
+    const textBody = {
+      number: digits,
+      type: 'text' as const,
+      message: textMessage,
+      instance_id: instanceId,
+      access_token: accessToken,
+    };
+    return this.moatmpPostOne(url, textBody, rawPhone, 'text');
+  }
+
+  private async moatmpPostOne(
+    url: string,
+    body: Record<string, string>,
+    rawPhone: string,
+    kind: 'text' | 'media',
+  ): Promise<boolean> {
     try {
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
+      const responseText = await res.text();
       if (!res.ok) {
-        const errText = await res.text();
         this.logger.warn(
-          `Moatmt POST /send ${res.status}: ${errText.slice(0, 200)}`,
+          `Moatmt POST /send ${res.status} [${kind}]: ${responseText.slice(0, 500)}`,
         );
         return false;
       }
-      this.logger.log(
-        `Moatmt sent (${body.type}) to …${rawPhone.slice(-4)}`,
-      );
+      if (this.moatmpResponseLooksLikeError(responseText)) {
+        this.logger.warn(
+          `Moatmt error in body [${kind}]: ${responseText.slice(0, 500)}`,
+        );
+        return false;
+      }
+      this.logger.log(`Moatmt OK [${kind}] to …${rawPhone.slice(-4)}`);
       return true;
     } catch (e) {
-      this.logger.warn(`Moatmt request failed: ${e}`);
+      this.logger.warn(`Moatmt request failed [${kind}]: ${e}`);
       return false;
     }
+  }
+
+  /**
+   * Some providers return HTTP 200 with { error } or success: false in JSON.
+   */
+  private moatmpResponseLooksLikeError(responseText: string): boolean {
+    const t = responseText.trim();
+    if (!t) {
+      return false;
+    }
+    try {
+      const j = JSON.parse(t) as Record<string, unknown>;
+      if (j.error != null) {
+        return true;
+      }
+      if (j.success === false) {
+        return true;
+      }
+      if (typeof j.status === 'string' && /fail|error/i.test(j.status)) {
+        return true;
+      }
+    } catch {
+      /* not JSON or partial */
+    }
+    const lower = t.toLowerCase();
+    return /"error"\s*:|success\s*:\s*false|فشل|invalid/i.test(lower);
   }
 }

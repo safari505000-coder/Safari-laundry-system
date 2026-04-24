@@ -230,8 +230,8 @@ let CustomerNotificationsService = CustomerNotificationsService_1 = class Custom
         }
         const base = (process.env.MOATMT_API_BASE_URL?.trim() || 'https://moatmt.sa/api').replace(/\/$/, '');
         const url = `${base}/send`;
-        const body = media
-            ? {
+        if (media) {
+            const mediaBody = {
                 number: digits,
                 type: 'media',
                 message: media.caption,
@@ -239,32 +239,66 @@ let CustomerNotificationsService = CustomerNotificationsService_1 = class Custom
                 filename: media.filename,
                 instance_id: instanceId,
                 access_token: accessToken,
-            }
-            : {
-                number: digits,
-                type: 'text',
-                message: textMessage,
-                instance_id: instanceId,
-                access_token: accessToken,
             };
+            if (await this.moatmpPostOne(url, mediaBody, rawPhone, 'media')) {
+                return true;
+            }
+            this.logger.warn('Moatmt: media send failed; falling back to type=text (full invoice message).');
+        }
+        const textBody = {
+            number: digits,
+            type: 'text',
+            message: textMessage,
+            instance_id: instanceId,
+            access_token: accessToken,
+        };
+        return this.moatmpPostOne(url, textBody, rawPhone, 'text');
+    }
+    async moatmpPostOne(url, body, rawPhone, kind) {
         try {
             const res = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body),
             });
+            const responseText = await res.text();
             if (!res.ok) {
-                const errText = await res.text();
-                this.logger.warn(`Moatmt POST /send ${res.status}: ${errText.slice(0, 200)}`);
+                this.logger.warn(`Moatmt POST /send ${res.status} [${kind}]: ${responseText.slice(0, 500)}`);
                 return false;
             }
-            this.logger.log(`Moatmt sent (${body.type}) to …${rawPhone.slice(-4)}`);
+            if (this.moatmpResponseLooksLikeError(responseText)) {
+                this.logger.warn(`Moatmt error in body [${kind}]: ${responseText.slice(0, 500)}`);
+                return false;
+            }
+            this.logger.log(`Moatmt OK [${kind}] to …${rawPhone.slice(-4)}`);
             return true;
         }
         catch (e) {
-            this.logger.warn(`Moatmt request failed: ${e}`);
+            this.logger.warn(`Moatmt request failed [${kind}]: ${e}`);
             return false;
         }
+    }
+    moatmpResponseLooksLikeError(responseText) {
+        const t = responseText.trim();
+        if (!t) {
+            return false;
+        }
+        try {
+            const j = JSON.parse(t);
+            if (j.error != null) {
+                return true;
+            }
+            if (j.success === false) {
+                return true;
+            }
+            if (typeof j.status === 'string' && /fail|error/i.test(j.status)) {
+                return true;
+            }
+        }
+        catch {
+        }
+        const lower = t.toLowerCase();
+        return /"error"\s*:|success\s*:\s*false|فشل|invalid/i.test(lower);
     }
 };
 exports.CustomerNotificationsService = CustomerNotificationsService;
