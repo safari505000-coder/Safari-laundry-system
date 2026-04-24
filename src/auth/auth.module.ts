@@ -5,6 +5,7 @@ import { PassportModule } from '@nestjs/passport';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { FinanceModule } from '../finance/finance.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { OperatingHoursModule } from '../system/operating-hours.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { BcryptService } from './bcrypt.service';
@@ -16,6 +17,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
   imports: [
     PrismaModule,
     FinanceModule,
+    OperatingHoursModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.register({
       secret:

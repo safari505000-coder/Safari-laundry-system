@@ -9,6 +9,7 @@ import * as crypto from 'node:crypto';
 import { FinanceService } from '../finance/finance.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { kuwaitHour } from '../common/time/kuwait-time';
+import { OperatingHoursService } from '../system/operating-hours.service';
 import { BcryptService } from './bcrypt.service';
 import { LoginDto } from './dto/login.dto';
 import { LoginResponseDto } from './dto/login-response.dto';
@@ -67,6 +68,7 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly financeService: FinanceService,
     private readonly bcryptService: BcryptService,
+    private readonly operatingHours: OperatingHoursService,
   ) {}
 
   async login(dto: LoginDto): Promise<LoginResponseDto> {
@@ -89,7 +91,7 @@ export class AuthService {
     if (!INSTITUTIONAL_ROLES.includes(roleName)) {
       throw new UnauthorizedException('Account role is not authorized');
     }
-    if (FIELD_OPERATOR_ROLES.includes(roleName)) {
+    if (FIELD_OPERATOR_ROLES.includes(roleName) && this.operatingHours.isLockEnabled()) {
       const hour = kuwaitHour(new Date());
       const bypass = isWorkingHoursBypassed();
       if (hour < FIELD_OPERATOR_WINDOW_START_HOUR && !bypass) {

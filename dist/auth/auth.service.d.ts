@@ -1,6 +1,7 @@
 import { JwtService } from '@nestjs/jwt';
 import { FinanceService } from '../finance/finance.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { OperatingHoursService } from '../system/operating-hours.service';
 import { BcryptService } from './bcrypt.service';
 import { LoginDto } from './dto/login.dto';
 import { LoginResponseDto } from './dto/login-response.dto';
@@ -10,8 +11,9 @@ export declare class AuthService {
     private readonly jwt;
     private readonly financeService;
     private readonly bcryptService;
+    private readonly operatingHours;
     private readonly logger;
-    constructor(prisma: PrismaService, jwt: JwtService, financeService: FinanceService, bcryptService: BcryptService);
+    constructor(prisma: PrismaService, jwt: JwtService, financeService: FinanceService, bcryptService: BcryptService, operatingHours: OperatingHoursService);
     login(dto: LoginDto): Promise<LoginResponseDto>;
     refreshAccessToken(rawToken: string): Promise<RefreshTokenResponseDto>;
     revokeRefreshToken(rawToken: string): Promise<void>;

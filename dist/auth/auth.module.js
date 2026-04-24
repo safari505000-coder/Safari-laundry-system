@@ -14,6 +14,7 @@ const passport_1 = require("@nestjs/passport");
 const throttler_1 = require("@nestjs/throttler");
 const finance_module_1 = require("../finance/finance.module");
 const prisma_module_1 = require("../prisma/prisma.module");
+const operating_hours_module_1 = require("../system/operating-hours.module");
 const auth_controller_1 = require("./auth.controller");
 const auth_service_1 = require("./auth.service");
 const bcrypt_service_1 = require("./bcrypt.service");
@@ -28,6 +29,7 @@ exports.AuthModule = AuthModule = __decorate([
         imports: [
             prisma_module_1.PrismaModule,
             finance_module_1.FinanceModule,
+            operating_hours_module_1.OperatingHoursModule,
             passport_1.PassportModule.register({ defaultStrategy: 'jwt' }),
             jwt_1.JwtModule.register({
                 secret: process.env.JWT_SECRET ?? 'safari-dev-jwt-secret-change-in-production',

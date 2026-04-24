@@ -51,6 +51,7 @@ const crypto = __importStar(require("node:crypto"));
 const finance_service_1 = require("../finance/finance.service");
 const prisma_service_1 = require("../prisma/prisma.service");
 const kuwait_time_1 = require("../common/time/kuwait-time");
+const operating_hours_service_1 = require("../system/operating-hours.service");
 const bcrypt_service_1 = require("./bcrypt.service");
 const INSTITUTIONAL_ROLES = [
     client_1.SafariRole.OWNER,
@@ -87,12 +88,14 @@ let AuthService = AuthService_1 = class AuthService {
     jwt;
     financeService;
     bcryptService;
+    operatingHours;
     logger = new common_1.Logger(AuthService_1.name);
-    constructor(prisma, jwt, financeService, bcryptService) {
+    constructor(prisma, jwt, financeService, bcryptService, operatingHours) {
         this.prisma = prisma;
         this.jwt = jwt;
         this.financeService = financeService;
         this.bcryptService = bcryptService;
+        this.operatingHours = operatingHours;
     }
     async login(dto) {
         const username = dto.username.trim();
@@ -114,7 +117,7 @@ let AuthService = AuthService_1 = class AuthService {
         if (!INSTITUTIONAL_ROLES.includes(roleName)) {
             throw new common_1.UnauthorizedException('Account role is not authorized');
         }
-        if (FIELD_OPERATOR_ROLES.includes(roleName)) {
+        if (FIELD_OPERATOR_ROLES.includes(roleName) && this.operatingHours.isLockEnabled()) {
             const hour = (0, kuwait_time_1.kuwaitHour)(new Date());
             const bypass = isWorkingHoursBypassed();
             if (hour < FIELD_OPERATOR_WINDOW_START_HOUR && !bypass) {
@@ -265,6 +268,7 @@ exports.AuthService = AuthService = AuthService_1 = __decorate([
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
         jwt_1.JwtService,
         finance_service_1.FinanceService,
-        bcrypt_service_1.BcryptService])
+        bcrypt_service_1.BcryptService,
+        operating_hours_service_1.OperatingHoursService])
 ], AuthService);
 //# sourceMappingURL=auth.service.js.map
