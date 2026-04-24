@@ -12,9 +12,10 @@ const KUWAIT_TZ = 'Asia/Kuwait';
 const KUWAIT_OFFSET_MIN = 180;
 let OperatingHoursService = class OperatingHoursService {
     isLockEnabled() {
-        const v = process.env.OPERATING_HOURS_LOCK_ENABLED;
-        if (v === 'false' || v === '0')
+        const v = (process.env.OPERATING_HOURS_LOCK_ENABLED ?? '').trim().toLowerCase();
+        if (v === 'false' || v === '0' || v === 'off' || v === 'no') {
             return false;
+        }
         return true;
     }
     getKuwaitClockMinutes() {

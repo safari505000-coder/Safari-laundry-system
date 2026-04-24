@@ -7,8 +7,11 @@ const KUWAIT_OFFSET_MIN = 180; // UTC+03:00, no DST.
 @Injectable()
 export class OperatingHoursService {
   isLockEnabled(): boolean {
-    const v = process.env.OPERATING_HOURS_LOCK_ENABLED;
-    if (v === 'false' || v === '0') return false;
+    const v = (process.env.OPERATING_HOURS_LOCK_ENABLED ?? '').trim().toLowerCase();
+    // false | 0 | off | no — anything else (including unset) = lock on
+    if (v === 'false' || v === '0' || v === 'off' || v === 'no') {
+      return false;
+    }
     return true;
   }
 
