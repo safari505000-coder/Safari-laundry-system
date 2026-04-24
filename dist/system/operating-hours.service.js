@@ -5,12 +5,23 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
     else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
     return c > 3 && r && Object.defineProperty(target, key, r), r;
 };
+var OperatingHoursService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.OperatingHoursService = void 0;
 const common_1 = require("@nestjs/common");
 const KUWAIT_TZ = 'Asia/Kuwait';
 const KUWAIT_OFFSET_MIN = 180;
-let OperatingHoursService = class OperatingHoursService {
+let OperatingHoursService = OperatingHoursService_1 = class OperatingHoursService {
+    logger = new common_1.Logger(OperatingHoursService_1.name);
+    onModuleInit() {
+        if (this.isLockEnabled()) {
+            const w = this.getWindowHours();
+            this.logger.log(`OPERATING_HOURS: lock ON — window ${w.startHour}:00–${w.endHour}:00 Asia/Kuwait; set OPERATING_HOURS_LOCK_ENABLED=false to open 24/7.`);
+        }
+        else {
+            this.logger.log('OPERATING_HOURS: lock OFF — API + driver login ignore business window (re-enable lock when done).');
+        }
+    }
     isLockEnabled() {
         const v = (process.env.OPERATING_HOURS_LOCK_ENABLED ?? '').trim().toLowerCase();
         if (v === 'false' || v === '0' || v === 'off' || v === 'no') {
@@ -53,6 +64,7 @@ let OperatingHoursService = class OperatingHoursService {
         const financialDateIso = `${y}-${m}-${d}`;
         return {
             isOpen: open,
+            lockEnabled: this.isLockEnabled(),
             kuwaitTimeLabel: new Date().toLocaleString('en-GB', {
                 timeZone: KUWAIT_TZ,
                 weekday: 'short',
@@ -74,7 +86,7 @@ let OperatingHoursService = class OperatingHoursService {
     }
 };
 exports.OperatingHoursService = OperatingHoursService;
-exports.OperatingHoursService = OperatingHoursService = __decorate([
+exports.OperatingHoursService = OperatingHoursService = OperatingHoursService_1 = __decorate([
     (0, common_1.Injectable)()
 ], OperatingHoursService);
 //# sourceMappingURL=operating-hours.service.js.map

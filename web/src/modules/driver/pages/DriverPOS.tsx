@@ -127,7 +127,8 @@ export function DriverPOS() {
     maximumFractionDigits: 3,
   });
 
-  if (operating && !operating.isOpen) {
+  const hoursLocked = operating ? (operating.lockEnabled ?? true) : true;
+  if (operating && hoursLocked && !operating.isOpen) {
     return (
       <SystemClosedScreen
         kuwaitTimeLabel={operating.kuwaitTimeLabel}

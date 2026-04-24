@@ -230,6 +230,8 @@ export function postLogin(username: string, password: string) {
 
 export type OperatingStatusPayload = {
   isOpen: boolean;
+  /** false = OPERATING_HOURS_LOCK_ENABLED off; driver/branch not blocked by time. */
+  lockEnabled?: boolean;
   kuwaitTimeLabel: string;
   /** Kuwait date (YYYY-MM-DD) the system considers “active” for financial grouping. */
   financialDateIso: string;

@@ -1,11 +1,26 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 
 const KUWAIT_TZ = 'Asia/Kuwait';
 const KUWAIT_OFFSET_MIN = 180; // UTC+03:00, no DST.
 
 /** Business window: [startHour, endHour) Kuwait time — default 07:00–24:00 (ends at midnight). */
 @Injectable()
-export class OperatingHoursService {
+export class OperatingHoursService implements OnModuleInit {
+  private readonly logger = new Logger(OperatingHoursService.name);
+
+  onModuleInit(): void {
+    if (this.isLockEnabled()) {
+      const w = this.getWindowHours();
+      this.logger.log(
+        `OPERATING_HOURS: lock ON — window ${w.startHour}:00–${w.endHour}:00 Asia/Kuwait; set OPERATING_HOURS_LOCK_ENABLED=false to open 24/7.`,
+      );
+    } else {
+      this.logger.log(
+        'OPERATING_HOURS: lock OFF — API + driver login ignore business window (re-enable lock when done).',
+      );
+    }
+  }
+
   isLockEnabled(): boolean {
     const v = (process.env.OPERATING_HOURS_LOCK_ENABLED ?? '').trim().toLowerCase();
     // false | 0 | off | no — anything else (including unset) = lock on
@@ -67,6 +82,8 @@ export class OperatingHoursService {
     const financialDateIso = `${y}-${m}-${d}`;
     return {
       isOpen: open,
+      /** Mirrors `OPERATING_HOURS_LOCK_ENABLED` for UI; when false, Driver POS should not full-screen "closed". */
+      lockEnabled: this.isLockEnabled(),
       kuwaitTimeLabel: new Date().toLocaleString('en-GB', {
         timeZone: KUWAIT_TZ,
         weekday: 'short',

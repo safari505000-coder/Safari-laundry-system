@@ -1,4 +1,7 @@
-export declare class OperatingHoursService {
+import { OnModuleInit } from '@nestjs/common';
+export declare class OperatingHoursService implements OnModuleInit {
+    private readonly logger;
+    onModuleInit(): void;
     isLockEnabled(): boolean;
     getKuwaitClockMinutes(): number;
     getWindowHours(): {
@@ -8,6 +11,7 @@ export declare class OperatingHoursService {
     isWithinOperatingWindow(): boolean;
     getStatusPayload(): {
         isOpen: boolean;
+        lockEnabled: boolean;
         kuwaitTimeLabel: string;
         financialDateIso: string;
         financialDateLabel: string;

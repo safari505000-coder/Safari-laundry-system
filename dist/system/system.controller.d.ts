@@ -4,6 +4,7 @@ export declare class SystemController {
     constructor(operatingHours: OperatingHoursService);
     operatingStatus(): {
         isOpen: boolean;
+        lockEnabled: boolean;
         kuwaitTimeLabel: string;
         financialDateIso: string;
         financialDateLabel: string;
