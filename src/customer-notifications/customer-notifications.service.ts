@@ -5,6 +5,69 @@ import {
 } from '../common/constants/branding';
 import { parseKuwaitMobile965 } from '../common/validation/kuwait-customer-phone';
 
+const MOATMT_LOG_MAX_BODY = 3000;
+const MOATMT_LOG_MAX_MESSAGE = 400;
+
+function mask965ForLog(digits: string): string {
+  if (!digits || digits.length < 4) {
+    return '(empty)';
+  }
+  if (digits.length <= 7) {
+    return `${digits.slice(0, 2)}****`;
+  }
+  return `${digits.slice(0, 3)}****${digits.slice(-4)}`;
+}
+
+function maskIdForLog(s: string): string {
+  if (!s) {
+    return '(empty)';
+  }
+  if (s.length <= 6) {
+    return '****';
+  }
+  return `${s.slice(0, 2)}…${s.slice(-3)}(len${s.length})`;
+}
+
+function formatPhoneHintForLog(raw: string): string {
+  const t = (raw ?? '').replace(/\s+/g, ' ').trim();
+  if (!t) {
+    return '(empty)';
+  }
+  return `len=${t.length} last4=…${t.replace(/\D/g, '').slice(-4) || '????'}`;
+}
+
+function truncateForMoatmtLog(s: string, max = MOATMT_LOG_MAX_BODY): string {
+  const t = s.trim();
+  if (t.length <= max) {
+    return t;
+  }
+  return `${t.slice(0, max)}…(truncated ${t.length}→${max})`;
+}
+
+/**
+ * Log-safe copy of the JSON body: never print full `access_token` or full `instance_id`.
+ */
+function redactMoatmtPayloadForLog(
+  body: Record<string, string>,
+): string {
+  const o: Record<string, string> = { ...body };
+  if (o.access_token) {
+    const x = o.access_token;
+    o.access_token =
+      x.length <= 8 ? '***' : `${x.slice(0, 4)}…${x.slice(-2)}(len${x.length})`;
+  }
+  if (o.instance_id) {
+    o.instance_id = maskIdForLog(o.instance_id);
+  }
+  if (o.message && o.message.length > MOATMT_LOG_MAX_MESSAGE) {
+    o.message = `${o.message.slice(0, MOATMT_LOG_MAX_MESSAGE)}…(len${o.message.length})`;
+  }
+  if (o.media_url && o.media_url.length > 120) {
+    o.media_url = `${o.media_url.slice(0, 100)}…(len${o.media_url.length})`;
+  }
+  return JSON.stringify(o);
+}
+
 export type InvoiceIssuedNotifyParams = {
   customerPhone: string;
   orderId: string;
@@ -123,18 +186,21 @@ export class CustomerNotificationsService implements OnModuleInit {
   private readonly logger = new Logger(CustomerNotificationsService.name);
 
   onModuleInit(): void {
-    const hasMoatmt =
-      Boolean(process.env.MOATMT_ACCESS_TOKEN?.trim()) &&
-      Boolean(process.env.MOATMT_INSTANCE_ID?.trim());
+    const accessToken = process.env.MOATMT_ACCESS_TOKEN?.trim() ?? '';
+    const instanceId = process.env.MOATMT_INSTANCE_ID?.trim() ?? '';
+    const hasMoatmt = Boolean(accessToken) && Boolean(instanceId);
     const hasHook = Boolean(process.env.CUSTOMER_NOTIFY_WEBHOOK_URL?.trim());
     if (hasMoatmt) {
+      const base = (
+        process.env.MOATMT_API_BASE_URL?.trim() || 'https://moatmt.sa/api'
+      ).replace(/\/$/, '');
       const media =
         process.env.MOATMT_USE_INVOICE_MEDIA?.trim() === 'true' ||
         process.env.MOATMT_USE_INVOICE_MEDIA?.trim() === '1';
       this.logger.log(
-        `Customer notify: Moatmt /send enabled (mode: ${
-          media ? 'text+media when share URL is present' : 'text'
-        }; webhook on failure if CUSTOMER_NOTIFY_WEBHOOK_URL is set).`,
+        `Customer notify: Moatmt enabled → POST ${base}/send | instance_id=${maskIdForLog(instanceId)} (len ${instanceId.length}) | access_token set (len ${accessToken.length}) | mode: ${
+          media ? 'text+media when share URL is present' : 'text only'
+        }; on failure: CUSTOMER_NOTIFY_WEBHOOK_URL if set.`,
       );
     } else if (hasHook) {
       this.logger.log('Customer notify: CUSTOMER_NOTIFY_WEBHOOK_URL is set.');
@@ -368,7 +434,8 @@ export class CustomerNotificationsService implements OnModuleInit {
     const digits = parseKuwaitMobile965(rawPhone);
     if (!digits) {
       this.logger.warn(
-        `Moatmt send skipped: invalid Kuwait mobile (…${rawPhone.slice(-4)})`,
+        `Moatmt send skipped: invalid Kuwait mobile. raw=${formatPhoneHintForLog(rawPhone)}. ` +
+          'Expected: 8 digits (5/6/9…), or +965/965/00965 + 8 digits. Example: 51234567 or 96551234567.',
       );
       return false;
     }
@@ -387,7 +454,7 @@ export class CustomerNotificationsService implements OnModuleInit {
         instance_id: instanceId,
         access_token: accessToken,
       };
-      if (await this.moatmpPostOne(url, mediaBody, rawPhone, 'media')) {
+      if (await this.moatmpPostOne(url, mediaBody, 'media')) {
         return true;
       }
       this.logger.warn(
@@ -402,15 +469,19 @@ export class CustomerNotificationsService implements OnModuleInit {
       instance_id: instanceId,
       access_token: accessToken,
     };
-    return this.moatmpPostOne(url, textBody, rawPhone, 'text');
+    return this.moatmpPostOne(url, textBody, 'text');
   }
 
   private async moatmpPostOne(
     url: string,
     body: Record<string, string>,
-    rawPhone: string,
     kind: 'text' | 'media',
   ): Promise<boolean> {
+    const to965 = body.number;
+    this.logger.log(
+      `[Moatmt] request → ${kind} | url=${url} | to=${mask965ForLog(String(to965))} | ` +
+        `body=${redactMoatmtPayloadForLog(body)}`,
+    );
     try {
       const res = await fetch(url, {
         method: 'POST',
@@ -418,22 +489,31 @@ export class CustomerNotificationsService implements OnModuleInit {
         body: JSON.stringify(body),
       });
       const responseText = await res.text();
+      const snippet = truncateForMoatmtLog(responseText, 3000);
+      this.logger.log(
+        `[Moatmt] response ← http ${res.status} [${kind}] | to=${mask965ForLog(String(to965))} | ` +
+          `raw=${snippet}`,
+      );
       if (!res.ok) {
         this.logger.warn(
-          `Moatmt POST /send ${res.status} [${kind}]: ${responseText.slice(0, 500)}`,
+          `[Moatmt] HTTP error [${kind}]: status=${res.status} body_start=${responseText.slice(0, 500)}`,
         );
         return false;
       }
       if (this.moatmpResponseLooksLikeError(responseText)) {
         this.logger.warn(
-          `Moatmt error in body [${kind}]: ${responseText.slice(0, 500)}`,
+          `[Moatmt] success:false or error in JSON [${kind}]: body_start=${responseText.slice(0, 800)}`,
         );
         return false;
       }
-      this.logger.log(`Moatmt OK [${kind}] to …${rawPhone.slice(-4)}`);
+      this.logger.log(
+        `[Moatmt] send accepted [${kind}] to=${mask965ForLog(String(to965))} (see response raw above).`,
+      );
       return true;
     } catch (e) {
-      this.logger.warn(`Moatmt request failed [${kind}]: ${e}`);
+      this.logger.warn(
+        `[Moatmt] network/exception [${kind}] to=${mask965ForLog(String(to965))}: ${e}`,
+      );
       return false;
     }
   }
