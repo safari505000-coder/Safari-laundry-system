@@ -25,6 +25,7 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
     generalLedger;
     inventory;
     logger = new common_1.Logger(PaymentsService_1.name);
+    prodFirstMockLinkLogged = false;
     apiBase;
     apiKey;
     merchantId;
@@ -78,6 +79,10 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
         if (this.isPublicMockCheckoutAvailable()) {
             const base = (process.env.PUBLIC_API_URL ?? 'http://localhost:3000').replace(/\/$/, '');
             const url = `${base}/api/payments/mock-checkout?orderId=${encodeURIComponent(params.orderId)}`;
+            if (process.env.NODE_ENV === 'production' && !this.prodFirstMockLinkLogged) {
+                this.prodFirstMockLinkLogged = true;
+                this.logger.warn('PAYMENTS: ONLINE order uses mock payment URL — set PAYMENTS_API_BASE_URL and PAYMENTS_API_KEY on the host; unset PAYMENTS_MOCK. (This banner once; each order still logs below.)');
+            }
             this.logger.log(`Mock payment link for ${params.orderId} (set PAYMENTS_API_BASE_URL for UPayments)`);
             return { url, reference: 'mock', trackId: `mock-${params.orderId}` };
         }

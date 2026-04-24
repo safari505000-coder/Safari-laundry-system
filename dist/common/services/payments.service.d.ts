@@ -36,6 +36,7 @@ export declare class PaymentsService implements OnModuleInit {
     private readonly generalLedger;
     private readonly inventory;
     private readonly logger;
+    private prodFirstMockLinkLogged;
     private readonly apiBase;
     private readonly apiKey;
     private readonly merchantId;

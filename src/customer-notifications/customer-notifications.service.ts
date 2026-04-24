@@ -184,6 +184,8 @@ function buildInvoiceEditedIssuerMessage(params: {
 @Injectable()
 export class CustomerNotificationsService implements OnModuleInit {
   private readonly logger = new Logger(CustomerNotificationsService.name);
+  /** One-time: Moatmt env not set. */
+  private static moatmtCredsMissingLogged = false;
 
   onModuleInit(): void {
     const accessToken = process.env.MOATMT_ACCESS_TOKEN?.trim() ?? '';
@@ -296,8 +298,9 @@ export class CustomerNotificationsService implements OnModuleInit {
       return;
     }
 
-    this.logger.log(
-      `[notify] ${params.customerPhone}: ${message.slice(0, 120)}… (set MOATMT_* or CUSTOMER_NOTIFY_WEBHOOK_URL)`,
+    this.logger.warn(
+      `Invoice WhatsApp not sent to customer (check MOATMT_* and CUSTOMER_NOTIFY_WEBHOOK_URL on the server). ` +
+        `phone=${formatPhoneHintForLog(params.customerPhone)} orderId=${params.orderId} text_preview=${message.slice(0, 120)}…`,
     );
   }
 
@@ -344,8 +347,8 @@ export class CustomerNotificationsService implements OnModuleInit {
       return;
     }
 
-    this.logger.log(
-      `[notify issuer] ${params.toPhone}: ${message.slice(0, 120)}… (set MOATMT_* or STAFF_/CUSTOMER_ webhook)`,
+    this.logger.warn(
+      `Issuer WhatsApp not delivered: phone=${formatPhoneHintForLog(params.toPhone)} orderId=${params.orderId} (set MOATMT_* or STAFF_INVOICE_NOTIFY_WEBHOOK_URL / CUSTOMER_NOTIFY_WEBHOOK_URL). preview=${message.slice(0, 100)}…`,
     );
   }
 
@@ -429,6 +432,12 @@ export class CustomerNotificationsService implements OnModuleInit {
     const accessToken = process.env.MOATMT_ACCESS_TOKEN?.trim();
     const instanceId = process.env.MOATMT_INSTANCE_ID?.trim();
     if (!accessToken || !instanceId) {
+      if (!CustomerNotificationsService.moatmtCredsMissingLogged) {
+        CustomerNotificationsService.moatmtCredsMissingLogged = true;
+        this.logger.warn(
+          'Moatmt: MOATMT_INSTANCE_ID and/or MOATMT_ACCESS_TOKEN is empty — no WhatsApp API calls (set both in host env, redeploy).',
+        );
+      }
       return false;
     }
     const digits = parseKuwaitMobile965(rawPhone);

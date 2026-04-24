@@ -58,6 +58,7 @@ type UPaymentsInquiryData = {
 @Injectable()
 export class PaymentsService implements OnModuleInit {
   private readonly logger = new Logger(PaymentsService.name);
+  private prodFirstMockLinkLogged = false;
   private readonly apiBase: string;
   private readonly apiKey: string;
   private readonly merchantId: string;
@@ -145,6 +146,12 @@ export class PaymentsService implements OnModuleInit {
         process.env.PUBLIC_API_URL ?? 'http://localhost:3000'
       ).replace(/\/$/, '');
       const url = `${base}/api/payments/mock-checkout?orderId=${encodeURIComponent(params.orderId)}`;
+      if (process.env.NODE_ENV === 'production' && !this.prodFirstMockLinkLogged) {
+        this.prodFirstMockLinkLogged = true;
+        this.logger.warn(
+          'PAYMENTS: ONLINE order uses mock payment URL — set PAYMENTS_API_BASE_URL and PAYMENTS_API_KEY on the host; unset PAYMENTS_MOCK. (This banner once; each order still logs below.)',
+        );
+      }
       this.logger.log(
         `Mock payment link for ${params.orderId} (set PAYMENTS_API_BASE_URL for UPayments)`,
       );

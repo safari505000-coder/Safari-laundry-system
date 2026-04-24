@@ -119,8 +119,10 @@ function buildInvoiceEditedIssuerMessage(params) {
     lines.push(`فريق ${branding_1.BRAND_SYSTEM_AR} 🇰🇼`);
     return lines.join('\n');
 }
-let CustomerNotificationsService = CustomerNotificationsService_1 = class CustomerNotificationsService {
+let CustomerNotificationsService = class CustomerNotificationsService {
+    static { CustomerNotificationsService_1 = this; }
     logger = new common_1.Logger(CustomerNotificationsService_1.name);
+    static moatmtCredsMissingLogged = false;
     onModuleInit() {
         const accessToken = process.env.MOATMT_ACCESS_TOKEN?.trim() ?? '';
         const instanceId = process.env.MOATMT_INSTANCE_ID?.trim() ?? '';
@@ -189,7 +191,8 @@ let CustomerNotificationsService = CustomerNotificationsService_1 = class Custom
             }
             return;
         }
-        this.logger.log(`[notify] ${params.customerPhone}: ${message.slice(0, 120)}… (set MOATMT_* or CUSTOMER_NOTIFY_WEBHOOK_URL)`);
+        this.logger.warn(`Invoice WhatsApp not sent to customer (check MOATMT_* and CUSTOMER_NOTIFY_WEBHOOK_URL on the server). ` +
+            `phone=${formatPhoneHintForLog(params.customerPhone)} orderId=${params.orderId} text_preview=${message.slice(0, 120)}…`);
     }
     async deliverIssuerEdit(params) {
         const message = buildInvoiceEditedIssuerMessage({
@@ -221,7 +224,7 @@ let CustomerNotificationsService = CustomerNotificationsService_1 = class Custom
             }
             return;
         }
-        this.logger.log(`[notify issuer] ${params.toPhone}: ${message.slice(0, 120)}… (set MOATMT_* or STAFF_/CUSTOMER_ webhook)`);
+        this.logger.warn(`Issuer WhatsApp not delivered: phone=${formatPhoneHintForLog(params.toPhone)} orderId=${params.orderId} (set MOATMT_* or STAFF_INVOICE_NOTIFY_WEBHOOK_URL / CUSTOMER_NOTIFY_WEBHOOK_URL). preview=${message.slice(0, 100)}…`);
     }
     buildMoatmtInvoiceMediaPayload(params) {
         const on = process.env.MOATMT_USE_INVOICE_MEDIA?.trim() === 'true' ||
@@ -275,6 +278,10 @@ let CustomerNotificationsService = CustomerNotificationsService_1 = class Custom
         const accessToken = process.env.MOATMT_ACCESS_TOKEN?.trim();
         const instanceId = process.env.MOATMT_INSTANCE_ID?.trim();
         if (!accessToken || !instanceId) {
+            if (!CustomerNotificationsService_1.moatmtCredsMissingLogged) {
+                CustomerNotificationsService_1.moatmtCredsMissingLogged = true;
+                this.logger.warn('Moatmt: MOATMT_INSTANCE_ID and/or MOATMT_ACCESS_TOKEN is empty — no WhatsApp API calls (set both in host env, redeploy).');
+            }
             return false;
         }
         const digits = (0, kuwait_customer_phone_1.parseKuwaitMobile965)(rawPhone);
