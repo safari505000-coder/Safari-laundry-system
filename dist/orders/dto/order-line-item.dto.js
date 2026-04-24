@@ -50,7 +50,7 @@ __decorate([
     (0, swagger_1.ApiProperty)({ example: 45.25 }),
     (0, class_transformer_1.Type)(() => Number),
     (0, class_validator_1.IsNumber)({ maxDecimalPlaces: 4 }),
-    (0, class_validator_1.IsPositive)(),
+    (0, class_validator_1.Min)(0),
     __metadata("design:type", Number)
 ], OrderLineItemDto.prototype, "unitPrice", void 0);
 __decorate([

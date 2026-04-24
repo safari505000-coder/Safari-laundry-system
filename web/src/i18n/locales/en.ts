@@ -1002,6 +1002,16 @@
       validation: 'Enter name and a valid Kuwait mobile.',
       created: 'Customer saved',
     },
+    serviceModal: {
+      selectAtLeastOne: 'Select at least one service tier (quantity > 0).',
+      manualPriceInvalid: 'Unit price must be greater than zero.',
+      addedToCart: 'Item added to cart',
+      manualUnitPrice: 'Unit price (KWD)',
+      manualUnitPricePlaceholder: 'e.g. 1.500',
+      manualUnitPriceHint:
+        'This item is priced per piece: enter the amount in KWD (manual / zero in tariff).',
+      tierPriceManual: 'Manual',
+    },
     activeCustomer: 'Billing:',
     noName: 'No name',
     cartTitle: 'Current order',

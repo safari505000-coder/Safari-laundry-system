@@ -1003,6 +1003,16 @@ export const ar = {
       validation: 'أدخل الاسم ورقماً جوالاً كويتياً صالحاً.',
       created: 'تم حفظ العميل',
     },
+    serviceModal: {
+      selectAtLeastOne: 'اختر خدمة واحدة على الأقل (كمية أكبر من صفر).',
+      manualPriceInvalid: 'السعر يجب أن يكون أكبر من صفر.',
+      addedToCart: 'تمت إضافة الصنف إلى السلة',
+      manualUnitPrice: 'سعر القطعة (د.ك)',
+      manualUnitPricePlaceholder: 'مثال: 1.500',
+      manualUnitPriceHint:
+        'يُدخل سعر القطعة يدوياً لأن الصنف مسجّل كسعر يدوي أو بقيمة صفر في قائمة الأسعار.',
+      tierPriceManual: 'سعر يدوي',
+    },
     activeCustomer: 'الفاتورة لـ',
     noName: 'بدون اسم',
     cartTitle: 'الطلب الحالي',

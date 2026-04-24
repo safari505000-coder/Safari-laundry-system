@@ -9,6 +9,7 @@ import {
   IsString,
   IsUUID,
   MaxLength,
+  Min,
 } from 'class-validator';
 
 export class OrderLineItemDto {
@@ -33,10 +34,11 @@ export class OrderLineItemDto {
   @IsEnum(StarchOption)
   starchOption?: StarchOption;
 
+  /** May be 0 for free delivery / zero-priced surcharge rows (e.g. attached-invoice trip fee). */
   @ApiProperty({ example: 45.25 })
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 4 })
-  @IsPositive()
+  @Min(0)
   unitPrice: number;
 
   /**

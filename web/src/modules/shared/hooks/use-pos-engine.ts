@@ -324,6 +324,7 @@ export function usePosEngine(opts: PosEngineOptions) {
   const [serviceStyle, setServiceStyle] = useState<'SEEDA' | 'MIRZAAM' | 'MURABAA' | ''>('');
   const [servicePackaging, setServicePackaging] = useState<'SHARSHAF' | 'TASFEET' | ''>('');
   const [serviceItemNote, setServiceItemNote] = useState('');
+  const [serviceManualUnitPrice, setServiceManualUnitPrice] = useState('');
   const [billing, setBilling] = useState<CustomerBillingProfile | null>(null);
   const [billingLoading, setBillingLoading] = useState(false);
   const [posPaymentMethod, setPosPaymentMethod] = useState<
@@ -470,6 +471,7 @@ export function usePosEngine(opts: PosEngineOptions) {
     setServiceStyle('');
     setServicePackaging('');
     setServiceItemNote('');
+    setServiceManualUnitPrice('');
     setServiceOpen(true);
   }
 
@@ -511,8 +513,24 @@ export function usePosEngine(opts: PosEngineOptions) {
       }));
 
     if (selectedLines.length === 0) {
-      toast.error('اختر خدمة واحدة على الأقل');
+      toast.error(t('pos.serviceModal.selectAtLeastOne'));
       return;
+    }
+
+    const parseManualKwd = (raw: string) => {
+      const n = Number.parseFloat(String(raw).replace(/,/g, '').trim());
+      return n;
+    };
+    const manualEntryItem = serviceItem.manualEntry === true;
+    const needsManual =
+      manualEntryItem ||
+      selectedLines.some((l) => l.option.price <= 0);
+    const manualParsed = parseManualKwd(serviceManualUnitPrice);
+    if (needsManual) {
+      if (!Number.isFinite(manualParsed) || manualParsed <= 0) {
+        toast.error(t('pos.serviceModal.manualPriceInvalid'));
+        return;
+      }
     }
 
     const isRedZoneItem = /GHUTRA|SHEMAGH/i.test(serviceItem.code);
@@ -534,6 +552,11 @@ export function usePosEngine(opts: PosEngineOptions) {
         const displayName =
           `${serviceItem.nameAr} - ${line.option.labelAr}${extrasLabel}`;
 
+        const unitPrice =
+          manualEntryItem || line.option.price <= 0 ?
+            manualParsed
+          : line.option.price;
+
         if (existingIndex === -1) {
           next.push({
             lineKey,
@@ -545,7 +568,7 @@ export function usePosEngine(opts: PosEngineOptions) {
             neshaLevel: isRedZoneItem ? serviceNeshaLevel : '0%',
             foldingStyle,
             itemNote: serviceItemNote.trim(),
-            unitPrice: line.option.price,
+            unitPrice,
             quantity: line.quantity,
           });
         } else {
@@ -559,7 +582,7 @@ export function usePosEngine(opts: PosEngineOptions) {
       return orders;
     });
     setServiceOpen(false);
-    toast.success('تمت إضافة الخدمة إلى سلة الأصناف');
+    toast.success(t('pos.serviceModal.addedToCart'));
   }
 
   function resetNewCustomerForm() {
@@ -1097,6 +1120,8 @@ export function usePosEngine(opts: PosEngineOptions) {
     setServicePackaging,
     serviceItemNote,
     setServiceItemNote,
+    serviceManualUnitPrice,
+    setServiceManualUnitPrice,
     billing,
     setBilling,
     billingLoading,

@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Loader2, Minus, Plus } from 'lucide-react';
 import { OrderDetailDialog } from '@/modules/shared/components/orders/order-detail-dialog';
 import { OrderIdBarcode } from '@/modules/shared/components/orders/order-id-barcode';
@@ -33,6 +34,8 @@ export function PosAuxiliaryUi({ p }: { p: PosEngineApi }) {
     setServicePackaging,
     serviceItemNote,
     setServiceItemNote,
+    serviceManualUnitPrice,
+    setServiceManualUnitPrice,
     addServiceSelectionToCart,
     defaultVisual,
     receiptSheets,
@@ -70,6 +73,15 @@ export function PosAuxiliaryUi({ p }: { p: PosEngineApi }) {
       /غترة|شماغ/.test(serviceItem.nameAr || '')
     : false;
 
+  const serviceTierOptions = useMemo(
+    () => (serviceItem ? serviceOptionsForItem(serviceItem) : []),
+    [serviceItem, serviceOptionsForItem],
+  );
+  const showManualPriceField =
+    !!serviceItem &&
+    (serviceItem.manualEntry ||
+      serviceTierOptions.some((o) => o.available && o.price <= 0));
+
   return (
     <>
       <Dialog open={serviceOpen} onOpenChange={setServiceOpen}>
@@ -101,7 +113,11 @@ export function PosAuxiliaryUi({ p }: { p: PosEngineApi }) {
                         {service.labelAr}
                       </div>
                       <div className="text-sm font-bold text-slate-900">
-                        {service.available ? `${service.price.toFixed(3)} ${rtl ? 'د.ك' : 'KWD'}` : '---'}
+                        {service.available ?
+                          serviceItem.manualEntry || service.price <= 0 ?
+                            t('pos.serviceModal.tierPriceManual')
+                          : `${service.price.toFixed(3)} ${rtl ? 'د.ك' : 'KWD'}`
+                        : '---'}
                       </div>
                       <div className="flex items-center gap-2">
                         <Button
@@ -130,6 +146,25 @@ export function PosAuxiliaryUi({ p }: { p: PosEngineApi }) {
                     </div>
                   ))}
                 </div>
+
+                {showManualPriceField && serviceItem ?
+                  <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50/80 p-3">
+                    <Label className="text-sm font-semibold text-slate-900">
+                      {t('pos.serviceModal.manualUnitPrice')}
+                    </Label>
+                    <Input
+                      type="text"
+                      inputMode="decimal"
+                      value={serviceManualUnitPrice}
+                      onChange={(e) => setServiceManualUnitPrice(e.target.value)}
+                      placeholder={t('pos.serviceModal.manualUnitPricePlaceholder')}
+                      className="bg-white font-mono text-base font-semibold tabular-nums"
+                    />
+                    <p className="text-xs text-amber-900/80">
+                      {t('pos.serviceModal.manualUnitPriceHint')}
+                    </p>
+                  </div>
+                : null}
       
                 {isRedZoneItem ? <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
                   <p className="mb-2 text-sm font-semibold text-slate-900">محددات الغترة/الشماغ</p>
