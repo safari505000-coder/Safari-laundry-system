@@ -65,7 +65,7 @@ function buildInvoiceIssuedMessage(params: {
   if (params.paymentUrl) {
     lines.push('');
     lines.push(
-      '📱 رابط الدفع + نسخة الفاتورة تُرسل لجوالكم (SMS) — للدفع من هنا:',
+      '📱 رابط الدفع + نسخة الفاتورة تُرسل لجوالكم (واتساب) — للدفع من هنا:',
     );
     lines.push('🔒 رابط UPayments:');
     lines.push(params.paymentUrl);
@@ -123,31 +123,30 @@ export class CustomerNotificationsService implements OnModuleInit {
   private readonly logger = new Logger(CustomerNotificationsService.name);
 
   onModuleInit(): void {
-    const k = process.env.INFOBIP_API_KEY?.trim();
-    const b = process.env.INFOBIP_BASE_URL?.trim();
-    const f = process.env.INFOBIP_SMS_FROM?.trim();
-    const infobipOk = Boolean(k && b && f);
-    const infobipPartial = Boolean((k || b || f) && !infobipOk);
-    if (infobipOk) {
-      this.logger.log('Customer notify: Infobip SMS is configured.');
-    } else if (infobipPartial) {
-      this.logger.warn(
-        'Customer notify: Infobip incomplete — set INFOBIP_BASE_URL, INFOBIP_API_KEY, and INFOBIP_SMS_FROM together to send SMS.',
-      );
-    }
+    const hasMoatmt =
+      Boolean(process.env.MOATMT_ACCESS_TOKEN?.trim()) &&
+      Boolean(process.env.MOATMT_INSTANCE_ID?.trim());
     const hasHook = Boolean(process.env.CUSTOMER_NOTIFY_WEBHOOK_URL?.trim());
-    if (hasHook) {
+    if (hasMoatmt) {
+      const media =
+        process.env.MOATMT_USE_INVOICE_MEDIA?.trim() === 'true' ||
+        process.env.MOATMT_USE_INVOICE_MEDIA?.trim() === '1';
+      this.logger.log(
+        `Customer notify: Moatmt /send enabled (mode: ${
+          media ? 'text+media when share URL is present' : 'text'
+        }; webhook on failure if CUSTOMER_NOTIFY_WEBHOOK_URL is set).`,
+      );
+    } else if (hasHook) {
       this.logger.log('Customer notify: CUSTOMER_NOTIFY_WEBHOOK_URL is set.');
-    }
-    if (!infobipOk && !hasHook) {
+    } else {
       this.logger.warn(
-        'Customer notify: no Infobip SMS and no CUSTOMER_NOTIFY_WEBHOOK_URL — invoice text only hits logs.',
+        'Customer notify: no MOATMT_INSTANCE_ID+MOATMT_ACCESS_TOKEN and no CUSTOMER_NOTIFY_WEBHOOK_URL — invoice text only hits logs.',
       );
     }
   }
 
   /**
-   * Fire-and-forget SMS + optional webhook — never blocks POS.
+   * Fire-and-forget Moatmt + optional webhook — never blocks POS.
    */
   notifyInvoiceIssued(params: InvoiceIssuedNotifyParams): void {
     setImmediate(() => {
@@ -158,9 +157,8 @@ export class CustomerNotificationsService implements OnModuleInit {
   }
 
   /**
-   * Same as `notifyInvoiceIssued` but awaited — used after **ONLINE** POS
-   * checkout so the payment link + receipt text reach the webhook before
-   * the HTTP response returns to the client.
+   * Awaited after **ONLINE** POS so payment link + text reach Moatmt/webhook
+   * before the HTTP response returns.
    */
   async deliverInvoiceIssuedNow(
     params: InvoiceIssuedNotifyParams,
@@ -200,8 +198,14 @@ export class CustomerNotificationsService implements OnModuleInit {
       detailsLink,
     });
 
-    if (this.isInfobipConfigured()) {
-      await this.trySendInfobipSms(params.customerPhone, message);
+    if (
+      await this.trySendMoatmt(
+        params.customerPhone,
+        message,
+        this.buildMoatmtInvoiceMediaPayload(params),
+      )
+    ) {
+      return;
     }
 
     const webhook = process.env.CUSTOMER_NOTIFY_WEBHOOK_URL?.trim();
@@ -226,11 +230,9 @@ export class CustomerNotificationsService implements OnModuleInit {
       return;
     }
 
-    if (!this.isInfobipConfigured()) {
-      this.logger.log(
-        `[notify] ${params.customerPhone}: ${message.slice(0, 120)}… (set Infobip or CUSTOMER_NOTIFY_WEBHOOK_URL to send)`,
-      );
-    }
+    this.logger.log(
+      `[notify] ${params.customerPhone}: ${message.slice(0, 120)}… (set MOATMT_* or CUSTOMER_NOTIFY_WEBHOOK_URL)`,
+    );
   }
 
   private async deliverIssuerEdit(
@@ -243,8 +245,14 @@ export class CustomerNotificationsService implements OnModuleInit {
       invoiceShareUrl: params.invoiceShareUrl,
     });
 
-    if (this.isInfobipConfigured()) {
-      await this.trySendInfobipSms(params.toPhone, message);
+    if (
+      await this.trySendMoatmt(
+        params.toPhone,
+        message,
+        this.buildMoatmtIssuerEditMediaPayload(params),
+      )
+    ) {
+      return;
     }
 
     const staffWebhook = process.env.STAFF_INVOICE_NOTIFY_WEBHOOK_URL?.trim();
@@ -270,73 +278,139 @@ export class CustomerNotificationsService implements OnModuleInit {
       return;
     }
 
-    if (!this.isInfobipConfigured()) {
-      this.logger.log(
-        `[notify issuer] ${params.toPhone}: ${message.slice(0, 120)}… (set Infobip or STAFF_/CUSTOMER_ webhook)`,
-      );
-    }
-  }
-
-  /** Infobip: base URL, API key, and registered sender (alphanumeric or numeric on your account). */
-  private isInfobipConfigured(): boolean {
-    return (
-      Boolean(process.env.INFOBIP_API_KEY?.trim()) &&
-      Boolean(process.env.INFOBIP_BASE_URL?.trim()) &&
-      Boolean(process.env.INFOBIP_SMS_FROM?.trim())
+    this.logger.log(
+      `[notify issuer] ${params.toPhone}: ${message.slice(0, 120)}… (set MOATMT_* or STAFF_/CUSTOMER_ webhook)`,
     );
   }
 
   /**
-   * Infobip SMS — POST /sms/2/text/advanced, `Authorization: App <api key>`.
-   * `to` is international format without + (e.g. 965XXXXXXXX for Kuwait).
+   * When `MOATMT_USE_INVOICE_MEDIA` is set and a public invoice URL exists,
+   * use `type: "media"` (Moatmp must fetch a direct file URL; a SPA page may not work).
    */
-  private async trySendInfobipSms(
+  private buildMoatmtInvoiceMediaPayload(
+    params: InvoiceIssuedNotifyParams,
+  ): { mediaUrl: string; filename: string; caption: string } | null {
+    const on =
+      process.env.MOATMT_USE_INVOICE_MEDIA?.trim() === 'true' ||
+      process.env.MOATMT_USE_INVOICE_MEDIA?.trim() === '1';
+    if (!on) {
+      return null;
+    }
+    const mediaUrl =
+      params.invoiceShareUrl?.trim() ||
+      params.invoiceShareItems?.[0]?.url?.trim() ||
+      null;
+    if (!mediaUrl) {
+      return null;
+    }
+    const shortId = params.orderId.replace(/-/g, '').slice(0, 8);
+    const filename =
+      process.env.MOATMT_INVOICE_MEDIA_FILENAME?.trim() ||
+      `invoice_${shortId}.png`;
+    return {
+      mediaUrl,
+      filename,
+      caption: this.buildMoatmtMediaCaptionForInvoice({
+        paymentUrl: params.paymentUrl,
+      }),
+    };
+  }
+
+  private buildMoatmtIssuerEditMediaPayload(
+    params: InvoiceEditedIssuerNotifyParams,
+  ): { mediaUrl: string; filename: string; caption: string } | null {
+    const on =
+      process.env.MOATMT_USE_INVOICE_MEDIA?.trim() === 'true' ||
+      process.env.MOATMT_USE_INVOICE_MEDIA?.trim() === '1';
+    if (!on || !params.invoiceShareUrl?.trim()) {
+      return null;
+    }
+    const shortId = params.orderId.replace(/-/g, '').slice(0, 8);
+    const filename =
+      process.env.MOATMT_INVOICE_MEDIA_FILENAME?.trim() ||
+      `invoice_${shortId}.png`;
+    const caption =
+      process.env.MOATMT_EDIT_MEDIA_CAPTION?.trim() ||
+      process.env.MOATMT_MEDIA_CAPTION?.trim() ||
+      'فاتورتك مرفقة 👇';
+    return {
+      mediaUrl: params.invoiceShareUrl,
+      filename,
+      caption,
+    };
+  }
+
+  private buildMoatmtMediaCaptionForInvoice(params: {
+    paymentUrl?: string;
+  }): string {
+    let c = process.env.MOATMT_MEDIA_CAPTION?.trim() || 'فاتورتك مرفقة 👇';
+    if (params.paymentUrl) {
+      c += `\n\n🔒 ${params.paymentUrl}`;
+    }
+    return c;
+  }
+
+  /**
+   * Moatmt POST /api/send — `MOATMT_ACCESS_TOKEN` + `MOATMT_INSTANCE_ID` set.
+   * `number` as string, e.g. `"965XXXXXXXX"`. `media` → type `media` + `media_url` + `filename`.
+   */
+  private async trySendMoatmt(
     rawPhone: string,
-    text: string,
+    textMessage: string,
+    media: { mediaUrl: string; filename: string; caption: string } | null,
   ): Promise<boolean> {
-    const apiKey = process.env.INFOBIP_API_KEY?.trim();
-    const base = process.env.INFOBIP_BASE_URL?.trim();
-    const from = process.env.INFOBIP_SMS_FROM?.trim();
-    if (!apiKey || !base || !from) {
+    const accessToken = process.env.MOATMT_ACCESS_TOKEN?.trim();
+    const instanceId = process.env.MOATMT_INSTANCE_ID?.trim();
+    if (!accessToken || !instanceId) {
       return false;
     }
-    const to = parseKuwaitMobile965(rawPhone);
-    if (!to) {
+    const digits = parseKuwaitMobile965(rawPhone);
+    if (!digits) {
       this.logger.warn(
-        `Infobip SMS skipped: invalid Kuwait mobile (…${rawPhone.slice(-4)})`,
+        `Moatmt send skipped: invalid Kuwait mobile (…${rawPhone.slice(-4)})`,
       );
       return false;
     }
-    const url = `${base.replace(/\/$/, '')}/sms/2/text/advanced`;
+    const base = (
+      process.env.MOATMT_API_BASE_URL?.trim() || 'https://moatmt.sa/api'
+    ).replace(/\/$/, '');
+    const url = `${base}/send`;
+    const body = media
+      ? {
+          number: digits,
+          type: 'media' as const,
+          message: media.caption,
+          media_url: media.mediaUrl,
+          filename: media.filename,
+          instance_id: instanceId,
+          access_token: accessToken,
+        }
+      : {
+          number: digits,
+          type: 'text' as const,
+          message: textMessage,
+          instance_id: instanceId,
+          access_token: accessToken,
+        };
     try {
       const res = await fetch(url, {
         method: 'POST',
-        headers: {
-          Authorization: `App ${apiKey}`,
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
-        body: JSON.stringify({
-          messages: [
-            {
-              from,
-              destinations: [{ to }],
-              text,
-            },
-          ],
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const errText = await res.text();
         this.logger.warn(
-          `Infobip SMS ${res.status}: ${errText.slice(0, 400)}`,
+          `Moatmt POST /send ${res.status}: ${errText.slice(0, 200)}`,
         );
         return false;
       }
-      this.logger.log(`Infobip SMS queued for …${rawPhone.slice(-4)}`);
+      this.logger.log(
+        `Moatmt sent (${body.type}) to …${rawPhone.slice(-4)}`,
+      );
       return true;
     } catch (e) {
-      this.logger.warn(`Infobip SMS request failed: ${e}`);
+      this.logger.warn(`Moatmt request failed: ${e}`);
       return false;
     }
   }

@@ -7,7 +7,7 @@ import { registerDecorator, ValidationOptions } from 'class-validator';
 export const KUWAIT_CUSTOMER_PHONE_PATTERN = /^(\+?965)?[569]\d{7}$/;
 
 /**
- * Kuwait mobile as 965 + 8 digits (5/6/9…), for UPayments / SMS / notify.
+ * Kuwait mobile as 965 + 8 digits (5/6/9…), for UPayments / Moatmt / notify.
  * Returns compact digits string starting with 965, or null.
  */
 export function parseKuwaitMobile965(phone: string): string | null {
