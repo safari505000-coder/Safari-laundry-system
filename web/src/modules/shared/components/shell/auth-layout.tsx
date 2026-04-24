@@ -35,8 +35,12 @@ const DRIVER_PATH_PREFIXES = [
   '/my/debt-transfers/',
 ];
 
+/** V19.26 — same route as `ExecutiveShell` `invoices/:orderId/print` (OrderRow, daily sales). */
+const DRIVER_INVOICE_PRINT_RE = /^\/invoices\/[^/]+\/print$/;
+
 function isDriverAllowedPath(pathname: string): boolean {
   if (DRIVER_EXACT_PATHS.has(pathname)) return true;
+  if (DRIVER_INVOICE_PRINT_RE.test(pathname)) return true;
   return DRIVER_PATH_PREFIXES.some((p) => pathname.startsWith(p));
 }
 
