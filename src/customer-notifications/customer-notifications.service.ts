@@ -56,20 +56,26 @@ function normalizeMoatmtAccessToken(raw: string | undefined): string {
 }
 
 /**
- * Log-safe copy of the JSON body: never print full `access_token` or full `instance_id`.
- */
-/**
- * Moatmt docs: send `access_token` + `instance_id` in the POST URL (query) *and* in the JSON
- * body (snake_case) for maximum compatibility with their gateway.
+ * Moatmt: `access_token` + `instance_id` + `number` in the POST URL (query) and in the JSON
+ * body. Field name for the phone in JSON must be `number` only (965XXXXXXXX, no +).
  */
 function moatmtUrlWithAuthQuery(
   pathUrl: string,
   accessToken: string,
   instanceId: string,
+  e164NoPlus: string,
 ): string {
   const u = new URL(pathUrl);
   u.searchParams.set('access_token', accessToken);
   u.searchParams.set('instance_id', instanceId);
+  u.searchParams.set('number', e164NoPlus);
+  return u.toString();
+}
+
+/** At least the destination in the query (e.g. when auth params are only in the body). */
+function moatmtUrlWithNumberQuery(pathUrl: string, e164NoPlus: string): string {
+  const u = new URL(pathUrl);
+  u.searchParams.set('number', e164NoPlus);
   return u.toString();
 }
 
@@ -86,16 +92,27 @@ function redactMoatmtUrlForLog(u: string): string {
         id.length <= 6 ? '***' : `${id.slice(0, 2)}…${id.slice(-2)}(len${id.length})`,
       );
     }
+    if (url.searchParams.has('number')) {
+      const n = url.searchParams.get('number') ?? '';
+      url.searchParams.set('number', mask965ForLog(n));
+    }
     return url.toString();
   } catch {
     return u;
   }
 }
 
+/**
+ * Log-safe copy of the JSON body: never print full `access_token` or full `instance_id`.
+ */
+
 function redactMoatmtPayloadForLog(
   body: Record<string, string>,
 ): string {
   const o: Record<string, string> = { ...body };
+  if (o.number) {
+    o.number = mask965ForLog(o.number);
+  }
   if (o.access_token) {
     const x = o.access_token;
     o.access_token =
@@ -552,11 +569,12 @@ export class CustomerNotificationsService implements OnModuleInit {
       process.env.MOATMT_OMIT_QUERY_AUTH?.trim() === '1' ||
       process.env.MOATMT_OMIT_QUERY_AUTH?.trim() === 'true';
     const finalUrl = omitQuery
-      ? url
+      ? moatmtUrlWithNumberQuery(url, body.number)
       : moatmtUrlWithAuthQuery(
           url,
           body.access_token,
           body.instance_id,
+          body.number,
         );
     this.logger.log(
       `[Moatmt] request → ${kind} | url=${redactMoatmtUrlForLog(finalUrl)} | to=${mask965ForLog(String(to965))} | ` +
@@ -597,8 +615,13 @@ export class CustomerNotificationsService implements OnModuleInit {
           run: () => this.moatmpFetch(finalUrl, body, { encoding: 'form-bearer' }),
         },
         {
-          label: 'json body (no query auth, no Bearer)',
-          run: () => this.moatmpFetch(url, body, { encoding: 'json-moatmt' }),
+          label: 'json body + number in query only (no token in URL)',
+          run: () =>
+            this.moatmpFetch(
+              moatmtUrlWithNumberQuery(url, body.number),
+              body,
+              { encoding: 'json-moatmt' },
+            ),
         },
       );
     }

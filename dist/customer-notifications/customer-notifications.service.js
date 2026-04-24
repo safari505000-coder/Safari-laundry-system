@@ -52,10 +52,16 @@ function normalizeMoatmtAccessToken(raw) {
     }
     return t.replace(/^TOKEN\s*=\s*/i, '').trim();
 }
-function moatmtUrlWithAuthQuery(pathUrl, accessToken, instanceId) {
+function moatmtUrlWithAuthQuery(pathUrl, accessToken, instanceId, e164NoPlus) {
     const u = new URL(pathUrl);
     u.searchParams.set('access_token', accessToken);
     u.searchParams.set('instance_id', instanceId);
+    u.searchParams.set('number', e164NoPlus);
+    return u.toString();
+}
+function moatmtUrlWithNumberQuery(pathUrl, e164NoPlus) {
+    const u = new URL(pathUrl);
+    u.searchParams.set('number', e164NoPlus);
     return u.toString();
 }
 function redactMoatmtUrlForLog(u) {
@@ -68,6 +74,10 @@ function redactMoatmtUrlForLog(u) {
             const id = url.searchParams.get('instance_id') ?? '';
             url.searchParams.set('instance_id', id.length <= 6 ? '***' : `${id.slice(0, 2)}…${id.slice(-2)}(len${id.length})`);
         }
+        if (url.searchParams.has('number')) {
+            const n = url.searchParams.get('number') ?? '';
+            url.searchParams.set('number', mask965ForLog(n));
+        }
         return url.toString();
     }
     catch {
@@ -76,6 +86,9 @@ function redactMoatmtUrlForLog(u) {
 }
 function redactMoatmtPayloadForLog(body) {
     const o = { ...body };
+    if (o.number) {
+        o.number = mask965ForLog(o.number);
+    }
     if (o.access_token) {
         const x = o.access_token;
         o.access_token =
@@ -360,8 +373,8 @@ let CustomerNotificationsService = class CustomerNotificationsService {
         const omitQuery = process.env.MOATMT_OMIT_QUERY_AUTH?.trim() === '1' ||
             process.env.MOATMT_OMIT_QUERY_AUTH?.trim() === 'true';
         const finalUrl = omitQuery
-            ? url
-            : moatmtUrlWithAuthQuery(url, body.access_token, body.instance_id);
+            ? moatmtUrlWithNumberQuery(url, body.number)
+            : moatmtUrlWithAuthQuery(url, body.access_token, body.instance_id, body.number);
         this.logger.log(`[Moatmt] request → ${kind} | url=${redactMoatmtUrlForLog(finalUrl)} | to=${mask965ForLog(String(to965))} | ` +
             `body=${redactMoatmtPayloadForLog(body)}`);
         const attempts = [
@@ -389,8 +402,8 @@ let CustomerNotificationsService = class CustomerNotificationsService {
                 label: 'form-urlencoded+Bearer',
                 run: () => this.moatmpFetch(finalUrl, body, { encoding: 'form-bearer' }),
             }, {
-                label: 'json body (no query auth, no Bearer)',
-                run: () => this.moatmpFetch(url, body, { encoding: 'json-moatmt' }),
+                label: 'json body + number in query only (no token in URL)',
+                run: () => this.moatmpFetch(moatmtUrlWithNumberQuery(url, body.number), body, { encoding: 'json-moatmt' }),
             });
         }
         for (let i = 0; i < attempts.length; i++) {
