@@ -16,6 +16,7 @@ const jwt_1 = require("@nestjs/jwt");
 const prisma_service_1 = require("../prisma/prisma.service");
 const general_ledger_service_1 = require("../general-ledger/general-ledger.service");
 const customer_notifications_service_1 = require("../customer-notifications/customer-notifications.service");
+const invoice_pdf_util_1 = require("../orders/invoice-pdf.util");
 const kuwait_time_1 = require("../common/time/kuwait-time");
 let InvoiceAuditService = class InvoiceAuditService {
     prisma;
@@ -412,10 +413,12 @@ let InvoiceAuditService = class InvoiceAuditService {
             }
             const base = process.env.PUBLIC_WEB_APP_URL?.trim().replace(/\/$/, '');
             let invoiceShareUrl;
+            let invoicePdfUrl;
             if (base) {
                 try {
                     const token = await this.jwt.signAsync({ purpose: 'INVOICE_SHARE', orderId }, { expiresIn: '7d' });
                     invoiceShareUrl = `${base}/public/invoice/${encodeURIComponent(token)}`;
+                    invoicePdfUrl = (0, invoice_pdf_util_1.buildPublicInvoicePdfUrl)(token);
                 }
                 catch {
                 }
@@ -429,6 +432,7 @@ let InvoiceAuditService = class InvoiceAuditService {
                 newAmountKd: newTotalKd,
                 editorLabel,
                 invoiceShareUrl,
+                invoicePdfUrl,
             });
         })();
     }

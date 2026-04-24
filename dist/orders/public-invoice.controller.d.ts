@@ -1,7 +1,9 @@
+import { StreamableFile } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 export declare class PublicInvoiceController {
     private readonly orders;
     constructor(orders: OrdersService);
+    getPdf(token: string): Promise<StreamableFile>;
     get(token: string): Promise<{
         customer: {
             wallet: {

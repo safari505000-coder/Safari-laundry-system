@@ -165,6 +165,7 @@ export declare class OrdersController {
     mintInvoiceShareLink(id: string, user: JwtUser, req: Request): Promise<{
         token: string;
         shareUrl: string;
+        pdfUrl?: string;
         expiresAtIso: string;
     }>;
     findOne(id: string, user: JwtUser): Promise<{

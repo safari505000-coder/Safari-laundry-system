@@ -18,6 +18,7 @@ import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
 import { CustomerNotificationsService } from '../customer-notifications/customer-notifications.service';
+import { buildPublicInvoicePdfUrl } from '../orders/invoice-pdf.util';
 import {
   isSameKuwaitDay,
   kuwaitDayIso,
@@ -585,6 +586,7 @@ export class InvoiceAuditService {
       }
       const base = process.env.PUBLIC_WEB_APP_URL?.trim().replace(/\/$/, '');
       let invoiceShareUrl: string | undefined;
+      let invoicePdfUrl: string | undefined;
       if (base) {
         try {
           const token = await this.jwt.signAsync(
@@ -592,6 +594,7 @@ export class InvoiceAuditService {
             { expiresIn: '7d' },
           );
           invoiceShareUrl = `${base}/public/invoice/${encodeURIComponent(token)}`;
+          invoicePdfUrl = buildPublicInvoicePdfUrl(token);
         } catch {
           /* non-fatal */
         }
@@ -606,6 +609,7 @@ export class InvoiceAuditService {
         newAmountKd: newTotalKd,
         editorLabel,
         invoiceShareUrl,
+        invoicePdfUrl,
       });
     })();
   }

@@ -143,6 +143,12 @@ export type InvoiceIssuedNotifyParams = {
    * `PUBLIC_WEB_APP_URL` is set.
    */
   invoiceShareUrl?: string;
+  /**
+   * V19.27 — `GET {PUBLIC_API_URL}/api/public/invoice/pdf/:token` — binary PDF
+   * for Moatmt `type: media` (direct fetch). Requires `PUBLIC_API_URL` or
+   * `PAYMENTS_CALLBACK_PUBLIC_URL`.
+   */
+  invoicePdfUrl?: string;
   /** Multi-invoice bundle: one message, several receipt links. */
   invoiceShareItems?: Array<{ label: string; url: string }>;
 };
@@ -156,6 +162,8 @@ export type InvoiceEditedIssuerNotifyParams = {
   editorLabel: string;
   /** Public receipt URL for updated totals/lines. */
   invoiceShareUrl?: string;
+  /** V19.27 — direct PDF for Moatmt media. */
+  invoicePdfUrl?: string;
 };
 
 /**
@@ -357,6 +365,7 @@ export class CustomerNotificationsService implements OnModuleInit {
           template: 'invoice_issued',
           invoiceShareUrl: params.invoiceShareUrl ?? null,
           invoiceShareItems: params.invoiceShareItems ?? null,
+          invoicePdfUrl: params.invoicePdfUrl ?? null,
         }),
       });
       if (!res.ok) {
@@ -435,6 +444,7 @@ export class CustomerNotificationsService implements OnModuleInit {
       return null;
     }
     const mediaUrl =
+      params.invoicePdfUrl?.trim() ||
       params.invoiceShareUrl?.trim() ||
       params.invoiceShareItems?.[0]?.url?.trim() ||
       null;
@@ -442,9 +452,12 @@ export class CustomerNotificationsService implements OnModuleInit {
       return null;
     }
     const shortId = params.orderId.replace(/-/g, '').slice(0, 8);
+    const isPdf = Boolean(params.invoicePdfUrl?.trim());
     const filename =
       process.env.MOATMT_INVOICE_MEDIA_FILENAME?.trim() ||
-      `invoice_${shortId}.png`;
+      (isPdf || /\.pdf($|[?#])/i.test(mediaUrl) ?
+        `invoice_${shortId}.pdf`
+      : `invoice_${shortId}.png`);
     return {
       mediaUrl,
       filename,
@@ -460,19 +473,23 @@ export class CustomerNotificationsService implements OnModuleInit {
     const on =
       process.env.MOATMT_USE_INVOICE_MEDIA?.trim() === 'true' ||
       process.env.MOATMT_USE_INVOICE_MEDIA?.trim() === '1';
-    if (!on || !params.invoiceShareUrl?.trim()) {
+    const mediaUrl = params.invoicePdfUrl?.trim() || params.invoiceShareUrl?.trim() || '';
+    if (!on || !mediaUrl) {
       return null;
     }
     const shortId = params.orderId.replace(/-/g, '').slice(0, 8);
+    const isPdf = Boolean(params.invoicePdfUrl?.trim());
     const filename =
       process.env.MOATMT_INVOICE_MEDIA_FILENAME?.trim() ||
-      `invoice_${shortId}.png`;
+      (isPdf || /\.pdf($|[?#])/i.test(mediaUrl) ?
+        `invoice_${shortId}.pdf`
+      : `invoice_${shortId}.png`);
     const caption =
       process.env.MOATMT_EDIT_MEDIA_CAPTION?.trim() ||
       process.env.MOATMT_MEDIA_CAPTION?.trim() ||
       'فاتورتك مرفقة 👇';
     return {
-      mediaUrl: params.invoiceShareUrl,
+      mediaUrl,
       filename,
       caption,
     };

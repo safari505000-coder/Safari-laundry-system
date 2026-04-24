@@ -21,11 +21,30 @@ let PublicInvoiceController = class PublicInvoiceController {
     constructor(orders) {
         this.orders = orders;
     }
+    async getPdf(token) {
+        const { stream, filename } = await this.orders.getPublicInvoicePdfStream(token);
+        return new common_1.StreamableFile(stream, {
+            type: 'application/pdf',
+            disposition: `inline; filename="${filename}"`,
+        });
+    }
     get(token) {
         return this.orders.getOrderForPublicInvoiceToken(token);
     }
 };
 exports.PublicInvoiceController = PublicInvoiceController;
+__decorate([
+    (0, common_1.Get)('pdf/:token'),
+    (0, swagger_1.ApiProduces)('application/pdf'),
+    (0, swagger_1.ApiOperation)({
+        summary: 'Download shared invoice as PDF (direct binary for WhatsApp media)',
+        description: 'V19.27 — Same JWT as `GET /:token` but returns `application/pdf` for Moatmt `media_url` fetches. Must be listed before the generic `:token` route.',
+    }),
+    __param(0, (0, common_1.Param)('token')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], PublicInvoiceController.prototype, "getPdf", null);
 __decorate([
     (0, common_1.Get)(':token'),
     (0, swagger_1.ApiOperation)({

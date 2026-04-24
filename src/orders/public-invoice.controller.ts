@@ -1,5 +1,5 @@
-import { Controller, Get, Param } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Controller, Get, Param, StreamableFile } from '@nestjs/common';
+import { ApiOperation, ApiProduces, ApiTags } from '@nestjs/swagger';
 import { OrdersService } from './orders.service';
 
 /**
@@ -10,6 +10,21 @@ import { OrdersService } from './orders.service';
 @Controller('public/invoice')
 export class PublicInvoiceController {
   constructor(private readonly orders: OrdersService) {}
+
+  @Get('pdf/:token')
+  @ApiProduces('application/pdf')
+  @ApiOperation({
+    summary: 'Download shared invoice as PDF (direct binary for WhatsApp media)',
+    description:
+      'V19.27 — Same JWT as `GET /:token` but returns `application/pdf` for Moatmt `media_url` fetches. Must be listed before the generic `:token` route.',
+  })
+  async getPdf(@Param('token') token: string) {
+    const { stream, filename } = await this.orders.getPublicInvoicePdfStream(token);
+    return new StreamableFile(stream, {
+      type: 'application/pdf',
+      disposition: `inline; filename="${filename}"`,
+    });
+  }
 
   @Get(':token')
   @ApiOperation({

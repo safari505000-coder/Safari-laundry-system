@@ -6,6 +6,7 @@ export type InvoiceIssuedNotifyParams = {
     amountKd: string;
     paymentUrl?: string;
     invoiceShareUrl?: string;
+    invoicePdfUrl?: string;
     invoiceShareItems?: Array<{
         label: string;
         url: string;
@@ -18,6 +19,7 @@ export type InvoiceEditedIssuerNotifyParams = {
     newAmountKd: string;
     editorLabel: string;
     invoiceShareUrl?: string;
+    invoicePdfUrl?: string;
 };
 export declare class CustomerNotificationsService implements OnModuleInit {
     private readonly logger;

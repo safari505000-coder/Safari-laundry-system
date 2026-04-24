@@ -8,6 +8,9 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 var OrdersService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.OrdersService = exports.STALE_QUICK_ORDER_THRESHOLD_MS = exports.STALE_QUICK_ORDER_THRESHOLD_HOURS = void 0;
@@ -26,6 +29,9 @@ const prisma_service_1 = require("../prisma/prisma.service");
 const serial_counter_service_1 = require("../serials/serial-counter.service");
 const order_status_machine_1 = require("./order-status.machine");
 const order_total_util_1 = require("./order-total.util");
+const invoice_pdf_util_1 = require("./invoice-pdf.util");
+const pdfkit_1 = __importDefault(require("pdfkit"));
+const node_stream_1 = require("node:stream");
 const PAYMENT_LINK_VALIDITY_HOURS = 24;
 const PAYMENT_LINK_VALIDITY_MS = PAYMENT_LINK_VALIDITY_HOURS * 60 * 60 * 1000;
 exports.STALE_QUICK_ORDER_THRESHOLD_HOURS = 24;
@@ -112,16 +118,20 @@ let OrdersService = OrdersService_1 = class OrdersService {
         });
         if (!row)
             return undefined;
-        const { shareUrl } = await this.mintInvoiceShareLink(orderId, base);
-        return shareUrl;
+        return this.mintInvoiceShareLink(orderId, base);
     }
     async posInvoiceNotifyToCustomer(detail, phoneCompact) {
         const phone = (0, kuwait_customer_phone_1.resolveCustomerPhoneForNotify)(detail.customer.phone, detail.customer.phone2, phoneCompact);
         const inv = detail.invoiceNumber?.trim() || `#${detail.id.slice(0, 8)}`;
         const amt = detail.totalPrice.toFixed(4);
         let invoiceShareUrl;
+        let invoicePdfUrl;
         try {
-            invoiceShareUrl = await this.resolveInvoiceShareForNotify(detail.id);
+            const minted = await this.resolveInvoiceShareForNotify(detail.id);
+            if (minted) {
+                invoiceShareUrl = minted.shareUrl;
+                invoicePdfUrl = minted.pdfUrl;
+            }
         }
         catch {
         }
@@ -132,6 +142,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
             amountKd: amt,
             paymentUrl: detail.paymentLink?.url,
             invoiceShareUrl,
+            invoicePdfUrl,
         });
     }
     isManagerOrOwner(role) {
@@ -543,10 +554,14 @@ let OrdersService = OrdersService_1 = class OrdersService {
         {
             const base = process.env.PUBLIC_WEB_APP_URL?.trim().replace(/\/$/, '');
             const invoiceShareItems = [];
+            let firstInvoicePdfUrl;
             if (base) {
                 for (const o of orders) {
                     try {
-                        const { shareUrl } = await this.mintInvoiceShareLink(o.id, base);
+                        const { shareUrl, pdfUrl } = await this.mintInvoiceShareLink(o.id, base);
+                        if (!firstInvoicePdfUrl && pdfUrl) {
+                            firstInvoicePdfUrl = pdfUrl;
+                        }
                         const lab = o.invoiceNumber?.trim() ||
                             o.serialNumber?.trim() ||
                             o.id.slice(0, 8);
@@ -566,6 +581,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
                 amountKd: sumDecimal.toFixed(4),
                 paymentUrl: paymentLink.url,
                 invoiceShareItems: invoiceShareItems.length > 0 ? invoiceShareItems : undefined,
+                invoicePdfUrl: firstInvoicePdfUrl,
             });
         }
         return { bundleId, orders, paymentLink };
@@ -1072,13 +1088,76 @@ let OrdersService = OrdersService_1 = class OrdersService {
         return {
             token,
             shareUrl: `${base}/public/invoice/${encodeURIComponent(token)}`,
+            pdfUrl: (0, invoice_pdf_util_1.buildPublicInvoicePdfUrl)(token),
             expiresAtIso: expiresAt.toISOString(),
         };
     }
+    normalizePublicInvoiceTokenParam(raw) {
+        const t = (raw ?? '').trim();
+        if (!t) {
+            return t;
+        }
+        try {
+            return decodeURIComponent(t);
+        }
+        catch {
+            return t;
+        }
+    }
+    async getPublicInvoicePdfStream(token) {
+        const normalized = this.normalizePublicInvoiceTokenParam(token);
+        const order = await this.getOrderForPublicInvoiceToken(normalized);
+        const inv = order.invoiceNumber?.trim() ||
+            order.serialNumber?.trim() ||
+            order.id.slice(0, 8);
+        const safe = inv.replace(/[^\w\u0600-\u06FF-]+/g, '_');
+        const filename = `invoice-${safe}.pdf`;
+        const stream = new node_stream_1.PassThrough();
+        const doc = new pdfkit_1.default({
+            size: 'A4',
+            margin: 40,
+            info: { Title: `Invoice ${inv}` },
+        });
+        doc.on('error', (err) => stream.destroy(err));
+        doc.pipe(stream);
+        doc.fillColor('#0f766e').fontSize(16).text('Safari Omni — Invoice', {
+            align: 'center',
+        });
+        doc.moveDown(0.4);
+        doc
+            .fillColor('#0f172a')
+            .fontSize(10)
+            .text(`Invoice / serial: ${inv}`);
+        doc.text(`Date: ${order.createdAt.toLocaleString('en-GB', { timeZone: 'Asia/Kuwait' })}`);
+        doc.text(`Order id: ${order.id}`);
+        doc.text(`Total: ${order.totalPrice.toFixed(3)} KWD`);
+        if (order.customer?.phone) {
+            doc.text(`Phone: ${order.customer.phone}`);
+        }
+        if (order.driver?.fullName) {
+            doc.text(`Driver: ${order.driver.fullName}`);
+        }
+        doc.moveDown(0.4);
+        doc
+            .fillColor('#0f172a')
+            .fontSize(9)
+            .text('Line items', { underline: true });
+        const lines = [...order.lineItems].sort((a, b) => a.id.localeCompare(b.id));
+        for (const li of lines) {
+            const unit = Number(li.unitPrice);
+            const qty = Number(li.quantity);
+            const sub = (unit * qty).toFixed(3);
+            const label = (li.label ?? 'Item').replace(/\s+/g, ' ');
+            doc.text(`• ${label}  x${String(qty)}  @${unit.toFixed(3)} KWD  =  ${sub} KWD`, { width: 515 });
+        }
+        doc.end();
+        return { stream, filename };
+    }
     async getOrderForPublicInvoiceToken(token) {
+        const normalized = this.normalizePublicInvoiceTokenParam(token);
         let payload;
         try {
-            payload = await this.jwt.verifyAsync(token);
+            payload = await this.jwt.verifyAsync(normalized);
         }
         catch {
             throw new common_1.NotFoundException('رابط الفاتورة غير صالح أو منتهي الصلاحية');

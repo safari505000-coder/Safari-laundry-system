@@ -39,6 +39,9 @@ import type { OrderLineItemDto } from './dto/order-line-item.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
 import { assertOrderStatusTransition } from './order-status.machine';
 import { assertLineItemsMatchTotal } from './order-total.util';
+import { buildPublicInvoicePdfUrl } from './invoice-pdf.util';
+import PDFDocument from 'pdfkit';
+import { PassThrough } from 'node:stream';
 
 /**
  * V19.22.2 — Payment-link validity window (milliseconds).
@@ -171,7 +174,7 @@ export class OrdersService {
    */
   private async resolveInvoiceShareForNotify(
     orderId: string,
-  ): Promise<string | undefined> {
+  ): Promise<{ shareUrl: string; pdfUrl?: string } | undefined> {
     const base = process.env.PUBLIC_WEB_APP_URL?.trim().replace(/\/$/, '');
     if (!base) return undefined;
     const row = await this.prisma.order.findUnique({
@@ -179,8 +182,7 @@ export class OrdersService {
       select: { id: true },
     });
     if (!row) return undefined;
-    const { shareUrl } = await this.mintInvoiceShareLink(orderId, base);
-    return shareUrl;
+    return this.mintInvoiceShareLink(orderId, base);
   }
 
   /**
@@ -201,8 +203,13 @@ export class OrdersService {
     const inv = detail.invoiceNumber?.trim() || `#${detail.id.slice(0, 8)}`;
     const amt = detail.totalPrice.toFixed(4);
     let invoiceShareUrl: string | undefined;
+    let invoicePdfUrl: string | undefined;
     try {
-      invoiceShareUrl = await this.resolveInvoiceShareForNotify(detail.id);
+      const minted = await this.resolveInvoiceShareForNotify(detail.id);
+      if (minted) {
+        invoiceShareUrl = minted.shareUrl;
+        invoicePdfUrl = minted.pdfUrl;
+      }
     } catch {
       /* non-fatal — notify still sends without receipt link */
     }
@@ -213,6 +220,7 @@ export class OrdersService {
       amountKd: amt,
       paymentUrl: detail.paymentLink?.url,
       invoiceShareUrl,
+      invoicePdfUrl,
     });
   }
 
@@ -848,10 +856,17 @@ export class OrdersService {
     {
       const base = process.env.PUBLIC_WEB_APP_URL?.trim().replace(/\/$/, '');
       const invoiceShareItems: Array<{ label: string; url: string }> = [];
+      let firstInvoicePdfUrl: string | undefined;
       if (base) {
         for (const o of orders) {
           try {
-            const { shareUrl } = await this.mintInvoiceShareLink(o.id, base);
+            const { shareUrl, pdfUrl } = await this.mintInvoiceShareLink(
+              o.id,
+              base,
+            );
+            if (!firstInvoicePdfUrl && pdfUrl) {
+              firstInvoicePdfUrl = pdfUrl;
+            }
             const lab =
               o.invoiceNumber?.trim() ||
               o.serialNumber?.trim() ||
@@ -874,6 +889,7 @@ export class OrdersService {
         paymentUrl: paymentLink.url,
         invoiceShareItems:
           invoiceShareItems.length > 0 ? invoiceShareItems : undefined,
+        invoicePdfUrl: firstInvoicePdfUrl,
       });
     }
 
@@ -1715,7 +1731,12 @@ export class OrdersService {
   async mintInvoiceShareLink(
     orderId: string,
     publicBaseUrl: string,
-  ): Promise<{ token: string; shareUrl: string; expiresAtIso: string }> {
+  ): Promise<{
+    token: string;
+    shareUrl: string;
+    pdfUrl?: string;
+    expiresAtIso: string;
+  }> {
     const exists = await this.prisma.order.findUnique({
       where: { id: orderId },
       select: { id: true },
@@ -1732,6 +1753,7 @@ export class OrdersService {
     return {
       token,
       shareUrl: `${base}/public/invoice/${encodeURIComponent(token)}`,
+      pdfUrl: buildPublicInvoicePdfUrl(token),
       expiresAtIso: expiresAt.toISOString(),
     };
   }
@@ -1740,10 +1762,86 @@ export class OrdersService {
    * Public GET for `GET /api/public/invoice/:token` — same `orderDetailSelect`
    * payload as staff `GET /api/orders/:id` after JWT verification.
    */
+  private normalizePublicInvoiceTokenParam(raw: string): string {
+    const t = (raw ?? '').trim();
+    if (!t) {
+      return t;
+    }
+    try {
+      return decodeURIComponent(t);
+    } catch {
+      return t;
+    }
+  }
+
+  /**
+   * V19.27 — Stream a simple A4 PDF (English labels; numbers match order totals).
+   * Moatmt and other clients fetch this URL as `application/pdf` without SPA auth.
+   */
+  async getPublicInvoicePdfStream(token: string): Promise<{
+    stream: PassThrough;
+    filename: string;
+  }> {
+    const normalized = this.normalizePublicInvoiceTokenParam(token);
+    const order = await this.getOrderForPublicInvoiceToken(normalized);
+    const inv =
+      order.invoiceNumber?.trim() ||
+      order.serialNumber?.trim() ||
+      order.id.slice(0, 8);
+    const safe = inv.replace(/[^\w\u0600-\u06FF-]+/g, '_');
+    const filename = `invoice-${safe}.pdf`;
+    const stream = new PassThrough();
+    const doc = new PDFDocument({
+      size: 'A4',
+      margin: 40,
+      info: { Title: `Invoice ${inv}` },
+    });
+    doc.on('error', (err) => stream.destroy(err));
+    doc.pipe(stream);
+    doc.fillColor('#0f766e').fontSize(16).text('Safari Omni — Invoice', {
+      align: 'center',
+    });
+    doc.moveDown(0.4);
+    doc
+      .fillColor('#0f172a')
+      .fontSize(10)
+      .text(`Invoice / serial: ${inv}`);
+    doc.text(
+      `Date: ${order.createdAt.toLocaleString('en-GB', { timeZone: 'Asia/Kuwait' })}`,
+    );
+    doc.text(`Order id: ${order.id}`);
+    doc.text(`Total: ${order.totalPrice.toFixed(3)} KWD`);
+    if (order.customer?.phone) {
+      doc.text(`Phone: ${order.customer.phone}`);
+    }
+    if (order.driver?.fullName) {
+      doc.text(`Driver: ${order.driver.fullName}`);
+    }
+    doc.moveDown(0.4);
+    doc
+      .fillColor('#0f172a')
+      .fontSize(9)
+      .text('Line items', { underline: true });
+    const lines = [...order.lineItems].sort((a, b) => a.id.localeCompare(b.id));
+    for (const li of lines) {
+      const unit = Number(li.unitPrice);
+      const qty = Number(li.quantity);
+      const sub = (unit * qty).toFixed(3);
+      const label = (li.label ?? 'Item').replace(/\s+/g, ' ');
+      doc.text(
+        `• ${label}  x${String(qty)}  @${unit.toFixed(3)} KWD  =  ${sub} KWD`,
+        { width: 515 },
+      );
+    }
+    doc.end();
+    return { stream, filename };
+  }
+
   async getOrderForPublicInvoiceToken(token: string): Promise<OrderDetail> {
+    const normalized = this.normalizePublicInvoiceTokenParam(token);
     let payload: { purpose?: string; orderId?: string };
     try {
-      payload = await this.jwt.verifyAsync(token);
+      payload = await this.jwt.verifyAsync(normalized);
     } catch {
       throw new NotFoundException(
         'رابط الفاتورة غير صالح أو منتهي الصلاحية',

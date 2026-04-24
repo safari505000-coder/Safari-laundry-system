@@ -15,6 +15,7 @@ import { PosCheckoutBundleDto } from './dto/pos-checkout-bundle.dto';
 import { PosCheckoutDto } from './dto/pos-checkout.dto';
 import type { DriverContributionDto } from './dto/manager-dashboard.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
+import { PassThrough } from 'node:stream';
 export declare const STALE_QUICK_ORDER_THRESHOLD_HOURS = 24;
 export declare const STALE_QUICK_ORDER_THRESHOLD_MS: number;
 declare const orderDetailSelect: {
@@ -208,7 +209,13 @@ export declare class OrdersService {
     mintInvoiceShareLink(orderId: string, publicBaseUrl: string): Promise<{
         token: string;
         shareUrl: string;
+        pdfUrl?: string;
         expiresAtIso: string;
+    }>;
+    private normalizePublicInvoiceTokenParam;
+    getPublicInvoicePdfStream(token: string): Promise<{
+        stream: PassThrough;
+        filename: string;
     }>;
     getOrderForPublicInvoiceToken(token: string): Promise<OrderDetail>;
     assignDriver(orderId: string, dto: AssignDriverDto): Promise<OrderDetail>;

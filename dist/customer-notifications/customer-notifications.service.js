@@ -279,15 +279,19 @@ let CustomerNotificationsService = class CustomerNotificationsService {
         if (!on) {
             return null;
         }
-        const mediaUrl = params.invoiceShareUrl?.trim() ||
+        const mediaUrl = params.invoicePdfUrl?.trim() ||
+            params.invoiceShareUrl?.trim() ||
             params.invoiceShareItems?.[0]?.url?.trim() ||
             null;
         if (!mediaUrl) {
             return null;
         }
         const shortId = params.orderId.replace(/-/g, '').slice(0, 8);
+        const isPdf = Boolean(params.invoicePdfUrl?.trim());
         const filename = process.env.MOATMT_INVOICE_MEDIA_FILENAME?.trim() ||
-            `invoice_${shortId}.png`;
+            (isPdf || /\.pdf($|[?#])/i.test(mediaUrl) ?
+                `invoice_${shortId}.pdf`
+                : `invoice_${shortId}.png`);
         return {
             mediaUrl,
             filename,
@@ -299,17 +303,21 @@ let CustomerNotificationsService = class CustomerNotificationsService {
     buildMoatmtIssuerEditMediaPayload(params) {
         const on = process.env.MOATMT_USE_INVOICE_MEDIA?.trim() === 'true' ||
             process.env.MOATMT_USE_INVOICE_MEDIA?.trim() === '1';
-        if (!on || !params.invoiceShareUrl?.trim()) {
+        const mediaUrl = params.invoicePdfUrl?.trim() || params.invoiceShareUrl?.trim() || '';
+        if (!on || !mediaUrl) {
             return null;
         }
         const shortId = params.orderId.replace(/-/g, '').slice(0, 8);
+        const isPdf = Boolean(params.invoicePdfUrl?.trim());
         const filename = process.env.MOATMT_INVOICE_MEDIA_FILENAME?.trim() ||
-            `invoice_${shortId}.png`;
+            (isPdf || /\.pdf($|[?#])/i.test(mediaUrl) ?
+                `invoice_${shortId}.pdf`
+                : `invoice_${shortId}.png`);
         const caption = process.env.MOATMT_EDIT_MEDIA_CAPTION?.trim() ||
             process.env.MOATMT_MEDIA_CAPTION?.trim() ||
             'فاتورتك مرفقة 👇';
         return {
-            mediaUrl: params.invoiceShareUrl,
+            mediaUrl,
             filename,
             caption,
         };
