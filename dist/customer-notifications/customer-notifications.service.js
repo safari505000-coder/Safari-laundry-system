@@ -337,33 +337,109 @@ let CustomerNotificationsService = class CustomerNotificationsService {
         const to965 = body.number;
         this.logger.log(`[Moatmt] request → ${kind} | url=${url} | to=${mask965ForLog(String(to965))} | ` +
             `body=${redactMoatmtPayloadForLog(body)}`);
-        try {
-            const res = await fetch(url, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${body.access_token}`,
-                },
-                body: JSON.stringify(body),
+        const attempts = [
+            {
+                label: 'json+Bearer',
+                run: () => this.moatmpFetch(url, body, { encoding: 'json' }),
+            },
+        ];
+        if (process.env.MOATMT_FORCE_FORM?.trim() === '1') {
+            attempts.length = 0;
+            attempts.push({
+                label: 'form (MOATMT_FORCE_FORM=1)',
+                run: () => this.moatmpFetch(url, body, { encoding: 'form' }),
             });
-            const responseText = await res.text();
-            const snippet = truncateForMoatmtLog(responseText, 3000);
-            this.logger.log(`[Moatmt] response ← http ${res.status} [${kind}] | to=${mask965ForLog(String(to965))} | ` +
-                `raw=${snippet}`);
-            if (!res.ok) {
-                this.logger.warn(`[Moatmt] HTTP error [${kind}]: status=${res.status} body_start=${responseText.slice(0, 500)}`);
+        }
+        else {
+            attempts.push({
+                label: 'form-urlencoded (no header)',
+                run: () => this.moatmpFetch(url, body, { encoding: 'form' }),
+            }, {
+                label: 'form-urlencoded+Bearer',
+                run: () => this.moatmpFetch(url, body, { encoding: 'form-bearer' }),
+            }, {
+                label: 'json body only (no Bearer)',
+                run: () => this.moatmpFetch(url, body, { encoding: 'json-no-bearer' }),
+            });
+        }
+        for (let i = 0; i < attempts.length; i++) {
+            const step = attempts[i];
+            const r = await step.run();
+            this.logger.log(`[Moatmt] try "${step.label}" → http ${r.status} | to=${mask965ForLog(String(to965))} | raw=${truncateForMoatmtLog(r.text, 2000)}`);
+            if (r.exn) {
+                this.logger.warn(`[Moatmt] [${step.label}] ${r.exn}`);
+                continue;
+            }
+            if (!r.ok) {
+                this.logger.warn(`[Moatmt] HTTP [${step.label}]: status=${r.status} body_start=${r.text.slice(0, 500)}`);
+                if (r.status >= 500) {
+                    return false;
+                }
+                continue;
+            }
+            if (this.moatmpResponseLooksLikeError(r.text)) {
+                if (this.moatmpLooksLikeMissingTokenError(r.text) &&
+                    i < attempts.length - 1) {
+                    this.logger.warn(`[Moatmt] auth/body not accepted on [${step.label}] — trying next encoding…`);
+                    continue;
+                }
+                this.logger.warn(`[Moatmt] error in body [${step.label}]: ${r.text.slice(0, 800)}`);
                 return false;
             }
-            if (this.moatmpResponseLooksLikeError(responseText)) {
-                this.logger.warn(`[Moatmt] success:false or error in JSON [${kind}]: body_start=${responseText.slice(0, 800)}`);
-                return false;
-            }
-            this.logger.log(`[Moatmt] send accepted [${kind}] to=${mask965ForLog(String(to965))} (see response raw above).`);
+            this.logger.log(`[Moatmt] send ok [${step.label}] to=${mask965ForLog(String(to965))}`);
             return true;
         }
+        return false;
+    }
+    moatmpLooksLikeMissingTokenError(responseText) {
+        return /access token is required|token is required|invalid\s+access/i.test(responseText);
+    }
+    async moatmpFetch(url, body, opts) {
+        const accessToken = body.access_token ?? '';
+        let headers = {};
+        let reqBody;
+        if (opts.encoding === 'json') {
+            headers = {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${accessToken}`,
+            };
+            reqBody = JSON.stringify(body);
+        }
+        else if (opts.encoding === 'form') {
+            headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
+            const p = new URLSearchParams();
+            for (const [k, v] of Object.entries(body)) {
+                p.set(k, v);
+            }
+            reqBody = p.toString();
+        }
+        else if (opts.encoding === 'form-bearer') {
+            headers = {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                Authorization: `Bearer ${accessToken}`,
+            };
+            const p = new URLSearchParams();
+            for (const [k, v] of Object.entries(body)) {
+                p.set(k, v);
+            }
+            reqBody = p.toString();
+        }
+        else {
+            headers = { 'Content-Type': 'application/json' };
+            reqBody = JSON.stringify(body);
+        }
+        try {
+            const res = await fetch(url, { method: 'POST', headers, body: reqBody });
+            const text = await res.text();
+            return { ok: res.ok, status: res.status, text };
+        }
         catch (e) {
-            this.logger.warn(`[Moatmt] network/exception [${kind}] to=${mask965ForLog(String(to965))}: ${e}`);
-            return false;
+            return {
+                ok: false,
+                status: 0,
+                text: '',
+                exn: String(e),
+            };
         }
     }
     moatmpResponseLooksLikeError(responseText) {

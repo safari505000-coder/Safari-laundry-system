@@ -34,5 +34,7 @@ export declare class CustomerNotificationsService implements OnModuleInit {
     private buildMoatmtMediaCaptionForInvoice;
     private trySendMoatmt;
     private moatmpPostOne;
+    private moatmpLooksLikeMissingTokenError;
+    private moatmpFetch;
     private moatmpResponseLooksLikeError;
 }
