@@ -51,9 +51,15 @@ export function AuthLayout() {
     if (!isDriverAllowedPath(pathname)) {
       return <Navigate to="/pos" replace />;
     }
-    // Drivers operate from full-screen island routes and the bottom nav
-    // intentionally renders `null` for them, so we skip it here too.
-    return <Outlet />;
+    // Driver POS (`/pos`) has its own menu sheet; `MobileBottomNav` hides
+    // there to avoid a second hamburger over the field header. Everywhere
+    // else (ExecutiveShell: مصروف، عهدة، …) the drawer is the only mobile nav.
+    return (
+      <>
+        <Outlet />
+        <MobileBottomNav />
+      </>
+    );
   }
 
   // Dastur — POS is for field operators only. DRIVER already branches

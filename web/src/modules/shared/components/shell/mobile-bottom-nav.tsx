@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import { LogOut, Menu } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { getSidebarNavGroupsForRole } from '@/modules/shared/nav/resolve-sidebar-nav';
@@ -63,6 +63,7 @@ const GROUP_TONE_CLASSES: Record<NavGroupTone, { dot: string; text: string }> = 
  */
 export function MobileBottomNav() {
   const { t, i18n } = useTranslation();
+  const { pathname } = useLocation();
   const { user, hasRole, logout } = useAuth();
   const [open, setOpen] = useState(false);
 
@@ -80,9 +81,7 @@ export function MobileBottomNav() {
   }, [hasRole, role]);
 
   if (!user) return null;
-  if (role === 'DRIVER') {
-    // Drivers use full-screen island pages (POS etc.) with their own
-    // in-page navigation; no shell chrome to attach the trigger to.
+  if (role === 'DRIVER' && pathname === '/pos') {
     return null;
   }
 
