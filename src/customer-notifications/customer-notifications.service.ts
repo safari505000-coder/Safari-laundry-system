@@ -197,6 +197,7 @@ export class CustomerNotificationsService implements OnModuleInit {
   private readonly logger = new Logger(CustomerNotificationsService.name);
   /** One-time: Moatmt env not set. */
   private static moatmtCredsMissingLogged = false;
+  private static moatmtShortTokenWarned = false;
 
   onModuleInit(): void {
     const accessToken = normalizeMoatmtAccessToken(process.env.MOATMT_ACCESS_TOKEN);
@@ -215,6 +216,12 @@ export class CustomerNotificationsService implements OnModuleInit {
           media ? 'text+media when share URL is present' : 'text only'
         }; on failure: CUSTOMER_NOTIFY_WEBHOOK_URL if set.`,
       );
+      if (accessToken.length < 24) {
+        this.logger.warn(
+          `Moatmt: MOATMT_ACCESS_TOKEN is only ${accessToken.length} chars — the panel usually issues a *long* token. ` +
+            'If the API says "Access token is required", paste the full API token from moatmt.sa (not a short instance/session id).',
+        );
+      }
     } else if (hasHook) {
       this.logger.log('Customer notify: CUSTOMER_NOTIFY_WEBHOOK_URL is set.');
     } else {
@@ -451,6 +458,15 @@ export class CustomerNotificationsService implements OnModuleInit {
       }
       return false;
     }
+    if (
+      accessToken.length < 24 &&
+      !CustomerNotificationsService.moatmtShortTokenWarned
+    ) {
+      CustomerNotificationsService.moatmtShortTokenWarned = true;
+      this.logger.warn(
+        `Moatmt: access token length is ${accessToken.length} (expected a long value from the Moatmt dashboard). API may return "Access token is required".`,
+      );
+    }
     const digits = parseKuwaitMobile965(rawPhone);
     if (!digits) {
       this.logger.warn(
@@ -505,7 +521,11 @@ export class CustomerNotificationsService implements OnModuleInit {
     try {
       const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          // Some Moatmt deployments read auth from Authorization; body is kept for compatibility.
+          Authorization: `Bearer ${body.access_token}`,
+        },
         body: JSON.stringify(body),
       });
       const responseText = await res.text();

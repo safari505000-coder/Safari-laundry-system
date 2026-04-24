@@ -22,6 +22,7 @@ export type InvoiceEditedIssuerNotifyParams = {
 export declare class CustomerNotificationsService implements OnModuleInit {
     private readonly logger;
     private static moatmtCredsMissingLogged;
+    private static moatmtShortTokenWarned;
     onModuleInit(): void;
     notifyInvoiceIssued(params: InvoiceIssuedNotifyParams): void;
     deliverInvoiceIssuedNow(params: InvoiceIssuedNotifyParams): Promise<void>;

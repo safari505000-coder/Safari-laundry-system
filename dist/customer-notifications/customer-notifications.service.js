@@ -130,6 +130,7 @@ let CustomerNotificationsService = class CustomerNotificationsService {
     static { CustomerNotificationsService_1 = this; }
     logger = new common_1.Logger(CustomerNotificationsService_1.name);
     static moatmtCredsMissingLogged = false;
+    static moatmtShortTokenWarned = false;
     onModuleInit() {
         const accessToken = normalizeMoatmtAccessToken(process.env.MOATMT_ACCESS_TOKEN);
         const instanceId = process.env.MOATMT_INSTANCE_ID?.trim() ?? '';
@@ -140,6 +141,10 @@ let CustomerNotificationsService = class CustomerNotificationsService {
             const media = process.env.MOATMT_USE_INVOICE_MEDIA?.trim() === 'true' ||
                 process.env.MOATMT_USE_INVOICE_MEDIA?.trim() === '1';
             this.logger.log(`Customer notify: Moatmt enabled → POST ${base}/send | instance_id=${maskIdForLog(instanceId)} (len ${instanceId.length}) | access_token set (len ${accessToken.length}) | mode: ${media ? 'text+media when share URL is present' : 'text only'}; on failure: CUSTOMER_NOTIFY_WEBHOOK_URL if set.`);
+            if (accessToken.length < 24) {
+                this.logger.warn(`Moatmt: MOATMT_ACCESS_TOKEN is only ${accessToken.length} chars — the panel usually issues a *long* token. ` +
+                    'If the API says "Access token is required", paste the full API token from moatmt.sa (not a short instance/session id).');
+            }
         }
         else if (hasHook) {
             this.logger.log('Customer notify: CUSTOMER_NOTIFY_WEBHOOK_URL is set.');
@@ -291,6 +296,11 @@ let CustomerNotificationsService = class CustomerNotificationsService {
             }
             return false;
         }
+        if (accessToken.length < 24 &&
+            !CustomerNotificationsService_1.moatmtShortTokenWarned) {
+            CustomerNotificationsService_1.moatmtShortTokenWarned = true;
+            this.logger.warn(`Moatmt: access token length is ${accessToken.length} (expected a long value from the Moatmt dashboard). API may return "Access token is required".`);
+        }
         const digits = (0, kuwait_customer_phone_1.parseKuwaitMobile965)(rawPhone);
         if (!digits) {
             this.logger.warn(`Moatmt send skipped: invalid Kuwait mobile. raw=${formatPhoneHintForLog(rawPhone)}. ` +
@@ -330,7 +340,10 @@ let CustomerNotificationsService = class CustomerNotificationsService {
         try {
             const res = await fetch(url, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${body.access_token}`,
+                },
                 body: JSON.stringify(body),
             });
             const responseText = await res.text();
