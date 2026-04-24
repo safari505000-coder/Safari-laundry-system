@@ -7,6 +7,7 @@ import { InventoryModule } from '../inventory/inventory.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { SerialsModule } from '../serials/serials.module';
 import { OrdersController } from './orders.controller';
+import { PublicInvoiceController } from './public-invoice.controller';
 import { OrdersService } from './orders.service';
 import { StaleQuickOrdersCronService } from './stale-quick-orders.cron';
 
@@ -20,7 +21,7 @@ import { StaleQuickOrdersCronService } from './stale-quick-orders.cron';
     SerialsModule,
     InventoryModule,
   ],
-  controllers: [OrdersController],
+  controllers: [OrdersController, PublicInvoiceController],
   providers: [OrdersService, StaleQuickOrdersCronService],
   exports: [OrdersService],
 })

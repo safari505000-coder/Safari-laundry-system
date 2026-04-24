@@ -1,13 +1,17 @@
 import { Prisma, SafariRole } from '@prisma/client';
+import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
+import { CustomerNotificationsService } from '../customer-notifications/customer-notifications.service';
 import { EditInvoiceDto } from './dto/edit-invoice.dto';
 import { ListAuditLogQueryDto } from './dto/list-audit-log.dto';
 import { CcPerformanceQueryDto } from './dto/cc-performance.dto';
 export declare class InvoiceAuditService {
     private readonly prisma;
     private readonly generalLedger;
-    constructor(prisma: PrismaService, generalLedger: GeneralLedgerService);
+    private readonly customerNotifications;
+    private readonly jwt;
+    constructor(prisma: PrismaService, generalLedger: GeneralLedgerService, customerNotifications: CustomerNotificationsService, jwt: JwtService);
     private decimalToFilsBigInt;
     private buildSnapshot;
     private diffSnapshots;
@@ -20,6 +24,7 @@ export declare class InvoiceAuditService {
         newTotal: string;
         newPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
     }>;
+    private queueIssuerReprintNudgeAfterEdit;
     voidInvoice(orderId: string, actorId: string, actorRole: SafariRole, reason: string): Promise<{
         orderId: string;
         auditId: string;

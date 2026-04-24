@@ -59,6 +59,18 @@ let OrdersController = class OrdersController {
     listDriverPendingInvoices(user) {
         return this.ordersService.listDriverPendingInvoices(user.userId);
     }
+    async mintInvoiceShareLink(id, user, req) {
+        await this.ordersService.findOneForActor(id, user.userId, user.role);
+        const proto = req.headers['x-forwarded-proto'] ??
+            req.protocol ??
+            'http';
+        const host = req.headers['x-forwarded-host'] ??
+            req.headers.host ??
+            'localhost:3000';
+        const publicBaseUrl = process.env.PUBLIC_WEB_APP_URL?.replace(/\/$/, '') ||
+            `${proto}://${host}`;
+        return this.ordersService.mintInvoiceShareLink(id, publicBaseUrl);
+    }
     findOne(id, user) {
         return this.ordersService.findOneForActor(id, user.userId, user.role);
     }
@@ -170,6 +182,19 @@ __decorate([
     __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", void 0)
 ], OrdersController.prototype, "listDriverPendingInvoices", null);
+__decorate([
+    (0, common_1.Post)(':id/invoice-share-link'),
+    (0, swagger_1.ApiOperation)({
+        summary: `Mint public share URL for the POS invoice (WhatsApp / PDF) (${branding_1.APP_BRAND})`,
+        description: 'V19.24 — anyone who can GET this order may mint a 7-day link to `/public/invoice/:token` on the web app. Customer saves PDF via the browser. Same visibility rules as GET :id (driver: own order only).',
+    }),
+    __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
+    __param(1, (0, current_user_decorator_1.CurrentUser)()),
+    __param(2, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object, Object]),
+    __metadata("design:returntype", Promise)
+], OrdersController.prototype, "mintInvoiceShareLink", null);
 __decorate([
     (0, common_1.Get)(':id'),
     (0, swagger_1.ApiOperation)({

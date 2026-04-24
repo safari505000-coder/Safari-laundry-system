@@ -11,6 +11,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.OrdersService = exports.STALE_QUICK_ORDER_THRESHOLD_MS = exports.STALE_QUICK_ORDER_THRESHOLD_HOURS = void 0;
 const common_1 = require("@nestjs/common");
+const jwt_1 = require("@nestjs/jwt");
 const client_1 = require("@prisma/client");
 const payments_service_1 = require("../common/services/payments.service");
 const customer_notifications_service_1 = require("../customer-notifications/customer-notifications.service");
@@ -87,7 +88,8 @@ let OrdersService = class OrdersService {
     generalLedger;
     serialCounter;
     inventory;
-    constructor(prisma, customerLedger, paymentsService, customerNotifications, generalLedger, serialCounter, inventory) {
+    jwt;
+    constructor(prisma, customerLedger, paymentsService, customerNotifications, generalLedger, serialCounter, inventory, jwt) {
         this.prisma = prisma;
         this.customerLedger = customerLedger;
         this.paymentsService = paymentsService;
@@ -95,20 +97,43 @@ let OrdersService = class OrdersService {
         this.generalLedger = generalLedger;
         this.serialCounter = serialCounter;
         this.inventory = inventory;
+        this.jwt = jwt;
+    }
+    async resolveInvoiceShareForNotify(orderId) {
+        const base = process.env.PUBLIC_WEB_APP_URL?.trim().replace(/\/$/, '');
+        if (!base)
+            return undefined;
+        const row = await this.prisma.order.findUnique({
+            where: { id: orderId },
+            select: { id: true },
+        });
+        if (!row)
+            return undefined;
+        const { shareUrl } = await this.mintInvoiceShareLink(orderId, base);
+        return shareUrl;
     }
     queuePosInvoiceNotify(detail, phoneCompact) {
-        const phone = detail.customer.phone?.trim() ||
-            detail.customer.phone2?.trim() ||
-            phoneCompact;
-        const inv = detail.invoiceNumber?.trim() || `#${detail.id.slice(0, 8)}`;
-        const amt = detail.totalPrice.toFixed(4);
-        this.customerNotifications.notifyInvoiceIssued({
-            customerPhone: phone,
-            orderId: detail.id,
-            invoiceLabel: inv,
-            amountKd: amt,
-            paymentUrl: detail.paymentLink?.url,
-        });
+        void (async () => {
+            const phone = detail.customer.phone?.trim() ||
+                detail.customer.phone2?.trim() ||
+                phoneCompact;
+            const inv = detail.invoiceNumber?.trim() || `#${detail.id.slice(0, 8)}`;
+            const amt = detail.totalPrice.toFixed(4);
+            let invoiceShareUrl;
+            try {
+                invoiceShareUrl = await this.resolveInvoiceShareForNotify(detail.id);
+            }
+            catch {
+            }
+            this.customerNotifications.notifyInvoiceIssued({
+                customerPhone: phone,
+                orderId: detail.id,
+                invoiceLabel: inv,
+                amountKd: amt,
+                paymentUrl: detail.paymentLink?.url,
+                invoiceShareUrl,
+            });
+        })();
     }
     isManagerOrOwner(role) {
         return (role === client_1.SafariRole.OWNER ||
@@ -505,14 +530,34 @@ let OrdersService = class OrdersService {
             where: { posPaymentBundleId: bundleId },
             data: { posHostedPaymentUrl: paymentLink.url },
         });
-        const notifyBase = orders[0];
-        const merged = {
-            ...notifyBase,
-            id: bundleId,
-            totalPrice: sumDecimal,
-            paymentLink,
-        };
-        this.queuePosInvoiceNotify(merged, phoneCompact);
+        void (async () => {
+            const base = process.env.PUBLIC_WEB_APP_URL?.trim().replace(/\/$/, '');
+            const invoiceShareItems = [];
+            if (base) {
+                for (const o of orders) {
+                    try {
+                        const { shareUrl } = await this.mintInvoiceShareLink(o.id, base);
+                        const lab = o.invoiceNumber?.trim() ||
+                            o.serialNumber?.trim() ||
+                            o.id.slice(0, 8);
+                        invoiceShareItems.push({ label: lab, url: shareUrl });
+                    }
+                    catch {
+                    }
+                }
+            }
+            const first = orders[0];
+            this.customerNotifications.notifyInvoiceIssued({
+                customerPhone: phone,
+                orderId: first.id,
+                invoiceLabel: orders.length > 1 ?
+                    `مجموعة ${orders.length} فواتير`
+                    : (first.invoiceNumber?.trim() || `#${first.id.slice(0, 8)}`),
+                amountKd: sumDecimal.toFixed(4),
+                paymentUrl: paymentLink.url,
+                invoiceShareItems: invoiceShareItems.length > 0 ? invoiceShareItems : undefined,
+            });
+        })();
         return { bundleId, orders, paymentLink };
     }
     async createAsManager(dto) {
@@ -965,11 +1010,27 @@ let OrdersService = class OrdersService {
                 { customer: { displayName: { contains: q, mode: 'insensitive' } } },
             ];
         }
-        return this.prisma.order.findMany({
+        const rows = await this.prisma.order.findMany({
             where,
             select: orderDetailSelect,
             orderBy: { createdAt: 'desc' },
         });
+        if (rows.length === 0) {
+            return [];
+        }
+        const withEdit = await this.prisma.invoiceAuditLog.findMany({
+            where: {
+                orderId: { in: rows.map((r) => r.id) },
+                action: client_1.InvoiceAuditAction.EDIT,
+            },
+            select: { orderId: true },
+            distinct: ['orderId'],
+        });
+        const editSet = new Set(withEdit.map((a) => a.orderId));
+        return rows.map((o) => ({
+            ...o,
+            hasSupervisorEdit: editSet.has(o.id),
+        }));
     }
     async findOneForActor(id, userId, role) {
         const order = await this.prisma.order.findUnique({
@@ -986,6 +1047,43 @@ let OrdersService = class OrdersService {
             return order;
         }
         throw new common_1.ForbiddenException('You cannot view this order');
+    }
+    async mintInvoiceShareLink(orderId, publicBaseUrl) {
+        const exists = await this.prisma.order.findUnique({
+            where: { id: orderId },
+            select: { id: true },
+        });
+        if (!exists) {
+            throw new common_1.NotFoundException('Order not found');
+        }
+        const token = await this.jwt.signAsync({ purpose: 'INVOICE_SHARE', orderId }, { expiresIn: '7d' });
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        const base = publicBaseUrl.replace(/\/$/, '');
+        return {
+            token,
+            shareUrl: `${base}/public/invoice/${encodeURIComponent(token)}`,
+            expiresAtIso: expiresAt.toISOString(),
+        };
+    }
+    async getOrderForPublicInvoiceToken(token) {
+        let payload;
+        try {
+            payload = await this.jwt.verifyAsync(token);
+        }
+        catch {
+            throw new common_1.NotFoundException('رابط الفاتورة غير صالح أو منتهي الصلاحية');
+        }
+        if (payload.purpose !== 'INVOICE_SHARE' || !payload.orderId) {
+            throw new common_1.NotFoundException('رابط الفاتورة غير صالح');
+        }
+        const order = await this.prisma.order.findUnique({
+            where: { id: payload.orderId },
+            select: orderDetailSelect,
+        });
+        if (!order) {
+            throw new common_1.NotFoundException('Order not found');
+        }
+        return order;
     }
     async assignDriver(orderId, dto) {
         const order = await this.prisma.order.findUnique({
@@ -1119,6 +1217,7 @@ exports.OrdersService = OrdersService = __decorate([
         customer_notifications_service_1.CustomerNotificationsService,
         general_ledger_service_1.GeneralLedgerService,
         serial_counter_service_1.SerialCounterService,
-        inventory_service_1.InventoryService])
+        inventory_service_1.InventoryService,
+        jwt_1.JwtService])
 ], OrdersService);
 //# sourceMappingURL=orders.service.js.map

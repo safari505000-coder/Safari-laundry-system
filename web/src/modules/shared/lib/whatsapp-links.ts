@@ -91,25 +91,34 @@ const SAFARI_TEAM_FOOTER_AR = `فريق ${BRAND.systemAr} 🇰🇼`;
  * The `paymentUrl` argument is explicit (instead of reading
  * `row.paymentUrl`) so the caller can mint a fresh link on demand before
  * sending, guaranteeing the message always carries a live URL.
+ *
+ * V19.23 — **Order matters for `wa.me?text=`.** Browsers and WhatsApp cap
+ * the full URL length (~2k chars is a safe margin). The previous layout put
+ * the UPayments link *after* a long T&C block, so the link was **truncated**
+ * from the pre-filled text and customers never reached checkout. The hosted
+ * payment URL is now placed **immediately after the total** (before
+ * reassurance + terms), and line items are capped to keep the payload small.
  */
-export function buildCollectionsUnpaidWhatsAppText(
+const WA_COLLECTIONS_MAX_ITEM_LINES = 15;
+
+const SAFARI_WHATSAPP_TERMS_AR_COMPACT = [
+  '⚠️ الشروط: تفاصيل الخدمة والتعويض كما في فاتورتكم المطبوعة أو كشف الحساب.',
+  'للدعم: 22200299',
+].join('\n');
+
+function buildCollectionsUnpaidWhatsAppTextInner(
   row: CollectionUnpaidOnlineRow,
-  paymentUrl?: string | null,
+  url: string,
+  termsMode: 'full' | 'compact',
 ): string {
   const invoiceRef =
     row.invoiceNumber?.trim() || row.readableId || row.orderId.slice(-6).toUpperCase();
-  const url = paymentUrl ?? row.paymentUrl ?? '';
   const customerName = row.customerName?.trim() || 'عميلنا العزيز';
 
   const greet = buildGreetingLine(customerName, row.orderId);
 
   const intro = `نسعد بخدمتكم في ${BRAND.customerAr}، ونود تذكيركم بفاتورتكم التالية:`;
 
-  // V19.4 — CC pack #5. Surface the branch and driver identity so
-  // the customer instantly recognises the origin of the invoice and
-  // can ask for the same driver on follow-up. Silently omitted when
-  // either field is missing to keep the message clean for legacy
-  // rows that never had branch/driver attribution.
   const originLines: string[] = [];
   if (row.branchName && row.branchName.trim()) {
     originLines.push(`🏬 الفرع: ${row.branchName.trim()}`);
@@ -123,22 +132,37 @@ export function buildCollectionsUnpaidWhatsAppText(
   ].join('\n');
 
   const itemsHeader = '--- الأصناف ---';
+  const rawItems = row.lineItems.length > 0 ? row.lineItems : null;
+  const linesToShow =
+    rawItems && rawItems.length > WA_COLLECTIONS_MAX_ITEM_LINES ?
+      rawItems.slice(0, WA_COLLECTIONS_MAX_ITEM_LINES)
+    : rawItems;
   const itemLines =
-    row.lineItems.length > 0
-      ? row.lineItems.map((li) => {
-          const name = li.label?.trim() || 'خدمة';
-          const qty = formatQty(li.quantity);
-          return `${qty} × ${name} : ${li.lineTotalKd} د.ك`;
-        })
-      : ['—'];
-  const itemsBlock = [itemsHeader, ...itemLines, '---'].join('\n');
+    linesToShow && linesToShow.length > 0 ?
+      linesToShow.map((li) => {
+        const name = li.label?.trim() || 'خدمة';
+        const qty = formatQty(li.quantity);
+        return `${qty} × ${name} : ${li.lineTotalKd} د.ك`;
+      })
+    : ['—'];
+  const moreLines =
+    rawItems && rawItems.length > WA_COLLECTIONS_MAX_ITEM_LINES ?
+      [
+        `… و${rawItems.length - WA_COLLECTIONS_MAX_ITEM_LINES} بند إضافي (راجع تفصيل الفاتورة في التطبيق).`,
+      ]
+    : [];
+  const itemsBlock = [itemsHeader, ...itemLines, ...moreLines, '---'].join(
+    '\n',
+  );
 
-  // WhatsApp bold uses *...* — keeping the total visually anchored.
   const totalLine = `💰 *الإجمالي: ${row.amountKd} د.ك*`;
 
   const actionBlock = url
-    ? ['🔒 للدفع السريع عبر الرابط الآمن:', url].join('\n')
+    ? ['🔒 رابط الدفع (UPayments):', url].join('\n')
     : '📞 للدفع يرجى التواصل معنا.';
+
+  const termsBlock =
+    termsMode === 'full' ? SAFARI_WHATSAPP_TERMS_AR : SAFARI_WHATSAPP_TERMS_AR_COMPACT;
 
   return [
     greet,
@@ -150,14 +174,50 @@ export function buildCollectionsUnpaidWhatsAppText(
     itemsBlock,
     totalLine,
     '',
+    actionBlock,
+    '',
     SAFARI_REASSURANCE_AR,
     '',
-    SAFARI_WHATSAPP_TERMS_AR,
-    '',
-    actionBlock,
+    termsBlock,
     '',
     SAFARI_TEAM_FOOTER_AR,
   ].join('\n');
+}
+
+function buildCollectionsUnpaidWhatsAppTextMinimal(
+  row: CollectionUnpaidOnlineRow,
+  url: string,
+): string {
+  const invoiceRef =
+    row.invoiceNumber?.trim() || row.readableId || row.orderId.slice(-6).toUpperCase();
+  const name = row.customerName?.trim() || 'عميلنا العزيز';
+  const greet = buildGreetingLine(name, row.orderId);
+  const pay = url
+    ? ['🔒 رابط الدفع (UPayments):', url].join('\n')
+    : '📞 للدفع يرجى التواصل معنا.';
+  return [greet, '', `🏷️ ${invoiceRef}`, `💰 *${row.amountKd} د.ك*`, '', pay, '', SAFARI_TEAM_FOOTER_AR].join(
+    '\n',
+  );
+}
+
+export function buildCollectionsUnpaidWhatsAppText(
+  row: CollectionUnpaidOnlineRow,
+  paymentUrl?: string | null,
+): string {
+  const url = paymentUrl ?? row.paymentUrl ?? '';
+  const full = buildCollectionsUnpaidWhatsAppTextInner(row, url, 'full');
+  // If the prefilled `text` is huge (many lines / long labels), the `wa.me`
+  // URL can still exceed client limits — fall back to shorter copy so the
+  // payment URL survives end-to-end.
+  const fullEnc = encodeURIComponent(full);
+  if (fullEnc.length <= 6_000) {
+    return full;
+  }
+  const compact = buildCollectionsUnpaidWhatsAppTextInner(row, url, 'compact');
+  if (encodeURIComponent(compact).length <= 6_000) {
+    return compact;
+  }
+  return buildCollectionsUnpaidWhatsAppTextMinimal(row, url);
 }
 
 export function collectionsUnpaidWhatsAppHref(row: CollectionUnpaidOnlineRow): string | null {
@@ -312,5 +372,29 @@ export function customerDirectoryBalanceWhatsAppHref(row: CustomerDirectoryRow):
     SAFARI_TEAM_FOOTER_AR,
   ].join('\n');
 
+  return `https://wa.me/${n}?text=${encodeURIComponent(text)}`;
+}
+
+/**
+ * V19.24 — Pre-filled WhatsApp message with a **public invoice** link
+ * (customer saves as PDF from the browser). `wa.me` cannot attach PDF files.
+ */
+export function buildInvoiceShareWhatsAppHref(
+  phone: string,
+  shareUrl: string,
+  args: { customerName?: string | null; orderLabel: string },
+): string | null {
+  const n = whatsappChatNumber(phone);
+  if (!n) return null;
+  const name = args.customerName?.trim() || 'عميلنا العزيز';
+  const text = [
+    `حياك الله ${name} 🌿`,
+    '',
+    `فاتورتكم (${args.orderLabel}) — ${BRAND.customerAr}:`,
+    'افتحوا الرابط ثم من القائمة اختروا «حفظ كملف PDF» (أو طباعة → PDF):',
+    shareUrl,
+    '',
+    `فريق ${BRAND.systemAr} 🇰🇼`,
+  ].join('\n');
   return `https://wa.me/${n}?text=${encodeURIComponent(text)}`;
 }

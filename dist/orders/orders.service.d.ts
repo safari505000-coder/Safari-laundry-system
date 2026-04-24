@@ -1,3 +1,4 @@
+import { JwtService } from '@nestjs/jwt';
 import { CashStatus, OrderStatus, PosPaymentMethod, Prisma } from '@prisma/client';
 import type { CreatePaymentLinkResult } from '../common/services/payments.service';
 import { PaymentsService } from '../common/services/payments.service';
@@ -77,6 +78,9 @@ declare const orderDetailSelect: {
 export type OrderDetail = Prisma.OrderGetPayload<{
     select: typeof orderDetailSelect;
 }>;
+export type OrderDetailWithListFlags = OrderDetail & {
+    hasSupervisorEdit: boolean;
+};
 export type PosCheckoutOrderDetail = OrderDetail & {
     paymentLink?: CreatePaymentLinkResult;
 };
@@ -93,7 +97,9 @@ export declare class OrdersService {
     private readonly generalLedger;
     private readonly serialCounter;
     private readonly inventory;
-    constructor(prisma: PrismaService, customerLedger: CustomerLedgerService, paymentsService: PaymentsService, customerNotifications: CustomerNotificationsService, generalLedger: GeneralLedgerService, serialCounter: SerialCounterService, inventory: InventoryService);
+    private readonly jwt;
+    constructor(prisma: PrismaService, customerLedger: CustomerLedgerService, paymentsService: PaymentsService, customerNotifications: CustomerNotificationsService, generalLedger: GeneralLedgerService, serialCounter: SerialCounterService, inventory: InventoryService, jwt: JwtService);
+    private resolveInvoiceShareForNotify;
     private queuePosInvoiceNotify;
     private isManagerOrOwner;
     private canViewAllOrders;
@@ -196,8 +202,14 @@ export declare class OrdersService {
         from?: string;
         to?: string;
         q?: string;
-    }): Promise<OrderDetail[]>;
+    }): Promise<OrderDetailWithListFlags[]>;
     findOneForActor(id: string, userId: string, role: string): Promise<OrderDetail>;
+    mintInvoiceShareLink(orderId: string, publicBaseUrl: string): Promise<{
+        token: string;
+        shareUrl: string;
+        expiresAtIso: string;
+    }>;
+    getOrderForPublicInvoiceToken(token: string): Promise<OrderDetail>;
     assignDriver(orderId: string, dto: AssignDriverDto): Promise<OrderDetail>;
     updateOrder(orderId: string, dto: UpdateOrderDto, userId: string, role: string): Promise<OrderDetail>;
     getManagerDashboard(): Promise<{

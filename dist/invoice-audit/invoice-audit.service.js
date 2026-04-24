@@ -12,15 +12,21 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.InvoiceAuditService = void 0;
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
+const jwt_1 = require("@nestjs/jwt");
 const prisma_service_1 = require("../prisma/prisma.service");
 const general_ledger_service_1 = require("../general-ledger/general-ledger.service");
+const customer_notifications_service_1 = require("../customer-notifications/customer-notifications.service");
 const kuwait_time_1 = require("../common/time/kuwait-time");
 let InvoiceAuditService = class InvoiceAuditService {
     prisma;
     generalLedger;
-    constructor(prisma, generalLedger) {
+    customerNotifications;
+    jwt;
+    constructor(prisma, generalLedger, customerNotifications, jwt) {
         this.prisma = prisma;
         this.generalLedger = generalLedger;
+        this.customerNotifications = customerNotifications;
+        this.jwt = jwt;
     }
     decimalToFilsBigInt(d) {
         if (!d)
@@ -166,7 +172,7 @@ let InvoiceAuditService = class InvoiceAuditService {
         if (!hasChange) {
             throw new common_1.BadRequestException('At least one of totalPrice, posPaymentMethod, notes, lineItems must be supplied.');
         }
-        return this.prisma.$transaction(async (tx) => {
+        const out = await this.prisma.$transaction(async (tx) => {
             const order = await tx.order.findUnique({
                 where: { id: orderId },
                 select: {
@@ -363,8 +369,68 @@ let InvoiceAuditService = class InvoiceAuditService {
                 changedFields,
                 newTotal: newTotal.toFixed(3),
                 newPaymentMethod: newMethod,
+                issuerUserId: order.driverId,
             };
         }, { maxWait: 10_000, timeout: 15_000 });
+        void this.queueIssuerReprintNudgeAfterEdit({
+            orderId: out.orderId,
+            issuerUserId: out.issuerUserId,
+            newTotalKd: out.newTotal,
+            editorId: actorId,
+        });
+        return {
+            orderId: out.orderId,
+            auditId: out.auditId,
+            changedFields: out.changedFields,
+            newTotal: out.newTotal,
+            newPaymentMethod: out.newPaymentMethod,
+        };
+    }
+    queueIssuerReprintNudgeAfterEdit(ctx) {
+        const { orderId, issuerUserId, newTotalKd, editorId } = ctx;
+        if (!issuerUserId) {
+            return;
+        }
+        void (async () => {
+            const [issuer, editor, order] = await Promise.all([
+                this.prisma.user.findUnique({
+                    where: { id: issuerUserId },
+                    select: { phone: true },
+                }),
+                this.prisma.user.findUnique({
+                    where: { id: editorId },
+                    select: { fullName: true },
+                }),
+                this.prisma.order.findUnique({
+                    where: { id: orderId },
+                    select: { invoiceNumber: true, id: true },
+                }),
+            ]);
+            const phone = issuer?.phone?.replace(/[\s-]/g, '').trim();
+            if (!phone) {
+                return;
+            }
+            const base = process.env.PUBLIC_WEB_APP_URL?.trim().replace(/\/$/, '');
+            let invoiceShareUrl;
+            if (base) {
+                try {
+                    const token = await this.jwt.signAsync({ purpose: 'INVOICE_SHARE', orderId }, { expiresIn: '7d' });
+                    invoiceShareUrl = `${base}/public/invoice/${encodeURIComponent(token)}`;
+                }
+                catch {
+                }
+            }
+            const label = order?.invoiceNumber?.trim() || `#${orderId.slice(0, 8)}`;
+            const editorLabel = editor?.fullName?.trim() || 'مشرف';
+            this.customerNotifications.notifyInvoiceEditedForIssuer({
+                toPhone: phone,
+                orderId,
+                invoiceLabel: label,
+                newAmountKd: newTotalKd,
+                editorLabel,
+                invoiceShareUrl,
+            });
+        })();
     }
     async voidInvoice(orderId, actorId, actorRole, reason) {
         if (actorRole !== client_1.SafariRole.CALL_CENTER_SUPERVISOR &&
@@ -666,6 +732,8 @@ exports.InvoiceAuditService = InvoiceAuditService;
 exports.InvoiceAuditService = InvoiceAuditService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
-        general_ledger_service_1.GeneralLedgerService])
+        general_ledger_service_1.GeneralLedgerService,
+        customer_notifications_service_1.CustomerNotificationsService,
+        jwt_1.JwtService])
 ], InvoiceAuditService);
 //# sourceMappingURL=invoice-audit.service.js.map

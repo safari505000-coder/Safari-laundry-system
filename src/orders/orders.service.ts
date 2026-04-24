@@ -4,10 +4,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import {
   CashStatus,
   DebtSource,
   GeneralLedgerEntryType,
+  InvoiceAuditAction,
   OrderStatus,
   PosPaymentMethod,
   Prisma,
@@ -122,6 +124,11 @@ export type OrderDetail = Prisma.OrderGetPayload<{
   select: typeof orderDetailSelect;
 }>;
 
+/** V19.26 — set on `GET /api/orders` when any supervisor EDIT row exists. */
+export type OrderDetailWithListFlags = OrderDetail & {
+  hasSupervisorEdit: boolean;
+};
+
 /** POS checkout may attach a hosted payment URL when using ONLINE. */
 export type PosCheckoutOrderDetail = OrderDetail & {
   paymentLink?: CreatePaymentLinkResult;
@@ -149,25 +156,54 @@ export class OrdersService {
     private readonly generalLedger: GeneralLedgerService,
     private readonly serialCounter: SerialCounterService,
     private readonly inventory: InventoryService,
+    private readonly jwt: JwtService,
   ) {}
+
+  /**
+   * V19.25 — Mint the same public receipt URL as manual «واتساب للعميل».
+   * Skips when `PUBLIC_WEB_APP_URL` is unset or `orderId` is not a real row
+   * (e.g. bundle placeholder id).
+   */
+  private async resolveInvoiceShareForNotify(
+    orderId: string,
+  ): Promise<string | undefined> {
+    const base = process.env.PUBLIC_WEB_APP_URL?.trim().replace(/\/$/, '');
+    if (!base) return undefined;
+    const row = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: { id: true },
+    });
+    if (!row) return undefined;
+    const { shareUrl } = await this.mintInvoiceShareLink(orderId, base);
+    return shareUrl;
+  }
 
   private queuePosInvoiceNotify(
     detail: PosCheckoutOrderDetail,
     phoneCompact: string,
   ): void {
-    const phone =
-      detail.customer.phone?.trim() ||
-      detail.customer.phone2?.trim() ||
-      phoneCompact;
-    const inv = detail.invoiceNumber?.trim() || `#${detail.id.slice(0, 8)}`;
-    const amt = detail.totalPrice.toFixed(4);
-    this.customerNotifications.notifyInvoiceIssued({
-      customerPhone: phone,
-      orderId: detail.id,
-      invoiceLabel: inv,
-      amountKd: amt,
-      paymentUrl: detail.paymentLink?.url,
-    });
+    void (async () => {
+      const phone =
+        detail.customer.phone?.trim() ||
+        detail.customer.phone2?.trim() ||
+        phoneCompact;
+      const inv = detail.invoiceNumber?.trim() || `#${detail.id.slice(0, 8)}`;
+      const amt = detail.totalPrice.toFixed(4);
+      let invoiceShareUrl: string | undefined;
+      try {
+        invoiceShareUrl = await this.resolveInvoiceShareForNotify(detail.id);
+      } catch {
+        /* non-fatal — notify still sends without receipt link */
+      }
+      this.customerNotifications.notifyInvoiceIssued({
+        customerPhone: phone,
+        orderId: detail.id,
+        invoiceLabel: inv,
+        amountKd: amt,
+        paymentUrl: detail.paymentLink?.url,
+        invoiceShareUrl,
+      });
+    })();
   }
 
   private isManagerOrOwner(role: string): boolean {
@@ -770,14 +806,37 @@ export class OrdersService {
       data: { posHostedPaymentUrl: paymentLink.url },
     });
 
-    const notifyBase = orders[0];
-    const merged: PosCheckoutOrderDetail = {
-      ...notifyBase,
-      id: bundleId,
-      totalPrice: sumDecimal,
-      paymentLink,
-    };
-    this.queuePosInvoiceNotify(merged, phoneCompact);
+    void (async () => {
+      const base = process.env.PUBLIC_WEB_APP_URL?.trim().replace(/\/$/, '');
+      const invoiceShareItems: Array<{ label: string; url: string }> = [];
+      if (base) {
+        for (const o of orders) {
+          try {
+            const { shareUrl } = await this.mintInvoiceShareLink(o.id, base);
+            const lab =
+              o.invoiceNumber?.trim() ||
+              o.serialNumber?.trim() ||
+              o.id.slice(0, 8);
+            invoiceShareItems.push({ label: lab, url: shareUrl });
+          } catch {
+            /* non-fatal */
+          }
+        }
+      }
+      const first = orders[0]!;
+      this.customerNotifications.notifyInvoiceIssued({
+        customerPhone: phone,
+        orderId: first.id,
+        invoiceLabel:
+          orders.length > 1 ?
+            `مجموعة ${orders.length} فواتير`
+          : (first.invoiceNumber?.trim() || `#${first.id.slice(0, 8)}`),
+        amountKd: sumDecimal.toFixed(4),
+        paymentUrl: paymentLink.url,
+        invoiceShareItems:
+          invoiceShareItems.length > 0 ? invoiceShareItems : undefined,
+      });
+    })();
 
     return { bundleId, orders, paymentLink };
   }
@@ -1503,7 +1562,7 @@ export class OrdersService {
       to?: string;
       q?: string;
     } = {},
-  ): Promise<OrderDetail[]> {
+  ): Promise<OrderDetailWithListFlags[]> {
     const where: Prisma.OrderWhereInput = {};
 
     // V19.22.5 — Branch scoping (Dastur §11).
@@ -1565,11 +1624,27 @@ export class OrdersService {
       ];
     }
 
-    return this.prisma.order.findMany({
+    const rows = await this.prisma.order.findMany({
       where,
       select: orderDetailSelect,
       orderBy: { createdAt: 'desc' },
     });
+    if (rows.length === 0) {
+      return [];
+    }
+    const withEdit = await this.prisma.invoiceAuditLog.findMany({
+      where: {
+        orderId: { in: rows.map((r) => r.id) },
+        action: InvoiceAuditAction.EDIT,
+      },
+      select: { orderId: true },
+      distinct: ['orderId'],
+    });
+    const editSet = new Set(withEdit.map((a) => a.orderId));
+    return rows.map((o) => ({
+      ...o,
+      hasSupervisorEdit: editSet.has(o.id),
+    }));
   }
 
   async findOneForActor(
@@ -1591,6 +1666,61 @@ export class OrdersService {
       return order;
     }
     throw new ForbiddenException('You cannot view this order');
+  }
+
+  /**
+   * V19.24 — Mint a 7-day signed URL for the same POS receipt HTML the
+   * staff print view uses. Customer opens `/public/invoice/:token` from
+   * WhatsApp and saves as PDF locally (wa.me cannot attach binary PDFs).
+   */
+  async mintInvoiceShareLink(
+    orderId: string,
+    publicBaseUrl: string,
+  ): Promise<{ token: string; shareUrl: string; expiresAtIso: string }> {
+    const exists = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: { id: true },
+    });
+    if (!exists) {
+      throw new NotFoundException('Order not found');
+    }
+    const token = await this.jwt.signAsync(
+      { purpose: 'INVOICE_SHARE' as const, orderId },
+      { expiresIn: '7d' },
+    );
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const base = publicBaseUrl.replace(/\/$/, '');
+    return {
+      token,
+      shareUrl: `${base}/public/invoice/${encodeURIComponent(token)}`,
+      expiresAtIso: expiresAt.toISOString(),
+    };
+  }
+
+  /**
+   * Public GET for `GET /api/public/invoice/:token` — same `orderDetailSelect`
+   * payload as staff `GET /api/orders/:id` after JWT verification.
+   */
+  async getOrderForPublicInvoiceToken(token: string): Promise<OrderDetail> {
+    let payload: { purpose?: string; orderId?: string };
+    try {
+      payload = await this.jwt.verifyAsync(token);
+    } catch {
+      throw new NotFoundException(
+        'رابط الفاتورة غير صالح أو منتهي الصلاحية',
+      );
+    }
+    if (payload.purpose !== 'INVOICE_SHARE' || !payload.orderId) {
+      throw new NotFoundException('رابط الفاتورة غير صالح');
+    }
+    const order = await this.prisma.order.findUnique({
+      where: { id: payload.orderId },
+      select: orderDetailSelect,
+    });
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+    return order;
   }
 
   async assignDriver(

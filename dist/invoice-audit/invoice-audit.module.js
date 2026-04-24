@@ -9,6 +9,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.InvoiceAuditModule = void 0;
 const common_1 = require("@nestjs/common");
 const auth_module_1 = require("../auth/auth.module");
+const customer_notifications_module_1 = require("../customer-notifications/customer-notifications.module");
 const general_ledger_module_1 = require("../general-ledger/general-ledger.module");
 const prisma_module_1 = require("../prisma/prisma.module");
 const invoice_audit_controller_1 = require("./invoice-audit.controller");
@@ -18,7 +19,12 @@ let InvoiceAuditModule = class InvoiceAuditModule {
 exports.InvoiceAuditModule = InvoiceAuditModule;
 exports.InvoiceAuditModule = InvoiceAuditModule = __decorate([
     (0, common_1.Module)({
-        imports: [prisma_module_1.PrismaModule, auth_module_1.AuthModule, general_ledger_module_1.GeneralLedgerModule],
+        imports: [
+            prisma_module_1.PrismaModule,
+            auth_module_1.AuthModule,
+            general_ledger_module_1.GeneralLedgerModule,
+            customer_notifications_module_1.CustomerNotificationsModule,
+        ],
         controllers: [invoice_audit_controller_1.InvoiceAuditController],
         providers: [invoice_audit_service_1.InvoiceAuditService],
         exports: [invoice_audit_service_1.InvoiceAuditService],

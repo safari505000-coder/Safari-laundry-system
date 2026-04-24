@@ -394,6 +394,10 @@
     colPhone: 'Phone',
     colDate: 'Date',
     colAmount: 'Amount',
+    colStatus: 'Status',
+    badgeEdited: 'Edited',
+    colPrint: 'Print',
+    print: 'Print',
   },
   driverPending: {
     title: 'Field Collection Tracker',
@@ -981,6 +985,15 @@
     subtitle:
       'Star ratings and notes left after the customer scans the QR code on their invoice. Watch the average and unread count, filter by score, and tap acknowledge when the note has been handled. Visible to owner, general manager, and call-center staff (per role).',
     refresh: 'Refresh',
+  },
+  invoicePrint: {
+    print: 'Print',
+    close: 'Close',
+    whatsapp: 'WhatsApp to customer',
+    whatsappHint:
+      'Opens WhatsApp with a 7-day link; customer saves the receipt as PDF in the browser.',
+    whatsappNoPhone: 'This invoice has no customer mobile number on file.',
+    whatsappOpened: 'WhatsApp opened — send the message to the customer.',
   },
   pos: {
     backToDashboard: 'Back to Dashboard',

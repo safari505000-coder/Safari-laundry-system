@@ -14,8 +14,10 @@ import {
   SafariRole,
   StarchOption,
 } from '@prisma/client';
+import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
+import { CustomerNotificationsService } from '../customer-notifications/customer-notifications.service';
 import {
   isSameKuwaitDay,
   kuwaitDayIso,
@@ -47,6 +49,8 @@ export class InvoiceAuditService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly generalLedger: GeneralLedgerService,
+    private readonly customerNotifications: CustomerNotificationsService,
+    private readonly jwt: JwtService,
   ) {}
 
   /* ================================================================
@@ -285,7 +289,7 @@ export class InvoiceAuditService {
       );
     }
 
-    return this.prisma.$transaction(
+    const out = await this.prisma.$transaction(
       async (tx) => {
         const order = await tx.order.findUnique({
           where: { id: orderId },
@@ -528,10 +532,82 @@ export class InvoiceAuditService {
           changedFields,
           newTotal: newTotal.toFixed(3),
           newPaymentMethod: newMethod,
+          issuerUserId: order.driverId,
         };
       },
       { maxWait: 10_000, timeout: 15_000 },
     );
+
+    void this.queueIssuerReprintNudgeAfterEdit({
+      orderId: out.orderId,
+      issuerUserId: out.issuerUserId,
+      newTotalKd: out.newTotal,
+      editorId: actorId,
+    });
+
+    return {
+      orderId: out.orderId,
+      auditId: out.auditId,
+      changedFields: out.changedFields,
+      newTotal: out.newTotal,
+      newPaymentMethod: out.newPaymentMethod,
+    };
+  }
+
+  private queueIssuerReprintNudgeAfterEdit(ctx: {
+    orderId: string;
+    issuerUserId: string | null;
+    newTotalKd: string;
+    editorId: string;
+  }): void {
+    const { orderId, issuerUserId, newTotalKd, editorId } = ctx;
+    if (!issuerUserId) {
+      return;
+    }
+    void (async () => {
+      const [issuer, editor, order] = await Promise.all([
+        this.prisma.user.findUnique({
+          where: { id: issuerUserId },
+          select: { phone: true },
+        }),
+        this.prisma.user.findUnique({
+          where: { id: editorId },
+          select: { fullName: true },
+        }),
+        this.prisma.order.findUnique({
+          where: { id: orderId },
+          select: { invoiceNumber: true, id: true },
+        }),
+      ]);
+      const phone = issuer?.phone?.replace(/[\s-]/g, '').trim();
+      if (!phone) {
+        return;
+      }
+      const base = process.env.PUBLIC_WEB_APP_URL?.trim().replace(/\/$/, '');
+      let invoiceShareUrl: string | undefined;
+      if (base) {
+        try {
+          const token = await this.jwt.signAsync(
+            { purpose: 'INVOICE_SHARE' as const, orderId },
+            { expiresIn: '7d' },
+          );
+          invoiceShareUrl = `${base}/public/invoice/${encodeURIComponent(token)}`;
+        } catch {
+          /* non-fatal */
+        }
+      }
+      const label =
+        order?.invoiceNumber?.trim() || `#${orderId.slice(0, 8)}`;
+      const editorLabel = editor?.fullName?.trim() || 'مشرف';
+      this.customerNotifications.notifyInvoiceEditedForIssuer({
+        toPhone: phone,
+        orderId,
+        invoiceLabel: label,
+        newAmountKd: newTotalKd,
+        editorLabel,
+        invoiceShareUrl,
+      });
+    })();
   }
 
   /* ================================================================

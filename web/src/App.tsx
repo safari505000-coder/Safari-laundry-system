@@ -23,6 +23,7 @@ import { LoanPrintPage } from '@/pages/loan-print-page';
 import { InvoicePrintPage } from '@/pages/invoice-print-page';
 import { StatementPrintPage } from '@/pages/statement-print-page';
 import { PublicStatementPage } from '@/pages/public-statement-page';
+import { PublicInvoicePage } from '@/pages/public-invoice-page';
 import { FeedbackPublicPage } from '@/pages/feedback-public-page';
 import { FeedbackInboxPage } from '@/pages/feedback-inbox-page';
 import {
@@ -131,6 +132,14 @@ export default function App() {
             <Route
               path="/public/statement/:token"
               element={<PublicStatementPage />}
+            />
+            {/*
+              V19.24 — Public POS invoice (JWT). Opened from WhatsApp;
+              customer saves PDF via the print dialog. No auth.
+            */}
+            <Route
+              path="/public/invoice/:token"
+              element={<PublicInvoicePage />}
             />
             {/*
               V19.22 — Public customer rating page. The invoice QR

@@ -16,6 +16,7 @@ const inventory_module_1 = require("../inventory/inventory.module");
 const payments_module_1 = require("../payments/payments.module");
 const serials_module_1 = require("../serials/serials.module");
 const orders_controller_1 = require("./orders.controller");
+const public_invoice_controller_1 = require("./public-invoice.controller");
 const orders_service_1 = require("./orders.service");
 const stale_quick_orders_cron_1 = require("./stale-quick-orders.cron");
 let OrdersModule = class OrdersModule {
@@ -32,7 +33,7 @@ exports.OrdersModule = OrdersModule = __decorate([
             serials_module_1.SerialsModule,
             inventory_module_1.InventoryModule,
         ],
-        controllers: [orders_controller_1.OrdersController],
+        controllers: [orders_controller_1.OrdersController, public_invoice_controller_1.PublicInvoiceController],
         providers: [orders_service_1.OrdersService, stale_quick_orders_cron_1.StaleQuickOrdersCronService],
         exports: [orders_service_1.OrdersService],
     })

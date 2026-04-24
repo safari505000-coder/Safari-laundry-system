@@ -1043,6 +1043,8 @@ export type OrderRow = {
   // bespoke DTO.
   serialNumber?: string | null;
   completedAt?: string | null;
+  /** V19.26 — true when a Call-Center/Owner `InvoiceAuditLog` EDIT exists. */
+  hasSupervisorEdit?: boolean;
   notes: string | null;
   createdAt: string;
   updatedAt: string;
@@ -1931,6 +1933,32 @@ export function getPublicCustomerStatement(
 ): Promise<CustomerLedgerResponse> {
   return apiJson<CustomerLedgerResponse>(
     `/api/public/statement/${encodeURIComponent(shareToken)}`,
+  );
+}
+
+export type OrderInvoiceShareLink = {
+  token: string;
+  shareUrl: string;
+  expiresAtIso: string;
+};
+
+/**
+ * V19.24 — 7-day link to the same receipt as `/invoices/:id/print` for
+ * WhatsApp; customer opens and saves as PDF in the browser.
+ */
+export function createOrderInvoiceShareLink(
+  token: string | null,
+  orderId: string,
+): Promise<OrderInvoiceShareLink> {
+  return apiJson<OrderInvoiceShareLink>(`/api/orders/${orderId}/invoice-share-link`, {
+    method: 'POST',
+    token,
+  });
+}
+
+export function getPublicOrderInvoice(shareToken: string): Promise<OrderRow> {
+  return apiJson<OrderRow>(
+    `/api/public/invoice/${encodeURIComponent(shareToken)}`,
   );
 }
 

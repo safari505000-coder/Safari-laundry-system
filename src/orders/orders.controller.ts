@@ -7,8 +7,10 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { SafariRole } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -155,6 +157,31 @@ export class OrdersController {
   })
   listDriverPendingInvoices(@CurrentUser() user: JwtUser) {
     return this.ordersService.listDriverPendingInvoices(user.userId);
+  }
+
+  @Post(':id/invoice-share-link')
+  @ApiOperation({
+    summary: `Mint public share URL for the POS invoice (WhatsApp / PDF) (${APP_BRAND})`,
+    description:
+      'V19.24 — anyone who can GET this order may mint a 7-day link to `/public/invoice/:token` on the web app. Customer saves PDF via the browser. Same visibility rules as GET :id (driver: own order only).',
+  })
+  async mintInvoiceShareLink(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtUser,
+    @Req() req: Request,
+  ) {
+    await this.ordersService.findOneForActor(id, user.userId, user.role);
+    const proto =
+      (req.headers['x-forwarded-proto'] as string | undefined) ??
+      req.protocol ??
+      'http';
+    const host = (req.headers['x-forwarded-host'] as string | undefined) ??
+      req.headers.host ??
+      'localhost:3000';
+    const publicBaseUrl =
+      process.env.PUBLIC_WEB_APP_URL?.replace(/\/$/, '') ||
+      `${proto}://${host}`;
+    return this.ordersService.mintInvoiceShareLink(id, publicBaseUrl);
   }
 
   @Get(':id')
