@@ -168,21 +168,36 @@ export class OrdersService {
   ) {}
 
   /**
-   * V19.25 — Mint the same public receipt URL as manual «واتساب للعميل».
-   * Skips when `PUBLIC_WEB_APP_URL` is unset or `orderId` is not a real row
-   * (e.g. bundle placeholder id).
+   * V19.25 — Mint public share + optional PDF for Moatmt. V19.27.1 — If
+   * `PUBLIC_WEB_APP_URL` is missing but `PUBLIC_API_URL` (or payment callback
+   * base) is set, we still mint JWT so `invoicePdfUrl` can be sent; web receipt
+   * link is omitted in that case.
    */
   private async resolveInvoiceShareForNotify(
     orderId: string,
-  ): Promise<{ shareUrl: string; pdfUrl?: string } | undefined> {
-    const base = process.env.PUBLIC_WEB_APP_URL?.trim().replace(/\/$/, '');
-    if (!base) return undefined;
+  ): Promise<{ shareUrl?: string; pdfUrl?: string } | undefined> {
+    const webBase = process.env.PUBLIC_WEB_APP_URL?.trim().replace(/\/$/, '');
+    const apiBase = (
+      process.env.PUBLIC_API_URL?.trim() ||
+      process.env.PAYMENTS_CALLBACK_PUBLIC_URL?.trim() ||
+      ''
+    ).replace(/\/$/, '');
+    if (!webBase && !apiBase) {
+      return undefined;
+    }
     const row = await this.prisma.order.findUnique({
       where: { id: orderId },
       select: { id: true },
     });
-    if (!row) return undefined;
-    return this.mintInvoiceShareLink(orderId, base);
+    if (!row) {
+      return undefined;
+    }
+    const mintBase = webBase || apiBase;
+    const minted = await this.mintInvoiceShareLink(orderId, mintBase);
+    return {
+      shareUrl: webBase ? minted.shareUrl : undefined,
+      pdfUrl: minted.pdfUrl,
+    };
   }
 
   /**
@@ -854,15 +869,21 @@ export class OrdersService {
     });
 
     {
-      const base = process.env.PUBLIC_WEB_APP_URL?.trim().replace(/\/$/, '');
+      const webBase = process.env.PUBLIC_WEB_APP_URL?.trim().replace(/\/$/, '');
+      const apiBase = (
+        process.env.PUBLIC_API_URL?.trim() ||
+        process.env.PAYMENTS_CALLBACK_PUBLIC_URL?.trim() ||
+        ''
+      ).replace(/\/$/, '');
+      const mintBase = webBase || apiBase;
       const invoiceShareItems: Array<{ label: string; url: string }> = [];
       let firstInvoicePdfUrl: string | undefined;
-      if (base) {
+      if (mintBase) {
         for (const o of orders) {
           try {
             const { shareUrl, pdfUrl } = await this.mintInvoiceShareLink(
               o.id,
-              base,
+              mintBase,
             );
             if (!firstInvoicePdfUrl && pdfUrl) {
               firstInvoicePdfUrl = pdfUrl;

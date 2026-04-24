@@ -109,16 +109,26 @@ let OrdersService = OrdersService_1 = class OrdersService {
         this.jwt = jwt;
     }
     async resolveInvoiceShareForNotify(orderId) {
-        const base = process.env.PUBLIC_WEB_APP_URL?.trim().replace(/\/$/, '');
-        if (!base)
+        const webBase = process.env.PUBLIC_WEB_APP_URL?.trim().replace(/\/$/, '');
+        const apiBase = (process.env.PUBLIC_API_URL?.trim() ||
+            process.env.PAYMENTS_CALLBACK_PUBLIC_URL?.trim() ||
+            '').replace(/\/$/, '');
+        if (!webBase && !apiBase) {
             return undefined;
+        }
         const row = await this.prisma.order.findUnique({
             where: { id: orderId },
             select: { id: true },
         });
-        if (!row)
+        if (!row) {
             return undefined;
-        return this.mintInvoiceShareLink(orderId, base);
+        }
+        const mintBase = webBase || apiBase;
+        const minted = await this.mintInvoiceShareLink(orderId, mintBase);
+        return {
+            shareUrl: webBase ? minted.shareUrl : undefined,
+            pdfUrl: minted.pdfUrl,
+        };
     }
     async posInvoiceNotifyToCustomer(detail, phoneCompact) {
         const phone = (0, kuwait_customer_phone_1.resolveCustomerPhoneForNotify)(detail.customer.phone, detail.customer.phone2, phoneCompact);
@@ -552,13 +562,17 @@ let OrdersService = OrdersService_1 = class OrdersService {
             data: { posHostedPaymentUrl: paymentLink.url },
         });
         {
-            const base = process.env.PUBLIC_WEB_APP_URL?.trim().replace(/\/$/, '');
+            const webBase = process.env.PUBLIC_WEB_APP_URL?.trim().replace(/\/$/, '');
+            const apiBase = (process.env.PUBLIC_API_URL?.trim() ||
+                process.env.PAYMENTS_CALLBACK_PUBLIC_URL?.trim() ||
+                '').replace(/\/$/, '');
+            const mintBase = webBase || apiBase;
             const invoiceShareItems = [];
             let firstInvoicePdfUrl;
-            if (base) {
+            if (mintBase) {
                 for (const o of orders) {
                     try {
-                        const { shareUrl, pdfUrl } = await this.mintInvoiceShareLink(o.id, base);
+                        const { shareUrl, pdfUrl } = await this.mintInvoiceShareLink(o.id, mintBase);
                         if (!firstInvoicePdfUrl && pdfUrl) {
                             firstInvoicePdfUrl = pdfUrl;
                         }
