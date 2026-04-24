@@ -132,13 +132,17 @@ export function SerialGapCard({ token }: Props) {
                 </dd>
               </div>
               <div>
-                <dt className="text-xs text-muted-foreground">العدّاد الحالي</dt>
+                <dt className="text-xs text-muted-foreground">
+                  مجموع سقف التسلسل (كل المشغّلين)
+                </dt>
                 <dd className="font-semibold tabular-nums">
                   {report?.currentCounter ?? 0}
                 </dd>
               </div>
               <div>
-                <dt className="text-xs text-muted-foreground">الفواتير المسجّلة</dt>
+                <dt className="text-xs text-muted-foreground">
+                  خانات تسلسل مغطاة (1…N لكل مشغّل)
+                </dt>
                 <dd className="font-semibold tabular-nums">
                   {report?.presentCount ?? 0}
                 </dd>

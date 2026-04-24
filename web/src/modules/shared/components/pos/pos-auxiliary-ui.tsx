@@ -257,7 +257,9 @@ export function PosAuxiliaryUi({ p }: { p: PosEngineApi }) {
               Shop Tel: 24899399 - Call Center: 22200299
             </p>
             <div className="pos-receipt-meta-grid">
-              <p><strong>INV#:</strong> {sheet.orderNumber ?? '-'}</p>
+              <p>
+                <strong>INV#:</strong> {sheet.orderNumber ?? '-'}
+              </p>
               <p>
                 <strong>Employee:</strong>{' '}
                 {`${sheet.employeeId} / ${sheet.employeeName}`}
@@ -382,6 +384,7 @@ export function PosAuxiliaryUi({ p }: { p: PosEngineApi }) {
                 <OrderIdBarcode
                   orderId={sheet.orderId}
                   variant="receipt"
+                  displayLabel={sheet.orderNumber}
                 />
                 <p className="pos-receipt-barcode-caption">
                   {t('pos.receiptBarcodeCaption')}
@@ -389,7 +392,7 @@ export function PosAuxiliaryUi({ p }: { p: PosEngineApi }) {
               </div>
             : null}
             <div className="mt-2 flex flex-col items-center gap-1">
-              <TermsQr size={78} />
+              <TermsQr size={78} orderId={sheet.orderId} />
               <p className="text-[10px] text-muted-foreground">{t('pos.termsQrCaption')}</p>
             </div>
             <div className="pos-receipt-terms">
@@ -419,6 +422,7 @@ export function PosAuxiliaryUi({ p }: { p: PosEngineApi }) {
                     <OrderIdBarcode
                       orderId={sheet.orderId}
                       variant="receipt"
+                      displayLabel={sheet.orderNumber}
                     />
                     <div className="tag-meta">
                       <div>

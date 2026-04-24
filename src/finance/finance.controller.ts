@@ -171,7 +171,7 @@ export class FinanceController {
   @ApiOperation({
     summary: `NET open debt grouped by invoice issuer (${APP_BRAND})`,
     description:
-      'Live snapshot. Per-customer FIFO allocation of PAYMENT entries against INVOICE_SHORTFALL. Σ rows equals /unpaid-invoices openDebtKd and /collections totalMarketDebtKd.',
+      'Live snapshot. Per-customer FIFO allocation of PAYMENT entries against INVOICE_SHORTFALL. Σ openDebtKd matches /unpaid-invoices; the Call Center red KPI uses Σ UNPAID order totals (collections list) and may differ when off-list wallet/subscription debt exists.',
   })
   getOpenDebtByIssuer(
     @Query() q: OpenDebtByIssuerQueryDto,

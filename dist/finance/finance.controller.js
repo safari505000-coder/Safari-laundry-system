@@ -164,7 +164,7 @@ __decorate([
     (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.CALL_CENTER, client_1.SafariRole.CALL_CENTER_SUPERVISOR),
     (0, swagger_1.ApiOperation)({
         summary: `NET open debt grouped by invoice issuer (${branding_1.APP_BRAND})`,
-        description: 'Live snapshot. Per-customer FIFO allocation of PAYMENT entries against INVOICE_SHORTFALL. Σ rows equals /unpaid-invoices openDebtKd and /collections totalMarketDebtKd.',
+        description: 'Live snapshot. Per-customer FIFO allocation of PAYMENT entries against INVOICE_SHORTFALL. Σ openDebtKd matches /unpaid-invoices; the Call Center red KPI uses Σ UNPAID order totals (collections list) and may differ when off-list wallet/subscription debt exists.',
     }),
     __param(0, (0, common_1.Query)()),
     __metadata("design:type", Function),

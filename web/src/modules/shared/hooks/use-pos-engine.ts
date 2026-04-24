@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -301,6 +301,8 @@ export function usePosEngine(opts: PosEngineOptions) {
   const [newHouse, setNewHouse] = useState('');
   const [savingCustomer, setSavingCustomer] = useState(false);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
+  /** Synchronous re-entry guard — `checkoutBusy` alone loses double-clicks before React re-renders. */
+  const checkoutInFlightRef = useRef(false);
   const [receiptSheets, setReceiptSheets] = useState<ReceiptSnapshot[] | null>(
     null,
   );
@@ -656,6 +658,11 @@ export function usePosEngine(opts: PosEngineOptions) {
       toast.error(t('pos.checkout.emptyCart'));
       return;
     }
+    if (checkoutInFlightRef.current) {
+      return;
+    }
+    checkoutInFlightRef.current = true;
+    setCheckoutBusy(true);
     const phone = selected.phone.replace(/[\s-]/g, '').trim();
 
     const customerAddressStr =
@@ -689,7 +696,17 @@ export function usePosEngine(opts: PosEngineOptions) {
       extras: ReceiptSheetExtras,
     ): ReceiptSnapshot => ({
       orderId: created.id,
-      orderNumber: created.invoiceNumber || created.id || '-',
+      /**
+       * Human-facing INV#: owner serial (A-3) → paper invoice # → last-resort
+       * short id (8 hex), **not** the full uuid — the full `orderId` is printed
+       * only on the "سيريال كود" line so the two lines are never identical.
+       * Mirrors `docNumber` in `invoice-print-page.tsx`.
+       */
+      orderNumber:
+        created.serialNumber?.trim() ||
+        created.invoiceNumber?.trim() ||
+        (created.id ? created.id.slice(0, 8).toUpperCase() : '') ||
+        '-',
       createdAt: created.createdAt || new Date().toISOString(),
       branchLabel: t('pos.branchLabelFallback'),
       employeeName: user.fullName || user.username,
@@ -702,7 +719,6 @@ export function usePosEngine(opts: PosEngineOptions) {
       ...extras,
     });
 
-    setCheckoutBusy(true);
     try {
       const bundlePrep = computeMultiInvoiceParts(
         nonEmptyOrdered.map((o) => ({
@@ -984,6 +1000,7 @@ export function usePosEngine(opts: PosEngineOptions) {
         }
       }
     } finally {
+      checkoutInFlightRef.current = false;
       setCheckoutBusy(false);
     }
   }

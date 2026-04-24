@@ -22,7 +22,7 @@ class CallCenterOperationsSummaryDto {
 exports.CallCenterOperationsSummaryDto = CallCenterOperationsSummaryDto;
 __decorate([
     (0, swagger_1.ApiProperty)({
-        description: 'V1.6.5 — Sum of every UNPAID, non-canceled order.totalPrice (KWD, 3 decimals / fils). Identical predicate to the Debt-Tracking table so KPI === Σ(rows) to the last fils.',
+        description: 'V1.6.5 / V20.x — Sum of `order.totalPrice` for `cashStatus=UNPAID` and not canceled, same `branchId` OR as the collections list (not full DebtLedger: excludes subscription overuse, etc.). Matches Σ table rows when the search box is empty.',
         example: '1234.560',
     }),
     __metadata("design:type", String)

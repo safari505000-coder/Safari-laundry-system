@@ -27,6 +27,7 @@ const request_id_middleware_1 = require("./common/middleware/request-id.middlewa
 const customers_module_1 = require("./customers/customers.module");
 const debt_transfers_module_1 = require("./debt-transfers/debt-transfers.module");
 const expenses_module_1 = require("./expenses/expenses.module");
+const feedback_module_1 = require("./feedback/feedback.module");
 const exports_module_1 = require("./exports/exports.module");
 const fixed_expense_module_1 = require("./fixed-expenses/fixed-expense.module");
 const payroll_module_1 = require("./payroll/payroll.module");
@@ -121,6 +122,7 @@ exports.AppModule = AppModule = __decorate([
             loans_module_1.LoansModule,
             vehicle_expenses_module_1.VehicleExpensesModule,
             verify_module_1.VerifyModule,
+            feedback_module_1.FeedbackModule,
             health_module_1.HealthModule,
             serve_static_1.ServeStaticModule.forRoot({
                 rootPath: uploadsPath,

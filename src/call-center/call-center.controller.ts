@@ -175,7 +175,6 @@ export class CallCenterController {
     return this.callCenterService.sendSubscriberReminder(customerId);
   }
 
-
   @Get('customers/:customerId/settlements')
   @ApiOperation({
     summary: `Customer settlement history (${APP_BRAND})`,

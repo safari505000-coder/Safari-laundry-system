@@ -31,6 +31,7 @@ class DriverPrefixRowDto {
     driverPrefix;
     branchName;
     isActive;
+    safariRole;
 }
 exports.DriverPrefixRowDto = DriverPrefixRowDto;
 class SerialLogRowDto {

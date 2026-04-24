@@ -83,6 +83,11 @@ const orderDetailSelect = {
       phone2: true,
       address: true,
       displayName: true,
+      // V19.22 — surface outstanding wallet debt on invoice prints so the
+      // customer (and driver handing over the receipt) immediately sees
+      // any prior debt that is still owed. The print template hides the
+      // line when debt is zero so zero-debt receipts keep the old layout.
+      wallet: { select: { balance: true, debt: true } },
     },
   },
   driver: {

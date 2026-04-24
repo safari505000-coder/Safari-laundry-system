@@ -500,13 +500,14 @@ let CallCenterService = class CallCenterService {
         const { dayStart, dayEnd, dayIsoLocal } = kuwaitDayBounds(now);
         const orderBranch = orderBranchWhere(branchId);
         const ledgerBranchFilter = branchId ? { branchId } : {};
-        const [ledgerTotals, todaysPayments, pendingLinksCount] = await Promise.all([
-            this.prisma.debtLedgerEntry.groupBy({
-                by: ['customerId', 'source'],
+        const [unpaidInvoicesSum, todaysPayments, pendingLinksCount] = await Promise.all([
+            this.prisma.order.aggregate({
                 where: {
-                    ...ledgerBranchFilter,
+                    cashStatus: client_1.CashStatus.UNPAID,
+                    status: { not: client_1.OrderStatus.CANCELED },
+                    ...(orderBranch ?? {}),
                 },
-                _sum: { amount: true },
+                _sum: { totalPrice: true },
             }),
             this.prisma.debtLedgerEntry.aggregate({
                 where: {
@@ -525,26 +526,10 @@ let CallCenterService = class CallCenterService {
                 },
             }),
         ]);
-        const perCustomer = new Map();
-        for (const g of ledgerTotals) {
-            const cur = perCustomer.get(g.customerId) ??
-                { debt: new client_1.Prisma.Decimal(0), payment: new client_1.Prisma.Decimal(0) };
-            const amt = g._sum.amount ?? new client_1.Prisma.Decimal(0);
-            if (g.source === client_1.DebtSource.PAYMENT)
-                cur.payment = cur.payment.plus(amt);
-            else
-                cur.debt = cur.debt.plus(amt);
-            perCustomer.set(g.customerId, cur);
-        }
-        let openDebt = new client_1.Prisma.Decimal(0);
-        for (const { debt, payment } of perCustomer.values()) {
-            const diff = debt.minus(payment);
-            if (diff.gt(0))
-                openDebt = openDebt.plus(diff);
-        }
+        const redCardTotal = unpaidInvoicesSum._sum.totalPrice ?? new client_1.Prisma.Decimal(0);
         const recoveredToday = todaysPayments._sum.amount ?? new client_1.Prisma.Decimal(0);
         return {
-            totalMarketDebtKd: KWD_DP(openDebt),
+            totalMarketDebtKd: KWD_DP(redCardTotal),
             debtCollectedTodayKd: KWD_DP(recoveredToday),
             debtRecoveredTodayKd: KWD_DP(recoveredToday),
             pendingLinksCount,

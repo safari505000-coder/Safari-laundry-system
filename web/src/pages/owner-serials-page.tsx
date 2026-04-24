@@ -7,7 +7,7 @@ import {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate } from 'react-router-dom';
-import { CheckCircle2, Hash, Loader2, RefreshCw } from 'lucide-react';
+import { Building2, CheckCircle2, Hash, Loader2, RefreshCw, Truck } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/modules/shared/components/ui/button';
 import { Input } from '@/modules/shared/components/ui/input';
@@ -31,10 +31,10 @@ import { cn } from '@/lib/utils';
 import { formatKwdLabel } from '@/lib/kwd';
 
 /**
- * Dastur §1 (V1.5) — Owner-only Serial Management.
+ * Dastur §1 (V1.5) + V19.24 — Owner-only Serial Management.
  *
- * Left panel: assign / clear single-letter prefixes to drivers.
- * Right panel: live global serial log (most recent `<Prefix>-<N>` orders).
+ * Left panel: assign / clear single-letter operator prefixes.
+ * Right panel: live serial log; each `<Prefix>-<n>` uses **n** per user (V19.24).
  */
 export function OwnerSerialsPage() {
   const { t } = useTranslation();
@@ -210,6 +210,7 @@ export function OwnerSerialsPage() {
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <TableHead>{t('ownerSerials.driverCol')}</TableHead>
+                <TableHead>{t('ownerSerials.roleCol')}</TableHead>
                 <TableHead>{t('ownerSerials.branchCol')}</TableHead>
                 <TableHead className="text-center">
                   {t('ownerSerials.prefixCol')}
@@ -219,13 +220,13 @@ export function OwnerSerialsPage() {
             <TableBody>
               {drivers === null ? (
                 <TableRow>
-                  <TableCell colSpan={3} className="text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={4} className="text-center text-sm text-muted-foreground">
                     {loading ? t('ownerSerials.loading') : t('ownerSerials.unable')}
                   </TableCell>
                 </TableRow>
               ) : drivers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={3} className="text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={4} className="text-center text-sm text-muted-foreground">
                     {t('ownerSerials.emptyDrivers')}
                   </TableCell>
                 </TableRow>
@@ -236,6 +237,7 @@ export function OwnerSerialsPage() {
                     pending !== undefined ? pending : (d.driverPrefix ?? '');
                   const rowSaving = savingId === d.id;
                   const rowJustSaved = lastSavedId === d.id;
+                  const isManager = d.safariRole === 'MANAGER';
                   return (
                     <TableRow key={d.id} className={cn(!d.isActive && 'opacity-60')}>
                       <TableCell className="font-medium">
@@ -245,6 +247,25 @@ export function OwnerSerialsPage() {
                             ({t('ownerSerials.inactive')})
                           </span>
                         ) : null}
+                      </TableCell>
+                      <TableCell>
+                        <span
+                          className={cn(
+                            'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium',
+                            isManager
+                              ? 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-300'
+                              : 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300',
+                          )}
+                        >
+                          {isManager ? (
+                            <Building2 className="h-3 w-3" aria-hidden />
+                          ) : (
+                            <Truck className="h-3 w-3" aria-hidden />
+                          )}
+                          {isManager
+                            ? t('ownerSerials.roleManager')
+                            : t('ownerSerials.roleDriver')}
+                        </span>
                       </TableCell>
                       <TableCell className="text-sm">
                         {d.branchName ?? '—'}

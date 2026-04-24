@@ -144,6 +144,18 @@ export const collectionsItem: NavItem = {
   roles: ['OWNER', 'GENERAL_MANAGER', 'CALL_CENTER', 'CALL_CENTER_SUPERVISOR'],
 };
 
+/**
+ * V19.22 — Customer QR feedback inbox. Lives next to the Call-Center
+ * collections item because the team that follows up on complaints is
+ * the same team. Owner + GM see it as a strategic signal.
+ */
+export const feedbackInboxItem: NavItem = {
+  to: '/feedback',
+  labelKey: 'nav.feedbackInbox',
+  icon: MessageSquare,
+  roles: ['OWNER', 'GENERAL_MANAGER', 'CALL_CENTER', 'CALL_CENTER_SUPERVISOR'],
+};
+
 export const whatsappToolsItem: NavItem = {
   to: '/whatsapp-tools',
   labelKey: 'nav.whatsappTools',

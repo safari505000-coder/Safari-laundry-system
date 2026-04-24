@@ -22,17 +22,15 @@ const AUDIT_ACTION_CLEAN = 'ORDER_SERIAL_GAP_SCAN_CLEAN';
 const AUDIT_RESOURCE = '/owner/serials/gaps';
 let SerialGapService = SerialGapService_1 = class SerialGapService {
     prisma;
-    counter;
     logger = new common_1.Logger(SerialGapService_1.name);
-    constructor(prisma, counter) {
+    constructor(prisma) {
         this.prisma = prisma;
-        this.counter = counter;
     }
     async handleCron() {
         try {
             const report = await this.runDailyCheck();
             if (report.gapCount > 0) {
-                this.logger.warn(`[SERIAL-GAP] ${report.gapCount} gap(s) detected; counter=${report.currentCounter}`);
+                this.logger.warn(`[SERIAL-GAP] ${report.gapCount} gap(s) across per-operator serials; aggregateHighMark=${report.currentCounter}`);
             }
         }
         catch (err) {
@@ -48,43 +46,69 @@ let SerialGapService = SerialGapService_1 = class SerialGapService {
         return this.runDailyCheck();
     }
     async scanGaps() {
-        const currentCounter = await this.counter.peek();
         const scannedAtIso = new Date().toISOString();
-        if (currentCounter <= 0) {
-            return {
-                scannedAtIso,
-                currentCounter,
-                presentCount: 0,
-                gapCount: 0,
-                firstGaps: [],
-                allGapsTruncated: false,
-            };
-        }
-        const rows = await this.prisma.order.findMany({
-            where: { serialNumber: { not: null } },
-            select: { serialNumber: true },
+        const operators = await this.prisma.user.findMany({
+            where: { driverPrefix: { not: null } },
+            select: { id: true, driverPrefix: true },
         });
-        const present = new Set();
-        for (const r of rows) {
-            const n = extractCounter(r.serialNumber);
-            if (n !== null && n >= 1 && n <= currentCounter) {
-                present.add(n);
-            }
-        }
-        const firstGaps = [];
+        let currentCounter = 0;
+        let presentCount = 0;
         let gapCount = 0;
-        for (let i = 1; i <= currentCounter; i++) {
-            if (!present.has(i)) {
-                gapCount += 1;
-                if (firstGaps.length < GAP_SAMPLE_LIMIT) {
-                    firstGaps.push(i);
+        const firstGaps = [];
+        const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        for (const op of operators) {
+            const p = (op.driverPrefix ?? '').trim();
+            if (!p)
+                continue;
+            const key = serial_counter_service_1.SerialCounterService.orderSerialKeyForUser(op.id);
+            const [counterRow, orderRows] = await Promise.all([
+                this.prisma.serialCounter.findUnique({ where: { key } }),
+                this.prisma.order.findMany({
+                    where: { driverId: op.id, serialNumber: { startsWith: `${p}-` } },
+                    select: { serialNumber: true },
+                }),
+            ]);
+            const re = new RegExp(`^${esc(p)}-(\\d+)$`);
+            let maxN = 0;
+            const present = new Set();
+            for (const r of orderRows) {
+                if (!r.serialNumber)
+                    continue;
+                const m = r.serialNumber.match(re);
+                if (m) {
+                    const n = Number.parseInt(m[1], 10);
+                    if (Number.isFinite(n)) {
+                        maxN = Math.max(maxN, n);
+                        present.add(n);
+                    }
+                }
+            }
+            const cFromRow = counterRow?.value ?? 0;
+            const C = Math.max(cFromRow, maxN);
+            if (C <= 0) {
+                continue;
+            }
+            currentCounter += C;
+            let slotFilled = 0;
+            for (let i = 1; i <= C; i += 1) {
+                if (present.has(i)) {
+                    slotFilled += 1;
+                }
+            }
+            presentCount += slotFilled;
+            for (let i = 1; i <= C; i += 1) {
+                if (!present.has(i)) {
+                    gapCount += 1;
+                    if (firstGaps.length < GAP_SAMPLE_LIMIT) {
+                        firstGaps.push(`${p}-${i}`);
+                    }
                 }
             }
         }
         return {
             scannedAtIso,
             currentCounter,
-            presentCount: present.size,
+            presentCount,
             gapCount,
             firstGaps,
             allGapsTruncated: gapCount > firstGaps.length,
@@ -130,16 +154,6 @@ __decorate([
 ], SerialGapService.prototype, "handleCron", null);
 exports.SerialGapService = SerialGapService = SerialGapService_1 = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [prisma_service_1.PrismaService,
-        serial_counter_service_1.SerialCounterService])
+    __metadata("design:paramtypes", [prisma_service_1.PrismaService])
 ], SerialGapService);
-function extractCounter(serial) {
-    if (!serial)
-        return null;
-    const m = serial.match(/-(\d+)$/);
-    if (!m)
-        return null;
-    const n = Number.parseInt(m[1], 10);
-    return Number.isFinite(n) ? n : null;
-}
 //# sourceMappingURL=serial-gap.service.js.map

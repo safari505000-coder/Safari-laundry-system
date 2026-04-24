@@ -39,6 +39,12 @@ declare const orderDetailSelect: {
             phone2: true;
             address: true;
             displayName: true;
+            wallet: {
+                select: {
+                    balance: true;
+                    debt: true;
+                };
+            };
         };
     };
     driver: {

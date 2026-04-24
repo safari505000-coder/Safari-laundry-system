@@ -830,33 +830,22 @@ export class CallCenterService {
     const { dayStart, dayEnd, dayIsoLocal } = kuwaitDayBounds(now);
 
     const orderBranch = orderBranchWhere(branchId);
-
-    // V19.11 — KPI math now comes from DebtLedgerEntry (the unified
-    // accounting book), not `Order.cashStatus` or TransactionHistory
-    // metadata. This gives a single source of truth so numbers match
-    // across /collections and /unpaid-invoices:
-    //
-    //   Red card  (totalMarketDebtKd)     = Σ max(SUM(INVOICE_SHORTFALL
-    //                                              + SUBSCRIPTION_OVERUSE)
-    //                                            − SUM(PAYMENT), 0)
-    //                                        grouped by customer.
-    //   Green card (debtCollectedTodayKd) = SUM(PAYMENT entries created
-    //                                            today within Kuwait day
-    //                                            window).
-    //
-    // `branchId` scope (when provided) matches the debt-creating branch
-    // for the red card (the branch that issued the unpaid receivable)
-    // and the branch field on the PAYMENT row for the green card (the
-    // operator's branch that recorded the settlement).
+    // Red card: Σ `order.totalPrice` for the **same** predicate as
+    // `GET /api/orders/collections/unpaid-online` (invoice list only:
+    // `cashStatus = UNPAID`, not canceled, optional branch OR).  This
+    // excludes subscription-overuse and other non-invoice debt that lives
+    // only in `DebtLedgerEntry`, so the KPI matches the table footer
+    // when the search box is empty.
     const ledgerBranchFilter = branchId ? { branchId } : {};
 
-    const [ledgerTotals, todaysPayments, pendingLinksCount] = await Promise.all([
-      this.prisma.debtLedgerEntry.groupBy({
-        by: ['customerId', 'source'],
+    const [unpaidInvoicesSum, todaysPayments, pendingLinksCount] = await Promise.all([
+      this.prisma.order.aggregate({
         where: {
-          ...ledgerBranchFilter,
+          cashStatus: CashStatus.UNPAID,
+          status: { not: OrderStatus.CANCELED },
+          ...(orderBranch ?? {}),
         },
-        _sum: { amount: true },
+        _sum: { totalPrice: true },
       }),
       this.prisma.debtLedgerEntry.aggregate({
         where: {
@@ -866,8 +855,6 @@ export class CallCenterService {
         },
         _sum: { amount: true },
       }),
-      // Workload signal still meaningful: how many open invoices already
-      // have a hosted link minted. Orders is still the right source here.
       this.prisma.order.count({
         where: {
           cashStatus: CashStatus.UNPAID,
@@ -878,29 +865,12 @@ export class CallCenterService {
       }),
     ]);
 
-    // Per-customer (debt − payment), clamped at 0. Any residual
-    // over-payment for a customer does NOT offset other customers'
-    // open debt in the red-card total — it just means their row is 0.
-    const perCustomer = new Map<string, { debt: Prisma.Decimal; payment: Prisma.Decimal }>();
-    for (const g of ledgerTotals) {
-      const cur =
-        perCustomer.get(g.customerId) ??
-        { debt: new Prisma.Decimal(0), payment: new Prisma.Decimal(0) };
-      const amt = g._sum.amount ?? new Prisma.Decimal(0);
-      if (g.source === DebtSource.PAYMENT) cur.payment = cur.payment.plus(amt);
-      else cur.debt = cur.debt.plus(amt);
-      perCustomer.set(g.customerId, cur);
-    }
-    let openDebt = new Prisma.Decimal(0);
-    for (const { debt, payment } of perCustomer.values()) {
-      const diff = debt.minus(payment);
-      if (diff.gt(0)) openDebt = openDebt.plus(diff);
-    }
-
+    const redCardTotal =
+      unpaidInvoicesSum._sum.totalPrice ?? new Prisma.Decimal(0);
     const recoveredToday = todaysPayments._sum.amount ?? new Prisma.Decimal(0);
 
     return {
-      totalMarketDebtKd: KWD_DP(openDebt),
+      totalMarketDebtKd: KWD_DP(redCardTotal),
       debtCollectedTodayKd: KWD_DP(recoveredToday),
       debtRecoveredTodayKd: KWD_DP(recoveredToday),
       pendingLinksCount,

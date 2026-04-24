@@ -127,7 +127,10 @@ export function CreateOrderDialog({ open, onOpenChange, onCreated }: Props) {
     if (!token) return;
     setLoadingCatalog(true);
     try {
-      const path = buildLaundryPriceListPath(pricingBranchId);
+      const path = buildLaundryPriceListPath(
+        pricingBranchId,
+        user?.safariRole,
+      );
       const data = await apiJson<LaundryPriceListItemRow[]>(path, {
         token,
       });
@@ -137,7 +140,7 @@ export function CreateOrderDialog({ open, onOpenChange, onCreated }: Props) {
     } finally {
       setLoadingCatalog(false);
     }
-  }, [token, pricingBranchId]);
+  }, [token, pricingBranchId, user?.safariRole]);
 
   useEffect(() => {
     if (open && token) void loadCatalog();

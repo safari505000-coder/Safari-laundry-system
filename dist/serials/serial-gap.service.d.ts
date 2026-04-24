@@ -1,18 +1,16 @@
 import { PrismaService } from '../prisma/prisma.service';
-import { SerialCounterService } from './serial-counter.service';
 export interface GapReport {
     scannedAtIso: string;
     currentCounter: number;
     presentCount: number;
     gapCount: number;
-    firstGaps: number[];
+    firstGaps: string[];
     allGapsTruncated: boolean;
 }
 export declare class SerialGapService {
     private readonly prisma;
-    private readonly counter;
     private readonly logger;
-    constructor(prisma: PrismaService, counter: SerialCounterService);
+    constructor(prisma: PrismaService);
     handleCron(): Promise<void>;
     runDailyCheck(): Promise<GapReport>;
     scanNow(): Promise<GapReport>;

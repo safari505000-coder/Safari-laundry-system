@@ -21,16 +21,16 @@ export declare class CallCenterController {
         actualBalance: import("@prisma/client-runtime-utils").Decimal;
     }[]>;
     searchCustomers(q: string): Promise<{
+        wallet: {
+            balance: import("@prisma/client-runtime-utils").Decimal;
+            debt: import("@prisma/client-runtime-utils").Decimal;
+        } | null;
         id: string;
         createdAt: Date;
         phone: string;
         phone2: string | null;
         displayName: string | null;
         address: string | null;
-        wallet: {
-            balance: import("@prisma/client-runtime-utils").Decimal;
-            debt: import("@prisma/client-runtime-utils").Decimal;
-        } | null;
     }[]>;
     activateSubscription(dto: ActivateSubscriptionDto, user: JwtUser): Promise<{
         customer: {

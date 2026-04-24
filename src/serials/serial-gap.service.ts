@@ -6,12 +6,13 @@ import { KUWAIT_TIMEZONE } from '../common/time/kuwait-time';
 import { SerialCounterService } from './serial-counter.service';
 
 /**
- * Serial-gap monitor (Dastur §3.8).
+ * Serial-gap monitor (Dastur §3.8) — V19.24 per-operator sequences.
  *
- * The global `ORDER_SERIAL` counter is atomic and bumps only inside the
- * order-creation transaction, so a legitimate gap can only appear if an
- * `Order` row is hard-deleted after the fact — which is exactly the event
- * the Owner needs to see about.
+ * After V19.24, each `User` with a `driverPrefix` has their own
+ * `SerialCounter` key `OU_<userId>`. A gap in **that** stream (a missing
+ * `prefix-<i>` for `1 ≤ i ≤ C` where `C` is the per-user high mark) can
+ * only appear if an `Order` was hard-deleted (or a serial was tampered) —
+ * the same business meaning as the old global `ORDER_SERIAL` check.
  *
  * The service has two entry points:
  *   • `@Cron('5 0 * * *', Asia/Kuwait)` — runs at 00:05 local, right after
@@ -26,11 +27,13 @@ import { SerialCounterService } from './serial-counter.service';
 
 export interface GapReport {
   scannedAtIso: string;
+  /** Sum of per-operator high marks `C` (each is max(counter row, max suffix in DB for that user)). */
   currentCounter: number;
+  /** Sum, across operators, of how many integers in `1..C` are covered by a live order. */
   presentCount: number;
   gapCount: number;
-  /** First N missing integers (oldest → newest). Capped to keep payloads sane. */
-  firstGaps: number[];
+  /** Up to 50 — full serial strings like `A-3` (not bare integers). */
+  firstGaps: string[];
   allGapsTruncated: boolean;
 }
 
@@ -43,10 +46,7 @@ const AUDIT_RESOURCE = '/owner/serials/gaps';
 export class SerialGapService {
   private readonly logger = new Logger(SerialGapService.name);
 
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly counter: SerialCounterService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   /**
    * Kuwait 00:05 daily. The 5-minute offset guarantees the shift cycle
@@ -59,7 +59,7 @@ export class SerialGapService {
       const report = await this.runDailyCheck();
       if (report.gapCount > 0) {
         this.logger.warn(
-          `[SERIAL-GAP] ${report.gapCount} gap(s) detected; counter=${report.currentCounter}`,
+          `[SERIAL-GAP] ${report.gapCount} gap(s) across per-operator serials; aggregateHighMark=${report.currentCounter}`,
         );
       }
     } catch (err) {
@@ -89,38 +89,65 @@ export class SerialGapService {
    * the `latestReport()` audit read below.
    */
   async scanGaps(): Promise<GapReport> {
-    const currentCounter = await this.counter.peek();
     const scannedAtIso = new Date().toISOString();
-    if (currentCounter <= 0) {
-      return {
-        scannedAtIso,
-        currentCounter,
-        presentCount: 0,
-        gapCount: 0,
-        firstGaps: [],
-        allGapsTruncated: false,
-      };
-    }
-
-    const rows = await this.prisma.order.findMany({
-      where: { serialNumber: { not: null } },
-      select: { serialNumber: true },
+    const operators = await this.prisma.user.findMany({
+      where: { driverPrefix: { not: null } },
+      select: { id: true, driverPrefix: true },
     });
-    const present = new Set<number>();
-    for (const r of rows) {
-      const n = extractCounter(r.serialNumber);
-      if (n !== null && n >= 1 && n <= currentCounter) {
-        present.add(n);
-      }
-    }
 
-    const firstGaps: number[] = [];
+    let currentCounter = 0;
+    let presentCount = 0;
     let gapCount = 0;
-    for (let i = 1; i <= currentCounter; i++) {
-      if (!present.has(i)) {
-        gapCount += 1;
-        if (firstGaps.length < GAP_SAMPLE_LIMIT) {
-          firstGaps.push(i);
+    const firstGaps: string[] = [];
+    const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    for (const op of operators) {
+      const p = (op.driverPrefix ?? '').trim();
+      if (!p) continue;
+
+      const key = SerialCounterService.orderSerialKeyForUser(op.id);
+      const [counterRow, orderRows] = await Promise.all([
+        this.prisma.serialCounter.findUnique({ where: { key } }),
+        this.prisma.order.findMany({
+          where: { driverId: op.id, serialNumber: { startsWith: `${p}-` } },
+          select: { serialNumber: true },
+        }),
+      ]);
+      const re = new RegExp(`^${esc(p)}-(\\d+)$`);
+      let maxN = 0;
+      const present = new Set<number>();
+      for (const r of orderRows) {
+        if (!r.serialNumber) continue;
+        const m = r.serialNumber.match(re);
+        if (m) {
+          const n = Number.parseInt(m[1], 10);
+          if (Number.isFinite(n)) {
+            maxN = Math.max(maxN, n);
+            present.add(n);
+          }
+        }
+      }
+      const cFromRow = counterRow?.value ?? 0;
+      const C = Math.max(cFromRow, maxN);
+      if (C <= 0) {
+        continue;
+      }
+      currentCounter += C;
+
+      let slotFilled = 0;
+      for (let i = 1; i <= C; i += 1) {
+        if (present.has(i)) {
+          slotFilled += 1;
+        }
+      }
+      presentCount += slotFilled;
+
+      for (let i = 1; i <= C; i += 1) {
+        if (!present.has(i)) {
+          gapCount += 1;
+          if (firstGaps.length < GAP_SAMPLE_LIMIT) {
+            firstGaps.push(`${p}-${i}`);
+          }
         }
       }
     }
@@ -128,7 +155,7 @@ export class SerialGapService {
     return {
       scannedAtIso,
       currentCounter,
-      presentCount: present.size,
+      presentCount,
       gapCount,
       firstGaps,
       allGapsTruncated: gapCount > firstGaps.length,
@@ -172,16 +199,4 @@ export class SerialGapService {
       },
     });
   }
-}
-
-/**
- * Pulls the trailing integer from a `<prefix>-<n>` serial. Returns
- * `null` for malformed rows rather than crashing the sweep.
- */
-function extractCounter(serial: string | null): number | null {
-  if (!serial) return null;
-  const m = serial.match(/-(\d+)$/);
-  if (!m) return null;
-  const n = Number.parseInt(m[1], 10);
-  return Number.isFinite(n) ? n : null;
 }

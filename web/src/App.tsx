@@ -23,6 +23,8 @@ import { LoanPrintPage } from '@/pages/loan-print-page';
 import { InvoicePrintPage } from '@/pages/invoice-print-page';
 import { StatementPrintPage } from '@/pages/statement-print-page';
 import { PublicStatementPage } from '@/pages/public-statement-page';
+import { FeedbackPublicPage } from '@/pages/feedback-public-page';
+import { FeedbackInboxPage } from '@/pages/feedback-inbox-page';
 import {
   PaymentFailedPage,
   PaymentSuccessPage,
@@ -129,6 +131,18 @@ export default function App() {
             <Route
               path="/public/statement/:token"
               element={<PublicStatementPage />}
+            />
+            {/*
+              V19.22 — Public customer rating page. The invoice QR
+              encodes `<origin>/r/:orderId` and the customer scans it
+              straight from the paper receipt. No auth by design, same
+              security pattern as the public statement route above —
+              the backend returns a trimmed payload that matches what
+              the customer already sees on paper, nothing more.
+            */}
+            <Route
+              path="/r/:orderId"
+              element={<FeedbackPublicPage />}
             />
             {/*
               V1.7.0 — Customer return pages for UPayments hosted
@@ -464,6 +478,21 @@ export default function App() {
                   element={
                     <RequireAccess access="managerDocuments.view">
                       <MyDocumentsPage />
+                    </RequireAccess>
+                  }
+                />
+                {/*
+                  V19.22 — Customer Ratings inbox. Sidebar surface for
+                  Owner / GM / Call-Center (agent + supervisor) to read
+                  QR-submitted star ratings + notes and mark them as
+                  addressed. Access matrix gates the route and the nav
+                  entry together.
+                */}
+                <Route
+                  path="feedback"
+                  element={
+                    <RequireAccess access="feedback.view">
+                      <FeedbackInboxPage />
                     </RequireAccess>
                   }
                 />

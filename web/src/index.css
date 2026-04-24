@@ -661,6 +661,13 @@ body {
   .pos-receipt-meta-grid p {
     margin: 0 0 0.8mm;
   }
+  /* System UUID under INV# — small mono so the full id fits 80mm. */
+  .pos-receipt-serial-line {
+    font-size: 8.5px;
+    line-height: 1.25;
+    font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+    word-break: break-all;
+  }
   .pos-customer-box {
     border: 1px solid #000;
     padding: 1.5mm;

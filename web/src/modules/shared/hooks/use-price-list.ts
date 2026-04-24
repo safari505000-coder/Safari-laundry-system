@@ -20,11 +20,19 @@ export function rowShowsInLiveCatalog(row: LaundryPriceListItemRow): boolean {
   return true;
 }
 
+/**
+ * `?branchId=` is only valid for OWNER / GENERAL_MANAGER (branch preview).
+ * For MANAGER / DRIVER the API ignores the query and uses JWT `branchId`;
+ * sending the param provokes 400 from the server.
+ */
 export function buildLaundryPriceListPath(
   branchId: string | null | undefined,
+  safariRole: string | null | undefined = undefined,
 ): string {
-  if (branchId && branchId.length > 0) {
-    return `/api/laundry-price-list?branchId=${encodeURIComponent(branchId)}`;
+  const isExec =
+    safariRole === 'OWNER' || safariRole === 'GENERAL_MANAGER';
+  if (isExec && branchId && String(branchId).trim().length > 0) {
+    return `/api/laundry-price-list?branchId=${encodeURIComponent(String(branchId).trim())}`;
   }
   return '/api/laundry-price-list';
 }
@@ -121,7 +129,10 @@ export function usePriceList(opts: UsePriceListOpts): PriceListBridge {
     setLoading(true);
     setFailed(false);
     try {
-      const listPath = buildLaundryPriceListPath(queryBranchId);
+      const listPath = buildLaundryPriceListPath(
+        queryBranchId,
+        user?.safariRole,
+      );
       const listData = await apiJson<LaundryPriceListItemRow[]>(listPath, {
         token,
       });
@@ -164,7 +175,7 @@ export function usePriceList(opts: UsePriceListOpts): PriceListBridge {
     } finally {
       setLoading(false);
     }
-  }, [token, queryBranchId, includeInactive, t]);
+  }, [token, queryBranchId, includeInactive, t, user?.safariRole]);
 
   useEffect(() => {
     void reload();

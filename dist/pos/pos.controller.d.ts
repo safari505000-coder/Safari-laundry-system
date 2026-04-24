@@ -9,6 +9,10 @@ export declare class PosController {
     private readonly ordersService;
     constructor(posService: PosService, ordersService: OrdersService);
     searchCustomers(q: string): Promise<{
+        wallet: {
+            balance: import("@prisma/client-runtime-utils").Decimal;
+            debt: import("@prisma/client-runtime-utils").Decimal;
+        } | null;
         id: string;
         createdAt: Date;
         phone: string;
@@ -20,12 +24,12 @@ export declare class PosController {
         addressStreet: string | null;
         addressAvenue: string | null;
         addressHouse: string | null;
-        wallet: {
-            balance: import("@prisma/client-runtime-utils").Decimal;
-            debt: import("@prisma/client-runtime-utils").Decimal;
-        } | null;
     }[]>;
     createCustomer(dto: PosCreateCustomerDto): Promise<{
+        wallet: {
+            balance: import("@prisma/client-runtime-utils").Decimal;
+            debt: import("@prisma/client-runtime-utils").Decimal;
+        } | null;
         id: string;
         createdAt: Date;
         phone: string;
@@ -37,10 +41,6 @@ export declare class PosController {
         addressStreet: string | null;
         addressAvenue: string | null;
         addressHouse: string | null;
-        wallet: {
-            balance: import("@prisma/client-runtime-utils").Decimal;
-            debt: import("@prisma/client-runtime-utils").Decimal;
-        } | null;
     }>;
     getCustomerBilling(customerId: string): Promise<{
         subscriptionActive: boolean;

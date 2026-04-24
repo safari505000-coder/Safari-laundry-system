@@ -46,12 +46,28 @@ export class CustomerLedgerService {
     return new Prisma.Decimal(minorToAmountString(minor));
   }
 
+  /**
+   * Concurrent checkouts for the same new customer can race on `upsert` create;
+   * the second tx may get P2002 on `customerId` unique — re-read the row.
+   */
   async getOrCreateWalletTx(tx: PrismaTx, customerId: string) {
-    return tx.customerWallet.upsert({
-      where: { customerId },
-      create: { customerId },
-      update: {},
-    });
+    try {
+      return await tx.customerWallet.upsert({
+        where: { customerId },
+        create: { customerId },
+        update: {},
+      });
+    } catch (e) {
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P2002'
+      ) {
+        return tx.customerWallet.findUniqueOrThrow({
+          where: { customerId },
+        });
+      }
+      throw e;
+    }
   }
 
   private resolveDebtCategory(role: SafariRole): DebtEntityCategory {

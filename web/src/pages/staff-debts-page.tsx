@@ -3,6 +3,9 @@ import { useTranslation } from 'react-i18next';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
+  AlertTriangle,
+  Banknote,
+  Building2,
   ChevronDown,
   ChevronRight,
   HandCoins,
@@ -35,7 +38,6 @@ import {
   CardTitle,
 } from '@/modules/shared/components/ui/card';
 import { Input } from '@/modules/shared/components/ui/input';
-import { Label } from '@/modules/shared/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -52,6 +54,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/modules/shared/components/ui/table';
+import {
+  FilterBar,
+  FilterField,
+  KpiCard,
+  PageHeader,
+} from '@/modules/shared/components/page';
 import { cn } from '@/lib/utils';
 
 type DebtStatus = 'ALL' | 'OVERDUE' | 'CURRENT';
@@ -359,6 +367,18 @@ export function StaffDebtsPage() {
     [managerRows],
   );
 
+  const pipelineTotal = driverTotal + managerTotal;
+
+  const overdueDriverCount = useMemo(
+    () => driverRows.filter((d) => isDriverOverdue(d, now)).length,
+    [driverRows, now],
+  );
+  const overdueManagerCount = useMemo(
+    () => managerRows.filter((c) => c.isOverdue).length,
+    [managerRows],
+  );
+  const totalOverdueCount = overdueDriverCount + overdueManagerCount;
+
   /*
    * Dastur §3 — QR verification URL.
    * Encodes the live `/staff-debts` route including the current filter query
@@ -435,7 +455,7 @@ export function StaffDebtsPage() {
   if (!allowed) return <Navigate to="/" replace />;
 
   return (
-    <div id="staff-debts-print-root" className="space-y-6">
+    <div id="staff-debts-print-root" className="space-y-5">
       {/*
        * Print-only header with QR verification code. Hidden on screen via the
        * `.sd-print-only` utility and revealed only inside @media print.
@@ -495,60 +515,135 @@ export function StaffDebtsPage() {
         </p>
       </div>
 
-      <header className="sd-screen-only flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight text-foreground">
-            <HandCoins className="h-6 w-6 text-primary" aria-hidden />
-            {t('staffDebts.title')}
-          </h1>
-          <p className="text-sm text-muted-foreground">{t('staffDebts.subtitle')}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="gap-1.5"
-            onClick={handlePrint}
-          >
-            <Printer className="h-4 w-4" aria-hidden />
-            {t('staffDebts.print')}
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            className="gap-1.5"
-            disabled={loading}
-            onClick={() => void load()}
-          >
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-            ) : (
-              <RefreshCw className="h-4 w-4" aria-hidden />
-            )}
-            {t('staffDebts.refresh')}
-          </Button>
-        </div>
-      </header>
+      <div className="sd-screen-only space-y-5">
+        <PageHeader
+          className="!mb-0 border-0 pb-3"
+          tone="orange"
+          title={
+            <span className="inline-flex items-center gap-2">
+              <HandCoins
+                className="h-6 w-6 shrink-0 text-orange-600 dark:text-orange-400"
+                aria-hidden
+              />
+              {t('staffDebts.title')}
+            </span>
+          }
+          subtitle={t('staffDebts.subtitle')}
+          actions={
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={handlePrint}
+              >
+                <Printer className="h-4 w-4" aria-hidden />
+                {t('staffDebts.print')}
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="gap-1.5"
+                disabled={loading}
+                onClick={() => void load()}
+              >
+                {loading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                ) : (
+                  <RefreshCw className="h-4 w-4" aria-hidden />
+                )}
+                {t('staffDebts.refresh')}
+              </Button>
+            </div>
+          }
+        />
 
-      {/* Filters — interactive; hidden in print (summary appears in print header) */}
-      <Card className="sd-screen-only border-border bg-card">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">
-            {t('staffDebts.filtersTitle')}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {/*
-           * V19.4 — Branch select is hidden when a specific employee is
-           * picked, because the employee's branch is already implied and
-           * rendered on every row. Picking a branch resets the employee
-           * filter so the two pickers never disagree.
-           */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <KpiCard
+            tone="orange"
+            label={t('staffDebts.kpiTotalPipeline', 'النقد قيد المسار')}
+            value={formatKwdLabel(pipelineTotal.toFixed(4))}
+            icon={<Banknote className="h-4 w-4" aria-hidden />}
+            loading={loading && drivers === null}
+            deltaBadge={
+              <span className="text-[10px] tabular-nums text-muted-foreground">
+                {t('staffDebts.kpiPipelineHint', {
+                  defaultValue: '{{d}} سائق · {{m}} مدير/عهدة',
+                  d: String(driverRows.length),
+                  m: String(managerRows.length),
+                })}
+              </span>
+            }
+          />
+          <KpiCard
+            tone="blue"
+            label={t('staffDebts.kpiWithDrivers', 'عند السائقين')}
+            value={formatKwdLabel(driverTotal.toFixed(4))}
+            icon={<Truck className="h-4 w-4" aria-hidden />}
+            loading={loading && drivers === null}
+            deltaBadge={
+              <span className="text-[10px] tabular-nums text-muted-foreground">
+                {t('staffDebts.kpiDriversHint', {
+                  defaultValue: 'كاش + كي نت + رابط + أونلاين',
+                })}
+              </span>
+            }
+          />
+          <KpiCard
+            tone="purple"
+            label={t('staffDebts.kpiWithManagers', 'عهدة المدراء')}
+            value={formatKwdLabel(managerTotal.toFixed(4))}
+            icon={<Building2 className="h-4 w-4" aria-hidden />}
+            loading={loading && custody === null}
+            deltaBadge={
+              <span className="text-[10px] tabular-nums text-muted-foreground">
+                {t('staffDebts.kpiManagersHint', {
+                  defaultValue: 'قبل اعتماد المحاسب',
+                })}
+              </span>
+            }
+          />
+          <KpiCard
+            tone="red"
+            label={t('staffDebts.kpiOverdue', 'يحتاج متابعة عاجلة')}
+            value={String(totalOverdueCount)}
+            icon={<AlertTriangle className="h-4 w-4" aria-hidden />}
+            loading={loading && (drivers === null || custody === null)}
+            deltaBadge={
+              <span className="text-[10px] tabular-nums text-muted-foreground">
+                {t('staffDebts.kpiOverdueHint', {
+                  defaultValue: '{{d}} سائق · {{m}} مدير',
+                  d: String(overdueDriverCount),
+                  m: String(overdueManagerCount),
+                })}
+              </span>
+            }
+          />
+        </div>
+
+        {/*
+         * V19.4 — Branch hidden when a specific employee is picked. Employee
+         * list merges drivers w/ pending balance + managers w/ open custody.
+         */}
+        <FilterBar
+          className="mb-0"
+          actions={
+            <span className="text-xs tabular-nums text-muted-foreground">
+              {t('staffDebts.filterResultCount', {
+                defaultValue: '{{d}} + {{m}} سطر',
+                d: String(driverRows.length),
+                m: String(managerRows.length),
+              })}
+            </span>
+          }
+        >
           {showBranchFilter ? (
-            <div className="space-y-1.5">
-              <Label htmlFor="sd-branch">{t('staffDebts.filterBranch')}</Label>
+            <FilterField
+              className="min-w-[10rem] max-w-full sm:max-w-xs"
+              label={t('staffDebts.filterBranch')}
+            >
               <Select
                 value={branchFilter}
                 onValueChange={(v) => {
@@ -556,7 +651,7 @@ export function StaffDebtsPage() {
                   setEmployeeFilter('ALL');
                 }}
               >
-                <SelectTrigger id="sd-branch">
+                <SelectTrigger id="sd-branch" className="h-9 w-full min-w-0">
                   <SelectValue placeholder={t('staffDebts.allBranches')}>
                     {branchFilter === 'ALL'
                       ? t('staffDebts.allBranches')
@@ -575,23 +670,17 @@ export function StaffDebtsPage() {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
+            </FilterField>
           ) : null}
-          {/*
-           * V19.4 — Employee dropdown. Populated from drivers with pending
-           * balance + managers with open custody, narrowed to the active
-           * branch when one is set. Selecting a specific employee hides
-           * the branch picker above.
-           */}
-          <div className="space-y-1.5">
-            <Label htmlFor="sd-employee">
-              {t('staffDebts.filterEmployee')}
-            </Label>
+          <FilterField
+            className="min-w-[12rem] max-w-full sm:min-w-[14rem]"
+            label={t('staffDebts.filterEmployee')}
+          >
             <Select
               value={employeeFilter}
               onValueChange={(v) => setEmployeeFilter(v ?? 'ALL')}
             >
-              <SelectTrigger id="sd-employee">
+              <SelectTrigger id="sd-employee" className="h-9 w-full min-w-0">
                 <SelectValue
                   placeholder={t('staffDebts.filterEmployeePlaceholder')}
                 >
@@ -628,24 +717,29 @@ export function StaffDebtsPage() {
                 })}
               </SelectContent>
             </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="sd-name">{t('staffDebts.filterName')}</Label>
+          </FilterField>
+          <FilterField
+            className="min-w-[8rem] max-w-full sm:max-w-[11rem]"
+            label={t('staffDebts.filterName')}
+          >
             <Input
               id="sd-name"
+              className="h-9"
               value={nameFilter}
               onChange={(e) => setNameFilter(e.target.value)}
               placeholder={t('staffDebts.filterNamePlaceholder')}
               autoComplete="off"
             />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="sd-status">{t('staffDebts.filterStatus')}</Label>
+          </FilterField>
+          <FilterField
+            className="min-w-[8.5rem] max-w-full sm:max-w-[10rem]"
+            label={t('staffDebts.filterStatus')}
+          >
             <Select
               value={statusFilter}
               onValueChange={(v) => setStatusFilter((v as DebtStatus) ?? 'ALL')}
             >
-              <SelectTrigger id="sd-status">
+              <SelectTrigger id="sd-status" className="h-9 w-full min-w-0">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -658,17 +752,22 @@ export function StaffDebtsPage() {
                 </SelectItem>
               </SelectContent>
             </Select>
-          </div>
-        </CardContent>
-      </Card>
+          </FilterField>
+        </FilterBar>
+      </div>
 
       {/* SECTION A — Drivers (Combined Pending Invoices: Cash + K-Net + Link + Online) */}
-      <Card className="border-border bg-card">
-        <CardHeader className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Truck className="h-4 w-4 text-primary" aria-hidden />
-              {t('staffDebts.driversSectionTitle')}
+      <Card className="overflow-hidden border border-border border-l-4 border-l-sky-500 bg-card shadow-sm sm:rounded-2xl">
+        <CardHeader className="flex flex-col gap-3 border-b border-border/60 bg-muted/20 px-4 py-4 sm:flex-row sm:items-end sm:justify-between sm:px-6">
+          <div className="min-w-0 space-y-1">
+            <CardTitle className="flex flex-wrap items-center gap-2 text-base font-semibold">
+              <span className="inline-flex items-center gap-2 text-sky-700 dark:text-sky-300">
+                <Truck className="h-4 w-4 shrink-0" aria-hidden />
+                {t('staffDebts.driversSectionTitle')}
+              </span>
+              <Badge variant="secondary" className="tabular-nums">
+                {driverRows.length}
+              </Badge>
             </CardTitle>
             <p className="text-xs text-muted-foreground">
               {t('staffDebts.driversSectionHintCombined')}
@@ -885,12 +984,17 @@ export function StaffDebtsPage() {
       </Card>
 
       {/* SECTION B — Managers */}
-      <Card className="border-border bg-card">
-        <CardHeader className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Users className="h-4 w-4 text-primary" aria-hidden />
-              {t('staffDebts.managersSectionTitle')}
+      <Card className="overflow-hidden border border-border border-l-4 border-l-violet-500 bg-card shadow-sm sm:rounded-2xl">
+        <CardHeader className="flex flex-col gap-3 border-b border-border/60 bg-muted/20 px-4 py-4 sm:flex-row sm:items-end sm:justify-between sm:px-6">
+          <div className="min-w-0 space-y-1">
+            <CardTitle className="flex flex-wrap items-center gap-2 text-base font-semibold">
+              <span className="inline-flex items-center gap-2 text-violet-700 dark:text-violet-300">
+                <Users className="h-4 w-4 shrink-0" aria-hidden />
+                {t('staffDebts.managersSectionTitle')}
+              </span>
+              <Badge variant="secondary" className="tabular-nums">
+                {managerRows.length}
+              </Badge>
             </CardTitle>
             <p className="text-xs text-muted-foreground">
               {t('staffDebts.managersSectionHint')}

@@ -27,18 +27,41 @@ export class SerialsService {
     private readonly counter: SerialCounterService,
   ) {}
 
+  /**
+   * V19.23 — Extended from DRIVER-only to `{ DRIVER, MANAGER }`.
+   *
+   * Branch managers also issue invoices from the POS while covering
+   * for their branch, so each manager needs their own unique
+   * single-letter prefix alongside every driver. The physical column
+   * stays `User.driverPrefix` (one global unique index already
+   * enforces "no two ticket-issuers share a prefix") — no schema
+   * change is needed; we just widen which roles the island lists
+   * and accepts prefixes for.
+   */
+  private static readonly PREFIX_ROLES: SafariRole[] = [
+    SafariRole.DRIVER,
+    SafariRole.MANAGER,
+  ];
+
   async listDrivers(): Promise<DriverPrefixRowDto[]> {
     const users = await this.prisma.user.findMany({
-      where: { safariRole: SafariRole.DRIVER },
+      where: { safariRole: { in: SerialsService.PREFIX_ROLES } },
       select: {
         id: true,
         fullName: true,
         username: true,
         driverPrefix: true,
         isActive: true,
+        safariRole: true,
         branch: { select: { name: true } },
       },
-      orderBy: [{ isActive: 'desc' }, { fullName: 'asc' }],
+      // DRIVER rows first (daily operators), then MANAGER rows.
+      // Within each group, active users first, then alphabetical.
+      orderBy: [
+        { safariRole: 'asc' },
+        { isActive: 'desc' },
+        { fullName: 'asc' },
+      ],
     });
     return users.map((u) => ({
       id: u.id,
@@ -47,6 +70,7 @@ export class SerialsService {
       driverPrefix: u.driverPrefix,
       branchName: u.branch?.name ?? null,
       isActive: u.isActive,
+      safariRole: u.safariRole as 'DRIVER' | 'MANAGER',
     }));
   }
 
@@ -59,8 +83,10 @@ export class SerialsService {
       select: { safariRole: true },
     });
     if (!existing) throw new NotFoundException('User not found');
-    if (existing.safariRole !== SafariRole.DRIVER) {
-      throw new BadRequestException('Only DRIVER users can receive a prefix');
+    if (!SerialsService.PREFIX_ROLES.includes(existing.safariRole)) {
+      throw new BadRequestException(
+        'Only DRIVER or MANAGER users can receive a prefix',
+      );
     }
 
     const normalised =
@@ -84,6 +110,7 @@ export class SerialsService {
           username: true,
           driverPrefix: true,
           isActive: true,
+          safariRole: true,
           branch: { select: { name: true } },
         },
       });
@@ -94,6 +121,7 @@ export class SerialsService {
         driverPrefix: updated.driverPrefix,
         branchName: updated.branch?.name ?? null,
         isActive: updated.isActive,
+        safariRole: updated.safariRole as 'DRIVER' | 'MANAGER',
       };
     } catch (err) {
       if (
@@ -101,7 +129,7 @@ export class SerialsService {
         err.code === 'P2002'
       ) {
         throw new ConflictException(
-          `Prefix "${normalised}" is already assigned to another driver`,
+          `Prefix "${normalised}" is already assigned to another operator`,
         );
       }
       throw err;
@@ -131,7 +159,7 @@ export class SerialsService {
           },
         },
       }),
-      this.counter.peek(),
+      this.counter.countOrdersWithSerialNumber(),
     ]);
 
     const rows: SerialLogRowDto[] = rowsRaw.map((o) => ({

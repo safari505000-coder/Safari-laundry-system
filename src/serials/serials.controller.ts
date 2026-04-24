@@ -27,12 +27,12 @@ import { SerialGapService, type GapReport } from './serial-gap.service';
 import { SerialsService } from './serials.service';
 
 /**
- * Dastur §1 (V1.5) + §3.8 — Owner-only serial management island.
+ * Dastur §1 (V1.5) + §3.8 + V19.24 — Owner-only serial management island.
  *
- * - `GET  /owner/serials/drivers`      list drivers + current prefixes
- * - `PATCH /owner/serials/drivers/:id` set/clear a driver's single-letter prefix
+ * - `GET  /owner/serials/drivers`      list operators (drivers + managers) + prefixes
+ * - `PATCH /owner/serials/drivers/:id` set/clear a single-letter prefix
  * - `GET  /owner/serials/log`          recent orders with stamped serials
- * - `GET  /owner/serials/gaps`         latest gap scan (audit-backed)
+ * - `GET  /owner/serials/gaps`         latest per-operator gap scan (audit-backed)
  * - `POST /owner/serials/gaps/scan-now` force a fresh scan (OWNER only)
  */
 @ApiTags('owner-serials')

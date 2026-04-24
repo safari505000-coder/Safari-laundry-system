@@ -280,6 +280,10 @@ export const ACCESS = {
   //   (today's orders / cash / pending / risks).
   'managerDocuments.view': withExec('MANAGER'),
   'driverOversight.view': withExec('MANAGER'),
+  // V19.22 — Customer QR feedback inbox. Owner + GM see it for strategic
+  // reasons, Call Center (agent + supervisor) see it as the customer-
+  // service team. ACCOUNTANT / MANAGER / DRIVER intentionally excluded.
+  'feedback.view': withExec('CALL_CENTER', 'CALL_CENTER_SUPERVISOR'),
   // Only MANAGER needs the "Back to Dashboard" shortcut — DRIVER has no
   // dashboard, OWNER/GM never enter POS. Keep this tight so the button
   // never renders for roles that shouldn't see it.

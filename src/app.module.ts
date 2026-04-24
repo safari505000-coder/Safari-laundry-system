@@ -18,6 +18,7 @@ import { requestIdMiddleware } from './common/middleware/request-id.middleware';
 import { CustomersModule } from './customers/customers.module';
 import { DebtTransfersModule } from './debt-transfers/debt-transfers.module';
 import { ExpensesModule } from './expenses/expenses.module';
+import { FeedbackModule } from './feedback/feedback.module';
 import { ExportsModule } from './exports/exports.module';
 import { FixedExpenseModule } from './fixed-expenses/fixed-expense.module';
 import { PayrollModule } from './payroll/payroll.module';
@@ -107,6 +108,7 @@ const spaStaticModule = existsSync(webDistPath)
     LoansModule,
     VehicleExpensesModule,
     VerifyModule,
+    FeedbackModule,
     HealthModule,
     ServeStaticModule.forRoot({
       rootPath: uploadsPath,

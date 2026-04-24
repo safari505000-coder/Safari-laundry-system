@@ -26,11 +26,22 @@ let CustomerLedgerService = class CustomerLedgerService {
         return new client_1.Prisma.Decimal((0, finance_money_1.minorToAmountString)(minor));
     }
     async getOrCreateWalletTx(tx, customerId) {
-        return tx.customerWallet.upsert({
-            where: { customerId },
-            create: { customerId },
-            update: {},
-        });
+        try {
+            return await tx.customerWallet.upsert({
+                where: { customerId },
+                create: { customerId },
+                update: {},
+            });
+        }
+        catch (e) {
+            if (e instanceof client_1.Prisma.PrismaClientKnownRequestError &&
+                e.code === 'P2002') {
+                return tx.customerWallet.findUniqueOrThrow({
+                    where: { customerId },
+                });
+            }
+            throw e;
+        }
     }
     resolveDebtCategory(role) {
         if (role === client_1.SafariRole.OWNER)

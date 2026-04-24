@@ -5,6 +5,7 @@ import {
   collectionsItem,
   customersItem,
   dashboardItem,
+  feedbackInboxItem,
   debtRecoveryReportItem,
   debtTransfersItem,
   driverCashTraceItem,
@@ -55,7 +56,13 @@ export const defaultSidebarNavGroups: NavGroup[] = [
   },
   {
     ...G.customersSubs,
-    items: [customersItem, collectionsItem, subscriptionsItem, subscribersItem],
+    items: [
+      customersItem,
+      collectionsItem,
+      feedbackInboxItem,
+      subscriptionsItem,
+      subscribersItem,
+    ],
   },
   {
     ...G.invoices,

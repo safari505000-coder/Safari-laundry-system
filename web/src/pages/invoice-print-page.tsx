@@ -227,6 +227,26 @@ export function InvoicePrintPage() {
                 <strong>Mobile:</strong> {row.customer.phone ?? '-'}
               </span>
             </div>
+            {/*
+              V19.22 — Show outstanding debt on the printed invoice when
+              the customer's wallet carries a positive debt balance.
+              Rendered as a red chip so the driver handing over the
+              receipt (and the customer) can immediately see what is
+              still owed. Zero-debt customers keep the old layout.
+            */}
+            {(() => {
+              const debtRaw = row.customer.wallet?.debt ?? '0';
+              const debt = Number.parseFloat(debtRaw);
+              if (!Number.isFinite(debt) || debt <= 0) return null;
+              return (
+                <div className="pos-customer-row">
+                  <span className="pos-customer-debt">
+                    <strong>المديونية / Debt:</strong>{' '}
+                    {debt.toFixed(3)} د.ك
+                  </span>
+                </div>
+              );
+            })()}
             <div className="pos-customer-address">
               <strong>Address:</strong> {row.customer.address ?? '-'}
             </div>
@@ -306,7 +326,11 @@ export function InvoicePrintPage() {
           : null}
           {row.id ?
             <div className="pos-receipt-barcode">
-              <OrderIdBarcode orderId={row.id} variant="receipt" />
+              <OrderIdBarcode
+                orderId={row.id}
+                variant="receipt"
+                displayLabel={docNumber}
+              />
               <p className="pos-receipt-barcode-caption">
                 امسح الباركود للتحقق من الفاتورة
               </p>
@@ -321,9 +345,9 @@ export function InvoicePrintPage() {
               gap: '1mm',
             }}
           >
-            <TermsQr size={78} />
+            <TermsQr size={78} orderId={row.id} />
             <p style={{ fontSize: '8px', color: '#555' }}>
-              شروط وأحكام الخدمة — امسح الكود
+              امسح الكود لمشاركة تقييمك + مراجعة الشروط
             </p>
           </div>
           <div className="pos-receipt-terms">
@@ -488,6 +512,13 @@ export function InvoicePrintPage() {
             padding-top: 0.8mm;
             margin-top: 0.8mm;
             word-break: break-word;
+          }
+          .invoice-print-surface .pos-customer-debt {
+            display: inline-block;
+            padding: 0 1mm;
+            border: 1px solid #c00;
+            color: #c00;
+            font-weight: 700;
           }
           .invoice-print-surface .pos-receipt-table {
             width: 100%;

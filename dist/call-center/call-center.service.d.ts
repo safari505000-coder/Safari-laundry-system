@@ -48,16 +48,16 @@ export declare class CallCenterService {
         actualBalance: Prisma.Decimal;
     }[]>;
     searchCustomers(query: string): Promise<{
+        wallet: {
+            balance: Prisma.Decimal;
+            debt: Prisma.Decimal;
+        } | null;
         id: string;
         createdAt: Date;
         phone: string;
         phone2: string | null;
         displayName: string | null;
         address: string | null;
-        wallet: {
-            balance: Prisma.Decimal;
-            debt: Prisma.Decimal;
-        } | null;
     }[]>;
     activateSubscription(userId: string, dto: ActivateSubscriptionDto): Promise<{
         customer: {

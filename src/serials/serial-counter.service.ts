@@ -3,30 +3,81 @@ import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
- * Dastur §1 (V1.5) — Atomic global counter service.
+ * Dastur §1 (V1.5) + V19.24 — Per-operator serial counter.
  *
- * The only consumer today is Order.serialNumber but the service is generic:
- * any feature can claim a counter key and receive monotonically increasing
- * integers safe for concurrent use. The underlying table (`SerialCounter`)
- * is seeded by the V1.5 migration with `{ key: "ORDER_SERIAL", value: 0 }`.
+ * `Order.serialNumber` is composed as `<driverPrefix>-<N>` with **one
+ * monotonic integer stream per issuing user** (driver, branch manager, etc.),
+ * not a single global N across everyone. The legacy `ORDER_SERIAL` key
+ * in `SerialCounter` is no longer used for stamping; each operator has
+ * their own `OU_<userId>` row. This keeps e.g. `A-1`, `A-2`, `A-3` for
+ * the same `A` user while a different `B` user can also have `B-1`
+ * (unique is on the full `serialNumber` string, not the suffix alone).
  *
- * Atomicity: `update({ data: { value: { increment: 1 } } })` is compiled to
- * a `value = value + 1` UPDATE which Postgres executes under a row-level
- * lock, so parallel transactions serialize cleanly. We always call it from
- * inside the caller's transaction so the counter bump is rolled back if
- * the surrounding order creation fails.
+ * Before the first stamp after a deploy (or to absorb historical rows
+ * issued under the old global counter), the service synchronises the
+ * row's floor to `max(N)` parsed from that user's **existing** orders
+ * with matching `<prefix>-<N>` so the next `increment` can never
+ * collide.
+ *
+ * Atomicity: `update({ data: { value: { increment: 1 } } })` is compiled
+ * to a `value = value + 1` UPDATE which Postgres executes under a row
+ * lock, so parallel transactions for the *same* operator serialise. Two
+ * different operators can stamp concurrently.
  */
 @Injectable()
 export class SerialCounterService {
+  /** @deprecated Stamping now uses per-user keys only. Kept for old DBs. */
   private static readonly ORDER_SERIAL_KEY = 'ORDER_SERIAL';
+
+  /**
+   * Row key: `OU_` + user UUID. Must match `deleteMany` in reset-invoices
+   * and `scanGaps` prefix filters.
+   */
+  static readonly USER_ORDER_KEY_PREFIX = 'OU_';
 
   constructor(private readonly prisma: PrismaService) {}
 
+  static orderSerialKeyForUser(userId: string): string {
+    return `${SerialCounterService.USER_ORDER_KEY_PREFIX}${userId}`;
+  }
+
+  private escapeRegex(s: string): string {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
   /**
-   * Stamp a fresh `<prefix>-<counter>` serial for an order inside a
-   * surrounding transaction. Returns `null` (and skips the counter bump)
-   * when the driver has no prefix assigned — keeps legacy POS tickets
-   * working without blocking.
+   * Largest `<N>` from existing `prefix-<N>` serials for this user.
+   * Used to sync a fresh `SerialCounter` row with legacy (global) data.
+   */
+  private async maxSerialSuffixForOperator(
+    tx: Prisma.TransactionClient,
+    operatorId: string,
+    prefix: string,
+  ): Promise<number> {
+    const rows = await tx.order.findMany({
+      where: {
+        driverId: operatorId,
+        serialNumber: { startsWith: `${prefix}-` },
+      },
+      select: { serialNumber: true },
+    });
+    const re = new RegExp(`^${this.escapeRegex(prefix)}-(\\d+)$`);
+    let maxN = 0;
+    for (const r of rows) {
+      if (!r.serialNumber) continue;
+      const m = r.serialNumber.match(re);
+      if (m) {
+        const n = Number.parseInt(m[1], 10);
+        if (Number.isFinite(n)) maxN = Math.max(maxN, n);
+      }
+    }
+    return maxN;
+  }
+
+  /**
+   * Stamp a fresh `<prefix>-<n>` where **n** is unique per `driverId` /
+   * operator (V19.24). Return `null` when the user has no prefix — same as
+   * before (legacy unblocked tickets).
    */
   async stampOrderSerial(
     tx: Prisma.TransactionClient,
@@ -41,7 +92,27 @@ export class SerialCounterService {
     const prefix = driver?.driverPrefix?.trim();
     if (!prefix) return null;
 
-    const next = await this.incrementCounter(tx, SerialCounterService.ORDER_SERIAL_KEY);
+    const key = SerialCounterService.orderSerialKeyForUser(driverId);
+    const maxFromOrders = await this.maxSerialSuffixForOperator(
+      tx,
+      driverId,
+      prefix,
+    );
+    const row = await tx.serialCounter.findUnique({
+      where: { key },
+      select: { value: true },
+    });
+    const current = row?.value ?? 0;
+    const floor = Math.max(current, maxFromOrders);
+    if (floor > current) {
+      await tx.serialCounter.upsert({
+        where: { key },
+        create: { key, value: floor },
+        update: { value: floor },
+      });
+    }
+
+    const next = await this.incrementCounter(tx, key);
     return `${prefix}-${next}`;
   }
 
@@ -67,7 +138,10 @@ export class SerialCounterService {
     return row.value;
   }
 
-  /** Non-transactional read — current counter value, for the Owner log UI. */
+  /**
+   * Non-transactional read of a `SerialCounter` row (e.g. legacy
+   * `ORDER_SERIAL` — not used for stamping after V19.24).
+   */
   async peek(key = SerialCounterService.ORDER_SERIAL_KEY): Promise<number> {
     const row = await this.prisma.serialCounter.findUnique({
       where: { key },
@@ -75,4 +149,12 @@ export class SerialCounterService {
     });
     return row?.value ?? 0;
   }
+
+  /** For Owner "serial log" — how many rows carry a stamped serial. */
+  async countOrdersWithSerialNumber(): Promise<number> {
+    return this.prisma.order.count({
+      where: { serialNumber: { not: null } },
+    });
+  }
+
 }

@@ -51,6 +51,37 @@ const ALL_BRANCHES = 'ALL' as const;
 const ALL_ACTORS = 'ALL' as const;
 
 type Scope = 'open' | 'all';
+type UnpaidRow = UnpaidInvoicesResponse['rows'][number];
+
+/**
+ * Cumulative sum of `remainingKd` per customer in chronological
+ * (`issuedAt` ascending) order, so the column reads as a running total
+ * down the list (e.g. 1.000 → 2.500 as invoices stack).
+ */
+function cumulativeRemainingByOrderId(rows: UnpaidRow[]): Map<string, string> {
+  const byCustomer = new Map<string, UnpaidRow[]>();
+  for (const r of rows) {
+    const list = byCustomer.get(r.customerId) ?? [];
+    list.push(r);
+    byCustomer.set(r.customerId, list);
+  }
+  const out = new Map<string, string>();
+  for (const list of byCustomer.values()) {
+    const sorted = [...list].sort((a, b) => {
+      const ta = new Date(a.issuedAt).getTime();
+      const tb = new Date(b.issuedAt).getTime();
+      if (ta !== tb) return ta - tb;
+      return a.orderId.localeCompare(b.orderId);
+    });
+    let acc = 0;
+    for (const r of sorted) {
+      const rem = Number.parseFloat(r.remainingKd || '0');
+      acc += Number.isFinite(rem) ? rem : 0;
+      out.set(r.orderId, acc.toFixed(4));
+    }
+  }
+  return out;
+}
 
 function startOfDay(iso: string): string {
   return new Date(`${iso}T00:00:00`).toISOString();
@@ -158,6 +189,25 @@ export function UnpaidInvoicesPage() {
     return rows;
   }, [data, scope]);
 
+  const cumulativeByOrder = useMemo(
+    () => cumulativeRemainingByOrderId(visibleRows),
+    [visibleRows],
+  );
+
+  /** Oldest invoice first per customer so «إجمالي المديونية» increases down the table. */
+  const displayRows = useMemo(() => {
+    const rows = [...visibleRows];
+    rows.sort((a, b) => {
+      const c = a.customerId.localeCompare(b.customerId);
+      if (c !== 0) return c;
+      const ta = new Date(a.issuedAt).getTime();
+      const tb = new Date(b.issuedAt).getTime();
+      if (ta !== tb) return ta - tb;
+      return a.orderId.localeCompare(b.orderId);
+    });
+    return rows;
+  }, [visibleRows]);
+
   const fmtDate = useCallback(
     (iso: string | null | undefined) =>
       iso
@@ -177,7 +227,7 @@ export function UnpaidInvoicesPage() {
     printReport({
       t: t as unknown as TFn,
       locale,
-      rows: visibleRows,
+      rows: displayRows,
       kpis: data?.kpis ?? null,
       filters: {
         fromDate,
@@ -199,7 +249,7 @@ export function UnpaidInvoicesPage() {
   }, [
     t,
     locale,
-    visibleRows,
+    displayRows,
     data,
     fromDate,
     toDate,
@@ -240,10 +290,10 @@ export function UnpaidInvoicesPage() {
       numeric: true,
     },
     {
-      key: 'walletDebt',
+      key: 'cumulativeIndebtedness',
       label: t(
-        'unpaidInvoices.col.currentCustomerDebt',
-        'Customer current debt',
+        'unpaidInvoices.col.cumulativeIndebtedness',
+        'Cumulative debt (running total per customer)',
       ),
       align: 'end',
       numeric: true,
@@ -300,7 +350,7 @@ export function UnpaidInvoicesPage() {
       <FilterBar
         actions={
           <div className="text-xs tabular-nums text-muted-foreground">
-            {visibleRows.length} / {data?.rows.length ?? 0}
+            {displayRows.length} / {data?.rows.length ?? 0}
           </div>
         }
       >
@@ -514,14 +564,14 @@ export function UnpaidInvoicesPage() {
       ) : (
         <DataTableShell
           columns={cols}
-          empty={visibleRows.length === 0}
+          empty={displayRows.length === 0}
           emptyState={t(
             'unpaidInvoices.noInvoices',
             'No invoices match the current filters.',
           )}
           scrollClassName="max-h-[min(72vh,720px)]"
         >
-          {visibleRows.map((r) => (
+          {displayRows.map((r) => (
             <TableRow key={r.orderId}>
               <TableCell>
                 <Badge
@@ -579,11 +629,13 @@ export function UnpaidInvoicesPage() {
               <TableCell className="text-end tabular-nums text-emerald-600 dark:text-emerald-400">
                 {formatKwdLabel(r.paidKd)}
               </TableCell>
-              <TableCell className="text-end font-semibold tabular-nums text-red-600 dark:text-red-400">
+              <TableCell className="text-end font-semibold tabular-nums text-yellow-600 dark:text-yellow-400">
                 {formatKwdLabel(r.remainingKd)}
               </TableCell>
-              <TableCell className="text-end tabular-nums text-muted-foreground">
-                {formatKwdLabel(r.currentCustomerDebtKd)}
+              <TableCell className="text-end font-semibold tabular-nums text-red-600 dark:text-red-400">
+                {formatKwdLabel(
+                  cumulativeByOrder.get(r.orderId) ?? r.remainingKd,
+                )}
               </TableCell>
             </TableRow>
           ))}
@@ -617,6 +669,7 @@ function printReport(args: {
   };
 }) {
   const { t, locale, rows, kpis, filters } = args;
+  const printCumulative = cumulativeRemainingByOrderId(rows);
   // NOTE: do NOT pass `noopener`/`noreferrer` in the features string —
   // Chromium returns `null` from `window.open()` in that case, so we
   // lose the handle to the new window and the whole print flow goes
@@ -688,8 +741,8 @@ function printReport(args: {
         <td>${esc(r.actorUserName)}</td>
         <td class="num">${money(r.invoiceTotalKd)}</td>
         <td class="num paid">${money(r.paidKd)}</td>
-        <td class="num open">${money(r.remainingKd)}</td>
-        <td class="num muted">${money(r.currentCustomerDebtKd)}</td>
+        <td class="num rem">${money(r.remainingKd)}</td>
+        <td class="num cum">${money(printCumulative.get(r.orderId) ?? r.remainingKd)}</td>
       </tr>`,
           )
           .join('')
@@ -793,7 +846,8 @@ function printReport(args: {
     tbody tr:nth-child(even) td { background: #fafafa; }
     td.num, th.num { text-align: end; font-variant-numeric: tabular-nums; }
     td.mono { font-variant-numeric: tabular-nums; }
-    td.open { color: var(--red); font-weight: 700; }
+    td.rem { color: #ca8a04; font-weight: 700; }
+    td.cum { color: var(--red); font-weight: 700; }
     td.paid { color: #047857; font-weight: 600; }
     td.muted { color: var(--muted); }
     td.empty { text-align: center; color: var(--muted); padding: 16px; }
@@ -866,7 +920,7 @@ function printReport(args: {
           <th class="num">${esc(t('unpaidInvoices.col.invoiceTotal', 'Invoice total'))}</th>
           <th class="num">${esc(t('unpaidInvoices.col.paid', 'Paid'))}</th>
           <th class="num">${esc(t('unpaidInvoices.col.remaining', 'Remaining'))}</th>
-          <th class="num">${esc(t('unpaidInvoices.col.currentCustomerDebt', 'Customer debt'))}</th>
+          <th class="num">${esc(t('unpaidInvoices.col.cumulativeIndebtedness', 'Cumulative debt'))}</th>
         </tr>
       </thead>
       <tbody>

@@ -8,6 +8,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var SerialsService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SerialsService = void 0;
 const common_1 = require("@nestjs/common");
@@ -15,24 +16,34 @@ const client_1 = require("@prisma/client");
 const prisma_service_1 = require("../prisma/prisma.service");
 const serial_counter_service_1 = require("./serial-counter.service");
 let SerialsService = class SerialsService {
+    static { SerialsService_1 = this; }
     prisma;
     counter;
     constructor(prisma, counter) {
         this.prisma = prisma;
         this.counter = counter;
     }
+    static PREFIX_ROLES = [
+        client_1.SafariRole.DRIVER,
+        client_1.SafariRole.MANAGER,
+    ];
     async listDrivers() {
         const users = await this.prisma.user.findMany({
-            where: { safariRole: client_1.SafariRole.DRIVER },
+            where: { safariRole: { in: SerialsService_1.PREFIX_ROLES } },
             select: {
                 id: true,
                 fullName: true,
                 username: true,
                 driverPrefix: true,
                 isActive: true,
+                safariRole: true,
                 branch: { select: { name: true } },
             },
-            orderBy: [{ isActive: 'desc' }, { fullName: 'asc' }],
+            orderBy: [
+                { safariRole: 'asc' },
+                { isActive: 'desc' },
+                { fullName: 'asc' },
+            ],
         });
         return users.map((u) => ({
             id: u.id,
@@ -41,6 +52,7 @@ let SerialsService = class SerialsService {
             driverPrefix: u.driverPrefix,
             branchName: u.branch?.name ?? null,
             isActive: u.isActive,
+            safariRole: u.safariRole,
         }));
     }
     async setDriverPrefix(userId, rawPrefix) {
@@ -50,8 +62,8 @@ let SerialsService = class SerialsService {
         });
         if (!existing)
             throw new common_1.NotFoundException('User not found');
-        if (existing.safariRole !== client_1.SafariRole.DRIVER) {
-            throw new common_1.BadRequestException('Only DRIVER users can receive a prefix');
+        if (!SerialsService_1.PREFIX_ROLES.includes(existing.safariRole)) {
+            throw new common_1.BadRequestException('Only DRIVER or MANAGER users can receive a prefix');
         }
         const normalised = typeof rawPrefix === 'string' && rawPrefix.trim().length > 0
             ? rawPrefix.trim().toUpperCase()
@@ -69,6 +81,7 @@ let SerialsService = class SerialsService {
                     username: true,
                     driverPrefix: true,
                     isActive: true,
+                    safariRole: true,
                     branch: { select: { name: true } },
                 },
             });
@@ -79,12 +92,13 @@ let SerialsService = class SerialsService {
                 driverPrefix: updated.driverPrefix,
                 branchName: updated.branch?.name ?? null,
                 isActive: updated.isActive,
+                safariRole: updated.safariRole,
             };
         }
         catch (err) {
             if (err instanceof client_1.Prisma.PrismaClientKnownRequestError &&
                 err.code === 'P2002') {
-                throw new common_1.ConflictException(`Prefix "${normalised}" is already assigned to another driver`);
+                throw new common_1.ConflictException(`Prefix "${normalised}" is already assigned to another operator`);
             }
             throw err;
         }
@@ -112,7 +126,7 @@ let SerialsService = class SerialsService {
                     },
                 },
             }),
-            this.counter.peek(),
+            this.counter.countOrdersWithSerialNumber(),
         ]);
         const rows = rowsRaw.map((o) => ({
             orderId: o.id,
@@ -130,7 +144,7 @@ let SerialsService = class SerialsService {
     }
 };
 exports.SerialsService = SerialsService;
-exports.SerialsService = SerialsService = __decorate([
+exports.SerialsService = SerialsService = SerialsService_1 = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
         serial_counter_service_1.SerialCounterService])

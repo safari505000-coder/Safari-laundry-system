@@ -5,6 +5,7 @@ import {
   collectionsItem,
   customersItem,
   driverMonitorItem,
+  feedbackInboxItem,
   subscribersItem,
   unpaidInvoicesItem,
 } from '@/modules/shared/nav/nav-items';
@@ -30,7 +31,7 @@ import {
 export const callCenterSidebarNavGroups: NavGroup[] = [
   {
     ...G.main,
-    items: [customersItem, collectionsItem, subscribersItem],
+    items: [customersItem, collectionsItem, feedbackInboxItem, subscribersItem],
   },
   {
     ...G.invoices,

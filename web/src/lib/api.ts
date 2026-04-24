@@ -786,7 +786,8 @@ export type SerialGapReport = {
   currentCounter: number;
   presentCount: number;
   gapCount: number;
-  firstGaps: number[];
+  /** V19.24 — e.g. `A-2`, `B-5` (per-operator sequence gaps). */
+  firstGaps: string[];
   allGapsTruncated: boolean;
 };
 
@@ -1051,6 +1052,14 @@ export type OrderRow = {
     phone2?: string | null;
     address: string | null;
     displayName?: string | null;
+    // V19.22 — outstanding wallet state so invoice prints can show the
+    // customer's debt directly on the receipt (matches the POS screen).
+    // Decimal strings to preserve server precision; `null` when the
+    // customer has no wallet row yet.
+    wallet?: {
+      balance: string;
+      debt: string;
+    } | null;
   };
   driver: {
     id: string;
@@ -1163,6 +1172,8 @@ export type DriverPrefixRow = {
   driverPrefix: string | null;
   branchName: string | null;
   isActive: boolean;
+  /** V19.23 — prefix island now covers DRIVER + MANAGER (branch managers issue invoices too). */
+  safariRole: 'DRIVER' | 'MANAGER';
 };
 
 export type SerialLogRow = {
@@ -1298,6 +1309,11 @@ export type PosPaymentLinkResult = {
 export type PosCheckoutResponse = {
   id: string;
   invoiceNumber: string | null;
+  /**
+   * Owner-configured per-operator serial (`A-5`); the human invoice id on
+   * the thermal roll. Null when the operator has no prefix (legacy/blank).
+   */
+  serialNumber: string | null;
   createdAt: string;
   status?: string;
   paymentLink?: PosPaymentLinkResult;
@@ -1916,6 +1932,105 @@ export function getPublicCustomerStatement(
   return apiJson<CustomerLedgerResponse>(
     `/api/public/statement/${encodeURIComponent(shareToken)}`,
   );
+}
+
+/* ===================================================================
+ * V19.22 — Customer QR feedback (public + admin).
+ * =================================================================== */
+
+export type PublicFeedbackOrder = {
+  orderId: string;
+  serialNumber: string | null;
+  invoiceNumber: string | null;
+  totalKd: string;
+  createdAt: string;
+  driverFirstName: string | null;
+  customerFirstName: string | null;
+  alreadyRated: {
+    rating: number;
+    note: string | null;
+    submittedAt: string;
+  } | null;
+};
+
+export function getPublicOrderForFeedback(
+  orderId: string,
+): Promise<PublicFeedbackOrder> {
+  return apiJson<PublicFeedbackOrder>(
+    `/api/public/orders/${encodeURIComponent(orderId)}`,
+  );
+}
+
+export function submitOrderFeedback(
+  orderId: string,
+  body: { rating: number; note?: string },
+): Promise<{ ok: boolean; rating: number; note: string | null; at: string }> {
+  return apiJson(`/api/public/orders/${encodeURIComponent(orderId)}/feedback`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export type FeedbackListRow = {
+  id: string;
+  rating: number;
+  note: string | null;
+  submittedAt: string;
+  ipMasked: string | null;
+  acknowledgedAt: string | null;
+  order: {
+    id: string;
+    serialNumber: string | null;
+    invoiceNumber: string | null;
+    totalKd: string;
+    createdAt: string;
+    status: string;
+    driver: {
+      id: string;
+      fullName: string;
+      username: string;
+    } | null;
+    customer: {
+      id: string;
+      displayName: string | null;
+      phone: string;
+    };
+  };
+};
+
+export type FeedbackListResponse = {
+  total: number;
+  unread: number;
+  avgRating: number;
+  ratedCount: number;
+  rows: FeedbackListRow[];
+};
+
+export function listFeedback(
+  token: string,
+  opts: { onlyUnread?: boolean; minRating?: number; maxRating?: number; take?: number; skip?: number } = {},
+): Promise<FeedbackListResponse> {
+  const qs = new URLSearchParams();
+  if (opts.onlyUnread) qs.set('onlyUnread', 'true');
+  if (opts.minRating != null) qs.set('minRating', String(opts.minRating));
+  if (opts.maxRating != null) qs.set('maxRating', String(opts.maxRating));
+  if (opts.take != null) qs.set('take', String(opts.take));
+  if (opts.skip != null) qs.set('skip', String(opts.skip));
+  const q = qs.toString();
+  return apiJson<FeedbackListResponse>(
+    `/api/feedback${q ? `?${q}` : ''}`,
+    { token },
+  );
+}
+
+export function acknowledgeFeedback(
+  id: string,
+  token: string,
+): Promise<{ ok: boolean; alreadyAcknowledged: boolean }> {
+  return apiJson(`/api/feedback/${encodeURIComponent(id)}/acknowledge`, {
+    method: 'PATCH',
+    token,
+  });
 }
 
 /**

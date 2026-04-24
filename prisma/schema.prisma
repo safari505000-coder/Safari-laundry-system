@@ -216,10 +216,10 @@ model User {
    */
   lastKnownLocation String?
   /**
-   * Dastur §1 (V1.5) — Owner-assigned single-letter prefix for drivers
-   * ("A", "B", ...). Combined with the global SerialCounter to stamp
-   * every outgoing order with a human-readable serial like "A-1042".
-   * Optional: non-driver users never receive one.
+   * Dastur §1 (V1.5) + V19.24 — Owner-assigned single-letter operator prefix
+   * ("A", "B", ...). Stamped on invoices as `prefix-n` with **n monotonic
+   * per user** (SerialCounter `OU_<userId>`), not a single global counter.
+   * Optional; drivers and branch managers (who can issue) may have one.
    */
   driverPrefix      String?    @unique
   safariRole        SafariRole @default(DRIVER)
@@ -234,6 +234,7 @@ model User {
 
   // ─── HR master-data (Stage D) ─────────────────────────────────────
   /**
+   * /**
    * /**
    * /**
    * /** Kuwaiti Civil ID — البطاقة المدنية.
@@ -777,10 +778,9 @@ model Order {
    */
   invoiceNumber           String?
   /**
-   * Dastur §1 (V1.5) — Human-readable, globally unique order serial
-   * composed as `<driverPrefix>-<globalCounter>`. Stamped at creation
-   * time when the assigned driver has a `driverPrefix`; legacy rows
-   * (and driver-less POS tickets) stay null for backward compatibility.
+   * Dastur §1 (V1.5) + V19.24 — Human-readable, globally-unique string
+   * `prefix-n` (per-operator n). Stamped when the order's driver/manager
+   * has a `driverPrefix`. Legacy and driver-less POS may stay null.
    */
   serialNumber            String?           @unique
   /**
@@ -875,6 +875,13 @@ model Order {
    * Back-relation of `CommissionPayout.sourceOrder`.
    */
   commissionPayouts     CommissionPayout[]    @relation("OrderCommissionPayouts")
+  /**
+   * V19.22 — Customer-side QR feedback. When the customer scans the
+   * QR on the printed invoice they land on a public micro-page that
+   * lets them leave a 1..5 star rating + free-text note. One row per
+   * order — re-submissions update the existing row (idempotent).
+   */
+  feedback              OrderFeedback?
 
   @@index([driverId])
   @@index([status])
@@ -891,10 +898,56 @@ model Order {
 }
 
 /**
- * Dastur §1 (V1.5) — Global atomic counters (e.g. the single-row
- * "ORDER_SERIAL" used to stamp Order.serialNumber). One row per key.
- * Safely incremented inside Prisma transactions via `update({ data:
- * { value: { increment: 1 } } })` which is row-level-locking.
+ * V19.22 — Customer QR feedback (ratings + free-text note). Captured
+ * via the public `/r/:orderId` micro-page that the invoice QR points
+ * at. Lightweight by design: no PII beyond what already appears on
+ * the receipt, and a single row per order (unique `orderId`). Kept as
+ * a separate table (not columns on `Order`) so the existing invoice
+ * list queries stay narrow and so we can GROUP/AGGREGATE ratings for
+ * Owner / GM / Call-Center dashboards without touching the hot Order
+ * table.
+ */
+model OrderFeedback {
+  id             String    @id @default(uuid()) @db.Uuid
+  orderId        String    @unique @db.Uuid
+  /**
+   * 1..5 star rating. Stored as an Int so the DB can enforce the
+   * bound with a CHECK constraint added in the migration.
+   */
+  rating         Int
+  /**
+   * Free-text customer note. Capped at 1000 chars in the DTO; null
+   * when the customer only left the star rating.
+   */
+  note           String?   @db.Text
+  /**
+   * Client IP captured at submission so abuse / bot waves can be
+   * traced without exposing it in the admin UI. Admin view only
+   * shows first two octets.
+   */
+  submittedFrom  String?
+  submittedAt    DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  /**
+   * Owner / GM / Call-Center supervisor marks a feedback row as
+   * "seen / addressed" so the dashboard only badges truly-new
+   * complaints. Null until the first acknowledgement.
+   */
+  acknowledgedAt DateTime?
+  acknowledgedBy String?   @db.Uuid
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([rating])
+  @@index([acknowledgedAt])
+  @@index([submittedAt])
+}
+
+/**
+ * Dastur §1 (V1.5) + V19.24 — Atomic integer counters, one `key` per row.
+ * Stamping now uses one key per operator (`OU_<userId>`). Legacy
+ * `ORDER_SERIAL` may remain in old DBs; `update({ data: { value: {
+ * increment: 1 } } })` is row-level lock safe.
  */
 model SerialCounter {
   key       String   @id
@@ -1263,17 +1316,17 @@ enum LeaveStatus {
  * lives on PayrollService.create (§D.5).
  */
 model EmployeeLoan {
-  id               String     @id @default(uuid()) @db.Uuid
-  userId           String     @db.Uuid
-  amount           Decimal    @db.Decimal(19, 4)
-  installmentCount Int
-  monthlyDeduction Decimal    @db.Decimal(19, 4)
-  remaining        Decimal    @db.Decimal(19, 4)
-  reason           String?
-  status           LoanStatus @default(PENDING)
-  approvedById     String?    @db.Uuid
-  approvedAt       DateTime?
-  rejectedReason   String?
+  id                     String     @id @default(uuid()) @db.Uuid
+  userId                 String     @db.Uuid
+  amount                 Decimal    @db.Decimal(19, 4)
+  installmentCount       Int
+  monthlyDeduction       Decimal    @db.Decimal(19, 4)
+  remaining              Decimal    @db.Decimal(19, 4)
+  reason                 String?
+  status                 LoanStatus @default(PENDING)
+  approvedById           String?    @db.Uuid
+  approvedAt             DateTime?
+  rejectedReason         String?
   /**
    * V19.20 — last "YYYY-MM" the payroll engine booked an instalment
    * against this loan. Used as an idempotency key inside
@@ -1281,9 +1334,9 @@ model EmployeeLoan {
    * observes this field and SKIPS the deduction so an instalment can
    * never be taken twice. NULL = never deducted via payroll yet.
    */
-  lastDeductionYearMonth String? @db.VarChar(7)
-  createdAt        DateTime   @default(now())
-  updatedAt        DateTime   @updatedAt
+  lastDeductionYearMonth String?    @db.VarChar(7)
+  createdAt              DateTime   @default(now())
+  updatedAt              DateTime   @updatedAt
 
   user       User  @relation(fields: [userId], references: [id], name: "EmployeeLoanUser")
   approvedBy User? @relation(fields: [approvedById], references: [id], name: "EmployeeLoanApprover")
@@ -2099,20 +2152,19 @@ model DebtHoldPolicy {
  * Settings Dashboard. These knobs are independent from the `PAYROLL`
  * master toggle (which only switches the payroll feature on/off) — they
  * tune *how* payroll behaves when enabled.
- *
  * • `payDayOfMonth` — default day the Owner cuts monthly payroll (1–28
- *   to avoid month-end drift). Purely informational today; the actual
- *   run is still triggered by OWNER/GM from `/payroll`, but the value
- *   is used to pre-fill the payment date and drives future automation
- *   work (cron-triggered auto-cuts).
+ * to avoid month-end drift). Purely informational today; the actual
+ * run is still triggered by OWNER/GM from `/payroll`, but the value
+ * is used to pre-fill the payment date and drives future automation
+ * work (cron-triggered auto-cuts).
  * • `autoDeductLoans` — when true, any OUTSTANDING employee loan
- *   instalments due up to the payroll payment date are auto-applied as
- *   `deductions` on the generated Payroll row (mirrors existing
- *   behaviour; the toggle just exposes it to the Owner).
+ * instalments due up to the payroll payment date are auto-applied as
+ * `deductions` on the generated Payroll row (mirrors existing
+ * behaviour; the toggle just exposes it to the Owner).
  * • `linkWithAttendance` — when true, late-entries + unapproved
- *   absences logged on the Attendance module deduct proportional
- *   amounts from the salary. Off by default so existing payroll runs
- *   do not suddenly surface retroactive cuts.
+ * absences logged on the Attendance module deduct proportional
+ * amounts from the salary. Off by default so existing payroll runs
+ * do not suddenly surface retroactive cuts.
  */
 model PayrollSettings {
   id                 String   @id @default("singleton")

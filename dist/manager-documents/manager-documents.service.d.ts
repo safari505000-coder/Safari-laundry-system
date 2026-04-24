@@ -16,28 +16,28 @@ export declare class ManagerDocumentsService {
     constructor(prisma: PrismaService);
     listForManager(managerId: string, branchId: string | null): Promise<ManagerDocumentRow[]>;
     getExpenseVoucherForManager(expenseId: string, managerId: string, branchId: string | null): Promise<({
+        branch: {
+            id: string;
+            name: string;
+        } | null;
         recordedBy: {
             id: string;
             username: string;
             fullName: string;
         };
-        branch: {
-            id: string;
-            name: string;
-        } | null;
     } & {
         id: string;
-        title: string;
         amount: Prisma.Decimal;
-        category: import("@prisma/client").$Enums.ExpenseCategory;
-        expenseMethod: import("@prisma/client").$Enums.ExpenseMethod;
-        status: import("@prisma/client").$Enums.ExpenseStatus;
-        note: string | null;
-        receiptUrl: string | null;
-        recordedById: string;
-        branchId: string | null;
-        expenseDate: Date;
         createdAt: Date;
         updatedAt: Date;
+        status: import("@prisma/client").$Enums.ExpenseStatus;
+        branchId: string | null;
+        category: import("@prisma/client").$Enums.ExpenseCategory;
+        note: string | null;
+        title: string;
+        receiptUrl: string | null;
+        recordedById: string;
+        expenseMethod: import("@prisma/client").$Enums.ExpenseMethod;
+        expenseDate: Date;
     }) | null>;
 }

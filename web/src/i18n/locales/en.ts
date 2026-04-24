@@ -1,4 +1,4 @@
-export const en = {
+﻿export const en = {
   nav: {
     dashboard: 'Dashboard',
     branches: 'Branch management',
@@ -22,6 +22,7 @@ export const en = {
     groupInventory: 'Inventory & Supply Chain',
     collections: 'Invoice collections',
     customerDebtTracker: 'Customer Debt Tracker',
+    feedbackInbox: 'Customer Ratings',
     driverMonitor: 'Driver Monitor',
     myDailySales: 'My Daily Sales',
     myCashCustody: 'My Cash Custody',
@@ -124,15 +125,15 @@ export const en = {
     allEmployees: 'All employees',
     employeeKindDriver: 'Driver',
     employeeKindManager: 'Branch manager',
-    filterStatus: 'Debt status',
+    filterStatus: 'Settlement status',
     statusAll: 'All',
     statusOverdue: 'Overdue',
     statusCurrent: 'Current',
-    driversSectionTitle: 'Drivers',
+    driversSectionTitle: 'Cash with drivers',
     driversSectionHint:
       "Current field-cash balance per driver (liability before handover to a branch manager).",
-    driversEmpty: 'No driver debts match the current filters.',
-    managersSectionTitle: 'Branch managers',
+    driversEmpty: 'No driver cash in pipeline matches the current filters.',
+    managersSectionTitle: 'Cash with branch managers',
     managersSectionHint:
       'Pending cash custody per branch manager, awaiting accountant verification.',
     managersEmpty: 'No pending branch-manager custody matches the current filters.',
@@ -169,6 +170,15 @@ export const en = {
     signAccountant: 'Accountant signature',
     signManagement: 'Management approval',
     printPageOf: 'Page',
+    kpiTotalPipeline: 'Pipeline total',
+    kpiPipelineHint: '{{d}} drivers · {{m}} manager slots',
+    kpiWithDrivers: 'With drivers',
+    kpiDriversHint: 'Cash + K-Net + link + online (pending)',
+    kpiWithManagers: 'Manager custody',
+    kpiManagersHint: 'Before accountant sign-off',
+    kpiOverdue: 'Needs follow-up',
+    kpiOverdueHint: '{{d}} driver · {{m}} manager (overdue)',
+    filterResultCount: '{{d}} driver rows + {{m}} custody rows',
   },
   branchesPage: {
     title: 'Branch management',
@@ -328,7 +338,7 @@ export const en = {
   collections: {
     title: 'Debt-tracking report',
     subtitle:
-      'Every uncollected invoice — all payment methods. Owner financial oversight.',
+      'Invoices that still carry a balance (cash, K-Net, payment link, debt, etc.). Use this list to collect, send reminders, and close amounts. For call-center and management (per role).',
     pollingHint: 'Auto-refresh every {{seconds}}s after payment.',
     debtRadarHint: 'List auto-refreshes every {{seconds}} seconds.',
     radarBadge: 'invoices',
@@ -359,7 +369,8 @@ export const en = {
     searchPlaceholder: 'Search by phone number or customer name…',
     opsDashboardAria: 'Call center KPIs',
     kpiMarketDebtLabel: 'Total market debt',
-    kpiMarketDebtSub: 'Sum of every uncollected invoice across all payment methods',
+    kpiMarketDebtSub:
+      'Equals the table Amount column (no search) — UNPAID invoices only, not off-list subscription/wallet debt',
     kpiCollectedTodayLabel: 'Collected today',
     kpiCollectedTodaySub: 'Debts recovered today across every payment channel',
     kpiPendingLinksLabel: 'Pending links',
@@ -376,7 +387,8 @@ export const en = {
   },
   driverDailySales: {
     title: 'My Daily Sales',
-    goal: 'Track today completed deliveries and sales.',
+    goal:
+      'Completed invoices for the current financial day — customer names and amounts so you can recap your route at a glance (read-only).',
     tableTitle: 'Today completed invoices',
     colCustomer: 'Customer',
     colPhone: 'Phone',
@@ -740,7 +752,7 @@ export const en = {
   dashboard: {
     title: 'Command center',
     subtitle:
-      'Live operational snapshot — field cash, digital revenue, prepaid subscription credit, and receivable-style customer debt.',
+      'Your daily starting point: cash held by drivers, K-Net/online sales, subscription wallet liability, and open customer debt. Figures follow the active financial day and your role scope.',
     execTitle: 'Financial dashboard',
     execSubtitle:
       'Cash flow, revenue movement, debts, and net profit — interactive and live.',
@@ -853,7 +865,7 @@ export const en = {
   unifiedLedger: {
     title: 'Unified ledger',
     subtitle:
-      'Financial stream from the general ledger: cash/K-Net/online/debt sales, field expenses, and driver deposits.',
+      'Chronological money trail: each cash/K-Net/online/debt sale, field expense with receipt, and driver deposit. Pick a range and export CSV — for review with finance and management.',
     streamTitle: 'Financial stream',
     colStream: 'Type',
     colMemo: 'Memo',
@@ -878,7 +890,8 @@ export const en = {
   },
   orders: {
     title: 'Invoices',
-    subtitle: 'Full ledger view filtered by your institutional role.',
+    subtitle:
+      'Full invoice list within your role: filter by driver, order status, cash status, payment method, and date. Search by serial, phone, or name.',
     filters: {
       title: 'Filters',
       hide: 'Hide',
@@ -912,7 +925,7 @@ export const en = {
     lineItem: 'Item',
     lineQty: 'Qty',
     linePrice: 'Unit',
-    termsQrCaption: 'Terms & Conditions',
+    termsQrCaption: 'Scan to rate & read terms',
     dash: '—',
     create: {
       openButton: 'New order',
@@ -962,6 +975,12 @@ export const en = {
       PRESS_ONLY: 'Press only',
       URGENT_PRESS: 'Urgent + press',
     },
+  },
+  feedbackInbox: {
+    title: 'Customer ratings',
+    subtitle:
+      'Star ratings and notes left after the customer scans the QR code on their invoice. Watch the average and unread count, filter by score, and tap acknowledge when the note has been handled. Visible to owner, general manager, and call-center staff (per role).',
+    refresh: 'Refresh',
   },
   pos: {
     backToDashboard: 'Back to Dashboard',
@@ -1070,7 +1089,8 @@ export const en = {
     close: 'Close',
     change: 'Change',
     receiptBarcodeCaption: 'Order ID (scan)',
-    termsQrCaption: 'Terms & Conditions',
+    receiptSerialCode: 'Serial code:',
+    termsQrCaption: 'Scan to rate & read terms',
     branchLabelFallback: 'Safari Express Laundries Group',
     financialDate: 'Financial date:',
     tagCustomer: 'Customer:',
@@ -1581,12 +1601,15 @@ export const en = {
   ownerSerials: {
     title: 'Serial management',
     subtitle:
-      'Assign a single-letter prefix to each driver and view the live global invoice serial log.',
+      'For owner / general manager: give each driver or branch manager one Latin letter (A–Z). Their invoices are numbered A-1, A-2… on a separate counter per user. The right-hand table shows the latest stamped invoices.',
     refresh: 'Refresh',
-    currentCounter: 'Last serial',
-    driversHeading: 'Drivers',
+    currentCounter: 'Invoices with serial',
+    driversHeading: 'Drivers & branch managers',
     logHeading: 'Serial log (last 50 invoices)',
-    driverCol: 'Driver',
+    driverCol: 'Operator',
+    roleCol: 'Role',
+    roleDriver: 'Driver',
+    roleManager: 'Branch manager',
     branchCol: 'Branch',
     prefixCol: 'Prefix',
     actionCol: 'Action',
@@ -1600,7 +1623,7 @@ export const en = {
     inactive: 'inactive',
     loading: 'Loading…',
     unable: 'Unable to load data.',
-    emptyDrivers: 'No drivers to show.',
+    emptyDrivers: 'No operators to show.',
     emptyLog: 'No serial-stamped invoices yet.',
     invalidPrefix: 'Must be a single English letter (A-Z).',
     prefixSaved: 'Prefix saved',
@@ -1608,7 +1631,8 @@ export const en = {
   },
   customers: {
     title: 'Customer management',
-    subtitle: 'Manage customer profile, addresses, and additional family contacts.',
+    subtitle:
+      'Create and update customers: phone, Kuwait address, and extra contacts. Feeds laundry invoices, subscription wallet, and the 360° account — the main entry for call-center and anyone managing accounts.',
     whatsappBalance: 'WhatsApp: balance and payment link',
     paymentLink: 'Open payment link',
     search: 'Search name, phone, address or contacts',
@@ -1794,7 +1818,7 @@ export const en = {
   reports: {
     title: 'Financial reports',
     subtitle:
-      'Issued invoices, driver cash vs office, and daily cash closing (net of branch expenses).',
+      'Per-tab detail: issued invoices, driver receivable ledger, and daily cash close (net of branch expenses). Choose the date range, then run the report.',
     filters: 'Filters',
     from: 'From',
     to: 'To',
@@ -1874,7 +1898,7 @@ export const en = {
     tabClosingShort: 'Closing',
     hubTitle: 'Financial reports',
     hubSubtitle:
-      'Unified hub for profit & loss, operational reports, financial cycle, KNET audit, unified ledger, and AI insights.',
+      'One entry point: P&L, operational reports, financial cycle, K-Net bank matching, unified ledger, and AI insights. Open the tab you need — each screen explains its own data.',
     hubTabPnl: 'P&L',
     hubTabReports: 'Operational reports',
     hubTabCycle: 'Financial cycle',
@@ -1885,7 +1909,8 @@ export const en = {
   liveOps: {
     title: 'Live operations',
     live: 'Live',
-    subtitle: 'Last invoices across all branches (refreshes automatically).',
+    subtitle:
+      'Near-real-time feed of the latest invoices company-wide (auto-refresh) — for quick monitoring, not a final accounting close.',
     empty: 'No recent invoices yet.',
     refresh: 'Refresh now',
     colItem: 'Item',
@@ -2265,6 +2290,8 @@ export const en = {
       paid: 'Paid',
       remaining: 'Remaining',
       currentCustomerDebt: 'Customer current debt',
+      /** Running sum of «Remaining» per customer, oldest invoice first */
+      cumulativeIndebtedness: 'Cumulative debt',
     },
     statusOpen: 'Outstanding',
     statusClosed: 'Settled',

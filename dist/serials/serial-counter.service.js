@@ -17,8 +17,37 @@ let SerialCounterService = class SerialCounterService {
     static { SerialCounterService_1 = this; }
     prisma;
     static ORDER_SERIAL_KEY = 'ORDER_SERIAL';
+    static USER_ORDER_KEY_PREFIX = 'OU_';
     constructor(prisma) {
         this.prisma = prisma;
+    }
+    static orderSerialKeyForUser(userId) {
+        return `${SerialCounterService_1.USER_ORDER_KEY_PREFIX}${userId}`;
+    }
+    escapeRegex(s) {
+        return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+    async maxSerialSuffixForOperator(tx, operatorId, prefix) {
+        const rows = await tx.order.findMany({
+            where: {
+                driverId: operatorId,
+                serialNumber: { startsWith: `${prefix}-` },
+            },
+            select: { serialNumber: true },
+        });
+        const re = new RegExp(`^${this.escapeRegex(prefix)}-(\\d+)$`);
+        let maxN = 0;
+        for (const r of rows) {
+            if (!r.serialNumber)
+                continue;
+            const m = r.serialNumber.match(re);
+            if (m) {
+                const n = Number.parseInt(m[1], 10);
+                if (Number.isFinite(n))
+                    maxN = Math.max(maxN, n);
+            }
+        }
+        return maxN;
     }
     async stampOrderSerial(tx, driverId) {
         if (!driverId)
@@ -30,7 +59,22 @@ let SerialCounterService = class SerialCounterService {
         const prefix = driver?.driverPrefix?.trim();
         if (!prefix)
             return null;
-        const next = await this.incrementCounter(tx, SerialCounterService_1.ORDER_SERIAL_KEY);
+        const key = SerialCounterService_1.orderSerialKeyForUser(driverId);
+        const maxFromOrders = await this.maxSerialSuffixForOperator(tx, driverId, prefix);
+        const row = await tx.serialCounter.findUnique({
+            where: { key },
+            select: { value: true },
+        });
+        const current = row?.value ?? 0;
+        const floor = Math.max(current, maxFromOrders);
+        if (floor > current) {
+            await tx.serialCounter.upsert({
+                where: { key },
+                create: { key, value: floor },
+                update: { value: floor },
+            });
+        }
+        const next = await this.incrementCounter(tx, key);
         return `${prefix}-${next}`;
     }
     async incrementCounter(tx, key) {
@@ -51,6 +95,11 @@ let SerialCounterService = class SerialCounterService {
             select: { value: true },
         });
         return row?.value ?? 0;
+    }
+    async countOrdersWithSerialNumber() {
+        return this.prisma.order.count({
+            where: { serialNumber: { not: null } },
+        });
     }
 };
 exports.SerialCounterService = SerialCounterService;
