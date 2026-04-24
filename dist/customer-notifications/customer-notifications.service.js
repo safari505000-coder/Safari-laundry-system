@@ -45,6 +45,13 @@ function truncateForMoatmtLog(s, max = MOATMT_LOG_MAX_BODY) {
     }
     return `${t.slice(0, max)}…(truncated ${t.length}→${max})`;
 }
+function normalizeMoatmtAccessToken(raw) {
+    const t = (raw ?? '').trim();
+    if (!t) {
+        return '';
+    }
+    return t.replace(/^TOKEN\s*=\s*/i, '').trim();
+}
 function redactMoatmtPayloadForLog(body) {
     const o = { ...body };
     if (o.access_token) {
@@ -124,7 +131,7 @@ let CustomerNotificationsService = class CustomerNotificationsService {
     logger = new common_1.Logger(CustomerNotificationsService_1.name);
     static moatmtCredsMissingLogged = false;
     onModuleInit() {
-        const accessToken = process.env.MOATMT_ACCESS_TOKEN?.trim() ?? '';
+        const accessToken = normalizeMoatmtAccessToken(process.env.MOATMT_ACCESS_TOKEN);
         const instanceId = process.env.MOATMT_INSTANCE_ID?.trim() ?? '';
         const hasMoatmt = Boolean(accessToken) && Boolean(instanceId);
         const hasHook = Boolean(process.env.CUSTOMER_NOTIFY_WEBHOOK_URL?.trim());
@@ -275,7 +282,7 @@ let CustomerNotificationsService = class CustomerNotificationsService {
         return c;
     }
     async trySendMoatmt(rawPhone, textMessage, media) {
-        const accessToken = process.env.MOATMT_ACCESS_TOKEN?.trim();
+        const accessToken = normalizeMoatmtAccessToken(process.env.MOATMT_ACCESS_TOKEN);
         const instanceId = process.env.MOATMT_INSTANCE_ID?.trim();
         if (!accessToken || !instanceId) {
             if (!CustomerNotificationsService_1.moatmtCredsMissingLogged) {
