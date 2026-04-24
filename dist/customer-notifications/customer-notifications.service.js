@@ -83,6 +83,20 @@ function kuwaitPhoneDigitsForWhatsApp(phone) {
 }
 let CustomerNotificationsService = CustomerNotificationsService_1 = class CustomerNotificationsService {
     logger = new common_1.Logger(CustomerNotificationsService_1.name);
+    onModuleInit() {
+        const hasMoatmt = Boolean(process.env.MOATMT_ACCESS_TOKEN?.trim()) &&
+            Boolean(process.env.MOATMT_INSTANCE_ID?.trim());
+        const hasHook = Boolean(process.env.CUSTOMER_NOTIFY_WEBHOOK_URL?.trim());
+        if (hasMoatmt) {
+            this.logger.log('Customer notify: Moatmt /send enabled (and webhook fallback if Moatmt fails and CUSTOMER_NOTIFY_WEBHOOK_URL is set).');
+        }
+        else if (hasHook) {
+            this.logger.log('Customer notify: CUSTOMER_NOTIFY_WEBHOOK_URL is set.');
+        }
+        else {
+            this.logger.warn('Customer notify: no MOATMT_INSTANCE_ID+MOATMT_ACCESS_TOKEN and no CUSTOMER_NOTIFY_WEBHOOK_URL — invoice WhatsApp only logs, nothing is sent.');
+        }
+    }
     notifyInvoiceIssued(params) {
         setImmediate(() => {
             void this.deliver(params).catch((e) => this.logger.warn(`Invoice notify failed: ${e}`));

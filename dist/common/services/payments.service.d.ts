@@ -1,3 +1,4 @@
+import { OnModuleInit } from '@nestjs/common';
 import { PosPaymentMethod, Prisma } from '@prisma/client';
 import { CustomerLedgerService } from '../../customer-ledger/customer-ledger.service';
 import { GeneralLedgerService } from '../../general-ledger/general-ledger.service';
@@ -29,7 +30,7 @@ type UPaymentsInquiryData = {
         reference?: string;
     };
 };
-export declare class PaymentsService {
+export declare class PaymentsService implements OnModuleInit {
     private readonly prisma;
     private readonly customerLedger;
     private readonly generalLedger;
@@ -42,6 +43,7 @@ export declare class PaymentsService {
     private readonly callbackPublicUrl;
     private readonly webAppUrl;
     constructor(prisma: PrismaService, customerLedger: CustomerLedgerService, generalLedger: GeneralLedgerService, inventory: InventoryService);
+    onModuleInit(): void;
     paymentsMockExplicit(): boolean;
     usePlaceholderGateway(): boolean;
     isPublicMockCheckoutAvailable(): boolean;

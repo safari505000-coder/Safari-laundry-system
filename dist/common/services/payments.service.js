@@ -44,6 +44,23 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
             .replace(/\/$/, '');
         this.webAppUrl = (process.env.PUBLIC_WEB_APP_URL ?? 'http://localhost:5173').replace(/\/$/, '');
     }
+    onModuleInit() {
+        if (this.isPublicMockCheckoutAvailable()) {
+            const inProd = process.env.NODE_ENV === 'production';
+            if (inProd) {
+                this.logger.warn('PAYMENTS: mock checkout is active in production — links go to /api/payments/mock-checkout, not UPayments. Set PAYMENTS_API_BASE_URL (e.g. https://apiv2api.upayments.com), PAYMENTS_API_KEY, PAYMENTS_CALLBACK_PUBLIC_URL, ensure PAYMENTS_MOCK is not true, then redeploy.');
+            }
+            else {
+                this.logger.log('PAYMENTS: mock / dev link mode (set PAYMENTS_API_BASE_URL for real UPayments).');
+            }
+        }
+        else if (!this.apiKey.trim()) {
+            this.logger.warn('PAYMENTS: PAYMENTS_API_KEY is empty — /charge will fail when creating payment links.');
+        }
+        else {
+            this.logger.log('PAYMENTS: UPayments hosted links enabled.');
+        }
+    }
     paymentsMockExplicit() {
         const m = process.env.PAYMENTS_MOCK?.trim().toLowerCase();
         return m === '1' || m === 'true' || m === 'yes';

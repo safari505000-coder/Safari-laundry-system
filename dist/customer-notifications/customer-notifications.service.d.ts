@@ -1,3 +1,4 @@
+import { OnModuleInit } from '@nestjs/common';
 export type InvoiceIssuedNotifyParams = {
     customerPhone: string;
     orderId: string;
@@ -18,8 +19,9 @@ export type InvoiceEditedIssuerNotifyParams = {
     editorLabel: string;
     invoiceShareUrl?: string;
 };
-export declare class CustomerNotificationsService {
+export declare class CustomerNotificationsService implements OnModuleInit {
     private readonly logger;
+    onModuleInit(): void;
     notifyInvoiceIssued(params: InvoiceIssuedNotifyParams): void;
     notifyInvoiceEditedForIssuer(params: InvoiceEditedIssuerNotifyParams): void;
     private deliver;

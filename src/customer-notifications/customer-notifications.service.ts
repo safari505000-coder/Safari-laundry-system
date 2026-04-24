@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import {
   BRAND_CUSTOMER_AR,
   BRAND_SYSTEM_AR,
@@ -133,8 +133,26 @@ function kuwaitPhoneDigitsForWhatsApp(phone: string): string | null {
 }
 
 @Injectable()
-export class CustomerNotificationsService {
+export class CustomerNotificationsService implements OnModuleInit {
   private readonly logger = new Logger(CustomerNotificationsService.name);
+
+  onModuleInit(): void {
+    const hasMoatmt =
+      Boolean(process.env.MOATMT_ACCESS_TOKEN?.trim()) &&
+      Boolean(process.env.MOATMT_INSTANCE_ID?.trim());
+    const hasHook = Boolean(process.env.CUSTOMER_NOTIFY_WEBHOOK_URL?.trim());
+    if (hasMoatmt) {
+      this.logger.log(
+        'Customer notify: Moatmt /send enabled (and webhook fallback if Moatmt fails and CUSTOMER_NOTIFY_WEBHOOK_URL is set).',
+      );
+    } else if (hasHook) {
+      this.logger.log('Customer notify: CUSTOMER_NOTIFY_WEBHOOK_URL is set.');
+    } else {
+      this.logger.warn(
+        'Customer notify: no MOATMT_INSTANCE_ID+MOATMT_ACCESS_TOKEN and no CUSTOMER_NOTIFY_WEBHOOK_URL — invoice WhatsApp only logs, nothing is sent.',
+      );
+    }
+  }
 
   /**
    * Fire-and-forget SMS/WhatsApp hook — never blocks POS.
