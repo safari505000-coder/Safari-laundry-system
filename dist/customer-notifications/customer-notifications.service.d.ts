@@ -24,4 +24,5 @@ export declare class CustomerNotificationsService {
     notifyInvoiceEditedForIssuer(params: InvoiceEditedIssuerNotifyParams): void;
     private deliver;
     private deliverIssuerEdit;
+    private trySendMoatmt;
 }

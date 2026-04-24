@@ -114,6 +114,24 @@ function buildInvoiceEditedIssuerMessage(params: {
   return lines.join('\n');
 }
 
+/** Digits only for API `number` (Moatmt expects Kuwait mobile as 965 + 8 digits). */
+function kuwaitPhoneDigitsForWhatsApp(phone: string): string | null {
+  const d = phone.replace(/[\s\-+]/g, '');
+  if (d.length === 8 && /^[569]\d{7}$/.test(d)) {
+    return `965${d}`;
+  }
+  if (d.length === 11 && d.startsWith('965') && /^965[569]\d{7}$/.test(d)) {
+    return d;
+  }
+  if (d.length === 12 && d.startsWith('00965') && /^00965[569]\d{7}$/.test(d)) {
+    return d.slice(2);
+  }
+  if (d.length > 0 && d.startsWith('965') && d.length >= 11) {
+    return d;
+  }
+  return null;
+}
+
 @Injectable()
 export class CustomerNotificationsService {
   private readonly logger = new Logger(CustomerNotificationsService.name);
@@ -161,6 +179,10 @@ export class CustomerNotificationsService {
       detailsLink,
     });
 
+    if (await this.trySendMoatmt(params.customerPhone, message)) {
+      return;
+    }
+
     const webhook = process.env.CUSTOMER_NOTIFY_WEBHOOK_URL?.trim();
     if (webhook) {
       const res = await fetch(webhook, {
@@ -184,7 +206,7 @@ export class CustomerNotificationsService {
     }
 
     this.logger.log(
-      `[notify] ${params.customerPhone}: ${message.slice(0, 120)}… (set CUSTOMER_NOTIFY_WEBHOOK_URL to send)`,
+      `[notify] ${params.customerPhone}: ${message.slice(0, 120)}… (set MOATMT_* or CUSTOMER_NOTIFY_WEBHOOK_URL to send)`,
     );
   }
 
@@ -197,6 +219,10 @@ export class CustomerNotificationsService {
       editorLabel: params.editorLabel,
       invoiceShareUrl: params.invoiceShareUrl,
     });
+
+    if (await this.trySendMoatmt(params.toPhone, message)) {
+      return;
+    }
 
     const staffWebhook = process.env.STAFF_INVOICE_NOTIFY_WEBHOOK_URL?.trim();
     const customerWebhook = process.env.CUSTOMER_NOTIFY_WEBHOOK_URL?.trim();
@@ -222,7 +248,59 @@ export class CustomerNotificationsService {
     }
 
     this.logger.log(
-      `[notify issuer] ${params.toPhone}: ${message.slice(0, 120)}… (set STAFF_INVOICE_NOTIFY_WEBHOOK_URL or CUSTOMER_NOTIFY_WEBHOOK_URL)`,
+      `[notify issuer] ${params.toPhone}: ${message.slice(0, 120)}… (set MOATMT_* or STAFF/ CUSTOMER webhooks)`,
     );
+  }
+
+  /**
+   * Moatmt (moatmt.sa) POST /api/send — used when `MOATMT_ACCESS_TOKEN` +
+   * `MOATMT_INSTANCE_ID` are set. Returns true if the request succeeded.
+   * Doc: `type: text`, body includes `number` (Kuwait 965…), `message`.
+   */
+  private async trySendMoatmt(
+    rawPhone: string,
+    message: string,
+  ): Promise<boolean> {
+    const accessToken = process.env.MOATMT_ACCESS_TOKEN?.trim();
+    const instanceId = process.env.MOATMT_INSTANCE_ID?.trim();
+    if (!accessToken || !instanceId) {
+      return false;
+    }
+    const number = kuwaitPhoneDigitsForWhatsApp(rawPhone);
+    if (!number) {
+      this.logger.warn(
+        `Moatmt send skipped: could not parse Kuwait mobile from value ending …${rawPhone.slice(-4)}`,
+      );
+      return false;
+    }
+    const base = (
+      process.env.MOATMT_API_BASE_URL?.trim() || 'https://moatmt.sa/api'
+    ).replace(/\/$/, '');
+    const url = `${base}/send`;
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          number,
+          type: 'text',
+          message,
+          instance_id: instanceId,
+          access_token: accessToken,
+        }),
+      });
+      if (!res.ok) {
+        const errText = await res.text();
+        this.logger.warn(
+          `Moatmt POST /send ${res.status}: ${errText.slice(0, 200)}`,
+        );
+        return false;
+      }
+      this.logger.log(`Moatmt WhatsApp sent to …${rawPhone.slice(-4)}`);
+      return true;
+    } catch (e) {
+      this.logger.warn(`Moatmt request failed: ${e}`);
+      return false;
+    }
   }
 }
