@@ -7,10 +7,10 @@ import { registerDecorator, ValidationOptions } from 'class-validator';
 export const KUWAIT_CUSTOMER_PHONE_PATTERN = /^(\+?965)?[569]\d{7}$/;
 
 /**
- * Digits for Moatmt / WhatsApp: Kuwait mobile as 965 + 8 digits (5/6/9…).
+ * Kuwait mobile as 965 + 8 digits (5/6/9…), for UPayments / SMS / notify.
  * Returns compact digits string starting with 965, or null.
  */
-export function kuwaitPhoneDigitsForMoatmt(phone: string): string | null {
+export function parseKuwaitMobile965(phone: string): string | null {
   const d = phone.replace(/[\s\-+]/g, '');
   if (d.length === 8 && /^[569]\d{7}$/.test(d)) {
     return `965${d}`;
@@ -30,14 +30,14 @@ export function kuwaitPhoneDigitsForMoatmt(phone: string): string | null {
 /**
  * Prefer the first field that is a valid Kuwait mobile (e.g. `phone` vs
  * `phone2` on Customer). Stops a landline/foreign primary `phone` from
- * blocking Moatmt when `phone2` is the real WhatsApp number.
+ * blocking UPayments/notify when `phone2` is the only valid mobile.
  */
 export function pickFirstKuwaitMobileForWhatsApp(
   ...candidates: Array<string | null | undefined>
 ): string | null {
   for (const c of candidates) {
     const t = c?.trim();
-    if (t && kuwaitPhoneDigitsForMoatmt(t)) {
+    if (t && parseKuwaitMobile965(t)) {
       return t;
     }
   }

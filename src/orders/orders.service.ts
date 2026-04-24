@@ -183,7 +183,7 @@ export class OrdersService {
   }
 
   /**
-   * Sends invoice + payment/receipt text to the customer (Moatmt or webhook).
+   * Sends invoice + payment/receipt text to the customer (webhook if configured).
    * Call with `void …catch` for non-**ONLINE** checkouts; **await** for ONLINE
    * so the UPayments link + receipt text is delivered before the HTTP response
    * returns to the POS.

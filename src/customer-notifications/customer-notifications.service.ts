@@ -3,7 +3,7 @@ import {
   BRAND_CUSTOMER_AR,
   BRAND_SYSTEM_AR,
 } from '../common/constants/branding';
-import { kuwaitPhoneDigitsForMoatmt } from '../common/validation/kuwait-customer-phone';
+import { parseKuwaitMobile965 } from '../common/validation/kuwait-customer-phone';
 
 export type InvoiceIssuedNotifyParams = {
   customerPhone: string;
@@ -55,7 +55,7 @@ function buildInvoiceIssuedMessage(params: {
   lines.push(`نسعد بخدمتكم في ${BRAND_CUSTOMER_AR}.`);
   lines.push('');
   lines.push(`🏷️ رقم الفاتورة: ${params.invoiceLabel}`);
-  // WhatsApp bold uses *...* — keeping the total visually anchored.
+  // *...* for bold-style emphasis in the message text.
   lines.push(`💰 *الإجمالي: ${params.amountKd} د.ك*`);
   lines.push('');
   lines.push(
@@ -65,7 +65,7 @@ function buildInvoiceIssuedMessage(params: {
   if (params.paymentUrl) {
     lines.push('');
     lines.push(
-      '📱 رابط الدفع + نسخة الفاتورة تُرسل لجوالكم (واتساب) — للدفع من هنا:',
+      '📱 رابط الدفع + نسخة الفاتورة تُرسل لجوالكم (SMS) — للدفع من هنا:',
     );
     lines.push('🔒 رابط UPayments:');
     lines.push(params.paymentUrl);
@@ -123,25 +123,31 @@ export class CustomerNotificationsService implements OnModuleInit {
   private readonly logger = new Logger(CustomerNotificationsService.name);
 
   onModuleInit(): void {
-    const hasMoatmt =
-      Boolean(process.env.MOATMT_ACCESS_TOKEN?.trim()) &&
-      Boolean(process.env.MOATMT_INSTANCE_ID?.trim());
-    const hasHook = Boolean(process.env.CUSTOMER_NOTIFY_WEBHOOK_URL?.trim());
-    if (hasMoatmt) {
-      this.logger.log(
-        'Customer notify: Moatmt /send enabled (and webhook fallback if Moatmt fails and CUSTOMER_NOTIFY_WEBHOOK_URL is set).',
-      );
-    } else if (hasHook) {
-      this.logger.log('Customer notify: CUSTOMER_NOTIFY_WEBHOOK_URL is set.');
-    } else {
+    const k = process.env.INFOBIP_API_KEY?.trim();
+    const b = process.env.INFOBIP_BASE_URL?.trim();
+    const f = process.env.INFOBIP_SMS_FROM?.trim();
+    const infobipOk = Boolean(k && b && f);
+    const infobipPartial = Boolean((k || b || f) && !infobipOk);
+    if (infobipOk) {
+      this.logger.log('Customer notify: Infobip SMS is configured.');
+    } else if (infobipPartial) {
       this.logger.warn(
-        'Customer notify: no MOATMT_INSTANCE_ID+MOATMT_ACCESS_TOKEN and no CUSTOMER_NOTIFY_WEBHOOK_URL — invoice WhatsApp only logs, nothing is sent.',
+        'Customer notify: Infobip incomplete — set INFOBIP_BASE_URL, INFOBIP_API_KEY, and INFOBIP_SMS_FROM together to send SMS.',
+      );
+    }
+    const hasHook = Boolean(process.env.CUSTOMER_NOTIFY_WEBHOOK_URL?.trim());
+    if (hasHook) {
+      this.logger.log('Customer notify: CUSTOMER_NOTIFY_WEBHOOK_URL is set.');
+    }
+    if (!infobipOk && !hasHook) {
+      this.logger.warn(
+        'Customer notify: no Infobip SMS and no CUSTOMER_NOTIFY_WEBHOOK_URL — invoice text only hits logs.',
       );
     }
   }
 
   /**
-   * Fire-and-forget SMS/WhatsApp hook — never blocks POS.
+   * Fire-and-forget SMS + optional webhook — never blocks POS.
    */
   notifyInvoiceIssued(params: InvoiceIssuedNotifyParams): void {
     setImmediate(() => {
@@ -153,7 +159,7 @@ export class CustomerNotificationsService implements OnModuleInit {
 
   /**
    * Same as `notifyInvoiceIssued` but awaited — used after **ONLINE** POS
-   * checkout so the payment link + receipt text hit Moatmt/webhook before
+   * checkout so the payment link + receipt text reach the webhook before
    * the HTTP response returns to the client.
    */
   async deliverInvoiceIssuedNow(
@@ -194,8 +200,8 @@ export class CustomerNotificationsService implements OnModuleInit {
       detailsLink,
     });
 
-    if (await this.trySendMoatmt(params.customerPhone, message)) {
-      return;
+    if (this.isInfobipConfigured()) {
+      await this.trySendInfobipSms(params.customerPhone, message);
     }
 
     const webhook = process.env.CUSTOMER_NOTIFY_WEBHOOK_URL?.trim();
@@ -220,9 +226,11 @@ export class CustomerNotificationsService implements OnModuleInit {
       return;
     }
 
-    this.logger.log(
-      `[notify] ${params.customerPhone}: ${message.slice(0, 120)}… (set MOATMT_* or CUSTOMER_NOTIFY_WEBHOOK_URL to send)`,
-    );
+    if (!this.isInfobipConfigured()) {
+      this.logger.log(
+        `[notify] ${params.customerPhone}: ${message.slice(0, 120)}… (set Infobip or CUSTOMER_NOTIFY_WEBHOOK_URL to send)`,
+      );
+    }
   }
 
   private async deliverIssuerEdit(
@@ -235,8 +243,8 @@ export class CustomerNotificationsService implements OnModuleInit {
       invoiceShareUrl: params.invoiceShareUrl,
     });
 
-    if (await this.trySendMoatmt(params.toPhone, message)) {
-      return;
+    if (this.isInfobipConfigured()) {
+      await this.trySendInfobipSms(params.toPhone, message);
     }
 
     const staffWebhook = process.env.STAFF_INVOICE_NOTIFY_WEBHOOK_URL?.trim();
@@ -262,65 +270,73 @@ export class CustomerNotificationsService implements OnModuleInit {
       return;
     }
 
-    this.logger.log(
-      `[notify issuer] ${params.toPhone}: ${message.slice(0, 120)}… (set MOATMT_* or STAFF/ CUSTOMER webhooks)`,
+    if (!this.isInfobipConfigured()) {
+      this.logger.log(
+        `[notify issuer] ${params.toPhone}: ${message.slice(0, 120)}… (set Infobip or STAFF_/CUSTOMER_ webhook)`,
+      );
+    }
+  }
+
+  /** Infobip: base URL, API key, and registered sender (alphanumeric or numeric on your account). */
+  private isInfobipConfigured(): boolean {
+    return (
+      Boolean(process.env.INFOBIP_API_KEY?.trim()) &&
+      Boolean(process.env.INFOBIP_BASE_URL?.trim()) &&
+      Boolean(process.env.INFOBIP_SMS_FROM?.trim())
     );
   }
 
   /**
-   * Moatmt (moatmt.sa) POST /api/send — used when `MOATMT_ACCESS_TOKEN` +
-   * `MOATMT_INSTANCE_ID` are set. Returns true if the request succeeded.
-   * Doc: `type: text`, body includes `number` (Kuwait 965…), `message`.
+   * Infobip SMS — POST /sms/2/text/advanced, `Authorization: App <api key>`.
+   * `to` is international format without + (e.g. 965XXXXXXXX for Kuwait).
    */
-  private async trySendMoatmt(
+  private async trySendInfobipSms(
     rawPhone: string,
-    message: string,
+    text: string,
   ): Promise<boolean> {
-    const accessToken = process.env.MOATMT_ACCESS_TOKEN?.trim();
-    const instanceId = process.env.MOATMT_INSTANCE_ID?.trim();
-    if (!accessToken || !instanceId) {
+    const apiKey = process.env.INFOBIP_API_KEY?.trim();
+    const base = process.env.INFOBIP_BASE_URL?.trim();
+    const from = process.env.INFOBIP_SMS_FROM?.trim();
+    if (!apiKey || !base || !from) {
       return false;
     }
-    const digits = kuwaitPhoneDigitsForMoatmt(rawPhone);
-    if (!digits) {
+    const to = parseKuwaitMobile965(rawPhone);
+    if (!to) {
       this.logger.warn(
-        `Moatmt send skipped: could not parse Kuwait mobile from value ending …${rawPhone.slice(-4)}`,
+        `Infobip SMS skipped: invalid Kuwait mobile (…${rawPhone.slice(-4)})`,
       );
       return false;
     }
-    // Moatmt docs: `number` is int (e.g. 965XXXXXXXX). Sending a string can fail validation.
-    const numberInt = Number(digits);
-    if (!Number.isFinite(numberInt) || numberInt < 1e7) {
-      this.logger.warn(`Moatmt send skipped: invalid number digits from phone`);
-      return false;
-    }
-    const base = (
-      process.env.MOATMT_API_BASE_URL?.trim() || 'https://moatmt.sa/api'
-    ).replace(/\/$/, '');
-    const url = `${base}/send`;
+    const url = `${base.replace(/\/$/, '')}/sms/2/text/advanced`;
     try {
       const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          Authorization: `App ${apiKey}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
         body: JSON.stringify({
-          number: numberInt,
-          type: 'text',
-          message,
-          instance_id: instanceId,
-          access_token: accessToken,
+          messages: [
+            {
+              from,
+              destinations: [{ to }],
+              text,
+            },
+          ],
         }),
       });
       if (!res.ok) {
         const errText = await res.text();
         this.logger.warn(
-          `Moatmt POST /send ${res.status}: ${errText.slice(0, 200)}`,
+          `Infobip SMS ${res.status}: ${errText.slice(0, 400)}`,
         );
         return false;
       }
-      this.logger.log(`Moatmt WhatsApp sent to …${rawPhone.slice(-4)}`);
+      this.logger.log(`Infobip SMS queued for …${rawPhone.slice(-4)}`);
       return true;
     } catch (e) {
-      this.logger.warn(`Moatmt request failed: ${e}`);
+      this.logger.warn(`Infobip SMS request failed: ${e}`);
       return false;
     }
   }

@@ -1,13 +1,13 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.KUWAIT_CUSTOMER_PHONE_PATTERN = void 0;
-exports.kuwaitPhoneDigitsForMoatmt = kuwaitPhoneDigitsForMoatmt;
+exports.parseKuwaitMobile965 = parseKuwaitMobile965;
 exports.pickFirstKuwaitMobileForWhatsApp = pickFirstKuwaitMobileForWhatsApp;
 exports.resolveCustomerPhoneForNotify = resolveCustomerPhoneForNotify;
 exports.IsKuwaitCustomerPhone = IsKuwaitCustomerPhone;
 const class_validator_1 = require("class-validator");
 exports.KUWAIT_CUSTOMER_PHONE_PATTERN = /^(\+?965)?[569]\d{7}$/;
-function kuwaitPhoneDigitsForMoatmt(phone) {
+function parseKuwaitMobile965(phone) {
     const d = phone.replace(/[\s\-+]/g, '');
     if (d.length === 8 && /^[569]\d{7}$/.test(d)) {
         return `965${d}`;
@@ -26,7 +26,7 @@ function kuwaitPhoneDigitsForMoatmt(phone) {
 function pickFirstKuwaitMobileForWhatsApp(...candidates) {
     for (const c of candidates) {
         const t = c?.trim();
-        if (t && kuwaitPhoneDigitsForMoatmt(t)) {
+        if (t && parseKuwaitMobile965(t)) {
             return t;
         }
     }

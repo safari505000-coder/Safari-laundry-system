@@ -27,5 +27,6 @@ export declare class CustomerNotificationsService implements OnModuleInit {
     notifyInvoiceEditedForIssuer(params: InvoiceEditedIssuerNotifyParams): void;
     private deliver;
     private deliverIssuerEdit;
-    private trySendMoatmt;
+    private isInfobipConfigured;
+    private trySendInfobipSms;
 }
