@@ -104,6 +104,7 @@ export declare class OrdersService {
     private resolveInvoiceShareForNotify;
     private formatLineItemsBlockForNotify;
     private formatLineItemsBlockForBundleNotify;
+    private invoiceLabelForCustomerNotify;
     private posInvoiceNotifyToCustomer;
     private isManagerOrOwner;
     private canViewAllOrders;

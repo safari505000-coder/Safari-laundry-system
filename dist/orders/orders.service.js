@@ -153,17 +153,20 @@ let OrdersService = OrdersService_1 = class OrdersService {
         }
         const parts = [];
         for (const o of orders) {
-            const lab = o.invoiceNumber?.trim() ||
-                o.serialNumber?.trim() ||
-                o.id.slice(0, 8);
+            const lab = this.invoiceLabelForCustomerNotify(o);
             const block = this.formatLineItemsBlockForNotify(o);
             parts.push(`━━ ${lab} ━━`, block || '—');
         }
         return parts.join('\n\n');
     }
+    invoiceLabelForCustomerNotify(order) {
+        return (order.serialNumber?.trim() ||
+            order.invoiceNumber?.trim() ||
+            `#${order.id.slice(0, 8)}`);
+    }
     async posInvoiceNotifyToCustomer(detail, phoneCompact) {
         const phone = (0, kuwait_customer_phone_1.resolveCustomerPhoneForNotify)(detail.customer.phone, detail.customer.phone2, phoneCompact);
-        const inv = detail.invoiceNumber?.trim() || `#${detail.id.slice(0, 8)}`;
+        const inv = this.invoiceLabelForCustomerNotify(detail);
         const amt = detail.totalPrice.toFixed(3);
         const lineItemsSummary = this.formatLineItemsBlockForNotify(detail);
         await this.customerNotifications.deliverInvoiceIssuedNow({
@@ -589,7 +592,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
                 orderId: first.id,
                 invoiceLabel: orders.length > 1 ?
                     `مجموعة ${orders.length} فواتير`
-                    : (first.invoiceNumber?.trim() || `#${first.id.slice(0, 8)}`),
+                    : this.invoiceLabelForCustomerNotify(first),
                 amountKd: sumDecimal.toFixed(3),
                 paymentUrl: paymentLink.url,
                 lineItemsSummary: lineItemsSummary || undefined,
