@@ -9,13 +9,14 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.UnpaidInvoicesResponseDto = exports.UnpaidInvoicesKpisDto = exports.UnpaidInvoiceRowDto = exports.UnpaidInvoicesQueryDto = void 0;
+exports.UnpaidInvoicesResponseDto = exports.UnpaidInvoicesKpisDto = exports.MarketUnpaidByMethodDto = exports.UnpaidInvoiceRowDto = exports.UnpaidInvoicesQueryDto = void 0;
 const swagger_1 = require("@nestjs/swagger");
 const class_validator_1 = require("class-validator");
 class UnpaidInvoicesQueryDto {
     from;
     to;
     branchId;
+    marketKpiBranchId;
     actorUserId;
     customerPhone;
 }
@@ -47,6 +48,15 @@ __decorate([
     (0, class_validator_1.IsUUID)(),
     __metadata("design:type", String)
 ], UnpaidInvoicesQueryDto.prototype, "branchId", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({
+        format: 'uuid',
+        description: 'V20.x — Optional scope for the «market» KPI (Σ `Order` UNPAID) only, so it matches `GET /api/call-center/operations-summary` when the table uses no branch (كل الفروع). If omitted, the KPI reuses `branchId`.',
+    }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsUUID)(),
+    __metadata("design:type", String)
+], UnpaidInvoicesQueryDto.prototype, "marketKpiBranchId", void 0);
 __decorate([
     (0, swagger_1.ApiPropertyOptional)({
         format: 'uuid',
@@ -86,6 +96,7 @@ class UnpaidInvoiceRowDto {
     entryCount;
     currentCustomerDebtKd;
     isOpen;
+    debtSource;
     lastEntryAt;
 }
 exports.UnpaidInvoiceRowDto = UnpaidInvoiceRowDto;
@@ -196,9 +207,44 @@ __decorate([
     __metadata("design:type", Boolean)
 ], UnpaidInvoiceRowDto.prototype, "isOpen", void 0);
 __decorate([
+    (0, swagger_1.ApiProperty)({
+        enum: ['INVOICE_SHORTFALL', 'SUBSCRIPTION_OVERUSE', 'OPEN_UNPAID_ORDER'],
+        description: 'INVOICE_SHORTFALL: field-issued receivable. SUBSCRIPTION_OVERUSE: order exceeded subscription wallet. OPEN_UNPAID_ORDER: `Order.cashStatus=UNPAID` with no field-ledger line yet (same scope as the red market-debt card).',
+    }),
+    __metadata("design:type", String)
+], UnpaidInvoiceRowDto.prototype, "debtSource", void 0);
+__decorate([
     (0, swagger_1.ApiPropertyOptional)({ format: 'date-time' }),
     __metadata("design:type", String)
 ], UnpaidInvoiceRowDto.prototype, "lastEntryAt", void 0);
+class MarketUnpaidByMethodDto {
+    cashKd;
+    knetKd;
+    onlineKd;
+    paymentLinkKd;
+    otherKd;
+}
+exports.MarketUnpaidByMethodDto = MarketUnpaidByMethodDto;
+__decorate([
+    (0, swagger_1.ApiProperty)({ description: 'CASH' }),
+    __metadata("design:type", String)
+], MarketUnpaidByMethodDto.prototype, "cashKd", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ description: 'KNET' }),
+    __metadata("design:type", String)
+], MarketUnpaidByMethodDto.prototype, "knetKd", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ description: 'ONLINE' }),
+    __metadata("design:type", String)
+], MarketUnpaidByMethodDto.prototype, "onlineKd", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ description: 'PAYMENT_LINK (روابط / واتساب)' }),
+    __metadata("design:type", String)
+], MarketUnpaidByMethodDto.prototype, "paymentLinkKd", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ description: 'Other / unset method (e.g. wallet, debt-on-account, null)' }),
+    __metadata("design:type", String)
+], MarketUnpaidByMethodDto.prototype, "otherKd", void 0);
 class UnpaidInvoicesKpisDto {
     invoiceCount;
     openInvoiceCount;
@@ -208,6 +254,11 @@ class UnpaidInvoicesKpisDto {
     totalDebtKd;
     totalPaidKd;
     openDebtKd;
+    openShortfallDebtKd;
+    openSubscriptionOveruseDebtKd;
+    openUnpaidOrderBalanceKd;
+    totalMarketUnpaidKd;
+    marketUnpaidByMethod;
     avgDebtPerInvoiceKd;
 }
 exports.UnpaidInvoicesKpisDto = UnpaidInvoicesKpisDto;
@@ -247,10 +298,38 @@ __decorate([
 ], UnpaidInvoicesKpisDto.prototype, "totalPaidKd", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)({
-        description: 'Σ of remaining open amounts. Matches /collections totalMarketDebtKd.',
+        description: 'Σ of remaining open amounts on shortfall rows (ledger net, driver/manager scope).',
     }),
     __metadata("design:type", String)
 ], UnpaidInvoicesKpisDto.prototype, "openDebtKd", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({
+        description: 'Σ `remainingKd` for rows with `debtSource=INVOICE_SHORTFALL` (subset of `openDebtKd` when both types are present).',
+    }),
+    __metadata("design:type", String)
+], UnpaidInvoicesKpisDto.prototype, "openShortfallDebtKd", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({
+        description: 'Σ `remainingKd` for rows with `debtSource=SUBSCRIPTION_OVERUSE`.',
+    }),
+    __metadata("design:type", String)
+], UnpaidInvoicesKpisDto.prototype, "openSubscriptionOveruseDebtKd", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({
+        description: 'Σ `remainingKd` for `OPEN_UNPAID_ORDER` (UNPAITotal — matches «الديون السوقية» for orders without a debt-ledger line).',
+    }),
+    __metadata("design:type", String)
+], UnpaidInvoicesKpisDto.prototype, "openUnpaidOrderBalanceKd", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({
+        description: 'Σ `Order.totalPrice` for `cashStatus=UNPAID` in branch scope — same as call-center red KPI; unchanged until the order is settled (no from/to).',
+    }),
+    __metadata("design:type", String)
+], UnpaidInvoicesKpisDto.prototype, "totalMarketUnpaidKd", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ type: MarketUnpaidByMethodDto }),
+    __metadata("design:type", MarketUnpaidByMethodDto)
+], UnpaidInvoicesKpisDto.prototype, "marketUnpaidByMethod", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)(),
     __metadata("design:type", String)

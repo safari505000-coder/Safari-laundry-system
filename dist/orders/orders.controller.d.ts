@@ -114,8 +114,9 @@ export declare class OrdersController {
         username: string;
         branchName: string | null;
     }[]>;
-    listCollectionsUnpaidOnline(branchId?: string): Promise<{
+    listCollectionsUnpaidOnline(branchId: string | undefined, user: JwtUser): Promise<{
         orderId: string;
+        customerId: string;
         readableId: string;
         invoiceNumber: string | null;
         customerName: string;

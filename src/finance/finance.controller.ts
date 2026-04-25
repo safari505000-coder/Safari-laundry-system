@@ -340,7 +340,7 @@ export class FinanceController {
   @ApiOperation({
     summary: `Unpaid invoices list (${APP_BRAND})`,
     description:
-      'V19.10 — aggregates every invoice that contributed to outstanding customer debt (INVOICE_SHORTFALL entries), joined with current wallet balance. Supports filters by date, branch, issuing employee and customer phone.',
+      'Table: per-order `INVOICE_SHORTFALL` and subscription overuse (any actor) with FIFO payments. `kpis.totalMarketUnpaidKd` = Σ `Order` UNPAID; use `marketKpiBranchId` to align the headline with Call Center / collections when `branchId` is omitted (all branches in the table).',
   })
   getUnpaidInvoices(
     @Query() query: UnpaidInvoicesQueryDto,

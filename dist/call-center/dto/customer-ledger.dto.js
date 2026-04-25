@@ -9,7 +9,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CustomerLedgerResponseDto = exports.CustomerLedgerInvoiceDto = exports.CustomerLedgerEventDto = exports.CustomerLedgerClosedInvoiceDto = exports.CustomerLedgerActivationBreakdownDto = exports.CustomerLedgerSubscriptionDto = exports.CustomerLedgerHeaderDto = exports.CustomerLedgerQueryDto = void 0;
+exports.CustomerLedgerResponseDto = exports.CustomerLedgerFeedbackSummaryDto = exports.CustomerLedgerFeedbackLastDto = exports.CustomerLedgerInvoiceDto = exports.CustomerLedgerEventDto = exports.CustomerLedgerClosedInvoiceDto = exports.CustomerLedgerActivationBreakdownDto = exports.CustomerLedgerSubscriptionDto = exports.CustomerLedgerHeaderDto = exports.CustomerLedgerQueryDto = void 0;
 const swagger_1 = require("@nestjs/swagger");
 const class_validator_1 = require("class-validator");
 const class_transformer_1 = require("class-transformer");
@@ -354,6 +354,8 @@ class CustomerLedgerInvoiceDto {
     subscriptionLabel;
     issuedWhileCutOff;
     openDebt;
+    feedbackRating;
+    feedbackSubmittedAtIso;
 }
 exports.CustomerLedgerInvoiceDto = CustomerLedgerInvoiceDto;
 __decorate([
@@ -420,6 +422,63 @@ __decorate([
     }),
     __metadata("design:type", Boolean)
 ], CustomerLedgerInvoiceDto.prototype, "openDebt", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({
+        nullable: true,
+        description: '1..5 from customer feedback (QR / rating page) for this order.',
+    }),
+    __metadata("design:type", Object)
+], CustomerLedgerInvoiceDto.prototype, "feedbackRating", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ nullable: true }),
+    __metadata("design:type", Object)
+], CustomerLedgerInvoiceDto.prototype, "feedbackSubmittedAtIso", void 0);
+class CustomerLedgerFeedbackLastDto {
+    rating;
+    note;
+    submittedAtIso;
+    orderId;
+    orderSerial;
+}
+exports.CustomerLedgerFeedbackLastDto = CustomerLedgerFeedbackLastDto;
+__decorate([
+    (0, swagger_1.ApiProperty)(),
+    __metadata("design:type", Number)
+], CustomerLedgerFeedbackLastDto.prototype, "rating", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ nullable: true }),
+    __metadata("design:type", Object)
+], CustomerLedgerFeedbackLastDto.prototype, "note", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)(),
+    __metadata("design:type", String)
+], CustomerLedgerFeedbackLastDto.prototype, "submittedAtIso", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)(),
+    __metadata("design:type", String)
+], CustomerLedgerFeedbackLastDto.prototype, "orderId", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ nullable: true }),
+    __metadata("design:type", Object)
+], CustomerLedgerFeedbackLastDto.prototype, "orderSerial", void 0);
+class CustomerLedgerFeedbackSummaryDto {
+    averageRating;
+    ratedCount;
+    lastFeedback;
+}
+exports.CustomerLedgerFeedbackSummaryDto = CustomerLedgerFeedbackSummaryDto;
+__decorate([
+    (0, swagger_1.ApiProperty)({ nullable: true, description: '1..5 average' }),
+    __metadata("design:type", Object)
+], CustomerLedgerFeedbackSummaryDto.prototype, "averageRating", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)(),
+    __metadata("design:type", Number)
+], CustomerLedgerFeedbackSummaryDto.prototype, "ratedCount", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ type: CustomerLedgerFeedbackLastDto, nullable: true }),
+    __metadata("design:type", Object)
+], CustomerLedgerFeedbackSummaryDto.prototype, "lastFeedback", void 0);
 class CustomerLedgerResponseDto {
     customer;
     activeSubscription;
@@ -429,6 +488,7 @@ class CustomerLedgerResponseDto {
     events;
     invoices;
     totals;
+    feedbackSummary;
 }
 exports.CustomerLedgerResponseDto = CustomerLedgerResponseDto;
 __decorate([
@@ -467,4 +527,8 @@ __decorate([
     }),
     __metadata("design:type", Object)
 ], CustomerLedgerResponseDto.prototype, "totals", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ type: CustomerLedgerFeedbackSummaryDto }),
+    __metadata("design:type", CustomerLedgerFeedbackSummaryDto)
+], CustomerLedgerResponseDto.prototype, "feedbackSummary", void 0);
 //# sourceMappingURL=customer-ledger.dto.js.map

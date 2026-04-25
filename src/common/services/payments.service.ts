@@ -18,9 +18,11 @@ import {
   CustomerLedgerService,
   type OrderWalletSettlementPrefetch,
 } from '../../customer-ledger/customer-ledger.service';
+import { CustomerNotificationsService } from '../../customer-notifications/customer-notifications.service';
 import { GeneralLedgerService } from '../../general-ledger/general-ledger.service';
 import { InventoryService } from '../../inventory/inventory.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { resolveCustomerPhoneForNotify } from '../validation/kuwait-customer-phone';
 import { cashStatusForPaymentMethod } from '../utils/cash-status-for-method';
 
 export type CreatePaymentLinkParams = {
@@ -71,6 +73,7 @@ export class PaymentsService implements OnModuleInit {
     private readonly customerLedger: CustomerLedgerService,
     private readonly generalLedger: GeneralLedgerService,
     private readonly inventory: InventoryService,
+    private readonly customerNotifications: CustomerNotificationsService,
   ) {
     this.apiBase = (process.env.PAYMENTS_API_BASE_URL ?? '').replace(
       /\/$/,
@@ -578,7 +581,7 @@ export class PaymentsService implements OnModuleInit {
     orderId: string,
     gatewayMetadata?: Prisma.InputJsonValue,
   ): Promise<void> {
-    await this.prisma.$transaction(
+    const didFinalize = await this.prisma.$transaction(
       async (tx) => {
         const order = await tx.order.findUnique({
           where: { id: orderId },
@@ -599,7 +602,7 @@ export class PaymentsService implements OnModuleInit {
         }
         if (order.walletSettledAt) {
           // Idempotent — already settled (likely a replayed webhook).
-          return;
+          return false;
         }
         if (order.status === OrderStatus.CANCELED) {
           throw new BadRequestException(
@@ -719,9 +722,78 @@ export class PaymentsService implements OnModuleInit {
           branchId: driverRow?.branchId ?? actorRow?.branchId ?? null,
           reference: `GATEWAY-${orderId.slice(0, 8)}`,
         });
+        return true;
       },
       { maxWait: 10_000, timeout: 15_000 },
     );
+    if (didFinalize) {
+      this.emitPaymentConfirmedNotify(orderId);
+    }
+  }
+
+  /**
+   * After the order is fully paid (any channel: gateway, CC mark-paid, or
+   * POS instant settlement), schedule the same customer WhatsApp as the
+   * link callback (thank-you + optional `/r/:orderId` rating URL).
+   */
+  schedulePaymentConfirmedCustomerNotify(orderId: string): void {
+    this.emitPaymentConfirmedNotify(orderId);
+  }
+
+  /**
+   * WhatsApp: payment-thanks + public `/r/:orderId` rating link (when
+   * `PUBLIC_WEB_APP_URL` is set). Phone resolution matches invoice notify
+   * (Kuwait mobile preferred, else first non-empty on file).
+   */
+  private emitPaymentConfirmedNotify(orderId: string): void {
+    setImmediate(() => {
+      void (async () => {
+        const row = await this.prisma.order.findUnique({
+          where: { id: orderId },
+          select: {
+            id: true,
+            serialNumber: true,
+            invoiceNumber: true,
+            totalPrice: true,
+            posHostedPaymentUrl: true,
+            customer: { select: { phone: true, phone2: true } },
+          },
+        });
+        if (!row) {
+          return;
+        }
+        const phone = resolveCustomerPhoneForNotify(
+          row.customer.phone,
+          row.customer.phone2,
+        );
+        if (!phone.trim()) {
+          this.logger.log(
+            `Payment confirmed notify skipped: no customer phone on file for order ${row.id.slice(0, 8)}…`,
+          );
+          return;
+        }
+        const orderLabel =
+          row.serialNumber?.trim() ||
+          row.invoiceNumber?.trim() ||
+          `#${row.id.slice(0, 8)}`;
+        const base = (process.env.PUBLIC_WEB_APP_URL ?? '')
+          .replace(/\/$/, '')
+          .trim();
+        const ratingUrl =
+          base ? `${base}/r/${encodeURIComponent(row.id)}` : undefined;
+        const paymentUrl = row.posHostedPaymentUrl?.trim() || undefined;
+        this.customerNotifications.notifyPaymentConfirmed({
+          customerPhone: phone,
+          orderId: row.id,
+          amountKd: row.totalPrice.toFixed(3),
+          orderLabel,
+          paymentUrl,
+          ratingUrl,
+        });
+      })().catch((e) => {
+        this.logger.warn(`emitPaymentConfirmedNotify: ${e}`);
+      });
+    });
   }
 
   /**
@@ -770,7 +842,7 @@ export class PaymentsService implements OnModuleInit {
     posPaymentMethod: PosPaymentMethod;
   }> {
     const { orderId, method, performedByUserId } = args;
-    return this.prisma.$transaction(
+    const result = await this.prisma.$transaction(
       async (tx) => {
         const order = await tx.order.findUnique({
           where: { id: orderId },
@@ -908,6 +980,10 @@ export class PaymentsService implements OnModuleInit {
       },
       { maxWait: 10_000, timeout: 15_000 },
     );
+    if (!result.alreadySettled) {
+      this.emitPaymentConfirmedNotify(orderId);
+    }
+    return result;
   }
 }
 

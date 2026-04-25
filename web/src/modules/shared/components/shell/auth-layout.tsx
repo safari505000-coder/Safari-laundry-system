@@ -27,6 +27,9 @@ const DRIVER_EXACT_PATHS = new Set([
   '/my-field-expenses',
   '/my-cash-receipts',
   '/my/debt-transfers',
+  /** Tahseel + wa.me — same pages as call center, scoped in API to this driver. */
+  '/collections',
+  '/whatsapp-tools',
 ]);
 
 const DRIVER_PATH_PREFIXES = [

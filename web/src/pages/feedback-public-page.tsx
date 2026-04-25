@@ -136,7 +136,10 @@ export function FeedbackPublicPage() {
               <p className="text-xs opacity-90">{BRAND.customerEn}</p>
             </div>
           </div>
-          <p className="relative mt-5 text-sm leading-relaxed opacity-95">
+          <p className="relative mt-1 text-xs font-medium text-white/85">
+            صفحة بسيطة وآمنة — التقييم يصل لفريقنا مباشرة
+          </p>
+          <p className="relative mt-4 text-sm leading-relaxed opacity-95">
             {order?.customerFirstName ? `أهلاً ${order.customerFirstName}! ` : 'شكراً لاختيارك Safari! '}
             رأيك يساعدنا نخدمك أفضل في المرة القادمة.
           </p>

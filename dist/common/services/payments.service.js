@@ -15,15 +15,18 @@ const node_crypto_1 = require("node:crypto");
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
 const customer_ledger_service_1 = require("../../customer-ledger/customer-ledger.service");
+const customer_notifications_service_1 = require("../../customer-notifications/customer-notifications.service");
 const general_ledger_service_1 = require("../../general-ledger/general-ledger.service");
 const inventory_service_1 = require("../../inventory/inventory.service");
 const prisma_service_1 = require("../../prisma/prisma.service");
+const kuwait_customer_phone_1 = require("../validation/kuwait-customer-phone");
 const cash_status_for_method_1 = require("../utils/cash-status-for-method");
 let PaymentsService = PaymentsService_1 = class PaymentsService {
     prisma;
     customerLedger;
     generalLedger;
     inventory;
+    customerNotifications;
     logger = new common_1.Logger(PaymentsService_1.name);
     prodFirstMockLinkLogged = false;
     apiBase;
@@ -32,11 +35,12 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
     secret;
     callbackPublicUrl;
     webAppUrl;
-    constructor(prisma, customerLedger, generalLedger, inventory) {
+    constructor(prisma, customerLedger, generalLedger, inventory, customerNotifications) {
         this.prisma = prisma;
         this.customerLedger = customerLedger;
         this.generalLedger = generalLedger;
         this.inventory = inventory;
+        this.customerNotifications = customerNotifications;
         this.apiBase = (process.env.PAYMENTS_API_BASE_URL ?? '').replace(/\/$/, '');
         this.apiKey = process.env.PAYMENTS_API_KEY ?? '';
         this.merchantId = process.env.PAYMENTS_MERCHANT_ID ?? '';
@@ -352,7 +356,7 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
         await this.finalizeSinglePaidOrderFromGateway(referenceId, gatewayMetadata);
     }
     async finalizeSinglePaidOrderFromGateway(orderId, gatewayMetadata) {
-        await this.prisma.$transaction(async (tx) => {
+        const didFinalize = await this.prisma.$transaction(async (tx) => {
             const order = await tx.order.findUnique({
                 where: { id: orderId },
                 select: {
@@ -371,7 +375,7 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
                 throw new common_1.BadRequestException('Order not found');
             }
             if (order.walletSettledAt) {
-                return;
+                return false;
             }
             if (order.status === client_1.OrderStatus.CANCELED) {
                 throw new common_1.BadRequestException('Order is canceled — cannot finalize a link payment for it');
@@ -439,7 +443,57 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
                 branchId: driverRow?.branchId ?? actorRow?.branchId ?? null,
                 reference: `GATEWAY-${orderId.slice(0, 8)}`,
             });
+            return true;
         }, { maxWait: 10_000, timeout: 15_000 });
+        if (didFinalize) {
+            this.emitPaymentConfirmedNotify(orderId);
+        }
+    }
+    schedulePaymentConfirmedCustomerNotify(orderId) {
+        this.emitPaymentConfirmedNotify(orderId);
+    }
+    emitPaymentConfirmedNotify(orderId) {
+        setImmediate(() => {
+            void (async () => {
+                const row = await this.prisma.order.findUnique({
+                    where: { id: orderId },
+                    select: {
+                        id: true,
+                        serialNumber: true,
+                        invoiceNumber: true,
+                        totalPrice: true,
+                        posHostedPaymentUrl: true,
+                        customer: { select: { phone: true, phone2: true } },
+                    },
+                });
+                if (!row) {
+                    return;
+                }
+                const phone = (0, kuwait_customer_phone_1.resolveCustomerPhoneForNotify)(row.customer.phone, row.customer.phone2);
+                if (!phone.trim()) {
+                    this.logger.log(`Payment confirmed notify skipped: no customer phone on file for order ${row.id.slice(0, 8)}…`);
+                    return;
+                }
+                const orderLabel = row.serialNumber?.trim() ||
+                    row.invoiceNumber?.trim() ||
+                    `#${row.id.slice(0, 8)}`;
+                const base = (process.env.PUBLIC_WEB_APP_URL ?? '')
+                    .replace(/\/$/, '')
+                    .trim();
+                const ratingUrl = base ? `${base}/r/${encodeURIComponent(row.id)}` : undefined;
+                const paymentUrl = row.posHostedPaymentUrl?.trim() || undefined;
+                this.customerNotifications.notifyPaymentConfirmed({
+                    customerPhone: phone,
+                    orderId: row.id,
+                    amountKd: row.totalPrice.toFixed(3),
+                    orderLabel,
+                    paymentUrl,
+                    ratingUrl,
+                });
+            })().catch((e) => {
+                this.logger.warn(`emitPaymentConfirmedNotify: ${e}`);
+            });
+        });
     }
     async resolveFallbackPerformer(tx) {
         const owner = await tx.user.findFirst({
@@ -451,7 +505,7 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
     }
     async manuallyMarkOrderPaidByMethod(args) {
         const { orderId, method, performedByUserId } = args;
-        return this.prisma.$transaction(async (tx) => {
+        const result = await this.prisma.$transaction(async (tx) => {
             const order = await tx.order.findUnique({
                 where: { id: orderId },
                 select: {
@@ -548,6 +602,10 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
                 posPaymentMethod: method,
             };
         }, { maxWait: 10_000, timeout: 15_000 });
+        if (!result.alreadySettled) {
+            this.emitPaymentConfirmedNotify(orderId);
+        }
+        return result;
     }
 };
 exports.PaymentsService = PaymentsService;
@@ -556,7 +614,8 @@ exports.PaymentsService = PaymentsService = PaymentsService_1 = __decorate([
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
         customer_ledger_service_1.CustomerLedgerService,
         general_ledger_service_1.GeneralLedgerService,
-        inventory_service_1.InventoryService])
+        inventory_service_1.InventoryService,
+        customer_notifications_service_1.CustomerNotificationsService])
 ], PaymentsService);
 function normalizeKwPhone(phone) {
     const d = phone.replace(/[\s-]/g, '').trim();

@@ -2,6 +2,7 @@ export declare class UnpaidInvoicesQueryDto {
     from?: string;
     to?: string;
     branchId?: string;
+    marketKpiBranchId?: string;
     actorUserId?: string;
     customerPhone?: string;
 }
@@ -26,7 +27,15 @@ export declare class UnpaidInvoiceRowDto {
     entryCount: number;
     currentCustomerDebtKd: string;
     isOpen: boolean;
+    debtSource: 'INVOICE_SHORTFALL' | 'SUBSCRIPTION_OVERUSE' | 'OPEN_UNPAID_ORDER';
     lastEntryAt: string;
+}
+export declare class MarketUnpaidByMethodDto {
+    cashKd: string;
+    knetKd: string;
+    onlineKd: string;
+    paymentLinkKd: string;
+    otherKd: string;
 }
 export declare class UnpaidInvoicesKpisDto {
     invoiceCount: number;
@@ -37,6 +46,11 @@ export declare class UnpaidInvoicesKpisDto {
     totalDebtKd: string;
     totalPaidKd: string;
     openDebtKd: string;
+    openShortfallDebtKd: string;
+    openSubscriptionOveruseDebtKd: string;
+    openUnpaidOrderBalanceKd: string;
+    totalMarketUnpaidKd: string;
+    marketUnpaidByMethod: MarketUnpaidByMethodDto;
     avgDebtPerInvoiceKd: string;
 }
 export declare class UnpaidInvoicesResponseDto {

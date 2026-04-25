@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeftRight,
   ArrowUpRight,
@@ -1401,10 +1401,15 @@ function ExtendSubscriptionDialog({
   );
 }
 
+const ACTIVATE_CUSTOMER_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function SubscribersPage() {
   const { t } = useTranslation();
   const locale = useAppLocale();
   const { token, user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const deepLinkKey = useRef<string | null>(null);
   const allowed = can(user, 'subscribers.view');
   const canManage = can(user, 'subscribers.manage');
 
@@ -1491,6 +1496,97 @@ export function SubscribersPage() {
     }, POLL_MS);
     return () => window.clearInterval(id);
   }, [token, allowed, load]);
+
+  /**
+   * Deep-link from المديونية: `/subscribers?activateCustomer=uuid&n=&p=`
+   * — if the customer is already in the list, open Manage; if not, open
+   * Issue (new subscription) with the customer pre-filled.
+   */
+  useEffect(() => {
+    if (!token || !allowed) return;
+    if (rows === null) return;
+
+    const ac = searchParams.get('activateCustomer')?.trim() ?? '';
+    if (!ac) {
+      deepLinkKey.current = null;
+      return;
+    }
+    if (!ACTIVATE_CUSTOMER_RE.test(ac)) {
+      setSearchParams(
+        (p) => {
+          const n = new URLSearchParams(p);
+          n.delete('activateCustomer');
+          n.delete('n');
+          n.delete('p');
+          return n;
+        },
+        { replace: true },
+      );
+      return;
+    }
+
+    const n = (searchParams.get('n') ?? '').trim();
+    const p = (searchParams.get('p') ?? '').trim();
+    const k = `${ac}|${n}|${p}`;
+    if (deepLinkKey.current === k) return;
+    deepLinkKey.current = k;
+
+    setSearchParams(
+      (prev) => {
+        const nsp = new URLSearchParams(prev);
+        nsp.delete('activateCustomer');
+        nsp.delete('n');
+        nsp.delete('p');
+        return nsp;
+      },
+      { replace: true },
+    );
+
+    const match = rows.find((r) => r.customerId === ac);
+    if (canManage) {
+      if (match) {
+        setManageTarget(match);
+        setManageOpen(true);
+      } else {
+        setIssueMode('new');
+        setIssuePrefill({
+          customerId: ac,
+          customerName: n || '—',
+          customerPhone: p || null,
+          planId: null,
+        });
+        setIssueOpen(true);
+      }
+    } else {
+      if (p) setQuery(p);
+      toast.info(t('subscribers.deepLinkViewOnly'));
+    }
+  }, [
+    token,
+    allowed,
+    rows,
+    canManage,
+    searchParams,
+    setSearchParams,
+    t,
+  ]);
+
+  /** `?q=` from المديونية (read-only) — pre-fill search, then clear URL. */
+  useEffect(() => {
+    if (!allowed) return;
+    if (searchParams.get('activateCustomer')?.trim()) return;
+    const onlyQ = searchParams.get('q')?.trim() ?? '';
+    if (!onlyQ) return;
+    setQuery(onlyQ);
+    setSearchParams(
+      (p) => {
+        const n = new URLSearchParams(p);
+        n.delete('q');
+        return n;
+      },
+      { replace: true },
+    );
+  }, [allowed, searchParams, setSearchParams]);
 
   const handleOpenAccount = useCallback((r: SubscriberListRow) => {
     setManageTarget(r);

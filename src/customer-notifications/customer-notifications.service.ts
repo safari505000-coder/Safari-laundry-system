@@ -195,6 +195,21 @@ export type InvoiceEditedIssuerNotifyParams = {
 };
 
 /**
+ * After the customer’s payment is fully settled (gateway link or call-center
+ * "تم الدفع") — short thank-you + public `/r/:orderId` rating page.
+ */
+export type PaymentConfirmedNotifyParams = {
+  customerPhone: string;
+  orderId: string;
+  orderLabel: string;
+  amountKd: string;
+  /** Host UPayments / hosted checkout URL stored on the order when a link was used. */
+  paymentUrl?: string;
+  /** `${PUBLIC_WEB_APP_URL}/r/:orderId` when `PUBLIC_WEB_APP_URL` is set. */
+  ratingUrl?: string;
+};
+
+/**
  * V7.1 — Gender-neutral Arabic template for the auto-notification fired
  * when a POS checkout issues an invoice. The customer's display name is
  * not in scope at call time (only their phone), so this opens with a
@@ -333,6 +348,38 @@ function buildInvoiceEditedIssuerMessage(params: {
   return lines.join('\n');
 }
 
+function buildPaymentConfirmedMessage(params: {
+  amountKd: string;
+  orderLabel: string;
+  paymentUrl?: string;
+  ratingUrl?: string;
+}): string {
+  const lines: string[] = [];
+  lines.push('تم تأكيد الدفع بنجاح ✅');
+  lines.push('');
+  lines.push('شكراً لك، تم استلام المبلغ.');
+  lines.push('');
+  lines.push(`📋 رقم الطلب: *${params.orderLabel}*`);
+  lines.push(`💰 المبلغ الإجمالي: *${params.amountKd} د.ك*`);
+  lines.push('');
+  lines.push('ملابسك الآن نظيفة، معطرة، وجاهزة.');
+  lines.push('');
+  lines.push('مصبغة سفاري — جودة نهتم بها.');
+  if (params.paymentUrl) {
+    lines.push('');
+    lines.push('🔒 رابط الدفع:');
+    lines.push(params.paymentUrl);
+  }
+  if (params.ratingUrl) {
+    lines.push('');
+    lines.push('⭐ نسعد بتقييمك:');
+    lines.push(params.ratingUrl);
+  }
+  lines.push('');
+  lines.push(`فريق ${BRAND_SYSTEM_AR} 🇰🇼`);
+  return lines.join('\n');
+}
+
 @Injectable()
 export class CustomerNotificationsService implements OnModuleInit {
   private readonly logger = new Logger(CustomerNotificationsService.name);
@@ -406,6 +453,59 @@ export class CustomerNotificationsService implements OnModuleInit {
     });
   }
 
+  /**
+   * After hosted-link payment or call-center payment confirmation.
+   * Fire-and-forget — same delivery path as invoice text (Moatmt → webhook → log).
+   */
+  notifyPaymentConfirmed(params: PaymentConfirmedNotifyParams): void {
+    setImmediate(() => {
+      void this.deliverPaymentConfirmed(params).catch((e) =>
+        this.logger.warn(`Payment confirmed notify failed: ${e}`),
+      );
+    });
+  }
+
+  /**
+   * Call Center collections — full Arabic payment-link text. Awaited so the
+   * API can fall back to `wa.me` when Moatmt + webhook are absent.
+   */
+  async deliverCollectionsPaymentLinkNow(params: {
+    customerPhone: string;
+    orderId: string;
+    message: string;
+  }): Promise<boolean> {
+    if (
+      await this.trySendMoatmt(params.customerPhone, params.message, null)
+    ) {
+      return true;
+    }
+    const webhook = process.env.CUSTOMER_NOTIFY_WEBHOOK_URL?.trim();
+    if (webhook) {
+      const res = await fetch(webhook, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: params.customerPhone,
+          message: params.message,
+          orderId: params.orderId,
+          template: 'collections_payment_link',
+        }),
+      });
+      if (!res.ok) {
+        this.logger.warn(
+          `CUSTOMER_NOTIFY_WEBHOOK_URL returned ${res.status} (collections_payment_link)`,
+        );
+        return false;
+      }
+      return true;
+    }
+    this.logger.warn(
+      `Collections payment-link WhatsApp not sent (check MOATMT_* and CUSTOMER_NOTIFY_WEBHOOK_URL). ` +
+        `phone=${formatPhoneHintForLog(params.customerPhone)} orderId=${params.orderId}`,
+    );
+    return false;
+  }
+
   private async deliver(params: InvoiceIssuedNotifyParams): Promise<void> {
     const base =
       (process.env.PUBLIC_WEB_APP_URL ?? '').replace(/\/$/, '') || '';
@@ -476,6 +576,51 @@ export class CustomerNotificationsService implements OnModuleInit {
     this.logger.warn(
       `Invoice WhatsApp not sent to customer (check MOATMT_* and CUSTOMER_NOTIFY_WEBHOOK_URL on the server). ` +
         `phone=${formatPhoneHintForLog(params.customerPhone)} orderId=${params.orderId} text_preview=${message.slice(0, 120)}…`,
+    );
+  }
+
+  private async deliverPaymentConfirmed(
+    params: PaymentConfirmedNotifyParams,
+  ): Promise<void> {
+    const message = buildPaymentConfirmedMessage({
+      amountKd: params.amountKd,
+      orderLabel: params.orderLabel,
+      paymentUrl: params.paymentUrl,
+      ratingUrl: params.ratingUrl,
+    });
+    if (
+      await this.trySendMoatmt(
+        params.customerPhone,
+        message,
+        null,
+      )
+    ) {
+      return;
+    }
+    const webhook = process.env.CUSTOMER_NOTIFY_WEBHOOK_URL?.trim();
+    if (webhook) {
+      const res = await fetch(webhook, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: params.customerPhone,
+          message,
+          orderId: params.orderId,
+          template: 'payment_confirmed',
+          paymentUrl: params.paymentUrl ?? null,
+          ratingUrl: params.ratingUrl ?? null,
+        }),
+      });
+      if (!res.ok) {
+        this.logger.warn(
+          `CUSTOMER_NOTIFY_WEBHOOK_URL returned ${res.status} (payment_confirmed)`,
+        );
+      }
+      return;
+    }
+    this.logger.warn(
+      `Payment-confirmed WhatsApp not sent (check MOATMT_* and CUSTOMER_NOTIFY_WEBHOOK_URL). ` +
+        `phone=${formatPhoneHintForLog(params.customerPhone)} orderId=${params.orderId} preview=${message.slice(0, 100)}…`,
     );
   }
 

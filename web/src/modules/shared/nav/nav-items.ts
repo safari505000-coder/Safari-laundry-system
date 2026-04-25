@@ -139,9 +139,15 @@ export const collectionsItem: NavItem = {
   to: '/collections',
   labelKey: 'nav.customerDebtTracker',
   icon: MessageSquare,
-  // Dastur §5 — Tahseel (debt recovery) is a CALL_CENTER core surface.
-  // The supervisor mirrors the same access (and then some).
-  roles: ['OWNER', 'GENERAL_MANAGER', 'CALL_CENTER', 'CALL_CENTER_SUPERVISOR'],
+  // Dastur §5 + field follow-up: CC pair, owner/exec, branch manager, driver.
+  roles: [
+    'OWNER',
+    'GENERAL_MANAGER',
+    'CALL_CENTER',
+    'CALL_CENTER_SUPERVISOR',
+    'MANAGER',
+    'DRIVER',
+  ],
 };
 
 /**
@@ -160,7 +166,14 @@ export const whatsappToolsItem: NavItem = {
   to: '/whatsapp-tools',
   labelKey: 'nav.whatsappTools',
   icon: MessageCircle,
-  roles: ['OWNER', 'GENERAL_MANAGER', 'CALL_CENTER', 'CALL_CENTER_SUPERVISOR'],
+  roles: [
+    'OWNER',
+    'GENERAL_MANAGER',
+    'CALL_CENTER',
+    'CALL_CENTER_SUPERVISOR',
+    'MANAGER',
+    'DRIVER',
+  ],
 };
 
 /** DRIVER — تسجيل وقود/تكاليف ميدان (نفس المسار؛ الأيقونة + التسمية للقائمة الرئيسية). */

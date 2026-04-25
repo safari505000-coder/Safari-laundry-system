@@ -20,6 +20,20 @@ export class CallCenterOperationsSummaryDto {
 
   @ApiProperty({
     description:
+      'V20.x — NET open INVOICE_SHORTFALL after customer-level PAYMENT waterfall (same formula as monthly P&L `outstandingInvoiceDebtKd`). Not the same as red-card UNPAID order total.',
+    example: '45.000',
+  })
+  outstandingInvoiceDebtKd!: string;
+
+  @ApiProperty({
+    description:
+      'V20.x — NET open SUBSCRIPTION_OVERUSE (subscription wallet exceeded) after waterfall. Shown next to market debt for full receivables picture.',
+    example: '12.500',
+  })
+  outstandingSubscriptionDebtKd!: string;
+
+  @ApiProperty({
+    description:
       'V1.6.5 — Sum of `metadata.debtSettled` across ORDER_WALLET_SETTLEMENT rows tagged `debtSettlementViaLink: true`, created strictly between Kuwait-local 00:00 today and now. Resets at 00:00 Kuwait time. Scoped by `branchId` when provided. Serialized in KWD 3-decimal precision.',
     example: '80.000',
   })

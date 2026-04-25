@@ -84,6 +84,20 @@ export declare class CustomerLedgerInvoiceDto {
     subscriptionLabel: string | null;
     issuedWhileCutOff: boolean;
     openDebt: boolean;
+    feedbackRating: number | null;
+    feedbackSubmittedAtIso: string | null;
+}
+export declare class CustomerLedgerFeedbackLastDto {
+    rating: number;
+    note: string | null;
+    submittedAtIso: string;
+    orderId: string;
+    orderSerial: string | null;
+}
+export declare class CustomerLedgerFeedbackSummaryDto {
+    averageRating: number | null;
+    ratedCount: number;
+    lastFeedback: CustomerLedgerFeedbackLastDto | null;
 }
 export declare class CustomerLedgerResponseDto {
     customer: CustomerLedgerHeaderDto;
@@ -100,4 +114,5 @@ export declare class CustomerLedgerResponseDto {
         totalCollectedKd: string;
         totalDiscountedKd: string;
     };
+    feedbackSummary: CustomerLedgerFeedbackSummaryDto;
 }

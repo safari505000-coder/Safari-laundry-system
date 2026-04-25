@@ -1,8 +1,13 @@
 import { PosPaymentMethod, Prisma } from '@prisma/client';
+import type { JwtUser } from '../auth/decorators/current-user.decorator';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { CustomerLedgerService } from '../customer-ledger/customer-ledger.service';
 import { PaymentsService } from '../common/services/payments.service';
+import { CustomerNotificationsService } from '../customer-notifications/customer-notifications.service';
+import { DebtService } from '../finance/services/debt.service';
+import { OrdersService } from '../orders/orders.service';
+import type { SendPaymentLinkWhatsappResultDto } from './dto/send-payment-link-whatsapp.dto';
 import { ActivateSubscriptionDto } from './dto/activate-subscription.dto';
 import { ExtendSubscriptionDto } from './dto/extend-subscription.dto';
 import type { SettlementHistoryRowDto } from './dto/settlement-history-row.dto';
@@ -21,7 +26,11 @@ export declare class CallCenterService {
     private readonly customerLedger;
     private readonly payments;
     private readonly jwt;
-    constructor(prisma: PrismaService, customerLedger: CustomerLedgerService, payments: PaymentsService, jwt: JwtService);
+    private readonly orders;
+    private readonly customerNotifications;
+    private readonly debt;
+    constructor(prisma: PrismaService, customerLedger: CustomerLedgerService, payments: PaymentsService, jwt: JwtService, orders: OrdersService, customerNotifications: CustomerNotificationsService, debt: DebtService);
+    private assertOrderInCollectionScope;
     createStatementShareToken(customerId: string, params: {
         from?: string | null;
         to?: string | null;
@@ -32,10 +41,11 @@ export declare class CallCenterService {
         expiresAtIso: string;
     }>;
     getPublicStatement(token: string): Promise<CustomerLedgerResponseDto>;
-    ensureOrderPaymentLink(orderId: string): Promise<{
+    ensureOrderPaymentLink(orderId: string, actor: JwtUser): Promise<{
         url: string;
     }>;
-    markCollectionOrderPaid(orderId: string, method: 'CASH' | 'KNET' | 'PAYMENT_LINK' | 'ONLINE', performedByUserId: string): Promise<{
+    sendPaymentLinkToCustomerWhatsapp(orderId: string, actor: JwtUser): Promise<SendPaymentLinkWhatsappResultDto>;
+    markCollectionOrderPaid(orderId: string, method: 'CASH' | 'KNET' | 'PAYMENT_LINK' | 'ONLINE', performedByUserId: string, actor: JwtUser): Promise<{
         orderId: string;
         alreadySettled: boolean;
         amountKd: string;
@@ -88,9 +98,9 @@ export declare class CallCenterService {
         planName: string | null;
     }>;
     listCustomerSettlementHistory(customerId: string, take?: number): Promise<SettlementHistoryRowDto[]>;
-    sendOrderReminder(orderId: string): Promise<ReminderResultDto>;
+    sendOrderReminder(orderId: string, actor: JwtUser): Promise<ReminderResultDto>;
     sendSubscriberReminder(customerId: string): Promise<ReminderResultDto>;
-    getOperationsSummary(branchId?: string | null): Promise<CallCenterOperationsSummaryDto>;
+    getOperationsSummary(branchId?: string | null, actor?: JwtUser | null): Promise<CallCenterOperationsSummaryDto>;
     getDebtRecoveryReport(fromIso?: string, toIso?: string): Promise<DebtRecoveryReportDto>;
     previewSubscriptionRollover(customerId: string): Promise<SubscriptionRolloverPreviewDto>;
     listCustomerSubscriptionChain(customerId: string): Promise<CustomerSubscriptionRowDto[]>;

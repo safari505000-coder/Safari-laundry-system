@@ -16,6 +16,11 @@ const jwt_1 = require("@nestjs/jwt");
 const prisma_service_1 = require("../prisma/prisma.service");
 const customer_ledger_service_1 = require("../customer-ledger/customer-ledger.service");
 const payments_service_1 = require("../common/services/payments.service");
+const customer_notifications_service_1 = require("../customer-notifications/customer-notifications.service");
+const debt_service_1 = require("../finance/services/debt.service");
+const orders_service_1 = require("../orders/orders.service");
+const kuwait_customer_phone_1 = require("../common/validation/kuwait-customer-phone");
+const collections_whatsapp_text_1 = require("./collections-whatsapp-text");
 const ORDER_REMINDER_COOLDOWN_MS = 2.5 * 60 * 60 * 1000;
 const SUBSCRIBER_REMINDER_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 function buildReminderResult(args) {
@@ -152,11 +157,49 @@ let CallCenterService = class CallCenterService {
     customerLedger;
     payments;
     jwt;
-    constructor(prisma, customerLedger, payments, jwt) {
+    orders;
+    customerNotifications;
+    debt;
+    constructor(prisma, customerLedger, payments, jwt, orders, customerNotifications, debt) {
         this.prisma = prisma;
         this.customerLedger = customerLedger;
         this.payments = payments;
         this.jwt = jwt;
+        this.orders = orders;
+        this.customerNotifications = customerNotifications;
+        this.debt = debt;
+    }
+    async assertOrderInCollectionScope(orderId, actor) {
+        if (actor.role !== client_1.SafariRole.MANAGER && actor.role !== client_1.SafariRole.DRIVER) {
+            return;
+        }
+        const o = await this.prisma.order.findUnique({
+            where: { id: orderId },
+            select: {
+                id: true,
+                driverId: true,
+                driver: { select: { branchId: true } },
+                customer: { select: { originBranchId: true } },
+            },
+        });
+        if (!o) {
+            throw new common_1.NotFoundException('Order not found');
+        }
+        if (actor.role === client_1.SafariRole.DRIVER) {
+            if (o.driverId !== actor.userId) {
+                throw new common_1.ForbiddenException('This invoice is not assigned to you for follow-up');
+            }
+            return;
+        }
+        const b = actor.branchId;
+        if (!b) {
+            return;
+        }
+        const inBranch = (o.driverId && o.driver?.branchId === b) ||
+            (!o.driverId && o.customer?.originBranchId === b);
+        if (!inBranch) {
+            throw new common_1.ForbiddenException('This invoice is outside your branch scope');
+        }
     }
     async createStatementShareToken(customerId, params) {
         const customer = await this.prisma.customer.findUnique({
@@ -199,11 +242,36 @@ let CallCenterService = class CallCenterService {
             limit: 500,
         });
     }
-    async ensureOrderPaymentLink(orderId) {
+    async ensureOrderPaymentLink(orderId, actor) {
+        await this.assertOrderInCollectionScope(orderId, actor);
         const link = await this.payments.ensurePaymentLinkForUnpaidOrder(orderId);
         return { url: link.url };
     }
-    async markCollectionOrderPaid(orderId, method, performedByUserId) {
+    async sendPaymentLinkToCustomerWhatsapp(orderId, actor) {
+        await this.assertOrderInCollectionScope(orderId, actor);
+        const link = await this.payments.ensurePaymentLinkForUnpaidOrder(orderId);
+        const reminder = await this.sendOrderReminder(orderId, actor);
+        if (!reminder.sent) {
+            return { reminder, serverPush: false, paymentUrl: link.url };
+        }
+        const snap = await this.orders.getUnpaidCollectionOrderRowForWhatsappText(orderId);
+        if (!snap) {
+            throw new common_1.BadRequestException('Order is not open for collection messaging (settled, canceled, or not found).');
+        }
+        const to = (0, kuwait_customer_phone_1.resolveCustomerPhoneForNotify)(snap.customerPhone, snap.customerPhone2);
+        if (!to.trim()) {
+            throw new common_1.BadRequestException('No customer phone on file for this order');
+        }
+        const message = (0, collections_whatsapp_text_1.buildCollectionsPaymentLinkTextAr)(snap, link.url);
+        const serverPush = await this.customerNotifications.deliverCollectionsPaymentLinkNow({
+            customerPhone: to,
+            orderId: snap.orderId,
+            message,
+        });
+        return { reminder, serverPush, paymentUrl: link.url };
+    }
+    async markCollectionOrderPaid(orderId, method, performedByUserId, actor) {
+        await this.assertOrderInCollectionScope(orderId, actor);
         return this.payments.manuallyMarkOrderPaidByMethod({
             orderId,
             method,
@@ -408,7 +476,8 @@ let CallCenterService = class CallCenterService {
             };
         });
     }
-    async sendOrderReminder(orderId) {
+    async sendOrderReminder(orderId, actor) {
+        await this.assertOrderInCollectionScope(orderId, actor);
         const now = new Date();
         const cutoff = new Date(now.getTime() - ORDER_REMINDER_COOLDOWN_MS);
         const update = await this.prisma.order.updateMany({
@@ -495,17 +564,29 @@ let CallCenterService = class CallCenterService {
             cooldownMs: SUBSCRIBER_REMINDER_COOLDOWN_MS,
         });
     }
-    async getOperationsSummary(branchId = null) {
+    async getOperationsSummary(branchId = null, actor) {
         const now = new Date();
         const { dayStart, dayEnd, dayIsoLocal } = kuwaitDayBounds(now);
-        const orderBranch = orderBranchWhere(branchId);
-        const ledgerBranchFilter = branchId ? { branchId } : {};
-        const [unpaidInvoicesSum, todaysPayments, pendingLinksCount] = await Promise.all([
+        const isDriver = actor?.role === client_1.SafariRole.DRIVER;
+        const effectiveBranchId = isDriver ? null
+            : branchId ??
+                (actor?.role === client_1.SafariRole.MANAGER && actor.branchId ?
+                    actor.branchId
+                    : null);
+        const orderBranch = isDriver && actor
+            ? { driverId: actor.userId }
+            : (orderBranchWhere(effectiveBranchId) ?? {});
+        const ledgerBranchFilter = isDriver && actor
+            ? { order: { driverId: actor.userId } }
+            : effectiveBranchId
+                ? { branchId: effectiveBranchId }
+                : {};
+        const [unpaidInvoicesSum, todaysPayments, pendingLinksCount, ledgerDebtSplit] = await Promise.all([
             this.prisma.order.aggregate({
                 where: {
                     cashStatus: client_1.CashStatus.UNPAID,
                     status: { not: client_1.OrderStatus.CANCELED },
-                    ...(orderBranch ?? {}),
+                    ...orderBranch,
                 },
                 _sum: { totalPrice: true },
             }),
@@ -522,19 +603,22 @@ let CallCenterService = class CallCenterService {
                     cashStatus: client_1.CashStatus.UNPAID,
                     status: { not: client_1.OrderStatus.CANCELED },
                     posHostedPaymentUrl: { not: null },
-                    ...(orderBranch ?? {}),
+                    ...orderBranch,
                 },
             }),
+            this.debt.getLedgerOpenDebtByCategory(ledgerBranchFilter),
         ]);
         const redCardTotal = unpaidInvoicesSum._sum.totalPrice ?? new client_1.Prisma.Decimal(0);
         const recoveredToday = todaysPayments._sum.amount ?? new client_1.Prisma.Decimal(0);
         return {
             totalMarketDebtKd: KWD_DP(redCardTotal),
+            outstandingInvoiceDebtKd: KWD_DP(new client_1.Prisma.Decimal(ledgerDebtSplit.outstandingInvoiceDebtKd)),
+            outstandingSubscriptionDebtKd: KWD_DP(new client_1.Prisma.Decimal(ledgerDebtSplit.outstandingSubscriptionDebtKd)),
             debtCollectedTodayKd: KWD_DP(recoveredToday),
             debtRecoveredTodayKd: KWD_DP(recoveredToday),
             pendingLinksCount,
             dayIso: dayIsoLocal,
-            branchId: branchId ?? null,
+            branchId: effectiveBranchId ?? null,
         };
     }
     async getDebtRecoveryReport(fromIso, toIso) {
@@ -886,6 +970,50 @@ let CallCenterService = class CallCenterService {
                 },
             }),
         ]);
+        const orderIds = invoices.map((o) => o.id);
+        const [fbAgg, fbLatest, fbRows] = await Promise.all([
+            this.prisma.orderFeedback.aggregate({
+                where: { order: { customerId } },
+                _avg: { rating: true },
+                _count: { _all: true },
+            }),
+            this.prisma.orderFeedback.findFirst({
+                where: { order: { customerId } },
+                orderBy: { submittedAt: 'desc' },
+                select: {
+                    rating: true,
+                    note: true,
+                    submittedAt: true,
+                    orderId: true,
+                    order: {
+                        select: { serialNumber: true, invoiceNumber: true },
+                    },
+                },
+            }),
+            orderIds.length > 0
+                ? this.prisma.orderFeedback.findMany({
+                    where: { orderId: { in: orderIds } },
+                    select: { orderId: true, rating: true, submittedAt: true },
+                })
+                : Promise.resolve([]),
+        ]);
+        const feedbackByOrderId = new Map(fbRows.map((r) => [r.orderId, r]));
+        const ratingAvg = fbAgg._avg.rating;
+        const feedbackSummary = {
+            averageRating: ratingAvg != null ? Math.round(Number(ratingAvg) * 100) / 100 : null,
+            ratedCount: fbAgg._count._all,
+            lastFeedback: fbLatest ?
+                {
+                    rating: fbLatest.rating,
+                    note: fbLatest.note,
+                    submittedAtIso: fbLatest.submittedAt.toISOString(),
+                    orderId: fbLatest.orderId,
+                    orderSerial: fbLatest.order?.serialNumber?.trim() ||
+                        fbLatest.order?.invoiceNumber?.trim() ||
+                        null,
+                }
+                : null,
+        };
         const allClosedIds = Array.from(new Set(events.flatMap((e) => e.type === client_1.LedgerTransactionType.SUBSCRIPTION_ACTIVATION
             ? readMetaStringArray(e.metadata, 'autoClosedInvoiceIds')
             : [])));
@@ -977,6 +1105,7 @@ let CallCenterService = class CallCenterService {
         const mappedInvoices = invoices.map((o) => {
             const openDebt = o.status !== client_1.OrderStatus.CANCELED &&
                 o.cashStatus === client_1.CashStatus.UNPAID;
+            const fr = feedbackByOrderId.get(o.id);
             return {
                 id: o.id,
                 serial: o.serialNumber ?? o.invoiceNumber ?? null,
@@ -993,6 +1122,8 @@ let CallCenterService = class CallCenterService {
                 subscriptionLabel: o.subscription?.planNameSnapshot ?? null,
                 issuedWhileCutOff: o.subscription?.status === client_1.CustomerSubscriptionStatus.CUT_OFF,
                 openDebt,
+                feedbackRating: fr?.rating ?? null,
+                feedbackSubmittedAtIso: fr?.submittedAt.toISOString() ?? null,
             };
         });
         const totalCollected = mappedEvents.reduce((acc, e) => acc.plus(new client_1.Prisma.Decimal(e.debtSettledKd)), new client_1.Prisma.Decimal(0));
@@ -1037,6 +1168,7 @@ let CallCenterService = class CallCenterService {
                 totalCollectedKd: FOUR_DP(totalCollected),
                 totalDiscountedKd: FOUR_DP(totalDiscounted),
             },
+            feedbackSummary,
         };
     }
     async getDailyCollections(params) {
@@ -1390,6 +1522,9 @@ exports.CallCenterService = CallCenterService = __decorate([
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
         customer_ledger_service_1.CustomerLedgerService,
         payments_service_1.PaymentsService,
-        jwt_1.JwtService])
+        jwt_1.JwtService,
+        orders_service_1.OrdersService,
+        customer_notifications_service_1.CustomerNotificationsService,
+        debt_service_1.DebtService])
 ], CallCenterService);
 //# sourceMappingURL=call-center.service.js.map

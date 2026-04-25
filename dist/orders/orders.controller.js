@@ -47,11 +47,11 @@ let OrdersController = class OrdersController {
     listBranchDrivers(user) {
         return this.ordersService.listInvoiceFilterDrivers(user.role, user.branchId);
     }
-    listCollectionsUnpaidOnline(branchId) {
+    listCollectionsUnpaidOnline(branchId, user) {
         const raw = (branchId ?? '').trim();
         const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         const scoped = raw && uuidRe.test(raw) ? raw : null;
-        return this.ordersService.listUnpaidCollectionOrders(scoped);
+        return this.ordersService.listUnpaidCollectionOrders(scoped, user);
     }
     listStaleQuickOrderRisks() {
         return this.ordersService.listStaleQuickOrderRisks();
@@ -147,14 +147,15 @@ __decorate([
 __decorate([
     (0, common_1.Get)('collections/unpaid-online'),
     (0, common_1.UseGuards)(roles_guard_1.RolesGuard),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.CALL_CENTER_SUPERVISOR, client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.CALL_CENTER_SUPERVISOR, client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.DRIVER),
     (0, swagger_1.ApiOperation)({
         summary: `Debt-Tracking — every unpaid invoice (${branding_1.APP_BRAND})`,
         description: 'V1.6.5: Financial Oversight Report feeding the Collections debt table. Returns ALL non-canceled orders with cashStatus=UNPAID, regardless of payment method (Cash, KNET, Payment Link, Online, Wallet, Debt-on-account). Pass `?branchId=<uuid>` to scope the table to a single branch — the Red-card KPI uses the same scope so the footer sum equals the KPI to the last fils. Amounts are serialized with 3 decimals (KWD standard).',
     }),
     __param(0, (0, common_1.Query)('branchId')),
+    __param(1, (0, current_user_decorator_1.CurrentUser)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String]),
+    __metadata("design:paramtypes", [Object, Object]),
     __metadata("design:returntype", void 0)
 ], OrdersController.prototype, "listCollectionsUnpaidOnline", null);
 __decorate([

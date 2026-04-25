@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -12,11 +13,19 @@ import {
   OrderStatus,
   PosPaymentMethod,
   Prisma,
+  SafariRole,
 } from '@prisma/client';
+import type { JwtUser } from '../auth/decorators/current-user.decorator';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { CustomerLedgerService } from '../customer-ledger/customer-ledger.service';
 import { PaymentsService } from '../common/services/payments.service';
+import { CustomerNotificationsService } from '../customer-notifications/customer-notifications.service';
+import { DebtService } from '../finance/services/debt.service';
+import { OrdersService } from '../orders/orders.service';
+import { resolveCustomerPhoneForNotify } from '../common/validation/kuwait-customer-phone';
+import { buildCollectionsPaymentLinkTextAr } from './collections-whatsapp-text';
+import type { SendPaymentLinkWhatsappResultDto } from './dto/send-payment-link-whatsapp.dto';
 import { ActivateSubscriptionDto } from './dto/activate-subscription.dto';
 import { ExtendSubscriptionDto } from './dto/extend-subscription.dto';
 import type { SettlementHistoryRowDto } from './dto/settlement-history-row.dto';
@@ -342,7 +351,53 @@ export class CallCenterService {
     private readonly customerLedger: CustomerLedgerService,
     private readonly payments: PaymentsService,
     private readonly jwt: JwtService,
+    private readonly orders: OrdersService,
+    private readonly customerNotifications: CustomerNotificationsService,
+    private readonly debt: DebtService,
   ) {}
+
+  /**
+   * MANAGER: order must belong to the manager's branch. DRIVER: their own
+   * invoices only. All other roles skip the check.
+   */
+  private async assertOrderInCollectionScope(
+    orderId: string,
+    actor: JwtUser,
+  ): Promise<void> {
+    if (actor.role !== SafariRole.MANAGER && actor.role !== SafariRole.DRIVER) {
+      return;
+    }
+    const o = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        driverId: true,
+        driver: { select: { branchId: true } },
+        customer: { select: { originBranchId: true } },
+      },
+    });
+    if (!o) {
+      throw new NotFoundException('Order not found');
+    }
+    if (actor.role === SafariRole.DRIVER) {
+      if (o.driverId !== actor.userId) {
+        throw new ForbiddenException(
+          'This invoice is not assigned to you for follow-up',
+        );
+      }
+      return;
+    }
+    const b = actor.branchId;
+    if (!b) {
+      return;
+    }
+    const inBranch =
+      (o.driverId && o.driver?.branchId === b) ||
+      (!o.driverId && o.customer?.originBranchId === b);
+    if (!inBranch) {
+      throw new ForbiddenException('This invoice is outside your branch scope');
+    }
+  }
 
   /**
    * V19.8.9 — Issue a short-lived, signed share link for a customer's
@@ -419,9 +474,54 @@ export class CallCenterService {
    * `finalizeSinglePaidOrderFromGateway` will auto-switch the method to
    * ONLINE and tag the row as a debt settlement via link.
    */
-  async ensureOrderPaymentLink(orderId: string): Promise<{ url: string }> {
+  async ensureOrderPaymentLink(
+    orderId: string,
+    actor: JwtUser,
+  ): Promise<{ url: string }> {
+    await this.assertOrderInCollectionScope(orderId, actor);
     const link = await this.payments.ensurePaymentLinkForUnpaidOrder(orderId);
     return { url: link.url };
+  }
+
+  /**
+   * Mint/refresh hosted URL, apply reminder/cooldown, then push the same
+   * Collections Arabic text through Moatmt or CUSTOMER_NOTIFY_WEBHOOK_URL so
+   * the customer receives the link without a manual WhatsApp "Send" tap.
+   * When no server channel is configured, the caller should open `wa.me`.
+   */
+  async sendPaymentLinkToCustomerWhatsapp(
+    orderId: string,
+    actor: JwtUser,
+  ): Promise<SendPaymentLinkWhatsappResultDto> {
+    await this.assertOrderInCollectionScope(orderId, actor);
+    const link = await this.payments.ensurePaymentLinkForUnpaidOrder(orderId);
+    const reminder = await this.sendOrderReminder(orderId, actor);
+    if (!reminder.sent) {
+      return { reminder, serverPush: false, paymentUrl: link.url };
+    }
+    const snap =
+      await this.orders.getUnpaidCollectionOrderRowForWhatsappText(orderId);
+    if (!snap) {
+      throw new BadRequestException(
+        'Order is not open for collection messaging (settled, canceled, or not found).',
+      );
+    }
+    const to = resolveCustomerPhoneForNotify(
+      snap.customerPhone,
+      snap.customerPhone2,
+    );
+    if (!to.trim()) {
+      throw new BadRequestException('No customer phone on file for this order');
+    }
+    const message = buildCollectionsPaymentLinkTextAr(snap, link.url);
+    const serverPush = await this.customerNotifications.deliverCollectionsPaymentLinkNow(
+      {
+        customerPhone: to,
+        orderId: snap.orderId,
+        message,
+      },
+    );
+    return { reminder, serverPush, paymentUrl: link.url };
   }
 
   /**
@@ -440,7 +540,9 @@ export class CallCenterService {
     orderId: string,
     method: 'CASH' | 'KNET' | 'PAYMENT_LINK' | 'ONLINE',
     performedByUserId: string,
+    actor: JwtUser,
   ) {
+    await this.assertOrderInCollectionScope(orderId, actor);
     return this.payments.manuallyMarkOrderPaidByMethod({
       orderId,
       method,
@@ -713,7 +815,11 @@ export class CallCenterService {
    * the last 24h, our WHERE clause matches zero rows and `count = 0`, so we
    * re-read the current state and return a cooldown-only payload.
    */
-  async sendOrderReminder(orderId: string): Promise<ReminderResultDto> {
+  async sendOrderReminder(
+    orderId: string,
+    actor: JwtUser,
+  ): Promise<ReminderResultDto> {
+    await this.assertOrderInCollectionScope(orderId, actor);
     const now = new Date();
     // V1.6.8 — Collections recall window is 2.5 h (9_000_000 ms).
     const cutoff = new Date(now.getTime() - ORDER_REMINDER_COOLDOWN_MS);
@@ -822,6 +928,7 @@ export class CallCenterService {
    */
   async getOperationsSummary(
     branchId: string | null = null,
+    actor?: JwtUser | null,
   ): Promise<CallCenterOperationsSummaryDto> {
     // V1.6.1 — strictly sum [Kuwait 00:00 today → now]. At 00:00 Kuwait
     // local time the KPI naturally resets because `createdAt` is compared
@@ -829,41 +936,55 @@ export class CallCenterService {
     const now = new Date();
     const { dayStart, dayEnd, dayIsoLocal } = kuwaitDayBounds(now);
 
-    const orderBranch = orderBranchWhere(branchId);
-    // Red card: Σ `order.totalPrice` for the **same** predicate as
-    // `GET /api/orders/collections/unpaid-online` (invoice list only:
-    // `cashStatus = UNPAID`, not canceled, optional branch OR).  This
-    // excludes subscription-overuse and other non-invoice debt that lives
-    // only in `DebtLedgerEntry`, so the KPI matches the table footer
-    // when the search box is empty.
-    const ledgerBranchFilter = branchId ? { branchId } : {};
+    const isDriver = actor?.role === SafariRole.DRIVER;
+    const effectiveBranchId =
+      isDriver ? null
+      : branchId ??
+        (actor?.role === SafariRole.MANAGER && actor.branchId ?
+          actor.branchId
+        : null);
 
-    const [unpaidInvoicesSum, todaysPayments, pendingLinksCount] = await Promise.all([
-      this.prisma.order.aggregate({
-        where: {
-          cashStatus: CashStatus.UNPAID,
-          status: { not: OrderStatus.CANCELED },
-          ...(orderBranch ?? {}),
-        },
-        _sum: { totalPrice: true },
-      }),
-      this.prisma.debtLedgerEntry.aggregate({
-        where: {
-          source: DebtSource.PAYMENT,
-          createdAt: { gte: dayStart, lt: dayEnd },
-          ...ledgerBranchFilter,
-        },
-        _sum: { amount: true },
-      }),
-      this.prisma.order.count({
-        where: {
-          cashStatus: CashStatus.UNPAID,
-          status: { not: OrderStatus.CANCELED },
-          posHostedPaymentUrl: { not: null },
-          ...(orderBranch ?? {}),
-        },
-      }),
-    ]);
+    const orderBranch = isDriver && actor
+      ? { driverId: actor.userId }
+      : (orderBranchWhere(effectiveBranchId) ?? {});
+
+    const ledgerBranchFilter =
+      isDriver && actor
+        ? { order: { driverId: actor.userId } }
+        : effectiveBranchId
+          ? { branchId: effectiveBranchId }
+          : {};
+    // Red card: same predicate as collections/unpaid for this actor. Green:
+    // PAYMENT rows today (branch or driver’s orders).
+
+    const [unpaidInvoicesSum, todaysPayments, pendingLinksCount, ledgerDebtSplit] =
+      await Promise.all([
+        this.prisma.order.aggregate({
+          where: {
+            cashStatus: CashStatus.UNPAID,
+            status: { not: OrderStatus.CANCELED },
+            ...orderBranch,
+          },
+          _sum: { totalPrice: true },
+        }),
+        this.prisma.debtLedgerEntry.aggregate({
+          where: {
+            source: DebtSource.PAYMENT,
+            createdAt: { gte: dayStart, lt: dayEnd },
+            ...ledgerBranchFilter,
+          },
+          _sum: { amount: true },
+        }),
+        this.prisma.order.count({
+          where: {
+            cashStatus: CashStatus.UNPAID,
+            status: { not: OrderStatus.CANCELED },
+            posHostedPaymentUrl: { not: null },
+            ...orderBranch,
+          },
+        }),
+        this.debt.getLedgerOpenDebtByCategory(ledgerBranchFilter),
+      ]);
 
     const redCardTotal =
       unpaidInvoicesSum._sum.totalPrice ?? new Prisma.Decimal(0);
@@ -871,11 +992,17 @@ export class CallCenterService {
 
     return {
       totalMarketDebtKd: KWD_DP(redCardTotal),
+      outstandingInvoiceDebtKd: KWD_DP(
+        new Prisma.Decimal(ledgerDebtSplit.outstandingInvoiceDebtKd),
+      ),
+      outstandingSubscriptionDebtKd: KWD_DP(
+        new Prisma.Decimal(ledgerDebtSplit.outstandingSubscriptionDebtKd),
+      ),
       debtCollectedTodayKd: KWD_DP(recoveredToday),
       debtRecoveredTodayKd: KWD_DP(recoveredToday),
       pendingLinksCount,
       dayIso: dayIsoLocal,
-      branchId: branchId ?? null,
+      branchId: effectiveBranchId ?? null,
     };
   }
 
@@ -1340,6 +1467,62 @@ export class CallCenterService {
       }),
     ]);
 
+    const orderIds = invoices.map((o) => o.id);
+    const [fbAgg, fbLatest, fbRows] = await Promise.all([
+      this.prisma.orderFeedback.aggregate({
+        where: { order: { customerId } },
+        _avg: { rating: true },
+        _count: { _all: true },
+      }),
+      this.prisma.orderFeedback.findFirst({
+        where: { order: { customerId } },
+        orderBy: { submittedAt: 'desc' },
+        select: {
+          rating: true,
+          note: true,
+          submittedAt: true,
+          orderId: true,
+          order: {
+            select: { serialNumber: true, invoiceNumber: true },
+          },
+        },
+      }),
+      orderIds.length > 0
+        ? this.prisma.orderFeedback.findMany({
+            where: { orderId: { in: orderIds } },
+            select: { orderId: true, rating: true, submittedAt: true },
+          })
+        : Promise.resolve(
+            [] as Array<{
+              orderId: string;
+              rating: number;
+              submittedAt: Date;
+            }>,
+          ),
+    ]);
+    const feedbackByOrderId = new Map(
+      fbRows.map((r) => [r.orderId, r] as const),
+    );
+    const ratingAvg = fbAgg._avg.rating;
+    const feedbackSummary = {
+      averageRating:
+        ratingAvg != null ? Math.round(Number(ratingAvg) * 100) / 100 : null,
+      ratedCount: fbAgg._count._all,
+      lastFeedback:
+        fbLatest ?
+          {
+            rating: fbLatest.rating,
+            note: fbLatest.note,
+            submittedAtIso: fbLatest.submittedAt.toISOString(),
+            orderId: fbLatest.orderId,
+            orderSerial:
+              fbLatest.order?.serialNumber?.trim() ||
+              fbLatest.order?.invoiceNumber?.trim() ||
+              null,
+          }
+        : null,
+    };
+
     // V19.8.3 — batch-fetch every invoice the activation rows auto-closed
     // so the customer statement can spell out "these old invoices were
     // paid from your new subscription credit". We union all
@@ -1498,6 +1681,7 @@ export class CallCenterService {
       const openDebt =
         o.status !== OrderStatus.CANCELED &&
         o.cashStatus === CashStatus.UNPAID;
+      const fr = feedbackByOrderId.get(o.id);
       return {
         id: o.id,
         serial: o.serialNumber ?? o.invoiceNumber ?? null,
@@ -1515,6 +1699,8 @@ export class CallCenterService {
         issuedWhileCutOff:
           o.subscription?.status === CustomerSubscriptionStatus.CUT_OFF,
         openDebt,
+        feedbackRating: fr?.rating ?? null,
+        feedbackSubmittedAtIso: fr?.submittedAt.toISOString() ?? null,
       };
     });
 
@@ -1572,6 +1758,7 @@ export class CallCenterService {
         totalCollectedKd: FOUR_DP(totalCollected),
         totalDiscountedKd: FOUR_DP(totalDiscounted),
       },
+      feedbackSummary,
     };
   }
 

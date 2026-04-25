@@ -1,7 +1,10 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { CustomerLedgerModule } from '../customer-ledger/customer-ledger.module';
+import { CustomerNotificationsModule } from '../customer-notifications/customer-notifications.module';
+import { OrdersModule } from '../orders/orders.module';
 import { PaymentsModule } from '../payments/payments.module';
+import { FinanceModule } from '../finance/finance.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { CallCenterController } from './call-center.controller';
 import { CallCenterService } from './call-center.service';
@@ -9,7 +12,15 @@ import { DailyCollectionsReconciliationCronService } from './daily-collections-r
 import { PublicStatementController } from './public-statement.controller';
 
 @Module({
-  imports: [PrismaModule, AuthModule, CustomerLedgerModule, PaymentsModule],
+  imports: [
+    PrismaModule,
+    AuthModule,
+    CustomerLedgerModule,
+    FinanceModule,
+    PaymentsModule,
+    OrdersModule,
+    CustomerNotificationsModule,
+  ],
   controllers: [CallCenterController, PublicStatementController],
   providers: [CallCenterService, DailyCollectionsReconciliationCronService],
 })

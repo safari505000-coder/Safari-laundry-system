@@ -13,6 +13,8 @@ exports.CallCenterOperationsSummaryDto = void 0;
 const swagger_1 = require("@nestjs/swagger");
 class CallCenterOperationsSummaryDto {
     totalMarketDebtKd;
+    outstandingInvoiceDebtKd;
+    outstandingSubscriptionDebtKd;
     debtCollectedTodayKd;
     debtRecoveredTodayKd;
     pendingLinksCount;
@@ -27,6 +29,20 @@ __decorate([
     }),
     __metadata("design:type", String)
 ], CallCenterOperationsSummaryDto.prototype, "totalMarketDebtKd", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({
+        description: 'V20.x — NET open INVOICE_SHORTFALL after customer-level PAYMENT waterfall (same formula as monthly P&L `outstandingInvoiceDebtKd`). Not the same as red-card UNPAID order total.',
+        example: '45.000',
+    }),
+    __metadata("design:type", String)
+], CallCenterOperationsSummaryDto.prototype, "outstandingInvoiceDebtKd", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({
+        description: 'V20.x — NET open SUBSCRIPTION_OVERUSE (subscription wallet exceeded) after waterfall. Shown next to market debt for full receivables picture.',
+        example: '12.500',
+    }),
+    __metadata("design:type", String)
+], CallCenterOperationsSummaryDto.prototype, "outstandingSubscriptionDebtKd", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)({
         description: 'V1.6.5 — Sum of `metadata.debtSettled` across ORDER_WALLET_SETTLEMENT rows tagged `debtSettlementViaLink: true`, created strictly between Kuwait-local 00:00 today and now. Resets at 00:00 Kuwait time. Scoped by `branchId` when provided. Serialized in KWD 3-decimal precision.',

@@ -293,7 +293,7 @@ __decorate([
     (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.CALL_CENTER, client_1.SafariRole.CALL_CENTER_SUPERVISOR),
     (0, swagger_1.ApiOperation)({
         summary: `Unpaid invoices list (${branding_1.APP_BRAND})`,
-        description: 'V19.10 — aggregates every invoice that contributed to outstanding customer debt (INVOICE_SHORTFALL entries), joined with current wallet balance. Supports filters by date, branch, issuing employee and customer phone.',
+        description: 'Table: per-order `INVOICE_SHORTFALL` and subscription overuse (any actor) with FIFO payments. `kpis.totalMarketUnpaidKd` = Σ `Order` UNPAID; use `marketKpiBranchId` to align the headline with Call Center / collections when `branchId` is omitted (all branches in the table).',
     }),
     __param(0, (0, common_1.Query)()),
     __metadata("design:type", Function),

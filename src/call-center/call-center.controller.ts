@@ -45,19 +45,24 @@ export class CallCenterController {
     SafariRole.CALL_CENTER_SUPERVISOR,
     SafariRole.OWNER,
     SafariRole.GENERAL_MANAGER,
+    SafariRole.MANAGER,
+    SafariRole.DRIVER,
   )
   @ApiOperation({
     summary: `Call center operations summary — 3 KPIs (${APP_BRAND})`,
     description:
       'V1.6.1 — RED total market debt (Σ unpaid non-canceled orders), GREEN debt collected today strictly between Kuwait-local 00:00 and now (Σ metadata.debtSettled), YELLOW count of open UNPAID orders with a hosted payment URL awaiting action. Pass `?branchId=<uuid>` to scope every aggregate to a single branch (driver.branchId OR customer.originBranchId when driver-less); omit for global totals.',
   })
-  operationsSummary(@Query('branchId') branchId?: string) {
+  operationsSummary(
+    @Query('branchId') branchId: string | undefined,
+    @CurrentUser() user: JwtUser,
+  ) {
     // Empty / sentinel values ("__ALL__") → global.
     const raw = (branchId ?? '').trim();
     const uuidRe =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const scoped = raw && uuidRe.test(raw) ? raw : null;
-    return this.callCenterService.getOperationsSummary(scoped);
+    return this.callCenterService.getOperationsSummary(scoped, user);
   }
 
   @Get('debt-recovery-report')
@@ -118,7 +123,13 @@ export class CallCenterController {
   }
 
   @Post('orders/:orderId/reminder')
-  @Roles(SafariRole.CALL_CENTER, SafariRole.CALL_CENTER_SUPERVISOR, SafariRole.OWNER)
+  @Roles(
+    SafariRole.CALL_CENTER,
+    SafariRole.CALL_CENTER_SUPERVISOR,
+    SafariRole.OWNER,
+    SafariRole.MANAGER,
+    SafariRole.DRIVER,
+  )
   @ApiOperation({
     summary: `Mark a collection reminder as sent (${APP_BRAND})`,
     description:
@@ -126,12 +137,18 @@ export class CallCenterController {
   })
   markOrderReminderSent(
     @Param('orderId', ParseUUIDPipe) orderId: string,
+    @CurrentUser() user: JwtUser,
   ) {
-    return this.callCenterService.sendOrderReminder(orderId);
+    return this.callCenterService.sendOrderReminder(orderId, user);
   }
 
   @Post('orders/:orderId/payment-link')
-  @Roles(SafariRole.CALL_CENTER, SafariRole.CALL_CENTER_SUPERVISOR)
+  @Roles(
+    SafariRole.CALL_CENTER,
+    SafariRole.CALL_CENTER_SUPERVISOR,
+    SafariRole.MANAGER,
+    SafariRole.DRIVER,
+  )
   @ApiOperation({
     summary: `Ensure a hosted payment link exists for an unpaid order (${APP_BRAND})`,
     description:
@@ -139,12 +156,42 @@ export class CallCenterController {
   })
   ensureOrderPaymentLink(
     @Param('orderId', ParseUUIDPipe) orderId: string,
+    @CurrentUser() user: JwtUser,
   ) {
-    return this.callCenterService.ensureOrderPaymentLink(orderId);
+    return this.callCenterService.ensureOrderPaymentLink(orderId, user);
+  }
+
+  @Post('orders/:orderId/send-payment-link-whatsapp')
+  @Roles(
+    SafariRole.CALL_CENTER,
+    SafariRole.CALL_CENTER_SUPERVISOR,
+    SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
+    SafariRole.MANAGER,
+    SafariRole.DRIVER,
+  )
+  @ApiOperation({
+    summary: `Push payment-link message to customer (Moatmt / webhook) (${APP_BRAND})`,
+    description:
+      'Ensures a hosted link, applies the same reminder/cooldown as the Collections page, then sends the Arabic template via MOATMT_* or CUSTOMER_NOTIFY_WEBHOOK_URL so the client receives WhatsApp without opening wa.me. Returns `serverPush: false` if no channel is configured or delivery failed — client should fall back to wa.me.',
+  })
+  sendPaymentLinkToCustomerWhatsapp(
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.callCenterService.sendPaymentLinkToCustomerWhatsapp(
+      orderId,
+      user,
+    );
   }
 
   @Post('orders/:orderId/mark-paid')
-  @Roles(SafariRole.CALL_CENTER, SafariRole.CALL_CENTER_SUPERVISOR)
+  @Roles(
+    SafariRole.CALL_CENTER,
+    SafariRole.CALL_CENTER_SUPERVISOR,
+    SafariRole.MANAGER,
+    SafariRole.DRIVER,
+  )
   @ApiOperation({
     summary: `Mark a collection order as manually paid (${APP_BRAND})`,
     description:
@@ -159,6 +206,7 @@ export class CallCenterController {
       orderId,
       dto.paymentMethod,
       user.userId,
+      user,
     );
   }
 
@@ -294,6 +342,7 @@ export class CallCenterController {
     SafariRole.OWNER,
     SafariRole.GENERAL_MANAGER,
     SafariRole.ACCOUNTANT,
+    SafariRole.MANAGER,
   )
   @ApiOperation({
     summary: `Daily collector feed — today's debt reductions (${APP_BRAND})`,
@@ -311,6 +360,7 @@ export class CallCenterController {
     SafariRole.OWNER,
     SafariRole.GENERAL_MANAGER,
     SafariRole.ACCOUNTANT,
+    SafariRole.MANAGER,
   )
   @ApiOperation({
     summary: `Daily collector reconciliation — TH ↔ GL validator (${APP_BRAND})`,

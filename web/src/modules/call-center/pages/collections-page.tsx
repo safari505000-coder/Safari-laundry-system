@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Navigate } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import {
   Banknote,
   CheckCircle2,
@@ -11,6 +11,7 @@ import {
   MessageCircle,
   RefreshCw,
   Search,
+  Sparkles,
   TrendingUp,
   Wallet,
 } from 'lucide-react';
@@ -22,7 +23,7 @@ import {
   type CollectionUnpaidOnlineRow,
   type MarkOrderPaidResult,
   type MarkPaidMethod,
-  type ReminderResult,
+  type SendPaymentLinkWhatsappResult,
   apiJson,
   ApiError,
 } from '@/lib/api';
@@ -143,13 +144,18 @@ function KpiCard({ tone, icon, label, value, sub, loading }: KpiCardProps) {
 export function CollectionsPage() {
   const { t } = useTranslation();
   const { token, user, ownerBranchId } = useAuth();
-  // V1.6.0 — Page access is limited to OWNER (oversight) and CALL_CENTER
-  // (workspace). MANAGER, DRIVER, ACCOUNTANT, and VIEWER do not see this
-  // page at all. Within the two permitted roles, only CALL_CENTER can
-  // actually send WhatsApp reminders or open a hosted payment link —
-  // OWNER sees the page as a read-only Financial Oversight Report.
+  /** Manager defaults to their branch; Owner uses the branch switcher when set. */
+  const collectionsBranchId = useMemo(() => {
+    if (user?.safariRole === 'MANAGER' && user.branchId) {
+      return user.branchId;
+    }
+    return ownerBranchId;
+  }, [user?.safariRole, user?.branchId, ownerBranchId]);
   const allowed = can(user, 'collections.view');
   const canAct = can(user, 'collections.act');
+  const canSubscribers = can(user, 'subscribers.view');
+  const canSubscribersManage = can(user, 'subscribers.manage');
+  const tableColCount = 7 + (canSubscribers ? 1 : 0) + (canAct ? 1 : 0);
   const [rows, setRows] = useState<CollectionUnpaidOnlineRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<CallCenterOperationsSummary | null>(
@@ -161,7 +167,6 @@ export function CollectionsPage() {
   // V1.6.0 — "Payment Link" button is now universal (Cash + KNET + …).
   // We track which row is currently minting a link so the user gets a
   // spinner while the gateway call is in flight.
-  const [linkBusyId, setLinkBusyId] = useState<string | null>(null);
   // V1.6.9 — "تم الدفع" manual confirmation flow. We keep the row that
   // the agent picked so the dialog shows the customer name + amount, and
   // we track which method is currently submitting so the picked button
@@ -176,12 +181,9 @@ export function CollectionsPage() {
       if (!token || !allowed) return;
       if (!opts?.silent) setLoading(true);
       try {
-        // V1.6.5 — forward the Owner's branch filter to the table so
-        // the footer sum equals the Red KPI card to the last fils. For
-        // CALL_CENTER the switcher isn't rendered → `ownerBranchId` is
-        // always null and the fetch stays global.
-        const qs = ownerBranchId
-          ? `?branchId=${encodeURIComponent(ownerBranchId)}`
+        // V1.6.5 — forward branch scope (owner switcher, or manager’s branch).
+        const qs = collectionsBranchId
+          ? `?branchId=${encodeURIComponent(collectionsBranchId)}`
           : '';
         const data = await apiJson<CollectionUnpaidOnlineRow[]>(
           `/api/orders/collections/unpaid-online${qs}`,
@@ -194,7 +196,7 @@ export function CollectionsPage() {
         if (!opts?.silent) setLoading(false);
       }
     },
-    [token, allowed, ownerBranchId],
+    [token, allowed, collectionsBranchId],
   );
 
   const loadSummary = useCallback(
@@ -202,11 +204,9 @@ export function CollectionsPage() {
       if (!token || !allowed) return;
       if (!opts?.silent) setSummaryLoading(true);
       try {
-        // V1.6.1 — obey the top-right "Branch" dropdown. Only OWNER has
-        // the switcher rendered (`BranchSwitcher`); for CALL_CENTER
-        // `ownerBranchId` is always null and the aggregate stays global.
-        const qs = ownerBranchId
-          ? `?branchId=${encodeURIComponent(ownerBranchId)}`
+        // V1.6.1 — same branch scope as the unpaid list (owner / manager).
+        const qs = collectionsBranchId
+          ? `?branchId=${encodeURIComponent(collectionsBranchId)}`
           : '';
         const data = await apiJson<CallCenterOperationsSummary>(
           `/api/call-center/operations-summary${qs}`,
@@ -221,7 +221,7 @@ export function CollectionsPage() {
         if (!opts?.silent) setSummaryLoading(false);
       }
     },
-    [token, allowed, ownerBranchId],
+    [token, allowed, collectionsBranchId],
   );
 
   useEffect(() => {
@@ -246,18 +246,11 @@ export function CollectionsPage() {
   }, [token, allowed, loadSummary]);
 
   /**
-   * Dastur V1.5.2 + V1.6.6 — "Send Payment Link" WhatsApp flow.
+   * Dastur V1.5.2 + V1.6.6 — "Send Payment Link" flow.
    *
-   * Sequence:
-   *   1. Ensure the order has a hosted payment URL — mint one on the
-   *      fly if `row.paymentUrl` is null so the template always carries
-   *      a live link.
-   *   2. Atomically increment the 24h server-side reminder counter. If
-   *      the cooldown hasn't elapsed, toast the cooldown message and
-   *      abort without opening WhatsApp.
-   *   3. Render the Arabic invoice + T&Cs template (see
-   *      `buildCollectionsUnpaidWhatsAppText`) and open wa.me with it
-   *      pre-filled.
+   * Primary: POST `send-payment-link-whatsapp` → Moatmt / webhook delivers
+   * the Arabic template to the customer's number (no manual Send in WhatsApp).
+   * Fallback when the server has no channel: same `wa.me` pre-fill as before.
    */
   const handleWhatsApp = useCallback(
     async (row: CollectionUnpaidOnlineRow) => {
@@ -269,46 +262,17 @@ export function CollectionsPage() {
       }
       setReminderBusyId(row.orderId);
       try {
-        // 1. Make sure we have a payment URL before we compose the
-        //    message. We only hit the endpoint when we don't already
-        //    have one so we don't churn the gateway needlessly. On
-        //    success we optimistically patch local state so the row
-        //    turns yellow INSTANTLY — the silent reload at the end of
-        //    this handler will reconcile with the server.
-        let paymentUrl = row.paymentUrl;
-        if (!paymentUrl) {
-          try {
-            const linkRes = await apiJson<{ url: string }>(
-              `/api/call-center/orders/${row.orderId}/payment-link`,
-              { method: 'POST', token },
-            );
-            paymentUrl = linkRes?.url ?? null;
-            if (paymentUrl) {
-              const freshUrl = paymentUrl;
-              setRows((prev) =>
-                prev.map((r) =>
-                  r.orderId === row.orderId ? { ...r, paymentUrl: freshUrl } : r,
-                ),
-              );
-            }
-          } catch (e) {
-            if (e instanceof ApiError) toast.error(e.message);
-            return;
-          }
-        }
-
-        // 2. Reminder counter / 2.5h cooldown (V1.6.8 — Owner recall window).
-        const res = await apiJson<ReminderResult>(
-          `/api/call-center/orders/${row.orderId}/reminder`,
+        const res = await apiJson<SendPaymentLinkWhatsappResult>(
+          `/api/call-center/orders/${row.orderId}/send-payment-link-whatsapp`,
           { method: 'POST', token },
         );
-        if (!res.sent) {
-          // Prefer minute-resolution (new server field); fall back to
-          // hours*60 for any stale build, and finally to the 150-minute
-          // window ceiling so the toast always renders something sane.
+
+        if (!res.reminder.sent) {
           const minutesLeft =
-            res.minutesUntilNext ??
-            (res.hoursUntilNext != null ? res.hoursUntilNext * 60 : 150);
+            res.reminder.minutesUntilNext ??
+            (res.reminder.hoursUntilNext != null ?
+              res.reminder.hoursUntilNext * 60
+            : 150);
           toast.warning(
             t('collections.remindCooldown', {
               minutes: minutesLeft,
@@ -318,13 +282,29 @@ export function CollectionsPage() {
           return;
         }
 
-        // 3. Compose + open.
-        const text = buildCollectionsUnpaidWhatsAppText(row, paymentUrl);
+        if (res.serverPush) {
+          toast.success(
+            t('collections.remindSentServer', {
+              count: res.reminder.reminderCount,
+            }),
+          );
+          await load({ silent: true });
+          return;
+        }
+
+        const paymentUrl = res.paymentUrl;
+        setRows((prev) =>
+          prev.map((r) =>
+            r.orderId === row.orderId ? { ...r, paymentUrl } : r,
+          ),
+        );
+        const text = buildCollectionsUnpaidWhatsAppText(
+          { ...row, paymentUrl },
+          paymentUrl,
+        );
         const href = `https://wa.me/${n}?text=${encodeURIComponent(text)}`;
         window.open(href, '_blank', 'noopener,noreferrer');
-        toast.success(
-          t('collections.remindSentToast', { count: res.reminderCount }),
-        );
+        toast.info(t('collections.remindSentFallbackWa'));
         await load({ silent: true });
       } catch (e) {
         if (e instanceof ApiError) toast.error(e.message);
@@ -336,39 +316,15 @@ export function CollectionsPage() {
   );
 
   /**
-   * V1.6.0 — on-demand payment link. Works for ANY unpaid order regardless
-   * of the original method. If the backend already has a `posHostedPaymentUrl`
-   * it's returned immediately; otherwise a fresh link is minted and persisted.
-   * The order keeps its original `posPaymentMethod` until the gateway
-   * callback lands — at that point the order auto-switches to ONLINE and
-   * the ledger row is tagged as a debt settlement.
+   * Same delivery as the primary WhatsApp action: ensure hosted URL, respect
+   * reminder/cooldown, then open `wa.me` to the **customer** with the link —
+   * never open the UPayments tab on the operator's browser.
    */
   const handlePaymentLink = useCallback(
-    async (row: CollectionUnpaidOnlineRow) => {
-      if (!token || !canAct) return;
-      // Fast path: existing link → just open it.
-      if (row.paymentUrl) {
-        window.open(row.paymentUrl, '_blank', 'noopener,noreferrer');
-        return;
-      }
-      setLinkBusyId(row.orderId);
-      try {
-        const res = await apiJson<{ url: string }>(
-          `/api/call-center/orders/${row.orderId}/payment-link`,
-          { method: 'POST', token },
-        );
-        if (res?.url) {
-          window.open(res.url, '_blank', 'noopener,noreferrer');
-          // Refresh so subsequent clicks use the cached URL from the server.
-          await load({ silent: true });
-        }
-      } catch (e) {
-        if (e instanceof ApiError) toast.error(e.message);
-      } finally {
-        setLinkBusyId(null);
-      }
+    (row: CollectionUnpaidOnlineRow) => {
+      return handleWhatsApp(row);
     },
-    [token, canAct, load],
+    [handleWhatsApp],
   );
 
   /**
@@ -499,13 +455,28 @@ export function CollectionsPage() {
         />
       </section>
 
+      {summary && !summaryLoading ? (
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          {t('collections.ledgerStripLine', {
+            inv: formatKwd3(
+              summary.outstandingInvoiceDebtKd ?? '0',
+            ),
+            sub: formatKwd3(
+              summary.outstandingSubscriptionDebtKd ?? '0',
+            ),
+          })}
+        </p>
+      ) : null}
+
       {/*
        * V19.4 — CC pack #4. Daily collector feed. Lists today's debt-
        * reducing events across every agent with per-agent totals so a
        * supervisor / CC lead can answer "من حصّل ماذا اليوم؟" in one
        * glance, without leaving the Collections page.
        */}
-      <DailyCollectorPanel token={token} />
+      {user?.safariRole !== 'DRIVER' ? (
+        <DailyCollectorPanel token={token} />
+      ) : null}
 
       {/* Phone search — narrows the radar to a specific customer/phone. */}
       <div className="relative">
@@ -537,7 +508,6 @@ export function CollectionsPage() {
         <ul className="flex flex-col gap-3">
           {filteredRows.map((row) => {
             const reminderBusy = reminderBusyId === row.orderId;
-            const linkBusy = linkBusyId === row.orderId;
             const ageBadgeTone =
               row.invoiceAgeDays >= 7
                 ? 'bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-200'
@@ -639,32 +609,52 @@ export function CollectionsPage() {
                       {t('collections.markPaid')}
                     </Button>
                     {/*
-                      V1.6.7 — The standalone "Knet / Manual-Settlement"
-                      open-hosted-URL button is temporarily hidden. The
-                      WhatsApp "Send Link" button above now performs the
-                      complete flow (mint → increment reminder → send
-                      template with embedded link), so a separate KNET
-                      launcher would double-count reminders. Flip the
-                      feature flag below to re-enable; `handlePaymentLink`
-                      and `linkBusy` remain live so re-exposing the
-                      button is a one-line change.
+                      V1.6.7 — Optional secondary "link" control (same as
+                      WhatsApp: opens wa.me to the customer, not the agent tab).
                     */}
                     {false && (
                       <button
                         type="button"
-                        disabled={linkBusy}
+                        disabled={reminderBusy}
                         onClick={() => void handlePaymentLink(row)}
                         className="inline-flex min-h-12 min-w-12 items-center justify-center rounded-xl border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
                         title={t('collections.paymentLink')}
                         aria-label={t('collections.paymentLink')}
                       >
-                        {linkBusy ? (
+                        {reminderBusy ? (
                           <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
                         ) : (
                           <CreditCard className="h-5 w-5" aria-hidden />
                         )}
                       </button>
                     )}
+                  </div>
+                ) : null}
+                {canSubscribers ? (
+                  <div className="mt-2">
+                    <Link
+                      to={
+                        canSubscribersManage
+                          ? `/subscribers?${new URLSearchParams({
+                              activateCustomer: row.customerId,
+                              n: row.customerName,
+                              ...(row.customerPhone
+                                ? { p: row.customerPhone }
+                                : {}),
+                            }).toString()}`
+                          : `/subscribers?${new URLSearchParams(
+                              row.customerPhone
+                                ? { q: row.customerPhone }
+                                : { q: row.customerName },
+                            ).toString()}`
+                      }
+                      className="inline-flex w-full min-h-10 items-center justify-center gap-2 rounded-lg border border-indigo-200/80 bg-indigo-50/80 px-3 text-sm font-medium text-indigo-900 hover:bg-indigo-100/90 dark:border-indigo-900/50 dark:bg-indigo-950/30 dark:text-indigo-100"
+                    >
+                      <Sparkles className="h-4 w-4" aria-hidden />
+                      {canSubscribersManage
+                        ? t('collections.subscribersCta')
+                        : t('collections.subscribersCtaView')}
+                    </Link>
                   </div>
                 ) : null}
               </li>
@@ -690,6 +680,11 @@ export function CollectionsPage() {
               <TableHead className="text-end tabular-nums">
                 {t('collections.colReminders')}
               </TableHead>
+              {canSubscribers ? (
+                <TableHead className="w-[100px] text-center text-xs">
+                  {t('collections.colSubscription')}
+                </TableHead>
+              ) : null}
               {canAct ? (
                 <TableHead className="w-[260px] text-center">
                   {t('collections.colActions')}
@@ -700,7 +695,10 @@ export function CollectionsPage() {
           <TableBody>
             {loading && filteredRows.length === 0 ?
               <TableRow>
-                <TableCell colSpan={canAct ? 8 : 7} className="py-12 text-center">
+                <TableCell
+                  colSpan={tableColCount}
+                  className="py-12 text-center"
+                >
                   <Loader2 className="mx-auto h-7 w-7 animate-spin text-muted-foreground" />
                 </TableCell>
               </TableRow>
@@ -708,7 +706,7 @@ export function CollectionsPage() {
             {!loading && filteredRows.length === 0 ?
               <TableRow>
                 <TableCell
-                  colSpan={canAct ? 8 : 7}
+                  colSpan={tableColCount}
                   className="py-10 text-center text-muted-foreground"
                 >
                   {query.trim() ? t('collections.emptySearch') : t('collections.empty')}
@@ -717,7 +715,6 @@ export function CollectionsPage() {
             : null}
             {filteredRows.map((row) => {
               const reminderBusy = reminderBusyId === row.orderId;
-              const linkBusy = linkBusyId === row.orderId;
               const ageTone =
                 row.invoiceAgeDays >= 7
                   ? 'text-red-700 dark:text-red-300'
@@ -776,6 +773,39 @@ export function CollectionsPage() {
                   <TableCell className="text-end tabular-nums">
                     {row.reminderCount}
                   </TableCell>
+                  {canSubscribers ? (
+                    <TableCell className="p-1 text-center">
+                      <Link
+                        to={
+                          canSubscribersManage
+                            ? `/subscribers?${new URLSearchParams({
+                                activateCustomer: row.customerId,
+                                n: row.customerName,
+                                ...(row.customerPhone
+                                  ? { p: row.customerPhone }
+                                  : {}),
+                              }).toString()}`
+                            : `/subscribers?${new URLSearchParams(
+                                row.customerPhone
+                                  ? { q: row.customerPhone }
+                                  : { q: row.customerName },
+                              ).toString()}`
+                        }
+                        className="inline-flex h-8 w-full min-w-0 max-w-full items-center justify-center gap-1 rounded-md border border-border bg-background px-1.5 text-[10px] font-medium text-foreground transition hover:border-indigo-300 hover:bg-indigo-50/80 dark:hover:bg-indigo-950/30"
+                        title={t('collections.subscribersCtaTitle')}
+                      >
+                        <Sparkles
+                          className="h-3 w-3 shrink-0 text-indigo-600 dark:text-indigo-400"
+                          aria-hidden
+                        />
+                        <span className="truncate">
+                          {canSubscribersManage
+                            ? t('collections.subscribersCta')
+                            : t('collections.subscribersCtaView')}
+                        </span>
+                      </Link>
+                    </TableCell>
+                  ) : null}
                   {canAct ? (
                     <TableCell className="text-center">
                       <div className="inline-flex items-center gap-2">
@@ -816,13 +846,13 @@ export function CollectionsPage() {
                         {false && (
                           <button
                             type="button"
-                            disabled={linkBusy}
+                            disabled={reminderBusy}
                             onClick={() => void handlePaymentLink(row)}
                             className="inline-flex min-h-9 min-w-9 items-center justify-center rounded-md border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
                             title={t('collections.paymentLink')}
                             aria-label={t('collections.paymentLink')}
                           >
-                            {linkBusy ? (
+                            {reminderBusy ? (
                               <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
                             ) : (
                               <CreditCard className="h-4 w-4" aria-hidden />
@@ -852,7 +882,11 @@ export function CollectionsPage() {
                     ),
                   )}
                 </TableCell>
-                <TableCell colSpan={canAct ? 3 : 2} />
+                <TableCell
+                  colSpan={
+                    2 + (canSubscribers ? 1 : 0) + (canAct ? 1 : 0)
+                  }
+                />
               </TableRow>
             ) : null}
           </TableBody>

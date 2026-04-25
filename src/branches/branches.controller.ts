@@ -33,11 +33,13 @@ export class BranchesController {
     SafariRole.ACCOUNTANT,
     SafariRole.SUPERVISOR,
     SafariRole.VIEWER,
+    SafariRole.CALL_CENTER,
+    SafariRole.CALL_CENTER_SUPERVISOR,
   )
   @ApiOperation({
     summary: `List branches (${APP_BRAND})`,
     description:
-      'OWNER / GENERAL_MANAGER use this for the branch switcher on reports and for the branch picker in the user-management dialog.',
+      'Read-only list of branches for report filters, switchers, and receivables / collections. Call-center roles need the same pickers as operations.',
   })
   list() {
     return this.branchesService.listAll();

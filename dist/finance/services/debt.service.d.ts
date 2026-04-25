@@ -1,4 +1,4 @@
-import { DebtEntityCategory } from '@prisma/client';
+import { DebtEntityCategory, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SubscriptionService } from './subscription.service';
 import type { UnpaidInvoicesQueryDto, UnpaidInvoicesResponseDto } from '../dto/unpaid-invoices.dto';
@@ -40,5 +40,9 @@ export declare class DebtService {
         settledOrderCount: number;
     }>;
     getUnpaidInvoices(query: UnpaidInvoicesQueryDto): Promise<UnpaidInvoicesResponseDto>;
+    getLedgerOpenDebtByCategory(whereExtra?: Prisma.DebtLedgerEntryWhereInput): Promise<{
+        outstandingInvoiceDebtKd: string;
+        outstandingSubscriptionDebtKd: string;
+    }>;
     getOpenDebtByIssuer(branchId?: string): Promise<OpenDebtByIssuerResponseDto>;
 }

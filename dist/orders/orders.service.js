@@ -480,6 +480,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
                 return merged;
             }
             void this.posInvoiceNotifyToCustomer(detail, phoneCompact).catch((e) => this.log.warn(`pos invoice notify: ${e}`));
+            this.paymentsService.schedulePaymentConfirmedCustomerNotify(detail.id);
             return detail;
         }
         catch (error) {
@@ -641,18 +642,26 @@ let OrdersService = OrdersService_1 = class OrdersService {
             });
         });
     }
-    async listUnpaidCollectionOrders(branchId = null) {
-        const branchWhere = branchId
-            ? {
-                OR: [
-                    { driver: { is: { branchId } } },
-                    {
-                        driverId: null,
-                        customer: { is: { originBranchId: branchId } },
-                    },
-                ],
-            }
-            : undefined;
+    async listUnpaidCollectionOrders(branchId = null, actor) {
+        const isDriver = actor?.role === client_1.SafariRole.DRIVER;
+        const effectiveBranchId = isDriver ? null
+            : branchId ??
+                (actor?.role === client_1.SafariRole.MANAGER && actor.branchId ?
+                    actor.branchId
+                    : null);
+        const branchWhere = isDriver
+            ? { driverId: actor.userId }
+            : effectiveBranchId
+                ? {
+                    OR: [
+                        { driver: { is: { branchId: effectiveBranchId } } },
+                        {
+                            driverId: null,
+                            customer: { is: { originBranchId: effectiveBranchId } },
+                        },
+                    ],
+                }
+                : undefined;
         const rows = await this.prisma.order.findMany({
             where: {
                 cashStatus: client_1.CashStatus.UNPAID,
@@ -661,6 +670,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
             },
             select: {
                 id: true,
+                customerId: true,
                 serialNumber: true,
                 invoiceNumber: true,
                 totalPrice: true,
@@ -671,6 +681,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
                 lastReminderAt: true,
                 customer: {
                     select: {
+                        id: true,
                         displayName: true,
                         phone: true,
                         phone2: true,
@@ -726,6 +737,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
             const driverName = r.driver?.fullName?.trim() || null;
             return {
                 orderId: r.id,
+                customerId: r.customerId,
                 readableId,
                 invoiceNumber: r.invoiceNumber ?? null,
                 customerName: name,
@@ -746,8 +758,79 @@ let OrdersService = OrdersService_1 = class OrdersService {
             };
         });
     }
+    async getUnpaidCollectionOrderRowForWhatsappText(orderId) {
+        const r = await this.prisma.order.findFirst({
+            where: {
+                id: orderId,
+                cashStatus: client_1.CashStatus.UNPAID,
+                status: { not: client_1.OrderStatus.CANCELED },
+            },
+            select: {
+                id: true,
+                serialNumber: true,
+                invoiceNumber: true,
+                totalPrice: true,
+                customer: {
+                    select: {
+                        displayName: true,
+                        phone: true,
+                        phone2: true,
+                        originBranch: { select: { name: true } },
+                    },
+                },
+                driver: {
+                    select: {
+                        fullName: true,
+                        branch: { select: { name: true } },
+                    },
+                },
+                lineItems: {
+                    select: {
+                        label: true,
+                        quantity: true,
+                        unitPrice: true,
+                    },
+                    orderBy: { createdAt: 'asc' },
+                },
+            },
+        });
+        if (!r) {
+            return null;
+        }
+        const phone = r.customer.phone?.replace(/[\s-]/g, '').trim() ||
+            r.customer.phone2?.replace(/[\s-]/g, '').trim() ||
+            '';
+        const name = r.customer.displayName?.trim() || (phone ? phone : 'Customer');
+        const readableId = r.serialNumber?.trim() ||
+            r.invoiceNumber?.trim() ||
+            `#${r.id.slice(-6).toUpperCase()}`;
+        const lineItems = r.lineItems.map((li) => {
+            const lineTotal = li.quantity.mul(li.unitPrice);
+            return {
+                label: li.label,
+                quantity: li.quantity.toString(),
+                lineTotalKd: lineTotal.toFixed(3),
+            };
+        });
+        const branchName = r.driver?.branch?.name?.trim() ||
+            r.customer.originBranch?.name?.trim() ||
+            null;
+        const driverName = r.driver?.fullName?.trim() || null;
+        return {
+            orderId: r.id,
+            readableId,
+            invoiceNumber: r.invoiceNumber ?? null,
+            customerName: name,
+            customerPhone: phone,
+            customerPhone2: r.customer.phone2?.replace(/[\s-]/g, '').trim() || null,
+            amountKd: r.totalPrice.toFixed(3),
+            lineItems,
+            branchName,
+            driverName,
+        };
+    }
     async listUnpaidOnlinePaymentOrders() {
-        return this.listUnpaidCollectionOrders();
+        return this.listUnpaidCollectionOrders(null, undefined);
     }
     async listDriverPendingInvoices(userId) {
         const rows = await this.prisma.order.findMany({

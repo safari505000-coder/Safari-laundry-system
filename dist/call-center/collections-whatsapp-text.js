@@ -1,0 +1,126 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.buildCollectionsPaymentLinkTextAr = buildCollectionsPaymentLinkTextAr;
+const branding_1 = require("../common/constants/branding");
+const WA_COLLECTIONS_MAX_ITEM_LINES = 15;
+const GREETINGS_AR = ['حياك الله', 'نسعد بلقائك'];
+function pickGreeting(seed) {
+    let h = 0;
+    for (let i = 0; i < seed.length; i += 1) {
+        h = (h * 31 + seed.charCodeAt(i)) | 0;
+    }
+    return GREETINGS_AR[Math.abs(h) % GREETINGS_AR.length];
+}
+function buildGreetingLine(name, seed) {
+    return `${pickGreeting(seed)} ${name} 🌿`;
+}
+const SAFARI_WHATSAPP_TERMS_AR = [
+    '⚠️ الشروط والأحكام:',
+    '1. تسليم المستعجل: 4 ساعات (عادي) / 24 ساعة (أعياد).',
+    '2. ملاحظات الخدمة مقبولة فقط خلال 24 ساعة من التسليم.',
+    '3. استلام الملابس يبدأ بعد 5:00 مساءً.',
+    '4. الماركات العالمية لها معاملة وأسعار خاصة.',
+    '5. المحل غير مسئول عن المفقودات الشخصية أو التخزين بعد 30 يوم.',
+    '6. التعويض عن التلف 25% من القيمة بشرط الفاتورة الأصلية.',
+].join('\n');
+const SAFARI_REASSURANCE_AR = 'ملابسكم في أيدٍ أمينة، وسنعتني بها بأفضل صورة — شكراً لثقتكم بنا.';
+const SAFARI_WHATSAPP_TERMS_AR_COMPACT = [
+    '⚠️ الشروط: تفاصيل الخدمة والتعويض كما في فاتورتكم المطبوعة أو كشف الحساب.',
+    'للدعم: 22200299',
+].join('\n');
+function formatQty(q) {
+    const n = Number.parseFloat(q || '0');
+    if (!Number.isFinite(n))
+        return q;
+    if (Number.isInteger(n))
+        return String(n);
+    return n
+        .toFixed(4)
+        .replace(/0+$/, '')
+        .replace(/\.$/, '');
+}
+function buildInner(row, url, termsMode) {
+    const invoiceRef = row.invoiceNumber?.trim() || row.readableId || row.orderId.slice(-6).toUpperCase();
+    const customerName = row.customerName?.trim() || 'عميلنا العزيز';
+    const greet = buildGreetingLine(customerName, row.orderId);
+    const intro = `نسعد بخدمتكم في ${branding_1.BRAND_CUSTOMER_AR}، ونود تذكيركم بفاتورتكم التالية:`;
+    const originLines = [];
+    if (row.branchName && row.branchName.trim()) {
+        originLines.push(`🏬 الفرع: ${row.branchName.trim()}`);
+    }
+    if (row.driverName && row.driverName.trim()) {
+        originLines.push(`🚗 السائق: ${row.driverName.trim()}`);
+    }
+    const metaBlock = [`🏷️ رقم الفاتورة: ${invoiceRef}`, ...originLines].join('\n');
+    const itemsHeader = '--- الأصناف ---';
+    const rawItems = row.lineItems.length > 0 ? row.lineItems : null;
+    const linesToShow = rawItems && rawItems.length > WA_COLLECTIONS_MAX_ITEM_LINES ?
+        rawItems.slice(0, WA_COLLECTIONS_MAX_ITEM_LINES)
+        : rawItems;
+    const itemLines = linesToShow && linesToShow.length > 0 ?
+        linesToShow.map((li) => {
+            const name = li.label?.trim() || 'خدمة';
+            const qty = formatQty(li.quantity);
+            return `${qty} × ${name} : ${li.lineTotalKd} د.ك`;
+        })
+        : ['—'];
+    const moreLines = rawItems && rawItems.length > WA_COLLECTIONS_MAX_ITEM_LINES ?
+        [
+            `… و${rawItems.length - WA_COLLECTIONS_MAX_ITEM_LINES} بند إضافي (راجع تفصيل الفاتورة في التطبيق).`,
+        ]
+        : [];
+    const itemsBlock = [itemsHeader, ...itemLines, ...moreLines, '---'].join('\n');
+    const totalLine = `💰 *الإجمالي: ${row.amountKd} د.ك*`;
+    const actionBlock = url
+        ? ['🔒 رابط الدفع (UPayments):', url].join('\n')
+        : '📞 للدفع يرجى التواصل معنا.';
+    const termsBlock = termsMode === 'full' ? SAFARI_WHATSAPP_TERMS_AR : SAFARI_WHATSAPP_TERMS_AR_COMPACT;
+    return [
+        greet,
+        '',
+        intro,
+        '',
+        metaBlock,
+        '',
+        itemsBlock,
+        totalLine,
+        '',
+        actionBlock,
+        '',
+        SAFARI_REASSURANCE_AR,
+        '',
+        termsBlock,
+        '',
+        `فريق ${branding_1.BRAND_SYSTEM_AR} 🇰🇼`,
+    ].join('\n');
+}
+function buildMinimal(row, url) {
+    const invoiceRef = row.invoiceNumber?.trim() || row.readableId || row.orderId.slice(-6).toUpperCase();
+    const name = row.customerName?.trim() || 'عميلنا العزيز';
+    const greet = buildGreetingLine(name, row.orderId);
+    const pay = url
+        ? ['🔒 رابط الدفع (UPayments):', url].join('\n')
+        : '📞 للدفع يرجى التواصل معنا.';
+    return [
+        greet,
+        '',
+        `🏷️ ${invoiceRef}`,
+        `💰 *${row.amountKd} د.ك*`,
+        '',
+        pay,
+        '',
+        `فريق ${branding_1.BRAND_SYSTEM_AR} 🇰🇼`,
+    ].join('\n');
+}
+function buildCollectionsPaymentLinkTextAr(row, paymentUrl) {
+    const full = buildInner(row, paymentUrl, 'full');
+    if (full.length <= 4_000) {
+        return full;
+    }
+    const compact = buildInner(row, paymentUrl, 'compact');
+    if (compact.length <= 4_000) {
+        return compact;
+    }
+    return buildMinimal(row, paymentUrl);
+}
+//# sourceMappingURL=collections-whatsapp-text.js.map

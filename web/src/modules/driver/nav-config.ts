@@ -1,6 +1,7 @@
 import type { NavGroup } from '@/modules/shared/nav/nav-types';
 import { G } from '@/modules/shared/nav/nav-groups';
 import {
+  collectionsItem,
   driverFieldExpensesItem,
   driverPendingInvoicesItem,
   myCashReceiptsItem,
@@ -8,6 +9,7 @@ import {
   myDebtTransfersItem,
   myDepositsItem,
   posItem,
+  whatsappToolsItem,
 } from '@/modules/shared/nav/nav-items';
 
 /**
@@ -34,5 +36,9 @@ export const driverSidebarNavGroups: NavGroup[] = [
       driverPendingInvoicesItem,
       myDebtTransfersItem,
     ],
+  },
+  {
+    ...G.customersSubs,
+    items: [collectionsItem, whatsappToolsItem],
   },
 ];

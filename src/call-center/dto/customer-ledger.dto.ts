@@ -208,6 +208,30 @@ export class CustomerLedgerInvoiceDto {
       'True if the invoice still has money owed (UNPAID / PENDING-ish cash status and not CANCELED).',
   })
   openDebt!: boolean;
+  @ApiProperty({
+    nullable: true,
+    description: '1..5 from customer feedback (QR / rating page) for this order.',
+  })
+  feedbackRating!: number | null;
+  @ApiProperty({ nullable: true })
+  feedbackSubmittedAtIso!: string | null;
+}
+
+/** Aggregate feedback across this customer’s orders (QR ratings). */
+export class CustomerLedgerFeedbackLastDto {
+  @ApiProperty() rating!: number;
+  @ApiProperty({ nullable: true }) note!: string | null;
+  @ApiProperty() submittedAtIso!: string;
+  @ApiProperty() orderId!: string;
+  @ApiProperty({ nullable: true }) orderSerial!: string | null;
+}
+
+export class CustomerLedgerFeedbackSummaryDto {
+  @ApiProperty({ nullable: true, description: '1..5 average' })
+  averageRating!: number | null;
+  @ApiProperty() ratedCount!: number;
+  @ApiProperty({ type: CustomerLedgerFeedbackLastDto, nullable: true })
+  lastFeedback!: CustomerLedgerFeedbackLastDto | null;
 }
 
 export class CustomerLedgerResponseDto {
@@ -243,4 +267,7 @@ export class CustomerLedgerResponseDto {
     totalCollectedKd: string;
     totalDiscountedKd: string;
   };
+
+  @ApiProperty({ type: CustomerLedgerFeedbackSummaryDto })
+  feedbackSummary!: CustomerLedgerFeedbackSummaryDto;
 }

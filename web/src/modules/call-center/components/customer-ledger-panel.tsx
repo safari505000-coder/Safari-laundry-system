@@ -6,10 +6,12 @@ import {
   ArrowUpCircle,
   FileText,
   History,
+  LayoutGrid,
   Loader2,
   Printer,
   RefreshCw,
   ScissorsLineDashed,
+  Star,
   Wallet,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -18,6 +20,7 @@ import {
   apiJson,
   type CustomerLedgerActivationBreakdown,
   type CustomerLedgerClosedInvoice,
+  type CustomerLedgerInvoice,
   type CustomerLedgerResponse,
 } from '@/lib/api';
 import { formatKwdLabel } from '@/lib/kwd';
@@ -87,6 +90,62 @@ export function CustomerLedgerPanel({ customerId, token }: Props) {
     () => new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }),
     [locale],
   );
+
+  const invBuckets = useMemo(() => {
+    if (!data) {
+      return {
+        unpaid: [] as CustomerLedgerInvoice[],
+        paid: [] as CustomerLedgerInvoice[],
+        canceled: [] as CustomerLedgerInvoice[],
+      };
+    }
+    const unpaid: CustomerLedgerInvoice[] = [];
+    const paid: CustomerLedgerInvoice[] = [];
+    const canceled: CustomerLedgerInvoice[] = [];
+    for (const inv of data.invoices) {
+      if (inv.status === 'CANCELED') {
+        canceled.push(inv);
+        continue;
+      }
+      if (inv.openDebt) unpaid.push(inv);
+      else paid.push(inv);
+    }
+    return { unpaid, paid, canceled };
+  }, [data]);
+
+  const kpiSums = useMemo(() => {
+    const sum = (rows: CustomerLedgerInvoice[]) =>
+      rows.reduce(
+        (acc, inv) => acc + (Number.parseFloat(inv.totalKd) || 0),
+        0,
+      );
+    return {
+      unpaidKd: sum(invBuckets.unpaid),
+      paidKd: sum(invBuckets.paid),
+    };
+  }, [invBuckets]);
+
+  const eventKpis = useMemo(() => {
+    if (!data) {
+      return {
+        settlements: 0,
+        activations: 0,
+        rollovers: 0,
+        partialPay: 0,
+      };
+    }
+    let settlements = 0;
+    let activations = 0;
+    let rollovers = 0;
+    let partialPay = 0;
+    for (const e of data.events) {
+      if (e.kind === 'ORDER_SETTLEMENT') settlements += 1;
+      else if (e.kind === 'SUBSCRIPTION_ACTIVATION') activations += 1;
+      else if (e.kind === 'SUBSCRIPTION_ROLLOVER_CARRY') rollovers += 1;
+      else if (e.kind === 'PARTIAL_DEBT_PAYMENT') partialPay += 1;
+    }
+    return { settlements, activations, rollovers, partialPay };
+  }, [data]);
 
   if (!data) {
     return (
@@ -166,6 +225,58 @@ export function CustomerLedgerPanel({ customerId, token }: Props) {
         </div>
       </div>
 
+      {data.feedbackSummary.ratedCount > 0 ? (
+        <div className="flex flex-col gap-1 rounded-lg border border-amber-200/90 bg-gradient-to-l from-amber-50/90 to-amber-50/30 p-3 text-sm dark:border-amber-900/50 dark:from-amber-950/40 dark:to-amber-950/10">
+          <div className="flex flex-wrap items-center gap-2 text-amber-950 dark:text-amber-100">
+            <Star
+              className="h-4 w-4 shrink-0 text-amber-500"
+              fill="currentColor"
+              aria-hidden
+            />
+            <span className="font-semibold">
+              {t('customerLedger.feedbackTitle')}
+            </span>
+            <span className="tabular-nums text-amber-900/90 dark:text-amber-200/90">
+              {t('customerLedger.feedbackAverage', {
+                rating: data.feedbackSummary.averageRating?.toFixed(1) ?? '—',
+                count: data.feedbackSummary.ratedCount,
+              })}
+            </span>
+          </div>
+          {data.feedbackSummary.lastFeedback ? (
+            <p className="text-xs text-amber-900/80 dark:text-amber-200/80">
+              {t('customerLedger.feedbackLast')}:{' '}
+              <span className="inline-flex items-center gap-0.5 font-medium tabular-nums">
+                {Array.from({ length: 5 }, (_, i) => i + 1).map((i) => (
+                  <Star
+                    key={i}
+                    className={`h-3 w-3 ${
+                      i <= (data.feedbackSummary.lastFeedback?.rating ?? 0)
+                        ? 'fill-amber-400 text-amber-400'
+                        : 'text-amber-200/80'
+                    }`}
+                  />
+                ))}
+              </span>
+              {data.feedbackSummary.lastFeedback.orderSerial ?
+                <span className="ms-1 font-mono text-[11px] text-amber-800/90">
+                  {data.feedbackSummary.lastFeedback.orderSerial}
+                </span>
+              : null}
+              {data.feedbackSummary.lastFeedback.note ?
+                <span className="mt-0.5 block text-amber-900/70 dark:text-amber-200/70">
+                  &ldquo;{data.feedbackSummary.lastFeedback.note}&rdquo;
+                </span>
+              : null}
+            </p>
+          ) : null}
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          {t('customerLedger.feedbackNone')}
+        </p>
+      )}
+
       {data.activeSubscription ? (
         <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-3 text-sm dark:border-blue-900/60 dark:bg-blue-950/20">
           <p className="font-medium text-blue-900 dark:text-blue-100">
@@ -184,18 +295,25 @@ export function CustomerLedgerPanel({ customerId, token }: Props) {
           {Number.parseFloat(data.activeSubscription.carriedBalanceKd) !== 0 ? (
             <p className="mt-1 text-xs text-blue-900/80 dark:text-blue-100/80">
               {t('customerLedger.carried')}:{' '}
-              <span className="tabular-nums">
+              <span className="font-semibold tabular-nums text-blue-950 dark:text-blue-50">
                 {formatKwdLabel(
                   Number.parseFloat(data.activeSubscription.carriedBalanceKd),
                 )}
+              </span>
+              <span className="ms-1 text-[11px] text-blue-800/80 dark:text-blue-200/80">
+                — {t('customerLedger.subCarriedHint')}
               </span>
             </p>
           ) : null}
         </div>
       ) : null}
 
-      <Tabs defaultValue="invoices">
+      <Tabs defaultValue="overview">
         <TabsList variant="line" className="w-full">
+          <TabsTrigger value="overview">
+            <LayoutGrid className="me-1.5 h-4 w-4" aria-hidden />
+            {t('customerLedger.tabOverview')}
+          </TabsTrigger>
           <TabsTrigger value="invoices">
             <FileText className="me-1.5 h-4 w-4" aria-hidden />
             {t('customerLedger.tabInvoices', {
@@ -210,133 +328,154 @@ export function CustomerLedgerPanel({ customerId, token }: Props) {
           </TabsTrigger>
         </TabsList>
 
+        <TabsContent value="overview" className="pt-3">
+          <p className="mb-3 text-xs text-muted-foreground">
+            {t('customerLedger.overviewHint')}
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div
+              className={cn(
+                'rounded-lg border p-3 text-sm',
+                invBuckets.unpaid.length > 0
+                  ? 'border-red-200 bg-red-50/35 dark:border-red-900/50 dark:bg-red-950/20'
+                  : 'border-border bg-card',
+              )}
+            >
+              <p className="text-xs font-medium text-muted-foreground">
+                {t('customerLedger.kpiUnpaid')}
+              </p>
+              <p className="mt-1 text-lg font-semibold tabular-nums text-red-800 dark:text-red-200">
+                {formatKwdLabel(kpiSums.unpaidKd)}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                {t('customerLedger.invoiceListCount', {
+                  count: invBuckets.unpaid.length,
+                })}
+              </p>
+            </div>
+            <div className="rounded-lg border border-border bg-card p-3 text-sm">
+              <p className="text-xs font-medium text-muted-foreground">
+                {t('customerLedger.kpiPaid')}
+              </p>
+              <p className="mt-1 text-lg font-semibold tabular-nums">
+                {formatKwdLabel(kpiSums.paidKd)}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                {t('customerLedger.invoiceListCount', {
+                  count: invBuckets.paid.length,
+                })}
+              </p>
+            </div>
+            <div className="rounded-lg border border-amber-200/80 bg-amber-50/30 p-3 text-sm dark:border-amber-900/50 dark:bg-amber-950/20">
+              <p className="text-xs font-medium text-amber-900/90 dark:text-amber-100/90">
+                {t('customerLedger.kpiSettlements')}
+              </p>
+              <p className="mt-1 text-lg font-semibold tabular-nums text-amber-950 dark:text-amber-100">
+                {eventKpis.settlements}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                {t('customerLedger.kpiSettlementsDesc')}
+              </p>
+            </div>
+            <div className="rounded-lg border border-blue-200/80 bg-blue-50/30 p-3 text-sm dark:border-blue-900/50 dark:bg-blue-950/20">
+              <p className="text-xs font-medium text-blue-900/90 dark:text-blue-100/90">
+                {t('customerLedger.kpiSubActivations')}
+              </p>
+              <p className="mt-1 text-lg font-semibold tabular-nums text-blue-950 dark:text-blue-50">
+                {eventKpis.activations}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                {t('customerLedger.kpiRollover')}: {eventKpis.rollovers} ·{' '}
+                {t('customerLedger.kpiPartialDebt')}: {eventKpis.partialPay}
+              </p>
+            </div>
+          </div>
+          <p className="mt-3 text-center text-[11px] text-muted-foreground">
+            {t('customerLedger.overviewSeeTabs')}
+          </p>
+        </TabsContent>
+
         <TabsContent value="invoices" className="pt-3">
           {data.invoices.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">
               {t('customerLedger.noInvoices')}
             </p>
           ) : (
-            <ul className="space-y-2">
-              {data.invoices.map((inv) => {
-                const at = inv.completedAtIso ?? inv.createdAtIso;
-                return (
-                  <li
-                    key={inv.id}
-                    className={cn(
-                      'rounded-lg border p-3 text-sm transition',
-                      inv.openDebt
-                        ? 'border-red-200 bg-red-50/40 dark:border-red-900/60 dark:bg-red-950/20'
-                        : 'bg-card',
-                    )}
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="font-medium">
-                          {inv.serial
-                            ? `#${inv.serial}`
-                            : t('customerLedger.invoice')}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {fmtDateTime.format(new Date(at))}
-                        </p>
-                        {inv.driverName || inv.branchName ? (
-                          <p className="text-xs text-muted-foreground">
-                            {inv.branchName ? `🏬 ${inv.branchName}` : ''}
-                            {inv.branchName && inv.driverName ? ' · ' : ''}
-                            {inv.driverName ? `🚗 ${inv.driverName}` : ''}
-                          </p>
-                        ) : null}
-                      </div>
-                      <div className="flex shrink-0 items-center gap-2">
-                        <p className="text-base font-semibold tabular-nums">
-                          {formatKwdLabel(inv.totalKd)}
-                        </p>
-                        {/* V19.7.5 — "عرض صورة الفاتورة". Opens the
-                            printable A4 invoice in a new tab so the
-                            operator keeps the Customer 360 dialog
-                            open for the rest of the call. RBAC is
-                            enforced on /api/orders/:id, so this
-                            link is safe to render unconditionally. */}
-                        <a
-                          href={`/invoices/${inv.id}/print`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          title={t('customerLedger.viewInvoice') ?? ''}
-                          aria-label={
-                            t('customerLedger.viewInvoice') ?? undefined
-                          }
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition hover:border-primary hover:bg-primary/5 hover:text-primary"
-                        >
-                          <Printer className="h-4 w-4" aria-hidden />
-                        </a>
-                        {/* V19.9 — CALL_CENTER_SUPERVISOR only: edit (same-day) / void.
-                            The component internally checks RBAC via `can()`, so
-                            it renders nothing for agents, accountants, etc. */}
-                        <InvoiceSupervisorActions
-                          order={{
-                            id: inv.id,
-                            createdAtIso: inv.createdAtIso,
-                            status: inv.status,
-                            totalKd: inv.totalKd,
-                            paymentMethod: inv.paymentMethod,
-                          }}
-                          onChanged={() => void load()}
-                          compact
-                        />
-                      </div>
-                    </div>
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      <StatusChip
-                        tone={
-                          inv.status === 'CANCELED'
-                            ? 'muted'
-                            : inv.status === 'COMPLETED'
-                              ? 'success'
-                              : 'info'
-                        }
-                      >
-                        {t(`customerLedger.orderStatus.${inv.status}`, {
-                          defaultValue: inv.status,
-                        })}
-                      </StatusChip>
-                      <StatusChip
-                        tone={inv.openDebt ? 'danger' : 'success'}
-                      >
-                        {t(`customerLedger.cashStatus.${inv.cashStatus}`, {
-                          defaultValue: inv.cashStatus,
-                        })}
-                      </StatusChip>
-                      {inv.paymentMethod ? (
-                        <StatusChip tone="info">
-                          {t(
-                            `customerLedger.method.${inv.paymentMethod}`,
-                            { defaultValue: inv.paymentMethod },
-                          )}
-                        </StatusChip>
-                      ) : null}
-                      {inv.issuedWhileCutOff ? (
-                        <StatusChip tone="danger">
-                          <ScissorsLineDashed
-                            className="me-1 h-3 w-3"
-                            aria-hidden
-                          />
-                          {t('customerLedger.chipCutOff')}
-                        </StatusChip>
-                      ) : null}
-                      {inv.subscriptionLabel ? (
-                        <StatusChip tone="muted">
-                          {inv.subscriptionLabel}
-                        </StatusChip>
-                      ) : null}
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
+            <div className="space-y-6">
+              {invBuckets.unpaid.length > 0 ? (
+                <section className="space-y-2">
+                  <div>
+                    <h4 className="text-sm font-semibold text-red-800 dark:text-red-200">
+                      {t('customerLedger.sectionInvoicesUnpaid')}
+                    </h4>
+                    <p className="text-[11px] text-muted-foreground">
+                      {t('customerLedger.sectionInvoicesUnpaidHint')}
+                    </p>
+                  </div>
+                  <ul className="space-y-2">
+                    {invBuckets.unpaid.map((inv) => (
+                      <CustomerLedgerInvoiceRow
+                        key={inv.id}
+                        inv={inv}
+                        fmtDateTime={fmtDateTime}
+                        onOrderChanged={() => void load()}
+                      />
+                    ))}
+                  </ul>
+                </section>
+              ) : null}
+              {invBuckets.paid.length > 0 ? (
+                <section className="space-y-2">
+                  <div>
+                    <h4 className="text-sm font-semibold text-foreground">
+                      {t('customerLedger.sectionInvoicesPaid')}
+                    </h4>
+                    <p className="text-[11px] text-muted-foreground">
+                      {t('customerLedger.sectionInvoicesPaidHint')}
+                    </p>
+                  </div>
+                  <ul className="space-y-2">
+                    {invBuckets.paid.map((inv) => (
+                      <CustomerLedgerInvoiceRow
+                        key={inv.id}
+                        inv={inv}
+                        fmtDateTime={fmtDateTime}
+                        onOrderChanged={() => void load()}
+                      />
+                    ))}
+                  </ul>
+                </section>
+              ) : null}
+              {invBuckets.canceled.length > 0 ? (
+                <section className="space-y-2">
+                  <div>
+                    <h4 className="text-sm font-semibold text-muted-foreground">
+                      {t('customerLedger.sectionInvoicesCanceled')}
+                    </h4>
+                    <p className="text-[11px] text-muted-foreground">
+                      {t('customerLedger.sectionInvoicesCanceledHint')}
+                    </p>
+                  </div>
+                  <ul className="space-y-2">
+                    {invBuckets.canceled.map((inv) => (
+                      <CustomerLedgerInvoiceRow
+                        key={inv.id}
+                        inv={inv}
+                        fmtDateTime={fmtDateTime}
+                        onOrderChanged={() => void load()}
+                      />
+                    ))}
+                  </ul>
+                </section>
+              ) : null}
+            </div>
           )}
         </TabsContent>
 
         <TabsContent value="timeline" className="pt-3">
+          <p className="mb-3 text-xs text-muted-foreground">
+            {t('customerLedger.timelineIntro')}
+          </p>
           {data.events.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">
               {t('customerLedger.noEvents')}
@@ -477,6 +616,119 @@ export function CustomerLedgerPanel({ customerId, token }: Props) {
         ledger={data}
       />
     </div>
+  );
+}
+
+function CustomerLedgerInvoiceRow({
+  inv,
+  fmtDateTime,
+  onOrderChanged,
+}: {
+  inv: CustomerLedgerInvoice;
+  fmtDateTime: Intl.DateTimeFormat;
+  onOrderChanged: () => void;
+}) {
+  const { t } = useTranslation();
+  const at = inv.completedAtIso ?? inv.createdAtIso;
+  return (
+    <li
+      className={cn(
+        'rounded-lg border p-3 text-sm transition',
+        inv.openDebt
+          ? 'border-red-200 bg-red-50/40 dark:border-red-900/60 dark:bg-red-950/20'
+          : 'bg-card',
+      )}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className="font-medium">
+            {inv.serial ? `#${inv.serial}` : t('customerLedger.invoice')}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {fmtDateTime.format(new Date(at))}
+          </p>
+          {inv.driverName || inv.branchName ? (
+            <p className="text-xs text-muted-foreground">
+              {inv.branchName ? `🏬 ${inv.branchName}` : ''}
+              {inv.branchName && inv.driverName ? ' · ' : ''}
+              {inv.driverName ? `🚗 ${inv.driverName}` : ''}
+            </p>
+          ) : null}
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <p className="text-base font-semibold tabular-nums">
+            {formatKwdLabel(inv.totalKd)}
+          </p>
+          <a
+            href={`/invoices/${inv.id}/print`}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={t('customerLedger.viewInvoice') ?? ''}
+            aria-label={t('customerLedger.viewInvoice') ?? undefined}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition hover:border-primary hover:bg-primary/5 hover:text-primary"
+          >
+            <Printer className="h-4 w-4" aria-hidden />
+          </a>
+          <InvoiceSupervisorActions
+            order={{
+              id: inv.id,
+              createdAtIso: inv.createdAtIso,
+              status: inv.status,
+              totalKd: inv.totalKd,
+              paymentMethod: inv.paymentMethod,
+            }}
+            onChanged={onOrderChanged}
+            compact
+          />
+        </div>
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        <StatusChip
+          tone={
+            inv.status === 'CANCELED'
+              ? 'muted'
+              : inv.status === 'COMPLETED'
+                ? 'success'
+                : 'info'
+          }
+        >
+          {t(`customerLedger.orderStatus.${inv.status}`, {
+            defaultValue: inv.status,
+          })}
+        </StatusChip>
+        <StatusChip tone={inv.openDebt ? 'danger' : 'success'}>
+          {t(`customerLedger.cashStatus.${inv.cashStatus}`, {
+            defaultValue: inv.cashStatus,
+          })}
+        </StatusChip>
+        {inv.paymentMethod ? (
+          <StatusChip tone="info">
+            {t(`customerLedger.method.${inv.paymentMethod}`, {
+              defaultValue: inv.paymentMethod,
+            })}
+          </StatusChip>
+        ) : null}
+        {inv.issuedWhileCutOff ? (
+          <StatusChip tone="danger">
+            <ScissorsLineDashed className="me-1 h-3 w-3" aria-hidden />
+            {t('customerLedger.chipCutOff')}
+          </StatusChip>
+        ) : null}
+        {inv.subscriptionLabel ? (
+          <StatusChip tone="muted">{inv.subscriptionLabel}</StatusChip>
+        ) : null}
+        {inv.feedbackRating != null ? (
+          <StatusChip tone="info">
+            <Star
+              className="me-0.5 h-3 w-3 text-amber-500"
+              fill="currentColor"
+              aria-hidden
+            />
+            {t('customerLedger.feedbackInvoice')} {inv.feedbackRating}/5
+          </StatusChip>
+        ) : null}
+      </div>
+    </li>
   );
 }
 

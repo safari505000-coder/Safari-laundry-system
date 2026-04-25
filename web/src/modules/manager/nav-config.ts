@@ -2,6 +2,7 @@ import type { NavGroup } from '@/modules/shared/nav/nav-types';
 import { G } from '@/modules/shared/nav/nav-groups';
 import {
   attendanceItem,
+  collectionsItem,
   dashboardItem,
   driverOversightItem,
   expensesItem,
@@ -12,6 +13,7 @@ import {
   ordersItem,
   posItem,
   shiftsItem,
+  whatsappToolsItem,
 } from '@/modules/shared/nav/nav-items';
 
 /**
@@ -29,6 +31,10 @@ export const managerSidebarNavGroups: NavGroup[] = [
   {
     ...G.finance,
     items: [expensesItem, myCustodyItem, myDocumentsItem],
+  },
+  {
+    ...G.customersSubs,
+    items: [collectionsItem, whatsappToolsItem],
   },
   {
     ...G.inventoryOps,

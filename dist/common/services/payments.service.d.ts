@@ -1,6 +1,7 @@
 import { OnModuleInit } from '@nestjs/common';
 import { PosPaymentMethod, Prisma } from '@prisma/client';
 import { CustomerLedgerService } from '../../customer-ledger/customer-ledger.service';
+import { CustomerNotificationsService } from '../../customer-notifications/customer-notifications.service';
 import { GeneralLedgerService } from '../../general-ledger/general-ledger.service';
 import { InventoryService } from '../../inventory/inventory.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -35,6 +36,7 @@ export declare class PaymentsService implements OnModuleInit {
     private readonly customerLedger;
     private readonly generalLedger;
     private readonly inventory;
+    private readonly customerNotifications;
     private readonly logger;
     private prodFirstMockLinkLogged;
     private readonly apiBase;
@@ -43,7 +45,7 @@ export declare class PaymentsService implements OnModuleInit {
     private readonly secret;
     private readonly callbackPublicUrl;
     private readonly webAppUrl;
-    constructor(prisma: PrismaService, customerLedger: CustomerLedgerService, generalLedger: GeneralLedgerService, inventory: InventoryService);
+    constructor(prisma: PrismaService, customerLedger: CustomerLedgerService, generalLedger: GeneralLedgerService, inventory: InventoryService, customerNotifications: CustomerNotificationsService);
     onModuleInit(): void;
     paymentsMockExplicit(): boolean;
     usePlaceholderGateway(): boolean;
@@ -69,6 +71,8 @@ export declare class PaymentsService implements OnModuleInit {
     findOrderByTrackId(trackId: string): Promise<string | null>;
     finalizePaidOrderFromGateway(referenceId: string, gatewayMetadata?: Prisma.InputJsonValue): Promise<void>;
     private finalizeSinglePaidOrderFromGateway;
+    schedulePaymentConfirmedCustomerNotify(orderId: string): void;
+    private emitPaymentConfirmedNotify;
     private resolveFallbackPerformer;
     manuallyMarkOrderPaidByMethod(args: {
         orderId: string;

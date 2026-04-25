@@ -22,6 +22,14 @@ export type InvoiceEditedIssuerNotifyParams = {
     invoiceShareUrl?: string;
     invoicePdfUrl?: string;
 };
+export type PaymentConfirmedNotifyParams = {
+    customerPhone: string;
+    orderId: string;
+    orderLabel: string;
+    amountKd: string;
+    paymentUrl?: string;
+    ratingUrl?: string;
+};
 export declare class CustomerNotificationsService implements OnModuleInit {
     private readonly logger;
     private static moatmtCredsMissingLogged;
@@ -30,7 +38,14 @@ export declare class CustomerNotificationsService implements OnModuleInit {
     notifyInvoiceIssued(params: InvoiceIssuedNotifyParams): void;
     deliverInvoiceIssuedNow(params: InvoiceIssuedNotifyParams): Promise<void>;
     notifyInvoiceEditedForIssuer(params: InvoiceEditedIssuerNotifyParams): void;
+    notifyPaymentConfirmed(params: PaymentConfirmedNotifyParams): void;
+    deliverCollectionsPaymentLinkNow(params: {
+        customerPhone: string;
+        orderId: string;
+        message: string;
+    }): Promise<boolean>;
     private deliver;
+    private deliverPaymentConfirmed;
     private deliverIssuerEdit;
     private buildMoatmtInvoiceMediaPayload;
     private buildMoatmtIssuerEditMediaPayload;

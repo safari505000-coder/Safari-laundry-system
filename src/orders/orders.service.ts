@@ -27,6 +27,7 @@ import { resolveCustomerPhoneForNotify } from '../common/validation/kuwait-custo
 import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
 import { parseFixed4ToMinor, toMinorFromFixed4 } from '../finance/finance-money';
 import { InventoryService } from '../inventory/inventory.service';
+import type { JwtUser } from '../auth/decorators/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { SerialCounterService } from '../serials/serial-counter.service';
 import { AssignDriverDto } from './dto/assign-driver.dto';
@@ -742,6 +743,8 @@ export class OrdersService {
       void this.posInvoiceNotifyToCustomer(detail, phoneCompact).catch((e) =>
         this.log.warn(`pos invoice notify: ${e}`),
       );
+      // Same thank-you + rating link as gateway / CC mark-paid (field cash & KNET included).
+      this.paymentsService.schedulePaymentConfirmedCustomerNotify(detail.id);
       return detail;
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
@@ -994,9 +997,11 @@ export class OrdersService {
    */
   async listUnpaidCollectionOrders(
     branchId: string | null = null,
+    actor?: JwtUser,
   ): Promise<
     {
       orderId: string;
+      customerId: string;
       readableId: string;
       invoiceNumber: string | null;
       customerName: string;
@@ -1032,17 +1037,27 @@ export class OrdersService {
     // sales we match `driver.branchId`; for driver-less invoices (office
     // bookings, online prepaid, etc.) we fall back to the customer's
     // `originBranchId`. Omitting `branchId` yields the global view.
-    const branchWhere: Prisma.OrderWhereInput | undefined = branchId
-      ? {
-          OR: [
-            { driver: { is: { branchId } } },
-            {
-              driverId: null,
-              customer: { is: { originBranchId: branchId } },
-            },
-          ],
-        }
-      : undefined;
+    const isDriver = actor?.role === SafariRole.DRIVER;
+    const effectiveBranchId =
+      isDriver ? null
+      : branchId ??
+        (actor?.role === SafariRole.MANAGER && actor.branchId ?
+          actor.branchId
+        : null);
+
+    const branchWhere: Prisma.OrderWhereInput | undefined = isDriver
+      ? { driverId: actor!.userId }
+      : effectiveBranchId
+        ? {
+            OR: [
+              { driver: { is: { branchId: effectiveBranchId } } },
+              {
+                driverId: null,
+                customer: { is: { originBranchId: effectiveBranchId } },
+              },
+            ],
+          }
+        : undefined;
 
     const rows = await this.prisma.order.findMany({
       where: {
@@ -1052,6 +1067,7 @@ export class OrdersService {
       },
       select: {
         id: true,
+        customerId: true,
         serialNumber: true,
         invoiceNumber: true,
         totalPrice: true,
@@ -1062,6 +1078,7 @@ export class OrdersService {
         lastReminderAt: true,
         customer: {
           select: {
+            id: true,
             displayName: true,
             phone: true,
             phone2: true,
@@ -1143,6 +1160,7 @@ export class OrdersService {
       const driverName = r.driver?.fullName?.trim() || null;
       return {
         orderId: r.id,
+        customerId: r.customerId,
         readableId,
         invoiceNumber: r.invoiceNumber ?? null,
         customerName: name,
@@ -1168,12 +1186,111 @@ export class OrdersService {
   }
 
   /**
+   * Single unpaid row for server-side payment-link WhatsApp (Moatmt / webhook),
+   * using the same projection as {@link listUnpaidCollectionOrders}.
+   */
+  async getUnpaidCollectionOrderRowForWhatsappText(
+    orderId: string,
+  ): Promise<{
+    orderId: string;
+    readableId: string;
+    invoiceNumber: string | null;
+    customerName: string;
+    /** Compact digits — same as collections list `customerPhone`. */
+    customerPhone: string;
+    customerPhone2: string | null;
+    amountKd: string;
+    lineItems: {
+      label: string | null;
+      quantity: string;
+      lineTotalKd: string;
+    }[];
+    branchName: string | null;
+    driverName: string | null;
+  } | null> {
+    const r = await this.prisma.order.findFirst({
+      where: {
+        id: orderId,
+        cashStatus: CashStatus.UNPAID,
+        status: { not: OrderStatus.CANCELED },
+      },
+      select: {
+        id: true,
+        serialNumber: true,
+        invoiceNumber: true,
+        totalPrice: true,
+        customer: {
+          select: {
+            displayName: true,
+            phone: true,
+            phone2: true,
+            originBranch: { select: { name: true } },
+          },
+        },
+        driver: {
+          select: {
+            fullName: true,
+            branch: { select: { name: true } },
+          },
+        },
+        lineItems: {
+          select: {
+            label: true,
+            quantity: true,
+            unitPrice: true,
+          },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+    });
+    if (!r) {
+      return null;
+    }
+    const phone =
+      r.customer.phone?.replace(/[\s-]/g, '').trim() ||
+      r.customer.phone2?.replace(/[\s-]/g, '').trim() ||
+      '';
+    const name =
+      r.customer.displayName?.trim() || (phone ? phone : 'Customer');
+    const readableId =
+      r.serialNumber?.trim() ||
+      r.invoiceNumber?.trim() ||
+      `#${r.id.slice(-6).toUpperCase()}`;
+    const lineItems = r.lineItems.map((li) => {
+      const lineTotal = li.quantity.mul(li.unitPrice);
+      return {
+        label: li.label,
+        quantity: li.quantity.toString(),
+        lineTotalKd: lineTotal.toFixed(3),
+      };
+    });
+    const branchName =
+      r.driver?.branch?.name?.trim() ||
+      r.customer.originBranch?.name?.trim() ||
+      null;
+    const driverName = r.driver?.fullName?.trim() || null;
+    return {
+      orderId: r.id,
+      readableId,
+      invoiceNumber: r.invoiceNumber ?? null,
+      customerName: name,
+      customerPhone: phone,
+      customerPhone2:
+        r.customer.phone2?.replace(/[\s-]/g, '').trim() || null,
+      amountKd: r.totalPrice.toFixed(3),
+      lineItems,
+      branchName,
+      driverName,
+    };
+  }
+
+  /**
    * @deprecated Use {@link listUnpaidCollectionOrders}. Retained as a
    * thin alias so that legacy callers (if any) keep compiling while
    * callers migrate to the widened, payment-method-agnostic query.
    */
   async listUnpaidOnlinePaymentOrders() {
-    return this.listUnpaidCollectionOrders();
+    return this.listUnpaidCollectionOrders(null, undefined);
   }
 
   /**

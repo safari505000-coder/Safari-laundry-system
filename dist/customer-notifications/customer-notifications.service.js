@@ -210,6 +210,32 @@ function buildInvoiceEditedIssuerMessage(params) {
     lines.push(`فريق ${branding_1.BRAND_SYSTEM_AR} 🇰🇼`);
     return lines.join('\n');
 }
+function buildPaymentConfirmedMessage(params) {
+    const lines = [];
+    lines.push('تم تأكيد الدفع بنجاح ✅');
+    lines.push('');
+    lines.push('شكراً لك، تم استلام المبلغ.');
+    lines.push('');
+    lines.push(`📋 رقم الطلب: *${params.orderLabel}*`);
+    lines.push(`💰 المبلغ الإجمالي: *${params.amountKd} د.ك*`);
+    lines.push('');
+    lines.push('ملابسك الآن نظيفة، معطرة، وجاهزة.');
+    lines.push('');
+    lines.push('مصبغة سفاري — جودة نهتم بها.');
+    if (params.paymentUrl) {
+        lines.push('');
+        lines.push('🔒 رابط الدفع:');
+        lines.push(params.paymentUrl);
+    }
+    if (params.ratingUrl) {
+        lines.push('');
+        lines.push('⭐ نسعد بتقييمك:');
+        lines.push(params.ratingUrl);
+    }
+    lines.push('');
+    lines.push(`فريق ${branding_1.BRAND_SYSTEM_AR} 🇰🇼`);
+    return lines.join('\n');
+}
 let CustomerNotificationsService = class CustomerNotificationsService {
     static { CustomerNotificationsService_1 = this; }
     logger = new common_1.Logger(CustomerNotificationsService_1.name);
@@ -224,7 +250,7 @@ let CustomerNotificationsService = class CustomerNotificationsService {
             const base = (process.env.MOATMT_API_BASE_URL?.trim() || 'https://moatmt.sa/api').replace(/\/$/, '');
             const media = isMoatmtInvoiceMediaEnabled();
             const minimal = useInvoiceIssuedMessageMinimalText();
-            this.logger.log(`Customer notify: Moatmt enabled → POST ${base}/send | instance_id=${maskIdForLog(instanceId)} (len ${instanceId.length}) | access_token set (len ${accessToken.length}) | media: ${media ? 'on (PDF when URL present)' : 'off (type:text only)'} | invoice text: ${minimal ? 'minimal (رقم+إجمالي+رابط دفع)' : 'full template'}; on failure: CUSTOMER_NOTIFY_WEBHOOK_URL if set.`);
+            this.logger.log(`Customer notify: Moatmt enabled → POST ${base}/send | instance_id=${maskIdForLog(instanceId)} (len ${instanceId.length}) | access_token set (len ${accessToken.length}) | media: ${media ? 'on (PDF when URL present)' : 'off (type:text only)'} | invoice text: ${minimal ? 'minimal (رقم+إجمالي+رابط دفع)' : 'full / أصناف+دفع (POS: بلا مرفق ملف من السيرفر)'}; on failure: CUSTOMER_NOTIFY_WEBHOOK_URL if set.`);
             if (accessToken.length < 24) {
                 this.logger.warn(`Moatmt: MOATMT_ACCESS_TOKEN is only ${accessToken.length} chars — the panel usually issues a *long* token. ` +
                     'If the API says "Access token is required", paste the full API token from moatmt.sa (not a short instance/session id).');
@@ -249,6 +275,37 @@ let CustomerNotificationsService = class CustomerNotificationsService {
         setImmediate(() => {
             void this.deliverIssuerEdit(params).catch((e) => this.logger.warn(`Invoice issuer notify failed: ${e}`));
         });
+    }
+    notifyPaymentConfirmed(params) {
+        setImmediate(() => {
+            void this.deliverPaymentConfirmed(params).catch((e) => this.logger.warn(`Payment confirmed notify failed: ${e}`));
+        });
+    }
+    async deliverCollectionsPaymentLinkNow(params) {
+        if (await this.trySendMoatmt(params.customerPhone, params.message, null)) {
+            return true;
+        }
+        const webhook = process.env.CUSTOMER_NOTIFY_WEBHOOK_URL?.trim();
+        if (webhook) {
+            const res = await fetch(webhook, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    to: params.customerPhone,
+                    message: params.message,
+                    orderId: params.orderId,
+                    template: 'collections_payment_link',
+                }),
+            });
+            if (!res.ok) {
+                this.logger.warn(`CUSTOMER_NOTIFY_WEBHOOK_URL returned ${res.status} (collections_payment_link)`);
+                return false;
+            }
+            return true;
+        }
+        this.logger.warn(`Collections payment-link WhatsApp not sent (check MOATMT_* and CUSTOMER_NOTIFY_WEBHOOK_URL). ` +
+            `phone=${formatPhoneHintForLog(params.customerPhone)} orderId=${params.orderId}`);
+        return false;
     }
     async deliver(params) {
         const base = (process.env.PUBLIC_WEB_APP_URL ?? '').replace(/\/$/, '') || '';
@@ -304,6 +361,38 @@ let CustomerNotificationsService = class CustomerNotificationsService {
         }
         this.logger.warn(`Invoice WhatsApp not sent to customer (check MOATMT_* and CUSTOMER_NOTIFY_WEBHOOK_URL on the server). ` +
             `phone=${formatPhoneHintForLog(params.customerPhone)} orderId=${params.orderId} text_preview=${message.slice(0, 120)}…`);
+    }
+    async deliverPaymentConfirmed(params) {
+        const message = buildPaymentConfirmedMessage({
+            amountKd: params.amountKd,
+            orderLabel: params.orderLabel,
+            paymentUrl: params.paymentUrl,
+            ratingUrl: params.ratingUrl,
+        });
+        if (await this.trySendMoatmt(params.customerPhone, message, null)) {
+            return;
+        }
+        const webhook = process.env.CUSTOMER_NOTIFY_WEBHOOK_URL?.trim();
+        if (webhook) {
+            const res = await fetch(webhook, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    to: params.customerPhone,
+                    message,
+                    orderId: params.orderId,
+                    template: 'payment_confirmed',
+                    paymentUrl: params.paymentUrl ?? null,
+                    ratingUrl: params.ratingUrl ?? null,
+                }),
+            });
+            if (!res.ok) {
+                this.logger.warn(`CUSTOMER_NOTIFY_WEBHOOK_URL returned ${res.status} (payment_confirmed)`);
+            }
+            return;
+        }
+        this.logger.warn(`Payment-confirmed WhatsApp not sent (check MOATMT_* and CUSTOMER_NOTIFY_WEBHOOK_URL). ` +
+            `phone=${formatPhoneHintForLog(params.customerPhone)} orderId=${params.orderId} preview=${message.slice(0, 100)}…`);
     }
     async deliverIssuerEdit(params) {
         const message = buildInvoiceEditedIssuerMessage({

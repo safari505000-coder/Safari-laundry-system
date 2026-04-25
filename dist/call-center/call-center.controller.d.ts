@@ -12,7 +12,7 @@ import { DailyCollectionsReconciliationQueryDto } from './dto/daily-collections-
 export declare class CallCenterController {
     private readonly callCenterService;
     constructor(callCenterService: CallCenterService);
-    operationsSummary(branchId?: string): Promise<import("./dto/operations-summary.dto").CallCenterOperationsSummaryDto>;
+    operationsSummary(branchId: string | undefined, user: JwtUser): Promise<import("./dto/operations-summary.dto").CallCenterOperationsSummaryDto>;
     debtRecoveryReport(q: DebtRecoveryQueryDto): Promise<import("./dto/debt-recovery-report.dto").DebtRecoveryReportDto>;
     listPlans(): import("@prisma/client").Prisma.PrismaPromise<{
         id: string;
@@ -60,10 +60,11 @@ export declare class CallCenterController {
         planId: string;
         planName: string | null;
     }>;
-    markOrderReminderSent(orderId: string): Promise<import("./dto/reminder-result.dto").ReminderResultDto>;
-    ensureOrderPaymentLink(orderId: string): Promise<{
+    markOrderReminderSent(orderId: string, user: JwtUser): Promise<import("./dto/reminder-result.dto").ReminderResultDto>;
+    ensureOrderPaymentLink(orderId: string, user: JwtUser): Promise<{
         url: string;
     }>;
+    sendPaymentLinkToCustomerWhatsapp(orderId: string, user: JwtUser): Promise<import("./dto/send-payment-link-whatsapp.dto").SendPaymentLinkWhatsappResultDto>;
     markCollectionOrderPaid(orderId: string, dto: MarkOrderPaidDto, user: JwtUser): Promise<{
         orderId: string;
         alreadySettled: boolean;

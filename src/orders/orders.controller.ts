@@ -115,20 +115,25 @@ export class OrdersController {
     SafariRole.CALL_CENTER_SUPERVISOR,
     SafariRole.OWNER,
     SafariRole.GENERAL_MANAGER,
+    SafariRole.MANAGER,
+    SafariRole.DRIVER,
   )
   @ApiOperation({
     summary: `Debt-Tracking — every unpaid invoice (${APP_BRAND})`,
     description:
       'V1.6.5: Financial Oversight Report feeding the Collections debt table. Returns ALL non-canceled orders with cashStatus=UNPAID, regardless of payment method (Cash, KNET, Payment Link, Online, Wallet, Debt-on-account). Pass `?branchId=<uuid>` to scope the table to a single branch — the Red-card KPI uses the same scope so the footer sum equals the KPI to the last fils. Amounts are serialized with 3 decimals (KWD standard).',
   })
-  listCollectionsUnpaidOnline(@Query('branchId') branchId?: string) {
+  listCollectionsUnpaidOnline(
+    @Query('branchId') branchId: string | undefined,
+    @CurrentUser() user: JwtUser,
+  ) {
     // V1.6.5 — mirror the operations-summary parser: empty / non-UUID
     // values collapse to global so a stray "?branchId=" doesn't 500.
     const raw = (branchId ?? '').trim();
     const uuidRe =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const scoped = raw && uuidRe.test(raw) ? raw : null;
-    return this.ordersService.listUnpaidCollectionOrders(scoped);
+    return this.ordersService.listUnpaidCollectionOrders(scoped, user);
   }
 
   @Get('stale-quick-risks')

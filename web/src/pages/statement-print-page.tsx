@@ -1,11 +1,18 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/auth-context';
 import {
   ApiError,
   apiJson,
-  type CustomerLedgerResponse,
   type CustomerLedgerEvent,
+  type CustomerLedgerInvoice,
+  type CustomerLedgerResponse,
 } from '@/lib/api';
 import { formatKwdLabel } from '@/lib/kwd';
 import { PrintableSheet } from '@/modules/shared/print/PrintableSheet';
@@ -75,11 +82,72 @@ const METHOD_AR: Record<string, string> = {
 };
 
 const EVENT_KIND_AR: Record<string, string> = {
-  SUBSCRIPTION_ACTIVATION: 'تفعيل / تجديد اشتراك',
-  SUBSCRIPTION_ROLLOVER_CARRY: 'ترحيل اشتراك',
-  ORDER_SETTLEMENT: 'تسوية فاتورة',
+  SUBSCRIPTION_ACTIVATION: 'تجديد أو تفعيل اشتراك',
+  SUBSCRIPTION_ROLLOVER_CARRY: 'ترحيل رصيد اشتراك',
+  ORDER_SETTLEMENT: 'تسوية فاتورة (من رصيد الاشتراك)',
   PARTIAL_DEBT_PAYMENT: 'تسديد جزء من المديونية',
 };
+
+/**
+ * One invoice sub-table (shared thead). Used for unpaid / paid / canceled
+ * groups on the printed statement.
+ */
+function StatementInvoiceSubTable({
+  invoices,
+  title,
+  hint,
+  trClass,
+  foot,
+}: {
+  invoices: CustomerLedgerInvoice[];
+  title: string;
+  hint?: string;
+  trClass?: (inv: CustomerLedgerInvoice) => string | undefined;
+  foot?: ReactNode;
+}) {
+  if (invoices.length === 0) return null;
+  return (
+    <div className="stmt-invoice-block">
+      <h4 className="stmt-invoice-group-title">{title}</h4>
+      {hint ? <p className="stmt-invoice-group-hint">{hint}</p> : null}
+      <table className="printable-sheet__table">
+        <thead>
+          <tr>
+            <th style={{ width: '18%' }}>رقم الفاتورة</th>
+            <th style={{ width: '22%' }}>التاريخ</th>
+            <th style={{ width: '20%' }}>حالة الطلب</th>
+            <th style={{ width: '20%' }}>حالة الدفع</th>
+            <th style={{ width: '20%', textAlign: 'end' }}>المبلغ</th>
+          </tr>
+        </thead>
+        <tbody>
+          {invoices.map((inv) => (
+            <tr
+              key={inv.id}
+              className={trClass ? trClass(inv) : undefined}
+            >
+              <td>#{inv.serial ?? inv.id.slice(0, 8)}</td>
+              <td>{formatDate(inv.completedAtIso ?? inv.createdAtIso)}</td>
+              <td>{ORDER_STATUS_AR[inv.status] ?? inv.status}</td>
+              <td>
+                {CASH_STATUS_AR[inv.cashStatus] ?? inv.cashStatus}
+                {inv.paymentMethod ? (
+                  <span className="stmt-pay-method">
+                    ({METHOD_AR[inv.paymentMethod] ?? inv.paymentMethod})
+                  </span>
+                ) : null}
+              </td>
+              <td style={{ textAlign: 'end' }}>
+                <strong>{KD_FMT_4(inv.totalKd)}</strong>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+        {foot}
+      </table>
+    </div>
+  );
+}
 
 // ────────────────────────────────────────────────────────────────────
 // Shared A4 body — used by both the authenticated CC flow and the
@@ -109,6 +177,21 @@ export function StatementSheet({
       else totalPaid += v;
     }
     return { totalInvoiced, totalPaid, totalOpenDebt };
+  }, [data]);
+
+  const invBuckets = useMemo(() => {
+    const unpaid: CustomerLedgerInvoice[] = [];
+    const paid: CustomerLedgerInvoice[] = [];
+    const canceled: CustomerLedgerInvoice[] = [];
+    for (const inv of data.invoices) {
+      if (inv.status === 'CANCELED') {
+        canceled.push(inv);
+        continue;
+      }
+      if (inv.openDebt) unpaid.push(inv);
+      else paid.push(inv);
+    }
+    return { unpaid, paid, canceled };
   }, [data]);
 
   const issuedAtIso = new Date().toISOString();
@@ -219,15 +302,81 @@ export function StatementSheet({
                   </span>
                 </div>
               </div>
+              {Number.parseFloat(sub.carriedBalanceKd) !== 0 ? (
+                <div className="stmt-sub-carried">
+                  <span className="stmt-sub-carried-label">
+                    رصيد مرحّل (من اشتراك/تسوية سابقة)
+                  </span>
+                  <span className="stmt-sub-carried-value">
+                    {KD_FMT_4(sub.carriedBalanceKd)}
+                  </span>
+                </div>
+              ) : null}
             </div>
           ) : null}
         </section>
 
-        {/* ─── 3. Financial transactions (the star of the show) ──── */}
+        {/* ─── 3. Invoices: unpaid → paid → canceled (read as "what I owe" first) */}
+        <section className="printable-sheet__section">
+          <h3 className="printable-sheet__section-title">
+            الفواتير ({data.invoices.length})
+          </h3>
+          {data.invoices.length === 0 ? (
+            <p className="stmt-empty">لا توجد فواتير مسجّلة.</p>
+          ) : (
+            <>
+              <StatementInvoiceSubTable
+                title="فواتير غير مدفوعة"
+                hint="مبالغ لا تزال مطلوبة، أو بانتظار توريد المندوب."
+                invoices={invBuckets.unpaid}
+                trClass={(inv) =>
+                  inv.openDebt ? 'stmt-invoice-open' : undefined
+                }
+                foot={
+                  invBuckets.unpaid.length > 0 ? (
+                    <tfoot>
+                      <tr>
+                        <td colSpan={4}>إجمالي غير المسدّد (هذا القسم)</td>
+                        <td style={{ textAlign: 'end', color: '#b91c1c' }}>
+                          {formatKwdLabel(
+                            invBuckets.unpaid.reduce(
+                              (s, i) => s + (Number.parseFloat(i.totalKd) || 0),
+                              0,
+                            ),
+                          )}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  ) : null
+                }
+              />
+              <StatementInvoiceSubTable
+                title="فواتير مدفوعة"
+                hint="طلبات اكتملت وتم سدادها (نقداً، كي نت، أونلاين، أو من رصيد الاشتراك)."
+                invoices={invBuckets.paid}
+              />
+              <StatementInvoiceSubTable
+                title="فواتير ملغاة"
+                hint="لا تُحسب ضمن المدفوع أو المستحق."
+                invoices={invBuckets.canceled}
+                trClass={() => 'stmt-invoice-canceled'}
+              />
+            </>
+          )}
+        </section>
+
+        {/* ─── 4. Financial transactions (الحركة) — after invoices so renewals + settlements are contextual */}
         <section className="printable-sheet__section">
           <h3 className="printable-sheet__section-title">
             الحركة المالية ({data.events.length})
           </h3>
+          <p className="stmt-events-intro">
+            يوضح هذا الجدول أين ذهب المال:{' '}
+            <strong>تجديد/تفعيل اشتراك</strong> (مع تفصيل دفع المديونية
+            وإقفال فواتير سابقة عند الضغط على الصف الموسّع)، و
+            <strong> تسوية فواتير من رصيد الاشتراك</strong>، و
+            <strong> ترحيل رصيد</strong> و<strong>تسديد مديونية</strong>.
+          </p>
           {data.events.length === 0 ? (
             <p className="stmt-empty">لا توجد حركة مالية مسجّلة.</p>
           ) : (
@@ -247,61 +396,6 @@ export function StatementSheet({
                   <EventRows key={e.id} event={e} />
                 ))}
               </tbody>
-            </table>
-          )}
-        </section>
-
-        {/* ─── 4. Invoice listing ─────────────────────────────────── */}
-        <section className="printable-sheet__section">
-          <h3 className="printable-sheet__section-title">
-            الفواتير ({data.invoices.length})
-          </h3>
-          {data.invoices.length === 0 ? (
-            <p className="stmt-empty">لا توجد فواتير مسجّلة.</p>
-          ) : (
-            <table className="printable-sheet__table">
-              <thead>
-                <tr>
-                  <th style={{ width: '18%' }}>رقم الفاتورة</th>
-                  <th style={{ width: '22%' }}>التاريخ</th>
-                  <th style={{ width: '20%' }}>حالة الطلب</th>
-                  <th style={{ width: '20%' }}>حالة الدفع</th>
-                  <th style={{ width: '20%', textAlign: 'end' }}>المبلغ</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.invoices.map((inv) => (
-                  <tr
-                    key={inv.id}
-                    className={inv.openDebt ? 'stmt-invoice-open' : undefined}
-                  >
-                    <td>#{inv.serial ?? inv.id.slice(0, 8)}</td>
-                    <td>
-                      {formatDate(inv.completedAtIso ?? inv.createdAtIso)}
-                    </td>
-                    <td>{ORDER_STATUS_AR[inv.status] ?? inv.status}</td>
-                    <td>
-                      {CASH_STATUS_AR[inv.cashStatus] ?? inv.cashStatus}
-                      {inv.paymentMethod ? (
-                        <span className="stmt-pay-method">
-                          ({METHOD_AR[inv.paymentMethod] ?? inv.paymentMethod})
-                        </span>
-                      ) : null}
-                    </td>
-                    <td style={{ textAlign: 'end' }}>
-                      <strong>{KD_FMT_4(inv.totalKd)}</strong>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td colSpan={4}>إجمالي الفواتير غير المسدّدة</td>
-                  <td style={{ textAlign: 'end', color: '#b91c1c' }}>
-                    {formatKwdLabel(totals.totalOpenDebt)}
-                  </td>
-                </tr>
-              </tfoot>
             </table>
           )}
         </section>

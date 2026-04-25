@@ -6,6 +6,7 @@ import { CustomerNotificationsService } from '../customer-notifications/customer
 import { CustomerLedgerService } from '../customer-ledger/customer-ledger.service';
 import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
 import { InventoryService } from '../inventory/inventory.service';
+import type { JwtUser } from '../auth/decorators/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { SerialCounterService } from '../serials/serial-counter.service';
 import { AssignDriverDto } from './dto/assign-driver.dto';
@@ -120,8 +121,9 @@ export declare class OrdersService {
     posCheckout(driverUserId: string, dto: PosCheckoutDto): Promise<PosCheckoutOrderDetail>;
     posCheckoutBundle(driverUserId: string, dto: PosCheckoutBundleDto): Promise<PosCheckoutBundleResult>;
     createAsManager(dto: CreateOrderDto): Promise<OrderDetail>;
-    listUnpaidCollectionOrders(branchId?: string | null): Promise<{
+    listUnpaidCollectionOrders(branchId?: string | null, actor?: JwtUser): Promise<{
         orderId: string;
+        customerId: string;
         readableId: string;
         invoiceNumber: string | null;
         customerName: string;
@@ -143,8 +145,25 @@ export declare class OrdersService {
             lineTotalKd: string;
         }[];
     }[]>;
+    getUnpaidCollectionOrderRowForWhatsappText(orderId: string): Promise<{
+        orderId: string;
+        readableId: string;
+        invoiceNumber: string | null;
+        customerName: string;
+        customerPhone: string;
+        customerPhone2: string | null;
+        amountKd: string;
+        lineItems: {
+            label: string | null;
+            quantity: string;
+            lineTotalKd: string;
+        }[];
+        branchName: string | null;
+        driverName: string | null;
+    } | null>;
     listUnpaidOnlinePaymentOrders(): Promise<{
         orderId: string;
+        customerId: string;
         readableId: string;
         invoiceNumber: string | null;
         customerName: string;

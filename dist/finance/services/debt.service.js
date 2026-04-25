@@ -14,6 +14,51 @@ const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
 const prisma_service_1 = require("../../prisma/prisma.service");
 const subscription_service_1 = require("./subscription.service");
+function orderBranchWhereForMarketDebt(branchId) {
+    const b = branchId?.trim();
+    if (!b)
+        return undefined;
+    return {
+        OR: [
+            { driver: { is: { branchId: b } } },
+            {
+                driverId: null,
+                customer: { is: { originBranchId: b } },
+            },
+        ],
+    };
+}
+function foldMarketUnpaidByMethod(groups) {
+    let cash = 0;
+    let knet = 0;
+    let online = 0;
+    let link = 0;
+    let other = 0;
+    for (const g of groups) {
+        const n = Number.parseFloat((g._sum.totalPrice ?? new client_1.Prisma.Decimal(0)).toString());
+        if (!Number.isFinite(n) || n === 0)
+            continue;
+        const p = g.posPaymentMethod;
+        if (p === client_1.PosPaymentMethod.CASH)
+            cash += n;
+        else if (p === client_1.PosPaymentMethod.KNET)
+            knet += n;
+        else if (p === client_1.PosPaymentMethod.ONLINE)
+            online += n;
+        else if (p === client_1.PosPaymentMethod.PAYMENT_LINK)
+            link += n;
+        else
+            other += n;
+    }
+    const f = (x) => x.toFixed(4);
+    return {
+        cashKd: f(cash),
+        knetKd: f(knet),
+        onlineKd: f(online),
+        paymentLinkKd: f(link),
+        otherKd: f(other),
+    };
+}
 let DebtService = class DebtService {
     prisma;
     subscriptionService;
@@ -183,13 +228,8 @@ let DebtService = class DebtService {
         }
         const phone = (query.customerPhone ?? '').replace(/\D+/g, '').trim();
         const where = {
-            source: client_1.DebtSource.INVOICE_SHORTFALL,
+            source: { in: [client_1.DebtSource.INVOICE_SHORTFALL, client_1.DebtSource.SUBSCRIPTION_OVERUSE] },
             orderId: { not: null },
-            actorUser: {
-                is: {
-                    safariRole: { in: [client_1.SafariRole.DRIVER, client_1.SafariRole.MANAGER] },
-                },
-            },
             ...(from || to
                 ? {
                     createdAt: {
@@ -214,6 +254,7 @@ let DebtService = class DebtService {
             take: 20_000,
             select: {
                 id: true,
+                source: true,
                 amount: true,
                 createdAt: true,
                 orderId: true,
@@ -258,43 +299,59 @@ let DebtService = class DebtService {
             const amount = Number.parseFloat(e.amount.toString());
             if (!Number.isFinite(amount) || amount <= 0)
                 continue;
-            const existing = byOrder.get(e.orderId);
-            if (existing) {
-                existing.debtSum += amount;
-                existing.row.entryCount += 1;
-                if (new Date(e.createdAt) > new Date(existing.row.lastEntryAt)) {
-                    existing.row.lastEntryAt = e.createdAt.toISOString();
+            const tIso = e.createdAt.toISOString();
+            const isShort = e.source === client_1.DebtSource.INVOICE_SHORTFALL;
+            const ex = byOrder.get(e.orderId);
+            if (ex) {
+                if (isShort) {
+                    ex.shortSum += amount;
+                    ex.entryCountShort += 1;
+                    if (tIso > ex.lastEntryShort)
+                        ex.lastEntryShort = tIso;
+                }
+                else {
+                    ex.subSum += amount;
+                    ex.entryCountSub += 1;
+                    if (tIso > ex.lastEntrySub)
+                        ex.lastEntrySub = tIso;
                 }
                 continue;
             }
             const actorRole = e.actorUser?.safariRole != null
                 ? String(e.actorUser.safariRole)
                 : null;
+            const baseRow = {
+                orderId: e.order.id,
+                serialNumber: e.order.serialNumber ?? null,
+                invoiceNumber: e.order.invoiceNumber ?? null,
+                issuedAt: (e.order.completedAt ?? e.order.createdAt).toISOString(),
+                customerId: e.customer.id,
+                customerName: e.customer.displayName ?? e.customer.phone ?? '—',
+                customerPhone: e.customer.phone ?? null,
+                customerPhone2: e.customer.phone2 ?? null,
+                branchId: e.branch?.id ?? null,
+                branchName: e.branch?.name ?? null,
+                actorUserId: e.actorUser?.id ?? null,
+                actorUserName: e.actorUser?.fullName ?? null,
+                actorUserRole: actorRole,
+                invoiceTotalKd: e.order.totalPrice.toString(),
+                debtAmountKd: '0',
+                paidKd: '0',
+                remainingKd: '0',
+                entryCount: 1,
+                currentCustomerDebtKd: '0',
+                isOpen: true,
+                lastEntryAt: tIso,
+                debtSource: 'INVOICE_SHORTFALL',
+            };
             byOrder.set(e.orderId, {
-                debtSum: amount,
-                row: {
-                    orderId: e.order.id,
-                    serialNumber: e.order.serialNumber ?? null,
-                    invoiceNumber: e.order.invoiceNumber ?? null,
-                    issuedAt: (e.order.completedAt ?? e.order.createdAt).toISOString(),
-                    customerId: e.customer.id,
-                    customerName: e.customer.displayName ?? e.customer.phone ?? '—',
-                    customerPhone: e.customer.phone ?? null,
-                    customerPhone2: e.customer.phone2 ?? null,
-                    branchId: e.branch?.id ?? null,
-                    branchName: e.branch?.name ?? null,
-                    actorUserId: e.actorUser?.id ?? null,
-                    actorUserName: e.actorUser?.fullName ?? null,
-                    actorUserRole: actorRole,
-                    invoiceTotalKd: e.order.totalPrice.toString(),
-                    debtAmountKd: '0',
-                    paidKd: '0',
-                    remainingKd: '0',
-                    entryCount: 1,
-                    currentCustomerDebtKd: '0',
-                    isOpen: true,
-                    lastEntryAt: e.createdAt.toISOString(),
-                },
+                shortSum: isShort ? amount : 0,
+                subSum: isShort ? 0 : amount,
+                lastEntryShort: isShort ? tIso : '',
+                lastEntrySub: isShort ? '' : tIso,
+                entryCountShort: isShort ? 1 : 0,
+                entryCountSub: isShort ? 0 : 1,
+                row: baseRow,
             });
         }
         const orderIds = Array.from(byOrder.keys());
@@ -337,66 +394,316 @@ let DebtService = class DebtService {
                 cur.debt += v;
             perCustomer.set(g.customerId, cur);
         }
-        const customerUnallocated = new Map();
-        for (const cid of customerIds) {
-            const totals = perCustomer.get(cid) ?? { debt: 0, payment: 0 };
-            customerUnallocated.set(cid, Math.max(totals.debt - totals.payment, 0));
-        }
-        const ordersByCustomer = new Map();
-        for (const v of byOrder.values()) {
-            const arr = ordersByCustomer.get(v.row.customerId) ?? [];
-            arr.push(v);
-            ordersByCustomer.set(v.row.customerId, arr);
-        }
-        for (const arr of ordersByCustomer.values()) {
-            arr.sort((a, b) => new Date(a.row.issuedAt).getTime() -
-                new Date(b.row.issuedAt).getTime());
-        }
         const finalRows = [];
         let totalDebt = 0;
         let totalPaid = 0;
         let openDebt = 0;
-        let totalInvoices = 0;
+        let openShortfallDebt = 0;
+        let openSubDebt = 0;
+        let openUnpaidOrderBalance = 0;
+        let totalInvOrderSum = 0;
+        const orderInvTallied = new Set();
         let openInvoiceCount = 0;
         const openCustomers = new Set();
-        for (const [cid, arr] of ordersByCustomer) {
+        for (const cid of customerIds) {
+            const custAggs = Array.from(byOrder.values()).filter((a) => a.row.customerId === cid);
+            custAggs.sort((a, b) => new Date(a.row.issuedAt).getTime() -
+                new Date(b.row.issuedAt).getTime());
+            const shortQ = [];
+            const subQ = [];
+            for (const agg of custAggs) {
+                const payO = paidByOrder.get(agg.row.orderId) ?? 0;
+                const S = agg.shortSum;
+                const T = agg.subSum;
+                const dS = Math.min(payO, S);
+                const sNet = Math.max(0, S - dS);
+                const remPay = payO - dS;
+                const dT = Math.min(Math.max(0, remPay), T);
+                const tNet = Math.max(0, T - dT);
+                const issued = agg.row.issuedAt;
+                if (S > 0) {
+                    shortQ.push({
+                        agg,
+                        sNet,
+                        tNet,
+                        directShort: dS,
+                        directSub: dT,
+                        grossS: S,
+                        grossT: T,
+                        issuedAt: issued,
+                    });
+                }
+                if (T > 0) {
+                    subQ.push({
+                        agg,
+                        sNet,
+                        tNet,
+                        directShort: dS,
+                        directSub: dT,
+                        grossS: S,
+                        grossT: T,
+                        issuedAt: issued,
+                    });
+                }
+            }
+            shortQ.sort((a, b) => new Date(a.issuedAt).getTime() - new Date(b.issuedAt).getTime());
+            subQ.sort((a, b) => new Date(a.issuedAt).getTime() - new Date(b.issuedAt).getTime());
             const custTotals = perCustomer.get(cid) ?? { debt: 0, payment: 0 };
             const custOpen = Math.max(custTotals.debt - custTotals.payment, 0);
-            let remainingCustomerOpen = custOpen;
-            for (const v of arr) {
-                const paidForOrder = paidByOrder.get(v.row.orderId) ?? 0;
-                const perOrderNet = Math.max(v.debtSum - paidForOrder, 0);
-                const shareOfCustomerOpen = Math.min(perOrderNet, remainingCustomerOpen);
-                remainingCustomerOpen -= shareOfCustomerOpen;
-                const perOrderFifoShare = perOrderNet - shareOfCustomerOpen;
-                const invoicePaid = paidForOrder + perOrderFifoShare;
-                const invoiceRemaining = shareOfCustomerOpen;
-                v.row.debtAmountKd = v.debtSum.toFixed(4);
-                v.row.paidKd = invoicePaid.toFixed(4);
-                v.row.remainingKd = invoiceRemaining.toFixed(4);
-                v.row.currentCustomerDebtKd = custOpen.toFixed(4);
-                v.row.isOpen = shareOfCustomerOpen > 0.0001;
-                totalDebt += v.debtSum;
-                totalPaid += invoicePaid;
-                const invTotal = Number.parseFloat(v.row.invoiceTotalKd);
-                if (Number.isFinite(invTotal))
-                    totalInvoices += invTotal;
-                if (v.row.isOpen) {
-                    openDebt += invoiceRemaining;
-                    openInvoiceCount += 1;
-                    openCustomers.add(v.row.customerId);
+            let rem = custOpen;
+            const pushRow = (x, kind, perOrderNet, directPart, gross, lastAt, entryCount) => {
+                const share = Math.min(perOrderNet, rem);
+                rem -= share;
+                const fifo = perOrderNet - share;
+                const invoicePaid = directPart + fifo;
+                const remaining = share;
+                const invTotal = Number.parseFloat(x.agg.row.invoiceTotalKd);
+                if (Number.isFinite(invTotal) && !orderInvTallied.has(x.agg.row.orderId)) {
+                    totalInvOrderSum += invTotal;
+                    orderInvTallied.add(x.agg.row.orderId);
                 }
-                finalRows.push(v.row);
+                const isOpen = remaining > 0.0001;
+                const r = {
+                    ...x.agg.row,
+                    debtSource: kind,
+                    debtAmountKd: gross.toFixed(4),
+                    paidKd: invoicePaid.toFixed(4),
+                    remainingKd: remaining.toFixed(4),
+                    currentCustomerDebtKd: custOpen.toFixed(4),
+                    isOpen,
+                    entryCount,
+                    lastEntryAt: lastAt || x.agg.row.issuedAt,
+                };
+                totalDebt += gross;
+                totalPaid += invoicePaid;
+                if (isOpen) {
+                    openDebt += remaining;
+                    openInvoiceCount += 1;
+                    openCustomers.add(x.agg.row.customerId);
+                    if (kind === 'INVOICE_SHORTFALL')
+                        openShortfallDebt += remaining;
+                    else
+                        openSubDebt += remaining;
+                }
+                finalRows.push(r);
+            };
+            for (const x of shortQ) {
+                pushRow(x, 'INVOICE_SHORTFALL', x.sNet, x.directShort, x.grossS, x.agg.lastEntryShort, x.agg.entryCountShort);
+            }
+            for (const x of subQ) {
+                pushRow(x, 'SUBSCRIPTION_OVERUSE', x.tNet, x.directSub, x.grossT, x.agg.lastEntrySub, x.agg.entryCountSub);
             }
         }
+        const orderIdsCovered = new Set(finalRows.map((r) => r.orderId));
+        const listScope = query.branchId?.trim() || query.marketKpiBranchId?.trim() || null;
+        const orderDateWhere = from || to
+            ? {
+                OR: [
+                    {
+                        completedAt: {
+                            ...(from ? { gte: from } : {}),
+                            ...(to ? { lte: to } : {}),
+                        },
+                    },
+                    {
+                        AND: [
+                            { completedAt: null },
+                            {
+                                createdAt: {
+                                    ...(from ? { gte: from } : {}),
+                                    ...(to ? { lte: to } : {}),
+                                },
+                            },
+                        ],
+                    },
+                ],
+            }
+            : undefined;
+        const phoneWhere = phone
+            ? {
+                customer: {
+                    OR: [{ phone: { contains: phone } }, { phone2: { contains: phone } }],
+                },
+            }
+            : undefined;
+        const baseOrderUnpaid = {
+            cashStatus: client_1.CashStatus.UNPAID,
+            status: { not: client_1.OrderStatus.CANCELED },
+            ...(orderBranchWhereForMarketDebt(listScope ?? undefined) ?? {}),
+            ...(orderDateWhere ? orderDateWhere : {}),
+            ...(phoneWhere ? phoneWhere : {}),
+        };
+        if (orderIdsCovered.size > 0) {
+            baseOrderUnpaid.id = {
+                notIn: Array.from(orderIdsCovered),
+            };
+        }
+        if (query.actorUserId) {
+            const actor = await this.prisma.user.findUnique({
+                where: { id: query.actorUserId },
+                select: { safariRole: true },
+            });
+            if (actor?.safariRole === client_1.SafariRole.DRIVER) {
+                baseOrderUnpaid.driverId = query.actorUserId;
+            }
+        }
+        const unlinkedUnpaid = await this.prisma.order.findMany({
+            where: baseOrderUnpaid,
+            take: 5_000,
+            orderBy: { createdAt: 'desc' },
+            select: {
+                id: true,
+                totalPrice: true,
+                createdAt: true,
+                completedAt: true,
+                serialNumber: true,
+                invoiceNumber: true,
+                customerId: true,
+                driverId: true,
+                customer: {
+                    select: {
+                        id: true,
+                        displayName: true,
+                        phone: true,
+                        phone2: true,
+                        originBranch: { select: { id: true, name: true } },
+                    },
+                },
+                driver: {
+                    select: {
+                        id: true,
+                        fullName: true,
+                        username: true,
+                        safariRole: true,
+                        branch: { select: { id: true, name: true } },
+                    },
+                },
+            },
+        });
+        if (unlinkedUnpaid.length > 0) {
+            const needCust = Array.from(new Set(unlinkedUnpaid
+                .map((o) => o.customerId)
+                .filter((cid) => !perCustomer.has(cid))));
+            if (needCust.length) {
+                const moreTotals = await this.prisma.debtLedgerEntry.groupBy({
+                    by: ['customerId', 'source'],
+                    where: { customerId: { in: needCust } },
+                    _sum: { amount: true },
+                });
+                for (const g of moreTotals) {
+                    const cur = perCustomer.get(g.customerId) ?? { debt: 0, payment: 0 };
+                    const v = Number.parseFloat(g._sum.amount?.toString() ?? '0');
+                    if (!Number.isFinite(v))
+                        continue;
+                    if (g.source === client_1.DebtSource.PAYMENT)
+                        cur.payment += v;
+                    else
+                        cur.debt += v;
+                    perCustomer.set(g.customerId, cur);
+                }
+            }
+        }
+        for (const o of unlinkedUnpaid) {
+            const tot = Number.parseFloat(o.totalPrice.toString());
+            if (!Number.isFinite(tot) || tot <= 0)
+                continue;
+            const branchName = o.driver?.branch?.name?.trim() || o.customer.originBranch?.name?.trim() || null;
+            const branchId = o.driver?.branch?.id?.trim() ?? o.customer.originBranch?.id ?? null;
+            const actorUserId = o.driver?.id ?? null;
+            const actorUserName = o.driver?.fullName?.trim() ?? null;
+            const actorUserRole = o.driver?.safariRole
+                ? String(o.driver.safariRole)
+                : null;
+            const issued = (o.completedAt ?? o.createdAt).toISOString();
+            const ct = perCustomer.get(o.customerId) ?? { debt: 0, payment: 0 };
+            const custOpen = Math.max(ct.debt - ct.payment, 0);
+            const row = {
+                orderId: o.id,
+                serialNumber: o.serialNumber ?? null,
+                invoiceNumber: o.invoiceNumber ?? null,
+                issuedAt: issued,
+                customerId: o.customerId,
+                customerName: o.customer.displayName?.trim() || o.customer.phone,
+                customerPhone: o.customer.phone,
+                customerPhone2: o.customer.phone2 ?? null,
+                branchId,
+                branchName,
+                actorUserId,
+                actorUserName,
+                actorUserRole,
+                invoiceTotalKd: o.totalPrice.toString(),
+                debtAmountKd: tot.toFixed(4),
+                paidKd: '0.0000',
+                remainingKd: tot.toFixed(4),
+                entryCount: 0,
+                currentCustomerDebtKd: custOpen.toFixed(4),
+                isOpen: true,
+                lastEntryAt: issued,
+                debtSource: 'OPEN_UNPAID_ORDER',
+            };
+            finalRows.push(row);
+            totalDebt += tot;
+            totalInvOrderSum += tot;
+            orderInvTallied.add(o.id);
+            openDebt += tot;
+            openUnpaidOrderBalance += tot;
+            openInvoiceCount += 1;
+            openCustomers.add(o.customerId);
+        }
+        const debtSourceSortRank = (s) => {
+            if (s === 'INVOICE_SHORTFALL')
+                return 0;
+            if (s === 'SUBSCRIPTION_OVERUSE')
+                return 1;
+            return 2;
+        };
         finalRows.sort((a, b) => {
             if (a.isOpen !== b.isOpen)
                 return a.isOpen ? -1 : 1;
-            return new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime();
+            const tb = new Date(b.issuedAt).getTime();
+            const ta = new Date(a.issuedAt).getTime();
+            if (tb !== ta)
+                return tb - ta;
+            if (a.orderId !== b.orderId)
+                return a.orderId.localeCompare(b.orderId);
+            if (a.debtSource === b.debtSource)
+                return 0;
+            return debtSourceSortRank(a.debtSource) - debtSourceSortRank(b.debtSource);
         });
         const invoiceCount = finalRows.length;
         const customerCount = new Set(finalRows.map((r) => r.customerId)).size;
         const avgDebtPerInvoice = invoiceCount > 0 ? totalDebt / invoiceCount : 0;
+        const marketKpiScope = query.marketKpiBranchId?.trim() || query.branchId?.trim() || null;
+        const marketBaseWhere = {
+            cashStatus: client_1.CashStatus.UNPAID,
+            status: { not: client_1.OrderStatus.CANCELED },
+            ...(orderBranchWhereForMarketDebt(marketKpiScope ?? undefined) ?? {}),
+        };
+        const [marketAgg, byMethod] = await Promise.all([
+            this.prisma.order.aggregate({
+                where: marketBaseWhere,
+                _sum: { totalPrice: true },
+            }),
+            this.prisma.order.groupBy({
+                by: ['posPaymentMethod'],
+                where: {
+                    ...marketBaseWhere,
+                    debtLedgerEntries: {
+                        some: {
+                            source: client_1.DebtSource.INVOICE_SHORTFALL,
+                            actorUser: {
+                                is: {
+                                    safariRole: { in: [client_1.SafariRole.DRIVER, client_1.SafariRole.MANAGER] },
+                                },
+                            },
+                        },
+                    },
+                },
+                _sum: { totalPrice: true },
+            }),
+        ]);
+        const totalMarketUnpaidKd = (marketAgg._sum.totalPrice ?? new client_1.Prisma.Decimal(0)).toFixed(4);
+        const marketUnpaidByMethod = foldMarketUnpaidByMethod(byMethod);
         return {
             from: from ? from.toISOString() : null,
             to: to ? to.toISOString() : null,
@@ -405,13 +712,59 @@ let DebtService = class DebtService {
                 openInvoiceCount,
                 customerCount,
                 openCustomerCount: openCustomers.size,
-                totalInvoicesKd: totalInvoices.toFixed(4),
+                totalInvoicesKd: totalInvOrderSum.toFixed(4),
                 totalDebtKd: totalDebt.toFixed(4),
                 totalPaidKd: totalPaid.toFixed(4),
                 openDebtKd: openDebt.toFixed(4),
+                openShortfallDebtKd: openShortfallDebt.toFixed(4),
+                openSubscriptionOveruseDebtKd: openSubDebt.toFixed(4),
+                openUnpaidOrderBalanceKd: openUnpaidOrderBalance.toFixed(4),
+                totalMarketUnpaidKd,
+                marketUnpaidByMethod,
                 avgDebtPerInvoiceKd: avgDebtPerInvoice.toFixed(4),
             },
             rows: finalRows,
+        };
+    }
+    async getLedgerOpenDebtByCategory(whereExtra) {
+        const z = new client_1.Prisma.Decimal(0);
+        const rows = await this.prisma.debtLedgerEntry.groupBy({
+            by: ['customerId', 'source'],
+            where: whereExtra ?? {},
+            _sum: { amount: true },
+        });
+        const byCustomer = new Map();
+        for (const r of rows) {
+            const amt = new client_1.Prisma.Decimal(r._sum.amount?.toString() ?? '0');
+            const cur = byCustomer.get(r.customerId) ?? {
+                inv: new client_1.Prisma.Decimal(0),
+                sub: new client_1.Prisma.Decimal(0),
+                pay: new client_1.Prisma.Decimal(0),
+            };
+            if (r.source === client_1.DebtSource.INVOICE_SHORTFALL)
+                cur.inv = cur.inv.add(amt);
+            else if (r.source === client_1.DebtSource.SUBSCRIPTION_OVERUSE)
+                cur.sub = cur.sub.add(amt);
+            else if (r.source === client_1.DebtSource.PAYMENT)
+                cur.pay = cur.pay.add(amt);
+            byCustomer.set(r.customerId, cur);
+        }
+        let openInv = z;
+        let openSub = z;
+        for (const { inv, sub, pay } of byCustomer.values()) {
+            const invPaid = inv.lessThanOrEqualTo(pay) ? inv : pay;
+            const payAfterInv = pay.sub(invPaid);
+            const subPaid = sub.lessThanOrEqualTo(payAfterInv) ? sub : payAfterInv;
+            const remInv = inv.sub(invPaid);
+            const remSub = sub.sub(subPaid);
+            if (remInv.gt(0))
+                openInv = openInv.add(remInv);
+            if (remSub.gt(0))
+                openSub = openSub.add(remSub);
+        }
+        return {
+            outstandingInvoiceDebtKd: openInv.toFixed(4),
+            outstandingSubscriptionDebtKd: openSub.toFixed(4),
         };
     }
     async getOpenDebtByIssuer(branchId) {

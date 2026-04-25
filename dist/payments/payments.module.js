@@ -9,6 +9,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.PaymentsModule = void 0;
 const common_1 = require("@nestjs/common");
 const customer_ledger_module_1 = require("../customer-ledger/customer-ledger.module");
+const customer_notifications_module_1 = require("../customer-notifications/customer-notifications.module");
 const payments_service_1 = require("../common/services/payments.service");
 const general_ledger_module_1 = require("../general-ledger/general-ledger.module");
 const inventory_module_1 = require("../inventory/inventory.module");
@@ -22,6 +23,7 @@ exports.PaymentsModule = PaymentsModule = __decorate([
         imports: [
             prisma_module_1.PrismaModule,
             customer_ledger_module_1.CustomerLedgerModule,
+            customer_notifications_module_1.CustomerNotificationsModule,
             general_ledger_module_1.GeneralLedgerModule,
             inventory_module_1.InventoryModule,
         ],

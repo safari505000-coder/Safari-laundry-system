@@ -701,6 +701,8 @@ export type UnpaidInvoiceRow = {
   currentCustomerDebtKd: string;
   isOpen: boolean;
   lastEntryAt: string;
+  /** Field shortfall vs subscription wallet overuse */
+  debtSource: 'INVOICE_SHORTFALL' | 'SUBSCRIPTION_OVERUSE' | 'OPEN_UNPAID_ORDER';
 };
 
 export type UnpaidInvoicesKpis = {
@@ -712,6 +714,19 @@ export type UnpaidInvoicesKpis = {
   totalDebtKd: string;
   totalPaidKd: string;
   openDebtKd: string;
+  openShortfallDebtKd: string;
+  openSubscriptionOveruseDebtKd: string;
+  openUnpaidOrderBalanceKd: string;
+  /** Same as call-center «market debt» red KPI: Σ order total for UNPAID in branch scope */
+  totalMarketUnpaidKd: string;
+  /** UNPAID Σ by `posPaymentMethod` (orders with field INVOICE_SHORTFALL from driver / branch manager) */
+  marketUnpaidByMethod: {
+    cashKd: string;
+    knetKd: string;
+    onlineKd: string;
+    paymentLinkKd: string;
+    otherKd: string;
+  };
   avgDebtPerInvoiceKd: string;
 };
 
@@ -728,6 +743,8 @@ export function getUnpaidInvoices(
     from?: string;
     to?: string;
     branchId?: string;
+    /** When set with no `branchId`, scopes only the market-debt KPI to match `/collections` / operations-summary. */
+    marketKpiBranchId?: string;
     actorUserId?: string;
     customerPhone?: string;
   },
@@ -736,6 +753,8 @@ export function getUnpaidInvoices(
   if (params.from) search.set('from', params.from);
   if (params.to) search.set('to', params.to);
   if (params.branchId) search.set('branchId', params.branchId);
+  if (params.marketKpiBranchId)
+    search.set('marketKpiBranchId', params.marketKpiBranchId);
   if (params.actorUserId) search.set('actorUserId', params.actorUserId);
   if (params.customerPhone)
     search.set('customerPhone', params.customerPhone);
@@ -1145,6 +1164,15 @@ export type ReminderResult = {
 };
 
 /**
+ * POST /api/call-center/orders/:orderId/send-payment-link-whatsapp
+ */
+export type SendPaymentLinkWhatsappResult = {
+  reminder: ReminderResult;
+  serverPush: boolean;
+  paymentUrl: string;
+};
+
+/**
  * V1.6.9 — "تم الدفع" confirmation.
  *
  * The Call Center agent picks the method the customer actually used.
@@ -1285,10 +1313,10 @@ export type DebtByCategoryReport = {
 };
 
 /**
- * V19.11.4 — NET open debt grouped by the invoice's original issuer.
- * Σ rows[].openDebtKd === /unpaid-invoices openDebtKd === /collections
- * totalMarketDebtKd, so the dashboard's distribution chart reconciles
- * with every other debt screen.
+ * V19.11.4 — NET open debt grouped by the invoice's original issuer (all
+ * INVOICE_SHORTFALL issuers). Receivables page table uses driver/manager
+ * only; its headline total matches the call-center red KPI via
+ * `totalMarketUnpaidKd` (UNPAID order sum), not this chart's total.
  */
 export type OpenDebtByIssuerReport = {
   rows: Array<{
@@ -1330,6 +1358,7 @@ export type PosCheckoutResponse = {
  */
 export type CollectionUnpaidOnlineRow = {
   orderId: string;
+  customerId: string;
   /**
    * V1.6.5 — human-readable ID: driver `serialNumber` if set, otherwise
    * the paper `invoiceNumber`, otherwise `#<last-6 of uuid>`. Safe to
@@ -1626,6 +1655,10 @@ export type ExtendSubscriptionResult = {
  */
 export type CallCenterOperationsSummary = {
   totalMarketDebtKd: string;
+  /** NET open INVOICE_SHORTFALL (ledger) after customer waterfall. */
+  outstandingInvoiceDebtKd: string;
+  /** NET open SUBSCRIPTION_OVERUSE (ledger). */
+  outstandingSubscriptionDebtKd: string;
   /** Narrow "collected via payment link today" — historical green KPI. */
   debtCollectedTodayKd: string;
   /**
@@ -1861,6 +1894,20 @@ export type CustomerLedgerInvoice = {
   subscriptionLabel: string | null;
   issuedWhileCutOff: boolean;
   openDebt: boolean;
+  feedbackRating: number | null;
+  feedbackSubmittedAtIso: string | null;
+};
+
+export type CustomerLedgerFeedbackSummary = {
+  averageRating: number | null;
+  ratedCount: number;
+  lastFeedback: {
+    rating: number;
+    note: string | null;
+    submittedAtIso: string;
+    orderId: string;
+    orderSerial: string | null;
+  } | null;
 };
 
 export type CustomerLedgerResponse = {
@@ -1900,6 +1947,7 @@ export type CustomerLedgerResponse = {
     totalCollectedKd: string;
     totalDiscountedKd: string;
   };
+  feedbackSummary: CustomerLedgerFeedbackSummary;
 };
 
 /**

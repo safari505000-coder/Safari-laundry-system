@@ -186,7 +186,12 @@ export const ACCESS = {
     'ACCOUNTANT',
   ] satisfies readonly SafariRole[],
   'vehicleExpenses.report.view': withExec('ACCOUNTANT'),
-  'whatsappTools.use': withExec('CALL_CENTER', 'CALL_CENTER_SUPERVISOR'),
+  'whatsappTools.use': withExec(
+    'CALL_CENTER',
+    'CALL_CENTER_SUPERVISOR',
+    'MANAGER',
+    'DRIVER',
+  ),
   // V19.14 — Driver tracking screen.
   //
   // UI access is opened for OWNER + GENERAL_MANAGER + CALL_CENTER +
@@ -221,10 +226,17 @@ export const ACCESS = {
     'CALL_CENTER',
     'CALL_CENTER_SUPERVISOR',
   ] satisfies readonly SafariRole[],
-  'collections.view': withExec('CALL_CENTER', 'CALL_CENTER_SUPERVISOR'),
+  'collections.view': withExec(
+    'CALL_CENTER',
+    'CALL_CENTER_SUPERVISOR',
+    'MANAGER',
+    'DRIVER',
+  ),
   'collections.act': [
     'CALL_CENTER',
     'CALL_CENTER_SUPERVISOR',
+    'MANAGER',
+    'DRIVER',
   ] satisfies readonly SafariRole[],
   // V19.4 CC cleanup — `/subscriptions` is now the plan-catalog page for
   // executives only. Every Call-Center activation / debt / extend /

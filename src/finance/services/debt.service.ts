@@ -8,6 +8,7 @@ import {
   Prisma,
   SafariRole,
 } from '@prisma/client';
+import type { MarketUnpaidByMethodDto } from '../dto/unpaid-invoices.dto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SubscriptionService } from './subscription.service';
 import type {
@@ -19,6 +20,59 @@ import type {
   OpenDebtByIssuerResponseDto,
   OpenDebtByIssuerRowDto,
 } from '../dto/open-debt-by-issuer.dto';
+
+/**
+ * Same branch scoping as `CallCenterService.getOperationsSummary` red KPI
+ * (`order.aggregate` on UNPAID orders). Driver branch OR customer origin.
+ */
+function orderBranchWhereForMarketDebt(
+  branchId: string | null | undefined,
+): Prisma.OrderWhereInput | undefined {
+  const b = branchId?.trim();
+  if (!b) return undefined;
+  return {
+    OR: [
+      { driver: { is: { branchId: b } } },
+      {
+        driverId: null,
+        customer: { is: { originBranchId: b } },
+      },
+    ],
+  };
+}
+
+function foldMarketUnpaidByMethod(
+  groups: Array<{
+    posPaymentMethod: PosPaymentMethod | null;
+    _sum: { totalPrice: Prisma.Decimal | null };
+  }>,
+): MarketUnpaidByMethodDto {
+  let cash = 0;
+  let knet = 0;
+  let online = 0;
+  let link = 0;
+  let other = 0;
+  for (const g of groups) {
+    const n = Number.parseFloat(
+      (g._sum.totalPrice ?? new Prisma.Decimal(0)).toString(),
+    );
+    if (!Number.isFinite(n) || n === 0) continue;
+    const p = g.posPaymentMethod;
+    if (p === PosPaymentMethod.CASH) cash += n;
+    else if (p === PosPaymentMethod.KNET) knet += n;
+    else if (p === PosPaymentMethod.ONLINE) online += n;
+    else if (p === PosPaymentMethod.PAYMENT_LINK) link += n;
+    else other += n;
+  }
+  const f = (x: number) => x.toFixed(4);
+  return {
+    cashKd: f(cash),
+    knetKd: f(knet),
+    onlineKd: f(online),
+    paymentLinkKd: f(link),
+    otherKd: f(other),
+  };
+}
 
 @Injectable()
 export class DebtService {
@@ -196,23 +250,11 @@ export class DebtService {
   }
 
   /**
-   * V19.10 — "Unpaid Invoices List" (قائمة مديونيات الفواتير).
-   *
-   * Returns every invoice that contributed to outstanding customer
-   * debt, aggregated per-order. Used by the new debts page.
-   *
-   * Implementation notes:
-   * - Source is `DebtLedgerEntry` with `source = INVOICE_SHORTFALL`.
-   *   Subscription-overuse debt is excluded (it belongs to the
-   *   subscriber statement, not to a specific invoice).
-   * - Rows are aggregated by `orderId`. Multiple ledger entries for
-   *   the same invoice are summed.
-   * - `currentCustomerDebtKd` joins the customer's live wallet so the
-   *   UI can show current balance and highlight invoices whose
-   *   customer has since cleared everything.
-   * - Filters are additive. When `from/to` are omitted the report
-   *   scans the entire history (cheap because the table is indexed
-   *   by `(source, category, createdAt)`).
+   * Receivables / "المديونية" — all `INVOICE_SHORTFALL` / `SUBSCRIPTION_OVERUSE`
+   * lines with `orderId` (any actor), aggregated per order. `remaining` deducts
+   * recorded `PAYMENT` (incl. FIFO on customer-level payments). Subscription
+   * overage lines use the same customer-level FIFO (short first by `issuedAt`,
+   * then subscription) as the monthly P&amp;L split.
    */
   async getUnpaidInvoices(
     query: UnpaidInvoicesQueryDto,
@@ -228,18 +270,14 @@ export class DebtService {
 
     const phone = (query.customerPhone ?? '').replace(/\D+/g, '').trim();
 
-    // V19.10 — scope to invoices actually issued by field staff. Only
-    // DRIVER and MANAGER (branch manager) create invoices from the POS;
-    // Call Center never issues invoices, and OWNER/GM/ACCOUNTANT adjustments
-    // should not leak into this operational list.
+    // INVOICE_SHORTFALL and SUBSCRIPTION_OVERUSE for every order-attributed line
+    // (field POS, subscription wallet, or admin flows such as invoice edit).
+    // Do not filter on `actorUser` role: «متابعة السائق» and driver lists must
+    // stay in lock-step with this table; a null actor or a CC edit must still
+    // surface the receivable.
     const where: Prisma.DebtLedgerEntryWhereInput = {
-      source: DebtSource.INVOICE_SHORTFALL,
+      source: { in: [DebtSource.INVOICE_SHORTFALL, DebtSource.SUBSCRIPTION_OVERUSE] },
       orderId: { not: null },
-      actorUser: {
-        is: {
-          safariRole: { in: [SafariRole.DRIVER, SafariRole.MANAGER] },
-        },
-      },
       ...(from || to
         ? {
             createdAt: {
@@ -259,15 +297,13 @@ export class DebtService {
         : {}),
     };
 
-    // 1) Fetch all matching entries with their context. We cap at
-    //    20k to avoid accidental runaway queries — the page itself is
-    //    filterable, so operators that exceed this should narrow down.
     const entries = await this.prisma.debtLedgerEntry.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       take: 20_000,
       select: {
         id: true,
+        source: true,
         amount: true,
         createdAt: true,
         orderId: true,
@@ -306,26 +342,35 @@ export class DebtService {
       },
     });
 
-    // 2) Aggregate per-invoice from SHORTFALL entries
-    const byOrder = new Map<
-      string,
-      {
-        row: UnpaidInvoiceRowDto;
-        debtSum: number;
-      }
-    >();
+    type OrderAgg = {
+      row: UnpaidInvoiceRowDto;
+      shortSum: number;
+      subSum: number;
+      lastEntryShort: string;
+      lastEntrySub: string;
+      entryCountShort: number;
+      entryCountSub: number;
+    };
+
+    const byOrder = new Map<string, OrderAgg>();
 
     for (const e of entries) {
       if (!e.orderId || !e.order) continue;
       const amount = Number.parseFloat(e.amount.toString());
       if (!Number.isFinite(amount) || amount <= 0) continue;
+      const tIso = e.createdAt.toISOString();
+      const isShort = e.source === DebtSource.INVOICE_SHORTFALL;
 
-      const existing = byOrder.get(e.orderId);
-      if (existing) {
-        existing.debtSum += amount;
-        existing.row.entryCount += 1;
-        if (new Date(e.createdAt) > new Date(existing.row.lastEntryAt)) {
-          existing.row.lastEntryAt = e.createdAt.toISOString();
+      const ex = byOrder.get(e.orderId);
+      if (ex) {
+        if (isShort) {
+          ex.shortSum += amount;
+          ex.entryCountShort += 1;
+          if (tIso > ex.lastEntryShort) ex.lastEntryShort = tIso;
+        } else {
+          ex.subSum += amount;
+          ex.entryCountSub += 1;
+          if (tIso > ex.lastEntrySub) ex.lastEntrySub = tIso;
         }
         continue;
       }
@@ -335,40 +380,42 @@ export class DebtService {
           ? String(e.actorUser.safariRole)
           : null;
 
+      const baseRow: UnpaidInvoiceRowDto = {
+        orderId: e.order.id,
+        serialNumber: e.order.serialNumber ?? null,
+        invoiceNumber: e.order.invoiceNumber ?? null,
+        issuedAt: (e.order.completedAt ?? e.order.createdAt).toISOString(),
+        customerId: e.customer.id,
+        customerName: e.customer.displayName ?? e.customer.phone ?? '—',
+        customerPhone: e.customer.phone ?? null,
+        customerPhone2: e.customer.phone2 ?? null,
+        branchId: e.branch?.id ?? null,
+        branchName: e.branch?.name ?? null,
+        actorUserId: e.actorUser?.id ?? null,
+        actorUserName: e.actorUser?.fullName ?? null,
+        actorUserRole: actorRole,
+        invoiceTotalKd: e.order.totalPrice.toString(),
+        debtAmountKd: '0',
+        paidKd: '0',
+        remainingKd: '0',
+        entryCount: 1,
+        currentCustomerDebtKd: '0',
+        isOpen: true,
+        lastEntryAt: tIso,
+        debtSource: 'INVOICE_SHORTFALL',
+      };
+
       byOrder.set(e.orderId, {
-        debtSum: amount,
-        row: {
-          orderId: e.order.id,
-          serialNumber: e.order.serialNumber ?? null,
-          invoiceNumber: e.order.invoiceNumber ?? null,
-          issuedAt: (e.order.completedAt ?? e.order.createdAt).toISOString(),
-          customerId: e.customer.id,
-          customerName: e.customer.displayName ?? e.customer.phone ?? '—',
-          customerPhone: e.customer.phone ?? null,
-          customerPhone2: e.customer.phone2 ?? null,
-          branchId: e.branch?.id ?? null,
-          branchName: e.branch?.name ?? null,
-          actorUserId: e.actorUser?.id ?? null,
-          actorUserName: e.actorUser?.fullName ?? null,
-          actorUserRole: actorRole,
-          invoiceTotalKd: e.order.totalPrice.toString(),
-          debtAmountKd: '0',
-          paidKd: '0',
-          remainingKd: '0',
-          entryCount: 1,
-          currentCustomerDebtKd: '0',
-          isOpen: true,
-          lastEntryAt: e.createdAt.toISOString(),
-        },
+        shortSum: isShort ? amount : 0,
+        subSum: isShort ? 0 : amount,
+        lastEntryShort: isShort ? tIso : '',
+        lastEntrySub: isShort ? '' : tIso,
+        entryCountShort: isShort ? 1 : 0,
+        entryCountSub: isShort ? 0 : 1,
+        row: baseRow,
       });
     }
 
-    // 3) V19.11.1 — pull both per-order PAYMENTs AND customer-wide totals.
-    //    Customer-level PAYMENT rows (orderId=null, produced by CC partial-
-    //    debt-payment or subscription FIFO residual) don't map to a
-    //    specific invoice, so we allocate them FIFO against the customer's
-    //    oldest unpaid invoices before deciding which ones are "open".
-    //    This is the single source of truth shared with /collections.
     const orderIds = Array.from(byOrder.keys());
     const customerIds = Array.from(
       new Set(Array.from(byOrder.values()).map((x) => x.row.customerId)),
@@ -412,91 +459,379 @@ export class DebtService {
       perCustomer.set(g.customerId, cur);
     }
 
-    // Remaining UNALLOCATED customer-wide open debt for each customer.
-    // This is whatever the customer still owes after their per-order
-    // payments are fully applied to the orders they target — i.e. the
-    // pool that customer-level PAYMENT rows still need to absorb.
-    const customerUnallocated = new Map<string, number>();
-    for (const cid of customerIds) {
-      const totals = perCustomer.get(cid) ?? { debt: 0, payment: 0 };
-      customerUnallocated.set(cid, Math.max(totals.debt - totals.payment, 0));
-    }
-
-    // Group orders by customer, sort oldest-first for FIFO allocation.
-    const ordersByCustomer = new Map<string, Array<(typeof byOrder extends Map<unknown, infer V> ? V : never)>>();
-    for (const v of byOrder.values()) {
-      const arr = ordersByCustomer.get(v.row.customerId) ?? [];
-      arr.push(v);
-      ordersByCustomer.set(v.row.customerId, arr);
-    }
-    for (const arr of ordersByCustomer.values()) {
-      arr.sort(
-        (a, b) =>
-          new Date(a.row.issuedAt).getTime() -
-          new Date(b.row.issuedAt).getTime(),
-      );
-    }
-
-    // 4) Finalize. Per-invoice open-debt = shortfall − per-order PAYMENT
-    //    − FIFO share of customer-level PAYMENTs. The SUM matches the
-    //    /collections red card by construction.
     const finalRows: UnpaidInvoiceRowDto[] = [];
     let totalDebt = 0;
     let totalPaid = 0;
     let openDebt = 0;
-    let totalInvoices = 0;
+    let openShortfallDebt = 0;
+    let openSubDebt = 0;
+    let openUnpaidOrderBalance = 0;
+    let totalInvOrderSum = 0;
+    const orderInvTallied = new Set<string>();
     let openInvoiceCount = 0;
     const openCustomers = new Set<string>();
-    for (const [cid, arr] of ordersByCustomer) {
+
+    for (const cid of customerIds) {
+      const custAggs = Array.from(byOrder.values()).filter(
+        (a) => a.row.customerId === cid,
+      );
+      custAggs.sort(
+        (a, b) =>
+          new Date(a.row.issuedAt).getTime() -
+          new Date(b.row.issuedAt).getTime(),
+      );
+
+      type Q = {
+        agg: OrderAgg;
+        sNet: number;
+        tNet: number;
+        directShort: number;
+        directSub: number;
+        grossS: number;
+        grossT: number;
+        issuedAt: string;
+      };
+      const shortQ: Q[] = [];
+      const subQ: Q[] = [];
+
+      for (const agg of custAggs) {
+        const payO = paidByOrder.get(agg.row.orderId) ?? 0;
+        const S = agg.shortSum;
+        const T = agg.subSum;
+        const dS = Math.min(payO, S);
+        const sNet = Math.max(0, S - dS);
+        const remPay = payO - dS;
+        const dT = Math.min(Math.max(0, remPay), T);
+        const tNet = Math.max(0, T - dT);
+        const issued = agg.row.issuedAt;
+        if (S > 0) {
+          shortQ.push({
+            agg,
+            sNet,
+            tNet,
+            directShort: dS,
+            directSub: dT,
+            grossS: S,
+            grossT: T,
+            issuedAt: issued,
+          });
+        }
+        if (T > 0) {
+          subQ.push({
+            agg,
+            sNet,
+            tNet,
+            directShort: dS,
+            directSub: dT,
+            grossS: S,
+            grossT: T,
+            issuedAt: issued,
+          });
+        }
+      }
+
+      shortQ.sort(
+        (a, b) =>
+          new Date(a.issuedAt).getTime() - new Date(b.issuedAt).getTime(),
+      );
+      subQ.sort(
+        (a, b) =>
+          new Date(a.issuedAt).getTime() - new Date(b.issuedAt).getTime(),
+      );
+
       const custTotals = perCustomer.get(cid) ?? { debt: 0, payment: 0 };
       const custOpen = Math.max(custTotals.debt - custTotals.payment, 0);
-      let remainingCustomerOpen = custOpen;
-      for (const v of arr) {
-        const paidForOrder = paidByOrder.get(v.row.orderId) ?? 0;
-        const perOrderNet = Math.max(v.debtSum - paidForOrder, 0);
-        // This invoice's share of the customer's remaining open pool,
-        // FIFO-allocated from the oldest invoice first.
-        const shareOfCustomerOpen = Math.min(perOrderNet, remainingCustomerOpen);
-        remainingCustomerOpen -= shareOfCustomerOpen;
+      let rem = custOpen;
 
-        // V19.11.2 — `paidKd` is everything that offsets this invoice:
-        //   (a) per-order PAYMENT rows attributed directly to it, plus
-        //   (b) its FIFO share of customer-level (orderId=null) PAYMENTs.
-        //   `remainingKd` is therefore `max(shortfall − paidKd, 0)` which
-        //   is what the collector still has to chase for THIS invoice.
-        const perOrderFifoShare = perOrderNet - shareOfCustomerOpen;
-        const invoicePaid = paidForOrder + perOrderFifoShare;
-        const invoiceRemaining = shareOfCustomerOpen;
-
-        v.row.debtAmountKd = v.debtSum.toFixed(4);
-        v.row.paidKd = invoicePaid.toFixed(4);
-        v.row.remainingKd = invoiceRemaining.toFixed(4);
-        v.row.currentCustomerDebtKd = custOpen.toFixed(4);
-        v.row.isOpen = shareOfCustomerOpen > 0.0001;
-
-        totalDebt += v.debtSum;
-        totalPaid += invoicePaid;
-        const invTotal = Number.parseFloat(v.row.invoiceTotalKd);
-        if (Number.isFinite(invTotal)) totalInvoices += invTotal;
-        if (v.row.isOpen) {
-          openDebt += invoiceRemaining;
-          openInvoiceCount += 1;
-          openCustomers.add(v.row.customerId);
+      const pushRow = (
+        x: Q,
+        kind: 'INVOICE_SHORTFALL' | 'SUBSCRIPTION_OVERUSE',
+        perOrderNet: number,
+        directPart: number,
+        gross: number,
+        lastAt: string,
+        entryCount: number,
+      ) => {
+        const share = Math.min(perOrderNet, rem);
+        rem -= share;
+        const fifo = perOrderNet - share;
+        const invoicePaid = directPart + fifo;
+        const remaining = share;
+        const invTotal = Number.parseFloat(x.agg.row.invoiceTotalKd);
+        if (Number.isFinite(invTotal) && !orderInvTallied.has(x.agg.row.orderId)) {
+          totalInvOrderSum += invTotal;
+          orderInvTallied.add(x.agg.row.orderId);
         }
-        finalRows.push(v.row);
+        const isOpen = remaining > 0.0001;
+        const r: UnpaidInvoiceRowDto = {
+          ...x.agg.row,
+          debtSource: kind,
+          debtAmountKd: gross.toFixed(4),
+          paidKd: invoicePaid.toFixed(4),
+          remainingKd: remaining.toFixed(4),
+          currentCustomerDebtKd: custOpen.toFixed(4),
+          isOpen,
+          entryCount,
+          lastEntryAt: lastAt || x.agg.row.issuedAt,
+        };
+        totalDebt += gross;
+        totalPaid += invoicePaid;
+        if (isOpen) {
+          openDebt += remaining;
+          openInvoiceCount += 1;
+          openCustomers.add(x.agg.row.customerId);
+          if (kind === 'INVOICE_SHORTFALL') openShortfallDebt += remaining;
+          else openSubDebt += remaining;
+        }
+        finalRows.push(r);
+      };
+
+      for (const x of shortQ) {
+        pushRow(
+          x,
+          'INVOICE_SHORTFALL',
+          x.sNet,
+          x.directShort,
+          x.grossS,
+          x.agg.lastEntryShort,
+          x.agg.entryCountShort,
+        );
+      }
+      for (const x of subQ) {
+        pushRow(
+          x,
+          'SUBSCRIPTION_OVERUSE',
+          x.tNet,
+          x.directSub,
+          x.grossT,
+          x.agg.lastEntrySub,
+          x.agg.entryCountSub,
+        );
       }
     }
 
-    // 5) Sort: open invoices first, newest issuedAt first
+    // ── Merge UNPAITotal orders (same scope as the red market KPI) that have
+    //    no field-ledger row yet, so the table is never empty while the
+    //    top card still shows «الديون السوقية». Disappear when the order is
+    //    no longer `UNPAITotal` (collected) — the row is dropped on the next
+    //    fetch. See `orderBranchWhereForMarketDebt` for branch semantics.
+    const orderIdsCovered = new Set(finalRows.map((r) => r.orderId));
+    const listScope = query.branchId?.trim() || query.marketKpiBranchId?.trim() || null;
+    const orderDateWhere: Prisma.OrderWhereInput | undefined = from || to
+      ? {
+          OR: [
+            {
+              completedAt: {
+                ...(from ? { gte: from } : {}),
+                ...(to ? { lte: to } : {}),
+              },
+            },
+            {
+              AND: [
+                { completedAt: null },
+                {
+                  createdAt: {
+                    ...(from ? { gte: from } : {}),
+                    ...(to ? { lte: to } : {}),
+                  },
+                },
+              ],
+            },
+          ],
+        }
+      : undefined;
+    const phoneWhere: Prisma.OrderWhereInput | undefined = phone
+      ? {
+          customer: {
+            OR: [{ phone: { contains: phone } }, { phone2: { contains: phone } }],
+          },
+        }
+      : undefined;
+    const baseOrderUnpaid: Prisma.OrderWhereInput = {
+      cashStatus: CashStatus.UNPAID,
+      status: { not: OrderStatus.CANCELED },
+      ...(orderBranchWhereForMarketDebt(listScope ?? undefined) ?? {}),
+      ...(orderDateWhere ? orderDateWhere : {}),
+      ...(phoneWhere ? phoneWhere : {}),
+    };
+    if (orderIdsCovered.size > 0) {
+      (baseOrderUnpaid as { id?: { notIn: string[] } }).id = {
+        notIn: Array.from(orderIdsCovered),
+      };
+    }
+    if (query.actorUserId) {
+      const actor = await this.prisma.user.findUnique({
+        where: { id: query.actorUserId },
+        select: { safariRole: true },
+      });
+      if (actor?.safariRole === SafariRole.DRIVER) {
+        (baseOrderUnpaid as { driverId: string }).driverId = query.actorUserId;
+      }
+    }
+    const unlinkedUnpaid = await this.prisma.order.findMany({
+      where: baseOrderUnpaid,
+      take: 5_000,
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        totalPrice: true,
+        createdAt: true,
+        completedAt: true,
+        serialNumber: true,
+        invoiceNumber: true,
+        customerId: true,
+        driverId: true,
+        customer: {
+          select: {
+            id: true,
+            displayName: true,
+            phone: true,
+            phone2: true,
+            originBranch: { select: { id: true, name: true } },
+          },
+        },
+        driver: {
+          select: {
+            id: true,
+            fullName: true,
+            username: true,
+            safariRole: true,
+            branch: { select: { id: true, name: true } },
+          },
+        },
+      },
+    });
+    if (unlinkedUnpaid.length > 0) {
+      const needCust = Array.from(
+        new Set(
+          unlinkedUnpaid
+            .map((o) => o.customerId)
+            .filter((cid) => !perCustomer.has(cid)),
+        ),
+      );
+      if (needCust.length) {
+        const moreTotals = await this.prisma.debtLedgerEntry.groupBy({
+          by: ['customerId', 'source'],
+          where: { customerId: { in: needCust } },
+          _sum: { amount: true },
+        });
+        for (const g of moreTotals) {
+          const cur = perCustomer.get(g.customerId) ?? { debt: 0, payment: 0 };
+          const v = Number.parseFloat(g._sum.amount?.toString() ?? '0');
+          if (!Number.isFinite(v)) continue;
+          if (g.source === DebtSource.PAYMENT) cur.payment += v;
+          else cur.debt += v;
+          perCustomer.set(g.customerId, cur);
+        }
+      }
+    }
+    for (const o of unlinkedUnpaid) {
+      const tot = Number.parseFloat(o.totalPrice.toString());
+      if (!Number.isFinite(tot) || tot <= 0) continue;
+      const branchName =
+        o.driver?.branch?.name?.trim() || o.customer.originBranch?.name?.trim() || null;
+      const branchId = o.driver?.branch?.id?.trim() ?? o.customer.originBranch?.id ?? null;
+      const actorUserId = o.driver?.id ?? null;
+      const actorUserName = o.driver?.fullName?.trim() ?? null;
+      const actorUserRole = o.driver?.safariRole
+        ? String(o.driver.safariRole)
+        : null;
+      const issued = (o.completedAt ?? o.createdAt).toISOString();
+      const ct = perCustomer.get(o.customerId) ?? { debt: 0, payment: 0 };
+      const custOpen = Math.max(ct.debt - ct.payment, 0);
+      const row: UnpaidInvoiceRowDto = {
+        orderId: o.id,
+        serialNumber: o.serialNumber ?? null,
+        invoiceNumber: o.invoiceNumber ?? null,
+        issuedAt: issued,
+        customerId: o.customerId,
+        customerName: o.customer.displayName?.trim() || o.customer.phone,
+        customerPhone: o.customer.phone,
+        customerPhone2: o.customer.phone2 ?? null,
+        branchId,
+        branchName,
+        actorUserId,
+        actorUserName,
+        actorUserRole,
+        invoiceTotalKd: o.totalPrice.toString(),
+        debtAmountKd: tot.toFixed(4),
+        paidKd: '0.0000',
+        remainingKd: tot.toFixed(4),
+        entryCount: 0,
+        currentCustomerDebtKd: custOpen.toFixed(4),
+        isOpen: true,
+        lastEntryAt: issued,
+        debtSource: 'OPEN_UNPAID_ORDER',
+      };
+      finalRows.push(row);
+      totalDebt += tot;
+      totalInvOrderSum += tot;
+      orderInvTallied.add(o.id);
+      openDebt += tot;
+      openUnpaidOrderBalance += tot;
+      openInvoiceCount += 1;
+      openCustomers.add(o.customerId);
+    }
+
+    const debtSourceSortRank = (s: UnpaidInvoiceRowDto['debtSource']) => {
+      if (s === 'INVOICE_SHORTFALL') return 0;
+      if (s === 'SUBSCRIPTION_OVERUSE') return 1;
+      return 2; // OPEN_UNPAID_ORDER
+    };
     finalRows.sort((a, b) => {
       if (a.isOpen !== b.isOpen) return a.isOpen ? -1 : 1;
-      return new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime();
+      const tb = new Date(b.issuedAt).getTime();
+      const ta = new Date(a.issuedAt).getTime();
+      if (tb !== ta) return tb - ta;
+      if (a.orderId !== b.orderId) return a.orderId.localeCompare(b.orderId);
+      if (a.debtSource === b.debtSource) return 0;
+      return debtSourceSortRank(a.debtSource) - debtSourceSortRank(b.debtSource);
     });
 
     const invoiceCount = finalRows.length;
     const customerCount = new Set(finalRows.map((r) => r.customerId)).size;
     const avgDebtPerInvoice =
       invoiceCount > 0 ? totalDebt / invoiceCount : 0;
+
+    // Headline KPI: same Σ `Order.totalPrice` as the red "إجمالي الديون السوقية"
+    // on `/collections` / call-center ops (UNPAID + branch OR), until the order
+    // leaves UNPAID — no short-horizon date window. When the table is unscoped
+    // (`!branchId`) but the UI passes `marketKpiBranchId`, match the branch the
+    // owner/manager context uses for operations-summary; otherwise all branches.
+    const marketKpiScope =
+      query.marketKpiBranchId?.trim() || query.branchId?.trim() || null;
+    const marketBaseWhere: Prisma.OrderWhereInput = {
+      cashStatus: CashStatus.UNPAID,
+      status: { not: OrderStatus.CANCELED },
+      ...(orderBranchWhereForMarketDebt(marketKpiScope ?? undefined) ?? {}),
+    };
+    const [marketAgg, byMethod] = await Promise.all([
+      this.prisma.order.aggregate({
+        where: marketBaseWhere,
+        _sum: { totalPrice: true },
+      }),
+      this.prisma.order.groupBy({
+        by: ['posPaymentMethod'],
+        where: {
+          ...marketBaseWhere,
+          debtLedgerEntries: {
+            some: {
+              source: DebtSource.INVOICE_SHORTFALL,
+              actorUser: {
+                is: {
+                  safariRole: { in: [SafariRole.DRIVER, SafariRole.MANAGER] },
+                },
+              },
+            },
+          },
+        },
+        _sum: { totalPrice: true },
+      }),
+    ]);
+    const totalMarketUnpaidKd = (
+      marketAgg._sum.totalPrice ?? new Prisma.Decimal(0)
+    ).toFixed(4);
+    const marketUnpaidByMethod = foldMarketUnpaidByMethod(byMethod);
 
     return {
       from: from ? from.toISOString() : null,
@@ -506,10 +841,15 @@ export class DebtService {
         openInvoiceCount,
         customerCount,
         openCustomerCount: openCustomers.size,
-        totalInvoicesKd: totalInvoices.toFixed(4),
+        totalInvoicesKd: totalInvOrderSum.toFixed(4),
         totalDebtKd: totalDebt.toFixed(4),
         totalPaidKd: totalPaid.toFixed(4),
         openDebtKd: openDebt.toFixed(4),
+        openShortfallDebtKd: openShortfallDebt.toFixed(4),
+        openSubscriptionOveruseDebtKd: openSubDebt.toFixed(4),
+        openUnpaidOrderBalanceKd: openUnpaidOrderBalance.toFixed(4),
+        totalMarketUnpaidKd,
+        marketUnpaidByMethod,
         avgDebtPerInvoiceKd: avgDebtPerInvoice.toFixed(4),
       },
       rows: finalRows,
@@ -517,15 +857,58 @@ export class DebtService {
   }
 
   /**
+   * Net open debt split (shortfall vs subscription overuse) using the same
+   * per-customer waterfall as monthly reports — scoped for CC dashboard KPIs.
+   */
+  async getLedgerOpenDebtByCategory(
+    whereExtra?: Prisma.DebtLedgerEntryWhereInput,
+  ): Promise<{
+    outstandingInvoiceDebtKd: string;
+    outstandingSubscriptionDebtKd: string;
+  }> {
+    const z = new Prisma.Decimal(0);
+    const rows = await this.prisma.debtLedgerEntry.groupBy({
+      by: ['customerId', 'source'],
+      where: whereExtra ?? {},
+      _sum: { amount: true },
+    });
+    type Bucket = { inv: Prisma.Decimal; sub: Prisma.Decimal; pay: Prisma.Decimal };
+    const byCustomer = new Map<string, Bucket>();
+    for (const r of rows) {
+      const amt = new Prisma.Decimal(r._sum.amount?.toString() ?? '0');
+      const cur = byCustomer.get(r.customerId) ?? {
+        inv: new Prisma.Decimal(0),
+        sub: new Prisma.Decimal(0),
+        pay: new Prisma.Decimal(0),
+      };
+      if (r.source === DebtSource.INVOICE_SHORTFALL) cur.inv = cur.inv.add(amt);
+      else if (r.source === DebtSource.SUBSCRIPTION_OVERUSE) cur.sub = cur.sub.add(amt);
+      else if (r.source === DebtSource.PAYMENT) cur.pay = cur.pay.add(amt);
+      byCustomer.set(r.customerId, cur);
+    }
+    let openInv = z;
+    let openSub = z;
+    for (const { inv, sub, pay } of byCustomer.values()) {
+      const invPaid = inv.lessThanOrEqualTo(pay) ? inv : pay;
+      const payAfterInv = pay.sub(invPaid);
+      const subPaid = sub.lessThanOrEqualTo(payAfterInv) ? sub : payAfterInv;
+      const remInv = inv.sub(invPaid);
+      const remSub = sub.sub(subPaid);
+      if (remInv.gt(0)) openInv = openInv.add(remInv);
+      if (remSub.gt(0)) openSub = openSub.add(remSub);
+    }
+    return {
+      outstandingInvoiceDebtKd: openInv.toFixed(4),
+      outstandingSubscriptionDebtKd: openSub.toFixed(4),
+    };
+  }
+
+  /**
    * V19.11.4 — NET open debt, grouped by the invoice's original issuer
-   * (DRIVER / BRANCH / OTHER). Used by the exec dashboard
-   * "توزيع الديون" chart so it agrees with /unpaid-invoices and
-   * /collections to the last fils.
-   *
-   * Algorithm mirrors getUnpaidInvoices(): we include INVOICE_SHORTFALL
-   * entries from every role (not just DRIVER+MANAGER) so every field
-   * invoice shows up in exactly one bucket. FIFO allocation of
-   * customer-wide PAYMENTs keeps the sum equal to the red KPI.
+   * (DRIVER / BRANCH / OTHER). Exec dashboard "توزيع الديون" — every
+   * INVOICE_SHORTFALL role is in one bucket. `getUnpaidInvoices().kpis.openDebtKd`
+   * uses the same per-order FIFO; the market red KPI is
+   * `getUnpaidInvoices().kpis.totalMarketUnpaidKd`.
    */
   async getOpenDebtByIssuer(
     branchId?: string,

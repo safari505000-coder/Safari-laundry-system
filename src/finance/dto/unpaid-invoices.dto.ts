@@ -8,13 +8,13 @@ import {
 } from 'class-validator';
 
 /**
- * V19.10 — "Unpaid Invoices List" report (قائمة مديونيات الفواتير).
+ * "المديونية" / Unpaid Invoices — receivables from invoice shortfall.
  *
- * Single source of truth: `DebtLedgerEntry` with
- * `source = INVOICE_SHORTFALL`. Each entry represents an amount that
- * the customer still owes from a specific invoice. Entries are joined
- * back to their parent order, customer, branch, and issuing employee
- * so the page can reproduce the invoice context.
+ * Table: `DebtLedgerEntry` with `source = INVOICE_SHORTFALL` (or
+ * subscription overuse) and `orderId` set; any actor. Headline KPI: order UNPAID
+ * sum in branch (matches call-center red card).
+ * Each entry represents customer debt tied to an order. PAYMENT rows
+ * reduce remaining (per-order + FIFO); see `DebtService.getUnpaidInvoices`.
  *
  * Aggregation is per-invoice: multiple DebtLedgerEntry rows for the
  * same order (e.g. a partial top-up that still left a residual) are
@@ -50,6 +50,15 @@ export class UnpaidInvoicesQueryDto {
   @IsOptional()
   @IsUUID()
   branchId?: string;
+
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description:
+      'V20.x — Optional scope for the «market» KPI (Σ `Order` UNPAID) only, so it matches `GET /api/call-center/operations-summary` when the table uses no branch (كل الفروع). If omitted, the KPI reuses `branchId`.',
+  })
+  @IsOptional()
+  @IsUUID()
+  marketKpiBranchId?: string;
 
   @ApiPropertyOptional({
     format: 'uuid',
@@ -159,8 +168,29 @@ export class UnpaidInvoiceRowDto {
   })
   isOpen: boolean;
 
+  @ApiProperty({
+    enum: ['INVOICE_SHORTFALL', 'SUBSCRIPTION_OVERUSE', 'OPEN_UNPAID_ORDER'],
+    description:
+      'INVOICE_SHORTFALL: field-issued receivable. SUBSCRIPTION_OVERUSE: order exceeded subscription wallet. OPEN_UNPAID_ORDER: `Order.cashStatus=UNPAID` with no field-ledger line yet (same scope as the red market-debt card).',
+  })
+  debtSource: 'INVOICE_SHORTFALL' | 'SUBSCRIPTION_OVERUSE' | 'OPEN_UNPAID_ORDER';
+
   @ApiPropertyOptional({ format: 'date-time' })
   lastEntryAt: string;
+}
+
+/** UNPAID `Order.totalPrice` grouped by `posPaymentMethod` (field: driver/branch shortfall on order). */
+export class MarketUnpaidByMethodDto {
+  @ApiProperty({ description: 'CASH' })
+  cashKd: string;
+  @ApiProperty({ description: 'KNET' })
+  knetKd: string;
+  @ApiProperty({ description: 'ONLINE' })
+  onlineKd: string;
+  @ApiProperty({ description: 'PAYMENT_LINK (روابط / واتساب)' })
+  paymentLinkKd: string;
+  @ApiProperty({ description: 'Other / unset method (e.g. wallet, debt-on-account, null)' })
+  otherKd: string;
 }
 
 export class UnpaidInvoicesKpisDto {
@@ -185,9 +215,31 @@ export class UnpaidInvoicesKpisDto {
   totalPaidKd: string;
   @ApiProperty({
     description:
-      'Σ of remaining open amounts. Matches /collections totalMarketDebtKd.',
+      'Σ of remaining open amounts on shortfall rows (ledger net, driver/manager scope).',
   })
   openDebtKd: string;
+  @ApiProperty({
+    description:
+      'Σ `remainingKd` for rows with `debtSource=INVOICE_SHORTFALL` (subset of `openDebtKd` when both types are present).',
+  })
+  openShortfallDebtKd: string;
+  @ApiProperty({
+    description:
+      'Σ `remainingKd` for rows with `debtSource=SUBSCRIPTION_OVERUSE`.',
+  })
+  openSubscriptionOveruseDebtKd: string;
+  @ApiProperty({
+    description:
+      'Σ `remainingKd` for `OPEN_UNPAID_ORDER` (UNPAITotal — matches «الديون السوقية» for orders without a debt-ledger line).',
+  })
+  openUnpaidOrderBalanceKd: string;
+  @ApiProperty({
+    description:
+      'Σ `Order.totalPrice` for `cashStatus=UNPAID` in branch scope — same as call-center red KPI; unchanged until the order is settled (no from/to).',
+  })
+  totalMarketUnpaidKd: string;
+  @ApiProperty({ type: MarketUnpaidByMethodDto })
+  marketUnpaidByMethod: MarketUnpaidByMethodDto;
   @ApiProperty() avgDebtPerInvoiceKd: string;
 }
 

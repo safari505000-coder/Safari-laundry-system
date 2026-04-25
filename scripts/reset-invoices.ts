@@ -2,11 +2,22 @@
  * scripts/reset-invoices.ts
  *
  * DESTRUCTIVE — wipes every invoice + invoice-tied financial record and
- * resets the invoice serial counter back to 0. KEEPS: Users, Customers
- * (wallet zeroed), Branches, PriceList, LaundryItems, Roles, HR records
- * (EmployeeLoan, Payroll, BranchExpense), catalog/config tables.
+ * resets the invoice serial counter back to 0.
  *
- * What it deletes (in FK-safe order inside a single transaction):
+ * `DELETE-ALL-INVOICES` KEEPS: Users, Customers (wallet zeroed), Branches,
+ * PriceList, catalog, roles, HR (Payroll, loans, attendance), branch/fleet
+ * expenses, PO/stock, audit logs, refresh tokens.
+ *
+ * `DELETE-INVOICES-AND-MONEY` (recommended for “تصفير فلوس” بدون لخبطة) —
+ * all invoice/ledger work **plus** payroll, employee loans, branch + vehicle
+ * + fixed overheads, zero branch `Wallet` and salary fields on `User`. Does
+ * **not** remove attendance, leave, PO/stock, `AuditLog`, or `RefreshToken`.
+ *
+ * `DELETE-LOCAL-TEST-ALL` — full local nuke: everything in INVOICES-AND-MONEY
+ * **plus** leave, attendance, purchase orders, stock movements, stock levels,
+ * `AuditLog`, `RefreshToken` (everyone must re-login).
+ *
+ * What the core mode deletes (in FK-safe order inside a single transaction):
  *  - DebtTransferOrder + DebtTransfer          (Restrict blocker on Order)
  *  - CommissionPayout                          (order-derived earnings)
  *  - InvoiceAuditLog                           (cascade would work, explicit for safety)
@@ -24,10 +35,20 @@
  *  - CustomerWallet: balance = 0, debt = 0, subscription fields cleared
  *
  * Usage:
- *   npx ts-node scripts/reset-invoices.ts --confirm=DELETE-ALL-INVOICES
+ *   npx tsx scripts/reset-invoices.ts
+ *   npx tsx scripts/reset-invoices.ts --confirm=DELETE-ALL-INVOICES
+ *   npx tsx scripts/reset-invoices.ts --confirm=DELETE-INVOICES-AND-MONEY
+ *   npx tsx scripts/reset-invoices.ts --confirm=DELETE-LOCAL-TEST-ALL
  *
- * Without --confirm flag it runs in DRY-RUN mode and only prints counts.
+ * Or: npm run db:reset-money  |  npm run db:reset-local
+ *
+ * Without a matching --confirm it runs in DRY-RUN mode and only prints counts.
  * Read .env for DATABASE_URL.
+ *
+ * Safety: destructive `--confirm=...` is **refused** unless the DB host is a
+ * typical local dev target (localhost, 127.0.0.1, host.docker.internal, etc.)
+ * to avoid accidentally wiping production. Override only if intentional:
+ *   RESET_ALLOW_NON_LOCAL=true
  */
 
 import 'dotenv/config';
@@ -47,6 +68,7 @@ async function countAll() {
   const [
     orders,
     orderLineItems,
+    orderFeedback,
     invoiceAudit,
     debtTransferOrders,
     debtTransfers,
@@ -63,9 +85,22 @@ async function countAll() {
     subscriptions,
     serialCounter,
     walletRows,
+    payrolls,
+    employeeLoans,
+    leaveRequests,
+    attendanceLogs,
+    branchExpenses,
+    vehicleExpenses,
+    fixedExpenseSchedules,
+    purchaseOrders,
+    stockMovements,
+    branchWallets,
+    auditLogs,
+    refreshTokens,
   ] = await Promise.all([
     prisma.order.count(),
     prisma.orderLineItem.count(),
+    prisma.orderFeedback.count(),
     prisma.invoiceAuditLog.count(),
     prisma.debtTransferOrder.count(),
     prisma.debtTransfer.count(),
@@ -82,11 +117,24 @@ async function countAll() {
     prisma.customerSubscription.count(),
     prisma.serialCounter.findUnique({ where: { key: 'ORDER_SERIAL' } }),
     prisma.customerWallet.count(),
+    prisma.payroll.count(),
+    prisma.employeeLoan.count(),
+    prisma.leaveRequest.count(),
+    prisma.attendanceLog.count(),
+    prisma.branchExpense.count(),
+    prisma.vehicleExpense.count(),
+    prisma.fixedExpenseSchedule.count(),
+    prisma.purchaseOrder.count(),
+    prisma.stockMovement.count(),
+    prisma.wallet.count(),
+    prisma.auditLog.count(),
+    prisma.refreshToken.count(),
   ]);
 
   return {
     orders,
     orderLineItems,
+    orderFeedback,
     invoiceAudit,
     debtTransferOrders,
     debtTransfers,
@@ -103,6 +151,18 @@ async function countAll() {
     subscriptions,
     serialCounterValue: serialCounter?.value ?? null,
     walletRows,
+    payrolls,
+    employeeLoans,
+    leaveRequests,
+    attendanceLogs,
+    branchExpenses,
+    vehicleExpenses,
+    fixedExpenseSchedules,
+    purchaseOrders,
+    stockMovements,
+    branchWallets,
+    auditLogs,
+    refreshTokens,
   };
 }
 
@@ -112,6 +172,7 @@ function printCounts(label: string, c: Awaited<ReturnType<typeof countAll>>) {
   console.log(`\n--- ${label} ---`);
   console.log(`  Order                       : ${fmt(c.orders)}`);
   console.log(`  OrderLineItem               : ${fmt(c.orderLineItems)}`);
+  console.log(`  OrderFeedback               : ${fmt(c.orderFeedback)}`);
   console.log(`  InvoiceAuditLog             : ${fmt(c.invoiceAudit)}`);
   console.log(`  DebtTransferOrder           : ${fmt(c.debtTransferOrders)}`);
   console.log(`  DebtTransfer                : ${fmt(c.debtTransfers)}`);
@@ -128,23 +189,80 @@ function printCounts(label: string, c: Awaited<ReturnType<typeof countAll>>) {
   console.log(`  CustomerSubscription        : ${fmt(c.subscriptions)}`);
   console.log(`  SerialCounter[ORDER_SERIAL] : ${fmt(c.serialCounterValue)}`);
   console.log(`  CustomerWallet rows (kept)  : ${fmt(c.walletRows)}`);
+  console.log(`  -- extended (local-test only) --`);
+  console.log(`  Payroll                     : ${fmt(c.payrolls)}`);
+  console.log(`  EmployeeLoan                : ${fmt(c.employeeLoans)}`);
+  console.log(`  LeaveRequest                : ${fmt(c.leaveRequests)}`);
+  console.log(`  AttendanceLog               : ${fmt(c.attendanceLogs)}`);
+  console.log(`  BranchExpense               : ${fmt(c.branchExpenses)}`);
+  console.log(`  VehicleExpense              : ${fmt(c.vehicleExpenses)}`);
+  console.log(`  FixedExpenseSchedule        : ${fmt(c.fixedExpenseSchedules)}`);
+  console.log(`  PurchaseOrder               : ${fmt(c.purchaseOrders)}`);
+  console.log(`  StockMovement               : ${fmt(c.stockMovements)}`);
+  console.log(`  Wallet (branch cash)        : ${fmt(c.branchWallets)}`);
+  console.log(`  AuditLog                    : ${fmt(c.auditLogs)}`);
+  console.log(`  RefreshToken                : ${fmt(c.refreshTokens)}`);
+}
+
+const CONFIRM_INVOICES_ONLY = 'DELETE-ALL-INVOICES';
+const CONFIRM_INVOICES_AND_MONEY = 'DELETE-INVOICES-AND-MONEY';
+const CONFIRM_LOCAL_TEST_ALL = 'DELETE-LOCAL-TEST-ALL';
+
+/**
+ * Best-effort hostname from a Postgres connection URL (excludes userinfo).
+ */
+function databaseHostForGuard(url: string): string {
+  const s = String(url);
+  if (s.includes('[') && s.includes(']')) {
+    const b = s.match(/@[[][^]]+]/);
+    if (b) return b[0].slice(2, -1);
+  }
+  const m = s.match(/@([^:/?#]+)/);
+  return (m?.[1] ?? '').trim() || '(unknown host)';
+}
+
+function isLocalDatabaseHost(host: string): boolean {
+  const h = host.toLowerCase();
+  if (h === 'localhost' || h === '127.0.0.1' || h === '::1') return true;
+  if (h === 'host.docker.internal' || h === 'postgres' || h === 'db') return true;
+  return false;
 }
 
 async function main() {
   const confirmArg = process.argv.find((a) => a.startsWith('--confirm='));
   const confirmValue = confirmArg ? confirmArg.split('=')[1] : '';
-  const isDryRun = confirmValue !== 'DELETE-ALL-INVOICES';
+  const localTestAll = confirmValue === CONFIRM_LOCAL_TEST_ALL;
+  const moneyScope = confirmValue === CONFIRM_INVOICES_AND_MONEY;
+  /** Payroll, loans, branch/vehicle/fixed expenses, branch Wallet, salary fields on User. */
+  const clearingMoneyData = moneyScope || localTestAll;
+  const isDryRun =
+    confirmValue !== CONFIRM_INVOICES_ONLY && !localTestAll && !moneyScope;
 
   const dbUrl = process.env.DATABASE_URL ?? '';
-  const dbHost = dbUrl.match(/@([^/:]+)/)?.[1] ?? '(unknown host)';
+  const dbHost = databaseHostForGuard(dbUrl);
+  const executeLabel = isDryRun
+    ? ''
+    : localTestAll
+      ? 'LOCAL TEST — full wipe (attendance, PO, stock, audit, sessions)'
+      : moneyScope
+        ? 'INVOICES + MONEY (payroll, loans, cash expenses, branch wallets, salary fields; keeps attendance, stock, audit, logins)'
+        : 'invoices + ledgers only (keeps payroll & expense tables)';
   console.log('=============================================================');
   console.log(' Safari ERP — reset invoices + invoice-tied financial records');
   console.log('=============================================================');
   console.log(` DB host: ${dbHost}`);
-  console.log(` Mode   : ${isDryRun ? 'DRY-RUN (no changes)' : 'EXECUTE (committing deletes)'}`);
+  console.log(
+    ` Mode   : ${isDryRun ? 'DRY-RUN (no changes)' : `EXECUTE (${executeLabel})`}`,
+  );
   if (dbHost.includes('rlwy.net') || dbHost.includes('railway')) {
     console.log('  !! This is a Railway-hosted database.');
     console.log('  !! Take a snapshot from the Railway dashboard BEFORE running with --confirm.');
+  }
+  if (!isDryRun && localTestAll) {
+    console.log('  !! DELETE-LOCAL-TEST-ALL: also attendance, leave, PO/stock, audit, sessions.');
+  }
+  if (!isDryRun && moneyScope) {
+    console.log('  !! DELETE-INVOICES-AND-MONEY: financial-only; sessions & HR calendar preserved.');
   }
   console.log('-------------------------------------------------------------');
 
@@ -152,8 +270,28 @@ async function main() {
   printCounts('BEFORE', before);
 
   if (isDryRun) {
-    console.log('\nDry run only. Re-run with --confirm=DELETE-ALL-INVOICES to apply.');
+    console.log(
+      `\nDry run only. Re-run with one of:\n` +
+        `  --confirm=${CONFIRM_INVOICES_ONLY}            → orders/ledgers only (keeps Payroll, loans, expenses)\n` +
+        `  --confirm=${CONFIRM_INVOICES_AND_MONEY}   → + payroll, loans, branch/vehicle/fixed expenses, branch Wallet, salary fields (keeps attendance, leave, PO/stock, AuditLog, RefreshToken)\n` +
+        `  --confirm=${CONFIRM_LOCAL_TEST_ALL}       → full local wipe (+ stock, attendance, audit, sessions)`,
+    );
     return;
+  }
+
+  const allowNonLocal = ['1', 'true', 'yes'].includes(
+    (process.env.RESET_ALLOW_NON_LOCAL ?? '').toLowerCase().trim(),
+  );
+  if (!isLocalDatabaseHost(dbHost) && !allowNonLocal) {
+    console.error('\nتوقف — لن نحذف على سيرفر بعيد (حماية من مسح بيانات الإنتاج/الـRailway).');
+    console.error('ABORT: DATABASE_URL is not a local dev host. Refusing destructive run.');
+    console.error(`  Host: ${dbHost}`);
+    console.error('  Fix: set DATABASE_URL to 127.0.0.1 or localhost (e.g. Docker: docker compose up -d postgres), then re-run.');
+    console.error('  If you really want this non-local host: set RESET_ALLOW_NON_LOCAL=true');
+    process.exit(1);
+  }
+  if (!isLocalDatabaseHost(dbHost) && allowNonLocal) {
+    console.log('  !! RESET_ALLOW_NON_LOCAL=true — running DELETE on NON-LOCAL host. Double-check you meant this.');
   }
 
   console.log('\nExecuting delete sequence inside a single transaction…');
@@ -187,6 +325,21 @@ async function main() {
       await tx.bankDepositLog.deleteMany();
       await tx.deposit.deleteMany();
       await tx.debtHold.deleteMany();
+
+      if (clearingMoneyData) {
+        // CommissionPayout + DebtHold already reference Payroll — must be clear first.
+        await tx.payroll.deleteMany();
+        await tx.employeeLoan.deleteMany();
+        await tx.branchExpense.deleteMany();
+        await tx.vehicleExpense.deleteMany();
+        await tx.fixedExpenseSchedule.deleteMany();
+        if (localTestAll) {
+          await tx.leaveRequest.deleteMany();
+          await tx.attendanceLog.deleteMany();
+          await tx.purchaseOrder.deleteMany();
+          await tx.stockMovement.deleteMany();
+        }
+      }
 
       // 5. Shift comes after BankDepositLog (FK SetNull, but explicit order
       // avoids unexpected NULLs on the now-orphaned rows we're about to drop).
@@ -227,6 +380,25 @@ async function main() {
         },
       });
 
+      if (clearingMoneyData) {
+        await tx.wallet.updateMany({ data: { balance: 0 } });
+        await tx.user.updateMany({
+          data: { basicMonthlySalary: null, monthlyAllowances: null },
+        });
+      }
+      if (localTestAll) {
+        await tx.branchStockLevel.updateMany({
+          data: {
+            quantityOnHand: 0,
+            avgUnitCost: null,
+            lastMovementAt: null,
+          },
+        });
+        await tx.stockItem.updateMany({ data: { lastUnitCost: null } });
+        await tx.auditLog.deleteMany();
+        await tx.refreshToken.deleteMany();
+      }
+
       await tx.$executeRawUnsafe('ALTER TABLE "DebtLedgerEntry" ENABLE TRIGGER USER');
     },
     { timeout: 120_000, maxWait: 15_000 },
@@ -234,7 +406,17 @@ async function main() {
 
   const after = await countAll();
   printCounts('AFTER', after);
-  console.log('\nDone. Next invoice will be stamped as 1.');
+  if (localTestAll) {
+    console.log(
+      '\nDone. Full local wipe: invoices, ledgers, payroll, loans, expenses, PO/stock, attendance, audit, sessions; wallets at 0; re-login required.',
+    );
+  } else if (moneyScope) {
+    console.log(
+      '\nDone. Invoices, ledgers, payroll, loans, cash expenses cleared; customer + branch Wallets 0; salary fields cleared. Attendance, stock, audit, logins preserved.',
+    );
+  } else {
+    console.log('\nDone. Next invoice will be stamped as 1.');
+  }
 }
 
 main()
