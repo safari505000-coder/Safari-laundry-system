@@ -206,6 +206,45 @@ export class OrdersService {
    * so the UPayments link + receipt text is delivered before the HTTP response
    * returns to the POS.
    */
+  /**
+   * V19.27.5 — Text block for customer WhatsApp: line labels + qty × price (3dp KWD).
+   */
+  private formatLineItemsBlockForNotify(detail: OrderDetail): string {
+    if (!detail.lineItems?.length) {
+      return '';
+    }
+    const out: string[] = [];
+    for (const li of detail.lineItems) {
+      const qty = Number(li.quantity);
+      const unit = Number(li.unitPrice);
+      const sub = (qty * unit).toFixed(3);
+      const label = (li.label ?? '—').replace(/\s+/g, ' ').trim();
+      out.push(
+        `• ${label} — العدد ${String(qty)} × ${unit.toFixed(3)} = ${sub} د.ك`,
+      );
+    }
+    return out.join('\n');
+  }
+
+  private formatLineItemsBlockForBundleNotify(orders: OrderDetail[]): string {
+    if (orders.length === 0) {
+      return '';
+    }
+    if (orders.length === 1) {
+      return this.formatLineItemsBlockForNotify(orders[0]!);
+    }
+    const parts: string[] = [];
+    for (const o of orders) {
+      const lab =
+        o.invoiceNumber?.trim() ||
+        o.serialNumber?.trim() ||
+        o.id.slice(0, 8);
+      const block = this.formatLineItemsBlockForNotify(o);
+      parts.push(`━━ ${lab} ━━`, block || '—');
+    }
+    return parts.join('\n\n');
+  }
+
   private async posInvoiceNotifyToCustomer(
     detail: PosCheckoutOrderDetail,
     phoneCompact: string,
@@ -217,25 +256,14 @@ export class OrdersService {
     );
     const inv = detail.invoiceNumber?.trim() || `#${detail.id.slice(0, 8)}`;
     const amt = detail.totalPrice.toFixed(3);
-    let invoiceShareUrl: string | undefined;
-    let invoicePdfUrl: string | undefined;
-    try {
-      const minted = await this.resolveInvoiceShareForNotify(detail.id);
-      if (minted) {
-        invoiceShareUrl = minted.shareUrl;
-        invoicePdfUrl = minted.pdfUrl;
-      }
-    } catch {
-      /* non-fatal — notify still sends without receipt link */
-    }
+    const lineItemsSummary = this.formatLineItemsBlockForNotify(detail);
     await this.customerNotifications.deliverInvoiceIssuedNow({
       customerPhone: phone,
       orderId: detail.id,
       invoiceLabel: inv,
       amountKd: amt,
       paymentUrl: detail.paymentLink?.url,
-      invoiceShareUrl,
-      invoicePdfUrl,
+      lineItemsSummary: lineItemsSummary || undefined,
     });
   }
 
@@ -869,36 +897,8 @@ export class OrdersService {
     });
 
     {
-      const webBase = process.env.PUBLIC_WEB_APP_URL?.trim().replace(/\/$/, '');
-      const apiBase = (
-        process.env.PUBLIC_API_URL?.trim() ||
-        process.env.PAYMENTS_CALLBACK_PUBLIC_URL?.trim() ||
-        ''
-      ).replace(/\/$/, '');
-      const mintBase = webBase || apiBase;
-      const invoiceShareItems: Array<{ label: string; url: string }> = [];
-      let firstInvoicePdfUrl: string | undefined;
-      if (mintBase) {
-        for (const o of orders) {
-          try {
-            const { shareUrl, pdfUrl } = await this.mintInvoiceShareLink(
-              o.id,
-              mintBase,
-            );
-            if (!firstInvoicePdfUrl && pdfUrl) {
-              firstInvoicePdfUrl = pdfUrl;
-            }
-            const lab =
-              o.invoiceNumber?.trim() ||
-              o.serialNumber?.trim() ||
-              o.id.slice(0, 8);
-            invoiceShareItems.push({ label: lab, url: shareUrl });
-          } catch {
-            /* non-fatal */
-          }
-        }
-      }
       const first = orders[0]!;
+      const lineItemsSummary = this.formatLineItemsBlockForBundleNotify(orders);
       await this.customerNotifications.deliverInvoiceIssuedNow({
         customerPhone: phone,
         orderId: first.id,
@@ -908,9 +908,7 @@ export class OrdersService {
           : (first.invoiceNumber?.trim() || `#${first.id.slice(0, 8)}`),
         amountKd: sumDecimal.toFixed(3),
         paymentUrl: paymentLink.url,
-        invoiceShareItems:
-          invoiceShareItems.length > 0 ? invoiceShareItems : undefined,
-        invoicePdfUrl: firstInvoicePdfUrl,
+        lineItemsSummary: lineItemsSummary || undefined,
       });
     }
 

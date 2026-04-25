@@ -173,6 +173,12 @@ export type InvoiceIssuedNotifyParams = {
   invoicePdfUrl?: string;
   /** Multi-invoice bundle: one message, several receipt links. */
   invoiceShareItems?: Array<{ label: string; url: string }>;
+  /**
+   * V19.27.5 — Pre-formatted "الأصناف" block for POS WhatsApp; when set, default
+   * message is the classic text (greeting + items + total + payment) with **no**
+   * public share/PDF lines and **no** media file from this payload.
+   */
+  lineItemsSummary?: string;
 };
 
 export type InvoiceEditedIssuerNotifyParams = {
@@ -264,6 +270,43 @@ function buildInvoiceIssuedMessageMinimal(params: {
   return lines.join('\n');
 }
 
+/**
+ * V19.27.5 — Like the earlier full WhatsApp: greeting + فاتورة + أصناف + إجمالي +
+ * دفع. No /public/invoice link and no media attachment from server (those fields
+ * are omitted in `deliver` params from POS).
+ */
+function buildInvoiceIssuedMessageWithLineItemsNoFile(params: {
+  invoiceLabel: string;
+  amountKd: string;
+  lineItemsBlock: string;
+  paymentUrl?: string;
+}): string {
+  const lines: string[] = [];
+  lines.push('حياك الله! 🌿');
+  lines.push('');
+  lines.push(`نسعد بخدمتكم في ${BRAND_CUSTOMER_AR}.`);
+  lines.push('');
+  lines.push(`🏷️ رقم الفاتورة: ${params.invoiceLabel}`);
+  lines.push(`💰 *الإجمالي: ${params.amountKd} د.ك*`);
+  if (params.lineItemsBlock.trim().length > 0) {
+    lines.push('');
+    lines.push('🧺 الأصناف:');
+    lines.push(params.lineItemsBlock);
+  }
+  lines.push('');
+  lines.push(
+    'ملابسكم في أيدٍ أمينة، وسنعتني بها بأفضل صورة — شكراً لثقتكم بنا.',
+  );
+  if (params.paymentUrl) {
+    lines.push('');
+    lines.push('🔒 رابط الدفع:');
+    lines.push(params.paymentUrl);
+  }
+  lines.push('');
+  lines.push(`فريق ${BRAND_SYSTEM_AR} 🇰🇼`);
+  return lines.join('\n');
+}
+
 function buildInvoiceEditedIssuerMessage(params: {
   invoiceLabel: string;
   newAmountKd: string;
@@ -312,7 +355,7 @@ export class CustomerNotificationsService implements OnModuleInit {
         `Customer notify: Moatmt enabled → POST ${base}/send | instance_id=${maskIdForLog(instanceId)} (len ${instanceId.length}) | access_token set (len ${accessToken.length}) | media: ${
           media ? 'on (PDF when URL present)' : 'off (type:text only)'
         } | invoice text: ${
-          minimal ? 'minimal (رقم+إجمالي+رابط دفع)' : 'full template'
+          minimal ? 'minimal (رقم+إجمالي+رابط دفع)' : 'full / أصناف+دفع (POS: بلا مرفق ملف من السيرفر)'
         }; on failure: CUSTOMER_NOTIFY_WEBHOOK_URL if set.`,
       );
       if (accessToken.length < 24) {
@@ -374,7 +417,15 @@ export class CustomerNotificationsService implements OnModuleInit {
         undefined
       : `${base}/orders?highlight=${encodeURIComponent(params.orderId)}`;
 
-    const message = useInvoiceIssuedMessageMinimalText() ?
+    const hasItemsBlock = Boolean(params.lineItemsSummary?.trim());
+    const message = hasItemsBlock ?
+        buildInvoiceIssuedMessageWithLineItemsNoFile({
+          invoiceLabel: params.invoiceLabel,
+          amountKd: params.amountKd,
+          lineItemsBlock: params.lineItemsSummary!.trim(),
+          paymentUrl: params.paymentUrl,
+        })
+      : useInvoiceIssuedMessageMinimalText() ?
         buildInvoiceIssuedMessageMinimal({
           invoiceLabel: params.invoiceLabel,
           amountKd: params.amountKd,

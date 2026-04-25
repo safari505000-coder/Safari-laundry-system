@@ -11,6 +11,7 @@ export type InvoiceIssuedNotifyParams = {
         label: string;
         url: string;
     }>;
+    lineItemsSummary?: string;
 };
 export type InvoiceEditedIssuerNotifyParams = {
     toPhone: string;

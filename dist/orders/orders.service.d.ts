@@ -102,6 +102,8 @@ export declare class OrdersService {
     private readonly log;
     constructor(prisma: PrismaService, customerLedger: CustomerLedgerService, paymentsService: PaymentsService, customerNotifications: CustomerNotificationsService, generalLedger: GeneralLedgerService, serialCounter: SerialCounterService, inventory: InventoryService, jwt: JwtService);
     private resolveInvoiceShareForNotify;
+    private formatLineItemsBlockForNotify;
+    private formatLineItemsBlockForBundleNotify;
     private posInvoiceNotifyToCustomer;
     private isManagerOrOwner;
     private canViewAllOrders;

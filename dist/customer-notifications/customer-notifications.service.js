@@ -167,6 +167,30 @@ function buildInvoiceIssuedMessageMinimal(params) {
     }
     return lines.join('\n');
 }
+function buildInvoiceIssuedMessageWithLineItemsNoFile(params) {
+    const lines = [];
+    lines.push('حياك الله! 🌿');
+    lines.push('');
+    lines.push(`نسعد بخدمتكم في ${branding_1.BRAND_CUSTOMER_AR}.`);
+    lines.push('');
+    lines.push(`🏷️ رقم الفاتورة: ${params.invoiceLabel}`);
+    lines.push(`💰 *الإجمالي: ${params.amountKd} د.ك*`);
+    if (params.lineItemsBlock.trim().length > 0) {
+        lines.push('');
+        lines.push('🧺 الأصناف:');
+        lines.push(params.lineItemsBlock);
+    }
+    lines.push('');
+    lines.push('ملابسكم في أيدٍ أمينة، وسنعتني بها بأفضل صورة — شكراً لثقتكم بنا.');
+    if (params.paymentUrl) {
+        lines.push('');
+        lines.push('🔒 رابط الدفع:');
+        lines.push(params.paymentUrl);
+    }
+    lines.push('');
+    lines.push(`فريق ${branding_1.BRAND_SYSTEM_AR} 🇰🇼`);
+    return lines.join('\n');
+}
 function buildInvoiceEditedIssuerMessage(params) {
     const lines = [];
     lines.push('تنبيه — تعديل فاتورة');
@@ -233,20 +257,28 @@ let CustomerNotificationsService = class CustomerNotificationsService {
         const detailsLink = hasPublicShare || !base ?
             undefined
             : `${base}/orders?highlight=${encodeURIComponent(params.orderId)}`;
-        const message = useInvoiceIssuedMessageMinimalText() ?
-            buildInvoiceIssuedMessageMinimal({
+        const hasItemsBlock = Boolean(params.lineItemsSummary?.trim());
+        const message = hasItemsBlock ?
+            buildInvoiceIssuedMessageWithLineItemsNoFile({
                 invoiceLabel: params.invoiceLabel,
                 amountKd: params.amountKd,
+                lineItemsBlock: params.lineItemsSummary.trim(),
                 paymentUrl: params.paymentUrl,
             })
-            : buildInvoiceIssuedMessage({
-                invoiceLabel: params.invoiceLabel,
-                amountKd: params.amountKd,
-                paymentUrl: params.paymentUrl,
-                invoiceShareUrl: params.invoiceShareUrl,
-                invoiceShareItems: params.invoiceShareItems,
-                detailsLink,
-            });
+            : useInvoiceIssuedMessageMinimalText() ?
+                buildInvoiceIssuedMessageMinimal({
+                    invoiceLabel: params.invoiceLabel,
+                    amountKd: params.amountKd,
+                    paymentUrl: params.paymentUrl,
+                })
+                : buildInvoiceIssuedMessage({
+                    invoiceLabel: params.invoiceLabel,
+                    amountKd: params.amountKd,
+                    paymentUrl: params.paymentUrl,
+                    invoiceShareUrl: params.invoiceShareUrl,
+                    invoiceShareItems: params.invoiceShareItems,
+                    detailsLink,
+                });
         if (await this.trySendMoatmt(params.customerPhone, message, this.buildMoatmtInvoiceMediaPayload(params))) {
             return;
         }

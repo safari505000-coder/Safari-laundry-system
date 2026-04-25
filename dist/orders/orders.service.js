@@ -130,29 +130,49 @@ let OrdersService = OrdersService_1 = class OrdersService {
             pdfUrl: minted.pdfUrl,
         };
     }
+    formatLineItemsBlockForNotify(detail) {
+        if (!detail.lineItems?.length) {
+            return '';
+        }
+        const out = [];
+        for (const li of detail.lineItems) {
+            const qty = Number(li.quantity);
+            const unit = Number(li.unitPrice);
+            const sub = (qty * unit).toFixed(3);
+            const label = (li.label ?? '—').replace(/\s+/g, ' ').trim();
+            out.push(`• ${label} — العدد ${String(qty)} × ${unit.toFixed(3)} = ${sub} د.ك`);
+        }
+        return out.join('\n');
+    }
+    formatLineItemsBlockForBundleNotify(orders) {
+        if (orders.length === 0) {
+            return '';
+        }
+        if (orders.length === 1) {
+            return this.formatLineItemsBlockForNotify(orders[0]);
+        }
+        const parts = [];
+        for (const o of orders) {
+            const lab = o.invoiceNumber?.trim() ||
+                o.serialNumber?.trim() ||
+                o.id.slice(0, 8);
+            const block = this.formatLineItemsBlockForNotify(o);
+            parts.push(`━━ ${lab} ━━`, block || '—');
+        }
+        return parts.join('\n\n');
+    }
     async posInvoiceNotifyToCustomer(detail, phoneCompact) {
         const phone = (0, kuwait_customer_phone_1.resolveCustomerPhoneForNotify)(detail.customer.phone, detail.customer.phone2, phoneCompact);
         const inv = detail.invoiceNumber?.trim() || `#${detail.id.slice(0, 8)}`;
         const amt = detail.totalPrice.toFixed(3);
-        let invoiceShareUrl;
-        let invoicePdfUrl;
-        try {
-            const minted = await this.resolveInvoiceShareForNotify(detail.id);
-            if (minted) {
-                invoiceShareUrl = minted.shareUrl;
-                invoicePdfUrl = minted.pdfUrl;
-            }
-        }
-        catch {
-        }
+        const lineItemsSummary = this.formatLineItemsBlockForNotify(detail);
         await this.customerNotifications.deliverInvoiceIssuedNow({
             customerPhone: phone,
             orderId: detail.id,
             invoiceLabel: inv,
             amountKd: amt,
             paymentUrl: detail.paymentLink?.url,
-            invoiceShareUrl,
-            invoicePdfUrl,
+            lineItemsSummary: lineItemsSummary || undefined,
         });
     }
     isManagerOrOwner(role) {
@@ -562,30 +582,8 @@ let OrdersService = OrdersService_1 = class OrdersService {
             data: { posHostedPaymentUrl: paymentLink.url },
         });
         {
-            const webBase = process.env.PUBLIC_WEB_APP_URL?.trim().replace(/\/$/, '');
-            const apiBase = (process.env.PUBLIC_API_URL?.trim() ||
-                process.env.PAYMENTS_CALLBACK_PUBLIC_URL?.trim() ||
-                '').replace(/\/$/, '');
-            const mintBase = webBase || apiBase;
-            const invoiceShareItems = [];
-            let firstInvoicePdfUrl;
-            if (mintBase) {
-                for (const o of orders) {
-                    try {
-                        const { shareUrl, pdfUrl } = await this.mintInvoiceShareLink(o.id, mintBase);
-                        if (!firstInvoicePdfUrl && pdfUrl) {
-                            firstInvoicePdfUrl = pdfUrl;
-                        }
-                        const lab = o.invoiceNumber?.trim() ||
-                            o.serialNumber?.trim() ||
-                            o.id.slice(0, 8);
-                        invoiceShareItems.push({ label: lab, url: shareUrl });
-                    }
-                    catch {
-                    }
-                }
-            }
             const first = orders[0];
+            const lineItemsSummary = this.formatLineItemsBlockForBundleNotify(orders);
             await this.customerNotifications.deliverInvoiceIssuedNow({
                 customerPhone: phone,
                 orderId: first.id,
@@ -594,8 +592,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
                     : (first.invoiceNumber?.trim() || `#${first.id.slice(0, 8)}`),
                 amountKd: sumDecimal.toFixed(3),
                 paymentUrl: paymentLink.url,
-                invoiceShareItems: invoiceShareItems.length > 0 ? invoiceShareItems : undefined,
-                invoicePdfUrl: firstInvoicePdfUrl,
+                lineItemsSummary: lineItemsSummary || undefined,
             });
         }
         return { bundleId, orders, paymentLink };
