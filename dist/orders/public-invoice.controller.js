@@ -44,6 +44,8 @@ let PublicInvoiceController = class PublicInvoiceController {
 exports.PublicInvoiceController = PublicInvoiceController;
 __decorate([
     (0, common_1.Get)('pdf'),
+    (0, common_1.Header)('Cache-Control', 'no-store, no-cache, must-revalidate, private'),
+    (0, common_1.Header)('Pragma', 'no-cache'),
     (0, swagger_1.ApiProduces)('application/pdf'),
     (0, swagger_1.ApiOperation)({
         summary: 'Download invoice PDF (token in query string)',
@@ -56,6 +58,8 @@ __decorate([
 ], PublicInvoiceController.prototype, "getPdfByQuery", null);
 __decorate([
     (0, common_1.Get)('pdf/:token'),
+    (0, common_1.Header)('Cache-Control', 'no-store, no-cache, must-revalidate, private'),
+    (0, common_1.Header)('Pragma', 'no-cache'),
     (0, swagger_1.ApiProduces)('application/pdf'),
     (0, swagger_1.ApiOperation)({
         summary: 'Download shared invoice as PDF (token in path)',

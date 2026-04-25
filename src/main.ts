@@ -25,6 +25,7 @@ if (sentryDsn) {
   });
   Logger.log('Sentry initialised (backend)', 'Bootstrap');
 }
+import { assertProductionJwtSecret } from './bootstrap/assert-production-jwt-secret';
 import { ensureDefaultPriceList } from './bootstrap/ensure-default-price-list';
 import { APP_BRAND, APP_BRAND_ERP } from './common/constants/branding';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
@@ -139,6 +140,7 @@ async function bootstrap() {
   await ensureInstitutionalRoles(prisma);
   await ensureDefaultPriceList(prisma);
   await ensureDefaultOwner(prisma);
+  assertProductionJwtSecret();
 
   app.setGlobalPrefix('api');
 

@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Controller,
   Get,
+  Header,
   Param,
   Query,
   StreamableFile,
@@ -23,6 +24,8 @@ export class PublicInvoiceController {
    * GET /api/public/invoice/pdf?token=...
    */
   @Get('pdf')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, private')
+  @Header('Pragma', 'no-cache')
   @ApiProduces('application/pdf')
   @ApiOperation({
     summary: 'Download invoice PDF (token in query string)',
@@ -37,6 +40,8 @@ export class PublicInvoiceController {
   }
 
   @Get('pdf/:token')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, private')
+  @Header('Pragma', 'no-cache')
   @ApiProduces('application/pdf')
   @ApiOperation({
     summary: 'Download shared invoice as PDF (token in path)',

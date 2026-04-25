@@ -56,6 +56,7 @@ if (sentryDsn) {
     });
     common_1.Logger.log('Sentry initialised (backend)', 'Bootstrap');
 }
+const assert_production_jwt_secret_1 = require("./bootstrap/assert-production-jwt-secret");
 const ensure_default_price_list_1 = require("./bootstrap/ensure-default-price-list");
 const branding_1 = require("./common/constants/branding");
 const global_exception_filter_1 = require("./common/filters/global-exception.filter");
@@ -136,6 +137,7 @@ async function bootstrap() {
     await ensureInstitutionalRoles(prisma);
     await (0, ensure_default_price_list_1.ensureDefaultPriceList)(prisma);
     await ensureDefaultOwner(prisma);
+    (0, assert_production_jwt_secret_1.assertProductionJwtSecret)();
     app.setGlobalPrefix('api');
     app.enableCors({
         origin: (process.env.CORS_ORIGIN ??

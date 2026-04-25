@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
+import { JWT_SECRET_DEV_FALLBACK } from '../../common/constants/jwt-secret-fallback';
 
 export type JwtPayload = {
   sub: string;
@@ -15,8 +16,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey:
-        process.env.JWT_SECRET ?? 'safari-dev-jwt-secret-change-in-production',
+      secretOrKey: process.env.JWT_SECRET ?? JWT_SECRET_DEV_FALLBACK,
     });
   }
 

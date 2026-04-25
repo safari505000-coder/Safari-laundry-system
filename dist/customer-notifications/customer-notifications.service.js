@@ -231,6 +231,7 @@ let CustomerNotificationsService = class CustomerNotificationsService {
                     template: 'invoice_issued',
                     invoiceShareUrl: params.invoiceShareUrl ?? null,
                     invoiceShareItems: params.invoiceShareItems ?? null,
+                    invoicePdfUrl: params.invoicePdfUrl ?? null,
                 }),
             });
             if (!res.ok) {

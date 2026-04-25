@@ -3,6 +3,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { JWT_SECRET_DEV_FALLBACK } from '../common/constants/jwt-secret-fallback';
 import { FinanceModule } from '../finance/finance.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { OperatingHoursModule } from '../system/operating-hours.module';
@@ -20,8 +21,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     OperatingHoursModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.register({
-      secret:
-        process.env.JWT_SECRET ?? 'safari-dev-jwt-secret-change-in-production',
+      secret: process.env.JWT_SECRET ?? JWT_SECRET_DEV_FALLBACK,
       // V19.12 — access tokens are short-lived (default 15 min); override per
       // call via `jwt.signAsync(payload, { expiresIn })`. Kept as a sane
       // default for anything that does not override.

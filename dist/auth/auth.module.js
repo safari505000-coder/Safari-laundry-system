@@ -12,6 +12,7 @@ const core_1 = require("@nestjs/core");
 const jwt_1 = require("@nestjs/jwt");
 const passport_1 = require("@nestjs/passport");
 const throttler_1 = require("@nestjs/throttler");
+const jwt_secret_fallback_1 = require("../common/constants/jwt-secret-fallback");
 const finance_module_1 = require("../finance/finance.module");
 const prisma_module_1 = require("../prisma/prisma.module");
 const operating_hours_module_1 = require("../system/operating-hours.module");
@@ -32,7 +33,7 @@ exports.AuthModule = AuthModule = __decorate([
             operating_hours_module_1.OperatingHoursModule,
             passport_1.PassportModule.register({ defaultStrategy: 'jwt' }),
             jwt_1.JwtModule.register({
-                secret: process.env.JWT_SECRET ?? 'safari-dev-jwt-secret-change-in-production',
+                secret: process.env.JWT_SECRET ?? jwt_secret_fallback_1.JWT_SECRET_DEV_FALLBACK,
                 signOptions: {
                     expiresIn: (process.env.AUTH_ACCESS_TOKEN_TTL ?? '15m'),
                 },
