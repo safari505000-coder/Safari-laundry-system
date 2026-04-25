@@ -44,6 +44,28 @@ function truncateForMoatmtLog(s: string, max = MOATMT_LOG_MAX_BODY): string {
   return `${t.slice(0, max)}…(truncated ${t.length}→${max})`;
 }
 
+function isMoatmtInvoiceMediaEnabled(): boolean {
+  const v = process.env.MOATMT_USE_INVOICE_MEDIA?.trim().toLowerCase() ?? '';
+  return v === 'true' || v === '1';
+}
+
+/**
+ * V19.27.4 — When media is off (`MOATMT_USE_INVOICE_MEDIA=0` / unset) and
+ * `MOATMT_INVOICE_MINIMAL_TEXT` is not forced to 0, send a short text (invoice
+ * #, total, payment link only). If media is on, the long template remains the
+ * default text body (media is a separate request).
+ */
+function useInvoiceIssuedMessageMinimalText(): boolean {
+  const o = process.env.MOATMT_INVOICE_MINIMAL_TEXT?.trim().toLowerCase() ?? '';
+  if (o === '0' || o === 'false' || o === 'no' || o === 'off') {
+    return false;
+  }
+  if (o === '1' || o === 'true' || o === 'yes' || o === 'on') {
+    return true;
+  }
+  return !isMoatmtInvoiceMediaEnabled();
+}
+
 /**
  * Moatmt env value must be the token only. Users sometimes paste `TOKEN=abc` from docs.
  */
@@ -225,6 +247,23 @@ function buildInvoiceIssuedMessage(params: {
   return lines.join('\n');
 }
 
+/** V19.27.4 — Text-only mode: invoice #, 3dp total KWD, optional UPayments link. */
+function buildInvoiceIssuedMessageMinimal(params: {
+  invoiceLabel: string;
+  amountKd: string;
+  paymentUrl?: string;
+}): string {
+  const lines: string[] = [];
+  lines.push(`🏷️ رقم الفاتورة: ${params.invoiceLabel}`);
+  lines.push(`💰 الإجمالي: ${params.amountKd} د.ك`);
+  if (params.paymentUrl) {
+    lines.push('');
+    lines.push('🔒 رابط الدفع:');
+    lines.push(params.paymentUrl);
+  }
+  return lines.join('\n');
+}
+
 function buildInvoiceEditedIssuerMessage(params: {
   invoiceLabel: string;
   newAmountKd: string;
@@ -267,12 +306,13 @@ export class CustomerNotificationsService implements OnModuleInit {
       const base = (
         process.env.MOATMT_API_BASE_URL?.trim() || 'https://moatmt.sa/api'
       ).replace(/\/$/, '');
-      const media =
-        process.env.MOATMT_USE_INVOICE_MEDIA?.trim() === 'true' ||
-        process.env.MOATMT_USE_INVOICE_MEDIA?.trim() === '1';
+      const media = isMoatmtInvoiceMediaEnabled();
+      const minimal = useInvoiceIssuedMessageMinimalText();
       this.logger.log(
-        `Customer notify: Moatmt enabled → POST ${base}/send | instance_id=${maskIdForLog(instanceId)} (len ${instanceId.length}) | access_token set (len ${accessToken.length}) | mode: ${
-          media ? 'text+media when share URL is present' : 'text only'
+        `Customer notify: Moatmt enabled → POST ${base}/send | instance_id=${maskIdForLog(instanceId)} (len ${instanceId.length}) | access_token set (len ${accessToken.length}) | media: ${
+          media ? 'on (PDF when URL present)' : 'off (type:text only)'
+        } | invoice text: ${
+          minimal ? 'minimal (رقم+إجمالي+رابط دفع)' : 'full template'
         }; on failure: CUSTOMER_NOTIFY_WEBHOOK_URL if set.`,
       );
       if (accessToken.length < 24) {
@@ -334,14 +374,20 @@ export class CustomerNotificationsService implements OnModuleInit {
         undefined
       : `${base}/orders?highlight=${encodeURIComponent(params.orderId)}`;
 
-    const message = buildInvoiceIssuedMessage({
-      invoiceLabel: params.invoiceLabel,
-      amountKd: params.amountKd,
-      paymentUrl: params.paymentUrl,
-      invoiceShareUrl: params.invoiceShareUrl,
-      invoiceShareItems: params.invoiceShareItems,
-      detailsLink,
-    });
+    const message = useInvoiceIssuedMessageMinimalText() ?
+        buildInvoiceIssuedMessageMinimal({
+          invoiceLabel: params.invoiceLabel,
+          amountKd: params.amountKd,
+          paymentUrl: params.paymentUrl,
+        })
+      : buildInvoiceIssuedMessage({
+          invoiceLabel: params.invoiceLabel,
+          amountKd: params.amountKd,
+          paymentUrl: params.paymentUrl,
+          invoiceShareUrl: params.invoiceShareUrl,
+          invoiceShareItems: params.invoiceShareItems,
+          detailsLink,
+        });
 
     if (
       await this.trySendMoatmt(
@@ -437,10 +483,7 @@ export class CustomerNotificationsService implements OnModuleInit {
   private buildMoatmtInvoiceMediaPayload(
     params: InvoiceIssuedNotifyParams,
   ): { mediaUrl: string; filename: string; caption: string } | null {
-    const on =
-      process.env.MOATMT_USE_INVOICE_MEDIA?.trim() === 'true' ||
-      process.env.MOATMT_USE_INVOICE_MEDIA?.trim() === '1';
-    if (!on) {
+    if (!isMoatmtInvoiceMediaEnabled()) {
       return null;
     }
     const mediaUrl =
@@ -470,11 +513,8 @@ export class CustomerNotificationsService implements OnModuleInit {
   private buildMoatmtIssuerEditMediaPayload(
     params: InvoiceEditedIssuerNotifyParams,
   ): { mediaUrl: string; filename: string; caption: string } | null {
-    const on =
-      process.env.MOATMT_USE_INVOICE_MEDIA?.trim() === 'true' ||
-      process.env.MOATMT_USE_INVOICE_MEDIA?.trim() === '1';
     const mediaUrl = params.invoicePdfUrl?.trim() || params.invoiceShareUrl?.trim() || '';
-    if (!on || !mediaUrl) {
+    if (!isMoatmtInvoiceMediaEnabled() || !mediaUrl) {
       return null;
     }
     const shortId = params.orderId.replace(/-/g, '').slice(0, 8);

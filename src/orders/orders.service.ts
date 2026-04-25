@@ -216,7 +216,7 @@ export class OrdersService {
       phoneCompact,
     );
     const inv = detail.invoiceNumber?.trim() || `#${detail.id.slice(0, 8)}`;
-    const amt = detail.totalPrice.toFixed(4);
+    const amt = detail.totalPrice.toFixed(3);
     let invoiceShareUrl: string | undefined;
     let invoicePdfUrl: string | undefined;
     try {
@@ -906,7 +906,7 @@ export class OrdersService {
           orders.length > 1 ?
             `مجموعة ${orders.length} فواتير`
           : (first.invoiceNumber?.trim() || `#${first.id.slice(0, 8)}`),
-        amountKd: sumDecimal.toFixed(4),
+        amountKd: sumDecimal.toFixed(3),
         paymentUrl: paymentLink.url,
         invoiceShareItems:
           invoiceShareItems.length > 0 ? invoiceShareItems : undefined,

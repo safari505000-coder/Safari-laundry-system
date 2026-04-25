@@ -45,6 +45,20 @@ function truncateForMoatmtLog(s, max = MOATMT_LOG_MAX_BODY) {
     }
     return `${t.slice(0, max)}…(truncated ${t.length}→${max})`;
 }
+function isMoatmtInvoiceMediaEnabled() {
+    const v = process.env.MOATMT_USE_INVOICE_MEDIA?.trim().toLowerCase() ?? '';
+    return v === 'true' || v === '1';
+}
+function useInvoiceIssuedMessageMinimalText() {
+    const o = process.env.MOATMT_INVOICE_MINIMAL_TEXT?.trim().toLowerCase() ?? '';
+    if (o === '0' || o === 'false' || o === 'no' || o === 'off') {
+        return false;
+    }
+    if (o === '1' || o === 'true' || o === 'yes' || o === 'on') {
+        return true;
+    }
+    return !isMoatmtInvoiceMediaEnabled();
+}
 function normalizeMoatmtAccessToken(raw) {
     const t = (raw ?? '').trim();
     if (!t) {
@@ -142,6 +156,17 @@ function buildInvoiceIssuedMessage(params) {
     lines.push(`فريق ${branding_1.BRAND_SYSTEM_AR} 🇰🇼`);
     return lines.join('\n');
 }
+function buildInvoiceIssuedMessageMinimal(params) {
+    const lines = [];
+    lines.push(`🏷️ رقم الفاتورة: ${params.invoiceLabel}`);
+    lines.push(`💰 الإجمالي: ${params.amountKd} د.ك`);
+    if (params.paymentUrl) {
+        lines.push('');
+        lines.push('🔒 رابط الدفع:');
+        lines.push(params.paymentUrl);
+    }
+    return lines.join('\n');
+}
 function buildInvoiceEditedIssuerMessage(params) {
     const lines = [];
     lines.push('تنبيه — تعديل فاتورة');
@@ -173,9 +198,9 @@ let CustomerNotificationsService = class CustomerNotificationsService {
         const hasHook = Boolean(process.env.CUSTOMER_NOTIFY_WEBHOOK_URL?.trim());
         if (hasMoatmt) {
             const base = (process.env.MOATMT_API_BASE_URL?.trim() || 'https://moatmt.sa/api').replace(/\/$/, '');
-            const media = process.env.MOATMT_USE_INVOICE_MEDIA?.trim() === 'true' ||
-                process.env.MOATMT_USE_INVOICE_MEDIA?.trim() === '1';
-            this.logger.log(`Customer notify: Moatmt enabled → POST ${base}/send | instance_id=${maskIdForLog(instanceId)} (len ${instanceId.length}) | access_token set (len ${accessToken.length}) | mode: ${media ? 'text+media when share URL is present' : 'text only'}; on failure: CUSTOMER_NOTIFY_WEBHOOK_URL if set.`);
+            const media = isMoatmtInvoiceMediaEnabled();
+            const minimal = useInvoiceIssuedMessageMinimalText();
+            this.logger.log(`Customer notify: Moatmt enabled → POST ${base}/send | instance_id=${maskIdForLog(instanceId)} (len ${instanceId.length}) | access_token set (len ${accessToken.length}) | media: ${media ? 'on (PDF when URL present)' : 'off (type:text only)'} | invoice text: ${minimal ? 'minimal (رقم+إجمالي+رابط دفع)' : 'full template'}; on failure: CUSTOMER_NOTIFY_WEBHOOK_URL if set.`);
             if (accessToken.length < 24) {
                 this.logger.warn(`Moatmt: MOATMT_ACCESS_TOKEN is only ${accessToken.length} chars — the panel usually issues a *long* token. ` +
                     'If the API says "Access token is required", paste the full API token from moatmt.sa (not a short instance/session id).');
@@ -208,14 +233,20 @@ let CustomerNotificationsService = class CustomerNotificationsService {
         const detailsLink = hasPublicShare || !base ?
             undefined
             : `${base}/orders?highlight=${encodeURIComponent(params.orderId)}`;
-        const message = buildInvoiceIssuedMessage({
-            invoiceLabel: params.invoiceLabel,
-            amountKd: params.amountKd,
-            paymentUrl: params.paymentUrl,
-            invoiceShareUrl: params.invoiceShareUrl,
-            invoiceShareItems: params.invoiceShareItems,
-            detailsLink,
-        });
+        const message = useInvoiceIssuedMessageMinimalText() ?
+            buildInvoiceIssuedMessageMinimal({
+                invoiceLabel: params.invoiceLabel,
+                amountKd: params.amountKd,
+                paymentUrl: params.paymentUrl,
+            })
+            : buildInvoiceIssuedMessage({
+                invoiceLabel: params.invoiceLabel,
+                amountKd: params.amountKd,
+                paymentUrl: params.paymentUrl,
+                invoiceShareUrl: params.invoiceShareUrl,
+                invoiceShareItems: params.invoiceShareItems,
+                detailsLink,
+            });
         if (await this.trySendMoatmt(params.customerPhone, message, this.buildMoatmtInvoiceMediaPayload(params))) {
             return;
         }
@@ -275,9 +306,7 @@ let CustomerNotificationsService = class CustomerNotificationsService {
         this.logger.warn(`Issuer WhatsApp not delivered: phone=${formatPhoneHintForLog(params.toPhone)} orderId=${params.orderId} (set MOATMT_* or STAFF_INVOICE_NOTIFY_WEBHOOK_URL / CUSTOMER_NOTIFY_WEBHOOK_URL). preview=${message.slice(0, 100)}…`);
     }
     buildMoatmtInvoiceMediaPayload(params) {
-        const on = process.env.MOATMT_USE_INVOICE_MEDIA?.trim() === 'true' ||
-            process.env.MOATMT_USE_INVOICE_MEDIA?.trim() === '1';
-        if (!on) {
+        if (!isMoatmtInvoiceMediaEnabled()) {
             return null;
         }
         const mediaUrl = params.invoicePdfUrl?.trim() ||
@@ -302,10 +331,8 @@ let CustomerNotificationsService = class CustomerNotificationsService {
         };
     }
     buildMoatmtIssuerEditMediaPayload(params) {
-        const on = process.env.MOATMT_USE_INVOICE_MEDIA?.trim() === 'true' ||
-            process.env.MOATMT_USE_INVOICE_MEDIA?.trim() === '1';
         const mediaUrl = params.invoicePdfUrl?.trim() || params.invoiceShareUrl?.trim() || '';
-        if (!on || !mediaUrl) {
+        if (!isMoatmtInvoiceMediaEnabled() || !mediaUrl) {
             return null;
         }
         const shortId = params.orderId.replace(/-/g, '').slice(0, 8);

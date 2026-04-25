@@ -133,7 +133,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
     async posInvoiceNotifyToCustomer(detail, phoneCompact) {
         const phone = (0, kuwait_customer_phone_1.resolveCustomerPhoneForNotify)(detail.customer.phone, detail.customer.phone2, phoneCompact);
         const inv = detail.invoiceNumber?.trim() || `#${detail.id.slice(0, 8)}`;
-        const amt = detail.totalPrice.toFixed(4);
+        const amt = detail.totalPrice.toFixed(3);
         let invoiceShareUrl;
         let invoicePdfUrl;
         try {
@@ -592,7 +592,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
                 invoiceLabel: orders.length > 1 ?
                     `مجموعة ${orders.length} فواتير`
                     : (first.invoiceNumber?.trim() || `#${first.id.slice(0, 8)}`),
-                amountKd: sumDecimal.toFixed(4),
+                amountKd: sumDecimal.toFixed(3),
                 paymentUrl: paymentLink.url,
                 invoiceShareItems: invoiceShareItems.length > 0 ? invoiceShareItems : undefined,
                 invoicePdfUrl: firstInvoicePdfUrl,
