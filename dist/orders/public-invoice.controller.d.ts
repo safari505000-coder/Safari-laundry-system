@@ -3,7 +3,9 @@ import { OrdersService } from './orders.service';
 export declare class PublicInvoiceController {
     private readonly orders;
     constructor(orders: OrdersService);
-    getPdf(token: string): Promise<StreamableFile>;
+    getPdfByQuery(token: string | undefined): Promise<StreamableFile>;
+    getPdfByParam(token: string): Promise<StreamableFile>;
+    private servePublicInvoicePdf;
     get(token: string): Promise<{
         customer: {
             wallet: {

@@ -1863,7 +1863,19 @@ export class OrdersService {
     let payload: { purpose?: string; orderId?: string };
     try {
       payload = await this.jwt.verifyAsync(normalized);
-    } catch {
+    } catch (e: unknown) {
+      const name =
+        e && typeof e === 'object' && 'name' in e ?
+          String((e as { name: string }).name)
+        : '';
+      if (name === 'TokenExpiredError') {
+        throw new NotFoundException('رابط الفاتورة منتهي الصلاحية');
+      }
+      if (name === 'JsonWebTokenError' || name === 'NotBeforeError') {
+        throw new NotFoundException(
+          'رابط الفاتورة غير صالح — انسخ التوكن كاملاً، أو راجع تطابق JWT_SECRET بين البيئات',
+        );
+      }
       throw new NotFoundException(
         'رابط الفاتورة غير صالح أو منتهي الصلاحية',
       );

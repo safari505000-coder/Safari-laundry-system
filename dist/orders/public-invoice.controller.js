@@ -21,7 +21,16 @@ let PublicInvoiceController = class PublicInvoiceController {
     constructor(orders) {
         this.orders = orders;
     }
-    async getPdf(token) {
+    async getPdfByQuery(token) {
+        if (token == null || !String(token).trim()) {
+            throw new common_1.BadRequestException('Missing required query: token');
+        }
+        return this.servePublicInvoicePdf(String(token));
+    }
+    async getPdfByParam(token) {
+        return this.servePublicInvoicePdf(token);
+    }
+    async servePublicInvoicePdf(token) {
         const { stream, filename } = await this.orders.getPublicInvoicePdfStream(token);
         return new common_1.StreamableFile(stream, {
             type: 'application/pdf',
@@ -34,17 +43,29 @@ let PublicInvoiceController = class PublicInvoiceController {
 };
 exports.PublicInvoiceController = PublicInvoiceController;
 __decorate([
+    (0, common_1.Get)('pdf'),
+    (0, swagger_1.ApiProduces)('application/pdf'),
+    (0, swagger_1.ApiOperation)({
+        summary: 'Download invoice PDF (token in query string)',
+        description: 'Same JWT as `GET /:token` / `GET pdf/:token`. Use when the token is long or path-based URLs are altered by a proxy.',
+    }),
+    __param(0, (0, common_1.Query)('token')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], PublicInvoiceController.prototype, "getPdfByQuery", null);
+__decorate([
     (0, common_1.Get)('pdf/:token'),
     (0, swagger_1.ApiProduces)('application/pdf'),
     (0, swagger_1.ApiOperation)({
-        summary: 'Download shared invoice as PDF (direct binary for WhatsApp media)',
-        description: 'V19.27 — Same JWT as `GET /:token` but returns `application/pdf` for Moatmt `media_url` fetches. Must be listed before the generic `:token` route.',
+        summary: 'Download shared invoice as PDF (token in path)',
+        description: 'V19.27 — Same JWT as `GET /:token` but returns `application/pdf` for Moatmt `media_url` fetches.',
     }),
     __param(0, (0, common_1.Param)('token')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
-], PublicInvoiceController.prototype, "getPdf", null);
+], PublicInvoiceController.prototype, "getPdfByParam", null);
 __decorate([
     (0, common_1.Get)(':token'),
     (0, swagger_1.ApiOperation)({

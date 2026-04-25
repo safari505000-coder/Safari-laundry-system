@@ -1,4 +1,11 @@
-import { Controller, Get, Param, StreamableFile } from '@nestjs/common';
+import {
+  BadRequestException,
+  Controller,
+  Get,
+  Param,
+  Query,
+  StreamableFile,
+} from '@nestjs/common';
 import { ApiOperation, ApiProduces, ApiTags } from '@nestjs/swagger';
 import { OrdersService } from './orders.service';
 
@@ -11,14 +18,36 @@ import { OrdersService } from './orders.service';
 export class PublicInvoiceController {
   constructor(private readonly orders: OrdersService) {}
 
+  /**
+   * V19.27.2 — Query form preferred for long JWTs; some gateways mangle path segments.
+   * GET /api/public/invoice/pdf?token=...
+   */
+  @Get('pdf')
+  @ApiProduces('application/pdf')
+  @ApiOperation({
+    summary: 'Download invoice PDF (token in query string)',
+    description:
+      'Same JWT as `GET /:token` / `GET pdf/:token`. Use when the token is long or path-based URLs are altered by a proxy.',
+  })
+  async getPdfByQuery(@Query('token') token: string | undefined) {
+    if (token == null || !String(token).trim()) {
+      throw new BadRequestException('Missing required query: token');
+    }
+    return this.servePublicInvoicePdf(String(token));
+  }
+
   @Get('pdf/:token')
   @ApiProduces('application/pdf')
   @ApiOperation({
-    summary: 'Download shared invoice as PDF (direct binary for WhatsApp media)',
+    summary: 'Download shared invoice as PDF (token in path)',
     description:
-      'V19.27 — Same JWT as `GET /:token` but returns `application/pdf` for Moatmt `media_url` fetches. Must be listed before the generic `:token` route.',
+      'V19.27 — Same JWT as `GET /:token` but returns `application/pdf` for Moatmt `media_url` fetches.',
   })
-  async getPdf(@Param('token') token: string) {
+  async getPdfByParam(@Param('token') token: string) {
+    return this.servePublicInvoicePdf(token);
+  }
+
+  private async servePublicInvoicePdf(token: string) {
     const { stream, filename } = await this.orders.getPublicInvoicePdfStream(token);
     return new StreamableFile(stream, {
       type: 'application/pdf',

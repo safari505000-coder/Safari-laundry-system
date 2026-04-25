@@ -8,6 +8,6 @@ function buildPublicInvoicePdfUrl(token) {
     if (!apiBase) {
         return undefined;
     }
-    return `${apiBase}/api/public/invoice/pdf/${encodeURIComponent(token)}`;
+    return `${apiBase}/api/public/invoice/pdf?token=${encodeURIComponent(token)}`;
 }
 //# sourceMappingURL=invoice-pdf.util.js.map
