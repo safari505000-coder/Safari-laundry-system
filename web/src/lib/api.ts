@@ -1130,6 +1130,11 @@ export type SubscriberListRow = {
   remainingDays: number | null;
   balance: string;
   /**
+   * V19.13.2 — Column display: prepaid while active; net (balance − total owed)
+   * when subscription expired. Falls back to `balance` if absent (older API).
+   */
+  balanceDisplayKd?: string;
+  /**
    * V19.4 — CC pack #1. Customer's current outstanding debt (KWD 4dp).
    * Drives the "Pay part of debt" card in the Manage-Account dialog;
    * when "0.0000" the card is hidden.

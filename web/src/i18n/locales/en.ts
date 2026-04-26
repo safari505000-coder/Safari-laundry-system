@@ -1542,7 +1542,8 @@ export const en = {
     colStart: 'Start date',
     colExpiry: 'Expiry date',
     colRemaining: 'Remaining days',
-    colBalance: 'Remaining balance',
+    colBalance:
+      'Remaining balance (after expiry: net vs debt & unsettled invoices)',
     empty: 'No subscribers match yet.',
     emptySearch: 'No subscribers match your search.',
     loading: 'Loading…',

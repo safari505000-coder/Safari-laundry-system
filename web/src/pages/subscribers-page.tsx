@@ -107,6 +107,21 @@ function isLowPrepaidBalance(balance: string): boolean {
   return Number.isFinite(n) && n > 0 && n < 10;
 }
 
+/** Prepaid low-balance warn only while subscription is not in expired net view. */
+function isLowPrepaidBalanceRow(r: SubscriberListRow): boolean {
+  if (
+    r.rowStatus === 'expired' ||
+    (r.remainingDays !== null && r.remainingDays < 0)
+  ) {
+    return false;
+  }
+  return isLowPrepaidBalance(r.balance);
+}
+
+function subscriberListBalanceDisplay(r: SubscriberListRow): string {
+  return r.balanceDisplayKd ?? r.balance;
+}
+
 /** Digits-only phone normalisation — matches the collections page helper. */
 function normalisePhone(value: string): string {
   return value.replace(/\D+/g, '');
@@ -158,10 +173,10 @@ function SubscriberCard({
             dir="ltr"
             className={cn(
               'tabular-nums text-base font-bold sm:text-sm',
-              subscriberBalanceClass(r.balance),
+              subscriberBalanceClass(subscriberListBalanceDisplay(r)),
             )}
           >
-            {formatSignedKwdLabel(r.balance)}
+            {formatSignedKwdLabel(subscriberListBalanceDisplay(r))}
           </dd>
         </div>
         <div className="min-w-0">
@@ -181,7 +196,7 @@ function SubscriberCard({
           </dd>
         </div>
       </dl>
-      {isLowPrepaidBalance(r.balance) ? (
+      {isLowPrepaidBalanceRow(r) ? (
         <p className="mt-2 text-xs font-semibold text-red-700">
           {t('subscribers.lowBalanceWarn')}
         </p>
@@ -1837,11 +1852,11 @@ export function SubscribersPage() {
                   <TableCell
                     className={cn(
                       'text-end tabular-nums text-sm font-medium',
-                      subscriberBalanceClass(r.balance),
+                      subscriberBalanceClass(subscriberListBalanceDisplay(r)),
                     )}
                     dir="ltr"
                   >
-                    {formatSignedKwdLabel(r.balance)}
+                    {formatSignedKwdLabel(subscriberListBalanceDisplay(r))}
                   </TableCell>
                 </TableRow>
               ))}

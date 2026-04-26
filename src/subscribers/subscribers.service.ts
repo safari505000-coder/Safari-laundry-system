@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { LedgerTransactionType } from '@prisma/client';
+import {
+  CashStatus,
+  LedgerTransactionType,
+  OrderStatus,
+  Prisma,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 type ActivationMeta = {
@@ -19,6 +24,13 @@ export type SubscriberListRow = {
   expiryDate: string | null;
   remainingDays: number | null;
   balance: string;
+  /**
+   * V19.13.2 — What the subscribers table should show in "remaining balance":
+   * while the subscription window is active, same as prepaid `balance`;
+   * when **expired**, net position `balance − (wallet.debt + unsettled UNPAID
+   * receivables)` so operators see owed amounts instead of a misleading 0.
+   */
+  balanceDisplayKd: string;
   /**
    * V19.4 — CC pack #1. Outstanding debt the customer still owes,
    * surfaced next to `balance` so the Call-Center manage dialog can
@@ -151,6 +163,27 @@ export class SubscribersService {
       },
     });
 
+    const customerIds = customers.map((c) => c.id);
+    const openByCustomer =
+      customerIds.length === 0 ?
+        []
+      : await this.prisma.order.groupBy({
+          by: ['customerId'],
+          where: {
+            customerId: { in: customerIds },
+            cashStatus: CashStatus.UNPAID,
+            status: { not: OrderStatus.CANCELED },
+            walletSettledAt: null,
+          },
+          _sum: { totalPrice: true },
+        });
+    const openReceivableByCustomer = new Map(
+      openByCustomer.map((g) => [
+        g.customerId,
+        g._sum.totalPrice ?? new Prisma.Decimal(0),
+      ]),
+    );
+
     const now = Date.now();
 
     const planIds = new Set<string>();
@@ -269,6 +302,18 @@ export class SubscribersService {
       const canRemindNow =
         !lastReminderAt || now - lastReminderAt.getTime() >= REMINDER_COOLDOWN_MS;
 
+      const openReceivable =
+        openReceivableByCustomer.get(c.id) ?? new Prisma.Decimal(0);
+      const debtD = w?.debt ?? new Prisma.Decimal(0);
+      const balanceD = w?.balance ?? new Prisma.Decimal(0);
+      const totalOwedD = debtD.add(openReceivable);
+      const useNetPosition =
+        rowStatus === 'expired' ||
+        (remainingDays !== null && remainingDays < 0);
+      const balanceDisplayKd = useNetPosition
+        ? balanceD.minus(totalOwedD).toFixed(4)
+        : balanceD.toFixed(4);
+
       rows.push({
         customerId: c.id,
         customerName,
@@ -279,6 +324,7 @@ export class SubscribersService {
         expiryDate: expiryDate?.toISOString() ?? null,
         remainingDays,
         balance: balanceStr,
+        balanceDisplayKd,
         debt: debtStr,
         rowStatus,
         invoiceAgeDays,
