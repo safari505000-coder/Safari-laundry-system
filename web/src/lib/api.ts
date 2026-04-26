@@ -1731,6 +1731,8 @@ export type SubscriptionActivationSettlement = {
    * Signed string (4dp). + credit carried, - debt carried, '0.0000' none.
    */
   carriedBalanceKd?: string;
+  /** Server: FIFO-paid from prepaid balance after activation (V19.13). */
+  prepaidAutoReconciledOrderIds?: string[];
 };
 
 /**

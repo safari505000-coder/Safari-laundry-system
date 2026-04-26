@@ -14,9 +14,8 @@ export class ActivateSubscriptionDto {
    * V19.7.4 — when true, the activation will also walk unpaid invoices
    * for this customer oldest-first (FIFO) and mark any that are fully
    * covered by the debt-reduction portion of the activation as paid.
-   * Owner directive: only the "Convert debt → subscription" flow sends
-   * this flag; the regular upgrade flow keeps individual invoices open
-   * so the debt-tracking list still reflects the original receivables.
+   * The Call Center issue/upgrade dialog also sends true so payment-link
+   * invoices (unsettled receivables) clear together with `wallet.debt`.
    */
   @ApiPropertyOptional({ default: false })
   @IsOptional()

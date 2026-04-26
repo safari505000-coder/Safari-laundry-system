@@ -38,4 +38,10 @@ export type SubscriptionActivationSettlement = {
    * or no invoice was fully covered.
    */
   closedInvoiceIds: string[];
+  /**
+   * V19.13 — UNPAID invoices paid in full from prepaid `wallet.balance`
+   * immediately after activation (FIFO, oldest first). Server-driven; no
+   * frontend flag required.
+   */
+  prepaidAutoReconciledOrderIds: string[];
 };

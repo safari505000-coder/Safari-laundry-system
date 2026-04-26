@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -15,11 +16,13 @@ import {
   Prisma,
   SafariRole,
 } from '@prisma/client';
+import { cashStatusForPaymentMethod } from '../common/utils/cash-status-for-method';
 import {
   minorToAmountString,
   toMinorFromFixed4,
 } from '../finance/finance-money';
 import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
+import { InventoryService } from '../inventory/inventory.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { SubscriptionActivationSettlement } from './subscription-settlement.types';
 
@@ -37,10 +40,194 @@ export type OrderWalletSettlementPrefetch = {
 
 @Injectable()
 export class CustomerLedgerService {
+  private readonly logger = new Logger(CustomerLedgerService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly generalLedger: GeneralLedgerService,
+    private readonly inventory: InventoryService,
   ) {}
+
+  /**
+   * UNPAID orders that never ran `applyOrderWalletSettlementForCompletedOrder`
+   * (`walletSettledAt` still null) — e.g. hosted payment-link / pending-online
+   * invoices. They appear on collections KPIs but are absent from
+   * `CustomerWallet.debt` until the gateway or CC settles the order.
+   */
+  private async sumUnsettledUnpaidReceivableMinorTx(
+    tx: Pick<Prisma.TransactionClient, 'order'>,
+    customerId: string,
+  ): Promise<bigint> {
+    const agg = await tx.order.aggregate({
+      where: {
+        customerId,
+        cashStatus: CashStatus.UNPAID,
+        status: { not: OrderStatus.CANCELED },
+        walletSettledAt: null,
+      },
+      _sum: { totalPrice: true },
+    });
+    return toMinorFromFixed4(agg._sum.totalPrice ?? new Prisma.Decimal(0));
+  }
+
+  private async resolveFallbackOwnerIdTx(tx: PrismaTx): Promise<string | null> {
+    const owner = await tx.user.findFirst({
+      where: { safariRole: SafariRole.OWNER },
+      select: { id: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    return owner?.id ?? null;
+  }
+
+  /**
+   * FIFO-settle UNPAID orders using positive prepaid `CustomerWallet.balance`
+   * (subscription credit). Oldest `createdAt` first; only **full** invoice
+   * amounts (same invariant as POS `SUBSCRIPTION_WALLET` checkout). Skips
+   * bundled gateway orders (`posPaymentBundleId` set) — those stay on the
+   * multi-pay link flow.
+   *
+   * Intended to run at the end of subscription activation and whenever
+   * prepaid balance increases, so operators are not dependent on a frontend
+   * `autoCloseInvoices` flag for “balance pays open invoices”.
+   */
+  async autoReconcileUnpaidInvoicesFromPrepaidBalanceTx(
+    tx: PrismaTx,
+    customerId: string,
+    performedByUserId: string | null | undefined,
+  ): Promise<{ paidOrderIds: string[] }> {
+    const paidOrderIds: string[] = [];
+    const performerId =
+      performedByUserId ?? (await this.resolveFallbackOwnerIdTx(tx));
+    if (!performerId) {
+      this.logger.warn(
+        `[prepaid-auto-reconcile] No OWNER user to attribute ledger — skip customerId=${customerId}`,
+      );
+      return { paidOrderIds };
+    }
+
+    const maxPasses = 50;
+    for (let pass = 0; pass < maxPasses; pass++) {
+      const wallet = await this.getOrCreateWalletTx(tx, customerId);
+      const balanceMinor = toMinorFromFixed4(wallet.balance);
+      if (balanceMinor <= 0n) break;
+
+      const next = await tx.order.findFirst({
+        where: {
+          customerId,
+          cashStatus: CashStatus.UNPAID,
+          status: { not: OrderStatus.CANCELED },
+          walletSettledAt: null,
+          posPaymentBundleId: null,
+        },
+        orderBy: { createdAt: 'asc' },
+        select: {
+          id: true,
+          totalPrice: true,
+          status: true,
+          completedAt: true,
+          driverId: true,
+          customerId: true,
+        },
+      });
+      if (!next) break;
+
+      const invMinor = toMinorFromFixed4(next.totalPrice);
+      if (invMinor <= 0n) break;
+      if (invMinor > balanceMinor) break;
+
+      const wasIncomplete = next.status !== OrderStatus.COMPLETED;
+
+      await tx.order.update({
+        where: { id: next.id },
+        data: {
+          status: OrderStatus.COMPLETED,
+          completedAt: next.completedAt ?? new Date(),
+          posPaymentMethod: PosPaymentMethod.SUBSCRIPTION_WALLET,
+          cashStatus: cashStatusForPaymentMethod(
+            PosPaymentMethod.SUBSCRIPTION_WALLET,
+          ),
+        },
+      });
+
+      await this.applyOrderWalletSettlementForCompletedOrder(
+        tx,
+        next.id,
+        performerId,
+        {
+          customerId: next.customerId,
+          totalPrice: next.totalPrice,
+          posPaymentMethod: PosPaymentMethod.SUBSCRIPTION_WALLET,
+          walletSettledAt: null,
+          skipPerformerLookup: true,
+        },
+        {
+          autoReconciledFromPrepaidBalance: true,
+          reportingCategory: 'PREPAID_AUTO_RECONCILE',
+        },
+      );
+
+      if (wasIncomplete) {
+        await this.generalLedger.append(tx, {
+          entryType: GeneralLedgerEntryType.POS_SALE_COMPLETED,
+          amount: next.totalPrice,
+          memo: 'POS checkout (prepaid auto-reconcile)',
+          orderId: next.id,
+          customerId: next.customerId,
+          actorUserId: performerId,
+          metadata: {
+            posPaymentMethod: PosPaymentMethod.SUBSCRIPTION_WALLET,
+            source: 'PREPAID_AUTO_RECONCILE',
+          },
+        });
+
+        const actorRow = await tx.user.findUnique({
+          where: { id: performerId },
+          select: { branchId: true },
+        });
+        const driverRow = next.driverId
+          ? await tx.user.findUnique({
+              where: { id: next.driverId },
+              select: { branchId: true },
+            })
+          : null;
+        await this.inventory.applyOrderStockDecrement(tx, {
+          orderId: next.id,
+          actorUserId: performerId,
+          branchId: driverRow?.branchId ?? actorRow?.branchId ?? null,
+          reference: `AUTO-PREPAID-${next.id.slice(0, 8)}`,
+        });
+      }
+
+      paidOrderIds.push(next.id);
+    }
+
+    if (paidOrderIds.length > 0) {
+      this.logger.log(
+        `[prepaid-auto-reconcile] customerId=${customerId} count=${paidOrderIds.length} orderIds=${paidOrderIds.join(',')}`,
+      );
+    }
+
+    return { paidOrderIds };
+  }
+
+  /**
+   * Standalone transaction wrapper for future callers (cron, admin tools)
+   * after any prepaid balance increase.
+   */
+  async runPrepaidAutoReconcileForCustomer(
+    customerId: string,
+    performedByUserId?: string | null,
+  ): Promise<{ paidOrderIds: string[] }> {
+    return this.prisma.$transaction(
+      async (tx) =>
+        this.autoReconcileUnpaidInvoicesFromPrepaidBalanceTx(
+          tx,
+          customerId,
+          performedByUserId ?? null,
+        ),
+      { maxWait: 10_000, timeout: 15_000 },
+    );
+  }
 
   private decimalFromMinor(minor: bigint): Prisma.Decimal {
     return new Prisma.Decimal(minorToAmountString(minor));
@@ -428,6 +615,11 @@ export class CustomerLedgerService {
     const subsidyBranchId = refreshedCustomer?.originBranchId ?? actor.branchId ?? null;
     const balanceMinor = toMinorFromFixed4(wallet.balance);
     const debtMinor = toMinorFromFixed4(wallet.debt);
+    const implicitReceivableMinor = await this.sumUnsettledUnpaidReceivableMinorTx(
+      tx,
+      params.customerId,
+    );
+    const effectiveDebtMinor = debtMinor + implicitReceivableMinor;
     const priceMinor = toMinorFromFixed4(plan.salePrice);
     const creditMinor = toMinorFromFixed4(plan.actualBalance);
 
@@ -466,9 +658,21 @@ export class CustomerLedgerService {
     //
     // Behavior for debt-free customers is unchanged: debtPaid=0, the
     // full credit still lands in the wallet.
+    //
+    // V19.12.1 — `effectiveDebtMinor` adds **unposted** receivables (UNPAID
+    // orders with `walletSettledAt=null`, typical payment-link pending rows).
+    // Without this, `wallet.debt` could be 0 while collections still show an
+    // invoice; activation would skip both debt pay-down and FIFO closure.
     const debtPaidMinor =
-      debtMinor < creditMinor ? debtMinor : creditMinor;
-    const newDebtMinor = debtMinor - debtPaidMinor;
+      effectiveDebtMinor < creditMinor ? effectiveDebtMinor : creditMinor;
+    const newDebtMinor = debtMinor - (debtPaidMinor < debtMinor ? debtPaidMinor : debtMinor);
+
+    this.logger.log(
+      `[subscription-activation] customerId=${params.customerId} planId=${params.planId} ` +
+        `walletDebtMinor=${debtMinor.toString()} implicitUnpostedMinor=${implicitReceivableMinor.toString()} ` +
+        `effectiveDebtMinor=${effectiveDebtMinor.toString()} planCreditMinor=${creditMinor.toString()} ` +
+        `debtPaidMinor=${debtPaidMinor.toString()} autoCloseInvoices=${params.autoCloseInvoices === true}`,
+    );
     const rawCreditMinor = creditMinor - debtPaidMinor;
     const balanceIncreaseMinor =
       rawCreditMinor > 0n ? rawCreditMinor : 0n;
@@ -577,19 +781,18 @@ export class CustomerLedgerService {
           automaticDebtSettlement: true,
           rolledOverFromSubscriptionId: previousSubscription?.id ?? null,
           carriedBalanceKd: carriedBalanceStr,
+          implicitUnpostedReceivableKd: minorToAmountString(implicitReceivableMinor),
+          effectiveDebtForActivationKd: minorToAmountString(effectiveDebtMinor),
         },
       },
     });
 
-    // V19.7.4 — FIFO invoice auto-closure (Owner directive, opt-in via
-    // `autoCloseInvoices`). Context: `wallet.debt` is the aggregate
-    // receivable, while `Order.cashStatus=UNPAID` is the per-invoice
-    // status. Before this change the "Convert debt → subscription" flow
-    // reduced the aggregate but left the underlying invoices flagged
-    // UNPAID, so the debt-tracking list kept showing receivables whose
-    // total no longer matched `wallet.debt`. Owner asked: "إذا
-    // انخصمت تحذف فواتيره من قائمة متابعة المديونية صحيح" — yes, but
-    // only for the Convert flow (regular Upgrade keeps invoices open).
+    // V19.7.4 — FIFO invoice auto-closure (opt-in via `autoCloseInvoices`).
+    // Context: `wallet.debt` is posted aggregate receivable; UNPAID orders
+    // may still exist (e.g. payment-link pending) and are folded into
+    // `effectiveDebtMinor` above. When this flag is true and `debtPaidMinor`
+    // is positive, we FIFO-close matching UNPAID rows so collections matches
+    // wallet state.
     //
     // Algorithm: walk completed+unpaid invoices oldest-first and mark
     // any fully covered by `debtPaidMinor` as PAID_TO_DRIVER. We do not
@@ -710,18 +913,31 @@ export class CustomerLedgerService {
       }
     }
 
+    const prepaidReconciled =
+      await this.autoReconcileUnpaidInvoicesFromPrepaidBalanceTx(
+        tx,
+        params.customerId,
+        params.performedByUserId,
+      );
+
+    const walletFinal = await tx.customerWallet.findUniqueOrThrow({
+      where: { customerId: params.customerId },
+      select: { balance: true, debt: true },
+    });
+
     return {
       totalCollected: totalCollectedStr,
       debtSettled: debtSettledStr,
       creditedToBalance: creditedStr,
       previousBalance: wallet.balance.toString(),
       previousDebt: wallet.debt.toString(),
-      newBalance: minorToAmountString(newBalanceMinor),
-      newDebt: minorToAmountString(newDebtMinor),
+      newBalance: walletFinal.balance.toString(),
+      newDebt: walletFinal.debt.toString(),
       subscriptionId: newSubscription.id,
       rolledOverFromSubscriptionId: previousSubscription?.id ?? null,
       carriedBalanceKd: carriedBalanceStr,
       closedInvoiceIds,
+      prepaidAutoReconciledOrderIds: prepaidReconciled.paidOrderIds,
     };
   }
 

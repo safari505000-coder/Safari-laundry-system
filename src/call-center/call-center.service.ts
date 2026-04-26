@@ -2215,10 +2215,11 @@ export class CallCenterService {
    * `CustomerLedgerService.activateSubscriptionPlan` flow, otherwise
    * the preview and the committed result will disagree and the agent
    * will lose trust. That's why we re-derive from the same inputs:
-   *   debtToSettle = min(currentDebt, planSalePrice)
+   *   effectiveDebt = wallet.debt + Σ(UNPAID, unsettled order totals)
+   *   debtToSettle = min(effectiveDebt, planActualBalance)
    *   creditedToBalance = max(0, planActualBalance − debtToSettle)
    *   newBalance = currentBalance + creditedToBalance
-   *   newDebt = currentDebt − debtToSettle
+   *   newWalletDebt = wallet.debt − min(wallet.debt, debtToSettle)
    *   subsidy = max(0, planActualBalance − planSalePrice)
    * No persistence, no transaction — pure read.
    */
@@ -2250,21 +2251,33 @@ export class CallCenterService {
 
     const currentBalance =
       customer.wallet?.balance ?? new Prisma.Decimal(0);
-    const currentDebt = customer.wallet?.debt ?? new Prisma.Decimal(0);
+    const walletDebt = customer.wallet?.debt ?? new Prisma.Decimal(0);
+    const implicitAgg = await this.prisma.order.aggregate({
+      where: {
+        customerId,
+        cashStatus: CashStatus.UNPAID,
+        status: { not: OrderStatus.CANCELED },
+        walletSettledAt: null,
+      },
+      _sum: { totalPrice: true },
+    });
+    const implicitDebt = implicitAgg._sum.totalPrice ?? new Prisma.Decimal(0);
+    const effectiveCurrentDebt = walletDebt.plus(implicitDebt);
     const zero = new Prisma.Decimal(0);
 
     const options: DebtConversionPlanOptionDto[] = plans.map((p) => {
       // V19.7.3 — mirror `activateSubscriptionPlan`: the CREDIT amount
       // (`actualBalance`), not the sale price, is what offsets
-      // existing debt. Keeping this read-only preview in lock-step
-      // with the write path is critical — any drift between the
-      // dialog's projected numbers and the post-commit numbers would
-      // re-introduce the exact "Convert" bug the owner just flagged.
-      // All arithmetic stays on Prisma.Decimal to avoid FP drift.
-      const debtToSettle = currentDebt.lt(p.actualBalance)
-        ? currentDebt
+      // existing debt. V19.12.1 — debt basis includes unposted UNPAID
+      // invoices (payment-link pending). All arithmetic on Prisma.Decimal.
+      const debtToSettle = effectiveCurrentDebt.lt(p.actualBalance)
+        ? effectiveCurrentDebt
         : p.actualBalance;
-      const remainingDebt = currentDebt.minus(debtToSettle);
+      const ledgerPaid = walletDebt.lt(debtToSettle) ? walletDebt : debtToSettle;
+      const implicitPaid = debtToSettle.minus(ledgerPaid);
+      const remainingLedger = walletDebt.minus(ledgerPaid);
+      const remainingImplicit = implicitDebt.minus(implicitPaid);
+      const remainingTotal = remainingLedger.plus(remainingImplicit);
       const rawCredit = p.actualBalance.minus(debtToSettle);
       const creditedToBalance = rawCredit.gt(0) ? rawCredit : zero;
       const projectedBalance = currentBalance.plus(creditedToBalance);
@@ -2273,9 +2286,11 @@ export class CallCenterService {
         : zero;
 
       const convertsDebt = debtToSettle.gt(0);
-      const clearsAllDebt = currentDebt.gt(0) && remainingDebt.lte(0);
+      const clearsAllDebt =
+        effectiveCurrentDebt.gt(0) && remainingTotal.lte(0);
       const recommended =
-        currentDebt.gt(0) && p.actualBalance.gte(currentDebt);
+        effectiveCurrentDebt.gt(0) &&
+        p.actualBalance.gte(effectiveCurrentDebt);
 
       return {
         planId: p.id,
@@ -2284,10 +2299,10 @@ export class CallCenterService {
         cashRequiredKd: FOUR_DP(p.salePrice),
         planActualBalanceKd: FOUR_DP(p.actualBalance),
         debtToSettleKd: FOUR_DP(debtToSettle),
-        remainingDebtKd: FOUR_DP(remainingDebt),
+        remainingDebtKd: FOUR_DP(remainingTotal),
         creditedToBalanceKd: FOUR_DP(creditedToBalance),
         projectedWalletBalanceKd: FOUR_DP(projectedBalance),
-        projectedWalletDebtKd: FOUR_DP(remainingDebt),
+        projectedWalletDebtKd: FOUR_DP(remainingLedger),
         subsidyKd: FOUR_DP(subsidy),
         convertsDebt,
         clearsAllDebt,
@@ -2297,9 +2312,9 @@ export class CallCenterService {
 
     return {
       customerId: customer.id,
-      currentDebtKd: FOUR_DP(currentDebt),
+      currentDebtKd: FOUR_DP(effectiveCurrentDebt),
       currentBalanceKd: FOUR_DP(currentBalance),
-      hasDebt: currentDebt.gt(0),
+      hasDebt: effectiveCurrentDebt.gt(0),
       options,
     };
   }
