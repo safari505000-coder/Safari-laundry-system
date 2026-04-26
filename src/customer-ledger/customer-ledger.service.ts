@@ -225,7 +225,7 @@ export class CustomerLedgerService {
           customerId,
           performedByUserId ?? null,
         ),
-      { maxWait: 10_000, timeout: 15_000 },
+      { maxWait: 15_000, timeout: 45_000 },
     );
   }
 
