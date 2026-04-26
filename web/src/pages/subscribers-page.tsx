@@ -551,6 +551,9 @@ function IssueSubscriptionDialog({
         body: JSON.stringify({
           customerId: selectedCustomer.id,
           planId,
+          // Same as convert-debt: when plan credit settles wallet debt, FIFO-close
+          // matching UNPAID invoices. Backend no-ops when debtPaidMinor is 0.
+          autoCloseInvoices: true,
         }),
       });
       toast.success(
@@ -1061,11 +1064,8 @@ function DebtConvertDialog({
         body: JSON.stringify({
           customerId: subscriber.customerId,
           planId: selected.planId,
-          // V19.7.4 — owner directive: only the Convert flow opts in to
-          // FIFO-close the customer's unpaid invoices. Regular Upgrade
-          // (the other caller above) intentionally leaves invoices
-          // open so the debt-tracking list still reflects original
-          // receivables for follow-up.
+          // FIFO-close UNPAID invoices when activation pays down wallet debt.
+          // Issue/upgrade dialog also sends this; backend skips when no debt settled.
           autoCloseInvoices: true,
         }),
       });
