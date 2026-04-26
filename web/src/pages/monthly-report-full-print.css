@@ -1,0 +1,336 @@
+/* V19.29 — Comprehensive monthly report layout on top of monthly-summary-print.css.
+ * Adds: TOC page, explanation table, per-branch sheet, CC section chrome.
+ * Uses A4 portrait, forces a page break before each major section so each
+ * branch reads as its own booklet-style block.
+ */
+
+.mrf-print .monthly-summary-print__sheet {
+  max-width: 1040px;
+  padding: 20px 24px;
+}
+
+/* Screen + print: cover must end the first sheet so TOC never shares page 1. */
+.mrf-print-cover-page {
+  break-after: page;
+  page-break-after: always;
+}
+
+/* --- TOC ---------------------------------------------------------- */
+.mrf-toc {
+  margin-top: 20px;
+  break-before: page;
+  page-break-before: always;
+}
+
+.mrf-toc__list {
+  margin: 12px 0 0 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: mrf-toc;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.mrf-toc__list li {
+  padding: 10px 14px;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: #ffffff;
+}
+
+.mrf-toc__list li:nth-child(even) {
+  background: #f8fafc;
+}
+
+.mrf-toc__list li:last-child {
+  border-bottom: 0;
+}
+
+.mrf-toc__label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.mrf-toc__sub {
+  font-size: 11.5px;
+  color: #64748b;
+  line-height: 1.45;
+}
+
+/* --- Explanation ------------------------------------------------- */
+.mrf-explain {
+  margin-top: 20px;
+  break-before: page;
+  page-break-before: always;
+}
+
+.mrf-explain__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+  margin-top: 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.mrf-explain__table thead th {
+  background: #f1f5f9;
+  color: #334155;
+  text-align: start;
+  font-weight: 700;
+  padding: 7px 10px;
+  border-bottom: 1px solid #cbd5e1;
+  font-size: 12px;
+}
+
+.mrf-explain__table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #e5e7eb;
+  vertical-align: top;
+  color: #1e293b;
+  line-height: 1.55;
+}
+
+.mrf-explain__table tr:nth-child(even) td {
+  background: #fafafa;
+}
+
+.mrf-explain__k {
+  width: 140px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.mrf-explain__w {
+  width: 320px;
+  color: #475569;
+}
+
+/* --- Per-branch booklet ----------------------------------------- */
+.mrf-branch {
+  margin-top: 28px;
+  padding: 14px 18px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #ffffff;
+  break-before: page;
+  page-break-before: always;
+  break-inside: auto;
+  page-break-inside: auto;
+}
+
+.mrf-branch--cc {
+  background: #f8fafc;
+  border-color: #c7d2fe;
+}
+
+.mrf-branch__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 10px;
+  margin-bottom: 12px;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.mrf-branch__brand {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #1e40af;
+  font-weight: 700;
+}
+
+.mrf-branch__title {
+  font-size: 20px;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 4px 0 0 0;
+}
+
+.mrf-branch__intro {
+  margin: 8px 0 0 0;
+  max-width: 640px;
+}
+
+.mrf-branch__metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 220px;
+}
+
+.mrf-branch__metric {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #f8fafc;
+  font-size: 12px;
+}
+
+.mrf-branch__metric span {
+  color: #64748b;
+  font-weight: 600;
+}
+
+.mrf-branch__metric strong {
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+}
+
+.mrf-branch__chip {
+  border: 1px solid #c7d2fe;
+  background: #eef2ff;
+  color: #1e3a8a;
+  font-weight: 700;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.mrf-branch__block {
+  margin-top: 14px;
+  break-inside: auto;
+  page-break-inside: auto;
+}
+
+.mrf-branch__block-title {
+  font-size: 13.5px;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0 0 6px 0;
+  padding: 6px 10px;
+  background: #eff6ff;
+  border-radius: 6px;
+  border: 1px solid #bfdbfe;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+/* Manager info grid (4 cols × N rows). */
+.mrf-mgr {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.mrf-mgr th {
+  background: #f1f5f9;
+  color: #334155;
+  text-align: start;
+  font-weight: 700;
+  padding: 7px 10px;
+  width: 120px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.mrf-mgr td {
+  padding: 7px 10px;
+  border-bottom: 1px solid #e5e7eb;
+  color: #0f172a;
+}
+
+.mrf-mgr tr:last-child th,
+.mrf-mgr tr:last-child td {
+  border-bottom: 0;
+}
+
+.mrf-foot {
+  font-weight: 800;
+  background: #f1f5f9;
+}
+
+/* --- Print behaviour -------------------------------------------- */
+@media print {
+  /* A4 body: let the subtree grow — capped #root / flex shells otherwise clip. */
+  html[data-print-mode='light'] #root,
+  .mrf-print,
+  .mrf-print .monthly-summary-print__sheet {
+    height: auto !important;
+    max-height: none !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
+  .mrf-print-cover-page {
+    min-height: 260mm;
+    box-sizing: border-box;
+    break-after: page !important;
+    page-break-after: always !important;
+    padding-bottom: 6mm;
+  }
+
+  /*
+   * monthly-summary-print.css sets `tr { break-inside: avoid }` globally.
+   * On long مسير/حضور tables Blink sometimes under-paginates (one page).
+   * Allow row splits by default; keep atomic rows only on data tables.
+   */
+  .mrf-print tr {
+    break-inside: auto !important;
+    page-break-inside: auto !important;
+  }
+
+  .mrf-print .msp-list tbody tr,
+  .mrf-print .msp-table tbody tr,
+  .mrf-print .mrf-mgr tr {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .mrf-toc,
+  .mrf-explain,
+  .mrf-branch {
+    break-before: page !important;
+    page-break-before: always !important;
+  }
+
+  .mrf-branch__head {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  .mrf-branch__block {
+    break-inside: auto !important;
+    page-break-inside: auto !important;
+  }
+
+  .mrf-toc__list li {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .mrf-mgr,
+  .mrf-explain__table {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .mrf-branch__block-title {
+    background: #eff6ff !important;
+  }
+
+  .mrf-branch--cc {
+    background: #f8fafc !important;
+  }
+
+  .mrf-foot {
+    background: #f1f5f9 !important;
+  }
+}

@@ -2,14 +2,7 @@ import { useMemo } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import type { ComponentType } from 'react';
-import {
-  BarChart3,
-  Brain,
-  CircleDollarSign,
-  CreditCard,
-  FileSpreadsheet,
-  LineChart,
-} from 'lucide-react';
+import { BarChart3, CircleDollarSign, CreditCard, LineChart } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { can, type AccessKey } from '@/modules/shared/auth/access-matrix';
 import { PageHeader } from '@/modules/shared/components/page';
@@ -20,29 +13,27 @@ import {
   TabsTrigger,
 } from '@/modules/shared/components/ui/tabs';
 import { FinancialsPage } from '@/pages/financials-page';
-import { ReportsPage } from '@/pages/reports-page';
 import { FinancialCycleReportPage } from '@/pages/financial-cycle-report-page';
 import { UnifiedLedgerPage } from '@/pages/unified-ledger-page';
-import { InsightsAiPage } from '@/pages/insights-ai-page';
 import { KnetAudit } from '@/modules/accountant/pages/KnetAudit';
 import { cn } from '@/lib/utils';
 
 /**
  * V19.9.7 — Unified "Financial reports" hub (Owner / GM).
  *
- * Replaces six separate sidebar entries (P&L, operational reports,
- * financial cycle, KNET audit, unified ledger, AI insights) with a
- * single hub page that nests each of them as an internal tab. The
- * underlying page components are rendered as-is inside `<TabsContent>`
- * so none of the business logic, permissions, or data-loading changes.
+ * V19.23 — Operational invoice/cash reports and AI insights moved to
+ * `OperationalReportsHubPage` (`/operational-reports-hub`). This hub
+ * keeps P&L, financial cycle, KNET audit, and unified ledger only.
+ *
+ * Underlying page components render as-is inside `<TabsContent>`;
+ * permissions and data-loading are unchanged.
  *
  * The tab panels are mounted lazily by Base UI — only the active panel
  * is in the DOM, so switching tabs is cheap and no report fetches data
  * until the user actually opens its tab.
  *
- * Tab visibility piggy-backs on the existing access-matrix keys so a
- * role that cannot access e.g. `insights.view` simply won't see that
- * tab. If a user has no allowed tabs at all the hub redirects to `/`.
+ * Tab visibility uses access-matrix keys; if no tab is allowed the hub
+ * redirects to `/`.
  *
  * The original routes (`/financials`, `/reports`, `/knet-audit`, …)
  * are NOT removed — they remain registered in `App.tsx` so any
@@ -66,13 +57,6 @@ const TABS: readonly TabDef[] = [
     Icon: CircleDollarSign,
   },
   {
-    id: 'reports',
-    labelKey: 'reports.hubTabReports',
-    access: 'reports.view',
-    Component: ReportsPage,
-    Icon: FileSpreadsheet,
-  },
-  {
     id: 'cycle',
     labelKey: 'reports.hubTabCycle',
     access: 'financialCycleReport.view',
@@ -92,13 +76,6 @@ const TABS: readonly TabDef[] = [
     access: 'unifiedLedger.view',
     Component: UnifiedLedgerPage,
     Icon: BarChart3,
-  },
-  {
-    id: 'ai',
-    labelKey: 'reports.hubTabAi',
-    access: 'insights.view',
-    Component: InsightsAiPage,
-    Icon: Brain,
   },
 ];
 

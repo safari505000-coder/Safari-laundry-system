@@ -19,17 +19,17 @@ export declare class ReportsController {
             id: string;
             createdAt: Date;
             status: import("@prisma/client").$Enums.OrderStatus;
-            serviceType: import("@prisma/client").$Enums.ServiceType;
             cashStatus: import("@prisma/client").$Enums.CashStatus;
+            serviceType: import("@prisma/client").$Enums.ServiceType;
             invoiceNumber: string | null;
             posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
             completedAt: Date | null;
             driver: {
                 id: string;
-                username: string;
-                employeeId: string | null;
-                fullName: string;
                 branchId: string | null;
+                username: string;
+                fullName: string;
+                employeeId: string | null;
             } | null;
         }[];
     }>;
@@ -53,12 +53,12 @@ export declare class ReportsController {
     driverLedger(q: DriverLedgerQueryDto): Promise<{
         driver: {
             id: string;
+            branchId: string | null;
             phone: string | null;
             username: string;
-            employeeId: string | null;
             fullName: string;
+            employeeId: string | null;
             safariRole: import("@prisma/client").$Enums.SafariRole;
-            branchId: string | null;
         };
         owedToOfficeKd: string;
         pendingSettlementOrderCount: number;
@@ -105,6 +105,23 @@ export declare class ReportsController {
     monthlySummary(q: ReportsRangeQueryDto): Promise<{
         from: string;
         to: string;
+        ledgerRollup: {
+            generalLedger: Array<{
+                entryType: import("@prisma/client").GeneralLedgerEntryType;
+                totalKd: string;
+                movementCount: number;
+            }>;
+            walletJournal: Array<{
+                type: import("@prisma/client").LedgerTransactionType;
+                totalKd: string;
+                movementCount: number;
+            }>;
+            debtLedger: Array<{
+                source: import("@prisma/client").DebtSource;
+                totalKd: string;
+                movementCount: number;
+            }>;
+        };
         consolidated: {
             grossRevenueKd: string;
             bankFeesTotalKd: string;
@@ -159,6 +176,63 @@ export declare class ReportsController {
                     movementCount: number;
                 }[];
             }[];
+        };
+    }>;
+    moneyFlowStatement(q: ReportsRangeQueryDto): Promise<{
+        from: string;
+        to: string;
+        executive: {
+            from: string;
+            to: string;
+            branchId: string | null;
+            driverId: string | null;
+            grossRevenueKd: string;
+            bankFeesTotalKd: string;
+            settledRevenueAfterBankFeesKd: string;
+            variableSoapFuelKd: string;
+            miscOperationalKd: string;
+            fixedExpensesKd: string;
+            subscriptionSubsidyKd: string;
+            enterpriseSubscriptionSubsidyKd: string;
+            payrollPaidKd: string;
+            totalExpensesVariableAndFixedKd: string;
+            netProfitKd: string;
+        };
+        collections: {
+            collectedRevenueKd: string;
+            uncollectedRevenueKd: string;
+        };
+        debtPaymentsPriorInvoiceKd: string;
+        branchExpensesByCategory: {
+            category: import("@prisma/client").$Enums.ExpenseCategory;
+            totalKd: string;
+            movementCount: number;
+        }[];
+        vehicleExpensesByType: {
+            expenseType: import("@prisma/client").$Enums.VehicleExpenseType;
+            totalKd: string;
+            movementCount: number;
+        }[];
+        fixedExpensesByCategory: {
+            category: import("@prisma/client").FixedExpenseCategory;
+            totalKd: string;
+        }[];
+        ledgerRollup: {
+            generalLedger: Array<{
+                entryType: import("@prisma/client").GeneralLedgerEntryType;
+                totalKd: string;
+                movementCount: number;
+            }>;
+            walletJournal: Array<{
+                type: import("@prisma/client").LedgerTransactionType;
+                totalKd: string;
+                movementCount: number;
+            }>;
+            debtLedger: Array<{
+                source: import("@prisma/client").DebtSource;
+                totalKd: string;
+                movementCount: number;
+            }>;
         };
     }>;
     bankFeesByBranch(q: ReportsRangeQueryDto): Promise<{

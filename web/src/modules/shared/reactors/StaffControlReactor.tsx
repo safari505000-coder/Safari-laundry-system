@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
-import { Loader2, Power, RotateCcwKey, Save, UserPlus, Users } from 'lucide-react';
+import {
+  Loader2,
+  Pencil,
+  Power,
+  RotateCcwKey,
+  Save,
+  UserPlus,
+  Users,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import type { BranchRow, SafariRole, TeamUserRow } from '@/lib/api';
@@ -64,6 +72,7 @@ export function StaffControlReactor({ token }: Props) {
   const [password, setPassword] = useState('');
   const [safariRole, setSafariRole] = useState<SafariRole>('DRIVER');
   const [branchId, setBranchId] = useState<string>('');
+  const [jobTitleCreate, setJobTitleCreate] = useState('');
   const [saving, setSaving] = useState(false);
 
   const canSubmit = useMemo(
@@ -144,6 +153,7 @@ export function StaffControlReactor({ token }: Props) {
             password,
             safariRole,
             branchId,
+            ...(jobTitleCreate.trim() ? { jobTitle: jobTitleCreate.trim() } : {}),
           }),
         });
         toast.success('تم إنشاء المستخدم بنجاح');
@@ -153,6 +163,7 @@ export function StaffControlReactor({ token }: Props) {
         setPassword('');
         setSafariRole('DRIVER');
         setBranchId('');
+        setJobTitleCreate('');
         await loadUsers();
       } catch (e) {
         if (e instanceof ApiError) toast.error(e.message);
@@ -198,6 +209,77 @@ export function StaffControlReactor({ token }: Props) {
         body: JSON.stringify({ branchId: nextBranchId }),
       });
       toast.success('تم حفظ ربط الفرع');
+      await loadUsers();
+    } catch (e) {
+      if (e instanceof ApiError) toast.error(e.message);
+    } finally {
+      setActionBusyId(null);
+    }
+  }
+
+  async function editJobTitle(u: TeamUserRow) {
+    if (!token) return;
+    const next = window.prompt('المهنة / المسمى الوظيفي', u.jobTitle ?? '');
+    if (next === null) return;
+    const trimmed = next.trim();
+    if ((u.jobTitle ?? '').trim() === trimmed) return;
+    const nextBranchId = branchDraftByUser[u.id] ?? u.branchId ?? '';
+    if (!nextBranchId) {
+      toast.error('اختيار الفرع إلزامي');
+      return;
+    }
+    setActionBusyId(u.id);
+    try {
+      await apiJson<TeamUserRow>(`/api/users/${u.id}`, {
+        method: 'PATCH',
+        token,
+        body: JSON.stringify({
+          jobTitle: trimmed.length ? trimmed : '',
+          branchId: nextBranchId,
+        }),
+      });
+      toast.success('تم تحديث المهنة');
+      await loadUsers();
+    } catch (e) {
+      if (e instanceof ApiError) toast.error(e.message);
+    } finally {
+      setActionBusyId(null);
+    }
+  }
+
+  async function renameUsername(u: TeamUserRow) {
+    if (!token) return;
+    const next = window.prompt(
+      'اسم المستخدم الجديد (أحرف / أرقام / . _ - فقط)',
+      u.username,
+    );
+    if (next === null) return;
+    const trimmed = next.trim();
+    if (trimmed.length < 2) {
+      toast.error('اسم المستخدم قصير جداً');
+      return;
+    }
+    if (!USERNAME_PATTERN.test(trimmed)) {
+      toast.error('اسم المستخدم يجب أن يحتوي على أحرف/أرقام/نقطة/شرطة فقط');
+      return;
+    }
+    if (trimmed === u.username) return;
+    const nextBranchId = branchDraftByUser[u.id] ?? u.branchId ?? '';
+    if (!nextBranchId) {
+      toast.error('اختيار الفرع إلزامي');
+      return;
+    }
+    setActionBusyId(u.id);
+    try {
+      await apiJson<TeamUserRow>(`/api/users/${u.id}`, {
+        method: 'PATCH',
+        token,
+        body: JSON.stringify({
+          username: trimmed,
+          branchId: nextBranchId,
+        }),
+      });
+      toast.success('تم تغيير اسم المستخدم');
       await loadUsers();
     } catch (e) {
       if (e instanceof ApiError) toast.error(e.message);
@@ -257,6 +339,7 @@ export function StaffControlReactor({ token }: Props) {
                 <TableRow className="bg-slate-100/90 hover:bg-slate-100/90">
                   <TableHead className="font-bold text-slate-950">Name</TableHead>
                   <TableHead className="font-bold text-slate-950">Username</TableHead>
+                  <TableHead className="font-bold text-slate-950">المهنة</TableHead>
                   <TableHead className="font-bold text-slate-950">Role</TableHead>
                   <TableHead className="font-bold text-slate-950">Branch</TableHead>
                   <TableHead className="font-bold text-slate-950">Status</TableHead>
@@ -267,7 +350,40 @@ export function StaffControlReactor({ token }: Props) {
                 {users.map((u) => (
                   <TableRow key={u.id}>
                     <TableCell className="font-semibold text-slate-900">{u.fullName}</TableCell>
-                    <TableCell className="text-slate-800">@{u.username}</TableCell>
+                    <TableCell className="text-slate-800">
+                      <div className="inline-flex items-center gap-1.5">
+                        <span>@{u.username}</span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 w-7 p-0 text-slate-600 hover:text-slate-900"
+                          title="تعديل اسم المستخدم"
+                          aria-label="تعديل اسم المستخدم"
+                          disabled={actionBusyId === u.id}
+                          onClick={() => void renameUsername(u)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-slate-800">
+                      <div className="inline-flex max-w-[220px] items-center gap-1.5">
+                        <span className="truncate" title={u.jobTitle ?? undefined}>
+                          {u.jobTitle?.trim() ? u.jobTitle : '—'}
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 w-7 shrink-0 p-0 text-slate-600 hover:text-slate-900"
+                          title="تعديل المهنة"
+                          aria-label="تعديل المهنة"
+                          disabled={actionBusyId === u.id}
+                          onClick={() => void editJobTitle(u)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
                     <TableCell className="text-slate-800">{roleLabel(u.safariRole)}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
@@ -362,6 +478,14 @@ export function StaffControlReactor({ token }: Props) {
               <div className="space-y-1.5">
                 <Label>اسم المستخدم</Label>
                 <Input value={username} onChange={(e) => setUsername(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>المهنة (اختياري)</Label>
+                <Input
+                  value={jobTitleCreate}
+                  onChange={(e) => setJobTitleCreate(e.target.value)}
+                  placeholder="مثال: سائق، أخصائي، …"
+                />
               </div>
               <div className="space-y-1.5">
                 <Label>كلمة المرور</Label>

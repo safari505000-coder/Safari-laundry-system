@@ -15,11 +15,11 @@ export declare class FixedExpenseService {
     }): Promise<{
         id: string;
         createdAt: Date;
+        branchId: string;
+        title: string;
         updatedAt: Date;
         isActive: boolean;
-        branchId: string;
         category: import("@prisma/client").$Enums.FixedExpenseCategory;
-        title: string;
         monthlyAmount: Prisma.Decimal;
         effectiveFrom: Date;
         effectiveTo: Date | null;
@@ -32,11 +32,11 @@ export declare class FixedExpenseService {
     } & {
         id: string;
         createdAt: Date;
+        branchId: string;
+        title: string;
         updatedAt: Date;
         isActive: boolean;
-        branchId: string;
         category: import("@prisma/client").$Enums.FixedExpenseCategory;
-        title: string;
         monthlyAmount: Prisma.Decimal;
         effectiveFrom: Date;
         effectiveTo: Date | null;

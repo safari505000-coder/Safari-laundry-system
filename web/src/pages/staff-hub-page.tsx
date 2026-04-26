@@ -110,7 +110,7 @@ export function StaffHubPage() {
   // stamp. `ym` is read from the URL (the unified page syncs it).
   const openPayrollRosterPrint = useCallback(() => {
     if (typeof window === 'undefined') return;
-    const ym = searchParams.get('ym') ?? '';
+    const ym = searchParams.get('ym') ?? searchParams.get('m') ?? '';
     const qs = new URLSearchParams();
     if (ym) qs.set('ym', ym);
     window.open(
@@ -206,7 +206,7 @@ export function StaffHubPage() {
             </div>
           </div>
 
-          <TabsContent value="payroll">
+          <TabsContent value="payroll" keepMounted>
             <PayrollUnifiedPage />
           </TabsContent>
 

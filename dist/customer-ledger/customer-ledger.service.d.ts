@@ -1,5 +1,6 @@
 import { PosPaymentMethod, Prisma } from '@prisma/client';
 import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
+import { InventoryService } from '../inventory/inventory.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { SubscriptionActivationSettlement } from './subscription-settlement.types';
 export type PrismaTx = Prisma.TransactionClient;
@@ -13,12 +14,23 @@ export type OrderWalletSettlementPrefetch = {
 export declare class CustomerLedgerService {
     private readonly prisma;
     private readonly generalLedger;
-    constructor(prisma: PrismaService, generalLedger: GeneralLedgerService);
+    private readonly inventory;
+    private readonly logger;
+    constructor(prisma: PrismaService, generalLedger: GeneralLedgerService, inventory: InventoryService);
+    private sumUnsettledUnpaidReceivableMinorTx;
+    private resolveFallbackOwnerIdTx;
+    autoReconcileUnpaidInvoicesFromPrepaidBalanceTx(tx: PrismaTx, customerId: string, performedByUserId: string | null | undefined): Promise<{
+        paidOrderIds: string[];
+    }>;
+    runPrepaidAutoReconcileForCustomer(customerId: string, performedByUserId?: string | null): Promise<{
+        paidOrderIds: string[];
+    }>;
     private decimalFromMinor;
     getOrCreateWalletTx(tx: PrismaTx, customerId: string): Promise<{
         id: string;
         customerId: string;
         createdAt: Date;
+        updatedAt: Date;
         balance: Prisma.Decimal;
         debt: Prisma.Decimal;
         subscriptionActivatedAt: Date | null;
@@ -27,7 +39,6 @@ export declare class CustomerLedgerService {
         subscriptionPlanName: string | null;
         subscriptionReminderCount: number;
         subscriptionLastReminderAt: Date | null;
-        updatedAt: Date;
     }>;
     private resolveDebtCategory;
     private ensureCustomerOriginBranchTx;

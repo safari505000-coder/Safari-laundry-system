@@ -10,4 +10,5 @@ export type SubscriptionActivationSettlement = {
     rolledOverFromSubscriptionId: string | null;
     carriedBalanceKd: string;
     closedInvoiceIds: string[];
+    prepaidAutoReconciledOrderIds: string[];
 };

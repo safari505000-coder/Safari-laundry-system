@@ -16,6 +16,7 @@ import {
   type BranchRow,
 } from '@/lib/api';
 import { requestBranchesListRefresh } from '@/lib/branch-list-refresh';
+import { compareBranchesForPayrollRoster } from '@/lib/payroll-roster-sort';
 import { Button } from '@/modules/shared/components/ui/button';
 import {
   Card,
@@ -70,6 +71,8 @@ export function BranchesPage() {
   const [phone, setPhone] = useState('');
   const [isActive, setIsActive] = useState(true);
   const [isAdministrative, setIsAdministrative] = useState(false);
+  /** Empty string = clear sort (null on server). */
+  const [payrollRosterSortDraft, setPayrollRosterSortDraft] = useState('');
 
   const load = useCallback(() => {
     if (!token || !isOwner) return;
@@ -89,7 +92,16 @@ export function BranchesPage() {
   const sortedRows = useMemo(
     () =>
       [...(rows ?? [])].sort((a, b) =>
-        a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
+        compareBranchesForPayrollRoster(
+          {
+            name: a.name,
+            payrollRosterSortOrder: a.payrollRosterSortOrder,
+          },
+          {
+            name: b.name,
+            payrollRosterSortOrder: b.payrollRosterSortOrder,
+          },
+        ),
       ),
     [rows],
   );
@@ -101,6 +113,7 @@ export function BranchesPage() {
     setPhone('');
     setIsActive(true);
     setIsAdministrative(false);
+    setPayrollRosterSortDraft('');
   }
 
   function openCreate() {
@@ -115,6 +128,11 @@ export function BranchesPage() {
     setPhone(row.phone ?? '');
     setIsActive(row.isActive);
     setIsAdministrative(row.isAdministrative ?? false);
+    setPayrollRosterSortDraft(
+      row.payrollRosterSortOrder != null
+        ? String(row.payrollRosterSortOrder)
+        : '',
+    );
     setDialogOpen(true);
   }
 
@@ -130,12 +148,22 @@ export function BranchesPage() {
     setSubmitting(true);
     try {
       if (editingId) {
+        const sortRaw = payrollRosterSortDraft.trim();
+        const payrollRosterSortOrder =
+          sortRaw === '' ? null : Number.parseInt(sortRaw, 10);
+        if (sortRaw !== '' && !Number.isFinite(payrollRosterSortOrder)) {
+          toast.error(t('branchesPage.errRosterSort'));
+          setSubmitting(false);
+          return;
+        }
         await updateBranch(token, editingId, {
           name: trimmedName,
           location: trimmedLocation,
           phone: phone.trim(),
           isActive,
           isAdministrative,
+          payrollRosterSortOrder:
+            sortRaw === '' ? null : payrollRosterSortOrder,
         });
         toast.success(t('branchesPage.updated'));
       } else {
@@ -216,6 +244,9 @@ export function BranchesPage() {
                   <TableHead>{t('branchesPage.colPhone')}</TableHead>
                   <TableHead>{t('branchesPage.colStatus')}</TableHead>
                   <TableHead>{t('branchesPage.colKind')}</TableHead>
+                  <TableHead className="tabular-nums">
+                    {t('branchesPage.colPayrollRoster')}
+                  </TableHead>
                   <TableHead className="text-end">
                     {t('branchesPage.colActions')}
                   </TableHead>
@@ -225,7 +256,7 @@ export function BranchesPage() {
                 {sortedRows.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={6}
+                      colSpan={7}
                       className="py-10 text-center text-sm text-muted-foreground"
                     >
                       {loading
@@ -262,6 +293,9 @@ export function BranchesPage() {
                         {b.isAdministrative ?
                           t('branchesPage.kindAdministrative')
                         : t('branchesPage.kindOperational')}
+                      </TableCell>
+                      <TableCell className="tabular-nums text-muted-foreground">
+                        {b.payrollRosterSortOrder ?? '—'}
                       </TableCell>
                       <TableCell className="text-end">
                         <Button
@@ -365,6 +399,24 @@ export function BranchesPage() {
                 aria-label={t('branchesPage.fieldAdministrative')}
               />
             </div>
+            {editingId ?
+              <div className="space-y-2">
+                <Label htmlFor="branch-roster-sort">
+                  {t('branchesPage.fieldPayrollRosterOrder')}
+                </Label>
+                <Input
+                  id="branch-roster-sort"
+                  value={payrollRosterSortDraft}
+                  onChange={(e) => setPayrollRosterSortDraft(e.target.value)}
+                  placeholder="1"
+                  inputMode="numeric"
+                  className="max-w-[120px]"
+                />
+                <p className="text-xs text-muted-foreground">
+                  {t('branchesPage.fieldPayrollRosterOrderHint')}
+                </p>
+              </div>
+            : null}
             <DialogFooter>
               <Button
                 type="button"

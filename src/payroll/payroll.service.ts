@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -325,8 +326,18 @@ export class PayrollService {
       },
       orderBy: { paymentDate: 'desc' },
       include: {
-        user: { select: { id: true, fullName: true, username: true } },
-        branch: { select: { id: true, name: true } },
+        user: {
+          select: {
+            id: true,
+            fullName: true,
+            username: true,
+            payrollRosterLineOrder: true,
+            bankIban: true,
+          },
+        },
+        branch: {
+          select: { id: true, name: true, payrollRosterSortOrder: true },
+        },
       },
     });
   }
@@ -397,5 +408,145 @@ export class PayrollService {
       total = total.add(netPay(r));
     }
     return total.toFixed(4);
+  }
+
+  /** V19.28 — manual roster rows for external beneficiaries (read: same as payroll list). */
+  async listAdHocLines(
+    actorRole: SafariRole,
+    periodYm: string,
+    branchId?: string,
+  ) {
+    if (
+      actorRole !== SafariRole.OWNER &&
+      actorRole !== SafariRole.GENERAL_MANAGER &&
+      actorRole !== SafariRole.MANAGER &&
+      actorRole !== SafariRole.ACCOUNTANT
+    ) {
+      throw new ForbiddenException();
+    }
+    if (!/^\d{4}-\d{2}$/.test(periodYm)) {
+      throw new BadRequestException('Invalid ym');
+    }
+    return this.prisma.payrollAdHocLine.findMany({
+      where: {
+        periodYm,
+        ...(branchId ? { branchId } : {}),
+      },
+      orderBy: [{ branchId: 'asc' }, { lineSort: 'asc' }, { createdAt: 'asc' }],
+      include: {
+        branch: { select: { id: true, name: true } },
+      },
+    });
+  }
+
+  async createAdHocLine(
+    actorRole: SafariRole,
+    dto: {
+      branchId: string;
+      periodYm: string;
+      beneficiaryName: string;
+      bankName?: string | null;
+      bankIban?: string | null;
+      basicSalary: number;
+      allowances?: number;
+      deductions?: number;
+      lineSort?: number;
+      note?: string | null;
+    },
+  ) {
+    this.assertOwnerOrManager(actorRole);
+    if (!/^\d{4}-\d{2}$/.test(dto.periodYm)) {
+      throw new BadRequestException('Invalid periodYm');
+    }
+    const iban = dto.bankIban?.replace(/\s/g, '').trim();
+    const bankName = dto.bankName?.trim();
+    return this.prisma.payrollAdHocLine.create({
+      data: {
+        branchId: dto.branchId,
+        periodYm: dto.periodYm,
+        lineSort: dto.lineSort ?? 0,
+        beneficiaryName: dto.beneficiaryName.trim(),
+        bankName: bankName && bankName.length > 0 ? bankName : null,
+        bankIban: iban && iban.length > 0 ? iban : null,
+        basicSalary: new Prisma.Decimal(dto.basicSalary.toFixed(4)),
+        allowances: new Prisma.Decimal((dto.allowances ?? 0).toFixed(4)),
+        deductions: new Prisma.Decimal((dto.deductions ?? 0).toFixed(4)),
+        note: dto.note?.trim() || null,
+      },
+      include: {
+        branch: { select: { id: true, name: true } },
+      },
+    });
+  }
+
+  async updateAdHocLine(
+    actorRole: SafariRole,
+    id: string,
+    dto: {
+      beneficiaryName?: string;
+      bankName?: string | null;
+      bankIban?: string | null;
+      basicSalary?: number;
+      allowances?: number;
+      deductions?: number;
+      lineSort?: number;
+      note?: string | null;
+    },
+  ) {
+    this.assertOwnerOrManager(actorRole);
+    const existing = await this.prisma.payrollAdHocLine.findUnique({
+      where: { id },
+    });
+    if (!existing) throw new NotFoundException('Ad-hoc line not found');
+    const data: Prisma.PayrollAdHocLineUpdateInput = {};
+    if (dto.beneficiaryName !== undefined) {
+      data.beneficiaryName = dto.beneficiaryName.trim();
+    }
+    if (dto.bankName !== undefined) {
+      const v = dto.bankName?.trim();
+      data.bankName = v && v.length > 0 ? v : null;
+    }
+    if (dto.bankIban !== undefined) {
+      const raw = dto.bankIban?.replace(/\s/g, '').trim();
+      data.bankIban = raw && raw.length > 0 ? raw : null;
+    }
+    if (dto.basicSalary !== undefined) {
+      data.basicSalary = new Prisma.Decimal(dto.basicSalary.toFixed(4));
+    }
+    if (dto.allowances !== undefined) {
+      data.allowances = new Prisma.Decimal(dto.allowances.toFixed(4));
+    }
+    if (dto.deductions !== undefined) {
+      data.deductions = new Prisma.Decimal(dto.deductions.toFixed(4));
+    }
+    if (dto.lineSort !== undefined) {
+      data.lineSort = dto.lineSort;
+    }
+    if (dto.note !== undefined) {
+      data.note = dto.note?.trim() || null;
+    }
+    return this.prisma.payrollAdHocLine.update({
+      where: { id },
+      data,
+      include: {
+        branch: { select: { id: true, name: true } },
+      },
+    });
+  }
+
+  async deleteAdHocLine(actorRole: SafariRole, id: string) {
+    this.assertOwnerOrManager(actorRole);
+    try {
+      await this.prisma.payrollAdHocLine.delete({ where: { id } });
+    } catch (e) {
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P2025'
+      ) {
+        throw new NotFoundException('Ad-hoc line not found');
+      }
+      throw e;
+    }
+    return { id, deleted: true };
   }
 }

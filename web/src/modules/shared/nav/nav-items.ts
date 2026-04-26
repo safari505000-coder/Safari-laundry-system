@@ -386,6 +386,14 @@ export const monthlySummaryItem: NavItem = {
   roles: ['OWNER', 'GENERAL_MANAGER'],
 };
 
+/** V19.24 — وارد / خصومات / مصروفات + تفصيل الدفاتر. */
+export const moneyFlowStatementItem: NavItem = {
+  to: '/money-flow-statement',
+  labelKey: 'nav.moneyFlowStatement',
+  icon: ArrowLeftRight,
+  roles: ['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT'],
+};
+
 /*
  * Dastur §3 — the old "تصفية الموظفين" (collectDriverCashItem) menu item
  * and its /collect-driver-cash page were removed: driver-receipt approval
@@ -552,16 +560,26 @@ export const financialReportsItem: NavItem = {
 /**
  * V19.9.7 — Unified "Financial reports" hub entry for OWNER / GM.
  *
- * Replaces six separate finance entries (P&L, operational reports,
- * financial cycle, KNET audit, unified ledger, AI insights) with a
- * single hub that nests them as internal tabs. The underlying routes
- * remain registered so deep links keep working.
+ * Four tabs: P&L, financial cycle, KNET audit, unified ledger.
+ * Operational reports + AI insights live on `operationalReportsHubItem`.
+ * Underlying routes remain registered for deep links.
  */
 export const financialReportsHubItem: NavItem = {
   to: '/reports-hub',
   labelKey: 'nav.financialReports',
   icon: FileSpreadsheet,
   roles: ['OWNER', 'GENERAL_MANAGER'],
+};
+
+/**
+ * V19.23 — Operational reports + AI insights (formerly tabs on the
+ * financial reports hub). Same access union as `operationalReportsHub.view`.
+ */
+export const operationalReportsHubItem: NavItem = {
+  to: '/operational-reports-hub',
+  labelKey: 'nav.operationalReportsHub',
+  icon: ClipboardList,
+  roles: ['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT', 'MANAGER'],
 };
 
 /**

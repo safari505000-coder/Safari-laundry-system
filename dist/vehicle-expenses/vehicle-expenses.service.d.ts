@@ -31,8 +31,8 @@ export declare class VehicleExpensesService {
         createdAt: Date;
         updatedAt: Date;
         status: import("@prisma/client").$Enums.VehicleExpenseStatus;
-        vehicleLabel: string | null;
         receiptUrl: string;
+        vehicleLabel: string | null;
         rejectionReason: string | null;
         expenseDate: Date;
         vehiclePlate: string;
@@ -67,8 +67,8 @@ export declare class VehicleExpensesService {
         createdAt: Date;
         updatedAt: Date;
         status: import("@prisma/client").$Enums.VehicleExpenseStatus;
-        vehicleLabel: string | null;
         receiptUrl: string;
+        vehicleLabel: string | null;
         rejectionReason: string | null;
         expenseDate: Date;
         vehiclePlate: string;
@@ -97,8 +97,8 @@ export declare class VehicleExpensesService {
         createdAt: Date;
         updatedAt: Date;
         status: import("@prisma/client").$Enums.VehicleExpenseStatus;
-        vehicleLabel: string | null;
         receiptUrl: string;
+        vehicleLabel: string | null;
         rejectionReason: string | null;
         expenseDate: Date;
         vehiclePlate: string;
@@ -130,8 +130,8 @@ export declare class VehicleExpensesService {
         createdAt: Date;
         updatedAt: Date;
         status: import("@prisma/client").$Enums.VehicleExpenseStatus;
-        vehicleLabel: string | null;
         receiptUrl: string;
+        vehicleLabel: string | null;
         rejectionReason: string | null;
         expenseDate: Date;
         vehiclePlate: string;

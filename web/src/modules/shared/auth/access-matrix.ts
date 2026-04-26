@@ -104,6 +104,8 @@ export const ACCESS = {
   // V19.13 — "الملخص الشهري". OWNER + GM only; the backend at
   // /api/reports/monthly-summary mirrors this role set.
   'monthlySummary.view': EXEC_PAIR,
+  /** V19.24 — وارد / خصومات / مصروفات + تفصيل الدفاتر للفترة. */
+  'moneyFlowStatement.view': withExec('ACCOUNTANT'),
   'driverCashTrace.view': withExec('ACCOUNTANT'),
   // V19.10 — "Unpaid invoices list" page (قائمة مديونيات الفواتير).
   // Accessible to exec pair, accountant, and call-centre (pair) because
@@ -164,6 +166,12 @@ export const ACCESS = {
   'inventory.stocktake': ['ACCOUNTANT'] satisfies readonly SafariRole[],
   'inventory.lowStock.view': withExec('ACCOUNTANT'),
   'unifiedLedger.view': withExec('ACCOUNTANT'),
+  /**
+   * Hub: operational invoice/cash reports + AI insights (split from
+   * `/reports-hub`). Union of everyone who may open `reports.view` or
+   * `insights.view`; each tab still checks its own key.
+   */
+  'operationalReportsHub.view': withExec('ACCOUNTANT', 'MANAGER'),
   'reports.view': withExec('ACCOUNTANT'),
   'managerCustodyAging.view': withExec('ACCOUNTANT'),
   'managerCustodyAging.act': ['ACCOUNTANT'] satisfies readonly SafariRole[],

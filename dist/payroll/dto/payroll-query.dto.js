@@ -10,7 +10,15 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PayrollQueryDto = void 0;
+const class_transformer_1 = require("class-transformer");
 const class_validator_1 = require("class-validator");
+function emptyToUndefinedUuid(value) {
+    if (value === '' || value === undefined || value === null)
+        return undefined;
+    if (typeof value === 'string' && value.trim() === '')
+        return undefined;
+    return typeof value === 'string' ? value.trim() : value;
+}
 class PayrollQueryDto {
     from;
     to;
@@ -27,6 +35,7 @@ __decorate([
 ], PayrollQueryDto.prototype, "to", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
+    (0, class_transformer_1.Transform)(({ value }) => emptyToUndefinedUuid(value)),
     (0, class_validator_1.IsUUID)(),
     __metadata("design:type", String)
 ], PayrollQueryDto.prototype, "branchId", void 0);

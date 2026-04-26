@@ -7,11 +7,11 @@ export declare class FixedExpenseController {
     create(dto: CreateFixedExpenseDto, user: JwtUser): Promise<{
         id: string;
         createdAt: Date;
+        branchId: string;
+        title: string;
         updatedAt: Date;
         isActive: boolean;
-        branchId: string;
         category: import("@prisma/client").$Enums.FixedExpenseCategory;
-        title: string;
         monthlyAmount: import("@prisma/client-runtime-utils").Decimal;
         effectiveFrom: Date;
         effectiveTo: Date | null;
@@ -24,11 +24,11 @@ export declare class FixedExpenseController {
     } & {
         id: string;
         createdAt: Date;
+        branchId: string;
+        title: string;
         updatedAt: Date;
         isActive: boolean;
-        branchId: string;
         category: import("@prisma/client").$Enums.FixedExpenseCategory;
-        title: string;
         monthlyAmount: import("@prisma/client-runtime-utils").Decimal;
         effectiveFrom: Date;
         effectiveTo: Date | null;

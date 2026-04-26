@@ -21,8 +21,10 @@ const roles_decorator_1 = require("../auth/decorators/roles.decorator");
 const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
 const roles_guard_1 = require("../auth/guards/roles.guard");
 const branding_1 = require("../common/constants/branding");
+const create_payroll_adhoc_line_dto_1 = require("./dto/create-payroll-adhoc-line.dto");
 const create_payroll_dto_1 = require("./dto/create-payroll.dto");
 const payroll_query_dto_1 = require("./dto/payroll-query.dto");
+const update_payroll_adhoc_line_dto_1 = require("./dto/update-payroll-adhoc-line.dto");
 const payroll_service_1 = require("./payroll.service");
 let PayrollController = class PayrollController {
     payrollService;
@@ -40,6 +42,18 @@ let PayrollController = class PayrollController {
     }
     list(q, user) {
         return this.payrollService.list(user.role, q.from, q.to, q.branchId);
+    }
+    listAdHoc(ym, branchId, user) {
+        return this.payrollService.listAdHocLines(user.role, ym, branchId);
+    }
+    createAdHoc(dto, user) {
+        return this.payrollService.createAdHocLine(user.role, dto);
+    }
+    updateAdHoc(id, dto, user) {
+        return this.payrollService.updateAdHocLine(user.role, id, dto);
+    }
+    removeAdHoc(id, user) {
+        return this.payrollService.deleteAdHocLine(user.role, id);
     }
     findOne(id, user) {
         return this.payrollService.findOne(user.role, user.userId, id);
@@ -89,6 +103,48 @@ __decorate([
     __metadata("design:paramtypes", [payroll_query_dto_1.PayrollQueryDto, Object]),
     __metadata("design:returntype", void 0)
 ], PayrollController.prototype, "list", null);
+__decorate([
+    (0, common_1.Get)('adhoc-lines'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT),
+    (0, swagger_1.ApiOperation)({ summary: `List manual payroll roster lines for YYYY-MM` }),
+    __param(0, (0, common_1.Query)('ym')),
+    __param(1, (0, common_1.Query)('branchId')),
+    __param(2, (0, current_user_decorator_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object, Object]),
+    __metadata("design:returntype", void 0)
+], PayrollController.prototype, "listAdHoc", null);
+__decorate([
+    (0, common_1.Post)('adhoc-lines'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER),
+    (0, swagger_1.ApiOperation)({ summary: `Create manual payroll roster line` }),
+    __param(0, (0, common_1.Body)()),
+    __param(1, (0, current_user_decorator_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [create_payroll_adhoc_line_dto_1.CreatePayrollAdhocLineDto, Object]),
+    __metadata("design:returntype", void 0)
+], PayrollController.prototype, "createAdHoc", null);
+__decorate([
+    (0, common_1.Patch)('adhoc-lines/:id'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER),
+    (0, swagger_1.ApiOperation)({ summary: `Update manual payroll roster line` }),
+    __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
+    __param(1, (0, common_1.Body)()),
+    __param(2, (0, current_user_decorator_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, update_payroll_adhoc_line_dto_1.UpdatePayrollAdhocLineDto, Object]),
+    __metadata("design:returntype", void 0)
+], PayrollController.prototype, "updateAdHoc", null);
+__decorate([
+    (0, common_1.Delete)('adhoc-lines/:id'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER),
+    (0, swagger_1.ApiOperation)({ summary: `Delete manual payroll roster line` }),
+    __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
+    __param(1, (0, current_user_decorator_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", void 0)
+], PayrollController.prototype, "removeAdHoc", null);
 __decorate([
     (0, common_1.Get)(':id'),
     (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.DRIVER, client_1.SafariRole.CALL_CENTER, client_1.SafariRole.CALL_CENTER_SUPERVISOR, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),

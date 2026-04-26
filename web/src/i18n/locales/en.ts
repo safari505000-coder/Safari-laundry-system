@@ -11,6 +11,7 @@ export const en = {
     shifts: 'Driver shifts',
     financials: 'Financial reports',
     monthlySummary: 'Monthly summary',
+    moneyFlowStatement: 'Income & outflow',
     pos: 'POS',
     ownerDashboard: 'Owner dashboard',
     manageItems: 'Items & pricing',
@@ -39,6 +40,7 @@ export const en = {
     driverFieldExpenses: 'Add expense',
     whatsappTools: 'WhatsApp tools',
     financialReports: 'Financial reports',
+    operationalReportsHub: 'Operations & insights',
     expenseVerification: 'Expense Verification',
     vehicleExpenses: 'Vehicle expenses',
     vehicleExpensesApproval: 'Vehicle expense approval',
@@ -210,6 +212,7 @@ export const en = {
     save: 'Save branch',
     created: 'Branch created',
     errRequired: 'Name and location are required.',
+    errRosterSort: 'Enter a valid roster sort number or leave the field empty.',
     editBranch: 'Edit branch',
     edit: 'Edit',
     saveEdit: 'Save changes',
@@ -221,6 +224,10 @@ export const en = {
     fieldAdministrative: 'Administrative (HQ) branch',
     fieldAdministrativeHint:
       'Cost center only: no POS, no user accounts, hidden from operational roles. Expenses, fixed schedules, and payroll can still post here.',
+    colPayrollRoster: 'Roster order',
+    fieldPayrollRosterOrder: 'Payroll roster sort',
+    fieldPayrollRosterOrderHint:
+      'Lower numbers print first on the monthly roster (1 = first block). Leave empty to fall back to name order after numbered branches.',
   },
   manageItems: {
     title: 'Laundry price list',
@@ -1310,6 +1317,32 @@ export const en = {
       overview: 'Overview',
       expenses: 'Expenses',
       payroll: 'Payroll',
+      ledger: 'Money movement log',
+    },
+    ledgerIntro:
+      'Every ledger posting captured in the period, grouped by type (audit reference; timing may differ from net-profit cards).',
+    ledgerGlTitle: 'Unified ledger',
+    ledgerJournalTitle: 'Customer wallet journal',
+    ledgerDebtTitle: 'Receivables ledger',
+    ledgerUnavailable: 'Movement log unavailable — refresh or update the app.',
+    ledgerEmpty: 'No movements in this period for these ledgers.',
+    colLedgerKind: 'Line',
+    colLedgerMovements: 'Movements',
+    colLedgerTotal: 'Total amount',
+    glType: {
+      POS_SALE_COMPLETED: 'Revenue — completed invoice (sales)',
+      EXPENSE_RECORDED: 'Recorded expense',
+      WALLET_SETTLEMENT: 'Custody / wallet settlement',
+      DEBT_ADJUSTMENT: 'Debt / receivable adjustment',
+    },
+    journalType: {
+      SUBSCRIPTION_ACTIVATION: 'Subscription activation / wallet credit',
+      ORDER_WALLET_SETTLEMENT: 'Invoice ↔ wallet settlement',
+    },
+    debtSource: {
+      INVOICE_SHORTFALL: 'Invoice shortfall receivable',
+      SUBSCRIPTION_OVERUSE: 'Subscription overuse receivable',
+      PAYMENT: 'Collection / debt payment',
     },
     col: {
       date: 'Date',
@@ -1328,6 +1361,57 @@ export const en = {
       unit: 'Unit',
       qtyConsumed: 'Qty consumed',
       movements: 'Movements',
+    },
+  },
+  moneyFlow: {
+    title: 'Income & outflow report',
+    subtitle:
+      'All income lines, deductions, and expenses for the period — plus ledger rollups for audit. Some rows overlap by design (use as a reconciliation aid).',
+    from: 'From',
+    to: 'To',
+    thisMonth: 'This month',
+    run: 'Run',
+    loadFailed: 'Could not load money-flow data.',
+    tabInflows: 'Inflows',
+    tabDeductions: 'Deductions & receivables',
+    tabOutflows: 'Outflows & expenses',
+    tabLedgers: 'Ledger detail',
+    inIntro:
+      'Completed sales, collection split, prior-period debt recovered in-window, and wallet / receivable journal totals.',
+    dedIntro:
+      'Bank fees, subscription subsidy, debt adjustments, and new receivable buckets raised in the period.',
+    outIntro:
+      'Payroll, fixed accruals, variable branch expenses from the P&L engine, approved branch & vehicle spend, and fixed cost by category.',
+    ledgerIntro:
+      'Raw rollups by posting type (same basis as the monthly summary movement log). Amounts are signed as stored.',
+    ledgerGl: 'General ledger',
+    ledgerJournal: 'Wallet journal',
+    ledgerDebt: 'Receivables ledger',
+    ledgerEmpty: 'No movements.',
+    emptySection: 'Nothing in this period.',
+    colKind: 'Line',
+    colMovements: 'Movements',
+    colTotal: 'Amount',
+    in: {
+      grossCompleted: 'Gross revenue — completed sales in period',
+      settledAfterFees: 'After bank fees (reporting estimate)',
+      collectedSlice: 'Collected portion of those sales',
+      uncollectedSlice: 'Same sales — still unpaid (on debt)',
+      debtPrior: 'Debt payments on invoices completed before period',
+    },
+    ded: {
+      bankFees: 'Bank & acquirer fees (reporting)',
+      subsidy: 'Subscription subsidy (group discount)',
+    },
+    out: {
+      payroll: 'Payroll paid (net)',
+      fixedTotal: 'Fixed overheads accrued in period',
+      soapFuel: 'Soap & fuel (approved field expenses)',
+      misc: 'Misc operational (approved)',
+      branchTitle: 'Branch expenses (approved)',
+      vehicleTitle: 'Vehicle expenses (approved)',
+      fixedByCat: 'Fixed overheads by category (accrual)',
+      netProfit: 'Net profit (executive formula)',
     },
   },
   financials: {
@@ -1989,7 +2073,10 @@ export const en = {
     tabClosingShort: 'Closing',
     hubTitle: 'Financial reports',
     hubSubtitle:
-      'One entry point: P&L, operational reports, financial cycle, K-Net bank matching, unified ledger, and AI insights. Open the tab you need — each screen explains its own data.',
+      'P&L, financial cycle, K-Net bank matching, and unified ledger in one place. Open the tab you need — each screen explains its own data.',
+    operationalHubTitle: 'Operations & insights',
+    operationalHubSubtitle:
+      'Operational invoice and cash reports, plus AI / BI dashboards. Each tab uses its own date rules and permissions.',
     hubTabPnl: 'P&L',
     hubTabReports: 'Operational reports',
     hubTabCycle: 'Financial cycle',

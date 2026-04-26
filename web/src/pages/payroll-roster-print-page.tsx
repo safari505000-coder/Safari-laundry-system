@@ -4,10 +4,16 @@ import { useAuth } from '@/contexts/auth-context';
 import {
   ApiError,
   apiJson,
+  listPayrollAdhocLines,
   type BranchRow,
+  type PayrollAdHocLineRow,
   type PayrollRow,
 } from '@/lib/api';
 import { PrintableSheet } from '@/modules/shared/print';
+import {
+  compareBranchesForPayrollRoster,
+  comparePayrollRowsForRoster,
+} from '@/lib/payroll-roster-sort';
 
 /**
  * V19.21 — Digital A4 «مسير الرواتب الشهري».
@@ -70,6 +76,10 @@ function payrollNet(row: PayrollRow): number {
   );
 }
 
+function adhocNet(a: PayrollAdHocLineRow): number {
+  return f(a.basicSalary) + f(a.allowances) - f(a.deductions);
+}
+
 function monthLabelAr(ym: string): string {
   if (!/^\d{4}-\d{2}$/.test(ym)) return ym;
   const [ys, ms] = ym.split('-');
@@ -86,13 +96,14 @@ function monthLabelAr(ym: string): string {
 type BranchGroup = {
   branch: BranchRow | null;
   rows: PayrollRow[];
+  adhoc: PayrollAdHocLineRow[];
 };
 
 export function PayrollRosterPrintPage() {
   const { token } = useAuth();
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const ym = params.get('ym') ?? '';
+  const ym = params.get('ym') ?? params.get('m') ?? '';
   const branchId = params.get('branchId');
 
   // New tabs opened via `window.open` have no history — `navigate(-1)` is
@@ -106,6 +117,7 @@ export function PayrollRosterPrintPage() {
   }, [navigate, ym, branchId]);
 
   const [rows, setRows] = useState<PayrollRow[] | null>(null);
+  const [adhocLines, setAdhocLines] = useState<PayrollAdHocLineRow[]>([]);
   const [branches, setBranches] = useState<BranchRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -129,11 +141,13 @@ export function PayrollRosterPrintPage() {
     Promise.all([
       apiJson<PayrollRow[]>(`/api/payroll?${qs.toString()}`, { token }),
       apiJson<BranchRow[]>('/api/branches', { token }),
+      listPayrollAdhocLines(token, ym, branchId ?? undefined),
     ])
-      .then(([p, b]) => {
+      .then(([p, b, ad]) => {
         if (cancelled) return;
         setRows(Array.isArray(p) ? p : []);
         setBranches(Array.isArray(b) ? b : []);
+        setAdhocLines(Array.isArray(ad) ? ad : []);
       })
       .catch((e) => {
         if (!cancelled) {
@@ -157,6 +171,30 @@ export function PayrollRosterPrintPage() {
 
   const groups: BranchGroup[] = useMemo(() => {
     const byBranch = new Map<string, BranchGroup>();
+    const ensureAdhocBucket = (branchKey: string): BranchGroup => {
+      let g = byBranch.get(branchKey);
+      if (g) return g;
+      const br = branchesById.get(branchKey);
+      g = {
+        branch:
+          br ??
+          ({
+            id: branchKey,
+            name: 'بدون فرع',
+            location: '',
+            phone: '',
+            isActive: true,
+            isAdministrative: false,
+            payrollRosterSortOrder: null,
+            updatedAt: new Date().toISOString(),
+          } as BranchRow),
+        rows: [],
+        adhoc: [],
+      };
+      byBranch.set(branchKey, g);
+      return g;
+    };
+
     for (const r of rows ?? []) {
       const key = r.branchId || '__unassigned__';
       const bucket = byBranch.get(key);
@@ -173,22 +211,48 @@ export function PayrollRosterPrintPage() {
                 isActive: true,
                 isAdministrative:
                   branchesById.get(r.branchId)?.isAdministrative ?? false,
+                payrollRosterSortOrder:
+                  branchesById.get(r.branchId)?.payrollRosterSortOrder ??
+                  r.branch?.payrollRosterSortOrder,
                 updatedAt: new Date().toISOString(),
               } as BranchRow)
             : null,
           rows: [r],
+          adhoc: [],
         });
       }
     }
+
+    const adhocFiltered = (adhocLines ?? []).filter(
+      (a) =>
+        a.periodYm === ym &&
+        (!branchId || a.branchId === branchId),
+    );
+    for (const a of adhocFiltered) {
+      const g = ensureAdhocBucket(a.branchId);
+      g.adhoc.push(a);
+    }
+
     for (const g of byBranch.values()) {
-      g.rows.sort((a, b) =>
-        a.user.fullName.localeCompare(b.user.fullName, 'ar'),
+      g.rows.sort(comparePayrollRowsForRoster);
+      g.adhoc.sort(
+        (x, y) =>
+          x.lineSort - y.lineSort || x.createdAt.localeCompare(y.createdAt),
       );
     }
     return Array.from(byBranch.values()).sort((a, b) =>
-      (a.branch?.name ?? '').localeCompare(b.branch?.name ?? '', 'ar'),
+      compareBranchesForPayrollRoster(
+        {
+          name: a.branch?.name ?? '',
+          payrollRosterSortOrder: a.branch?.payrollRosterSortOrder,
+        },
+        {
+          name: b.branch?.name ?? '',
+          payrollRosterSortOrder: b.branch?.payrollRosterSortOrder,
+        },
+      ),
     );
-  }, [rows, branchesById]);
+  }, [rows, branchesById, adhocLines, ym, branchId]);
 
   const totals = useMemo(() => {
     let basic = 0;
@@ -207,18 +271,35 @@ export function PayrollRosterPrintPage() {
       loan += f(r.loanDeduction);
       net += payrollNet(r);
     }
+    const adhocFiltered = (adhocLines ?? []).filter(
+      (a) =>
+        a.periodYm === ym &&
+        (!branchId || a.branchId === branchId),
+    );
+    for (const a of adhocFiltered) {
+      basic += f(a.basicSalary);
+      allow += f(a.allowances);
+      deductions += f(a.deductions);
+      net += adhocNet(a);
+    }
     return { basic, allow, deductions, commission, hold, loan, net };
-  }, [rows]);
+  }, [rows, adhocLines, ym, branchId]);
 
   // V19.21 — auto-launch the print dialog once the data has
   // rendered so the Owner doesn't need a second click. Guarded by
   // `loading` to avoid firing while the sheet is still empty.
   useEffect(() => {
     if (loading || error) return;
-    if (!rows || rows.length === 0) return;
+    const rowCount = rows?.length ?? 0;
+    const adCount = (adhocLines ?? []).filter(
+      (a) =>
+        a.periodYm === ym &&
+        (!branchId || a.branchId === branchId),
+    ).length;
+    if (rowCount === 0 && adCount === 0) return;
     const t = window.setTimeout(() => window.print(), 450);
     return () => window.clearTimeout(t);
-  }, [loading, error, rows]);
+  }, [loading, error, rows, adhocLines, ym, branchId]);
 
   const docNumber = `PAYROLL-${ym.replace(/-/g, '')}${
     branchId ? `-${branchId.slice(0, 6).toUpperCase()}` : ''
@@ -274,7 +355,10 @@ export function PayrollRosterPrintPage() {
     );
   }
 
-  if (!rows || rows.length === 0) {
+  const adhocForScope = (adhocLines ?? []).filter(
+    (a) => a.periodYm === ym && (!branchId || a.branchId === branchId),
+  );
+  if ((!rows || rows.length === 0) && adhocForScope.length === 0) {
     return (
       <PrintableSheet
         docType="PAYROLL_ROSTER"
@@ -292,15 +376,14 @@ export function PayrollRosterPrintPage() {
             color: '#64748b',
           }}
         >
-          لا توجد سجلات راتب محفوظة لهذا الشهر.
+          لا توجد سجلات راتب أو سطور يدوية لهذا الشهر.
         </div>
       </PrintableSheet>
     );
   }
 
-  // 4 fixed (# + الموظف + أساسي + بدلات + خصم) + hold + loan + net,
-  // plus optional commission column.
-  const colCount = 7 + (hasCommission ? 1 : 0) + 1;
+  // # + الموظف + رقم الحساب + data cols — `nCurr` below + 2 for # and name.
+  const colCount = 7 + (hasCommission ? 1 : 0) + 2;
 
   return (
     <PrintableSheet
@@ -317,8 +400,8 @@ export function PayrollRosterPrintPage() {
         <h2 className="printable-sheet__section-title">ملخص المسير</h2>
         <div className="roster-summary">
           <SummaryStat
-            label="عدد المسيرات"
-            value={String(rows.length)}
+            label="عدد الصفوف"
+            value={String((rows?.length ?? 0) + adhocForScope.length)}
             tone="neutral"
           />
           <SummaryStat
@@ -374,6 +457,12 @@ export function PayrollRosterPrintPage() {
           bLoan += f(r.loanDeduction);
           bNet += payrollNet(r);
         }
+        for (const a of g.adhoc) {
+          bBasic += f(a.basicSalary);
+          bAllow += f(a.allowances);
+          bDed += f(a.deductions);
+          bNet += adhocNet(a);
+        }
         return (
           <section
             key={g.branch?.id ?? idx}
@@ -384,7 +473,7 @@ export function PayrollRosterPrintPage() {
                 {g.branch?.name ?? 'بدون فرع'}
               </h2>
               <span className="roster-branch__chip">
-                {g.rows.length} موظف — صافي {KD(bNet)} د.ك
+                {g.rows.length + g.adhoc.length} صف — صافي {KD(bNet)} د.ك
               </span>
             </div>
             <table className="printable-sheet__table roster-table">
@@ -394,12 +483,13 @@ export function PayrollRosterPrintPage() {
                 when the sheet prints in A4 landscape.
               */}
               {(() => {
-                const nCurr = 6 + (hasCommission ? 1 : 0);
-                const wRest = 77 / nCurr;
+                const nCurr = 7 + (hasCommission ? 1 : 0);
+                const wRest = 63 / nCurr;
                 return (
                   <colgroup>
                     <col style={{ width: '3%' }} />
-                    <col style={{ width: '20%' }} />
+                    <col style={{ width: '16%' }} />
+                    <col style={{ width: '14%' }} />
                     {Array.from({ length: nCurr }, (_, i) => (
                       <col
                         key={i}
@@ -413,6 +503,7 @@ export function PayrollRosterPrintPage() {
                 <tr>
                   <th style={{ width: '3%' }}>#</th>
                   <th className="roster-col-name">الموظف</th>
+                  <th>رقم الحساب</th>
                   <th>الأساسي</th>
                   <th>البدلات</th>
                   <th>الخصم</th>
@@ -435,6 +526,17 @@ export function PayrollRosterPrintPage() {
                           {r.user.username}
                         </span>
                       </div>
+                    </td>
+                    <td
+                      className="roster-iban"
+                      style={{
+                        fontSize: '8.5pt',
+                        direction: 'ltr',
+                        textAlign: 'start',
+                        wordBreak: 'break-all',
+                      }}
+                    >
+                      {r.user.bankIban?.trim() ? r.user.bankIban : '—'}
                     </td>
                     <td className="roster-num">{KD(r.basicSalary)}</td>
                     <td className="roster-num">{KD(r.allowances)}</td>
@@ -475,12 +577,50 @@ export function PayrollRosterPrintPage() {
                     </td>
                   </tr>
                 ))}
+                {g.adhoc.map((a, j) => (
+                  <tr key={a.id}>
+                    <td className="roster-num">{g.rows.length + j + 1}</td>
+                    <td className="roster-col-name">
+                      <div className="roster-employee">
+                        <span className="roster-employee__name">
+                          {a.beneficiaryName}
+                        </span>
+                        <span className="roster-employee__role">يدوي</span>
+                      </div>
+                    </td>
+                    <td
+                      className="roster-iban"
+                      style={{
+                        fontSize: '8.5pt',
+                        direction: 'ltr',
+                        textAlign: 'start',
+                        wordBreak: 'break-all',
+                      }}
+                    >
+                      {a.bankIban?.trim() ? a.bankIban : '—'}
+                    </td>
+                    <td className="roster-num">{KD(a.basicSalary)}</td>
+                    <td className="roster-num">{KD(a.allowances)}</td>
+                    <td className="roster-num roster-neg">
+                      {f(a.deductions) > 0 ? `−${KD(a.deductions)}` : '—'}
+                    </td>
+                    {hasCommission && (
+                      <td className="roster-num">—</td>
+                    )}
+                    <td className="roster-num">—</td>
+                    <td className="roster-num">—</td>
+                    <td className="roster-num roster-net">
+                      {KD(adhocNet(a))}
+                    </td>
+                  </tr>
+                ))}
               </tbody>
               <tfoot>
                 <tr>
                   <td colSpan={2} style={{ textAlign: 'start' }}>
                     مجموع الفرع
                   </td>
+                  <td className="roster-num">—</td>
                   <td className="roster-num">{KD(bBasic)}</td>
                   <td className="roster-num">{KD(bAllow)}</td>
                   <td className="roster-num roster-neg">

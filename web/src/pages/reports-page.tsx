@@ -94,7 +94,8 @@ function computeRange(range: QuickRange): { from: string; to: string } {
 }
 
 /**
- * V19.9.6 — Financial reports page (General Manager / Owner / Accountant).
+ * V19.9.6 — Operational reports page (issued invoices, driver ledger, cash closing).
+ * Reached from `/reports` or the Operations & insights hub (`/operational-reports-hub`).
  *
  * Rebuilt on the shared page primitives (PageHeader, FilterBar, KpiCard,
  * DataTableShell) and consolidated so every tab has the same rhythm:

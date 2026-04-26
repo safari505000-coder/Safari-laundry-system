@@ -2785,6 +2785,11 @@ export type TeamUserRow = {
   /** V19.17 — salary defaults surfaced by the payroll registry page. */
   basicMonthlySalary?: string | null;
   monthlyAllowances?: string | null;
+  /** V19.26 — Row order on مسير الرواتب within branch. */
+  payrollRosterLineOrder?: number | null;
+  /** V19.27 — Salary transfer / printed roster. */
+  bankName?: string | null;
+  bankIban?: string | null;
 };
 
 /**
@@ -2797,6 +2802,9 @@ export function updateSalaryDefaults(
   dto: {
     basicMonthlySalary?: number | null;
     monthlyAllowances?: number | null;
+    payrollRosterLineOrder?: number | null;
+    bankName?: string | null;
+    bankIban?: string | null;
   },
 ) {
   return apiJson<TeamUserRow>(`/api/users/${userId}/salary-defaults`, {
@@ -3121,6 +3129,8 @@ export type BranchRow = {
   isActive: boolean;
   /** HQ / cost-center branch: no POS, hidden from operational roles in `/api/branches`. */
   isAdministrative: boolean;
+  /** V19.26 — Lower value first on printed payroll roster (null = after set values). */
+  payrollRosterSortOrder?: number | null;
   updatedAt: string;
 };
 
@@ -3135,6 +3145,7 @@ export type UpdateBranchInput = {
   phone?: string;
   isActive?: boolean;
   isAdministrative?: boolean;
+  payrollRosterSortOrder?: number | null;
 };
 
 /** V19.21 — OWNER / GM edit a branch. See BranchesController PATCH. */
@@ -3247,15 +3258,76 @@ export type MonthlySummaryInventoryBranch = {
   lines: MonthlySummaryInventoryLine[];
 };
 
+/** V19.17 — Rollups by posting type inside the report window (audit / completeness). */
+export type MonthlySummaryLedgerGlRow = {
+  entryType: string;
+  totalKd: string;
+  movementCount: number;
+};
+
+export type MonthlySummaryLedgerJournalRow = {
+  type: string;
+  totalKd: string;
+  movementCount: number;
+};
+
+export type MonthlySummaryLedgerDebtRow = {
+  source: string;
+  totalKd: string;
+  movementCount: number;
+};
+
+export type MonthlySummaryLedgerRollup = {
+  generalLedger: MonthlySummaryLedgerGlRow[];
+  walletJournal: MonthlySummaryLedgerJournalRow[];
+  debtLedger: MonthlySummaryLedgerDebtRow[];
+};
+
 export type MonthlySummaryReport = {
   from: string;
   to: string;
+  /** V19.17 — Every GL / wallet / debt-ledger bucket that moved in-range. */
+  ledgerRollup?: MonthlySummaryLedgerRollup;
   consolidated: Omit<
     MonthlySummaryBranchRow,
     'branchId' | 'branchName' | 'isAdministrative'
   >;
   branches: MonthlySummaryBranchRow[];
   inventoryConsumption: { branches: MonthlySummaryInventoryBranch[] };
+};
+
+/** V19.24 — `/api/reports/money-flow-statement` */
+export type MoneyFlowBranchExpenseRow = {
+  category: string;
+  totalKd: string;
+  movementCount: number;
+};
+
+export type MoneyFlowVehicleExpenseRow = {
+  expenseType: string;
+  totalKd: string;
+  movementCount: number;
+};
+
+export type MoneyFlowFixedExpenseRow = {
+  category: string;
+  totalKd: string;
+};
+
+export type MoneyFlowStatementReport = {
+  from: string;
+  to: string;
+  executive: ExecutiveSummaryReport;
+  collections: {
+    collectedRevenueKd: string;
+    uncollectedRevenueKd: string;
+  };
+  /** PAYMENT rows linked to invoices completed before `from` (monthly-summary KPI). */
+  debtPaymentsPriorInvoiceKd: string;
+  branchExpensesByCategory: MoneyFlowBranchExpenseRow[];
+  vehicleExpensesByType: MoneyFlowVehicleExpenseRow[];
+  fixedExpensesByCategory: MoneyFlowFixedExpenseRow[];
+  ledgerRollup: MonthlySummaryLedgerRollup;
 };
 
 export type LiveFeedLine = {
@@ -3310,7 +3382,35 @@ export type PayrollRow = {
   status: PayrollStatus;
   createdAt: string;
   updatedAt: string;
-  user: { id: string; fullName: string; username: string };
+  user: {
+    id: string;
+    fullName: string;
+    username: string;
+    payrollRosterLineOrder?: number | null;
+    bankIban?: string | null;
+  };
+  branch: {
+    id: string;
+    name: string;
+    payrollRosterSortOrder?: number | null;
+  };
+};
+
+/** V19.28 — manual مسير row (no User); same month key as payroll `paymentDate`. */
+export type PayrollAdHocLineRow = {
+  id: string;
+  branchId: string;
+  periodYm: string;
+  lineSort: number;
+  beneficiaryName: string;
+  bankName: string | null;
+  bankIban: string | null;
+  basicSalary: string;
+  allowances: string;
+  deductions: string;
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
   branch: { id: string; name: string };
 };
 
@@ -3676,6 +3776,68 @@ export function exportAttendanceXlsx(
     `/api/exports/attendance.xlsx${buildQuery(f)}`,
     token,
     'attendance.xlsx',
+  );
+}
+
+export function listPayrollAdhocLines(
+  token: string,
+  ym: string,
+  branchId?: string,
+) {
+  const qs = new URLSearchParams({ ym });
+  if (branchId) qs.set('branchId', branchId);
+  return apiJson<PayrollAdHocLineRow[]>(`/api/payroll/adhoc-lines?${qs}`, {
+    token,
+  });
+}
+
+export function createPayrollAdhocLine(
+  token: string,
+  body: {
+    branchId: string;
+    periodYm: string;
+    beneficiaryName: string;
+    bankName?: string | null;
+    bankIban?: string | null;
+    basicSalary: number;
+    allowances?: number;
+    deductions?: number;
+    lineSort?: number;
+    note?: string | null;
+  },
+) {
+  return apiJson<PayrollAdHocLineRow>('/api/payroll/adhoc-lines', {
+    method: 'POST',
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
+export function updatePayrollAdhocLine(
+  token: string,
+  id: string,
+  body: {
+    beneficiaryName?: string;
+    bankName?: string | null;
+    bankIban?: string | null;
+    basicSalary?: number;
+    allowances?: number;
+    deductions?: number;
+    lineSort?: number;
+    note?: string | null;
+  },
+) {
+  return apiJson<PayrollAdHocLineRow>(`/api/payroll/adhoc-lines/${id}`, {
+    method: 'PATCH',
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
+export function deletePayrollAdhocLine(token: string, id: string) {
+  return apiJson<{ id: string; deleted: boolean }>(
+    `/api/payroll/adhoc-lines/${id}`,
+    { method: 'DELETE', token },
   );
 }
 

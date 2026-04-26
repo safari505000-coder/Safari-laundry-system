@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Printer } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
+import type { TFunction } from 'i18next';
 import {
   apiJson,
   ApiError,
@@ -11,7 +12,7 @@ import {
   type MonthlySummaryReport,
   type PayrollRow,
 } from '@/lib/api';
-import { formatKwdLabel } from '@/lib/kwd';
+import { formatKwdLabel, formatSignedKwdLabel } from '@/lib/kwd';
 import { OperatorRouteHint } from '@/modules/shared/components/shell/operator-route-hint';
 import './monthly-summary-print.css';
 
@@ -31,6 +32,56 @@ import './monthly-summary-print.css';
  * preview is never triggered before layout is settled.
  */
 type BranchRow = MonthlySummaryReport['branches'][number];
+
+type LedgerNs = 'glType' | 'journalType' | 'debtSource';
+
+function LedgerRollupPrintBlock({
+  t,
+  title,
+  ns,
+  rows,
+}: {
+  t: TFunction;
+  title: string;
+  ns: LedgerNs;
+  rows: Array<{ code: string; totalKd: string; movementCount: number }>;
+}) {
+  return (
+    <div className="msp-inventory-branch">
+      <h3 className="msp-inventory-branch__title">{title}</h3>
+      {rows.length === 0 ? (
+        <p className="msp-empty">
+          {t('monthlySummary.ledgerEmpty', 'لا توجد حركات.')}
+        </p>
+      ) : (
+        <table className="msp-list">
+          <thead>
+            <tr>
+              <th>{t('monthlySummary.colLedgerKind', 'البند')}</th>
+              <th className="num">
+                {t('monthlySummary.colLedgerMovements', 'الحركات')}
+              </th>
+              <th className="num">
+                {t('monthlySummary.colLedgerTotal', 'المجموع')}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.code}>
+                <td>{t(`monthlySummary.${ns}.${r.code}`, r.code)}</td>
+                <td className="num">{r.movementCount}</td>
+                <td className="num" dir="ltr">
+                  {formatSignedKwdLabel(r.totalKd)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
 
 type RowFormula = Pick<
   BranchRow,
@@ -654,6 +705,62 @@ export function MonthlySummaryPrintPage() {
                 })}
               </tbody>
             </table>
+          )}
+        </section>
+
+        <section className="monthly-summary-print__section msp-section--flow">
+          <h2 className="monthly-summary-print__section-title">
+            {t('monthlySummary.tabs.ledger', 'سجل الحركات')}
+          </h2>
+          {!summary.ledgerRollup ? (
+            <p className="msp-empty">
+              {t(
+                'monthlySummary.ledgerUnavailable',
+                'سجل الحركات غير متوفر.',
+              )}
+            </p>
+          ) : (
+            <>
+              <p className="msp-section__intro">
+                {t(
+                  'monthlySummary.ledgerIntro',
+                  'كل قيد مالي دخل النظام خلال الفترة.',
+                )}
+              </p>
+              <LedgerRollupPrintBlock
+                t={t}
+                title={t('monthlySummary.ledgerGlTitle', 'الدفتر الموحّد')}
+                ns="glType"
+                rows={summary.ledgerRollup.generalLedger.map((g) => ({
+                  code: g.entryType,
+                  totalKd: g.totalKd,
+                  movementCount: g.movementCount,
+                }))}
+              />
+              <LedgerRollupPrintBlock
+                t={t}
+                title={t(
+                  'monthlySummary.ledgerJournalTitle',
+                  'سجل المحفظة',
+                )}
+                ns="journalType"
+                rows={summary.ledgerRollup.walletJournal.map((g) => ({
+                  code: g.type,
+                  totalKd: g.totalKd,
+                  movementCount: g.movementCount,
+                }))}
+              />
+              <LedgerRollupPrintBlock
+                t={t}
+                title={t('monthlySummary.ledgerDebtTitle', 'دفتر الذمم')}
+                ns="debtSource"
+                rows={summary.ledgerRollup.debtLedger.map((g) => ({
+                  code: g.source,
+                  totalKd: g.totalKd,
+                  movementCount: g.movementCount,
+                }))}
+              />
+            </>
           )}
         </section>
 

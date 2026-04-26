@@ -27,10 +27,11 @@ import {
   ApiError,
   API_EXPENSES,
   type ExpenseRow,
+  type MonthlySummaryLedgerRollup,
   type MonthlySummaryReport,
   type PayrollRow,
 } from '@/lib/api';
-import { formatKwdLabel } from '@/lib/kwd';
+import { formatKwdLabel, formatSignedKwdLabel } from '@/lib/kwd';
 import {
   FilterBar,
   FilterField,
@@ -69,6 +70,138 @@ import { cn } from '@/lib/utils';
  * blank pages.
  */
 export type BranchRow = MonthlySummaryReport['branches'][number];
+
+type LedgerNs = 'glType' | 'journalType' | 'debtSource';
+
+function LedgerRollupSection({
+  title,
+  rows,
+  ns,
+}: {
+  title: string;
+  rows: Array<{ code: string; totalKd: string; movementCount: number }>;
+  ns: LedgerNs;
+}) {
+  const { t } = useTranslation();
+  return (
+    <Card className="overflow-hidden">
+      <CardHeader className="py-3">
+        <CardTitle className="text-base">{title}</CardTitle>
+      </CardHeader>
+      <CardContent className="p-0">
+        {rows.length === 0 ? (
+          <p className="px-6 py-6 text-sm text-muted-foreground">
+            {t('monthlySummary.ledgerEmpty', 'لا توجد حركات.')}
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-muted/40 text-start text-muted-foreground">
+                  <th className="px-4 py-2 font-medium">
+                    {t('monthlySummary.colLedgerKind', 'البند')}
+                  </th>
+                  <th className="px-4 py-2 text-end font-medium tabular-nums">
+                    {t('monthlySummary.colLedgerMovements', 'الحركات')}
+                  </th>
+                  <th className="px-4 py-2 text-end font-medium tabular-nums">
+                    {t('monthlySummary.colLedgerTotal', 'المجموع')}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.code} className="border-b border-border/60">
+                    <td className="px-4 py-2 text-foreground">
+                      {t(`monthlySummary.${ns}.${r.code}`, r.code)}
+                    </td>
+                    <td className="px-4 py-2 text-end tabular-nums text-muted-foreground">
+                      {r.movementCount}
+                    </td>
+                    <td
+                      className="px-4 py-2 text-end text-sm font-semibold tabular-nums text-foreground"
+                      dir="ltr"
+                    >
+                      {formatSignedKwdLabel(r.totalKd)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function LedgerRollupTab({
+  rollup,
+  loading,
+}: {
+  rollup: MonthlySummaryLedgerRollup | undefined;
+  loading: boolean;
+}) {
+  const { t } = useTranslation();
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="py-10">
+          <Skeleton className="mx-auto h-8 w-48" />
+        </CardContent>
+      </Card>
+    );
+  }
+  if (!rollup) {
+    return (
+      <Card>
+        <CardContent className="py-10 text-center text-sm text-muted-foreground">
+          {t(
+            'monthlySummary.ledgerUnavailable',
+            'سجل الحركات غير متوفر.',
+          )}
+        </CardContent>
+      </Card>
+    );
+  }
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        {t(
+          'monthlySummary.ledgerIntro',
+          'كل قيد مالي دخل النظام خلال الفترة.',
+        )}
+      </p>
+      <LedgerRollupSection
+        title={t('monthlySummary.ledgerGlTitle', 'الدفتر الموحّد')}
+        ns="glType"
+        rows={rollup.generalLedger.map((g) => ({
+          code: g.entryType,
+          totalKd: g.totalKd,
+          movementCount: g.movementCount,
+        }))}
+      />
+      <LedgerRollupSection
+        title={t('monthlySummary.ledgerJournalTitle', 'سجل المحفظة')}
+        ns="journalType"
+        rows={rollup.walletJournal.map((g) => ({
+          code: g.type,
+          totalKd: g.totalKd,
+          movementCount: g.movementCount,
+        }))}
+      />
+      <LedgerRollupSection
+        title={t('monthlySummary.ledgerDebtTitle', 'دفتر الذمم')}
+        ns="debtSource"
+        rows={rollup.debtLedger.map((g) => ({
+          code: g.source,
+          totalKd: g.totalKd,
+          movementCount: g.movementCount,
+        }))}
+      />
+    </div>
+  );
+}
 
 type RowFormula = Pick<
   BranchRow,
@@ -790,6 +923,25 @@ export function MonthlySummaryPage() {
     }
   }, [from, to, t]);
 
+  // V19.29 — Comprehensive report: cover + TOC + explanations + per-branch
+  // booklet (payroll, attendance, drivers & debts, manager) + call-center
+  // collections + ledger/expenses/inventory appendix.
+  const openFullPrintWindow = useCallback(() => {
+    const qs = new URLSearchParams({ from, to }).toString();
+    const win = window.open(
+      `/monthly-summary/full-print?${qs}`,
+      '_blank',
+    );
+    if (!win) {
+      toast.error(
+        t(
+          'monthlySummary.printBlocked',
+          'المتصفح منع فتح نافذة الطباعة — فعّل النوافذ المنبثقة لهذا الموقع.',
+        ),
+      );
+    }
+  }, [from, to, t]);
+
   return (
     <div className="space-y-5">
       <PageHeader
@@ -818,11 +970,25 @@ export function MonthlySummaryPage() {
             <Button
               type="button"
               size="sm"
+              variant="outline"
               onClick={openPrintWindow}
               disabled={loading || !data}
             >
               <Printer className="me-2 h-4 w-4" aria-hidden />
               {t('monthlySummary.print', 'طباعة')}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={openFullPrintWindow}
+              disabled={loading || !data}
+              title={t(
+                'monthlySummary.fullPrintHint',
+                'تقرير موسّع: غلاف + فهرس + شرح + كل فرع (حضور + رواتب + سواقين + ديون) + كول سنتر',
+              )}
+            >
+              <Printer className="me-2 h-4 w-4" aria-hidden />
+              {t('monthlySummary.fullPrint', 'طباعة موسّعة')}
             </Button>
           </div>
         }
@@ -894,6 +1060,9 @@ export function MonthlySummaryPage() {
           </TabsTrigger>
           <TabsTrigger value="payroll">
             {t('monthlySummary.tabs.payroll', 'الرواتب')}
+          </TabsTrigger>
+          <TabsTrigger value="ledger">
+            {t('monthlySummary.tabs.ledger', 'سجل الحركات')}
           </TabsTrigger>
         </TabsList>
 
@@ -975,6 +1144,10 @@ export function MonthlySummaryPage() {
 
         <TabsContent value="payroll" className="mt-4">
           <PayrollTab rows={payroll} loading={detailsLoading} />
+        </TabsContent>
+
+        <TabsContent value="ledger" className="mt-4">
+          <LedgerRollupTab rollup={data?.ledgerRollup} loading={loading} />
         </TabsContent>
       </Tabs>
     </div>

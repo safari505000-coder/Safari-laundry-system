@@ -47,6 +47,9 @@ let ReportsController = class ReportsController {
     monthlySummary(q) {
         return this.reportsService.monthlySummary(q.from, q.to);
     }
+    moneyFlowStatement(q) {
+        return this.reportsService.moneyFlowStatement(q.from, q.to);
+    }
     bankFeesByBranch(q) {
         return this.reportsService.bankFeesByBranch(q.from, q.to);
     }
@@ -125,6 +128,18 @@ __decorate([
     __metadata("design:paramtypes", [reports_range_query_dto_1.ReportsRangeQueryDto]),
     __metadata("design:returntype", void 0)
 ], ReportsController.prototype, "monthlySummary", null);
+__decorate([
+    (0, common_1.Get)('money-flow-statement'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),
+    (0, swagger_1.ApiOperation)({
+        summary: `Money flow statement — income, deductions, expenses, ledger rollups (${branding_1.APP_BRAND})`,
+        description: 'V19.24 — Consolidated executive lines (same as /reports/executive-summary), approved branch/vehicle expenses, accrued fixed costs by category, collections split, prior-period invoice debt payments, plus GL / wallet / debt ledger rollups for the window.',
+    }),
+    __param(0, (0, common_1.Query)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [reports_range_query_dto_1.ReportsRangeQueryDto]),
+    __metadata("design:returntype", void 0)
+], ReportsController.prototype, "moneyFlowStatement", null);
 __decorate([
     (0, common_1.Get)('bank-fees-by-branch'),
     (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),

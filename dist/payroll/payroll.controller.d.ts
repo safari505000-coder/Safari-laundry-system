@@ -1,6 +1,8 @@
 import type { JwtUser } from '../auth/decorators/current-user.decorator';
+import { CreatePayrollAdhocLineDto } from './dto/create-payroll-adhoc-line.dto';
 import { CreatePayrollDto } from './dto/create-payroll.dto';
 import { PayrollQueryDto } from './dto/payroll-query.dto';
+import { UpdatePayrollAdhocLineDto } from './dto/update-payroll-adhoc-line.dto';
 import { PayrollService } from './payroll.service';
 export declare class PayrollController {
     private readonly payrollService;
@@ -18,10 +20,10 @@ export declare class PayrollController {
     } & {
         id: string;
         createdAt: Date;
+        userId: string;
+        branchId: string;
         updatedAt: Date;
         status: import("@prisma/client").$Enums.PayrollStatus;
-        branchId: string;
-        userId: string;
         basicSalary: import("@prisma/client-runtime-utils").Decimal;
         allowances: import("@prisma/client-runtime-utils").Decimal;
         deductions: import("@prisma/client-runtime-utils").Decimal;
@@ -44,10 +46,10 @@ export declare class PayrollController {
     } & {
         id: string;
         createdAt: Date;
+        userId: string;
+        branchId: string;
         updatedAt: Date;
         status: import("@prisma/client").$Enums.PayrollStatus;
-        branchId: string;
-        userId: string;
         basicSalary: import("@prisma/client-runtime-utils").Decimal;
         allowances: import("@prisma/client-runtime-utils").Decimal;
         deductions: import("@prisma/client-runtime-utils").Decimal;
@@ -70,10 +72,10 @@ export declare class PayrollController {
     } & {
         id: string;
         createdAt: Date;
+        userId: string;
+        branchId: string;
         updatedAt: Date;
         status: import("@prisma/client").$Enums.PayrollStatus;
-        branchId: string;
-        userId: string;
         basicSalary: import("@prisma/client-runtime-utils").Decimal;
         allowances: import("@prisma/client-runtime-utils").Decimal;
         deductions: import("@prisma/client-runtime-utils").Decimal;
@@ -88,18 +90,21 @@ export declare class PayrollController {
             id: string;
             username: string;
             fullName: string;
+            bankIban: string | null;
+            payrollRosterLineOrder: number | null;
         };
         branch: {
             id: string;
             name: string;
+            payrollRosterSortOrder: number | null;
         };
     } & {
         id: string;
         createdAt: Date;
+        userId: string;
+        branchId: string;
         updatedAt: Date;
         status: import("@prisma/client").$Enums.PayrollStatus;
-        branchId: string;
-        userId: string;
         basicSalary: import("@prisma/client-runtime-utils").Decimal;
         allowances: import("@prisma/client-runtime-utils").Decimal;
         deductions: import("@prisma/client-runtime-utils").Decimal;
@@ -109,15 +114,79 @@ export declare class PayrollController {
         loanDeduction: import("@prisma/client-runtime-utils").Decimal;
         paymentDate: Date;
     })[]>;
+    listAdHoc(ym: string, branchId: string | undefined, user: JwtUser): Promise<({
+        branch: {
+            id: string;
+            name: string;
+        };
+    } & {
+        id: string;
+        createdAt: Date;
+        branchId: string;
+        updatedAt: Date;
+        note: string | null;
+        bankName: string | null;
+        bankIban: string | null;
+        basicSalary: import("@prisma/client-runtime-utils").Decimal;
+        allowances: import("@prisma/client-runtime-utils").Decimal;
+        deductions: import("@prisma/client-runtime-utils").Decimal;
+        periodYm: string;
+        lineSort: number;
+        beneficiaryName: string;
+    })[]>;
+    createAdHoc(dto: CreatePayrollAdhocLineDto, user: JwtUser): Promise<{
+        branch: {
+            id: string;
+            name: string;
+        };
+    } & {
+        id: string;
+        createdAt: Date;
+        branchId: string;
+        updatedAt: Date;
+        note: string | null;
+        bankName: string | null;
+        bankIban: string | null;
+        basicSalary: import("@prisma/client-runtime-utils").Decimal;
+        allowances: import("@prisma/client-runtime-utils").Decimal;
+        deductions: import("@prisma/client-runtime-utils").Decimal;
+        periodYm: string;
+        lineSort: number;
+        beneficiaryName: string;
+    }>;
+    updateAdHoc(id: string, dto: UpdatePayrollAdhocLineDto, user: JwtUser): Promise<{
+        branch: {
+            id: string;
+            name: string;
+        };
+    } & {
+        id: string;
+        createdAt: Date;
+        branchId: string;
+        updatedAt: Date;
+        note: string | null;
+        bankName: string | null;
+        bankIban: string | null;
+        basicSalary: import("@prisma/client-runtime-utils").Decimal;
+        allowances: import("@prisma/client-runtime-utils").Decimal;
+        deductions: import("@prisma/client-runtime-utils").Decimal;
+        periodYm: string;
+        lineSort: number;
+        beneficiaryName: string;
+    }>;
+    removeAdHoc(id: string, user: JwtUser): Promise<{
+        id: string;
+        deleted: boolean;
+    }>;
     findOne(id: string, user: JwtUser): Promise<{
         user: {
             id: string;
             address: string | null;
             username: string;
-            employeeId: string | null;
-            civilId: string | null;
             fullName: string;
+            employeeId: string | null;
             jobTitle: string | null;
+            civilId: string | null;
             nationality: string | null;
             bankName: string | null;
             bankIban: string | null;
@@ -131,10 +200,10 @@ export declare class PayrollController {
     } & {
         id: string;
         createdAt: Date;
+        userId: string;
+        branchId: string;
         updatedAt: Date;
         status: import("@prisma/client").$Enums.PayrollStatus;
-        branchId: string;
-        userId: string;
         basicSalary: import("@prisma/client-runtime-utils").Decimal;
         allowances: import("@prisma/client-runtime-utils").Decimal;
         deductions: import("@prisma/client-runtime-utils").Decimal;

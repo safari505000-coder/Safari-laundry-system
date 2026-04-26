@@ -29,13 +29,13 @@ export declare class ManagerDocumentsService {
         id: string;
         amount: Prisma.Decimal;
         createdAt: Date;
+        branchId: string | null;
+        title: string;
         updatedAt: Date;
         status: import("@prisma/client").$Enums.ExpenseStatus;
-        branchId: string | null;
-        category: import("@prisma/client").$Enums.ExpenseCategory;
         note: string | null;
-        title: string;
         receiptUrl: string | null;
+        category: import("@prisma/client").$Enums.ExpenseCategory;
         recordedById: string;
         expenseMethod: import("@prisma/client").$Enums.ExpenseMethod;
         expenseDate: Date;

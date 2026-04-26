@@ -7,30 +7,33 @@ export declare class BranchesController {
         id: string;
         name: string;
         updatedAt: Date;
-        phone: string | null;
         isActive: boolean;
+        phone: string | null;
         location: string;
         isAdministrative: boolean;
+        payrollRosterSortOrder: number | null;
     }[]>;
     create(body: unknown): Promise<{
         id: string;
         createdAt: Date;
         name: string;
         updatedAt: Date;
-        phone: string | null;
         isActive: boolean;
+        phone: string | null;
         location: string;
         isAdministrative: boolean;
+        payrollRosterSortOrder: number | null;
     }>;
     update(id: string, body: unknown): Promise<{
         id: string;
         createdAt: Date;
         name: string;
         updatedAt: Date;
-        phone: string | null;
         isActive: boolean;
+        phone: string | null;
         location: string;
         isAdministrative: boolean;
+        payrollRosterSortOrder: number | null;
     }>;
     operationsLive(): Promise<{
         branches: {

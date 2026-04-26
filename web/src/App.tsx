@@ -34,12 +34,15 @@ import { ExpensesPage } from '@/pages/expenses-page';
 import { FinancialsPage } from '@/pages/financials-page';
 import { MonthlySummaryPage } from '@/pages/monthly-summary-page';
 import { MonthlySummaryPrintPage } from '@/pages/monthly-summary-print-page';
+import { MonthlyReportFullPrintPage } from '@/pages/monthly-report-full-print-page';
+import { MoneyFlowStatementPage } from '@/pages/money-flow-statement-page';
 import { InsightsAiPage } from '@/pages/insights-ai-page';
 import { FinancialCycleReportPage } from '@/pages/financial-cycle-report-page';
 import { DriverCashTracePage } from '@/pages/driver-cash-trace-page';
 import { UnpaidInvoicesPage } from '@/pages/unpaid-invoices-page';
 import { ReportsPage } from '@/pages/reports-page';
 import { FinancialReportsHubPage } from '@/pages/financial-reports-hub-page';
+import { OperationalReportsHubPage } from '@/pages/operational-reports-hub-page';
 import { LoginPage } from '@/pages/login-page';
 import { OrdersPage } from '@/pages/orders-page';
 import { MyCustodyPage } from '@/modules/manager/pages/MyCustodyPage';
@@ -213,6 +216,14 @@ export default function App() {
                 element={
                   <RequireAccess access="monthlySummary.view">
                     <MonthlySummaryPrintPage />
+                  </RequireAccess>
+                }
+              />
+              <Route
+                path="/monthly-summary/full-print"
+                element={
+                  <RequireAccess access="monthlySummary.view">
+                    <MonthlyReportFullPrintPage />
                   </RequireAccess>
                 }
               />
@@ -570,6 +581,14 @@ export default function App() {
                   }
                 />
                 <Route
+                  path="money-flow-statement"
+                  element={
+                    <RequireAccess access="moneyFlowStatement.view">
+                      <MoneyFlowStatementPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
                   path="insights/ai"
                   element={
                     <RequireAccess access="insights.view">
@@ -729,6 +748,14 @@ export default function App() {
                   element={
                     <RequireAccess access="reports.view">
                       <FinancialReportsHubPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="operational-reports-hub"
+                  element={
+                    <RequireAccess access="operationalReportsHub.view">
+                      <OperationalReportsHubPage />
                     </RequireAccess>
                   }
                 />

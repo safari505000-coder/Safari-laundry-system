@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
@@ -17,8 +18,10 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { APP_BRAND } from '../common/constants/branding';
+import { CreatePayrollAdhocLineDto } from './dto/create-payroll-adhoc-line.dto';
 import { CreatePayrollDto } from './dto/create-payroll.dto';
 import { PayrollQueryDto } from './dto/payroll-query.dto';
+import { UpdatePayrollAdhocLineDto } from './dto/update-payroll-adhoc-line.dto';
 import { PayrollService } from './payroll.service';
 
 @ApiTags('payroll')
@@ -85,6 +88,64 @@ export class PayrollController {
       q.to,
       q.branchId,
     );
+  }
+
+  /**
+   * V19.28 — manual مسير lines (name + IBAN + amounts) not tied to User.
+   */
+  @Get('adhoc-lines')
+  @Roles(
+    SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
+    SafariRole.MANAGER,
+    SafariRole.ACCOUNTANT,
+  )
+  @ApiOperation({ summary: `List manual payroll roster lines for YYYY-MM` })
+  listAdHoc(
+    @Query('ym') ym: string,
+    @Query('branchId') branchId: string | undefined,
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.payrollService.listAdHocLines(
+      user.role as SafariRole,
+      ym,
+      branchId,
+    );
+  }
+
+  @Post('adhoc-lines')
+  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.MANAGER)
+  @ApiOperation({ summary: `Create manual payroll roster line` })
+  createAdHoc(
+    @Body() dto: CreatePayrollAdhocLineDto,
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.payrollService.createAdHocLine(user.role as SafariRole, dto);
+  }
+
+  @Patch('adhoc-lines/:id')
+  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.MANAGER)
+  @ApiOperation({ summary: `Update manual payroll roster line` })
+  updateAdHoc(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdatePayrollAdhocLineDto,
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.payrollService.updateAdHocLine(
+      user.role as SafariRole,
+      id,
+      dto,
+    );
+  }
+
+  @Delete('adhoc-lines/:id')
+  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.MANAGER)
+  @ApiOperation({ summary: `Delete manual payroll roster line` })
+  removeAdHoc(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.payrollService.deleteAdHocLine(user.role as SafariRole, id);
   }
 
   @Get(':id')

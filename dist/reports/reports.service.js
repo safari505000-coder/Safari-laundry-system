@@ -12,12 +12,23 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ReportsService = void 0;
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
+function prismaGroupCount(g) {
+    const c = g._count;
+    if (typeof c === 'number')
+        return c;
+    if (c && typeof c === 'object' && '_all' in c) {
+        const n = c._all;
+        return typeof n === 'number' ? n : 0;
+    }
+    return 0;
+}
 const prisma_service_1 = require("../prisma/prisma.service");
 const expenses_service_1 = require("../expenses/expenses.service");
 const fixed_expense_service_1 = require("../fixed-expenses/fixed-expense.service");
 const payment_method_fees_service_1 = require("../payment-method-fees/payment-method-fees.service");
 const bank_fee_util_1 = require("../payment-method-fees/bank-fee.util");
 const payroll_service_1 = require("../payroll/payroll.service");
+const fixed_expense_service_2 = require("../fixed-expenses/fixed-expense.service");
 const finance_money_1 = require("../finance/finance-money");
 function decSubMany(base, ...subs) {
     let x = new client_1.Prisma.Decimal(base);
@@ -444,7 +455,7 @@ let ReportsService = class ReportsService {
     }
     async monthlySummary(fromIso, toIso) {
         const { from, to } = this.parseRange(fromIso, toIso);
-        const [consolidated, branches, consolidatedCollections, consolidatedDebtPayments, consolidatedDebtOpen, inventoryConsumption,] = await Promise.all([
+        const [consolidated, branches, consolidatedCollections, consolidatedDebtPayments, consolidatedDebtOpen, inventoryConsumption, ledgerRollup,] = await Promise.all([
             this.netProfitExecutive(fromIso, toIso),
             this.prisma.branch.findMany({
                 where: { isActive: true },
@@ -455,6 +466,7 @@ let ReportsService = class ReportsService {
             this.computeDebtPaymentsInRange(from, to),
             this.computeOutstandingDebtBreakdown(),
             this.computeMonthlyInventoryConsumption(from, to),
+            this.computeLedgerRollupForPeriod(from, to),
         ]);
         const netWithSubsidy = (base, subsidy) => {
             const n = Number.parseFloat(base || '0') - Number.parseFloat(subsidy || '0');
@@ -494,6 +506,7 @@ let ReportsService = class ReportsService {
         return {
             from: consolidated.from,
             to: consolidated.to,
+            ledgerRollup,
             consolidated: {
                 grossRevenueKd: consolidated.grossRevenueKd,
                 bankFeesTotalKd: consolidated.bankFeesTotalKd,
@@ -515,6 +528,126 @@ let ReportsService = class ReportsService {
             branches: perBranch,
             inventoryConsumption,
         };
+    }
+    async computeLedgerRollupForPeriod(from, to) {
+        const [glGroups, thGroups, debtGroups] = await Promise.all([
+            this.prisma.generalLedgerEntry.groupBy({
+                by: ['entryType'],
+                where: { createdAt: { gte: from, lte: to } },
+                _sum: { amount: true },
+                _count: true,
+            }),
+            this.prisma.transactionHistory.groupBy({
+                by: ['type'],
+                where: { createdAt: { gte: from, lte: to } },
+                _sum: { amount: true },
+                _count: true,
+            }),
+            this.prisma.debtLedgerEntry.groupBy({
+                by: ['source'],
+                where: { createdAt: { gte: from, lte: to } },
+                _sum: { amount: true },
+                _count: true,
+            }),
+        ]);
+        const z = new client_1.Prisma.Decimal(0);
+        const generalLedger = glGroups
+            .map((g) => ({
+            entryType: g.entryType,
+            totalKd: (g._sum.amount ?? z).toFixed(4),
+            movementCount: prismaGroupCount(g),
+        }))
+            .sort((a, b) => a.entryType.localeCompare(b.entryType));
+        const walletJournal = thGroups
+            .map((g) => ({
+            type: g.type,
+            totalKd: (g._sum.amount ?? z).toFixed(4),
+            movementCount: prismaGroupCount(g),
+        }))
+            .sort((a, b) => a.type.localeCompare(b.type));
+        const debtLedger = debtGroups
+            .map((g) => ({
+            source: g.source,
+            totalKd: (g._sum.amount ?? z).toFixed(4),
+            movementCount: prismaGroupCount(g),
+        }))
+            .sort((a, b) => a.source.localeCompare(b.source));
+        return { generalLedger, walletJournal, debtLedger };
+    }
+    async moneyFlowStatement(fromIso, toIso) {
+        const { from, to } = this.parseRange(fromIso, toIso);
+        const [executive, collections, ledgerRollup, branchExpensesByCategory, vehicleExpensesByType, fixedExpensesByCategory, debtPaymentsPriorInvoiceKd,] = await Promise.all([
+            this.netProfitExecutive(fromIso, toIso),
+            this.computeCollectionsForRange(from, to),
+            this.computeLedgerRollupForPeriod(from, to),
+            this.prisma.branchExpense.groupBy({
+                by: ['category'],
+                where: {
+                    status: client_1.ExpenseStatus.APPROVED,
+                    expenseDate: { gte: from, lte: to },
+                },
+                _sum: { amount: true },
+                _count: true,
+            }),
+            this.prisma.vehicleExpense.groupBy({
+                by: ['expenseType'],
+                where: {
+                    status: client_1.VehicleExpenseStatus.APPROVED,
+                    expenseDate: { gte: from, lte: to },
+                },
+                _sum: { amount: true },
+                _count: true,
+            }),
+            this.fixedExpensesAccruedByCategory(from, to),
+            this.computeDebtPaymentsInRange(from, to),
+        ]);
+        const z = new client_1.Prisma.Decimal(0);
+        return {
+            from: executive.from,
+            to: executive.to,
+            executive,
+            collections,
+            debtPaymentsPriorInvoiceKd,
+            branchExpensesByCategory: branchExpensesByCategory
+                .map((g) => ({
+                category: g.category,
+                totalKd: (g._sum.amount ?? z).toFixed(4),
+                movementCount: prismaGroupCount(g),
+            }))
+                .sort((a, b) => a.category.localeCompare(b.category)),
+            vehicleExpensesByType: vehicleExpensesByType
+                .map((g) => ({
+                expenseType: g.expenseType,
+                totalKd: (g._sum.amount ?? z).toFixed(4),
+                movementCount: prismaGroupCount(g),
+            }))
+                .sort((a, b) => a.expenseType.localeCompare(b.expenseType)),
+            fixedExpensesByCategory,
+            ledgerRollup,
+        };
+    }
+    async fixedExpensesAccruedByCategory(from, to) {
+        const rows = await this.prisma.fixedExpenseSchedule.findMany({
+            where: { isActive: true },
+            select: {
+                category: true,
+                monthlyAmount: true,
+                effectiveFrom: true,
+                effectiveTo: true,
+            },
+        });
+        const map = new Map();
+        for (const r of rows) {
+            const months = (0, fixed_expense_service_2.countAccruedMonths)(from, to, r.effectiveFrom, r.effectiveTo);
+            if (months <= 0)
+                continue;
+            const amt = r.monthlyAmount.mul(months);
+            const cur = map.get(r.category) ?? new client_1.Prisma.Decimal(0);
+            map.set(r.category, cur.add(amt));
+        }
+        return [...map.entries()]
+            .map(([category, d]) => ({ category, totalKd: d.toFixed(4) }))
+            .sort((a, b) => a.category.localeCompare(b.category));
     }
     async computeMonthlyInventoryConsumption(from, to) {
         const groups = await this.prisma.stockMovement.groupBy({

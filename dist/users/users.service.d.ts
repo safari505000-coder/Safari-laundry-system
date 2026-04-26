@@ -19,6 +19,9 @@ export declare class UsersService {
     updateSalaryDefaults(id: string, dto: {
         basicMonthlySalary?: number | null;
         monthlyAllowances?: number | null;
+        payrollRosterLineOrder?: number | null;
+        bankName?: string | null;
+        bankIban?: string | null;
     }): Promise<UserPublic>;
     remove(id: string): Promise<{
         id: string;

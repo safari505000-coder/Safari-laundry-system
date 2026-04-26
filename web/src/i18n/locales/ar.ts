@@ -12,6 +12,7 @@ export const ar = {
     shifts: 'ورديات السائقين',
     financials: 'التقارير المالية',
     monthlySummary: 'الملخص الشهري',
+    moneyFlowStatement: 'الوارد والصادر',
     pos: 'نقطة البيع',
     ownerDashboard: 'لوحة المالك',
     manageItems: 'الأصناف والأسعار',
@@ -40,6 +41,7 @@ export const ar = {
     driverFieldExpenses: 'إضافة مصروف',
     whatsappTools: 'أدوات واتساب',
     financialReports: 'التقارير المالية',
+    operationalReportsHub: 'تشغيل ورؤى',
     expenseVerification: 'اعتماد المصروفات',
     vehicleExpenses: 'مصروفات السيارات',
     vehicleExpensesApproval: 'اعتماد مصروفات السيارات',
@@ -210,6 +212,7 @@ export const ar = {
     save: 'حفظ الفرع',
     created: 'تم إنشاء الفرع',
     errRequired: 'الاسم والموقع مطلوبان.',
+    errRosterSort: 'أدخل رقماً صحيحاً لترتيب المسير أو اترك الحقل فارغاً.',
     editBranch: 'تعديل الفرع',
     edit: 'تعديل',
     saveEdit: 'حفظ التعديل',
@@ -221,6 +224,10 @@ export const ar = {
     fieldAdministrative: 'فرع إداري (مركز تكلفة)',
     fieldAdministrativeHint:
       'بدون نقطة بيع أو مستخدمين؛ يظهر للمالك والمدير العام والمحاسب فقط. يُسجَّل عليه المصاريف والرواتب المركزية.',
+    colPayrollRoster: 'ترتيب المسير',
+    fieldPayrollRosterOrder: 'ترتيب مسير الرواتب',
+    fieldPayrollRosterOrderHint:
+      'رقم أصغر يظهر أولاً (1 = أول فرع). اتركه فارغاً للترتيب حسب الاسم بعد الفروع المرقّمة.',
   },
   manageItems: {
     title: 'قائمة أسعار الغسيل',
@@ -1312,6 +1319,32 @@ export const ar = {
       overview: 'نظرة عامة',
       expenses: 'المصروفات',
       payroll: 'الرواتب',
+      ledger: 'سجل الحركات المالية',
+    },
+    ledgerIntro:
+      'كل قيد مالي دخل النظام خلال الفترة — مجمّع حسب نوع الحركة (مرجع تدقيق؛ توقيته قد يختلف عن بطاقات صافي الربح).',
+    ledgerGlTitle: 'الدفتر الموحّد',
+    ledgerJournalTitle: 'سجل محفظة العملاء',
+    ledgerDebtTitle: 'دفتر الذمم',
+    ledgerUnavailable: 'سجل الحركات غير متوفر — حدّث النظام أو أعد تحميل الصفحة.',
+    ledgerEmpty: 'لا توجد حركات مسجّلة في هذه الفترة ضمن هذه الدفاتر.',
+    colLedgerKind: 'البند',
+    colLedgerMovements: 'عدد الحركات',
+    colLedgerTotal: 'مجموع المبالغ',
+    glType: {
+      POS_SALE_COMPLETED: 'إيراد — فاتورة مكتملة (مبيعات)',
+      EXPENSE_RECORDED: 'مصروف مسجّل',
+      WALLET_SETTLEMENT: 'تسوية عهدة / محفظة',
+      DEBT_ADJUSTMENT: 'تعديل مديونية / ذمم',
+    },
+    journalType: {
+      SUBSCRIPTION_ACTIVATION: 'تفعيل اشتراك / إضافة رصيد',
+      ORDER_WALLET_SETTLEMENT: 'تسوية فاتورة مع المحفظة',
+    },
+    debtSource: {
+      INVOICE_SHORTFALL: 'ذمم من فواتير (عجز)',
+      SUBSCRIPTION_OVERUSE: 'زيادة على رصيد اشتراك',
+      PAYMENT: 'تحصيل / سداد ذمم',
     },
     col: {
       date: 'التاريخ',
@@ -1330,6 +1363,57 @@ export const ar = {
       unit: 'الوحدة',
       qtyConsumed: 'الكمية المستهلكة',
       movements: 'عدد الحركات',
+    },
+  },
+  moneyFlow: {
+    title: 'تقرير الوارد والصادر',
+    subtitle:
+      'مصادر الدخل والخصومات والمصروفات في الفترة، مع تفصيل الدفاتر للمراجعة. بعض الأسطر تتقاطع مع تقارير أخرى عن قصد.',
+    from: 'من',
+    to: 'إلى',
+    thisMonth: 'هذا الشهر',
+    run: 'تشغيل',
+    loadFailed: 'تعذر تحميل بيانات التدفق المالي.',
+    tabInflows: 'وارد',
+    tabDeductions: 'خصومات وذمم',
+    tabOutflows: 'صادر ومصروفات',
+    tabLedgers: 'تفصيل الدفاتر',
+    inIntro:
+      'المبيعات المكتملة، تقسيم التحصيل، تحصيل ذمم فواتير سابقة، ومجاميع سجل المحفظة ودفتر الذمم.',
+    dedIntro:
+      'رسوم البنوك، دعم الاشتراكات، تعديلات الذمم، وتكوين ذمم جديدة خلال الفترة.',
+    outIntro:
+      'الرواتب والثابت والمتغير من محرك الربحية، مع مصروفات الفروع والسيارات المعتمدة والثابت حسب الفئة.',
+    ledgerIntro:
+      'مجاميع أنواع القيود كما في سجل حركات الملخص الشهري — المبالغ موقعة كما خزّنها النظام.',
+    ledgerGl: 'الدفتر الموحّد',
+    ledgerJournal: 'سجل المحفظة',
+    ledgerDebt: 'دفتر الذمم',
+    ledgerEmpty: 'لا توجد حركات.',
+    emptySection: 'لا بيانات في هذه الفترة.',
+    colKind: 'البند',
+    colMovements: 'الحركات',
+    colTotal: 'المبلغ',
+    in: {
+      grossCompleted: 'إيراد مبيعات مكتملة (الفترة)',
+      settledAfterFees: 'إيراد بعد رسوم البنوك (تقريبي)',
+      collectedSlice: 'المحصّل من تلك المبيعات (طرق الدفع)',
+      uncollectedSlice: 'مبيعات مكتملة — لم تُقبض بعد (ذمم فواتير جديدة)',
+      debtPrior: 'تحصيل ذمم فواتير صدرت قبل الفترة',
+    },
+    ded: {
+      bankFees: 'رسوم بنك وتوجيه (تقريبية)',
+      subsidy: 'دعم الاشتراكات (خصم المجموعة)',
+    },
+    out: {
+      payroll: 'رواتب مدفوعة (صافي المسير)',
+      fixedTotal: 'مصاريف ثابتة (استحقاق شهري في الفترة)',
+      soapFuel: 'صابون ووقود (مصروفات ميدانية معتمدة)',
+      misc: 'متفرقات تشغيلية (معتمدة)',
+      branchTitle: 'مصروفات الفروع (معتمدة)',
+      vehicleTitle: 'مصروفات السيارات (معتمدة)',
+      fixedByCat: 'مصاريف ثابتة حسب الفئة (استحقاق)',
+      netProfit: 'صافي الربح (بعد الخصومات التنفيذية)',
     },
   },
   financials: {
@@ -2007,7 +2091,10 @@ export const ar = {
     tabClosingShort: 'الإغلاق',
     hubTitle: 'التقارير المالية',
     hubSubtitle:
-      'بوابة واحدة: الربحية (P&L)، تقارير تشغيلية، دورة مالية، مطابقة كي نت مع كشف البنك، الدفتر الموحّد، والرؤى. افتح التبويب المناسب — كل قسم يوضح بياناته داخل الصفحة.',
+      'الربحية (P&L)، الدورة المالية، مطابقة كي نت، والدفتر الموحّد في مكان واحد. افتح التبويب المناسب — كل قسم يوضح بياناته داخل الصفحة.',
+    operationalHubTitle: 'التقارير التشغيلية والرؤى',
+    operationalHubSubtitle:
+      'تقارير الفواتير والكاش التشغيلية، ولوحات التحليل والذكاء. لكل تبويب قواعد تاريخ وصلاحيات خاصة.',
     hubTabPnl: 'الربحية (P&L)',
     hubTabReports: 'التقارير التشغيلية',
     hubTabCycle: 'الدورة المالية',

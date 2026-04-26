@@ -28,17 +28,17 @@ export declare class CallCenterController {
         id: string;
         createdAt: Date;
         phone: string;
+        address: string | null;
         phone2: string | null;
         displayName: string | null;
-        address: string | null;
     }[]>;
     activateSubscription(dto: ActivateSubscriptionDto, user: JwtUser): Promise<{
         customer: {
             id: string;
             phone: string;
+            address: string | null;
             phone2: string | null;
             displayName: string | null;
-            address: string | null;
         };
         plan: {
             id: string;

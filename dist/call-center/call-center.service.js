@@ -1493,13 +1493,28 @@ let CallCenterService = class CallCenterService {
             },
         });
         const currentBalance = customer.wallet?.balance ?? new client_1.Prisma.Decimal(0);
-        const currentDebt = customer.wallet?.debt ?? new client_1.Prisma.Decimal(0);
+        const walletDebt = customer.wallet?.debt ?? new client_1.Prisma.Decimal(0);
+        const implicitAgg = await this.prisma.order.aggregate({
+            where: {
+                customerId,
+                cashStatus: client_1.CashStatus.UNPAID,
+                status: { not: client_1.OrderStatus.CANCELED },
+                walletSettledAt: null,
+            },
+            _sum: { totalPrice: true },
+        });
+        const implicitDebt = implicitAgg._sum.totalPrice ?? new client_1.Prisma.Decimal(0);
+        const effectiveCurrentDebt = walletDebt.plus(implicitDebt);
         const zero = new client_1.Prisma.Decimal(0);
         const options = plans.map((p) => {
-            const debtToSettle = currentDebt.lt(p.actualBalance)
-                ? currentDebt
+            const debtToSettle = effectiveCurrentDebt.lt(p.actualBalance)
+                ? effectiveCurrentDebt
                 : p.actualBalance;
-            const remainingDebt = currentDebt.minus(debtToSettle);
+            const ledgerPaid = walletDebt.lt(debtToSettle) ? walletDebt : debtToSettle;
+            const implicitPaid = debtToSettle.minus(ledgerPaid);
+            const remainingLedger = walletDebt.minus(ledgerPaid);
+            const remainingImplicit = implicitDebt.minus(implicitPaid);
+            const remainingTotal = remainingLedger.plus(remainingImplicit);
             const rawCredit = p.actualBalance.minus(debtToSettle);
             const creditedToBalance = rawCredit.gt(0) ? rawCredit : zero;
             const projectedBalance = currentBalance.plus(creditedToBalance);
@@ -1507,8 +1522,9 @@ let CallCenterService = class CallCenterService {
                 ? p.actualBalance.minus(p.salePrice)
                 : zero;
             const convertsDebt = debtToSettle.gt(0);
-            const clearsAllDebt = currentDebt.gt(0) && remainingDebt.lte(0);
-            const recommended = currentDebt.gt(0) && p.actualBalance.gte(currentDebt);
+            const clearsAllDebt = effectiveCurrentDebt.gt(0) && remainingTotal.lte(0);
+            const recommended = effectiveCurrentDebt.gt(0) &&
+                p.actualBalance.gte(effectiveCurrentDebt);
             return {
                 planId: p.id,
                 planName: p.name,
@@ -1516,10 +1532,10 @@ let CallCenterService = class CallCenterService {
                 cashRequiredKd: FOUR_DP(p.salePrice),
                 planActualBalanceKd: FOUR_DP(p.actualBalance),
                 debtToSettleKd: FOUR_DP(debtToSettle),
-                remainingDebtKd: FOUR_DP(remainingDebt),
+                remainingDebtKd: FOUR_DP(remainingTotal),
                 creditedToBalanceKd: FOUR_DP(creditedToBalance),
                 projectedWalletBalanceKd: FOUR_DP(projectedBalance),
-                projectedWalletDebtKd: FOUR_DP(remainingDebt),
+                projectedWalletDebtKd: FOUR_DP(remainingLedger),
                 subsidyKd: FOUR_DP(subsidy),
                 convertsDebt,
                 clearsAllDebt,
@@ -1528,9 +1544,9 @@ let CallCenterService = class CallCenterService {
         });
         return {
             customerId: customer.id,
-            currentDebtKd: FOUR_DP(currentDebt),
+            currentDebtKd: FOUR_DP(effectiveCurrentDebt),
             currentBalanceKd: FOUR_DP(currentBalance),
-            hasDebt: currentDebt.gt(0),
+            hasDebt: effectiveCurrentDebt.gt(0),
             options,
         };
     }

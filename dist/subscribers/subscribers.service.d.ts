@@ -9,6 +9,7 @@ export type SubscriberListRow = {
     expiryDate: string | null;
     remainingDays: number | null;
     balance: string;
+    balanceDisplayKd: string;
     debt: string;
     rowStatus: 'active_ok' | 'active_warn' | 'expired' | 'open_credit';
     invoiceAgeDays: number | null;

@@ -3,11 +3,16 @@ import { SafariRole } from '@prisma/client';
 import {
   IsBoolean,
   IsIn,
+  IsInt,
   IsOptional,
   IsString,
   IsUUID,
   Matches,
+  Max,
+  MaxLength,
+  Min,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
 
 // V19.0: explicit allow-list so validation does not depend on Prisma client
@@ -70,6 +75,15 @@ export class CreateUserDto {
   @IsString()
   phone?: string;
 
+  @ApiPropertyOptional({
+    example: 'سائق توصيل',
+    description: 'Optional job title / profession shown in staff lists.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  jobTitle?: string;
+
   @ApiProperty({ format: 'uuid', description: 'Mandatory branch assignment for all staff.' })
   @IsUUID('4')
   branchId: string;
@@ -81,4 +95,19 @@ export class CreateUserDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  /**
+   * V19.26 — Printed payroll roster row order within branch (lower first).
+   * Omit or set `null` for alphabetical fallback.
+   */
+  @ApiPropertyOptional({
+    description:
+      'Optional line order on مسير الرواتب within the branch; lower prints first.',
+  })
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @IsInt()
+  @Min(0)
+  @Max(9999)
+  payrollRosterLineOrder?: number | null;
 }

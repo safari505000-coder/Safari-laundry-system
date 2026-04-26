@@ -34,6 +34,7 @@
     "db:wipe-operational": "tsx scripts/reset-invoices.ts --confirm=DELETE-OPERATIONAL-DATA",
     "db:backup-desktop": "tsx scripts/backup-db-to-desktop.ts",
     "seed:price-list": "tsx scripts/seed-price-list.ts",
+    "apply-payroll-roster-order": "tsx scripts/apply-payroll-roster-order.ts",
     "web:dev": "npm run dev --prefix web",
     "web:build": "npm run build --prefix web",
     "check": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/safety-check.ps1 full",

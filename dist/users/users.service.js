@@ -63,6 +63,9 @@ const userPublicSelect = {
     updatedAt: true,
     basicMonthlySalary: true,
     monthlyAllowances: true,
+    payrollRosterLineOrder: true,
+    bankName: true,
+    bankIban: true,
     role: { select: { id: true, name: true } },
     branch: { select: { id: true, name: true, location: true } },
 };
@@ -124,6 +127,18 @@ let UsersService = class UsersService {
                     roleId,
                     branchId: dto.branchId,
                     phone: dto.phone,
+                    ...(dto.jobTitle !== undefined
+                        ? {
+                            jobTitle: (() => {
+                                const t = dto.jobTitle.trim();
+                                return t.length ? t : null;
+                            })(),
+                        }
+                        : {}),
+                    ...(dto.payrollRosterLineOrder !== undefined &&
+                        dto.payrollRosterLineOrder !== null
+                        ? { payrollRosterLineOrder: dto.payrollRosterLineOrder }
+                        : {}),
                 },
                 select: userPublicSelect,
             });
@@ -208,6 +223,13 @@ let UsersService = class UsersService {
         if (dto.password !== undefined) {
             data.password = await bcrypt.hash(dto.password, 10);
         }
+        if (dto.payrollRosterLineOrder !== undefined) {
+            data.payrollRosterLineOrder = dto.payrollRosterLineOrder;
+        }
+        if (dto.jobTitle !== undefined) {
+            const t = dto.jobTitle.trim();
+            data.jobTitle = t.length ? t : null;
+        }
         try {
             return await this.prisma.user.update({
                 where: { id },
@@ -254,6 +276,17 @@ let UsersService = class UsersService {
                 dto.monthlyAllowances === null
                     ? null
                     : new client_1.Prisma.Decimal(dto.monthlyAllowances.toFixed(4));
+        }
+        if (dto.payrollRosterLineOrder !== undefined) {
+            data.payrollRosterLineOrder = dto.payrollRosterLineOrder;
+        }
+        if (dto.bankName !== undefined) {
+            const v = dto.bankName?.trim();
+            data.bankName = v && v.length > 0 ? v : null;
+        }
+        if (dto.bankIban !== undefined) {
+            const raw = dto.bankIban?.replace(/\s/g, '').trim();
+            data.bankIban = raw && raw.length > 0 ? raw : null;
         }
         return this.prisma.user.update({
             where: { id },

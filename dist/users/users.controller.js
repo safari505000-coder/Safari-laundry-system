@@ -187,10 +187,10 @@ __decorate([
 ], UsersController.prototype, "setStatus", null);
 __decorate([
     (0, common_1.Patch)(':id/salary-defaults'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER),
     (0, swagger_1.ApiOperation)({
         summary: `Update salary defaults (${branding_1.APP_BRAND})`,
-        description: 'OWNER + GENERAL_MANAGER only. Updates `basicMonthlySalary` + `monthlyAllowances` on the user record; used by the payroll registry page as the seed for each monthly payroll run.',
+        description: 'OWNER, GENERAL_MANAGER, or MANAGER. Updates `basicMonthlySalary` + `monthlyAllowances`, and optionally `payrollRosterLineOrder`, `bankName`, `bankIban` for the payroll roster / salary transfer.',
     }),
     (0, swagger_1.ApiBody)({ type: update_salary_defaults_dto_1.UpdateSalaryDefaultsDto }),
     __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),

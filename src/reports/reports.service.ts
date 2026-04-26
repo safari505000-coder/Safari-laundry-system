@@ -2,6 +2,8 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import {
   CashStatus,
   DebtSource,
+  ExpenseStatus,
+  FixedExpenseCategory,
   GeneralLedgerEntryType,
   LedgerTransactionType,
   ExpenseCategory,
@@ -10,13 +12,25 @@ import {
   Prisma,
   SafariRole,
   StockMovementType,
+  VehicleExpenseStatus,
 } from '@prisma/client';
+
+function prismaGroupCount(g: { _count: unknown }): number {
+  const c = g._count;
+  if (typeof c === 'number') return c;
+  if (c && typeof c === 'object' && '_all' in c) {
+    const n = (c as { _all: number })._all;
+    return typeof n === 'number' ? n : 0;
+  }
+  return 0;
+}
 import { PrismaService } from '../prisma/prisma.service';
 import { ExpensesService } from '../expenses/expenses.service';
 import { FixedExpenseService } from '../fixed-expenses/fixed-expense.service';
 import { PaymentMethodFeesService } from '../payment-method-fees/payment-method-fees.service';
 import { computeOrderBankFeeKd } from '../payment-method-fees/bank-fee.util';
 import { PayrollService } from '../payroll/payroll.service';
+import { countAccruedMonths } from '../fixed-expenses/fixed-expense.service';
 import {
   minorToAmountString,
   sumOrderMinors,
@@ -667,6 +681,7 @@ export class ReportsService {
       consolidatedDebtPayments,
       consolidatedDebtOpen,
       inventoryConsumption,
+      ledgerRollup,
     ] = await Promise.all([
       this.netProfitExecutive(fromIso, toIso),
       this.prisma.branch.findMany({
@@ -678,6 +693,7 @@ export class ReportsService {
       this.computeDebtPaymentsInRange(from, to),
       this.computeOutstandingDebtBreakdown(),
       this.computeMonthlyInventoryConsumption(from, to),
+      this.computeLedgerRollupForPeriod(from, to),
     ]);
 
     /**
@@ -735,6 +751,7 @@ export class ReportsService {
     return {
       from: consolidated.from,
       to: consolidated.to,
+      ledgerRollup,
       consolidated: {
         grossRevenueKd: consolidated.grossRevenueKd,
         bankFeesTotalKd: consolidated.bankFeesTotalKd,
@@ -762,6 +779,174 @@ export class ReportsService {
       branches: perBranch,
       inventoryConsumption,
     };
+  }
+
+  /**
+   * V19.17 — Full-funnel money lines for the monthly summary: every posting
+   * path that touches group money is rolled up by type inside [from, to].
+   * Amounts are **signed** where the ledger stores negatives (e.g. debt
+   * pay-down). This is an audit trail complement to the P&L cards — not a
+   * second net-profit formula (timing vs completed orders may differ).
+   */
+  private async computeLedgerRollupForPeriod(from: Date, to: Date): Promise<{
+    generalLedger: Array<{
+      entryType: GeneralLedgerEntryType;
+      totalKd: string;
+      movementCount: number;
+    }>;
+    walletJournal: Array<{
+      type: LedgerTransactionType;
+      totalKd: string;
+      movementCount: number;
+    }>;
+    debtLedger: Array<{
+      source: DebtSource;
+      totalKd: string;
+      movementCount: number;
+    }>;
+  }> {
+    const [glGroups, thGroups, debtGroups] = await Promise.all([
+      this.prisma.generalLedgerEntry.groupBy({
+        by: ['entryType'],
+        where: { createdAt: { gte: from, lte: to } },
+        _sum: { amount: true },
+        _count: true,
+      }),
+      this.prisma.transactionHistory.groupBy({
+        by: ['type'],
+        where: { createdAt: { gte: from, lte: to } },
+        _sum: { amount: true },
+        _count: true,
+      }),
+      this.prisma.debtLedgerEntry.groupBy({
+        by: ['source'],
+        where: { createdAt: { gte: from, lte: to } },
+        _sum: { amount: true },
+        _count: true,
+      }),
+    ]);
+
+    const z = new Prisma.Decimal(0);
+    const generalLedger = glGroups
+      .map((g) => ({
+        entryType: g.entryType,
+        totalKd: (g._sum.amount ?? z).toFixed(4),
+        movementCount: prismaGroupCount(g),
+      }))
+      .sort((a, b) => a.entryType.localeCompare(b.entryType));
+
+    const walletJournal = thGroups
+      .map((g) => ({
+        type: g.type,
+        totalKd: (g._sum.amount ?? z).toFixed(4),
+        movementCount: prismaGroupCount(g),
+      }))
+      .sort((a, b) => a.type.localeCompare(b.type));
+
+    const debtLedger = debtGroups
+      .map((g) => ({
+        source: g.source,
+        totalKd: (g._sum.amount ?? z).toFixed(4),
+        movementCount: prismaGroupCount(g),
+      }))
+      .sort((a, b) => a.source.localeCompare(b.source));
+
+    return { generalLedger, walletJournal, debtLedger };
+  }
+
+  /**
+   * V19.24 — Executive “every fils in / out” pack: P&L lines, approved
+   * branch/vehicle expenses, accrued fixed by category, collections split,
+   * prior-period debt recovery KPI, and the same GL / wallet / debt rollups
+   * as the monthly summary ledger tab (audit complement — not a second
+   * cash-basis cashflow statement).
+   */
+  async moneyFlowStatement(fromIso: string, toIso: string) {
+    const { from, to } = this.parseRange(fromIso, toIso);
+    const [
+      executive,
+      collections,
+      ledgerRollup,
+      branchExpensesByCategory,
+      vehicleExpensesByType,
+      fixedExpensesByCategory,
+      debtPaymentsPriorInvoiceKd,
+    ] = await Promise.all([
+      this.netProfitExecutive(fromIso, toIso),
+      this.computeCollectionsForRange(from, to),
+      this.computeLedgerRollupForPeriod(from, to),
+      this.prisma.branchExpense.groupBy({
+        by: ['category'],
+        where: {
+          status: ExpenseStatus.APPROVED,
+          expenseDate: { gte: from, lte: to },
+        },
+        _sum: { amount: true },
+        _count: true,
+      }),
+      this.prisma.vehicleExpense.groupBy({
+        by: ['expenseType'],
+        where: {
+          status: VehicleExpenseStatus.APPROVED,
+          expenseDate: { gte: from, lte: to },
+        },
+        _sum: { amount: true },
+        _count: true,
+      }),
+      this.fixedExpensesAccruedByCategory(from, to),
+      this.computeDebtPaymentsInRange(from, to),
+    ]);
+
+    const z = new Prisma.Decimal(0);
+    return {
+      from: executive.from,
+      to: executive.to,
+      executive,
+      collections,
+      debtPaymentsPriorInvoiceKd,
+      branchExpensesByCategory: branchExpensesByCategory
+        .map((g) => ({
+          category: g.category,
+          totalKd: (g._sum.amount ?? z).toFixed(4),
+          movementCount: prismaGroupCount(g),
+        }))
+        .sort((a, b) => a.category.localeCompare(b.category)),
+      vehicleExpensesByType: vehicleExpensesByType
+        .map((g) => ({
+          expenseType: g.expenseType,
+          totalKd: (g._sum.amount ?? z).toFixed(4),
+          movementCount: prismaGroupCount(g),
+        }))
+        .sort((a, b) => a.expenseType.localeCompare(b.expenseType)),
+      fixedExpensesByCategory,
+      ledgerRollup,
+    };
+  }
+
+  private async fixedExpensesAccruedByCategory(
+    from: Date,
+    to: Date,
+  ): Promise<Array<{ category: FixedExpenseCategory; totalKd: string }>> {
+    const rows = await this.prisma.fixedExpenseSchedule.findMany({
+      where: { isActive: true },
+      select: {
+        category: true,
+        monthlyAmount: true,
+        effectiveFrom: true,
+        effectiveTo: true,
+      },
+    });
+    const map = new Map<FixedExpenseCategory, Prisma.Decimal>();
+    for (const r of rows) {
+      const months = countAccruedMonths(from, to, r.effectiveFrom, r.effectiveTo);
+      if (months <= 0) continue;
+      const amt = r.monthlyAmount.mul(months);
+      const cur = map.get(r.category) ?? new Prisma.Decimal(0);
+      map.set(r.category, cur.add(amt));
+    }
+    return [...map.entries()]
+      .map(([category, d]) => ({ category, totalKd: d.toFixed(4) }))
+      .sort((a, b) => a.category.localeCompare(b.category));
   }
 
   /**

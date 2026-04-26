@@ -5,6 +5,8 @@ export declare class CreateUserDto {
     password: string;
     safariRole: SafariRole;
     phone?: string;
+    jobTitle?: string;
     branchId: string;
     isActive?: boolean;
+    payrollRosterLineOrder?: number | null;
 }

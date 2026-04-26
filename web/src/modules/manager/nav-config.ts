@@ -6,7 +6,7 @@ import {
   dashboardItem,
   driverOversightItem,
   expensesItem,
-  insightsAiItem,
+  operationalReportsHubItem,
   inventoryOperationsItem,
   myCustodyItem,
   myDocumentsItem,
@@ -49,6 +49,6 @@ export const managerSidebarNavGroups: NavGroup[] = [
   },
   {
     ...G.adminSettings,
-    items: [attendanceItem, insightsAiItem],
+    items: [attendanceItem, operationalReportsHubItem],
   },
 ];

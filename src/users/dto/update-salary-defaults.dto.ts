@@ -1,10 +1,18 @@
-import { IsNumber, IsOptional, Min } from 'class-validator';
+import {
+  IsInt,
+  IsNumber,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Min,
+  ValidateIf,
+} from 'class-validator';
 
 /**
  * V19.17 — DTO for `PATCH /users/:id/salary-defaults`.
  *
- * Both fields are optional + nullable: omit = no change, null = clear
- * the default, a number = set the value (clamped to ≥ 0).
+ * Salary fields: omit = no change, null = clear the default, number = set.
+ * HR extras (V19.27): roster order + bank details for مسير / تحويل الراتب.
  */
 export class UpdateSalaryDefaultsDto {
   @IsOptional()
@@ -16,4 +24,22 @@ export class UpdateSalaryDefaultsDto {
   @IsNumber()
   @Min(0)
   monthlyAllowances?: number | null;
+
+  @IsOptional()
+  @ValidateIf((_, v) => v != null)
+  @IsInt()
+  @Min(1)
+  payrollRosterLineOrder?: number | null;
+
+  @IsOptional()
+  @ValidateIf((_, v) => v != null)
+  @IsString()
+  @MaxLength(120)
+  bankName?: string | null;
+
+  @IsOptional()
+  @ValidateIf((_, v) => v != null)
+  @IsString()
+  @MaxLength(42)
+  bankIban?: string | null;
 }

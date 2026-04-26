@@ -80,6 +80,8 @@ export const operatorHints = {
       'Recovery analytics on receivables. Tie back to «Receivables» for open invoice lines.',
     financials:
       'Executive finance island: profit, fees, debts. Align date range with month close policy.',
+    moneyFlowStatement:
+      'Period inflows, deductions, and outflows with ledger rollups. Overlaps with P&L by design — use for audit trails.',
     monthlySummary:
       'Branch P&L style month close. Print view omits shell chrome for clean PDFs.',
     insightsAi:
@@ -107,7 +109,9 @@ export const operatorHints = {
     reports:
       'Classic report launcher. Prefer «Reports hub» if your role lands there by default.',
     reportsHub:
-      'Grouped finance and ops reports. Each tile may enforce its own date rules.',
+      'Core finance only: P&L, cycle, KNET, unified ledger. Operational reports live under Operations & insights.',
+    operationalReportsHub:
+      'Invoice/cash operational reports and AI insights. Each tab enforces its own permissions and date rules.',
     unifiedLedger:
       'Append-only financial event stream. Filters help audit; exports for accountants.',
     payroll:

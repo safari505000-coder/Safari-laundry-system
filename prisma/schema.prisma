@@ -256,6 +256,11 @@ model User {
    * Fixed monthly allowances (housing, transport, etc.) used to seed payroll.
    */
   monthlyAllowances  Decimal?  @db.Decimal(19, 4)
+  /**
+   * V19.26 — Row order on printed payroll roster within the employee’s branch.
+   * Null sorts after assigned rows (then by fullName).
+   */
+  payrollRosterLineOrder Int?
 
   role                             Role                   @relation(fields: [roleId], references: [id])
   branch                           Branch?                @relation(fields: [branchId], references: [id])
@@ -1215,6 +1220,11 @@ model Branch {
    * fixed + variable expenses and payroll attribution only.
    */
   isAdministrative Boolean @default(false)
+  /**
+   * V19.26 — Lower value prints first on «مسير الرواتب» and in payroll
+   * team grid. Null sorts after all set values (then by branch name).
+   */
+  payrollRosterSortOrder Int?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1222,6 +1232,11 @@ model Branch {
   expenses              BranchExpense[]
   wallets               Wallet[]
   payrolls              Payroll[]
+  /**
+   * V19.28 — Manual roster lines (vendor / external payee) for a given
+   * YYYY-MM; shown on unified payroll + printed مسير, not linked to User.
+   */
+  payrollAdHocLines     PayrollAdHocLine[]
   fixedExpenseSchedules FixedExpenseSchedule[]
   debtLedgerEntries     DebtLedgerEntry[]
   originCustomers       Customer[]               @relation("CustomerOriginBranch")
@@ -1413,6 +1428,32 @@ model Payroll {
   @@index([branchId, paymentDate])
   @@index([userId, paymentDate])
   @@index([status])
+}
+
+/**
+ * V19.28 — «سطر يدوي» on the monthly payroll roster: beneficiary not in
+ * `User`, optional IBAN for bank file / printed مسير.
+ */
+model PayrollAdHocLine {
+  id               String   @id @default(uuid()) @db.Uuid
+  branchId         String   @db.Uuid
+  /** Calendar month key `YYYY-MM` (Kuwait payroll month). */
+  periodYm         String
+  /** Lower prints first within the ad-hoc block for that branch/month. */
+  lineSort         Int      @default(0)
+  beneficiaryName  String
+  bankName         String?
+  bankIban         String?
+  basicSalary      Decimal  @db.Decimal(19, 4)
+  allowances       Decimal  @default(0) @db.Decimal(19, 4)
+  deductions       Decimal  @default(0) @db.Decimal(19, 4)
+  note             String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@index([branchId, periodYm])
 }
 
 model FixedExpenseSchedule {

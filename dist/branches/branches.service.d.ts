@@ -8,20 +8,22 @@ export declare class BranchesService {
         id: string;
         name: string;
         updatedAt: Date;
-        phone: string | null;
         isActive: boolean;
+        phone: string | null;
         location: string;
         isAdministrative: boolean;
+        payrollRosterSortOrder: number | null;
     }[]>;
     createFromBody(body: unknown): Promise<{
         id: string;
         createdAt: Date;
         name: string;
         updatedAt: Date;
-        phone: string | null;
         isActive: boolean;
+        phone: string | null;
         location: string;
         isAdministrative: boolean;
+        payrollRosterSortOrder: number | null;
     }>;
     create(dto: {
         name: string;
@@ -34,10 +36,11 @@ export declare class BranchesService {
         createdAt: Date;
         name: string;
         updatedAt: Date;
-        phone: string | null;
         isActive: boolean;
+        phone: string | null;
         location: string;
         isAdministrative: boolean;
+        payrollRosterSortOrder: number | null;
     }>;
     update(id: string, dto: {
         name?: string;
@@ -45,25 +48,28 @@ export declare class BranchesService {
         phone?: string;
         isActive?: boolean;
         isAdministrative?: boolean;
+        payrollRosterSortOrder?: number | null;
     }): Promise<{
         id: string;
         createdAt: Date;
         name: string;
         updatedAt: Date;
-        phone: string | null;
         isActive: boolean;
+        phone: string | null;
         location: string;
         isAdministrative: boolean;
+        payrollRosterSortOrder: number | null;
     }>;
     updateFromBody(id: string, body: unknown): Promise<{
         id: string;
         createdAt: Date;
         name: string;
         updatedAt: Date;
-        phone: string | null;
         isActive: boolean;
+        phone: string | null;
         location: string;
         isAdministrative: boolean;
+        payrollRosterSortOrder: number | null;
     }>;
     operationsLiveByBranch(): Promise<{
         branches: {

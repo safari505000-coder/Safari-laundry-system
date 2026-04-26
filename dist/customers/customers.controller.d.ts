@@ -18,12 +18,12 @@ export declare class CustomersController {
         createdAt: Date;
         updatedAt: Date;
         phone: string;
+        address: string | null;
         phone2: string | null;
         motherContact: string | null;
         wifeContact: string | null;
         sonContact: string | null;
         displayName: string | null;
-        address: string | null;
         addressArea: string | null;
         addressBlock: string | null;
         addressStreet: string | null;

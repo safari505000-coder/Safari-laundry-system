@@ -22,6 +22,20 @@ const CREATE_BRANCH_KEYS = new Set([
   'isAdministrative',
 ]);
 
+/** Integer or null for optional roster sort; undefined = omit from patch. */
+function readOptionalSortOrder(
+  v: unknown,
+  field: string,
+): number | null | undefined {
+  if (v === undefined) return undefined;
+  if (v === null) return null;
+  if (typeof v === 'number' && Number.isInteger(v)) return v;
+  if (typeof v === 'string' && /^-?\d+$/.test(v.trim())) {
+    return Number.parseInt(v.trim(), 10);
+  }
+  throw new BadRequestException(`${field} must be an integer or null`);
+}
+
 function assertPlainObject(raw: unknown): Record<string, unknown> {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new BadRequestException('Invalid JSON body');
@@ -52,6 +66,7 @@ export class BranchesService {
     phone: true,
     isActive: true,
     isAdministrative: true,
+    payrollRosterSortOrder: true,
     updatedAt: true,
   } as const;
 
@@ -64,7 +79,10 @@ export class BranchesService {
       where: canSeeAdministrativeBranches(actorRole)
         ? {}
         : { isAdministrative: false },
-      orderBy: { name: 'asc' },
+      orderBy: [
+        { payrollRosterSortOrder: { sort: 'asc', nulls: 'last' } },
+        { name: 'asc' },
+      ],
       select: this.branchListSelect,
     });
   }
@@ -141,6 +159,7 @@ export class BranchesService {
         phone: true,
         isActive: true,
         isAdministrative: true,
+        payrollRosterSortOrder: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -167,6 +186,7 @@ export class BranchesService {
       phone?: string;
       isActive?: boolean;
       isAdministrative?: boolean;
+      payrollRosterSortOrder?: number | null;
     },
   ) {
     const patch: Prisma.BranchUpdateInput = {};
@@ -202,6 +222,9 @@ export class BranchesService {
       }
       patch.isAdministrative = dto.isAdministrative;
     }
+    if (dto.payrollRosterSortOrder !== undefined) {
+      patch.payrollRosterSortOrder = dto.payrollRosterSortOrder;
+    }
 
     try {
       return await this.prisma.branch.update({
@@ -214,6 +237,7 @@ export class BranchesService {
           phone: true,
           isActive: true,
           isAdministrative: true,
+          payrollRosterSortOrder: true,
           createdAt: true,
           updatedAt: true,
         },
@@ -238,6 +262,7 @@ export class BranchesService {
       phone?: string;
       isActive?: boolean;
       isAdministrative?: boolean;
+      payrollRosterSortOrder?: number | null;
     } = {};
     if ('name' in o) {
       if (typeof o.name !== 'string') {
@@ -274,6 +299,12 @@ export class BranchesService {
       }
       patch.isAdministrative = b;
     }
+    if ('payrollRosterSortOrder' in o) {
+      patch.payrollRosterSortOrder = readOptionalSortOrder(
+        o.payrollRosterSortOrder,
+        'payrollRosterSortOrder',
+      );
+    }
     const unknown = Object.keys(o).filter(
       (k) =>
         ![
@@ -282,6 +313,7 @@ export class BranchesService {
           'phone',
           'isActive',
           'isAdministrative',
+          'payrollRosterSortOrder',
         ].includes(k),
     );
     if (unknown.length) {

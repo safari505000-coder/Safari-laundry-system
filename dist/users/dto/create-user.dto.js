@@ -32,8 +32,10 @@ class CreateUserDto {
     password;
     safariRole;
     phone;
+    jobTitle;
     branchId;
     isActive;
+    payrollRosterLineOrder;
 }
 exports.CreateUserDto = CreateUserDto;
 __decorate([
@@ -82,6 +84,16 @@ __decorate([
     __metadata("design:type", String)
 ], CreateUserDto.prototype, "phone", void 0);
 __decorate([
+    (0, swagger_1.ApiPropertyOptional)({
+        example: 'سائق توصيل',
+        description: 'Optional job title / profession shown in staff lists.',
+    }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(200),
+    __metadata("design:type", String)
+], CreateUserDto.prototype, "jobTitle", void 0);
+__decorate([
     (0, swagger_1.ApiProperty)({ format: 'uuid', description: 'Mandatory branch assignment for all staff.' }),
     (0, class_validator_1.IsUUID)('4'),
     __metadata("design:type", String)
@@ -95,4 +107,15 @@ __decorate([
     (0, class_validator_1.IsBoolean)(),
     __metadata("design:type", Boolean)
 ], CreateUserDto.prototype, "isActive", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({
+        description: 'Optional line order on مسير الرواتب within the branch; lower prints first.',
+    }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.ValidateIf)((_, v) => v !== null && v !== undefined),
+    (0, class_validator_1.IsInt)(),
+    (0, class_validator_1.Min)(0),
+    (0, class_validator_1.Max)(9999),
+    __metadata("design:type", Object)
+], CreateUserDto.prototype, "payrollRosterLineOrder", void 0);
 //# sourceMappingURL=create-user.dto.js.map

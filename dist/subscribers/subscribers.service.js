@@ -83,6 +83,23 @@ let SubscribersService = class SubscribersService {
                 },
             },
         });
+        const customerIds = customers.map((c) => c.id);
+        const openByCustomer = customerIds.length === 0 ?
+            []
+            : await this.prisma.order.groupBy({
+                by: ['customerId'],
+                where: {
+                    customerId: { in: customerIds },
+                    cashStatus: client_1.CashStatus.UNPAID,
+                    status: { not: client_1.OrderStatus.CANCELED },
+                    walletSettledAt: null,
+                },
+                _sum: { totalPrice: true },
+            });
+        const openReceivableByCustomer = new Map(openByCustomer.map((g) => [
+            g.customerId,
+            g._sum.totalPrice ?? new client_1.Prisma.Decimal(0),
+        ]));
         const now = Date.now();
         const planIds = new Set();
         for (const c of customers) {
@@ -171,6 +188,15 @@ let SubscribersService = class SubscribersService {
             const lastReminderAt = w?.subscriptionLastReminderAt ?? null;
             const reminderCount = w?.subscriptionReminderCount ?? 0;
             const canRemindNow = !lastReminderAt || now - lastReminderAt.getTime() >= REMINDER_COOLDOWN_MS;
+            const openReceivable = openReceivableByCustomer.get(c.id) ?? new client_1.Prisma.Decimal(0);
+            const debtD = w?.debt ?? new client_1.Prisma.Decimal(0);
+            const balanceD = w?.balance ?? new client_1.Prisma.Decimal(0);
+            const totalOwedD = debtD.add(openReceivable);
+            const useNetPosition = rowStatus === 'expired' ||
+                (remainingDays !== null && remainingDays < 0);
+            const balanceDisplayKd = useNetPosition
+                ? balanceD.minus(totalOwedD).toFixed(4)
+                : balanceD.toFixed(4);
             rows.push({
                 customerId: c.id,
                 customerName,
@@ -181,6 +207,7 @@ let SubscribersService = class SubscribersService {
                 expiryDate: expiryDate?.toISOString() ?? null,
                 remainingDays,
                 balance: balanceStr,
+                balanceDisplayKd,
                 debt: debtStr,
                 rowStatus,
                 invoiceAgeDays,

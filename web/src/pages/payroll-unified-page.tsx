@@ -4,6 +4,7 @@ import {
   useMemo,
   useState,
   type FormEvent,
+  type ReactNode,
 } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -20,21 +21,31 @@ import {
   RefreshCw,
   Save,
   ShieldAlert,
+  Trash2,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import {
   ApiError,
   apiJson,
   createManualDebtHold,
+  createPayrollAdhocLine,
+  deletePayrollAdhocLine,
   exportPayrollXlsx,
   listDebtHolds,
+  listPayrollAdhocLines,
   recalcPayrollLoan,
+  updatePayrollAdhocLine,
   updateSalaryDefaults,
   type BranchRow,
   type DebtHoldRow,
+  type PayrollAdHocLineRow,
   type PayrollRow,
   type TeamUserRow,
 } from '@/lib/api';
+import {
+  compareBranchesForPayrollRoster,
+  compareTeamUsersForPayrollRoster,
+} from '@/lib/payroll-roster-sort';
 import { formatKwdLabel, sumKwdStrings } from '@/lib/kwd';
 import { Badge } from '@/modules/shared/components/ui/badge';
 import { Button } from '@/modules/shared/components/ui/button';
@@ -112,6 +123,66 @@ function f(n: string | null | undefined): number {
   return Number.isFinite(v) ? v : 0;
 }
 
+/** V19.27 — Parse manual roster / bank fields for PATCH salary-defaults. */
+function rosterBankExtrasPayload(d: {
+  rosterOrder: string;
+  bankIban: string;
+  bankName: string;
+}):
+  | {
+      ok: true;
+      body: {
+        payrollRosterLineOrder: number | null;
+        bankIban: string | null;
+        bankName: string | null;
+      };
+    }
+  | { ok: false; message: string } {
+  const sortRaw = d.rosterOrder.trim();
+  let payrollRosterLineOrder: number | null;
+  if (sortRaw === '') {
+    payrollRosterLineOrder = null;
+  } else {
+    const n = Number.parseInt(sortRaw, 10);
+    if (!Number.isFinite(n) || n < 1) {
+      return {
+        ok: false,
+        message: 'ترتيب المسيرة: أدخل رقماً صحيحاً أو اتركه فارغاً',
+      };
+    }
+    payrollRosterLineOrder = n;
+  }
+  const bankIban = d.bankIban.replace(/\s/g, '').trim() || null;
+  const bankName = d.bankName.trim() || null;
+  return { ok: true, body: { payrollRosterLineOrder, bankIban, bankName } };
+}
+
+function rosterExtrasMatchesUser(
+  u: TeamUserRow,
+  b: {
+    payrollRosterLineOrder: number | null;
+    bankIban: string | null;
+    bankName: string | null;
+  },
+): boolean {
+  if ((u.payrollRosterLineOrder ?? null) !== (b.payrollRosterLineOrder ?? null)) {
+    return false;
+  }
+  const ibanU = (u.bankIban ?? '').replace(/\s/g, '').trim();
+  const ibanB = (b.bankIban ?? '').replace(/\s/g, '').trim();
+  if (ibanU !== ibanB) return false;
+  if ((u.bankName ?? '').trim() !== (b.bankName ?? '').trim()) return false;
+  return true;
+}
+
+function readYmFromSearch(sp: URLSearchParams): string | null {
+  const ym = sp.get('ym');
+  if (ym && /^\d{4}-\d{2}$/.test(ym)) return ym;
+  const legacyM = sp.get('m');
+  if (legacyM && /^\d{4}-\d{2}$/.test(legacyM)) return legacyM;
+  return null;
+}
+
 function payrollNet(row: PayrollRow): number {
   // V19.20 — mirrors backend `PayrollService.netPay`. The loan
   // instalment is subtracted alongside deductions + debt-hold so the
@@ -135,7 +206,8 @@ interface EditBuffer {
 
 export function PayrollUnifiedPage() {
   const { token, hasRole } = useAuth();
-  const isAdmin = hasRole('OWNER', 'GENERAL_MANAGER');
+  /** Same roles as `POST /payroll` — was OWNER/GM only in UI and hid the grid from MANAGER. */
+  const isAdmin = hasRole('OWNER', 'GENERAL_MANAGER', 'MANAGER');
 
   // V19.22 — keep the selected month in the URL (?ym=YYYY-MM) so the
   // Staff Hub print button can read it and open the dedicated roster
@@ -143,11 +215,29 @@ export function PayrollUnifiedPage() {
   // month is bookmarkable / restorable on refresh.
   const [searchParams, setSearchParams] = useSearchParams();
   const [month, setMonth] = useState(() => {
-    const fromUrl = searchParams.get('ym');
-    if (fromUrl && /^\d{4}-\d{2}$/.test(fromUrl)) return fromUrl;
+    const fromUrl = readYmFromSearch(searchParams);
+    if (fromUrl) return fromUrl;
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   });
+
+  /** Normalize `?m=YYYY-MM` → `?ym=` (Bookmarks / old links). */
+  useEffect(() => {
+    const canonical = readYmFromSearch(searchParams);
+    if (searchParams.get('m') && canonical) {
+      const next = new URLSearchParams(searchParams);
+      next.set('ym', canonical);
+      next.delete('m');
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
+  /** Keep month in sync when `ym` changes in the URL (e.g. back/forward). */
+  useEffect(() => {
+    const ymOnly = searchParams.get('ym');
+    if (!ymOnly || !/^\d{4}-\d{2}$/.test(ymOnly)) return;
+    setMonth((prev) => (prev === ymOnly ? prev : ymOnly));
+  }, [searchParams]);
 
   useEffect(() => {
     const current = searchParams.get('ym');
@@ -173,6 +263,23 @@ export function PayrollUnifiedPage() {
   // controlled input for every employee on page load.
   const [buffers, setBuffers] = useState<Record<string, EditBuffer>>({});
 
+  /** V19.27 — Manual payroll roster order + bank account (per user). */
+  const [rosterBankDraft, setRosterBankDraft] = useState<
+    Record<
+      string,
+      { rosterOrder: string; bankIban: string; bankName: string }
+    >
+  >({});
+  const [savingRosterExtraId, setSavingRosterExtraId] = useState<string | null>(
+    null,
+  );
+
+  /** V19.28 — مسير lines without a User (external payee + IBAN). */
+  const [adhocLines, setAdhocLines] = useState<PayrollAdHocLineRow[]>([]);
+  const [adhocCreateForBranchId, setAdhocCreateForBranchId] = useState<
+    string | null
+  >(null);
+
   /** '' = every branch; otherwise focus one branch card (easier mass edits). */
   const [branchFilter, setBranchFilter] = useState<string>('');
 
@@ -193,15 +300,17 @@ export function PayrollUnifiedPage() {
     try {
       const { from, to } = monthRangeIso(month);
       const qs = new URLSearchParams({ from, to });
-      const [p, u, b, h] = await Promise.all([
+      const [p, u, b, h, ad] = await Promise.all([
         apiJson<PayrollRow[]>(`/api/payroll?${qs.toString()}`, { token }),
         apiJson<TeamUserRow[]>('/api/users', { token }),
         apiJson<BranchRow[]>('/api/branches', { token }),
         listDebtHolds(token, { status: 'HELD' }),
+        listPayrollAdhocLines(token, month),
       ]);
       setPayrolls(Array.isArray(p) ? p : []);
       setUsers(Array.isArray(u) ? u : []);
       setBranches(Array.isArray(b) ? b : []);
+      setAdhocLines(Array.isArray(ad) ? ad : []);
       const heldMap = new Map<string, number>();
       for (const row of Array.isArray(h) ? h : []) {
         heldMap.set(
@@ -211,6 +320,7 @@ export function PayrollUnifiedPage() {
       }
       setHeldByUser(heldMap);
       setBuffers({});
+      setRosterBankDraft({});
     } catch (e) {
       if (e instanceof ApiError) toast.error(e.message);
     } finally {
@@ -229,14 +339,95 @@ export function PayrollUnifiedPage() {
     return map;
   }, [payrolls]);
 
+  const branchesByIdMap = useMemo(
+    () => new Map((branches ?? []).map((b) => [b.id, b])),
+    [branches],
+  );
+
+  /**
+   * «عرض الفرع» must list every active branch from the registry — not only
+   * branches that already have staff rows this month (branchGroups). Otherwise
+   * owners see seven branches in إدارة الفروع but only one option here.
+   */
+  const branchSelectOptions = useMemo(() => {
+    const activeStaffByKey = new Map<string, number>();
+    for (const u of (users ?? []).filter((x) => x.isActive)) {
+      const k = u.branchId ?? '__unassigned__';
+      activeStaffByKey.set(k, (activeStaffByKey.get(k) ?? 0) + 1);
+    }
+    const sorted = (branches ?? [])
+      .filter((b) => b.isActive)
+      .slice()
+      .sort((a, b) =>
+        compareBranchesForPayrollRoster(
+          {
+            name: a.name,
+            payrollRosterSortOrder: a.payrollRosterSortOrder,
+          },
+          {
+            name: b.name,
+            payrollRosterSortOrder: b.payrollRosterSortOrder,
+          },
+        ),
+      )
+      .map((b) => ({
+        id: b.id,
+        name: b.name,
+        activeStaffCount: activeStaffByKey.get(b.id) ?? 0,
+      }));
+    const listed = new Set(sorted.map((o) => o.id));
+    const orphans: { id: string; name: string; activeStaffCount: number }[] =
+      [];
+    for (const branchId of activeStaffByKey.keys()) {
+      if (branchId === '__unassigned__' || listed.has(branchId)) continue;
+      const sample = (users ?? []).find(
+        (x) => x.isActive && x.branchId === branchId,
+      );
+      orphans.push({
+        id: branchId,
+        name: sample?.branch?.name ?? 'فرع غير مدرج في القائمة',
+        activeStaffCount: activeStaffByKey.get(branchId) ?? 0,
+      });
+    }
+    orphans.sort((a, b) => a.name.localeCompare(b.name, 'ar'));
+    const hasUnassigned = (users ?? []).some(
+      (x) => x.isActive && !x.branchId,
+    );
+    const tail = hasUnassigned
+      ? [
+          {
+            id: '__unassigned__',
+            name: 'بدون فرع',
+            activeStaffCount: activeStaffByKey.get('__unassigned__') ?? 0,
+          },
+        ]
+      : [];
+    return [...sorted, ...orphans, ...tail];
+  }, [branches, users]);
+
+  /** If `branchFilter` is stale (unknown id), Base UI shows the raw value (UUID) in the trigger. */
+  useEffect(() => {
+    if (loading) return;
+    if (!branchFilter) return;
+    const valid = branchSelectOptions.some((o) => o.id === branchFilter);
+    if (!valid) setBranchFilter('');
+  }, [loading, branchFilter, branchSelectOptions]);
+
+  const branchFilterTriggerLabel = useMemo(() => {
+    if (!branchFilter) return '';
+    const o = branchSelectOptions.find((x) => x.id === branchFilter);
+    if (o) return `${o.name} (${o.activeStaffCount})`;
+    return branchesByIdMap.get(branchFilter)?.name ?? '';
+  }, [branchFilter, branchSelectOptions, branchesByIdMap]);
+
   const branchGroups = useMemo(() => {
-    const branchesById = new Map((branches ?? []).map((b) => [b.id, b]));
+    const branchesById = branchesByIdMap;
     const groups = new Map<string, { branch: BranchRow; users: TeamUserRow[] }>();
     for (const u of (users ?? []).filter((x) => x.isActive)) {
       const key = u.branchId ?? '__unassigned__';
-      const branch: BranchRow =
-        (u.branchId && branchesById.get(u.branchId)) ||
-        ({
+      let branch: BranchRow;
+      if (!u.branchId) {
+        branch = {
           id: '__unassigned__',
           name: 'بدون فرع',
           location: '',
@@ -244,25 +435,72 @@ export function PayrollUnifiedPage() {
           isActive: true,
           isAdministrative: false,
           updatedAt: '',
-        } as BranchRow);
+        } as BranchRow;
+      } else {
+        const row = branchesById.get(u.branchId);
+        if (row) {
+          branch = row;
+        } else {
+          // branchId لا يظهر في قائمة الفروع (فرع محذوف، أو غير مرئي للدور الحالي):
+          // يجب أن يبقى g.branch.id === key وإلا يفشل تصفية «عرض الفرع».
+          branch = {
+            id: u.branchId,
+            name: u.branch?.name ?? 'فرع غير مدرج في القائمة',
+            location: u.branch?.location ?? '',
+            phone: null,
+            isActive: true,
+            isAdministrative: false,
+            updatedAt: '',
+          } as BranchRow;
+        }
+      }
       const bucket = groups.get(key) ?? { branch, users: [] };
       bucket.users.push(u);
       groups.set(key, bucket);
     }
     return Array.from(groups.values())
-      .sort((a, b) => a.branch.name.localeCompare(b.branch.name, 'ar'))
+      .sort((a, b) =>
+        compareBranchesForPayrollRoster(
+          {
+            name: a.branch.name,
+            payrollRosterSortOrder: a.branch.payrollRosterSortOrder,
+          },
+          {
+            name: b.branch.name,
+            payrollRosterSortOrder: b.branch.payrollRosterSortOrder,
+          },
+        ),
+      )
       .map((g) => ({
         branch: g.branch,
-        users: g.users.sort((a, b) =>
-          a.fullName.localeCompare(b.fullName, 'ar'),
-        ),
+        users: g.users.sort(compareTeamUsersForPayrollRoster),
       }));
-  }, [users, branches]);
+  }, [users, branchesByIdMap]);
 
   const visibleBranchGroups = useMemo(() => {
     if (!branchFilter) return branchGroups;
     return branchGroups.filter((g) => g.branch.id === branchFilter);
   }, [branchGroups, branchFilter]);
+
+  /**
+   * DB reality check: if every active `User.branchId` is the same while the
+   * registry lists many branches, dropdown counts will be (0) everywhere
+   * except that one branch — not a UI bug.
+   */
+  const payrollSingleBranchDataNotice = useMemo(() => {
+    if (loading) return null;
+    const active = (users ?? []).filter((u) => u.isActive);
+    const withBranch = active.filter((u) => u.branchId);
+    const distinctIds = new Set(
+      withBranch.map((u) => u.branchId as string),
+    );
+    const registryActive = (branches ?? []).filter((b) => b.isActive).length;
+    if (withBranch.length === 0 || registryActive < 2) return null;
+    if (distinctIds.size !== 1) return null;
+    const onlyId = [...distinctIds][0]!;
+    const branchName = branchesByIdMap.get(onlyId)?.name ?? 'فرع واحد';
+    return { staff: withBranch.length, branchName };
+  }, [loading, users, branches, branchesByIdMap]);
 
   const grandTotals = useMemo(() => {
     const rows = payrolls ?? [];
@@ -298,6 +536,72 @@ export function PayrollUnifiedPage() {
   // current page has no loans made users think the feature was
   // broken. Empty rows render "—" and the totals chip shows 0.000.
   const hasAnyLoan = true;
+
+  function getRosterBankDraft(u: TeamUserRow): {
+    rosterOrder: string;
+    bankIban: string;
+    bankName: string;
+  } {
+    const d = rosterBankDraft[u.id];
+    if (d) return d;
+    return {
+      rosterOrder:
+        u.payrollRosterLineOrder != null ? String(u.payrollRosterLineOrder) : '',
+      bankIban: u.bankIban ?? '',
+      bankName: u.bankName ?? '',
+    };
+  }
+
+  function setRosterBankDraftField(
+    userId: string,
+    patch: Partial<{
+      rosterOrder: string;
+      bankIban: string;
+      bankName: string;
+    }>,
+  ) {
+    setRosterBankDraft((prev) => {
+      const row = (users ?? []).find((x) => x.id === userId);
+      const base =
+        prev[userId] ??
+        (row
+          ? {
+              rosterOrder:
+                row.payrollRosterLineOrder != null
+                  ? String(row.payrollRosterLineOrder)
+                  : '',
+              bankIban: row.bankIban ?? '',
+              bankName: row.bankName ?? '',
+            }
+          : { rosterOrder: '', bankIban: '', bankName: '' });
+      return { ...prev, [userId]: { ...base, ...patch } };
+    });
+  }
+
+  async function saveRosterBankExtras(u: TeamUserRow) {
+    if (!token) return;
+    const parsed = rosterBankExtrasPayload(getRosterBankDraft(u));
+    if (!parsed.ok) {
+      toast.error(parsed.message);
+      return;
+    }
+    setSavingRosterExtraId(u.id);
+    try {
+      const updated = await updateSalaryDefaults(token, u.id, parsed.body);
+      setUsers((prev) =>
+        (prev ?? []).map((x) => (x.id === u.id ? updated : x)),
+      );
+      setRosterBankDraft((prev) => {
+        const { [u.id]: _, ...rest } = prev;
+        return rest;
+      });
+      toast.success('تم حفظ رقم الحساب');
+    } catch (e) {
+      if (e instanceof ApiError) toast.error(e.message);
+    } finally {
+      setSavingRosterExtraId(null);
+    }
+  }
 
   function getBuffer(u: TeamUserRow): EditBuffer {
     const b = buffers[u.id];
@@ -355,6 +659,11 @@ export function PayrollUnifiedPage() {
       if (!silent) toast.error('الخصم غير صالح');
       return false;
     }
+    const extrasParsed = rosterBankExtrasPayload(getRosterBankDraft(u));
+    if (!extrasParsed.ok) {
+      if (!silent) toast.error(extrasParsed.message);
+      return false;
+    }
     const { from } = monthRangeIso(month);
     setSavingUserId(u.id);
     try {
@@ -372,26 +681,25 @@ export function PayrollUnifiedPage() {
       });
       setPayrolls((prev) => [row, ...(prev ?? [])]);
 
-      // Persist the numbers as the user's new defaults so next month
-      // starts from the same values without re-typing.
-      const needsDefaultUpdate =
-        f(u.basicMonthlySalary ?? '0') !== basic ||
-        f(u.monthlyAllowances ?? '0') !== allow;
-      if (needsDefaultUpdate) {
-        try {
-          const updated = await updateSalaryDefaults(token, u.id, {
-            basicMonthlySalary: basic,
-            monthlyAllowances: allow,
-          });
-          setUsers((prev) =>
-            (prev ?? []).map((x) => (x.id === u.id ? updated : x)),
-          );
-        } catch {
-          /* soft-fail — payroll already saved */
-        }
+      // Defaults + roster/bank extras: one PATCH so المسيرة والحساب stay in sync.
+      try {
+        const updated = await updateSalaryDefaults(token, u.id, {
+          basicMonthlySalary: basic,
+          monthlyAllowances: allow,
+          ...extrasParsed.body,
+        });
+        setUsers((prev) =>
+          (prev ?? []).map((x) => (x.id === u.id ? updated : x)),
+        );
+      } catch {
+        /* soft-fail — payroll already saved */
       }
       setBuffers((curr) => {
         const { [u.id]: _removed, ...rest } = curr;
+        return rest;
+      });
+      setRosterBankDraft((curr) => {
+        const { [u.id]: _r, ...rest } = curr;
         return rest;
       });
       if (!silent) toast.success(`تم حفظ مسير ${u.fullName}`);
@@ -526,7 +834,7 @@ export function PayrollUnifiedPage() {
         className="flex flex-wrap items-end justify-between gap-3"
         data-hub-print-hide="true"
       >
-        <div className="space-y-1">
+        <div className="space-y-2">
           <h2 className="text-xl font-bold">مسير الرواتب الشهري</h2>
           <p className="text-sm text-muted-foreground">
             صفحة واحدة لإدخال واعتماد المسير: تعدّل القيم مباشرة في صف
@@ -534,6 +842,28 @@ export function PayrollUnifiedPage() {
             تحرير المحجوز يُصرف كإيصال مستقل من تبويب «محجوز المديونية»
             بعد نزول الراتب.
           </p>
+          <p className="rounded-md border border-primary/25 bg-primary/5 px-3 py-2 text-xs text-foreground">
+            <span className="font-semibold">رقم الحساب:</span> يُحدَّث في العمود
+            أدناه (رقم محلي دون رمز دولة مثل KW)؛ بعد تعديل الصف المسجّل اضغط خارج
+            الحقل ليُحفظ. وزر{' '}
+            <span className="font-semibold">سطر يدوي</span> لإضافة مستفيد خارج
+            النظام لنفس شهر المسير.
+          </p>
+          {payrollSingleBranchDataNotice ? (
+            <p
+              className="rounded-md border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-xs text-foreground"
+              data-payroll-data-notice="single-branch"
+            >
+              <span className="font-semibold">فحص البيانات:</span> كل الموظفين
+              النشطين في النظام ({payrollSingleBranchDataNotice.staff}) مربوطون
+              حالياً بفرع واحد فقط: «
+              {payrollSingleBranchDataNotice.branchName}». لذلك يظهر العدد
+              بجانب بقية الفروع صفراً — مسير الرواتب يعتمد على{' '}
+              <span className="font-medium">حقل الفرع في حساب المستخدم</span>،
+              وليس على أسماء الفروع في التشغيل فقط. لتوزيع الفريق: عدّل الفرع من
+              لوحة المالك أو شغّل سكربت التعيين الجماعي إن وُجد.
+            </p>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-end gap-2">
           <div className="space-y-1.5">
@@ -552,18 +882,24 @@ export function PayrollUnifiedPage() {
               onValueChange={(v) =>
                 setBranchFilter(!v || v === '__all__' ? '' : v)
               }
-              disabled={loading || branchGroups.length === 0}
+              disabled={loading || branchSelectOptions.length === 0}
             >
-              <SelectTrigger className="w-[220px]">
-                <SelectValue placeholder="كل الفروع" />
+              <SelectTrigger className="min-w-[220px] max-w-[min(100%,320px)]">
+                <SelectValue placeholder="كل الفروع">
+                  {branchFilter && branchFilterTriggerLabel
+                    ? branchFilterTriggerLabel
+                    : undefined}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="__all__">كل الفروع</SelectItem>
-                {branchGroups.map(({ branch }) => (
-                  <SelectItem key={branch.id} value={branch.id}>
-                    {branch.name}
-                  </SelectItem>
-                ))}
+                {branchSelectOptions.map(
+                  ({ id, name, activeStaffCount }) => (
+                    <SelectItem key={id} value={id}>
+                      {`${name} (${activeStaffCount})`}
+                    </SelectItem>
+                  ),
+                )}
               </SelectContent>
             </Select>
           </div>
@@ -685,8 +1021,17 @@ export function PayrollUnifiedPage() {
         </Card>
       ) : visibleBranchGroups.length === 0 ? (
         <Card>
-          <CardContent className="py-10 text-center text-muted-foreground">
-            لا يوجد موظفون في الفرع المحدد.
+          <CardContent className="space-y-2 py-10 text-center text-muted-foreground">
+            <p>
+              لا يوجد موظفون نشطون مربوطون بهذا الفرع في{' '}
+              <span className="font-medium text-foreground">حقل الفرع</span> داخل
+              حساب المستخدم.
+            </p>
+            <p className="text-sm">
+              إن وُجد موظفون تحت «كل الفروع» لكن لا يظهرون هنا، فغالباً فرعهم
+              في الملف مختلف عن الفرع التشغيلي — عدّل التعيين من لوحة المالك /
+              تعديل المستخدم.
+            </p>
           </CardContent>
         </Card>
       ) : (
@@ -747,6 +1092,17 @@ export function PayrollUnifiedPage() {
                       اعتماد مسير هذا الفرع ({branchPendingSave})
                     </Button>
                   ) : null}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 border-dashed border-amber-600/50 text-amber-900 dark:text-amber-200"
+                    disabled={loading || bulkSaving}
+                    onClick={() => setAdhocCreateForBranchId(branch.id)}
+                  >
+                    <Plus className="me-1 size-3.5" />
+                    سطر يدوي
+                  </Button>
                 </CardTitle>
                 <div className="text-sm text-muted-foreground">
                   صافي الفرع:{' '}
@@ -757,10 +1113,15 @@ export function PayrollUnifiedPage() {
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto rounded-lg border">
-                    <Table>
+                    <Table className="min-w-[1040px] table-auto">
                     <TableHeader>
                       <TableRow>
-                        <TableHead>الموظف</TableHead>
+                        <TableHead className="min-w-[9rem] whitespace-normal">
+                          الموظف
+                        </TableHead>
+                        <TableHead className="min-w-[12rem] max-w-[20rem] whitespace-normal">
+                          رقم الحساب
+                        </TableHead>
                         <TableHead className="text-end">الأساسي</TableHead>
                         <TableHead className="text-end">البدلات</TableHead>
                         <TableHead className="text-end">الخصم</TableHead>
@@ -784,6 +1145,29 @@ export function PayrollUnifiedPage() {
                     <TableBody>
                       {branchUsers.map((u) => {
                         const saved = payrollByUserId.get(u.id);
+                        const extrasSaving =
+                          savingRosterExtraId === u.id ||
+                          savingUserId === u.id ||
+                          bulkSaving;
+                        const rosterExtras = (
+                          <PayrollRosterBankBlock
+                            draft={getRosterBankDraft(u)}
+                            disabled={extrasSaving}
+                            onDraftChange={(patch) =>
+                              setRosterBankDraftField(u.id, patch)
+                            }
+                            onBlurPersist={() => {
+                              const d = getRosterBankDraft(u);
+                              const p = rosterBankExtrasPayload(d);
+                              if (!p.ok) {
+                                toast.error(p.message);
+                                return;
+                              }
+                              if (rosterExtrasMatchesUser(u, p.body)) return;
+                              void saveRosterBankExtras(u);
+                            }}
+                          />
+                        );
                         if (saved) {
                           return (
                             <SavedRow
@@ -801,6 +1185,7 @@ export function PayrollUnifiedPage() {
                                   payrollId: saved.id,
                                 })
                               }
+                              rosterExtras={rosterExtras}
                             />
                           );
                         }
@@ -819,9 +1204,31 @@ export function PayrollUnifiedPage() {
                             }
                             onSave={() => void saveRow(u)}
                             onOpenHold={() => setHoldDialogFor({ user: u })}
+                            rosterExtras={rosterExtras}
                           />
                         );
                       })}
+                      {adhocLines
+                        .filter(
+                          (l) =>
+                            l.branchId === branch.id && l.periodYm === month,
+                        )
+                        .sort(
+                          (a, b) =>
+                            a.lineSort - b.lineSort ||
+                            a.createdAt.localeCompare(b.createdAt),
+                        )
+                        .map((line) => (
+                          <AdhocPayrollLineRow
+                            key={line.id}
+                            line={line}
+                            token={token}
+                            showReleaseColumn={hasAnyRelease}
+                            showLoanColumn={hasAnyLoan}
+                            savingGlobal={bulkSaving}
+                            onReload={() => void loadAll()}
+                          />
+                        ))}
                     </TableBody>
                   </Table>
                 </div>
@@ -830,6 +1237,20 @@ export function PayrollUnifiedPage() {
           );
         })
       )}
+
+      <AdhocManualCreateDialog
+        open={adhocCreateForBranchId !== null}
+        branchId={adhocCreateForBranchId ?? ''}
+        branchName={
+          adhocCreateForBranchId ?
+            branchesByIdMap.get(adhocCreateForBranchId)?.name ?? ''
+          : ''
+        }
+        month={month}
+        token={token}
+        onClose={() => setAdhocCreateForBranchId(null)}
+        onCreated={() => void loadAll()}
+      />
 
       <ManualHoldDialog
         employee={holdDialogFor?.user ?? null}
@@ -872,6 +1293,414 @@ export function PayrollUnifiedPage() {
   );
 }
 
+function AdhocPayrollLineRow({
+  line,
+  token,
+  showReleaseColumn,
+  showLoanColumn,
+  savingGlobal,
+  onReload,
+}: {
+  line: PayrollAdHocLineRow;
+  token: string | null;
+  showReleaseColumn: boolean;
+  showLoanColumn: boolean;
+  savingGlobal: boolean;
+  onReload: () => void;
+}) {
+  const [name, setName] = useState(line.beneficiaryName);
+  const [bankName, setBankName] = useState(line.bankName ?? '');
+  const [iban, setIban] = useState(line.bankIban ?? '');
+  const [sort, setSort] = useState(String(line.lineSort));
+  const [basic, setBasic] = useState(line.basicSalary);
+  const [allow, setAllow] = useState(line.allowances);
+  const [deduct, setDeduct] = useState(line.deductions);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setName(line.beneficiaryName);
+    setBankName(line.bankName ?? '');
+    setIban(line.bankIban ?? '');
+    setSort(String(line.lineSort));
+    setBasic(line.basicSalary);
+    setAllow(line.allowances);
+    setDeduct(line.deductions);
+  }, [line]);
+
+  const preview =
+    (Number.parseFloat(basic) || 0) +
+    (Number.parseFloat(allow) || 0) -
+    (Number.parseFloat(deduct) || 0);
+
+  async function save() {
+    if (!token) return;
+    const sortN = Number.parseInt(sort, 10);
+    if (!Number.isFinite(sortN)) {
+      toast.error('ترتيب السطر: رقم صحيح');
+      return;
+    }
+    setSaving(true);
+    try {
+      await updatePayrollAdhocLine(token, line.id, {
+        beneficiaryName: name.trim(),
+        bankName: bankName.trim() || null,
+        bankIban: iban.replace(/\s/g, '').trim() || null,
+        lineSort: sortN,
+        basicSalary: Number.parseFloat(basic) || 0,
+        allowances: Number.parseFloat(allow) || 0,
+        deductions: Number.parseFloat(deduct) || 0,
+      });
+      toast.success('تم حفظ السطر اليدوي');
+      onReload();
+    } catch (e) {
+      if (e instanceof ApiError) toast.error(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function remove() {
+    if (!token) return;
+    if (!window.confirm('حذف هذا السطر من المسير؟')) return;
+    try {
+      await deletePayrollAdhocLine(token, line.id);
+      toast.success('تم الحذف');
+      onReload();
+    } catch (e) {
+      if (e instanceof ApiError) toast.error(e.message);
+    }
+  }
+
+  const dis = saving || savingGlobal;
+
+  return (
+    <TableRow className="border-amber-200/80 bg-amber-50/40 dark:bg-amber-950/25">
+      <TableCell className="align-top whitespace-normal">
+        <div className="mb-1 flex flex-wrap items-center gap-1">
+          <Badge variant="secondary" className="text-[10px]">
+            سطر يدوي
+          </Badge>
+        </div>
+        <Input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className="h-8 font-semibold"
+          disabled={dis}
+          placeholder="اسم المستفيد"
+        />
+      </TableCell>
+      <TableCell className="align-top whitespace-normal">
+        <div className="space-y-1">
+          <Input
+            value={bankName}
+            onChange={(e) => setBankName(e.target.value)}
+            className="h-8"
+            placeholder="البنك"
+            disabled={dis}
+          />
+          <div className="flex flex-wrap items-end gap-2">
+            <Input
+              value={iban}
+              onChange={(e) => setIban(e.target.value)}
+              dir="ltr"
+              className="h-8 min-w-[10rem] flex-1 font-mono text-start"
+              disabled={dis}
+              spellCheck={false}
+            />
+            <div className="space-y-0.5">
+              <Label className="text-[10px] text-muted-foreground">
+                ترتيب
+              </Label>
+              <Input
+                value={sort}
+                onChange={(e) => setSort(e.target.value)}
+                className="h-8 w-14"
+                inputMode="numeric"
+                disabled={dis}
+              />
+            </div>
+          </div>
+        </div>
+      </TableCell>
+      <TableCell className="text-end">
+        <Input
+          type="number"
+          step="0.001"
+          min="0"
+          value={basic}
+          onChange={(e) => setBasic(e.target.value)}
+          className="w-[120px] text-end"
+          disabled={dis}
+        />
+      </TableCell>
+      <TableCell className="text-end">
+        <Input
+          type="number"
+          step="0.001"
+          min="0"
+          value={allow}
+          onChange={(e) => setAllow(e.target.value)}
+          className="w-[110px] text-end"
+          disabled={dis}
+        />
+      </TableCell>
+      <TableCell className="text-end">
+        <Input
+          type="number"
+          step="0.001"
+          min="0"
+          value={deduct}
+          onChange={(e) => setDeduct(e.target.value)}
+          className="w-[110px] text-end"
+          disabled={dis}
+        />
+      </TableCell>
+      <TableCell className="payroll-auto-cell text-end text-xs text-muted-foreground">
+        —
+      </TableCell>
+      {showReleaseColumn && (
+        <TableCell className="payroll-auto-cell text-end text-xs text-muted-foreground">
+          —
+        </TableCell>
+      )}
+      <TableCell className="payroll-auto-cell text-end text-xs text-muted-foreground">
+        —
+      </TableCell>
+      {showLoanColumn && (
+        <TableCell className="payroll-auto-cell text-end text-xs text-muted-foreground">
+          —
+        </TableCell>
+      )}
+      <TableCell className="text-end tabular-nums font-medium">
+        {formatKwdLabel(preview.toFixed(4))}
+      </TableCell>
+      <TableCell className="text-end" data-row-actions="true">
+        <div className="flex flex-wrap justify-end gap-1">
+          <Button type="button" size="sm" variant="secondary" disabled={dis} onClick={() => void save()}>
+            {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="text-destructive"
+            disabled={dis}
+            onClick={() => void remove()}
+          >
+            <Trash2 className="size-4" />
+          </Button>
+        </div>
+      </TableCell>
+    </TableRow>
+  );
+}
+
+function AdhocManualCreateDialog({
+  open,
+  branchId,
+  branchName,
+  month,
+  token,
+  onClose,
+  onCreated,
+}: {
+  open: boolean;
+  branchId: string;
+  branchName: string;
+  month: string;
+  token: string | null;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [name, setName] = useState('');
+  const [bankName, setBankName] = useState('');
+  const [iban, setIban] = useState('');
+  const [basic, setBasic] = useState('0');
+  const [allow, setAllow] = useState('0');
+  const [deduct, setDeduct] = useState('0');
+  const [sort, setSort] = useState('0');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open) {
+      setName('');
+      setBankName('');
+      setIban('');
+      setBasic('0');
+      setAllow('0');
+      setDeduct('0');
+      setSort('0');
+    }
+  }, [open]);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    if (!token || !branchId) return;
+    if (!name.trim()) {
+      toast.error('أدخل اسم المستفيد');
+      return;
+    }
+    setSaving(true);
+    try {
+      await createPayrollAdhocLine(token, {
+        branchId,
+        periodYm: month,
+        beneficiaryName: name.trim(),
+        bankName: bankName.trim() || null,
+        bankIban: iban.replace(/\s/g, '').trim() || null,
+        basicSalary: Number.parseFloat(basic) || 0,
+        allowances: Number.parseFloat(allow) || 0,
+        deductions: Number.parseFloat(deduct) || 0,
+        lineSort: Number.parseInt(sort, 10) || 0,
+      });
+      toast.success('تمت إضافة السطر اليدوي');
+      onCreated();
+      onClose();
+    } catch (err) {
+      if (err instanceof ApiError) toast.error(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>
+            إضافة سطر يدوي — {branchName || 'الفرع'}
+          </DialogTitle>
+        </DialogHeader>
+        <form onSubmit={submit} className="space-y-3">
+          <div className="space-y-1">
+            <Label>اسم المستفيد</Label>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              disabled={saving}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <Label>البنك</Label>
+              <Input
+                value={bankName}
+                onChange={(e) => setBankName(e.target.value)}
+                disabled={saving}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>ترتيب الظهور</Label>
+              <Input
+                value={sort}
+                onChange={(e) => setSort(e.target.value)}
+                inputMode="numeric"
+                disabled={saving}
+              />
+            </div>
+          </div>
+          <div className="space-y-1">
+            <Label>رقم الحساب</Label>
+            <Input
+              value={iban}
+              onChange={(e) => setIban(e.target.value)}
+              dir="ltr"
+              className="font-mono"
+              disabled={saving}
+              spellCheck={false}
+            />
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="space-y-1">
+              <Label>أساسي</Label>
+              <Input
+                type="number"
+                step="0.001"
+                min="0"
+                value={basic}
+                onChange={(e) => setBasic(e.target.value)}
+                disabled={saving}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>بدلات</Label>
+              <Input
+                type="number"
+                step="0.001"
+                min="0"
+                value={allow}
+                onChange={(e) => setAllow(e.target.value)}
+                disabled={saving}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>خصم</Label>
+              <Input
+                type="number"
+                step="0.001"
+                min="0"
+                value={deduct}
+                onChange={(e) => setDeduct(e.target.value)}
+                disabled={saving}
+              />
+            </div>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            الشهر الحالي للمسير: {month} — لا يُربط السطر بمستخدم في النظام.
+          </p>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
+              إلغاء
+            </Button>
+            <Button type="submit" disabled={saving}>
+              {saving ? <Loader2 className="size-4 animate-spin" /> : null}
+              حفظ
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Bank account # (local digits ok; no country prefix required in UI). */
+function PayrollRosterBankBlock({
+  draft,
+  disabled,
+  onDraftChange,
+  onBlurPersist,
+}: {
+  draft: {
+    rosterOrder: string;
+    bankIban: string;
+    bankName: string;
+  };
+  disabled: boolean;
+  onDraftChange: (
+    patch: Partial<{
+      rosterOrder: string;
+      bankIban: string;
+      bankName: string;
+    }>,
+  ) => void;
+  onBlurPersist: () => void;
+}) {
+  return (
+    <Input
+      data-payroll-roster-extras="true"
+      value={draft.bankIban}
+      onChange={(e) => onDraftChange({ bankIban: e.target.value })}
+      onBlur={() => onBlurPersist()}
+      dir="ltr"
+      className="h-8 min-w-[10rem] max-w-[20rem] font-mono text-start"
+      disabled={disabled}
+      spellCheck={false}
+      aria-label="رقم الحساب"
+    />
+  );
+}
+
 function SavedRow({
   user,
   row,
@@ -881,6 +1710,7 @@ function SavedRow({
   recalcing,
   onRecalcLoan,
   onOpenHold,
+  rosterExtras,
 }: {
   user: TeamUserRow;
   row: PayrollRow;
@@ -890,12 +1720,16 @@ function SavedRow({
   recalcing: boolean;
   onRecalcLoan: () => void;
   onOpenHold: () => void;
+  rosterExtras: ReactNode;
 }) {
   return (
     <TableRow>
-      <TableCell>
+      <TableCell className="align-top whitespace-normal">
         <div className="font-semibold">{user.fullName}</div>
         <div className="text-xs text-muted-foreground">{user.safariRole}</div>
+      </TableCell>
+      <TableCell className="align-top whitespace-normal">
+        {rosterExtras}
       </TableCell>
       <TableCell className="text-end tabular-nums">
         {formatKwdLabel(row.basicSalary)}
@@ -990,6 +1824,7 @@ function EditableRow({
   onChange,
   onSave,
   onOpenHold,
+  rosterExtras,
 }: {
   user: TeamUserRow;
   buffer: EditBuffer;
@@ -1001,12 +1836,16 @@ function EditableRow({
   onChange: (field: keyof EditBuffer, value: string) => void;
   onSave: () => void;
   onOpenHold: () => void;
+  rosterExtras: ReactNode;
 }) {
   return (
     <TableRow className="bg-muted/10">
-      <TableCell>
+      <TableCell className="align-top whitespace-normal">
         <div className="font-semibold">{user.fullName}</div>
         <div className="text-xs text-muted-foreground">{user.safariRole}</div>
+      </TableCell>
+      <TableCell className="align-top whitespace-normal">
+        {rosterExtras}
       </TableCell>
       <TableCell className="text-end">
         <Input

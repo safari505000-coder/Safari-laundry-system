@@ -13,10 +13,10 @@ export declare class LeavesController {
             } | null;
             id: string;
             username: string;
-            employeeId: string | null;
-            civilId: string | null;
             fullName: string;
+            employeeId: string | null;
             jobTitle: string | null;
+            civilId: string | null;
         };
         approvedBy: {
             id: string;
@@ -26,11 +26,11 @@ export declare class LeavesController {
     } & {
         id: string;
         createdAt: Date;
+        userId: string;
+        type: import("@prisma/client").$Enums.LeaveType;
         updatedAt: Date;
         status: import("@prisma/client").$Enums.LeaveStatus;
-        type: import("@prisma/client").$Enums.LeaveType;
         reason: string | null;
-        userId: string;
         approvedAt: Date | null;
         approvedById: string | null;
         rejectedReason: string | null;
@@ -46,10 +46,10 @@ export declare class LeavesController {
             } | null;
             id: string;
             username: string;
-            employeeId: string | null;
-            civilId: string | null;
             fullName: string;
+            employeeId: string | null;
             jobTitle: string | null;
+            civilId: string | null;
         };
         approvedBy: {
             id: string;
@@ -59,11 +59,11 @@ export declare class LeavesController {
     } & {
         id: string;
         createdAt: Date;
+        userId: string;
+        type: import("@prisma/client").$Enums.LeaveType;
         updatedAt: Date;
         status: import("@prisma/client").$Enums.LeaveStatus;
-        type: import("@prisma/client").$Enums.LeaveType;
         reason: string | null;
-        userId: string;
         approvedAt: Date | null;
         approvedById: string | null;
         rejectedReason: string | null;
@@ -79,10 +79,10 @@ export declare class LeavesController {
             } | null;
             id: string;
             username: string;
-            employeeId: string | null;
-            civilId: string | null;
             fullName: string;
+            employeeId: string | null;
             jobTitle: string | null;
+            civilId: string | null;
         };
         approvedBy: {
             id: string;
@@ -92,11 +92,11 @@ export declare class LeavesController {
     } & {
         id: string;
         createdAt: Date;
+        userId: string;
+        type: import("@prisma/client").$Enums.LeaveType;
         updatedAt: Date;
         status: import("@prisma/client").$Enums.LeaveStatus;
-        type: import("@prisma/client").$Enums.LeaveType;
         reason: string | null;
-        userId: string;
         approvedAt: Date | null;
         approvedById: string | null;
         rejectedReason: string | null;
@@ -112,10 +112,10 @@ export declare class LeavesController {
             } | null;
             id: string;
             username: string;
-            employeeId: string | null;
-            civilId: string | null;
             fullName: string;
+            employeeId: string | null;
             jobTitle: string | null;
+            civilId: string | null;
         };
         approvedBy: {
             id: string;
@@ -125,11 +125,11 @@ export declare class LeavesController {
     } & {
         id: string;
         createdAt: Date;
+        userId: string;
+        type: import("@prisma/client").$Enums.LeaveType;
         updatedAt: Date;
         status: import("@prisma/client").$Enums.LeaveStatus;
-        type: import("@prisma/client").$Enums.LeaveType;
         reason: string | null;
-        userId: string;
         approvedAt: Date | null;
         approvedById: string | null;
         rejectedReason: string | null;
@@ -145,10 +145,10 @@ export declare class LeavesController {
             } | null;
             id: string;
             username: string;
-            employeeId: string | null;
-            civilId: string | null;
             fullName: string;
+            employeeId: string | null;
             jobTitle: string | null;
+            civilId: string | null;
         };
         approvedBy: {
             id: string;
@@ -158,11 +158,11 @@ export declare class LeavesController {
     } & {
         id: string;
         createdAt: Date;
+        userId: string;
+        type: import("@prisma/client").$Enums.LeaveType;
         updatedAt: Date;
         status: import("@prisma/client").$Enums.LeaveStatus;
-        type: import("@prisma/client").$Enums.LeaveType;
         reason: string | null;
-        userId: string;
         approvedAt: Date | null;
         approvedById: string | null;
         rejectedReason: string | null;
@@ -178,10 +178,10 @@ export declare class LeavesController {
             } | null;
             id: string;
             username: string;
-            employeeId: string | null;
-            civilId: string | null;
             fullName: string;
+            employeeId: string | null;
             jobTitle: string | null;
+            civilId: string | null;
         };
         approvedBy: {
             id: string;
@@ -191,11 +191,11 @@ export declare class LeavesController {
     } & {
         id: string;
         createdAt: Date;
+        userId: string;
+        type: import("@prisma/client").$Enums.LeaveType;
         updatedAt: Date;
         status: import("@prisma/client").$Enums.LeaveStatus;
-        type: import("@prisma/client").$Enums.LeaveType;
         reason: string | null;
-        userId: string;
         approvedAt: Date | null;
         approvedById: string | null;
         rejectedReason: string | null;
@@ -211,10 +211,10 @@ export declare class LeavesController {
             } | null;
             id: string;
             username: string;
-            employeeId: string | null;
-            civilId: string | null;
             fullName: string;
+            employeeId: string | null;
             jobTitle: string | null;
+            civilId: string | null;
         };
         approvedBy: {
             id: string;
@@ -224,11 +224,11 @@ export declare class LeavesController {
     } & {
         id: string;
         createdAt: Date;
+        userId: string;
+        type: import("@prisma/client").$Enums.LeaveType;
         updatedAt: Date;
         status: import("@prisma/client").$Enums.LeaveStatus;
-        type: import("@prisma/client").$Enums.LeaveType;
         reason: string | null;
-        userId: string;
         approvedAt: Date | null;
         approvedById: string | null;
         rejectedReason: string | null;

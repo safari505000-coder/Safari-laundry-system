@@ -8,19 +8,143 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var CustomerLedgerService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CustomerLedgerService = void 0;
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
+const cash_status_for_method_1 = require("../common/utils/cash-status-for-method");
 const finance_money_1 = require("../finance/finance-money");
 const general_ledger_service_1 = require("../general-ledger/general-ledger.service");
+const inventory_service_1 = require("../inventory/inventory.service");
 const prisma_service_1 = require("../prisma/prisma.service");
-let CustomerLedgerService = class CustomerLedgerService {
+let CustomerLedgerService = CustomerLedgerService_1 = class CustomerLedgerService {
     prisma;
     generalLedger;
-    constructor(prisma, generalLedger) {
+    inventory;
+    logger = new common_1.Logger(CustomerLedgerService_1.name);
+    constructor(prisma, generalLedger, inventory) {
         this.prisma = prisma;
         this.generalLedger = generalLedger;
+        this.inventory = inventory;
+    }
+    async sumUnsettledUnpaidReceivableMinorTx(tx, customerId) {
+        const agg = await tx.order.aggregate({
+            where: {
+                customerId,
+                cashStatus: client_1.CashStatus.UNPAID,
+                status: { not: client_1.OrderStatus.CANCELED },
+                walletSettledAt: null,
+            },
+            _sum: { totalPrice: true },
+        });
+        return (0, finance_money_1.toMinorFromFixed4)(agg._sum.totalPrice ?? new client_1.Prisma.Decimal(0));
+    }
+    async resolveFallbackOwnerIdTx(tx) {
+        const owner = await tx.user.findFirst({
+            where: { safariRole: client_1.SafariRole.OWNER },
+            select: { id: true },
+            orderBy: { createdAt: 'asc' },
+        });
+        return owner?.id ?? null;
+    }
+    async autoReconcileUnpaidInvoicesFromPrepaidBalanceTx(tx, customerId, performedByUserId) {
+        const paidOrderIds = [];
+        const performerId = performedByUserId ?? (await this.resolveFallbackOwnerIdTx(tx));
+        if (!performerId) {
+            this.logger.warn(`[prepaid-auto-reconcile] No OWNER user to attribute ledger — skip customerId=${customerId}`);
+            return { paidOrderIds };
+        }
+        const maxPasses = 50;
+        for (let pass = 0; pass < maxPasses; pass++) {
+            const wallet = await this.getOrCreateWalletTx(tx, customerId);
+            const balanceMinor = (0, finance_money_1.toMinorFromFixed4)(wallet.balance);
+            if (balanceMinor <= 0n)
+                break;
+            const next = await tx.order.findFirst({
+                where: {
+                    customerId,
+                    cashStatus: client_1.CashStatus.UNPAID,
+                    status: { not: client_1.OrderStatus.CANCELED },
+                    walletSettledAt: null,
+                    posPaymentBundleId: null,
+                },
+                orderBy: { createdAt: 'asc' },
+                select: {
+                    id: true,
+                    totalPrice: true,
+                    status: true,
+                    completedAt: true,
+                    driverId: true,
+                    customerId: true,
+                },
+            });
+            if (!next)
+                break;
+            const invMinor = (0, finance_money_1.toMinorFromFixed4)(next.totalPrice);
+            if (invMinor <= 0n)
+                break;
+            if (invMinor > balanceMinor)
+                break;
+            const wasIncomplete = next.status !== client_1.OrderStatus.COMPLETED;
+            await tx.order.update({
+                where: { id: next.id },
+                data: {
+                    status: client_1.OrderStatus.COMPLETED,
+                    completedAt: next.completedAt ?? new Date(),
+                    posPaymentMethod: client_1.PosPaymentMethod.SUBSCRIPTION_WALLET,
+                    cashStatus: (0, cash_status_for_method_1.cashStatusForPaymentMethod)(client_1.PosPaymentMethod.SUBSCRIPTION_WALLET),
+                },
+            });
+            await this.applyOrderWalletSettlementForCompletedOrder(tx, next.id, performerId, {
+                customerId: next.customerId,
+                totalPrice: next.totalPrice,
+                posPaymentMethod: client_1.PosPaymentMethod.SUBSCRIPTION_WALLET,
+                walletSettledAt: null,
+                skipPerformerLookup: true,
+            }, {
+                autoReconciledFromPrepaidBalance: true,
+                reportingCategory: 'PREPAID_AUTO_RECONCILE',
+            });
+            if (wasIncomplete) {
+                await this.generalLedger.append(tx, {
+                    entryType: client_1.GeneralLedgerEntryType.POS_SALE_COMPLETED,
+                    amount: next.totalPrice,
+                    memo: 'POS checkout (prepaid auto-reconcile)',
+                    orderId: next.id,
+                    customerId: next.customerId,
+                    actorUserId: performerId,
+                    metadata: {
+                        posPaymentMethod: client_1.PosPaymentMethod.SUBSCRIPTION_WALLET,
+                        source: 'PREPAID_AUTO_RECONCILE',
+                    },
+                });
+                const actorRow = await tx.user.findUnique({
+                    where: { id: performerId },
+                    select: { branchId: true },
+                });
+                const driverRow = next.driverId
+                    ? await tx.user.findUnique({
+                        where: { id: next.driverId },
+                        select: { branchId: true },
+                    })
+                    : null;
+                await this.inventory.applyOrderStockDecrement(tx, {
+                    orderId: next.id,
+                    actorUserId: performerId,
+                    branchId: driverRow?.branchId ?? actorRow?.branchId ?? null,
+                    reference: `AUTO-PREPAID-${next.id.slice(0, 8)}`,
+                });
+            }
+            paidOrderIds.push(next.id);
+        }
+        if (paidOrderIds.length > 0) {
+            this.logger.log(`[prepaid-auto-reconcile] customerId=${customerId} count=${paidOrderIds.length} orderIds=${paidOrderIds.join(',')}`);
+        }
+        return { paidOrderIds };
+    }
+    async runPrepaidAutoReconcileForCustomer(customerId, performedByUserId) {
+        return this.prisma.$transaction(async (tx) => this.autoReconcileUnpaidInvoicesFromPrepaidBalanceTx(tx, customerId, performedByUserId ?? null), { maxWait: 15_000, timeout: 45_000 });
     }
     decimalFromMinor(minor) {
         return new client_1.Prisma.Decimal((0, finance_money_1.minorToAmountString)(minor));
@@ -299,6 +423,8 @@ let CustomerLedgerService = class CustomerLedgerService {
         const subsidyBranchId = refreshedCustomer?.originBranchId ?? actor.branchId ?? null;
         const balanceMinor = (0, finance_money_1.toMinorFromFixed4)(wallet.balance);
         const debtMinor = (0, finance_money_1.toMinorFromFixed4)(wallet.debt);
+        const implicitReceivableMinor = await this.sumUnsettledUnpaidReceivableMinorTx(tx, params.customerId);
+        const effectiveDebtMinor = debtMinor + implicitReceivableMinor;
         const priceMinor = (0, finance_money_1.toMinorFromFixed4)(plan.salePrice);
         const creditMinor = (0, finance_money_1.toMinorFromFixed4)(plan.actualBalance);
         if (priceMinor < 0n || creditMinor < 0n) {
@@ -307,8 +433,12 @@ let CustomerLedgerService = class CustomerLedgerService {
         if (priceMinor === 0n && creditMinor === 0n) {
             throw new common_1.BadRequestException(`Subscription plan "${plan.name}" is misconfigured: both sale price and credit amount are 0. Ask the Owner to set them in Subscription Plans before activating.`);
         }
-        const debtPaidMinor = debtMinor < creditMinor ? debtMinor : creditMinor;
-        const newDebtMinor = debtMinor - debtPaidMinor;
+        const debtPaidMinor = effectiveDebtMinor < creditMinor ? effectiveDebtMinor : creditMinor;
+        const newDebtMinor = debtMinor - (debtPaidMinor < debtMinor ? debtPaidMinor : debtMinor);
+        this.logger.log(`[subscription-activation] customerId=${params.customerId} planId=${params.planId} ` +
+            `walletDebtMinor=${debtMinor.toString()} implicitUnpostedMinor=${implicitReceivableMinor.toString()} ` +
+            `effectiveDebtMinor=${effectiveDebtMinor.toString()} planCreditMinor=${creditMinor.toString()} ` +
+            `debtPaidMinor=${debtPaidMinor.toString()} autoCloseInvoices=${params.autoCloseInvoices === true}`);
         const rawCreditMinor = creditMinor - debtPaidMinor;
         const balanceIncreaseMinor = rawCreditMinor > 0n ? rawCreditMinor : 0n;
         const newBalanceMinor = balanceMinor + balanceIncreaseMinor;
@@ -396,6 +526,8 @@ let CustomerLedgerService = class CustomerLedgerService {
                     automaticDebtSettlement: true,
                     rolledOverFromSubscriptionId: previousSubscription?.id ?? null,
                     carriedBalanceKd: carriedBalanceStr,
+                    implicitUnpostedReceivableKd: (0, finance_money_1.minorToAmountString)(implicitReceivableMinor),
+                    effectiveDebtForActivationKd: (0, finance_money_1.minorToAmountString)(effectiveDebtMinor),
                 },
             },
         });
@@ -486,18 +618,24 @@ let CustomerLedgerService = class CustomerLedgerService {
                 });
             }
         }
+        const prepaidReconciled = await this.autoReconcileUnpaidInvoicesFromPrepaidBalanceTx(tx, params.customerId, params.performedByUserId);
+        const walletFinal = await tx.customerWallet.findUniqueOrThrow({
+            where: { customerId: params.customerId },
+            select: { balance: true, debt: true },
+        });
         return {
             totalCollected: totalCollectedStr,
             debtSettled: debtSettledStr,
             creditedToBalance: creditedStr,
             previousBalance: wallet.balance.toString(),
             previousDebt: wallet.debt.toString(),
-            newBalance: (0, finance_money_1.minorToAmountString)(newBalanceMinor),
-            newDebt: (0, finance_money_1.minorToAmountString)(newDebtMinor),
+            newBalance: walletFinal.balance.toString(),
+            newDebt: walletFinal.debt.toString(),
             subscriptionId: newSubscription.id,
             rolledOverFromSubscriptionId: previousSubscription?.id ?? null,
             carriedBalanceKd: carriedBalanceStr,
             closedInvoiceIds,
+            prepaidAutoReconciledOrderIds: prepaidReconciled.paidOrderIds,
         };
     }
     async recordPartialDebtPayment(params) {
@@ -624,9 +762,10 @@ let CustomerLedgerService = class CustomerLedgerService {
     }
 };
 exports.CustomerLedgerService = CustomerLedgerService;
-exports.CustomerLedgerService = CustomerLedgerService = __decorate([
+exports.CustomerLedgerService = CustomerLedgerService = CustomerLedgerService_1 = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
-        general_ledger_service_1.GeneralLedgerService])
+        general_ledger_service_1.GeneralLedgerService,
+        inventory_service_1.InventoryService])
 ], CustomerLedgerService);
 //# sourceMappingURL=customer-ledger.service.js.map

@@ -176,15 +176,19 @@ export class UsersController {
   /**
    * V19.17 — Payroll registry: update the per-employee salary defaults
    * (`basicMonthlySalary` + `monthlyAllowances`) that seed future
-   * payroll rows. Restricted to OWNER + GENERAL_MANAGER so branch
-   * managers cannot escalate their own rate.
+   * payroll rows. OWNER + GENERAL_MANAGER + MANAGER (same actors as
+   * payroll create) so branch managers can run the monthly grid.
    */
   @Patch(':id/salary-defaults')
-  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
+  @Roles(
+    SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
+    SafariRole.MANAGER,
+  )
   @ApiOperation({
     summary: `Update salary defaults (${APP_BRAND})`,
     description:
-      'OWNER + GENERAL_MANAGER only. Updates `basicMonthlySalary` + `monthlyAllowances` on the user record; used by the payroll registry page as the seed for each monthly payroll run.',
+      'OWNER, GENERAL_MANAGER, or MANAGER. Updates `basicMonthlySalary` + `monthlyAllowances`, and optionally `payrollRosterLineOrder`, `bankName`, `bankIban` for the payroll roster / salary transfer.',
   })
   @ApiBody({ type: UpdateSalaryDefaultsDto })
   async updateSalaryDefaults(

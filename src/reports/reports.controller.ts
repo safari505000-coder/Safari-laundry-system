@@ -126,6 +126,21 @@ export class ReportsController {
     return this.reportsService.monthlySummary(q.from, q.to);
   }
 
+  @Get('money-flow-statement')
+  @Roles(
+    SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
+    SafariRole.ACCOUNTANT,
+  )
+  @ApiOperation({
+    summary: `Money flow statement — income, deductions, expenses, ledger rollups (${APP_BRAND})`,
+    description:
+      'V19.24 — Consolidated executive lines (same as /reports/executive-summary), approved branch/vehicle expenses, accrued fixed costs by category, collections split, prior-period invoice debt payments, plus GL / wallet / debt ledger rollups for the window.',
+  })
+  moneyFlowStatement(@Query() q: ReportsRangeQueryDto) {
+    return this.reportsService.moneyFlowStatement(q.from, q.to);
+  }
+
   @Get('bank-fees-by-branch')
   @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
   @ApiOperation({

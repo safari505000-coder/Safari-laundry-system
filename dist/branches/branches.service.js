@@ -27,6 +27,18 @@ const CREATE_BRANCH_KEYS = new Set([
     'isActive',
     'isAdministrative',
 ]);
+function readOptionalSortOrder(v, field) {
+    if (v === undefined)
+        return undefined;
+    if (v === null)
+        return null;
+    if (typeof v === 'number' && Number.isInteger(v))
+        return v;
+    if (typeof v === 'string' && /^-?\d+$/.test(v.trim())) {
+        return Number.parseInt(v.trim(), 10);
+    }
+    throw new common_1.BadRequestException(`${field} must be an integer or null`);
+}
 function assertPlainObject(raw) {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
         throw new common_1.BadRequestException('Invalid JSON body');
@@ -56,6 +68,7 @@ let BranchesService = class BranchesService {
         phone: true,
         isActive: true,
         isAdministrative: true,
+        payrollRosterSortOrder: true,
         updatedAt: true,
     };
     listForRole(actorRole) {
@@ -63,7 +76,10 @@ let BranchesService = class BranchesService {
             where: (0, administrative_branch_util_1.canSeeAdministrativeBranches)(actorRole)
                 ? {}
                 : { isAdministrative: false },
-            orderBy: { name: 'asc' },
+            orderBy: [
+                { payrollRosterSortOrder: { sort: 'asc', nulls: 'last' } },
+                { name: 'asc' },
+            ],
             select: this.branchListSelect,
         });
     }
@@ -124,6 +140,7 @@ let BranchesService = class BranchesService {
                 phone: true,
                 isActive: true,
                 isAdministrative: true,
+                payrollRosterSortOrder: true,
                 createdAt: true,
                 updatedAt: true,
             },
@@ -162,6 +179,9 @@ let BranchesService = class BranchesService {
             }
             patch.isAdministrative = dto.isAdministrative;
         }
+        if (dto.payrollRosterSortOrder !== undefined) {
+            patch.payrollRosterSortOrder = dto.payrollRosterSortOrder;
+        }
         try {
             return await this.prisma.branch.update({
                 where: { id },
@@ -173,6 +193,7 @@ let BranchesService = class BranchesService {
                     phone: true,
                     isActive: true,
                     isAdministrative: true,
+                    payrollRosterSortOrder: true,
                     createdAt: true,
                     updatedAt: true,
                 },
@@ -226,12 +247,16 @@ let BranchesService = class BranchesService {
             }
             patch.isAdministrative = b;
         }
+        if ('payrollRosterSortOrder' in o) {
+            patch.payrollRosterSortOrder = readOptionalSortOrder(o.payrollRosterSortOrder, 'payrollRosterSortOrder');
+        }
         const unknown = Object.keys(o).filter((k) => ![
             'name',
             'location',
             'phone',
             'isActive',
             'isAdministrative',
+            'payrollRosterSortOrder',
         ].includes(k));
         if (unknown.length) {
             throw new common_1.BadRequestException(`property ${unknown[0]} should not exist`);
