@@ -12,6 +12,7 @@ import {
   type PayrollRow,
 } from '@/lib/api';
 import { formatKwdLabel } from '@/lib/kwd';
+import { OperatorRouteHint } from '@/modules/shared/components/shell/operator-route-hint';
 import './monthly-summary-print.css';
 
 /**
@@ -404,6 +405,9 @@ export function MonthlySummaryPrintPage() {
 
   return (
     <div className="monthly-summary-print">
+      <div className="no-print px-4 pt-3">
+        <OperatorRouteHint />
+      </div>
       <div className="monthly-summary-print__toolbar no-print">
         <div className="msp-toolbar__hint">
           {ready
@@ -530,6 +534,14 @@ export function MonthlySummaryPrintPage() {
                   >
                     <h3 className="monthly-summary-print__branch-title">
                       {b.branchName}
+                      {b.isAdministrative ?
+                        <span className="monthly-summary-print__chip ms-2">
+                          {t(
+                            'monthlySummary.branchAdminSubtitle',
+                            'مركز تكلفة — إدارة',
+                          )}
+                        </span>
+                      : null}
                     </h3>
                     <PnlTable row={b} />
                     <CollectionsTable row={b} />

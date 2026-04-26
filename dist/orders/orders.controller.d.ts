@@ -59,7 +59,7 @@ export declare class OrdersController {
             unitPrice: import("@prisma/client-runtime-utils").Decimal;
         }[];
     }>;
-    create(dto: CreateOrderDto): Promise<{
+    create(dto: CreateOrderDto, user: JwtUser): Promise<{
         customer: {
             wallet: {
                 balance: import("@prisma/client-runtime-utils").Decimal;

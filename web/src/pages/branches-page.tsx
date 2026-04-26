@@ -69,6 +69,7 @@ export function BranchesPage() {
   const [location, setLocation] = useState('');
   const [phone, setPhone] = useState('');
   const [isActive, setIsActive] = useState(true);
+  const [isAdministrative, setIsAdministrative] = useState(false);
 
   const load = useCallback(() => {
     if (!token || !isOwner) return;
@@ -99,6 +100,7 @@ export function BranchesPage() {
     setLocation('');
     setPhone('');
     setIsActive(true);
+    setIsAdministrative(false);
   }
 
   function openCreate() {
@@ -112,6 +114,7 @@ export function BranchesPage() {
     setLocation(row.location);
     setPhone(row.phone ?? '');
     setIsActive(row.isActive);
+    setIsAdministrative(row.isAdministrative ?? false);
     setDialogOpen(true);
   }
 
@@ -132,6 +135,7 @@ export function BranchesPage() {
           location: trimmedLocation,
           phone: phone.trim(),
           isActive,
+          isAdministrative,
         });
         toast.success(t('branchesPage.updated'));
       } else {
@@ -143,6 +147,7 @@ export function BranchesPage() {
             location: trimmedLocation,
             phone: phone.trim() || undefined,
             isActive,
+            isAdministrative,
           }),
         });
         toast.success(t('branchesPage.created'));
@@ -210,6 +215,7 @@ export function BranchesPage() {
                   <TableHead>{t('branchesPage.colLocation')}</TableHead>
                   <TableHead>{t('branchesPage.colPhone')}</TableHead>
                   <TableHead>{t('branchesPage.colStatus')}</TableHead>
+                  <TableHead>{t('branchesPage.colKind')}</TableHead>
                   <TableHead className="text-end">
                     {t('branchesPage.colActions')}
                   </TableHead>
@@ -219,7 +225,7 @@ export function BranchesPage() {
                 {sortedRows.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={5}
+                      colSpan={6}
                       className="py-10 text-center text-sm text-muted-foreground"
                     >
                       {loading
@@ -251,6 +257,11 @@ export function BranchesPage() {
                             ? t('branchesPage.active')
                             : t('branchesPage.inactive')}
                         </span>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {b.isAdministrative ?
+                          t('branchesPage.kindAdministrative')
+                        : t('branchesPage.kindOperational')}
                       </TableCell>
                       <TableCell className="text-end">
                         <Button
@@ -337,6 +348,21 @@ export function BranchesPage() {
                 checked={isActive}
                 onCheckedChange={setIsActive}
                 aria-label={t('branchesPage.fieldActive')}
+              />
+            </div>
+            <div className="flex items-center justify-between rounded-md border border-border px-3 py-2">
+              <div>
+                <p className="text-sm font-medium">
+                  {t('branchesPage.fieldAdministrative')}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {t('branchesPage.fieldAdministrativeHint')}
+                </p>
+              </div>
+              <Switch
+                checked={isAdministrative}
+                onCheckedChange={setIsAdministrative}
+                aria-label={t('branchesPage.fieldAdministrative')}
               />
             </div>
             <DialogFooter>

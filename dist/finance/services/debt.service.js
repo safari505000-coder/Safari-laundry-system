@@ -603,17 +603,47 @@ let DebtService = class DebtService {
                 }
             }
         }
+        const ordersWithoutDriver = unlinkedUnpaid
+            .filter((o) => !o.driverId)
+            .map((o) => o.id);
+        const issuerFromSettlement = new Map();
+        if (ordersWithoutDriver.length > 0) {
+            const settlements = await this.prisma.transactionHistory.findMany({
+                where: {
+                    orderId: { in: ordersWithoutDriver },
+                    type: client_1.LedgerTransactionType.ORDER_WALLET_SETTLEMENT,
+                    performedById: { not: null },
+                },
+                orderBy: { createdAt: 'desc' },
+                select: {
+                    orderId: true,
+                    performedBy: {
+                        select: { id: true, fullName: true, safariRole: true },
+                    },
+                },
+            });
+            for (const h of settlements) {
+                if (!h.orderId || !h.performedBy)
+                    continue;
+                if (!issuerFromSettlement.has(h.orderId)) {
+                    issuerFromSettlement.set(h.orderId, h.performedBy);
+                }
+            }
+        }
         for (const o of unlinkedUnpaid) {
             const tot = Number.parseFloat(o.totalPrice.toString());
             if (!Number.isFinite(tot) || tot <= 0)
                 continue;
             const branchName = o.driver?.branch?.name?.trim() || o.customer.originBranch?.name?.trim() || null;
             const branchId = o.driver?.branch?.id?.trim() ?? o.customer.originBranch?.id ?? null;
-            const actorUserId = o.driver?.id ?? null;
-            const actorUserName = o.driver?.fullName?.trim() ?? null;
-            const actorUserRole = o.driver?.safariRole
+            const settlementActor = issuerFromSettlement.get(o.id);
+            const actorUserId = o.driver?.id ?? settlementActor?.id ?? null;
+            const actorUserName = o.driver?.fullName?.trim() ?? settlementActor?.fullName?.trim() ?? null;
+            const actorUserRole = o.driver?.safariRole != null
                 ? String(o.driver.safariRole)
-                : null;
+                : settlementActor?.safariRole != null
+                    ? String(settlementActor.safariRole)
+                    : null;
             const issued = (o.completedAt ?? o.createdAt).toISOString();
             const ct = perCustomer.get(o.customerId) ?? { debt: 0, payment: 0 };
             const custOpen = Math.max(ct.debt - ct.payment, 0);
@@ -686,19 +716,7 @@ let DebtService = class DebtService {
             }),
             this.prisma.order.groupBy({
                 by: ['posPaymentMethod'],
-                where: {
-                    ...marketBaseWhere,
-                    debtLedgerEntries: {
-                        some: {
-                            source: client_1.DebtSource.INVOICE_SHORTFALL,
-                            actorUser: {
-                                is: {
-                                    safariRole: { in: [client_1.SafariRole.DRIVER, client_1.SafariRole.MANAGER] },
-                                },
-                            },
-                        },
-                    },
-                },
+                where: marketBaseWhere,
                 _sum: { totalPrice: true },
             }),
         ]);

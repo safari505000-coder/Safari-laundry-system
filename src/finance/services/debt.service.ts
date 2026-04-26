@@ -3,6 +3,7 @@ import {
   CashStatus,
   DebtEntityCategory,
   DebtSource,
+  LedgerTransactionType,
   OrderStatus,
   PosPaymentMethod,
   Prisma,
@@ -251,10 +252,11 @@ export class DebtService {
 
   /**
    * Receivables / "المديونية" — all `INVOICE_SHORTFALL` / `SUBSCRIPTION_OVERUSE`
-   * lines with `orderId` (any actor), aggregated per order. `remaining` deducts
+   * lines with `orderId` (any actor), aggregated per order. Each open amount is
+   * owed by the customer and attributed to `actorUser*` (who issued / settled
+   * the ticket — driver, branch manager, call center, etc.). `remaining` deducts
    * recorded `PAYMENT` (incl. FIFO on customer-level payments). Subscription
-   * overage lines use the same customer-level FIFO (short first by `issuedAt`,
-   * then subscription) as the monthly P&amp;L split.
+   * overage uses the same customer-level FIFO as the monthly P&amp;L split.
    */
   async getUnpaidInvoices(
     query: UnpaidInvoicesQueryDto,
@@ -725,17 +727,53 @@ export class DebtService {
         }
       }
     }
+
+    const ordersWithoutDriver = unlinkedUnpaid
+      .filter((o) => !o.driverId)
+      .map((o) => o.id);
+    const issuerFromSettlement = new Map<
+      string,
+      { id: string; fullName: string | null; safariRole: SafariRole | null }
+    >();
+    if (ordersWithoutDriver.length > 0) {
+      const settlements = await this.prisma.transactionHistory.findMany({
+        where: {
+          orderId: { in: ordersWithoutDriver },
+          type: LedgerTransactionType.ORDER_WALLET_SETTLEMENT,
+          performedById: { not: null },
+        },
+        orderBy: { createdAt: 'desc' },
+        select: {
+          orderId: true,
+          performedBy: {
+            select: { id: true, fullName: true, safariRole: true },
+          },
+        },
+      });
+      for (const h of settlements) {
+        if (!h.orderId || !h.performedBy) continue;
+        if (!issuerFromSettlement.has(h.orderId)) {
+          issuerFromSettlement.set(h.orderId, h.performedBy);
+        }
+      }
+    }
+
     for (const o of unlinkedUnpaid) {
       const tot = Number.parseFloat(o.totalPrice.toString());
       if (!Number.isFinite(tot) || tot <= 0) continue;
       const branchName =
         o.driver?.branch?.name?.trim() || o.customer.originBranch?.name?.trim() || null;
       const branchId = o.driver?.branch?.id?.trim() ?? o.customer.originBranch?.id ?? null;
-      const actorUserId = o.driver?.id ?? null;
-      const actorUserName = o.driver?.fullName?.trim() ?? null;
-      const actorUserRole = o.driver?.safariRole
-        ? String(o.driver.safariRole)
-        : null;
+      const settlementActor = issuerFromSettlement.get(o.id);
+      const actorUserId = o.driver?.id ?? settlementActor?.id ?? null;
+      const actorUserName =
+        o.driver?.fullName?.trim() ?? settlementActor?.fullName?.trim() ?? null;
+      const actorUserRole =
+        o.driver?.safariRole != null
+          ? String(o.driver.safariRole)
+          : settlementActor?.safariRole != null
+            ? String(settlementActor.safariRole)
+            : null;
       const issued = (o.completedAt ?? o.createdAt).toISOString();
       const ct = perCustomer.get(o.customerId) ?? { debt: 0, payment: 0 };
       const custOpen = Math.max(ct.debt - ct.payment, 0);
@@ -805,6 +843,10 @@ export class DebtService {
       status: { not: OrderStatus.CANCELED },
       ...(orderBranchWhereForMarketDebt(marketKpiScope ?? undefined) ?? {}),
     };
+    // `marketUnpaidByMethod`: same UNPAID order universe as the red KPI, split by
+    // `posPaymentMethod`. Every uncollected field total is receivable on the
+    // customer and attributed to whoever issued/settled the ticket (see table
+    // «المُصدِّر»); do not restrict to DRIVER/MANAGER shortfall rows only.
     const [marketAgg, byMethod] = await Promise.all([
       this.prisma.order.aggregate({
         where: marketBaseWhere,
@@ -812,19 +854,7 @@ export class DebtService {
       }),
       this.prisma.order.groupBy({
         by: ['posPaymentMethod'],
-        where: {
-          ...marketBaseWhere,
-          debtLedgerEntries: {
-            some: {
-              source: DebtSource.INVOICE_SHORTFALL,
-              actorUser: {
-                is: {
-                  safariRole: { in: [SafariRole.DRIVER, SafariRole.MANAGER] },
-                },
-              },
-            },
-          },
-        },
+        where: marketBaseWhere,
         _sum: { totalPrice: true },
       }),
     ]);

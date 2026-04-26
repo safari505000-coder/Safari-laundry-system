@@ -28,6 +28,7 @@ import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
 import { parseFixed4ToMinor, toMinorFromFixed4 } from '../finance/finance-money';
 import { InventoryService } from '../inventory/inventory.service';
 import type { JwtUser } from '../auth/decorators/current-user.decorator';
+import { assertUserNotOnAdministrativeBranchForSales } from '../branches/administrative-branch.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { SerialCounterService } from '../serials/serial-counter.service';
 import { AssignDriverDto } from './dto/assign-driver.dto';
@@ -484,6 +485,10 @@ export class OrdersService {
     dto: CreateOrderQuickDto,
   ): Promise<OrderDetail> {
     await this.assertDriverUser(driverUserId);
+    await assertUserNotOnAdministrativeBranchForSales(
+      this.prisma,
+      driverUserId,
+    );
     const serviceType = dto.serviceType ?? ServiceType.NORMAL;
     const lineCreates = this.reconcileLineItems(dto.totalPrice, dto.lineItems);
     const phoneCompact = dto.customerPhone.replace(/[\s-]/g, '').trim();
@@ -544,6 +549,10 @@ export class OrdersService {
         );
       }
       await this.assertPosCheckoutActor(driverUserId);
+      await assertUserNotOnAdministrativeBranchForSales(
+        this.prisma,
+        driverUserId,
+      );
       if (!Number.isFinite(dto.totalPrice) || dto.totalPrice <= 0) {
         throw new BadRequestException(
           'totalPrice must be a finite positive number',
@@ -775,6 +784,10 @@ export class OrdersService {
       );
     }
     await this.assertPosCheckoutActor(driverUserId);
+    await assertUserNotOnAdministrativeBranchForSales(
+      this.prisma,
+      driverUserId,
+    );
     const serviceType = dto.serviceType ?? ServiceType.NORMAL;
     const phoneCompact = dto.customerPhone.replace(/[\s-]/g, '').trim();
 
@@ -928,9 +941,20 @@ export class OrdersService {
   }
 
   /** Manager / owner intake — optional assignment to a driver. */
-  async createAsManager(dto: CreateOrderDto): Promise<OrderDetail> {
+  async createAsManager(
+    dto: CreateOrderDto,
+    managerUserId: string,
+  ): Promise<OrderDetail> {
+    await assertUserNotOnAdministrativeBranchForSales(
+      this.prisma,
+      managerUserId,
+    );
     if (dto.driverId) {
       await this.assertDriverUser(dto.driverId);
+      await assertUserNotOnAdministrativeBranchForSales(
+        this.prisma,
+        dto.driverId,
+      );
     }
     const serviceType = dto.serviceType ?? ServiceType.NORMAL;
     const lineCreates = this.reconcileLineItems(dto.totalPrice, dto.lineItems);
@@ -2033,6 +2057,10 @@ export class OrdersService {
       );
     }
     await this.assertDriverUser(dto.driverId);
+    await assertUserNotOnAdministrativeBranchForSales(
+      this.prisma,
+      dto.driverId,
+    );
     return this.prisma.order.update({
       where: { id: orderId },
       data: { driverId: dto.driverId },
@@ -2123,11 +2151,35 @@ export class OrdersService {
     revenueCompletedOrders: string;
     driverContribution: DriverContributionDto[];
   }> {
+    const opsDrivers = await this.prisma.user.findMany({
+      where: {
+        safariRole: SafariRole.DRIVER,
+        OR: [
+          { branchId: null },
+          { branch: { isAdministrative: false } },
+        ],
+      },
+      select: { id: true },
+    });
+    const opsDriverIds = new Set(opsDrivers.map((u) => u.id));
+
     const totalActiveOrders = await this.prisma.order.count({
-      where: { status: { notIn: terminalStatuses } },
+      where: {
+        status: { notIn: terminalStatuses },
+        OR: [
+          { driverId: null },
+          { driverId: { in: [...opsDriverIds] } },
+        ],
+      },
     });
     const agg = await this.prisma.order.aggregate({
-      where: { status: OrderStatus.COMPLETED },
+      where: {
+        status: OrderStatus.COMPLETED,
+        OR: [
+          { driverId: null },
+          { driverId: { in: [...opsDriverIds] } },
+        ],
+      },
       _sum: { totalPrice: true },
     });
     const sum = agg._sum.totalPrice;
@@ -2136,7 +2188,7 @@ export class OrdersService {
       by: ['driverId'],
       where: {
         status: OrderStatus.COMPLETED,
-        driverId: { not: null },
+        driverId: { in: [...opsDriverIds] },
       },
       _count: true,
       _sum: { totalPrice: true },

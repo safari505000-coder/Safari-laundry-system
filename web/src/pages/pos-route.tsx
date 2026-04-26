@@ -1,5 +1,6 @@
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/auth-context';
+import { OperatorRouteHint } from '@/modules/shared/components/shell/operator-route-hint';
 import { DriverPOS } from '@/modules/driver/pages/DriverPOS';
 import { PosPage } from '@/pages/pos-page';
 
@@ -14,7 +15,27 @@ import { PosPage } from '@/pages/pos-page';
  */
 export function PosRoute() {
   const { user } = useAuth();
-  if (user?.safariRole === 'DRIVER') return <DriverPOS />;
-  if (user?.safariRole === 'MANAGER') return <PosPage />;
+  const hintPath =
+    user?.safariRole === 'DRIVER'
+      ? '/__hint/pos-driver'
+      : user?.safariRole === 'MANAGER'
+        ? '/__hint/pos-manager'
+        : null;
+  if (user?.safariRole === 'DRIVER') {
+    return (
+      <>
+        {hintPath ? <OperatorRouteHint pathOverride={hintPath} /> : null}
+        <DriverPOS />
+      </>
+    );
+  }
+  if (user?.safariRole === 'MANAGER') {
+    return (
+      <>
+        {hintPath ? <OperatorRouteHint pathOverride={hintPath} /> : null}
+        <PosPage />
+      </>
+    );
+  }
   return <Navigate to="/" replace />;
 }

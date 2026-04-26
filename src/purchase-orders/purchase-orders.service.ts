@@ -10,6 +10,7 @@ import {
   PurchaseOrder,
   PurchaseOrderStatus,
 } from '@prisma/client';
+import { assertBranchOperationalForCommerce } from '../branches/administrative-branch.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { CreatePurchaseOrderDto } from './dto/create-purchase-order.dto';
@@ -109,6 +110,7 @@ export class PurchaseOrdersService {
       where: { id: dto.branchId },
     });
     if (!branch) throw new NotFoundException('Branch not found');
+    await assertBranchOperationalForCommerce(this.prisma, dto.branchId);
 
     const seenItemIds = new Set<string>();
     for (const line of dto.lines) {

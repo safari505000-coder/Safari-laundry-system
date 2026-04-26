@@ -53,6 +53,13 @@ import {
 } from '@/modules/shared/components/ui/dialog';
 import { Input } from '@/modules/shared/components/ui/input';
 import { Label } from '@/modules/shared/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/modules/shared/components/ui/select';
 import { Skeleton } from '@/modules/shared/components/ui/skeleton';
 import {
   Table,
@@ -166,6 +173,9 @@ export function PayrollUnifiedPage() {
   // controlled input for every employee on page load.
   const [buffers, setBuffers] = useState<Record<string, EditBuffer>>({});
 
+  /** '' = every branch; otherwise focus one branch card (easier mass edits). */
+  const [branchFilter, setBranchFilter] = useState<string>('');
+
   /**
    * Manual-hold dialog state. Carries the employee AND — when opened
    * from an already-saved row — the payroll id so the new hold can be
@@ -232,6 +242,8 @@ export function PayrollUnifiedPage() {
           location: '',
           phone: '',
           isActive: true,
+          isAdministrative: false,
+          updatedAt: '',
         } as BranchRow);
       const bucket = groups.get(key) ?? { branch, users: [] };
       bucket.users.push(u);
@@ -246,6 +258,11 @@ export function PayrollUnifiedPage() {
         ),
       }));
   }, [users, branches]);
+
+  const visibleBranchGroups = useMemo(() => {
+    if (!branchFilter) return branchGroups;
+    return branchGroups.filter((g) => g.branch.id === branchFilter);
+  }, [branchGroups, branchFilter]);
 
   const grandTotals = useMemo(() => {
     const rows = payrolls ?? [];
@@ -418,6 +435,32 @@ export function PayrollUnifiedPage() {
     }
   }
 
+  async function handleBulkSaveForBranch(branchId: string) {
+    if (!token || !isAdmin) return;
+    const eligible = (users ?? []).filter((u) => {
+      if (!u.isActive || u.branchId !== branchId) return false;
+      if (payrollByUserId.has(u.id)) return false;
+      const buf = getBuffer(u);
+      const basic = Number.parseFloat(buf.basic);
+      return Number.isFinite(basic) && basic > 0;
+    });
+    if (eligible.length === 0) {
+      toast.info('لا يوجد في هذا الفرع مسيرات جاهزة للاعتماد.');
+      return;
+    }
+    setBulkSaving(true);
+    let ok = 0;
+    let fail = 0;
+    for (const u of eligible) {
+      const success = await saveRow(u, true);
+      if (success) ok += 1;
+      else fail += 1;
+    }
+    setBulkSaving(false);
+    if (ok) toast.success(`تم اعتماد ${ok} مسيراً في الفرع`);
+    if (fail) toast.error(`تعذّر حفظ ${fail} صف — راجع القيم`);
+  }
+
   async function handleBulkSave() {
     if (!token || !isAdmin) return;
     const eligible = (users ?? []).filter((u) => {
@@ -501,6 +544,28 @@ export function PayrollUnifiedPage() {
               onChange={(e) => setMonth(e.target.value)}
               className="w-[170px]"
             />
+          </div>
+          <div className="space-y-1.5 min-w-[200px]">
+            <Label>عرض الفرع</Label>
+            <Select
+              value={branchFilter || '__all__'}
+              onValueChange={(v) =>
+                setBranchFilter(!v || v === '__all__' ? '' : v)
+              }
+              disabled={loading || branchGroups.length === 0}
+            >
+              <SelectTrigger className="w-[220px]">
+                <SelectValue placeholder="كل الفروع" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">كل الفروع</SelectItem>
+                {branchGroups.map(({ branch }) => (
+                  <SelectItem key={branch.id} value={branch.id}>
+                    {branch.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <Button variant="outline" onClick={handleExport} disabled={loading}>
             <FileSpreadsheet className="me-1 size-4" />
@@ -618,19 +683,34 @@ export function PayrollUnifiedPage() {
             لا يوجد موظفون مسجّلون.
           </CardContent>
         </Card>
+      ) : visibleBranchGroups.length === 0 ? (
+        <Card>
+          <CardContent className="py-10 text-center text-muted-foreground">
+            لا يوجد موظفون في الفرع المحدد.
+          </CardContent>
+        </Card>
       ) : (
-        branchGroups.map(({ branch, users: branchUsers }) => {
+        visibleBranchGroups.map(({ branch, users: branchUsers }) => {
           const branchPayrolls = branchUsers
             .map((u) => payrollByUserId.get(u.id))
             .filter((p): p is PayrollRow => !!p);
           const missing = branchUsers.length - branchPayrolls.length;
+          const branchPendingSave = branchUsers.filter(
+            (u) =>
+              !payrollByUserId.has(u.id) &&
+              Number.parseFloat(getBuffer(u).basic) > 0,
+          ).length;
           const branchNet = sumKwdStrings(
             branchPayrolls.map((p) => payrollNet(p).toFixed(4)),
           );
           return (
-            <Card key={branch.id} data-card="branch-payroll">
+            <Card
+              key={branch.id}
+              id={`payroll-branch-${branch.id}`}
+              data-card="branch-payroll"
+            >
               <CardHeader className="flex flex-row flex-wrap items-baseline justify-between gap-2">
-                <CardTitle className="flex items-center gap-2 text-base">
+                <CardTitle className="flex flex-wrap items-center gap-2 text-base">
                   <Banknote className="size-5 text-primary" />
                   {branch.name}
                   <Badge variant="outline" className="text-xs">
@@ -650,6 +730,23 @@ export function PayrollUnifiedPage() {
                       مكتمل
                     </Badge>
                   )}
+                  {branchPendingSave > 0 ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="h-8"
+                      disabled={bulkSaving || loading}
+                      onClick={() => void handleBulkSaveForBranch(branch.id)}
+                    >
+                      {bulkSaving ? (
+                        <Loader2 className="me-1 size-3.5 animate-spin" />
+                      ) : (
+                        <PlayCircle className="me-1 size-3.5" />
+                      )}
+                      اعتماد مسير هذا الفرع ({branchPendingSave})
+                    </Button>
+                  ) : null}
                 </CardTitle>
                 <div className="text-sm text-muted-foreground">
                   صافي الفرع:{' '}

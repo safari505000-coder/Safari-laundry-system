@@ -229,15 +229,13 @@ export function UnpaidInvoicesPage() {
     [visibleRows],
   );
 
-  /** Oldest invoice first per customer so «إجمالي المديونية» increases down the table. */
+  /** Newest debt line first (`issuedAt` desc); tie-break by order id and debt source. */
   const displayRows = useMemo(() => {
     const rows = [...visibleRows];
     rows.sort((a, b) => {
-      const c = a.customerId.localeCompare(b.customerId);
-      if (c !== 0) return c;
       const ta = new Date(a.issuedAt).getTime();
       const tb = new Date(b.issuedAt).getTime();
-      if (ta !== tb) return ta - tb;
+      if (ta !== tb) return tb - ta;
       const o = a.orderId.localeCompare(b.orderId);
       if (o !== 0) return o;
       return debtSourceSortRank(a.debtSource) - debtSourceSortRank(b.debtSource);

@@ -13,7 +13,8 @@ import {
  * Table: `DebtLedgerEntry` with `source = INVOICE_SHORTFALL` (or
  * subscription overuse) and `orderId` set; any actor. Headline KPI: order UNPAID
  * sum in branch (matches call-center red card).
- * Each entry represents customer debt tied to an order. PAYMENT rows
+ * Each entry is customer receivable tied to an order, with the issuing
+ * employee on `actorUser*` (driver, branch manager, etc.). PAYMENT rows
  * reduce remaining (per-order + FIFO); see `DebtService.getUnpaidInvoices`.
  *
  * Aggregation is per-invoice: multiple DebtLedgerEntry rows for the
@@ -111,7 +112,11 @@ export class UnpaidInvoiceRowDto {
   @ApiPropertyOptional({ format: 'uuid', nullable: true })
   actorUserId: string | null;
 
-  @ApiPropertyOptional({ nullable: true })
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Employee who issued / settled the ticket (field accountability alongside customer debt).',
+  })
   actorUserName: string | null;
 
   @ApiPropertyOptional({
@@ -179,7 +184,10 @@ export class UnpaidInvoiceRowDto {
   lastEntryAt: string;
 }
 
-/** UNPAID `Order.totalPrice` grouped by `posPaymentMethod` (field: driver/branch shortfall on order). */
+/**
+ * UNPAID `Order.totalPrice` grouped by `posPaymentMethod` — full market scope
+ * (same filter as `totalMarketUnpaidKd`), not only driver/manager ledger rows.
+ */
 export class MarketUnpaidByMethodDto {
   @ApiProperty({ description: 'CASH' })
   cashKd: string;
@@ -215,7 +223,7 @@ export class UnpaidInvoicesKpisDto {
   totalPaidKd: string;
   @ApiProperty({
     description:
-      'Σ of remaining open amounts on shortfall rows (ledger net, driver/manager scope).',
+      'Σ `remainingKd` for open rows in this response (ledger + UNPAITotal lines).',
   })
   openDebtKd: string;
   @ApiProperty({

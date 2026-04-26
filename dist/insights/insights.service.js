@@ -193,11 +193,23 @@ let InsightsService = InsightsService_1 = class InsightsService {
         const driverIds = groups
             .map((g) => g.driverId)
             .filter((v) => v != null);
+        const driverBranchFlags = await this.prisma.user.findMany({
+            where: { id: { in: driverIds } },
+            select: { id: true, branch: { select: { isAdministrative: true } } },
+        });
+        const opsDriverIds = new Set(driverBranchFlags
+            .filter((u) => !u.branch?.isAdministrative)
+            .map((u) => u.id));
+        const filteredGroups = groups.filter((g) => g.driverId != null && opsDriverIds.has(g.driverId));
+        if (filteredGroups.length === 0) {
+            return { periodDays, drivers: [] };
+        }
+        const opsIdList = [...opsDriverIds];
         const orders = await this.prisma.order.findMany({
             where: {
                 completedAt: { gte: from, lt: to },
                 status: client_1.OrderStatus.COMPLETED,
-                driverId: { in: driverIds },
+                driverId: { in: opsIdList },
             },
             select: {
                 driverId: true,
@@ -219,7 +231,7 @@ let InsightsService = InsightsService_1 = class InsightsService {
                 (turnaroundNByDriver[o.driverId] ?? 0) + 1;
         }
         const users = await this.prisma.user.findMany({
-            where: { id: { in: driverIds } },
+            where: { id: { in: opsIdList } },
             select: {
                 id: true,
                 fullName: true,
@@ -229,7 +241,7 @@ let InsightsService = InsightsService_1 = class InsightsService {
             },
         });
         const userIndex = new Map(users.map((u) => [u.id, u]));
-        const raw = groups
+        const raw = filteredGroups
             .filter((g) => g.driverId)
             .map((g) => {
             const id = g.driverId;

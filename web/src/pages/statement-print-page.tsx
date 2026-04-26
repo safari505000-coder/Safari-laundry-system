@@ -15,6 +15,7 @@ import {
   type CustomerLedgerResponse,
 } from '@/lib/api';
 import { formatKwdLabel } from '@/lib/kwd';
+import { OperatorRouteHint } from '@/modules/shared/components/shell/operator-route-hint';
 import { PrintableSheet } from '@/modules/shared/print/PrintableSheet';
 import './statement-print.css';
 
@@ -79,13 +80,17 @@ const METHOD_AR: Record<string, string> = {
   PAYMENT_LINK: 'رابط دفع',
   ONLINE: 'أونلاين',
   SUBSCRIPTION_WALLET: 'من الرصيد',
+  DEBT_ON_ACCOUNT: 'على الحساب (ذمة)',
 };
 
 const EVENT_KIND_AR: Record<string, string> = {
   SUBSCRIPTION_ACTIVATION: 'تجديد أو تفعيل اشتراك',
   SUBSCRIPTION_ROLLOVER_CARRY: 'ترحيل رصيد اشتراك',
-  ORDER_SETTLEMENT: 'تسوية فاتورة (من رصيد الاشتراك)',
-  PARTIAL_DEBT_PAYMENT: 'تسديد جزء من المديونية',
+  ORDER_PAID_IN_FULL: 'فاتورة مدفوعة',
+  ORDER_SETTLEMENT_SUBSCRIPTION: 'تسوية فاتورة (من رصيد الاشتراك)',
+  ORDER_INVOICE_PARTIAL_PAYMENT: 'تسديد جزئي للفاتورة',
+  ORDER_INVOICE_ON_ACCOUNT: 'تسجيل فاتورة على الحساب (ذمة)',
+  PARTIAL_DEBT_PAYMENT: 'تسديد جزئي من المديونية',
 };
 
 /**
@@ -373,9 +378,11 @@ export function StatementSheet({
           <p className="stmt-events-intro">
             يوضح هذا الجدول أين ذهب المال:{' '}
             <strong>تجديد/تفعيل اشتراك</strong> (مع تفصيل دفع المديونية
-            وإقفال فواتير سابقة عند الضغط على الصف الموسّع)، و
-            <strong> تسوية فواتير من رصيد الاشتراك</strong>، و
-            <strong> ترحيل رصيد</strong> و<strong>تسديد مديونية</strong>.
+            وإقفال فواتير سابقة عند الصف الموسّع)، و
+            <strong> فواتير مدفوعة</strong> (نقداً أو إلكترونياً)، و
+            <strong> تسوية من رصيد الاشتراك</strong>، و
+            <strong> تسديد جزئي</strong>، و<strong>تسجيل آجل</strong>، و
+            <strong>ترحيل رصيد</strong>.
           </p>
           {data.events.length === 0 ? (
             <p className="stmt-empty">لا توجد حركة مالية مسجّلة.</p>
@@ -492,7 +499,14 @@ export function StatementPrintPage() {
     }
   };
 
-  return <StatementSheet data={data} rangeLabel={rangeLabel} onBack={handleBack} />;
+  return (
+    <>
+      <div className="mx-auto max-w-6xl print:hidden">
+        <OperatorRouteHint />
+      </div>
+      <StatementSheet data={data} rangeLabel={rangeLabel} onBack={handleBack} />
+    </>
+  );
 }
 
 /**

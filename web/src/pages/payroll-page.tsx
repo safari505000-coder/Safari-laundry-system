@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -95,6 +95,60 @@ export function PayrollPage() {
       ),
     [users],
   );
+
+  const staffByBranch = useMemo(() => {
+    const map = new Map<
+      string,
+      { branchName: string; users: TeamUserRow[] }
+    >();
+    for (const u of eligibleStaff) {
+      const key = u.branchId ?? '__unassigned__';
+      const branchName =
+        key === '__unassigned__' ?
+          t('payroll.unassignedBranch')
+        : (u.branch?.name ?? '—');
+      let bucket = map.get(key);
+      if (!bucket) {
+        bucket = { branchName, users: [] };
+        map.set(key, bucket);
+      }
+      bucket.users.push(u);
+    }
+    return Array.from(map.entries())
+      .map(([branchId, v]) => ({
+        branchId,
+        branchName: v.branchName,
+        users: v.users.sort((a, b) =>
+          a.fullName.localeCompare(b.fullName, 'ar'),
+        ),
+      }))
+      .sort((a, b) =>
+        a.branchName.localeCompare(b.branchName, 'ar'),
+      );
+  }, [eligibleStaff, t]);
+
+  const payrollByBranch = useMemo(() => {
+    if (!payrolls?.length) return [];
+    const map = new Map<string, { branchName: string; rows: PayrollRow[] }>();
+    for (const p of payrolls) {
+      const id = p.branch.id;
+      const name = p.branch.name;
+      const bucket = map.get(id) ?? { branchName: name, rows: [] };
+      bucket.rows.push(p);
+      map.set(id, bucket);
+    }
+    return Array.from(map.entries())
+      .map(([branchId, v]) => ({
+        branchId,
+        branchName: v.branchName,
+        rows: v.rows.sort((a, b) =>
+          a.user.fullName.localeCompare(b.user.fullName, 'ar'),
+        ),
+      }))
+      .sort((a, b) =>
+        a.branchName.localeCompare(b.branchName, 'ar'),
+      );
+  }, [payrolls]);
 
   const loadRefs = useCallback(async () => {
     if (!token || !hasRole('OWNER', 'GENERAL_MANAGER')) return;
@@ -284,6 +338,9 @@ export function PayrollPage() {
         <Card className="rounded-[20px] border-border shadow-sm lg:col-span-2">
           <CardHeader>
             <CardTitle className="text-base">{t('payroll.staffTitle')}</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              {t('payroll.staffGroupedHint')}
+            </p>
           </CardHeader>
           <CardContent className="p-0">
             {loadingRefs || !users ?
@@ -305,23 +362,38 @@ export function PayrollPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {eligibleStaff.map((u) => (
-                    <TableRow key={u.id}>
-                      <TableCell className="font-medium">
-                        {u.fullName}
-                        <span className="ms-2 text-xs text-muted-foreground">
-                          @{u.username}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        {t(`roles.${u.safariRole}`, {
-                          defaultValue: u.safariRole,
-                        })}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {u.branch?.name ?? '—'}
-                      </TableCell>
-                    </TableRow>
+                  {staffByBranch.map(({ branchId, branchName, users: group }) => (
+                    <Fragment key={branchId}>
+                      <TableRow className="bg-muted/50 hover:bg-muted/50">
+                        <TableCell
+                          colSpan={3}
+                          className="py-2 text-sm font-semibold text-foreground"
+                        >
+                          {branchName}
+                          <span className="ms-2 font-normal text-muted-foreground">
+                            ({group.length})
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                      {group.map((u) => (
+                        <TableRow key={u.id}>
+                          <TableCell className="font-medium">
+                            {u.fullName}
+                            <span className="ms-2 text-xs text-muted-foreground">
+                              @{u.username}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            {t(`roles.${u.safariRole}`, {
+                              defaultValue: u.safariRole,
+                            })}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {u.branch?.name ?? '—'}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </Fragment>
                   ))}
                 </TableBody>
               </Table>
@@ -350,10 +422,17 @@ export function PayrollPage() {
                   <SelectValue placeholder={t('payroll.pickEmployee')} />
                 </SelectTrigger>
                 <SelectContent>
-                  {eligibleStaff.map((u) => (
-                    <SelectItem key={u.id} value={u.id}>
-                      {u.fullName} · {t(`roles.${u.safariRole}`)}
-                    </SelectItem>
+                  {staffByBranch.map(({ branchId, branchName, users: group }) => (
+                    <Fragment key={branchId}>
+                      <div className="px-2 py-1.5 text-[11px] font-semibold text-muted-foreground">
+                        {branchName}
+                      </div>
+                      {group.map((u) => (
+                        <SelectItem key={u.id} value={u.id}>
+                          {u.fullName} · {t(`roles.${u.safariRole}`)}
+                        </SelectItem>
+                      ))}
+                    </Fragment>
                   ))}
                 </SelectContent>
               </Select>
@@ -431,6 +510,9 @@ export function PayrollPage() {
       <Card className="rounded-[20px] border-border shadow-sm">
         <CardHeader>
           <CardTitle className="text-base">{t('payroll.listTitle')}</CardTitle>
+          <p className="text-xs text-muted-foreground">
+            {t('payroll.listGroupedHint')}
+          </p>
         </CardHeader>
         <CardContent className="p-0">
           {loadingList && !payrolls ?
@@ -459,71 +541,90 @@ export function PayrollPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {payrolls.map((p) => (
-                  <TableRow key={p.id}>
-                    <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
-                      {new Date(p.paymentDate).toLocaleDateString(dateLocale)}
-                    </TableCell>
-                    <TableCell className="font-medium">
-                      {p.user.fullName}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {p.branch.name}
-                    </TableCell>
-                    <TableCell className="text-end tabular-nums text-emerald-600">
-                      {Number.parseFloat(p.commissionAmount ?? '0') > 0
-                        ? formatKwdLabel(p.commissionAmount ?? '0')
-                        : '—'}
-                    </TableCell>
-                    <TableCell className="text-end tabular-nums text-amber-600">
-                      {Number.parseFloat(p.debtHoldAmount ?? '0') > 0
-                        ? formatKwdLabel(p.debtHoldAmount ?? '0')
-                        : '—'}
-                    </TableCell>
-                    <TableCell className="text-end tabular-nums text-emerald-600">
-                      {Number.parseFloat(p.debtReleaseAmount ?? '0') > 0
-                        ? formatKwdLabel(p.debtReleaseAmount ?? '0')
-                        : '—'}
-                    </TableCell>
-                    <TableCell className="text-end tabular-nums text-rose-600">
-                      {Number.parseFloat(p.loanDeduction ?? '0') > 0
-                        ? '−' + formatKwdLabel(p.loanDeduction ?? '0')
-                        : '—'}
-                    </TableCell>
-                    <TableCell className="text-end tabular-nums font-semibold">
-                      {formatKwdLabel(payrollNetKd(p))}
-                    </TableCell>
-                    <TableCell>
-                      {p.status === 'PAID' ?
-                        <Badge>{t('payroll.statusPaid')}</Badge>
-                      : <Badge variant="secondary">{t('payroll.statusPending')}</Badge>}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        {p.status === 'PENDING' ?
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            disabled={markingId === p.id}
-                            onClick={() => void markPaid(p.id)}
-                          >
-                            {markingId === p.id ?
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            : t('payroll.markPaid')}
-                          </Button>
-                        : null}
-                        <a
-                          href={`/payroll/${p.id}/print`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex h-8 items-center justify-center rounded-md border border-input bg-background px-3 text-xs font-medium shadow-sm transition hover:bg-accent"
-                        >
-                          {t('payroll.printPayslip')}
-                        </a>
-                      </div>
-                    </TableCell>
-                  </TableRow>
+                {payrollByBranch.map(({ branchId, branchName, rows }) => (
+                  <Fragment key={branchId}>
+                    <TableRow className="bg-muted/50 hover:bg-muted/50">
+                      <TableCell
+                        colSpan={10}
+                        className="py-2 text-sm font-semibold text-foreground"
+                      >
+                        {branchName}
+                        <span className="ms-2 font-normal text-muted-foreground">
+                          ({rows.length})
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                    {rows.map((p) => (
+                      <TableRow key={p.id}>
+                        <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                          {new Date(p.paymentDate).toLocaleDateString(
+                            dateLocale,
+                          )}
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {p.user.fullName}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {p.branch.name}
+                        </TableCell>
+                        <TableCell className="text-end tabular-nums text-emerald-600">
+                          {Number.parseFloat(p.commissionAmount ?? '0') > 0
+                            ? formatKwdLabel(p.commissionAmount ?? '0')
+                            : '—'}
+                        </TableCell>
+                        <TableCell className="text-end tabular-nums text-amber-600">
+                          {Number.parseFloat(p.debtHoldAmount ?? '0') > 0
+                            ? formatKwdLabel(p.debtHoldAmount ?? '0')
+                            : '—'}
+                        </TableCell>
+                        <TableCell className="text-end tabular-nums text-emerald-600">
+                          {Number.parseFloat(p.debtReleaseAmount ?? '0') > 0
+                            ? formatKwdLabel(p.debtReleaseAmount ?? '0')
+                            : '—'}
+                        </TableCell>
+                        <TableCell className="text-end tabular-nums text-rose-600">
+                          {Number.parseFloat(p.loanDeduction ?? '0') > 0
+                            ? '−' + formatKwdLabel(p.loanDeduction ?? '0')
+                            : '—'}
+                        </TableCell>
+                        <TableCell className="text-end tabular-nums font-semibold">
+                          {formatKwdLabel(payrollNetKd(p))}
+                        </TableCell>
+                        <TableCell>
+                          {p.status === 'PAID' ?
+                            <Badge>{t('payroll.statusPaid')}</Badge>
+                          : <Badge variant="secondary">
+                              {t('payroll.statusPending')}
+                            </Badge>}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            {p.status === 'PENDING' ?
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                disabled={markingId === p.id}
+                                onClick={() => void markPaid(p.id)}
+                              >
+                                {markingId === p.id ?
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                : t('payroll.markPaid')}
+                              </Button>
+                            : null}
+                            <a
+                              href={`/payroll/${p.id}/print`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex h-8 items-center justify-center rounded-md border border-input bg-background px-3 text-xs font-medium shadow-sm transition hover:bg-accent"
+                            >
+                              {t('payroll.printPayslip')}
+                            </a>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </Fragment>
                 ))}
               </TableBody>
             </Table>

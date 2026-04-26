@@ -16,7 +16,20 @@ const KWD_SUFFIX = ' د.ك';
 export function formatKwdLabel(s: string | number): string {
   const raw = typeof s === 'number' ? s : Number.parseFloat(s || '0');
   if (!Number.isFinite(raw)) return `${String(s)}${KWD_SUFFIX}`;
-  return `${raw.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}${KWD_SUFFIX}`;
+  return `${raw.toLocaleString('en-GB', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}${KWD_SUFFIX}`;
+}
+
+/** Same as `formatKwdLabel` but prefixes `+` for credit and `-` for debt. */
+export function formatSignedKwdLabel(s: string | number): string {
+  const raw = typeof s === 'number' ? s : Number.parseFloat(s || '0');
+  if (!Number.isFinite(raw)) return `${String(s)}${KWD_SUFFIX}`;
+  const absStr = Math.abs(raw).toLocaleString('en-GB', {
+    minimumFractionDigits: 3,
+    maximumFractionDigits: 3,
+  });
+  if (raw > 0) return `+${absStr}${KWD_SUFFIX}`;
+  if (raw < 0) return `-${absStr}${KWD_SUFFIX}`;
+  return `${absStr}${KWD_SUFFIX}`;
 }
 
 /** Decimal string a − b (4dp) for receipt lines. */

@@ -126,6 +126,7 @@ export declare class ReportsController {
         branches: {
             branchId: string;
             branchName: string;
+            isAdministrative: boolean;
             grossRevenueKd: string;
             bankFeesTotalKd: string;
             settledRevenueAfterBankFeesKd: string;

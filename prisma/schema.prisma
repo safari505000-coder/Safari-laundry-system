@@ -1208,6 +1208,13 @@ model Branch {
   location  String
   phone     String?
   isActive  Boolean  @default(true)
+  /**
+   * V19.25 — Administrative / HQ cost-center branch: no POS, no purchase
+   * orders, no user accounts may be assigned here. Visible in branch
+   * pickers only to OWNER / GENERAL_MANAGER / ACCOUNTANT. Carries
+   * fixed + variable expenses and payroll attribution only.
+   */
+  isAdministrative Boolean @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

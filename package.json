@@ -31,6 +31,8 @@
     "db:reset-invoices": "tsx scripts/reset-invoices.ts",
     "db:reset-money": "tsx scripts/reset-invoices.ts --confirm=DELETE-INVOICES-AND-MONEY",
     "db:reset-local": "tsx scripts/reset-invoices.ts --confirm=DELETE-LOCAL-TEST-ALL",
+    "db:wipe-operational": "tsx scripts/reset-invoices.ts --confirm=DELETE-OPERATIONAL-DATA",
+    "db:backup-desktop": "tsx scripts/backup-db-to-desktop.ts",
     "seed:price-list": "tsx scripts/seed-price-list.ts",
     "web:dev": "npm run dev --prefix web",
     "web:build": "npm run build --prefix web",

@@ -38,8 +38,8 @@ let OrdersController = class OrdersController {
     createQuick(dto, user) {
         return this.ordersService.createQuick(user.userId, dto);
     }
-    create(dto) {
-        return this.ordersService.createAsManager(dto);
+    create(dto, user) {
+        return this.ordersService.createAsManager(dto, user.userId);
     }
     findAll(user, filters) {
         return this.ordersService.findAllForActor(user.userId, user.role, user.branchId, filters);
@@ -117,8 +117,9 @@ __decorate([
         description: 'Same validation as driver quick create: Kuwait phone, **totalPrice > 0**, **EXPRESS|NORMAL**, optional **lineItems** with total reconciliation. Optional driver assignment. Branch managers only — drivers use POST /orders/quick; Call Center is NOT permitted to issue invoices (Dastur §2, V19.3).',
     }),
     __param(0, (0, common_1.Body)()),
+    __param(1, (0, current_user_decorator_1.CurrentUser)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [create_order_dto_1.CreateOrderDto]),
+    __metadata("design:paramtypes", [create_order_dto_1.CreateOrderDto, Object]),
     __metadata("design:returntype", void 0)
 ], OrdersController.prototype, "create", null);
 __decorate([

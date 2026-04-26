@@ -94,7 +94,14 @@ export class CustomerLedgerSubscriptionDto {
 export type CustomerLedgerEventKind =
   | 'SUBSCRIPTION_ACTIVATION'
   | 'SUBSCRIPTION_ROLLOVER_CARRY'
-  | 'ORDER_SETTLEMENT'
+  /** فاتورة سُدّت كاملة نقداً / كي نت / رابط / أونلاين (بدون خصم من رصيد الاشتراك). */
+  | 'ORDER_PAID_IN_FULL'
+  /** خصم من رصيد الاشتراك فقط (SUBSCRIPTION_WALLET). */
+  | 'ORDER_SETTLEMENT_SUBSCRIPTION'
+  /** جزء من رصيد الاشتراك + جزء دفع خارجي لنفس الفاتورة. */
+  | 'ORDER_INVOICE_PARTIAL_PAYMENT'
+  /** إصدار فاتورة على الحساب (ذمة) — أول تسوية للطلب. */
+  | 'ORDER_INVOICE_ON_ACCOUNT'
   | 'PARTIAL_DEBT_PAYMENT';
 
 /**
@@ -131,7 +138,10 @@ export class CustomerLedgerEventDto {
     enum: [
       'SUBSCRIPTION_ACTIVATION',
       'SUBSCRIPTION_ROLLOVER_CARRY',
-      'ORDER_SETTLEMENT',
+      'ORDER_PAID_IN_FULL',
+      'ORDER_SETTLEMENT_SUBSCRIPTION',
+      'ORDER_INVOICE_PARTIAL_PAYMENT',
+      'ORDER_INVOICE_ON_ACCOUNT',
       'PARTIAL_DEBT_PAYMENT',
     ],
   })

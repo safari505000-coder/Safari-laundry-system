@@ -672,7 +672,7 @@ export class ReportsService {
       this.prisma.branch.findMany({
         where: { isActive: true },
         orderBy: { name: 'asc' },
-        select: { id: true, name: true },
+        select: { id: true, name: true, isAdministrative: true },
       }),
       this.computeCollectionsForRange(from, to),
       this.computeDebtPaymentsInRange(from, to),
@@ -708,6 +708,7 @@ export class ReportsService {
         return {
           branchId: b.id,
           branchName: b.name,
+          isAdministrative: b.isAdministrative,
           grossRevenueKd: row.grossRevenueKd,
           bankFeesTotalKd: row.bankFeesTotalKd,
           settledRevenueAfterBankFeesKd: row.settledRevenueAfterBankFeesKd,

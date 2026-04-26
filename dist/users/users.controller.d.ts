@@ -30,6 +30,7 @@ export declare class UsersController {
             phone: string | null;
             isActive: boolean;
             location: string;
+            isAdministrative: boolean;
         } | null;
         id: string;
         createdAt: Date;
@@ -733,6 +734,7 @@ export declare class UsersController {
             phone: string | null;
             isActive: boolean;
             location: string;
+            isAdministrative: boolean;
         } | null;
         id: string;
         createdAt: Date;
@@ -1436,6 +1438,7 @@ export declare class UsersController {
             phone: string | null;
             isActive: boolean;
             location: string;
+            isAdministrative: boolean;
         } | null;
         id: string;
         createdAt: Date;
@@ -2142,6 +2145,7 @@ export declare class UsersController {
             phone: string | null;
             isActive: boolean;
             location: string;
+            isAdministrative: boolean;
         } | null;
         id: string;
         createdAt: Date;
@@ -2848,6 +2852,7 @@ export declare class UsersController {
             phone: string | null;
             isActive: boolean;
             location: string;
+            isAdministrative: boolean;
         } | null;
         id: string;
         createdAt: Date;
@@ -3554,6 +3559,7 @@ export declare class UsersController {
             phone: string | null;
             isActive: boolean;
             location: string;
+            isAdministrative: boolean;
         } | null;
         id: string;
         createdAt: Date;

@@ -120,7 +120,7 @@ export declare class OrdersService {
     createQuick(driverUserId: string, dto: CreateOrderQuickDto): Promise<OrderDetail>;
     posCheckout(driverUserId: string, dto: PosCheckoutDto): Promise<PosCheckoutOrderDetail>;
     posCheckoutBundle(driverUserId: string, dto: PosCheckoutBundleDto): Promise<PosCheckoutBundleResult>;
-    createAsManager(dto: CreateOrderDto): Promise<OrderDetail>;
+    createAsManager(dto: CreateOrderDto, managerUserId: string): Promise<OrderDetail>;
     listUnpaidCollectionOrders(branchId?: string | null, actor?: JwtUser): Promise<{
         orderId: string;
         customerId: string;

@@ -1,4 +1,6 @@
-﻿/** Arabic UI — aligned with executive terms (مركز العمليات، إجمالي الكاش، إلخ). */
+﻿import { operatorHints as operatorHintsAr } from './operator-hints-ar';
+
+/** Arabic UI — aligned with executive terms (مركز العمليات، إجمالي الكاش، إلخ). */
 export const ar = {
   nav: {
     dashboard: 'لوحة التحكم',
@@ -213,6 +215,12 @@ export const ar = {
     saveEdit: 'حفظ التعديل',
     updated: 'تم حفظ تعديلات الفرع',
     colActions: 'إجراءات',
+    colKind: 'النوع',
+    kindOperational: 'تشغيلي',
+    kindAdministrative: 'إدارة / مقر',
+    fieldAdministrative: 'فرع إداري (مركز تكلفة)',
+    fieldAdministrativeHint:
+      'بدون نقطة بيع أو مستخدمين؛ يظهر للمالك والمدير العام والمحاسب فقط. يُسجَّل عليه المصاريف والرواتب المركزية.',
   },
   manageItems: {
     title: 'قائمة أسعار الغسيل',
@@ -1205,25 +1213,34 @@ export const ar = {
   },
   knetAudit: {
     title: 'مطابقة كي نت',
-    subtitle: 'مطابقة طلبات كي نت في النظام مع المبالغ المستخرجة من ملف CSV البنكي.',
+    subtitle:
+      'مطابقة فواتير كي نت مع كشف البنك: إما رفع CSV أو إدخال مبلغ/مرجع كل فاتورة يدوياً من الكشف الورقي أو البنكي. الإدخال اليدوي له أولوية على CSV.',
     filters: 'فترة التقرير',
     from: 'من',
     to: 'إلى',
     loadOrders: 'تحميل طلبات كي نت',
     bankCsv: 'كشف البنك (CSV)',
     parsedAmounts: 'تم استخراج {{count}} مبلغاً من الملف',
+    bankManualCard: 'إدخال يدوي من كشف البنك',
+    bankManualHint:
+      'في الجدول أدناه، عمود «مبلغ كشف البنك»: انسخ المبلغ كما يظهر في كشف الحساب أو إيصال الـ POS البنكي. إذا طابق مبلغ الفاتورة يصبح الصف أخضر. عمود «مرجع البنك» اختياري (رقم عملية / Auth).',
+    clearManual: 'مسح الإدخال اليدوي',
+    bankAmountPlaceholder: 'مثال: 12.500',
+    bankRefPlaceholder: 'مرجع',
     matchTable: 'المطابقة',
     loading: 'جاري التحميل…',
     colStatus: 'الحالة',
     colOrder: 'الطلب',
     colWhen: 'الوقت',
     colCustomer: 'العميل',
-    colAmount: 'المبلغ',
+    colAmount: 'مبلغ الفاتورة',
+    colBankStatementAmount: 'مبلغ كشف البنك',
+    colBankRef: 'مرجع البنك',
     unmatchedBank: 'مبالغ من CSV لم تُطابق أي طلب',
     status: {
       green: 'مطابق',
       yellow: 'مراجعة',
-      red: 'ناقص',
+      red: 'ناقص / لا يطابق',
     },
   },
   monthlySummary: {
@@ -1763,9 +1780,12 @@ export const ar = {
     kpiSettlements: 'تسوية من رصيد الاشتراك',
     kpiSubActivations: 'تجديد / تفعيل اشتراك',
     kpiRollover: 'ترحيل رصيد',
-    kpiPartialDebt: 'تسديد مديونية جزئي',
+    kpiPartialDebt: 'تسديد جزئي',
+    kpiPartialDebtHint:
+      'مديونية عامة أو فاتورة دُفعت جزئياً من الرصيد مع دفع خارجي.',
+    kpiOrderPaidFull: 'فاتورة مدفوعة بالكامل (نقد/إلكتروني)',
     kpiSettlementsDesc:
-      'عدد مرات دفعتَ فيها فاتورة من «رصيد الاشتراك» (المحفظة).',
+      'عدد مرات خُصم فيها مبلغ فاتورة من «رصيد الاشتراك» فقط.',
     overviewSeeTabs:
       'للتفاصيل: تبويب «الفواتير» للقائمة، و«سجل الحركة» لكل دينار (تجديد، تسوية، ترحيل).',
     invoiceListCount: '{{count}} فاتورة',
@@ -1778,7 +1798,7 @@ export const ar = {
     sectionInvoicesCanceledHint: 'طلبات أُلغيت ولا تُحسب ضمن المدفوع أو غير المدفوع.',
     noInvoices: 'لا توجد فواتير لهذا العميل في النطاق المحدد.',
     timelineIntro:
-      'ترتيب زمني: تجديد/تفعيل، ترحيل رصيد، تسوية فواتير من الاشتراك، وتسديد المديونية. عند «تجديد» يظهر تفصيل المبلغ وما خُصم منه.',
+      'ترتيب زمني: تجديد/تفعيل، فواتير مدفوعة نقداً أو إلكترونياً، تسوية من رصيد الاشتراك، تسديد جزئي، وتسجيل آجل. عند «تجديد» يظهر تفصيل المبلغ.',
     noEvents: 'لا توجد حركة مالية لهذا العميل في النطاق المحدد.',
     invoice: 'فاتورة',
     viewInvoice: 'عرض صورة الفاتورة',
@@ -1808,12 +1828,16 @@ export const ar = {
       KNET: 'كي نت',
       PAYMENT_LINK: 'رابط دفع',
       ONLINE: 'أونلاين',
+      DEBT_ON_ACCOUNT: 'على الحساب (ذمة)',
     },
     kind: {
       SUBSCRIPTION_ACTIVATION: 'تجديد أو تفعيل اشتراك',
       SUBSCRIPTION_ROLLOVER_CARRY: 'ترحيل رصيد اشتراك',
-      ORDER_SETTLEMENT: 'تسوية فاتورة',
-      PARTIAL_DEBT_PAYMENT: 'تسديد جزء من المديونية',
+      ORDER_PAID_IN_FULL: 'فاتورة مدفوعة',
+      ORDER_SETTLEMENT_SUBSCRIPTION: 'تسوية فاتورة (من رصيد الاشتراك)',
+      ORDER_INVOICE_PARTIAL_PAYMENT: 'تسديد جزئي للفاتورة',
+      ORDER_INVOICE_ON_ACCOUNT: 'تسجيل فاتورة على الحساب (ذمة)',
+      PARTIAL_DEBT_PAYMENT: 'تسديد جزئي من المديونية',
     },
     activationBreakdown: {
       title: 'تفصيل الحركة المالية للاشتراك',
@@ -2045,6 +2069,9 @@ export const ar = {
     summaryPaidTitle: 'المدفوع هذا الشهر (الصافي)',
     summaryPaidHint: 'مجموع صافي الراتب (أساسي + بدلات − خصومات) للسجلات المدفوعة ضمن هذا الشهر.',
     staffTitle: 'الموظفون المؤهلون',
+    staffGroupedHint:
+      'الموظفون مجمّعون حسب الفرع لتسهيل المراجعة وتعديل الرواتب.',
+    unassignedBranch: 'بدون فرع',
     noStaff: 'لا يوجد مدراء فروع أو سائقون في الدليل بعد.',
     colName: 'الموظف',
     colRole: 'الدور',
@@ -2064,6 +2091,7 @@ export const ar = {
     saved: 'تم حفظ سطر الراتب',
     validation: 'اختر موظفاً وفرعاً وأدخل مبالغاً صحيحة.',
     listTitle: 'سجلات الرواتب (الشهر المحدد)',
+    listGroupedHint: 'السجلات مجمّعة حسب الفرع.',
     listEmpty: 'لا سجلات رواتب لهذا الشهر.',
     statusPaid: 'مدفوع',
     statusPending: 'معلق',
@@ -2310,7 +2338,8 @@ export const ar = {
     colPendingManager: 'قيد التوديع / المراجعة',
     colAtBank: 'موثّق في البنك',
     empty: 'لا توجد أي حركة كاش ضمن المدة المحددة.',
-    emptyHint: 'جرّب يوماً آخر أو وسّع نطاق التاريخ.',
+    emptyHint:
+      'جرّب يوماً آخر أو وسّع نطاق التاريخ، وتأكد أن السنة صحيحة (البيانات لن تظهر لسنة مختلفة عن بياناتك الفعلية).',
     noHandoverYet: 'هذا السائق لم يُسلِّم أي كاش لمدير فرع خلال هذه المدة.',
     bag: {
       receivedAt: 'وقت الاستلام من السائق',
@@ -2331,7 +2360,7 @@ export const ar = {
   unpaidInvoices: {
     title: 'المديونية',
     subtitle:
-      'الجدول: عجز ميداني (فاتورة) أو تجاوز لرصيد الاشتراك (SUBSCRIPTION_OVERUSE) من نفس دفتر الذمم. البطاقة الحمراء: مجموع UNPAID؛ سطرا «فواتير / اشتراك» = المتبقي المفتوح لكل نوع في النطاق.',
+      'أي مبلغ غير محصّل يُعدّ مديونية على العميل، ويُنسَب أيضاً لمُصدِّر الفاتورة (سائق أو مدير فرع أو غيره) في عمود «المُصدِّر». الجدول: دفتر الذمم + طلبات السوق غير المحصّلة؛ البطاقة الحمراء: مجموع UNPAID.',
     filterDebtWindow: 'نطاق إنشاء الدَّين',
     filterFrom: 'من',
     filterTo: 'إلى',
@@ -2345,7 +2374,7 @@ export const ar = {
     scopeOnlyOpen: 'المتبقي فقط',
     scopeAll: 'الكل (مع المسدَّد)',
     pollingHint:
-      'تحديث تلقائي كل {{seconds}} ثانية. البطاقة العليا: طلبات UNPAID؛ الجدول: دفتر الذمم (سائق/مدير فرع).',
+      'تحديث تلقائي كل {{seconds}} ثانية. البطاقة العليا: طلبات UNPAID؛ الجدول: ذمم العملاء مع المُصدِّر المسؤول ميدانياً.',
     refresh: 'تحديث',
     print: 'طباعة',
     kpiOpenShortfallDebt: 'متبقي — فواتير (ميدان)',
@@ -2353,7 +2382,7 @@ export const ar = {
     kpiOpenUnpaidOrderOnly:
       'طلبات UNPAID (بدون سطر ذمم ميدان بعد) — تطابق البطاقة الحمراء',
     kpiOpenDebt: 'المديونية',
-    marketByMethodTitle: 'حسب أسلوب التحصيل (سائق / مدير فرع)',
+    marketByMethodTitle: 'حسب أسلوب الدفع على الطلب (كاش / كي نت / …) — كل غير محصّل',
     methodCash: 'كاش',
     methodKnet: 'كي نت',
     methodOnline: 'أونلاين',
@@ -2392,7 +2421,7 @@ export const ar = {
       paid: 'المُسدَّد',
       remaining: 'المتبقي',
       currentCustomerDebt: 'رصيد العميل الحالي',
-      /** تراكم عمود «المتبقي» لكل عميل من الأقدم إلى الأحدث */
+      /** تراكم «المتبقي» زمنياً لكل عميل (العرض في الجدول قد يكون الأحدث أولاً) */
       cumulativeIndebtedness: 'إجمالي المديونية',
     },
     statusOpen: 'غير محصَّل',
@@ -2575,4 +2604,5 @@ export const ar = {
       cancelled_ok: 'تم إلغاء التحويل.',
     },
   },
+  operatorHints: operatorHintsAr,
 };

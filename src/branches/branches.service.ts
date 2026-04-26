@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { OrderStatus, Prisma, SafariRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { canSeeAdministrativeBranches } from './administrative-branch.util';
 
 const IN_FLIGHT_ORDER_STATUSES: OrderStatus[] = [
   OrderStatus.PENDING,
@@ -13,21 +14,108 @@ const IN_FLIGHT_ORDER_STATUSES: OrderStatus[] = [
   OrderStatus.OUT_FOR_DELIVERY,
 ];
 
+const CREATE_BRANCH_KEYS = new Set([
+  'name',
+  'location',
+  'phone',
+  'isActive',
+  'isAdministrative',
+]);
+
+function assertPlainObject(raw: unknown): Record<string, unknown> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new BadRequestException('Invalid JSON body');
+  }
+  return raw as Record<string, unknown>;
+}
+
+/** Accepts boolean or common JSON/string forms from clients. */
+function readBooleanField(
+  v: unknown,
+  field: string,
+): boolean | undefined {
+  if (v === undefined) return undefined;
+  if (v === true || v === false) return v;
+  if (v === 'true' || v === 'false') return v === 'true';
+  if (v === 1 || v === 0) return v === 1;
+  throw new BadRequestException(`${field} must be a boolean`);
+}
+
 @Injectable()
 export class BranchesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  listAll() {
+  private branchListSelect = {
+    id: true,
+    name: true,
+    location: true,
+    phone: true,
+    isActive: true,
+    isAdministrative: true,
+    updatedAt: true,
+  } as const;
+
+  /**
+   * Full branch list for OWNER / GENERAL_MANAGER / ACCOUNTANT.
+   * Other roles never see `isAdministrative` branches (HQ cost center).
+   */
+  listForRole(actorRole: string) {
     return this.prisma.branch.findMany({
+      where: canSeeAdministrativeBranches(actorRole)
+        ? {}
+        : { isAdministrative: false },
       orderBy: { name: 'asc' },
-      select: {
-        id: true,
-        name: true,
-        location: true,
-        phone: true,
-        isActive: true,
-        updatedAt: true,
-      },
+      select: this.branchListSelect,
+    });
+  }
+
+  /**
+   * Bypasses global `ValidationPipe` class validation so `isAdministrative`
+   * (and booleans) always parse correctly even when DTO metadata is stale
+   * in the running process or clients send slightly loose JSON.
+   */
+  createFromBody(body: unknown) {
+    const o = assertPlainObject(body);
+    for (const key of Object.keys(o)) {
+      if (!CREATE_BRANCH_KEYS.has(key)) {
+        throw new BadRequestException(`property ${key} should not exist`);
+      }
+    }
+    const name = typeof o.name === 'string' ? o.name.trim() : '';
+    const location = typeof o.location === 'string' ? o.location.trim() : '';
+    if (!name) {
+      throw new BadRequestException('Branch name is required');
+    }
+    if (name.length > 200) {
+      throw new BadRequestException('Branch name is too long');
+    }
+    if (!location) {
+      throw new BadRequestException('Branch location is required');
+    }
+    if (location.length > 500) {
+      throw new BadRequestException('Branch location is too long');
+    }
+    let phone: string | undefined;
+    if (o.phone !== undefined && o.phone !== null) {
+      if (typeof o.phone !== 'string') {
+        throw new BadRequestException('phone must be a string');
+      }
+      phone = o.phone.trim();
+      if (phone.length > 40) {
+        throw new BadRequestException('phone is too long');
+      }
+    }
+    const isActive = readBooleanField(o.isActive, 'isActive');
+    const isAdministrative = readBooleanField(
+      o.isAdministrative,
+      'isAdministrative',
+    );
+    return this.create({
+      name,
+      location,
+      phone,
+      isActive,
+      isAdministrative,
     });
   }
 
@@ -36,6 +124,7 @@ export class BranchesService {
     location: string;
     phone?: string;
     isActive?: boolean;
+    isAdministrative?: boolean;
   }) {
     return this.prisma.branch.create({
       data: {
@@ -43,6 +132,7 @@ export class BranchesService {
         location: dto.location.trim(),
         phone: dto.phone?.trim() || null,
         isActive: dto.isActive ?? true,
+        isAdministrative: dto.isAdministrative ?? false,
       },
       select: {
         id: true,
@@ -50,6 +140,7 @@ export class BranchesService {
         location: true,
         phone: true,
         isActive: true,
+        isAdministrative: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -75,6 +166,7 @@ export class BranchesService {
       location?: string;
       phone?: string;
       isActive?: boolean;
+      isAdministrative?: boolean;
     },
   ) {
     const patch: Prisma.BranchUpdateInput = {};
@@ -97,6 +189,19 @@ export class BranchesService {
     if (dto.isActive !== undefined) {
       patch.isActive = dto.isActive;
     }
+    if (dto.isAdministrative !== undefined) {
+      if (dto.isAdministrative === true) {
+        const assigned = await this.prisma.user.count({
+          where: { branchId: id },
+        });
+        if (assigned > 0) {
+          throw new BadRequestException(
+            'Cannot mark branch as administrative while users are still assigned to it. Reassign staff first.',
+          );
+        }
+      }
+      patch.isAdministrative = dto.isAdministrative;
+    }
 
     try {
       return await this.prisma.branch.update({
@@ -108,6 +213,7 @@ export class BranchesService {
           location: true,
           phone: true,
           isActive: true,
+          isAdministrative: true,
           createdAt: true,
           updatedAt: true,
         },
@@ -121,6 +227,72 @@ export class BranchesService {
       }
       throw e;
     }
+  }
+
+  /** Same rationale as `createFromBody` — reliable PATCH parsing for toggles. */
+  updateFromBody(id: string, body: unknown) {
+    const o = assertPlainObject(body);
+    const patch: {
+      name?: string;
+      location?: string;
+      phone?: string;
+      isActive?: boolean;
+      isAdministrative?: boolean;
+    } = {};
+    if ('name' in o) {
+      if (typeof o.name !== 'string') {
+        throw new BadRequestException('name must be a string');
+      }
+      patch.name = o.name;
+    }
+    if ('location' in o) {
+      if (typeof o.location !== 'string') {
+        throw new BadRequestException('location must be a string');
+      }
+      patch.location = o.location;
+    }
+    if ('phone' in o) {
+      if (o.phone === null) {
+        patch.phone = '';
+      } else if (typeof o.phone === 'string') {
+        patch.phone = o.phone;
+      } else {
+        throw new BadRequestException('phone must be a string');
+      }
+    }
+    if ('isActive' in o) {
+      const b = readBooleanField(o.isActive, 'isActive');
+      if (b === undefined) {
+        throw new BadRequestException('isActive must be a boolean');
+      }
+      patch.isActive = b;
+    }
+    if ('isAdministrative' in o) {
+      const b = readBooleanField(o.isAdministrative, 'isAdministrative');
+      if (b === undefined) {
+        throw new BadRequestException('isAdministrative must be a boolean');
+      }
+      patch.isAdministrative = b;
+    }
+    const unknown = Object.keys(o).filter(
+      (k) =>
+        ![
+          'name',
+          'location',
+          'phone',
+          'isActive',
+          'isAdministrative',
+        ].includes(k),
+    );
+    if (unknown.length) {
+      throw new BadRequestException(
+        `property ${unknown[0]} should not exist`,
+      );
+    }
+    if (Object.keys(patch).length === 0) {
+      throw new BadRequestException('Send at least one field to update');
+    }
+    return this.update(id, patch);
   }
 
   /** Branches with at least one in-flight order assigned to a driver at that branch. */

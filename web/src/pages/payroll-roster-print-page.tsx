@@ -171,6 +171,8 @@ export function PayrollRosterPrintPage() {
                 location: branchesById.get(r.branchId)?.location ?? '',
                 phone: branchesById.get(r.branchId)?.phone ?? '',
                 isActive: true,
+                isAdministrative:
+                  branchesById.get(r.branchId)?.isAdministrative ?? false,
                 updatedAt: new Date().toISOString(),
               } as BranchRow)
             : null,

@@ -345,6 +345,9 @@ export function LiveMonitorPage() {
               <p className="text-sm text-slate-400">
                 Live command center (Owner wallboard) · Auto-refresh every ~9s
               </p>
+              <p className="mt-2 max-w-2xl text-xs leading-relaxed text-slate-500">
+                {t('operatorHints.routes.liveMonitor')}
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-2 text-xs text-slate-400">

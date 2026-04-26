@@ -145,7 +145,10 @@ __decorate([
     __metadata("design:type", Object)
 ], UnpaidInvoiceRowDto.prototype, "actorUserId", void 0);
 __decorate([
-    (0, swagger_1.ApiPropertyOptional)({ nullable: true }),
+    (0, swagger_1.ApiPropertyOptional)({
+        nullable: true,
+        description: 'Employee who issued / settled the ticket (field accountability alongside customer debt).',
+    }),
     __metadata("design:type", Object)
 ], UnpaidInvoiceRowDto.prototype, "actorUserName", void 0);
 __decorate([
@@ -298,7 +301,7 @@ __decorate([
 ], UnpaidInvoicesKpisDto.prototype, "totalPaidKd", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)({
-        description: 'Σ of remaining open amounts on shortfall rows (ledger net, driver/manager scope).',
+        description: 'Σ `remainingKd` for open rows in this response (ledger + UNPAITotal lines).',
     }),
     __metadata("design:type", String)
 ], UnpaidInvoicesKpisDto.prototype, "openDebtKd", void 0);

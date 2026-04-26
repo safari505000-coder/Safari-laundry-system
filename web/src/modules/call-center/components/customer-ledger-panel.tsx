@@ -129,22 +129,30 @@ export function CustomerLedgerPanel({ customerId, token }: Props) {
     if (!data) {
       return {
         settlements: 0,
+        paidFull: 0,
         activations: 0,
         rollovers: 0,
         partialPay: 0,
       };
     }
     let settlements = 0;
+    let paidFull = 0;
     let activations = 0;
     let rollovers = 0;
     let partialPay = 0;
     for (const e of data.events) {
-      if (e.kind === 'ORDER_SETTLEMENT') settlements += 1;
+      if (e.kind === 'ORDER_SETTLEMENT_SUBSCRIPTION') settlements += 1;
+      else if (e.kind === 'ORDER_PAID_IN_FULL') paidFull += 1;
       else if (e.kind === 'SUBSCRIPTION_ACTIVATION') activations += 1;
       else if (e.kind === 'SUBSCRIPTION_ROLLOVER_CARRY') rollovers += 1;
-      else if (e.kind === 'PARTIAL_DEBT_PAYMENT') partialPay += 1;
+      else if (
+        e.kind === 'PARTIAL_DEBT_PAYMENT' ||
+        e.kind === 'ORDER_INVOICE_PARTIAL_PAYMENT'
+      ) {
+        partialPay += 1;
+      }
     }
-    return { settlements, activations, rollovers, partialPay };
+    return { settlements, paidFull, activations, rollovers, partialPay };
   }, [data]);
 
   if (!data) {
@@ -385,6 +393,7 @@ export function CustomerLedgerPanel({ customerId, token }: Props) {
                 {eventKpis.activations}
               </p>
               <p className="text-[11px] text-muted-foreground">
+                {t('customerLedger.kpiOrderPaidFull')}: {eventKpis.paidFull} ·{' '}
                 {t('customerLedger.kpiRollover')}: {eventKpis.rollovers} ·{' '}
                 {t('customerLedger.kpiPartialDebt')}: {eventKpis.partialPay}
               </p>

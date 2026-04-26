@@ -58,7 +58,7 @@ import {
   ApiError,
 } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { formatKwdLabel } from '@/lib/kwd';
+import { formatKwdLabel, formatSignedKwdLabel } from '@/lib/kwd';
 
 const POLL_MS = 12_000;
 
@@ -92,9 +92,19 @@ function rowTone(status: SubscriberListRow['rowStatus']): string {
   }
 }
 
-function isCriticalBalance(balance: string): boolean {
+/** Text colour: debt vs neutral zero vs low prepaid vs healthy credit. */
+function subscriberBalanceClass(balance: string): string {
   const n = Number.parseFloat(balance);
-  return Number.isFinite(n) && n < 10;
+  if (!Number.isFinite(n)) return '';
+  if (n < 0) return 'text-red-700 dark:text-red-400';
+  if (n === 0) return 'text-muted-foreground';
+  if (n < 10) return 'text-red-700 dark:text-red-400';
+  return 'text-emerald-700 dark:text-emerald-400';
+}
+
+function isLowPrepaidBalance(balance: string): boolean {
+  const n = Number.parseFloat(balance);
+  return Number.isFinite(n) && n > 0 && n < 10;
 }
 
 /** Digits-only phone normalisation — matches the collections page helper. */
@@ -145,12 +155,13 @@ function SubscriberCard({
         <div className="min-w-0">
           <dt className="text-muted-foreground">{t('subscribers.colBalance')}</dt>
           <dd
+            dir="ltr"
             className={cn(
-              'tabular-nums text-base font-bold text-foreground sm:text-sm',
-              isCriticalBalance(r.balance) && 'text-red-700',
+              'tabular-nums text-base font-bold sm:text-sm',
+              subscriberBalanceClass(r.balance),
             )}
           >
-            {formatKwdLabel(r.balance)}
+            {formatSignedKwdLabel(r.balance)}
           </dd>
         </div>
         <div className="min-w-0">
@@ -170,7 +181,7 @@ function SubscriberCard({
           </dd>
         </div>
       </dl>
-      {isCriticalBalance(r.balance) ? (
+      {isLowPrepaidBalance(r.balance) ? (
         <p className="mt-2 text-xs font-semibold text-red-700">
           {t('subscribers.lowBalanceWarn')}
         </p>
@@ -1826,10 +1837,11 @@ export function SubscribersPage() {
                   <TableCell
                     className={cn(
                       'text-end tabular-nums text-sm font-medium',
-                      isCriticalBalance(r.balance) && 'text-red-700',
+                      subscriberBalanceClass(r.balance),
                     )}
+                    dir="ltr"
                   >
-                    {formatKwdLabel(r.balance)}
+                    {formatSignedKwdLabel(r.balance)}
                   </TableCell>
                 </TableRow>
               ))}

@@ -8,12 +8,14 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { SafariRole } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { APP_BRAND } from '../common/constants/branding';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { JwtUser } from '../auth/decorators/current-user.decorator';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
 import { BranchesService } from './branches.service';
@@ -41,19 +43,20 @@ export class BranchesController {
     description:
       'Read-only list of branches for report filters, switchers, and receivables / collections. Call-center roles need the same pickers as operations.',
   })
-  list() {
-    return this.branchesService.listAll();
+  list(@CurrentUser() user: JwtUser) {
+    return this.branchesService.listForRole(user.role);
   }
 
   @Post()
   @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
+  @ApiBody({ type: CreateBranchDto })
   @ApiOperation({
     summary: `Create branch (${APP_BRAND})`,
     description:
       'OWNER and GENERAL_MANAGER only. New branches appear in the branch switcher when active.',
   })
-  create(@Body() dto: CreateBranchDto) {
-    return this.branchesService.create(dto);
+  create(@Body() body: unknown) {
+    return this.branchesService.createFromBody(body);
   }
 
   /**
@@ -63,6 +66,7 @@ export class BranchesController {
    */
   @Patch(':id')
   @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
+  @ApiBody({ type: UpdateBranchDto })
   @ApiOperation({
     summary: `Update branch (${APP_BRAND})`,
     description:
@@ -70,9 +74,9 @@ export class BranchesController {
   })
   update(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: UpdateBranchDto,
+    @Body() body: unknown,
   ) {
-    return this.branchesService.update(id, dto);
+    return this.branchesService.updateFromBody(id, body);
   }
 
   @Get('operations-live')

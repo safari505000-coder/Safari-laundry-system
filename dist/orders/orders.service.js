@@ -25,6 +25,7 @@ const kuwait_customer_phone_1 = require("../common/validation/kuwait-customer-ph
 const general_ledger_service_1 = require("../general-ledger/general-ledger.service");
 const finance_money_1 = require("../finance/finance-money");
 const inventory_service_1 = require("../inventory/inventory.service");
+const administrative_branch_util_1 = require("../branches/administrative-branch.util");
 const prisma_service_1 = require("../prisma/prisma.service");
 const serial_counter_service_1 = require("../serials/serial-counter.service");
 const order_status_machine_1 = require("./order-status.machine");
@@ -311,6 +312,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
     }
     async createQuick(driverUserId, dto) {
         await this.assertDriverUser(driverUserId);
+        await (0, administrative_branch_util_1.assertUserNotOnAdministrativeBranchForSales)(this.prisma, driverUserId);
         const serviceType = dto.serviceType ?? client_1.ServiceType.NORMAL;
         const lineCreates = this.reconcileLineItems(dto.totalPrice, dto.lineItems);
         const phoneCompact = dto.customerPhone.replace(/[\s-]/g, '').trim();
@@ -345,6 +347,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
                 throw new common_1.BadRequestException('posCheckout: missing driver/manager id from session');
             }
             await this.assertPosCheckoutActor(driverUserId);
+            await (0, administrative_branch_util_1.assertUserNotOnAdministrativeBranchForSales)(this.prisma, driverUserId);
             if (!Number.isFinite(dto.totalPrice) || dto.totalPrice <= 0) {
                 throw new common_1.BadRequestException('totalPrice must be a finite positive number');
             }
@@ -498,6 +501,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
             throw new common_1.BadRequestException('posCheckoutBundle: missing driver/manager id from session');
         }
         await this.assertPosCheckoutActor(driverUserId);
+        await (0, administrative_branch_util_1.assertUserNotOnAdministrativeBranchForSales)(this.prisma, driverUserId);
         const serviceType = dto.serviceType ?? client_1.ServiceType.NORMAL;
         const phoneCompact = dto.customerPhone.replace(/[\s-]/g, '').trim();
         const prepared = [];
@@ -601,9 +605,11 @@ let OrdersService = OrdersService_1 = class OrdersService {
         }
         return { bundleId, orders, paymentLink };
     }
-    async createAsManager(dto) {
+    async createAsManager(dto, managerUserId) {
+        await (0, administrative_branch_util_1.assertUserNotOnAdministrativeBranchForSales)(this.prisma, managerUserId);
         if (dto.driverId) {
             await this.assertDriverUser(dto.driverId);
+            await (0, administrative_branch_util_1.assertUserNotOnAdministrativeBranchForSales)(this.prisma, dto.driverId);
         }
         const serviceType = dto.serviceType ?? client_1.ServiceType.NORMAL;
         const lineCreates = this.reconcileLineItems(dto.totalPrice, dto.lineItems);
@@ -1291,6 +1297,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
             throw new common_1.ForbiddenException('Cannot assign a driver to a completed or canceled order');
         }
         await this.assertDriverUser(dto.driverId);
+        await (0, administrative_branch_util_1.assertUserNotOnAdministrativeBranchForSales)(this.prisma, dto.driverId);
         return this.prisma.order.update({
             where: { id: orderId },
             data: { driverId: dto.driverId },
@@ -1359,11 +1366,34 @@ let OrdersService = OrdersService_1 = class OrdersService {
         }, { maxWait: 10_000, timeout: 15_000 });
     }
     async getManagerDashboard() {
+        const opsDrivers = await this.prisma.user.findMany({
+            where: {
+                safariRole: client_1.SafariRole.DRIVER,
+                OR: [
+                    { branchId: null },
+                    { branch: { isAdministrative: false } },
+                ],
+            },
+            select: { id: true },
+        });
+        const opsDriverIds = new Set(opsDrivers.map((u) => u.id));
         const totalActiveOrders = await this.prisma.order.count({
-            where: { status: { notIn: terminalStatuses } },
+            where: {
+                status: { notIn: terminalStatuses },
+                OR: [
+                    { driverId: null },
+                    { driverId: { in: [...opsDriverIds] } },
+                ],
+            },
         });
         const agg = await this.prisma.order.aggregate({
-            where: { status: client_1.OrderStatus.COMPLETED },
+            where: {
+                status: client_1.OrderStatus.COMPLETED,
+                OR: [
+                    { driverId: null },
+                    { driverId: { in: [...opsDriverIds] } },
+                ],
+            },
             _sum: { totalPrice: true },
         });
         const sum = agg._sum.totalPrice;
@@ -1371,7 +1401,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
             by: ['driverId'],
             where: {
                 status: client_1.OrderStatus.COMPLETED,
-                driverId: { not: null },
+                driverId: { in: [...opsDriverIds] },
             },
             _count: true,
             _sum: { totalPrice: true },

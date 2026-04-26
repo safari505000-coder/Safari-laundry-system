@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { X } from 'lucide-react';
 import { ExecutiveHeader } from '@/modules/shared/components/shell/executive-header';
+import { OperatorRouteHint } from '@/modules/shared/components/shell/operator-route-hint';
 import { ExecutiveSidebar } from '@/modules/shared/components/shell/executive-sidebar';
 import { shellGuidanceForRole } from '@/modules/shared/shell/resolve-shell-guidance';
 import { useAuth } from '@/contexts/auth-context';
@@ -86,6 +87,7 @@ export function ExecutiveShell() {
                 </button>
               </div>
             ) : null}
+            <OperatorRouteHint />
             <Outlet />
           </div>
         </main>

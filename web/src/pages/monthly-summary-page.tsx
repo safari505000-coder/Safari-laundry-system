@@ -921,12 +921,20 @@ export function MonthlySummaryPage() {
                 highlighted
               />
 
-              <div className="flex items-center gap-3 pt-2">
+              <div className="flex flex-wrap items-center gap-3 pt-2">
                 <h2 className="text-base font-semibold text-foreground">
                   {t('monthlySummary.branchesHeading', 'تقارير الفروع')}
                 </h2>
                 <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground tabular-nums">
+                  {data.branches.filter((b) => !b.isAdministrative).length}
+                  <span className="mx-1 opacity-70">/</span>
                   {data.branches.length}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {t(
+                    'monthlySummary.branchesCountHint',
+                    'تشغيلي / إجمالي الصفوف (يشمل الإدارة إن وُجد)',
+                  )}
                 </span>
               </div>
 
@@ -945,7 +953,13 @@ export function MonthlySummaryPage() {
                     <SummaryCard
                       key={b.branchId}
                       title={b.branchName}
-                      subtitle={t('monthlySummary.branchBadge', 'فرع')}
+                      subtitle={
+                        b.isAdministrative ?
+                          t(
+                            'monthlySummary.branchAdminSubtitle',
+                            'مركز تكلفة — إدارة',
+                          )
+                        : t('monthlySummary.branchBadge', 'فرع')}
                       row={b}
                     />
                   ))}

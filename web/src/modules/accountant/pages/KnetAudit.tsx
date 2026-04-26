@@ -80,6 +80,13 @@ export function KnetAudit() {
   const [report, setReport] = useState<IssuedInvoicesReport | null>(null);
   const [csvName, setCsvName] = useState<string | null>(null);
   const [bankAmounts, setBankAmounts] = useState<number[]>([]);
+  /** Per-order values copied from the bank statement (manual reconciliation). */
+  const [manualAmountByOrderId, setManualAmountByOrderId] = useState<
+    Record<string, string>
+  >({});
+  const [manualRefByOrderId, setManualRefByOrderId] = useState<
+    Record<string, string>
+  >({});
   /*
    * V19.18 — KNET audit is now scoped by BRANCH, not by driver.
    *
@@ -160,6 +167,28 @@ export function KnetAudit() {
     for (const o of knetOrders) {
       const amount = Number.parseFloat(o.totalPrice || '0');
       const tcomp = o.completedAt || o.createdAt;
+      const manualRaw = (manualAmountByOrderId[o.id] ?? '').trim();
+
+      if (manualRaw !== '') {
+        const manualVal = Number.parseFloat(manualRaw.replace(/,/g, ''));
+        let status: RowStatus;
+        if (!Number.isFinite(manualVal)) {
+          status = 'yellow';
+        } else if (Math.abs(manualVal - amount) < 0.002) {
+          status = 'green';
+        } else {
+          status = 'red';
+        }
+        out.push({
+          id: o.id,
+          amount,
+          at: tcomp,
+          customer: o.customer.displayName || o.customer.phone,
+          status,
+        });
+        continue;
+      }
+
       const loose = bankAmounts
         .map((b, i) => ({ b, i }))
         .filter(
@@ -189,7 +218,7 @@ export function KnetAudit() {
       bankAmounts.length === 0 ? [] : bankAmounts.filter((_, i) => !usedBank.has(i));
 
     return { rows: out, unmatchedBank };
-  }, [report, bankAmounts]);
+  }, [report, bankAmounts, manualAmountByOrderId]);
 
   useEffect(() => {
     void load();
@@ -284,26 +313,52 @@ export function KnetAudit() {
       </FilterBar>
 
       {canReconcile ? (
-        <Card className="border-slate-200 bg-white">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Upload className="h-4 w-4" />
-              {t('knetAudit.bankCsv')}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <Input
-              type="file"
-              accept=".csv,text/csv"
-              onChange={(e) => onCsv(e.target.files?.[0] ?? null)}
-            />
-            {csvName ?
-              <p className="text-xs text-slate-600">
-                {t('knetAudit.parsedAmounts', { count: bankAmounts.length })}
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card className="border-slate-200 bg-white">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Upload className="h-4 w-4" />
+                {t('knetAudit.bankCsv')}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <Input
+                type="file"
+                accept=".csv,text/csv"
+                onChange={(e) => onCsv(e.target.files?.[0] ?? null)}
+              />
+              {csvName ?
+                <p className="text-xs text-slate-600">
+                  {t('knetAudit.parsedAmounts', { count: bankAmounts.length })}
+                </p>
+              : null}
+            </CardContent>
+          </Card>
+          <Card className="border-slate-200 bg-white">
+            <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
+              <CardTitle className="text-base">
+                {t('knetAudit.bankManualCard')}
+              </CardTitle>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="shrink-0"
+                onClick={() => {
+                  setManualAmountByOrderId({});
+                  setManualRefByOrderId({});
+                }}
+              >
+                {t('knetAudit.clearManual')}
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                {t('knetAudit.bankManualHint')}
               </p>
-            : null}
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </div>
       ) : null}
 
       <div className="flex items-center justify-between px-1">
@@ -326,6 +381,16 @@ export function KnetAudit() {
             label: t('knetAudit.colAmount'),
             align: 'end',
             numeric: true,
+          },
+          {
+            key: 'bankAmt',
+            label: t('knetAudit.colBankStatementAmount'),
+            align: 'end',
+            numeric: true,
+          },
+          {
+            key: 'bankRef',
+            label: t('knetAudit.colBankRef'),
           },
         ]}
         loading={loading && !report}
@@ -378,6 +443,56 @@ export function KnetAudit() {
             <TableCell>{r.customer}</TableCell>
             <TableCell className="text-end tabular-nums">
               {formatKwdLabel(r.amount.toFixed(3))}
+            </TableCell>
+            <TableCell className="w-[1%] min-w-[6.5rem]">
+              {canReconcile ? (
+                <Input
+                  dir="ltr"
+                  inputMode="decimal"
+                  disabled={loading}
+                  className="h-8 tabular-nums"
+                  placeholder={t('knetAudit.bankAmountPlaceholder')}
+                  value={manualAmountByOrderId[r.id] ?? ''}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setManualAmountByOrderId((prev) => {
+                      const next = { ...prev };
+                      if (v.trim() === '') delete next[r.id];
+                      else next[r.id] = v;
+                      return next;
+                    });
+                  }}
+                />
+              ) : (
+                <span className="text-xs text-muted-foreground tabular-nums" dir="ltr">
+                  {manualAmountByOrderId[r.id]?.trim()
+                    ? manualAmountByOrderId[r.id]
+                    : '—'}
+                </span>
+              )}
+            </TableCell>
+            <TableCell className="min-w-[7rem] max-w-[12rem]">
+              {canReconcile ? (
+                <Input
+                  disabled={loading}
+                  className="h-8 text-xs"
+                  placeholder={t('knetAudit.bankRefPlaceholder')}
+                  value={manualRefByOrderId[r.id] ?? ''}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setManualRefByOrderId((prev) => {
+                      const next = { ...prev };
+                      if (v.trim() === '') delete next[r.id];
+                      else next[r.id] = v;
+                      return next;
+                    });
+                  }}
+                />
+              ) : (
+                <span className="truncate text-xs text-muted-foreground">
+                  {manualRefByOrderId[r.id]?.trim() || '—'}
+                </span>
+              )}
             </TableCell>
           </TableRow>
         ))}

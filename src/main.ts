@@ -1,3 +1,4 @@
+import 'reflect-metadata';
 import 'dotenv/config';
 import * as Sentry from '@sentry/node';
 import * as bcrypt from 'bcrypt';

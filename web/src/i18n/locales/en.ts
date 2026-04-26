@@ -1,4 +1,6 @@
-﻿export const en = {
+﻿import { operatorHints as operatorHintsEn } from './operator-hints-en';
+
+export const en = {
   nav: {
     dashboard: 'Dashboard',
     branches: 'Branch management',
@@ -213,6 +215,12 @@
     saveEdit: 'Save changes',
     updated: 'Branch updated',
     colActions: 'Actions',
+    colKind: 'Type',
+    kindOperational: 'Operations',
+    kindAdministrative: 'HQ / admin',
+    fieldAdministrative: 'Administrative (HQ) branch',
+    fieldAdministrativeHint:
+      'Cost center only: no POS, no user accounts, hidden from operational roles. Expenses, fixed schedules, and payroll can still post here.',
   },
   manageItems: {
     title: 'Laundry price list',
@@ -1204,25 +1212,33 @@
   knetAudit: {
     title: 'K-Net reconciliation',
     subtitle:
-      'Match KNET orders from Safari against amounts parsed from your bank CSV export.',
+      'Match KNET invoices to the bank statement: upload a CSV and/or type the bank amount (and optional auth/ref) per row from your paper or online statement. Manual row entry overrides CSV matching.',
     filters: 'Reporting window',
     from: 'From',
     to: 'To',
     loadOrders: 'Load KNET orders',
     bankCsv: 'Bank statement (CSV)',
     parsedAmounts: '{{count}} amount tokens extracted from CSV',
+    bankManualCard: 'Manual entry from bank statement',
+    bankManualHint:
+      'Use the «Bank statement amount» column below: enter the amount exactly as on the account statement or terminal report. When it equals the invoice total (±0.002 KD) the row turns green. «Bank ref» is optional (auth / trace number).',
+    clearManual: 'Clear manual fields',
+    bankAmountPlaceholder: 'e.g. 12.500',
+    bankRefPlaceholder: 'Ref',
     matchTable: 'Reconciliation',
     loading: 'Loading…',
     colStatus: 'Match',
     colOrder: 'Order',
     colWhen: 'Time',
     colCustomer: 'Customer',
-    colAmount: 'Amount',
+    colAmount: 'Invoice amount',
+    colBankStatementAmount: 'Bank statement amount',
+    colBankRef: 'Bank ref',
     unmatchedBank: 'CSV amounts not matched to a system order',
     status: {
       green: 'Matched',
       yellow: 'Review',
-      red: 'Missing',
+      red: 'Missing / mismatch',
     },
   },
   monthlySummary: {
@@ -1746,8 +1762,12 @@
     kpiSettlements: 'Settlements from subscription wallet',
     kpiSubActivations: 'Subscription renewal / activation',
     kpiRollover: 'Carry-over',
-    kpiPartialDebt: 'Partial debt payment',
-    kpiSettlementsDesc: 'How many times an invoice was paid from subscription wallet credit.',
+    kpiPartialDebt: 'Partial payment',
+    kpiPartialDebtHint:
+      'General debt collection or invoice paid partly from wallet + external.',
+    kpiOrderPaidFull: 'Invoice paid in full (cash / electronic)',
+    kpiSettlementsDesc:
+      'How many times an invoice amount was taken from subscription wallet only.',
     overviewSeeTabs:
       'For details, use Invoices (grouped) and Timeline (full ledger: renewals, settlements, carry-over).',
     invoiceListCount: '{{count}} invoice(s)',
@@ -1760,7 +1780,7 @@
     sectionInvoicesCanceledHint: 'Canceled orders; excluded from paid/unpaid totals.',
     noInvoices: 'No invoices for this customer in the selected range.',
     timelineIntro:
-      'Chronological: renewals, carry-over, wallet settlements, and debt payments. Renewals may expand to show the money split.',
+      'Chronological: renewals, invoices paid cash/online, subscription wallet settlements, partial payments, and on-account charges. Renewals may expand.',
     noEvents: 'No ledger activity for this customer in the selected range.',
     invoice: 'Invoice',
     viewInvoice: 'View printable invoice',
@@ -1790,11 +1810,15 @@
       KNET: 'KNET',
       PAYMENT_LINK: 'Payment link',
       ONLINE: 'Online',
+      DEBT_ON_ACCOUNT: 'On account',
     },
     kind: {
       SUBSCRIPTION_ACTIVATION: 'Subscription renewal / activation',
       SUBSCRIPTION_ROLLOVER_CARRY: 'Subscription balance carry-over',
-      ORDER_SETTLEMENT: 'Order settlement',
+      ORDER_PAID_IN_FULL: 'Invoice paid',
+      ORDER_SETTLEMENT_SUBSCRIPTION: 'Invoice settlement (subscription wallet)',
+      ORDER_INVOICE_PARTIAL_PAYMENT: 'Partial invoice payment',
+      ORDER_INVOICE_ON_ACCOUNT: 'Invoice on account (receivable)',
       PARTIAL_DEBT_PAYMENT: 'Partial debt payment',
     },
     activationBreakdown: {
@@ -2025,6 +2049,9 @@
     summaryPaidTitle: 'Paid this month (net)',
     summaryPaidHint: 'Sum of net pay (basic + allowances − deductions) for PAID rows with payment date in this month.',
     staffTitle: 'Eligible employees',
+    staffGroupedHint:
+      'Staff are grouped by branch for easier review and salary edits.',
+    unassignedBranch: 'No branch',
     noStaff: 'No branch managers or drivers in the directory yet.',
     colName: 'Employee',
     colRole: 'Role',
@@ -2044,6 +2071,7 @@
     saved: 'Payroll line saved',
     validation: 'Choose an employee and branch, and enter valid amounts.',
     listTitle: 'Payroll lines (selected month)',
+    listGroupedHint: 'Records are grouped by branch.',
     listEmpty: 'No payroll lines for this month.',
     statusPaid: 'Paid',
     statusPending: 'Pending',
@@ -2295,7 +2323,8 @@
     colPendingManager: 'Pending / Awaiting',
     colAtBank: 'Verified at bank',
     empty: 'No cash activity in the selected window.',
-    emptyHint: 'Pick a different day or widen the date range.',
+    emptyHint:
+      'Pick a different day or widen the date range; confirm the year matches your real data.',
     noHandoverYet:
       'This driver has not handed any cash to a branch manager in the window yet.',
     bag: {
@@ -2317,7 +2346,7 @@
   unpaidInvoices: {
     title: 'Receivables',
     subtitle:
-      'Table: field shortfall and subscription-wallet overuse (same ledger). Red card: UNPAID order sum. The two tiles below split remaining receivables by type.',
+      'Any uncollected amount is receivable from the customer and attributed to whoever issued the ticket (driver, branch manager, etc.) in the Issuer column. Table: debt ledger + market UNPAITotal lines. Red card: UNPAID order sum.',
     filterDebtWindow: 'Debt creation window',
     filterFrom: 'From',
     filterTo: 'To',
@@ -2331,14 +2360,14 @@
     scopeOnlyOpen: 'Open only',
     scopeAll: 'All (incl. settled)',
     pollingHint:
-      'Auto-refresh every {{seconds}}s. Top card: UNPAID orders; table: ledger (driver/branch manager).',
+      'Auto-refresh every {{seconds}}s. Top card: UNPAID orders; table: customer receivables with field issuer.',
     refresh: 'Refresh',
     print: 'Print',
     kpiOpenShortfallDebt: 'Open — invoice (field)',
     kpiOpenSubDebt: 'Open — subscription overuse',
     kpiOpenUnpaidOrderOnly: 'UNPAITotal — no field ledger line yet (matches red card)',
     kpiOpenDebt: 'Receivables',
-    marketByMethodTitle: 'By collection method (driver / branch manager)',
+    marketByMethodTitle: 'By order payment method (cash / KNET / …) — all uncollected',
     methodCash: 'Cash',
     methodKnet: 'KNET',
     methodOnline: 'Online',
@@ -2377,7 +2406,7 @@
       paid: 'Paid',
       remaining: 'Remaining',
       currentCustomerDebt: 'Customer current debt',
-      /** Running sum of «Remaining» per customer, oldest invoice first */
+      /** Chronological running sum of «Remaining» per customer (table may sort newest first) */
       cumulativeIndebtedness: 'Cumulative debt',
     },
     statusOpen: 'Outstanding',
@@ -2560,4 +2589,5 @@
       cancelled_ok: 'Transfer cancelled.',
     },
   },
+  operatorHints: operatorHintsEn,
 } as const;

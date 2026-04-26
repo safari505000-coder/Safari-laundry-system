@@ -139,6 +139,7 @@ export declare class ReportsService {
         branches: {
             branchId: string;
             branchName: string;
+            isAdministrative: boolean;
             grossRevenueKd: string;
             bankFeesTotalKd: string;
             settledRevenueAfterBankFeesKd: string;

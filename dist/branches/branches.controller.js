@@ -20,6 +20,7 @@ const roles_decorator_1 = require("../auth/decorators/roles.decorator");
 const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
 const roles_guard_1 = require("../auth/guards/roles.guard");
 const branding_1 = require("../common/constants/branding");
+const current_user_decorator_1 = require("../auth/decorators/current-user.decorator");
 const create_branch_dto_1 = require("./dto/create-branch.dto");
 const update_branch_dto_1 = require("./dto/update-branch.dto");
 const branches_service_1 = require("./branches.service");
@@ -28,14 +29,14 @@ let BranchesController = class BranchesController {
     constructor(branchesService) {
         this.branchesService = branchesService;
     }
-    list() {
-        return this.branchesService.listAll();
+    list(user) {
+        return this.branchesService.listForRole(user.role);
     }
-    create(dto) {
-        return this.branchesService.create(dto);
+    create(body) {
+        return this.branchesService.createFromBody(body);
     }
-    update(id, dto) {
-        return this.branchesService.update(id, dto);
+    update(id, body) {
+        return this.branchesService.updateFromBody(id, body);
     }
     operationsLive() {
         return this.branchesService.operationsLiveByBranch();
@@ -49,25 +50,28 @@ __decorate([
         summary: `List branches (${branding_1.APP_BRAND})`,
         description: 'Read-only list of branches for report filters, switchers, and receivables / collections. Call-center roles need the same pickers as operations.',
     }),
+    __param(0, (0, current_user_decorator_1.CurrentUser)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", []),
+    __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", void 0)
 ], BranchesController.prototype, "list", null);
 __decorate([
     (0, common_1.Post)(),
     (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
+    (0, swagger_1.ApiBody)({ type: create_branch_dto_1.CreateBranchDto }),
     (0, swagger_1.ApiOperation)({
         summary: `Create branch (${branding_1.APP_BRAND})`,
         description: 'OWNER and GENERAL_MANAGER only. New branches appear in the branch switcher when active.',
     }),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [create_branch_dto_1.CreateBranchDto]),
+    __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", void 0)
 ], BranchesController.prototype, "create", null);
 __decorate([
     (0, common_1.Patch)(':id'),
     (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
+    (0, swagger_1.ApiBody)({ type: update_branch_dto_1.UpdateBranchDto }),
     (0, swagger_1.ApiOperation)({
         summary: `Update branch (${branding_1.APP_BRAND})`,
         description: 'OWNER and GENERAL_MANAGER only. Only the fields present in the body are written — omitted fields stay unchanged.',
@@ -75,7 +79,7 @@ __decorate([
     __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
     __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, update_branch_dto_1.UpdateBranchDto]),
+    __metadata("design:paramtypes", [String, Object]),
     __metadata("design:returntype", void 0)
 ], BranchesController.prototype, "update", null);
 __decorate([

@@ -167,8 +167,34 @@ export class CustomerLedgerService {
     const addInvoiceDebt =
       o.posPaymentMethod === PosPaymentMethod.DEBT_ON_ACCOUNT ||
       (!isSubscriptionWalletPayment && !externalCoversShortfall);
-    const newDebtMinor =
+    let newDebtMinor =
       addInvoiceDebt && shortfallMinor > 0n ? debtMinor + shortfallMinor : debtMinor;
+
+    /**
+     * V19.26 — Gateway / CC "debt collected" paths pass `metadata.debtSettled`
+     * (and `debtSettlementViaLink` / `debtSettlementViaCallCenter`). We always
+     * wrote PAYMENT rows + GL, but **never reduced `CustomerWallet.debt`**, so
+     * aggregate debt stayed high after a successful link payment. That broke
+     * "تحويل مديونية → اشتراك" (activation saw stale debt = 0 effect on prepaid)
+     * and debt-tracking tiles. Pay down aggregate debt by the portion of the
+     * settlement that actually retires receivables, capped by current debt.
+     */
+    const debtSettledRawEarly =
+      extraMetadata !== undefined ? extraMetadata.debtSettled : null;
+    let debtPaydownFromSettlementMinor = 0n;
+    if (typeof debtSettledRawEarly === 'string') {
+      const declaredSettledMinor = toMinorFromFixed4(
+        new Prisma.Decimal(debtSettledRawEarly),
+      );
+      if (declaredSettledMinor > 0n && newDebtMinor > 0n) {
+        debtPaydownFromSettlementMinor =
+          declaredSettledMinor < newDebtMinor
+            ? declaredSettledMinor
+            : newDebtMinor;
+        newDebtMinor -= debtPaydownFromSettlementMinor;
+      }
+    }
+
     const afterSubscriptionDebtMinor = newBalanceMinor < 0n ? -newBalanceMinor : 0n;
     const addedSubscriptionDebtMinor =
       afterSubscriptionDebtMinor > beforeSubscriptionDebtMinor
@@ -227,6 +253,13 @@ export class CustomerLedgerService {
           posPaymentMethod: o.posPaymentMethod ?? null,
           externalCoversShortfall:
             externalCoversShortfall && shortfallMinor > 0n ? true : false,
+          ...(debtPaydownFromSettlementMinor > 0n
+            ? {
+                debtPaydownFromSettlement: minorToAmountString(
+                  debtPaydownFromSettlementMinor,
+                ),
+              }
+            : {}),
           reportingCategory: 'DAILY_SALES',
           subscriptionId: activeSubscription?.id ?? null,
           // Caller-supplied fields (e.g. debt-settlement tagging from the
@@ -301,51 +334,44 @@ export class CustomerLedgerService {
 
     // V19.11 — Unified DebtLedgerEntry: when a settlement is tagged as a
     // real debt payment (CC "تم الدفع" = `debtSettlementViaCallCenter`,
-    // gateway callback = `debtSettlementViaLink`), mirror the `debtSettled`
-    // amount into the ledger as a PAYMENT row. This turns the table into
-    // the single source of truth for open-debt math across every report.
-    //
-    // Plain POS invoices (cash/knet at the driver/pos) do NOT pass
-    // `debtSettled`, so no PAYMENT row is written for them — their
-    // receivable-lifecycle is fully captured by INVOICE_SHORTFALL when
-    // applicable, and nothing otherwise.
-    const debtSettledRaw =
-      extraMetadata !== undefined ? extraMetadata.debtSettled : null;
-    if (typeof debtSettledRaw === 'string') {
-      const settledMinor = toMinorFromFixed4(new Prisma.Decimal(debtSettledRaw));
-      if (settledMinor > 0n) {
-        await tx.debtLedgerEntry.create({
-          data: {
-            customerId: o.customerId,
-            orderId,
-            source: DebtSource.PAYMENT,
-            category: debtCategory,
-            amount: this.decimalFromMinor(settledMinor),
-            branchId: actor.branchId,
-            actorUserId: actor.id,
-            note: 'Invoice debt settled (wallet settlement)',
-          },
-        });
-        await this.generalLedger.append(tx, {
-          entryType: GeneralLedgerEntryType.DEBT_ADJUSTMENT,
-          amount: `-${minorToAmountString(settledMinor)}`,
-          memo: 'Debt payment recorded on unified ledger',
+    // gateway callback = `debtSettlementViaLink`), mirror the **actual**
+    // aggregate debt pay-down (see `debtPaydownFromSettlementMinor` above)
+    // as a PAYMENT row. Amount may be less than `debtSettled` when the
+    // customer had no open debt.
+    if (debtPaydownFromSettlementMinor > 0n) {
+      await tx.debtLedgerEntry.create({
+        data: {
           customerId: o.customerId,
           orderId,
+          source: DebtSource.PAYMENT,
+          category: debtCategory,
+          amount: this.decimalFromMinor(debtPaydownFromSettlementMinor),
+          branchId: actor.branchId,
           actorUserId: actor.id,
-          metadata: {
-            source: DebtSource.PAYMENT,
-            category: debtCategory,
-            branchId: actor.branchId,
-            trigger:
-              extraMetadata?.debtSettlementViaCallCenter === true
-                ? 'CALL_CENTER_MANUAL'
-                : extraMetadata?.debtSettlementViaLink === true
-                  ? 'PAYMENT_LINK_CALLBACK'
-                  : 'WALLET_SETTLEMENT',
-          },
-        });
-      }
+          note: 'Invoice debt settled (wallet settlement)',
+        },
+      });
+      await this.generalLedger.append(tx, {
+        entryType: GeneralLedgerEntryType.DEBT_ADJUSTMENT,
+        amount: `-${minorToAmountString(debtPaydownFromSettlementMinor)}`,
+        memo: 'Debt payment recorded on unified ledger',
+        customerId: o.customerId,
+        orderId,
+        actorUserId: actor.id,
+        metadata: {
+          source: DebtSource.PAYMENT,
+          category: debtCategory,
+          branchId: actor.branchId,
+          trigger:
+            extraMetadata?.debtSettlementViaCallCenter === true
+              ? 'CALL_CENTER_MANUAL'
+              : extraMetadata?.debtSettlementViaLink === true
+                ? 'PAYMENT_LINK_CALLBACK'
+                : 'WALLET_SETTLEMENT',
+          declaredDebtSettled:
+            typeof debtSettledRawEarly === 'string' ? debtSettledRawEarly : null,
+        },
+      });
     }
   }
 

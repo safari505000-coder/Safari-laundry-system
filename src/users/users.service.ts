@@ -77,6 +77,18 @@ export class UsersService {
     }
 
     const roleId = await this.resolveRoleId(dto.safariRole);
+    const branch = await this.prisma.branch.findUnique({
+      where: { id: dto.branchId },
+      select: { isAdministrative: true },
+    });
+    if (!branch) {
+      throw new NotFoundException('Branch not found');
+    }
+    if (branch.isAdministrative) {
+      throw new BadRequestException(
+        'Users cannot be assigned to the administrative branch. Keep HQ as a cost center only; assign staff to an operational branch (payroll may still post to the administrative branch).',
+      );
+    }
     const passwordHash = await bcrypt.hash(dto.password, 10);
 
     try {
@@ -165,6 +177,18 @@ export class UsersService {
     if (branchPatch !== undefined) {
       if (branchPatch === null) {
         throw new BadRequestException('branchId is mandatory for all staff');
+      }
+      const br = await this.prisma.branch.findUnique({
+        where: { id: branchPatch },
+        select: { isAdministrative: true },
+      });
+      if (!br) {
+        throw new NotFoundException('Branch not found');
+      }
+      if (br.isAdministrative) {
+        throw new BadRequestException(
+          'Users cannot be assigned to the administrative branch.',
+        );
       }
       data.branch =
         { connect: { id: branchPatch } };

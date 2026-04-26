@@ -330,6 +330,57 @@ function readMetaStringArray(
   return v.filter((x): x is string => typeof x === 'string' && x.length > 0);
 }
 
+function parseMetaAppliedFromWallet(
+  meta: Prisma.JsonValue | null,
+): Prisma.Decimal {
+  const s = readMetaString(meta, 'appliedFromWallet');
+  if (!s) return new Prisma.Decimal(0);
+  try {
+    const d = new Prisma.Decimal(s);
+    return d.lt(0) ? new Prisma.Decimal(0) : d;
+  } catch {
+    return new Prisma.Decimal(0);
+  }
+}
+
+/**
+ * V19.26 — Statement labels: «تسوية» only when the invoice is paid from
+ * subscription wallet; full cash/online/link → «فاتورة مدفوعة»; wallet +
+ * external on the same invoice → «تسديد جزئي».
+ */
+function classifyOrderWalletLedgerKind(
+  meta: Prisma.JsonValue | null,
+  paymentMethod: PosPaymentMethod | null,
+): CustomerLedgerEventKind {
+  const applied = parseMetaAppliedFromWallet(meta);
+  const externalMethods: ReadonlySet<PosPaymentMethod> = new Set([
+    PosPaymentMethod.CASH,
+    PosPaymentMethod.KNET,
+    PosPaymentMethod.ONLINE,
+    PosPaymentMethod.PAYMENT_LINK,
+  ]);
+
+  if (paymentMethod === PosPaymentMethod.SUBSCRIPTION_WALLET) {
+    return 'ORDER_SETTLEMENT_SUBSCRIPTION';
+  }
+
+  if (paymentMethod === PosPaymentMethod.DEBT_ON_ACCOUNT) {
+    return 'ORDER_INVOICE_ON_ACCOUNT';
+  }
+
+  if (paymentMethod && externalMethods.has(paymentMethod)) {
+    return applied.gt(0)
+      ? 'ORDER_INVOICE_PARTIAL_PAYMENT'
+      : 'ORDER_PAID_IN_FULL';
+  }
+
+  if (applied.gt(0)) {
+    return 'ORDER_SETTLEMENT_SUBSCRIPTION';
+  }
+
+  return 'ORDER_PAID_IN_FULL';
+}
+
 /**
  * V19.4 — CC pack #8/#10/#11. Convert a Kuwait-local YYYY-MM-DD into
  * UTC instants [dayStart, dayEnd) that match the server's other
@@ -1563,21 +1614,6 @@ export class CallCenterService {
     }
 
     const mappedEvents: CustomerLedgerEventDto[] = events.map((e) => {
-      let kind: CustomerLedgerEventKind;
-      if (e.type === LedgerTransactionType.SUBSCRIPTION_ACTIVATION) {
-        kind = 'SUBSCRIPTION_ACTIVATION';
-      } else if (isPartialDebtPaymentRow(e.metadata)) {
-        kind = 'PARTIAL_DEBT_PAYMENT';
-      } else if (e.orderId) {
-        kind = 'ORDER_SETTLEMENT';
-      } else {
-        // Fallback for legacy rows with ORDER_WALLET_SETTLEMENT type but
-        // no orderId — treat as a generic carry/rollover for display.
-        kind = 'SUBSCRIPTION_ROLLOVER_CARRY';
-      }
-
-      const debtSettled = extractDebtSettled(e.metadata);
-      const debtDiscount = extractDebtDiscount(e.metadata);
       const rawMethod =
         readMetaString(e.metadata, 'posPaymentMethod') ??
         readMetaString(e.metadata, 'paymentMethod') ??
@@ -1587,6 +1623,22 @@ export class CallCenterService {
         rawMethod && (Object.values(PosPaymentMethod) as string[]).includes(rawMethod)
           ? (rawMethod as PosPaymentMethod)
           : null;
+
+      let kind: CustomerLedgerEventKind;
+      if (e.type === LedgerTransactionType.SUBSCRIPTION_ACTIVATION) {
+        kind = 'SUBSCRIPTION_ACTIVATION';
+      } else if (isPartialDebtPaymentRow(e.metadata)) {
+        kind = 'PARTIAL_DEBT_PAYMENT';
+      } else if (e.orderId) {
+        kind = classifyOrderWalletLedgerKind(e.metadata, paymentMethod);
+      } else {
+        // Fallback for legacy rows with ORDER_WALLET_SETTLEMENT type but
+        // no orderId — treat as a generic carry/rollover for display.
+        kind = 'SUBSCRIPTION_ROLLOVER_CARRY';
+      }
+
+      const debtSettled = extractDebtSettled(e.metadata);
+      const debtDiscount = extractDebtDiscount(e.metadata);
 
       // V19.8.3 — activation-only enrichment. `activationBreakdown`
       // surfaces each leg of the money flow (what the customer paid,

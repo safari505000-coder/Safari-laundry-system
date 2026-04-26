@@ -7,6 +7,7 @@ import {
   type PublicPaymentStatus,
 } from '@/lib/api';
 import { BRAND } from '@/lib/brand';
+import { formatKwdLabel } from '@/lib/kwd';
 import { Button } from '@/modules/shared/components/ui/button';
 
 /**
@@ -152,7 +153,7 @@ function SuccessBlock({ status }: { status: PublicPaymentStatus | null }) {
       </p>
       {status && (
         <p className="mt-4 text-2xl font-bold text-slate-900 tabular-nums">
-          {status.amountKd} <span className="text-sm text-slate-500 font-medium">د.ك</span>
+          {formatKwdLabel(status.amountKd)}
         </p>
       )}
       <p className="mt-6 text-xs text-slate-400">
@@ -182,7 +183,7 @@ function FailedBlock({
       </p>
       {status && (
         <p className="mt-4 text-xl font-semibold text-slate-900 tabular-nums">
-          المبلغ المطلوب: {status.amountKd} د.ك
+          المبلغ المطلوب: {formatKwdLabel(status.amountKd)}
         </p>
       )}
       <div className="mt-6 flex flex-col gap-2">
@@ -227,7 +228,7 @@ function PendingBlock({
       </p>
       {status && (
         <p className="mt-4 text-lg font-semibold text-slate-800 tabular-nums">
-          {status.amountKd} د.ك
+          {formatKwdLabel(status.amountKd)}
         </p>
       )}
       <p className="mt-6 text-xs text-slate-400 tabular-nums">

@@ -32,6 +32,7 @@ import {
   type StockItemRow,
   type SupplierRow,
 } from '@/lib/api';
+import { formatKwdLabel } from '@/lib/kwd';
 import { Button } from '@/modules/shared/components/ui/button';
 import {
   Card,
@@ -493,7 +494,7 @@ export default function PurchaseOrdersPage() {
                   />
                   <StatTile
                     label="الإجمالي"
-                    value={`${detail.totalKd} د.ك`}
+                    value={formatKwdLabel(detail.totalKd)}
                     mono
                     tone="primary"
                     size="compact"

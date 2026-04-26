@@ -13,6 +13,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.PurchaseOrdersService = void 0;
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
+const administrative_branch_util_1 = require("../branches/administrative-branch.util");
 const prisma_service_1 = require("../prisma/prisma.service");
 const inventory_service_1 = require("../inventory/inventory.service");
 let PurchaseOrdersService = PurchaseOrdersService_1 = class PurchaseOrdersService {
@@ -35,6 +36,7 @@ let PurchaseOrdersService = PurchaseOrdersService_1 = class PurchaseOrdersServic
         });
         if (!branch)
             throw new common_1.NotFoundException('Branch not found');
+        await (0, administrative_branch_util_1.assertBranchOperationalForCommerce)(this.prisma, dto.branchId);
         const seenItemIds = new Set();
         for (const line of dto.lines) {
             if (seenItemIds.has(line.stockItemId)) {

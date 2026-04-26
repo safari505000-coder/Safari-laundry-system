@@ -1816,7 +1816,10 @@ export type CustomerSubscriptionRow = {
 export type CustomerLedgerEventKind =
   | 'SUBSCRIPTION_ACTIVATION'
   | 'SUBSCRIPTION_ROLLOVER_CARRY'
-  | 'ORDER_SETTLEMENT'
+  | 'ORDER_PAID_IN_FULL'
+  | 'ORDER_SETTLEMENT_SUBSCRIPTION'
+  | 'ORDER_INVOICE_PARTIAL_PAYMENT'
+  | 'ORDER_INVOICE_ON_ACCOUNT'
   | 'PARTIAL_DEBT_PAYMENT';
 
 export type CustomerLedgerActivationBreakdown = {
@@ -1853,6 +1856,7 @@ export type CustomerLedgerEvent = {
     | 'KNET'
     | 'PAYMENT_LINK'
     | 'ONLINE'
+    | 'DEBT_ON_ACCOUNT'
     | null;
   orderId: string | null;
   orderSerial: string | null;
@@ -1880,6 +1884,7 @@ export type CustomerLedgerInvoice = {
     | 'KNET'
     | 'PAYMENT_LINK'
     | 'ONLINE'
+    | 'DEBT_ON_ACCOUNT'
     | null;
   driverName: string | null;
   branchName: string | null;
@@ -3107,6 +3112,8 @@ export type BranchRow = {
   location: string;
   phone: string | null;
   isActive: boolean;
+  /** HQ / cost-center branch: no POS, hidden from operational roles in `/api/branches`. */
+  isAdministrative: boolean;
   updatedAt: string;
 };
 
@@ -3120,6 +3127,7 @@ export type UpdateBranchInput = {
   location?: string;
   phone?: string;
   isActive?: boolean;
+  isAdministrative?: boolean;
 };
 
 /** V19.21 — OWNER / GM edit a branch. See BranchesController PATCH. */
@@ -3189,6 +3197,7 @@ export type BankFeesByBranchResponse = {
 export type MonthlySummaryBranchRow = {
   branchId: string;
   branchName: string;
+  isAdministrative: boolean;
   grossRevenueKd: string;
   bankFeesTotalKd: string;
   settledRevenueAfterBankFeesKd: string;
@@ -3234,7 +3243,10 @@ export type MonthlySummaryInventoryBranch = {
 export type MonthlySummaryReport = {
   from: string;
   to: string;
-  consolidated: Omit<MonthlySummaryBranchRow, 'branchId' | 'branchName'>;
+  consolidated: Omit<
+    MonthlySummaryBranchRow,
+    'branchId' | 'branchName' | 'isAdministrative'
+  >;
   branches: MonthlySummaryBranchRow[];
   inventoryConsumption: { branches: MonthlySummaryInventoryBranch[] };
 };

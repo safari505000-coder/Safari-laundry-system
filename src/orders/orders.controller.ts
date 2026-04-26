@@ -73,8 +73,11 @@ export class OrdersController {
     description:
       'Same validation as driver quick create: Kuwait phone, **totalPrice > 0**, **EXPRESS|NORMAL**, optional **lineItems** with total reconciliation. Optional driver assignment. Branch managers only — drivers use POST /orders/quick; Call Center is NOT permitted to issue invoices (Dastur §2, V19.3).',
   })
-  create(@Body() dto: CreateOrderDto) {
-    return this.ordersService.createAsManager(dto);
+  create(
+    @Body() dto: CreateOrderDto,
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.ordersService.createAsManager(dto, user.userId);
   }
 
   @Get()

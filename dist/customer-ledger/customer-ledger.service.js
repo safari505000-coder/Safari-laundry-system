@@ -104,7 +104,19 @@ let CustomerLedgerService = class CustomerLedgerService {
             o.posPaymentMethod === client_1.PosPaymentMethod.PAYMENT_LINK;
         const addInvoiceDebt = o.posPaymentMethod === client_1.PosPaymentMethod.DEBT_ON_ACCOUNT ||
             (!isSubscriptionWalletPayment && !externalCoversShortfall);
-        const newDebtMinor = addInvoiceDebt && shortfallMinor > 0n ? debtMinor + shortfallMinor : debtMinor;
+        let newDebtMinor = addInvoiceDebt && shortfallMinor > 0n ? debtMinor + shortfallMinor : debtMinor;
+        const debtSettledRawEarly = extraMetadata !== undefined ? extraMetadata.debtSettled : null;
+        let debtPaydownFromSettlementMinor = 0n;
+        if (typeof debtSettledRawEarly === 'string') {
+            const declaredSettledMinor = (0, finance_money_1.toMinorFromFixed4)(new client_1.Prisma.Decimal(debtSettledRawEarly));
+            if (declaredSettledMinor > 0n && newDebtMinor > 0n) {
+                debtPaydownFromSettlementMinor =
+                    declaredSettledMinor < newDebtMinor
+                        ? declaredSettledMinor
+                        : newDebtMinor;
+                newDebtMinor -= debtPaydownFromSettlementMinor;
+            }
+        }
         const afterSubscriptionDebtMinor = newBalanceMinor < 0n ? -newBalanceMinor : 0n;
         const addedSubscriptionDebtMinor = afterSubscriptionDebtMinor > beforeSubscriptionDebtMinor
             ? afterSubscriptionDebtMinor - beforeSubscriptionDebtMinor
@@ -150,6 +162,11 @@ let CustomerLedgerService = class CustomerLedgerService {
                     addedSubscriptionDebt: (0, finance_money_1.minorToAmountString)(addedSubscriptionDebtMinor),
                     posPaymentMethod: o.posPaymentMethod ?? null,
                     externalCoversShortfall: externalCoversShortfall && shortfallMinor > 0n ? true : false,
+                    ...(debtPaydownFromSettlementMinor > 0n
+                        ? {
+                            debtPaydownFromSettlement: (0, finance_money_1.minorToAmountString)(debtPaydownFromSettlementMinor),
+                        }
+                        : {}),
                     reportingCategory: 'DAILY_SALES',
                     subscriptionId: activeSubscription?.id ?? null,
                     ...(extraMetadata ?? {}),
@@ -215,41 +232,38 @@ let CustomerLedgerService = class CustomerLedgerService {
             where: { id: orderId, walletSettledAt: null },
             data: { walletSettledAt: new Date() },
         });
-        const debtSettledRaw = extraMetadata !== undefined ? extraMetadata.debtSettled : null;
-        if (typeof debtSettledRaw === 'string') {
-            const settledMinor = (0, finance_money_1.toMinorFromFixed4)(new client_1.Prisma.Decimal(debtSettledRaw));
-            if (settledMinor > 0n) {
-                await tx.debtLedgerEntry.create({
-                    data: {
-                        customerId: o.customerId,
-                        orderId,
-                        source: client_1.DebtSource.PAYMENT,
-                        category: debtCategory,
-                        amount: this.decimalFromMinor(settledMinor),
-                        branchId: actor.branchId,
-                        actorUserId: actor.id,
-                        note: 'Invoice debt settled (wallet settlement)',
-                    },
-                });
-                await this.generalLedger.append(tx, {
-                    entryType: client_1.GeneralLedgerEntryType.DEBT_ADJUSTMENT,
-                    amount: `-${(0, finance_money_1.minorToAmountString)(settledMinor)}`,
-                    memo: 'Debt payment recorded on unified ledger',
+        if (debtPaydownFromSettlementMinor > 0n) {
+            await tx.debtLedgerEntry.create({
+                data: {
                     customerId: o.customerId,
                     orderId,
+                    source: client_1.DebtSource.PAYMENT,
+                    category: debtCategory,
+                    amount: this.decimalFromMinor(debtPaydownFromSettlementMinor),
+                    branchId: actor.branchId,
                     actorUserId: actor.id,
-                    metadata: {
-                        source: client_1.DebtSource.PAYMENT,
-                        category: debtCategory,
-                        branchId: actor.branchId,
-                        trigger: extraMetadata?.debtSettlementViaCallCenter === true
-                            ? 'CALL_CENTER_MANUAL'
-                            : extraMetadata?.debtSettlementViaLink === true
-                                ? 'PAYMENT_LINK_CALLBACK'
-                                : 'WALLET_SETTLEMENT',
-                    },
-                });
-            }
+                    note: 'Invoice debt settled (wallet settlement)',
+                },
+            });
+            await this.generalLedger.append(tx, {
+                entryType: client_1.GeneralLedgerEntryType.DEBT_ADJUSTMENT,
+                amount: `-${(0, finance_money_1.minorToAmountString)(debtPaydownFromSettlementMinor)}`,
+                memo: 'Debt payment recorded on unified ledger',
+                customerId: o.customerId,
+                orderId,
+                actorUserId: actor.id,
+                metadata: {
+                    source: client_1.DebtSource.PAYMENT,
+                    category: debtCategory,
+                    branchId: actor.branchId,
+                    trigger: extraMetadata?.debtSettlementViaCallCenter === true
+                        ? 'CALL_CENTER_MANUAL'
+                        : extraMetadata?.debtSettlementViaLink === true
+                            ? 'PAYMENT_LINK_CALLBACK'
+                            : 'WALLET_SETTLEMENT',
+                    declaredDebtSettled: typeof debtSettledRawEarly === 'string' ? debtSettledRawEarly : null,
+                },
+            });
         }
     }
     async activateSubscriptionPlan(tx, params) {

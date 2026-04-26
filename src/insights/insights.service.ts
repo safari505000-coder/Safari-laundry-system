@@ -270,14 +270,31 @@ export class InsightsService {
       .map((g) => g.driverId)
       .filter((v): v is string => v != null);
 
+    const driverBranchFlags = await this.prisma.user.findMany({
+      where: { id: { in: driverIds } },
+      select: { id: true, branch: { select: { isAdministrative: true } } },
+    });
+    const opsDriverIds = new Set(
+      driverBranchFlags
+        .filter((u) => !u.branch?.isAdministrative)
+        .map((u) => u.id),
+    );
+    const filteredGroups = groups.filter(
+      (g) => g.driverId != null && opsDriverIds.has(g.driverId as string),
+    );
+    if (filteredGroups.length === 0) {
+      return { periodDays, drivers: [] };
+    }
+
     // For turnaround we need the per-order create→complete delta. The
     // dataset stays small (one period per driver) so we just
     // stream-process in-memory.
+    const opsIdList = [...opsDriverIds];
     const orders = await this.prisma.order.findMany({
       where: {
         completedAt: { gte: from, lt: to },
         status: OrderStatus.COMPLETED,
-        driverId: { in: driverIds },
+        driverId: { in: opsIdList },
       },
       select: {
         driverId: true,
@@ -299,7 +316,7 @@ export class InsightsService {
     }
 
     const users = await this.prisma.user.findMany({
-      where: { id: { in: driverIds } },
+      where: { id: { in: opsIdList } },
       select: {
         id: true,
         fullName: true,
@@ -310,7 +327,7 @@ export class InsightsService {
     });
     const userIndex = new Map(users.map((u) => [u.id, u]));
 
-    const raw = groups
+    const raw = filteredGroups
       .filter((g) => g.driverId)
       .map((g) => {
         const id = g.driverId as string;

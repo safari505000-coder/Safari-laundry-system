@@ -29,7 +29,7 @@ export declare class CustomerLedgerSubscriptionDto {
     closedAtIso: string | null;
     closedReason: string | null;
 }
-export type CustomerLedgerEventKind = 'SUBSCRIPTION_ACTIVATION' | 'SUBSCRIPTION_ROLLOVER_CARRY' | 'ORDER_SETTLEMENT' | 'PARTIAL_DEBT_PAYMENT';
+export type CustomerLedgerEventKind = 'SUBSCRIPTION_ACTIVATION' | 'SUBSCRIPTION_ROLLOVER_CARRY' | 'ORDER_PAID_IN_FULL' | 'ORDER_SETTLEMENT_SUBSCRIPTION' | 'ORDER_INVOICE_PARTIAL_PAYMENT' | 'ORDER_INVOICE_ON_ACCOUNT' | 'PARTIAL_DEBT_PAYMENT';
 export declare class CustomerLedgerActivationBreakdownDto {
     totalCollectedKd: string;
     actualBalanceKd: string;

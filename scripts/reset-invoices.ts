@@ -13,6 +13,16 @@
  * + fixed overheads, zero branch `Wallet` and salary fields on `User`. Does
  * **not** remove attendance, leave, PO/stock, `AuditLog`, or `RefreshToken`.
  *
+ * `DELETE-OPERATIONAL-DATA` — تصفير البيانات التشغيلية وفق مواصفة «مسح المدخلات فقط»:
+ *   • فواتير/طلبات/بنود/اشتراكات عملاء + كل السجلات المرتبطة بالمبيعات والذمم
+ *   • مسيرات الرواتب، السلف، مصاريف الفروع/السيارات/الجداول الثابتة، محافظ الفروع،
+ *     حقول الراتب على `User`، وتصفير محافظ العملاء
+ *   • سجلات الحضور والانصراف فقط (لا تُمسّ `LeaveRequest`)
+ *   يُبقى: الإعدادات، قوائم الأسعار والتصنيفات، المستخدمون والصلاحيات، المخزون
+ *   وأوامر الشراء، `AuditLog`، جلسات الدخول (`RefreshToken`)، قواعد العمولة.
+ *   أرقام الفواتير: يُصفَّر `SerialCounter` (الفاتورة التالية تُطبع كـ 1). المفاتيح
+ *   الأساسية في PostgreSQL UUID وليست SERIAL — لا يوجد auto-increment عام للجداول.
+ *
  * `DELETE-LOCAL-TEST-ALL` — full local nuke: everything in INVOICES-AND-MONEY
  * **plus** leave, attendance, purchase orders, stock movements, stock levels,
  * `AuditLog`, `RefreshToken` (everyone must re-login).
@@ -39,16 +49,19 @@
  *   npx tsx scripts/reset-invoices.ts --confirm=DELETE-ALL-INVOICES
  *   npx tsx scripts/reset-invoices.ts --confirm=DELETE-INVOICES-AND-MONEY
  *   npx tsx scripts/reset-invoices.ts --confirm=DELETE-LOCAL-TEST-ALL
+ *   npx tsx scripts/reset-invoices.ts --confirm=DELETE-OPERATIONAL-DATA
  *
- * Or: npm run db:reset-money  |  npm run db:reset-local
+ * Or: npm run db:reset-money  |  npm run db:reset-local  |  npm run db:wipe-operational
  *
  * Without a matching --confirm it runs in DRY-RUN mode and only prints counts.
  * Read .env for DATABASE_URL.
  *
- * Safety: destructive `--confirm=...` is **refused** unless the DB host is a
- * typical local dev target (localhost, 127.0.0.1, host.docker.internal, etc.)
- * to avoid accidentally wiping production. Override only if intentional:
- *   RESET_ALLOW_NON_LOCAL=true
+ * Safety — destructive `--confirm=...` is double-gated:
+ *   • Non-local hosts (e.g. Railway): refused unless `RESET_ALLOW_NON_LOCAL=true`.
+ *   • Local hosts (localhost, 127.0.0.1, docker service names `postgres`/`db`, etc.):
+ *     refused unless `RESET_ALLOW_LOCAL=true` so `.env` pointing at Docker Postgres
+ *     is not wiped by mistake.
+ * Dry-run (`npx tsx scripts/reset-invoices.ts` with no `--confirm`) always allowed.
  */
 
 import 'dotenv/config';
@@ -206,6 +219,7 @@ function printCounts(label: string, c: Awaited<ReturnType<typeof countAll>>) {
 
 const CONFIRM_INVOICES_ONLY = 'DELETE-ALL-INVOICES';
 const CONFIRM_INVOICES_AND_MONEY = 'DELETE-INVOICES-AND-MONEY';
+const CONFIRM_OPERATIONAL_DATA = 'DELETE-OPERATIONAL-DATA';
 const CONFIRM_LOCAL_TEST_ALL = 'DELETE-LOCAL-TEST-ALL';
 
 /**
@@ -232,11 +246,15 @@ async function main() {
   const confirmArg = process.argv.find((a) => a.startsWith('--confirm='));
   const confirmValue = confirmArg ? confirmArg.split('=')[1] : '';
   const localTestAll = confirmValue === CONFIRM_LOCAL_TEST_ALL;
+  const operationalData = confirmValue === CONFIRM_OPERATIONAL_DATA;
   const moneyScope = confirmValue === CONFIRM_INVOICES_AND_MONEY;
   /** Payroll, loans, branch/vehicle/fixed expenses, branch Wallet, salary fields on User. */
-  const clearingMoneyData = moneyScope || localTestAll;
+  const clearingMoneyData = moneyScope || localTestAll || operationalData;
   const isDryRun =
-    confirmValue !== CONFIRM_INVOICES_ONLY && !localTestAll && !moneyScope;
+    confirmValue !== CONFIRM_INVOICES_ONLY &&
+    !localTestAll &&
+    !moneyScope &&
+    !operationalData;
 
   const dbUrl = process.env.DATABASE_URL ?? '';
   const dbHost = databaseHostForGuard(dbUrl);
@@ -244,9 +262,11 @@ async function main() {
     ? ''
     : localTestAll
       ? 'LOCAL TEST — full wipe (attendance, PO, stock, audit, sessions)'
-      : moneyScope
-        ? 'INVOICES + MONEY (payroll, loans, cash expenses, branch wallets, salary fields; keeps attendance, stock, audit, logins)'
-        : 'invoices + ledgers only (keeps payroll & expense tables)';
+      : operationalData
+        ? 'OPERATIONAL DATA — invoices, ledgers, payroll, loans, expenses, wallets + attendance (keeps leave, stock, PO, audit, logins)'
+        : moneyScope
+          ? 'INVOICES + MONEY (payroll, loans, cash expenses, branch wallets, salary fields; keeps attendance, stock, audit, logins)'
+          : 'invoices + ledgers only (keeps payroll & expense tables)';
   console.log('=============================================================');
   console.log(' Safari ERP — reset invoices + invoice-tied financial records');
   console.log('=============================================================');
@@ -264,6 +284,9 @@ async function main() {
   if (!isDryRun && moneyScope) {
     console.log('  !! DELETE-INVOICES-AND-MONEY: financial-only; sessions & HR calendar preserved.');
   }
+  if (!isDryRun && operationalData) {
+    console.log('  !! DELETE-OPERATIONAL-DATA: + attendance wipe; leave, inventory, PO, audit, sessions preserved.');
+  }
   console.log('-------------------------------------------------------------');
 
   const before = await countAll();
@@ -274,13 +297,20 @@ async function main() {
       `\nDry run only. Re-run with one of:\n` +
         `  --confirm=${CONFIRM_INVOICES_ONLY}            → orders/ledgers only (keeps Payroll, loans, expenses)\n` +
         `  --confirm=${CONFIRM_INVOICES_AND_MONEY}   → + payroll, loans, branch/vehicle/fixed expenses, branch Wallet, salary fields (keeps attendance, leave, PO/stock, AuditLog, RefreshToken)\n` +
-        `  --confirm=${CONFIRM_LOCAL_TEST_ALL}       → full local wipe (+ stock, attendance, audit, sessions)`,
+        `  --confirm=${CONFIRM_OPERATIONAL_DATA}     → like MONEY + clears attendance only (keeps leave, PO/stock, audit, logins)\n` +
+        `  --confirm=${CONFIRM_LOCAL_TEST_ALL}       → full local wipe (+ stock, attendance, audit, sessions)\n` +
+        `\nExecuting any --confirm also requires:\n` +
+        `  • Local DATABASE_URL → RESET_ALLOW_LOCAL=true\n` +
+        `  • Non-local host     → RESET_ALLOW_NON_LOCAL=true`,
     );
     return;
   }
 
   const allowNonLocal = ['1', 'true', 'yes'].includes(
     (process.env.RESET_ALLOW_NON_LOCAL ?? '').toLowerCase().trim(),
+  );
+  const allowLocalDestructive = ['1', 'true', 'yes'].includes(
+    (process.env.RESET_ALLOW_LOCAL ?? '').toLowerCase().trim(),
   );
   if (!isLocalDatabaseHost(dbHost) && !allowNonLocal) {
     console.error('\nتوقف — لن نحذف على سيرفر بعيد (حماية من مسح بيانات الإنتاج/الـRailway).');
@@ -292,6 +322,16 @@ async function main() {
   }
   if (!isLocalDatabaseHost(dbHost) && allowNonLocal) {
     console.log('  !! RESET_ALLOW_NON_LOCAL=true — running DELETE on NON-LOCAL host. Double-check you meant this.');
+  }
+  if (isLocalDatabaseHost(dbHost) && !allowLocalDestructive) {
+    console.error('\nتوقف — لن ننفّذ تصفيراً على قاعدة محلية بدون موافقة صريحة.');
+    console.error('ABORT: local DATABASE_URL — refusing destructive run (protect local data).');
+    console.error(`  Host: ${dbHost}`);
+    console.error('  To wipe this database on purpose: set RESET_ALLOW_LOCAL=true then re-run the same command.');
+    process.exit(1);
+  }
+  if (isLocalDatabaseHost(dbHost) && allowLocalDestructive) {
+    console.log('  !! RESET_ALLOW_LOCAL=true — destructive DELETE on LOCAL host.');
   }
 
   console.log('\nExecuting delete sequence inside a single transaction…');
@@ -338,6 +378,8 @@ async function main() {
           await tx.attendanceLog.deleteMany();
           await tx.purchaseOrder.deleteMany();
           await tx.stockMovement.deleteMany();
+        } else if (operationalData) {
+          await tx.attendanceLog.deleteMany();
         }
       }
 
@@ -409,6 +451,10 @@ async function main() {
   if (localTestAll) {
     console.log(
       '\nDone. Full local wipe: invoices, ledgers, payroll, loans, expenses, PO/stock, attendance, audit, sessions; wallets at 0; re-login required.',
+    );
+  } else if (operationalData) {
+    console.log(
+      '\nDone. Operational wipe: invoices, ledgers, payroll, loans, expenses, attendance cleared; customer + branch Wallets 0; salary fields cleared. Leave, stock, PO, audit, logins preserved. Next invoice serial → 1.',
     );
   } else if (moneyScope) {
     console.log(

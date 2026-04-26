@@ -340,7 +340,7 @@ export class FinanceController {
   @ApiOperation({
     summary: `Unpaid invoices list (${APP_BRAND})`,
     description:
-      'Table: per-order `INVOICE_SHORTFALL` and subscription overuse (any actor) with FIFO payments. `kpis.totalMarketUnpaidKd` = Σ `Order` UNPAID; use `marketKpiBranchId` to align the headline with Call Center / collections when `branchId` is omitted (all branches in the table).',
+      'Receivable on the customer per row, with `actorUser*` = field issuer (driver, branch manager, etc.). Ledger: `INVOICE_SHORTFALL` + subscription overuse + FIFO payments; plus `OPEN_UNPAITotal` lines. `kpis.totalMarketUnpaidKd` and `kpis.marketUnpaidByMethod` both use the full Σ `Order` UNPAID universe in branch scope (split by `posPaymentMethod` for the latter). Use `marketKpiBranchId` to align the headline with Call Center when `branchId` is omitted.',
   })
   getUnpaidInvoices(
     @Query() query: UnpaidInvoicesQueryDto,

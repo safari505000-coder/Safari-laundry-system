@@ -146,6 +146,42 @@ function readMetaStringArray(meta, key) {
         return [];
     return v.filter((x) => typeof x === 'string' && x.length > 0);
 }
+function parseMetaAppliedFromWallet(meta) {
+    const s = readMetaString(meta, 'appliedFromWallet');
+    if (!s)
+        return new client_1.Prisma.Decimal(0);
+    try {
+        const d = new client_1.Prisma.Decimal(s);
+        return d.lt(0) ? new client_1.Prisma.Decimal(0) : d;
+    }
+    catch {
+        return new client_1.Prisma.Decimal(0);
+    }
+}
+function classifyOrderWalletLedgerKind(meta, paymentMethod) {
+    const applied = parseMetaAppliedFromWallet(meta);
+    const externalMethods = new Set([
+        client_1.PosPaymentMethod.CASH,
+        client_1.PosPaymentMethod.KNET,
+        client_1.PosPaymentMethod.ONLINE,
+        client_1.PosPaymentMethod.PAYMENT_LINK,
+    ]);
+    if (paymentMethod === client_1.PosPaymentMethod.SUBSCRIPTION_WALLET) {
+        return 'ORDER_SETTLEMENT_SUBSCRIPTION';
+    }
+    if (paymentMethod === client_1.PosPaymentMethod.DEBT_ON_ACCOUNT) {
+        return 'ORDER_INVOICE_ON_ACCOUNT';
+    }
+    if (paymentMethod && externalMethods.has(paymentMethod)) {
+        return applied.gt(0)
+            ? 'ORDER_INVOICE_PARTIAL_PAYMENT'
+            : 'ORDER_PAID_IN_FULL';
+    }
+    if (applied.gt(0)) {
+        return 'ORDER_SETTLEMENT_SUBSCRIPTION';
+    }
+    return 'ORDER_PAID_IN_FULL';
+}
 function kuwaitDayFromIso(iso) {
     const base = parseDayUtc(iso);
     const dayStart = new Date(base.getTime() - KUWAIT_OFFSET_MS);
@@ -1039,6 +1075,13 @@ let CallCenterService = class CallCenterService {
             }
         }
         const mappedEvents = events.map((e) => {
+            const rawMethod = readMetaString(e.metadata, 'posPaymentMethod') ??
+                readMetaString(e.metadata, 'paymentMethod') ??
+                e.order?.posPaymentMethod ??
+                null;
+            const paymentMethod = rawMethod && Object.values(client_1.PosPaymentMethod).includes(rawMethod)
+                ? rawMethod
+                : null;
             let kind;
             if (e.type === client_1.LedgerTransactionType.SUBSCRIPTION_ACTIVATION) {
                 kind = 'SUBSCRIPTION_ACTIVATION';
@@ -1047,20 +1090,13 @@ let CallCenterService = class CallCenterService {
                 kind = 'PARTIAL_DEBT_PAYMENT';
             }
             else if (e.orderId) {
-                kind = 'ORDER_SETTLEMENT';
+                kind = classifyOrderWalletLedgerKind(e.metadata, paymentMethod);
             }
             else {
                 kind = 'SUBSCRIPTION_ROLLOVER_CARRY';
             }
             const debtSettled = extractDebtSettled(e.metadata);
             const debtDiscount = extractDebtDiscount(e.metadata);
-            const rawMethod = readMetaString(e.metadata, 'posPaymentMethod') ??
-                readMetaString(e.metadata, 'paymentMethod') ??
-                e.order?.posPaymentMethod ??
-                null;
-            const paymentMethod = rawMethod && Object.values(client_1.PosPaymentMethod).includes(rawMethod)
-                ? rawMethod
-                : null;
             let activationBreakdown = null;
             let closedInvoicesForEvent = [];
             if (kind === 'SUBSCRIPTION_ACTIVATION') {

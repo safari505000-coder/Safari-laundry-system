@@ -3,4 +3,5 @@ export declare class CreateBranchDto {
     location: string;
     phone?: string;
     isActive?: boolean;
+    isAdministrative?: boolean;
 }

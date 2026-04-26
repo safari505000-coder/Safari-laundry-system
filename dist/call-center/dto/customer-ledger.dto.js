@@ -257,7 +257,10 @@ __decorate([
         enum: [
             'SUBSCRIPTION_ACTIVATION',
             'SUBSCRIPTION_ROLLOVER_CARRY',
-            'ORDER_SETTLEMENT',
+            'ORDER_PAID_IN_FULL',
+            'ORDER_SETTLEMENT_SUBSCRIPTION',
+            'ORDER_INVOICE_PARTIAL_PAYMENT',
+            'ORDER_INVOICE_ON_ACCOUNT',
             'PARTIAL_DEBT_PAYMENT',
         ],
     }),
