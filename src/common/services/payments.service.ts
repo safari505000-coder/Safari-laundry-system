@@ -60,27 +60,159 @@ type UPaymentsInquiryData = {
 
 /**
  * UPayments `/api/v1/charge` JSON shape is not stable across environments:
- * official docs' examples only show `data.link` while `data.trackId` is required
- * for `get-payment-status`. Alternate keys (TrackID, track_id) and query params
- * on `link` are parsed here so we persist a real `posGatewayTrackId`.
+ * official docs' examples only show `data.link` while a track is required
+ * for `get-payment-status`. We accept many key spellings, numeric values, and
+ * perform a shallow recursive walk — production payloads have placed the id
+ * under `payment_id`, `invoice_id`, nested `payment`, etc.
  */
+function looksLikeOurOrderUuid(s: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    s.trim(),
+  );
+}
+
+function coerceStringishTrackValue(v: unknown): string | undefined {
+  if (typeof v === 'string') {
+    const t = v.trim();
+    return t || undefined;
+  }
+  if (typeof v === 'number' && Number.isFinite(v)) {
+    if (!Number.isInteger(v) && v > 1e15) {
+      return undefined;
+    }
+    const s = String(v);
+    if (s === 'NaN' || s.includes('e') || s.includes('E')) {
+      return undefined;
+    }
+    return s;
+  }
+  if (typeof v === 'bigint') {
+    return v.toString();
+  }
+  return undefined;
+}
+
+/** Known spellings from UPayments and partner gateways (KNET / uInterface). */
+const UPAYMENTS_TRACK_LIKE_KEYS: readonly string[] = [
+  'trackId',
+  'TrackID',
+  'track_id',
+  'TrackId',
+  'trackID',
+  'paymentTrackId',
+  'PaymentTrackId',
+  'payment_id',
+  'paymentId',
+  'PaymentId',
+  'Payment_ID',
+  'invoice_id',
+  'invoiceId',
+  'InvoiceId',
+  'session_id',
+  'sessionId',
+  'SessionId',
+  'transaction_id',
+  'transactionId',
+  'TransactionId',
+  'tran_id',
+  'tranId',
+  'receipt_id',
+  'receiptId',
+  'receiptid',
+  'upayment_id',
+  'uPaymentId',
+];
+
+function isPlausibleTrackValue(s: string, key: string): boolean {
+  if (s.length < 5 || s.length > 128) {
+    return false;
+  }
+  if (s.startsWith('http') || s.startsWith('//')) {
+    return false;
+  }
+  if (looksLikeOurOrderUuid(s) && (key === 'id' || key === 'orderId')) {
+    return false;
+  }
+  if (key === 'id' && looksLikeOurOrderUuid(s)) {
+    return false;
+  }
+  return true;
+}
+
 function tryParseTrackIdFromRecord(o: unknown): string | undefined {
   if (!o || typeof o !== 'object') {
     return undefined;
   }
   const r = o as Record<string, unknown>;
-  for (const k of [
-    'trackId',
-    'TrackID',
-    'track_id',
-    'TrackId',
-    'trackID',
-    'paymentTrackId',
-    'PaymentTrackId',
-  ]) {
-    const v = r[k];
-    if (typeof v === 'string' && v.trim()) {
-      return v.trim();
+  for (const k of UPAYMENTS_TRACK_LIKE_KEYS) {
+    if (!(k in r)) {
+      continue;
+    }
+    const s = coerceStringishTrackValue(r[k]);
+    if (s && isPlausibleTrackValue(s, k)) {
+      return s;
+    }
+  }
+  return undefined;
+}
+
+const TRACK_KEY_NAME_HINT = /track|payment_?id|invoice_?|session_?|tran_?|receipt_?/i;
+
+/**
+ * Deep search (depth-limited) for any nested object that carries a track-like key.
+ * Skips obvious non-ids (URLs, our UUID order ids in known fields).
+ */
+function deepFindUpaymentsTrackId(node: unknown, depth: number): string | undefined {
+  if (depth > 12 || node == null) {
+    return undefined;
+  }
+  if (Array.isArray(node)) {
+    for (const el of node) {
+      const t = deepFindUpaymentsTrackId(el, depth + 1);
+      if (t) {
+        return t;
+      }
+    }
+    return undefined;
+  }
+  if (typeof node !== 'object') {
+    return undefined;
+  }
+  const o = node as Record<string, unknown>;
+  for (const k of UPAYMENTS_TRACK_LIKE_KEYS) {
+    if (!(k in o)) {
+      continue;
+    }
+    const s = coerceStringishTrackValue(o[k]);
+    if (s && isPlausibleTrackValue(s, k)) {
+      return s;
+    }
+  }
+  if (depth > 0) {
+    for (const k of ['id', 'Id', 'ID'] as const) {
+      if (!(k in o)) {
+        continue;
+      }
+      const s = coerceStringishTrackValue(o[k]);
+      if (s && isPlausibleTrackValue(s, 'id')) {
+        return s;
+      }
+    }
+  }
+  for (const [k, v] of Object.entries(o)) {
+    if (TRACK_KEY_NAME_HINT.test(k)) {
+      const s = coerceStringishTrackValue(v);
+      if (s && isPlausibleTrackValue(s, k)) {
+        return s;
+      }
+    }
+  }
+  for (const v of Object.values(o)) {
+    if (v != null && typeof v === 'object') {
+      const t = deepFindUpaymentsTrackId(v, depth + 1);
+      if (t) {
+        return t;
+      }
     }
   }
   return undefined;
@@ -140,6 +272,66 @@ function extractUpaymentsChargeTrackId(
   t = tryParseTrackIdFromPaymentUrl(paymentUrl);
   if (t) {
     return t;
+  }
+  t = deepFindUpaymentsTrackId(data, 0);
+  return t;
+}
+
+/**
+ * Last-resort: parse `track_id` / `payment_id` from raw body so 15+ digit ids
+ * are not corrupted by JSON number parsing (`Number` precision loss).
+ */
+function extractTrackIdFromChargeRawJsonText(raw: string): string | undefined {
+  const quotedPatterns: RegExp[] = [
+    /"track_?id"\s*:\s*"([^"]{5,128})"/i,
+    /"payment_?id"\s*:\s*"([^"]{5,128})"/i,
+    /"PaymentId"\s*:\s*"([^"]{5,128})"/,
+    /"invoice_?id"\s*:\s*"([^"]{5,128})"/i,
+  ];
+  for (const re of quotedPatterns) {
+    const m = re.exec(raw);
+    const s = m?.[1]?.trim();
+    if (
+      s &&
+      !s.startsWith('http') &&
+      !looksLikeOurOrderUuid(s) &&
+      isPlausibleTrackValue(s, 'raw')
+    ) {
+      return s;
+    }
+  }
+  const numM = /"(?:track_?id|payment_?id|invoice_?id|session_?id)"\s*:\s*(\d{10,24})\b/.exec(
+    raw,
+  );
+  if (numM?.[1]) {
+    return numM[1];
+  }
+  return undefined;
+}
+
+/** Payment landing URL: UPayments and partners vary between `link`, `url`, `paymentUrl`. */
+function resolveUpaymentsChargePaymentUrl(data: unknown): string | undefined {
+  if (!data || typeof data !== 'object') {
+    return undefined;
+  }
+  const d = data as Record<string, unknown>;
+  for (const key of [
+    'link',
+    'url',
+    'paymentUrl',
+    'paymentLink',
+    'href',
+    'redirectUrl',
+    'redirect_url',
+  ]) {
+    const v = d[key];
+    if (typeof v !== 'string') {
+      continue;
+    }
+    const t = v.trim();
+    if (t.startsWith('http://') || t.startsWith('https://')) {
+      return t;
+    }
   }
   return undefined;
 }
@@ -423,21 +615,31 @@ export class PaymentsService implements OnModuleInit {
       );
     }
 
-    const url = json.data?.link;
-    if (!url || typeof url !== 'string') {
+    const dataBlock: unknown = json.data;
+    const url = resolveUpaymentsChargePaymentUrl(dataBlock);
+    if (!url) {
       throw new BadRequestException(
-        'UPayments response missing `data.link`',
+        'UPayments response missing payment link (`data.link` / `data.url` / similar)',
       );
     }
 
-    const dataBlock: unknown = json.data;
     let trackId = extractUpaymentsChargeTrackId(dataBlock, url);
+    if (!trackId) {
+      trackId = deepFindUpaymentsTrackId(json, 0);
+    }
     if (!trackId) {
       trackId = tryParseTrackIdFromRecord(json);
     }
     if (!trackId) {
+      trackId = extractTrackIdFromChargeRawJsonText(text);
+    }
+    if (!trackId) {
+      const dataKeys =
+        dataBlock && typeof dataBlock === 'object'
+          ? Object.keys(dataBlock as object).join(',')
+          : 'n/a';
       this.logger.error(
-        `UPayments /charge: cannot resolve trackId for order=${params.orderId}. Raw data (redacted) snippet: ${text.slice(0, 2500)}`,
+        `UPayments /charge: cannot resolve trackId for order=${params.orderId}. data keys=[${dataKeys}] snippet=${text.slice(0, 2500)}`,
       );
       throw new BadRequestException(
         'UPayments did not return a verifiable track id (needed for recheck and webhooks). Check gateway /charge JSON or contact UPayments support.',
