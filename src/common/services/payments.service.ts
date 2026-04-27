@@ -861,6 +861,62 @@ export class PaymentsService implements OnModuleInit {
   }
 
   /**
+   * Finalize when the browser return URL (or UPayments webhook body) already
+   * states CAPTURED with a v2 `track_id` and our `Order.id` is known — do not
+   * block on `get-payment-status` (UPayments can lag behind the redirect).
+   */
+  async tryFinalizeOrderFromTrustedUpaymentsReturn(
+    orderId: string,
+    trackId: string,
+    gatewayResultRaw: string,
+    source: string,
+    extras?: {
+      paymentId?: string | null;
+      tranId?: string | null;
+      amount?: string;
+    },
+  ): Promise<{ finalized: boolean }> {
+    const clean = trackId.trim();
+    if (!clean || !/v2$/i.test(clean)) {
+      return { finalized: false };
+    }
+    if (this.normalizeCallbackStatus(gatewayResultRaw) !== 'success') {
+      return { finalized: false };
+    }
+
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        status: true,
+        walletSettledAt: true,
+      },
+    });
+    if (!order) {
+      return { finalized: false };
+    }
+    if (order.walletSettledAt || order.status === OrderStatus.COMPLETED) {
+      return { finalized: true };
+    }
+    if (order.status === OrderStatus.CANCELED) {
+      return { finalized: false };
+    }
+
+    await this.finalizePaidOrderFromGateway(orderId, {
+      provider: 'upayments',
+      trackId: clean,
+      source,
+      result: gatewayResultRaw.trim(),
+      paymentId: extras?.paymentId ?? null,
+      tranId: extras?.tranId ?? null,
+      amount: extras?.amount != null ? String(extras.amount) : '',
+      inquiryRaw: { trustedWithoutUpaymentsInquiry: true },
+    } as never);
+
+    return { finalized: true };
+  }
+
+  /**
    * V1.6.0 — Universal payment link for ANY unpaid non-canceled order.
    *
    * Returns the existing `posHostedPaymentUrl` if one was already generated

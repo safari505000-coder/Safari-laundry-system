@@ -23,4 +23,16 @@ export class GatewayTrackHintDto {
   @IsString()
   @MaxLength(384)
   track_id?: string;
+
+  /**
+   * Gateway return URL `result=` (e.g. CAPTURED). When present with a v2
+   * `track_id`, the server may finalize without waiting for UPayments inquiry.
+   */
+  @ApiPropertyOptional({
+    description: 'Echo of return URL result= (CAPTURED, FAILED, …)',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  result?: string;
 }

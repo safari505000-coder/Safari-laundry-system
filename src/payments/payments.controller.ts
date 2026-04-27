@@ -120,17 +120,20 @@ document.getElementById('go').onclick = async function () {
    * V1.7.0 — Public webhook (UPayments `notificationUrl`).
    *
    * UPayments does not sign webhooks the way the legacy HMAC
-   * contract expected, so we NEVER trust the body blindly:
+   * contract expected, so we do not trust arbitrary fields alone:
    *
    *   1. If `devMock` is set AND mock mode is enabled, take the
    *      legacy `{orderId, status}` pair and finalize — used by
    *      local dev + the mock-checkout HTML page only.
-   *   2. Otherwise, pull `trackId` from the body (snake/upper/camel
-   *      variants all handled) and call UPayments'
-   *      `GET /api/v1/get-payment-status/{trackId}` with our
-   *      server-side API key. Only if UPayments confirms
-   *      `result === CAPTURED` (or equivalent) do we finalize.
-   *   3. If the legacy HMAC `signature` field IS present AND we're
+   *   2. If the body already says CAPTURED (normalized), `track_id`
+   *      ends with `v2`, and we can resolve a Safari `Order.id` from
+   *      `requested_order_id` / `trn_udf` / etc., we finalize immediately
+   *      — this is the authoritative path when the shopper never opens
+   *      our return page (webhook as source of truth).
+   *   3. Otherwise, pull `trackId` from the body and call UPayments'
+   *      `GET /api/v1/get-payment-status/{trackId}` as a backstop when
+   *      the body alone is incomplete or trusted finalize fails.
+   *   4. If the legacy HMAC `signature` field IS present AND we're
    *      not in mock mode, we still verify it as a fallback (for
    *      gateways that continue to use that contract).
    *
@@ -178,8 +181,54 @@ document.getElementById('go').onclick = async function () {
 
     if (trackId) {
       this.logger.log(
-        `UPayments callback: received trackId prefix=${trackId.slice(0, 12)}… (inquiry next)`,
+        `UPayments callback: received trackId prefix=${trackId.slice(0, 12)}…`,
       );
+
+      const safariOrderFromBody = extractOrderId(body);
+      const bodyOutcome = this.paymentsService.normalizeCallbackStatus(
+        body.result ?? body.status ?? '',
+      );
+      const trustWebhookFinalize =
+        Boolean(safariOrderFromBody) &&
+        bodyOutcome === 'success' &&
+        /v2$/i.test(trackId.trim());
+
+      if (trustWebhookFinalize) {
+        this.logger.log(
+          `UPayments callback: trusted webhook (CAPTURED + v2 + Safari order) orderId=${safariOrderFromBody} — finalize without inquiry`,
+        );
+        try {
+          await this.paymentsService.finalizePaidOrderFromGateway(
+            safariOrderFromBody!,
+            {
+              provider: 'upayments',
+              trackId,
+              source: 'UPayments_WEBHOOK_TRUSTED_BODY',
+              paymentId: body.payment_id ?? body.paymentId ?? null,
+              tranId: body.tran_id ?? body.tranId ?? null,
+              result: body.result ?? body.status ?? null,
+              auth: body.auth ?? null,
+              amount: String(body.amount ?? ''),
+              inquiryRaw: { trustedWithoutUpaymentsInquiry: true },
+              receivedBody: body,
+            } as never,
+          );
+          this.logger.log(
+            `UPayments callback: finalizePaidOrderFromGateway (trusted) done orderId=${safariOrderFromBody}`,
+          );
+          return {
+            ok: true as const,
+            orderId: safariOrderFromBody!,
+            trackId,
+            outcome: 'success' as const,
+          };
+        } catch (err) {
+          this.logger.warn(
+            `UPayments callback: trusted finalize failed orderId=${safariOrderFromBody}: ${(err as Error).message} — falling back to inquiry`,
+          );
+        }
+      }
+
       const inquiry = await this.paymentsService.fetchGatewayStatus(trackId);
       const resolvedOrderId =
         inquiry.data.order?.id ??
@@ -298,6 +347,7 @@ document.getElementById('go').onclick = async function () {
     @Query('track_id') track_id?: string,
     @Query('TrackID') trackID?: string,
     @Query('trackId') trackIdQuery?: string,
+    @Query('result') gatewayResultQuery?: string,
   ): Promise<PublicOrderStatusDto> {
     return this.runPublicOrderStatusPoll(
       orderId,
@@ -306,6 +356,8 @@ document.getElementById('go').onclick = async function () {
       trackID,
       trackIdQuery,
       undefined,
+      undefined,
+      gatewayResultQuery,
     );
   }
 
@@ -323,6 +375,7 @@ document.getElementById('go').onclick = async function () {
     @Query('track_id') track_id?: string,
     @Query('TrackID') trackID?: string,
     @Query('trackId') trackIdQuery?: string,
+    @Query('result') gatewayResultQuery?: string,
   ): Promise<PublicOrderStatusDto> {
     return this.runPublicOrderStatusPoll(
       orderId,
@@ -331,6 +384,8 @@ document.getElementById('go').onclick = async function () {
       trackID,
       trackIdQuery,
       body?.trackId ?? body?.track_id,
+      body?.result,
+      gatewayResultQuery,
     );
   }
 
@@ -341,6 +396,8 @@ document.getElementById('go').onclick = async function () {
     trackID?: string,
     trackIdQuery?: string,
     bodyTrackId?: string,
+    gatewayResultFromBody?: string,
+    gatewayResultQuery?: string,
   ): Promise<PublicOrderStatusDto> {
     if (!orderId || orderId.length < 32) {
       throw new BadRequestException('orderId is required (UUID)');
@@ -366,9 +423,36 @@ document.getElementById('go').onclick = async function () {
       trackIdQuery,
       req,
     );
+    const gatewayResultRaw = pickGatewayReturnResultFromRequest(
+      gatewayResultFromBody,
+      gatewayResultQuery,
+      req,
+    );
 
     let settled = Boolean(order.walletSettledAt);
     let status = order.status;
+    if (!settled && status !== OrderStatus.COMPLETED) {
+      if (gatewayResultRaw && returnTrack) {
+        try {
+          const tr =
+            await this.paymentsService.tryFinalizeOrderFromTrustedUpaymentsReturn(
+              order.id,
+              returnTrack,
+              gatewayResultRaw,
+              'PUBLIC_STATUS_POLL_TRUSTED_RETURN_URL',
+            );
+          if (tr.finalized) {
+            settled = true;
+            status = OrderStatus.COMPLETED;
+          }
+        } catch (err) {
+          this.logger.warn(
+            `Trusted return-url finalize failed for order ${order.id}: ${(err as Error).message}`,
+          );
+        }
+      }
+    }
+
     if (!settled && status !== OrderStatus.COMPLETED) {
       const candidates = buildUpaymentsInquiryTrackCandidates(
         returnTrack,
@@ -406,19 +490,17 @@ document.getElementById('go').onclick = async function () {
   }
 
   /**
-   * Customer-triggered re-check. Same trust model as `/status/:orderId`
-   * (public; only the customer with the URL can call it), but always
-   * runs the Server-to-Server inquiry and returns a descriptive message
-   * the return page can surface ("تم تأكيد الدفع" / "البوابة تعيد X" /
-   * "الدفع لم يُكمَل بعد"). POST so double-tap doesn't get cached by
-   * CDNs / the browser back-button.
+   * Customer-triggered re-check. Public like `/status/:orderId`. When the
+   * return URL echoes `result=CAPTURED` and a v2 `track_id`, finalizes
+   * without waiting on UPayments inquiry; otherwise uses get-payment-status
+   * and returns an Arabic message for the UI.
    */
   @Post('recheck/:orderId')
   @HttpCode(200)
   @ApiOperation({
-    summary: 'Force a UPayments inquiry and finalize if CAPTURED',
+    summary: 'Force payment verification and finalize if CAPTURED',
     description:
-      'Public — for the /payment/success|failed return pages. Always calls UPayments get-payment-status. If CAPTURED the order is marked paid before responding.',
+      'Public — for /payment/success|failed. When `result=CAPTURED` and v2 `track_id` are echoed from the return URL, finalizes without waiting for UPayments inquiry; otherwise uses get-payment-status as a backstop.',
   })
   @ApiBody({ type: GatewayTrackHintDto, required: false })
   async recheckPayment(
@@ -428,6 +510,7 @@ document.getElementById('go').onclick = async function () {
     @Query('track_id') track_id?: string,
     @Query('TrackID') trackID?: string,
     @Query('trackId') trackIdQuery?: string,
+    @Query('result') gatewayResultQuery?: string,
   ): Promise<{
     orderId: string;
     status: OrderStatus;
@@ -481,6 +564,42 @@ document.getElementById('go').onclick = async function () {
       trackIdQuery,
       req,
     );
+    const gatewayResultRaw = pickGatewayReturnResultFromRequest(
+      body?.result,
+      gatewayResultQuery,
+      req,
+    );
+
+    if (!isPaid && gatewayResultRaw && returnTrack) {
+      try {
+        const tr =
+          await this.paymentsService.tryFinalizeOrderFromTrustedUpaymentsReturn(
+            order.id,
+            returnTrack,
+            gatewayResultRaw,
+            'CUSTOMER_RECHECK_TRUSTED_RETURN_URL',
+          );
+        if (tr.finalized) {
+          this.logger.log(
+            `UPayments manual recheck: finalized (trusted return URL) orderId=${order.id}`,
+          );
+          return {
+            orderId: order.id,
+            status: OrderStatus.COMPLETED,
+            isPaid: true,
+            amountKd: order.totalPrice.toFixed(3),
+            trackIdPresent: true,
+            gatewayResult: gatewayResultRaw,
+            settledNow: true,
+            messageAr: 'تم تأكيد الدفع بنجاح! نحدّث الفاتورة الآن.',
+          };
+        }
+      } catch (err) {
+        this.logger.warn(
+          `Trusted recheck finalize failed orderId=${order.id}: ${(err as Error).message}`,
+        );
+      }
+    }
 
     if (!returnTrack && !order.posGatewayTrackId) {
       return {
@@ -603,14 +722,24 @@ function buildUpaymentsInquiryTrackCandidates(
   returnTrack: string,
   posGatewayTrackId?: string | null,
 ): string[] {
-  const parts = [returnTrack, posGatewayTrackId ?? '']
+  const rt = typeof returnTrack === 'string' ? returnTrack.trim() : '';
+  const parts = [rt, posGatewayTrackId ?? '']
     .map((s) => (typeof s === 'string' ? s.trim() : ''))
     .filter((s) => s.length > 0);
   const unique = [...new Set(parts)];
-  unique.sort(
+  // Hosted `session_id` values are not valid for UPayments get-payment-status.
+  // When the return URL supplies a v2 `track_id`, do not fall through to the
+  // persisted session id — it only yields "Transaction not found" after the
+  // real v2 inquiry returned a non-final status (race) or order mismatch.
+  const filtered =
+    rt && /v2$/i.test(rt)
+      ? unique.filter((t) => !/^\d{18,}$/.test(t.trim()))
+      : unique;
+  const list = filtered.length > 0 ? filtered : unique;
+  list.sort(
     (a, b) => upaymentTrackInquirySortKey(a) - upaymentTrackInquirySortKey(b),
   );
-  return unique;
+  return list;
 }
 
 /**
@@ -736,6 +865,69 @@ function extractTrackIdFromRequestUrl(req: Request): string {
     sp.get('trackId')?.trim() ||
     ''
   );
+}
+
+function readGatewayResultFromPlainBody(req: Request): string {
+  const raw = req.body as unknown;
+  if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) {
+    return '';
+  }
+  const o = raw as Record<string, unknown>;
+  const v = o.result ?? o.Result;
+  if (typeof v === 'string' && v.trim()) {
+    return v.trim();
+  }
+  return '';
+}
+
+function extractGatewayResultFromRequestUrl(req: Request): string {
+  let raw =
+    (typeof req.originalUrl === 'string' && req.originalUrl.length > 0
+      ? req.originalUrl
+      : null) ??
+    (typeof req.url === 'string' && req.url.length > 0 ? req.url : '') ??
+    '';
+  raw = normalizeAmpInQueryString(raw);
+  try {
+    raw = decodeURIComponent(raw);
+  } catch {
+    /* keep */
+  }
+  const m = /[?&]result=([^&#]+)/i.exec(raw);
+  if (m?.[1]) {
+    try {
+      return decodeURIComponent(m[1].trim());
+    } catch {
+      return m[1].trim();
+    }
+  }
+  const qMark = raw.indexOf('?');
+  if (qMark < 0) {
+    return '';
+  }
+  let qs = raw.slice(qMark + 1).split('#')[0];
+  qs = normalizeAmpInQueryString(qs);
+  return new URLSearchParams(qs).get('result')?.trim() || '';
+}
+
+function pickGatewayReturnResultFromRequest(
+  bodyResult: string | undefined,
+  resultQuery: string | undefined,
+  req: Request,
+): string {
+  const fromPlain = readGatewayResultFromPlainBody(req);
+  if (fromPlain) {
+    return fromPlain;
+  }
+  const fromBody = bodyResult?.trim();
+  if (fromBody) {
+    return fromBody;
+  }
+  const fromQuery = resultQuery?.trim();
+  if (fromQuery) {
+    return fromQuery;
+  }
+  return extractGatewayResultFromRequestUrl(req);
 }
 
 /** Prisma-style UUID v4 (Safari `Order.id`). */

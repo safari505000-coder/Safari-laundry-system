@@ -15,9 +15,9 @@ import { IsBoolean, IsOptional, IsString, MaxLength } from 'class-validator';
  * or the global `ValidationPipe({ forbidNonWhitelisted: true })` rejects
  * the entire callback and the order never finalizes.
  *
- * None of these fields are strictly required — the controller
- * re-verifies the payment with a Server-to-Server inquiry using
- * the resolved track id, so we intentionally keep the DTO permissive.
+ * None of these fields are strictly required — the controller may
+ * finalize from a trusted CAPTURED + v2 `track_id` + Safari order id,
+ * or fall back to Server-to-Server inquiry using the resolved track id.
  * Legacy fields (`orderId`, `status`, `signature`) are preserved for
  * backward compatibility with the devMock flow and with any non-
  * UPayments gateway that is pointed at this endpoint in the

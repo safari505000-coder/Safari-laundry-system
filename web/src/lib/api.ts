@@ -2338,6 +2338,33 @@ function coalesceGatewayTrackIdForPublicPoll(
   return parseGatewayTrackIdFromBrowserSearch(window.location.search);
 }
 
+function parseGatewayResultFromBrowserSearch(search: string): string {
+  const raw = (search ?? '').replace(/^\?/, '');
+  const normalized = raw.replace(/&amp;/gi, '&').replace(/%26amp%3B/gi, '&');
+  const withQ = normalized.startsWith('?') ? normalized : `?${normalized}`;
+  const m = /[?&]result=([^&#]+)/i.exec(withQ);
+  if (m?.[1]) {
+    try {
+      return decodeURIComponent(m[1].trim());
+    } catch {
+      return m[1].trim();
+    }
+  }
+  const sp = new URLSearchParams(normalized);
+  return sp.get('result')?.trim() || sp.get('Result')?.trim() || '';
+}
+
+function coalesceGatewayResultForPublicPoll(explicit?: string): string {
+  const a = explicit?.trim();
+  if (a) {
+    return a;
+  }
+  if (typeof window === 'undefined') {
+    return '';
+  }
+  return parseGatewayResultFromBrowserSearch(window.location.search);
+}
+
 /**
  * Always POST — CDNs/proxies have stripped query params before Node; JSON body
  * + optional `X-Gateway-Track-Id` carry the v2 track reliably. Falls back to
@@ -2345,23 +2372,40 @@ function coalesceGatewayTrackIdForPublicPoll(
  */
 export function getPublicPaymentStatus(
   orderId: string,
-  opts?: { returnTrackId?: string },
+  opts?: { returnTrackId?: string; gatewayResult?: string },
 ): Promise<PublicPaymentStatus> {
   const tid = coalesceGatewayTrackIdForPublicPoll(opts?.returnTrackId);
+  const gatewayResult = coalesceGatewayResultForPublicPoll(
+    opts?.gatewayResult,
+  );
+  const qs = new URLSearchParams();
+  if (tid) {
+    qs.set('track_id', tid);
+  }
+  if (gatewayResult) {
+    qs.set('result', gatewayResult);
+  }
+  const qstr = qs.toString();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
   if (tid) {
     headers['X-Gateway-Track-Id'] = tid;
   }
+  const bodyPayload: Record<string, string> = {};
+  if (tid) {
+    bodyPayload.trackId = tid;
+    bodyPayload.track_id = tid;
+  }
+  if (gatewayResult) {
+    bodyPayload.result = gatewayResult;
+  }
   return apiJson<PublicPaymentStatus>(
-    `/api/payments/status/${encodeURIComponent(orderId)}`,
+    `/api/payments/status/${encodeURIComponent(orderId)}${qstr ? `?${qstr}` : ''}`,
     {
       method: 'POST',
       headers,
-      body: JSON.stringify(
-        tid ? { trackId: tid, track_id: tid } : {},
-      ),
+      body: JSON.stringify(bodyPayload),
     },
   );
 }
@@ -2386,12 +2430,18 @@ export type PublicPaymentRecheck = {
 
 export function recheckPublicPayment(
   orderId: string,
-  opts?: { returnTrackId?: string },
+  opts?: { returnTrackId?: string; gatewayResult?: string },
 ): Promise<PublicPaymentRecheck> {
   const tid = coalesceGatewayTrackIdForPublicPoll(opts?.returnTrackId);
+  const gatewayResult = coalesceGatewayResultForPublicPoll(
+    opts?.gatewayResult,
+  );
   const qs = new URLSearchParams();
   if (tid) {
     qs.set('track_id', tid);
+  }
+  if (gatewayResult) {
+    qs.set('result', gatewayResult);
   }
   const qstr = qs.toString();
   const headers: Record<string, string> = {
@@ -2400,14 +2450,20 @@ export function recheckPublicPayment(
   if (tid) {
     headers['X-Gateway-Track-Id'] = tid;
   }
+  const bodyPayload: Record<string, string> = {};
+  if (tid) {
+    bodyPayload.trackId = tid;
+    bodyPayload.track_id = tid;
+  }
+  if (gatewayResult) {
+    bodyPayload.result = gatewayResult;
+  }
   return apiJson<PublicPaymentRecheck>(
     `/api/payments/recheck/${encodeURIComponent(orderId)}${qstr ? `?${qstr}` : ''}`,
     {
       method: 'POST',
       headers,
-      body: JSON.stringify(
-        tid ? { trackId: tid, track_id: tid } : {},
-      ),
+      body: JSON.stringify(bodyPayload),
     },
   );
 }
