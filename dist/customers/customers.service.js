@@ -45,6 +45,26 @@ let CustomersService = class CustomersService {
     async update(id, dto) {
         return this.core.update(id, dto);
     }
+    async resolveIncomingPhone(raw) {
+        const rows = await this.core.findByIncomingPhoneRaw(raw);
+        const hintTerms = this.core.incomingPhoneSearchTerms(raw);
+        const searchHint = hintTerms.sort((a, b) => b.length - a.length)[0] ?? '';
+        if (rows.length === 0) {
+            return { customer: null, ambiguous: false, searchHint };
+        }
+        const seen = new Map();
+        for (const r of rows) {
+            seen.set(r.id, r);
+        }
+        const unique = [...seen.values()];
+        if (unique.length === 1) {
+            return { customer: unique[0], ambiguous: false, searchHint };
+        }
+        return { customer: null, ambiguous: true, searchHint };
+    }
+    async createQuick(dto) {
+        return this.core.createQuickCustomer(dto.displayName, dto.phone);
+    }
     async getProfileWithFinancials(customerId) {
         const customer = await this.core.getById(customerId);
         if (!customer) {

@@ -27,6 +27,7 @@ import {
   MessageSquare,
   Package,
   PackagePlus,
+  PhoneIncoming,
   Radar,
   Receipt,
   ReceiptText,
@@ -130,9 +131,28 @@ export const customersItem: NavItem = {
   to: '/customers',
   labelKey: 'nav.customers',
   icon: Users,
-  // Dastur §5 — CALL_CENTER + CC supervisor are the CRM island.
-  // Owner + GM keep full access.
-  roles: ['OWNER', 'GENERAL_MANAGER', 'CALL_CENTER', 'CALL_CENTER_SUPERVISOR'],
+  // CRM + PBX handoff: CC pair، مدير الفرع، التنفيذي.
+  roles: [
+    'OWNER',
+    'GENERAL_MANAGER',
+    'MANAGER',
+    'CALL_CENTER',
+    'CALL_CENTER_SUPERVISOR',
+  ],
+};
+
+/** PBX / dialer deep-link handoff — مركز الاتصال + المشرف + مدير الفرع + التنفيذي. */
+export const callIncomingItem: NavItem = {
+  to: '/call-incoming',
+  labelKey: 'nav.callIncoming',
+  icon: PhoneIncoming,
+  roles: [
+    'OWNER',
+    'GENERAL_MANAGER',
+    'MANAGER',
+    'CALL_CENTER',
+    'CALL_CENTER_SUPERVISOR',
+  ],
 };
 
 export const collectionsItem: NavItem = {

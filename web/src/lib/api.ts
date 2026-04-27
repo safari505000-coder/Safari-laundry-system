@@ -2121,6 +2121,35 @@ export function createCustomerStatementShareLink(
   );
 }
 
+/** PBX / dialer — `GET /api/customers/resolve-incoming-phone?phone=…` */
+export type ResolveIncomingPhoneResponse = {
+  customer: CustomerDirectoryRow['customer'] | null;
+  ambiguous: boolean;
+  searchHint: string;
+};
+
+export function getResolveIncomingPhone(
+  token: string | null,
+  phone: string,
+): Promise<ResolveIncomingPhoneResponse> {
+  return apiJson<ResolveIncomingPhoneResponse>(
+    `/api/customers/resolve-incoming-phone?phone=${encodeURIComponent(phone)}`,
+    { token },
+  );
+}
+
+/** Call Center — minimal customer create (`POST /api/customers`). */
+export function postCreateCustomerQuick(
+  token: string | null,
+  body: { displayName: string; phone: string },
+): Promise<CustomerDirectoryRow['customer']> {
+  return apiJson<CustomerDirectoryRow['customer']>('/api/customers', {
+    method: 'POST',
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
 export function getPublicCustomerStatement(
   shareToken: string,
 ): Promise<CustomerLedgerResponse> {

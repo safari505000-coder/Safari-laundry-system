@@ -20,6 +20,7 @@ const roles_decorator_1 = require("../auth/decorators/roles.decorator");
 const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
 const roles_guard_1 = require("../auth/guards/roles.guard");
 const branding_1 = require("../common/constants/branding");
+const create_customer_quick_dto_1 = require("./dto/create-customer-quick.dto");
 const update_customer_dto_1 = require("./dto/update-customer.dto");
 const customers_service_1 = require("./customers.service");
 let CustomersController = class CustomersController {
@@ -29,6 +30,12 @@ let CustomersController = class CustomersController {
     }
     list(q) {
         return this.customersService.list(q);
+    }
+    resolveIncomingPhone(phone) {
+        return this.customersService.resolveIncomingPhone(phone ?? '');
+    }
+    createQuick(dto) {
+        return this.customersService.createQuick(dto);
     }
     getProfile(id) {
         return this.customersService.getProfileWithFinancials(id);
@@ -49,6 +56,28 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", void 0)
 ], CustomersController.prototype, "list", null);
+__decorate([
+    (0, common_1.Get)('resolve-incoming-phone'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.CALL_CENTER, client_1.SafariRole.CALL_CENTER_SUPERVISOR, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
+    (0, swagger_1.ApiOperation)({
+        summary: 'Resolve caller ID (PBX) to a single customer when possible',
+    }),
+    __param(0, (0, common_1.Query)('phone')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], CustomersController.prototype, "resolveIncomingPhone", null);
+__decorate([
+    (0, common_1.Post)(),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.CALL_CENTER, client_1.SafariRole.CALL_CENTER_SUPERVISOR, client_1.SafariRole.SUPERVISOR),
+    (0, swagger_1.ApiOperation)({
+        summary: 'Create customer (minimal — Call Center / CTI handoff)',
+    }),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [create_customer_quick_dto_1.CreateCustomerQuickDto]),
+    __metadata("design:returntype", void 0)
+], CustomersController.prototype, "createQuick", null);
 __decorate([
     (0, common_1.Get)(':id/profile'),
     (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.CALL_CENTER, client_1.SafariRole.CALL_CENTER_SUPERVISOR, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),

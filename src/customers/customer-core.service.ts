@@ -1,6 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+} from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { parseKuwaitMobile965 } from '../common/validation/kuwait-customer-phone';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 
 export const customerCoreSelect = {
@@ -91,6 +96,82 @@ export class CustomerCoreService {
   async getById(id: string): Promise<CustomerCoreRow | null> {
     return this.prisma.customer.findUnique({
       where: { id },
+      select: customerCoreSelect,
+    });
+  }
+
+  /**
+   * Digit variants for PBX / CTI caller-id (965xxxxxxxx, 5xxxxxxx, 00965…).
+   * Used with `contains` so DB values like `965…` still match local `5…`.
+   */
+  incomingPhoneSearchTerms(raw: string): string[] {
+    const d = raw.replace(/\D/g, '');
+    const terms = new Set<string>();
+    if (d.length < 4) {
+      return [];
+    }
+    terms.add(d);
+    let rest = d;
+    if (rest.startsWith('00965')) {
+      rest = rest.slice(5);
+    } else if (rest.startsWith('965')) {
+      rest = rest.slice(3);
+    } else if (rest.startsWith('00')) {
+      rest = rest.replace(/^0+/, '') || rest;
+    }
+    if (rest.length >= 4 && rest !== d) {
+      terms.add(rest);
+    }
+    if (rest.length === 8 && /^\d{8}$/.test(rest)) {
+      terms.add(rest);
+      terms.add(`965${rest}`);
+    }
+    return [...terms].filter((t) => t.length >= 4 && t.length <= 16);
+  }
+
+  /**
+   * PBX «رقم المتصل» — OR match on phone / phone2 for any search term.
+   */
+  async findByIncomingPhoneRaw(raw: string): Promise<CustomerCoreRow[]> {
+    const terms = this.incomingPhoneSearchTerms(raw);
+    if (terms.length === 0) {
+      return [];
+    }
+    const or: Prisma.CustomerWhereInput[] = [];
+    for (const t of terms) {
+      or.push({ phone: { contains: t, mode: 'insensitive' } });
+      or.push({ phone2: { contains: t, mode: 'insensitive' } });
+    }
+    return this.prisma.customer.findMany({
+      where: { OR: or },
+      orderBy: { createdAt: 'desc' },
+      take: 25,
+      select: customerCoreSelect,
+    });
+  }
+
+  /**
+   * Minimal create for Call Center / CTI handoff (canonical 965… when valid Kuwait mobile).
+   */
+  async createQuickCustomer(displayName: string, phoneRaw: string): Promise<CustomerCoreRow> {
+    const name = displayName.trim();
+    if (name.length < 1) {
+      throw new BadRequestException('displayName is required');
+    }
+    const compact = phoneRaw.replace(/[\s-]/g, '').trim();
+    if (compact.length < 8) {
+      throw new BadRequestException('Valid Kuwait mobile phone is required');
+    }
+    const dupes = await this.findByIncomingPhoneRaw(compact);
+    if (dupes.length > 0) {
+      throw new ConflictException('A customer with this phone already exists');
+    }
+    const phone = parseKuwaitMobile965(compact) ?? compact;
+    return this.prisma.customer.create({
+      data: {
+        displayName: name,
+        phone,
+      },
       select: customerCoreSelect,
     });
   }

@@ -6,6 +6,7 @@ export const ar = {
     dashboard: 'لوحة التحكم',
     branches: 'إدارة الفروع',
     customers: 'العملاء',
+    callIncoming: 'اتصال وارد (البدّالة)',
     subscriptions: 'الاشتراكات',
     subscribers: 'قائمة المشتركين',
     orders: 'الفواتير',
@@ -1900,6 +1901,19 @@ export const ar = {
     saved: 'تم تحديث العميل',
     tabProfile: 'الملف',
     tabLedger: 'الحساب 360°',
+    ctiNewTitle: 'عميل جديد — اتصال وارد',
+    ctiNewHint:
+      'لم يُعثر على هذا الرقم في النظام. أدخل اسم العميل ثم أنشئ الملف.',
+    ctiNamePlaceholder: 'مثال: محمد أحمد',
+    ctiNameRequired: 'يرجى إدخال اسم العميل.',
+    ctiCreate: 'إنشاء العميل',
+    ctiCreated: 'تم إنشاء العميل',
+    ctiNoPermission: 'لا تملك صلاحية إنشاء عميل. تواصل مع المشرف.',
+  },
+  callIncoming: {
+    resolving: 'جاري البحث عن العميل…',
+    missingPhone: 'لم يُرسل رقم في الرابط. استخدم: /call-incoming?phone=…',
+    lookupFailed: 'تعذّر البحث. حاول مرة أخرى.',
   },
   statementDialog: {
     title: 'تصدير كشف حساب العميل',

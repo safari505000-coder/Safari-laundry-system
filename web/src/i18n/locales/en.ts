@@ -5,6 +5,7 @@ export const en = {
     dashboard: 'Dashboard',
     branches: 'Branch management',
     customers: 'Customers',
+    callIncoming: 'Incoming call (PBX)',
     subscriptions: 'Subscriptions',
     subscribers: 'Subscribers list',
     orders: 'Invoices',
@@ -1881,6 +1882,19 @@ export const en = {
     saved: 'Customer updated',
     tabProfile: 'Profile',
     tabLedger: 'Account 360°',
+    ctiNewTitle: 'New customer — incoming call',
+    ctiNewHint:
+      'This number is not in the directory yet. Enter the customer name, then create the record.',
+    ctiNamePlaceholder: 'e.g. Mohammed Ahmad',
+    ctiNameRequired: 'Please enter the customer name.',
+    ctiCreate: 'Create customer',
+    ctiCreated: 'Customer created',
+    ctiNoPermission: 'You do not have permission to create customers.',
+  },
+  callIncoming: {
+    resolving: 'Looking up caller…',
+    missingPhone: 'No phone in the URL. Use: /call-incoming?phone=…',
+    lookupFailed: 'Lookup failed. Try again.',
   },
   statementDialog: {
     title: 'Export customer statement',

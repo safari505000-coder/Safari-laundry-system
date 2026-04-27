@@ -228,11 +228,17 @@ export const ACCESS = {
   // management). OWNER keeps manage on the subscriber CRM to support
   // escalations — this mirrors the pre-refactor behaviour so we don't
   // remove a tool the Owner actually uses.
-  'customers.view': withExec('CALL_CENTER', 'CALL_CENTER_SUPERVISOR'),
+  // MANAGER: فرع يتابع تحصيلاً وعملاءً — نفس شاشة العملاء + اتصال وارد (PBX).
+  'customers.view': withExec(
+    'CALL_CENTER',
+    'CALL_CENTER_SUPERVISOR',
+    'MANAGER',
+  ),
   'customers.manage': [
     'OWNER',
     'CALL_CENTER',
     'CALL_CENTER_SUPERVISOR',
+    'MANAGER',
   ] satisfies readonly SafariRole[],
   'collections.view': withExec(
     'CALL_CENTER',

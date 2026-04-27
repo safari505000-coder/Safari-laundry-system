@@ -27,5 +27,8 @@ export declare class CustomerCoreService {
     list(query?: string): Promise<CustomerCoreRow[]>;
     listByPhonePriority(query: string): Promise<CustomerCoreRow[]>;
     getById(id: string): Promise<CustomerCoreRow | null>;
+    incomingPhoneSearchTerms(raw: string): string[];
+    findByIncomingPhoneRaw(raw: string): Promise<CustomerCoreRow[]>;
+    createQuickCustomer(displayName: string, phoneRaw: string): Promise<CustomerCoreRow>;
     update(id: string, dto: UpdateCustomerDto): Promise<CustomerCoreRow>;
 }

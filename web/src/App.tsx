@@ -61,6 +61,7 @@ import { StaffHubPage } from '@/pages/staff-hub-page';
 import { FixedExpensesPage } from '@/pages/fixed-expenses-page';
 import { CollectionsPage } from '@/modules/call-center/pages/collections-page';
 import { CustomersPage } from '@/modules/call-center/pages/customers-page';
+import { CallIncomingPage } from '@/pages/call-incoming-page';
 import { PosRoute } from '@/pages/pos-route';
 import { MyDailySalesPage } from '@/modules/driver/pages/my-daily-sales-page';
 import { DriverFieldExpensesPage } from '@/modules/driver/pages/driver-field-expenses-page';
@@ -338,6 +339,14 @@ export default function App() {
                   element={
                     <RequireAccess access="customers.view">
                       <CustomersPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="call-incoming"
+                  element={
+                    <RequireAccess access="customers.view">
+                      <CallIncomingPage />
                     </RequireAccess>
                   }
                 />

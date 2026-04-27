@@ -2,6 +2,7 @@ import type { NavGroup } from '@/modules/shared/nav/nav-types';
 import { G } from '@/modules/shared/nav/nav-groups';
 import {
   allInvoicesItem,
+  callIncomingItem,
   ccPerformanceItem,
   collectionsItem,
   customersItem,
@@ -38,7 +39,13 @@ import {
 export const callCenterSupervisorSidebarNavGroups: NavGroup[] = [
   {
     ...G.main,
-    items: [customersItem, collectionsItem, feedbackInboxItem, subscribersItem],
+    items: [
+      customersItem,
+      callIncomingItem,
+      collectionsItem,
+      feedbackInboxItem,
+      subscribersItem,
+    ],
   },
   {
     ...G.invoices,

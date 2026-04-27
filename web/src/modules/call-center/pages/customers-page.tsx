@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Navigate } from 'react-router-dom';
-import { Loader2, RefreshCw, Save } from 'lucide-react';
+import { Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { Loader2, RefreshCw, Save, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/auth-context';
 import { can } from '@/modules/shared/auth/access-matrix';
-import { type CustomerDirectoryRow, ApiError, apiJson } from '@/lib/api';
+import {
+  type CustomerDirectoryRow,
+  ApiError,
+  apiJson,
+  postCreateCustomerQuick,
+} from '@/lib/api';
 // V1.6.9 — WhatsApp / Payment-link actions were removed from this page;
 // those flows now live exclusively in the Collections island (Isolated
 // Islands principle). This page is now profile/data-entry only.
@@ -37,6 +42,20 @@ type EditDraft = {
   sonContact: string;
 };
 
+function stripSearchKeys(
+  navigate: ReturnType<typeof useNavigate>,
+  pathname: string,
+  searchParams: URLSearchParams,
+  keys: string[],
+) {
+  const next = new URLSearchParams(searchParams);
+  for (const k of keys) {
+    next.delete(k);
+  }
+  const s = next.toString();
+  navigate({ pathname, search: s ? `?${s}` : '' }, { replace: true });
+}
+
 function toDraft(row: CustomerDirectoryRow['customer']): EditDraft {
   return {
     displayName: row.displayName ?? '',
@@ -57,12 +76,21 @@ export function CustomersPage() {
   const { t } = useTranslation();
   const { token, user } = useAuth();
   const allowed = can(user, 'customers.view');
+  const canManage = can(user, 'customers.manage');
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
   const { q, setQ, rows, loading, error, reload } = useCustomersDataBridge({
     token,
   });
   const [activeId, setActiveId] = useState<string | null>(null);
   const [draft, setDraft] = useState<EditDraft | null>(null);
   const [saving, setSaving] = useState(false);
+  const [ctiNewName, setCtiNewName] = useState('');
+  const [ctiCreating, setCtiCreating] = useState(false);
+
+  const newPhoneFromUrl = searchParams.get('newPhone')?.trim() ?? '';
+  const searchParamsKey = searchParams.toString();
 
   const activeRow = useMemo(
     () => rows.find((r) => r.customer.id === activeId) ?? null,
@@ -77,6 +105,60 @@ export function CustomersPage() {
   useEffect(() => {
     if (error) toast.error(error);
   }, [error]);
+
+  useEffect(() => {
+    const qv = searchParams.get('q');
+    if (qv) {
+      setQ(qv);
+    }
+  }, [searchParamsKey, searchParams, setQ]);
+
+  useEffect(() => {
+    const focusId = searchParams.get('focus');
+    if (!focusId || loading) {
+      return;
+    }
+    const hit = rows.some((r) => r.customer.id === focusId);
+    if (hit) {
+      setActiveId(focusId);
+      stripSearchKeys(navigate, location.pathname, searchParams, ['focus']);
+    }
+  }, [searchParams, rows, loading, navigate, location.pathname]);
+
+  useEffect(() => {
+    if (!newPhoneFromUrl || canManage) {
+      return;
+    }
+    toast.error(t('customers.ctiNoPermission'));
+    stripSearchKeys(navigate, location.pathname, searchParams, ['newPhone']);
+  }, [newPhoneFromUrl, canManage, navigate, location.pathname, searchParams, t]);
+
+  async function submitCtiNewCustomer() {
+    if (!token || !newPhoneFromUrl) {
+      return;
+    }
+    const name = ctiNewName.trim();
+    if (name.length < 1) {
+      toast.error(t('customers.ctiNameRequired'));
+      return;
+    }
+    setCtiCreating(true);
+    try {
+      const cust = await postCreateCustomerQuick(token, {
+        displayName: name,
+        phone: newPhoneFromUrl,
+      });
+      toast.success(t('customers.ctiCreated'));
+      setCtiNewName('');
+      await reload();
+      setActiveId(cust.id);
+      stripSearchKeys(navigate, location.pathname, searchParams, ['newPhone']);
+    } catch (e) {
+      if (e instanceof ApiError) toast.error(e.message);
+    } finally {
+      setCtiCreating(false);
+    }
+  }
 
   async function save() {
     if (!token || !activeId || !draft) return;
@@ -117,6 +199,45 @@ export function CustomersPage() {
           </Button>
         </div>
       </header>
+
+      {newPhoneFromUrl && canManage ? (
+        <Card className="border-amber-200 bg-amber-50/60">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <UserPlus className="h-5 w-5" aria-hidden />
+              {t('customers.ctiNewTitle')}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">{t('customers.ctiNewHint')}</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label>{t('customers.phone')}</Label>
+                <Input value={newPhoneFromUrl} readOnly className="bg-white" />
+              </div>
+              <div className="space-y-1">
+                <Label>{t('customers.name')}</Label>
+                <Input
+                  value={ctiNewName}
+                  onChange={(e) => setCtiNewName(e.target.value)}
+                  placeholder={t('customers.ctiNamePlaceholder')}
+                  autoFocus
+                />
+              </div>
+            </div>
+            <Button
+              type="button"
+              onClick={() => void submitCtiNewCustomer()}
+              disabled={ctiCreating}
+            >
+              {ctiCreating ?
+                <Loader2 className="me-2 h-4 w-4 animate-spin" />
+              : <UserPlus className="me-2 h-4 w-4" />}
+              {t('customers.ctiCreate')}
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <div className="grid gap-4 xl:grid-cols-[1.2fr_1fr]">
         <Card>

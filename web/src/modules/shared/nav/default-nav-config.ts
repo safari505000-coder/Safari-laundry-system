@@ -2,6 +2,7 @@ import type { NavGroup } from '@/modules/shared/nav/nav-types';
 import { G } from '@/modules/shared/nav/nav-groups';
 import {
   branchesItem,
+  callIncomingItem,
   collectionsItem,
   customersItem,
   dashboardItem,
@@ -60,6 +61,7 @@ export const defaultSidebarNavGroups: NavGroup[] = [
     ...G.customersSubs,
     items: [
       customersItem,
+      callIncomingItem,
       collectionsItem,
       feedbackInboxItem,
       subscriptionsItem,

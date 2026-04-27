@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.CustomerCoreService = exports.customerCoreSelect = void 0;
 const common_1 = require("@nestjs/common");
 const prisma_service_1 = require("../prisma/prisma.service");
+const kuwait_customer_phone_1 = require("../common/validation/kuwait-customer-phone");
 exports.customerCoreSelect = {
     id: true,
     phone: true,
@@ -91,6 +92,71 @@ let CustomerCoreService = class CustomerCoreService {
     async getById(id) {
         return this.prisma.customer.findUnique({
             where: { id },
+            select: exports.customerCoreSelect,
+        });
+    }
+    incomingPhoneSearchTerms(raw) {
+        const d = raw.replace(/\D/g, '');
+        const terms = new Set();
+        if (d.length < 4) {
+            return [];
+        }
+        terms.add(d);
+        let rest = d;
+        if (rest.startsWith('00965')) {
+            rest = rest.slice(5);
+        }
+        else if (rest.startsWith('965')) {
+            rest = rest.slice(3);
+        }
+        else if (rest.startsWith('00')) {
+            rest = rest.replace(/^0+/, '') || rest;
+        }
+        if (rest.length >= 4 && rest !== d) {
+            terms.add(rest);
+        }
+        if (rest.length === 8 && /^\d{8}$/.test(rest)) {
+            terms.add(rest);
+            terms.add(`965${rest}`);
+        }
+        return [...terms].filter((t) => t.length >= 4 && t.length <= 16);
+    }
+    async findByIncomingPhoneRaw(raw) {
+        const terms = this.incomingPhoneSearchTerms(raw);
+        if (terms.length === 0) {
+            return [];
+        }
+        const or = [];
+        for (const t of terms) {
+            or.push({ phone: { contains: t, mode: 'insensitive' } });
+            or.push({ phone2: { contains: t, mode: 'insensitive' } });
+        }
+        return this.prisma.customer.findMany({
+            where: { OR: or },
+            orderBy: { createdAt: 'desc' },
+            take: 25,
+            select: exports.customerCoreSelect,
+        });
+    }
+    async createQuickCustomer(displayName, phoneRaw) {
+        const name = displayName.trim();
+        if (name.length < 1) {
+            throw new common_1.BadRequestException('displayName is required');
+        }
+        const compact = phoneRaw.replace(/[\s-]/g, '').trim();
+        if (compact.length < 8) {
+            throw new common_1.BadRequestException('Valid Kuwait mobile phone is required');
+        }
+        const dupes = await this.findByIncomingPhoneRaw(compact);
+        if (dupes.length > 0) {
+            throw new common_1.ConflictException('A customer with this phone already exists');
+        }
+        const phone = (0, kuwait_customer_phone_1.parseKuwaitMobile965)(compact) ?? compact;
+        return this.prisma.customer.create({
+            data: {
+                displayName: name,
+                phone,
+            },
             select: exports.customerCoreSelect,
         });
     }
