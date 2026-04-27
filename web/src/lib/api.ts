@@ -2274,26 +2274,64 @@ export type PublicPaymentStatus = {
   amountKd: string;
 };
 
+/** UPayments v2 id from the browser return URL (query often lost before the API). */
+function parseGatewayTrackIdFromBrowserSearch(search: string): string {
+  const raw = (search ?? '').replace(/^\?/, '');
+  const normalized = raw.replace(/&amp;/gi, '&').replace(/%26amp%3B/gi, '&');
+  const withQ = normalized.startsWith('?') ? normalized : `?${normalized}`;
+  const m = /[?&]track_id=([^&#]+)/i.exec(withQ);
+  if (m?.[1]) {
+    try {
+      return decodeURIComponent(m[1].trim());
+    } catch {
+      return m[1].trim();
+    }
+  }
+  const sp = new URLSearchParams(normalized);
+  return (
+    sp.get('track_id')?.trim() ||
+    sp.get('TrackID')?.trim() ||
+    sp.get('trackId')?.trim() ||
+    ''
+  );
+}
+
+function coalesceGatewayTrackIdForPublicPoll(
+  explicit?: string,
+): string {
+  const a = explicit?.trim();
+  if (a) {
+    return a;
+  }
+  if (typeof window === 'undefined') {
+    return '';
+  }
+  return parseGatewayTrackIdFromBrowserSearch(window.location.search);
+}
+
+/**
+ * Always POST — CDNs/proxies have stripped query params before Node; JSON body
+ * + optional `X-Gateway-Track-Id` carry the v2 track reliably. Falls back to
+ * reading `track_id` from `window.location` when React state omits it.
+ */
 export function getPublicPaymentStatus(
   orderId: string,
   opts?: { returnTrackId?: string },
 ): Promise<PublicPaymentStatus> {
-  const tid = opts?.returnTrackId?.trim();
+  const tid = coalesceGatewayTrackIdForPublicPoll(opts?.returnTrackId);
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
   if (tid) {
-    return apiJson<PublicPaymentStatus>(
-      `/api/payments/status/${encodeURIComponent(orderId)}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Gateway-Track-Id': tid,
-        },
-        body: JSON.stringify({ trackId: tid }),
-      },
-    );
+    headers['X-Gateway-Track-Id'] = tid;
   }
   return apiJson<PublicPaymentStatus>(
     `/api/payments/status/${encodeURIComponent(orderId)}`,
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(tid ? { trackId: tid } : {}),
+    },
   );
 }
 
@@ -2319,20 +2357,23 @@ export function recheckPublicPayment(
   orderId: string,
   opts?: { returnTrackId?: string },
 ): Promise<PublicPaymentRecheck> {
-  const tid = opts?.returnTrackId?.trim();
+  const tid = coalesceGatewayTrackIdForPublicPoll(opts?.returnTrackId);
   const qs = new URLSearchParams();
   if (tid) {
     qs.set('track_id', tid);
   }
   const qstr = qs.toString();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (tid) {
+    headers['X-Gateway-Track-Id'] = tid;
+  }
   return apiJson<PublicPaymentRecheck>(
     `/api/payments/recheck/${encodeURIComponent(orderId)}${qstr ? `?${qstr}` : ''}`,
     {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(tid ? { 'X-Gateway-Track-Id': tid } : {}),
-      },
+      headers,
       body: JSON.stringify(tid ? { trackId: tid } : {}),
     },
   );
