@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import {
   BadRequestException,
   Injectable,
+  InternalServerErrorException,
   Logger,
   OnModuleInit,
   ServiceUnavailableException,
@@ -56,6 +57,92 @@ type UPaymentsInquiryData = {
   customerExtraData?: string;
   order?: { id?: string; reference?: string };
 };
+
+/**
+ * UPayments `/api/v1/charge` JSON shape is not stable across environments:
+ * official docs' examples only show `data.link` while `data.trackId` is required
+ * for `get-payment-status`. Alternate keys (TrackID, track_id) and query params
+ * on `link` are parsed here so we persist a real `posGatewayTrackId`.
+ */
+function tryParseTrackIdFromRecord(o: unknown): string | undefined {
+  if (!o || typeof o !== 'object') {
+    return undefined;
+  }
+  const r = o as Record<string, unknown>;
+  for (const k of [
+    'trackId',
+    'TrackID',
+    'track_id',
+    'TrackId',
+    'trackID',
+    'paymentTrackId',
+    'PaymentTrackId',
+  ]) {
+    const v = r[k];
+    if (typeof v === 'string' && v.trim()) {
+      return v.trim();
+    }
+  }
+  return undefined;
+}
+
+function tryParseTrackIdFromPaymentUrl(link: string): string | undefined {
+  if (!link || typeof link !== 'string') {
+    return undefined;
+  }
+  try {
+    const u = new URL(link);
+    for (const key of [
+      'track_id',
+      'trackId',
+      'TrackID',
+      'trackid',
+      'TrackId',
+    ]) {
+      const v = u.searchParams.get(key);
+      if (v?.trim()) {
+        return v.trim();
+      }
+    }
+  } catch {
+    // relative or non-standard URL; fall through to regex
+  }
+  const m = /[?&](?:track_id|trackId|TrackID)=([^&]+)/i.exec(link);
+  if (m?.[1]) {
+    try {
+      return decodeURIComponent(m[1].trim());
+    } catch {
+      return m[1].trim();
+    }
+  }
+  return undefined;
+}
+
+/**
+ * @param data — typically `json.data` from the charge response (may be nested).
+ */
+function extractUpaymentsChargeTrackId(
+  data: unknown,
+  paymentUrl: string,
+): string | undefined {
+  let t = tryParseTrackIdFromRecord(data);
+  if (t) {
+    return t;
+  }
+  if (data && typeof data === 'object' && 'data' in (data as object)) {
+    t = tryParseTrackIdFromRecord(
+      (data as { data?: unknown }).data,
+    );
+    if (t) {
+      return t;
+    }
+  }
+  t = tryParseTrackIdFromPaymentUrl(paymentUrl);
+  if (t) {
+    return t;
+  }
+  return undefined;
+}
 
 @Injectable()
 export class PaymentsService implements OnModuleInit {
@@ -313,7 +400,7 @@ export class PaymentsService implements OnModuleInit {
     let json: {
       status?: boolean;
       message?: string;
-      data?: { link?: string; trackId?: string };
+      data?: { link?: string; trackId?: string; [k: string]: unknown };
     };
     try {
       json = text ? (JSON.parse(text) as typeof json) : {};
@@ -337,17 +424,30 @@ export class PaymentsService implements OnModuleInit {
     }
 
     const url = json.data?.link;
-    const trackId = json.data?.trackId;
     if (!url || typeof url !== 'string') {
       throw new BadRequestException(
         'UPayments response missing `data.link`',
       );
     }
 
+    const dataBlock: unknown = json.data;
+    let trackId = extractUpaymentsChargeTrackId(dataBlock, url);
+    if (!trackId) {
+      trackId = tryParseTrackIdFromRecord(json);
+    }
+    if (!trackId) {
+      this.logger.error(
+        `UPayments /charge: cannot resolve trackId for order=${params.orderId}. Raw data (redacted) snippet: ${text.slice(0, 2500)}`,
+      );
+      throw new BadRequestException(
+        'UPayments did not return a verifiable track id (needed for recheck and webhooks). Check gateway /charge JSON or contact UPayments support.',
+      );
+    }
+
     return {
       url,
       reference: trackId,
-      trackId: trackId ?? undefined,
+      trackId,
     };
   }
 
@@ -551,21 +651,34 @@ export class PaymentsService implements OnModuleInit {
       customerName: order.customer.displayName ?? undefined,
       customerUniqueId: order.customer.id.slice(0, 20),
     });
+    const tid = link.trackId ?? null;
     await this.prisma.order.update({
       where: { id: order.id },
       data: {
         posHostedPaymentUrl: link.url,
-        posGatewayTrackId: link.trackId ?? null,
+        posGatewayTrackId: tid,
         posGatewayMetadata: {
           charge: {
             provider: 'upayments',
-            trackId: link.trackId ?? null,
+            trackId: tid,
             link: link.url,
             createdAt: new Date().toISOString(),
           },
         } as Prisma.InputJsonValue,
       },
     });
+    const persisted = await this.prisma.order.findUnique({
+      where: { id: order.id },
+      select: { posGatewayTrackId: true },
+    });
+    if (!persisted?.posGatewayTrackId) {
+      this.logger.error(
+        `posGatewayTrackId not readable after update orderId=${order.id}`,
+      );
+      throw new InternalServerErrorException(
+        'Failed to persist gateway track id. Check database and Order.posGatewayTrackId column.',
+      );
+    }
     return link;
   }
 
