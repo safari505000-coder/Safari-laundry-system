@@ -46,6 +46,7 @@ export declare class PaymentsService implements OnModuleInit {
     private readonly callbackPublicUrl;
     private readonly webAppUrl;
     constructor(prisma: PrismaService, customerLedger: CustomerLedgerService, generalLedger: GeneralLedgerService, inventory: InventoryService, customerNotifications: CustomerNotificationsService);
+    private looksLikeLocalHost;
     onModuleInit(): void;
     paymentsMockExplicit(): boolean;
     usePlaceholderGateway(): boolean;

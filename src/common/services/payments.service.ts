@@ -218,19 +218,34 @@ function deepFindUpaymentsTrackId(node: unknown, depth: number): string | undefi
   return undefined;
 }
 
+/**
+ * Keep this aligned with UPayments partner gateways (Apiv2, uInterface, KPay).
+ * Real observed production shape (Apr 2026): `data.link` is the ONLY field,
+ * and the id sits in the URL as `session_id`.
+ */
+const TRACK_URL_QUERY_KEYS: readonly string[] = [
+  'track_id',
+  'trackId',
+  'TrackID',
+  'trackid',
+  'TrackId',
+  'session_id',
+  'sessionId',
+  'SessionId',
+  'payment_id',
+  'paymentId',
+  'PaymentId',
+  'invoice_id',
+  'invoiceId',
+];
+
 function tryParseTrackIdFromPaymentUrl(link: string): string | undefined {
   if (!link || typeof link !== 'string') {
     return undefined;
   }
   try {
     const u = new URL(link);
-    for (const key of [
-      'track_id',
-      'trackId',
-      'TrackID',
-      'trackid',
-      'TrackId',
-    ]) {
+    for (const key of TRACK_URL_QUERY_KEYS) {
       const v = u.searchParams.get(key);
       if (v?.trim()) {
         return v.trim();
@@ -239,7 +254,10 @@ function tryParseTrackIdFromPaymentUrl(link: string): string | undefined {
   } catch {
     // relative or non-standard URL; fall through to regex
   }
-  const m = /[?&](?:track_id|trackId|TrackID)=([^&]+)/i.exec(link);
+  const m = new RegExp(
+    `[?&](?:${TRACK_URL_QUERY_KEYS.join('|')})=([^&]+)`,
+    'i',
+  ).exec(link);
   if (m?.[1]) {
     try {
       return decodeURIComponent(m[1].trim());

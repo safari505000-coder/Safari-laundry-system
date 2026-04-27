@@ -21,6 +21,252 @@ const inventory_service_1 = require("../../inventory/inventory.service");
 const prisma_service_1 = require("../../prisma/prisma.service");
 const kuwait_customer_phone_1 = require("../validation/kuwait-customer-phone");
 const cash_status_for_method_1 = require("../utils/cash-status-for-method");
+function looksLikeOurOrderUuid(s) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s.trim());
+}
+function coerceStringishTrackValue(v) {
+    if (typeof v === 'string') {
+        const t = v.trim();
+        return t || undefined;
+    }
+    if (typeof v === 'number' && Number.isFinite(v)) {
+        if (!Number.isInteger(v) && v > 1e15) {
+            return undefined;
+        }
+        const s = String(v);
+        if (s === 'NaN' || s.includes('e') || s.includes('E')) {
+            return undefined;
+        }
+        return s;
+    }
+    if (typeof v === 'bigint') {
+        return v.toString();
+    }
+    return undefined;
+}
+const UPAYMENTS_TRACK_LIKE_KEYS = [
+    'trackId',
+    'TrackID',
+    'track_id',
+    'TrackId',
+    'trackID',
+    'paymentTrackId',
+    'PaymentTrackId',
+    'payment_id',
+    'paymentId',
+    'PaymentId',
+    'Payment_ID',
+    'invoice_id',
+    'invoiceId',
+    'InvoiceId',
+    'session_id',
+    'sessionId',
+    'SessionId',
+    'transaction_id',
+    'transactionId',
+    'TransactionId',
+    'tran_id',
+    'tranId',
+    'receipt_id',
+    'receiptId',
+    'receiptid',
+    'upayment_id',
+    'uPaymentId',
+];
+function isPlausibleTrackValue(s, key) {
+    if (s.length < 5 || s.length > 128) {
+        return false;
+    }
+    if (s.startsWith('http') || s.startsWith('//')) {
+        return false;
+    }
+    if (looksLikeOurOrderUuid(s) && (key === 'id' || key === 'orderId')) {
+        return false;
+    }
+    if (key === 'id' && looksLikeOurOrderUuid(s)) {
+        return false;
+    }
+    return true;
+}
+function tryParseTrackIdFromRecord(o) {
+    if (!o || typeof o !== 'object') {
+        return undefined;
+    }
+    const r = o;
+    for (const k of UPAYMENTS_TRACK_LIKE_KEYS) {
+        if (!(k in r)) {
+            continue;
+        }
+        const s = coerceStringishTrackValue(r[k]);
+        if (s && isPlausibleTrackValue(s, k)) {
+            return s;
+        }
+    }
+    return undefined;
+}
+const TRACK_KEY_NAME_HINT = /track|payment_?id|invoice_?|session_?|tran_?|receipt_?/i;
+function deepFindUpaymentsTrackId(node, depth) {
+    if (depth > 12 || node == null) {
+        return undefined;
+    }
+    if (Array.isArray(node)) {
+        for (const el of node) {
+            const t = deepFindUpaymentsTrackId(el, depth + 1);
+            if (t) {
+                return t;
+            }
+        }
+        return undefined;
+    }
+    if (typeof node !== 'object') {
+        return undefined;
+    }
+    const o = node;
+    for (const k of UPAYMENTS_TRACK_LIKE_KEYS) {
+        if (!(k in o)) {
+            continue;
+        }
+        const s = coerceStringishTrackValue(o[k]);
+        if (s && isPlausibleTrackValue(s, k)) {
+            return s;
+        }
+    }
+    if (depth > 0) {
+        for (const k of ['id', 'Id', 'ID']) {
+            if (!(k in o)) {
+                continue;
+            }
+            const s = coerceStringishTrackValue(o[k]);
+            if (s && isPlausibleTrackValue(s, 'id')) {
+                return s;
+            }
+        }
+    }
+    for (const [k, v] of Object.entries(o)) {
+        if (TRACK_KEY_NAME_HINT.test(k)) {
+            const s = coerceStringishTrackValue(v);
+            if (s && isPlausibleTrackValue(s, k)) {
+                return s;
+            }
+        }
+    }
+    for (const v of Object.values(o)) {
+        if (v != null && typeof v === 'object') {
+            const t = deepFindUpaymentsTrackId(v, depth + 1);
+            if (t) {
+                return t;
+            }
+        }
+    }
+    return undefined;
+}
+const TRACK_URL_QUERY_KEYS = [
+    'track_id',
+    'trackId',
+    'TrackID',
+    'trackid',
+    'TrackId',
+    'session_id',
+    'sessionId',
+    'SessionId',
+    'payment_id',
+    'paymentId',
+    'PaymentId',
+    'invoice_id',
+    'invoiceId',
+];
+function tryParseTrackIdFromPaymentUrl(link) {
+    if (!link || typeof link !== 'string') {
+        return undefined;
+    }
+    try {
+        const u = new URL(link);
+        for (const key of TRACK_URL_QUERY_KEYS) {
+            const v = u.searchParams.get(key);
+            if (v?.trim()) {
+                return v.trim();
+            }
+        }
+    }
+    catch {
+    }
+    const m = new RegExp(`[?&](?:${TRACK_URL_QUERY_KEYS.join('|')})=([^&]+)`, 'i').exec(link);
+    if (m?.[1]) {
+        try {
+            return decodeURIComponent(m[1].trim());
+        }
+        catch {
+            return m[1].trim();
+        }
+    }
+    return undefined;
+}
+function extractUpaymentsChargeTrackId(data, paymentUrl) {
+    let t = tryParseTrackIdFromRecord(data);
+    if (t) {
+        return t;
+    }
+    if (data && typeof data === 'object' && 'data' in data) {
+        t = tryParseTrackIdFromRecord(data.data);
+        if (t) {
+            return t;
+        }
+    }
+    t = tryParseTrackIdFromPaymentUrl(paymentUrl);
+    if (t) {
+        return t;
+    }
+    t = deepFindUpaymentsTrackId(data, 0);
+    return t;
+}
+function extractTrackIdFromChargeRawJsonText(raw) {
+    const quotedPatterns = [
+        /"track_?id"\s*:\s*"([^"]{5,128})"/i,
+        /"payment_?id"\s*:\s*"([^"]{5,128})"/i,
+        /"PaymentId"\s*:\s*"([^"]{5,128})"/,
+        /"invoice_?id"\s*:\s*"([^"]{5,128})"/i,
+    ];
+    for (const re of quotedPatterns) {
+        const m = re.exec(raw);
+        const s = m?.[1]?.trim();
+        if (s &&
+            !s.startsWith('http') &&
+            !looksLikeOurOrderUuid(s) &&
+            isPlausibleTrackValue(s, 'raw')) {
+            return s;
+        }
+    }
+    const numM = /"(?:track_?id|payment_?id|invoice_?id|session_?id)"\s*:\s*(\d{10,24})\b/.exec(raw);
+    if (numM?.[1]) {
+        return numM[1];
+    }
+    return undefined;
+}
+function resolveUpaymentsChargePaymentUrl(data) {
+    if (!data || typeof data !== 'object') {
+        return undefined;
+    }
+    const d = data;
+    for (const key of [
+        'link',
+        'url',
+        'paymentUrl',
+        'paymentLink',
+        'href',
+        'redirectUrl',
+        'redirect_url',
+    ]) {
+        const v = d[key];
+        if (typeof v !== 'string') {
+            continue;
+        }
+        const t = v.trim();
+        if (t.startsWith('http://') || t.startsWith('https://')) {
+            return t;
+        }
+    }
+    return undefined;
+}
 let PaymentsService = PaymentsService_1 = class PaymentsService {
     prisma;
     customerLedger;
@@ -49,7 +295,25 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
             .replace(/\/$/, '');
         this.webAppUrl = (process.env.PUBLIC_WEB_APP_URL ?? 'http://localhost:5173').replace(/\/$/, '');
     }
+    looksLikeLocalHost(url) {
+        return /localhost|127\.0\.0\.1|0\.0\.0\.0/.test(url);
+    }
     onModuleInit() {
+        const inProd = process.env.NODE_ENV === 'production';
+        if (inProd && !this.isPublicMockCheckoutAvailable()) {
+            if (this.looksLikeLocalHost(this.webAppUrl)) {
+                this.logger.error('PAYMENTS: PUBLIC_WEB_APP_URL is localhost (or loopback) while real UPayments is enabled. After pay, the gateway redirects the customer to this URL — phones cannot open it. Set PUBLIC_WEB_APP_URL to your public SPA (e.g. https://www.safariomni.com) and redeploy.');
+            }
+            if (!this.callbackPublicUrl) {
+                const fallback = (process.env.PUBLIC_API_URL ?? '').replace(/\/$/, '');
+                if (!fallback || this.looksLikeLocalHost(fallback)) {
+                    this.logger.error('PAYMENTS: PAYMENTS_CALLBACK_PUBLIC_URL is unset and PUBLIC_API_URL is missing or not internet-reachable. UPayments cannot POST /api/payments/callback; orders may stay unpaid. Set PAYMENTS_CALLBACK_PUBLIC_URL to the public https base of this API (same as deploy/render-production.env).');
+                }
+            }
+            else if (this.looksLikeLocalHost(this.callbackPublicUrl)) {
+                this.logger.error('PAYMENTS: PAYMENTS_CALLBACK_PUBLIC_URL must be a public https host — not localhost. UPayments server-to-server callback will never reach your app.');
+            }
+        }
         if (this.isPublicMockCheckoutAvailable()) {
             const inProd = process.env.NODE_ENV === 'production';
             if (inProd) {
@@ -96,8 +360,8 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
         const notificationUrl = this.callbackPublicUrl
             ? `${this.callbackPublicUrl}/api/payments/callback`
             : `${process.env.PUBLIC_API_URL ?? 'http://localhost:3000'}/api/payments/callback`;
-        const returnUrl = `${this.webAppUrl}/payment/success?orderId=${encodeURIComponent(params.orderId)}`;
-        const cancelUrl = `${this.webAppUrl}/payment/failed?orderId=${encodeURIComponent(params.orderId)}`;
+        const returnUrl = `${this.webAppUrl}/payment/success`;
+        const cancelUrl = `${this.webAppUrl}/payment/failed`;
         const amount = Number(params.amount.toFixed(3));
         if (!Number.isFinite(amount) || amount <= 0) {
             throw new common_1.BadRequestException('Invalid order amount for payment link');
@@ -179,15 +443,32 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
             this.logger.error(`UPayments /charge failed (${res.status}) for ${params.orderId}: ${msg}`);
             throw new common_1.BadRequestException(`Payments gateway error (${res.status}): ${msg}`);
         }
-        const url = json.data?.link;
-        const trackId = json.data?.trackId;
-        if (!url || typeof url !== 'string') {
-            throw new common_1.BadRequestException('UPayments response missing `data.link`');
+        const dataBlock = json.data;
+        const url = resolveUpaymentsChargePaymentUrl(dataBlock);
+        if (!url) {
+            throw new common_1.BadRequestException('UPayments response missing payment link (`data.link` / `data.url` / similar)');
+        }
+        let trackId = extractUpaymentsChargeTrackId(dataBlock, url);
+        if (!trackId) {
+            trackId = deepFindUpaymentsTrackId(json, 0);
+        }
+        if (!trackId) {
+            trackId = tryParseTrackIdFromRecord(json);
+        }
+        if (!trackId) {
+            trackId = extractTrackIdFromChargeRawJsonText(text);
+        }
+        if (!trackId) {
+            const dataKeys = dataBlock && typeof dataBlock === 'object'
+                ? Object.keys(dataBlock).join(',')
+                : 'n/a';
+            this.logger.error(`UPayments /charge: cannot resolve trackId for order=${params.orderId}. data keys=[${dataKeys}] snippet=${text.slice(0, 2500)}`);
+            throw new common_1.BadRequestException('UPayments did not return a verifiable track id (needed for recheck and webhooks). Check gateway /charge JSON or contact UPayments support.');
         }
         return {
             url,
             reference: trackId,
-            trackId: trackId ?? undefined,
+            trackId,
         };
     }
     async fetchGatewayStatus(trackId) {
@@ -298,11 +579,14 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
         if (order.cashStatus !== client_1.CashStatus.UNPAID || order.walletSettledAt) {
             throw new common_1.BadRequestException('Order is already paid');
         }
-        if (order.posHostedPaymentUrl) {
+        if (order.posHostedPaymentUrl && order.posGatewayTrackId) {
             return {
                 url: order.posHostedPaymentUrl,
-                trackId: order.posGatewayTrackId ?? undefined,
+                trackId: order.posGatewayTrackId,
             };
+        }
+        if (order.posHostedPaymentUrl && !order.posGatewayTrackId) {
+            this.logger.warn(`Payment link missing trackId (repair): orderId=${order.id} — creating new UPayments session`);
         }
         const phone = order.customer.phone?.trim() || order.customer.phone2?.trim() || '';
         const link = await this.createPaymentLink({
@@ -312,21 +596,30 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
             customerName: order.customer.displayName ?? undefined,
             customerUniqueId: order.customer.id.slice(0, 20),
         });
+        const tid = link.trackId ?? null;
         await this.prisma.order.update({
             where: { id: order.id },
             data: {
                 posHostedPaymentUrl: link.url,
-                posGatewayTrackId: link.trackId ?? null,
+                posGatewayTrackId: tid,
                 posGatewayMetadata: {
                     charge: {
                         provider: 'upayments',
-                        trackId: link.trackId ?? null,
+                        trackId: tid,
                         link: link.url,
                         createdAt: new Date().toISOString(),
                     },
                 },
             },
         });
+        const persisted = await this.prisma.order.findUnique({
+            where: { id: order.id },
+            select: { posGatewayTrackId: true },
+        });
+        if (!persisted?.posGatewayTrackId) {
+            this.logger.error(`posGatewayTrackId not readable after update orderId=${order.id}`);
+            throw new common_1.InternalServerErrorException('Failed to persist gateway track id. Check database and Order.posGatewayTrackId column.');
+        }
         return link;
     }
     async findOrderByTrackId(trackId) {
