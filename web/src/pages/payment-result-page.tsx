@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { CheckCircle2, Clock, RefreshCw, ShieldCheck, XCircle } from 'lucide-react';
 import {
   ApiError,
@@ -12,37 +12,106 @@ import { BRAND } from '@/lib/brand';
 import { formatKwdLabel } from '@/lib/kwd';
 import { Button } from '@/modules/shared/components/ui/button';
 
+/** Our Prisma `Order.id` (UUID v4-style). UPayments `order_id` is often a different hex id. */
+const SAFARI_ORDER_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 /**
- * After UPayments redirect, the order id may appear as:
- *   - `orderId` (our legacy returnUrl) — value can be corrupt if a second
- *     `?` was injected (`uuid?payment_id=…`); we strip at first `?`.
- *   - `requested_order_id` (UPayments) — matches our Safari `Order.id`.
- *   - `trn_udf=orderId=<uuid>` (echo of customerExtraData).
+ * Some gateways / emails emit `&amp;` instead of `&`; `URLSearchParams` then
+ * misses every param after the first. Normalize before parsing.
  */
-function resolveOrderIdFromUrl(params: URLSearchParams): string {
-  const raw = params.get('orderId')?.trim();
-  if (raw) {
-    const uuid = raw.split('?')[0]?.trim() ?? '';
-    if (uuid) return uuid;
+function normalizeQuerySearchStringForParsing(q: string): string {
+  return q.replace(/&amp;/gi, '&').replace(/%26amp%3B/gi, '&');
+}
+
+/**
+ * After UPayments redirect, the Safari order id may appear as:
+ *   - `requested_order_id` (UPayments) — best; matches our `Order.id`.
+ *   - `trn_udf=orderId=<uuid>` (echo of customerExtraData).
+ *   - `orderId` or `order_id` — only if the value is a real UUID (UPayments
+ *     also sends `order_id` as *their* id; do not use that as our order id).
+ *
+ * Use `location.search` (not only `useSearchParams()`) so we can normalize
+ * and apply regex fallbacks on the raw string.
+ */
+function resolveOrderIdFromPaymentReturnUrl(search: string): string {
+  const raw = (search ?? '').replace(/^\?/, '');
+  const normalized = normalizeQuerySearchStringForParsing(raw);
+  const params = new URLSearchParams(normalized);
+
+  const requested = params.get('requested_order_id')?.trim();
+  if (requested && SAFARI_ORDER_UUID_RE.test(requested)) {
+    return requested;
   }
-  const req = params.get('requested_order_id')?.trim();
-  if (req) return req;
+
   const udf = params.get('trn_udf')?.trim();
   if (udf) {
-    const m = udf.match(/orderId=([0-9a-f-]{8}-[0-9a-f-]{4}-[0-9a-f-]{4}-[0-9a-f-]{4}-[0-9a-f-]{12})/i);
-    if (m) return m[1];
+    const m = udf.match(
+      /orderId=([0-9a-f-]{8}-[0-9a-f-]{4}-[0-9a-f-]{4}-[0-9a-f-]{4}-[0-9a-f-]{12})/i,
+    );
+    if (m?.[1] && SAFARI_ORDER_UUID_RE.test(m[1])) {
+      return m[1];
+    }
   }
+
+  for (const key of ['orderId', 'order_id'] as const) {
+    const v = params.get(key)?.trim();
+    if (v && SAFARI_ORDER_UUID_RE.test(v.split('?')[0] ?? '')) {
+      return (v.split('?')[0] ?? v).trim();
+    }
+  }
+
+  const blob = `?${normalized}`;
+  const fallbackReq =
+    /[?&]requested_order_id=([0-9a-f-]{8}-[0-9a-f-]{4}-[0-9a-f-]{4}-[0-9a-f-]{4}-[0-9a-f-]{12})/i.exec(
+      blob,
+    );
+  if (fallbackReq?.[1]) {
+    return fallbackReq[1];
+  }
+
+  const udfQ = /[?&]trn_udf=([^&]+)/i.exec(blob);
+  if (udfQ?.[1]) {
+    let inner = udfQ[1];
+    try {
+      inner = decodeURIComponent(inner.replace(/\+/g, ' '));
+    } catch {
+      /* keep raw */
+    }
+    const m2 = inner.match(
+      /orderId=([0-9a-f-]{8}-[0-9a-f-]{4}-[0-9a-f-]{4}-[0-9a-f-]{4}-[0-9a-f-]{12})/i,
+    );
+    if (m2?.[1]) {
+      return m2[1];
+    }
+  }
+
   return '';
 }
 
 /** v2 UPayments `track_id` (return page) — not the same as `session_id` in the hosted link. */
-function resolveReturnGatewayTrackId(params: URLSearchParams): string {
-  return (
+function resolveReturnGatewayTrackIdFromSearch(search: string): string {
+  const raw = (search ?? '').replace(/^\?/, '');
+  const normalized = normalizeQuerySearchStringForParsing(raw);
+  const params = new URLSearchParams(normalized);
+  const fromParams =
     params.get('track_id')?.trim() ||
     params.get('TrackID')?.trim() ||
     params.get('trackId')?.trim() ||
-    ''
-  );
+    '';
+  if (fromParams) {
+    return fromParams;
+  }
+  const blob = `?${normalized}`;
+  const m = /[?&]track_id=([^&]+)/i.exec(blob);
+  if (m?.[1]) {
+    try {
+      return decodeURIComponent(m[1].trim());
+    } catch {
+      return m[1].trim();
+    }
+  }
+  return '';
 }
 
 /**
@@ -71,9 +140,15 @@ export function PaymentResultPage({
 }: {
   mode: 'success' | 'failed';
 }) {
-  const [searchParams] = useSearchParams();
-  const orderId = resolveOrderIdFromUrl(searchParams);
-  const returnGatewayTrackId = resolveReturnGatewayTrackId(searchParams);
+  const { search } = useLocation();
+  const orderId = useMemo(
+    () => resolveOrderIdFromPaymentReturnUrl(search),
+    [search],
+  );
+  const returnGatewayTrackId = useMemo(
+    () => resolveReturnGatewayTrackIdFromSearch(search),
+    [search],
+  );
 
   const [status, setStatus] = useState<PublicPaymentStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
