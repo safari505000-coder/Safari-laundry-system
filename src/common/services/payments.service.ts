@@ -794,14 +794,24 @@ export class PaymentsService implements OnModuleInit {
    * quirks.
    */
   normalizeCallbackStatus(status: string): 'success' | 'failed' {
-    const s = status.trim().toLowerCase();
+    const raw = (status ?? '').trim();
+    if (!raw) {
+      return 'failed';
+    }
+    const s = raw.toLowerCase();
+    const firstSegment = (s.split(/[,;|]/)[0] ?? s).trim();
+    const head = (firstSegment.split(/\s+/)[0] ?? firstSegment).trim();
     if (
-      s === 'success' ||
-      s === 'paid' ||
-      s === 'completed' ||
-      s === 'captured' ||
-      s === 'authorized'
+      head === 'success' ||
+      head === 'paid' ||
+      head === 'completed' ||
+      head === 'captured' ||
+      head === 'authorized' ||
+      head === 'capture'
     ) {
+      return 'success';
+    }
+    if (/\bcaptured\b/.test(s) && !/\b(not|un|de|pre)\s*captured\b/.test(s)) {
       return 'success';
     }
     return 'failed';

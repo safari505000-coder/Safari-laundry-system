@@ -262,11 +262,12 @@ export function PaymentResultPage({
     };
   }, [orderId, returnGatewayTrackId, returnGatewayResult]);
 
+  /** Never show «تم الدفع بنجاح» from the route alone — only after API confirms `isPaid`. */
   const resolvedMode: 'success' | 'failed' | 'pending' = useMemo(() => {
     if (status?.isPaid) return 'success';
-    if (mode === 'failed' && status && !status.isPaid) return 'failed';
-    if (mode === 'success' && status && !status.isPaid) return 'pending';
-    return mode;
+    if (mode === 'failed') return 'failed';
+    if (mode === 'success') return 'pending';
+    return 'pending';
   }, [mode, status]);
 
   return (

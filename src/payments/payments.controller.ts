@@ -198,30 +198,32 @@ document.getElementById('go').onclick = async function () {
           `UPayments callback: trusted webhook (CAPTURED + v2 + Safari order) orderId=${safariOrderFromBody} — finalize without inquiry`,
         );
         try {
-          await this.paymentsService.finalizePaidOrderFromGateway(
-            safariOrderFromBody!,
-            {
-              provider: 'upayments',
+          const tr =
+            await this.paymentsService.tryFinalizeOrderFromTrustedUpaymentsReturn(
+              safariOrderFromBody!,
               trackId,
-              source: 'UPayments_WEBHOOK_TRUSTED_BODY',
-              paymentId: body.payment_id ?? body.paymentId ?? null,
-              tranId: body.tran_id ?? body.tranId ?? null,
-              result: body.result ?? body.status ?? null,
-              auth: body.auth ?? null,
-              amount: String(body.amount ?? ''),
-              inquiryRaw: { trustedWithoutUpaymentsInquiry: true },
-              receivedBody: body,
-            } as never,
+              String(body.result ?? body.status ?? ''),
+              'UPayments_WEBHOOK_TRUSTED_BODY',
+              {
+                paymentId: body.payment_id ?? body.paymentId ?? null,
+                tranId: body.tran_id ?? body.tranId ?? null,
+                amount: body.amount,
+              },
+            );
+          if (tr.finalized) {
+            this.logger.log(
+              `UPayments callback: finalize (trusted) done orderId=${safariOrderFromBody}`,
+            );
+            return {
+              ok: true as const,
+              orderId: safariOrderFromBody!,
+              trackId,
+              outcome: 'success' as const,
+            };
+          }
+          this.logger.warn(
+            `UPayments callback: trusted finalize no-op orderId=${safariOrderFromBody} — falling back to inquiry`,
           );
-          this.logger.log(
-            `UPayments callback: finalizePaidOrderFromGateway (trusted) done orderId=${safariOrderFromBody}`,
-          );
-          return {
-            ok: true as const,
-            orderId: safariOrderFromBody!,
-            trackId,
-            outcome: 'success' as const,
-          };
         } catch (err) {
           this.logger.warn(
             `UPayments callback: trusted finalize failed orderId=${safariOrderFromBody}: ${(err as Error).message} — falling back to inquiry`,
@@ -252,7 +254,7 @@ document.getElementById('go').onclick = async function () {
       const outcome = this.paymentsService.normalizeCallbackStatus(
         inquiry.data.result ?? body.result ?? body.status ?? '',
       );
-      const willFinalize = outcome === 'success' && inquiry.ok;
+      let willFinalize = outcome === 'success' && inquiry.ok;
       this.logger.log(
         `UPayments callback: orderId=${resolvedOrderId} gatewayResult=${inquiry.data.result ?? 'n/a'} normalizedOutcome=${outcome} inquiryOk=${inquiry.ok} willFinalize=${willFinalize}`,
       );
@@ -283,13 +285,42 @@ document.getElementById('go').onclick = async function () {
         this.logger.log(
           `UPayments callback: finalizePaidOrderFromGateway done orderId=${resolvedOrderId}`,
         );
+      } else if (
+        !inquiry.ok &&
+        safariOrderFromBody &&
+        this.paymentsService.normalizeCallbackStatus(
+          body.result ?? body.status ?? '',
+        ) === 'success' &&
+        /v2$/i.test(trackId.trim())
+      ) {
+        this.logger.warn(
+          `UPayments callback: inquiry failed for trackId prefix=${trackId.slice(0, 16)}… — finalizing from webhook body (Safari orderId=${safariOrderFromBody})`,
+        );
+        const tr =
+          await this.paymentsService.tryFinalizeOrderFromTrustedUpaymentsReturn(
+            safariOrderFromBody,
+            trackId,
+            String(body.result ?? body.status ?? ''),
+            'UPayments_WEBHOOK_BODY_INQUIRY_FAILED',
+            {
+              paymentId: body.payment_id ?? body.paymentId ?? null,
+              tranId: body.tran_id ?? body.tranId ?? null,
+              amount: body.amount,
+            },
+          );
+        if (tr.finalized) {
+          willFinalize = true;
+          this.logger.log(
+            `UPayments callback: finalize after inquiry fail done orderId=${safariOrderFromBody}`,
+          );
+        }
       }
 
       return {
         ok: true as const,
         orderId: resolvedOrderId,
         trackId,
-        outcome,
+        outcome: willFinalize ? ('success' as const) : outcome,
       };
     }
 
@@ -775,6 +806,10 @@ function pickReturnTrackIdFromRequest(
     return fromRawUrl;
   }
   if (!req.query || typeof req.query !== 'object') {
+    const fromRefererEarly = extractPaymentReturnHintsFromReferer(req).trackId;
+    if (fromRefererEarly) {
+      return fromRefererEarly;
+    }
     return '';
   }
   const q = req.query as Record<string, string | string[] | undefined>;
@@ -803,6 +838,10 @@ function pickReturnTrackIdFromRequest(
         return v;
       }
     }
+  }
+  const fromReferer = extractPaymentReturnHintsFromReferer(req).trackId;
+  if (fromReferer) {
+    return fromReferer;
   }
   return '';
 }
@@ -927,7 +966,45 @@ function pickGatewayReturnResultFromRequest(
   if (fromQuery) {
     return fromQuery;
   }
-  return extractGatewayResultFromRequestUrl(req);
+  const fromUrl = extractGatewayResultFromRequestUrl(req);
+  if (fromUrl) {
+    return fromUrl;
+  }
+  return extractPaymentReturnHintsFromReferer(req).result;
+}
+
+/**
+ * Browser often sends `Referer: https://…/payment/success?result=CAPTURED&track_id=…v2`
+ * on same-origin POSTs. Used when JSON/query hints were stripped upstream.
+ */
+function extractPaymentReturnHintsFromReferer(req: Request): {
+  trackId: string;
+  result: string;
+} {
+  const header =
+    (typeof req.get === 'function' && req.get('referer')) ||
+    (typeof req.get === 'function' && req.get('referrer')) ||
+    (req.headers['referer'] as string | undefined) ||
+    (req.headers['referrer'] as string | undefined) ||
+    '';
+  if (!header || typeof header !== 'string') {
+    return { trackId: '', result: '' };
+  }
+  try {
+    const u = new URL(header);
+    const trackId =
+      u.searchParams.get('track_id')?.trim() ||
+      u.searchParams.get('TrackID')?.trim() ||
+      u.searchParams.get('trackId')?.trim() ||
+      '';
+    const result =
+      u.searchParams.get('result')?.trim() ||
+      u.searchParams.get('Result')?.trim() ||
+      '';
+    return { trackId, result };
+  } catch {
+    return { trackId: '', result: '' };
+  }
 }
 
 /** Prisma-style UUID v4 (Safari `Order.id`). */
