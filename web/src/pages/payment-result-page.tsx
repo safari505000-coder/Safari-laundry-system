@@ -35,6 +35,16 @@ function resolveOrderIdFromUrl(params: URLSearchParams): string {
   return '';
 }
 
+/** v2 UPayments `track_id` (return page) — not the same as `session_id` in the hosted link. */
+function resolveReturnGatewayTrackId(params: URLSearchParams): string {
+  return (
+    params.get('track_id')?.trim() ||
+    params.get('TrackID')?.trim() ||
+    params.get('trackId')?.trim() ||
+    ''
+  );
+}
+
 /**
  * V1.7.0 — Customer-facing landing page after UPayments redirects
  * the shopper back from the hosted checkout. Rendered at two
@@ -63,6 +73,7 @@ export function PaymentResultPage({
 }) {
   const [searchParams] = useSearchParams();
   const orderId = resolveOrderIdFromUrl(searchParams);
+  const returnGatewayTrackId = resolveReturnGatewayTrackId(searchParams);
 
   const [status, setStatus] = useState<PublicPaymentStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -76,7 +87,9 @@ export function PaymentResultPage({
     setError(null);
     setRecheckBusy(true);
     try {
-      const r = await recheckPublicPayment(orderId);
+      const r = await recheckPublicPayment(orderId, {
+        returnTrackId: returnGatewayTrackId || undefined,
+      });
       setRecheckResult(r);
       setStatus({
         orderId: r.orderId,
@@ -96,7 +109,7 @@ export function PaymentResultPage({
     } finally {
       setRecheckBusy(false);
     }
-  }, [orderId, recheckBusy]);
+  }, [orderId, recheckBusy, returnGatewayTrackId]);
 
   useEffect(() => {
     if (!orderId) {
@@ -111,7 +124,9 @@ export function PaymentResultPage({
     const tick = async () => {
       if (cancelled || stoppedRef.current) return;
       try {
-        const s = await getPublicPaymentStatus(orderId);
+        const s = await getPublicPaymentStatus(orderId, {
+          returnTrackId: returnGatewayTrackId || undefined,
+        });
         if (cancelled) return;
         setStatus(s);
         if (s.isPaid) {
@@ -142,7 +157,7 @@ export function PaymentResultPage({
     return () => {
       cancelled = true;
     };
-  }, [orderId]);
+  }, [orderId, returnGatewayTrackId]);
 
   const resolvedMode: 'success' | 'failed' | 'pending' = useMemo(() => {
     if (status?.isPaid) return 'success';

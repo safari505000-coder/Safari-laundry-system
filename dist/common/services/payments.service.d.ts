@@ -68,6 +68,11 @@ export declare class PaymentsService implements OnModuleInit {
         signature?: string;
     }): boolean;
     normalizeCallbackStatus(status: string): 'success' | 'failed';
+    tryFinalizeOrderIfUpaymentsCaptured(orderId: string, inquiryTrackId: string, source: string): Promise<{
+        finalized: boolean;
+        gatewayResult: string | null;
+        inquiryRaw: unknown;
+    }>;
     ensurePaymentLinkForUnpaidOrder(orderId: string): Promise<CreatePaymentLinkResult>;
     findOrderByTrackId(trackId: string): Promise<string | null>;
     finalizePaidOrderFromGateway(referenceId: string, gatewayMetadata?: Prisma.InputJsonValue): Promise<void>;

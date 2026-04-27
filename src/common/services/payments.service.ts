@@ -808,6 +808,59 @@ export class PaymentsService implements OnModuleInit {
   }
 
   /**
+   * `/api/v1/charge` often returns only `data.link?session_id=…` while
+   * `get-payment-status` and webhooks use the v2 `track_id` (return URL + POST body).
+   * This helper runs the inquiry + finalizes if CAPTURED, and
+   * `finalizeSinglePaidOrderFromGateway` will persist the inquiry-capable
+   * `trackId` to `posGatewayTrackId` when the callback payload includes it.
+   */
+  async tryFinalizeOrderIfUpaymentsCaptured(
+    orderId: string,
+    inquiryTrackId: string,
+    source: string,
+  ): Promise<{
+    finalized: boolean;
+    gatewayResult: string | null;
+    inquiryRaw: unknown;
+  }> {
+    const clean = inquiryTrackId.trim();
+    if (!clean) {
+      return { finalized: false, gatewayResult: null, inquiryRaw: null };
+    }
+    const inquiry = await this.fetchGatewayStatus(clean);
+    const gr = inquiry.data.result?.toString() ?? null;
+    if (!inquiry.ok) {
+      return { finalized: false, gatewayResult: gr, inquiryRaw: inquiry.raw };
+    }
+    if (this.normalizeCallbackStatus(inquiry.data.result ?? '') !== 'success') {
+      return { finalized: false, gatewayResult: gr, inquiryRaw: inquiry.raw };
+    }
+    const fromInq =
+      inquiry.data.order?.id?.trim() ||
+      extractOrderIdFromUpaymentsExtraData(inquiry.data.customerExtraData);
+    if (fromInq && fromInq !== orderId) {
+      this.logger.warn(
+        `UPayments inquiry order mismatch: urlOrder=${orderId} inquiryOrder=${fromInq} trackPrefix=${clean.slice(0, 20)}…`,
+      );
+      return { finalized: false, gatewayResult: gr, inquiryRaw: inquiry.raw };
+    }
+    await this.finalizePaidOrderFromGateway(
+      orderId,
+      {
+        provider: 'upayments',
+        trackId: clean,
+        source,
+        paymentId: inquiry.data.paymentId ?? null,
+        tranId: inquiry.data.transactionId ?? null,
+        result: inquiry.data.result ?? null,
+        amount: String(inquiry.data.amount ?? ''),
+        inquiryRaw: inquiry.raw,
+      } as never,
+    );
+    return { finalized: true, gatewayResult: gr, inquiryRaw: inquiry.raw };
+  }
+
+  /**
    * V1.6.0 — Universal payment link for ANY unpaid non-canceled order.
    *
    * Returns the existing `posHostedPaymentUrl` if one was already generated
@@ -997,6 +1050,8 @@ export class PaymentsService implements OnModuleInit {
           gatewayMetadata,
           completedAt,
         );
+        const inquiryCapableTrackId =
+          extractTrackIdFromFinalizeGatewayMetadata(gatewayMetadata);
         await tx.order.update({
           where: { id: orderId },
           data: {
@@ -1007,6 +1062,9 @@ export class PaymentsService implements OnModuleInit {
             completedAt,
             posPaymentMethod: PosPaymentMethod.ONLINE,
             walletSettledAt: null,
+            ...(inquiryCapableTrackId
+              ? { posGatewayTrackId: inquiryCapableTrackId }
+              : {}),
             ...(mergedGatewayMetadata
               ? { posGatewayMetadata: mergedGatewayMetadata }
               : {}),
@@ -1371,6 +1429,31 @@ function normalizeKwPhone(phone: string): string {
     return `+965${d}`;
   }
   return `+${d}`;
+}
+
+function extractTrackIdFromFinalizeGatewayMetadata(
+  meta: Prisma.InputJsonValue | undefined,
+): string | undefined {
+  if (meta == null || typeof meta !== 'object' || Array.isArray(meta)) {
+    return undefined;
+  }
+  const m = meta as Record<string, unknown>;
+  const t = m.trackId ?? m.TrackID;
+  if (typeof t === 'string' && t.trim().length > 0) {
+    return t.trim();
+  }
+  return undefined;
+}
+
+/** Same regex as in `payments.controller` — `orderId=<uuid>` in UPayments UDF. */
+function extractOrderIdFromUpaymentsExtraData(
+  raw: string | undefined,
+): string | null {
+  if (!raw) {
+    return null;
+  }
+  const match = raw.match(/orderId=([0-9a-fA-F-]{36})/);
+  return match?.[1] ?? null;
 }
 
 /**

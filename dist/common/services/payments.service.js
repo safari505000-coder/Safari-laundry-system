@@ -554,6 +554,37 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
         }
         return 'failed';
     }
+    async tryFinalizeOrderIfUpaymentsCaptured(orderId, inquiryTrackId, source) {
+        const clean = inquiryTrackId.trim();
+        if (!clean) {
+            return { finalized: false, gatewayResult: null, inquiryRaw: null };
+        }
+        const inquiry = await this.fetchGatewayStatus(clean);
+        const gr = inquiry.data.result?.toString() ?? null;
+        if (!inquiry.ok) {
+            return { finalized: false, gatewayResult: gr, inquiryRaw: inquiry.raw };
+        }
+        if (this.normalizeCallbackStatus(inquiry.data.result ?? '') !== 'success') {
+            return { finalized: false, gatewayResult: gr, inquiryRaw: inquiry.raw };
+        }
+        const fromInq = inquiry.data.order?.id?.trim() ||
+            extractOrderIdFromUpaymentsExtraData(inquiry.data.customerExtraData);
+        if (fromInq && fromInq !== orderId) {
+            this.logger.warn(`UPayments inquiry order mismatch: urlOrder=${orderId} inquiryOrder=${fromInq} trackPrefix=${clean.slice(0, 20)}…`);
+            return { finalized: false, gatewayResult: gr, inquiryRaw: inquiry.raw };
+        }
+        await this.finalizePaidOrderFromGateway(orderId, {
+            provider: 'upayments',
+            trackId: clean,
+            source,
+            paymentId: inquiry.data.paymentId ?? null,
+            tranId: inquiry.data.transactionId ?? null,
+            result: inquiry.data.result ?? null,
+            amount: String(inquiry.data.amount ?? ''),
+            inquiryRaw: inquiry.raw,
+        });
+        return { finalized: true, gatewayResult: gr, inquiryRaw: inquiry.raw };
+    }
     async ensurePaymentLinkForUnpaidOrder(orderId) {
         const order = await this.prisma.order.findUnique({
             where: { id: orderId },
@@ -676,6 +707,7 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
             const originalMethod = order.posPaymentMethod;
             const completedAt = new Date();
             const mergedGatewayMetadata = mergeGatewayMetadata(order.posGatewayMetadata, gatewayMetadata, completedAt);
+            const inquiryCapableTrackId = extractTrackIdFromFinalizeGatewayMetadata(gatewayMetadata);
             await tx.order.update({
                 where: { id: orderId },
                 data: {
@@ -684,6 +716,9 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
                     completedAt,
                     posPaymentMethod: client_1.PosPaymentMethod.ONLINE,
                     walletSettledAt: null,
+                    ...(inquiryCapableTrackId
+                        ? { posGatewayTrackId: inquiryCapableTrackId }
+                        : {}),
                     ...(mergedGatewayMetadata
                         ? { posGatewayMetadata: mergedGatewayMetadata }
                         : {}),
@@ -925,6 +960,24 @@ function normalizeKwPhone(phone) {
         return `+965${d}`;
     }
     return `+${d}`;
+}
+function extractTrackIdFromFinalizeGatewayMetadata(meta) {
+    if (meta == null || typeof meta !== 'object' || Array.isArray(meta)) {
+        return undefined;
+    }
+    const m = meta;
+    const t = m.trackId ?? m.TrackID;
+    if (typeof t === 'string' && t.trim().length > 0) {
+        return t.trim();
+    }
+    return undefined;
+}
+function extractOrderIdFromUpaymentsExtraData(raw) {
+    if (!raw) {
+        return null;
+    }
+    const match = raw.match(/orderId=([0-9a-fA-F-]{36})/);
+    return match?.[1] ?? null;
 }
 function mergeGatewayMetadata(existing, incoming, at) {
     if (incoming === undefined || incoming === null) {

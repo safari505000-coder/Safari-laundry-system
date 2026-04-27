@@ -116,6 +116,7 @@ document.getElementById('go').onclick = async function () {
             body.gatewayReference?.trim() ||
             '';
         if (trackId) {
+            this.logger.log(`UPayments callback: received trackId prefix=${trackId.slice(0, 12)}… (inquiry next)`);
             const inquiry = await this.paymentsService.fetchGatewayStatus(trackId);
             const resolvedOrderId = inquiry.data.order?.id ??
                 extractOrderIdFromExtraData(inquiry.data.customerExtraData) ??
@@ -132,7 +133,9 @@ document.getElementById('go').onclick = async function () {
                 };
             }
             const outcome = this.paymentsService.normalizeCallbackStatus(inquiry.data.result ?? body.result ?? body.status ?? '');
-            if (outcome === 'success' && inquiry.ok) {
+            const willFinalize = outcome === 'success' && inquiry.ok;
+            this.logger.log(`UPayments callback: orderId=${resolvedOrderId} gatewayResult=${inquiry.data.result ?? 'n/a'} normalizedOutcome=${outcome} inquiryOk=${inquiry.ok} willFinalize=${willFinalize}`);
+            if (willFinalize) {
                 await this.paymentsService.finalizePaidOrderFromGateway(resolvedOrderId, {
                     provider: 'upayments',
                     trackId,
@@ -144,6 +147,7 @@ document.getElementById('go').onclick = async function () {
                     inquiryRaw: inquiry.raw,
                     receivedBody: body,
                 });
+                this.logger.log(`UPayments callback: finalizePaidOrderFromGateway done orderId=${resolvedOrderId}`);
             }
             return {
                 ok: true,
@@ -152,6 +156,7 @@ document.getElementById('go').onclick = async function () {
                 outcome,
             };
         }
+        this.logger.warn(`UPayments callback: no trackId in body — keys=${Object.keys(body ?? {}).join(',') || 'empty'}; falling back to legacy HMAC (needs orderId)`);
         if (!body.orderId) {
             throw new common_1.UnauthorizedException('Callback missing trackId and orderId — cannot verify payment');
         }
@@ -169,7 +174,7 @@ document.getElementById('go').onclick = async function () {
         }
         return { ok: true, orderId: body.orderId, outcome };
     }
-    async publicOrderStatus(orderId) {
+    async publicOrderStatus(orderId, track_id, trackID, trackIdQuery) {
         if (!orderId || orderId.length < 32) {
             throw new common_1.BadRequestException('orderId is required (UUID)');
         }
@@ -186,29 +191,29 @@ document.getElementById('go').onclick = async function () {
         if (!order) {
             throw new common_1.BadRequestException('Order not found');
         }
+        const returnTrack = track_id?.trim() || trackID?.trim() || trackIdQuery?.trim() || '';
         let settled = Boolean(order.walletSettledAt);
         let status = order.status;
-        if (!settled && status !== client_1.OrderStatus.COMPLETED && order.posGatewayTrackId) {
-            try {
-                const inquiry = await this.paymentsService.fetchGatewayStatus(order.posGatewayTrackId);
-                const outcome = this.paymentsService.normalizeCallbackStatus(inquiry.data.result ?? '');
-                if (inquiry.ok && outcome === 'success') {
-                    await this.paymentsService.finalizePaidOrderFromGateway(order.id, {
-                        provider: 'upayments',
-                        trackId: order.posGatewayTrackId,
-                        source: 'PUBLIC_STATUS_POLL',
-                        paymentId: inquiry.data.paymentId ?? null,
-                        tranId: inquiry.data.transactionId ?? null,
-                        result: inquiry.data.result ?? null,
-                        amount: String(inquiry.data.amount ?? ''),
-                        inquiryRaw: inquiry.raw,
-                    });
-                    settled = true;
-                    status = client_1.OrderStatus.COMPLETED;
+        if (!settled && status !== client_1.OrderStatus.COMPLETED) {
+            const candidates = [
+                ...new Set([returnTrack, order.posGatewayTrackId ?? '']
+                    .map((s) => s?.trim())
+                    .filter((s) => Boolean(s?.length))),
+            ];
+            for (const tid of candidates) {
+                try {
+                    const r = await this.paymentsService.tryFinalizeOrderIfUpaymentsCaptured(order.id, tid, tid === returnTrack
+                        ? 'PUBLIC_STATUS_POLL_RETURN_TRACK'
+                        : 'PUBLIC_STATUS_POLL');
+                    if (r.finalized) {
+                        settled = true;
+                        status = client_1.OrderStatus.COMPLETED;
+                        break;
+                    }
                 }
-            }
-            catch (err) {
-                this.logger.warn(`Lazy reconciliation failed for order ${order.id}: ${err.message}`);
+                catch (err) {
+                    this.logger.warn(`Lazy reconciliation failed for order ${order.id}: ${err.message}`);
+                }
             }
         }
         return {
@@ -216,6 +221,102 @@ document.getElementById('go').onclick = async function () {
             status,
             isPaid: status === client_1.OrderStatus.COMPLETED || settled,
             amountKd: order.totalPrice.toFixed(3),
+        };
+    }
+    async recheckPayment(orderId, track_id, trackID, trackIdQuery) {
+        if (!orderId || orderId.length < 32) {
+            throw new common_1.BadRequestException('orderId is required (UUID)');
+        }
+        const order = await this.prisma.order.findUnique({
+            where: { id: orderId },
+            select: {
+                id: true,
+                status: true,
+                walletSettledAt: true,
+                totalPrice: true,
+                posGatewayTrackId: true,
+            },
+        });
+        if (!order) {
+            throw new common_1.BadRequestException('Order not found');
+        }
+        let status = order.status;
+        let isPaid = status === client_1.OrderStatus.COMPLETED || Boolean(order.walletSettledAt);
+        let gatewayResult = null;
+        let settledNow = false;
+        if (isPaid) {
+            return {
+                orderId: order.id,
+                status,
+                isPaid: true,
+                amountKd: order.totalPrice.toFixed(3),
+                trackIdPresent: Boolean(order.posGatewayTrackId),
+                gatewayResult: null,
+                settledNow: false,
+                messageAr: 'الدفع مؤكَّد. شكراً لك.',
+            };
+        }
+        const returnTrack = track_id?.trim() || trackID?.trim() || trackIdQuery?.trim() || '';
+        if (!returnTrack && !order.posGatewayTrackId) {
+            return {
+                orderId: order.id,
+                status,
+                isPaid: false,
+                amountKd: order.totalPrice.toFixed(3),
+                trackIdPresent: false,
+                gatewayResult: null,
+                settledNow: false,
+                messageAr: 'لا يوجد معرّف دفع مرتبط بهذا الطلب. يرجى التواصل مع مركز الخدمة.',
+            };
+        }
+        this.logger.log(`UPayments manual recheck: orderId=${order.id} hasReturnTrack=${Boolean(returnTrack)} posTrack=${order.posGatewayTrackId ? 'yes' : 'no'}`);
+        try {
+            const candidates = [
+                ...new Set([returnTrack, order.posGatewayTrackId ?? '']
+                    .map((s) => s?.trim())
+                    .filter((s) => Boolean(s?.length))),
+            ];
+            for (const tid of candidates) {
+                const r = await this.paymentsService.tryFinalizeOrderIfUpaymentsCaptured(order.id, tid, tid === returnTrack
+                    ? 'CUSTOMER_RECHECK_RETURN_TRACK'
+                    : 'CUSTOMER_RECHECK');
+                gatewayResult = r.gatewayResult;
+                if (r.finalized) {
+                    status = client_1.OrderStatus.COMPLETED;
+                    isPaid = true;
+                    settledNow = true;
+                    this.logger.log(`UPayments manual recheck: finalized orderId=${order.id}`);
+                    break;
+                }
+            }
+        }
+        catch (err) {
+            this.logger.warn(`UPayments manual recheck error orderId=${order.id}: ${err.message}`);
+            return {
+                orderId: order.id,
+                status,
+                isPaid: false,
+                amountKd: order.totalPrice.toFixed(3),
+                trackIdPresent: Boolean(returnTrack || order.posGatewayTrackId),
+                gatewayResult: null,
+                settledNow: false,
+                messageAr: 'تعذّر الاتصال ببوابة الدفع الآن. جرّب «إعادة التحقق» مرة أخرى خلال لحظات.',
+            };
+        }
+        const messageAr = isPaid && settledNow
+            ? 'تم تأكيد الدفع بنجاح! نحدّث الفاتورة الآن.'
+            : gatewayResult && gatewayResult.trim().length > 0
+                ? `بوابة الدفع ترد بالحالة: «${gatewayResult}». إن خُصم المبلغ من حسابك ولم يُسوَّ خلال دقائق يرجى التواصل مع مركز الخدمة.`
+                : 'الدفع لم يُكمَل لدى البوابة بعد. إن كنت أتممت الدفع، انتظر دقيقة ثم أعد التحقق.';
+        return {
+            orderId: order.id,
+            status,
+            isPaid,
+            amountKd: order.totalPrice.toFixed(3),
+            trackIdPresent: Boolean(returnTrack || order.posGatewayTrackId),
+            gatewayResult,
+            settledNow,
+            messageAr,
         };
     }
 };
@@ -256,10 +357,28 @@ __decorate([
         summary: 'Public order payment status (for customer return pages)',
     }),
     __param(0, (0, common_1.Param)('orderId')),
+    __param(1, (0, common_1.Query)('track_id')),
+    __param(2, (0, common_1.Query)('TrackID')),
+    __param(3, (0, common_1.Query)('trackId')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String]),
+    __metadata("design:paramtypes", [String, String, String, String]),
     __metadata("design:returntype", Promise)
 ], PaymentsController.prototype, "publicOrderStatus", null);
+__decorate([
+    (0, common_1.Post)('recheck/:orderId'),
+    (0, common_1.HttpCode)(200),
+    (0, swagger_1.ApiOperation)({
+        summary: 'Force a UPayments inquiry and finalize if CAPTURED',
+        description: 'Public — for the /payment/success|failed return pages. Always calls UPayments get-payment-status. If CAPTURED the order is marked paid before responding.',
+    }),
+    __param(0, (0, common_1.Param)('orderId')),
+    __param(1, (0, common_1.Query)('track_id')),
+    __param(2, (0, common_1.Query)('TrackID')),
+    __param(3, (0, common_1.Query)('trackId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, String, String]),
+    __metadata("design:returntype", Promise)
+], PaymentsController.prototype, "recheckPayment", null);
 exports.PaymentsController = PaymentsController = PaymentsController_1 = __decorate([
     (0, swagger_1.ApiTags)('payments'),
     (0, common_1.Controller)('payments'),

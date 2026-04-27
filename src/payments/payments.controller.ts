@@ -277,6 +277,9 @@ document.getElementById('go').onclick = async function () {
   })
   async publicOrderStatus(
     @Param('orderId') orderId: string,
+    @Query('track_id') track_id?: string,
+    @Query('TrackID') trackID?: string,
+    @Query('trackId') trackIdQuery?: string,
   ): Promise<PublicOrderStatusDto> {
     if (!orderId || orderId.length < 32) {
       throw new BadRequestException('orderId is required (UUID)');
@@ -301,37 +304,43 @@ document.getElementById('go').onclick = async function () {
     // trackId on file. We ALWAYS ask UPayments with our API key, so an
     // attacker hitting this endpoint cannot flip orders to PAID — only
     // a real CAPTURED/AUTHORIZED result on UPayments' side will do it.
+    //
+    // V1.7.3 — `/charge` may persist `session_id` (hosted link) while
+    // `get-payment-status` only accepts the v2 `track_id` from the
+    // return URL. The success page passes `?track_id=` from the redirect.
+    const returnTrack =
+      track_id?.trim() || trackID?.trim() || trackIdQuery?.trim() || '';
+
     let settled = Boolean(order.walletSettledAt);
     let status = order.status;
-    if (!settled && status !== OrderStatus.COMPLETED && order.posGatewayTrackId) {
-      try {
-        const inquiry = await this.paymentsService.fetchGatewayStatus(
-          order.posGatewayTrackId,
-        );
-        const outcome = this.paymentsService.normalizeCallbackStatus(
-          inquiry.data.result ?? '',
-        );
-        if (inquiry.ok && outcome === 'success') {
-          await this.paymentsService.finalizePaidOrderFromGateway(
-            order.id,
-            {
-              provider: 'upayments',
-              trackId: order.posGatewayTrackId,
-              source: 'PUBLIC_STATUS_POLL',
-              paymentId: inquiry.data.paymentId ?? null,
-              tranId: inquiry.data.transactionId ?? null,
-              result: inquiry.data.result ?? null,
-              amount: String(inquiry.data.amount ?? ''),
-              inquiryRaw: inquiry.raw,
-            } as never,
+    if (!settled && status !== OrderStatus.COMPLETED) {
+      const candidates = [
+        ...new Set(
+          [returnTrack, order.posGatewayTrackId ?? '']
+            .map((s) => s?.trim())
+            .filter((s): s is string => Boolean(s?.length)),
+        ),
+      ];
+      for (const tid of candidates) {
+        try {
+          const r =
+            await this.paymentsService.tryFinalizeOrderIfUpaymentsCaptured(
+              order.id,
+              tid,
+              tid === returnTrack
+                ? 'PUBLIC_STATUS_POLL_RETURN_TRACK'
+                : 'PUBLIC_STATUS_POLL',
+            );
+          if (r.finalized) {
+            settled = true;
+            status = OrderStatus.COMPLETED;
+            break;
+          }
+        } catch (err) {
+          this.logger.warn(
+            `Lazy reconciliation failed for order ${order.id}: ${(err as Error).message}`,
           );
-          settled = true;
-          status = OrderStatus.COMPLETED;
         }
-      } catch (err) {
-        this.logger.warn(
-          `Lazy reconciliation failed for order ${order.id}: ${(err as Error).message}`,
-        );
       }
     }
 
@@ -358,7 +367,12 @@ document.getElementById('go').onclick = async function () {
     description:
       'Public — for the /payment/success|failed return pages. Always calls UPayments get-payment-status. If CAPTURED the order is marked paid before responding.',
   })
-  async recheckPayment(@Param('orderId') orderId: string): Promise<{
+  async recheckPayment(
+    @Param('orderId') orderId: string,
+    @Query('track_id') track_id?: string,
+    @Query('TrackID') trackID?: string,
+    @Query('trackId') trackIdQuery?: string,
+  ): Promise<{
     orderId: string;
     status: OrderStatus;
     isPaid: boolean;
@@ -404,7 +418,10 @@ document.getElementById('go').onclick = async function () {
       };
     }
 
-    if (!order.posGatewayTrackId) {
+    const returnTrack =
+      track_id?.trim() || trackID?.trim() || trackIdQuery?.trim() || '';
+
+    if (!returnTrack && !order.posGatewayTrackId) {
       return {
         orderId: order.id,
         status,
@@ -419,37 +436,35 @@ document.getElementById('go').onclick = async function () {
     }
 
     this.logger.log(
-      `UPayments manual recheck: orderId=${order.id} trackId=${order.posGatewayTrackId}`,
+      `UPayments manual recheck: orderId=${order.id} hasReturnTrack=${Boolean(returnTrack)} posTrack=${order.posGatewayTrackId ? 'yes' : 'no'}`,
     );
 
     try {
-      const inquiry = await this.paymentsService.fetchGatewayStatus(
-        order.posGatewayTrackId,
-      );
-      gatewayResult = inquiry.data.result?.toString() ?? null;
-      const outcome = this.paymentsService.normalizeCallbackStatus(
-        inquiry.data.result ?? '',
-      );
-      if (inquiry.ok && outcome === 'success') {
-        await this.paymentsService.finalizePaidOrderFromGateway(
+      const candidates = [
+        ...new Set(
+          [returnTrack, order.posGatewayTrackId ?? '']
+            .map((s) => s?.trim())
+            .filter((s): s is string => Boolean(s?.length)),
+        ),
+      ];
+      for (const tid of candidates) {
+        const r = await this.paymentsService.tryFinalizeOrderIfUpaymentsCaptured(
           order.id,
-          {
-            provider: 'upayments',
-            trackId: order.posGatewayTrackId,
-            source: 'CUSTOMER_RECHECK',
-            paymentId: inquiry.data.paymentId ?? null,
-            tranId: inquiry.data.transactionId ?? null,
-            result: inquiry.data.result ?? null,
-            amount: String(inquiry.data.amount ?? ''),
-            inquiryRaw: inquiry.raw,
-          } as never,
+          tid,
+          tid === returnTrack
+            ? 'CUSTOMER_RECHECK_RETURN_TRACK'
+            : 'CUSTOMER_RECHECK',
         );
-        status = OrderStatus.COMPLETED;
-        isPaid = true;
-        settledNow = true;
-        this.logger.log(
-          `UPayments manual recheck: finalized orderId=${order.id}`,
-        );
+        gatewayResult = r.gatewayResult;
+        if (r.finalized) {
+          status = OrderStatus.COMPLETED;
+          isPaid = true;
+          settledNow = true;
+          this.logger.log(
+            `UPayments manual recheck: finalized orderId=${order.id}`,
+          );
+          break;
+        }
       }
     } catch (err) {
       this.logger.warn(
@@ -460,7 +475,7 @@ document.getElementById('go').onclick = async function () {
         status,
         isPaid: false,
         amountKd: order.totalPrice.toFixed(3),
-        trackIdPresent: true,
+        trackIdPresent: Boolean(returnTrack || order.posGatewayTrackId),
         gatewayResult: null,
         settledNow: false,
         messageAr:
@@ -480,7 +495,7 @@ document.getElementById('go').onclick = async function () {
       status,
       isPaid,
       amountKd: order.totalPrice.toFixed(3),
-      trackIdPresent: true,
+      trackIdPresent: Boolean(returnTrack || order.posGatewayTrackId),
       gatewayResult,
       settledNow,
       messageAr,

@@ -35,6 +35,16 @@ export declare class PaymentsController {
         outcome: "success" | "failed";
         reason?: undefined;
     }>;
-    publicOrderStatus(orderId: string): Promise<PublicOrderStatusDto>;
+    publicOrderStatus(orderId: string, track_id?: string, trackID?: string, trackIdQuery?: string): Promise<PublicOrderStatusDto>;
+    recheckPayment(orderId: string, track_id?: string, trackID?: string, trackIdQuery?: string): Promise<{
+        orderId: string;
+        status: OrderStatus;
+        isPaid: boolean;
+        amountKd: string;
+        trackIdPresent: boolean;
+        gatewayResult: string | null;
+        settledNow: boolean;
+        messageAr: string;
+    }>;
 }
 export {};

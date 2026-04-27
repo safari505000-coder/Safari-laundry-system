@@ -2276,9 +2276,15 @@ export type PublicPaymentStatus = {
 
 export function getPublicPaymentStatus(
   orderId: string,
+  opts?: { returnTrackId?: string },
 ): Promise<PublicPaymentStatus> {
+  const q = new URLSearchParams();
+  if (opts?.returnTrackId?.trim()) {
+    q.set('track_id', opts.returnTrackId.trim());
+  }
+  const qs = q.toString();
   return apiJson<PublicPaymentStatus>(
-    `/api/payments/status/${encodeURIComponent(orderId)}`,
+    `/api/payments/status/${encodeURIComponent(orderId)}${qs ? `?${qs}` : ''}`,
   );
 }
 
@@ -2302,9 +2308,15 @@ export type PublicPaymentRecheck = {
 
 export function recheckPublicPayment(
   orderId: string,
+  opts?: { returnTrackId?: string },
 ): Promise<PublicPaymentRecheck> {
+  const q = new URLSearchParams();
+  if (opts?.returnTrackId?.trim()) {
+    q.set('track_id', opts.returnTrackId.trim());
+  }
+  const qs = q.toString();
   return apiJson<PublicPaymentRecheck>(
-    `/api/payments/recheck/${encodeURIComponent(orderId)}`,
+    `/api/payments/recheck/${encodeURIComponent(orderId)}${qs ? `?${qs}` : ''}`,
     { method: 'POST', body: '{}' },
   );
 }
