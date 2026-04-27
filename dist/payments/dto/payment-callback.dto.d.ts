@@ -1,12 +1,25 @@
 export declare class PaymentCallbackDto {
     trackId?: string;
+    track_id?: string;
     TrackID?: string;
     paymentId?: string;
+    payment_id?: string;
     result?: string;
     tranId?: string;
+    tran_id?: string;
     reference?: string;
     auth?: string;
     customerExtraData?: string;
+    requested_order_id?: string;
+    order_id?: string;
+    refund_order_id?: string;
+    post_date?: string;
+    ref?: string;
+    payment_type?: string;
+    invoice_id?: string;
+    transaction_date?: string;
+    receipt_id?: string;
+    trn_udf?: string;
     orderId?: string;
     status?: string;
     amount?: string;

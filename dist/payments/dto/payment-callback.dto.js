@@ -14,13 +14,26 @@ const swagger_1 = require("@nestjs/swagger");
 const class_validator_1 = require("class-validator");
 class PaymentCallbackDto {
     trackId;
+    track_id;
     TrackID;
     paymentId;
+    payment_id;
     result;
     tranId;
+    tran_id;
     reference;
     auth;
     customerExtraData;
+    requested_order_id;
+    order_id;
+    refund_order_id;
+    post_date;
+    ref;
+    payment_type;
+    invoice_id;
+    transaction_date;
+    receipt_id;
+    trn_udf;
     orderId;
     status;
     amount;
@@ -30,11 +43,18 @@ class PaymentCallbackDto {
 }
 exports.PaymentCallbackDto = PaymentCallbackDto;
 __decorate([
-    (0, swagger_1.ApiPropertyOptional)({ description: 'UPayments charge trackId' }),
+    (0, swagger_1.ApiPropertyOptional)({ description: 'UPayments charge trackId (camelCase)' }),
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], PaymentCallbackDto.prototype, "trackId", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ description: 'UPayments track_id (snake_case)' }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(256),
+    __metadata("design:type", String)
+], PaymentCallbackDto.prototype, "track_id", void 0);
 __decorate([
     (0, swagger_1.ApiPropertyOptional)({ description: 'Alias: TrackID (upper-case variant)' }),
     (0, class_validator_1.IsOptional)(),
@@ -48,6 +68,13 @@ __decorate([
     __metadata("design:type", String)
 ], PaymentCallbackDto.prototype, "paymentId", void 0);
 __decorate([
+    (0, swagger_1.ApiPropertyOptional)({ description: 'UPayments payment_id (snake_case)' }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(128),
+    __metadata("design:type", String)
+], PaymentCallbackDto.prototype, "payment_id", void 0);
+__decorate([
     (0, swagger_1.ApiPropertyOptional)({ description: 'UPayments result code (CAPTURED, FAILED, …)' }),
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
@@ -59,6 +86,13 @@ __decorate([
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], PaymentCallbackDto.prototype, "tranId", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ description: 'UPayments tran_id (snake_case)' }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(128),
+    __metadata("design:type", String)
+], PaymentCallbackDto.prototype, "tran_id", void 0);
 __decorate([
     (0, swagger_1.ApiPropertyOptional)({ description: 'Merchant reference echoed by gateway' }),
     (0, class_validator_1.IsOptional)(),
@@ -79,6 +113,78 @@ __decorate([
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], PaymentCallbackDto.prototype, "customerExtraData", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)(),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(64),
+    __metadata("design:type", String)
+], PaymentCallbackDto.prototype, "requested_order_id", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)(),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(128),
+    __metadata("design:type", String)
+], PaymentCallbackDto.prototype, "order_id", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)(),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(128),
+    __metadata("design:type", String)
+], PaymentCallbackDto.prototype, "refund_order_id", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)(),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(32),
+    __metadata("design:type", String)
+], PaymentCallbackDto.prototype, "post_date", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)(),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(128),
+    __metadata("design:type", String)
+], PaymentCallbackDto.prototype, "ref", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)(),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(64),
+    __metadata("design:type", String)
+], PaymentCallbackDto.prototype, "payment_type", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)(),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(64),
+    __metadata("design:type", String)
+], PaymentCallbackDto.prototype, "invoice_id", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)(),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(64),
+    __metadata("design:type", String)
+], PaymentCallbackDto.prototype, "transaction_date", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)(),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(128),
+    __metadata("design:type", String)
+], PaymentCallbackDto.prototype, "receipt_id", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({
+        description: 'Echo UDF; may contain orderId=<Safari uuid>',
+    }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(4000),
+    __metadata("design:type", String)
+], PaymentCallbackDto.prototype, "trn_udf", void 0);
 __decorate([
     (0, swagger_1.ApiPropertyOptional)({ description: 'Internal order UUID (legacy contract)' }),
     (0, class_validator_1.IsOptional)(),

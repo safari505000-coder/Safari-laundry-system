@@ -112,7 +112,8 @@ document.getElementById('go').onclick = async function () {
             }
             return { ok: true, orderId, outcome };
         }
-        const trackId = body.trackId?.trim() ||
+        const trackId = body.track_id?.trim() ||
+            body.trackId?.trim() ||
             body.TrackID?.trim() ||
             body.gatewayReference?.trim() ||
             '';
@@ -140,8 +141,14 @@ document.getElementById('go').onclick = async function () {
                 await this.paymentsService.finalizePaidOrderFromGateway(resolvedOrderId, {
                     provider: 'upayments',
                     trackId,
-                    paymentId: inquiry.data.paymentId ?? body.paymentId ?? null,
-                    tranId: inquiry.data.transactionId ?? body.tranId ?? null,
+                    paymentId: inquiry.data.paymentId ??
+                        body.paymentId ??
+                        body.payment_id ??
+                        null,
+                    tranId: inquiry.data.transactionId ??
+                        body.tranId ??
+                        body.tran_id ??
+                        null,
                     result: inquiry.data.result ?? body.result ?? null,
                     auth: body.auth ?? null,
                     amount: String(inquiry.data.amount ?? body.amount ?? ''),
@@ -540,16 +547,58 @@ function extractTrackIdFromRequestUrl(req) {
         sp.get('trackId')?.trim() ||
         '');
 }
+const SAFARI_ORDER_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+function parseSafariOrderUuid(raw) {
+    const t = raw?.trim();
+    if (!t)
+        return null;
+    return SAFARI_ORDER_UUID_RE.test(t) ? t : null;
+}
 function extractOrderIdFromExtraData(raw) {
     if (!raw)
         return null;
-    const match = raw.match(/orderId=([0-9a-fA-F-]{36})/);
-    return match?.[1] ?? null;
+    const match = raw.match(/orderId=([0-9a-fA-F-]{36})/i);
+    const id = match?.[1];
+    return id && SAFARI_ORDER_UUID_RE.test(id) ? id : null;
+}
+function extractOrderIdFromTrnUdf(raw) {
+    if (!raw)
+        return null;
+    const match = raw.match(/orderId=([0-9a-fA-F-]{36})/i);
+    const id = match?.[1];
+    return id && SAFARI_ORDER_UUID_RE.test(id) ? id : null;
+}
+function tryOrderIdFromUpaymentsCompactRef(raw) {
+    const t = raw?.trim();
+    if (!t)
+        return null;
+    const noHyphen = t.replace(/-/g, '');
+    let hex = noHyphen;
+    if (/^[a-z][0-9a-f]{32}$/i.test(hex)) {
+        hex = hex.slice(1);
+    }
+    if (!/^[0-9a-f]{32}$/i.test(hex)) {
+        return null;
+    }
+    const uuid = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+    return parseSafariOrderUuid(uuid);
 }
 function extractOrderId(body) {
-    if (body.orderId)
-        return body.orderId;
-    return extractOrderIdFromExtraData(body.customerExtraData);
+    const legacy = parseSafariOrderUuid(body.orderId);
+    if (legacy)
+        return legacy;
+    const requested = parseSafariOrderUuid(body.requested_order_id);
+    if (requested)
+        return requested;
+    const gatewayOid = parseSafariOrderUuid(body.order_id);
+    if (gatewayOid)
+        return gatewayOid;
+    const fromRef = tryOrderIdFromUpaymentsCompactRef(body.ref) ??
+        tryOrderIdFromUpaymentsCompactRef(body.reference);
+    if (fromRef)
+        return fromRef;
+    return (extractOrderIdFromExtraData(body.customerExtraData) ??
+        extractOrderIdFromTrnUdf(body.trn_udf));
 }
 function safeJson(value) {
     try {

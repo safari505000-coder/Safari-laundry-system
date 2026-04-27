@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsOptional, IsString, MaxLength } from 'class-validator';
 
 /**
  * V1.7.0 — UPayments webhook payload.
@@ -9,19 +9,32 @@ import { IsBoolean, IsOptional, IsString } from 'class-validator';
  *   { trackId, paymentId, result, tranId, reference, auth,
  *     customerExtraData, order: { id, reference }, ... }
  *
+ * Official docs (developers.upayments.com) also use **snake_case**
+ * keys on the webhook: `track_id`, `payment_id`, `tran_id`,
+ * `requested_order_id`, `trn_udf`, etc. Those MUST be whitelisted here
+ * or the global `ValidationPipe({ forbidNonWhitelisted: true })` rejects
+ * the entire callback and the order never finalizes.
+ *
  * None of these fields are strictly required — the controller
  * re-verifies the payment with a Server-to-Server inquiry using
- * `trackId`, so we intentionally keep the DTO permissive. Legacy
- * fields (`orderId`, `status`, `signature`) are preserved for
+ * the resolved track id, so we intentionally keep the DTO permissive.
+ * Legacy fields (`orderId`, `status`, `signature`) are preserved for
  * backward compatibility with the devMock flow and with any non-
  * UPayments gateway that is pointed at this endpoint in the
  * future.
  */
 export class PaymentCallbackDto {
-  @ApiPropertyOptional({ description: 'UPayments charge trackId' })
+  @ApiPropertyOptional({ description: 'UPayments charge trackId (camelCase)' })
   @IsOptional()
   @IsString()
   trackId?: string;
+
+  /** Official UPayments webhook spelling (see add-charge / webhook docs). */
+  @ApiPropertyOptional({ description: 'UPayments track_id (snake_case)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(256)
+  track_id?: string;
 
   /** Some UPayments endpoints upper-case this key. */
   @ApiPropertyOptional({ description: 'Alias: TrackID (upper-case variant)' })
@@ -34,6 +47,12 @@ export class PaymentCallbackDto {
   @IsString()
   paymentId?: string;
 
+  @ApiPropertyOptional({ description: 'UPayments payment_id (snake_case)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  payment_id?: string;
+
   @ApiPropertyOptional({ description: 'UPayments result code (CAPTURED, FAILED, …)' })
   @IsOptional()
   @IsString()
@@ -43,6 +62,12 @@ export class PaymentCallbackDto {
   @IsOptional()
   @IsString()
   tranId?: string;
+
+  @ApiPropertyOptional({ description: 'UPayments tran_id (snake_case)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  tran_id?: string;
 
   @ApiPropertyOptional({ description: 'Merchant reference echoed by gateway' })
   @IsOptional()
@@ -61,6 +86,70 @@ export class PaymentCallbackDto {
   @IsOptional()
   @IsString()
   customerExtraData?: string;
+
+  /** Echoed on return URL — Safari `Order.id` when set at charge time. */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  requested_order_id?: string;
+
+  /** Gateway order id (may differ from Safari UUID — validate before use). */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  order_id?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  refund_order_id?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  post_date?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  ref?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  payment_type?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  invoice_id?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  transaction_date?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  receipt_id?: string;
+
+  @ApiPropertyOptional({
+    description: 'Echo UDF; may contain orderId=<Safari uuid>',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  trn_udf?: string;
 
   // ---------- Legacy / non-UPayments gateway fields ----------
 
