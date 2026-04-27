@@ -44,6 +44,48 @@ function truncateForMoatmtLog(s: string, max = MOATMT_LOG_MAX_BODY): string {
   return `${t.slice(0, max)}…(truncated ${t.length}→${max})`;
 }
 
+function publicWebAppBaseTrimmed(): string {
+  return (process.env.PUBLIC_WEB_APP_URL ?? '').replace(/\/$/, '').trim();
+}
+
+/**
+ * Same shape as payment-thank-you: `/r/:orderId` on the public web app.
+ */
+function buildPublicCustomerRatingUrl(orderId: string): string | undefined {
+  const base = publicWebAppBaseTrimmed();
+  const id = orderId?.trim();
+  if (!base || !id) {
+    return undefined;
+  }
+  return `${base}/r/${encodeURIComponent(id)}`;
+}
+
+function appendRatingSectionToLines(lines: string[], ratingUrl?: string): void {
+  const u = ratingUrl?.trim();
+  if (!u) {
+    return;
+  }
+  lines.push('');
+  lines.push('⭐ نسعد بتقييمك:');
+  lines.push(u);
+}
+
+/** Append rating block when missing (e.g. CC-built payment text). */
+function appendRatingToCustomerMessageBody(
+  body: string,
+  orderId: string,
+): string {
+  const ratingUrl = buildPublicCustomerRatingUrl(orderId);
+  if (!ratingUrl) {
+    return body;
+  }
+  const trimmed = body.trimEnd();
+  if (trimmed.includes(ratingUrl)) {
+    return body;
+  }
+  return `${trimmed}\n\n⭐ نسعد بتقييمك:\n${ratingUrl}`;
+}
+
 function isMoatmtInvoiceMediaEnabled(): boolean {
   const v = process.env.MOATMT_USE_INVOICE_MEDIA?.trim().toLowerCase() ?? '';
   return v === 'true' || v === '1';
@@ -237,6 +279,7 @@ function buildInvoiceIssuedMessage(params: {
   invoiceShareItems?: Array<{ label: string; url: string }>;
   /** Legacy fallback when no public invoice URL (no PUBLIC_WEB_APP_URL). */
   detailsLink?: string;
+  ratingUrl?: string;
 }): string {
   const lines: string[] = [];
   lines.push('حياك الله! 🌿');
@@ -276,6 +319,7 @@ function buildInvoiceIssuedMessage(params: {
     lines.push(params.detailsLink);
   }
 
+  appendRatingSectionToLines(lines, params.ratingUrl);
   lines.push('');
   lines.push(`فريق ${BRAND_SYSTEM_AR} 🇰🇼`);
   return lines.join('\n');
@@ -286,6 +330,7 @@ function buildInvoiceIssuedMessageMinimal(params: {
   invoiceLabel: string;
   amountKd: string;
   paymentUrl?: string;
+  ratingUrl?: string;
 }): string {
   const lines: string[] = [];
   lines.push(`🏷️ رقم الفاتورة: ${params.invoiceLabel}`);
@@ -295,6 +340,7 @@ function buildInvoiceIssuedMessageMinimal(params: {
     lines.push('🔒 رابط الدفع:');
     lines.push(params.paymentUrl);
   }
+  appendRatingSectionToLines(lines, params.ratingUrl);
   return lines.join('\n');
 }
 
@@ -308,6 +354,7 @@ function buildInvoiceIssuedMessageWithLineItemsNoFile(params: {
   amountKd: string;
   lineItemsBlock: string;
   paymentUrl?: string;
+  ratingUrl?: string;
 }): string {
   const lines: string[] = [];
   lines.push('حياك الله! 🌿');
@@ -330,6 +377,7 @@ function buildInvoiceIssuedMessageWithLineItemsNoFile(params: {
     lines.push('🔒 رابط الدفع:');
     lines.push(params.paymentUrl);
   }
+  appendRatingSectionToLines(lines, params.ratingUrl);
   lines.push('');
   lines.push(`فريق ${BRAND_SYSTEM_AR} 🇰🇼`);
   return lines.join('\n');
@@ -364,6 +412,7 @@ function buildInvoiceEditedIssuerMessage(params: {
 function buildDriverCollectionConfirmedMessage(params: {
   amountKd: string;
   paymentMethodLabelAr: string;
+  ratingUrl?: string;
 }): string {
   const lines: string[] = [];
   lines.push('عميلنا العزيز،');
@@ -377,6 +426,7 @@ function buildDriverCollectionConfirmedMessage(params: {
   );
   lines.push('');
   lines.push('شاكرين تعاونكم معنا');
+  appendRatingSectionToLines(lines, params.ratingUrl);
   lines.push('');
   lines.push(`فريق ${BRAND_SYSTEM_AR} 🇰🇼`);
   return lines.join('\n');
@@ -522,9 +572,12 @@ export class CustomerNotificationsService implements OnModuleInit {
     orderId: string;
     message: string;
   }): Promise<boolean> {
-    if (
-      await this.trySendMoatmt(params.customerPhone, params.message, null)
-    ) {
+    const messageOut = appendRatingToCustomerMessageBody(
+      params.message,
+      params.orderId,
+    );
+    const ratingUrl = buildPublicCustomerRatingUrl(params.orderId);
+    if (await this.trySendMoatmt(params.customerPhone, messageOut, null)) {
       return true;
     }
     const webhook = process.env.CUSTOMER_NOTIFY_WEBHOOK_URL?.trim();
@@ -534,9 +587,10 @@ export class CustomerNotificationsService implements OnModuleInit {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           to: params.customerPhone,
-          message: params.message,
+          message: messageOut,
           orderId: params.orderId,
           template: 'collections_payment_link',
+          ratingUrl: ratingUrl ?? null,
         }),
       });
       if (!res.ok) {
@@ -557,6 +611,7 @@ export class CustomerNotificationsService implements OnModuleInit {
   private async deliver(params: InvoiceIssuedNotifyParams): Promise<void> {
     const base =
       (process.env.PUBLIC_WEB_APP_URL ?? '').replace(/\/$/, '') || '';
+    const ratingUrl = buildPublicCustomerRatingUrl(params.orderId);
     const hasPublicShare =
       Boolean(params.invoiceShareUrl) ||
       (params.invoiceShareItems && params.invoiceShareItems.length > 0);
@@ -572,12 +627,14 @@ export class CustomerNotificationsService implements OnModuleInit {
           amountKd: params.amountKd,
           lineItemsBlock: params.lineItemsSummary!.trim(),
           paymentUrl: params.paymentUrl,
+          ratingUrl,
         })
       : useInvoiceIssuedMessageMinimalText() ?
         buildInvoiceIssuedMessageMinimal({
           invoiceLabel: params.invoiceLabel,
           amountKd: params.amountKd,
           paymentUrl: params.paymentUrl,
+          ratingUrl,
         })
       : buildInvoiceIssuedMessage({
           invoiceLabel: params.invoiceLabel,
@@ -586,6 +643,7 @@ export class CustomerNotificationsService implements OnModuleInit {
           invoiceShareUrl: params.invoiceShareUrl,
           invoiceShareItems: params.invoiceShareItems,
           detailsLink,
+          ratingUrl,
         });
 
     if (
@@ -611,6 +669,7 @@ export class CustomerNotificationsService implements OnModuleInit {
           invoiceShareUrl: params.invoiceShareUrl ?? null,
           invoiceShareItems: params.invoiceShareItems ?? null,
           invoicePdfUrl: params.invoicePdfUrl ?? null,
+          ratingUrl: ratingUrl ?? null,
         }),
       });
       if (!res.ok) {
@@ -675,9 +734,11 @@ export class CustomerNotificationsService implements OnModuleInit {
   private async deliverDriverCollectionConfirmed(
     params: DriverCollectionConfirmedNotifyParams,
   ): Promise<void> {
+    const ratingUrl = buildPublicCustomerRatingUrl(params.orderId);
     const message = buildDriverCollectionConfirmedMessage({
       amountKd: params.amountKd,
       paymentMethodLabelAr: params.paymentMethodLabelAr,
+      ratingUrl,
     });
     if (await this.trySendMoatmt(params.customerPhone, message, null)) {
       return;
@@ -694,6 +755,7 @@ export class CustomerNotificationsService implements OnModuleInit {
           template: 'driver_collection_confirmed',
           amountKd: params.amountKd,
           paymentMethodLabelAr: params.paymentMethodLabelAr,
+          ratingUrl: ratingUrl ?? null,
         }),
       });
       if (!res.ok) {
