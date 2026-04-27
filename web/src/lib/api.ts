@@ -22,7 +22,15 @@ export type LoginUser = {
 
 export type LoginResponse = {
   accessToken: string;
+  /** Single-use refresh token (rotated on every `/auth/refresh-token`). Long-lived. */
+  refreshToken: string;
   user: LoginUser;
+};
+
+/** V19.29 — auth refresh endpoint response shape. */
+export type RefreshTokenResponse = {
+  accessToken: string;
+  refreshToken: string;
 };
 
 /** SafariStream global context (`GET /api/safari-stream/snapshot`). */
@@ -224,9 +232,13 @@ function formatErrorMessage(
 
 export async function apiJson<T>(
   path: string,
-  init?: RequestInit & { token?: string | null },
+  init?: RequestInit & { token?: string | null; _retriedAfterRefresh?: boolean },
 ): Promise<T> {
-  const { token: bearer, ...fetchInit } = init ?? {};
+  const {
+    token: bearer,
+    _retriedAfterRefresh,
+    ...fetchInit
+  } = init ?? {};
   const headers = new Headers(fetchInit.headers);
   if (!headers.has('Content-Type') && fetchInit.body) {
     headers.set('Content-Type', 'application/json');
@@ -246,6 +258,28 @@ export async function apiJson<T>(
 
   const rawText = await res.text();
   const json = parseApiBody(rawText);
+
+  // V19.29 — transparent access-token refresh. When an authenticated call
+  // gets 401 we call the `AuthProvider` handler once to mint a new access
+  // token from the stored refresh token, then retry. Keeps staff logged in
+  // through the whole shift instead of being kicked every 15 minutes.
+  const shouldTryRefresh =
+    res.status === 401 &&
+    bearer != null &&
+    !_retriedAfterRefresh &&
+    !path.includes('/api/auth/refresh-token') &&
+    !path.includes('/api/auth/login') &&
+    tokenRefreshHandler != null;
+  if (shouldTryRefresh) {
+    const fresh = await tryRefreshAccessToken();
+    if (fresh) {
+      return apiJson<T>(path, {
+        ...init,
+        token: fresh,
+        _retriedAfterRefresh: true,
+      });
+    }
+  }
 
   if (!res.ok) {
     const errorCode =
@@ -271,6 +305,52 @@ export function postLogin(username: string, password: string) {
     method: 'POST',
     body: JSON.stringify({ username: username.trim(), password }),
   });
+}
+
+export function postRefreshToken(refreshToken: string) {
+  return apiJson<RefreshTokenResponse>('/api/auth/refresh-token', {
+    method: 'POST',
+    body: JSON.stringify({ refreshToken }),
+  });
+}
+
+export function postLogout(refreshToken: string): Promise<void> {
+  return apiJson<void>('/api/auth/logout', {
+    method: 'POST',
+    body: JSON.stringify({ refreshToken }),
+  }).catch(() => {
+    // Best-effort — logout must never fail the UX flow.
+  });
+}
+
+/**
+ * Global refresh handler wired by `AuthProvider`. When an authenticated call
+ * returns 401 because the short access token expired, apiJson calls this
+ * ONCE per in-flight request to silently swap in a new access token and
+ * retry — so staff are not kicked to the login screen every 15 minutes.
+ *
+ * Returns the new access token on success, or `null` if refresh failed
+ * (caller should then force a logout).
+ */
+type RefreshHandler = () => Promise<string | null>;
+let tokenRefreshHandler: RefreshHandler | null = null;
+let inFlightRefresh: Promise<string | null> | null = null;
+
+export function setTokenRefreshHandler(handler: RefreshHandler | null): void {
+  tokenRefreshHandler = handler;
+}
+
+async function tryRefreshAccessToken(): Promise<string | null> {
+  if (!tokenRefreshHandler) return null;
+  if (inFlightRefresh) return inFlightRefresh;
+  inFlightRefresh = (async () => {
+    try {
+      return await tokenRefreshHandler!();
+    } finally {
+      inFlightRefresh = null;
+    }
+  })();
+  return inFlightRefresh;
 }
 
 export type OperatingStatusPayload = {

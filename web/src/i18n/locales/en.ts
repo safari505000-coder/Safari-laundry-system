@@ -837,6 +837,9 @@ export const en = {
     signInError: 'Unable to sign in',
     outsideWorkingHours:
       'Login is restricted to 07:00–23:59 Kuwait time for drivers and branch managers.',
+    rememberMe: 'Remember me',
+    rememberMeHint:
+      'We only save your username on this device for a faster next login. Passwords are never stored.',
   },
   dashboard: {
     title: 'Command center',

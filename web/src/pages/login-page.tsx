@@ -22,6 +22,7 @@ import {
 } from '@/modules/shared/components/ui/dialog';
 import { Input } from '@/modules/shared/components/ui/input';
 import { Label } from '@/modules/shared/components/ui/label';
+import { Checkbox } from '@/modules/shared/components/ui/checkbox';
 import { cn } from '@/lib/utils';
 
 /** لوحة تسويق + نص على خلفية متدرّجة متحركة (متناسقة مع `LoginAtmosphere`). */
@@ -172,12 +173,15 @@ function LoginAtmosphere() {
 export function LoginPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { token, user, login } = useAuth();
+  const { token, user, login, rememberedUsername } = useAuth();
   const loc = useLocation() as { state?: { from?: { pathname: string } } };
   const from = loc.state?.from?.pathname ?? '/';
 
-  const [username, setUsername] = useState('');
+  const [username, setUsername] = useState(rememberedUsername);
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState<boolean>(
+    rememberedUsername.length > 0,
+  );
   const [loading, setLoading] = useState(false);
   const [forgotOpen, setForgotOpen] = useState(false);
 
@@ -190,7 +194,7 @@ export function LoginPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      const me = await login(username, password);
+      const me = await login(username, password, rememberMe);
       toast.success(t('login.signedIn'));
       navigate(me.safariRole === 'DRIVER' ? '/pos' : from, { replace: true });
     } catch (err) {
@@ -267,7 +271,21 @@ export function LoginPage() {
                     className="border-white/10 bg-slate-950/50 text-zinc-100"
                   />
                 </div>
-                <div className="flex justify-end">
+                <div className="flex items-center justify-between gap-2">
+                  <label className="inline-flex cursor-pointer select-none items-center gap-2">
+                    <Checkbox
+                      checked={rememberMe}
+                      onCheckedChange={(v) => setRememberMe(v === true)}
+                      className="border-white/30 data-[state=checked]:bg-cyan-600 data-[state=checked]:text-white"
+                      aria-label={t('login.rememberMe')}
+                    />
+                    <span
+                      className="text-xs text-zinc-200"
+                      title={t('login.rememberMeHint')}
+                    >
+                      {t('login.rememberMe')}
+                    </span>
+                  </label>
                   <button
                     type="button"
                     className="text-xs text-cyan-300/90 underline decoration-cyan-500/30 underline-offset-2 hover:text-cyan-200"

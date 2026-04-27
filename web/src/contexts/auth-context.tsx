@@ -2,26 +2,46 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
 import type { LoginUser, SafariRole } from '@/lib/api';
-import { postLogin } from '@/lib/api';
+import {
+  postLogin,
+  postLogout,
+  postRefreshToken,
+  setTokenRefreshHandler,
+} from '@/lib/api';
 
 const TOKEN_KEY = 'safari_erp_token';
+const REFRESH_TOKEN_KEY = 'safari_erp_refresh_token';
 const USER_KEY = 'safari_erp_user';
 const OWNER_BRANCH_KEY = 'safari_erp_owner_branch_id';
+/** V19.29 — "Remember me": only the username is persisted, never the password. */
+const REMEMBER_USERNAME_KEY = 'safari_erp_remember_username';
 
 type AuthContextValue = {
   token: string | null;
   user: LoginUser | null;
-  login: (username: string, password: string) => Promise<LoginUser>;
+  /**
+   * `rememberMe=true` keeps the username in localStorage for next launch.
+   * Password is never stored.
+   */
+  login: (
+    username: string,
+    password: string,
+    rememberMe?: boolean,
+  ) => Promise<LoginUser>;
   logout: () => void;
   hasRole: (...roles: SafariRole[]) => boolean;
   /** OWNER: filter reports/expenses to one branch; `null` = all branches. */
   ownerBranchId: string | null;
   setOwnerBranchId: (branchId: string | null) => void;
+  /** V19.29 — pre-fill the login form with the last saved username. */
+  rememberedUsername: string;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -44,6 +64,22 @@ function readStoredToken(): string | null {
   }
 }
 
+function readStoredRefreshToken(): string | null {
+  try {
+    return localStorage.getItem(REFRESH_TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function readRememberedUsername(): string {
+  try {
+    return localStorage.getItem(REMEMBER_USERNAME_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
 function readOwnerBranchId(): string | null {
   try {
     const v = localStorage.getItem(OWNER_BRANCH_KEY);
@@ -60,23 +96,75 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [ownerBranchId, setOwnerBranchIdState] = useState<string | null>(
     readOwnerBranchId,
   );
+  const [rememberedUsername] = useState<string>(readRememberedUsername);
+  /*
+   * Refresh token lives in a ref so `apiJson` can always read the latest
+   * single-use value after rotation without waiting for a React re-render.
+   */
+  const refreshTokenRef = useRef<string | null>(readStoredRefreshToken());
 
-  const login = useCallback(async (username: string, password: string) => {
-    const res = await postLogin(username, password);
-    localStorage.setItem(TOKEN_KEY, res.accessToken);
-    localStorage.setItem(USER_KEY, JSON.stringify(res.user));
-    setToken(res.accessToken);
-    setUser(res.user);
-    if (res.user.safariRole !== 'OWNER') {
+  const persistSession = useCallback(
+    (
+      newAccessToken: string,
+      newRefreshToken: string,
+      nextUser?: LoginUser,
+    ) => {
       try {
-        localStorage.removeItem(OWNER_BRANCH_KEY);
+        localStorage.setItem(TOKEN_KEY, newAccessToken);
+        localStorage.setItem(REFRESH_TOKEN_KEY, newRefreshToken);
+        if (nextUser) {
+          localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
+        }
+      } catch {
+        /* storage quota / disabled — session stays in memory */
+      }
+      refreshTokenRef.current = newRefreshToken;
+      setToken(newAccessToken);
+      if (nextUser) setUser(nextUser);
+    },
+    [],
+  );
+
+  const clearSession = useCallback(() => {
+    try {
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(REFRESH_TOKEN_KEY);
+      localStorage.removeItem(USER_KEY);
+      localStorage.removeItem(OWNER_BRANCH_KEY);
+    } catch {
+      /* ignore */
+    }
+    refreshTokenRef.current = null;
+    setToken(null);
+    setUser(null);
+    setOwnerBranchIdState(null);
+  }, []);
+
+  const login = useCallback(
+    async (username: string, password: string, rememberMe = true) => {
+      const res = await postLogin(username, password);
+      persistSession(res.accessToken, res.refreshToken, res.user);
+      try {
+        if (rememberMe) {
+          localStorage.setItem(REMEMBER_USERNAME_KEY, username.trim());
+        } else {
+          localStorage.removeItem(REMEMBER_USERNAME_KEY);
+        }
       } catch {
         /* ignore */
       }
-      setOwnerBranchIdState(null);
-    }
-    return res.user;
-  }, []);
+      if (res.user.safariRole !== 'OWNER') {
+        try {
+          localStorage.removeItem(OWNER_BRANCH_KEY);
+        } catch {
+          /* ignore */
+        }
+        setOwnerBranchIdState(null);
+      }
+      return res.user;
+    },
+    [persistSession],
+  );
 
   const setOwnerBranchId = useCallback((branchId: string | null) => {
     setOwnerBranchIdState(branchId);
@@ -92,13 +180,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(USER_KEY);
-    localStorage.removeItem(OWNER_BRANCH_KEY);
-    setToken(null);
-    setUser(null);
-    setOwnerBranchIdState(null);
-  }, []);
+    const rt = refreshTokenRef.current;
+    if (rt) {
+      void postLogout(rt);
+    }
+    clearSession();
+  }, [clearSession]);
+
+  /*
+   * V19.29 — Wire a single global refresh handler. apiJson will call this
+   * whenever an authenticated request gets 401. We redeem the stored refresh
+   * token for a new access token (and a rotated refresh token) and return the
+   * new access. On failure (invalid / expired / revoked) we clear the session
+   * so the app naturally falls back to the login screen.
+   */
+  useEffect(() => {
+    setTokenRefreshHandler(async () => {
+      const rt = refreshTokenRef.current;
+      if (!rt) return null;
+      try {
+        const fresh = await postRefreshToken(rt);
+        persistSession(fresh.accessToken, fresh.refreshToken);
+        return fresh.accessToken;
+      } catch {
+        clearSession();
+        return null;
+      }
+    });
+    return () => {
+      setTokenRefreshHandler(null);
+    };
+  }, [persistSession, clearSession]);
 
   const hasRole = useCallback(
     (...roles: SafariRole[]) => {
@@ -117,8 +229,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       hasRole,
       ownerBranchId,
       setOwnerBranchId,
+      rememberedUsername,
     }),
-    [token, user, login, logout, hasRole, ownerBranchId, setOwnerBranchId],
+    [
+      token,
+      user,
+      login,
+      logout,
+      hasRole,
+      ownerBranchId,
+      setOwnerBranchId,
+      rememberedUsername,
+    ],
   );
 
   return (
