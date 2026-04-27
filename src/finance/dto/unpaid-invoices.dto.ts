@@ -180,6 +180,13 @@ export class UnpaidInvoiceRowDto {
   })
   debtSource: 'INVOICE_SHORTFALL' | 'SUBSCRIPTION_OVERUSE' | 'OPEN_UNPAID_ORDER';
 
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Order `posPaymentMethod` (e.g. PAYMENT_LINK). Used to offer gateway recheck for unpaid link invoices.',
+  })
+  posPaymentMethod: string | null;
+
   @ApiPropertyOptional({ format: 'date-time' })
   lastEntryAt: string;
 }

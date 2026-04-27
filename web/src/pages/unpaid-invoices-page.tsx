@@ -10,6 +10,7 @@ import {
   Printer,
   RefreshCw,
   Search,
+  ShieldCheck,
   Users,
   Wallet as WalletIcon,
   X,
@@ -20,6 +21,7 @@ import {
   ApiError,
   apiJson,
   getUnpaidInvoices,
+  recheckOrderPayment,
   type BranchRow,
   type UnpaidInvoicesResponse,
 } from '@/lib/api';
@@ -131,6 +133,9 @@ export function UnpaidInvoicesPage() {
   const [branches, setBranches] = useState<BranchRow[] | null>(null);
   const [data, setData] = useState<UnpaidInvoicesResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [recheckingOrderId, setRecheckingOrderId] = useState<string | null>(
+    null,
+  );
 
   const load = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -181,6 +186,31 @@ export function UnpaidInvoicesPage() {
     }, UNPAID_INVOICES_POLL_MS);
     return () => window.clearInterval(id);
   }, [token, canView, load]);
+
+  const handlePaymentRecheck = useCallback(
+    async (orderId: string) => {
+      if (!token) return;
+      setRecheckingOrderId(orderId);
+      try {
+        const res = await recheckOrderPayment(token, orderId);
+        if (res.settledNow && res.isPaid) {
+          toast.success(res.messageAr);
+        } else {
+          toast.info(res.messageAr);
+        }
+        await load({ silent: true });
+      } catch (e) {
+        toast.error(
+          e instanceof ApiError
+            ? e.message
+            : t('unpaidInvoices.recheckError', 'تعذّر التحقق من الدفع.'),
+        );
+      } finally {
+        setRecheckingOrderId(null);
+      }
+    },
+    [token, load, t],
+  );
 
   useEffect(() => {
     if (!token) return;
@@ -338,6 +368,11 @@ export function UnpaidInvoicesPage() {
       ),
       align: 'end',
       numeric: true,
+    });
+    base.push({
+      key: 'actions',
+      label: t('unpaidInvoices.col.actions', 'Actions'),
+      align: 'end',
     });
     return base;
   }, [t]);
@@ -798,6 +833,31 @@ export function UnpaidInvoicesPage() {
               <TableCell className="text-end font-semibold tabular-nums text-red-600 dark:text-red-400">
                 {formatKwdLabel(
                   cumulativeByLine.get(lineKeyUnpaid(r)) ?? r.remainingKd,
+                )}
+              </TableCell>
+              <TableCell className="w-[1%] whitespace-nowrap">
+                {r.isOpen && r.posPaymentMethod === 'PAYMENT_LINK' ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 gap-1.5"
+                    title={t(
+                      'unpaidInvoices.recheckHint',
+                      'سحب حالة الدفع من البوابة (مثل صفحة العميل).',
+                    )}
+                    disabled={recheckingOrderId === r.orderId}
+                    onClick={() => void handlePaymentRecheck(r.orderId)}
+                  >
+                    {recheckingOrderId === r.orderId ? (
+                      <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                    ) : (
+                      <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
+                    )}
+                    {t('unpaidInvoices.recheckPayment', 'تحقق')}
+                  </Button>
+                ) : (
+                  <span className="text-muted-foreground">—</span>
                 )}
               </TableCell>
             </TableRow>

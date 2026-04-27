@@ -65,6 +65,23 @@ import type {
   ReconciliationStatus,
 } from './dto/daily-collections-reconciliation.dto';
 
+/** Block only call-center agents when the field already WhatsApp'd the payment link. */
+function assertCallCenterMaySendCollectionPaymentWa(
+  ccCollectionPaymentWaLocked: boolean,
+  actor: JwtUser,
+): void {
+  if (
+    !ccCollectionPaymentWaLocked ||
+    (actor.role !== SafariRole.CALL_CENTER &&
+      actor.role !== SafariRole.CALL_CENTER_SUPERVISOR)
+  ) {
+    return;
+  }
+  throw new ForbiddenException(
+    'تم إرسال رابط الدفع للعميل من الميدان (سائق/مدير فرع). لا يمكن لمركز الاتصال إرسال تذكير واتساب إضافي لتفادي إزعاج العميل.',
+  );
+}
+
 /**
  * V1.6.8 — Cooldown windows are per-feature now.
  *
@@ -545,6 +562,14 @@ export class CallCenterService {
     actor: JwtUser,
   ): Promise<SendPaymentLinkWhatsappResultDto> {
     await this.assertOrderInCollectionScope(orderId, actor);
+    const lockRow = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: { ccCollectionPaymentWaLocked: true },
+    });
+    assertCallCenterMaySendCollectionPaymentWa(
+      lockRow?.ccCollectionPaymentWaLocked ?? false,
+      actor,
+    );
     const link = await this.payments.ensurePaymentLinkForUnpaidOrder(orderId);
     const reminder = await this.sendOrderReminder(orderId, actor);
     if (!reminder.sent) {
@@ -871,6 +896,14 @@ export class CallCenterService {
     actor: JwtUser,
   ): Promise<ReminderResultDto> {
     await this.assertOrderInCollectionScope(orderId, actor);
+    const lockRow = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: { ccCollectionPaymentWaLocked: true },
+    });
+    assertCallCenterMaySendCollectionPaymentWa(
+      lockRow?.ccCollectionPaymentWaLocked ?? false,
+      actor,
+    );
     const now = new Date();
     // V1.6.8 — Collections recall window is 2.5 h (9_000_000 ms).
     const cutoff = new Date(now.getTime() - ORDER_REMINDER_COOLDOWN_MS);

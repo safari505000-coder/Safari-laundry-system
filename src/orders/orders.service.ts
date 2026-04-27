@@ -746,6 +746,10 @@ export class OrdersService {
         });
         const merged: PosCheckoutOrderDetail = { ...detail, paymentLink };
         await this.posInvoiceNotifyToCustomer(merged, phoneCompact);
+        await this.prisma.order.update({
+          where: { id: detail.id },
+          data: { ccCollectionPaymentWaLocked: true },
+        });
         return merged;
       }
 
@@ -936,6 +940,10 @@ export class OrdersService {
         lineItemsSummary: lineItemsSummary || undefined,
       });
     }
+    await this.prisma.order.updateMany({
+      where: { posPaymentBundleId: bundleId },
+      data: { ccCollectionPaymentWaLocked: true },
+    });
 
     return { bundleId, orders, paymentLink };
   }
@@ -1038,6 +1046,10 @@ export class OrdersService {
       reminderCount: number;
       lastReminderAtIso: string | null;
       canRemindNow: boolean;
+      /** True when field (driver/manager) already sent payment link — CC agents must not duplicate WhatsApp. */
+      ccCollectionPaymentWaLocked: boolean;
+      /** For CC: false when `ccCollectionPaymentWaLocked`; other roles ignore the lock. */
+      canSendCollectionPaymentWa: boolean;
       // V19.4 — CC pack #5. Contextual identity for the WhatsApp
       // template + CC dashboard: which branch the sale came from and
       // which driver handled the delivery. Nullable because legacy
@@ -1100,6 +1112,7 @@ export class OrdersService {
         createdAt: true,
         reminderCount: true,
         lastReminderAt: true,
+        ccCollectionPaymentWaLocked: true,
         customer: {
           select: {
             id: true,
@@ -1157,6 +1170,12 @@ export class OrdersService {
       const canRemindNow =
         lastReminderMs === null ||
         now - lastReminderMs >= ORDER_REMINDER_COOLDOWN_MS;
+      const ccLocked = r.ccCollectionPaymentWaLocked;
+      const isCcOnly =
+        actor?.role === SafariRole.CALL_CENTER ||
+        actor?.role === SafariRole.CALL_CENTER_SUPERVISOR;
+      const canSendCollectionPaymentWa =
+        canRemindNow && !(ccLocked && isCcOnly);
       const readableId =
         r.serialNumber?.trim() ||
         r.invoiceNumber?.trim() ||
@@ -1202,6 +1221,8 @@ export class OrdersService {
           ? r.lastReminderAt.toISOString()
           : null,
         canRemindNow,
+        ccCollectionPaymentWaLocked: ccLocked,
+        canSendCollectionPaymentWa,
         branchName,
         driverName,
         lineItems,

@@ -19,6 +19,8 @@ function normalizePath(url: string): string {
 function isAllowlisted(path: string): boolean {
   if (path === '/api/auth/login') return true;
   if (path === '/api/payments/callback') return true;
+  // Customer + staff «إعادة التحقق» — must work 24/7 (same as callback trust model).
+  if (path.startsWith('/api/payments/recheck/')) return true;
   if (path === '/api/system/operating-status') return true;
   return false;
 }

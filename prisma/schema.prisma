@@ -794,6 +794,13 @@ model Order {
    */
   reminderCount           Int               @default(0)
   lastReminderAt          DateTime?
+  /**
+   * When true, the customer was already sent the payment link from the field
+   * (driver / branch manager POS). Call-center agents must not send duplicate
+   * WhatsApp payment-link reminders until cleared (e.g. owner); other roles
+   * are unaffected.
+   */
+  ccCollectionPaymentWaLocked Boolean @default(false)
   notes                   String?
   customerId              String            @db.Uuid
   driverId                String?           @db.Uuid

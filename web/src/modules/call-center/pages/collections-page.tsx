@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { Link, Navigate } from 'react-router-dom';
 import {
@@ -11,6 +12,7 @@ import {
   MessageCircle,
   RefreshCw,
   Search,
+  ShieldCheck,
   Sparkles,
   TrendingUp,
   Wallet,
@@ -26,6 +28,7 @@ import {
   type SendPaymentLinkWhatsappResult,
   apiJson,
   ApiError,
+  recheckOrderPayment,
 } from '@/lib/api';
 import {
   buildCollectionsUnpaidWhatsAppText,
@@ -86,6 +89,26 @@ function normalisePhone(value: string): string {
 }
 
 type KpiTone = 'red' | 'green' | 'yellow';
+
+function waSendButtonTitle(
+  t: TFunction,
+  row: CollectionUnpaidOnlineRow,
+  isCcAgent: boolean,
+): string {
+  const locked = row.ccCollectionPaymentWaLocked === true;
+  if (locked && isCcAgent) {
+    return String(t('collections.waLockedByField'));
+  }
+  const canSend = row.canSendCollectionPaymentWa ?? row.canRemindNow;
+  if (!canSend) {
+    return String(t('collections.remindCooldownShort'));
+  }
+  return String(t('collections.whatsapp'));
+}
+
+function canSendCollectionWaRow(row: CollectionUnpaidOnlineRow): boolean {
+  return row.canSendCollectionPaymentWa ?? row.canRemindNow;
+}
 
 const KPI_TONE: Record<KpiTone, { border: string; bg: string; accent: string; icon: string }> = {
   red: {
@@ -151,6 +174,12 @@ export function CollectionsPage() {
     }
     return ownerBranchId;
   }, [user?.safariRole, user?.branchId, ownerBranchId]);
+  const isCcAgent = useMemo(
+    () =>
+      user?.safariRole === 'CALL_CENTER' ||
+      user?.safariRole === 'CALL_CENTER_SUPERVISOR',
+    [user?.safariRole],
+  );
   const allowed = can(user, 'collections.view');
   const canAct = can(user, 'collections.act');
   const canSubscribers = can(user, 'subscribers.view');
@@ -175,6 +204,7 @@ export function CollectionsPage() {
     null,
   );
   const [markPaidBusy, setMarkPaidBusy] = useState<MarkPaidMethod | null>(null);
+  const [recheckingOrderId, setRecheckingOrderId] = useState<string | null>(null);
 
   const load = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -222,6 +252,36 @@ export function CollectionsPage() {
       }
     },
     [token, allowed, collectionsBranchId],
+  );
+
+  /** UPayments inquiry — same as customer «إعادة التحقق»; for hosted link / online orders. */
+  const canRecheckGatewayPayment = (row: CollectionUnpaidOnlineRow) =>
+    row.paymentMethod === 'PAYMENT_LINK' || row.paymentMethod === 'ONLINE';
+
+  const handleGatewayRecheck = useCallback(
+    async (orderId: string) => {
+      if (!token) return;
+      setRecheckingOrderId(orderId);
+      try {
+        const res = await recheckOrderPayment(token, orderId);
+        if (res.settledNow && res.isPaid) {
+          toast.success(res.messageAr);
+        } else {
+          toast.info(res.messageAr);
+        }
+        await load({ silent: true });
+        await loadSummary({ silent: true });
+      } catch (e) {
+        toast.error(
+          e instanceof ApiError
+            ? e.message
+            : t('collections.recheckError', 'تعذّر التحقق من الدفع.'),
+        );
+      } finally {
+        setRecheckingOrderId(null);
+      }
+    },
+    [token, load, loadSummary, t],
   );
 
   useEffect(() => {
@@ -579,13 +639,11 @@ export function CollectionsPage() {
                       type="button"
                       size="default"
                       className="min-h-12 flex-1 gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
-                      disabled={reminderBusy || !row.canRemindNow}
-                      onClick={() => void handleWhatsApp(row)}
-                      title={
-                        row.canRemindNow
-                          ? t('collections.whatsapp')
-                          : t('collections.remindCooldownShort')
+                      disabled={
+                        reminderBusy || !canSendCollectionWaRow(row)
                       }
+                      onClick={() => void handleWhatsApp(row)}
+                      title={waSendButtonTitle(t, row, isCcAgent)}
                     >
                       {reminderBusy ? (
                         <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
@@ -594,9 +652,6 @@ export function CollectionsPage() {
                       )}
                       {t('collections.whatsapp')}
                     </Button>
-                    {/* V1.6.9 — "تم الدفع" confirmation.
-                        Opens the payment-method picker dialog so the agent
-                        can record CASH / KNET / PAYMENT_LINK / ONLINE. */}
                     <Button
                       type="button"
                       size="default"
@@ -608,26 +663,29 @@ export function CollectionsPage() {
                       <CheckCircle2 className="h-5 w-5 shrink-0" aria-hidden />
                       {t('collections.markPaid')}
                     </Button>
-                    {/*
-                      V1.6.7 — Optional secondary "link" control (same as
-                      WhatsApp: opens wa.me to the customer, not the agent tab).
-                    */}
-                    {false && (
-                      <button
-                        type="button"
-                        disabled={reminderBusy}
-                        onClick={() => void handlePaymentLink(row)}
-                        className="inline-flex min-h-12 min-w-12 items-center justify-center rounded-xl border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
-                        title={t('collections.paymentLink')}
-                        aria-label={t('collections.paymentLink')}
-                      >
-                        {reminderBusy ? (
-                          <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
-                        ) : (
-                          <CreditCard className="h-5 w-5" aria-hidden />
-                        )}
-                      </button>
-                    )}
+                  </div>
+                ) : null}
+                {canAct && canRecheckGatewayPayment(row) ? (
+                  <div className="mt-2">
+                    <Button
+                      type="button"
+                      size="default"
+                      variant="secondary"
+                      className="h-11 w-full gap-2"
+                      disabled={
+                        recheckingOrderId === row.orderId ||
+                        reminderBusyId === row.orderId
+                      }
+                      title={t('collections.recheckHint')}
+                      onClick={() => void handleGatewayRecheck(row.orderId)}
+                    >
+                      {recheckingOrderId === row.orderId ? (
+                        <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+                      ) : (
+                        <ShieldCheck className="h-5 w-5 shrink-0" aria-hidden />
+                      )}
+                      {t('collections.recheckPayment')}
+                    </Button>
                   </div>
                 ) : null}
                 {canSubscribers ? (
@@ -686,7 +744,7 @@ export function CollectionsPage() {
                 </TableHead>
               ) : null}
               {canAct ? (
-                <TableHead className="w-[260px] text-center">
+                <TableHead className="min-w-[280px] max-w-[420px] text-center">
                   {t('collections.colActions')}
                 </TableHead>
               ) : null}
@@ -808,18 +866,16 @@ export function CollectionsPage() {
                   ) : null}
                   {canAct ? (
                     <TableCell className="text-center">
-                      <div className="inline-flex items-center gap-2">
+                      <div className="inline-flex flex-wrap items-center justify-center gap-2">
                         <Button
                           type="button"
                           size="sm"
-                          className="min-h-9 min-w-[120px] gap-1.5"
-                          disabled={reminderBusy || !row.canRemindNow}
-                          onClick={() => void handleWhatsApp(row)}
-                          title={
-                            row.canRemindNow
-                              ? t('collections.whatsapp')
-                              : t('collections.remindCooldownShort')
+                          className="min-h-9 min-w-[7rem] gap-1.5 sm:min-w-[120px]"
+                          disabled={
+                            reminderBusy || !canSendCollectionWaRow(row)
                           }
+                          onClick={() => void handleWhatsApp(row)}
+                          title={waSendButtonTitle(t, row, isCcAgent)}
                         >
                           {reminderBusy ? (
                             <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
@@ -828,6 +884,26 @@ export function CollectionsPage() {
                           )}
                           {t('collections.whatsapp')}
                         </Button>
+                        {canRecheckGatewayPayment(row) ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            className="min-h-9 gap-1.5"
+                            disabled={
+                              recheckingOrderId === row.orderId || reminderBusy
+                            }
+                            title={t('collections.recheckHint')}
+                            onClick={() => void handleGatewayRecheck(row.orderId)}
+                          >
+                            {recheckingOrderId === row.orderId ? (
+                              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                            ) : (
+                              <ShieldCheck className="h-4 w-4" aria-hidden />
+                            )}
+                            {t('collections.recheckPayment')}
+                          </Button>
+                        ) : null}
                         {/* V1.6.9 — "تم الدفع" confirmation. */}
                         <Button
                           type="button"

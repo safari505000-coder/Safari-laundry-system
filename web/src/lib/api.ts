@@ -828,6 +828,8 @@ export type UnpaidInvoiceRow = {
   lastEntryAt: string;
   /** Field shortfall vs subscription wallet overuse */
   debtSource: 'INVOICE_SHORTFALL' | 'SUBSCRIPTION_OVERUSE' | 'OPEN_UNPAID_ORDER';
+  /** Mirrors `Order.posPaymentMethod` — e.g. PAYMENT_LINK for WhatsApp payment links */
+  posPaymentMethod?: string | null;
 };
 
 export type UnpaidInvoicesKpis = {
@@ -1519,6 +1521,10 @@ export type CollectionUnpaidOnlineRow = {
   reminderCount: number;
   lastReminderAtIso: string | null;
   canRemindNow: boolean;
+  /** Field (driver/manager) already sent payment link — CC must not duplicate WhatsApp. */
+  ccCollectionPaymentWaLocked?: boolean;
+  /** Combined cooldown + CC lock — use for «إرسال رابط الدفع». */
+  canSendCollectionPaymentWa?: boolean;
   /**
    * V19.4 — CC pack #5. Branch + driver names enrich the WhatsApp
    * template and the Collections table so the customer sees which
@@ -2300,6 +2306,17 @@ export function recheckPublicPayment(
   return apiJson<PublicPaymentRecheck>(
     `/api/payments/recheck/${encodeURIComponent(orderId)}`,
     { method: 'POST', body: '{}' },
+  );
+}
+
+/** Same UPayments inquiry as the public return page; includes `Authorization` for staff tools. */
+export function recheckOrderPayment(
+  token: string,
+  orderId: string,
+): Promise<PublicPaymentRecheck> {
+  return apiJson<PublicPaymentRecheck>(
+    `/api/payments/recheck/${encodeURIComponent(orderId)}`,
+    { method: 'POST', body: '{}', token },
   );
 }
 

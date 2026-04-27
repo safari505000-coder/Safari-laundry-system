@@ -339,6 +339,7 @@ export class DebtService {
             totalPrice: true,
             createdAt: true,
             completedAt: true,
+            posPaymentMethod: true,
           },
         },
       },
@@ -405,6 +406,9 @@ export class DebtService {
         isOpen: true,
         lastEntryAt: tIso,
         debtSource: 'INVOICE_SHORTFALL',
+        posPaymentMethod: e.order.posPaymentMethod
+          ? String(e.order.posPaymentMethod)
+          : null,
       };
 
       byOrder.set(e.orderId, {
@@ -681,6 +685,7 @@ export class DebtService {
         completedAt: true,
         serialNumber: true,
         invoiceNumber: true,
+        posPaymentMethod: true,
         customerId: true,
         driverId: true,
         customer: {
@@ -800,6 +805,9 @@ export class DebtService {
         isOpen: true,
         lastEntryAt: issued,
         debtSource: 'OPEN_UNPAID_ORDER',
+        posPaymentMethod: o.posPaymentMethod
+          ? String(o.posPaymentMethod)
+          : null,
       };
       finalRows.push(row);
       totalDebt += tot;

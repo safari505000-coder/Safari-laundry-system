@@ -427,9 +427,15 @@ export const en = {
     colActions: 'Actions',
     totalFooter: 'Total market debt',
     whatsapp: 'Send payment link',
+    waLockedByField:
+      'Payment link was already sent to the customer from the field (driver/branch manager). Call center cannot send another WhatsApp reminder to avoid duplicate messages.',
     whatsappNoPhone: 'No WhatsApp-compatible phone on file.',
     paymentLink: 'Payment link',
     markPaid: 'Paid',
+    recheckPayment: 'Verify payment',
+    recheckHint:
+      'Query UPayments (same as the customer return page) and update the invoice if CAPTURED.',
+    recheckError: 'Could not verify payment with the gateway.',
     markPaidTitle: 'Confirm payment received',
     markPaidSubtitle: 'Select the method the customer actually used:',
     markPaidToast: 'Payment recorded successfully',
@@ -2579,7 +2585,12 @@ export const en = {
       currentCustomerDebt: 'Customer current debt',
       /** Chronological running sum of «Remaining» per customer (table may sort newest first) */
       cumulativeIndebtedness: 'Cumulative debt',
+      actions: 'Actions',
     },
+    recheckPayment: 'Verify',
+    recheckHint:
+      'Query the payment gateway (same as the customer return page) and update the invoice if CAPTURED.',
+    recheckError: 'Could not verify payment with the gateway.',
     statusOpen: 'Outstanding',
     statusClosed: 'Settled',
     noInvoices: 'No invoices match the current filters.',
