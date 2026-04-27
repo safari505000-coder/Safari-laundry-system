@@ -742,7 +742,19 @@ export class OrdersService {
         });
         await this.prisma.order.update({
           where: { id: detail.id },
-          data: { posHostedPaymentUrl: paymentLink.url },
+          data: {
+            posHostedPaymentUrl: paymentLink.url,
+            posGatewayTrackId: paymentLink.trackId ?? null,
+            posGatewayMetadata: {
+              charge: {
+                provider: 'upayments',
+                trackId: paymentLink.trackId ?? null,
+                link: paymentLink.url,
+                createdAt: new Date().toISOString(),
+                source: 'posCheckout',
+              },
+            } as Prisma.InputJsonValue,
+          },
         });
         const merged: PosCheckoutOrderDetail = { ...detail, paymentLink };
         await this.posInvoiceNotifyToCustomer(merged, phoneCompact);
@@ -922,7 +934,19 @@ export class OrdersService {
 
     await this.prisma.order.updateMany({
       where: { posPaymentBundleId: bundleId },
-      data: { posHostedPaymentUrl: paymentLink.url },
+      data: {
+        posHostedPaymentUrl: paymentLink.url,
+        posGatewayTrackId: paymentLink.trackId ?? null,
+        posGatewayMetadata: {
+          charge: {
+            provider: 'upayments',
+            trackId: paymentLink.trackId ?? null,
+            link: paymentLink.url,
+            createdAt: new Date().toISOString(),
+            source: 'posCheckoutBundle',
+          },
+        } as Prisma.InputJsonValue,
+      },
     });
 
     {

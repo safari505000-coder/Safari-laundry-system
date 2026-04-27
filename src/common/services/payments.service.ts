@@ -528,11 +528,19 @@ export class PaymentsService implements OnModuleInit {
     if (order.cashStatus !== CashStatus.UNPAID || order.walletSettledAt) {
       throw new BadRequestException('Order is already paid');
     }
-    if (order.posHostedPaymentUrl) {
+    // Idempotent: same URL + trackId. Legacy POS rows (pre-fix) may have a URL
+    // without `posGatewayTrackId` — recheck cannot run; re-mint a gateway session
+    // so Collections "Send payment link" can repair the row.
+    if (order.posHostedPaymentUrl && order.posGatewayTrackId) {
       return {
         url: order.posHostedPaymentUrl,
-        trackId: order.posGatewayTrackId ?? undefined,
+        trackId: order.posGatewayTrackId,
       };
+    }
+    if (order.posHostedPaymentUrl && !order.posGatewayTrackId) {
+      this.logger.warn(
+        `Payment link missing trackId (repair): orderId=${order.id} — creating new UPayments session`,
+      );
     }
     const phone =
       order.customer.phone?.trim() || order.customer.phone2?.trim() || '';
