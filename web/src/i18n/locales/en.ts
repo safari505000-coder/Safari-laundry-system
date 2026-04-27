@@ -1224,8 +1224,26 @@ export const en = {
     from: 'From',
     to: 'To',
     loadOrders: 'Load KNET orders',
-    bankCsv: 'Bank statement (CSV)',
-    parsedAmounts: '{{count}} amount tokens extracted from CSV',
+    bankCsv: 'Bank statement (CSV or PDF)',
+    bankCsvHint:
+      'Upload a KNET / account statement (PDF) or a CSV. From PDF we extract amount tokens for line matching, and we try to detect commission and gross lines (format-dependent — verify the PDF and use manual overrides if needed).',
+    statementCompare: 'Statement vs system summary',
+    erpKnetGross: 'KNET sales total (system)',
+    systemFeeEst: 'Fee estimate (system settings)',
+    statementGross: 'Gross sales (PDF parse estimate)',
+    statementCommission: 'Commission (PDF parse estimate)',
+    statementNet: 'Net / settlement (PDF parse estimate)',
+    statementCommissionOverride: 'Statement commission (manual — overrides parse)',
+    feeDelta: 'Fee difference (statement − system)',
+    grossDelta: 'Gross difference (system − statement)',
+    parseNote:
+      'Auto-parse ignores company transfer / settlement lines and does not use the «Balance» row as a sales total. Adjust commission manually if needed.',
+    pdfReadFailed: 'Could not read this PDF. Try another export or use CSV / plain text.',
+    pdfSeemsScanned:
+      'Very little text was read from the PDF (likely image-only or no text layer). Try a CSV from the bank, or a text-based export.',
+    pdfNoAmountsFound:
+      'No amounts were found in the file. Check the format, widen the from/to range if your KNET sales fall outside it, or try CSV.',
+    parsedAmounts: '{{count}} amount tokens extracted from file',
     bankManualCard: 'Manual entry from bank statement',
     bankManualHint:
       'Use the «Bank statement amount» column below: enter the amount exactly as on the account statement or terminal report. When it equals the invoice total (±0.002 KD) the row turns green. «Bank ref» is optional (auth / trace number).',
@@ -1392,6 +1410,9 @@ export const en = {
     colKind: 'Line',
     colMovements: 'Movements',
     colTotal: 'Amount',
+    kpiGross: 'Total (completed sales)',
+    kpiCollected: 'Paid / collected',
+    kpiUncollected: 'Still owed',
     in: {
       grossCompleted: 'Gross revenue — completed sales in period',
       settledAfterFees: 'After bank fees (reporting estimate)',
@@ -2599,6 +2620,7 @@ export const en = {
     refresh: 'Refresh',
     loading: 'Loading…',
     empty: 'No transfers match the current filters.',
+    loadFailed: 'Could not load transfer details.',
     filters: {
       title: 'Filters',
       status: 'Status',

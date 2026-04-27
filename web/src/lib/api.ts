@@ -153,28 +153,73 @@ function parseApiBody(text: string): Record<string, unknown> {
   }
 }
 
+/**
+ * Map known English backend / Prisma messages to Arabic toasts. Keys are
+ * full strings or /regex/ test patterns for parameterized Prisma codes.
+ */
+const API_ERROR_MSG_AR: Array<{ m: string | RegExp; ar: string }> = [
+  {
+    m: /^A database error occurred \((P\d{4})\)\. Please try again, or run migrations if the system was just updated\.$/,
+    ar: 'تعذّر تنفيذ العملية على قاعدة البيانات. إن كان النظام حديث التحديث، نفّذ ترحيلات قاعدة البيانات ثم أعد المحاولة، أو جرّب لاحقاً.',
+  },
+  {
+    m: 'A database error occurred. Please try again.',
+    ar: 'تعذّر تنفيذ العملية على قاعدة البيانات. جرّب مرة أخرى أو تأكد من تطبيق الترحيلات.',
+  },
+  {
+    m: 'Something went wrong. Please try again.',
+    ar: 'حدث خطأ غير متوقع. جرّب مرة أخرى.',
+  },
+  {
+    m: 'Invalid data was sent. Check your input and try again.',
+    ar: 'بيانات غير صالحة. راجع المدخلات.',
+  },
+  {
+    m: 'A required database table is missing. Run `npx prisma migrate deploy` on the server, then try again.',
+    ar: 'جداول قاعدة البيانات غير مكتملة. نفّذ ترحيلات قاعدة البيانات على الخادم (migrate deploy) ثم أعد المحاولة.',
+  },
+  {
+    m: 'A required database column is missing. Run migrations, then try again.',
+    ar: 'عمود مفقود في قاعدة البيانات. نفّذ الترحيلات ثم أعد المحاولة.',
+  },
+  {
+    m: 'Database schema mismatch. Ensure migrations are applied, then try again.',
+    ar: 'عدم تطابق مخطط قاعدة البيانات. طبّق الترحيلات ثم أعد المحاولة.',
+  },
+];
+
+function toUserFacingErrorMessage(english: string): string {
+  for (const row of API_ERROR_MSG_AR) {
+    if (typeof row.m === 'string' && row.m === english) return row.ar;
+    if (row.m instanceof RegExp && row.m.test(english)) return row.ar;
+  }
+  return english;
+}
+
 function formatErrorMessage(
   json: Record<string, unknown>,
   status: number,
   rawText: string,
 ): string {
   const message = json.message;
+  let raw: string;
   if (Array.isArray(message)) {
-    return message
+    raw = message
       .map((m) => (typeof m === 'string' ? m : JSON.stringify(m)))
       .join(', ');
+  } else if (typeof message === 'string' && message.length > 0) {
+    raw = message;
+  } else {
+    const err = json.error;
+    if (typeof err === 'string' && err.length > 0) {
+      raw = err;
+    } else if (rawText.length > 0 && rawText.length < 400) {
+      raw = rawText;
+    } else {
+      return `HTTP ${status}`;
+    }
   }
-  if (typeof message === 'string' && message.length > 0) {
-    return message;
-  }
-  const err = json.error;
-  if (typeof err === 'string' && err.length > 0) {
-    return err;
-  }
-  if (rawText.length > 0 && rawText.length < 400) {
-    return rawText;
-  }
-  return `HTTP ${status}`;
+  return toUserFacingErrorMessage(raw);
 }
 
 export async function apiJson<T>(
@@ -4677,6 +4722,41 @@ export function updatePayrollSettings(
 ) {
   return apiJson<PayrollSettings>('/api/system-settings/payroll-settings', {
     method: 'PUT',
+    token,
+    body: JSON.stringify(dto),
+  });
+}
+
+/** V8.5 — global reporting-layer KNET / card fee knobs (`PaymentMethodFeeConfig`). */
+export type KnetCommissionRule =
+  | 'HIGHER_OF_FLAT_AND_PERCENT'
+  | 'FLAT_ONLY'
+  | 'PERCENT_ONLY';
+
+export type PaymentMethodFeeConfig = {
+  id: string;
+  knetFlatKd: string;
+  knetPercentOfGross: string;
+  knetRule: KnetCommissionRule;
+  cardPercentOfGross: string;
+  updatedAt: string;
+};
+
+export function getPaymentMethodFeeConfig(token: string) {
+  return apiJson<PaymentMethodFeeConfig>('/api/payment-method-fees', { token });
+}
+
+export function updatePaymentMethodFeeConfig(
+  token: string,
+  dto: {
+    knetFlatKd?: number;
+    knetPercentOfGross?: number;
+    knetRule?: KnetCommissionRule;
+    cardPercentOfGross?: number;
+  },
+) {
+  return apiJson<PaymentMethodFeeConfig>('/api/payment-method-fees', {
+    method: 'PATCH',
     token,
     body: JSON.stringify(dto),
   });

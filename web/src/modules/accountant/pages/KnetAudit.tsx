@@ -7,9 +7,18 @@ import { useAuth } from '@/contexts/auth-context';
 import {
   type BranchRow,
   type IssuedInvoicesReport,
+  type PaymentMethodFeeConfig,
   apiJson,
   ApiError,
+  getPaymentMethodFeeConfig,
 } from '@/lib/api';
+import { sumEstimatedKnetFees } from '@/lib/knet-fee-estimate';
+import {
+  extractBankAmounts,
+  extractTextFromStatementPdf,
+  isLikelyUnextractableScannedStatement,
+  parseStatementSummaryHints,
+} from '@/lib/knet-statement-parse';
 import { formatKwdLabel } from '@/lib/kwd';
 import { can } from '@/modules/shared/auth/access-matrix';
 import { Button } from '@/modules/shared/components/ui/button';
@@ -56,17 +65,23 @@ function startOfDayIsoDaysAgo(daysAgo: number): string {
   return x.toISOString();
 }
 
-/** Extract KWD-like amounts (up to 4 dp) from CSV text for reconciliation. */
-function extractBankAmounts(csvText: string): number[] {
-  const amounts: number[] = [];
-  const re = /\b\d+(?:\.\d{1,4})?\b/g;
-  for (const line of csvText.split(/\r?\n/)) {
-    for (const m of line.matchAll(re)) {
-      const v = Number.parseFloat(m[0]);
-      if (Number.isFinite(v) && v > 0 && v < 50000) amounts.push(v);
-    }
-  }
-  return amounts;
+/** `datetime-local` is in local time; do not use `toISOString().slice(0,16)` for the value. */
+function toLocalInputValue(iso: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return (
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+    `T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  );
+}
+
+function localInputToIso(value: string): string {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toISOString();
 }
 
 type RowStatus = 'green' | 'yellow' | 'red';
@@ -78,8 +93,18 @@ export function KnetAudit() {
   const [to, setTo] = useState(() => endOfDayIso(new Date()));
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState<IssuedInvoicesReport | null>(null);
-  const [csvName, setCsvName] = useState<string | null>(null);
+  const [statementName, setStatementName] = useState<string | null>(null);
   const [bankAmounts, setBankAmounts] = useState<number[]>([]);
+  const [statementSummary, setStatementSummary] = useState<
+    ReturnType<typeof parseStatementSummaryHints> | null
+  >(null);
+  const [feeConfig, setFeeConfig] = useState<PaymentMethodFeeConfig | null>(
+    null,
+  );
+  const [commissionOverride, setCommissionOverride] = useState('');
+  const [statementPdfError, setStatementPdfError] = useState<string | null>(
+    null,
+  );
   /** Per-order values copied from the bank statement (manual reconciliation). */
   const [manualAmountByOrderId, setManualAmountByOrderId] = useState<
     Record<string, string>
@@ -119,6 +144,13 @@ export function KnetAudit() {
       .catch(() => setBranches(null));
   }, [token, allowed]);
 
+  useEffect(() => {
+    if (!token || !allowed) return;
+    void getPaymentMethodFeeConfig(token)
+      .then((c) => setFeeConfig(c))
+      .catch(() => setFeeConfig(null));
+  }, [token, allowed]);
+
   const load = useCallback(async () => {
     if (!token || !allowed) return;
     setLoading(true);
@@ -140,6 +172,46 @@ export function KnetAudit() {
       setLoading(false);
     }
   }, [allowed, from, to, token, branchFilter]);
+
+  const erpKnetTotals = useMemo(() => {
+    if (!report) {
+      return { gross: 0, feeEst: 0 };
+    }
+    const knet = report.rows.filter((r) => r.posPaymentMethod === 'KNET');
+    const prices = knet.map((r) => r.totalPrice);
+    const gross = prices.reduce(
+      (a, s) => a + Number.parseFloat(s || '0'),
+      0,
+    );
+    const feeEst =
+      feeConfig ?
+        sumEstimatedKnetFees(prices, {
+          knetFlatKd: feeConfig.knetFlatKd,
+          knetPercentOfGross: feeConfig.knetPercentOfGross,
+          knetRule: feeConfig.knetRule,
+        })
+      : 0;
+    return { gross, feeEst };
+  }, [report, feeConfig]);
+
+  const statementCommissionResolved = useMemo(() => {
+    const o = commissionOverride.trim().replace(/,/g, '');
+    if (o !== '') {
+      const n = Number.parseFloat(o);
+      if (Number.isFinite(n) && n >= 0) return n;
+    }
+    return statementSummary?.commission;
+  }, [commissionOverride, statementSummary?.commission]);
+
+  const feeDelta = useMemo(() => {
+    if (statementCommissionResolved == null) return null;
+    return statementCommissionResolved - erpKnetTotals.feeEst;
+  }, [statementCommissionResolved, erpKnetTotals.feeEst]);
+
+  const grossDelta = useMemo(() => {
+    if (statementSummary?.totalGross == null) return null;
+    return erpKnetTotals.gross - statementSummary.totalGross;
+  }, [erpKnetTotals.gross, statementSummary?.totalGross]);
 
   const { rows, unmatchedBank } = useMemo(() => {
     if (!report) {
@@ -224,19 +296,51 @@ export function KnetAudit() {
     void load();
   }, [load]);
 
-  function onCsv(file: File | null) {
+  async function onStatementFile(file: File | null) {
     if (!file) {
-      setCsvName(null);
+      setStatementName(null);
       setBankAmounts([]);
+      setStatementSummary(null);
+      setStatementPdfError(null);
       return;
     }
-    setCsvName(file.name);
-    const reader = new FileReader();
-    reader.onload = () => {
-      const text = typeof reader.result === 'string' ? reader.result : '';
-      setBankAmounts(extractBankAmounts(text));
-    };
-    reader.readAsText(file);
+    setStatementName(file.name);
+    setStatementPdfError(null);
+    setStatementSummary(null);
+    const isPdf =
+      file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+    try {
+      if (isPdf) {
+        const buf = await file.arrayBuffer();
+        const text = await extractTextFromStatementPdf(buf);
+        if (isLikelyUnextractableScannedStatement(text)) {
+          setStatementPdfError(t('knetAudit.pdfSeemsScanned'));
+          setBankAmounts([]);
+          setStatementSummary(null);
+        } else {
+          setStatementPdfError(null);
+          const amounts = extractBankAmounts(text);
+          setBankAmounts(amounts);
+          setStatementSummary(parseStatementSummaryHints(text));
+          if (amounts.length === 0) {
+            toast.warning(t('knetAudit.pdfNoAmountsFound'));
+          }
+        }
+      } else {
+        const text = await file.text();
+        const amounts = extractBankAmounts(text);
+        setBankAmounts(amounts);
+        setStatementSummary(null);
+        if (amounts.length === 0) {
+          toast.warning(t('knetAudit.pdfNoAmountsFound'));
+        }
+      }
+    } catch (e) {
+      setStatementPdfError(
+        e instanceof Error ? e.message : t('knetAudit.pdfReadFailed'),
+      );
+      setBankAmounts([]);
+    }
   }
 
   if (!allowed) return <Navigate to="/" replace />;
@@ -269,15 +373,21 @@ export function KnetAudit() {
         <FilterField label={t('knetAudit.from')}>
           <Input
             type="datetime-local"
-            value={from.slice(0, 16)}
-            onChange={(e) => setFrom(new Date(e.target.value).toISOString())}
+            value={toLocalInputValue(from)}
+            onChange={(e) => {
+              const iso = localInputToIso(e.target.value);
+              if (iso) setFrom(iso);
+            }}
           />
         </FilterField>
         <FilterField label={t('knetAudit.to')}>
           <Input
             type="datetime-local"
-            value={to.slice(0, 16)}
-            onChange={(e) => setTo(new Date(e.target.value).toISOString())}
+            value={toLocalInputValue(to)}
+            onChange={(e) => {
+              const iso = localInputToIso(e.target.value);
+              if (iso) setTo(iso);
+            }}
           />
         </FilterField>
         {/*
@@ -322,12 +432,20 @@ export function KnetAudit() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                {t('knetAudit.bankCsvHint')}
+              </p>
               <Input
                 type="file"
-                accept=".csv,text/csv"
-                onChange={(e) => onCsv(e.target.files?.[0] ?? null)}
+                accept=".csv,text/csv,application/pdf,.pdf"
+                onChange={(e) => {
+                  void onStatementFile(e.target.files?.[0] ?? null);
+                }}
               />
-              {csvName ?
+              {statementPdfError ?
+                <p className="text-xs text-destructive">{statementPdfError}</p>
+              : null}
+              {statementName ?
                 <p className="text-xs text-slate-600">
                   {t('knetAudit.parsedAmounts', { count: bankAmounts.length })}
                 </p>
@@ -360,6 +478,122 @@ export function KnetAudit() {
           </Card>
         </div>
       ) : null}
+
+      {report ?
+        <Card className="border-slate-200 bg-slate-50/80">
+          <CardHeader>
+            <CardTitle className="text-base">
+              {t('knetAudit.statementCompare')}
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              {t('knetAudit.parseNote')}
+            </p>
+          </CardHeader>
+          <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div>
+              <p className="text-xs text-muted-foreground">
+                {t('knetAudit.erpKnetGross')}
+              </p>
+              <p className="font-mono text-lg font-semibold tabular-nums" dir="ltr">
+                {formatKwdLabel(erpKnetTotals.gross)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">
+                {t('knetAudit.systemFeeEst')}
+              </p>
+              <p className="font-mono text-lg font-semibold tabular-nums" dir="ltr">
+                {feeConfig ?
+                  formatKwdLabel(erpKnetTotals.feeEst)
+                : '—'}
+              </p>
+            </div>
+            {statementSummary?.totalGross != null ?
+              <div>
+                <p className="text-xs text-muted-foreground">
+                  {t('knetAudit.statementGross')}
+                </p>
+                <p
+                  className="font-mono text-lg font-semibold tabular-nums"
+                  dir="ltr"
+                >
+                  {formatKwdLabel(statementSummary.totalGross)}
+                </p>
+              </div>
+            : null}
+            {statementSummary?.net != null ?
+              <div>
+                <p className="text-xs text-muted-foreground">
+                  {t('knetAudit.statementNet')}
+                </p>
+                <p
+                  className="font-mono text-lg font-semibold tabular-nums"
+                  dir="ltr"
+                >
+                  {formatKwdLabel(statementSummary.net)}
+                </p>
+              </div>
+            : null}
+            <div>
+              <p className="text-xs text-muted-foreground">
+                {t('knetAudit.statementCommission')}
+              </p>
+              <p className="font-mono text-lg font-semibold tabular-nums" dir="ltr">
+                {statementCommissionResolved != null ?
+                  formatKwdLabel(statementCommissionResolved)
+                : '—'}
+              </p>
+            </div>
+            {canReconcile ?
+              <div className="sm:col-span-2 lg:col-span-1">
+                <p className="text-xs text-muted-foreground">
+                  {t('knetAudit.statementCommissionOverride')}
+                </p>
+                <Input
+                  dir="ltr"
+                  inputMode="decimal"
+                  className="mt-1 h-8 font-mono tabular-nums"
+                  value={commissionOverride}
+                  onChange={(e) => setCommissionOverride(e.target.value)}
+                  placeholder="0.000"
+                />
+              </div>
+            : null}
+            {feeDelta != null && feeConfig ?
+              <div>
+                <p className="text-xs text-muted-foreground">
+                  {t('knetAudit.feeDelta')}
+                </p>
+                <p
+                  className={cn(
+                    'font-mono text-lg font-semibold tabular-nums',
+                    Math.abs(feeDelta) < 0.01 ? 'text-emerald-700' : 'text-amber-800',
+                  )}
+                  dir="ltr"
+                >
+                  {formatKwdLabel(feeDelta)}
+                </p>
+              </div>
+            : null}
+            {grossDelta != null ?
+              <div>
+                <p className="text-xs text-muted-foreground">
+                  {t('knetAudit.grossDelta')}
+                </p>
+                <p
+                  className={cn(
+                    'font-mono text-lg font-semibold tabular-nums',
+                    Math.abs(grossDelta) < 0.01 ? 'text-emerald-700' : 'text-amber-800',
+                  )}
+                  dir="ltr"
+                >
+                  {formatKwdLabel(grossDelta)}
+                </p>
+              </div>
+            : null}
+          </CardContent>
+        </Card>
+      : null}
 
       <div className="flex items-center justify-between px-1">
         <h2 className="text-sm font-semibold text-foreground">
