@@ -3398,7 +3398,7 @@ export type LiveFeedResponse = {
 };
 
 export type BranchOperationsLiveResponse = {
-  branches: { branchId: string; isLive: boolean }[];
+  branches: { branchId: string; branchName: string; isLive: boolean }[];
 };
 
 export type PayrollStatus = 'PENDING' | 'PAID';

@@ -2,7 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import {
+  ArrowDown,
   ArrowLeftRight,
+  ArrowUp,
+  ArrowUpDown,
   ArrowUpRight,
   CalendarClock,
   CheckCircle2,
@@ -122,6 +125,39 @@ function subscriberListBalanceDisplay(r: SubscriberListRow): string {
   return r.balanceDisplayKd ?? r.balance;
 }
 
+type SubscribersNumSortKey = 'remainingDays' | 'balance';
+
+function NumSortHeaderButton({
+  label,
+  active,
+  dir,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  dir: 'asc' | 'desc' | null;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="inline-flex w-full max-w-full items-center justify-end gap-1.5 font-bold text-foreground hover:underline"
+      onClick={onClick}
+    >
+      <span className="min-w-0 text-end">{label}</span>
+      {active && dir ?
+        (dir === 'asc' ?
+          <ArrowUp className="size-3.5 shrink-0 opacity-90" aria-hidden />
+        : <ArrowDown className="size-3.5 shrink-0 opacity-90" aria-hidden />)
+      : <ArrowUpDown
+          className="size-3.5 shrink-0 text-muted-foreground/70"
+          aria-hidden
+        />
+      }
+    </button>
+  );
+}
+
 /** Digits-only phone normalisation — matches the collections page helper. */
 function normalisePhone(value: string): string {
   return value.replace(/\D+/g, '');
@@ -172,7 +208,7 @@ function SubscriberCard({
           <dd
             dir="ltr"
             className={cn(
-              'tabular-nums text-base font-bold sm:text-sm',
+              'font-mono tabular-nums text-base font-bold sm:text-sm',
               subscriberBalanceClass(subscriberListBalanceDisplay(r)),
             )}
           >
@@ -191,7 +227,10 @@ function SubscriberCard({
         </div>
         <div className="min-w-0">
           <dt className="text-muted-foreground">{t('subscribers.colRemaining')}</dt>
-          <dd className="tabular-nums font-medium">
+          <dd
+            dir="ltr"
+            className="font-mono text-base font-medium tabular-nums sm:text-sm"
+          >
             {r.remainingDays === null ? '—' : r.remainingDays}
           </dd>
         </div>
@@ -1442,6 +1481,10 @@ export function SubscribersPage() {
   const [rows, setRows] = useState<SubscriberListRow[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
+  const [numSort, setNumSort] = useState<{
+    key: SubscribersNumSortKey;
+    dir: 'asc' | 'desc';
+  } | null>(null);
 
   // Activate-subscription dialog state — powers "new" + "upgrade".
   const [issueOpen, setIssueOpen] = useState(false);
@@ -1687,6 +1730,45 @@ export function SubscribersPage() {
     });
   }, [rows, query]);
 
+  const toggleNumSort = useCallback((key: SubscribersNumSortKey) => {
+    setNumSort((prev) => {
+      if (prev?.key === key) {
+        return { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' };
+      }
+      return { key, dir: key === 'balance' ? 'desc' : 'asc' };
+    });
+  }, []);
+
+  const displayRows = useMemo(() => {
+    if (!filteredRows) return null;
+    if (!numSort) return filteredRows;
+    const arr = [...filteredRows];
+    const mult = numSort.dir === 'asc' ? 1 : -1;
+    arr.sort((a, b) => {
+      if (numSort.key === 'remainingDays') {
+        const av = a.remainingDays;
+        const bv = b.remainingDays;
+        if (av === null && bv === null) return 0;
+        if (av === null) return 1;
+        if (bv === null) return -1;
+        return (av - bv) * mult;
+      }
+      const av = Number.parseFloat(subscriberListBalanceDisplay(a));
+      const bv = Number.parseFloat(subscriberListBalanceDisplay(b));
+      const aOk = Number.isFinite(av);
+      const bOk = Number.isFinite(bv);
+      if (!aOk && !bOk) return 0;
+      if (!aOk) return 1;
+      if (!bOk) return -1;
+      return (av - bv) * mult;
+    });
+    return arr;
+  }, [filteredRows, numSort]);
+
+  useEffect(() => {
+    setNumSort(null);
+  }, [query]);
+
   if (!allowed) {
     return <Navigate to="/" replace />;
   }
@@ -1752,16 +1834,16 @@ export function SubscribersPage() {
       </div>
 
       <section className="md:hidden">
-        {filteredRows === null ?
+        {displayRows === null ?
           <p className="rounded-xl border border-border bg-card p-6 text-center text-sm text-muted-foreground">
             {loading ? t('subscribers.loading') : t('subscribers.unable')}
           </p>
-        : filteredRows.length === 0 ?
+        : displayRows.length === 0 ?
           <p className="rounded-xl border border-border bg-card p-6 text-center text-sm text-muted-foreground">
             {query.trim() ? t('subscribers.emptySearch') : t('subscribers.empty')}
           </p>
         : <ul className="space-y-3">
-            {filteredRows.map((r) => (
+            {displayRows.map((r) => (
               <li key={r.customerId}>
                 <SubscriberCard
                   r={r}
@@ -1791,16 +1873,46 @@ export function SubscribersPage() {
               <TableHead className="whitespace-nowrap">
                 {t('subscribers.colExpiry')}
               </TableHead>
-              <TableHead className="whitespace-nowrap text-end tabular-nums">
-                {t('subscribers.colRemaining')}
+              <TableHead
+                className="whitespace-nowrap text-end tabular-nums"
+                aria-sort={
+                  numSort?.key === 'remainingDays' ?
+                    numSort.dir === 'asc' ?
+                      'ascending'
+                    : 'descending'
+                  : 'none'
+                }
+              >
+                <NumSortHeaderButton
+                  label={t('subscribers.colRemaining')}
+                  active={numSort?.key === 'remainingDays'}
+                  dir={
+                    numSort?.key === 'remainingDays' ? numSort.dir : null
+                  }
+                  onClick={() => toggleNumSort('remainingDays')}
+                />
               </TableHead>
-              <TableHead className="whitespace-nowrap text-end tabular-nums">
-                {t('subscribers.colBalance')}
+              <TableHead
+                className="whitespace-nowrap text-end tabular-nums"
+                aria-sort={
+                  numSort?.key === 'balance' ?
+                    numSort.dir === 'asc' ?
+                      'ascending'
+                    : 'descending'
+                  : 'none'
+                }
+              >
+                <NumSortHeaderButton
+                  label={t('subscribers.colBalance')}
+                  active={numSort?.key === 'balance'}
+                  dir={numSort?.key === 'balance' ? numSort.dir : null}
+                  onClick={() => toggleNumSort('balance')}
+                />
               </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredRows === null ?
+            {displayRows === null ?
               <TableRow>
                 <TableCell
                   colSpan={6}
@@ -1809,7 +1921,7 @@ export function SubscribersPage() {
                   {loading ? t('subscribers.loading') : t('subscribers.unable')}
                 </TableCell>
               </TableRow>
-            : filteredRows.length === 0 ?
+            : displayRows.length === 0 ?
               <TableRow>
                 <TableCell
                   colSpan={6}
@@ -1818,7 +1930,7 @@ export function SubscribersPage() {
                   {query.trim() ? t('subscribers.emptySearch') : t('subscribers.empty')}
                 </TableCell>
               </TableRow>
-            : filteredRows.map((r) => (
+            : displayRows.map((r) => (
                 <TableRow
                   key={r.customerId}
                   className={cn(rowTone(r.rowStatus), 'align-middle')}
@@ -1846,17 +1958,26 @@ export function SubscribersPage() {
                   <TableCell className="whitespace-nowrap tabular-nums text-sm">
                     {formatDate(r.expiryDate)}
                   </TableCell>
-                  <TableCell className="text-end tabular-nums text-sm">
-                    {r.remainingDays === null ? '—' : r.remainingDays}
+                  <TableCell className="w-[1%] min-w-[4.5rem] py-2.5 pe-2 ps-2 text-end align-middle">
+                    <span
+                      dir="ltr"
+                      className="inline-block min-w-[2.5rem] font-mono text-sm tabular-nums text-foreground"
+                    >
+                      {r.remainingDays === null ? '—' : r.remainingDays}
+                    </span>
                   </TableCell>
-                  <TableCell
-                    className={cn(
-                      'text-end tabular-nums text-sm font-medium',
-                      subscriberBalanceClass(subscriberListBalanceDisplay(r)),
-                    )}
-                    dir="ltr"
-                  >
-                    {formatSignedKwdLabel(subscriberListBalanceDisplay(r))}
+                  <TableCell className="w-[1%] min-w-[7.5rem] py-2.5 pe-2 ps-2 text-end align-middle">
+                    <span
+                      dir="ltr"
+                      className={cn(
+                        'inline-block min-w-[5.5rem] font-mono text-sm font-medium tabular-nums',
+                        subscriberBalanceClass(
+                          subscriberListBalanceDisplay(r),
+                        ),
+                      )}
+                    >
+                      {formatSignedKwdLabel(subscriberListBalanceDisplay(r))}
+                    </span>
                   </TableCell>
                 </TableRow>
               ))}

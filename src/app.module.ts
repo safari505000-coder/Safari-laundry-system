@@ -53,12 +53,11 @@ import { VerifyModule } from './verify/verify.module';
 import { WalletsModule } from './wallets/wallets.module';
 
 const webDistPath = join(process.cwd(), 'web', 'dist');
-const uploadsPath = join(process.cwd(), 'uploads');
 const spaStaticModule = existsSync(webDistPath)
   ? [
       ServeStaticModule.forRoot({
         rootPath: webDistPath,
-        exclude: ['/api/{*any}', '/docs/{*any}'],
+        exclude: ['/api/{*any}', '/docs/{*any}', '/uploads/{*any}'],
       }),
     ]
   : [];
@@ -110,11 +109,8 @@ const spaStaticModule = existsSync(webDistPath)
     VerifyModule,
     FeedbackModule,
     HealthModule,
-    ServeStaticModule.forRoot({
-      rootPath: uploadsPath,
-      serveRoot: '/uploads',
-      serveStaticOptions: { index: false, fallthrough: true },
-    }),
+    // /uploads is mounted in main.ts (express.static only) to avoid
+    // ServeStaticModule’s SPA index fallback for missing files.
     ...spaStaticModule,
   ],
   controllers: [AppController],

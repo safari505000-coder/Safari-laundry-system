@@ -161,7 +161,21 @@ export function MyDebtTransfersPage() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => setActive(r)}
+                      onClick={() => {
+                        if (!token) return;
+                        void (async () => {
+                          try {
+                            const d = await getDebtTransfer(token, r.id);
+                            setActive(d);
+                          } catch (e) {
+                            const m =
+                              e instanceof Error
+                                ? e.message
+                                : t('debtTransfers.loadFailed');
+                            toast.error(m);
+                          }
+                        })();
+                      }}
                     >
                       {t('debtTransfers.viewDetails')}
                     </Button>

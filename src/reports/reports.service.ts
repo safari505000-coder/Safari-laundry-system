@@ -1157,6 +1157,33 @@ export class ReportsService {
     const orderMap = new Map(orders.map((o) => [o.id, o] as const));
     const expenseMap = new Map(expenses.map((e) => [e.id, e] as const));
 
+    /** WALLET_SETTLEMENT: slip may live on ManagerCashCustody when only custodyId is on the GL row. */
+    const custodyIdsForSlips = new Set<string>();
+    for (const row of glRows) {
+      if (row.entryType !== GeneralLedgerEntryType.WALLET_SETTLEMENT) continue;
+      const m = row.metadata;
+      if (!m || typeof m !== 'object' || Array.isArray(m)) continue;
+      const rec = m as Record<string, unknown>;
+      if (rec['event'] === 'CUSTODY_VERIFIED' && typeof rec['custodyId'] === 'string') {
+        custodyIdsForSlips.add(rec['custodyId']);
+      }
+    }
+    const custodySlipById = new Map<string, string | null>();
+    if (custodyIdsForSlips.size > 0) {
+      const bags = await this.prisma.managerCashCustody.findMany({
+        where: { id: { in: [...custodyIdsForSlips] } },
+        select: { id: true, depositSlipUrl: true },
+      });
+      for (const b of bags) {
+        custodySlipById.set(
+          b.id,
+          typeof b.depositSlipUrl === 'string' && b.depositSlipUrl.trim().length > 0 ?
+            b.depositSlipUrl.trim()
+          : null,
+        );
+      }
+    }
+
     const out: Array<{
       id: string;
       at: string;
@@ -1229,9 +1256,23 @@ export class ReportsService {
           refId: exp.id,
         });
       } else if (row.entryType === GeneralLedgerEntryType.WALLET_SETTLEMENT) {
-        // Bank/Custody settlement event — emitted by
-        // ManagerCustodyService.verifyCustody when a bag is validated and
-        // deposited at the bank. Not tied to a single order row.
+        // Bank/Custody settlement + driver-deposit + bank-deposit audit rows.
+        // Attachments: metadata.receiptImageUrl (deposits / bank logs) or
+        // ManagerCashCustody.depositSlipUrl via metadata.custodyId (CUSTODY_VERIFIED).
+        const m =
+          row.metadata && typeof row.metadata === 'object' && !Array.isArray(row.metadata) ?
+            (row.metadata as Record<string, unknown>)
+          : {};
+        let walletAttach: string | null = null;
+        const direct = m['receiptImageUrl'];
+        if (typeof direct === 'string' && direct.trim().length > 0) {
+          walletAttach = direct.trim();
+        } else if (m['event'] === 'CUSTODY_VERIFIED') {
+          const cid = m['custodyId'];
+          if (typeof cid === 'string' && custodySlipById.has(cid)) {
+            walletAttach = custodySlipById.get(cid) ?? null;
+          }
+        }
         out.push({
           id: row.id,
           at: row.createdAt.toISOString(),
@@ -1240,7 +1281,7 @@ export class ReportsService {
           memo: row.memo,
           driverId: null,
           driverName: null,
-          attachmentUrl: null,
+          attachmentUrl: walletAttach,
           refKind: 'GL',
           refId: row.id,
         });

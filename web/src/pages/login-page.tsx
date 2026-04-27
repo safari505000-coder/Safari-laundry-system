@@ -225,7 +225,7 @@ export function LoginPage() {
         />
         <div className="flex min-h-0 flex-col items-center justify-center gap-6 px-4 py-10 sm:px-6 lg:min-h-svh lg:py-12 lg:pe-8">
           <div className="w-full max-w-md text-center">
-            <BrandLogo />
+            <BrandLogo tone="onDark" />
           </div>
           <Card className="w-full max-w-md border border-white/10 bg-slate-950/35 shadow-xl shadow-black/20 backdrop-blur-xl">
             <CardHeader className="space-y-1">

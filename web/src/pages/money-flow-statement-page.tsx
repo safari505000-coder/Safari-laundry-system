@@ -471,11 +471,53 @@ export function MoneyFlowStatementPage() {
       </FilterBar>
 
       {loading && !data ?
-        <Skeleton className="h-96 w-full rounded-xl" />
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <Skeleton className="h-24 rounded-xl" />
+            <Skeleton className="h-24 rounded-xl" />
+            <Skeleton className="h-24 rounded-xl" />
+          </div>
+          <Skeleton className="h-96 w-full rounded-xl" />
+        </div>
       : !data ?
         null
       : (
         <Tabs defaultValue="inflows" className="space-y-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <Card className="border-border/80 px-4 py-3">
+              <p className="text-xs font-medium text-muted-foreground">
+                {t('moneyFlow.kpiGross', 'الإجمالي')}
+              </p>
+              <p
+                className="mt-1 text-2xl font-bold tabular-nums text-foreground"
+                dir="ltr"
+              >
+                {formatKwdLabel(data.executive.grossRevenueKd)}
+              </p>
+            </Card>
+            <Card className="border-border/80 px-4 py-3">
+              <p className="text-xs font-medium text-muted-foreground">
+                {t('moneyFlow.kpiCollected', 'المدفوع')}
+              </p>
+              <p
+                className="mt-1 text-2xl font-bold tabular-nums text-foreground"
+                dir="ltr"
+              >
+                {formatKwdLabel(data.collections.collectedRevenueKd)}
+              </p>
+            </Card>
+            <Card className="border-border/80 px-4 py-3">
+              <p className="text-xs font-medium text-muted-foreground">
+                {t('moneyFlow.kpiUncollected', 'المتبقي')}
+              </p>
+              <p
+                className="mt-1 text-2xl font-bold tabular-nums text-foreground"
+                dir="ltr"
+              >
+                {formatKwdLabel(data.collections.uncollectedRevenueKd)}
+              </p>
+            </Card>
+          </div>
           <TabsList className="flex w-full flex-wrap justify-start gap-1">
             <TabsTrigger value="inflows">
               {t('moneyFlow.tabInflows', 'وارد')}

@@ -62,8 +62,44 @@ const DEBT_TRANSFER_INCLUDE = {
   },
 } as const satisfies Prisma.DebtTransferInclude;
 
+/**
+ * List views (admin list + `mine`) do not need line-item orders. Skipping
+ * the nested `orders → order → customer` include avoids heavy queries and
+ * Prisma/DB surface area when the schema or relations drift.
+ */
+const DEBT_TRANSFER_LIST_INCLUDE = {
+  sourceDriver: {
+    select: {
+      id: true,
+      username: true,
+      fullName: true,
+      safariRole: true,
+      branchId: true,
+    },
+  },
+  targetDriver: {
+    select: {
+      id: true,
+      username: true,
+      fullName: true,
+      safariRole: true,
+      branchId: true,
+    },
+  },
+  executedBy: {
+    select: { id: true, username: true, fullName: true, safariRole: true },
+  },
+  cancelledBy: {
+    select: { id: true, username: true, fullName: true, safariRole: true },
+  },
+} as const satisfies Prisma.DebtTransferInclude;
+
 type DebtTransferRow = Prisma.DebtTransferGetPayload<{
   include: typeof DEBT_TRANSFER_INCLUDE;
+}>;
+
+type DebtTransferListRow = Prisma.DebtTransferGetPayload<{
+  include: typeof DEBT_TRANSFER_LIST_INCLUDE;
 }>;
 
 /**
@@ -488,9 +524,9 @@ export class DebtTransfersService {
         OR: [{ sourceDriverId: userId }, { targetDriverId: userId }],
       },
       orderBy: { createdAt: 'desc' },
-      include: DEBT_TRANSFER_INCLUDE,
+      include: DEBT_TRANSFER_LIST_INCLUDE,
     });
-    return { rows: rows.map((r) => this.serialize(r)) };
+    return { rows: rows.map((r) => this.serialize(r as DebtTransferListRow)) };
   }
 
   async findOne(id: string) {
@@ -523,7 +559,7 @@ export class DebtTransfersService {
         orderBy: { createdAt: 'desc' },
         take,
         skip,
-        include: DEBT_TRANSFER_INCLUDE,
+        include: DEBT_TRANSFER_LIST_INCLUDE,
       }),
       this.prisma.debtTransfer.count({ where }),
     ]);
@@ -532,13 +568,28 @@ export class DebtTransfersService {
       total,
       limit: take,
       offset: skip,
-      rows: rows.map((r) => this.serialize(r)),
+      rows: rows.map((r) => this.serialize(r as DebtTransferListRow)),
     };
   }
 
   /* ── Serializer ─────────────────────────────────────────────────────── */
 
-  private serialize(t: DebtTransferRow) {
+  private serialize(
+    t: DebtTransferRow | DebtTransferListRow,
+  ) {
+    const withLines = t as DebtTransferRow;
+    const lineItems =
+      withLines.orders?.length
+        ? withLines.orders.map((line) => ({
+            id: line.id,
+            amountSnapshot: line.amountSnapshot.toFixed(3),
+            order: {
+              ...line.order,
+              totalPrice: line.order.totalPrice.toFixed(3),
+            },
+          }))
+        : [];
+
     return {
       id: t.id,
       status: t.status,
@@ -559,14 +610,7 @@ export class DebtTransfersService {
       systemSignature: t.systemSignature,
       createdAt: t.createdAt,
       updatedAt: t.updatedAt,
-      orders: t.orders.map((line) => ({
-        id: line.id,
-        amountSnapshot: line.amountSnapshot.toFixed(3),
-        order: {
-          ...line.order,
-          totalPrice: line.order.totalPrice.toFixed(3),
-        },
-      })),
+      orders: lineItems,
     };
   }
 }

@@ -145,11 +145,16 @@ export function FinancialReportsHubPage() {
           </TabsList>
         </div>
 
+        {/*
+          Mount only the active tab’s page. Otherwise every tab’s useEffect
+          runs at once (hidden Radix panes) and 403s from an inactive tab
+          look like the wrong screen is “broken” for GM/accountant.
+        */}
         {allowedTabs.map((tab) => {
           const Component = tab.Component;
           return (
             <TabsContent key={tab.id} value={tab.id} className="mt-0">
-              <Component />
+              {activeTab === tab.id ? <Component /> : null}
             </TabsContent>
           );
         })}

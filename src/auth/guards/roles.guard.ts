@@ -36,6 +36,21 @@ export class RolesGuard implements CanActivate {
     if (role === SafariRole.OWNER) {
       return true;
     }
+    // V19.25 — Second-eye (GENERAL_MANAGER) must not be blocked from the
+    // unified money stream. If a deployed API bundle lags the source tree
+    // (`@Roles` on GET /reports/unified-ledger-stream), GM still needs this
+    // read-only audit. Scope is the single path string only.
+    if (role === SafariRole.GENERAL_MANAGER) {
+      const rawUrl =
+        (req as { originalUrl?: string; url?: string; path?: string })
+          .originalUrl ??
+        (req as { url?: string }).url ??
+        (req as { path?: string }).path ??
+        '';
+      if (rawUrl.includes('unified-ledger-stream')) {
+        return true;
+      }
+    }
     const driverDailyPos = this.reflector.getAllAndOverride<boolean>(
       DRIVER_FINANCE_DAILY_POS_KEY,
       [context.getHandler(), context.getClass()],

@@ -89,7 +89,31 @@ export class PaymentsService implements OnModuleInit {
     ).replace(/\/$/, '');
   }
 
+  private looksLikeLocalHost(url: string): boolean {
+    return /localhost|127\.0\.0\.1|0\.0\.0\.0/.test(url);
+  }
+
   onModuleInit(): void {
+    const inProd = process.env.NODE_ENV === 'production';
+    if (inProd && !this.isPublicMockCheckoutAvailable()) {
+      if (this.looksLikeLocalHost(this.webAppUrl)) {
+        this.logger.error(
+          'PAYMENTS: PUBLIC_WEB_APP_URL is localhost (or loopback) while real UPayments is enabled. After pay, the gateway redirects the customer to this URL — phones cannot open it. Set PUBLIC_WEB_APP_URL to your public SPA (e.g. https://www.safariomni.com) and redeploy.',
+        );
+      }
+      if (!this.callbackPublicUrl) {
+        const fallback = (process.env.PUBLIC_API_URL ?? '').replace(/\/$/, '');
+        if (!fallback || this.looksLikeLocalHost(fallback)) {
+          this.logger.error(
+            'PAYMENTS: PAYMENTS_CALLBACK_PUBLIC_URL is unset and PUBLIC_API_URL is missing or not internet-reachable. UPayments cannot POST /api/payments/callback; orders may stay unpaid. Set PAYMENTS_CALLBACK_PUBLIC_URL to the public https base of this API (same as deploy/render-production.env).',
+          );
+        }
+      } else if (this.looksLikeLocalHost(this.callbackPublicUrl)) {
+        this.logger.error(
+          'PAYMENTS: PAYMENTS_CALLBACK_PUBLIC_URL must be a public https host — not localhost. UPayments server-to-server callback will never reach your app.',
+        );
+      }
+    }
     if (this.isPublicMockCheckoutAvailable()) {
       const inProd = process.env.NODE_ENV === 'production';
       if (inProd) {

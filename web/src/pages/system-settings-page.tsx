@@ -7,6 +7,7 @@ import {
   CalendarDays,
   ChevronRight,
   Clock,
+  CreditCard,
   HandCoins,
   Info,
   Landmark,
@@ -28,15 +29,19 @@ import {
   type DebtHoldMode,
   type DebtHoldPolicy,
   type PayrollSettings,
+  type PaymentMethodFeeConfig,
+  type KnetCommissionRule,
   type SystemToggleKey,
   type SystemToggleRow,
   getDebtHoldPolicy,
   getDefaultCommissionRule,
+  getPaymentMethodFeeConfig,
   getPayrollSettings,
   listSystemToggles,
   setSystemToggle,
   updateDebtHoldPolicy,
   updatePayrollSettings,
+  updatePaymentMethodFeeConfig,
   upsertDefaultCommissionRule,
 } from '@/lib/api';
 import { Badge } from '@/modules/shared/components/ui/badge';
@@ -119,6 +124,8 @@ export function SystemSettingsPage() {
   const [defaultRule, setDefaultRule] = useState<CommissionRuleRow | null>(
     null,
   );
+  const [paymentFeeConfig, setPaymentFeeConfig] =
+    useState<PaymentMethodFeeConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState<SystemToggleKey | null>(null);
 
@@ -126,16 +133,18 @@ export function SystemSettingsPage() {
     if (!token) return;
     setLoading(true);
     try {
-      const [t, p, ps, dr] = await Promise.all([
+      const [t, p, ps, dr, fee] = await Promise.all([
         listSystemToggles(token),
         getDebtHoldPolicy(token),
         getPayrollSettings(token),
         getDefaultCommissionRule(token),
+        getPaymentMethodFeeConfig(token),
       ]);
       setToggles(t);
       setDebtPolicy(p);
       setPayrollSettings(ps);
       setDefaultRule(dr);
+      setPaymentFeeConfig(fee);
     } catch (e) {
       if (e instanceof ApiError) toast.error(e.message);
     } finally {
@@ -266,6 +275,28 @@ export function SystemSettingsPage() {
             })}
           </div>
         )}
+      </section>
+
+      {/* ─── KNET / card fee estimates (reporting) ─────────────── */}
+      <section>
+        <div className="mb-3">
+          <h2 className="text-lg font-semibold">
+            عمولة كي نت وروابط الدفع
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            تُستخدم تقريبياً في الأرباح ورسوم البنوك في التقارير — لا تغيّر مبالغ
+            فواتير العملاء. اختر مبلغاً ثابتاً لكل عملية (يدوي)، أو نسبة فقط، أو
+            الأعلى بين المبلغ الثابت والنسبة.
+          </p>
+        </div>
+        {loading && !paymentFeeConfig ?
+          <Skeleton className="h-56 w-full" />
+        : paymentFeeConfig ?
+          <KnetPaymentFeeEditor
+            value={paymentFeeConfig}
+            onSaved={(c) => setPaymentFeeConfig(c)}
+          />
+        : null}
       </section>
 
       {/* ─── Section 2 — Commission (conditional) ─────────────── */}
@@ -914,6 +945,191 @@ function PayrollSettingsEditor({
           <Button onClick={handleSave} disabled={!dirty || saving}>
             {saving && <Loader2 className="me-2 size-4 animate-spin" />}
             حفظ إعدادات الرواتب
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+const KNET_RULE_OPTIONS: { value: KnetCommissionRule; label: string }[] = [
+  {
+    value: 'HIGHER_OF_FLAT_AND_PERCENT',
+    label: 'الأعلى بين مبلغ ثابت ونسبة (يُقارن الحقلان أدناه)',
+  },
+  {
+    value: 'FLAT_ONLY',
+    label: 'مبلغ ثابت يدوي (د.ك) لكل عملية كي نت',
+  },
+  {
+    value: 'PERCENT_ONLY',
+    label: 'نسبة يدوية من قيمة الفاتورة (كي نت)',
+  },
+];
+
+function KnetPaymentFeeEditor({
+  value,
+  onSaved,
+}: {
+  value: PaymentMethodFeeConfig;
+  onSaved: (c: PaymentMethodFeeConfig) => void;
+}) {
+  const { token } = useAuth();
+  const [knetRule, setKnetRule] = useState<KnetCommissionRule>(value.knetRule);
+  const [knetFlatKd, setKnetFlatKd] = useState(
+    Number.parseFloat(value.knetFlatKd).toString(),
+  );
+  const [knetPercentOfGross, setKnetPercentOfGross] = useState(
+    Number.parseFloat(value.knetPercentOfGross).toString(),
+  );
+  const [cardPercentOfGross, setCardPercentOfGross] = useState(
+    Number.parseFloat(value.cardPercentOfGross).toString(),
+  );
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setKnetRule(value.knetRule);
+    setKnetFlatKd(Number.parseFloat(value.knetFlatKd).toString());
+    setKnetPercentOfGross(
+      Number.parseFloat(value.knetPercentOfGross).toString(),
+    );
+    setCardPercentOfGross(
+      Number.parseFloat(value.cardPercentOfGross).toString(),
+    );
+  }, [value]);
+
+  const parseNum = (s: string) => {
+    const n = Number.parseFloat(s.replace(',', '.'));
+    return Number.isFinite(n) ? n : NaN;
+  };
+
+  const flatN = parseNum(knetFlatKd);
+  const knetPctN = parseNum(knetPercentOfGross);
+  const cardPctN = parseNum(cardPercentOfGross);
+  const dirty =
+    knetRule !== value.knetRule ||
+    Math.abs(flatN - Number.parseFloat(value.knetFlatKd)) > 1e-6 ||
+    Math.abs(knetPctN - Number.parseFloat(value.knetPercentOfGross)) > 1e-7 ||
+    Math.abs(cardPctN - Number.parseFloat(value.cardPercentOfGross)) > 1e-7;
+
+  async function handleSave() {
+    if (!token) return;
+    if (
+      [flatN, knetPctN, cardPctN].some((n) => !Number.isFinite(n) || n < 0)
+    ) {
+      toast.error('تأكد من إدخال أرقام صحيحة (صفر فأعلى).');
+      return;
+    }
+    setSaving(true);
+    try {
+      const saved = await updatePaymentMethodFeeConfig(token, {
+        knetRule,
+        knetFlatKd: flatN,
+        knetPercentOfGross: knetPctN,
+        cardPercentOfGross: cardPctN,
+      });
+      onSaved(saved);
+      toast.success('تم حفظ تقديرات رسوم كي نت');
+    } catch (e) {
+      if (e instanceof ApiError) toast.error(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardContent className="space-y-4 pt-4">
+        <div className="flex items-start gap-2 rounded-md border border-sky-200/80 bg-sky-50/60 px-3 py-2 text-xs text-sky-950">
+          <Info className="mt-0.5 size-4 shrink-0" />
+          <p>
+            حقل &quot;مبلغ ثابت&quot; و&quot;نسبة كي نت&quot; يتحكمان بفواتير
+            كي نت. حقل &quot;نسبة البطاقة/الرابط&quot; لـ الدفع عبر رابط/أونلاين
+            (ليست كي نت). لتحصيل مبلغ ثابت فقط: اختر &quot;مبلغ ثابت يدوي&quot;
+            وأدخل المبلغ بالدينار.
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label className="flex items-center gap-2">
+            <CreditCard className="size-4" />
+            طريقة احتساب عمولة كي نت
+          </Label>
+          <Select
+            value={knetRule}
+            onValueChange={(v) => v && setKnetRule(v as KnetCommissionRule)}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {KNET_RULE_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label>مبلغ ثابت كي نت (د.ك / عملية)</Label>
+            <Input
+              type="text"
+              inputMode="decimal"
+              className="font-mono tabular-nums"
+              dir="ltr"
+              value={knetFlatKd}
+              onChange={(e) => setKnetFlatKd(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              مثال: 0.100 — يُستخدم حسب الطريقة أعلاه.
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label>نسبة كي نت (عشري: 0.015 = 1.5%)</Label>
+            <Input
+              type="text"
+              inputMode="decimal"
+              className="font-mono tabular-nums"
+              dir="ltr"
+              value={knetPercentOfGross}
+              onChange={(e) => setKnetPercentOfGross(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              يُتجاهل عند &quot;مبلغ ثابت يدوي فقط&quot;.
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label className="flex items-center gap-2">
+            <Link2 className="size-4" />
+            نسبة رابط الدفع / أونلاين (عشري: 0.025 = 2.5%)
+          </Label>
+          <Input
+            type="text"
+            inputMode="decimal"
+            className="max-w-sm font-mono tabular-nums"
+            dir="ltr"
+            value={cardPercentOfGross}
+            onChange={(e) => setCardPercentOfGross(e.target.value)}
+          />
+        </div>
+
+        <p className="text-xs text-muted-foreground">
+          آخر تحديث:{' '}
+          {new Date(value.updatedAt).toLocaleString('ar-KW', {
+            dateStyle: 'short',
+            timeStyle: 'short',
+          })}
+        </p>
+
+        <div className="flex justify-end">
+          <Button onClick={handleSave} disabled={!dirty || saving}>
+            {saving && <Loader2 className="me-2 size-4 animate-spin" />}
+            حفظ
           </Button>
         </div>
       </CardContent>

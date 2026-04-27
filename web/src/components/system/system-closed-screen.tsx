@@ -12,7 +12,7 @@ export function SystemClosedScreen({ kuwaitTimeLabel, onSignOut }: Props) {
   const { t } = useTranslation();
   return (
     <div className="flex min-h-svh flex-col items-center justify-center bg-gradient-to-b from-[#0f172a] to-[#1e293b] px-4 text-center text-white">
-      <BrandLogo className="mb-6 max-h-16 opacity-95" />
+      <BrandLogo tone="onDark" className="mb-6 max-h-16" />
       <div className="mb-4 rounded-full bg-white/10 p-4">
         <Moon className="h-10 w-10 text-amber-200" aria-hidden />
       </div>

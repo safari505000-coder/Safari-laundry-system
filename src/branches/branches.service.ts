@@ -329,7 +329,7 @@ export class BranchesService {
 
   /** Branches with at least one in-flight order assigned to a driver at that branch. */
   async operationsLiveByBranch(): Promise<{
-    branches: { branchId: string; isLive: boolean }[];
+    branches: { branchId: string; branchName: string; isLive: boolean }[];
   }> {
     const driversWithActive = await this.prisma.user.findMany({
       where: {
@@ -348,12 +348,13 @@ export class BranchesService {
         .filter((id): id is string => id != null),
     );
     const all = await this.prisma.branch.findMany({
-      select: { id: true },
+      select: { id: true, name: true },
       orderBy: { name: 'asc' },
     });
     return {
       branches: all.map((b) => ({
         branchId: b.id,
+        branchName: b.name,
         isLive: live.has(b.id),
       })),
     };

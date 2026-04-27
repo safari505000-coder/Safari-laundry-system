@@ -155,6 +155,7 @@ export class ReportsController {
   @Get('unified-ledger-stream')
   @Roles(
     SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
     SafariRole.MANAGER,
     SafariRole.ACCOUNTANT,
     SafariRole.SUPERVISOR,
@@ -163,7 +164,7 @@ export class ReportsController {
   @ApiOperation({
     summary: `Unified ledger stream (${APP_BRAND})`,
     description:
-      'POS ledger entries, driver field expenses (with receipt pointers), and driver deposits for accountant radar.',
+      'POS ledger entries, driver field expenses (with receipt pointers), and driver deposits for accountant radar. GENERAL_MANAGER included to match `unifiedLedger.view` in the access matrix and exports.',
   })
   unifiedLedgerStream(@Query() q: ReportsRangeQueryDto) {
     return this.reportsService.unifiedLedgerStream(
