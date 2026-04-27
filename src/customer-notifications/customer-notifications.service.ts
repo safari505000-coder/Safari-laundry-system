@@ -210,6 +210,19 @@ export type PaymentConfirmedNotifyParams = {
 };
 
 /**
+ * After the driver marks the delivered order COMPLETED and cash/KNET was
+ * still UNPAID — separate from gateway `payment_confirmed` / link flows.
+ */
+export type DriverCollectionConfirmedNotifyParams = {
+  customerPhone: string;
+  orderId: string;
+  /** Invoice total, 3dp KWD string (e.g. "12.500"). */
+  amountKd: string;
+  /** e.g. "الكاش" | "الكي نت" */
+  paymentMethodLabelAr: string;
+};
+
+/**
  * V7.1 — Gender-neutral Arabic template for the auto-notification fired
  * when a POS checkout issues an invoice. The customer's display name is
  * not in scope at call time (only their phone), so this opens with a
@@ -348,6 +361,27 @@ function buildInvoiceEditedIssuerMessage(params: {
   return lines.join('\n');
 }
 
+function buildDriverCollectionConfirmedMessage(params: {
+  amountKd: string;
+  paymentMethodLabelAr: string;
+}): string {
+  const lines: string[] = [];
+  lines.push('عميلنا العزيز،');
+  lines.push('');
+  lines.push(
+    `نود إبلاغكم بأنه تم استلام مبلغ ${params.amountKd} د.ك من قبل السائق، وذلك عبر (${params.paymentMethodLabelAr}).`,
+  );
+  lines.push('');
+  lines.push(
+    'يرجى تأكيد صحة هذه المعلومة لضمان الشفافية ومتابعة أداء السائق.',
+  );
+  lines.push('');
+  lines.push('شاكرين تعاونكم معنا');
+  lines.push('');
+  lines.push(`فريق ${BRAND_SYSTEM_AR} 🇰🇼`);
+  return lines.join('\n');
+}
+
 function buildPaymentConfirmedMessage(params: {
   amountKd: string;
   orderLabel: string;
@@ -461,6 +495,20 @@ export class CustomerNotificationsService implements OnModuleInit {
     setImmediate(() => {
       void this.deliverPaymentConfirmed(params).catch((e) =>
         this.logger.warn(`Payment confirmed notify failed: ${e}`),
+      );
+    });
+  }
+
+  /**
+   * Driver closed the order as COMPLETED with cash or handheld KNET still
+   * marked UNPAID — does not run for ONLINE / PAYMENT_LINK / gateway paths.
+   */
+  notifyDriverCollectionConfirmed(
+    params: DriverCollectionConfirmedNotifyParams,
+  ): void {
+    setImmediate(() => {
+      void this.deliverDriverCollectionConfirmed(params).catch((e) =>
+        this.logger.warn(`Driver collection confirmed notify failed: ${e}`),
       );
     });
   }
@@ -620,6 +668,43 @@ export class CustomerNotificationsService implements OnModuleInit {
     }
     this.logger.warn(
       `Payment-confirmed WhatsApp not sent (check MOATMT_* and CUSTOMER_NOTIFY_WEBHOOK_URL). ` +
+        `phone=${formatPhoneHintForLog(params.customerPhone)} orderId=${params.orderId} preview=${message.slice(0, 100)}…`,
+    );
+  }
+
+  private async deliverDriverCollectionConfirmed(
+    params: DriverCollectionConfirmedNotifyParams,
+  ): Promise<void> {
+    const message = buildDriverCollectionConfirmedMessage({
+      amountKd: params.amountKd,
+      paymentMethodLabelAr: params.paymentMethodLabelAr,
+    });
+    if (await this.trySendMoatmt(params.customerPhone, message, null)) {
+      return;
+    }
+    const webhook = process.env.CUSTOMER_NOTIFY_WEBHOOK_URL?.trim();
+    if (webhook) {
+      const res = await fetch(webhook, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: params.customerPhone,
+          message,
+          orderId: params.orderId,
+          template: 'driver_collection_confirmed',
+          amountKd: params.amountKd,
+          paymentMethodLabelAr: params.paymentMethodLabelAr,
+        }),
+      });
+      if (!res.ok) {
+        this.logger.warn(
+          `CUSTOMER_NOTIFY_WEBHOOK_URL returned ${res.status} (driver_collection_confirmed)`,
+        );
+      }
+      return;
+    }
+    this.logger.warn(
+      `Driver-collection WhatsApp not sent (check MOATMT_* and CUSTOMER_NOTIFY_WEBHOOK_URL). ` +
         `phone=${formatPhoneHintForLog(params.customerPhone)} orderId=${params.orderId} preview=${message.slice(0, 100)}…`,
     );
   }

@@ -2169,7 +2169,17 @@ export class OrdersService {
       data.completedAt = new Date();
     }
 
-    return this.prisma.$transaction(
+    const transitionedToCompleted =
+      dto.status === OrderStatus.COMPLETED && dto.status !== order.status;
+    /** Driver delivery: cash or handheld KNET collected at completion — not link/online gateway. */
+    const notifyDriverManualCollection =
+      transitionedToCompleted &&
+      !order.walletSettledAt &&
+      order.cashStatus === CashStatus.UNPAID &&
+      (order.posPaymentMethod === PosPaymentMethod.CASH ||
+        order.posPaymentMethod === PosPaymentMethod.KNET);
+
+    const updated = await this.prisma.$transaction(
       async (tx) => {
         await tx.order.update({
           where: { id: orderId },
@@ -2189,6 +2199,27 @@ export class OrdersService {
       },
       { maxWait: 10_000, timeout: 15_000 },
     );
+
+    if (notifyDriverManualCollection) {
+      const phone = resolveCustomerPhoneForNotify(
+        updated.customer.phone,
+        updated.customer.phone2,
+      );
+      if (phone.trim()) {
+        const paymentMethodLabelAr =
+          order.posPaymentMethod === PosPaymentMethod.CASH
+            ? 'الكاش'
+            : 'الكي نت';
+        this.customerNotifications.notifyDriverCollectionConfirmed({
+          customerPhone: phone,
+          orderId: updated.id,
+          amountKd: updated.totalPrice.toFixed(3),
+          paymentMethodLabelAr,
+        });
+      }
+    }
+
+    return updated;
   }
 
   async getManagerDashboard(): Promise<{
