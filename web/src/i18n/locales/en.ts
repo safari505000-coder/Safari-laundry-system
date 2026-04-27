@@ -760,6 +760,10 @@ export const en = {
   login: {
     brand: 'Safari Omni',
     title: 'Safari Omni',
+    chipCaption: 'Safari Omni',
+    heroHeadline: 'A smart operating system for intelligent control.',
+    heroBody:
+      'Built on modern ERP architecture, Safari Omni redefines laundry management. We do not just offer software — you get an advanced operations engine that processes financial and logistics data in real time, so you keep full control over every detail of your business.',
     copyright: 'Safari Omni © 2026 — All rights reserved to Safari Express Laundries Group.',
     cardTitle: 'Sign in',
     cardDescription:
