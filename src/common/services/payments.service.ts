@@ -194,8 +194,12 @@ export class PaymentsService implements OnModuleInit {
     const notificationUrl = this.callbackPublicUrl
       ? `${this.callbackPublicUrl}/api/payments/callback`
       : `${process.env.PUBLIC_API_URL ?? 'http://localhost:3000'}/api/payments/callback`;
-    const returnUrl = `${this.webAppUrl}/payment/success?orderId=${encodeURIComponent(params.orderId)}`;
-    const cancelUrl = `${this.webAppUrl}/payment/failed?orderId=${encodeURIComponent(params.orderId)}`;
+    // No query string on return/cancel: UPayments appends `?key=value&...` to
+    // the URL; if we already used `?orderId=…`, their join used to produce
+    // `...?orderId=…?payment_id=…` and browsers broke the success page. Our
+    // SPA reads `orderId` from `requested_order_id` / `trn_udf` on redirect.
+    const returnUrl = `${this.webAppUrl}/payment/success`;
+    const cancelUrl = `${this.webAppUrl}/payment/failed`;
 
     // UPayments mandates numeric amount with up to 3 decimals (KWD fils).
     // We pass as Number to match their schema; the authoritative

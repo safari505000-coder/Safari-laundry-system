@@ -11,11 +11,34 @@ import { formatKwdLabel } from '@/lib/kwd';
 import { Button } from '@/modules/shared/components/ui/button';
 
 /**
+ * After UPayments redirect, the order id may appear as:
+ *   - `orderId` (our legacy returnUrl) — value can be corrupt if a second
+ *     `?` was injected (`uuid?payment_id=…`); we strip at first `?`.
+ *   - `requested_order_id` (UPayments) — matches our Safari `Order.id`.
+ *   - `trn_udf=orderId=<uuid>` (echo of customerExtraData).
+ */
+function resolveOrderIdFromUrl(params: URLSearchParams): string {
+  const raw = params.get('orderId')?.trim();
+  if (raw) {
+    const uuid = raw.split('?')[0]?.trim() ?? '';
+    if (uuid) return uuid;
+  }
+  const req = params.get('requested_order_id')?.trim();
+  if (req) return req;
+  const udf = params.get('trn_udf')?.trim();
+  if (udf) {
+    const m = udf.match(/orderId=([0-9a-f-]{8}-[0-9a-f-]{4}-[0-9a-f-]{4}-[0-9a-f-]{4}-[0-9a-f-]{12})/i);
+    if (m) return m[1];
+  }
+  return '';
+}
+
+/**
  * V1.7.0 — Customer-facing landing page after UPayments redirects
  * the shopper back from the hosted checkout. Rendered at two
  * routes:
- *   - `/payment/success?orderId=<uuid>` (returnUrl from UPayments)
- *   - `/payment/failed?orderId=<uuid>`  (cancelUrl from UPayments)
+ *   - `/payment/success?…` (returnUrl; order id in query — see resolve helper)
+ *   - `/payment/failed?…`  (cancelUrl)
  *
  * UX rules:
  *   - Public route — no login. The URL alone is enough; the
@@ -36,8 +59,8 @@ export function PaymentResultPage({
 }: {
   mode: 'success' | 'failed';
 }) {
-  const [params] = useSearchParams();
-  const orderId = params.get('orderId')?.trim() ?? '';
+  const [searchParams] = useSearchParams();
+  const orderId = resolveOrderIdFromUrl(searchParams);
 
   const [status, setStatus] = useState<PublicPaymentStatus | null>(null);
   const [error, setError] = useState<string | null>(null);

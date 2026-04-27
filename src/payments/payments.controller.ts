@@ -171,6 +171,9 @@ document.getElementById('go').onclick = async function () {
       '';
 
     if (trackId) {
+      this.logger.log(
+        `UPayments callback: received trackId prefix=${trackId.slice(0, 12)}… (inquiry next)`,
+      );
       const inquiry = await this.paymentsService.fetchGatewayStatus(trackId);
       const resolvedOrderId =
         inquiry.data.order?.id ??
@@ -194,8 +197,12 @@ document.getElementById('go').onclick = async function () {
       const outcome = this.paymentsService.normalizeCallbackStatus(
         inquiry.data.result ?? body.result ?? body.status ?? '',
       );
+      const willFinalize = outcome === 'success' && inquiry.ok;
+      this.logger.log(
+        `UPayments callback: orderId=${resolvedOrderId} gatewayResult=${inquiry.data.result ?? 'n/a'} normalizedOutcome=${outcome} inquiryOk=${inquiry.ok} willFinalize=${willFinalize}`,
+      );
 
-      if (outcome === 'success' && inquiry.ok) {
+      if (willFinalize) {
         await this.paymentsService.finalizePaidOrderFromGateway(
           resolvedOrderId,
           {
@@ -210,6 +217,9 @@ document.getElementById('go').onclick = async function () {
             receivedBody: body,
           } as never,
         );
+        this.logger.log(
+          `UPayments callback: finalizePaidOrderFromGateway done orderId=${resolvedOrderId}`,
+        );
       }
 
       return {
@@ -221,6 +231,9 @@ document.getElementById('go').onclick = async function () {
     }
 
     // --- Legacy fallback: HMAC-signed webhook (non-UPayments gateway) ---
+    this.logger.warn(
+      `UPayments callback: no trackId in body — keys=${Object.keys(body ?? {}).join(',') || 'empty'}; falling back to legacy HMAC (needs orderId)`,
+    );
     if (!body.orderId) {
       throw new UnauthorizedException(
         'Callback missing trackId and orderId — cannot verify payment',
