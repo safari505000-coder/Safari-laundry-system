@@ -2279,12 +2279,16 @@ export function getPublicPaymentStatus(
   opts?: { returnTrackId?: string },
 ): Promise<PublicPaymentStatus> {
   const q = new URLSearchParams();
-  if (opts?.returnTrackId?.trim()) {
-    q.set('track_id', opts.returnTrackId.trim());
+  const tid = opts?.returnTrackId?.trim();
+  if (tid) {
+    q.set('track_id', tid);
   }
   const qs = q.toString();
   return apiJson<PublicPaymentStatus>(
     `/api/payments/status/${encodeURIComponent(orderId)}${qs ? `?${qs}` : ''}`,
+    tid
+      ? { headers: { 'X-Gateway-Track-Id': tid } }
+      : undefined,
   );
 }
 
@@ -2311,13 +2315,18 @@ export function recheckPublicPayment(
   opts?: { returnTrackId?: string },
 ): Promise<PublicPaymentRecheck> {
   const q = new URLSearchParams();
-  if (opts?.returnTrackId?.trim()) {
-    q.set('track_id', opts.returnTrackId.trim());
+  const tid = opts?.returnTrackId?.trim();
+  if (tid) {
+    q.set('track_id', tid);
   }
   const qs = q.toString();
   return apiJson<PublicPaymentRecheck>(
     `/api/payments/recheck/${encodeURIComponent(orderId)}${qs ? `?${qs}` : ''}`,
-    { method: 'POST', body: '{}' },
+    {
+      method: 'POST',
+      body: '{}',
+      ...(tid ? { headers: { 'X-Gateway-Track-Id': tid } } : {}),
+    },
   );
 }
 

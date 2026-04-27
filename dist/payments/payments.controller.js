@@ -392,6 +392,10 @@ function pickReturnTrackIdFromRequest(track_id, trackID, trackIdQuery, req) {
     if (fromDecorators) {
         return fromDecorators;
     }
+    const fromHeader = readGatewayTrackIdFromRequestHeaders(req);
+    if (fromHeader) {
+        return fromHeader;
+    }
     const fromRawUrl = extractTrackIdFromRequestUrl(req);
     if (fromRawUrl) {
         return fromRawUrl;
@@ -430,27 +434,28 @@ function pickReturnTrackIdFromRequest(track_id, trackID, trackIdQuery, req) {
 function normalizeAmpInQueryString(qs) {
     return qs.replace(/&amp;/gi, '&').replace(/%26amp%3B/gi, '&');
 }
+function readGatewayTrackIdFromRequestHeaders(req) {
+    const raw = req.headers['x-gateway-track-id'] ??
+        req.headers['X-Gateway-Track-Id'] ??
+        '';
+    if (Array.isArray(raw)) {
+        return (raw[0] ?? '').trim();
+    }
+    return String(raw).trim();
+}
 function extractTrackIdFromRequestUrl(req) {
-    const raw = (typeof req.originalUrl === 'string' && req.originalUrl.length > 0
+    let raw = (typeof req.originalUrl === 'string' && req.originalUrl.length > 0
         ? req.originalUrl
         : null) ??
         (typeof req.url === 'string' && req.url.length > 0 ? req.url : '') ??
         '';
-    const qMark = raw.indexOf('?');
-    if (qMark < 0) {
-        return '';
+    raw = normalizeAmpInQueryString(raw);
+    try {
+        raw = decodeURIComponent(raw);
     }
-    let qs = raw.slice(qMark + 1).split('#')[0];
-    qs = normalizeAmpInQueryString(qs);
-    const sp = new URLSearchParams(qs);
-    const fromParams = sp.get('track_id')?.trim() ||
-        sp.get('TrackID')?.trim() ||
-        sp.get('trackId')?.trim() ||
-        '';
-    if (fromParams) {
-        return fromParams;
+    catch {
     }
-    const m = /(?:^|&)track_id=([^&]+)/i.exec(qs);
+    const m = /[?&]track_id=([^&#]+)/i.exec(raw);
     if (m?.[1]) {
         try {
             return decodeURIComponent(m[1].trim());
@@ -459,7 +464,17 @@ function extractTrackIdFromRequestUrl(req) {
             return m[1].trim();
         }
     }
-    return '';
+    const qMark = raw.indexOf('?');
+    if (qMark < 0) {
+        return '';
+    }
+    let qs = raw.slice(qMark + 1).split('#')[0];
+    qs = normalizeAmpInQueryString(qs);
+    const sp = new URLSearchParams(qs);
+    return (sp.get('track_id')?.trim() ||
+        sp.get('TrackID')?.trim() ||
+        sp.get('trackId')?.trim() ||
+        '');
 }
 function extractOrderIdFromExtraData(raw) {
     if (!raw)
