@@ -277,11 +277,11 @@ document.getElementById('go').onclick = async function () {
     summary: 'Public order payment status (for customer return pages)',
   })
   async publicOrderStatus(
+    @Req() req: Request,
     @Param('orderId') orderId: string,
     @Query('track_id') track_id?: string,
     @Query('TrackID') trackID?: string,
     @Query('trackId') trackIdQuery?: string,
-    @Req() req?: Request,
   ): Promise<PublicOrderStatusDto> {
     if (!orderId || orderId.length < 32) {
       throw new BadRequestException('orderId is required (UUID)');
@@ -377,11 +377,11 @@ document.getElementById('go').onclick = async function () {
       'Public — for the /payment/success|failed return pages. Always calls UPayments get-payment-status. If CAPTURED the order is marked paid before responding.',
   })
   async recheckPayment(
+    @Req() req: Request,
     @Param('orderId') orderId: string,
     @Query('track_id') track_id?: string,
     @Query('TrackID') trackID?: string,
     @Query('trackId') trackIdQuery?: string,
-    @Req() req?: Request,
   ): Promise<{
     orderId: string;
     status: OrderStatus;
@@ -518,22 +518,26 @@ document.getElementById('go').onclick = async function () {
 }
 
 /**
- * Prefer explicit `@Query` values, then Express `req.query` (always
- * reflects the raw query string). Some deployments did not populate
- * `track_id` via decorators while the access log still showed it.
+ * Prefer `@Query`, then parse `req.originalUrl` / `req.url` (raw query —
+ * survives cases where Express `req.query` or Nest decorators miss
+ * `track_id` behind proxies / rewrites), then `req.query`.
  */
 function pickReturnTrackIdFromRequest(
   track_id: string | undefined,
   trackID: string | undefined,
   trackIdQuery: string | undefined,
-  req: Request | undefined,
+  req: Request,
 ): string {
   const fromDecorators =
     track_id?.trim() || trackID?.trim() || trackIdQuery?.trim() || '';
   if (fromDecorators) {
     return fromDecorators;
   }
-  if (!req?.query || typeof req.query !== 'object') {
+  const fromRawUrl = extractTrackIdFromRequestUrl(req);
+  if (fromRawUrl) {
+    return fromRawUrl;
+  }
+  if (!req.query || typeof req.query !== 'object') {
     return '';
   }
   const q = req.query as Record<string, string | string[] | undefined>;
@@ -561,6 +565,47 @@ function pickReturnTrackIdFromRequest(
       if (v) {
         return v;
       }
+    }
+  }
+  return '';
+}
+
+function normalizeAmpInQueryString(qs: string): string {
+  return qs.replace(/&amp;/gi, '&').replace(/%26amp%3B/gi, '&');
+}
+
+/**
+ * Read `track_id` from the raw URL line (after `?`). This is the most
+ * reliable source when `req.query` is `{}` for `/api/...?track_id=…v2`.
+ */
+function extractTrackIdFromRequestUrl(req: Request): string {
+  const raw =
+    (typeof req.originalUrl === 'string' && req.originalUrl.length > 0
+      ? req.originalUrl
+      : null) ??
+    (typeof req.url === 'string' && req.url.length > 0 ? req.url : '') ??
+    '';
+  const qMark = raw.indexOf('?');
+  if (qMark < 0) {
+    return '';
+  }
+  let qs = raw.slice(qMark + 1).split('#')[0];
+  qs = normalizeAmpInQueryString(qs);
+  const sp = new URLSearchParams(qs);
+  const fromParams =
+    sp.get('track_id')?.trim() ||
+    sp.get('TrackID')?.trim() ||
+    sp.get('trackId')?.trim() ||
+    '';
+  if (fromParams) {
+    return fromParams;
+  }
+  const m = /(?:^|&)track_id=([^&]+)/i.exec(qs);
+  if (m?.[1]) {
+    try {
+      return decodeURIComponent(m[1].trim());
+    } catch {
+      return m[1].trim();
     }
   }
   return '';

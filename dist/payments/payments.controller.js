@@ -174,7 +174,7 @@ document.getElementById('go').onclick = async function () {
         }
         return { ok: true, orderId: body.orderId, outcome };
     }
-    async publicOrderStatus(orderId, track_id, trackID, trackIdQuery, req) {
+    async publicOrderStatus(req, orderId, track_id, trackID, trackIdQuery) {
         if (!orderId || orderId.length < 32) {
             throw new common_1.BadRequestException('orderId is required (UUID)');
         }
@@ -223,7 +223,7 @@ document.getElementById('go').onclick = async function () {
             amountKd: order.totalPrice.toFixed(3),
         };
     }
-    async recheckPayment(orderId, track_id, trackID, trackIdQuery, req) {
+    async recheckPayment(req, orderId, track_id, trackID, trackIdQuery) {
         if (!orderId || orderId.length < 32) {
             throw new common_1.BadRequestException('orderId is required (UUID)');
         }
@@ -356,13 +356,13 @@ __decorate([
     (0, swagger_1.ApiOperation)({
         summary: 'Public order payment status (for customer return pages)',
     }),
-    __param(0, (0, common_1.Param)('orderId')),
-    __param(1, (0, common_1.Query)('track_id')),
-    __param(2, (0, common_1.Query)('TrackID')),
-    __param(3, (0, common_1.Query)('trackId')),
-    __param(4, (0, common_1.Req)()),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('orderId')),
+    __param(2, (0, common_1.Query)('track_id')),
+    __param(3, (0, common_1.Query)('TrackID')),
+    __param(4, (0, common_1.Query)('trackId')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, String, String, String, Object]),
+    __metadata("design:paramtypes", [Object, String, String, String, String]),
     __metadata("design:returntype", Promise)
 ], PaymentsController.prototype, "publicOrderStatus", null);
 __decorate([
@@ -372,13 +372,13 @@ __decorate([
         summary: 'Force a UPayments inquiry and finalize if CAPTURED',
         description: 'Public — for the /payment/success|failed return pages. Always calls UPayments get-payment-status. If CAPTURED the order is marked paid before responding.',
     }),
-    __param(0, (0, common_1.Param)('orderId')),
-    __param(1, (0, common_1.Query)('track_id')),
-    __param(2, (0, common_1.Query)('TrackID')),
-    __param(3, (0, common_1.Query)('trackId')),
-    __param(4, (0, common_1.Req)()),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('orderId')),
+    __param(2, (0, common_1.Query)('track_id')),
+    __param(3, (0, common_1.Query)('TrackID')),
+    __param(4, (0, common_1.Query)('trackId')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, String, String, String, Object]),
+    __metadata("design:paramtypes", [Object, String, String, String, String]),
     __metadata("design:returntype", Promise)
 ], PaymentsController.prototype, "recheckPayment", null);
 exports.PaymentsController = PaymentsController = PaymentsController_1 = __decorate([
@@ -392,7 +392,11 @@ function pickReturnTrackIdFromRequest(track_id, trackID, trackIdQuery, req) {
     if (fromDecorators) {
         return fromDecorators;
     }
-    if (!req?.query || typeof req.query !== 'object') {
+    const fromRawUrl = extractTrackIdFromRequestUrl(req);
+    if (fromRawUrl) {
+        return fromRawUrl;
+    }
+    if (!req.query || typeof req.query !== 'object') {
         return '';
     }
     const q = req.query;
@@ -419,6 +423,40 @@ function pickReturnTrackIdFromRequest(track_id, trackID, trackIdQuery, req) {
             if (v) {
                 return v;
             }
+        }
+    }
+    return '';
+}
+function normalizeAmpInQueryString(qs) {
+    return qs.replace(/&amp;/gi, '&').replace(/%26amp%3B/gi, '&');
+}
+function extractTrackIdFromRequestUrl(req) {
+    const raw = (typeof req.originalUrl === 'string' && req.originalUrl.length > 0
+        ? req.originalUrl
+        : null) ??
+        (typeof req.url === 'string' && req.url.length > 0 ? req.url : '') ??
+        '';
+    const qMark = raw.indexOf('?');
+    if (qMark < 0) {
+        return '';
+    }
+    let qs = raw.slice(qMark + 1).split('#')[0];
+    qs = normalizeAmpInQueryString(qs);
+    const sp = new URLSearchParams(qs);
+    const fromParams = sp.get('track_id')?.trim() ||
+        sp.get('TrackID')?.trim() ||
+        sp.get('trackId')?.trim() ||
+        '';
+    if (fromParams) {
+        return fromParams;
+    }
+    const m = /(?:^|&)track_id=([^&]+)/i.exec(qs);
+    if (m?.[1]) {
+        try {
+            return decodeURIComponent(m[1].trim());
+        }
+        catch {
+            return m[1].trim();
         }
     }
     return '';

@@ -35,8 +35,8 @@ export declare class PaymentsController {
         outcome: "success" | "failed";
         reason?: undefined;
     }>;
-    publicOrderStatus(orderId: string, track_id?: string, trackID?: string, trackIdQuery?: string, req?: Request): Promise<PublicOrderStatusDto>;
-    recheckPayment(orderId: string, track_id?: string, trackID?: string, trackIdQuery?: string, req?: Request): Promise<{
+    publicOrderStatus(req: Request, orderId: string, track_id?: string, trackID?: string, trackIdQuery?: string): Promise<PublicOrderStatusDto>;
+    recheckPayment(req: Request, orderId: string, track_id?: string, trackID?: string, trackIdQuery?: string): Promise<{
         orderId: string;
         status: OrderStatus;
         isPaid: boolean;
