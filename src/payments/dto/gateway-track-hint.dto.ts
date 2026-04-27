@@ -12,6 +12,15 @@ export class GatewayTrackHintDto {
   })
   @IsOptional()
   @IsString()
-  @MaxLength(256)
+  @MaxLength(384)
   trackId?: string;
+
+  /** Same as `trackId` — some clients send snake_case JSON. */
+  @ApiPropertyOptional({
+    description: 'Alias of trackId (UPayments v2 id for inquiry)',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(384)
+  track_id?: string;
 }

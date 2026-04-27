@@ -2330,7 +2330,9 @@ export function getPublicPaymentStatus(
     {
       method: 'POST',
       headers,
-      body: JSON.stringify(tid ? { trackId: tid } : {}),
+      body: JSON.stringify(
+        tid ? { trackId: tid, track_id: tid } : {},
+      ),
     },
   );
 }
@@ -2374,7 +2376,9 @@ export function recheckPublicPayment(
     {
       method: 'POST',
       headers,
-      body: JSON.stringify(tid ? { trackId: tid } : {}),
+      body: JSON.stringify(
+        tid ? { trackId: tid, track_id: tid } : {},
+      ),
     },
   );
 }

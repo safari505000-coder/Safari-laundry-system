@@ -179,7 +179,7 @@ document.getElementById('go').onclick = async function () {
         return this.runPublicOrderStatusPoll(orderId, req, track_id, trackID, trackIdQuery, undefined);
     }
     async publicOrderStatusPost(req, orderId, body, track_id, trackID, trackIdQuery) {
-        return this.runPublicOrderStatusPoll(orderId, req, track_id, trackID, trackIdQuery, body?.trackId);
+        return this.runPublicOrderStatusPoll(orderId, req, track_id, trackID, trackIdQuery, body?.trackId ?? body?.track_id);
     }
     async runPublicOrderStatusPoll(orderId, req, track_id, trackID, trackIdQuery, bodyTrackId) {
         if (!orderId || orderId.length < 32) {
@@ -202,11 +202,7 @@ document.getElementById('go').onclick = async function () {
         let settled = Boolean(order.walletSettledAt);
         let status = order.status;
         if (!settled && status !== client_1.OrderStatus.COMPLETED) {
-            const candidates = [
-                ...new Set([returnTrack, order.posGatewayTrackId ?? '']
-                    .map((s) => s?.trim())
-                    .filter((s) => Boolean(s?.length))),
-            ];
+            const candidates = buildUpaymentsInquiryTrackCandidates(returnTrack, order.posGatewayTrackId);
             for (const tid of candidates) {
                 try {
                     const r = await this.paymentsService.tryFinalizeOrderIfUpaymentsCaptured(order.id, tid, tid === returnTrack
@@ -263,7 +259,7 @@ document.getElementById('go').onclick = async function () {
                 messageAr: 'الدفع مؤكَّد. شكراً لك.',
             };
         }
-        const returnTrack = pickReturnTrackIdFromRequest(body?.trackId, track_id, trackID, trackIdQuery, req);
+        const returnTrack = pickReturnTrackIdFromRequest(body?.trackId ?? body?.track_id, track_id, trackID, trackIdQuery, req);
         if (!returnTrack && !order.posGatewayTrackId) {
             return {
                 orderId: order.id,
@@ -278,11 +274,7 @@ document.getElementById('go').onclick = async function () {
         }
         this.logger.log(`UPayments manual recheck: orderId=${order.id} hasReturnTrack=${Boolean(returnTrack)} posTrack=${order.posGatewayTrackId ? 'yes' : 'no'}`);
         try {
-            const candidates = [
-                ...new Set([returnTrack, order.posGatewayTrackId ?? '']
-                    .map((s) => s?.trim())
-                    .filter((s) => Boolean(s?.length))),
-            ];
+            const candidates = buildUpaymentsInquiryTrackCandidates(returnTrack, order.posGatewayTrackId);
             for (const tid of candidates) {
                 const r = await this.paymentsService.tryFinalizeOrderIfUpaymentsCaptured(order.id, tid, tid === returnTrack
                     ? 'CUSTOMER_RECHECK_RETURN_TRACK'
@@ -413,7 +405,49 @@ exports.PaymentsController = PaymentsController = PaymentsController_1 = __decor
     __metadata("design:paramtypes", [payments_service_1.PaymentsService,
         prisma_service_1.PrismaService])
 ], PaymentsController);
+function readGatewayTrackIdFromPlainBody(req) {
+    const raw = req.body;
+    if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) {
+        return '';
+    }
+    const o = raw;
+    for (const k of ['trackId', 'track_id', 'TrackID', 'gateway_track_id']) {
+        const v = o[k];
+        if (typeof v === 'string' && v.trim()) {
+            return v.trim();
+        }
+    }
+    return '';
+}
+function upaymentTrackInquirySortKey(tid) {
+    const t = tid.trim();
+    if (!t) {
+        return 99;
+    }
+    if (/v2$/i.test(t)) {
+        return 0;
+    }
+    if (/^\d{18,}$/.test(t)) {
+        return 2;
+    }
+    if (/^\d+$/.test(t)) {
+        return 1;
+    }
+    return 1;
+}
+function buildUpaymentsInquiryTrackCandidates(returnTrack, posGatewayTrackId) {
+    const parts = [returnTrack, posGatewayTrackId ?? '']
+        .map((s) => (typeof s === 'string' ? s.trim() : ''))
+        .filter((s) => s.length > 0);
+    const unique = [...new Set(parts)];
+    unique.sort((a, b) => upaymentTrackInquirySortKey(a) - upaymentTrackInquirySortKey(b));
+    return unique;
+}
 function pickReturnTrackIdFromRequest(bodyTrackId, track_id, trackID, trackIdQuery, req) {
+    const fromPlainBody = readGatewayTrackIdFromPlainBody(req);
+    if (fromPlainBody) {
+        return fromPlainBody;
+    }
     const fromBody = bodyTrackId?.trim();
     if (fromBody) {
         return fromBody;

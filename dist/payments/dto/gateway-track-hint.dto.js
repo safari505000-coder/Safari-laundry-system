@@ -14,6 +14,7 @@ const swagger_1 = require("@nestjs/swagger");
 const class_validator_1 = require("class-validator");
 class GatewayTrackHintDto {
     trackId;
+    track_id;
 }
 exports.GatewayTrackHintDto = GatewayTrackHintDto;
 __decorate([
@@ -22,7 +23,16 @@ __decorate([
     }),
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
-    (0, class_validator_1.MaxLength)(256),
+    (0, class_validator_1.MaxLength)(384),
     __metadata("design:type", String)
 ], GatewayTrackHintDto.prototype, "trackId", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({
+        description: 'Alias of trackId (UPayments v2 id for inquiry)',
+    }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(384),
+    __metadata("design:type", String)
+], GatewayTrackHintDto.prototype, "track_id", void 0);
 //# sourceMappingURL=gateway-track-hint.dto.js.map
