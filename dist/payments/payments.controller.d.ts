@@ -1,4 +1,4 @@
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { OrderStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaymentsService } from '../common/services/payments.service';
@@ -35,8 +35,8 @@ export declare class PaymentsController {
         outcome: "success" | "failed";
         reason?: undefined;
     }>;
-    publicOrderStatus(orderId: string, track_id?: string, trackID?: string, trackIdQuery?: string): Promise<PublicOrderStatusDto>;
-    recheckPayment(orderId: string, track_id?: string, trackID?: string, trackIdQuery?: string): Promise<{
+    publicOrderStatus(orderId: string, track_id?: string, trackID?: string, trackIdQuery?: string, req?: Request): Promise<PublicOrderStatusDto>;
+    recheckPayment(orderId: string, track_id?: string, trackID?: string, trackIdQuery?: string, req?: Request): Promise<{
         orderId: string;
         status: OrderStatus;
         isPaid: boolean;

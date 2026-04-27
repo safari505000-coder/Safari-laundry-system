@@ -8,6 +8,7 @@ import {
   Param,
   Post,
   Query,
+  Req,
   Res,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -17,7 +18,7 @@ import {
   ApiProperty,
   ApiTags,
 } from '@nestjs/swagger';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { OrderStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaymentsService } from '../common/services/payments.service';
@@ -280,6 +281,7 @@ document.getElementById('go').onclick = async function () {
     @Query('track_id') track_id?: string,
     @Query('TrackID') trackID?: string,
     @Query('trackId') trackIdQuery?: string,
+    @Req() req?: Request,
   ): Promise<PublicOrderStatusDto> {
     if (!orderId || orderId.length < 32) {
       throw new BadRequestException('orderId is required (UUID)');
@@ -308,8 +310,15 @@ document.getElementById('go').onclick = async function () {
     // V1.7.3 — `/charge` may persist `session_id` (hosted link) while
     // `get-payment-status` only accepts the v2 `track_id` from the
     // return URL. The success page passes `?track_id=` from the redirect.
-    const returnTrack =
-      track_id?.trim() || trackID?.trim() || trackIdQuery?.trim() || '';
+    // Fall back to `req.query` — some edge proxies / Nest query parsing
+    // paths have left `@Query('track_id')` empty even when the URL
+    // contains it (we still saw the session id inquired instead of v2).
+    const returnTrack = pickReturnTrackIdFromRequest(
+      track_id,
+      trackID,
+      trackIdQuery,
+      req,
+    );
 
     let settled = Boolean(order.walletSettledAt);
     let status = order.status;
@@ -372,6 +381,7 @@ document.getElementById('go').onclick = async function () {
     @Query('track_id') track_id?: string,
     @Query('TrackID') trackID?: string,
     @Query('trackId') trackIdQuery?: string,
+    @Req() req?: Request,
   ): Promise<{
     orderId: string;
     status: OrderStatus;
@@ -418,8 +428,12 @@ document.getElementById('go').onclick = async function () {
       };
     }
 
-    const returnTrack =
-      track_id?.trim() || trackID?.trim() || trackIdQuery?.trim() || '';
+    const returnTrack = pickReturnTrackIdFromRequest(
+      track_id,
+      trackID,
+      trackIdQuery,
+      req,
+    );
 
     if (!returnTrack && !order.posGatewayTrackId) {
       return {
@@ -501,6 +515,55 @@ document.getElementById('go').onclick = async function () {
       messageAr,
     };
   }
+}
+
+/**
+ * Prefer explicit `@Query` values, then Express `req.query` (always
+ * reflects the raw query string). Some deployments did not populate
+ * `track_id` via decorators while the access log still showed it.
+ */
+function pickReturnTrackIdFromRequest(
+  track_id: string | undefined,
+  trackID: string | undefined,
+  trackIdQuery: string | undefined,
+  req: Request | undefined,
+): string {
+  const fromDecorators =
+    track_id?.trim() || trackID?.trim() || trackIdQuery?.trim() || '';
+  if (fromDecorators) {
+    return fromDecorators;
+  }
+  if (!req?.query || typeof req.query !== 'object') {
+    return '';
+  }
+  const q = req.query as Record<string, string | string[] | undefined>;
+  const g = (key: string): string => {
+    const v = q[key];
+    if (v === undefined) {
+      return '';
+    }
+    if (Array.isArray(v)) {
+      return (v[0] ?? '').trim();
+    }
+    return String(v).trim();
+  };
+  const direct =
+    g('track_id') ||
+    g('TrackID') ||
+    g('trackId') ||
+    g('gateway_track_id');
+  if (direct) {
+    return direct;
+  }
+  for (const key of Object.keys(q)) {
+    if (/^track_?id$/i.test(key)) {
+      const v = g(key);
+      if (v) {
+        return v;
+      }
+    }
+  }
+  return '';
 }
 
 /** Extract `orderId=<uuid>` from UPayments' `customerExtraData`. */

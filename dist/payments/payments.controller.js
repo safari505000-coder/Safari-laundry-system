@@ -174,7 +174,7 @@ document.getElementById('go').onclick = async function () {
         }
         return { ok: true, orderId: body.orderId, outcome };
     }
-    async publicOrderStatus(orderId, track_id, trackID, trackIdQuery) {
+    async publicOrderStatus(orderId, track_id, trackID, trackIdQuery, req) {
         if (!orderId || orderId.length < 32) {
             throw new common_1.BadRequestException('orderId is required (UUID)');
         }
@@ -191,7 +191,7 @@ document.getElementById('go').onclick = async function () {
         if (!order) {
             throw new common_1.BadRequestException('Order not found');
         }
-        const returnTrack = track_id?.trim() || trackID?.trim() || trackIdQuery?.trim() || '';
+        const returnTrack = pickReturnTrackIdFromRequest(track_id, trackID, trackIdQuery, req);
         let settled = Boolean(order.walletSettledAt);
         let status = order.status;
         if (!settled && status !== client_1.OrderStatus.COMPLETED) {
@@ -223,7 +223,7 @@ document.getElementById('go').onclick = async function () {
             amountKd: order.totalPrice.toFixed(3),
         };
     }
-    async recheckPayment(orderId, track_id, trackID, trackIdQuery) {
+    async recheckPayment(orderId, track_id, trackID, trackIdQuery, req) {
         if (!orderId || orderId.length < 32) {
             throw new common_1.BadRequestException('orderId is required (UUID)');
         }
@@ -256,7 +256,7 @@ document.getElementById('go').onclick = async function () {
                 messageAr: 'الدفع مؤكَّد. شكراً لك.',
             };
         }
-        const returnTrack = track_id?.trim() || trackID?.trim() || trackIdQuery?.trim() || '';
+        const returnTrack = pickReturnTrackIdFromRequest(track_id, trackID, trackIdQuery, req);
         if (!returnTrack && !order.posGatewayTrackId) {
             return {
                 orderId: order.id,
@@ -360,8 +360,9 @@ __decorate([
     __param(1, (0, common_1.Query)('track_id')),
     __param(2, (0, common_1.Query)('TrackID')),
     __param(3, (0, common_1.Query)('trackId')),
+    __param(4, (0, common_1.Req)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, String, String, String]),
+    __metadata("design:paramtypes", [String, String, String, String, Object]),
     __metadata("design:returntype", Promise)
 ], PaymentsController.prototype, "publicOrderStatus", null);
 __decorate([
@@ -375,8 +376,9 @@ __decorate([
     __param(1, (0, common_1.Query)('track_id')),
     __param(2, (0, common_1.Query)('TrackID')),
     __param(3, (0, common_1.Query)('trackId')),
+    __param(4, (0, common_1.Req)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, String, String, String]),
+    __metadata("design:paramtypes", [String, String, String, String, Object]),
     __metadata("design:returntype", Promise)
 ], PaymentsController.prototype, "recheckPayment", null);
 exports.PaymentsController = PaymentsController = PaymentsController_1 = __decorate([
@@ -385,6 +387,42 @@ exports.PaymentsController = PaymentsController = PaymentsController_1 = __decor
     __metadata("design:paramtypes", [payments_service_1.PaymentsService,
         prisma_service_1.PrismaService])
 ], PaymentsController);
+function pickReturnTrackIdFromRequest(track_id, trackID, trackIdQuery, req) {
+    const fromDecorators = track_id?.trim() || trackID?.trim() || trackIdQuery?.trim() || '';
+    if (fromDecorators) {
+        return fromDecorators;
+    }
+    if (!req?.query || typeof req.query !== 'object') {
+        return '';
+    }
+    const q = req.query;
+    const g = (key) => {
+        const v = q[key];
+        if (v === undefined) {
+            return '';
+        }
+        if (Array.isArray(v)) {
+            return (v[0] ?? '').trim();
+        }
+        return String(v).trim();
+    };
+    const direct = g('track_id') ||
+        g('TrackID') ||
+        g('trackId') ||
+        g('gateway_track_id');
+    if (direct) {
+        return direct;
+    }
+    for (const key of Object.keys(q)) {
+        if (/^track_?id$/i.test(key)) {
+            const v = g(key);
+            if (v) {
+                return v;
+            }
+        }
+    }
+    return '';
+}
 function extractOrderIdFromExtraData(raw) {
     if (!raw)
         return null;
