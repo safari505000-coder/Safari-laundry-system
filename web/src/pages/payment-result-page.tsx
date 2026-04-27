@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { CheckCircle2, Clock, RefreshCw, XCircle } from 'lucide-react';
+import { CheckCircle2, Clock, RefreshCw, ShieldCheck, XCircle } from 'lucide-react';
 import {
   ApiError,
   getPublicPaymentStatus,
+  recheckPublicPayment,
+  type PublicPaymentRecheck,
   type PublicPaymentStatus,
 } from '@/lib/api';
 import { BRAND } from '@/lib/brand';
@@ -65,7 +67,36 @@ export function PaymentResultPage({
   const [status, setStatus] = useState<PublicPaymentStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [secondsElapsed, setSecondsElapsed] = useState(0);
+  const [recheckBusy, setRecheckBusy] = useState(false);
+  const [recheckResult, setRecheckResult] = useState<PublicPaymentRecheck | null>(null);
   const stoppedRef = useRef(false);
+
+  const handleManualRecheck = useCallback(async () => {
+    if (!orderId || recheckBusy) return;
+    setError(null);
+    setRecheckBusy(true);
+    try {
+      const r = await recheckPublicPayment(orderId);
+      setRecheckResult(r);
+      setStatus({
+        orderId: r.orderId,
+        status: r.status,
+        isPaid: r.isPaid,
+        amountKd: r.amountKd,
+      });
+      if (r.isPaid) {
+        stoppedRef.current = true;
+      }
+    } catch (e) {
+      setError(
+        e instanceof ApiError
+          ? e.message
+          : 'تعذّر الاتصال بالخادم. حاول مرة أخرى بعد لحظات.',
+      );
+    } finally {
+      setRecheckBusy(false);
+    }
+  }, [orderId, recheckBusy]);
 
   useEffect(() => {
     if (!orderId) {
@@ -136,9 +167,31 @@ export function PaymentResultPage({
           {resolvedMode === 'success' ? (
             <SuccessBlock status={status} />
           ) : resolvedMode === 'failed' ? (
-            <FailedBlock status={status} orderId={orderId} />
+            <FailedBlock
+              status={status}
+              onRecheck={handleManualRecheck}
+              recheckBusy={recheckBusy}
+              hasOrderId={Boolean(orderId)}
+            />
           ) : (
-            <PendingBlock status={status} secondsElapsed={secondsElapsed} />
+            <PendingBlock
+              status={status}
+              secondsElapsed={secondsElapsed}
+              onRecheck={handleManualRecheck}
+              recheckBusy={recheckBusy}
+              hasOrderId={Boolean(orderId)}
+            />
+          )}
+
+          {recheckResult && !recheckResult.isPaid && (
+            <p className="mt-4 text-sm text-amber-700 bg-amber-50 rounded-md p-3 border border-amber-200 leading-6">
+              {recheckResult.messageAr}
+            </p>
+          )}
+          {recheckResult?.isPaid && recheckResult.settledNow && (
+            <p className="mt-4 text-sm text-emerald-700 bg-emerald-50 rounded-md p-3 border border-emerald-200 leading-6">
+              {recheckResult.messageAr}
+            </p>
           )}
 
           {error && (
@@ -188,10 +241,14 @@ function SuccessBlock({ status }: { status: PublicPaymentStatus | null }) {
 
 function FailedBlock({
   status,
-  orderId,
+  onRecheck,
+  recheckBusy,
+  hasOrderId,
 }: {
   status: PublicPaymentStatus | null;
-  orderId: string;
+  onRecheck: () => void;
+  recheckBusy: boolean;
+  hasOrderId: boolean;
 }) {
   return (
     <>
@@ -212,18 +269,24 @@ function FailedBlock({
       <div className="mt-6 flex flex-col gap-2">
         <Button
           type="button"
-          onClick={() => {
-            if (orderId) {
-              window.location.reload();
-            }
-          }}
-          className="bg-slate-900 hover:bg-slate-800"
+          onClick={onRecheck}
+          disabled={!hasOrderId || recheckBusy}
+          className="bg-emerald-700 hover:bg-emerald-800 text-white"
+        >
+          <ShieldCheck className="w-4 h-4 ms-2" />
+          {recheckBusy ? 'جارٍ التحقق…' : 'إعادة التحقق من الدفع'}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => window.location.reload()}
+          className="border-slate-300 text-slate-700"
         >
           <RefreshCw className="w-4 h-4 ms-2" />
           تحديث حالة الطلب
         </Button>
         <p className="text-xs text-slate-500 mt-2">
-          لإعادة المحاولة، يرجى التواصل مع مركز الخدمة للحصول على رابط دفع جديد.
+          إن كنت أتممت الدفع من البنك ولم يتغيّر الحال، اضغط «إعادة التحقق من الدفع». إن استمرت المشكلة تواصل مع مركز الخدمة.
         </p>
       </div>
     </>
@@ -233,9 +296,15 @@ function FailedBlock({
 function PendingBlock({
   status,
   secondsElapsed,
+  onRecheck,
+  recheckBusy,
+  hasOrderId,
 }: {
   status: PublicPaymentStatus | null;
   secondsElapsed: number;
+  onRecheck: () => void;
+  recheckBusy: boolean;
+  hasOrderId: boolean;
 }) {
   return (
     <>
@@ -254,9 +323,23 @@ function PendingBlock({
           {formatKwdLabel(status.amountKd)}
         </p>
       )}
-      <p className="mt-6 text-xs text-slate-400 tabular-nums">
+      <p className="mt-3 text-xs text-slate-400 tabular-nums">
         جاري الفحص… ({secondsElapsed}s)
       </p>
+      <div className="mt-5">
+        <Button
+          type="button"
+          onClick={onRecheck}
+          disabled={!hasOrderId || recheckBusy}
+          className="bg-emerald-700 hover:bg-emerald-800 text-white"
+        >
+          <ShieldCheck className="w-4 h-4 ms-2" />
+          {recheckBusy ? 'جارٍ التحقق…' : 'إعادة التحقق من الدفع'}
+        </Button>
+        <p className="mt-2 text-[11px] text-slate-500 leading-5">
+          اضغط إعادة التحقق لاستعلام فوري من بوابة الدفع دون انتظار الإشعار التلقائي.
+        </p>
+      </div>
     </>
   );
 }

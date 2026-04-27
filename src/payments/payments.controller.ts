@@ -342,6 +342,150 @@ document.getElementById('go').onclick = async function () {
       amountKd: order.totalPrice.toFixed(3),
     };
   }
+
+  /**
+   * Customer-triggered re-check. Same trust model as `/status/:orderId`
+   * (public; only the customer with the URL can call it), but always
+   * runs the Server-to-Server inquiry and returns a descriptive message
+   * the return page can surface ("تم تأكيد الدفع" / "البوابة تعيد X" /
+   * "الدفع لم يُكمَل بعد"). POST so double-tap doesn't get cached by
+   * CDNs / the browser back-button.
+   */
+  @Post('recheck/:orderId')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Force a UPayments inquiry and finalize if CAPTURED',
+    description:
+      'Public — for the /payment/success|failed return pages. Always calls UPayments get-payment-status. If CAPTURED the order is marked paid before responding.',
+  })
+  async recheckPayment(@Param('orderId') orderId: string): Promise<{
+    orderId: string;
+    status: OrderStatus;
+    isPaid: boolean;
+    amountKd: string;
+    trackIdPresent: boolean;
+    gatewayResult: string | null;
+    settledNow: boolean;
+    messageAr: string;
+  }> {
+    if (!orderId || orderId.length < 32) {
+      throw new BadRequestException('orderId is required (UUID)');
+    }
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        status: true,
+        walletSettledAt: true,
+        totalPrice: true,
+        posGatewayTrackId: true,
+      },
+    });
+    if (!order) {
+      throw new BadRequestException('Order not found');
+    }
+
+    let status = order.status;
+    let isPaid =
+      status === OrderStatus.COMPLETED || Boolean(order.walletSettledAt);
+    let gatewayResult: string | null = null;
+    let settledNow = false;
+
+    if (isPaid) {
+      return {
+        orderId: order.id,
+        status,
+        isPaid: true,
+        amountKd: order.totalPrice.toFixed(3),
+        trackIdPresent: Boolean(order.posGatewayTrackId),
+        gatewayResult: null,
+        settledNow: false,
+        messageAr: 'الدفع مؤكَّد. شكراً لك.',
+      };
+    }
+
+    if (!order.posGatewayTrackId) {
+      return {
+        orderId: order.id,
+        status,
+        isPaid: false,
+        amountKd: order.totalPrice.toFixed(3),
+        trackIdPresent: false,
+        gatewayResult: null,
+        settledNow: false,
+        messageAr:
+          'لا يوجد معرّف دفع مرتبط بهذا الطلب. يرجى التواصل مع مركز الخدمة.',
+      };
+    }
+
+    this.logger.log(
+      `UPayments manual recheck: orderId=${order.id} trackId=${order.posGatewayTrackId}`,
+    );
+
+    try {
+      const inquiry = await this.paymentsService.fetchGatewayStatus(
+        order.posGatewayTrackId,
+      );
+      gatewayResult = inquiry.data.result?.toString() ?? null;
+      const outcome = this.paymentsService.normalizeCallbackStatus(
+        inquiry.data.result ?? '',
+      );
+      if (inquiry.ok && outcome === 'success') {
+        await this.paymentsService.finalizePaidOrderFromGateway(
+          order.id,
+          {
+            provider: 'upayments',
+            trackId: order.posGatewayTrackId,
+            source: 'CUSTOMER_RECHECK',
+            paymentId: inquiry.data.paymentId ?? null,
+            tranId: inquiry.data.transactionId ?? null,
+            result: inquiry.data.result ?? null,
+            amount: String(inquiry.data.amount ?? ''),
+            inquiryRaw: inquiry.raw,
+          } as never,
+        );
+        status = OrderStatus.COMPLETED;
+        isPaid = true;
+        settledNow = true;
+        this.logger.log(
+          `UPayments manual recheck: finalized orderId=${order.id}`,
+        );
+      }
+    } catch (err) {
+      this.logger.warn(
+        `UPayments manual recheck error orderId=${order.id}: ${(err as Error).message}`,
+      );
+      return {
+        orderId: order.id,
+        status,
+        isPaid: false,
+        amountKd: order.totalPrice.toFixed(3),
+        trackIdPresent: true,
+        gatewayResult: null,
+        settledNow: false,
+        messageAr:
+          'تعذّر الاتصال ببوابة الدفع الآن. جرّب «إعادة التحقق» مرة أخرى خلال لحظات.',
+      };
+    }
+
+    const messageAr =
+      isPaid && settledNow
+        ? 'تم تأكيد الدفع بنجاح! نحدّث الفاتورة الآن.'
+        : gatewayResult && gatewayResult.trim().length > 0
+          ? `بوابة الدفع ترد بالحالة: «${gatewayResult}». إن خُصم المبلغ من حسابك ولم يُسوَّ خلال دقائق يرجى التواصل مع مركز الخدمة.`
+          : 'الدفع لم يُكمَل لدى البوابة بعد. إن كنت أتممت الدفع، انتظر دقيقة ثم أعد التحقق.';
+
+    return {
+      orderId: order.id,
+      status,
+      isPaid,
+      amountKd: order.totalPrice.toFixed(3),
+      trackIdPresent: true,
+      gatewayResult,
+      settledNow,
+      messageAr,
+    };
+  }
 }
 
 /** Extract `orderId=<uuid>` from UPayments' `customerExtraData`. */

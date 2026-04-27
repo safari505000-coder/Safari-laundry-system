@@ -2197,6 +2197,33 @@ export function getPublicPaymentStatus(
 }
 
 /**
+ * Customer-triggered "Verify Payment" on the /payment/success|failed return
+ * pages. Forces a Server-to-Server UPayments inquiry server-side and, if the
+ * gateway reports CAPTURED, finalizes the order before responding. Returns a
+ * ready-to-render Arabic message so the page can surface the gateway status
+ * (or a polite "not captured yet" fallback).
+ */
+export type PublicPaymentRecheck = {
+  orderId: string;
+  status: PublicPaymentStatus['status'];
+  isPaid: boolean;
+  amountKd: string;
+  trackIdPresent: boolean;
+  gatewayResult: string | null;
+  settledNow: boolean;
+  messageAr: string;
+};
+
+export function recheckPublicPayment(
+  orderId: string,
+): Promise<PublicPaymentRecheck> {
+  return apiJson<PublicPaymentRecheck>(
+    `/api/payments/recheck/${encodeURIComponent(orderId)}`,
+    { method: 'POST', body: '{}' },
+  );
+}
+
+/**
  * V19.4 — CC pack #4. Daily collector feed for the Collections page
  * activity panel. Covers every debt-reducing event in the Kuwait-local
  * day window (partial debt payments + full settlements + mark-paid-via-link).
