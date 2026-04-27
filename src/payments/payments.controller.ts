@@ -13,6 +13,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import {
+  ApiBody,
   ApiExcludeEndpoint,
   ApiOperation,
   ApiProperty,
@@ -22,6 +23,7 @@ import type { Request, Response } from 'express';
 import { OrderStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaymentsService } from '../common/services/payments.service';
+import { GatewayTrackHintDto } from './dto/gateway-track-hint.dto';
 import { PaymentCallbackDto } from './dto/payment-callback.dto';
 
 /**
@@ -271,17 +273,63 @@ document.getElementById('go').onclick = async function () {
    * result on their phone. We disclose ONLY the minimum info
    * (status + paid flag + amount) so the endpoint cannot be used
    * to enumerate other customers' orders.
+   *
+   * V1.7.4 — `POST` with `{ "trackId": "…v2" }` is preferred when the
+   * v2 id is known: some CDNs strip query strings before Node.
    */
   @Get('status/:orderId')
   @ApiOperation({
     summary: 'Public order payment status (for customer return pages)',
   })
-  async publicOrderStatus(
+  async publicOrderStatusGet(
     @Req() req: Request,
     @Param('orderId') orderId: string,
     @Query('track_id') track_id?: string,
     @Query('TrackID') trackID?: string,
     @Query('trackId') trackIdQuery?: string,
+  ): Promise<PublicOrderStatusDto> {
+    return this.runPublicOrderStatusPoll(
+      orderId,
+      req,
+      track_id,
+      trackID,
+      trackIdQuery,
+      undefined,
+    );
+  }
+
+  @Post('status/:orderId')
+  @HttpCode(200)
+  @ApiOperation({
+    summary:
+      'Public order payment status (POST — trackId in JSON when query is stripped)',
+  })
+  @ApiBody({ type: GatewayTrackHintDto, required: false })
+  async publicOrderStatusPost(
+    @Req() req: Request,
+    @Param('orderId') orderId: string,
+    @Body() body: GatewayTrackHintDto,
+    @Query('track_id') track_id?: string,
+    @Query('TrackID') trackID?: string,
+    @Query('trackId') trackIdQuery?: string,
+  ): Promise<PublicOrderStatusDto> {
+    return this.runPublicOrderStatusPoll(
+      orderId,
+      req,
+      track_id,
+      trackID,
+      trackIdQuery,
+      body?.trackId,
+    );
+  }
+
+  private async runPublicOrderStatusPoll(
+    orderId: string,
+    req: Request,
+    track_id?: string,
+    trackID?: string,
+    trackIdQuery?: string,
+    bodyTrackId?: string,
   ): Promise<PublicOrderStatusDto> {
     if (!orderId || orderId.length < 32) {
       throw new BadRequestException('orderId is required (UUID)');
@@ -300,20 +348,8 @@ document.getElementById('go').onclick = async function () {
       throw new BadRequestException('Order not found');
     }
 
-    // V1.7.1 — Lazy reconciliation for environments where the webhook
-    // cannot reach the API (local dev, private networks, etc.). Only
-    // triggers when the order still looks unsettled AND we have a
-    // trackId on file. We ALWAYS ask UPayments with our API key, so an
-    // attacker hitting this endpoint cannot flip orders to PAID — only
-    // a real CAPTURED/AUTHORIZED result on UPayments' side will do it.
-    //
-    // V1.7.3 — `/charge` may persist `session_id` (hosted link) while
-    // `get-payment-status` only accepts the v2 `track_id` from the
-    // return URL. The success page passes `?track_id=` from the redirect.
-    // Fall back to `req.query` — some edge proxies / Nest query parsing
-    // paths have left `@Query('track_id')` empty even when the URL
-    // contains it (we still saw the session id inquired instead of v2).
     const returnTrack = pickReturnTrackIdFromRequest(
+      bodyTrackId,
       track_id,
       trackID,
       trackIdQuery,
@@ -376,9 +412,11 @@ document.getElementById('go').onclick = async function () {
     description:
       'Public — for the /payment/success|failed return pages. Always calls UPayments get-payment-status. If CAPTURED the order is marked paid before responding.',
   })
+  @ApiBody({ type: GatewayTrackHintDto, required: false })
   async recheckPayment(
     @Req() req: Request,
     @Param('orderId') orderId: string,
+    @Body() body: GatewayTrackHintDto,
     @Query('track_id') track_id?: string,
     @Query('TrackID') trackID?: string,
     @Query('trackId') trackIdQuery?: string,
@@ -429,6 +467,7 @@ document.getElementById('go').onclick = async function () {
     }
 
     const returnTrack = pickReturnTrackIdFromRequest(
+      body?.trackId,
       track_id,
       trackID,
       trackIdQuery,
@@ -518,16 +557,20 @@ document.getElementById('go').onclick = async function () {
 }
 
 /**
- * Prefer `@Query`, then parse `req.originalUrl` / `req.url` (raw query —
- * survives cases where Express `req.query` or Nest decorators miss
- * `track_id` behind proxies / rewrites), then `req.query`.
+ * Prefer JSON `trackId` (POST body), then `@Query`, header, raw URL,
+ * then `req.query`.
  */
 function pickReturnTrackIdFromRequest(
+  bodyTrackId: string | undefined,
   track_id: string | undefined,
   trackID: string | undefined,
   trackIdQuery: string | undefined,
   req: Request,
 ): string {
+  const fromBody = bodyTrackId?.trim();
+  if (fromBody) {
+    return fromBody;
+  }
   const fromDecorators =
     track_id?.trim() || trackID?.trim() || trackIdQuery?.trim() || '';
   if (fromDecorators) {

@@ -2278,17 +2278,22 @@ export function getPublicPaymentStatus(
   orderId: string,
   opts?: { returnTrackId?: string },
 ): Promise<PublicPaymentStatus> {
-  const q = new URLSearchParams();
   const tid = opts?.returnTrackId?.trim();
   if (tid) {
-    q.set('track_id', tid);
+    return apiJson<PublicPaymentStatus>(
+      `/api/payments/status/${encodeURIComponent(orderId)}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Gateway-Track-Id': tid,
+        },
+        body: JSON.stringify({ trackId: tid }),
+      },
+    );
   }
-  const qs = q.toString();
   return apiJson<PublicPaymentStatus>(
-    `/api/payments/status/${encodeURIComponent(orderId)}${qs ? `?${qs}` : ''}`,
-    tid
-      ? { headers: { 'X-Gateway-Track-Id': tid } }
-      : undefined,
+    `/api/payments/status/${encodeURIComponent(orderId)}`,
   );
 }
 
@@ -2314,18 +2319,21 @@ export function recheckPublicPayment(
   orderId: string,
   opts?: { returnTrackId?: string },
 ): Promise<PublicPaymentRecheck> {
-  const q = new URLSearchParams();
   const tid = opts?.returnTrackId?.trim();
+  const qs = new URLSearchParams();
   if (tid) {
-    q.set('track_id', tid);
+    qs.set('track_id', tid);
   }
-  const qs = q.toString();
+  const qstr = qs.toString();
   return apiJson<PublicPaymentRecheck>(
-    `/api/payments/recheck/${encodeURIComponent(orderId)}${qs ? `?${qs}` : ''}`,
+    `/api/payments/recheck/${encodeURIComponent(orderId)}${qstr ? `?${qstr}` : ''}`,
     {
       method: 'POST',
-      body: '{}',
-      ...(tid ? { headers: { 'X-Gateway-Track-Id': tid } } : {}),
+      headers: {
+        'Content-Type': 'application/json',
+        ...(tid ? { 'X-Gateway-Track-Id': tid } : {}),
+      },
+      body: JSON.stringify(tid ? { trackId: tid } : {}),
     },
   );
 }

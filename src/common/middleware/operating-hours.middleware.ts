@@ -16,11 +16,20 @@ function normalizePath(url: string): string {
   return path;
 }
 
-function isAllowlisted(path: string): boolean {
+function isAllowlisted(path: string, method: string): boolean {
   if (path === '/api/auth/login') return true;
   if (path === '/api/payments/callback') return true;
   // Customer + staff «إعادة التحقق» — must work 24/7 (same as callback trust model).
   if (path.startsWith('/api/payments/recheck/')) return true;
+  // V1.7.4 — POST status poll carries `trackId` in JSON (query often stripped upstream).
+  if (
+    method === 'POST' &&
+    /^\/api\/payments\/status\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      path,
+    )
+  ) {
+    return true;
+  }
   if (path === '/api/system/operating-status') return true;
   return false;
 }
@@ -66,7 +75,7 @@ export class OperatingHoursMiddleware implements NestMiddleware {
       return;
     }
     const path = normalizePath(req.originalUrl ?? req.url ?? '');
-    if (isAllowlisted(path)) {
+    if (isAllowlisted(path, method)) {
       next();
       return;
     }

@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import { OrderStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaymentsService } from '../common/services/payments.service';
+import { GatewayTrackHintDto } from './dto/gateway-track-hint.dto';
 import { PaymentCallbackDto } from './dto/payment-callback.dto';
 declare class PublicOrderStatusDto {
     orderId: string;
@@ -35,8 +36,10 @@ export declare class PaymentsController {
         outcome: "success" | "failed";
         reason?: undefined;
     }>;
-    publicOrderStatus(req: Request, orderId: string, track_id?: string, trackID?: string, trackIdQuery?: string): Promise<PublicOrderStatusDto>;
-    recheckPayment(req: Request, orderId: string, track_id?: string, trackID?: string, trackIdQuery?: string): Promise<{
+    publicOrderStatusGet(req: Request, orderId: string, track_id?: string, trackID?: string, trackIdQuery?: string): Promise<PublicOrderStatusDto>;
+    publicOrderStatusPost(req: Request, orderId: string, body: GatewayTrackHintDto, track_id?: string, trackID?: string, trackIdQuery?: string): Promise<PublicOrderStatusDto>;
+    private runPublicOrderStatusPoll;
+    recheckPayment(req: Request, orderId: string, body: GatewayTrackHintDto, track_id?: string, trackID?: string, trackIdQuery?: string): Promise<{
         orderId: string;
         status: OrderStatus;
         isPaid: boolean;

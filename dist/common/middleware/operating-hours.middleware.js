@@ -24,11 +24,17 @@ function normalizePath(url) {
     }
     return path;
 }
-function isAllowlisted(path) {
+function isAllowlisted(path, method) {
     if (path === '/api/auth/login')
         return true;
     if (path === '/api/payments/callback')
         return true;
+    if (path.startsWith('/api/payments/recheck/'))
+        return true;
+    if (method === 'POST' &&
+        /^\/api\/payments\/status\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(path)) {
+        return true;
+    }
     if (path === '/api/system/operating-status')
         return true;
     return false;
@@ -65,7 +71,7 @@ let OperatingHoursMiddleware = OperatingHoursMiddleware_1 = class OperatingHours
             return;
         }
         const path = normalizePath(req.originalUrl ?? req.url ?? '');
-        if (isAllowlisted(path)) {
+        if (isAllowlisted(path, method)) {
             next();
             return;
         }

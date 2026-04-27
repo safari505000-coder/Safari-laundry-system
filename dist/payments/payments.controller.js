@@ -19,6 +19,7 @@ const swagger_1 = require("@nestjs/swagger");
 const client_1 = require("@prisma/client");
 const prisma_service_1 = require("../prisma/prisma.service");
 const payments_service_1 = require("../common/services/payments.service");
+const gateway_track_hint_dto_1 = require("./dto/gateway-track-hint.dto");
 const payment_callback_dto_1 = require("./dto/payment-callback.dto");
 class PublicOrderStatusDto {
     orderId;
@@ -174,7 +175,13 @@ document.getElementById('go').onclick = async function () {
         }
         return { ok: true, orderId: body.orderId, outcome };
     }
-    async publicOrderStatus(req, orderId, track_id, trackID, trackIdQuery) {
+    async publicOrderStatusGet(req, orderId, track_id, trackID, trackIdQuery) {
+        return this.runPublicOrderStatusPoll(orderId, req, track_id, trackID, trackIdQuery, undefined);
+    }
+    async publicOrderStatusPost(req, orderId, body, track_id, trackID, trackIdQuery) {
+        return this.runPublicOrderStatusPoll(orderId, req, track_id, trackID, trackIdQuery, body?.trackId);
+    }
+    async runPublicOrderStatusPoll(orderId, req, track_id, trackID, trackIdQuery, bodyTrackId) {
         if (!orderId || orderId.length < 32) {
             throw new common_1.BadRequestException('orderId is required (UUID)');
         }
@@ -191,7 +198,7 @@ document.getElementById('go').onclick = async function () {
         if (!order) {
             throw new common_1.BadRequestException('Order not found');
         }
-        const returnTrack = pickReturnTrackIdFromRequest(track_id, trackID, trackIdQuery, req);
+        const returnTrack = pickReturnTrackIdFromRequest(bodyTrackId, track_id, trackID, trackIdQuery, req);
         let settled = Boolean(order.walletSettledAt);
         let status = order.status;
         if (!settled && status !== client_1.OrderStatus.COMPLETED) {
@@ -223,7 +230,7 @@ document.getElementById('go').onclick = async function () {
             amountKd: order.totalPrice.toFixed(3),
         };
     }
-    async recheckPayment(req, orderId, track_id, trackID, trackIdQuery) {
+    async recheckPayment(req, orderId, body, track_id, trackID, trackIdQuery) {
         if (!orderId || orderId.length < 32) {
             throw new common_1.BadRequestException('orderId is required (UUID)');
         }
@@ -256,7 +263,7 @@ document.getElementById('go').onclick = async function () {
                 messageAr: 'الدفع مؤكَّد. شكراً لك.',
             };
         }
-        const returnTrack = pickReturnTrackIdFromRequest(track_id, trackID, trackIdQuery, req);
+        const returnTrack = pickReturnTrackIdFromRequest(body?.trackId, track_id, trackID, trackIdQuery, req);
         if (!returnTrack && !order.posGatewayTrackId) {
             return {
                 orderId: order.id,
@@ -364,7 +371,24 @@ __decorate([
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object, String, String, String, String]),
     __metadata("design:returntype", Promise)
-], PaymentsController.prototype, "publicOrderStatus", null);
+], PaymentsController.prototype, "publicOrderStatusGet", null);
+__decorate([
+    (0, common_1.Post)('status/:orderId'),
+    (0, common_1.HttpCode)(200),
+    (0, swagger_1.ApiOperation)({
+        summary: 'Public order payment status (POST — trackId in JSON when query is stripped)',
+    }),
+    (0, swagger_1.ApiBody)({ type: gateway_track_hint_dto_1.GatewayTrackHintDto, required: false }),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('orderId')),
+    __param(2, (0, common_1.Body)()),
+    __param(3, (0, common_1.Query)('track_id')),
+    __param(4, (0, common_1.Query)('TrackID')),
+    __param(5, (0, common_1.Query)('trackId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String, gateway_track_hint_dto_1.GatewayTrackHintDto, String, String, String]),
+    __metadata("design:returntype", Promise)
+], PaymentsController.prototype, "publicOrderStatusPost", null);
 __decorate([
     (0, common_1.Post)('recheck/:orderId'),
     (0, common_1.HttpCode)(200),
@@ -372,13 +396,15 @@ __decorate([
         summary: 'Force a UPayments inquiry and finalize if CAPTURED',
         description: 'Public — for the /payment/success|failed return pages. Always calls UPayments get-payment-status. If CAPTURED the order is marked paid before responding.',
     }),
+    (0, swagger_1.ApiBody)({ type: gateway_track_hint_dto_1.GatewayTrackHintDto, required: false }),
     __param(0, (0, common_1.Req)()),
     __param(1, (0, common_1.Param)('orderId')),
-    __param(2, (0, common_1.Query)('track_id')),
-    __param(3, (0, common_1.Query)('TrackID')),
-    __param(4, (0, common_1.Query)('trackId')),
+    __param(2, (0, common_1.Body)()),
+    __param(3, (0, common_1.Query)('track_id')),
+    __param(4, (0, common_1.Query)('TrackID')),
+    __param(5, (0, common_1.Query)('trackId')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, String, String, String, String]),
+    __metadata("design:paramtypes", [Object, String, gateway_track_hint_dto_1.GatewayTrackHintDto, String, String, String]),
     __metadata("design:returntype", Promise)
 ], PaymentsController.prototype, "recheckPayment", null);
 exports.PaymentsController = PaymentsController = PaymentsController_1 = __decorate([
@@ -387,7 +413,11 @@ exports.PaymentsController = PaymentsController = PaymentsController_1 = __decor
     __metadata("design:paramtypes", [payments_service_1.PaymentsService,
         prisma_service_1.PrismaService])
 ], PaymentsController);
-function pickReturnTrackIdFromRequest(track_id, trackID, trackIdQuery, req) {
+function pickReturnTrackIdFromRequest(bodyTrackId, track_id, trackID, trackIdQuery, req) {
+    const fromBody = bodyTrackId?.trim();
+    if (fromBody) {
+        return fromBody;
+    }
     const fromDecorators = track_id?.trim() || trackID?.trim() || trackIdQuery?.trim() || '';
     if (fromDecorators) {
         return fromDecorators;
