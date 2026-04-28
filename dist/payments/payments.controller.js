@@ -284,6 +284,7 @@ document.getElementById('go').onclick = async function () {
                 walletSettledAt: true,
                 totalPrice: true,
                 posGatewayTrackId: true,
+                posHostedPaymentUrl: true,
             },
         });
         if (!order) {
@@ -294,6 +295,7 @@ document.getElementById('go').onclick = async function () {
             this.logger.warn(`Ignoring invalid payment-status inquiry hint from return URL/body (len=${returnTrack.length}) order=${order.id.slice(0, 8)}…`);
             returnTrack = '';
         }
+        const urlTrackFallback = extractUpaymentsInquiryIdFromHostedUrl(order.posHostedPaymentUrl);
         const gatewayResultRaw = pickGatewayReturnResultFromRequest(gatewayResultFromBody, gatewayResultQuery, req);
         let settled = Boolean(order.walletSettledAt);
         let status = order.status;
@@ -312,7 +314,7 @@ document.getElementById('go').onclick = async function () {
             }
         }
         if (!settled && status !== client_1.OrderStatus.COMPLETED) {
-            const candidates = buildUpaymentsInquiryTrackCandidates(returnTrack, order.posGatewayTrackId);
+            const candidates = buildUpaymentsInquiryTrackCandidates(returnTrack, order.posGatewayTrackId ?? urlTrackFallback ?? null);
             for (const tid of candidates) {
                 try {
                     const r = await this.paymentsService.tryFinalizeOrderIfUpaymentsCaptured(order.id, tid, tid === returnTrack
@@ -364,6 +366,7 @@ document.getElementById('go').onclick = async function () {
                 walletSettledAt: true,
                 totalPrice: true,
                 posGatewayTrackId: true,
+                posHostedPaymentUrl: true,
             },
         });
         if (!order) {
@@ -412,7 +415,8 @@ document.getElementById('go').onclick = async function () {
                 this.logger.warn(`Trusted recheck finalize failed orderId=${order.id}: ${err.message}`);
             }
         }
-        if (!returnTrack && !order.posGatewayTrackId) {
+        const urlTrackFallback = extractUpaymentsInquiryIdFromHostedUrl(order.posHostedPaymentUrl);
+        if (!returnTrack && !order.posGatewayTrackId && !urlTrackFallback) {
             return {
                 orderId: order.id,
                 status,
@@ -421,12 +425,12 @@ document.getElementById('go').onclick = async function () {
                 trackIdPresent: false,
                 gatewayResult: null,
                 settledNow: false,
-                messageAr: 'لا يوجد معرّف دفع مرتبط بهذا الطلب. يرجى التواصل مع مركز الخدمة.',
+                messageAr: 'الدفع لم يُكمَل لدى البوابة بعد. إن كنت أتممت الدفع، انتظر دقيقة ثم أعد التحقق.',
             };
         }
-        this.logger.log(`UPayments manual recheck: orderId=${order.id} hasReturnTrack=${Boolean(returnTrack)} posTrack=${order.posGatewayTrackId ? 'yes' : 'no'}`);
+        this.logger.log(`UPayments manual recheck: orderId=${order.id} hasReturnTrack=${Boolean(returnTrack)} posTrack=${order.posGatewayTrackId ? 'yes' : 'no'} urlTrack=${urlTrackFallback ? 'yes' : 'no'}`);
         try {
-            const candidates = buildUpaymentsInquiryTrackCandidates(returnTrack, order.posGatewayTrackId);
+            const candidates = buildUpaymentsInquiryTrackCandidates(returnTrack, order.posGatewayTrackId ?? urlTrackFallback ?? null);
             for (const tid of candidates) {
                 const r = await this.paymentsService.tryFinalizeOrderIfUpaymentsCaptured(order.id, tid, tid === returnTrack
                     ? 'CUSTOMER_RECHECK_RETURN_TRACK'
@@ -617,6 +621,72 @@ function upaymentTrackInquirySortKey(tid) {
         return 1;
     }
     return 1;
+}
+function extractUpaymentsInquiryIdFromHostedUrl(hostedUrl) {
+    if (!hostedUrl) {
+        return undefined;
+    }
+    const link = String(hostedUrl).trim();
+    if (!link) {
+        return undefined;
+    }
+    const KEYS = [
+        'trans_id',
+        'transId',
+        'tran_id',
+        'tranId',
+        'track_id',
+        'trackId',
+        'TrackID',
+        'session_id',
+        'sessionId',
+        'SessionId',
+        'payment_id',
+        'paymentId',
+    ];
+    const pick = (sp) => {
+        for (const [k, v] of sp.entries()) {
+            if (KEYS.some((key) => key.toLowerCase() === k.toLowerCase()) &&
+                v?.trim()) {
+                return v.trim();
+            }
+        }
+        return undefined;
+    };
+    try {
+        const u = new URL(link);
+        const fromMain = pick(u.searchParams);
+        if (fromMain && (0, payments_service_1.isValidUpaymentsPaymentStatusInquiryId)(fromMain)) {
+            return fromMain;
+        }
+        const h = u.hash;
+        if (h && h.length > 1) {
+            const inner = h.startsWith('#') ? h.slice(1) : h;
+            const qMark = inner.indexOf('?');
+            if (qMark >= 0) {
+                const qp = new URLSearchParams(inner.slice(qMark + 1));
+                const fromHash = pick(qp);
+                if (fromHash && (0, payments_service_1.isValidUpaymentsPaymentStatusInquiryId)(fromHash)) {
+                    return fromHash;
+                }
+            }
+        }
+    }
+    catch {
+    }
+    const m = new RegExp(`[?&#/](?:${KEYS.join('|')})=([^&#]+)`, 'i').exec(link);
+    if (m?.[1]) {
+        let v = m[1].trim();
+        try {
+            v = decodeURIComponent(v);
+        }
+        catch {
+        }
+        if ((0, payments_service_1.isValidUpaymentsPaymentStatusInquiryId)(v)) {
+            return v;
+        }
+    }
+    return undefined;
 }
 function buildUpaymentsInquiryTrackCandidates(returnTrack, posGatewayTrackId) {
     const rt = typeof returnTrack === 'string' ? returnTrack.trim() : '';
