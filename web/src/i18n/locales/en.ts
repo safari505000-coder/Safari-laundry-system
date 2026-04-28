@@ -1161,6 +1161,19 @@ export const en = {
         'Online payment link works for one invoice only. Use cash, K-Net, or debt — or complete payment per invoice.',
       doneMulti: '{{count}} orders saved for this customer',
     },
+    offline: {
+      bundleNeedsNetwork:
+        'Multi-invoice bundles with payment link require internet.',
+      paymentLinkNeedsNetwork:
+        'Online payment link requires an internet connection.',
+      syncUnavailable:
+        'Offline queue is unavailable — refresh or try again online.',
+      pendingSerialTag: '⋯ Pending',
+      queuedCheckout:
+        'Order saved offline — sync will run automatically when you are online.',
+      queuedCheckoutMulti:
+        '{{count}} invoices queued — sync when connectivity returns.',
+    },
     multiOrder: {
       addAttached: 'Add attached order',
       tabPrimary: 'Invoice {{n}} · Primary',
@@ -2788,5 +2801,19 @@ export const en = {
       cancelled_ok: 'Transfer cancelled.',
     },
   },
+
+  offline: {
+    statusOnline: 'Online',
+    statusOffline: 'Offline',
+    bannerOffline:
+      'No internet connection — actions are stored on this device and will sync automatically when the network returns.',
+    bannerOfflineHint: 'Cannot reach the server right now.',
+    bannerPendingHint: 'Queued actions on this device are not uploaded yet.',
+    bannerPendingWithCount:
+      '{{count}} action(s) queued for sync — tap to sync now or wait.',
+    syncNow: 'Sync now',
+    syncing: 'Syncing…',
+  },
+
   operatorHints: operatorHintsEn,
 } as const;

@@ -41,6 +41,16 @@ export class PosController {
     return this.posService.searchCustomers(q ?? '');
   }
 
+  @Get('customers/cache')
+  @ApiOperation({
+    summary: `Hydrate offline IndexedDB snapshot — DRIVER/MANAGER POS (${APP_BRAND})`,
+    description:
+      'Returns newest customers (cap ~15k) with wallet balance/debt — same projection as `/customers/search`.',
+  })
+  listCustomersForOfflineCache() {
+    return this.posService.listCustomersForOfflineDirectory();
+  }
+
   @Post('customers')
   @ApiOperation({
     summary: `Create customer — driver POS (${APP_BRAND})`,

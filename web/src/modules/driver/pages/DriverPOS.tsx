@@ -29,6 +29,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/modules/shared/components/ui/sheet';
+import { ConnectivityBadge } from '@/offline/connectivity-badge';
 import { cn } from '@/lib/utils';
 import { sumLinesKd, DELIVERY_FEE_KD } from '@/utils/finance-engine';
 import { usePosEngine } from '@/modules/shared/hooks/use-pos-engine';
@@ -520,6 +521,7 @@ export function DriverPOS() {
             width={96}
             className="h-9 w-auto max-w-[96px] shrink-0 object-contain"
           />
+          <ConnectivityBadge dense className="hidden min-[380px]:flex" />
 
           <div className="relative min-w-0 flex-1">
             <Input
@@ -626,7 +628,7 @@ export function DriverPOS() {
             />
           </div>
 
-          {catalogLoading ? (
+          {catalogLoading && catalogItems.length === 0 ? (
             <div className="flex justify-center py-16">
               <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />
             </div>

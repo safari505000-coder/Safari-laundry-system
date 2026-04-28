@@ -8,6 +8,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var PosService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PosService = void 0;
 const common_1 = require("@nestjs/common");
@@ -45,6 +46,7 @@ const customerSelect = {
     },
 };
 let PosService = class PosService {
+    static { PosService_1 = this; }
     prisma;
     constructor(prisma) {
         this.prisma = prisma;
@@ -79,6 +81,14 @@ let PosService = class PosService {
             debt: wallet?.debt.toString() ?? '0.0000',
             lastSubscriptionAt: lastActivation?.createdAt?.toISOString() ?? null,
         };
+    }
+    static POS_OFFLINE_DIRECTORY_CAP = 15_000;
+    async listCustomersForOfflineDirectory() {
+        return this.prisma.customer.findMany({
+            take: PosService_1.POS_OFFLINE_DIRECTORY_CAP,
+            orderBy: { updatedAt: 'desc' },
+            select: customerSelect,
+        });
     }
     async searchCustomers(query) {
         const q = query.trim();
@@ -156,7 +166,7 @@ let PosService = class PosService {
     }
 };
 exports.PosService = PosService;
-exports.PosService = PosService = __decorate([
+exports.PosService = PosService = PosService_1 = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService])
 ], PosService);

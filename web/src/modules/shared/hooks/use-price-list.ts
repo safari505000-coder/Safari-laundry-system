@@ -9,6 +9,11 @@ import {
   apiJson,
   ApiError,
 } from '@/lib/api';
+import {
+  buildPosLaundryMetadataCacheId,
+  loadPosLaundryMetadata,
+  savePosLaundryMetadata,
+} from '@/offline/pos-metadata-cache';
 
 /** POS / Driver — keep row unless explicitly soft-hidden (`isActive=false`). */
 export function rowShowsInLiveCatalog(row: LaundryPriceListItemRow): boolean {
@@ -124,9 +129,52 @@ export function usePriceList(opts: UsePriceListOpts): PriceListBridge {
       setItems([]);
       setCategories([]);
       setLoading(false);
+      setFailed(false);
       return;
     }
-    setLoading(true);
+
+    const cacheId = buildPosLaundryMetadataCacheId(
+      user?.safariRole,
+      queryBranchId,
+    );
+    let hadStoredSnapshot = false;
+
+    try {
+      const cached = await loadPosLaundryMetadata(cacheId);
+      if (cached != null) {
+        hadStoredSnapshot = true;
+        const rawItems = Array.isArray(cached.itemsRaw) ? cached.itemsRaw : [];
+        const visibleItems = includeInactive
+          ? rawItems
+          : rawItems.filter(rowShowsInLiveCatalog);
+        setItems(visibleItems);
+        setCategories(Array.isArray(cached.categories) ? cached.categories : []);
+        if (cached.catalogVersion) {
+          lastCatalogVersionRef.current = cached.catalogVersion;
+        }
+        setFailed(false);
+        setLoading(false);
+      }
+    } catch {
+      /* IndexedDB optional */
+    }
+
+    const online =
+      typeof navigator === 'undefined' ? true : navigator.onLine;
+    if (!online) {
+      if (hadStoredSnapshot) {
+        return;
+      }
+      setItems([]);
+      setCategories([]);
+      setFailed(true);
+      setLoading(false);
+      return;
+    }
+
+    if (!hadStoredSnapshot) {
+      setLoading(true);
+    }
     setFailed(false);
     try {
       const listPath = buildLaundryPriceListPath(
@@ -150,32 +198,61 @@ export function usePriceList(opts: UsePriceListOpts): PriceListBridge {
         }
       }
       const rawItems = Array.isArray(listData) ? listData : [];
-      // POS / Driver see only live items; management screens opt-in via
-      // `includeInactive` so hidden rows remain visible for toggling / delete.
       const visibleItems = includeInactive
         ? rawItems
         : rawItems.filter(rowShowsInLiveCatalog);
       setItems(visibleItems);
-      setCategories(Array.isArray(catData) ? catData : []);
+      const cats = Array.isArray(catData) ? catData : [];
+      setCategories(cats);
+
+      let catalogVersion: string | null = null;
       try {
         const { version } = await apiJson<{ version: string }>(
           '/api/laundry-price-list/catalog-version',
           { token },
         );
-        if (version) lastCatalogVersionRef.current = version;
+        if (version) {
+          catalogVersion = version;
+          lastCatalogVersionRef.current = version;
+        }
       } catch {
         /* keep prior ref — poll will recover */
       }
+
+      await savePosLaundryMetadata({
+        cacheId,
+        itemsRaw: rawItems,
+        categories: cats,
+        effectiveBranchId,
+        catalogVersion: catalogVersion ?? lastCatalogVersionRef.current,
+      });
     } catch (e) {
-      setItems([]);
-      setCategories([]);
-      setFailed(true);
-      if (e instanceof ApiError) toast.error(e.message);
-      else toast.error(t('pos.catalogLoadFailed'));
+      if (hadStoredSnapshot) {
+        setFailed(false);
+      } else {
+        setItems([]);
+        setCategories([]);
+        setFailed(true);
+        if (
+          e instanceof ApiError &&
+          e.status !== 0
+        ) {
+          toast.error(e.message);
+        } else if (!(e instanceof ApiError)) {
+          toast.error(t('pos.catalogLoadFailed'));
+        }
+      }
     } finally {
       setLoading(false);
     }
-  }, [token, queryBranchId, includeInactive, t, user?.safariRole]);
+  }, [
+    token,
+    queryBranchId,
+    includeInactive,
+    t,
+    user?.safariRole,
+    effectiveBranchId,
+  ]);
 
   useEffect(() => {
     void reload();

@@ -36,6 +36,9 @@ let PosController = class PosController {
     searchCustomers(q) {
         return this.posService.searchCustomers(q ?? '');
     }
+    listCustomersForOfflineCache() {
+        return this.posService.listCustomersForOfflineDirectory();
+    }
     createCustomer(dto) {
         return this.posService.createCustomer(dto);
     }
@@ -60,6 +63,16 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", void 0)
 ], PosController.prototype, "searchCustomers", null);
+__decorate([
+    (0, common_1.Get)('customers/cache'),
+    (0, swagger_1.ApiOperation)({
+        summary: `Hydrate offline IndexedDB snapshot — DRIVER/MANAGER POS (${branding_1.APP_BRAND})`,
+        description: 'Returns newest customers (cap ~15k) with wallet balance/debt — same projection as `/customers/search`.',
+    }),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", void 0)
+], PosController.prototype, "listCustomersForOfflineCache", null);
 __decorate([
     (0, common_1.Post)('customers'),
     (0, swagger_1.ApiOperation)({

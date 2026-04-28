@@ -42,8 +42,26 @@ import {
   ApiError,
   getPublicPaymentStatus,
 } from '@/lib/api';
+import {
+  mergeSearchHitsIntoCustomerCache,
+  searchCustomerDirectoryOfflineAsync,
+} from '@/offline/customer-cache';
+import { useOfflineSyncOptional } from '@/offline/offline-sync-context';
 import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
 import type { PriceListBridge } from '@/modules/shared/hooks/use-price-list';
+
+function billingFromCachedWallet(
+  w: NonNullable<CustomerSearchRow['wallet']>,
+): CustomerBillingProfile {
+  const balNum = Number.parseFloat(w.balance);
+  return {
+    subscriptionActive: Number.isFinite(balNum) && balNum > 0,
+    planType: null,
+    remainingBalance: w.balance,
+    debt: w.debt,
+    lastSubscriptionAt: null,
+  };
+}
 import {
   computeMultiInvoiceParts,
   computeSessionTotals,
@@ -283,6 +301,8 @@ export function usePosEngine(opts: PosEngineOptions) {
   const navigate = useNavigate();
   const dateLocale = useAppLocale();
   const { token, user, logout } = useAuth();
+  /** Out-of-band queue when `navigator.onLine` is false — see `completePayment`. */
+  const offlineSync = useOfflineSyncOptional();
   const [subOrders, setSubOrders] = useState<PosSubOrder[]>([
     { id: crypto.randomUUID(), kind: 'primary', lines: [] },
   ]);
@@ -366,18 +386,45 @@ export function usePosEngine(opts: PosEngineOptions) {
       void (async () => {
         setSearching(true);
         try {
-          const rows = await apiJson<CustomerSearchRow[]>(
-            `/api/pos/customers/search?q=${encodeURIComponent(q)}`,
-            { token: token! },
-          );
-          if (!cancelled) setSearchHits(rows);
+          const online =
+            typeof navigator === 'undefined' ? true : navigator.onLine;
+          let rows: CustomerSearchRow[] = [];
+
+          if (online && token) {
+            try {
+              rows = await apiJson<CustomerSearchRow[]>(
+                `/api/pos/customers/search?q=${encodeURIComponent(q)}`,
+                { token },
+              );
+              void mergeSearchHitsIntoCustomerCache(rows);
+            } catch (e) {
+              rows = await searchCustomerDirectoryOfflineAsync(q);
+              if (
+                rows.length === 0 &&
+                e instanceof ApiError &&
+                e.status !== 0
+              ) {
+                toast.error(e.message);
+              }
+            }
+          } else {
+            rows = await searchCustomerDirectoryOfflineAsync(q);
+          }
+
+          if (!cancelled) {
+            setSearchHits(rows);
+          }
         } catch (e) {
-          if (!cancelled && e instanceof ApiError) toast.error(e.message);
+          if (!cancelled && e instanceof ApiError) {
+            toast.error(e.message);
+          }
         } finally {
-          if (!cancelled) setSearching(false);
+          if (!cancelled) {
+            setSearching(false);
+          }
         }
       })();
-    }, 320);
+    }, 400);
     return () => {
       cancelled = true;
       window.clearTimeout(tmr);
@@ -436,6 +483,22 @@ export function usePosEngine(opts: PosEngineOptions) {
   const loadBilling = useCallback(
     async (customerId: string) => {
       if (!token) return;
+
+      const offline =
+        typeof navigator !== 'undefined' && !navigator.onLine;
+      const cachedWallet =
+        selected?.id === customerId ? selected.wallet : null;
+
+      if (offline && cachedWallet) {
+        setBillingLoading(true);
+        try {
+          setBilling(billingFromCachedWallet(cachedWallet));
+        } finally {
+          setBillingLoading(false);
+        }
+        return;
+      }
+
       setBillingLoading(true);
       try {
         const row = await apiJson<CustomerBillingProfile>(
@@ -444,13 +507,22 @@ export function usePosEngine(opts: PosEngineOptions) {
         );
         setBilling(row);
       } catch (e) {
-        setBilling(null);
-        if (e instanceof ApiError) toast.error(e.message);
+        if (cachedWallet) {
+          setBilling(billingFromCachedWallet(cachedWallet));
+        } else {
+          setBilling(null);
+          if (
+            e instanceof ApiError &&
+            e.status !== 0
+          ) {
+            toast.error(e.message);
+          }
+        }
       } finally {
         setBillingLoading(false);
       }
     },
-    [token],
+    [token, selected?.id, selected?.wallet],
   );
 
   useEffect(() => {
@@ -773,7 +845,14 @@ export function usePosEngine(opts: PosEngineOptions) {
         posPaymentMethod === 'PAYMENT_LINK' &&
         bundlePrep.allNeedExternal;
 
+      const checkoutOnline =
+        typeof navigator === 'undefined' ? true : navigator.onLine;
+
       if (useBundle) {
+        if (!checkoutOnline) {
+          toast.error(t('pos.offline.bundleNeedsNetwork'));
+          return;
+        }
         const { parts, ordersPayload } = bundlePrep;
         const bundleRes = await apiJson<PosCheckoutBundleResponse>(
           '/api/pos/checkout-bundle',
@@ -851,6 +930,11 @@ export function usePosEngine(opts: PosEngineOptions) {
         return;
       }
 
+      if (!checkoutOnline && posPaymentMethod === 'PAYMENT_LINK') {
+        toast.error(t('pos.offline.paymentLinkNeedsNetwork'));
+        return;
+      }
+
       let billingSnapshot: CustomerBillingProfile | null = billing;
       let balanceAfter = selected.wallet?.balance ?? '0.0000';
       // V19.4 — CC pack #7. Track debt alongside balance so each sheet
@@ -916,22 +1000,42 @@ export function usePosEngine(opts: PosEngineOptions) {
         });
         const lineItemsPayload = [...garmentLines, ...serviceLines];
 
-        const created = await apiJson<PosCheckoutResponse>(
-          '/api/pos/checkout',
-          {
+        const checkoutBody: Record<string, unknown> = {
+          customerPhone: phone,
+          customerId: selected.id,
+          customerDisplayName: selected.displayName ?? undefined,
+          totalPrice: netTotal,
+          lineItems: lineItemsPayload,
+          serviceType: 'NORMAL',
+        };
+        if (extMethod) {
+          checkoutBody.posPaymentMethod = extMethod;
+        }
+
+        let created: PosCheckoutResponse;
+        if (checkoutOnline) {
+          created = await apiJson<PosCheckoutResponse>('/api/pos/checkout', {
             method: 'POST',
             token,
-            body: JSON.stringify({
-              customerPhone: phone,
-              customerId: selected.id,
-              customerDisplayName: selected.displayName ?? undefined,
-              totalPrice: netTotal,
-              lineItems: lineItemsPayload,
-              serviceType: 'NORMAL',
-              ...(extMethod ? { posPaymentMethod: extMethod } : {}),
-            }),
-          },
-        );
+            body: JSON.stringify(checkoutBody),
+          });
+        } else {
+          if (!offlineSync) {
+            toast.error(t('pos.offline.syncUnavailable'));
+            return;
+          }
+          const qid = await offlineSync.queueMutationForSync(
+            'pos_checkout',
+            '/api/pos/checkout',
+            checkoutBody,
+          );
+          created = {
+            id: qid,
+            invoiceNumber: null,
+            serialNumber: t('pos.offline.pendingSerialTag'),
+            createdAt: new Date().toISOString(),
+          };
+        }
 
         const receiptLines = o.lines.map((c) => ({
           label: c.nameAr,
@@ -975,28 +1079,30 @@ export function usePosEngine(opts: PosEngineOptions) {
           }),
         );
 
-        try {
-          const fresh = await apiJson<CustomerBillingProfile>(
-            `/api/pos/customers/${selected.id}/billing`,
-            { token },
-          );
-          billingSnapshot = fresh;
-          balanceAfter = fresh.remainingBalance;
-          debtAfter = fresh.debt;
-          setBilling(fresh);
-          setSelected((prev) =>
-            prev && prev.id === selected.id ?
-              {
-                ...prev,
-                wallet: {
-                  balance: fresh.remainingBalance,
-                  debt: fresh.debt,
-                },
-              }
-            : prev,
-          );
-        } catch {
-          /* keep previous balance on receipt */
+        if (checkoutOnline) {
+          try {
+            const fresh = await apiJson<CustomerBillingProfile>(
+              `/api/pos/customers/${selected.id}/billing`,
+              { token },
+            );
+            billingSnapshot = fresh;
+            balanceAfter = fresh.remainingBalance;
+            debtAfter = fresh.debt;
+            setBilling(fresh);
+            setSelected((prev) =>
+              prev && prev.id === selected.id ?
+                {
+                  ...prev,
+                  wallet: {
+                    balance: fresh.remainingBalance,
+                    debt: fresh.debt,
+                  },
+                }
+              : prev,
+            );
+          } catch {
+            /* keep previous balance on receipt */
+          }
         }
       }
 
@@ -1015,6 +1121,14 @@ export function usePosEngine(opts: PosEngineOptions) {
       if (sawPaymentLink) {
         toast.success(t('pos.checkout.paymentLinkCreated'));
         trackPendingPaymentSettlement(pendingLinkOrderIds);
+      } else if (!checkoutOnline) {
+        toast.success(
+          nonEmptyOrdered.length > 1
+            ? t('pos.offline.queuedCheckoutMulti', {
+                count: nonEmptyOrdered.length,
+              })
+            : t('pos.offline.queuedCheckout'),
+        );
       } else if (nonEmptyOrdered.length > 1) {
         toast.success(
           t('pos.checkout.doneMulti', { count: nonEmptyOrdered.length }),

@@ -131,7 +131,8 @@ function apiBase(): string {
 /** Nest `ExpensesController` (`@Controller('expenses')`) + global prefix `api`. */
 export const API_EXPENSES = '/api/expenses';
 
-function buildUrl(path: string): string {
+/** Same URL resolver as apiJson — exposed for offline queue replay (`flushPendingMutations`). */
+export function buildUrl(path: string): string {
   if (path.startsWith('http')) return path;
   const base = apiBase();
   return `${base}${path.startsWith('/') ? path : `/${path}`}`;

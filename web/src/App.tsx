@@ -1,6 +1,8 @@
 import { useTranslation } from 'react-i18next';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { ErrorBoundary } from '@/components/error-boundary';
+import { OfflineGlobalAlerts } from '@/offline/offline-global-alerts';
+import { OfflineSyncProvider } from '@/offline/offline-sync-context';
 import { AuthProvider } from '@/contexts/auth-context';
 import { SafariStreamProvider } from '@/contexts/safari-stream-context';
 import { AuthLayout } from '@/modules/shared/components/shell/auth-layout';
@@ -121,8 +123,10 @@ export default function App() {
   return (
     <ErrorBoundary>
       <AuthProvider>
+        <OfflineSyncProvider>
         <SafariStreamProvider>
         <BrowserRouter>
+          <OfflineGlobalAlerts />
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             {/*
@@ -855,6 +859,7 @@ export default function App() {
         </BrowserRouter>
         <AppToaster />
         </SafariStreamProvider>
+        </OfflineSyncProvider>
       </AuthProvider>
     </ErrorBoundary>
   );

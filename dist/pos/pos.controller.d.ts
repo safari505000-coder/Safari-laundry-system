@@ -25,6 +25,23 @@ export declare class PosController {
         addressAvenue: string | null;
         addressHouse: string | null;
     }[]>;
+    listCustomersForOfflineCache(): Promise<{
+        wallet: {
+            balance: import("@prisma/client-runtime-utils").Decimal;
+            debt: import("@prisma/client-runtime-utils").Decimal;
+        } | null;
+        id: string;
+        createdAt: Date;
+        phone: string;
+        address: string | null;
+        phone2: string | null;
+        displayName: string | null;
+        addressArea: string | null;
+        addressBlock: string | null;
+        addressStreet: string | null;
+        addressAvenue: string | null;
+        addressHouse: string | null;
+    }[]>;
     createCustomer(dto: PosCreateCustomerDto): Promise<{
         wallet: {
             balance: import("@prisma/client-runtime-utils").Decimal;

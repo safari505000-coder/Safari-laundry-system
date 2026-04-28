@@ -82,6 +82,21 @@ export class PosService {
     };
   }
 
+  /** Snapshot for SPA offline POS — capped for mobile IndexedDB (~15k newest by touch). */
+  private static readonly POS_OFFLINE_DIRECTORY_CAP = 15_000;
+
+  /**
+   * Full customer directory projection (same shape as search API rows) so the
+   * web client can hydrate Dexie and search offline without hitting Prisma HTTP.
+   */
+  async listCustomersForOfflineDirectory() {
+    return this.prisma.customer.findMany({
+      take: PosService.POS_OFFLINE_DIRECTORY_CAP,
+      orderBy: { updatedAt: 'desc' },
+      select: customerSelect,
+    });
+  }
+
   async searchCustomers(query: string) {
     const q = query.trim();
     if (q.length < 2) {

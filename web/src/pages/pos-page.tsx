@@ -215,7 +215,7 @@ export function PosPage() {
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col md:flex-row">
         <main className="min-h-0 min-w-0 w-full overflow-y-auto overflow-x-hidden border-border px-3 pt-3 pb-48 sm:px-4 sm:pt-4 md:w-[70%] md:max-w-[70%] md:flex-none md:border-e md:px-4 md:pt-4 md:pb-4">
-          {catalogLoading ?
+          {catalogLoading && catalogItems.length === 0 ?
             <div className="flex justify-center py-20">
               <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />
             </div>
