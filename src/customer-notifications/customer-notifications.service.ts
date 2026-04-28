@@ -1,8 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import {
-  BRAND_CUSTOMER_AR,
-  BRAND_SYSTEM_AR,
-} from '../common/constants/branding';
+import { BRAND_CUSTOMER_AR } from '../common/constants/branding';
 import { parseKuwaitMobile965 } from '../common/validation/kuwait-customer-phone';
 
 const MOATMT_LOG_MAX_BODY = 3000;
@@ -321,7 +318,7 @@ function buildInvoiceIssuedMessage(params: {
 
   appendRatingSectionToLines(lines, params.ratingUrl);
   lines.push('');
-  lines.push(`فريق ${BRAND_SYSTEM_AR} 🇰🇼`);
+  lines.push(`فريق ${BRAND_CUSTOMER_AR} 🇰🇼`);
   return lines.join('\n');
 }
 
@@ -379,7 +376,7 @@ function buildInvoiceIssuedMessageWithLineItemsNoFile(params: {
   }
   appendRatingSectionToLines(lines, params.ratingUrl);
   lines.push('');
-  lines.push(`فريق ${BRAND_SYSTEM_AR} 🇰🇼`);
+  lines.push(`فريق ${BRAND_CUSTOMER_AR} 🇰🇼`);
   return lines.join('\n');
 }
 
@@ -405,7 +402,7 @@ function buildInvoiceEditedIssuerMessage(params: {
     lines.push('افتح تطبيق السفاري — الفواتير — لإعادة الطباعة بأرقام محدثة.');
   }
   lines.push('');
-  lines.push(`فريق ${BRAND_SYSTEM_AR} 🇰🇼`);
+  lines.push(`فريق ${BRAND_CUSTOMER_AR} 🇰🇼`);
   return lines.join('\n');
 }
 
@@ -428,7 +425,7 @@ function buildDriverCollectionConfirmedMessage(params: {
   lines.push('شاكرين تعاونكم معنا');
   appendRatingSectionToLines(lines, params.ratingUrl);
   lines.push('');
-  lines.push(`فريق ${BRAND_SYSTEM_AR} 🇰🇼`);
+  lines.push(`فريق ${BRAND_CUSTOMER_AR} 🇰🇼`);
   return lines.join('\n');
 }
 
@@ -448,7 +445,7 @@ function buildPaymentConfirmedMessage(params: {
   lines.push('');
   lines.push('ملابسك الآن نظيفة، معطرة، وجاهزة.');
   lines.push('');
-  lines.push('مصبغة سفاري — جودة نهتم بها.');
+  lines.push(`${BRAND_CUSTOMER_AR} — جودة نهتم بها.`);
   if (params.paymentUrl) {
     lines.push('');
     lines.push('🔒 رابط الدفع:');
@@ -460,7 +457,7 @@ function buildPaymentConfirmedMessage(params: {
     lines.push(params.ratingUrl);
   }
   lines.push('');
-  lines.push(`فريق ${BRAND_SYSTEM_AR} 🇰🇼`);
+  lines.push(`فريق ${BRAND_CUSTOMER_AR} 🇰🇼`);
   return lines.join('\n');
 }
 
