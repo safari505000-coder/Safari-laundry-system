@@ -948,6 +948,191 @@ export class CustomerLedgerService {
   }
 
   /**
+   * V1.7.6 — Call-Center «تم الدفع» for an order sold as
+   * {@link PosPaymentMethod.DEBT_ON_ACCOUNT}.
+   *
+   * POS checkout already ran {@link applyOrderWalletSettlementForCompletedOrder}
+   * and set `walletSettledAt`, so `manuallyMarkOrderPaidByMethod` used to
+   * think the invoice was fully done and returned `{ alreadySettled: true }`.
+   * Physically collecting cash/KNET at the office is a second step: we
+   * record the pay-down on `CustomerWallet.debt`, write invoice-scoped
+   * `DebtSource.PAYMENT`, emit a tagged `ORDER_WALLET_SETTLEMENT` row, and
+   * flip `posPaymentMethod`/`cashStatus` — without duplicating
+   * `POS_SALE_COMPLETED`, stock movement, or the first settlement snapshot.
+   */
+  async recordDebtInvoiceCollectedAtCallCenter(
+    tx: PrismaTx,
+    params: {
+      orderId: string;
+      confirmedMethod: Exclude<
+        PosPaymentMethod,
+        'SUBSCRIPTION_WALLET' | 'DEBT_ON_ACCOUNT'
+      >;
+      performedByUserId: string;
+    },
+  ): Promise<{ kind: 'applied' } | { kind: 'already_cleared' }> {
+    const { orderId, confirmedMethod, performedByUserId } = params;
+
+    const order = await tx.order.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        status: true,
+        customerId: true,
+        totalPrice: true,
+        posPaymentMethod: true,
+        walletSettledAt: true,
+      },
+    });
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+    if (order.status === OrderStatus.CANCELED) {
+      throw new BadRequestException(
+        'Order is canceled — cannot record collection',
+      );
+    }
+    if (order.posPaymentMethod !== PosPaymentMethod.DEBT_ON_ACCOUNT) {
+      throw new BadRequestException(
+        'This path only applies to invoices that were sold as debt-on-account',
+      );
+    }
+    if (!order.walletSettledAt) {
+      throw new BadRequestException(
+        'Invoice has no ledger booking yet — use the standard manual mark flow',
+      );
+    }
+
+    const [shortAgg, payAgg] = await Promise.all([
+      tx.debtLedgerEntry.aggregate({
+        where: {
+          orderId,
+          source: DebtSource.INVOICE_SHORTFALL,
+        },
+        _sum: { amount: true },
+      }),
+      tx.debtLedgerEntry.aggregate({
+        where: {
+          orderId,
+          source: DebtSource.PAYMENT,
+        },
+        _sum: { amount: true },
+      }),
+    ]);
+
+    const shortfall = new Prisma.Decimal(shortAgg._sum.amount?.toString() ?? '0');
+    const paidDirect = new Prisma.Decimal(payAgg._sum.amount?.toString() ?? '0');
+    const remaining = shortfall.minus(paidDirect);
+
+    if (remaining.lessThanOrEqualTo(new Prisma.Decimal(0))) {
+      await tx.order.update({
+        where: { id: orderId },
+        data: {
+          posPaymentMethod: confirmedMethod,
+          cashStatus: cashStatusForPaymentMethod(confirmedMethod),
+        },
+      });
+      return { kind: 'already_cleared' };
+    }
+
+    const wallet = await this.getOrCreateWalletTx(tx, order.customerId);
+    const debtMinor = toMinorFromFixed4(wallet.debt);
+    const remainingMinor = toMinorFromFixed4(remaining);
+    const paydownMinor =
+      remainingMinor < debtMinor ? remainingMinor : debtMinor;
+
+    if (paydownMinor <= 0n) {
+      throw new BadRequestException(
+        'Aggregate wallet debt is zero while this invoice still carries an open balance — contact accounting',
+      );
+    }
+
+    const newDebtMinor = debtMinor - paydownMinor;
+    const paydownKdStr = minorToAmountString(paydownMinor);
+
+    await tx.customerWallet.update({
+      where: { id: wallet.id },
+      data: { debt: this.decimalFromMinor(newDebtMinor) },
+    });
+
+    const actor = await tx.user.findUnique({
+      where: { id: performedByUserId },
+      select: { id: true, safariRole: true, branchId: true },
+    });
+    if (!actor) {
+      throw new NotFoundException('Performing user not found');
+    }
+
+    const cust = await tx.customer.findUnique({
+      where: { id: order.customerId },
+      select: { originBranchId: true },
+    });
+    const branchId = cust?.originBranchId ?? actor.branchId ?? null;
+    const category = this.resolveDebtCategory(actor.safariRole);
+
+    await tx.transactionHistory.create({
+      data: {
+        type: LedgerTransactionType.ORDER_WALLET_SETTLEMENT,
+        customerId: order.customerId,
+        orderId,
+        subscriptionId: null,
+        amount: this.decimalFromMinor(paydownMinor),
+        balanceBefore: wallet.balance,
+        balanceAfter: wallet.balance,
+        debtBefore: wallet.debt,
+        debtAfter: this.decimalFromMinor(newDebtMinor),
+        performedById: performedByUserId,
+        metadata: {
+          debtSettled: paydownKdStr,
+          debtSettlementViaCallCenter: true,
+          confirmedPaymentMethod: confirmedMethod,
+          originalPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT,
+          reportingCategory: 'DEBT_INVOICE_PHYSICAL_COLLECTION',
+        },
+      },
+    });
+
+    await tx.debtLedgerEntry.create({
+      data: {
+        customerId: order.customerId,
+        orderId,
+        source: DebtSource.PAYMENT,
+        category,
+        amount: this.decimalFromMinor(paydownMinor),
+        branchId,
+        actorUserId: performedByUserId,
+        note: 'Debt-on-account invoice collected at Call Center',
+      },
+    });
+
+    await this.generalLedger.append(tx, {
+      entryType: GeneralLedgerEntryType.DEBT_ADJUSTMENT,
+      amount: `-${paydownKdStr}`,
+      memo: 'Debt-on-account invoice collected via Call Center',
+      customerId: order.customerId,
+      orderId,
+      actorUserId: performedByUserId,
+      metadata: {
+        event: 'DEBT_COLLECTED',
+        source: 'CC_DEBT_INVOICE_PHYSICAL',
+        posPaymentMethod: confirmedMethod,
+        category,
+        branchId,
+      },
+    });
+
+    await tx.order.update({
+      where: { id: orderId },
+      data: {
+        posPaymentMethod: confirmedMethod,
+        cashStatus: cashStatusForPaymentMethod(confirmedMethod),
+      },
+    });
+
+    return { kind: 'applied' };
+  }
+
+  /**
    * V19.4 — CC pack #1. Partial debt payment with optional discount.
    *
    * Models the operator sitting with a customer on the phone who says

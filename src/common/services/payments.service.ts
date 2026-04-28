@@ -1622,9 +1622,12 @@ export class PaymentsService implements OnModuleInit {
    * assigned driver, then the owner, so the ledger row always attributes
    * cleanly).
    *
-   * Idempotent: if the order was already settled (`walletSettledAt`
-   * set) we just return the current snapshot. If the order is canceled
-   * we throw — you cannot mark a canceled order as paid.
+   * Idempotent: if `walletSettledAt` is set **and** this is **not**
+   * a DEBT_ON_ACCOUNT invoice still awaiting physical cash collection,
+   * we return `{ alreadySettled: true }`. Debt-on-account sales set
+   * `walletSettledAt` when POS books the receivable — the second-phase
+   * «تم الدفع» path delegates to {@link CustomerLedgerService.recordDebtInvoiceCollectedAtCallCenter}.
+   * Canceled orders are rejected.
    */
   async manuallyMarkOrderPaidByMethod(args: {
     orderId: string;
@@ -1663,15 +1666,53 @@ export class PaymentsService implements OnModuleInit {
             'Order is canceled — cannot mark it as paid',
           );
         }
-        if (order.walletSettledAt) {
-          // Idempotent — the order is already settled. Return the
-          // current snapshot so the UI can refresh without error.
+        const awaitingDebtPhysicalCollection =
+          Boolean(order.walletSettledAt) &&
+          order.posPaymentMethod === PosPaymentMethod.DEBT_ON_ACCOUNT;
+
+        if (order.walletSettledAt && !awaitingDebtPhysicalCollection) {
           return {
             orderId: order.id,
             alreadySettled: true,
             amountKd: order.totalPrice.toFixed(3),
             posPaymentMethod:
               order.posPaymentMethod ?? PosPaymentMethod.CASH,
+          };
+        }
+
+        // V1.7.6 — «على الحساب»: wallet line already booked at POS; this
+        // button records cash/KNET at the CC desk without duplicating POS
+        // revenue/stock/debit (see Bug: toast «مسددة مسبقاً» on debt rows).
+        if (awaitingDebtPhysicalCollection) {
+          const performerId =
+            performedByUserId ??
+            order.driverId ??
+            (await this.resolveFallbackPerformer(tx));
+          if (!performerId) {
+            throw new BadRequestException(
+              'No performer available to attribute the manual settlement to',
+            );
+          }
+          const out =
+            await this.customerLedger.recordDebtInvoiceCollectedAtCallCenter(
+              tx,
+              {
+                orderId,
+                confirmedMethod: method,
+                performedByUserId: performerId,
+              },
+            );
+
+          return {
+            orderId: order.id,
+            // Always false here so CC sees a successful toast after the flip/
+            // pay-down (`already_cleared` = FIFO retired the debt elsewhere but
+            // we still sync posPaymentMethod to the handset). A true duplicate
+            // press after the invoice is genuinely CASH is handled by the
+            // universal `walletSettledAt && !DEBT`-guard above.
+            alreadySettled: false,
+            amountKd: order.totalPrice.toFixed(3),
+            posPaymentMethod: method,
           };
         }
 
