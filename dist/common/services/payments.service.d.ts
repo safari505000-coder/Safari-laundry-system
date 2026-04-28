@@ -1,7 +1,7 @@
 import { OnModuleInit } from '@nestjs/common';
 import { PosPaymentMethod, Prisma } from '@prisma/client';
 import { CustomerLedgerService } from '../../customer-ledger/customer-ledger.service';
-import { CustomerNotificationsService } from '../../customer-notifications/customer-notifications.service';
+import { CustomerNotificationsService, type PaymentConfirmedCustomerScenario } from '../../customer-notifications/customer-notifications.service';
 import { GeneralLedgerService } from '../../general-ledger/general-ledger.service';
 import { InventoryService } from '../../inventory/inventory.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -87,7 +87,9 @@ export declare class PaymentsService implements OnModuleInit {
     findOrderByTrackId(trackId: string): Promise<string | null>;
     finalizePaidOrderFromGateway(referenceId: string, gatewayMetadata?: Prisma.InputJsonValue): Promise<void>;
     private finalizeSinglePaidOrderFromGateway;
-    schedulePaymentConfirmedCustomerNotify(orderId: string): void;
+    private static readonly GATEWAY_ORDER_FRESH_MS;
+    private inferPaymentScenarioFromOrderAge;
+    schedulePaymentConfirmedCustomerNotify(orderId: string, scenario?: PaymentConfirmedCustomerScenario): void;
     private emitPaymentConfirmedNotify;
     private resolveFallbackPerformer;
     manuallyMarkOrderPaidByMethod(args: {

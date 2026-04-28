@@ -8,6 +8,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var CustomerNotificationsService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CustomerNotificationsService = void 0;
+exports.formatStandaloneReceiptLabelFromHistoryId = formatStandaloneReceiptLabelFromHistoryId;
 const common_1 = require("@nestjs/common");
 const branding_1 = require("../common/constants/branding");
 const kuwait_customer_phone_1 = require("../common/validation/kuwait-customer-phone");
@@ -266,17 +267,12 @@ function appendPaymentLinkIfAny(lines, paymentUrl) {
     lines.push('🔒 رابط الدفع:');
     lines.push(paymentUrl.trim());
 }
-const PAY_CONFIRM_LINE_SATISFACTION_AR = 'نسعد دائماً بخدمتكم في مصبغة سفاري.';
-const PAY_CONFIRM_LINE_TEAM_AR = 'فريق سفاري أومني 🇰🇼';
-function buildPaymentConfirmedUnifiedMessage(params) {
-    const lines = [];
-    const invoiceLabel = params.orderLabel.trim();
-    lines.push('تم تأكيد الدفع بنجاح ✅');
-    lines.push('');
-    lines.push('شكراً لك، تم استلام المبلغ وتحديث حسابكم لدى المصبغة.');
-    lines.push('');
-    lines.push(`📋 رقم الفاتورة: *${invoiceLabel}*`);
-    lines.push(`💰 المبلغ الإجمالي: *${params.amountKd} د.ك*`);
+const LINE_BRAND_SAFA_RI_FOOTER_AR = 'مصبغة سفاري 🇰🇼';
+function formatStandaloneReceiptLabelFromHistoryId(transactionHistoryId) {
+    const hex = transactionHistoryId.replace(/-/g, '').slice(0, 12).toUpperCase();
+    return `سند-${hex}`;
+}
+function appendNewPosOrderOptionalWalletLines(lines, params) {
     const v = params.variant ?? 'standard';
     if (v === 'subscription_wallet' && params.remainingSubscriptionBalanceKd) {
         lines.push('');
@@ -296,8 +292,16 @@ function buildPaymentConfirmedUnifiedMessage(params) {
             lines.push(`📌 المديونية الحالية على حسابكم: *${params.walletDebtKd} د.ك*`);
         }
     }
+}
+function buildPaymentConfirmedNewPosOrderMessage(params) {
+    const lines = [];
+    lines.push('تم استلام طلبك بنجاح ✅');
     lines.push('');
-    lines.push(PAY_CONFIRM_LINE_SATISFACTION_AR);
+    lines.push('شكراً لثقتك، تم استلام مبلغ الطلب وتحديث حسابكم.');
+    lines.push('');
+    lines.push(`📋 رقم الفاتورة: *${params.orderLabel.trim()}*`);
+    lines.push(`💰 المبلغ الإجمالي: *${params.amountKd} د.ك*`);
+    appendNewPosOrderOptionalWalletLines(lines, params);
     const rating = params.ratingUrl?.trim();
     if (rating) {
         lines.push('');
@@ -305,12 +309,55 @@ function buildPaymentConfirmedUnifiedMessage(params) {
         lines.push(rating);
     }
     lines.push('');
-    lines.push(PAY_CONFIRM_LINE_TEAM_AR);
+    lines.push(LINE_BRAND_SAFA_RI_FOOTER_AR);
     appendPaymentLinkIfAny(lines, params.paymentUrl);
     return lines.join('\n');
 }
+function resolveRemainingBalanceLineKd(params) {
+    const v = params.variant ?? 'standard';
+    if (v === 'debt_on_account' && params.totalDebtKd?.trim()) {
+        return params.totalDebtKd.trim();
+    }
+    if (v === 'subscription_wallet' &&
+        params.remainingSubscriptionBalanceKd?.trim()) {
+        return params.remainingSubscriptionBalanceKd.trim();
+    }
+    if (params.walletDebtKd != null && params.walletDebtKd.trim() !== '') {
+        return params.walletDebtKd.trim();
+    }
+    return '0.000';
+}
+function buildPaymentConfirmedDebtReceiptMessage(params) {
+    const lines = [];
+    lines.push('تم استلام دفعة مالية لحسابكم ✅');
+    lines.push('');
+    lines.push(`شكراً لك، تم استلام مبلغ *${params.amountKd} د.ك* كدفعة من الحساب.`);
+    lines.push('');
+    lines.push(`📋 رقم السند: *${params.orderLabel.trim()}*`);
+    lines.push(`💳 رصيدك المتبقي: *${resolveRemainingBalanceLineKd(params)} د.ك*`);
+    lines.push('');
+    lines.push(LINE_BRAND_SAFA_RI_FOOTER_AR);
+    appendPaymentLinkIfAny(lines, params.paymentUrl);
+    return lines.join('\n');
+}
+function buildStandalonePartialDebtReceiptMessage(params) {
+    const ref = formatStandaloneReceiptLabelFromHistoryId(params.transactionHistoryId);
+    const lines = [];
+    lines.push('تم استلام دفعة مالية لحسابكم ✅');
+    lines.push('');
+    lines.push(`شكراً لك، تم استلام مبلغ *${params.amountCollectedKd.trim()} د.ك* كدفعة من الحساب.`);
+    lines.push('');
+    lines.push(`📋 رقم السند: *${ref}*`);
+    lines.push(`💳 رصيدك المتبقي: *${params.remainingDebtKd.trim()} د.ك*`);
+    lines.push('');
+    lines.push(LINE_BRAND_SAFA_RI_FOOTER_AR);
+    return lines.join('\n');
+}
 function buildPaymentConfirmedMessageBody(params) {
-    return buildPaymentConfirmedUnifiedMessage(params);
+    const scenario = params.customerScenario ?? 'new_pos_order';
+    return scenario === 'debt_receipt' ?
+        buildPaymentConfirmedDebtReceiptMessage(params)
+        : buildPaymentConfirmedNewPosOrderMessage(params);
 }
 let CustomerNotificationsService = class CustomerNotificationsService {
     static { CustomerNotificationsService_1 = this; }
@@ -355,6 +402,11 @@ let CustomerNotificationsService = class CustomerNotificationsService {
     notifyPaymentConfirmed(params) {
         setImmediate(() => {
             void this.deliverPaymentConfirmed(params).catch((e) => this.logger.warn(`Payment confirmed notify failed: ${e}`));
+        });
+    }
+    notifyStandaloneDebtReceipt(params) {
+        setImmediate(() => {
+            void this.deliverStandaloneDebtReceipt(params).catch((e) => this.logger.warn(`Standalone debt receipt notify failed: ${e}`));
         });
     }
     notifyDriverCollectionConfirmed(params) {
@@ -466,6 +518,7 @@ let CustomerNotificationsService = class CustomerNotificationsService {
                     message,
                     orderId: params.orderId,
                     template: 'payment_confirmed',
+                    customerScenario: params.customerScenario ?? 'new_pos_order',
                     variant: params.variant ?? 'standard',
                     paymentUrl: params.paymentUrl ?? null,
                     ratingUrl: params.ratingUrl ?? null,
@@ -481,6 +534,34 @@ let CustomerNotificationsService = class CustomerNotificationsService {
         }
         this.logger.warn(`Payment-confirmed WhatsApp not sent (check MOATMT_* and CUSTOMER_NOTIFY_WEBHOOK_URL). ` +
             `phone=${formatPhoneHintForLog(params.customerPhone)} orderId=${params.orderId} preview=${message.slice(0, 100)}…`);
+    }
+    async deliverStandaloneDebtReceipt(params) {
+        const message = buildStandalonePartialDebtReceiptMessage(params);
+        if (await this.trySendMoatmt(params.customerPhone, message, null)) {
+            return;
+        }
+        const webhook = process.env.CUSTOMER_NOTIFY_WEBHOOK_URL?.trim();
+        if (webhook) {
+            const res = await fetch(webhook, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    to: params.customerPhone,
+                    message,
+                    transactionHistoryId: params.transactionHistoryId,
+                    template: 'standalone_debt_receipt',
+                    receiptLabel: formatStandaloneReceiptLabelFromHistoryId(params.transactionHistoryId),
+                    amountCollectedKd: params.amountCollectedKd,
+                    remainingDebtKd: params.remainingDebtKd,
+                }),
+            });
+            if (!res.ok) {
+                this.logger.warn(`CUSTOMER_NOTIFY_WEBHOOK_URL returned ${res.status} (standalone_debt_receipt)`);
+            }
+            return;
+        }
+        this.logger.warn(`Standalone debt-receipt WhatsApp not sent (check MOATMT_* and CUSTOMER_NOTIFY_WEBHOOK_URL). ` +
+            `phone=${formatPhoneHintForLog(params.customerPhone)} txn=${params.transactionHistoryId.slice(0, 8)}… preview=${message.slice(0, 90)}…`);
     }
     async deliverDriverCollectionConfirmed(params) {
         const ratingUrl = buildPublicCustomerRatingUrl(params.orderId);

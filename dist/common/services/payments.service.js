@@ -426,7 +426,8 @@ function extractTrackIdFromHttpsUrlsInChargeRaw(raw) {
     }
     return undefined;
 }
-let PaymentsService = PaymentsService_1 = class PaymentsService {
+let PaymentsService = class PaymentsService {
+    static { PaymentsService_1 = this; }
     prisma;
     customerLedger;
     generalLedger;
@@ -1038,16 +1039,24 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
             this.emitPaymentConfirmedNotify(orderId);
         }
     }
-    schedulePaymentConfirmedCustomerNotify(orderId) {
-        this.emitPaymentConfirmedNotify(orderId);
+    static GATEWAY_ORDER_FRESH_MS = 72 * 3600 * 1000;
+    inferPaymentScenarioFromOrderAge(createdAt) {
+        return Date.now() - createdAt.getTime() <=
+            PaymentsService_1.GATEWAY_ORDER_FRESH_MS
+            ? 'new_pos_order'
+            : 'debt_receipt';
     }
-    emitPaymentConfirmedNotify(orderId) {
+    schedulePaymentConfirmedCustomerNotify(orderId, scenario) {
+        this.emitPaymentConfirmedNotify(orderId, scenario);
+    }
+    emitPaymentConfirmedNotify(orderId, scenario) {
         setImmediate(() => {
             void (async () => {
                 const row = await this.prisma.order.findUnique({
                     where: { id: orderId },
                     select: {
                         id: true,
+                        createdAt: true,
                         serialNumber: true,
                         invoiceNumber: true,
                         totalPrice: true,
@@ -1077,6 +1086,8 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
                     return;
                 }
                 const orderLabel = snPersisted || invPersisted;
+                const customerScenario = scenario ??
+                    this.inferPaymentScenarioFromOrderAge(row.createdAt);
                 const base = (process.env.PUBLIC_WEB_APP_URL ?? '')
                     .replace(/\/$/, '')
                     .trim();
@@ -1107,6 +1118,7 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
                     orderLabel,
                     paymentUrl,
                     ratingUrl,
+                    customerScenario,
                     variant,
                     walletDebtKd,
                     remainingSubscriptionBalanceKd,
@@ -1246,7 +1258,7 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
             };
         }, { maxWait: 10_000, timeout: 15_000 });
         if (!result.alreadySettled) {
-            this.emitPaymentConfirmedNotify(orderId);
+            this.emitPaymentConfirmedNotify(orderId, 'debt_receipt');
         }
         return result;
     }

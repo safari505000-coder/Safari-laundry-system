@@ -82,6 +82,7 @@ export declare class CallCenterController {
         newDebtKd: string;
         walletBalanceKd: string;
         paymentMethod: import("@prisma/client").PosPaymentMethod;
+        transactionHistoryId: string;
     }>;
     listCustomerSubscriptionChain(customerId: string): Promise<import("./dto/customer-subscription.dto").CustomerSubscriptionRowDto[]>;
     getCustomerLedger(customerId: string, q: CustomerLedgerQueryDto): Promise<import("./dto/customer-ledger.dto").CustomerLedgerResponseDto>;

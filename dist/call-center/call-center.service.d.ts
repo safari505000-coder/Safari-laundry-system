@@ -112,6 +112,7 @@ export declare class CallCenterService {
         newDebtKd: string;
         walletBalanceKd: string;
         paymentMethod: PosPaymentMethod;
+        transactionHistoryId: string;
     }>;
     getCustomerLedger(customerId: string, filters: CustomerLedgerQueryDto): Promise<CustomerLedgerResponseDto>;
     getDailyCollections(params: DailyCollectionsQueryDto): Promise<DailyCollectionsResponseDto>;

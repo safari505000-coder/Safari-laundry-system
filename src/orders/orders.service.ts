@@ -769,7 +769,10 @@ export class OrdersService {
         this.log.warn(`pos invoice notify: ${e}`),
       );
       // Same thank-you + rating link as gateway / CC mark-paid (field cash & KNET included).
-      this.paymentsService.schedulePaymentConfirmedCustomerNotify(detail.id);
+      this.paymentsService.schedulePaymentConfirmedCustomerNotify(
+        detail.id,
+        'new_pos_order',
+      );
       return detail;
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {

@@ -21,6 +21,7 @@ import {
 } from '../../customer-ledger/customer-ledger.service';
 import {
   CustomerNotificationsService,
+  type PaymentConfirmedCustomerScenario,
   type PaymentConfirmedVariant,
 } from '../../customer-notifications/customer-notifications.service';
 import { GeneralLedgerService } from '../../general-ledger/general-ledger.service';
@@ -1532,13 +1533,25 @@ export class PaymentsService implements OnModuleInit {
     }
   }
 
+  private static readonly GATEWAY_ORDER_FRESH_MS = 72 * 3600 * 1000;
+
+  private inferPaymentScenarioFromOrderAge(createdAt: Date): PaymentConfirmedCustomerScenario {
+    return Date.now() - createdAt.getTime() <=
+      PaymentsService.GATEWAY_ORDER_FRESH_MS
+      ? 'new_pos_order'
+      : 'debt_receipt';
+  }
+
   /**
    * After the order is fully paid (any channel: gateway, CC mark-paid, or
    * POS instant settlement), schedule the same customer WhatsApp as the
    * link callback (thank-you + optional `/r/:orderId` rating URL).
    */
-  schedulePaymentConfirmedCustomerNotify(orderId: string): void {
-    this.emitPaymentConfirmedNotify(orderId);
+  schedulePaymentConfirmedCustomerNotify(
+    orderId: string,
+    scenario?: PaymentConfirmedCustomerScenario,
+  ): void {
+    this.emitPaymentConfirmedNotify(orderId, scenario);
   }
 
   /**
@@ -1546,13 +1559,17 @@ export class PaymentsService implements OnModuleInit {
    * `PUBLIC_WEB_APP_URL` is set). Phone resolution matches invoice notify
    * (Kuwait mobile preferred, else first non-empty on file).
    */
-  private emitPaymentConfirmedNotify(orderId: string): void {
+  private emitPaymentConfirmedNotify(
+    orderId: string,
+    scenario?: PaymentConfirmedCustomerScenario,
+  ): void {
     setImmediate(() => {
       void (async () => {
         const row = await this.prisma.order.findUnique({
           where: { id: orderId },
           select: {
             id: true,
+            createdAt: true,
             serialNumber: true,
             invoiceNumber: true,
             totalPrice: true,
@@ -1591,6 +1608,9 @@ export class PaymentsService implements OnModuleInit {
         /** Central DB invoice id — مطابق لفاتورة الطابعة/الرسالة. */
         const orderLabel =
           snPersisted || invPersisted!;
+        const customerScenario =
+          scenario ??
+          this.inferPaymentScenarioFromOrderAge(row.createdAt);
         const base = (process.env.PUBLIC_WEB_APP_URL ?? '')
           .replace(/\/$/, '')
           .trim();
@@ -1625,6 +1645,7 @@ export class PaymentsService implements OnModuleInit {
           orderLabel,
           paymentUrl,
           ratingUrl,
+          customerScenario,
           variant,
           walletDebtKd,
           remainingSubscriptionBalanceKd,
@@ -1862,7 +1883,7 @@ export class PaymentsService implements OnModuleInit {
       { maxWait: 10_000, timeout: 15_000 },
     );
     if (!result.alreadySettled) {
-      this.emitPaymentConfirmedNotify(orderId);
+      this.emitPaymentConfirmedNotify(orderId, 'debt_receipt');
     }
     return result;
   }

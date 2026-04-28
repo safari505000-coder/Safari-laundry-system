@@ -1480,7 +1480,7 @@ export class CallCenterService {
     performedByUserId: string,
   ) {
     const method = dto.paymentMethod as PosPaymentMethod;
-    return this.customerLedger.recordPartialDebtPayment({
+    const result = await this.customerLedger.recordPartialDebtPayment({
       customerId,
       amountKd: dto.amountKd,
       discountKd: dto.discountKd,
@@ -1488,6 +1488,27 @@ export class CallCenterService {
       performedByUserId,
       note: dto.note,
     });
+    try {
+      const cust = await this.prisma.customer.findUnique({
+        where: { id: customerId },
+        select: { phone: true, phone2: true },
+      });
+      const phone = cust
+        ? resolveCustomerPhoneForNotify(cust.phone, cust.phone2)
+        : '';
+      if (!phone.trim()) {
+        return result;
+      }
+      this.customerNotifications.notifyStandaloneDebtReceipt({
+        customerPhone: phone,
+        transactionHistoryId: result.transactionHistoryId,
+        amountCollectedKd: result.amountCollectedKd,
+        remainingDebtKd: result.newDebtKd,
+      });
+    } catch {
+      /* best-effort — never block debt collection */
+    }
+    return result;
   }
 
   /**

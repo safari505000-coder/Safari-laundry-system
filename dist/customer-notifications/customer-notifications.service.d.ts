@@ -23,6 +23,7 @@ export type InvoiceEditedIssuerNotifyParams = {
     invoicePdfUrl?: string;
 };
 export type PaymentConfirmedVariant = 'standard' | 'subscription_wallet' | 'debt_on_account';
+export type PaymentConfirmedCustomerScenario = 'new_pos_order' | 'debt_receipt';
 export type PaymentConfirmedNotifyParams = {
     customerPhone: string;
     orderId: string;
@@ -30,10 +31,17 @@ export type PaymentConfirmedNotifyParams = {
     amountKd: string;
     paymentUrl?: string;
     ratingUrl?: string;
+    customerScenario?: PaymentConfirmedCustomerScenario;
     variant?: PaymentConfirmedVariant;
     walletDebtKd?: string;
     remainingSubscriptionBalanceKd?: string;
     totalDebtKd?: string;
+};
+export type StandaloneDebtReceiptNotifyParams = {
+    customerPhone: string;
+    transactionHistoryId: string;
+    amountCollectedKd: string;
+    remainingDebtKd: string;
 };
 export type DriverCollectionConfirmedNotifyParams = {
     customerPhone: string;
@@ -41,6 +49,7 @@ export type DriverCollectionConfirmedNotifyParams = {
     amountKd: string;
     paymentMethodLabelAr: string;
 };
+export declare function formatStandaloneReceiptLabelFromHistoryId(transactionHistoryId: string): string;
 export declare class CustomerNotificationsService implements OnModuleInit {
     private readonly logger;
     private static moatmtCredsMissingLogged;
@@ -50,6 +59,7 @@ export declare class CustomerNotificationsService implements OnModuleInit {
     deliverInvoiceIssuedNow(params: InvoiceIssuedNotifyParams): Promise<void>;
     notifyInvoiceEditedForIssuer(params: InvoiceEditedIssuerNotifyParams): void;
     notifyPaymentConfirmed(params: PaymentConfirmedNotifyParams): void;
+    notifyStandaloneDebtReceipt(params: StandaloneDebtReceiptNotifyParams): void;
     notifyDriverCollectionConfirmed(params: DriverCollectionConfirmedNotifyParams): void;
     deliverCollectionsPaymentLinkNow(params: {
         customerPhone: string;
@@ -58,6 +68,7 @@ export declare class CustomerNotificationsService implements OnModuleInit {
     }): Promise<boolean>;
     private deliver;
     private deliverPaymentConfirmed;
+    private deliverStandaloneDebtReceipt;
     private deliverDriverCollectionConfirmed;
     private deliverIssuerEdit;
     private buildMoatmtInvoiceMediaPayload;

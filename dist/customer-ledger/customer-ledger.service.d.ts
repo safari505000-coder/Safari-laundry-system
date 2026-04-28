@@ -73,5 +73,6 @@ export declare class CustomerLedgerService {
         newDebtKd: string;
         walletBalanceKd: string;
         paymentMethod: PosPaymentMethod;
+        transactionHistoryId: string;
     }>;
 }

@@ -499,7 +499,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
                 return merged;
             }
             void this.posInvoiceNotifyToCustomer(detail, phoneCompact).catch((e) => this.log.warn(`pos invoice notify: ${e}`));
-            this.paymentsService.schedulePaymentConfirmedCustomerNotify(detail.id);
+            this.paymentsService.schedulePaymentConfirmedCustomerNotify(detail.id, 'new_pos_order');
             return detail;
         }
         catch (error) {

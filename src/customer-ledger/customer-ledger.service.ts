@@ -1170,6 +1170,8 @@ export class CustomerLedgerService {
     newDebtKd: string;
     walletBalanceKd: string;
     paymentMethod: PosPaymentMethod;
+    /** Ledger row used as سند reference in customer WhatsApp/SMS. */
+    transactionHistoryId: string;
   }> {
     // V19.7.1 — lift Prisma's default 5 s transaction budget. The
     // partial-debt-payment flow writes 3–4 rows (wallet update,
@@ -1237,7 +1239,7 @@ export class CustomerLedgerService {
         // debt-recovery aggregations naturally pick up the collected
         // portion via metadata.debtSettled. No orderId because this row
         // is customer-level, not invoice-level.
-        await tx.transactionHistory.create({
+        const thDebtRow = await tx.transactionHistory.create({
           data: {
             type: LedgerTransactionType.ORDER_WALLET_SETTLEMENT,
             customerId: params.customerId,
@@ -1330,6 +1332,7 @@ export class CustomerLedgerService {
           newDebtKd: newDebtStr,
           walletBalanceKd: wallet.balance.toString(),
           paymentMethod: params.paymentMethod,
+          transactionHistoryId: thDebtRow.id,
         };
       },
       { maxWait: 10_000, timeout: 15_000 },

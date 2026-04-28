@@ -822,7 +822,7 @@ let CustomerLedgerService = CustomerLedgerService_1 = class CustomerLedgerServic
                 where: { id: wallet.id },
                 data: { debt: this.decimalFromMinor(newDebtMinor) },
             });
-            await tx.transactionHistory.create({
+            const thDebtRow = await tx.transactionHistory.create({
                 data: {
                     type: client_1.LedgerTransactionType.ORDER_WALLET_SETTLEMENT,
                     customerId: params.customerId,
@@ -900,6 +900,7 @@ let CustomerLedgerService = CustomerLedgerService_1 = class CustomerLedgerServic
                 newDebtKd: newDebtStr,
                 walletBalanceKd: wallet.balance.toString(),
                 paymentMethod: params.paymentMethod,
+                transactionHistoryId: thDebtRow.id,
             };
         }, { maxWait: 10_000, timeout: 15_000 });
     }

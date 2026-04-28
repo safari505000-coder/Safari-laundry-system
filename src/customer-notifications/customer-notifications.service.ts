@@ -242,6 +242,14 @@ export type PaymentConfirmedVariant =
   | 'debt_on_account';
 
 /**
+ * Separate customer-facing wording: new laundry sale vs تحصيل/سند قبض بدون تأطير كطلب جديد.
+ * Default when omitted falls back inside {@link PaymentsService.emitPaymentConfirmedNotify}.
+ */
+export type PaymentConfirmedCustomerScenario =
+  | 'new_pos_order'
+  | 'debt_receipt';
+
+/**
  * After the customer’s payment is fully settled (gateway link or call-center
  * "تم الدفع") — قالب موجَّه بحسب وسيلة الدفع.
  */
@@ -254,6 +262,8 @@ export type PaymentConfirmedNotifyParams = {
   paymentUrl?: string;
   /** `${PUBLIC_WEB_APP_URL}/r/:orderId` when `PUBLIC_WEB_APP_URL` is set. */
   ratingUrl?: string;
+  /** طلب نقطة بيع جديد vs سند قبض — يختار نص الواتساب/الويب هوك */
+  customerScenario?: PaymentConfirmedCustomerScenario;
   /** Branching for Moatmt text + webhook consumers. Default `standard`. */
   variant?: PaymentConfirmedVariant;
   /**
@@ -268,6 +278,16 @@ export type PaymentConfirmedNotifyParams = {
    * (same as `wallet.debt` post-settlement — includes this sale).
    */
   totalDebtKd?: string;
+};
+
+/** CC partial debt (no invoice row) — `transactionHistory.id` anchored in TransactionHistory. */
+export type StandaloneDebtReceiptNotifyParams = {
+  customerPhone: string;
+  transactionHistoryId: string;
+  /** المبلغ المُحصَّل فعلياً نقداً (بدون جزء الخصم). */
+  amountCollectedKd: string;
+  /** `CustomerWallet.debt` بعد الخصم/الخصم goodwill. */
+  remainingDebtKd: string;
 };
 
 /**
@@ -463,42 +483,33 @@ function appendPaymentLinkIfAny(
   lines.push(paymentUrl.trim());
 }
 
-/** Copy lines — WhatsApp/Webhook unified payment-thanks (مسدّدة فقط؛ رقم مطابق لفاتورة DB). */
-const PAY_CONFIRM_LINE_SATISFACTION_AR =
-  'نسعد دائماً بخدمتكم في مصبغة سفاري.';
-const PAY_CONFIRM_LINE_TEAM_AR = 'فريق سفاري أومني 🇰🇼';
+const LINE_BRAND_SAFA_RI_FOOTER_AR = 'مصبغة سفاري 🇰🇼';
 
-/**
- * وحدة واحدة لكل وسائل الدفع (كاش، رابط، أونلاين، اشتراك، آجل) + أسطر توضيحية عند وجود مديونية/رصيد.
- */
-function buildPaymentConfirmedUnifiedMessage(
-  params: PaymentConfirmedNotifyParams,
+/** Human سند reference from central `TransactionHistory.id` (DB uuid). */
+export function formatStandaloneReceiptLabelFromHistoryId(
+  transactionHistoryId: string,
 ): string {
-  const lines: string[] = [];
-  const invoiceLabel = params.orderLabel.trim();
-  lines.push('تم تأكيد الدفع بنجاح ✅');
-  lines.push('');
-  lines.push('شكراً لك، تم استلام المبلغ وتحديث حسابكم لدى المصبغة.');
-  lines.push('');
-  lines.push(`📋 رقم الفاتورة: *${invoiceLabel}*`);
-  lines.push(`💰 المبلغ الإجمالي: *${params.amountKd} د.ك*`);
+  const hex = transactionHistoryId.replace(/-/g, '').slice(0, 12).toUpperCase();
+  return `سند-${hex}`;
+}
 
+function appendNewPosOrderOptionalWalletLines(
+  lines: string[],
+  params: PaymentConfirmedNotifyParams,
+): void {
   const v = params.variant ?? 'standard';
-
   if (v === 'subscription_wallet' && params.remainingSubscriptionBalanceKd) {
     lines.push('');
     lines.push(
       `💳 الرصيد المتبقي في اشتراككم: *${params.remainingSubscriptionBalanceKd} د.ك*`,
     );
   }
-
   if (v === 'debt_on_account' && params.totalDebtKd) {
     lines.push('');
     lines.push(
       `📌 إجمالي المديونية الحالية على حسابكم: *${params.totalDebtKd} د.ك*`,
     );
   }
-
   if (v === 'standard') {
     const debt = Number.parseFloat(params.walletDebtKd ?? '');
     if (
@@ -513,28 +524,99 @@ function buildPaymentConfirmedUnifiedMessage(
       );
     }
   }
+}
 
+/** فاتورة طلب جديد (نقطة البيع / رابط دفع لطلب حديث). */
+function buildPaymentConfirmedNewPosOrderMessage(
+  params: PaymentConfirmedNotifyParams,
+): string {
+  const lines: string[] = [];
+  lines.push('تم استلام طلبك بنجاح ✅');
   lines.push('');
-  lines.push(PAY_CONFIRM_LINE_SATISFACTION_AR);
-
+  lines.push('شكراً لثقتك، تم استلام مبلغ الطلب وتحديث حسابكم.');
+  lines.push('');
+  lines.push(`📋 رقم الفاتورة: *${params.orderLabel.trim()}*`);
+  lines.push(`💰 المبلغ الإجمالي: *${params.amountKd} د.ك*`);
+  appendNewPosOrderOptionalWalletLines(lines, params);
   const rating = params.ratingUrl?.trim();
   if (rating) {
     lines.push('');
     lines.push('⭐ نسعد بتقييمك لخدمتنا:');
     lines.push(rating);
   }
-
   lines.push('');
-  lines.push(PAY_CONFIRM_LINE_TEAM_AR);
-
+  lines.push(LINE_BRAND_SAFA_RI_FOOTER_AR);
   appendPaymentLinkIfAny(lines, params.paymentUrl);
+  return lines.join('\n');
+}
+
+function resolveRemainingBalanceLineKd(
+  params: PaymentConfirmedNotifyParams,
+): string {
+  const v = params.variant ?? 'standard';
+  if (v === 'debt_on_account' && params.totalDebtKd?.trim()) {
+    return params.totalDebtKd.trim();
+  }
+  if (
+    v === 'subscription_wallet' &&
+    params.remainingSubscriptionBalanceKd?.trim()
+  ) {
+    return params.remainingSubscriptionBalanceKd.trim();
+  }
+  if (params.walletDebtKd != null && params.walletDebtKd.trim() !== '') {
+    return params.walletDebtKd.trim();
+  }
+  return '0.000';
+}
+
+/** سند قبض / تحصيل على حساب (كول سنتر، رابط قديم، إلخ) — دون صياغة «طلب ملابس». */
+function buildPaymentConfirmedDebtReceiptMessage(
+  params: PaymentConfirmedNotifyParams,
+): string {
+  const lines: string[] = [];
+  lines.push('تم استلام دفعة مالية لحسابكم ✅');
+  lines.push('');
+  lines.push(
+    `شكراً لك، تم استلام مبلغ *${params.amountKd} د.ك* كدفعة من الحساب.`,
+  );
+  lines.push('');
+  lines.push(`📋 رقم السند: *${params.orderLabel.trim()}*`);
+  lines.push(
+    `💳 رصيدك المتبقي: *${resolveRemainingBalanceLineKd(params)} د.ك*`,
+  );
+  lines.push('');
+  lines.push(LINE_BRAND_SAFA_RI_FOOTER_AR);
+  appendPaymentLinkIfAny(lines, params.paymentUrl);
+  return lines.join('\n');
+}
+
+function buildStandalonePartialDebtReceiptMessage(
+  params: StandaloneDebtReceiptNotifyParams,
+): string {
+  const ref = formatStandaloneReceiptLabelFromHistoryId(
+    params.transactionHistoryId,
+  );
+  const lines: string[] = [];
+  lines.push('تم استلام دفعة مالية لحسابكم ✅');
+  lines.push('');
+  lines.push(
+    `شكراً لك، تم استلام مبلغ *${params.amountCollectedKd.trim()} د.ك* كدفعة من الحساب.`,
+  );
+  lines.push('');
+  lines.push(`📋 رقم السند: *${ref}*`);
+  lines.push(`💳 رصيدك المتبقي: *${params.remainingDebtKd.trim()} د.ك*`);
+  lines.push('');
+  lines.push(LINE_BRAND_SAFA_RI_FOOTER_AR);
   return lines.join('\n');
 }
 
 function buildPaymentConfirmedMessageBody(
   params: PaymentConfirmedNotifyParams,
 ): string {
-  return buildPaymentConfirmedUnifiedMessage(params);
+  const scenario = params.customerScenario ?? 'new_pos_order';
+  return scenario === 'debt_receipt' ?
+      buildPaymentConfirmedDebtReceiptMessage(params)
+    : buildPaymentConfirmedNewPosOrderMessage(params);
 }
 
 @Injectable()
@@ -618,6 +700,18 @@ export class CustomerNotificationsService implements OnModuleInit {
     setImmediate(() => {
       void this.deliverPaymentConfirmed(params).catch((e) =>
         this.logger.warn(`Payment confirmed notify failed: ${e}`),
+      );
+    });
+  }
+
+  /**
+   * تحصيل جزئي على الحساب بدون فاتورة طلب (Call Center pack #1).
+   * رقم السند مربوط بـ `TransactionHistory.id` في القاعدة.
+   */
+  notifyStandaloneDebtReceipt(params: StandaloneDebtReceiptNotifyParams): void {
+    setImmediate(() => {
+      void this.deliverStandaloneDebtReceipt(params).catch((e) =>
+        this.logger.warn(`Standalone debt receipt notify failed: ${e}`),
       );
     });
   }
@@ -782,6 +876,7 @@ export class CustomerNotificationsService implements OnModuleInit {
           message,
           orderId: params.orderId,
           template: 'payment_confirmed',
+          customerScenario: params.customerScenario ?? 'new_pos_order',
           variant: params.variant ?? 'standard',
           paymentUrl: params.paymentUrl ?? null,
           ratingUrl: params.ratingUrl ?? null,
@@ -801,6 +896,45 @@ export class CustomerNotificationsService implements OnModuleInit {
     this.logger.warn(
       `Payment-confirmed WhatsApp not sent (check MOATMT_* and CUSTOMER_NOTIFY_WEBHOOK_URL). ` +
         `phone=${formatPhoneHintForLog(params.customerPhone)} orderId=${params.orderId} preview=${message.slice(0, 100)}…`,
+    );
+  }
+
+  private async deliverStandaloneDebtReceipt(
+    params: StandaloneDebtReceiptNotifyParams,
+  ): Promise<void> {
+    const message = buildStandalonePartialDebtReceiptMessage(params);
+    if (
+      await this.trySendMoatmt(params.customerPhone, message, null)
+    ) {
+      return;
+    }
+    const webhook = process.env.CUSTOMER_NOTIFY_WEBHOOK_URL?.trim();
+    if (webhook) {
+      const res = await fetch(webhook, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: params.customerPhone,
+          message,
+          transactionHistoryId: params.transactionHistoryId,
+          template: 'standalone_debt_receipt',
+          receiptLabel: formatStandaloneReceiptLabelFromHistoryId(
+            params.transactionHistoryId,
+          ),
+          amountCollectedKd: params.amountCollectedKd,
+          remainingDebtKd: params.remainingDebtKd,
+        }),
+      });
+      if (!res.ok) {
+        this.logger.warn(
+          `CUSTOMER_NOTIFY_WEBHOOK_URL returned ${res.status} (standalone_debt_receipt)`,
+        );
+      }
+      return;
+    }
+    this.logger.warn(
+      `Standalone debt-receipt WhatsApp not sent (check MOATMT_* and CUSTOMER_NOTIFY_WEBHOOK_URL). ` +
+        `phone=${formatPhoneHintForLog(params.customerPhone)} txn=${params.transactionHistoryId.slice(0, 8)}… preview=${message.slice(0, 90)}…`,
     );
   }
 
