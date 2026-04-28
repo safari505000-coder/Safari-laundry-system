@@ -21,20 +21,22 @@ let PublicInvoiceController = class PublicInvoiceController {
     constructor(orders) {
         this.orders = orders;
     }
-    async getPdfByQuery(token) {
+    async getPdfByQuery(token, res) {
         if (token == null || !String(token).trim()) {
             throw new common_1.BadRequestException('Missing required query: token');
         }
-        return this.servePublicInvoicePdf(String(token));
+        return this.servePublicInvoicePdf(String(token), res);
     }
-    async getPdfByParam(token) {
-        return this.servePublicInvoicePdf(token);
+    async getPdfByParam(token, res) {
+        return this.servePublicInvoicePdf(token, res);
     }
-    async servePublicInvoicePdf(token) {
+    async servePublicInvoicePdf(token, res) {
         const { stream, filename } = await this.orders.getPublicInvoicePdfStream(token);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
         return new common_1.StreamableFile(stream, {
             type: 'application/pdf',
-            disposition: `inline; filename="${filename}"`,
+            disposition: `attachment; filename="${filename}"`,
         });
     }
     get(token) {
@@ -52,8 +54,9 @@ __decorate([
         description: 'Same JWT as `GET /:token` / `GET pdf/:token`. Use when the token is long or path-based URLs are altered by a proxy.',
     }),
     __param(0, (0, common_1.Query)('token')),
+    __param(1, (0, common_1.Res)({ passthrough: true })),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
+    __metadata("design:paramtypes", [Object, Object]),
     __metadata("design:returntype", Promise)
 ], PublicInvoiceController.prototype, "getPdfByQuery", null);
 __decorate([
@@ -66,8 +69,9 @@ __decorate([
         description: 'V19.27 — Same JWT as `GET /:token` but returns `application/pdf` for Moatmt `media_url` fetches.',
     }),
     __param(0, (0, common_1.Param)('token')),
+    __param(1, (0, common_1.Res)({ passthrough: true })),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String]),
+    __metadata("design:paramtypes", [String, Object]),
     __metadata("design:returntype", Promise)
 ], PublicInvoiceController.prototype, "getPdfByParam", null);
 __decorate([

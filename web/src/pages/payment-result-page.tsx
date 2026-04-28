@@ -574,23 +574,15 @@ function LuxuryBackdrop() {
 }
 
 function ReceiptHeader() {
+  // V1.7.2 — Owner directive: drop the S-monogram; keep only the brand
+  // wordmark + tagline so the header reads as an official digital
+  // receipt without competing visual elements.
   return (
-    <div className="relative px-6 sm:px-7 pt-7 pb-5 text-center border-b border-white/10">
-      <div className="flex items-center justify-center">
-        <div
-          className="
-            w-11 h-11 rounded-full flex items-center justify-center
-            bg-gradient-to-br from-[#F1D27A] via-[#D4AF37] to-[#A67C20]
-            shadow-[inset_0_0_0_1px_rgba(255,255,255,0.35)]
-          "
-        >
-          <SafariMonogramSvg />
-        </div>
-      </div>
-      <h1 className="mt-3 text-base font-semibold tracking-wide text-white">
+    <div className="relative px-6 sm:px-7 pt-8 pb-5 text-center border-b border-white/10">
+      <h1 className="text-base font-semibold tracking-wide text-white">
         {BRAND.customerAr}
       </h1>
-      <p className="mt-1 text-[11px] uppercase tracking-[0.35em] text-[#F1D27A]/90">
+      <p className="mt-2 text-[11px] uppercase tracking-[0.35em] text-[#F1D27A]/90">
         Safari · Digital Receipt
       </p>
     </div>
@@ -608,24 +600,6 @@ function ReceiptFooter() {
         22200299
       </a>
     </div>
-  );
-}
-
-function SafariMonogramSvg() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      aria-hidden
-      className="w-5 h-5 text-[#0B1B3A]"
-      fill="none"
-    >
-      <path
-        d="M5 7h10a3 3 0 0 1 0 6H9a3 3 0 0 0 0 6h10"
-        stroke="currentColor"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-      />
-    </svg>
   );
 }
 

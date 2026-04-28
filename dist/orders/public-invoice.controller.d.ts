@@ -1,10 +1,11 @@
 import { StreamableFile } from '@nestjs/common';
+import type { Response } from 'express';
 import { OrdersService } from './orders.service';
 export declare class PublicInvoiceController {
     private readonly orders;
     constructor(orders: OrdersService);
-    getPdfByQuery(token: string | undefined): Promise<StreamableFile>;
-    getPdfByParam(token: string): Promise<StreamableFile>;
+    getPdfByQuery(token: string | undefined, res: Response): Promise<StreamableFile>;
+    getPdfByParam(token: string, res: Response): Promise<StreamableFile>;
     private servePublicInvoicePdf;
     get(token: string): Promise<{
         customer: {
