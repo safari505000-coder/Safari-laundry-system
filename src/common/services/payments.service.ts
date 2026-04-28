@@ -81,7 +81,12 @@ function coerceStringishTrackValue(v: unknown): string | undefined {
     return t || undefined;
   }
   if (typeof v === 'number' && Number.isFinite(v)) {
-    if (!Number.isInteger(v) && v > 1e15) {
+    if (!Number.isInteger(v)) {
+      return undefined;
+    }
+    // JSON numbers beyond MAX_SAFE_INTEGER are corrupted — never stringify them
+    // as a UPayments inquiry id (use quoted-string extraction from raw text).
+    if (!Number.isSafeInteger(v)) {
       return undefined;
     }
     const s = String(v);
@@ -96,8 +101,16 @@ function coerceStringishTrackValue(v: unknown): string | undefined {
   return undefined;
 }
 
-/** Known spellings from UPayments and partner gateways (KNET / uInterface). */
+/**
+ * Known spellings from UPayments and partner gateways (KNET / uInterface).
+ * **Order matters:** prefer dashboard `trans_id` / `tran_id` and docs `track_id`
+ * before `payment_id` / `session_id` so we never persist a bogus long composite.
+ */
 const UPAYMENTS_TRACK_LIKE_KEYS: readonly string[] = [
+  'trans_id',
+  'transId',
+  'tran_id',
+  'tranId',
   'trackId',
   'TrackID',
   'track_id',
@@ -112,28 +125,30 @@ const UPAYMENTS_TRACK_LIKE_KEYS: readonly string[] = [
   'invoice_id',
   'invoiceId',
   'InvoiceId',
-  'session_id',
-  'sessionId',
-  'SessionId',
   'transaction_id',
   'transactionId',
   'TransactionId',
-  'tran_id',
-  'tranId',
-  'trans_id',
-  'transId',
   'receipt_id',
   'receiptId',
   'receiptid',
   'upayment_id',
   'uPaymentId',
+  'session_id',
+  'sessionId',
+  'SessionId',
 ];
+
+/** Pure-digit UPayments `trans_id` / inquiry ids are short; longer runs are wrong-field picks or corrupted JSON. */
+export const UPAYMENTS_MAX_DIGIT_ONLY_INQUIRY_LEN = 32;
 
 function isPlausibleTrackValue(s: string, key: string): boolean {
   if (s.length < 5 || s.length > 128) {
     return false;
   }
   if (s.startsWith('http') || s.startsWith('//')) {
+    return false;
+  }
+  if (/^\d+$/.test(s) && s.length > UPAYMENTS_MAX_DIGIT_ONLY_INQUIRY_LEN) {
     return false;
   }
   if (looksLikeOurOrderUuid(s) && (key === 'id' || key === 'orderId')) {
@@ -143,6 +158,15 @@ function isPlausibleTrackValue(s: string, key: string): boolean {
     return false;
   }
   return true;
+}
+
+/**
+ * True when the string is safe to pass to `GET …/get-payment-status/{id}` or
+ * to persist as `Order.posGatewayTrackId`.
+ */
+export function isValidUpaymentsPaymentStatusInquiryId(s: string): boolean {
+  const t = (s ?? '').trim();
+  return isPlausibleTrackValue(t, 'inquiry');
 }
 
 function tryParseTrackIdFromRecord(o: unknown): string | undefined {
@@ -230,19 +254,23 @@ function deepFindUpaymentsTrackId(node: unknown, depth: number): string | undefi
  * and the id sits in the URL as `session_id`.
  */
 const TRACK_URL_QUERY_KEYS: readonly string[] = [
+  'trans_id',
+  'transId',
+  'tran_id',
+  'tranId',
   'track_id',
   'trackId',
   'TrackID',
   'trackid',
   'TrackId',
-  'session_id',
-  'sessionId',
-  'SessionId',
   'payment_id',
   'paymentId',
   'PaymentId',
   'invoice_id',
   'invoiceId',
+  'session_id',
+  'sessionId',
+  'SessionId',
 ];
 
 function tryParseTrackIdFromPaymentUrl(link: string): string | undefined {
@@ -307,6 +335,8 @@ function extractUpaymentsChargeTrackId(
  */
 function extractTrackIdFromChargeRawJsonText(raw: string): string | undefined {
   const quotedPatterns: RegExp[] = [
+    /"trans_?id"\s*:\s*"([^"]{5,128})"/i,
+    /"tran_?id"\s*:\s*"([^"]{5,128})"/i,
     /"track_?id"\s*:\s*"([^"]{5,128})"/i,
     /"payment_?id"\s*:\s*"([^"]{5,128})"/i,
     /"PaymentId"\s*:\s*"([^"]{5,128})"/,
@@ -324,9 +354,10 @@ function extractTrackIdFromChargeRawJsonText(raw: string): string | undefined {
       return s;
     }
   }
-  const numM = /"(?:track_?id|payment_?id|invoice_?id|session_?id)"\s*:\s*(\d{10,24})\b/.exec(
-    raw,
-  );
+  const numM =
+    /"(?:trans_?id|tran_?id|track_?id|payment_?id|invoice_?id)"\s*:\s*(\d{10,28})\b/.exec(
+      raw,
+    );
   if (numM?.[1]) {
     return numM[1];
   }
@@ -670,11 +701,45 @@ export class PaymentsService implements OnModuleInit {
       );
     }
 
+    const validatedTrackId = this.assertUsableChargePaymentStatusId(
+      trackId,
+      text,
+      params.orderId,
+    );
+
     return {
       url,
-      reference: trackId,
-      trackId,
+      reference: validatedTrackId,
+      trackId: validatedTrackId,
     };
+  }
+
+  /**
+   * Reject corrupted / wrong-field ids (oversized all-digit strings, etc.)
+   * before persisting `posGatewayTrackId`; recover from raw JSON when possible.
+   */
+  private assertUsableChargePaymentStatusId(
+    primary: string,
+    rawJsonText: string,
+    orderIdForLog: string,
+  ): string {
+    const t = primary.trim();
+    if (isValidUpaymentsPaymentStatusInquiryId(t)) {
+      return t;
+    }
+    this.logger.warn(
+      `UPayments /charge: resolved inquiry id rejected (len=${t.length}) order=${orderIdForLog.slice(0, 8)}… — attempting recovery from raw JSON`,
+    );
+    const recovered = extractTrackIdFromChargeRawJsonText(rawJsonText);
+    if (recovered && isValidUpaymentsPaymentStatusInquiryId(recovered)) {
+      return recovered;
+    }
+    this.logger.error(
+      `UPayments /charge: unusable inquiry id after recovery order=${orderIdForLog} badLen=${t.length}`,
+    );
+    throw new BadRequestException(
+      'UPayments returned a payment-status inquiry id that is too long or corrupted. Open a new payment link from Collections after verifying the gateway JSON.',
+    );
   }
 
   /**
@@ -690,6 +755,20 @@ export class PaymentsService implements OnModuleInit {
     /** Inquiry id: prefer merchant `trans_id` / `tran_id` when supplied; same URL segment as `track_id` in docs. */
     trackId: string,
   ): Promise<{ ok: boolean; data: UPaymentsInquiryData; raw: unknown }> {
+    const clean = trackId.trim();
+    if (!clean) {
+      return { ok: false, data: {}, raw: null };
+    }
+    if (!isValidUpaymentsPaymentStatusInquiryId(clean)) {
+      this.logger.warn(
+        `UPayments inquiry skipped: invalid inquiry id (len=${clean.length}) prefix=${clean.slice(0, 20)}…`,
+      );
+      return {
+        ok: false,
+        data: {},
+        raw: { invalidInquiryId: clean.slice(0, 80) },
+      };
+    }
     if (this.usePlaceholderGateway()) {
       // Dev / mock — no external call. Caller decides what to do
       // with the empty payload; the mock-callback path uses the
@@ -701,7 +780,7 @@ export class PaymentsService implements OnModuleInit {
         'Payment inquiry is not configured (PAYMENTS_API_KEY missing)',
       );
     }
-    const statusUrl = `${this.apiBase}/api/v1/get-payment-status/${encodeURIComponent(trackId)}`;
+    const statusUrl = `${this.apiBase}/api/v1/get-payment-status/${encodeURIComponent(clean)}`;
     const upaymentsFetchTimeoutMs = Number(
       process.env.PAYMENTS_UPAYMENTS_TIMEOUT_MS?.trim() || '60000',
     );
@@ -740,7 +819,7 @@ export class PaymentsService implements OnModuleInit {
     }
     if (!res.ok || json.status === false || !json.data) {
       this.logger.warn(
-        `UPayments inquiry failed for ${trackId}: ${json.message ?? text.slice(0, 200)}`,
+        `UPayments inquiry failed for ${clean}: ${json.message ?? text.slice(0, 200)}`,
       );
       return { ok: false, data: json.data ?? {}, raw: json };
     }
@@ -1521,9 +1600,25 @@ function extractTrackIdFromFinalizeGatewayMetadata(
     return undefined;
   }
   const m = meta as Record<string, unknown>;
-  const t = m.trackId ?? m.TrackID;
-  if (typeof t === 'string' && t.trim().length > 0) {
-    return t.trim();
+  const candidates: Array<string | undefined> = [
+    tryParseTrackIdFromRecord(m),
+  ];
+  const callback = m.callback;
+  if (callback && typeof callback === 'object' && !Array.isArray(callback)) {
+    const payload = (callback as Record<string, unknown>).payload;
+    candidates.push(tryParseTrackIdFromRecord(payload));
+  }
+  for (const c of candidates) {
+    if (c && isValidUpaymentsPaymentStatusInquiryId(c)) {
+      return c.trim();
+    }
+  }
+  const legacy = m.trackId ?? m.TrackID;
+  if (typeof legacy === 'string') {
+    const s = legacy.trim();
+    if (isValidUpaymentsPaymentStatusInquiryId(s)) {
+      return s;
+    }
   }
   return undefined;
 }

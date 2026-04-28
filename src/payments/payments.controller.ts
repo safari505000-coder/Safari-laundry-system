@@ -23,7 +23,10 @@ import {
 import type { Request, Response } from 'express';
 import { OrderStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { PaymentsService } from '../common/services/payments.service';
+import {
+  PaymentsService,
+  isValidUpaymentsPaymentStatusInquiryId,
+} from '../common/services/payments.service';
 import { GatewayTrackHintDto } from './dto/gateway-track-hint.dto';
 import { PaymentCallbackDto } from './dto/payment-callback.dto';
 
@@ -195,7 +198,7 @@ document.getElementById('go').onclick = async function () {
     // --- Production path: UPayments inquiry ---
     // Merchant dashboard: primary id for payment-status is often **trans_id**
     // / **tran_id**; official API docs also call the path segment `track_id`.
-    const paymentStatusInquiryId =
+    const rawGatewayInquiryId =
       body.trans_id?.trim() ||
       body.transId?.trim() ||
       body.tran_id?.trim() ||
@@ -203,19 +206,44 @@ document.getElementById('go').onclick = async function () {
       body.track_id?.trim() ||
       body.trackId?.trim() ||
       body.TrackID?.trim() ||
-      body.gatewayReference?.trim() ||
       '';
 
-    if (paymentStatusInquiryId) {
+    let gatewayInquiryId = rawGatewayInquiryId;
+    if (
+      gatewayInquiryId &&
+      !isValidUpaymentsPaymentStatusInquiryId(gatewayInquiryId)
+    ) {
+      this.logger.warn(
+        `UPayments callback: rejecting corrupt/oversize inquiry id from webhook (len=${gatewayInquiryId.length})`,
+      );
+      gatewayInquiryId = '';
+    }
+
+    const safariForInquiryFallback = extractOrderId(body);
+    if (!gatewayInquiryId && safariForInquiryFallback) {
+      const row = await this.prisma.order.findUnique({
+        where: { id: safariForInquiryFallback },
+        select: { posGatewayTrackId: true },
+      });
+      const persisted = row?.posGatewayTrackId?.trim() ?? '';
+      if (persisted && isValidUpaymentsPaymentStatusInquiryId(persisted)) {
+        gatewayInquiryId = persisted;
+        this.logger.log(
+          `UPayments callback: using Order.posGatewayTrackId from DB (webhook id missing/invalid) order=${safariForInquiryFallback.slice(0, 8)}…`,
+        );
+      }
+    }
+
+    if (gatewayInquiryId) {
       this.logger.log(
-        `UPayments callback: received payment-status id prefix=${paymentStatusInquiryId.slice(0, 12)}…`,
+        `UPayments callback: received payment-status id prefix=${gatewayInquiryId.slice(0, 12)}…`,
       );
 
       const safariOrderFromBody = extractOrderId(body);
       const bodyOutcome = this.paymentsService.normalizeCallbackStatus(
         body.result ?? body.status ?? '',
       );
-      const trimmedTrack = paymentStatusInquiryId.trim();
+      const trimmedTrack = gatewayInquiryId;
       const linkedOrderId = trimmedTrack
         ? await this.paymentsService.findOrderByTrackId(trimmedTrack)
         : null;
@@ -237,7 +265,7 @@ document.getElementById('go').onclick = async function () {
           const tr =
             await this.paymentsService.tryFinalizeOrderFromTrustedUpaymentsReturn(
               safariOrderFromBody!,
-              paymentStatusInquiryId,
+              gatewayInquiryId,
               String(body.result ?? body.status ?? ''),
               'UPayments_WEBHOOK_TRUSTED_BODY',
               {
@@ -253,7 +281,7 @@ document.getElementById('go').onclick = async function () {
             return {
               ok: true as const,
               orderId: safariOrderFromBody!,
-              trackId: paymentStatusInquiryId,
+              trackId: gatewayInquiryId,
               outcome: 'success' as const,
             };
           }
@@ -268,21 +296,19 @@ document.getElementById('go').onclick = async function () {
       }
 
       const inquiry = await this.paymentsService.fetchGatewayStatus(
-        paymentStatusInquiryId,
+        gatewayInquiryId,
       );
       const resolvedOrderId =
         inquiry.data.order?.id ??
         extractOrderIdFromExtraData(inquiry.data.customerExtraData) ??
-        (await this.paymentsService.findOrderByTrackId(
-          paymentStatusInquiryId,
-        )) ??
+        (await this.paymentsService.findOrderByTrackId(gatewayInquiryId)) ??
         extractOrderId(body) ??
         body.orderId ??
         null;
 
       if (!resolvedOrderId) {
         this.logger.warn(
-          `UPayments webhook for paymentStatusInquiryId=${paymentStatusInquiryId} — cannot map to a Safari order; body=${safeJson(body)}`,
+          `UPayments webhook for gatewayInquiryId=${gatewayInquiryId} — cannot map to a Safari order; body=${safeJson(body)}`,
         );
         return {
           ok: false as const,
@@ -304,7 +330,7 @@ document.getElementById('go').onclick = async function () {
           resolvedOrderId,
           {
             provider: 'upayments',
-            trackId: paymentStatusInquiryId,
+            trackId: gatewayInquiryId,
             paymentId:
               inquiry.data.paymentId ??
               body.paymentId ??
@@ -334,12 +360,12 @@ document.getElementById('go').onclick = async function () {
         trackTrusted
       ) {
         this.logger.warn(
-          `UPayments callback: inquiry failed for payment-status id prefix=${paymentStatusInquiryId.slice(0, 16)}… — finalizing from webhook body (Safari orderId=${safariOrderFromBody})`,
+          `UPayments callback: inquiry failed for payment-status id prefix=${gatewayInquiryId.slice(0, 16)}… — finalizing from webhook body (Safari orderId=${safariOrderFromBody})`,
         );
         const tr =
           await this.paymentsService.tryFinalizeOrderFromTrustedUpaymentsReturn(
             safariOrderFromBody,
-            paymentStatusInquiryId,
+            gatewayInquiryId,
             String(body.result ?? body.status ?? ''),
             'UPayments_WEBHOOK_BODY_INQUIRY_FAILED',
             {
@@ -359,7 +385,7 @@ document.getElementById('go').onclick = async function () {
       return {
         ok: true as const,
         orderId: resolvedOrderId,
-        trackId: paymentStatusInquiryId,
+        trackId: gatewayInquiryId,
         outcome: willFinalize ? ('success' as const) : outcome,
       };
     }
@@ -487,13 +513,19 @@ document.getElementById('go').onclick = async function () {
       throw new BadRequestException('Order not found');
     }
 
-    const returnTrack = pickReturnTrackIdFromRequest(
+    let returnTrack = pickReturnTrackIdFromRequest(
       bodyTrackId,
       track_id,
       trackID,
       trackIdQuery,
       req,
     );
+    if (returnTrack && !isValidUpaymentsPaymentStatusInquiryId(returnTrack)) {
+      this.logger.warn(
+        `Ignoring invalid payment-status inquiry hint from return URL/body (len=${returnTrack.length}) order=${order.id.slice(0, 8)}…`,
+      );
+      returnTrack = '';
+    }
     const gatewayResultRaw = pickGatewayReturnResultFromRequest(
       gatewayResultFromBody,
       gatewayResultQuery,
@@ -676,13 +708,19 @@ document.getElementById('go').onclick = async function () {
       };
     }
 
-    const returnTrack = pickReturnTrackIdFromRequest(
+    let returnTrack = pickReturnTrackIdFromRequest(
       mergeGatewayInquiryIdFromHintDto(bodyHint),
       q.track_id,
       q.trackID,
       q.trackIdQuery,
       req,
     );
+    if (returnTrack && !isValidUpaymentsPaymentStatusInquiryId(returnTrack)) {
+      this.logger.warn(
+        `Recheck: ignoring invalid inquiry hint (len=${returnTrack.length}) order=${orderId.slice(0, 8)}…`,
+      );
+      returnTrack = '';
+    }
     const gatewayResultRaw = pickGatewayReturnResultFromRequest(
       bodyHint?.result,
       q.gatewayResultQuery,
@@ -853,7 +891,11 @@ function buildUpaymentsInquiryTrackCandidates(
   const rt = typeof returnTrack === 'string' ? returnTrack.trim() : '';
   const parts = [rt, posGatewayTrackId ?? '']
     .map((s) => (typeof s === 'string' ? s.trim() : ''))
-    .filter((s) => s.length > 0);
+    .filter(
+      (s) =>
+        s.length > 0 &&
+        isValidUpaymentsPaymentStatusInquiryId(s),
+    );
   const unique = [...new Set(parts)];
   // Hosted `session_id` values are not valid for UPayments get-payment-status.
   // When the return URL supplies a v2 `track_id`, do not fall through to the
