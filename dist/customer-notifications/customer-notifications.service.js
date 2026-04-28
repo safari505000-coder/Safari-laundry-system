@@ -269,6 +269,13 @@ function buildPaymentConfirmedMessage(params) {
     lines.push('');
     lines.push('ملابسك الآن نظيفة، معطرة، وجاهزة.');
     lines.push('');
+    lines.push('يرجى تأكيد صحة البيانات لضمان دقة المتابعة.');
+    const debt = Number.parseFloat(params.walletDebtKd ?? '');
+    if (Number.isFinite(debt) && debt > 0) {
+        lines.push('');
+        lines.push(`📌 المديونية الحالية على حسابكم: *${params.walletDebtKd} د.ك*`);
+    }
+    lines.push('');
     lines.push(`${branding_1.BRAND_CUSTOMER_AR} — جودة نهتم بها.`);
     if (params.paymentUrl) {
         lines.push('');
@@ -429,6 +436,7 @@ let CustomerNotificationsService = class CustomerNotificationsService {
             orderLabel: params.orderLabel,
             paymentUrl: params.paymentUrl,
             ratingUrl: params.ratingUrl,
+            walletDebtKd: params.walletDebtKd,
         });
         if (await this.trySendMoatmt(params.customerPhone, message, null)) {
             return;
@@ -445,6 +453,7 @@ let CustomerNotificationsService = class CustomerNotificationsService {
                     template: 'payment_confirmed',
                     paymentUrl: params.paymentUrl ?? null,
                     ratingUrl: params.ratingUrl ?? null,
+                    walletDebtKd: params.walletDebtKd ?? null,
                 }),
             });
             if (!res.ok) {

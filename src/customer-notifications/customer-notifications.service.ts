@@ -246,6 +246,11 @@ export type PaymentConfirmedNotifyParams = {
   paymentUrl?: string;
   /** `${PUBLIC_WEB_APP_URL}/r/:orderId` when `PUBLIC_WEB_APP_URL` is set. */
   ratingUrl?: string;
+  /**
+   * Outstanding wallet debt after this settlement (3dp KWD), if any — shown
+   * so the customer sees remaining receivables on their account.
+   */
+  walletDebtKd?: string;
 };
 
 /**
@@ -434,6 +439,8 @@ function buildPaymentConfirmedMessage(params: {
   orderLabel: string;
   paymentUrl?: string;
   ratingUrl?: string;
+  /** 3dp KWD; line omitted when absent or non-positive. */
+  walletDebtKd?: string;
 }): string {
   const lines: string[] = [];
   lines.push('تم تأكيد الدفع بنجاح ✅');
@@ -444,6 +451,13 @@ function buildPaymentConfirmedMessage(params: {
   lines.push(`💰 المبلغ الإجمالي: *${params.amountKd} د.ك*`);
   lines.push('');
   lines.push('ملابسك الآن نظيفة، معطرة، وجاهزة.');
+  lines.push('');
+  lines.push('يرجى تأكيد صحة البيانات لضمان دقة المتابعة.');
+  const debt = Number.parseFloat(params.walletDebtKd ?? '');
+  if (Number.isFinite(debt) && debt > 0) {
+    lines.push('');
+    lines.push(`📌 المديونية الحالية على حسابكم: *${params.walletDebtKd} د.ك*`);
+  }
   lines.push('');
   lines.push(`${BRAND_CUSTOMER_AR} — جودة نهتم بها.`);
   if (params.paymentUrl) {
@@ -691,6 +705,7 @@ export class CustomerNotificationsService implements OnModuleInit {
       orderLabel: params.orderLabel,
       paymentUrl: params.paymentUrl,
       ratingUrl: params.ratingUrl,
+      walletDebtKd: params.walletDebtKd,
     });
     if (
       await this.trySendMoatmt(
@@ -713,6 +728,7 @@ export class CustomerNotificationsService implements OnModuleInit {
           template: 'payment_confirmed',
           paymentUrl: params.paymentUrl ?? null,
           ratingUrl: params.ratingUrl ?? null,
+          walletDebtKd: params.walletDebtKd ?? null,
         }),
       });
       if (!res.ok) {

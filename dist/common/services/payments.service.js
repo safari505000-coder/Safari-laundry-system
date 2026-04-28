@@ -1052,7 +1052,13 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
                         invoiceNumber: true,
                         totalPrice: true,
                         posHostedPaymentUrl: true,
-                        customer: { select: { phone: true, phone2: true } },
+                        customer: {
+                            select: {
+                                phone: true,
+                                phone2: true,
+                                wallet: { select: { debt: true } },
+                            },
+                        },
                     },
                 });
                 if (!row) {
@@ -1071,6 +1077,10 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
                     .trim();
                 const ratingUrl = base ? `${base}/r/${encodeURIComponent(row.id)}` : undefined;
                 const paymentUrl = row.posHostedPaymentUrl?.trim() || undefined;
+                const walletDebt = row.customer.wallet?.debt ?? new client_1.Prisma.Decimal(0);
+                const walletDebtKd = walletDebt.gt(0)
+                    ? walletDebt.toFixed(3)
+                    : undefined;
                 this.customerNotifications.notifyPaymentConfirmed({
                     customerPhone: phone,
                     orderId: row.id,
@@ -1078,6 +1088,7 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
                     orderLabel,
                     paymentUrl,
                     ratingUrl,
+                    walletDebtKd,
                 });
             })().catch((e) => {
                 this.logger.warn(`emitPaymentConfirmedNotify: ${e}`);

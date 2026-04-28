@@ -1554,7 +1554,13 @@ export class PaymentsService implements OnModuleInit {
             invoiceNumber: true,
             totalPrice: true,
             posHostedPaymentUrl: true,
-            customer: { select: { phone: true, phone2: true } },
+            customer: {
+              select: {
+                phone: true,
+                phone2: true,
+                wallet: { select: { debt: true } },
+              },
+            },
           },
         });
         if (!row) {
@@ -1580,6 +1586,11 @@ export class PaymentsService implements OnModuleInit {
         const ratingUrl =
           base ? `${base}/r/${encodeURIComponent(row.id)}` : undefined;
         const paymentUrl = row.posHostedPaymentUrl?.trim() || undefined;
+        const walletDebt =
+          row.customer.wallet?.debt ?? new Prisma.Decimal(0);
+        const walletDebtKd = walletDebt.gt(0)
+          ? walletDebt.toFixed(3)
+          : undefined;
         this.customerNotifications.notifyPaymentConfirmed({
           customerPhone: phone,
           orderId: row.id,
@@ -1587,6 +1598,7 @@ export class PaymentsService implements OnModuleInit {
           orderLabel,
           paymentUrl,
           ratingUrl,
+          walletDebtKd,
         });
       })().catch((e) => {
         this.logger.warn(`emitPaymentConfirmedNotify: ${e}`);

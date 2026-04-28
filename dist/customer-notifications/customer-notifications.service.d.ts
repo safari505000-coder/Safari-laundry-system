@@ -29,6 +29,7 @@ export type PaymentConfirmedNotifyParams = {
     amountKd: string;
     paymentUrl?: string;
     ratingUrl?: string;
+    walletDebtKd?: string;
 };
 export type DriverCollectionConfirmedNotifyParams = {
     customerPhone: string;
