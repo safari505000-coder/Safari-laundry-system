@@ -137,7 +137,6 @@ const FOUR_DP = (d: Prisma.Decimal): string => d.toFixed(4);
  * still expect 4dp (e.g. the Debt-Recovery report) keep using FOUR_DP.
  */
 const KWD_DP = (d: Prisma.Decimal): string => d.toFixed(3);
-const toIsoDay = (d: Date): string => d.toISOString().slice(0, 10);
 
 /** Parse YYYY-MM-DD into UTC midnight. Invalid strings throw. */
 function parseDayUtc(iso: string): Date {
@@ -172,6 +171,35 @@ function kuwaitDayBounds(now: Date): {
   const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
   const dayIsoLocal = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
   return { dayStart, dayEnd, dayIsoLocal };
+}
+
+/** Kuwait-local calendar date (YYYY-MM-DD) for an absolute instant. */
+function toKuwaitIsoDay(d: Date): string {
+  const shifted = new Date(d.getTime() + KUWAIT_OFFSET_MS);
+  const y = shifted.getUTCFullYear();
+  const mo = shifted.getUTCMonth() + 1;
+  const day = shifted.getUTCDate();
+  return `${y}-${String(mo).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+/**
+ * Kuwait-local calendar YYYY-MM-DD at 00:00 → stored UTC instant
+ * (same convention as `kuwaitDayBounds` / Collections KPIs).
+ */
+function parseKuwaitCalendarDateStart(iso: string): Date {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso.trim());
+  if (!m) {
+    throw new BadRequestException(`Invalid date: ${iso}`);
+  }
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  return new Date(Date.UTC(y, mo - 1, d) - KUWAIT_OFFSET_MS);
+}
+
+function addKuwaitCalendarDays(isoYmd: string, deltaDays: number): string {
+  const start = parseKuwaitCalendarDateStart(isoYmd);
+  return toKuwaitIsoDay(new Date(start.getTime() + deltaDays * 86400000));
 }
 
 /**
@@ -239,12 +267,21 @@ function extractDebtSettled(meta: Prisma.JsonValue | null): Prisma.Decimal {
     return new Prisma.Decimal(0);
   }
   const v = (meta as Record<string, unknown>).debtSettled;
-  if (typeof v !== 'string') return new Prisma.Decimal(0);
-  try {
-    return new Prisma.Decimal(v);
-  } catch {
-    return new Prisma.Decimal(0);
+  if (typeof v === 'string' && v.trim()) {
+    try {
+      return new Prisma.Decimal(v);
+    } catch {
+      return new Prisma.Decimal(0);
+    }
   }
+  if (typeof v === 'number' && Number.isFinite(v)) {
+    try {
+      return new Prisma.Decimal(v);
+    } catch {
+      return new Prisma.Decimal(0);
+    }
+  }
+  return new Prisma.Decimal(0);
 }
 
 /** V1.6.4 — type-safe read of the `debtSettlementViaLink` flag. */
@@ -1092,35 +1129,31 @@ export class CallCenterService {
 
   /**
    * Dastur §5 — Owner Debt Recovery Report.
-   * Returns debt-settled KWD per UTC day between `from` and `to` (inclusive).
-   * Defaults: last 30 days ending today (UTC).
+   * Returns debt-settled KWD per **Kuwait-local** calendar day between
+   * `from` and `to` (inclusive). Defaults: last 30 Kuwait days ending
+   * today (Kuwait), aligned with Collections / «محصل اليوم» semantics.
    */
   async getDebtRecoveryReport(
     fromIso?: string,
     toIso?: string,
   ): Promise<DebtRecoveryReportDto> {
-    const todayUtc = new Date();
-    todayUtc.setUTCHours(0, 0, 0, 0);
+    const todayKuwait = toKuwaitIsoDay(new Date());
+    const toDayStr = toIso?.trim() || todayKuwait;
+    const fromDayStr =
+      fromIso?.trim() || addKuwaitCalendarDays(todayKuwait, -29);
 
-    const toDay = toIso ? parseDayUtc(toIso) : new Date(todayUtc);
-    const fromDay = fromIso
-      ? parseDayUtc(fromIso)
-      : (() => {
-          const d = new Date(toDay);
-          d.setUTCDate(d.getUTCDate() - 29);
-          return d;
-        })();
-
-    if (fromDay.getTime() > toDay.getTime()) {
+    if (fromDayStr > toDayStr) {
       throw new BadRequestException('`from` must be on or before `to`');
     }
 
-    const windowEnd = new Date(toDay);
-    windowEnd.setUTCDate(windowEnd.getUTCDate() + 1);
+    const fromBound = parseKuwaitCalendarDateStart(fromDayStr);
+    const windowEnd = new Date(
+      parseKuwaitCalendarDateStart(toDayStr).getTime() + 86400000,
+    );
 
     const rows = await this.prisma.transactionHistory.findMany({
       where: {
-        createdAt: { gte: fromDay, lt: windowEnd },
+        createdAt: { gte: fromBound, lt: windowEnd },
         type: {
           in: [
             LedgerTransactionType.ORDER_WALLET_SETTLEMENT,
@@ -1140,11 +1173,11 @@ export class CallCenterService {
     // (cleaner for sparkline rendering).
     const buckets = new Map<string, DebtRecoveryDayRowDto>();
     for (
-      let cursor = new Date(fromDay);
-      cursor.getTime() <= toDay.getTime();
-      cursor.setUTCDate(cursor.getUTCDate() + 1)
+      let d = fromDayStr;
+      d <= toDayStr;
+      d = addKuwaitCalendarDays(d, 1)
     ) {
-      const key = toIsoDay(cursor);
+      const key = d;
       buckets.set(key, {
         dayIso: key,
         recoveredKd: '0.0000',
@@ -1161,7 +1194,7 @@ export class CallCenterService {
     let totalElectronic = new Prisma.Decimal(0);
     let totalWallet = new Prisma.Decimal(0);
     for (const r of rows) {
-      const key = toIsoDay(r.createdAt);
+      const key = toKuwaitIsoDay(r.createdAt);
       const bucket = buckets.get(key);
       if (!bucket) continue;
       const debtSettled = extractDebtSettled(r.metadata);
@@ -1230,8 +1263,8 @@ export class CallCenterService {
     }
 
     return {
-      from: toIsoDay(fromDay),
-      to: toIsoDay(toDay),
+      from: fromDayStr,
+      to: toDayStr,
       totalRecoveredKd: FOUR_DP(total),
       totalRecoveredCashKd: FOUR_DP(totalCash),
       totalRecoveredElectronicKd: FOUR_DP(totalElectronic),

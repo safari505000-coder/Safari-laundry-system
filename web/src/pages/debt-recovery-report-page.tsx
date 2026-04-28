@@ -29,14 +29,25 @@ import { cn } from '@/lib/utils';
 
 const DEFAULT_WINDOW_DAYS = 30;
 
-function isoDay(date: Date): string {
-  return date.toISOString().slice(0, 10);
+/** Match server `getDebtRecoveryReport`: Kuwait-local calendar day. */
+const KUWAIT_OFFSET_MS = 3 * 60 * 60 * 1000;
+
+function isoDayKuwait(date: Date = new Date()): string {
+  const shifted = new Date(date.getTime() + KUWAIT_OFFSET_MS);
+  const y = shifted.getUTCFullYear();
+  const m = shifted.getUTCMonth() + 1;
+  const d = shifted.getUTCDate();
+  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
 
-function subtractDays(date: Date, days: number): Date {
-  const next = new Date(date);
-  next.setUTCDate(next.getUTCDate() - days);
-  return next;
+function addKuwaitCalendarDays(isoYmd: string, deltaDays: number): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoYmd.trim());
+  if (!m) return isoYmd;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  const start = new Date(Date.UTC(y, mo - 1, d) - KUWAIT_OFFSET_MS);
+  return isoDayKuwait(new Date(start.getTime() + deltaDays * 86400000));
 }
 
 /**
@@ -50,9 +61,9 @@ export function DebtRecoveryReportPage() {
   const { token, user } = useAuth();
   const isOwner = can(user, 'debtRecoveryReport.view');
 
-  const todayIso = useMemo(() => isoDay(new Date()), []);
+  const todayIso = useMemo(() => isoDayKuwait(), []);
   const defaultFromIso = useMemo(
-    () => isoDay(subtractDays(new Date(), DEFAULT_WINDOW_DAYS - 1)),
+    () => addKuwaitCalendarDays(isoDayKuwait(), -(DEFAULT_WINDOW_DAYS - 1)),
     [],
   );
 
