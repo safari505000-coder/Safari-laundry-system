@@ -40,6 +40,7 @@ import {
   type PosPaymentMethod,
   apiJson,
   ApiError,
+  getPublicPaymentStatus,
 } from '@/lib/api';
 import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
 import type { PriceListBridge } from '@/modules/shared/hooks/use-price-list';
@@ -306,6 +307,15 @@ export function usePosEngine(opts: PosEngineOptions) {
   const [receiptSheets, setReceiptSheets] = useState<ReceiptSnapshot[] | null>(
     null,
   );
+  /**
+   * V1.7.2 — live poll for hosted-link payments. After POS prints the
+   * receipt with a pending payment, we poll `GET /api/payments/status/:orderId`
+   * every 5s until the gateway callback settles the order. On settle we
+   * flip the receipt banner to «مدفوع ✅» and refresh the billing profile
+   * so the cashier sees wallet/debt update without reloading the page.
+   */
+  const pendingPayOrderIdsRef = useRef<Set<string>>(new Set());
+  const pendingPayTimerRef = useRef<number | null>(null);
   const [scanOrderDetail, setScanOrderDetail] = useState<OrderRow | null>(null);
   const [scanOrderDialogOpen, setScanOrderDialogOpen] = useState(false);
   const [serviceOpen, setServiceOpen] = useState(false);
@@ -830,6 +840,9 @@ export function usePosEngine(opts: PosEngineOptions) {
         setReceiptSheets(sheets);
 
         toast.success(t('pos.checkout.paymentLinkCreated'));
+        if (paymentLinkUrl) {
+          trackPendingPaymentSettlement(bundleRes.orders.map((o) => o.id));
+        }
         setSubOrders([{ id: crypto.randomUUID(), kind: 'primary', lines: [] }]);
         setActiveSubOrderIndex(0);
         window.setTimeout(() => {
@@ -846,6 +859,7 @@ export function usePosEngine(opts: PosEngineOptions) {
         billingSnapshot?.debt ?? selected.wallet?.debt ?? '0.0000';
       const sheets: ReceiptSnapshot[] = [];
       let sawPaymentLink = false;
+      const pendingLinkOrderIds: string[] = [];
 
       for (let k = 0; k < nonEmptyOrdered.length; k++) {
         const o = nonEmptyOrdered[k];
@@ -942,6 +956,9 @@ export function usePosEngine(opts: PosEngineOptions) {
         const paymentLinkUrl = created.paymentLink?.url?.trim();
         if (paymentLinkUrl && checkoutPayMethod === 'PAYMENT_LINK') {
           sawPaymentLink = true;
+          if (created.id) {
+            pendingLinkOrderIds.push(created.id);
+          }
         }
 
         sheets.push(
@@ -997,6 +1014,7 @@ export function usePosEngine(opts: PosEngineOptions) {
 
       if (sawPaymentLink) {
         toast.success(t('pos.checkout.paymentLinkCreated'));
+        trackPendingPaymentSettlement(pendingLinkOrderIds);
       } else if (nonEmptyOrdered.length > 1) {
         toast.success(
           t('pos.checkout.doneMulti', { count: nonEmptyOrdered.length }),
@@ -1023,6 +1041,101 @@ export function usePosEngine(opts: PosEngineOptions) {
       setCheckoutBusy(false);
     }
   }
+
+  const refreshSelectedCustomerBilling = useCallback(async () => {
+    if (!selected?.id) {
+      return;
+    }
+    try {
+      const fresh = await apiJson<CustomerBillingProfile>(
+        `/api/pos/customers/${selected.id}/billing`,
+        { token },
+      );
+      setBilling(fresh);
+      setSelected((prev) =>
+        prev && prev.id === selected.id
+          ? {
+              ...prev,
+              wallet: {
+                balance: fresh.remainingBalance,
+                debt: fresh.debt,
+              },
+            }
+          : prev,
+      );
+    } catch {
+      /* ignore — next interaction refetches */
+    }
+  }, [selected?.id, token]);
+
+  const trackPendingPaymentSettlement = useCallback(
+    (orderIds: string[]) => {
+      const keep = orderIds.filter(Boolean);
+      if (keep.length === 0) return;
+      for (const id of keep) pendingPayOrderIdsRef.current.add(id);
+      if (pendingPayTimerRef.current != null) return;
+      const stopAt = Date.now() + 15 * 60_000;
+      const tick = async () => {
+        if (pendingPayOrderIdsRef.current.size === 0) {
+          if (pendingPayTimerRef.current != null) {
+            window.clearInterval(pendingPayTimerRef.current);
+            pendingPayTimerRef.current = null;
+          }
+          return;
+        }
+        const snapshot = [...pendingPayOrderIdsRef.current];
+        let anySettled = false;
+        await Promise.all(
+          snapshot.map(async (orderId) => {
+            try {
+              const status = await getPublicPaymentStatus(orderId);
+              if (status.isPaid) {
+                pendingPayOrderIdsRef.current.delete(orderId);
+                anySettled = true;
+                setReceiptSheets((prev) =>
+                  prev
+                    ? prev.map((s) =>
+                        s.orderId === orderId
+                          ? { ...s, paymentPending: false }
+                          : s,
+                      )
+                    : prev,
+                );
+              }
+            } catch {
+              /* transient — retry next tick */
+            }
+          }),
+        );
+        if (anySettled) {
+          toast.success(t('pos.checkout.paymentSettled'));
+          void refreshSelectedCustomerBilling();
+        }
+        if (Date.now() > stopAt) {
+          pendingPayOrderIdsRef.current.clear();
+          if (pendingPayTimerRef.current != null) {
+            window.clearInterval(pendingPayTimerRef.current);
+            pendingPayTimerRef.current = null;
+          }
+        }
+      };
+      pendingPayTimerRef.current = window.setInterval(() => {
+        void tick();
+      }, 5000);
+      void tick();
+    },
+    [refreshSelectedCustomerBilling, t],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (pendingPayTimerRef.current != null) {
+        window.clearInterval(pendingPayTimerRef.current);
+        pendingPayTimerRef.current = null;
+      }
+      pendingPayOrderIdsRef.current.clear();
+    };
+  }, []);
 
   function handlePrintReceipt() {
     if (!receiptSheets?.length) {

@@ -1153,6 +1153,8 @@ export const en = {
       done: 'Order saved',
       paymentLinkCreated:
         'Payment link and receipt were sent to the customer’s phone. They pay via UPayments on their device — print the slip for your copy only.',
+      paymentSettled:
+        'Gateway confirmed payment ✅ — the order is fully settled now.',
       paymentPendingReceipt:
         'Payment pending — order completes after gateway confirms.',
       multiOrderNoPaymentLink:

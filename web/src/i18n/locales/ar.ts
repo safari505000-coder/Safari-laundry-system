@@ -1154,6 +1154,8 @@ export const ar = {
       done: 'تم حفظ الطلب',
       paymentLinkCreated:
         'أُرسل لجوال العميل رابط الدفع (UPayments) ونسخة الفاتورة — يكمل العميل الدفع من هاتفه. اطبعوا السند لنسختكم فقط.',
+      paymentSettled:
+        'تم تأكيد الدفع لدى البوابة ✅ — الطلب محفوظ ومكتمل الآن.',
       paymentPendingReceipt:
         'الدفع قيد الانتظار — يُغلق الطلب بعد تأكيد البوابة.',
       multiOrderNoPaymentLink:
