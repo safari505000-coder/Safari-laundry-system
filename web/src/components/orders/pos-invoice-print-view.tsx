@@ -76,6 +76,26 @@ export function PosInvoicePrintView({
 
   return (
     <div className="invoice-print-stage" dir="rtl">
+      {/*
+        V1.7.5 — Luxury water+soap backdrop (screen-only). A soft teal /
+        sky-blue foam gradient under soap-bubble motifs positioned around
+        the receipt sheet — so the staff/customer view feels like a
+        polished laundry hall, while the thermal print remains pristine
+        monochrome. Everything inside `.invoice-print-backdrop` is
+        aria-hidden + pointer-events:none + suppressed under @media
+        print, so the actual tape output is unchanged.
+      */}
+      <div className="invoice-print-backdrop no-print" aria-hidden>
+        <span className="soap-bubble b1" />
+        <span className="soap-bubble b2" />
+        <span className="soap-bubble b3" />
+        <span className="soap-bubble b4" />
+        <span className="soap-bubble b5" />
+        <span className="soap-bubble b6" />
+        <span className="soap-bubble b7" />
+        <span className="soap-bubble b8" />
+      </div>
+
       {toolbar ?
         <div className="invoice-print-toolbar no-print">{toolbar}</div>
       : null}
@@ -91,11 +111,28 @@ export function PosInvoicePrintView({
             alt={BRAND.customerAr}
             className="pos-receipt-logo"
           />
-          <h2>{BRAND.customerAr}</h2>
-          <p className="pos-receipt-sub">{BRAND.customerEn}</p>
-          <p className="pos-receipt-sub">Farwaniya, 00</p>
+          {/* V1.7.5 — Branded header. The canonical customer name
+              (مجموعة مصابغ سفاري السريعة) sits on top with a gold rule
+              under it, and the bilingual identity block below carries
+              only the data we actually know is correct — the hard-coded
+              «Farwaniya, 00» placeholder was removed because it rendered
+              as nonsense on non-Farwaniya invoices. Branch + phone lines
+              use proper Arabic glyphs (not the previous ASCII dashes
+              which broke under some RTL browsers — those were the
+              «طلاسم» the Owner flagged). */}
+          <h2 className="pos-brand-ar">{BRAND.customerAr}</h2>
+          <span className="pos-brand-rule" aria-hidden />
+          <p className="pos-brand-en">{BRAND.customerEn}</p>
           <p className="pos-receipt-sub">
-            Shop Tel: 24899399 - Call Center: 22200299
+            <span dir="ltr">
+              <strong>هاتف الفرع:</strong> 24899399
+            </span>
+            <span className="pos-brand-dot" aria-hidden>
+              •
+            </span>
+            <span dir="ltr">
+              <strong>مركز الاتصال:</strong> 22200299
+            </span>
           </p>
           <div className="pos-receipt-meta-grid">
             <p>
@@ -263,31 +300,117 @@ export function PosInvoicePrintView({
               امسح الكود لمشاركة تقييمك + مراجعة الشروط
             </p>
           </div>
+          {/* V1.7.5 — "سياسة التقييم والشروط" block. The Owner's
+              directive was to bring the evaluation policy to the front,
+              so this replaces the former single-paragraph legalese with
+              a numbered policy card. Printed glyphs stay Cairo (no
+              ASCII bullets that break on thermal printers) and the
+              block keeps its monochrome 8pt rendering so the tape comes
+              out crisp. */}
           <div className="pos-receipt-terms">
-            <p>الشروط والأحكام:</p>
-            <p>
-              يبدأ تسليم الطلبات المستعجلة خلال ساعات العمل وفق سياسة الفرع. يرجى
-              مراجعة الفاتورة خلال 24 ساعة من الاستلام. المتجر غير مسؤول عن
-              المقتنيات الشخصية داخل الملابس، ولا يلتزم بالتخزين بعد 30 يوماً.
-              تعويض القطع التالفة يخضع لسياسة الشركة وبحد أقصى 25% مع إبراز
-              الفاتورة الأصلية.
+            <p className="pos-terms-heading">
+              سياسة التقييم والشروط
+              <span className="pos-terms-heading-en" dir="ltr">
+                / Evaluation Policy &amp; Terms
+              </span>
             </p>
+            <ol className="pos-terms-list">
+              <li>
+                فترة التقييم: يرجى فحص القطع المستلمة خلال ٢٤ ساعة — بعدها
+                تُعتبر الفاتورة مُقرّة.
+              </li>
+              <li>
+                تعويض القطع التالفة يخضع لسياسة الشركة بحدٍّ أقصى ٢٥٪ من
+                قيمة القطعة، وبإبراز الفاتورة الأصلية.
+              </li>
+              <li>
+                المصبغة غير مسؤولة عن المقتنيات الشخصية المتروكة داخل
+                الملابس (مجوهرات، نقود، بطاقات).
+              </li>
+              <li>
+                لا تلتزم المصبغة بتخزين الطلبات بعد مرور ٣٠ يوماً من
+                تاريخ الفاتورة.
+              </li>
+              <li>
+                الطلبات المستعجلة تخضع لجدول ساعات العمل الرسمي للفرع —
+                يُرجى التنسيق مسبقاً.
+              </li>
+              <li>
+                شكراكم لاختياركم مجموعة مصابغ سفاري — خدمة بجودة ملكية
+                وعناية بكل قطعة.
+              </li>
+            </ol>
           </div>
         </div>
       </section>
 
       <style>{`
+        /* V1.7.5 — Screen stage wears a soft water+soap wash: layered
+           radial gradients in laundry-hall teals that frame the receipt
+           without competing with it, plus slow-floating soap bubbles
+           positioned in a decorative ring. Print reverts to plain white. */
         .invoice-print-stage {
+          position: relative;
           min-height: 100vh;
-          padding: 24px 12px 48px;
-          background: #f1f5f9;
+          padding: 28px 12px 56px;
           display: flex;
           flex-direction: column;
           align-items: center;
           gap: 16px;
-          font-family: 'Cairo', 'Almarai', system-ui, sans-serif;
+          font-family: 'Cairo', 'Almarai', system-ui, -apple-system, 'Segoe UI', sans-serif;
+          font-feature-settings: "kern" 1, "liga" 1, "rlig" 1, "calt" 1;
+          text-rendering: optimizeLegibility;
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
+          background:
+            radial-gradient(1200px 600px at 12% 18%, rgba(186, 230, 253, 0.55) 0%, transparent 60%),
+            radial-gradient(900px 520px at 88% 82%, rgba(165, 243, 252, 0.45) 0%, transparent 60%),
+            radial-gradient(600px 380px at 60% 0%, rgba(224, 242, 254, 0.6) 0%, transparent 55%),
+            linear-gradient(160deg, #F0FAFF 0%, #E0F2FE 45%, #F0F9FF 100%);
+          overflow: hidden;
+          isolation: isolate;
+        }
+        .invoice-print-backdrop {
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          z-index: 0;
+          overflow: hidden;
+        }
+        /* Base soap-bubble: pearlescent radial gradient + subtle inner
+           highlight so each orb reads as a translucent water bead. */
+        .invoice-print-backdrop .soap-bubble {
+          position: absolute;
+          border-radius: 9999px;
+          background:
+            radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.85) 0%, rgba(186, 230, 253, 0.55) 35%, rgba(56, 189, 248, 0.22) 70%, rgba(3, 105, 161, 0.0) 100%);
+          box-shadow:
+            inset 2px 2px 6px rgba(255, 255, 255, 0.8),
+            inset -4px -4px 10px rgba(14, 116, 144, 0.18),
+            0 4px 18px rgba(56, 189, 248, 0.18);
+          filter: blur(0.2px);
+          opacity: 0.75;
+          animation: soap-float 14s ease-in-out infinite;
+        }
+        .invoice-print-backdrop .soap-bubble.b1 { width: 140px; height: 140px; top: 6%;  right: 6%;  animation-delay: 0s;   }
+        .invoice-print-backdrop .soap-bubble.b2 { width: 90px;  height: 90px;  top: 18%; left: 10%;  animation-delay: -3s;  }
+        .invoice-print-backdrop .soap-bubble.b3 { width: 60px;  height: 60px;  top: 42%; right: 14%; animation-delay: -6s;  }
+        .invoice-print-backdrop .soap-bubble.b4 { width: 110px; height: 110px; top: 58%; left: 6%;   animation-delay: -2s;  }
+        .invoice-print-backdrop .soap-bubble.b5 { width: 74px;  height: 74px;  top: 74%; right: 18%; animation-delay: -8s;  }
+        .invoice-print-backdrop .soap-bubble.b6 { width: 46px;  height: 46px;  top: 32%; right: 32%; animation-delay: -5s;  }
+        .invoice-print-backdrop .soap-bubble.b7 { width: 52px;  height: 52px;  bottom: 8%;  left: 30%; animation-delay: -11s; }
+        .invoice-print-backdrop .soap-bubble.b8 { width: 32px;  height: 32px;  top: 10%; left: 40%;  animation-delay: -9s;  }
+        @keyframes soap-float {
+          0%   { transform: translate3d(0, 0, 0) scale(1);       opacity: 0.72; }
+          50%  { transform: translate3d(-6px, -14px, 0) scale(1.04); opacity: 0.85; }
+          100% { transform: translate3d(0, 0, 0) scale(1);       opacity: 0.72; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .invoice-print-backdrop .soap-bubble { animation: none; }
         }
         .invoice-print-toolbar {
+          position: relative;
+          z-index: 1;
           display: flex;
           flex-wrap: wrap;
           gap: 8px;
@@ -332,6 +455,7 @@ export function PosInvoicePrintView({
             padding: 0;
             background: #ffffff;
           }
+          .invoice-print-backdrop { display: none !important; }
           .no-print { display: none !important; }
         }
 
@@ -340,12 +464,15 @@ export function PosInvoicePrintView({
             width: 80mm;
             background: #ffffff;
             color: #0f172a;
-            border-radius: 6px;
-            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12);
+            border-radius: 10px;
+            box-shadow:
+              0 24px 60px -18px rgba(14, 116, 144, 0.35),
+              0 10px 22px -12px rgba(2, 132, 199, 0.28),
+              0 0 0 1px rgba(191, 219, 254, 0.6) inset;
             padding: 4mm;
             display: block;
-            position: static;
-            z-index: auto;
+            position: relative;
+            z-index: 1;
           }
           .invoice-print-surface .pos-receipt-wrap {
             width: 72mm;
@@ -369,6 +496,43 @@ export function PosInvoicePrintView({
             text-align: center;
             font-size: 13px;
             font-weight: 700;
+          }
+          /* V1.7.5 — Branded header refinements. A thin gold hairline
+             rule under the Arabic trade-name and a bullet separator
+             inside the phone line turn the top of the receipt into a
+             proper brand plate. Works on the thermal printer too —
+             the gold degrades to black on monochrome paper, the dot
+             prints as the standard UTF-8 bullet (no ASCII fallback). */
+          .invoice-print-surface .pos-brand-ar {
+            font-size: 14px;
+            letter-spacing: 0.01em;
+          }
+          .invoice-print-surface .pos-brand-rule {
+            display: block;
+            width: 26mm;
+            height: 2px;
+            margin: 1mm auto 1.4mm;
+            background: linear-gradient(90deg,
+              transparent 0%,
+              #c6a14a 20%,
+              #f0d27a 50%,
+              #c6a14a 80%,
+              transparent 100%);
+            border-radius: 2px;
+            print-color-adjust: exact;
+            -webkit-print-color-adjust: exact;
+          }
+          .invoice-print-surface .pos-brand-en {
+            margin: 0 0 1.1mm;
+            text-align: center;
+            font-size: 9.2px;
+            letter-spacing: 0.02em;
+            color: #334155;
+          }
+          .invoice-print-surface .pos-brand-dot {
+            display: inline-block;
+            margin: 0 1mm;
+            color: #0ea5e9;
           }
           .invoice-print-surface .pos-receipt-sub {
             margin: 0;
@@ -508,10 +672,50 @@ export function PosInvoicePrintView({
             padding-top: 1.1mm;
             border-top: 1px dashed #0f172a;
             font-size: 8px;
-            line-height: 1.4;
+            line-height: 1.5;
           }
           .invoice-print-surface .pos-receipt-terms p {
             margin: 0 0 0.5mm;
+          }
+          /* V1.7.5 — Evaluation Policy card. Light sky-blue strip with
+             a teal bar on the right (RTL) that reads as a "quality
+             seal" on the screen; flattens to a clean monochrome block
+             on the thermal printer. */
+          .invoice-print-surface .pos-terms-heading {
+            display: block;
+            margin: 0 0 1mm;
+            padding: 0.6mm 1.4mm;
+            border-right: 2px solid #0369a1;
+            background: #f0f9ff;
+            font-size: 9px;
+            font-weight: 700;
+            color: #0c4a6e;
+            letter-spacing: 0.01em;
+            print-color-adjust: exact;
+            -webkit-print-color-adjust: exact;
+          }
+          .invoice-print-surface .pos-terms-heading-en {
+            display: inline-block;
+            margin-inline-start: 1.5mm;
+            font-size: 7.5px;
+            font-weight: 500;
+            color: #0f766e;
+            letter-spacing: 0.02em;
+          }
+          .invoice-print-surface .pos-terms-list {
+            margin: 0;
+            padding-inline-start: 3.5mm;
+            list-style: arabic-indic;
+          }
+          .invoice-print-surface .pos-terms-list li {
+            margin: 0 0 0.45mm;
+            font-size: 7.8px;
+            line-height: 1.5;
+            color: #0f172a;
+          }
+          .invoice-print-surface .pos-terms-list li::marker {
+            color: #0369a1;
+            font-weight: 700;
           }
           .invoice-print-surface .pos-receipt-notes {
             margin-top: 1.2mm;
