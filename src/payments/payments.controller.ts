@@ -20,6 +20,7 @@ import {
   ApiProperty,
   ApiTags,
 } from '@nestjs/swagger';
+import { JwtService } from '@nestjs/jwt';
 import type { Request, Response } from 'express';
 import { OrderStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -27,6 +28,7 @@ import {
   PaymentsService,
   isValidUpaymentsPaymentStatusInquiryId,
 } from '../common/services/payments.service';
+import { buildPublicInvoicePdfUrl } from '../orders/invoice-pdf.util';
 import { GatewayTrackHintDto } from './dto/gateway-track-hint.dto';
 import { PaymentCallbackDto } from './dto/payment-callback.dto';
 
@@ -53,6 +55,42 @@ class PublicOrderStatusDto {
   isPaid!: boolean;
   @ApiProperty({ description: 'Amount in KWD, 3 decimals, as a string.' })
   amountKd!: string;
+  /**
+   * V1.7.1 — short POS serial like `A-47` used on the luxury success page
+   * so customers never see the raw UUID. `invoiceNumber` is the longer
+   * back-office format; serialNumber wins when both are set.
+   */
+  @ApiProperty({
+    description:
+      'Short POS serial (e.g. "A-47"). Prefer showing this to the customer on receipts.',
+    required: false,
+    nullable: true,
+    type: String,
+  })
+  serialNumber!: string | null;
+  @ApiProperty({
+    description: 'Back-office invoice number. Falls back to `serialNumber`.',
+    required: false,
+    nullable: true,
+    type: String,
+  })
+  invoiceNumber!: string | null;
+  @ApiProperty({
+    description:
+      'V1.7.1 — Direct PDF download URL (signed 15m token, purpose INVOICE_SHARE). Only present once `isPaid=true` and `PUBLIC_API_URL` is configured.',
+    required: false,
+    nullable: true,
+    type: String,
+  })
+  pdfUrl!: string | null;
+  @ApiProperty({
+    description:
+      'V1.7.1 — Customer-facing SPA share URL for the invoice. Only present once `isPaid=true` and `PUBLIC_WEB_APP_URL` is configured.',
+    required: false,
+    nullable: true,
+    type: String,
+  })
+  shareUrl!: string | null;
 }
 
 /**
@@ -83,7 +121,40 @@ export class PaymentsController {
   constructor(
     private readonly paymentsService: PaymentsService,
     private readonly prisma: PrismaService,
+    private readonly jwt: JwtService,
   ) {}
+
+  /**
+   * V1.7.1 — Build the customer-facing invoice share URL + binary PDF URL
+   * for a given `orderId`. Mirrors `OrdersService.mintInvoiceShareLink`
+   * (7-day JWT, `purpose: INVOICE_SHARE`) but stays inside the payments
+   * module to avoid the Orders↔Payments cycle.
+   *
+   * Called from `runPublicOrderStatusPoll` / `runRecheckPayment` once the
+   * order is actually settled so the luxury success page can offer
+   * "Download PDF" + "Share via WhatsApp" without a second round-trip.
+   */
+  private async mintInvoiceShareUrlsForOrder(
+    orderId: string,
+  ): Promise<{ pdfUrl: string | null; shareUrl: string | null }> {
+    try {
+      const token = await this.jwt.signAsync(
+        { purpose: 'INVOICE_SHARE' as const, orderId },
+        { expiresIn: '7d' },
+      );
+      const pdfUrl = buildPublicInvoicePdfUrl(token) ?? null;
+      const webBase = process.env.PUBLIC_WEB_APP_URL?.trim().replace(/\/$/, '');
+      const shareUrl = webBase
+        ? `${webBase}/public/invoice/${encodeURIComponent(token)}`
+        : null;
+      return { pdfUrl, shareUrl };
+    } catch (err) {
+      this.logger.warn(
+        `Failed to mint invoice share token for order ${orderId.slice(0, 8)}…: ${(err as Error).message}`,
+      );
+      return { pdfUrl: null, shareUrl: null };
+    }
+  }
 
   /**
    * Local / mock: browser page to simulate gateway success (POSTs to callback with devMock).
@@ -506,6 +577,8 @@ document.getElementById('go').onclick = async function () {
         status: true,
         walletSettledAt: true,
         totalPrice: true,
+        serialNumber: true,
+        invoiceNumber: true,
         posGatewayTrackId: true,
         posHostedPaymentUrl: true,
       },
@@ -588,11 +661,19 @@ document.getElementById('go').onclick = async function () {
       }
     }
 
+    const isPaid = status === OrderStatus.COMPLETED || settled;
+    const share = isPaid
+      ? await this.mintInvoiceShareUrlsForOrder(order.id)
+      : { pdfUrl: null, shareUrl: null };
     return {
       orderId: order.id,
       status,
-      isPaid: status === OrderStatus.COMPLETED || settled,
+      isPaid,
       amountKd: order.totalPrice.toFixed(3),
+      serialNumber: order.serialNumber ?? null,
+      invoiceNumber: order.invoiceNumber ?? null,
+      pdfUrl: share.pdfUrl,
+      shareUrl: share.shareUrl,
     };
   }
 
@@ -675,6 +756,10 @@ document.getElementById('go').onclick = async function () {
     gatewayResult: string | null;
     settledNow: boolean;
     messageAr: string;
+    serialNumber: string | null;
+    invoiceNumber: string | null;
+    pdfUrl: string | null;
+    shareUrl: string | null;
   }> {
     if (!orderId || orderId.length < 32) {
       throw new BadRequestException('orderId is required (UUID)');
@@ -686,6 +771,8 @@ document.getElementById('go').onclick = async function () {
         status: true,
         walletSettledAt: true,
         totalPrice: true,
+        serialNumber: true,
+        invoiceNumber: true,
         posGatewayTrackId: true,
         posHostedPaymentUrl: true,
       },
@@ -701,6 +788,7 @@ document.getElementById('go').onclick = async function () {
     let settledNow = false;
 
     if (isPaid) {
+      const share = await this.mintInvoiceShareUrlsForOrder(order.id);
       return {
         orderId: order.id,
         status,
@@ -710,6 +798,10 @@ document.getElementById('go').onclick = async function () {
         gatewayResult: null,
         settledNow: false,
         messageAr: 'الدفع مؤكَّد. شكراً لك.',
+        serialNumber: order.serialNumber ?? null,
+        invoiceNumber: order.invoiceNumber ?? null,
+        pdfUrl: share.pdfUrl,
+        shareUrl: share.shareUrl,
       };
     }
 
@@ -745,6 +837,7 @@ document.getElementById('go').onclick = async function () {
           this.logger.log(
             `UPayments manual recheck: finalized (trusted return URL) orderId=${order.id}`,
           );
+          const share = await this.mintInvoiceShareUrlsForOrder(order.id);
           return {
             orderId: order.id,
             status: OrderStatus.COMPLETED,
@@ -754,6 +847,10 @@ document.getElementById('go').onclick = async function () {
             gatewayResult: gatewayResultRaw,
             settledNow: true,
             messageAr: 'تم تأكيد الدفع بنجاح! نحدّث الفاتورة الآن.',
+            serialNumber: order.serialNumber ?? null,
+            invoiceNumber: order.invoiceNumber ?? null,
+            pdfUrl: share.pdfUrl,
+            shareUrl: share.shareUrl,
           };
         }
       } catch (err) {
@@ -778,6 +875,10 @@ document.getElementById('go').onclick = async function () {
         settledNow: false,
         messageAr:
           'الدفع لم يُكمَل لدى البوابة بعد. إن كنت أتممت الدفع، انتظر دقيقة ثم أعد التحقق.',
+        serialNumber: order.serialNumber ?? null,
+        invoiceNumber: order.invoiceNumber ?? null,
+        pdfUrl: null,
+        shareUrl: null,
       };
     }
 
@@ -823,6 +924,10 @@ document.getElementById('go').onclick = async function () {
         settledNow: false,
         messageAr:
           'تعذّر الاتصال ببوابة الدفع الآن. جرّب «إعادة التحقق» مرة أخرى خلال لحظات.',
+        serialNumber: order.serialNumber ?? null,
+        invoiceNumber: order.invoiceNumber ?? null,
+        pdfUrl: null,
+        shareUrl: null,
       };
     }
 
@@ -833,6 +938,9 @@ document.getElementById('go').onclick = async function () {
           ? `بوابة الدفع ترد بالحالة: «${gatewayResult}». إن خُصم المبلغ من حسابك ولم يُسوَّ خلال دقائق يرجى التواصل مع مركز الخدمة.`
           : 'الدفع لم يُكمَل لدى البوابة بعد. إن كنت أتممت الدفع، انتظر دقيقة ثم أعد التحقق.';
 
+    const share = isPaid
+      ? await this.mintInvoiceShareUrlsForOrder(order.id)
+      : { pdfUrl: null, shareUrl: null };
     return {
       orderId: order.id,
       status,
@@ -842,6 +950,10 @@ document.getElementById('go').onclick = async function () {
       gatewayResult,
       settledNow,
       messageAr,
+      serialNumber: order.serialNumber ?? null,
+      invoiceNumber: order.invoiceNumber ?? null,
+      pdfUrl: share.pdfUrl,
+      shareUrl: share.shareUrl,
     };
   }
 }

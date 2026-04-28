@@ -2301,6 +2301,14 @@ export type PublicPaymentStatus = {
     | 'CANCELED';
   isPaid: boolean;
   amountKd: string;
+  /** V1.7.1 — Short POS serial (e.g. "A-47") shown on the luxury success page. */
+  serialNumber?: string | null;
+  /** V1.7.1 — Longer back-office invoice number; fallback display when `serialNumber` is null. */
+  invoiceNumber?: string | null;
+  /** V1.7.1 — Direct PDF download (JWT-signed, 7d TTL). Populated only when `isPaid === true`. */
+  pdfUrl?: string | null;
+  /** V1.7.1 — Customer-facing SPA share URL for WhatsApp. Populated only when `isPaid === true`. */
+  shareUrl?: string | null;
 };
 
 /** UPayments v2 id from the browser return URL (query often lost before the API). */
@@ -2426,6 +2434,11 @@ export type PublicPaymentRecheck = {
   gatewayResult: string | null;
   settledNow: boolean;
   messageAr: string;
+  /** V1.7.1 — Same luxury-page fields as {@link PublicPaymentStatus}. */
+  serialNumber?: string | null;
+  invoiceNumber?: string | null;
+  pdfUrl?: string | null;
+  shareUrl?: string | null;
 };
 
 export function recheckPublicPayment(

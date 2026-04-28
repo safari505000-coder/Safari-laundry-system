@@ -1,3 +1,4 @@
+import { JwtService } from '@nestjs/jwt';
 import type { Request, Response } from 'express';
 import { OrderStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -9,12 +10,18 @@ declare class PublicOrderStatusDto {
     status: OrderStatus;
     isPaid: boolean;
     amountKd: string;
+    serialNumber: string | null;
+    invoiceNumber: string | null;
+    pdfUrl: string | null;
+    shareUrl: string | null;
 }
 export declare class PaymentsController {
     private readonly paymentsService;
     private readonly prisma;
+    private readonly jwt;
     private readonly logger;
-    constructor(paymentsService: PaymentsService, prisma: PrismaService);
+    constructor(paymentsService: PaymentsService, prisma: PrismaService, jwt: JwtService);
+    private mintInvoiceShareUrlsForOrder;
     mockCheckoutPage(orderId: string | undefined, res: Response): void;
     mockCheckoutPageAlias(orderId: string | undefined, res: Response): void;
     callback(body: PaymentCallbackDto): Promise<{
@@ -48,6 +55,10 @@ export declare class PaymentsController {
         gatewayResult: string | null;
         settledNow: boolean;
         messageAr: string;
+        serialNumber: string | null;
+        invoiceNumber: string | null;
+        pdfUrl: string | null;
+        shareUrl: string | null;
     }>;
     recheckPaymentGet(req: Request, orderId: string, track_id?: string, trackID?: string, trackIdQuery?: string, gatewayResultQuery?: string): Promise<{
         orderId: string;
@@ -58,6 +69,10 @@ export declare class PaymentsController {
         gatewayResult: string | null;
         settledNow: boolean;
         messageAr: string;
+        serialNumber: string | null;
+        invoiceNumber: string | null;
+        pdfUrl: string | null;
+        shareUrl: string | null;
     }>;
     private runRecheckPayment;
 }

@@ -16,9 +16,11 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.PaymentsController = void 0;
 const common_1 = require("@nestjs/common");
 const swagger_1 = require("@nestjs/swagger");
+const jwt_1 = require("@nestjs/jwt");
 const client_1 = require("@prisma/client");
 const prisma_service_1 = require("../prisma/prisma.service");
 const payments_service_1 = require("../common/services/payments.service");
+const invoice_pdf_util_1 = require("../orders/invoice-pdf.util");
 const gateway_track_hint_dto_1 = require("./dto/gateway-track-hint.dto");
 const payment_callback_dto_1 = require("./dto/payment-callback.dto");
 class PublicOrderStatusDto {
@@ -26,6 +28,10 @@ class PublicOrderStatusDto {
     status;
     isPaid;
     amountKd;
+    serialNumber;
+    invoiceNumber;
+    pdfUrl;
+    shareUrl;
 }
 __decorate([
     (0, swagger_1.ApiProperty)(),
@@ -52,6 +58,42 @@ __decorate([
     (0, swagger_1.ApiProperty)({ description: 'Amount in KWD, 3 decimals, as a string.' }),
     __metadata("design:type", String)
 ], PublicOrderStatusDto.prototype, "amountKd", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({
+        description: 'Short POS serial (e.g. "A-47"). Prefer showing this to the customer on receipts.',
+        required: false,
+        nullable: true,
+        type: String,
+    }),
+    __metadata("design:type", Object)
+], PublicOrderStatusDto.prototype, "serialNumber", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({
+        description: 'Back-office invoice number. Falls back to `serialNumber`.',
+        required: false,
+        nullable: true,
+        type: String,
+    }),
+    __metadata("design:type", Object)
+], PublicOrderStatusDto.prototype, "invoiceNumber", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({
+        description: 'V1.7.1 — Direct PDF download URL (signed 15m token, purpose INVOICE_SHARE). Only present once `isPaid=true` and `PUBLIC_API_URL` is configured.',
+        required: false,
+        nullable: true,
+        type: String,
+    }),
+    __metadata("design:type", Object)
+], PublicOrderStatusDto.prototype, "pdfUrl", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({
+        description: 'V1.7.1 — Customer-facing SPA share URL for the invoice. Only present once `isPaid=true` and `PUBLIC_WEB_APP_URL` is configured.',
+        required: false,
+        nullable: true,
+        type: String,
+    }),
+    __metadata("design:type", Object)
+], PublicOrderStatusDto.prototype, "shareUrl", void 0);
 function mergeGatewayInquiryIdFromHintDto(hint) {
     if (!hint)
         return undefined;
@@ -67,10 +109,27 @@ function mergeGatewayInquiryIdFromHintDto(hint) {
 let PaymentsController = PaymentsController_1 = class PaymentsController {
     paymentsService;
     prisma;
+    jwt;
     logger = new common_1.Logger(PaymentsController_1.name);
-    constructor(paymentsService, prisma) {
+    constructor(paymentsService, prisma, jwt) {
         this.paymentsService = paymentsService;
         this.prisma = prisma;
+        this.jwt = jwt;
+    }
+    async mintInvoiceShareUrlsForOrder(orderId) {
+        try {
+            const token = await this.jwt.signAsync({ purpose: 'INVOICE_SHARE', orderId }, { expiresIn: '7d' });
+            const pdfUrl = (0, invoice_pdf_util_1.buildPublicInvoicePdfUrl)(token) ?? null;
+            const webBase = process.env.PUBLIC_WEB_APP_URL?.trim().replace(/\/$/, '');
+            const shareUrl = webBase
+                ? `${webBase}/public/invoice/${encodeURIComponent(token)}`
+                : null;
+            return { pdfUrl, shareUrl };
+        }
+        catch (err) {
+            this.logger.warn(`Failed to mint invoice share token for order ${orderId.slice(0, 8)}…: ${err.message}`);
+            return { pdfUrl: null, shareUrl: null };
+        }
     }
     mockCheckoutPage(orderId, res) {
         if (!orderId || orderId.length < 32) {
@@ -283,6 +342,8 @@ document.getElementById('go').onclick = async function () {
                 status: true,
                 walletSettledAt: true,
                 totalPrice: true,
+                serialNumber: true,
+                invoiceNumber: true,
                 posGatewayTrackId: true,
                 posHostedPaymentUrl: true,
             },
@@ -331,11 +392,19 @@ document.getElementById('go').onclick = async function () {
                 }
             }
         }
+        const isPaid = status === client_1.OrderStatus.COMPLETED || settled;
+        const share = isPaid
+            ? await this.mintInvoiceShareUrlsForOrder(order.id)
+            : { pdfUrl: null, shareUrl: null };
         return {
             orderId: order.id,
             status,
-            isPaid: status === client_1.OrderStatus.COMPLETED || settled,
+            isPaid,
             amountKd: order.totalPrice.toFixed(3),
+            serialNumber: order.serialNumber ?? null,
+            invoiceNumber: order.invoiceNumber ?? null,
+            pdfUrl: share.pdfUrl,
+            shareUrl: share.shareUrl,
         };
     }
     async recheckPaymentPost(req, orderId, body, track_id, trackID, trackIdQuery, gatewayResultQuery) {
@@ -365,6 +434,8 @@ document.getElementById('go').onclick = async function () {
                 status: true,
                 walletSettledAt: true,
                 totalPrice: true,
+                serialNumber: true,
+                invoiceNumber: true,
                 posGatewayTrackId: true,
                 posHostedPaymentUrl: true,
             },
@@ -377,6 +448,7 @@ document.getElementById('go').onclick = async function () {
         let gatewayResult = null;
         let settledNow = false;
         if (isPaid) {
+            const share = await this.mintInvoiceShareUrlsForOrder(order.id);
             return {
                 orderId: order.id,
                 status,
@@ -386,6 +458,10 @@ document.getElementById('go').onclick = async function () {
                 gatewayResult: null,
                 settledNow: false,
                 messageAr: 'الدفع مؤكَّد. شكراً لك.',
+                serialNumber: order.serialNumber ?? null,
+                invoiceNumber: order.invoiceNumber ?? null,
+                pdfUrl: share.pdfUrl,
+                shareUrl: share.shareUrl,
             };
         }
         let returnTrack = pickReturnTrackIdFromRequest(mergeGatewayInquiryIdFromHintDto(bodyHint), q.track_id, q.trackID, q.trackIdQuery, req);
@@ -399,6 +475,7 @@ document.getElementById('go').onclick = async function () {
                 const tr = await this.paymentsService.tryFinalizeOrderFromTrustedUpaymentsReturn(order.id, returnTrack, gatewayResultRaw, 'CUSTOMER_RECHECK_TRUSTED_RETURN_URL');
                 if (tr.finalized) {
                     this.logger.log(`UPayments manual recheck: finalized (trusted return URL) orderId=${order.id}`);
+                    const share = await this.mintInvoiceShareUrlsForOrder(order.id);
                     return {
                         orderId: order.id,
                         status: client_1.OrderStatus.COMPLETED,
@@ -408,6 +485,10 @@ document.getElementById('go').onclick = async function () {
                         gatewayResult: gatewayResultRaw,
                         settledNow: true,
                         messageAr: 'تم تأكيد الدفع بنجاح! نحدّث الفاتورة الآن.',
+                        serialNumber: order.serialNumber ?? null,
+                        invoiceNumber: order.invoiceNumber ?? null,
+                        pdfUrl: share.pdfUrl,
+                        shareUrl: share.shareUrl,
                     };
                 }
             }
@@ -426,6 +507,10 @@ document.getElementById('go').onclick = async function () {
                 gatewayResult: null,
                 settledNow: false,
                 messageAr: 'الدفع لم يُكمَل لدى البوابة بعد. إن كنت أتممت الدفع، انتظر دقيقة ثم أعد التحقق.',
+                serialNumber: order.serialNumber ?? null,
+                invoiceNumber: order.invoiceNumber ?? null,
+                pdfUrl: null,
+                shareUrl: null,
             };
         }
         this.logger.log(`UPayments manual recheck: orderId=${order.id} hasReturnTrack=${Boolean(returnTrack)} posTrack=${order.posGatewayTrackId ? 'yes' : 'no'} urlTrack=${urlTrackFallback ? 'yes' : 'no'}`);
@@ -456,6 +541,10 @@ document.getElementById('go').onclick = async function () {
                 gatewayResult: null,
                 settledNow: false,
                 messageAr: 'تعذّر الاتصال ببوابة الدفع الآن. جرّب «إعادة التحقق» مرة أخرى خلال لحظات.',
+                serialNumber: order.serialNumber ?? null,
+                invoiceNumber: order.invoiceNumber ?? null,
+                pdfUrl: null,
+                shareUrl: null,
             };
         }
         const messageAr = isPaid && settledNow
@@ -463,6 +552,9 @@ document.getElementById('go').onclick = async function () {
             : gatewayResult && gatewayResult.trim().length > 0
                 ? `بوابة الدفع ترد بالحالة: «${gatewayResult}». إن خُصم المبلغ من حسابك ولم يُسوَّ خلال دقائق يرجى التواصل مع مركز الخدمة.`
                 : 'الدفع لم يُكمَل لدى البوابة بعد. إن كنت أتممت الدفع، انتظر دقيقة ثم أعد التحقق.';
+        const share = isPaid
+            ? await this.mintInvoiceShareUrlsForOrder(order.id)
+            : { pdfUrl: null, shareUrl: null };
         return {
             orderId: order.id,
             status,
@@ -472,6 +564,10 @@ document.getElementById('go').onclick = async function () {
             gatewayResult,
             settledNow,
             messageAr,
+            serialNumber: order.serialNumber ?? null,
+            invoiceNumber: order.invoiceNumber ?? null,
+            pdfUrl: share.pdfUrl,
+            shareUrl: share.shareUrl,
         };
     }
 };
@@ -581,7 +677,8 @@ exports.PaymentsController = PaymentsController = PaymentsController_1 = __decor
     (0, swagger_1.ApiTags)('payments'),
     (0, common_1.Controller)('payments'),
     __metadata("design:paramtypes", [payments_service_1.PaymentsService,
-        prisma_service_1.PrismaService])
+        prisma_service_1.PrismaService,
+        jwt_1.JwtService])
 ], PaymentsController);
 function readGatewayTrackIdFromPlainBody(req) {
     const raw = req.body;

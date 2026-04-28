@@ -8,12 +8,14 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PaymentsModule = void 0;
 const common_1 = require("@nestjs/common");
+const jwt_1 = require("@nestjs/jwt");
 const customer_ledger_module_1 = require("../customer-ledger/customer-ledger.module");
 const customer_notifications_module_1 = require("../customer-notifications/customer-notifications.module");
 const payments_service_1 = require("../common/services/payments.service");
 const general_ledger_module_1 = require("../general-ledger/general-ledger.module");
 const inventory_module_1 = require("../inventory/inventory.module");
 const prisma_module_1 = require("../prisma/prisma.module");
+const jwt_secret_fallback_1 = require("../common/constants/jwt-secret-fallback");
 const payments_controller_1 = require("./payments.controller");
 let PaymentsModule = class PaymentsModule {
 };
@@ -26,6 +28,13 @@ exports.PaymentsModule = PaymentsModule = __decorate([
             customer_notifications_module_1.CustomerNotificationsModule,
             general_ledger_module_1.GeneralLedgerModule,
             inventory_module_1.InventoryModule,
+            jwt_1.JwtModule.register({
+                secret: process.env.JWT_SECRET ?? jwt_secret_fallback_1.JWT_SECRET_DEV_FALLBACK,
+                signOptions: {
+                    expiresIn: (process.env.AUTH_ACCESS_TOKEN_TTL ??
+                        '15m'),
+                },
+            }),
         ],
         controllers: [payments_controller_1.PaymentsController],
         providers: [payments_service_1.PaymentsService],
