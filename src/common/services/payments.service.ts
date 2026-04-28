@@ -169,6 +169,18 @@ export function isValidUpaymentsPaymentStatusInquiryId(s: string): boolean {
   return isPlausibleTrackValue(t, 'inquiry');
 }
 
+/** For `/charge` only: never treat our Safari order UUID as a gateway inquiry id. */
+function isSafeUpaymentsChargeInquiryCandidate(s: string): boolean {
+  const t = (s ?? '').trim();
+  if (!isValidUpaymentsPaymentStatusInquiryId(t)) {
+    return false;
+  }
+  if (looksLikeOurOrderUuid(t)) {
+    return false;
+  }
+  return true;
+}
+
 function tryParseTrackIdFromRecord(o: unknown): string | undefined {
   if (!o || typeof o !== 'object') {
     return undefined;
@@ -192,13 +204,17 @@ const TRACK_KEY_NAME_HINT = /track|payment_?id|invoice_?|session_?|tran_?|receip
  * Deep search (depth-limited) for any nested object that carries a track-like key.
  * Skips obvious non-ids (URLs, our UUID order ids in known fields).
  */
-function deepFindUpaymentsTrackId(node: unknown, depth: number): string | undefined {
+function deepFindUpaymentsTrackIdWithPredicate(
+  node: unknown,
+  depth: number,
+  accept: (s: string, key: string) => boolean,
+): string | undefined {
   if (depth > 12 || node == null) {
     return undefined;
   }
   if (Array.isArray(node)) {
     for (const el of node) {
-      const t = deepFindUpaymentsTrackId(el, depth + 1);
+      const t = deepFindUpaymentsTrackIdWithPredicate(el, depth + 1, accept);
       if (t) {
         return t;
       }
@@ -214,7 +230,7 @@ function deepFindUpaymentsTrackId(node: unknown, depth: number): string | undefi
       continue;
     }
     const s = coerceStringishTrackValue(o[k]);
-    if (s && isPlausibleTrackValue(s, k)) {
+    if (s && accept(s, k)) {
       return s;
     }
   }
@@ -224,7 +240,8 @@ function deepFindUpaymentsTrackId(node: unknown, depth: number): string | undefi
         continue;
       }
       const s = coerceStringishTrackValue(o[k]);
-      if (s && isPlausibleTrackValue(s, 'id')) {
+      // Match legacy `isPlausibleTrackValue(s, 'id')` regardless of property casing.
+      if (s && accept(s, 'id')) {
         return s;
       }
     }
@@ -232,20 +249,36 @@ function deepFindUpaymentsTrackId(node: unknown, depth: number): string | undefi
   for (const [k, v] of Object.entries(o)) {
     if (TRACK_KEY_NAME_HINT.test(k)) {
       const s = coerceStringishTrackValue(v);
-      if (s && isPlausibleTrackValue(s, k)) {
+      if (s && accept(s, k)) {
         return s;
       }
     }
   }
   for (const v of Object.values(o)) {
     if (v != null && typeof v === 'object') {
-      const t = deepFindUpaymentsTrackId(v, depth + 1);
+      const t = deepFindUpaymentsTrackIdWithPredicate(v, depth + 1, accept);
       if (t) {
         return t;
       }
     }
   }
   return undefined;
+}
+
+function deepFindUpaymentsTrackId(node: unknown, depth: number): string | undefined {
+  return deepFindUpaymentsTrackIdWithPredicate(node, depth, (s, k) =>
+    isPlausibleTrackValue(s, k),
+  );
+}
+
+/** Like `deepFindUpaymentsTrackId` but only values safe for `get-payment-status` / `posGatewayTrackId`. */
+function deepFindValidUpaymentsChargeInquiryId(
+  node: unknown,
+  depth: number,
+): string | undefined {
+  return deepFindUpaymentsTrackIdWithPredicate(node, depth, (s) =>
+    isSafeUpaymentsChargeInquiryCandidate(s),
+  );
 }
 
 /**
@@ -285,11 +318,37 @@ function tryParseTrackIdFromPaymentUrl(link: string): string | undefined {
         return v.trim();
       }
     }
+    // Hash routing: `https://host/#/pay?session_id=…` — `URL.searchParams` ignores the hash.
+    const h = u.hash;
+    if (h && h.length > 1) {
+      const inner = h.startsWith('#') ? h.slice(1) : h;
+      const qMark = inner.indexOf('?');
+      if (qMark >= 0) {
+        const qp = new URLSearchParams(inner.slice(qMark + 1));
+        for (const key of TRACK_URL_QUERY_KEYS) {
+          const v = qp.get(key);
+          if (v?.trim()) {
+            return v.trim();
+          }
+        }
+      }
+      const loose = new RegExp(
+        `(?:^|[?&#/])(?:${TRACK_URL_QUERY_KEYS.join('|')})=([^&#]+)`,
+        'i',
+      ).exec(inner);
+      if (loose?.[1]) {
+        try {
+          return decodeURIComponent(loose[1].trim());
+        } catch {
+          return loose[1].trim();
+        }
+      }
+    }
   } catch {
     // relative or non-standard URL; fall through to regex
   }
   const m = new RegExp(
-    `[?&](?:${TRACK_URL_QUERY_KEYS.join('|')})=([^&]+)`,
+    `[?&#/](?:${TRACK_URL_QUERY_KEYS.join('|')})=([^&]+)`,
     'i',
   ).exec(link);
   if (m?.[1]) {
@@ -313,23 +372,57 @@ function extractUpaymentsChargeTrackId(
   // before JSON object fields — some payloads expose misleading long numeric
   // fields that are not valid `get-payment-status` inquiry ids.
   let t = tryParseTrackIdFromPaymentUrl(paymentUrl);
-  if (t) {
+  if (t && isSafeUpaymentsChargeInquiryCandidate(t)) {
     return t;
   }
   t = tryParseTrackIdFromRecord(data);
-  if (t) {
+  if (t && isSafeUpaymentsChargeInquiryCandidate(t)) {
     return t;
   }
   if (data && typeof data === 'object' && 'data' in (data as object)) {
     t = tryParseTrackIdFromRecord(
       (data as { data?: unknown }).data,
     );
-    if (t) {
+    if (t && isSafeUpaymentsChargeInquiryCandidate(t)) {
       return t;
     }
   }
-  t = deepFindUpaymentsTrackId(data, 0);
+  t = deepFindValidUpaymentsChargeInquiryId(data, 0);
   return t;
+}
+
+/**
+ * If `JSON.parse` coerced or skipped fields, re-read `data.link` (or similar)
+ * from the raw `/charge` body and parse query / hash / path for an inquiry id.
+ */
+function extractTrackIdFromChargeLinkEmbeddedInRaw(raw: string): string | undefined {
+  const m =
+    /"link"\s*:\s*"((?:[^"\\]|\\.)*)"/i.exec(raw) ??
+    /"paymentUrl"\s*:\s*"((?:[^"\\]|\\.)*)"/i.exec(raw) ??
+    /"paymentLink"\s*:\s*"((?:[^"\\]|\\.)*)"/i.exec(raw) ??
+    /"url"\s*:\s*"((?:[^"\\]|\\.)*)"/i.exec(raw);
+  if (!m?.[1]) {
+    return undefined;
+  }
+  let linkStr: string;
+  try {
+    linkStr = JSON.parse(`"${m[1]}"`) as string;
+  } catch {
+    linkStr = m[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+  }
+  const fromQuery = tryParseTrackIdFromPaymentUrl(linkStr);
+  if (fromQuery && isSafeUpaymentsChargeInquiryCandidate(fromQuery)) {
+    return fromQuery;
+  }
+  const pathDigits = /\/(\d{10,28})(?:\?|#|$)/.exec(linkStr);
+  if (pathDigits?.[1] && isSafeUpaymentsChargeInquiryCandidate(pathDigits[1])) {
+    return pathDigits[1];
+  }
+  const pathV2 = /\/([0-9a-f]{8,40}v2)(?:\?|#|$)/i.exec(linkStr);
+  if (pathV2?.[1] && isSafeUpaymentsChargeInquiryCandidate(pathV2[1])) {
+    return pathV2[1];
+  }
+  return undefined;
 }
 
 /**
@@ -341,6 +434,8 @@ function extractTrackIdFromChargeRawJsonText(raw: string): string | undefined {
     /"trans_?id"\s*:\s*"([^"]{5,128})"/i,
     /"tran_?id"\s*:\s*"([^"]{5,128})"/i,
     /"track_?id"\s*:\s*"([^"]{5,128})"/i,
+    /"trackId"\s*:\s*"([^"]{5,128})"/,
+    /"TrackID"\s*:\s*"([^"]{5,128})"/,
     /"session_?id"\s*:\s*"([^"]{5,128})"/i,
     /"payment_?id"\s*:\s*"([^"]{5,128})"/i,
     /"PaymentId"\s*:\s*"([^"]{5,128})"/,
@@ -353,7 +448,8 @@ function extractTrackIdFromChargeRawJsonText(raw: string): string | undefined {
       s &&
       !s.startsWith('http') &&
       !looksLikeOurOrderUuid(s) &&
-      isPlausibleTrackValue(s, 'raw')
+      isPlausibleTrackValue(s, 'raw') &&
+      isSafeUpaymentsChargeInquiryCandidate(s)
     ) {
       return s;
     }
@@ -362,7 +458,7 @@ function extractTrackIdFromChargeRawJsonText(raw: string): string | undefined {
     /"(?:trans_?id|tran_?id|track_?id|session_?id|payment_?id|invoice_?id)"\s*:\s*(\d{10,28})\b/.exec(
       raw,
     );
-  if (numM?.[1]) {
+  if (numM?.[1] && isSafeUpaymentsChargeInquiryCandidate(numM[1])) {
     return numM[1];
   }
   return undefined;
@@ -684,13 +780,19 @@ export class PaymentsService implements OnModuleInit {
 
     let trackId = extractUpaymentsChargeTrackId(dataBlock, url);
     if (!trackId) {
-      trackId = deepFindUpaymentsTrackId(json, 0);
+      trackId = deepFindValidUpaymentsChargeInquiryId(json, 0);
     }
     if (!trackId) {
-      trackId = tryParseTrackIdFromRecord(json);
+      const tr = tryParseTrackIdFromRecord(json);
+      if (tr && isSafeUpaymentsChargeInquiryCandidate(tr)) {
+        trackId = tr;
+      }
     }
     if (!trackId) {
       trackId = extractTrackIdFromChargeRawJsonText(text);
+    }
+    if (!trackId) {
+      trackId = extractTrackIdFromChargeLinkEmbeddedInRaw(text);
     }
     if (!trackId) {
       const dataKeys =
@@ -735,8 +837,12 @@ export class PaymentsService implements OnModuleInit {
       `UPayments /charge: resolved inquiry id rejected (len=${t.length}) order=${orderIdForLog.slice(0, 8)}… — attempting recovery from raw JSON`,
     );
     const recovered = extractTrackIdFromChargeRawJsonText(rawJsonText);
-    if (recovered && isValidUpaymentsPaymentStatusInquiryId(recovered)) {
+    if (recovered && isSafeUpaymentsChargeInquiryCandidate(recovered)) {
       return recovered;
+    }
+    const fromLink = extractTrackIdFromChargeLinkEmbeddedInRaw(rawJsonText);
+    if (fromLink && isSafeUpaymentsChargeInquiryCandidate(fromLink)) {
+      return fromLink;
     }
     this.logger.error(
       `UPayments /charge: unusable inquiry id after recovery order=${orderIdForLog} badLen=${t.length}`,
