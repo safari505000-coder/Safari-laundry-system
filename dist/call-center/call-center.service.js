@@ -670,15 +670,8 @@ let CallCenterService = class CallCenterService {
             : orderBranchScope
                 ? { order: { is: orderBranchScope } }
                 : {};
-        const [unpaidInvoicesSum, todaysSettlementRows, todaysSubscriptionActivationRows, pendingLinksCount, ledgerDebtSplit,] = await Promise.all([
-            this.prisma.order.aggregate({
-                where: {
-                    cashStatus: client_1.CashStatus.UNPAID,
-                    status: { not: client_1.OrderStatus.CANCELED },
-                    ...orderBranch,
-                },
-                _sum: { totalPrice: true },
-            }),
+        const [redCardTotal, todaysSettlementRows, todaysSubscriptionActivationRows, pendingLinksCount, ledgerDebtSplit,] = await Promise.all([
+            this.orders.sumCollectionsDebtTotalKd(effectiveBranchId, actor ?? undefined),
             this.prisma.transactionHistory.findMany({
                 where: {
                     type: client_1.LedgerTransactionType.ORDER_WALLET_SETTLEMENT,
@@ -705,7 +698,6 @@ let CallCenterService = class CallCenterService {
             }),
             this.debt.getLedgerOpenDebtByCategory(ledgerBranchFilter),
         ]);
-        const redCardTotal = unpaidInvoicesSum._sum.totalPrice ?? new client_1.Prisma.Decimal(0);
         let collectedTodayFromOrders = new client_1.Prisma.Decimal(0);
         for (const r of todaysSettlementRows) {
             const debtSettled = extractDebtSettled(r.metadata);

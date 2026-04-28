@@ -1119,10 +1119,23 @@ export class OrdersService {
           }
         : undefined;
 
+    // V1.7.4 — Owner directive: DEBT_ON_ACCOUNT invoices must also feed
+    // the Collections panel (previously the query filtered by
+    // `cashStatus: UNPAID` only, which excluded debt-on-account sales
+    // because their mapping pins cashStatus to PAID_TO_DRIVER even
+    // though the customer still owes the money). We reuse the same
+    // pattern the driver Field-Tracker already uses: widen with OR +
+    // FIFO-filter via `resolveOpenDebtOrderIds`, so an invoice drops
+    // off the list the moment the customer settles through any channel
+    // (office cash by accountant, CC manual mark, partial debt payment,
+    // gateway link, etc.).
     const rows = await this.prisma.order.findMany({
       where: {
-        cashStatus: CashStatus.UNPAID,
         status: { not: OrderStatus.CANCELED },
+        OR: [
+          { cashStatus: CashStatus.UNPAID },
+          { posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT },
+        ],
         ...(branchWhere ?? {}),
       },
       select: {
@@ -1133,6 +1146,7 @@ export class OrdersService {
         totalPrice: true,
         posPaymentMethod: true,
         posHostedPaymentUrl: true,
+        cashStatus: true,
         createdAt: true,
         reminderCount: true,
         lastReminderAt: true,
@@ -1173,6 +1187,25 @@ export class OrdersService {
       // predicate, so capping rows here would silently desync the
       // table-footer sum from the "Market Debt Total" card.
     });
+
+    // V1.7.4 — FIFO-allocate customer-level payments so a DEBT_ON_ACCOUNT
+    // invoice drops off the collections list the instant it is settled
+    // (same rule the Driver Field-Tracker + Owner Debt Recovery Report
+    // already use). UNPAID rows are always kept — their own pathway
+    // (hosted link / cash mark) flips `cashStatus` back on settlement.
+    const debtCandidates = rows.filter(
+      (r) => r.posPaymentMethod === PosPaymentMethod.DEBT_ON_ACCOUNT,
+    );
+    const openDebtOrderIds = await this.resolveOpenDebtOrderIds(
+      debtCandidates.map((r) => ({ orderId: r.id, customerId: r.customerId })),
+    );
+    const filteredRows = rows.filter((r) => {
+      if (r.cashStatus === CashStatus.UNPAID) return true;
+      if (r.posPaymentMethod === PosPaymentMethod.DEBT_ON_ACCOUNT) {
+        return openDebtOrderIds.has(r.id);
+      }
+      return false;
+    });
     const now = Date.now();
     const DAY_MS = 24 * 60 * 60 * 1000;
     // V1.6.8 — Collections recall window (must stay in sync with
@@ -1180,7 +1213,7 @@ export class OrdersService {
     // the `canRemindNow` flag that greys out the Send-payment-link
     // button on the table until 2.5 h after the last reminder.
     const ORDER_REMINDER_COOLDOWN_MS = 2.5 * 60 * 60 * 1000;
-    return rows.map((r) => {
+    return filteredRows.map((r) => {
       const phone =
         r.customer.phone?.replace(/[\s-]/g, '').trim() ||
         r.customer.phone2?.replace(/[\s-]/g, '').trim() ||
@@ -1252,6 +1285,90 @@ export class OrdersService {
         lineItems,
       };
     });
+  }
+
+  /**
+   * V1.7.4 — Market-debt aggregate that mirrors the widened Collections
+   * list (`listUnpaidCollectionOrders`). Returns the single Decimal sum
+   * the Red KPI card displays, so the table footer and the card always
+   * match to the last fils. Kept as a dedicated helper because the KPI
+   * is called on every Operations-Summary poll and building the full
+   * row projection (with line items, reminders, WhatsApp locks, etc.)
+   * would be wasted work.
+   *
+   * Scope semantics match the list:
+   *   - `driverId === userId`           when the caller is a DRIVER,
+   *   - driver.branchId | customer.originBranchId when a MANAGER or a
+   *     branch filter is set,
+   *   - global otherwise.
+   *
+   * Membership:
+   *   - `cashStatus = UNPAID` (pending hosted-link / cash arrears), OR
+   *   - `posPaymentMethod = DEBT_ON_ACCOUNT` with still-open FIFO debt
+   *     (resolved via the Accountant-canonical ledger allocation).
+   */
+  async sumCollectionsDebtTotalKd(
+    branchId: string | null = null,
+    actor?: JwtUser,
+  ): Promise<Prisma.Decimal> {
+    const isDriver = actor?.role === SafariRole.DRIVER;
+    const effectiveBranchId =
+      isDriver ? null
+      : branchId ??
+        (actor?.role === SafariRole.MANAGER && actor.branchId ?
+          actor.branchId
+        : null);
+
+    const branchWhere: Prisma.OrderWhereInput | undefined = isDriver
+      ? { driverId: actor!.userId }
+      : effectiveBranchId
+        ? {
+            OR: [
+              { driver: { is: { branchId: effectiveBranchId } } },
+              {
+                driverId: null,
+                customer: { is: { originBranchId: effectiveBranchId } },
+              },
+            ],
+          }
+        : undefined;
+
+    const [unpaidAgg, debtCandidates] = await Promise.all([
+      this.prisma.order.aggregate({
+        where: {
+          cashStatus: CashStatus.UNPAID,
+          status: { not: OrderStatus.CANCELED },
+          ...(branchWhere ?? {}),
+        },
+        _sum: { totalPrice: true },
+      }),
+      this.prisma.order.findMany({
+        where: {
+          posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT,
+          status: { not: OrderStatus.CANCELED },
+          NOT: { cashStatus: CashStatus.UNPAID },
+          ...(branchWhere ?? {}),
+        },
+        select: { id: true, customerId: true, totalPrice: true },
+      }),
+    ]);
+
+    const openDebtOrderIds = await this.resolveOpenDebtOrderIds(
+      debtCandidates.map((d) => ({
+        orderId: d.id,
+        customerId: d.customerId,
+      })),
+    );
+    const debtOpenTotal = debtCandidates
+      .filter((d) => openDebtOrderIds.has(d.id))
+      .reduce(
+        (acc, d) => acc.plus(d.totalPrice),
+        new Prisma.Decimal(0),
+      );
+
+    return (unpaidAgg._sum.totalPrice ?? new Prisma.Decimal(0)).plus(
+      debtOpenTotal,
+    );
   }
 
   /**

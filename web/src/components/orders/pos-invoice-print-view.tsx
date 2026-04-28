@@ -125,6 +125,16 @@ export function PosInvoicePrintView({
             <p className="pos-payment-pending" dir="auto">
               دفع غير مكتمل — الفاتورة لم تُسدَّد بعد
             </p>
+          ) : row.posPaymentMethod === 'DEBT_ON_ACCOUNT' ? (
+            // V1.7.4 — DEBT_ON_ACCOUNT invoices are workflow-completed
+            // but the customer still owes the money. The paper trail
+            // must read "مديونية" so the Call-Center agent, the driver,
+            // and the customer never mistake it for a settled cash/
+            // KNET receipt. Once CC marks it paid, `posPaymentMethod`
+            // flips to CASH/KNET/etc. and this banner disappears.
+            <p className="pos-payment-pending" dir="auto">
+              مديونية على الحساب — لم تُسدَّد بعد
+            </p>
           ) : row.cashStatus === 'PAID_ONLINE' ? (
             <p className="pos-payment-online" dir="auto">
               تم الدفع أونلاين ✅

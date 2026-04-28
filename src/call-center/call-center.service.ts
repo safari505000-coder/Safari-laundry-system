@@ -1098,21 +1098,21 @@ export class CallCenterService {
     //   only fire when a pre-existing debt is paid down, so fresh ONLINE
     //   payment-link sales never surfaced on the card — see bug A-48.)
 
+    // V1.7.4 — Widened Red KPI to mirror the widened Collections list
+    // (`listUnpaidCollectionOrders`). The sum now covers:
+    //   • `cashStatus = UNPAID` rows (pending link / cash arrears), AND
+    //   • `posPaymentMethod = DEBT_ON_ACCOUNT` rows with still-open
+    //     FIFO debt in the ledger.
+    // This is delegated to OrdersService.sumCollectionsDebtTotalKd so
+    // the card and the table footer stay identical to the last fils.
     const [
-      unpaidInvoicesSum,
+      redCardTotal,
       todaysSettlementRows,
       todaysSubscriptionActivationRows,
       pendingLinksCount,
       ledgerDebtSplit,
     ] = await Promise.all([
-      this.prisma.order.aggregate({
-        where: {
-          cashStatus: CashStatus.UNPAID,
-          status: { not: OrderStatus.CANCELED },
-          ...orderBranch,
-        },
-        _sum: { totalPrice: true },
-      }),
+      this.orders.sumCollectionsDebtTotalKd(effectiveBranchId, actor ?? undefined),
       this.prisma.transactionHistory.findMany({
         where: {
           type: LedgerTransactionType.ORDER_WALLET_SETTLEMENT,
@@ -1139,9 +1139,6 @@ export class CallCenterService {
       }),
       this.debt.getLedgerOpenDebtByCategory(ledgerBranchFilter),
     ]);
-
-    const redCardTotal =
-      unpaidInvoicesSum._sum.totalPrice ?? new Prisma.Decimal(0);
 
     // Green card (broad) — every ORDER_WALLET_SETTLEMENT row today that
     // carries a positive `metadata.debtSettled`. Covers:

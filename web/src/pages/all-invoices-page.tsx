@@ -287,17 +287,49 @@ export function AllInvoicesPage() {
               </TableCell>
               <TableCell className="text-xs">
                 {o.posPaymentMethod ? (
-                  METHOD_LABELS[o.posPaymentMethod] ?? o.posPaymentMethod
+                  <span
+                    className={
+                      o.posPaymentMethod === 'DEBT_ON_ACCOUNT'
+                        ? 'inline-flex items-center rounded-md border border-rose-300 bg-rose-50 px-1.5 py-0.5 text-[11px] font-medium text-rose-700'
+                        : ''
+                    }
+                  >
+                    {METHOD_LABELS[o.posPaymentMethod] ?? o.posPaymentMethod}
+                  </span>
                 ) : (
                   <span className="text-muted-foreground">—</span>
                 )}
               </TableCell>
               <TableCell>
-                <span className={orderStatusChipClass(o.status)}>
-                  {t(`orderStatus.${o.status}`, {
-                    defaultValue: o.status.replaceAll('_', ' ').toLowerCase(),
-                  })}
-                </span>
+                {/*
+                  V1.7.4 — Owner directive: a DEBT_ON_ACCOUNT invoice must
+                  never render as «مكتمل» in the unified invoice browser.
+                  The driver may have closed the job, but the customer
+                  still owes the money, so Collections + Accounting see
+                  it as a debt. We show the red "مديونية" chip whenever
+                  the row is DEBT_ON_ACCOUNT AND the invoice has not
+                  been retro-settled (posPaymentMethod flips to CASH/
+                  KNET/etc. the moment CC marks it paid, so a stuck
+                  DEBT_ON_ACCOUNT label == still outstanding). The same
+                  chip renders for the classic cashStatus=UNPAID case
+                  so agents spot every debt row without reading the
+                  method column.
+                */}
+                {o.status !== 'CANCELED' &&
+                (o.cashStatus === 'UNPAID' ||
+                  o.posPaymentMethod === 'DEBT_ON_ACCOUNT') ? (
+                  <span className="inline-flex items-center gap-1 rounded-md border border-rose-400 bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700">
+                    مديونية
+                  </span>
+                ) : (
+                  <span className={orderStatusChipClass(o.status)}>
+                    {t(`orderStatus.${o.status}`, {
+                      defaultValue: o.status
+                        .replaceAll('_', ' ')
+                        .toLowerCase(),
+                    })}
+                  </span>
+                )}
               </TableCell>
               <TableCell className="text-end font-semibold tabular-nums">
                 {formatKwdLabel(o.totalPrice)}

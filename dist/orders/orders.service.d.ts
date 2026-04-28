@@ -147,6 +147,7 @@ export declare class OrdersService {
             lineTotalKd: string;
         }[];
     }[]>;
+    sumCollectionsDebtTotalKd(branchId?: string | null, actor?: JwtUser): Promise<Prisma.Decimal>;
     getUnpaidCollectionOrderRowForWhatsappText(orderId: string): Promise<{
         orderId: string;
         readableId: string;

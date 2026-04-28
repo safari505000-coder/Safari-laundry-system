@@ -702,8 +702,11 @@ let OrdersService = OrdersService_1 = class OrdersService {
                 : undefined;
         const rows = await this.prisma.order.findMany({
             where: {
-                cashStatus: client_1.CashStatus.UNPAID,
                 status: { not: client_1.OrderStatus.CANCELED },
+                OR: [
+                    { cashStatus: client_1.CashStatus.UNPAID },
+                    { posPaymentMethod: client_1.PosPaymentMethod.DEBT_ON_ACCOUNT },
+                ],
                 ...(branchWhere ?? {}),
             },
             select: {
@@ -714,6 +717,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
                 totalPrice: true,
                 posPaymentMethod: true,
                 posHostedPaymentUrl: true,
+                cashStatus: true,
                 createdAt: true,
                 reminderCount: true,
                 lastReminderAt: true,
@@ -744,10 +748,20 @@ let OrdersService = OrdersService_1 = class OrdersService {
             },
             orderBy: { createdAt: 'desc' },
         });
+        const debtCandidates = rows.filter((r) => r.posPaymentMethod === client_1.PosPaymentMethod.DEBT_ON_ACCOUNT);
+        const openDebtOrderIds = await this.resolveOpenDebtOrderIds(debtCandidates.map((r) => ({ orderId: r.id, customerId: r.customerId })));
+        const filteredRows = rows.filter((r) => {
+            if (r.cashStatus === client_1.CashStatus.UNPAID)
+                return true;
+            if (r.posPaymentMethod === client_1.PosPaymentMethod.DEBT_ON_ACCOUNT) {
+                return openDebtOrderIds.has(r.id);
+            }
+            return false;
+        });
         const now = Date.now();
         const DAY_MS = 24 * 60 * 60 * 1000;
         const ORDER_REMINDER_COOLDOWN_MS = 2.5 * 60 * 60 * 1000;
-        return rows.map((r) => {
+        return filteredRows.map((r) => {
             const phone = r.customer.phone?.replace(/[\s-]/g, '').trim() ||
                 r.customer.phone2?.replace(/[\s-]/g, '').trim() ||
                 '';
@@ -802,6 +816,54 @@ let OrdersService = OrdersService_1 = class OrdersService {
                 lineItems,
             };
         });
+    }
+    async sumCollectionsDebtTotalKd(branchId = null, actor) {
+        const isDriver = actor?.role === client_1.SafariRole.DRIVER;
+        const effectiveBranchId = isDriver ? null
+            : branchId ??
+                (actor?.role === client_1.SafariRole.MANAGER && actor.branchId ?
+                    actor.branchId
+                    : null);
+        const branchWhere = isDriver
+            ? { driverId: actor.userId }
+            : effectiveBranchId
+                ? {
+                    OR: [
+                        { driver: { is: { branchId: effectiveBranchId } } },
+                        {
+                            driverId: null,
+                            customer: { is: { originBranchId: effectiveBranchId } },
+                        },
+                    ],
+                }
+                : undefined;
+        const [unpaidAgg, debtCandidates] = await Promise.all([
+            this.prisma.order.aggregate({
+                where: {
+                    cashStatus: client_1.CashStatus.UNPAID,
+                    status: { not: client_1.OrderStatus.CANCELED },
+                    ...(branchWhere ?? {}),
+                },
+                _sum: { totalPrice: true },
+            }),
+            this.prisma.order.findMany({
+                where: {
+                    posPaymentMethod: client_1.PosPaymentMethod.DEBT_ON_ACCOUNT,
+                    status: { not: client_1.OrderStatus.CANCELED },
+                    NOT: { cashStatus: client_1.CashStatus.UNPAID },
+                    ...(branchWhere ?? {}),
+                },
+                select: { id: true, customerId: true, totalPrice: true },
+            }),
+        ]);
+        const openDebtOrderIds = await this.resolveOpenDebtOrderIds(debtCandidates.map((d) => ({
+            orderId: d.id,
+            customerId: d.customerId,
+        })));
+        const debtOpenTotal = debtCandidates
+            .filter((d) => openDebtOrderIds.has(d.id))
+            .reduce((acc, d) => acc.plus(d.totalPrice), new client_1.Prisma.Decimal(0));
+        return (unpaidAgg._sum.totalPrice ?? new client_1.Prisma.Decimal(0)).plus(debtOpenTotal);
     }
     async getUnpaidCollectionOrderRowForWhatsappText(orderId) {
         const r = await this.prisma.order.findFirst({
