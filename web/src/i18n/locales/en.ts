@@ -456,7 +456,7 @@ export const en = {
     opsDashboardAria: 'Call center KPIs',
     kpiMarketDebtLabel: 'Total market debt',
     kpiMarketDebtSub:
-      'Equals the table Amount column (no search) — UNPAID invoices only, not off-list subscription/wallet debt',
+      'Should match the Amount column total (without search): every invoice still collectible — UNPAID, or Debt-on-account while FIFO ledger shows outstanding balance — separate from subscription/wallet line below',
     kpiCollectedTodayLabel: 'Collected today',
     kpiCollectedTodaySub: 'Debts recovered today across every payment channel',
     kpiPendingLinksLabel: 'Pending links',
