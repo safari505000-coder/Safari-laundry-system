@@ -16,8 +16,9 @@ import { IsBoolean, IsOptional, IsString, MaxLength } from 'class-validator';
  * the entire callback and the order never finalizes.
  *
  * None of these fields are strictly required — the controller may
- * finalize from a trusted CAPTURED + v2 `track_id` + Safari order id,
- * or fall back to Server-to-Server inquiry using the resolved track id.
+ * finalize from a trusted CAPTURED + payment-status id (`trans_id` /
+ * `tran_id` / `track_id`, …) + Safari order id, or fall back to
+ * Server-to-Server inquiry using that same id in the get-payment-status URL.
  * Legacy fields (`orderId`, `status`, `signature`) are preserved for
  * backward compatibility with the devMock flow and with any non-
  * UPayments gateway that is pointed at this endpoint in the
@@ -68,6 +69,23 @@ export class PaymentCallbackDto {
   @IsString()
   @MaxLength(128)
   tran_id?: string;
+
+  /**
+   * Merchant-dashboard spelling (often shown as the primary id for
+   * «Check payment status»). Same slot as `tran_id` / `track_id` for
+   * `GET …/get-payment-status/{id}` — whitelist so ValidationPipe does not strip it.
+   */
+  @ApiPropertyOptional({ description: 'UPayments / merchant trans_id (snake_case)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(256)
+  trans_id?: string;
+
+  @ApiPropertyOptional({ description: 'camelCase alias of trans_id' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(256)
+  transId?: string;
 
   @ApiPropertyOptional({ description: 'Merchant reference echoed by gateway' })
   @IsOptional()

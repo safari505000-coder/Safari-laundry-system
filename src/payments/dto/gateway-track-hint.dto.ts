@@ -2,13 +2,44 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsOptional, IsString, MaxLength } from 'class-validator';
 
 /**
- * Optional UPayments v2 `track_id` from the browser return URL.
- * Sent in JSON body so it survives CDNs/proxies that strip query params.
+ * Optional payment-status inquiry id from the browser return URL / recheck body.
+ * UPayments docs call the path segment `track_id`; the merchant dashboard often
+ * labels the same value **trans_id** / **tran_id**. Sent in JSON so it survives
+ * CDNs/proxies that strip query params.
  */
 export class GatewayTrackHintDto {
   @ApiPropertyOptional({
     description:
-      'UPayments v2 track id (e.g. …v2 suffix) for get-payment-status inquiry',
+      'Merchant dashboard trans_id (preferred for get-payment-status inquiry id)',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(384)
+  trans_id?: string;
+
+  @ApiPropertyOptional({ description: 'camelCase alias of trans_id' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(384)
+  transId?: string;
+
+  @ApiPropertyOptional({
+    description: 'UPayments tran_id — same inquiry-id slot as trans_id / track_id',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(384)
+  tran_id?: string;
+
+  @ApiPropertyOptional({ description: 'camelCase alias of tran_id' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(384)
+  tranId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'UPayments track_id (e.g. …v2 suffix) — same inquiry slot as trans_id',
   })
   @IsOptional()
   @IsString()
@@ -17,7 +48,7 @@ export class GatewayTrackHintDto {
 
   /** Same as `trackId` — some clients send snake_case JSON. */
   @ApiPropertyOptional({
-    description: 'Alias of trackId (UPayments v2 id for inquiry)',
+    description: 'Alias of trackId (inquiry id for get-payment-status)',
   })
   @IsOptional()
   @IsString()

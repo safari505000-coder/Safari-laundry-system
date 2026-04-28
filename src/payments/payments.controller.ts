@@ -52,6 +52,26 @@ class PublicOrderStatusDto {
   amountKd!: string;
 }
 
+/**
+ * UPayments merchant dashboard labels the **get-payment-status** path value as
+ * `trans_id` / `tran_id`; official HTTP docs name the same path segment
+ * `track_id`. Prefer dashboard spellings when multiple ids appear in one payload.
+ */
+function mergeGatewayInquiryIdFromHintDto(
+  hint: GatewayTrackHintDto | undefined,
+): string | undefined {
+  if (!hint) return undefined;
+  const s =
+    hint.trans_id?.trim() ||
+    hint.transId?.trim() ||
+    hint.tran_id?.trim() ||
+    hint.tranId?.trim() ||
+    hint.trackId?.trim() ||
+    hint.track_id?.trim() ||
+    '';
+  return s || undefined;
+}
+
 @ApiTags('payments')
 @Controller('payments')
 export class PaymentsController {
@@ -126,8 +146,10 @@ document.getElementById('go').onclick = async function () {
    *   1. If `devMock` is set AND mock mode is enabled, take the
    *      legacy `{orderId, status}` pair and finalize — used by
    *      local dev + the mock-checkout HTML page only.
-   *   2. If the body already says CAPTURED (normalized), `track_id`
-   *      ends with `v2`, and we can resolve a Safari `Order.id` from
+   *   2. If the body already says CAPTURED (normalized), the payment-status
+   *      id (prefer `trans_id` / `tran_id`, else `track_id`) is trusted
+   *      (v2 suffix or matches `Order.posGatewayTrackId`), and we can resolve
+   *      a Safari `Order.id` from
    *      `requested_order_id` / `trn_udf` / etc., we finalize immediately
    *      — this is the authoritative path when the shopper never opens
    *      our return page (webhook as source of truth).
@@ -171,25 +193,29 @@ document.getElementById('go').onclick = async function () {
     }
 
     // --- Production path: UPayments inquiry ---
-    // UPayments official webhook uses `track_id` (snake_case); camelCase
-    // variants appear on some partner paths — accept all.
-    const trackId =
+    // Merchant dashboard: primary id for payment-status is often **trans_id**
+    // / **tran_id**; official API docs also call the path segment `track_id`.
+    const paymentStatusInquiryId =
+      body.trans_id?.trim() ||
+      body.transId?.trim() ||
+      body.tran_id?.trim() ||
+      body.tranId?.trim() ||
       body.track_id?.trim() ||
       body.trackId?.trim() ||
       body.TrackID?.trim() ||
       body.gatewayReference?.trim() ||
       '';
 
-    if (trackId) {
+    if (paymentStatusInquiryId) {
       this.logger.log(
-        `UPayments callback: received trackId prefix=${trackId.slice(0, 12)}…`,
+        `UPayments callback: received payment-status id prefix=${paymentStatusInquiryId.slice(0, 12)}…`,
       );
 
       const safariOrderFromBody = extractOrderId(body);
       const bodyOutcome = this.paymentsService.normalizeCallbackStatus(
         body.result ?? body.status ?? '',
       );
-      const trimmedTrack = trackId.trim();
+      const trimmedTrack = paymentStatusInquiryId.trim();
       const linkedOrderId = trimmedTrack
         ? await this.paymentsService.findOrderByTrackId(trimmedTrack)
         : null;
@@ -211,7 +237,7 @@ document.getElementById('go').onclick = async function () {
           const tr =
             await this.paymentsService.tryFinalizeOrderFromTrustedUpaymentsReturn(
               safariOrderFromBody!,
-              trackId,
+              paymentStatusInquiryId,
               String(body.result ?? body.status ?? ''),
               'UPayments_WEBHOOK_TRUSTED_BODY',
               {
@@ -227,7 +253,7 @@ document.getElementById('go').onclick = async function () {
             return {
               ok: true as const,
               orderId: safariOrderFromBody!,
-              trackId,
+              trackId: paymentStatusInquiryId,
               outcome: 'success' as const,
             };
           }
@@ -241,18 +267,22 @@ document.getElementById('go').onclick = async function () {
         }
       }
 
-      const inquiry = await this.paymentsService.fetchGatewayStatus(trackId);
+      const inquiry = await this.paymentsService.fetchGatewayStatus(
+        paymentStatusInquiryId,
+      );
       const resolvedOrderId =
         inquiry.data.order?.id ??
         extractOrderIdFromExtraData(inquiry.data.customerExtraData) ??
-        (await this.paymentsService.findOrderByTrackId(trackId)) ??
+        (await this.paymentsService.findOrderByTrackId(
+          paymentStatusInquiryId,
+        )) ??
         extractOrderId(body) ??
         body.orderId ??
         null;
 
       if (!resolvedOrderId) {
         this.logger.warn(
-          `UPayments webhook for trackId=${trackId} — cannot map to a Safari order; body=${safeJson(body)}`,
+          `UPayments webhook for paymentStatusInquiryId=${paymentStatusInquiryId} — cannot map to a Safari order; body=${safeJson(body)}`,
         );
         return {
           ok: false as const,
@@ -274,7 +304,7 @@ document.getElementById('go').onclick = async function () {
           resolvedOrderId,
           {
             provider: 'upayments',
-            trackId,
+            trackId: paymentStatusInquiryId,
             paymentId:
               inquiry.data.paymentId ??
               body.paymentId ??
@@ -304,12 +334,12 @@ document.getElementById('go').onclick = async function () {
         trackTrusted
       ) {
         this.logger.warn(
-          `UPayments callback: inquiry failed for trackId prefix=${trackId.slice(0, 16)}… — finalizing from webhook body (Safari orderId=${safariOrderFromBody})`,
+          `UPayments callback: inquiry failed for payment-status id prefix=${paymentStatusInquiryId.slice(0, 16)}… — finalizing from webhook body (Safari orderId=${safariOrderFromBody})`,
         );
         const tr =
           await this.paymentsService.tryFinalizeOrderFromTrustedUpaymentsReturn(
             safariOrderFromBody,
-            trackId,
+            paymentStatusInquiryId,
             String(body.result ?? body.status ?? ''),
             'UPayments_WEBHOOK_BODY_INQUIRY_FAILED',
             {
@@ -329,18 +359,18 @@ document.getElementById('go').onclick = async function () {
       return {
         ok: true as const,
         orderId: resolvedOrderId,
-        trackId,
+        trackId: paymentStatusInquiryId,
         outcome: willFinalize ? ('success' as const) : outcome,
       };
     }
 
     // --- Legacy fallback: HMAC-signed webhook (non-UPayments gateway) ---
     this.logger.warn(
-      `UPayments callback: no trackId in body — keys=${Object.keys(body ?? {}).join(',') || 'empty'}; falling back to legacy HMAC (needs orderId)`,
+      `UPayments callback: no payment-status inquiry id (trans_id / tran_id / track_id) in body — keys=${Object.keys(body ?? {}).join(',') || 'empty'}; falling back to legacy HMAC (needs orderId)`,
     );
     if (!body.orderId) {
       throw new UnauthorizedException(
-        'Callback missing trackId and orderId — cannot verify payment',
+        'Callback missing payment-status inquiry id (trans_id / tran_id / track_id) and orderId — cannot verify payment',
       );
     }
     if (
@@ -424,7 +454,7 @@ document.getElementById('go').onclick = async function () {
       track_id,
       trackID,
       trackIdQuery,
-      body?.trackId ?? body?.track_id,
+      mergeGatewayInquiryIdFromHintDto(body),
       body?.result,
       gatewayResultQuery,
     );
@@ -647,7 +677,7 @@ document.getElementById('go').onclick = async function () {
     }
 
     const returnTrack = pickReturnTrackIdFromRequest(
-      bodyHint?.trackId ?? bodyHint?.track_id,
+      mergeGatewayInquiryIdFromHintDto(bodyHint),
       q.track_id,
       q.trackID,
       q.trackIdQuery,
@@ -780,7 +810,16 @@ function readGatewayTrackIdFromPlainBody(req: Request): string {
     return '';
   }
   const o = raw as Record<string, unknown>;
-  for (const k of ['trackId', 'track_id', 'TrackID', 'gateway_track_id'] as const) {
+  for (const k of [
+    'trans_id',
+    'transId',
+    'tran_id',
+    'tranId',
+    'trackId',
+    'track_id',
+    'TrackID',
+    'gateway_track_id',
+  ] as const) {
     const v = o[k];
     if (typeof v === 'string' && v.trim()) {
       return v.trim();
@@ -882,6 +921,10 @@ function pickReturnTrackIdFromRequest(
     return String(v).trim();
   };
   const direct =
+    g('trans_id') ||
+    g('transId') ||
+    g('tran_id') ||
+    g('tranId') ||
     g('track_id') ||
     g('TrackID') ||
     g('trackId') ||
@@ -890,6 +933,12 @@ function pickReturnTrackIdFromRequest(
     return direct;
   }
   for (const key of Object.keys(q)) {
+    if (/^trans_?id$/i.test(key) || /^tran_?id$/i.test(key)) {
+      const v = g(key);
+      if (v) {
+        return v;
+      }
+    }
     if (/^track_?id$/i.test(key)) {
       const v = g(key);
       if (v) {
@@ -915,6 +964,10 @@ function normalizeAmpInQueryString(qs: string): string {
  */
 function readGatewayTrackIdFromRequestHeaders(req: Request): string {
   const raw =
+    req.headers['x-gateway-trans-id'] ??
+    req.headers['X-Gateway-Trans-Id'] ??
+    req.headers['x-gateway-tran-id'] ??
+    req.headers['X-Gateway-Tran-Id'] ??
     req.headers['x-gateway-track-id'] ??
     req.headers['X-Gateway-Track-Id'] ??
     '';
@@ -941,12 +994,15 @@ function extractTrackIdFromRequestUrl(req: Request): string {
   } catch {
     /* keep */
   }
-  const m = /[?&]track_id=([^&#]+)/i.exec(raw);
-  if (m?.[1]) {
-    try {
-      return decodeURIComponent(m[1].trim());
-    } catch {
-      return m[1].trim();
+  for (const param of ['trans_id', 'tran_id', 'track_id'] as const) {
+    const re = new RegExp(`[?&]${param}=([^&#]+)`, 'i');
+    const m = re.exec(raw);
+    if (m?.[1]) {
+      try {
+        return decodeURIComponent(m[1].trim());
+      } catch {
+        return m[1].trim();
+      }
     }
   }
   const qMark = raw.indexOf('?');
@@ -957,6 +1013,10 @@ function extractTrackIdFromRequestUrl(req: Request): string {
   qs = normalizeAmpInQueryString(qs);
   const sp = new URLSearchParams(qs);
   return (
+    sp.get('trans_id')?.trim() ||
+    sp.get('transId')?.trim() ||
+    sp.get('tran_id')?.trim() ||
+    sp.get('tranId')?.trim() ||
     sp.get('track_id')?.trim() ||
     sp.get('TrackID')?.trim() ||
     sp.get('trackId')?.trim() ||
@@ -1051,6 +1111,10 @@ function extractPaymentReturnHintsFromReferer(req: Request): {
   try {
     const u = new URL(header);
     const trackId =
+      u.searchParams.get('trans_id')?.trim() ||
+      u.searchParams.get('transId')?.trim() ||
+      u.searchParams.get('tran_id')?.trim() ||
+      u.searchParams.get('tranId')?.trim() ||
       u.searchParams.get('track_id')?.trim() ||
       u.searchParams.get('TrackID')?.trim() ||
       u.searchParams.get('trackId')?.trim() ||

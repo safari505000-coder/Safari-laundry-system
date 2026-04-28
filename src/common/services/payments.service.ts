@@ -43,9 +43,13 @@ export type CreatePaymentLinkResult = {
 
 /**
  * V1.7.0 — Shape of the `data` block UPayments returns from
- * `GET /api/v1/get-payment-status/{trackId}`. Trimmed to the fields
- * we actually consume; extra fields (auth, tranId, postDate, etc.)
- * are kept around in `posGatewayMetadata` for audit but never read.
+ * `GET /api/v1/get-payment-status/{id}`. Official docs name the path
+ * parameter **`track_id`**; the UPayments merchant dashboard often shows the
+ * same value as **`trans_id`** / **`tran_id`**. We pass whichever id the
+ * webhook or return URL supplied into that single path segment.
+ *
+ * Note: response field **`transactionId`** (when present) is metadata from
+ * the gateway — it is **not** the same slot as dashboard `trans_id` for inquiry.
  */
 type UPaymentsInquiryData = {
   trackId?: string;
@@ -116,6 +120,8 @@ const UPAYMENTS_TRACK_LIKE_KEYS: readonly string[] = [
   'TransactionId',
   'tran_id',
   'tranId',
+  'trans_id',
+  'transId',
   'receipt_id',
   'receiptId',
   'receiptid',
@@ -675,11 +681,13 @@ export class PaymentsService implements OnModuleInit {
    * V1.7.0 — Server-to-Server inquiry. Called from the webhook
    * handler so we never trust the webhook body blindly; the
    * authoritative payment state is whatever UPayments reports for
-   * this `trackId` via its own authenticated endpoint.
+   * this **payment-status id** (dashboard `trans_id` / webhook `tran_id` /
+   * docs `track_id`) via its own authenticated endpoint.
    *
-   * Docs: `GET /api/v1/get-payment-status/{trackId}` (UInterfaceV2).
+   * Docs: `GET /api/v1/get-payment-status/{track_id}` (UInterfaceV2).
    */
   async fetchGatewayStatus(
+    /** Inquiry id: prefer merchant `trans_id` / `tran_id` when supplied; same URL segment as `track_id` in docs. */
     trackId: string,
   ): Promise<{ ok: boolean; data: UPaymentsInquiryData; raw: unknown }> {
     if (this.usePlaceholderGateway()) {
