@@ -883,24 +883,29 @@ export class PaymentsService implements OnModuleInit {
     if (!trackId) {
       trackId = extractTrackIdFromHttpsUrlsInChargeRaw(text);
     }
-    if (!trackId) {
+
+    // V1.7.1 — Gateways like KNET hosted (`trandata=…`) never expose a
+    // track id in /charge; the real id only arrives in the return URL /
+    // webhook after the customer pays. Do NOT block the POS — return the
+    // payment URL without a track id; the webhook will persist
+    // `posGatewayTrackId` when it fires with the real `trans_id`.
+    const validatedTrackId = trackId
+      ? this.tryValidateChargePaymentStatusId(trackId, text, params.orderId)
+      : undefined;
+
+    if (!validatedTrackId) {
       const dataKeys =
-        dataBlock && typeof dataBlock === 'object'
+        dataBlock && typeof dataBlock === 'object' && !Array.isArray(dataBlock)
           ? Object.keys(dataBlock as object).join(',')
-          : 'n/a';
-      this.logger.error(
-        `UPayments /charge: cannot resolve trackId for order=${params.orderId}. data keys=[${dataKeys}] snippet=${text.slice(0, 2500)}`,
-      );
-      throw new BadRequestException(
-        'UPayments did not return a verifiable track id (needed for recheck and webhooks). Check gateway /charge JSON or contact UPayments support.',
+          : typeof dataBlock === 'string'
+            ? '(string)'
+            : Array.isArray(dataBlock)
+              ? '(array)'
+              : 'n/a';
+      this.logger.warn(
+        `UPayments /charge: no inquiry id in response (order=${params.orderId}). data keys=[${dataKeys}]. Link returned; webhook will provide trans_id/track_id. Raw=${text.slice(0, 800)}`,
       );
     }
-
-    const validatedTrackId = this.assertUsableChargePaymentStatusId(
-      trackId,
-      text,
-      params.orderId,
-    );
 
     return {
       url,
@@ -910,14 +915,17 @@ export class PaymentsService implements OnModuleInit {
   }
 
   /**
-   * Reject corrupted / wrong-field ids (oversized all-digit strings, etc.)
-   * before persisting `posGatewayTrackId`; recover from raw JSON when possible.
+   * V1.7.1 — Validate-or-drop variant. Returns `undefined` when the /charge
+   * response contains an id that is too long / malformed, so the POS link
+   * creation does not fail: the real id will be filled in by the webhook.
+   * `/api/v1/get-payment-status/{id}` is only called with ids that pass
+   * `isValidUpaymentsPaymentStatusInquiryId`.
    */
-  private assertUsableChargePaymentStatusId(
+  private tryValidateChargePaymentStatusId(
     primary: string,
     rawJsonText: string,
     orderIdForLog: string,
-  ): string {
+  ): string | undefined {
     const t = primary.trim();
     if (isValidUpaymentsPaymentStatusInquiryId(t)) {
       return t;
@@ -937,12 +945,10 @@ export class PaymentsService implements OnModuleInit {
     if (fromAnyUrl && isSafeUpaymentsChargeInquiryCandidate(fromAnyUrl)) {
       return fromAnyUrl;
     }
-    this.logger.error(
-      `UPayments /charge: unusable inquiry id after recovery order=${orderIdForLog} badLen=${t.length}`,
+    this.logger.warn(
+      `UPayments /charge: inquiry id unrecoverable order=${orderIdForLog} badLen=${t.length} — will rely on webhook trans_id`,
     );
-    throw new BadRequestException(
-      'تعذر استخراج رقم تتبع UPayments صالح من رد الدفع. أنشئ رابط دفع جديد من التحصيل، أو راجع لوحة UPayments. (Payment-status id missing or invalid in /charge response — create a new link or verify gateway JSON.)',
-    );
+    return undefined;
   }
 
   /**
