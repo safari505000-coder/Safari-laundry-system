@@ -61,12 +61,11 @@ const vehicle_expenses_module_1 = require("./vehicle-expenses/vehicle-expenses.m
 const verify_module_1 = require("./verify/verify.module");
 const wallets_module_1 = require("./wallets/wallets.module");
 const webDistPath = (0, node_path_1.join)(process.cwd(), 'web', 'dist');
-const uploadsPath = (0, node_path_1.join)(process.cwd(), 'uploads');
 const spaStaticModule = (0, node_fs_1.existsSync)(webDistPath)
     ? [
         serve_static_1.ServeStaticModule.forRoot({
             rootPath: webDistPath,
-            exclude: ['/api/{*any}', '/docs/{*any}'],
+            exclude: ['/api/{*any}', '/docs/{*any}', '/uploads/{*any}'],
         }),
     ]
     : [];
@@ -124,11 +123,6 @@ exports.AppModule = AppModule = __decorate([
             verify_module_1.VerifyModule,
             feedback_module_1.FeedbackModule,
             health_module_1.HealthModule,
-            serve_static_1.ServeStaticModule.forRoot({
-                rootPath: uploadsPath,
-                serveRoot: '/uploads',
-                serveStaticOptions: { index: false, fallthrough: true },
-            }),
             ...spaStaticModule,
         ],
         controllers: [app_controller_1.AppController],

@@ -38,6 +38,16 @@ let RolesGuard = class RolesGuard {
         if (role === client_1.SafariRole.OWNER) {
             return true;
         }
+        if (role === client_1.SafariRole.GENERAL_MANAGER) {
+            const rawUrl = req
+                .originalUrl ??
+                req.url ??
+                req.path ??
+                '';
+            if (rawUrl.includes('unified-ledger-stream')) {
+                return true;
+            }
+        }
         const driverDailyPos = this.reflector.getAllAndOverride(roles_decorator_1.DRIVER_FINANCE_DAILY_POS_KEY, [context.getHandler(), context.getClass()]);
         if (driverDailyPos &&
             role === client_1.SafariRole.DRIVER &&

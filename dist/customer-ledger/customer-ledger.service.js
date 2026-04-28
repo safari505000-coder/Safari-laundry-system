@@ -231,8 +231,14 @@ let CustomerLedgerService = CustomerLedgerService_1 = class CustomerLedgerServic
         let newDebtMinor = addInvoiceDebt && shortfallMinor > 0n ? debtMinor + shortfallMinor : debtMinor;
         const debtSettledRawEarly = extraMetadata !== undefined ? extraMetadata.debtSettled : null;
         let debtPaydownFromSettlementMinor = 0n;
-        if (typeof debtSettledRawEarly === 'string') {
-            const declaredSettledMinor = (0, finance_money_1.toMinorFromFixed4)(new client_1.Prisma.Decimal(debtSettledRawEarly));
+        const debtSettledStr = typeof debtSettledRawEarly === 'string' && debtSettledRawEarly.trim()
+            ? debtSettledRawEarly.trim()
+            : typeof debtSettledRawEarly === 'number' &&
+                Number.isFinite(debtSettledRawEarly)
+                ? String(debtSettledRawEarly)
+                : null;
+        if (debtSettledStr) {
+            const declaredSettledMinor = (0, finance_money_1.toMinorFromFixed4)(new client_1.Prisma.Decimal(debtSettledStr));
             if (declaredSettledMinor > 0n && newDebtMinor > 0n) {
                 debtPaydownFromSettlementMinor =
                     declaredSettledMinor < newDebtMinor
@@ -385,7 +391,7 @@ let CustomerLedgerService = CustomerLedgerService_1 = class CustomerLedgerServic
                         : extraMetadata?.debtSettlementViaLink === true
                             ? 'PAYMENT_LINK_CALLBACK'
                             : 'WALLET_SETTLEMENT',
-                    declaredDebtSettled: typeof debtSettledRawEarly === 'string' ? debtSettledRawEarly : null,
+                    declaredDebtSettled: debtSettledStr,
                 },
             });
         }

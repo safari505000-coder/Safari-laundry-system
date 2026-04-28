@@ -21,6 +21,8 @@ class PaymentCallbackDto {
     result;
     tranId;
     tran_id;
+    trans_id;
+    transId;
     reference;
     auth;
     customerExtraData;
@@ -93,6 +95,20 @@ __decorate([
     (0, class_validator_1.MaxLength)(128),
     __metadata("design:type", String)
 ], PaymentCallbackDto.prototype, "tran_id", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ description: 'UPayments / merchant trans_id (snake_case)' }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(256),
+    __metadata("design:type", String)
+], PaymentCallbackDto.prototype, "trans_id", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ description: 'camelCase alias of trans_id' }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(256),
+    __metadata("design:type", String)
+], PaymentCallbackDto.prototype, "transId", void 0);
 __decorate([
     (0, swagger_1.ApiPropertyOptional)({ description: 'Merchant reference echoed by gateway' }),
     (0, class_validator_1.IsOptional)(),

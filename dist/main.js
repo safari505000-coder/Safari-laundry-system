@@ -45,6 +45,7 @@ const common_1 = require("@nestjs/common");
 const core_1 = require("@nestjs/core");
 const client_1 = require("@prisma/client");
 const swagger_1 = require("@nestjs/swagger");
+const node_path_1 = require("node:path");
 const express = __importStar(require("express"));
 const app_module_1 = require("./app.module");
 const sentryDsn = process.env.SENTRY_DSN?.trim();
@@ -126,6 +127,10 @@ async function bootstrap() {
     const app = await core_1.NestFactory.create(app_module_1.AppModule, {
         bodyParser: false,
     });
+    app.use('/uploads', express.static((0, node_path_1.join)(process.cwd(), 'uploads'), {
+        index: false,
+        fallthrough: true,
+    }));
     app.use(express.json({ limit: '1mb' }));
     app.use(express.urlencoded({ extended: true, limit: '1mb' }));
     app.use((0, helmet_1.default)({

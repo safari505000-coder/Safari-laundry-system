@@ -167,6 +167,7 @@ export declare class UsersController {
             invoiceNumber: string | null;
             serialNumber: string | null;
             lastReminderAt: Date | null;
+            ccCollectionPaymentWaLocked: boolean;
             notes: string | null;
             driverId: string | null;
             posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
@@ -531,6 +532,7 @@ export declare class UsersController {
             invoiceNumber: string | null;
             serialNumber: string | null;
             lastReminderAt: Date | null;
+            ccCollectionPaymentWaLocked: boolean;
             notes: string | null;
             driverId: string | null;
             posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
@@ -873,6 +875,7 @@ export declare class UsersController {
             invoiceNumber: string | null;
             serialNumber: string | null;
             lastReminderAt: Date | null;
+            ccCollectionPaymentWaLocked: boolean;
             notes: string | null;
             driverId: string | null;
             posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
@@ -1237,6 +1240,7 @@ export declare class UsersController {
             invoiceNumber: string | null;
             serialNumber: string | null;
             lastReminderAt: Date | null;
+            ccCollectionPaymentWaLocked: boolean;
             notes: string | null;
             driverId: string | null;
             posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
@@ -1579,6 +1583,7 @@ export declare class UsersController {
             invoiceNumber: string | null;
             serialNumber: string | null;
             lastReminderAt: Date | null;
+            ccCollectionPaymentWaLocked: boolean;
             notes: string | null;
             driverId: string | null;
             posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
@@ -1943,6 +1948,7 @@ export declare class UsersController {
             invoiceNumber: string | null;
             serialNumber: string | null;
             lastReminderAt: Date | null;
+            ccCollectionPaymentWaLocked: boolean;
             notes: string | null;
             driverId: string | null;
             posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
@@ -2288,6 +2294,7 @@ export declare class UsersController {
             invoiceNumber: string | null;
             serialNumber: string | null;
             lastReminderAt: Date | null;
+            ccCollectionPaymentWaLocked: boolean;
             notes: string | null;
             driverId: string | null;
             posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
@@ -2652,6 +2659,7 @@ export declare class UsersController {
             invoiceNumber: string | null;
             serialNumber: string | null;
             lastReminderAt: Date | null;
+            ccCollectionPaymentWaLocked: boolean;
             notes: string | null;
             driverId: string | null;
             posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
@@ -2997,6 +3005,7 @@ export declare class UsersController {
             invoiceNumber: string | null;
             serialNumber: string | null;
             lastReminderAt: Date | null;
+            ccCollectionPaymentWaLocked: boolean;
             notes: string | null;
             driverId: string | null;
             posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
@@ -3361,6 +3370,7 @@ export declare class UsersController {
             invoiceNumber: string | null;
             serialNumber: string | null;
             lastReminderAt: Date | null;
+            ccCollectionPaymentWaLocked: boolean;
             notes: string | null;
             driverId: string | null;
             posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
@@ -3706,6 +3716,7 @@ export declare class UsersController {
             invoiceNumber: string | null;
             serialNumber: string | null;
             lastReminderAt: Date | null;
+            ccCollectionPaymentWaLocked: boolean;
             notes: string | null;
             driverId: string | null;
             posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
@@ -4070,6 +4081,7 @@ export declare class UsersController {
             invoiceNumber: string | null;
             serialNumber: string | null;
             lastReminderAt: Date | null;
+            ccCollectionPaymentWaLocked: boolean;
             notes: string | null;
             driverId: string | null;
             posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;

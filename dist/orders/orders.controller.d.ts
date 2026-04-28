@@ -129,6 +129,8 @@ export declare class OrdersController {
         reminderCount: number;
         lastReminderAtIso: string | null;
         canRemindNow: boolean;
+        ccCollectionPaymentWaLocked: boolean;
+        canSendCollectionPaymentWa: boolean;
         branchName: string | null;
         driverName: string | null;
         lineItems: {

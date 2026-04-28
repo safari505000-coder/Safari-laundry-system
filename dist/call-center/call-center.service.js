@@ -21,6 +21,14 @@ const debt_service_1 = require("../finance/services/debt.service");
 const orders_service_1 = require("../orders/orders.service");
 const kuwait_customer_phone_1 = require("../common/validation/kuwait-customer-phone");
 const collections_whatsapp_text_1 = require("./collections-whatsapp-text");
+function assertCallCenterMaySendCollectionPaymentWa(ccCollectionPaymentWaLocked, actor) {
+    if (!ccCollectionPaymentWaLocked ||
+        (actor.role !== client_1.SafariRole.CALL_CENTER &&
+            actor.role !== client_1.SafariRole.CALL_CENTER_SUPERVISOR)) {
+        return;
+    }
+    throw new common_1.ForbiddenException('تم إرسال رابط الدفع للعميل من الميدان (سائق/مدير فرع). لا يمكن لمركز الاتصال إرسال تذكير واتساب إضافي لتفادي إزعاج العميل.');
+}
 const ORDER_REMINDER_COOLDOWN_MS = 2.5 * 60 * 60 * 1000;
 const SUBSCRIBER_REMINDER_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 function buildReminderResult(args) {
@@ -44,7 +52,6 @@ function buildReminderResult(args) {
 }
 const FOUR_DP = (d) => d.toFixed(4);
 const KWD_DP = (d) => d.toFixed(3);
-const toIsoDay = (d) => d.toISOString().slice(0, 10);
 function parseDayUtc(iso) {
     const d = new Date(`${iso}T00:00:00.000Z`);
     if (Number.isNaN(d.getTime())) {
@@ -62,6 +69,27 @@ function kuwaitDayBounds(now) {
     const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
     const dayIsoLocal = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     return { dayStart, dayEnd, dayIsoLocal };
+}
+function toKuwaitIsoDay(d) {
+    const shifted = new Date(d.getTime() + KUWAIT_OFFSET_MS);
+    const y = shifted.getUTCFullYear();
+    const mo = shifted.getUTCMonth() + 1;
+    const day = shifted.getUTCDate();
+    return `${y}-${String(mo).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+function parseKuwaitCalendarDateStart(iso) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso.trim());
+    if (!m) {
+        throw new common_1.BadRequestException(`Invalid date: ${iso}`);
+    }
+    const y = Number(m[1]);
+    const mo = Number(m[2]);
+    const d = Number(m[3]);
+    return new Date(Date.UTC(y, mo - 1, d) - KUWAIT_OFFSET_MS);
+}
+function addKuwaitCalendarDays(isoYmd, deltaDays) {
+    const start = parseKuwaitCalendarDateStart(isoYmd);
+    return toKuwaitIsoDay(new Date(start.getTime() + deltaDays * 86400000));
 }
 function orderBranchWhere(branchId) {
     if (!branchId)
@@ -93,14 +121,23 @@ function extractDebtSettled(meta) {
         return new client_1.Prisma.Decimal(0);
     }
     const v = meta.debtSettled;
-    if (typeof v !== 'string')
-        return new client_1.Prisma.Decimal(0);
-    try {
-        return new client_1.Prisma.Decimal(v);
+    if (typeof v === 'string' && v.trim()) {
+        try {
+            return new client_1.Prisma.Decimal(v);
+        }
+        catch {
+            return new client_1.Prisma.Decimal(0);
+        }
     }
-    catch {
-        return new client_1.Prisma.Decimal(0);
+    if (typeof v === 'number' && Number.isFinite(v)) {
+        try {
+            return new client_1.Prisma.Decimal(v);
+        }
+        catch {
+            return new client_1.Prisma.Decimal(0);
+        }
     }
+    return new client_1.Prisma.Decimal(0);
 }
 function isDebtViaLinkRow(meta) {
     if (!meta || typeof meta !== 'object' || Array.isArray(meta))
@@ -285,6 +322,11 @@ let CallCenterService = class CallCenterService {
     }
     async sendPaymentLinkToCustomerWhatsapp(orderId, actor) {
         await this.assertOrderInCollectionScope(orderId, actor);
+        const lockRow = await this.prisma.order.findUnique({
+            where: { id: orderId },
+            select: { ccCollectionPaymentWaLocked: true },
+        });
+        assertCallCenterMaySendCollectionPaymentWa(lockRow?.ccCollectionPaymentWaLocked ?? false, actor);
         const link = await this.payments.ensurePaymentLinkForUnpaidOrder(orderId);
         const reminder = await this.sendOrderReminder(orderId, actor);
         if (!reminder.sent) {
@@ -514,6 +556,11 @@ let CallCenterService = class CallCenterService {
     }
     async sendOrderReminder(orderId, actor) {
         await this.assertOrderInCollectionScope(orderId, actor);
+        const lockRow = await this.prisma.order.findUnique({
+            where: { id: orderId },
+            select: { ccCollectionPaymentWaLocked: true },
+        });
+        assertCallCenterMaySendCollectionPaymentWa(lockRow?.ccCollectionPaymentWaLocked ?? false, actor);
         const now = new Date();
         const cutoff = new Date(now.getTime() - ORDER_REMINDER_COOLDOWN_MS);
         const update = await this.prisma.order.updateMany({
@@ -658,24 +705,17 @@ let CallCenterService = class CallCenterService {
         };
     }
     async getDebtRecoveryReport(fromIso, toIso) {
-        const todayUtc = new Date();
-        todayUtc.setUTCHours(0, 0, 0, 0);
-        const toDay = toIso ? parseDayUtc(toIso) : new Date(todayUtc);
-        const fromDay = fromIso
-            ? parseDayUtc(fromIso)
-            : (() => {
-                const d = new Date(toDay);
-                d.setUTCDate(d.getUTCDate() - 29);
-                return d;
-            })();
-        if (fromDay.getTime() > toDay.getTime()) {
+        const todayKuwait = toKuwaitIsoDay(new Date());
+        const toDayStr = toIso?.trim() || todayKuwait;
+        const fromDayStr = fromIso?.trim() || addKuwaitCalendarDays(todayKuwait, -29);
+        if (fromDayStr > toDayStr) {
             throw new common_1.BadRequestException('`from` must be on or before `to`');
         }
-        const windowEnd = new Date(toDay);
-        windowEnd.setUTCDate(windowEnd.getUTCDate() + 1);
+        const fromBound = parseKuwaitCalendarDateStart(fromDayStr);
+        const windowEnd = new Date(parseKuwaitCalendarDateStart(toDayStr).getTime() + 86400000);
         const rows = await this.prisma.transactionHistory.findMany({
             where: {
-                createdAt: { gte: fromDay, lt: windowEnd },
+                createdAt: { gte: fromBound, lt: windowEnd },
                 type: {
                     in: [
                         client_1.LedgerTransactionType.ORDER_WALLET_SETTLEMENT,
@@ -691,8 +731,8 @@ let CallCenterService = class CallCenterService {
             orderBy: { createdAt: 'asc' },
         });
         const buckets = new Map();
-        for (let cursor = new Date(fromDay); cursor.getTime() <= toDay.getTime(); cursor.setUTCDate(cursor.getUTCDate() + 1)) {
-            const key = toIsoDay(cursor);
+        for (let d = fromDayStr; d <= toDayStr; d = addKuwaitCalendarDays(d, 1)) {
+            const key = d;
             buckets.set(key, {
                 dayIso: key,
                 recoveredKd: '0.0000',
@@ -708,7 +748,7 @@ let CallCenterService = class CallCenterService {
         let totalElectronic = new client_1.Prisma.Decimal(0);
         let totalWallet = new client_1.Prisma.Decimal(0);
         for (const r of rows) {
-            const key = toIsoDay(r.createdAt);
+            const key = toKuwaitIsoDay(r.createdAt);
             const bucket = buckets.get(key);
             if (!bucket)
                 continue;
@@ -761,8 +801,8 @@ let CallCenterService = class CallCenterService {
             }
         }
         return {
-            from: toIsoDay(fromDay),
-            to: toIsoDay(toDay),
+            from: fromDayStr,
+            to: toDayStr,
             totalRecoveredKd: FOUR_DP(total),
             totalRecoveredCashKd: FOUR_DP(totalCash),
             totalRecoveredElectronicKd: FOUR_DP(totalElectronic),
@@ -1373,7 +1413,8 @@ let CallCenterService = class CallCenterService {
             const viaLink = isDebtViaLinkRow(r.metadata);
             const reportingCategory = readMetaString(r.metadata, 'reportingCategory');
             const manual = reportingCategory === 'DEBT_COLLECTION_MANUAL';
-            if (!viaLink && !manual)
+            const viaLinkCategory = reportingCategory === 'DEBT_COLLECTION_VIA_LINK';
+            if (!viaLink && !manual && !viaLinkCategory)
                 continue;
             thOrderViaLinkCollected = thOrderViaLinkCollected.plus(debtSettled);
             thOrderViaLinkOrderIds.add(r.orderId);

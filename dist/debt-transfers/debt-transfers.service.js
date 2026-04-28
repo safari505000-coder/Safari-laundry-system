@@ -58,6 +58,32 @@ const DEBT_TRANSFER_INCLUDE = {
         },
     },
 };
+const DEBT_TRANSFER_LIST_INCLUDE = {
+    sourceDriver: {
+        select: {
+            id: true,
+            username: true,
+            fullName: true,
+            safariRole: true,
+            branchId: true,
+        },
+    },
+    targetDriver: {
+        select: {
+            id: true,
+            username: true,
+            fullName: true,
+            safariRole: true,
+            branchId: true,
+        },
+    },
+    executedBy: {
+        select: { id: true, username: true, fullName: true, safariRole: true },
+    },
+    cancelledBy: {
+        select: { id: true, username: true, fullName: true, safariRole: true },
+    },
+};
 let DebtTransfersService = class DebtTransfersService {
     prisma;
     generalLedger;
@@ -361,7 +387,7 @@ let DebtTransfersService = class DebtTransfersService {
                 OR: [{ sourceDriverId: userId }, { targetDriverId: userId }],
             },
             orderBy: { createdAt: 'desc' },
-            include: DEBT_TRANSFER_INCLUDE,
+            include: DEBT_TRANSFER_LIST_INCLUDE,
         });
         return { rows: rows.map((r) => this.serialize(r)) };
     }
@@ -399,7 +425,7 @@ let DebtTransfersService = class DebtTransfersService {
                 orderBy: { createdAt: 'desc' },
                 take,
                 skip,
-                include: DEBT_TRANSFER_INCLUDE,
+                include: DEBT_TRANSFER_LIST_INCLUDE,
             }),
             this.prisma.debtTransfer.count({ where }),
         ]);
@@ -411,6 +437,17 @@ let DebtTransfersService = class DebtTransfersService {
         };
     }
     serialize(t) {
+        const withLines = t;
+        const lineItems = withLines.orders?.length
+            ? withLines.orders.map((line) => ({
+                id: line.id,
+                amountSnapshot: line.amountSnapshot.toFixed(3),
+                order: {
+                    ...line.order,
+                    totalPrice: line.order.totalPrice.toFixed(3),
+                },
+            }))
+            : [];
         return {
             id: t.id,
             status: t.status,
@@ -431,14 +468,7 @@ let DebtTransfersService = class DebtTransfersService {
             systemSignature: t.systemSignature,
             createdAt: t.createdAt,
             updatedAt: t.updatedAt,
-            orders: t.orders.map((line) => ({
-                id: line.id,
-                amountSnapshot: line.amountSnapshot.toFixed(3),
-                order: {
-                    ...line.order,
-                    totalPrice: line.order.totalPrice.toFixed(3),
-                },
-            })),
+            orders: lineItems,
         };
     }
 };

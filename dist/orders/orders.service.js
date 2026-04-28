@@ -476,10 +476,26 @@ let OrdersService = OrdersService_1 = class OrdersService {
                 });
                 await this.prisma.order.update({
                     where: { id: detail.id },
-                    data: { posHostedPaymentUrl: paymentLink.url },
+                    data: {
+                        posHostedPaymentUrl: paymentLink.url,
+                        posGatewayTrackId: paymentLink.trackId ?? null,
+                        posGatewayMetadata: {
+                            charge: {
+                                provider: 'upayments',
+                                trackId: paymentLink.trackId ?? null,
+                                link: paymentLink.url,
+                                createdAt: new Date().toISOString(),
+                                source: 'posCheckout',
+                            },
+                        },
+                    },
                 });
                 const merged = { ...detail, paymentLink };
                 await this.posInvoiceNotifyToCustomer(merged, phoneCompact);
+                await this.prisma.order.update({
+                    where: { id: detail.id },
+                    data: { ccCollectionPaymentWaLocked: true },
+                });
                 return merged;
             }
             void this.posInvoiceNotifyToCustomer(detail, phoneCompact).catch((e) => this.log.warn(`pos invoice notify: ${e}`));
@@ -587,7 +603,19 @@ let OrdersService = OrdersService_1 = class OrdersService {
         });
         await this.prisma.order.updateMany({
             where: { posPaymentBundleId: bundleId },
-            data: { posHostedPaymentUrl: paymentLink.url },
+            data: {
+                posHostedPaymentUrl: paymentLink.url,
+                posGatewayTrackId: paymentLink.trackId ?? null,
+                posGatewayMetadata: {
+                    charge: {
+                        provider: 'upayments',
+                        trackId: paymentLink.trackId ?? null,
+                        link: paymentLink.url,
+                        createdAt: new Date().toISOString(),
+                        source: 'posCheckoutBundle',
+                    },
+                },
+            },
         });
         {
             const first = orders[0];
@@ -603,6 +631,10 @@ let OrdersService = OrdersService_1 = class OrdersService {
                 lineItemsSummary: lineItemsSummary || undefined,
             });
         }
+        await this.prisma.order.updateMany({
+            where: { posPaymentBundleId: bundleId },
+            data: { ccCollectionPaymentWaLocked: true },
+        });
         return { bundleId, orders, paymentLink };
     }
     async createAsManager(dto, managerUserId) {
@@ -685,6 +717,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
                 createdAt: true,
                 reminderCount: true,
                 lastReminderAt: true,
+                ccCollectionPaymentWaLocked: true,
                 customer: {
                     select: {
                         id: true,
@@ -725,6 +758,10 @@ let OrdersService = OrdersService_1 = class OrdersService {
             const lastReminderMs = r.lastReminderAt?.getTime() ?? null;
             const canRemindNow = lastReminderMs === null ||
                 now - lastReminderMs >= ORDER_REMINDER_COOLDOWN_MS;
+            const ccLocked = r.ccCollectionPaymentWaLocked;
+            const isCcOnly = actor?.role === client_1.SafariRole.CALL_CENTER ||
+                actor?.role === client_1.SafariRole.CALL_CENTER_SUPERVISOR;
+            const canSendCollectionPaymentWa = canRemindNow && !(ccLocked && isCcOnly);
             const readableId = r.serialNumber?.trim() ||
                 r.invoiceNumber?.trim() ||
                 `#${r.id.slice(-6).toUpperCase()}`;
@@ -758,6 +795,8 @@ let OrdersService = OrdersService_1 = class OrdersService {
                     ? r.lastReminderAt.toISOString()
                     : null,
                 canRemindNow,
+                ccCollectionPaymentWaLocked: ccLocked,
+                canSendCollectionPaymentWa,
                 branchName,
                 driverName,
                 lineItems,
@@ -1351,7 +1390,13 @@ let OrdersService = OrdersService_1 = class OrdersService {
         if (dto.status === client_1.OrderStatus.COMPLETED && dto.status !== order.status) {
             data.completedAt = new Date();
         }
-        return this.prisma.$transaction(async (tx) => {
+        const transitionedToCompleted = dto.status === client_1.OrderStatus.COMPLETED && dto.status !== order.status;
+        const notifyDriverManualCollection = transitionedToCompleted &&
+            !order.walletSettledAt &&
+            order.cashStatus === client_1.CashStatus.UNPAID &&
+            (order.posPaymentMethod === client_1.PosPaymentMethod.CASH ||
+                order.posPaymentMethod === client_1.PosPaymentMethod.KNET);
+        const updated = await this.prisma.$transaction(async (tx) => {
             await tx.order.update({
                 where: { id: orderId },
                 data,
@@ -1364,6 +1409,21 @@ let OrdersService = OrdersService_1 = class OrdersService {
                 select: orderDetailSelect,
             });
         }, { maxWait: 10_000, timeout: 15_000 });
+        if (notifyDriverManualCollection) {
+            const phone = (0, kuwait_customer_phone_1.resolveCustomerPhoneForNotify)(updated.customer.phone, updated.customer.phone2);
+            if (phone.trim()) {
+                const paymentMethodLabelAr = order.posPaymentMethod === client_1.PosPaymentMethod.CASH
+                    ? 'الكاش'
+                    : 'الكي نت';
+                this.customerNotifications.notifyDriverCollectionConfirmed({
+                    customerPhone: phone,
+                    orderId: updated.id,
+                    amountKd: updated.totalPrice.toFixed(3),
+                    paymentMethodLabelAr,
+                });
+            }
+        }
+        return updated;
     }
     async getManagerDashboard() {
         const opsDrivers = await this.prisma.user.findMany({

@@ -74,6 +74,7 @@ export declare class BranchesService {
     operationsLiveByBranch(): Promise<{
         branches: {
             branchId: string;
+            branchName: string;
             isLive: boolean;
         }[];
     }>;

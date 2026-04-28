@@ -30,6 +30,12 @@ export type PaymentConfirmedNotifyParams = {
     paymentUrl?: string;
     ratingUrl?: string;
 };
+export type DriverCollectionConfirmedNotifyParams = {
+    customerPhone: string;
+    orderId: string;
+    amountKd: string;
+    paymentMethodLabelAr: string;
+};
 export declare class CustomerNotificationsService implements OnModuleInit {
     private readonly logger;
     private static moatmtCredsMissingLogged;
@@ -39,6 +45,7 @@ export declare class CustomerNotificationsService implements OnModuleInit {
     deliverInvoiceIssuedNow(params: InvoiceIssuedNotifyParams): Promise<void>;
     notifyInvoiceEditedForIssuer(params: InvoiceEditedIssuerNotifyParams): void;
     notifyPaymentConfirmed(params: PaymentConfirmedNotifyParams): void;
+    notifyDriverCollectionConfirmed(params: DriverCollectionConfirmedNotifyParams): void;
     deliverCollectionsPaymentLinkNow(params: {
         customerPhone: string;
         orderId: string;
@@ -46,6 +53,7 @@ export declare class CustomerNotificationsService implements OnModuleInit {
     }): Promise<boolean>;
     private deliver;
     private deliverPaymentConfirmed;
+    private deliverDriverCollectionConfirmed;
     private deliverIssuerEdit;
     private buildMoatmtInvoiceMediaPayload;
     private buildMoatmtIssuerEditMediaPayload;

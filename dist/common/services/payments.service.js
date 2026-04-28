@@ -10,7 +10,8 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 var PaymentsService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.PaymentsService = void 0;
+exports.PaymentsService = exports.UPAYMENTS_MAX_DIGIT_ONLY_INQUIRY_LEN = void 0;
+exports.isValidUpaymentsPaymentStatusInquiryId = isValidUpaymentsPaymentStatusInquiryId;
 const node_crypto_1 = require("node:crypto");
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
@@ -30,7 +31,10 @@ function coerceStringishTrackValue(v) {
         return t || undefined;
     }
     if (typeof v === 'number' && Number.isFinite(v)) {
-        if (!Number.isInteger(v) && v > 1e15) {
+        if (!Number.isInteger(v)) {
+            return undefined;
+        }
+        if (!Number.isSafeInteger(v)) {
             return undefined;
         }
         const s = String(v);
@@ -45,6 +49,10 @@ function coerceStringishTrackValue(v) {
     return undefined;
 }
 const UPAYMENTS_TRACK_LIKE_KEYS = [
+    'trans_id',
+    'transId',
+    'tran_id',
+    'tranId',
     'trackId',
     'TrackID',
     'track_id',
@@ -59,20 +67,19 @@ const UPAYMENTS_TRACK_LIKE_KEYS = [
     'invoice_id',
     'invoiceId',
     'InvoiceId',
-    'session_id',
-    'sessionId',
-    'SessionId',
     'transaction_id',
     'transactionId',
     'TransactionId',
-    'tran_id',
-    'tranId',
     'receipt_id',
     'receiptId',
     'receiptid',
     'upayment_id',
     'uPaymentId',
+    'session_id',
+    'sessionId',
+    'SessionId',
 ];
+exports.UPAYMENTS_MAX_DIGIT_ONLY_INQUIRY_LEN = 32;
 function isPlausibleTrackValue(s, key) {
     if (s.length < 5 || s.length > 128) {
         return false;
@@ -80,10 +87,27 @@ function isPlausibleTrackValue(s, key) {
     if (s.startsWith('http') || s.startsWith('//')) {
         return false;
     }
+    if (/^\d+$/.test(s) && s.length > exports.UPAYMENTS_MAX_DIGIT_ONLY_INQUIRY_LEN) {
+        return false;
+    }
     if (looksLikeOurOrderUuid(s) && (key === 'id' || key === 'orderId')) {
         return false;
     }
     if (key === 'id' && looksLikeOurOrderUuid(s)) {
+        return false;
+    }
+    return true;
+}
+function isValidUpaymentsPaymentStatusInquiryId(s) {
+    const t = (s ?? '').trim();
+    return isPlausibleTrackValue(t, 'inquiry');
+}
+function isSafeUpaymentsChargeInquiryCandidate(s) {
+    const t = (s ?? '').trim();
+    if (!isValidUpaymentsPaymentStatusInquiryId(t)) {
+        return false;
+    }
+    if (looksLikeOurOrderUuid(t)) {
         return false;
     }
     return true;
@@ -105,13 +129,13 @@ function tryParseTrackIdFromRecord(o) {
     return undefined;
 }
 const TRACK_KEY_NAME_HINT = /track|payment_?id|invoice_?|session_?|tran_?|receipt_?/i;
-function deepFindUpaymentsTrackId(node, depth) {
+function deepFindUpaymentsTrackIdWithPredicate(node, depth, accept) {
     if (depth > 12 || node == null) {
         return undefined;
     }
     if (Array.isArray(node)) {
         for (const el of node) {
-            const t = deepFindUpaymentsTrackId(el, depth + 1);
+            const t = deepFindUpaymentsTrackIdWithPredicate(el, depth + 1, accept);
             if (t) {
                 return t;
             }
@@ -127,7 +151,7 @@ function deepFindUpaymentsTrackId(node, depth) {
             continue;
         }
         const s = coerceStringishTrackValue(o[k]);
-        if (s && isPlausibleTrackValue(s, k)) {
+        if (s && accept(s, k)) {
             return s;
         }
     }
@@ -137,7 +161,7 @@ function deepFindUpaymentsTrackId(node, depth) {
                 continue;
             }
             const s = coerceStringishTrackValue(o[k]);
-            if (s && isPlausibleTrackValue(s, 'id')) {
+            if (s && accept(s, 'id')) {
                 return s;
             }
         }
@@ -145,14 +169,14 @@ function deepFindUpaymentsTrackId(node, depth) {
     for (const [k, v] of Object.entries(o)) {
         if (TRACK_KEY_NAME_HINT.test(k)) {
             const s = coerceStringishTrackValue(v);
-            if (s && isPlausibleTrackValue(s, k)) {
+            if (s && accept(s, k)) {
                 return s;
             }
         }
     }
     for (const v of Object.values(o)) {
         if (v != null && typeof v === 'object') {
-            const t = deepFindUpaymentsTrackId(v, depth + 1);
+            const t = deepFindUpaymentsTrackIdWithPredicate(v, depth + 1, accept);
             if (t) {
                 return t;
             }
@@ -160,37 +184,79 @@ function deepFindUpaymentsTrackId(node, depth) {
     }
     return undefined;
 }
+function deepFindUpaymentsTrackId(node, depth) {
+    return deepFindUpaymentsTrackIdWithPredicate(node, depth, (s, k) => isPlausibleTrackValue(s, k));
+}
+function deepFindValidUpaymentsChargeInquiryId(node, depth) {
+    return deepFindUpaymentsTrackIdWithPredicate(node, depth, (s) => isSafeUpaymentsChargeInquiryCandidate(s));
+}
 const TRACK_URL_QUERY_KEYS = [
+    'trans_id',
+    'transId',
+    'tran_id',
+    'tranId',
     'track_id',
     'trackId',
     'TrackID',
     'trackid',
     'TrackId',
-    'session_id',
-    'sessionId',
-    'SessionId',
     'payment_id',
     'paymentId',
     'PaymentId',
     'invoice_id',
     'invoiceId',
+    'session_id',
+    'sessionId',
+    'SessionId',
 ];
+const TRACK_URL_QUERY_KEYS_LOWER = new Set(TRACK_URL_QUERY_KEYS.map((k) => k.toLowerCase()));
+function pickTrackIdFromUrlSearchParams(sp) {
+    for (const [k, v] of sp.entries()) {
+        if (TRACK_URL_QUERY_KEYS_LOWER.has(k.toLowerCase()) && v?.trim()) {
+            return v.trim();
+        }
+    }
+    return undefined;
+}
 function tryParseTrackIdFromPaymentUrl(link) {
     if (!link || typeof link !== 'string') {
         return undefined;
     }
+    let normalized = link.trim();
+    if (normalized.startsWith('//')) {
+        normalized = `https:${normalized}`;
+    }
     try {
-        const u = new URL(link);
-        for (const key of TRACK_URL_QUERY_KEYS) {
-            const v = u.searchParams.get(key);
-            if (v?.trim()) {
-                return v.trim();
+        const u = new URL(normalized);
+        const fromMain = pickTrackIdFromUrlSearchParams(u.searchParams);
+        if (fromMain) {
+            return fromMain;
+        }
+        const h = u.hash;
+        if (h && h.length > 1) {
+            const inner = h.startsWith('#') ? h.slice(1) : h;
+            const qMark = inner.indexOf('?');
+            if (qMark >= 0) {
+                const qp = new URLSearchParams(inner.slice(qMark + 1));
+                const fromHash = pickTrackIdFromUrlSearchParams(qp);
+                if (fromHash) {
+                    return fromHash;
+                }
+            }
+            const loose = new RegExp(`(?:^|[?&#/])(?:${TRACK_URL_QUERY_KEYS.join('|')})=([^&#]+)`, 'i').exec(inner);
+            if (loose?.[1]) {
+                try {
+                    return decodeURIComponent(loose[1].trim());
+                }
+                catch {
+                    return loose[1].trim();
+                }
             }
         }
     }
     catch {
     }
-    const m = new RegExp(`[?&](?:${TRACK_URL_QUERY_KEYS.join('|')})=([^&]+)`, 'i').exec(link);
+    const m = new RegExp(`[?&#/](?:${TRACK_URL_QUERY_KEYS.join('|')})=([^&]+)`, 'i').exec(normalized);
     if (m?.[1]) {
         try {
             return decodeURIComponent(m[1].trim());
@@ -202,26 +268,60 @@ function tryParseTrackIdFromPaymentUrl(link) {
     return undefined;
 }
 function extractUpaymentsChargeTrackId(data, paymentUrl) {
-    let t = tryParseTrackIdFromRecord(data);
-    if (t) {
+    let t = tryParseTrackIdFromPaymentUrl(paymentUrl);
+    if (t && isSafeUpaymentsChargeInquiryCandidate(t)) {
+        return t;
+    }
+    t = tryParseTrackIdFromRecord(data);
+    if (t && isSafeUpaymentsChargeInquiryCandidate(t)) {
         return t;
     }
     if (data && typeof data === 'object' && 'data' in data) {
         t = tryParseTrackIdFromRecord(data.data);
-        if (t) {
+        if (t && isSafeUpaymentsChargeInquiryCandidate(t)) {
             return t;
         }
     }
-    t = tryParseTrackIdFromPaymentUrl(paymentUrl);
-    if (t) {
-        return t;
-    }
-    t = deepFindUpaymentsTrackId(data, 0);
+    t = deepFindValidUpaymentsChargeInquiryId(data, 0);
     return t;
+}
+function extractTrackIdFromChargeLinkEmbeddedInRaw(raw) {
+    const m = /"link"\s*:\s*"((?:[^"\\]|\\.)*)"/i.exec(raw) ??
+        /"paymentUrl"\s*:\s*"((?:[^"\\]|\\.)*)"/i.exec(raw) ??
+        /"paymentLink"\s*:\s*"((?:[^"\\]|\\.)*)"/i.exec(raw) ??
+        /"url"\s*:\s*"((?:[^"\\]|\\.)*)"/i.exec(raw);
+    if (!m?.[1]) {
+        return undefined;
+    }
+    let linkStr;
+    try {
+        linkStr = JSON.parse(`"${m[1]}"`);
+    }
+    catch {
+        linkStr = m[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+    }
+    const fromQuery = tryParseTrackIdFromPaymentUrl(linkStr);
+    if (fromQuery && isSafeUpaymentsChargeInquiryCandidate(fromQuery)) {
+        return fromQuery;
+    }
+    const pathDigits = /\/(\d{10,28})(?:\?|#|$)/.exec(linkStr);
+    if (pathDigits?.[1] && isSafeUpaymentsChargeInquiryCandidate(pathDigits[1])) {
+        return pathDigits[1];
+    }
+    const pathV2 = /\/([0-9a-f]{8,40}v2)(?:\?|#|$)/i.exec(linkStr);
+    if (pathV2?.[1] && isSafeUpaymentsChargeInquiryCandidate(pathV2[1])) {
+        return pathV2[1];
+    }
+    return undefined;
 }
 function extractTrackIdFromChargeRawJsonText(raw) {
     const quotedPatterns = [
+        /"trans_?id"\s*:\s*"([^"]{5,128})"/i,
+        /"tran_?id"\s*:\s*"([^"]{5,128})"/i,
         /"track_?id"\s*:\s*"([^"]{5,128})"/i,
+        /"trackId"\s*:\s*"([^"]{5,128})"/,
+        /"TrackID"\s*:\s*"([^"]{5,128})"/,
+        /"session_?id"\s*:\s*"([^"]{5,128})"/i,
         /"payment_?id"\s*:\s*"([^"]{5,128})"/i,
         /"PaymentId"\s*:\s*"([^"]{5,128})"/,
         /"invoice_?id"\s*:\s*"([^"]{5,128})"/i,
@@ -232,37 +332,96 @@ function extractTrackIdFromChargeRawJsonText(raw) {
         if (s &&
             !s.startsWith('http') &&
             !looksLikeOurOrderUuid(s) &&
-            isPlausibleTrackValue(s, 'raw')) {
+            isPlausibleTrackValue(s, 'raw') &&
+            isSafeUpaymentsChargeInquiryCandidate(s)) {
             return s;
         }
     }
-    const numM = /"(?:track_?id|payment_?id|invoice_?id|session_?id)"\s*:\s*(\d{10,24})\b/.exec(raw);
-    if (numM?.[1]) {
+    const numM = /"(?:trans_?id|tran_?id|track_?id|session_?id|payment_?id|invoice_?id)"\s*:\s*(\d{10,28})\b/.exec(raw);
+    if (numM?.[1] && isSafeUpaymentsChargeInquiryCandidate(numM[1])) {
         return numM[1];
     }
     return undefined;
 }
+function pickHttpUrlFromUnknown(v) {
+    if (typeof v !== 'string') {
+        return undefined;
+    }
+    const t = v.trim();
+    if (t.startsWith('http://') || t.startsWith('https://')) {
+        return t;
+    }
+    if (t.startsWith('//')) {
+        return `https:${t}`;
+    }
+    return undefined;
+}
 function resolveUpaymentsChargePaymentUrl(data) {
+    const direct = pickHttpUrlFromUnknown(data);
+    if (direct) {
+        return direct;
+    }
+    if (Array.isArray(data)) {
+        for (const el of data) {
+            const u = resolveUpaymentsChargePaymentUrl(el);
+            if (u) {
+                return u;
+            }
+        }
+        return undefined;
+    }
     if (!data || typeof data !== 'object') {
         return undefined;
     }
     const d = data;
-    for (const key of [
+    const linkKeys = new Set([
         'link',
         'url',
-        'paymentUrl',
-        'paymentLink',
+        'paymenturl',
+        'paymentlink',
         'href',
-        'redirectUrl',
+        'redirecturl',
         'redirect_url',
-    ]) {
-        const v = d[key];
-        if (typeof v !== 'string') {
+    ]);
+    for (const [k, v] of Object.entries(d)) {
+        if (!linkKeys.has(k.replace(/\s/g, '').toLowerCase())) {
             continue;
         }
-        const t = v.trim();
-        if (t.startsWith('http://') || t.startsWith('https://')) {
+        const t = pickHttpUrlFromUnknown(v);
+        if (t) {
             return t;
+        }
+    }
+    return undefined;
+}
+function resolveUpaymentsChargePaymentUrlFromRoot(json) {
+    const fromData = resolveUpaymentsChargePaymentUrl(json.data);
+    if (fromData) {
+        return fromData;
+    }
+    const res = json.result;
+    if (res && typeof res === 'object' && !Array.isArray(res)) {
+        const r = res;
+        const nested = resolveUpaymentsChargePaymentUrl(r.data) ??
+            resolveUpaymentsChargePaymentUrl(r);
+        if (nested) {
+            return nested;
+        }
+    }
+    return resolveUpaymentsChargePaymentUrl(json);
+}
+function extractTrackIdFromHttpsUrlsInChargeRaw(raw) {
+    const re = /https?:\/\/[^\s"']{8,2048}/gi;
+    let m;
+    let n = 0;
+    while ((m = re.exec(raw)) !== null && n++ < 48) {
+        const candidate = m[0].replace(/[,;.)}\]]+$/g, '');
+        if (!/(upayment|upayments|checkout|payment|pay\.|kpay|knet|u\.kw|safari)/i.test(candidate)) {
+            continue;
+        }
+        const tid = tryParseTrackIdFromPaymentUrl(candidate);
+        if (tid && isSafeUpaymentsChargeInquiryCandidate(tid)) {
+            return tid;
         }
     }
     return undefined;
@@ -444,41 +603,89 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
             throw new common_1.BadRequestException(`Payments gateway error (${res.status}): ${msg}`);
         }
         const dataBlock = json.data;
-        const url = resolveUpaymentsChargePaymentUrl(dataBlock);
+        const url = resolveUpaymentsChargePaymentUrlFromRoot(json);
         if (!url) {
             throw new common_1.BadRequestException('UPayments response missing payment link (`data.link` / `data.url` / similar)');
         }
         let trackId = extractUpaymentsChargeTrackId(dataBlock, url);
         if (!trackId) {
-            trackId = deepFindUpaymentsTrackId(json, 0);
+            trackId = deepFindValidUpaymentsChargeInquiryId(json, 0);
         }
         if (!trackId) {
-            trackId = tryParseTrackIdFromRecord(json);
+            const tr = tryParseTrackIdFromRecord(json);
+            if (tr && isSafeUpaymentsChargeInquiryCandidate(tr)) {
+                trackId = tr;
+            }
         }
         if (!trackId) {
             trackId = extractTrackIdFromChargeRawJsonText(text);
         }
         if (!trackId) {
-            const dataKeys = dataBlock && typeof dataBlock === 'object'
+            trackId = extractTrackIdFromChargeLinkEmbeddedInRaw(text);
+        }
+        if (!trackId) {
+            trackId = extractTrackIdFromHttpsUrlsInChargeRaw(text);
+        }
+        const validatedTrackId = trackId
+            ? this.tryValidateChargePaymentStatusId(trackId, text, params.orderId)
+            : undefined;
+        if (!validatedTrackId) {
+            const dataKeys = dataBlock && typeof dataBlock === 'object' && !Array.isArray(dataBlock)
                 ? Object.keys(dataBlock).join(',')
-                : 'n/a';
-            this.logger.error(`UPayments /charge: cannot resolve trackId for order=${params.orderId}. data keys=[${dataKeys}] snippet=${text.slice(0, 2500)}`);
-            throw new common_1.BadRequestException('UPayments did not return a verifiable track id (needed for recheck and webhooks). Check gateway /charge JSON or contact UPayments support.');
+                : typeof dataBlock === 'string'
+                    ? '(string)'
+                    : Array.isArray(dataBlock)
+                        ? '(array)'
+                        : 'n/a';
+            this.logger.warn(`UPayments /charge: no inquiry id in response (order=${params.orderId}). data keys=[${dataKeys}]. Link returned; webhook will provide trans_id/track_id. Raw=${text.slice(0, 800)}`);
         }
         return {
             url,
-            reference: trackId,
-            trackId,
+            reference: validatedTrackId,
+            trackId: validatedTrackId,
         };
     }
+    tryValidateChargePaymentStatusId(primary, rawJsonText, orderIdForLog) {
+        const t = primary.trim();
+        if (isValidUpaymentsPaymentStatusInquiryId(t)) {
+            return t;
+        }
+        this.logger.warn(`UPayments /charge: resolved inquiry id rejected (len=${t.length}) order=${orderIdForLog.slice(0, 8)}… — attempting recovery from raw JSON`);
+        const recovered = extractTrackIdFromChargeRawJsonText(rawJsonText);
+        if (recovered && isSafeUpaymentsChargeInquiryCandidate(recovered)) {
+            return recovered;
+        }
+        const fromLink = extractTrackIdFromChargeLinkEmbeddedInRaw(rawJsonText);
+        if (fromLink && isSafeUpaymentsChargeInquiryCandidate(fromLink)) {
+            return fromLink;
+        }
+        const fromAnyUrl = extractTrackIdFromHttpsUrlsInChargeRaw(rawJsonText);
+        if (fromAnyUrl && isSafeUpaymentsChargeInquiryCandidate(fromAnyUrl)) {
+            return fromAnyUrl;
+        }
+        this.logger.warn(`UPayments /charge: inquiry id unrecoverable order=${orderIdForLog} badLen=${t.length} — will rely on webhook trans_id`);
+        return undefined;
+    }
     async fetchGatewayStatus(trackId) {
+        const clean = trackId.trim();
+        if (!clean) {
+            return { ok: false, data: {}, raw: null };
+        }
+        if (!isValidUpaymentsPaymentStatusInquiryId(clean)) {
+            this.logger.warn(`UPayments inquiry skipped: invalid inquiry id (len=${clean.length}) prefix=${clean.slice(0, 20)}…`);
+            return {
+                ok: false,
+                data: {},
+                raw: { invalidInquiryId: clean.slice(0, 80) },
+            };
+        }
         if (this.usePlaceholderGateway()) {
             return { ok: false, data: {}, raw: null };
         }
         if (!this.apiKey) {
             throw new common_1.ServiceUnavailableException('Payment inquiry is not configured (PAYMENTS_API_KEY missing)');
         }
-        const statusUrl = `${this.apiBase}/api/v1/get-payment-status/${encodeURIComponent(trackId)}`;
+        const statusUrl = `${this.apiBase}/api/v1/get-payment-status/${encodeURIComponent(clean)}`;
         const upaymentsFetchTimeoutMs = Number(process.env.PAYMENTS_UPAYMENTS_TIMEOUT_MS?.trim() || '60000');
         let res;
         try {
@@ -508,7 +715,7 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
             return { ok: false, data: {}, raw: text };
         }
         if (!res.ok || json.status === false || !json.data) {
-            this.logger.warn(`UPayments inquiry failed for ${trackId}: ${json.message ?? text.slice(0, 200)}`);
+            this.logger.warn(`UPayments inquiry failed for ${clean}: ${json.message ?? text.slice(0, 200)}`);
             return { ok: false, data: json.data ?? {}, raw: json };
         }
         return { ok: true, data: json.data, raw: json };
@@ -544,12 +751,22 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
         }
     }
     normalizeCallbackStatus(status) {
-        const s = status.trim().toLowerCase();
-        if (s === 'success' ||
-            s === 'paid' ||
-            s === 'completed' ||
-            s === 'captured' ||
-            s === 'authorized') {
+        const raw = (status ?? '').trim();
+        if (!raw) {
+            return 'failed';
+        }
+        const s = raw.toLowerCase();
+        const firstSegment = (s.split(/[,;|]/)[0] ?? s).trim();
+        const head = (firstSegment.split(/\s+/)[0] ?? firstSegment).trim();
+        if (head === 'success' ||
+            head === 'paid' ||
+            head === 'completed' ||
+            head === 'captured' ||
+            head === 'authorized' ||
+            head === 'capture') {
+            return 'success';
+        }
+        if (/\bcaptured\b/.test(s) && !/\b(not|un|de|pre)\s*captured\b/.test(s)) {
             return 'success';
         }
         return 'failed';
@@ -584,6 +801,50 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
             inquiryRaw: inquiry.raw,
         });
         return { finalized: true, gatewayResult: gr, inquiryRaw: inquiry.raw };
+    }
+    async tryFinalizeOrderFromTrustedUpaymentsReturn(orderId, trackId, gatewayResultRaw, source, extras) {
+        const clean = trackId.trim();
+        if (!clean) {
+            return { finalized: false };
+        }
+        if (this.normalizeCallbackStatus(gatewayResultRaw) !== 'success') {
+            return { finalized: false };
+        }
+        const order = await this.prisma.order.findUnique({
+            where: { id: orderId },
+            select: {
+                id: true,
+                status: true,
+                walletSettledAt: true,
+                posGatewayTrackId: true,
+            },
+        });
+        if (!order) {
+            return { finalized: false };
+        }
+        if (order.walletSettledAt || order.status === client_1.OrderStatus.COMPLETED) {
+            return { finalized: true };
+        }
+        if (order.status === client_1.OrderStatus.CANCELED) {
+            return { finalized: false };
+        }
+        const stored = order.posGatewayTrackId?.trim() ?? '';
+        const trackCorrelatesToOrder = /v2$/i.test(clean) ||
+            (stored.length > 0 && stored === clean);
+        if (!trackCorrelatesToOrder) {
+            return { finalized: false };
+        }
+        await this.finalizePaidOrderFromGateway(orderId, {
+            provider: 'upayments',
+            trackId: clean,
+            source,
+            result: gatewayResultRaw.trim(),
+            paymentId: extras?.paymentId ?? null,
+            tranId: extras?.tranId ?? null,
+            amount: extras?.amount != null ? String(extras.amount) : '',
+            inquiryRaw: { trustedWithoutUpaymentsInquiry: true },
+        });
+        return { finalized: true };
     }
     async ensurePaymentLinkForUnpaidOrder(orderId) {
         const order = await this.prisma.order.findUnique({
@@ -966,9 +1227,25 @@ function extractTrackIdFromFinalizeGatewayMetadata(meta) {
         return undefined;
     }
     const m = meta;
-    const t = m.trackId ?? m.TrackID;
-    if (typeof t === 'string' && t.trim().length > 0) {
-        return t.trim();
+    const candidates = [
+        tryParseTrackIdFromRecord(m),
+    ];
+    const callback = m.callback;
+    if (callback && typeof callback === 'object' && !Array.isArray(callback)) {
+        const payload = callback.payload;
+        candidates.push(tryParseTrackIdFromRecord(payload));
+    }
+    for (const c of candidates) {
+        if (c && isValidUpaymentsPaymentStatusInquiryId(c)) {
+            return c.trim();
+        }
+    }
+    const legacy = m.trackId ?? m.TrackID;
+    if (typeof legacy === 'string') {
+        const s = legacy.trim();
+        if (isValidUpaymentsPaymentStatusInquiryId(s)) {
+            return s;
+        }
     }
     return undefined;
 }

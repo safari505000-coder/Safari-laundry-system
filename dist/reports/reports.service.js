@@ -797,6 +797,30 @@ let ReportsService = class ReportsService {
         }
         const orderMap = new Map(orders.map((o) => [o.id, o]));
         const expenseMap = new Map(expenses.map((e) => [e.id, e]));
+        const custodyIdsForSlips = new Set();
+        for (const row of glRows) {
+            if (row.entryType !== client_1.GeneralLedgerEntryType.WALLET_SETTLEMENT)
+                continue;
+            const m = row.metadata;
+            if (!m || typeof m !== 'object' || Array.isArray(m))
+                continue;
+            const rec = m;
+            if (rec['event'] === 'CUSTODY_VERIFIED' && typeof rec['custodyId'] === 'string') {
+                custodyIdsForSlips.add(rec['custodyId']);
+            }
+        }
+        const custodySlipById = new Map();
+        if (custodyIdsForSlips.size > 0) {
+            const bags = await this.prisma.managerCashCustody.findMany({
+                where: { id: { in: [...custodyIdsForSlips] } },
+                select: { id: true, depositSlipUrl: true },
+            });
+            for (const b of bags) {
+                custodySlipById.set(b.id, typeof b.depositSlipUrl === 'string' && b.depositSlipUrl.trim().length > 0 ?
+                    b.depositSlipUrl.trim()
+                    : null);
+            }
+        }
         const out = [];
         const saleType = (m) => {
             if (m === null || m === undefined)
@@ -861,6 +885,20 @@ let ReportsService = class ReportsService {
                 });
             }
             else if (row.entryType === client_1.GeneralLedgerEntryType.WALLET_SETTLEMENT) {
+                const m = row.metadata && typeof row.metadata === 'object' && !Array.isArray(row.metadata) ?
+                    row.metadata
+                    : {};
+                let walletAttach = null;
+                const direct = m['receiptImageUrl'];
+                if (typeof direct === 'string' && direct.trim().length > 0) {
+                    walletAttach = direct.trim();
+                }
+                else if (m['event'] === 'CUSTODY_VERIFIED') {
+                    const cid = m['custodyId'];
+                    if (typeof cid === 'string' && custodySlipById.has(cid)) {
+                        walletAttach = custodySlipById.get(cid) ?? null;
+                    }
+                }
                 out.push({
                     id: row.id,
                     at: row.createdAt.toISOString(),
@@ -869,7 +907,7 @@ let ReportsService = class ReportsService {
                     memo: row.memo,
                     driverId: null,
                     driverName: null,
-                    attachmentUrl: null,
+                    attachmentUrl: walletAttach,
                     refKind: 'GL',
                     refId: row.id,
                 });

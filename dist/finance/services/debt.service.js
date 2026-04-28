@@ -288,6 +288,7 @@ let DebtService = class DebtService {
                         totalPrice: true,
                         createdAt: true,
                         completedAt: true,
+                        posPaymentMethod: true,
                     },
                 },
             },
@@ -343,6 +344,9 @@ let DebtService = class DebtService {
                 isOpen: true,
                 lastEntryAt: tIso,
                 debtSource: 'INVOICE_SHORTFALL',
+                posPaymentMethod: e.order.posPaymentMethod
+                    ? String(e.order.posPaymentMethod)
+                    : null,
             };
             byOrder.set(e.orderId, {
                 shortSum: isShort ? amount : 0,
@@ -558,6 +562,7 @@ let DebtService = class DebtService {
                 completedAt: true,
                 serialNumber: true,
                 invoiceNumber: true,
+                posPaymentMethod: true,
                 customerId: true,
                 driverId: true,
                 customer: {
@@ -670,6 +675,9 @@ let DebtService = class DebtService {
                 isOpen: true,
                 lastEntryAt: issued,
                 debtSource: 'OPEN_UNPAID_ORDER',
+                posPaymentMethod: o.posPaymentMethod
+                    ? String(o.posPaymentMethod)
+                    : null,
             };
             finalRows.push(row);
             totalDebt += tot;

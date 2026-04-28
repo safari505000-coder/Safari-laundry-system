@@ -31,6 +31,8 @@ type UPaymentsInquiryData = {
         reference?: string;
     };
 };
+export declare const UPAYMENTS_MAX_DIGIT_ONLY_INQUIRY_LEN = 32;
+export declare function isValidUpaymentsPaymentStatusInquiryId(s: string): boolean;
 export declare class PaymentsService implements OnModuleInit {
     private readonly prisma;
     private readonly customerLedger;
@@ -55,6 +57,7 @@ export declare class PaymentsService implements OnModuleInit {
         devMock?: boolean;
     }): boolean;
     createPaymentLink(params: CreatePaymentLinkParams): Promise<CreatePaymentLinkResult>;
+    private tryValidateChargePaymentStatusId;
     fetchGatewayStatus(trackId: string): Promise<{
         ok: boolean;
         data: UPaymentsInquiryData;
@@ -72,6 +75,13 @@ export declare class PaymentsService implements OnModuleInit {
         finalized: boolean;
         gatewayResult: string | null;
         inquiryRaw: unknown;
+    }>;
+    tryFinalizeOrderFromTrustedUpaymentsReturn(orderId: string, trackId: string, gatewayResultRaw: string, source: string, extras?: {
+        paymentId?: string | null;
+        tranId?: string | null;
+        amount?: string;
+    }): Promise<{
+        finalized: boolean;
     }>;
     ensurePaymentLinkForUnpaidOrder(orderId: string): Promise<CreatePaymentLinkResult>;
     findOrderByTrackId(trackId: string): Promise<string | null>;

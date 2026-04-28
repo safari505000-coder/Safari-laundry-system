@@ -52,6 +52,18 @@ __decorate([
     (0, swagger_1.ApiProperty)({ description: 'Amount in KWD, 3 decimals, as a string.' }),
     __metadata("design:type", String)
 ], PublicOrderStatusDto.prototype, "amountKd", void 0);
+function mergeGatewayInquiryIdFromHintDto(hint) {
+    if (!hint)
+        return undefined;
+    const s = hint.trans_id?.trim() ||
+        hint.transId?.trim() ||
+        hint.tran_id?.trim() ||
+        hint.tranId?.trim() ||
+        hint.trackId?.trim() ||
+        hint.track_id?.trim() ||
+        '';
+    return s || undefined;
+}
 let PaymentsController = PaymentsController_1 = class PaymentsController {
     paymentsService;
     prisma;
@@ -112,22 +124,79 @@ document.getElementById('go').onclick = async function () {
             }
             return { ok: true, orderId, outcome };
         }
-        const trackId = body.track_id?.trim() ||
+        const rawGatewayInquiryId = body.trans_id?.trim() ||
+            body.transId?.trim() ||
+            body.tran_id?.trim() ||
+            body.tranId?.trim() ||
+            body.track_id?.trim() ||
             body.trackId?.trim() ||
             body.TrackID?.trim() ||
-            body.gatewayReference?.trim() ||
             '';
-        if (trackId) {
-            this.logger.log(`UPayments callback: received trackId prefix=${trackId.slice(0, 12)}… (inquiry next)`);
-            const inquiry = await this.paymentsService.fetchGatewayStatus(trackId);
+        let gatewayInquiryId = rawGatewayInquiryId;
+        if (gatewayInquiryId &&
+            !(0, payments_service_1.isValidUpaymentsPaymentStatusInquiryId)(gatewayInquiryId)) {
+            this.logger.warn(`UPayments callback: rejecting corrupt/oversize inquiry id from webhook (len=${gatewayInquiryId.length})`);
+            gatewayInquiryId = '';
+        }
+        const safariForInquiryFallback = extractOrderId(body);
+        if (!gatewayInquiryId && safariForInquiryFallback) {
+            const row = await this.prisma.order.findUnique({
+                where: { id: safariForInquiryFallback },
+                select: { posGatewayTrackId: true },
+            });
+            const persisted = row?.posGatewayTrackId?.trim() ?? '';
+            if (persisted && (0, payments_service_1.isValidUpaymentsPaymentStatusInquiryId)(persisted)) {
+                gatewayInquiryId = persisted;
+                this.logger.log(`UPayments callback: using Order.posGatewayTrackId from DB (webhook id missing/invalid) order=${safariForInquiryFallback.slice(0, 8)}…`);
+            }
+        }
+        if (gatewayInquiryId) {
+            this.logger.log(`UPayments callback: received payment-status id prefix=${gatewayInquiryId.slice(0, 12)}…`);
+            const safariOrderFromBody = extractOrderId(body);
+            const bodyOutcome = this.paymentsService.normalizeCallbackStatus(body.result ?? body.status ?? '');
+            const trimmedTrack = gatewayInquiryId;
+            const linkedOrderId = trimmedTrack
+                ? await this.paymentsService.findOrderByTrackId(trimmedTrack)
+                : null;
+            const trackTrusted = /v2$/i.test(trimmedTrack) ||
+                (Boolean(safariOrderFromBody) &&
+                    Boolean(linkedOrderId) &&
+                    linkedOrderId === safariOrderFromBody);
+            const trustWebhookFinalize = Boolean(safariOrderFromBody) &&
+                bodyOutcome === 'success' &&
+                trackTrusted;
+            if (trustWebhookFinalize) {
+                this.logger.log(`UPayments callback: trusted webhook (CAPTURED + v2 + Safari order) orderId=${safariOrderFromBody} — finalize without inquiry`);
+                try {
+                    const tr = await this.paymentsService.tryFinalizeOrderFromTrustedUpaymentsReturn(safariOrderFromBody, gatewayInquiryId, String(body.result ?? body.status ?? ''), 'UPayments_WEBHOOK_TRUSTED_BODY', {
+                        paymentId: body.payment_id ?? body.paymentId ?? null,
+                        tranId: body.tran_id ?? body.tranId ?? null,
+                        amount: body.amount,
+                    });
+                    if (tr.finalized) {
+                        this.logger.log(`UPayments callback: finalize (trusted) done orderId=${safariOrderFromBody}`);
+                        return {
+                            ok: true,
+                            orderId: safariOrderFromBody,
+                            trackId: gatewayInquiryId,
+                            outcome: 'success',
+                        };
+                    }
+                    this.logger.warn(`UPayments callback: trusted finalize no-op orderId=${safariOrderFromBody} — falling back to inquiry`);
+                }
+                catch (err) {
+                    this.logger.warn(`UPayments callback: trusted finalize failed orderId=${safariOrderFromBody}: ${err.message} — falling back to inquiry`);
+                }
+            }
+            const inquiry = await this.paymentsService.fetchGatewayStatus(gatewayInquiryId);
             const resolvedOrderId = inquiry.data.order?.id ??
                 extractOrderIdFromExtraData(inquiry.data.customerExtraData) ??
-                (await this.paymentsService.findOrderByTrackId(trackId)) ??
+                (await this.paymentsService.findOrderByTrackId(gatewayInquiryId)) ??
                 extractOrderId(body) ??
                 body.orderId ??
                 null;
             if (!resolvedOrderId) {
-                this.logger.warn(`UPayments webhook for trackId=${trackId} — cannot map to a Safari order; body=${safeJson(body)}`);
+                this.logger.warn(`UPayments webhook for gatewayInquiryId=${gatewayInquiryId} — cannot map to a Safari order; body=${safeJson(body)}`);
                 return {
                     ok: false,
                     outcome: 'failed',
@@ -135,12 +204,12 @@ document.getElementById('go').onclick = async function () {
                 };
             }
             const outcome = this.paymentsService.normalizeCallbackStatus(inquiry.data.result ?? body.result ?? body.status ?? '');
-            const willFinalize = outcome === 'success' && inquiry.ok;
+            let willFinalize = outcome === 'success' && inquiry.ok;
             this.logger.log(`UPayments callback: orderId=${resolvedOrderId} gatewayResult=${inquiry.data.result ?? 'n/a'} normalizedOutcome=${outcome} inquiryOk=${inquiry.ok} willFinalize=${willFinalize}`);
             if (willFinalize) {
                 await this.paymentsService.finalizePaidOrderFromGateway(resolvedOrderId, {
                     provider: 'upayments',
-                    trackId,
+                    trackId: gatewayInquiryId,
                     paymentId: inquiry.data.paymentId ??
                         body.paymentId ??
                         body.payment_id ??
@@ -157,16 +226,31 @@ document.getElementById('go').onclick = async function () {
                 });
                 this.logger.log(`UPayments callback: finalizePaidOrderFromGateway done orderId=${resolvedOrderId}`);
             }
+            else if (!inquiry.ok &&
+                safariOrderFromBody &&
+                this.paymentsService.normalizeCallbackStatus(body.result ?? body.status ?? '') === 'success' &&
+                trackTrusted) {
+                this.logger.warn(`UPayments callback: inquiry failed for payment-status id prefix=${gatewayInquiryId.slice(0, 16)}… — finalizing from webhook body (Safari orderId=${safariOrderFromBody})`);
+                const tr = await this.paymentsService.tryFinalizeOrderFromTrustedUpaymentsReturn(safariOrderFromBody, gatewayInquiryId, String(body.result ?? body.status ?? ''), 'UPayments_WEBHOOK_BODY_INQUIRY_FAILED', {
+                    paymentId: body.payment_id ?? body.paymentId ?? null,
+                    tranId: body.tran_id ?? body.tranId ?? null,
+                    amount: body.amount,
+                });
+                if (tr.finalized) {
+                    willFinalize = true;
+                    this.logger.log(`UPayments callback: finalize after inquiry fail done orderId=${safariOrderFromBody}`);
+                }
+            }
             return {
                 ok: true,
                 orderId: resolvedOrderId,
-                trackId,
-                outcome,
+                trackId: gatewayInquiryId,
+                outcome: willFinalize ? 'success' : outcome,
             };
         }
-        this.logger.warn(`UPayments callback: no trackId in body — keys=${Object.keys(body ?? {}).join(',') || 'empty'}; falling back to legacy HMAC (needs orderId)`);
+        this.logger.warn(`UPayments callback: no payment-status inquiry id (trans_id / tran_id / track_id) in body — keys=${Object.keys(body ?? {}).join(',') || 'empty'}; falling back to legacy HMAC (needs orderId)`);
         if (!body.orderId) {
-            throw new common_1.UnauthorizedException('Callback missing trackId and orderId — cannot verify payment');
+            throw new common_1.UnauthorizedException('Callback missing payment-status inquiry id (trans_id / tran_id / track_id) and orderId — cannot verify payment');
         }
         if (!this.paymentsService.verifyIntegratedCallback({
             orderId: body.orderId,
@@ -182,13 +266,13 @@ document.getElementById('go').onclick = async function () {
         }
         return { ok: true, orderId: body.orderId, outcome };
     }
-    async publicOrderStatusGet(req, orderId, track_id, trackID, trackIdQuery) {
-        return this.runPublicOrderStatusPoll(orderId, req, track_id, trackID, trackIdQuery, undefined);
+    async publicOrderStatusGet(req, orderId, track_id, trackID, trackIdQuery, gatewayResultQuery) {
+        return this.runPublicOrderStatusPoll(orderId, req, track_id, trackID, trackIdQuery, undefined, undefined, gatewayResultQuery);
     }
-    async publicOrderStatusPost(req, orderId, body, track_id, trackID, trackIdQuery) {
-        return this.runPublicOrderStatusPoll(orderId, req, track_id, trackID, trackIdQuery, body?.trackId ?? body?.track_id);
+    async publicOrderStatusPost(req, orderId, body, track_id, trackID, trackIdQuery, gatewayResultQuery) {
+        return this.runPublicOrderStatusPoll(orderId, req, track_id, trackID, trackIdQuery, mergeGatewayInquiryIdFromHintDto(body), body?.result, gatewayResultQuery);
     }
-    async runPublicOrderStatusPoll(orderId, req, track_id, trackID, trackIdQuery, bodyTrackId) {
+    async runPublicOrderStatusPoll(orderId, req, track_id, trackID, trackIdQuery, bodyTrackId, gatewayResultFromBody, gatewayResultQuery) {
         if (!orderId || orderId.length < 32) {
             throw new common_1.BadRequestException('orderId is required (UUID)');
         }
@@ -205,9 +289,28 @@ document.getElementById('go').onclick = async function () {
         if (!order) {
             throw new common_1.BadRequestException('Order not found');
         }
-        const returnTrack = pickReturnTrackIdFromRequest(bodyTrackId, track_id, trackID, trackIdQuery, req);
+        let returnTrack = pickReturnTrackIdFromRequest(bodyTrackId, track_id, trackID, trackIdQuery, req);
+        if (returnTrack && !(0, payments_service_1.isValidUpaymentsPaymentStatusInquiryId)(returnTrack)) {
+            this.logger.warn(`Ignoring invalid payment-status inquiry hint from return URL/body (len=${returnTrack.length}) order=${order.id.slice(0, 8)}…`);
+            returnTrack = '';
+        }
+        const gatewayResultRaw = pickGatewayReturnResultFromRequest(gatewayResultFromBody, gatewayResultQuery, req);
         let settled = Boolean(order.walletSettledAt);
         let status = order.status;
+        if (!settled && status !== client_1.OrderStatus.COMPLETED) {
+            if (gatewayResultRaw && returnTrack) {
+                try {
+                    const tr = await this.paymentsService.tryFinalizeOrderFromTrustedUpaymentsReturn(order.id, returnTrack, gatewayResultRaw, 'PUBLIC_STATUS_POLL_TRUSTED_RETURN_URL');
+                    if (tr.finalized) {
+                        settled = true;
+                        status = client_1.OrderStatus.COMPLETED;
+                    }
+                }
+                catch (err) {
+                    this.logger.warn(`Trusted return-url finalize failed for order ${order.id}: ${err.message}`);
+                }
+            }
+        }
         if (!settled && status !== client_1.OrderStatus.COMPLETED) {
             const candidates = buildUpaymentsInquiryTrackCandidates(returnTrack, order.posGatewayTrackId);
             for (const tid of candidates) {
@@ -233,7 +336,23 @@ document.getElementById('go').onclick = async function () {
             amountKd: order.totalPrice.toFixed(3),
         };
     }
-    async recheckPayment(req, orderId, body, track_id, trackID, trackIdQuery) {
+    async recheckPaymentPost(req, orderId, body, track_id, trackID, trackIdQuery, gatewayResultQuery) {
+        return this.runRecheckPayment(req, orderId, body, {
+            track_id,
+            trackID,
+            trackIdQuery,
+            gatewayResultQuery,
+        });
+    }
+    async recheckPaymentGet(req, orderId, track_id, trackID, trackIdQuery, gatewayResultQuery) {
+        return this.runRecheckPayment(req, orderId, undefined, {
+            track_id,
+            trackID,
+            trackIdQuery,
+            gatewayResultQuery,
+        });
+    }
+    async runRecheckPayment(req, orderId, bodyHint, q) {
         if (!orderId || orderId.length < 32) {
             throw new common_1.BadRequestException('orderId is required (UUID)');
         }
@@ -266,7 +385,33 @@ document.getElementById('go').onclick = async function () {
                 messageAr: 'الدفع مؤكَّد. شكراً لك.',
             };
         }
-        const returnTrack = pickReturnTrackIdFromRequest(body?.trackId ?? body?.track_id, track_id, trackID, trackIdQuery, req);
+        let returnTrack = pickReturnTrackIdFromRequest(mergeGatewayInquiryIdFromHintDto(bodyHint), q.track_id, q.trackID, q.trackIdQuery, req);
+        if (returnTrack && !(0, payments_service_1.isValidUpaymentsPaymentStatusInquiryId)(returnTrack)) {
+            this.logger.warn(`Recheck: ignoring invalid inquiry hint (len=${returnTrack.length}) order=${orderId.slice(0, 8)}…`);
+            returnTrack = '';
+        }
+        const gatewayResultRaw = pickGatewayReturnResultFromRequest(bodyHint?.result, q.gatewayResultQuery, req);
+        if (!isPaid && gatewayResultRaw && returnTrack) {
+            try {
+                const tr = await this.paymentsService.tryFinalizeOrderFromTrustedUpaymentsReturn(order.id, returnTrack, gatewayResultRaw, 'CUSTOMER_RECHECK_TRUSTED_RETURN_URL');
+                if (tr.finalized) {
+                    this.logger.log(`UPayments manual recheck: finalized (trusted return URL) orderId=${order.id}`);
+                    return {
+                        orderId: order.id,
+                        status: client_1.OrderStatus.COMPLETED,
+                        isPaid: true,
+                        amountKd: order.totalPrice.toFixed(3),
+                        trackIdPresent: true,
+                        gatewayResult: gatewayResultRaw,
+                        settledNow: true,
+                        messageAr: 'تم تأكيد الدفع بنجاح! نحدّث الفاتورة الآن.',
+                    };
+                }
+            }
+            catch (err) {
+                this.logger.warn(`Trusted recheck finalize failed orderId=${order.id}: ${err.message}`);
+            }
+        }
         if (!returnTrack && !order.posGatewayTrackId) {
             return {
                 orderId: order.id,
@@ -367,8 +512,9 @@ __decorate([
     __param(2, (0, common_1.Query)('track_id')),
     __param(3, (0, common_1.Query)('TrackID')),
     __param(4, (0, common_1.Query)('trackId')),
+    __param(5, (0, common_1.Query)('result')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, String, String, String, String]),
+    __metadata("design:paramtypes", [Object, String, String, String, String, String]),
     __metadata("design:returntype", Promise)
 ], PaymentsController.prototype, "publicOrderStatusGet", null);
 __decorate([
@@ -384,16 +530,18 @@ __decorate([
     __param(3, (0, common_1.Query)('track_id')),
     __param(4, (0, common_1.Query)('TrackID')),
     __param(5, (0, common_1.Query)('trackId')),
+    __param(6, (0, common_1.Query)('result')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, String, gateway_track_hint_dto_1.GatewayTrackHintDto, String, String, String]),
+    __metadata("design:paramtypes", [Object, String, gateway_track_hint_dto_1.GatewayTrackHintDto, String, String, String, String]),
     __metadata("design:returntype", Promise)
 ], PaymentsController.prototype, "publicOrderStatusPost", null);
 __decorate([
     (0, common_1.Post)('recheck/:orderId'),
     (0, common_1.HttpCode)(200),
+    (0, common_1.Header)('Cache-Control', 'no-store'),
     (0, swagger_1.ApiOperation)({
-        summary: 'Force a UPayments inquiry and finalize if CAPTURED',
-        description: 'Public — for the /payment/success|failed return pages. Always calls UPayments get-payment-status. If CAPTURED the order is marked paid before responding.',
+        summary: 'Force payment verification and finalize if CAPTURED (POST)',
+        description: 'Public — optional JSON body with trackId when query string was stripped.',
     }),
     (0, swagger_1.ApiBody)({ type: gateway_track_hint_dto_1.GatewayTrackHintDto, required: false }),
     __param(0, (0, common_1.Req)()),
@@ -402,10 +550,29 @@ __decorate([
     __param(3, (0, common_1.Query)('track_id')),
     __param(4, (0, common_1.Query)('TrackID')),
     __param(5, (0, common_1.Query)('trackId')),
+    __param(6, (0, common_1.Query)('result')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, String, gateway_track_hint_dto_1.GatewayTrackHintDto, String, String, String]),
+    __metadata("design:paramtypes", [Object, String, gateway_track_hint_dto_1.GatewayTrackHintDto, String, String, String, String]),
     __metadata("design:returntype", Promise)
-], PaymentsController.prototype, "recheckPayment", null);
+], PaymentsController.prototype, "recheckPaymentPost", null);
+__decorate([
+    (0, common_1.Get)('recheck/:orderId'),
+    (0, common_1.HttpCode)(200),
+    (0, common_1.Header)('Cache-Control', 'no-store'),
+    (0, swagger_1.ApiOperation)({
+        summary: 'Force payment verification and finalize if CAPTURED (GET)',
+        description: 'Same as POST — use when the SPA origin cannot POST to the API (static hosting / mis-proxy). Pass track_id and result as query params when available.',
+    }),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('orderId')),
+    __param(2, (0, common_1.Query)('track_id')),
+    __param(3, (0, common_1.Query)('TrackID')),
+    __param(4, (0, common_1.Query)('trackId')),
+    __param(5, (0, common_1.Query)('result')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String, String, String, String, String]),
+    __metadata("design:returntype", Promise)
+], PaymentsController.prototype, "recheckPaymentGet", null);
 exports.PaymentsController = PaymentsController = PaymentsController_1 = __decorate([
     (0, swagger_1.ApiTags)('payments'),
     (0, common_1.Controller)('payments'),
@@ -418,7 +585,16 @@ function readGatewayTrackIdFromPlainBody(req) {
         return '';
     }
     const o = raw;
-    for (const k of ['trackId', 'track_id', 'TrackID', 'gateway_track_id']) {
+    for (const k of [
+        'trans_id',
+        'transId',
+        'tran_id',
+        'tranId',
+        'trackId',
+        'track_id',
+        'TrackID',
+        'gateway_track_id',
+    ]) {
         const v = o[k];
         if (typeof v === 'string' && v.trim()) {
             return v.trim();
@@ -443,12 +619,18 @@ function upaymentTrackInquirySortKey(tid) {
     return 1;
 }
 function buildUpaymentsInquiryTrackCandidates(returnTrack, posGatewayTrackId) {
-    const parts = [returnTrack, posGatewayTrackId ?? '']
+    const rt = typeof returnTrack === 'string' ? returnTrack.trim() : '';
+    const parts = [rt, posGatewayTrackId ?? '']
         .map((s) => (typeof s === 'string' ? s.trim() : ''))
-        .filter((s) => s.length > 0);
+        .filter((s) => s.length > 0 &&
+        (0, payments_service_1.isValidUpaymentsPaymentStatusInquiryId)(s));
     const unique = [...new Set(parts)];
-    unique.sort((a, b) => upaymentTrackInquirySortKey(a) - upaymentTrackInquirySortKey(b));
-    return unique;
+    const filtered = rt && /v2$/i.test(rt)
+        ? unique.filter((t) => !/^\d{18,}$/.test(t.trim()))
+        : unique;
+    const list = filtered.length > 0 ? filtered : unique;
+    list.sort((a, b) => upaymentTrackInquirySortKey(a) - upaymentTrackInquirySortKey(b));
+    return list;
 }
 function pickReturnTrackIdFromRequest(bodyTrackId, track_id, trackID, trackIdQuery, req) {
     const fromPlainBody = readGatewayTrackIdFromPlainBody(req);
@@ -472,6 +654,10 @@ function pickReturnTrackIdFromRequest(bodyTrackId, track_id, trackID, trackIdQue
         return fromRawUrl;
     }
     if (!req.query || typeof req.query !== 'object') {
+        const fromRefererEarly = extractPaymentReturnHintsFromReferer(req).trackId;
+        if (fromRefererEarly) {
+            return fromRefererEarly;
+        }
         return '';
     }
     const q = req.query;
@@ -485,7 +671,11 @@ function pickReturnTrackIdFromRequest(bodyTrackId, track_id, trackID, trackIdQue
         }
         return String(v).trim();
     };
-    const direct = g('track_id') ||
+    const direct = g('trans_id') ||
+        g('transId') ||
+        g('tran_id') ||
+        g('tranId') ||
+        g('track_id') ||
         g('TrackID') ||
         g('trackId') ||
         g('gateway_track_id');
@@ -493,6 +683,12 @@ function pickReturnTrackIdFromRequest(bodyTrackId, track_id, trackID, trackIdQue
         return direct;
     }
     for (const key of Object.keys(q)) {
+        if (/^trans_?id$/i.test(key) || /^tran_?id$/i.test(key)) {
+            const v = g(key);
+            if (v) {
+                return v;
+            }
+        }
         if (/^track_?id$/i.test(key)) {
             const v = g(key);
             if (v) {
@@ -500,13 +696,21 @@ function pickReturnTrackIdFromRequest(bodyTrackId, track_id, trackID, trackIdQue
             }
         }
     }
+    const fromReferer = extractPaymentReturnHintsFromReferer(req).trackId;
+    if (fromReferer) {
+        return fromReferer;
+    }
     return '';
 }
 function normalizeAmpInQueryString(qs) {
     return qs.replace(/&amp;/gi, '&').replace(/%26amp%3B/gi, '&');
 }
 function readGatewayTrackIdFromRequestHeaders(req) {
-    const raw = req.headers['x-gateway-track-id'] ??
+    const raw = req.headers['x-gateway-trans-id'] ??
+        req.headers['X-Gateway-Trans-Id'] ??
+        req.headers['x-gateway-tran-id'] ??
+        req.headers['X-Gateway-Tran-Id'] ??
+        req.headers['x-gateway-track-id'] ??
         req.headers['X-Gateway-Track-Id'] ??
         '';
     if (Array.isArray(raw)) {
@@ -526,7 +730,59 @@ function extractTrackIdFromRequestUrl(req) {
     }
     catch {
     }
-    const m = /[?&]track_id=([^&#]+)/i.exec(raw);
+    for (const param of ['trans_id', 'tran_id', 'track_id']) {
+        const re = new RegExp(`[?&]${param}=([^&#]+)`, 'i');
+        const m = re.exec(raw);
+        if (m?.[1]) {
+            try {
+                return decodeURIComponent(m[1].trim());
+            }
+            catch {
+                return m[1].trim();
+            }
+        }
+    }
+    const qMark = raw.indexOf('?');
+    if (qMark < 0) {
+        return '';
+    }
+    let qs = raw.slice(qMark + 1).split('#')[0];
+    qs = normalizeAmpInQueryString(qs);
+    const sp = new URLSearchParams(qs);
+    return (sp.get('trans_id')?.trim() ||
+        sp.get('transId')?.trim() ||
+        sp.get('tran_id')?.trim() ||
+        sp.get('tranId')?.trim() ||
+        sp.get('track_id')?.trim() ||
+        sp.get('TrackID')?.trim() ||
+        sp.get('trackId')?.trim() ||
+        '');
+}
+function readGatewayResultFromPlainBody(req) {
+    const raw = req.body;
+    if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) {
+        return '';
+    }
+    const o = raw;
+    const v = o.result ?? o.Result;
+    if (typeof v === 'string' && v.trim()) {
+        return v.trim();
+    }
+    return '';
+}
+function extractGatewayResultFromRequestUrl(req) {
+    let raw = (typeof req.originalUrl === 'string' && req.originalUrl.length > 0
+        ? req.originalUrl
+        : null) ??
+        (typeof req.url === 'string' && req.url.length > 0 ? req.url : '') ??
+        '';
+    raw = normalizeAmpInQueryString(raw);
+    try {
+        raw = decodeURIComponent(raw);
+    }
+    catch {
+    }
+    const m = /[?&]result=([^&#]+)/i.exec(raw);
     if (m?.[1]) {
         try {
             return decodeURIComponent(m[1].trim());
@@ -541,11 +797,54 @@ function extractTrackIdFromRequestUrl(req) {
     }
     let qs = raw.slice(qMark + 1).split('#')[0];
     qs = normalizeAmpInQueryString(qs);
-    const sp = new URLSearchParams(qs);
-    return (sp.get('track_id')?.trim() ||
-        sp.get('TrackID')?.trim() ||
-        sp.get('trackId')?.trim() ||
-        '');
+    return new URLSearchParams(qs).get('result')?.trim() || '';
+}
+function pickGatewayReturnResultFromRequest(bodyResult, resultQuery, req) {
+    const fromPlain = readGatewayResultFromPlainBody(req);
+    if (fromPlain) {
+        return fromPlain;
+    }
+    const fromBody = bodyResult?.trim();
+    if (fromBody) {
+        return fromBody;
+    }
+    const fromQuery = resultQuery?.trim();
+    if (fromQuery) {
+        return fromQuery;
+    }
+    const fromUrl = extractGatewayResultFromRequestUrl(req);
+    if (fromUrl) {
+        return fromUrl;
+    }
+    return extractPaymentReturnHintsFromReferer(req).result;
+}
+function extractPaymentReturnHintsFromReferer(req) {
+    const header = (typeof req.get === 'function' && req.get('referer')) ||
+        (typeof req.get === 'function' && req.get('referrer')) ||
+        req.headers['referer'] ||
+        req.headers['referrer'] ||
+        '';
+    if (!header || typeof header !== 'string') {
+        return { trackId: '', result: '' };
+    }
+    try {
+        const u = new URL(header);
+        const trackId = u.searchParams.get('trans_id')?.trim() ||
+            u.searchParams.get('transId')?.trim() ||
+            u.searchParams.get('tran_id')?.trim() ||
+            u.searchParams.get('tranId')?.trim() ||
+            u.searchParams.get('track_id')?.trim() ||
+            u.searchParams.get('TrackID')?.trim() ||
+            u.searchParams.get('trackId')?.trim() ||
+            '';
+        const result = u.searchParams.get('result')?.trim() ||
+            u.searchParams.get('Result')?.trim() ||
+            '';
+        return { trackId, result };
+    }
+    catch {
+        return { trackId: '', result: '' };
+    }
 }
 const SAFARI_ORDER_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function parseSafariOrderUuid(raw) {
@@ -593,6 +892,12 @@ function extractOrderId(body) {
     const gatewayOid = parseSafariOrderUuid(body.order_id);
     if (gatewayOid)
         return gatewayOid;
+    const invoiceId = parseSafariOrderUuid(body.invoice_id);
+    if (invoiceId)
+        return invoiceId;
+    const receiptId = parseSafariOrderUuid(body.receipt_id);
+    if (receiptId)
+        return receiptId;
     const fromRef = tryOrderIdFromUpaymentsCompactRef(body.ref) ??
         tryOrderIdFromUpaymentsCompactRef(body.reference);
     if (fromRef)

@@ -36,10 +36,10 @@ export declare class PaymentsController {
         outcome: "success" | "failed";
         reason?: undefined;
     }>;
-    publicOrderStatusGet(req: Request, orderId: string, track_id?: string, trackID?: string, trackIdQuery?: string): Promise<PublicOrderStatusDto>;
-    publicOrderStatusPost(req: Request, orderId: string, body: GatewayTrackHintDto, track_id?: string, trackID?: string, trackIdQuery?: string): Promise<PublicOrderStatusDto>;
+    publicOrderStatusGet(req: Request, orderId: string, track_id?: string, trackID?: string, trackIdQuery?: string, gatewayResultQuery?: string): Promise<PublicOrderStatusDto>;
+    publicOrderStatusPost(req: Request, orderId: string, body: GatewayTrackHintDto, track_id?: string, trackID?: string, trackIdQuery?: string, gatewayResultQuery?: string): Promise<PublicOrderStatusDto>;
     private runPublicOrderStatusPoll;
-    recheckPayment(req: Request, orderId: string, body: GatewayTrackHintDto, track_id?: string, trackID?: string, trackIdQuery?: string): Promise<{
+    recheckPaymentPost(req: Request, orderId: string, body: GatewayTrackHintDto, track_id?: string, trackID?: string, trackIdQuery?: string, gatewayResultQuery?: string): Promise<{
         orderId: string;
         status: OrderStatus;
         isPaid: boolean;
@@ -49,5 +49,16 @@ export declare class PaymentsController {
         settledNow: boolean;
         messageAr: string;
     }>;
+    recheckPaymentGet(req: Request, orderId: string, track_id?: string, trackID?: string, trackIdQuery?: string, gatewayResultQuery?: string): Promise<{
+        orderId: string;
+        status: OrderStatus;
+        isPaid: boolean;
+        amountKd: string;
+        trackIdPresent: boolean;
+        gatewayResult: string | null;
+        settledNow: boolean;
+        messageAr: string;
+    }>;
+    private runRecheckPayment;
 }
 export {};

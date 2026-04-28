@@ -28,6 +28,7 @@ export declare class UnpaidInvoiceRowDto {
     currentCustomerDebtKd: string;
     isOpen: boolean;
     debtSource: 'INVOICE_SHORTFALL' | 'SUBSCRIPTION_OVERUSE' | 'OPEN_UNPAID_ORDER';
+    posPaymentMethod: string | null;
     lastEntryAt: string;
 }
 export declare class MarketUnpaidByMethodDto {

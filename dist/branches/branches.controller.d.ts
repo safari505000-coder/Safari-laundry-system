@@ -38,6 +38,7 @@ export declare class BranchesController {
     operationsLive(): Promise<{
         branches: {
             branchId: string;
+            branchName: string;
             isLive: boolean;
         }[];
     }>;

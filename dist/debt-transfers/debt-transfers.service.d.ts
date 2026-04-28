@@ -47,6 +47,12 @@ export declare class DebtTransfersService {
             username: string;
             fullName: string;
             safariRole: import("@prisma/client").$Enums.SafariRole;
+        } | {
+            id: string;
+            branchId: string | null;
+            username: string;
+            fullName: string;
+            safariRole: import("@prisma/client").$Enums.SafariRole;
         };
         targetDriver: {
             id: string;
@@ -54,8 +60,19 @@ export declare class DebtTransfersService {
             username: string;
             fullName: string;
             safariRole: import("@prisma/client").$Enums.SafariRole;
+        } | {
+            id: string;
+            branchId: string | null;
+            username: string;
+            fullName: string;
+            safariRole: import("@prisma/client").$Enums.SafariRole;
         };
         executedBy: {
+            id: string;
+            username: string;
+            fullName: string;
+            safariRole: import("@prisma/client").$Enums.SafariRole;
+        } | {
             id: string;
             username: string;
             fullName: string;
@@ -68,6 +85,11 @@ export declare class DebtTransfersService {
         cancelledAt: Date | null;
         cancelledReason: string | null;
         cancelledBy: {
+            id: string;
+            username: string;
+            fullName: string;
+            safariRole: import("@prisma/client").$Enums.SafariRole;
+        } | {
             id: string;
             username: string;
             fullName: string;
@@ -109,6 +131,12 @@ export declare class DebtTransfersService {
             username: string;
             fullName: string;
             safariRole: import("@prisma/client").$Enums.SafariRole;
+        } | {
+            id: string;
+            branchId: string | null;
+            username: string;
+            fullName: string;
+            safariRole: import("@prisma/client").$Enums.SafariRole;
         };
         targetDriver: {
             id: string;
@@ -116,8 +144,19 @@ export declare class DebtTransfersService {
             username: string;
             fullName: string;
             safariRole: import("@prisma/client").$Enums.SafariRole;
+        } | {
+            id: string;
+            branchId: string | null;
+            username: string;
+            fullName: string;
+            safariRole: import("@prisma/client").$Enums.SafariRole;
         };
         executedBy: {
+            id: string;
+            username: string;
+            fullName: string;
+            safariRole: import("@prisma/client").$Enums.SafariRole;
+        } | {
             id: string;
             username: string;
             fullName: string;
@@ -130,6 +169,11 @@ export declare class DebtTransfersService {
         cancelledAt: Date | null;
         cancelledReason: string | null;
         cancelledBy: {
+            id: string;
+            username: string;
+            fullName: string;
+            safariRole: import("@prisma/client").$Enums.SafariRole;
+        } | {
             id: string;
             username: string;
             fullName: string;
@@ -171,6 +215,12 @@ export declare class DebtTransfersService {
             username: string;
             fullName: string;
             safariRole: import("@prisma/client").$Enums.SafariRole;
+        } | {
+            id: string;
+            branchId: string | null;
+            username: string;
+            fullName: string;
+            safariRole: import("@prisma/client").$Enums.SafariRole;
         };
         targetDriver: {
             id: string;
@@ -178,8 +228,19 @@ export declare class DebtTransfersService {
             username: string;
             fullName: string;
             safariRole: import("@prisma/client").$Enums.SafariRole;
+        } | {
+            id: string;
+            branchId: string | null;
+            username: string;
+            fullName: string;
+            safariRole: import("@prisma/client").$Enums.SafariRole;
         };
         executedBy: {
+            id: string;
+            username: string;
+            fullName: string;
+            safariRole: import("@prisma/client").$Enums.SafariRole;
+        } | {
             id: string;
             username: string;
             fullName: string;
@@ -192,6 +253,11 @@ export declare class DebtTransfersService {
         cancelledAt: Date | null;
         cancelledReason: string | null;
         cancelledBy: {
+            id: string;
+            username: string;
+            fullName: string;
+            safariRole: import("@prisma/client").$Enums.SafariRole;
+        } | {
             id: string;
             username: string;
             fullName: string;
@@ -233,6 +299,12 @@ export declare class DebtTransfersService {
             username: string;
             fullName: string;
             safariRole: import("@prisma/client").$Enums.SafariRole;
+        } | {
+            id: string;
+            branchId: string | null;
+            username: string;
+            fullName: string;
+            safariRole: import("@prisma/client").$Enums.SafariRole;
         };
         targetDriver: {
             id: string;
@@ -240,8 +312,19 @@ export declare class DebtTransfersService {
             username: string;
             fullName: string;
             safariRole: import("@prisma/client").$Enums.SafariRole;
+        } | {
+            id: string;
+            branchId: string | null;
+            username: string;
+            fullName: string;
+            safariRole: import("@prisma/client").$Enums.SafariRole;
         };
         executedBy: {
+            id: string;
+            username: string;
+            fullName: string;
+            safariRole: import("@prisma/client").$Enums.SafariRole;
+        } | {
             id: string;
             username: string;
             fullName: string;
@@ -254,6 +337,11 @@ export declare class DebtTransfersService {
         cancelledAt: Date | null;
         cancelledReason: string | null;
         cancelledBy: {
+            id: string;
+            username: string;
+            fullName: string;
+            safariRole: import("@prisma/client").$Enums.SafariRole;
+        } | {
             id: string;
             username: string;
             fullName: string;
@@ -295,6 +383,12 @@ export declare class DebtTransfersService {
             username: string;
             fullName: string;
             safariRole: import("@prisma/client").$Enums.SafariRole;
+        } | {
+            id: string;
+            branchId: string | null;
+            username: string;
+            fullName: string;
+            safariRole: import("@prisma/client").$Enums.SafariRole;
         };
         targetDriver: {
             id: string;
@@ -302,8 +396,19 @@ export declare class DebtTransfersService {
             username: string;
             fullName: string;
             safariRole: import("@prisma/client").$Enums.SafariRole;
+        } | {
+            id: string;
+            branchId: string | null;
+            username: string;
+            fullName: string;
+            safariRole: import("@prisma/client").$Enums.SafariRole;
         };
         executedBy: {
+            id: string;
+            username: string;
+            fullName: string;
+            safariRole: import("@prisma/client").$Enums.SafariRole;
+        } | {
             id: string;
             username: string;
             fullName: string;
@@ -316,6 +421,11 @@ export declare class DebtTransfersService {
         cancelledAt: Date | null;
         cancelledReason: string | null;
         cancelledBy: {
+            id: string;
+            username: string;
+            fullName: string;
+            safariRole: import("@prisma/client").$Enums.SafariRole;
+        } | {
             id: string;
             username: string;
             fullName: string;
@@ -358,6 +468,12 @@ export declare class DebtTransfersService {
                 username: string;
                 fullName: string;
                 safariRole: import("@prisma/client").$Enums.SafariRole;
+            } | {
+                id: string;
+                branchId: string | null;
+                username: string;
+                fullName: string;
+                safariRole: import("@prisma/client").$Enums.SafariRole;
             };
             targetDriver: {
                 id: string;
@@ -365,8 +481,19 @@ export declare class DebtTransfersService {
                 username: string;
                 fullName: string;
                 safariRole: import("@prisma/client").$Enums.SafariRole;
+            } | {
+                id: string;
+                branchId: string | null;
+                username: string;
+                fullName: string;
+                safariRole: import("@prisma/client").$Enums.SafariRole;
             };
             executedBy: {
+                id: string;
+                username: string;
+                fullName: string;
+                safariRole: import("@prisma/client").$Enums.SafariRole;
+            } | {
                 id: string;
                 username: string;
                 fullName: string;
@@ -379,6 +506,11 @@ export declare class DebtTransfersService {
             cancelledAt: Date | null;
             cancelledReason: string | null;
             cancelledBy: {
+                id: string;
+                username: string;
+                fullName: string;
+                safariRole: import("@prisma/client").$Enums.SafariRole;
+            } | {
                 id: string;
                 username: string;
                 fullName: string;
@@ -421,6 +553,12 @@ export declare class DebtTransfersService {
             username: string;
             fullName: string;
             safariRole: import("@prisma/client").$Enums.SafariRole;
+        } | {
+            id: string;
+            branchId: string | null;
+            username: string;
+            fullName: string;
+            safariRole: import("@prisma/client").$Enums.SafariRole;
         };
         targetDriver: {
             id: string;
@@ -428,8 +566,19 @@ export declare class DebtTransfersService {
             username: string;
             fullName: string;
             safariRole: import("@prisma/client").$Enums.SafariRole;
+        } | {
+            id: string;
+            branchId: string | null;
+            username: string;
+            fullName: string;
+            safariRole: import("@prisma/client").$Enums.SafariRole;
         };
         executedBy: {
+            id: string;
+            username: string;
+            fullName: string;
+            safariRole: import("@prisma/client").$Enums.SafariRole;
+        } | {
             id: string;
             username: string;
             fullName: string;
@@ -442,6 +591,11 @@ export declare class DebtTransfersService {
         cancelledAt: Date | null;
         cancelledReason: string | null;
         cancelledBy: {
+            id: string;
+            username: string;
+            fullName: string;
+            safariRole: import("@prisma/client").$Enums.SafariRole;
+        } | {
             id: string;
             username: string;
             fullName: string;
@@ -487,6 +641,12 @@ export declare class DebtTransfersService {
                 username: string;
                 fullName: string;
                 safariRole: import("@prisma/client").$Enums.SafariRole;
+            } | {
+                id: string;
+                branchId: string | null;
+                username: string;
+                fullName: string;
+                safariRole: import("@prisma/client").$Enums.SafariRole;
             };
             targetDriver: {
                 id: string;
@@ -494,8 +654,19 @@ export declare class DebtTransfersService {
                 username: string;
                 fullName: string;
                 safariRole: import("@prisma/client").$Enums.SafariRole;
+            } | {
+                id: string;
+                branchId: string | null;
+                username: string;
+                fullName: string;
+                safariRole: import("@prisma/client").$Enums.SafariRole;
             };
             executedBy: {
+                id: string;
+                username: string;
+                fullName: string;
+                safariRole: import("@prisma/client").$Enums.SafariRole;
+            } | {
                 id: string;
                 username: string;
                 fullName: string;
@@ -508,6 +679,11 @@ export declare class DebtTransfersService {
             cancelledAt: Date | null;
             cancelledReason: string | null;
             cancelledBy: {
+                id: string;
+                username: string;
+                fullName: string;
+                safariRole: import("@prisma/client").$Enums.SafariRole;
+            } | {
                 id: string;
                 username: string;
                 fullName: string;

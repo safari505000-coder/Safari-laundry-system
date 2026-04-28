@@ -7,6 +7,8 @@ export declare class PaymentCallbackDto {
     result?: string;
     tranId?: string;
     tran_id?: string;
+    trans_id?: string;
+    transId?: string;
     reference?: string;
     auth?: string;
     customerExtraData?: string;

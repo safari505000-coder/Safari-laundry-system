@@ -282,12 +282,13 @@ let BranchesService = class BranchesService {
             .map((u) => u.branchId)
             .filter((id) => id != null));
         const all = await this.prisma.branch.findMany({
-            select: { id: true },
+            select: { id: true, name: true },
             orderBy: { name: 'asc' },
         });
         return {
             branches: all.map((b) => ({
                 branchId: b.id,
+                branchName: b.name,
                 isLive: live.has(b.id),
             })),
         };

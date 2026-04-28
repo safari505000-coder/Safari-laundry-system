@@ -45,6 +45,37 @@ function truncateForMoatmtLog(s, max = MOATMT_LOG_MAX_BODY) {
     }
     return `${t.slice(0, max)}…(truncated ${t.length}→${max})`;
 }
+function publicWebAppBaseTrimmed() {
+    return (process.env.PUBLIC_WEB_APP_URL ?? '').replace(/\/$/, '').trim();
+}
+function buildPublicCustomerRatingUrl(orderId) {
+    const base = publicWebAppBaseTrimmed();
+    const id = orderId?.trim();
+    if (!base || !id) {
+        return undefined;
+    }
+    return `${base}/r/${encodeURIComponent(id)}`;
+}
+function appendRatingSectionToLines(lines, ratingUrl) {
+    const u = ratingUrl?.trim();
+    if (!u) {
+        return;
+    }
+    lines.push('');
+    lines.push('⭐ نسعد بتقييمك:');
+    lines.push(u);
+}
+function appendRatingToCustomerMessageBody(body, orderId) {
+    const ratingUrl = buildPublicCustomerRatingUrl(orderId);
+    if (!ratingUrl) {
+        return body;
+    }
+    const trimmed = body.trimEnd();
+    if (trimmed.includes(ratingUrl)) {
+        return body;
+    }
+    return `${trimmed}\n\n⭐ نسعد بتقييمك:\n${ratingUrl}`;
+}
 function isMoatmtInvoiceMediaEnabled() {
     const v = process.env.MOATMT_USE_INVOICE_MEDIA?.trim().toLowerCase() ?? '';
     return v === 'true' || v === '1';
@@ -152,6 +183,7 @@ function buildInvoiceIssuedMessage(params) {
         lines.push('🔗 لمراجعة تفاصيل الطلب:');
         lines.push(params.detailsLink);
     }
+    appendRatingSectionToLines(lines, params.ratingUrl);
     lines.push('');
     lines.push(`فريق ${branding_1.BRAND_SYSTEM_AR} 🇰🇼`);
     return lines.join('\n');
@@ -165,6 +197,7 @@ function buildInvoiceIssuedMessageMinimal(params) {
         lines.push('🔒 رابط الدفع:');
         lines.push(params.paymentUrl);
     }
+    appendRatingSectionToLines(lines, params.ratingUrl);
     return lines.join('\n');
 }
 function buildInvoiceIssuedMessageWithLineItemsNoFile(params) {
@@ -187,6 +220,7 @@ function buildInvoiceIssuedMessageWithLineItemsNoFile(params) {
         lines.push('🔒 رابط الدفع:');
         lines.push(params.paymentUrl);
     }
+    appendRatingSectionToLines(lines, params.ratingUrl);
     lines.push('');
     lines.push(`فريق ${branding_1.BRAND_SYSTEM_AR} 🇰🇼`);
     return lines.join('\n');
@@ -206,6 +240,20 @@ function buildInvoiceEditedIssuerMessage(params) {
         lines.push('');
         lines.push('افتح تطبيق السفاري — الفواتير — لإعادة الطباعة بأرقام محدثة.');
     }
+    lines.push('');
+    lines.push(`فريق ${branding_1.BRAND_SYSTEM_AR} 🇰🇼`);
+    return lines.join('\n');
+}
+function buildDriverCollectionConfirmedMessage(params) {
+    const lines = [];
+    lines.push('عميلنا العزيز،');
+    lines.push('');
+    lines.push(`نود إبلاغكم بأنه تم استلام مبلغ ${params.amountKd} د.ك من قبل السائق، وذلك عبر (${params.paymentMethodLabelAr}).`);
+    lines.push('');
+    lines.push('يرجى تأكيد صحة هذه المعلومة لضمان الشفافية ومتابعة أداء السائق.');
+    lines.push('');
+    lines.push('شاكرين تعاونكم معنا');
+    appendRatingSectionToLines(lines, params.ratingUrl);
     lines.push('');
     lines.push(`فريق ${branding_1.BRAND_SYSTEM_AR} 🇰🇼`);
     return lines.join('\n');
@@ -281,8 +329,15 @@ let CustomerNotificationsService = class CustomerNotificationsService {
             void this.deliverPaymentConfirmed(params).catch((e) => this.logger.warn(`Payment confirmed notify failed: ${e}`));
         });
     }
+    notifyDriverCollectionConfirmed(params) {
+        setImmediate(() => {
+            void this.deliverDriverCollectionConfirmed(params).catch((e) => this.logger.warn(`Driver collection confirmed notify failed: ${e}`));
+        });
+    }
     async deliverCollectionsPaymentLinkNow(params) {
-        if (await this.trySendMoatmt(params.customerPhone, params.message, null)) {
+        const messageOut = appendRatingToCustomerMessageBody(params.message, params.orderId);
+        const ratingUrl = buildPublicCustomerRatingUrl(params.orderId);
+        if (await this.trySendMoatmt(params.customerPhone, messageOut, null)) {
             return true;
         }
         const webhook = process.env.CUSTOMER_NOTIFY_WEBHOOK_URL?.trim();
@@ -292,9 +347,10 @@ let CustomerNotificationsService = class CustomerNotificationsService {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     to: params.customerPhone,
-                    message: params.message,
+                    message: messageOut,
                     orderId: params.orderId,
                     template: 'collections_payment_link',
+                    ratingUrl: ratingUrl ?? null,
                 }),
             });
             if (!res.ok) {
@@ -309,6 +365,7 @@ let CustomerNotificationsService = class CustomerNotificationsService {
     }
     async deliver(params) {
         const base = (process.env.PUBLIC_WEB_APP_URL ?? '').replace(/\/$/, '') || '';
+        const ratingUrl = buildPublicCustomerRatingUrl(params.orderId);
         const hasPublicShare = Boolean(params.invoiceShareUrl) ||
             (params.invoiceShareItems && params.invoiceShareItems.length > 0);
         const detailsLink = hasPublicShare || !base ?
@@ -321,12 +378,14 @@ let CustomerNotificationsService = class CustomerNotificationsService {
                 amountKd: params.amountKd,
                 lineItemsBlock: params.lineItemsSummary.trim(),
                 paymentUrl: params.paymentUrl,
+                ratingUrl,
             })
             : useInvoiceIssuedMessageMinimalText() ?
                 buildInvoiceIssuedMessageMinimal({
                     invoiceLabel: params.invoiceLabel,
                     amountKd: params.amountKd,
                     paymentUrl: params.paymentUrl,
+                    ratingUrl,
                 })
                 : buildInvoiceIssuedMessage({
                     invoiceLabel: params.invoiceLabel,
@@ -335,6 +394,7 @@ let CustomerNotificationsService = class CustomerNotificationsService {
                     invoiceShareUrl: params.invoiceShareUrl,
                     invoiceShareItems: params.invoiceShareItems,
                     detailsLink,
+                    ratingUrl,
                 });
         if (await this.trySendMoatmt(params.customerPhone, message, this.buildMoatmtInvoiceMediaPayload(params))) {
             return;
@@ -352,6 +412,7 @@ let CustomerNotificationsService = class CustomerNotificationsService {
                     invoiceShareUrl: params.invoiceShareUrl ?? null,
                     invoiceShareItems: params.invoiceShareItems ?? null,
                     invoicePdfUrl: params.invoicePdfUrl ?? null,
+                    ratingUrl: ratingUrl ?? null,
                 }),
             });
             if (!res.ok) {
@@ -392,6 +453,39 @@ let CustomerNotificationsService = class CustomerNotificationsService {
             return;
         }
         this.logger.warn(`Payment-confirmed WhatsApp not sent (check MOATMT_* and CUSTOMER_NOTIFY_WEBHOOK_URL). ` +
+            `phone=${formatPhoneHintForLog(params.customerPhone)} orderId=${params.orderId} preview=${message.slice(0, 100)}…`);
+    }
+    async deliverDriverCollectionConfirmed(params) {
+        const ratingUrl = buildPublicCustomerRatingUrl(params.orderId);
+        const message = buildDriverCollectionConfirmedMessage({
+            amountKd: params.amountKd,
+            paymentMethodLabelAr: params.paymentMethodLabelAr,
+            ratingUrl,
+        });
+        if (await this.trySendMoatmt(params.customerPhone, message, null)) {
+            return;
+        }
+        const webhook = process.env.CUSTOMER_NOTIFY_WEBHOOK_URL?.trim();
+        if (webhook) {
+            const res = await fetch(webhook, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    to: params.customerPhone,
+                    message,
+                    orderId: params.orderId,
+                    template: 'driver_collection_confirmed',
+                    amountKd: params.amountKd,
+                    paymentMethodLabelAr: params.paymentMethodLabelAr,
+                    ratingUrl: ratingUrl ?? null,
+                }),
+            });
+            if (!res.ok) {
+                this.logger.warn(`CUSTOMER_NOTIFY_WEBHOOK_URL returned ${res.status} (driver_collection_confirmed)`);
+            }
+            return;
+        }
+        this.logger.warn(`Driver-collection WhatsApp not sent (check MOATMT_* and CUSTOMER_NOTIFY_WEBHOOK_URL). ` +
             `phone=${formatPhoneHintForLog(params.customerPhone)} orderId=${params.orderId} preview=${message.slice(0, 100)}…`);
     }
     async deliverIssuerEdit(params) {

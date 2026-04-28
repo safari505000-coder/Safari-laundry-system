@@ -97,6 +97,7 @@ class UnpaidInvoiceRowDto {
     currentCustomerDebtKd;
     isOpen;
     debtSource;
+    posPaymentMethod;
     lastEntryAt;
 }
 exports.UnpaidInvoiceRowDto = UnpaidInvoiceRowDto;
@@ -216,6 +217,13 @@ __decorate([
     }),
     __metadata("design:type", String)
 ], UnpaidInvoiceRowDto.prototype, "debtSource", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({
+        nullable: true,
+        description: 'Order `posPaymentMethod` (e.g. PAYMENT_LINK). Used to offer gateway recheck for unpaid link invoices.',
+    }),
+    __metadata("design:type", Object)
+], UnpaidInvoiceRowDto.prototype, "posPaymentMethod", void 0);
 __decorate([
     (0, swagger_1.ApiPropertyOptional)({ format: 'date-time' }),
     __metadata("design:type", String)
