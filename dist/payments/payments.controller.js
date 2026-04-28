@@ -484,7 +484,7 @@ document.getElementById('go').onclick = async function () {
                         trackIdPresent: true,
                         gatewayResult: gatewayResultRaw,
                         settledNow: true,
-                        messageAr: 'تم تأكيد الدفع بنجاح! نحدّث الفاتورة الآن.',
+                        messageAr: 'تم تأكيد الدفع بنجاح ✅ — تم تحديث الفاتورة في النظام.',
                         serialNumber: order.serialNumber ?? null,
                         invoiceNumber: order.invoiceNumber ?? null,
                         pdfUrl: share.pdfUrl,
@@ -548,7 +548,7 @@ document.getElementById('go').onclick = async function () {
             };
         }
         const messageAr = isPaid && settledNow
-            ? 'تم تأكيد الدفع بنجاح! نحدّث الفاتورة الآن.'
+            ? 'تم تأكيد الدفع بنجاح ✅ — تم تحديث الفاتورة في النظام.'
             : gatewayResult && gatewayResult.trim().length > 0
                 ? `بوابة الدفع ترد بالحالة: «${gatewayResult}». إن خُصم المبلغ من حسابك ولم يُسوَّ خلال دقائق يرجى التواصل مع مركز الخدمة.`
                 : 'الدفع لم يُكمَل لدى البوابة بعد. إن كنت أتممت الدفع، انتظر دقيقة ثم أعد التحقق.';

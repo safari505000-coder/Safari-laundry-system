@@ -1580,10 +1580,17 @@ export class PaymentsService implements OnModuleInit {
           );
           return;
         }
+        const snPersisted = row.serialNumber?.trim();
+        const invPersisted = row.invoiceNumber?.trim();
+        if (!snPersisted && !invPersisted) {
+          this.logger.warn(
+            `Payment confirmed notify skipped — no persisted serialNumber/invoiceNumber (order ${row.id}); refuse draft-style labels.`,
+          );
+          return;
+        }
+        /** Central DB invoice id — مطابق لفاتورة الطابعة/الرسالة. */
         const orderLabel =
-          row.serialNumber?.trim() ||
-          row.invoiceNumber?.trim() ||
-          `#${row.id.slice(0, 8)}`;
+          snPersisted || invPersisted!;
         const base = (process.env.PUBLIC_WEB_APP_URL ?? '')
           .replace(/\/$/, '')
           .trim();

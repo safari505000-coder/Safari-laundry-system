@@ -1070,9 +1070,13 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
                     this.logger.log(`Payment confirmed notify skipped: no customer phone on file for order ${row.id.slice(0, 8)}…`);
                     return;
                 }
-                const orderLabel = row.serialNumber?.trim() ||
-                    row.invoiceNumber?.trim() ||
-                    `#${row.id.slice(0, 8)}`;
+                const snPersisted = row.serialNumber?.trim();
+                const invPersisted = row.invoiceNumber?.trim();
+                if (!snPersisted && !invPersisted) {
+                    this.logger.warn(`Payment confirmed notify skipped — no persisted serialNumber/invoiceNumber (order ${row.id}); refuse draft-style labels.`);
+                    return;
+                }
+                const orderLabel = snPersisted || invPersisted;
                 const base = (process.env.PUBLIC_WEB_APP_URL ?? '')
                     .replace(/\/$/, '')
                     .trim();

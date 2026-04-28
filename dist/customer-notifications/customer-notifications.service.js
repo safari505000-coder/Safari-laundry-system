@@ -266,92 +266,51 @@ function appendPaymentLinkIfAny(lines, paymentUrl) {
     lines.push('🔒 رابط الدفع:');
     lines.push(paymentUrl.trim());
 }
-function buildPaymentConfirmedStandardMessage(params) {
+const PAY_CONFIRM_LINE_SATISFACTION_AR = 'نسعد دائماً بخدمتكم في مصبغة سفاري.';
+const PAY_CONFIRM_LINE_TEAM_AR = 'فريق سفاري أومني 🇰🇼';
+function buildPaymentConfirmedUnifiedMessage(params) {
     const lines = [];
+    const invoiceLabel = params.orderLabel.trim();
     lines.push('تم تأكيد الدفع بنجاح ✅');
     lines.push('');
-    lines.push('شكراً لك، تم استلام المبلغ.');
+    lines.push('شكراً لك، تم استلام المبلغ وتحديث حسابكم لدى المصبغة.');
     lines.push('');
-    lines.push(`📋 رقم الطلب: *${params.orderLabel}*`);
+    lines.push(`📋 رقم الفاتورة: *${invoiceLabel}*`);
     lines.push(`💰 المبلغ الإجمالي: *${params.amountKd} د.ك*`);
-    lines.push('');
-    lines.push('نعمل الآن على تجهيز ملابسك بأعلى معايير الجودة، وسيتم إخطارك فور جاهزيتها.');
-    lines.push('');
-    lines.push('يرجى تأكيد صحة البيانات لضمان دقة المتابعة.');
-    const debt = Number.parseFloat(params.walletDebtKd ?? '');
-    if (Number.isFinite(debt) && debt > 0) {
+    const v = params.variant ?? 'standard';
+    if (v === 'subscription_wallet' && params.remainingSubscriptionBalanceKd) {
         lines.push('');
-        lines.push(`📌 المديونية الحالية على حسابكم: *${params.walletDebtKd} د.ك*`);
+        lines.push(`💳 الرصيد المتبقي في اشتراككم: *${params.remainingSubscriptionBalanceKd} د.ك*`);
+    }
+    if (v === 'debt_on_account' && params.totalDebtKd) {
+        lines.push('');
+        lines.push(`📌 إجمالي المديونية الحالية على حسابكم: *${params.totalDebtKd} د.ك*`);
+    }
+    if (v === 'standard') {
+        const debt = Number.parseFloat(params.walletDebtKd ?? '');
+        if (Number.isFinite(debt) &&
+            debt > 0 &&
+            params.walletDebtKd != null &&
+            params.walletDebtKd.trim() !== '') {
+            lines.push('');
+            lines.push(`📌 المديونية الحالية على حسابكم: *${params.walletDebtKd} د.ك*`);
+        }
     }
     lines.push('');
-    lines.push(`${branding_1.BRAND_CUSTOMER_AR} — جودة نهتم بها.`);
+    lines.push(PAY_CONFIRM_LINE_SATISFACTION_AR);
+    const rating = params.ratingUrl?.trim();
+    if (rating) {
+        lines.push('');
+        lines.push('⭐ نسعد بتقييمك لخدمتنا:');
+        lines.push(rating);
+    }
+    lines.push('');
+    lines.push(PAY_CONFIRM_LINE_TEAM_AR);
     appendPaymentLinkIfAny(lines, params.paymentUrl);
-    appendRatingSectionToLines(lines, params.ratingUrl);
-    lines.push('');
-    lines.push(`فريق ${branding_1.BRAND_CUSTOMER_AR} 🇰🇼`);
-    return lines.join('\n');
-}
-function buildPaymentConfirmedSubscriptionMessage(params) {
-    const lines = [];
-    lines.push('تم تأكيد الخصم من الرصيد 💎');
-    lines.push('');
-    lines.push('شكراً لك، استلمنا طلبك وبدأنا العمل عليه.');
-    lines.push('');
-    lines.push(`📋 رقم الطلب: ${params.orderLabel}`);
-    lines.push(`💰 قيمة الفاتورة: ${params.amountKd} د.ك`);
-    lines.push(`💳 *الرصيد المتبقي في اشتراككم: ${params.remainingSubscriptionBalanceKd} د.ك*`);
-    lines.push('');
-    lines.push('نعمل الآن على تجهيز ملابسك بأعلى معايير الجودة، وسيتم إخطارك فور جاهزيتها.');
-    appendPaymentLinkIfAny(lines, params.paymentUrl);
-    appendRatingSectionToLines(lines, params.ratingUrl);
-    lines.push('');
-    lines.push(`${branding_1.BRAND_CUSTOMER_AR} 🇰🇼`);
-    return lines.join('\n');
-}
-function buildPaymentConfirmedDebtOnAccountMessage(params) {
-    const lines = [];
-    lines.push('تم تسجيل الطلب في حسابكم ✅');
-    lines.push('');
-    lines.push('شكراً لثقتك، تم اعتماد الفاتورة والبدء بتنفيذ الطلب.');
-    lines.push('');
-    lines.push(`📋 رقم الطلب: ${params.orderLabel}`);
-    lines.push(`💰 مبلغ الفاتورة: ${params.amountKd} د.ك`);
-    lines.push(`📌 *إجمالي المديونية الحالية: ${params.totalDebtKd} د.ك*`);
-    lines.push('');
-    lines.push('ملابسك الآن في عهدة فريقنا لتجهيزها، وسنوافيك برسالة عند الانتهاء.');
-    appendPaymentLinkIfAny(lines, params.paymentUrl);
-    appendRatingSectionToLines(lines, params.ratingUrl);
-    lines.push('');
-    lines.push(`${branding_1.BRAND_CUSTOMER_AR} - جودة نهتم بها.`);
     return lines.join('\n');
 }
 function buildPaymentConfirmedMessageBody(params) {
-    const v = params.variant ?? 'standard';
-    if (v === 'subscription_wallet') {
-        return buildPaymentConfirmedSubscriptionMessage({
-            orderLabel: params.orderLabel,
-            amountKd: params.amountKd,
-            remainingSubscriptionBalanceKd: params.remainingSubscriptionBalanceKd ?? '0.000',
-            ratingUrl: params.ratingUrl,
-            paymentUrl: params.paymentUrl,
-        });
-    }
-    if (v === 'debt_on_account') {
-        return buildPaymentConfirmedDebtOnAccountMessage({
-            orderLabel: params.orderLabel,
-            amountKd: params.amountKd,
-            totalDebtKd: params.totalDebtKd ?? '0.000',
-            ratingUrl: params.ratingUrl,
-            paymentUrl: params.paymentUrl,
-        });
-    }
-    return buildPaymentConfirmedStandardMessage({
-        amountKd: params.amountKd,
-        orderLabel: params.orderLabel,
-        paymentUrl: params.paymentUrl,
-        ratingUrl: params.ratingUrl,
-        walletDebtKd: params.walletDebtKd,
-    });
+    return buildPaymentConfirmedUnifiedMessage(params);
 }
 let CustomerNotificationsService = class CustomerNotificationsService {
     static { CustomerNotificationsService_1 = this; }
