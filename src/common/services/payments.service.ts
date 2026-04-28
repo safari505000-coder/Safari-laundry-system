@@ -306,17 +306,32 @@ const TRACK_URL_QUERY_KEYS: readonly string[] = [
   'SessionId',
 ];
 
+const TRACK_URL_QUERY_KEYS_LOWER = new Set(
+  TRACK_URL_QUERY_KEYS.map((k) => k.toLowerCase()),
+);
+
+function pickTrackIdFromUrlSearchParams(sp: URLSearchParams): string | undefined {
+  for (const [k, v] of sp.entries()) {
+    if (TRACK_URL_QUERY_KEYS_LOWER.has(k.toLowerCase()) && v?.trim()) {
+      return v.trim();
+    }
+  }
+  return undefined;
+}
+
 function tryParseTrackIdFromPaymentUrl(link: string): string | undefined {
   if (!link || typeof link !== 'string') {
     return undefined;
   }
+  let normalized = link.trim();
+  if (normalized.startsWith('//')) {
+    normalized = `https:${normalized}`;
+  }
   try {
-    const u = new URL(link);
-    for (const key of TRACK_URL_QUERY_KEYS) {
-      const v = u.searchParams.get(key);
-      if (v?.trim()) {
-        return v.trim();
-      }
+    const u = new URL(normalized);
+    const fromMain = pickTrackIdFromUrlSearchParams(u.searchParams);
+    if (fromMain) {
+      return fromMain;
     }
     // Hash routing: `https://host/#/pay?session_id=…` — `URL.searchParams` ignores the hash.
     const h = u.hash;
@@ -325,11 +340,9 @@ function tryParseTrackIdFromPaymentUrl(link: string): string | undefined {
       const qMark = inner.indexOf('?');
       if (qMark >= 0) {
         const qp = new URLSearchParams(inner.slice(qMark + 1));
-        for (const key of TRACK_URL_QUERY_KEYS) {
-          const v = qp.get(key);
-          if (v?.trim()) {
-            return v.trim();
-          }
+        const fromHash = pickTrackIdFromUrlSearchParams(qp);
+        if (fromHash) {
+          return fromHash;
         }
       }
       const loose = new RegExp(
@@ -350,7 +363,7 @@ function tryParseTrackIdFromPaymentUrl(link: string): string | undefined {
   const m = new RegExp(
     `[?&#/](?:${TRACK_URL_QUERY_KEYS.join('|')})=([^&]+)`,
     'i',
-  ).exec(link);
+  ).exec(normalized);
   if (m?.[1]) {
     try {
       return decodeURIComponent(m[1].trim());
@@ -464,28 +477,101 @@ function extractTrackIdFromChargeRawJsonText(raw: string): string | undefined {
   return undefined;
 }
 
+function pickHttpUrlFromUnknown(v: unknown): string | undefined {
+  if (typeof v !== 'string') {
+    return undefined;
+  }
+  const t = v.trim();
+  if (t.startsWith('http://') || t.startsWith('https://')) {
+    return t;
+  }
+  if (t.startsWith('//')) {
+    return `https:${t}`;
+  }
+  return undefined;
+}
+
 /** Payment landing URL: UPayments and partners vary between `link`, `url`, `paymentUrl`. */
 function resolveUpaymentsChargePaymentUrl(data: unknown): string | undefined {
+  const direct = pickHttpUrlFromUnknown(data);
+  if (direct) {
+    return direct;
+  }
+  if (Array.isArray(data)) {
+    for (const el of data) {
+      const u = resolveUpaymentsChargePaymentUrl(el);
+      if (u) {
+        return u;
+      }
+    }
+    return undefined;
+  }
   if (!data || typeof data !== 'object') {
     return undefined;
   }
   const d = data as Record<string, unknown>;
-  for (const key of [
+  const linkKeys = new Set([
     'link',
     'url',
-    'paymentUrl',
-    'paymentLink',
+    'paymenturl',
+    'paymentlink',
     'href',
-    'redirectUrl',
+    'redirecturl',
     'redirect_url',
-  ]) {
-    const v = d[key];
-    if (typeof v !== 'string') {
+  ]);
+  for (const [k, v] of Object.entries(d)) {
+    if (!linkKeys.has(k.replace(/\s/g, '').toLowerCase())) {
       continue;
     }
-    const t = v.trim();
-    if (t.startsWith('http://') || t.startsWith('https://')) {
+    const t = pickHttpUrlFromUnknown(v);
+    if (t) {
       return t;
+    }
+  }
+  return undefined;
+}
+
+/** Some tenants return `{ data: { link } }`, others `{ result: { data: … } }` or `data` as URL string. */
+function resolveUpaymentsChargePaymentUrlFromRoot(
+  json: Record<string, unknown>,
+): string | undefined {
+  const fromData = resolveUpaymentsChargePaymentUrl(json.data);
+  if (fromData) {
+    return fromData;
+  }
+  const res = json.result;
+  if (res && typeof res === 'object' && !Array.isArray(res)) {
+    const r = res as Record<string, unknown>;
+    const nested =
+      resolveUpaymentsChargePaymentUrl(r.data) ??
+      resolveUpaymentsChargePaymentUrl(r);
+    if (nested) {
+      return nested;
+    }
+  }
+  return resolveUpaymentsChargePaymentUrl(json);
+}
+
+/**
+ * Scan raw `/charge` JSON for payment-looking URLs and parse track-like query keys.
+ * Handles ids only appearing inside string-escaped links or alternate hosts.
+ */
+function extractTrackIdFromHttpsUrlsInChargeRaw(raw: string): string | undefined {
+  const re = /https?:\/\/[^\s"']{8,2048}/gi;
+  let m: RegExpExecArray | null;
+  let n = 0;
+  while ((m = re.exec(raw)) !== null && n++ < 48) {
+    const candidate = m[0].replace(/[,;.)}\]]+$/g, '');
+    if (
+      !/(upayment|upayments|checkout|payment|pay\.|kpay|knet|u\.kw|safari)/i.test(
+        candidate,
+      )
+    ) {
+      continue;
+    }
+    const tid = tryParseTrackIdFromPaymentUrl(candidate);
+    if (tid && isSafeUpaymentsChargeInquiryCandidate(tid)) {
+      return tid;
     }
   }
   return undefined;
@@ -771,7 +857,7 @@ export class PaymentsService implements OnModuleInit {
     }
 
     const dataBlock: unknown = json.data;
-    const url = resolveUpaymentsChargePaymentUrl(dataBlock);
+    const url = resolveUpaymentsChargePaymentUrlFromRoot(json as Record<string, unknown>);
     if (!url) {
       throw new BadRequestException(
         'UPayments response missing payment link (`data.link` / `data.url` / similar)',
@@ -793,6 +879,9 @@ export class PaymentsService implements OnModuleInit {
     }
     if (!trackId) {
       trackId = extractTrackIdFromChargeLinkEmbeddedInRaw(text);
+    }
+    if (!trackId) {
+      trackId = extractTrackIdFromHttpsUrlsInChargeRaw(text);
     }
     if (!trackId) {
       const dataKeys =
@@ -843,6 +932,10 @@ export class PaymentsService implements OnModuleInit {
     const fromLink = extractTrackIdFromChargeLinkEmbeddedInRaw(rawJsonText);
     if (fromLink && isSafeUpaymentsChargeInquiryCandidate(fromLink)) {
       return fromLink;
+    }
+    const fromAnyUrl = extractTrackIdFromHttpsUrlsInChargeRaw(rawJsonText);
+    if (fromAnyUrl && isSafeUpaymentsChargeInquiryCandidate(fromAnyUrl)) {
+      return fromAnyUrl;
     }
     this.logger.error(
       `UPayments /charge: unusable inquiry id after recovery order=${orderIdForLog} badLen=${t.length}`,
