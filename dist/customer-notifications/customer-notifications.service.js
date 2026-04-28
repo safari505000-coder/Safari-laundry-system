@@ -185,7 +185,7 @@ function buildInvoiceIssuedMessage(params) {
     }
     appendRatingSectionToLines(lines, params.ratingUrl);
     lines.push('');
-    lines.push(`فريق ${branding_1.BRAND_SYSTEM_AR} 🇰🇼`);
+    lines.push(`فريق ${branding_1.BRAND_CUSTOMER_AR} 🇰🇼`);
     return lines.join('\n');
 }
 function buildInvoiceIssuedMessageMinimal(params) {
@@ -222,7 +222,7 @@ function buildInvoiceIssuedMessageWithLineItemsNoFile(params) {
     }
     appendRatingSectionToLines(lines, params.ratingUrl);
     lines.push('');
-    lines.push(`فريق ${branding_1.BRAND_SYSTEM_AR} 🇰🇼`);
+    lines.push(`فريق ${branding_1.BRAND_CUSTOMER_AR} 🇰🇼`);
     return lines.join('\n');
 }
 function buildInvoiceEditedIssuerMessage(params) {
@@ -241,7 +241,7 @@ function buildInvoiceEditedIssuerMessage(params) {
         lines.push('افتح تطبيق السفاري — الفواتير — لإعادة الطباعة بأرقام محدثة.');
     }
     lines.push('');
-    lines.push(`فريق ${branding_1.BRAND_SYSTEM_AR} 🇰🇼`);
+    lines.push(`فريق ${branding_1.BRAND_CUSTOMER_AR} 🇰🇼`);
     return lines.join('\n');
 }
 function buildDriverCollectionConfirmedMessage(params) {
@@ -255,7 +255,7 @@ function buildDriverCollectionConfirmedMessage(params) {
     lines.push('شاكرين تعاونكم معنا');
     appendRatingSectionToLines(lines, params.ratingUrl);
     lines.push('');
-    lines.push(`فريق ${branding_1.BRAND_SYSTEM_AR} 🇰🇼`);
+    lines.push(`فريق ${branding_1.BRAND_CUSTOMER_AR} 🇰🇼`);
     return lines.join('\n');
 }
 function buildPaymentConfirmedMessage(params) {
@@ -269,7 +269,7 @@ function buildPaymentConfirmedMessage(params) {
     lines.push('');
     lines.push('ملابسك الآن نظيفة، معطرة، وجاهزة.');
     lines.push('');
-    lines.push('مصبغة سفاري — جودة نهتم بها.');
+    lines.push(`${branding_1.BRAND_CUSTOMER_AR} — جودة نهتم بها.`);
     if (params.paymentUrl) {
         lines.push('');
         lines.push('🔒 رابط الدفع:');
@@ -281,7 +281,7 @@ function buildPaymentConfirmedMessage(params) {
         lines.push(params.ratingUrl);
     }
     lines.push('');
-    lines.push(`فريق ${branding_1.BRAND_SYSTEM_AR} 🇰🇼`);
+    lines.push(`فريق ${branding_1.BRAND_CUSTOMER_AR} 🇰🇼`);
     return lines.join('\n');
 }
 let CustomerNotificationsService = class CustomerNotificationsService {

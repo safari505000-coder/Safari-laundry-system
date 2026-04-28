@@ -74,6 +74,11 @@ export function PosInvoicePrintView({
 
   const notesLines = (row.notes ?? '').trim();
 
+  /** إجمالي مديونية المحفظة يُعرض هنا فقط عندما تكون *هذه* الفاتورة ذات ذمّة مفتوحة — لا على الفواتير المسدّدة بينما للعميل دين من فواتير أخرى. */
+  const invoiceShowsWalletDebtReminder =
+    row.status !== 'CANCELED' &&
+    (row.cashStatus === 'UNPAID' || row.posPaymentMethod === 'DEBT_ON_ACCOUNT');
+
   return (
     <div className="invoice-print-stage" dir="rtl">
       {/*
@@ -186,18 +191,20 @@ export function PosInvoicePrintView({
                 <strong>Mobile:</strong> {row.customer.phone ?? '-'}
               </span>
             </div>
-            {(() => {
-              const debtRaw = row.customer.wallet?.debt ?? '0';
-              const debt = Number.parseFloat(debtRaw);
-              if (!Number.isFinite(debt) || debt <= 0) return null;
-              return (
-                <div className="pos-customer-row">
-                  <span className="pos-customer-debt">
-                    <strong>المديونية / Debt:</strong> {debt.toFixed(3)} د.ك
-                  </span>
-                </div>
-              );
-            })()}
+            {invoiceShowsWalletDebtReminder ?
+              (() => {
+                const debtRaw = row.customer.wallet?.debt ?? '0';
+                const debt = Number.parseFloat(debtRaw);
+                if (!Number.isFinite(debt) || debt <= 0) return null;
+                return (
+                  <div className="pos-customer-row">
+                    <span className="pos-customer-debt">
+                      <strong>المديونية / Debt:</strong> {debt.toFixed(3)} د.ك
+                    </span>
+                  </div>
+                );
+              })()
+            : null}
             <div className="pos-customer-address">
               <strong>Address:</strong> {row.customer.address ?? '-'}
             </div>

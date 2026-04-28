@@ -49,6 +49,15 @@ export declare class CustomerLedgerService {
         performedByUserId: string;
         autoCloseInvoices?: boolean;
     }): Promise<SubscriptionActivationSettlement>;
+    recordDebtInvoiceCollectedAtCallCenter(tx: PrismaTx, params: {
+        orderId: string;
+        confirmedMethod: Exclude<PosPaymentMethod, 'SUBSCRIPTION_WALLET' | 'DEBT_ON_ACCOUNT'>;
+        performedByUserId: string;
+    }): Promise<{
+        kind: 'applied';
+    } | {
+        kind: 'already_cleared';
+    }>;
     recordPartialDebtPayment(params: {
         customerId: string;
         amountKd: string;

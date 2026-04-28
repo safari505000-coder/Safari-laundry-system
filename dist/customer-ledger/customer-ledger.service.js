@@ -644,6 +644,143 @@ let CustomerLedgerService = CustomerLedgerService_1 = class CustomerLedgerServic
             prepaidAutoReconciledOrderIds: prepaidReconciled.paidOrderIds,
         };
     }
+    async recordDebtInvoiceCollectedAtCallCenter(tx, params) {
+        const { orderId, confirmedMethod, performedByUserId } = params;
+        const order = await tx.order.findUnique({
+            where: { id: orderId },
+            select: {
+                id: true,
+                status: true,
+                customerId: true,
+                totalPrice: true,
+                posPaymentMethod: true,
+                walletSettledAt: true,
+            },
+        });
+        if (!order) {
+            throw new common_1.NotFoundException('Order not found');
+        }
+        if (order.status === client_1.OrderStatus.CANCELED) {
+            throw new common_1.BadRequestException('Order is canceled — cannot record collection');
+        }
+        if (order.posPaymentMethod !== client_1.PosPaymentMethod.DEBT_ON_ACCOUNT) {
+            throw new common_1.BadRequestException('This path only applies to invoices that were sold as debt-on-account');
+        }
+        if (!order.walletSettledAt) {
+            throw new common_1.BadRequestException('Invoice has no ledger booking yet — use the standard manual mark flow');
+        }
+        const [shortAgg, payAgg] = await Promise.all([
+            tx.debtLedgerEntry.aggregate({
+                where: {
+                    orderId,
+                    source: client_1.DebtSource.INVOICE_SHORTFALL,
+                },
+                _sum: { amount: true },
+            }),
+            tx.debtLedgerEntry.aggregate({
+                where: {
+                    orderId,
+                    source: client_1.DebtSource.PAYMENT,
+                },
+                _sum: { amount: true },
+            }),
+        ]);
+        const shortfall = new client_1.Prisma.Decimal(shortAgg._sum.amount?.toString() ?? '0');
+        const paidDirect = new client_1.Prisma.Decimal(payAgg._sum.amount?.toString() ?? '0');
+        const remaining = shortfall.minus(paidDirect);
+        if (remaining.lessThanOrEqualTo(new client_1.Prisma.Decimal(0))) {
+            await tx.order.update({
+                where: { id: orderId },
+                data: {
+                    posPaymentMethod: confirmedMethod,
+                    cashStatus: (0, cash_status_for_method_1.cashStatusForPaymentMethod)(confirmedMethod),
+                },
+            });
+            return { kind: 'already_cleared' };
+        }
+        const wallet = await this.getOrCreateWalletTx(tx, order.customerId);
+        const debtMinor = (0, finance_money_1.toMinorFromFixed4)(wallet.debt);
+        const remainingMinor = (0, finance_money_1.toMinorFromFixed4)(remaining);
+        const paydownMinor = remainingMinor < debtMinor ? remainingMinor : debtMinor;
+        if (paydownMinor <= 0n) {
+            throw new common_1.BadRequestException('Aggregate wallet debt is zero while this invoice still carries an open balance — contact accounting');
+        }
+        const newDebtMinor = debtMinor - paydownMinor;
+        const paydownKdStr = (0, finance_money_1.minorToAmountString)(paydownMinor);
+        await tx.customerWallet.update({
+            where: { id: wallet.id },
+            data: { debt: this.decimalFromMinor(newDebtMinor) },
+        });
+        const actor = await tx.user.findUnique({
+            where: { id: performedByUserId },
+            select: { id: true, safariRole: true, branchId: true },
+        });
+        if (!actor) {
+            throw new common_1.NotFoundException('Performing user not found');
+        }
+        const cust = await tx.customer.findUnique({
+            where: { id: order.customerId },
+            select: { originBranchId: true },
+        });
+        const branchId = cust?.originBranchId ?? actor.branchId ?? null;
+        const category = this.resolveDebtCategory(actor.safariRole);
+        await tx.transactionHistory.create({
+            data: {
+                type: client_1.LedgerTransactionType.ORDER_WALLET_SETTLEMENT,
+                customerId: order.customerId,
+                orderId,
+                subscriptionId: null,
+                amount: this.decimalFromMinor(paydownMinor),
+                balanceBefore: wallet.balance,
+                balanceAfter: wallet.balance,
+                debtBefore: wallet.debt,
+                debtAfter: this.decimalFromMinor(newDebtMinor),
+                performedById: performedByUserId,
+                metadata: {
+                    debtSettled: paydownKdStr,
+                    debtSettlementViaCallCenter: true,
+                    confirmedPaymentMethod: confirmedMethod,
+                    originalPaymentMethod: client_1.PosPaymentMethod.DEBT_ON_ACCOUNT,
+                    reportingCategory: 'DEBT_INVOICE_PHYSICAL_COLLECTION',
+                },
+            },
+        });
+        await tx.debtLedgerEntry.create({
+            data: {
+                customerId: order.customerId,
+                orderId,
+                source: client_1.DebtSource.PAYMENT,
+                category,
+                amount: this.decimalFromMinor(paydownMinor),
+                branchId,
+                actorUserId: performedByUserId,
+                note: 'Debt-on-account invoice collected at Call Center',
+            },
+        });
+        await this.generalLedger.append(tx, {
+            entryType: client_1.GeneralLedgerEntryType.DEBT_ADJUSTMENT,
+            amount: `-${paydownKdStr}`,
+            memo: 'Debt-on-account invoice collected via Call Center',
+            customerId: order.customerId,
+            orderId,
+            actorUserId: performedByUserId,
+            metadata: {
+                event: 'DEBT_COLLECTED',
+                source: 'CC_DEBT_INVOICE_PHYSICAL',
+                posPaymentMethod: confirmedMethod,
+                category,
+                branchId,
+            },
+        });
+        await tx.order.update({
+            where: { id: orderId },
+            data: {
+                posPaymentMethod: confirmedMethod,
+                cashStatus: (0, cash_status_for_method_1.cashStatusForPaymentMethod)(confirmedMethod),
+            },
+        });
+        return { kind: 'applied' };
+    }
     async recordPartialDebtPayment(params) {
         return this.prisma.$transaction(async (tx) => {
             const customer = await tx.customer.findUnique({

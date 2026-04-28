@@ -1114,12 +1114,33 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
             if (order.status === client_1.OrderStatus.CANCELED) {
                 throw new common_1.BadRequestException('Order is canceled — cannot mark it as paid');
             }
-            if (order.walletSettledAt) {
+            const awaitingDebtPhysicalCollection = Boolean(order.walletSettledAt) &&
+                order.posPaymentMethod === client_1.PosPaymentMethod.DEBT_ON_ACCOUNT;
+            if (order.walletSettledAt && !awaitingDebtPhysicalCollection) {
                 return {
                     orderId: order.id,
                     alreadySettled: true,
                     amountKd: order.totalPrice.toFixed(3),
                     posPaymentMethod: order.posPaymentMethod ?? client_1.PosPaymentMethod.CASH,
+                };
+            }
+            if (awaitingDebtPhysicalCollection) {
+                const performerId = performedByUserId ??
+                    order.driverId ??
+                    (await this.resolveFallbackPerformer(tx));
+                if (!performerId) {
+                    throw new common_1.BadRequestException('No performer available to attribute the manual settlement to');
+                }
+                const out = await this.customerLedger.recordDebtInvoiceCollectedAtCallCenter(tx, {
+                    orderId,
+                    confirmedMethod: method,
+                    performedByUserId: performerId,
+                });
+                return {
+                    orderId: order.id,
+                    alreadySettled: false,
+                    amountKd: order.totalPrice.toFixed(3),
+                    posPaymentMethod: method,
                 };
             }
             const originalMethod = order.posPaymentMethod;
