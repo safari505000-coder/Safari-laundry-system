@@ -7,7 +7,6 @@ import {
 import {
   CashStatus,
   CustomerSubscriptionStatus,
-  DebtSource,
   GeneralLedgerEntryType,
   LedgerTransactionType,
   OrderStatus,
@@ -1075,41 +1074,103 @@ export class CallCenterService {
         : effectiveBranchId
           ? { branchId: effectiveBranchId }
           : {};
-    // Red card: same predicate as collections/unpaid for this actor. Green:
-    // PAYMENT rows today (branch or driver’s orders).
 
-    const [unpaidInvoicesSum, todaysPayments, pendingLinksCount, ledgerDebtSplit] =
-      await Promise.all([
-        this.prisma.order.aggregate({
-          where: {
-            cashStatus: CashStatus.UNPAID,
-            status: { not: OrderStatus.CANCELED },
-            ...orderBranch,
-          },
-          _sum: { totalPrice: true },
-        }),
-        this.prisma.debtLedgerEntry.aggregate({
-          where: {
-            source: DebtSource.PAYMENT,
-            createdAt: { gte: dayStart, lt: dayEnd },
-            ...ledgerBranchFilter,
-          },
-          _sum: { amount: true },
-        }),
-        this.prisma.order.count({
-          where: {
-            cashStatus: CashStatus.UNPAID,
-            status: { not: OrderStatus.CANCELED },
-            posHostedPaymentUrl: { not: null },
-            ...orderBranch,
-          },
-        }),
-        this.debt.getLedgerOpenDebtByCategory(ledgerBranchFilter),
-      ]);
+    // V1.6.6 (A-48 fix) — Scope for TransactionHistory. TH has no direct
+    // branchId column, so we filter through the related Order using the
+    // same branch predicate as the red card (`orderBranchWhere`). For
+    // drivers we narrow to their own orders. When neither applies, we sum
+    // globally. We use the `is:` filter form because `order` is a nullable
+    // relation on TransactionHistory.
+    const orderBranchScope = orderBranchWhere(effectiveBranchId);
+    const transactionOrderScope: Prisma.TransactionHistoryWhereInput =
+      isDriver && actor
+        ? { order: { is: { driverId: actor.userId } } }
+        : orderBranchScope
+          ? { order: { is: orderBranchScope } }
+          : {};
+    // Red card: same predicate as collections/unpaid for this actor. Green:
+    //   Σ `metadata.debtSettled` across ORDER_WALLET_SETTLEMENT rows today.
+    //   This matches the DTO contract and captures gateway-link finalizes,
+    //   manual "تم الدفع" in Collections, CC partial-debt payments, AND
+    //   driver-led POS completions that settled open debt — exactly the
+    //   behaviour the Green "المحصل اليوم" card is supposed to mirror.
+    //   (Prior implementation summed DebtLedgerEntry.PAYMENT amounts which
+    //   only fire when a pre-existing debt is paid down, so fresh ONLINE
+    //   payment-link sales never surfaced on the card — see bug A-48.)
+
+    const [
+      unpaidInvoicesSum,
+      todaysSettlementRows,
+      todaysSubscriptionActivationRows,
+      pendingLinksCount,
+      ledgerDebtSplit,
+    ] = await Promise.all([
+      this.prisma.order.aggregate({
+        where: {
+          cashStatus: CashStatus.UNPAID,
+          status: { not: OrderStatus.CANCELED },
+          ...orderBranch,
+        },
+        _sum: { totalPrice: true },
+      }),
+      this.prisma.transactionHistory.findMany({
+        where: {
+          type: LedgerTransactionType.ORDER_WALLET_SETTLEMENT,
+          createdAt: { gte: dayStart, lt: dayEnd },
+          ...transactionOrderScope,
+        },
+        select: { metadata: true },
+      }),
+      this.prisma.transactionHistory.findMany({
+        where: {
+          type: LedgerTransactionType.SUBSCRIPTION_ACTIVATION,
+          createdAt: { gte: dayStart, lt: dayEnd },
+          ...transactionOrderScope,
+        },
+        select: { metadata: true },
+      }),
+      this.prisma.order.count({
+        where: {
+          cashStatus: CashStatus.UNPAID,
+          status: { not: OrderStatus.CANCELED },
+          posHostedPaymentUrl: { not: null },
+          ...orderBranch,
+        },
+      }),
+      this.debt.getLedgerOpenDebtByCategory(ledgerBranchFilter),
+    ]);
 
     const redCardTotal =
       unpaidInvoicesSum._sum.totalPrice ?? new Prisma.Decimal(0);
-    const recoveredToday = todaysPayments._sum.amount ?? new Prisma.Decimal(0);
+
+    // Green card (broad) — every ORDER_WALLET_SETTLEMENT row today that
+    // carries a positive `metadata.debtSettled`. Covers:
+    //   • Gateway callback finalize (`debtSettlementViaLink=true`)
+    //   • Collections "تم الدفع" (`debtSettlementViaCallCenter=true`)
+    //   • CC partial debt payment (`debtPaymentOnly=true`)
+    //   • Any driver-led POS completion that set `debtSettled` on its row
+    let collectedTodayFromOrders = new Prisma.Decimal(0);
+    for (const r of todaysSettlementRows) {
+      const debtSettled = extractDebtSettled(r.metadata);
+      if (debtSettled.gt(0)) {
+        collectedTodayFromOrders = collectedTodayFromOrders.plus(debtSettled);
+      }
+    }
+
+    // Broader recovery number — also includes subscription activations
+    // that retired legacy debt (per DTO contract for
+    // `debtRecoveredTodayKd`, A3.D10 Owner Debt Recovery Report formula).
+    let subscriptionActivationDebtToday = new Prisma.Decimal(0);
+    for (const r of todaysSubscriptionActivationRows) {
+      const debtSettled = extractDebtSettled(r.metadata);
+      if (debtSettled.gt(0)) {
+        subscriptionActivationDebtToday =
+          subscriptionActivationDebtToday.plus(debtSettled);
+      }
+    }
+    const recoveredToday = collectedTodayFromOrders.plus(
+      subscriptionActivationDebtToday,
+    );
 
     return {
       totalMarketDebtKd: KWD_DP(redCardTotal),
@@ -1119,7 +1180,7 @@ export class CallCenterService {
       outstandingSubscriptionDebtKd: KWD_DP(
         new Prisma.Decimal(ledgerDebtSplit.outstandingSubscriptionDebtKd),
       ),
-      debtCollectedTodayKd: KWD_DP(recoveredToday),
+      debtCollectedTodayKd: KWD_DP(collectedTodayFromOrders),
       debtRecoveredTodayKd: KWD_DP(recoveredToday),
       pendingLinksCount,
       dayIso: dayIsoLocal,

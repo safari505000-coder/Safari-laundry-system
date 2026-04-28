@@ -664,7 +664,13 @@ let CallCenterService = class CallCenterService {
             : effectiveBranchId
                 ? { branchId: effectiveBranchId }
                 : {};
-        const [unpaidInvoicesSum, todaysPayments, pendingLinksCount, ledgerDebtSplit] = await Promise.all([
+        const orderBranchScope = orderBranchWhere(effectiveBranchId);
+        const transactionOrderScope = isDriver && actor
+            ? { order: { is: { driverId: actor.userId } } }
+            : orderBranchScope
+                ? { order: { is: orderBranchScope } }
+                : {};
+        const [unpaidInvoicesSum, todaysSettlementRows, todaysSubscriptionActivationRows, pendingLinksCount, ledgerDebtSplit,] = await Promise.all([
             this.prisma.order.aggregate({
                 where: {
                     cashStatus: client_1.CashStatus.UNPAID,
@@ -673,13 +679,21 @@ let CallCenterService = class CallCenterService {
                 },
                 _sum: { totalPrice: true },
             }),
-            this.prisma.debtLedgerEntry.aggregate({
+            this.prisma.transactionHistory.findMany({
                 where: {
-                    source: client_1.DebtSource.PAYMENT,
+                    type: client_1.LedgerTransactionType.ORDER_WALLET_SETTLEMENT,
                     createdAt: { gte: dayStart, lt: dayEnd },
-                    ...ledgerBranchFilter,
+                    ...transactionOrderScope,
                 },
-                _sum: { amount: true },
+                select: { metadata: true },
+            }),
+            this.prisma.transactionHistory.findMany({
+                where: {
+                    type: client_1.LedgerTransactionType.SUBSCRIPTION_ACTIVATION,
+                    createdAt: { gte: dayStart, lt: dayEnd },
+                    ...transactionOrderScope,
+                },
+                select: { metadata: true },
             }),
             this.prisma.order.count({
                 where: {
@@ -692,12 +706,27 @@ let CallCenterService = class CallCenterService {
             this.debt.getLedgerOpenDebtByCategory(ledgerBranchFilter),
         ]);
         const redCardTotal = unpaidInvoicesSum._sum.totalPrice ?? new client_1.Prisma.Decimal(0);
-        const recoveredToday = todaysPayments._sum.amount ?? new client_1.Prisma.Decimal(0);
+        let collectedTodayFromOrders = new client_1.Prisma.Decimal(0);
+        for (const r of todaysSettlementRows) {
+            const debtSettled = extractDebtSettled(r.metadata);
+            if (debtSettled.gt(0)) {
+                collectedTodayFromOrders = collectedTodayFromOrders.plus(debtSettled);
+            }
+        }
+        let subscriptionActivationDebtToday = new client_1.Prisma.Decimal(0);
+        for (const r of todaysSubscriptionActivationRows) {
+            const debtSettled = extractDebtSettled(r.metadata);
+            if (debtSettled.gt(0)) {
+                subscriptionActivationDebtToday =
+                    subscriptionActivationDebtToday.plus(debtSettled);
+            }
+        }
+        const recoveredToday = collectedTodayFromOrders.plus(subscriptionActivationDebtToday);
         return {
             totalMarketDebtKd: KWD_DP(redCardTotal),
             outstandingInvoiceDebtKd: KWD_DP(new client_1.Prisma.Decimal(ledgerDebtSplit.outstandingInvoiceDebtKd)),
             outstandingSubscriptionDebtKd: KWD_DP(new client_1.Prisma.Decimal(ledgerDebtSplit.outstandingSubscriptionDebtKd)),
-            debtCollectedTodayKd: KWD_DP(recoveredToday),
+            debtCollectedTodayKd: KWD_DP(collectedTodayFromOrders),
             debtRecoveredTodayKd: KWD_DP(recoveredToday),
             pendingLinksCount,
             dayIso: dayIsoLocal,
