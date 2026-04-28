@@ -2444,26 +2444,16 @@ export function recheckPublicPayment(
     qs.set('result', gatewayResult);
   }
   const qstr = qs.toString();
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
+  const headers: Record<string, string> = {};
   if (tid) {
     headers['X-Gateway-Track-Id'] = tid;
   }
-  const bodyPayload: Record<string, string> = {};
-  if (tid) {
-    bodyPayload.trackId = tid;
-    bodyPayload.track_id = tid;
-  }
-  if (gatewayResult) {
-    bodyPayload.result = gatewayResult;
-  }
+  /** GET avoids `Cannot POST /api/...` when the SPA is served without an API proxy. */
   return apiJson<PublicPaymentRecheck>(
     `/api/payments/recheck/${encodeURIComponent(orderId)}${qstr ? `?${qstr}` : ''}`,
     {
-      method: 'POST',
+      method: 'GET',
       headers,
-      body: JSON.stringify(bodyPayload),
     },
   );
 }
@@ -2475,7 +2465,8 @@ export function recheckOrderPayment(
 ): Promise<PublicPaymentRecheck> {
   return apiJson<PublicPaymentRecheck>(
     `/api/payments/recheck/${encodeURIComponent(orderId)}`,
-    { method: 'POST', body: '{}', token },
+    /** GET: static hosts / mis-configured preview often reject POST to /api. */
+    { method: 'GET', token },
   );
 }
 

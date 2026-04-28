@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   HttpCode,
   Logger,
   Param,
@@ -534,16 +535,21 @@ document.getElementById('go').onclick = async function () {
    * return URL echoes `result=CAPTURED` and a v2 `track_id`, finalizes
    * without waiting on UPayments inquiry; otherwise uses get-payment-status
    * and returns an Arabic message for the UI.
+   *
+   * V19.30 — **GET** mirrors **POST**: some static SPA hosts answer
+   * `Cannot POST /api/...` when the bundle is not behind the API proxy.
+   * Collections «تحقق من الدفع» uses GET; the success page may use either.
    */
   @Post('recheck/:orderId')
   @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
   @ApiOperation({
-    summary: 'Force payment verification and finalize if CAPTURED',
+    summary: 'Force payment verification and finalize if CAPTURED (POST)',
     description:
-      'Public — for /payment/success|failed. When `result=CAPTURED` and v2 `track_id` are echoed from the return URL, finalizes without waiting for UPayments inquiry; otherwise uses get-payment-status as a backstop.',
+      'Public — optional JSON body with trackId when query string was stripped.',
   })
   @ApiBody({ type: GatewayTrackHintDto, required: false })
-  async recheckPayment(
+  async recheckPaymentPost(
     @Req() req: Request,
     @Param('orderId') orderId: string,
     @Body() body: GatewayTrackHintDto,
@@ -551,6 +557,49 @@ document.getElementById('go').onclick = async function () {
     @Query('TrackID') trackID?: string,
     @Query('trackId') trackIdQuery?: string,
     @Query('result') gatewayResultQuery?: string,
+  ) {
+    return this.runRecheckPayment(req, orderId, body, {
+      track_id,
+      trackID,
+      trackIdQuery,
+      gatewayResultQuery,
+    });
+  }
+
+  @Get('recheck/:orderId')
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({
+    summary: 'Force payment verification and finalize if CAPTURED (GET)',
+    description:
+      'Same as POST — use when the SPA origin cannot POST to the API (static hosting / mis-proxy). Pass track_id and result as query params when available.',
+  })
+  async recheckPaymentGet(
+    @Req() req: Request,
+    @Param('orderId') orderId: string,
+    @Query('track_id') track_id?: string,
+    @Query('TrackID') trackID?: string,
+    @Query('trackId') trackIdQuery?: string,
+    @Query('result') gatewayResultQuery?: string,
+  ) {
+    return this.runRecheckPayment(req, orderId, undefined, {
+      track_id,
+      trackID,
+      trackIdQuery,
+      gatewayResultQuery,
+    });
+  }
+
+  private async runRecheckPayment(
+    req: Request,
+    orderId: string,
+    bodyHint: GatewayTrackHintDto | undefined,
+    q: {
+      track_id?: string;
+      trackID?: string;
+      trackIdQuery?: string;
+      gatewayResultQuery?: string;
+    },
   ): Promise<{
     orderId: string;
     status: OrderStatus;
@@ -598,15 +647,15 @@ document.getElementById('go').onclick = async function () {
     }
 
     const returnTrack = pickReturnTrackIdFromRequest(
-      body?.trackId ?? body?.track_id,
-      track_id,
-      trackID,
-      trackIdQuery,
+      bodyHint?.trackId ?? bodyHint?.track_id,
+      q.track_id,
+      q.trackID,
+      q.trackIdQuery,
       req,
     );
     const gatewayResultRaw = pickGatewayReturnResultFromRequest(
-      body?.result,
-      gatewayResultQuery,
+      bodyHint?.result,
+      q.gatewayResultQuery,
       req,
     );
 
