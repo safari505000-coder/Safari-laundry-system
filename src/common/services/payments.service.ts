@@ -309,7 +309,14 @@ function extractUpaymentsChargeTrackId(
   data: unknown,
   paymentUrl: string,
 ): string | undefined {
-  let t = tryParseTrackIdFromRecord(data);
+  // Prefer the id embedded in `data.link` (often `session_id=` / `trans_id=`)
+  // before JSON object fields — some payloads expose misleading long numeric
+  // fields that are not valid `get-payment-status` inquiry ids.
+  let t = tryParseTrackIdFromPaymentUrl(paymentUrl);
+  if (t) {
+    return t;
+  }
+  t = tryParseTrackIdFromRecord(data);
   if (t) {
     return t;
   }
@@ -320,10 +327,6 @@ function extractUpaymentsChargeTrackId(
     if (t) {
       return t;
     }
-  }
-  t = tryParseTrackIdFromPaymentUrl(paymentUrl);
-  if (t) {
-    return t;
   }
   t = deepFindUpaymentsTrackId(data, 0);
   return t;
@@ -338,6 +341,7 @@ function extractTrackIdFromChargeRawJsonText(raw: string): string | undefined {
     /"trans_?id"\s*:\s*"([^"]{5,128})"/i,
     /"tran_?id"\s*:\s*"([^"]{5,128})"/i,
     /"track_?id"\s*:\s*"([^"]{5,128})"/i,
+    /"session_?id"\s*:\s*"([^"]{5,128})"/i,
     /"payment_?id"\s*:\s*"([^"]{5,128})"/i,
     /"PaymentId"\s*:\s*"([^"]{5,128})"/,
     /"invoice_?id"\s*:\s*"([^"]{5,128})"/i,
@@ -355,7 +359,7 @@ function extractTrackIdFromChargeRawJsonText(raw: string): string | undefined {
     }
   }
   const numM =
-    /"(?:trans_?id|tran_?id|track_?id|payment_?id|invoice_?id)"\s*:\s*(\d{10,28})\b/.exec(
+    /"(?:trans_?id|tran_?id|track_?id|session_?id|payment_?id|invoice_?id)"\s*:\s*(\d{10,28})\b/.exec(
       raw,
     );
   if (numM?.[1]) {
@@ -738,7 +742,7 @@ export class PaymentsService implements OnModuleInit {
       `UPayments /charge: unusable inquiry id after recovery order=${orderIdForLog} badLen=${t.length}`,
     );
     throw new BadRequestException(
-      'UPayments returned a payment-status inquiry id that is too long or corrupted. Open a new payment link from Collections after verifying the gateway JSON.',
+      'تعذر استخراج رقم تتبع UPayments صالح من رد الدفع. أنشئ رابط دفع جديد من التحصيل، أو راجع لوحة UPayments. (Payment-status id missing or invalid in /charge response — create a new link or verify gateway JSON.)',
     );
   }
 
