@@ -887,7 +887,7 @@ export class PaymentsService implements OnModuleInit {
     },
   ): Promise<{ finalized: boolean }> {
     const clean = trackId.trim();
-    if (!clean || !/v2$/i.test(clean)) {
+    if (!clean) {
       return { finalized: false };
     }
     if (this.normalizeCallbackStatus(gatewayResultRaw) !== 'success') {
@@ -900,6 +900,7 @@ export class PaymentsService implements OnModuleInit {
         id: true,
         status: true,
         walletSettledAt: true,
+        posGatewayTrackId: true,
       },
     });
     if (!order) {
@@ -909,6 +910,14 @@ export class PaymentsService implements OnModuleInit {
       return { finalized: true };
     }
     if (order.status === OrderStatus.CANCELED) {
+      return { finalized: false };
+    }
+
+    const stored = order.posGatewayTrackId?.trim() ?? '';
+    const trackCorrelatesToOrder =
+      /v2$/i.test(clean) ||
+      (stored.length > 0 && stored === clean);
+    if (!trackCorrelatesToOrder) {
       return { finalized: false };
     }
 

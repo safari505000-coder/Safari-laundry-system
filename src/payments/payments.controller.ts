@@ -188,10 +188,19 @@ document.getElementById('go').onclick = async function () {
       const bodyOutcome = this.paymentsService.normalizeCallbackStatus(
         body.result ?? body.status ?? '',
       );
+      const trimmedTrack = trackId.trim();
+      const linkedOrderId = trimmedTrack
+        ? await this.paymentsService.findOrderByTrackId(trimmedTrack)
+        : null;
+      const trackTrusted =
+        /v2$/i.test(trimmedTrack) ||
+        (Boolean(safariOrderFromBody) &&
+          Boolean(linkedOrderId) &&
+          linkedOrderId === safariOrderFromBody);
       const trustWebhookFinalize =
         Boolean(safariOrderFromBody) &&
         bodyOutcome === 'success' &&
-        /v2$/i.test(trackId.trim());
+        trackTrusted;
 
       if (trustWebhookFinalize) {
         this.logger.log(
@@ -291,7 +300,7 @@ document.getElementById('go').onclick = async function () {
         this.paymentsService.normalizeCallbackStatus(
           body.result ?? body.status ?? '',
         ) === 'success' &&
-        /v2$/i.test(trackId.trim())
+        trackTrusted
       ) {
         this.logger.warn(
           `UPayments callback: inquiry failed for trackId prefix=${trackId.slice(0, 16)}… — finalizing from webhook body (Safari orderId=${safariOrderFromBody})`,
@@ -1061,6 +1070,10 @@ function extractOrderId(body: PaymentCallbackDto): string | null {
   if (requested) return requested;
   const gatewayOid = parseSafariOrderUuid(body.order_id);
   if (gatewayOid) return gatewayOid;
+  const invoiceId = parseSafariOrderUuid(body.invoice_id);
+  if (invoiceId) return invoiceId;
+  const receiptId = parseSafariOrderUuid(body.receipt_id);
+  if (receiptId) return receiptId;
   const fromRef =
     tryOrderIdFromUpaymentsCompactRef(body.ref) ??
     tryOrderIdFromUpaymentsCompactRef(body.reference);

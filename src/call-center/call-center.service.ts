@@ -2153,7 +2153,9 @@ export class CallCenterService {
         'reportingCategory',
       );
       const manual = reportingCategory === 'DEBT_COLLECTION_MANUAL';
-      if (!viaLink && !manual) continue;
+      const viaLinkCategory =
+        reportingCategory === 'DEBT_COLLECTION_VIA_LINK';
+      if (!viaLink && !manual && !viaLinkCategory) continue;
       thOrderViaLinkCollected = thOrderViaLinkCollected.plus(debtSettled);
       thOrderViaLinkOrderIds.add(r.orderId);
     }

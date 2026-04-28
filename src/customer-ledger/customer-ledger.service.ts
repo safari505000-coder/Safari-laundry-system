@@ -369,9 +369,16 @@ export class CustomerLedgerService {
     const debtSettledRawEarly =
       extraMetadata !== undefined ? extraMetadata.debtSettled : null;
     let debtPaydownFromSettlementMinor = 0n;
-    if (typeof debtSettledRawEarly === 'string') {
+    const debtSettledStr =
+      typeof debtSettledRawEarly === 'string' && debtSettledRawEarly.trim()
+        ? debtSettledRawEarly.trim()
+        : typeof debtSettledRawEarly === 'number' &&
+            Number.isFinite(debtSettledRawEarly)
+          ? String(debtSettledRawEarly)
+          : null;
+    if (debtSettledStr) {
       const declaredSettledMinor = toMinorFromFixed4(
-        new Prisma.Decimal(debtSettledRawEarly),
+        new Prisma.Decimal(debtSettledStr),
       );
       if (declaredSettledMinor > 0n && newDebtMinor > 0n) {
         debtPaydownFromSettlementMinor =
@@ -555,8 +562,7 @@ export class CustomerLedgerService {
               : extraMetadata?.debtSettlementViaLink === true
                 ? 'PAYMENT_LINK_CALLBACK'
                 : 'WALLET_SETTLEMENT',
-          declaredDebtSettled:
-            typeof debtSettledRawEarly === 'string' ? debtSettledRawEarly : null,
+          declaredDebtSettled: debtSettledStr,
         },
       });
     }
