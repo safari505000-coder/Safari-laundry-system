@@ -109,16 +109,27 @@ export function PosInvoicePrintView({
               {new Date(createdAt).toLocaleString('en-GB')}
             </p>
           </div>
-          {row.cashStatus !== 'PAID_TO_DRIVER' && row.status !== 'CANCELED' ?
-            <p className="pos-payment-pending" dir="auto">
-              دفع غير مكتمل — الفاتورة لم تُسدَّد بعد
-            </p>
-          : null}
-          {row.status === 'CANCELED' ?
+          {/* V1.7.3 — Unified payment-status stamp. The three possible
+              states a settled order can carry (PAID_TO_DRIVER cash trail,
+              PAID_ONLINE gateway/link settlement, HANDED_OVER_TO_OFFICE
+              manager handover) all suppress the "unpaid" warning. When
+              the gateway just finalized an online payment we stamp a
+              green "تم الدفع أونلاين ✅" badge so the customer's saved
+              PDF shows the correct status the moment they download it
+              from the /payment/success page. */}
+          {row.status === 'CANCELED' ? (
             <p className="pos-payment-canceled" dir="auto">
               فاتورة ملغاة / CANCELED
             </p>
-          : null}
+          ) : row.cashStatus === 'UNPAID' ? (
+            <p className="pos-payment-pending" dir="auto">
+              دفع غير مكتمل — الفاتورة لم تُسدَّد بعد
+            </p>
+          ) : row.cashStatus === 'PAID_ONLINE' ? (
+            <p className="pos-payment-online" dir="auto">
+              تم الدفع أونلاين ✅
+            </p>
+          ) : null}
           <div className="pos-customer-box">
             <div className="pos-customer-row">
               <span>
@@ -384,6 +395,23 @@ export function PosInvoicePrintView({
             font-size: 10px;
             font-weight: 700;
             border-radius: 2px;
+          }
+          /* V1.7.3 — green "paid online" stamp shown when the gateway
+             settled the order. Same visual weight as the pending banner
+             but in the emerald palette so it reads as "confirmed". */
+          .invoice-print-surface .pos-payment-online {
+            margin: 1.6mm 0;
+            border: 1px solid #10b981;
+            background: #ecfdf5;
+            color: #065f46;
+            padding: 1mm 2mm;
+            text-align: center;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            border-radius: 2px;
+            print-color-adjust: exact;
+            -webkit-print-color-adjust: exact;
           }
           .invoice-print-surface .pos-customer-box {
             border: 1px solid #0f172a;

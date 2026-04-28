@@ -2016,20 +2016,38 @@ export class OrdersService {
       align: 'center',
     });
     doc.moveDown(0.4);
-    doc
-      .fillColor('#0f172a')
-      .fontSize(10)
-      .text(`Invoice / serial: ${inv}`);
+    doc.fillColor('#0f172a').fontSize(10).text(`Serial: ${inv}`);
     doc.text(
       `Date: ${order.createdAt.toLocaleString('en-GB', { timeZone: 'Asia/Kuwait' })}`,
     );
-    doc.text(`Order id: ${order.id}`);
+    // V1.7.3 — The raw UUID was leaking to customer-facing PDFs (see
+    // Owner directive). The serial above is sufficient; the Prisma id
+    // stays server-side. If an operator needs it they can pull it from
+    // the back-office, never from a customer receipt.
     doc.text(`Total: ${order.totalPrice.toFixed(3)} KWD`);
     if (order.customer?.phone) {
       doc.text(`Phone: ${order.customer.phone}`);
     }
     if (order.driver?.fullName) {
       doc.text(`Driver: ${order.driver.fullName}`);
+    }
+    // V1.7.3 — Paid-online stamp mirrors the React thermal template so
+    // that the Moatmt WhatsApp-attached copy (and any direct `/pdf?token=`
+    // fetch) also reflects the real settlement state.
+    if (order.cashStatus === 'PAID_ONLINE') {
+      doc.moveDown(0.3);
+      doc
+        .fillColor('#065f46')
+        .fontSize(11)
+        .text('PAID ONLINE  /  تم الدفع أونلاين', { align: 'center' });
+      doc.fillColor('#0f172a');
+    } else if (order.cashStatus === 'UNPAID' && order.status !== 'CANCELED') {
+      doc.moveDown(0.3);
+      doc
+        .fillColor('#92400e')
+        .fontSize(10)
+        .text('UNPAID / الفاتورة لم تُسدَّد بعد', { align: 'center' });
+      doc.fillColor('#0f172a');
     }
     doc.moveDown(0.4);
     doc

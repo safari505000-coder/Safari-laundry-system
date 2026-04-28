@@ -694,7 +694,17 @@ function SuccessBlock({
   orderCode: string | null;
   waHref: string | null;
 }) {
-  const pdfUrl = status?.pdfUrl?.trim() || null;
+  // V1.7.3 — "Download PDF" now points at the SAME thermal receipt the
+  // WhatsApp share uses (PublicInvoicePage). We append `?autoprint=1`
+  // so the browser's native print dialog auto-opens once the receipt
+  // has mounted — "Save as PDF" is one tap on every modern browser,
+  // Arabic renders natively, the logo/barcode/QR come out pixel-perfect,
+  // and the payment stamp auto-flips to "تم الدفع أونلاين ✅" because
+  // the order's cashStatus is already PAID_ONLINE at this point.
+  const shareUrl = status?.shareUrl?.trim() || null;
+  const downloadHref = shareUrl
+    ? `${shareUrl}${shareUrl.includes('?') ? '&' : '?'}autoprint=1`
+    : null;
   return (
     <>
       <AnimatedCheck />
@@ -722,9 +732,9 @@ function SuccessBlock({
       )}
 
       <div className="mt-6 grid gap-2.5">
-        {pdfUrl && (
+        {downloadHref && (
           <a
-            href={pdfUrl}
+            href={downloadHref}
             target="_blank"
             rel="noopener noreferrer"
             className="

@@ -1266,18 +1266,30 @@ let OrdersService = OrdersService_1 = class OrdersService {
             align: 'center',
         });
         doc.moveDown(0.4);
-        doc
-            .fillColor('#0f172a')
-            .fontSize(10)
-            .text(`Invoice / serial: ${inv}`);
+        doc.fillColor('#0f172a').fontSize(10).text(`Serial: ${inv}`);
         doc.text(`Date: ${order.createdAt.toLocaleString('en-GB', { timeZone: 'Asia/Kuwait' })}`);
-        doc.text(`Order id: ${order.id}`);
         doc.text(`Total: ${order.totalPrice.toFixed(3)} KWD`);
         if (order.customer?.phone) {
             doc.text(`Phone: ${order.customer.phone}`);
         }
         if (order.driver?.fullName) {
             doc.text(`Driver: ${order.driver.fullName}`);
+        }
+        if (order.cashStatus === 'PAID_ONLINE') {
+            doc.moveDown(0.3);
+            doc
+                .fillColor('#065f46')
+                .fontSize(11)
+                .text('PAID ONLINE  /  تم الدفع أونلاين', { align: 'center' });
+            doc.fillColor('#0f172a');
+        }
+        else if (order.cashStatus === 'UNPAID' && order.status !== 'CANCELED') {
+            doc.moveDown(0.3);
+            doc
+                .fillColor('#92400e')
+                .fontSize(10)
+                .text('UNPAID / الفاتورة لم تُسدَّد بعد', { align: 'center' });
+            doc.fillColor('#0f172a');
         }
         doc.moveDown(0.4);
         doc
