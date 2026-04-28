@@ -19,7 +19,10 @@ import {
   CustomerLedgerService,
   type OrderWalletSettlementPrefetch,
 } from '../../customer-ledger/customer-ledger.service';
-import { CustomerNotificationsService } from '../../customer-notifications/customer-notifications.service';
+import {
+  CustomerNotificationsService,
+  type PaymentConfirmedVariant,
+} from '../../customer-notifications/customer-notifications.service';
 import { GeneralLedgerService } from '../../general-ledger/general-ledger.service';
 import { InventoryService } from '../../inventory/inventory.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -1554,11 +1557,12 @@ export class PaymentsService implements OnModuleInit {
             invoiceNumber: true,
             totalPrice: true,
             posHostedPaymentUrl: true,
+            posPaymentMethod: true,
             customer: {
               select: {
                 phone: true,
                 phone2: true,
-                wallet: { select: { debt: true } },
+                wallet: { select: { debt: true, balance: true } },
               },
             },
           },
@@ -1588,9 +1592,25 @@ export class PaymentsService implements OnModuleInit {
         const paymentUrl = row.posHostedPaymentUrl?.trim() || undefined;
         const walletDebt =
           row.customer.wallet?.debt ?? new Prisma.Decimal(0);
-        const walletDebtKd = walletDebt.gt(0)
-          ? walletDebt.toFixed(3)
-          : undefined;
+        const walletBal =
+          row.customer.wallet?.balance ?? new Prisma.Decimal(0);
+        const method = row.posPaymentMethod;
+
+        let variant: PaymentConfirmedVariant = 'standard';
+        let walletDebtKd: string | undefined;
+        let remainingSubscriptionBalanceKd: string | undefined;
+        let totalDebtKd: string | undefined;
+
+        if (method === PosPaymentMethod.SUBSCRIPTION_WALLET) {
+          variant = 'subscription_wallet';
+          remainingSubscriptionBalanceKd = walletBal.toFixed(3);
+        } else if (method === PosPaymentMethod.DEBT_ON_ACCOUNT) {
+          variant = 'debt_on_account';
+          totalDebtKd = walletDebt.toFixed(3);
+        } else if (walletDebt.gt(0)) {
+          walletDebtKd = walletDebt.toFixed(3);
+        }
+
         this.customerNotifications.notifyPaymentConfirmed({
           customerPhone: phone,
           orderId: row.id,
@@ -1598,7 +1618,10 @@ export class PaymentsService implements OnModuleInit {
           orderLabel,
           paymentUrl,
           ratingUrl,
+          variant,
           walletDebtKd,
+          remainingSubscriptionBalanceKd,
+          totalDebtKd,
         });
       })().catch((e) => {
         this.logger.warn(`emitPaymentConfirmedNotify: ${e}`);

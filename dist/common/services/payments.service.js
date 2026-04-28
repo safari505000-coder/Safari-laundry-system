@@ -1052,11 +1052,12 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
                         invoiceNumber: true,
                         totalPrice: true,
                         posHostedPaymentUrl: true,
+                        posPaymentMethod: true,
                         customer: {
                             select: {
                                 phone: true,
                                 phone2: true,
-                                wallet: { select: { debt: true } },
+                                wallet: { select: { debt: true, balance: true } },
                             },
                         },
                     },
@@ -1078,9 +1079,23 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
                 const ratingUrl = base ? `${base}/r/${encodeURIComponent(row.id)}` : undefined;
                 const paymentUrl = row.posHostedPaymentUrl?.trim() || undefined;
                 const walletDebt = row.customer.wallet?.debt ?? new client_1.Prisma.Decimal(0);
-                const walletDebtKd = walletDebt.gt(0)
-                    ? walletDebt.toFixed(3)
-                    : undefined;
+                const walletBal = row.customer.wallet?.balance ?? new client_1.Prisma.Decimal(0);
+                const method = row.posPaymentMethod;
+                let variant = 'standard';
+                let walletDebtKd;
+                let remainingSubscriptionBalanceKd;
+                let totalDebtKd;
+                if (method === client_1.PosPaymentMethod.SUBSCRIPTION_WALLET) {
+                    variant = 'subscription_wallet';
+                    remainingSubscriptionBalanceKd = walletBal.toFixed(3);
+                }
+                else if (method === client_1.PosPaymentMethod.DEBT_ON_ACCOUNT) {
+                    variant = 'debt_on_account';
+                    totalDebtKd = walletDebt.toFixed(3);
+                }
+                else if (walletDebt.gt(0)) {
+                    walletDebtKd = walletDebt.toFixed(3);
+                }
                 this.customerNotifications.notifyPaymentConfirmed({
                     customerPhone: phone,
                     orderId: row.id,
@@ -1088,7 +1103,10 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
                     orderLabel,
                     paymentUrl,
                     ratingUrl,
+                    variant,
                     walletDebtKd,
+                    remainingSubscriptionBalanceKd,
+                    totalDebtKd,
                 });
             })().catch((e) => {
                 this.logger.warn(`emitPaymentConfirmedNotify: ${e}`);

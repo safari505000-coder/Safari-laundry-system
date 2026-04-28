@@ -22,6 +22,7 @@ export type InvoiceEditedIssuerNotifyParams = {
     invoiceShareUrl?: string;
     invoicePdfUrl?: string;
 };
+export type PaymentConfirmedVariant = 'standard' | 'subscription_wallet' | 'debt_on_account';
 export type PaymentConfirmedNotifyParams = {
     customerPhone: string;
     orderId: string;
@@ -29,7 +30,10 @@ export type PaymentConfirmedNotifyParams = {
     amountKd: string;
     paymentUrl?: string;
     ratingUrl?: string;
+    variant?: PaymentConfirmedVariant;
     walletDebtKd?: string;
+    remainingSubscriptionBalanceKd?: string;
+    totalDebtKd?: string;
 };
 export type DriverCollectionConfirmedNotifyParams = {
     customerPhone: string;

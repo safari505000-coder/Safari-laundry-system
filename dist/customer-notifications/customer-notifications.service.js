@@ -258,7 +258,15 @@ function buildDriverCollectionConfirmedMessage(params) {
     lines.push(`فريق ${branding_1.BRAND_CUSTOMER_AR} 🇰🇼`);
     return lines.join('\n');
 }
-function buildPaymentConfirmedMessage(params) {
+function appendPaymentLinkIfAny(lines, paymentUrl) {
+    if (!paymentUrl?.trim()) {
+        return;
+    }
+    lines.push('');
+    lines.push('🔒 رابط الدفع:');
+    lines.push(paymentUrl.trim());
+}
+function buildPaymentConfirmedStandardMessage(params) {
     const lines = [];
     lines.push('تم تأكيد الدفع بنجاح ✅');
     lines.push('');
@@ -267,7 +275,7 @@ function buildPaymentConfirmedMessage(params) {
     lines.push(`📋 رقم الطلب: *${params.orderLabel}*`);
     lines.push(`💰 المبلغ الإجمالي: *${params.amountKd} د.ك*`);
     lines.push('');
-    lines.push('ملابسك الآن نظيفة، معطرة، وجاهزة.');
+    lines.push('نعمل الآن على تجهيز ملابسك بأعلى معايير الجودة، وسيتم إخطارك فور جاهزيتها.');
     lines.push('');
     lines.push('يرجى تأكيد صحة البيانات لضمان دقة المتابعة.');
     const debt = Number.parseFloat(params.walletDebtKd ?? '');
@@ -277,19 +285,73 @@ function buildPaymentConfirmedMessage(params) {
     }
     lines.push('');
     lines.push(`${branding_1.BRAND_CUSTOMER_AR} — جودة نهتم بها.`);
-    if (params.paymentUrl) {
-        lines.push('');
-        lines.push('🔒 رابط الدفع:');
-        lines.push(params.paymentUrl);
-    }
-    if (params.ratingUrl) {
-        lines.push('');
-        lines.push('⭐ نسعد بتقييمك:');
-        lines.push(params.ratingUrl);
-    }
+    appendPaymentLinkIfAny(lines, params.paymentUrl);
+    appendRatingSectionToLines(lines, params.ratingUrl);
     lines.push('');
     lines.push(`فريق ${branding_1.BRAND_CUSTOMER_AR} 🇰🇼`);
     return lines.join('\n');
+}
+function buildPaymentConfirmedSubscriptionMessage(params) {
+    const lines = [];
+    lines.push('تم تأكيد الخصم من الرصيد 💎');
+    lines.push('');
+    lines.push('شكراً لك، استلمنا طلبك وبدأنا العمل عليه.');
+    lines.push('');
+    lines.push(`📋 رقم الطلب: ${params.orderLabel}`);
+    lines.push(`💰 قيمة الفاتورة: ${params.amountKd} د.ك`);
+    lines.push(`💳 *الرصيد المتبقي في اشتراككم: ${params.remainingSubscriptionBalanceKd} د.ك*`);
+    lines.push('');
+    lines.push('نعمل الآن على تجهيز ملابسك بأعلى معايير الجودة، وسيتم إخطارك فور جاهزيتها.');
+    appendPaymentLinkIfAny(lines, params.paymentUrl);
+    appendRatingSectionToLines(lines, params.ratingUrl);
+    lines.push('');
+    lines.push(`${branding_1.BRAND_CUSTOMER_AR} 🇰🇼`);
+    return lines.join('\n');
+}
+function buildPaymentConfirmedDebtOnAccountMessage(params) {
+    const lines = [];
+    lines.push('تم تسجيل الطلب في حسابكم ✅');
+    lines.push('');
+    lines.push('شكراً لثقتك، تم اعتماد الفاتورة والبدء بتنفيذ الطلب.');
+    lines.push('');
+    lines.push(`📋 رقم الطلب: ${params.orderLabel}`);
+    lines.push(`💰 مبلغ الفاتورة: ${params.amountKd} د.ك`);
+    lines.push(`📌 *إجمالي المديونية الحالية: ${params.totalDebtKd} د.ك*`);
+    lines.push('');
+    lines.push('ملابسك الآن في عهدة فريقنا لتجهيزها، وسنوافيك برسالة عند الانتهاء.');
+    appendPaymentLinkIfAny(lines, params.paymentUrl);
+    appendRatingSectionToLines(lines, params.ratingUrl);
+    lines.push('');
+    lines.push(`${branding_1.BRAND_CUSTOMER_AR} - جودة نهتم بها.`);
+    return lines.join('\n');
+}
+function buildPaymentConfirmedMessageBody(params) {
+    const v = params.variant ?? 'standard';
+    if (v === 'subscription_wallet') {
+        return buildPaymentConfirmedSubscriptionMessage({
+            orderLabel: params.orderLabel,
+            amountKd: params.amountKd,
+            remainingSubscriptionBalanceKd: params.remainingSubscriptionBalanceKd ?? '0.000',
+            ratingUrl: params.ratingUrl,
+            paymentUrl: params.paymentUrl,
+        });
+    }
+    if (v === 'debt_on_account') {
+        return buildPaymentConfirmedDebtOnAccountMessage({
+            orderLabel: params.orderLabel,
+            amountKd: params.amountKd,
+            totalDebtKd: params.totalDebtKd ?? '0.000',
+            ratingUrl: params.ratingUrl,
+            paymentUrl: params.paymentUrl,
+        });
+    }
+    return buildPaymentConfirmedStandardMessage({
+        amountKd: params.amountKd,
+        orderLabel: params.orderLabel,
+        paymentUrl: params.paymentUrl,
+        ratingUrl: params.ratingUrl,
+        walletDebtKd: params.walletDebtKd,
+    });
 }
 let CustomerNotificationsService = class CustomerNotificationsService {
     static { CustomerNotificationsService_1 = this; }
@@ -431,13 +493,7 @@ let CustomerNotificationsService = class CustomerNotificationsService {
             `phone=${formatPhoneHintForLog(params.customerPhone)} orderId=${params.orderId} text_preview=${message.slice(0, 120)}…`);
     }
     async deliverPaymentConfirmed(params) {
-        const message = buildPaymentConfirmedMessage({
-            amountKd: params.amountKd,
-            orderLabel: params.orderLabel,
-            paymentUrl: params.paymentUrl,
-            ratingUrl: params.ratingUrl,
-            walletDebtKd: params.walletDebtKd,
-        });
+        const message = buildPaymentConfirmedMessageBody(params);
         if (await this.trySendMoatmt(params.customerPhone, message, null)) {
             return;
         }
@@ -451,9 +507,12 @@ let CustomerNotificationsService = class CustomerNotificationsService {
                     message,
                     orderId: params.orderId,
                     template: 'payment_confirmed',
+                    variant: params.variant ?? 'standard',
                     paymentUrl: params.paymentUrl ?? null,
                     ratingUrl: params.ratingUrl ?? null,
                     walletDebtKd: params.walletDebtKd ?? null,
+                    remainingSubscriptionBalanceKd: params.remainingSubscriptionBalanceKd ?? null,
+                    totalDebtKd: params.totalDebtKd ?? null,
                 }),
             });
             if (!res.ok) {

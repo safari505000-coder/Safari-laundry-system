@@ -234,8 +234,16 @@ export type InvoiceEditedIssuerNotifyParams = {
 };
 
 /**
+ * WhatsApp «تأكيد الدفع التشغيلي» — تجنّب ادّعاء أن الملابس «جاهزة» قبل استلام الطلب.
+ */
+export type PaymentConfirmedVariant =
+  | 'standard'
+  | 'subscription_wallet'
+  | 'debt_on_account';
+
+/**
  * After the customer’s payment is fully settled (gateway link or call-center
- * "تم الدفع") — short thank-you + public `/r/:orderId` rating page.
+ * "تم الدفع") — قالب موجَّه بحسب وسيلة الدفع.
  */
 export type PaymentConfirmedNotifyParams = {
   customerPhone: string;
@@ -246,11 +254,20 @@ export type PaymentConfirmedNotifyParams = {
   paymentUrl?: string;
   /** `${PUBLIC_WEB_APP_URL}/r/:orderId` when `PUBLIC_WEB_APP_URL` is set. */
   ratingUrl?: string;
+  /** Branching for Moatmt text + webhook consumers. Default `standard`. */
+  variant?: PaymentConfirmedVariant;
   /**
-   * Outstanding wallet debt after this settlement (3dp KWD), if any — shown
-   * so the customer sees remaining receivables on their account.
+   * `standard`: optional remaining wallet debt (3dp) after cash/KNET/link/online
+   * when customer still owes on file.
    */
   walletDebtKd?: string;
+  /** `subscription_wallet`: prepaid balance after this charge (3dp). */
+  remainingSubscriptionBalanceKd?: string;
+  /**
+   * `debt_on_account`: total outstanding debt after booking this invoice
+   * (same as `wallet.debt` post-settlement — includes this sale).
+   */
+  totalDebtKd?: string;
 };
 
 /**
@@ -434,7 +451,20 @@ function buildDriverCollectionConfirmedMessage(params: {
   return lines.join('\n');
 }
 
-function buildPaymentConfirmedMessage(params: {
+function appendPaymentLinkIfAny(
+  lines: string[],
+  paymentUrl: string | undefined,
+): void {
+  if (!paymentUrl?.trim()) {
+    return;
+  }
+  lines.push('');
+  lines.push('🔒 رابط الدفع:');
+  lines.push(paymentUrl.trim());
+}
+
+/** كاش / كي نت / رابط / أونلاين — بدون ادّعاء «جاهزة» قبل الاستلام. */
+function buildPaymentConfirmedStandardMessage(params: {
   amountKd: string;
   orderLabel: string;
   paymentUrl?: string;
@@ -450,7 +480,9 @@ function buildPaymentConfirmedMessage(params: {
   lines.push(`📋 رقم الطلب: *${params.orderLabel}*`);
   lines.push(`💰 المبلغ الإجمالي: *${params.amountKd} د.ك*`);
   lines.push('');
-  lines.push('ملابسك الآن نظيفة، معطرة، وجاهزة.');
+  lines.push(
+    'نعمل الآن على تجهيز ملابسك بأعلى معايير الجودة، وسيتم إخطارك فور جاهزيتها.',
+  );
   lines.push('');
   lines.push('يرجى تأكيد صحة البيانات لضمان دقة المتابعة.');
   const debt = Number.parseFloat(params.walletDebtKd ?? '');
@@ -460,19 +492,98 @@ function buildPaymentConfirmedMessage(params: {
   }
   lines.push('');
   lines.push(`${BRAND_CUSTOMER_AR} — جودة نهتم بها.`);
-  if (params.paymentUrl) {
-    lines.push('');
-    lines.push('🔒 رابط الدفع:');
-    lines.push(params.paymentUrl);
-  }
-  if (params.ratingUrl) {
-    lines.push('');
-    lines.push('⭐ نسعد بتقييمك:');
-    lines.push(params.ratingUrl);
-  }
+  appendPaymentLinkIfAny(lines, params.paymentUrl);
+  appendRatingSectionToLines(lines, params.ratingUrl);
   lines.push('');
   lines.push(`فريق ${BRAND_CUSTOMER_AR} 🇰🇼`);
   return lines.join('\n');
+}
+
+function buildPaymentConfirmedSubscriptionMessage(params: {
+  orderLabel: string;
+  amountKd: string;
+  remainingSubscriptionBalanceKd: string;
+  ratingUrl?: string;
+  paymentUrl?: string;
+}): string {
+  const lines: string[] = [];
+  lines.push('تم تأكيد الخصم من الرصيد 💎');
+  lines.push('');
+  lines.push('شكراً لك، استلمنا طلبك وبدأنا العمل عليه.');
+  lines.push('');
+  lines.push(`📋 رقم الطلب: ${params.orderLabel}`);
+  lines.push(`💰 قيمة الفاتورة: ${params.amountKd} د.ك`);
+  lines.push(
+    `💳 *الرصيد المتبقي في اشتراككم: ${params.remainingSubscriptionBalanceKd} د.ك*`,
+  );
+  lines.push('');
+  lines.push(
+    'نعمل الآن على تجهيز ملابسك بأعلى معايير الجودة، وسيتم إخطارك فور جاهزيتها.',
+  );
+  appendPaymentLinkIfAny(lines, params.paymentUrl);
+  appendRatingSectionToLines(lines, params.ratingUrl);
+  lines.push('');
+  lines.push(`${BRAND_CUSTOMER_AR} 🇰🇼`);
+  return lines.join('\n');
+}
+
+/** دين / على الحساب — `totalDebtKd` = مديونية المحفظة بعد تسجيل الفاتورة الحالية. */
+function buildPaymentConfirmedDebtOnAccountMessage(params: {
+  orderLabel: string;
+  amountKd: string;
+  totalDebtKd: string;
+  ratingUrl?: string;
+  paymentUrl?: string;
+}): string {
+  const lines: string[] = [];
+  lines.push('تم تسجيل الطلب في حسابكم ✅');
+  lines.push('');
+  lines.push('شكراً لثقتك، تم اعتماد الفاتورة والبدء بتنفيذ الطلب.');
+  lines.push('');
+  lines.push(`📋 رقم الطلب: ${params.orderLabel}`);
+  lines.push(`💰 مبلغ الفاتورة: ${params.amountKd} د.ك`);
+  lines.push(`📌 *إجمالي المديونية الحالية: ${params.totalDebtKd} د.ك*`);
+  lines.push('');
+  lines.push(
+    'ملابسك الآن في عهدة فريقنا لتجهيزها، وسنوافيك برسالة عند الانتهاء.',
+  );
+  appendPaymentLinkIfAny(lines, params.paymentUrl);
+  appendRatingSectionToLines(lines, params.ratingUrl);
+  lines.push('');
+  lines.push(`${BRAND_CUSTOMER_AR} - جودة نهتم بها.`);
+  return lines.join('\n');
+}
+
+function buildPaymentConfirmedMessageBody(
+  params: PaymentConfirmedNotifyParams,
+): string {
+  const v = params.variant ?? 'standard';
+  if (v === 'subscription_wallet') {
+    return buildPaymentConfirmedSubscriptionMessage({
+      orderLabel: params.orderLabel,
+      amountKd: params.amountKd,
+      remainingSubscriptionBalanceKd:
+        params.remainingSubscriptionBalanceKd ?? '0.000',
+      ratingUrl: params.ratingUrl,
+      paymentUrl: params.paymentUrl,
+    });
+  }
+  if (v === 'debt_on_account') {
+    return buildPaymentConfirmedDebtOnAccountMessage({
+      orderLabel: params.orderLabel,
+      amountKd: params.amountKd,
+      totalDebtKd: params.totalDebtKd ?? '0.000',
+      ratingUrl: params.ratingUrl,
+      paymentUrl: params.paymentUrl,
+    });
+  }
+  return buildPaymentConfirmedStandardMessage({
+    amountKd: params.amountKd,
+    orderLabel: params.orderLabel,
+    paymentUrl: params.paymentUrl,
+    ratingUrl: params.ratingUrl,
+    walletDebtKd: params.walletDebtKd,
+  });
 }
 
 @Injectable()
@@ -700,13 +811,7 @@ export class CustomerNotificationsService implements OnModuleInit {
   private async deliverPaymentConfirmed(
     params: PaymentConfirmedNotifyParams,
   ): Promise<void> {
-    const message = buildPaymentConfirmedMessage({
-      amountKd: params.amountKd,
-      orderLabel: params.orderLabel,
-      paymentUrl: params.paymentUrl,
-      ratingUrl: params.ratingUrl,
-      walletDebtKd: params.walletDebtKd,
-    });
+    const message = buildPaymentConfirmedMessageBody(params);
     if (
       await this.trySendMoatmt(
         params.customerPhone,
@@ -726,9 +831,13 @@ export class CustomerNotificationsService implements OnModuleInit {
           message,
           orderId: params.orderId,
           template: 'payment_confirmed',
+          variant: params.variant ?? 'standard',
           paymentUrl: params.paymentUrl ?? null,
           ratingUrl: params.ratingUrl ?? null,
           walletDebtKd: params.walletDebtKd ?? null,
+          remainingSubscriptionBalanceKd:
+            params.remainingSubscriptionBalanceKd ?? null,
+          totalDebtKd: params.totalDebtKd ?? null,
         }),
       });
       if (!res.ok) {
