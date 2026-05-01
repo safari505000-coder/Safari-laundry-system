@@ -1095,6 +1095,7 @@ let PaymentsService = class PaymentsService {
             this.logger.warn(`finalize_rejected currency_mismatch orderId=${reference.id} currency=${currency}`);
             return { finalized: false, gatewayResult, inquiryRaw: inquiry.raw };
         }
+        this.logger.log(`about_to_finalize orderId=${reference.id} source=${source} trackId=${clean} version=${app_version_1.APP_VERSION}`);
         const finalized = await this.finalizePaidOrderFromGateway(reference.id, {
             provider: 'upayments',
             trackId: clean,
@@ -1251,6 +1252,7 @@ let PaymentsService = class PaymentsService {
         };
     }
     async finalizePaidOrderFromGateway(referenceId, gatewayMetadata) {
+        this.logger.log(`finalize_started orderId=${referenceId} version=${app_version_1.APP_VERSION}`);
         const bundle = await this.prisma.posPaymentBundle.findUnique({
             where: { id: referenceId },
             include: {
@@ -1273,6 +1275,7 @@ let PaymentsService = class PaymentsService {
         return this.finalizeSinglePaidOrderFromGateway(referenceId, gatewayMetadata);
     }
     async finalizeSinglePaidOrderFromGateway(orderId, gatewayMetadata) {
+        this.logger.log(`finalize_started orderId=${orderId} version=${app_version_1.APP_VERSION}`);
         const didFinalize = await this.prisma.$transaction(async (tx) => {
             const order = await tx.order.findUnique({
                 where: { id: orderId },
@@ -1347,6 +1350,7 @@ let PaymentsService = class PaymentsService {
                         : {}),
                 },
             });
+            this.logger.log(`finalize_claim_result orderId=${order.id} count=${claim.count} version=${app_version_1.APP_VERSION}`);
             if (claim.count === 0) {
                 this.totalDuplicates += 1;
                 this.paymentLog('duplicate_noop', {

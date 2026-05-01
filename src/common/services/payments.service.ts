@@ -1564,6 +1564,9 @@ export class PaymentsService implements OnModuleInit {
       return { finalized: false, gatewayResult, inquiryRaw: inquiry.raw };
     }
 
+    this.logger.log(
+      `about_to_finalize orderId=${reference.id} source=${source} trackId=${clean} version=${APP_VERSION}`,
+    );
     const finalized = await this.finalizePaidOrderFromGateway(reference.id, {
       provider: 'upayments',
       trackId: clean,
@@ -1750,6 +1753,7 @@ export class PaymentsService implements OnModuleInit {
     referenceId: string,
     gatewayMetadata?: Prisma.InputJsonValue,
   ): Promise<boolean> {
+    this.logger.log(`finalize_started orderId=${referenceId} version=${APP_VERSION}`);
     const bundle = await this.prisma.posPaymentBundle.findUnique({
       where: { id: referenceId },
       include: {
@@ -1778,6 +1782,7 @@ export class PaymentsService implements OnModuleInit {
     orderId: string,
     gatewayMetadata?: Prisma.InputJsonValue,
   ): Promise<boolean> {
+    this.logger.log(`finalize_started orderId=${orderId} version=${APP_VERSION}`);
     const didFinalize = await this.prisma.$transaction(
       async (tx) => {
         const order = await tx.order.findUnique({
@@ -1870,6 +1875,9 @@ export class PaymentsService implements OnModuleInit {
               : {}),
           },
         });
+        this.logger.log(
+          `finalize_claim_result orderId=${order.id} count=${claim.count} version=${APP_VERSION}`,
+        );
         if (claim.count === 0) {
           this.totalDuplicates += 1;
           this.paymentLog('duplicate_noop', {

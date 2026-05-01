@@ -423,6 +423,9 @@ document.getElementById('go').onclick = async function () {
           `UPayments callback: duplicate/no-op order already settled orderId=${order.id}`,
         );
       } else if (willFinalize) {
+        this.logger.log(
+          `about_to_finalize orderId=${order.id} source=UPAYMENTS_CALLBACK trackId=${gatewayInquiryId} version=${APP_VERSION}`,
+        );
         await this.paymentsService.finalizePaidOrderFromGateway(
           order.id,
           {
