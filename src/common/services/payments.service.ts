@@ -1443,6 +1443,16 @@ export class PaymentsService implements OnModuleInit {
       this.logger.warn(`finalize_rejected invalid_trans_id prefix=${clean.slice(0, 16)}`);
       return { finalized: false, gatewayResult: null, inquiryRaw: null };
     }
+    if (expectedOrderId && (await this.isGatewayReferencePaid(expectedOrderId))) {
+      this.totalDuplicates += 1;
+      this.paymentLog('duplicate_noop', {
+        transId: clean,
+        orderId: expectedOrderId,
+        status: 'already_paid',
+      });
+      this.logger.log(`ignored_duplicate_capture orderId=${expectedOrderId}`);
+      return { finalized: true, gatewayResult: null, inquiryRaw: null };
+    }
     const inquiry = await this.fetchGatewayStatus(clean);
     const gatewayResult = inquiry.data.result?.toString() ?? null;
     if (!inquiry.ok) {
@@ -1553,7 +1563,7 @@ export class PaymentsService implements OnModuleInit {
       return { finalized: false, gatewayResult, inquiryRaw: inquiry.raw };
     }
 
-    await this.finalizePaidOrderFromGateway(reference.id, {
+    const finalized = await this.finalizePaidOrderFromGateway(reference.id, {
       provider: 'upayments',
       trackId: clean,
       source,
@@ -1564,7 +1574,7 @@ export class PaymentsService implements OnModuleInit {
       currency: currency ?? null,
       inquiryRaw: inquiry.raw,
     } as never);
-    return { finalized: true, gatewayResult, inquiryRaw: inquiry.raw };
+    return { finalized, gatewayResult, inquiryRaw: inquiry.raw };
   }
 
   private startGatewayStatusPolling(orderId: string, transId: string): void {
@@ -1738,7 +1748,7 @@ export class PaymentsService implements OnModuleInit {
   async finalizePaidOrderFromGateway(
     referenceId: string,
     gatewayMetadata?: Prisma.InputJsonValue,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const bundle = await this.prisma.posPaymentBundle.findUnique({
       where: { id: referenceId },
       include: {
@@ -1751,19 +1761,22 @@ export class PaymentsService implements OnModuleInit {
     });
 
     if (bundle?.orders.length) {
+      let didFinalizeAny = false;
       for (const o of bundle.orders) {
-        await this.finalizeSinglePaidOrderFromGateway(o.id, gatewayMetadata);
+        didFinalizeAny =
+          (await this.finalizeSinglePaidOrderFromGateway(o.id, gatewayMetadata)) ||
+          didFinalizeAny;
       }
-      return;
+      return didFinalizeAny;
     }
 
-    await this.finalizeSinglePaidOrderFromGateway(referenceId, gatewayMetadata);
+    return this.finalizeSinglePaidOrderFromGateway(referenceId, gatewayMetadata);
   }
 
   private async finalizeSinglePaidOrderFromGateway(
     orderId: string,
     gatewayMetadata?: Prisma.InputJsonValue,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const didFinalize = await this.prisma.$transaction(
       async (tx) => {
         const order = await tx.order.findUnique({
@@ -1792,7 +1805,7 @@ export class PaymentsService implements OnModuleInit {
             orderId: order.id,
             status: 'already_paid',
           });
-          this.logger.log(`duplicate_noop orderId=${order.id}`);
+          this.logger.log(`ignored_duplicate_capture orderId=${order.id}`);
           return false;
         }
         if (order.status === OrderStatus.CANCELED) {
@@ -1863,9 +1876,10 @@ export class PaymentsService implements OnModuleInit {
             orderId: order.id,
             status: 'claim_lost',
           });
-          this.logger.log(`duplicate_noop orderId=${order.id}`);
+          this.logger.log(`ignored_duplicate_capture orderId=${order.id}`);
           return false;
         }
+        this.logger.log(`first_successful_capture orderId=${order.id}`);
 
         // V1.6.2 — every gateway-finalized order reached this point by
         // definition from the UNPAID bucket. That means EVERY row we write
@@ -1964,6 +1978,7 @@ export class PaymentsService implements OnModuleInit {
       await this.runPostPaymentSelfCheck(orderId);
       this.emitPaymentConfirmedNotify(orderId);
     }
+    return didFinalize;
   }
 
   private static readonly GATEWAY_ORDER_FRESH_MS = 72 * 3600 * 1000;
