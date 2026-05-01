@@ -122,6 +122,32 @@ let PaymentsController = PaymentsController_1 = class PaymentsController {
         this.prisma = prisma;
         this.jwt = jwt;
     }
+    async attachGatewayTrackIdToOrder(orderId, trackId) {
+        const cleanOrderId = parseSafariOrderUuid(orderId);
+        const cleanTrackId = trackId?.trim();
+        if (!cleanOrderId ||
+            !cleanTrackId ||
+            !(0, payments_service_1.isValidUpaymentsPaymentStatusInquiryId)(cleanTrackId)) {
+            return;
+        }
+        const order = await this.prisma.order.findUnique({
+            where: { id: cleanOrderId },
+            select: { posGatewayTrackId: true },
+        });
+        const existing = order?.posGatewayTrackId?.trim() ?? '';
+        if (existing === cleanTrackId) {
+            return;
+        }
+        if (existing && !/^\d{18,}$/.test(existing)) {
+            this.logger.warn(`track_id_attach_skipped orderId=${cleanOrderId} existing=${existing.slice(0, 16)} incoming=${cleanTrackId.slice(0, 16)}`);
+            return;
+        }
+        await this.prisma.order.update({
+            where: { id: cleanOrderId },
+            data: { posGatewayTrackId: cleanTrackId },
+        });
+        this.logger.log(`track_id_attached_to_order orderId=${cleanOrderId} trackId=${cleanTrackId} version=${app_version_1.APP_VERSION}`);
+    }
     async mintInvoiceShareUrlsForOrder(orderId) {
         try {
             const token = await this.jwt.signAsync({ purpose: 'INVOICE_SHARE', orderId }, { expiresIn: '7d' });
@@ -190,13 +216,13 @@ document.getElementById('go').onclick = async function () {
             }
             return { ok: true, orderId, outcome };
         }
-        const rawGatewayInquiryId = body.trans_id?.trim() ||
+        const callbackTrackId = body.track_id?.trim() || body.trackId?.trim() || body.TrackID?.trim() || '';
+        await this.attachGatewayTrackIdToOrder(extractOrderId(body), callbackTrackId);
+        const rawGatewayInquiryId = callbackTrackId ||
+            body.trans_id?.trim() ||
             body.transId?.trim() ||
             body.tran_id?.trim() ||
             body.tranId?.trim() ||
-            body.track_id?.trim() ||
-            body.trackId?.trim() ||
-            body.TrackID?.trim() ||
             '';
         let gatewayInquiryId = rawGatewayInquiryId;
         if (gatewayInquiryId &&
@@ -384,6 +410,7 @@ document.getElementById('go').onclick = async function () {
             this.logger.warn(`Ignoring invalid payment-status inquiry hint from return URL/body (len=${returnTrack.length}) order=${order.id.slice(0, 8)}…`);
             returnTrack = '';
         }
+        await this.attachGatewayTrackIdToOrder(order.id, returnTrack);
         const urlTrackFallback = extractUpaymentsInquiryIdFromHostedUrl(order.posHostedPaymentUrl);
         const gatewayResultRaw = pickGatewayReturnResultFromRequest(gatewayResultFromBody, gatewayResultQuery, req);
         let settled = Boolean(order.walletSettledAt);

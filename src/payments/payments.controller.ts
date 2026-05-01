@@ -127,6 +127,44 @@ export class PaymentsController {
     private readonly jwt: JwtService,
   ) {}
 
+  private async attachGatewayTrackIdToOrder(
+    orderId: string | null,
+    trackId: string | undefined,
+  ): Promise<void> {
+    const cleanOrderId = parseSafariOrderUuid(orderId);
+    const cleanTrackId = trackId?.trim();
+    if (
+      !cleanOrderId ||
+      !cleanTrackId ||
+      !isValidUpaymentsPaymentStatusInquiryId(cleanTrackId)
+    ) {
+      return;
+    }
+
+    const order = await this.prisma.order.findUnique({
+      where: { id: cleanOrderId },
+      select: { posGatewayTrackId: true },
+    });
+    const existing = order?.posGatewayTrackId?.trim() ?? '';
+    if (existing === cleanTrackId) {
+      return;
+    }
+    if (existing && !/^\d{18,}$/.test(existing)) {
+      this.logger.warn(
+        `track_id_attach_skipped orderId=${cleanOrderId} existing=${existing.slice(0, 16)} incoming=${cleanTrackId.slice(0, 16)}`,
+      );
+      return;
+    }
+
+    await this.prisma.order.update({
+      where: { id: cleanOrderId },
+      data: { posGatewayTrackId: cleanTrackId },
+    });
+    this.logger.log(
+      `track_id_attached_to_order orderId=${cleanOrderId} trackId=${cleanTrackId} version=${APP_VERSION}`,
+    );
+  }
+
   /**
    * V1.7.1 — Build the customer-facing invoice share URL + binary PDF URL
    * for a given `orderId`. Mirrors `OrdersService.mintInvoiceShareLink`
@@ -271,14 +309,15 @@ document.getElementById('go').onclick = async function () {
     // --- Production path: UPayments inquiry ---
     // Merchant dashboard: primary id for payment-status is often **trans_id**
     // / **tran_id**; official API docs also call the path segment `track_id`.
+    const callbackTrackId =
+      body.track_id?.trim() || body.trackId?.trim() || body.TrackID?.trim() || '';
+    await this.attachGatewayTrackIdToOrder(extractOrderId(body), callbackTrackId);
     const rawGatewayInquiryId =
+      callbackTrackId ||
       body.trans_id?.trim() ||
       body.transId?.trim() ||
       body.tran_id?.trim() ||
       body.tranId?.trim() ||
-      body.track_id?.trim() ||
-      body.trackId?.trim() ||
-      body.TrackID?.trim() ||
       '';
 
     let gatewayInquiryId = rawGatewayInquiryId;
@@ -612,6 +651,7 @@ document.getElementById('go').onclick = async function () {
       );
       returnTrack = '';
     }
+    await this.attachGatewayTrackIdToOrder(order.id, returnTrack);
     const urlTrackFallback = extractUpaymentsInquiryIdFromHostedUrl(
       order.posHostedPaymentUrl,
     );

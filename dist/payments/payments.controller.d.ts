@@ -22,6 +22,7 @@ export declare class PaymentsController {
     private readonly jwt;
     private readonly logger;
     constructor(paymentsService: PaymentsService, prisma: PrismaService, jwt: JwtService);
+    private attachGatewayTrackIdToOrder;
     private mintInvoiceShareUrlsForOrder;
     mockCheckoutPage(orderId: string | undefined, res: Response): void;
     mockCheckoutPageAlias(orderId: string | undefined, res: Response): void;

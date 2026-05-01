@@ -19,6 +19,7 @@ function makeController() {
   const prisma = {
     order: {
       findUnique: jest.fn(),
+      update: jest.fn(),
     },
   };
   const jwt = { signAsync: jest.fn() };
