@@ -79,6 +79,8 @@ enum ShiftStatus {
 enum LedgerTransactionType {
   SUBSCRIPTION_ACTIVATION
   ORDER_WALLET_SETTLEMENT
+  /** Administrative cancel before expiry — cash refunded + promo credit void (see metadata). */
+  SUBSCRIPTION_CANCELLATION
 }
 
 /**

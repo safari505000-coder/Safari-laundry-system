@@ -8,6 +8,9 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var __param = (this && this.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -26,6 +29,8 @@ const general_ledger_service_1 = require("../general-ledger/general-ledger.servi
 const finance_money_1 = require("../finance/finance-money");
 const inventory_service_1 = require("../inventory/inventory.service");
 const administrative_branch_util_1 = require("../branches/administrative-branch.util");
+const debt_customer_aggregates_util_1 = require("../finance/debt-customer-aggregates.util");
+const debt_kd_breakdown_util_1 = require("./debt-kd-breakdown.util");
 const prisma_service_1 = require("../prisma/prisma.service");
 const serial_counter_service_1 = require("../serials/serial-counter.service");
 const order_status_machine_1 = require("./order-status.machine");
@@ -772,10 +777,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
             const lastReminderMs = r.lastReminderAt?.getTime() ?? null;
             const canRemindNow = lastReminderMs === null ||
                 now - lastReminderMs >= ORDER_REMINDER_COOLDOWN_MS;
-            const ccLocked = r.ccCollectionPaymentWaLocked;
-            const isCcOnly = actor?.role === client_1.SafariRole.CALL_CENTER ||
-                actor?.role === client_1.SafariRole.CALL_CENTER_SUPERVISOR;
-            const canSendCollectionPaymentWa = canRemindNow && !(ccLocked && isCcOnly);
+            const canSendCollectionPaymentWa = canRemindNow;
             const readableId = r.serialNumber?.trim() ||
                 r.invoiceNumber?.trim() ||
                 `#${r.id.slice(-6).toUpperCase()}`;
@@ -809,7 +811,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
                     ? r.lastReminderAt.toISOString()
                     : null,
                 canRemindNow,
-                ccCollectionPaymentWaLocked: ccLocked,
+                ccCollectionPaymentWaLocked: r.ccCollectionPaymentWaLocked,
                 canSendCollectionPaymentWa,
                 branchName,
                 driverName,
@@ -864,6 +866,107 @@ let OrdersService = OrdersService_1 = class OrdersService {
             .filter((d) => openDebtOrderIds.has(d.id))
             .reduce((acc, d) => acc.plus(d.totalPrice), new client_1.Prisma.Decimal(0));
         return (unpaidAgg._sum.totalPrice ?? new client_1.Prisma.Decimal(0)).plus(debtOpenTotal);
+    }
+    isOrderInCollectionsUncollectedScope(r, debtOnAccountStillOpenIds) {
+        if (r.cashStatus === client_1.CashStatus.UNPAID)
+            return true;
+        if (r.posPaymentMethod === client_1.PosPaymentMethod.DEBT_ON_ACCOUNT &&
+            debtOnAccountStillOpenIds.has(r.id)) {
+            return true;
+        }
+        return false;
+    }
+    async getCollectionsReceivableSnapshotForCustomer(customerId, tx) {
+        const db = tx ?? this.prisma;
+        const rows = await db.order.findMany({
+            where: {
+                customerId,
+                status: { not: client_1.OrderStatus.CANCELED },
+                OR: [
+                    { cashStatus: client_1.CashStatus.UNPAID },
+                    { posPaymentMethod: client_1.PosPaymentMethod.DEBT_ON_ACCOUNT },
+                ],
+            },
+            select: {
+                id: true,
+                customerId: true,
+                totalPrice: true,
+                cashStatus: true,
+                posPaymentMethod: true,
+            },
+        });
+        const debtCandidates = rows.filter((r) => r.posPaymentMethod === client_1.PosPaymentMethod.DEBT_ON_ACCOUNT);
+        const openDebtOrderIds = await this.resolveOpenDebtOrderIds(debtCandidates.map((r) => ({
+            orderId: r.id,
+            customerId: r.customerId,
+        })), db);
+        let totalKd = new client_1.Prisma.Decimal(0);
+        const openOrderIds = new Set();
+        for (const r of rows) {
+            if (!this.isOrderInCollectionsUncollectedScope(r, openDebtOrderIds)) {
+                continue;
+            }
+            totalKd = totalKd.plus(r.totalPrice);
+            openOrderIds.add(r.id);
+        }
+        return { totalKd, openOrderIds };
+    }
+    async sumCollectionsReceivableKdForCustomer(customerId, tx) {
+        const { totalKd } = await this.getCollectionsReceivableSnapshotForCustomer(customerId, tx);
+        return totalKd;
+    }
+    async getEffectiveDebtKdBreakdown(customerId, embeddedWalletDebt, tx) {
+        const db = tx ?? this.prisma;
+        let walletDebtKd;
+        if (embeddedWalletDebt !== undefined) {
+            walletDebtKd =
+                embeddedWalletDebt ?? new client_1.Prisma.Decimal(0);
+        }
+        else {
+            const row = await db.customerWallet.findUnique({
+                where: { customerId },
+                select: { debt: true },
+            });
+            walletDebtKd = row?.debt ?? new client_1.Prisma.Decimal(0);
+        }
+        const ledgerOpen = await (0, debt_customer_aggregates_util_1.getCustomerNetDebtFromDebtLedgerAgg)(db, customerId);
+        const snapshotFromWalletKd = await (0, debt_customer_aggregates_util_1.getCustomerDebtSnapshotTotalKd)(db, customerId);
+        const collectionsSnap = await this.getCollectionsReceivableSnapshotForCustomer(customerId, tx);
+        const z = new client_1.Prisma.Decimal(0);
+        const ledgerNetKd = ledgerOpen.netOpenDebtKd;
+        const orderMarketScopeKd = walletDebtKd.plus(collectionsSnap.totalKd);
+        const effectiveDebtKd = client_1.Prisma.Decimal.max(ledgerNetKd, snapshotFromWalletKd, orderMarketScopeKd);
+        const collectionsReceivableKd = client_1.Prisma.Decimal.max(effectiveDebtKd.sub(walletDebtKd), z);
+        const unpaidIds = await db.order.findMany({
+            where: {
+                customerId,
+                status: { not: client_1.OrderStatus.CANCELED },
+                cashStatus: client_1.CashStatus.UNPAID,
+            },
+            select: { id: true },
+        });
+        const collectionsOpenOrderIds = new Set(collectionsSnap.openOrderIds);
+        for (const u of unpaidIds) {
+            collectionsOpenOrderIds.add(u.id);
+        }
+        const expose = process.env.EXPOSE_DEBT_BREAKDOWN?.trim().toLowerCase() === '1' ||
+            process.env.EXPOSE_DEBT_BREAKDOWN?.trim().toLowerCase() === 'true';
+        let trace;
+        if (expose) {
+            trace = (0, debt_kd_breakdown_util_1.buildDebtKdBreakdownTrace)(ledgerNetKd, snapshotFromWalletKd, orderMarketScopeKd, effectiveDebtKd);
+            this.log.warn(`[debtKdBreakdown] customerId=${customerId} ledger=${trace.ledgerNetKd} walletSnap=${trace.walletSnapshotKd} orderMarket=${trace.orderMarketScopeKd} effective=${trace.effectiveDebtKd} winners=[${trace.winningSources.join(',')}]`);
+        }
+        return {
+            walletDebtKd,
+            collectionsReceivableKd,
+            effectiveDebtKd,
+            collectionsOpenOrderIds,
+            trace,
+        };
+    }
+    async getCollectionsOpenOrderIdsForCustomer(customerId) {
+        const { openOrderIds } = await this.getCollectionsReceivableSnapshotForCustomer(customerId);
+        return openOrderIds;
     }
     async getUnpaidCollectionOrderRowForWhatsappText(orderId) {
         const r = await this.prisma.order.findFirst({
@@ -1085,12 +1188,12 @@ let OrdersService = OrdersService_1 = class OrdersService {
             };
         });
     }
-    async resolveOpenDebtOrderIds(candidates) {
+    async resolveOpenDebtOrderIds(candidates, db = this.prisma) {
         const openIds = new Set();
         if (candidates.length === 0)
             return openIds;
         const customerIds = Array.from(new Set(candidates.map((c) => c.customerId)));
-        const shortfallEntries = await this.prisma.debtLedgerEntry.findMany({
+        const shortfallEntries = await db.debtLedgerEntry.findMany({
             where: {
                 source: client_1.DebtSource.INVOICE_SHORTFALL,
                 customerId: { in: customerIds },
@@ -1129,7 +1232,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
         const allOrderIds = Array.from(perOrder.keys());
         if (allOrderIds.length === 0)
             return openIds;
-        const perOrderPayments = await this.prisma.debtLedgerEntry.groupBy({
+        const perOrderPayments = await db.debtLedgerEntry.groupBy({
             by: ['orderId'],
             where: {
                 source: client_1.DebtSource.PAYMENT,
@@ -1145,7 +1248,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
             if (cur && Number.isFinite(paid))
                 cur.paid = paid;
         }
-        const customerTotals = await this.prisma.debtLedgerEntry.groupBy({
+        const customerTotals = await db.debtLedgerEntry.groupBy({
             by: ['customerId', 'source'],
             where: { customerId: { in: customerIds } },
             _sum: { amount: true },
@@ -1570,6 +1673,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
 exports.OrdersService = OrdersService;
 exports.OrdersService = OrdersService = OrdersService_1 = __decorate([
     (0, common_1.Injectable)(),
+    __param(1, (0, common_1.Inject)((0, common_1.forwardRef)(() => customer_ledger_service_1.CustomerLedgerService))),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
         customer_ledger_service_1.CustomerLedgerService,
         payments_service_1.PaymentsService,

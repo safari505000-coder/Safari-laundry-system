@@ -9,13 +9,22 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ActivateSubscriptionDto = void 0;
+exports.ActivateSubscriptionDto = exports.SUBSCRIPTION_ACTIVATION_PAYMENT_METHODS = void 0;
 const swagger_1 = require("@nestjs/swagger");
+const client_1 = require("@prisma/client");
 const class_validator_1 = require("class-validator");
+exports.SUBSCRIPTION_ACTIVATION_PAYMENT_METHODS = [
+    client_1.PosPaymentMethod.CASH,
+    client_1.PosPaymentMethod.KNET,
+    client_1.PosPaymentMethod.PAYMENT_LINK,
+    client_1.PosPaymentMethod.ONLINE,
+    client_1.PosPaymentMethod.DEBT_ON_ACCOUNT,
+];
 class ActivateSubscriptionDto {
     customerId;
     planId;
     autoCloseInvoices;
+    paymentMethod;
 }
 exports.ActivateSubscriptionDto = ActivateSubscriptionDto;
 __decorate([
@@ -34,4 +43,14 @@ __decorate([
     (0, class_validator_1.IsBoolean)(),
     __metadata("design:type", Boolean)
 ], ActivateSubscriptionDto.prototype, "autoCloseInvoices", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({
+        enum: exports.SUBSCRIPTION_ACTIVATION_PAYMENT_METHODS,
+        description: 'Always required — including free (sale price = 0) plans.',
+    }),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsNotEmpty)(),
+    (0, class_validator_1.IsIn)(exports.SUBSCRIPTION_ACTIVATION_PAYMENT_METHODS),
+    __metadata("design:type", String)
+], ActivateSubscriptionDto.prototype, "paymentMethod", void 0);
 //# sourceMappingURL=activate-subscription.dto.js.map

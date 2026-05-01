@@ -40,6 +40,11 @@ export declare class DebtService {
         settledOrderCount: number;
     }>;
     getUnpaidInvoices(query: UnpaidInvoicesQueryDto): Promise<UnpaidInvoicesResponseDto>;
+    getCustomerNetDebtFromDebtLedger(customerId: string, tx?: Prisma.TransactionClient): Promise<{
+        outstandingInvoiceDebtKd: Prisma.Decimal;
+        outstandingSubscriptionDebtKd: Prisma.Decimal;
+        netOpenDebtKd: Prisma.Decimal;
+    }>;
     getLedgerOpenDebtByCategory(whereExtra?: Prisma.DebtLedgerEntryWhereInput): Promise<{
         outstandingInvoiceDebtKd: string;
         outstandingSubscriptionDebtKd: string;

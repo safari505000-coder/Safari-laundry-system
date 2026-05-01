@@ -1,10 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import {
-  CashStatus,
-  LedgerTransactionType,
-  OrderStatus,
-  Prisma,
-} from '@prisma/client';
+import { CashStatus, LedgerTransactionType, OrderStatus, Prisma } from '@prisma/client';
+import { OrdersService } from '../orders/orders.service';
+import type { DebtKdBreakdownTrace } from '../orders/debt-kd-breakdown.util';
 import { PrismaService } from '../prisma/prisma.service';
 
 type ActivationMeta = {
@@ -25,20 +22,29 @@ export type SubscriberListRow = {
   remainingDays: number | null;
   balance: string;
   /**
-   * V19.13.2 — What the subscribers table should show in "remaining balance":
-   * while the subscription window is active, same as prepaid `balance`;
-   * when **expired**, net position `balance − (wallet.debt + unsettled UNPAID
-   * receivables)` so operators see owed amounts instead of a misleading 0.
+   * Signed net wallet position vs total outstanding: `wallet.balance −
+   * effectiveDebtKd`. Positive = prepaid ahead of owed amount; negative = owes
+   * more than credit on the wallet (matches `OrdersService.getEffectiveDebtKdBreakdown`).
    */
   balanceDisplayKd: string;
   /**
-   * V19.4 — CC pack #1. Outstanding debt the customer still owes,
-   * surfaced next to `balance` so the Call-Center manage dialog can
-   * conditionally render the "Pay part of debt" card without an extra
-   * round-trip. KWD 4dp like the wallet (e.g. "2.5000"). Defaults to
-   * "0.0000" when the customer has no wallet row yet.
+   * V19.4 — CC pack #1. **Wallet ledger debt** (`CustomerWallet.debt` only).
+   * Partial debt payment caps against this field — it does NOT include
+   * UNPAID invoices that have not yet run wallet settlement (payment-link
+   * pipeline). For a single “total owed” figure see `effectiveDebtKd`.
    */
   debt: string;
+  /**
+   * Portion of `effectiveDebtKd` **not** covered by `CustomerWallet.debt`
+   * (`max(effective − wallet.debt, 0)`), matching the conversion modal split;
+   * no longer a separate collections-only filtered slice.
+   */
+  unsettledUnpaidKd: string;
+  /**
+   * Total owed: **max**(صافي أستاذ الديون، مجموع المحفظة الرسمية، محفظة+تحصيل
+   * قائمة الفواتير)؛ نفس `{@link OrdersService.getEffectiveDebtKdBreakdown}`.
+   */
+  effectiveDebtKd: string;
   rowStatus: 'active_ok' | 'active_warn' | 'expired' | 'open_credit';
   /**
    * Dastur §5 (V1.5) — days elapsed since the last activation (a.k.a.
@@ -54,6 +60,17 @@ export type SubscriberListRow = {
    * disable the button when it would be a no-op.
    */
   canRemindNow: boolean;
+  /**
+   * Σ `Order.reminderCount` across UNPAID invoices (each Collections WA link send +1).
+   */
+  collectionPaymentLinkReminderTotal: number;
+  /** Days since oldest unpaid row with a minted hosted URL; null if none. */
+  collectionPendingHostedLinkAgeDays: number | null;
+  /**
+   * فقط إذا كان السيرفر يعمل بـ `EXPOSE_DEBT_BREAKDOWN=1`: القيم الثلاث
+   * المقارَنة + من فاز بـ `effectiveDebtKd` (للتشخيص محلياً).
+   */
+  debtKdBreakdownTrace?: DebtKdBreakdownTrace;
 };
 
 function utcDayNumber(d: Date): number {
@@ -94,7 +111,10 @@ function addUtcDays(from: Date, days: number): Date {
 
 @Injectable()
 export class SubscribersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly orders: OrdersService,
+  ) {}
 
   /**
    * V19.4 — `q` is an optional needle (phone or display name). When
@@ -164,25 +184,74 @@ export class SubscribersService {
     });
 
     const customerIds = customers.map((c) => c.id);
-    const openByCustomer =
+    const customerById = new Map(customers.map((c) => [c.id, c]));
+    const debtBreakdownByCustomer =
       customerIds.length === 0 ?
-        []
-      : await this.prisma.order.groupBy({
-          by: ['customerId'],
+        new Map<
+          string,
+          Awaited<ReturnType<OrdersService['getEffectiveDebtKdBreakdown']>>
+        >()
+      : new Map(
+          await Promise.all(
+            customerIds.map(
+              async (
+                id,
+              ): Promise<
+                [
+                  string,
+                  Awaited<
+                    ReturnType<OrdersService['getEffectiveDebtKdBreakdown']>
+                  >,
+                ]
+              > => {
+                const cust = customerById.get(id);
+                const b = await this.orders.getEffectiveDebtKdBreakdown(
+                  id,
+                  cust?.wallet?.debt,
+                );
+                return [id, b];
+              },
+            ),
+          ),
+        );
+
+    const collectionLinkStats =
+      customerIds.length === 0 ?
+        new Map<string, { sumRem: number; minHostedLinkCreated: Date | null }>()
+      : await (async (): Promise<
+        Map<string, { sumRem: number; minHostedLinkCreated: Date | null }>
+      > => {
+        const stallRows = await this.prisma.order.findMany({
           where: {
             customerId: { in: customerIds },
-            cashStatus: CashStatus.UNPAID,
             status: { not: OrderStatus.CANCELED },
-            walletSettledAt: null,
+            cashStatus: CashStatus.UNPAID,
           },
-          _sum: { totalPrice: true },
+          select: {
+            customerId: true,
+            reminderCount: true,
+            createdAt: true,
+            posHostedPaymentUrl: true,
+          },
         });
-    const openReceivableByCustomer = new Map(
-      openByCustomer.map((g) => [
-        g.customerId,
-        g._sum.totalPrice ?? new Prisma.Decimal(0),
-      ]),
-    );
+        const map = new Map<
+          string,
+          { sumRem: number; minHostedLinkCreated: Date | null }
+        >();
+        for (const id of customerIds) {
+          map.set(id, { sumRem: 0, minHostedLinkCreated: null });
+        }
+        for (const o of stallRows) {
+          const agg = map.get(o.customerId);
+          if (!agg) continue;
+          agg.sumRem += o.reminderCount ?? 0;
+          if (o.posHostedPaymentUrl) {
+            const cur = agg.minHostedLinkCreated;
+            if (!cur || o.createdAt < cur) agg.minHostedLinkCreated = o.createdAt;
+          }
+        }
+        return map;
+      })();
 
     const now = Date.now();
 
@@ -215,7 +284,6 @@ export class SubscribersService {
       const w = c.wallet;
       const balanceStr = w?.balance.toString() ?? '0.0000';
       const balanceNum = Number.parseFloat(balanceStr);
-      const debtStr = w?.debt.toString() ?? '0.0000';
 
       let startDate: Date | null = w?.subscriptionActivatedAt ?? null;
       let expiryDate: Date | null = w?.subscriptionExpiresAt ?? null;
@@ -302,17 +370,21 @@ export class SubscribersService {
       const canRemindNow =
         !lastReminderAt || now - lastReminderAt.getTime() >= REMINDER_COOLDOWN_MS;
 
-      const openReceivable =
-        openReceivableByCustomer.get(c.id) ?? new Prisma.Decimal(0);
-      const debtD = w?.debt ?? new Prisma.Decimal(0);
+      const bd = debtBreakdownByCustomer.get(c.id)!;
+      const openReceivable = bd.collectionsReceivableKd;
+      const debtD = bd.walletDebtKd;
+      const totalOwedD = bd.effectiveDebtKd;
       const balanceD = w?.balance ?? new Prisma.Decimal(0);
-      const totalOwedD = debtD.add(openReceivable);
-      const useNetPosition =
-        rowStatus === 'expired' ||
-        (remainingDays !== null && remainingDays < 0);
-      const balanceDisplayKd = useNetPosition
-        ? balanceD.minus(totalOwedD).toFixed(4)
-        : balanceD.toFixed(4);
+      const balanceDisplayKd = balanceD.minus(totalOwedD).toFixed(4);
+
+      const collectionLink = collectionLinkStats.get(c.id)!;
+      const collectionPendingHostedLinkAgeDays =
+        collectionLink.minHostedLinkCreated === null ?
+          null
+        : Math.floor(
+            (now - collectionLink.minHostedLinkCreated.getTime()) /
+              (24 * 60 * 60 * 1000),
+          );
 
       rows.push({
         customerId: c.id,
@@ -325,12 +397,17 @@ export class SubscribersService {
         remainingDays,
         balance: balanceStr,
         balanceDisplayKd,
-        debt: debtStr,
+        debt: debtD.toFixed(4),
+        unsettledUnpaidKd: openReceivable.toFixed(4),
+        effectiveDebtKd: totalOwedD.toFixed(4),
         rowStatus,
         invoiceAgeDays,
         reminderCount,
         lastReminderAtIso: lastReminderAt?.toISOString() ?? null,
         canRemindNow,
+        collectionPaymentLinkReminderTotal: collectionLink.sumRem,
+        collectionPendingHostedLinkAgeDays,
+        ...(bd.trace ? { debtKdBreakdownTrace: bd.trace } : {}),
       });
     }
 

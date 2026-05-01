@@ -8,6 +8,9 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var __param = (this && this.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
 var CustomerLedgerService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CustomerLedgerService = void 0;
@@ -17,28 +20,20 @@ const cash_status_for_method_1 = require("../common/utils/cash-status-for-method
 const finance_money_1 = require("../finance/finance-money");
 const general_ledger_service_1 = require("../general-ledger/general-ledger.service");
 const inventory_service_1 = require("../inventory/inventory.service");
+const orders_service_1 = require("../orders/orders.service");
 const prisma_service_1 = require("../prisma/prisma.service");
+const activate_subscription_dto_1 = require("../call-center/dto/activate-subscription.dto");
 let CustomerLedgerService = CustomerLedgerService_1 = class CustomerLedgerService {
     prisma;
     generalLedger;
     inventory;
+    orders;
     logger = new common_1.Logger(CustomerLedgerService_1.name);
-    constructor(prisma, generalLedger, inventory) {
+    constructor(prisma, generalLedger, inventory, orders) {
         this.prisma = prisma;
         this.generalLedger = generalLedger;
         this.inventory = inventory;
-    }
-    async sumUnsettledUnpaidReceivableMinorTx(tx, customerId) {
-        const agg = await tx.order.aggregate({
-            where: {
-                customerId,
-                cashStatus: client_1.CashStatus.UNPAID,
-                status: { not: client_1.OrderStatus.CANCELED },
-                walletSettledAt: null,
-            },
-            _sum: { totalPrice: true },
-        });
-        return (0, finance_money_1.toMinorFromFixed4)(agg._sum.totalPrice ?? new client_1.Prisma.Decimal(0));
+        this.orders = orders;
     }
     async resolveFallbackOwnerIdTx(tx) {
         const owner = await tx.user.findFirst({
@@ -429,8 +424,9 @@ let CustomerLedgerService = CustomerLedgerService_1 = class CustomerLedgerServic
         const subsidyBranchId = refreshedCustomer?.originBranchId ?? actor.branchId ?? null;
         const balanceMinor = (0, finance_money_1.toMinorFromFixed4)(wallet.balance);
         const debtMinor = (0, finance_money_1.toMinorFromFixed4)(wallet.debt);
-        const implicitReceivableMinor = await this.sumUnsettledUnpaidReceivableMinorTx(tx, params.customerId);
-        const effectiveDebtMinor = debtMinor + implicitReceivableMinor;
+        const debtBreakdown = await this.orders.getEffectiveDebtKdBreakdown(params.customerId, wallet.debt, tx);
+        const implicitReceivableMinor = (0, finance_money_1.toMinorFromFixed4)(debtBreakdown.collectionsReceivableKd);
+        const effectiveDebtMinor = (0, finance_money_1.toMinorFromFixed4)(debtBreakdown.effectiveDebtKd);
         const priceMinor = (0, finance_money_1.toMinorFromFixed4)(plan.salePrice);
         const creditMinor = (0, finance_money_1.toMinorFromFixed4)(plan.actualBalance);
         if (priceMinor < 0n || creditMinor < 0n) {
@@ -439,12 +435,26 @@ let CustomerLedgerService = CustomerLedgerService_1 = class CustomerLedgerServic
         if (priceMinor === 0n && creditMinor === 0n) {
             throw new common_1.BadRequestException(`Subscription plan "${plan.name}" is misconfigured: both sale price and credit amount are 0. Ask the Owner to set them in Subscription Plans before activating.`);
         }
+        let collectionPaymentMethod;
+        if (!params.paymentMethod) {
+            throw new common_1.BadRequestException('paymentMethod is required for every subscription activation');
+        }
+        if (!activate_subscription_dto_1.SUBSCRIPTION_ACTIVATION_PAYMENT_METHODS.includes(params.paymentMethod)) {
+            throw new common_1.BadRequestException('Invalid paymentMethod for subscription activation');
+        }
+        collectionPaymentMethod = params.paymentMethod;
         const debtPaidMinor = effectiveDebtMinor < creditMinor ? effectiveDebtMinor : creditMinor;
-        const newDebtMinor = debtMinor - (debtPaidMinor < debtMinor ? debtPaidMinor : debtMinor);
+        let newDebtMinor = debtMinor - (debtPaidMinor < debtMinor ? debtPaidMinor : debtMinor);
+        const accrueSaleOnAccount = priceMinor > 0n &&
+            collectionPaymentMethod === client_1.PosPaymentMethod.DEBT_ON_ACCOUNT;
+        if (accrueSaleOnAccount) {
+            newDebtMinor += priceMinor;
+        }
         this.logger.log(`[subscription-activation] customerId=${params.customerId} planId=${params.planId} ` +
             `walletDebtMinor=${debtMinor.toString()} implicitUnpostedMinor=${implicitReceivableMinor.toString()} ` +
             `effectiveDebtMinor=${effectiveDebtMinor.toString()} planCreditMinor=${creditMinor.toString()} ` +
-            `debtPaidMinor=${debtPaidMinor.toString()} autoCloseInvoices=${params.autoCloseInvoices === true}`);
+            `debtPaidMinor=${debtPaidMinor.toString()} autoCloseInvoices=${params.autoCloseInvoices === true} ` +
+            `collectionPaymentMethod=${collectionPaymentMethod} accrueSaleOnAccount=${accrueSaleOnAccount}`);
         const rawCreditMinor = creditMinor - debtPaidMinor;
         const balanceIncreaseMinor = rawCreditMinor > 0n ? rawCreditMinor : 0n;
         const newBalanceMinor = balanceMinor + balanceIncreaseMinor;
@@ -534,10 +544,48 @@ let CustomerLedgerService = CustomerLedgerService_1 = class CustomerLedgerServic
                     carriedBalanceKd: carriedBalanceStr,
                     implicitUnpostedReceivableKd: (0, finance_money_1.minorToAmountString)(implicitReceivableMinor),
                     effectiveDebtForActivationKd: (0, finance_money_1.minorToAmountString)(effectiveDebtMinor),
+                    posPaymentMethod: collectionPaymentMethod,
+                    planSaleSettlement: accrueSaleOnAccount
+                        ? 'ACCOUNTS_RECEIVABLE'
+                        : priceMinor > 0n
+                            ? 'IMMEDIATE_COLLECTION'
+                            : 'NONE',
                 },
             },
         });
+        if (priceMinor > 0n && !accrueSaleOnAccount) {
+            await this.generalLedger.append(tx, {
+                entryType: client_1.GeneralLedgerEntryType.POS_SALE_COMPLETED,
+                amount: plan.salePrice,
+                memo: 'Subscription activation — plan sale (immediate collection)',
+                customerId: params.customerId,
+                actorUserId: params.performedByUserId,
+                metadata: {
+                    posPaymentMethod: collectionPaymentMethod,
+                    source: 'CALL_CENTER_SUBSCRIPTION_ACTIVATION',
+                    subscriptionId: newSubscription.id,
+                    planId: plan.id,
+                },
+            });
+        }
+        if (accrueSaleOnAccount && priceMinor > 0n) {
+            await this.generalLedger.append(tx, {
+                entryType: client_1.GeneralLedgerEntryType.DEBT_ADJUSTMENT,
+                amount: plan.salePrice.toString(),
+                memo: 'Subscription activation — plan sale on account (wallet debt)',
+                customerId: params.customerId,
+                actorUserId: params.performedByUserId,
+                metadata: {
+                    event: 'SUBSCRIPTION_PLAN_DEFERRED',
+                    source: 'CALL_CENTER_SUBSCRIPTION_ACTIVATION',
+                    posPaymentMethod: client_1.PosPaymentMethod.DEBT_ON_ACCOUNT,
+                    subscriptionId: newSubscription.id,
+                    planId: plan.id,
+                },
+            });
+        }
         const closedInvoiceIds = [];
+        const closedInvoiceAmountById = new Map();
         if (params.autoCloseInvoices === true && debtPaidMinor > 0n) {
             const candidates = await tx.order.findMany({
                 where: {
@@ -557,12 +605,18 @@ let CustomerLedgerService = CustomerLedgerService_1 = class CustomerLedgerServic
                     continue;
                 if (invMinor > remainingMinor)
                     continue;
-                await tx.order.update({
-                    where: { id: inv.id },
+                closedInvoiceIds.push(inv.id);
+                closedInvoiceAmountById.set(inv.id, inv.totalPrice);
+                remainingMinor -= invMinor;
+            }
+            if (closedInvoiceIds.length > 0) {
+                await tx.order.updateMany({
+                    where: {
+                        customerId: params.customerId,
+                        id: { in: closedInvoiceIds },
+                    },
                     data: { cashStatus: client_1.CashStatus.PAID_TO_DRIVER },
                 });
-                closedInvoiceIds.push(inv.id);
-                remainingMinor -= invMinor;
             }
         }
         if (debtPaidMinor > 0n) {
@@ -587,26 +641,29 @@ let CustomerLedgerService = CustomerLedgerService_1 = class CustomerLedgerServic
             const category = this.resolveDebtCategory(actor.safariRole);
             let coveredMinor = 0n;
             for (const invoiceId of closedInvoiceIds) {
-                const inv = await tx.order.findUnique({
-                    where: { id: invoiceId },
-                    select: { totalPrice: true },
-                });
-                if (!inv)
+                const amt = closedInvoiceAmountById.get(invoiceId);
+                if (!amt)
                     continue;
-                const invMinor = (0, finance_money_1.toMinorFromFixed4)(inv.totalPrice);
-                await tx.debtLedgerEntry.create({
-                    data: {
-                        customerId: params.customerId,
-                        orderId: invoiceId,
-                        source: client_1.DebtSource.PAYMENT,
-                        category,
-                        amount: inv.totalPrice,
-                        branchId: subsidyBranchId,
-                        actorUserId: params.performedByUserId,
-                        note: 'Invoice closed by subscription activation (FIFO)',
-                    },
+                coveredMinor += (0, finance_money_1.toMinorFromFixed4)(amt);
+            }
+            if (closedInvoiceIds.length > 0) {
+                await tx.debtLedgerEntry.createMany({
+                    data: closedInvoiceIds.flatMap((invoiceId) => {
+                        const amt = closedInvoiceAmountById.get(invoiceId);
+                        if (!amt)
+                            return [];
+                        return {
+                            customerId: params.customerId,
+                            orderId: invoiceId,
+                            source: client_1.DebtSource.PAYMENT,
+                            category,
+                            amount: amt,
+                            branchId: subsidyBranchId,
+                            actorUserId: params.performedByUserId,
+                            note: 'Invoice closed by subscription activation (FIFO)',
+                        };
+                    }),
                 });
-                coveredMinor += invMinor;
             }
             const residualMinor = debtPaidMinor - coveredMinor;
             if (residualMinor > 0n) {
@@ -624,7 +681,9 @@ let CustomerLedgerService = CustomerLedgerService_1 = class CustomerLedgerServic
                 });
             }
         }
-        const prepaidReconciled = await this.autoReconcileUnpaidInvoicesFromPrepaidBalanceTx(tx, params.customerId, params.performedByUserId);
+        const prepaidReconciled = params.skipPrepaidAutoReconcile
+            ? { paidOrderIds: [] }
+            : await this.autoReconcileUnpaidInvoicesFromPrepaidBalanceTx(tx, params.customerId, params.performedByUserId);
         const walletFinal = await tx.customerWallet.findUniqueOrThrow({
             where: { customerId: params.customerId },
             select: { balance: true, debt: true },
@@ -804,24 +863,61 @@ let CustomerLedgerService = CustomerLedgerService_1 = class CustomerLedgerServic
                 : 0n;
             const totalMinor = amountMinor + discountMinor;
             const debtMinor = (0, finance_money_1.toMinorFromFixed4)(wallet.debt);
+            const outstandingBreakdown = await this.orders.getEffectiveDebtKdBreakdown(params.customerId, wallet.debt, tx);
+            const ceilingMinor = (0, finance_money_1.toMinorFromFixed4)(outstandingBreakdown.effectiveDebtKd);
             if (amountMinor < 0n || discountMinor < 0n) {
                 throw new common_1.BadRequestException('Amount and discount must both be non-negative');
             }
             if (totalMinor === 0n) {
                 throw new common_1.BadRequestException('At least one of amount or discount must be greater than zero');
             }
-            if (totalMinor > debtMinor) {
-                throw new common_1.BadRequestException('Amount + discount cannot exceed current customer debt');
+            if (totalMinor > ceilingMinor) {
+                throw new common_1.BadRequestException(`Amount + discount cannot exceed total outstanding debt (${outstandingBreakdown.effectiveDebtKd.toFixed(4)} KD)`);
             }
-            const newDebtMinor = debtMinor - totalMinor;
+            const debtPaidMinor = totalMinor;
+            const walletDeductionMinor = debtPaidMinor < debtMinor ? debtPaidMinor : debtMinor;
+            const newDebtMinor = debtMinor - walletDeductionMinor;
             const amountStr = (0, finance_money_1.minorToAmountString)(amountMinor);
             const discountStr = (0, finance_money_1.minorToAmountString)(discountMinor);
             const totalStr = (0, finance_money_1.minorToAmountString)(totalMinor);
-            const newDebtStr = (0, finance_money_1.minorToAmountString)(newDebtMinor);
             await tx.customerWallet.update({
                 where: { id: wallet.id },
                 data: { debt: this.decimalFromMinor(newDebtMinor) },
             });
+            const closedInvoiceIds = [];
+            if (debtPaidMinor > 0n) {
+                const candidates = await tx.order.findMany({
+                    where: {
+                        customerId: params.customerId,
+                        cashStatus: client_1.CashStatus.UNPAID,
+                        status: { not: client_1.OrderStatus.CANCELED },
+                    },
+                    select: { id: true, totalPrice: true },
+                    orderBy: { createdAt: 'asc' },
+                });
+                let remainingMinor = debtPaidMinor;
+                for (const inv of candidates) {
+                    if (remainingMinor <= 0n)
+                        break;
+                    const invMinor = (0, finance_money_1.toMinorFromFixed4)(inv.totalPrice);
+                    if (invMinor <= 0n)
+                        continue;
+                    if (invMinor > remainingMinor)
+                        continue;
+                    await tx.order.update({
+                        where: { id: inv.id },
+                        data: { cashStatus: client_1.CashStatus.PAID_TO_DRIVER },
+                    });
+                    closedInvoiceIds.push(inv.id);
+                    remainingMinor -= invMinor;
+                }
+            }
+            const refreshedWallet = await tx.customerWallet.findUnique({
+                where: { id: wallet.id },
+                select: { debt: true },
+            });
+            const endingBreakdown = await this.orders.getEffectiveDebtKdBreakdown(params.customerId, refreshedWallet.debt, tx);
+            const newEffectiveDebtKdStr = endingBreakdown.effectiveDebtKd.toFixed(4);
             const thDebtRow = await tx.transactionHistory.create({
                 data: {
                     type: client_1.LedgerTransactionType.ORDER_WALLET_SETTLEMENT,
@@ -842,6 +938,9 @@ let CustomerLedgerService = CustomerLedgerService_1 = class CustomerLedgerServic
                         posPaymentMethod: params.paymentMethod,
                         reportingCategory: 'DEBT_COLLECTION_CC',
                         note: params.note ?? null,
+                        autoClosedInvoiceIds: closedInvoiceIds,
+                        autoClosedInvoiceCount: closedInvoiceIds.length,
+                        effectiveDebtAfterKd: newEffectiveDebtKdStr,
                     },
                 },
             });
@@ -896,20 +995,141 @@ let CustomerLedgerService = CustomerLedgerService_1 = class CustomerLedgerServic
                 amountCollectedKd: amountStr,
                 discountAppliedKd: discountStr,
                 totalReducedKd: totalStr,
-                previousDebtKd: wallet.debt.toString(),
-                newDebtKd: newDebtStr,
+                previousDebtKd: outstandingBreakdown.effectiveDebtKd.toFixed(4),
+                newDebtKd: newEffectiveDebtKdStr,
                 walletBalanceKd: wallet.balance.toString(),
                 paymentMethod: params.paymentMethod,
                 transactionHistoryId: thDebtRow.id,
             };
         }, { maxWait: 10_000, timeout: 15_000 });
     }
+    async cancelSubscriptionForCustomer(tx, params) {
+        const sub = await tx.customerSubscription.findFirst({
+            where: {
+                customerId: params.customerId,
+                status: client_1.CustomerSubscriptionStatus.ACTIVE,
+            },
+            orderBy: { activatedAt: 'desc' },
+        });
+        if (!sub) {
+            throw new common_1.BadRequestException('No active subscription found for this customer');
+        }
+        const wallet = await tx.customerWallet.findUnique({
+            where: { customerId: params.customerId },
+        });
+        if (!wallet) {
+            throw new common_1.NotFoundException('Customer wallet not found');
+        }
+        const now = new Date();
+        if (now.getTime() >= sub.expiresAt.getTime()) {
+            throw new common_1.BadRequestException('Subscription validity has already ended — use a new activation instead of cancellation');
+        }
+        const totalMs = BigInt(Math.max(1, sub.expiresAt.getTime() - sub.activatedAt.getTime()));
+        const remainingMs = BigInt(Math.max(0, sub.expiresAt.getTime() - now.getTime()));
+        const saleMinor = (0, finance_money_1.toMinorFromFixed4)(sub.planSalePriceSnapshot);
+        const creditMinor = (0, finance_money_1.toMinorFromFixed4)(sub.planActualBalanceSnapshot);
+        let subsidyMinor = creditMinor - saleMinor;
+        if (subsidyMinor < 0n)
+            subsidyMinor = 0n;
+        const giftTargetMinor = (subsidyMinor * remainingMs) / totalMs;
+        const cashTargetMinor = (saleMinor * remainingMs) / totalMs;
+        const balanceMinor = (0, finance_money_1.toMinorFromFixed4)(wallet.balance);
+        const giftRemovalMinor = giftTargetMinor < balanceMinor ? giftTargetMinor : balanceMinor;
+        const afterGiftMinor = balanceMinor - giftRemovalMinor;
+        const cashRefundMinor = cashTargetMinor < afterGiftMinor ? cashTargetMinor : afterGiftMinor;
+        const newBalanceMinor = afterGiftMinor - cashRefundMinor;
+        const giftStr = (0, finance_money_1.minorToAmountString)(giftRemovalMinor);
+        const cashStr = (0, finance_money_1.minorToAmountString)(cashRefundMinor);
+        const reductionStr = (0, finance_money_1.minorToAmountString)(giftRemovalMinor + cashRefundMinor);
+        const remainingTermFraction = Number(remainingMs) / Number(totalMs);
+        if (giftRemovalMinor > 0n) {
+            await this.generalLedger.append(tx, {
+                entryType: client_1.GeneralLedgerEntryType.DEBT_ADJUSTMENT,
+                amount: giftStr,
+                memo: 'Subscription cancellation — promotional / gift credit voided (no cash)',
+                customerId: params.customerId,
+                actorUserId: params.performedByUserId,
+                metadata: {
+                    event: 'SUBSCRIPTION_CANCEL_GIFT_VOID',
+                    subscriptionId: sub.id,
+                    voidedGiftKd: giftStr,
+                },
+            });
+        }
+        if (cashRefundMinor > 0n) {
+            await this.generalLedger.append(tx, {
+                entryType: client_1.GeneralLedgerEntryType.DEBT_ADJUSTMENT,
+                amount: `-${cashStr}`,
+                memo: 'Subscription cancellation — cash refund to customer (مسترجع / سند صرف)',
+                customerId: params.customerId,
+                actorUserId: params.performedByUserId,
+                metadata: {
+                    event: 'SUBSCRIPTION_CANCEL_CASH_REFUND',
+                    subscriptionId: sub.id,
+                    refundedCashKd: cashStr,
+                },
+            });
+        }
+        await tx.transactionHistory.create({
+            data: {
+                type: client_1.LedgerTransactionType.SUBSCRIPTION_CANCELLATION,
+                customerId: params.customerId,
+                subscriptionId: sub.id,
+                amount: this.decimalFromMinor(giftRemovalMinor + cashRefundMinor),
+                balanceBefore: wallet.balance,
+                balanceAfter: this.decimalFromMinor(newBalanceMinor),
+                debtBefore: wallet.debt,
+                debtAfter: wallet.debt,
+                performedById: params.performedByUserId,
+                metadata: {
+                    reason: params.reason && params.reason.trim().length > 0 ?
+                        params.reason.trim()
+                        : null,
+                    giftVoidedKd: giftStr,
+                    cashRefundedKd: cashStr,
+                    walletReductionKd: reductionStr,
+                    remainingTermFractionApprox: remainingTermFraction,
+                    planSalePriceSnapshot: sub.planSalePriceSnapshot.toString(),
+                    planActualBalanceSnapshot: sub.planActualBalanceSnapshot.toString(),
+                },
+            },
+        });
+        await tx.customerSubscription.update({
+            where: { id: sub.id },
+            data: {
+                status: client_1.CustomerSubscriptionStatus.CANCELLED,
+                closedAt: now,
+                closedReason: 'CANCEL_REFUND',
+            },
+        });
+        await tx.customerWallet.update({
+            where: { customerId: params.customerId },
+            data: {
+                balance: this.decimalFromMinor(newBalanceMinor),
+                subscriptionActivatedAt: null,
+                subscriptionExpiresAt: null,
+                subscriptionPlanId: null,
+                subscriptionPlanName: null,
+            },
+        });
+        return {
+            subscriptionId: sub.id,
+            refundedCashKd: cashStr,
+            voidedGiftKd: giftStr,
+            walletReductionKd: reductionStr,
+            previousBalanceKd: wallet.balance.toString(),
+            newBalanceKd: (0, finance_money_1.minorToAmountString)(newBalanceMinor),
+            remainingTermFraction,
+        };
+    }
 };
 exports.CustomerLedgerService = CustomerLedgerService;
 exports.CustomerLedgerService = CustomerLedgerService = CustomerLedgerService_1 = __decorate([
     (0, common_1.Injectable)(),
+    __param(3, (0, common_1.Inject)((0, common_1.forwardRef)(() => orders_service_1.OrdersService))),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
         general_ledger_service_1.GeneralLedgerService,
-        inventory_service_1.InventoryService])
+        inventory_service_1.InventoryService,
+        orders_service_1.OrdersService])
 ], CustomerLedgerService);
 //# sourceMappingURL=customer-ledger.service.js.map

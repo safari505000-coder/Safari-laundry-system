@@ -62,6 +62,8 @@ class CustomerLedgerHeaderDto {
     originBranchName;
     walletBalanceKd;
     walletDebtKd;
+    collectionsReceivableKd;
+    effectiveDebtKd;
 }
 exports.CustomerLedgerHeaderDto = CustomerLedgerHeaderDto;
 __decorate([
@@ -96,6 +98,14 @@ __decorate([
     (0, swagger_1.ApiProperty)({ example: '0.0000' }),
     __metadata("design:type", String)
 ], CustomerLedgerHeaderDto.prototype, "walletDebtKd", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ example: '0.0000' }),
+    __metadata("design:type", String)
+], CustomerLedgerHeaderDto.prototype, "collectionsReceivableKd", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ example: '0.0000' }),
+    __metadata("design:type", String)
+], CustomerLedgerHeaderDto.prototype, "effectiveDebtKd", void 0);
 class CustomerLedgerSubscriptionDto {
     id;
     status;
@@ -256,6 +266,7 @@ __decorate([
     (0, swagger_1.ApiProperty)({
         enum: [
             'SUBSCRIPTION_ACTIVATION',
+            'SUBSCRIPTION_CANCELLATION',
             'SUBSCRIPTION_ROLLOVER_CARRY',
             'ORDER_PAID_IN_FULL',
             'ORDER_SETTLEMENT_SUBSCRIPTION',

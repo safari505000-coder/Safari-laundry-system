@@ -12,3 +12,12 @@ export type SubscriptionActivationSettlement = {
     closedInvoiceIds: string[];
     prepaidAutoReconciledOrderIds: string[];
 };
+export type SubscriptionCancellationSettlement = {
+    subscriptionId: string;
+    refundedCashKd: string;
+    voidedGiftKd: string;
+    walletReductionKd: string;
+    previousBalanceKd: string;
+    newBalanceKd: string;
+    remainingTermFraction: number;
+};

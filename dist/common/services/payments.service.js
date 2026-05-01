@@ -978,6 +978,7 @@ let PaymentsService = class PaymentsService {
                     completedAt,
                     posPaymentMethod: client_1.PosPaymentMethod.ONLINE,
                     walletSettledAt: null,
+                    ccCollectionPaymentWaLocked: false,
                     ...(inquiryCapableTrackId
                         ? { posGatewayTrackId: inquiryCapableTrackId }
                         : {}),
@@ -1198,6 +1199,7 @@ let PaymentsService = class PaymentsService {
                     completedAt,
                     posPaymentMethod: method,
                     walletSettledAt: null,
+                    ccCollectionPaymentWaLocked: false,
                 },
             });
             const performerId = performedByUserId ??

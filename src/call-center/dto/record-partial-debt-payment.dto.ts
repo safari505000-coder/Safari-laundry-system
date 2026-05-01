@@ -33,8 +33,8 @@ export type DebtPaymentMethod = (typeof DEBT_PAYMENT_METHODS)[number];
  * rather than numbers because JS numeric types drop pennies for larger
  * amounts; the entire ledger is string-based. Validation enforces
  * non-negative values, at least one non-zero side, and a ceiling of
- * the current wallet debt (checked server-side in the service; this
- * DTO only enforces the per-field regex).
+ * total outstanding debt (`getEffectiveDebtKdBreakdown`; checked server-side;
+ * this DTO only enforces the per-field regex).
  */
 export class RecordPartialDebtPaymentDto {
   @ApiProperty({

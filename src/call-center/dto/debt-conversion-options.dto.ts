@@ -1,4 +1,19 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+
+/** Mirrors `OrdersService.getEffectiveDebtKdBreakdown` diagnostics. */
+export class DebtKdBreakdownTraceDto {
+  @ApiProperty({ example: '12.7000' }) ledgerNetKd!: string;
+  @ApiProperty({ example: '34.4500' }) walletSnapshotKd!: string;
+  @ApiProperty({ example: '34.4500' }) orderMarketScopeKd!: string;
+  @ApiProperty({ example: '34.4500' }) effectiveDebtKd!: string;
+  @ApiProperty({
+    example: ['walletSnapshot', 'orderMarket'],
+    description:
+      'Which baseline(s) matched effective (ties possible). Values: ledger | walletSnapshot | orderMarket.',
+    type: [String],
+  })
+  winningSources!: Array<'ledger' | 'walletSnapshot' | 'orderMarket'>;
+}
 
 /**
  * V19.4 — CC pack #9. Per-plan preview of what a subscription
@@ -77,6 +92,12 @@ export class DebtConversionOptionsResponseDto {
       'Convenience flag so the UI can hide the "Convert debt" CTA when the customer has no outstanding debt to convert.',
   })
   hasDebt!: boolean;
+  @ApiPropertyOptional({
+    type: DebtKdBreakdownTraceDto,
+    description:
+      'Included when server env EXPOSE_DEBT_BREAKDOWN=1 — three candidate totals + winners.',
+  })
+  debtKdBreakdownTrace?: DebtKdBreakdownTraceDto;
   @ApiProperty({ type: [DebtConversionPlanOptionDto] })
   options!: DebtConversionPlanOptionDto[];
 }

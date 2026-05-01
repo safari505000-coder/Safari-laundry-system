@@ -68,6 +68,10 @@ export class CustomerLedgerHeaderDto {
   @ApiProperty({ nullable: true }) originBranchName!: string | null;
   @ApiProperty({ example: '0.0000' }) walletBalanceKd!: string;
   @ApiProperty({ example: '0.0000' }) walletDebtKd!: string;
+  /** Σ uncollection per `/collections` (UNPAID ∪ open DEBT_ON_ACCOUNT FIFO). */
+  @ApiProperty({ example: '0.0000' }) collectionsReceivableKd!: string;
+  /** walletDebtKd + collectionsReceivableKd — same basis as subscribers / debt conversion. */
+  @ApiProperty({ example: '0.0000' }) effectiveDebtKd!: string;
 }
 
 export class CustomerLedgerSubscriptionDto {
@@ -93,6 +97,7 @@ export class CustomerLedgerSubscriptionDto {
  */
 export type CustomerLedgerEventKind =
   | 'SUBSCRIPTION_ACTIVATION'
+  | 'SUBSCRIPTION_CANCELLATION'
   | 'SUBSCRIPTION_ROLLOVER_CARRY'
   /** فاتورة سُدّت كاملة نقداً / كي نت / رابط / أونلاين (بدون خصم من رصيد الاشتراك). */
   | 'ORDER_PAID_IN_FULL'
@@ -137,6 +142,7 @@ export class CustomerLedgerEventDto {
   @ApiProperty({
     enum: [
       'SUBSCRIPTION_ACTIVATION',
+      'SUBSCRIPTION_CANCELLATION',
       'SUBSCRIPTION_ROLLOVER_CARRY',
       'ORDER_PAID_IN_FULL',
       'ORDER_SETTLEMENT_SUBSCRIPTION',

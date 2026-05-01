@@ -1,7 +1,9 @@
 import type { Request } from 'express';
+import { PosPaymentMethod } from '@prisma/client';
 import type { JwtUser } from '../auth/decorators/current-user.decorator';
 import { CallCenterService } from './call-center.service';
 import { ActivateSubscriptionDto } from './dto/activate-subscription.dto';
+import { CancelSubscriptionDto } from './dto/cancel-subscription.dto';
 import { ExtendSubscriptionDto } from './dto/extend-subscription.dto';
 import { DebtRecoveryQueryDto } from './dto/debt-recovery-report.dto';
 import { MarkOrderPaidDto } from './dto/mark-order-paid.dto';
@@ -50,8 +52,22 @@ export declare class CallCenterController {
             balance: string;
             debt: string;
         };
-        settlement: import("../customer-ledger/subscription-settlement.types").SubscriptionActivationSettlement;
+        settlement: {
+            prepaidAutoReconciledOrderIds: string[];
+            newBalance: string;
+            newDebt: string;
+            totalCollected: string;
+            debtSettled: string;
+            creditedToBalance: string;
+            previousBalance: string;
+            previousDebt: string;
+            subscriptionId: string;
+            rolledOverFromSubscriptionId: string | null;
+            carriedBalanceKd: string;
+            closedInvoiceIds: string[];
+        };
     }>;
+    cancelActiveSubscription(dto: CancelSubscriptionDto, user: JwtUser): Promise<import("../customer-ledger/subscription-settlement.types").SubscriptionCancellationSettlement>;
     extendSubscription(dto: ExtendSubscriptionDto, user: JwtUser): Promise<{
         customerId: string;
         extensionDays: number;
@@ -69,7 +85,7 @@ export declare class CallCenterController {
         orderId: string;
         alreadySettled: boolean;
         amountKd: string;
-        posPaymentMethod: import("@prisma/client").PosPaymentMethod;
+        posPaymentMethod: PosPaymentMethod;
     }>;
     markSubscriberReminderSent(customerId: string): Promise<import("./dto/reminder-result.dto").ReminderResultDto>;
     listSettlements(customerId: string): Promise<import("./dto/settlement-history-row.dto").SettlementHistoryRowDto[]>;
@@ -81,7 +97,7 @@ export declare class CallCenterController {
         previousDebtKd: string;
         newDebtKd: string;
         walletBalanceKd: string;
-        paymentMethod: import("@prisma/client").PosPaymentMethod;
+        paymentMethod: PosPaymentMethod;
         transactionHistoryId: string;
     }>;
     listCustomerSubscriptionChain(customerId: string): Promise<import("./dto/customer-subscription.dto").CustomerSubscriptionRowDto[]>;
@@ -93,5 +109,5 @@ export declare class CallCenterController {
     }>;
     getDailyCollections(q: DailyCollectionsQueryDto): Promise<import("./dto/daily-collections.dto").DailyCollectionsResponseDto>;
     getDailyCollectionsReconciliation(q: DailyCollectionsReconciliationQueryDto): Promise<import("./dto/daily-collections-reconciliation.dto").DailyCollectionsReconciliationResponseDto>;
-    getDebtConversionOptions(customerId: string): Promise<import("./dto/debt-conversion-options.dto").DebtConversionOptionsResponseDto>;
+    getDebtConversionOptions(customerId: string, raw?: string): Promise<import("./dto/debt-conversion-options.dto").DebtConversionOptionsResponseDto>;
 }

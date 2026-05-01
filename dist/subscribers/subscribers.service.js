@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.SubscribersService = void 0;
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
+const orders_service_1 = require("../orders/orders.service");
 const prisma_service_1 = require("../prisma/prisma.service");
 function utcDayNumber(d) {
     return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
@@ -34,8 +35,10 @@ function addUtcDays(from, days) {
 }
 let SubscribersService = class SubscribersService {
     prisma;
-    constructor(prisma) {
+    orders;
+    constructor(prisma, orders) {
         this.prisma = prisma;
+        this.orders = orders;
     }
     async list(q) {
         const needle = q?.trim() ?? '';
@@ -84,22 +87,47 @@ let SubscribersService = class SubscribersService {
             },
         });
         const customerIds = customers.map((c) => c.id);
-        const openByCustomer = customerIds.length === 0 ?
-            []
-            : await this.prisma.order.groupBy({
-                by: ['customerId'],
-                where: {
-                    customerId: { in: customerIds },
-                    cashStatus: client_1.CashStatus.UNPAID,
-                    status: { not: client_1.OrderStatus.CANCELED },
-                    walletSettledAt: null,
-                },
-                _sum: { totalPrice: true },
-            });
-        const openReceivableByCustomer = new Map(openByCustomer.map((g) => [
-            g.customerId,
-            g._sum.totalPrice ?? new client_1.Prisma.Decimal(0),
-        ]));
+        const customerById = new Map(customers.map((c) => [c.id, c]));
+        const debtBreakdownByCustomer = customerIds.length === 0 ?
+            new Map()
+            : new Map(await Promise.all(customerIds.map(async (id) => {
+                const cust = customerById.get(id);
+                const b = await this.orders.getEffectiveDebtKdBreakdown(id, cust?.wallet?.debt);
+                return [id, b];
+            })));
+        const collectionLinkStats = customerIds.length === 0 ?
+            new Map()
+            : await (async () => {
+                const stallRows = await this.prisma.order.findMany({
+                    where: {
+                        customerId: { in: customerIds },
+                        status: { not: client_1.OrderStatus.CANCELED },
+                        cashStatus: client_1.CashStatus.UNPAID,
+                    },
+                    select: {
+                        customerId: true,
+                        reminderCount: true,
+                        createdAt: true,
+                        posHostedPaymentUrl: true,
+                    },
+                });
+                const map = new Map();
+                for (const id of customerIds) {
+                    map.set(id, { sumRem: 0, minHostedLinkCreated: null });
+                }
+                for (const o of stallRows) {
+                    const agg = map.get(o.customerId);
+                    if (!agg)
+                        continue;
+                    agg.sumRem += o.reminderCount ?? 0;
+                    if (o.posHostedPaymentUrl) {
+                        const cur = agg.minHostedLinkCreated;
+                        if (!cur || o.createdAt < cur)
+                            agg.minHostedLinkCreated = o.createdAt;
+                    }
+                }
+                return map;
+            })();
         const now = Date.now();
         const planIds = new Set();
         for (const c of customers) {
@@ -123,7 +151,6 @@ let SubscribersService = class SubscribersService {
             const w = c.wallet;
             const balanceStr = w?.balance.toString() ?? '0.0000';
             const balanceNum = Number.parseFloat(balanceStr);
-            const debtStr = w?.debt.toString() ?? '0.0000';
             let startDate = w?.subscriptionActivatedAt ?? null;
             let expiryDate = w?.subscriptionExpiresAt ?? null;
             const rawWalletName = w?.subscriptionPlanName ?? null;
@@ -188,15 +215,17 @@ let SubscribersService = class SubscribersService {
             const lastReminderAt = w?.subscriptionLastReminderAt ?? null;
             const reminderCount = w?.subscriptionReminderCount ?? 0;
             const canRemindNow = !lastReminderAt || now - lastReminderAt.getTime() >= REMINDER_COOLDOWN_MS;
-            const openReceivable = openReceivableByCustomer.get(c.id) ?? new client_1.Prisma.Decimal(0);
-            const debtD = w?.debt ?? new client_1.Prisma.Decimal(0);
+            const bd = debtBreakdownByCustomer.get(c.id);
+            const openReceivable = bd.collectionsReceivableKd;
+            const debtD = bd.walletDebtKd;
+            const totalOwedD = bd.effectiveDebtKd;
             const balanceD = w?.balance ?? new client_1.Prisma.Decimal(0);
-            const totalOwedD = debtD.add(openReceivable);
-            const useNetPosition = rowStatus === 'expired' ||
-                (remainingDays !== null && remainingDays < 0);
-            const balanceDisplayKd = useNetPosition
-                ? balanceD.minus(totalOwedD).toFixed(4)
-                : balanceD.toFixed(4);
+            const balanceDisplayKd = balanceD.minus(totalOwedD).toFixed(4);
+            const collectionLink = collectionLinkStats.get(c.id);
+            const collectionPendingHostedLinkAgeDays = collectionLink.minHostedLinkCreated === null ?
+                null
+                : Math.floor((now - collectionLink.minHostedLinkCreated.getTime()) /
+                    (24 * 60 * 60 * 1000));
             rows.push({
                 customerId: c.id,
                 customerName,
@@ -208,12 +237,17 @@ let SubscribersService = class SubscribersService {
                 remainingDays,
                 balance: balanceStr,
                 balanceDisplayKd,
-                debt: debtStr,
+                debt: debtD.toFixed(4),
+                unsettledUnpaidKd: openReceivable.toFixed(4),
+                effectiveDebtKd: totalOwedD.toFixed(4),
                 rowStatus,
                 invoiceAgeDays,
                 reminderCount,
                 lastReminderAtIso: lastReminderAt?.toISOString() ?? null,
                 canRemindNow,
+                collectionPaymentLinkReminderTotal: collectionLink.sumRem,
+                collectionPendingHostedLinkAgeDays,
+                ...(bd.trace ? { debtKdBreakdownTrace: bd.trace } : {}),
             });
         }
         rows.sort((a, b) => {
@@ -239,6 +273,7 @@ let SubscribersService = class SubscribersService {
 exports.SubscribersService = SubscribersService;
 exports.SubscribersService = SubscribersService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [prisma_service_1.PrismaService])
+    __metadata("design:paramtypes", [prisma_service_1.PrismaService,
+        orders_service_1.OrdersService])
 ], SubscribersService);
 //# sourceMappingURL=subscribers.service.js.map

@@ -14,6 +14,7 @@ const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
 const prisma_service_1 = require("../../prisma/prisma.service");
 const subscription_service_1 = require("./subscription.service");
+const debt_customer_aggregates_util_1 = require("../debt-customer-aggregates.util");
 function orderBranchWhereForMarketDebt(branchId) {
     const b = branchId?.trim();
     if (!b)
@@ -751,6 +752,10 @@ let DebtService = class DebtService {
             },
             rows: finalRows,
         };
+    }
+    async getCustomerNetDebtFromDebtLedger(customerId, tx) {
+        const db = tx ?? this.prisma;
+        return (0, debt_customer_aggregates_util_1.getCustomerNetDebtFromDebtLedgerAgg)(db, customerId);
     }
     async getLedgerOpenDebtByCategory(whereExtra) {
         const z = new client_1.Prisma.Decimal(0);

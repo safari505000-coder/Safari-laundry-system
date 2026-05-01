@@ -10,6 +10,7 @@ exports.CustomerLedgerModule = void 0;
 const common_1 = require("@nestjs/common");
 const general_ledger_module_1 = require("../general-ledger/general-ledger.module");
 const inventory_module_1 = require("../inventory/inventory.module");
+const orders_module_1 = require("../orders/orders.module");
 const prisma_module_1 = require("../prisma/prisma.module");
 const customer_ledger_service_1 = require("./customer-ledger.service");
 const prepaid_auto_reconcile_cron_1 = require("./prepaid-auto-reconcile.cron");
@@ -18,7 +19,12 @@ let CustomerLedgerModule = class CustomerLedgerModule {
 exports.CustomerLedgerModule = CustomerLedgerModule;
 exports.CustomerLedgerModule = CustomerLedgerModule = __decorate([
     (0, common_1.Module)({
-        imports: [prisma_module_1.PrismaModule, general_ledger_module_1.GeneralLedgerModule, inventory_module_1.InventoryModule],
+        imports: [
+            prisma_module_1.PrismaModule,
+            general_ledger_module_1.GeneralLedgerModule,
+            inventory_module_1.InventoryModule,
+            (0, common_1.forwardRef)(() => orders_module_1.OrdersModule),
+        ],
         providers: [customer_ledger_service_1.CustomerLedgerService, prepaid_auto_reconcile_cron_1.PrepaidAutoReconcileCronService],
         exports: [customer_ledger_service_1.CustomerLedgerService],
     })

@@ -300,6 +300,9 @@ document.getElementById('go').onclick = async function () {
                     this.logger.log(`UPayments callback: finalize after inquiry fail done orderId=${safariOrderFromBody}`);
                 }
             }
+            if (!willFinalize && outcome === 'success') {
+                this.logger.warn(`UPayments callback: gateway outcome success but Safari order NOT finalized — invoice may remain unpaid pending manual reconcile orderId=${resolvedOrderId} trackIdPrefix=${gatewayInquiryId.slice(0, 16)}`);
+            }
             return {
                 ok: true,
                 orderId: resolvedOrderId,

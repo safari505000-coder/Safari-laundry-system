@@ -254,6 +254,11 @@ export type CustomerStatementWhatsAppArgs = {
   customerId: string;
   walletBalanceKd: string;
   walletDebtKd: string;
+  /**
+   * V19.8.11 — When set (ledger / CC), the summary line prefers this over
+   * wallet-only so WhatsApp matches subscribers / conversions.
+   */
+  effectiveDebtKd?: string;
   invoiceCount: number;
   openInvoiceCount: number;
   activeSubscription: {
@@ -289,9 +294,13 @@ export function buildCustomerStatementWhatsAppText(
           ? `📅 الفترة: حتى ${a.to}`
           : '📅 الفترة: كامل السجل';
 
+  const eff = a.effectiveDebtKd?.trim();
+  const debtLineKd =
+    eff !== undefined && eff !== '' ? eff : a.walletDebtKd;
+
   const balanceLines = [
     `💰 الرصيد الحالي: *${a.walletBalanceKd} د.ك*`,
-    `📉 المديونية الحالية: *${a.walletDebtKd} د.ك*`,
+    `📉 المديونية الحالية: *${debtLineKd} د.ك*`,
     `📄 عدد الفواتير: ${a.invoiceCount} (غير مسدّدة: ${a.openInvoiceCount})`,
   ];
 

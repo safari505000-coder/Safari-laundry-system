@@ -23,6 +23,7 @@ import {
   type CustomerLedgerInvoice,
   type CustomerLedgerResponse,
 } from '@/lib/api';
+import { parseLedgerEffectiveDebtKd } from '@/lib/customer-ledger-parse';
 import { formatKwdLabel } from '@/lib/kwd';
 import { Button } from '@/modules/shared/components/ui/button';
 import {
@@ -167,7 +168,7 @@ export function CustomerLedgerPanel({ customerId, token }: Props) {
     );
   }
 
-  const debtK = Number.parseFloat(data.customer.walletDebtKd ?? '0') || 0;
+  const debtK = parseLedgerEffectiveDebtKd(data.customer);
   const balK = Number.parseFloat(data.customer.walletBalanceKd ?? '0') || 0;
 
   return (
@@ -188,7 +189,7 @@ export function CustomerLedgerPanel({ customerId, token }: Props) {
             )}
           >
             <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
-            {t('customerLedger.walletDebt')}:{' '}
+            {t('customerLedger.effectiveTotalDebt')}:{' '}
             <span className="tabular-nums">{formatKwdLabel(debtK)}</span>
           </span>
           {data.isCutOff ? (
@@ -497,6 +498,10 @@ export function CustomerLedgerPanel({ customerId, token }: Props) {
                   Number.parseFloat(e.amountKd) < 0;
                 const Icon = isCredit ? ArrowUpCircle : ArrowDownCircle;
                 const isActivation = e.kind === 'SUBSCRIPTION_ACTIVATION';
+                const balanceAfter = Number.parseFloat(e.balanceAfterKd) || 0;
+                const debtAfter =
+                  (Number.parseFloat(e.debtAfterKd) || 0) +
+                  Math.max(-balanceAfter, 0);
                 return (
                   <li
                     key={e.id}
@@ -573,12 +578,12 @@ export function CustomerLedgerPanel({ customerId, token }: Props) {
                             <span
                               className={cn(
                                 'font-medium tabular-nums',
-                                Number.parseFloat(e.debtAfterKd) > 0
+                                debtAfter > 0
                                   ? 'text-red-700 dark:text-red-300'
                                   : 'text-foreground',
                               )}
                             >
-                              {formatKwdLabel(e.debtAfterKd)}
+                              {formatKwdLabel(debtAfter)}
                             </span>
                           </span>
                         </div>
@@ -595,6 +600,8 @@ export function CustomerLedgerPanel({ customerId, token }: Props) {
                             breakdown={e.activationBreakdown}
                             closedInvoices={e.closedInvoices}
                             fmtDate={fmtDate}
+                            balanceAfterKd={e.balanceAfterKd}
+                            debtAfterKd={e.debtAfterKd}
                           />
                         ) : null}
                         {e.performedByName ? (
@@ -754,10 +761,14 @@ function ActivationBreakdownBlock({
   breakdown,
   closedInvoices,
   fmtDate,
+  balanceAfterKd,
+  debtAfterKd,
 }: {
   breakdown: CustomerLedgerActivationBreakdown;
   closedInvoices: CustomerLedgerClosedInvoice[];
   fmtDate: Intl.DateTimeFormat;
+  balanceAfterKd: string;
+  debtAfterKd: string;
 }) {
   const { t } = useTranslation();
   const paid = Number.parseFloat(breakdown.totalCollectedKd) || 0;
@@ -766,6 +777,9 @@ function ActivationBreakdownBlock({
   const settled = Number.parseFloat(breakdown.debtSettledKd) || 0;
   const credited = Number.parseFloat(breakdown.creditedToBalanceKd) || 0;
   const carried = Number.parseFloat(breakdown.carriedBalanceKd) || 0;
+  const balanceAfter = Number.parseFloat(balanceAfterKd) || 0;
+  const debtAfter =
+    (Number.parseFloat(debtAfterKd) || 0) + Math.max(-balanceAfter, 0);
   const closedTotal = closedInvoices.reduce(
     (sum, inv) => sum + (Number.parseFloat(inv.totalKd) || 0),
     0,
@@ -809,11 +823,25 @@ function ActivationBreakdownBlock({
         ) : null}
         {carried !== 0 ? (
           <BreakdownRow
-            label={t('customerLedger.activationBreakdown.carried')}
+            label={
+              carried < 0
+                ? t('customerLedger.activationBreakdown.carriedDebt')
+                : t('customerLedger.activationBreakdown.carriedCredit')
+            }
             value={formatKwdLabel(carried)}
             tone={carried < 0 ? 'danger' : 'muted'}
           />
         ) : null}
+        <BreakdownRow
+          label={t('customerLedger.activationBreakdown.balanceAfterActivation')}
+          value={formatKwdLabel(balanceAfter)}
+          tone={balanceAfter < 0 ? 'danger' : 'success'}
+        />
+        <BreakdownRow
+          label={t('customerLedger.activationBreakdown.debtAfterActivation')}
+          value={formatKwdLabel(debtAfter)}
+          tone={debtAfter > 0 ? 'danger' : 'muted'}
+        />
       </div>
       {closedInvoices.length > 0 ? (
         <div className="mt-3 border-t border-blue-200 pt-2 dark:border-blue-900/50">

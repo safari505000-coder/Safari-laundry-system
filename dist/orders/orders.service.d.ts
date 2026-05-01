@@ -7,6 +7,7 @@ import { CustomerLedgerService } from '../customer-ledger/customer-ledger.servic
 import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
 import { InventoryService } from '../inventory/inventory.service';
 import type { JwtUser } from '../auth/decorators/current-user.decorator';
+import { type DebtKdBreakdownTrace } from './debt-kd-breakdown.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { SerialCounterService } from '../serials/serial-counter.service';
 import { AssignDriverDto } from './dto/assign-driver.dto';
@@ -148,6 +149,20 @@ export declare class OrdersService {
         }[];
     }[]>;
     sumCollectionsDebtTotalKd(branchId?: string | null, actor?: JwtUser): Promise<Prisma.Decimal>;
+    private isOrderInCollectionsUncollectedScope;
+    getCollectionsReceivableSnapshotForCustomer(customerId: string, tx?: Prisma.TransactionClient): Promise<{
+        totalKd: Prisma.Decimal;
+        openOrderIds: Set<string>;
+    }>;
+    sumCollectionsReceivableKdForCustomer(customerId: string, tx?: Prisma.TransactionClient): Promise<Prisma.Decimal>;
+    getEffectiveDebtKdBreakdown(customerId: string, embeddedWalletDebt?: Prisma.Decimal | null, tx?: Prisma.TransactionClient): Promise<{
+        walletDebtKd: Prisma.Decimal;
+        collectionsReceivableKd: Prisma.Decimal;
+        effectiveDebtKd: Prisma.Decimal;
+        collectionsOpenOrderIds: Set<string>;
+        trace?: DebtKdBreakdownTrace;
+    }>;
+    getCollectionsOpenOrderIdsForCustomer(customerId: string): Promise<Set<string>>;
     getUnpaidCollectionOrderRowForWhatsappText(orderId: string): Promise<{
         orderId: string;
         readableId: string;

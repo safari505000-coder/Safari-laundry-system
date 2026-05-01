@@ -14,8 +14,8 @@ export declare class CommissionRulesController {
         updatedAt: Date;
         isActive: boolean;
         mode: import("@prisma/client").$Enums.CommissionMode;
-        calculationBase: import("@prisma/client").$Enums.CommissionCalculationBase;
         percentage: import("@prisma/client-runtime-utils").Decimal;
+        calculationBase: import("@prisma/client").$Enums.CommissionCalculationBase;
         minInvoiceAmount: import("@prisma/client-runtime-utils").Decimal;
         payoutTiming: import("@prisma/client").$Enums.CommissionPayoutTiming;
         linkedToDebt: boolean;
@@ -28,8 +28,8 @@ export declare class CommissionRulesController {
         updatedAt: Date;
         isActive: boolean;
         mode: import("@prisma/client").$Enums.CommissionMode;
-        calculationBase: import("@prisma/client").$Enums.CommissionCalculationBase;
         percentage: import("@prisma/client-runtime-utils").Decimal;
+        calculationBase: import("@prisma/client").$Enums.CommissionCalculationBase;
         minInvoiceAmount: import("@prisma/client-runtime-utils").Decimal;
         payoutTiming: import("@prisma/client").$Enums.CommissionPayoutTiming;
         linkedToDebt: boolean;
@@ -42,8 +42,8 @@ export declare class CommissionRulesController {
         updatedAt: Date;
         isActive: boolean;
         mode: import("@prisma/client").$Enums.CommissionMode;
-        calculationBase: import("@prisma/client").$Enums.CommissionCalculationBase;
         percentage: import("@prisma/client-runtime-utils").Decimal;
+        calculationBase: import("@prisma/client").$Enums.CommissionCalculationBase;
         minInvoiceAmount: import("@prisma/client-runtime-utils").Decimal;
         payoutTiming: import("@prisma/client").$Enums.CommissionPayoutTiming;
         linkedToDebt: boolean;
@@ -56,8 +56,8 @@ export declare class CommissionRulesController {
         updatedAt: Date;
         isActive: boolean;
         mode: import("@prisma/client").$Enums.CommissionMode;
-        calculationBase: import("@prisma/client").$Enums.CommissionCalculationBase;
         percentage: import("@prisma/client-runtime-utils").Decimal;
+        calculationBase: import("@prisma/client").$Enums.CommissionCalculationBase;
         minInvoiceAmount: import("@prisma/client-runtime-utils").Decimal;
         payoutTiming: import("@prisma/client").$Enums.CommissionPayoutTiming;
         linkedToDebt: boolean;
@@ -70,8 +70,8 @@ export declare class CommissionRulesController {
         updatedAt: Date;
         isActive: boolean;
         mode: import("@prisma/client").$Enums.CommissionMode;
-        calculationBase: import("@prisma/client").$Enums.CommissionCalculationBase;
         percentage: import("@prisma/client-runtime-utils").Decimal;
+        calculationBase: import("@prisma/client").$Enums.CommissionCalculationBase;
         minInvoiceAmount: import("@prisma/client-runtime-utils").Decimal;
         payoutTiming: import("@prisma/client").$Enums.CommissionPayoutTiming;
         linkedToDebt: boolean;
@@ -84,8 +84,8 @@ export declare class CommissionRulesController {
         updatedAt: Date;
         isActive: boolean;
         mode: import("@prisma/client").$Enums.CommissionMode;
-        calculationBase: import("@prisma/client").$Enums.CommissionCalculationBase;
         percentage: import("@prisma/client-runtime-utils").Decimal;
+        calculationBase: import("@prisma/client").$Enums.CommissionCalculationBase;
         minInvoiceAmount: import("@prisma/client-runtime-utils").Decimal;
         payoutTiming: import("@prisma/client").$Enums.CommissionPayoutTiming;
         linkedToDebt: boolean;
@@ -98,8 +98,8 @@ export declare class CommissionRulesController {
         updatedAt: Date;
         isActive: boolean;
         mode: import("@prisma/client").$Enums.CommissionMode;
-        calculationBase: import("@prisma/client").$Enums.CommissionCalculationBase;
         percentage: import("@prisma/client-runtime-utils").Decimal;
+        calculationBase: import("@prisma/client").$Enums.CommissionCalculationBase;
         minInvoiceAmount: import("@prisma/client-runtime-utils").Decimal;
         payoutTiming: import("@prisma/client").$Enums.CommissionPayoutTiming;
         linkedToDebt: boolean;

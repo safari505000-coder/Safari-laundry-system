@@ -423,10 +423,15 @@ export const ar = {
     emptySearch: 'لا نتائج مطابقة لعملية البحث.',
     refresh: 'تحديث',
     searchPlaceholder: 'ابحث برقم الهاتف أو اسم العميل…',
+    /** عند تقييد الجدول على فواتير عميل واحد — يفسّر الفرق مع المشتركين. */
+    singleCustomerDebtAlignmentHint:
+      'مجموع «المبلغ» هنا لفواتيل {{name}} ({{invoicesTotal}}) يشمل فقط ما ظهر على شكل طلب؛ أما «إجمالي المديونية» في المشتركين فيجمِّع ذلك مع أي دين على محفظة الاشتراك.',
+    openSubscribersForTotal:
+      'فتح قائمة المشتركين لعرض الإجمالي المعتمد',
     opsDashboardAria: 'مؤشرات مركز الاتصال',
     kpiMarketDebtLabel: 'إجمالي الديون السوقية',
     kpiMarketDebtSub:
-      'يُطابق مجموع عمود «المبلغ» للصفوف الظاهرة (بدون حقل البحث): الطلبات غير المحصَّلة وفواتير «على الحساب» طالما ظل جزء من ذمّتها مفتوحاً وفق آلية المحاسبة. مختلف عن مجموع اشتراك/محفظة عميل في السطر الذي تحته إن وُجد.',
+      'مجموع مبالغ فواتيلا الجدول (غير المحصَّلة وفق شروط التحصيل). لا يُضاف إليه دين اشتراك مُجمَّع على محفظة العميل ولا يظهر على شكل فاتورة؛ ذلك الأخير يظهر في عمود «إجمالي المديونية» ضمن قائمة المشتركين.',
     kpiCollectedTodayLabel: 'المحصَّل اليوم',
     kpiCollectedTodaySub: 'مديونيات تم تحصيلها اليوم عبر كل وسائل الدفع',
     kpiPendingLinksLabel: 'روابط دفع معلّقة',
@@ -1713,7 +1718,8 @@ export const ar = {
     debtPayTotalReduction: 'إجمالي التخفيض',
     debtPayRemaining: 'المتبقي بعد الدفع',
     debtPayCurrentDebt: 'المديونية الحالية',
-    debtPayOverCap: 'المبلغ + الخصم لا يمكن أن يتجاوز المديونية الحالية.',
+    debtPayOverCap:
+      'المبلغ + الخصم لا يمكن أن يتجاوز إجمالي المديونية المعروض.',
     debtPaySubmit: 'تسجيل الدفع',
     debtPaySubmitting: 'جارٍ التسجيل…',
     debtPaySuccess:
@@ -1731,9 +1737,21 @@ export const ar = {
     colPlan: 'نوع الاشتراك',
     colStart: 'تاريخ البدء',
     colExpiry: 'تاريخ الانتهاء',
+    /** رأس عمود الجدول المدمج (بدء + انتهاء). */
+    colPeriod: 'بدء / انتهاء',
     colRemaining: 'الأيام المتبقية',
-    colBalance:
-      'الرصيد المتبقي (بعد انتهاء الاشتراك: صافٍ مقابل المديونية والفواتير المعلقة)',
+    colBalance: 'صافي الرصيد',
+    /** تلميح لعامود القائمة (العنوان المختصر هو `colBalance`). */
+    colBalanceHint:
+      'رصيد المحفظة ناقص إجمالي المديونية الفعّالة؛ سالب إذا تجاوز الدين الرصيد.',
+    /** مطابق لتحويل المديونية وباقي النظام المحاسبي. */
+    colTotalOwed: 'إجمالي المديونية',
+    colTotalOwedHint:
+      'دين المحفظة + فواتير التحصيل غير المسواة — نفس أساس «تحويل المديونية».',
+    colDebtReminderTally: 'مرات التذكير',
+    colDebtStaleDays: 'الأيام',
+    /** رأس عمود الجدول المدمج (تذكير + عمر رابط الدفع). */
+    colDebtFollowUp: 'تذكير / عمر',
     empty: 'لا يوجد مشتركون مطابقون بعد.',
     emptySearch: 'لا توجد نتائج مطابقة لعملية البحث.',
     loading: 'جارٍ التحميل…',
@@ -1754,6 +1772,9 @@ export const ar = {
     issuePlanPlaceholder: 'اختر باقة مفعّلة',
     issuePlanHint:
       'الباقة تعرض: السعر المدفوع ← الرصيد الفعلي المُضاف بعد تسوية الديون.',
+    activationPaymentMethodLabel: 'وسيلة قبض سعر الباقة',
+    activationPaymentMethodHint:
+      'كاش أو كي‌نت أو إلكتروني أو رابط دفع: يُسجَّل سعر الباقة كمبيعة/تحصيل فوري في الدفاتر ولا يُضاف إلى دين المحفظة. أما «على الحساب» فيُرحَّل سعر الباقة إلى المديونية حسب اختيارك.',
     issueCancel: 'إلغاء',
     issueSubmit: 'إصدار الاشتراك',
     issueSuccess: 'تم إصدار الاشتراك وتحديث المحفظة',
@@ -1788,10 +1809,9 @@ export const ar = {
     manageUpgradeHint: 'انتقال العميل إلى فئة/باقة مختلفة.',
     managePayDebtTitle: 'تسديد جزء من المديونية',
     managePayDebtHint:
-      'المديونية الحالية: {{debt}}. سجّل دفعة جزئية مع خصم اختياري.',
+      'المبلغ المطلوب حتى آخر مستحق: {{debt}} — يمكن التسديد الجزئي أو الخصم حتى هذا الإجمالي.',
     manageConvertDebtTitle: 'تحويل المديونية إلى اشتراك',
-    manageConvertDebtHint:
-      'المديونية الحالية: {{debt}}. استعرض الخطط التي تطفئ المديونية عند التفعيل.',
+    manageConvertDebtHint: 'إجمالي المديونية: {{effectiveDebt}}.',
     manageStatementTitle: 'كشف حساب العميل',
     manageStatementHint:
       'كل ما حصل مع العميل: المحفظة، الاشتراك، الفواتير، المعاملات الزمنية، مع إمكانية عرض صورة كل فاتورة.',
@@ -1821,6 +1841,13 @@ export const ar = {
     convertDebtSuccess:
       'تم تفعيل الخطة {{plan}}: سُدِّد {{cleared}} من المديونية، والمتبقي {{remaining}}.',
     manageClose: 'إغلاق',
+    manageCancelSubscriptionTitle: 'إلغاء الاشتراك والاسترداد',
+    manageCancelSubscriptionHint:
+      'متبقي مدة الاستحقاق: استرداد نقدي نسبي من المدفوع فقط، وإلغاء رصيد الهدية/الترويج من المحفظة دون صرف نقد — مع قيود في السجل والدفاتر.',
+    manageCancelSubscriptionDisabled: 'لا اشتراك نشط أو انتهى الأجل.',
+    cancelSubscriptionConfirm:
+      'تأكيد إلغاء الاشتراك؟ يُحسب الاسترداد وفق المتبقي من المدة، ولا يُصرف نقد لرصيد العروض/الهدايا.',
+    cancelSubscriptionSuccess: 'تم إلغاء الاشتراك وتوثيق الاسترداد/إلغاء الهدية.',
     debtPayTitle: 'تسديد جزء من المديونية',
     debtPayHint:
       'على {{name}} مديونية {{debt}}. أدخل المبلغ المُحصَّل وخصماً اختيارياً كهدية.',
@@ -1836,7 +1863,8 @@ export const ar = {
     debtPayTotalReduction: 'إجمالي التخفيض',
     debtPayRemaining: 'المتبقي',
     debtPayCurrentDebt: 'المديونية الحالية',
-    debtPayOverCap: 'المبلغ + الخصم لا يمكن أن يتجاوز المديونية الحالية.',
+    debtPayOverCap:
+      'المبلغ + الخصم لا يمكن أن يتجاوز إجمالي المديونية المعروض.',
     debtPaySubmit: 'تسجيل الدفع',
     debtPaySubmitting: 'جارٍ التسجيل…',
     debtPaySuccess:
@@ -1963,6 +1991,7 @@ export const ar = {
     printStatement: 'طباعة كشف حساب',
     walletBalance: 'الرصيد',
     walletDebt: 'المديونية',
+    effectiveTotalDebt: 'إجمالي المديونية',
     feedbackTitle: 'تقييمات العميل',
     feedbackAverage: 'متوسط {{rating}} / 5 — {{count}} طلب',
     feedbackNone: 'لا توجد تقييمات مُرسلة بعد (تظهر هنا بعد التقييم عبر رابط الرسالة أو QR).',
@@ -2035,6 +2064,7 @@ export const ar = {
     },
     kind: {
       SUBSCRIPTION_ACTIVATION: 'تجديد أو تفعيل اشتراك',
+      SUBSCRIPTION_CANCELLATION: 'إلغاء اشتراك (استرداد / إبطال رصيد ترويجي)',
       SUBSCRIPTION_ROLLOVER_CARRY: 'ترحيل رصيد اشتراك',
       ORDER_PAID_IN_FULL: 'فاتورة مدفوعة',
       ORDER_SETTLEMENT_SUBSCRIPTION: 'تسوية فاتورة (من رصيد الاشتراك)',
@@ -2050,6 +2080,10 @@ export const ar = {
       debtSettled: 'خُصم من المديونية السابقة',
       credited: 'أُضيف لرصيد المحفظة',
       carried: 'رصيد مرحّل من الاشتراك السابق',
+      carriedCredit: 'رصيد مرحّل قبل التفعيل',
+      carriedDebt: 'دين مرحّل قبل التفعيل',
+      balanceAfterActivation: 'الرصيد بعد التفعيل',
+      debtAfterActivation: 'المديونية بعد التفعيل',
       closedInvoicesTitle: 'فواتير سابقة تم سدادها تلقائياً ({{count}})',
       closedInvoicesTotal: 'إجمالي الفواتير المسدّدة',
       debtSettledNoInvoices:

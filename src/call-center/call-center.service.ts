@@ -17,6 +17,7 @@ import {
 import type { JwtUser } from '../auth/decorators/current-user.decorator';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
+import { logServerError } from '../common/filters/prisma-exception.util';
 import { CustomerLedgerService } from '../customer-ledger/customer-ledger.service';
 import { PaymentsService } from '../common/services/payments.service';
 import { CustomerNotificationsService } from '../customer-notifications/customer-notifications.service';
@@ -26,6 +27,7 @@ import { resolveCustomerPhoneForNotify } from '../common/validation/kuwait-custo
 import { buildCollectionsPaymentLinkTextAr } from './collections-whatsapp-text';
 import type { SendPaymentLinkWhatsappResultDto } from './dto/send-payment-link-whatsapp.dto';
 import { ActivateSubscriptionDto } from './dto/activate-subscription.dto';
+import { CancelSubscriptionDto } from './dto/cancel-subscription.dto';
 import { ExtendSubscriptionDto } from './dto/extend-subscription.dto';
 import type { SettlementHistoryRowDto } from './dto/settlement-history-row.dto';
 import type { CallCenterOperationsSummaryDto } from './dto/operations-summary.dto';
@@ -64,11 +66,19 @@ import type {
   ReconciliationStatus,
 } from './dto/daily-collections-reconciliation.dto';
 
-/** Block only call-center agents when the field already WhatsApp'd the payment link. */
+/** Block call-center duplicate WA only inside the 2.5h cooldown when the field already notified. */
 function assertCallCenterMaySendCollectionPaymentWa(
   ccCollectionPaymentWaLocked: boolean,
   actor: JwtUser,
+  lastReminderAt: Date | null,
+  now: Date,
 ): void {
+  const cooldownElapsed =
+    lastReminderAt === null ||
+    now.getTime() - lastReminderAt.getTime() >= ORDER_REMINDER_COOLDOWN_MS;
+  if (cooldownElapsed) {
+    return;
+  }
   if (
     !ccCollectionPaymentWaLocked ||
     (actor.role !== SafariRole.CALL_CENTER &&
@@ -600,11 +610,13 @@ export class CallCenterService {
     await this.assertOrderInCollectionScope(orderId, actor);
     const lockRow = await this.prisma.order.findUnique({
       where: { id: orderId },
-      select: { ccCollectionPaymentWaLocked: true },
+      select: { ccCollectionPaymentWaLocked: true, lastReminderAt: true },
     });
     assertCallCenterMaySendCollectionPaymentWa(
       lockRow?.ccCollectionPaymentWaLocked ?? false,
       actor,
+      lockRow?.lastReminderAt ?? null,
+      new Date(),
     );
     const link = await this.payments.ensurePaymentLinkForUnpaidOrder(orderId);
     const reminder = await this.sendOrderReminder(orderId, actor);
@@ -711,40 +723,36 @@ export class CallCenterService {
   }
 
   async activateSubscription(userId: string, dto: ActivateSubscriptionDto) {
-    // V19.7.1 — lift Prisma's default 5 s transaction budget. The
-    // `activateSubscriptionPlan` flow performs ~12 sequential DB calls
-    // (wallet resolve, branch origin, per-subscription ledger close +
-    // open, wallet update, TH insert, GL append) followed by 3 post-
-    // commit lookups here. On a warm DB the chain is ~300 ms, but with
-    // connection pool contention or cold caches it crosses 5 s and
-    // Prisma aborts with P2028. Aligns with the 10/15 s budget already
-    // used by Orders and Payments for the same 3-table atomic write.
-    return this.prisma.$transaction(
+    // Prepaid FIFO auto-reconcile at the tail of activation can dominate wall-
+    // clock (many UNPAID orders × remote latency) and pushes Prisma interactive
+    // transactions past interactive timeout (P2028). Run reconcile in its own
+    // transaction (`runPrepaidAutoReconcileForCustomer`) after activation commits.
+    const core = await this.prisma.$transaction(
       async (tx) => {
         const settlement = await this.customerLedger.activateSubscriptionPlan(tx, {
           customerId: dto.customerId,
           planId: dto.planId,
           performedByUserId: userId,
           autoCloseInvoices: dto.autoCloseInvoices === true,
+          paymentMethod: dto.paymentMethod,
+          skipPrepaidAutoReconcile: true,
         });
-        const [customer, plan, wallet] = await Promise.all([
-          tx.customer.findUniqueOrThrow({
-            where: { id: dto.customerId },
-            select: {
-              id: true,
-              phone: true,
-              phone2: true,
-              address: true,
-              displayName: true,
-            },
-          }),
-          tx.subscriptionPlan.findUniqueOrThrow({
-            where: { id: dto.planId },
-          }),
-          tx.customerWallet.findUniqueOrThrow({
-            where: { customerId: dto.customerId },
-          }),
-        ]);
+        const customer = await tx.customer.findUniqueOrThrow({
+          where: { id: dto.customerId },
+          select: {
+            id: true,
+            phone: true,
+            phone2: true,
+            address: true,
+            displayName: true,
+          },
+        });
+        const plan = await tx.subscriptionPlan.findUniqueOrThrow({
+          where: { id: dto.planId },
+        });
+        const wallet = await tx.customerWallet.findUniqueOrThrow({
+          where: { customerId: dto.customerId },
+        });
         return {
           customer,
           plan: {
@@ -760,6 +768,59 @@ export class CallCenterService {
           settlement,
         };
       },
+      { maxWait: 20_000, timeout: 90_000 },
+    );
+
+    let prepaidAutoReconciledOrderIds: string[] = [];
+    try {
+      const reconcile =
+        await this.customerLedger.runPrepaidAutoReconcileForCustomer(
+          dto.customerId,
+          userId,
+        );
+      prepaidAutoReconciledOrderIds = reconcile.paidOrderIds;
+    } catch (e) {
+      // Activation committed; reconcile is best-effort follow-up — log server-side only.
+      logServerError('activateSubscription.runPrepaidAutoReconcile', e);
+    }
+
+    const walletFinal = await this.prisma.customerWallet.findUniqueOrThrow({
+      where: { customerId: dto.customerId },
+      select: { balance: true, debt: true },
+    });
+
+    return {
+      customer: core.customer,
+      plan: core.plan,
+      wallet: {
+        balance: walletFinal.balance.toString(),
+        debt: walletFinal.debt.toString(),
+      },
+      settlement: {
+        ...core.settlement,
+        prepaidAutoReconciledOrderIds,
+        newBalance: walletFinal.balance.toString(),
+        newDebt: walletFinal.debt.toString(),
+      },
+    };
+  }
+
+  /**
+   * Early subscription cancellation: time-proportional separation of paid
+   * (cash-refund leg) vs promotional credit (voided, never paid as cash).
+   * See `{@link CustomerLedgerService.cancelSubscriptionForCustomer}`.
+   */
+  async cancelActiveSubscription(
+    userId: string,
+    dto: CancelSubscriptionDto,
+  ) {
+    return this.prisma.$transaction(
+      async (tx) =>
+        this.customerLedger.cancelSubscriptionForCustomer(tx, {
+          customerId: dto.customerId,
+          performedByUserId: userId,
+          reason: dto.reason?.trim() || null,
+        }),
       { maxWait: 10_000, timeout: 15_000 },
     );
   }
@@ -934,11 +995,13 @@ export class CallCenterService {
     await this.assertOrderInCollectionScope(orderId, actor);
     const lockRow = await this.prisma.order.findUnique({
       where: { id: orderId },
-      select: { ccCollectionPaymentWaLocked: true },
+      select: { ccCollectionPaymentWaLocked: true, lastReminderAt: true },
     });
     assertCallCenterMaySendCollectionPaymentWa(
       lockRow?.ccCollectionPaymentWaLocked ?? false,
       actor,
+      lockRow?.lastReminderAt ?? null,
+      new Date(),
     );
     const now = new Date();
     // V1.6.8 — Collections recall window is 2.5 h (9_000_000 ms).
@@ -1758,6 +1821,12 @@ export class CallCenterService {
       }
     }
 
+    const collectionsDebtBasis =
+      await this.orders.getEffectiveDebtKdBreakdown(
+        customerId,
+        customer.wallet?.debt,
+      );
+
     const mappedEvents: CustomerLedgerEventDto[] = events.map((e) => {
       const rawMethod =
         readMetaString(e.metadata, 'posPaymentMethod') ??
@@ -1772,6 +1841,10 @@ export class CallCenterService {
       let kind: CustomerLedgerEventKind;
       if (e.type === LedgerTransactionType.SUBSCRIPTION_ACTIVATION) {
         kind = 'SUBSCRIPTION_ACTIVATION';
+      } else if (
+        e.type === LedgerTransactionType.SUBSCRIPTION_CANCELLATION
+      ) {
+        kind = 'SUBSCRIPTION_CANCELLATION';
       } else if (isPartialDebtPaymentRow(e.metadata)) {
         kind = 'PARTIAL_DEBT_PAYMENT';
       } else if (e.orderId) {
@@ -1875,9 +1948,7 @@ export class CallCenterService {
     });
 
     const mappedInvoices: CustomerLedgerInvoiceDto[] = invoices.map((o) => {
-      const openDebt =
-        o.status !== OrderStatus.CANCELED &&
-        o.cashStatus === CashStatus.UNPAID;
+      const openDebt = collectionsDebtBasis.collectionsOpenOrderIds.has(o.id);
       const fr = feedbackByOrderId.get(o.id);
       return {
         id: o.id,
@@ -1922,7 +1993,11 @@ export class CallCenterService {
         walletBalanceKd: FOUR_DP(
           customer.wallet?.balance ?? new Prisma.Decimal(0),
         ),
-        walletDebtKd: FOUR_DP(customer.wallet?.debt ?? new Prisma.Decimal(0)),
+        walletDebtKd: FOUR_DP(collectionsDebtBasis.walletDebtKd),
+        collectionsReceivableKd: FOUR_DP(
+          collectionsDebtBasis.collectionsReceivableKd,
+        ),
+        effectiveDebtKd: FOUR_DP(collectionsDebtBasis.effectiveDebtKd),
       },
       activeSubscription:
         latestSub && latestSub.status === CustomerSubscriptionStatus.ACTIVE
@@ -2359,8 +2434,9 @@ export class CallCenterService {
    * would do to a customer's debt + wallet if activated right now.
    *
    * The arithmetic here MUST stay byte-identical to the atomic
-   * `CustomerLedgerService.activateSubscriptionPlan` flow, otherwise
-   * the preview and the committed result will disagree and the agent
+   * `CustomerLedgerService.activateSubscriptionPlan` flow AND to
+   * `OrdersService.getEffectiveDebtKdBreakdown` / the subscribers list totals;
+   * otherwise the preview and the committed result will disagree and the agent
    * will lose trust. That's why we re-derive from the same inputs:
    *   effectiveDebt = wallet.debt + Σ(UNPAID, unsettled order totals)
    *   debtToSettle = min(effectiveDebt, planActualBalance)
@@ -2372,6 +2448,8 @@ export class CallCenterService {
    */
   async getDebtConversionOptions(
     customerId: string,
+    /** When set, cashRequired / remainingDebt mirror `{@link CustomerLedgerService.activateSubscriptionPlan}` for that settlement mode. */
+    paymentMethodHint?: PosPaymentMethod,
   ): Promise<DebtConversionOptionsResponseDto> {
     const customer = await this.prisma.customer.findUnique({
       where: { id: customerId },
@@ -2398,18 +2476,14 @@ export class CallCenterService {
 
     const currentBalance =
       customer.wallet?.balance ?? new Prisma.Decimal(0);
-    const walletDebt = customer.wallet?.debt ?? new Prisma.Decimal(0);
-    const implicitAgg = await this.prisma.order.aggregate({
-      where: {
-        customerId,
-        cashStatus: CashStatus.UNPAID,
-        status: { not: OrderStatus.CANCELED },
-        walletSettledAt: null,
-      },
-      _sum: { totalPrice: true },
-    });
-    const implicitDebt = implicitAgg._sum.totalPrice ?? new Prisma.Decimal(0);
-    const effectiveCurrentDebt = walletDebt.plus(implicitDebt);
+
+    const debtBreakdown = await this.orders.getEffectiveDebtKdBreakdown(
+      customerId,
+      customer.wallet?.debt,
+    );
+    const walletDebt = debtBreakdown.walletDebtKd;
+    const implicitDebt = debtBreakdown.collectionsReceivableKd;
+    const effectiveCurrentDebt = debtBreakdown.effectiveDebtKd;
     const zero = new Prisma.Decimal(0);
 
     const options: DebtConversionPlanOptionDto[] = plans.map((p) => {
@@ -2425,6 +2499,15 @@ export class CallCenterService {
       const remainingLedger = walletDebt.minus(ledgerPaid);
       const remainingImplicit = implicitDebt.minus(implicitPaid);
       const remainingTotal = remainingLedger.plus(remainingImplicit);
+
+      /** Matches `activateSubscriptionPlan`: sale price accrued when `DEBT_ON_ACCOUNT`. */
+      const pm = paymentMethodHint ?? PosPaymentMethod.CASH;
+      const accrualOnAccount =
+        pm === PosPaymentMethod.DEBT_ON_ACCOUNT && p.salePrice.gt(0)
+          ? p.salePrice
+          : zero;
+      const displayedRemainingDebt = remainingTotal.plus(accrualOnAccount);
+
       const rawCredit = p.actualBalance.minus(debtToSettle);
       const creditedToBalance = rawCredit.gt(0) ? rawCredit : zero;
       const projectedBalance = currentBalance.plus(creditedToBalance);
@@ -2434,22 +2517,27 @@ export class CallCenterService {
 
       const convertsDebt = debtToSettle.gt(0);
       const clearsAllDebt =
-        effectiveCurrentDebt.gt(0) && remainingTotal.lte(0);
+        effectiveCurrentDebt.gt(0) && displayedRemainingDebt.lte(0);
       const recommended =
         effectiveCurrentDebt.gt(0) &&
         p.actualBalance.gte(effectiveCurrentDebt);
+
+      const cashRequired =
+        pm === PosPaymentMethod.DEBT_ON_ACCOUNT ? zero : p.salePrice;
+
+      const projectedLedgerDebtDisplay = remainingLedger.plus(accrualOnAccount);
 
       return {
         planId: p.id,
         planName: p.name,
         planValidityDays: p.validityDays,
-        cashRequiredKd: FOUR_DP(p.salePrice),
+        cashRequiredKd: FOUR_DP(cashRequired),
         planActualBalanceKd: FOUR_DP(p.actualBalance),
         debtToSettleKd: FOUR_DP(debtToSettle),
-        remainingDebtKd: FOUR_DP(remainingTotal),
+        remainingDebtKd: FOUR_DP(displayedRemainingDebt),
         creditedToBalanceKd: FOUR_DP(creditedToBalance),
         projectedWalletBalanceKd: FOUR_DP(projectedBalance),
-        projectedWalletDebtKd: FOUR_DP(remainingLedger),
+        projectedWalletDebtKd: FOUR_DP(projectedLedgerDebtDisplay),
         subsidyKd: FOUR_DP(subsidy),
         convertsDebt,
         clearsAllDebt,
@@ -2462,6 +2550,9 @@ export class CallCenterService {
       currentDebtKd: FOUR_DP(effectiveCurrentDebt),
       currentBalanceKd: FOUR_DP(currentBalance),
       hasDebt: effectiveCurrentDebt.gt(0),
+      ...(debtBreakdown.trace ?
+        { debtKdBreakdownTrace: debtBreakdown.trace }
+      : {}),
       options,
     };
   }

@@ -14,6 +14,7 @@ const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
 const jwt_1 = require("@nestjs/jwt");
 const prisma_service_1 = require("../prisma/prisma.service");
+const prisma_exception_util_1 = require("../common/filters/prisma-exception.util");
 const customer_ledger_service_1 = require("../customer-ledger/customer-ledger.service");
 const payments_service_1 = require("../common/services/payments.service");
 const customer_notifications_service_1 = require("../customer-notifications/customer-notifications.service");
@@ -21,7 +22,12 @@ const debt_service_1 = require("../finance/services/debt.service");
 const orders_service_1 = require("../orders/orders.service");
 const kuwait_customer_phone_1 = require("../common/validation/kuwait-customer-phone");
 const collections_whatsapp_text_1 = require("./collections-whatsapp-text");
-function assertCallCenterMaySendCollectionPaymentWa(ccCollectionPaymentWaLocked, actor) {
+function assertCallCenterMaySendCollectionPaymentWa(ccCollectionPaymentWaLocked, actor, lastReminderAt, now) {
+    const cooldownElapsed = lastReminderAt === null ||
+        now.getTime() - lastReminderAt.getTime() >= ORDER_REMINDER_COOLDOWN_MS;
+    if (cooldownElapsed) {
+        return;
+    }
     if (!ccCollectionPaymentWaLocked ||
         (actor.role !== client_1.SafariRole.CALL_CENTER &&
             actor.role !== client_1.SafariRole.CALL_CENTER_SUPERVISOR)) {
@@ -324,9 +330,9 @@ let CallCenterService = class CallCenterService {
         await this.assertOrderInCollectionScope(orderId, actor);
         const lockRow = await this.prisma.order.findUnique({
             where: { id: orderId },
-            select: { ccCollectionPaymentWaLocked: true },
+            select: { ccCollectionPaymentWaLocked: true, lastReminderAt: true },
         });
-        assertCallCenterMaySendCollectionPaymentWa(lockRow?.ccCollectionPaymentWaLocked ?? false, actor);
+        assertCallCenterMaySendCollectionPaymentWa(lockRow?.ccCollectionPaymentWaLocked ?? false, actor, lockRow?.lastReminderAt ?? null, new Date());
         const link = await this.payments.ensurePaymentLinkForUnpaidOrder(orderId);
         const reminder = await this.sendOrderReminder(orderId, actor);
         if (!reminder.sent) {
@@ -401,31 +407,31 @@ let CallCenterService = class CallCenterService {
         });
     }
     async activateSubscription(userId, dto) {
-        return this.prisma.$transaction(async (tx) => {
+        const core = await this.prisma.$transaction(async (tx) => {
             const settlement = await this.customerLedger.activateSubscriptionPlan(tx, {
                 customerId: dto.customerId,
                 planId: dto.planId,
                 performedByUserId: userId,
                 autoCloseInvoices: dto.autoCloseInvoices === true,
+                paymentMethod: dto.paymentMethod,
+                skipPrepaidAutoReconcile: true,
             });
-            const [customer, plan, wallet] = await Promise.all([
-                tx.customer.findUniqueOrThrow({
-                    where: { id: dto.customerId },
-                    select: {
-                        id: true,
-                        phone: true,
-                        phone2: true,
-                        address: true,
-                        displayName: true,
-                    },
-                }),
-                tx.subscriptionPlan.findUniqueOrThrow({
-                    where: { id: dto.planId },
-                }),
-                tx.customerWallet.findUniqueOrThrow({
-                    where: { customerId: dto.customerId },
-                }),
-            ]);
+            const customer = await tx.customer.findUniqueOrThrow({
+                where: { id: dto.customerId },
+                select: {
+                    id: true,
+                    phone: true,
+                    phone2: true,
+                    address: true,
+                    displayName: true,
+                },
+            });
+            const plan = await tx.subscriptionPlan.findUniqueOrThrow({
+                where: { id: dto.planId },
+            });
+            const wallet = await tx.customerWallet.findUniqueOrThrow({
+                where: { customerId: dto.customerId },
+            });
             return {
                 customer,
                 plan: {
@@ -440,7 +446,40 @@ let CallCenterService = class CallCenterService {
                 },
                 settlement,
             };
-        }, { maxWait: 10_000, timeout: 15_000 });
+        }, { maxWait: 20_000, timeout: 90_000 });
+        let prepaidAutoReconciledOrderIds = [];
+        try {
+            const reconcile = await this.customerLedger.runPrepaidAutoReconcileForCustomer(dto.customerId, userId);
+            prepaidAutoReconciledOrderIds = reconcile.paidOrderIds;
+        }
+        catch (e) {
+            (0, prisma_exception_util_1.logServerError)('activateSubscription.runPrepaidAutoReconcile', e);
+        }
+        const walletFinal = await this.prisma.customerWallet.findUniqueOrThrow({
+            where: { customerId: dto.customerId },
+            select: { balance: true, debt: true },
+        });
+        return {
+            customer: core.customer,
+            plan: core.plan,
+            wallet: {
+                balance: walletFinal.balance.toString(),
+                debt: walletFinal.debt.toString(),
+            },
+            settlement: {
+                ...core.settlement,
+                prepaidAutoReconciledOrderIds,
+                newBalance: walletFinal.balance.toString(),
+                newDebt: walletFinal.debt.toString(),
+            },
+        };
+    }
+    async cancelActiveSubscription(userId, dto) {
+        return this.prisma.$transaction(async (tx) => this.customerLedger.cancelSubscriptionForCustomer(tx, {
+            customerId: dto.customerId,
+            performedByUserId: userId,
+            reason: dto.reason?.trim() || null,
+        }), { maxWait: 10_000, timeout: 15_000 });
     }
     async extendSubscription(userId, dto) {
         return this.prisma.$transaction(async (tx) => {
@@ -558,9 +597,9 @@ let CallCenterService = class CallCenterService {
         await this.assertOrderInCollectionScope(orderId, actor);
         const lockRow = await this.prisma.order.findUnique({
             where: { id: orderId },
-            select: { ccCollectionPaymentWaLocked: true },
+            select: { ccCollectionPaymentWaLocked: true, lastReminderAt: true },
         });
-        assertCallCenterMaySendCollectionPaymentWa(lockRow?.ccCollectionPaymentWaLocked ?? false, actor);
+        assertCallCenterMaySendCollectionPaymentWa(lockRow?.ccCollectionPaymentWaLocked ?? false, actor, lockRow?.lastReminderAt ?? null, new Date());
         const now = new Date();
         const cutoff = new Date(now.getTime() - ORDER_REMINDER_COOLDOWN_MS);
         const update = await this.prisma.order.updateMany({
@@ -1156,6 +1195,7 @@ let CallCenterService = class CallCenterService {
                 });
             }
         }
+        const collectionsDebtBasis = await this.orders.getEffectiveDebtKdBreakdown(customerId, customer.wallet?.debt);
         const mappedEvents = events.map((e) => {
             const rawMethod = readMetaString(e.metadata, 'posPaymentMethod') ??
                 readMetaString(e.metadata, 'paymentMethod') ??
@@ -1167,6 +1207,9 @@ let CallCenterService = class CallCenterService {
             let kind;
             if (e.type === client_1.LedgerTransactionType.SUBSCRIPTION_ACTIVATION) {
                 kind = 'SUBSCRIPTION_ACTIVATION';
+            }
+            else if (e.type === client_1.LedgerTransactionType.SUBSCRIPTION_CANCELLATION) {
+                kind = 'SUBSCRIPTION_CANCELLATION';
             }
             else if (isPartialDebtPaymentRow(e.metadata)) {
                 kind = 'PARTIAL_DEBT_PAYMENT';
@@ -1221,8 +1264,7 @@ let CallCenterService = class CallCenterService {
             };
         });
         const mappedInvoices = invoices.map((o) => {
-            const openDebt = o.status !== client_1.OrderStatus.CANCELED &&
-                o.cashStatus === client_1.CashStatus.UNPAID;
+            const openDebt = collectionsDebtBasis.collectionsOpenOrderIds.has(o.id);
             const fr = feedbackByOrderId.get(o.id);
             return {
                 id: o.id,
@@ -1256,7 +1298,9 @@ let CallCenterService = class CallCenterService {
                 originBranchId: customer.originBranchId ?? null,
                 originBranchName: customer.originBranch?.name ?? null,
                 walletBalanceKd: FOUR_DP(customer.wallet?.balance ?? new client_1.Prisma.Decimal(0)),
-                walletDebtKd: FOUR_DP(customer.wallet?.debt ?? new client_1.Prisma.Decimal(0)),
+                walletDebtKd: FOUR_DP(collectionsDebtBasis.walletDebtKd),
+                collectionsReceivableKd: FOUR_DP(collectionsDebtBasis.collectionsReceivableKd),
+                effectiveDebtKd: FOUR_DP(collectionsDebtBasis.effectiveDebtKd),
             },
             activeSubscription: latestSub && latestSub.status === client_1.CustomerSubscriptionStatus.ACTIVE
                 ? {
@@ -1553,7 +1597,7 @@ let CallCenterService = class CallCenterService {
             generatedAtIso: new Date().toISOString(),
         };
     }
-    async getDebtConversionOptions(customerId) {
+    async getDebtConversionOptions(customerId, paymentMethodHint) {
         const customer = await this.prisma.customer.findUnique({
             where: { id: customerId },
             select: {
@@ -1576,18 +1620,10 @@ let CallCenterService = class CallCenterService {
             },
         });
         const currentBalance = customer.wallet?.balance ?? new client_1.Prisma.Decimal(0);
-        const walletDebt = customer.wallet?.debt ?? new client_1.Prisma.Decimal(0);
-        const implicitAgg = await this.prisma.order.aggregate({
-            where: {
-                customerId,
-                cashStatus: client_1.CashStatus.UNPAID,
-                status: { not: client_1.OrderStatus.CANCELED },
-                walletSettledAt: null,
-            },
-            _sum: { totalPrice: true },
-        });
-        const implicitDebt = implicitAgg._sum.totalPrice ?? new client_1.Prisma.Decimal(0);
-        const effectiveCurrentDebt = walletDebt.plus(implicitDebt);
+        const debtBreakdown = await this.orders.getEffectiveDebtKdBreakdown(customerId, customer.wallet?.debt);
+        const walletDebt = debtBreakdown.walletDebtKd;
+        const implicitDebt = debtBreakdown.collectionsReceivableKd;
+        const effectiveCurrentDebt = debtBreakdown.effectiveDebtKd;
         const zero = new client_1.Prisma.Decimal(0);
         const options = plans.map((p) => {
             const debtToSettle = effectiveCurrentDebt.lt(p.actualBalance)
@@ -1598,6 +1634,11 @@ let CallCenterService = class CallCenterService {
             const remainingLedger = walletDebt.minus(ledgerPaid);
             const remainingImplicit = implicitDebt.minus(implicitPaid);
             const remainingTotal = remainingLedger.plus(remainingImplicit);
+            const pm = paymentMethodHint ?? client_1.PosPaymentMethod.CASH;
+            const accrualOnAccount = pm === client_1.PosPaymentMethod.DEBT_ON_ACCOUNT && p.salePrice.gt(0)
+                ? p.salePrice
+                : zero;
+            const displayedRemainingDebt = remainingTotal.plus(accrualOnAccount);
             const rawCredit = p.actualBalance.minus(debtToSettle);
             const creditedToBalance = rawCredit.gt(0) ? rawCredit : zero;
             const projectedBalance = currentBalance.plus(creditedToBalance);
@@ -1605,20 +1646,22 @@ let CallCenterService = class CallCenterService {
                 ? p.actualBalance.minus(p.salePrice)
                 : zero;
             const convertsDebt = debtToSettle.gt(0);
-            const clearsAllDebt = effectiveCurrentDebt.gt(0) && remainingTotal.lte(0);
+            const clearsAllDebt = effectiveCurrentDebt.gt(0) && displayedRemainingDebt.lte(0);
             const recommended = effectiveCurrentDebt.gt(0) &&
                 p.actualBalance.gte(effectiveCurrentDebt);
+            const cashRequired = pm === client_1.PosPaymentMethod.DEBT_ON_ACCOUNT ? zero : p.salePrice;
+            const projectedLedgerDebtDisplay = remainingLedger.plus(accrualOnAccount);
             return {
                 planId: p.id,
                 planName: p.name,
                 planValidityDays: p.validityDays,
-                cashRequiredKd: FOUR_DP(p.salePrice),
+                cashRequiredKd: FOUR_DP(cashRequired),
                 planActualBalanceKd: FOUR_DP(p.actualBalance),
                 debtToSettleKd: FOUR_DP(debtToSettle),
-                remainingDebtKd: FOUR_DP(remainingTotal),
+                remainingDebtKd: FOUR_DP(displayedRemainingDebt),
                 creditedToBalanceKd: FOUR_DP(creditedToBalance),
                 projectedWalletBalanceKd: FOUR_DP(projectedBalance),
-                projectedWalletDebtKd: FOUR_DP(remainingLedger),
+                projectedWalletDebtKd: FOUR_DP(projectedLedgerDebtDisplay),
                 subsidyKd: FOUR_DP(subsidy),
                 convertsDebt,
                 clearsAllDebt,
@@ -1630,6 +1673,9 @@ let CallCenterService = class CallCenterService {
             currentDebtKd: FOUR_DP(effectiveCurrentDebt),
             currentBalanceKd: FOUR_DP(currentBalance),
             hasDebt: effectiveCurrentDebt.gt(0),
+            ...(debtBreakdown.trace ?
+                { debtKdBreakdownTrace: debtBreakdown.trace }
+                : {}),
             options,
         };
     }

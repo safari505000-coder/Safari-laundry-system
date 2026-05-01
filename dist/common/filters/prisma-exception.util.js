@@ -24,6 +24,17 @@ function prismaClientMessage(error) {
                 return 'A required database column is missing. Run migrations, then try again.';
             case 'P2025':
                 return 'Record not found.';
+            case 'P1001':
+                return 'Cannot reach the database server. Check DATABASE_URL and network, then try again.';
+            case 'P1017':
+            case 'P1008':
+                return 'Database connection was closed or interrupted. Retry the operation.';
+            case 'P2024':
+                return 'Timed out waiting for a database connection from the pool. Retry in a moment or reduce concurrent load.';
+            case 'P2028':
+                return 'Database transaction timed out or was aborted. Retry the operation.';
+            case 'P2034':
+                return 'A concurrent database write conflict occurred. Retry the operation.';
             default:
                 return `A database error occurred (${error.code}). Please try again, or run migrations if the system was just updated.`;
         }

@@ -93,12 +93,8 @@ type KpiTone = 'red' | 'green' | 'yellow';
 function waSendButtonTitle(
   t: TFunction,
   row: CollectionUnpaidOnlineRow,
-  isCcAgent: boolean,
+  _isCcAgent: boolean,
 ): string {
-  const locked = row.ccCollectionPaymentWaLocked === true;
-  if (locked && isCcAgent) {
-    return String(t('collections.waLockedByField'));
-  }
   const canSend = row.canSendCollectionPaymentWa ?? row.canRemindNow;
   if (!canSend) {
     return String(t('collections.remindCooldownShort'));
@@ -439,6 +435,27 @@ export function CollectionsPage() {
     });
   }, [rows, query]);
 
+  /** When search narrows the table to one customer's invoices — explain vs subscribers «effective» total */
+  const singleCustomerInvoiceScope = useMemo(() => {
+    if (filteredRows.length === 0) return null;
+    const cid = filteredRows[0]?.customerId;
+    if (!cid || filteredRows.some((r) => r.customerId !== cid)) return null;
+    let total = 0;
+    for (const r of filteredRows) {
+      total += Number.parseFloat(r.amountKd || '0') || 0;
+    }
+    const first = filteredRows[0]!;
+    const phone = first.customerPhone?.trim() ?? '';
+    const name = first.customerName?.trim() ?? '';
+    const qForLink =
+      phone.length > 0 ? phone : name.length > 0 ? name : first.customerId;
+    return {
+      customerName: name || '—',
+      invoiceTotalKd: total.toFixed(3),
+      subscribersQuery: qForLink,
+    };
+  }, [filteredRows]);
+
   if (!allowed) {
     return <Navigate to="/" replace />;
   }
@@ -553,6 +570,27 @@ export function CollectionsPage() {
           className="ps-9"
         />
       </div>
+
+      {singleCustomerInvoiceScope ?
+        <div className="rounded-lg border border-sky-200 bg-sky-50/70 px-3 py-2 text-start dark:border-sky-900/50 dark:bg-sky-950/30">
+          <p className="text-sm leading-relaxed text-foreground">
+            {t('collections.singleCustomerDebtAlignmentHint', {
+              name: singleCustomerInvoiceScope.customerName,
+              invoicesTotal: formatKwd3(
+                singleCustomerInvoiceScope.invoiceTotalKd,
+              ),
+            })}
+          </p>
+          {canSubscribers ?
+            <Link
+              className="mt-1 inline-block text-sm font-medium text-primary underline-offset-4 hover:underline"
+              to={`/subscribers?q=${encodeURIComponent(singleCustomerInvoiceScope.subscribersQuery)}`}
+            >
+              {t('collections.openSubscribersForTotal')}
+            </Link>
+          : null}
+        </div>
+      : null}
 
       <div className="md:hidden">
         {loading && filteredRows.length === 0 ?

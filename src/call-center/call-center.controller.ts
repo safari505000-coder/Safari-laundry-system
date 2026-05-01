@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -11,7 +12,7 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { SafariRole } from '@prisma/client';
+import { PosPaymentMethod, SafariRole } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { JwtUser } from '../auth/decorators/current-user.decorator';
@@ -19,7 +20,11 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { APP_BRAND } from '../common/constants/branding';
 import { CallCenterService } from './call-center.service';
-import { ActivateSubscriptionDto } from './dto/activate-subscription.dto';
+import {
+  ActivateSubscriptionDto,
+  SUBSCRIPTION_ACTIVATION_PAYMENT_METHODS,
+} from './dto/activate-subscription.dto';
+import { CancelSubscriptionDto } from './dto/cancel-subscription.dto';
 import { ExtendSubscriptionDto } from './dto/extend-subscription.dto';
 import { DebtRecoveryQueryDto } from './dto/debt-recovery-report.dto';
 import { MarkOrderPaidDto } from './dto/mark-order-paid.dto';
@@ -100,13 +105,26 @@ export class CallCenterController {
   @ApiOperation({
     summary: `Activate subscription for customer (${APP_BRAND})`,
     description:
-      'CALL_CENTER only. Collected plan price is applied to customer debt first (automatic settlement), then the remainder of the plan credit increases prepaid balance. All wallet updates run inside this transaction — no bypass.',
+      'CALL_CENTER only. Plan credit is applied to customer debt first, then the remainder increases prepaid balance. When plan `salePrice` > 0, `paymentMethod` is mandatory: cash-like methods book `POS_SALE_COMPLETED` for the sale; `DEBT_ON_ACCOUNT` accrues the sale price onto `wallet.debt` and writes a matching GL receivable line. All wallet updates run inside this transaction — no bypass.',
   })
   activateSubscription(
     @Body() dto: ActivateSubscriptionDto,
     @CurrentUser() user: JwtUser,
   ) {
     return this.callCenterService.activateSubscription(user.userId, dto);
+  }
+
+  @Post('subscriptions/cancel')
+  @ApiOperation({
+    summary: `Cancel active subscription (refund math + promo void) (${APP_BRAND})`,
+    description:
+      'CALL_CENTER only — while validity remains. Applies time-based split between customer-paid snapshot (possible cash refund) vs company promotional gap (gift void, never refunded as cash). Writes SUBSCRIPTION_CANCELLATION ledger + GL DEBT_ADJUSTMENT traces.',
+  })
+  cancelActiveSubscription(
+    @Body() dto: CancelSubscriptionDto,
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.callCenterService.cancelActiveSubscription(user.userId, dto);
   }
 
   @Post('subscriptions/extend')
@@ -384,11 +402,23 @@ export class CallCenterController {
   @ApiOperation({
     summary: `Convert debt \u2192 subscription preview (${APP_BRAND})`,
     description:
-      "V19.4 CC pack #9. Read-only, zero-side-effect preview for the Call Center: given a customer with outstanding debt, computes what every active subscription plan would do if activated right now \u2014 how much of the plan price clears debt, how much is added as prepaid balance, whether the plan fully kills the debt. Arithmetic is byte-identical to `activateSubscriptionPlan` so the UI never disagrees with what actually gets booked when the agent clicks \"activate\".",
+      "V19.4 CC pack #9. Read-only preview. Optional `?paymentMethod=` (CASH, KNET, PAYMENT_LINK, ONLINE, DEBT_ON_ACCOUNT) mirrors how `activateSubscription` will book the plan sale — cash-like methods show cash required = sale price; on-account shows the sale accruing to remaining debt instead.",
   })
   getDebtConversionOptions(
     @Param('customerId', ParseUUIDPipe) customerId: string,
+    @Query('paymentMethod') raw?: string,
   ) {
-    return this.callCenterService.getDebtConversionOptions(customerId);
+    const trimmed = raw?.trim().toUpperCase();
+    let hint: PosPaymentMethod | undefined;
+    if (trimmed) {
+      const ok = SUBSCRIPTION_ACTIVATION_PAYMENT_METHODS.some((m) => m === trimmed);
+      if (!ok) {
+        throw new BadRequestException(
+          `Invalid paymentMethod "${raw}" — expected one of: ${SUBSCRIPTION_ACTIVATION_PAYMENT_METHODS.join(', ')}`,
+        );
+      }
+      hint = trimmed as PosPaymentMethod;
+    }
+    return this.callCenterService.getDebtConversionOptions(customerId, hint);
   }
 }

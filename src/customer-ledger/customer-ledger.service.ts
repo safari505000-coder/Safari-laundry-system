@@ -1,8 +1,10 @@
 import {
   BadRequestException,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import {
   CashStatus,
@@ -23,8 +25,14 @@ import {
 } from '../finance/finance-money';
 import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
 import { InventoryService } from '../inventory/inventory.service';
+import { OrdersService } from '../orders/orders.service';
 import { PrismaService } from '../prisma/prisma.service';
-import type { SubscriptionActivationSettlement } from './subscription-settlement.types';
+import { SUBSCRIPTION_ACTIVATION_PAYMENT_METHODS } from '../call-center/dto/activate-subscription.dto';
+import type { SubscriptionActivationPaymentMethod } from '../call-center/dto/activate-subscription.dto';
+import type {
+  SubscriptionActivationSettlement,
+  SubscriptionCancellationSettlement,
+} from './subscription-settlement.types';
 
 export type PrismaTx = Prisma.TransactionClient;
 
@@ -46,29 +54,9 @@ export class CustomerLedgerService {
     private readonly prisma: PrismaService,
     private readonly generalLedger: GeneralLedgerService,
     private readonly inventory: InventoryService,
+    @Inject(forwardRef(() => OrdersService))
+    private readonly orders: OrdersService,
   ) {}
-
-  /**
-   * UNPAID orders that never ran `applyOrderWalletSettlementForCompletedOrder`
-   * (`walletSettledAt` still null) — e.g. hosted payment-link / pending-online
-   * invoices. They appear on collections KPIs but are absent from
-   * `CustomerWallet.debt` until the gateway or CC settles the order.
-   */
-  private async sumUnsettledUnpaidReceivableMinorTx(
-    tx: Pick<Prisma.TransactionClient, 'order'>,
-    customerId: string,
-  ): Promise<bigint> {
-    const agg = await tx.order.aggregate({
-      where: {
-        customerId,
-        cashStatus: CashStatus.UNPAID,
-        status: { not: OrderStatus.CANCELED },
-        walletSettledAt: null,
-      },
-      _sum: { totalPrice: true },
-    });
-    return toMinorFromFixed4(agg._sum.totalPrice ?? new Prisma.Decimal(0));
-  }
 
   private async resolveFallbackOwnerIdTx(tx: PrismaTx): Promise<string | null> {
     const owner = await tx.user.findFirst({
@@ -586,6 +574,17 @@ export class CustomerLedgerService {
        * flow unchanged (invoices stay open as receivables).
        */
       autoCloseInvoices?: boolean;
+      /**
+       * How `{@link SubscriptionPlan.salePrice}` collection was recognised.
+       * Mandatory on every activation (same enum as ActivateSubscriptionDto).
+       */
+      paymentMethod: SubscriptionActivationPaymentMethod;
+      /**
+       * When true, skip the prepaid FIFO auto-reconcile pass at the end so the
+       * caller can run `runPrepaidAutoReconcileForCustomer` in a separate
+       * transaction — avoids one long interactive transaction (P2028).
+       */
+      skipPrepaidAutoReconcile?: boolean;
     },
   ): Promise<SubscriptionActivationSettlement> {
     const plan = await tx.subscriptionPlan.findUnique({
@@ -621,11 +620,15 @@ export class CustomerLedgerService {
     const subsidyBranchId = refreshedCustomer?.originBranchId ?? actor.branchId ?? null;
     const balanceMinor = toMinorFromFixed4(wallet.balance);
     const debtMinor = toMinorFromFixed4(wallet.debt);
-    const implicitReceivableMinor = await this.sumUnsettledUnpaidReceivableMinorTx(
-      tx,
+    const debtBreakdown = await this.orders.getEffectiveDebtKdBreakdown(
       params.customerId,
+      wallet.debt,
+      tx,
     );
-    const effectiveDebtMinor = debtMinor + implicitReceivableMinor;
+    const implicitReceivableMinor = toMinorFromFixed4(
+      debtBreakdown.collectionsReceivableKd,
+    );
+    const effectiveDebtMinor = toMinorFromFixed4(debtBreakdown.effectiveDebtKd);
     const priceMinor = toMinorFromFixed4(plan.salePrice);
     const creditMinor = toMinorFromFixed4(plan.actualBalance);
 
@@ -648,6 +651,23 @@ export class CustomerLedgerService {
       );
     }
 
+    let collectionPaymentMethod: PosPaymentMethod;
+    if (!params.paymentMethod) {
+      throw new BadRequestException(
+        'paymentMethod is required for every subscription activation',
+      );
+    }
+    if (
+      !(SUBSCRIPTION_ACTIVATION_PAYMENT_METHODS as readonly string[]).includes(
+        params.paymentMethod,
+      )
+    ) {
+      throw new BadRequestException(
+        'Invalid paymentMethod for subscription activation',
+      );
+    }
+    collectionPaymentMethod = params.paymentMethod;
+
     // V19.7.3 — Owner directive: the subscription's CREDIT amount
     // (`actualBalance`) is what reduces existing debt, NOT the sale
     // price. Previous logic "debtPaid = min(debt, salePrice)" produced
@@ -665,19 +685,26 @@ export class CustomerLedgerService {
     // Behavior for debt-free customers is unchanged: debtPaid=0, the
     // full credit still lands in the wallet.
     //
-    // V19.12.1 — `effectiveDebtMinor` adds **unposted** receivables (UNPAID
-    // orders with `walletSettledAt=null`, typical payment-link pending rows).
-    // Without this, `wallet.debt` could be 0 while collections still show an
-    // invoice; activation would skip both debt pay-down and FIFO closure.
+    // V19.12.1 — **effectiveDebtKd** mirrors `DebtLedgerEntry` net + snapshot
+    // reconciliation (via `OrdersService.getEffectiveDebtKdBreakdown`); do not add
+    // wallet.debt twice here (`effectiveDebtMinor` is totals from breakdown).
     const debtPaidMinor =
       effectiveDebtMinor < creditMinor ? effectiveDebtMinor : creditMinor;
-    const newDebtMinor = debtMinor - (debtPaidMinor < debtMinor ? debtPaidMinor : debtMinor);
+    let newDebtMinor =
+      debtMinor - (debtPaidMinor < debtMinor ? debtPaidMinor : debtMinor);
+    const accrueSaleOnAccount =
+      priceMinor > 0n &&
+      collectionPaymentMethod === PosPaymentMethod.DEBT_ON_ACCOUNT;
+    if (accrueSaleOnAccount) {
+      newDebtMinor += priceMinor;
+    }
 
     this.logger.log(
       `[subscription-activation] customerId=${params.customerId} planId=${params.planId} ` +
         `walletDebtMinor=${debtMinor.toString()} implicitUnpostedMinor=${implicitReceivableMinor.toString()} ` +
         `effectiveDebtMinor=${effectiveDebtMinor.toString()} planCreditMinor=${creditMinor.toString()} ` +
-        `debtPaidMinor=${debtPaidMinor.toString()} autoCloseInvoices=${params.autoCloseInvoices === true}`,
+        `debtPaidMinor=${debtPaidMinor.toString()} autoCloseInvoices=${params.autoCloseInvoices === true} ` +
+        `collectionPaymentMethod=${collectionPaymentMethod} accrueSaleOnAccount=${accrueSaleOnAccount}`,
     );
     const rawCreditMinor = creditMinor - debtPaidMinor;
     const balanceIncreaseMinor =
@@ -789,9 +816,47 @@ export class CustomerLedgerService {
           carriedBalanceKd: carriedBalanceStr,
           implicitUnpostedReceivableKd: minorToAmountString(implicitReceivableMinor),
           effectiveDebtForActivationKd: minorToAmountString(effectiveDebtMinor),
+          posPaymentMethod: collectionPaymentMethod,
+          planSaleSettlement: accrueSaleOnAccount
+            ? 'ACCOUNTS_RECEIVABLE'
+            : priceMinor > 0n
+              ? 'IMMEDIATE_COLLECTION'
+              : 'NONE',
         },
       },
     });
+
+    if (priceMinor > 0n && !accrueSaleOnAccount) {
+      await this.generalLedger.append(tx, {
+        entryType: GeneralLedgerEntryType.POS_SALE_COMPLETED,
+        amount: plan.salePrice,
+        memo: 'Subscription activation — plan sale (immediate collection)',
+        customerId: params.customerId,
+        actorUserId: params.performedByUserId,
+        metadata: {
+          posPaymentMethod: collectionPaymentMethod,
+          source: 'CALL_CENTER_SUBSCRIPTION_ACTIVATION',
+          subscriptionId: newSubscription.id,
+          planId: plan.id,
+        },
+      });
+    }
+    if (accrueSaleOnAccount && priceMinor > 0n) {
+      await this.generalLedger.append(tx, {
+        entryType: GeneralLedgerEntryType.DEBT_ADJUSTMENT,
+        amount: plan.salePrice.toString(),
+        memo: 'Subscription activation — plan sale on account (wallet debt)',
+        customerId: params.customerId,
+        actorUserId: params.performedByUserId,
+        metadata: {
+          event: 'SUBSCRIPTION_PLAN_DEFERRED',
+          source: 'CALL_CENTER_SUBSCRIPTION_ACTIVATION',
+          posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT,
+          subscriptionId: newSubscription.id,
+          planId: plan.id,
+        },
+      });
+    }
 
     // V19.7.4 — FIFO invoice auto-closure (opt-in via `autoCloseInvoices`).
     // Context: `wallet.debt` is posted aggregate receivable; UNPAID orders
@@ -821,6 +886,8 @@ export class CustomerLedgerService {
     // PAID_TO_DRIVER is a pure status flag change and does NOT touch
     // the wallet balance again.
     const closedInvoiceIds: string[] = [];
+    /** Amounts picked from FIFO scan — avoids N `findUnique` round trips when writing ledger rows. */
+    const closedInvoiceAmountById = new Map<string, Prisma.Decimal>();
     if (params.autoCloseInvoices === true && debtPaidMinor > 0n) {
       const candidates = await tx.order.findMany({
         where: {
@@ -840,12 +907,20 @@ export class CustomerLedgerService {
         // would require mutating `totalPrice` or introducing a
         // "partiallyPaid" state the rest of the system doesn't model.
         if (invMinor > remainingMinor) continue;
-        await tx.order.update({
-          where: { id: inv.id },
+        closedInvoiceIds.push(inv.id);
+        closedInvoiceAmountById.set(inv.id, inv.totalPrice);
+        remainingMinor -= invMinor;
+      }
+      if (closedInvoiceIds.length > 0) {
+        // One UPDATE instead of N sequential updates — critical on high-
+        // latency links (P2028) when many small invoices FIFO-close here.
+        await tx.order.updateMany({
+          where: {
+            customerId: params.customerId,
+            id: { in: closedInvoiceIds },
+          },
           data: { cashStatus: CashStatus.PAID_TO_DRIVER },
         });
-        closedInvoiceIds.push(inv.id);
-        remainingMinor -= invMinor;
       }
     }
 
@@ -882,25 +957,27 @@ export class CustomerLedgerService {
       const category = this.resolveDebtCategory(actor.safariRole);
       let coveredMinor = 0n;
       for (const invoiceId of closedInvoiceIds) {
-        const inv = await tx.order.findUnique({
-          where: { id: invoiceId },
-          select: { totalPrice: true },
+        const amt = closedInvoiceAmountById.get(invoiceId);
+        if (!amt) continue;
+        coveredMinor += toMinorFromFixed4(amt);
+      }
+      if (closedInvoiceIds.length > 0) {
+        await tx.debtLedgerEntry.createMany({
+          data: closedInvoiceIds.flatMap((invoiceId) => {
+            const amt = closedInvoiceAmountById.get(invoiceId);
+            if (!amt) return [];
+            return {
+              customerId: params.customerId,
+              orderId: invoiceId,
+              source: DebtSource.PAYMENT,
+              category,
+              amount: amt,
+              branchId: subsidyBranchId,
+              actorUserId: params.performedByUserId,
+              note: 'Invoice closed by subscription activation (FIFO)',
+            };
+          }),
         });
-        if (!inv) continue;
-        const invMinor = toMinorFromFixed4(inv.totalPrice);
-        await tx.debtLedgerEntry.create({
-          data: {
-            customerId: params.customerId,
-            orderId: invoiceId,
-            source: DebtSource.PAYMENT,
-            category,
-            amount: inv.totalPrice,
-            branchId: subsidyBranchId,
-            actorUserId: params.performedByUserId,
-            note: 'Invoice closed by subscription activation (FIFO)',
-          },
-        });
-        coveredMinor += invMinor;
       }
       const residualMinor = debtPaidMinor - coveredMinor;
       if (residualMinor > 0n) {
@@ -919,12 +996,13 @@ export class CustomerLedgerService {
       }
     }
 
-    const prepaidReconciled =
-      await this.autoReconcileUnpaidInvoicesFromPrepaidBalanceTx(
-        tx,
-        params.customerId,
-        params.performedByUserId,
-      );
+    const prepaidReconciled = params.skipPrepaidAutoReconcile
+      ? { paidOrderIds: [] as string[] }
+      : await this.autoReconcileUnpaidInvoicesFromPrepaidBalanceTx(
+          tx,
+          params.customerId,
+          params.performedByUserId,
+        );
 
     const walletFinal = await tx.customerWallet.findUniqueOrThrow({
       where: { customerId: params.customerId },
@@ -1152,6 +1230,11 @@ export class CustomerLedgerService {
    * the existing two values. The metadata flag keeps existing reports
    * working while letting any future dedicated query opt into it.
    *
+   * `amount + discount` is capped by `getEffectiveDebtKdBreakdown.effectiveDebtKd`
+   * (same subscriber total as conversion). After reducing `wallet.debt`,
+   * UNPAID invoices are FIFO-closed with the same budget (full-amount
+   * rows only), matching `activateSubscriptionPlan` (`autoCloseInvoices`).
+   *
    * Runs inside a single transaction so wallet + history + GL + debt-
    * ledger entries can never drift apart on a mid-call failure.
    */
@@ -1207,6 +1290,12 @@ export class CustomerLedgerService {
             : 0n;
         const totalMinor = amountMinor + discountMinor;
         const debtMinor = toMinorFromFixed4(wallet.debt);
+        const outstandingBreakdown = await this.orders.getEffectiveDebtKdBreakdown(
+          params.customerId,
+          wallet.debt,
+          tx,
+        );
+        const ceilingMinor = toMinorFromFixed4(outstandingBreakdown.effectiveDebtKd);
 
         if (amountMinor < 0n || discountMinor < 0n) {
           throw new BadRequestException(
@@ -1218,22 +1307,65 @@ export class CustomerLedgerService {
             'At least one of amount or discount must be greater than zero',
           );
         }
-        if (totalMinor > debtMinor) {
+        if (totalMinor > ceilingMinor) {
           throw new BadRequestException(
-            'Amount + discount cannot exceed current customer debt',
+            `Amount + discount cannot exceed total outstanding debt (${outstandingBreakdown.effectiveDebtKd.toFixed(4)} KD)`,
           );
         }
 
-        const newDebtMinor = debtMinor - totalMinor;
+        const debtPaidMinor = totalMinor;
+        const walletDeductionMinor =
+          debtPaidMinor < debtMinor ? debtPaidMinor : debtMinor;
+        const newDebtMinor = debtMinor - walletDeductionMinor;
         const amountStr = minorToAmountString(amountMinor);
         const discountStr = minorToAmountString(discountMinor);
         const totalStr = minorToAmountString(totalMinor);
-        const newDebtStr = minorToAmountString(newDebtMinor);
 
         await tx.customerWallet.update({
           where: { id: wallet.id },
           data: { debt: this.decimalFromMinor(newDebtMinor) },
         });
+
+        // Same FIFO shape as `activateSubscriptionPlan` (`autoCloseInvoices`):
+        // UNPAID + not canceled, oldest first, full invoices only. Budget
+        // is the full `debtPaidMinor` so collections rows can reconcile with
+        // the same effective-debt ceiling used for the cap above.
+        const closedInvoiceIds: string[] = [];
+        if (debtPaidMinor > 0n) {
+          const candidates = await tx.order.findMany({
+            where: {
+              customerId: params.customerId,
+              cashStatus: CashStatus.UNPAID,
+              status: { not: OrderStatus.CANCELED },
+            },
+            select: { id: true, totalPrice: true },
+            orderBy: { createdAt: 'asc' },
+          });
+          let remainingMinor = debtPaidMinor;
+          for (const inv of candidates) {
+            if (remainingMinor <= 0n) break;
+            const invMinor = toMinorFromFixed4(inv.totalPrice);
+            if (invMinor <= 0n) continue;
+            if (invMinor > remainingMinor) continue;
+            await tx.order.update({
+              where: { id: inv.id },
+              data: { cashStatus: CashStatus.PAID_TO_DRIVER },
+            });
+            closedInvoiceIds.push(inv.id);
+            remainingMinor -= invMinor;
+          }
+        }
+
+        const refreshedWallet = await tx.customerWallet.findUnique({
+          where: { id: wallet.id },
+          select: { debt: true },
+        });
+        const endingBreakdown = await this.orders.getEffectiveDebtKdBreakdown(
+          params.customerId,
+          refreshedWallet!.debt,
+          tx,
+        );
+        const newEffectiveDebtKdStr = endingBreakdown.effectiveDebtKd.toFixed(4);
 
         // V19.4 — CC pack #1. Re-use ORDER_WALLET_SETTLEMENT so existing
         // debt-recovery aggregations naturally pick up the collected
@@ -1259,6 +1391,9 @@ export class CustomerLedgerService {
               posPaymentMethod: params.paymentMethod,
               reportingCategory: 'DEBT_COLLECTION_CC',
               note: params.note ?? null,
+              autoClosedInvoiceIds: closedInvoiceIds,
+              autoClosedInvoiceCount: closedInvoiceIds.length,
+              effectiveDebtAfterKd: newEffectiveDebtKdStr,
             },
           },
         });
@@ -1328,8 +1463,8 @@ export class CustomerLedgerService {
           amountCollectedKd: amountStr,
           discountAppliedKd: discountStr,
           totalReducedKd: totalStr,
-          previousDebtKd: wallet.debt.toString(),
-          newDebtKd: newDebtStr,
+          previousDebtKd: outstandingBreakdown.effectiveDebtKd.toFixed(4),
+          newDebtKd: newEffectiveDebtKdStr,
           walletBalanceKd: wallet.balance.toString(),
           paymentMethod: params.paymentMethod,
           transactionHistoryId: thDebtRow.id,
@@ -1337,5 +1472,168 @@ export class CustomerLedgerService {
       },
       { maxWait: 10_000, timeout: 15_000 },
     );
+  }
+
+  /**
+   * Early cancellation while the subscription window is still open: removes
+   * time-proportional promotional credit (gift) from the wallet first (never
+   * paid as cash), then applies a time-proportional cash refund from the
+   * customer-paid portion of the plan snapshot, capped by remaining wallet.
+   * Emits GL `DEBT_ADJUSTMENT` rows + a `SUBSCRIPTION_CANCELLATION` journal line.
+   */
+  async cancelSubscriptionForCustomer(
+    tx: PrismaTx,
+    params: {
+      customerId: string;
+      performedByUserId: string;
+      reason?: string | null;
+    },
+  ): Promise<SubscriptionCancellationSettlement> {
+    const sub = await tx.customerSubscription.findFirst({
+      where: {
+        customerId: params.customerId,
+        status: CustomerSubscriptionStatus.ACTIVE,
+      },
+      orderBy: { activatedAt: 'desc' },
+    });
+    if (!sub) {
+      throw new BadRequestException(
+        'No active subscription found for this customer',
+      );
+    }
+
+    const wallet = await tx.customerWallet.findUnique({
+      where: { customerId: params.customerId },
+    });
+    if (!wallet) {
+      throw new NotFoundException('Customer wallet not found');
+    }
+
+    const now = new Date();
+    if (now.getTime() >= sub.expiresAt.getTime()) {
+      throw new BadRequestException(
+        'Subscription validity has already ended — use a new activation instead of cancellation',
+      );
+    }
+
+    const totalMs = BigInt(
+      Math.max(1, sub.expiresAt.getTime() - sub.activatedAt.getTime()),
+    );
+    const remainingMs = BigInt(
+      Math.max(0, sub.expiresAt.getTime() - now.getTime()),
+    );
+
+    const saleMinor = toMinorFromFixed4(sub.planSalePriceSnapshot);
+    const creditMinor = toMinorFromFixed4(sub.planActualBalanceSnapshot);
+    let subsidyMinor = creditMinor - saleMinor;
+    if (subsidyMinor < 0n) subsidyMinor = 0n;
+
+    const giftTargetMinor = (subsidyMinor * remainingMs) / totalMs;
+    const cashTargetMinor = (saleMinor * remainingMs) / totalMs;
+
+    const balanceMinor = toMinorFromFixed4(wallet.balance);
+
+    const giftRemovalMinor =
+      giftTargetMinor < balanceMinor ? giftTargetMinor : balanceMinor;
+    const afterGiftMinor = balanceMinor - giftRemovalMinor;
+
+    const cashRefundMinor =
+      cashTargetMinor < afterGiftMinor ? cashTargetMinor : afterGiftMinor;
+    const newBalanceMinor = afterGiftMinor - cashRefundMinor;
+
+    const giftStr = minorToAmountString(giftRemovalMinor);
+    const cashStr = minorToAmountString(cashRefundMinor);
+    const reductionStr = minorToAmountString(
+      giftRemovalMinor + cashRefundMinor,
+    );
+
+    const remainingTermFraction = Number(remainingMs) / Number(totalMs);
+
+    if (giftRemovalMinor > 0n) {
+      await this.generalLedger.append(tx, {
+        entryType: GeneralLedgerEntryType.DEBT_ADJUSTMENT,
+        amount: giftStr,
+        memo:
+          'Subscription cancellation — promotional / gift credit voided (no cash)',
+        customerId: params.customerId,
+        actorUserId: params.performedByUserId,
+        metadata: {
+          event: 'SUBSCRIPTION_CANCEL_GIFT_VOID',
+          subscriptionId: sub.id,
+          voidedGiftKd: giftStr,
+        },
+      });
+    }
+    if (cashRefundMinor > 0n) {
+      await this.generalLedger.append(tx, {
+        entryType: GeneralLedgerEntryType.DEBT_ADJUSTMENT,
+        amount: `-${cashStr}`,
+        memo:
+          'Subscription cancellation — cash refund to customer (مسترجع / سند صرف)',
+        customerId: params.customerId,
+        actorUserId: params.performedByUserId,
+        metadata: {
+          event: 'SUBSCRIPTION_CANCEL_CASH_REFUND',
+          subscriptionId: sub.id,
+          refundedCashKd: cashStr,
+        },
+      });
+    }
+
+    await tx.transactionHistory.create({
+      data: {
+        type: LedgerTransactionType.SUBSCRIPTION_CANCELLATION,
+        customerId: params.customerId,
+        subscriptionId: sub.id,
+        amount: this.decimalFromMinor(giftRemovalMinor + cashRefundMinor),
+        balanceBefore: wallet.balance,
+        balanceAfter: this.decimalFromMinor(newBalanceMinor),
+        debtBefore: wallet.debt,
+        debtAfter: wallet.debt,
+        performedById: params.performedByUserId,
+        metadata: {
+          reason:
+            params.reason && params.reason.trim().length > 0 ?
+              params.reason.trim()
+            : null,
+          giftVoidedKd: giftStr,
+          cashRefundedKd: cashStr,
+          walletReductionKd: reductionStr,
+          remainingTermFractionApprox: remainingTermFraction,
+          planSalePriceSnapshot: sub.planSalePriceSnapshot.toString(),
+          planActualBalanceSnapshot: sub.planActualBalanceSnapshot.toString(),
+        },
+      },
+    });
+
+    await tx.customerSubscription.update({
+      where: { id: sub.id },
+      data: {
+        status: CustomerSubscriptionStatus.CANCELLED,
+        closedAt: now,
+        closedReason: 'CANCEL_REFUND',
+      },
+    });
+
+    await tx.customerWallet.update({
+      where: { customerId: params.customerId },
+      data: {
+        balance: this.decimalFromMinor(newBalanceMinor),
+        subscriptionActivatedAt: null,
+        subscriptionExpiresAt: null,
+        subscriptionPlanId: null,
+        subscriptionPlanName: null,
+      },
+    });
+
+    return {
+      subscriptionId: sub.id,
+      refundedCashKd: cashStr,
+      voidedGiftKd: giftStr,
+      walletReductionKd: reductionStr,
+      previousBalanceKd: wallet.balance.toString(),
+      newBalanceKd: minorToAmountString(newBalanceMinor),
+      remainingTermFraction,
+    };
   }
 }

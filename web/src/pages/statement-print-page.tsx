@@ -14,6 +14,7 @@ import {
   type CustomerLedgerInvoice,
   type CustomerLedgerResponse,
 } from '@/lib/api';
+import { parseLedgerEffectiveDebtKd } from '@/lib/customer-ledger-parse';
 import { formatKwdLabel } from '@/lib/kwd';
 import { OperatorRouteHint } from '@/modules/shared/components/shell/operator-route-hint';
 import { PrintableSheet } from '@/modules/shared/print/PrintableSheet';
@@ -199,12 +200,23 @@ export function StatementSheet({
     return { unpaid, paid, canceled };
   }, [data]);
 
+  /**
+   * Full Σ uncollection matches `/collections` (server field). Fallback:
+   * sum `openDebt` rows on **this page** only when legacy responses omit it.
+   */
+  const collectionsReceivableFromApi = data.customer.collectionsReceivableKd;
+  const openInvoicesKdForTile =
+    collectionsReceivableFromApi !== undefined &&
+    collectionsReceivableFromApi.trim() !== ''
+      ? Number.parseFloat(collectionsReceivableFromApi) || 0
+      : totals.totalOpenDebt;
+
   const issuedAtIso = new Date().toISOString();
   const customerName = data.customer.displayName ?? '—';
   const customerPhone = data.customer.phone ?? '—';
   const branchName = data.customer.originBranchName ?? '—';
   const sub = data.activeSubscription;
-  const debtK = Number.parseFloat(data.customer.walletDebtKd) || 0;
+  const debtK = parseLedgerEffectiveDebtKd(data.customer);
   const balK = Number.parseFloat(data.customer.walletBalanceKd) || 0;
   const docNumber = `STMT-${data.customer.id.slice(0, 8).toUpperCase()}`;
 
@@ -267,7 +279,7 @@ export function StatementSheet({
             <div className="stmt-snapshot-tile stmt-tone-info">
               <span className="stmt-snapshot-label">الفواتير المفتوحة</span>
               <span className="stmt-snapshot-value">
-                {formatKwdLabel(totals.totalOpenDebt)}
+                {formatKwdLabel(openInvoicesKdForTile)}
               </span>
               <span className="stmt-snapshot-sub">
                 من إجمالي {formatKwdLabel(totals.totalInvoiced)}
@@ -518,7 +530,9 @@ function EventRows({ event: e }: { event: CustomerLedgerEvent }) {
   const label = EVENT_KIND_AR[e.kind] ?? e.kind;
   const planTag = e.subscriptionLabel ? ` — ${e.subscriptionLabel}` : '';
   const ref = e.orderSerial ? `#${e.orderSerial}` : '—';
-  const debtAfter = Number.parseFloat(e.debtAfterKd) || 0;
+  const balanceAfter = Number.parseFloat(e.balanceAfterKd) || 0;
+  const debtAfter =
+    (Number.parseFloat(e.debtAfterKd) || 0) + Math.max(-balanceAfter, 0);
   const showBreakdown =
     e.kind === 'SUBSCRIPTION_ACTIVATION' && e.activationBreakdown;
 
@@ -536,7 +550,7 @@ function EventRows({ event: e }: { event: CustomerLedgerEvent }) {
           className="stmt-num"
           style={debtAfter > 0 ? { color: '#b91c1c' } : undefined}
         >
-          {KD_FMT_4(e.debtAfterKd)}
+          {KD_FMT_4(debtAfter)}
         </td>
         <td>{ref}</td>
       </tr>
@@ -581,10 +595,26 @@ function EventRows({ event: e }: { event: CustomerLedgerEvent }) {
                 {Number.parseFloat(e.activationBreakdown.carriedBalanceKd) !==
                 0 ? (
                   <BreakdownItem
-                    label="رصيد مرحّل"
+                    label={
+                      Number.parseFloat(
+                        e.activationBreakdown.carriedBalanceKd,
+                      ) < 0
+                        ? 'دين مرحّل قبل التفعيل'
+                        : 'رصيد مرحّل قبل التفعيل'
+                    }
                     value={KD_FMT_4(e.activationBreakdown.carriedBalanceKd)}
                   />
                 ) : null}
+                <BreakdownItem
+                  label="الرصيد بعد التفعيل"
+                  value={KD_FMT_4(e.balanceAfterKd)}
+                  tone={balanceAfter < 0 ? 'danger' : 'success'}
+                />
+                <BreakdownItem
+                  label="المديونية بعد التفعيل"
+                  value={KD_FMT_4(debtAfter)}
+                  tone={debtAfter > 0 ? 'danger' : undefined}
+                />
               </dl>
               {e.closedInvoices.length > 0 ? (
                 <div className="stmt-closed-block">
@@ -652,11 +682,13 @@ function BreakdownItem({
 }: {
   label: string;
   value: string;
-  tone?: 'info' | 'success';
+  tone?: 'info' | 'success' | 'danger';
 }) {
   const cls =
     tone === 'success'
       ? 'stmt-bd-row stmt-bd-success'
+      : tone === 'danger'
+        ? 'stmt-bd-row stmt-bd-danger'
       : tone === 'info'
         ? 'stmt-bd-row stmt-bd-info'
         : 'stmt-bd-row';

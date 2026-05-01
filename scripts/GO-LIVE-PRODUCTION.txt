@@ -1,0 +1,41 @@
+Safari ERP — Production database & storage go-live checklist
+--------------------------------------------------------------
+
+1) Full backup BEFORE any SQL run (mandatory).
+   PostgreSQL examples:
+     pg_dump %DATABASE_URL% -Fc -f safari_backup.dump      (CMD)
+     pg_dump $env:DATABASE_URL -Fc -f safari_backup.dump  (PowerShell)
+
+2) Run the purge SQL (destroys operational + trial data, ALL customers,
+   and deletes staff users except roles listed in-file):
+     psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f scripts/go-live-production-ready.sql
+
+   Precondition: database must contain at least one User with safariRole = OWNER
+   or the transaction aborts on purpose.
+
+3) Clear browser offline queue on every workstation (IndexedDB DB name):
+     safari-erp-offline-v1
+
+4) Optional: delete trial upload files served under /uploads (deposits, slips,
+   handover JPEGs, bank scans, weekly PDFs).
+
+   Example (see scripts/go-live-clear-uploads.ps1):
+     .\scripts\go-live-clear-uploads.ps1
+
+   Override directory if your deployment stores files elsewhere:
+     $env:ERP_UPLOAD_ROOT = 'D:\path\to\uploads'
+     .\scripts\go-live-clear-uploads.ps1
+
+5) Roles kept in SQL defaults: OWNER, GENERAL_MANAGER, ACCOUNTANT.
+   Drivers, CALL_CENTER, MANAGER branch staff, etc. are removed — recreate
+   them from the Owner console after launch. To keep MANAGER rows, edit the
+   DELETE FROM "User" ... NOT IN (...) clause accordingly before running.
+
+6) Keeps catalogue data: Laundry categories/items/branch overrides, SubscriptionPlan,
+   CommissionRule shells, DebtHoldPolicy, branches, Roles/permissions, PaymentMethodFeeConfig.
+
+7) Invoice numbering: PostgreSQL IDs are UUID; physical invoice suffix is rebuilt from
+   SerialCounter rows (cleared — next issued serial starts fresh per-operator).
+
+8) Softer reset (financial only, KEEP customer master rows): use instead
+      scripts/go-live-reset-financial.sql

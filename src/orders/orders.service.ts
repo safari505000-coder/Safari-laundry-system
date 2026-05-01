@@ -1,10 +1,12 @@
 import {
   BadRequestException,
   ForbiddenException,
+  Inject,
   InternalServerErrorException,
   Injectable,
   Logger,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import {
@@ -29,6 +31,14 @@ import { parseFixed4ToMinor, toMinorFromFixed4 } from '../finance/finance-money'
 import { InventoryService } from '../inventory/inventory.service';
 import type { JwtUser } from '../auth/decorators/current-user.decorator';
 import { assertUserNotOnAdministrativeBranchForSales } from '../branches/administrative-branch.util';
+import {
+  getCustomerDebtSnapshotTotalKd,
+  getCustomerNetDebtFromDebtLedgerAgg,
+} from '../finance/debt-customer-aggregates.util';
+import {
+  buildDebtKdBreakdownTrace,
+  type DebtKdBreakdownTrace,
+} from './debt-kd-breakdown.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { SerialCounterService } from '../serials/serial-counter.service';
 import { AssignDriverDto } from './dto/assign-driver.dto';
@@ -149,6 +159,9 @@ export type PosCheckoutBundleResult = {
   paymentLink: CreatePaymentLinkResult;
 };
 
+/** Prisma client outside or inside `$transaction`. */
+type PrismaOrderDb = PrismaService | Prisma.TransactionClient;
+
 const terminalStatuses: OrderStatus[] = [
   OrderStatus.COMPLETED,
   OrderStatus.CANCELED,
@@ -160,6 +173,7 @@ export class OrdersService {
 
   constructor(
     private readonly prisma: PrismaService,
+    @Inject(forwardRef(() => CustomerLedgerService))
     private readonly customerLedger: CustomerLedgerService,
     private readonly paymentsService: PaymentsService,
     private readonly customerNotifications: CustomerNotificationsService,
@@ -1230,12 +1244,7 @@ export class OrdersService {
       const canRemindNow =
         lastReminderMs === null ||
         now - lastReminderMs >= ORDER_REMINDER_COOLDOWN_MS;
-      const ccLocked = r.ccCollectionPaymentWaLocked;
-      const isCcOnly =
-        actor?.role === SafariRole.CALL_CENTER ||
-        actor?.role === SafariRole.CALL_CENTER_SUPERVISOR;
-      const canSendCollectionPaymentWa =
-        canRemindNow && !(ccLocked && isCcOnly);
+      const canSendCollectionPaymentWa = canRemindNow;
       const readableId =
         r.serialNumber?.trim() ||
         r.invoiceNumber?.trim() ||
@@ -1281,7 +1290,7 @@ export class OrdersService {
           ? r.lastReminderAt.toISOString()
           : null,
         canRemindNow,
-        ccCollectionPaymentWaLocked: ccLocked,
+        ccCollectionPaymentWaLocked: r.ccCollectionPaymentWaLocked,
         canSendCollectionPaymentWa,
         branchName,
         driverName,
@@ -1372,6 +1381,207 @@ export class OrdersService {
     return (unpaidAgg._sum.totalPrice ?? new Prisma.Decimal(0)).plus(
       debtOpenTotal,
     );
+  }
+
+  /**
+   * Whether an order contributes to the Collections / market-debt totals for
+   * a customer — **byte-identical** to the filter in {@link listUnpaidCollectionOrders}
+   * (`filteredRows`). UNPAID rows always count; DEBT_ON_ACCOUNT rows only while
+   * FIFO says the invoice is still open.
+   */
+  private isOrderInCollectionsUncollectedScope(
+    r: {
+      id: string;
+      cashStatus: CashStatus;
+      posPaymentMethod: PosPaymentMethod | null;
+    },
+    debtOnAccountStillOpenIds: Set<string>,
+  ): boolean {
+    if (r.cashStatus === CashStatus.UNPAID) return true;
+    if (
+      r.posPaymentMethod === PosPaymentMethod.DEBT_ON_ACCOUNT &&
+      debtOnAccountStillOpenIds.has(r.id)
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Single DB pass: total KD + order ids that count as Collections debt for
+   * this customer (same filter as {@link listUnpaidCollectionOrders}).
+   */
+  async getCollectionsReceivableSnapshotForCustomer(
+    customerId: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<{
+    totalKd: Prisma.Decimal;
+    openOrderIds: Set<string>;
+  }> {
+    const db = tx ?? this.prisma;
+    const rows = await db.order.findMany({
+      where: {
+        customerId,
+        status: { not: OrderStatus.CANCELED },
+        OR: [
+          { cashStatus: CashStatus.UNPAID },
+          { posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT },
+        ],
+      },
+      select: {
+        id: true,
+        customerId: true,
+        totalPrice: true,
+        cashStatus: true,
+        posPaymentMethod: true,
+      },
+    });
+    const debtCandidates = rows.filter(
+      (r) => r.posPaymentMethod === PosPaymentMethod.DEBT_ON_ACCOUNT,
+    );
+    const openDebtOrderIds = await this.resolveOpenDebtOrderIds(
+      debtCandidates.map((r) => ({
+        orderId: r.id,
+        customerId: r.customerId,
+      })),
+      db,
+    );
+    let totalKd = new Prisma.Decimal(0);
+    const openOrderIds = new Set<string>();
+    for (const r of rows) {
+      if (!this.isOrderInCollectionsUncollectedScope(r, openDebtOrderIds)) {
+        continue;
+      }
+      totalKd = totalKd.plus(r.totalPrice);
+      openOrderIds.add(r.id);
+    }
+    return { totalKd, openOrderIds };
+  }
+
+  /**
+   * Σ `totalPrice` for every non-canceled invoice for this customer that would
+   * appear on `/collections` (الفواتير غير المحصّلة) — same scope as
+   * {@link sumCollectionsDebtTotalKd} but for one `customerId`.
+   */
+  async sumCollectionsReceivableKdForCustomer(
+    customerId: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<Prisma.Decimal> {
+    const { totalKd } =
+      await this.getCollectionsReceivableSnapshotForCustomer(customerId, tx);
+    return totalKd;
+  }
+
+  /**
+   * **Single source** for subscriber totals, Call Center conversion / partial-pay
+   * copy, and `activateSubscriptionPlan`:
+   *
+   * - **`effectiveDebtKd`**: **أعلى** القيم الثلاث حتى لا يظهر رقم أقل من أي
+   *   مرجع يعتمد عليه الموظف:
+   *   1) صافي أستاذ الديون (`DebtLedgerEntry`، نفس شلال «ذمم دفتر الالتزام»)،
+   *   2) `getCustomerDebtSnapshot.totalDebt` (دين المحفظة + زيادة استعمال الاشتراك)،
+   *   3) مجموع نطاق التحصيل التقليدي: `wallet.debt + Σ` فواتير التحصيل
+   *      ({@link getCollectionsReceivableSnapshotForCustomer}) — يطابق الصفوف في
+   *      «تقرير تتبع الديون» عندما تُجمع ذمم الفواتير مع عمود المحفظة.
+   * - **`collectionsReceivableKd`**: `max(effectiveDebtKd − walletDebtKd, 0)`.
+   *
+   * Pass `embeddedWalletDebt` when `customer.wallet` is already loaded so the
+   * wallet row cannot diverge from the serialized `debt` column.
+   */
+  async getEffectiveDebtKdBreakdown(
+    customerId: string,
+    embeddedWalletDebt?: Prisma.Decimal | null,
+    tx?: Prisma.TransactionClient,
+  ): Promise<{
+    walletDebtKd: Prisma.Decimal;
+    collectionsReceivableKd: Prisma.Decimal;
+    effectiveDebtKd: Prisma.Decimal;
+    collectionsOpenOrderIds: Set<string>;
+    /** Present when env `EXPOSE_DEBT_BREAKDOWN=1`: three inputs + winners. */
+    trace?: DebtKdBreakdownTrace;
+  }> {
+    const db = tx ?? this.prisma;
+    let walletDebtKd: Prisma.Decimal;
+    if (embeddedWalletDebt !== undefined) {
+      walletDebtKd =
+        embeddedWalletDebt ?? new Prisma.Decimal(0);
+    } else {
+      const row = await db.customerWallet.findUnique({
+        where: { customerId },
+        select: { debt: true },
+      });
+      walletDebtKd = row?.debt ?? new Prisma.Decimal(0);
+    }
+
+    const ledgerOpen = await getCustomerNetDebtFromDebtLedgerAgg(db, customerId);
+    const snapshotFromWalletKd = await getCustomerDebtSnapshotTotalKd(
+      db,
+      customerId,
+    );
+    const collectionsSnap = await this.getCollectionsReceivableSnapshotForCustomer(
+      customerId,
+      tx,
+    );
+    const z = new Prisma.Decimal(0);
+    const ledgerNetKd = ledgerOpen.netOpenDebtKd;
+    /** نفس «قديم effective»: دين المحفظة + ذمم التحصيل الظاهرة في القائمة. */
+    const orderMarketScopeKd = walletDebtKd.plus(collectionsSnap.totalKd);
+    const effectiveDebtKd = Prisma.Decimal.max(
+      ledgerNetKd,
+      snapshotFromWalletKd,
+      orderMarketScopeKd,
+    );
+
+    const collectionsReceivableKd = Prisma.Decimal.max(
+      effectiveDebtKd.sub(walletDebtKd),
+      z,
+    );
+
+    const unpaidIds = await db.order.findMany({
+      where: {
+        customerId,
+        status: { not: OrderStatus.CANCELED },
+        cashStatus: CashStatus.UNPAID,
+      },
+      select: { id: true },
+    });
+    const collectionsOpenOrderIds = new Set<string>(collectionsSnap.openOrderIds);
+    for (const u of unpaidIds) {
+      collectionsOpenOrderIds.add(u.id);
+    }
+
+    const expose =
+      process.env.EXPOSE_DEBT_BREAKDOWN?.trim().toLowerCase() === '1' ||
+      process.env.EXPOSE_DEBT_BREAKDOWN?.trim().toLowerCase() === 'true';
+    let trace: DebtKdBreakdownTrace | undefined;
+    if (expose) {
+      trace = buildDebtKdBreakdownTrace(
+        ledgerNetKd,
+        snapshotFromWalletKd,
+        orderMarketScopeKd,
+        effectiveDebtKd,
+      );
+      this.log.warn(
+        `[debtKdBreakdown] customerId=${customerId} ledger=${trace.ledgerNetKd} walletSnap=${trace.walletSnapshotKd} orderMarket=${trace.orderMarketScopeKd} effective=${trace.effectiveDebtKd} winners=[${trace.winningSources.join(',')}]`,
+      );
+    }
+
+    return {
+      walletDebtKd,
+      collectionsReceivableKd,
+      effectiveDebtKd,
+      collectionsOpenOrderIds,
+      trace,
+    };
+  }
+
+  /** Every order id for this customer that is still counted as Collections debt. */
+  async getCollectionsOpenOrderIdsForCustomer(
+    customerId: string,
+  ): Promise<Set<string>> {
+    const { openOrderIds } =
+      await this.getCollectionsReceivableSnapshotForCustomer(customerId);
+    return openOrderIds;
   }
 
   /**
@@ -1806,6 +2016,7 @@ export class OrdersService {
    */
   private async resolveOpenDebtOrderIds(
     candidates: { orderId: string; customerId: string }[],
+    db: PrismaOrderDb = this.prisma,
   ): Promise<Set<string>> {
     const openIds = new Set<string>();
     if (candidates.length === 0) return openIds;
@@ -1817,7 +2028,7 @@ export class OrdersService {
     // 1) Every SHORTFALL entry for the affected customers — we need the
     //    FULL picture (other drivers' invoices too) so FIFO allocation
     //    applies to the correct oldest-first order across all of them.
-    const shortfallEntries = await this.prisma.debtLedgerEntry.findMany({
+    const shortfallEntries = await db.debtLedgerEntry.findMany({
       where: {
         source: DebtSource.INVOICE_SHORTFALL,
         customerId: { in: customerIds },
@@ -1863,7 +2074,7 @@ export class OrdersService {
     if (allOrderIds.length === 0) return openIds;
 
     // 2) Per-order direct PAYMENTs.
-    const perOrderPayments = await this.prisma.debtLedgerEntry.groupBy({
+    const perOrderPayments = await db.debtLedgerEntry.groupBy({
       by: ['orderId'],
       where: {
         source: DebtSource.PAYMENT,
@@ -1879,7 +2090,7 @@ export class OrdersService {
     }
 
     // 3) Customer-wide totals to derive the still-unallocated pool.
-    const customerTotals = await this.prisma.debtLedgerEntry.groupBy({
+    const customerTotals = await db.debtLedgerEntry.groupBy({
       by: ['customerId', 'source'],
       where: { customerId: { in: customerIds } },
       _sum: { amount: true },

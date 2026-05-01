@@ -1,8 +1,10 @@
 import { PosPaymentMethod, Prisma } from '@prisma/client';
 import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
 import { InventoryService } from '../inventory/inventory.service';
+import { OrdersService } from '../orders/orders.service';
 import { PrismaService } from '../prisma/prisma.service';
-import type { SubscriptionActivationSettlement } from './subscription-settlement.types';
+import type { SubscriptionActivationPaymentMethod } from '../call-center/dto/activate-subscription.dto';
+import type { SubscriptionActivationSettlement, SubscriptionCancellationSettlement } from './subscription-settlement.types';
 export type PrismaTx = Prisma.TransactionClient;
 export type OrderWalletSettlementPrefetch = {
     customerId: string;
@@ -15,9 +17,9 @@ export declare class CustomerLedgerService {
     private readonly prisma;
     private readonly generalLedger;
     private readonly inventory;
+    private readonly orders;
     private readonly logger;
-    constructor(prisma: PrismaService, generalLedger: GeneralLedgerService, inventory: InventoryService);
-    private sumUnsettledUnpaidReceivableMinorTx;
+    constructor(prisma: PrismaService, generalLedger: GeneralLedgerService, inventory: InventoryService, orders: OrdersService);
     private resolveFallbackOwnerIdTx;
     autoReconcileUnpaidInvoicesFromPrepaidBalanceTx(tx: PrismaTx, customerId: string, performedByUserId: string | null | undefined): Promise<{
         paidOrderIds: string[];
@@ -48,6 +50,8 @@ export declare class CustomerLedgerService {
         planId: string;
         performedByUserId: string;
         autoCloseInvoices?: boolean;
+        paymentMethod: SubscriptionActivationPaymentMethod;
+        skipPrepaidAutoReconcile?: boolean;
     }): Promise<SubscriptionActivationSettlement>;
     recordDebtInvoiceCollectedAtCallCenter(tx: PrismaTx, params: {
         orderId: string;
@@ -75,4 +79,9 @@ export declare class CustomerLedgerService {
         paymentMethod: PosPaymentMethod;
         transactionHistoryId: string;
     }>;
+    cancelSubscriptionForCustomer(tx: PrismaTx, params: {
+        customerId: string;
+        performedByUserId: string;
+        reason?: string | null;
+    }): Promise<SubscriptionCancellationSettlement>;
 }

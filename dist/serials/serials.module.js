@@ -19,7 +19,7 @@ let SerialsModule = class SerialsModule {
 exports.SerialsModule = SerialsModule;
 exports.SerialsModule = SerialsModule = __decorate([
     (0, common_1.Module)({
-        imports: [prisma_module_1.PrismaModule, auth_module_1.AuthModule],
+        imports: [prisma_module_1.PrismaModule, (0, common_1.forwardRef)(() => auth_module_1.AuthModule)],
         controllers: [serials_controller_1.SerialsController],
         providers: [serials_service_1.SerialsService, serial_counter_service_1.SerialCounterService, serial_gap_service_1.SerialGapService],
         exports: [serial_counter_service_1.SerialCounterService],

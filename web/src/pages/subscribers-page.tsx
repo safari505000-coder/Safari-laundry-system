@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  type ComponentPropsWithoutRef,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import {
@@ -16,6 +23,7 @@ import {
   RefreshCw,
   Search,
   Sparkles,
+  Undo2,
 } from 'lucide-react';
 import { CustomerLedgerPanel } from '@/modules/call-center/components/customer-ledger-panel';
 import { toast } from 'sonner';
@@ -62,6 +70,28 @@ import {
 } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { formatKwdLabel, formatSignedKwdLabel } from '@/lib/kwd';
+
+/** Isolates LTR amounts (+ digits + د.ك) inside RTL pages — avoids bidi “floating” digits. */
+function RtlSafeMoney({
+  block = true,
+  className,
+  ...props
+}: ComponentPropsWithoutRef<'bdi'> & { block?: boolean }) {
+  return (
+    <bdi
+      dir="ltr"
+      lang="en"
+      className={cn(
+        'whitespace-nowrap tabular-nums [unicode-bidi:isolate]',
+        block ?
+          'block w-full text-end'
+        : 'inline-block align-baseline',
+        className,
+      )}
+      {...props}
+    />
+  );
+}
 
 const POLL_MS = 12_000;
 
@@ -125,15 +155,26 @@ function subscriberListBalanceDisplay(r: SubscriberListRow): string {
   return r.balanceDisplayKd ?? r.balance;
 }
 
-type SubscribersNumSortKey = 'remainingDays' | 'balance';
+/** Same basis as debt→subscription preview (`effectiveDebtKd` from API). */
+function subscriberEffectiveDebtKdNumber(r: SubscriberListRow): number {
+  const s = r.effectiveDebtKd?.trim() ?? '';
+  if (!s) return 0;
+  const n = Number.parseFloat(s);
+  return Number.isFinite(n) ? n : 0;
+}
+
+type SubscribersNumSortKey = 'remainingDays' | 'balance' | 'effectiveDebt';
 
 function NumSortHeaderButton({
   label,
+  title: hintTitle,
   active,
   dir,
   onClick,
 }: {
   label: string;
+  /** Optional fuller explanation (header stays short — this is for hover/accessibility). */
+  title?: string;
   active: boolean;
   dir: 'asc' | 'desc' | null;
   onClick: () => void;
@@ -141,6 +182,7 @@ function NumSortHeaderButton({
   return (
     <button
       type="button"
+      title={hintTitle}
       className="inline-flex w-full max-w-full items-center justify-end gap-1.5 font-bold text-foreground hover:underline"
       onClick={onClick}
     >
@@ -204,17 +246,40 @@ function SubscriberCard({
       <p className="mt-1 text-sm text-muted-foreground">{r.subscriptionType}</p>
       <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 text-xs sm:grid-cols-4 sm:text-sm">
         <div className="min-w-0">
-          <dt className="text-muted-foreground">{t('subscribers.colBalance')}</dt>
-          <dd
-            dir="ltr"
-            className={cn(
-              'font-mono tabular-nums text-base font-bold sm:text-sm',
-              subscriberBalanceClass(subscriberListBalanceDisplay(r)),
-            )}
+          <dt
+            className="text-muted-foreground"
+            title={t('subscribers.colBalanceHint')}
           >
-            {formatSignedKwdLabel(subscriberListBalanceDisplay(r))}
+            {t('subscribers.colBalance')}
+          </dt>
+          <dd dir="ltr" className="tabular-nums text-base sm:text-sm">
+            <RtlSafeMoney
+              block={false}
+              className={cn(
+                'font-mono text-base font-bold sm:text-sm',
+                subscriberBalanceClass(subscriberListBalanceDisplay(r)),
+              )}
+            >
+              {formatSignedKwdLabel(subscriberListBalanceDisplay(r))}
+            </RtlSafeMoney>
           </dd>
         </div>
+        {subscriberEffectiveDebtKdNumber(r) > 0.0005 ?
+          <div className="min-w-0">
+            <dt className="text-muted-foreground">{t('subscribers.colTotalOwed')}</dt>
+            <dd
+              dir="ltr"
+              className="tabular-nums text-base font-semibold sm:text-sm"
+            >
+              <RtlSafeMoney
+                block={false}
+                className="font-mono text-base font-semibold text-amber-800 dark:text-amber-200 sm:text-sm"
+              >
+                {formatKwdLabel(r.effectiveDebtKd ?? '0')}
+              </RtlSafeMoney>
+            </dd>
+          </div>
+        : null}
         <div className="min-w-0">
           <dt className="text-muted-foreground">{t('subscribers.colExpiry')}</dt>
           <dd className="tabular-nums font-semibold text-foreground">
@@ -229,12 +294,31 @@ function SubscriberCard({
           <dt className="text-muted-foreground">{t('subscribers.colRemaining')}</dt>
           <dd
             dir="ltr"
-            className="font-mono text-base font-medium tabular-nums sm:text-sm"
+            className="tabular-nums text-base font-medium sm:text-sm"
           >
-            {r.remainingDays === null ? '—' : r.remainingDays}
+            <RtlSafeMoney block={false} className="font-mono">
+              {r.remainingDays === null ? '—' : r.remainingDays}
+            </RtlSafeMoney>
           </dd>
         </div>
       </dl>
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 border-t border-border/40 pt-2 text-[11px] text-muted-foreground">
+        <span>
+          {t('subscribers.colDebtReminderTally')}:{' '}
+          <strong className="text-foreground" dir="ltr">
+            {r.collectionPaymentLinkReminderTotal ?? 0}
+          </strong>
+        </span>
+        <span>
+          {t('subscribers.colDebtStaleDays')}:{' '}
+          <strong className="text-foreground" dir="ltr">
+            {r.collectionPendingHostedLinkAgeDays === undefined ||
+            r.collectionPendingHostedLinkAgeDays === null
+              ? '—'
+              : r.collectionPendingHostedLinkAgeDays}
+          </strong>
+        </span>
+      </div>
       {isLowPrepaidBalanceRow(r) ? (
         <p className="mt-2 text-xs font-semibold text-red-700">
           {t('subscribers.lowBalanceWarn')}
@@ -266,6 +350,7 @@ function ManageAccountDialog({
   onPayDebt,
   onConvertDebt,
   onStatement,
+  onCancelSubscription,
 }: {
   subscriber: SubscriberListRow | null;
   open: boolean;
@@ -275,15 +360,25 @@ function ManageAccountDialog({
   onPayDebt: (r: SubscriberListRow) => void;
   onConvertDebt: (r: SubscriberListRow) => void;
   onStatement: (r: SubscriberListRow) => void;
+  onCancelSubscription: (r: SubscriberListRow) => void;
 }) {
   const { t } = useTranslation();
   const canExtend = Boolean(subscriber?.planId);
-  // V19.4 — CC pack #1. Hide the debt action when the customer has
-  // no outstanding debt; keeping the button visible-but-disabled
-  // would just add visual noise mid-call. Guarded with Number.parse
-  // so legacy rows without a `debt` field collapse to "no debt".
-  const debtAmount = Number.parseFloat(subscriber?.debt ?? '0') || 0;
-  const hasDebt = debtAmount > 0;
+  const walletDebtKd = Number.parseFloat(subscriber?.debt ?? '0') || 0;
+  const effectiveDebtKd =
+    subscriber?.effectiveDebtKd !== undefined && subscriber.effectiveDebtKd.trim() !== ''
+      ? Number.parseFloat(subscriber.effectiveDebtKd) || 0
+      : walletDebtKd;
+  const showPayDebtPartial = effectiveDebtKd > 0;
+  const showConvertDebt = effectiveDebtKd > 0;
+  const expiryMs = subscriber?.expiryDate?.trim()
+    ? new Date(subscriber.expiryDate).getTime()
+    : NaN;
+  const canCancelSubscription =
+    Boolean(subscriber) &&
+    subscriber!.rowStatus !== 'expired' &&
+    Number.isFinite(expiryMs) &&
+    expiryMs > Date.now();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
@@ -341,7 +436,7 @@ function ManageAccountDialog({
             </span>
           </button>
 
-          {hasDebt && subscriber ? (
+          {showPayDebtPartial && subscriber ? (
             <button
               type="button"
               className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50/60 p-4 text-start transition hover:border-red-400 hover:bg-red-100/70 dark:border-red-900/60 dark:bg-red-950/20 dark:hover:bg-red-950/40"
@@ -356,7 +451,9 @@ function ManageAccountDialog({
                 </span>
                 <span className="mt-1 block text-xs text-muted-foreground">
                   {t('subscribers.managePayDebtHint', {
-                    debt: formatKwdLabel(subscriber.debt),
+                    debt: formatKwdLabel(
+                      String(subscriber.effectiveDebtKd ?? subscriber.debt),
+                    ),
                   })}
                 </span>
               </span>
@@ -366,7 +463,7 @@ function ManageAccountDialog({
           {/* V19.4 — CC pack #9. Convert debt → subscription. Shown only
               when the customer still has debt; otherwise the action has
               no business meaning and would just be noise in the hub. */}
-          {hasDebt && subscriber ? (
+          {showConvertDebt && subscriber ? (
             <button
               type="button"
               className="flex items-start gap-3 rounded-lg border border-indigo-200 bg-indigo-50/60 p-4 text-start transition hover:border-indigo-400 hover:bg-indigo-100/70 dark:border-indigo-900/60 dark:bg-indigo-950/20 dark:hover:bg-indigo-950/40"
@@ -381,12 +478,50 @@ function ManageAccountDialog({
                 </span>
                 <span className="mt-1 block text-xs text-muted-foreground">
                   {t('subscribers.manageConvertDebtHint', {
-                    debt: formatKwdLabel(subscriber.debt),
+                    effectiveDebt: formatKwdLabel(
+                      String(subscriber.effectiveDebtKd ?? subscriber.debt),
+                    ),
                   })}
                 </span>
               </span>
             </button>
           ) : null}
+
+          <button
+            type="button"
+            className={cn(
+              'flex items-start gap-3 rounded-lg border p-4 text-start transition',
+              canCancelSubscription
+                ? 'border-rose-200 bg-rose-50/60 hover:border-rose-400 hover:bg-rose-100/70 dark:border-rose-900/40 dark:bg-rose-950/20 dark:hover:bg-rose-950/40'
+                : 'cursor-not-allowed border-border opacity-50',
+            )}
+            disabled={!canCancelSubscription || !subscriber}
+            onClick={() => {
+              if (!canCancelSubscription || !subscriber) return;
+              onCancelSubscription(subscriber);
+            }}
+          >
+            <span
+              className={cn(
+                'mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md',
+                canCancelSubscription
+                  ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-200'
+                  : 'bg-muted text-muted-foreground',
+              )}
+            >
+              <Undo2 className="h-5 w-5" aria-hidden />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-semibold">
+                {t('subscribers.manageCancelSubscriptionTitle')}
+              </span>
+              <span className="mt-1 block text-xs text-muted-foreground">
+                {canCancelSubscription
+                  ? t('subscribers.manageCancelSubscriptionHint')
+                  : t('subscribers.manageCancelSubscriptionDisabled')}
+              </span>
+            </span>
+          </button>
 
           {/* V19.7.5 — "كشف حساب العميل". Always available regardless
               of debt or plan state; the agent should be able to review
@@ -512,6 +647,9 @@ function IssueSubscriptionDialog({
     [],
   );
   const [customerSearching, setCustomerSearching] = useState(false);
+  const [activationPaymentMethod, setActivationPaymentMethod] = useState<
+    'CASH' | 'KNET' | 'PAYMENT_LINK' | 'ONLINE' | 'DEBT_ON_ACCOUNT'
+  >('CASH');
   const [selectedCustomer, setSelectedCustomer] =
     useState<CustomerSearchRow | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -575,6 +713,7 @@ function IssueSubscriptionDialog({
       setCustomerResults([]);
       setSelectedCustomer(null);
       setSubmitting(false);
+      setActivationPaymentMethod('CASH');
       return;
     }
     if (prefill) {
@@ -608,6 +747,7 @@ function IssueSubscriptionDialog({
           // Same as convert-debt: when plan credit settles wallet debt, FIFO-close
           // matching UNPAID invoices. Backend no-ops when debtPaidMinor is 0.
           autoCloseInvoices: true,
+          paymentMethod: activationPaymentMethod,
         }),
       });
       toast.success(
@@ -770,6 +910,45 @@ function IssueSubscriptionDialog({
                 : t('subscribers.issuePlanHint')}
             </p>
           </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="sub-pay-method">
+              {t('subscribers.activationPaymentMethodLabel')}
+            </Label>
+            <Select
+              value={activationPaymentMethod}
+              onValueChange={(v) =>
+                setActivationPaymentMethod(
+                  v as
+                    | 'CASH'
+                    | 'KNET'
+                    | 'PAYMENT_LINK'
+                    | 'ONLINE'
+                    | 'DEBT_ON_ACCOUNT',
+                )
+              }
+            >
+              <SelectTrigger id="sub-pay-method">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="CASH">{t('collections.pm.CASH')}</SelectItem>
+                <SelectItem value="KNET">{t('collections.pm.KNET')}</SelectItem>
+                <SelectItem value="PAYMENT_LINK">
+                  {t('collections.pm.PAYMENT_LINK')}
+                </SelectItem>
+                <SelectItem value="ONLINE">
+                  {t('collections.pm.ONLINE')}
+                </SelectItem>
+                <SelectItem value="DEBT_ON_ACCOUNT">
+                  {t('collections.pm.DEBT_ON_ACCOUNT')}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-[11px] text-muted-foreground">
+              {t('subscribers.activationPaymentMethodHint')}
+            </p>
+          </div>
         </div>
 
         <DialogFooter>
@@ -802,8 +981,9 @@ function IssueSubscriptionDialog({
  *
  * Opened from the Manage-Account dialog when the customer has debt > 0.
  * The agent types the cash collected, an optional goodwill discount,
- * and the payment method; the server validates `amount + discount
- * <= wallet.debt` and writes a TransactionHistory + two GL entries
+ * and the payment method; the server validates `amount + discount`
+ * against total outstanding debt (`effectiveDebtKd` basis) and writes
+ * a TransactionHistory + two GL entries
  * (see `CustomerLedgerService.recordPartialDebtPayment`).
  *
  * Intentionally kept as a separate dialog rather than inline inside
@@ -843,7 +1023,12 @@ function DebtPaymentDialog({
     }
   }, [open]);
 
-  const debtNum = Number.parseFloat(subscriber?.debt ?? '0') || 0;
+  const effectiveDebtKd =
+    subscriber?.effectiveDebtKd !== undefined &&
+    subscriber.effectiveDebtKd.trim() !== ''
+      ? Number.parseFloat(subscriber.effectiveDebtKd) || 0
+      : Number.parseFloat(subscriber?.debt ?? '0') || 0;
+  const debtNum = effectiveDebtKd;
   const amountNum = Number.parseFloat(amount || '0') || 0;
   const discountNum = Number.parseFloat(discount || '0') || 0;
   const totalReduction = amountNum + discountNum;
@@ -897,7 +1082,9 @@ function DebtPaymentDialog({
           <DialogDescription>
             {t('subscribers.debtPayHint', {
               name: subscriber?.customerName ?? '',
-              debt: formatKwdLabel(subscriber?.debt ?? '0'),
+              debt: formatKwdLabel(
+                String(subscriber?.effectiveDebtKd ?? subscriber?.debt ?? '0'),
+              ),
             })}
           </DialogDescription>
         </DialogHeader>
@@ -995,7 +1182,9 @@ function DebtPaymentDialog({
                 {t('subscribers.debtPayCurrentDebt')}
               </div>
               <div className="font-medium text-foreground">
-                {formatKwdLabel(subscriber?.debt ?? '0')}
+                {formatKwdLabel(
+                  String(subscriber?.effectiveDebtKd ?? subscriber?.debt ?? '0'),
+                )}
               </div>
             </div>
           </div>
@@ -1068,11 +1257,15 @@ function DebtConvertDialog({
   const [data, setData] = useState<DebtConversionOptionsResponse | null>(null);
   const [selectedPlanId, setSelectedPlanId] = useState<string>('');
   const [submitting, setSubmitting] = useState(false);
+  const [activationPaymentMethod, setActivationPaymentMethod] = useState<
+    'CASH' | 'KNET' | 'PAYMENT_LINK' | 'ONLINE' | 'DEBT_ON_ACCOUNT'
+  >('CASH');
 
   useEffect(() => {
     if (!open || !subscriber) {
       setData(null);
       setSelectedPlanId('');
+      setActivationPaymentMethod('CASH');
       return;
     }
     let alive = true;
@@ -1080,11 +1273,17 @@ function DebtConvertDialog({
     (async () => {
       try {
         const res = await apiJson<DebtConversionOptionsResponse>(
-          `/api/call-center/customers/${subscriber.customerId}/debt-conversion-options`,
+          `/api/call-center/customers/${subscriber.customerId}/debt-conversion-options?paymentMethod=${encodeURIComponent(activationPaymentMethod)}`,
           { token },
         );
         if (!alive) return;
         setData(res);
+        if (import.meta.env.DEV && res.debtKdBreakdownTrace) {
+          console.info(
+            `[debtKdBreakdownTrace] convert modal → ${subscriber.customerName}`,
+            res.debtKdBreakdownTrace,
+          );
+        }
         // Pre-select the cheapest "recommended" plan to save the agent a
         // click in the common case. If none clear all debt, leave empty
         // so the agent has to make a conscious choice.
@@ -1099,7 +1298,7 @@ function DebtConvertDialog({
     return () => {
       alive = false;
     };
-  }, [open, subscriber, token]);
+  }, [open, subscriber, token, activationPaymentMethod]);
 
   const selected = useMemo<DebtConversionPlanOption | null>(() => {
     if (!data || !selectedPlanId) return null;
@@ -1118,9 +1317,8 @@ function DebtConvertDialog({
         body: JSON.stringify({
           customerId: subscriber.customerId,
           planId: selected.planId,
-          // FIFO-close UNPAID invoices when activation pays down wallet debt.
-          // Issue/upgrade dialog also sends this; backend skips when no debt settled.
           autoCloseInvoices: true,
+          paymentMethod: activationPaymentMethod,
         }),
       });
       toast.success(
@@ -1154,6 +1352,45 @@ function DebtConvertDialog({
           </DialogDescription>
         </DialogHeader>
 
+        <div className="space-y-2">
+          <Label htmlFor="conv-pay-method">
+            {t('subscribers.activationPaymentMethodLabel')}
+          </Label>
+          <Select
+            value={activationPaymentMethod}
+            onValueChange={(v) =>
+              setActivationPaymentMethod(
+                v as
+                  | 'CASH'
+                  | 'KNET'
+                  | 'PAYMENT_LINK'
+                  | 'ONLINE'
+                  | 'DEBT_ON_ACCOUNT',
+              )
+            }
+          >
+            <SelectTrigger id="conv-pay-method">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="CASH">{t('collections.pm.CASH')}</SelectItem>
+              <SelectItem value="KNET">{t('collections.pm.KNET')}</SelectItem>
+              <SelectItem value="PAYMENT_LINK">
+                {t('collections.pm.PAYMENT_LINK')}
+              </SelectItem>
+              <SelectItem value="ONLINE">
+                {t('collections.pm.ONLINE')}
+              </SelectItem>
+              <SelectItem value="DEBT_ON_ACCOUNT">
+                {t('collections.pm.DEBT_ON_ACCOUNT')}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-[11px] text-muted-foreground">
+            {t('subscribers.activationPaymentMethodHint')}
+          </p>
+        </div>
+
         {loading ? (
           <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
             <Loader2 className="me-2 h-4 w-4 animate-spin" aria-hidden />
@@ -1170,17 +1407,20 @@ function DebtConvertDialog({
         ) : (
           <div className="space-y-3">
             <div className="rounded-md border border-border bg-muted/40 p-3 text-sm">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="font-medium">
+              <div className="flex gap-2">
+                <span className="min-w-0 flex-1 font-medium">
                   {t('subscribers.convertDebtCurrentDebt')}
                 </span>
-                <span className="tabular-nums font-semibold text-red-700">
+                <span
+                  className="shrink-0 font-semibold tabular-nums text-red-700"
+                  dir="ltr"
+                >
                   {formatKwdLabel(data.currentDebtKd)}
                 </span>
               </div>
-              <div className="mt-1 flex flex-wrap items-center justify-between gap-2 text-muted-foreground">
-                <span>{t('subscribers.convertDebtCurrentBalance')}</span>
-                <span className="tabular-nums">
+              <div className="mt-1 flex gap-2 text-muted-foreground">
+                <span className="min-w-0 flex-1">{t('subscribers.convertDebtCurrentBalance')}</span>
+                <span className="shrink-0 tabular-nums" dir="ltr">
                   {formatKwdLabel(data.currentBalanceKd)}
                 </span>
               </div>
@@ -1209,8 +1449,8 @@ function DebtConvertDialog({
                           'border-emerald-300 bg-emerald-50/40 dark:border-emerald-900/40 dark:bg-emerald-950/15',
                       )}
                     >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-baseline gap-2">
+                        <div className="flex min-w-0 flex-1 items-center gap-2">
                           <span className="font-semibold">{opt.planName}</span>
                           {opt.recommended ? (
                             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-100">
@@ -1219,65 +1459,75 @@ function DebtConvertDialog({
                             </span>
                           ) : null}
                         </div>
-                        <span className="text-xs text-muted-foreground tabular-nums">
+                        <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
                           {t('subscribers.convertDebtValidity', {
                             days: opt.planValidityDays,
                           })}
                         </span>
                       </div>
-                      <div className="mt-2 grid gap-x-4 gap-y-1 text-xs sm:grid-cols-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-muted-foreground">
+                      <div className="mt-3 space-y-1.5 border-t border-border/50 pt-3 text-xs">
+                        <div className="flex items-baseline gap-2">
+                          <span className="min-w-0 flex-1 leading-snug text-muted-foreground">
                             {t('subscribers.convertDebtCashRequired')}
                           </span>
-                          <span className="tabular-nums font-medium">
+                          <span
+                            className="shrink-0 font-medium tabular-nums"
+                            dir="ltr"
+                          >
                             {formatKwdLabel(opt.cashRequiredKd)}
                           </span>
                         </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-muted-foreground">
+                        <div className="flex items-baseline gap-2">
+                          <span className="min-w-0 flex-1 leading-snug text-muted-foreground">
                             {t('subscribers.convertDebtPlanBalance')}
                           </span>
-                          <span className="tabular-nums">
+                          <span className="shrink-0 tabular-nums" dir="ltr">
                             {formatKwdLabel(opt.planActualBalanceKd)}
                           </span>
                         </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-muted-foreground">
+                        <div className="flex items-baseline gap-2">
+                          <span className="min-w-0 flex-1 leading-snug text-muted-foreground">
                             {t('subscribers.convertDebtDebtCleared')}
                           </span>
-                          <span className="tabular-nums font-medium text-emerald-700 dark:text-emerald-300">
+                          <span
+                            className="shrink-0 font-medium tabular-nums text-emerald-700 dark:text-emerald-300"
+                            dir="ltr"
+                          >
                             −{formatKwdLabel(opt.debtToSettleKd)}
                           </span>
                         </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-muted-foreground">
+                        <div className="flex items-baseline gap-2">
+                          <span className="min-w-0 flex-1 leading-snug text-muted-foreground">
                             {t('subscribers.convertDebtRemaining')}
                           </span>
                           <span
                             className={cn(
-                              'tabular-nums font-medium',
+                              'shrink-0 font-medium tabular-nums',
                               Number.parseFloat(opt.remainingDebtKd) > 0
                                 ? 'text-red-700 dark:text-red-300'
                                 : 'text-emerald-700 dark:text-emerald-300',
                             )}
+                            dir="ltr"
                           >
                             {formatKwdLabel(opt.remainingDebtKd)}
                           </span>
                         </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-muted-foreground">
+                        <div className="flex items-baseline gap-2">
+                          <span className="min-w-0 flex-1 leading-snug text-muted-foreground">
                             {t('subscribers.convertDebtCreditedToBalance')}
                           </span>
-                          <span className="tabular-nums">
+                          <span className="shrink-0 tabular-nums" dir="ltr">
                             {formatKwdLabel(opt.creditedToBalanceKd)}
                           </span>
                         </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-muted-foreground">
+                        <div className="flex items-baseline gap-2">
+                          <span className="min-w-0 flex-1 leading-snug text-muted-foreground">
                             {t('subscribers.convertDebtProjectedBalance')}
                           </span>
-                          <span className="tabular-nums font-medium">
+                          <span
+                            className="shrink-0 font-medium tabular-nums"
+                            dir="ltr"
+                          >
                             {formatKwdLabel(opt.projectedWalletBalanceKd)}
                           </span>
                         </div>
@@ -1558,6 +1808,36 @@ export function SubscribersPage() {
     void load();
   }, [load]);
 
+  /** Dev-only: when API sets EXPOSE_DEBT_BREAKDOWN=1, log which baseline won. */
+  const debtTraceLogKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (!import.meta.env.DEV || !rows?.length) return;
+    const traced = rows.filter((r) => r.debtKdBreakdownTrace);
+    if (traced.length === 0) return;
+    const key = JSON.stringify(
+      traced.map((r) => [
+        r.customerId,
+        r.effectiveDebtKd,
+        r.debtKdBreakdownTrace?.winningSources,
+      ]),
+    );
+    if (key === debtTraceLogKey.current) return;
+    debtTraceLogKey.current = key;
+    console.info(
+      '[debtKdBreakdownTrace] effective = max(ledger, walletSnapshot, wallet+orderMarket). Rows:',
+    );
+    console.table(
+      traced.map((r) => ({
+        name: r.customerName,
+        effective: r.effectiveDebtKd,
+        ledger: r.debtKdBreakdownTrace?.ledgerNetKd,
+        walletSnap: r.debtKdBreakdownTrace?.walletSnapshotKd,
+        orderMarket: r.debtKdBreakdownTrace?.orderMarketScopeKd,
+        winners: r.debtKdBreakdownTrace?.winningSources?.join('+'),
+      })),
+    );
+  }, [rows]);
+
   useEffect(() => {
     if (!token || !allowed) return;
     const id = window.setInterval(() => {
@@ -1699,6 +1979,27 @@ export function SubscribersPage() {
     setIssueOpen(true);
   }, []);
 
+  const launchCancelSubscription = useCallback(
+    async (r: SubscriberListRow) => {
+      if (!token) return;
+      if (!window.confirm(t('subscribers.cancelSubscriptionConfirm'))) return;
+      try {
+        await apiJson('/api/call-center/subscriptions/cancel', {
+          method: 'POST',
+          token,
+          body: JSON.stringify({ customerId: r.customerId }),
+        });
+        toast.success(t('subscribers.cancelSubscriptionSuccess'));
+        setManageOpen(false);
+        setManageTarget(null);
+        void load();
+      } catch (e) {
+        if (e instanceof ApiError) toast.error(e.message);
+      }
+    },
+    [token, t, load],
+  );
+
   const launchNewIssue = useCallback(() => {
     setIssueMode('new');
     setIssuePrefill(null);
@@ -1735,7 +2036,10 @@ export function SubscribersPage() {
       if (prev?.key === key) {
         return { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' };
       }
-      return { key, dir: key === 'balance' ? 'desc' : 'asc' };
+      return {
+        key,
+        dir: key === 'balance' || key === 'effectiveDebt' ? 'desc' : 'asc',
+      };
     });
   }, []);
 
@@ -1751,6 +2055,11 @@ export function SubscribersPage() {
         if (av === null && bv === null) return 0;
         if (av === null) return 1;
         if (bv === null) return -1;
+        return (av - bv) * mult;
+      }
+      if (numSort.key === 'effectiveDebt') {
+        const av = subscriberEffectiveDebtKdNumber(a);
+        const bv = subscriberEffectiveDebtKdNumber(b);
         return (av - bv) * mult;
       }
       const av = Number.parseFloat(subscriberListBalanceDisplay(a));
@@ -1857,24 +2166,21 @@ export function SubscribersPage() {
         }
       </section>
 
-      <div className="hidden min-w-0 overflow-x-auto rounded-xl border border-border bg-card shadow-sm md:block">
-        <Table>
-          <TableHeader>
+      <div className="hidden max-h-[min(65vh,680px)] min-w-0 overflow-x-hidden overflow-y-auto rounded-xl border border-border bg-card shadow-sm [&_[data-slot=table-container]]:overflow-x-hidden md:block">
+        <Table className="min-w-0 max-w-full table-fixed">
+          <TableHeader className="sticky top-0 z-10 [&_th]:backdrop-blur-sm">
             <TableRow className="hover:bg-transparent">
-              <TableHead className="whitespace-nowrap">
+              <TableHead className="max-w-[18%] truncate align-bottom text-[0.6875rem] leading-tight sm:text-xs">
                 {t('subscribers.colCustomer')}
               </TableHead>
-              <TableHead className="whitespace-nowrap">
+              <TableHead className="w-[11%] min-w-0 truncate align-bottom text-[0.6875rem] leading-tight sm:text-xs">
                 {t('subscribers.colPlan')}
               </TableHead>
-              <TableHead className="whitespace-nowrap">
-                {t('subscribers.colStart')}
-              </TableHead>
-              <TableHead className="whitespace-nowrap">
-                {t('subscribers.colExpiry')}
+              <TableHead className="min-w-0 whitespace-normal text-start align-bottom text-[0.6875rem] leading-tight sm:text-xs">
+                {t('subscribers.colPeriod')}
               </TableHead>
               <TableHead
-                className="whitespace-nowrap text-end tabular-nums"
+                className="w-[9%] min-w-0 whitespace-nowrap text-end text-[0.6875rem] tabular-nums sm:text-xs"
                 aria-sort={
                   numSort?.key === 'remainingDays' ?
                     numSort.dir === 'asc' ?
@@ -1893,7 +2199,7 @@ export function SubscribersPage() {
                 />
               </TableHead>
               <TableHead
-                className="whitespace-nowrap text-end tabular-nums"
+                className="min-w-0 whitespace-normal px-1 text-end text-[0.6875rem] tabular-nums sm:text-xs"
                 aria-sort={
                   numSort?.key === 'balance' ?
                     numSort.dir === 'asc' ?
@@ -1904,10 +2210,34 @@ export function SubscribersPage() {
               >
                 <NumSortHeaderButton
                   label={t('subscribers.colBalance')}
+                  title={t('subscribers.colBalanceHint')}
                   active={numSort?.key === 'balance'}
                   dir={numSort?.key === 'balance' ? numSort.dir : null}
                   onClick={() => toggleNumSort('balance')}
                 />
+              </TableHead>
+              <TableHead
+                className="min-w-0 whitespace-normal px-1 text-end text-[0.6875rem] tabular-nums sm:text-xs"
+                aria-sort={
+                  numSort?.key === 'effectiveDebt' ?
+                    numSort.dir === 'asc' ?
+                      'ascending'
+                    : 'descending'
+                  : 'none'
+                }
+              >
+                <NumSortHeaderButton
+                  label={t('subscribers.colTotalOwed')}
+                  title={t('subscribers.colTotalOwedHint')}
+                  active={numSort?.key === 'effectiveDebt'}
+                  dir={
+                    numSort?.key === 'effectiveDebt' ? numSort.dir : null
+                  }
+                  onClick={() => toggleNumSort('effectiveDebt')}
+                />
+              </TableHead>
+              <TableHead className="min-w-0 whitespace-normal text-end text-[0.6875rem] tabular-nums text-muted-foreground sm:text-xs">
+                {t('subscribers.colDebtFollowUp')}
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -1915,7 +2245,7 @@ export function SubscribersPage() {
             {displayRows === null ?
               <TableRow>
                 <TableCell
-                  colSpan={6}
+                  colSpan={7}
                   className="text-center text-sm text-muted-foreground"
                 >
                   {loading ? t('subscribers.loading') : t('subscribers.unable')}
@@ -1924,7 +2254,7 @@ export function SubscribersPage() {
             : displayRows.length === 0 ?
               <TableRow>
                 <TableCell
-                  colSpan={6}
+                  colSpan={7}
                   className="text-center text-sm text-muted-foreground"
                 >
                   {query.trim() ? t('subscribers.emptySearch') : t('subscribers.empty')}
@@ -1935,49 +2265,104 @@ export function SubscribersPage() {
                   key={r.customerId}
                   className={cn(rowTone(r.rowStatus), 'align-middle')}
                 >
-                  <TableCell className="max-w-[14rem] font-medium">
+                  <TableCell className="max-w-0 min-w-0 font-medium">
                     {canManage ? (
                       <button
                         type="button"
                         onClick={() => handleOpenAccount(r)}
-                        className="inline-flex items-center gap-1 text-start text-foreground underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none"
-                        title={t('subscribers.manageDialogOpenHint')}
+                        className="block w-full truncate text-start text-foreground underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none"
+                        title={
+                          `${r.customerName} — ${t(
+                            'subscribers.manageDialogOpenHint',
+                          )}`
+                        }
                       >
                         {r.customerName}
                       </button>
                     ) : (
-                      r.customerName
+                      <span className="block truncate" title={r.customerName}>
+                        {r.customerName}
+                      </span>
                     )}
                   </TableCell>
-                  <TableCell className="max-w-[10rem] text-sm">
-                    {r.subscriptionType}
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap tabular-nums text-sm">
-                    {formatDate(r.startDate)}
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap tabular-nums text-sm">
-                    {formatDate(r.expiryDate)}
-                  </TableCell>
-                  <TableCell className="w-[1%] min-w-[4.5rem] py-2.5 pe-2 ps-2 text-end align-middle">
-                    <span
-                      dir="ltr"
-                      className="inline-block min-w-[2.5rem] font-mono text-sm tabular-nums text-foreground"
-                    >
-                      {r.remainingDays === null ? '—' : r.remainingDays}
+                  <TableCell className="max-w-0 min-w-0 truncate text-sm">
+                    <span title={r.subscriptionType}>
+                      {r.subscriptionType}
                     </span>
                   </TableCell>
-                  <TableCell className="w-[1%] min-w-[7.5rem] py-2.5 pe-2 ps-2 text-end align-middle">
-                    <span
-                      dir="ltr"
+                  <TableCell
+                    dir="ltr"
+                    className="py-1.5 pe-2 ps-2 align-middle tabular-nums"
+                  >
+                    <div className="flex flex-col gap-px text-xs leading-snug text-foreground tabular-nums sm:text-sm">
+                      <span title={t('subscribers.colStart')}>
+                        {formatDate(r.startDate)}
+                      </span>
+                      <span title={t('subscribers.colExpiry')}>
+                        {formatDate(r.expiryDate)}
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell
+                    dir="ltr"
+                    className="py-1.5 pe-2 ps-2 text-end align-middle"
+                  >
+                    <RtlSafeMoney className="font-mono text-sm text-foreground">
+                      {r.remainingDays === null ? '—' : r.remainingDays}
+                    </RtlSafeMoney>
+                  </TableCell>
+                  <TableCell
+                    dir="ltr"
+                    className="py-1.5 pe-2 ps-2 align-middle"
+                  >
+                    <RtlSafeMoney
                       className={cn(
-                        'inline-block min-w-[5.5rem] font-mono text-sm font-medium tabular-nums',
+                        'font-mono text-xs font-medium sm:text-sm',
                         subscriberBalanceClass(
                           subscriberListBalanceDisplay(r),
                         ),
                       )}
                     >
                       {formatSignedKwdLabel(subscriberListBalanceDisplay(r))}
-                    </span>
+                    </RtlSafeMoney>
+                  </TableCell>
+                  <TableCell
+                    dir="ltr"
+                    className="py-1.5 pe-2 ps-2 align-middle"
+                  >
+                    <RtlSafeMoney
+                      className={cn(
+                        'font-mono text-xs sm:text-sm',
+                        subscriberEffectiveDebtKdNumber(r) > 0.0005 ?
+                          'font-medium text-amber-800 dark:text-amber-200'
+                        : 'text-muted-foreground',
+                      )}
+                      title={t('subscribers.colTotalOwedHint')}
+                    >
+                      {formatKwdLabel(r.effectiveDebtKd ?? '0')}
+                    </RtlSafeMoney>
+                  </TableCell>
+                  <TableCell
+                    dir="ltr"
+                    className="py-1.5 pe-2 ps-2 text-end align-middle"
+                  >
+                    <div className="ms-auto flex min-w-0 flex-col items-end gap-px font-mono text-xs tabular-nums text-muted-foreground sm:text-sm">
+                      <RtlSafeMoney
+                        className="font-mono text-xs text-muted-foreground sm:text-sm"
+                        title={t('subscribers.colDebtReminderTally')}
+                      >
+                        {r.collectionPaymentLinkReminderTotal ?? 0}
+                      </RtlSafeMoney>
+                      <RtlSafeMoney
+                        className="font-mono text-xs text-muted-foreground sm:text-sm"
+                        title={t('subscribers.colDebtStaleDays')}
+                      >
+                        {r.collectionPendingHostedLinkAgeDays === null ||
+                        r.collectionPendingHostedLinkAgeDays === undefined
+                          ? '—'
+                          : r.collectionPendingHostedLinkAgeDays}
+                      </RtlSafeMoney>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -1998,6 +2383,7 @@ export function SubscribersPage() {
           onPayDebt={launchPayDebt}
           onConvertDebt={launchConvertDebt}
           onStatement={launchStatement}
+          onCancelSubscription={launchCancelSubscription}
         />
       ) : null}
 

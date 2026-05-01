@@ -1,5 +1,28 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsOptional, IsUUID } from 'class-validator';
+import { PosPaymentMethod } from '@prisma/client';
+import {
+  IsBoolean,
+  IsIn,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUUID,
+} from 'class-validator';
+
+/**
+ * How the employee records collection of `{@link SubscriptionPlan.salePrice}`.
+ * Mirrors POS payment semantics; required server-side whenever sale price > 0.
+ */
+export const SUBSCRIPTION_ACTIVATION_PAYMENT_METHODS = [
+  PosPaymentMethod.CASH,
+  PosPaymentMethod.KNET,
+  PosPaymentMethod.PAYMENT_LINK,
+  PosPaymentMethod.ONLINE,
+  PosPaymentMethod.DEBT_ON_ACCOUNT,
+] as const;
+
+export type SubscriptionActivationPaymentMethod =
+  (typeof SUBSCRIPTION_ACTIVATION_PAYMENT_METHODS)[number];
 
 export class ActivateSubscriptionDto {
   @ApiProperty({ format: 'uuid' })
@@ -21,4 +44,20 @@ export class ActivateSubscriptionDto {
   @IsOptional()
   @IsBoolean()
   autoCloseInvoices?: boolean;
+
+  /**
+   * Mandatory on every activation: records how sale proceeds (when any)
+   * were recognised. Cash/KNET/link/online book immediate POS collection;
+   * `DEBT_ON_ACCOUNT` accrues the sale onto `wallet.debt`. Even when `salePrice`
+   * is zero, operators must explicitly pick a channel so the ledger always
+   * has a dated payment-method trail.
+   */
+  @ApiProperty({
+    enum: SUBSCRIPTION_ACTIVATION_PAYMENT_METHODS,
+    description: 'Always required — including free (sale price = 0) plans.',
+  })
+  @IsString()
+  @IsNotEmpty()
+  @IsIn(SUBSCRIPTION_ACTIVATION_PAYMENT_METHODS as unknown as string[])
+  paymentMethod!: SubscriptionActivationPaymentMethod;
 }

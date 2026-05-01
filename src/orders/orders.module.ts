@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { CustomerLedgerModule } from '../customer-ledger/customer-ledger.module';
 import { GeneralLedgerModule } from '../general-ledger/general-ledger.module';
@@ -13,10 +13,10 @@ import { StaleQuickOrdersCronService } from './stale-quick-orders.cron';
 
 @Module({
   imports: [
-    AuthModule,
-    CustomerLedgerModule,
+    forwardRef(() => AuthModule),
+    forwardRef(() => CustomerLedgerModule),
     GeneralLedgerModule,
-    PaymentsModule,
+    forwardRef(() => PaymentsModule),
     CustomerNotificationsModule,
     SerialsModule,
     InventoryModule,

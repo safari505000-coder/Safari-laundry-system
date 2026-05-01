@@ -1,3 +1,10 @@
+export declare class DebtKdBreakdownTraceDto {
+    ledgerNetKd: string;
+    walletSnapshotKd: string;
+    orderMarketScopeKd: string;
+    effectiveDebtKd: string;
+    winningSources: Array<'ledger' | 'walletSnapshot' | 'orderMarket'>;
+}
 export declare class DebtConversionPlanOptionDto {
     planId: string;
     planName: string;
@@ -19,5 +26,6 @@ export declare class DebtConversionOptionsResponseDto {
     currentDebtKd: string;
     currentBalanceKd: string;
     hasDebt: boolean;
+    debtKdBreakdownTrace?: DebtKdBreakdownTraceDto;
     options: DebtConversionPlanOptionDto[];
 }

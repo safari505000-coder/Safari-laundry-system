@@ -453,10 +453,14 @@ export const en = {
     emptySearch: 'No rows match your search.',
     refresh: 'Refresh',
     searchPlaceholder: 'Search by phone number or customer name…',
+    /** When filtered rows belong to one customer — explains vs Subscribers «Total debt». */
+    singleCustomerDebtAlignmentHint:
+      'Sum of Amount rows here for {{name}} is {{invoicesTotal}} (invoice-scope only). Subscribers »Total debt« also includes subscription-wallet debt.',
+    openSubscribersForTotal: 'Open subscribers list for the full approved total',
     opsDashboardAria: 'Call center KPIs',
     kpiMarketDebtLabel: 'Total market debt',
     kpiMarketDebtSub:
-      'Should match the Amount column total (without search): every invoice still collectible — UNPAID, or Debt-on-account while FIFO ledger shows outstanding balance — separate from subscription/wallet line below',
+      'Sum of collectible invoice totals in this list. Subscription-wallet debt aggregated on CustomerWallet.debt — not shown as invoice lines — appears under «Total debt» on the Subscribers screen.',
     kpiCollectedTodayLabel: 'Collected today',
     kpiCollectedTodaySub: 'Debts recovered today across every payment channel',
     kpiPendingLinksLabel: 'Pending links',
@@ -1713,7 +1717,7 @@ export const en = {
     debtPayRemaining: 'Remaining after payment',
     debtPayCurrentDebt: 'Current debt',
     debtPayOverCap:
-      'Amount + discount cannot exceed the current outstanding debt.',
+      'Amount + discount cannot exceed the total outstanding debt shown.',
     debtPaySubmit: 'Record payment',
     debtPaySubmitting: 'Recording…',
     debtPaySuccess:
@@ -1730,9 +1734,20 @@ export const en = {
     colPlan: 'Subscription type',
     colStart: 'Start date',
     colExpiry: 'Expiry date',
+    /** Merged table column header (start + end). */
+    colPeriod: 'Start / end',
     colRemaining: 'Remaining days',
-    colBalance:
-      'Remaining balance (after expiry: net vs debt & unsettled invoices)',
+    colBalance: 'Net balance',
+    /** Tooltip for the balance column (`colBalance`). */
+    colBalanceHint:
+      'Wallet balance minus effective total debt — negative when debt exceeds prepaid credit.',
+    colTotalOwed: 'Total debt owed',
+    colTotalOwedHint:
+      'Wallet debt plus unpaid collection orders — same basis as «Convert debt».',
+    colDebtReminderTally: 'Reminder sends',
+    colDebtStaleDays: 'Days',
+    /** Merged table column (reminder count + link age). */
+    colDebtFollowUp: 'Rem. / age',
     empty: 'No subscribers match yet.',
     emptySearch: 'No subscribers match your search.',
     loading: 'Loading…',
@@ -1753,6 +1768,9 @@ export const en = {
     issuePlanPlaceholder: 'Select an active plan',
     issuePlanHint:
       'Plan shows: customer-paid price → wallet credit applied after debt settlement.',
+    activationPaymentMethodLabel: 'Plan sale — payment method',
+    activationPaymentMethodHint:
+      'Cash, KNET, online, or payment link: books the plan sale as an immediate receipt (POS GL) and does not accrue as wallet debt. «On account» posts the plan price to wallet debt.',
     issueCancel: 'Cancel',
     issueSubmit: 'Issue subscription',
     issueSuccess: 'Subscription issued and wallet updated',
@@ -1768,10 +1786,9 @@ export const en = {
     manageUpgradeHint: 'Switch the customer to a different plan tier.',
     managePayDebtTitle: 'Pay part of debt',
     managePayDebtHint:
-      'Outstanding debt: {{debt}}. Record a partial payment with an optional discount.',
+      'Amount due through latest outstanding: {{debt}} — partial payment and discounts are capped at this total.',
     manageConvertDebtTitle: 'Convert debt to subscription',
-    manageConvertDebtHint:
-      'Outstanding debt: {{debt}}. Preview which plans clear this debt on activation.',
+    manageConvertDebtHint: 'Total outstanding: {{effectiveDebt}}.',
     manageStatementTitle: 'Customer account statement',
     manageStatementHint:
       "Full read-only view: wallet, active subscription, every invoice + timeline — with a button to open each invoice's printable A4.",
@@ -1801,6 +1818,13 @@ export const en = {
     convertDebtSuccess:
       'Plan {{plan}} activated: {{cleared}} of debt settled, {{remaining}} still owed.',
     manageClose: 'Close',
+    manageCancelSubscriptionTitle: 'Cancel subscription & refund',
+    manageCancelSubscriptionHint:
+      'Uses remaining term: cash refund is proportional to paid-in plan price; promotional / gift credit is voided from the wallet (never paid as cash). GL + journal lines.',
+    manageCancelSubscriptionDisabled: 'No active subscription or validity already ended.',
+    cancelSubscriptionConfirm:
+      'Cancel this subscription now? Paid and promo portions split by remaining time — promo is never refunded as cash.',
+    cancelSubscriptionSuccess: 'Subscription cancelled; refund/gift reversal recorded.',
     debtPayTitle: 'Partial debt payment',
     debtPayHint:
       '{{name}} owes {{debt}}. Enter cash collected and an optional goodwill discount.',
@@ -1817,7 +1841,7 @@ export const en = {
     debtPayRemaining: 'Remaining',
     debtPayCurrentDebt: 'Current debt',
     debtPayOverCap:
-      'Amount + discount cannot exceed the current outstanding debt.',
+      'Amount + discount cannot exceed the total outstanding debt shown.',
     debtPaySubmit: 'Record payment',
     debtPaySubmitting: 'Recording…',
     debtPaySuccess:
@@ -1944,6 +1968,7 @@ export const en = {
     printStatement: 'Print statement',
     walletBalance: 'Balance',
     walletDebt: 'Debt',
+    effectiveTotalDebt: 'Total owed',
     feedbackTitle: 'Customer ratings',
     feedbackAverage: 'Average {{rating}} / 5 ({{count}} order(s) rated)',
     feedbackNone:
@@ -2017,6 +2042,8 @@ export const en = {
     },
     kind: {
       SUBSCRIPTION_ACTIVATION: 'Subscription renewal / activation',
+      SUBSCRIPTION_CANCELLATION:
+        'Subscription cancelled (cash refund / promo void)',
       SUBSCRIPTION_ROLLOVER_CARRY: 'Subscription balance carry-over',
       ORDER_PAID_IN_FULL: 'Invoice paid',
       ORDER_SETTLEMENT_SUBSCRIPTION: 'Invoice settlement (subscription wallet)',
@@ -2032,6 +2059,10 @@ export const en = {
       debtSettled: 'Deducted from prior debt',
       credited: 'Added to wallet balance',
       carried: 'Carried over from previous plan',
+      carriedCredit: 'Credit carried before activation',
+      carriedDebt: 'Debt carried before activation',
+      balanceAfterActivation: 'Balance after activation',
+      debtAfterActivation: 'Debt after activation',
       closedInvoicesTitle: 'Prior invoices auto-closed ({{count}})',
       closedInvoicesTotal: 'Total of closed invoices',
       debtSettledNoInvoices:

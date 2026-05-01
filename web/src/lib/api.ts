@@ -167,10 +167,7 @@ function parseApiBody(text: string): Record<string, unknown> {
  * full strings or /regex/ test patterns for parameterized Prisma codes.
  */
 const API_ERROR_MSG_AR: Array<{ m: string | RegExp; ar: string }> = [
-  {
-    m: /^A database error occurred \((P\d{4})\)\. Please try again, or run migrations if the system was just updated\.$/,
-    ar: 'تعذّر تنفيذ العملية على قاعدة البيانات. إن كان النظام حديث التحديث، نفّذ ترحيلات قاعدة البيانات ثم أعد المحاولة، أو جرّب لاحقاً.',
-  },
+  // Note: generic `A database error occurred (P####)...` — handled first in `toUserFacingErrorMessage`.
   {
     m: 'A database error occurred. Please try again.',
     ar: 'تعذّر تنفيذ العملية على قاعدة البيانات. جرّب مرة أخرى أو تأكد من تطبيق الترحيلات.',
@@ -195,9 +192,51 @@ const API_ERROR_MSG_AR: Array<{ m: string | RegExp; ar: string }> = [
     m: 'Database schema mismatch. Ensure migrations are applied, then try again.',
     ar: 'عدم تطابق مخطط قاعدة البيانات. طبّق الترحيلات ثم أعد المحاولة.',
   },
+  {
+    m: 'Cannot reach the database server. Check DATABASE_URL and network, then try again.',
+    ar: 'لا يمكن الوصول إلى خادم قاعدة البيانات. تحقّق من DATABASE_URL والشبكة ثم أعد المحاولة.',
+  },
+  {
+    m: 'Database connection was closed or interrupted. Retry the operation.',
+    ar: 'انقطع الاتصال بقاعدة البيانات. أعد المحاولة.',
+  },
+  {
+    m: 'Timed out waiting for a database connection from the pool. Retry in a moment or reduce concurrent load.',
+    ar: 'انتهى انتظار اتصال من تجمع الربط؛ أعد المحاولة أو خفّف الضغط المتزامن على الخادم.',
+  },
+  {
+    m: 'Database transaction timed out or was aborted. Retry the operation.',
+    ar: 'انتهت مهلة معاملة قاعدة البيانات؛ أعد المحاولة — غالباً ليس بسبب الترحيلات.',
+  },
+  {
+    m: 'A concurrent database write conflict occurred. Retry the operation.',
+    ar: 'تعارض كتابة متزامن على قاعدة البيانات؛ أعد المحاولة.',
+  },
 ];
 
+/**
+ * Prisma exposes many failure modes; the dashboard used to blame "migrations" for
+ * all of them. Map known codes when we only have the `(P####)` generic string.
+ */
+function prismaFallbackArabic(prismaCode: string): string {
+  const schemaCodes = ['P2006', 'P2010', 'P2021', 'P2022'];
+  const retryCodes = ['P2028', 'P2034', 'P2024', 'P2030', 'P1008'];
+  const connectivity = ['P1001', 'P1017'];
+  if (schemaCodes.includes(prismaCode))
+    return `تعذّر التنفيذ (${prismaCode}). غالباً مخطّط أو بيانات غير متطابقة — تأكّد من ترحيلات قاعدة البيانات ثم أعد المحاولة.`;
+  if (retryCodes.includes(prismaCode))
+    return `تعذّر التنفيذ (${prismaCode}). أعد المحاولة بعد لحظات (مهلة معاملة أو ازدحام — ليس بالضرورة نقص ترحيلات).`;
+  if (connectivity.includes(prismaCode))
+    return `لا يمكن الاتصال بقاعدة البيانات (${prismaCode}). تحقّق من الاتصال و DATABASE_URL.`;
+  return `تعذّر تنفيذ العملية على قاعدة البيانات (${prismaCode}). راجع طرفية الخادم للتفاصيل؛ إذا كان الإصدار حديثاً فتحقّق من الترحيلات أيضاً.`;
+}
+
 function toUserFacingErrorMessage(english: string): string {
+  const legacyGeneric =
+    /^A database error occurred \((P\d{4})\)\. Please try again, or run migrations if the system was just updated\.?$/;
+  const legacy = legacyGeneric.exec(english);
+  if (legacy?.[1]) return prismaFallbackArabic(legacy[1]);
+
   for (const row of API_ERROR_MSG_AR) {
     if (typeof row.m === 'string' && row.m === english) return row.ar;
     if (row.m instanceof RegExp && row.m.test(english)) return row.ar;
@@ -1258,16 +1297,16 @@ export type SubscriberListRow = {
   remainingDays: number | null;
   balance: string;
   /**
-   * V19.13.2 — Column display: prepaid while active; net (balance − total owed)
-   * when subscription expired. Falls back to `balance` if absent (older API).
+   * Column display: signed net `balance − effectiveDebtKd` (negative when debt
+   * exceeds prepaid). Falls back to `balance` if absent (older API).
    */
   balanceDisplayKd?: string;
-  /**
-   * V19.4 — CC pack #1. Customer's current outstanding debt (KWD 4dp).
-   * Drives the "Pay part of debt" card in the Manage-Account dialog;
-   * when "0.0000" the card is hidden.
-   */
+  /** Wallet-posted aggregate debt (`CustomerWallet.debt`). */
   debt: string;
+  /** UNPAID totals with `walletSettledAt=null` (before posted to wallet). */
+  unsettledUnpaidKd?: string;
+  /** `debt` + unsettled — same basis as debt→subscription preview API. */
+  effectiveDebtKd?: string;
   rowStatus: 'active_ok' | 'active_warn' | 'expired' | 'open_credit';
   /** Days since the subscription was last activated. Null if unknown. */
   invoiceAgeDays: number | null;
@@ -1276,6 +1315,21 @@ export type SubscriberListRow = {
   lastReminderAtIso: string | null;
   /** Backend says "true" when another `/reminder` call would succeed. */
   canRemindNow: boolean;
+  /** Σ Collections payment-link reminder sends (`Order.reminderCount`). */
+  collectionPaymentLinkReminderTotal?: number;
+  /** Days since oldest unpaid row with minted hosted payment URL; null none. */
+  collectionPendingHostedLinkAgeDays?: number | null;
+  /**
+   * When API runs with `EXPOSE_DEBT_BREAKDOWN=1`: three debt baselines + winners
+   * (local diagnostics — compare list vs convert modal).
+   */
+  debtKdBreakdownTrace?: {
+    ledgerNetKd: string;
+    walletSnapshotKd: string;
+    orderMarketScopeKd: string;
+    effectiveDebtKd: string;
+    winningSources: Array<'ledger' | 'walletSnapshot' | 'orderMarket'>;
+  };
 };
 
 /**
@@ -1954,6 +2008,7 @@ export type CustomerSubscriptionRow = {
  */
 export type CustomerLedgerEventKind =
   | 'SUBSCRIPTION_ACTIVATION'
+  | 'SUBSCRIPTION_CANCELLATION'
   | 'SUBSCRIPTION_ROLLOVER_CARRY'
   | 'ORDER_PAID_IN_FULL'
   | 'ORDER_SETTLEMENT_SUBSCRIPTION'
@@ -1980,7 +2035,7 @@ export type CustomerLedgerClosedInvoice = {
 export type CustomerLedgerEvent = {
   id: string;
   atIso: string;
-  rawType: 'SUBSCRIPTION_ACTIVATION' | 'ORDER_WALLET_SETTLEMENT';
+  rawType: 'SUBSCRIPTION_ACTIVATION' | 'SUBSCRIPTION_CANCELLATION' | 'ORDER_WALLET_SETTLEMENT';
   kind: CustomerLedgerEventKind;
   amountKd: string;
   balanceBeforeKd: string;
@@ -2064,6 +2119,10 @@ export type CustomerLedgerResponse = {
     originBranchName: string | null;
     walletBalanceKd: string;
     walletDebtKd: string;
+    /** Σ uncollection aligned with `/collections` (invoice scope). */
+    collectionsReceivableKd?: string;
+    /** wallet + collections — single source of truth with subscribers / CC. */
+    effectiveDebtKd?: string;
   };
   activeSubscription: {
     id: string;
@@ -2589,6 +2648,8 @@ export type DebtConversionOptionsResponse = {
   currentDebtKd: string;
   currentBalanceKd: string;
   hasDebt: boolean;
+  /** When API has EXPOSE_DEBT_BREAKDOWN=1 — same trace as subscriber row. */
+  debtKdBreakdownTrace?: SubscriberListRow['debtKdBreakdownTrace'];
   options: DebtConversionPlanOption[];
 };
 

@@ -21,6 +21,7 @@ import type {
   OpenDebtByIssuerResponseDto,
   OpenDebtByIssuerRowDto,
 } from '../dto/open-debt-by-issuer.dto';
+import { getCustomerNetDebtFromDebtLedgerAgg } from '../debt-customer-aggregates.util';
 
 /**
  * Same branch scoping as `CallCenterService.getOperationsSummary` red KPI
@@ -898,6 +899,23 @@ export class DebtService {
    * Net open debt split (shortfall vs subscription overuse) using the same
    * per-customer waterfall as monthly reports — scoped for CC dashboard KPIs.
    */
+  /**
+   * Per-customer net open amounts from {@link DebtLedgerEntry}: same PAYMENT→
+   * INVOICE_SHORTFALL→SUBSCRIPTION_OVERUSE waterfall as {@link getLedgerOpenDebtByCategory}.
+   * This is what Ops «ذمم دفتر الالتزام» / financial strip sums to globally.
+   */
+  async getCustomerNetDebtFromDebtLedger(
+    customerId: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<{
+    outstandingInvoiceDebtKd: Prisma.Decimal;
+    outstandingSubscriptionDebtKd: Prisma.Decimal;
+    netOpenDebtKd: Prisma.Decimal;
+  }> {
+    const db = tx ?? this.prisma;
+    return getCustomerNetDebtFromDebtLedgerAgg(db, customerId);
+  }
+
   async getLedgerOpenDebtByCategory(
     whereExtra?: Prisma.DebtLedgerEntryWhereInput,
   ): Promise<{

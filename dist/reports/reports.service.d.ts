@@ -28,8 +28,8 @@ export declare class ReportsService {
             id: string;
             createdAt: Date;
             status: import("@prisma/client").$Enums.OrderStatus;
-            cashStatus: import("@prisma/client").$Enums.CashStatus;
             serviceType: import("@prisma/client").$Enums.ServiceType;
+            cashStatus: import("@prisma/client").$Enums.CashStatus;
             invoiceNumber: string | null;
             posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
             completedAt: Date | null;

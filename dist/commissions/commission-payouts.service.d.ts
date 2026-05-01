@@ -10,8 +10,8 @@ export declare class CommissionPayoutsService {
                 id: string;
                 name: string;
                 mode: import("@prisma/client").$Enums.CommissionMode;
-                calculationBase: import("@prisma/client").$Enums.CommissionCalculationBase;
                 percentage: Prisma.Decimal;
+                calculationBase: import("@prisma/client").$Enums.CommissionCalculationBase;
                 payoutTiming: import("@prisma/client").$Enums.CommissionPayoutTiming;
             };
             earner: {
@@ -32,17 +32,17 @@ export declare class CommissionPayoutsService {
             status: import("@prisma/client").$Enums.CommissionPayoutStatus;
             mode: import("@prisma/client").$Enums.CommissionMode;
             cancelledAt: Date | null;
-            percentage: Prisma.Decimal;
+            ruleId: string;
+            earnerUserId: string;
             basisAmount: Prisma.Decimal;
+            percentage: Prisma.Decimal;
+            sourceOrderId: string | null;
+            sourceDebtEntryId: string | null;
+            payrollId: string | null;
             earnedAt: Date;
             releasedAt: Date | null;
             paidAt: Date | null;
             cancelReason: string | null;
-            ruleId: string;
-            earnerUserId: string;
-            sourceOrderId: string | null;
-            sourceDebtEntryId: string | null;
-            payrollId: string | null;
         })[];
         totals: {
             earnerUserId: string;

@@ -9,8 +9,40 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.DebtConversionOptionsResponseDto = exports.DebtConversionPlanOptionDto = void 0;
+exports.DebtConversionOptionsResponseDto = exports.DebtConversionPlanOptionDto = exports.DebtKdBreakdownTraceDto = void 0;
 const swagger_1 = require("@nestjs/swagger");
+class DebtKdBreakdownTraceDto {
+    ledgerNetKd;
+    walletSnapshotKd;
+    orderMarketScopeKd;
+    effectiveDebtKd;
+    winningSources;
+}
+exports.DebtKdBreakdownTraceDto = DebtKdBreakdownTraceDto;
+__decorate([
+    (0, swagger_1.ApiProperty)({ example: '12.7000' }),
+    __metadata("design:type", String)
+], DebtKdBreakdownTraceDto.prototype, "ledgerNetKd", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ example: '34.4500' }),
+    __metadata("design:type", String)
+], DebtKdBreakdownTraceDto.prototype, "walletSnapshotKd", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ example: '34.4500' }),
+    __metadata("design:type", String)
+], DebtKdBreakdownTraceDto.prototype, "orderMarketScopeKd", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ example: '34.4500' }),
+    __metadata("design:type", String)
+], DebtKdBreakdownTraceDto.prototype, "effectiveDebtKd", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({
+        example: ['walletSnapshot', 'orderMarket'],
+        description: 'Which baseline(s) matched effective (ties possible). Values: ledger | walletSnapshot | orderMarket.',
+        type: [String],
+    }),
+    __metadata("design:type", Array)
+], DebtKdBreakdownTraceDto.prototype, "winningSources", void 0);
 class DebtConversionPlanOptionDto {
     planId;
     planName;
@@ -89,6 +121,7 @@ class DebtConversionOptionsResponseDto {
     currentDebtKd;
     currentBalanceKd;
     hasDebt;
+    debtKdBreakdownTrace;
     options;
 }
 exports.DebtConversionOptionsResponseDto = DebtConversionOptionsResponseDto;
@@ -110,6 +143,13 @@ __decorate([
     }),
     __metadata("design:type", Boolean)
 ], DebtConversionOptionsResponseDto.prototype, "hasDebt", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({
+        type: DebtKdBreakdownTraceDto,
+        description: 'Included when server env EXPOSE_DEBT_BREAKDOWN=1 — three candidate totals + winners.',
+    }),
+    __metadata("design:type", DebtKdBreakdownTraceDto)
+], DebtConversionOptionsResponseDto.prototype, "debtKdBreakdownTrace", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)({ type: [DebtConversionPlanOptionDto] }),
     __metadata("design:type", Array)

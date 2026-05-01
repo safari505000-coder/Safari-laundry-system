@@ -9,6 +9,7 @@ import { DebtService } from '../finance/services/debt.service';
 import { OrdersService } from '../orders/orders.service';
 import type { SendPaymentLinkWhatsappResultDto } from './dto/send-payment-link-whatsapp.dto';
 import { ActivateSubscriptionDto } from './dto/activate-subscription.dto';
+import { CancelSubscriptionDto } from './dto/cancel-subscription.dto';
 import { ExtendSubscriptionDto } from './dto/extend-subscription.dto';
 import type { SettlementHistoryRowDto } from './dto/settlement-history-row.dto';
 import type { CallCenterOperationsSummaryDto } from './dto/operations-summary.dto';
@@ -87,8 +88,22 @@ export declare class CallCenterService {
             balance: string;
             debt: string;
         };
-        settlement: import("../customer-ledger/subscription-settlement.types").SubscriptionActivationSettlement;
+        settlement: {
+            prepaidAutoReconciledOrderIds: string[];
+            newBalance: string;
+            newDebt: string;
+            totalCollected: string;
+            debtSettled: string;
+            creditedToBalance: string;
+            previousBalance: string;
+            previousDebt: string;
+            subscriptionId: string;
+            rolledOverFromSubscriptionId: string | null;
+            carriedBalanceKd: string;
+            closedInvoiceIds: string[];
+        };
     }>;
+    cancelActiveSubscription(userId: string, dto: CancelSubscriptionDto): Promise<import("../customer-ledger/subscription-settlement.types").SubscriptionCancellationSettlement>;
     extendSubscription(userId: string, dto: ExtendSubscriptionDto): Promise<{
         customerId: string;
         extensionDays: number;
@@ -117,6 +132,6 @@ export declare class CallCenterService {
     getCustomerLedger(customerId: string, filters: CustomerLedgerQueryDto): Promise<CustomerLedgerResponseDto>;
     getDailyCollections(params: DailyCollectionsQueryDto): Promise<DailyCollectionsResponseDto>;
     getDailyCollectionsReconciliation(params: DailyCollectionsReconciliationQueryDto): Promise<DailyCollectionsReconciliationResponseDto>;
-    getDebtConversionOptions(customerId: string): Promise<DebtConversionOptionsResponseDto>;
+    getDebtConversionOptions(customerId: string, paymentMethodHint?: PosPaymentMethod): Promise<DebtConversionOptionsResponseDto>;
     private mapSubscriptionChainRows;
 }

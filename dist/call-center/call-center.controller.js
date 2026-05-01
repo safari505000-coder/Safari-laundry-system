@@ -23,6 +23,7 @@ const roles_guard_1 = require("../auth/guards/roles.guard");
 const branding_1 = require("../common/constants/branding");
 const call_center_service_1 = require("./call-center.service");
 const activate_subscription_dto_1 = require("./dto/activate-subscription.dto");
+const cancel_subscription_dto_1 = require("./dto/cancel-subscription.dto");
 const extend_subscription_dto_1 = require("./dto/extend-subscription.dto");
 const debt_recovery_report_dto_1 = require("./dto/debt-recovery-report.dto");
 const mark_order_paid_dto_1 = require("./dto/mark-order-paid.dto");
@@ -52,6 +53,9 @@ let CallCenterController = class CallCenterController {
     }
     activateSubscription(dto, user) {
         return this.callCenterService.activateSubscription(user.userId, dto);
+    }
+    cancelActiveSubscription(dto, user) {
+        return this.callCenterService.cancelActiveSubscription(user.userId, dto);
     }
     extendSubscription(dto, user) {
         return this.callCenterService.extendSubscription(user.userId, dto);
@@ -107,8 +111,17 @@ let CallCenterController = class CallCenterController {
     getDailyCollectionsReconciliation(q) {
         return this.callCenterService.getDailyCollectionsReconciliation(q);
     }
-    getDebtConversionOptions(customerId) {
-        return this.callCenterService.getDebtConversionOptions(customerId);
+    getDebtConversionOptions(customerId, raw) {
+        const trimmed = raw?.trim().toUpperCase();
+        let hint;
+        if (trimmed) {
+            const ok = activate_subscription_dto_1.SUBSCRIPTION_ACTIVATION_PAYMENT_METHODS.some((m) => m === trimmed);
+            if (!ok) {
+                throw new common_1.BadRequestException(`Invalid paymentMethod "${raw}" — expected one of: ${activate_subscription_dto_1.SUBSCRIPTION_ACTIVATION_PAYMENT_METHODS.join(', ')}`);
+            }
+            hint = trimmed;
+        }
+        return this.callCenterService.getDebtConversionOptions(customerId, hint);
     }
 };
 exports.CallCenterController = CallCenterController;
@@ -162,7 +175,7 @@ __decorate([
     (0, common_1.Post)('subscriptions/activate'),
     (0, swagger_1.ApiOperation)({
         summary: `Activate subscription for customer (${branding_1.APP_BRAND})`,
-        description: 'CALL_CENTER only. Collected plan price is applied to customer debt first (automatic settlement), then the remainder of the plan credit increases prepaid balance. All wallet updates run inside this transaction — no bypass.',
+        description: 'CALL_CENTER only. Plan credit is applied to customer debt first, then the remainder increases prepaid balance. When plan `salePrice` > 0, `paymentMethod` is mandatory: cash-like methods book `POS_SALE_COMPLETED` for the sale; `DEBT_ON_ACCOUNT` accrues the sale price onto `wallet.debt` and writes a matching GL receivable line. All wallet updates run inside this transaction — no bypass.',
     }),
     __param(0, (0, common_1.Body)()),
     __param(1, (0, current_user_decorator_1.CurrentUser)()),
@@ -170,6 +183,18 @@ __decorate([
     __metadata("design:paramtypes", [activate_subscription_dto_1.ActivateSubscriptionDto, Object]),
     __metadata("design:returntype", void 0)
 ], CallCenterController.prototype, "activateSubscription", null);
+__decorate([
+    (0, common_1.Post)('subscriptions/cancel'),
+    (0, swagger_1.ApiOperation)({
+        summary: `Cancel active subscription (refund math + promo void) (${branding_1.APP_BRAND})`,
+        description: 'CALL_CENTER only — while validity remains. Applies time-based split between customer-paid snapshot (possible cash refund) vs company promotional gap (gift void, never refunded as cash). Writes SUBSCRIPTION_CANCELLATION ledger + GL DEBT_ADJUSTMENT traces.',
+    }),
+    __param(0, (0, common_1.Body)()),
+    __param(1, (0, current_user_decorator_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [cancel_subscription_dto_1.CancelSubscriptionDto, Object]),
+    __metadata("design:returntype", void 0)
+], CallCenterController.prototype, "cancelActiveSubscription", null);
 __decorate([
     (0, common_1.Post)('subscriptions/extend'),
     (0, swagger_1.ApiOperation)({
@@ -349,11 +374,12 @@ __decorate([
     (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.CALL_CENTER_SUPERVISOR, client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),
     (0, swagger_1.ApiOperation)({
         summary: `Convert debt \u2192 subscription preview (${branding_1.APP_BRAND})`,
-        description: "V19.4 CC pack #9. Read-only, zero-side-effect preview for the Call Center: given a customer with outstanding debt, computes what every active subscription plan would do if activated right now \u2014 how much of the plan price clears debt, how much is added as prepaid balance, whether the plan fully kills the debt. Arithmetic is byte-identical to `activateSubscriptionPlan` so the UI never disagrees with what actually gets booked when the agent clicks \"activate\".",
+        description: "V19.4 CC pack #9. Read-only preview. Optional `?paymentMethod=` (CASH, KNET, PAYMENT_LINK, ONLINE, DEBT_ON_ACCOUNT) mirrors how `activateSubscription` will book the plan sale — cash-like methods show cash required = sale price; on-account shows the sale accruing to remaining debt instead.",
     }),
     __param(0, (0, common_1.Param)('customerId', common_1.ParseUUIDPipe)),
+    __param(1, (0, common_1.Query)('paymentMethod')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String]),
+    __metadata("design:paramtypes", [String, String]),
     __metadata("design:returntype", void 0)
 ], CallCenterController.prototype, "getDebtConversionOptions", null);
 exports.CallCenterController = CallCenterController = __decorate([

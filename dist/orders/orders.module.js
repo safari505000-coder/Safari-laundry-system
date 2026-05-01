@@ -25,10 +25,10 @@ exports.OrdersModule = OrdersModule;
 exports.OrdersModule = OrdersModule = __decorate([
     (0, common_1.Module)({
         imports: [
-            auth_module_1.AuthModule,
-            customer_ledger_module_1.CustomerLedgerModule,
+            (0, common_1.forwardRef)(() => auth_module_1.AuthModule),
+            (0, common_1.forwardRef)(() => customer_ledger_module_1.CustomerLedgerModule),
             general_ledger_module_1.GeneralLedgerModule,
-            payments_module_1.PaymentsModule,
+            (0, common_1.forwardRef)(() => payments_module_1.PaymentsModule),
             customer_notifications_module_1.CustomerNotificationsModule,
             serials_module_1.SerialsModule,
             inventory_module_1.InventoryModule,

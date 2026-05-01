@@ -32,8 +32,8 @@ export declare class LoansController {
         updatedAt: Date;
         status: import("@prisma/client").$Enums.LoanStatus;
         reason: string | null;
-        approvedAt: Date | null;
         approvedById: string | null;
+        approvedAt: Date | null;
         installmentCount: number;
         monthlyDeduction: import("@prisma/client-runtime-utils").Decimal;
         remaining: import("@prisma/client-runtime-utils").Decimal;
@@ -66,8 +66,8 @@ export declare class LoansController {
         updatedAt: Date;
         status: import("@prisma/client").$Enums.LoanStatus;
         reason: string | null;
-        approvedAt: Date | null;
         approvedById: string | null;
+        approvedAt: Date | null;
         installmentCount: number;
         monthlyDeduction: import("@prisma/client-runtime-utils").Decimal;
         remaining: import("@prisma/client-runtime-utils").Decimal;
@@ -100,8 +100,8 @@ export declare class LoansController {
         updatedAt: Date;
         status: import("@prisma/client").$Enums.LoanStatus;
         reason: string | null;
-        approvedAt: Date | null;
         approvedById: string | null;
+        approvedAt: Date | null;
         installmentCount: number;
         monthlyDeduction: import("@prisma/client-runtime-utils").Decimal;
         remaining: import("@prisma/client-runtime-utils").Decimal;
@@ -134,8 +134,8 @@ export declare class LoansController {
         updatedAt: Date;
         status: import("@prisma/client").$Enums.LoanStatus;
         reason: string | null;
-        approvedAt: Date | null;
         approvedById: string | null;
+        approvedAt: Date | null;
         installmentCount: number;
         monthlyDeduction: import("@prisma/client-runtime-utils").Decimal;
         remaining: import("@prisma/client-runtime-utils").Decimal;
@@ -168,8 +168,8 @@ export declare class LoansController {
         updatedAt: Date;
         status: import("@prisma/client").$Enums.LoanStatus;
         reason: string | null;
-        approvedAt: Date | null;
         approvedById: string | null;
+        approvedAt: Date | null;
         installmentCount: number;
         monthlyDeduction: import("@prisma/client-runtime-utils").Decimal;
         remaining: import("@prisma/client-runtime-utils").Decimal;
@@ -202,8 +202,8 @@ export declare class LoansController {
         updatedAt: Date;
         status: import("@prisma/client").$Enums.LoanStatus;
         reason: string | null;
-        approvedAt: Date | null;
         approvedById: string | null;
+        approvedAt: Date | null;
         installmentCount: number;
         monthlyDeduction: import("@prisma/client-runtime-utils").Decimal;
         remaining: import("@prisma/client-runtime-utils").Decimal;
@@ -236,8 +236,8 @@ export declare class LoansController {
         updatedAt: Date;
         status: import("@prisma/client").$Enums.LoanStatus;
         reason: string | null;
-        approvedAt: Date | null;
         approvedById: string | null;
+        approvedAt: Date | null;
         installmentCount: number;
         monthlyDeduction: import("@prisma/client-runtime-utils").Decimal;
         remaining: import("@prisma/client-runtime-utils").Decimal;

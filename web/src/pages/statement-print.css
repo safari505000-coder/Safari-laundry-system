@@ -302,6 +302,14 @@ tr.stmt-invoice-canceled td {
   color: #14532d;
 }
 
+.stmt-bd-danger {
+  background: #fef2f2;
+  border-color: #fca5a5;
+}
+.stmt-bd-danger > dd {
+  color: #991b1b;
+}
+
 /* ── Closed invoices mini-table ────────────────────────────── */
 
 .stmt-closed-block {
@@ -475,6 +483,7 @@ tr.stmt-invoice-canceled td {
   .stmt-closed-table,
   .stmt-cert-note,
   .stmt-bd-success,
+  .stmt-bd-danger,
   .stmt-invoice-open td,
   .stmt-closed-note {
     -webkit-print-color-adjust: exact;

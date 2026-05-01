@@ -33,8 +33,8 @@ export declare class VehicleExpensesService {
         status: import("@prisma/client").$Enums.VehicleExpenseStatus;
         receiptUrl: string;
         vehicleLabel: string | null;
-        rejectionReason: string | null;
         expenseDate: Date;
+        rejectionReason: string | null;
         vehiclePlate: string;
         expenseType: import("@prisma/client").$Enums.VehicleExpenseType;
         odometerKm: number | null;
@@ -69,8 +69,8 @@ export declare class VehicleExpensesService {
         status: import("@prisma/client").$Enums.VehicleExpenseStatus;
         receiptUrl: string;
         vehicleLabel: string | null;
-        rejectionReason: string | null;
         expenseDate: Date;
+        rejectionReason: string | null;
         vehiclePlate: string;
         expenseType: import("@prisma/client").$Enums.VehicleExpenseType;
         odometerKm: number | null;
@@ -99,8 +99,8 @@ export declare class VehicleExpensesService {
         status: import("@prisma/client").$Enums.VehicleExpenseStatus;
         receiptUrl: string;
         vehicleLabel: string | null;
-        rejectionReason: string | null;
         expenseDate: Date;
+        rejectionReason: string | null;
         vehiclePlate: string;
         expenseType: import("@prisma/client").$Enums.VehicleExpenseType;
         odometerKm: number | null;
@@ -132,8 +132,8 @@ export declare class VehicleExpensesService {
         status: import("@prisma/client").$Enums.VehicleExpenseStatus;
         receiptUrl: string;
         vehicleLabel: string | null;
-        rejectionReason: string | null;
         expenseDate: Date;
+        rejectionReason: string | null;
         vehiclePlate: string;
         expenseType: import("@prisma/client").$Enums.VehicleExpenseType;
         odometerKm: number | null;

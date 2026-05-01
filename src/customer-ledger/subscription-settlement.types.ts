@@ -45,3 +45,14 @@ export type SubscriptionActivationSettlement = {
    */
   prepaidAutoReconciledOrderIds: string[];
 };
+
+/** Result after early subscription cancellation (`LedgerTransactionType.SUBSCRIPTION_CANCELLATION`). */
+export type SubscriptionCancellationSettlement = {
+  subscriptionId: string;
+  refundedCashKd: string;
+  voidedGiftKd: string;
+  walletReductionKd: string;
+  previousBalanceKd: string;
+  newBalanceKd: string;
+  remainingTermFraction: number;
+};
