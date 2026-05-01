@@ -75,7 +75,7 @@ describe('PaymentsController callback webhook safety', () => {
       expect.objectContaining({
         provider: 'upayments',
         trackId: TRANS_ID,
-        amount: '10.000',
+        amount: '10',
       }),
     );
   });
@@ -158,7 +158,7 @@ describe('PaymentsController callback webhook safety', () => {
     expect(paymentsService.finalizePaidOrderFromGateway).not.toHaveBeenCalled();
   });
 
-  it('does not finalize when gateway amount mismatches the order', async () => {
+  it('force finalizes captured payment even when gateway amount mismatches the order', async () => {
     const { controller, paymentsService, prisma } = makeController();
     paymentsService.fetchGatewayStatus.mockResolvedValue(gatewaySuccess('9.000'));
     paymentsService.findOrderByTrackId.mockResolvedValue(ORDER_ID);
@@ -178,6 +178,14 @@ describe('PaymentsController callback webhook safety', () => {
 
     expect(result.outcome).toBe('success');
     expect(result.reason).toBe('amount-mismatch');
-    expect(paymentsService.finalizePaidOrderFromGateway).not.toHaveBeenCalled();
+    expect(paymentsService.finalizePaidOrderFromGateway).toHaveBeenCalledTimes(1);
+    expect(paymentsService.finalizePaidOrderFromGateway).toHaveBeenCalledWith(
+      ORDER_ID,
+      expect.objectContaining({
+        amount: '10',
+        result: 'CAPTURED',
+        trackId: TRANS_ID,
+      }),
+    );
   });
 });

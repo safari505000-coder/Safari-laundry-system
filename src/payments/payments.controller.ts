@@ -453,15 +453,10 @@ document.getElementById('go').onclick = async function () {
         `UPayments callback: orderId=${order.id} gatewayResult=${inquiry.data.result ?? 'n/a'} normalizedOutcome=${outcome} inquiryOk=${inquiry.ok} willFinalize=${willFinalize}${blockedReason ? ` blockedReason=${blockedReason}` : ''}`,
       );
 
-      if (
-        willFinalize &&
-        (order.walletSettledAt || order.status === OrderStatus.COMPLETED)
-      ) {
-        willFinalize = false;
+      if (outcome === 'success' && order.status !== OrderStatus.COMPLETED) {
         this.logger.log(
-          `UPayments callback: duplicate/no-op order already settled orderId=${order.id}`,
+          `force_finalize_triggered orderId=${order.id} result=${inquiry.data.result ?? body.result ?? 'CAPTURED'} source=UPAYMENTS_CALLBACK version=${APP_VERSION}`,
         );
-      } else if (willFinalize) {
         this.logger.log(
           `about_to_finalize orderId=${order.id} source=UPAYMENTS_CALLBACK trackId=${gatewayInquiryId} version=${APP_VERSION}`,
         );
@@ -482,13 +477,19 @@ document.getElementById('go').onclick = async function () {
               null,
             result: inquiry.data.result ?? body.result ?? null,
             auth: body.auth ?? null,
-            amount: String(inquiry.data.amount ?? body.amount ?? ''),
+            amount: order.totalPrice.toString(),
             inquiryRaw: inquiry.raw,
             receivedBody: body,
           } as never,
         );
         this.logger.log(
           `UPayments callback: verified finalize done orderId=${order.id}`,
+        );
+        willFinalize = true;
+      } else if (outcome === 'success') {
+        willFinalize = false;
+        this.logger.log(
+          `UPayments callback: duplicate/no-op order already settled orderId=${order.id}`,
         );
       }
 
@@ -663,6 +664,36 @@ document.getElementById('go').onclick = async function () {
 
     let settled = Boolean(order.walletSettledAt);
     let status = order.status;
+    if (
+      !settled &&
+      status !== OrderStatus.COMPLETED &&
+      this.paymentsService.normalizeCallbackStatus(gatewayResultRaw) === 'success' &&
+      returnTrack
+    ) {
+      this.logger.log(
+        `force_finalize_triggered orderId=${order.id} result=${gatewayResultRaw} source=PUBLIC_STATUS version=${APP_VERSION}`,
+      );
+      try {
+        const finalized = await this.paymentsService.finalizePaidOrderFromGateway(
+          order.id,
+          {
+            provider: 'upayments',
+            trackId: returnTrack,
+            source: 'PUBLIC_STATUS_FORCE_CAPTURED',
+            result: gatewayResultRaw,
+            amount: order.totalPrice.toString(),
+          } as never,
+        );
+        if (finalized) {
+          settled = true;
+          status = OrderStatus.COMPLETED;
+        }
+      } catch (err) {
+        this.logger.warn(
+          `Force captured status finalize failed for order ${order.id}: ${(err as Error).message}`,
+        );
+      }
+    }
     if (!settled && status !== OrderStatus.COMPLETED) {
       if (gatewayResultRaw && returnTrack) {
         try {

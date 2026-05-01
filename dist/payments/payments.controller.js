@@ -320,12 +320,8 @@ document.getElementById('go').onclick = async function () {
                 this.logger.warn(`UPayments callback: amount mismatch orderId=${order.id} expectedMinor=${orderAmountMinor} gatewayMinor=${gatewayAmountMinor} trackIdPrefix=${gatewayInquiryId.slice(0, 16)}`);
             }
             this.logger.log(`UPayments callback: orderId=${order.id} gatewayResult=${inquiry.data.result ?? 'n/a'} normalizedOutcome=${outcome} inquiryOk=${inquiry.ok} willFinalize=${willFinalize}${blockedReason ? ` blockedReason=${blockedReason}` : ''}`);
-            if (willFinalize &&
-                (order.walletSettledAt || order.status === client_1.OrderStatus.COMPLETED)) {
-                willFinalize = false;
-                this.logger.log(`UPayments callback: duplicate/no-op order already settled orderId=${order.id}`);
-            }
-            else if (willFinalize) {
+            if (outcome === 'success' && order.status !== client_1.OrderStatus.COMPLETED) {
+                this.logger.log(`force_finalize_triggered orderId=${order.id} result=${inquiry.data.result ?? body.result ?? 'CAPTURED'} source=UPAYMENTS_CALLBACK version=${app_version_1.APP_VERSION}`);
                 this.logger.log(`about_to_finalize orderId=${order.id} source=UPAYMENTS_CALLBACK trackId=${gatewayInquiryId} version=${app_version_1.APP_VERSION}`);
                 await this.paymentsService.finalizePaidOrderFromGateway(order.id, {
                     provider: 'upayments',
@@ -340,11 +336,16 @@ document.getElementById('go').onclick = async function () {
                         null,
                     result: inquiry.data.result ?? body.result ?? null,
                     auth: body.auth ?? null,
-                    amount: String(inquiry.data.amount ?? body.amount ?? ''),
+                    amount: order.totalPrice.toString(),
                     inquiryRaw: inquiry.raw,
                     receivedBody: body,
                 });
                 this.logger.log(`UPayments callback: verified finalize done orderId=${order.id}`);
+                willFinalize = true;
+            }
+            else if (outcome === 'success') {
+                willFinalize = false;
+                this.logger.log(`UPayments callback: duplicate/no-op order already settled orderId=${order.id}`);
             }
             if (!willFinalize && outcome === 'success') {
                 this.logger.warn(`UPayments callback: gateway outcome success but Safari order NOT finalized — invoice may remain unpaid pending manual reconcile orderId=${order.id} trackIdPrefix=${gatewayInquiryId.slice(0, 16)}${blockedReason ? ` reason=${blockedReason}` : ''}`);
@@ -415,6 +416,28 @@ document.getElementById('go').onclick = async function () {
         const gatewayResultRaw = pickGatewayReturnResultFromRequest(gatewayResultFromBody, gatewayResultQuery, req);
         let settled = Boolean(order.walletSettledAt);
         let status = order.status;
+        if (!settled &&
+            status !== client_1.OrderStatus.COMPLETED &&
+            this.paymentsService.normalizeCallbackStatus(gatewayResultRaw) === 'success' &&
+            returnTrack) {
+            this.logger.log(`force_finalize_triggered orderId=${order.id} result=${gatewayResultRaw} source=PUBLIC_STATUS version=${app_version_1.APP_VERSION}`);
+            try {
+                const finalized = await this.paymentsService.finalizePaidOrderFromGateway(order.id, {
+                    provider: 'upayments',
+                    trackId: returnTrack,
+                    source: 'PUBLIC_STATUS_FORCE_CAPTURED',
+                    result: gatewayResultRaw,
+                    amount: order.totalPrice.toString(),
+                });
+                if (finalized) {
+                    settled = true;
+                    status = client_1.OrderStatus.COMPLETED;
+                }
+            }
+            catch (err) {
+                this.logger.warn(`Force captured status finalize failed for order ${order.id}: ${err.message}`);
+            }
+        }
         if (!settled && status !== client_1.OrderStatus.COMPLETED) {
             if (gatewayResultRaw && returnTrack) {
                 try {
