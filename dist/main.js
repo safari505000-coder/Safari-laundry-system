@@ -64,6 +64,7 @@ const branding_1 = require("./common/constants/branding");
 const global_exception_filter_1 = require("./common/filters/global-exception.filter");
 const branding_response_interceptor_1 = require("./common/interceptors/branding-response.interceptor");
 const prisma_service_1 = require("./prisma/prisma.service");
+const app_version_1 = require("./common/constants/app-version");
 const DEFAULT_ADMIN_USERNAME = 'admin';
 const DEFAULT_ADMIN_PASSWORD = 'admin';
 const DEFAULT_ADMIN_FULL_NAME = 'System Administrator';
@@ -127,6 +128,7 @@ async function bootstrap() {
     const app = await core_1.NestFactory.create(app_module_1.AppModule, {
         bodyParser: false,
     });
+    common_1.Logger.log(`APP_VERSION: ${app_version_1.APP_VERSION}`, 'Bootstrap');
     app.use('/uploads', express.static((0, node_path_1.join)(process.cwd(), 'uploads'), {
         index: false,
         fallthrough: true,

@@ -20,8 +20,33 @@ const customer_notifications_service_1 = require("../../customer-notifications/c
 const general_ledger_service_1 = require("../../general-ledger/general-ledger.service");
 const inventory_service_1 = require("../../inventory/inventory.service");
 const prisma_service_1 = require("../../prisma/prisma.service");
+const app_version_1 = require("../constants/app-version");
 const kuwait_customer_phone_1 = require("../validation/kuwait-customer-phone");
 const cash_status_for_method_1 = require("../utils/cash-status-for-method");
+const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
+async function sendDiscordAlert(type, data) {
+    if (!DISCORD_WEBHOOK_URL)
+        return;
+    const message = type === 'inconsistency'
+        ? `🚨 PAYMENT INCONSISTENCY\n\nOrderId: ${data.orderId ?? null}\nIssues: ${(data.issues ?? []).join(', ')}\nTime: ${new Date().toISOString()}`
+        : type === 'error'
+            ? `🚨 PAYMENT ERROR\n\nEvent: ${data.event ?? null}\nTransId: ${data.transId ?? null}\nOrderId: ${data.orderId ?? null}\nTime: ${new Date().toISOString()}`
+            : `✅ PAYMENT SUCCESS\n\nTransId: ${data.transId ?? null}\nOrderId: ${data.orderId ?? null}\nTime: ${new Date().toISOString()}`;
+    try {
+        await fetch(DISCORD_WEBHOOK_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                content: message,
+            }),
+        });
+    }
+    catch (err) {
+        console.error('discord_alert_failed', err);
+    }
+}
 function looksLikeOurOrderUuid(s) {
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s.trim());
 }
@@ -434,6 +459,10 @@ let PaymentsService = class PaymentsService {
     inventory;
     customerNotifications;
     logger = new common_1.Logger(PaymentsService_1.name);
+    activePollingTransIds = new Set();
+    totalPaymentsProcessed = 0;
+    totalFailures = 0;
+    totalDuplicates = 0;
     prodFirstMockLinkLogged = false;
     apiBase;
     apiKey;
@@ -640,6 +669,9 @@ let PaymentsService = class PaymentsService {
                         : 'n/a';
             this.logger.warn(`UPayments /charge: no inquiry id in response (order=${params.orderId}). data keys=[${dataKeys}]. Link returned; webhook will provide trans_id/track_id. Raw=${text.slice(0, 800)}`);
         }
+        if (validatedTrackId) {
+            this.startGatewayStatusPolling(params.orderId, validatedTrackId);
+        }
         return {
             url,
             reference: validatedTrackId,
@@ -777,75 +809,15 @@ let PaymentsService = class PaymentsService {
         if (!clean) {
             return { finalized: false, gatewayResult: null, inquiryRaw: null };
         }
-        const inquiry = await this.fetchGatewayStatus(clean);
-        const gr = inquiry.data.result?.toString() ?? null;
-        if (!inquiry.ok) {
-            return { finalized: false, gatewayResult: gr, inquiryRaw: inquiry.raw };
-        }
-        if (this.normalizeCallbackStatus(inquiry.data.result ?? '') !== 'success') {
-            return { finalized: false, gatewayResult: gr, inquiryRaw: inquiry.raw };
-        }
-        const fromInq = inquiry.data.order?.id?.trim() ||
-            extractOrderIdFromUpaymentsExtraData(inquiry.data.customerExtraData);
-        if (fromInq && fromInq !== orderId) {
-            this.logger.warn(`UPayments inquiry order mismatch: urlOrder=${orderId} inquiryOrder=${fromInq} trackPrefix=${clean.slice(0, 20)}…`);
-            return { finalized: false, gatewayResult: gr, inquiryRaw: inquiry.raw };
-        }
-        await this.finalizePaidOrderFromGateway(orderId, {
-            provider: 'upayments',
-            trackId: clean,
-            source,
-            paymentId: inquiry.data.paymentId ?? null,
-            tranId: inquiry.data.transactionId ?? null,
-            result: inquiry.data.result ?? null,
-            amount: String(inquiry.data.amount ?? ''),
-            inquiryRaw: inquiry.raw,
-        });
-        return { finalized: true, gatewayResult: gr, inquiryRaw: inquiry.raw };
+        return this.checkPaymentStatus(clean, orderId, source);
     }
-    async tryFinalizeOrderFromTrustedUpaymentsReturn(orderId, trackId, gatewayResultRaw, source, extras) {
+    async tryFinalizeOrderFromTrustedUpaymentsReturn(orderId, trackId, _gatewayResultRaw, source, _extras) {
         const clean = trackId.trim();
         if (!clean) {
             return { finalized: false };
         }
-        if (this.normalizeCallbackStatus(gatewayResultRaw) !== 'success') {
-            return { finalized: false };
-        }
-        const order = await this.prisma.order.findUnique({
-            where: { id: orderId },
-            select: {
-                id: true,
-                status: true,
-                walletSettledAt: true,
-                posGatewayTrackId: true,
-            },
-        });
-        if (!order) {
-            return { finalized: false };
-        }
-        if (order.walletSettledAt || order.status === client_1.OrderStatus.COMPLETED) {
-            return { finalized: true };
-        }
-        if (order.status === client_1.OrderStatus.CANCELED) {
-            return { finalized: false };
-        }
-        const stored = order.posGatewayTrackId?.trim() ?? '';
-        const trackCorrelatesToOrder = /v2$/i.test(clean) ||
-            (stored.length > 0 && stored === clean);
-        if (!trackCorrelatesToOrder) {
-            return { finalized: false };
-        }
-        await this.finalizePaidOrderFromGateway(orderId, {
-            provider: 'upayments',
-            trackId: clean,
-            source,
-            result: gatewayResultRaw.trim(),
-            paymentId: extras?.paymentId ?? null,
-            tranId: extras?.tranId ?? null,
-            amount: extras?.amount != null ? String(extras.amount) : '',
-            inquiryRaw: { trustedWithoutUpaymentsInquiry: true },
-        });
-        return { finalized: true };
+        const r = await this.checkPaymentStatus(clean, orderId, source);
+        return { finalized: r.finalized };
     }
     async ensurePaymentLinkForUnpaidOrder(orderId) {
         const order = await this.prisma.order.findUnique({
@@ -922,6 +894,362 @@ let PaymentsService = class PaymentsService {
         });
         return row?.id ?? null;
     }
+    paymentLog(event, data) {
+        const alertEvent = data.status === 'gateway_error' ? 'gateway_error' : event;
+        if (alertEvent === 'gateway_error' || alertEvent === 'finalize_rejected') {
+            void sendDiscordAlert('error', {
+                event: alertEvent,
+                transId: data.transId ?? null,
+                orderId: data.orderId ?? null,
+            });
+        }
+        if (event === 'finalize_success') {
+            void sendDiscordAlert('success', {
+                transId: data.transId ?? null,
+                orderId: data.orderId ?? null,
+            });
+        }
+        this.logger.log(JSON.stringify({
+            event,
+            transId: data.transId ?? null,
+            orderId: data.orderId ?? null,
+            status: data.status ?? 'info',
+            timestamp: new Date().toISOString(),
+            totalPaymentsProcessed: this.totalPaymentsProcessed,
+            totalFailures: this.totalFailures,
+            totalDuplicates: this.totalDuplicates,
+            ...data,
+        }));
+    }
+    paymentError(event, data) {
+        const alertEvent = data.status === 'gateway_error' ? 'gateway_error' : event;
+        if (alertEvent === 'gateway_error' ||
+            alertEvent === 'finalize_rejected' ||
+            alertEvent === 'polling_failed') {
+            void sendDiscordAlert('error', {
+                event: alertEvent,
+                transId: data.transId ?? null,
+                orderId: data.orderId ?? null,
+            });
+        }
+        console.error(JSON.stringify({
+            event,
+            transId: data.transId ?? null,
+            orderId: data.orderId ?? null,
+            status: data.status ?? 'error',
+            timestamp: new Date().toISOString(),
+            totalPaymentsProcessed: this.totalPaymentsProcessed,
+            totalFailures: this.totalFailures,
+            totalDuplicates: this.totalDuplicates,
+            ...data,
+        }));
+    }
+    async runPostPaymentSelfCheck(orderId) {
+        try {
+            const order = await this.prisma.order.findUnique({
+                where: { id: orderId },
+                include: {
+                    transactionHistory: true,
+                },
+            });
+            if (!order)
+                return;
+            const issues = [];
+            if (order.status !== client_1.OrderStatus.COMPLETED) {
+                issues.push('order_not_completed');
+            }
+            if (!order.walletSettledAt) {
+                issues.push('wallet_not_settled');
+            }
+            if (!order.transactionHistory || order.transactionHistory.length === 0) {
+                issues.push('missing_transaction_history');
+            }
+            if (issues.length > 0) {
+                await sendDiscordAlert('inconsistency', {
+                    orderId,
+                    issues,
+                });
+            }
+        }
+        catch (err) {
+            console.error('post_payment_self_check_failed', err);
+        }
+    }
+    async checkPaymentStatus(transId, expectedOrderId, source = 'POLLING') {
+        const clean = transId.trim();
+        if (!clean || !isValidUpaymentsPaymentStatusInquiryId(clean)) {
+            this.totalFailures += 1;
+            this.paymentError('finalize_rejected', {
+                transId: clean || null,
+                orderId: expectedOrderId ?? null,
+                status: 'invalid_trans_id',
+            });
+            this.logger.warn(`finalize_rejected invalid_trans_id prefix=${clean.slice(0, 16)}`);
+            return { finalized: false, gatewayResult: null, inquiryRaw: null };
+        }
+        if (expectedOrderId && (await this.isGatewayReferencePaid(expectedOrderId))) {
+            this.totalDuplicates += 1;
+            this.paymentLog('duplicate_noop', {
+                transId: clean,
+                orderId: expectedOrderId,
+                status: 'already_paid',
+            });
+            this.logger.log(`ignored_duplicate_capture orderId=${expectedOrderId}`);
+            return { finalized: true, gatewayResult: null, inquiryRaw: null };
+        }
+        const inquiry = await this.fetchGatewayStatus(clean);
+        const gatewayResult = inquiry.data.result?.toString() ?? null;
+        if (!inquiry.ok) {
+            this.totalFailures += 1;
+            this.paymentError('finalize_rejected', {
+                transId: clean,
+                orderId: expectedOrderId ?? null,
+                status: 'gateway_error',
+                gatewayResult,
+            });
+            return { finalized: false, gatewayResult, inquiryRaw: inquiry.raw };
+        }
+        if (this.normalizeCallbackStatus(inquiry.data.result ?? '') !== 'success') {
+            return { finalized: false, gatewayResult, inquiryRaw: inquiry.raw };
+        }
+        const inquiryOrderId = inquiry.data.order?.id?.trim() ||
+            extractOrderIdFromUpaymentsExtraData(inquiry.data.customerExtraData);
+        const linkedOrderId = await this.findOrderByTrackId(clean);
+        const referenceId = inquiryOrderId || expectedOrderId || linkedOrderId || null;
+        if (!referenceId) {
+            this.totalFailures += 1;
+            this.paymentLog('finalize_rejected', {
+                transId: clean,
+                orderId: null,
+                status: 'order_not_found',
+            });
+            this.logger.warn(`finalize_rejected order_not_found transId=${clean.slice(0, 16)}`);
+            return { finalized: false, gatewayResult, inquiryRaw: inquiry.raw };
+        }
+        if (expectedOrderId && referenceId !== expectedOrderId) {
+            this.totalFailures += 1;
+            this.paymentLog('finalize_rejected', {
+                transId: clean,
+                orderId: expectedOrderId,
+                status: 'order_mismatch',
+                actualOrderId: referenceId,
+            });
+            this.logger.warn(`finalize_rejected order_mismatch expected=${expectedOrderId} actual=${referenceId} transId=${clean.slice(0, 16)}`);
+            return { finalized: false, gatewayResult, inquiryRaw: inquiry.raw };
+        }
+        const reference = await this.getGatewayReferenceForFinalize(referenceId);
+        if (!reference) {
+            this.totalFailures += 1;
+            this.paymentLog('finalize_rejected', {
+                transId: clean,
+                orderId: referenceId,
+                status: 'order_missing',
+            });
+            this.logger.warn(`finalize_rejected order_missing orderId=${referenceId}`);
+            return { finalized: false, gatewayResult, inquiryRaw: inquiry.raw };
+        }
+        if (reference.isPaid) {
+            this.totalDuplicates += 1;
+            this.paymentLog('duplicate_noop', {
+                transId: clean,
+                orderId: reference.id,
+                status: 'already_paid',
+            });
+            this.logger.log(`duplicate_noop orderId=${reference.id}`);
+            return { finalized: true, gatewayResult, inquiryRaw: inquiry.raw };
+        }
+        const stored = reference.trackId?.trim() ?? '';
+        if (stored && stored !== clean) {
+            this.totalFailures += 1;
+            this.paymentLog('finalize_rejected', {
+                transId: clean,
+                orderId: reference.id,
+                status: 'trans_mismatch',
+            });
+            this.logger.warn(`finalize_rejected trans_mismatch orderId=${reference.id} stored=${stored.slice(0, 16)} incoming=${clean.slice(0, 16)}`);
+            return { finalized: false, gatewayResult, inquiryRaw: inquiry.raw };
+        }
+        const gatewayAmountMinor = parseKwdMinor(inquiry.data.amount);
+        const expectedAmountMinor = parseKwdMinor(reference.amount.toString());
+        if (gatewayAmountMinor === null || gatewayAmountMinor !== expectedAmountMinor) {
+            this.totalFailures += 1;
+            this.paymentError('finalize_rejected', {
+                transId: clean,
+                orderId: reference.id,
+                status: 'amount_mismatch',
+                expectedAmountMinor,
+                gatewayAmountMinor,
+            });
+            this.logger.warn(`finalize_rejected amount_mismatch orderId=${reference.id} expectedMinor=${expectedAmountMinor} gatewayMinor=${gatewayAmountMinor}`);
+            return { finalized: false, gatewayResult, inquiryRaw: inquiry.raw };
+        }
+        const currency = inquiry.data.currency?.trim().toUpperCase();
+        if (currency && currency !== 'KWD') {
+            this.totalFailures += 1;
+            this.paymentLog('finalize_rejected', {
+                transId: clean,
+                orderId: reference.id,
+                status: 'currency_mismatch',
+                currency,
+            });
+            this.logger.warn(`finalize_rejected currency_mismatch orderId=${reference.id} currency=${currency}`);
+            return { finalized: false, gatewayResult, inquiryRaw: inquiry.raw };
+        }
+        const finalized = await this.finalizePaidOrderFromGateway(reference.id, {
+            provider: 'upayments',
+            trackId: clean,
+            source,
+            paymentId: inquiry.data.paymentId ?? null,
+            tranId: inquiry.data.transactionId ?? null,
+            result: inquiry.data.result ?? null,
+            amount: String(inquiry.data.amount ?? ''),
+            currency: currency ?? null,
+            inquiryRaw: inquiry.raw,
+        });
+        return { finalized, gatewayResult, inquiryRaw: inquiry.raw };
+    }
+    startGatewayStatusPolling(orderId, transId) {
+        const pollingKey = transId.trim();
+        if (this.activePollingTransIds.has(pollingKey)) {
+            this.totalDuplicates += 1;
+            this.paymentLog('duplicate_noop', {
+                transId: pollingKey,
+                orderId,
+                status: 'polling_already_active',
+            });
+            this.logger.log(`duplicate_noop polling transId=${pollingKey.slice(0, 16)}`);
+            return;
+        }
+        this.activePollingTransIds.add(pollingKey);
+        this.paymentLog('polling_started', {
+            transId: pollingKey,
+            orderId,
+            status: 'started',
+        });
+        this.logger.log(`polling_started orderId=${orderId} transId=${transId.slice(0, 16)}`);
+        void (async () => {
+            try {
+                for (let attempt = 1; attempt <= 3; attempt += 1) {
+                    if (attempt > 1) {
+                        await delay(20_000);
+                    }
+                    if (await this.isGatewayReferencePaid(orderId)) {
+                        this.totalDuplicates += 1;
+                        this.paymentLog('duplicate_noop', {
+                            transId: pollingKey,
+                            orderId,
+                            status: 'already_paid',
+                        });
+                        this.logger.log(`duplicate_noop polling orderId=${orderId}`);
+                        return;
+                    }
+                    const result = await this.checkPaymentStatus(transId, orderId, `POLLING_ATTEMPT_${attempt}`);
+                    if (result.finalized) {
+                        this.paymentLog('polling_success', {
+                            transId: pollingKey,
+                            orderId,
+                            status: 'finalized',
+                            attempt,
+                        });
+                        this.logger.log(`polling_success orderId=${orderId} attempt=${attempt}`);
+                        return;
+                    }
+                    if (attempt < 3) {
+                        this.paymentLog('polling_retry', {
+                            transId: pollingKey,
+                            orderId,
+                            status: 'retry',
+                            attempt,
+                            gatewayResult: result.gatewayResult ?? null,
+                        });
+                        this.logger.log(`polling_retry orderId=${orderId} attempt=${attempt} gatewayResult=${result.gatewayResult ?? 'n/a'}`);
+                    }
+                }
+                this.totalFailures += 1;
+                this.paymentError('polling_failed', {
+                    transId: pollingKey,
+                    orderId,
+                    status: 'max_retries_exhausted',
+                });
+                this.logger.warn(`polling_failed orderId=${orderId} transId=${transId.slice(0, 16)}`);
+            }
+            finally {
+                this.activePollingTransIds.delete(pollingKey);
+            }
+        })().catch((e) => {
+            this.totalFailures += 1;
+            this.paymentError('polling_failed', {
+                transId: pollingKey,
+                orderId,
+                status: 'exception',
+                error: e instanceof Error ? e.message : String(e),
+            });
+            this.logger.warn(`polling_failed orderId=${orderId}: ${e}`);
+        });
+    }
+    async isGatewayReferencePaid(referenceId) {
+        const order = await this.prisma.order.findUnique({
+            where: { id: referenceId },
+            select: { status: true, walletSettledAt: true },
+        });
+        if (order) {
+            return order.status === client_1.OrderStatus.COMPLETED || Boolean(order.walletSettledAt);
+        }
+        const bundle = await this.prisma.posPaymentBundle.findUnique({
+            where: { id: referenceId },
+            select: {
+                orders: {
+                    select: { status: true, walletSettledAt: true },
+                },
+            },
+        });
+        return Boolean(bundle?.orders.length &&
+            bundle.orders.every((o) => o.status === client_1.OrderStatus.COMPLETED || Boolean(o.walletSettledAt)));
+    }
+    async getGatewayReferenceForFinalize(referenceId) {
+        const order = await this.prisma.order.findUnique({
+            where: { id: referenceId },
+            select: {
+                id: true,
+                totalPrice: true,
+                status: true,
+                walletSettledAt: true,
+                posGatewayTrackId: true,
+            },
+        });
+        if (order) {
+            return {
+                id: order.id,
+                amount: order.totalPrice,
+                trackId: order.posGatewayTrackId,
+                isPaid: order.status === client_1.OrderStatus.COMPLETED || Boolean(order.walletSettledAt),
+            };
+        }
+        const bundle = await this.prisma.posPaymentBundle.findUnique({
+            where: { id: referenceId },
+            select: {
+                id: true,
+                totalAmountKd: true,
+                orders: {
+                    select: {
+                        status: true,
+                        walletSettledAt: true,
+                        posGatewayTrackId: true,
+                    },
+                },
+            },
+        });
+        if (!bundle) {
+            return null;
+        }
+        return {
+            id: bundle.id,
+            amount: bundle.totalAmountKd,
+            trackId: bundle.orders.find((o) => o.posGatewayTrackId)?.posGatewayTrackId ?? null,
+            isPaid: bundle.orders.length > 0 &&
+                bundle.orders.every((o) => o.status === client_1.OrderStatus.COMPLETED || Boolean(o.walletSettledAt)),
+        };
+    }
     async finalizePaidOrderFromGateway(referenceId, gatewayMetadata) {
         const bundle = await this.prisma.posPaymentBundle.findUnique({
             where: { id: referenceId },
@@ -934,12 +1262,15 @@ let PaymentsService = class PaymentsService {
             },
         });
         if (bundle?.orders.length) {
+            let didFinalizeAny = false;
             for (const o of bundle.orders) {
-                await this.finalizeSinglePaidOrderFromGateway(o.id, gatewayMetadata);
+                didFinalizeAny =
+                    (await this.finalizeSinglePaidOrderFromGateway(o.id, gatewayMetadata)) ||
+                        didFinalizeAny;
             }
-            return;
+            return didFinalizeAny;
         }
-        await this.finalizeSinglePaidOrderFromGateway(referenceId, gatewayMetadata);
+        return this.finalizeSinglePaidOrderFromGateway(referenceId, gatewayMetadata);
     }
     async finalizeSinglePaidOrderFromGateway(orderId, gatewayMetadata) {
         const didFinalize = await this.prisma.$transaction(async (tx) => {
@@ -954,24 +1285,53 @@ let PaymentsService = class PaymentsService {
                     totalPrice: true,
                     posPaymentMethod: true,
                     driverId: true,
+                    posPaymentBundleId: true,
+                    posGatewayTrackId: true,
                     posGatewayMetadata: true,
                 },
             });
             if (!order) {
                 throw new common_1.BadRequestException('Order not found');
             }
-            if (order.walletSettledAt) {
+            if (order.walletSettledAt || order.status === client_1.OrderStatus.COMPLETED) {
+                this.totalDuplicates += 1;
+                this.paymentLog('duplicate_noop', {
+                    transId: order.posGatewayTrackId,
+                    orderId: order.id,
+                    status: 'already_paid',
+                });
+                this.logger.log(`ignored_duplicate_capture orderId=${order.id}`);
                 return false;
             }
             if (order.status === client_1.OrderStatus.CANCELED) {
                 throw new common_1.BadRequestException('Order is canceled — cannot finalize a link payment for it');
             }
-            const originalMethod = order.posPaymentMethod;
             const completedAt = new Date();
             const mergedGatewayMetadata = mergeGatewayMetadata(order.posGatewayMetadata, gatewayMetadata, completedAt);
             const inquiryCapableTrackId = extractTrackIdFromFinalizeGatewayMetadata(gatewayMetadata);
-            await tx.order.update({
-                where: { id: orderId },
+            const bundleAmount = order.posPaymentBundleId
+                ? await tx.posPaymentBundle.findUnique({
+                    where: { id: order.posPaymentBundleId },
+                    select: { totalAmountKd: true },
+                })
+                : null;
+            const gatewayChecks = validateFinalizeGatewayMetadata(gatewayMetadata, bundleAmount?.totalAmountKd ?? order.totalPrice, order.posGatewayTrackId, inquiryCapableTrackId);
+            if (!gatewayChecks.ok) {
+                this.totalFailures += 1;
+                this.paymentLog('finalize_rejected', {
+                    transId: inquiryCapableTrackId ?? order.posGatewayTrackId,
+                    orderId: order.id,
+                    status: gatewayChecks.reason,
+                });
+                this.logger.warn(`finalize_rejected ${gatewayChecks.reason} orderId=${order.id}`);
+                return false;
+            }
+            const claim = await tx.order.updateMany({
+                where: {
+                    id: orderId,
+                    walletSettledAt: null,
+                    status: { not: client_1.OrderStatus.COMPLETED },
+                },
                 data: {
                     status: client_1.OrderStatus.COMPLETED,
                     cashStatus: (0, cash_status_for_method_1.cashStatusForPaymentMethod)(client_1.PosPaymentMethod.ONLINE),
@@ -987,6 +1347,19 @@ let PaymentsService = class PaymentsService {
                         : {}),
                 },
             });
+            if (claim.count === 0) {
+                this.totalDuplicates += 1;
+                this.paymentLog('duplicate_noop', {
+                    transId: inquiryCapableTrackId ?? order.posGatewayTrackId,
+                    orderId: order.id,
+                    status: 'claim_lost',
+                });
+                this.logger.log(`ignored_duplicate_capture orderId=${order.id}`);
+                return false;
+            }
+            this.logger.log(`first_successful_capture orderId=${order.id}`);
+            this.logger.log(`payment_invoice_updated orderId=${order.id} status=${client_1.OrderStatus.COMPLETED} paymentMethod=${client_1.PosPaymentMethod.ONLINE}`);
+            const originalMethod = order.posPaymentMethod;
             const performerId = order.driverId ?? (await this.resolveFallbackPerformer(tx));
             if (!performerId) {
                 throw new common_1.BadRequestException('No performer available to attribute the link payment to');
@@ -1000,11 +1373,23 @@ let PaymentsService = class PaymentsService {
             };
             const extraMetadata = {
                 debtSettled: order.totalPrice.toString(),
+                debtSettledFlag: true,
                 debtSettlementViaLink: true,
+                trackId: inquiryCapableTrackId ?? order.posGatewayTrackId,
                 originalPaymentMethod: originalMethod ?? null,
                 reportingCategory: 'DEBT_COLLECTION_VIA_LINK',
             };
+            const walletBeforeSettlement = await tx.customerWallet.findUnique({
+                where: { customerId: order.customerId },
+                select: { debt: true },
+            });
             await this.customerLedger.applyOrderWalletSettlementForCompletedOrder(tx, orderId, performerId, prefetch, extraMetadata);
+            const walletAfterSettlement = await tx.customerWallet.findUnique({
+                where: { customerId: order.customerId },
+                select: { debt: true },
+            });
+            this.logger.log(`payment_wallet_updated orderId=${order.id} customerId=${order.customerId} debtBefore=${walletBeforeSettlement?.debt.toString() ?? '0'} debtAfter=${walletAfterSettlement?.debt.toString() ?? '0'} version=${app_version_1.APP_VERSION}`);
+            this.logger.log(`payment_financial_transaction_recorded orderId=${order.id} customerId=${order.customerId} amount=${order.totalPrice.toString()} trackId=${inquiryCapableTrackId ?? order.posGatewayTrackId ?? 'n/a'} version=${app_version_1.APP_VERSION}`);
             await this.generalLedger.append(tx, {
                 entryType: client_1.GeneralLedgerEntryType.POS_SALE_COMPLETED,
                 amount: order.totalPrice,
@@ -1034,11 +1419,19 @@ let PaymentsService = class PaymentsService {
                 branchId: driverRow?.branchId ?? actorRow?.branchId ?? null,
                 reference: `GATEWAY-${orderId.slice(0, 8)}`,
             });
+            this.totalPaymentsProcessed += 1;
+            this.paymentLog('finalize_success', {
+                transId: inquiryCapableTrackId ?? order.posGatewayTrackId,
+                orderId: order.id,
+                status: 'completed',
+            });
             return true;
         }, { maxWait: 10_000, timeout: 15_000 });
         if (didFinalize) {
+            await this.runPostPaymentSelfCheck(orderId);
             this.emitPaymentConfirmedNotify(orderId);
         }
+        return didFinalize;
     }
     static GATEWAY_ORDER_FRESH_MS = 72 * 3600 * 1000;
     inferPaymentScenarioFromOrderAge(createdAt) {
@@ -1289,6 +1682,49 @@ function normalizeKwPhone(phone) {
         return `+965${d}`;
     }
     return `+${d}`;
+}
+function delay(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+function parseKwdMinor(raw) {
+    if (raw === undefined || raw === null)
+        return null;
+    const value = typeof raw === 'number' ? raw : Number(raw);
+    if (!Number.isFinite(value))
+        return null;
+    return Math.round(value * 1000);
+}
+function validateFinalizeGatewayMetadata(meta, orderTotal, storedTrackId, incomingTrackId) {
+    if (meta == null || typeof meta !== 'object' || Array.isArray(meta)) {
+        return { ok: true };
+    }
+    const m = meta;
+    if (m.devMock === true || m.provider === 'legacy-hmac') {
+        return { ok: true };
+    }
+    if (m.provider !== 'upayments') {
+        return { ok: true };
+    }
+    const stored = storedTrackId?.trim() ?? '';
+    const incoming = incomingTrackId?.trim() ?? '';
+    if (!incoming) {
+        return { ok: false, reason: 'missing_trans_id' };
+    }
+    if (stored && stored !== incoming) {
+        return { ok: false, reason: 'trans_mismatch' };
+    }
+    const gatewayAmountMinor = parseKwdMinor(typeof m.amount === 'string' || typeof m.amount === 'number'
+        ? m.amount
+        : undefined);
+    const orderAmountMinor = parseKwdMinor(orderTotal.toString());
+    if (gatewayAmountMinor === null || gatewayAmountMinor !== orderAmountMinor) {
+        return { ok: false, reason: 'amount_mismatch' };
+    }
+    const currency = typeof m.currency === 'string' ? m.currency.trim().toUpperCase() : '';
+    if (currency && currency !== 'KWD') {
+        return { ok: false, reason: 'currency_mismatch' };
+    }
+    return { ok: true };
 }
 function extractTrackIdFromFinalizeGatewayMetadata(meta) {
     if (meta == null || typeof meta !== 'object' || Array.isArray(meta)) {

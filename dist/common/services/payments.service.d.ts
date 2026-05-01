@@ -25,6 +25,7 @@ type UPaymentsInquiryData = {
     transactionId?: string;
     reference?: string;
     amount?: string | number;
+    currency?: string;
     customerExtraData?: string;
     order?: {
         id?: string;
@@ -40,6 +41,10 @@ export declare class PaymentsService implements OnModuleInit {
     private readonly inventory;
     private readonly customerNotifications;
     private readonly logger;
+    private readonly activePollingTransIds;
+    private totalPaymentsProcessed;
+    private totalFailures;
+    private totalDuplicates;
     private prodFirstMockLinkLogged;
     private readonly apiBase;
     private readonly apiKey;
@@ -76,7 +81,7 @@ export declare class PaymentsService implements OnModuleInit {
         gatewayResult: string | null;
         inquiryRaw: unknown;
     }>;
-    tryFinalizeOrderFromTrustedUpaymentsReturn(orderId: string, trackId: string, gatewayResultRaw: string, source: string, extras?: {
+    tryFinalizeOrderFromTrustedUpaymentsReturn(orderId: string, trackId: string, _gatewayResultRaw: string, source: string, _extras?: {
         paymentId?: string | null;
         tranId?: string | null;
         amount?: string;
@@ -85,7 +90,18 @@ export declare class PaymentsService implements OnModuleInit {
     }>;
     ensurePaymentLinkForUnpaidOrder(orderId: string): Promise<CreatePaymentLinkResult>;
     findOrderByTrackId(trackId: string): Promise<string | null>;
-    finalizePaidOrderFromGateway(referenceId: string, gatewayMetadata?: Prisma.InputJsonValue): Promise<void>;
+    private paymentLog;
+    private paymentError;
+    private runPostPaymentSelfCheck;
+    checkPaymentStatus(transId: string, expectedOrderId?: string, source?: string): Promise<{
+        finalized: boolean;
+        gatewayResult: string | null;
+        inquiryRaw: unknown;
+    }>;
+    private startGatewayStatusPolling;
+    private isGatewayReferencePaid;
+    private getGatewayReferenceForFinalize;
+    finalizePaidOrderFromGateway(referenceId: string, gatewayMetadata?: Prisma.InputJsonValue): Promise<boolean>;
     private finalizeSinglePaidOrderFromGateway;
     private static readonly GATEWAY_ORDER_FRESH_MS;
     private inferPaymentScenarioFromOrderAge;

@@ -20,6 +20,7 @@ const jwt_1 = require("@nestjs/jwt");
 const client_1 = require("@prisma/client");
 const prisma_service_1 = require("../prisma/prisma.service");
 const payments_service_1 = require("../common/services/payments.service");
+const app_version_1 = require("../common/constants/app-version");
 const invoice_pdf_util_1 = require("../orders/invoice-pdf.util");
 const gateway_track_hint_dto_1 = require("./dto/gateway-track-hint.dto");
 const payment_callback_dto_1 = require("./dto/payment-callback.dto");
@@ -27,6 +28,7 @@ class PublicOrderStatusDto {
     orderId;
     status;
     isPaid;
+    paid;
     amountKd;
     serialNumber;
     invoiceNumber;
@@ -54,6 +56,10 @@ __decorate([
     (0, swagger_1.ApiProperty)({ description: 'True once the gateway callback has settled the order.' }),
     __metadata("design:type", Boolean)
 ], PublicOrderStatusDto.prototype, "isPaid", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ description: 'Alias for clients that only need { paid: boolean }.' }),
+    __metadata("design:type", Boolean)
+], PublicOrderStatusDto.prototype, "paid", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)({ description: 'Amount in KWD, 3 decimals, as a string.' }),
     __metadata("design:type", String)
@@ -172,6 +178,7 @@ document.getElementById('go').onclick = async function () {
         this.mockCheckoutPage(orderId, res);
     }
     async callback(body) {
+        this.logger.log(`UPayments callback received requested_order_id=${body.requested_order_id ?? 'n/a'} track_id=${body.track_id ?? body.trackId ?? body.trans_id ?? body.tran_id ?? 'n/a'} result=${body.result ?? body.status ?? 'n/a'} version=${app_version_1.APP_VERSION}`);
         if (this.paymentsService.allowDevMockCallback(body)) {
             const orderId = body.orderId ?? extractOrderId(body);
             if (!orderId) {
@@ -211,62 +218,89 @@ document.getElementById('go').onclick = async function () {
         }
         if (gatewayInquiryId) {
             this.logger.log(`UPayments callback: received payment-status id prefix=${gatewayInquiryId.slice(0, 12)}…`);
-            const safariOrderFromBody = extractOrderId(body);
-            const bodyOutcome = this.paymentsService.normalizeCallbackStatus(body.result ?? body.status ?? '');
-            const trimmedTrack = gatewayInquiryId;
-            const linkedOrderId = trimmedTrack
-                ? await this.paymentsService.findOrderByTrackId(trimmedTrack)
-                : null;
-            const trackTrusted = /v2$/i.test(trimmedTrack) ||
-                (Boolean(safariOrderFromBody) &&
-                    Boolean(linkedOrderId) &&
-                    linkedOrderId === safariOrderFromBody);
-            const trustWebhookFinalize = Boolean(safariOrderFromBody) &&
-                bodyOutcome === 'success' &&
-                trackTrusted;
-            if (trustWebhookFinalize) {
-                this.logger.log(`UPayments callback: trusted webhook (CAPTURED + v2 + Safari order) orderId=${safariOrderFromBody} — finalize without inquiry`);
-                try {
-                    const tr = await this.paymentsService.tryFinalizeOrderFromTrustedUpaymentsReturn(safariOrderFromBody, gatewayInquiryId, String(body.result ?? body.status ?? ''), 'UPayments_WEBHOOK_TRUSTED_BODY', {
-                        paymentId: body.payment_id ?? body.paymentId ?? null,
-                        tranId: body.tran_id ?? body.tranId ?? null,
-                        amount: body.amount,
-                    });
-                    if (tr.finalized) {
-                        this.logger.log(`UPayments callback: finalize (trusted) done orderId=${safariOrderFromBody}`);
-                        return {
-                            ok: true,
-                            orderId: safariOrderFromBody,
-                            trackId: gatewayInquiryId,
-                            outcome: 'success',
-                        };
-                    }
-                    this.logger.warn(`UPayments callback: trusted finalize no-op orderId=${safariOrderFromBody} — falling back to inquiry`);
-                }
-                catch (err) {
-                    this.logger.warn(`UPayments callback: trusted finalize failed orderId=${safariOrderFromBody}: ${err.message} — falling back to inquiry`);
-                }
-            }
             const inquiry = await this.paymentsService.fetchGatewayStatus(gatewayInquiryId);
-            const resolvedOrderId = inquiry.data.order?.id ??
+            const safariOrderFromBody = extractOrderId(body);
+            const linkedOrderId = await this.paymentsService.findOrderByTrackId(gatewayInquiryId);
+            const inquiryOrderId = parseSafariOrderUuid(inquiry.data.order?.id) ??
                 extractOrderIdFromExtraData(inquiry.data.customerExtraData) ??
-                (await this.paymentsService.findOrderByTrackId(gatewayInquiryId)) ??
-                extractOrderId(body) ??
-                body.orderId ??
+                tryOrderIdFromUpaymentsCompactRef(inquiry.data.order?.reference) ??
+                tryOrderIdFromUpaymentsCompactRef(inquiry.data.reference);
+            const resolvedOrderId = inquiryOrderId ??
+                linkedOrderId ??
+                safariOrderFromBody ??
                 null;
             if (!resolvedOrderId) {
                 this.logger.warn(`UPayments webhook for gatewayInquiryId=${gatewayInquiryId} — cannot map to a Safari order; body=${safeJson(body)}`);
                 return {
-                    ok: false,
+                    ok: true,
                     outcome: 'failed',
                     reason: 'order-not-found',
                 };
             }
-            const outcome = this.paymentsService.normalizeCallbackStatus(inquiry.data.result ?? body.result ?? body.status ?? '');
+            const order = await this.prisma.order.findUnique({
+                where: { id: resolvedOrderId },
+                select: {
+                    id: true,
+                    status: true,
+                    walletSettledAt: true,
+                    totalPrice: true,
+                },
+            });
+            if (!order) {
+                this.logger.warn(`UPayments callback: resolved order does not exist orderId=${resolvedOrderId} trackIdPrefix=${gatewayInquiryId.slice(0, 16)}`);
+                return {
+                    ok: true,
+                    orderId: resolvedOrderId,
+                    trackId: gatewayInquiryId,
+                    outcome: 'failed',
+                    reason: 'order-not-found',
+                };
+            }
+            if (inquiryOrderId && inquiryOrderId !== order.id) {
+                this.logger.warn(`UPayments callback: gateway order mismatch inquiryOrder=${inquiryOrderId} resolvedOrder=${order.id} trackIdPrefix=${gatewayInquiryId.slice(0, 16)}`);
+                return {
+                    ok: true,
+                    orderId: order.id,
+                    trackId: gatewayInquiryId,
+                    outcome: 'failed',
+                    reason: 'order-mismatch',
+                };
+            }
+            if (linkedOrderId && linkedOrderId !== order.id) {
+                this.logger.warn(`UPayments callback: stored track/order mismatch linkedOrder=${linkedOrderId} resolvedOrder=${order.id} trackIdPrefix=${gatewayInquiryId.slice(0, 16)}`);
+                return {
+                    ok: true,
+                    orderId: order.id,
+                    trackId: gatewayInquiryId,
+                    outcome: 'failed',
+                    reason: 'track-order-mismatch',
+                };
+            }
+            const outcome = this.paymentsService.normalizeCallbackStatus(inquiry.data.result ?? '');
             let willFinalize = outcome === 'success' && inquiry.ok;
-            this.logger.log(`UPayments callback: orderId=${resolvedOrderId} gatewayResult=${inquiry.data.result ?? 'n/a'} normalizedOutcome=${outcome} inquiryOk=${inquiry.ok} willFinalize=${willFinalize}`);
-            if (willFinalize) {
-                await this.paymentsService.finalizePaidOrderFromGateway(resolvedOrderId, {
+            const gatewayAmountMinor = parseKwdMinor(inquiry.data.amount);
+            const orderAmountMinor = parseKwdMinor(order.totalPrice.toString());
+            let blockedReason = null;
+            if (willFinalize && gatewayAmountMinor === null) {
+                willFinalize = false;
+                blockedReason = 'amount-missing';
+                this.logger.warn(`UPayments callback: gateway success without amount; not finalizing orderId=${order.id} trackIdPrefix=${gatewayInquiryId.slice(0, 16)}`);
+            }
+            else if (willFinalize &&
+                orderAmountMinor !== null &&
+                gatewayAmountMinor !== orderAmountMinor) {
+                willFinalize = false;
+                blockedReason = 'amount-mismatch';
+                this.logger.warn(`UPayments callback: amount mismatch orderId=${order.id} expectedMinor=${orderAmountMinor} gatewayMinor=${gatewayAmountMinor} trackIdPrefix=${gatewayInquiryId.slice(0, 16)}`);
+            }
+            this.logger.log(`UPayments callback: orderId=${order.id} gatewayResult=${inquiry.data.result ?? 'n/a'} normalizedOutcome=${outcome} inquiryOk=${inquiry.ok} willFinalize=${willFinalize}${blockedReason ? ` blockedReason=${blockedReason}` : ''}`);
+            if (willFinalize &&
+                (order.walletSettledAt || order.status === client_1.OrderStatus.COMPLETED)) {
+                willFinalize = false;
+                this.logger.log(`UPayments callback: duplicate/no-op order already settled orderId=${order.id}`);
+            }
+            else if (willFinalize) {
+                await this.paymentsService.finalizePaidOrderFromGateway(order.id, {
                     provider: 'upayments',
                     trackId: gatewayInquiryId,
                     paymentId: inquiry.data.paymentId ??
@@ -283,31 +317,21 @@ document.getElementById('go').onclick = async function () {
                     inquiryRaw: inquiry.raw,
                     receivedBody: body,
                 });
-                this.logger.log(`UPayments callback: finalizePaidOrderFromGateway done orderId=${resolvedOrderId}`);
-            }
-            else if (!inquiry.ok &&
-                safariOrderFromBody &&
-                this.paymentsService.normalizeCallbackStatus(body.result ?? body.status ?? '') === 'success' &&
-                trackTrusted) {
-                this.logger.warn(`UPayments callback: inquiry failed for payment-status id prefix=${gatewayInquiryId.slice(0, 16)}… — finalizing from webhook body (Safari orderId=${safariOrderFromBody})`);
-                const tr = await this.paymentsService.tryFinalizeOrderFromTrustedUpaymentsReturn(safariOrderFromBody, gatewayInquiryId, String(body.result ?? body.status ?? ''), 'UPayments_WEBHOOK_BODY_INQUIRY_FAILED', {
-                    paymentId: body.payment_id ?? body.paymentId ?? null,
-                    tranId: body.tran_id ?? body.tranId ?? null,
-                    amount: body.amount,
-                });
-                if (tr.finalized) {
-                    willFinalize = true;
-                    this.logger.log(`UPayments callback: finalize after inquiry fail done orderId=${safariOrderFromBody}`);
-                }
+                this.logger.log(`UPayments callback: verified finalize done orderId=${order.id}`);
             }
             if (!willFinalize && outcome === 'success') {
-                this.logger.warn(`UPayments callback: gateway outcome success but Safari order NOT finalized — invoice may remain unpaid pending manual reconcile orderId=${resolvedOrderId} trackIdPrefix=${gatewayInquiryId.slice(0, 16)}`);
+                this.logger.warn(`UPayments callback: gateway outcome success but Safari order NOT finalized — invoice may remain unpaid pending manual reconcile orderId=${order.id} trackIdPrefix=${gatewayInquiryId.slice(0, 16)}${blockedReason ? ` reason=${blockedReason}` : ''}`);
             }
             return {
                 ok: true,
-                orderId: resolvedOrderId,
+                orderId: order.id,
                 trackId: gatewayInquiryId,
-                outcome: willFinalize ? 'success' : outcome,
+                outcome: willFinalize ||
+                    order.walletSettledAt ||
+                    order.status === client_1.OrderStatus.COMPLETED
+                    ? 'success'
+                    : outcome,
+                ...(blockedReason ? { reason: blockedReason } : {}),
             };
         }
         this.logger.warn(`UPayments callback: no payment-status inquiry id (trans_id / tran_id / track_id) in body — keys=${Object.keys(body ?? {}).join(',') || 'empty'}; falling back to legacy HMAC (needs orderId)`);
@@ -403,6 +427,7 @@ document.getElementById('go').onclick = async function () {
             orderId: order.id,
             status,
             isPaid,
+            paid: isPaid,
             amountKd: order.totalPrice.toFixed(3),
             serialNumber: order.serialNumber ?? null,
             invoiceNumber: order.invoiceNumber ?? null,
@@ -456,6 +481,7 @@ document.getElementById('go').onclick = async function () {
                 orderId: order.id,
                 status,
                 isPaid: true,
+                paid: true,
                 amountKd: order.totalPrice.toFixed(3),
                 trackIdPresent: Boolean(order.posGatewayTrackId),
                 gatewayResult: null,
@@ -483,6 +509,7 @@ document.getElementById('go').onclick = async function () {
                         orderId: order.id,
                         status: client_1.OrderStatus.COMPLETED,
                         isPaid: true,
+                        paid: true,
                         amountKd: order.totalPrice.toFixed(3),
                         trackIdPresent: true,
                         gatewayResult: gatewayResultRaw,
@@ -505,6 +532,7 @@ document.getElementById('go').onclick = async function () {
                 orderId: order.id,
                 status,
                 isPaid: false,
+                paid: false,
                 amountKd: order.totalPrice.toFixed(3),
                 trackIdPresent: false,
                 gatewayResult: null,
@@ -539,6 +567,7 @@ document.getElementById('go').onclick = async function () {
                 orderId: order.id,
                 status,
                 isPaid: false,
+                paid: false,
                 amountKd: order.totalPrice.toFixed(3),
                 trackIdPresent: Boolean(returnTrack || order.posGatewayTrackId),
                 gatewayResult: null,
@@ -562,6 +591,7 @@ document.getElementById('go').onclick = async function () {
             orderId: order.id,
             status,
             isPaid,
+            paid: isPaid,
             amountKd: order.totalPrice.toFixed(3),
             trackIdPresent: Boolean(returnTrack || order.posGatewayTrackId),
             gatewayResult,
@@ -1022,6 +1052,14 @@ function parseSafariOrderUuid(raw) {
     if (!t)
         return null;
     return SAFARI_ORDER_UUID_RE.test(t) ? t : null;
+}
+function parseKwdMinor(raw) {
+    if (raw === undefined || raw === null)
+        return null;
+    const value = typeof raw === 'number' ? raw : Number(raw);
+    if (!Number.isFinite(value))
+        return null;
+    return Math.round(value * 1000);
 }
 function extractOrderIdFromExtraData(raw) {
     if (!raw)

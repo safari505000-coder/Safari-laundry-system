@@ -1,7 +1,6 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import * as fs from 'node:fs';
-import * as path from 'node:path';
+import { APP_VERSION } from '../common/constants/app-version';
 import { APP_BRAND } from '../common/constants/branding';
 
 /**
@@ -28,12 +27,7 @@ import { APP_BRAND } from '../common/constants/branding';
 @ApiTags('version')
 @Controller('version')
 export class VersionController {
-  private readonly version: string;
   private readonly startedAtMs: number = Date.now();
-
-  constructor() {
-    this.version = readPackageVersion();
-  }
 
   @Get()
   @ApiOperation({
@@ -47,7 +41,8 @@ export class VersionController {
   get() {
     return {
       name: APP_BRAND,
-      version: this.version,
+      version: APP_VERSION,
+      timestamp: new Date().toISOString(),
       gitCommit:
         process.env.GIT_COMMIT ??
         process.env.BUILD_SHA ??
@@ -59,29 +54,4 @@ export class VersionController {
       startedAt: new Date(this.startedAtMs).toISOString(),
     };
   }
-}
-
-/**
- * Read package.json once at module init. We resolve from the compiled
- * `dist/src/health/` path back to the project root, but also accept
- * ts-node / jest paths (dev) by walking up until package.json is found.
- */
-function readPackageVersion(): string {
-  let dir = __dirname;
-  for (let hops = 0; hops < 6; hops++) {
-    const candidate = path.join(dir, 'package.json');
-    if (fs.existsSync(candidate)) {
-      try {
-        const raw = fs.readFileSync(candidate, 'utf8');
-        const json = JSON.parse(raw) as { version?: string; name?: string };
-        if (json.version) return json.version;
-      } catch {
-        /* fall through to parent */
-      }
-    }
-    const parent = path.dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  return 'unknown';
 }

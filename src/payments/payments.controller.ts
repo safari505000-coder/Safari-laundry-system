@@ -28,6 +28,7 @@ import {
   PaymentsService,
   isValidUpaymentsPaymentStatusInquiryId,
 } from '../common/services/payments.service';
+import { APP_VERSION } from '../common/constants/app-version';
 import { buildPublicInvoicePdfUrl } from '../orders/invoice-pdf.util';
 import { GatewayTrackHintDto } from './dto/gateway-track-hint.dto';
 import { PaymentCallbackDto } from './dto/payment-callback.dto';
@@ -53,6 +54,8 @@ class PublicOrderStatusDto {
   status!: OrderStatus;
   @ApiProperty({ description: 'True once the gateway callback has settled the order.' })
   isPaid!: boolean;
+  @ApiProperty({ description: 'Alias for clients that only need { paid: boolean }.' })
+  paid!: boolean;
   @ApiProperty({ description: 'Amount in KWD, 3 decimals, as a string.' })
   amountKd!: string;
   /**
@@ -242,6 +245,9 @@ document.getElementById('go').onclick = async function () {
       'Server-side verification via `GET /api/v1/get-payment-status/{trackId}`. Legacy HMAC signatures and devMock are also accepted for non-UPayments gateways and local testing.',
   })
   async callback(@Body() body: PaymentCallbackDto) {
+    this.logger.log(
+      `UPayments callback received requested_order_id=${body.requested_order_id ?? 'n/a'} track_id=${body.track_id ?? body.trackId ?? body.trans_id ?? body.tran_id ?? 'n/a'} result=${body.result ?? body.status ?? 'n/a'} version=${APP_VERSION}`,
+    );
     // --- Mock / dev-only short-circuit ---
     if (this.paymentsService.allowDevMockCallback(body)) {
       const orderId = body.orderId ?? extractOrderId(body);
@@ -672,6 +678,7 @@ document.getElementById('go').onclick = async function () {
       orderId: order.id,
       status,
       isPaid,
+      paid: isPaid,
       amountKd: order.totalPrice.toFixed(3),
       serialNumber: order.serialNumber ?? null,
       invoiceNumber: order.invoiceNumber ?? null,
@@ -754,6 +761,7 @@ document.getElementById('go').onclick = async function () {
     orderId: string;
     status: OrderStatus;
     isPaid: boolean;
+    paid: boolean;
     amountKd: string;
     trackIdPresent: boolean;
     gatewayResult: string | null;
@@ -796,6 +804,7 @@ document.getElementById('go').onclick = async function () {
         orderId: order.id,
         status,
         isPaid: true,
+        paid: true,
         amountKd: order.totalPrice.toFixed(3),
         trackIdPresent: Boolean(order.posGatewayTrackId),
         gatewayResult: null,
@@ -845,6 +854,7 @@ document.getElementById('go').onclick = async function () {
             orderId: order.id,
             status: OrderStatus.COMPLETED,
             isPaid: true,
+            paid: true,
             amountKd: order.totalPrice.toFixed(3),
             trackIdPresent: true,
             gatewayResult: gatewayResultRaw,
@@ -873,6 +883,7 @@ document.getElementById('go').onclick = async function () {
         orderId: order.id,
         status,
         isPaid: false,
+        paid: false,
         amountKd: order.totalPrice.toFixed(3),
         trackIdPresent: false,
         gatewayResult: null,
@@ -922,6 +933,7 @@ document.getElementById('go').onclick = async function () {
         orderId: order.id,
         status,
         isPaid: false,
+        paid: false,
         amountKd: order.totalPrice.toFixed(3),
         trackIdPresent: Boolean(returnTrack || order.posGatewayTrackId),
         gatewayResult: null,
@@ -949,6 +961,7 @@ document.getElementById('go').onclick = async function () {
       orderId: order.id,
       status,
       isPaid,
+      paid: isPaid,
       amountKd: order.totalPrice.toFixed(3),
       trackIdPresent: Boolean(returnTrack || order.posGatewayTrackId),
       gatewayResult,

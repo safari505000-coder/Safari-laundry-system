@@ -33,6 +33,7 @@ import { APP_BRAND, APP_BRAND_ERP } from './common/constants/branding';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { BrandingResponseInterceptor } from './common/interceptors/branding-response.interceptor';
 import { PrismaService } from './prisma/prisma.service';
+import { APP_VERSION } from './common/constants/app-version';
 
 const DEFAULT_ADMIN_USERNAME = 'admin';
 const DEFAULT_ADMIN_PASSWORD = 'admin';
@@ -118,6 +119,7 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bodyParser: false,
   });
+  Logger.log(`APP_VERSION: ${APP_VERSION}`, 'Bootstrap');
   // Never use @nestjs/serve-static for /uploads — it registers a `{*any}` GET that
   // serves `uploads/index.html` on 404, breaking missing/deposit slip URLs with a
   // misleading ENOENT. Raw express.static is enough (same as the old static only).

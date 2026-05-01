@@ -1,10 +1,9 @@
 export declare class VersionController {
-    private readonly version;
     private readonly startedAtMs;
-    constructor();
     get(): {
         name: string;
         version: string;
+        timestamp: string;
         gitCommit: string;
         buildTime: string;
         node: string;

@@ -9,6 +9,7 @@ declare class PublicOrderStatusDto {
     orderId: string;
     status: OrderStatus;
     isPaid: boolean;
+    paid: boolean;
     amountKd: string;
     serialNumber: string | null;
     invoiceNumber: string | null;
@@ -29,19 +30,17 @@ export declare class PaymentsController {
         orderId: string;
         outcome: "success" | "failed";
         reason?: undefined;
-        trackId?: undefined;
     } | {
-        ok: false;
+        ok: true;
         outcome: "failed";
         reason: string;
         orderId?: undefined;
-        trackId?: undefined;
     } | {
+        reason?: string | undefined;
         ok: true;
         orderId: string;
         trackId: string;
         outcome: "success" | "failed";
-        reason?: undefined;
     }>;
     publicOrderStatusGet(req: Request, orderId: string, track_id?: string, trackID?: string, trackIdQuery?: string, gatewayResultQuery?: string): Promise<PublicOrderStatusDto>;
     publicOrderStatusPost(req: Request, orderId: string, body: GatewayTrackHintDto, track_id?: string, trackID?: string, trackIdQuery?: string, gatewayResultQuery?: string): Promise<PublicOrderStatusDto>;
@@ -50,6 +49,7 @@ export declare class PaymentsController {
         orderId: string;
         status: OrderStatus;
         isPaid: boolean;
+        paid: boolean;
         amountKd: string;
         trackIdPresent: boolean;
         gatewayResult: string | null;
@@ -64,6 +64,7 @@ export declare class PaymentsController {
         orderId: string;
         status: OrderStatus;
         isPaid: boolean;
+        paid: boolean;
         amountKd: string;
         trackIdPresent: boolean;
         gatewayResult: string | null;

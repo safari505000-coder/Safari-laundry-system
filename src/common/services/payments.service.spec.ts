@@ -20,6 +20,12 @@ function makeTx(overrides: Record<string, unknown> = {}) {
       findUnique: jest.fn().mockResolvedValue({ branchId: 'branch-1' }),
       findFirst: jest.fn().mockResolvedValue({ id: DRIVER_ID }),
     },
+    customerWallet: {
+      findUnique: jest
+        .fn()
+        .mockResolvedValueOnce({ debt: new Prisma.Decimal('10.0000') })
+        .mockResolvedValue({ debt: new Prisma.Decimal('0.0000') }),
+    },
     ...overrides,
   } as any;
 }

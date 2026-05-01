@@ -27,6 +27,7 @@ import {
 import { GeneralLedgerService } from '../../general-ledger/general-ledger.service';
 import { InventoryService } from '../../inventory/inventory.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { APP_VERSION } from '../constants/app-version';
 import { resolveCustomerPhoneForNotify } from '../validation/kuwait-customer-phone';
 import { cashStatusForPaymentMethod } from '../utils/cash-status-for-method';
 
@@ -1880,6 +1881,9 @@ export class PaymentsService implements OnModuleInit {
           return false;
         }
         this.logger.log(`first_successful_capture orderId=${order.id}`);
+        this.logger.log(
+          `payment_invoice_updated orderId=${order.id} status=${OrderStatus.COMPLETED} paymentMethod=${PosPaymentMethod.ONLINE}`,
+        );
 
         // V1.6.2 — every gateway-finalized order reached this point by
         // definition from the UNPAID bucket. That means EVERY row we write
@@ -1913,17 +1917,33 @@ export class PaymentsService implements OnModuleInit {
           // is the magic key the green card sums; it MUST be a string so
           // `extractDebtSettled()` picks it up.
           debtSettled: order.totalPrice.toString(),
+          debtSettledFlag: true,
           debtSettlementViaLink: true,
+          trackId: inquiryCapableTrackId ?? order.posGatewayTrackId,
           originalPaymentMethod: originalMethod ?? null,
           reportingCategory: 'DEBT_COLLECTION_VIA_LINK',
         };
 
+        const walletBeforeSettlement = await tx.customerWallet.findUnique({
+          where: { customerId: order.customerId },
+          select: { debt: true },
+        });
         await this.customerLedger.applyOrderWalletSettlementForCompletedOrder(
           tx,
           orderId,
           performerId,
           prefetch,
           extraMetadata,
+        );
+        const walletAfterSettlement = await tx.customerWallet.findUnique({
+          where: { customerId: order.customerId },
+          select: { debt: true },
+        });
+        this.logger.log(
+          `payment_wallet_updated orderId=${order.id} customerId=${order.customerId} debtBefore=${walletBeforeSettlement?.debt.toString() ?? '0'} debtAfter=${walletAfterSettlement?.debt.toString() ?? '0'} version=${APP_VERSION}`,
+        );
+        this.logger.log(
+          `payment_financial_transaction_recorded orderId=${order.id} customerId=${order.customerId} amount=${order.totalPrice.toString()} trackId=${inquiryCapableTrackId ?? order.posGatewayTrackId ?? 'n/a'} version=${APP_VERSION}`,
         );
 
         // A3.D1 — every gateway-finalized order is a real revenue event
