@@ -28,6 +28,7 @@ const INSTITUTIONAL_ROLES: readonly SafariRole[] = [
   SafariRole.ACCOUNTANT,
   SafariRole.SUPERVISOR,
   SafariRole.VIEWER,
+  SafariRole.CUSTOMER,
 ];
 
 const FIELD_OPERATOR_ROLES: readonly SafariRole[] = [
@@ -72,11 +73,22 @@ export class AuthService {
   ) {}
 
   async login(dto: LoginDto): Promise<LoginResponseDto> {
-    const username = dto.username.trim();
-    const user = await this.prisma.user.findUnique({
-      where: { username },
-      include: { role: true },
-    });
+    // The login form is labelled "اسم المستخدم أو رقم الموظف" (username
+    // or employee number). We must honour both: try `username` first
+    // (the canonical login handle), then fall back to `employeeId` so
+    // legacy staff who still type their corporate employee number can
+    // authenticate. Same generic error message either way to avoid
+    // user enumeration.
+    const handle = dto.username.trim();
+    const user =
+      (await this.prisma.user.findUnique({
+        where: { username: handle },
+        include: { role: true },
+      })) ??
+      (await this.prisma.user.findUnique({
+        where: { employeeId: handle },
+        include: { role: true },
+      }));
     if (!user) {
       throw new UnauthorizedException('Invalid username or password');
     }
@@ -114,6 +126,11 @@ export class AuthService {
         );
       }
     }
+    if (roleName === SafariRole.CUSTOMER && !user.linkedCustomerId?.trim()) {
+      throw new UnauthorizedException(
+        'Customer portal account is not linked to a customer profile',
+      );
+    }
     if (user.safariRole !== roleName) {
       await this.prisma.user.update({
         where: { id: user.id },
@@ -127,6 +144,7 @@ export class AuthService {
       sub: user.id,
       role: roleName,
       branchId: user.branchId ?? undefined,
+      linkedCustomerId: user.linkedCustomerId ?? undefined,
     };
     const accessToken = await this.jwt.signAsync(payload, {
       expiresIn: ACCESS_TOKEN_TTL,
@@ -143,6 +161,7 @@ export class AuthService {
         phone: user.phone,
         safariRole: roleName,
         branchId: user.branchId,
+        linkedCustomerId: user.linkedCustomerId,
       },
     };
   }
@@ -198,6 +217,7 @@ export class AuthService {
       sub: user.id,
       role: roleName,
       branchId: user.branchId ?? undefined,
+      linkedCustomerId: user.linkedCustomerId ?? undefined,
     };
     const accessToken = await this.jwt.signAsync(payload, {
       expiresIn: ACCESS_TOKEN_TTL,

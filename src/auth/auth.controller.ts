@@ -1,4 +1,6 @@
-import { Body, Controller, HttpCode, Post } from '@nestjs/common';
+import { Body, Controller, HttpCode, Post, Req } from '@nestjs/common';
+import { AuditStatus } from '@prisma/client';
+import type { Request } from 'express';
 import {
   ApiBadRequestResponse,
   ApiOkResponse,
@@ -8,6 +10,8 @@ import {
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { APP_BRAND } from '../common/constants/branding';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { Public } from './decorators/roles.decorator';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { LoginResponseDto } from './dto/login-response.dto';
@@ -18,8 +22,12 @@ import {
 
 @ApiTags('auth')
 @Controller('auth')
+@Public('Authentication endpoints must be reachable before a JWT exists.')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly auditLogs: AuditLogsService,
+  ) {}
 
   @Post('login')
   // 5 login attempts per IP per minute (brute-force defence). Override via
@@ -42,8 +50,40 @@ export class AuthController {
   @ApiOkResponse({ type: LoginResponseDto })
   @ApiUnauthorizedResponse({ description: 'Invalid credentials' })
   @ApiBadRequestResponse({ description: 'Validation failed' })
-  login(@Body() dto: LoginDto): Promise<LoginResponseDto> {
-    return this.authService.login(dto);
+  async login(
+    @Body() dto: LoginDto,
+    @Req() req: Request & { requestId?: string },
+  ): Promise<LoginResponseDto> {
+    try {
+      const res = await this.authService.login(dto);
+      this.auditLogs.log({
+        userId: res.user.id,
+        role: res.user.safariRole,
+        action: 'LOGIN',
+        resource: 'auth',
+        endpoint: req.originalUrl ?? req.url,
+        method: req.method,
+        status: AuditStatus.SUCCESS,
+        ip: this.ip(req),
+        userAgent: this.userAgent(req),
+        requestId: req.requestId ?? null,
+      });
+      return res;
+    } catch (error) {
+      this.auditLogs.log({
+        action: 'LOGIN',
+        resource: 'auth',
+        endpoint: req.originalUrl ?? req.url,
+        method: req.method,
+        status: AuditStatus.DENIED,
+        ip: this.ip(req),
+        userAgent: this.userAgent(req),
+        requestId: req.requestId ?? null,
+        suspicious: true,
+        changes: { username: dto.username },
+      });
+      throw error;
+    }
   }
 
   @Post('refresh-token')
@@ -71,7 +111,33 @@ export class AuthController {
     description:
       'Best-effort revocation of the supplied refresh token. Always returns 204 so malformed tokens do not reveal whether they existed.',
   })
-  async logout(@Body() dto: RefreshTokenRequestDto): Promise<void> {
+  async logout(
+    @Body() dto: RefreshTokenRequestDto,
+    @Req() req: Request & { requestId?: string },
+  ): Promise<void> {
     await this.authService.revokeRefreshToken(dto.refreshToken);
+    this.auditLogs.log({
+      action: 'LOGOUT',
+      resource: 'auth',
+      endpoint: req.originalUrl ?? req.url,
+      method: req.method,
+      status: AuditStatus.SUCCESS,
+      ip: this.ip(req),
+      userAgent: this.userAgent(req),
+      requestId: req.requestId ?? null,
+    });
+  }
+
+  private ip(req: Request): string | null {
+    const forwarded = req.headers['x-forwarded-for'];
+    if (typeof forwarded === 'string' && forwarded.trim()) {
+      return forwarded.split(',')[0]?.trim() ?? null;
+    }
+    return req.ip ?? req.socket.remoteAddress ?? null;
+  }
+
+  private userAgent(req: Request): string | null {
+    const userAgent = req.headers['user-agent'];
+    return typeof userAgent === 'string' ? userAgent : null;
   }
 }

@@ -21,6 +21,31 @@ import { kuwaitMidnightUtc } from '../common/time/kuwait-time';
  * (see `orders.service.ts`) — 24 h from createdAt for a
  * PENDING + UNPAID row that carries a `posPaymentMethod` (i.e. was
  * created through the quick-capture path, not full POS checkout).
+ *
+ * SSoT lock (post-mortem on the 111.450 KD vs 0.5000 KD mismatch):
+ *
+ *   This endpoint historically published two cash-shaped fields that
+ *   competed with the cash-intelligence Single Source of Truth
+ *   (`classified.drivers[].amount`):
+ *
+ *     • `cashTodayKd` — Σ Order.totalPrice for orders created today.
+ *       This is **today's gross revenue attributed to the driver**,
+ *       NOT the live cash residue the driver currently holds.
+ *
+ *     • `heldCashKd` — all-time Σ Order.totalPrice for orders with
+ *       cashStatus = PAID_TO_DRIVER. This is a **legacy operational
+ *       accumulator** with no time bound; it is NOT the live unsettled
+ *       cash residue tracked by the cash-intelligence v2 engine.
+ *
+ *   Both fields are now permanently nullified on the wire (`null`) so
+ *   no consumer can ever again interpret them as "driver cash". The
+ *   ONLY sanctioned source for driver cash is
+ *   `GET /api/cash-intelligence/dashboard` → `drivers[].totalCash`.
+ *
+ *   The underlying Prisma query that powered `heldCashKd` has been
+ *   removed (no other field consumed it). The query that powered
+ *   `cashTodayKd` is retained ONLY for `ordersTodayCount`; its `_sum`
+ *   selector is dropped.
  */
 const STALE_QUICK_HOURS = 24;
 
@@ -36,10 +61,24 @@ export type DriverOversightCard = {
   /** ISO timestamp of the currently-open shift's start, if any. */
   shiftStartedAt: string | null;
   ordersTodayCount: number;
-  cashTodayKd: string;
+  /**
+   * @deprecated SSoT-locked. Always `null`. Driver cash is exposed
+   *   only by `GET /api/cash-intelligence/dashboard`.
+   */
+  cashTodayKd: null;
   pendingInvoicesCount: number;
-  heldCashKd: string;
+  /**
+   * @deprecated SSoT-locked. Always `null`. Driver cash is exposed
+   *   only by `GET /api/cash-intelligence/dashboard`.
+   */
+  heldCashKd: null;
   staleQuickCount: number;
+  /**
+   * Stale-quick capture amount (NOT a cash-residue field — it is the
+   * Σ totalPrice of PENDING + UNPAID quick-capture orders older than
+   * 24 h). Kept because it powers the operational risk badge, not the
+   * "driver cash" tile.
+   */
   staleQuickKd: string;
   /** Derived convenience flag so the FE badge doesn't re-implement it. */
   atRisk: boolean;
@@ -113,7 +152,13 @@ export class DriverOversightService {
       Date.now() - STALE_QUICK_HOURS * 60 * 60 * 1000,
     );
 
-    const [openShifts, todayOrders, pendingOrders, heldCashRows, staleRows] =
+    // SSoT lock: the `heldCashKd` Prisma query (PAID_TO_DRIVER
+    // accumulator) is intentionally REMOVED. The only Order aggregates
+    // we still need are operational counters: today's order count
+    // (NOT today's revenue), pending UNPAID count, and stale-quick
+    // capture totals — none of which are exposed as a driver-cash
+    // tile on the dashboard.
+    const [openShifts, todayOrders, pendingOrders, staleRows] =
       await Promise.all([
         this.prisma.shift.findMany({
           where: {
@@ -130,8 +175,10 @@ export class DriverOversightService {
             createdAt: { gte: todayStart },
             status: { not: OrderStatus.CANCELED },
           },
+          // NOTE: `_sum.totalPrice` was the source of `cashTodayKd`,
+          // which conflicted with the cash-intelligence SSoT and is
+          // permanently nullified on the wire. Only the count is read.
           _count: { _all: true },
-          _sum: { totalPrice: true },
         }),
         this.prisma.order.groupBy({
           by: ['driverId'],
@@ -141,15 +188,6 @@ export class DriverOversightService {
             status: { not: OrderStatus.CANCELED },
           },
           _count: { _all: true },
-        }),
-        this.prisma.order.groupBy({
-          by: ['driverId'],
-          where: {
-            driverId: { in: driverIds },
-            cashStatus: CashStatus.PAID_TO_DRIVER,
-            status: { not: OrderStatus.CANCELED },
-          },
-          _sum: { totalPrice: true },
         }),
         this.prisma.order.groupBy({
           by: ['driverId'],
@@ -158,7 +196,6 @@ export class DriverOversightService {
             status: OrderStatus.PENDING,
             cashStatus: CashStatus.UNPAID,
             createdAt: { lt: staleCutoff },
-            posPaymentMethod: { not: null },
           },
           _count: { _all: true },
           _sum: { totalPrice: true },
@@ -183,20 +220,19 @@ export class DriverOversightService {
 
     const todayMap = byDriver(todayOrders);
     const pendingMap = byDriver(pendingOrders);
-    const heldMap = byDriver(heldCashRows);
     const staleMap = byDriver(staleRows);
 
     return drivers.map((d) => {
       const shiftStart = firstShiftByDriver.get(d.id) ?? null;
       const today = todayMap.get(d.id);
       const pending = pendingMap.get(d.id);
-      const held = heldMap.get(d.id);
       const stale = staleMap.get(d.id);
 
-      const heldCash = held?._sum.totalPrice ?? new Prisma.Decimal(0);
-      const staleKd = stale?._sum.totalPrice ?? new Prisma.Decimal(0);
-      const pendingCount = pending?._count._all ?? 0;
-      const staleCount = stale?._count._all ?? 0;
+      const staleKd = stale?._sum?.totalPrice ?? new Prisma.Decimal(0);
+      const pendingCount =
+        typeof pending?._count === 'object' ? (pending._count._all ?? 0) : 0;
+      const staleCount =
+        typeof stale?._count === 'object' ? (stale._count._all ?? 0) : 0;
 
       const atRisk = staleCount > 0 || pendingCount > 10;
 
@@ -209,16 +245,17 @@ export class DriverOversightService {
         shiftStatus: shiftStart ? 'ON_SHIFT' : 'OFF',
         shiftStartedAt: shiftStart ? shiftStart.toISOString() : null,
         ordersTodayCount: today?._count._all ?? 0,
-        cashTodayKd: (today?._sum.totalPrice ?? new Prisma.Decimal(0)).toFixed(
-          3,
-        ),
+        // SSoT-locked. See module header — driver cash is published
+        // ONLY by GET /api/cash-intelligence/dashboard.
+        cashTodayKd: null,
         pendingInvoicesCount: pendingCount,
-        heldCashKd: heldCash.toFixed(3),
+        // SSoT-locked. See module header — driver cash is published
+        // ONLY by GET /api/cash-intelligence/dashboard.
+        heldCashKd: null,
         staleQuickCount: staleCount,
         staleQuickKd: staleKd.toFixed(3),
         atRisk,
       };
     });
   }
-
 }

@@ -21,6 +21,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { JwtService } from '@nestjs/jwt';
+import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import { OrderStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -29,6 +30,8 @@ import {
   isValidUpaymentsPaymentStatusInquiryId,
 } from '../common/services/payments.service';
 import { APP_VERSION } from '../common/constants/app-version';
+import { Public } from '../auth/decorators/roles.decorator';
+import { withPaymentFinalizeSpan } from '../common/tracing/payment-finalize-span';
 import { buildPublicInvoicePdfUrl } from '../orders/invoice-pdf.util';
 import { GatewayTrackHintDto } from './dto/gateway-track-hint.dto';
 import { PaymentCallbackDto } from './dto/payment-callback.dto';
@@ -117,7 +120,15 @@ function mergeGatewayInquiryIdFromHintDto(
 }
 
 @ApiTags('payments')
+@Throttle({
+  default: {
+    ttl: 60_000,
+    limit:
+      Number.parseInt(process.env.PUBLIC_PAYMENT_THROTTLE_PER_MIN ?? '180', 10) || 180,
+  },
+})
 @Controller('payments')
+@Public('UPayments callbacks and customer status polling are public gateway/customer endpoints.')
 export class PaymentsController {
   private readonly logger = new Logger(PaymentsController.name);
 
@@ -298,9 +309,11 @@ document.getElementById('go').onclick = async function () {
         body.status ?? body.result ?? 'success',
       );
       if (outcome === 'success') {
-        await this.paymentsService.finalizePaidOrderFromGateway(
-          orderId,
-          { devMock: true, receivedBody: body } as never,
+        await withPaymentFinalizeSpan({ orderId, source: 'DEV_MOCK_CALLBACK' }, () =>
+          this.paymentsService.finalizePaidOrderFromGateway(
+            orderId,
+            { devMock: true, receivedBody: body } as never,
+          ),
         );
       }
       return { ok: true as const, orderId, outcome };
@@ -460,27 +473,29 @@ document.getElementById('go').onclick = async function () {
         this.logger.log(
           `about_to_finalize orderId=${order.id} source=UPAYMENTS_CALLBACK trackId=${gatewayInquiryId} version=${APP_VERSION}`,
         );
-        await this.paymentsService.finalizePaidOrderFromGateway(
-          order.id,
-          {
-            provider: 'upayments',
-            trackId: gatewayInquiryId,
-            paymentId:
-              inquiry.data.paymentId ??
-              body.paymentId ??
-              body.payment_id ??
-              null,
-            tranId:
-              inquiry.data.transactionId ??
-              body.tranId ??
-              body.tran_id ??
-              null,
-            result: inquiry.data.result ?? body.result ?? null,
-            auth: body.auth ?? null,
-            amount: order.totalPrice.toString(),
-            inquiryRaw: inquiry.raw,
-            receivedBody: body,
-          } as never,
+        await withPaymentFinalizeSpan({ orderId: order.id, source: 'UPAYMENTS_CALLBACK' }, () =>
+          this.paymentsService.finalizePaidOrderFromGateway(
+            order.id,
+            {
+              provider: 'upayments',
+              trackId: gatewayInquiryId,
+              paymentId:
+                inquiry.data.paymentId ??
+                body.paymentId ??
+                body.payment_id ??
+                null,
+              tranId:
+                inquiry.data.transactionId ??
+                body.tranId ??
+                body.tran_id ??
+                null,
+              result: inquiry.data.result ?? body.result ?? null,
+              auth: body.auth ?? null,
+              amount: order.totalPrice.toString(),
+              inquiryRaw: inquiry.raw,
+              receivedBody: body,
+            } as never,
+          ),
         );
         this.logger.log(
           `UPayments callback: verified finalize done orderId=${order.id}`,
@@ -538,9 +553,13 @@ document.getElementById('go').onclick = async function () {
       body.status ?? body.result ?? '',
     );
     if (outcome === 'success') {
-      await this.paymentsService.finalizePaidOrderFromGateway(
-        body.orderId,
-        { provider: 'legacy-hmac', receivedBody: body } as never,
+      await withPaymentFinalizeSpan(
+        { orderId: body.orderId, source: 'LEGACY_HMAC_CALLBACK' },
+        () =>
+          this.paymentsService.finalizePaidOrderFromGateway(
+            body.orderId!,
+            { provider: 'legacy-hmac', receivedBody: body } as never,
+          ),
       );
     }
     return { ok: true as const, orderId: body.orderId, outcome };
@@ -674,15 +693,19 @@ document.getElementById('go').onclick = async function () {
         `force_finalize_triggered orderId=${order.id} result=${gatewayResultRaw} source=PUBLIC_STATUS version=${APP_VERSION}`,
       );
       try {
-        const finalized = await this.paymentsService.finalizePaidOrderFromGateway(
-          order.id,
-          {
-            provider: 'upayments',
-            trackId: returnTrack,
-            source: 'PUBLIC_STATUS_FORCE_CAPTURED',
-            result: gatewayResultRaw,
-            amount: order.totalPrice.toString(),
-          } as never,
+        const finalized = await withPaymentFinalizeSpan(
+          { orderId: order.id, source: 'PUBLIC_STATUS_FORCE_CAPTURED' },
+          () =>
+            this.paymentsService.finalizePaidOrderFromGateway(
+              order.id,
+              {
+                provider: 'upayments',
+                trackId: returnTrack,
+                source: 'PUBLIC_STATUS_FORCE_CAPTURED',
+                result: gatewayResultRaw,
+                amount: order.totalPrice.toString(),
+              } as never,
+            ),
         );
         if (finalized) {
           settled = true;

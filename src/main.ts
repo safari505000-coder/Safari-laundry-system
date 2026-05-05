@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import './tracing';
 import 'dotenv/config';
 import * as Sentry from '@sentry/node';
 import * as bcrypt from 'bcrypt';
@@ -11,6 +12,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { join } from 'node:path';
 import * as express from 'express';
 import { AppModule } from './app.module';
+import { JsonConsoleLogger } from './common/logging/json-logger';
 
 // Dastur §8 — Sentry observability (Stage-G). Initialised before the
 // Nest factory so early bootstrap failures still get captured. No-op
@@ -27,13 +29,18 @@ if (sentryDsn) {
   });
   Logger.log('Sentry initialised (backend)', 'Bootstrap');
 }
+import { validateProductionConfig, validateProductionConnectivity } from './bootstrap/validate-production-config';
 import { assertProductionJwtSecret } from './bootstrap/assert-production-jwt-secret';
 import { ensureDefaultPriceList } from './bootstrap/ensure-default-price-list';
 import { APP_BRAND, APP_BRAND_ERP } from './common/constants/branding';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { BrandingResponseInterceptor } from './common/interceptors/branding-response.interceptor';
 import { PrismaService } from './prisma/prisma.service';
+import { ReadinessService } from './health/readiness.service';
 import { APP_VERSION } from './common/constants/app-version';
+import { MetricsService } from './observability/metrics.service';
+import { validatePermissionCoverage } from './auth/permissions/validate-permissions';
+import { logDebugCustomer360Routes } from './bootstrap/log-express-routes';
 
 const DEFAULT_ADMIN_USERNAME = 'admin';
 const DEFAULT_ADMIN_PASSWORD = 'admin';
@@ -115,10 +122,14 @@ async function ensureDefaultOwner(prisma: PrismaService): Promise<void> {
 }
 
 async function bootstrap() {
+  validateProductionConfig();
+  validatePermissionCoverage();
   /** Default Nest/express.json limit is 100kb — fuel receipts are data URLs and exceed it, yielding a misleading 404. */
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bodyParser: false,
+    logger: new JsonConsoleLogger('Bootstrap'),
   });
+  app.enableShutdownHooks();
   Logger.log(`APP_VERSION: ${APP_VERSION}`, 'Bootstrap');
   // Never use @nestjs/serve-static for /uploads — it registers a `{*any}` GET that
   // serves `uploads/index.html` on 404, breaking missing/deposit slip URLs with a
@@ -148,8 +159,35 @@ async function bootstrap() {
     }),
   );
   app.set('trust proxy', true);
+  const metrics = app.get(MetricsService);
+  app.use('/metrics', async (_req, res) => {
+    res.setHeader('Content-Type', metrics.registry.contentType);
+    res.send(await metrics.prometheus());
+  });
+  app.use('/health', (req, res) => {
+    if (req.method !== 'GET') {
+      res.status(405).json({ status: 'method_not_allowed' });
+      return;
+    }
+    res.status(200).json({
+      status: 'ok',
+      service: process.env.OTEL_SERVICE_NAME ?? 'safari-erp-api',
+    });
+  });
+  app.use('/health/live', (_req, res) => res.json({ status: 'ok' }));
+  app.use('/health/ready', async (_req, res) => {
+    try {
+      const readiness = app.get(ReadinessService);
+      const r = await readiness.check();
+      res.status(r.ok ? 200 : 503).json(r);
+    } catch {
+      res.status(503).json({ ok: false, status: 'unavailable' });
+    }
+  });
   const httpAdapterHost = app.get(HttpAdapterHost);
   const prisma = app.get(PrismaService);
+
+  await validateProductionConnectivity(prisma);
 
   await ensureInstitutionalRoles(prisma);
   await ensureDefaultPriceList(prisma);
@@ -242,5 +280,6 @@ async function bootstrap() {
   const parsed = Number.parseInt(process.env.PORT ?? '3000', 10);
   const port = Number.isFinite(parsed) && parsed > 0 ? parsed : 3000;
   await app.listen(port, '0.0.0.0');
+  logDebugCustomer360Routes(app);
 }
 void bootstrap();

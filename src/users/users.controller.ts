@@ -26,6 +26,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { APP_BRAND } from '../common/constants/branding';
+import { assertInstitutionalMutationAllowed } from '../auth/institutional-mutation.util';
 import { PermissionsService } from '../permissions/permissions.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateSalaryDefaultsDto } from './dto/update-salary-defaults.dto';
@@ -37,6 +38,12 @@ import { UsersService } from './users.service';
 @ApiBearerAuth('bearer')
 @Controller('users')
 @UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(
+  SafariRole.OWNER,
+  SafariRole.GENERAL_MANAGER,
+  SafariRole.MANAGER,
+  SafariRole.SUPERVISOR,
+)
 export class UsersController {
   private readonly logger = new Logger(UsersController.name);
 
@@ -45,11 +52,22 @@ export class UsersController {
     private readonly permissionsService: PermissionsService,
   ) {}
 
-  private async assertCanManageStaff(user: JwtUser): Promise<void> {
+  private async assertCanViewStaffDirectory(user: JwtUser): Promise<void> {
     if (
       user.role === SafariRole.OWNER ||
       user.role === SafariRole.GENERAL_MANAGER
     ) {
+      return;
+    }
+    const ok = await this.permissionsService.canManageStaff(user.role);
+    if (!ok) {
+      throw new ForbiddenException('Missing can_manage_staff capability');
+    }
+  }
+
+  private async assertCanMutateStaffDirectory(user: JwtUser): Promise<void> {
+    assertInstitutionalMutationAllowed(user.role);
+    if (user.role === SafariRole.OWNER) {
       return;
     }
     const ok = await this.permissionsService.canManageStaff(user.role);
@@ -87,7 +105,7 @@ export class UsersController {
     @CurrentUser() user: JwtUser,
     @Req() req: { headers?: Record<string, unknown>; id?: string },
   ) {
-    await this.assertCanManageStaff(user);
+    await this.assertCanMutateStaffDirectory(user);
     const row = await this.usersService.create(dto);
     this.logger.log(
       JSON.stringify({
@@ -105,14 +123,14 @@ export class UsersController {
   @Get()
   @ApiOperation({ summary: `List users (${APP_BRAND})` })
   async findAll(@CurrentUser() user: JwtUser) {
-    await this.assertCanManageStaff(user);
+    await this.assertCanViewStaffDirectory(user);
     return this.usersService.findAll();
   }
 
   @Get(':id')
   @ApiOperation({ summary: `Get user by id (${APP_BRAND})` })
   async findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtUser) {
-    await this.assertCanManageStaff(user);
+    await this.assertCanViewStaffDirectory(user);
     return this.usersService.findOne(id);
   }
 
@@ -124,7 +142,7 @@ export class UsersController {
     @CurrentUser() user: JwtUser,
     @Req() req: { headers?: Record<string, unknown>; id?: string },
   ) {
-    await this.assertCanManageStaff(user);
+    await this.assertCanMutateStaffDirectory(user);
     const row = await this.usersService.update(id, dto);
     this.logger.log(
       JSON.stringify({
@@ -140,17 +158,14 @@ export class UsersController {
   }
 
   /**
-   * Soft-lock a user account. Available to OWNER + GENERAL_MANAGER so
-   * the Owner's proxy can revoke access instantly (departing staff,
-   * compromised credentials) without being able to hard-delete and
-   * lose the audit trail.
+   * Soft-lock a user account (OWNER only for institutional read-only GM policy).
    */
   @Patch(':id/status')
-  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
+  @Roles(SafariRole.OWNER)
   @ApiOperation({
     summary: `Enable / disable user (${APP_BRAND})`,
     description:
-      'OWNER + GENERAL_MANAGER only. Toggles `isActive` without touching role/branch/password. GM gets this in place of hard delete so disabled staff keep their audit trail.',
+      'OWNER only. Toggles `isActive` without touching role/branch/password.',
   })
   @ApiBody({ type: UpdateUserStatusDto })
   async setStatus(
@@ -176,19 +191,14 @@ export class UsersController {
   /**
    * V19.17 — Payroll registry: update the per-employee salary defaults
    * (`basicMonthlySalary` + `monthlyAllowances`) that seed future
-   * payroll rows. OWNER + GENERAL_MANAGER + MANAGER (same actors as
-   * payroll create) so branch managers can run the monthly grid.
+   * payroll rows. OWNER + MANAGER.
    */
   @Patch(':id/salary-defaults')
-  @Roles(
-    SafariRole.OWNER,
-    SafariRole.GENERAL_MANAGER,
-    SafariRole.MANAGER,
-  )
+  @Roles(SafariRole.OWNER, SafariRole.MANAGER)
   @ApiOperation({
     summary: `Update salary defaults (${APP_BRAND})`,
     description:
-      'OWNER, GENERAL_MANAGER, or MANAGER. Updates `basicMonthlySalary` + `monthlyAllowances`, and optionally `payrollRosterLineOrder`, `bankName`, `bankIban` for the payroll roster / salary transfer.',
+      'OWNER or MANAGER. Updates `basicMonthlySalary` + `monthlyAllowances`, and optionally `payrollRosterLineOrder`, `bankName`, `bankIban` for the payroll roster / salary transfer.',
   })
   @ApiBody({ type: UpdateSalaryDefaultsDto })
   async updateSalaryDefaults(
@@ -221,7 +231,7 @@ export class UsersController {
   @ApiOperation({
     summary: `Delete user (${APP_BRAND})`,
     description:
-      'OWNER only. GENERAL_MANAGER must use `PATCH /users/:id/status` to disable accounts instead.',
+      'OWNER only. GENERAL_MANAGER has read-only oversight; account enable/disable is OWNER-only.',
   })
   async remove(
     @Param('id', ParseUUIDPipe) id: string,

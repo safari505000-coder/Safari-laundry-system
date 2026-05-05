@@ -1,10 +1,13 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-/** Mirrors `OrdersService.getEffectiveDebtKdBreakdown` diagnostics. */
+/** Mirrors `OrdersService.getOperationalDebtKdBreakdown` diagnostics. */
 export class DebtKdBreakdownTraceDto {
   @ApiProperty({ example: '12.7000' }) ledgerNetKd!: string;
   @ApiProperty({ example: '34.4500' }) walletSnapshotKd!: string;
   @ApiProperty({ example: '34.4500' }) orderMarketScopeKd!: string;
+  /** Operational debt basis. This is NOT the canonical Customer 360 financial number. */
+  @ApiProperty({ example: '34.4500' }) operationalDebtKd!: string;
+  /** @deprecated Use operationalDebtKd. Kept for client compatibility. */
   @ApiProperty({ example: '34.4500' }) effectiveDebtKd!: string;
   @ApiProperty({
     example: ['walletSnapshot', 'orderMarket'],

@@ -5,14 +5,21 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { SafariRole } from '@prisma/client';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
 import { APP_BRAND } from '../common/constants/branding';
 import { PermissionKeyDto } from './dto/permission-key.dto';
 import { PermissionsService } from './permissions.service';
 
 @ApiTags('permissions')
 @Controller('permissions')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
 export class PermissionsController {
   constructor(private readonly permissionsService: PermissionsService) {}
 

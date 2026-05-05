@@ -12,6 +12,7 @@ import {
 } from '@prisma/client';
 import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { assertInstitutionalMutationAllowed } from '../auth/institutional-mutation.util';
 import { DepositsListQueryDto } from './dto/deposits-list-query.dto';
 import { UpdateDepositStatusDto } from './dto/update-deposit-status.dto';
 import { DebtService } from './services/debt.service';
@@ -133,9 +134,11 @@ export class DepositsService {
 
   async updateStatus(
     auditorId: string,
+    auditorRole: SafariRole,
     id: string,
     dto: UpdateDepositStatusDto,
   ) {
+    assertInstitutionalMutationAllowed(auditorRole);
     const row = await this.prisma.deposit.findUnique({
       where: { id },
       include: {

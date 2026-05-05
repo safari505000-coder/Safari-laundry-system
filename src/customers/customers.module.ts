@@ -1,12 +1,19 @@
 import { Module } from '@nestjs/common';
 import { FinanceModule } from '../finance/finance.module';
-import { CustomersController } from './customers.controller';
+import { CustomerBlockingService } from '../common/services/customer-blocking.service';
 import { CustomerCoreService } from './customer-core.service';
+import { CustomersController } from './customers.controller';
 import { CustomersService } from './customers.service';
+import { Customer360Service } from './customer-360.service';
 
 @Module({
   imports: [FinanceModule],
   controllers: [CustomersController],
-  providers: [CustomersService, CustomerCoreService],
+  providers: [
+    CustomersService,
+    CustomerCoreService,
+    Customer360Service,
+    CustomerBlockingService,
+  ],
 })
 export class CustomersModule {}

@@ -1,19 +1,24 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { CustomerLedgerModule } from '../customer-ledger/customer-ledger.module';
 import { CustomerNotificationsModule } from '../customer-notifications/customer-notifications.module';
+import { DiscordAlertsModule } from '../common/services/discord-alerts.module';
 import { PaymentsService } from '../common/services/payments.service';
 import { GeneralLedgerModule } from '../general-ledger/general-ledger.module';
 import { InventoryModule } from '../inventory/inventory.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { JWT_SECRET_DEV_FALLBACK } from '../common/constants/jwt-secret-fallback';
+import { PaymentConsistencyWatchdogService } from './payment-consistency-watchdog.service';
 import { PaymentsController } from './payments.controller';
 
 @Module({
   imports: [
+    ThrottlerModule,
     PrismaModule,
     CustomerLedgerModule,
     CustomerNotificationsModule,
+    DiscordAlertsModule,
     GeneralLedgerModule,
     InventoryModule,
     // V1.7.1 — a local JwtModule registration (same secret as AuthModule)
@@ -29,7 +34,7 @@ import { PaymentsController } from './payments.controller';
     }),
   ],
   controllers: [PaymentsController],
-  providers: [PaymentsService],
+  providers: [PaymentsService, PaymentConsistencyWatchdogService],
   exports: [PaymentsService],
 })
 export class PaymentsModule {}

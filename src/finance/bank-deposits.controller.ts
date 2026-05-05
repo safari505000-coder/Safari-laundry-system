@@ -26,6 +26,7 @@ import { BankDepositType, SafariRole } from '@prisma/client';
 import { diskStorage } from 'multer';
 import type { Express } from 'express';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { CashWriteEndpoint } from '../cash-monitor/cash-write-police.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { JwtUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -76,6 +77,7 @@ export class BankDepositsController {
 
   @Post()
   @Roles(SafariRole.MANAGER)
+  @CashWriteEndpoint(SafariRole.MANAGER)
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: {
@@ -147,14 +149,17 @@ export class BankDepositsController {
       depositType,
       amount,
       shiftId?.trim() || undefined,
+      user.role,
     );
   }
 
   @Post(':id/verify')
   @Roles(SafariRole.ACCOUNTANT)
+  @CashWriteEndpoint(SafariRole.ACCOUNTANT)
   @ApiOperation({
     summary: `Verify deposit matches records (${APP_BRAND})`,
-    description: 'ACCOUNTANT only — dual control confirmation.',
+    description:
+      'ACCOUNTANT only -- dual control confirmation. CashWritePoliceGuard enforces the role lock and rejects any forbidden cash-override fields in the (currently empty) body.',
   })
   verify(
     @Param('id', ParseUUIDPipe) id: string,

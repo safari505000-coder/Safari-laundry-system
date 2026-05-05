@@ -15,10 +15,10 @@ describe('AppController', () => {
   });
 
   describe('root', () => {
-    it('should return Safari Fast Group branding', () => {
+    it('should return Safari Omni branding', () => {
       const res = appController.getHello();
-      expect(res.product).toBe('Safari Fast Group ERP');
-      expect(res.message).toContain('Safari Fast Group');
+      expect(res.product).toBe('Safari Express Laundries Group — Safari Omni ERP');
+      expect(res.message).toContain('Safari Express Laundries Group');
     });
   });
 });

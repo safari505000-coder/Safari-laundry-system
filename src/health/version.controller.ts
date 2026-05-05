@@ -1,5 +1,7 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Public } from '../auth/decorators/roles.decorator';
+import { deploymentColor, deploymentRegion } from '../common/config/region';
 import { APP_VERSION } from '../common/constants/app-version';
 import { APP_BRAND } from '../common/constants/branding';
 
@@ -26,6 +28,7 @@ import { APP_BRAND } from '../common/constants/branding';
  */
 @ApiTags('version')
 @Controller('version')
+@Public('Deployment version endpoint contains only build identity metadata.')
 export class VersionController {
   private readonly startedAtMs: number = Date.now();
 
@@ -52,6 +55,8 @@ export class VersionController {
       env: process.env.NODE_ENV ?? 'development',
       uptime: Math.round(process.uptime()),
       startedAt: new Date(this.startedAtMs).toISOString(),
+      region: deploymentRegion(),
+      deploymentColor: deploymentColor(),
     };
   }
 }

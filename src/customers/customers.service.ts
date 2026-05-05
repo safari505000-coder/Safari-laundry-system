@@ -1,9 +1,23 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { SafariRole } from '@prisma/client';
 import type { CustomerCoreRow } from './customer-core.service';
 import { DebtService } from '../finance/services/debt.service';
 import { SubscriptionService } from '../finance/services/subscription.service';
 import { CustomerCoreService } from './customer-core.service';
+import type {
+  CustomerFinancialDTO,
+  CustomerInternalDTO,
+  CustomerPublicDTO,
+} from './dto/customer-access.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
+
+const SENSITIVE_CUSTOMER_FINANCE_ROLES = new Set<SafariRole>([
+  SafariRole.OWNER,
+  SafariRole.GENERAL_MANAGER,
+  SafariRole.CALL_CENTER,
+  SafariRole.CALL_CENTER_SUPERVISOR,
+  SafariRole.ACCOUNTANT,
+]);
 
 @Injectable()
 export class CustomersService {
@@ -13,32 +27,28 @@ export class CustomersService {
     private readonly subscription: SubscriptionService,
   ) {}
 
-  async list(query?: string): Promise<
-    Array<{
-      customer: CustomerCoreRow;
-      debt: Awaited<ReturnType<DebtService['getCustomerDebtSnapshot']>>;
-      subscription: Awaited<
-        ReturnType<SubscriptionService['getCustomerSubscriptionSnapshot']>
-      >;
-    }>
-  > {
+  /**
+   * 🔒 SECURITY LOCK - DO NOT MODIFY
+   * Unauthorized roles must NEVER access collections or WhatsApp tools.
+   */
+  async list(query?: string, role?: SafariRole | string): Promise<CustomerInternalDTO[]> {
     const q = (query ?? '').trim();
     const isNumeric = /^[0-9]+$/.test(q);
+    const canSeeFinancials = this.canSeeFinancials(role);
     const customers =
       isNumeric && q.length >= 2
         ? await this.core.listByPhonePriority(q)
         : await this.core.list(q);
+    if (!canSeeFinancials) {
+      return customers.map((customer) => this.toPublicDto(customer));
+    }
     const snapshots = await Promise.all(
-      customers.map(async (customer) => {
+      customers.map(async (customer): Promise<CustomerFinancialDTO> => {
         const [debt, subscription] = await Promise.all([
           this.debt.getCustomerDebtSnapshot(customer.id),
           this.subscription.getCustomerSubscriptionSnapshot(customer.id),
         ]);
-        return {
-          customer,
-          debt,
-          subscription,
-        };
+        return this.toFinancialDto(customer, debt, subscription);
       }),
     );
     return snapshots;
@@ -81,19 +91,38 @@ export class CustomersService {
     return this.core.createQuickCustomer(dto.displayName, dto.phone);
   }
 
-  async getProfileWithFinancials(customerId: string): Promise<{
-    customer: CustomerCoreRow;
-    debt: Awaited<ReturnType<DebtService['getCustomerDebtSnapshot']>>;
-    subscription: Awaited<ReturnType<SubscriptionService['getCustomerSubscriptionSnapshot']>>;
-  }> {
+  async getProfileWithFinancials(
+    customerId: string,
+    role?: SafariRole | string,
+  ): Promise<CustomerInternalDTO> {
+    const canSeeFinancials = this.canSeeFinancials(role);
     const customer = await this.core.getById(customerId);
     if (!customer) {
       throw new NotFoundException('Customer not found');
+    }
+    if (!canSeeFinancials) {
+      return this.toPublicDto(customer);
     }
     const [debt, subscription] = await Promise.all([
       this.debt.getCustomerDebtSnapshot(customerId),
       this.subscription.getCustomerSubscriptionSnapshot(customerId),
     ]);
+    return this.toFinancialDto(customer, debt, subscription);
+  }
+
+  private canSeeFinancials(role?: SafariRole | string): boolean {
+    return !!role && SENSITIVE_CUSTOMER_FINANCE_ROLES.has(role as SafariRole);
+  }
+
+  private toPublicDto(customer: CustomerCoreRow): CustomerPublicDTO {
+    return { customer };
+  }
+
+  private toFinancialDto(
+    customer: CustomerCoreRow,
+    debt: Awaited<ReturnType<DebtService['getCustomerDebtSnapshot']>>,
+    subscription: Awaited<ReturnType<SubscriptionService['getCustomerSubscriptionSnapshot']>>,
+  ): CustomerFinancialDTO {
     return { customer, debt, subscription };
   }
 }

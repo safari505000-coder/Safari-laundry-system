@@ -44,14 +44,14 @@ import { DailyCollectionsReconciliationQueryDto } from './dto/daily-collections-
 export class CallCenterController {
   constructor(private readonly callCenterService: CallCenterService) {}
 
+  /**
+   * 🔒 SECURITY LOCK - DO NOT MODIFY
+   * Unauthorized roles must NEVER access collections or WhatsApp tools.
+   */
   @Get('operations-summary')
   @Roles(
     SafariRole.CALL_CENTER,
     SafariRole.CALL_CENTER_SUPERVISOR,
-    SafariRole.OWNER,
-    SafariRole.GENERAL_MANAGER,
-    SafariRole.MANAGER,
-    SafariRole.DRIVER,
   )
   @ApiOperation({
     summary: `Call center operations summary — 3 KPIs (${APP_BRAND})`,
@@ -144,9 +144,6 @@ export class CallCenterController {
   @Roles(
     SafariRole.CALL_CENTER,
     SafariRole.CALL_CENTER_SUPERVISOR,
-    SafariRole.OWNER,
-    SafariRole.MANAGER,
-    SafariRole.DRIVER,
   )
   @ApiOperation({
     summary: `Mark a collection reminder as sent (${APP_BRAND})`,
@@ -164,8 +161,6 @@ export class CallCenterController {
   @Roles(
     SafariRole.CALL_CENTER,
     SafariRole.CALL_CENTER_SUPERVISOR,
-    SafariRole.MANAGER,
-    SafariRole.DRIVER,
   )
   @ApiOperation({
     summary: `Ensure a hosted payment link exists for an unpaid order (${APP_BRAND})`,
@@ -183,10 +178,6 @@ export class CallCenterController {
   @Roles(
     SafariRole.CALL_CENTER,
     SafariRole.CALL_CENTER_SUPERVISOR,
-    SafariRole.OWNER,
-    SafariRole.GENERAL_MANAGER,
-    SafariRole.MANAGER,
-    SafariRole.DRIVER,
   )
   @ApiOperation({
     summary: `Push payment-link message to customer (Moatmt / webhook) (${APP_BRAND})`,
@@ -207,8 +198,6 @@ export class CallCenterController {
   @Roles(
     SafariRole.CALL_CENTER,
     SafariRole.CALL_CENTER_SUPERVISOR,
-    SafariRole.MANAGER,
-    SafariRole.DRIVER,
   )
   @ApiOperation({
     summary: `Mark a collection order as manually paid (${APP_BRAND})`,
@@ -357,10 +346,6 @@ export class CallCenterController {
   @Roles(
     SafariRole.CALL_CENTER,
     SafariRole.CALL_CENTER_SUPERVISOR,
-    SafariRole.OWNER,
-    SafariRole.GENERAL_MANAGER,
-    SafariRole.ACCOUNTANT,
-    SafariRole.MANAGER,
   )
   @ApiOperation({
     summary: `Daily collector feed — today's debt reductions (${APP_BRAND})`,
@@ -375,10 +360,6 @@ export class CallCenterController {
   @Roles(
     SafariRole.CALL_CENTER,
     SafariRole.CALL_CENTER_SUPERVISOR,
-    SafariRole.OWNER,
-    SafariRole.GENERAL_MANAGER,
-    SafariRole.ACCOUNTANT,
-    SafariRole.MANAGER,
   )
   @ApiOperation({
     summary: `Daily collector reconciliation — TH ↔ GL validator (${APP_BRAND})`,

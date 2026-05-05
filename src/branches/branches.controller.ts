@@ -48,12 +48,12 @@ export class BranchesController {
   }
 
   @Post()
-  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
+  @Roles(SafariRole.OWNER)
   @ApiBody({ type: CreateBranchDto })
   @ApiOperation({
     summary: `Create branch (${APP_BRAND})`,
     description:
-      'OWNER and GENERAL_MANAGER only. New branches appear in the branch switcher when active.',
+      'OWNER only. New branches appear in the branch switcher when active.',
   })
   create(@Body() body: unknown) {
     return this.branchesService.createFromBody(body);
@@ -65,12 +65,12 @@ export class BranchesController {
    * same trim / length caps apply to whichever fields were sent.
    */
   @Patch(':id')
-  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
+  @Roles(SafariRole.OWNER)
   @ApiBody({ type: UpdateBranchDto })
   @ApiOperation({
     summary: `Update branch (${APP_BRAND})`,
     description:
-      'OWNER and GENERAL_MANAGER only. Only the fields present in the body are written — omitted fields stay unchanged.',
+      'OWNER only. Only the fields present in the body are written — omitted fields stay unchanged.',
   })
   update(
     @Param('id', ParseUUIDPipe) id: string,

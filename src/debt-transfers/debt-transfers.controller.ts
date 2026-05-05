@@ -27,8 +27,7 @@ import { ListDebtTransfersDto } from './dto/list-debt-transfers.dto';
  * Dastur §5 — Debt Transfer REST surface.
  *
  * Role matrix:
- *   • GENERAL_MANAGER, ACCOUNTANT → full write access (create / finalize /
- *     cancel) and read access (list + detail).
+ *   • ACCOUNTANT → create / finalize / cancel + read access.
  *   • OWNER → read-only (list + detail + driver outstanding lookup).
  *   • DRIVER → may sign ONLY their own half (source or target) of a
  *     specific transfer they appear on, and may read that one transfer.
@@ -119,11 +118,11 @@ export class DebtTransfersController {
     return transfer;
   }
 
-  /* ── Mutations (GM + ACCOUNTANT) ────────────────────────────────────── */
+  /* ── Mutations (ACCOUNTANT) ──────────────────────────────────────────── */
 
   @Post()
-  @Roles(SafariRole.GENERAL_MANAGER, SafariRole.ACCOUNTANT)
-  @ApiOperation({ summary: 'Create a new debt transfer (GM or ACCOUNTANT only).' })
+  @Roles(SafariRole.ACCOUNTANT)
+  @ApiOperation({ summary: 'Create a new debt transfer (ACCOUNTANT only).' })
   create(
     @Body() dto: CreateDebtTransferDto,
     @CurrentUser() user: JwtUser,
@@ -132,7 +131,7 @@ export class DebtTransfersController {
   }
 
   @Post(':id/finalize')
-  @Roles(SafariRole.GENERAL_MANAGER, SafariRole.ACCOUNTANT)
+  @Roles(SafariRole.ACCOUNTANT)
   @ApiOperation({
     summary: 'Finalize a debt transfer (requires both driver signatures).',
   })
@@ -144,7 +143,7 @@ export class DebtTransfersController {
   }
 
   @Post(':id/cancel')
-  @Roles(SafariRole.GENERAL_MANAGER, SafariRole.ACCOUNTANT)
+  @Roles(SafariRole.ACCOUNTANT)
   @ApiOperation({ summary: 'Cancel a DRAFT or AWAITING_SIGNATURES debt transfer.' })
   cancel(
     @Param('id', ParseUUIDPipe) id: string,

@@ -9,16 +9,22 @@ import {
   Query,
   Req,
   UseGuards,
+  ForbiddenException,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { SafariRole } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { Permissions } from '../auth/permissions/permissions.decorator';
+import { AppPermission } from '../auth/permissions/permissions.enum';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { JwtUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { CustomerBlockGuard } from '../common/guards/customer-block.guard';
 import { APP_BRAND } from '../common/constants/branding';
+import { AuditService } from '../common/audit/audit.service';
+import { applyScope } from '../common/utils/apply-scope';
 import { AssignDriverDto } from './dto/assign-driver.dto';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CreateOrderQuickDto } from './dto/create-order-quick.dto';
@@ -32,18 +38,14 @@ import { OrdersService } from './orders.service';
 @Controller('orders')
 @UseGuards(JwtAuthGuard)
 export class OrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(
+    private readonly ordersService: OrdersService,
+    private readonly audit: AuditService,
+  ) {}
 
   @Get('manager-dashboard')
   @UseGuards(RolesGuard)
-  @Roles(
-    SafariRole.OWNER,
-    SafariRole.GENERAL_MANAGER,
-    SafariRole.MANAGER,
-    SafariRole.SUPERVISOR,
-    SafariRole.ACCOUNTANT,
-    SafariRole.VIEWER,
-  )
+  @Permissions(AppPermission.VIEW_INVOICES, AppPermission.VIEW_REPORTS)
   @ApiOperation({
     summary: `Manager dashboard — orders & driver contribution (${APP_BRAND})`,
     description:
@@ -54,8 +56,8 @@ export class OrdersController {
   }
 
   @Post('quick')
-  @UseGuards(RolesGuard)
-  @Roles(SafariRole.DRIVER)
+  @UseGuards(RolesGuard, CustomerBlockGuard)
+  @Permissions(AppPermission.CREATE_INVOICE)
   @ApiOperation({
     summary: `Quick create order — driver (${APP_BRAND})`,
     description:
@@ -66,8 +68,8 @@ export class OrdersController {
   }
 
   @Post()
-  @UseGuards(RolesGuard)
-  @Roles(SafariRole.MANAGER)
+  @UseGuards(RolesGuard, CustomerBlockGuard)
+  @Permissions(AppPermission.CREATE_INVOICE)
   @ApiOperation({
     summary: `Create order — back office (${APP_BRAND})`,
     description:
@@ -81,6 +83,8 @@ export class OrdersController {
   }
 
   @Get()
+  @UseGuards(RolesGuard)
+  @Permissions(AppPermission.VIEW_INVOICES)
   @ApiOperation({
     summary: `List invoices (${APP_BRAND})`,
     description:
@@ -90,15 +94,28 @@ export class OrdersController {
     @CurrentUser() user: JwtUser,
     @Query() filters: ListOrdersQueryDto,
   ) {
+    if (user.scope === 'BRANCH' && !user.branchId) {
+      this.audit.logAudit('PERMISSION_DENIED', user, {
+        reason: 'branch_scope_without_branch',
+        resource: 'invoices',
+      });
+      throw new ForbiddenException('Branch scope requires a branch.');
+    }
+    const scopedFilters = applyScope(user, filters as Record<string, unknown>, {
+      branchField: 'branchId',
+      userField: 'driverId',
+    }) as ListOrdersQueryDto;
     return this.ordersService.findAllForActor(
       user.userId,
       user.role,
       user.branchId,
-      filters,
+      scopedFilters,
     );
   }
 
   @Get('branch-drivers')
+  @UseGuards(RolesGuard)
+  @Permissions(AppPermission.VIEW_INVOICES)
   @ApiOperation({
     summary: `Drivers for Invoices-page filter (${APP_BRAND})`,
     description:
@@ -111,15 +128,15 @@ export class OrdersController {
     );
   }
 
+  /**
+   * 🔒 SECURITY LOCK - DO NOT MODIFY
+   * Unauthorized roles must NEVER access collections or WhatsApp tools.
+   */
   @Get('collections/unpaid-online')
   @UseGuards(RolesGuard)
   @Roles(
     SafariRole.CALL_CENTER,
     SafariRole.CALL_CENTER_SUPERVISOR,
-    SafariRole.OWNER,
-    SafariRole.GENERAL_MANAGER,
-    SafariRole.MANAGER,
-    SafariRole.DRIVER,
   )
   @ApiOperation({
     summary: `Debt-Tracking — every unpaid invoice (${APP_BRAND})`,
@@ -141,11 +158,7 @@ export class OrdersController {
 
   @Get('stale-quick-risks')
   @UseGuards(RolesGuard)
-  @Roles(
-    SafariRole.OWNER,
-    SafariRole.GENERAL_MANAGER,
-    SafariRole.ACCOUNTANT,
-  )
+  @Permissions(AppPermission.AUDIT_INVOICE)
   @ApiOperation({
     summary: `Stale Quick-Capture accountability risks (${APP_BRAND})`,
     description:
@@ -168,6 +181,8 @@ export class OrdersController {
   }
 
   @Post(':id/invoice-share-link')
+  @UseGuards(RolesGuard)
+  @Permissions(AppPermission.SHARE_INVOICE)
   @ApiOperation({
     summary: `Mint public share URL for the POS invoice (WhatsApp / PDF) (${APP_BRAND})`,
     description:
@@ -193,6 +208,8 @@ export class OrdersController {
   }
 
   @Get(':id')
+  @UseGuards(RolesGuard)
+  @Permissions(AppPermission.VIEW_INVOICES)
   @ApiOperation({
     summary: `Get order by id (${APP_BRAND})`,
     description:
@@ -207,7 +224,7 @@ export class OrdersController {
 
   @Patch(':id/assign-driver')
   @UseGuards(RolesGuard)
-  @Roles(SafariRole.MANAGER, SafariRole.SUPERVISOR)
+  @Permissions(AppPermission.UPDATE_OPERATIONAL_DATA)
   @ApiOperation({
     summary: `Assign or reassign driver (${APP_BRAND})`,
     description:
@@ -221,6 +238,8 @@ export class OrdersController {
   }
 
   @Patch(':id')
+  @UseGuards(RolesGuard)
+  @Permissions(AppPermission.UPDATE_INVOICE)
   @ApiOperation({
     summary: `Update order status / notes (${APP_BRAND})`,
     description:

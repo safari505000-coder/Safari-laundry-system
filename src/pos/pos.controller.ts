@@ -15,6 +15,7 @@ import type { JwtUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { CustomerBlockGuard } from '../common/guards/customer-block.guard';
 import { APP_BRAND } from '../common/constants/branding';
 import { PosCheckoutBundleDto } from '../orders/dto/pos-checkout-bundle.dto';
 import { PosCheckoutDto } from '../orders/dto/pos-checkout.dto';
@@ -61,6 +62,7 @@ export class PosController {
   }
 
   @Get('customers/:customerId/billing')
+  @UseGuards(CustomerBlockGuard)
   @ApiOperation({
     summary: `Customer subscription & wallet — POS (${APP_BRAND})`,
     description:
@@ -73,6 +75,7 @@ export class PosController {
   }
 
   @Post('checkout')
+  @UseGuards(CustomerBlockGuard)
   @ApiOperation({
     summary: `Complete POS sale — wallet + payment method (${APP_BRAND})`,
     description:
@@ -83,6 +86,7 @@ export class PosController {
   }
 
   @Post('checkout-bundle')
+  @UseGuards(CustomerBlockGuard)
   @ApiOperation({
     summary: `Multi-invoice POS — one hosted payment for several orders (${APP_BRAND})`,
     description:

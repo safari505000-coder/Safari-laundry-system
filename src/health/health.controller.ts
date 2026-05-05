@@ -5,6 +5,7 @@ import {
   MemoryHealthIndicator,
 } from '@nestjs/terminus';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Public } from '../auth/decorators/roles.decorator';
 import { APP_BRAND } from '../common/constants/branding';
 import { PrismaHealthIndicator } from './prisma.health';
 
@@ -20,6 +21,7 @@ import { PrismaHealthIndicator } from './prisma.health';
  */
 @ApiTags('health')
 @Controller('health')
+@Public('Infrastructure liveness probe contains no business data.')
 export class HealthController {
   private readonly heapLimitBytes: number;
   private readonly rssLimitBytes: number;

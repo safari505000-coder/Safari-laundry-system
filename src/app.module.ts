@@ -1,22 +1,32 @@
 import { existsSync } from 'node:fs';
+import { SecretsModule } from './common/config/secrets.module';
+import { HttpDrainService } from './deployment/http-drain.service';
 import { join } from 'node:path';
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { AccountingModule } from './accounting/accounting.module';
 import { AttendanceModule } from './attendance/attendance.module';
 import { AuditLogsModule } from './audit-logs/audit-logs.module';
+import { AuditLogsMiddleware } from './audit-logs/audit-logs.middleware';
 import { AuthModule } from './auth/auth.module';
 import { BranchesModule } from './branches/branches.module';
 import { CallCenterModule } from './call-center/call-center.module';
+import { CashIntelligenceModule } from './cash-intelligence/cash-intelligence.module';
+import { CashMonitorModule } from './cash-monitor/cash-monitor.module';
 import { CommissionsModule } from './commissions/commissions.module';
 import { DebtHoldsModule } from './debt-holds/debt-holds.module';
 import { InvoiceAuditModule } from './invoice-audit/invoice-audit.module';
 import { OperatingHoursMiddleware } from './common/middleware/operating-hours.middleware';
+import { ipReputationMiddleware } from './common/middleware/ip-reputation.middleware';
 import { requestIdMiddleware } from './common/middleware/request-id.middleware';
+import { requestContextMiddleware } from './common/tracing/request-async-context';
 import { CustomersModule } from './customers/customers.module';
 import { DebtTransfersModule } from './debt-transfers/debt-transfers.module';
+import { DispatchModule } from './dispatch/dispatch.module';
 import { ExpensesModule } from './expenses/expenses.module';
 import { FeedbackModule } from './feedback/feedback.module';
 import { ExportsModule } from './exports/exports.module';
@@ -27,6 +37,7 @@ import { HealthModule } from './health/health.module';
 import { InsightsModule } from './insights/insights.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { PurchaseOrdersModule } from './purchase-orders/purchase-orders.module';
+import { QueueAdminModule } from './queue-admin/queue-admin.module';
 import { LaundryPriceListModule } from './laundry-price-list/laundry-price-list.module';
 import { LeavesModule } from './leaves/leaves.module';
 import { LoansModule } from './loans/loans.module';
@@ -34,6 +45,8 @@ import { ManagerCustodyModule } from './manager-custody/manager-custody.module';
 import { DriverOversightModule } from './driver-oversight/driver-oversight.module';
 import { ManagerDocumentsModule } from './manager-documents/manager-documents.module';
 import { OrdersModule } from './orders/orders.module';
+import { ObservabilityModule } from './observability/observability.module';
+import { OwnerDashboardModule } from './owner-dashboard/owner-dashboard.module';
 import { PaymentMethodFeesModule } from './payment-method-fees/payment-method-fees.module';
 import { PaymentsModule } from './payments/payments.module';
 import { PermissionsModule } from './permissions/permissions.module';
@@ -44,6 +57,8 @@ import { ReportsModule } from './reports/reports.module';
 import { SerialsModule } from './serials/serials.module';
 import { ShiftsModule } from './shifts/shifts.module';
 import { SystemModule } from './system/system.module';
+import { SystemConfigModule } from './system-config/system-config.module';
+import { SystemGuardianModule } from './system-guardian/system-guardian.module';
 import { SystemSettingsModule } from './system-settings/system-settings.module';
 import { SubscriptionPlansModule } from './subscription-plans/subscription-plans.module';
 import { SubscribersModule } from './subscribers/subscribers.module';
@@ -53,20 +68,45 @@ import { VerifyModule } from './verify/verify.module';
 import { WalletsModule } from './wallets/wallets.module';
 
 const webDistPath = join(process.cwd(), 'web', 'dist');
-const spaStaticModule = existsSync(webDistPath)
+/** Set `DISABLE_SPA_STATIC=1` to rule out `@nestjs/serve-static` when debugging API-only 404s. */
+const serveSpaFromApi =
+  existsSync(webDistPath) && process.env.DISABLE_SPA_STATIC !== '1';
+const spaStaticModule = serveSpaFromApi
   ? [
       ServeStaticModule.forRoot({
         rootPath: webDistPath,
-        exclude: ['/api/{*any}', '/docs/{*any}', '/uploads/{*any}'],
+        // Two `/api` patterns: different path-to-regexp versions accept `{*any}` vs `*param`.
+        exclude: [
+          '/api/{*any}',
+          '/api/*path',
+          '/docs/{*any}',
+          '/uploads/{*any}',
+        ],
       }),
     ]
   : [];
 
 @Module({
   imports: [
+    SecretsModule,
     ScheduleModule.forRoot(),
+    // V19.x — In-process pub/sub used for the dispatch auto-completion
+    // hook (OrdersService emits → DispatchService listens). Wildcard
+    // matching is enabled so future modules can subscribe to namespaced
+    // events without coordinating constants.
+    EventEmitterModule.forRoot({
+      wildcard: true,
+      delimiter: '.',
+      maxListeners: 50,
+      verboseMemoryLeak: false,
+      ignoreErrors: false,
+    }),
+    ObservabilityModule,
     PrismaModule,
     PermissionsModule,
+    AccountingModule,
+    CashIntelligenceModule,
+    CashMonitorModule,
     FinanceModule,
     AuthModule,
     SafariStreamModule,
@@ -74,6 +114,8 @@ const spaStaticModule = existsSync(webDistPath)
     ReportsModule,
     PaymentMethodFeesModule,
     SystemModule,
+    SystemConfigModule,
+    SystemGuardianModule,
     SystemSettingsModule,
     CommissionsModule,
     DebtHoldsModule,
@@ -82,6 +124,7 @@ const spaStaticModule = existsSync(webDistPath)
     PayrollModule,
     FixedExpenseModule,
     OrdersModule,
+    OwnerDashboardModule,
     PaymentsModule,
     BranchesModule,
     WalletsModule,
@@ -93,6 +136,7 @@ const spaStaticModule = existsSync(webDistPath)
     LaundryPriceListModule,
     InventoryModule,
     PurchaseOrdersModule,
+    QueueAdminModule,
     InsightsModule,
     ManagerCustodyModule,
     ManagerDocumentsModule,
@@ -100,6 +144,7 @@ const spaStaticModule = existsSync(webDistPath)
     PosModule,
     CustomersModule,
     DebtTransfersModule,
+    DispatchModule,
     SerialsModule,
     ShiftsModule,
     AttendanceModule,
@@ -114,10 +159,16 @@ const spaStaticModule = existsSync(webDistPath)
     ...spaStaticModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, AuditLogsMiddleware, HttpDrainService],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(requestIdMiddleware, OperatingHoursMiddleware).forRoutes('*');
+    const pre = [requestIdMiddleware, requestContextMiddleware];
+    if (process.env.IP_REPUTATION_ENABLED === 'true') {
+      pre.push(ipReputationMiddleware);
+    }
+    consumer
+      .apply(...pre, OperatingHoursMiddleware, AuditLogsMiddleware)
+      .forRoutes('*');
   }
 }

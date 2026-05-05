@@ -3,6 +3,7 @@ import { TerminusModule } from '@nestjs/terminus';
 import { PrismaModule } from '../prisma/prisma.module';
 import { HealthController } from './health.controller';
 import { PrismaHealthIndicator } from './prisma.health';
+import { ReadinessService } from './readiness.service';
 import { VersionController } from './version.controller';
 
 /**
@@ -17,6 +18,7 @@ import { VersionController } from './version.controller';
 @Module({
   imports: [TerminusModule, PrismaModule],
   controllers: [HealthController, VersionController],
-  providers: [PrismaHealthIndicator],
+  providers: [PrismaHealthIndicator, ReadinessService],
+  exports: [ReadinessService],
 })
 export class HealthModule {}

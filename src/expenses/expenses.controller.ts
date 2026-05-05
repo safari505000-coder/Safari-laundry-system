@@ -16,10 +16,12 @@ import {
 import { SafariRole } from '@prisma/client';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { JwtUser } from '../auth/decorators/current-user.decorator';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { Permissions } from '../auth/permissions/permissions.decorator';
+import { AppPermission } from '../auth/permissions/permissions.enum';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { APP_BRAND } from '../common/constants/branding';
+import { AuditService } from '../common/audit/audit.service';
 import { CreateExpenseDto } from './dto/create-expense.dto';
 import { ExpensesService } from './expenses.service';
 import { ExpensesQueryDto } from './dto/expenses-query.dto';
@@ -30,10 +32,13 @@ import { UpdateExpenseStatusDto } from './dto/update-expense-status.dto';
 @Controller('expenses')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ExpensesController {
-  constructor(private readonly expensesService: ExpensesService) {}
+  constructor(
+    private readonly expensesService: ExpensesService,
+    private readonly audit: AuditService,
+  ) {}
 
   @Post()
-  @Roles(SafariRole.MANAGER, SafariRole.DRIVER)
+  @Permissions(AppPermission.CREATE_EXPENSES)
   @ApiOperation({
     summary: `Record branch expense (${APP_BRAND})`,
     description:
@@ -48,13 +53,7 @@ export class ExpensesController {
   }
 
   @Get()
-  @Roles(
-    SafariRole.MANAGER,
-    SafariRole.ACCOUNTANT,
-    SafariRole.OWNER,
-    SafariRole.GENERAL_MANAGER,
-    SafariRole.DRIVER,
-  )
+  @Permissions(AppPermission.VIEW_EXPENSES)
   @ApiOperation({
     summary: `List expenses in date range (${APP_BRAND})`,
   })
@@ -70,7 +69,7 @@ export class ExpensesController {
   }
 
   @Get('pending-approval')
-  @Roles(SafariRole.ACCOUNTANT, SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
+  @Permissions(AppPermission.APPROVE_EXPENSES)
   @ApiOperation({
     summary: `Pending expense approvals (${APP_BRAND})`,
   })
@@ -79,7 +78,7 @@ export class ExpensesController {
   }
 
   @Patch(':id/status')
-  @Roles(SafariRole.ACCOUNTANT, SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
+  @Permissions(AppPermission.APPROVE_EXPENSES)
   @ApiOperation({
     summary: `Approve/Reject/Audit expense (${APP_BRAND})`,
   })
@@ -88,6 +87,10 @@ export class ExpensesController {
     @Body() dto: UpdateExpenseStatusDto,
     @CurrentUser() user: JwtUser,
   ) {
+    this.audit.logAudit('EXPENSE_APPROVAL_DECISION', user, {
+      expenseId: id,
+      status: dto.status,
+    });
     return this.expensesService.updateStatus(
       id,
       user.role as SafariRole,

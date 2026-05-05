@@ -30,12 +30,16 @@ export type LoanRow = Prisma.EmployeeLoanGetPayload<{
   include: typeof LOAN_INCLUDE;
 }>;
 
-function isApprover(role: SafariRole): boolean {
+function canSeeAllLoans(role: SafariRole): boolean {
   return (
     role === SafariRole.OWNER ||
     role === SafariRole.GENERAL_MANAGER ||
     role === SafariRole.ACCOUNTANT
   );
+}
+
+function canApproveLoan(role: SafariRole): boolean {
+  return role === SafariRole.OWNER || role === SafariRole.ACCOUNTANT;
 }
 
 /**
@@ -71,7 +75,7 @@ export class LoansService {
     }
     const amount = new Prisma.Decimal(dto.amount.toFixed(4));
     const monthly = amount.div(dto.installmentCount).toDecimalPlaces(4);
-    const targetUserId = isApprover(actorRole)
+    const targetUserId = canApproveLoan(actorRole)
       ? dto.userId ?? actorUserId
       : actorUserId;
     return this.prisma.employeeLoan.create({
@@ -97,7 +101,7 @@ export class LoansService {
       ...(q.status ? { status: q.status } : {}),
       ...(q.userId ? { userId: q.userId } : {}),
     };
-    if (!isApprover(actorRole)) {
+    if (!canSeeAllLoans(actorRole)) {
       where.userId = actorUserId;
     }
     return this.prisma.employeeLoan.findMany({
@@ -126,7 +130,7 @@ export class LoansService {
       include: LOAN_INCLUDE,
     });
     if (!row) throw new NotFoundException('Loan not found');
-    if (!isApprover(actorRole) && row.userId !== actorUserId) {
+    if (!canSeeAllLoans(actorRole) && row.userId !== actorUserId) {
       throw new ForbiddenException();
     }
     return row;
@@ -137,7 +141,7 @@ export class LoansService {
     actorUserId: string,
     id: string,
   ): Promise<LoanRow> {
-    if (!isApprover(actorRole)) throw new ForbiddenException();
+    if (!canApproveLoan(actorRole)) throw new ForbiddenException();
     const current = await this.prisma.employeeLoan.findUnique({
       where: { id },
     });
@@ -162,7 +166,7 @@ export class LoansService {
     id: string,
     reason: string,
   ): Promise<LoanRow> {
-    if (!isApprover(actorRole)) throw new ForbiddenException();
+    if (!canApproveLoan(actorRole)) throw new ForbiddenException();
     const current = await this.prisma.employeeLoan.findUnique({
       where: { id },
     });
@@ -183,21 +187,7 @@ export class LoansService {
   }
 
   /**
-   * V19.19 — manual loan deduction by OWNER / GENERAL_MANAGER.
-   *
-   * The previous `applyMonthlyDeductionForUser` path (which payroll
-   * called automatically inside `PayrollService.create`) was removed
-   * because it could double-deduct an instalment when the same month's
-   * payroll was run twice. The Owner explicitly asked that loans be
-   * handled OUTSIDE the payroll cycle so salary goes out clean and the
-   * loan repayment is a standalone manual event — mirroring the debt-
-   * hold "release then disburse" split.
-   *
-   * This handler clamps the requested amount to `remaining`, drops
-   * `remaining` accordingly, and auto-flips `status` to SETTLED when it
-   * reaches zero. No new table is added: the audit trail is the
-   * `remaining` delta + `updatedAt` on EmployeeLoan, plus the optional
-   * note surfaced on the loan row.
+   * V19.19 — manual loan deduction by OWNER only (GM read-only oversight).
    */
   async deductManual(
     actorRole: SafariRole,
@@ -205,12 +195,9 @@ export class LoansService {
     amountKd: number,
     note?: string,
   ): Promise<LoanRow> {
-    if (
-      actorRole !== SafariRole.OWNER &&
-      actorRole !== SafariRole.GENERAL_MANAGER
-    ) {
+    if (actorRole !== SafariRole.OWNER) {
       throw new ForbiddenException(
-        'Manual loan deductions are OWNER / GM only',
+        'Manual loan deductions are restricted to OWNER.',
       );
     }
     if (!Number.isFinite(amountKd) || amountKd <= 0) {

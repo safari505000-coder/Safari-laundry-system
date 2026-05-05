@@ -58,7 +58,6 @@ export class AttendanceController {
   @Post('manual')
   @Roles(
     SafariRole.OWNER,
-    SafariRole.GENERAL_MANAGER,
     SafariRole.MANAGER,
     SafariRole.ACCOUNTANT,
   )
@@ -86,7 +85,7 @@ export class AttendanceController {
   }
 
   @Post('biometric')
-  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
+  @Roles(SafariRole.OWNER)
   @ApiOperation({
     summary: `Biometric device webhook (${APP_BRAND}, HR-BIO-001 stub)`,
     description:

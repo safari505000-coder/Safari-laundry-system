@@ -5,6 +5,7 @@ import { FixedExpenseModule } from '../fixed-expenses/fixed-expense.module';
 import { PaymentMethodFeesModule } from '../payment-method-fees/payment-method-fees.module';
 import { PayrollModule } from '../payroll/payroll.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { AuditService } from '../common/audit/audit.service';
 import { ReportsController } from './reports.controller';
 import { ReportsService } from './reports.service';
 
@@ -18,7 +19,7 @@ import { ReportsService } from './reports.service';
     PaymentMethodFeesModule,
   ],
   controllers: [ReportsController],
-  providers: [ReportsService],
+  providers: [ReportsService, AuditService],
   exports: [ReportsService],
 })
 export class ReportsModule {}

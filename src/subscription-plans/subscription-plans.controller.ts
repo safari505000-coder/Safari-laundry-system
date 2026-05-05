@@ -23,13 +23,13 @@ import { SubscriptionPlansService } from './subscription-plans.service';
 @ApiBearerAuth('bearer')
 @Controller('subscription-plans')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
 export class SubscriptionPlansController {
   constructor(
     private readonly subscriptionPlansService: SubscriptionPlansService,
   ) {}
 
   @Post()
+  @Roles(SafariRole.OWNER)
   @ApiOperation({
     summary: `Create subscription plan (${APP_BRAND})`,
     description:
@@ -40,18 +40,21 @@ export class SubscriptionPlansController {
   }
 
   @Get()
+  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
   @ApiOperation({ summary: `List subscription plans (${APP_BRAND})` })
   findAll() {
     return this.subscriptionPlansService.findAll();
   }
 
   @Get(':id')
+  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
   @ApiOperation({ summary: `Get subscription plan (${APP_BRAND})` })
   findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.subscriptionPlansService.findOne(id);
   }
 
   @Patch(':id')
+  @Roles(SafariRole.OWNER)
   @ApiOperation({ summary: `Update subscription plan (${APP_BRAND})` })
   update(
     @Param('id', ParseUUIDPipe) id: string,
@@ -61,6 +64,7 @@ export class SubscriptionPlansController {
   }
 
   @Delete(':id')
+  @Roles(SafariRole.OWNER)
   @ApiOperation({ summary: `Delete subscription plan (${APP_BRAND})` })
   remove(@Param('id', ParseUUIDPipe) id: string) {
     return this.subscriptionPlansService.remove(id);

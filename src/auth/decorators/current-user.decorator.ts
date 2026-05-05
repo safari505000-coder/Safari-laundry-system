@@ -4,6 +4,9 @@ export type JwtUser = {
   userId: string;
   role: string;
   branchId: string | null;
+  scope?: 'ALL' | 'BRANCH' | 'OWN';
+  /** B2C portal — must equal `Customer.id` when role is CUSTOMER. */
+  linkedCustomerId?: string | null;
 };
 
 export const CurrentUser = createParamDecorator(

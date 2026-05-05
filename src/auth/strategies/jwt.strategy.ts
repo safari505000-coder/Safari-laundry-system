@@ -8,6 +8,9 @@ export type JwtPayload = {
   role: string;
   /** Present for branch-scoped staff (manager, driver, …). */
   branchId?: string | null;
+  scope?: 'ALL' | 'BRANCH' | 'OWN';
+  /** B2C portal user — must match Customer id in path for `/customers/:id/360`. */
+  linkedCustomerId?: string | null;
 };
 
 @Injectable()
@@ -24,11 +27,23 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     userId: string;
     role: string;
     branchId: string | null;
+    scope?: 'ALL' | 'BRANCH' | 'OWN';
+    linkedCustomerId: string | null;
   } {
+    const role =
+      typeof payload.role === 'string' && payload.role.trim() ?
+        payload.role.trim().toUpperCase()
+      : '';
+    const linked =
+      typeof payload.linkedCustomerId === 'string' && payload.linkedCustomerId.trim() ?
+        payload.linkedCustomerId.trim()
+      : null;
     return {
       userId: payload.sub,
-      role: payload.role,
+      role,
       branchId: payload.branchId ?? null,
+      scope: payload.scope,
+      linkedCustomerId: linked,
     };
   }
 }

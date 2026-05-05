@@ -194,12 +194,9 @@ export class DebtTransfersService {
     executorRole: SafariRole,
     dto: CreateDebtTransferDto,
   ) {
-    if (
-      executorRole !== SafariRole.GENERAL_MANAGER &&
-      executorRole !== SafariRole.ACCOUNTANT
-    ) {
+    if (executorRole !== SafariRole.ACCOUNTANT) {
       throw new ForbiddenException(
-        'Only GENERAL_MANAGER or ACCOUNTANT may initiate a debt transfer.',
+        'Only ACCOUNTANT may initiate a debt transfer.',
       );
     }
     if (dto.sourceDriverId === dto.targetDriverId) {
@@ -369,12 +366,9 @@ export class DebtTransfersService {
     executorId: string,
     executorRole: SafariRole,
   ) {
-    if (
-      executorRole !== SafariRole.GENERAL_MANAGER &&
-      executorRole !== SafariRole.ACCOUNTANT
-    ) {
+    if (executorRole !== SafariRole.ACCOUNTANT) {
       throw new ForbiddenException(
-        'Only GENERAL_MANAGER or ACCOUNTANT may finalize a debt transfer.',
+        'Only ACCOUNTANT may finalize a debt transfer.',
       );
     }
     const result = await this.prisma.$transaction(async (tx) => {
@@ -483,12 +477,9 @@ export class DebtTransfersService {
     cancellerRole: SafariRole,
     reason: string | null,
   ) {
-    if (
-      cancellerRole !== SafariRole.GENERAL_MANAGER &&
-      cancellerRole !== SafariRole.ACCOUNTANT
-    ) {
+    if (cancellerRole !== SafariRole.ACCOUNTANT) {
       throw new ForbiddenException(
-        'Only GENERAL_MANAGER or ACCOUNTANT may cancel a debt transfer.',
+        'Only ACCOUNTANT may cancel a debt transfer.',
       );
     }
     const transfer = await this.prisma.debtTransfer.findUnique({

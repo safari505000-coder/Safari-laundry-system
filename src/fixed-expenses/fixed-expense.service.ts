@@ -48,11 +48,7 @@ export class FixedExpenseService {
   constructor(private readonly prisma: PrismaService) {}
 
   private assertOwnerOrManager(role: SafariRole): void {
-    if (
-      role !== SafariRole.OWNER &&
-      role !== SafariRole.GENERAL_MANAGER &&
-      role !== SafariRole.MANAGER
-    ) {
+    if (role !== SafariRole.OWNER && role !== SafariRole.MANAGER) {
       throw new ForbiddenException();
     }
   }

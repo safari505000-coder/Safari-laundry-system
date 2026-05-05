@@ -704,6 +704,10 @@ export class CustomerNotificationsService implements OnModuleInit {
     });
   }
 
+  deliverPaymentConfirmedQueued(params: PaymentConfirmedNotifyParams): Promise<void> {
+    return this.deliverPaymentConfirmed(params);
+  }
+
   /**
    * تحصيل جزئي على الحساب بدون فاتورة طلب (Call Center pack #1).
    * رقم السند مربوط بـ `TransactionHistory.id` في القاعدة.

@@ -620,7 +620,7 @@ export class CustomerLedgerService {
     const subsidyBranchId = refreshedCustomer?.originBranchId ?? actor.branchId ?? null;
     const balanceMinor = toMinorFromFixed4(wallet.balance);
     const debtMinor = toMinorFromFixed4(wallet.debt);
-    const debtBreakdown = await this.orders.getEffectiveDebtKdBreakdown(
+    const debtBreakdown = await this.orders.getOperationalDebtKdBreakdown(
       params.customerId,
       wallet.debt,
       tx,
@@ -628,7 +628,7 @@ export class CustomerLedgerService {
     const implicitReceivableMinor = toMinorFromFixed4(
       debtBreakdown.collectionsReceivableKd,
     );
-    const effectiveDebtMinor = toMinorFromFixed4(debtBreakdown.effectiveDebtKd);
+    const operationalDebtMinor = toMinorFromFixed4(debtBreakdown.operationalDebtKd);
     const priceMinor = toMinorFromFixed4(plan.salePrice);
     const creditMinor = toMinorFromFixed4(plan.actualBalance);
 
@@ -685,11 +685,11 @@ export class CustomerLedgerService {
     // Behavior for debt-free customers is unchanged: debtPaid=0, the
     // full credit still lands in the wallet.
     //
-    // V19.12.1 — **effectiveDebtKd** mirrors `DebtLedgerEntry` net + snapshot
-    // reconciliation (via `OrdersService.getEffectiveDebtKdBreakdown`); do not add
-    // wallet.debt twice here (`effectiveDebtMinor` is totals from breakdown).
+    // V19.12.1 — **operationalDebtKd** mirrors `DebtLedgerEntry` net + snapshot
+    // reconciliation. This is NOT the canonical Customer 360 financial number;
+    // do not add wallet.debt twice here (`operationalDebtMinor` is totals from breakdown).
     const debtPaidMinor =
-      effectiveDebtMinor < creditMinor ? effectiveDebtMinor : creditMinor;
+      operationalDebtMinor < creditMinor ? operationalDebtMinor : creditMinor;
     let newDebtMinor =
       debtMinor - (debtPaidMinor < debtMinor ? debtPaidMinor : debtMinor);
     const accrueSaleOnAccount =
@@ -702,7 +702,7 @@ export class CustomerLedgerService {
     this.logger.log(
       `[subscription-activation] customerId=${params.customerId} planId=${params.planId} ` +
         `walletDebtMinor=${debtMinor.toString()} implicitUnpostedMinor=${implicitReceivableMinor.toString()} ` +
-        `effectiveDebtMinor=${effectiveDebtMinor.toString()} planCreditMinor=${creditMinor.toString()} ` +
+        `operationalDebtMinor=${operationalDebtMinor.toString()} planCreditMinor=${creditMinor.toString()} ` +
         `debtPaidMinor=${debtPaidMinor.toString()} autoCloseInvoices=${params.autoCloseInvoices === true} ` +
         `collectionPaymentMethod=${collectionPaymentMethod} accrueSaleOnAccount=${accrueSaleOnAccount}`,
     );
@@ -815,7 +815,8 @@ export class CustomerLedgerService {
           rolledOverFromSubscriptionId: previousSubscription?.id ?? null,
           carriedBalanceKd: carriedBalanceStr,
           implicitUnpostedReceivableKd: minorToAmountString(implicitReceivableMinor),
-          effectiveDebtForActivationKd: minorToAmountString(effectiveDebtMinor),
+          operationalDebtForActivationKd: minorToAmountString(operationalDebtMinor),
+          effectiveDebtForActivationKd: minorToAmountString(operationalDebtMinor),
           posPaymentMethod: collectionPaymentMethod,
           planSaleSettlement: accrueSaleOnAccount
             ? 'ACCOUNTS_RECEIVABLE'
@@ -861,7 +862,7 @@ export class CustomerLedgerService {
     // V19.7.4 — FIFO invoice auto-closure (opt-in via `autoCloseInvoices`).
     // Context: `wallet.debt` is posted aggregate receivable; UNPAID orders
     // may still exist (e.g. payment-link pending) and are folded into
-    // `effectiveDebtMinor` above. When this flag is true and `debtPaidMinor`
+    // `operationalDebtMinor` above. When this flag is true and `debtPaidMinor`
     // is positive, we FIFO-close matching UNPAID rows so collections matches
     // wallet state.
     //
@@ -1230,8 +1231,9 @@ export class CustomerLedgerService {
    * the existing two values. The metadata flag keeps existing reports
    * working while letting any future dedicated query opt into it.
    *
-   * `amount + discount` is capped by `getEffectiveDebtKdBreakdown.effectiveDebtKd`
-   * (same subscriber total as conversion). After reducing `wallet.debt`,
+   * `amount + discount` is capped by operational debt
+   * (`getOperationalDebtKdBreakdown.operationalDebtKd`; same subscriber total as conversion).
+   * This is NOT the canonical Customer 360 financial number. After reducing `wallet.debt`,
    * UNPAID invoices are FIFO-closed with the same budget (full-amount
    * rows only), matching `activateSubscriptionPlan` (`autoCloseInvoices`).
    *
@@ -1290,12 +1292,12 @@ export class CustomerLedgerService {
             : 0n;
         const totalMinor = amountMinor + discountMinor;
         const debtMinor = toMinorFromFixed4(wallet.debt);
-        const outstandingBreakdown = await this.orders.getEffectiveDebtKdBreakdown(
+        const outstandingBreakdown = await this.orders.getOperationalDebtKdBreakdown(
           params.customerId,
           wallet.debt,
           tx,
         );
-        const ceilingMinor = toMinorFromFixed4(outstandingBreakdown.effectiveDebtKd);
+        const ceilingMinor = toMinorFromFixed4(outstandingBreakdown.operationalDebtKd);
 
         if (amountMinor < 0n || discountMinor < 0n) {
           throw new BadRequestException(
@@ -1309,7 +1311,7 @@ export class CustomerLedgerService {
         }
         if (totalMinor > ceilingMinor) {
           throw new BadRequestException(
-            `Amount + discount cannot exceed total outstanding debt (${outstandingBreakdown.effectiveDebtKd.toFixed(4)} KD)`,
+            `Amount + discount cannot exceed total outstanding debt (${outstandingBreakdown.operationalDebtKd.toFixed(4)} KD)`,
           );
         }
 
@@ -1360,12 +1362,12 @@ export class CustomerLedgerService {
           where: { id: wallet.id },
           select: { debt: true },
         });
-        const endingBreakdown = await this.orders.getEffectiveDebtKdBreakdown(
+        const endingBreakdown = await this.orders.getOperationalDebtKdBreakdown(
           params.customerId,
           refreshedWallet!.debt,
           tx,
         );
-        const newEffectiveDebtKdStr = endingBreakdown.effectiveDebtKd.toFixed(4);
+        const newOperationalDebtKdStr = endingBreakdown.operationalDebtKd.toFixed(4);
 
         // V19.4 — CC pack #1. Re-use ORDER_WALLET_SETTLEMENT so existing
         // debt-recovery aggregations naturally pick up the collected
@@ -1393,7 +1395,8 @@ export class CustomerLedgerService {
               note: params.note ?? null,
               autoClosedInvoiceIds: closedInvoiceIds,
               autoClosedInvoiceCount: closedInvoiceIds.length,
-              effectiveDebtAfterKd: newEffectiveDebtKdStr,
+              operationalDebtAfterKd: newOperationalDebtKdStr,
+              effectiveDebtAfterKd: newOperationalDebtKdStr,
             },
           },
         });
@@ -1463,8 +1466,8 @@ export class CustomerLedgerService {
           amountCollectedKd: amountStr,
           discountAppliedKd: discountStr,
           totalReducedKd: totalStr,
-          previousDebtKd: outstandingBreakdown.effectiveDebtKd.toFixed(4),
-          newDebtKd: newEffectiveDebtKdStr,
+          previousDebtKd: outstandingBreakdown.operationalDebtKd.toFixed(4),
+          newDebtKd: newOperationalDebtKdStr,
           walletBalanceKd: wallet.balance.toString(),
           paymentMethod: params.paymentMethod,
           transactionHistoryId: thDebtRow.id,

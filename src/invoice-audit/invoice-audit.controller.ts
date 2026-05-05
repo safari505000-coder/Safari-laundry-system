@@ -13,7 +13,8 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { SafariRole } from '@prisma/client';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { JwtUser } from '../auth/decorators/current-user.decorator';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { Permissions } from '../auth/permissions/permissions.decorator';
+import { AppPermission } from '../auth/permissions/permissions.enum';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { InvoiceAuditService } from './invoice-audit.service';
@@ -30,7 +31,7 @@ export class InvoiceAuditController {
   constructor(private readonly invoiceAudit: InvoiceAuditService) {}
 
   @Patch('orders/:orderId')
-  @Roles(SafariRole.CALL_CENTER_SUPERVISOR, SafariRole.OWNER)
+  @Permissions(AppPermission.EDIT_INVOICE_AUDIT)
   @ApiOperation({
     summary: 'Same-day invoice edit by CC Supervisor',
     description:
@@ -50,7 +51,7 @@ export class InvoiceAuditController {
   }
 
   @Post('orders/:orderId/void')
-  @Roles(SafariRole.CALL_CENTER_SUPERVISOR, SafariRole.OWNER)
+  @Permissions(AppPermission.VOID_INVOICE_AUDIT)
   @ApiOperation({
     summary: 'Soft-void an invoice by CC Supervisor',
     description:
@@ -70,11 +71,7 @@ export class InvoiceAuditController {
   }
 
   @Get('log')
-  @Roles(
-    SafariRole.OWNER,
-    SafariRole.GENERAL_MANAGER,
-    SafariRole.ACCOUNTANT,
-  )
+  @Permissions(AppPermission.AUDIT_INVOICE)
   @ApiOperation({
     summary: 'Invoice audit log — edits and voids',
     description:
@@ -85,11 +82,7 @@ export class InvoiceAuditController {
   }
 
   @Get('cc-performance')
-  @Roles(
-    SafariRole.OWNER,
-    SafariRole.GENERAL_MANAGER,
-    SafariRole.CALL_CENTER_SUPERVISOR,
-  )
+  @Permissions(AppPermission.VIEW_REPORTS)
   @ApiOperation({
     summary: 'Per-agent Call-Center performance',
     description:

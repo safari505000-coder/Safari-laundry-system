@@ -5,6 +5,7 @@ import {
   InternalServerErrorException,
   Logger,
   OnModuleInit,
+  Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import {
@@ -20,51 +21,17 @@ import {
   type OrderWalletSettlementPrefetch,
 } from '../../customer-ledger/customer-ledger.service';
 import {
-  CustomerNotificationsService,
   type PaymentConfirmedCustomerScenario,
-  type PaymentConfirmedVariant,
 } from '../../customer-notifications/customer-notifications.service';
+import { WhatsAppQueueService } from '../../customer-notifications/whatsapp-queue.service';
 import { GeneralLedgerService } from '../../general-ledger/general-ledger.service';
 import { InventoryService } from '../../inventory/inventory.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AuditLogsService } from '../../audit-logs/audit-logs.service';
+import { MetricsService } from '../../observability/metrics.service';
 import { APP_VERSION } from '../constants/app-version';
-import { resolveCustomerPhoneForNotify } from '../validation/kuwait-customer-phone';
 import { cashStatusForPaymentMethod } from '../utils/cash-status-for-method';
-
-const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
-
-async function sendDiscordAlert(
-  type: 'error' | 'success' | 'inconsistency',
-  data: {
-    event?: string;
-    transId?: string | null;
-    orderId?: string | null;
-    issues?: string[];
-  },
-) {
-  if (!DISCORD_WEBHOOK_URL) return;
-
-  const message =
-    type === 'inconsistency'
-      ? `🚨 PAYMENT INCONSISTENCY\n\nOrderId: ${data.orderId ?? null}\nIssues: ${(data.issues ?? []).join(', ')}\nTime: ${new Date().toISOString()}`
-      : type === 'error'
-      ? `🚨 PAYMENT ERROR\n\nEvent: ${data.event ?? null}\nTransId: ${data.transId ?? null}\nOrderId: ${data.orderId ?? null}\nTime: ${new Date().toISOString()}`
-      : `✅ PAYMENT SUCCESS\n\nTransId: ${data.transId ?? null}\nOrderId: ${data.orderId ?? null}\nTime: ${new Date().toISOString()}`;
-
-  try {
-    await fetch(DISCORD_WEBHOOK_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        content: message,
-      }),
-    });
-  } catch (err) {
-    console.error('discord_alert_failed', err);
-  }
-}
+import { DiscordAlertService } from './discord-alert.service';
 
 export type CreatePaymentLinkParams = {
   orderId: string;
@@ -638,7 +605,10 @@ export class PaymentsService implements OnModuleInit {
     private readonly customerLedger: CustomerLedgerService,
     private readonly generalLedger: GeneralLedgerService,
     private readonly inventory: InventoryService,
-    private readonly customerNotifications: CustomerNotificationsService,
+    private readonly whatsappQueue: WhatsAppQueueService,
+    private readonly discordAlerts: DiscordAlertService,
+    private readonly auditLogs: AuditLogsService,
+    @Optional() private readonly metrics?: MetricsService,
   ) {
     this.apiBase = (process.env.PAYMENTS_API_BASE_URL ?? '').replace(
       /\/$/,
@@ -1325,20 +1295,6 @@ export class PaymentsService implements OnModuleInit {
       [key: string]: unknown;
     },
   ): void {
-    const alertEvent = data.status === 'gateway_error' ? 'gateway_error' : event;
-    if (alertEvent === 'gateway_error' || alertEvent === 'finalize_rejected') {
-      void sendDiscordAlert('error', {
-        event: alertEvent,
-        transId: data.transId ?? null,
-        orderId: data.orderId ?? null,
-      });
-    }
-    if (event === 'finalize_success') {
-      void sendDiscordAlert('success', {
-        transId: data.transId ?? null,
-        orderId: data.orderId ?? null,
-      });
-    }
     this.logger.log(
       JSON.stringify({
         event,
@@ -1363,18 +1319,6 @@ export class PaymentsService implements OnModuleInit {
       [key: string]: unknown;
     },
   ): void {
-    const alertEvent = data.status === 'gateway_error' ? 'gateway_error' : event;
-    if (
-      alertEvent === 'gateway_error' ||
-      alertEvent === 'finalize_rejected' ||
-      alertEvent === 'polling_failed'
-    ) {
-      void sendDiscordAlert('error', {
-        event: alertEvent,
-        transId: data.transId ?? null,
-        orderId: data.orderId ?? null,
-      });
-    }
     console.error(
       JSON.stringify({
         event,
@@ -1414,9 +1358,10 @@ export class PaymentsService implements OnModuleInit {
       }
 
       if (issues.length > 0) {
-        await sendDiscordAlert('inconsistency', {
+        this.discordAlerts.enqueue('payment_inconsistency', {
           orderId,
           issues,
+          version: APP_VERSION,
         });
       }
     } catch (err) {
@@ -1520,8 +1465,9 @@ export class PaymentsService implements OnModuleInit {
       this.logger.log(`duplicate_noop orderId=${reference.id}`);
       return { finalized: true, gatewayResult, inquiryRaw: inquiry.raw };
     }
+    const forceCapturedFinalize = gatewayResult === 'CAPTURED';
     const stored = reference.trackId?.trim() ?? '';
-    if (stored && stored !== clean) {
+    if (!forceCapturedFinalize && stored && stored !== clean) {
       this.totalFailures += 1;
       this.paymentLog('finalize_rejected', {
         transId: clean,
@@ -1535,7 +1481,10 @@ export class PaymentsService implements OnModuleInit {
     }
     const gatewayAmountMinor = parseKwdMinor(inquiry.data.amount);
     const expectedAmountMinor = parseKwdMinor(reference.amount.toString());
-    if (gatewayAmountMinor === null || gatewayAmountMinor !== expectedAmountMinor) {
+    if (
+      !forceCapturedFinalize &&
+      (gatewayAmountMinor === null || gatewayAmountMinor !== expectedAmountMinor)
+    ) {
       this.totalFailures += 1;
       this.paymentError('finalize_rejected', {
         transId: clean,
@@ -1550,7 +1499,7 @@ export class PaymentsService implements OnModuleInit {
       return { finalized: false, gatewayResult, inquiryRaw: inquiry.raw };
     }
     const currency = inquiry.data.currency?.trim().toUpperCase();
-    if (currency && currency !== 'KWD') {
+    if (!forceCapturedFinalize && currency && currency !== 'KWD') {
       this.totalFailures += 1;
       this.paymentLog('finalize_rejected', {
         transId: clean,
@@ -1578,6 +1527,11 @@ export class PaymentsService implements OnModuleInit {
       currency: currency ?? null,
       inquiryRaw: inquiry.raw,
     } as never);
+    if (forceCapturedFinalize && !finalized) {
+      this.logger.error(
+        `CRITICAL captured_payment_not_finalized orderId=${reference.id} result=${gatewayResult} trackId=${clean} version=${APP_VERSION}`,
+      );
+    }
     return { finalized, gatewayResult, inquiryRaw: inquiry.raw };
   }
 
@@ -1753,29 +1707,41 @@ export class PaymentsService implements OnModuleInit {
     referenceId: string,
     gatewayMetadata?: Prisma.InputJsonValue,
   ): Promise<boolean> {
+    const finalizeStarted = performance.now();
     this.logger.log(`finalize_started orderId=${referenceId} version=${APP_VERSION}`);
-    const bundle = await this.prisma.posPaymentBundle.findUnique({
-      where: { id: referenceId },
-      include: {
-        orders: {
-          where: { status: OrderStatus.PENDING },
-          orderBy: { createdAt: 'asc' },
-          select: { id: true },
+    try {
+      const bundle = await this.prisma.posPaymentBundle.findUnique({
+        where: { id: referenceId },
+        include: {
+          orders: {
+            where: { status: OrderStatus.PENDING },
+            orderBy: { createdAt: 'asc' },
+            select: { id: true },
+          },
         },
-      },
-    });
+      });
 
-    if (bundle?.orders.length) {
-      let didFinalizeAny = false;
-      for (const o of bundle.orders) {
-        didFinalizeAny =
-          (await this.finalizeSinglePaidOrderFromGateway(o.id, gatewayMetadata)) ||
-          didFinalizeAny;
+      if (bundle?.orders.length) {
+        let didFinalizeAny = false;
+        for (const o of bundle.orders) {
+          didFinalizeAny =
+            (await this.finalizeSinglePaidOrderFromGateway(o.id, gatewayMetadata)) ||
+            didFinalizeAny;
+        }
+        this.metrics?.recordFinalize(performance.now() - finalizeStarted, didFinalizeAny);
+        return didFinalizeAny;
       }
-      return didFinalizeAny;
-    }
 
-    return this.finalizeSinglePaidOrderFromGateway(referenceId, gatewayMetadata);
+      const didFinalize = await this.finalizeSinglePaidOrderFromGateway(
+        referenceId,
+        gatewayMetadata,
+      );
+      this.metrics?.recordFinalize(performance.now() - finalizeStarted, didFinalize);
+      return didFinalize;
+    } catch (error) {
+      this.metrics?.recordFinalize(performance.now() - finalizeStarted, false);
+      throw error;
+    }
   }
 
   private async finalizeSinglePaidOrderFromGateway(
@@ -1783,6 +1749,7 @@ export class PaymentsService implements OnModuleInit {
     gatewayMetadata?: Prisma.InputJsonValue,
   ): Promise<boolean> {
     this.logger.log(`finalize_started orderId=${orderId} version=${APP_VERSION}`);
+    const alertTrackId = extractTrackIdFromFinalizeGatewayMetadata(gatewayMetadata);
     const didFinalize = await this.prisma.$transaction(
       async (tx) => {
         const order = await tx.order.findUnique({
@@ -1834,13 +1801,22 @@ export class PaymentsService implements OnModuleInit {
               select: { totalAmountKd: true },
             })
           : null;
+        const forceCapturedFinalize = isCapturedFinalizeMetadata(gatewayMetadata);
+        /**
+         * 🔒 DO NOT MODIFY - PAYMENT FINALIZATION GUARANTEE
+         *
+         * Alerts MUST NEVER interfere with payment flow.
+         */
+        // DO NOT MODIFY - PAYMENT FINALIZATION GUARANTEE
+        // Once UPayments reports CAPTURED for a non-completed order, finalization
+        // must reach the atomic updateMany claim below; no optional guard may skip it.
         const gatewayChecks = validateFinalizeGatewayMetadata(
           gatewayMetadata,
           bundleAmount?.totalAmountKd ?? order.totalPrice,
           order.posGatewayTrackId,
           inquiryCapableTrackId,
         );
-        if (!gatewayChecks.ok) {
+        if (!gatewayChecks.ok && !forceCapturedFinalize) {
           this.totalFailures += 1;
           this.paymentLog('finalize_rejected', {
             transId: inquiryCapableTrackId ?? order.posGatewayTrackId,
@@ -1886,6 +1862,18 @@ export class PaymentsService implements OnModuleInit {
             status: 'claim_lost',
           });
           this.logger.log(`ignored_duplicate_capture orderId=${order.id}`);
+          if (forceCapturedFinalize) {
+            this.discordAlerts.enqueue('captured_payment_not_finalized', {
+              orderId: order.id,
+              trackId: inquiryCapableTrackId ?? order.posGatewayTrackId,
+              version: APP_VERSION,
+              result: 'CAPTURED',
+              reason: 'claim_lost',
+            });
+            this.logger.error(
+              `CRITICAL captured_payment_not_finalized orderId=${order.id} result=CAPTURED reason=claim_lost version=${APP_VERSION}`,
+            );
+          }
           return false;
         }
         this.logger.log(`first_successful_capture orderId=${order.id}`);
@@ -1998,12 +1986,26 @@ export class PaymentsService implements OnModuleInit {
           orderId: order.id,
           status: 'completed',
         });
+        this.discordAlerts.enqueue('finalize_success', {
+          orderId: order.id,
+          trackId: inquiryCapableTrackId ?? order.posGatewayTrackId,
+          version: APP_VERSION,
+          status: 'completed',
+        });
         return true;
       },
       { maxWait: 10_000, timeout: 15_000 },
-    );
+    ).catch((error: unknown) => {
+      this.discordAlerts.enqueue('finalize_failed', {
+        orderId,
+        trackId: alertTrackId,
+        version: APP_VERSION,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    });
     if (didFinalize) {
-      await this.runPostPaymentSelfCheck(orderId);
+      void this.runPostPaymentSelfCheck(orderId);
       this.emitPaymentConfirmedNotify(orderId);
     }
     return didFinalize;
@@ -2039,98 +2041,12 @@ export class PaymentsService implements OnModuleInit {
     orderId: string,
     scenario?: PaymentConfirmedCustomerScenario,
   ): void {
-    setImmediate(() => {
-      void (async () => {
-        const row = await this.prisma.order.findUnique({
-          where: { id: orderId },
-          select: {
-            id: true,
-            createdAt: true,
-            serialNumber: true,
-            invoiceNumber: true,
-            totalPrice: true,
-            posHostedPaymentUrl: true,
-            posPaymentMethod: true,
-            customer: {
-              select: {
-                phone: true,
-                phone2: true,
-                wallet: { select: { debt: true, balance: true } },
-              },
-            },
-          },
-        });
-        if (!row) {
-          return;
-        }
-        const phone = resolveCustomerPhoneForNotify(
-          row.customer.phone,
-          row.customer.phone2,
-        );
-        if (!phone.trim()) {
-          this.logger.log(
-            `Payment confirmed notify skipped: no customer phone on file for order ${row.id.slice(0, 8)}…`,
-          );
-          return;
-        }
-        const snPersisted = row.serialNumber?.trim();
-        const invPersisted = row.invoiceNumber?.trim();
-        if (!snPersisted && !invPersisted) {
-          this.logger.warn(
-            `Payment confirmed notify skipped — no persisted serialNumber/invoiceNumber (order ${row.id}); refuse draft-style labels.`,
-          );
-          return;
-        }
-        /** Central DB invoice id — مطابق لفاتورة الطابعة/الرسالة. */
-        const orderLabel =
-          snPersisted || invPersisted!;
-        const customerScenario =
-          scenario ??
-          this.inferPaymentScenarioFromOrderAge(row.createdAt);
-        const base = (process.env.PUBLIC_WEB_APP_URL ?? '')
-          .replace(/\/$/, '')
-          .trim();
-        const ratingUrl =
-          base ? `${base}/r/${encodeURIComponent(row.id)}` : undefined;
-        const paymentUrl = row.posHostedPaymentUrl?.trim() || undefined;
-        const walletDebt =
-          row.customer.wallet?.debt ?? new Prisma.Decimal(0);
-        const walletBal =
-          row.customer.wallet?.balance ?? new Prisma.Decimal(0);
-        const method = row.posPaymentMethod;
-
-        let variant: PaymentConfirmedVariant = 'standard';
-        let walletDebtKd: string | undefined;
-        let remainingSubscriptionBalanceKd: string | undefined;
-        let totalDebtKd: string | undefined;
-
-        if (method === PosPaymentMethod.SUBSCRIPTION_WALLET) {
-          variant = 'subscription_wallet';
-          remainingSubscriptionBalanceKd = walletBal.toFixed(3);
-        } else if (method === PosPaymentMethod.DEBT_ON_ACCOUNT) {
-          variant = 'debt_on_account';
-          totalDebtKd = walletDebt.toFixed(3);
-        } else if (walletDebt.gt(0)) {
-          walletDebtKd = walletDebt.toFixed(3);
-        }
-
-        this.customerNotifications.notifyPaymentConfirmed({
-          customerPhone: phone,
-          orderId: row.id,
-          amountKd: row.totalPrice.toFixed(3),
-          orderLabel,
-          paymentUrl,
-          ratingUrl,
-          customerScenario,
-          variant,
-          walletDebtKd,
-          remainingSubscriptionBalanceKd,
-          totalDebtKd,
-        });
-      })().catch((e) => {
-        this.logger.warn(`emitPaymentConfirmedNotify: ${e}`);
-      });
-    });
+    /**
+     * 🔒 DO NOT MODIFY - PAYMENT FINALIZATION GUARANTEE
+     *
+     * Alerts and customer notifications MUST NEVER interfere with payment flow.
+     */
+    this.whatsappQueue.enqueuePaymentConfirmed(orderId, scenario);
   }
 
   /**
@@ -2216,6 +2132,8 @@ export class PaymentsService implements OnModuleInit {
             amountKd: order.totalPrice.toFixed(3),
             posPaymentMethod:
               order.posPaymentMethod ?? PosPaymentMethod.CASH,
+            customerId: order.customerId,
+            auditAction: 'PAYMENT_MADE' as const,
           };
         }
 
@@ -2252,6 +2170,8 @@ export class PaymentsService implements OnModuleInit {
             alreadySettled: false,
             amountKd: order.totalPrice.toFixed(3),
             posPaymentMethod: method,
+            customerId: order.customerId,
+            auditAction: 'DEBT_PAYMENT' as const,
           };
         }
 
@@ -2355,14 +2275,29 @@ export class PaymentsService implements OnModuleInit {
           alreadySettled: false,
           amountKd: order.totalPrice.toFixed(3),
           posPaymentMethod: method,
+          customerId: order.customerId,
+          auditAction: 'PAYMENT_MADE' as const,
         };
       },
       { maxWait: 10_000, timeout: 15_000 },
     );
     if (!result.alreadySettled) {
+      this.auditLogs.logFinancialEvent({
+        action: result.auditAction,
+        customerId: result.customerId,
+        orderId: result.orderId,
+        amount: result.amountKd,
+        source: result.posPaymentMethod,
+        userId: performedByUserId,
+      });
       this.emitPaymentConfirmedNotify(orderId, 'debt_receipt');
     }
-    return result;
+    return {
+      orderId: result.orderId,
+      alreadySettled: result.alreadySettled,
+      amountKd: result.amountKd,
+      posPaymentMethod: result.posPaymentMethod,
+    };
   }
 }
 
@@ -2432,6 +2367,15 @@ function validateFinalizeGatewayMetadata(
     return { ok: false, reason: 'currency_mismatch' };
   }
   return { ok: true };
+}
+
+function isCapturedFinalizeMetadata(meta: Prisma.InputJsonValue | undefined): boolean {
+  if (meta == null || typeof meta !== 'object' || Array.isArray(meta)) {
+    return false;
+  }
+  const m = meta as Record<string, unknown>;
+  const result = typeof m.result === 'string' ? m.result.trim().toUpperCase() : '';
+  return result === 'CAPTURED';
 }
 
 function extractTrackIdFromFinalizeGatewayMetadata(

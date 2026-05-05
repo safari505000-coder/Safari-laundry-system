@@ -4,10 +4,12 @@ import {
   Logger,
   OnModuleDestroy,
   OnModuleInit,
+  Optional,
 } from '@nestjs/common';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { Pool } from 'pg';
+import { MetricsService } from '../observability/metrics.service';
 
 /**
  * V19.11 — forbidden mutation verbs on the DebtLedgerEntry delegate.
@@ -67,15 +69,25 @@ export class PrismaService
   private readonly pool: Pool;
   private static readonly logger = new Logger(PrismaService.name);
 
-  constructor() {
+  constructor(@Optional() private readonly metrics?: MetricsService) {
     const connectionString = process.env.DATABASE_URL;
     if (!connectionString?.trim()) {
       throw new Error('DATABASE_URL is not set');
     }
     const pool = new Pool({ connectionString });
-    const options: Prisma.PrismaClientOptions = { adapter: new PrismaPg(pool) };
+    const options: Prisma.PrismaClientOptions = {
+      adapter: new PrismaPg(pool),
+      log: [{ emit: 'event', level: 'query' }],
+    };
     super(options);
     this.pool = pool;
+
+    const prismaQueryEmitter = this as unknown as {
+      $on(event: 'query', listener: (e: Prisma.QueryEvent) => void): void;
+    };
+    prismaQueryEmitter.$on('query', (e: Prisma.QueryEvent) => {
+      this.metrics?.dbQueryDuration.observe(e.duration);
+    });
 
     // V19.11.5 — the runtime Proxy-based append-only guard on
     // `debtLedgerEntry` broke Prisma 7's driver-adapter batching
@@ -99,6 +111,10 @@ export class PrismaService
     PrismaService.logger.log(
       'DebtLedgerEntry append-only enforcement = DB trigger only (app-layer Proxy disabled for Prisma 7 compatibility)',
     );
+
+    const auditDelegate = this.auditLog;
+    (this as unknown as { auditLog: typeof auditDelegate }).auditLog =
+      guardAppendOnlyDelegate(auditDelegate, 'AuditLog');
   }
 
   async onModuleInit(): Promise<void> {
@@ -108,6 +124,15 @@ export class PrismaService
   async onModuleDestroy(): Promise<void> {
     await this.$disconnect();
     await this.pool.end();
+  }
+
+  async timedQuery<T>(fn: () => Promise<T>): Promise<T> {
+    const started = performance.now();
+    try {
+      return await fn();
+    } finally {
+      this.metrics?.dbQueryDuration.observe(performance.now() - started);
+    }
   }
 }
 

@@ -22,28 +22,31 @@ export type SubscriberListRow = {
   remainingDays: number | null;
   balance: string;
   /**
-   * Signed net wallet position vs total outstanding: `wallet.balance −
-   * effectiveDebtKd`. Positive = prepaid ahead of owed amount; negative = owes
-   * more than credit on the wallet (matches `OrdersService.getEffectiveDebtKdBreakdown`).
+   * Signed net wallet position vs operational debt: `wallet.balance −
+   * operationalDebtKd`. Positive = prepaid ahead of owed amount; negative = owes
+   * more than credit on the wallet.
    */
   balanceDisplayKd: string;
   /**
    * V19.4 — CC pack #1. **Wallet ledger debt** (`CustomerWallet.debt` only).
    * Partial debt payment caps against this field — it does NOT include
    * UNPAID invoices that have not yet run wallet settlement (payment-link
-   * pipeline). For a single “total owed” figure see `effectiveDebtKd`.
+   * pipeline). For the operational owed figure see `operationalDebtKd`.
    */
   debt: string;
   /**
-   * Portion of `effectiveDebtKd` **not** covered by `CustomerWallet.debt`
-   * (`max(effective − wallet.debt, 0)`), matching the conversion modal split;
+   * Portion of `operationalDebtKd` **not** covered by `CustomerWallet.debt`
+   * (`max(operational − wallet.debt, 0)`), matching the conversion modal split;
    * no longer a separate collections-only filtered slice.
    */
   unsettledUnpaidKd: string;
   /**
-   * Total owed: **max**(صافي أستاذ الديون، مجموع المحفظة الرسمية، محفظة+تحصيل
-   * قائمة الفواتير)؛ نفس `{@link OrdersService.getEffectiveDebtKdBreakdown}`.
+   * Operational debt: **max**(صافي أستاذ الديون، مجموع المحفظة الرسمية،
+   * محفظة+تحصيل قائمة الفواتير).
+   * This is NOT the canonical Customer 360 financial number.
    */
+  operationalDebtKd: string;
+  /** @deprecated Use operationalDebtKd. Kept for client compatibility. */
   effectiveDebtKd: string;
   rowStatus: 'active_ok' | 'active_warn' | 'expired' | 'open_credit';
   /**
@@ -68,7 +71,7 @@ export type SubscriberListRow = {
   collectionPendingHostedLinkAgeDays: number | null;
   /**
    * فقط إذا كان السيرفر يعمل بـ `EXPOSE_DEBT_BREAKDOWN=1`: القيم الثلاث
-   * المقارَنة + من فاز بـ `effectiveDebtKd` (للتشخيص محلياً).
+   * المقارَنة + من فاز بـ `operationalDebtKd` (للتشخيص محلياً).
    */
   debtKdBreakdownTrace?: DebtKdBreakdownTrace;
 };
@@ -189,7 +192,7 @@ export class SubscribersService {
       customerIds.length === 0 ?
         new Map<
           string,
-          Awaited<ReturnType<OrdersService['getEffectiveDebtKdBreakdown']>>
+                  Awaited<ReturnType<OrdersService['getOperationalDebtKdBreakdown']>>
         >()
       : new Map(
           await Promise.all(
@@ -200,12 +203,12 @@ export class SubscribersService {
                 [
                   string,
                   Awaited<
-                    ReturnType<OrdersService['getEffectiveDebtKdBreakdown']>
+                    ReturnType<OrdersService['getOperationalDebtKdBreakdown']>
                   >,
                 ]
               > => {
                 const cust = customerById.get(id);
-                const b = await this.orders.getEffectiveDebtKdBreakdown(
+                const b = await this.orders.getOperationalDebtKdBreakdown(
                   id,
                   cust?.wallet?.debt,
                 );
@@ -373,7 +376,7 @@ export class SubscribersService {
       const bd = debtBreakdownByCustomer.get(c.id)!;
       const openReceivable = bd.collectionsReceivableKd;
       const debtD = bd.walletDebtKd;
-      const totalOwedD = bd.effectiveDebtKd;
+      const totalOwedD = bd.operationalDebtKd;
       const balanceD = w?.balance ?? new Prisma.Decimal(0);
       const balanceDisplayKd = balanceD.minus(totalOwedD).toFixed(4);
 
@@ -399,6 +402,7 @@ export class SubscribersService {
         balanceDisplayKd,
         debt: debtD.toFixed(4),
         unsettledUnpaidKd: openReceivable.toFixed(4),
+        operationalDebtKd: totalOwedD.toFixed(4),
         effectiveDebtKd: totalOwedD.toFixed(4),
         rowStatus,
         invoiceAgeDays,

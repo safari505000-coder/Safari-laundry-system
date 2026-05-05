@@ -5,6 +5,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Param,
   ParseUUIDPipe,
@@ -30,11 +31,14 @@ import {
   AllowDriverDailyPosSales,
   Roles,
 } from '../auth/decorators/roles.decorator';
+import { Permissions } from '../auth/permissions/permissions.decorator';
+import { AppPermission } from '../auth/permissions/permissions.enum';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { JwtUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { APP_BRAND } from '../common/constants/branding';
+import { CashWriteEndpoint } from '../cash-monitor/cash-write-police.guard';
 import { ConfirmHandoverDto } from './dto/confirm-handover.dto';
 import { DebtByCategoryQueryDto } from './dto/debt-by-category-query.dto';
 import {
@@ -47,6 +51,10 @@ import {
   HandoverResultDto,
 } from './dto/driver-balance.dto';
 import {
+  CashReconciliationQueryDto,
+  type CashReconciliationSnapshotDto,
+} from './dto/cash-reconciliation.dto';
+import {
   DriverCashTraceQueryDto,
   DriverCashTraceResponseDto,
 } from './dto/driver-cash-trace.dto';
@@ -56,7 +64,10 @@ import {
   UnpaidInvoicesQueryDto,
   UnpaidInvoicesResponseDto,
 } from './dto/unpaid-invoices.dto';
+import { AccountantDashboardQueryDto } from './dto/accountant-dashboard-query.dto';
 import { FinanceService } from './finance.service';
+import { AccountantDashboardService } from './services/accountant-dashboard.service';
+import { OwnerFinancialDashboardService } from './services/owner-financial-dashboard.service';
 
 const HANDOVER_RECEIPTS_DIR = join(
   process.cwd(),
@@ -74,7 +85,11 @@ const HANDOVER_RECEIPT_MIMES = new Set([
 @Controller('finance')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class FinanceController {
-  constructor(private readonly financeService: FinanceService) {}
+  constructor(
+    private readonly financeService: FinanceService,
+    private readonly accountantDashboard: AccountantDashboardService,
+    private readonly ownerFinancialDashboard: OwnerFinancialDashboardService,
+  ) {}
 
   @Post('driver/ensure-shift')
   @Roles(SafariRole.DRIVER)
@@ -99,8 +114,20 @@ export class FinanceController {
     return this.financeService.getOwnerCustomerWalletSummary();
   }
 
-  @Get('consolidated-cash')
+  @Get('owner-dashboard')
   @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.ACCOUNTANT)
+  @Permissions(AppPermission.VIEW_FINANCIAL_REPORTS, AppPermission.VIEW_CASH)
+  @ApiOperation({
+    summary: `Owner financial intelligence dashboard (${APP_BRAND})`,
+    description:
+      'Decision layer on top of canonical customer financials, cached with the finance dashboard cache.',
+  })
+  getOwnerFinancialDashboard() {
+    return this.ownerFinancialDashboard.getDashboard();
+  }
+
+  @Get('consolidated-cash')
+  @Permissions(AppPermission.VIEW_CASH)
   @ApiOperation({
     summary: `Consolidated cash snapshot (${APP_BRAND})`,
     description:
@@ -136,13 +163,7 @@ export class FinanceController {
   }
 
   @Get('reports/debt-by-category')
-  @Roles(
-    SafariRole.OWNER,
-    SafariRole.GENERAL_MANAGER,
-    SafariRole.MANAGER,
-    SafariRole.ACCOUNTANT,
-    SafariRole.SUPERVISOR,
-  )
+  @Permissions(AppPermission.VIEW_DEBTS)
   @ApiOperation({
     summary: `Debt breakdown by category (${APP_BRAND})`,
     description:
@@ -159,15 +180,7 @@ export class FinanceController {
   }
 
   @Get('reports/open-debt-by-issuer')
-  @Roles(
-    SafariRole.OWNER,
-    SafariRole.GENERAL_MANAGER,
-    SafariRole.MANAGER,
-    SafariRole.ACCOUNTANT,
-    SafariRole.SUPERVISOR,
-    SafariRole.CALL_CENTER,
-    SafariRole.CALL_CENTER_SUPERVISOR,
-  )
+  @Permissions(AppPermission.VIEW_DEBTS)
   @ApiOperation({
     summary: `NET open debt grouped by invoice issuer (${APP_BRAND})`,
     description:
@@ -235,16 +248,7 @@ export class FinanceController {
   }
 
   @Get('driver-balance')
-  @Roles(
-    SafariRole.OWNER,
-    SafariRole.GENERAL_MANAGER,
-    SafariRole.MANAGER,
-    SafariRole.CALL_CENTER,
-    SafariRole.CALL_CENTER_SUPERVISOR,
-    SafariRole.ACCOUNTANT,
-    SafariRole.SUPERVISOR,
-    SafariRole.VIEWER,
-  )
+  @Permissions(AppPermission.VIEW_CASH)
   @ApiOperation({
     summary: `Driver cash on hand (${APP_BRAND})`,
     description:
@@ -289,16 +293,21 @@ export class FinanceController {
 
   @Post('handover/confirm')
   @Roles(SafariRole.MANAGER)
+  @CashWriteEndpoint(SafariRole.MANAGER)
   @ApiOperation({
     summary: `Confirm cash handover (${APP_BRAND})`,
     description:
-      'Atomic settlement: all PAID_TO_DRIVER orders for the driver → HANDED_OVER_TO_OFFICE; OPEN shift → CLOSED with ledger totals. Optional declaredHandoverTotal must match ledger within 0.0001 KWD.',
+      'Atomic settlement: all PAID_TO_DRIVER orders for the driver → HANDED_OVER_TO_OFFICE; OPEN shift → CLOSED with ledger totals. Optional declaredHandoverTotal must match ledger within 0.0001 KWD. CashWritePoliceGuard rejects any request body containing forbidden cash-override fields (cashAmount, heldCashKd, totalCash, etc.) -- the ledger is the only producer.',
   })
   confirmHandover(
     @Body() dto: ConfirmHandoverDto,
     @CurrentUser() user: JwtUser,
   ): Promise<HandoverResultDto> {
-    return this.financeService.confirmHandover(user.userId, dto);
+    return this.financeService.confirmHandover(
+      user.userId,
+      user.role as SafariRole,
+      dto,
+    );
   }
 
   @Get('reports/financial-cycle')
@@ -313,11 +322,7 @@ export class FinanceController {
   }
 
   @Get('reports/driver-cash-trace')
-  @Roles(
-    SafariRole.OWNER,
-    SafariRole.GENERAL_MANAGER,
-    SafariRole.ACCOUNTANT,
-  )
+  @Permissions(AppPermission.VIEW_CASH)
   @ApiOperation({
     summary: `Driver cash trace report (${APP_BRAND})`,
     description:
@@ -329,14 +334,21 @@ export class FinanceController {
     return this.financeService.getDriverCashTrace(query);
   }
 
+  @Get('reports/cash-reconciliation')
+  @Permissions(AppPermission.VIEW_CASH)
+  @ApiOperation({
+    summary: `Cash reconciliation snapshot (${APP_BRAND})`,
+    description:
+      'V19.31 — event-based totals in the selected window vs open balances now (drivers, managers by status).',
+  })
+  getCashReconciliation(
+    @Query() query: CashReconciliationQueryDto,
+  ): Promise<CashReconciliationSnapshotDto> {
+    return this.financeService.getCashReconciliationSnapshot(query);
+  }
+
   @Get('reports/unpaid-invoices')
-  @Roles(
-    SafariRole.OWNER,
-    SafariRole.GENERAL_MANAGER,
-    SafariRole.ACCOUNTANT,
-    SafariRole.CALL_CENTER,
-    SafariRole.CALL_CENTER_SUPERVISOR,
-  )
+  @Permissions(AppPermission.VIEW_DEBTS)
   @ApiOperation({
     summary: `Unpaid invoices list (${APP_BRAND})`,
     description:
@@ -348,15 +360,76 @@ export class FinanceController {
     return this.financeService.getUnpaidInvoices(query);
   }
 
-  @Get('dashboard/realtime-totals')
+  @Get('dashboard-summary')
+  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.ACCOUNTANT)
+  @Permissions(AppPermission.VIEW_FINANCIAL_REPORTS, AppPermission.VIEW_CASH)
+  @ApiOperation({
+    summary: `Accountant interactive dashboard (${APP_BRAND})`,
+    description:
+      'V19.32 — KPIs, cash pipeline, charts, drilldowns; cached ~45s when Redis is configured.',
+  })
+  getDashboardSummary(@Query() q: AccountantDashboardQueryDto) {
+    return this.accountantDashboard.getDashboardSummary(q);
+  }
+
+  @Get('reconciliation/explain')
+  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.ACCOUNTANT)
+  @Permissions(AppPermission.VIEW_CASH)
+  @ApiOperation({
+    summary: `Reconciliation explain — timing lag breakdown (${APP_BRAND})`,
+  })
+  getReconciliationExplain(@Query() q: AccountantDashboardQueryDto) {
+    return this.accountantDashboard.explainReconciliation(q);
+  }
+
+  @Get('reconciliation')
+  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.ACCOUNTANT)
+  @Permissions(AppPermission.VIEW_CASH)
+  @ApiOperation({
+    summary: `Cash reconciliation — collected vs handed (${APP_BRAND})`,
+    description: 'Difference = handed − collected in window; badge for timing gaps.',
+  })
+  getFinanceReconciliation(@Query() q: AccountantDashboardQueryDto) {
+    return this.accountantDashboard.getReconciliation(q);
+  }
+
+  @Get('alerts')
   @Roles(
     SafariRole.OWNER,
     SafariRole.GENERAL_MANAGER,
-    SafariRole.MANAGER,
     SafariRole.ACCOUNTANT,
-    SafariRole.SUPERVISOR,
-    SafariRole.VIEWER,
+    // V19.33 — Branch Manager dashboard alerts. Server clamps `branchId`
+    // below to the JWT branch so a MANAGER can never read alerts for
+    // another branch even by hand-crafting `?branchId=…`.
+    SafariRole.MANAGER,
   )
+  @Permissions(AppPermission.VIEW_CASH)
+  @ApiOperation({ summary: `Finance alerts (${APP_BRAND})` })
+  getFinanceAlerts(
+    @Query() q: AccountantDashboardQueryDto,
+    @CurrentUser() user: JwtUser,
+  ) {
+    if (user.role === SafariRole.MANAGER) {
+      if (!user.branchId) {
+        throw new ForbiddenException(
+          'Manager has no branchId on JWT — cannot scope branch alerts.',
+        );
+      }
+      q.branchId = user.branchId;
+    }
+    return this.accountantDashboard.getAlerts(q);
+  }
+
+  @Get('insights')
+  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.ACCOUNTANT)
+  @Permissions(AppPermission.VIEW_FINANCIAL_REPORTS, AppPermission.VIEW_CASH)
+  @ApiOperation({ summary: `Rule-based finance insights (${APP_BRAND})` })
+  getFinanceInsights(@Query() q: AccountantDashboardQueryDto) {
+    return this.accountantDashboard.getInsights(q);
+  }
+
+  @Get('dashboard/realtime-totals')
+  @Permissions(AppPermission.VIEW_CASH, AppPermission.VIEW_DEBTS)
   @ApiOperation({
     summary: `Realtime financial dashboard totals (${APP_BRAND})`,
     description:

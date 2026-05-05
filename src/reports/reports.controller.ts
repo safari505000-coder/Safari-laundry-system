@@ -2,8 +2,13 @@ import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { SafariRole } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { Permissions } from '../auth/permissions/permissions.decorator';
+import { AppPermission } from '../auth/permissions/permissions.enum';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { JwtUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { AuditService } from '../common/audit/audit.service';
 import { APP_BRAND } from '../common/constants/branding';
 import { DriverLedgerQueryDto } from './dto/driver-ledger-query.dto';
 import { LiveFeedQueryDto } from './dto/live-feed-query.dto';
@@ -15,7 +20,10 @@ import { ReportsService } from './reports.service';
 @Controller('reports')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ReportsController {
-  constructor(private readonly reportsService: ReportsService) {}
+  constructor(
+    private readonly reportsService: ReportsService,
+    private readonly audit: AuditService,
+  ) {}
 
   // A3.D9 — previously there was a `GET /reports/manager-summary`
   // placeholder that just echoed hard-coded zeros. It had no frontend
@@ -24,14 +32,7 @@ export class ReportsController {
   // live at `issued-invoices`, `driver-ledger`, and `daily-cash-closing`.
 
   @Get('issued-invoices')
-  @Roles(
-    SafariRole.OWNER,
-    SafariRole.GENERAL_MANAGER,
-    SafariRole.MANAGER,
-    SafariRole.ACCOUNTANT,
-    SafariRole.SUPERVISOR,
-    SafariRole.VIEWER,
-  )
+  @Permissions(AppPermission.VIEW_INVOICES, AppPermission.VIEW_REPORTS)
   @ApiOperation({
     summary: `Issued invoices — orders created in period (${APP_BRAND})`,
     description:
@@ -59,14 +60,7 @@ export class ReportsController {
   }
 
   @Get('driver-ledger')
-  @Roles(
-    SafariRole.OWNER,
-    SafariRole.GENERAL_MANAGER,
-    SafariRole.MANAGER,
-    SafariRole.ACCOUNTANT,
-    SafariRole.SUPERVISOR,
-    SafariRole.VIEWER,
-  )
+  @Permissions(AppPermission.VIEW_CASH, AppPermission.VIEW_REPORTS)
   @ApiOperation({
     summary: `Driver cash vs office — held COD and period activity (${APP_BRAND})`,
   })
@@ -80,13 +74,7 @@ export class ReportsController {
   }
 
   @Get('daily-cash-closing')
-  @Roles(
-    SafariRole.OWNER,
-    SafariRole.GENERAL_MANAGER,
-    SafariRole.MANAGER,
-    SafariRole.ACCOUNTANT,
-    SafariRole.SUPERVISOR,
-  )
+  @Permissions(AppPermission.VIEW_CASH, AppPermission.VIEW_REPORTS)
   @ApiOperation({
     summary: `Daily cash closing — gross CASH sales minus expenses (${APP_BRAND})`,
   })
@@ -127,17 +115,21 @@ export class ReportsController {
   }
 
   @Get('money-flow-statement')
-  @Roles(
-    SafariRole.OWNER,
-    SafariRole.GENERAL_MANAGER,
-    SafariRole.ACCOUNTANT,
-  )
+  @Permissions(AppPermission.VIEW_FINANCIAL_REPORTS)
   @ApiOperation({
     summary: `Money flow statement — income, deductions, expenses, ledger rollups (${APP_BRAND})`,
     description:
       'V19.24 — Consolidated executive lines (same as /reports/executive-summary), approved branch/vehicle expenses, accrued fixed costs by category, collections split, prior-period invoice debt payments, plus GL / wallet / debt ledger rollups for the window.',
   })
-  moneyFlowStatement(@Query() q: ReportsRangeQueryDto) {
+  moneyFlowStatement(
+    @Query() q: ReportsRangeQueryDto,
+    @CurrentUser() user: JwtUser,
+  ) {
+    this.audit.logAudit('FINANCIAL_REPORT_ACCESS', user, {
+      report: 'money-flow-statement',
+      from: q.from,
+      to: q.to,
+    });
     return this.reportsService.moneyFlowStatement(q.from, q.to);
   }
 
@@ -153,14 +145,7 @@ export class ReportsController {
   }
 
   @Get('unified-ledger-stream')
-  @Roles(
-    SafariRole.OWNER,
-    SafariRole.GENERAL_MANAGER,
-    SafariRole.MANAGER,
-    SafariRole.ACCOUNTANT,
-    SafariRole.SUPERVISOR,
-    SafariRole.VIEWER,
-  )
+  @Permissions(AppPermission.VIEW_FINANCIAL_REPORTS)
   @ApiOperation({
     summary: `Unified ledger stream (${APP_BRAND})`,
     description:

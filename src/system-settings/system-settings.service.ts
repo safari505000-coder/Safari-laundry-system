@@ -28,8 +28,14 @@ export class SystemSettingsService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  private assertOwnerOrGM(role: SafariRole): void {
+  private assertCanViewSettings(role: SafariRole): void {
     if (role !== SafariRole.OWNER && role !== SafariRole.GENERAL_MANAGER) {
+      throw new ForbiddenException();
+    }
+  }
+
+  private assertOwnerWrites(role: SafariRole): void {
+    if (role !== SafariRole.OWNER) {
       throw new ForbiddenException();
     }
   }
@@ -41,7 +47,7 @@ export class SystemSettingsService {
    * row for every known subsystem even on a fresh install.
    */
   async listToggles(actorRole: SafariRole) {
-    this.assertOwnerOrGM(actorRole);
+    this.assertCanViewSettings(actorRole);
     const rows = await this.prisma.systemToggle.findMany();
     const byKey = new Map(rows.map((r) => [r.key, r]));
     return Object.values(SystemToggleKey).map((key) => {
@@ -61,7 +67,7 @@ export class SystemSettingsService {
     key: SystemToggleKey,
     isEnabled: boolean,
   ) {
-    this.assertOwnerOrGM(actorRole);
+    this.assertOwnerWrites(actorRole);
     return this.prisma.systemToggle.upsert({
       where: { key },
       create: { key, isEnabled, updatedBy: actorUserId },
@@ -99,7 +105,7 @@ export class SystemSettingsService {
     actorRole: SafariRole,
     dto: UpdateDebtHoldPolicyDto,
   ) {
-    this.assertOwnerOrGM(actorRole);
+    this.assertOwnerWrites(actorRole);
     if (dto.holdMode === DebtHoldMode.FIXED && dto.fixedAmount == null) {
       throw new BadRequestException(
         'fixedAmount is required when holdMode = FIXED',
@@ -154,7 +160,7 @@ export class SystemSettingsService {
       linkWithAttendance: boolean;
     },
   ) {
-    this.assertOwnerOrGM(actorRole);
+    this.assertOwnerWrites(actorRole);
     // Clamp to [1,28] to avoid month-end drift (Feb has 28 days).
     if (
       !Number.isInteger(dto.payDayOfMonth) ||

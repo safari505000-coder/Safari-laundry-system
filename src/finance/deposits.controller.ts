@@ -134,7 +134,7 @@ export class DepositsController {
   }
 
   @Patch(':id/status')
-  @Roles(SafariRole.ACCOUNTANT, SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
+  @Roles(SafariRole.ACCOUNTANT, SafariRole.OWNER)
   @ApiOperation({
     summary: `Accountant/Owner audits deposit (${APP_BRAND})`,
     description:
@@ -145,7 +145,12 @@ export class DepositsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateDepositStatusDto,
   ) {
-    return this.depositsService.updateStatus(user.userId, id, dto);
+    return this.depositsService.updateStatus(
+      user.userId,
+      user.role as SafariRole,
+      id,
+      dto,
+    );
   }
 }
 

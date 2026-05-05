@@ -8,6 +8,7 @@ import {
   NotFoundException,
   forwardRef,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { JwtService } from '@nestjs/jwt';
 import {
   CashStatus,
@@ -20,7 +21,13 @@ import {
   SafariRole,
   ServiceType,
 } from '@prisma/client';
+import {
+  ORDER_CREATED_EVENT,
+  type OrderCreatedEventPayload,
+} from '../dispatch/dispatch.events';
 import type { CreatePaymentLinkResult } from '../common/services/payments.service';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { CustomerBlockingService } from '../common/services/customer-blocking.service';
 import { PaymentsService } from '../common/services/payments.service';
 import { CustomerNotificationsService } from '../customer-notifications/customer-notifications.service';
 import { CustomerLedgerService } from '../customer-ledger/customer-ledger.service';
@@ -94,6 +101,9 @@ const orderDetailSelect = {
   notes: true,
   reminderCount: true,
   lastReminderAt: true,
+  // V19.x — Call-center dispatch back-pointer. Surfaced so the
+  // ORDER_CREATED_EVENT emit knows which dispatch (if any) to close.
+  dispatchId: true,
   createdAt: true,
   updatedAt: true,
   customer: {
@@ -181,7 +191,60 @@ export class OrdersService {
     private readonly serialCounter: SerialCounterService,
     private readonly inventory: InventoryService,
     private readonly jwt: JwtService,
+    private readonly customerBlocking: CustomerBlockingService,
+    private readonly auditLogs: AuditLogsService,
+    private readonly events: EventEmitter2,
   ) {}
+
+  /**
+   * V19.x — Fire-and-forget broadcast that an Order row was committed.
+   * Listened to by `DispatchService.handleOrderCreated` to auto-close
+   * any matching dispatch (Part 4 of the call-center brief). Always
+   * emits, even when the order has no dispatchId — the listener
+   * filters internally so this stays a single-line hook.
+   */
+  private emitOrderCreated(
+    order: Pick<OrderDetail, 'id' | 'dispatchId' | 'createdAt'>,
+    actorUserId: string | null,
+  ): void {
+    this.events.emit(ORDER_CREATED_EVENT, {
+      orderId: order.id,
+      dispatchId: order.dispatchId ?? null,
+      actorUserId,
+      occurredAtIso: order.createdAt.toISOString(),
+    } satisfies OrderCreatedEventPayload);
+  }
+
+  private auditOrderCreated(order: OrderDetail, actorUserId: string | null): void {
+    this.auditLogs.logFinancialEvent({
+      action: 'ORDER_CREATED',
+      customerId: order.customer.id,
+      orderId: order.id,
+      amount: order.totalPrice.toString(),
+      source: order.posPaymentMethod ?? 'UNKNOWN',
+      userId: actorUserId,
+      changes: {
+        status: order.status,
+        cashStatus: order.cashStatus,
+        posPaymentMethod: order.posPaymentMethod,
+      },
+    });
+  }
+
+  private auditOrderPayment(order: OrderDetail, actorUserId: string | null): void {
+    this.auditLogs.logFinancialEvent({
+      action: 'PAYMENT_MADE',
+      customerId: order.customer.id,
+      orderId: order.id,
+      amount: order.totalPrice.toString(),
+      source: order.posPaymentMethod ?? 'UNKNOWN',
+      userId: actorUserId,
+      changes: {
+        cashStatus: order.cashStatus,
+        posPaymentMethod: order.posPaymentMethod,
+      },
+    });
+  }
 
   /**
    * V19.25 — Mint public share + optional PDF for Moatmt. V19.27.1 — If
@@ -343,6 +406,42 @@ export class OrdersService {
   }
 
   /**
+   * V19.x — Defense-in-depth guard for the Call-Center / Dispatch
+   * module (Part 5 of the reliability brief).
+   *
+   * Today, CALL_CENTER is already blocked from EVERY order-create
+   * path via `assertPosCheckoutActor` and the role guards on
+   * controllers — this helper is intentionally additive.
+   *
+   * If a future iteration grants CALL_CENTER any order-create
+   * permission, this guard kicks in IMMEDIATELY and requires
+   * `dispatchId` on the request. Without it, an order created from
+   * a CALL_CENTER session would have no parent dispatch, breaking
+   * the "Order = the only completer of a dispatch" contract.
+   *
+   * Returns silently for any other actor role so the existing
+   * driver / manager hot paths take ZERO extra DB latency on the
+   * happy branch (one indexed lookup; SafariRole returns from cache
+   * on warm queries).
+   */
+  private async assertCallCenterDispatchRequirement(
+    actorUserId: string,
+    dispatchId: string | null | undefined,
+  ): Promise<void> {
+    const u = await this.prisma.user.findUnique({
+      where: { id: actorUserId },
+      select: { safariRole: true },
+    });
+    if (u?.safariRole === SafariRole.CALL_CENTER && !dispatchId) {
+      throw new BadRequestException({
+        code: 'CALL_CENTER_DISPATCH_REQUIRED',
+        message:
+          'CALL_CENTER actors must supply dispatchId on order creation.',
+      });
+    }
+  }
+
+  /**
    * Wallet covers full total → SUBSCRIPTION_WALLET. Otherwise require external
    * settlement (CASH / KNET / PAYMENT_LINK / DEBT_ON_ACCOUNT).
    */
@@ -499,6 +598,11 @@ export class OrdersService {
     dto: CreateOrderQuickDto,
   ): Promise<OrderDetail> {
     await this.assertDriverUser(driverUserId);
+    // CreateOrderQuickDto does not (yet) carry `dispatchId`. The
+    // guard therefore falls through for DRIVER actors but blocks any
+    // future CALL_CENTER actor that reaches this code path until the
+    // DTO is extended with `dispatchId` and a value is supplied.
+    await this.assertCallCenterDispatchRequirement(driverUserId, null);
     await assertUserNotOnAdministrativeBranchForSales(
       this.prisma,
       driverUserId,
@@ -507,7 +611,7 @@ export class OrdersService {
     const lineCreates = this.reconcileLineItems(dto.totalPrice, dto.lineItems);
     const phoneCompact = dto.customerPhone.replace(/[\s-]/g, '').trim();
 
-    return this.prisma.$transaction(async (tx) => {
+    const order = await this.prisma.$transaction(async (tx) => {
       const customerId = await this.resolveQuickOrderCustomerId(
         tx,
         dto,
@@ -546,6 +650,9 @@ export class OrdersService {
         select: orderDetailSelect,
       });
     });
+    this.auditOrderCreated(order, driverUserId);
+    await this.customerBlocking.autoBlockIfNeeded(order.customer.id);
+    return order;
   }
 
   /**
@@ -563,6 +670,10 @@ export class OrdersService {
         );
       }
       await this.assertPosCheckoutActor(driverUserId);
+      await this.assertCallCenterDispatchRequirement(
+        driverUserId,
+        dto.dispatchId,
+      );
       await assertUserNotOnAdministrativeBranchForSales(
         this.prisma,
         driverUserId,
@@ -638,6 +749,10 @@ export class OrdersService {
                 invoiceNumber: dto.invoiceNumber?.trim() || null,
                 serialNumber,
                 notes: dto.notes?.trim() || null,
+                // V19.x — Optional call-center dispatch fulfillment
+                // pointer; the post-commit emit closes the matching
+                // dispatch via DispatchService.handleOrderCreated.
+                dispatchId: dto.dispatchId ?? null,
                 ...(lineCreates?.length
                   ? { lineItems: { create: lineCreates } }
                   : {}),
@@ -676,6 +791,8 @@ export class OrdersService {
               invoiceNumber: dto.invoiceNumber?.trim() || null,
               serialNumber,
               notes: dto.notes?.trim() || null,
+              // V19.x — see sibling block above (ONLINE branch).
+              dispatchId: dto.dispatchId ?? null,
               ...(lineCreates?.length
                 ? { lineItems: { create: lineCreates } }
                 : {}),
@@ -771,11 +888,14 @@ export class OrdersService {
           },
         });
         const merged: PosCheckoutOrderDetail = { ...detail, paymentLink };
+        this.auditOrderCreated(merged, driverUserId);
+        this.emitOrderCreated(merged, driverUserId);
         await this.posInvoiceNotifyToCustomer(merged, phoneCompact);
         await this.prisma.order.update({
           where: { id: detail.id },
           data: { ccCollectionPaymentWaLocked: true },
         });
+        await this.customerBlocking.autoBlockIfNeeded(merged.customer.id);
         return merged;
       }
 
@@ -787,6 +907,10 @@ export class OrdersService {
         detail.id,
         'new_pos_order',
       );
+      this.auditOrderCreated(detail, driverUserId);
+      this.emitOrderCreated(detail, driverUserId);
+      this.auditOrderPayment(detail, driverUserId);
+      await this.customerBlocking.autoBlockIfNeeded(detail.customer.id);
       return detail;
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
@@ -986,6 +1110,8 @@ export class OrdersService {
       data: { ccCollectionPaymentWaLocked: true },
     });
 
+    orders.forEach((order) => this.auditOrderCreated(order, driverUserId));
+    await this.customerBlocking.autoBlockIfNeeded(orders[0]!.customer.id);
     return { bundleId, orders, paymentLink };
   }
 
@@ -994,6 +1120,11 @@ export class OrdersService {
     dto: CreateOrderDto,
     managerUserId: string,
   ): Promise<OrderDetail> {
+    // CreateOrderDto has no `dispatchId` field — manager-led intake
+    // is intentionally outside the dispatch flow. A CALL_CENTER
+    // actor reaching this path is therefore always rejected by the
+    // guard below.
+    await this.assertCallCenterDispatchRequirement(managerUserId, null);
     await assertUserNotOnAdministrativeBranchForSales(
       this.prisma,
       managerUserId,
@@ -1007,7 +1138,7 @@ export class OrdersService {
     }
     const serviceType = dto.serviceType ?? ServiceType.NORMAL;
     const lineCreates = this.reconcileLineItems(dto.totalPrice, dto.lineItems);
-    return this.prisma.$transaction(async (tx) => {
+    const order = await this.prisma.$transaction(async (tx) => {
       const phoneCompact = dto.customerPhone.replace(/[\s-]/g, '').trim();
       const existingByPhone = await this.findCustomerByAnyPhone(tx, phoneCompact);
       const customer =
@@ -1035,6 +1166,7 @@ export class OrdersService {
           serviceType,
           totalPrice: dto.totalPrice,
           status: OrderStatus.PENDING,
+          posPaymentMethod: PosPaymentMethod.CASH,
           invoiceNumber: dto.invoiceNumber?.trim() || null,
           serialNumber,
           notes: dto.notes?.trim() || null,
@@ -1045,6 +1177,9 @@ export class OrdersService {
         select: orderDetailSelect,
       });
     });
+    this.auditOrderCreated(order, dto.driverId ?? null);
+    await this.customerBlocking.autoBlockIfNeeded(order.customer.id);
+    return order;
   }
 
   /**
@@ -1473,28 +1608,33 @@ export class OrdersService {
   }
 
   /**
-   * **Single source** for subscriber totals, Call Center conversion / partial-pay
-   * copy, and `activateSubscriptionPlan`:
+   * Operational debt basis for subscriber totals, Call Center conversion /
+   * partial-pay copy, and `activateSubscriptionPlan`.
    *
-   * - **`effectiveDebtKd`**: **أعلى** القيم الثلاث حتى لا يظهر رقم أقل من أي
+   * This is NOT the canonical financial number for Customer 360. Canonical
+   * customer financial totals come only from `computeCustomerFinancials()`.
+   *
+   * - **`operationalDebtKd`**: **أعلى** القيم الثلاث حتى لا يظهر رقم أقل من أي
    *   مرجع يعتمد عليه الموظف:
    *   1) صافي أستاذ الديون (`DebtLedgerEntry`، نفس شلال «ذمم دفتر الالتزام»)،
    *   2) `getCustomerDebtSnapshot.totalDebt` (دين المحفظة + زيادة استعمال الاشتراك)،
    *   3) مجموع نطاق التحصيل التقليدي: `wallet.debt + Σ` فواتير التحصيل
    *      ({@link getCollectionsReceivableSnapshotForCustomer}) — يطابق الصفوف في
    *      «تقرير تتبع الديون» عندما تُجمع ذمم الفواتير مع عمود المحفظة.
-   * - **`collectionsReceivableKd`**: `max(effectiveDebtKd − walletDebtKd, 0)`.
+   * - **`collectionsReceivableKd`**: `max(operationalDebtKd − walletDebtKd, 0)`.
    *
    * Pass `embeddedWalletDebt` when `customer.wallet` is already loaded so the
    * wallet row cannot diverge from the serialized `debt` column.
    */
-  async getEffectiveDebtKdBreakdown(
+  async getOperationalDebtKdBreakdown(
     customerId: string,
     embeddedWalletDebt?: Prisma.Decimal | null,
     tx?: Prisma.TransactionClient,
   ): Promise<{
     walletDebtKd: Prisma.Decimal;
     collectionsReceivableKd: Prisma.Decimal;
+    operationalDebtKd: Prisma.Decimal;
+    /** @deprecated Use operationalDebtKd. Kept for API compatibility. */
     effectiveDebtKd: Prisma.Decimal;
     collectionsOpenOrderIds: Set<string>;
     /** Present when env `EXPOSE_DEBT_BREAKDOWN=1`: three inputs + winners. */
@@ -1526,14 +1666,14 @@ export class OrdersService {
     const ledgerNetKd = ledgerOpen.netOpenDebtKd;
     /** نفس «قديم effective»: دين المحفظة + ذمم التحصيل الظاهرة في القائمة. */
     const orderMarketScopeKd = walletDebtKd.plus(collectionsSnap.totalKd);
-    const effectiveDebtKd = Prisma.Decimal.max(
+    const operationalDebtKd = Prisma.Decimal.max(
       ledgerNetKd,
       snapshotFromWalletKd,
       orderMarketScopeKd,
     );
 
     const collectionsReceivableKd = Prisma.Decimal.max(
-      effectiveDebtKd.sub(walletDebtKd),
+      operationalDebtKd.sub(walletDebtKd),
       z,
     );
 
@@ -1559,20 +1699,30 @@ export class OrdersService {
         ledgerNetKd,
         snapshotFromWalletKd,
         orderMarketScopeKd,
-        effectiveDebtKd,
+        operationalDebtKd,
       );
       this.log.warn(
-        `[debtKdBreakdown] customerId=${customerId} ledger=${trace.ledgerNetKd} walletSnap=${trace.walletSnapshotKd} orderMarket=${trace.orderMarketScopeKd} effective=${trace.effectiveDebtKd} winners=[${trace.winningSources.join(',')}]`,
+        `[debtKdBreakdown] customerId=${customerId} ledger=${trace.ledgerNetKd} walletSnap=${trace.walletSnapshotKd} orderMarket=${trace.orderMarketScopeKd} operational=${trace.operationalDebtKd} winners=[${trace.winningSources.join(',')}]`,
       );
     }
 
     return {
       walletDebtKd,
       collectionsReceivableKd,
-      effectiveDebtKd,
+      operationalDebtKd,
+      effectiveDebtKd: operationalDebtKd,
       collectionsOpenOrderIds,
       trace,
     };
+  }
+
+  /** @deprecated Use getOperationalDebtKdBreakdown. */
+  async getEffectiveDebtKdBreakdown(
+    customerId: string,
+    embeddedWalletDebt?: Prisma.Decimal | null,
+    tx?: Prisma.TransactionClient,
+  ) {
+    return this.getOperationalDebtKdBreakdown(customerId, embeddedWalletDebt, tx);
   }
 
   /** Every order id for this customer that is still counted as Collections debt. */
@@ -1881,7 +2031,13 @@ export class OrdersService {
     role: string,
     branchId: string | null,
   ): Promise<
-    { id: string; fullName: string; username: string; branchName: string | null }[]
+    {
+      id: string;
+      fullName: string;
+      username: string;
+      branchId: string | null;
+      branchName: string | null;
+    }[]
   > {
     const where: Prisma.UserWhereInput = {
       role: { name: SafariRole.DRIVER },
@@ -1897,6 +2053,7 @@ export class OrdersService {
         id: true,
         fullName: true,
         username: true,
+        branchId: true,
         branch: { select: { name: true } },
       },
       orderBy: { fullName: 'asc' },
@@ -1905,6 +2062,7 @@ export class OrdersService {
       id: r.id,
       fullName: r.fullName,
       username: r.username,
+      branchId: r.branchId,
       branchName: r.branch?.name ?? null,
     }));
   }

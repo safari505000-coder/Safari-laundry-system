@@ -1822,7 +1822,7 @@ export class CallCenterService {
     }
 
     const collectionsDebtBasis =
-      await this.orders.getEffectiveDebtKdBreakdown(
+      await this.orders.getOperationalDebtKdBreakdown(
         customerId,
         customer.wallet?.debt,
       );
@@ -1997,7 +1997,8 @@ export class CallCenterService {
         collectionsReceivableKd: FOUR_DP(
           collectionsDebtBasis.collectionsReceivableKd,
         ),
-        effectiveDebtKd: FOUR_DP(collectionsDebtBasis.effectiveDebtKd),
+        operationalDebtKd: FOUR_DP(collectionsDebtBasis.operationalDebtKd),
+        effectiveDebtKd: FOUR_DP(collectionsDebtBasis.operationalDebtKd),
       },
       activeSubscription:
         latestSub && latestSub.status === CustomerSubscriptionStatus.ACTIVE
@@ -2435,7 +2436,7 @@ export class CallCenterService {
    *
    * The arithmetic here MUST stay byte-identical to the atomic
    * `CustomerLedgerService.activateSubscriptionPlan` flow AND to
-   * `OrdersService.getEffectiveDebtKdBreakdown` / the subscribers list totals;
+   * `OrdersService.getOperationalDebtKdBreakdown` / the subscribers list totals;
    * otherwise the preview and the committed result will disagree and the agent
    * will lose trust. That's why we re-derive from the same inputs:
    *   effectiveDebt = wallet.debt + Σ(UNPAID, unsettled order totals)
@@ -2477,13 +2478,13 @@ export class CallCenterService {
     const currentBalance =
       customer.wallet?.balance ?? new Prisma.Decimal(0);
 
-    const debtBreakdown = await this.orders.getEffectiveDebtKdBreakdown(
+    const debtBreakdown = await this.orders.getOperationalDebtKdBreakdown(
       customerId,
       customer.wallet?.debt,
     );
     const walletDebt = debtBreakdown.walletDebtKd;
     const implicitDebt = debtBreakdown.collectionsReceivableKd;
-    const effectiveCurrentDebt = debtBreakdown.effectiveDebtKd;
+    const operationalCurrentDebt = debtBreakdown.operationalDebtKd;
     const zero = new Prisma.Decimal(0);
 
     const options: DebtConversionPlanOptionDto[] = plans.map((p) => {
@@ -2491,8 +2492,8 @@ export class CallCenterService {
       // (`actualBalance`), not the sale price, is what offsets
       // existing debt. V19.12.1 — debt basis includes unposted UNPAID
       // invoices (payment-link pending). All arithmetic on Prisma.Decimal.
-      const debtToSettle = effectiveCurrentDebt.lt(p.actualBalance)
-        ? effectiveCurrentDebt
+      const debtToSettle = operationalCurrentDebt.lt(p.actualBalance)
+        ? operationalCurrentDebt
         : p.actualBalance;
       const ledgerPaid = walletDebt.lt(debtToSettle) ? walletDebt : debtToSettle;
       const implicitPaid = debtToSettle.minus(ledgerPaid);
@@ -2517,10 +2518,10 @@ export class CallCenterService {
 
       const convertsDebt = debtToSettle.gt(0);
       const clearsAllDebt =
-        effectiveCurrentDebt.gt(0) && displayedRemainingDebt.lte(0);
+        operationalCurrentDebt.gt(0) && displayedRemainingDebt.lte(0);
       const recommended =
-        effectiveCurrentDebt.gt(0) &&
-        p.actualBalance.gte(effectiveCurrentDebt);
+        operationalCurrentDebt.gt(0) &&
+        p.actualBalance.gte(operationalCurrentDebt);
 
       const cashRequired =
         pm === PosPaymentMethod.DEBT_ON_ACCOUNT ? zero : p.salePrice;
@@ -2547,9 +2548,9 @@ export class CallCenterService {
 
     return {
       customerId: customer.id,
-      currentDebtKd: FOUR_DP(effectiveCurrentDebt),
+      currentDebtKd: FOUR_DP(operationalCurrentDebt),
       currentBalanceKd: FOUR_DP(currentBalance),
-      hasDebt: effectiveCurrentDebt.gt(0),
+      hasDebt: operationalCurrentDebt.gt(0),
       ...(debtBreakdown.trace ?
         { debtKdBreakdownTrace: debtBreakdown.trace }
       : {}),

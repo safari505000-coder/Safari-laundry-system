@@ -299,11 +299,8 @@ export class DebtHoldsService {
       payrollId?: string;
     },
   ) {
-    if (
-      actorRole !== SafariRole.OWNER &&
-      actorRole !== SafariRole.GENERAL_MANAGER
-    ) {
-      throw new ForbiddenException('Only OWNER/GM may create manual holds');
+    if (actorRole !== SafariRole.OWNER) {
+      throw new ForbiddenException('Only OWNER may create manual holds');
     }
     if (dto.holdAmount <= 0) {
       throw new ForbiddenException('holdAmount must be > 0');
@@ -376,11 +373,8 @@ export class DebtHoldsService {
    * transfer, …). Admin-gated. Idempotent on already-released rows.
    */
   async releaseManualHold(actorRole: SafariRole, id: string) {
-    if (
-      actorRole !== SafariRole.OWNER &&
-      actorRole !== SafariRole.GENERAL_MANAGER
-    ) {
-      throw new ForbiddenException('Only OWNER/GM may release holds');
+    if (actorRole !== SafariRole.OWNER) {
+      throw new ForbiddenException('Only OWNER may release holds');
     }
     const row = await this.prisma.debtHold.findUnique({ where: { id } });
     if (!row) {
@@ -412,11 +406,8 @@ export class DebtHoldsService {
    * again is a no-op. Owner / GM only.
    */
   async markDisbursed(actorRole: SafariRole, actorUserId: string, id: string) {
-    if (
-      actorRole !== SafariRole.OWNER &&
-      actorRole !== SafariRole.GENERAL_MANAGER
-    ) {
-      throw new ForbiddenException('Only OWNER/GM may disburse holds');
+    if (actorRole !== SafariRole.OWNER) {
+      throw new ForbiddenException('Only OWNER may disburse holds');
     }
     const row = await this.prisma.debtHold.findUnique({ where: { id } });
     if (!row) {

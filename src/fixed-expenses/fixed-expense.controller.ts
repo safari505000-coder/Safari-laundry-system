@@ -18,7 +18,7 @@ export class FixedExpenseController {
   constructor(private readonly fixedExpenseService: FixedExpenseService) {}
 
   @Post()
-  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.MANAGER)
+  @Roles(SafariRole.OWNER, SafariRole.MANAGER)
   @ApiOperation({
     summary: `Create recurring fixed expense schedule (${APP_BRAND})`,
   })

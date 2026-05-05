@@ -70,7 +70,9 @@ export class CustomerLedgerHeaderDto {
   @ApiProperty({ example: '0.0000' }) walletDebtKd!: string;
   /** Σ uncollection per `/collections` (UNPAID ∪ open DEBT_ON_ACCOUNT FIFO). */
   @ApiProperty({ example: '0.0000' }) collectionsReceivableKd!: string;
-  /** walletDebtKd + collectionsReceivableKd — same basis as subscribers / debt conversion. */
+  /** Operational debt basis. This is NOT the canonical Customer 360 financial number. */
+  @ApiProperty({ example: '0.0000' }) operationalDebtKd!: string;
+  /** @deprecated Use operationalDebtKd. Kept for client compatibility. */
   @ApiProperty({ example: '0.0000' }) effectiveDebtKd!: string;
 }
 

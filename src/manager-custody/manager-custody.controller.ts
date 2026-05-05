@@ -139,10 +139,18 @@ export class ManagerCustodyController {
   }
 
   @Get('mine')
-  @Roles(SafariRole.MANAGER)
-  @ApiOperation({ summary: `Manager — my custody bags (${APP_BRAND})` })
+  @Roles(
+    SafariRole.MANAGER,
+    SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
+    SafariRole.ACCOUNTANT,
+  )
+  @ApiOperation({ summary: `Manager custody bags — branch "mine" or fleet read-only (${APP_BRAND})` })
   listMine(@CurrentUser() user: JwtUser) {
-    return this.svc.listMine(user.userId);
+    return this.svc.listMineForActor(
+      user.userId,
+      user.role as SafariRole,
+    );
   }
 
   // -------------------------------------------------- DRIVER self-service ops

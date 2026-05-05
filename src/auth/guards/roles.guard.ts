@@ -9,8 +9,10 @@ import { SafariRole } from '@prisma/client';
 import { FINANCE_DAILY_POS_SALES_OWN } from '../capabilities';
 import {
   DRIVER_FINANCE_DAILY_POS_KEY,
+  IS_PUBLIC_KEY,
   ROLES_KEY,
 } from '../decorators/roles.decorator';
+import { PERMISSIONS_KEY } from '../permissions/permissions.decorator';
 import { PermissionsService } from '../../permissions/permissions.service';
 
 @Injectable()
@@ -21,12 +23,28 @@ export class RolesGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    const isPublic = this.reflector.getAllAndOverride<string>(IS_PUBLIC_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (isPublic) {
+      return true;
+    }
+    const requiredPermissions = this.reflector.getAllAndOverride<string[]>(
+      PERMISSIONS_KEY,
+      [context.getHandler(), context.getClass()],
+    );
+    if (requiredPermissions?.length) {
+      return true;
+    }
     const required = this.reflector.getAllAndOverride<SafariRole[]>(ROLES_KEY, [
       context.getHandler(),
       context.getClass(),
     ]);
     if (!required?.length) {
-      return true;
+      throw new ForbiddenException(
+        'RBAC policy missing: endpoint must declare @Roles or @Public.',
+      );
     }
     const req = context
       .switchToHttp()

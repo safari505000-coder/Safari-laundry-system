@@ -54,7 +54,6 @@ export class LoansController {
   @Post()
   @Roles(
     SafariRole.OWNER,
-    SafariRole.GENERAL_MANAGER,
     SafariRole.MANAGER,
     SafariRole.ACCOUNTANT,
     SafariRole.DRIVER,
@@ -111,11 +110,7 @@ export class LoansController {
   }
 
   @Patch(':id/approve')
-  @Roles(
-    SafariRole.OWNER,
-    SafariRole.GENERAL_MANAGER,
-    SafariRole.ACCOUNTANT,
-  )
+  @Roles(SafariRole.OWNER, SafariRole.ACCOUNTANT)
   @ApiOperation({ summary: `Approve loan (${APP_BRAND})` })
   approve(
     @Param('id', ParseUUIDPipe) id: string,
@@ -125,11 +120,7 @@ export class LoansController {
   }
 
   @Patch(':id/reject')
-  @Roles(
-    SafariRole.OWNER,
-    SafariRole.GENERAL_MANAGER,
-    SafariRole.ACCOUNTANT,
-  )
+  @Roles(SafariRole.OWNER, SafariRole.ACCOUNTANT)
   @ApiOperation({ summary: `Reject loan (${APP_BRAND})` })
   reject(
     @Param('id', ParseUUIDPipe) id: string,
@@ -145,20 +136,14 @@ export class LoansController {
   }
 
   /**
-   * V19.19 — OWNER / GM post a manual deduction against an ACTIVE loan.
-   * This replaces the automatic payroll-time deduction so salaries are
-   * always clean and loan repayments never get taken twice if the same
-   * month's payroll is re-run.
-   *
-   * Roles are DELIBERATELY narrower than /approve: accountants cannot
-   * mutate the `remaining` balance here; only the Owner or GM.
+   * V19.19 — OWNER posts a manual deduction against an ACTIVE loan.
    */
   @Post(':id/deduct')
-  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
+  @Roles(SafariRole.OWNER)
   @ApiOperation({
     summary: `Manually deduct an instalment from an ACTIVE loan (${APP_BRAND})`,
     description:
-      'OWNER + GENERAL_MANAGER only. Clamps to remaining and marks SETTLED when it reaches zero. Replaces the old payroll-embedded auto-deduction.',
+      'OWNER only. Clamps to remaining and marks SETTLED when it reaches zero.',
   })
   deduct(
     @Param('id', ParseUUIDPipe) id: string,

@@ -7,13 +7,18 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  AuditStatus,
+  BankDepositStatus,
+  BankDepositType,
   GeneralLedgerEntryType,
   ManagerCashCustody,
   ManagerCashCustodyStatus,
   Prisma,
   SafariRole,
 } from '@prisma/client';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { CashService } from '../finance/services/cash.service';
+import { LedgerProjectionService } from '../finance/ledger/ledger-projection.service';
 import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -78,6 +83,103 @@ export type AgingSummary = {
   bucket: Record<AgingBucket, number>;
 };
 
+/**
+ * Per-driver row inside the manager `cash-status` snapshot.
+ *
+ * Represents cash that is STILL ON THE DRIVER (not yet handed over to
+ * the manager) — the high-risk side of the custody pipeline. Risk
+ * level is graded purely from the driver's open shift age:
+ *   - <24h     → NORMAL
+ *   - ≥24h     → WARNING
+ *   - ≥48h     → CRITICAL
+ *
+ * The manager UI uses this to drive the red/yellow tones and the
+ * "خطر — driver hasn't handed cash in 48h" badges. No frontend
+ * arithmetic — risk classification is computed here once.
+ */
+export type DriverHandoverSummaryDto = {
+  driverId: string;
+  driverName: string;
+  driverUsername: string;
+  driverPhone: string | null;
+  heldCashKd: string;
+  pendingOrderCount: number;
+  shiftStartedAt: string | null;
+  ageHours: number | null;
+  riskLevel: 'NORMAL' | 'WARNING' | 'CRITICAL';
+};
+
+/**
+ * Recent activity row inside the manager `cash-status` snapshot.
+ *
+ * Sourced from the LedgerProjectionService entries that touch this
+ * manager's MANAGER_<id> account OR any DRIVER_<id> account in the
+ * manager's branch — i.e. exactly the same events the auditor sees,
+ * deduped by `txId` (every projected event has a paired DR/CR).
+ */
+export type ActivityEventDto = {
+  txId: string;
+  at: string;
+  amountKd: string;
+  kind: 'POS_SALE' | 'DRIVER_HANDOVER' | 'BANK_DEPOSIT' | 'OTHER';
+  actorAccountId: string;
+  meta: Record<string, unknown> | null;
+};
+
+export type ManagerCashStatusSnapshotDto = {
+  source: 'api/manager/cash-status';
+  managerId: string;
+  managerName: string;
+  /** Grand total under this manager's control = own POS cash + held bags. */
+  pendingDepositKd: string;
+  /** Manager's own POS cash (CASH POS sales rung up by them directly). */
+  managerOwnPosKd: string;
+  /** KD aggregate of bags currently in this manager's drawer. */
+  custodyBagsTotalKd: string;
+  /**
+   * KD aggregate of cash currently with branch drivers (not yet
+   * handed to the manager). The high-risk side of the pipeline.
+   */
+  driversAwaitingHandoverKd: string;
+  bagsCount: number;
+  driversAtRiskCount: number;
+  lastHandoverAt: string | null;
+  lastActivityAt: string | null;
+  /** Drivers in this branch with cash still on them. Risk-graded. */
+  drivers: DriverHandoverSummaryDto[];
+  /** Last 10 events (deduped by txId), most recent first. */
+  recentActivity: ActivityEventDto[];
+  generatedAt: string;
+};
+
+function riskRank(r: DriverHandoverSummaryDto['riskLevel']): number {
+  if (r === 'CRITICAL') return 2;
+  if (r === 'WARNING') return 1;
+  return 0;
+}
+
+function classifyActivity(e: {
+  meta: unknown;
+  accountId: string;
+}): ActivityEventDto['kind'] {
+  const meta = (e.meta ?? {}) as Record<string, unknown>;
+  const source = String(meta.source ?? '');
+  const entryType = String(meta.entryType ?? '');
+  const event = String(meta.event ?? '');
+  if (source === 'GeneralLedgerEntry' && entryType === 'POS_SALE_COMPLETED') {
+    return 'POS_SALE';
+  }
+  if (source === 'BankDepositLog') return 'BANK_DEPOSIT';
+  if (source === 'ManagerCashCustody') {
+    // VERIFIED handover row = the bank deposit closing the bag (CR
+    // MANAGER_<id> / DR BANK_ACCOUNT). HANDOVER is the driver→manager
+    // pickup itself.
+    if (event === 'VERIFIED') return 'BANK_DEPOSIT';
+    return 'DRIVER_HANDOVER';
+  }
+  return 'OTHER';
+}
+
 @Injectable()
 export class ManagerCustodyService {
   private readonly logger = new Logger(ManagerCustodyService.name);
@@ -85,6 +187,8 @@ export class ManagerCustodyService {
     private readonly prisma: PrismaService,
     private readonly generalLedger: GeneralLedgerService,
     private readonly cashService: CashService,
+    private readonly auditLogs: AuditLogsService,
+    private readonly ledgerProjection: LedgerProjectionService,
   ) {}
 
   /**
@@ -113,10 +217,14 @@ export class ManagerCustodyService {
     // financial-integrity risk. Now we delegate to the single canonical
     // pipeline and only augment the resulting bag with the optional
     // free-text note that is specific to this entry point.
-    const result = await this.cashService.confirmHandover(managerId, {
-      driverId: dto.driverId,
-      declaredHandoverTotal: dto.declaredHandoverTotal,
-    });
+    const result = await this.cashService.confirmHandover(
+      managerId,
+      SafariRole.MANAGER,
+      {
+        driverId: dto.driverId,
+        declaredHandoverTotal: dto.declaredHandoverTotal,
+      },
+    );
 
     if (result.settledOrderCount === 0) {
       // Preserve legacy contract for the manager mobile flow: the manager
@@ -284,8 +392,88 @@ export class ManagerCustodyService {
         },
       });
 
+      if (row.depositSlipUrl) {
+        const existingDeposit = await tx.bankDepositLog.findFirst({
+          where: {
+            OR: [
+              { managerCashCustodyId: row.id },
+              {
+                shiftId: row.shiftId,
+                receiptImageUrl: row.depositSlipUrl,
+                amountKd: row.amountKd,
+              },
+            ],
+          },
+        });
+        if (!existingDeposit) {
+          const deposit = await tx.bankDepositLog.create({
+            data: {
+              depositType: BankDepositType.CASH_DEPOSIT_SLIP,
+              status: BankDepositStatus.VERIFIED,
+              amountKd: row.amountKd,
+              receiptImageUrl: row.depositSlipUrl,
+              shiftId: row.shiftId,
+              managerCashCustodyId: row.id,
+              uploadedById: row.managerId,
+              verifiedByAccountantId: accountantId,
+              verifiedAt: row.verifiedAt,
+              createdAt: row.slipUploadedAt ?? row.receivedFromDriverAt,
+            },
+          });
+          await tx.auditLog.create({
+            data: {
+              userId: accountantId,
+              actorId: accountantId,
+              action: 'CASH_DEPOSIT_REGISTERED',
+              resource: 'bank_deposit_log',
+              amount: row.amountKd,
+              source: 'MANAGER_CASH_CUSTODY',
+              status: AuditStatus.SUCCESS,
+              changes: {
+                managerCashCustodyId: row.id,
+                bankDepositLogId: deposit.id,
+                shiftId: row.shiftId,
+                amountKd: row.amountKd.toString(),
+              },
+            },
+          });
+        } else if (!existingDeposit.managerCashCustodyId) {
+          await tx.bankDepositLog.update({
+            where: { id: existingDeposit.id },
+            data: {
+              managerCashCustodyId: row.id,
+              status:
+                existingDeposit.verifiedAt ?
+                  BankDepositStatus.VERIFIED
+                : existingDeposit.status,
+            },
+          });
+        }
+      }
+
       return row;
     });
+
+    // Cash leaves manager custody and is recognised as company asset.
+    // Emit at the verification boundary REGARDLESS of which branch ran
+    // inside the transaction (auto-create vs link-to-pre-upload), so the
+    // audit timeline always carries one row per VERIFIED bag.
+    this.auditLogs.logFinancialEvent({
+      action: 'CASH_DEPOSIT_VERIFIED',
+      userId: accountantId,
+      role: SafariRole.ACCOUNTANT,
+      amount: updated.amountKd.toString(),
+      source: 'MANAGER_CASH_CUSTODY',
+      changes: {
+        custodyId: updated.id,
+        managerId: updated.managerId,
+        driverId: updated.driverId,
+        branchId: updated.branchId,
+        shiftId: updated.shiftId,
+        settledOrderCount: updated.settledOrderCount,
+      },
+    });
+
     return this.toRow(updated);
   }
 
@@ -318,6 +506,28 @@ export class ManagerCustodyService {
         shift: { select: { id: true, endedAt: true, startedAt: true } },
       },
     });
+
+    // Symmetrical to CASH_HANDOVER_TRANSFER: a rejected verification is a
+    // material event in the cash chain — the bag is bounced back to
+    // PENDING_DEPOSIT and the manager must re-upload. Without this audit
+    // row, an external auditor could not reconstruct why a bag's status
+    // oscillated.
+    this.auditLogs.logFinancialEvent({
+      action: 'CASH_HANDOVER_REJECTED',
+      userId: accountantId,
+      role: SafariRole.ACCOUNTANT,
+      amount: updated.amountKd.toString(),
+      source: 'MANAGER_CASH_CUSTODY',
+      changes: {
+        custodyId: updated.id,
+        managerId: updated.managerId,
+        driverId: updated.driverId,
+        branchId: updated.branchId,
+        shiftId: updated.shiftId,
+        rejectionReason: updated.rejectionReason,
+      },
+    });
+
     return this.toRow(updated);
   }
 
@@ -337,6 +547,29 @@ export class ManagerCustodyService {
       },
     });
     return rows.map((r) => this.toRow(r));
+  }
+
+  /**
+   * V19.30 — Same HTTP entry as `listMine` for MANAGER; for OWNER / GM /
+   * ACCOUNTANT returns fleet-wide unsettled custody (aging rows) so the
+   * My Custody shell can render read-only without a second route.
+   */
+  async listMineForActor(
+    userId: string,
+    role: SafariRole,
+  ): Promise<CustodyRowDto[]> {
+    if (role === SafariRole.MANAGER) {
+      return this.listMine(userId);
+    }
+    if (
+      role === SafariRole.OWNER ||
+      role === SafariRole.GENERAL_MANAGER ||
+      role === SafariRole.ACCOUNTANT
+    ) {
+      const { rows } = await this.listAging({});
+      return rows;
+    }
+    throw new ForbiddenException('Not authorised for manager custody list.');
   }
 
   /**
@@ -504,6 +737,219 @@ export class ManagerCustodyService {
         count: v.count,
         amountKd: minorToAmountString(v.minor),
       })),
+    };
+  }
+
+  /**
+   * Operational snapshot for the BRANCH_MANAGER `cash-status` page.
+   *
+   * SSoT for the KD figure
+   * ----------------------
+   *   `pendingDepositKd` is the **derived `MANAGER_<id>` balance from
+   *   the LedgerProjectionService** — i.e. the canonical Σ(debit -
+   *   credit) over every event that touches this manager's hands:
+   *
+   *     +DR MANAGER_<id> from driver→manager custody handovers
+   *     +DR MANAGER_<id> from this manager's own CASH POS sales
+   *                     (the actor-role-aware projection rule lands
+   *                      manager-rung CASH sales here directly,
+   *                      instead of misclassifying them as
+   *                      DRIVER_<id> with no real driver)
+   *     -CR MANAGER_<id> from VERIFIED bank deposits
+   *
+   *   This is the ONE figure that includes BOTH bag-handover cash
+   *   AND a manager's own POS cash. Reading from `ManagerCashCustody`
+   *   alone (the previous implementation) silently under-reported the
+   *   second category and was the root cause of the
+   *   "3.250 KWD missing on cash-status" report.
+   *
+   * Operational counts
+   * ------------------
+   *   `bagsCount` and `lastHandoverAt` are status counters / timestamps,
+   *   not money figures, so they read directly from `ManagerCashCustody`.
+   *
+   * STRICT (Dastur §3 / brief PART 2):
+   *   - NO totals beyond what the manager physically holds.
+   *   - NO analytics / trends / averages.
+   *   - NO ledger account exposure to the manager — the projection is
+   *     called server-side and only the single KD figure leaks out.
+   *
+   * READ-ONLY. The projection covers the last 90d window which is the
+   * brief's max range — anything older is not actionable for the
+   * "deposit it today" surface anyway.
+   */
+  async getCashStatusSnapshot(
+    managerId: string,
+  ): Promise<ManagerCashStatusSnapshotDto> {
+    const to = new Date();
+    const from = new Date(to.getTime() - 90 * 24 * 60 * 60 * 1000);
+
+    // Single projection pass — every aggregate below is derived from
+    // these entries, so the figures cannot drift apart.
+    const [managerRow, bagsAgg, custodyAgg, entries, allDrivers] =
+      await Promise.all([
+        this.prisma.user.findUnique({
+          where: { id: managerId },
+          select: { id: true, fullName: true, branchId: true },
+        }),
+        // Operational counters (status counts + last-handover timestamp).
+        this.prisma.managerCashCustody.aggregate({
+          where: {
+            managerId,
+            status: {
+              in: [
+                ManagerCashCustodyStatus.PENDING_DEPOSIT,
+                ManagerCashCustodyStatus.AWAITING_VERIFICATION,
+              ],
+            },
+          },
+          _count: { _all: true },
+          _max: { receivedFromDriverAt: true },
+        }),
+        // KD aggregate of held bags (== driver→manager handovers still
+        // in this manager's drawer). Used to break out the "drivers
+        // sub-total" from the manager's own POS sub-total.
+        this.prisma.managerCashCustody.aggregate({
+          where: {
+            managerId,
+            status: {
+              in: [
+                ManagerCashCustodyStatus.PENDING_DEPOSIT,
+                ManagerCashCustodyStatus.AWAITING_VERIFICATION,
+              ],
+            },
+          },
+          _sum: { amountKd: true },
+        }),
+        this.ledgerProjection.project({
+          fromIso: from.toISOString(),
+          toIso: to.toISOString(),
+        }),
+        // Reused for the per-driver high-risk list and the
+        // "drivers awaiting handover" sub-total.
+        this.cashService.getDriverBalances(),
+      ]);
+
+    const managerAccountId = `MANAGER_${managerId}`;
+
+    // Manager-held total — single canonical figure (matches the
+    // bug-fix from the previous turn).
+    const managerAccount = this.ledgerProjection.aggregateAccounts(
+      entries.filter((e) => e.accountId === managerAccountId),
+    )[0];
+    const pendingDepositKd = managerAccount?.balance ?? '0.0000';
+
+    const custodyBagsTotalKd = custodyAgg._sum.amountKd
+      ? new Prisma.Decimal(custodyAgg._sum.amountKd.toString()).toFixed(4)
+      : '0.0000';
+
+    // Manager's own POS cash = manager-held total − bag total. Both
+    // figures are server-aggregated; the subtraction lives here, not
+    // on the frontend.
+    const managerOwnPosKd = new Prisma.Decimal(pendingDepositKd)
+      .minus(new Prisma.Decimal(custodyBagsTotalKd))
+      .toFixed(4);
+
+    // ── Drivers in the manager's branch with cash still on them ────
+    const branchDrivers = managerRow?.branchId
+      ? allDrivers.drivers.filter((d) => d.branchId === managerRow.branchId)
+      : allDrivers.drivers;
+    const driversAtRisk = branchDrivers
+      .filter((d) => new Prisma.Decimal(d.heldCashTotal).greaterThan(0))
+      .map((d): DriverHandoverSummaryDto => {
+        const ageMs = d.shiftStartedAt
+          ? Date.now() - new Date(d.shiftStartedAt).getTime()
+          : null;
+        const ageHours = ageMs !== null ? Math.floor(ageMs / 3_600_000) : null;
+        let riskLevel: DriverHandoverSummaryDto['riskLevel'] = 'NORMAL';
+        if (ageHours !== null && ageHours >= 48) riskLevel = 'CRITICAL';
+        else if (ageHours !== null && ageHours >= 24) riskLevel = 'WARNING';
+        return {
+          driverId: d.driverId,
+          driverName: d.fullName,
+          driverUsername: d.username,
+          driverPhone: d.phone,
+          heldCashKd: d.heldCashTotal,
+          pendingOrderCount: d.pendingSettlementOrderCount,
+          shiftStartedAt: d.shiftStartedAt
+            ? new Date(d.shiftStartedAt).toISOString()
+            : null,
+          ageHours,
+          riskLevel,
+        };
+      })
+      .sort((a, b) => {
+        // Worst risk + biggest amount first.
+        const r = riskRank(b.riskLevel) - riskRank(a.riskLevel);
+        if (r !== 0) return r;
+        return new Prisma.Decimal(b.heldCashKd).comparedTo(
+          new Prisma.Decimal(a.heldCashKd),
+        );
+      });
+
+    const driversAwaitingHandoverKd = driversAtRisk
+      .reduce(
+        (acc, d) => acc.plus(new Prisma.Decimal(d.heldCashKd)),
+        new Prisma.Decimal(0),
+      )
+      .toFixed(4);
+
+    // ── Recent activity (last 10 events touching this manager OR a
+    //    branch driver). Sourced from the projection so the UI sees
+    //    exactly the same entries the auditor sees. ──
+    const branchDriverIds = new Set(branchDrivers.map((d) => d.driverId));
+    const branchDriverAccounts = new Set(
+      [...branchDriverIds].map((id) => `DRIVER_${id}`),
+    );
+    const relevantEntries = entries.filter(
+      (e) =>
+        e.accountId === managerAccountId ||
+        branchDriverAccounts.has(e.accountId),
+    );
+    // De-duplicate by txId — every event has a paired DR/CR; we only
+    // need one row per transaction.
+    const seenTx = new Set<string>();
+    const deduped = relevantEntries
+      .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
+      .filter((e) => {
+        if (seenTx.has(e.txId)) return false;
+        seenTx.add(e.txId);
+        return true;
+      });
+    const recentActivity = deduped.slice(0, 10).map(
+      (e): ActivityEventDto => ({
+        txId: e.txId,
+        at: e.createdAt,
+        amountKd: new Prisma.Decimal(
+          (e.debit !== '0.0000' ? e.debit : e.credit) || '0',
+        ).toFixed(4),
+        kind: classifyActivity({
+          meta: e.meta as unknown,
+          accountId: e.accountId,
+        }),
+        actorAccountId: e.accountId,
+        meta: e.meta as Record<string, unknown> | null,
+      }),
+    );
+
+    const lastActivityAt = recentActivity[0]?.at ?? null;
+
+    return {
+      source: 'api/manager/cash-status',
+      managerId,
+      managerName: managerRow?.fullName ?? '',
+      pendingDepositKd,
+      managerOwnPosKd,
+      custodyBagsTotalKd,
+      driversAwaitingHandoverKd,
+      bagsCount: bagsAgg._count._all,
+      driversAtRiskCount: driversAtRisk.length,
+      lastHandoverAt:
+        bagsAgg._max.receivedFromDriverAt?.toISOString() ?? null,
+      lastActivityAt,
+      drivers: driversAtRisk,
+      recentActivity,
+      generatedAt: new Date().toISOString(),
     };
   }
 

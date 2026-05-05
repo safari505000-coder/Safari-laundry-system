@@ -4,12 +4,15 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  BankDepositStatus,
   BankDepositType,
   GeneralLedgerEntryType,
+  ManagerCashCustodyStatus,
   Prisma,
 } from '@prisma/client';
 import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import type { BankDepositsListQueryDto } from './dto/bank-deposits-list-query.dto';
 
 @Injectable()
@@ -17,6 +20,7 @@ export class BankDepositsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly generalLedger: GeneralLedgerService,
+    private readonly auditLogs: AuditLogsService,
   ) {}
 
   async list(q: BankDepositsListQueryDto) {
@@ -47,6 +51,7 @@ export class BankDepositsService {
       entries: rows.map((r) => ({
         id: r.id,
         depositType: r.depositType,
+        status: r.status,
         amountKd: r.amountKd.toString(),
         receiptImageUrl: r.receiptImageUrl,
         shiftId: r.shiftId,
@@ -64,6 +69,13 @@ export class BankDepositsService {
     depositType: BankDepositType,
     amountKd: number,
     shiftId?: string | null,
+    /**
+     * Actor role from JWT. Optional for backwards compatibility with
+     * any internal caller that does not yet plumb the role through;
+     * when omitted the audit log records `null` and the SSoT cron
+     * will surface the missing role on its next sweep.
+     */
+    actorRole?: string | null,
   ) {
     if (!Number.isFinite(amountKd) || amountKd < 0) {
       throw new BadRequestException('Invalid amount');
@@ -76,6 +88,52 @@ export class BankDepositsService {
         throw new NotFoundException('Shift not found');
       }
     }
+
+    // Coverage check — does this manager actually hold enough custody to
+    // back a deposit slip of `amountKd`? Computed from the canonical
+    // ledger source (ManagerCashCustody.PENDING_DEPOSIT|AWAITING_VERIFICATION),
+    // not from any stored balance. This is a SOFT check: the row is still
+    // created (legacy non-CASH deposit types like KNET_RETURN never have a
+    // matching custody bag, and the slip-first flow can register the slip
+    // before the formal handover bag exists), but uncovered amounts emit a
+    // CASH_DEPOSIT_UNCOVERED audit row with `suspicious=true` so the
+    // accountant timeline surfaces them on the next sweep.
+    let coverage = {
+      heldKd: '0.0000',
+      heldBagCount: 0,
+      gapKd: '0.0000',
+      flagged: false,
+    };
+    if (
+      depositType === BankDepositType.CASH_DEPOSIT_SLIP &&
+      amountKd > 0
+    ) {
+      const heldAgg = await this.prisma.managerCashCustody.aggregate({
+        where: {
+          managerId,
+          status: {
+            in: [
+              ManagerCashCustodyStatus.PENDING_DEPOSIT,
+              ManagerCashCustodyStatus.AWAITING_VERIFICATION,
+            ],
+          },
+        },
+        _sum: { amountKd: true },
+        _count: { _all: true },
+      });
+      const heldDec = heldAgg._sum.amountKd
+        ? new Prisma.Decimal(heldAgg._sum.amountKd.toString())
+        : new Prisma.Decimal(0);
+      const amountDec = new Prisma.Decimal(amountKd.toFixed(4));
+      const gapDec = amountDec.minus(heldDec);
+      coverage = {
+        heldKd: heldDec.toFixed(4),
+        heldBagCount: heldAgg._count._all,
+        gapKd: gapDec.gt(0) ? gapDec.toFixed(4) : '0.0000',
+        flagged: gapDec.gt(0),
+      };
+    }
+
     const row = await this.prisma.bankDepositLog.create({
       data: {
         depositType,
@@ -93,6 +151,43 @@ export class BankDepositsService {
         },
       },
     });
+    this.auditLogs.logFinancialEvent({
+      action: 'CASH_DEPOSIT_REGISTERED',
+      customerId: null,
+      amount: amountKd.toFixed(4),
+      source: 'BANK_DEPOSIT_UPLOAD',
+      userId: managerId,
+      role: actorRole ?? null,
+      changes: {
+        bankDepositLogId: row.id,
+        depositType,
+        shiftId: shiftId ?? null,
+        receiptImageUrl: fileUrl,
+        coverage,
+      },
+    });
+    if (coverage.flagged) {
+      this.auditLogs.log({
+        userId: managerId,
+        role: actorRole ?? null,
+        action: 'CASH_DEPOSIT_UNCOVERED',
+        resource: 'bank_deposit_log',
+        amount: amountKd.toFixed(4),
+        source: 'BANK_DEPOSIT_UPLOAD',
+        status: 'SUCCESS',
+        suspicious: true,
+        changes: {
+          bankDepositLogId: row.id,
+          depositType,
+          shiftId: shiftId ?? null,
+          managerId,
+          declaredAmountKd: amountKd.toFixed(4),
+          heldCustodyKd: coverage.heldKd,
+          heldCustodyBagCount: coverage.heldBagCount,
+          shortfallKd: coverage.gapKd,
+        },
+      });
+    }
     return this.mapOne(row);
   }
 
@@ -110,6 +205,7 @@ export class BankDepositsService {
         data: {
           verifiedByAccountantId: accountantId,
           verifiedAt: new Date(),
+          status: BankDepositStatus.VERIFIED,
         },
         include: {
           uploadedBy: {
@@ -165,6 +261,7 @@ export class BankDepositsService {
     return {
       id: row.id,
       depositType: row.depositType,
+      status: row.status,
       amountKd: row.amountKd.toString(),
       receiptImageUrl: row.receiptImageUrl,
       shiftId: row.shiftId,

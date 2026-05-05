@@ -32,14 +32,14 @@ export class PayrollController {
   constructor(private readonly payrollService: PayrollService) {}
 
   @Post()
-  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.MANAGER)
+  @Roles(SafariRole.OWNER, SafariRole.MANAGER)
   @ApiOperation({ summary: `Create payroll line (${APP_BRAND})` })
   create(@Body() dto: CreatePayrollDto, @CurrentUser() user: JwtUser) {
     return this.payrollService.create(user.role as SafariRole, dto);
   }
 
   @Patch(':id/mark-paid')
-  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.MANAGER)
+  @Roles(SafariRole.OWNER, SafariRole.MANAGER)
   @ApiOperation({ summary: `Mark payroll as paid (${APP_BRAND})` })
   markPaid(
     @Param('id', ParseUUIDPipe) id: string,
@@ -57,7 +57,7 @@ export class PayrollController {
    * why we refuse to backdate the high-water mark.
    */
   @Post(':id/recalc-loan')
-  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.MANAGER)
+  @Roles(SafariRole.OWNER, SafariRole.MANAGER)
   @ApiOperation({
     summary: `Recalculate loan instalment for a pending payroll (${APP_BRAND})`,
     description:
@@ -114,7 +114,7 @@ export class PayrollController {
   }
 
   @Post('adhoc-lines')
-  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.MANAGER)
+  @Roles(SafariRole.OWNER, SafariRole.MANAGER)
   @ApiOperation({ summary: `Create manual payroll roster line` })
   createAdHoc(
     @Body() dto: CreatePayrollAdhocLineDto,
@@ -124,7 +124,7 @@ export class PayrollController {
   }
 
   @Patch('adhoc-lines/:id')
-  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.MANAGER)
+  @Roles(SafariRole.OWNER, SafariRole.MANAGER)
   @ApiOperation({ summary: `Update manual payroll roster line` })
   updateAdHoc(
     @Param('id', ParseUUIDPipe) id: string,
@@ -139,7 +139,7 @@ export class PayrollController {
   }
 
   @Delete('adhoc-lines/:id')
-  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.MANAGER)
+  @Roles(SafariRole.OWNER, SafariRole.MANAGER)
   @ApiOperation({ summary: `Delete manual payroll roster line` })
   removeAdHoc(
     @Param('id', ParseUUIDPipe) id: string,

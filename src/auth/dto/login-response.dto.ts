@@ -23,6 +23,13 @@ export class LoginUserDto {
     description: 'Branch scope for pricing / operations when applicable',
   })
   branchId?: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    format: 'uuid',
+    description: 'B2C portal — binds this login to exactly one Customer.id',
+  })
+  linkedCustomerId?: string | null;
 }
 
 export class LoginResponseDto {

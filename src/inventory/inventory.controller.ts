@@ -7,9 +7,9 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { SafariRole } from '@prisma/client';
 import { CurrentUser, type JwtUser } from '../auth/decorators/current-user.decorator';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { Permissions } from '../auth/permissions/permissions.decorator';
+import { AppPermission } from '../auth/permissions/permissions.enum';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { APP_BRAND } from '../common/constants/branding';
@@ -29,9 +29,8 @@ import { LowStockCronService } from './low-stock-cron.service';
 /**
  * Dastur §4 — Smart Inventory & Stock-In.
  * RBAC:
- *  - Report (GET /report):       OWNER + ACCOUNTANT (Branch Manager can be added later)
- *  - Stock-In (POST /stock-in):  ACCOUNTANT only (per Dastur §2.ACCOUNTANT.Stock-In)
- *  - Catalog writes:             OWNER + ACCOUNTANT
+ *  - Report/read endpoints: OWNER/GM/ACCOUNTANT financial oversight.
+ *  - Mutation endpoints: operational permission only; ACCOUNTANT is read-only.
  */
 @ApiTags('inventory')
 @ApiBearerAuth('bearer')
@@ -44,7 +43,7 @@ export class InventoryController {
   ) {}
 
   @Get('report')
-  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.ACCOUNTANT)
+  @Permissions(AppPermission.VIEW_INVENTORY)
   @ApiOperation({
     summary: `Smart inventory report (${APP_BRAND})`,
     description:
@@ -55,53 +54,43 @@ export class InventoryController {
   }
 
   @Get('categories')
-  @Roles(
-    SafariRole.OWNER,
-    SafariRole.GENERAL_MANAGER,
-    SafariRole.ACCOUNTANT,
-    SafariRole.MANAGER,
-  )
+  @Permissions(AppPermission.VIEW_INVENTORY)
   listCategories() {
     return this.inventory.listCategories();
   }
 
   @Post('categories')
-  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.ACCOUNTANT)
+  @Permissions(AppPermission.UPDATE_OPERATIONAL_DATA)
   createCategory(@Body() dto: CreateInventoryCategoryDto) {
     return this.inventory.createCategory(dto);
   }
 
   @Get('items')
-  @Roles(
-    SafariRole.OWNER,
-    SafariRole.GENERAL_MANAGER,
-    SafariRole.ACCOUNTANT,
-    SafariRole.MANAGER,
-  )
+  @Permissions(AppPermission.VIEW_INVENTORY)
   listItems() {
     return this.inventory.listItems();
   }
 
   @Post('items')
-  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.ACCOUNTANT)
+  @Permissions(AppPermission.UPDATE_OPERATIONAL_DATA)
   createItem(@Body() dto: CreateStockItemDto) {
     return this.inventory.createItem(dto);
   }
 
   @Get('suppliers')
-  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.ACCOUNTANT)
+  @Permissions(AppPermission.VIEW_INVENTORY)
   listSuppliers() {
     return this.inventory.listSuppliers();
   }
 
   @Post('suppliers')
-  @Roles(SafariRole.ACCOUNTANT, SafariRole.GENERAL_MANAGER)
+  @Permissions(AppPermission.UPDATE_OPERATIONAL_DATA)
   createSupplier(@Body() dto: CreateSupplierDto) {
     return this.inventory.createSupplier(dto);
   }
 
   @Post('stock-in')
-  @Roles(SafariRole.ACCOUNTANT, SafariRole.GENERAL_MANAGER)
+  @Permissions(AppPermission.UPDATE_OPERATIONAL_DATA)
   @ApiOperation({
     summary: `Record stock-in (ACCOUNTANT) (${APP_BRAND})`,
     description:
@@ -112,7 +101,7 @@ export class InventoryController {
   }
 
   @Get('movements')
-  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.ACCOUNTANT)
+  @Permissions(AppPermission.VIEW_INVENTORY)
   @ApiOperation({
     summary: 'List stock movements (audit)',
     description:
@@ -123,7 +112,7 @@ export class InventoryController {
   }
 
   @Post('stock-out')
-  @Roles(SafariRole.ACCOUNTANT, SafariRole.GENERAL_MANAGER, SafariRole.MANAGER)
+  @Permissions(AppPermission.UPDATE_OPERATIONAL_DATA)
   @ApiOperation({
     summary: 'Record stock consumption (STOCK_OUT)',
     description:
@@ -134,7 +123,7 @@ export class InventoryController {
   }
 
   @Post('adjust')
-  @Roles(SafariRole.ACCOUNTANT, SafariRole.GENERAL_MANAGER)
+  @Permissions(AppPermission.UPDATE_OPERATIONAL_DATA)
   @ApiOperation({
     summary: 'Signed stock adjustment (ADJUSTMENT)',
     description:
@@ -145,7 +134,7 @@ export class InventoryController {
   }
 
   @Post('transfer')
-  @Roles(SafariRole.ACCOUNTANT, SafariRole.GENERAL_MANAGER)
+  @Permissions(AppPermission.UPDATE_OPERATIONAL_DATA)
   @ApiOperation({
     summary: 'Transfer stock between two branches',
     description:
@@ -156,7 +145,7 @@ export class InventoryController {
   }
 
   @Post('stocktake')
-  @Roles(SafariRole.ACCOUNTANT, SafariRole.GENERAL_MANAGER)
+  @Permissions(AppPermission.UPDATE_OPERATIONAL_DATA)
   @ApiOperation({
     summary: 'Submit a physical stocktake',
     description:
@@ -167,7 +156,7 @@ export class InventoryController {
   }
 
   @Get('low-stock')
-  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.ACCOUNTANT)
+  @Permissions(AppPermission.VIEW_INVENTORY)
   @ApiOperation({
     summary: 'Low-stock & out-of-stock snapshot',
     description:
@@ -178,7 +167,7 @@ export class InventoryController {
   }
 
   @Get('low-stock/latest')
-  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.ACCOUNTANT)
+  @Permissions(AppPermission.VIEW_INVENTORY)
   @ApiOperation({
     summary: 'Last persisted low-stock snapshot (cached by the 06:00 cron).',
   })

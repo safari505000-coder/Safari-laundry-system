@@ -31,14 +31,22 @@ export class CommissionRulesController {
   constructor(private readonly service: CommissionRulesService) {}
 
   @Get()
-  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
+  @Roles(
+    SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
+    SafariRole.ACCOUNTANT,
+  )
   @ApiOperation({ summary: `List commission rules (${APP_BRAND})` })
   list(@CurrentUser() user: JwtUser, @Query('mode') mode?: CommissionMode) {
     return this.service.list(user.role as SafariRole, { mode });
   }
 
   @Get('default')
-  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
+  @Roles(
+    SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
+    SafariRole.ACCOUNTANT,
+  )
   @ApiOperation({
     summary: `Fetch the dashboard "default" rule (role = null) (${APP_BRAND})`,
   })
@@ -47,7 +55,7 @@ export class CommissionRulesController {
   }
 
   @Put('default')
-  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
+  @Roles(SafariRole.OWNER)
   @ApiOperation({
     summary: `Upsert the dashboard "default" rule (role = null) (${APP_BRAND})`,
   })
@@ -59,7 +67,11 @@ export class CommissionRulesController {
   }
 
   @Get(':id')
-  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
+  @Roles(
+    SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
+    SafariRole.ACCOUNTANT,
+  )
   @ApiOperation({ summary: `Fetch a commission rule (${APP_BRAND})` })
   findOne(
     @Param('id', ParseUUIDPipe) id: string,
@@ -69,7 +81,7 @@ export class CommissionRulesController {
   }
 
   @Post()
-  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
+  @Roles(SafariRole.OWNER)
   @ApiOperation({ summary: `Create a commission rule (${APP_BRAND})` })
   create(
     @Body() dto: CreateCommissionRuleDto,
@@ -79,7 +91,7 @@ export class CommissionRulesController {
   }
 
   @Patch(':id')
-  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
+  @Roles(SafariRole.OWNER)
   @ApiOperation({ summary: `Update a commission rule (${APP_BRAND})` })
   update(
     @Param('id', ParseUUIDPipe) id: string,
@@ -90,7 +102,7 @@ export class CommissionRulesController {
   }
 
   @Delete(':id')
-  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
+  @Roles(SafariRole.OWNER)
   @ApiOperation({
     summary: `Soft-disable a commission rule (${APP_BRAND})`,
   })

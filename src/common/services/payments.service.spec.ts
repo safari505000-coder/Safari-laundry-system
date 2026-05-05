@@ -26,6 +26,9 @@ function makeTx(overrides: Record<string, unknown> = {}) {
         .mockResolvedValueOnce({ debt: new Prisma.Decimal('10.0000') })
         .mockResolvedValue({ debt: new Prisma.Decimal('0.0000') }),
     },
+    transactionHistory: {
+      create: jest.fn(),
+    },
     ...overrides,
   } as any;
 }
@@ -53,16 +56,18 @@ function makeService(tx = makeTx()) {
   };
   const generalLedger = { append: jest.fn().mockResolvedValue(undefined) };
   const inventory = { applyOrderStockDecrement: jest.fn().mockResolvedValue(undefined) };
-  const customerNotifications = { notifyPaymentConfirmed: jest.fn() };
+  const whatsappQueue = { enqueuePaymentConfirmed: jest.fn() };
+  const discordAlerts = { enqueue: jest.fn() };
   const service = new PaymentsService(
     prisma,
     customerLedger as any,
     generalLedger as any,
     inventory as any,
-    customerNotifications as any,
+    whatsappQueue as any,
+    discordAlerts as any,
   );
   jest.spyOn(service as any, 'emitPaymentConfirmedNotify').mockImplementation(() => undefined);
-  return { service, prisma, tx, customerLedger, generalLedger, inventory };
+  return { service, prisma, tx, customerLedger, generalLedger, inventory, discordAlerts };
 }
 
 function pendingOrder(overrides: Record<string, unknown> = {}) {
@@ -119,7 +124,7 @@ describe('PaymentsService payment safety', () => {
     tx.order.updateMany
       .mockResolvedValueOnce({ count: 1 })
       .mockResolvedValueOnce({ count: 0 });
-    const { service, prisma, customerLedger, generalLedger, inventory } =
+    const { service, prisma, customerLedger, generalLedger, inventory, discordAlerts } =
       makeService(tx);
     prisma.posPaymentBundle.findUnique.mockResolvedValue(null);
 
@@ -132,13 +137,74 @@ describe('PaymentsService payment safety', () => {
     expect(inventory.applyOrderStockDecrement).toHaveBeenCalledTimes(1);
   });
 
+  it('guarantees CAPTURED finalization completes order, settles wallet, and creates transaction history', async () => {
+    const tx = makeTx();
+    tx.order.findUnique.mockResolvedValue(pendingOrder());
+    tx.order.updateMany
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 1 });
+    const { service, prisma, customerLedger, discordAlerts } = makeService(tx);
+    prisma.posPaymentBundle.findUnique.mockResolvedValue(null);
+    customerLedger.applyOrderWalletSettlementForCompletedOrder.mockImplementation(
+      async (ledgerTx: any, orderId: string) => {
+        await ledgerTx.transactionHistory.create({
+          data: { orderId },
+        });
+        await ledgerTx.order.updateMany({
+          where: { id: orderId, walletSettledAt: null },
+          data: { walletSettledAt: new Date() },
+        });
+      },
+    );
+
+    const finalized = await service.finalizePaidOrderFromGateway(
+      ORDER_ID,
+      gatewayMetadata('9.000'),
+    );
+
+    expect(finalized).toBe(true);
+    expect(tx.order.updateMany).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: {
+          id: ORDER_ID,
+          walletSettledAt: null,
+          status: { not: OrderStatus.COMPLETED },
+        },
+        data: expect.objectContaining({
+          status: OrderStatus.COMPLETED,
+        }),
+      }),
+    );
+    expect(tx.order.updateMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: { id: ORDER_ID, walletSettledAt: null },
+        data: expect.objectContaining({ walletSettledAt: expect.any(Date) }),
+      }),
+    );
+    expect(tx.transactionHistory.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ orderId: ORDER_ID }),
+      }),
+    );
+    expect(customerLedger.applyOrderWalletSettlementForCompletedOrder).toHaveBeenCalledTimes(1);
+    expect(discordAlerts.enqueue).toHaveBeenCalledWith(
+      'finalize_success',
+      expect.objectContaining({
+        orderId: ORDER_ID,
+        trackId: TRANS_ID,
+      }),
+    );
+  });
+
   it('handles race condition: concurrent finalizes produce one set of side effects', async () => {
     const tx = makeTx();
     tx.order.findUnique.mockResolvedValue(pendingOrder());
     tx.order.updateMany
       .mockResolvedValueOnce({ count: 1 })
       .mockResolvedValueOnce({ count: 0 });
-    const { service, prisma, customerLedger, generalLedger, inventory } =
+    const { service, prisma, customerLedger, generalLedger, inventory, discordAlerts } =
       makeService(tx);
     prisma.posPaymentBundle.findUnique.mockResolvedValue(null);
 
@@ -150,6 +216,57 @@ describe('PaymentsService payment safety', () => {
     expect(customerLedger.applyOrderWalletSettlementForCompletedOrder).toHaveBeenCalledTimes(1);
     expect(generalLedger.append).toHaveBeenCalledTimes(1);
     expect(inventory.applyOrderStockDecrement).toHaveBeenCalledTimes(1);
+  });
+
+  it('logs CRITICAL when CAPTURED cannot claim a non-completed order', async () => {
+    const tx = makeTx();
+    tx.order.findUnique.mockResolvedValue(pendingOrder());
+    tx.order.updateMany.mockResolvedValue({ count: 0 });
+    const { service, prisma, customerLedger, generalLedger, inventory, discordAlerts } =
+      makeService(tx);
+    prisma.posPaymentBundle.findUnique.mockResolvedValue(null);
+    const criticalLog = jest
+      .spyOn((service as any).logger, 'error')
+      .mockImplementation(() => undefined);
+
+    const finalized = await service.finalizePaidOrderFromGateway(
+      ORDER_ID,
+      gatewayMetadata(),
+    );
+
+    expect(finalized).toBe(false);
+    expect(criticalLog).toHaveBeenCalledWith(
+      expect.stringContaining('CRITICAL captured_payment_not_finalized'),
+    );
+    expect(discordAlerts.enqueue).toHaveBeenCalledWith(
+      'captured_payment_not_finalized',
+      expect.objectContaining({
+        orderId: ORDER_ID,
+        trackId: TRANS_ID,
+      }),
+    );
+    expect(customerLedger.applyOrderWalletSettlementForCompletedOrder).not.toHaveBeenCalled();
+    expect(generalLedger.append).not.toHaveBeenCalled();
+    expect(inventory.applyOrderStockDecrement).not.toHaveBeenCalled();
+  });
+
+  it('enqueues finalize_failed without swallowing core finalize errors', async () => {
+    const tx = makeTx();
+    const { service, prisma, discordAlerts } = makeService(tx);
+    prisma.posPaymentBundle.findUnique.mockResolvedValue(null);
+    const failure = new Error('database unavailable');
+    prisma.$transaction.mockRejectedValue(failure);
+
+    await expect(
+      service.finalizePaidOrderFromGateway(ORDER_ID, gatewayMetadata()),
+    ).rejects.toThrow('database unavailable');
+    expect(discordAlerts.enqueue).toHaveBeenCalledWith(
+      'finalize_failed',
+      expect.objectContaining({
+        orderId: ORDER_ID,
+        trackId: TRANS_ID,
+      }),
+    );
   });
 
   it('polling success finalizes the order', async () => {
@@ -240,7 +357,7 @@ describe('PaymentsService payment safety', () => {
     expect(customerLedger.applyOrderWalletSettlementForCompletedOrder).toHaveBeenCalledTimes(1);
   });
 
-  it('bundle amount mismatch is rejected with no side effects', async () => {
+  it('bundle CAPTURED payment finalizes even when amount mismatch would otherwise block it', async () => {
     const tx = makeTx();
     tx.order.findUnique.mockResolvedValue(
       pendingOrder({
@@ -256,12 +373,17 @@ describe('PaymentsService payment safety', () => {
     prisma.posPaymentBundle.findUnique.mockResolvedValue({
       orders: [{ id: ORDER_ID }],
     });
+    tx.order.updateMany.mockResolvedValue({ count: 1 });
 
-    await service.finalizePaidOrderFromGateway(BUNDLE_ID, gatewayMetadata('9.000'));
+    const finalized = await service.finalizePaidOrderFromGateway(
+      BUNDLE_ID,
+      gatewayMetadata('9.000'),
+    );
 
-    expect(customerLedger.applyOrderWalletSettlementForCompletedOrder).not.toHaveBeenCalled();
-    expect(generalLedger.append).not.toHaveBeenCalled();
-    expect(inventory.applyOrderStockDecrement).not.toHaveBeenCalled();
+    expect(finalized).toBe(true);
+    expect(customerLedger.applyOrderWalletSettlementForCompletedOrder).toHaveBeenCalledTimes(1);
+    expect(generalLedger.append).toHaveBeenCalledTimes(1);
+    expect(inventory.applyOrderStockDecrement).toHaveBeenCalledTimes(1);
   });
 
   it('gateway error does not finalize', async () => {
@@ -289,9 +411,12 @@ describe('PaymentsService payment safety', () => {
     expect(inventory.applyOrderStockDecrement).not.toHaveBeenCalled();
   });
 
-  it('amount mismatch does not finalize', async () => {
+  it('CAPTURED status finalizes even when amount mismatch would otherwise leave order pending', async () => {
+    const tx = makeTx();
+    tx.order.findUnique.mockResolvedValue(pendingOrder());
+    tx.order.updateMany.mockResolvedValue({ count: 1 });
     const { service, prisma, customerLedger, generalLedger, inventory } =
-      makeService();
+      makeService(tx);
     jest.spyOn(service, 'fetchGatewayStatus').mockResolvedValue(gatewaySuccess('9.000') as any);
     prisma.order.findUnique.mockResolvedValue({
       id: ORDER_ID,
@@ -303,9 +428,9 @@ describe('PaymentsService payment safety', () => {
 
     const result = await service.checkPaymentStatus(TRANS_ID, ORDER_ID);
 
-    expect(result.finalized).toBe(false);
-    expect(customerLedger.applyOrderWalletSettlementForCompletedOrder).not.toHaveBeenCalled();
-    expect(generalLedger.append).not.toHaveBeenCalled();
-    expect(inventory.applyOrderStockDecrement).not.toHaveBeenCalled();
+    expect(result.finalized).toBe(true);
+    expect(customerLedger.applyOrderWalletSettlementForCompletedOrder).toHaveBeenCalledTimes(1);
+    expect(generalLedger.append).toHaveBeenCalledTimes(1);
+    expect(inventory.applyOrderStockDecrement).toHaveBeenCalledTimes(1);
   });
 });

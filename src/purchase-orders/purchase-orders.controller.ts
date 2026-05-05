@@ -24,7 +24,7 @@ import { PurchaseOrdersService } from './purchase-orders.service';
  * Stage-F Cosmetic — Purchase Order endpoints.
  *
  * RBAC (mirrors inventory stock-in policy):
- *  - OWNER, GENERAL_MANAGER, ACCOUNTANT → create / send / cancel / receive
+ *  - OWNER, ACCOUNTANT → create / send / cancel / receive
  *  - MANAGER                            → read-only (pre-arrival visibility
  *                                         for branch managers)
  */
@@ -60,7 +60,7 @@ export class PurchaseOrdersController {
   }
 
   @Post()
-  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.ACCOUNTANT)
+  @Roles(SafariRole.OWNER, SafariRole.ACCOUNTANT)
   @ApiOperation({ summary: `Create a DRAFT purchase order (${APP_BRAND})` })
   create(
     @Body() dto: CreatePurchaseOrderDto,
@@ -70,7 +70,7 @@ export class PurchaseOrdersController {
   }
 
   @Post(':id/send')
-  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.ACCOUNTANT)
+  @Roles(SafariRole.OWNER, SafariRole.ACCOUNTANT)
   @ApiOperation({ summary: `Transition DRAFT → SENT (${APP_BRAND})` })
   send(
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -80,7 +80,7 @@ export class PurchaseOrdersController {
   }
 
   @Post(':id/cancel')
-  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.ACCOUNTANT)
+  @Roles(SafariRole.OWNER, SafariRole.ACCOUNTANT)
   @ApiOperation({ summary: `Cancel a purchase order (${APP_BRAND})` })
   cancel(
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -91,7 +91,7 @@ export class PurchaseOrdersController {
   }
 
   @Post(':id/receive')
-  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.ACCOUNTANT)
+  @Roles(SafariRole.OWNER, SafariRole.ACCOUNTANT)
   @ApiOperation({
     summary: `Record a delivery against a PO (${APP_BRAND})`,
     description:

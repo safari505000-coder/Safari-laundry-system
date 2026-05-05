@@ -1,5 +1,6 @@
 import { Controller, Get, Param } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Public } from '../auth/decorators/roles.decorator';
 import { VerifyService } from './verify.service';
 
 /**
@@ -20,6 +21,7 @@ import { VerifyService } from './verify.service';
  */
 @ApiTags('verify')
 @Controller('verify')
+@Public('Printed-document QR verification returns only data already visible on paper.')
 export class VerifyController {
   constructor(private readonly verify: VerifyService) {}
 

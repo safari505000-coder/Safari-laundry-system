@@ -24,7 +24,7 @@ import { FeedbackService } from './feedback.service';
  * V19.22 — Authenticated read/write for the Customer Ratings inbox.
  *
  * Visible to:
- *   • OWNER / GENERAL_MANAGER  — strategic read; also acknowledge.
+ *   • OWNER / GENERAL_MANAGER  — strategic read only.
  *   • CALL_CENTER_SUPERVISOR  — operational inbox + acknowledge.
  *   • CALL_CENTER             — agent-level read + acknowledge (so the
  *                               agent closing the loop with the
@@ -67,7 +67,6 @@ export class FeedbackController {
   @Patch(':id/acknowledge')
   @Roles(
     SafariRole.OWNER,
-    SafariRole.GENERAL_MANAGER,
     SafariRole.CALL_CENTER,
     SafariRole.CALL_CENTER_SUPERVISOR,
   )

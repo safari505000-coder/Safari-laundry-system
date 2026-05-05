@@ -69,11 +69,11 @@ export class DebtHoldsController {
   }
 
   @Post('manual')
-  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
+  @Roles(SafariRole.OWNER)
   @ApiOperation({
     summary: `Create a manual debt hold (${APP_BRAND})`,
     description:
-      'OWNER + GENERAL_MANAGER only. Withholds a one-off amount from the employee outside the automatic open-customer-debt computation.',
+      'OWNER only. Withholds a one-off amount from the employee outside the automatic open-customer-debt computation.',
   })
   createManual(
     @Body() dto: CreateManualHoldDto,
@@ -83,11 +83,11 @@ export class DebtHoldsController {
   }
 
   @Post(':id/release')
-  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
+  @Roles(SafariRole.OWNER)
   @ApiOperation({
     summary: `Force-release a debt hold (${APP_BRAND})`,
     description:
-      'OWNER + GENERAL_MANAGER only. V19.17: flips the hold to RELEASED, marking it as eligible for a SEPARATE voucher payout (no longer bundled into the next payroll).',
+      'OWNER only. V19.17: flips the hold to RELEASED, marking it as eligible for a SEPARATE voucher payout (no longer bundled into the next payroll).',
   })
   release(
     @Param('id', ParseUUIDPipe) id: string,
@@ -97,11 +97,11 @@ export class DebtHoldsController {
   }
 
   @Post(':id/disburse')
-  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
+  @Roles(SafariRole.OWNER)
   @ApiOperation({
     summary: `Stamp a released hold as disbursed (${APP_BRAND})`,
     description:
-      'OWNER + GENERAL_MANAGER only. V19.17: records that the RELEASED hold has actually been paid out to the employee as a standalone voucher, setting `disbursedAt` + `disbursedById`.',
+      'OWNER only. V19.17: records that the RELEASED hold has actually been paid out to the employee as a standalone voucher, setting `disbursedAt` + `disbursedById`.',
   })
   disburse(
     @Param('id', ParseUUIDPipe) id: string,

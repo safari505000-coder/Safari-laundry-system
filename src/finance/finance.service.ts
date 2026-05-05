@@ -3,6 +3,7 @@ import {
   DebtEntityCategory,
   ManagerCashCustodyStatus,
   Prisma,
+  SafariRole,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConfirmHandoverDto } from './dto/confirm-handover.dto';
@@ -10,6 +11,7 @@ import type {
   DriverBalanceResponseDto,
   HandoverResultDto,
 } from './dto/driver-balance.dto';
+import type { CashReconciliationSnapshotDto } from './dto/cash-reconciliation.dto';
 import type {
   DriverCashTraceQueryDto,
   DriverCashTraceResponseDto,
@@ -113,9 +115,16 @@ export class FinanceService {
 
   async confirmHandover(
     managerId: string,
+    actorRole: SafariRole,
     dto: ConfirmHandoverDto,
   ): Promise<HandoverResultDto> {
-    return this.cashService.confirmHandover(managerId, dto);
+    return this.cashService.confirmHandover(managerId, actorRole, dto);
+  }
+
+  async getCashReconciliationSnapshot(
+    query: DriverCashTraceQueryDto,
+  ): Promise<CashReconciliationSnapshotDto> {
+    return this.cashService.getCashReconciliationSnapshot(query);
   }
 
   /**

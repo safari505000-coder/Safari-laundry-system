@@ -233,7 +233,11 @@ export class SafariStreamService {
     }
 
     let institution: SafariStreamSnapshotDto['institution'] = null;
-    if (user.safariRole === SafariRole.ACCOUNTANT) {
+    if (
+      user.safariRole === SafariRole.ACCOUNTANT ||
+      user.safariRole === SafariRole.GENERAL_MANAGER ||
+      user.safariRole === SafariRole.OWNER
+    ) {
       institution = await this.buildInstitutionRadar();
     }
 

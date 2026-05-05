@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { OrderStatus, PosPaymentMethod } from '@prisma/client';
 import { PaymentsService } from '../../common/services/payments.service';
+import { withPaymentFinalizeSpan } from '../../common/tracing/payment-finalize-span';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
@@ -32,7 +33,10 @@ export class OnlinePaymentService {
   }
 
   async finalizePaidOrderFromGateway(referenceId: string): Promise<void> {
-    await this.payments.finalizePaidOrderFromGateway(referenceId);
+    await withPaymentFinalizeSpan(
+      { orderId: referenceId, source: 'ONLINE_PAYMENT_SERVICE' },
+      () => this.payments.finalizePaidOrderFromGateway(referenceId),
+    );
   }
 
   /**

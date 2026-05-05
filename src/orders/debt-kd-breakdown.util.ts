@@ -8,11 +8,14 @@ function approxEq(a: Prisma.Decimal, b: Prisma.Decimal): boolean {
 
 export type DebtKdBreakdownWinner = 'ledger' | 'walletSnapshot' | 'orderMarket';
 
-/** Serialized for API/clients — see `OrdersService.getEffectiveDebtKdBreakdown`. */
+/** Serialized for API/clients — see `OrdersService.getOperationalDebtKdBreakdown`. */
 export type DebtKdBreakdownTrace = {
   ledgerNetKd: string;
   walletSnapshotKd: string;
   orderMarketScopeKd: string;
+  /** Operational debt only. This is NOT the canonical financial number. */
+  operationalDebtKd: string;
+  /** @deprecated Use operationalDebtKd. Kept for API compatibility. */
   effectiveDebtKd: string;
   winningSources: DebtKdBreakdownWinner[];
 };
@@ -35,6 +38,7 @@ export function buildDebtKdBreakdownTrace(
     ledgerNetKd: ledgerNetKd.toFixed(4),
     walletSnapshotKd: walletSnapshotKd.toFixed(4),
     orderMarketScopeKd: orderMarketScopeKd.toFixed(4),
+    operationalDebtKd: effectiveKd.toFixed(4),
     effectiveDebtKd: effectiveKd.toFixed(4),
     winningSources,
   };

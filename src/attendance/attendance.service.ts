@@ -196,7 +196,6 @@ export class AttendanceService {
   ): Promise<AttendanceRowDto> {
     if (
       actorRole !== SafariRole.OWNER &&
-      actorRole !== SafariRole.GENERAL_MANAGER &&
       actorRole !== SafariRole.MANAGER &&
       actorRole !== SafariRole.ACCOUNTANT
     ) {

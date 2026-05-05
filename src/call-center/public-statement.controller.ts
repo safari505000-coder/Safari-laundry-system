@@ -1,5 +1,6 @@
 import { Controller, Get, Param } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Public } from '../auth/decorators/roles.decorator';
 import { CallCenterService } from './call-center.service';
 
 /**
@@ -26,6 +27,7 @@ import { CallCenterService } from './call-center.service';
  */
 @ApiTags('public-statement')
 @Controller('public/statement')
+@Public('Signed statement-share token scopes access without a staff JWT.')
 export class PublicStatementController {
   constructor(private readonly callCenter: CallCenterService) {}
 

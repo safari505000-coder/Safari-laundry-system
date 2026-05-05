@@ -13,6 +13,7 @@ import {
   ShiftStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AuditLogsService } from '../../audit-logs/audit-logs.service';
 import { ConfirmHandoverDto } from '../dto/confirm-handover.dto';
 import type {
   DriverBalanceResponseDto,
@@ -26,11 +27,13 @@ import type {
   DriverCashTraceResponseDto,
 } from '../dto/driver-cash-trace.dto';
 import type { UpdateDriverTrackingDto } from '../dto/update-driver-tracking.dto';
+import { assertInstitutionalMutationAllowed } from '../../auth/institutional-mutation.util';
 import {
   assertDeclaredMatchesLedgerMinor,
   minorToAmountString,
   sumOrderMinors,
 } from '../finance-money';
+import type { CashReconciliationSnapshotDto } from '../dto/cash-reconciliation.dto';
 
 function sumKd(values: string[]): string {
   let total = 0;
@@ -67,7 +70,10 @@ function parseLatLng(input?: string | null): { lat: number; lng: number } | null
 
 @Injectable()
 export class CashService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditLogs: AuditLogsService,
+  ) {}
 
   /**
    * DUSTUR §2 — the financial cycle is owned by {@link ShiftCycleService} and
@@ -105,7 +111,6 @@ export class CashService {
       where: {
         status: OrderStatus.COMPLETED,
         completedAt: { gte: from, lte: to },
-        posPaymentMethod: { not: null },
         ...(scopedDriverId ? { driverId: scopedDriverId } : {}),
       },
       _sum: { totalPrice: true },
@@ -114,15 +119,11 @@ export class CashService {
     return {
       from: from.toISOString(),
       to: to.toISOString(),
-      rows: rows
-        .filter((r): r is typeof r & { posPaymentMethod: PosPaymentMethod } =>
-          r.posPaymentMethod !== null,
-        )
-        .map((r) => ({
+      rows: rows.map((r) => ({
           posPaymentMethod: r.posPaymentMethod,
           orderCount: r._count,
           totalRevenue:
-            r._sum.totalPrice !== null && r._sum.totalPrice !== undefined
+            r._sum?.totalPrice !== null && r._sum?.totalPrice !== undefined
               ? r._sum.totalPrice.toString()
               : '0',
         })),
@@ -325,15 +326,17 @@ export class CashService {
    */
   async confirmHandover(
     managerId: string,
+    actorRole: SafariRole,
     dto: ConfirmHandoverDto,
   ): Promise<HandoverResultDto> {
+    assertInstitutionalMutationAllowed(actorRole);
     const driver = await this.prisma.user.findUnique({
       where: { id: dto.driverId },
     });
     if (!driver || driver.safariRole !== SafariRole.DRIVER) {
       throw new NotFoundException('Driver not found');
     }
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const pending = await tx.order.findMany({
         where: {
           driverId: dto.driverId,
@@ -367,6 +370,8 @@ export class CashService {
           systemHandoverTotal: '0.0000',
           shiftId: shift?.id ?? null,
           bankDepositReceiptUrl: dto.depositReceiptUrl ?? null,
+          custodyBagId: null as string | null,
+          branchId: null as string | null,
         };
       }
 
@@ -397,11 +402,12 @@ export class CashService {
         select: { branchId: true },
       });
       const hasSlip = Boolean(dto.depositReceiptUrl);
-      await tx.managerCashCustody.create({
+      const branchId = manager?.branchId ?? driver.branchId ?? null;
+      const bag = await tx.managerCashCustody.create({
         data: {
           managerId,
           driverId: dto.driverId,
-          branchId: manager?.branchId ?? driver.branchId ?? null,
+          branchId,
           shiftId: shift?.id ?? null,
           amountKd: systemHandoverTotal,
           settledOrderCount: pending.length,
@@ -411,6 +417,7 @@ export class CashService {
           depositSlipUrl: dto.depositReceiptUrl ?? null,
           slipUploadedAt: hasSlip ? new Date() : null,
         },
+        select: { id: true },
       });
 
       return {
@@ -418,8 +425,43 @@ export class CashService {
         systemHandoverTotal,
         shiftId: shift?.id ?? null,
         bankDepositReceiptUrl: dto.depositReceiptUrl ?? null,
+        custodyBagId: bag.id,
+        branchId,
       };
     });
+
+    // Canonical AuditLog at the TRANSFER boundary (driver -> branch).
+    // Emitted ONLY on a non-empty settlement so we don't pollute the
+    // log with no-op handover attempts. The actor is the manager (the
+    // user who pressed the button); the driver is recorded in the
+    // structured `changes` payload as the cash holder, NOT as actor.
+    // The custody bag id is included so an auditor can chain TRANSFER
+    // -> DEPOSIT -> bank deposit verification end-to-end.
+    if (result.settledOrderCount > 0) {
+      this.auditLogs.logFinancialEvent({
+        action: 'CASH_HANDOVER_TRANSFER',
+        userId: managerId,
+        role: actorRole,
+        amount: result.systemHandoverTotal,
+        source: 'DRIVER_TO_BRANCH_HANDOVER',
+        changes: {
+          driverId: dto.driverId,
+          branchId: result.branchId,
+          custodyBagId: result.custodyBagId,
+          shiftId: result.shiftId,
+          settledOrderCount: result.settledOrderCount,
+          declaredHandoverTotal: dto.declaredHandoverTotal ?? null,
+          depositReceiptProvided: Boolean(dto.depositReceiptUrl),
+        },
+      });
+    }
+
+    return {
+      settledOrderCount: result.settledOrderCount,
+      systemHandoverTotal: result.systemHandoverTotal,
+      shiftId: result.shiftId,
+      bankDepositReceiptUrl: result.bankDepositReceiptUrl,
+    };
   }
 
   /**
@@ -624,6 +666,66 @@ export class CashService {
       range: { from: from.toISOString(), to: to.toISOString() },
       kpis,
       drivers: active,
+    };
+  }
+
+  /**
+   * V19.31 — Reconciliation snapshot: window events vs open balances (now).
+   */
+  async getCashReconciliationSnapshot(
+    query: DriverCashTraceQueryDto,
+  ): Promise<CashReconciliationSnapshotDto> {
+    const trace = await this.getDriverCashTrace(query);
+    const [pendingDriversKd, depRejected, awaiting] = await Promise.all([
+      this.getTotalCashWithDrivers(),
+      this.prisma.managerCashCustody.aggregate({
+        where: {
+          status: {
+            in: [
+              ManagerCashCustodyStatus.PENDING_DEPOSIT,
+              ManagerCashCustodyStatus.REJECTED,
+            ],
+          },
+        },
+        _sum: { amountKd: true },
+        _count: { _all: true },
+      }),
+      this.prisma.managerCashCustody.aggregate({
+        where: { status: ManagerCashCustodyStatus.AWAITING_VERIFICATION },
+        _sum: { amountKd: true },
+        _count: { _all: true },
+      }),
+    ]);
+    const depRejectedKd =
+      depRejected._sum.amountKd !== null && depRejected._sum.amountKd !== undefined
+        ? depRejected._sum.amountKd.toFixed(4)
+        : '0.0000';
+    const awaitingKd =
+      awaiting._sum.amountKd !== null && awaiting._sum.amountKd !== undefined
+        ? awaiting._sum.amountKd.toFixed(4)
+        : '0.0000';
+
+    return {
+      range: trace.range,
+      notes: [
+        'eventBasedInRange uses completedAt (collected) and receivedFromDriverAt (handed) inside [from, to].',
+        'stateBasedNow.pendingWithDriversKd is current driver field cash (PAID_TO_DRIVER), not window-scoped.',
+        'stateBasedNow.pendingWithManagers* uses open custody rows by status (deposit/rejected vs awaiting verification).',
+      ],
+      eventBasedInRange: {
+        collectedKd: trace.kpis.totalCollectedKd,
+        handedToManagerKd: trace.kpis.totalHandedToManagerKd,
+        collectedOrderCount: trace.kpis.totalCollectedOrderCount,
+        handedBagCount: trace.kpis.totalBagCount,
+      },
+      stateBasedNow: {
+        pendingWithDriversKd: pendingDriversKd,
+        pendingWithManagersDepositOrRejectedKd: depRejectedKd,
+        pendingWithManagersDepositOrRejectedBagCount: depRejected._count._all,
+        awaitingVerificationKd: awaitingKd,
+        awaitingVerificationBagCount: awaiting._count._all,
+      },
+      driverCashTraceKpis: trace.kpis,
     };
   }
 

@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { ApiOperation, ApiProduces, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
+import { Public } from '../auth/decorators/roles.decorator';
 import { OrdersService } from './orders.service';
 
 /**
@@ -18,6 +19,7 @@ import { OrdersService } from './orders.service';
  */
 @ApiTags('public-invoice')
 @Controller('public/invoice')
+@Public('Signed invoice-share token scopes public receipt/PDF access.')
 export class PublicInvoiceController {
   constructor(private readonly orders: OrdersService) {}
 

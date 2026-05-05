@@ -10,8 +10,10 @@ import { OperatingHoursModule } from '../system/operating-hours.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { BcryptService } from './bcrypt.service';
+import { GeneralManagerReadOnlyGuard } from './guards/general-manager-read-only.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
+import { PermissionsGuard } from './permissions/permissions.guard';
 import { JwtStrategy } from './strategies/jwt.strategy';
 
 @Module({
@@ -48,12 +50,38 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     BcryptService,
     JwtStrategy,
     JwtAuthGuard,
+    GeneralManagerReadOnlyGuard,
     RolesGuard,
+    PermissionsGuard,
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
     },
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: GeneralManagerReadOnlyGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: PermissionsGuard,
+    },
   ],
-  exports: [AuthService, BcryptService, JwtModule, JwtAuthGuard, RolesGuard],
+  exports: [
+    AuthService,
+    BcryptService,
+    JwtModule,
+    JwtAuthGuard,
+    GeneralManagerReadOnlyGuard,
+    RolesGuard,
+    PermissionsGuard,
+  ],
 })
 export class AuthModule {}

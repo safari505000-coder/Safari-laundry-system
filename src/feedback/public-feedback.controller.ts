@@ -8,6 +8,7 @@ import {
   Post,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Public } from '../auth/decorators/roles.decorator';
 import { SubmitFeedbackDto } from './dto/submit-feedback.dto';
 import { FeedbackService } from './feedback.service';
 
@@ -22,6 +23,7 @@ import { FeedbackService } from './feedback.service';
  */
 @ApiTags('public-feedback')
 @Controller('public/orders')
+@Public('Customer QR feedback endpoint is login-less and returns receipt-visible data only.')
 export class PublicFeedbackController {
   constructor(private readonly svc: FeedbackService) {}
 

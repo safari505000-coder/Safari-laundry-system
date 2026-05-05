@@ -5,6 +5,7 @@ import {
   CREATE_CUSTOMER,
   roleHasBuiltinCapability,
 } from '../auth/capabilities';
+import { permissionsForRole } from '../auth/permissions/roles-permissions.map';
 import { PrismaService } from '../prisma/prisma.service';
 import { PermissionKeyDto } from './dto/permission-key.dto';
 
@@ -37,7 +38,9 @@ export class PermissionsService {
       where: { name: roleName },
       select: { permissions: { select: { key: true } } },
     });
-    return (r?.permissions ?? []).map((p) => p.key);
+    const fromDb = (r?.permissions ?? []).map((p) => p.key);
+    const fromBuiltin = permissionsForRole(roleName) as unknown as string[];
+    return Array.from(new Set([...fromDb, ...fromBuiltin]));
   }
 
   async getRoleWithPermissions(roleId: string): Promise<RoleWithPermissions> {

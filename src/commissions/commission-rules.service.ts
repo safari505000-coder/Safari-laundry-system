@@ -9,23 +9,31 @@ import { CreateCommissionRuleDto } from './dto/create-commission-rule.dto';
 import { UpdateCommissionRuleDto } from './dto/update-commission-rule.dto';
 
 /**
- * V19.16 — CRUD for `CommissionRule`. Owner / GM only. The backend
- * `CommissionEarningService` reads active rules at earning time and
- * picks the most-specific one per (mode, earner-role). This service is
- * purely storage — it never touches `CommissionPayout` rows.
+ * V19.16 — CRUD for `CommissionRule`. Owner writes; GM / Accountant read.
+ * The backend `CommissionEarningService` reads active rules at earning time.
  */
 @Injectable()
 export class CommissionRulesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private assertOwnerOrGM(role: SafariRole): void {
-    if (role !== SafariRole.OWNER && role !== SafariRole.GENERAL_MANAGER) {
+  private assertCanReadRules(role: SafariRole): void {
+    if (
+      role !== SafariRole.OWNER &&
+      role !== SafariRole.GENERAL_MANAGER &&
+      role !== SafariRole.ACCOUNTANT
+    ) {
+      throw new ForbiddenException();
+    }
+  }
+
+  private assertOwnerWrites(role: SafariRole): void {
+    if (role !== SafariRole.OWNER) {
       throw new ForbiddenException();
     }
   }
 
   async list(actorRole: SafariRole, opts?: { mode?: CommissionMode }) {
-    this.assertOwnerOrGM(actorRole);
+    this.assertCanReadRules(actorRole);
     return this.prisma.commissionRule.findMany({
       where: opts?.mode ? { mode: opts.mode } : {},
       orderBy: [{ isActive: 'desc' }, { updatedAt: 'desc' }],
@@ -33,14 +41,14 @@ export class CommissionRulesService {
   }
 
   async findOne(actorRole: SafariRole, id: string) {
-    this.assertOwnerOrGM(actorRole);
+    this.assertCanReadRules(actorRole);
     const row = await this.prisma.commissionRule.findUnique({ where: { id } });
     if (!row) throw new NotFoundException('Commission rule not found');
     return row;
   }
 
   async create(actorRole: SafariRole, dto: CreateCommissionRuleDto) {
-    this.assertOwnerOrGM(actorRole);
+    this.assertOwnerWrites(actorRole);
     return this.prisma.commissionRule.create({
       data: {
         name: dto.name,
@@ -63,7 +71,7 @@ export class CommissionRulesService {
     id: string,
     dto: UpdateCommissionRuleDto,
   ) {
-    this.assertOwnerOrGM(actorRole);
+    this.assertOwnerWrites(actorRole);
     await this.findOne(actorRole, id);
     const data: Prisma.CommissionRuleUpdateInput = {};
     if (dto.name !== undefined) data.name = dto.name;
@@ -84,28 +92,16 @@ export class CommissionRulesService {
   }
 
   async remove(actorRole: SafariRole, id: string) {
-    this.assertOwnerOrGM(actorRole);
+    this.assertOwnerWrites(actorRole);
     await this.findOne(actorRole, id);
-    // Soft-disable instead of hard-delete so historical CommissionPayout
-    // rows keep a readable rule reference for the Owner report.
     return this.prisma.commissionRule.update({
       where: { id },
       data: { isActive: false },
     });
   }
 
-  /**
-   * V19.17 — "Default" rule helper used by the unified Settings
-   * Dashboard. The Dashboard exposes a single inline card that edits
-   * one rule applying to ALL roles (`role = null`). To keep the
-   * storage model unchanged, we treat the most-recently-updated active
-   * rule with `role = null` as the "default" one. If none exists yet,
-   * the first save creates it. Advanced users can still manage the
-   * full list (per-role overrides, multiple concurrent rules) from
-   * `/settings/commission-rules`.
-   */
   async getDefaultRule(actorRole: SafariRole) {
-    this.assertOwnerOrGM(actorRole);
+    this.assertCanReadRules(actorRole);
     return this.prisma.commissionRule.findFirst({
       where: { role: null },
       orderBy: [{ isActive: 'desc' }, { updatedAt: 'desc' }],
@@ -116,7 +112,7 @@ export class CommissionRulesService {
     actorRole: SafariRole,
     dto: CreateCommissionRuleDto,
   ) {
-    this.assertOwnerOrGM(actorRole);
+    this.assertOwnerWrites(actorRole);
     const existing = await this.prisma.commissionRule.findFirst({
       where: { role: null },
       orderBy: [{ isActive: 'desc' }, { updatedAt: 'desc' }],

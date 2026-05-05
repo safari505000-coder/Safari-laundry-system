@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { LedgerTransactionType } from '@prisma/client';
+import { LedgerTransactionType, OrderStatus, PosPaymentMethod } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
@@ -10,32 +10,32 @@ export class SubscriptionService {
     totalSubscriptionUsage: string;
     debtSettledBySubscriptions: string;
   }> {
+    const usageAgg = await this.prisma.order.aggregate({
+      where: {
+        status: { not: OrderStatus.CANCELED },
+        posPaymentMethod: PosPaymentMethod.SUBSCRIPTION_WALLET,
+      },
+      _sum: { totalPrice: true },
+    });
     const txRows = await this.prisma.transactionHistory.findMany({
       where: {
-        OR: [
-          { type: LedgerTransactionType.ORDER_WALLET_SETTLEMENT },
-          { type: LedgerTransactionType.SUBSCRIPTION_ACTIVATION },
-        ],
+        type: LedgerTransactionType.SUBSCRIPTION_ACTIVATION,
       },
       select: { type: true, metadata: true },
     });
-    let usage = 0;
     let settled = 0;
     for (const row of txRows) {
       const meta = row.metadata as
-        | { debtSettled?: unknown; appliedFromWallet?: unknown }
+        | { debtSettled?: unknown }
         | null
         | undefined;
-      if (row.type === LedgerTransactionType.ORDER_WALLET_SETTLEMENT) {
-        const n = Number.parseFloat(String(meta?.appliedFromWallet ?? '0'));
-        if (Number.isFinite(n) && n > 0) usage += n;
-      } else if (row.type === LedgerTransactionType.SUBSCRIPTION_ACTIVATION) {
+      if (row.type === LedgerTransactionType.SUBSCRIPTION_ACTIVATION) {
         const n = Number.parseFloat(String(meta?.debtSettled ?? '0'));
         if (Number.isFinite(n) && n > 0) settled += n;
       }
     }
     return {
-      totalSubscriptionUsage: usage.toFixed(4),
+      totalSubscriptionUsage: (usageAgg._sum.totalPrice?.toNumber() ?? 0).toFixed(4),
       debtSettledBySubscriptions: settled.toFixed(4),
     };
   }
@@ -59,28 +59,29 @@ export class SubscriptionService {
         subscriptionExpiresAt: true,
       },
     });
+    const usageAgg = await this.prisma.order.aggregate({
+      where: {
+        customerId,
+        status: { not: OrderStatus.CANCELED },
+        posPaymentMethod: PosPaymentMethod.SUBSCRIPTION_WALLET,
+      },
+      _sum: { totalPrice: true },
+    });
     const txRows = await this.prisma.transactionHistory.findMany({
       where: {
         customerId,
-        OR: [
-          { type: LedgerTransactionType.ORDER_WALLET_SETTLEMENT },
-          { type: LedgerTransactionType.SUBSCRIPTION_ACTIVATION },
-        ],
+        type: LedgerTransactionType.SUBSCRIPTION_ACTIVATION,
       },
       select: { type: true, metadata: true },
       take: 5000,
     });
-    let usage = 0;
     let settled = 0;
     for (const row of txRows) {
       const meta = row.metadata as
-        | { debtSettled?: unknown; appliedFromWallet?: unknown }
+        | { debtSettled?: unknown }
         | null
         | undefined;
-      if (row.type === LedgerTransactionType.ORDER_WALLET_SETTLEMENT) {
-        const n = Number.parseFloat(String(meta?.appliedFromWallet ?? '0'));
-        if (Number.isFinite(n) && n > 0) usage += n;
-      } else if (row.type === LedgerTransactionType.SUBSCRIPTION_ACTIVATION) {
+      if (row.type === LedgerTransactionType.SUBSCRIPTION_ACTIVATION) {
         const n = Number.parseFloat(String(meta?.debtSettled ?? '0'));
         if (Number.isFinite(n) && n > 0) settled += n;
       }
@@ -91,7 +92,7 @@ export class SubscriptionService {
       subscriptionPlanName: wallet?.subscriptionPlanName ?? null,
       subscriptionActivatedAt: wallet?.subscriptionActivatedAt?.toISOString() ?? null,
       subscriptionExpiresAt: wallet?.subscriptionExpiresAt?.toISOString() ?? null,
-      totalSubscriptionUsage: usage.toFixed(4),
+      totalSubscriptionUsage: (usageAgg._sum.totalPrice?.toNumber() ?? 0).toFixed(4),
       debtSettledBySubscriptions: settled.toFixed(4),
     };
   }
