@@ -1,4 +1,4 @@
-import { SafariRole } from '@prisma/client';
+import { SafariRole } from "@prisma/client";
 export declare class CreateUserDto {
     fullName: string;
     username: string;

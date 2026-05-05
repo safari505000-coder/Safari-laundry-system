@@ -1,4 +1,4 @@
-import { LedgerTransactionType } from '@prisma/client';
+import { LedgerTransactionType } from "@prisma/client";
 export declare class SettlementHistoryRowDto {
     id: string;
     createdAt: Date;

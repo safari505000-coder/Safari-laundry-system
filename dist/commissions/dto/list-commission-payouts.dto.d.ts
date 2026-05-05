@@ -1,4 +1,4 @@
-import { CommissionPayoutStatus } from '@prisma/client';
+import { CommissionPayoutStatus } from "@prisma/client";
 export declare class ListCommissionPayoutsDto {
     from: string;
     to: string;

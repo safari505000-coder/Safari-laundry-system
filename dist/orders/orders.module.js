@@ -15,6 +15,9 @@ const customer_notifications_module_1 = require("../customer-notifications/custo
 const inventory_module_1 = require("../inventory/inventory.module");
 const payments_module_1 = require("../payments/payments.module");
 const serials_module_1 = require("../serials/serials.module");
+const audit_service_1 = require("../common/audit/audit.service");
+const customer_block_guard_1 = require("../common/guards/customer-block.guard");
+const customer_blocking_service_1 = require("../common/services/customer-blocking.service");
 const orders_controller_1 = require("./orders.controller");
 const public_invoice_controller_1 = require("./public-invoice.controller");
 const orders_service_1 = require("./orders.service");
@@ -34,7 +37,13 @@ exports.OrdersModule = OrdersModule = __decorate([
             inventory_module_1.InventoryModule,
         ],
         controllers: [orders_controller_1.OrdersController, public_invoice_controller_1.PublicInvoiceController],
-        providers: [orders_service_1.OrdersService, stale_quick_orders_cron_1.StaleQuickOrdersCronService],
+        providers: [
+            orders_service_1.OrdersService,
+            stale_quick_orders_cron_1.StaleQuickOrdersCronService,
+            audit_service_1.AuditService,
+            customer_block_guard_1.CustomerBlockGuard,
+            customer_blocking_service_1.CustomerBlockingService,
+        ],
         exports: [orders_service_1.OrdersService],
     })
 ], OrdersModule);

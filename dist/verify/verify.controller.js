@@ -15,6 +15,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.VerifyController = void 0;
 const common_1 = require("@nestjs/common");
 const swagger_1 = require("@nestjs/swagger");
+const roles_decorator_1 = require("../auth/decorators/roles.decorator");
 const verify_service_1 = require("./verify.service");
 let VerifyController = class VerifyController {
     verify;
@@ -124,6 +125,7 @@ __decorate([
 exports.VerifyController = VerifyController = __decorate([
     (0, swagger_1.ApiTags)('verify'),
     (0, common_1.Controller)('verify'),
+    (0, roles_decorator_1.Public)('Printed-document QR verification returns only data already visible on paper.'),
     __metadata("design:paramtypes", [verify_service_1.VerifyService])
 ], VerifyController);
 //# sourceMappingURL=verify.controller.js.map

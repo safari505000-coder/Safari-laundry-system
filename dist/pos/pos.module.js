@@ -9,6 +9,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.PosModule = void 0;
 const common_1 = require("@nestjs/common");
 const auth_module_1 = require("../auth/auth.module");
+const customer_block_guard_1 = require("../common/guards/customer-block.guard");
+const customer_blocking_service_1 = require("../common/services/customer-blocking.service");
 const orders_module_1 = require("../orders/orders.module");
 const prisma_module_1 = require("../prisma/prisma.module");
 const pos_controller_1 = require("./pos.controller");
@@ -20,7 +22,7 @@ exports.PosModule = PosModule = __decorate([
     (0, common_1.Module)({
         imports: [prisma_module_1.PrismaModule, auth_module_1.AuthModule, orders_module_1.OrdersModule],
         controllers: [pos_controller_1.PosController],
-        providers: [pos_service_1.PosService],
+        providers: [pos_service_1.PosService, customer_block_guard_1.CustomerBlockGuard, customer_blocking_service_1.CustomerBlockingService],
     })
 ], PosModule);
 //# sourceMappingURL=pos.module.js.map

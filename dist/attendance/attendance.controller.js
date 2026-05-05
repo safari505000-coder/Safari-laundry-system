@@ -58,7 +58,7 @@ __decorate([
 ], AttendanceController.prototype, "list", null);
 __decorate([
     (0, common_1.Post)('manual'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT),
     (0, swagger_1.ApiOperation)({
         summary: `Create / correct an attendance row manually (${branding_1.APP_BRAND})`,
         description: 'Admin / HR correction channel. Upserts the (userId, date) pair and stamps source=MANUAL.',
@@ -84,7 +84,7 @@ __decorate([
 ], AttendanceController.prototype, "sync", null);
 __decorate([
     (0, common_1.Post)('biometric'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER),
     (0, swagger_1.ApiOperation)({
         summary: `Biometric device webhook (${branding_1.APP_BRAND}, HR-BIO-001 stub)`,
         description: 'Accepts fingerprint / face-scan events and upserts the matching (userId, Kuwait-date) row. The concrete vendor driver plugs in later without changing this contract.',

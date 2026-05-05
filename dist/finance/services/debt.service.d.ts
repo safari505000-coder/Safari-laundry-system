@@ -1,4 +1,4 @@
-import { DebtEntityCategory, Prisma } from '@prisma/client';
+import { DebtEntityCategory, Prisma } from "@prisma/client";
 import { PrismaService } from '../../prisma/prisma.service';
 import { SubscriptionService } from './subscription.service';
 import type { UnpaidInvoicesQueryDto, UnpaidInvoicesResponseDto } from '../dto/unpaid-invoices.dto';
@@ -23,8 +23,8 @@ export declare class DebtService {
         from: string;
         to: string;
         rows: {
-            category: import("@prisma/client").$Enums.DebtEntityCategory;
-            source: import("@prisma/client").$Enums.DebtSource;
+            category: import(".prisma/client").$Enums.DebtEntityCategory;
+            source: import(".prisma/client").$Enums.DebtSource;
             entryCount: number;
             totalDebt: string;
         }[];

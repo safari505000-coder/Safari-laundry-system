@@ -7,12 +7,12 @@ export declare class CommissionPayoutsController {
     list(q: ListCommissionPayoutsDto, user: JwtUser): Promise<{
         rows: ({
             rule: {
-                id: string;
                 name: string;
-                mode: import("@prisma/client").$Enums.CommissionMode;
-                percentage: import("@prisma/client-runtime-utils").Decimal;
-                calculationBase: import("@prisma/client").$Enums.CommissionCalculationBase;
-                payoutTiming: import("@prisma/client").$Enums.CommissionPayoutTiming;
+                id: string;
+                mode: import(".prisma/client").$Enums.CommissionMode;
+                percentage: import("@prisma/client-runtime-utils/dist").Decimal;
+                calculationBase: import(".prisma/client").$Enums.CommissionCalculationBase;
+                payoutTiming: import(".prisma/client").$Enums.CommissionPayoutTiming;
             };
             earner: {
                 id: string;
@@ -25,17 +25,17 @@ export declare class CommissionPayoutsController {
                 serialNumber: string | null;
             } | null;
         } & {
+            status: import(".prisma/client").$Enums.CommissionPayoutStatus;
+            amount: import("@prisma/client-runtime-utils/dist").Decimal;
             id: string;
-            amount: import("@prisma/client-runtime-utils").Decimal;
             createdAt: Date;
             updatedAt: Date;
-            status: import("@prisma/client").$Enums.CommissionPayoutStatus;
-            mode: import("@prisma/client").$Enums.CommissionMode;
+            mode: import(".prisma/client").$Enums.CommissionMode;
             cancelledAt: Date | null;
             ruleId: string;
             earnerUserId: string;
-            basisAmount: import("@prisma/client-runtime-utils").Decimal;
-            percentage: import("@prisma/client-runtime-utils").Decimal;
+            basisAmount: import("@prisma/client-runtime-utils/dist").Decimal;
+            percentage: import("@prisma/client-runtime-utils/dist").Decimal;
             sourceOrderId: string | null;
             sourceDebtEntryId: string | null;
             payrollId: string | null;

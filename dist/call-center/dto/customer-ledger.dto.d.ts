@@ -1,4 +1,4 @@
-import { CashStatus, CustomerSubscriptionStatus, LedgerTransactionType, OrderStatus, PosPaymentMethod, SafariRole } from '@prisma/client';
+import { CashStatus, CustomerSubscriptionStatus, LedgerTransactionType, OrderStatus, PosPaymentMethod, SafariRole } from "@prisma/client";
 export declare class CustomerLedgerQueryDto {
     from?: string;
     to?: string;
@@ -15,6 +15,7 @@ export declare class CustomerLedgerHeaderDto {
     walletBalanceKd: string;
     walletDebtKd: string;
     collectionsReceivableKd: string;
+    operationalDebtKd: string;
     effectiveDebtKd: string;
 }
 export declare class CustomerLedgerSubscriptionDto {

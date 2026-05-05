@@ -15,6 +15,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.PublicFeedbackController = void 0;
 const common_1 = require("@nestjs/common");
 const swagger_1 = require("@nestjs/swagger");
+const roles_decorator_1 = require("../auth/decorators/roles.decorator");
 const submit_feedback_dto_1 = require("./dto/submit-feedback.dto");
 const feedback_service_1 = require("./feedback.service");
 let PublicFeedbackController = class PublicFeedbackController {
@@ -57,6 +58,7 @@ __decorate([
 exports.PublicFeedbackController = PublicFeedbackController = __decorate([
     (0, swagger_1.ApiTags)('public-feedback'),
     (0, common_1.Controller)('public/orders'),
+    (0, roles_decorator_1.Public)('Customer QR feedback endpoint is login-less and returns receipt-visible data only.'),
     __metadata("design:paramtypes", [feedback_service_1.FeedbackService])
 ], PublicFeedbackController);
 //# sourceMappingURL=public-feedback.controller.js.map

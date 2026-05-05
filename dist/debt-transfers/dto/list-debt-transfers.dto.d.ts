@@ -1,4 +1,4 @@
-import { DebtTransferStatus } from '@prisma/client';
+import { DebtTransferStatus } from "@prisma/client";
 export declare class ListDebtTransfersDto {
     status?: DebtTransferStatus;
     sourceDriverId?: string;

@@ -1,4 +1,4 @@
-import { PurchaseOrderStatus } from '@prisma/client';
+import { PurchaseOrderStatus } from "@prisma/client";
 export declare class ListPurchaseOrdersQueryDto {
     status?: PurchaseOrderStatus;
     supplierId?: string;

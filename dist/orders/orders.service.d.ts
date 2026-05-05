@@ -1,6 +1,9 @@
-import { JwtService } from '@nestjs/jwt';
-import { CashStatus, OrderStatus, PosPaymentMethod, Prisma } from '@prisma/client';
+import { EventEmitter2 } from "@nestjs/event-emitter";
+import { JwtService } from "@nestjs/jwt";
+import { CashStatus, OrderStatus, PosPaymentMethod, Prisma } from "@prisma/client";
 import type { CreatePaymentLinkResult } from '../common/services/payments.service';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { CustomerBlockingService } from '../common/services/customer-blocking.service';
 import { PaymentsService } from '../common/services/payments.service';
 import { CustomerNotificationsService } from '../customer-notifications/customer-notifications.service';
 import { CustomerLedgerService } from '../customer-ledger/customer-ledger.service';
@@ -34,6 +37,7 @@ declare const orderDetailSelect: {
     notes: true;
     reminderCount: true;
     lastReminderAt: true;
+    dispatchId: true;
     createdAt: true;
     updatedAt: true;
     customer: {
@@ -101,8 +105,14 @@ export declare class OrdersService {
     private readonly serialCounter;
     private readonly inventory;
     private readonly jwt;
+    private readonly customerBlocking;
+    private readonly auditLogs;
+    private readonly events;
     private readonly log;
-    constructor(prisma: PrismaService, customerLedger: CustomerLedgerService, paymentsService: PaymentsService, customerNotifications: CustomerNotificationsService, generalLedger: GeneralLedgerService, serialCounter: SerialCounterService, inventory: InventoryService, jwt: JwtService);
+    constructor(prisma: PrismaService, customerLedger: CustomerLedgerService, paymentsService: PaymentsService, customerNotifications: CustomerNotificationsService, generalLedger: GeneralLedgerService, serialCounter: SerialCounterService, inventory: InventoryService, jwt: JwtService, customerBlocking: CustomerBlockingService, auditLogs: AuditLogsService, events: EventEmitter2);
+    private emitOrderCreated;
+    private auditOrderCreated;
+    private auditOrderPayment;
     private resolveInvoiceShareForNotify;
     private formatLineItemsBlockForNotify;
     private formatLineItemsBlockForBundleNotify;
@@ -113,6 +123,7 @@ export declare class OrdersService {
     private canStaffUpdateOrders;
     private assertDriverUser;
     private assertPosCheckoutActor;
+    private assertCallCenterDispatchRequirement;
     private resolvePosCheckoutPaymentMethod;
     private reconcileLineItems;
     private mapPosCheckoutLineItems;
@@ -155,9 +166,18 @@ export declare class OrdersService {
         openOrderIds: Set<string>;
     }>;
     sumCollectionsReceivableKdForCustomer(customerId: string, tx?: Prisma.TransactionClient): Promise<Prisma.Decimal>;
+    getOperationalDebtKdBreakdown(customerId: string, embeddedWalletDebt?: Prisma.Decimal | null, tx?: Prisma.TransactionClient): Promise<{
+        walletDebtKd: Prisma.Decimal;
+        collectionsReceivableKd: Prisma.Decimal;
+        operationalDebtKd: Prisma.Decimal;
+        effectiveDebtKd: Prisma.Decimal;
+        collectionsOpenOrderIds: Set<string>;
+        trace?: DebtKdBreakdownTrace;
+    }>;
     getEffectiveDebtKdBreakdown(customerId: string, embeddedWalletDebt?: Prisma.Decimal | null, tx?: Prisma.TransactionClient): Promise<{
         walletDebtKd: Prisma.Decimal;
         collectionsReceivableKd: Prisma.Decimal;
+        operationalDebtKd: Prisma.Decimal;
         effectiveDebtKd: Prisma.Decimal;
         collectionsOpenOrderIds: Set<string>;
         trace?: DebtKdBreakdownTrace;
@@ -222,6 +242,7 @@ export declare class OrdersService {
         id: string;
         fullName: string;
         username: string;
+        branchId: string | null;
         branchName: string | null;
     }[]>;
     listStaleQuickOrderRisks(): Promise<{

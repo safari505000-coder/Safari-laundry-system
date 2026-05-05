@@ -37,7 +37,7 @@ export declare class InventoryController {
     }>;
     listMovements(q: ListMovementsQueryDto): Promise<{
         id: string;
-        type: import("@prisma/client").$Enums.StockMovementType;
+        type: import(".prisma/client").$Enums.StockMovementType;
         stockItem: {
             code: string;
             nameAr: string;
@@ -62,7 +62,7 @@ export declare class InventoryController {
         id: string;
         stockItemId: string;
         branchId: string;
-        type: import("@prisma/client").$Enums.StockMovementType;
+        type: import(".prisma/client").$Enums.StockMovementType;
         quantity: string;
         unitCost: string | null;
         totalCost: string | null;
@@ -74,7 +74,7 @@ export declare class InventoryController {
         id: string;
         stockItemId: string;
         branchId: string;
-        type: import("@prisma/client").$Enums.StockMovementType;
+        type: import(".prisma/client").$Enums.StockMovementType;
         quantity: string;
         unitCost: string | null;
         totalCost: string | null;
@@ -88,7 +88,7 @@ export declare class InventoryController {
             id: string;
             stockItemId: string;
             branchId: string;
-            type: import("@prisma/client").$Enums.StockMovementType;
+            type: import(".prisma/client").$Enums.StockMovementType;
             quantity: string;
             unitCost: string | null;
             totalCost: string | null;
@@ -100,7 +100,7 @@ export declare class InventoryController {
             id: string;
             stockItemId: string;
             branchId: string;
-            type: import("@prisma/client").$Enums.StockMovementType;
+            type: import(".prisma/client").$Enums.StockMovementType;
             quantity: string;
             unitCost: string | null;
             totalCost: string | null;

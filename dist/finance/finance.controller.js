@@ -22,18 +22,25 @@ const swagger_1 = require("@nestjs/swagger");
 const client_1 = require("@prisma/client");
 const multer_1 = require("multer");
 const roles_decorator_1 = require("../auth/decorators/roles.decorator");
+const permissions_decorator_1 = require("../auth/permissions/permissions.decorator");
+const permissions_enum_1 = require("../auth/permissions/permissions.enum");
 const current_user_decorator_1 = require("../auth/decorators/current-user.decorator");
 const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
 const roles_guard_1 = require("../auth/guards/roles.guard");
 const branding_1 = require("../common/constants/branding");
+const cash_write_police_guard_1 = require("../cash-monitor/cash-write-police.guard");
 const confirm_handover_dto_1 = require("./dto/confirm-handover.dto");
 const debt_by_category_query_dto_1 = require("./dto/debt-by-category-query.dto");
 const open_debt_by_issuer_dto_1 = require("./dto/open-debt-by-issuer.dto");
 const daily_pos_sales_query_dto_1 = require("./dto/daily-pos-sales-query.dto");
+const cash_reconciliation_dto_1 = require("./dto/cash-reconciliation.dto");
 const driver_cash_trace_dto_1 = require("./dto/driver-cash-trace.dto");
 const update_driver_tracking_dto_1 = require("./dto/update-driver-tracking.dto");
 const unpaid_invoices_dto_1 = require("./dto/unpaid-invoices.dto");
+const accountant_dashboard_query_dto_1 = require("./dto/accountant-dashboard-query.dto");
 const finance_service_1 = require("./finance.service");
+const accountant_dashboard_service_1 = require("./services/accountant-dashboard.service");
+const owner_financial_dashboard_service_1 = require("./services/owner-financial-dashboard.service");
 const HANDOVER_RECEIPTS_DIR = (0, node_path_1.join)(process.cwd(), 'uploads', 'handover-receipts');
 const HANDOVER_RECEIPT_MIMES = new Set([
     'image/jpeg',
@@ -42,8 +49,12 @@ const HANDOVER_RECEIPT_MIMES = new Set([
 ]);
 let FinanceController = class FinanceController {
     financeService;
-    constructor(financeService) {
+    accountantDashboard;
+    ownerFinancialDashboard;
+    constructor(financeService, accountantDashboard, ownerFinancialDashboard) {
         this.financeService = financeService;
+        this.accountantDashboard = accountantDashboard;
+        this.ownerFinancialDashboard = ownerFinancialDashboard;
     }
     async driverEnsureShift(user) {
         await this.financeService.ensureOpenShiftForDriver(user.userId);
@@ -51,6 +62,9 @@ let FinanceController = class FinanceController {
     }
     getOwnerCustomerWalletSummary() {
         return this.financeService.getOwnerCustomerWalletSummary();
+    }
+    getOwnerFinancialDashboard() {
+        return this.ownerFinancialDashboard.getDashboard();
     }
     getConsolidatedCashSnapshot() {
         return this.financeService.getConsolidatedCashSnapshot();
@@ -83,7 +97,7 @@ let FinanceController = class FinanceController {
         return this.financeService.updateDriverTracking(driverId, dto);
     }
     confirmHandover(dto, user) {
-        return this.financeService.confirmHandover(user.userId, dto);
+        return this.financeService.confirmHandover(user.userId, user.role, dto);
     }
     getFinancialCycleReport() {
         return this.financeService.getOwnerFinancialCycleReport();
@@ -91,8 +105,32 @@ let FinanceController = class FinanceController {
     getDriverCashTrace(query) {
         return this.financeService.getDriverCashTrace(query);
     }
+    getCashReconciliation(query) {
+        return this.financeService.getCashReconciliationSnapshot(query);
+    }
     getUnpaidInvoices(query) {
         return this.financeService.getUnpaidInvoices(query);
+    }
+    getDashboardSummary(q) {
+        return this.accountantDashboard.getDashboardSummary(q);
+    }
+    getReconciliationExplain(q) {
+        return this.accountantDashboard.explainReconciliation(q);
+    }
+    getFinanceReconciliation(q) {
+        return this.accountantDashboard.getReconciliation(q);
+    }
+    getFinanceAlerts(q, user) {
+        if (user.role === client_1.SafariRole.MANAGER) {
+            if (!user.branchId) {
+                throw new common_1.ForbiddenException('Manager has no branchId on JWT — cannot scope branch alerts.');
+            }
+            q.branchId = user.branchId;
+        }
+        return this.accountantDashboard.getAlerts(q);
+    }
+    getFinanceInsights(q) {
+        return this.accountantDashboard.getInsights(q);
     }
     getRealtimeTotals() {
         return this.financeService.getRealtimeTotals();
@@ -123,8 +161,20 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], FinanceController.prototype, "getOwnerCustomerWalletSummary", null);
 __decorate([
-    (0, common_1.Get)('consolidated-cash'),
+    (0, common_1.Get)('owner-dashboard'),
     (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.VIEW_FINANCIAL_REPORTS, permissions_enum_1.AppPermission.VIEW_CASH),
+    (0, swagger_1.ApiOperation)({
+        summary: `Owner financial intelligence dashboard (${branding_1.APP_BRAND})`,
+        description: 'Decision layer on top of canonical customer financials, cached with the finance dashboard cache.',
+    }),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", void 0)
+], FinanceController.prototype, "getOwnerFinancialDashboard", null);
+__decorate([
+    (0, common_1.Get)('consolidated-cash'),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.VIEW_CASH),
     (0, swagger_1.ApiOperation)({
         summary: `Consolidated cash snapshot (${branding_1.APP_BRAND})`,
         description: 'A3.D8 — every pool of KD cash the institution currently holds: driver field cash + manager custody bags (PENDING_DEPOSIT / AWAITING_VERIFICATION) + branch wallets + unverified bank deposit logs. Used by the Owner/Accountant control-panel card so the total is the single source of truth.',
@@ -149,7 +199,7 @@ __decorate([
 ], FinanceController.prototype, "getDailyPosSales", null);
 __decorate([
     (0, common_1.Get)('reports/debt-by-category'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.VIEW_DEBTS),
     (0, swagger_1.ApiOperation)({
         summary: `Debt breakdown by category (${branding_1.APP_BRAND})`,
         description: 'Debt totals grouped by category (BRANCH, DRIVER, OWNER, CALL_CENTER) and source (SUBSCRIPTION_OVERUSE, INVOICE_SHORTFALL).',
@@ -161,7 +211,7 @@ __decorate([
 ], FinanceController.prototype, "getDebtByCategory", null);
 __decorate([
     (0, common_1.Get)('reports/open-debt-by-issuer'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.CALL_CENTER, client_1.SafariRole.CALL_CENTER_SUPERVISOR),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.VIEW_DEBTS),
     (0, swagger_1.ApiOperation)({
         summary: `NET open debt grouped by invoice issuer (${branding_1.APP_BRAND})`,
         description: 'Live snapshot. Per-customer FIFO allocation of PAYMENT entries against INVOICE_SHORTFALL. Σ openDebtKd matches /unpaid-invoices; the Call Center red KPI uses Σ UNPAID order totals (collections list) and may differ when off-list wallet/subscription debt exists.',
@@ -218,7 +268,7 @@ __decorate([
 ], FinanceController.prototype, "uploadHandoverReceipt", null);
 __decorate([
     (0, common_1.Get)('driver-balance'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.CALL_CENTER, client_1.SafariRole.CALL_CENTER_SUPERVISOR, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.VIEW_CASH),
     (0, swagger_1.ApiOperation)({
         summary: `Driver cash on hand (${branding_1.APP_BRAND})`,
         description: 'Per driver: sum of COMPLETED orders still PAID_TO_DRIVER (not yet handed to office), plus current OPEN shift metadata. OWNER/MANAGER only.',
@@ -255,9 +305,10 @@ __decorate([
 __decorate([
     (0, common_1.Post)('handover/confirm'),
     (0, roles_decorator_1.Roles)(client_1.SafariRole.MANAGER),
+    (0, cash_write_police_guard_1.CashWriteEndpoint)(client_1.SafariRole.MANAGER),
     (0, swagger_1.ApiOperation)({
         summary: `Confirm cash handover (${branding_1.APP_BRAND})`,
-        description: 'Atomic settlement: all PAID_TO_DRIVER orders for the driver → HANDED_OVER_TO_OFFICE; OPEN shift → CLOSED with ledger totals. Optional declaredHandoverTotal must match ledger within 0.0001 KWD.',
+        description: 'Atomic settlement: all PAID_TO_DRIVER orders for the driver → HANDED_OVER_TO_OFFICE; OPEN shift → CLOSED with ledger totals. Optional declaredHandoverTotal must match ledger within 0.0001 KWD. CashWritePoliceGuard rejects any request body containing forbidden cash-override fields (cashAmount, heldCashKd, totalCash, etc.) -- the ledger is the only producer.',
     }),
     __param(0, (0, common_1.Body)()),
     __param(1, (0, current_user_decorator_1.CurrentUser)()),
@@ -278,7 +329,7 @@ __decorate([
 ], FinanceController.prototype, "getFinancialCycleReport", null);
 __decorate([
     (0, common_1.Get)('reports/driver-cash-trace'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.VIEW_CASH),
     (0, swagger_1.ApiOperation)({
         summary: `Driver cash trace report (${branding_1.APP_BRAND})`,
         description: 'V19.10 — trace each KD from driver collection through manager custody to verified bank deposit, for a given date window.',
@@ -289,8 +340,20 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], FinanceController.prototype, "getDriverCashTrace", null);
 __decorate([
+    (0, common_1.Get)('reports/cash-reconciliation'),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.VIEW_CASH),
+    (0, swagger_1.ApiOperation)({
+        summary: `Cash reconciliation snapshot (${branding_1.APP_BRAND})`,
+        description: 'V19.31 — event-based totals in the selected window vs open balances now (drivers, managers by status).',
+    }),
+    __param(0, (0, common_1.Query)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [cash_reconciliation_dto_1.CashReconciliationQueryDto]),
+    __metadata("design:returntype", Promise)
+], FinanceController.prototype, "getCashReconciliation", null);
+__decorate([
     (0, common_1.Get)('reports/unpaid-invoices'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.CALL_CENTER, client_1.SafariRole.CALL_CENTER_SUPERVISOR),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.VIEW_DEBTS),
     (0, swagger_1.ApiOperation)({
         summary: `Unpaid invoices list (${branding_1.APP_BRAND})`,
         description: 'Receivable on the customer per row, with `actorUser*` = field issuer (driver, branch manager, etc.). Ledger: `INVOICE_SHORTFALL` + subscription overuse + FIFO payments; plus `OPEN_UNPAITotal` lines. `kpis.totalMarketUnpaidKd` and `kpis.marketUnpaidByMethod` both use the full Σ `Order` UNPAID universe in branch scope (split by `posPaymentMethod` for the latter). Use `marketKpiBranchId` to align the headline with Call Center when `branchId` is omitted.',
@@ -301,8 +364,67 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], FinanceController.prototype, "getUnpaidInvoices", null);
 __decorate([
+    (0, common_1.Get)('dashboard-summary'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.VIEW_FINANCIAL_REPORTS, permissions_enum_1.AppPermission.VIEW_CASH),
+    (0, swagger_1.ApiOperation)({
+        summary: `Accountant interactive dashboard (${branding_1.APP_BRAND})`,
+        description: 'V19.32 — KPIs, cash pipeline, charts, drilldowns; cached ~45s when Redis is configured.',
+    }),
+    __param(0, (0, common_1.Query)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [accountant_dashboard_query_dto_1.AccountantDashboardQueryDto]),
+    __metadata("design:returntype", void 0)
+], FinanceController.prototype, "getDashboardSummary", null);
+__decorate([
+    (0, common_1.Get)('reconciliation/explain'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.VIEW_CASH),
+    (0, swagger_1.ApiOperation)({
+        summary: `Reconciliation explain — timing lag breakdown (${branding_1.APP_BRAND})`,
+    }),
+    __param(0, (0, common_1.Query)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [accountant_dashboard_query_dto_1.AccountantDashboardQueryDto]),
+    __metadata("design:returntype", void 0)
+], FinanceController.prototype, "getReconciliationExplain", null);
+__decorate([
+    (0, common_1.Get)('reconciliation'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.VIEW_CASH),
+    (0, swagger_1.ApiOperation)({
+        summary: `Cash reconciliation — collected vs handed (${branding_1.APP_BRAND})`,
+        description: 'Difference = handed − collected in window; badge for timing gaps.',
+    }),
+    __param(0, (0, common_1.Query)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [accountant_dashboard_query_dto_1.AccountantDashboardQueryDto]),
+    __metadata("design:returntype", void 0)
+], FinanceController.prototype, "getFinanceReconciliation", null);
+__decorate([
+    (0, common_1.Get)('alerts'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.MANAGER),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.VIEW_CASH),
+    (0, swagger_1.ApiOperation)({ summary: `Finance alerts (${branding_1.APP_BRAND})` }),
+    __param(0, (0, common_1.Query)()),
+    __param(1, (0, current_user_decorator_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [accountant_dashboard_query_dto_1.AccountantDashboardQueryDto, Object]),
+    __metadata("design:returntype", void 0)
+], FinanceController.prototype, "getFinanceAlerts", null);
+__decorate([
+    (0, common_1.Get)('insights'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.VIEW_FINANCIAL_REPORTS, permissions_enum_1.AppPermission.VIEW_CASH),
+    (0, swagger_1.ApiOperation)({ summary: `Rule-based finance insights (${branding_1.APP_BRAND})` }),
+    __param(0, (0, common_1.Query)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [accountant_dashboard_query_dto_1.AccountantDashboardQueryDto]),
+    __metadata("design:returntype", void 0)
+], FinanceController.prototype, "getFinanceInsights", null);
+__decorate([
     (0, common_1.Get)('dashboard/realtime-totals'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.VIEW_CASH, permissions_enum_1.AppPermission.VIEW_DEBTS),
     (0, swagger_1.ApiOperation)({
         summary: `Realtime financial dashboard totals (${branding_1.APP_BRAND})`,
         description: 'Card totals for cash with drivers, online revenue, total debt, and subscription usage.',
@@ -316,6 +438,8 @@ exports.FinanceController = FinanceController = __decorate([
     (0, swagger_1.ApiBearerAuth)('bearer'),
     (0, common_1.Controller)('finance'),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
-    __metadata("design:paramtypes", [finance_service_1.FinanceService])
+    __metadata("design:paramtypes", [finance_service_1.FinanceService,
+        accountant_dashboard_service_1.AccountantDashboardService,
+        owner_financial_dashboard_service_1.OwnerFinancialDashboardService])
 ], FinanceController);
 //# sourceMappingURL=finance.controller.js.map

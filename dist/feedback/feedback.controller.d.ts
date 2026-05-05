@@ -21,7 +21,7 @@ export declare class FeedbackController {
                 invoiceNumber: string | null;
                 totalKd: string;
                 createdAt: string;
-                status: import("@prisma/client").$Enums.OrderStatus;
+                status: import(".prisma/client").$Enums.OrderStatus;
                 driver: {
                     id: string;
                     fullName: string;

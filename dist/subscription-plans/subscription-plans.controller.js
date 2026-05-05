@@ -47,6 +47,7 @@ let SubscriptionPlansController = class SubscriptionPlansController {
 exports.SubscriptionPlansController = SubscriptionPlansController;
 __decorate([
     (0, common_1.Post)(),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER),
     (0, swagger_1.ApiOperation)({
         summary: `Create subscription plan (${branding_1.APP_BRAND})`,
         description: 'OWNER only. Defines list price and wallet credit granted on activation.',
@@ -58,6 +59,7 @@ __decorate([
 ], SubscriptionPlansController.prototype, "create", null);
 __decorate([
     (0, common_1.Get)(),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
     (0, swagger_1.ApiOperation)({ summary: `List subscription plans (${branding_1.APP_BRAND})` }),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
@@ -65,6 +67,7 @@ __decorate([
 ], SubscriptionPlansController.prototype, "findAll", null);
 __decorate([
     (0, common_1.Get)(':id'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
     (0, swagger_1.ApiOperation)({ summary: `Get subscription plan (${branding_1.APP_BRAND})` }),
     __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
     __metadata("design:type", Function),
@@ -73,6 +76,7 @@ __decorate([
 ], SubscriptionPlansController.prototype, "findOne", null);
 __decorate([
     (0, common_1.Patch)(':id'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER),
     (0, swagger_1.ApiOperation)({ summary: `Update subscription plan (${branding_1.APP_BRAND})` }),
     __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
     __param(1, (0, common_1.Body)()),
@@ -82,6 +86,7 @@ __decorate([
 ], SubscriptionPlansController.prototype, "update", null);
 __decorate([
     (0, common_1.Delete)(':id'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER),
     (0, swagger_1.ApiOperation)({ summary: `Delete subscription plan (${branding_1.APP_BRAND})` }),
     __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
     __metadata("design:type", Function),
@@ -93,7 +98,6 @@ exports.SubscriptionPlansController = SubscriptionPlansController = __decorate([
     (0, swagger_1.ApiBearerAuth)('bearer'),
     (0, common_1.Controller)('subscription-plans'),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
     __metadata("design:paramtypes", [subscription_plans_service_1.SubscriptionPlansService])
 ], SubscriptionPlansController);
 //# sourceMappingURL=subscription-plans.controller.js.map

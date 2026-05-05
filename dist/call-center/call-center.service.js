@@ -1195,7 +1195,7 @@ let CallCenterService = class CallCenterService {
                 });
             }
         }
-        const collectionsDebtBasis = await this.orders.getEffectiveDebtKdBreakdown(customerId, customer.wallet?.debt);
+        const collectionsDebtBasis = await this.orders.getOperationalDebtKdBreakdown(customerId, customer.wallet?.debt);
         const mappedEvents = events.map((e) => {
             const rawMethod = readMetaString(e.metadata, 'posPaymentMethod') ??
                 readMetaString(e.metadata, 'paymentMethod') ??
@@ -1300,7 +1300,8 @@ let CallCenterService = class CallCenterService {
                 walletBalanceKd: FOUR_DP(customer.wallet?.balance ?? new client_1.Prisma.Decimal(0)),
                 walletDebtKd: FOUR_DP(collectionsDebtBasis.walletDebtKd),
                 collectionsReceivableKd: FOUR_DP(collectionsDebtBasis.collectionsReceivableKd),
-                effectiveDebtKd: FOUR_DP(collectionsDebtBasis.effectiveDebtKd),
+                operationalDebtKd: FOUR_DP(collectionsDebtBasis.operationalDebtKd),
+                effectiveDebtKd: FOUR_DP(collectionsDebtBasis.operationalDebtKd),
             },
             activeSubscription: latestSub && latestSub.status === client_1.CustomerSubscriptionStatus.ACTIVE
                 ? {
@@ -1620,14 +1621,14 @@ let CallCenterService = class CallCenterService {
             },
         });
         const currentBalance = customer.wallet?.balance ?? new client_1.Prisma.Decimal(0);
-        const debtBreakdown = await this.orders.getEffectiveDebtKdBreakdown(customerId, customer.wallet?.debt);
+        const debtBreakdown = await this.orders.getOperationalDebtKdBreakdown(customerId, customer.wallet?.debt);
         const walletDebt = debtBreakdown.walletDebtKd;
         const implicitDebt = debtBreakdown.collectionsReceivableKd;
-        const effectiveCurrentDebt = debtBreakdown.effectiveDebtKd;
+        const operationalCurrentDebt = debtBreakdown.operationalDebtKd;
         const zero = new client_1.Prisma.Decimal(0);
         const options = plans.map((p) => {
-            const debtToSettle = effectiveCurrentDebt.lt(p.actualBalance)
-                ? effectiveCurrentDebt
+            const debtToSettle = operationalCurrentDebt.lt(p.actualBalance)
+                ? operationalCurrentDebt
                 : p.actualBalance;
             const ledgerPaid = walletDebt.lt(debtToSettle) ? walletDebt : debtToSettle;
             const implicitPaid = debtToSettle.minus(ledgerPaid);
@@ -1646,9 +1647,9 @@ let CallCenterService = class CallCenterService {
                 ? p.actualBalance.minus(p.salePrice)
                 : zero;
             const convertsDebt = debtToSettle.gt(0);
-            const clearsAllDebt = effectiveCurrentDebt.gt(0) && displayedRemainingDebt.lte(0);
-            const recommended = effectiveCurrentDebt.gt(0) &&
-                p.actualBalance.gte(effectiveCurrentDebt);
+            const clearsAllDebt = operationalCurrentDebt.gt(0) && displayedRemainingDebt.lte(0);
+            const recommended = operationalCurrentDebt.gt(0) &&
+                p.actualBalance.gte(operationalCurrentDebt);
             const cashRequired = pm === client_1.PosPaymentMethod.DEBT_ON_ACCOUNT ? zero : p.salePrice;
             const projectedLedgerDebtDisplay = remainingLedger.plus(accrualOnAccount);
             return {
@@ -1670,9 +1671,9 @@ let CallCenterService = class CallCenterService {
         });
         return {
             customerId: customer.id,
-            currentDebtKd: FOUR_DP(effectiveCurrentDebt),
+            currentDebtKd: FOUR_DP(operationalCurrentDebt),
             currentBalanceKd: FOUR_DP(currentBalance),
-            hasDebt: effectiveCurrentDebt.gt(0),
+            hasDebt: operationalCurrentDebt.gt(0),
             ...(debtBreakdown.trace ?
                 { debtKdBreakdownTrace: debtBreakdown.trace }
                 : {}),

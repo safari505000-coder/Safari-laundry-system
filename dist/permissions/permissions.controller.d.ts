@@ -10,9 +10,9 @@ export declare class PermissionsController {
         key: string;
     }[]>;
     getRole(roleId: string): Promise<{
+        name: string;
         id: string;
         createdAt: Date;
-        name: string;
         updatedAt: Date;
         permissions: {
             id: string;
@@ -20,9 +20,9 @@ export declare class PermissionsController {
         }[];
     }>;
     grant(roleId: string, dto: PermissionKeyDto): Promise<{
+        name: string;
         id: string;
         createdAt: Date;
-        name: string;
         updatedAt: Date;
         permissions: {
             id: string;
@@ -30,9 +30,9 @@ export declare class PermissionsController {
         }[];
     }>;
     revoke(roleId: string, dto: PermissionKeyDto): Promise<{
+        name: string;
         id: string;
         createdAt: Date;
-        name: string;
         updatedAt: Date;
         permissions: {
             id: string;

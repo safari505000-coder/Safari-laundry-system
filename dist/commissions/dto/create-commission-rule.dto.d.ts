@@ -1,4 +1,4 @@
-import { CommissionCalculationBase, CommissionMode, CommissionPayoutTiming, SafariRole } from '@prisma/client';
+import { CommissionCalculationBase, CommissionMode, CommissionPayoutTiming, SafariRole } from "@prisma/client";
 export declare class CreateCommissionRuleDto {
     name: string;
     isActive?: boolean;

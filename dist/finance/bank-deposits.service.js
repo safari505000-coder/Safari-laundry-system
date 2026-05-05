@@ -14,12 +14,15 @@ const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
 const general_ledger_service_1 = require("../general-ledger/general-ledger.service");
 const prisma_service_1 = require("../prisma/prisma.service");
+const audit_logs_service_1 = require("../audit-logs/audit-logs.service");
 let BankDepositsService = class BankDepositsService {
     prisma;
     generalLedger;
-    constructor(prisma, generalLedger) {
+    auditLogs;
+    constructor(prisma, generalLedger, auditLogs) {
         this.prisma = prisma;
         this.generalLedger = generalLedger;
+        this.auditLogs = auditLogs;
     }
     async list(q) {
         const take = q.take ?? 100;
@@ -49,6 +52,7 @@ let BankDepositsService = class BankDepositsService {
             entries: rows.map((r) => ({
                 id: r.id,
                 depositType: r.depositType,
+                status: r.status,
                 amountKd: r.amountKd.toString(),
                 receiptImageUrl: r.receiptImageUrl,
                 shiftId: r.shiftId,
@@ -59,7 +63,7 @@ let BankDepositsService = class BankDepositsService {
             })),
         };
     }
-    async createFromUpload(managerId, fileUrl, depositType, amountKd, shiftId) {
+    async createFromUpload(managerId, fileUrl, depositType, amountKd, shiftId, actorRole) {
         if (!Number.isFinite(amountKd) || amountKd < 0) {
             throw new common_1.BadRequestException('Invalid amount');
         }
@@ -70,6 +74,39 @@ let BankDepositsService = class BankDepositsService {
             if (!shift) {
                 throw new common_1.NotFoundException('Shift not found');
             }
+        }
+        let coverage = {
+            heldKd: '0.0000',
+            heldBagCount: 0,
+            gapKd: '0.0000',
+            flagged: false,
+        };
+        if (depositType === client_1.BankDepositType.CASH_DEPOSIT_SLIP &&
+            amountKd > 0) {
+            const heldAgg = await this.prisma.managerCashCustody.aggregate({
+                where: {
+                    managerId,
+                    status: {
+                        in: [
+                            client_1.ManagerCashCustodyStatus.PENDING_DEPOSIT,
+                            client_1.ManagerCashCustodyStatus.AWAITING_VERIFICATION,
+                        ],
+                    },
+                },
+                _sum: { amountKd: true },
+                _count: { _all: true },
+            });
+            const heldDec = heldAgg._sum.amountKd
+                ? new client_1.Prisma.Decimal(heldAgg._sum.amountKd.toString())
+                : new client_1.Prisma.Decimal(0);
+            const amountDec = new client_1.Prisma.Decimal(amountKd.toFixed(4));
+            const gapDec = amountDec.minus(heldDec);
+            coverage = {
+                heldKd: heldDec.toFixed(4),
+                heldBagCount: heldAgg._count._all,
+                gapKd: gapDec.gt(0) ? gapDec.toFixed(4) : '0.0000',
+                flagged: gapDec.gt(0),
+            };
         }
         const row = await this.prisma.bankDepositLog.create({
             data: {
@@ -88,6 +125,43 @@ let BankDepositsService = class BankDepositsService {
                 },
             },
         });
+        this.auditLogs.logFinancialEvent({
+            action: 'CASH_DEPOSIT_REGISTERED',
+            customerId: null,
+            amount: amountKd.toFixed(4),
+            source: 'BANK_DEPOSIT_UPLOAD',
+            userId: managerId,
+            role: actorRole ?? null,
+            changes: {
+                bankDepositLogId: row.id,
+                depositType,
+                shiftId: shiftId ?? null,
+                receiptImageUrl: fileUrl,
+                coverage,
+            },
+        });
+        if (coverage.flagged) {
+            this.auditLogs.log({
+                userId: managerId,
+                role: actorRole ?? null,
+                action: 'CASH_DEPOSIT_UNCOVERED',
+                resource: 'bank_deposit_log',
+                amount: amountKd.toFixed(4),
+                source: 'BANK_DEPOSIT_UPLOAD',
+                status: 'SUCCESS',
+                suspicious: true,
+                changes: {
+                    bankDepositLogId: row.id,
+                    depositType,
+                    shiftId: shiftId ?? null,
+                    managerId,
+                    declaredAmountKd: amountKd.toFixed(4),
+                    heldCustodyKd: coverage.heldKd,
+                    heldCustodyBagCount: coverage.heldBagCount,
+                    shortfallKd: coverage.gapKd,
+                },
+            });
+        }
         return this.mapOne(row);
     }
     async verify(accountantId, id) {
@@ -104,6 +178,7 @@ let BankDepositsService = class BankDepositsService {
                 data: {
                     verifiedByAccountantId: accountantId,
                     verifiedAt: new Date(),
+                    status: client_1.BankDepositStatus.VERIFIED,
                 },
                 include: {
                     uploadedBy: {
@@ -137,6 +212,7 @@ let BankDepositsService = class BankDepositsService {
         return {
             id: row.id,
             depositType: row.depositType,
+            status: row.status,
             amountKd: row.amountKd.toString(),
             receiptImageUrl: row.receiptImageUrl,
             shiftId: row.shiftId,
@@ -151,6 +227,7 @@ exports.BankDepositsService = BankDepositsService;
 exports.BankDepositsService = BankDepositsService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
-        general_ledger_service_1.GeneralLedgerService])
+        general_ledger_service_1.GeneralLedgerService,
+        audit_logs_service_1.AuditLogsService])
 ], BankDepositsService);
 //# sourceMappingURL=bank-deposits.service.js.map

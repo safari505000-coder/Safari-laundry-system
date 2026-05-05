@@ -116,7 +116,6 @@ let AttendanceService = AttendanceService_1 = class AttendanceService {
     }
     async upsertManual(actorRole, dto) {
         if (actorRole !== client_1.SafariRole.OWNER &&
-            actorRole !== client_1.SafariRole.GENERAL_MANAGER &&
             actorRole !== client_1.SafariRole.MANAGER &&
             actorRole !== client_1.SafariRole.ACCOUNTANT) {
             throw new common_1.BadRequestException('Role cannot edit attendance');

@@ -21,13 +21,18 @@ let SystemSettingsService = class SystemSettingsService {
     constructor(prisma) {
         this.prisma = prisma;
     }
-    assertOwnerOrGM(role) {
+    assertCanViewSettings(role) {
         if (role !== client_1.SafariRole.OWNER && role !== client_1.SafariRole.GENERAL_MANAGER) {
             throw new common_1.ForbiddenException();
         }
     }
+    assertOwnerWrites(role) {
+        if (role !== client_1.SafariRole.OWNER) {
+            throw new common_1.ForbiddenException();
+        }
+    }
     async listToggles(actorRole) {
-        this.assertOwnerOrGM(actorRole);
+        this.assertCanViewSettings(actorRole);
         const rows = await this.prisma.systemToggle.findMany();
         const byKey = new Map(rows.map((r) => [r.key, r]));
         return Object.values(client_1.SystemToggleKey).map((key) => {
@@ -41,7 +46,7 @@ let SystemSettingsService = class SystemSettingsService {
         });
     }
     async setToggle(actorRole, actorUserId, key, isEnabled) {
-        this.assertOwnerOrGM(actorRole);
+        this.assertOwnerWrites(actorRole);
         return this.prisma.systemToggle.upsert({
             where: { key },
             create: { key, isEnabled, updatedBy: actorUserId },
@@ -67,7 +72,7 @@ let SystemSettingsService = class SystemSettingsService {
         });
     }
     async updateDebtHoldPolicy(actorRole, dto) {
-        this.assertOwnerOrGM(actorRole);
+        this.assertOwnerWrites(actorRole);
         if (dto.holdMode === client_1.DebtHoldMode.FIXED && dto.fixedAmount == null) {
             throw new common_1.BadRequestException('fixedAmount is required when holdMode = FIXED');
         }
@@ -105,7 +110,7 @@ let SystemSettingsService = class SystemSettingsService {
         });
     }
     async updatePayrollSettings(actorRole, dto) {
-        this.assertOwnerOrGM(actorRole);
+        this.assertOwnerWrites(actorRole);
         if (!Number.isInteger(dto.payDayOfMonth) ||
             dto.payDayOfMonth < 1 ||
             dto.payDayOfMonth > 28) {

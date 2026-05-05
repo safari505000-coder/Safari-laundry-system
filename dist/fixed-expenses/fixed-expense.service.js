@@ -40,9 +40,7 @@ let FixedExpenseService = class FixedExpenseService {
         this.prisma = prisma;
     }
     assertOwnerOrManager(role) {
-        if (role !== client_1.SafariRole.OWNER &&
-            role !== client_1.SafariRole.GENERAL_MANAGER &&
-            role !== client_1.SafariRole.MANAGER) {
+        if (role !== client_1.SafariRole.OWNER && role !== client_1.SafariRole.MANAGER) {
             throw new common_1.ForbiddenException();
         }
     }

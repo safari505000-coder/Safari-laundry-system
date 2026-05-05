@@ -1,4 +1,4 @@
-import { ExpenseStatus } from '@prisma/client';
+import { ExpenseStatus } from "@prisma/client";
 export declare class ExpensesQueryDto {
     from: string;
     to: string;

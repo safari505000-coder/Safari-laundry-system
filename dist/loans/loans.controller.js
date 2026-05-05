@@ -55,7 +55,7 @@ let LoansController = class LoansController {
 exports.LoansController = LoansController;
 __decorate([
     (0, common_1.Post)(),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.DRIVER, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.DRIVER, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
     (0, swagger_1.ApiOperation)({ summary: `Create loan request (${branding_1.APP_BRAND})` }),
     __param(0, (0, common_1.Body)()),
     __param(1, (0, current_user_decorator_1.CurrentUser)()),
@@ -94,7 +94,7 @@ __decorate([
 ], LoansController.prototype, "findOne", null);
 __decorate([
     (0, common_1.Patch)(':id/approve'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.ACCOUNTANT),
     (0, swagger_1.ApiOperation)({ summary: `Approve loan (${branding_1.APP_BRAND})` }),
     __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
     __param(1, (0, current_user_decorator_1.CurrentUser)()),
@@ -104,7 +104,7 @@ __decorate([
 ], LoansController.prototype, "approve", null);
 __decorate([
     (0, common_1.Patch)(':id/reject'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.ACCOUNTANT),
     (0, swagger_1.ApiOperation)({ summary: `Reject loan (${branding_1.APP_BRAND})` }),
     __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
     __param(1, (0, common_1.Body)()),
@@ -115,10 +115,10 @@ __decorate([
 ], LoansController.prototype, "reject", null);
 __decorate([
     (0, common_1.Post)(':id/deduct'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER),
     (0, swagger_1.ApiOperation)({
         summary: `Manually deduct an instalment from an ACTIVE loan (${branding_1.APP_BRAND})`,
-        description: 'OWNER + GENERAL_MANAGER only. Clamps to remaining and marks SETTLED when it reaches zero. Replaces the old payroll-embedded auto-deduction.',
+        description: 'OWNER only. Clamps to remaining and marks SETTLED when it reaches zero.',
     }),
     __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
     __param(1, (0, common_1.Body)()),

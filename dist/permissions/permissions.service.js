@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.PermissionsService = void 0;
 const common_1 = require("@nestjs/common");
 const capabilities_1 = require("../auth/capabilities");
+const roles_permissions_map_1 = require("../auth/permissions/roles-permissions.map");
 const prisma_service_1 = require("../prisma/prisma.service");
 const roleWithPermissionsSelect = {
     id: true,
@@ -36,7 +37,9 @@ let PermissionsService = class PermissionsService {
             where: { name: roleName },
             select: { permissions: { select: { key: true } } },
         });
-        return (r?.permissions ?? []).map((p) => p.key);
+        const fromDb = (r?.permissions ?? []).map((p) => p.key);
+        const fromBuiltin = (0, roles_permissions_map_1.permissionsForRole)(roleName);
+        return Array.from(new Set([...fromDb, ...fromBuiltin]));
     }
     async getRoleWithPermissions(roleId) {
         const role = await this.prisma.role.findUnique({

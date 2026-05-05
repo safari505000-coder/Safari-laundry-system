@@ -19,32 +19,30 @@ let SubscriptionService = class SubscriptionService {
         this.prisma = prisma;
     }
     async getUsageAndSettledDebtTotals() {
+        const usageAgg = await this.prisma.order.aggregate({
+            where: {
+                status: { not: client_1.OrderStatus.CANCELED },
+                posPaymentMethod: client_1.PosPaymentMethod.SUBSCRIPTION_WALLET,
+            },
+            _sum: { totalPrice: true },
+        });
         const txRows = await this.prisma.transactionHistory.findMany({
             where: {
-                OR: [
-                    { type: client_1.LedgerTransactionType.ORDER_WALLET_SETTLEMENT },
-                    { type: client_1.LedgerTransactionType.SUBSCRIPTION_ACTIVATION },
-                ],
+                type: client_1.LedgerTransactionType.SUBSCRIPTION_ACTIVATION,
             },
             select: { type: true, metadata: true },
         });
-        let usage = 0;
         let settled = 0;
         for (const row of txRows) {
             const meta = row.metadata;
-            if (row.type === client_1.LedgerTransactionType.ORDER_WALLET_SETTLEMENT) {
-                const n = Number.parseFloat(String(meta?.appliedFromWallet ?? '0'));
-                if (Number.isFinite(n) && n > 0)
-                    usage += n;
-            }
-            else if (row.type === client_1.LedgerTransactionType.SUBSCRIPTION_ACTIVATION) {
+            if (row.type === client_1.LedgerTransactionType.SUBSCRIPTION_ACTIVATION) {
                 const n = Number.parseFloat(String(meta?.debtSettled ?? '0'));
                 if (Number.isFinite(n) && n > 0)
                     settled += n;
             }
         }
         return {
-            totalSubscriptionUsage: usage.toFixed(4),
+            totalSubscriptionUsage: (usageAgg._sum.totalPrice?.toNumber() ?? 0).toFixed(4),
             debtSettledBySubscriptions: settled.toFixed(4),
         };
     }
@@ -59,27 +57,26 @@ let SubscriptionService = class SubscriptionService {
                 subscriptionExpiresAt: true,
             },
         });
+        const usageAgg = await this.prisma.order.aggregate({
+            where: {
+                customerId,
+                status: { not: client_1.OrderStatus.CANCELED },
+                posPaymentMethod: client_1.PosPaymentMethod.SUBSCRIPTION_WALLET,
+            },
+            _sum: { totalPrice: true },
+        });
         const txRows = await this.prisma.transactionHistory.findMany({
             where: {
                 customerId,
-                OR: [
-                    { type: client_1.LedgerTransactionType.ORDER_WALLET_SETTLEMENT },
-                    { type: client_1.LedgerTransactionType.SUBSCRIPTION_ACTIVATION },
-                ],
+                type: client_1.LedgerTransactionType.SUBSCRIPTION_ACTIVATION,
             },
             select: { type: true, metadata: true },
             take: 5000,
         });
-        let usage = 0;
         let settled = 0;
         for (const row of txRows) {
             const meta = row.metadata;
-            if (row.type === client_1.LedgerTransactionType.ORDER_WALLET_SETTLEMENT) {
-                const n = Number.parseFloat(String(meta?.appliedFromWallet ?? '0'));
-                if (Number.isFinite(n) && n > 0)
-                    usage += n;
-            }
-            else if (row.type === client_1.LedgerTransactionType.SUBSCRIPTION_ACTIVATION) {
+            if (row.type === client_1.LedgerTransactionType.SUBSCRIPTION_ACTIVATION) {
                 const n = Number.parseFloat(String(meta?.debtSettled ?? '0'));
                 if (Number.isFinite(n) && n > 0)
                     settled += n;
@@ -91,7 +88,7 @@ let SubscriptionService = class SubscriptionService {
             subscriptionPlanName: wallet?.subscriptionPlanName ?? null,
             subscriptionActivatedAt: wallet?.subscriptionActivatedAt?.toISOString() ?? null,
             subscriptionExpiresAt: wallet?.subscriptionExpiresAt?.toISOString() ?? null,
-            totalSubscriptionUsage: usage.toFixed(4),
+            totalSubscriptionUsage: (usageAgg._sum.totalPrice?.toNumber() ?? 0).toFixed(4),
             debtSettledBySubscriptions: settled.toFixed(4),
         };
     }

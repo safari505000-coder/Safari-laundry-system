@@ -62,7 +62,7 @@ let DepositsController = class DepositsController {
         return this.depositsService.createByDriver(user.userId, amount, type, url);
     }
     updateStatus(user, id, dto) {
-        return this.depositsService.updateStatus(user.userId, id, dto);
+        return this.depositsService.updateStatus(user.userId, user.role, id, dto);
     }
 };
 exports.DepositsController = DepositsController;
@@ -130,7 +130,7 @@ __decorate([
 ], DepositsController.prototype, "create", null);
 __decorate([
     (0, common_1.Patch)(':id/status'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.OWNER),
     (0, swagger_1.ApiOperation)({
         summary: `Accountant/Owner audits deposit (${branding_1.APP_BRAND})`,
         description: 'APPROVED triggers liability reduction via DebtService and updates wallet cash/bank balance.',

@@ -1,16 +1,20 @@
+import type { JwtUser } from '../auth/decorators/current-user.decorator';
+import { AuditService } from '../common/audit/audit.service';
 import { DriverLedgerQueryDto } from './dto/driver-ledger-query.dto';
 import { LiveFeedQueryDto } from './dto/live-feed-query.dto';
 import { ReportsRangeQueryDto } from './dto/reports-range-query.dto';
 import { ReportsService } from './reports.service';
 export declare class ReportsController {
     private readonly reportsService;
-    constructor(reportsService: ReportsService);
+    private readonly audit;
+    constructor(reportsService: ReportsService, audit: AuditService);
     issuedInvoices(q: ReportsRangeQueryDto): Promise<{
         from: string;
         to: string;
         count: number;
         rows: {
             totalPrice: string;
+            status: import(".prisma/client").$Enums.OrderStatus;
             customer: {
                 id: string;
                 phone: string;
@@ -18,19 +22,18 @@ export declare class ReportsController {
             };
             id: string;
             createdAt: Date;
-            status: import("@prisma/client").$Enums.OrderStatus;
-            serviceType: import("@prisma/client").$Enums.ServiceType;
-            cashStatus: import("@prisma/client").$Enums.CashStatus;
-            invoiceNumber: string | null;
-            posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
-            completedAt: Date | null;
             driver: {
-                id: string;
                 branchId: string | null;
+                id: string;
                 username: string;
                 fullName: string;
                 employeeId: string | null;
             } | null;
+            serviceType: import(".prisma/client").$Enums.ServiceType;
+            cashStatus: import(".prisma/client").$Enums.CashStatus;
+            invoiceNumber: string | null;
+            posPaymentMethod: import(".prisma/client").$Enums.PosPaymentMethod;
+            completedAt: Date | null;
         }[];
     }>;
     liveFeed(q: LiveFeedQueryDto): Promise<{
@@ -52,13 +55,13 @@ export declare class ReportsController {
     }>;
     driverLedger(q: DriverLedgerQueryDto): Promise<{
         driver: {
-            id: string;
             branchId: string | null;
-            phone: string | null;
+            id: string;
             username: string;
             fullName: string;
             employeeId: string | null;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            phone: string | null;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         };
         owedToOfficeKd: string;
         pendingSettlementOrderCount: number;
@@ -68,12 +71,12 @@ export declare class ReportsController {
         };
         ordersInPeriod: {
             totalPrice: string;
+            status: import(".prisma/client").$Enums.OrderStatus;
             id: string;
             createdAt: Date;
-            status: import("@prisma/client").$Enums.OrderStatus;
-            cashStatus: import("@prisma/client").$Enums.CashStatus;
+            cashStatus: import(".prisma/client").$Enums.CashStatus;
             invoiceNumber: string | null;
-            posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
+            posPaymentMethod: import(".prisma/client").$Enums.PosPaymentMethod;
             completedAt: Date | null;
         }[];
     }>;
@@ -107,17 +110,17 @@ export declare class ReportsController {
         to: string;
         ledgerRollup: {
             generalLedger: Array<{
-                entryType: import("@prisma/client").GeneralLedgerEntryType;
+                entryType: import(".prisma/client").GeneralLedgerEntryType;
                 totalKd: string;
                 movementCount: number;
             }>;
             walletJournal: Array<{
-                type: import("@prisma/client").LedgerTransactionType;
+                type: import(".prisma/client").LedgerTransactionType;
                 totalKd: string;
                 movementCount: number;
             }>;
             debtLedger: Array<{
-                source: import("@prisma/client").DebtSource;
+                source: import(".prisma/client").DebtSource;
                 totalKd: string;
                 movementCount: number;
             }>;
@@ -178,7 +181,7 @@ export declare class ReportsController {
             }[];
         };
     }>;
-    moneyFlowStatement(q: ReportsRangeQueryDto): Promise<{
+    moneyFlowStatement(q: ReportsRangeQueryDto, user: JwtUser): Promise<{
         from: string;
         to: string;
         executive: {
@@ -204,32 +207,32 @@ export declare class ReportsController {
         };
         debtPaymentsPriorInvoiceKd: string;
         branchExpensesByCategory: {
-            category: import("@prisma/client").$Enums.ExpenseCategory;
+            category: import(".prisma/client").$Enums.ExpenseCategory;
             totalKd: string;
             movementCount: number;
         }[];
         vehicleExpensesByType: {
-            expenseType: import("@prisma/client").$Enums.VehicleExpenseType;
+            expenseType: import(".prisma/client").$Enums.VehicleExpenseType;
             totalKd: string;
             movementCount: number;
         }[];
         fixedExpensesByCategory: {
-            category: import("@prisma/client").FixedExpenseCategory;
+            category: import(".prisma/client").FixedExpenseCategory;
             totalKd: string;
         }[];
         ledgerRollup: {
             generalLedger: Array<{
-                entryType: import("@prisma/client").GeneralLedgerEntryType;
+                entryType: import(".prisma/client").GeneralLedgerEntryType;
                 totalKd: string;
                 movementCount: number;
             }>;
             walletJournal: Array<{
-                type: import("@prisma/client").LedgerTransactionType;
+                type: import(".prisma/client").LedgerTransactionType;
                 totalKd: string;
                 movementCount: number;
             }>;
             debtLedger: Array<{
-                source: import("@prisma/client").DebtSource;
+                source: import(".prisma/client").DebtSource;
                 totalKd: string;
                 movementCount: number;
             }>;

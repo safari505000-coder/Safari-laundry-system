@@ -1,4 +1,4 @@
-import { ManagerCashCustodyStatus } from '@prisma/client';
+import { ManagerCashCustodyStatus } from "@prisma/client";
 export declare class ListCustodyQueryDto {
     status?: ManagerCashCustodyStatus;
     managerId?: string;

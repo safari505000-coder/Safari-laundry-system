@@ -1,4 +1,4 @@
-import { DebtHoldStatus } from '@prisma/client';
+import { DebtHoldStatus } from "@prisma/client";
 export declare class ListDebtHoldsDto {
     from?: string;
     to?: string;

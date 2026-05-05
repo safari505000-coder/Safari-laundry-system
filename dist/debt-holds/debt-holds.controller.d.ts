@@ -7,8 +7,8 @@ export declare class DebtHoldsController {
     constructor(service: DebtHoldsService);
     list(q: ListDebtHoldsDto, user: JwtUser): Promise<({
         payroll: {
+            status: import(".prisma/client").$Enums.PayrollStatus;
             id: string;
-            status: import("@prisma/client").$Enums.PayrollStatus;
             paymentDate: Date;
         } | null;
         employee: {
@@ -22,16 +22,16 @@ export declare class DebtHoldsController {
             fullName: string;
         } | null;
     } & {
+        status: import(".prisma/client").$Enums.DebtHoldStatus;
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        status: import("@prisma/client").$Enums.DebtHoldStatus;
         note: string | null;
         payrollId: string | null;
         employeeUserId: string;
-        debtAmount: import("@prisma/client-runtime-utils").Decimal;
-        holdAmount: import("@prisma/client-runtime-utils").Decimal;
-        releasedAmount: import("@prisma/client-runtime-utils").Decimal;
+        debtAmount: import("@prisma/client-runtime-utils/dist").Decimal;
+        holdAmount: import("@prisma/client-runtime-utils/dist").Decimal;
+        releasedAmount: import("@prisma/client-runtime-utils/dist").Decimal;
         releaseDate: Date | null;
         disbursedAt: Date | null;
         disbursedById: string | null;
@@ -45,7 +45,7 @@ export declare class DebtHoldsController {
         isPolicyActive: boolean;
         debtKd: string;
         holdKd: string;
-        holdMode: import("@prisma/client").$Enums.DebtHoldMode;
+        holdMode: import(".prisma/client").$Enums.DebtHoldMode;
     }>;
     createManual(dto: CreateManualHoldDto, user: JwtUser): Promise<{
         employee: {
@@ -54,46 +54,46 @@ export declare class DebtHoldsController {
             fullName: string;
         };
     } & {
+        status: import(".prisma/client").$Enums.DebtHoldStatus;
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        status: import("@prisma/client").$Enums.DebtHoldStatus;
         note: string | null;
         payrollId: string | null;
         employeeUserId: string;
-        debtAmount: import("@prisma/client-runtime-utils").Decimal;
-        holdAmount: import("@prisma/client-runtime-utils").Decimal;
-        releasedAmount: import("@prisma/client-runtime-utils").Decimal;
+        debtAmount: import("@prisma/client-runtime-utils/dist").Decimal;
+        holdAmount: import("@prisma/client-runtime-utils/dist").Decimal;
+        releasedAmount: import("@prisma/client-runtime-utils/dist").Decimal;
         releaseDate: Date | null;
         disbursedAt: Date | null;
         disbursedById: string | null;
     }>;
     release(id: string, user: JwtUser): Promise<{
+        status: import(".prisma/client").$Enums.DebtHoldStatus;
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        status: import("@prisma/client").$Enums.DebtHoldStatus;
         note: string | null;
         payrollId: string | null;
         employeeUserId: string;
-        debtAmount: import("@prisma/client-runtime-utils").Decimal;
-        holdAmount: import("@prisma/client-runtime-utils").Decimal;
-        releasedAmount: import("@prisma/client-runtime-utils").Decimal;
+        debtAmount: import("@prisma/client-runtime-utils/dist").Decimal;
+        holdAmount: import("@prisma/client-runtime-utils/dist").Decimal;
+        releasedAmount: import("@prisma/client-runtime-utils/dist").Decimal;
         releaseDate: Date | null;
         disbursedAt: Date | null;
         disbursedById: string | null;
     }>;
     disburse(id: string, user: JwtUser): Promise<{
+        status: import(".prisma/client").$Enums.DebtHoldStatus;
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        status: import("@prisma/client").$Enums.DebtHoldStatus;
         note: string | null;
         payrollId: string | null;
         employeeUserId: string;
-        debtAmount: import("@prisma/client-runtime-utils").Decimal;
-        holdAmount: import("@prisma/client-runtime-utils").Decimal;
-        releasedAmount: import("@prisma/client-runtime-utils").Decimal;
+        debtAmount: import("@prisma/client-runtime-utils/dist").Decimal;
+        holdAmount: import("@prisma/client-runtime-utils/dist").Decimal;
+        releasedAmount: import("@prisma/client-runtime-utils/dist").Decimal;
         releaseDate: Date | null;
         disbursedAt: Date | null;
         disbursedById: string | null;

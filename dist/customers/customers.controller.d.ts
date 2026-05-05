@@ -1,14 +1,16 @@
 import { CreateCustomerQuickDto } from './dto/create-customer-quick.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
+import { BlockCustomerDto, UnblockCustomerDto } from './dto/block-customer.dto';
 import { CustomersService } from './customers.service';
+import { Customer360Service } from './customer-360.service';
+import { CustomerBlockingService } from '../common/services/customer-blocking.service';
+import type { JwtUser } from '../auth/decorators/current-user.decorator';
 export declare class CustomersController {
     private readonly customersService;
-    constructor(customersService: CustomersService);
-    list(q?: string): Promise<{
-        customer: import("./customer-core.service").CustomerCoreRow;
-        debt: Awaited<ReturnType<import("../finance/services/debt.service").DebtService["getCustomerDebtSnapshot"]>>;
-        subscription: Awaited<ReturnType<import("../finance/services/subscription.service").SubscriptionService["getCustomerSubscriptionSnapshot"]>>;
-    }[]>;
+    private readonly customer360;
+    private readonly customerBlocking;
+    constructor(customersService: CustomersService, customer360: Customer360Service, customerBlocking: CustomerBlockingService);
+    list(q: string | undefined, user: JwtUser): Promise<import("./dto/customer-access.dto").CustomerInternalDTO[]>;
     resolveIncomingPhone(phone?: string): Promise<{
         customer: import("./customer-core.service").CustomerCoreRow | null;
         ambiguous: boolean;
@@ -16,9 +18,9 @@ export declare class CustomersController {
     }>;
     createQuick(dto: CreateCustomerQuickDto): Promise<{
         id: string;
+        phone: string;
         createdAt: Date;
         updatedAt: Date;
-        phone: string;
         address: string | null;
         phone2: string | null;
         motherContact: string | null;
@@ -31,16 +33,13 @@ export declare class CustomersController {
         addressAvenue: string | null;
         addressHouse: string | null;
     }>;
-    getProfile(id: string): Promise<{
-        customer: import("./customer-core.service").CustomerCoreRow;
-        debt: Awaited<ReturnType<import("../finance/services/debt.service").DebtService["getCustomerDebtSnapshot"]>>;
-        subscription: Awaited<ReturnType<import("../finance/services/subscription.service").SubscriptionService["getCustomerSubscriptionSnapshot"]>>;
-    }>;
+    getCustomer360(customerId: string, user: JwtUser): Promise<import("./customer-360.service").Customer360ResponseDto>;
+    getProfile(id: string, user: JwtUser): Promise<import("./dto/customer-access.dto").CustomerInternalDTO>;
     update(id: string, dto: UpdateCustomerDto): Promise<{
         id: string;
+        phone: string;
         createdAt: Date;
         updatedAt: Date;
-        phone: string;
         address: string | null;
         phone2: string | null;
         motherContact: string | null;
@@ -53,4 +52,6 @@ export declare class CustomersController {
         addressAvenue: string | null;
         addressHouse: string | null;
     }>;
+    block(id: string, dto: BlockCustomerDto, user: JwtUser): Promise<import("../common/services/customer-blocking.service").CustomerBlockSnapshot>;
+    unblock(id: string, dto: UnblockCustomerDto, user: JwtUser): Promise<import("../common/services/customer-blocking.service").CustomerBlockSnapshot>;
 }

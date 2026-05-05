@@ -11,9 +11,9 @@ export declare class DepositsController {
             driverId: string;
             driverName: string;
             amount: string;
-            type: import("@prisma/client").$Enums.DepositType;
+            type: import(".prisma/client").$Enums.DepositType;
             receiptImage: string;
-            status: import("@prisma/client").$Enums.DepositStatus;
+            status: import(".prisma/client").$Enums.DepositStatus;
             auditComment: string | null;
             auditedBy: {
                 id: string;
@@ -29,9 +29,9 @@ export declare class DepositsController {
         driverId: string;
         driverName: string;
         amount: string;
-        type: import("@prisma/client").$Enums.DepositType;
+        type: import(".prisma/client").$Enums.DepositType;
         receiptImage: string;
-        status: import("@prisma/client").$Enums.DepositStatus;
+        status: import(".prisma/client").$Enums.DepositStatus;
         auditComment: string | null;
         auditedBy: null;
         createdAt: string;
@@ -39,7 +39,7 @@ export declare class DepositsController {
     }>;
     updateStatus(user: JwtUser, id: string, dto: UpdateDepositStatusDto): Promise<{
         id: string;
-        status: import("@prisma/client").$Enums.DepositStatus;
+        status: import(".prisma/client").$Enums.DepositStatus;
         auditComment: string | null;
         updatedAt: string;
     }>;

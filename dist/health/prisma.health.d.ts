@@ -1,4 +1,4 @@
-import { HealthIndicator, HealthIndicatorResult } from '@nestjs/terminus';
+import { HealthIndicator, HealthIndicatorResult } from "@nestjs/terminus";
 import { PrismaService } from '../prisma/prisma.service';
 export declare class PrismaHealthIndicator extends HealthIndicator {
     private readonly prisma;

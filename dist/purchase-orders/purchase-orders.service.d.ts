@@ -1,4 +1,4 @@
-import { Prisma, PurchaseOrderStatus } from '@prisma/client';
+import { Prisma, PurchaseOrderStatus } from "@prisma/client";
 import { PrismaService } from '../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { CreatePurchaseOrderDto } from './dto/create-purchase-order.dto';

@@ -1,4 +1,4 @@
-import { ServiceType } from '@prisma/client';
+import { ServiceType } from "@prisma/client";
 import { OrderLineItemDto } from './order-line-item.dto';
 export declare class CreateOrderDto {
     customerPhone: string;

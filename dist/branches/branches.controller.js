@@ -57,11 +57,11 @@ __decorate([
 ], BranchesController.prototype, "list", null);
 __decorate([
     (0, common_1.Post)(),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER),
     (0, swagger_1.ApiBody)({ type: create_branch_dto_1.CreateBranchDto }),
     (0, swagger_1.ApiOperation)({
         summary: `Create branch (${branding_1.APP_BRAND})`,
-        description: 'OWNER and GENERAL_MANAGER only. New branches appear in the branch switcher when active.',
+        description: 'OWNER only. New branches appear in the branch switcher when active.',
     }),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
@@ -70,11 +70,11 @@ __decorate([
 ], BranchesController.prototype, "create", null);
 __decorate([
     (0, common_1.Patch)(':id'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER),
     (0, swagger_1.ApiBody)({ type: update_branch_dto_1.UpdateBranchDto }),
     (0, swagger_1.ApiOperation)({
         summary: `Update branch (${branding_1.APP_BRAND})`,
-        description: 'OWNER and GENERAL_MANAGER only. Only the fields present in the body are written — omitted fields stay unchanged.',
+        description: 'OWNER only. Only the fields present in the body are written — omitted fields stay unchanged.',
     }),
     __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
     __param(1, (0, common_1.Body)()),

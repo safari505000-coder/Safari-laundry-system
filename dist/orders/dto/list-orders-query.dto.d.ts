@@ -1,4 +1,4 @@
-import { CashStatus, OrderStatus, PosPaymentMethod } from '@prisma/client';
+import { CashStatus, OrderStatus, PosPaymentMethod } from "@prisma/client";
 export declare class ListOrdersQueryDto {
     driverId?: string;
     status?: OrderStatus;

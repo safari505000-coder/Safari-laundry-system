@@ -1,4 +1,4 @@
-import { StarchOption } from '@prisma/client';
+import { StarchOption } from "@prisma/client";
 export declare class OrderLineItemDto {
     label?: string;
     quantity: number;

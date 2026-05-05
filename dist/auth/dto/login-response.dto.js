@@ -19,6 +19,7 @@ class LoginUserDto {
     phone;
     safariRole;
     branchId;
+    linkedCustomerId;
 }
 exports.LoginUserDto = LoginUserDto;
 __decorate([
@@ -49,6 +50,14 @@ __decorate([
     }),
     __metadata("design:type", Object)
 ], LoginUserDto.prototype, "branchId", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({
+        nullable: true,
+        format: 'uuid',
+        description: 'B2C portal — binds this login to exactly one Customer.id',
+    }),
+    __metadata("design:type", Object)
+], LoginUserDto.prototype, "linkedCustomerId", void 0);
 class LoginResponseDto {
     accessToken;
     refreshToken;

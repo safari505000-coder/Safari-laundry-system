@@ -1,4 +1,4 @@
-import type { Prisma } from '@prisma/client';
+import type { Prisma } from "@prisma/client";
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 export declare const customerCoreSelect: {

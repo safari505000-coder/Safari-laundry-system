@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { Prisma } from "@prisma/client";
 import { PrismaService } from '../prisma/prisma.service';
 import { PermissionKeyDto } from './dto/permission-key.dto';
 declare const roleWithPermissionsSelect: {

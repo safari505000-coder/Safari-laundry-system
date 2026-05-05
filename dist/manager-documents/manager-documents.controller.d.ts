@@ -8,12 +8,12 @@ export declare class ManagerDocumentsController {
         id: string;
         title: string;
         amountKd: string;
-        category: import("@prisma/client").$Enums.ExpenseCategory;
-        expenseMethod: import("@prisma/client").$Enums.ExpenseMethod;
+        category: import(".prisma/client").$Enums.ExpenseCategory;
+        expenseMethod: import(".prisma/client").$Enums.ExpenseMethod;
         note: string | null;
         expenseDate: string;
         approvedAt: string;
-        status: import("@prisma/client").$Enums.ExpenseStatus;
+        status: import(".prisma/client").$Enums.ExpenseStatus;
         recordedBy: {
             id: string;
             fullName: string;

@@ -1,0 +1,12 @@
+import type { CashMonitorLiveDto } from './dto/cash-monitor.dto';
+import type { OperationalLiveDto } from './dto/cash-monitor-operational.dto';
+import type { CashDecisionsResponseDto } from './dto/cash-decision.dto';
+import type { CashRiskResponseDto } from './dto/cash-risk.dto';
+import type { CashClassifiedResponseDto } from './dto/cash-classified.dto';
+import type { CashExplainResponseDto } from './dto/cash-explain.dto';
+export declare function scopeLiveByBranch(live: CashMonitorLiveDto, branchId: string, scopedClassified: CashClassifiedResponseDto): CashMonitorLiveDto;
+export declare function scopeOperationalByBranch(view: OperationalLiveDto, branchId: string, scopedClassified: CashClassifiedResponseDto): OperationalLiveDto;
+export declare function scopeDecisionsByBranch(res: CashDecisionsResponseDto, branchId: string): CashDecisionsResponseDto;
+export declare function scopeRiskByBranch(res: CashRiskResponseDto, branchId: string, scopedClassified: CashClassifiedResponseDto): CashRiskResponseDto;
+export declare function scopeClassifiedByBranch(res: CashClassifiedResponseDto, branchId: string): CashClassifiedResponseDto;
+export declare function scopeExplainByBranch(res: CashExplainResponseDto, branchId: string, scopedClassified: CashClassifiedResponseDto): CashExplainResponseDto;

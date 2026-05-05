@@ -1,5 +1,5 @@
 import { PassThrough } from 'node:stream';
-import { SafariRole } from '@prisma/client';
+import { SafariRole } from "@prisma/client";
 import { AttendanceService } from '../attendance/attendance.service';
 import type { ListAttendanceQueryDto } from '../attendance/dto/list-attendance-query.dto';
 import { FinanceService } from '../finance/finance.service';

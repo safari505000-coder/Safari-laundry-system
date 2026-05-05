@@ -15,6 +15,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.PublicStatementController = void 0;
 const common_1 = require("@nestjs/common");
 const swagger_1 = require("@nestjs/swagger");
+const roles_decorator_1 = require("../auth/decorators/roles.decorator");
 const call_center_service_1 = require("./call-center.service");
 let PublicStatementController = class PublicStatementController {
     callCenter;
@@ -40,6 +41,7 @@ __decorate([
 exports.PublicStatementController = PublicStatementController = __decorate([
     (0, swagger_1.ApiTags)('public-statement'),
     (0, common_1.Controller)('public/statement'),
+    (0, roles_decorator_1.Public)('Signed statement-share token scopes access without a staff JWT.'),
     __metadata("design:paramtypes", [call_center_service_1.CallCenterService])
 ], PublicStatementController);
 //# sourceMappingURL=public-statement.controller.js.map

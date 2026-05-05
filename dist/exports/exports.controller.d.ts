@@ -1,5 +1,5 @@
-import { StreamableFile } from '@nestjs/common';
-import type { Response } from 'express';
+import { StreamableFile } from "@nestjs/common";
+import type { Response } from "express";
 import type { JwtUser } from '../auth/decorators/current-user.decorator';
 import { ListAttendanceQueryDto } from '../attendance/dto/list-attendance-query.dto';
 import { InventoryReportQueryDto } from '../inventory/dto/inventory-report-query.dto';

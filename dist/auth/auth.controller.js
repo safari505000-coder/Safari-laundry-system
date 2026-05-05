@@ -14,26 +14,82 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AuthController = void 0;
 const common_1 = require("@nestjs/common");
+const client_1 = require("@prisma/client");
 const swagger_1 = require("@nestjs/swagger");
 const throttler_1 = require("@nestjs/throttler");
 const branding_1 = require("../common/constants/branding");
+const audit_logs_service_1 = require("../audit-logs/audit-logs.service");
+const roles_decorator_1 = require("./decorators/roles.decorator");
 const auth_service_1 = require("./auth.service");
 const login_dto_1 = require("./dto/login.dto");
 const login_response_dto_1 = require("./dto/login-response.dto");
 const refresh_token_dto_1 = require("./dto/refresh-token.dto");
 let AuthController = class AuthController {
     authService;
-    constructor(authService) {
+    auditLogs;
+    constructor(authService, auditLogs) {
         this.authService = authService;
+        this.auditLogs = auditLogs;
     }
-    login(dto) {
-        return this.authService.login(dto);
+    async login(dto, req) {
+        try {
+            const res = await this.authService.login(dto);
+            this.auditLogs.log({
+                userId: res.user.id,
+                role: res.user.safariRole,
+                action: 'LOGIN',
+                resource: 'auth',
+                endpoint: req.originalUrl ?? req.url,
+                method: req.method,
+                status: client_1.AuditStatus.SUCCESS,
+                ip: this.ip(req),
+                userAgent: this.userAgent(req),
+                requestId: req.requestId ?? null,
+            });
+            return res;
+        }
+        catch (error) {
+            this.auditLogs.log({
+                action: 'LOGIN',
+                resource: 'auth',
+                endpoint: req.originalUrl ?? req.url,
+                method: req.method,
+                status: client_1.AuditStatus.DENIED,
+                ip: this.ip(req),
+                userAgent: this.userAgent(req),
+                requestId: req.requestId ?? null,
+                suspicious: true,
+                changes: { username: dto.username },
+            });
+            throw error;
+        }
     }
     refresh(dto) {
         return this.authService.refreshAccessToken(dto.refreshToken);
     }
-    async logout(dto) {
+    async logout(dto, req) {
         await this.authService.revokeRefreshToken(dto.refreshToken);
+        this.auditLogs.log({
+            action: 'LOGOUT',
+            resource: 'auth',
+            endpoint: req.originalUrl ?? req.url,
+            method: req.method,
+            status: client_1.AuditStatus.SUCCESS,
+            ip: this.ip(req),
+            userAgent: this.userAgent(req),
+            requestId: req.requestId ?? null,
+        });
+    }
+    ip(req) {
+        const forwarded = req.headers['x-forwarded-for'];
+        if (typeof forwarded === 'string' && forwarded.trim()) {
+            return forwarded.split(',')[0]?.trim() ?? null;
+        }
+        return req.ip ?? req.socket.remoteAddress ?? null;
+    }
+    userAgent(req) {
+        const userAgent = req.headers['user-agent'];
+        return typeof userAgent === 'string' ? userAgent : null;
     }
 };
 exports.AuthController = AuthController;
@@ -54,8 +110,9 @@ __decorate([
     (0, swagger_1.ApiUnauthorizedResponse)({ description: 'Invalid credentials' }),
     (0, swagger_1.ApiBadRequestResponse)({ description: 'Validation failed' }),
     __param(0, (0, common_1.Body)()),
+    __param(1, (0, common_1.Req)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [login_dto_1.LoginDto]),
+    __metadata("design:paramtypes", [login_dto_1.LoginDto, Object]),
     __metadata("design:returntype", Promise)
 ], AuthController.prototype, "login", null);
 __decorate([
@@ -83,13 +140,16 @@ __decorate([
         description: 'Best-effort revocation of the supplied refresh token. Always returns 204 so malformed tokens do not reveal whether they existed.',
     }),
     __param(0, (0, common_1.Body)()),
+    __param(1, (0, common_1.Req)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [refresh_token_dto_1.RefreshTokenRequestDto]),
+    __metadata("design:paramtypes", [refresh_token_dto_1.RefreshTokenRequestDto, Object]),
     __metadata("design:returntype", Promise)
 ], AuthController.prototype, "logout", null);
 exports.AuthController = AuthController = __decorate([
     (0, swagger_1.ApiTags)('auth'),
     (0, common_1.Controller)('auth'),
-    __metadata("design:paramtypes", [auth_service_1.AuthService])
+    (0, roles_decorator_1.Public)('Authentication endpoints must be reachable before a JWT exists.'),
+    __metadata("design:paramtypes", [auth_service_1.AuthService,
+        audit_logs_service_1.AuditLogsService])
 ], AuthController);
 //# sourceMappingURL=auth.controller.js.map

@@ -13,6 +13,7 @@ exports.HealthController = void 0;
 const common_1 = require("@nestjs/common");
 const terminus_1 = require("@nestjs/terminus");
 const swagger_1 = require("@nestjs/swagger");
+const roles_decorator_1 = require("../auth/decorators/roles.decorator");
 const branding_1 = require("../common/constants/branding");
 const prisma_health_1 = require("./prisma.health");
 let HealthController = class HealthController {
@@ -54,6 +55,7 @@ __decorate([
 exports.HealthController = HealthController = __decorate([
     (0, swagger_1.ApiTags)('health'),
     (0, common_1.Controller)('health'),
+    (0, roles_decorator_1.Public)('Infrastructure liveness probe contains no business data.'),
     __metadata("design:paramtypes", [terminus_1.HealthCheckService,
         prisma_health_1.PrismaHealthIndicator,
         terminus_1.MemoryHealthIndicator])

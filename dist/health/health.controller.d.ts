@@ -1,4 +1,4 @@
-import { HealthCheckService, MemoryHealthIndicator } from '@nestjs/terminus';
+import { HealthCheckService, MemoryHealthIndicator } from "@nestjs/terminus";
 import { PrismaHealthIndicator } from './prisma.health';
 export declare class HealthController {
     private readonly health;

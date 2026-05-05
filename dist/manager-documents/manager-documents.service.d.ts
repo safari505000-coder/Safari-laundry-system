@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { Prisma } from "@prisma/client";
 import { PrismaService } from '../prisma/prisma.service';
 export type ManagerDocumentKind = 'CUSTODY_RECEIPT' | 'EXPENSE_VOUCHER';
 export type ManagerDocumentRow = {
@@ -17,8 +17,8 @@ export declare class ManagerDocumentsService {
     listForManager(managerId: string, branchId: string | null): Promise<ManagerDocumentRow[]>;
     getExpenseVoucherForManager(expenseId: string, managerId: string, branchId: string | null): Promise<({
         branch: {
-            id: string;
             name: string;
+            id: string;
         } | null;
         recordedBy: {
             id: string;
@@ -26,18 +26,18 @@ export declare class ManagerDocumentsService {
             fullName: string;
         };
     } & {
-        id: string;
-        amount: Prisma.Decimal;
-        createdAt: Date;
+        status: import(".prisma/client").$Enums.ExpenseStatus;
         branchId: string | null;
         title: string;
+        amount: Prisma.Decimal;
+        id: string;
+        createdAt: Date;
         updatedAt: Date;
-        status: import("@prisma/client").$Enums.ExpenseStatus;
         note: string | null;
         receiptUrl: string | null;
-        category: import("@prisma/client").$Enums.ExpenseCategory;
+        category: import(".prisma/client").$Enums.ExpenseCategory;
         recordedById: string;
-        expenseMethod: import("@prisma/client").$Enums.ExpenseMethod;
+        expenseMethod: import(".prisma/client").$Enums.ExpenseMethod;
         expenseDate: Date;
     }) | null>;
 }

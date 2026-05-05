@@ -44,9 +44,7 @@ let PayrollService = class PayrollService {
         this.loans = loans;
     }
     assertOwnerOrManager(role) {
-        if (role !== client_1.SafariRole.OWNER &&
-            role !== client_1.SafariRole.GENERAL_MANAGER &&
-            role !== client_1.SafariRole.MANAGER) {
+        if (role !== client_1.SafariRole.OWNER && role !== client_1.SafariRole.MANAGER) {
             throw new common_1.ForbiddenException();
         }
     }

@@ -8,14 +8,18 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CustomerNotificationsModule = void 0;
 const common_1 = require("@nestjs/common");
+const prisma_module_1 = require("../prisma/prisma.module");
 const customer_notifications_service_1 = require("./customer-notifications.service");
+const whatsapp_queue_service_1 = require("./whatsapp-queue.service");
+const whatsapp_worker_1 = require("./whatsapp.worker");
 let CustomerNotificationsModule = class CustomerNotificationsModule {
 };
 exports.CustomerNotificationsModule = CustomerNotificationsModule;
 exports.CustomerNotificationsModule = CustomerNotificationsModule = __decorate([
     (0, common_1.Module)({
-        providers: [customer_notifications_service_1.CustomerNotificationsService],
-        exports: [customer_notifications_service_1.CustomerNotificationsService],
+        imports: [prisma_module_1.PrismaModule],
+        providers: [customer_notifications_service_1.CustomerNotificationsService, whatsapp_queue_service_1.WhatsAppQueueService, whatsapp_worker_1.WhatsAppWorker],
+        exports: [customer_notifications_service_1.CustomerNotificationsService, whatsapp_queue_service_1.WhatsAppQueueService],
     })
 ], CustomerNotificationsModule);
 //# sourceMappingURL=customer-notifications.module.js.map

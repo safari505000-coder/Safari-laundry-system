@@ -1,4 +1,4 @@
-import { Prisma, SafariRole } from '@prisma/client';
+import { Prisma, SafariRole } from "@prisma/client";
 import { PrismaService } from '../prisma/prisma.service';
 import { ListCommissionPayoutsDto } from './dto/list-commission-payouts.dto';
 export declare class CommissionPayoutsService {
@@ -7,12 +7,12 @@ export declare class CommissionPayoutsService {
     list(actorRole: SafariRole, actorUserId: string, dto: ListCommissionPayoutsDto): Promise<{
         rows: ({
             rule: {
-                id: string;
                 name: string;
-                mode: import("@prisma/client").$Enums.CommissionMode;
+                id: string;
+                mode: import(".prisma/client").$Enums.CommissionMode;
                 percentage: Prisma.Decimal;
-                calculationBase: import("@prisma/client").$Enums.CommissionCalculationBase;
-                payoutTiming: import("@prisma/client").$Enums.CommissionPayoutTiming;
+                calculationBase: import(".prisma/client").$Enums.CommissionCalculationBase;
+                payoutTiming: import(".prisma/client").$Enums.CommissionPayoutTiming;
             };
             earner: {
                 id: string;
@@ -25,12 +25,12 @@ export declare class CommissionPayoutsService {
                 serialNumber: string | null;
             } | null;
         } & {
-            id: string;
+            status: import(".prisma/client").$Enums.CommissionPayoutStatus;
             amount: Prisma.Decimal;
+            id: string;
             createdAt: Date;
             updatedAt: Date;
-            status: import("@prisma/client").$Enums.CommissionPayoutStatus;
-            mode: import("@prisma/client").$Enums.CommissionMode;
+            mode: import(".prisma/client").$Enums.CommissionMode;
             cancelledAt: Date | null;
             ruleId: string;
             earnerUserId: string;

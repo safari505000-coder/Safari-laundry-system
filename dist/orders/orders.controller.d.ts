@@ -1,5 +1,6 @@
-import type { Request } from 'express';
+import type { Request } from "express";
 import type { JwtUser } from '../auth/decorators/current-user.decorator';
+import { AuditService } from '../common/audit/audit.service';
 import { AssignDriverDto } from './dto/assign-driver.dto';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CreateOrderQuickDto } from './dto/create-order-quick.dto';
@@ -9,13 +10,15 @@ import { UpdateOrderDto } from './dto/update-order.dto';
 import { OrdersService } from './orders.service';
 export declare class OrdersController {
     private readonly ordersService;
-    constructor(ordersService: OrdersService);
+    private readonly audit;
+    constructor(ordersService: OrdersService, audit: AuditService);
     getManagerDashboard(): Promise<ManagerDashboardDto>;
     createQuick(dto: CreateOrderQuickDto, user: JwtUser): Promise<{
+        status: import(".prisma/client").$Enums.OrderStatus;
         customer: {
             wallet: {
-                balance: import("@prisma/client-runtime-utils").Decimal;
-                debt: import("@prisma/client-runtime-utils").Decimal;
+                balance: import("@prisma/client-runtime-utils/dist").Decimal;
+                debt: import("@prisma/client-runtime-utils/dist").Decimal;
             } | null;
             id: string;
             phone: string;
@@ -26,44 +29,45 @@ export declare class OrdersController {
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        status: import("@prisma/client").$Enums.OrderStatus;
-        serviceType: import("@prisma/client").$Enums.ServiceType;
-        totalPrice: import("@prisma/client-runtime-utils").Decimal;
-        cashStatus: import("@prisma/client").$Enums.CashStatus;
+        driver: {
+            branch: {
+                name: string;
+                id: string;
+            } | null;
+            id: string;
+            username: string;
+            fullName: string;
+            employeeId: string | null;
+            jobTitle: string | null;
+            phone: string | null;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
+        } | null;
+        serviceType: import(".prisma/client").$Enums.ServiceType;
+        totalPrice: import("@prisma/client-runtime-utils/dist").Decimal;
+        cashStatus: import(".prisma/client").$Enums.CashStatus;
         invoiceNumber: string | null;
         serialNumber: string | null;
         reminderCount: number;
         lastReminderAt: Date | null;
         notes: string | null;
-        posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
+        posPaymentMethod: import(".prisma/client").$Enums.PosPaymentMethod;
         completedAt: Date | null;
         walletSettledAt: Date | null;
-        driver: {
-            branch: {
-                id: string;
-                name: string;
-            } | null;
-            id: string;
-            phone: string | null;
-            username: string;
-            fullName: string;
-            employeeId: string | null;
-            jobTitle: string | null;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
-        } | null;
+        dispatchId: string | null;
         lineItems: {
             id: string;
-            quantity: import("@prisma/client-runtime-utils").Decimal;
+            quantity: import("@prisma/client-runtime-utils/dist").Decimal;
             label: string | null;
-            starchOption: import("@prisma/client").$Enums.StarchOption;
-            unitPrice: import("@prisma/client-runtime-utils").Decimal;
+            starchOption: import(".prisma/client").$Enums.StarchOption;
+            unitPrice: import("@prisma/client-runtime-utils/dist").Decimal;
         }[];
     }>;
     create(dto: CreateOrderDto, user: JwtUser): Promise<{
+        status: import(".prisma/client").$Enums.OrderStatus;
         customer: {
             wallet: {
-                balance: import("@prisma/client-runtime-utils").Decimal;
-                debt: import("@prisma/client-runtime-utils").Decimal;
+                balance: import("@prisma/client-runtime-utils/dist").Decimal;
+                debt: import("@prisma/client-runtime-utils/dist").Decimal;
             } | null;
             id: string;
             phone: string;
@@ -74,37 +78,37 @@ export declare class OrdersController {
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        status: import("@prisma/client").$Enums.OrderStatus;
-        serviceType: import("@prisma/client").$Enums.ServiceType;
-        totalPrice: import("@prisma/client-runtime-utils").Decimal;
-        cashStatus: import("@prisma/client").$Enums.CashStatus;
+        driver: {
+            branch: {
+                name: string;
+                id: string;
+            } | null;
+            id: string;
+            username: string;
+            fullName: string;
+            employeeId: string | null;
+            jobTitle: string | null;
+            phone: string | null;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
+        } | null;
+        serviceType: import(".prisma/client").$Enums.ServiceType;
+        totalPrice: import("@prisma/client-runtime-utils/dist").Decimal;
+        cashStatus: import(".prisma/client").$Enums.CashStatus;
         invoiceNumber: string | null;
         serialNumber: string | null;
         reminderCount: number;
         lastReminderAt: Date | null;
         notes: string | null;
-        posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
+        posPaymentMethod: import(".prisma/client").$Enums.PosPaymentMethod;
         completedAt: Date | null;
         walletSettledAt: Date | null;
-        driver: {
-            branch: {
-                id: string;
-                name: string;
-            } | null;
-            id: string;
-            phone: string | null;
-            username: string;
-            fullName: string;
-            employeeId: string | null;
-            jobTitle: string | null;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
-        } | null;
+        dispatchId: string | null;
         lineItems: {
             id: string;
-            quantity: import("@prisma/client-runtime-utils").Decimal;
+            quantity: import("@prisma/client-runtime-utils/dist").Decimal;
             label: string | null;
-            starchOption: import("@prisma/client").$Enums.StarchOption;
-            unitPrice: import("@prisma/client-runtime-utils").Decimal;
+            starchOption: import(".prisma/client").$Enums.StarchOption;
+            unitPrice: import("@prisma/client-runtime-utils/dist").Decimal;
         }[];
     }>;
     findAll(user: JwtUser, filters: ListOrdersQueryDto): Promise<import("./orders.service").OrderDetailWithListFlags[]>;
@@ -112,6 +116,7 @@ export declare class OrdersController {
         id: string;
         fullName: string;
         username: string;
+        branchId: string | null;
         branchName: string | null;
     }[]>;
     listCollectionsUnpaidOnline(branchId: string | undefined, user: JwtUser): Promise<{
@@ -122,7 +127,7 @@ export declare class OrdersController {
         customerName: string;
         customerPhone: string;
         amountKd: string;
-        paymentMethod: import("@prisma/client").PosPaymentMethod | null;
+        paymentMethod: import(".prisma/client").PosPaymentMethod | null;
         paymentUrl: string | null;
         createdAtIso: string;
         invoiceAgeDays: number;
@@ -148,7 +153,7 @@ export declare class OrdersController {
         customerName: string;
         customerPhone: string;
         amountKd: string;
-        paymentMethod: import("@prisma/client").PosPaymentMethod | null;
+        paymentMethod: import(".prisma/client").PosPaymentMethod | null;
         ageHours: number;
         createdAtIso: string;
     }[]>;
@@ -159,9 +164,9 @@ export declare class OrdersController {
         customerName: string;
         customerPhone: string;
         amountKd: string;
-        paymentMethod: import("@prisma/client").PosPaymentMethod | null;
+        paymentMethod: import(".prisma/client").PosPaymentMethod | null;
         notes: string | null;
-        orderStatus: import("@prisma/client").OrderStatus;
+        orderStatus: import(".prisma/client").OrderStatus;
         linkStatus: "PENDING" | "EXPIRED" | null;
         createdAtIso: string;
     }[]>;
@@ -172,10 +177,11 @@ export declare class OrdersController {
         expiresAtIso: string;
     }>;
     findOne(id: string, user: JwtUser): Promise<{
+        status: import(".prisma/client").$Enums.OrderStatus;
         customer: {
             wallet: {
-                balance: import("@prisma/client-runtime-utils").Decimal;
-                debt: import("@prisma/client-runtime-utils").Decimal;
+                balance: import("@prisma/client-runtime-utils/dist").Decimal;
+                debt: import("@prisma/client-runtime-utils/dist").Decimal;
             } | null;
             id: string;
             phone: string;
@@ -186,44 +192,45 @@ export declare class OrdersController {
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        status: import("@prisma/client").$Enums.OrderStatus;
-        serviceType: import("@prisma/client").$Enums.ServiceType;
-        totalPrice: import("@prisma/client-runtime-utils").Decimal;
-        cashStatus: import("@prisma/client").$Enums.CashStatus;
+        driver: {
+            branch: {
+                name: string;
+                id: string;
+            } | null;
+            id: string;
+            username: string;
+            fullName: string;
+            employeeId: string | null;
+            jobTitle: string | null;
+            phone: string | null;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
+        } | null;
+        serviceType: import(".prisma/client").$Enums.ServiceType;
+        totalPrice: import("@prisma/client-runtime-utils/dist").Decimal;
+        cashStatus: import(".prisma/client").$Enums.CashStatus;
         invoiceNumber: string | null;
         serialNumber: string | null;
         reminderCount: number;
         lastReminderAt: Date | null;
         notes: string | null;
-        posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
+        posPaymentMethod: import(".prisma/client").$Enums.PosPaymentMethod;
         completedAt: Date | null;
         walletSettledAt: Date | null;
-        driver: {
-            branch: {
-                id: string;
-                name: string;
-            } | null;
-            id: string;
-            phone: string | null;
-            username: string;
-            fullName: string;
-            employeeId: string | null;
-            jobTitle: string | null;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
-        } | null;
+        dispatchId: string | null;
         lineItems: {
             id: string;
-            quantity: import("@prisma/client-runtime-utils").Decimal;
+            quantity: import("@prisma/client-runtime-utils/dist").Decimal;
             label: string | null;
-            starchOption: import("@prisma/client").$Enums.StarchOption;
-            unitPrice: import("@prisma/client-runtime-utils").Decimal;
+            starchOption: import(".prisma/client").$Enums.StarchOption;
+            unitPrice: import("@prisma/client-runtime-utils/dist").Decimal;
         }[];
     }>;
     assignDriver(id: string, dto: AssignDriverDto): Promise<{
+        status: import(".prisma/client").$Enums.OrderStatus;
         customer: {
             wallet: {
-                balance: import("@prisma/client-runtime-utils").Decimal;
-                debt: import("@prisma/client-runtime-utils").Decimal;
+                balance: import("@prisma/client-runtime-utils/dist").Decimal;
+                debt: import("@prisma/client-runtime-utils/dist").Decimal;
             } | null;
             id: string;
             phone: string;
@@ -234,44 +241,45 @@ export declare class OrdersController {
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        status: import("@prisma/client").$Enums.OrderStatus;
-        serviceType: import("@prisma/client").$Enums.ServiceType;
-        totalPrice: import("@prisma/client-runtime-utils").Decimal;
-        cashStatus: import("@prisma/client").$Enums.CashStatus;
+        driver: {
+            branch: {
+                name: string;
+                id: string;
+            } | null;
+            id: string;
+            username: string;
+            fullName: string;
+            employeeId: string | null;
+            jobTitle: string | null;
+            phone: string | null;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
+        } | null;
+        serviceType: import(".prisma/client").$Enums.ServiceType;
+        totalPrice: import("@prisma/client-runtime-utils/dist").Decimal;
+        cashStatus: import(".prisma/client").$Enums.CashStatus;
         invoiceNumber: string | null;
         serialNumber: string | null;
         reminderCount: number;
         lastReminderAt: Date | null;
         notes: string | null;
-        posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
+        posPaymentMethod: import(".prisma/client").$Enums.PosPaymentMethod;
         completedAt: Date | null;
         walletSettledAt: Date | null;
-        driver: {
-            branch: {
-                id: string;
-                name: string;
-            } | null;
-            id: string;
-            phone: string | null;
-            username: string;
-            fullName: string;
-            employeeId: string | null;
-            jobTitle: string | null;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
-        } | null;
+        dispatchId: string | null;
         lineItems: {
             id: string;
-            quantity: import("@prisma/client-runtime-utils").Decimal;
+            quantity: import("@prisma/client-runtime-utils/dist").Decimal;
             label: string | null;
-            starchOption: import("@prisma/client").$Enums.StarchOption;
-            unitPrice: import("@prisma/client-runtime-utils").Decimal;
+            starchOption: import(".prisma/client").$Enums.StarchOption;
+            unitPrice: import("@prisma/client-runtime-utils/dist").Decimal;
         }[];
     }>;
     updateOrder(id: string, dto: UpdateOrderDto, user: JwtUser): Promise<{
+        status: import(".prisma/client").$Enums.OrderStatus;
         customer: {
             wallet: {
-                balance: import("@prisma/client-runtime-utils").Decimal;
-                debt: import("@prisma/client-runtime-utils").Decimal;
+                balance: import("@prisma/client-runtime-utils/dist").Decimal;
+                debt: import("@prisma/client-runtime-utils/dist").Decimal;
             } | null;
             id: string;
             phone: string;
@@ -282,37 +290,37 @@ export declare class OrdersController {
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        status: import("@prisma/client").$Enums.OrderStatus;
-        serviceType: import("@prisma/client").$Enums.ServiceType;
-        totalPrice: import("@prisma/client-runtime-utils").Decimal;
-        cashStatus: import("@prisma/client").$Enums.CashStatus;
+        driver: {
+            branch: {
+                name: string;
+                id: string;
+            } | null;
+            id: string;
+            username: string;
+            fullName: string;
+            employeeId: string | null;
+            jobTitle: string | null;
+            phone: string | null;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
+        } | null;
+        serviceType: import(".prisma/client").$Enums.ServiceType;
+        totalPrice: import("@prisma/client-runtime-utils/dist").Decimal;
+        cashStatus: import(".prisma/client").$Enums.CashStatus;
         invoiceNumber: string | null;
         serialNumber: string | null;
         reminderCount: number;
         lastReminderAt: Date | null;
         notes: string | null;
-        posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
+        posPaymentMethod: import(".prisma/client").$Enums.PosPaymentMethod;
         completedAt: Date | null;
         walletSettledAt: Date | null;
-        driver: {
-            branch: {
-                id: string;
-                name: string;
-            } | null;
-            id: string;
-            phone: string | null;
-            username: string;
-            fullName: string;
-            employeeId: string | null;
-            jobTitle: string | null;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
-        } | null;
+        dispatchId: string | null;
         lineItems: {
             id: string;
-            quantity: import("@prisma/client-runtime-utils").Decimal;
+            quantity: import("@prisma/client-runtime-utils/dist").Decimal;
             label: string | null;
-            starchOption: import("@prisma/client").$Enums.StarchOption;
-            unitPrice: import("@prisma/client-runtime-utils").Decimal;
+            starchOption: import(".prisma/client").$Enums.StarchOption;
+            unitPrice: import("@prisma/client-runtime-utils/dist").Decimal;
         }[];
     }>;
 }

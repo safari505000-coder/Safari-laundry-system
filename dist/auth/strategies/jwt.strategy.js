@@ -23,10 +23,18 @@ let JwtStrategy = class JwtStrategy extends (0, passport_1.PassportStrategy)(pas
         });
     }
     validate(payload) {
+        const role = typeof payload.role === 'string' && payload.role.trim() ?
+            payload.role.trim().toUpperCase()
+            : '';
+        const linked = typeof payload.linkedCustomerId === 'string' && payload.linkedCustomerId.trim() ?
+            payload.linkedCustomerId.trim()
+            : null;
         return {
             userId: payload.sub,
-            role: payload.role,
+            role,
             branchId: payload.branchId ?? null,
+            scope: payload.scope,
+            linkedCustomerId: linked,
         };
     }
 };

@@ -4,44 +4,44 @@ import { SubscriptionPlansService } from './subscription-plans.service';
 export declare class SubscriptionPlansController {
     private readonly subscriptionPlansService;
     constructor(subscriptionPlansService: SubscriptionPlansService);
-    create(dto: CreateSubscriptionPlanDto): import("@prisma/client").Prisma.Prisma__SubscriptionPlanClient<{
-        id: string;
-        createdAt: Date;
+    create(dto: CreateSubscriptionPlanDto): import(".prisma/client").Prisma.Prisma__SubscriptionPlanClient<{
         name: string;
-        updatedAt: Date;
+        id: string;
         isActive: boolean;
-        salePrice: import("@prisma/client-runtime-utils").Decimal;
-        actualBalance: import("@prisma/client-runtime-utils").Decimal;
+        createdAt: Date;
+        updatedAt: Date;
+        salePrice: import("@prisma/client-runtime-utils/dist").Decimal;
+        actualBalance: import("@prisma/client-runtime-utils/dist").Decimal;
         validityDays: number;
-    }, never, import("@prisma/client/runtime/client").DefaultArgs, import("@prisma/client").Prisma.PrismaClientOptions>;
+    }, never, import("@prisma/client/runtime/client").DefaultArgs, import(".prisma/client").Prisma.PrismaClientOptions>;
     findAll(): Promise<{
-        id: string;
-        createdAt: Date;
         name: string;
-        updatedAt: Date;
+        id: string;
         isActive: boolean;
-        salePrice: import("@prisma/client-runtime-utils").Decimal;
-        actualBalance: import("@prisma/client-runtime-utils").Decimal;
+        createdAt: Date;
+        updatedAt: Date;
+        salePrice: import("@prisma/client-runtime-utils/dist").Decimal;
+        actualBalance: import("@prisma/client-runtime-utils/dist").Decimal;
         validityDays: number;
     }[]>;
     findOne(id: string): Promise<{
-        id: string;
-        createdAt: Date;
         name: string;
-        updatedAt: Date;
+        id: string;
         isActive: boolean;
-        salePrice: import("@prisma/client-runtime-utils").Decimal;
-        actualBalance: import("@prisma/client-runtime-utils").Decimal;
+        createdAt: Date;
+        updatedAt: Date;
+        salePrice: import("@prisma/client-runtime-utils/dist").Decimal;
+        actualBalance: import("@prisma/client-runtime-utils/dist").Decimal;
         validityDays: number;
     }>;
     update(id: string, dto: UpdateSubscriptionPlanDto): Promise<{
-        id: string;
-        createdAt: Date;
         name: string;
-        updatedAt: Date;
+        id: string;
         isActive: boolean;
-        salePrice: import("@prisma/client-runtime-utils").Decimal;
-        actualBalance: import("@prisma/client-runtime-utils").Decimal;
+        createdAt: Date;
+        updatedAt: Date;
+        salePrice: import("@prisma/client-runtime-utils/dist").Decimal;
+        actualBalance: import("@prisma/client-runtime-utils/dist").Decimal;
         validityDays: number;
     }>;
     remove(id: string): Promise<{

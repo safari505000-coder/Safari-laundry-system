@@ -18,27 +18,34 @@ let CommissionRulesService = class CommissionRulesService {
     constructor(prisma) {
         this.prisma = prisma;
     }
-    assertOwnerOrGM(role) {
-        if (role !== client_1.SafariRole.OWNER && role !== client_1.SafariRole.GENERAL_MANAGER) {
+    assertCanReadRules(role) {
+        if (role !== client_1.SafariRole.OWNER &&
+            role !== client_1.SafariRole.GENERAL_MANAGER &&
+            role !== client_1.SafariRole.ACCOUNTANT) {
+            throw new common_1.ForbiddenException();
+        }
+    }
+    assertOwnerWrites(role) {
+        if (role !== client_1.SafariRole.OWNER) {
             throw new common_1.ForbiddenException();
         }
     }
     async list(actorRole, opts) {
-        this.assertOwnerOrGM(actorRole);
+        this.assertCanReadRules(actorRole);
         return this.prisma.commissionRule.findMany({
             where: opts?.mode ? { mode: opts.mode } : {},
             orderBy: [{ isActive: 'desc' }, { updatedAt: 'desc' }],
         });
     }
     async findOne(actorRole, id) {
-        this.assertOwnerOrGM(actorRole);
+        this.assertCanReadRules(actorRole);
         const row = await this.prisma.commissionRule.findUnique({ where: { id } });
         if (!row)
             throw new common_1.NotFoundException('Commission rule not found');
         return row;
     }
     async create(actorRole, dto) {
-        this.assertOwnerOrGM(actorRole);
+        this.assertOwnerWrites(actorRole);
         return this.prisma.commissionRule.create({
             data: {
                 name: dto.name,
@@ -54,7 +61,7 @@ let CommissionRulesService = class CommissionRulesService {
         });
     }
     async update(actorRole, id, dto) {
-        this.assertOwnerOrGM(actorRole);
+        this.assertOwnerWrites(actorRole);
         await this.findOne(actorRole, id);
         const data = {};
         if (dto.name !== undefined)
@@ -78,7 +85,7 @@ let CommissionRulesService = class CommissionRulesService {
         return this.prisma.commissionRule.update({ where: { id }, data });
     }
     async remove(actorRole, id) {
-        this.assertOwnerOrGM(actorRole);
+        this.assertOwnerWrites(actorRole);
         await this.findOne(actorRole, id);
         return this.prisma.commissionRule.update({
             where: { id },
@@ -86,14 +93,14 @@ let CommissionRulesService = class CommissionRulesService {
         });
     }
     async getDefaultRule(actorRole) {
-        this.assertOwnerOrGM(actorRole);
+        this.assertCanReadRules(actorRole);
         return this.prisma.commissionRule.findFirst({
             where: { role: null },
             orderBy: [{ isActive: 'desc' }, { updatedAt: 'desc' }],
         });
     }
     async upsertDefaultRule(actorRole, dto) {
-        this.assertOwnerOrGM(actorRole);
+        this.assertOwnerWrites(actorRole);
         const existing = await this.prisma.commissionRule.findFirst({
             where: { role: null },
             orderBy: [{ isActive: 'desc' }, { updatedAt: 'desc' }],

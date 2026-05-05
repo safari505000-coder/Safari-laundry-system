@@ -21,6 +21,7 @@ function buildDebtKdBreakdownTrace(ledgerNetKd, walletSnapshotKd, orderMarketSco
         ledgerNetKd: ledgerNetKd.toFixed(4),
         walletSnapshotKd: walletSnapshotKd.toFixed(4),
         orderMarketScopeKd: orderMarketScopeKd.toFixed(4),
+        operationalDebtKd: effectiveKd.toFixed(4),
         effectiveDebtKd: effectiveKd.toFixed(4),
         winningSources,
     };

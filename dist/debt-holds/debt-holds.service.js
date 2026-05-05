@@ -185,9 +185,8 @@ let DebtHoldsService = class DebtHoldsService {
         });
     }
     async createManualHold(actorRole, dto) {
-        if (actorRole !== client_1.SafariRole.OWNER &&
-            actorRole !== client_1.SafariRole.GENERAL_MANAGER) {
-            throw new common_1.ForbiddenException('Only OWNER/GM may create manual holds');
+        if (actorRole !== client_1.SafariRole.OWNER) {
+            throw new common_1.ForbiddenException('Only OWNER may create manual holds');
         }
         if (dto.holdAmount <= 0) {
             throw new common_1.ForbiddenException('holdAmount must be > 0');
@@ -243,9 +242,8 @@ let DebtHoldsService = class DebtHoldsService {
         });
     }
     async releaseManualHold(actorRole, id) {
-        if (actorRole !== client_1.SafariRole.OWNER &&
-            actorRole !== client_1.SafariRole.GENERAL_MANAGER) {
-            throw new common_1.ForbiddenException('Only OWNER/GM may release holds');
+        if (actorRole !== client_1.SafariRole.OWNER) {
+            throw new common_1.ForbiddenException('Only OWNER may release holds');
         }
         const row = await this.prisma.debtHold.findUnique({ where: { id } });
         if (!row) {
@@ -268,9 +266,8 @@ let DebtHoldsService = class DebtHoldsService {
         });
     }
     async markDisbursed(actorRole, actorUserId, id) {
-        if (actorRole !== client_1.SafariRole.OWNER &&
-            actorRole !== client_1.SafariRole.GENERAL_MANAGER) {
-            throw new common_1.ForbiddenException('Only OWNER/GM may disburse holds');
+        if (actorRole !== client_1.SafariRole.OWNER) {
+            throw new common_1.ForbiddenException('Only OWNER may disburse holds');
         }
         const row = await this.prisma.debtHold.findUnique({ where: { id } });
         if (!row) {

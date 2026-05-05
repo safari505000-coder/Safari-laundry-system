@@ -10,5 +10,7 @@ export declare class VersionController {
         env: string;
         uptime: number;
         startedAt: string;
+        region: string;
+        deploymentColor: string;
     };
 }

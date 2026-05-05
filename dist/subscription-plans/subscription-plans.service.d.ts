@@ -1,4 +1,4 @@
-import type { Prisma, SubscriptionPlan } from '@prisma/client';
+import type { Prisma, SubscriptionPlan } from "@prisma/client";
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateSubscriptionPlanDto } from './dto/create-subscription-plan.dto';
 import { UpdateSubscriptionPlanDto } from './dto/update-subscription-plan.dto';
@@ -8,21 +8,21 @@ export declare class SubscriptionPlansService {
     findAll(): Promise<SubscriptionPlan[]>;
     findOne(id: string): Promise<SubscriptionPlan>;
     create(dto: CreateSubscriptionPlanDto): Prisma.Prisma__SubscriptionPlanClient<{
-        id: string;
-        createdAt: Date;
         name: string;
-        updatedAt: Date;
+        id: string;
         isActive: boolean;
+        createdAt: Date;
+        updatedAt: Date;
         salePrice: Prisma.Decimal;
         actualBalance: Prisma.Decimal;
         validityDays: number;
     }, never, import("@prisma/client/runtime/client").DefaultArgs, Prisma.PrismaClientOptions>;
     update(id: string, dto: UpdateSubscriptionPlanDto): Promise<{
-        id: string;
-        createdAt: Date;
         name: string;
-        updatedAt: Date;
+        id: string;
         isActive: boolean;
+        createdAt: Date;
+        updatedAt: Date;
         salePrice: Prisma.Decimal;
         actualBalance: Prisma.Decimal;
         validityDays: number;

@@ -8,8 +8,8 @@ export declare class LeavesController {
     create(dto: CreateLeaveDto, user: JwtUser): Promise<{
         user: {
             branch: {
-                id: string;
                 name: string;
+                id: string;
             } | null;
             id: string;
             username: string;
@@ -24,25 +24,25 @@ export declare class LeavesController {
             fullName: string;
         } | null;
     } & {
+        status: import(".prisma/client").$Enums.LeaveStatus;
+        userId: string;
+        type: import(".prisma/client").$Enums.LeaveType;
         id: string;
         createdAt: Date;
-        userId: string;
-        type: import("@prisma/client").$Enums.LeaveType;
         updatedAt: Date;
-        status: import("@prisma/client").$Enums.LeaveStatus;
         reason: string | null;
+        startDate: Date;
+        endDate: Date;
         approvedById: string | null;
         approvedAt: Date | null;
         rejectedReason: string | null;
-        startDate: Date;
-        endDate: Date;
         daysCount: number;
     }>;
     list(q: ListLeavesQueryDto, user: JwtUser): Promise<({
         user: {
             branch: {
-                id: string;
                 name: string;
+                id: string;
             } | null;
             id: string;
             username: string;
@@ -57,25 +57,25 @@ export declare class LeavesController {
             fullName: string;
         } | null;
     } & {
+        status: import(".prisma/client").$Enums.LeaveStatus;
+        userId: string;
+        type: import(".prisma/client").$Enums.LeaveType;
         id: string;
         createdAt: Date;
-        userId: string;
-        type: import("@prisma/client").$Enums.LeaveType;
         updatedAt: Date;
-        status: import("@prisma/client").$Enums.LeaveStatus;
         reason: string | null;
+        startDate: Date;
+        endDate: Date;
         approvedById: string | null;
         approvedAt: Date | null;
         rejectedReason: string | null;
-        startDate: Date;
-        endDate: Date;
         daysCount: number;
     })[]>;
     mine(user: JwtUser): Promise<({
         user: {
             branch: {
-                id: string;
                 name: string;
+                id: string;
             } | null;
             id: string;
             username: string;
@@ -90,25 +90,25 @@ export declare class LeavesController {
             fullName: string;
         } | null;
     } & {
+        status: import(".prisma/client").$Enums.LeaveStatus;
+        userId: string;
+        type: import(".prisma/client").$Enums.LeaveType;
         id: string;
         createdAt: Date;
-        userId: string;
-        type: import("@prisma/client").$Enums.LeaveType;
         updatedAt: Date;
-        status: import("@prisma/client").$Enums.LeaveStatus;
         reason: string | null;
+        startDate: Date;
+        endDate: Date;
         approvedById: string | null;
         approvedAt: Date | null;
         rejectedReason: string | null;
-        startDate: Date;
-        endDate: Date;
         daysCount: number;
     })[]>;
     findOne(id: string, user: JwtUser): Promise<{
         user: {
             branch: {
-                id: string;
                 name: string;
+                id: string;
             } | null;
             id: string;
             username: string;
@@ -123,25 +123,25 @@ export declare class LeavesController {
             fullName: string;
         } | null;
     } & {
+        status: import(".prisma/client").$Enums.LeaveStatus;
+        userId: string;
+        type: import(".prisma/client").$Enums.LeaveType;
         id: string;
         createdAt: Date;
-        userId: string;
-        type: import("@prisma/client").$Enums.LeaveType;
         updatedAt: Date;
-        status: import("@prisma/client").$Enums.LeaveStatus;
         reason: string | null;
+        startDate: Date;
+        endDate: Date;
         approvedById: string | null;
         approvedAt: Date | null;
         rejectedReason: string | null;
-        startDate: Date;
-        endDate: Date;
         daysCount: number;
     }>;
     approve(id: string, user: JwtUser): Promise<{
         user: {
             branch: {
-                id: string;
                 name: string;
+                id: string;
             } | null;
             id: string;
             username: string;
@@ -156,25 +156,25 @@ export declare class LeavesController {
             fullName: string;
         } | null;
     } & {
+        status: import(".prisma/client").$Enums.LeaveStatus;
+        userId: string;
+        type: import(".prisma/client").$Enums.LeaveType;
         id: string;
         createdAt: Date;
-        userId: string;
-        type: import("@prisma/client").$Enums.LeaveType;
         updatedAt: Date;
-        status: import("@prisma/client").$Enums.LeaveStatus;
         reason: string | null;
+        startDate: Date;
+        endDate: Date;
         approvedById: string | null;
         approvedAt: Date | null;
         rejectedReason: string | null;
-        startDate: Date;
-        endDate: Date;
         daysCount: number;
     }>;
     reject(id: string, dto: RejectLeaveDto, user: JwtUser): Promise<{
         user: {
             branch: {
-                id: string;
                 name: string;
+                id: string;
             } | null;
             id: string;
             username: string;
@@ -189,25 +189,25 @@ export declare class LeavesController {
             fullName: string;
         } | null;
     } & {
+        status: import(".prisma/client").$Enums.LeaveStatus;
+        userId: string;
+        type: import(".prisma/client").$Enums.LeaveType;
         id: string;
         createdAt: Date;
-        userId: string;
-        type: import("@prisma/client").$Enums.LeaveType;
         updatedAt: Date;
-        status: import("@prisma/client").$Enums.LeaveStatus;
         reason: string | null;
+        startDate: Date;
+        endDate: Date;
         approvedById: string | null;
         approvedAt: Date | null;
         rejectedReason: string | null;
-        startDate: Date;
-        endDate: Date;
         daysCount: number;
     }>;
     cancel(id: string, user: JwtUser): Promise<{
         user: {
             branch: {
-                id: string;
                 name: string;
+                id: string;
             } | null;
             id: string;
             username: string;
@@ -222,18 +222,18 @@ export declare class LeavesController {
             fullName: string;
         } | null;
     } & {
+        status: import(".prisma/client").$Enums.LeaveStatus;
+        userId: string;
+        type: import(".prisma/client").$Enums.LeaveType;
         id: string;
         createdAt: Date;
-        userId: string;
-        type: import("@prisma/client").$Enums.LeaveType;
         updatedAt: Date;
-        status: import("@prisma/client").$Enums.LeaveStatus;
         reason: string | null;
+        startDate: Date;
+        endDate: Date;
         approvedById: string | null;
         approvedAt: Date | null;
         rejectedReason: string | null;
-        startDate: Date;
-        endDate: Date;
         daysCount: number;
     }>;
 }

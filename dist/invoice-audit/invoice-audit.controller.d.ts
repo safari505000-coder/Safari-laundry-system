@@ -12,7 +12,7 @@ export declare class InvoiceAuditController {
         auditId: string;
         changedFields: string[];
         newTotal: string;
-        newPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
+        newPaymentMethod: import(".prisma/client").$Enums.PosPaymentMethod;
     }>;
     voidInvoice(orderId: string, dto: VoidInvoiceDto, user: JwtUser): Promise<{
         orderId: string;
@@ -24,13 +24,13 @@ export declare class InvoiceAuditController {
         rows: {
             id: string;
             orderId: string;
-            action: import("@prisma/client").$Enums.InvoiceAuditAction;
+            action: import(".prisma/client").$Enums.InvoiceAuditAction;
             actor: {
                 id: string;
                 fullName: string;
-                safariRole: import("@prisma/client").$Enums.SafariRole;
+                safariRole: import(".prisma/client").$Enums.SafariRole;
             };
-            actorRoleAtTime: import("@prisma/client").$Enums.SafariRole;
+            actorRoleAtTime: import(".prisma/client").$Enums.SafariRole;
             actorNameAtTime: string;
             reason: string | null;
             changedFields: string[];
@@ -44,7 +44,7 @@ export declare class InvoiceAuditController {
                 serialNumber: string | null;
                 invoiceNumber: string | null;
                 totalPriceKd: string;
-                status: import("@prisma/client").$Enums.OrderStatus;
+                status: import(".prisma/client").$Enums.OrderStatus;
                 customer: {
                     id: string;
                     phone: string;
@@ -62,7 +62,7 @@ export declare class InvoiceAuditController {
         agents: {
             agentId: string;
             agentName: string;
-            role: import("@prisma/client").$Enums.SafariRole;
+            role: import(".prisma/client").$Enums.SafariRole;
             collectedKd: string;
             debtSettledKd: string;
             activationsCount: number;

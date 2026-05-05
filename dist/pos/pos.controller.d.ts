@@ -10,12 +10,12 @@ export declare class PosController {
     constructor(posService: PosService, ordersService: OrdersService);
     searchCustomers(q: string): Promise<{
         wallet: {
-            balance: import("@prisma/client-runtime-utils").Decimal;
-            debt: import("@prisma/client-runtime-utils").Decimal;
+            balance: import("@prisma/client-runtime-utils/dist").Decimal;
+            debt: import("@prisma/client-runtime-utils/dist").Decimal;
         } | null;
         id: string;
-        createdAt: Date;
         phone: string;
+        createdAt: Date;
         address: string | null;
         phone2: string | null;
         displayName: string | null;
@@ -27,12 +27,12 @@ export declare class PosController {
     }[]>;
     listCustomersForOfflineCache(): Promise<{
         wallet: {
-            balance: import("@prisma/client-runtime-utils").Decimal;
-            debt: import("@prisma/client-runtime-utils").Decimal;
+            balance: import("@prisma/client-runtime-utils/dist").Decimal;
+            debt: import("@prisma/client-runtime-utils/dist").Decimal;
         } | null;
         id: string;
-        createdAt: Date;
         phone: string;
+        createdAt: Date;
         address: string | null;
         phone2: string | null;
         displayName: string | null;
@@ -44,12 +44,12 @@ export declare class PosController {
     }[]>;
     createCustomer(dto: PosCreateCustomerDto): Promise<{
         wallet: {
-            balance: import("@prisma/client-runtime-utils").Decimal;
-            debt: import("@prisma/client-runtime-utils").Decimal;
+            balance: import("@prisma/client-runtime-utils/dist").Decimal;
+            debt: import("@prisma/client-runtime-utils/dist").Decimal;
         } | null;
         id: string;
-        createdAt: Date;
         phone: string;
+        createdAt: Date;
         address: string | null;
         phone2: string | null;
         displayName: string | null;

@@ -404,6 +404,9 @@ let CustomerNotificationsService = class CustomerNotificationsService {
             void this.deliverPaymentConfirmed(params).catch((e) => this.logger.warn(`Payment confirmed notify failed: ${e}`));
         });
     }
+    deliverPaymentConfirmedQueued(params) {
+        return this.deliverPaymentConfirmed(params);
+    }
     notifyStandaloneDebtReceipt(params) {
         setImmediate(() => {
             void this.deliverStandaloneDebtReceipt(params).catch((e) => this.logger.warn(`Standalone debt receipt notify failed: ${e}`));

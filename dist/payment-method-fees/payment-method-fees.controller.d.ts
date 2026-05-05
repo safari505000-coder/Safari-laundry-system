@@ -8,17 +8,17 @@ export declare class PaymentMethodFeesController {
     getConfig(): Promise<{
         id: string;
         updatedAt: Date;
-        knetFlatKd: import("@prisma/client-runtime-utils").Decimal;
-        knetPercentOfGross: import("@prisma/client-runtime-utils").Decimal;
-        knetRule: import("@prisma/client").$Enums.KnetCommissionRule;
-        cardPercentOfGross: import("@prisma/client-runtime-utils").Decimal;
+        knetFlatKd: import("@prisma/client-runtime-utils/dist").Decimal;
+        knetPercentOfGross: import("@prisma/client-runtime-utils/dist").Decimal;
+        knetRule: import(".prisma/client").$Enums.KnetCommissionRule;
+        cardPercentOfGross: import("@prisma/client-runtime-utils/dist").Decimal;
     }>;
     patch(dto: UpdatePaymentMethodFeesDto): Promise<{
         id: string;
         updatedAt: Date;
-        knetFlatKd: import("@prisma/client-runtime-utils").Decimal;
-        knetPercentOfGross: import("@prisma/client-runtime-utils").Decimal;
-        knetRule: import("@prisma/client").$Enums.KnetCommissionRule;
-        cardPercentOfGross: import("@prisma/client-runtime-utils").Decimal;
+        knetFlatKd: import("@prisma/client-runtime-utils/dist").Decimal;
+        knetPercentOfGross: import("@prisma/client-runtime-utils/dist").Decimal;
+        knetRule: import(".prisma/client").$Enums.KnetCommissionRule;
+        cardPercentOfGross: import("@prisma/client-runtime-utils/dist").Decimal;
     }>;
 }

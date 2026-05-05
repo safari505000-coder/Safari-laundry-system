@@ -11,9 +11,17 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CustomersService = void 0;
 const common_1 = require("@nestjs/common");
+const client_1 = require("@prisma/client");
 const debt_service_1 = require("../finance/services/debt.service");
 const subscription_service_1 = require("../finance/services/subscription.service");
 const customer_core_service_1 = require("./customer-core.service");
+const SENSITIVE_CUSTOMER_FINANCE_ROLES = new Set([
+    client_1.SafariRole.OWNER,
+    client_1.SafariRole.GENERAL_MANAGER,
+    client_1.SafariRole.CALL_CENTER,
+    client_1.SafariRole.CALL_CENTER_SUPERVISOR,
+    client_1.SafariRole.ACCOUNTANT,
+]);
 let CustomersService = class CustomersService {
     core;
     debt;
@@ -23,22 +31,22 @@ let CustomersService = class CustomersService {
         this.debt = debt;
         this.subscription = subscription;
     }
-    async list(query) {
+    async list(query, role) {
         const q = (query ?? '').trim();
         const isNumeric = /^[0-9]+$/.test(q);
+        const canSeeFinancials = this.canSeeFinancials(role);
         const customers = isNumeric && q.length >= 2
             ? await this.core.listByPhonePriority(q)
             : await this.core.list(q);
+        if (!canSeeFinancials) {
+            return customers.map((customer) => this.toPublicDto(customer));
+        }
         const snapshots = await Promise.all(customers.map(async (customer) => {
             const [debt, subscription] = await Promise.all([
                 this.debt.getCustomerDebtSnapshot(customer.id),
                 this.subscription.getCustomerSubscriptionSnapshot(customer.id),
             ]);
-            return {
-                customer,
-                debt,
-                subscription,
-            };
+            return this.toFinancialDto(customer, debt, subscription);
         }));
         return snapshots;
     }
@@ -65,15 +73,28 @@ let CustomersService = class CustomersService {
     async createQuick(dto) {
         return this.core.createQuickCustomer(dto.displayName, dto.phone);
     }
-    async getProfileWithFinancials(customerId) {
+    async getProfileWithFinancials(customerId, role) {
+        const canSeeFinancials = this.canSeeFinancials(role);
         const customer = await this.core.getById(customerId);
         if (!customer) {
             throw new common_1.NotFoundException('Customer not found');
+        }
+        if (!canSeeFinancials) {
+            return this.toPublicDto(customer);
         }
         const [debt, subscription] = await Promise.all([
             this.debt.getCustomerDebtSnapshot(customerId),
             this.subscription.getCustomerSubscriptionSnapshot(customerId),
         ]);
+        return this.toFinancialDto(customer, debt, subscription);
+    }
+    canSeeFinancials(role) {
+        return !!role && SENSITIVE_CUSTOMER_FINANCE_ROLES.has(role);
+    }
+    toPublicDto(customer) {
+        return { customer };
+    }
+    toFinancialDto(customer, debt, subscription) {
         return { customer, debt, subscription };
     }
 };

@@ -15,6 +15,7 @@ const core_1 = require("@nestjs/core");
 const client_1 = require("@prisma/client");
 const capabilities_1 = require("../capabilities");
 const roles_decorator_1 = require("../decorators/roles.decorator");
+const permissions_decorator_1 = require("../permissions/permissions.decorator");
 const permissions_service_1 = require("../../permissions/permissions.service");
 let RolesGuard = class RolesGuard {
     reflector;
@@ -24,12 +25,23 @@ let RolesGuard = class RolesGuard {
         this.permissionsService = permissionsService;
     }
     async canActivate(context) {
+        const isPublic = this.reflector.getAllAndOverride(roles_decorator_1.IS_PUBLIC_KEY, [
+            context.getHandler(),
+            context.getClass(),
+        ]);
+        if (isPublic) {
+            return true;
+        }
+        const requiredPermissions = this.reflector.getAllAndOverride(permissions_decorator_1.PERMISSIONS_KEY, [context.getHandler(), context.getClass()]);
+        if (requiredPermissions?.length) {
+            return true;
+        }
         const required = this.reflector.getAllAndOverride(roles_decorator_1.ROLES_KEY, [
             context.getHandler(),
             context.getClass(),
         ]);
         if (!required?.length) {
-            return true;
+            throw new common_1.ForbiddenException('RBAC policy missing: endpoint must declare @Roles or @Public.');
         }
         const req = context
             .switchToHttp()

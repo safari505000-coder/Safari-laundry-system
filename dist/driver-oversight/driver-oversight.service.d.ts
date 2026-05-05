@@ -12,9 +12,9 @@ export type DriverOversightCard = {
     shiftStatus: DriverOversightShiftStatus;
     shiftStartedAt: string | null;
     ordersTodayCount: number;
-    cashTodayKd: string;
+    cashTodayKd: null;
     pendingInvoicesCount: number;
-    heldCashKd: string;
+    heldCashKd: null;
     staleQuickCount: number;
     staleQuickKd: string;
     atRisk: boolean;

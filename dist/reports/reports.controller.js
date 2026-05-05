@@ -17,8 +17,12 @@ const common_1 = require("@nestjs/common");
 const swagger_1 = require("@nestjs/swagger");
 const client_1 = require("@prisma/client");
 const roles_decorator_1 = require("../auth/decorators/roles.decorator");
+const permissions_decorator_1 = require("../auth/permissions/permissions.decorator");
+const permissions_enum_1 = require("../auth/permissions/permissions.enum");
+const current_user_decorator_1 = require("../auth/decorators/current-user.decorator");
 const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
 const roles_guard_1 = require("../auth/guards/roles.guard");
+const audit_service_1 = require("../common/audit/audit.service");
 const branding_1 = require("../common/constants/branding");
 const driver_ledger_query_dto_1 = require("./dto/driver-ledger-query.dto");
 const live_feed_query_dto_1 = require("./dto/live-feed-query.dto");
@@ -26,8 +30,10 @@ const reports_range_query_dto_1 = require("./dto/reports-range-query.dto");
 const reports_service_1 = require("./reports.service");
 let ReportsController = class ReportsController {
     reportsService;
-    constructor(reportsService) {
+    audit;
+    constructor(reportsService, audit) {
         this.reportsService = reportsService;
+        this.audit = audit;
     }
     issuedInvoices(q) {
         return this.reportsService.issuedInvoices(q.from, q.to, q.driverId, q.posPaymentMethod, q.branchId);
@@ -47,7 +53,12 @@ let ReportsController = class ReportsController {
     monthlySummary(q) {
         return this.reportsService.monthlySummary(q.from, q.to);
     }
-    moneyFlowStatement(q) {
+    moneyFlowStatement(q, user) {
+        this.audit.logAudit('FINANCIAL_REPORT_ACCESS', user, {
+            report: 'money-flow-statement',
+            from: q.from,
+            to: q.to,
+        });
         return this.reportsService.moneyFlowStatement(q.from, q.to);
     }
     bankFeesByBranch(q) {
@@ -60,7 +71,7 @@ let ReportsController = class ReportsController {
 exports.ReportsController = ReportsController;
 __decorate([
     (0, common_1.Get)('issued-invoices'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.VIEW_INVOICES, permissions_enum_1.AppPermission.VIEW_REPORTS),
     (0, swagger_1.ApiOperation)({
         summary: `Issued invoices — orders created in period (${branding_1.APP_BRAND})`,
         description: 'A3.D6 — Time axis is Order.createdAt (invoice-issuance time). Includes canceled rows so the count ties to the serial counter. For a "completed in range" view use /reports/completed-orders which filters on Order.completedAt instead (the axis the Executive P&L uses).',
@@ -84,7 +95,7 @@ __decorate([
 ], ReportsController.prototype, "liveFeed", null);
 __decorate([
     (0, common_1.Get)('driver-ledger'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.VIEW_CASH, permissions_enum_1.AppPermission.VIEW_REPORTS),
     (0, swagger_1.ApiOperation)({
         summary: `Driver cash vs office — held COD and period activity (${branding_1.APP_BRAND})`,
     }),
@@ -95,7 +106,7 @@ __decorate([
 ], ReportsController.prototype, "driverLedger", null);
 __decorate([
     (0, common_1.Get)('daily-cash-closing'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.VIEW_CASH, permissions_enum_1.AppPermission.VIEW_REPORTS),
     (0, swagger_1.ApiOperation)({
         summary: `Daily cash closing — gross CASH sales minus expenses (${branding_1.APP_BRAND})`,
     }),
@@ -130,14 +141,15 @@ __decorate([
 ], ReportsController.prototype, "monthlySummary", null);
 __decorate([
     (0, common_1.Get)('money-flow-statement'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.VIEW_FINANCIAL_REPORTS),
     (0, swagger_1.ApiOperation)({
         summary: `Money flow statement — income, deductions, expenses, ledger rollups (${branding_1.APP_BRAND})`,
         description: 'V19.24 — Consolidated executive lines (same as /reports/executive-summary), approved branch/vehicle expenses, accrued fixed costs by category, collections split, prior-period invoice debt payments, plus GL / wallet / debt ledger rollups for the window.',
     }),
     __param(0, (0, common_1.Query)()),
+    __param(1, (0, current_user_decorator_1.CurrentUser)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [reports_range_query_dto_1.ReportsRangeQueryDto]),
+    __metadata("design:paramtypes", [reports_range_query_dto_1.ReportsRangeQueryDto, Object]),
     __metadata("design:returntype", void 0)
 ], ReportsController.prototype, "moneyFlowStatement", null);
 __decorate([
@@ -154,7 +166,7 @@ __decorate([
 ], ReportsController.prototype, "bankFeesByBranch", null);
 __decorate([
     (0, common_1.Get)('unified-ledger-stream'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.VIEWER),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.VIEW_FINANCIAL_REPORTS),
     (0, swagger_1.ApiOperation)({
         summary: `Unified ledger stream (${branding_1.APP_BRAND})`,
         description: 'POS ledger entries, driver field expenses (with receipt pointers), and driver deposits for accountant radar. GENERAL_MANAGER included to match `unifiedLedger.view` in the access matrix and exports.',
@@ -169,6 +181,7 @@ exports.ReportsController = ReportsController = __decorate([
     (0, swagger_1.ApiBearerAuth)('bearer'),
     (0, common_1.Controller)('reports'),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
-    __metadata("design:paramtypes", [reports_service_1.ReportsService])
+    __metadata("design:paramtypes", [reports_service_1.ReportsService,
+        audit_service_1.AuditService])
 ], ReportsController);
 //# sourceMappingURL=reports.controller.js.map

@@ -1,4 +1,4 @@
-import { AttendanceSource, SafariRole } from '@prisma/client';
+import { AttendanceSource, SafariRole } from "@prisma/client";
 import { PrismaService } from '../prisma/prisma.service';
 import type { BiometricEventDto } from './dto/biometric-event.dto';
 import type { ListAttendanceQueryDto } from './dto/list-attendance-query.dto';

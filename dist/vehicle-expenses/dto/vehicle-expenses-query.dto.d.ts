@@ -1,4 +1,4 @@
-import { VehicleExpenseStatus, VehicleExpenseType } from '@prisma/client';
+import { VehicleExpenseStatus, VehicleExpenseType } from "@prisma/client";
 export declare class VehicleExpensesQueryDto {
     from?: string;
     to?: string;

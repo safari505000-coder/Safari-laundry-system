@@ -1,4 +1,4 @@
-import { SafariRole } from '@prisma/client';
+import { SafariRole } from "@prisma/client";
 import type { PrismaService } from '../prisma/prisma.service';
 export declare const ROLES_THAT_SEE_ADMINISTRATIVE_BRANCHES: SafariRole[];
 export declare function canSeeAdministrativeBranches(role: string): boolean;

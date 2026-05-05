@@ -11,16 +11,18 @@ const common_1 = require("@nestjs/common");
 const auth_module_1 = require("../auth/auth.module");
 const general_ledger_module_1 = require("../general-ledger/general-ledger.module");
 const prisma_module_1 = require("../prisma/prisma.module");
+const audit_service_1 = require("../common/audit/audit.service");
 const expenses_controller_1 = require("./expenses.controller");
 const expenses_service_1 = require("./expenses.service");
+const finance_expenses_summary_controller_1 = require("./finance-expenses-summary.controller");
 let ExpensesModule = class ExpensesModule {
 };
 exports.ExpensesModule = ExpensesModule;
 exports.ExpensesModule = ExpensesModule = __decorate([
     (0, common_1.Module)({
         imports: [prisma_module_1.PrismaModule, auth_module_1.AuthModule, general_ledger_module_1.GeneralLedgerModule],
-        controllers: [expenses_controller_1.ExpensesController],
-        providers: [expenses_service_1.ExpensesService],
+        controllers: [expenses_controller_1.ExpensesController, finance_expenses_summary_controller_1.FinanceExpensesSummaryController],
+        providers: [expenses_service_1.ExpensesService, audit_service_1.AuditService],
         exports: [expenses_service_1.ExpensesService],
     })
 ], ExpensesModule);

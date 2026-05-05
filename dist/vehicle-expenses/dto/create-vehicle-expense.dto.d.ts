@@ -1,4 +1,4 @@
-import { VehicleExpenseType } from '@prisma/client';
+import { VehicleExpenseType } from "@prisma/client";
 export declare class CreateVehicleExpenseDto {
     vehiclePlate: string;
     vehicleLabel?: string;

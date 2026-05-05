@@ -1,4 +1,4 @@
-import { DepositType } from '@prisma/client';
+import { DepositType, SafariRole } from "@prisma/client";
 import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { DepositsListQueryDto } from './dto/deposits-list-query.dto';
@@ -15,9 +15,9 @@ export declare class DepositsService {
             driverId: string;
             driverName: string;
             amount: string;
-            type: import("@prisma/client").$Enums.DepositType;
+            type: import(".prisma/client").$Enums.DepositType;
             receiptImage: string;
-            status: import("@prisma/client").$Enums.DepositStatus;
+            status: import(".prisma/client").$Enums.DepositStatus;
             auditComment: string | null;
             auditedBy: {
                 id: string;
@@ -33,17 +33,17 @@ export declare class DepositsService {
         driverId: string;
         driverName: string;
         amount: string;
-        type: import("@prisma/client").$Enums.DepositType;
+        type: import(".prisma/client").$Enums.DepositType;
         receiptImage: string;
-        status: import("@prisma/client").$Enums.DepositStatus;
+        status: import(".prisma/client").$Enums.DepositStatus;
         auditComment: string | null;
         auditedBy: null;
         createdAt: string;
         updatedAt: string;
     }>;
-    updateStatus(auditorId: string, id: string, dto: UpdateDepositStatusDto): Promise<{
+    updateStatus(auditorId: string, auditorRole: SafariRole, id: string, dto: UpdateDepositStatusDto): Promise<{
         id: string;
-        status: import("@prisma/client").$Enums.DepositStatus;
+        status: import(".prisma/client").$Enums.DepositStatus;
         auditComment: string | null;
         updatedAt: string;
     }>;

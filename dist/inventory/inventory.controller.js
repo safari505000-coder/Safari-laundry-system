@@ -15,9 +15,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.InventoryController = void 0;
 const common_1 = require("@nestjs/common");
 const swagger_1 = require("@nestjs/swagger");
-const client_1 = require("@prisma/client");
 const current_user_decorator_1 = require("../auth/decorators/current-user.decorator");
-const roles_decorator_1 = require("../auth/decorators/roles.decorator");
+const permissions_decorator_1 = require("../auth/permissions/permissions.decorator");
+const permissions_enum_1 = require("../auth/permissions/permissions.enum");
 const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
 const roles_guard_1 = require("../auth/guards/roles.guard");
 const branding_1 = require("../common/constants/branding");
@@ -89,7 +89,7 @@ let InventoryController = class InventoryController {
 exports.InventoryController = InventoryController;
 __decorate([
     (0, common_1.Get)('report'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.VIEW_INVENTORY),
     (0, swagger_1.ApiOperation)({
         summary: `Smart inventory report (${branding_1.APP_BRAND})`,
         description: 'Multi-layer filter: category, branch, stock-status. Rows return a server-derived status (IN_STOCK / LOW_STOCK / OUT_OF_STOCK) used for the Yellow/Red colour cues in the UI.',
@@ -101,14 +101,14 @@ __decorate([
 ], InventoryController.prototype, "getReport", null);
 __decorate([
     (0, common_1.Get)('categories'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.MANAGER),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.VIEW_INVENTORY),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", void 0)
 ], InventoryController.prototype, "listCategories", null);
 __decorate([
     (0, common_1.Post)('categories'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.UPDATE_OPERATIONAL_DATA),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [create_inventory_category_dto_1.CreateInventoryCategoryDto]),
@@ -116,14 +116,14 @@ __decorate([
 ], InventoryController.prototype, "createCategory", null);
 __decorate([
     (0, common_1.Get)('items'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.MANAGER),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.VIEW_INVENTORY),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", void 0)
 ], InventoryController.prototype, "listItems", null);
 __decorate([
     (0, common_1.Post)('items'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.UPDATE_OPERATIONAL_DATA),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [create_stock_item_dto_1.CreateStockItemDto]),
@@ -131,14 +131,14 @@ __decorate([
 ], InventoryController.prototype, "createItem", null);
 __decorate([
     (0, common_1.Get)('suppliers'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.VIEW_INVENTORY),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", void 0)
 ], InventoryController.prototype, "listSuppliers", null);
 __decorate([
     (0, common_1.Post)('suppliers'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.GENERAL_MANAGER),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.UPDATE_OPERATIONAL_DATA),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [create_supplier_dto_1.CreateSupplierDto]),
@@ -146,7 +146,7 @@ __decorate([
 ], InventoryController.prototype, "createSupplier", null);
 __decorate([
     (0, common_1.Post)('stock-in'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.GENERAL_MANAGER),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.UPDATE_OPERATIONAL_DATA),
     (0, swagger_1.ApiOperation)({
         summary: `Record stock-in (ACCOUNTANT) (${branding_1.APP_BRAND})`,
         description: 'Creates a STOCK_IN movement row, increments BranchStockLevel.quantityOnHand, and updates the weighted moving-average unit cost. Auto-creates a supplier row when supplierName is provided without supplierId.',
@@ -159,7 +159,7 @@ __decorate([
 ], InventoryController.prototype, "stockIn", null);
 __decorate([
     (0, common_1.Get)('movements'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.VIEW_INVENTORY),
     (0, swagger_1.ApiOperation)({
         summary: 'List stock movements (audit)',
         description: 'Filter by branch, item, type, and/or date range. Returns the most recent movements first, capped at 500 rows.',
@@ -171,7 +171,7 @@ __decorate([
 ], InventoryController.prototype, "listMovements", null);
 __decorate([
     (0, common_1.Post)('stock-out'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.UPDATE_OPERATIONAL_DATA),
     (0, swagger_1.ApiOperation)({
         summary: 'Record stock consumption (STOCK_OUT)',
         description: 'Decrements BranchStockLevel.quantityOnHand and writes a StockMovement(STOCK_OUT) with negative quantity. Rejects below-zero writes.',
@@ -184,7 +184,7 @@ __decorate([
 ], InventoryController.prototype, "stockOut", null);
 __decorate([
     (0, common_1.Post)('adjust'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.GENERAL_MANAGER),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.UPDATE_OPERATIONAL_DATA),
     (0, swagger_1.ApiOperation)({
         summary: 'Signed stock adjustment (ADJUSTMENT)',
         description: 'Applies a signed delta (breakage / count correction / write-off). Reason is mandatory and stored on the movement.',
@@ -197,7 +197,7 @@ __decorate([
 ], InventoryController.prototype, "adjust", null);
 __decorate([
     (0, common_1.Post)('transfer'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.GENERAL_MANAGER),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.UPDATE_OPERATIONAL_DATA),
     (0, swagger_1.ApiOperation)({
         summary: 'Transfer stock between two branches',
         description: 'Atomic TRANSFER_OUT + TRANSFER_IN pair sharing one reference. The destination branch cost is weighted-averaged.',
@@ -210,7 +210,7 @@ __decorate([
 ], InventoryController.prototype, "transfer", null);
 __decorate([
     (0, common_1.Post)('stocktake'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.GENERAL_MANAGER),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.UPDATE_OPERATIONAL_DATA),
     (0, swagger_1.ApiOperation)({
         summary: 'Submit a physical stocktake',
         description: 'For each line, computes counted − system delta and emits one ADJUSTMENT per non-zero delta. Zero-delta lines are ignored.',
@@ -223,7 +223,7 @@ __decorate([
 ], InventoryController.prototype, "stocktake", null);
 __decorate([
     (0, common_1.Get)('low-stock'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.VIEW_INVENTORY),
     (0, swagger_1.ApiOperation)({
         summary: 'Low-stock & out-of-stock snapshot',
         description: 'Returns every branch-level row at or below its reorder point, sorted OUT_OF_STOCK first. Powers the owner widget and the nightly alert cron.',
@@ -235,7 +235,7 @@ __decorate([
 ], InventoryController.prototype, "lowStock", null);
 __decorate([
     (0, common_1.Get)('low-stock/latest'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.VIEW_INVENTORY),
     (0, swagger_1.ApiOperation)({
         summary: 'Last persisted low-stock snapshot (cached by the 06:00 cron).',
     }),

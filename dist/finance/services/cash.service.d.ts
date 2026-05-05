@@ -1,17 +1,21 @@
+import { SafariRole } from "@prisma/client";
 import { PrismaService } from '../../prisma/prisma.service';
+import { AuditLogsService } from '../../audit-logs/audit-logs.service';
 import { ConfirmHandoverDto } from '../dto/confirm-handover.dto';
 import type { DriverBalanceResponseDto, HandoverResultDto } from '../dto/driver-balance.dto';
 import type { DriverCashTraceQueryDto, DriverCashTraceResponseDto } from '../dto/driver-cash-trace.dto';
 import type { UpdateDriverTrackingDto } from '../dto/update-driver-tracking.dto';
+import type { CashReconciliationSnapshotDto } from '../dto/cash-reconciliation.dto';
 export declare class CashService {
     private readonly prisma;
-    constructor(prisma: PrismaService);
+    private readonly auditLogs;
+    constructor(prisma: PrismaService, auditLogs: AuditLogsService);
     ensureOpenShiftForDriver(driverId: string): Promise<void>;
     getDailyPosSalesByPaymentMethod(fromIso: string, toIso: string, scopedDriverId?: string): Promise<{
         from: string;
         to: string;
         rows: {
-            posPaymentMethod: "SUBSCRIPTION_WALLET" | "CASH" | "KNET" | "PAYMENT_LINK" | "DEBT_ON_ACCOUNT" | "ONLINE";
+            posPaymentMethod: import(".prisma/client").$Enums.PosPaymentMethod;
             orderCount: number;
             totalRevenue: string;
         }[];
@@ -36,8 +40,8 @@ export declare class CashService {
                 lng: number;
             } | null;
             branch: {
-                id: string;
                 name: string;
+                id: string;
                 location: string;
             } | null;
         }[];
@@ -49,8 +53,9 @@ export declare class CashService {
         vehicleLabel: string | null;
         lastKnownLocation: string | null;
     }>;
-    confirmHandover(managerId: string, dto: ConfirmHandoverDto): Promise<HandoverResultDto>;
+    confirmHandover(managerId: string, actorRole: SafariRole, dto: ConfirmHandoverDto): Promise<HandoverResultDto>;
     getDriverCashTrace(query: DriverCashTraceQueryDto): Promise<DriverCashTraceResponseDto>;
+    getCashReconciliationSnapshot(query: DriverCashTraceQueryDto): Promise<CashReconciliationSnapshotDto>;
     getOwnerFinancialCycleReport(): Promise<{
         rows: {
             orderId: string;

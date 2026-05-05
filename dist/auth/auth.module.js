@@ -19,8 +19,10 @@ const operating_hours_module_1 = require("../system/operating-hours.module");
 const auth_controller_1 = require("./auth.controller");
 const auth_service_1 = require("./auth.service");
 const bcrypt_service_1 = require("./bcrypt.service");
+const general_manager_read_only_guard_1 = require("./guards/general-manager-read-only.guard");
 const jwt_auth_guard_1 = require("./guards/jwt-auth.guard");
 const roles_guard_1 = require("./guards/roles.guard");
+const permissions_guard_1 = require("./permissions/permissions.guard");
 const jwt_strategy_1 = require("./strategies/jwt.strategy");
 let AuthModule = class AuthModule {
 };
@@ -53,13 +55,39 @@ exports.AuthModule = AuthModule = __decorate([
             bcrypt_service_1.BcryptService,
             jwt_strategy_1.JwtStrategy,
             jwt_auth_guard_1.JwtAuthGuard,
+            general_manager_read_only_guard_1.GeneralManagerReadOnlyGuard,
             roles_guard_1.RolesGuard,
+            permissions_guard_1.PermissionsGuard,
             {
                 provide: core_1.APP_GUARD,
                 useClass: throttler_1.ThrottlerGuard,
             },
+            {
+                provide: core_1.APP_GUARD,
+                useClass: jwt_auth_guard_1.JwtAuthGuard,
+            },
+            {
+                provide: core_1.APP_GUARD,
+                useClass: general_manager_read_only_guard_1.GeneralManagerReadOnlyGuard,
+            },
+            {
+                provide: core_1.APP_GUARD,
+                useClass: roles_guard_1.RolesGuard,
+            },
+            {
+                provide: core_1.APP_GUARD,
+                useClass: permissions_guard_1.PermissionsGuard,
+            },
         ],
-        exports: [auth_service_1.AuthService, bcrypt_service_1.BcryptService, jwt_1.JwtModule, jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard],
+        exports: [
+            auth_service_1.AuthService,
+            bcrypt_service_1.BcryptService,
+            jwt_1.JwtModule,
+            jwt_auth_guard_1.JwtAuthGuard,
+            general_manager_read_only_guard_1.GeneralManagerReadOnlyGuard,
+            roles_guard_1.RolesGuard,
+            permissions_guard_1.PermissionsGuard,
+        ],
     })
 ], AuthModule);
 //# sourceMappingURL=auth.module.js.map

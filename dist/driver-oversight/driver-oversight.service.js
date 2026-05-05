@@ -63,7 +63,7 @@ let DriverOversightService = class DriverOversightService {
         const driverIds = drivers.map((d) => d.id);
         const todayStart = (0, kuwait_time_1.kuwaitMidnightUtc)(new Date());
         const staleCutoff = new Date(Date.now() - STALE_QUICK_HOURS * 60 * 60 * 1000);
-        const [openShifts, todayOrders, pendingOrders, heldCashRows, staleRows] = await Promise.all([
+        const [openShifts, todayOrders, pendingOrders, staleRows] = await Promise.all([
             this.prisma.shift.findMany({
                 where: {
                     driverId: { in: driverIds },
@@ -80,7 +80,6 @@ let DriverOversightService = class DriverOversightService {
                     status: { not: client_1.OrderStatus.CANCELED },
                 },
                 _count: { _all: true },
-                _sum: { totalPrice: true },
             }),
             this.prisma.order.groupBy({
                 by: ['driverId'],
@@ -95,19 +94,9 @@ let DriverOversightService = class DriverOversightService {
                 by: ['driverId'],
                 where: {
                     driverId: { in: driverIds },
-                    cashStatus: client_1.CashStatus.PAID_TO_DRIVER,
-                    status: { not: client_1.OrderStatus.CANCELED },
-                },
-                _sum: { totalPrice: true },
-            }),
-            this.prisma.order.groupBy({
-                by: ['driverId'],
-                where: {
-                    driverId: { in: driverIds },
                     status: client_1.OrderStatus.PENDING,
                     cashStatus: client_1.CashStatus.UNPAID,
                     createdAt: { lt: staleCutoff },
-                    posPaymentMethod: { not: null },
                 },
                 _count: { _all: true },
                 _sum: { totalPrice: true },
@@ -129,18 +118,15 @@ let DriverOversightService = class DriverOversightService {
         };
         const todayMap = byDriver(todayOrders);
         const pendingMap = byDriver(pendingOrders);
-        const heldMap = byDriver(heldCashRows);
         const staleMap = byDriver(staleRows);
         return drivers.map((d) => {
             const shiftStart = firstShiftByDriver.get(d.id) ?? null;
             const today = todayMap.get(d.id);
             const pending = pendingMap.get(d.id);
-            const held = heldMap.get(d.id);
             const stale = staleMap.get(d.id);
-            const heldCash = held?._sum.totalPrice ?? new client_1.Prisma.Decimal(0);
-            const staleKd = stale?._sum.totalPrice ?? new client_1.Prisma.Decimal(0);
-            const pendingCount = pending?._count._all ?? 0;
-            const staleCount = stale?._count._all ?? 0;
+            const staleKd = stale?._sum?.totalPrice ?? new client_1.Prisma.Decimal(0);
+            const pendingCount = typeof pending?._count === 'object' ? (pending._count._all ?? 0) : 0;
+            const staleCount = typeof stale?._count === 'object' ? (stale._count._all ?? 0) : 0;
             const atRisk = staleCount > 0 || pendingCount > 10;
             return {
                 driverId: d.id,
@@ -151,9 +137,9 @@ let DriverOversightService = class DriverOversightService {
                 shiftStatus: shiftStart ? 'ON_SHIFT' : 'OFF',
                 shiftStartedAt: shiftStart ? shiftStart.toISOString() : null,
                 ordersTodayCount: today?._count._all ?? 0,
-                cashTodayKd: (today?._sum.totalPrice ?? new client_1.Prisma.Decimal(0)).toFixed(3),
+                cashTodayKd: null,
                 pendingInvoicesCount: pendingCount,
-                heldCashKd: heldCash.toFixed(3),
+                heldCashKd: null,
                 staleQuickCount: staleCount,
                 staleQuickKd: staleKd.toFixed(3),
                 atRisk,

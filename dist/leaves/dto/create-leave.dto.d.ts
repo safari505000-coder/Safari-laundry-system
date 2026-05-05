@@ -1,4 +1,4 @@
-import { LeaveType } from '@prisma/client';
+import { LeaveType } from "@prisma/client";
 export declare class CreateLeaveDto {
     type: LeaveType;
     startDate: string;

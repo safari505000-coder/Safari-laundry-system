@@ -16,6 +16,7 @@ const class_transformer_1 = require("class-transformer");
 const class_validator_1 = require("class-validator");
 const create_order_quick_dto_1 = require("./create-order-quick.dto");
 class PosCheckoutDto extends create_order_quick_dto_1.CreateOrderQuickDto {
+    dispatchId;
 }
 exports.PosCheckoutDto = PosCheckoutDto;
 __decorate([
@@ -38,4 +39,13 @@ __decorate([
     (0, class_validator_1.IsEnum)(client_1.PosPaymentMethod),
     __metadata("design:type", String)
 ], PosCheckoutDto.prototype, "posPaymentMethod", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({
+        description: 'Optional Dispatch UUID this POS checkout fulfils. Auto-completes the dispatch on commit.',
+        example: '33333333-3333-3333-3333-333333333333',
+    }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsUUID)('4'),
+    __metadata("design:type", String)
+], PosCheckoutDto.prototype, "dispatchId", void 0);
 //# sourceMappingURL=pos-checkout.dto.js.map

@@ -12,6 +12,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.VersionController = void 0;
 const common_1 = require("@nestjs/common");
 const swagger_1 = require("@nestjs/swagger");
+const roles_decorator_1 = require("../auth/decorators/roles.decorator");
+const region_1 = require("../common/config/region");
 const app_version_1 = require("../common/constants/app-version");
 const branding_1 = require("../common/constants/branding");
 let VersionController = class VersionController {
@@ -29,6 +31,8 @@ let VersionController = class VersionController {
             env: process.env.NODE_ENV ?? 'development',
             uptime: Math.round(process.uptime()),
             startedAt: new Date(this.startedAtMs).toISOString(),
+            region: (0, region_1.deploymentRegion)(),
+            deploymentColor: (0, region_1.deploymentColor)(),
         };
     }
 };
@@ -48,6 +52,7 @@ __decorate([
 ], VersionController.prototype, "get", null);
 exports.VersionController = VersionController = __decorate([
     (0, swagger_1.ApiTags)('version'),
-    (0, common_1.Controller)('version')
+    (0, common_1.Controller)('version'),
+    (0, roles_decorator_1.Public)('Deployment version endpoint contains only build identity metadata.')
 ], VersionController);
 //# sourceMappingURL=version.controller.js.map

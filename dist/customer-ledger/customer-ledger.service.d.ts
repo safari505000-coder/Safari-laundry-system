@@ -1,4 +1,4 @@
-import { PosPaymentMethod, Prisma } from '@prisma/client';
+import { PosPaymentMethod, Prisma } from "@prisma/client";
 import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { OrdersService } from '../orders/orders.service';
@@ -30,9 +30,9 @@ export declare class CustomerLedgerService {
     private decimalFromMinor;
     getOrCreateWalletTx(tx: PrismaTx, customerId: string): Promise<{
         id: string;
-        customerId: string;
         createdAt: Date;
         updatedAt: Date;
+        customerId: string;
         balance: Prisma.Decimal;
         debt: Prisma.Decimal;
         subscriptionActivatedAt: Date | null;

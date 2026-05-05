@@ -19,17 +19,17 @@ export declare class VehicleExpensesController {
         } | null;
     } & {
         description: string | null;
+        status: import(".prisma/client").$Enums.VehicleExpenseStatus;
+        amount: import("@prisma/client-runtime-utils/dist").Decimal;
         id: string;
-        amount: import("@prisma/client-runtime-utils").Decimal;
+        vehicleLabel: string | null;
         createdAt: Date;
         updatedAt: Date;
-        status: import("@prisma/client").$Enums.VehicleExpenseStatus;
-        receiptUrl: string;
-        vehicleLabel: string | null;
-        expenseDate: Date;
         rejectionReason: string | null;
+        receiptUrl: string;
+        expenseDate: Date;
         vehiclePlate: string;
-        expenseType: import("@prisma/client").$Enums.VehicleExpenseType;
+        expenseType: import(".prisma/client").$Enums.VehicleExpenseType;
         odometerKm: number | null;
         vendorName: string | null;
         submittedById: string;
@@ -49,17 +49,17 @@ export declare class VehicleExpensesController {
         } | null;
     } & {
         description: string | null;
+        status: import(".prisma/client").$Enums.VehicleExpenseStatus;
+        amount: import("@prisma/client-runtime-utils/dist").Decimal;
         id: string;
-        amount: import("@prisma/client-runtime-utils").Decimal;
+        vehicleLabel: string | null;
         createdAt: Date;
         updatedAt: Date;
-        status: import("@prisma/client").$Enums.VehicleExpenseStatus;
-        receiptUrl: string;
-        vehicleLabel: string | null;
-        expenseDate: Date;
         rejectionReason: string | null;
+        receiptUrl: string;
+        expenseDate: Date;
         vehiclePlate: string;
-        expenseType: import("@prisma/client").$Enums.VehicleExpenseType;
+        expenseType: import(".prisma/client").$Enums.VehicleExpenseType;
         odometerKm: number | null;
         vendorName: string | null;
         submittedById: string;
@@ -79,17 +79,17 @@ export declare class VehicleExpensesController {
         } | null;
     } & {
         description: string | null;
+        status: import(".prisma/client").$Enums.VehicleExpenseStatus;
+        amount: import("@prisma/client-runtime-utils/dist").Decimal;
         id: string;
-        amount: import("@prisma/client-runtime-utils").Decimal;
+        vehicleLabel: string | null;
         createdAt: Date;
         updatedAt: Date;
-        status: import("@prisma/client").$Enums.VehicleExpenseStatus;
-        receiptUrl: string;
-        vehicleLabel: string | null;
-        expenseDate: Date;
         rejectionReason: string | null;
+        receiptUrl: string;
+        expenseDate: Date;
         vehiclePlate: string;
-        expenseType: import("@prisma/client").$Enums.VehicleExpenseType;
+        expenseType: import(".prisma/client").$Enums.VehicleExpenseType;
         odometerKm: number | null;
         vendorName: string | null;
         submittedById: string;
@@ -108,7 +108,7 @@ export declare class VehicleExpensesController {
             count: number;
         }[];
         byType: {
-            expenseType: import("@prisma/client").$Enums.VehicleExpenseType;
+            expenseType: import(".prisma/client").$Enums.VehicleExpenseType;
             amountKd: string;
             count: number;
         }[];
@@ -131,17 +131,17 @@ export declare class VehicleExpensesController {
         } | null;
     } & {
         description: string | null;
+        status: import(".prisma/client").$Enums.VehicleExpenseStatus;
+        amount: import("@prisma/client-runtime-utils/dist").Decimal;
         id: string;
-        amount: import("@prisma/client-runtime-utils").Decimal;
+        vehicleLabel: string | null;
         createdAt: Date;
         updatedAt: Date;
-        status: import("@prisma/client").$Enums.VehicleExpenseStatus;
-        receiptUrl: string;
-        vehicleLabel: string | null;
-        expenseDate: Date;
         rejectionReason: string | null;
+        receiptUrl: string;
+        expenseDate: Date;
         vehiclePlate: string;
-        expenseType: import("@prisma/client").$Enums.VehicleExpenseType;
+        expenseType: import(".prisma/client").$Enums.VehicleExpenseType;
         odometerKm: number | null;
         vendorName: string | null;
         submittedById: string;

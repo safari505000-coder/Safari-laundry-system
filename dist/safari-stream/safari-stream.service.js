@@ -163,7 +163,9 @@ let SafariStreamService = class SafariStreamService {
             pendingDebtOrdersKd = debt.toFixed(4);
         }
         let institution = null;
-        if (user.safariRole === client_1.SafariRole.ACCOUNTANT) {
+        if (user.safariRole === client_1.SafariRole.ACCOUNTANT ||
+            user.safariRole === client_1.SafariRole.GENERAL_MANAGER ||
+            user.safariRole === client_1.SafariRole.OWNER) {
             institution = await this.buildInstitutionRadar();
         }
         const priceListVersion = await this.laundryPriceListService.getCatalogVersion();

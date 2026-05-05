@@ -1,4 +1,4 @@
-import { DebtSource, FixedExpenseCategory, GeneralLedgerEntryType, LedgerTransactionType, PosPaymentMethod } from '@prisma/client';
+import { DebtSource, FixedExpenseCategory, GeneralLedgerEntryType, LedgerTransactionType, PosPaymentMethod } from "@prisma/client";
 import { PrismaService } from '../prisma/prisma.service';
 import { ExpensesService } from '../expenses/expenses.service';
 import { FixedExpenseService } from '../fixed-expenses/fixed-expense.service';
@@ -20,6 +20,7 @@ export declare class ReportsService {
         count: number;
         rows: {
             totalPrice: string;
+            status: import(".prisma/client").$Enums.OrderStatus;
             customer: {
                 id: string;
                 phone: string;
@@ -27,19 +28,18 @@ export declare class ReportsService {
             };
             id: string;
             createdAt: Date;
-            status: import("@prisma/client").$Enums.OrderStatus;
-            serviceType: import("@prisma/client").$Enums.ServiceType;
-            cashStatus: import("@prisma/client").$Enums.CashStatus;
-            invoiceNumber: string | null;
-            posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
-            completedAt: Date | null;
             driver: {
-                id: string;
                 branchId: string | null;
+                id: string;
                 username: string;
                 fullName: string;
                 employeeId: string | null;
             } | null;
+            serviceType: import(".prisma/client").$Enums.ServiceType;
+            cashStatus: import(".prisma/client").$Enums.CashStatus;
+            invoiceNumber: string | null;
+            posPaymentMethod: import(".prisma/client").$Enums.PosPaymentMethod;
+            completedAt: Date | null;
         }[];
     }>;
     liveFeedRecent(limit?: number): Promise<{
@@ -61,13 +61,13 @@ export declare class ReportsService {
     }>;
     driverLedger(driverId: string, fromIso: string, toIso: string, branchId?: string): Promise<{
         driver: {
-            id: string;
             branchId: string | null;
-            phone: string | null;
+            id: string;
             username: string;
             fullName: string;
             employeeId: string | null;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            phone: string | null;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         };
         owedToOfficeKd: string;
         pendingSettlementOrderCount: number;
@@ -77,12 +77,12 @@ export declare class ReportsService {
         };
         ordersInPeriod: {
             totalPrice: string;
+            status: import(".prisma/client").$Enums.OrderStatus;
             id: string;
             createdAt: Date;
-            status: import("@prisma/client").$Enums.OrderStatus;
-            cashStatus: import("@prisma/client").$Enums.CashStatus;
+            cashStatus: import(".prisma/client").$Enums.CashStatus;
             invoiceNumber: string | null;
-            posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
+            posPaymentMethod: import(".prisma/client").$Enums.PosPaymentMethod;
             completedAt: Date | null;
         }[];
     }>;
@@ -218,12 +218,12 @@ export declare class ReportsService {
         };
         debtPaymentsPriorInvoiceKd: string;
         branchExpensesByCategory: {
-            category: import("@prisma/client").$Enums.ExpenseCategory;
+            category: import(".prisma/client").$Enums.ExpenseCategory;
             totalKd: string;
             movementCount: number;
         }[];
         vehicleExpensesByType: {
-            expenseType: import("@prisma/client").$Enums.VehicleExpenseType;
+            expenseType: import(".prisma/client").$Enums.VehicleExpenseType;
             totalKd: string;
             movementCount: number;
         }[];

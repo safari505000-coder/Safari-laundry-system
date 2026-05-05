@@ -1,4 +1,4 @@
-import { InvoiceAuditAction } from '@prisma/client';
+import { InvoiceAuditAction } from "@prisma/client";
 export declare class ListAuditLogQueryDto {
     from?: string;
     to?: string;

@@ -1,4 +1,4 @@
-import { PosPaymentMethod, ServiceType } from '@prisma/client';
+import { PosPaymentMethod, ServiceType } from "@prisma/client";
 import { OrderLineItemDto } from './order-line-item.dto';
 export declare class CreateOrderQuickDto {
     customerPhone: string;

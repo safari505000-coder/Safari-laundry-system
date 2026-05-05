@@ -1,7 +1,8 @@
-import { DebtEntityCategory } from '@prisma/client';
+import { DebtEntityCategory, SafariRole } from "@prisma/client";
 import { PrismaService } from '../prisma/prisma.service';
 import { ConfirmHandoverDto } from './dto/confirm-handover.dto';
 import type { DriverBalanceResponseDto, HandoverResultDto } from './dto/driver-balance.dto';
+import type { CashReconciliationSnapshotDto } from './dto/cash-reconciliation.dto';
 import type { DriverCashTraceQueryDto, DriverCashTraceResponseDto } from './dto/driver-cash-trace.dto';
 import type { OwnerCustomerWalletSummaryDto } from './dto/owner-customer-wallet-summary.dto';
 import type { UnpaidInvoicesQueryDto, UnpaidInvoicesResponseDto } from './dto/unpaid-invoices.dto';
@@ -36,7 +37,7 @@ export declare class FinanceService {
         from: string;
         to: string;
         rows: {
-            posPaymentMethod: "SUBSCRIPTION_WALLET" | "CASH" | "KNET" | "PAYMENT_LINK" | "DEBT_ON_ACCOUNT" | "ONLINE";
+            posPaymentMethod: import(".prisma/client").$Enums.PosPaymentMethod;
             orderCount: number;
             totalRevenue: string;
         }[];
@@ -46,8 +47,8 @@ export declare class FinanceService {
         from: string;
         to: string;
         rows: {
-            category: import("@prisma/client").$Enums.DebtEntityCategory;
-            source: import("@prisma/client").$Enums.DebtSource;
+            category: import(".prisma/client").$Enums.DebtEntityCategory;
+            source: import(".prisma/client").$Enums.DebtSource;
             entryCount: number;
             totalDebt: string;
         }[];
@@ -72,8 +73,8 @@ export declare class FinanceService {
                 lng: number;
             } | null;
             branch: {
-                id: string;
                 name: string;
+                id: string;
                 location: string;
             } | null;
         }[];
@@ -85,7 +86,8 @@ export declare class FinanceService {
         vehicleLabel: string | null;
         lastKnownLocation: string | null;
     }>;
-    confirmHandover(managerId: string, dto: ConfirmHandoverDto): Promise<HandoverResultDto>;
+    confirmHandover(managerId: string, actorRole: SafariRole, dto: ConfirmHandoverDto): Promise<HandoverResultDto>;
+    getCashReconciliationSnapshot(query: DriverCashTraceQueryDto): Promise<CashReconciliationSnapshotDto>;
     getOwnerFinancialCycleReport(): Promise<{
         rows: {
             orderId: string;

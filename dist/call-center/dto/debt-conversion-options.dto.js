@@ -15,6 +15,7 @@ class DebtKdBreakdownTraceDto {
     ledgerNetKd;
     walletSnapshotKd;
     orderMarketScopeKd;
+    operationalDebtKd;
     effectiveDebtKd;
     winningSources;
 }
@@ -31,6 +32,10 @@ __decorate([
     (0, swagger_1.ApiProperty)({ example: '34.4500' }),
     __metadata("design:type", String)
 ], DebtKdBreakdownTraceDto.prototype, "orderMarketScopeKd", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ example: '34.4500' }),
+    __metadata("design:type", String)
+], DebtKdBreakdownTraceDto.prototype, "operationalDebtKd", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)({ example: '34.4500' }),
     __metadata("design:type", String)

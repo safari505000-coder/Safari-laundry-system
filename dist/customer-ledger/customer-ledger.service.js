@@ -424,9 +424,9 @@ let CustomerLedgerService = CustomerLedgerService_1 = class CustomerLedgerServic
         const subsidyBranchId = refreshedCustomer?.originBranchId ?? actor.branchId ?? null;
         const balanceMinor = (0, finance_money_1.toMinorFromFixed4)(wallet.balance);
         const debtMinor = (0, finance_money_1.toMinorFromFixed4)(wallet.debt);
-        const debtBreakdown = await this.orders.getEffectiveDebtKdBreakdown(params.customerId, wallet.debt, tx);
+        const debtBreakdown = await this.orders.getOperationalDebtKdBreakdown(params.customerId, wallet.debt, tx);
         const implicitReceivableMinor = (0, finance_money_1.toMinorFromFixed4)(debtBreakdown.collectionsReceivableKd);
-        const effectiveDebtMinor = (0, finance_money_1.toMinorFromFixed4)(debtBreakdown.effectiveDebtKd);
+        const operationalDebtMinor = (0, finance_money_1.toMinorFromFixed4)(debtBreakdown.operationalDebtKd);
         const priceMinor = (0, finance_money_1.toMinorFromFixed4)(plan.salePrice);
         const creditMinor = (0, finance_money_1.toMinorFromFixed4)(plan.actualBalance);
         if (priceMinor < 0n || creditMinor < 0n) {
@@ -443,7 +443,7 @@ let CustomerLedgerService = CustomerLedgerService_1 = class CustomerLedgerServic
             throw new common_1.BadRequestException('Invalid paymentMethod for subscription activation');
         }
         collectionPaymentMethod = params.paymentMethod;
-        const debtPaidMinor = effectiveDebtMinor < creditMinor ? effectiveDebtMinor : creditMinor;
+        const debtPaidMinor = operationalDebtMinor < creditMinor ? operationalDebtMinor : creditMinor;
         let newDebtMinor = debtMinor - (debtPaidMinor < debtMinor ? debtPaidMinor : debtMinor);
         const accrueSaleOnAccount = priceMinor > 0n &&
             collectionPaymentMethod === client_1.PosPaymentMethod.DEBT_ON_ACCOUNT;
@@ -452,7 +452,7 @@ let CustomerLedgerService = CustomerLedgerService_1 = class CustomerLedgerServic
         }
         this.logger.log(`[subscription-activation] customerId=${params.customerId} planId=${params.planId} ` +
             `walletDebtMinor=${debtMinor.toString()} implicitUnpostedMinor=${implicitReceivableMinor.toString()} ` +
-            `effectiveDebtMinor=${effectiveDebtMinor.toString()} planCreditMinor=${creditMinor.toString()} ` +
+            `operationalDebtMinor=${operationalDebtMinor.toString()} planCreditMinor=${creditMinor.toString()} ` +
             `debtPaidMinor=${debtPaidMinor.toString()} autoCloseInvoices=${params.autoCloseInvoices === true} ` +
             `collectionPaymentMethod=${collectionPaymentMethod} accrueSaleOnAccount=${accrueSaleOnAccount}`);
         const rawCreditMinor = creditMinor - debtPaidMinor;
@@ -543,7 +543,8 @@ let CustomerLedgerService = CustomerLedgerService_1 = class CustomerLedgerServic
                     rolledOverFromSubscriptionId: previousSubscription?.id ?? null,
                     carriedBalanceKd: carriedBalanceStr,
                     implicitUnpostedReceivableKd: (0, finance_money_1.minorToAmountString)(implicitReceivableMinor),
-                    effectiveDebtForActivationKd: (0, finance_money_1.minorToAmountString)(effectiveDebtMinor),
+                    operationalDebtForActivationKd: (0, finance_money_1.minorToAmountString)(operationalDebtMinor),
+                    effectiveDebtForActivationKd: (0, finance_money_1.minorToAmountString)(operationalDebtMinor),
                     posPaymentMethod: collectionPaymentMethod,
                     planSaleSettlement: accrueSaleOnAccount
                         ? 'ACCOUNTS_RECEIVABLE'
@@ -863,8 +864,8 @@ let CustomerLedgerService = CustomerLedgerService_1 = class CustomerLedgerServic
                 : 0n;
             const totalMinor = amountMinor + discountMinor;
             const debtMinor = (0, finance_money_1.toMinorFromFixed4)(wallet.debt);
-            const outstandingBreakdown = await this.orders.getEffectiveDebtKdBreakdown(params.customerId, wallet.debt, tx);
-            const ceilingMinor = (0, finance_money_1.toMinorFromFixed4)(outstandingBreakdown.effectiveDebtKd);
+            const outstandingBreakdown = await this.orders.getOperationalDebtKdBreakdown(params.customerId, wallet.debt, tx);
+            const ceilingMinor = (0, finance_money_1.toMinorFromFixed4)(outstandingBreakdown.operationalDebtKd);
             if (amountMinor < 0n || discountMinor < 0n) {
                 throw new common_1.BadRequestException('Amount and discount must both be non-negative');
             }
@@ -872,7 +873,7 @@ let CustomerLedgerService = CustomerLedgerService_1 = class CustomerLedgerServic
                 throw new common_1.BadRequestException('At least one of amount or discount must be greater than zero');
             }
             if (totalMinor > ceilingMinor) {
-                throw new common_1.BadRequestException(`Amount + discount cannot exceed total outstanding debt (${outstandingBreakdown.effectiveDebtKd.toFixed(4)} KD)`);
+                throw new common_1.BadRequestException(`Amount + discount cannot exceed total outstanding debt (${outstandingBreakdown.operationalDebtKd.toFixed(4)} KD)`);
             }
             const debtPaidMinor = totalMinor;
             const walletDeductionMinor = debtPaidMinor < debtMinor ? debtPaidMinor : debtMinor;
@@ -916,8 +917,8 @@ let CustomerLedgerService = CustomerLedgerService_1 = class CustomerLedgerServic
                 where: { id: wallet.id },
                 select: { debt: true },
             });
-            const endingBreakdown = await this.orders.getEffectiveDebtKdBreakdown(params.customerId, refreshedWallet.debt, tx);
-            const newEffectiveDebtKdStr = endingBreakdown.effectiveDebtKd.toFixed(4);
+            const endingBreakdown = await this.orders.getOperationalDebtKdBreakdown(params.customerId, refreshedWallet.debt, tx);
+            const newOperationalDebtKdStr = endingBreakdown.operationalDebtKd.toFixed(4);
             const thDebtRow = await tx.transactionHistory.create({
                 data: {
                     type: client_1.LedgerTransactionType.ORDER_WALLET_SETTLEMENT,
@@ -940,7 +941,8 @@ let CustomerLedgerService = CustomerLedgerService_1 = class CustomerLedgerServic
                         note: params.note ?? null,
                         autoClosedInvoiceIds: closedInvoiceIds,
                         autoClosedInvoiceCount: closedInvoiceIds.length,
-                        effectiveDebtAfterKd: newEffectiveDebtKdStr,
+                        operationalDebtAfterKd: newOperationalDebtKdStr,
+                        effectiveDebtAfterKd: newOperationalDebtKdStr,
                     },
                 },
             });
@@ -995,8 +997,8 @@ let CustomerLedgerService = CustomerLedgerService_1 = class CustomerLedgerServic
                 amountCollectedKd: amountStr,
                 discountAppliedKd: discountStr,
                 totalReducedKd: totalStr,
-                previousDebtKd: outstandingBreakdown.effectiveDebtKd.toFixed(4),
-                newDebtKd: newEffectiveDebtKdStr,
+                previousDebtKd: outstandingBreakdown.operationalDebtKd.toFixed(4),
+                newDebtKd: newOperationalDebtKdStr,
                 walletBalanceKd: wallet.balance.toString(),
                 paymentMethod: params.paymentMethod,
                 transactionHistoryId: thDebtRow.id,

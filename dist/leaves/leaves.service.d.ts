@@ -1,4 +1,4 @@
-import { Prisma, SafariRole } from '@prisma/client';
+import { Prisma, SafariRole } from "@prisma/client";
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateLeaveDto } from './dto/create-leave.dto';
 import type { ListLeavesQueryDto } from './dto/list-leaves-query.dto';

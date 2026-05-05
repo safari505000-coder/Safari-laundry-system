@@ -9,11 +9,28 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ExpensesService = void 0;
+exports.ExpensesService = exports.DRIVER_ONLY_CATEGORIES = void 0;
+exports.deriveOwnerType = deriveOwnerType;
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
 const general_ledger_service_1 = require("../general-ledger/general-ledger.service");
 const prisma_service_1 = require("../prisma/prisma.service");
+const institutional_mutation_util_1 = require("../auth/institutional-mutation.util");
+function deriveOwnerType(recordedByRole, branchId) {
+    if (recordedByRole === client_1.SafariRole.DRIVER)
+        return 'DRIVER';
+    if (recordedByRole === client_1.SafariRole.MANAGER)
+        return 'BRANCH';
+    if (recordedByRole === client_1.SafariRole.OWNER ||
+        recordedByRole === client_1.SafariRole.GENERAL_MANAGER ||
+        recordedByRole === client_1.SafariRole.ACCOUNTANT) {
+        return 'COMPANY';
+    }
+    return branchId ? 'BRANCH' : 'COMPANY';
+}
+exports.DRIVER_ONLY_CATEGORIES = new Set([
+    client_1.ExpenseCategory.FUEL,
+]);
 let ExpensesService = class ExpensesService {
     prisma;
     generalLedger;
@@ -24,6 +41,16 @@ let ExpensesService = class ExpensesService {
     assertCanRecordExpense(role) {
         if (role !== client_1.SafariRole.MANAGER && role !== client_1.SafariRole.DRIVER) {
             throw new common_1.ForbiddenException('Only MANAGER or DRIVER can record expenses');
+        }
+    }
+    assertCategoryMatchesRole(role, category) {
+        if (role === client_1.SafariRole.MANAGER && exports.DRIVER_ONLY_CATEGORIES.has(category)) {
+            throw new common_1.BadRequestException(`INVALID EXPENSE TYPE — category ${category} is driver-only; branch managers cannot record it.`);
+        }
+    }
+    assertOwnershipCoherent(role, branchId) {
+        if (role === client_1.SafariRole.MANAGER && !branchId) {
+            throw new common_1.BadRequestException('EXPENSE MUST HAVE OWNER — branch manager has no branch attribution.');
         }
     }
     async computeDriverSpendableCash(tx, driverId) {
@@ -56,6 +83,7 @@ let ExpensesService = class ExpensesService {
     }
     async create(userId, safariRole, dto) {
         this.assertCanRecordExpense(safariRole);
+        this.assertCategoryMatchesRole(safariRole, dto.category);
         const method = dto.expenseMethod ?? client_1.ExpenseMethod.CASH;
         const amountDec = new client_1.Prisma.Decimal(Number(dto.amount).toFixed(4));
         return this.prisma.$transaction(async (tx) => {
@@ -69,6 +97,7 @@ let ExpensesService = class ExpensesService {
                 where: { id: userId },
                 select: { branchId: true },
             });
+            this.assertOwnershipCoherent(safariRole, u?.branchId ?? null);
             const row = await tx.branchExpense.create({
                 data: {
                     title: dto.title.trim(),
@@ -112,7 +141,11 @@ let ExpensesService = class ExpensesService {
                     ownerProfitRadarDelta: ownerRadarDelta.toString(),
                 },
             });
-            return { ...row, receiptUrl: null };
+            return {
+                ...row,
+                receiptUrl: null,
+                ownerType: deriveOwnerType(safariRole, row.branchId),
+            };
         });
     }
     async listForUser(userId, safariRole, fromIso, toIso, branchId, status) {
@@ -136,7 +169,7 @@ let ExpensesService = class ExpensesService {
             orderBy: { expenseDate: 'desc' },
             include: {
                 recordedBy: {
-                    select: { id: true, fullName: true, username: true },
+                    select: { id: true, fullName: true, username: true, safariRole: true },
                 },
                 branch: {
                     select: { id: true, name: true },
@@ -148,6 +181,7 @@ let ExpensesService = class ExpensesService {
         return rows.map((row) => ({
             ...row,
             receiptUrl: canSeeReceipt ? row.receiptUrl : null,
+            ownerType: deriveOwnerType(row.recordedBy.safariRole, row.branchId),
         }));
     }
     async listPendingApproval(safariRole) {
@@ -170,9 +204,9 @@ let ExpensesService = class ExpensesService {
         });
     }
     async updateStatus(id, safariRole, status, actorUserId) {
+        (0, institutional_mutation_util_1.assertInstitutionalMutationAllowed)(safariRole);
         if (safariRole !== client_1.SafariRole.ACCOUNTANT &&
-            safariRole !== client_1.SafariRole.OWNER &&
-            safariRole !== client_1.SafariRole.GENERAL_MANAGER) {
+            safariRole !== client_1.SafariRole.OWNER) {
             throw new common_1.ForbiddenException();
         }
         return this.prisma.$transaction(async (tx) => {
@@ -260,6 +294,173 @@ let ExpensesService = class ExpensesService {
         return agg._sum.amount !== null && agg._sum.amount !== undefined
             ? agg._sum.amount.toString()
             : '0';
+    }
+    async summarize(fromIso, toIso, branchId) {
+        const from = new Date(fromIso);
+        const to = new Date(toIso);
+        const branchFilter = branchId ? { branchId } : {};
+        const rows = await this.prisma.branchExpense.findMany({
+            where: {
+                expenseDate: { gte: from, lte: to },
+                ...branchFilter,
+            },
+            select: {
+                amount: true,
+                category: true,
+                status: true,
+                branchId: true,
+                expenseDate: true,
+                branch: { select: { name: true } },
+                recordedBy: { select: { safariRole: true } },
+            },
+        });
+        let totalApprovedKd = new client_1.Prisma.Decimal(0);
+        let totalPendingKd = new client_1.Prisma.Decimal(0);
+        let approvedCount = 0;
+        const ownerTotals = new Map();
+        const categoryTotals = new Map();
+        const branchTotals = new Map();
+        const monthly = new Map();
+        for (const row of rows) {
+            const amount = row.amount;
+            if (row.status === client_1.ExpenseStatus.APPROVED) {
+                totalApprovedKd = totalApprovedKd.add(amount);
+                approvedCount += 1;
+            }
+            else if (row.status === client_1.ExpenseStatus.PENDING_ACCOUNTANT) {
+                totalPendingKd = totalPendingKd.add(amount);
+            }
+            if (row.status !== client_1.ExpenseStatus.APPROVED)
+                continue;
+            const ownerType = deriveOwnerType(row.recordedBy.safariRole, row.branchId);
+            const ownerSlot = ownerTotals.get(ownerType) ?? {
+                kd: new client_1.Prisma.Decimal(0),
+                count: 0,
+            };
+            ownerSlot.kd = ownerSlot.kd.add(amount);
+            ownerSlot.count += 1;
+            ownerTotals.set(ownerType, ownerSlot);
+            const categorySlot = categoryTotals.get(row.category) ?? {
+                kd: new client_1.Prisma.Decimal(0),
+                count: 0,
+            };
+            categorySlot.kd = categorySlot.kd.add(amount);
+            categorySlot.count += 1;
+            categoryTotals.set(row.category, categorySlot);
+            const branchKey = row.branchId ?? '__unattributed__';
+            const branchSlot = branchTotals.get(branchKey) ?? {
+                branchId: row.branchId ?? null,
+                branchName: row.branch?.name ?? null,
+                kd: new client_1.Prisma.Decimal(0),
+                count: 0,
+            };
+            branchSlot.kd = branchSlot.kd.add(amount);
+            branchSlot.count += 1;
+            branchTotals.set(branchKey, branchSlot);
+            const monthKey = row.expenseDate.toISOString().slice(0, 7);
+            const monthSlot = monthly.get(monthKey) ?? {
+                total: new client_1.Prisma.Decimal(0),
+                driver: new client_1.Prisma.Decimal(0),
+                branch: new client_1.Prisma.Decimal(0),
+                company: new client_1.Prisma.Decimal(0),
+            };
+            monthSlot.total = monthSlot.total.add(amount);
+            if (ownerType === 'DRIVER')
+                monthSlot.driver = monthSlot.driver.add(amount);
+            else if (ownerType === 'BRANCH')
+                monthSlot.branch = monthSlot.branch.add(amount);
+            else
+                monthSlot.company = monthSlot.company.add(amount);
+            monthly.set(monthKey, monthSlot);
+        }
+        const byOwnerType = ['DRIVER', 'BRANCH', 'COMPANY'].map((ownerType) => {
+            const slot = ownerTotals.get(ownerType);
+            return {
+                ownerType,
+                totalKd: (slot?.kd ?? new client_1.Prisma.Decimal(0)).toFixed(4),
+                count: slot?.count ?? 0,
+            };
+        });
+        const byCategory = [...categoryTotals.entries()]
+            .map(([category, slot]) => ({
+            category,
+            totalKd: slot.kd.toFixed(4),
+            count: slot.count,
+        }))
+            .sort((a, b) => Number(b.totalKd) - Number(a.totalKd));
+        const byBranch = [...branchTotals.values()]
+            .map((slot) => ({
+            branchId: slot.branchId,
+            branchName: slot.branchName,
+            totalKd: slot.kd.toFixed(4),
+            count: slot.count,
+        }))
+            .sort((a, b) => Number(b.totalKd) - Number(a.totalKd));
+        const monthlyOut = [...monthly.entries()]
+            .map(([month, slot]) => ({
+            month,
+            totalKd: slot.total.toFixed(4),
+            driverKd: slot.driver.toFixed(4),
+            branchKd: slot.branch.toFixed(4),
+            companyKd: slot.company.toFixed(4),
+        }))
+            .sort((a, b) => a.month.localeCompare(b.month));
+        const alerts = this.buildSummaryAlerts(monthlyOut, totalApprovedKd);
+        return {
+            source: 'api/finance/expenses-summary',
+            rangeFromIso: from.toISOString(),
+            rangeToIso: to.toISOString(),
+            branchScope: branchId ?? null,
+            totalApprovedKd: totalApprovedKd.toFixed(4),
+            totalPendingKd: totalPendingKd.toFixed(4),
+            approvedCount,
+            byOwnerType,
+            byCategory,
+            byBranch,
+            monthly: monthlyOut,
+            alerts,
+        };
+    }
+    buildSummaryAlerts(monthly, totalApproved) {
+        const alerts = [];
+        if (monthly.length >= 2) {
+            const last = monthly[monthly.length - 1];
+            const prev = monthly[monthly.length - 2];
+            const lastTotal = new client_1.Prisma.Decimal(last.totalKd);
+            const prevTotal = new client_1.Prisma.Decimal(prev.totalKd);
+            if (prevTotal.gt(0)) {
+                const growth = lastTotal.sub(prevTotal).div(prevTotal);
+                if (growth.gt(0.75)) {
+                    alerts.push({
+                        id: 'expenses-monthly-spike',
+                        severity: 'critical',
+                        message: `Monthly expenses spiked +${growth.mul(100).toFixed(0)}% (${prev.month} → ${last.month}).`,
+                    });
+                }
+                else if (growth.gt(0.3)) {
+                    alerts.push({
+                        id: 'expenses-monthly-growth',
+                        severity: 'warning',
+                        message: `Monthly expenses grew +${growth.mul(100).toFixed(0)}% (${prev.month} → ${last.month}).`,
+                    });
+                }
+                else if (growth.lt(-0.5)) {
+                    alerts.push({
+                        id: 'expenses-monthly-drop',
+                        severity: 'info',
+                        message: `Monthly expenses dropped ${growth.mul(100).toFixed(0)}% (${prev.month} → ${last.month}).`,
+                    });
+                }
+            }
+        }
+        if (totalApproved.lte(0)) {
+            alerts.push({
+                id: 'expenses-empty-window',
+                severity: 'info',
+                message: 'No approved expenses in the selected window.',
+            });
+        }
+        return alerts;
     }
 };
 exports.ExpensesService = ExpensesService;

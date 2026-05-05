@@ -1,4 +1,4 @@
-import { KnetCommissionRule, PosPaymentMethod, Prisma } from '@prisma/client';
+import { KnetCommissionRule, PosPaymentMethod, Prisma } from "@prisma/client";
 export type PaymentFeeConfigShape = {
     knetFlatKd: Prisma.Decimal | string;
     knetPercentOfGross: Prisma.Decimal | string;

@@ -1,10 +1,14 @@
-import { OnModuleInit } from '@nestjs/common';
-import { PosPaymentMethod, Prisma } from '@prisma/client';
+import { OnModuleInit } from "@nestjs/common";
+import { PosPaymentMethod, Prisma } from "@prisma/client";
 import { CustomerLedgerService } from '../../customer-ledger/customer-ledger.service';
-import { CustomerNotificationsService, type PaymentConfirmedCustomerScenario } from '../../customer-notifications/customer-notifications.service';
+import { type PaymentConfirmedCustomerScenario } from '../../customer-notifications/customer-notifications.service';
+import { WhatsAppQueueService } from '../../customer-notifications/whatsapp-queue.service';
 import { GeneralLedgerService } from '../../general-ledger/general-ledger.service';
 import { InventoryService } from '../../inventory/inventory.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AuditLogsService } from '../../audit-logs/audit-logs.service';
+import { MetricsService } from '../../observability/metrics.service';
+import { DiscordAlertService } from './discord-alert.service';
 export type CreatePaymentLinkParams = {
     orderId: string;
     amount: Prisma.Decimal;
@@ -39,7 +43,10 @@ export declare class PaymentsService implements OnModuleInit {
     private readonly customerLedger;
     private readonly generalLedger;
     private readonly inventory;
-    private readonly customerNotifications;
+    private readonly whatsappQueue;
+    private readonly discordAlerts;
+    private readonly auditLogs;
+    private readonly metrics?;
     private readonly logger;
     private readonly activePollingTransIds;
     private totalPaymentsProcessed;
@@ -52,7 +59,7 @@ export declare class PaymentsService implements OnModuleInit {
     private readonly secret;
     private readonly callbackPublicUrl;
     private readonly webAppUrl;
-    constructor(prisma: PrismaService, customerLedger: CustomerLedgerService, generalLedger: GeneralLedgerService, inventory: InventoryService, customerNotifications: CustomerNotificationsService);
+    constructor(prisma: PrismaService, customerLedger: CustomerLedgerService, generalLedger: GeneralLedgerService, inventory: InventoryService, whatsappQueue: WhatsAppQueueService, discordAlerts: DiscordAlertService, auditLogs: AuditLogsService, metrics?: MetricsService | undefined);
     private looksLikeLocalHost;
     onModuleInit(): void;
     paymentsMockExplicit(): boolean;

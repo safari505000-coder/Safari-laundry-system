@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { Prisma } from "@prisma/client";
 type Db = {
     debtLedgerEntry: Prisma.DebtLedgerEntryDelegate;
     customerWallet: Prisma.CustomerWalletDelegate;

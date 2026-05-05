@@ -1,5 +1,5 @@
-import type { Request } from 'express';
-import { PosPaymentMethod } from '@prisma/client';
+import type { Request } from "express";
+import { PosPaymentMethod } from "@prisma/client";
 import type { JwtUser } from '../auth/decorators/current-user.decorator';
 import { CallCenterService } from './call-center.service';
 import { ActivateSubscriptionDto } from './dto/activate-subscription.dto';
@@ -16,20 +16,20 @@ export declare class CallCenterController {
     constructor(callCenterService: CallCenterService);
     operationsSummary(branchId: string | undefined, user: JwtUser): Promise<import("./dto/operations-summary.dto").CallCenterOperationsSummaryDto>;
     debtRecoveryReport(q: DebtRecoveryQueryDto): Promise<import("./dto/debt-recovery-report.dto").DebtRecoveryReportDto>;
-    listPlans(): import("@prisma/client").Prisma.PrismaPromise<{
-        id: string;
+    listPlans(): import(".prisma/client").Prisma.PrismaPromise<{
         name: string;
-        salePrice: import("@prisma/client-runtime-utils").Decimal;
-        actualBalance: import("@prisma/client-runtime-utils").Decimal;
+        id: string;
+        salePrice: import("@prisma/client-runtime-utils/dist").Decimal;
+        actualBalance: import("@prisma/client-runtime-utils/dist").Decimal;
     }[]>;
     searchCustomers(q: string): Promise<{
         wallet: {
-            balance: import("@prisma/client-runtime-utils").Decimal;
-            debt: import("@prisma/client-runtime-utils").Decimal;
+            balance: import("@prisma/client-runtime-utils/dist").Decimal;
+            debt: import("@prisma/client-runtime-utils/dist").Decimal;
         } | null;
         id: string;
-        createdAt: Date;
         phone: string;
+        createdAt: Date;
         address: string | null;
         phone2: string | null;
         displayName: string | null;

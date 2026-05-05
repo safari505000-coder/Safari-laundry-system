@@ -1,4 +1,4 @@
-import { OnModuleInit } from '@nestjs/common';
+import { OnModuleInit } from "@nestjs/common";
 export declare class OperatingHoursService implements OnModuleInit {
     private readonly logger;
     onModuleInit(): void;

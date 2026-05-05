@@ -15,6 +15,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.PublicInvoiceController = void 0;
 const common_1 = require("@nestjs/common");
 const swagger_1 = require("@nestjs/swagger");
+const roles_decorator_1 = require("../auth/decorators/roles.decorator");
 const orders_service_1 = require("./orders.service");
 let PublicInvoiceController = class PublicInvoiceController {
     orders;
@@ -88,6 +89,7 @@ __decorate([
 exports.PublicInvoiceController = PublicInvoiceController = __decorate([
     (0, swagger_1.ApiTags)('public-invoice'),
     (0, common_1.Controller)('public/invoice'),
+    (0, roles_decorator_1.Public)('Signed invoice-share token scopes public receipt/PDF access.'),
     __metadata("design:paramtypes", [orders_service_1.OrdersService])
 ], PublicInvoiceController);
 //# sourceMappingURL=public-invoice.controller.js.map

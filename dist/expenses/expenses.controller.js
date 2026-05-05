@@ -15,20 +15,23 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ExpensesController = void 0;
 const common_1 = require("@nestjs/common");
 const swagger_1 = require("@nestjs/swagger");
-const client_1 = require("@prisma/client");
 const current_user_decorator_1 = require("../auth/decorators/current-user.decorator");
-const roles_decorator_1 = require("../auth/decorators/roles.decorator");
+const permissions_decorator_1 = require("../auth/permissions/permissions.decorator");
+const permissions_enum_1 = require("../auth/permissions/permissions.enum");
 const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
 const roles_guard_1 = require("../auth/guards/roles.guard");
 const branding_1 = require("../common/constants/branding");
+const audit_service_1 = require("../common/audit/audit.service");
 const create_expense_dto_1 = require("./dto/create-expense.dto");
 const expenses_service_1 = require("./expenses.service");
 const expenses_query_dto_1 = require("./dto/expenses-query.dto");
 const update_expense_status_dto_1 = require("./dto/update-expense-status.dto");
 let ExpensesController = class ExpensesController {
     expensesService;
-    constructor(expensesService) {
+    audit;
+    constructor(expensesService, audit) {
         this.expensesService = expensesService;
+        this.audit = audit;
     }
     create(dto, user) {
         return this.expensesService.create(user.userId, user.role, dto);
@@ -40,13 +43,17 @@ let ExpensesController = class ExpensesController {
         return this.expensesService.listPendingApproval(user.role);
     }
     updateStatus(id, dto, user) {
+        this.audit.logAudit('EXPENSE_APPROVAL_DECISION', user, {
+            expenseId: id,
+            status: dto.status,
+        });
         return this.expensesService.updateStatus(id, user.role, dto.status, user.userId);
     }
 };
 exports.ExpensesController = ExpensesController;
 __decorate([
     (0, common_1.Post)(),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.MANAGER, client_1.SafariRole.DRIVER),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.CREATE_EXPENSES),
     (0, swagger_1.ApiOperation)({
         summary: `Record branch expense (${branding_1.APP_BRAND})`,
         description: 'MANAGER or DRIVER (field). Categories: SOAP, FUEL, MISC. New rows are PENDING_ACCOUNTANT until approved.',
@@ -59,7 +66,7 @@ __decorate([
 ], ExpensesController.prototype, "create", null);
 __decorate([
     (0, common_1.Get)(),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.DRIVER),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.VIEW_EXPENSES),
     (0, swagger_1.ApiOperation)({
         summary: `List expenses in date range (${branding_1.APP_BRAND})`,
     }),
@@ -71,7 +78,7 @@ __decorate([
 ], ExpensesController.prototype, "list", null);
 __decorate([
     (0, common_1.Get)('pending-approval'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.APPROVE_EXPENSES),
     (0, swagger_1.ApiOperation)({
         summary: `Pending expense approvals (${branding_1.APP_BRAND})`,
     }),
@@ -82,7 +89,7 @@ __decorate([
 ], ExpensesController.prototype, "listPendingApproval", null);
 __decorate([
     (0, common_1.Patch)(':id/status'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.APPROVE_EXPENSES),
     (0, swagger_1.ApiOperation)({
         summary: `Approve/Reject/Audit expense (${branding_1.APP_BRAND})`,
     }),
@@ -98,6 +105,7 @@ exports.ExpensesController = ExpensesController = __decorate([
     (0, swagger_1.ApiBearerAuth)('bearer'),
     (0, common_1.Controller)('expenses'),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
-    __metadata("design:paramtypes", [expenses_service_1.ExpensesService])
+    __metadata("design:paramtypes", [expenses_service_1.ExpensesService,
+        audit_service_1.AuditService])
 ], ExpensesController);
 //# sourceMappingURL=expenses.controller.js.map

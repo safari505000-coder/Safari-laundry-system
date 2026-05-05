@@ -1,6 +1,6 @@
-import { PosPaymentMethod, Prisma } from '@prisma/client';
+import { PosPaymentMethod, Prisma } from "@prisma/client";
 import type { JwtUser } from '../auth/decorators/current-user.decorator';
-import { JwtService } from '@nestjs/jwt';
+import { JwtService } from "@nestjs/jwt";
 import { PrismaService } from '../prisma/prisma.service';
 import { CustomerLedgerService } from '../customer-ledger/customer-ledger.service';
 import { PaymentsService } from '../common/services/payments.service';
@@ -53,8 +53,8 @@ export declare class CallCenterService {
         posPaymentMethod: PosPaymentMethod;
     }>;
     listActiveSubscriptionPlans(): Prisma.PrismaPromise<{
-        id: string;
         name: string;
+        id: string;
         salePrice: Prisma.Decimal;
         actualBalance: Prisma.Decimal;
     }[]>;
@@ -64,8 +64,8 @@ export declare class CallCenterService {
             debt: Prisma.Decimal;
         } | null;
         id: string;
-        createdAt: Date;
         phone: string;
+        createdAt: Date;
         address: string | null;
         phone2: string | null;
         displayName: string | null;

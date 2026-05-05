@@ -14,6 +14,7 @@ const fixed_expense_module_1 = require("../fixed-expenses/fixed-expense.module")
 const payment_method_fees_module_1 = require("../payment-method-fees/payment-method-fees.module");
 const payroll_module_1 = require("../payroll/payroll.module");
 const prisma_module_1 = require("../prisma/prisma.module");
+const audit_service_1 = require("../common/audit/audit.service");
 const reports_controller_1 = require("./reports.controller");
 const reports_service_1 = require("./reports.service");
 let ReportsModule = class ReportsModule {
@@ -30,7 +31,7 @@ exports.ReportsModule = ReportsModule = __decorate([
             payment_method_fees_module_1.PaymentMethodFeesModule,
         ],
         controllers: [reports_controller_1.ReportsController],
-        providers: [reports_service_1.ReportsService],
+        providers: [reports_service_1.ReportsService, audit_service_1.AuditService],
         exports: [reports_service_1.ReportsService],
     })
 ], ReportsModule);

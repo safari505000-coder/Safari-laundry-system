@@ -1,4 +1,4 @@
-import { Prisma, SafariRole } from '@prisma/client';
+import { Prisma, SafariRole } from "@prisma/client";
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateLoanDto } from './dto/create-loan.dto';
 import type { ListLoansQueryDto } from './dto/list-loans-query.dto';

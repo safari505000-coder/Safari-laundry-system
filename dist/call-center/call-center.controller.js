@@ -127,7 +127,7 @@ let CallCenterController = class CallCenterController {
 exports.CallCenterController = CallCenterController;
 __decorate([
     (0, common_1.Get)('operations-summary'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.CALL_CENTER_SUPERVISOR, client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.DRIVER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.CALL_CENTER_SUPERVISOR),
     (0, swagger_1.ApiOperation)({
         summary: `Call center operations summary — 3 KPIs (${branding_1.APP_BRAND})`,
         description: 'V1.6.1 — RED total market debt (Σ unpaid non-canceled orders), GREEN debt collected today strictly between Kuwait-local 00:00 and now (Σ metadata.debtSettled), YELLOW count of open UNPAID orders with a hosted payment URL awaiting action. Pass `?branchId=<uuid>` to scope every aggregate to a single branch (driver.branchId OR customer.originBranchId when driver-less); omit for global totals.',
@@ -209,7 +209,7 @@ __decorate([
 ], CallCenterController.prototype, "extendSubscription", null);
 __decorate([
     (0, common_1.Post)('orders/:orderId/reminder'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.CALL_CENTER_SUPERVISOR, client_1.SafariRole.OWNER, client_1.SafariRole.MANAGER, client_1.SafariRole.DRIVER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.CALL_CENTER_SUPERVISOR),
     (0, swagger_1.ApiOperation)({
         summary: `Mark a collection reminder as sent (${branding_1.APP_BRAND})`,
         description: 'Dastur §5 (V1.5). Atomic 24h-guarded reminder counter bump for an order. Returns `{sent:true}` when the counter was incremented, or `{sent:false, nextAllowedAtIso}` when the 24h cooldown is still active.',
@@ -222,7 +222,7 @@ __decorate([
 ], CallCenterController.prototype, "markOrderReminderSent", null);
 __decorate([
     (0, common_1.Post)('orders/:orderId/payment-link'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.CALL_CENTER_SUPERVISOR, client_1.SafariRole.MANAGER, client_1.SafariRole.DRIVER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.CALL_CENTER_SUPERVISOR),
     (0, swagger_1.ApiOperation)({
         summary: `Ensure a hosted payment link exists for an unpaid order (${branding_1.APP_BRAND})`,
         description: 'V1.6.0 — CALL_CENTER only. Returns the existing hosted-checkout URL if one was already minted, otherwise calls the gateway and persists a new link on the order. Works for ANY unpaid non-canceled order regardless of original payment method (Cash, KNET, DEBT_ON_ACCOUNT, PAYMENT_LINK, ONLINE). When the gateway callback later confirms payment, the order auto-switches to `posPaymentMethod=ONLINE` and the ledger row is tagged `debtSettlementViaLink=true` with `originalPaymentMethod` preserved for Accountant reports.',
@@ -235,7 +235,7 @@ __decorate([
 ], CallCenterController.prototype, "ensureOrderPaymentLink", null);
 __decorate([
     (0, common_1.Post)('orders/:orderId/send-payment-link-whatsapp'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.CALL_CENTER_SUPERVISOR, client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.DRIVER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.CALL_CENTER_SUPERVISOR),
     (0, swagger_1.ApiOperation)({
         summary: `Push payment-link message to customer (Moatmt / webhook) (${branding_1.APP_BRAND})`,
         description: 'Ensures a hosted link, applies the same reminder/cooldown as the Collections page, then sends the Arabic template via MOATMT_* or CUSTOMER_NOTIFY_WEBHOOK_URL so the client receives WhatsApp without opening wa.me. Returns `serverPush: false` if no channel is configured or delivery failed — client should fall back to wa.me.',
@@ -248,7 +248,7 @@ __decorate([
 ], CallCenterController.prototype, "sendPaymentLinkToCustomerWhatsapp", null);
 __decorate([
     (0, common_1.Post)('orders/:orderId/mark-paid'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.CALL_CENTER_SUPERVISOR, client_1.SafariRole.MANAGER, client_1.SafariRole.DRIVER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.CALL_CENTER_SUPERVISOR),
     (0, swagger_1.ApiOperation)({
         summary: `Mark a collection order as manually paid (${branding_1.APP_BRAND})`,
         description: 'V1.6.9 — CALL_CENTER only. Confirms that the customer has paid an outstanding invoice and records the method actually used (CASH / KNET / PAYMENT_LINK / ONLINE). Flips the order to COMPLETED + PAID_TO_DRIVER, writes an ORDER_WALLET_SETTLEMENT ledger row tagged `debtSettlementViaCallCenter=true` with `originalPaymentMethod` preserved, and updates the customer wallet via the shared settlement logic. Idempotent: replaying on an already-settled order returns `{alreadySettled:true}` without side effects. Canceled orders are rejected.',
@@ -347,7 +347,7 @@ __decorate([
 ], CallCenterController.prototype, "createStatementShareLink", null);
 __decorate([
     (0, common_1.Get)('daily-collections'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.CALL_CENTER_SUPERVISOR, client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.MANAGER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.CALL_CENTER_SUPERVISOR),
     (0, swagger_1.ApiOperation)({
         summary: `Daily collector feed — today's debt reductions (${branding_1.APP_BRAND})`,
         description: 'V19.4 CC pack #4. Lists every debt-reducing ledger row written between Kuwait 00:00 and 24:00 (default today) with per-agent totals. Includes CC #1 partial debt payments, "mark paid via link" settlements, and any order settlement that reduced debt. Pass `?agentId=<uuid>` for a per-collector view; supervisors see everyone when omitted.',
@@ -359,7 +359,7 @@ __decorate([
 ], CallCenterController.prototype, "getDailyCollections", null);
 __decorate([
     (0, common_1.Get)('daily-collections/reconciliation'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.CALL_CENTER_SUPERVISOR, client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.MANAGER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.CALL_CENTER_SUPERVISOR),
     (0, swagger_1.ApiOperation)({
         summary: `Daily collector reconciliation — TH ↔ GL validator (${branding_1.APP_BRAND})`,
         description: "V19.5 — read-time validator that re-aggregates today's debt collections from both TransactionHistory (UI source) and GeneralLedgerEntry (accounting source) and reports the delta. At steady state the two MUST agree because every write runs through a single Prisma transaction that updates both. The daily 23:59 Kuwait cron calls this endpoint and logs a Sentry warning if `overallStatus=DRIFT`; the Collections page shows a ✓/⚠ badge alongside the KPI tiles.",

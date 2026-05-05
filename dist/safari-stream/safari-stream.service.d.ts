@@ -1,4 +1,4 @@
-import { SafariRole } from '@prisma/client';
+import { SafariRole } from "@prisma/client";
 import { LaundryPriceListService } from '../laundry-price-list/laundry-price-list.service';
 import { ManagerCustodyService } from '../manager-custody/manager-custody.service';
 import { PermissionsService } from '../permissions/permissions.service';

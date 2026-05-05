@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { Prisma } from "@prisma/client";
 export declare const CANONICAL_PAYMENT_METHOD_FEE_CONFIG: {
     readonly knetFlatKd: Prisma.Decimal;
     readonly knetPercentOfGross: Prisma.Decimal;

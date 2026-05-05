@@ -73,10 +73,10 @@ __decorate([
 ], DebtHoldsController.prototype, "preview", null);
 __decorate([
     (0, common_1.Post)('manual'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER),
     (0, swagger_1.ApiOperation)({
         summary: `Create a manual debt hold (${branding_1.APP_BRAND})`,
-        description: 'OWNER + GENERAL_MANAGER only. Withholds a one-off amount from the employee outside the automatic open-customer-debt computation.',
+        description: 'OWNER only. Withholds a one-off amount from the employee outside the automatic open-customer-debt computation.',
     }),
     __param(0, (0, common_1.Body)()),
     __param(1, (0, current_user_decorator_1.CurrentUser)()),
@@ -86,10 +86,10 @@ __decorate([
 ], DebtHoldsController.prototype, "createManual", null);
 __decorate([
     (0, common_1.Post)(':id/release'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER),
     (0, swagger_1.ApiOperation)({
         summary: `Force-release a debt hold (${branding_1.APP_BRAND})`,
-        description: 'OWNER + GENERAL_MANAGER only. V19.17: flips the hold to RELEASED, marking it as eligible for a SEPARATE voucher payout (no longer bundled into the next payroll).',
+        description: 'OWNER only. V19.17: flips the hold to RELEASED, marking it as eligible for a SEPARATE voucher payout (no longer bundled into the next payroll).',
     }),
     __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
     __param(1, (0, current_user_decorator_1.CurrentUser)()),
@@ -99,10 +99,10 @@ __decorate([
 ], DebtHoldsController.prototype, "release", null);
 __decorate([
     (0, common_1.Post)(':id/disburse'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER),
     (0, swagger_1.ApiOperation)({
         summary: `Stamp a released hold as disbursed (${branding_1.APP_BRAND})`,
-        description: 'OWNER + GENERAL_MANAGER only. V19.17: records that the RELEASED hold has actually been paid out to the employee as a standalone voucher, setting `disbursedAt` + `disbursedById`.',
+        description: 'OWNER only. V19.17: records that the RELEASED hold has actually been paid out to the employee as a standalone voucher, setting `disbursedAt` + `disbursedById`.',
     }),
     __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
     __param(1, (0, current_user_decorator_1.CurrentUser)()),

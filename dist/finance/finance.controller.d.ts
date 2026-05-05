@@ -4,24 +4,31 @@ import { DebtByCategoryQueryDto } from './dto/debt-by-category-query.dto';
 import { OpenDebtByIssuerQueryDto, OpenDebtByIssuerResponseDto } from './dto/open-debt-by-issuer.dto';
 import { DailyPosSalesQueryDto } from './dto/daily-pos-sales-query.dto';
 import { DriverBalanceResponseDto, HandoverResultDto } from './dto/driver-balance.dto';
+import { CashReconciliationQueryDto, type CashReconciliationSnapshotDto } from './dto/cash-reconciliation.dto';
 import { DriverCashTraceQueryDto, DriverCashTraceResponseDto } from './dto/driver-cash-trace.dto';
 import { OwnerCustomerWalletSummaryDto } from './dto/owner-customer-wallet-summary.dto';
 import { UpdateDriverTrackingDto } from './dto/update-driver-tracking.dto';
 import { UnpaidInvoicesQueryDto, UnpaidInvoicesResponseDto } from './dto/unpaid-invoices.dto';
+import { AccountantDashboardQueryDto } from './dto/accountant-dashboard-query.dto';
 import { FinanceService } from './finance.service';
+import { AccountantDashboardService } from './services/accountant-dashboard.service';
+import { OwnerFinancialDashboardService } from './services/owner-financial-dashboard.service';
 export declare class FinanceController {
     private readonly financeService;
-    constructor(financeService: FinanceService);
+    private readonly accountantDashboard;
+    private readonly ownerFinancialDashboard;
+    constructor(financeService: FinanceService, accountantDashboard: AccountantDashboardService, ownerFinancialDashboard: OwnerFinancialDashboardService);
     driverEnsureShift(user: JwtUser): Promise<{
         ok: boolean;
     }>;
     getOwnerCustomerWalletSummary(): Promise<OwnerCustomerWalletSummaryDto>;
+    getOwnerFinancialDashboard(): Promise<import("./dto/owner-financial-dashboard.dto").OwnerFinancialDashboardDto>;
     getConsolidatedCashSnapshot(): Promise<import("./finance.service").ConsolidatedCashSnapshotDto>;
     getDailyPosSales(q: DailyPosSalesQueryDto, user: JwtUser): Promise<{
         from: string;
         to: string;
         rows: {
-            posPaymentMethod: "SUBSCRIPTION_WALLET" | "CASH" | "KNET" | "PAYMENT_LINK" | "DEBT_ON_ACCOUNT" | "ONLINE";
+            posPaymentMethod: import(".prisma/client").$Enums.PosPaymentMethod;
             orderCount: number;
             totalRevenue: string;
         }[];
@@ -30,8 +37,8 @@ export declare class FinanceController {
         from: string;
         to: string;
         rows: {
-            category: import("@prisma/client").$Enums.DebtEntityCategory;
-            source: import("@prisma/client").$Enums.DebtSource;
+            category: import(".prisma/client").$Enums.DebtEntityCategory;
+            source: import(".prisma/client").$Enums.DebtSource;
             entryCount: number;
             totalDebt: string;
         }[];
@@ -59,8 +66,8 @@ export declare class FinanceController {
                 lng: number;
             } | null;
             branch: {
-                id: string;
                 name: string;
+                id: string;
                 location: string;
             } | null;
         }[];
@@ -95,7 +102,181 @@ export declare class FinanceController {
         }[];
     }>;
     getDriverCashTrace(query: DriverCashTraceQueryDto): Promise<DriverCashTraceResponseDto>;
+    getCashReconciliation(query: CashReconciliationQueryDto): Promise<CashReconciliationSnapshotDto>;
     getUnpaidInvoices(query: UnpaidInvoicesQueryDto): Promise<UnpaidInvoicesResponseDto>;
+    getDashboardSummary(q: AccountantDashboardQueryDto): Promise<{
+        window: import("./services/accountant-dashboard.service").ResolvedDashboardWindow;
+        kpis: {
+            totalSales: {
+                valueKd: string;
+                previousKd: string;
+                count: number | undefined;
+                trendPctVsPrevious: number;
+                trendDirection: "flat" | "up" | "down";
+                drilldownType: string;
+            };
+            cashCollected: {
+                valueKd: string;
+                previousKd: string;
+                count: number | undefined;
+                trendPctVsPrevious: number;
+                trendDirection: "flat" | "up" | "down";
+                drilldownType: string;
+            };
+            cashWithDrivers: {
+                valueKd: string;
+                snapshot: boolean;
+                trendPctVsPrevious: number;
+                trendDirection: "flat";
+                drilldownType: string;
+            };
+            cashWithManagers: {
+                valueKd: string;
+                count: number;
+                snapshot: boolean;
+                trendPctVsPrevious: number;
+                trendDirection: "flat";
+                drilldownType: string;
+            };
+            bankDeposited: {
+                valueKd: string;
+                previousKd: string;
+                count: number | undefined;
+                trendPctVsPrevious: number;
+                trendDirection: "flat" | "up" | "down";
+                drilldownType: string;
+            };
+            netProfit: {
+                valueKd: string;
+                previousKd: string;
+                count: number | undefined;
+                trendPctVsPrevious: number;
+                trendDirection: "flat" | "up" | "down";
+                drilldownType: string;
+            };
+        };
+        pipeline: {
+            stages: {
+                key: string;
+                label: string;
+                amountKd: string;
+                count: number;
+                avgDelayHours: number;
+                tone: "green" | "yellow" | "red";
+            }[];
+        };
+        expenses: {
+            totalKd: string;
+            topCategory: import(".prisma/client").ExpenseCategory | null;
+            expenseRatioVsSales: string | null;
+        };
+        charts: {
+            profitOverTime: {
+                day: string;
+                netKd: string;
+            }[];
+            salesVsExpenses: {
+                day: string;
+                salesKd: string;
+                expensesKd: string;
+            }[];
+            cashStagesTrend: {
+                day: string;
+                collectedKd: string;
+                handedKd: string;
+            }[];
+        };
+        drilldowns: {
+            openCustodyBags: {
+                id: string;
+                amountKd: string;
+                status: import(".prisma/client").$Enums.ManagerCashCustodyStatus;
+                managerName: string;
+                driverName: string;
+                ageHours: number;
+                isOverdue: boolean;
+            }[];
+            pendingDrivers: {
+                driverId: string;
+                name: string;
+                pendingKd: string;
+                lastCompletedAt: string;
+            }[];
+        };
+        cacheTtlSec: number;
+    }>;
+    getReconciliationExplain(q: AccountantDashboardQueryDto): Promise<{
+        window: {
+            fromIso: string;
+            toIso: string;
+        };
+        byDate: {
+            day: string;
+            collectedKd: string;
+            handedKd: string;
+        }[];
+        byDriver: {
+            driverId: string;
+            name: string;
+            collectedKd: string;
+            handedKd: string;
+            shortfallKd: string;
+        }[];
+        byManager: {
+            managerId: string;
+            name: string;
+            handedKd: string;
+            bagCount: number;
+        }[];
+        totalShortfallKd: string;
+        totalDeltaKd: string;
+        summaryLabels: {
+            driverHoldsLine: string | null;
+            officeHoldsLine: string | null;
+        };
+        narratives: string[];
+    }>;
+    getFinanceReconciliation(q: AccountantDashboardQueryDto): Promise<{
+        window: {
+            fromIso: string;
+            toIso: string;
+        };
+        collected: {
+            kd: string;
+            orderCount: number;
+        };
+        handed: {
+            kd: string;
+            bagCount: number;
+        };
+        pendingDrivers: {
+            kd: string;
+        };
+        pendingManagers: {
+            kd: string;
+        };
+        differenceKd: string;
+        deltaKd: string;
+        shortfallKd: string;
+        status: import("./utils/accountant-dashboard-math").ReconciliationDisplayStatus;
+        badge: "green" | "yellow" | "red";
+    }>;
+    getFinanceAlerts(q: AccountantDashboardQueryDto, user: JwtUser): Promise<{
+        alerts: {
+            id: string;
+            severity: "HIGH" | "MEDIUM" | "LOW";
+            code: string;
+            title: string;
+            detail: string;
+            drilldownType: string;
+            refId?: string;
+        }[];
+        generatedAt: string;
+    }>;
+    getFinanceInsights(q: AccountantDashboardQueryDto): Promise<{
+        lines: string[];
+        generatedAt: string;
+    }>;
     getRealtimeTotals(): Promise<{
         totalCash: string;
         totalOnline: string;

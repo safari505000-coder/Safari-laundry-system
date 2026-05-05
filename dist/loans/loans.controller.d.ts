@@ -9,8 +9,8 @@ export declare class LoansController {
     create(dto: CreateLoanDto, user: JwtUser): Promise<{
         user: {
             branch: {
-                id: string;
                 name: string;
+                id: string;
             } | null;
             id: string;
             username: string;
@@ -25,26 +25,26 @@ export declare class LoansController {
             fullName: string;
         } | null;
     } & {
-        id: string;
-        amount: import("@prisma/client-runtime-utils").Decimal;
-        createdAt: Date;
+        status: import(".prisma/client").$Enums.LoanStatus;
         userId: string;
+        amount: import("@prisma/client-runtime-utils/dist").Decimal;
+        id: string;
+        createdAt: Date;
         updatedAt: Date;
-        status: import("@prisma/client").$Enums.LoanStatus;
         reason: string | null;
         approvedById: string | null;
         approvedAt: Date | null;
         installmentCount: number;
-        monthlyDeduction: import("@prisma/client-runtime-utils").Decimal;
-        remaining: import("@prisma/client-runtime-utils").Decimal;
+        monthlyDeduction: import("@prisma/client-runtime-utils/dist").Decimal;
+        remaining: import("@prisma/client-runtime-utils/dist").Decimal;
         rejectedReason: string | null;
         lastDeductionYearMonth: string | null;
     }>;
     list(q: ListLoansQueryDto, user: JwtUser): Promise<({
         user: {
             branch: {
-                id: string;
                 name: string;
+                id: string;
             } | null;
             id: string;
             username: string;
@@ -59,26 +59,26 @@ export declare class LoansController {
             fullName: string;
         } | null;
     } & {
-        id: string;
-        amount: import("@prisma/client-runtime-utils").Decimal;
-        createdAt: Date;
+        status: import(".prisma/client").$Enums.LoanStatus;
         userId: string;
+        amount: import("@prisma/client-runtime-utils/dist").Decimal;
+        id: string;
+        createdAt: Date;
         updatedAt: Date;
-        status: import("@prisma/client").$Enums.LoanStatus;
         reason: string | null;
         approvedById: string | null;
         approvedAt: Date | null;
         installmentCount: number;
-        monthlyDeduction: import("@prisma/client-runtime-utils").Decimal;
-        remaining: import("@prisma/client-runtime-utils").Decimal;
+        monthlyDeduction: import("@prisma/client-runtime-utils/dist").Decimal;
+        remaining: import("@prisma/client-runtime-utils/dist").Decimal;
         rejectedReason: string | null;
         lastDeductionYearMonth: string | null;
     })[]>;
     mine(user: JwtUser): Promise<({
         user: {
             branch: {
-                id: string;
                 name: string;
+                id: string;
             } | null;
             id: string;
             username: string;
@@ -93,26 +93,26 @@ export declare class LoansController {
             fullName: string;
         } | null;
     } & {
-        id: string;
-        amount: import("@prisma/client-runtime-utils").Decimal;
-        createdAt: Date;
+        status: import(".prisma/client").$Enums.LoanStatus;
         userId: string;
+        amount: import("@prisma/client-runtime-utils/dist").Decimal;
+        id: string;
+        createdAt: Date;
         updatedAt: Date;
-        status: import("@prisma/client").$Enums.LoanStatus;
         reason: string | null;
         approvedById: string | null;
         approvedAt: Date | null;
         installmentCount: number;
-        monthlyDeduction: import("@prisma/client-runtime-utils").Decimal;
-        remaining: import("@prisma/client-runtime-utils").Decimal;
+        monthlyDeduction: import("@prisma/client-runtime-utils/dist").Decimal;
+        remaining: import("@prisma/client-runtime-utils/dist").Decimal;
         rejectedReason: string | null;
         lastDeductionYearMonth: string | null;
     })[]>;
     findOne(id: string, user: JwtUser): Promise<{
         user: {
             branch: {
-                id: string;
                 name: string;
+                id: string;
             } | null;
             id: string;
             username: string;
@@ -127,26 +127,26 @@ export declare class LoansController {
             fullName: string;
         } | null;
     } & {
-        id: string;
-        amount: import("@prisma/client-runtime-utils").Decimal;
-        createdAt: Date;
+        status: import(".prisma/client").$Enums.LoanStatus;
         userId: string;
+        amount: import("@prisma/client-runtime-utils/dist").Decimal;
+        id: string;
+        createdAt: Date;
         updatedAt: Date;
-        status: import("@prisma/client").$Enums.LoanStatus;
         reason: string | null;
         approvedById: string | null;
         approvedAt: Date | null;
         installmentCount: number;
-        monthlyDeduction: import("@prisma/client-runtime-utils").Decimal;
-        remaining: import("@prisma/client-runtime-utils").Decimal;
+        monthlyDeduction: import("@prisma/client-runtime-utils/dist").Decimal;
+        remaining: import("@prisma/client-runtime-utils/dist").Decimal;
         rejectedReason: string | null;
         lastDeductionYearMonth: string | null;
     }>;
     approve(id: string, user: JwtUser): Promise<{
         user: {
             branch: {
-                id: string;
                 name: string;
+                id: string;
             } | null;
             id: string;
             username: string;
@@ -161,26 +161,26 @@ export declare class LoansController {
             fullName: string;
         } | null;
     } & {
-        id: string;
-        amount: import("@prisma/client-runtime-utils").Decimal;
-        createdAt: Date;
+        status: import(".prisma/client").$Enums.LoanStatus;
         userId: string;
+        amount: import("@prisma/client-runtime-utils/dist").Decimal;
+        id: string;
+        createdAt: Date;
         updatedAt: Date;
-        status: import("@prisma/client").$Enums.LoanStatus;
         reason: string | null;
         approvedById: string | null;
         approvedAt: Date | null;
         installmentCount: number;
-        monthlyDeduction: import("@prisma/client-runtime-utils").Decimal;
-        remaining: import("@prisma/client-runtime-utils").Decimal;
+        monthlyDeduction: import("@prisma/client-runtime-utils/dist").Decimal;
+        remaining: import("@prisma/client-runtime-utils/dist").Decimal;
         rejectedReason: string | null;
         lastDeductionYearMonth: string | null;
     }>;
     reject(id: string, dto: RejectLoanDto, user: JwtUser): Promise<{
         user: {
             branch: {
-                id: string;
                 name: string;
+                id: string;
             } | null;
             id: string;
             username: string;
@@ -195,26 +195,26 @@ export declare class LoansController {
             fullName: string;
         } | null;
     } & {
-        id: string;
-        amount: import("@prisma/client-runtime-utils").Decimal;
-        createdAt: Date;
+        status: import(".prisma/client").$Enums.LoanStatus;
         userId: string;
+        amount: import("@prisma/client-runtime-utils/dist").Decimal;
+        id: string;
+        createdAt: Date;
         updatedAt: Date;
-        status: import("@prisma/client").$Enums.LoanStatus;
         reason: string | null;
         approvedById: string | null;
         approvedAt: Date | null;
         installmentCount: number;
-        monthlyDeduction: import("@prisma/client-runtime-utils").Decimal;
-        remaining: import("@prisma/client-runtime-utils").Decimal;
+        monthlyDeduction: import("@prisma/client-runtime-utils/dist").Decimal;
+        remaining: import("@prisma/client-runtime-utils/dist").Decimal;
         rejectedReason: string | null;
         lastDeductionYearMonth: string | null;
     }>;
     deduct(id: string, dto: DeductLoanDto, user: JwtUser): Promise<{
         user: {
             branch: {
-                id: string;
                 name: string;
+                id: string;
             } | null;
             id: string;
             username: string;
@@ -229,18 +229,18 @@ export declare class LoansController {
             fullName: string;
         } | null;
     } & {
-        id: string;
-        amount: import("@prisma/client-runtime-utils").Decimal;
-        createdAt: Date;
+        status: import(".prisma/client").$Enums.LoanStatus;
         userId: string;
+        amount: import("@prisma/client-runtime-utils/dist").Decimal;
+        id: string;
+        createdAt: Date;
         updatedAt: Date;
-        status: import("@prisma/client").$Enums.LoanStatus;
         reason: string | null;
         approvedById: string | null;
         approvedAt: Date | null;
         installmentCount: number;
-        monthlyDeduction: import("@prisma/client-runtime-utils").Decimal;
-        remaining: import("@prisma/client-runtime-utils").Decimal;
+        monthlyDeduction: import("@prisma/client-runtime-utils/dist").Decimal;
+        remaining: import("@prisma/client-runtime-utils/dist").Decimal;
         rejectedReason: string | null;
         lastDeductionYearMonth: string | null;
     }>;

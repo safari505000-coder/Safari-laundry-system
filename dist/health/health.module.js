@@ -12,6 +12,7 @@ const terminus_1 = require("@nestjs/terminus");
 const prisma_module_1 = require("../prisma/prisma.module");
 const health_controller_1 = require("./health.controller");
 const prisma_health_1 = require("./prisma.health");
+const readiness_service_1 = require("./readiness.service");
 const version_controller_1 = require("./version.controller");
 let HealthModule = class HealthModule {
 };
@@ -20,7 +21,8 @@ exports.HealthModule = HealthModule = __decorate([
     (0, common_1.Module)({
         imports: [terminus_1.TerminusModule, prisma_module_1.PrismaModule],
         controllers: [health_controller_1.HealthController, version_controller_1.VersionController],
-        providers: [prisma_health_1.PrismaHealthIndicator],
+        providers: [prisma_health_1.PrismaHealthIndicator, readiness_service_1.ReadinessService],
+        exports: [readiness_service_1.ReadinessService],
     })
 ], HealthModule);
 //# sourceMappingURL=health.module.js.map

@@ -12,6 +12,7 @@ const auth_module_1 = require("../auth/auth.module");
 const finance_module_1 = require("../finance/finance.module");
 const general_ledger_module_1 = require("../general-ledger/general-ledger.module");
 const prisma_module_1 = require("../prisma/prisma.module");
+const cash_flow_aliases_controller_1 = require("./cash-flow-aliases.controller");
 const manager_custody_controller_1 = require("./manager-custody.controller");
 const manager_custody_service_1 = require("./manager-custody.service");
 let ManagerCustodyModule = class ManagerCustodyModule {
@@ -20,7 +21,7 @@ exports.ManagerCustodyModule = ManagerCustodyModule;
 exports.ManagerCustodyModule = ManagerCustodyModule = __decorate([
     (0, common_1.Module)({
         imports: [prisma_module_1.PrismaModule, auth_module_1.AuthModule, general_ledger_module_1.GeneralLedgerModule, finance_module_1.FinanceModule],
-        controllers: [manager_custody_controller_1.ManagerCustodyController],
+        controllers: [manager_custody_controller_1.ManagerCustodyController, cash_flow_aliases_controller_1.CashFlowAliasesController],
         providers: [manager_custody_service_1.ManagerCustodyService],
         exports: [manager_custody_service_1.ManagerCustodyService],
     })

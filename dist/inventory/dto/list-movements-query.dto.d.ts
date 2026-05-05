@@ -1,4 +1,4 @@
-import { StockMovementType } from '@prisma/client';
+import { StockMovementType } from "@prisma/client";
 export declare class ListMovementsQueryDto {
     branchId?: string;
     stockItemId?: string;

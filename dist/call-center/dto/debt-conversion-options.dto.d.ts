@@ -2,6 +2,7 @@ export declare class DebtKdBreakdownTraceDto {
     ledgerNetKd: string;
     walletSnapshotKd: string;
     orderMarketScopeKd: string;
+    operationalDebtKd: string;
     effectiveDebtKd: string;
     winningSources: Array<'ledger' | 'walletSnapshot' | 'orderMarket'>;
 }

@@ -1,5 +1,5 @@
-import { Prisma, SafariRole } from '@prisma/client';
-import { JwtService } from '@nestjs/jwt';
+import { Prisma, SafariRole } from "@prisma/client";
+import { JwtService } from "@nestjs/jwt";
 import { PrismaService } from '../prisma/prisma.service';
 import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
 import { CustomerNotificationsService } from '../customer-notifications/customer-notifications.service';
@@ -22,7 +22,7 @@ export declare class InvoiceAuditService {
         auditId: string;
         changedFields: string[];
         newTotal: string;
-        newPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
+        newPaymentMethod: import(".prisma/client").$Enums.PosPaymentMethod;
     }>;
     private queueIssuerReprintNudgeAfterEdit;
     voidInvoice(orderId: string, actorId: string, actorRole: SafariRole, reason: string): Promise<{
@@ -35,13 +35,13 @@ export declare class InvoiceAuditService {
         rows: {
             id: string;
             orderId: string;
-            action: import("@prisma/client").$Enums.InvoiceAuditAction;
+            action: import(".prisma/client").$Enums.InvoiceAuditAction;
             actor: {
                 id: string;
                 fullName: string;
-                safariRole: import("@prisma/client").$Enums.SafariRole;
+                safariRole: import(".prisma/client").$Enums.SafariRole;
             };
-            actorRoleAtTime: import("@prisma/client").$Enums.SafariRole;
+            actorRoleAtTime: import(".prisma/client").$Enums.SafariRole;
             actorNameAtTime: string;
             reason: string | null;
             changedFields: string[];
@@ -55,7 +55,7 @@ export declare class InvoiceAuditService {
                 serialNumber: string | null;
                 invoiceNumber: string | null;
                 totalPriceKd: string;
-                status: import("@prisma/client").$Enums.OrderStatus;
+                status: import(".prisma/client").$Enums.OrderStatus;
                 customer: {
                     id: string;
                     phone: string;
@@ -73,7 +73,7 @@ export declare class InvoiceAuditService {
         agents: {
             agentId: string;
             agentName: string;
-            role: import("@prisma/client").$Enums.SafariRole;
+            role: import(".prisma/client").$Enums.SafariRole;
             collectedKd: string;
             debtSettledKd: string;
             activationsCount: number;

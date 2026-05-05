@@ -92,7 +92,7 @@ let SubscribersService = class SubscribersService {
             new Map()
             : new Map(await Promise.all(customerIds.map(async (id) => {
                 const cust = customerById.get(id);
-                const b = await this.orders.getEffectiveDebtKdBreakdown(id, cust?.wallet?.debt);
+                const b = await this.orders.getOperationalDebtKdBreakdown(id, cust?.wallet?.debt);
                 return [id, b];
             })));
         const collectionLinkStats = customerIds.length === 0 ?
@@ -218,7 +218,7 @@ let SubscribersService = class SubscribersService {
             const bd = debtBreakdownByCustomer.get(c.id);
             const openReceivable = bd.collectionsReceivableKd;
             const debtD = bd.walletDebtKd;
-            const totalOwedD = bd.effectiveDebtKd;
+            const totalOwedD = bd.operationalDebtKd;
             const balanceD = w?.balance ?? new client_1.Prisma.Decimal(0);
             const balanceDisplayKd = balanceD.minus(totalOwedD).toFixed(4);
             const collectionLink = collectionLinkStats.get(c.id);
@@ -239,6 +239,7 @@ let SubscribersService = class SubscribersService {
                 balanceDisplayKd,
                 debt: debtD.toFixed(4),
                 unsettledUnpaidKd: openReceivable.toFixed(4),
+                operationalDebtKd: totalOwedD.toFixed(4),
                 effectiveDebtKd: totalOwedD.toFixed(4),
                 rowStatus,
                 invoiceAgeDays,

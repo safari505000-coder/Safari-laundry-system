@@ -13,23 +13,53 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ManagerCustodyService = exports.CUSTODY_OVERDUE_MS = void 0;
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
+const audit_logs_service_1 = require("../audit-logs/audit-logs.service");
 const cash_service_1 = require("../finance/services/cash.service");
+const ledger_projection_service_1 = require("../finance/ledger/ledger-projection.service");
 const general_ledger_service_1 = require("../general-ledger/general-ledger.service");
 const prisma_service_1 = require("../prisma/prisma.service");
 const finance_money_1 = require("../finance/finance-money");
 exports.CUSTODY_OVERDUE_MS = 24 * 60 * 60 * 1000;
+function riskRank(r) {
+    if (r === 'CRITICAL')
+        return 2;
+    if (r === 'WARNING')
+        return 1;
+    return 0;
+}
+function classifyActivity(e) {
+    const meta = (e.meta ?? {});
+    const source = String(meta.source ?? '');
+    const entryType = String(meta.entryType ?? '');
+    const event = String(meta.event ?? '');
+    if (source === 'GeneralLedgerEntry' && entryType === 'POS_SALE_COMPLETED') {
+        return 'POS_SALE';
+    }
+    if (source === 'BankDepositLog')
+        return 'BANK_DEPOSIT';
+    if (source === 'ManagerCashCustody') {
+        if (event === 'VERIFIED')
+            return 'BANK_DEPOSIT';
+        return 'DRIVER_HANDOVER';
+    }
+    return 'OTHER';
+}
 let ManagerCustodyService = ManagerCustodyService_1 = class ManagerCustodyService {
     prisma;
     generalLedger;
     cashService;
+    auditLogs;
+    ledgerProjection;
     logger = new common_1.Logger(ManagerCustodyService_1.name);
-    constructor(prisma, generalLedger, cashService) {
+    constructor(prisma, generalLedger, cashService, auditLogs, ledgerProjection) {
         this.prisma = prisma;
         this.generalLedger = generalLedger;
         this.cashService = cashService;
+        this.auditLogs = auditLogs;
+        this.ledgerProjection = ledgerProjection;
     }
     async approveReceiptFromDriver(managerId, _managerBranchId, dto) {
-        const result = await this.cashService.confirmHandover(managerId, {
+        const result = await this.cashService.confirmHandover(managerId, client_1.SafariRole.MANAGER, {
             driverId: dto.driverId,
             declaredHandoverTotal: dto.declaredHandoverTotal,
         });
@@ -157,7 +187,80 @@ let ManagerCustodyService = ManagerCustodyService_1 = class ManagerCustodyServic
                     settledOrderCount: row.settledOrderCount,
                 },
             });
+            if (row.depositSlipUrl) {
+                const existingDeposit = await tx.bankDepositLog.findFirst({
+                    where: {
+                        OR: [
+                            { managerCashCustodyId: row.id },
+                            {
+                                shiftId: row.shiftId,
+                                receiptImageUrl: row.depositSlipUrl,
+                                amountKd: row.amountKd,
+                            },
+                        ],
+                    },
+                });
+                if (!existingDeposit) {
+                    const deposit = await tx.bankDepositLog.create({
+                        data: {
+                            depositType: client_1.BankDepositType.CASH_DEPOSIT_SLIP,
+                            status: client_1.BankDepositStatus.VERIFIED,
+                            amountKd: row.amountKd,
+                            receiptImageUrl: row.depositSlipUrl,
+                            shiftId: row.shiftId,
+                            managerCashCustodyId: row.id,
+                            uploadedById: row.managerId,
+                            verifiedByAccountantId: accountantId,
+                            verifiedAt: row.verifiedAt,
+                            createdAt: row.slipUploadedAt ?? row.receivedFromDriverAt,
+                        },
+                    });
+                    await tx.auditLog.create({
+                        data: {
+                            userId: accountantId,
+                            actorId: accountantId,
+                            action: 'CASH_DEPOSIT_REGISTERED',
+                            resource: 'bank_deposit_log',
+                            amount: row.amountKd,
+                            source: 'MANAGER_CASH_CUSTODY',
+                            status: client_1.AuditStatus.SUCCESS,
+                            changes: {
+                                managerCashCustodyId: row.id,
+                                bankDepositLogId: deposit.id,
+                                shiftId: row.shiftId,
+                                amountKd: row.amountKd.toString(),
+                            },
+                        },
+                    });
+                }
+                else if (!existingDeposit.managerCashCustodyId) {
+                    await tx.bankDepositLog.update({
+                        where: { id: existingDeposit.id },
+                        data: {
+                            managerCashCustodyId: row.id,
+                            status: existingDeposit.verifiedAt ?
+                                client_1.BankDepositStatus.VERIFIED
+                                : existingDeposit.status,
+                        },
+                    });
+                }
+            }
             return row;
+        });
+        this.auditLogs.logFinancialEvent({
+            action: 'CASH_DEPOSIT_VERIFIED',
+            userId: accountantId,
+            role: client_1.SafariRole.ACCOUNTANT,
+            amount: updated.amountKd.toString(),
+            source: 'MANAGER_CASH_CUSTODY',
+            changes: {
+                custodyId: updated.id,
+                managerId: updated.managerId,
+                driverId: updated.driverId,
+                branchId: updated.branchId,
+                shiftId: updated.shiftId,
+                settledOrderCount: updated.settledOrderCount,
+            },
         });
         return this.toRow(updated);
     }
@@ -183,6 +286,21 @@ let ManagerCustodyService = ManagerCustodyService_1 = class ManagerCustodyServic
                 shift: { select: { id: true, endedAt: true, startedAt: true } },
             },
         });
+        this.auditLogs.logFinancialEvent({
+            action: 'CASH_HANDOVER_REJECTED',
+            userId: accountantId,
+            role: client_1.SafariRole.ACCOUNTANT,
+            amount: updated.amountKd.toString(),
+            source: 'MANAGER_CASH_CUSTODY',
+            changes: {
+                custodyId: updated.id,
+                managerId: updated.managerId,
+                driverId: updated.driverId,
+                branchId: updated.branchId,
+                shiftId: updated.shiftId,
+                rejectionReason: updated.rejectionReason,
+            },
+        });
         return this.toRow(updated);
     }
     async listMine(managerId) {
@@ -200,6 +318,18 @@ let ManagerCustodyService = ManagerCustodyService_1 = class ManagerCustodyServic
             },
         });
         return rows.map((r) => this.toRow(r));
+    }
+    async listMineForActor(userId, role) {
+        if (role === client_1.SafariRole.MANAGER) {
+            return this.listMine(userId);
+        }
+        if (role === client_1.SafariRole.OWNER ||
+            role === client_1.SafariRole.GENERAL_MANAGER ||
+            role === client_1.SafariRole.ACCOUNTANT) {
+            const { rows } = await this.listAging({});
+            return rows;
+        }
+        throw new common_1.ForbiddenException('Not authorised for manager custody list.');
     }
     async listByDriver(driverId) {
         const rows = await this.prisma.managerCashCustody.findMany({
@@ -325,6 +455,134 @@ let ManagerCustodyService = ManagerCustodyService_1 = class ManagerCustodyServic
             })),
         };
     }
+    async getCashStatusSnapshot(managerId) {
+        const to = new Date();
+        const from = new Date(to.getTime() - 90 * 24 * 60 * 60 * 1000);
+        const [managerRow, bagsAgg, custodyAgg, entries, allDrivers] = await Promise.all([
+            this.prisma.user.findUnique({
+                where: { id: managerId },
+                select: { id: true, fullName: true, branchId: true },
+            }),
+            this.prisma.managerCashCustody.aggregate({
+                where: {
+                    managerId,
+                    status: {
+                        in: [
+                            client_1.ManagerCashCustodyStatus.PENDING_DEPOSIT,
+                            client_1.ManagerCashCustodyStatus.AWAITING_VERIFICATION,
+                        ],
+                    },
+                },
+                _count: { _all: true },
+                _max: { receivedFromDriverAt: true },
+            }),
+            this.prisma.managerCashCustody.aggregate({
+                where: {
+                    managerId,
+                    status: {
+                        in: [
+                            client_1.ManagerCashCustodyStatus.PENDING_DEPOSIT,
+                            client_1.ManagerCashCustodyStatus.AWAITING_VERIFICATION,
+                        ],
+                    },
+                },
+                _sum: { amountKd: true },
+            }),
+            this.ledgerProjection.project({
+                fromIso: from.toISOString(),
+                toIso: to.toISOString(),
+            }),
+            this.cashService.getDriverBalances(),
+        ]);
+        const managerAccountId = `MANAGER_${managerId}`;
+        const managerAccount = this.ledgerProjection.aggregateAccounts(entries.filter((e) => e.accountId === managerAccountId))[0];
+        const pendingDepositKd = managerAccount?.balance ?? '0.0000';
+        const custodyBagsTotalKd = custodyAgg._sum.amountKd
+            ? new client_1.Prisma.Decimal(custodyAgg._sum.amountKd.toString()).toFixed(4)
+            : '0.0000';
+        const managerOwnPosKd = new client_1.Prisma.Decimal(pendingDepositKd)
+            .minus(new client_1.Prisma.Decimal(custodyBagsTotalKd))
+            .toFixed(4);
+        const branchDrivers = managerRow?.branchId
+            ? allDrivers.drivers.filter((d) => d.branchId === managerRow.branchId)
+            : allDrivers.drivers;
+        const driversAtRisk = branchDrivers
+            .filter((d) => new client_1.Prisma.Decimal(d.heldCashTotal).greaterThan(0))
+            .map((d) => {
+            const ageMs = d.shiftStartedAt
+                ? Date.now() - new Date(d.shiftStartedAt).getTime()
+                : null;
+            const ageHours = ageMs !== null ? Math.floor(ageMs / 3_600_000) : null;
+            let riskLevel = 'NORMAL';
+            if (ageHours !== null && ageHours >= 48)
+                riskLevel = 'CRITICAL';
+            else if (ageHours !== null && ageHours >= 24)
+                riskLevel = 'WARNING';
+            return {
+                driverId: d.driverId,
+                driverName: d.fullName,
+                driverUsername: d.username,
+                driverPhone: d.phone,
+                heldCashKd: d.heldCashTotal,
+                pendingOrderCount: d.pendingSettlementOrderCount,
+                shiftStartedAt: d.shiftStartedAt
+                    ? new Date(d.shiftStartedAt).toISOString()
+                    : null,
+                ageHours,
+                riskLevel,
+            };
+        })
+            .sort((a, b) => {
+            const r = riskRank(b.riskLevel) - riskRank(a.riskLevel);
+            if (r !== 0)
+                return r;
+            return new client_1.Prisma.Decimal(b.heldCashKd).comparedTo(new client_1.Prisma.Decimal(a.heldCashKd));
+        });
+        const driversAwaitingHandoverKd = driversAtRisk
+            .reduce((acc, d) => acc.plus(new client_1.Prisma.Decimal(d.heldCashKd)), new client_1.Prisma.Decimal(0))
+            .toFixed(4);
+        const branchDriverIds = new Set(branchDrivers.map((d) => d.driverId));
+        const branchDriverAccounts = new Set([...branchDriverIds].map((id) => `DRIVER_${id}`));
+        const relevantEntries = entries.filter((e) => e.accountId === managerAccountId ||
+            branchDriverAccounts.has(e.accountId));
+        const seenTx = new Set();
+        const deduped = relevantEntries
+            .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
+            .filter((e) => {
+            if (seenTx.has(e.txId))
+                return false;
+            seenTx.add(e.txId);
+            return true;
+        });
+        const recentActivity = deduped.slice(0, 10).map((e) => ({
+            txId: e.txId,
+            at: e.createdAt,
+            amountKd: new client_1.Prisma.Decimal((e.debit !== '0.0000' ? e.debit : e.credit) || '0').toFixed(4),
+            kind: classifyActivity({
+                meta: e.meta,
+                accountId: e.accountId,
+            }),
+            actorAccountId: e.accountId,
+            meta: e.meta,
+        }));
+        const lastActivityAt = recentActivity[0]?.at ?? null;
+        return {
+            source: 'api/manager/cash-status',
+            managerId,
+            managerName: managerRow?.fullName ?? '',
+            pendingDepositKd,
+            managerOwnPosKd,
+            custodyBagsTotalKd,
+            driversAwaitingHandoverKd,
+            bagsCount: bagsAgg._count._all,
+            driversAtRiskCount: driversAtRisk.length,
+            lastHandoverAt: bagsAgg._max.receivedFromDriverAt?.toISOString() ?? null,
+            lastActivityAt,
+            drivers: driversAtRisk,
+            recentActivity,
+            generatedAt: new Date().toISOString(),
+        };
+    }
     async requireBag(custodyId) {
         const bag = await this.prisma.managerCashCustody.findUnique({
             where: { id: custodyId },
@@ -412,6 +670,8 @@ exports.ManagerCustodyService = ManagerCustodyService = ManagerCustodyService_1 
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
         general_ledger_service_1.GeneralLedgerService,
-        cash_service_1.CashService])
+        cash_service_1.CashService,
+        audit_logs_service_1.AuditLogsService,
+        ledger_projection_service_1.LedgerProjectionService])
 ], ManagerCustodyService);
 //# sourceMappingURL=manager-custody.service.js.map

@@ -1,5 +1,5 @@
-import { ArgumentsHost, ExceptionFilter } from '@nestjs/common';
-import { HttpAdapterHost } from '@nestjs/core';
+import { ArgumentsHost, ExceptionFilter } from "@nestjs/common";
+import { HttpAdapterHost } from "@nestjs/core";
 export declare class GlobalExceptionFilter implements ExceptionFilter {
     private readonly httpAdapterHost;
     constructor(httpAdapterHost: HttpAdapterHost);

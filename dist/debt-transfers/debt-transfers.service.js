@@ -140,9 +140,8 @@ let DebtTransfersService = class DebtTransfersService {
         };
     }
     async create(executorId, executorRole, dto) {
-        if (executorRole !== client_1.SafariRole.GENERAL_MANAGER &&
-            executorRole !== client_1.SafariRole.ACCOUNTANT) {
-            throw new common_1.ForbiddenException('Only GENERAL_MANAGER or ACCOUNTANT may initiate a debt transfer.');
+        if (executorRole !== client_1.SafariRole.ACCOUNTANT) {
+            throw new common_1.ForbiddenException('Only ACCOUNTANT may initiate a debt transfer.');
         }
         if (dto.sourceDriverId === dto.targetDriverId) {
             throw new common_1.BadRequestException('Source and target drivers must be different.');
@@ -275,9 +274,8 @@ let DebtTransfersService = class DebtTransfersService {
         return this.serialize(updated);
     }
     async finalize(transferId, executorId, executorRole) {
-        if (executorRole !== client_1.SafariRole.GENERAL_MANAGER &&
-            executorRole !== client_1.SafariRole.ACCOUNTANT) {
-            throw new common_1.ForbiddenException('Only GENERAL_MANAGER or ACCOUNTANT may finalize a debt transfer.');
+        if (executorRole !== client_1.SafariRole.ACCOUNTANT) {
+            throw new common_1.ForbiddenException('Only ACCOUNTANT may finalize a debt transfer.');
         }
         const result = await this.prisma.$transaction(async (tx) => {
             const transfer = await tx.debtTransfer.findUnique({
@@ -356,9 +354,8 @@ let DebtTransfersService = class DebtTransfersService {
         return this.serialize(result);
     }
     async cancel(transferId, cancellerId, cancellerRole, reason) {
-        if (cancellerRole !== client_1.SafariRole.GENERAL_MANAGER &&
-            cancellerRole !== client_1.SafariRole.ACCOUNTANT) {
-            throw new common_1.ForbiddenException('Only GENERAL_MANAGER or ACCOUNTANT may cancel a debt transfer.');
+        if (cancellerRole !== client_1.SafariRole.ACCOUNTANT) {
+            throw new common_1.ForbiddenException('Only ACCOUNTANT may cancel a debt transfer.');
         }
         const transfer = await this.prisma.debtTransfer.findUnique({
             where: { id: transferId },

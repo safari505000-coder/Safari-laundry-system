@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { Prisma } from "@prisma/client";
 import { PrismaService } from '../prisma/prisma.service';
 import type { PosCreateCustomerDto } from './dto/pos-create-customer.dto';
 export declare class PosService {
@@ -18,8 +18,8 @@ export declare class PosService {
             debt: Prisma.Decimal;
         } | null;
         id: string;
-        createdAt: Date;
         phone: string;
+        createdAt: Date;
         address: string | null;
         phone2: string | null;
         displayName: string | null;
@@ -35,8 +35,8 @@ export declare class PosService {
             debt: Prisma.Decimal;
         } | null;
         id: string;
-        createdAt: Date;
         phone: string;
+        createdAt: Date;
         address: string | null;
         phone2: string | null;
         displayName: string | null;
@@ -52,8 +52,8 @@ export declare class PosService {
             debt: Prisma.Decimal;
         } | null;
         id: string;
-        createdAt: Date;
         phone: string;
+        createdAt: Date;
         address: string | null;
         phone2: string | null;
         displayName: string | null;

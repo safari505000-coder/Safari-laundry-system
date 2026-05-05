@@ -1,0 +1,32 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.AppPermission = void 0;
+var AppPermission;
+(function (AppPermission) {
+    AppPermission["VIEW_INVOICES"] = "invoices.view";
+    AppPermission["CREATE_INVOICE"] = "invoices.create";
+    AppPermission["UPDATE_INVOICE"] = "invoices.update";
+    AppPermission["DELETE_INVOICE"] = "invoices.delete";
+    AppPermission["SHARE_INVOICE"] = "invoices.share";
+    AppPermission["AUDIT_INVOICE"] = "invoices.audit";
+    AppPermission["EDIT_INVOICE_AUDIT"] = "invoices.audit.edit";
+    AppPermission["VOID_INVOICE_AUDIT"] = "invoices.audit.void";
+    AppPermission["VIEW_REPORTS"] = "reports.view";
+    AppPermission["VIEW_FINANCIAL_REPORTS"] = "reports.financial.view";
+    AppPermission["VIEW_CASH"] = "cash.view";
+    AppPermission["VIEW_DEBTS"] = "debts.view";
+    AppPermission["VIEW_CUSTOMERS"] = "customers.view";
+    AppPermission["VIEW_INVENTORY"] = "inventory.view";
+    AppPermission["VIEW_PAYROLL"] = "payroll.view";
+    AppPermission["VIEW_AUDIT_LOGS"] = "audit.logs.view";
+    AppPermission["CREATE_OPERATIONAL_DATA"] = "operations.create";
+    AppPermission["UPDATE_OPERATIONAL_DATA"] = "operations.update";
+    AppPermission["DELETE_OPERATIONAL_DATA"] = "operations.delete";
+    AppPermission["VIEW_EXPENSES"] = "expenses.view";
+    AppPermission["CREATE_EXPENSES"] = "expenses.create";
+    AppPermission["APPROVE_EXPENSES"] = "expenses.approve";
+    AppPermission["MANAGE_DISPATCH"] = "dispatch.manage";
+    AppPermission["VIEW_DISPATCH"] = "dispatch.view";
+    AppPermission["MANAGE_CUSTOMER_BLOCK"] = "customers.block.manage";
+})(AppPermission || (exports.AppPermission = AppPermission = {}));
+//# sourceMappingURL=permissions.enum.js.map

@@ -1,6 +1,6 @@
-import { NestMiddleware } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
-import { Request, Response, NextFunction } from 'express';
+import { NestMiddleware } from "@nestjs/common";
+import { JwtService } from "@nestjs/jwt";
+import { Request, Response, NextFunction } from "express";
 import { OperatingHoursService } from '../../system/operating-hours.service';
 import { PrismaService } from '../../prisma/prisma.service';
 export declare class OperatingHoursMiddleware implements NestMiddleware {

@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { Prisma } from "@prisma/client";
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateInventoryCategoryDto } from './dto/create-inventory-category.dto';
 import { CreateStockItemDto } from './dto/create-stock-item.dto';
@@ -94,7 +94,7 @@ export declare class InventoryService {
         id: string;
         stockItemId: string;
         branchId: string;
-        type: import("@prisma/client").$Enums.StockMovementType;
+        type: import(".prisma/client").$Enums.StockMovementType;
         quantity: string;
         unitCost: string | null;
         totalCost: string | null;
@@ -106,7 +106,7 @@ export declare class InventoryService {
         id: string;
         stockItemId: string;
         branchId: string;
-        type: import("@prisma/client").$Enums.StockMovementType;
+        type: import(".prisma/client").$Enums.StockMovementType;
         quantity: string;
         unitCost: string | null;
         totalCost: string | null;
@@ -120,7 +120,7 @@ export declare class InventoryService {
             id: string;
             stockItemId: string;
             branchId: string;
-            type: import("@prisma/client").$Enums.StockMovementType;
+            type: import(".prisma/client").$Enums.StockMovementType;
             quantity: string;
             unitCost: string | null;
             totalCost: string | null;
@@ -132,7 +132,7 @@ export declare class InventoryService {
             id: string;
             stockItemId: string;
             branchId: string;
-            type: import("@prisma/client").$Enums.StockMovementType;
+            type: import(".prisma/client").$Enums.StockMovementType;
             quantity: string;
             unitCost: string | null;
             totalCost: string | null;
@@ -182,7 +182,7 @@ export declare class InventoryService {
     }>;
     listMovements(q: ListMovementsQueryDto): Promise<{
         id: string;
-        type: import("@prisma/client").$Enums.StockMovementType;
+        type: import(".prisma/client").$Enums.StockMovementType;
         stockItem: {
             code: string;
             nameAr: string;
@@ -205,7 +205,7 @@ export declare class InventoryService {
     }[]>;
     listRecentMovements(limit?: number, branchId?: string): Promise<{
         id: string;
-        type: import("@prisma/client").$Enums.StockMovementType;
+        type: import(".prisma/client").$Enums.StockMovementType;
         stockItem: {
             code: string;
             nameAr: string;

@@ -18,8 +18,12 @@ var OrdersService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.OrdersService = exports.STALE_QUICK_ORDER_THRESHOLD_MS = exports.STALE_QUICK_ORDER_THRESHOLD_HOURS = void 0;
 const common_1 = require("@nestjs/common");
+const event_emitter_1 = require("@nestjs/event-emitter");
 const jwt_1 = require("@nestjs/jwt");
 const client_1 = require("@prisma/client");
+const dispatch_events_1 = require("../dispatch/dispatch.events");
+const audit_logs_service_1 = require("../audit-logs/audit-logs.service");
+const customer_blocking_service_1 = require("../common/services/customer-blocking.service");
 const payments_service_1 = require("../common/services/payments.service");
 const customer_notifications_service_1 = require("../customer-notifications/customer-notifications.service");
 const customer_ledger_service_1 = require("../customer-ledger/customer-ledger.service");
@@ -56,6 +60,7 @@ const orderDetailSelect = {
     notes: true,
     reminderCount: true,
     lastReminderAt: true,
+    dispatchId: true,
     createdAt: true,
     updatedAt: true,
     customer: {
@@ -103,8 +108,11 @@ let OrdersService = OrdersService_1 = class OrdersService {
     serialCounter;
     inventory;
     jwt;
+    customerBlocking;
+    auditLogs;
+    events;
     log = new common_1.Logger(OrdersService_1.name);
-    constructor(prisma, customerLedger, paymentsService, customerNotifications, generalLedger, serialCounter, inventory, jwt) {
+    constructor(prisma, customerLedger, paymentsService, customerNotifications, generalLedger, serialCounter, inventory, jwt, customerBlocking, auditLogs, events) {
         this.prisma = prisma;
         this.customerLedger = customerLedger;
         this.paymentsService = paymentsService;
@@ -113,6 +121,46 @@ let OrdersService = OrdersService_1 = class OrdersService {
         this.serialCounter = serialCounter;
         this.inventory = inventory;
         this.jwt = jwt;
+        this.customerBlocking = customerBlocking;
+        this.auditLogs = auditLogs;
+        this.events = events;
+    }
+    emitOrderCreated(order, actorUserId) {
+        this.events.emit(dispatch_events_1.ORDER_CREATED_EVENT, {
+            orderId: order.id,
+            dispatchId: order.dispatchId ?? null,
+            actorUserId,
+            occurredAtIso: order.createdAt.toISOString(),
+        });
+    }
+    auditOrderCreated(order, actorUserId) {
+        this.auditLogs.logFinancialEvent({
+            action: 'ORDER_CREATED',
+            customerId: order.customer.id,
+            orderId: order.id,
+            amount: order.totalPrice.toString(),
+            source: order.posPaymentMethod ?? 'UNKNOWN',
+            userId: actorUserId,
+            changes: {
+                status: order.status,
+                cashStatus: order.cashStatus,
+                posPaymentMethod: order.posPaymentMethod,
+            },
+        });
+    }
+    auditOrderPayment(order, actorUserId) {
+        this.auditLogs.logFinancialEvent({
+            action: 'PAYMENT_MADE',
+            customerId: order.customer.id,
+            orderId: order.id,
+            amount: order.totalPrice.toString(),
+            source: order.posPaymentMethod ?? 'UNKNOWN',
+            userId: actorUserId,
+            changes: {
+                cashStatus: order.cashStatus,
+                posPaymentMethod: order.posPaymentMethod,
+            },
+        });
     }
     async resolveInvoiceShareForNotify(orderId) {
         const webBase = process.env.PUBLIC_WEB_APP_URL?.trim().replace(/\/$/, '');
@@ -213,6 +261,18 @@ let OrdersService = OrdersService_1 = class OrdersService {
             (u.safariRole !== client_1.SafariRole.DRIVER &&
                 u.safariRole !== client_1.SafariRole.MANAGER)) {
             throw new common_1.ForbiddenException('POS checkout is only available to drivers and managers.');
+        }
+    }
+    async assertCallCenterDispatchRequirement(actorUserId, dispatchId) {
+        const u = await this.prisma.user.findUnique({
+            where: { id: actorUserId },
+            select: { safariRole: true },
+        });
+        if (u?.safariRole === client_1.SafariRole.CALL_CENTER && !dispatchId) {
+            throw new common_1.BadRequestException({
+                code: 'CALL_CENTER_DISPATCH_REQUIRED',
+                message: 'CALL_CENTER actors must supply dispatchId on order creation.',
+            });
         }
     }
     resolvePosCheckoutPaymentMethod(shortfallMinor, raw) {
@@ -317,11 +377,12 @@ let OrdersService = OrdersService_1 = class OrdersService {
     }
     async createQuick(driverUserId, dto) {
         await this.assertDriverUser(driverUserId);
+        await this.assertCallCenterDispatchRequirement(driverUserId, null);
         await (0, administrative_branch_util_1.assertUserNotOnAdministrativeBranchForSales)(this.prisma, driverUserId);
         const serviceType = dto.serviceType ?? client_1.ServiceType.NORMAL;
         const lineCreates = this.reconcileLineItems(dto.totalPrice, dto.lineItems);
         const phoneCompact = dto.customerPhone.replace(/[\s-]/g, '').trim();
-        return this.prisma.$transaction(async (tx) => {
+        const order = await this.prisma.$transaction(async (tx) => {
             const customerId = await this.resolveQuickOrderCustomerId(tx, dto, phoneCompact);
             const serialNumber = await this.serialCounter.stampOrderSerial(tx, driverUserId);
             const posPaymentMethodNormalized = dto.posPaymentMethod === client_1.PosPaymentMethod.PAYMENT_LINK
@@ -345,6 +406,9 @@ let OrdersService = OrdersService_1 = class OrdersService {
                 select: orderDetailSelect,
             });
         });
+        this.auditOrderCreated(order, driverUserId);
+        await this.customerBlocking.autoBlockIfNeeded(order.customer.id);
+        return order;
     }
     async posCheckout(driverUserId, dto) {
         try {
@@ -352,6 +416,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
                 throw new common_1.BadRequestException('posCheckout: missing driver/manager id from session');
             }
             await this.assertPosCheckoutActor(driverUserId);
+            await this.assertCallCenterDispatchRequirement(driverUserId, dto.dispatchId);
             await (0, administrative_branch_util_1.assertUserNotOnAdministrativeBranchForSales)(this.prisma, driverUserId);
             if (!Number.isFinite(dto.totalPrice) || dto.totalPrice <= 0) {
                 throw new common_1.BadRequestException('totalPrice must be a finite positive number');
@@ -396,6 +461,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
                             invoiceNumber: dto.invoiceNumber?.trim() || null,
                             serialNumber,
                             notes: dto.notes?.trim() || null,
+                            dispatchId: dto.dispatchId ?? null,
                             ...(lineCreates?.length
                                 ? { lineItems: { create: lineCreates } }
                                 : {}),
@@ -425,6 +491,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
                         invoiceNumber: dto.invoiceNumber?.trim() || null,
                         serialNumber,
                         notes: dto.notes?.trim() || null,
+                        dispatchId: dto.dispatchId ?? null,
                         ...(lineCreates?.length
                             ? { lineItems: { create: lineCreates } }
                             : {}),
@@ -496,15 +563,22 @@ let OrdersService = OrdersService_1 = class OrdersService {
                     },
                 });
                 const merged = { ...detail, paymentLink };
+                this.auditOrderCreated(merged, driverUserId);
+                this.emitOrderCreated(merged, driverUserId);
                 await this.posInvoiceNotifyToCustomer(merged, phoneCompact);
                 await this.prisma.order.update({
                     where: { id: detail.id },
                     data: { ccCollectionPaymentWaLocked: true },
                 });
+                await this.customerBlocking.autoBlockIfNeeded(merged.customer.id);
                 return merged;
             }
             void this.posInvoiceNotifyToCustomer(detail, phoneCompact).catch((e) => this.log.warn(`pos invoice notify: ${e}`));
             this.paymentsService.schedulePaymentConfirmedCustomerNotify(detail.id, 'new_pos_order');
+            this.auditOrderCreated(detail, driverUserId);
+            this.emitOrderCreated(detail, driverUserId);
+            this.auditOrderPayment(detail, driverUserId);
+            await this.customerBlocking.autoBlockIfNeeded(detail.customer.id);
             return detail;
         }
         catch (error) {
@@ -640,9 +714,12 @@ let OrdersService = OrdersService_1 = class OrdersService {
             where: { posPaymentBundleId: bundleId },
             data: { ccCollectionPaymentWaLocked: true },
         });
+        orders.forEach((order) => this.auditOrderCreated(order, driverUserId));
+        await this.customerBlocking.autoBlockIfNeeded(orders[0].customer.id);
         return { bundleId, orders, paymentLink };
     }
     async createAsManager(dto, managerUserId) {
+        await this.assertCallCenterDispatchRequirement(managerUserId, null);
         await (0, administrative_branch_util_1.assertUserNotOnAdministrativeBranchForSales)(this.prisma, managerUserId);
         if (dto.driverId) {
             await this.assertDriverUser(dto.driverId);
@@ -650,7 +727,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
         }
         const serviceType = dto.serviceType ?? client_1.ServiceType.NORMAL;
         const lineCreates = this.reconcileLineItems(dto.totalPrice, dto.lineItems);
-        return this.prisma.$transaction(async (tx) => {
+        const order = await this.prisma.$transaction(async (tx) => {
             const phoneCompact = dto.customerPhone.replace(/[\s-]/g, '').trim();
             const existingByPhone = await this.findCustomerByAnyPhone(tx, phoneCompact);
             const customer = existingByPhone ?
@@ -674,6 +751,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
                     serviceType,
                     totalPrice: dto.totalPrice,
                     status: client_1.OrderStatus.PENDING,
+                    posPaymentMethod: client_1.PosPaymentMethod.CASH,
                     invoiceNumber: dto.invoiceNumber?.trim() || null,
                     serialNumber,
                     notes: dto.notes?.trim() || null,
@@ -684,6 +762,9 @@ let OrdersService = OrdersService_1 = class OrdersService {
                 select: orderDetailSelect,
             });
         });
+        this.auditOrderCreated(order, dto.driverId ?? null);
+        await this.customerBlocking.autoBlockIfNeeded(order.customer.id);
+        return order;
     }
     async listUnpaidCollectionOrders(branchId = null, actor) {
         const isDriver = actor?.role === client_1.SafariRole.DRIVER;
@@ -915,7 +996,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
         const { totalKd } = await this.getCollectionsReceivableSnapshotForCustomer(customerId, tx);
         return totalKd;
     }
-    async getEffectiveDebtKdBreakdown(customerId, embeddedWalletDebt, tx) {
+    async getOperationalDebtKdBreakdown(customerId, embeddedWalletDebt, tx) {
         const db = tx ?? this.prisma;
         let walletDebtKd;
         if (embeddedWalletDebt !== undefined) {
@@ -935,8 +1016,8 @@ let OrdersService = OrdersService_1 = class OrdersService {
         const z = new client_1.Prisma.Decimal(0);
         const ledgerNetKd = ledgerOpen.netOpenDebtKd;
         const orderMarketScopeKd = walletDebtKd.plus(collectionsSnap.totalKd);
-        const effectiveDebtKd = client_1.Prisma.Decimal.max(ledgerNetKd, snapshotFromWalletKd, orderMarketScopeKd);
-        const collectionsReceivableKd = client_1.Prisma.Decimal.max(effectiveDebtKd.sub(walletDebtKd), z);
+        const operationalDebtKd = client_1.Prisma.Decimal.max(ledgerNetKd, snapshotFromWalletKd, orderMarketScopeKd);
+        const collectionsReceivableKd = client_1.Prisma.Decimal.max(operationalDebtKd.sub(walletDebtKd), z);
         const unpaidIds = await db.order.findMany({
             where: {
                 customerId,
@@ -953,16 +1034,20 @@ let OrdersService = OrdersService_1 = class OrdersService {
             process.env.EXPOSE_DEBT_BREAKDOWN?.trim().toLowerCase() === 'true';
         let trace;
         if (expose) {
-            trace = (0, debt_kd_breakdown_util_1.buildDebtKdBreakdownTrace)(ledgerNetKd, snapshotFromWalletKd, orderMarketScopeKd, effectiveDebtKd);
-            this.log.warn(`[debtKdBreakdown] customerId=${customerId} ledger=${trace.ledgerNetKd} walletSnap=${trace.walletSnapshotKd} orderMarket=${trace.orderMarketScopeKd} effective=${trace.effectiveDebtKd} winners=[${trace.winningSources.join(',')}]`);
+            trace = (0, debt_kd_breakdown_util_1.buildDebtKdBreakdownTrace)(ledgerNetKd, snapshotFromWalletKd, orderMarketScopeKd, operationalDebtKd);
+            this.log.warn(`[debtKdBreakdown] customerId=${customerId} ledger=${trace.ledgerNetKd} walletSnap=${trace.walletSnapshotKd} orderMarket=${trace.orderMarketScopeKd} operational=${trace.operationalDebtKd} winners=[${trace.winningSources.join(',')}]`);
         }
         return {
             walletDebtKd,
             collectionsReceivableKd,
-            effectiveDebtKd,
+            operationalDebtKd,
+            effectiveDebtKd: operationalDebtKd,
             collectionsOpenOrderIds,
             trace,
         };
+    }
+    async getEffectiveDebtKdBreakdown(customerId, embeddedWalletDebt, tx) {
+        return this.getOperationalDebtKdBreakdown(customerId, embeddedWalletDebt, tx);
     }
     async getCollectionsOpenOrderIdsForCustomer(customerId) {
         const { openOrderIds } = await this.getCollectionsReceivableSnapshotForCustomer(customerId);
@@ -1127,6 +1212,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
                 id: true,
                 fullName: true,
                 username: true,
+                branchId: true,
                 branch: { select: { name: true } },
             },
             orderBy: { fullName: 'asc' },
@@ -1135,6 +1221,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
             id: r.id,
             fullName: r.fullName,
             username: r.username,
+            branchId: r.branchId,
             branchName: r.branch?.name ?? null,
         }));
     }
@@ -1681,6 +1768,9 @@ exports.OrdersService = OrdersService = OrdersService_1 = __decorate([
         general_ledger_service_1.GeneralLedgerService,
         serial_counter_service_1.SerialCounterService,
         inventory_service_1.InventoryService,
-        jwt_1.JwtService])
+        jwt_1.JwtService,
+        customer_blocking_service_1.CustomerBlockingService,
+        audit_logs_service_1.AuditLogsService,
+        event_emitter_1.EventEmitter2])
 ], OrdersService);
 //# sourceMappingURL=orders.service.js.map

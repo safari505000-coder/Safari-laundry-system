@@ -1,4 +1,4 @@
-import { KnetCommissionRule } from '@prisma/client';
+import { KnetCommissionRule } from "@prisma/client";
 export declare class UpdatePaymentMethodFeesDto {
     knetFlatKd?: number;
     knetPercentOfGross?: number;

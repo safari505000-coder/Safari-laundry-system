@@ -15,9 +15,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.InvoiceAuditController = void 0;
 const common_1 = require("@nestjs/common");
 const swagger_1 = require("@nestjs/swagger");
-const client_1 = require("@prisma/client");
 const current_user_decorator_1 = require("../auth/decorators/current-user.decorator");
-const roles_decorator_1 = require("../auth/decorators/roles.decorator");
+const permissions_decorator_1 = require("../auth/permissions/permissions.decorator");
+const permissions_enum_1 = require("../auth/permissions/permissions.enum");
 const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
 const roles_guard_1 = require("../auth/guards/roles.guard");
 const invoice_audit_service_1 = require("./invoice-audit.service");
@@ -46,7 +46,7 @@ let InvoiceAuditController = class InvoiceAuditController {
 exports.InvoiceAuditController = InvoiceAuditController;
 __decorate([
     (0, common_1.Patch)('orders/:orderId'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER_SUPERVISOR, client_1.SafariRole.OWNER),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.EDIT_INVOICE_AUDIT),
     (0, swagger_1.ApiOperation)({
         summary: 'Same-day invoice edit by CC Supervisor',
         description: 'V19.9 — Patch totalPrice / posPaymentMethod / notes on a non-canceled order that was issued on the same Kuwait-local day. Writes an immutable InvoiceAuditLog row and posts GL reversal + re-post entries so the books stay balanced.',
@@ -60,7 +60,7 @@ __decorate([
 ], InvoiceAuditController.prototype, "editInvoice", null);
 __decorate([
     (0, common_1.Post)('orders/:orderId/void'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER_SUPERVISOR, client_1.SafariRole.OWNER),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.VOID_INVOICE_AUDIT),
     (0, swagger_1.ApiOperation)({
         summary: 'Soft-void an invoice by CC Supervisor',
         description: 'V19.9 — Flip order.status → CANCELED, reverse the GL sale entry with a negative POS_SALE_COMPLETED row, and roll back the wallet (refund subscription balance or clear the debt slot). Writes an immutable InvoiceAuditLog row with the mandatory reason.',
@@ -74,7 +74,7 @@ __decorate([
 ], InvoiceAuditController.prototype, "voidInvoice", null);
 __decorate([
     (0, common_1.Get)('log'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.AUDIT_INVOICE),
     (0, swagger_1.ApiOperation)({
         summary: 'Invoice audit log — edits and voids',
         description: 'V19.9 — Owner / GM / Accountant paginated read of every supervisor edit and void with before/after snapshots, the actor, the mandatory void reason, and the financial impact in fils.',
@@ -86,7 +86,7 @@ __decorate([
 ], InvoiceAuditController.prototype, "listAuditLog", null);
 __decorate([
     (0, common_1.Get)('cc-performance'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.CALL_CENTER_SUPERVISOR),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.VIEW_REPORTS),
     (0, swagger_1.ApiOperation)({
         summary: 'Per-agent Call-Center performance',
         description: 'V19.9 — For each CC agent (or supervisor) in the Kuwait-local date range: collections, debt settled, subscription activations, and distinct customers served. Defaults to today if `from`/`to` are omitted.',

@@ -1,0 +1,31 @@
+import { OnModuleDestroy, OnModuleInit } from "@nestjs/common";
+import { IntegrationCircuitBreakerService } from './integration-circuit-breaker.service';
+import { WorkerDedupService } from './worker-dedup.service';
+import { DiscordAlertService } from './discord-alert.service';
+export declare class DiscordAlertWorker implements OnModuleInit, OnModuleDestroy {
+    private readonly circuitBreaker;
+    private readonly dedup;
+    private readonly discordAlerts;
+    private readonly logger;
+    private worker;
+    private dlq;
+    private readonly pending;
+    private flushTimer;
+    private isFlushing;
+    private consecutiveFailures;
+    private circuitOpenUntil;
+    private destroyed;
+    constructor(circuitBreaker: IntegrationCircuitBreakerService, dedup: WorkerDedupService, discordAlerts: DiscordAlertService);
+    onModuleInit(): void;
+    onModuleDestroy(): void;
+    private process;
+    private processCritical;
+    private scheduleFlush;
+    private flushBatch;
+    private sendBatch;
+    private recordFailure;
+    private waitForCircuit;
+    private retryableError;
+    private webhookUrl;
+    private delay;
+}

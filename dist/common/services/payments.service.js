@@ -8,6 +8,9 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var __param = (this && this.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
 var PaymentsService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PaymentsService = exports.UPAYMENTS_MAX_DIGIT_ONLY_INQUIRY_LEN = void 0;
@@ -16,37 +19,15 @@ const node_crypto_1 = require("node:crypto");
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
 const customer_ledger_service_1 = require("../../customer-ledger/customer-ledger.service");
-const customer_notifications_service_1 = require("../../customer-notifications/customer-notifications.service");
+const whatsapp_queue_service_1 = require("../../customer-notifications/whatsapp-queue.service");
 const general_ledger_service_1 = require("../../general-ledger/general-ledger.service");
 const inventory_service_1 = require("../../inventory/inventory.service");
 const prisma_service_1 = require("../../prisma/prisma.service");
+const audit_logs_service_1 = require("../../audit-logs/audit-logs.service");
+const metrics_service_1 = require("../../observability/metrics.service");
 const app_version_1 = require("../constants/app-version");
-const kuwait_customer_phone_1 = require("../validation/kuwait-customer-phone");
 const cash_status_for_method_1 = require("../utils/cash-status-for-method");
-const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
-async function sendDiscordAlert(type, data) {
-    if (!DISCORD_WEBHOOK_URL)
-        return;
-    const message = type === 'inconsistency'
-        ? `🚨 PAYMENT INCONSISTENCY\n\nOrderId: ${data.orderId ?? null}\nIssues: ${(data.issues ?? []).join(', ')}\nTime: ${new Date().toISOString()}`
-        : type === 'error'
-            ? `🚨 PAYMENT ERROR\n\nEvent: ${data.event ?? null}\nTransId: ${data.transId ?? null}\nOrderId: ${data.orderId ?? null}\nTime: ${new Date().toISOString()}`
-            : `✅ PAYMENT SUCCESS\n\nTransId: ${data.transId ?? null}\nOrderId: ${data.orderId ?? null}\nTime: ${new Date().toISOString()}`;
-    try {
-        await fetch(DISCORD_WEBHOOK_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                content: message,
-            }),
-        });
-    }
-    catch (err) {
-        console.error('discord_alert_failed', err);
-    }
-}
+const discord_alert_service_1 = require("./discord-alert.service");
 function looksLikeOurOrderUuid(s) {
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s.trim());
 }
@@ -457,7 +438,10 @@ let PaymentsService = class PaymentsService {
     customerLedger;
     generalLedger;
     inventory;
-    customerNotifications;
+    whatsappQueue;
+    discordAlerts;
+    auditLogs;
+    metrics;
     logger = new common_1.Logger(PaymentsService_1.name);
     activePollingTransIds = new Set();
     totalPaymentsProcessed = 0;
@@ -470,12 +454,15 @@ let PaymentsService = class PaymentsService {
     secret;
     callbackPublicUrl;
     webAppUrl;
-    constructor(prisma, customerLedger, generalLedger, inventory, customerNotifications) {
+    constructor(prisma, customerLedger, generalLedger, inventory, whatsappQueue, discordAlerts, auditLogs, metrics) {
         this.prisma = prisma;
         this.customerLedger = customerLedger;
         this.generalLedger = generalLedger;
         this.inventory = inventory;
-        this.customerNotifications = customerNotifications;
+        this.whatsappQueue = whatsappQueue;
+        this.discordAlerts = discordAlerts;
+        this.auditLogs = auditLogs;
+        this.metrics = metrics;
         this.apiBase = (process.env.PAYMENTS_API_BASE_URL ?? '').replace(/\/$/, '');
         this.apiKey = process.env.PAYMENTS_API_KEY ?? '';
         this.merchantId = process.env.PAYMENTS_MERCHANT_ID ?? '';
@@ -895,20 +882,6 @@ let PaymentsService = class PaymentsService {
         return row?.id ?? null;
     }
     paymentLog(event, data) {
-        const alertEvent = data.status === 'gateway_error' ? 'gateway_error' : event;
-        if (alertEvent === 'gateway_error' || alertEvent === 'finalize_rejected') {
-            void sendDiscordAlert('error', {
-                event: alertEvent,
-                transId: data.transId ?? null,
-                orderId: data.orderId ?? null,
-            });
-        }
-        if (event === 'finalize_success') {
-            void sendDiscordAlert('success', {
-                transId: data.transId ?? null,
-                orderId: data.orderId ?? null,
-            });
-        }
         this.logger.log(JSON.stringify({
             event,
             transId: data.transId ?? null,
@@ -922,16 +895,6 @@ let PaymentsService = class PaymentsService {
         }));
     }
     paymentError(event, data) {
-        const alertEvent = data.status === 'gateway_error' ? 'gateway_error' : event;
-        if (alertEvent === 'gateway_error' ||
-            alertEvent === 'finalize_rejected' ||
-            alertEvent === 'polling_failed') {
-            void sendDiscordAlert('error', {
-                event: alertEvent,
-                transId: data.transId ?? null,
-                orderId: data.orderId ?? null,
-            });
-        }
         console.error(JSON.stringify({
             event,
             transId: data.transId ?? null,
@@ -965,9 +928,10 @@ let PaymentsService = class PaymentsService {
                 issues.push('missing_transaction_history');
             }
             if (issues.length > 0) {
-                await sendDiscordAlert('inconsistency', {
+                this.discordAlerts.enqueue('payment_inconsistency', {
                     orderId,
                     issues,
+                    version: app_version_1.APP_VERSION,
                 });
             }
         }
@@ -1058,8 +1022,9 @@ let PaymentsService = class PaymentsService {
             this.logger.log(`duplicate_noop orderId=${reference.id}`);
             return { finalized: true, gatewayResult, inquiryRaw: inquiry.raw };
         }
+        const forceCapturedFinalize = gatewayResult === 'CAPTURED';
         const stored = reference.trackId?.trim() ?? '';
-        if (stored && stored !== clean) {
+        if (!forceCapturedFinalize && stored && stored !== clean) {
             this.totalFailures += 1;
             this.paymentLog('finalize_rejected', {
                 transId: clean,
@@ -1071,7 +1036,8 @@ let PaymentsService = class PaymentsService {
         }
         const gatewayAmountMinor = parseKwdMinor(inquiry.data.amount);
         const expectedAmountMinor = parseKwdMinor(reference.amount.toString());
-        if (gatewayAmountMinor === null || gatewayAmountMinor !== expectedAmountMinor) {
+        if (!forceCapturedFinalize &&
+            (gatewayAmountMinor === null || gatewayAmountMinor !== expectedAmountMinor)) {
             this.totalFailures += 1;
             this.paymentError('finalize_rejected', {
                 transId: clean,
@@ -1084,7 +1050,7 @@ let PaymentsService = class PaymentsService {
             return { finalized: false, gatewayResult, inquiryRaw: inquiry.raw };
         }
         const currency = inquiry.data.currency?.trim().toUpperCase();
-        if (currency && currency !== 'KWD') {
+        if (!forceCapturedFinalize && currency && currency !== 'KWD') {
             this.totalFailures += 1;
             this.paymentLog('finalize_rejected', {
                 transId: clean,
@@ -1107,6 +1073,9 @@ let PaymentsService = class PaymentsService {
             currency: currency ?? null,
             inquiryRaw: inquiry.raw,
         });
+        if (forceCapturedFinalize && !finalized) {
+            this.logger.error(`CRITICAL captured_payment_not_finalized orderId=${reference.id} result=${gatewayResult} trackId=${clean} version=${app_version_1.APP_VERSION}`);
+        }
         return { finalized, gatewayResult, inquiryRaw: inquiry.raw };
     }
     startGatewayStatusPolling(orderId, transId) {
@@ -1252,30 +1221,41 @@ let PaymentsService = class PaymentsService {
         };
     }
     async finalizePaidOrderFromGateway(referenceId, gatewayMetadata) {
+        const finalizeStarted = performance.now();
         this.logger.log(`finalize_started orderId=${referenceId} version=${app_version_1.APP_VERSION}`);
-        const bundle = await this.prisma.posPaymentBundle.findUnique({
-            where: { id: referenceId },
-            include: {
-                orders: {
-                    where: { status: client_1.OrderStatus.PENDING },
-                    orderBy: { createdAt: 'asc' },
-                    select: { id: true },
+        try {
+            const bundle = await this.prisma.posPaymentBundle.findUnique({
+                where: { id: referenceId },
+                include: {
+                    orders: {
+                        where: { status: client_1.OrderStatus.PENDING },
+                        orderBy: { createdAt: 'asc' },
+                        select: { id: true },
+                    },
                 },
-            },
-        });
-        if (bundle?.orders.length) {
-            let didFinalizeAny = false;
-            for (const o of bundle.orders) {
-                didFinalizeAny =
-                    (await this.finalizeSinglePaidOrderFromGateway(o.id, gatewayMetadata)) ||
-                        didFinalizeAny;
+            });
+            if (bundle?.orders.length) {
+                let didFinalizeAny = false;
+                for (const o of bundle.orders) {
+                    didFinalizeAny =
+                        (await this.finalizeSinglePaidOrderFromGateway(o.id, gatewayMetadata)) ||
+                            didFinalizeAny;
+                }
+                this.metrics?.recordFinalize(performance.now() - finalizeStarted, didFinalizeAny);
+                return didFinalizeAny;
             }
-            return didFinalizeAny;
+            const didFinalize = await this.finalizeSinglePaidOrderFromGateway(referenceId, gatewayMetadata);
+            this.metrics?.recordFinalize(performance.now() - finalizeStarted, didFinalize);
+            return didFinalize;
         }
-        return this.finalizeSinglePaidOrderFromGateway(referenceId, gatewayMetadata);
+        catch (error) {
+            this.metrics?.recordFinalize(performance.now() - finalizeStarted, false);
+            throw error;
+        }
     }
     async finalizeSinglePaidOrderFromGateway(orderId, gatewayMetadata) {
         this.logger.log(`finalize_started orderId=${orderId} version=${app_version_1.APP_VERSION}`);
+        const alertTrackId = extractTrackIdFromFinalizeGatewayMetadata(gatewayMetadata);
         const didFinalize = await this.prisma.$transaction(async (tx) => {
             const order = await tx.order.findUnique({
                 where: { id: orderId },
@@ -1318,8 +1298,9 @@ let PaymentsService = class PaymentsService {
                     select: { totalAmountKd: true },
                 })
                 : null;
+            const forceCapturedFinalize = isCapturedFinalizeMetadata(gatewayMetadata);
             const gatewayChecks = validateFinalizeGatewayMetadata(gatewayMetadata, bundleAmount?.totalAmountKd ?? order.totalPrice, order.posGatewayTrackId, inquiryCapableTrackId);
-            if (!gatewayChecks.ok) {
+            if (!gatewayChecks.ok && !forceCapturedFinalize) {
                 this.totalFailures += 1;
                 this.paymentLog('finalize_rejected', {
                     transId: inquiryCapableTrackId ?? order.posGatewayTrackId,
@@ -1359,6 +1340,16 @@ let PaymentsService = class PaymentsService {
                     status: 'claim_lost',
                 });
                 this.logger.log(`ignored_duplicate_capture orderId=${order.id}`);
+                if (forceCapturedFinalize) {
+                    this.discordAlerts.enqueue('captured_payment_not_finalized', {
+                        orderId: order.id,
+                        trackId: inquiryCapableTrackId ?? order.posGatewayTrackId,
+                        version: app_version_1.APP_VERSION,
+                        result: 'CAPTURED',
+                        reason: 'claim_lost',
+                    });
+                    this.logger.error(`CRITICAL captured_payment_not_finalized orderId=${order.id} result=CAPTURED reason=claim_lost version=${app_version_1.APP_VERSION}`);
+                }
                 return false;
             }
             this.logger.log(`first_successful_capture orderId=${order.id}`);
@@ -1429,10 +1420,24 @@ let PaymentsService = class PaymentsService {
                 orderId: order.id,
                 status: 'completed',
             });
+            this.discordAlerts.enqueue('finalize_success', {
+                orderId: order.id,
+                trackId: inquiryCapableTrackId ?? order.posGatewayTrackId,
+                version: app_version_1.APP_VERSION,
+                status: 'completed',
+            });
             return true;
-        }, { maxWait: 10_000, timeout: 15_000 });
+        }, { maxWait: 10_000, timeout: 15_000 }).catch((error) => {
+            this.discordAlerts.enqueue('finalize_failed', {
+                orderId,
+                trackId: alertTrackId,
+                version: app_version_1.APP_VERSION,
+                error: error instanceof Error ? error.message : String(error),
+            });
+            throw error;
+        });
         if (didFinalize) {
-            await this.runPostPaymentSelfCheck(orderId);
+            void this.runPostPaymentSelfCheck(orderId);
             this.emitPaymentConfirmedNotify(orderId);
         }
         return didFinalize;
@@ -1448,84 +1453,7 @@ let PaymentsService = class PaymentsService {
         this.emitPaymentConfirmedNotify(orderId, scenario);
     }
     emitPaymentConfirmedNotify(orderId, scenario) {
-        setImmediate(() => {
-            void (async () => {
-                const row = await this.prisma.order.findUnique({
-                    where: { id: orderId },
-                    select: {
-                        id: true,
-                        createdAt: true,
-                        serialNumber: true,
-                        invoiceNumber: true,
-                        totalPrice: true,
-                        posHostedPaymentUrl: true,
-                        posPaymentMethod: true,
-                        customer: {
-                            select: {
-                                phone: true,
-                                phone2: true,
-                                wallet: { select: { debt: true, balance: true } },
-                            },
-                        },
-                    },
-                });
-                if (!row) {
-                    return;
-                }
-                const phone = (0, kuwait_customer_phone_1.resolveCustomerPhoneForNotify)(row.customer.phone, row.customer.phone2);
-                if (!phone.trim()) {
-                    this.logger.log(`Payment confirmed notify skipped: no customer phone on file for order ${row.id.slice(0, 8)}…`);
-                    return;
-                }
-                const snPersisted = row.serialNumber?.trim();
-                const invPersisted = row.invoiceNumber?.trim();
-                if (!snPersisted && !invPersisted) {
-                    this.logger.warn(`Payment confirmed notify skipped — no persisted serialNumber/invoiceNumber (order ${row.id}); refuse draft-style labels.`);
-                    return;
-                }
-                const orderLabel = snPersisted || invPersisted;
-                const customerScenario = scenario ??
-                    this.inferPaymentScenarioFromOrderAge(row.createdAt);
-                const base = (process.env.PUBLIC_WEB_APP_URL ?? '')
-                    .replace(/\/$/, '')
-                    .trim();
-                const ratingUrl = base ? `${base}/r/${encodeURIComponent(row.id)}` : undefined;
-                const paymentUrl = row.posHostedPaymentUrl?.trim() || undefined;
-                const walletDebt = row.customer.wallet?.debt ?? new client_1.Prisma.Decimal(0);
-                const walletBal = row.customer.wallet?.balance ?? new client_1.Prisma.Decimal(0);
-                const method = row.posPaymentMethod;
-                let variant = 'standard';
-                let walletDebtKd;
-                let remainingSubscriptionBalanceKd;
-                let totalDebtKd;
-                if (method === client_1.PosPaymentMethod.SUBSCRIPTION_WALLET) {
-                    variant = 'subscription_wallet';
-                    remainingSubscriptionBalanceKd = walletBal.toFixed(3);
-                }
-                else if (method === client_1.PosPaymentMethod.DEBT_ON_ACCOUNT) {
-                    variant = 'debt_on_account';
-                    totalDebtKd = walletDebt.toFixed(3);
-                }
-                else if (walletDebt.gt(0)) {
-                    walletDebtKd = walletDebt.toFixed(3);
-                }
-                this.customerNotifications.notifyPaymentConfirmed({
-                    customerPhone: phone,
-                    orderId: row.id,
-                    amountKd: row.totalPrice.toFixed(3),
-                    orderLabel,
-                    paymentUrl,
-                    ratingUrl,
-                    customerScenario,
-                    variant,
-                    walletDebtKd,
-                    remainingSubscriptionBalanceKd,
-                    totalDebtKd,
-                });
-            })().catch((e) => {
-                this.logger.warn(`emitPaymentConfirmedNotify: ${e}`);
-            });
-        });
+        this.whatsappQueue.enqueuePaymentConfirmed(orderId, scenario);
     }
     async resolveFallbackPerformer(tx) {
         const owner = await tx.user.findFirst({
@@ -1565,6 +1493,8 @@ let PaymentsService = class PaymentsService {
                     alreadySettled: true,
                     amountKd: order.totalPrice.toFixed(3),
                     posPaymentMethod: order.posPaymentMethod ?? client_1.PosPaymentMethod.CASH,
+                    customerId: order.customerId,
+                    auditAction: 'PAYMENT_MADE',
                 };
             }
             if (awaitingDebtPhysicalCollection) {
@@ -1584,6 +1514,8 @@ let PaymentsService = class PaymentsService {
                     alreadySettled: false,
                     amountKd: order.totalPrice.toFixed(3),
                     posPaymentMethod: method,
+                    customerId: order.customerId,
+                    auditAction: 'DEBT_PAYMENT',
                 };
             }
             const originalMethod = order.posPaymentMethod;
@@ -1654,22 +1586,41 @@ let PaymentsService = class PaymentsService {
                 alreadySettled: false,
                 amountKd: order.totalPrice.toFixed(3),
                 posPaymentMethod: method,
+                customerId: order.customerId,
+                auditAction: 'PAYMENT_MADE',
             };
         }, { maxWait: 10_000, timeout: 15_000 });
         if (!result.alreadySettled) {
+            this.auditLogs.logFinancialEvent({
+                action: result.auditAction,
+                customerId: result.customerId,
+                orderId: result.orderId,
+                amount: result.amountKd,
+                source: result.posPaymentMethod,
+                userId: performedByUserId,
+            });
             this.emitPaymentConfirmedNotify(orderId, 'debt_receipt');
         }
-        return result;
+        return {
+            orderId: result.orderId,
+            alreadySettled: result.alreadySettled,
+            amountKd: result.amountKd,
+            posPaymentMethod: result.posPaymentMethod,
+        };
     }
 };
 exports.PaymentsService = PaymentsService;
 exports.PaymentsService = PaymentsService = PaymentsService_1 = __decorate([
     (0, common_1.Injectable)(),
+    __param(7, (0, common_1.Optional)()),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
         customer_ledger_service_1.CustomerLedgerService,
         general_ledger_service_1.GeneralLedgerService,
         inventory_service_1.InventoryService,
-        customer_notifications_service_1.CustomerNotificationsService])
+        whatsapp_queue_service_1.WhatsAppQueueService,
+        discord_alert_service_1.DiscordAlertService,
+        audit_logs_service_1.AuditLogsService,
+        metrics_service_1.MetricsService])
 ], PaymentsService);
 function normalizeKwPhone(phone) {
     const d = phone.replace(/[\s-]/g, '').trim();
@@ -1729,6 +1680,14 @@ function validateFinalizeGatewayMetadata(meta, orderTotal, storedTrackId, incomi
         return { ok: false, reason: 'currency_mismatch' };
     }
     return { ok: true };
+}
+function isCapturedFinalizeMetadata(meta) {
+    if (meta == null || typeof meta !== 'object' || Array.isArray(meta)) {
+        return false;
+    }
+    const m = meta;
+    const result = typeof m.result === 'string' ? m.result.trim().toUpperCase() : '';
+    return result === 'CAPTURED';
 }
 function extractTrackIdFromFinalizeGatewayMetadata(meta) {
     if (meta == null || typeof meta !== 'object' || Array.isArray(meta)) {

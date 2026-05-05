@@ -13,6 +13,8 @@ exports.CashService = void 0;
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
 const prisma_service_1 = require("../../prisma/prisma.service");
+const audit_logs_service_1 = require("../../audit-logs/audit-logs.service");
+const institutional_mutation_util_1 = require("../../auth/institutional-mutation.util");
 const finance_money_1 = require("../finance-money");
 function sumKd(values) {
     let total = 0;
@@ -51,8 +53,10 @@ function parseLatLng(input) {
 }
 let CashService = class CashService {
     prisma;
-    constructor(prisma) {
+    auditLogs;
+    constructor(prisma, auditLogs) {
         this.prisma = prisma;
+        this.auditLogs = auditLogs;
     }
     async ensureOpenShiftForDriver(driverId) {
         const user = await this.prisma.user.findUnique({ where: { id: driverId } });
@@ -79,7 +83,6 @@ let CashService = class CashService {
             where: {
                 status: client_1.OrderStatus.COMPLETED,
                 completedAt: { gte: from, lte: to },
-                posPaymentMethod: { not: null },
                 ...(scopedDriverId ? { driverId: scopedDriverId } : {}),
             },
             _sum: { totalPrice: true },
@@ -88,12 +91,10 @@ let CashService = class CashService {
         return {
             from: from.toISOString(),
             to: to.toISOString(),
-            rows: rows
-                .filter((r) => r.posPaymentMethod !== null)
-                .map((r) => ({
+            rows: rows.map((r) => ({
                 posPaymentMethod: r.posPaymentMethod,
                 orderCount: r._count,
-                totalRevenue: r._sum.totalPrice !== null && r._sum.totalPrice !== undefined
+                totalRevenue: r._sum?.totalPrice !== null && r._sum?.totalPrice !== undefined
                     ? r._sum.totalPrice.toString()
                     : '0',
             })),
@@ -260,14 +261,15 @@ let CashService = class CashService {
             },
         });
     }
-    async confirmHandover(managerId, dto) {
+    async confirmHandover(managerId, actorRole, dto) {
+        (0, institutional_mutation_util_1.assertInstitutionalMutationAllowed)(actorRole);
         const driver = await this.prisma.user.findUnique({
             where: { id: dto.driverId },
         });
         if (!driver || driver.safariRole !== client_1.SafariRole.DRIVER) {
             throw new common_1.NotFoundException('Driver not found');
         }
-        return this.prisma.$transaction(async (tx) => {
+        const result = await this.prisma.$transaction(async (tx) => {
             const pending = await tx.order.findMany({
                 where: {
                     driverId: dto.driverId,
@@ -296,6 +298,8 @@ let CashService = class CashService {
                     systemHandoverTotal: '0.0000',
                     shiftId: shift?.id ?? null,
                     bankDepositReceiptUrl: dto.depositReceiptUrl ?? null,
+                    custodyBagId: null,
+                    branchId: null,
                 };
             }
             const ids = pending.map((o) => o.id);
@@ -319,11 +323,12 @@ let CashService = class CashService {
                 select: { branchId: true },
             });
             const hasSlip = Boolean(dto.depositReceiptUrl);
-            await tx.managerCashCustody.create({
+            const branchId = manager?.branchId ?? driver.branchId ?? null;
+            const bag = await tx.managerCashCustody.create({
                 data: {
                     managerId,
                     driverId: dto.driverId,
-                    branchId: manager?.branchId ?? driver.branchId ?? null,
+                    branchId,
                     shiftId: shift?.id ?? null,
                     amountKd: systemHandoverTotal,
                     settledOrderCount: pending.length,
@@ -333,14 +338,41 @@ let CashService = class CashService {
                     depositSlipUrl: dto.depositReceiptUrl ?? null,
                     slipUploadedAt: hasSlip ? new Date() : null,
                 },
+                select: { id: true },
             });
             return {
                 settledOrderCount: pending.length,
                 systemHandoverTotal,
                 shiftId: shift?.id ?? null,
                 bankDepositReceiptUrl: dto.depositReceiptUrl ?? null,
+                custodyBagId: bag.id,
+                branchId,
             };
         });
+        if (result.settledOrderCount > 0) {
+            this.auditLogs.logFinancialEvent({
+                action: 'CASH_HANDOVER_TRANSFER',
+                userId: managerId,
+                role: actorRole,
+                amount: result.systemHandoverTotal,
+                source: 'DRIVER_TO_BRANCH_HANDOVER',
+                changes: {
+                    driverId: dto.driverId,
+                    branchId: result.branchId,
+                    custodyBagId: result.custodyBagId,
+                    shiftId: result.shiftId,
+                    settledOrderCount: result.settledOrderCount,
+                    declaredHandoverTotal: dto.declaredHandoverTotal ?? null,
+                    depositReceiptProvided: Boolean(dto.depositReceiptUrl),
+                },
+            });
+        }
+        return {
+            settledOrderCount: result.settledOrderCount,
+            systemHandoverTotal: result.systemHandoverTotal,
+            shiftId: result.shiftId,
+            bankDepositReceiptUrl: result.bankDepositReceiptUrl,
+        };
     }
     async getDriverCashTrace(query) {
         const from = new Date(query.from);
@@ -485,6 +517,57 @@ let CashService = class CashService {
             drivers: active,
         };
     }
+    async getCashReconciliationSnapshot(query) {
+        const trace = await this.getDriverCashTrace(query);
+        const [pendingDriversKd, depRejected, awaiting] = await Promise.all([
+            this.getTotalCashWithDrivers(),
+            this.prisma.managerCashCustody.aggregate({
+                where: {
+                    status: {
+                        in: [
+                            client_1.ManagerCashCustodyStatus.PENDING_DEPOSIT,
+                            client_1.ManagerCashCustodyStatus.REJECTED,
+                        ],
+                    },
+                },
+                _sum: { amountKd: true },
+                _count: { _all: true },
+            }),
+            this.prisma.managerCashCustody.aggregate({
+                where: { status: client_1.ManagerCashCustodyStatus.AWAITING_VERIFICATION },
+                _sum: { amountKd: true },
+                _count: { _all: true },
+            }),
+        ]);
+        const depRejectedKd = depRejected._sum.amountKd !== null && depRejected._sum.amountKd !== undefined
+            ? depRejected._sum.amountKd.toFixed(4)
+            : '0.0000';
+        const awaitingKd = awaiting._sum.amountKd !== null && awaiting._sum.amountKd !== undefined
+            ? awaiting._sum.amountKd.toFixed(4)
+            : '0.0000';
+        return {
+            range: trace.range,
+            notes: [
+                'eventBasedInRange uses completedAt (collected) and receivedFromDriverAt (handed) inside [from, to].',
+                'stateBasedNow.pendingWithDriversKd is current driver field cash (PAID_TO_DRIVER), not window-scoped.',
+                'stateBasedNow.pendingWithManagers* uses open custody rows by status (deposit/rejected vs awaiting verification).',
+            ],
+            eventBasedInRange: {
+                collectedKd: trace.kpis.totalCollectedKd,
+                handedToManagerKd: trace.kpis.totalHandedToManagerKd,
+                collectedOrderCount: trace.kpis.totalCollectedOrderCount,
+                handedBagCount: trace.kpis.totalBagCount,
+            },
+            stateBasedNow: {
+                pendingWithDriversKd: pendingDriversKd,
+                pendingWithManagersDepositOrRejectedKd: depRejectedKd,
+                pendingWithManagersDepositOrRejectedBagCount: depRejected._count._all,
+                awaitingVerificationKd: awaitingKd,
+                awaitingVerificationBagCount: awaiting._count._all,
+            },
+            driverCashTraceKpis: trace.kpis,
+        };
+    }
     async getOwnerFinancialCycleReport() {
         const rows = await this.prisma.order.findMany({
             where: {
@@ -555,6 +638,7 @@ let CashService = class CashService {
 exports.CashService = CashService;
 exports.CashService = CashService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [prisma_service_1.PrismaService])
+    __metadata("design:paramtypes", [prisma_service_1.PrismaService,
+        audit_logs_service_1.AuditLogsService])
 ], CashService);
 //# sourceMappingURL=cash.service.js.map

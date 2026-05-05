@@ -62,7 +62,7 @@ let PayrollController = class PayrollController {
 exports.PayrollController = PayrollController;
 __decorate([
     (0, common_1.Post)(),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.MANAGER),
     (0, swagger_1.ApiOperation)({ summary: `Create payroll line (${branding_1.APP_BRAND})` }),
     __param(0, (0, common_1.Body)()),
     __param(1, (0, current_user_decorator_1.CurrentUser)()),
@@ -72,7 +72,7 @@ __decorate([
 ], PayrollController.prototype, "create", null);
 __decorate([
     (0, common_1.Patch)(':id/mark-paid'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.MANAGER),
     (0, swagger_1.ApiOperation)({ summary: `Mark payroll as paid (${branding_1.APP_BRAND})` }),
     __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
     __param(1, (0, current_user_decorator_1.CurrentUser)()),
@@ -82,7 +82,7 @@ __decorate([
 ], PayrollController.prototype, "markPaid", null);
 __decorate([
     (0, common_1.Post)(':id/recalc-loan'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.MANAGER),
     (0, swagger_1.ApiOperation)({
         summary: `Recalculate loan instalment for a pending payroll (${branding_1.APP_BRAND})`,
         description: 'Pulls the scheduled monthly instalment(s) into this payroll row for loans that have never been consumed by a payroll. Only touches PENDING rows.',
@@ -116,7 +116,7 @@ __decorate([
 ], PayrollController.prototype, "listAdHoc", null);
 __decorate([
     (0, common_1.Post)('adhoc-lines'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.MANAGER),
     (0, swagger_1.ApiOperation)({ summary: `Create manual payroll roster line` }),
     __param(0, (0, common_1.Body)()),
     __param(1, (0, current_user_decorator_1.CurrentUser)()),
@@ -126,7 +126,7 @@ __decorate([
 ], PayrollController.prototype, "createAdHoc", null);
 __decorate([
     (0, common_1.Patch)('adhoc-lines/:id'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.MANAGER),
     (0, swagger_1.ApiOperation)({ summary: `Update manual payroll roster line` }),
     __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
     __param(1, (0, common_1.Body)()),
@@ -137,7 +137,7 @@ __decorate([
 ], PayrollController.prototype, "updateAdHoc", null);
 __decorate([
     (0, common_1.Delete)('adhoc-lines/:id'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.MANAGER),
     (0, swagger_1.ApiOperation)({ summary: `Delete manual payroll roster line` }),
     __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
     __param(1, (0, current_user_decorator_1.CurrentUser)()),

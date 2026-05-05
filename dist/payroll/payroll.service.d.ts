@@ -1,4 +1,4 @@
-import { Prisma, SafariRole } from '@prisma/client';
+import { Prisma, SafariRole } from "@prisma/client";
 import { CommissionPayoutsService } from '../commissions/commission-payouts.service';
 import { DebtHoldsService } from '../debt-holds/debt-holds.service';
 import { LoansService } from '../loans/loans.service';
@@ -24,16 +24,16 @@ export declare class PayrollService {
             fullName: string;
         };
         branch: {
-            id: string;
             name: string;
+            id: string;
         };
     } & {
-        id: string;
-        createdAt: Date;
+        status: import(".prisma/client").$Enums.PayrollStatus;
         userId: string;
         branchId: string;
+        id: string;
+        createdAt: Date;
         updatedAt: Date;
-        status: import("@prisma/client").$Enums.PayrollStatus;
         basicSalary: Prisma.Decimal;
         allowances: Prisma.Decimal;
         deductions: Prisma.Decimal;
@@ -50,16 +50,16 @@ export declare class PayrollService {
             fullName: string;
         };
         branch: {
-            id: string;
             name: string;
+            id: string;
         };
     } & {
-        id: string;
-        createdAt: Date;
+        status: import(".prisma/client").$Enums.PayrollStatus;
         userId: string;
         branchId: string;
+        id: string;
+        createdAt: Date;
         updatedAt: Date;
-        status: import("@prisma/client").$Enums.PayrollStatus;
         basicSalary: Prisma.Decimal;
         allowances: Prisma.Decimal;
         deductions: Prisma.Decimal;
@@ -76,16 +76,16 @@ export declare class PayrollService {
             fullName: string;
         };
         branch: {
-            id: string;
             name: string;
+            id: string;
         };
     } & {
-        id: string;
-        createdAt: Date;
+        status: import(".prisma/client").$Enums.PayrollStatus;
         userId: string;
         branchId: string;
+        id: string;
+        createdAt: Date;
         updatedAt: Date;
-        status: import("@prisma/client").$Enums.PayrollStatus;
         basicSalary: Prisma.Decimal;
         allowances: Prisma.Decimal;
         deductions: Prisma.Decimal;
@@ -104,17 +104,17 @@ export declare class PayrollService {
             payrollRosterLineOrder: number | null;
         };
         branch: {
-            id: string;
             name: string;
+            id: string;
             payrollRosterSortOrder: number | null;
         };
     } & {
-        id: string;
-        createdAt: Date;
+        status: import(".prisma/client").$Enums.PayrollStatus;
         userId: string;
         branchId: string;
+        id: string;
+        createdAt: Date;
         updatedAt: Date;
-        status: import("@prisma/client").$Enums.PayrollStatus;
         basicSalary: Prisma.Decimal;
         allowances: Prisma.Decimal;
         deductions: Prisma.Decimal;
@@ -127,29 +127,29 @@ export declare class PayrollService {
     findOne(actorRole: SafariRole, actorUserId: string, id: string): Promise<{
         user: {
             id: string;
-            address: string | null;
             username: string;
             fullName: string;
             employeeId: string | null;
             jobTitle: string | null;
             civilId: string | null;
             nationality: string | null;
+            address: string | null;
             bankName: string | null;
             bankIban: string | null;
             hireDate: Date | null;
         };
         branch: {
-            id: string;
             name: string;
+            id: string;
             location: string;
         };
     } & {
-        id: string;
-        createdAt: Date;
+        status: import(".prisma/client").$Enums.PayrollStatus;
         userId: string;
         branchId: string;
+        id: string;
+        createdAt: Date;
         updatedAt: Date;
-        status: import("@prisma/client").$Enums.PayrollStatus;
         basicSalary: Prisma.Decimal;
         allowances: Prisma.Decimal;
         deductions: Prisma.Decimal;
@@ -162,17 +162,17 @@ export declare class PayrollService {
     sumPaidNetInRange(from: Date, to: Date, branchId?: string): Promise<string>;
     listAdHocLines(actorRole: SafariRole, periodYm: string, branchId?: string): Promise<({
         branch: {
-            id: string;
             name: string;
+            id: string;
         };
     } & {
+        branchId: string;
         id: string;
         createdAt: Date;
-        branchId: string;
         updatedAt: Date;
-        note: string | null;
         bankName: string | null;
         bankIban: string | null;
+        note: string | null;
         basicSalary: Prisma.Decimal;
         allowances: Prisma.Decimal;
         deductions: Prisma.Decimal;
@@ -193,17 +193,17 @@ export declare class PayrollService {
         note?: string | null;
     }): Promise<{
         branch: {
-            id: string;
             name: string;
+            id: string;
         };
     } & {
+        branchId: string;
         id: string;
         createdAt: Date;
-        branchId: string;
         updatedAt: Date;
-        note: string | null;
         bankName: string | null;
         bankIban: string | null;
+        note: string | null;
         basicSalary: Prisma.Decimal;
         allowances: Prisma.Decimal;
         deductions: Prisma.Decimal;
@@ -222,17 +222,17 @@ export declare class PayrollService {
         note?: string | null;
     }): Promise<{
         branch: {
-            id: string;
             name: string;
+            id: string;
         };
     } & {
+        branchId: string;
         id: string;
         createdAt: Date;
-        branchId: string;
         updatedAt: Date;
-        note: string | null;
         bankName: string | null;
         bankIban: string | null;
+        note: string | null;
         basicSalary: Prisma.Decimal;
         allowances: Prisma.Decimal;
         deductions: Prisma.Decimal;

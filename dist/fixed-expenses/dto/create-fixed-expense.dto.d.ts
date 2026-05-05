@@ -1,4 +1,4 @@
-import { FixedExpenseCategory } from '@prisma/client';
+import { FixedExpenseCategory } from "@prisma/client";
 export declare class CreateFixedExpenseDto {
     branchId: string;
     title: string;

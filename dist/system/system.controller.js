@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.SystemController = void 0;
 const common_1 = require("@nestjs/common");
 const swagger_1 = require("@nestjs/swagger");
+const roles_decorator_1 = require("../auth/decorators/roles.decorator");
 const branding_1 = require("../common/constants/branding");
 const operating_hours_service_1 = require("./operating-hours.service");
 let SystemController = class SystemController {
@@ -37,6 +38,7 @@ __decorate([
 exports.SystemController = SystemController = __decorate([
     (0, swagger_1.ApiTags)('system'),
     (0, common_1.Controller)('system'),
+    (0, roles_decorator_1.Public)('Operating-hours status is public so the web app can show closure state.'),
     __metadata("design:paramtypes", [operating_hours_service_1.OperatingHoursService])
 ], SystemController);
 //# sourceMappingURL=system.controller.js.map

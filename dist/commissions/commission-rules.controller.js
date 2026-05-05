@@ -54,7 +54,7 @@ let CommissionRulesController = class CommissionRulesController {
 exports.CommissionRulesController = CommissionRulesController;
 __decorate([
     (0, common_1.Get)(),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),
     (0, swagger_1.ApiOperation)({ summary: `List commission rules (${branding_1.APP_BRAND})` }),
     __param(0, (0, current_user_decorator_1.CurrentUser)()),
     __param(1, (0, common_1.Query)('mode')),
@@ -64,7 +64,7 @@ __decorate([
 ], CommissionRulesController.prototype, "list", null);
 __decorate([
     (0, common_1.Get)('default'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),
     (0, swagger_1.ApiOperation)({
         summary: `Fetch the dashboard "default" rule (role = null) (${branding_1.APP_BRAND})`,
     }),
@@ -75,7 +75,7 @@ __decorate([
 ], CommissionRulesController.prototype, "getDefault", null);
 __decorate([
     (0, common_1.Put)('default'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER),
     (0, swagger_1.ApiOperation)({
         summary: `Upsert the dashboard "default" rule (role = null) (${branding_1.APP_BRAND})`,
     }),
@@ -87,7 +87,7 @@ __decorate([
 ], CommissionRulesController.prototype, "upsertDefault", null);
 __decorate([
     (0, common_1.Get)(':id'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),
     (0, swagger_1.ApiOperation)({ summary: `Fetch a commission rule (${branding_1.APP_BRAND})` }),
     __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
     __param(1, (0, current_user_decorator_1.CurrentUser)()),
@@ -97,7 +97,7 @@ __decorate([
 ], CommissionRulesController.prototype, "findOne", null);
 __decorate([
     (0, common_1.Post)(),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER),
     (0, swagger_1.ApiOperation)({ summary: `Create a commission rule (${branding_1.APP_BRAND})` }),
     __param(0, (0, common_1.Body)()),
     __param(1, (0, current_user_decorator_1.CurrentUser)()),
@@ -107,7 +107,7 @@ __decorate([
 ], CommissionRulesController.prototype, "create", null);
 __decorate([
     (0, common_1.Patch)(':id'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER),
     (0, swagger_1.ApiOperation)({ summary: `Update a commission rule (${branding_1.APP_BRAND})` }),
     __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
     __param(1, (0, common_1.Body)()),
@@ -118,7 +118,7 @@ __decorate([
 ], CommissionRulesController.prototype, "update", null);
 __decorate([
     (0, common_1.Delete)(':id'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER),
     (0, swagger_1.ApiOperation)({
         summary: `Soft-disable a commission rule (${branding_1.APP_BRAND})`,
     }),

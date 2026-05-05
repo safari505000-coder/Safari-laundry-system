@@ -13,6 +13,7 @@ exports.OnlinePaymentService = void 0;
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
 const payments_service_1 = require("../../common/services/payments.service");
+const payment_finalize_span_1 = require("../../common/tracing/payment-finalize-span");
 const prisma_service_1 = require("../../prisma/prisma.service");
 let OnlinePaymentService = class OnlinePaymentService {
     prisma;
@@ -34,7 +35,7 @@ let OnlinePaymentService = class OnlinePaymentService {
         return this.payments.normalizeCallbackStatus(status);
     }
     async finalizePaidOrderFromGateway(referenceId) {
-        await this.payments.finalizePaidOrderFromGateway(referenceId);
+        await (0, payment_finalize_span_1.withPaymentFinalizeSpan)({ orderId: referenceId, source: 'ONLINE_PAYMENT_SERVICE' }, () => this.payments.finalizePaidOrderFromGateway(referenceId));
     }
     async ensurePaymentLinkForUnpaidOrder(orderId) {
         const link = await this.payments.ensurePaymentLinkForUnpaidOrder(orderId);

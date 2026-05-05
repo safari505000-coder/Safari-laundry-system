@@ -17,10 +17,15 @@ const common_1 = require("@nestjs/common");
 const swagger_1 = require("@nestjs/swagger");
 const client_1 = require("@prisma/client");
 const roles_decorator_1 = require("../auth/decorators/roles.decorator");
+const permissions_decorator_1 = require("../auth/permissions/permissions.decorator");
+const permissions_enum_1 = require("../auth/permissions/permissions.enum");
 const current_user_decorator_1 = require("../auth/decorators/current-user.decorator");
 const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
 const roles_guard_1 = require("../auth/guards/roles.guard");
+const customer_block_guard_1 = require("../common/guards/customer-block.guard");
 const branding_1 = require("../common/constants/branding");
+const audit_service_1 = require("../common/audit/audit.service");
+const apply_scope_1 = require("../common/utils/apply-scope");
 const assign_driver_dto_1 = require("./dto/assign-driver.dto");
 const create_order_dto_1 = require("./dto/create-order.dto");
 const create_order_quick_dto_1 = require("./dto/create-order-quick.dto");
@@ -29,8 +34,10 @@ const update_order_dto_1 = require("./dto/update-order.dto");
 const orders_service_1 = require("./orders.service");
 let OrdersController = class OrdersController {
     ordersService;
-    constructor(ordersService) {
+    audit;
+    constructor(ordersService, audit) {
         this.ordersService = ordersService;
+        this.audit = audit;
     }
     getManagerDashboard() {
         return this.ordersService.getManagerDashboard();
@@ -42,7 +49,18 @@ let OrdersController = class OrdersController {
         return this.ordersService.createAsManager(dto, user.userId);
     }
     findAll(user, filters) {
-        return this.ordersService.findAllForActor(user.userId, user.role, user.branchId, filters);
+        if (user.scope === 'BRANCH' && !user.branchId) {
+            this.audit.logAudit('PERMISSION_DENIED', user, {
+                reason: 'branch_scope_without_branch',
+                resource: 'invoices',
+            });
+            throw new common_1.ForbiddenException('Branch scope requires a branch.');
+        }
+        const scopedFilters = (0, apply_scope_1.applyScope)(user, filters, {
+            branchField: 'branchId',
+            userField: 'driverId',
+        });
+        return this.ordersService.findAllForActor(user.userId, user.role, user.branchId, scopedFilters);
     }
     listBranchDrivers(user) {
         return this.ordersService.listInvoiceFilterDrivers(user.role, user.branchId);
@@ -85,7 +103,7 @@ exports.OrdersController = OrdersController;
 __decorate([
     (0, common_1.Get)('manager-dashboard'),
     (0, common_1.UseGuards)(roles_guard_1.RolesGuard),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.SUPERVISOR, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.VIEWER),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.VIEW_INVOICES, permissions_enum_1.AppPermission.VIEW_REPORTS),
     (0, swagger_1.ApiOperation)({
         summary: `Manager dashboard — orders & driver contribution (${branding_1.APP_BRAND})`,
         description: 'Active pipeline count, completed revenue, and per-driver completed volume/revenue (driver-led business). OWNER/MANAGER only.',
@@ -96,8 +114,8 @@ __decorate([
 ], OrdersController.prototype, "getManagerDashboard", null);
 __decorate([
     (0, common_1.Post)('quick'),
-    (0, common_1.UseGuards)(roles_guard_1.RolesGuard),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.DRIVER),
+    (0, common_1.UseGuards)(roles_guard_1.RolesGuard, customer_block_guard_1.CustomerBlockGuard),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.CREATE_INVOICE),
     (0, swagger_1.ApiOperation)({
         summary: `Quick create order — driver (${branding_1.APP_BRAND})`,
         description: 'Mobile-first: **Kuwait mobile** (+965 optional, 8 digits starting 5/6/9), **totalPrice > 0**, optional **lineItems** (Σ qty×price must equal total). Auto-assigned to the authenticated driver.',
@@ -110,8 +128,8 @@ __decorate([
 ], OrdersController.prototype, "createQuick", null);
 __decorate([
     (0, common_1.Post)(),
-    (0, common_1.UseGuards)(roles_guard_1.RolesGuard),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.MANAGER),
+    (0, common_1.UseGuards)(roles_guard_1.RolesGuard, customer_block_guard_1.CustomerBlockGuard),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.CREATE_INVOICE),
     (0, swagger_1.ApiOperation)({
         summary: `Create order — back office (${branding_1.APP_BRAND})`,
         description: 'Same validation as driver quick create: Kuwait phone, **totalPrice > 0**, **EXPRESS|NORMAL**, optional **lineItems** with total reconciliation. Optional driver assignment. Branch managers only — drivers use POST /orders/quick; Call Center is NOT permitted to issue invoices (Dastur §2, V19.3).',
@@ -124,6 +142,8 @@ __decorate([
 ], OrdersController.prototype, "create", null);
 __decorate([
     (0, common_1.Get)(),
+    (0, common_1.UseGuards)(roles_guard_1.RolesGuard),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.VIEW_INVOICES),
     (0, swagger_1.ApiOperation)({
         summary: `List invoices (${branding_1.APP_BRAND})`,
         description: 'V19.22.5 — Invoices page. **OWNER / GENERAL_MANAGER / CC / ACCOUNTANT**: entire fleet. **MANAGER**: branch-scoped (orders whose assigned driver belongs to the manager\'s branch). **DRIVER**: own rows only. Query params (`driverId`, `status`, `posPaymentMethod`, `cashStatus`, `from`, `to`, `q`) layer on top of the role/branch scope.',
@@ -136,6 +156,8 @@ __decorate([
 ], OrdersController.prototype, "findAll", null);
 __decorate([
     (0, common_1.Get)('branch-drivers'),
+    (0, common_1.UseGuards)(roles_guard_1.RolesGuard),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.VIEW_INVOICES),
     (0, swagger_1.ApiOperation)({
         summary: `Drivers for Invoices-page filter (${branding_1.APP_BRAND})`,
         description: 'V19.22.5 — Lightweight dropdown source for the Invoices-page driver filter. MANAGER: only drivers attached to their branch. OWNER / GM / CC / ACCOUNTANT: every active DRIVER. Sorted by fullName. DRIVER role receives an empty list (their filter hides the driver dropdown).',
@@ -148,7 +170,7 @@ __decorate([
 __decorate([
     (0, common_1.Get)('collections/unpaid-online'),
     (0, common_1.UseGuards)(roles_guard_1.RolesGuard),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.CALL_CENTER_SUPERVISOR, client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.MANAGER, client_1.SafariRole.DRIVER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.CALL_CENTER_SUPERVISOR),
     (0, swagger_1.ApiOperation)({
         summary: `Debt-Tracking — every unpaid invoice (${branding_1.APP_BRAND})`,
         description: 'V1.6.5: Financial Oversight Report feeding the Collections debt table. Returns ALL non-canceled orders with cashStatus=UNPAID, regardless of payment method (Cash, KNET, Payment Link, Online, Wallet, Debt-on-account). Pass `?branchId=<uuid>` to scope the table to a single branch — the Red-card KPI uses the same scope so the footer sum equals the KPI to the last fils. Amounts are serialized with 3 decimals (KWD standard).',
@@ -162,7 +184,7 @@ __decorate([
 __decorate([
     (0, common_1.Get)('stale-quick-risks'),
     (0, common_1.UseGuards)(roles_guard_1.RolesGuard),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.AUDIT_INVOICE),
     (0, swagger_1.ApiOperation)({
         summary: `Stale Quick-Capture accountability risks (${branding_1.APP_BRAND})`,
         description: 'V19.22.4 — Accountant/Owner watchdog. Returns every Order still in PENDING + UNPAID state **>24h** after creation via the driver Quick-Capture flow. These invoices have a permanent serialNumber but no settlement trail — the driver may already be holding customer cash. Sort: oldest-first. Amounts serialized to KWD 3-decimal.',
@@ -186,6 +208,8 @@ __decorate([
 ], OrdersController.prototype, "listDriverPendingInvoices", null);
 __decorate([
     (0, common_1.Post)(':id/invoice-share-link'),
+    (0, common_1.UseGuards)(roles_guard_1.RolesGuard),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.SHARE_INVOICE),
     (0, swagger_1.ApiOperation)({
         summary: `Mint public share URL for the POS invoice (WhatsApp / PDF) (${branding_1.APP_BRAND})`,
         description: 'V19.24 — anyone who can GET this order may mint a 7-day link to `/public/invoice/:token` on the web app. Customer saves PDF via the browser. Same visibility rules as GET :id (driver: own order only).',
@@ -199,6 +223,8 @@ __decorate([
 ], OrdersController.prototype, "mintInvoiceShareLink", null);
 __decorate([
     (0, common_1.Get)(':id'),
+    (0, common_1.UseGuards)(roles_guard_1.RolesGuard),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.VIEW_INVOICES),
     (0, swagger_1.ApiOperation)({
         summary: `Get order by id (${branding_1.APP_BRAND})`,
         description: 'OWNER/MANAGER: any order. DRIVER: only if they are the assigned driver.',
@@ -212,7 +238,7 @@ __decorate([
 __decorate([
     (0, common_1.Patch)(':id/assign-driver'),
     (0, common_1.UseGuards)(roles_guard_1.RolesGuard),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.MANAGER, client_1.SafariRole.SUPERVISOR),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.UPDATE_OPERATIONAL_DATA),
     (0, swagger_1.ApiOperation)({
         summary: `Assign or reassign driver (${branding_1.APP_BRAND})`,
         description: 'Branch manager or supervisor. Not allowed when order is COMPLETED or CANCELED.',
@@ -225,6 +251,8 @@ __decorate([
 ], OrdersController.prototype, "assignDriver", null);
 __decorate([
     (0, common_1.Patch)(':id'),
+    (0, common_1.UseGuards)(roles_guard_1.RolesGuard),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.UPDATE_INVOICE),
     (0, swagger_1.ApiOperation)({
         summary: `Update order status / notes (${branding_1.APP_BRAND})`,
         description: '**State machine**: e.g. COMPLETED only from OUT_FOR_DELIVERY; PICKED_UP requires an assigned driver. DRIVER: own orders only. MANAGER/SUPERVISOR: any order. OWNER and other roles: read-only (no updates).',
@@ -241,6 +269,7 @@ exports.OrdersController = OrdersController = __decorate([
     (0, swagger_1.ApiBearerAuth)('bearer'),
     (0, common_1.Controller)('orders'),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
-    __metadata("design:paramtypes", [orders_service_1.OrdersService])
+    __metadata("design:paramtypes", [orders_service_1.OrdersService,
+        audit_service_1.AuditService])
 ], OrdersController);
 //# sourceMappingURL=orders.controller.js.map

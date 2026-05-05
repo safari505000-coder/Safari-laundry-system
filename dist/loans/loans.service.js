@@ -29,10 +29,13 @@ const LOAN_INCLUDE = {
         select: { id: true, fullName: true, username: true },
     },
 };
-function isApprover(role) {
+function canSeeAllLoans(role) {
     return (role === client_1.SafariRole.OWNER ||
         role === client_1.SafariRole.GENERAL_MANAGER ||
         role === client_1.SafariRole.ACCOUNTANT);
+}
+function canApproveLoan(role) {
+    return role === client_1.SafariRole.OWNER || role === client_1.SafariRole.ACCOUNTANT;
 }
 let LoansService = class LoansService {
     prisma;
@@ -47,7 +50,7 @@ let LoansService = class LoansService {
         }
         const amount = new client_1.Prisma.Decimal(dto.amount.toFixed(4));
         const monthly = amount.div(dto.installmentCount).toDecimalPlaces(4);
-        const targetUserId = isApprover(actorRole)
+        const targetUserId = canApproveLoan(actorRole)
             ? dto.userId ?? actorUserId
             : actorUserId;
         return this.prisma.employeeLoan.create({
@@ -68,7 +71,7 @@ let LoansService = class LoansService {
             ...(q.status ? { status: q.status } : {}),
             ...(q.userId ? { userId: q.userId } : {}),
         };
-        if (!isApprover(actorRole)) {
+        if (!canSeeAllLoans(actorRole)) {
             where.userId = actorUserId;
         }
         return this.prisma.employeeLoan.findMany({
@@ -92,13 +95,13 @@ let LoansService = class LoansService {
         });
         if (!row)
             throw new common_1.NotFoundException('Loan not found');
-        if (!isApprover(actorRole) && row.userId !== actorUserId) {
+        if (!canSeeAllLoans(actorRole) && row.userId !== actorUserId) {
             throw new common_1.ForbiddenException();
         }
         return row;
     }
     async approve(actorRole, actorUserId, id) {
-        if (!isApprover(actorRole))
+        if (!canApproveLoan(actorRole))
             throw new common_1.ForbiddenException();
         const current = await this.prisma.employeeLoan.findUnique({
             where: { id },
@@ -119,7 +122,7 @@ let LoansService = class LoansService {
         });
     }
     async reject(actorRole, actorUserId, id, reason) {
-        if (!isApprover(actorRole))
+        if (!canApproveLoan(actorRole))
             throw new common_1.ForbiddenException();
         const current = await this.prisma.employeeLoan.findUnique({
             where: { id },
@@ -141,9 +144,8 @@ let LoansService = class LoansService {
         });
     }
     async deductManual(actorRole, loanId, amountKd, note) {
-        if (actorRole !== client_1.SafariRole.OWNER &&
-            actorRole !== client_1.SafariRole.GENERAL_MANAGER) {
-            throw new common_1.ForbiddenException('Manual loan deductions are OWNER / GM only');
+        if (actorRole !== client_1.SafariRole.OWNER) {
+            throw new common_1.ForbiddenException('Manual loan deductions are restricted to OWNER.');
         }
         if (!Number.isFinite(amountKd) || amountKd <= 0) {
             throw new common_1.BadRequestException('Amount must be a positive number');

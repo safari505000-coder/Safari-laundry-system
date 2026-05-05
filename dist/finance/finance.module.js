@@ -21,13 +21,26 @@ const cash_service_1 = require("./services/cash.service");
 const debt_service_1 = require("./services/debt.service");
 const online_payment_service_1 = require("./services/online-payment.service");
 const subscription_service_1 = require("./services/subscription.service");
+const accountant_dashboard_service_1 = require("./services/accountant-dashboard.service");
+const customer_intelligence_service_1 = require("./services/customer-intelligence.service");
+const driver_risk_service_1 = require("./services/driver-risk.service");
+const finance_dashboard_cache_service_1 = require("./services/finance-dashboard-cache.service");
+const financial_alerts_service_1 = require("./services/financial-alerts.service");
+const owner_financial_dashboard_service_1 = require("./services/owner-financial-dashboard.service");
+const ledger_controller_1 = require("./ledger/ledger.controller");
+const ledger_projection_service_1 = require("./ledger/ledger-projection.service");
 let FinanceModule = class FinanceModule {
 };
 exports.FinanceModule = FinanceModule;
 exports.FinanceModule = FinanceModule = __decorate([
     (0, common_1.Module)({
         imports: [prisma_module_1.PrismaModule, payments_module_1.PaymentsModule, general_ledger_module_1.GeneralLedgerModule],
-        controllers: [finance_controller_1.FinanceController, bank_deposits_controller_1.BankDepositsController, deposits_controller_1.DepositsController],
+        controllers: [
+            finance_controller_1.FinanceController,
+            bank_deposits_controller_1.BankDepositsController,
+            deposits_controller_1.DepositsController,
+            ledger_controller_1.LedgerController,
+        ],
         providers: [
             finance_service_1.FinanceService,
             bank_deposits_service_1.BankDepositsService,
@@ -36,6 +49,13 @@ exports.FinanceModule = FinanceModule = __decorate([
             online_payment_service_1.OnlinePaymentService,
             debt_service_1.DebtService,
             subscription_service_1.SubscriptionService,
+            finance_dashboard_cache_service_1.FinanceDashboardCacheService,
+            accountant_dashboard_service_1.AccountantDashboardService,
+            customer_intelligence_service_1.CustomerIntelligenceService,
+            driver_risk_service_1.DriverRiskService,
+            financial_alerts_service_1.FinancialAlertsService,
+            owner_financial_dashboard_service_1.OwnerFinancialDashboardService,
+            ledger_projection_service_1.LedgerProjectionService,
         ],
         exports: [
             finance_service_1.FinanceService,
@@ -44,6 +64,8 @@ exports.FinanceModule = FinanceModule = __decorate([
             cash_service_1.CashService,
             debt_service_1.DebtService,
             subscription_service_1.SubscriptionService,
+            owner_financial_dashboard_service_1.OwnerFinancialDashboardService,
+            ledger_projection_service_1.LedgerProjectionService,
         ],
     })
 ], FinanceModule);

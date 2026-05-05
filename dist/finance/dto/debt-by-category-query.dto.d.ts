@@ -1,4 +1,4 @@
-import { DebtEntityCategory } from '@prisma/client';
+import { DebtEntityCategory } from "@prisma/client";
 export declare class DebtByCategoryQueryDto {
     from: string;
     to: string;

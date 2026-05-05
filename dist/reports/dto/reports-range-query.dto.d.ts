@@ -1,4 +1,4 @@
-import { PosPaymentMethod } from '@prisma/client';
+import { PosPaymentMethod } from "@prisma/client";
 export declare class ReportsRangeQueryDto {
     from: string;
     to: string;

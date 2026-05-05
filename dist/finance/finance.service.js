@@ -54,8 +54,11 @@ let FinanceService = class FinanceService {
     async updateDriverTracking(driverId, dto) {
         return this.cashService.updateDriverTracking(driverId, dto);
     }
-    async confirmHandover(managerId, dto) {
-        return this.cashService.confirmHandover(managerId, dto);
+    async confirmHandover(managerId, actorRole, dto) {
+        return this.cashService.confirmHandover(managerId, actorRole, dto);
+    }
+    async getCashReconciliationSnapshot(query) {
+        return this.cashService.getCashReconciliationSnapshot(query);
     }
     async getOwnerFinancialCycleReport() {
         return this.cashService.getOwnerFinancialCycleReport();

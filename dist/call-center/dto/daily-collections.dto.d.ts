@@ -1,4 +1,4 @@
-import { PosPaymentMethod, SafariRole } from '@prisma/client';
+import { PosPaymentMethod, SafariRole } from "@prisma/client";
 export declare class DailyCollectionsQueryDto {
     date?: string;
     agentId?: string;

@@ -70,7 +70,7 @@ __decorate([
 ], PurchaseOrdersController.prototype, "findOne", null);
 __decorate([
     (0, common_1.Post)(),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.ACCOUNTANT),
     (0, swagger_1.ApiOperation)({ summary: `Create a DRAFT purchase order (${branding_1.APP_BRAND})` }),
     __param(0, (0, common_1.Body)()),
     __param(1, (0, current_user_decorator_1.CurrentUser)()),
@@ -80,7 +80,7 @@ __decorate([
 ], PurchaseOrdersController.prototype, "create", null);
 __decorate([
     (0, common_1.Post)(':id/send'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.ACCOUNTANT),
     (0, swagger_1.ApiOperation)({ summary: `Transition DRAFT → SENT (${branding_1.APP_BRAND})` }),
     __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __param(1, (0, current_user_decorator_1.CurrentUser)()),
@@ -90,7 +90,7 @@ __decorate([
 ], PurchaseOrdersController.prototype, "send", null);
 __decorate([
     (0, common_1.Post)(':id/cancel'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.ACCOUNTANT),
     (0, swagger_1.ApiOperation)({ summary: `Cancel a purchase order (${branding_1.APP_BRAND})` }),
     __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __param(1, (0, common_1.Body)()),
@@ -101,7 +101,7 @@ __decorate([
 ], PurchaseOrdersController.prototype, "cancel", null);
 __decorate([
     (0, common_1.Post)(':id/receive'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.OWNER, client_1.SafariRole.ACCOUNTANT),
     (0, swagger_1.ApiOperation)({
         summary: `Record a delivery against a PO (${branding_1.APP_BRAND})`,
         description: 'Partial or full receipt. Creates StockMovement(STOCK_IN) rows via InventoryService and transitions PO to PARTIALLY_RECEIVED / RECEIVED.',

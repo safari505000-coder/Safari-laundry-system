@@ -1,4 +1,4 @@
-import { OnModuleInit } from '@nestjs/common';
+import { OnModuleInit } from "@nestjs/common";
 export type InvoiceIssuedNotifyParams = {
     customerPhone: string;
     orderId: string;
@@ -59,6 +59,7 @@ export declare class CustomerNotificationsService implements OnModuleInit {
     deliverInvoiceIssuedNow(params: InvoiceIssuedNotifyParams): Promise<void>;
     notifyInvoiceEditedForIssuer(params: InvoiceEditedIssuerNotifyParams): void;
     notifyPaymentConfirmed(params: PaymentConfirmedNotifyParams): void;
+    deliverPaymentConfirmedQueued(params: PaymentConfirmedNotifyParams): Promise<void>;
     notifyStandaloneDebtReceipt(params: StandaloneDebtReceiptNotifyParams): void;
     notifyDriverCollectionConfirmed(params: DriverCollectionConfirmedNotifyParams): void;
     deliverCollectionsPaymentLinkNow(params: {

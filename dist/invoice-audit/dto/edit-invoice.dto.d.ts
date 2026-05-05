@@ -1,4 +1,4 @@
-import { PosPaymentMethod, StarchOption } from '@prisma/client';
+import { PosPaymentMethod, StarchOption } from "@prisma/client";
 export declare class EditInvoiceLineItemDto {
     id?: string;
     label?: string;

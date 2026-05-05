@@ -20,6 +20,7 @@ const current_user_decorator_1 = require("../auth/decorators/current-user.decora
 const roles_decorator_1 = require("../auth/decorators/roles.decorator");
 const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
 const roles_guard_1 = require("../auth/guards/roles.guard");
+const customer_block_guard_1 = require("../common/guards/customer-block.guard");
 const branding_1 = require("../common/constants/branding");
 const pos_checkout_bundle_dto_1 = require("../orders/dto/pos-checkout-bundle.dto");
 const pos_checkout_dto_1 = require("../orders/dto/pos-checkout.dto");
@@ -86,6 +87,7 @@ __decorate([
 ], PosController.prototype, "createCustomer", null);
 __decorate([
     (0, common_1.Get)('customers/:customerId/billing'),
+    (0, common_1.UseGuards)(customer_block_guard_1.CustomerBlockGuard),
     (0, swagger_1.ApiOperation)({
         summary: `Customer subscription & wallet — POS (${branding_1.APP_BRAND})`,
         description: 'Prepaid balance (subscription credit), debt, and last activated plan name for checkout UI.',
@@ -97,6 +99,7 @@ __decorate([
 ], PosController.prototype, "getCustomerBilling", null);
 __decorate([
     (0, common_1.Post)('checkout'),
+    (0, common_1.UseGuards)(customer_block_guard_1.CustomerBlockGuard),
     (0, swagger_1.ApiOperation)({
         summary: `Complete POS sale — wallet + payment method (${branding_1.APP_BRAND})`,
         description: 'Cash/KNET/DEBT/wallet: creates COMPLETED order and wallet settlement. ONLINE: creates PENDING order, returns paymentLink URL; gateway callback completes the sale.',
@@ -109,6 +112,7 @@ __decorate([
 ], PosController.prototype, "posCheckout", null);
 __decorate([
     (0, common_1.Post)('checkout-bundle'),
+    (0, common_1.UseGuards)(customer_block_guard_1.CustomerBlockGuard),
     (0, swagger_1.ApiOperation)({
         summary: `Multi-invoice POS — one hosted payment for several orders (${branding_1.APP_BRAND})`,
         description: 'Creates multiple PENDING orders linked to one PosPaymentBundle; returns a single paymentLink for the combined total. Gateway callback references the bundle id.',

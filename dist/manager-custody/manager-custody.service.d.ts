@@ -1,5 +1,7 @@
-import { ManagerCashCustodyStatus, SafariRole } from '@prisma/client';
+import { ManagerCashCustodyStatus, SafariRole } from "@prisma/client";
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { CashService } from '../finance/services/cash.service';
+import { LedgerProjectionService } from '../finance/ledger/ledger-projection.service';
 import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ApproveReceiptFromDriverDto } from './dto/approve-receipt-from-driver.dto';
@@ -42,17 +44,55 @@ export type AgingSummary = {
     totalOverdueKd: string;
     bucket: Record<AgingBucket, number>;
 };
+export type DriverHandoverSummaryDto = {
+    driverId: string;
+    driverName: string;
+    driverUsername: string;
+    driverPhone: string | null;
+    heldCashKd: string;
+    pendingOrderCount: number;
+    shiftStartedAt: string | null;
+    ageHours: number | null;
+    riskLevel: 'NORMAL' | 'WARNING' | 'CRITICAL';
+};
+export type ActivityEventDto = {
+    txId: string;
+    at: string;
+    amountKd: string;
+    kind: 'POS_SALE' | 'DRIVER_HANDOVER' | 'BANK_DEPOSIT' | 'OTHER';
+    actorAccountId: string;
+    meta: Record<string, unknown> | null;
+};
+export type ManagerCashStatusSnapshotDto = {
+    source: 'api/manager/cash-status';
+    managerId: string;
+    managerName: string;
+    pendingDepositKd: string;
+    managerOwnPosKd: string;
+    custodyBagsTotalKd: string;
+    driversAwaitingHandoverKd: string;
+    bagsCount: number;
+    driversAtRiskCount: number;
+    lastHandoverAt: string | null;
+    lastActivityAt: string | null;
+    drivers: DriverHandoverSummaryDto[];
+    recentActivity: ActivityEventDto[];
+    generatedAt: string;
+};
 export declare class ManagerCustodyService {
     private readonly prisma;
     private readonly generalLedger;
     private readonly cashService;
+    private readonly auditLogs;
+    private readonly ledgerProjection;
     private readonly logger;
-    constructor(prisma: PrismaService, generalLedger: GeneralLedgerService, cashService: CashService);
+    constructor(prisma: PrismaService, generalLedger: GeneralLedgerService, cashService: CashService, auditLogs: AuditLogsService, ledgerProjection: LedgerProjectionService);
     approveReceiptFromDriver(managerId: string, _managerBranchId: string | null, dto: ApproveReceiptFromDriverDto): Promise<CustodyRowDto>;
     uploadDepositSlip(custodyId: string, managerId: string, dto: UploadDepositSlipDto): Promise<CustodyRowDto>;
     verifyCustody(custodyId: string, accountantId: string, dto: VerifyCustodyDto): Promise<CustodyRowDto>;
     rejectCustody(custodyId: string, accountantId: string, dto: RejectCustodyDto): Promise<CustodyRowDto>;
     listMine(managerId: string): Promise<CustodyRowDto[]>;
+    listMineForActor(userId: string, role: SafariRole): Promise<CustodyRowDto[]>;
     listByDriver(driverId: string): Promise<CustodyRowDto[]>;
     findByIdForReceipt(custodyId: string, actorUserId: string, actorRole: SafariRole): Promise<CustodyRowDto>;
     listAging(query: ListCustodyQueryDto): Promise<{
@@ -69,6 +109,7 @@ export declare class ManagerCustodyService {
             amountKd: string;
         }>;
     }>;
+    getCashStatusSnapshot(managerId: string): Promise<ManagerCashStatusSnapshotDto>;
     private requireBag;
     private toRow;
     private summarise;

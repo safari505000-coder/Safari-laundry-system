@@ -1,5 +1,5 @@
-import { StreamableFile } from '@nestjs/common';
-import type { Response } from 'express';
+import { StreamableFile } from "@nestjs/common";
+import type { Response } from "express";
 import { InsightsQueryDto } from './dto/insights-query.dto';
 import { InsightsService } from './insights.service';
 import { WeeklyExecutiveReportService } from './weekly-executive-report.service';

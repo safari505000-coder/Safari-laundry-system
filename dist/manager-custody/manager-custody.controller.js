@@ -52,7 +52,7 @@ let ManagerCustodyController = class ManagerCustodyController {
         return this.svc.uploadDepositSlip(id, user.userId, dto);
     }
     listMine(user) {
-        return this.svc.listMine(user.userId);
+        return this.svc.listMineForActor(user.userId, user.role);
     }
     listDriverMine(user) {
         return this.svc.listByDriver(user.userId);
@@ -142,8 +142,8 @@ __decorate([
 ], ManagerCustodyController.prototype, "uploadSlip", null);
 __decorate([
     (0, common_1.Get)('mine'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.MANAGER),
-    (0, swagger_1.ApiOperation)({ summary: `Manager — my custody bags (${branding_1.APP_BRAND})` }),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.MANAGER, client_1.SafariRole.OWNER, client_1.SafariRole.GENERAL_MANAGER, client_1.SafariRole.ACCOUNTANT),
+    (0, swagger_1.ApiOperation)({ summary: `Manager custody bags — branch "mine" or fleet read-only (${branding_1.APP_BRAND})` }),
     __param(0, (0, current_user_decorator_1.CurrentUser)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object]),

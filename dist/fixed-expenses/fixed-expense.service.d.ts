@@ -1,4 +1,4 @@
-import { FixedExpenseCategory, Prisma, SafariRole } from '@prisma/client';
+import { FixedExpenseCategory, Prisma, SafariRole } from "@prisma/client";
 import { PrismaService } from '../prisma/prisma.service';
 export declare function countAccruedMonths(rangeFrom: Date, rangeTo: Date, effFrom: Date, effTo: Date | null): number;
 export declare class FixedExpenseService {
@@ -13,30 +13,30 @@ export declare class FixedExpenseService {
         effectiveFrom?: string;
         effectiveTo?: string | null;
     }): Promise<{
-        id: string;
-        createdAt: Date;
         branchId: string;
         title: string;
-        updatedAt: Date;
+        id: string;
         isActive: boolean;
-        category: import("@prisma/client").$Enums.FixedExpenseCategory;
+        createdAt: Date;
+        updatedAt: Date;
+        category: import(".prisma/client").$Enums.FixedExpenseCategory;
         monthlyAmount: Prisma.Decimal;
         effectiveFrom: Date;
         effectiveTo: Date | null;
     }>;
     list(branchId?: string): Promise<({
         branch: {
-            id: string;
             name: string;
+            id: string;
         };
     } & {
-        id: string;
-        createdAt: Date;
         branchId: string;
         title: string;
-        updatedAt: Date;
+        id: string;
         isActive: boolean;
-        category: import("@prisma/client").$Enums.FixedExpenseCategory;
+        createdAt: Date;
+        updatedAt: Date;
+        category: import(".prisma/client").$Enums.FixedExpenseCategory;
         monthlyAmount: Prisma.Decimal;
         effectiveFrom: Date;
         effectiveTo: Date | null;

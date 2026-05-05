@@ -63,6 +63,7 @@ class CustomerLedgerHeaderDto {
     walletBalanceKd;
     walletDebtKd;
     collectionsReceivableKd;
+    operationalDebtKd;
     effectiveDebtKd;
 }
 exports.CustomerLedgerHeaderDto = CustomerLedgerHeaderDto;
@@ -102,6 +103,10 @@ __decorate([
     (0, swagger_1.ApiProperty)({ example: '0.0000' }),
     __metadata("design:type", String)
 ], CustomerLedgerHeaderDto.prototype, "collectionsReceivableKd", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ example: '0.0000' }),
+    __metadata("design:type", String)
+], CustomerLedgerHeaderDto.prototype, "operationalDebtKd", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)({ example: '0.0000' }),
     __metadata("design:type", String)

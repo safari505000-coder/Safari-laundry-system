@@ -1,4 +1,4 @@
-import { OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 export declare class BcryptService implements OnModuleInit, OnModuleDestroy {
     private readonly logger;
     private readonly workers;

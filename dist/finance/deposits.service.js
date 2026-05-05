@@ -14,6 +14,7 @@ const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
 const general_ledger_service_1 = require("../general-ledger/general-ledger.service");
 const prisma_service_1 = require("../prisma/prisma.service");
+const institutional_mutation_util_1 = require("../auth/institutional-mutation.util");
 const debt_service_1 = require("./services/debt.service");
 let DepositsService = class DepositsService {
     prisma;
@@ -119,7 +120,8 @@ let DepositsService = class DepositsService {
             updatedAt: row.updatedAt.toISOString(),
         };
     }
-    async updateStatus(auditorId, id, dto) {
+    async updateStatus(auditorId, auditorRole, id, dto) {
+        (0, institutional_mutation_util_1.assertInstitutionalMutationAllowed)(auditorRole);
         const row = await this.prisma.deposit.findUnique({
             where: { id },
             include: {

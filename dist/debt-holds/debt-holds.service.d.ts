@@ -1,4 +1,4 @@
-import { DebtHoldMode, Prisma, SafariRole } from '@prisma/client';
+import { DebtHoldMode, Prisma, SafariRole } from "@prisma/client";
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemSettingsService } from '../system-settings/system-settings.service';
 import { ListDebtHoldsDto } from './dto/list-debt-holds.dto';
@@ -23,10 +23,10 @@ export declare class DebtHoldsService {
         holdAmount: Prisma.Decimal;
         holdMode: DebtHoldMode;
     }, tx?: Prisma.TransactionClient): Promise<{
+        status: import(".prisma/client").$Enums.DebtHoldStatus;
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        status: import("@prisma/client").$Enums.DebtHoldStatus;
         note: string | null;
         payrollId: string | null;
         employeeUserId: string;
@@ -43,8 +43,8 @@ export declare class DebtHoldsService {
     }>;
     list(actorRole: SafariRole, actorUserId: string, dto: ListDebtHoldsDto): Promise<({
         payroll: {
+            status: import(".prisma/client").$Enums.PayrollStatus;
             id: string;
-            status: import("@prisma/client").$Enums.PayrollStatus;
             paymentDate: Date;
         } | null;
         employee: {
@@ -58,10 +58,10 @@ export declare class DebtHoldsService {
             fullName: string;
         } | null;
     } & {
+        status: import(".prisma/client").$Enums.DebtHoldStatus;
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        status: import("@prisma/client").$Enums.DebtHoldStatus;
         note: string | null;
         payrollId: string | null;
         employeeUserId: string;
@@ -84,10 +84,10 @@ export declare class DebtHoldsService {
             fullName: string;
         };
     } & {
+        status: import(".prisma/client").$Enums.DebtHoldStatus;
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        status: import("@prisma/client").$Enums.DebtHoldStatus;
         note: string | null;
         payrollId: string | null;
         employeeUserId: string;
@@ -99,10 +99,10 @@ export declare class DebtHoldsService {
         disbursedById: string | null;
     }>;
     releaseManualHold(actorRole: SafariRole, id: string): Promise<{
+        status: import(".prisma/client").$Enums.DebtHoldStatus;
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        status: import("@prisma/client").$Enums.DebtHoldStatus;
         note: string | null;
         payrollId: string | null;
         employeeUserId: string;
@@ -114,10 +114,10 @@ export declare class DebtHoldsService {
         disbursedById: string | null;
     }>;
     markDisbursed(actorRole: SafariRole, actorUserId: string, id: string): Promise<{
+        status: import(".prisma/client").$Enums.DebtHoldStatus;
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        status: import("@prisma/client").$Enums.DebtHoldStatus;
         note: string | null;
         payrollId: string | null;
         employeeUserId: string;
@@ -137,6 +137,6 @@ export declare class DebtHoldsService {
         isPolicyActive: boolean;
         debtKd: string;
         holdKd: string;
-        holdMode: import("@prisma/client").$Enums.DebtHoldMode;
+        holdMode: import(".prisma/client").$Enums.DebtHoldMode;
     }>;
 }

@@ -1,4 +1,4 @@
-import { SafariRole } from '@prisma/client';
+import { SafariRole } from "@prisma/client";
 export declare class LoginUserDto {
     id: string;
     username: string;
@@ -6,6 +6,7 @@ export declare class LoginUserDto {
     phone: string | null;
     safariRole: SafariRole;
     branchId?: string | null;
+    linkedCustomerId?: string | null;
 }
 export declare class LoginResponseDto {
     accessToken: string;

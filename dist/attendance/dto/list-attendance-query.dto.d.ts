@@ -1,4 +1,4 @@
-import { AttendanceSource } from '@prisma/client';
+import { AttendanceSource } from "@prisma/client";
 export declare class ListAttendanceQueryDto {
     from?: string;
     to?: string;

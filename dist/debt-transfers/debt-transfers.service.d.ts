@@ -1,4 +1,4 @@
-import { SafariRole } from '@prisma/client';
+import { SafariRole } from "@prisma/client";
 import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateDebtTransferDto } from './dto/create-debt-transfer.dto';
@@ -9,11 +9,11 @@ export declare class DebtTransfersService {
     constructor(prisma: PrismaService, generalLedger: GeneralLedgerService);
     listDrivers(): Promise<{
         drivers: {
-            id: string;
             branchId: string | null;
+            id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         }[];
     }>;
     getDriverOutstandingOrders(driverId: string): Promise<{
@@ -30,55 +30,55 @@ export declare class DebtTransfersService {
             id: string;
             invoiceNumber: string | null;
             serialNumber: string | null;
-            posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
+            posPaymentMethod: import(".prisma/client").$Enums.PosPaymentMethod;
             completedAt: Date | null;
         }[];
     }>;
     create(executorId: string, executorRole: SafariRole, dto: CreateDebtTransferDto): Promise<{
         id: string;
-        status: import("@prisma/client").$Enums.DebtTransferStatus;
+        status: import(".prisma/client").$Enums.DebtTransferStatus;
         totalAmount: string;
         orderCount: number;
         reason: string | null;
         notes: string | null;
         sourceDriver: {
-            id: string;
             branchId: string | null;
+            id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         } | {
-            id: string;
             branchId: string | null;
+            id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         };
         targetDriver: {
-            id: string;
             branchId: string | null;
+            id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         } | {
-            id: string;
             branchId: string | null;
+            id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         };
         executedBy: {
             id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         } | {
             id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         };
-        executedByRole: import("@prisma/client").$Enums.SafariRole;
+        executedByRole: import(".prisma/client").$Enums.SafariRole;
         sourceSignedAt: Date | null;
         targetSignedAt: Date | null;
         finalizedAt: Date | null;
@@ -88,12 +88,12 @@ export declare class DebtTransfersService {
             id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         } | {
             id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         } | null;
         systemSignature: string | null;
         createdAt: Date;
@@ -103,66 +103,66 @@ export declare class DebtTransfersService {
             amountSnapshot: string;
             order: {
                 totalPrice: string;
+                status: import(".prisma/client").$Enums.OrderStatus;
                 customer: {
                     id: string;
                     phone: string;
                     displayName: string | null;
                 };
                 id: string;
-                status: import("@prisma/client").$Enums.OrderStatus;
-                cashStatus: import("@prisma/client").$Enums.CashStatus;
+                cashStatus: import(".prisma/client").$Enums.CashStatus;
                 invoiceNumber: string | null;
                 serialNumber: string | null;
-                posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
+                posPaymentMethod: import(".prisma/client").$Enums.PosPaymentMethod;
                 completedAt: Date | null;
             };
         }[];
     }>;
     signAsSource(transferId: string, signerId: string): Promise<{
         id: string;
-        status: import("@prisma/client").$Enums.DebtTransferStatus;
+        status: import(".prisma/client").$Enums.DebtTransferStatus;
         totalAmount: string;
         orderCount: number;
         reason: string | null;
         notes: string | null;
         sourceDriver: {
-            id: string;
             branchId: string | null;
+            id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         } | {
-            id: string;
             branchId: string | null;
+            id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         };
         targetDriver: {
-            id: string;
             branchId: string | null;
+            id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         } | {
-            id: string;
             branchId: string | null;
+            id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         };
         executedBy: {
             id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         } | {
             id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         };
-        executedByRole: import("@prisma/client").$Enums.SafariRole;
+        executedByRole: import(".prisma/client").$Enums.SafariRole;
         sourceSignedAt: Date | null;
         targetSignedAt: Date | null;
         finalizedAt: Date | null;
@@ -172,12 +172,12 @@ export declare class DebtTransfersService {
             id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         } | {
             id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         } | null;
         systemSignature: string | null;
         createdAt: Date;
@@ -187,66 +187,66 @@ export declare class DebtTransfersService {
             amountSnapshot: string;
             order: {
                 totalPrice: string;
+                status: import(".prisma/client").$Enums.OrderStatus;
                 customer: {
                     id: string;
                     phone: string;
                     displayName: string | null;
                 };
                 id: string;
-                status: import("@prisma/client").$Enums.OrderStatus;
-                cashStatus: import("@prisma/client").$Enums.CashStatus;
+                cashStatus: import(".prisma/client").$Enums.CashStatus;
                 invoiceNumber: string | null;
                 serialNumber: string | null;
-                posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
+                posPaymentMethod: import(".prisma/client").$Enums.PosPaymentMethod;
                 completedAt: Date | null;
             };
         }[];
     }>;
     signAsTarget(transferId: string, signerId: string): Promise<{
         id: string;
-        status: import("@prisma/client").$Enums.DebtTransferStatus;
+        status: import(".prisma/client").$Enums.DebtTransferStatus;
         totalAmount: string;
         orderCount: number;
         reason: string | null;
         notes: string | null;
         sourceDriver: {
-            id: string;
             branchId: string | null;
+            id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         } | {
-            id: string;
             branchId: string | null;
+            id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         };
         targetDriver: {
-            id: string;
             branchId: string | null;
+            id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         } | {
-            id: string;
             branchId: string | null;
+            id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         };
         executedBy: {
             id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         } | {
             id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         };
-        executedByRole: import("@prisma/client").$Enums.SafariRole;
+        executedByRole: import(".prisma/client").$Enums.SafariRole;
         sourceSignedAt: Date | null;
         targetSignedAt: Date | null;
         finalizedAt: Date | null;
@@ -256,12 +256,12 @@ export declare class DebtTransfersService {
             id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         } | {
             id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         } | null;
         systemSignature: string | null;
         createdAt: Date;
@@ -271,66 +271,66 @@ export declare class DebtTransfersService {
             amountSnapshot: string;
             order: {
                 totalPrice: string;
+                status: import(".prisma/client").$Enums.OrderStatus;
                 customer: {
                     id: string;
                     phone: string;
                     displayName: string | null;
                 };
                 id: string;
-                status: import("@prisma/client").$Enums.OrderStatus;
-                cashStatus: import("@prisma/client").$Enums.CashStatus;
+                cashStatus: import(".prisma/client").$Enums.CashStatus;
                 invoiceNumber: string | null;
                 serialNumber: string | null;
-                posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
+                posPaymentMethod: import(".prisma/client").$Enums.PosPaymentMethod;
                 completedAt: Date | null;
             };
         }[];
     }>;
     finalize(transferId: string, executorId: string, executorRole: SafariRole): Promise<{
         id: string;
-        status: import("@prisma/client").$Enums.DebtTransferStatus;
+        status: import(".prisma/client").$Enums.DebtTransferStatus;
         totalAmount: string;
         orderCount: number;
         reason: string | null;
         notes: string | null;
         sourceDriver: {
-            id: string;
             branchId: string | null;
+            id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         } | {
-            id: string;
             branchId: string | null;
+            id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         };
         targetDriver: {
-            id: string;
             branchId: string | null;
+            id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         } | {
-            id: string;
             branchId: string | null;
+            id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         };
         executedBy: {
             id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         } | {
             id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         };
-        executedByRole: import("@prisma/client").$Enums.SafariRole;
+        executedByRole: import(".prisma/client").$Enums.SafariRole;
         sourceSignedAt: Date | null;
         targetSignedAt: Date | null;
         finalizedAt: Date | null;
@@ -340,12 +340,12 @@ export declare class DebtTransfersService {
             id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         } | {
             id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         } | null;
         systemSignature: string | null;
         createdAt: Date;
@@ -355,66 +355,66 @@ export declare class DebtTransfersService {
             amountSnapshot: string;
             order: {
                 totalPrice: string;
+                status: import(".prisma/client").$Enums.OrderStatus;
                 customer: {
                     id: string;
                     phone: string;
                     displayName: string | null;
                 };
                 id: string;
-                status: import("@prisma/client").$Enums.OrderStatus;
-                cashStatus: import("@prisma/client").$Enums.CashStatus;
+                cashStatus: import(".prisma/client").$Enums.CashStatus;
                 invoiceNumber: string | null;
                 serialNumber: string | null;
-                posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
+                posPaymentMethod: import(".prisma/client").$Enums.PosPaymentMethod;
                 completedAt: Date | null;
             };
         }[];
     }>;
     cancel(transferId: string, cancellerId: string, cancellerRole: SafariRole, reason: string | null): Promise<{
         id: string;
-        status: import("@prisma/client").$Enums.DebtTransferStatus;
+        status: import(".prisma/client").$Enums.DebtTransferStatus;
         totalAmount: string;
         orderCount: number;
         reason: string | null;
         notes: string | null;
         sourceDriver: {
-            id: string;
             branchId: string | null;
+            id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         } | {
-            id: string;
             branchId: string | null;
+            id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         };
         targetDriver: {
-            id: string;
             branchId: string | null;
+            id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         } | {
-            id: string;
             branchId: string | null;
+            id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         };
         executedBy: {
             id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         } | {
             id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         };
-        executedByRole: import("@prisma/client").$Enums.SafariRole;
+        executedByRole: import(".prisma/client").$Enums.SafariRole;
         sourceSignedAt: Date | null;
         targetSignedAt: Date | null;
         finalizedAt: Date | null;
@@ -424,12 +424,12 @@ export declare class DebtTransfersService {
             id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         } | {
             id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         } | null;
         systemSignature: string | null;
         createdAt: Date;
@@ -439,17 +439,17 @@ export declare class DebtTransfersService {
             amountSnapshot: string;
             order: {
                 totalPrice: string;
+                status: import(".prisma/client").$Enums.OrderStatus;
                 customer: {
                     id: string;
                     phone: string;
                     displayName: string | null;
                 };
                 id: string;
-                status: import("@prisma/client").$Enums.OrderStatus;
-                cashStatus: import("@prisma/client").$Enums.CashStatus;
+                cashStatus: import(".prisma/client").$Enums.CashStatus;
                 invoiceNumber: string | null;
                 serialNumber: string | null;
-                posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
+                posPaymentMethod: import(".prisma/client").$Enums.PosPaymentMethod;
                 completedAt: Date | null;
             };
         }[];
@@ -457,49 +457,49 @@ export declare class DebtTransfersService {
     listMine(userId: string): Promise<{
         rows: {
             id: string;
-            status: import("@prisma/client").$Enums.DebtTransferStatus;
+            status: import(".prisma/client").$Enums.DebtTransferStatus;
             totalAmount: string;
             orderCount: number;
             reason: string | null;
             notes: string | null;
             sourceDriver: {
-                id: string;
                 branchId: string | null;
+                id: string;
                 username: string;
                 fullName: string;
-                safariRole: import("@prisma/client").$Enums.SafariRole;
+                safariRole: import(".prisma/client").$Enums.SafariRole;
             } | {
-                id: string;
                 branchId: string | null;
+                id: string;
                 username: string;
                 fullName: string;
-                safariRole: import("@prisma/client").$Enums.SafariRole;
+                safariRole: import(".prisma/client").$Enums.SafariRole;
             };
             targetDriver: {
-                id: string;
                 branchId: string | null;
+                id: string;
                 username: string;
                 fullName: string;
-                safariRole: import("@prisma/client").$Enums.SafariRole;
+                safariRole: import(".prisma/client").$Enums.SafariRole;
             } | {
-                id: string;
                 branchId: string | null;
+                id: string;
                 username: string;
                 fullName: string;
-                safariRole: import("@prisma/client").$Enums.SafariRole;
+                safariRole: import(".prisma/client").$Enums.SafariRole;
             };
             executedBy: {
                 id: string;
                 username: string;
                 fullName: string;
-                safariRole: import("@prisma/client").$Enums.SafariRole;
+                safariRole: import(".prisma/client").$Enums.SafariRole;
             } | {
                 id: string;
                 username: string;
                 fullName: string;
-                safariRole: import("@prisma/client").$Enums.SafariRole;
+                safariRole: import(".prisma/client").$Enums.SafariRole;
             };
-            executedByRole: import("@prisma/client").$Enums.SafariRole;
+            executedByRole: import(".prisma/client").$Enums.SafariRole;
             sourceSignedAt: Date | null;
             targetSignedAt: Date | null;
             finalizedAt: Date | null;
@@ -509,12 +509,12 @@ export declare class DebtTransfersService {
                 id: string;
                 username: string;
                 fullName: string;
-                safariRole: import("@prisma/client").$Enums.SafariRole;
+                safariRole: import(".prisma/client").$Enums.SafariRole;
             } | {
                 id: string;
                 username: string;
                 fullName: string;
-                safariRole: import("@prisma/client").$Enums.SafariRole;
+                safariRole: import(".prisma/client").$Enums.SafariRole;
             } | null;
             systemSignature: string | null;
             createdAt: Date;
@@ -524,17 +524,17 @@ export declare class DebtTransfersService {
                 amountSnapshot: string;
                 order: {
                     totalPrice: string;
+                    status: import(".prisma/client").$Enums.OrderStatus;
                     customer: {
                         id: string;
                         phone: string;
                         displayName: string | null;
                     };
                     id: string;
-                    status: import("@prisma/client").$Enums.OrderStatus;
-                    cashStatus: import("@prisma/client").$Enums.CashStatus;
+                    cashStatus: import(".prisma/client").$Enums.CashStatus;
                     invoiceNumber: string | null;
                     serialNumber: string | null;
-                    posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
+                    posPaymentMethod: import(".prisma/client").$Enums.PosPaymentMethod;
                     completedAt: Date | null;
                 };
             }[];
@@ -542,49 +542,49 @@ export declare class DebtTransfersService {
     }>;
     findOne(id: string): Promise<{
         id: string;
-        status: import("@prisma/client").$Enums.DebtTransferStatus;
+        status: import(".prisma/client").$Enums.DebtTransferStatus;
         totalAmount: string;
         orderCount: number;
         reason: string | null;
         notes: string | null;
         sourceDriver: {
-            id: string;
             branchId: string | null;
+            id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         } | {
-            id: string;
             branchId: string | null;
+            id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         };
         targetDriver: {
-            id: string;
             branchId: string | null;
+            id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         } | {
-            id: string;
             branchId: string | null;
+            id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         };
         executedBy: {
             id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         } | {
             id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         };
-        executedByRole: import("@prisma/client").$Enums.SafariRole;
+        executedByRole: import(".prisma/client").$Enums.SafariRole;
         sourceSignedAt: Date | null;
         targetSignedAt: Date | null;
         finalizedAt: Date | null;
@@ -594,12 +594,12 @@ export declare class DebtTransfersService {
             id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         } | {
             id: string;
             username: string;
             fullName: string;
-            safariRole: import("@prisma/client").$Enums.SafariRole;
+            safariRole: import(".prisma/client").$Enums.SafariRole;
         } | null;
         systemSignature: string | null;
         createdAt: Date;
@@ -609,17 +609,17 @@ export declare class DebtTransfersService {
             amountSnapshot: string;
             order: {
                 totalPrice: string;
+                status: import(".prisma/client").$Enums.OrderStatus;
                 customer: {
                     id: string;
                     phone: string;
                     displayName: string | null;
                 };
                 id: string;
-                status: import("@prisma/client").$Enums.OrderStatus;
-                cashStatus: import("@prisma/client").$Enums.CashStatus;
+                cashStatus: import(".prisma/client").$Enums.CashStatus;
                 invoiceNumber: string | null;
                 serialNumber: string | null;
-                posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
+                posPaymentMethod: import(".prisma/client").$Enums.PosPaymentMethod;
                 completedAt: Date | null;
             };
         }[];
@@ -630,49 +630,49 @@ export declare class DebtTransfersService {
         offset: number;
         rows: {
             id: string;
-            status: import("@prisma/client").$Enums.DebtTransferStatus;
+            status: import(".prisma/client").$Enums.DebtTransferStatus;
             totalAmount: string;
             orderCount: number;
             reason: string | null;
             notes: string | null;
             sourceDriver: {
-                id: string;
                 branchId: string | null;
+                id: string;
                 username: string;
                 fullName: string;
-                safariRole: import("@prisma/client").$Enums.SafariRole;
+                safariRole: import(".prisma/client").$Enums.SafariRole;
             } | {
-                id: string;
                 branchId: string | null;
+                id: string;
                 username: string;
                 fullName: string;
-                safariRole: import("@prisma/client").$Enums.SafariRole;
+                safariRole: import(".prisma/client").$Enums.SafariRole;
             };
             targetDriver: {
-                id: string;
                 branchId: string | null;
+                id: string;
                 username: string;
                 fullName: string;
-                safariRole: import("@prisma/client").$Enums.SafariRole;
+                safariRole: import(".prisma/client").$Enums.SafariRole;
             } | {
-                id: string;
                 branchId: string | null;
+                id: string;
                 username: string;
                 fullName: string;
-                safariRole: import("@prisma/client").$Enums.SafariRole;
+                safariRole: import(".prisma/client").$Enums.SafariRole;
             };
             executedBy: {
                 id: string;
                 username: string;
                 fullName: string;
-                safariRole: import("@prisma/client").$Enums.SafariRole;
+                safariRole: import(".prisma/client").$Enums.SafariRole;
             } | {
                 id: string;
                 username: string;
                 fullName: string;
-                safariRole: import("@prisma/client").$Enums.SafariRole;
+                safariRole: import(".prisma/client").$Enums.SafariRole;
             };
-            executedByRole: import("@prisma/client").$Enums.SafariRole;
+            executedByRole: import(".prisma/client").$Enums.SafariRole;
             sourceSignedAt: Date | null;
             targetSignedAt: Date | null;
             finalizedAt: Date | null;
@@ -682,12 +682,12 @@ export declare class DebtTransfersService {
                 id: string;
                 username: string;
                 fullName: string;
-                safariRole: import("@prisma/client").$Enums.SafariRole;
+                safariRole: import(".prisma/client").$Enums.SafariRole;
             } | {
                 id: string;
                 username: string;
                 fullName: string;
-                safariRole: import("@prisma/client").$Enums.SafariRole;
+                safariRole: import(".prisma/client").$Enums.SafariRole;
             } | null;
             systemSignature: string | null;
             createdAt: Date;
@@ -697,17 +697,17 @@ export declare class DebtTransfersService {
                 amountSnapshot: string;
                 order: {
                     totalPrice: string;
+                    status: import(".prisma/client").$Enums.OrderStatus;
                     customer: {
                         id: string;
                         phone: string;
                         displayName: string | null;
                     };
                     id: string;
-                    status: import("@prisma/client").$Enums.OrderStatus;
-                    cashStatus: import("@prisma/client").$Enums.CashStatus;
+                    cashStatus: import(".prisma/client").$Enums.CashStatus;
                     invoiceNumber: string | null;
                     serialNumber: string | null;
-                    posPaymentMethod: import("@prisma/client").$Enums.PosPaymentMethod | null;
+                    posPaymentMethod: import(".prisma/client").$Enums.PosPaymentMethod;
                     completedAt: Date | null;
                 };
             }[];

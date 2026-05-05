@@ -37,6 +37,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 require("reflect-metadata");
+require("./tracing");
 require("dotenv/config");
 const Sentry = __importStar(require("@sentry/node"));
 const bcrypt = __importStar(require("bcrypt"));
@@ -48,6 +49,7 @@ const swagger_1 = require("@nestjs/swagger");
 const node_path_1 = require("node:path");
 const express = __importStar(require("express"));
 const app_module_1 = require("./app.module");
+const json_logger_1 = require("./common/logging/json-logger");
 const sentryDsn = process.env.SENTRY_DSN?.trim();
 if (sentryDsn) {
     Sentry.init({
@@ -58,13 +60,18 @@ if (sentryDsn) {
     });
     common_1.Logger.log('Sentry initialised (backend)', 'Bootstrap');
 }
+const validate_production_config_1 = require("./bootstrap/validate-production-config");
 const assert_production_jwt_secret_1 = require("./bootstrap/assert-production-jwt-secret");
 const ensure_default_price_list_1 = require("./bootstrap/ensure-default-price-list");
 const branding_1 = require("./common/constants/branding");
 const global_exception_filter_1 = require("./common/filters/global-exception.filter");
 const branding_response_interceptor_1 = require("./common/interceptors/branding-response.interceptor");
 const prisma_service_1 = require("./prisma/prisma.service");
+const readiness_service_1 = require("./health/readiness.service");
 const app_version_1 = require("./common/constants/app-version");
+const metrics_service_1 = require("./observability/metrics.service");
+const validate_permissions_1 = require("./auth/permissions/validate-permissions");
+const log_express_routes_1 = require("./bootstrap/log-express-routes");
 const DEFAULT_ADMIN_USERNAME = 'admin';
 const DEFAULT_ADMIN_PASSWORD = 'admin';
 const DEFAULT_ADMIN_FULL_NAME = 'System Administrator';
@@ -125,9 +132,13 @@ async function ensureDefaultOwner(prisma) {
     });
 }
 async function bootstrap() {
+    (0, validate_production_config_1.validateProductionConfig)();
+    (0, validate_permissions_1.validatePermissionCoverage)();
     const app = await core_1.NestFactory.create(app_module_1.AppModule, {
         bodyParser: false,
+        logger: new json_logger_1.JsonConsoleLogger('Bootstrap'),
     });
+    app.enableShutdownHooks();
     common_1.Logger.log(`APP_VERSION: ${app_version_1.APP_VERSION}`, 'Bootstrap');
     app.use('/uploads', express.static((0, node_path_1.join)(process.cwd(), 'uploads'), {
         index: false,
@@ -140,8 +151,35 @@ async function bootstrap() {
         crossOriginEmbedderPolicy: false,
     }));
     app.set('trust proxy', true);
+    const metrics = app.get(metrics_service_1.MetricsService);
+    app.use('/metrics', async (_req, res) => {
+        res.setHeader('Content-Type', metrics.registry.contentType);
+        res.send(await metrics.prometheus());
+    });
+    app.use('/health', (req, res) => {
+        if (req.method !== 'GET') {
+            res.status(405).json({ status: 'method_not_allowed' });
+            return;
+        }
+        res.status(200).json({
+            status: 'ok',
+            service: process.env.OTEL_SERVICE_NAME ?? 'safari-erp-api',
+        });
+    });
+    app.use('/health/live', (_req, res) => res.json({ status: 'ok' }));
+    app.use('/health/ready', async (_req, res) => {
+        try {
+            const readiness = app.get(readiness_service_1.ReadinessService);
+            const r = await readiness.check();
+            res.status(r.ok ? 200 : 503).json(r);
+        }
+        catch {
+            res.status(503).json({ ok: false, status: 'unavailable' });
+        }
+    });
     const httpAdapterHost = app.get(core_1.HttpAdapterHost);
     const prisma = app.get(prisma_service_1.PrismaService);
+    await (0, validate_production_config_1.validateProductionConnectivity)(prisma);
     await ensureInstitutionalRoles(prisma);
     await (0, ensure_default_price_list_1.ensureDefaultPriceList)(prisma);
     await ensureDefaultOwner(prisma);
@@ -200,6 +238,7 @@ async function bootstrap() {
     const parsed = Number.parseInt(process.env.PORT ?? '3000', 10);
     const port = Number.isFinite(parsed) && parsed > 0 ? parsed : 3000;
     await app.listen(port, '0.0.0.0');
+    (0, log_express_routes_1.logDebugCustomer360Routes)(app);
 }
 void bootstrap();
 //# sourceMappingURL=main.js.map

@@ -14,6 +14,7 @@ export type SubscriberListRow = {
     balanceDisplayKd: string;
     debt: string;
     unsettledUnpaidKd: string;
+    operationalDebtKd: string;
     effectiveDebtKd: string;
     rowStatus: 'active_ok' | 'active_warn' | 'expired' | 'open_credit';
     invoiceAgeDays: number | null;

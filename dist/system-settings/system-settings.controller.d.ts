@@ -14,23 +14,23 @@ export declare class SystemSettingsController {
     }[]>;
     setToggle(dto: UpdateToggleDto, user: JwtUser): Promise<{
         updatedAt: Date;
-        key: import("@prisma/client").$Enums.SystemToggleKey;
+        key: import(".prisma/client").$Enums.SystemToggleKey;
         isEnabled: boolean;
         updatedBy: string | null;
     }>;
     getPolicy(): Promise<{
         id: string;
-        updatedAt: Date;
         isActive: boolean;
-        holdMode: import("@prisma/client").$Enums.DebtHoldMode;
-        fixedAmount: import("@prisma/client-runtime-utils").Decimal | null;
+        updatedAt: Date;
+        holdMode: import(".prisma/client").$Enums.DebtHoldMode;
+        fixedAmount: import("@prisma/client-runtime-utils/dist").Decimal | null;
     }>;
     updatePolicy(dto: UpdateDebtHoldPolicyDto, user: JwtUser): Promise<{
         id: string;
-        updatedAt: Date;
         isActive: boolean;
-        holdMode: import("@prisma/client").$Enums.DebtHoldMode;
-        fixedAmount: import("@prisma/client-runtime-utils").Decimal | null;
+        updatedAt: Date;
+        holdMode: import(".prisma/client").$Enums.DebtHoldMode;
+        fixedAmount: import("@prisma/client-runtime-utils/dist").Decimal | null;
     }>;
     getPayrollSettings(): Promise<{
         id: string;

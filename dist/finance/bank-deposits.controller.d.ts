@@ -9,7 +9,8 @@ export declare class BankDepositsController {
         to: string;
         entries: {
             id: string;
-            depositType: import("@prisma/client").$Enums.BankDepositType;
+            depositType: import(".prisma/client").$Enums.BankDepositType;
+            status: import(".prisma/client").$Enums.BankDepositStatus;
             amountKd: string;
             receiptImageUrl: string;
             shiftId: string | null;
@@ -29,7 +30,8 @@ export declare class BankDepositsController {
     }>;
     create(file: Express.Multer.File, depositTypeRaw: string, amountRaw: string, shiftId: string | undefined, user: JwtUser): Promise<{
         id: string;
-        depositType: import("@prisma/client").$Enums.BankDepositType;
+        depositType: import(".prisma/client").$Enums.BankDepositType;
+        status: import(".prisma/client").$Enums.BankDepositStatus;
         amountKd: string;
         receiptImageUrl: string;
         shiftId: string | null;
@@ -48,7 +50,8 @@ export declare class BankDepositsController {
     }>;
     verify(id: string, user: JwtUser): Promise<{
         id: string;
-        depositType: import("@prisma/client").$Enums.BankDepositType;
+        depositType: import(".prisma/client").$Enums.BankDepositType;
+        status: import(".prisma/client").$Enums.BankDepositStatus;
         amountKd: string;
         receiptImageUrl: string;
         shiftId: string | null;

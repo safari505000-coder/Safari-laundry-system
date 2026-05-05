@@ -13,6 +13,7 @@ exports.AppController = void 0;
 const common_1 = require("@nestjs/common");
 const swagger_1 = require("@nestjs/swagger");
 const app_service_1 = require("./app.service");
+const roles_decorator_1 = require("./auth/decorators/roles.decorator");
 const branding_1 = require("./common/constants/branding");
 let AppController = class AppController {
     appService;
@@ -34,6 +35,7 @@ __decorate([
 exports.AppController = AppController = __decorate([
     (0, swagger_1.ApiTags)('health'),
     (0, common_1.Controller)(),
+    (0, roles_decorator_1.Public)('Service identity endpoint exposes only product metadata.'),
     __metadata("design:paramtypes", [app_service_1.AppService])
 ], AppController);
 //# sourceMappingURL=app.controller.js.map

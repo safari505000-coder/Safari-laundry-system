@@ -22,6 +22,7 @@ const swagger_1 = require("@nestjs/swagger");
 const client_1 = require("@prisma/client");
 const multer_1 = require("multer");
 const roles_decorator_1 = require("../auth/decorators/roles.decorator");
+const cash_write_police_guard_1 = require("../cash-monitor/cash-write-police.guard");
 const current_user_decorator_1 = require("../auth/decorators/current-user.decorator");
 const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
 const roles_guard_1 = require("../auth/guards/roles.guard");
@@ -59,7 +60,7 @@ let BankDepositsController = class BankDepositsController {
             throw new common_1.BadRequestException('amount is required and must be a number');
         }
         const url = `/uploads/bank-deposits/${file.filename}`;
-        return this.bankDepositsService.createFromUpload(user.userId, url, depositType, amount, shiftId?.trim() || undefined);
+        return this.bankDepositsService.createFromUpload(user.userId, url, depositType, amount, shiftId?.trim() || undefined, user.role);
     }
     verify(id, user) {
         return this.bankDepositsService.verify(user.userId, id);
@@ -81,6 +82,7 @@ __decorate([
 __decorate([
     (0, common_1.Post)(),
     (0, roles_decorator_1.Roles)(client_1.SafariRole.MANAGER),
+    (0, cash_write_police_guard_1.CashWriteEndpoint)(client_1.SafariRole.MANAGER),
     (0, swagger_1.ApiConsumes)('multipart/form-data'),
     (0, swagger_1.ApiBody)({
         schema: {
@@ -136,9 +138,10 @@ __decorate([
 __decorate([
     (0, common_1.Post)(':id/verify'),
     (0, roles_decorator_1.Roles)(client_1.SafariRole.ACCOUNTANT),
+    (0, cash_write_police_guard_1.CashWriteEndpoint)(client_1.SafariRole.ACCOUNTANT),
     (0, swagger_1.ApiOperation)({
         summary: `Verify deposit matches records (${branding_1.APP_BRAND})`,
-        description: 'ACCOUNTANT only — dual control confirmation.',
+        description: 'ACCOUNTANT only -- dual control confirmation. CashWritePoliceGuard enforces the role lock and rejects any forbidden cash-override fields in the (currently empty) body.',
     }),
     __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
     __param(1, (0, current_user_decorator_1.CurrentUser)()),
