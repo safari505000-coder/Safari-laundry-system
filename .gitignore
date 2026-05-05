@@ -11,3 +11,10 @@ uploads/
 # should never live in version control).
 tsconfig.build.tsbuildinfo
 tsconfig.tsbuildinfo
+
+# Local script/lint/test output dumps (audit, lint, jest, smoke, tsc, etc.).
+# These are scratch outputs from local commands and must never be committed.
+*.out
+audit.log
+strict-audit.json
+reports/

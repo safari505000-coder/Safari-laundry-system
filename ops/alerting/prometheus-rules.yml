@@ -1,0 +1,98 @@
+# Safari ERP — Prometheus alerting (Alertmanager-compatible).
+# Include in prometheus.yml: rule_files: ["prometheus-rules.yml"]
+groups:
+  - name: safari-erp-payments
+    interval: 30s
+    rules:
+      - alert: HighPaymentFailureRate
+        expr: rate(payments_finalize_failure_total[1m]) > 5
+        for: 2m
+        labels:
+          severity: critical
+          team: payments
+        annotations:
+          summary: "High payment finalize failure rate"
+          description: "payments_finalize_failure_total rate exceeded threshold."
+
+      - record: job:payments_finalize_failure:rate1m
+        expr: rate(payments_finalize_failure_total[1m])
+
+      - alert: PaymentSLOBurn
+        expr: slo_payment_success_ratio < 0.999
+        for: 5m
+        labels:
+          severity: warning
+          team: payments
+        annotations:
+          summary: "Payment success SLO burn (rolling window)"
+          description: "slo_payment_success_ratio below 99.9%. Current: {{ $value }}"
+
+      - alert: PaymentLatencySLO
+        expr: slo_latency_p95 > 200
+        for: 5m
+        labels:
+          severity: warning
+          team: payments
+        annotations:
+          summary: "P95 finalize latency above SLO"
+          description: "slo_latency_p95 ms > 200. Value: {{ $value }}"
+
+  - name: safari-erp-queues
+    interval: 30s
+    rules:
+      - alert: QueueBacklogSpike
+        expr: sum(queue_jobs_waiting) > 500
+        for: 3m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Queue waiting depth high"
+          description: "Sum of queue_jobs_waiting across queues > 500."
+
+      - alert: QueueDelaySLO
+        expr: slo_queue_delay_estimate_s > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Estimated queue delay exceeds 1s SLO heuristic"
+          description: "Tune QUEUE_SLO_SECONDS_PER_WAITING_JOB or scale workers."
+
+      - alert: WorkerFailedJobsDepth
+        expr: sum(queue_jobs_failed) > 50
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Elevated failed job count across queues"
+
+  - name: safari-erp-integrations
+    interval: 30s
+    rules:
+      - alert: CircuitBreakerOpen
+        expr: circuit_state > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Integration circuit open or half-open"
+          description: "circuit_state for {{ $labels.service }} is {{ $value }} (1=open,2=half_open)."
+
+      - alert: RedisLatencyHigh
+        expr: redis_latency_ms > 50
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis probe latency high"
+          description: "redis_latency_ms={{ $value }}"
+
+      - alert: DbQueryLatencyHigh
+        expr: histogram_quantile(0.95, sum(rate(db_query_duration_ms_bucket[5m])) by (le)) > 250
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "DB query P95 high"
+          description: "Check Postgres load, connections, and slow queries."
