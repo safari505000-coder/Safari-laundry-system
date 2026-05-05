@@ -1,0 +1,106 @@
+---
+description: Cash-intelligence safety contract — run audit before/after every change to the classifier, risk, or executive layers
+globs: src/cash-intelligence/**, src/cash-monitor/**, web/src/pages/executive-dashboard-page.tsx, web/src/modules/manager/hooks/useCashIntelligence.ts
+alwaysApply: false
+---
+
+# Cash Intelligence Safety Contract
+
+The cash-intelligence layer computes financial state (status, alerts,
+top risk) for an ERP. Any edit can silently shift severity counts,
+flip the traffic light, or surface false positives. Treat every
+change here as **HIGH RISK by default**.
+
+## 1. Pre-flight (do this BEFORE editing)
+
+A change is HIGH RISK when it touches:
+
+- `src/cash-monitor/cash-classifier.service.ts`
+- `src/cash-monitor/cash-risk.service.ts`
+- `src/cash-monitor/cash-executive.service.ts`
+- `src/cash-monitor/cash-decision.service.ts`
+- `src/cash-intelligence/cash-intelligence-v2.service.ts`
+- Any DTO under `src/cash-monitor/dto/*` or `src/cash-intelligence/dto/*`
+- Anything that derives `systemStatus`, severity, urgency, or domain
+
+For HIGH RISK edits:
+
+1. State the justification in 1–2 lines (rule change vs presentation).
+2. Run `node scripts/audit-cash-intelligence.mjs` PRE-change. Save output.
+3. Make the change.
+4. Run the audit again POST-change. Diff results. If any check flips
+   from `ok` → `FAIL`, **block the change** and ask the user.
+
+## 2. The contract — single source of truth
+
+`/api/cash-intelligence/classified` is the SSoT. Other layers must
+**read** from it, never recompute:
+
+| Layer | Reads | NEVER allowed to |
+|---|---|---|
+| `/risk` | `systemStatus` | recompute traffic light |
+| `/operational` | financial / compliance alerts | reclassify domain or severity |
+| `/decisions` | severity, domain | promote compliance to topRisk |
+| `/executive` | systemStatus, alerts, topRisk | re-derive any of them |
+
+Hard rules baked into the classifier — **do not weaken**:
+
+- Anomaly amount floor: **5 KD**.
+- Anomaly age gate: **24 hours** (except the `SHIFT_OVERDUE` override).
+- Compliance alerts NEVER promote to `topRisk`.
+- Compliance alerts NEVER escalate above `LOW` urgency.
+- A compliance-only day NEVER produces `systemStatus = RED`.
+
+## 3. Validation scenarios (all must pass)
+
+| Input | Required output |
+|---|---|
+| 3 KD,  age 2h     | systemStatus = GREEN, no anomaly        |
+| 600 KD, age 50h   | systemStatus = RED, severity = CRITICAL |
+| Only compliance   | systemStatus ≠ RED, topRisk = null      |
+| Empty day         | systemStatus = GREEN, all arrays empty  |
+
+These are encoded as predicates inside
+`scripts/audit-cash-intelligence.mjs` and asserted against live data.
+
+## 4. How to run the audit
+
+```powershell
+$env:AUDIT_BASE_URL = 'http://localhost:3000'
+$env:AUDIT_USER     = 'admin'
+$env:AUDIT_PASS     = '<the admin password>'
+node scripts/audit-cash-intelligence.mjs
+```
+
+- exit `0` → contract holds, change is safe.
+- exit `1` → contract regression — **BLOCK** the change.
+
+## 5. Forbidden patterns
+
+```typescript
+// ❌ Recomputing systemStatus outside the classifier
+const status = anomalies.length > 0 ? 'RED' : 'GREEN';
+
+// ❌ Frontend deriving severity from raw flows
+const severity = ageHours >= 24 && amount >= 5 ? 'CRITICAL' : 'INFO';
+
+// ❌ Promoting compliance into topRisk
+if (alert.type === 'SHIFT_COMPLIANCE_DELAY') topRisk = alert;
+
+// ❌ Lowering the amount floor or age gate ad-hoc
+if (amount >= 1) emit(anomaly); // floor is 5 KD, not 1
+```
+
+```typescript
+// ✅ Trust the classifier — read what it returned
+const status = classified.systemStatus;
+const topRisk = executive.topRisk; // backend already null-guards compliance-only
+
+// ✅ When extending behaviour, add the rule to the classifier and
+//     mirror it in the audit script's predicates.
+```
+
+## 6. Goal
+
+Zero regression. Zero silent logic drift. Every cash-intelligence
+change is either green-lit by the audit script, or blocked.
