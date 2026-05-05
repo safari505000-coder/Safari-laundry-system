@@ -240,6 +240,25 @@ async function main(): Promise<void> {
     },
   });
 
+  const customerPortalPermissions = await prisma.permission.findMany({
+    where: { key: { in: ['customer:read', 'customer:search'] } },
+  });
+
+  await prisma.role.upsert({
+    where: { name: SafariRole.CUSTOMER },
+    create: {
+      name: SafariRole.CUSTOMER,
+      permissions: {
+        connect: customerPortalPermissions.map((p) => ({ id: p.id })),
+      },
+    },
+    update: {
+      permissions: {
+        set: customerPortalPermissions.map((p) => ({ id: p.id })),
+      },
+    },
+  });
+
   const ownerRole = await prisma.role.findUniqueOrThrow({
     where: { name: SafariRole.OWNER },
   });

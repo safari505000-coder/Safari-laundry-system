@@ -33,6 +33,11 @@ enum SafariRole {
   ACCOUNTANT
   SUPERVISOR
   VIEWER
+  /**
+   * B2C portal login — JWT must include `linkedCustomerId` matching the
+   * Customer row; server never trusts client-supplied “view mode”.
+   */
+  CUSTOMER
 }
 
 enum OrderStatus {
@@ -79,7 +84,9 @@ enum ShiftStatus {
 enum LedgerTransactionType {
   SUBSCRIPTION_ACTIVATION
   ORDER_WALLET_SETTLEMENT
-  /** Administrative cancel before expiry — cash refunded + promo credit void (see metadata). */
+  /**
+   * Administrative cancel before expiry — cash refunded + promo credit void (see metadata).
+   */
   SUBSCRIPTION_CANCELLATION
 }
 
@@ -150,6 +157,11 @@ enum DebtEntityCategory {
 enum BankDepositType {
   CASH_DEPOSIT_SLIP
   KNET_Z_REPORT
+}
+
+enum BankDepositStatus {
+  PENDING
+  VERIFIED
 }
 
 enum DepositType {
@@ -226,6 +238,11 @@ model User {
   driverPrefix      String?    @unique
   safariRole        SafariRole @default(DRIVER)
   /**
+   * When `safariRole=CUSTOMER`, login JWT scopes this user to exactly one
+   * `Customer` id (must match `/customers/:id/360` path param).
+   */
+  linkedCustomerId  String?    @db.Uuid
+  /**
    * Owner toggle: inactive users cannot sign in.
    */
   isActive          Boolean    @default(true)
@@ -239,25 +256,27 @@ model User {
    * /**
    * /**
    * /**
+   * /**
+   * /**
    * /** Kuwaiti Civil ID — البطاقة المدنية.
    */
-  civilId            String?   @unique
-  nationality        String?
-  address            String?
-  bankName           String?
+  civilId                String?   @unique
+  nationality            String?
+  address                String?
+  bankName               String?
   /**
    * IBAN for salary transfers.
    */
-  bankIban           String?
-  hireDate           DateTime?
+  bankIban               String?
+  hireDate               DateTime?
   /**
    * Monthly basic salary used to seed new payroll rows.
    */
-  basicMonthlySalary Decimal?  @db.Decimal(19, 4)
+  basicMonthlySalary     Decimal?  @db.Decimal(19, 4)
   /**
    * Fixed monthly allowances (housing, transport, etc.) used to seed payroll.
    */
-  monthlyAllowances  Decimal?  @db.Decimal(19, 4)
+  monthlyAllowances      Decimal?  @db.Decimal(19, 4)
   /**
    * V19.26 — Row order on printed payroll roster within the employee’s branch.
    * Null sorts after assigned rows (then by fullName).
@@ -266,6 +285,7 @@ model User {
 
   role                             Role                   @relation(fields: [roleId], references: [id])
   branch                           Branch?                @relation(fields: [branchId], references: [id])
+  linkedCustomer                   Customer?              @relation("CustomerPortalUser", fields: [linkedCustomerId], references: [id], onDelete: SetNull)
   auditLogs                        AuditLog[]
   ordersAsDriver                   Order[]                @relation("OrderDriver")
   shiftsAsDriver                   Shift[]                @relation("ShiftDriver")
@@ -360,6 +380,17 @@ model User {
    * Back-relation of `DebtHold.disbursedBy`.
    */
   debtHoldsDisbursed               DebtHold[]             @relation("DebtHoldDisbursedBy")
+  /**
+   * V19.x — Call-Center dispatches assigned to this driver (DRIVER role).
+   * Read-only on the driver side; the driver cannot accept/reject — the
+   * dispatch is an instruction, never a contract.
+   */
+  driverDispatches                 Dispatch[]             @relation("DispatchDriver")
+  /**
+   * V19.x — Dispatches the user authored as a CALL_CENTER agent.
+   * Audit attribution only.
+   */
+  createdDispatches                Dispatch[]             @relation("DispatchCreatedBy")
 }
 
 /**
@@ -565,7 +596,7 @@ model VehicleExpense {
 }
 
 model Customer {
-  id             String   @id @default(uuid()) @db.Uuid
+  id             String    @id @default(uuid()) @db.Uuid
   phone          String
   phone2         String?
   motherContact  String?
@@ -590,16 +621,25 @@ model Customer {
   /**
    * Immutable attribution branch set from first transaction/subscription.
    */
-  originBranchId String?  @db.Uuid
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  originBranchId String?   @db.Uuid
+  /**
+   * Blocks new invoices/orders until a manager override is explicitly sent.
+   */
+  isBlocked      Boolean   @default(false)
+  blockReason    String?
+  blockedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   originBranch       Branch?                @relation("CustomerOriginBranch", fields: [originBranchId], references: [id], onDelete: SetNull)
+  portalUsers        User[]                 @relation("CustomerPortalUser")
+  auditLogs          AuditLog[]             @relation("AuditLogCustomer")
   orders             Order[]
   wallet             CustomerWallet?
   transactionHistory TransactionHistory[]
   debtLedgerEntries  DebtLedgerEntry[]
   subscriptions      CustomerSubscription[]
+  dispatches         Dispatch[]
 
   @@index([phone])
   @@index([phone2])
@@ -775,57 +815,57 @@ model TransactionHistory {
 }
 
 model Order {
-  id                      String            @id @default(uuid()) @db.Uuid
-  status                  OrderStatus       @default(PENDING)
-  serviceType             ServiceType       @default(NORMAL)
-  totalPrice              Decimal           @db.Decimal(19, 4)
-  cashStatus              CashStatus        @default(UNPAID)
+  id                          String           @id @default(uuid()) @db.Uuid
+  status                      OrderStatus      @default(PENDING)
+  serviceType                 ServiceType      @default(NORMAL)
+  totalPrice                  Decimal          @db.Decimal(19, 4)
+  cashStatus                  CashStatus       @default(UNPAID)
   /**
    * Paper invoice reference when the driver has it; null if not yet recorded.
    */
-  invoiceNumber           String?
+  invoiceNumber               String?
   /**
    * Dastur §1 (V1.5) + V19.24 — Human-readable, globally-unique string
    * `prefix-n` (per-operator n). Stamped when the order's driver/manager
    * has a `driverPrefix`. Legacy and driver-less POS may stay null.
    */
-  serialNumber            String?           @unique
+  serialNumber                String?          @unique
   /**
    * Dastur §5 (V1.5) — Call Center collection reminders counter.
    * Increments at most once every 24h (see `lastReminderAt`).
    */
-  reminderCount           Int               @default(0)
-  lastReminderAt          DateTime?
+  reminderCount               Int              @default(0)
+  lastReminderAt              DateTime?
   /**
    * When true, the customer was already sent the payment link from the field
    * (driver / branch manager POS). Call-center agents must not send duplicate
    * WhatsApp payment-link reminders until cleared (e.g. owner); other roles
    * are unaffected.
    */
-  ccCollectionPaymentWaLocked Boolean @default(false)
-  notes                   String?
-  customerId              String            @db.Uuid
-  driverId                String?           @db.Uuid
+  ccCollectionPaymentWaLocked Boolean          @default(false)
+  notes                       String?
+  customerId                  String           @db.Uuid
+  driverId                    String?          @db.Uuid
   /**
    * POS checkout: how sale was recognized for reporting (wallet vs external).
    */
-  posPaymentMethod        PosPaymentMethod?
+  posPaymentMethod            PosPaymentMethod @default(CASH)
   /**
    * Set when the order reaches COMPLETED (for daily sales / GL-style reporting).
    */
-  completedAt             DateTime?
+  completedAt                 DateTime?
   /**
    * Set when wallet + debt settlement ran for this order (idempotent).
    */
-  walletSettledAt         DateTime?
+  walletSettledAt             DateTime?
   /**
    * Multi-invoice POS: single gateway payment for several orders (see PosPaymentBundle).
    */
-  posPaymentBundleId      String?           @db.Uuid
+  posPaymentBundleId          String?          @db.Uuid
   /**
    * Hosted Kuwait Gateway (or dev mock) URL issued at checkout for ONLINE orders.
    */
-  posHostedPaymentUrl     String?           @db.Text
+  posHostedPaymentUrl         String?          @db.Text
   /**
    * V1.7.0 — UPayments (or compatible provider) `trackId` returned by
    * the `/api/v1/charge` call. Persisted so we can re-query the gateway
@@ -834,18 +874,18 @@ model Order {
    * Also used by the customer-facing `/payment/success` page to poll
    * for settlement confirmation.
    */
-  posGatewayTrackId       String?           @db.Text
+  posGatewayTrackId           String?          @db.Text
   /**
    * V1.7.0 — Raw provider responses + webhook payloads for this order
    * (charge creation, callback bodies, inquiry results). Opaque JSON
    * kept for audit + support tickets. Never queried for business logic
    * — authoritative state lives on `Order` + `GeneralLedgerEntry`.
    */
-  posGatewayMetadata      Json?
+  posGatewayMetadata          Json?
   /**
    * Manager cash handover shift that settled this CASH order into office custody.
    */
-  handoverShiftId         String?           @db.Uuid
+  handoverShiftId             String?          @db.Uuid
   /**
    * Dastur §5 — Debt Transfer audit column.
    * When a departing driver's outstanding cash is transferred to a
@@ -854,7 +894,7 @@ model Order {
    * historical sales / commission / shift reports can still attribute
    * the work to whoever actually issued the invoice.
    */
-  transferredFromDriverId String?           @db.Uuid
+  transferredFromDriverId     String?          @db.Uuid
   /**
    * V19.4 — CC pack #11. Points at the `CustomerSubscription` instance
    * that was active when this invoice was opened. Nullable so non-
@@ -863,9 +903,18 @@ model Order {
    * invoices by subscription without having to reason about time
    * windows + plan overwrites.
    */
-  subscriptionId          String?           @db.Uuid
-  createdAt               DateTime          @default(now())
-  updatedAt               DateTime          @updatedAt
+  subscriptionId              String?          @db.Uuid
+  /**
+   * V19.x — Call-Center dispatch instruction this order fulfilled.
+   * Optional: walk-ins / direct POS tickets stay null. When set, the
+   * Dispatch row auto-completes via the EventEmitter `order.created`
+   * listener (see `DispatchService.handleOrderCreated`) — there is no
+   * manual completion path. Dispatch is an INSTRUCTION; the Order/
+   * Invoice is the FINANCIAL TRUTH (Dispatch ≠ Order).
+   */
+  dispatchId                  String?          @db.Uuid
+  createdAt                   DateTime         @default(now())
+  updatedAt                   DateTime         @updatedAt
 
   customer              Customer              @relation(fields: [customerId], references: [id])
   driver                User?                 @relation("OrderDriver", fields: [driverId], references: [id])
@@ -873,6 +922,7 @@ model Order {
   posPaymentBundle      PosPaymentBundle?     @relation(fields: [posPaymentBundleId], references: [id], onDelete: SetNull)
   handoverShift         Shift?                @relation("ShiftHandoverOrders", fields: [handoverShiftId], references: [id], onDelete: SetNull)
   subscription          CustomerSubscription? @relation("OrderSubscription", fields: [subscriptionId], references: [id], onDelete: SetNull)
+  dispatch              Dispatch?             @relation("DispatchOrders", fields: [dispatchId], references: [id], onDelete: SetNull)
   lineItems             OrderLineItem[]
   transactionHistory    TransactionHistory[]
   debtLedgerEntries     DebtLedgerEntry[]
@@ -905,6 +955,7 @@ model Order {
   @@index([posPaymentMethod])
   @@index([posPaymentBundleId])
   @@index([handoverShiftId])
+  @@index([dispatchId])
   @@index([transferredFromDriverId])
   @@index([serialNumber])
   @@index([subscriptionId])
@@ -1018,25 +1069,30 @@ model Shift {
 }
 
 model BankDepositLog {
-  id                     String          @id @default(uuid()) @db.Uuid
+  id                     String            @id @default(uuid()) @db.Uuid
   depositType            BankDepositType
+  status                 BankDepositStatus @default(PENDING)
   /**
    * Amount (KD) as declared on slip / Z-report for reconciliation.
    */
-  amountKd               Decimal         @db.Decimal(19, 4)
+  amountKd               Decimal           @db.Decimal(19, 4)
   receiptImageUrl        String
-  shiftId                String?         @db.Uuid
-  uploadedById           String          @db.Uuid
-  verifiedByAccountantId String?         @db.Uuid
+  shiftId                String?           @db.Uuid
+  managerCashCustodyId   String?           @unique @db.Uuid
+  uploadedById           String            @db.Uuid
+  verifiedByAccountantId String?           @db.Uuid
   verifiedAt             DateTime?
-  createdAt              DateTime        @default(now())
-  updatedAt              DateTime        @updatedAt
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
 
-  shift                Shift? @relation(fields: [shiftId], references: [id], onDelete: SetNull)
-  uploadedBy           User   @relation("BankDepositUploadedBy", fields: [uploadedById], references: [id])
-  verifiedByAccountant User?  @relation("BankDepositVerifiedBy", fields: [verifiedByAccountantId], references: [id])
+  shift                Shift?              @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+  managerCashCustody   ManagerCashCustody? @relation(fields: [managerCashCustodyId], references: [id], onDelete: SetNull)
+  uploadedBy           User                @relation("BankDepositUploadedBy", fields: [uploadedById], references: [id])
+  verifiedByAccountant User?               @relation("BankDepositVerifiedBy", fields: [verifiedByAccountantId], references: [id])
 
   @@index([createdAt])
+  @@index([status])
+  @@index([shiftId])
   @@index([uploadedById])
   @@index([verifiedByAccountantId])
 }
@@ -1217,25 +1273,25 @@ model Permission {
 }
 
 model Branch {
-  id        String   @id @default(uuid()) @db.Uuid
-  name      String
-  location  String
-  phone     String?
-  isActive  Boolean  @default(true)
+  id                     String   @id @default(uuid()) @db.Uuid
+  name                   String
+  location               String
+  phone                  String?
+  isActive               Boolean  @default(true)
   /**
    * V19.25 — Administrative / HQ cost-center branch: no POS, no purchase
    * orders, no user accounts may be assigned here. Visible in branch
    * pickers only to OWNER / GENERAL_MANAGER / ACCOUNTANT. Carries
    * fixed + variable expenses and payroll attribution only.
    */
-  isAdministrative Boolean @default(false)
+  isAdministrative       Boolean  @default(false)
   /**
    * V19.26 — Lower value prints first on «مسير الرواتب» and in payroll
    * team grid. Null sorts after all set values (then by branch name).
    */
   payrollRosterSortOrder Int?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
   users                 User[]
   expenses              BranchExpense[]
@@ -1444,21 +1500,25 @@ model Payroll {
  * `User`, optional IBAN for bank file / printed مسير.
  */
 model PayrollAdHocLine {
-  id               String   @id @default(uuid()) @db.Uuid
-  branchId         String   @db.Uuid
-  /** Calendar month key `YYYY-MM` (Kuwait payroll month). */
-  periodYm         String
-  /** Lower prints first within the ad-hoc block for that branch/month. */
-  lineSort         Int      @default(0)
-  beneficiaryName  String
-  bankName         String?
-  bankIban         String?
-  basicSalary      Decimal  @db.Decimal(19, 4)
-  allowances       Decimal  @default(0) @db.Decimal(19, 4)
-  deductions       Decimal  @default(0) @db.Decimal(19, 4)
-  note             String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id              String   @id @default(uuid()) @db.Uuid
+  branchId        String   @db.Uuid
+  /**
+   * Calendar month key `YYYY-MM` (Kuwait payroll month).
+   */
+  periodYm        String
+  /**
+   * Lower prints first within the ad-hoc block for that branch/month.
+   */
+  lineSort        Int      @default(0)
+  beneficiaryName String
+  bankName        String?
+  bankIban        String?
+  basicSalary     Decimal  @db.Decimal(19, 4)
+  allowances      Decimal  @default(0) @db.Decimal(19, 4)
+  deductions      Decimal  @default(0) @db.Decimal(19, 4)
+  note            String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
 
@@ -1495,15 +1555,45 @@ model Wallet {
 }
 
 model AuditLog {
-  id        String   @id @default(uuid()) @db.Uuid
-  userId    String?  @db.Uuid
-  action    String
-  resource  String
-  changes   Json
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String      @id @default(uuid()) @db.Uuid
+  userId     String?     @db.Uuid
+  actorId    String?     @db.Uuid
+  customerId String?     @db.Uuid
+  orderId    String?     @db.Uuid
+  amount     Decimal?    @db.Decimal(19, 4)
+  source     String?
+  role       String?
+  action     String
+  resource   String
+  endpoint   String?
+  method     String?
+  status     AuditStatus @default(SUCCESS)
+  ip         String?
+  userAgent  String?
+  requestId  String?
+  suspicious Boolean     @default(false)
+  changes    Json
+  payload    Json?
+  hash       String?
+  prevHash   String?
+  timestamp  DateTime    @default(now())
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
 
-  user User? @relation(fields: [userId], references: [id])
+  user     User?     @relation(fields: [userId], references: [id])
+  customer Customer? @relation("AuditLogCustomer", fields: [customerId], references: [id], onDelete: SetNull)
+
+  @@index([userId, timestamp])
+  @@index([customerId, timestamp])
+  @@index([orderId, timestamp])
+  @@index([ip, timestamp])
+  @@index([status, timestamp])
+  @@map("audit_logs")
+}
+
+enum AuditStatus {
+  SUCCESS
+  DENIED
 }
 
 model GeneralLedgerEntry {
@@ -1826,12 +1916,13 @@ model ManagerCashCustody {
   createdAt              DateTime                 @default(now())
   updatedAt              DateTime                 @updatedAt
 
-  manager              User    @relation("ManagerCustodyManager", fields: [managerId], references: [id], onDelete: Restrict)
-  driver               User    @relation("ManagerCustodyDriver", fields: [driverId], references: [id], onDelete: Restrict)
-  branch               Branch? @relation("BranchManagerCustody", fields: [branchId], references: [id], onDelete: SetNull)
-  shift                Shift?  @relation("ShiftManagerCustody", fields: [shiftId], references: [id], onDelete: SetNull)
-  verifiedByAccountant User?   @relation("ManagerCustodyVerifiedBy", fields: [verifiedByAccountantId], references: [id], onDelete: SetNull)
-  rejectedByAccountant User?   @relation("ManagerCustodyRejectedBy", fields: [rejectedByAccountantId], references: [id], onDelete: SetNull)
+  manager              User            @relation("ManagerCustodyManager", fields: [managerId], references: [id], onDelete: Restrict)
+  driver               User            @relation("ManagerCustodyDriver", fields: [driverId], references: [id], onDelete: Restrict)
+  branch               Branch?         @relation("BranchManagerCustody", fields: [branchId], references: [id], onDelete: SetNull)
+  shift                Shift?          @relation("ShiftManagerCustody", fields: [shiftId], references: [id], onDelete: SetNull)
+  bankDepositLog       BankDepositLog?
+  verifiedByAccountant User?           @relation("ManagerCustodyVerifiedBy", fields: [verifiedByAccountantId], references: [id], onDelete: SetNull)
+  rejectedByAccountant User?           @relation("ManagerCustodyRejectedBy", fields: [rejectedByAccountantId], references: [id], onDelete: SetNull)
 
   @@index([managerId, status])
   @@index([status, receivedFromDriverAt])
@@ -2255,4 +2346,124 @@ model SystemToggle {
    */
   updatedBy String?         @db.Uuid
   updatedAt DateTime        @updatedAt
+}
+
+/**
+ * Cash Intelligence — operator action audit trail. Append-only ledger
+ * that backs `CashExecutionTrackerService`. Replaces the previous
+ * in-memory store so a server restart no longer wipes the operator's
+ * follow-up history.
+ * Three event types coexist on the same table:
+ * - ACTION_LOGGED   the operator clicked CONTACTED / FOLLOWED_UP / ESCALATED
+ * - RISK_ENTERED    the monitor saw the driver enter the at-risk set
+ * - AUTO_RESOLVED   the monitor saw the driver leave the at-risk set
+ * The current execution status for a driver = `resultStatus` of the
+ * most recent ACTION_LOGGED / AUTO_RESOLVED row. The flag-history
+ * counter (lateCountLast7Days, repeatIssue) reads RISK_ENTERED rows
+ * within the last 7 days.
+ * No FK on `driverId` because driver rows live on `User` keyed by id,
+ * and we want this ledger to survive driver deletions for audit
+ * purposes. We index by (driverId, occurredAt DESC) for fast latest-
+ * event lookups.
+ */
+enum CashIntelExecutionEventType {
+  ACTION_LOGGED
+  RISK_ENTERED
+  AUTO_RESOLVED
+}
+
+enum CashIntelExecutionAction {
+  CONTACTED
+  FOLLOWED_UP
+  ESCALATED
+}
+
+enum CashIntelExecutionStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+}
+
+model CashIntelExecutionEvent {
+  id           String                      @id @default(uuid()) @db.Uuid
+  driverId     String                      @db.Uuid
+  eventType    CashIntelExecutionEventType
+  action       CashIntelExecutionAction?
+  resultStatus CashIntelExecutionStatus
+  alertType    String?
+  note         String?
+  actorUserId  String?                     @db.Uuid
+  occurredAt   DateTime                    @default(now())
+
+  @@index([driverId, occurredAt(sort: Desc)])
+  @@index([eventType, occurredAt])
+}
+
+/// Operational-only platform configuration. SINGLE row keyed at
+/// `id = "GLOBAL"`. Stores non-financial settings that the Owner
+/// can edit from the Settings UI (e.g. WhatsApp alert recipient
+/// for the System Guardian). NEVER touches financial state.
+model SystemConfig {
+  id            String   @id
+  guardianPhone String?
+  updatedAt     DateTime @updatedAt
+}
+
+/// Call-Center → Driver dispatch instruction. STRICT semantics:
+///   - Dispatch ≠ Order. A Dispatch is a non-financial instruction
+///     to a specific driver to visit a specific customer.
+///   - The driver CANNOT accept or reject. There is no ACCEPTED state.
+///   - The dispatch is closed only by the appearance of an Order
+///     that links back via `Order.dispatchId` (see DispatchService
+///     `handleOrderCreated` listener). There is no manual close path.
+///   - LATE / CRITICAL severity is COMPUTED ON READ from
+///     `now() - createdAt`; it is NEVER persisted as a status (Single
+///     Source of Truth: the wall clock).
+model Dispatch {
+  id                 String         @id @default(uuid()) @db.Uuid
+  customerId         String         @db.Uuid
+  driverId           String         @db.Uuid
+  /// ASSIGNED → COMPLETED. (LATE is derived on read, never stored.)
+  status             DispatchStatus @default(ASSIGNED)
+  /// Free-text instruction the agent leaves for the driver (optional).
+  instructionNote    String?
+  /// CALL_CENTER user who created the dispatch — audit attribution only.
+  createdByUserId    String?        @db.Uuid
+  createdAt          DateTime       @default(now())
+  /// Stamped exactly once when an Order with this `dispatchId` is
+  /// created. Idempotent: re-emit of the event is a no-op.
+  completedAt        DateTime?
+  /// First Order that closed this dispatch (back-pointer for audit).
+  /// Optional because a dispatch can sit in ASSIGNED indefinitely.
+  completedByOrderId String?        @unique @db.Uuid
+  /// V19.x — Self-pointer for ESCALATION / REASSIGNMENT chains.
+  /// When the auto-escalation cron (>=30 min ASSIGNED) or the
+  /// CALL_CENTER /reassign endpoint creates a successor dispatch
+  /// for the same customer with a different driver, the NEW
+  /// dispatch carries `parentDispatchId = <originalId>`. The
+  /// original is intentionally LEFT in ASSIGNED — only an Order
+  /// (Single Source of Truth) closes any dispatch in the chain.
+  /// Presence of any child is also the idempotency key for the
+  /// escalation cron (no duplicate escalations per parent).
+  parentDispatchId   String?        @db.Uuid
+
+  customer  Customer   @relation(fields: [customerId], references: [id])
+  driver    User       @relation("DispatchDriver", fields: [driverId], references: [id])
+  createdBy User?      @relation("DispatchCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  parent    Dispatch?  @relation("DispatchEscalation", fields: [parentDispatchId], references: [id], onDelete: SetNull)
+  children  Dispatch[] @relation("DispatchEscalation")
+  /// Orders that point at this dispatch (1:N is allowed in case the
+  /// driver opens additional invoices on the same visit; the FIRST
+  /// order is the canonical closer recorded on `completedByOrderId`).
+  orders    Order[]    @relation("DispatchOrders")
+
+  @@index([driverId, status, createdAt])
+  @@index([customerId, createdAt])
+  @@index([status, createdAt])
+  @@index([parentDispatchId])
+}
+
+enum DispatchStatus {
+  ASSIGNED
+  COMPLETED
 }
