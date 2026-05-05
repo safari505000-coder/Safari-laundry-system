@@ -6,26 +6,26 @@ import { driverSidebarNavGroups } from '@/modules/driver/nav-config';
 import { fleetSupervisorSidebarNavGroups } from '@/modules/fleet-supervisor/nav-config';
 import { managerSidebarNavGroups } from '@/modules/manager/nav-config';
 import { defaultSidebarNavGroups } from '@/modules/shared/nav/default-nav-config';
+import { G } from '@/modules/shared/nav/nav-groups';
 import type { NavGroup } from '@/modules/shared/nav/nav-types';
-
+import { customerPortal360Item } from '@/modules/shared/nav/nav-items';
 /**
- * Dastur §3.9 — GENERAL_MANAGER now shares the OWNER sidebar (the
- * "Owner's Second Eye" rule). The only difference between the two
- * surfaces lives inside individual `NavItem.roles` arrays:
- *   • `driverMonitorItem.roles` now includes OWNER + GM + CC +
- *     CC_SUPERVISOR (V19.14). The map page is visible on all four
- *     sidebars, but live data still flows only for OWNER at the API
- *     layer — other roles see a placeholder until a dedicated feed
- *     is wired. CC/CC_SUP pick the item up through their own module
- *     nav-config files (they don't share this default set).
- *   • Hard-delete actions are gated by their own access-matrix keys.
- * Everything else is identical, so maintaining two configs was pure
- * drift risk. GM falls through to `defaultSidebarNavGroups` here.
+ * Dastur §3.9 — GENERAL_MANAGER shares the OWNER sidebar; HTTP mutations
+ * are blocked by `GeneralManagerReadOnlyGuard`. GM falls through to
+ * `defaultSidebarNavGroups`. Role-specific islands (driver, accountant, …)
+ * use their own nav-config modules.
  */
 export function getSidebarNavGroupsForRole(
   role: SafariRole | undefined,
 ): NavGroup[] {
   switch (role) {
+    case 'CUSTOMER':
+      return [
+        {
+          ...G.main,
+          items: [customerPortal360Item],
+        },
+      ];
     case 'DRIVER':
       return driverSidebarNavGroups;
     case 'ACCOUNTANT':

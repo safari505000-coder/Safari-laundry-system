@@ -255,9 +255,11 @@ export type CustomerStatementWhatsAppArgs = {
   walletBalanceKd: string;
   walletDebtKd: string;
   /**
-   * V19.8.11 — When set (ledger / CC), the summary line prefers this over
-   * wallet-only so WhatsApp matches subscribers / conversions.
+   * Operational debt basis from ledger / CC. This is NOT the canonical
+   * Customer 360 financial number.
    */
+  operationalDebtKd?: string;
+  /** @deprecated Use operationalDebtKd. Kept for older callers. */
   effectiveDebtKd?: string;
   invoiceCount: number;
   openInvoiceCount: number;
@@ -294,7 +296,7 @@ export function buildCustomerStatementWhatsAppText(
           ? `📅 الفترة: حتى ${a.to}`
           : '📅 الفترة: كامل السجل';
 
-  const eff = a.effectiveDebtKd?.trim();
+  const eff = (a.operationalDebtKd ?? a.effectiveDebtKd)?.trim();
   const debtLineKd =
     eff !== undefined && eff !== '' ? eff : a.walletDebtKd;
 

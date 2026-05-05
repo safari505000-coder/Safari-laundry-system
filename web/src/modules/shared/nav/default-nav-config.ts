@@ -1,6 +1,8 @@
 import type { NavGroup } from '@/modules/shared/nav/nav-types';
 import { G } from '@/modules/shared/nav/nav-groups';
 import {
+  accountantDashboardItem,
+  auditLogsItem,
   branchesItem,
   callIncomingItem,
   collectionsItem,
@@ -10,19 +12,22 @@ import {
   debtRecoveryReportItem,
   debtTransfersItem,
   driverCashTraceItem,
+  cashReconciliationItem,
   driverMonitorItem,
+  carExpensesItem,
   expenseApprovalItem,
-  expensesItem,
+  expenseReportsItem,
   financialReportsHubItem,
   fixedExpensesItem,
+  attendanceItem,
   monthlySummaryItem,
   moneyFlowStatementItem,
+  myCustodyItem,
   operationalReportsHubItem,
   inventoryCatalogItem,
   inventoryLowStockItem,
   inventoryMovementsItem,
   allInvoicesItem,
-  invoicesDataItem,
   invoiceAuditItem,
   ccPerformanceItem,
   manageItemsItem,
@@ -30,15 +35,14 @@ import {
   ownerInventoryItem,
   ownerSerialsItem,
   purchaseOrdersItem,
+  salesSummaryReportItem,
   shiftsItem,
-  staffDebtsItem,
   staffHubItem,
   subscribersItem,
   subscriptionsItem,
   teamItem,
+  unifiedLedgerItem,
   unpaidInvoicesItem,
-  vehicleExpensesApprovalItem,
-  vehicleExpensesReportItem,
 } from '@/modules/shared/nav/nav-items';
 
 /**
@@ -69,35 +73,43 @@ export const defaultSidebarNavGroups: NavGroup[] = [
     ],
   },
   {
-    ...G.invoices,
-    items: [allInvoicesItem],
+    ...G.financialManagement,
+    items: [auditLogsItem],
   },
   {
     ...G.finance,
     items: [
-      monthlySummaryItem,
+      allInvoicesItem,
+      unifiedLedgerItem,
+      accountantDashboardItem,
       moneyFlowStatementItem,
+      salesSummaryReportItem,
       financialReportsHubItem,
+      monthlySummaryItem,
       operationalReportsHubItem,
-      expenseApprovalItem,
-      vehicleExpensesApprovalItem,
-      vehicleExpensesReportItem,
-      debtTransfersItem,
-      fixedExpensesItem,
-      expensesItem,
+      invoiceAuditItem,
+      ccPerformanceItem,
     ],
   },
   {
-    ...G.paymentCollection,
+    ...G.expenses,
     items: [
-      invoicesDataItem,
-      invoiceAuditItem,
-      ccPerformanceItem,
-      debtRecoveryReportItem,
+      expenseApprovalItem,
+      expenseReportsItem,
+      carExpensesItem,
+      fixedExpensesItem,
+    ],
+  },
+  {
+    ...G.cashDebt,
+    items: [
       managerCustodyAgingItem,
       driverCashTraceItem,
+      cashReconciliationItem,
       unpaidInvoicesItem,
-      staffDebtsItem,
+      debtTransfersItem,
+      myCustodyItem,
+      debtRecoveryReportItem,
     ],
   },
   {
@@ -113,18 +125,20 @@ export const defaultSidebarNavGroups: NavGroup[] = [
     ],
   },
   {
+    ...G.operations,
+    items: [driverMonitorItem, shiftsItem, attendanceItem],
+  },
+  {
     // V19.17 — Staff/HR operational surfaces (payroll, attendance,
     // commission payouts, debt holds, commission rules, system
     // settings) live as internal tabs on the dedicated `staffHubItem`
-    // page (`/staff-hub`). The `teamItem` (`/owner-dashboard`) stays
+    // page (`/staff-hub`). The `teamItem` (`/users-management`) stays
     // focused on user accounts + branch registry only.
     ...G.adminSettings,
     items: [
       teamItem,
       staffHubItem,
       branchesItem,
-      driverMonitorItem,
-      shiftsItem,
     ],
   },
 ];

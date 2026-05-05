@@ -81,26 +81,6 @@ export function PosInvoicePrintView({
 
   return (
     <div className="invoice-print-stage" dir="rtl">
-      {/*
-        V1.7.5 — Luxury water+soap backdrop (screen-only). A soft teal /
-        sky-blue foam gradient under soap-bubble motifs positioned around
-        the receipt sheet — so the staff/customer view feels like a
-        polished laundry hall, while the thermal print remains pristine
-        monochrome. Everything inside `.invoice-print-backdrop` is
-        aria-hidden + pointer-events:none + suppressed under @media
-        print, so the actual tape output is unchanged.
-      */}
-      <div className="invoice-print-backdrop no-print" aria-hidden>
-        <span className="soap-bubble b1" />
-        <span className="soap-bubble b2" />
-        <span className="soap-bubble b3" />
-        <span className="soap-bubble b4" />
-        <span className="soap-bubble b5" />
-        <span className="soap-bubble b6" />
-        <span className="soap-bubble b7" />
-        <span className="soap-bubble b8" />
-      </div>
-
       {toolbar ?
         <div className="invoice-print-toolbar no-print">{toolbar}</div>
       : null}
@@ -352,10 +332,6 @@ export function PosInvoicePrintView({
       </section>
 
       <style>{`
-        /* V1.7.5 — Screen stage wears a soft water+soap wash: layered
-           radial gradients in laundry-hall teals that frame the receipt
-           without competing with it, plus slow-floating soap bubbles
-           positioned in a decorative ring. Print reverts to plain white. */
         .invoice-print-stage {
           position: relative;
           min-height: 100vh;
@@ -369,51 +345,9 @@ export function PosInvoicePrintView({
           text-rendering: optimizeLegibility;
           -webkit-font-smoothing: antialiased;
           -moz-osx-font-smoothing: grayscale;
-          background:
-            radial-gradient(1200px 600px at 12% 18%, rgba(186, 230, 253, 0.55) 0%, transparent 60%),
-            radial-gradient(900px 520px at 88% 82%, rgba(165, 243, 252, 0.45) 0%, transparent 60%),
-            radial-gradient(600px 380px at 60% 0%, rgba(224, 242, 254, 0.6) 0%, transparent 55%),
-            linear-gradient(160deg, #F0FAFF 0%, #E0F2FE 45%, #F0F9FF 100%);
+          background: #ffffff;
           overflow: hidden;
           isolation: isolate;
-        }
-        .invoice-print-backdrop {
-          position: absolute;
-          inset: 0;
-          pointer-events: none;
-          z-index: 0;
-          overflow: hidden;
-        }
-        /* Base soap-bubble: pearlescent radial gradient + subtle inner
-           highlight so each orb reads as a translucent water bead. */
-        .invoice-print-backdrop .soap-bubble {
-          position: absolute;
-          border-radius: 9999px;
-          background:
-            radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.85) 0%, rgba(186, 230, 253, 0.55) 35%, rgba(56, 189, 248, 0.22) 70%, rgba(3, 105, 161, 0.0) 100%);
-          box-shadow:
-            inset 2px 2px 6px rgba(255, 255, 255, 0.8),
-            inset -4px -4px 10px rgba(14, 116, 144, 0.18),
-            0 4px 18px rgba(56, 189, 248, 0.18);
-          filter: blur(0.2px);
-          opacity: 0.75;
-          animation: soap-float 14s ease-in-out infinite;
-        }
-        .invoice-print-backdrop .soap-bubble.b1 { width: 140px; height: 140px; top: 6%;  right: 6%;  animation-delay: 0s;   }
-        .invoice-print-backdrop .soap-bubble.b2 { width: 90px;  height: 90px;  top: 18%; left: 10%;  animation-delay: -3s;  }
-        .invoice-print-backdrop .soap-bubble.b3 { width: 60px;  height: 60px;  top: 42%; right: 14%; animation-delay: -6s;  }
-        .invoice-print-backdrop .soap-bubble.b4 { width: 110px; height: 110px; top: 58%; left: 6%;   animation-delay: -2s;  }
-        .invoice-print-backdrop .soap-bubble.b5 { width: 74px;  height: 74px;  top: 74%; right: 18%; animation-delay: -8s;  }
-        .invoice-print-backdrop .soap-bubble.b6 { width: 46px;  height: 46px;  top: 32%; right: 32%; animation-delay: -5s;  }
-        .invoice-print-backdrop .soap-bubble.b7 { width: 52px;  height: 52px;  bottom: 8%;  left: 30%; animation-delay: -11s; }
-        .invoice-print-backdrop .soap-bubble.b8 { width: 32px;  height: 32px;  top: 10%; left: 40%;  animation-delay: -9s;  }
-        @keyframes soap-float {
-          0%   { transform: translate3d(0, 0, 0) scale(1);       opacity: 0.72; }
-          50%  { transform: translate3d(-6px, -14px, 0) scale(1.04); opacity: 0.85; }
-          100% { transform: translate3d(0, 0, 0) scale(1);       opacity: 0.72; }
-        }
-        @media (prefers-reduced-motion: reduce) {
-          .invoice-print-backdrop .soap-bubble { animation: none; }
         }
         .invoice-print-toolbar {
           position: relative;

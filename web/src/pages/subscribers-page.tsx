@@ -155,9 +155,9 @@ function subscriberListBalanceDisplay(r: SubscriberListRow): string {
   return r.balanceDisplayKd ?? r.balance;
 }
 
-/** Same basis as debt→subscription preview (`effectiveDebtKd` from API). */
-function subscriberEffectiveDebtKdNumber(r: SubscriberListRow): number {
-  const s = r.effectiveDebtKd?.trim() ?? '';
+/** Operational debt basis from API. This is NOT the canonical Customer 360 totalDueKd. */
+function subscriberOperationalDebtKdNumber(r: SubscriberListRow): number {
+  const s = (r.operationalDebtKd ?? r.effectiveDebtKd)?.trim() ?? '';
   if (!s) return 0;
   const n = Number.parseFloat(s);
   return Number.isFinite(n) ? n : 0;
@@ -264,7 +264,7 @@ function SubscriberCard({
             </RtlSafeMoney>
           </dd>
         </div>
-        {subscriberEffectiveDebtKdNumber(r) > 0.0005 ?
+        {subscriberOperationalDebtKdNumber(r) > 0.0005 ?
           <div className="min-w-0">
             <dt className="text-muted-foreground">{t('subscribers.colTotalOwed')}</dt>
             <dd
@@ -275,7 +275,7 @@ function SubscriberCard({
                 block={false}
                 className="font-mono text-base font-semibold text-amber-800 dark:text-amber-200 sm:text-sm"
               >
-                {formatKwdLabel(r.effectiveDebtKd ?? '0')}
+                {formatKwdLabel(r.operationalDebtKd ?? r.effectiveDebtKd ?? '0')}
               </RtlSafeMoney>
             </dd>
           </div>
@@ -365,12 +365,14 @@ function ManageAccountDialog({
   const { t } = useTranslation();
   const canExtend = Boolean(subscriber?.planId);
   const walletDebtKd = Number.parseFloat(subscriber?.debt ?? '0') || 0;
-  const effectiveDebtKd =
-    subscriber?.effectiveDebtKd !== undefined && subscriber.effectiveDebtKd.trim() !== ''
-      ? Number.parseFloat(subscriber.effectiveDebtKd) || 0
+  const operationalDebtKd =
+    subscriber?.operationalDebtKd !== undefined && subscriber.operationalDebtKd.trim() !== ''
+      ? Number.parseFloat(subscriber.operationalDebtKd) || 0
+      : subscriber?.effectiveDebtKd !== undefined && subscriber.effectiveDebtKd.trim() !== ''
+        ? Number.parseFloat(subscriber.effectiveDebtKd) || 0
       : walletDebtKd;
-  const showPayDebtPartial = effectiveDebtKd > 0;
-  const showConvertDebt = effectiveDebtKd > 0;
+  const showPayDebtPartial = operationalDebtKd > 0;
+  const showConvertDebt = operationalDebtKd > 0;
   const expiryMs = subscriber?.expiryDate?.trim()
     ? new Date(subscriber.expiryDate).getTime()
     : NaN;
@@ -452,7 +454,7 @@ function ManageAccountDialog({
                 <span className="mt-1 block text-xs text-muted-foreground">
                   {t('subscribers.managePayDebtHint', {
                     debt: formatKwdLabel(
-                      String(subscriber.effectiveDebtKd ?? subscriber.debt),
+                      String(subscriber.operationalDebtKd ?? subscriber.effectiveDebtKd ?? subscriber.debt),
                     ),
                   })}
                 </span>
@@ -479,7 +481,7 @@ function ManageAccountDialog({
                 <span className="mt-1 block text-xs text-muted-foreground">
                   {t('subscribers.manageConvertDebtHint', {
                     effectiveDebt: formatKwdLabel(
-                      String(subscriber.effectiveDebtKd ?? subscriber.debt),
+                      String(subscriber.operationalDebtKd ?? subscriber.effectiveDebtKd ?? subscriber.debt),
                     ),
                   })}
                 </span>
@@ -982,7 +984,7 @@ function IssueSubscriptionDialog({
  * Opened from the Manage-Account dialog when the customer has debt > 0.
  * The agent types the cash collected, an optional goodwill discount,
  * and the payment method; the server validates `amount + discount`
- * against total outstanding debt (`effectiveDebtKd` basis) and writes
+ * against operational debt and writes
  * a TransactionHistory + two GL entries
  * (see `CustomerLedgerService.recordPartialDebtPayment`).
  *
@@ -1023,12 +1025,15 @@ function DebtPaymentDialog({
     }
   }, [open]);
 
-  const effectiveDebtKd =
-    subscriber?.effectiveDebtKd !== undefined &&
-    subscriber.effectiveDebtKd.trim() !== ''
-      ? Number.parseFloat(subscriber.effectiveDebtKd) || 0
+  const operationalDebtKd =
+    subscriber?.operationalDebtKd !== undefined &&
+    subscriber.operationalDebtKd.trim() !== ''
+      ? Number.parseFloat(subscriber.operationalDebtKd) || 0
+      : subscriber?.effectiveDebtKd !== undefined &&
+          subscriber.effectiveDebtKd.trim() !== ''
+        ? Number.parseFloat(subscriber.effectiveDebtKd) || 0
       : Number.parseFloat(subscriber?.debt ?? '0') || 0;
-  const debtNum = effectiveDebtKd;
+  const debtNum = operationalDebtKd;
   const amountNum = Number.parseFloat(amount || '0') || 0;
   const discountNum = Number.parseFloat(discount || '0') || 0;
   const totalReduction = amountNum + discountNum;
@@ -1083,7 +1088,7 @@ function DebtPaymentDialog({
             {t('subscribers.debtPayHint', {
               name: subscriber?.customerName ?? '',
               debt: formatKwdLabel(
-                String(subscriber?.effectiveDebtKd ?? subscriber?.debt ?? '0'),
+                String(subscriber?.operationalDebtKd ?? subscriber?.effectiveDebtKd ?? subscriber?.debt ?? '0'),
               ),
             })}
           </DialogDescription>
@@ -1183,7 +1188,7 @@ function DebtPaymentDialog({
               </div>
               <div className="font-medium text-foreground">
                 {formatKwdLabel(
-                  String(subscriber?.effectiveDebtKd ?? subscriber?.debt ?? '0'),
+                  String(subscriber?.operationalDebtKd ?? subscriber?.effectiveDebtKd ?? subscriber?.debt ?? '0'),
                 )}
               </div>
             </div>
@@ -1817,7 +1822,7 @@ export function SubscribersPage() {
     const key = JSON.stringify(
       traced.map((r) => [
         r.customerId,
-        r.effectiveDebtKd,
+        r.operationalDebtKd ?? r.effectiveDebtKd,
         r.debtKdBreakdownTrace?.winningSources,
       ]),
     );
@@ -1829,7 +1834,7 @@ export function SubscribersPage() {
     console.table(
       traced.map((r) => ({
         name: r.customerName,
-        effective: r.effectiveDebtKd,
+        operational: r.operationalDebtKd ?? r.effectiveDebtKd,
         ledger: r.debtKdBreakdownTrace?.ledgerNetKd,
         walletSnap: r.debtKdBreakdownTrace?.walletSnapshotKd,
         orderMarket: r.debtKdBreakdownTrace?.orderMarketScopeKd,
@@ -2058,8 +2063,8 @@ export function SubscribersPage() {
         return (av - bv) * mult;
       }
       if (numSort.key === 'effectiveDebt') {
-        const av = subscriberEffectiveDebtKdNumber(a);
-        const bv = subscriberEffectiveDebtKdNumber(b);
+        const av = subscriberOperationalDebtKdNumber(a);
+        const bv = subscriberOperationalDebtKdNumber(b);
         return (av - bv) * mult;
       }
       const av = Number.parseFloat(subscriberListBalanceDisplay(a));
@@ -2333,13 +2338,13 @@ export function SubscribersPage() {
                     <RtlSafeMoney
                       className={cn(
                         'font-mono text-xs sm:text-sm',
-                        subscriberEffectiveDebtKdNumber(r) > 0.0005 ?
+                        subscriberOperationalDebtKdNumber(r) > 0.0005 ?
                           'font-medium text-amber-800 dark:text-amber-200'
                         : 'text-muted-foreground',
                       )}
                       title={t('subscribers.colTotalOwedHint')}
                     >
-                      {formatKwdLabel(r.effectiveDebtKd ?? '0')}
+                      {formatKwdLabel(r.operationalDebtKd ?? r.effectiveDebtKd ?? '0')}
                     </RtlSafeMoney>
                   </TableCell>
                   <TableCell

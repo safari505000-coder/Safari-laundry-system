@@ -242,6 +242,10 @@ export function DriverCashTracePage() {
         }
       />
 
+      <div className="rounded-lg border border-sky-200 bg-sky-50/80 px-3 py-2 text-xs leading-relaxed text-sky-950 dark:border-sky-900/40 dark:bg-sky-950/30 dark:text-sky-100">
+        {t('accountingHints.cashTraceDates')}
+      </div>
+
       <FilterBar>
         <FilterField label={t('reports.from', 'From')}>
           <Input

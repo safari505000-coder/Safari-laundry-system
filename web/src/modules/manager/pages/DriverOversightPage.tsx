@@ -17,7 +17,9 @@ import { useAuth } from '@/contexts/auth-context';
 import { notify } from '@/lib/notify';
 import { can } from '@/modules/shared/auth/access-matrix';
 import {
+  getCashIntelligenceDashboard,
   getDriverOversight,
+  type CashIntelDashboardResponse,
   type DriverOversightCard,
 } from '@/lib/api';
 import { formatKwdLabel } from '@/lib/kwd';
@@ -37,10 +39,22 @@ import { cn } from '@/lib/utils';
  * V19.22.5 — Branch Manager "مراقبة السائقين" (Driver Oversight).
  *
  * One colourful card per active DRIVER in the manager's branch.
- * Each card bundles today's invoice count + cash, pending invoices,
- * cash on hand, and stale quick-capture risks. Cards tint to amber
- * when the driver is off shift and to red when the driver is at
- * risk (any stale quick row or > 10 pending invoices).
+ * Each card bundles today's invoice count, pending invoices, the
+ * SSoT-sourced cash residue (from the cash-intelligence dashboard),
+ * and stale quick-capture risks. Cards tint to amber when the
+ * driver is off shift and to red when the driver is at risk (any
+ * stale quick row or > 10 pending invoices).
+ *
+ * SSoT lock (post-mortem on the 111.450 KD vs 0.5000 KD mismatch):
+ *
+ *   The legacy `heldCashKd` / `cashTodayKd` fields on
+ *   /api/manager/driver-oversight were a competing ledger
+ *   (PAID_TO_DRIVER all-time accumulator + today's gross revenue).
+ *   They are now nullified at the backend. This page reads driver
+ *   cash EXCLUSIVELY from
+ *     GET /api/cash-intelligence/dashboard → drivers[].totalCash
+ *   joined by `driverId`. Frontend computes nothing — all monetary
+ *   values are pre-formatted (4dp KD strings) by the backend.
  *
  * Data is re-fetched every 60 s and on demand via the refresh
  * button — no SSE, same polling rhythm as the Accountant watchdog.
@@ -52,14 +66,23 @@ export function DriverOversightPage() {
   const { t } = useTranslation();
   const { token, user } = useAuth();
   const [rows, setRows] = useState<DriverOversightCard[] | null>(null);
+  const [dashboard, setDashboard] = useState<CashIntelDashboardResponse | null>(
+    null,
+  );
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     try {
-      const data = await getDriverOversight(token);
-      setRows(data);
+      // Fetch the operational counters AND the cash-intelligence
+      // SSoT in parallel. Driver cash is read ONLY from the SSoT.
+      const [oversight, ssot] = await Promise.all([
+        getDriverOversight(token),
+        getCashIntelligenceDashboard(token),
+      ]);
+      setRows(oversight);
+      setDashboard(ssot);
     } catch (e) {
       notify.error(e);
     } finally {
@@ -75,17 +98,28 @@ export function DriverOversightPage() {
 
   const canOpenMap = can(user, 'driverMonitor.view');
 
+  // SSoT: per-driver cash keyed by driverId. The backend already
+  // pre-formats every value as a 4dp KD string — we never recompute.
+  const cashByDriverId = useMemo(() => {
+    const m = new Map<string, string>();
+    if (dashboard) {
+      for (const d of dashboard.drivers) m.set(d.driverId, d.totalCash);
+    }
+    return m;
+  }, [dashboard]);
+
+  // Operational totals only — NEVER aggregate cash here. The
+  // group-wide cash total is `dashboard.totalCash` (pre-summed by
+  // the backend SSoT layer).
   const totals = useMemo(() => {
     if (!rows) return null;
-    return rows.reduce(
-      (acc, r) => {
-        acc.ordersToday += r.ordersTodayCount;
-        acc.cashTodayKd += Number(r.cashTodayKd);
-        acc.atRisk += r.atRisk ? 1 : 0;
-        return acc;
-      },
-      { ordersToday: 0, cashTodayKd: 0, atRisk: 0 },
-    );
+    let ordersToday = 0;
+    let atRisk = 0;
+    for (const r of rows) {
+      ordersToday += r.ordersTodayCount;
+      if (r.atRisk) atRisk += 1;
+    }
+    return { ordersToday, atRisk };
   }, [rows]);
 
   return (
@@ -145,10 +179,16 @@ export function DriverOversightPage() {
             })}
             tone="from-emerald-50 to-emerald-100 border-emerald-200 text-emerald-900"
           />
+          {/*
+            SSoT: total live cash across this manager's branch comes
+            from the cash-intelligence dashboard (pre-summed, 4dp).
+            We never reduce per-driver values here.
+          */}
           <TotalsTile
             icon={HandCoins}
-            label={t('driverOversight.totals.cashToday', {
-              total: formatKwdLabel(totals.cashTodayKd.toFixed(3)),
+            label={t('driverOversight.totals.cashLive', {
+              total: formatKwdLabel(dashboard?.totalCash ?? '0.0000'),
+              defaultValue: 'Live cash on drivers: {{total}}',
             })}
             tone="from-amber-50 to-amber-100 border-amber-200 text-amber-900"
           />
@@ -169,14 +209,31 @@ export function DriverOversightPage() {
         </Card>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {rows?.map((r) => <OversightCard key={r.driverId} row={r} />)}
+          {rows?.map((r) => (
+            <OversightCard
+              key={r.driverId}
+              row={r}
+              ssotCashKd={cashByDriverId.get(r.driverId) ?? '0.0000'}
+            />
+          ))}
         </div>
       )}
     </div>
   );
 }
 
-function OversightCard({ row }: { row: DriverOversightCard }) {
+function OversightCard({
+  row,
+  ssotCashKd,
+}: {
+  row: DriverOversightCard;
+  /**
+   * SSoT-sourced live cash residue (KD, 4dp string) for this driver.
+   * Comes from /api/cash-intelligence/dashboard → drivers[].totalCash.
+   * Pre-formatted by the backend; the page never recomputes it.
+   */
+  ssotCashKd: string;
+}) {
   const { t } = useTranslation();
   const onShift = row.shiftStatus === 'ON_SHIFT';
 
@@ -278,21 +335,24 @@ function OversightCard({ row }: { row: DriverOversightCard }) {
           value={String(row.ordersTodayCount)}
         />
         <MetricTile
-          icon={HandCoins}
-          label={t('driverOversight.card.cashToday')}
-          value={formatKwdLabel(row.cashTodayKd)}
-        />
-        <MetricTile
           icon={AlertTriangle}
           label={t('driverOversight.card.pending')}
           value={String(row.pendingInvoicesCount)}
           tone={row.pendingInvoicesCount > 0 ? 'warn' : undefined}
         />
+        {/*
+          SSoT cash tile. Reads directly from
+          /api/cash-intelligence/dashboard → drivers[].totalCash.
+          NEVER from row.cashTodayKd or row.heldCashKd (both nullified
+          at the backend). The string is already 4dp KD.
+        */}
         <MetricTile
           icon={HandCoins}
-          label={t('driverOversight.card.heldCash')}
-          value={formatKwdLabel(row.heldCashKd)}
-          tone={Number(row.heldCashKd) > 0 ? 'warn' : undefined}
+          label={t('driverOversight.card.cashLive', {
+            defaultValue: 'Live cash',
+          })}
+          value={formatKwdLabel(ssotCashKd)}
+          span={2}
         />
         {row.staleQuickCount > 0 ? (
           <MetricTile

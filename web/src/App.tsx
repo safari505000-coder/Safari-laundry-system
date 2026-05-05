@@ -1,17 +1,17 @@
+import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { OfflineGlobalAlerts } from '@/offline/offline-global-alerts';
 import { OfflineSyncProvider } from '@/offline/offline-sync-context';
-import { AuthProvider } from '@/contexts/auth-context';
+import { AuthProvider, useAuth } from '@/contexts/auth-context';
 import { SafariStreamProvider } from '@/contexts/safari-stream-context';
 import { AuthLayout } from '@/modules/shared/components/shell/auth-layout';
 import { ExecutiveShell } from '@/modules/shared/components/shell/executive-shell';
 import { RequireAccess } from '@/modules/shared/components/require-access';
-import { RequireOwnerIsland } from '@/modules/owner/require-owner-island';
 import { RequireAuth } from '@/components/require-auth';
 import { Toaster } from '@/modules/shared/components/ui/sonner';
-import { DashboardPage } from '@/pages/dashboard-page';
+import { ExecutiveDashboardPage } from '@/pages/executive-dashboard-page';
 import { DebtTransfersPage } from '@/pages/debt-transfers-page';
 import { MyDebtTransfersPage } from '@/pages/my-debt-transfers-page';
 import { AttendancePage } from '@/pages/attendance-page';
@@ -28,6 +28,7 @@ import { PublicStatementPage } from '@/pages/public-statement-page';
 import { PublicInvoicePage } from '@/pages/public-invoice-page';
 import { FeedbackPublicPage } from '@/pages/feedback-public-page';
 import { FeedbackInboxPage } from '@/pages/feedback-inbox-page';
+import { ForbiddenPage } from '@/pages/forbidden-page';
 import {
   PaymentFailedPage,
   PaymentSuccessPage,
@@ -41,8 +42,11 @@ import { MoneyFlowStatementPage } from '@/pages/money-flow-statement-page';
 import { InsightsAiPage } from '@/pages/insights-ai-page';
 import { FinancialCycleReportPage } from '@/pages/financial-cycle-report-page';
 import { DriverCashTracePage } from '@/pages/driver-cash-trace-page';
+import { CashReconciliationPage } from '@/pages/cash-reconciliation-page';
+import { AccountantDashboardPage } from '@/pages/accountant-dashboard-page';
 import { UnpaidInvoicesPage } from '@/pages/unpaid-invoices-page';
 import { ReportsPage } from '@/pages/reports-page';
+import { SalesSummaryReportPage } from '@/pages/sales-summary-report-page';
 import { FinancialReportsHubPage } from '@/pages/financial-reports-hub-page';
 import { OperationalReportsHubPage } from '@/pages/operational-reports-hub-page';
 import { LoginPage } from '@/pages/login-page';
@@ -63,6 +67,7 @@ import { StaffHubPage } from '@/pages/staff-hub-page';
 import { FixedExpensesPage } from '@/pages/fixed-expenses-page';
 import { CollectionsPage } from '@/modules/call-center/pages/collections-page';
 import { CustomersPage } from '@/modules/call-center/pages/customers-page';
+import { CustomerPortal360Page } from '@/pages/customer-portal-360-page';
 import { CallIncomingPage } from '@/pages/call-incoming-page';
 import { PosRoute } from '@/pages/pos-route';
 import { MyDailySalesPage } from '@/modules/driver/pages/my-daily-sales-page';
@@ -70,9 +75,6 @@ import { DriverFieldExpensesPage } from '@/modules/driver/pages/driver-field-exp
 import { DriverPendingInvoicesPage } from '@/modules/driver/pages/driver-pending-invoices-page';
 import { DriverMonitorPage } from '@/pages/driver-monitor-page';
 import { ExpenseApprovalPage } from '@/pages/expense-approval-page';
-import { VehicleExpensesMinePage } from '@/pages/vehicle-expenses-mine-page';
-import { VehicleExpensesApprovalPage } from '@/pages/vehicle-expenses-approval-page';
-import { VehicleExpensesReportPage } from '@/pages/vehicle-expenses-report-page';
 import { LiveMonitorPage } from '@/pages/live-monitor-page';
 import { KnetAudit } from '@/modules/accountant/pages/KnetAudit';
 import AccountantInventoryReportPage from '@/modules/accountant/pages/InventoryReport';
@@ -83,6 +85,7 @@ import InventoryMovementsPage from '@/pages/inventory-movements-page';
 import InventoryLowStockPage from '@/pages/inventory-low-stock-page';
 import PurchaseOrdersPage from '@/pages/purchase-orders-page';
 import { UnifiedLedgerPage } from '@/pages/unified-ledger-page';
+import { FinanceLedgerReportsPage } from '@/pages/finance-ledger-reports-page';
 import { CcPerformancePage } from '@/pages/cc-performance-page';
 import { InvoiceAuditLogPage } from '@/pages/invoice-audit-log-page';
 import { AllInvoicesPage } from '@/pages/all-invoices-page';
@@ -92,6 +95,7 @@ import { CashReceiptPrintPage } from '@/pages/cash-receipt-print-page';
 import { WhatsappToolsPage } from '@/modules/call-center/pages/whatsapp-tools-page';
 import { ManageItems } from '@/modules/owner/pages/ManageItems';
 import { OwnerDashboard } from '@/modules/owner/pages/OwnerDashboard';
+import { AuditLogsPage } from '@/pages/audit-logs-page';
 import OwnerInventoryReportPage from '@/modules/owner/pages/InventoryReport';
 import { ManagerCustodyAgingPage } from '@/pages/manager-custody-aging-page';
 import { StaffDebtsPage } from '@/pages/staff-debts-page';
@@ -99,16 +103,31 @@ import { DebtRecoveryReportPage } from '@/pages/debt-recovery-report-page';
 import { OwnerSerialsPage } from '@/pages/owner-serials-page';
 import { BranchesPage } from '@/pages/branches-page';
 /**
- * V19.0 — OWNER and GENERAL_MANAGER (the Owner's Second Eye) land on the
- * Financial Island. All other roles keep the operational dashboard.
+ * Unified-dashboard era:
+ *   - OWNER / GENERAL_MANAGER / MANAGER / ACCOUNTANT land on
+ *     `/dashboard` — the single cash-intelligence-backed Executive
+ *     Dashboard. The backend clamps `branchId` for MANAGER, so the
+ *     same component renders the right scope for each role.
+ *   - DRIVER goes straight to POS (their working surface).
+ *   - CALL_CENTER agents go to the inbound call screen.
+ *   - CALL_CENTER_SUPERVISOR lands on the CC performance hub.
+ *   - CUSTOMER keeps the self-service portal.
  */
 function IndexRoute() {
-  // V19.9.7 — OWNER / GM now land on the interactive executive
-  // dashboard (cash-flow / money movement / debts / net profit) that
-  // DashboardPage renders for them. The old redirect to /financials
-  // is removed so the dashboard entry point is real work, not a
-  // pass-through.
-  return <DashboardPage />;
+  const { user } = useAuth();
+  if (!user) return <Navigate to="/login" replace />;
+  switch (user.safariRole) {
+    case 'CUSTOMER':
+      return <Navigate to="/my-customer-360" replace />;
+    case 'DRIVER':
+      return <Navigate to="/pos" replace />;
+    case 'CALL_CENTER':
+      return <Navigate to="/call-incoming" replace />;
+    case 'CALL_CENTER_SUPERVISOR':
+      return <Navigate to="/cc-performance" replace />;
+    default:
+      return <Navigate to="/dashboard" replace />;
+  }
 }
 
 function AppToaster() {
@@ -117,6 +136,13 @@ function AppToaster() {
   return (
     <Toaster richColors position={rtl ? 'top-left' : 'top-right'} />
   );
+}
+
+function RequireOwnerOrGeneralManager({ children }: { children: ReactNode }) {
+  const { user, hasRole } = useAuth();
+  if (!user) return <Navigate to="/login" replace />;
+  if (!hasRole('OWNER', 'GENERAL_MANAGER')) return <Navigate to="/" replace />;
+  return <>{children}</>;
 }
 
 export default function App() {
@@ -234,12 +260,37 @@ export default function App() {
               />
               <Route path="/" element={<ExecutiveShell />}>
                 <Route index element={<IndexRoute />} />
+                <Route path="403" element={<ForbiddenPage />} />
+                {/*
+                  Unified dashboard. Single cash-intelligence-backed
+                  surface for OWNER / GM / MANAGER / ACCOUNTANT.
+                  The classifier is the single source of truth and the
+                  backend clamps `branchId` for MANAGER, so the same
+                  component renders the right scope for each role.
+                */}
+                <Route
+                  path="dashboard"
+                  element={
+                    <RequireAccess access="executiveDashboard.view">
+                      <ExecutiveDashboardPage />
+                    </RequireAccess>
+                  }
+                />
+                {/* Legacy dashboards — redirected to the unified one. */}
+                <Route
+                  path="admin/dashboard"
+                  element={<Navigate to="/dashboard" replace />}
+                />
                 <Route
                   path="owner-dashboard"
+                  element={<Navigate to="/dashboard" replace />}
+                />
+                <Route
+                  path="users-management"
                   element={
-                    <RequireOwnerIsland>
+                    <RequireAccess access="branches.manage">
                       <OwnerDashboard />
-                    </RequireOwnerIsland>
+                    </RequireAccess>
                   }
                 />
                 <Route
@@ -343,6 +394,14 @@ export default function App() {
                   element={
                     <RequireAccess access="customers.view">
                       <CustomersPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="my-customer-360"
+                  element={
+                    <RequireAccess access="customer360.self">
+                      <CustomerPortal360Page />
                     </RequireAccess>
                   }
                 />
@@ -545,6 +604,19 @@ export default function App() {
                     </RequireAccess>
                   }
                 />
+                {/*
+                  V19.33 — Branch Manager Dashboard.
+                  Branch-scoped read-only dashboard (driver performance,
+                  cash flow chain, alerts, inventory snapshot, driver
+                  timeline drill-down). Backend clamps `branchId` to the
+                  JWT branch on every read so this UI cannot leak across
+                  branches.
+                */}
+                {/* Legacy manager dashboard — folded into /dashboard. */}
+                <Route
+                  path="manager/dashboard"
+                  element={<Navigate to="/dashboard" replace />}
+                />
                 <Route
                   path="finance/manager-custody-aging"
                   element={
@@ -694,6 +766,10 @@ export default function App() {
                 />
                 <Route
                   path="expense-approval"
+                  element={<Navigate to="/expenses/approval" replace />}
+                />
+                <Route
+                  path="expenses/approval"
                   element={
                     <RequireAccess access="expenseApproval.view">
                       <ExpenseApprovalPage />
@@ -702,27 +778,19 @@ export default function App() {
                 />
                 <Route
                   path="vehicle-expenses"
-                  element={
-                    <RequireAccess access="vehicleExpenses.mine">
-                      <VehicleExpensesMinePage />
-                    </RequireAccess>
-                  }
+                  element={<Navigate to="/expenses/cars" replace />}
                 />
                 <Route
                   path="vehicle-expenses/approval"
-                  element={
-                    <RequireAccess access="vehicleExpenses.approval.view">
-                      <VehicleExpensesApprovalPage />
-                    </RequireAccess>
-                  }
+                  element={<Navigate to="/expenses/cars" replace />}
                 />
                 <Route
                   path="vehicle-expenses/report"
-                  element={
-                    <RequireAccess access="vehicleExpenses.report.view">
-                      <VehicleExpensesReportPage />
-                    </RequireAccess>
-                  }
+                  element={<Navigate to="/expenses/cars" replace />}
+                />
+                <Route
+                  path="vehicle-expenses/*"
+                  element={<Navigate to="/expenses/cars" replace />}
                 />
                 <Route
                   path="financial-cycle-report"
@@ -741,6 +809,35 @@ export default function App() {
                   }
                 />
                 <Route
+                  path="accountant-dashboard"
+                  element={
+                    <RequireAccess access="accountantDashboard.view">
+                      <AccountantDashboardPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="cash-reconciliation"
+                  element={
+                    <RequireAccess access="cashReconciliation.view">
+                      <CashReconciliationPage />
+                    </RequireAccess>
+                  }
+                />
+                {/* Legacy cash-control panel — folded into /dashboard. */}
+                <Route
+                  path="cash-control"
+                  element={<Navigate to="/dashboard" replace />}
+                />
+                <Route
+                  path="audit-logs"
+                  element={
+                    <RequireOwnerOrGeneralManager>
+                      <AuditLogsPage />
+                    </RequireOwnerOrGeneralManager>
+                  }
+                />
+                <Route
                   path="unpaid-invoices"
                   element={
                     <RequireAccess access="unpaidInvoices.view">
@@ -753,6 +850,14 @@ export default function App() {
                   element={
                     <RequireAccess access="reports.view">
                       <ReportsPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="reports/sales-summary"
+                  element={
+                    <RequireAccess access="reports.view">
+                      <SalesSummaryReportPage />
                     </RequireAccess>
                   }
                 />
@@ -777,6 +882,14 @@ export default function App() {
                   element={
                     <RequireAccess access="unifiedLedger.view">
                       <UnifiedLedgerPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="finance/reports"
+                  element={
+                    <RequireAccess access="financeLedgerReports.view">
+                      <FinanceLedgerReportsPage />
                     </RequireAccess>
                   }
                 />
@@ -833,6 +946,22 @@ export default function App() {
                   element={
                     <RequireAccess access="expenses.view">
                       <ExpensesPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="expenses/reports"
+                  element={
+                    <RequireAccess access="expenses.view">
+                      <ExpensesPage mode="reports" />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="expenses/cars"
+                  element={
+                    <RequireAccess access="expenses.view">
+                      <ExpensesPage mode="cars" />
                     </RequireAccess>
                   }
                 />

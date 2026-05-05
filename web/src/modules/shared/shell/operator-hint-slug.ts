@@ -6,7 +6,7 @@
 
 const EXACT: Record<string, string> = {
   '/': 'dashboard',
-  '/owner-dashboard': 'ownerDashboard',
+  '/dashboard': 'dashboard',
   '/staff-hub': 'staffHub',
   '/branches': 'branches',
   '/manage-items': 'manageItems',
@@ -55,6 +55,8 @@ const EXACT: Record<string, string> = {
   '/vehicle-expenses/report': 'vehicleExpensesReport',
   '/financial-cycle-report': 'financialCycleReport',
   '/driver-cash-trace': 'driverCashTrace',
+  '/accountant-dashboard': 'accountantDashboard',
+  '/cash-reconciliation': 'cashReconciliation',
   '/unpaid-invoices': 'unpaidInvoices',
   '/reports': 'reports',
   '/reports-hub': 'reportsHub',

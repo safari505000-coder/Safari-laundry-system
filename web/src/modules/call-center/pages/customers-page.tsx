@@ -27,6 +27,7 @@ import {
 } from '@/modules/shared/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import { CustomerLedgerPanel } from '@/modules/call-center/components/customer-ledger-panel';
+import { Customer360Panel } from '@/modules/call-center/components/customer-360-panel';
 
 type EditDraft = {
   displayName: string;
@@ -74,7 +75,7 @@ function toDraft(row: CustomerDirectoryRow['customer']): EditDraft {
 
 export function CustomersPage() {
   const { t } = useTranslation();
-  const { token, user } = useAuth();
+  const { token, user, hasRole } = useAuth();
   const allowed = can(user, 'customers.view');
   const canManage = can(user, 'customers.manage');
   const navigate = useNavigate();
@@ -92,6 +93,7 @@ export function CustomersPage() {
   const newPhoneFromUrl = searchParams.get('newPhone')?.trim() ?? '';
   const searchParamsKey = searchParams.toString();
 
+  const showCustomer360Tab = hasRole('CALL_CENTER', 'CALL_CENTER_SUPERVISOR');
   const activeRow = useMemo(
     () => rows.find((r) => r.customer.id === activeId) ?? null,
     [rows, activeId],
@@ -178,7 +180,9 @@ export function CustomersPage() {
     }
   }
 
-  if (!allowed) return <Navigate to="/" replace />;
+  if (!allowed) {
+    return <Navigate to="/403" replace />;
+  }
 
   return (
     <div className="space-y-6">
@@ -293,6 +297,11 @@ export function CustomersPage() {
                 <TabsTrigger value="ledger" disabled={!activeId}>
                   {t('customers.tabLedger')}
                 </TabsTrigger>
+                {showCustomer360Tab ? (
+                  <TabsTrigger value="360" disabled={!activeId}>
+                    {t('customers.tab360', '360')}
+                  </TabsTrigger>
+                ) : null}
               </TabsList>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -338,6 +347,19 @@ export function CustomersPage() {
                   </p>
                 )}
               </TabsContent>
+              {showCustomer360Tab ? (
+                <TabsContent value="360">
+                  {activeId ? (
+                    <Customer360Panel
+                      token={token}
+                      customerId={activeId}
+                      expectInternal
+                    />
+                  ) : (
+                    <p className="text-sm text-muted-foreground">{t('customers.selectHint')}</p>
+                  )}
+                </TabsContent>
+              ) : null}
             </CardContent>
           </Card>
         </Tabs>

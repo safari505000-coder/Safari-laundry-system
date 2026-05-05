@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { X } from 'lucide-react';
+import { GeneralManagerReadOnlyOversightStrip } from '@/modules/shared/components/shell/gm-readonly-oversight-strip';
 import { ExecutiveHeader } from '@/modules/shared/components/shell/executive-header';
 import { OperatorRouteHint } from '@/modules/shared/components/shell/operator-route-hint';
 import { ExecutiveSidebar } from '@/modules/shared/components/shell/executive-sidebar';
@@ -74,6 +75,9 @@ export function ExecutiveShell() {
           className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 print:p-2 sm:p-6 lg:p-8"
         >
           <div className="mx-auto min-w-0 max-w-6xl print:max-w-none">
+            {user?.safariRole === 'GENERAL_MANAGER' ?
+              <GeneralManagerReadOnlyOversightStrip />
+            : null}
             {!dismissed && guidance ? (
               <div className="relative mb-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 pe-10 text-sm text-sky-900 dark:border-sky-900/40 dark:bg-sky-950/40 dark:text-sky-200">
                 {guidance}

@@ -104,6 +104,10 @@ export const operatorHints = {
       'End-to-end cash cycle narrative for the period. Cross-check with unified ledger entries.',
     driverCashTrace:
       'Date-window CASH collections and custody bags by receive time. «Cash pipeline» is a live all-methods snapshot — totals differ by design.',
+    cashReconciliation:
+      'Side-by-side: money collected vs handed in the window, versus who still holds cash today (drivers vs managers by bag status).',
+    accountantDashboard:
+      'Period KPIs, live cash pipeline, reconciliation diff with explain breakdown, alerts, and GL-based insights. Data is server-cached ~45s.',
     unpaidInvoices:
       'Customer receivable lines with issuer column. Market KPI uses UNPAID orders; FIFO reduces remaining.',
     reports:

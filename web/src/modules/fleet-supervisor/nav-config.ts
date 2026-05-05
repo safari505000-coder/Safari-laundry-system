@@ -12,7 +12,7 @@ import { vehicleExpensesMineItem } from '@/modules/shared/nav/nav-items';
  */
 export const fleetSupervisorSidebarNavGroups: NavGroup[] = [
   {
-    ...G.operations,
+    ...G.expenses,
     items: [vehicleExpensesMineItem],
   },
 ];

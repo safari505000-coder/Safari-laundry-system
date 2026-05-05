@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import type { ComponentType } from 'react';
-import { BarChart3, CircleDollarSign, CreditCard, LineChart } from 'lucide-react';
+import { BarChart3, BookCheck, CircleDollarSign, CreditCard, LineChart } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { can, type AccessKey } from '@/modules/shared/auth/access-matrix';
 import { PageHeader } from '@/modules/shared/components/page';
@@ -15,6 +15,7 @@ import {
 import { FinancialsPage } from '@/pages/financials-page';
 import { FinancialCycleReportPage } from '@/pages/financial-cycle-report-page';
 import { UnifiedLedgerPage } from '@/pages/unified-ledger-page';
+import { FinanceLedgerReportsPage } from '@/pages/finance-ledger-reports-page';
 import { KnetAudit } from '@/modules/accountant/pages/KnetAudit';
 import { cn } from '@/lib/utils';
 
@@ -76,6 +77,13 @@ const TABS: readonly TabDef[] = [
     access: 'unifiedLedger.view',
     Component: UnifiedLedgerPage,
     Icon: BarChart3,
+  },
+  {
+    id: 'strict-ledger',
+    labelKey: 'reports.hubTabStrictLedger',
+    access: 'financeLedgerReports.view',
+    Component: FinanceLedgerReportsPage,
+    Icon: BookCheck,
   },
 ];
 

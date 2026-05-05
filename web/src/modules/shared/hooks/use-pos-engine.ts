@@ -139,6 +139,9 @@ export function garmentTagCount(qty: number): number {
   return Math.min(50, Math.max(1, Math.round(n)));
 }
 
+function isCustomerBlockedError(e: ApiError): boolean {
+  return e.errorCode === 'CUSTOMER_BLOCKED' || /CUSTOMER_BLOCKED/i.test(e.message);
+}
 
 export type PosSubOrder = {
   id: string;
@@ -322,6 +325,8 @@ export function usePosEngine(opts: PosEngineOptions) {
   const [newHouse, setNewHouse] = useState('');
   const [savingCustomer, setSavingCustomer] = useState(false);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
+  const [customerBlocked, setCustomerBlocked] = useState(false);
+  const [customerBlockReason, setCustomerBlockReason] = useState<string | null>(null);
   /** Synchronous re-entry guard — `checkoutBusy` alone loses double-clicks before React re-renders. */
   const checkoutInFlightRef = useRef(false);
   const [receiptSheets, setReceiptSheets] = useState<ReceiptSnapshot[] | null>(
@@ -506,8 +511,15 @@ export function usePosEngine(opts: PosEngineOptions) {
           { token },
         );
         setBilling(row);
+        setCustomerBlocked(false);
+        setCustomerBlockReason(null);
       } catch (e) {
-        if (cachedWallet) {
+        if (e instanceof ApiError && isCustomerBlockedError(e)) {
+          setBilling(null);
+          setCustomerBlocked(true);
+          setCustomerBlockReason(e.blockReason ?? 'غير محدد');
+          toast.error('🚫 لا يمكن تنفيذ الطلب');
+        } else if (cachedWallet) {
           setBilling(billingFromCachedWallet(cachedWallet));
         } else {
           setBilling(null);
@@ -528,6 +540,8 @@ export function usePosEngine(opts: PosEngineOptions) {
   useEffect(() => {
     if (!selected?.id) {
       setBilling(null);
+      setCustomerBlocked(false);
+      setCustomerBlockReason(null);
       return;
     }
     void loadBilling(selected.id);
@@ -1146,6 +1160,10 @@ export function usePosEngine(opts: PosEngineOptions) {
         if (e.errorCode === 'SYSTEM_CLOSED') {
           toast.error(e.message);
           void getOperatingStatus().then(setOperating);
+        } else if (isCustomerBlockedError(e)) {
+          setCustomerBlocked(true);
+          setCustomerBlockReason(e.blockReason ?? 'غير محدد');
+          toast.error('🚫 لا يمكن تنفيذ الطلب');
         } else {
           toast.error(e.message);
         }
@@ -1323,6 +1341,8 @@ export function usePosEngine(opts: PosEngineOptions) {
     savingCustomer,
     setSavingCustomer,
     checkoutBusy,
+    customerBlocked,
+    customerBlockReason,
     receiptSheets,
     setReceiptSheets,
     scanOrderDetail,

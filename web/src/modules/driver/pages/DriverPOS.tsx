@@ -111,6 +111,8 @@ export function DriverPOS() {
     handlePrintReceipt,
     handlePrintGarmentTags,
     checkoutBusy,
+    customerBlocked,
+    customerBlockReason,
     combinedVipSurcharge,
     setVipForSubOrder,
     completePayment,
@@ -473,17 +475,28 @@ export function DriverPOS() {
             size="sm"
             className="h-10 touch-manipulation gap-1 border-emerald-500/40 bg-emerald-50 text-[11px] font-semibold text-emerald-800 hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-500/30 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/60"
             onClick={addAttachedOrder}
-            disabled={!selected}
+            disabled={!selected || customerBlocked}
           >
             <Plus className="h-3.5 w-3.5" />
             {t('pos.addAnotherInvoice')}
           </Button>
         </div>
 
+        {customerBlocked ? (
+          <div className="mt-2 rounded-xl bg-red-500 p-4 text-white">
+            🚫 لا يمكن تنفيذ الطلب
+            <div className="mt-2 text-sm">
+              العميل موقوف بسبب: {customerBlockReason ?? 'غير محدد'}
+            </div>
+            <div className="mt-2">الرجاء التواصل مع الإدارة</div>
+          </div>
+        ) : null}
+
         <Button
           type="button"
           disabled={
             checkoutBusy ||
+            customerBlocked ||
             combinedLineSubtotal <= 0 ||
             !selected ||
             grandTotal <= 0

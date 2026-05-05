@@ -80,6 +80,8 @@ export function PosPage() {
     handlePrintReceipt,
     handlePrintGarmentTags,
     checkoutBusy,
+    customerBlocked,
+    customerBlockReason,
     sessionDeliveryCharge,
     combinedVipSurcharge,
     setVipForSubOrder,
@@ -454,7 +456,7 @@ export function PosPage() {
               size="sm"
               className="h-10 w-full shrink-0 border-emerald-600/55 bg-emerald-50 text-emerald-950 hover:bg-emerald-100"
               onClick={addAttachedOrder}
-              disabled={!selected}
+              disabled={!selected || customerBlocked}
             >
               <Layers className="me-2 h-4 w-4 shrink-0" aria-hidden />
               {t('pos.multiOrder.addAttached')}
@@ -623,10 +625,20 @@ export function PosPage() {
               {t('pos.printGarmentTags')}
             </Button>
           </div>
+          {customerBlocked ? (
+            <div className="rounded-xl bg-red-500 p-4 text-white">
+              🚫 لا يمكن تنفيذ الطلب
+              <div className="mt-2 text-sm">
+                العميل موقوف بسبب: {customerBlockReason ?? 'غير محدد'}
+              </div>
+              <div className="mt-2">الرجاء التواصل مع الإدارة</div>
+            </div>
+          ) : null}
           <Button
             type="button"
             disabled={
               checkoutBusy ||
+              customerBlocked ||
               combinedLineSubtotal <= 0 ||
               !selected ||
               grandTotal <= 0

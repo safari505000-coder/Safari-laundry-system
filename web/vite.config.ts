@@ -1,24 +1,19 @@
 import path from 'path';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig } from 'vite';
 
-/** Must match Nest `PORT` (default 3000). Use `127.0.0.1` — not `localhost` — so Windows avoids resolving to IPv6 `::1` while Nest binds IPv4-only (502 from Vite proxy). */
-function apiProxyTarget(mode: string): string {
-  const env = loadEnv(mode, __dirname, '');
-  const raw = (env.API_PROXY_TARGET || 'http://127.0.0.1:3000').trim().replace(/\/+$/, '');
-  return raw || 'http://127.0.0.1:3000';
-}
+/** Must match Nest `PORT` (default 3000). Use IPv4 loopback to avoid Windows resolving `localhost` to `::1`. */
+const API_PROXY_TARGET = 'http://127.0.0.1:3000';
 
-export default defineConfig(({ mode }) => {
-  const apiTarget = apiProxyTarget(mode);
+export default defineConfig(() => {
   const proxy = {
     '/api': {
-      target: apiTarget,
+      target: API_PROXY_TARGET,
       changeOrigin: true,
     },
     '/uploads': {
-      target: apiTarget,
+      target: API_PROXY_TARGET,
       changeOrigin: true,
     },
   };

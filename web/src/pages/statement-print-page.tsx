@@ -14,7 +14,7 @@ import {
   type CustomerLedgerInvoice,
   type CustomerLedgerResponse,
 } from '@/lib/api';
-import { parseLedgerEffectiveDebtKd } from '@/lib/customer-ledger-parse';
+import { parseLedgerOperationalDebtKd } from '@/lib/customer-ledger-parse';
 import { formatKwdLabel } from '@/lib/kwd';
 import { OperatorRouteHint } from '@/modules/shared/components/shell/operator-route-hint';
 import { PrintableSheet } from '@/modules/shared/print/PrintableSheet';
@@ -216,7 +216,7 @@ export function StatementSheet({
   const customerPhone = data.customer.phone ?? '—';
   const branchName = data.customer.originBranchName ?? '—';
   const sub = data.activeSubscription;
-  const debtK = parseLedgerEffectiveDebtKd(data.customer);
+  const debtK = parseLedgerOperationalDebtKd(data.customer);
   const balK = Number.parseFloat(data.customer.walletBalanceKd) || 0;
   const docNumber = `STMT-${data.customer.id.slice(0, 8).toUpperCase()}`;
 

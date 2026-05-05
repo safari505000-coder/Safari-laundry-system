@@ -161,6 +161,7 @@ export function StatementDialog({
       customerPhone: ledger.customer.phone,
       walletBalanceKd: ledger.customer.walletBalanceKd,
       walletDebtKd: ledger.customer.walletDebtKd,
+      operationalDebtKd: ledger.customer.operationalDebtKd,
       effectiveDebtKd: ledger.customer.effectiveDebtKd,
       invoiceCount: ledger.totals.invoiceCount,
       openInvoiceCount: ledger.totals.openInvoiceCount,

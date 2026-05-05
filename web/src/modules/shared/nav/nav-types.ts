@@ -1,11 +1,14 @@
 import type { LucideIcon } from 'lucide-react';
 import type { SafariRole } from '@/lib/api';
+import type { AppPermission } from '@/modules/shared/auth/app-permissions';
 
 export type NavItem = {
   to: string;
   labelKey: string;
   icon: LucideIcon;
   roles: SafariRole[];
+  /** Required: every sidebar entry must map to one AppPermission for safe filtering. */
+  permission: AppPermission;
 };
 
 /**

@@ -4,7 +4,7 @@ export const CAN_MANAGE_STAFF = 'can_manage_staff' as const;
 
 /**
  * Temporary frontend capability map.
- * V19.0: OWNER and GENERAL_MANAGER both have can_manage_staff (second-eye audit).
+ * V19.0: OWNER-only staff management (GM is read-only oversight at HTTP layer).
  */
 export function hasCapability(
   user: LoginUser | null | undefined,
@@ -12,9 +12,7 @@ export function hasCapability(
 ): boolean {
   if (!user) return false;
   if (capability === CAN_MANAGE_STAFF) {
-    return (
-      user.safariRole === 'OWNER' || user.safariRole === 'GENERAL_MANAGER'
-    );
+    return user.safariRole === 'OWNER';
   }
   return false;
 }

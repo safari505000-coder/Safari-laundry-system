@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Loader2, Plus, Receipt } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { can } from '@/modules/shared/auth/access-matrix';
+import { ExpensesAnalyticsDashboard } from '@/components/expenses/expenses-analytics-dashboard';
 import {
   API_EXPENSES,
   type BranchRow,
@@ -13,6 +14,11 @@ import {
   ApiError,
 } from '@/lib/api';
 import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
+import {
+  buildExpenseFilter,
+  type ExpensePageMode,
+  type ExpenseViewType,
+} from '@/lib/expense-filters';
 import { formatKwdLabel } from '@/lib/kwd';
 import { expenseWorkflowChipClass } from '@/lib/safari-ui';
 import { Button } from '@/modules/shared/components/ui/button';
@@ -28,6 +34,17 @@ import {
 } from '@/modules/shared/components/ui/select';
 import { Textarea } from '@/modules/shared/components/ui/textarea';
 
+type ExpensesPageProps = {
+  mode?: ExpensePageMode;
+};
+
+type ExpenseStatusFilter =
+  | 'ALL'
+  | 'PENDING_ACCOUNTANT'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'AUDIT';
+
 function startOfDayIso(d: Date): string {
   const x = new Date(d);
   x.setHours(0, 0, 0, 0);
@@ -40,29 +57,105 @@ function endOfDayIso(d: Date): string {
   return x.toISOString();
 }
 
-export function ExpensesPage() {
+function readIsoParam(
+  params: URLSearchParams,
+  key: string,
+  fallback: string,
+): string {
+  const raw = params.get(key);
+  if (!raw) return fallback;
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? fallback : parsed.toISOString();
+}
+
+function readStatusParam(params: URLSearchParams): ExpenseStatusFilter {
+  const status = params.get('status');
+  return status === 'PENDING_ACCOUNTANT' ||
+    status === 'APPROVED' ||
+    status === 'REJECTED' ||
+    status === 'AUDIT'
+    ? status
+    : 'ALL';
+}
+
+export function ExpensesPage({ mode = 'default' }: ExpensesPageProps) {
   const { t } = useTranslation();
   const dateLocale = useAppLocale();
   const { token, user, hasRole, ownerBranchId } = useAuth();
-  const [from, setFrom] = useState(() => startOfDayIso(new Date()));
-  const [to, setTo] = useState(() => endOfDayIso(new Date()));
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialFilter = buildExpenseFilter({
+    mode,
+    type: searchParams.get('type'),
+  });
+  const [from, setFrom] = useState(() =>
+    readIsoParam(searchParams, 'from', startOfDayIso(new Date())),
+  );
+  const [to, setTo] = useState(() =>
+    readIsoParam(searchParams, 'to', endOfDayIso(new Date())),
+  );
   const [rows, setRows] = useState<ExpenseRow[] | null>(null);
   const [branches, setBranches] = useState<BranchRow[]>([]);
-  const [selectedBranch, setSelectedBranch] = useState<string>('ALL');
-  const [statusFilter, setStatusFilter] = useState<
-    'ALL' | 'PENDING_ACCOUNTANT' | 'APPROVED' | 'REJECTED' | 'AUDIT'
-  >('ALL');
+  const [selectedBranch, setSelectedBranch] = useState<string>(
+    () => searchParams.get('branchId') ?? 'ALL',
+  );
+  const [statusFilter, setStatusFilter] = useState<ExpenseStatusFilter>(() =>
+    readStatusParam(searchParams),
+  );
+  const [expenseType, setExpenseType] = useState<ExpenseViewType>(
+    initialFilter.type,
+  );
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
-  const [category, setCategory] = useState<'SOAP' | 'FUEL' | 'MISC'>('MISC');
+  const [category, setCategory] = useState<'SOAP' | 'FUEL' | 'MISC'>(
+    mode === 'cars' ? 'FUEL' : 'MISC',
+  );
   const [note, setNote] = useState('');
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
 
   const canManage = can(user, 'expenses.record');
   const canView = can(user, 'expenses.view');
+
+  const updateFilterParams = useCallback(
+    (
+      patch: Partial<{
+        from: string;
+        to: string;
+        branchId: string;
+        status: ExpenseStatusFilter;
+        type: ExpenseViewType;
+      }>,
+    ) => {
+      setSearchParams((current) => {
+        const next = new URLSearchParams(current);
+
+        if (patch.from) next.set('from', patch.from);
+        if (patch.to) next.set('to', patch.to);
+        if (patch.branchId !== undefined) {
+          if (patch.branchId === 'ALL') next.delete('branchId');
+          else next.set('branchId', patch.branchId);
+        }
+        if (patch.status !== undefined) {
+          if (patch.status === 'ALL') next.delete('status');
+          else next.set('status', patch.status);
+        }
+        if (patch.type !== undefined) next.set('type', patch.type);
+
+        return next;
+      }, { replace: true });
+    },
+    [setSearchParams],
+  );
+
+  useEffect(() => {
+    if (mode !== 'cars') return;
+    if (expenseType !== 'car') setExpenseType('car');
+    if (searchParams.get('type') !== 'car') {
+      updateFilterParams({ type: 'car' });
+    }
+  }, [expenseType, mode, searchParams, updateFilterParams]);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -77,13 +170,24 @@ export function ExpensesPage() {
         `${API_EXPENSES}?${qs.toString()}`,
         { token },
       );
-      setRows(Array.isArray(data) ? data : []);
+      const nextRows = Array.isArray(data) ? data : [];
+      const expenseFilter = buildExpenseFilter({ mode, type: expenseType });
+      setRows(nextRows.filter(expenseFilter.matches));
     } catch (e) {
       if (e instanceof ApiError) toast.error(e.message);
     } finally {
       setLoading(false);
     }
-  }, [token, from, to, ownerBranchId, selectedBranch, statusFilter]);
+  }, [
+    token,
+    from,
+    to,
+    expenseType,
+    mode,
+    ownerBranchId,
+    selectedBranch,
+    statusFilter,
+  ]);
 
   useEffect(() => {
     if (token && canView) void load();
@@ -155,9 +259,19 @@ export function ExpensesPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">
-          {t('expenses.title')}
+          {mode === 'cars' ?
+            t('expenses.carTitle')
+          : mode === 'reports' ?
+            t('expenses.reportsTitle')
+          : t('expenses.title')}
         </h1>
-        <p className="text-sm text-muted-foreground">{t('expenses.subtitle')}</p>
+        <p className="text-sm text-muted-foreground">
+          {mode === 'cars' ?
+            t('expenses.carSubtitle')
+          : mode === 'reports' ?
+            t('expenses.reportsSubtitle')
+          : t('expenses.subtitle')}
+        </p>
       </div>
 
       {canManage ?
@@ -245,6 +359,25 @@ export function ExpensesPage() {
         </Card>
       : null}
 
+      {/*
+        STRICT ROLE-BASED EXPENSE DESIGN — Part 3 / Part 8 (defense in depth).
+
+        The analytics dashboard renders totals, trends, percentages and
+        insights ("expenses increased N%", "highest employee
+        spending"). It is a FINANCIAL surface — branch managers must
+        never see it, even if they manually enter the URL. The nav
+        already excludes them (see `expenseReportsItem`); this guard
+        is the second line of defense.
+      */}
+      {mode === 'reports' && user?.safariRole !== 'MANAGER' ?
+        <ExpensesAnalyticsDashboard
+          rows={rows ?? []}
+          fromIso={from}
+          toIso={to}
+          branchId={selectedBranch !== 'ALL' ? selectedBranch : undefined}
+        />
+      : null}
+
       <Card>
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <CardTitle className="text-base">{t('expenses.list')}</CardTitle>
@@ -252,15 +385,21 @@ export function ExpensesPage() {
             <Input
               type="datetime-local"
               value={from.slice(0, 16)}
-              onChange={(e) =>
-                setFrom(new Date(e.target.value).toISOString())
-              }
+              onChange={(e) => {
+                const nextFrom = new Date(e.target.value).toISOString();
+                setFrom(nextFrom);
+                updateFilterParams({ from: nextFrom });
+              }}
               className="w-auto"
             />
             <Input
               type="datetime-local"
               value={to.slice(0, 16)}
-              onChange={(e) => setTo(new Date(e.target.value).toISOString())}
+              onChange={(e) => {
+                const nextTo = new Date(e.target.value).toISOString();
+                setTo(nextTo);
+                updateFilterParams({ to: nextTo });
+              }}
               className="w-auto"
             />
             <Button
@@ -278,7 +417,11 @@ export function ExpensesPage() {
             {hasRole('OWNER', 'GENERAL_MANAGER') ? (
               <Select
                 value={selectedBranch}
-                onValueChange={(v) => setSelectedBranch(v ?? 'ALL')}
+                onValueChange={(v) => {
+                  const nextBranch = v ?? 'ALL';
+                  setSelectedBranch(nextBranch);
+                  updateFilterParams({ branchId: nextBranch });
+                }}
               >
                 <SelectTrigger className="min-w-[180px]">
                   <SelectValue placeholder="All branches">
@@ -298,18 +441,31 @@ export function ExpensesPage() {
                 </SelectContent>
               </Select>
             ) : null}
+            {mode !== 'cars' ? (
+              <Select
+                value={expenseType}
+                onValueChange={(v) => {
+                  const nextType = v === 'car' ? 'car' : 'all';
+                  setExpenseType(nextType);
+                  updateFilterParams({ type: nextType });
+                }}
+              >
+                <SelectTrigger className="min-w-[160px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t('expenses.typeAll')}</SelectItem>
+                  <SelectItem value="car">{t('expenses.typeCar')}</SelectItem>
+                </SelectContent>
+              </Select>
+            ) : null}
             <Select
               value={statusFilter}
-              onValueChange={(v) =>
-                setStatusFilter(
-                  v as
-                    | 'ALL'
-                    | 'PENDING_ACCOUNTANT'
-                    | 'APPROVED'
-                    | 'REJECTED'
-                    | 'AUDIT',
-                )
-              }
+              onValueChange={(v) => {
+                const nextStatus = v as ExpenseStatusFilter;
+                setStatusFilter(nextStatus);
+                updateFilterParams({ status: nextStatus });
+              }}
             >
               <SelectTrigger className="min-w-[180px]">
                 <SelectValue />
@@ -328,7 +484,13 @@ export function ExpensesPage() {
           {loading && !rows ?
             <p className="text-sm text-muted-foreground">{t('expenses.loading')}</p>
           : rows && rows.length === 0 ?
-            <p className="text-sm text-muted-foreground">{t('expenses.empty')}</p>
+            <div className="rounded-xl border border-dashed border-border bg-muted/30 px-4 py-8 text-center">
+              <p className="text-sm font-medium text-foreground">
+                {mode === 'cars' || expenseType === 'car' ?
+                  t('expenses.emptyCars')
+                : t('expenses.empty')}
+              </p>
+            </div>
           : (
             <table className="safari-data-table min-w-[560px]">
               <thead>

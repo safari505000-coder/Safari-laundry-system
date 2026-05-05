@@ -21,6 +21,9 @@ export type CanonicalGroupKey =
   | 'customersSubs'
   | 'invoices'
   | 'finance'
+  | 'financialManagement'
+  | 'expenses'
+  | 'cashDebt'
   | 'paymentCollection'
   | 'inventoryOps'
   | 'operations'
@@ -42,8 +45,20 @@ export const CANONICAL_GROUPS: Record<
     tone: 'blue',
   },
   finance: {
-    labelKey: 'nav.groupFinance',
+    labelKey: 'nav.groupFinancial',
     tone: 'blue',
+  },
+  financialManagement: {
+    labelKey: 'nav.groupFinancialManagement',
+    tone: 'blue',
+  },
+  expenses: {
+    labelKey: 'nav.groupExpenses',
+    tone: 'purple',
+  },
+  cashDebt: {
+    labelKey: 'nav.groupCashDebt',
+    tone: 'red',
   },
   paymentCollection: {
     labelKey: 'nav.groupPaymentCollection',

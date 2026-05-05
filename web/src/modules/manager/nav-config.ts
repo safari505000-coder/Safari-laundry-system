@@ -2,12 +2,9 @@ import type { NavGroup } from '@/modules/shared/nav/nav-types';
 import { G } from '@/modules/shared/nav/nav-groups';
 import {
   attendanceItem,
-  callIncomingItem,
-  collectionsItem,
-  customersItem,
   dashboardItem,
   driverOversightItem,
-  expensesItem,
+  expenseInputItem,
   operationalReportsHubItem,
   inventoryOperationsItem,
   myCustodyItem,
@@ -15,7 +12,6 @@ import {
   ordersItem,
   posItem,
   shiftsItem,
-  whatsappToolsItem,
 } from '@/modules/shared/nav/nav-items';
 
 /**
@@ -24,6 +20,17 @@ import {
  * Dastur §3 rules still encoded by omission: no /collect-driver-cash
  * (merged into /manager/custody), no HR self-service (/leaves,
  * /loans removed from sidebar).
+ *
+ * STRICT ROLE-BASED EXPENSE DESIGN — Part 3 / Part 4.
+ *
+ * Branch managers see ONLY operational data + the expense input
+ * surface. `expenseReportsItem` (analytics dashboard with totals,
+ * trends, %, employee comparisons) and `carExpensesItem` (vehicle
+ * expenses — owned by fleet, not branch) were removed because
+ * "expenses increased N%", "highest employee spending" and similar
+ * financial intelligence belongs to OWNER / GENERAL_MANAGER /
+ * ACCOUNTANT only. The new `expenseInputItem` points at the
+ * input-only expenses page.
  */
 export const managerSidebarNavGroups: NavGroup[] = [
   {
@@ -31,12 +38,12 @@ export const managerSidebarNavGroups: NavGroup[] = [
     items: [posItem, dashboardItem, ordersItem],
   },
   {
-    ...G.finance,
-    items: [expensesItem, myCustodyItem, myDocumentsItem],
+    ...G.expenses,
+    items: [expenseInputItem, myDocumentsItem],
   },
   {
-    ...G.customersSubs,
-    items: [customersItem, callIncomingItem, collectionsItem, whatsappToolsItem],
+    ...G.cashDebt,
+    items: [myCustodyItem],
   },
   {
     ...G.inventoryOps,

@@ -5,8 +5,9 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { BrandLogo } from '@/modules/shared/components/brand-logo';
+import { filterNavGroupsForUser } from '@/modules/shared/nav/filter-nav-groups';
 import { getSidebarNavGroupsForRole } from '@/modules/shared/nav/resolve-sidebar-nav';
 import type { NavGroupTone } from '@/modules/shared/nav/nav-types';
 import { useAuth } from '@/contexts/auth-context';
@@ -41,6 +42,11 @@ function navClass(active: boolean, collapsed: boolean) {
       'bg-primary/10 text-primary'
     : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
   );
+}
+
+function isNavRouteActive(pathname: string, to: string): boolean {
+  if (to === '/') return pathname === '/';
+  return pathname === to || pathname.startsWith(`${to}/`);
 }
 
 /**
@@ -95,7 +101,8 @@ const GROUP_TONE_CLASSES: Record<
 export function ExecutiveSidebar() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  const { user, logout, hasRole } = useAuth();
+  const { pathname } = useLocation();
+  const { user, logout } = useAuth();
   const rtl = i18n.language.startsWith('ar');
 
   const [collapsed, setCollapsed] = useState(() => {
@@ -117,13 +124,8 @@ export function ExecutiveSidebar() {
 
   const filteredGroups = useMemo(() => {
     const groups = getSidebarNavGroupsForRole(user?.safariRole);
-    return groups
-      .map((g) => ({
-        ...g,
-        items: g.items.filter((i) => hasRole(...i.roles)),
-      }))
-      .filter((g) => g.items.length > 0);
-  }, [hasRole, user?.safariRole]);
+    return filterNavGroupsForUser(groups, user);
+  }, [user]);
 
   const initials =
     (user?.fullName
@@ -239,9 +241,13 @@ export function ExecutiveSidebar() {
                   to={to}
                   end={to === '/'}
                   title={collapsed ? t(labelKey) : undefined}
-                  className={({ isActive }) => navClass(isActive, collapsed)}
+                  className={() =>
+                    navClass(isNavRouteActive(pathname, to), collapsed)
+                  }
                 >
-                  {({ isActive }) => (
+                  {() => {
+                    const isActive = isNavRouteActive(pathname, to);
+                    return (
                     <>
                       {isActive && tone && !collapsed ?
                         <span
@@ -261,7 +267,8 @@ export function ExecutiveSidebar() {
                       />
                       {!collapsed ? <span>{t(labelKey)}</span> : null}
                     </>
-                  )}
+                    );
+                  }}
                 </NavLink>
               ))}
             </div>

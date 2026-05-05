@@ -8,9 +8,9 @@ import type { LoginUser, SafariRole } from '@/lib/api';
  *      MUST look up its allowed roles here — never hard-code role
  *      strings in components.
  *   2. The list is exhaustive and explicit. OWNER and GENERAL_MANAGER
- *      are spelled out on every key they can reach; there is NO silent
- *      "master island" bypass any more. If a role is not listed here,
- *      it cannot enter — period.
+ *      are spelled out on every key they can reach **for read surfaces**;
+ *      GENERAL_MANAGER is HTTP read-only (see `GeneralManagerReadOnlyGuard`)
+ *      and must not appear on `.act` / `.manage` / mutation keys.
  *   3. Mutations happen only from this file. Adding a role, revoking a
  *      role, or opening a new screen = exactly one patch here.
  *
@@ -56,28 +56,16 @@ export const ACCESS = {
 
   // ─── Debt Transfer (Dastur §5) ─────────────────────────────────────
   // Departing-driver → replacement-driver debt handover with dual digital
-  // signatures. GM and ACCOUNTANT fully operate the workflow (create,
-  // finalize, cancel, view). OWNER sees the full history + filtering but
-  // MUST NOT initiate, sign, finalize, or cancel — the feature is
-  // deliberately kept out of executive oversight's write path so the
-  // audit chain always has an independent initiator.
+  // signatures. ACCOUNTANT operates the workflow (create, finalize,
+  // cancel); OWNER + GM read list + detail only.
   'debtTransfer.view': [
     'OWNER',
     'GENERAL_MANAGER',
     'ACCOUNTANT',
   ] satisfies readonly SafariRole[],
-  'debtTransfer.create': [
-    'GENERAL_MANAGER',
-    'ACCOUNTANT',
-  ] satisfies readonly SafariRole[],
-  'debtTransfer.finalize': [
-    'GENERAL_MANAGER',
-    'ACCOUNTANT',
-  ] satisfies readonly SafariRole[],
-  'debtTransfer.cancel': [
-    'GENERAL_MANAGER',
-    'ACCOUNTANT',
-  ] satisfies readonly SafariRole[],
+  'debtTransfer.create': ['ACCOUNTANT'] satisfies readonly SafariRole[],
+  'debtTransfer.finalize': ['ACCOUNTANT'] satisfies readonly SafariRole[],
+  'debtTransfer.cancel': ['ACCOUNTANT'] satisfies readonly SafariRole[],
   /** Driver (source or target) signs their half of the document. */
   'debtTransfer.sign': ['DRIVER'] satisfies readonly SafariRole[],
   /** Driver-facing inbox of transfers awaiting their signature. */
@@ -107,6 +95,10 @@ export const ACCESS = {
   /** V19.24 — وارد / خصومات / مصروفات + تفصيل الدفاتر للفترة. */
   'moneyFlowStatement.view': withExec('ACCOUNTANT'),
   'driverCashTrace.view': withExec('ACCOUNTANT'),
+  /** V19.31 — event vs state cash reconciliation (GM read-only safe). */
+  'cashReconciliation.view': withExec('ACCOUNTANT'),
+  /** V19.32 — Interactive accountant dashboard (KPIs, pipeline, recon, insights). */
+  'accountantDashboard.view': withExec('ACCOUNTANT'),
   // V19.10 — "Unpaid invoices list" page (قائمة مديونيات الفواتير).
   // Accessible to exec pair, accountant, and call-centre (pair) because
   // the operators chasing debt collection live in those roles.
@@ -115,7 +107,7 @@ export const ACCESS = {
     'CALL_CENTER',
     'CALL_CENTER_SUPERVISOR',
   ),
-  'ownerSerials.manage': EXEC_PAIR,
+  'ownerSerials.manage': ['OWNER'] satisfies readonly SafariRole[],
   'debtRecoveryReport.view': EXEC_PAIR,
   'liveMonitor.view': ['OWNER'] satisfies readonly SafariRole[],
   'payroll.view': EXEC_PAIR,
@@ -126,13 +118,25 @@ export const ACCESS = {
   // holds) are open to ACCOUNTANT/MANAGER as well because they need
   // visibility for payroll sign-off.
   'settings.dashboard.view': EXEC_PAIR,
-  'settings.commissionRules.manage': EXEC_PAIR,
-  'settings.debtHoldPolicy.manage': EXEC_PAIR,
+  'settings.commissionRules.manage': ['OWNER'] satisfies readonly SafariRole[],
+  'settings.debtHoldPolicy.manage': ['OWNER'] satisfies readonly SafariRole[],
   'commissionPayouts.view': withExec('ACCOUNTANT', 'MANAGER'),
   'debtHolds.view': withExec('ACCOUNTANT', 'MANAGER'),
-  'branches.manage': EXEC_PAIR,
-  'manageItems.edit': EXEC_PAIR,
-  'ownerDashboard.view': EXEC_PAIR,
+  'branches.manage': ['OWNER'] satisfies readonly SafariRole[],
+  'manageItems.edit': ['OWNER'] satisfies readonly SafariRole[],
+  /**
+   * Unified Executive Dashboard (`/dashboard`). The single cash-
+   * intelligence-backed landing surface for everyone except DRIVER /
+   * CUSTOMER (who have their own home routes).
+   *
+   * Role-based visibility is enforced by the *backend*: the cash-
+   * classifier clamps `branchId` to the JWT branch for MANAGER, while
+   * OWNER / GM / ACCOUNTANT see the full group view. The frontend just
+   * renders whatever the API returns — no client-side recomputation,
+   * no role-specific code paths beyond conditional sections.
+   */
+  'executiveDashboard.view': withExec('MANAGER', 'ACCOUNTANT'),
+  'auditLogs.view': EXEC_PAIR,
   // DUSTUR §2 — financial cycle control. Snapshot is readable by everyone who
   // sees the control panel, but the manual override is OWNER master-key only.
   'shiftCycle.view': EXEC_PAIR,
@@ -166,6 +170,10 @@ export const ACCESS = {
   'inventory.stocktake': ['ACCOUNTANT'] satisfies readonly SafariRole[],
   'inventory.lowStock.view': withExec('ACCOUNTANT'),
   'unifiedLedger.view': withExec('ACCOUNTANT'),
+  // Strict double-entry ledger reports (Stage A). OWNER / GM / ACCOUNTANT
+  // only — every endpoint in /api/finance/ledger/* enforces the same
+  // role list server-side; this client gate is for navigation only.
+  'financeLedgerReports.view': withExec('ACCOUNTANT'),
   /**
    * Hub: operational invoice/cash reports + AI insights (split from
    * `/reports-hub`). Union of everyone who may open `reports.view` or
@@ -194,12 +202,15 @@ export const ACCESS = {
     'ACCOUNTANT',
   ] satisfies readonly SafariRole[],
   'vehicleExpenses.report.view': withExec('ACCOUNTANT'),
-  'whatsappTools.use': withExec(
+  /**
+   * 🔒 SECURITY LOCK - DO NOT MODIFY
+   * Unauthorized roles must NEVER access collections or WhatsApp tools.
+   */
+  'whatsappTools.use': [
+    'OWNER',
     'CALL_CENTER',
     'CALL_CENTER_SUPERVISOR',
-    'MANAGER',
-    'DRIVER',
-  ),
+  ] satisfies readonly SafariRole[],
   // V19.14 — Driver tracking screen.
   //
   // UI access is opened for OWNER + GENERAL_MANAGER + CALL_CENTER +
@@ -228,29 +239,31 @@ export const ACCESS = {
   // management). OWNER keeps manage on the subscriber CRM to support
   // escalations — this mirrors the pre-refactor behaviour so we don't
   // remove a tool the Owner actually uses.
-  // MANAGER: فرع يتابع تحصيلاً وعملاءً — نفس شاشة العملاء + اتصال وارد (PBX).
+  // MANAGER removed — branch managers use POS customer search; CRM directory is CC + oversight.
   'customers.view': withExec(
     'CALL_CENTER',
     'CALL_CENTER_SUPERVISOR',
-    'MANAGER',
+    'ACCOUNTANT',
   ),
   'customers.manage': [
     'OWNER',
     'CALL_CENTER',
     'CALL_CENTER_SUPERVISOR',
-    'MANAGER',
   ] satisfies readonly SafariRole[],
-  'collections.view': withExec(
+  /** B2C — Customer 360 for the JWT-linked profile only (`/my-customer-360`). */
+  'customer360.self': ['CUSTOMER'] satisfies readonly SafariRole[],
+  /**
+   * 🔒 SECURITY LOCK - DO NOT MODIFY
+   * Unauthorized roles must NEVER access collections or WhatsApp tools.
+   */
+  'collections.view': [
+    'OWNER',
     'CALL_CENTER',
     'CALL_CENTER_SUPERVISOR',
-    'MANAGER',
-    'DRIVER',
-  ),
+  ] satisfies readonly SafariRole[],
   'collections.act': [
     'CALL_CENTER',
     'CALL_CENTER_SUPERVISOR',
-    'MANAGER',
-    'DRIVER',
   ] satisfies readonly SafariRole[],
   // V19.4 CC cleanup — `/subscriptions` is now the plan-catalog page for
   // executives only. Every Call-Center activation / debt / extend /
@@ -258,7 +271,7 @@ export const ACCESS = {
   // Leaving CC access here would mean two entry points for the same
   // workflow (the "old system" the user kept seeing), so we narrow it.
   'subscriptions.view': [...EXEC_PAIR] satisfies readonly SafariRole[],
-  'subscriptions.manage': [...EXEC_PAIR] satisfies readonly SafariRole[],
+  'subscriptions.manage': ['OWNER'] satisfies readonly SafariRole[],
   'subscribers.view': withExec('CALL_CENTER', 'CALL_CENTER_SUPERVISOR'),
   'subscribers.manage': [
     'OWNER',
@@ -295,7 +308,7 @@ export const ACCESS = {
   // ─── Branch manager ───────────────────────────────────────────────
   'managerCustody.view': withExec('MANAGER'),
   'managerCustody.act': ['MANAGER'] satisfies readonly SafariRole[],
-  'expenses.view': withExec('MANAGER'),
+  'expenses.view': withExec('ACCOUNTANT', 'MANAGER'),
   'expenses.record': ['MANAGER'] satisfies readonly SafariRole[],
   // V19.22.5 — Branch-Manager islands.
   // * `managerDocuments.view`: unified inbox of Accountant-approved
@@ -319,15 +332,19 @@ export const ACCESS = {
   // Attendance list/print — OWNER, GM, MANAGER (branch HR), ACCOUNTANT
   // (payroll sign-off). Biometric sync + manual entry are OWNER/GM only.
   'attendance.view': withExec('MANAGER', 'ACCOUNTANT'),
-  'attendance.manual': withExec('MANAGER', 'ACCOUNTANT'),
+  'attendance.manual': ['OWNER', 'MANAGER', 'ACCOUNTANT'] satisfies readonly SafariRole[],
   'attendance.sync': ['OWNER'] satisfies readonly SafariRole[],
-  'attendance.biometric': EXEC_PAIR,
+  'attendance.biometric': ['OWNER'] satisfies readonly SafariRole[],
 
   // Leave requests — every role can submit (see `hr.leaves.mine` on the
   // frontend list filter), but only OWNER/GM/MANAGER/ACCOUNTANT can
   // approve or reject.
   'hr.leaves.view': withExec('MANAGER', 'ACCOUNTANT'),
-  'hr.leaves.approve': withExec('MANAGER', 'ACCOUNTANT'),
+  'hr.leaves.approve': [
+    'OWNER',
+    'MANAGER',
+    'ACCOUNTANT',
+  ] satisfies readonly SafariRole[],
   'hr.leaves.mine': [
     'OWNER',
     'GENERAL_MANAGER',
@@ -343,13 +360,9 @@ export const ACCESS = {
   // Employee loans — same approver set as leaves. Drivers and other
   // staff can submit a request for themselves.
   'hr.loans.view': withExec('ACCOUNTANT'),
-  'hr.loans.approve': withExec('ACCOUNTANT'),
-  // V19.19 — manual loan deduction. DELIBERATELY tighter than
-  // `hr.loans.approve`: the Owner asked that only OWNER + GENERAL_MANAGER
-  // be able to actually take money off a loan balance, so the Accountant
-  // (who can approve requests) cannot mutate `remaining` here. This is
-  // the UI counterpart of `POST /api/loans/:id/deduct`.
-  'hr.loans.deduct': ['OWNER', 'GENERAL_MANAGER'] satisfies readonly SafariRole[],
+  'hr.loans.approve': ['OWNER', 'ACCOUNTANT'] satisfies readonly SafariRole[],
+  // V19.19 — manual loan deduction: OWNER only (GM is read-only oversight).
+  'hr.loans.deduct': ['OWNER'] satisfies readonly SafariRole[],
   // V19.4 — CALL_CENTER removed per the "CC cleanup" product decision:
   // loans/advances are handled by HR + accountant; the call-centre agent
   // should not see loan balances or submit requests from the CC shell.
@@ -378,10 +391,10 @@ export const ACCESS = {
   // Full control: OWNER / GM / Accountant. Branch Manager gets read-
   // only so they see what's arriving before it lands at the branch.
   'purchaseOrders.view': withExec('ACCOUNTANT', 'MANAGER'),
-  'purchaseOrders.create': withExec('ACCOUNTANT'),
-  'purchaseOrders.send': withExec('ACCOUNTANT'),
-  'purchaseOrders.cancel': withExec('ACCOUNTANT'),
-  'purchaseOrders.receive': withExec('ACCOUNTANT'),
+  'purchaseOrders.create': ['OWNER', 'ACCOUNTANT'] satisfies readonly SafariRole[],
+  'purchaseOrders.send': ['OWNER', 'ACCOUNTANT'] satisfies readonly SafariRole[],
+  'purchaseOrders.cancel': ['OWNER', 'ACCOUNTANT'] satisfies readonly SafariRole[],
+  'purchaseOrders.receive': ['OWNER', 'ACCOUNTANT'] satisfies readonly SafariRole[],
 
   // ─── Driver personal island ───────────────────────────────────────
   'myDeposits.view': withExec('DRIVER'),

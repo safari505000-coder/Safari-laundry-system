@@ -21,7 +21,7 @@ export function RequireAccess({
   const { user, hasRole } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
   if (!hasRole(...ACCESS[access])) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/403" replace />;
   }
   return <>{children}</>;
 }

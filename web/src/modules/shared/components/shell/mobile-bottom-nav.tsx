@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { NavLink, useLocation } from 'react-router-dom';
 import { LogOut, Menu } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
+import { filterNavGroupsForUser } from '@/modules/shared/nav/filter-nav-groups';
 import { getSidebarNavGroupsForRole } from '@/modules/shared/nav/resolve-sidebar-nav';
 import type { NavGroupTone } from '@/modules/shared/nav/nav-types';
 import {
@@ -27,6 +28,11 @@ const GROUP_TONE_CLASSES: Record<NavGroupTone, { dot: string; text: string }> = 
   red: { dot: 'bg-rose-500', text: 'text-rose-700 dark:text-rose-300' },
   gray: { dot: 'bg-zinc-400', text: 'text-muted-foreground' },
 };
+
+function isNavRouteActive(pathname: string, to: string): boolean {
+  if (to === '/') return pathname === '/';
+  return pathname === to || pathname.startsWith(`${to}/`);
+}
 
 /**
  * V19.15 — Mobile nav is a **side drawer** (reading-start side) instead
@@ -64,7 +70,7 @@ const GROUP_TONE_CLASSES: Record<NavGroupTone, { dot: string; text: string }> = 
 export function MobileBottomNav() {
   const { t, i18n } = useTranslation();
   const { pathname } = useLocation();
-  const { user, hasRole, logout } = useAuth();
+  const { user, logout } = useAuth();
   const [open, setOpen] = useState(false);
 
   const role = user?.safariRole;
@@ -72,13 +78,8 @@ export function MobileBottomNav() {
 
   const navGroups = useMemo(() => {
     const groups = getSidebarNavGroupsForRole(role);
-    return groups
-      .map((g) => ({
-        ...g,
-        items: g.items.filter((i) => hasRole(...i.roles)),
-      }))
-      .filter((g) => g.items.length > 0);
-  }, [hasRole, role]);
+    return filterNavGroupsForUser(groups, user);
+  }, [role, user]);
 
   if (!user) return null;
   if (role === 'DRIVER' && pathname === '/pos') {
@@ -159,10 +160,10 @@ export function MobileBottomNav() {
                           to={to}
                           end={to === '/'}
                           onClick={() => setOpen(false)}
-                          className={({ isActive }) =>
+                          className={() =>
                             cn(
                               'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
-                              isActive
+                              isNavRouteActive(pathname, to)
                                 ? 'bg-primary/10 text-primary'
                                 : 'text-foreground hover:bg-muted',
                             )

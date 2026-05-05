@@ -1,13 +1,13 @@
 import type { CustomerLedgerResponse } from './api';
 
 /**
- * Total owed for display: preferred server field `effectiveDebtKd`, else
- * wallet + collections (legacy clients before V19.8.11).
+ * Operational owed amount for display. This is NOT the canonical Customer 360
+ * financial number; Customer 360 must use `statement.financials.totalDueKd`.
  */
-export function parseLedgerEffectiveDebtKd(
+export function parseLedgerOperationalDebtKd(
   c: CustomerLedgerResponse['customer'],
 ): number {
-  const raw = c.effectiveDebtKd?.trim();
+  const raw = (c.operationalDebtKd ?? c.effectiveDebtKd)?.trim();
   if (raw !== undefined && raw !== '') return Number.parseFloat(raw) || 0;
   const w = Number.parseFloat(c.walletDebtKd) || 0;
   const cr = c.collectionsReceivableKd?.trim();
@@ -15,3 +15,6 @@ export function parseLedgerEffectiveDebtKd(
     cr !== undefined && cr !== '' ? Number.parseFloat(cr) || 0 : 0;
   return w + collections;
 }
+
+/** @deprecated Use parseLedgerOperationalDebtKd. */
+export const parseLedgerEffectiveDebtKd = parseLedgerOperationalDebtKd;

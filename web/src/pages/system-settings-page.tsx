@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import {
   AlertCircle,
   BadgeCheck,
+  Bell,
   CalendarDays,
   ChevronRight,
   Clock,
@@ -31,17 +32,20 @@ import {
   type PayrollSettings,
   type PaymentMethodFeeConfig,
   type KnetCommissionRule,
+  type SystemConfigResponse,
   type SystemToggleKey,
   type SystemToggleRow,
   getDebtHoldPolicy,
   getDefaultCommissionRule,
   getPaymentMethodFeeConfig,
   getPayrollSettings,
+  getSystemConfig,
   listSystemToggles,
   setSystemToggle,
   updateDebtHoldPolicy,
   updatePayrollSettings,
   updatePaymentMethodFeeConfig,
+  updateSystemConfig,
   upsertDefaultCommissionRule,
 } from '@/lib/api';
 import { Badge } from '@/modules/shared/components/ui/badge';
@@ -116,6 +120,10 @@ const TOGGLE_META: Record<
 export function SystemSettingsPage() {
   const { token, hasRole } = useAuth();
   const isOwner = hasRole('OWNER', 'GENERAL_MANAGER');
+  // OWNER-only sections (e.g. WhatsApp alert recipient) are gated
+  // separately so a GM can still read the rest of this page without
+  // hitting a 403 on the system-config fetch.
+  const isStrictOwner = hasRole('OWNER');
 
   const [toggles, setToggles] = useState<SystemToggleRow[] | null>(null);
   const [debtPolicy, setDebtPolicy] = useState<DebtHoldPolicy | null>(null);
@@ -126,6 +134,8 @@ export function SystemSettingsPage() {
   );
   const [paymentFeeConfig, setPaymentFeeConfig] =
     useState<PaymentMethodFeeConfig | null>(null);
+  const [systemConfig, setSystemConfig] =
+    useState<SystemConfigResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState<SystemToggleKey | null>(null);
 
@@ -145,12 +155,24 @@ export function SystemSettingsPage() {
       setPayrollSettings(ps);
       setDefaultRule(dr);
       setPaymentFeeConfig(fee);
+      // System config is OWNER-only; fetch it separately so a GM
+      // doesn't see a noisy toast for a 403 on this page.
+      if (isStrictOwner) {
+        try {
+          const cfg = await getSystemConfig(token);
+          setSystemConfig(cfg);
+        } catch (e) {
+          if (e instanceof ApiError && e.status !== 403) {
+            toast.error(e.message);
+          }
+        }
+      }
     } catch (e) {
       if (e instanceof ApiError) toast.error(e.message);
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [token, isStrictOwner]);
 
   useEffect(() => {
     if (!isOwner) return;
@@ -276,6 +298,29 @@ export function SystemSettingsPage() {
           </div>
         )}
       </section>
+
+      {/* ─── System Alerts (Owner only) ─────────────────────────── */}
+      {isStrictOwner ? (
+        <section>
+          <div className="mb-3 flex items-center gap-2">
+            <Bell className="size-5 text-primary" />
+            <h2 className="text-lg font-semibold">
+              تنبيهات النظام (System Alerts)
+            </h2>
+            <Badge variant="outline" className="text-xs">
+              للمالك فقط
+            </Badge>
+          </div>
+          {loading && !systemConfig ? (
+            <Skeleton className="h-40 w-full" />
+          ) : systemConfig ? (
+            <SystemAlertsEditor
+              value={systemConfig}
+              onSaved={(c) => setSystemConfig(c)}
+            />
+          ) : null}
+        </section>
+      ) : null}
 
       {/* ─── KNET / card fee estimates (reporting) ─────────────── */}
       <section>
@@ -1128,6 +1173,193 @@ function KnetPaymentFeeEditor({
 
         <div className="flex justify-end">
           <Button onClick={handleSave} disabled={!dirty || saving}>
+            {saving && <Loader2 className="me-2 size-4 animate-spin" />}
+            حفظ
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ─── System alerts (Owner WhatsApp recipient) ──────────────── */
+
+/**
+ * Kuwait mobile validator — mirrors the backend's
+ * `parseKuwaitMobile965` so the input rejects the same shapes the
+ * server would. NEVER touches financial state.
+ */
+function isValidKuwaitMobile(input: string): boolean {
+  const compact = input.replace(/[\s-+]/g, '');
+  if (/^[569]\d{7}$/.test(compact)) return true;
+  if (/^965[569]\d{7}$/.test(compact)) return true;
+  if (/^00965[569]\d{7}$/.test(compact)) return true;
+  return false;
+}
+
+function maskPhone(digits: string): string {
+  if (digits.length < 6) return '***';
+  return `${digits.slice(0, 3)}****${digits.slice(-4)}`;
+}
+
+function SystemAlertsEditor({
+  value,
+  onSaved,
+}: {
+  value: SystemConfigResponse;
+  onSaved: (cfg: SystemConfigResponse) => void;
+}) {
+  const { token } = useAuth();
+  const [phone, setPhone] = useState<string>(value.guardianPhone ?? '');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setPhone(value.guardianPhone ?? '');
+  }, [value]);
+
+  const trimmed = phone.trim();
+  const isEmpty = trimmed.length === 0;
+  const isValid = isEmpty || isValidKuwaitMobile(trimmed);
+  const dirty = trimmed !== (value.guardianPhone ?? '');
+
+  async function handleSave() {
+    if (!token) return;
+    if (!isValid) {
+      toast.error('رقم الواتساب غير صالح. مثال: 96591234567');
+      return;
+    }
+    setSaving(true);
+    try {
+      const next = await updateSystemConfig(token, {
+        guardianPhone: isEmpty ? null : trimmed,
+      });
+      onSaved(next);
+      toast.success(
+        isEmpty
+          ? 'تم مسح رقم تنبيهات النظام (سيُستخدم الرقم الافتراضي إن وُجد).'
+          : 'تم حفظ رقم واتساب التنبيهات.',
+      );
+    } catch (e) {
+      if (e instanceof ApiError) toast.error(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleClear() {
+    if (!token) return;
+    setSaving(true);
+    try {
+      const next = await updateSystemConfig(token, { guardianPhone: null });
+      onSaved(next);
+      setPhone('');
+      toast.success('تم مسح الرقم — سيتم استخدام رقم البيئة الافتراضي إن وُجد.');
+    } catch (e) {
+      if (e instanceof ApiError) toast.error(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const resolvedSourceLabel: Record<
+    SystemConfigResponse['resolved']['source'],
+    string
+  > = {
+    database: 'محفوظ في قاعدة البيانات',
+    env: 'متغير بيئة (Fallback)',
+    none: 'غير مهيأ — لن تُرسل تنبيهات واتساب',
+  };
+
+  return (
+    <Card>
+      <CardContent className="space-y-4 pt-4">
+        <div className="flex items-start gap-2 rounded-md border border-sky-200/80 bg-sky-50/60 px-3 py-2 text-xs text-sky-950">
+          <Info className="mt-0.5 size-4 shrink-0" />
+          <p>
+            هذا الرقم يستلم تنبيهات نظام الحماية (System Guardian) عبر
+            الواتساب فقط. لا يتعلق بأي عملية مالية. يُقبل صيغ:{' '}
+            <span className="font-mono" dir="ltr">
+              96591234567
+            </span>{' '}
+            أو{' '}
+            <span className="font-mono" dir="ltr">
+              +96591234567
+            </span>{' '}
+            أو الرقم المحلي{' '}
+            <span className="font-mono" dir="ltr">
+              91234567
+            </span>
+            .
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label className="flex items-center gap-2">
+            <Bell className="size-4" />
+            رقم واتساب التنبيهات
+          </Label>
+          <Input
+            type="tel"
+            inputMode="tel"
+            dir="ltr"
+            className="max-w-sm font-mono tabular-nums"
+            placeholder="96591234567"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            aria-invalid={!isValid}
+          />
+          {!isValid ? (
+            <p className="flex items-center gap-1.5 text-xs text-destructive">
+              <AlertCircle className="size-3.5" />
+              صيغة الرقم غير صحيحة. ابدأ بـ 5 أو 6 أو 9 (٨ أرقام).
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              اتركه فارغاً للعودة إلى الإعداد الافتراضي من البيئة (إن وُجد).
+            </p>
+          )}
+        </div>
+
+        <div className="rounded-lg border bg-muted/30 p-3 text-xs">
+          <div className="flex items-center justify-between">
+            <span className="font-medium">المصدر النشط حالياً</span>
+            <Badge
+              variant={
+                value.resolved.source === 'none' ? 'secondary' : 'outline'
+              }
+              className="text-xs"
+            >
+              {resolvedSourceLabel[value.resolved.source]}
+            </Badge>
+          </div>
+          <div className="mt-1 text-muted-foreground" dir="ltr">
+            {value.resolved.phone
+              ? maskPhone(value.resolved.phone)
+              : 'غير مهيأ'}
+          </div>
+          {value.updatedAt ? (
+            <div className="mt-1 text-muted-foreground">
+              آخر تعديل:{' '}
+              {new Date(value.updatedAt).toLocaleString('ar-KW', {
+                dateStyle: 'short',
+                timeStyle: 'short',
+              })}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="flex justify-end gap-2">
+          {value.guardianPhone ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleClear}
+              disabled={saving}
+            >
+              مسح الرقم
+            </Button>
+          ) : null}
+          <Button onClick={handleSave} disabled={!dirty || saving || !isValid}>
             {saving && <Loader2 className="me-2 size-4 animate-spin" />}
             حفظ
           </Button>

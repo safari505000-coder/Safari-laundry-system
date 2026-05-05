@@ -8,7 +8,8 @@ export type SafariRole =
   | 'FLEET_SUPERVISOR'
   | 'ACCOUNTANT'
   | 'SUPERVISOR'
-  | 'VIEWER';
+  | 'VIEWER'
+  | 'CUSTOMER';
 
 export type LoginUser = {
   id: string;
@@ -18,6 +19,8 @@ export type LoginUser = {
   safariRole: SafariRole;
   /** Set for branch-scoped staff; drives merged price list when using JWT defaults. */
   branchId?: string | null;
+  /** B2C portal — same id as Customer row this login may access. */
+  linkedCustomerId?: string | null;
 };
 
 export type LoginResponse = {
@@ -142,12 +145,19 @@ export class ApiError extends Error {
   status: number;
   /** Server codes e.g. SYSTEM_CLOSED (operating hours). */
   errorCode?: string;
+  blockReason?: string;
 
-  constructor(message: string, status: number, errorCode?: string) {
+  constructor(
+    message: string,
+    status: number,
+    errorCode?: string,
+    blockReason?: string,
+  ) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.errorCode = errorCode;
+    this.blockReason = blockReason;
   }
 }
 
@@ -324,10 +334,13 @@ export async function apiJson<T>(
   if (!res.ok) {
     const errorCode =
       typeof json.errorCode === 'string' ? json.errorCode : undefined;
+    const blockReason =
+      typeof json.blockReason === 'string' ? json.blockReason : undefined;
     throw new ApiError(
       formatErrorMessage(json, res.status, rawText),
       res.status,
       errorCode,
+      blockReason,
     );
   }
 
@@ -830,6 +843,25 @@ export type DriverCashTraceResponse = {
   drivers: DriverCashTraceDriver[];
 };
 
+export type CashReconciliationSnapshot = {
+  range: { from: string; to: string };
+  notes: string[];
+  eventBasedInRange: {
+    collectedKd: string;
+    handedToManagerKd: string;
+    collectedOrderCount: number;
+    handedBagCount: number;
+  };
+  stateBasedNow: {
+    pendingWithDriversKd: string;
+    pendingWithManagersDepositOrRejectedKd: string;
+    pendingWithManagersDepositOrRejectedBagCount: number;
+    awaitingVerificationKd: string;
+    awaitingVerificationBagCount: number;
+  };
+  driverCashTraceKpis: DriverCashTraceResponse['kpis'];
+};
+
 export function getDriverCashTrace(
   token: string,
   params: { from: string; to: string; driverId?: string; branchId?: string },
@@ -841,6 +873,392 @@ export function getDriverCashTrace(
     `/api/finance/reports/driver-cash-trace?${search.toString()}`,
     { token },
   );
+}
+
+export function getCashReconciliation(
+  token: string,
+  params: { from: string; to: string; driverId?: string; branchId?: string },
+) {
+  const search = new URLSearchParams({ from: params.from, to: params.to });
+  if (params.driverId) search.set('driverId', params.driverId);
+  if (params.branchId) search.set('branchId', params.branchId);
+  return apiJson<CashReconciliationSnapshot>(
+    `/api/finance/reports/cash-reconciliation?${search.toString()}`,
+    { token },
+  );
+}
+
+/** V19.32 — Interactive accountant dashboard (period = Kuwait window). */
+export type AccountantDashboardPeriod = 'today' | 'week' | 'month';
+
+export type AccountantDashboardKpi = {
+  valueKd: string;
+  drilldownType: string;
+  trendPctVsPrevious: number;
+  trendDirection: 'up' | 'down' | 'flat';
+  previousKd?: string;
+  count?: number;
+  snapshot?: boolean;
+};
+
+export type AccountantDashboardSummary = {
+  window: {
+    period: AccountantDashboardPeriod;
+    current: { fromIso: string; toIso: string };
+    previous: { fromIso: string; toIso: string };
+  };
+  kpis: {
+    totalSales: AccountantDashboardKpi & { previousKd: string };
+    cashCollected: AccountantDashboardKpi & { previousKd: string };
+    cashWithDrivers: AccountantDashboardKpi;
+    cashWithManagers: AccountantDashboardKpi;
+    bankDeposited: AccountantDashboardKpi & { previousKd: string };
+    netProfit: AccountantDashboardKpi & { previousKd: string };
+  };
+  pipeline: {
+    stages: Array<{
+      key: string;
+      label: string;
+      amountKd: string;
+      count: number;
+      avgDelayHours: number;
+      tone: 'green' | 'yellow' | 'red';
+    }>;
+  };
+  expenses: {
+    totalKd: string;
+    topCategory: string | null;
+    expenseRatioVsSales: string | null;
+  };
+  charts: {
+    profitOverTime: { day: string; netKd: string }[];
+    salesVsExpenses: { day: string; salesKd: string; expensesKd: string }[];
+    cashStagesTrend: { day: string; collectedKd: string; handedKd: string }[];
+  };
+  drilldowns: {
+    openCustodyBags: Array<{
+      id: string;
+      amountKd: string;
+      status: string;
+      managerName: string;
+      driverName: string;
+      ageHours: number;
+      isOverdue: boolean;
+    }>;
+    pendingDrivers: Array<{
+      driverId: string;
+      name: string;
+      pendingKd: string;
+      lastCompletedAt: string;
+    }>;
+  };
+  cacheTtlSec: number;
+};
+
+export type FinanceReconciliationDto = {
+  window: { fromIso: string; toIso: string };
+  collected: { kd: string; orderCount: number };
+  handed: { kd: string; bagCount: number };
+  pendingDrivers: { kd: string };
+  pendingManagers: { kd: string };
+  /** handed − collected (legacy name; same numeric value as deltaKd). */
+  differenceKd: string;
+  /** handed − collected */
+  deltaKd: string;
+  /** collected − handed (= −delta) */
+  shortfallKd: string;
+  /** Operator-facing status (drivers hold vs office ahead). Legacy `badge` kept for old clients. */
+  status: 'GREEN' | 'RED' | 'YELLOW';
+  /** Legacy timing-lag semantics on (handed − collected); unchanged. */
+  badge: 'green' | 'yellow' | 'red';
+};
+
+export type FinanceReconciliationExplainDto = {
+  window: { fromIso: string; toIso: string };
+  byDate: Array<{
+    day: string;
+    collectedKd: string;
+    handedKd: string;
+  }>;
+  byDriver: Array<{
+    driverId: string;
+    name: string;
+    collectedKd: string;
+    handedKd: string;
+    /** collected − handed per driver */
+    shortfallKd: string;
+  }>;
+  byManager: Array<{
+    managerId: string;
+    name: string;
+    handedKd: string;
+    bagCount: number;
+  }>;
+  /** Window totals: Σ collected − Σ handed */
+  totalShortfallKd: string;
+  /** Window totals: Σ handed − Σ collected */
+  totalDeltaKd: string;
+  summaryLabels: {
+    driverHoldsLine: string | null;
+    officeHoldsLine: string | null;
+  };
+  narratives: string[];
+};
+
+export type FinanceAlertDto = {
+  id: string;
+  severity: 'HIGH' | 'MEDIUM' | 'LOW';
+  code: string;
+  title: string;
+  detail: string;
+  drilldownType: string;
+  refId?: string;
+};
+
+export type FinanceAlertsResponse = {
+  alerts: FinanceAlertDto[];
+  generatedAt: string;
+};
+
+export type FinanceInsightsResponse = {
+  lines: string[];
+  generatedAt: string;
+};
+
+function accountantDashboardQs(
+  period: AccountantDashboardPeriod,
+  branchId?: string,
+) {
+  const p = new URLSearchParams({ period });
+  if (branchId) p.set('branchId', branchId);
+  return p.toString();
+}
+
+export function getAccountantDashboardSummary(
+  token: string,
+  params: { period: AccountantDashboardPeriod; branchId?: string },
+) {
+  return apiJson<AccountantDashboardSummary>(
+    `/api/finance/dashboard-summary?${accountantDashboardQs(params.period, params.branchId)}`,
+    { token },
+  );
+}
+
+export function getFinanceReconciliationApi(
+  token: string,
+  params: { period: AccountantDashboardPeriod; branchId?: string },
+) {
+  return apiJson<FinanceReconciliationDto>(
+    `/api/finance/reconciliation?${accountantDashboardQs(params.period, params.branchId)}`,
+    { token },
+  );
+}
+
+export function explainFinanceReconciliation(
+  token: string,
+  params: { period: AccountantDashboardPeriod; branchId?: string },
+) {
+  return apiJson<FinanceReconciliationExplainDto>(
+    `/api/finance/reconciliation/explain?${accountantDashboardQs(params.period, params.branchId)}`,
+    { token },
+  );
+}
+
+export function getFinanceAlerts(
+  token: string,
+  params: { period: AccountantDashboardPeriod; branchId?: string },
+) {
+  return apiJson<FinanceAlertsResponse>(
+    `/api/finance/alerts?${accountantDashboardQs(params.period, params.branchId)}`,
+    { token },
+  );
+}
+
+export function getFinanceInsights(
+  token: string,
+  params: { period: AccountantDashboardPeriod; branchId?: string },
+) {
+  return apiJson<FinanceInsightsResponse>(
+    `/api/finance/insights?${accountantDashboardQs(params.period, params.branchId)}`,
+    { token },
+  );
+}
+
+export type CashControlStatus = 'OK' | 'MISMATCH' | 'CRITICAL';
+export type CashControlSeverity = 'LOW' | 'MEDIUM' | 'HIGH';
+export type CashControlScopeType = 'ALL' | 'BRANCH' | 'DRIVER';
+
+export type CashControlReconciliation = {
+  date: string;
+  branchId: string | null;
+  expectedCash: string;
+  collectedByDrivers: string;
+  handedToBranch: string;
+  receivedByManager: string;
+  depositedToBank: string;
+  differenceDriver: string;
+  differenceBranch: string;
+  differenceBank: string;
+  totalDifference: string;
+  status: CashControlStatus;
+  breakdown: {
+    driverId: string;
+    driverName: string | null;
+    collected: string;
+    handed: string;
+    difference: string;
+    status: CashControlStatus;
+  }[];
+  accountability: {
+    responsible: 'DRIVER' | 'BRANCH' | 'ACCOUNTING';
+    amount: string;
+    delayHours: number;
+    severity: CashControlSeverity;
+  }[];
+  alerts: {
+    type:
+      | 'MISSING_HANDOVER'
+      | 'DELAYED_DEPOSIT'
+      | 'PARTIAL_DEPOSIT'
+      | 'DEPOSIT_NOT_REGISTERED';
+    severity: CashControlSeverity;
+    entityId: string;
+    message: string;
+  }[];
+  depositStatus?: 'MISSING' | 'PENDING' | 'VERIFIED' | 'MIXED';
+  auditComplete?: boolean;
+  flows?: {
+    custodyId: string;
+    shiftId: string | null;
+    custodyAmount: string;
+    linkedOrdersTotal: string;
+    depositId: string | null;
+    depositStatus: 'MISSING' | 'PENDING' | 'VERIFIED' | 'AMOUNT_MISMATCH';
+    auditComplete: boolean;
+    anomalyFlags: string[];
+  }[];
+  reconciliationMode: 'flow_based';
+  ignoredTimingMismatch: boolean;
+  actionsTaken: string[];
+};
+
+export type CashControlTimeline = {
+  events: {
+    type:
+      | 'ORDER_COLLECTED'
+      | 'DRIVER_HANDOVER'
+      | 'MANAGER_CONFIRMED'
+      | 'BANK_DEPOSITED';
+    timestamp: string;
+    amount: string;
+    userId: string | null;
+    sourceId: string;
+  }[];
+};
+
+export function getAccountingReconciliation(
+  token: string,
+  params: {
+    date: string;
+    scopeType?: CashControlScopeType;
+    branchId?: string;
+    driverId?: string;
+  },
+) {
+  const qs = new URLSearchParams({ date: params.date });
+  if (params.scopeType) qs.set('scopeType', params.scopeType);
+  if (params.branchId) qs.set('branchId', params.branchId);
+  if (params.driverId) qs.set('driverId', params.driverId);
+  return apiJson<CashControlReconciliation>(
+    `/api/accounting/reconciliation?${qs.toString()}`,
+    { token },
+  );
+}
+
+export function getAccountingTimeline(
+  token: string,
+  params: {
+    date: string;
+    scopeType?: CashControlScopeType;
+    driverId?: string;
+    branchId?: string;
+  },
+) {
+  const qs = new URLSearchParams({ date: params.date });
+  if (params.scopeType) qs.set('scopeType', params.scopeType);
+  if (params.driverId) qs.set('driverId', params.driverId);
+  if (params.branchId) qs.set('branchId', params.branchId);
+  return apiJson<CashControlTimeline>(
+    `/api/accounting/timeline?${qs.toString()}`,
+    { token },
+  );
+}
+
+export type OwnerFinancialDashboard = {
+  generatedAt: string;
+  totalInvoicesToday: string;
+  totalPaymentsToday: string;
+  totalDueTotal: string;
+  cashInDrivers: string;
+  cashInOffice: string;
+  reconciliationDifference: string;
+  alerts: {
+    type: 'HIGH_DEBT' | 'DRIVER_DELAY' | 'EXPENSE_SPIKE' | 'CASH_MISMATCH';
+    severity: 'LOW' | 'MEDIUM' | 'HIGH';
+    entityId: string;
+    message: string;
+    createdAt: string;
+  }[];
+  topCustomers: {
+    customerId: string;
+    displayName: string | null;
+    totalDueKd: string;
+    totalInvoicesKd: string;
+    totalPaymentsKd: string;
+    customerHealth: 'GOOD' | 'WATCH' | 'RISK' | 'BLOCKED';
+    paymentConsistency: number;
+    avgPaymentDelayHours: number;
+    lifetimeValueKd: string;
+  }[];
+  riskyDrivers: {
+    driverId: string;
+    driverName: string | null;
+    collectedCash: string;
+    handedCash: string;
+    delayHours: number;
+    riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'WARNING';
+  }[];
+};
+
+export function getOwnerFinancialDashboard(token: string) {
+  return apiJson<OwnerFinancialDashboard>('/api/finance/owner-dashboard', { token });
+}
+
+export type AuditLogTimelineRow = {
+  action: string;
+  amount: string | null;
+  source: string | null;
+  userId: string | null;
+  timestamp: string;
+};
+
+export type AuditLogsResponse = {
+  rows: AuditLogTimelineRow[];
+};
+
+export type AuditLogsQuery = {
+  customerId?: string;
+  driverId?: string;
+  orderId?: string;
+};
+
+export function listAuditLogs(token: string, query: AuditLogsQuery = {}) {
+  const q = new URLSearchParams();
+  if (query.customerId) q.set('customerId', query.customerId);
+  if (query.driverId) q.set('driverId', query.driverId);
+  if (query.orderId) q.set('orderId', query.orderId);
+  const qs = q.toString();
+  return apiJson<AuditLogsResponse>(`/api/audit/logs${qs ? `?${qs}` : ''}`, { token });
 }
 
 // V19.10 — Unpaid invoices list (قائمة مديونيات الفواتير).
@@ -1297,7 +1715,7 @@ export type SubscriberListRow = {
   remainingDays: number | null;
   balance: string;
   /**
-   * Column display: signed net `balance − effectiveDebtKd` (negative when debt
+   * Column display: signed net `balance − operationalDebtKd` (negative when debt
    * exceeds prepaid). Falls back to `balance` if absent (older API).
    */
   balanceDisplayKd?: string;
@@ -1305,7 +1723,9 @@ export type SubscriberListRow = {
   debt: string;
   /** UNPAID totals with `walletSettledAt=null` (before posted to wallet). */
   unsettledUnpaidKd?: string;
-  /** `debt` + unsettled — same basis as debt→subscription preview API. */
+  /** Operational debt basis. This is NOT the canonical Customer 360 financial number. */
+  operationalDebtKd?: string;
+  /** @deprecated Use operationalDebtKd. Kept for older API responses. */
   effectiveDebtKd?: string;
   rowStatus: 'active_ok' | 'active_warn' | 'expired' | 'open_credit';
   /** Days since the subscription was last activated. Null if unknown. */
@@ -1327,6 +1747,8 @@ export type SubscriberListRow = {
     ledgerNetKd: string;
     walletSnapshotKd: string;
     orderMarketScopeKd: string;
+    operationalDebtKd?: string;
+    /** @deprecated Use operationalDebtKd. */
     effectiveDebtKd: string;
     winningSources: Array<'ledger' | 'walletSnapshot' | 'orderMarket'>;
   };
@@ -1758,9 +2180,21 @@ export type DriverOversightCard = {
   shiftStatus: DriverOversightShiftStatus;
   shiftStartedAt: string | null;
   ordersTodayCount: number;
-  cashTodayKd: string;
+  /**
+   * @deprecated SSoT-locked. Always `null` on the wire. Read driver
+   *   cash from `getCashIntelligenceDashboard()` (single source of
+   *   truth). Kept on the type so old consumers do not crash on a
+   *   missing key.
+   */
+  cashTodayKd: null;
   pendingInvoicesCount: number;
-  heldCashKd: string;
+  /**
+   * @deprecated SSoT-locked. Always `null` on the wire. Read driver
+   *   cash from `getCashIntelligenceDashboard()` (single source of
+   *   truth). Kept on the type so old consumers do not crash on a
+   *   missing key.
+   */
+  heldCashKd: null;
   staleQuickCount: number;
   staleQuickKd: string;
   atRisk: boolean;
@@ -1784,6 +2218,7 @@ export type InvoiceFilterDriverRow = {
   id: string;
   fullName: string;
   username: string;
+  branchId: string | null;
   branchName: string | null;
 };
 
@@ -2121,7 +2556,9 @@ export type CustomerLedgerResponse = {
     walletDebtKd: string;
     /** Σ uncollection aligned with `/collections` (invoice scope). */
     collectionsReceivableKd?: string;
-    /** wallet + collections — single source of truth with subscribers / CC. */
+    /** Operational debt basis. This is NOT the canonical Customer 360 financial number. */
+    operationalDebtKd?: string;
+    /** @deprecated Use operationalDebtKd. Kept for older API responses. */
     effectiveDebtKd?: string;
   };
   activeSubscription: {
@@ -2208,6 +2645,85 @@ export function postCreateCustomerQuick(
     token,
     body: JSON.stringify(body),
   });
+}
+
+/** `GET /api/customers/:id/360` — view mode is server-derived from JWT. */
+export type Customer360Financials = {
+  consumedKd: string;
+  totalInvoicesKd: string;
+  subscriptionValueKd: string;
+  subscriptionConsumedKd: string;
+  subscriptionRemainingKd: string;
+  totalPaymentsKd: string;
+  totalDueKd: string;
+  isBlocked: boolean;
+  blockReason: string | null;
+  blockedAtIso: string | null;
+};
+
+export type Customer360SubscriptionRow = {
+  id: string;
+  status: string;
+  planNameSnapshot: string;
+  planSalePriceKd: string;
+  planActualBalanceKd: string;
+  planValidityDays: number;
+  carriedBalanceKd: string;
+  activatedAtIso: string;
+  expiresAtIso: string;
+  closedAtIso: string | null;
+  closedReason: string | null;
+};
+
+export type Customer360Statement = {
+  financials: Customer360Financials;
+  narrativeLines?: string[];
+};
+
+export type Customer360SubscriptionFinancials = {
+  subscriptionValueKd: string;
+  subscriptionConsumedKd: string;
+  subscriptionRemainingKd: string;
+};
+
+export type Customer360ResponseInternal = {
+  customer: {
+    id: string;
+    displayName: string | null;
+    phone: string;
+    phone2: string | null;
+  };
+  subscriptions: Customer360SubscriptionRow[];
+  subscription: Customer360SubscriptionFinancials;
+  statement: Customer360Statement;
+  rating: 'GOOD' | 'WATCH' | 'BLOCKED';
+  insight: string;
+  score: { value: number; feedbackAverage: number | null; factors: string[] };
+  insights: { summary: string; detail: string };
+  alerts: { code: string; message: string }[];
+  internalNotes: string | null;
+};
+
+export type Customer360ResponseSanitized = {
+  customer: Customer360ResponseInternal['customer'];
+  subscriptions: Customer360SubscriptionRow[];
+  subscription: Customer360SubscriptionFinancials;
+  statement: Customer360Statement;
+  rating: 'GOOD' | 'WATCH' | 'BLOCKED';
+  insight: string;
+  score: null;
+  insights: null;
+  friendlySummary: string;
+};
+
+export function getCustomer360(
+  token: string | null,
+  customerId: string,
+): Promise<Customer360ResponseInternal | Customer360ResponseSanitized> {
+  return apiJson<Customer360ResponseInternal | Customer360ResponseSanitized>(
+    `/api/customers/${customerId}/360`,
+    { token },
+  );
 }
 
 export function getPublicCustomerStatement(
@@ -3322,6 +3838,8 @@ export type DailyCashClosingReport = {
   cashOrderCount: number;
 };
 
+export type ExpenseOwnerType = 'BRANCH' | 'DRIVER' | 'COMPANY';
+
 export type ExpenseRow = {
   id: string;
   title: string;
@@ -3342,7 +3860,86 @@ export type ExpenseRow = {
     username: string;
   };
   branch: { id: string; name: string } | null;
+  /**
+   * STRICT ROLE-BASED EXPENSE DESIGN — Part 1.
+   *
+   * Derived ownership discriminator emitted by the backend
+   * (`ExpensesService.deriveOwnerType`). NOT a stored column —
+   * computed from `recordedBy.role + branchId` so the database stays
+   * the single source of truth.
+   */
+  ownerType?: ExpenseOwnerType;
 };
+
+/**
+ * STRICT ROLE-BASED EXPENSE DESIGN — Part 6 (SSoT).
+ *
+ * Single source of truth for every "total expense" displayed in the
+ * UI. Returned by `GET /api/finance/expenses-summary` (OWNER /
+ * GENERAL_MANAGER / ACCOUNTANT only). Frontends MUST consume this
+ * shape instead of reducing/summing over `ExpenseRow[]`.
+ */
+export type ExpensesSummaryByOwner = {
+  ownerType: ExpenseOwnerType;
+  totalKd: string;
+  count: number;
+};
+
+export type ExpensesSummaryByCategory = {
+  category: string;
+  totalKd: string;
+  count: number;
+};
+
+export type ExpensesSummaryByBranch = {
+  branchId: string | null;
+  branchName: string | null;
+  totalKd: string;
+  count: number;
+};
+
+export type ExpensesSummaryMonthly = {
+  month: string;
+  totalKd: string;
+  driverKd: string;
+  branchKd: string;
+  companyKd: string;
+};
+
+export type ExpensesSummaryAlert = {
+  id: string;
+  severity: 'info' | 'warning' | 'critical';
+  message: string;
+};
+
+export type ExpensesSummaryResponse = {
+  source: 'api/finance/expenses-summary';
+  rangeFromIso: string;
+  rangeToIso: string;
+  branchScope: string | null;
+  totalApprovedKd: string;
+  totalPendingKd: string;
+  approvedCount: number;
+  byOwnerType: ExpensesSummaryByOwner[];
+  byCategory: ExpensesSummaryByCategory[];
+  byBranch: ExpensesSummaryByBranch[];
+  monthly: ExpensesSummaryMonthly[];
+  alerts: ExpensesSummaryAlert[];
+};
+
+export const API_EXPENSES_SUMMARY = '/api/finance/expenses-summary';
+
+export function getExpensesSummary(
+  token: string,
+  params: { from: string; to: string; branchId?: string },
+) {
+  const qs = new URLSearchParams({ from: params.from, to: params.to });
+  if (params.branchId) qs.set('branchId', params.branchId);
+  return apiJson<ExpensesSummaryResponse>(
+    `${API_EXPENSES_SUMMARY}?${qs.toString()}`,
+    { token },
+  );
+}
 
 export function getPendingExpenseApprovals(token: string) {
   return apiJson<ExpenseRow[]>(`${API_EXPENSES}/pending-approval`, { token });
@@ -3527,6 +4124,10 @@ export type BranchRow = {
   payrollRosterSortOrder?: number | null;
   updatedAt: string;
 };
+
+export function listBranches(token: string) {
+  return apiJson<BranchRow[]>('/api/branches', { token });
+}
 
 /**
  * V19.21 — partial update payload. All fields optional so the Owner
@@ -5076,6 +5677,34 @@ export function updatePayrollSettings(
   });
 }
 
+/**
+ * SystemConfig — operational-only platform settings (single row).
+ * Currently exposes the WhatsApp alert recipient for the System
+ * Guardian. NEVER touches financial state.
+ */
+export type GuardianPhoneSource = 'database' | 'env' | 'none';
+
+export type SystemConfigResponse = {
+  guardianPhone: string | null;
+  resolved: { phone: string | null; source: GuardianPhoneSource };
+  updatedAt: string | null;
+};
+
+export function getSystemConfig(token: string) {
+  return apiJson<SystemConfigResponse>('/api/system-config', { token });
+}
+
+export function updateSystemConfig(
+  token: string,
+  dto: { guardianPhone: string | null },
+) {
+  return apiJson<SystemConfigResponse>('/api/system-config', {
+    method: 'POST',
+    token,
+    body: JSON.stringify(dto),
+  });
+}
+
 /** V8.5 — global reporting-layer KNET / card fee knobs (`PaymentMethodFeeConfig`). */
 export type KnetCommissionRule =
   | 'HIGHER_OF_FLAT_AND_PERCENT'
@@ -5338,6 +5967,730 @@ export type DebtHoldPreview = {
 export function previewDebtHold(token: string, employeeUserId: string) {
   return apiJson<DebtHoldPreview>(
     `/api/debt-holds/preview/${employeeUserId}`,
+    { token },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// V19.36 — Cash Intelligence (read-only, advisory-only).
+//
+// The backend pipeline owns ALL financial logic. The frontend is a passive
+// consumer: every endpoint here is a `GET` that returns a deterministic,
+// branch-clamped projection. For MANAGER, the response is automatically
+// filtered to the JWT's branchId server-side — these helpers MUST NOT pass
+// a branchId in the query.
+// ---------------------------------------------------------------------------
+
+export type CashIntelTrafficLight = 'GREEN' | 'YELLOW' | 'RED';
+export type CashIntelAlertSeverity = 'INFO' | 'WARNING' | 'CRITICAL';
+export type CashIntelUrgency = 'HIGH' | 'MEDIUM' | 'LOW';
+
+export type CashIntelOperationalAlertType =
+  | 'SHIFT_COMPLIANCE_DELAY'
+  | 'SHIFT_OVERDUE_FINANCIAL'
+  | 'PRE_SHIFT_OVERDUE'
+  | 'HIGH_DRIVER_EXPOSURE'
+  | 'STUCK_AT_DRIVER'
+  | 'HANDOVER_DELAY'
+  | 'CUSTODY_DELAY'
+  | 'DEPOSIT_NOT_REGISTERED'
+  | 'DEPOSIT_AMOUNT_MISMATCH'
+  | 'OVERPAYMENT_ANOMALY'
+  | 'DOUBLE_COUNT_RISK';
+
+export type CashIntelOperationalDriverStatus =
+  | 'ACTIVE'
+  | 'AT_RISK'
+  | 'EXPOSURE_ONLY'
+  | 'STALE';
+
+export type CashIntelActiveDriver = {
+  driverId: string;
+  driverName: string | null;
+  branchId: string | null;
+  ordersTodayCount: number;
+  collectedCashToday: string;
+  totalCash: string;
+  lastCashActivityDate: string | null;
+  shiftStatus: 'OPEN' | 'CLOSED' | 'NO_SHIFT';
+  shiftDurationHours: number | null;
+  countdownMinutes: number | null;
+  status: CashIntelOperationalDriverStatus;
+};
+
+export type CashIntelOperationalAlert = {
+  type: CashIntelOperationalAlertType;
+  /** Authoritative classification from /classified (source of truth). */
+  domain: 'FINANCIAL' | 'COMPLIANCE';
+  severity: CashIntelAlertSeverity;
+  driverId: string | null;
+  driverName: string | null;
+  branchId: string | null;
+  amount: string;
+  message: string;
+  timestamp: string;
+  countdownMinutes: number | null;
+  isPrediction: boolean;
+  originalType: string | null;
+};
+
+export type CashIntelOperationalResponse = {
+  timestamp: string;
+  realtimeStatus: CashIntelTrafficLight;
+  activeDrivers: CashIntelActiveDriver[];
+  driversAtRisk: CashIntelActiveDriver[];
+  alerts: CashIntelOperationalAlert[];
+  hidden: {
+    staleDriversCount: number;
+    excludedAlertCount: number;
+    note: string;
+  };
+  summary: {
+    totalDriversShown: number;
+    totalCash: string;
+    driversAtRisk: number;
+    activeAlerts: number;
+  };
+  readOnly: true;
+  advisoryOnly: true;
+};
+
+export type CashIntelDecisionAction = {
+  driverId: string | null;
+  driverName: string | null;
+  branchId: string | null;
+  alertType: string;
+  amount: string;
+  action: string;
+  reason: string;
+  urgency: CashIntelUrgency;
+  recommendedSteps: string[];
+  timestamp: string;
+};
+
+export type CashIntelDecisionTopRisk = {
+  driverId: string | null;
+  driverName: string | null;
+  branchId: string | null;
+  amount: string;
+  issue: string;
+  action: string;
+  urgency: CashIntelUrgency;
+  recommendedSteps: string[];
+  alertType: string;
+};
+
+export type CashIntelDecisionsResponse = {
+  timestamp: string;
+  realtimeStatus: CashIntelTrafficLight;
+  topRisk: CashIntelDecisionTopRisk | null;
+  actions: CashIntelDecisionAction[];
+  summary: {
+    critical: number;
+    warning: number;
+    info: number;
+    totalActions: number;
+  };
+  readOnly: true;
+  advisoryOnly: true;
+};
+
+export type CashIntelExecutiveResponsible =
+  | 'DRIVER'
+  | 'BRANCH_MANAGER'
+  | 'ACCOUNTANT'
+  | 'SYSTEM'
+  | null;
+
+export type CashIntelExecutionStatus =
+  | 'OPEN'
+  | 'IN_PROGRESS'
+  | 'RESOLVED';
+
+export type CashIntelExecutionAction =
+  | 'CONTACTED'
+  | 'FOLLOWED_UP'
+  | 'ESCALATED';
+
+export type CashIntelExecutionBlock = {
+  status: CashIntelExecutionStatus;
+  lastAction: CashIntelExecutionAction | null;
+  lastActionAt: string | null;
+  lastActor: string | null;
+  flagsToday: number;
+  flagsThisWeek: number;
+  repeatIssue: boolean;
+};
+
+export type CashIntelExecutiveTopRisk = {
+  driverId: string | null;
+  driverName: string | null;
+  branchId: string | null;
+  amount: string;
+  issue: string;
+  action: string;
+  urgency: CashIntelUrgency;
+  responsible: CashIntelExecutiveResponsible;
+  recommendedSteps: string[];
+  alertType: string;
+  execution: CashIntelExecutionBlock | null;
+};
+
+export type CashIntelExecutiveAction = {
+  driverName: string | null;
+  action: string;
+  urgency: CashIntelUrgency;
+  responsible: CashIntelExecutiveResponsible;
+  amount: string;
+  alertType: string;
+};
+
+export type CashIntelExecutiveResponse = {
+  systemStatus: CashIntelTrafficLight;
+  generatedAt: string;
+  topRisk: CashIntelExecutiveTopRisk | null;
+  actions: CashIntelExecutiveAction[];
+  summary: {
+    activeDrivers: number;
+    driversAtRisk: number;
+    criticalAlerts: number;
+    warningAlerts: number;
+  };
+  auditReference: {
+    totalAlerts: number;
+    hiddenStaleDrivers: number;
+    totalCashInFlight: string;
+    lastPollAt: string | null;
+  };
+  decisionNote: string;
+  readOnly: true;
+  advisoryOnly: true;
+};
+
+export type CashIntelLiveAlert = {
+  type: string;
+  severity: CashIntelAlertSeverity;
+  driverId: string | null;
+  driverName: string | null;
+  branchId: string | null;
+  amount: string;
+  message: string;
+  timestamp: string;
+  countdownMinutes: number | null;
+  isPrediction: boolean;
+  dedupKey: string | null;
+};
+
+export type CashIntelLiveResponse = {
+  timestamp: string;
+  lastPollAt: string | null;
+  lastPollAgeSeconds: number | null;
+  realtimeStatus: CashIntelTrafficLight;
+  activeDrivers: number;
+  preRisk: CashIntelLiveAlert[];
+  alerts: CashIntelLiveAlert[];
+  driversAtRisk: Array<{
+    driverId: string;
+    driverName: string | null;
+    branchId: string | null;
+    totalCash: string;
+    flowsCount: number;
+    shiftStatus: 'OPEN' | 'CLOSED' | 'NO_SHIFT';
+    shiftDurationHours: number | null;
+    countdownMinutes: number | null;
+  }>;
+  locationSummary: {
+    DRIVER: string;
+    CUSTODY: string;
+    BANK: string;
+  };
+  summary: {
+    totalCash: string;
+    driversAtRisk: number;
+    activeAnomalies: number;
+    openShifts: number;
+  };
+  readOnly: true;
+  advisoryOnly: true;
+};
+
+export function getCashIntelLive(token: string, signal?: AbortSignal) {
+  return apiJson<CashIntelLiveResponse>('/api/cash-intelligence/live', {
+    token,
+    signal,
+  });
+}
+
+// ─── /classified — single source of truth ──────────────────────────
+//
+// Owned by `CashClassifierService`. Every other layer (operational,
+// decisions, executive, risk) inherits its severity / domain / system-
+// status from this payload. The Manager Dashboard reads it directly
+// so the UI never depends on derivative endpoints.
+
+export type CashIntelClassifiedDomain = 'FINANCIAL' | 'COMPLIANCE';
+
+export type CashIntelClassifiedDriverStatus =
+  | 'NORMAL'
+  | 'COMPLIANCE_ONLY'
+  | 'AT_RISK';
+
+export type CashIntelClassifiedAlert = {
+  domain: CashIntelClassifiedDomain;
+  type: string;
+  severity: CashIntelAlertSeverity;
+  driverId: string | null;
+  driverName: string | null;
+  branchId: string | null;
+  amount: string;
+  cashAgeHours: number;
+  reason: string;
+  originalType: string | null;
+};
+
+export type CashIntelHolderRole =
+  | 'OWNER'
+  | 'GENERAL_MANAGER'
+  | 'MANAGER'
+  | 'DRIVER'
+  | 'WORKER'
+  | 'CALL_CENTER'
+  | 'CALL_CENTER_SUPERVISOR'
+  | 'FLEET_SUPERVISOR'
+  | 'ACCOUNTANT'
+  | 'SUPERVISOR'
+  | 'VIEWER'
+  | 'CUSTOMER';
+
+export type CashIntelClassifiedDriver = {
+  driverId: string;
+  driverName: string | null;
+  branchId: string | null;
+  // Server-provided role of the cash holder. Lets dashboards split
+  // DRIVER cash from MANAGER cash without re-querying the user table.
+  // `null` only when the user record was deleted (orphan rows).
+  holderRole: CashIntelHolderRole | null;
+  status: CashIntelClassifiedDriverStatus;
+  cashAgeHours: number;
+  amount: string;
+  shiftDurationHours: number | null;
+  note: string;
+};
+
+export type CashIntelClassifiedResponse = {
+  systemStatus: CashIntelTrafficLight;
+  financialAlerts: CashIntelClassifiedAlert[];
+  complianceAlerts: CashIntelClassifiedAlert[];
+  drivers: CashIntelClassifiedDriver[];
+  finalDecision: string;
+  rules: {
+    gracePeriodHours: number;
+    smallAmountFloorKd: number;
+    financialChainTypes: string[];
+    complianceTypes: string[];
+    shiftFinancialSeverityCap: CashIntelAlertSeverity;
+    generatedAt: string;
+  };
+  readOnly: true;
+  advisoryOnly: true;
+};
+
+export function getCashIntelClassified(token: string, signal?: AbortSignal) {
+  return apiJson<CashIntelClassifiedResponse>(
+    '/api/cash-intelligence/classified',
+    { token, signal },
+  );
+}
+
+// ─── /dashboard — UNIFIED UI-READY surface (frontend SSoT) ─────────
+//
+// Single backend surface for the cash dashboard. The shape is
+// pre-projected from `/classified` + `/executive` so the frontend
+// computes nothing — `totalCash` is `Σ classified.drivers[].amount`,
+// per-driver `totalCash` mirrors the classifier amount verbatim, and
+// `summaryText` is a deterministic Arabic label keyed on
+// `systemStatus`. Use this for ANY UI surface that needs to show a
+// per-driver or aggregate cash number.
+
+export type CashIntelDashboardDriver = {
+  driverId: string;
+  name: string;
+  totalCash: string;
+  status: CashIntelClassifiedDriverStatus;
+  oldestAgeHours: number;
+};
+
+export type CashIntelDashboardResponse = {
+  systemStatus: CashIntelTrafficLight;
+  totalCash: string;
+  summaryText: string;
+  alerts: {
+    financial: CashIntelClassifiedAlert[];
+    compliance: CashIntelClassifiedAlert[];
+  };
+  drivers: CashIntelDashboardDriver[];
+  topRisk: CashIntelExecutiveResponse['topRisk'];
+  generatedAt: string;
+  readOnly: true;
+  advisoryOnly: true;
+};
+
+export function getCashIntelligenceDashboard(
+  token: string,
+  signal?: AbortSignal,
+) {
+  return apiJson<CashIntelDashboardResponse>(
+    '/api/cash-intelligence/dashboard',
+    { token, signal },
+  );
+}
+
+export function getCashIntelOperational(token: string, signal?: AbortSignal) {
+  return apiJson<CashIntelOperationalResponse>(
+    '/api/cash-intelligence/operational',
+    { token, signal },
+  );
+}
+
+export function getCashIntelDecisions(token: string, signal?: AbortSignal) {
+  return apiJson<CashIntelDecisionsResponse>(
+    '/api/cash-intelligence/decisions',
+    { token, signal },
+  );
+}
+
+export function getCashIntelExecutive(token: string, signal?: AbortSignal) {
+  return apiJson<CashIntelExecutiveResponse>(
+    '/api/cash-intelligence/executive',
+    { token, signal },
+  );
+}
+
+// ─── System Verify ────────────────────────────────────────────────
+//
+// `/verify` runs synthetic safety scenarios through the classifier,
+// risk engine, and executive composer and returns PASS/FAIL plus a
+// per-scenario breakdown. Read-only on the wire and on the backend
+// (the service synthesises in-memory analyses; no Prisma reads).
+//
+// RBAC: OWNER + GENERAL_MANAGER only — the rest of the dashboard
+// hides the trigger button. The hook + button gate visibility on the
+// frontend, but the backend re-asserts the policy.
+
+export type CashIntelVerifyVerdict = 'PASS' | 'FAIL';
+
+export type CashIntelVerifyCheck = {
+  scenario: string;
+  expected: CashIntelTrafficLight;
+  classified: CashIntelTrafficLight;
+  risk: CashIntelTrafficLight;
+  executive: CashIntelTrafficLight;
+  financialAlerts: number;
+  complianceAlerts: number;
+  ok: boolean;
+};
+
+export type CashIntelVerifyResponse = {
+  status: CashIntelVerifyVerdict;
+  blocked: boolean;
+  checks: CashIntelVerifyCheck[];
+  mismatches: string[];
+  generatedAt: string;
+  readOnly: true;
+};
+
+export function verifyCashIntelSystem(
+  token: string,
+  signal?: AbortSignal,
+): Promise<CashIntelVerifyResponse> {
+  return apiJson<CashIntelVerifyResponse>(
+    '/api/cash-intelligence/verify',
+    { token, signal },
+  );
+}
+
+// ─── Integrity Audit ──────────────────────────────────────────────
+//
+// `/integrity-audit` cross-checks every cash-intelligence layer the
+// dashboard sees and lists every numeric / status drift between
+// them. Read-only end-to-end.
+
+export type CashIntelIntegrityIssueSeverity = 'CRITICAL' | 'WARNING';
+
+export type CashIntelIntegrityIssueType =
+  | 'STATUS_DRIFT'
+  | 'CRITICAL_COUNT_MISMATCH'
+  | 'WARNING_COUNT_MISMATCH'
+  | 'TOPRISK_INCONSISTENCY'
+  | 'AMOUNT_FLOOR_VIOLATION'
+  | 'AGE_GATE_VIOLATION'
+  | 'DRIVER_AMOUNT_MISMATCH'
+  | 'TOTAL_CASH_DRIFT'
+  | 'DRIVER_LAYER_MISMATCH'
+  | 'ALERT_WITHOUT_DRIVER'
+  | 'TOPRISK_DRIVER_NOT_IN_CLASSIFIED';
+
+export type CashIntelIntegrityIssue = {
+  type: CashIntelIntegrityIssueType;
+  severity: CashIntelIntegrityIssueSeverity;
+  driverId: string | null;
+  driverName: string | null;
+  expected: string | null;
+  found: string | null;
+  sourceA: string;
+  sourceB: string | null;
+  delta: string | null;
+  message: string;
+};
+
+export type CashIntelIntegrityResponse = {
+  status: 'PASS' | 'FAIL';
+  blocked: boolean;
+  criticalIssues: CashIntelIntegrityIssue[];
+  warnings: CashIntelIntegrityIssue[];
+  summary: {
+    driversChecked: number;
+    alertsChecked: number;
+    layersChecked: number;
+    mismatches: number;
+    warnings: number;
+    generatedAt: string;
+  };
+  readOnly: true;
+};
+
+export function runCashIntelIntegrityAudit(
+  token: string,
+  signal?: AbortSignal,
+): Promise<CashIntelIntegrityResponse> {
+  return apiJson<CashIntelIntegrityResponse>(
+    '/api/cash-intelligence/integrity-audit',
+    { token, signal },
+  );
+}
+
+export type CashIntelActionRequest = {
+  driverId: string;
+  action: CashIntelExecutionAction;
+  note?: string;
+  alertType?: string;
+};
+
+export type CashIntelActionResponse = {
+  driverId: string;
+  recordedAt: string;
+  execution: CashIntelExecutionBlock;
+  readOnlyFinancial: true;
+};
+
+export function postCashIntelAction(
+  token: string,
+  payload: CashIntelActionRequest,
+  signal?: AbortSignal,
+) {
+  return apiJson<CashIntelActionResponse>('/api/cash-intelligence/action', {
+    token,
+    method: 'POST',
+    body: JSON.stringify(payload),
+    signal,
+  });
+}
+
+// ─── Manager operational snapshot (Dastur §3 / brief PART 2) ─────
+// Returns EVERY money figure the branch manager needs on the
+// "Cash Pending Deposit" screen — and nothing more. Every KD value
+// here is pre-aggregated server-side from the SSoT
+// (LedgerProjectionService.MANAGER_<id> balance ± ManagerCashCustody
+// breakouts). The frontend MUST NOT re-compute, sum or subtract any
+// of these figures — the ESLint rule on `parseFloat(...Kd)` /
+// `Identifier[totalCashInFlight]` enforces that.
+
+export type ManagerCashStatusDriverRow = {
+  driverId: string;
+  driverName: string;
+  driverUsername: string;
+  driverPhone: string | null;
+  /** KD currently on this driver, not yet handed to the manager. */
+  heldCashKd: string;
+  pendingOrderCount: number;
+  shiftStartedAt: string | null;
+  /** Hours since the open shift started (null when no open shift). */
+  ageHours: number | null;
+  /** Server-graded risk: <24h NORMAL, ≥24h WARNING, ≥48h CRITICAL. */
+  riskLevel: 'NORMAL' | 'WARNING' | 'CRITICAL';
+};
+
+export type ManagerCashStatusActivityRow = {
+  txId: string;
+  at: string;
+  amountKd: string;
+  kind: 'POS_SALE' | 'DRIVER_HANDOVER' | 'BANK_DEPOSIT' | 'OTHER';
+  actorAccountId: string;
+  meta: Record<string, unknown> | null;
+};
+
+export type ManagerCashStatusResponse = {
+  source: 'api/manager/cash-status';
+  managerId: string;
+  managerName: string;
+  /** Grand total under the manager's control (own POS + held bags). */
+  pendingDepositKd: string;
+  /** Manager's own POS cash (CASH POS sales rung up by them directly). */
+  managerOwnPosKd: string;
+  /** KD aggregate of bags currently in this manager's drawer. */
+  custodyBagsTotalKd: string;
+  /** KD aggregate of cash currently with branch drivers (high risk). */
+  driversAwaitingHandoverKd: string;
+  bagsCount: number;
+  driversAtRiskCount: number;
+  lastHandoverAt: string | null;
+  lastActivityAt: string | null;
+  drivers: ManagerCashStatusDriverRow[];
+  recentActivity: ManagerCashStatusActivityRow[];
+  generatedAt: string;
+};
+
+export function getManagerCashStatus(token: string, signal?: AbortSignal) {
+  return apiJson<ManagerCashStatusResponse>('/api/manager/cash-status', {
+    token,
+    signal,
+  });
+}
+
+// ─── Strict double-entry ledger (Stage A) ────────────────────────
+// All five `/api/finance/ledger/*` endpoints are server-pre-calculated.
+// Frontends MUST NOT compute totals from these payloads — every KD
+// figure ships fully formatted (4dp) and every account row carries its
+// own `balance = SUM(debit) - SUM(credit)` already aggregated.
+
+export type LedgerEntry = {
+  id: string;
+  txId: string;
+  accountId: string;
+  debit: string;
+  credit: string;
+  createdAt: string;
+  meta: Record<string, unknown>;
+};
+
+export type LedgerAccountBalance = {
+  accountId: string;
+  totalDebit: string;
+  totalCredit: string;
+  balance: string;
+  entryCount: number;
+};
+
+export type LedgerSummaryResponse = {
+  source: 'api/finance/ledger/summary';
+  fromIso: string;
+  toIso: string;
+  totalEntries: number;
+  totalTransactions: number;
+  globalDebit: string;
+  globalCredit: string;
+  accounts: LedgerAccountBalance[];
+  generatedAt: string;
+};
+
+export type LedgerAccountResponse = {
+  source: 'api/finance/ledger/account';
+  accountId: string;
+  fromIso: string;
+  toIso: string;
+  balance: LedgerAccountBalance;
+  entries: LedgerEntry[];
+  generatedAt: string;
+};
+
+export type LedgerTransactionsResponse = {
+  source: 'api/finance/ledger/transactions';
+  fromIso: string;
+  toIso: string;
+  totalEntries: number;
+  entries: LedgerEntry[];
+  generatedAt: string;
+};
+
+export type LedgerReconciliationUnbalanced = {
+  txId: string;
+  debit: string;
+  credit: string;
+  delta: string;
+};
+
+export type LedgerReconciliationResponse = {
+  source: 'api/finance/ledger/reconciliation';
+  status: 'PASS' | 'FAIL';
+  fromIso: string;
+  toIso: string;
+  totalEntries: number;
+  totalTransactions: number;
+  globalDebit: string;
+  globalCredit: string;
+  unbalancedTransactions: LedgerReconciliationUnbalanced[];
+  unattributedEntries: number;
+  generatedAt: string;
+};
+
+function buildLedgerQs(p: { from?: string; to?: string; accountPrefix?: string; take?: number }) {
+  const q = new URLSearchParams();
+  if (p.from) q.set('from', p.from);
+  if (p.to) q.set('to', p.to);
+  if (p.accountPrefix) q.set('accountPrefix', p.accountPrefix);
+  if (p.take !== undefined) q.set('take', String(p.take));
+  const s = q.toString();
+  return s ? `?${s}` : '';
+}
+
+export function getLedgerSummary(
+  token: string,
+  params: { from?: string; to?: string } = {},
+) {
+  return apiJson<LedgerSummaryResponse>(
+    `/api/finance/ledger/summary${buildLedgerQs(params)}`,
+    { token },
+  );
+}
+
+export function getLedgerDriverAccount(
+  token: string,
+  driverId: string,
+  params: { from?: string; to?: string } = {},
+) {
+  return apiJson<LedgerAccountResponse>(
+    `/api/finance/ledger/driver/${driverId}${buildLedgerQs(params)}`,
+    { token },
+  );
+}
+
+export function getLedgerManagerAccount(
+  token: string,
+  managerId: string,
+  params: { from?: string; to?: string } = {},
+) {
+  return apiJson<LedgerAccountResponse>(
+    `/api/finance/ledger/manager/${managerId}${buildLedgerQs(params)}`,
+    { token },
+  );
+}
+
+export function getLedgerTransactions(
+  token: string,
+  params: { from?: string; to?: string; accountPrefix?: string; take?: number } = {},
+) {
+  return apiJson<LedgerTransactionsResponse>(
+    `/api/finance/ledger/transactions${buildLedgerQs(params)}`,
+    { token },
+  );
+}
+
+export function getLedgerReconciliation(
+  token: string,
+  params: { from?: string; to?: string } = {},
+) {
+  return apiJson<LedgerReconciliationResponse>(
+    `/api/finance/ledger/reconciliation${buildLedgerQs(params)}`,
     { token },
   );
 }

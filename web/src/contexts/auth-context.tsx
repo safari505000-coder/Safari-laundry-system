@@ -20,6 +20,8 @@ const TOKEN_KEY = 'safari_erp_token';
 const REFRESH_TOKEN_KEY = 'safari_erp_refresh_token';
 const USER_KEY = 'safari_erp_user';
 const OWNER_BRANCH_KEY = 'safari_erp_owner_branch_id';
+const RBAC_POLICY_VERSION_KEY = 'safari_erp_rbac_policy_version';
+const RBAC_POLICY_VERSION = 'customer-360-portal-v1';
 /** V19.29 — "Remember me": only the username is persisted, never the password. */
 const REMEMBER_USERNAME_KEY = 'safari_erp_remember_username';
 
@@ -90,7 +92,23 @@ function readOwnerBranchId(): string | null {
   }
 }
 
+function ensureFreshRbacPolicy(): void {
+  try {
+    if (localStorage.getItem(RBAC_POLICY_VERSION_KEY) === RBAC_POLICY_VERSION) {
+      return;
+    }
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(REFRESH_TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
+    localStorage.removeItem(OWNER_BRANCH_KEY);
+    localStorage.setItem(RBAC_POLICY_VERSION_KEY, RBAC_POLICY_VERSION);
+  } catch {
+    /* storage disabled — login will refresh permissions in memory */
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
+  ensureFreshRbacPolicy();
   const [token, setToken] = useState<string | null>(readStoredToken);
   const [user, setUser] = useState<LoginUser | null>(readStoredUser);
   const [ownerBranchId, setOwnerBranchIdState] = useState<string | null>(
@@ -112,6 +130,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         localStorage.setItem(TOKEN_KEY, newAccessToken);
         localStorage.setItem(REFRESH_TOKEN_KEY, newRefreshToken);
+        localStorage.setItem(RBAC_POLICY_VERSION_KEY, RBAC_POLICY_VERSION);
         if (nextUser) {
           localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
         }

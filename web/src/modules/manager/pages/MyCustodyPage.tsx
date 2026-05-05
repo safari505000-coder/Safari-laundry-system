@@ -4,29 +4,37 @@ import { Link, Navigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   AlertTriangle,
+  Briefcase,
   CheckCircle2,
   CheckSquare,
   Clock,
   HandCoins,
   Landmark,
   Loader2,
+  MessageSquare,
   Printer,
   RefreshCw,
+  ShieldCheck,
+  ShieldAlert,
+  Truck,
   Upload,
+  Wallet,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { can } from '@/modules/shared/auth/access-matrix';
 import {
   ApiError,
-  apiJson,
   approveReceiptFromDriver,
   attachDepositSlip,
+  getManagerCashStatus,
   listMyManagerCustody,
   uploadDepositSlipImage,
-  type DriverBalanceResponse,
-  type DriverBalanceRow,
   type ManagerCashCustodyRow,
+  type ManagerCashStatusActivityRow,
+  type ManagerCashStatusDriverRow,
+  type ManagerCashStatusResponse,
 } from '@/lib/api';
+import { formatRelativeTime } from '@/modules/shared/hooks/use-relative-time';
 import { formatKwdLabel } from '@/lib/kwd';
 import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
 import { Badge } from '@/modules/shared/components/ui/badge';
@@ -43,56 +51,51 @@ import {
 import { Input } from '@/modules/shared/components/ui/input';
 import { Label } from '@/modules/shared/components/ui/label';
 import { Skeleton } from '@/modules/shared/components/ui/skeleton';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/modules/shared/components/ui/table';
 import { Textarea } from '@/modules/shared/components/ui/textarea';
 import { cn } from '@/lib/utils';
 
 /**
- * Dastur §3 — Manager Accountability.
+ * Branch-Manager Cash Dashboard.
  *
- * Flow on this page (top → bottom):
- *   1. "Driver Handover Approval" list — each row has a تأكيد الاستلام
- *      button that calls POST /manager-custody/approve-receipt INLINE
- *      (no redirect). Liability flips from Driver → Manager in the
- *      background and the list refreshes on the same page.
- *   2. Summary tiles (pending / awaiting / overdue counts).
- *   3. Read-only list of custody bags for visibility (no per-bag upload
- *      button any more — the redundant individual-slip dialog was removed).
- *   4. Bulk "Bank deposit / Submit to accountant" section at the bottom —
- *      one photo, one submit, applied to every PENDING_DEPOSIT + REJECTED
- *      bag the manager currently holds. Backend is unchanged: we loop over
- *      the existing POST /manager-custody/:id/upload-slip endpoint, which
- *      flips each bag to AWAITING_VERIFICATION (== PENDING_ACCOUNTANT_
- *      VERIFICATION in business terms).
+ * Layout (top → bottom; risk first, control second):
+ *   1. HeaderSummary       — total under control + system status pill + 3 quick indicators
+ *   2. DriverSection       — drivers with cash STILL ON THEM (high-risk; red/yellow tones)
+ *   3. ManagerSection      — manager's own POS cash (controlled; neutral green)
+ *   4. DepositPanel        — bank-deposit slip upload (consumes the same SSoT total)
+ *   5. CustodyBagsList     — read-only bags currently in manager's drawer (printable receipts)
+ *   6. ActivityTimeline    — last 10 ledger events touching this manager / branch drivers
+ *
+ * STRICT (Dastur §3 / brief §"NO UI CALCULATIONS"):
+ *   - EVERY KD figure on this page comes from the server-aggregated
+ *     `/api/manager/cash-status` snapshot. The frontend never sums,
+ *     subtracts, or aggregates money. The ESLint rules
+ *     `Identifier[totalCashInFlight]` and `parseFloat(...Kd)` block
+ *     this at lint time.
+ *   - Per-driver risk classification (NORMAL / WARNING / CRITICAL) is
+ *     computed server-side from the driver's open shift age. The UI
+ *     only reads `riskLevel`.
  */
 export function MyCustodyPage() {
   const { t, i18n } = useTranslation();
   const dateLocale = useAppLocale();
   const { token, user } = useAuth();
   const [rows, setRows] = useState<ManagerCashCustodyRow[] | null>(null);
+  const [cashStatus, setCashStatus] =
+    useState<ManagerCashStatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
-
-  /*
-   * Dastur §2.1 / §3 — "Driver Handover Approval" pre-flight list.
-   * MANAGER-role endpoint /api/finance/driver-balance already exposes every
-   * driver's pending field cash. We surface just the ones in this manager's
-   * branch with a non-zero CASH balance; the Confirm-Receipt action calls
-   * POST /manager-custody/approve-receipt INLINE (no redirect) — the whole
-   * flow now lives on this single page.
-   */
-  const [driverBalances, setDriverBalances] = useState<
-    DriverBalanceRow[] | null
-  >(null);
-  const [balancesLoading, setBalancesLoading] = useState(true);
-  /*
-   * Per-row in-flight state for the inline "Confirm Receipt" action. We
-   * track by driverId (one button at a time) so clicking one doesn't
-   * spinner-lock the rest of the list.
-   */
   const [approvingDriverId, setApprovingDriverId] = useState<string | null>(
     null,
   );
 
-  /* Bulk bank-deposit section state (bottom of page). */
+  // Bulk bank-deposit section state.
   const [bulkFile, setBulkFile] = useState<File | null>(null);
   const [bulkNote, setBulkNote] = useState('');
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
@@ -101,33 +104,22 @@ export function MyCustodyPage() {
 
   const canUse = can(user, 'managerCustody.view');
   const isManager = can(user, 'managerCustody.act');
-  const managerBranchId = user?.branchId ?? null;
 
   const load = useCallback(async () => {
     if (!token || !canUse) return;
     try {
-      const d = await listMyManagerCustody(token);
-      setRows(d);
+      const [bagsRes, statusRes] = await Promise.all([
+        listMyManagerCustody(token),
+        isManager
+          ? getManagerCashStatus(token).catch(() => null)
+          : Promise.resolve(null),
+      ]);
+      setRows(bagsRes);
+      setCashStatus(statusRes);
     } catch (e) {
       if (e instanceof ApiError) toast.error(e.message);
     }
-  }, [token, canUse]);
-
-  const loadDriverBalances = useCallback(async () => {
-    if (!token || !canUse) return;
-    setBalancesLoading(true);
-    try {
-      const d = await apiJson<DriverBalanceResponse>(
-        '/api/finance/driver-balance',
-        { token },
-      );
-      setDriverBalances(d.drivers);
-    } catch (e) {
-      if (e instanceof ApiError) toast.error(e.message);
-    } finally {
-      setBalancesLoading(false);
-    }
-  }, [token, canUse]);
+  }, [token, canUse, isManager]);
 
   useEffect(() => {
     if (!token || !canUse) {
@@ -138,19 +130,26 @@ export function MyCustodyPage() {
     void (async () => {
       setLoading(true);
       try {
-        const d = await listMyManagerCustody(token);
-        if (!c) setRows(d);
+        const [bags, status] = await Promise.all([
+          listMyManagerCustody(token),
+          isManager
+            ? getManagerCashStatus(token).catch(() => null)
+            : Promise.resolve(null),
+        ]);
+        if (!c) {
+          setRows(bags);
+          setCashStatus(status);
+        }
       } catch (e) {
         if (!c && e instanceof ApiError) toast.error(e.message);
       } finally {
         if (!c) setLoading(false);
       }
     })();
-    void loadDriverBalances();
     return () => {
       c = true;
     };
-  }, [token, canUse, loadDriverBalances]);
+  }, [token, canUse, isManager]);
 
   useEffect(() => {
     if (!bulkFile) {
@@ -167,53 +166,18 @@ export function MyCustodyPage() {
     };
   }, [bulkFile]);
 
-  const driversReadyForHandover = useMemo(() => {
-    const list = driverBalances ?? [];
-    return list
-      .filter((d) => Number.parseFloat(d.heldCashTotal) > 0)
-      .filter((d) =>
-        managerBranchId && isManager
-          ? d.branchId === managerBranchId
-          : true,
-      )
-      .sort(
-        (a, b) =>
-          Number.parseFloat(b.heldCashTotal) -
-          Number.parseFloat(a.heldCashTotal),
-      );
-  }, [driverBalances, managerBranchId, isManager]);
-
-  const totalAwaitingHandoverKd = useMemo(
-    () =>
-      driversReadyForHandover.reduce(
-        (acc, d) => acc + Number.parseFloat(d.heldCashTotal),
-        0,
-      ),
-    [driversReadyForHandover],
+  // STATUS COUNT (not money), allowed from the bag list.
+  const overdueCount = useMemo(
+    () => (rows ?? []).filter((r) => r.isOverdue).length,
+    [rows],
   );
 
-  const summary = useMemo(() => {
-    const list = rows ?? [];
-    let pendingCount = 0;
-    let awaitingCount = 0;
-    let overdueCount = 0;
-    let pendingMinor = 0;
-    for (const r of list) {
-      if (r.status === 'PENDING_DEPOSIT') pendingCount += 1;
-      if (r.status === 'AWAITING_VERIFICATION') awaitingCount += 1;
-      if (r.isOverdue) overdueCount += 1;
-      if (r.status !== 'VERIFIED') {
-        pendingMinor += Number.parseFloat(r.amountKd);
-      }
-    }
-    return { pendingCount, awaitingCount, overdueCount, pendingMinor };
-  }, [rows]);
-
   /*
-   * Bulk-deposit eligible bags = everything the manager is still "holding":
-   * PENDING_DEPOSIT (fresh handovers) + REJECTED (kicked back by accountant,
-   * need a new slip). Backend's POST :id/upload-slip accepts exactly these
-   * two statuses, so the loop will never 400.
+   * Bulk-deposit eligible bags = everything the manager is still
+   * "holding": PENDING_DEPOSIT (fresh handovers) + REJECTED (kicked back
+   * by accountant, need a new slip). The KD figure shown next to the
+   * uploader is `cashStatus.pendingDepositKd` — the SSoT total — not a
+   * client-side reduce.
    */
   const bulkEligible = useMemo(
     () =>
@@ -223,31 +187,32 @@ export function MyCustodyPage() {
     [rows],
   );
 
-  const bulkTotalKd = useMemo(
-    () =>
-      bulkEligible.reduce((acc, r) => acc + Number.parseFloat(r.amountKd), 0),
-    [bulkEligible],
-  );
-
-  /*
-   * Inline Driver-Receipt approval. Replaces the old redirect to
-   * /collect-driver-cash. Transfers liability Driver → Manager via the
-   * existing atomic endpoint POST /manager-custody/approve-receipt, then
-   * silently refreshes both the driver-balance list (row should disappear)
-   * and the manager's custody bags (new PENDING_DEPOSIT bag appears below).
-   */
   async function approveReceipt(driverId: string) {
     if (!token) return;
     setApprovingDriverId(driverId);
     try {
       await approveReceiptFromDriver(token, { driverId });
       toast.success(t('managerCustody.approveReceiptInlineSuccess'));
-      await Promise.all([load(), loadDriverBalances()]);
+      await load();
     } catch (e) {
       if (e instanceof ApiError) toast.error(e.message);
     } finally {
       setApprovingDriverId(null);
     }
+  }
+
+  function remindDriver(driver: ManagerCashStatusDriverRow) {
+    if (!driver.driverPhone) {
+      toast.warning(t('managerCustody.driverRemindNoPhone'));
+      return;
+    }
+    const phone = driver.driverPhone.replace(/[^\d+]/g, '');
+    const message = t('managerCustody.driverRemindWhatsAppMessage', {
+      name: driver.driverName,
+      amount: formatKwdLabel(driver.heldCashKd),
+    });
+    const url = `https://wa.me/${encodeURIComponent(phone)}?text=${encodeURIComponent(message)}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
   }
 
   async function onBulkSubmit() {
@@ -264,11 +229,6 @@ export function MyCustodyPage() {
     try {
       const { depositSlipUrl } = await uploadDepositSlipImage(token, bulkFile);
       const trimmedNote = bulkNote.trim() || undefined;
-
-      /*
-       * Attach the SAME slip URL to every eligible bag. Using allSettled so
-       * a single failure doesn't swallow the partial success of the rest.
-       */
       const results = await Promise.allSettled(
         bulkEligible.map((r) =>
           attachDepositSlip(token, r.id, {
@@ -277,14 +237,10 @@ export function MyCustodyPage() {
           }),
         ),
       );
-
       const succeeded = results.filter((x) => x.status === 'fulfilled').length;
       const failed = results.length - succeeded;
-
       if (failed === 0) {
-        toast.success(
-          t('managerCustody.bulkSuccess', { count: succeeded }),
-        );
+        toast.success(t('managerCustody.bulkSuccess', { count: succeeded }));
       } else if (succeeded === 0) {
         const first = results.find((x) => x.status === 'rejected') as
           | PromiseRejectedResult
@@ -301,7 +257,6 @@ export function MyCustodyPage() {
           }),
         );
       }
-
       setBulkFile(null);
       setBulkNote('');
       await load();
@@ -317,6 +272,12 @@ export function MyCustodyPage() {
   const list = rows ?? [];
   const isRtl = i18n.dir() === 'rtl';
 
+  // Header status pill: WARNING when there are overdue manager bags
+  // OR any driver in WARNING/CRITICAL risk, NORMAL otherwise.
+  const systemWarning =
+    overdueCount > 0 ||
+    (cashStatus?.drivers ?? []).some((d) => d.riskLevel !== 'NORMAL');
+
   return (
     <div className="space-y-6" dir={isRtl ? 'rtl' : 'ltr'}>
       <header className="flex flex-wrap items-end justify-between gap-3">
@@ -326,6 +287,14 @@ export function MyCustodyPage() {
           </h1>
           <p className="text-sm text-zinc-500">
             {t('managerCustody.mySubtitle')}
+            {!isManager ? (
+              <>
+                {' '}
+                <span className="font-medium text-amber-800 dark:text-amber-200">
+                  ({t('managerCustody.readOnlyOversightHint')})
+                </span>
+              </>
+            ) : null}
           </p>
         </div>
         <Button
@@ -333,10 +302,7 @@ export function MyCustodyPage() {
           variant="outline"
           size="sm"
           className="gap-1.5"
-          onClick={() => {
-            void load();
-            void loadDriverBalances();
-          }}
+          onClick={() => void load()}
           disabled={loading}
         >
           {loading ? (
@@ -348,96 +314,59 @@ export function MyCustodyPage() {
         </Button>
       </header>
 
-      {/* Dastur §2.1 / §3 — Driver Handover Approval pre-flight list (Image 1). */}
-      <section className="space-y-3">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-semibold text-zinc-900">
-              {t('managerCustody.handoverSectionTitle')}
-            </h2>
-            <p className="text-xs text-muted-foreground">
-              {t('managerCustody.handoverSectionHint')}
-            </p>
-          </div>
-          {driversReadyForHandover.length > 0 ? (
-            <div className="text-sm text-muted-foreground">
-              {t('managerCustody.handoverTotalAwaiting')}:{' '}
-              <span className="font-semibold tabular-nums text-foreground">
-                {formatKwdLabel(totalAwaitingHandoverKd)}
-              </span>
-            </div>
-          ) : null}
-        </div>
+      <HeaderSummary
+        cashStatus={cashStatus}
+        loading={loading && !cashStatus}
+        warning={systemWarning}
+        overdueCount={overdueCount}
+        i18nLanguage={i18n.language}
+        nowMs={
+          cashStatus
+            ? new Date(cashStatus.generatedAt).getTime()
+            : null
+        }
+      />
 
-        {balancesLoading && driverBalances === null ? (
-          <div className="grid gap-2">
-            <Skeleton className="h-16 w-full rounded-xl" />
-            <Skeleton className="h-16 w-full rounded-xl" />
-          </div>
-        ) : driversReadyForHandover.length === 0 ? (
-          <Card className="border-zinc-200 bg-white">
-            <CardContent className="py-6 text-center text-sm text-zinc-500">
-              {t('managerCustody.handoverEmpty')}
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid gap-2">
-            {driversReadyForHandover.map((d) => (
-              <DriverHandoverRow
-                key={d.driverId}
-                row={d}
-                approving={approvingDriverId === d.driverId}
-                disabled={
-                  approvingDriverId !== null && approvingDriverId !== d.driverId
-                }
-                onConfirm={() => void approveReceipt(d.driverId)}
-              />
-            ))}
-          </div>
-        )}
-      </section>
+      {isManager ? (
+        <DriverSection
+          drivers={cashStatus?.drivers ?? null}
+          loading={loading && !cashStatus}
+          totalKd={cashStatus?.driversAwaitingHandoverKd ?? null}
+          approvingDriverId={approvingDriverId}
+          onApprove={(d) => void approveReceipt(d.driverId)}
+          onRemind={remindDriver}
+        />
+      ) : null}
 
-      {/* Summary tiles */}
-      <div className="grid gap-3 sm:grid-cols-3">
-        <SummaryTile
-          icon={<Clock className="h-4 w-4 text-amber-600" aria-hidden />}
-          label={t('managerCustody.tilePending')}
-          value={String(summary.pendingCount)}
-        />
-        <SummaryTile
-          icon={<Upload className="h-4 w-4 text-sky-600" aria-hidden />}
-          label={t('managerCustody.tileAwaiting')}
-          value={String(summary.awaitingCount)}
-        />
-        <SummaryTile
-          icon={
-            <AlertTriangle
-              className={cn(
-                'h-4 w-4',
-                summary.overdueCount > 0 ? 'text-red-600' : 'text-zinc-400',
-              )}
-              aria-hidden
-            />
-          }
-          label={t('managerCustody.tileOverdue')}
-          value={String(summary.overdueCount)}
-          tone={summary.overdueCount > 0 ? 'danger' : 'default'}
-        />
-      </div>
+      <ManagerSection
+        managerName={cashStatus?.managerName ?? user?.fullName ?? ''}
+        amountKd={cashStatus?.pendingDepositKd ?? null}
+        delayed={systemWarning}
+        loading={loading && !cashStatus}
+      />
 
-      {/* Read-only visibility of my custody bags (no per-bag upload button). */}
+      {isManager ? (
+        <DepositPanel
+          totalKd={cashStatus?.pendingDepositKd ?? null}
+          custodyBagsTotalKd={cashStatus?.custodyBagsTotalKd ?? null}
+          eligibleCount={bulkEligible.length}
+          submitting={bulkSubmitting}
+          file={bulkFile}
+          previewUrl={bulkPreviewUrl}
+          note={bulkNote}
+          onFile={setBulkFile}
+          onNote={setBulkNote}
+          onSubmit={() => void onBulkSubmit()}
+        />
+      ) : null}
+
+      {/* Read-only visibility of my custody bags (printable receipts). */}
       {loading && !rows ? (
         <div className="grid gap-3">
           <Skeleton className="h-24 w-full rounded-xl" />
           <Skeleton className="h-24 w-full rounded-xl" />
         </div>
-      ) : list.length === 0 ? (
-        <Card className="border-zinc-200 bg-white">
-          <CardContent className="py-10 text-center text-sm text-zinc-500">
-            {t('managerCustody.empty')}
-          </CardContent>
-        </Card>
-      ) : (
+      ) : list.length === 0 ? null : (
         <div className="grid gap-3">
           {list.map((r) => (
             <CustodyCard key={r.id} row={r} dateLocale={dateLocale} />
@@ -445,129 +374,728 @@ export function MyCustodyPage() {
         </div>
       )}
 
-      {/* Bulk bank-deposit section — replaces the per-bag upload dialog. */}
-      <Card className="border-slate-200 bg-slate-50/50 shadow-sm">
-        <CardHeader className="pb-3">
-          <div className="flex items-center gap-2">
-            <Landmark className="h-5 w-5 text-slate-700" aria-hidden />
-            <CardTitle className="text-lg font-semibold text-zinc-900">
-              {t('managerCustody.bulkDepositTitle')}
-            </CardTitle>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            {t('managerCustody.bulkDepositSubtitle')}
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-200 bg-white px-4 py-3">
-            <div>
-              <p className="text-xs text-muted-foreground">
-                {t('managerCustody.bulkHeldCash')}
-              </p>
-              <p className="text-2xl font-semibold tabular-nums text-zinc-900">
-                {formatKwdLabel(bulkTotalKd)}
-              </p>
-            </div>
-            <div className="text-xs text-muted-foreground">
-              {t('managerCustody.bulkBagsCount', {
-                count: bulkEligible.length,
-              })}
-            </div>
-          </div>
-
-          {bulkEligible.length === 0 ? (
-            <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-              {t('managerCustody.bulkNoBags')}
-            </p>
-          ) : (
-            <>
-              <div className="space-y-2">
-                <Label htmlFor="bulk-slip">
-                  {t('managerCustody.bulkSlipLabel')}
-                </Label>
-                <Input
-                  id="bulk-slip"
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  className="cursor-pointer"
-                  onChange={(e) => setBulkFile(e.target.files?.[0] ?? null)}
-                  disabled={bulkSubmitting}
-                />
-              </div>
-              {bulkPreviewUrl ? (
-                <div className="overflow-hidden rounded-lg border border-zinc-200">
-                  <img
-                    src={bulkPreviewUrl}
-                    alt=""
-                    className="max-h-56 w-full bg-zinc-100 object-contain"
-                  />
-                </div>
-              ) : null}
-              <div className="space-y-2">
-                <Label htmlFor="bulk-note">
-                  {t('managerCustody.bulkNoteLabel')}
-                </Label>
-                <Textarea
-                  id="bulk-note"
-                  value={bulkNote}
-                  onChange={(e) => setBulkNote(e.target.value)}
-                  placeholder={t('managerCustody.bulkNotePlaceholder')}
-                  rows={2}
-                  disabled={bulkSubmitting}
-                />
-              </div>
-              <Button
-                type="button"
-                className="gap-1.5 bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50"
-                disabled={bulkSubmitting || !bulkFile}
-                onClick={() => void onBulkSubmit()}
-              >
-                {bulkSubmitting ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Upload className="h-4 w-4" />
-                )}
-                {t('managerCustody.bulkSubmitCta')}
-              </Button>
-            </>
-          )}
-        </CardContent>
-      </Card>
+      <ActivityTimeline
+        events={cashStatus?.recentActivity ?? null}
+        loading={loading && !cashStatus}
+        i18nLanguage={i18n.language}
+        nowMs={
+          cashStatus
+            ? new Date(cashStatus.generatedAt).getTime()
+            : null
+        }
+      />
     </div>
   );
 }
 
-function SummaryTile({
-  icon,
-  label,
-  value,
-  tone = 'default',
+// ─────────────────────────────────────────────── HeaderSummary
+function HeaderSummary({
+  cashStatus,
+  loading,
+  warning,
+  overdueCount,
+  i18nLanguage,
+  nowMs,
 }: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  tone?: 'default' | 'danger';
+  cashStatus: ManagerCashStatusResponse | null;
+  loading: boolean;
+  warning: boolean;
+  overdueCount: number;
+  i18nLanguage: string;
+  nowMs: number | null;
 }) {
+  const { t } = useTranslation();
+  if (loading) {
+    return <Skeleton className="h-32 w-full rounded-xl" />;
+  }
   return (
     <Card
       className={cn(
         'border shadow-sm',
-        tone === 'danger'
-          ? 'border-red-200 bg-red-50/60'
-          : 'border-zinc-200 bg-white',
+        warning ? 'border-amber-300 bg-amber-50/50' : 'border-zinc-200 bg-white',
       )}
     >
-      <CardContent className="flex items-center gap-3 py-4">
-        {icon}
+      <CardContent className="grid gap-4 py-5 lg:grid-cols-[1.3fr_1fr_1fr_1fr]">
+        <div className="flex items-center gap-3">
+          <div
+            className={cn(
+              'flex h-12 w-12 shrink-0 items-center justify-center rounded-xl',
+              warning ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700',
+            )}
+            aria-hidden
+          >
+            <Wallet className="h-6 w-6" />
+          </div>
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {t('managerCustody.headerTotalUnderControl')}
+            </p>
+            <p className="text-3xl font-semibold tabular-nums text-zinc-900">
+              {cashStatus
+                ? formatKwdLabel(cashStatus.pendingDepositKd)
+                : '—'}
+            </p>
+            <div className="mt-1 flex items-center gap-2">
+              {warning ? (
+                <Badge className="gap-1 border-amber-300 bg-amber-100 text-amber-900">
+                  <ShieldAlert className="h-3.5 w-3.5" />
+                  {t('managerCustody.headerStatusWarning')}
+                </Badge>
+              ) : (
+                <Badge className="gap-1 border-emerald-300 bg-emerald-100 text-emerald-900">
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  {t('managerCustody.headerStatusNormal')}
+                </Badge>
+              )}
+              {overdueCount > 0 ? (
+                <Badge variant="outline" className="border-red-300 text-red-800">
+                  <AlertTriangle className="mr-1 h-3 w-3" />
+                  {t('managerCustody.tileOverdue')}: {overdueCount}
+                </Badge>
+              ) : null}
+            </div>
+          </div>
+        </div>
+        <Indicator
+          icon={<Truck className="h-4 w-4 text-amber-700" aria-hidden />}
+          label={t('managerCustody.headerDriversPending')}
+          value={
+            cashStatus
+              ? formatKwdLabel(cashStatus.driversAwaitingHandoverKd)
+              : '—'
+          }
+          sub={
+            cashStatus
+              ? `${cashStatus.driversAtRiskCount} ${t('managerCustody.colDriver')}`
+              : undefined
+          }
+        />
+        <Indicator
+          icon={<Briefcase className="h-4 w-4 text-emerald-700" aria-hidden />}
+          label={t('managerCustody.headerManagerCash')}
+          value={
+            cashStatus ? formatKwdLabel(cashStatus.managerOwnPosKd) : '—'
+          }
+          sub={t('managerCustody.managerSectionSource')}
+        />
+        <Indicator
+          icon={<Clock className="h-4 w-4 text-sky-700" aria-hidden />}
+          label={t('managerCustody.headerLastActivity')}
+          value={
+            cashStatus?.lastActivityAt && nowMs !== null
+              ? formatRelativeTime(
+                  cashStatus.lastActivityAt,
+                  i18nLanguage,
+                  nowMs,
+                )
+              : '—'
+          }
+        />
+      </CardContent>
+    </Card>
+  );
+}
+
+function Indicator({
+  icon,
+  label,
+  value,
+  sub,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  sub?: string;
+}) {
+  return (
+    <div className="flex items-start gap-2 rounded-lg bg-white/60 px-3 py-2">
+      <div className="mt-0.5">{icon}</div>
+      <div>
+        <p className="text-xs text-muted-foreground">{label}</p>
+        <p className="text-lg font-semibold tabular-nums">{value}</p>
+        {sub ? <p className="text-[11px] text-muted-foreground">{sub}</p> : null}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────── <Section />
+/**
+ * Reusable section wrapper used by both the drivers and the manager
+ * blocks. Keeps the title row + optional action/total slot consistent
+ * across the dashboard so the visual hierarchy is uniform.
+ *
+ * No business logic, no money math — pure layout.
+ */
+function Section({
+  title,
+  hint,
+  action,
+  children,
+}: {
+  title: React.ReactNode;
+  hint?: React.ReactNode;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="space-y-3">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-xs text-muted-foreground">{label}</p>
-          <p className="text-2xl font-semibold tabular-nums">{value}</p>
+          <h2 className="text-lg font-semibold text-zinc-900 flex items-center gap-2">
+            {title}
+          </h2>
+          {hint ? (
+            <p className="text-xs text-muted-foreground">{hint}</p>
+          ) : null}
+        </div>
+        {action ?? null}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+// ─────────────────────────────────────────────── DriverSection
+function DriverSection({
+  drivers,
+  loading,
+  totalKd,
+  approvingDriverId,
+  onApprove,
+  onRemind,
+}: {
+  drivers: ManagerCashStatusDriverRow[] | null;
+  loading: boolean;
+  totalKd: string | null;
+  approvingDriverId: string | null;
+  onApprove: (d: ManagerCashStatusDriverRow) => void;
+  onRemind: (d: ManagerCashStatusDriverRow) => void;
+}) {
+  const { t } = useTranslation();
+  // Brief: "Sorted by highest cash". Single-value ordering only — no
+  // aggregation, no client-side recomputation of money. The KD figures
+  // themselves are still rendered as-is from the server-aggregated
+  // `heldCashKd` strings.
+  const sortedDrivers = useMemo(
+    () =>
+      [...(drivers ?? [])].sort(
+        (a, b) => Number(b.heldCashKd) - Number(a.heldCashKd),
+      ),
+    [drivers],
+  );
+
+  return (
+    <Section
+      title={
+        <>
+          <span aria-hidden role="img">
+            🚚
+          </span>
+          {t('managerCustody.driverSectionTitle')}
+        </>
+      }
+      hint={t('managerCustody.handoverSectionHint')}
+      action={
+        totalKd && totalKd !== '0.0000' ? (
+          <div className="text-sm text-muted-foreground">
+            {t('managerCustody.handoverTotalAwaiting')}:{' '}
+            <span className="font-semibold tabular-nums text-foreground">
+              {formatKwdLabel(totalKd)}
+            </span>
+          </div>
+        ) : null
+      }
+    >
+      {loading && drivers === null ? (
+        <div className="grid gap-2">
+          <Skeleton className="h-10 w-full rounded" />
+          <Skeleton className="h-10 w-full rounded" />
+          <Skeleton className="h-10 w-full rounded" />
+        </div>
+      ) : sortedDrivers.length === 0 ? (
+        <Card className="border-emerald-200 bg-emerald-50/40">
+          <CardContent className="flex items-center gap-2 py-5 text-sm text-emerald-900">
+            <CheckCircle2 className="h-4 w-4" />
+            {t('managerCustody.driverSectionEmpty')}
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="border-zinc-200 bg-white shadow-sm">
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t('managerCustody.colDriver')}</TableHead>
+                    <TableHead className="text-end">
+                      {t('managerCustody.colAmount')}
+                    </TableHead>
+                    <TableHead>{t('managerCustody.colStatus')}</TableHead>
+                    <TableHead className="text-end">
+                      {t('managerCustody.colActions')}
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {sortedDrivers.map((d) => (
+                    <DriverRow
+                      key={d.driverId}
+                      driver={d}
+                      approving={approvingDriverId === d.driverId}
+                      disabled={
+                        approvingDriverId !== null &&
+                        approvingDriverId !== d.driverId
+                      }
+                      onApprove={() => onApprove(d)}
+                      onRemind={() => onRemind(d)}
+                    />
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </Section>
+  );
+}
+
+// Brief: badge "green = normal, red = delayed". Server grades the
+// risk (NORMAL / WARNING / CRITICAL); the client only maps to the
+// two-state badge palette and a single row tone.
+function DriverRow({
+  driver,
+  approving,
+  disabled,
+  onApprove,
+  onRemind,
+}: {
+  driver: ManagerCashStatusDriverRow;
+  approving: boolean;
+  disabled: boolean;
+  onApprove: () => void;
+  onRemind: () => void;
+}) {
+  const { t } = useTranslation();
+  const isDelayed = driver.riskLevel !== 'NORMAL';
+  return (
+    <TableRow
+      className={cn(isDelayed && 'bg-red-50/60 hover:bg-red-50/80')}
+    >
+      <TableCell>
+        <div className="flex items-center gap-2">
+          <span
+            aria-hidden
+            className={cn(
+              'rounded-md p-1.5',
+              isDelayed
+                ? 'bg-red-100 text-red-700'
+                : 'bg-zinc-100 text-zinc-600',
+            )}
+          >
+            <Truck className="h-3.5 w-3.5" />
+          </span>
+          <div>
+            <div className="font-medium">{driver.driverName}</div>
+            <div className="text-xs text-muted-foreground">
+              @{driver.driverUsername}
+              {driver.ageHours !== null ? (
+                <> · {t('managerCustody.age', { hours: driver.ageHours })}</>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      </TableCell>
+      <TableCell className="text-end font-semibold tabular-nums">
+        {formatKwdLabel(driver.heldCashKd)}
+      </TableCell>
+      <TableCell>
+        <StatusBadge delayed={isDelayed} />
+      </TableCell>
+      <TableCell className="text-end">
+        <div className="flex flex-wrap justify-end gap-1.5">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="gap-1.5"
+            disabled={!driver.driverPhone}
+            onClick={onRemind}
+            title={
+              driver.driverPhone
+                ? undefined
+                : t('managerCustody.driverRemindNoPhone')
+            }
+          >
+            <MessageSquare className="h-3.5 w-3.5" aria-hidden />
+            {t('managerCustody.driverRemind')}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            className="gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+            disabled={approving || disabled}
+            onClick={onApprove}
+          >
+            {approving ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+            ) : (
+              <CheckSquare className="h-3.5 w-3.5" aria-hidden />
+            )}
+            {t('managerCustody.driverHandoverNow')}
+          </Button>
+        </div>
+      </TableCell>
+    </TableRow>
+  );
+}
+
+function StatusBadge({ delayed }: { delayed: boolean }) {
+  const { t } = useTranslation();
+  return delayed ? (
+    <Badge
+      variant="outline"
+      className="gap-1 border-red-300 bg-red-100 text-red-900"
+    >
+      <AlertTriangle className="h-3 w-3" aria-hidden />
+      {t('managerCustody.driverRiskWarning')}
+    </Badge>
+  ) : (
+    <Badge
+      variant="outline"
+      className="gap-1 border-emerald-300 bg-emerald-100 text-emerald-900"
+    >
+      <CheckCircle2 className="h-3 w-3" aria-hidden />
+      {t('managerCustody.driverRiskNormal')}
+    </Badge>
+  );
+}
+
+// ─────────────────────────────────────────────── ManagerSection
+function ManagerSection({
+  managerName,
+  amountKd,
+  delayed,
+  loading,
+}: {
+  managerName: string;
+  amountKd: string | null;
+  delayed: boolean;
+  loading: boolean;
+}) {
+  const { t } = useTranslation();
+  return (
+    <Section
+      title={
+        <>
+          <span aria-hidden role="img">
+            👨‍💼
+          </span>
+          {t('managerCustody.managerSectionTitle')}
+        </>
+      }
+      hint={t('managerCustody.managerSectionHint')}
+    >
+      <ManagerCard
+        managerName={managerName}
+        amountKd={amountKd}
+        delayed={delayed}
+        loading={loading}
+      />
+    </Section>
+  );
+}
+
+function ManagerCard({
+  managerName,
+  amountKd,
+  delayed,
+  loading,
+}: {
+  managerName: string;
+  amountKd: string | null;
+  delayed: boolean;
+  loading: boolean;
+}) {
+  const { t } = useTranslation();
+  if (loading && amountKd === null) {
+    return <Skeleton className="h-28 w-full rounded-xl" />;
+  }
+  return (
+    <Card
+      className={cn(
+        'shadow-sm',
+        delayed
+          ? 'border-red-200 bg-red-50/60'
+          : 'border-emerald-200 bg-emerald-50/40',
+      )}
+    >
+      <CardContent className="flex flex-wrap items-center justify-between gap-4 py-5">
+        <div className="flex items-center gap-3">
+          <span
+            aria-hidden
+            className={cn(
+              'rounded-lg p-2.5',
+              delayed
+                ? 'bg-red-100 text-red-700'
+                : 'bg-emerald-100 text-emerald-700',
+            )}
+          >
+            <Briefcase className="h-5 w-5" />
+          </span>
+          <div>
+            <p className="text-sm font-medium text-zinc-900">
+              {managerName || t('managerCustody.colManager')}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {t('managerCustody.managerSectionSource')}
+            </p>
+            <div className="mt-1.5">
+              <StatusBadge delayed={delayed} />
+            </div>
+          </div>
+        </div>
+        <div className="text-end">
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">
+            {t('managerCustody.managerCardTotalLabel')}
+          </p>
+          <p
+            className={cn(
+              'text-2xl font-semibold tabular-nums',
+              delayed ? 'text-red-900' : 'text-emerald-900',
+            )}
+          >
+            {amountKd ? formatKwdLabel(amountKd) : '—'}
+          </p>
         </div>
       </CardContent>
     </Card>
   );
 }
 
+// ─────────────────────────────────────────────── DepositPanel
+function DepositPanel({
+  totalKd,
+  custodyBagsTotalKd,
+  eligibleCount,
+  submitting,
+  file,
+  previewUrl,
+  note,
+  onFile,
+  onNote,
+  onSubmit,
+}: {
+  totalKd: string | null;
+  custodyBagsTotalKd: string | null;
+  eligibleCount: number;
+  submitting: boolean;
+  file: File | null;
+  previewUrl: string | null;
+  note: string;
+  onFile: (f: File | null) => void;
+  onNote: (s: string) => void;
+  onSubmit: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <Card className="border-slate-200 bg-slate-50/50 shadow-sm">
+      <CardHeader className="pb-3">
+        <div className="flex items-center gap-2">
+          <Landmark className="h-5 w-5 text-slate-700" aria-hidden />
+          <CardTitle className="text-lg font-semibold text-zinc-900">
+            {t('managerCustody.bulkDepositTitle')}
+          </CardTitle>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {t('managerCustody.bulkDepositSubtitle')}
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-xl border border-zinc-200 bg-white px-4 py-3">
+            <p className="text-xs text-muted-foreground">
+              {t('managerCustody.bulkHeldCash')}
+            </p>
+            <p className="text-2xl font-semibold tabular-nums text-zinc-900">
+              {totalKd ? formatKwdLabel(totalKd) : '—'}
+            </p>
+            <p className="text-[11px] text-muted-foreground">
+              {t('managerCustody.bulkBagsCount', { count: eligibleCount })}
+            </p>
+          </div>
+          <div className="rounded-xl border border-zinc-200 bg-white px-4 py-3">
+            <p className="text-xs text-muted-foreground">
+              {t('managerCustody.custodyBagsSubtotalLabel')}
+            </p>
+            <p className="text-2xl font-semibold tabular-nums text-zinc-900">
+              {custodyBagsTotalKd ? formatKwdLabel(custodyBagsTotalKd) : '—'}
+            </p>
+          </div>
+        </div>
+
+        {eligibleCount === 0 ? (
+          <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+            {t('managerCustody.bulkNoBags')}
+          </p>
+        ) : (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="bulk-slip">
+                {t('managerCustody.bulkSlipLabel')}
+              </Label>
+              <Input
+                id="bulk-slip"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="cursor-pointer"
+                onChange={(e) => onFile(e.target.files?.[0] ?? null)}
+                disabled={submitting}
+              />
+            </div>
+            {previewUrl ? (
+              <div className="overflow-hidden rounded-lg border border-zinc-200">
+                <img
+                  src={previewUrl}
+                  alt=""
+                  className="max-h-56 w-full bg-zinc-100 object-contain"
+                />
+              </div>
+            ) : null}
+            <div className="space-y-2">
+              <Label htmlFor="bulk-note">
+                {t('managerCustody.bulkNoteLabel')}
+              </Label>
+              <Textarea
+                id="bulk-note"
+                value={note}
+                onChange={(e) => onNote(e.target.value)}
+                placeholder={t('managerCustody.bulkNotePlaceholder')}
+                rows={2}
+                disabled={submitting}
+              />
+            </div>
+            <Button
+              type="button"
+              className="gap-1.5 bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50"
+              disabled={submitting || !file}
+              onClick={onSubmit}
+            >
+              {submitting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Upload className="h-4 w-4" />
+              )}
+              {t('managerCustody.bulkSubmitCta')}
+            </Button>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─────────────────────────────────────────────── ActivityTimeline
+function ActivityTimeline({
+  events,
+  loading,
+  i18nLanguage,
+  nowMs,
+}: {
+  events: ManagerCashStatusActivityRow[] | null;
+  loading: boolean;
+  i18nLanguage: string;
+  nowMs: number | null;
+}) {
+  const { t } = useTranslation();
+  if (loading && events === null) {
+    return <Skeleton className="h-32 w-full rounded-xl" />;
+  }
+  const list = events ?? [];
+  return (
+    <Card className="border-zinc-200 bg-white shadow-sm">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base font-semibold text-zinc-900 flex items-center gap-2">
+          <Clock className="h-4 w-4 text-zinc-500" aria-hidden />
+          {t('managerCustody.activityTitle')}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="pt-0">
+        {list.length === 0 ? (
+          <p className="py-4 text-sm text-muted-foreground">
+            {t('managerCustody.activityEmpty')}
+          </p>
+        ) : (
+          <ul className="divide-y divide-zinc-100">
+            {list.map((e) => {
+              const style = ACTIVITY_STYLE[e.kind];
+              return (
+                <li
+                  key={e.txId}
+                  className="flex items-center justify-between gap-3 py-3"
+                >
+                  <div className="flex items-center gap-3">
+                    <span
+                      aria-hidden
+                      className={cn('rounded-md p-1.5', style.iconWrap)}
+                    >
+                      {style.icon}
+                    </span>
+                    <div>
+                      <p className="text-sm font-medium text-zinc-900">
+                        {t(style.labelKey)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {nowMs !== null
+                          ? formatRelativeTime(e.at, i18nLanguage, nowMs)
+                          : ''}
+                        {e.actorAccountId ? <> · {e.actorAccountId}</> : null}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-end">
+                    <p className="text-sm font-semibold tabular-nums text-zinc-900">
+                      {formatKwdLabel(e.amountKd)}
+                    </p>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+const ACTIVITY_STYLE: Record<
+  ManagerCashStatusActivityRow['kind'],
+  { iconWrap: string; icon: React.ReactNode; labelKey: string }
+> = {
+  POS_SALE: {
+    iconWrap: 'bg-sky-100 text-sky-700',
+    icon: <HandCoins className="h-3.5 w-3.5" />,
+    labelKey: 'managerCustody.activityKindPosSale',
+  },
+  DRIVER_HANDOVER: {
+    iconWrap: 'bg-amber-100 text-amber-700',
+    icon: <Truck className="h-3.5 w-3.5" />,
+    labelKey: 'managerCustody.activityKindDriverHandover',
+  },
+  BANK_DEPOSIT: {
+    iconWrap: 'bg-emerald-100 text-emerald-700',
+    icon: <Landmark className="h-3.5 w-3.5" />,
+    labelKey: 'managerCustody.activityKindBankDeposit',
+  },
+  OTHER: {
+    iconWrap: 'bg-zinc-100 text-zinc-700',
+    icon: <Wallet className="h-3.5 w-3.5" />,
+    labelKey: 'managerCustody.activityKindOther',
+  },
+};
+
+// ─────────────────────────────────────────────── CustodyCard (existing)
 function CustodyCard({
   row,
   dateLocale,
@@ -636,9 +1164,6 @@ function CustodyCard({
               {t('managerCustody.closed')}
             </Badge>
           ) : null}
-          {/* V19.17 — same "سند استلام" voucher the driver sees. Opens
-              the shared printable A4 sheet (RBAC is re-enforced on
-              the backend for each bag). */}
           <Link
             to={`/my-cash-receipts/${row.id}/print`}
             target="_blank"
@@ -664,68 +1189,6 @@ function CustodyCard({
         </CardContent>
       ) : null}
     </Card>
-  );
-}
-
-function DriverHandoverRow({
-  row,
-  approving,
-  disabled,
-  onConfirm,
-}: {
-  row: DriverBalanceRow;
-  approving: boolean;
-  disabled: boolean;
-  onConfirm: () => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3 shadow-sm">
-      <div className="flex items-center gap-3">
-        <span
-          aria-hidden
-          className="rounded-lg bg-white p-1.5 text-amber-700 shadow-sm"
-        >
-          <HandCoins className="h-4 w-4" />
-        </span>
-        <div>
-          <p className="text-sm font-medium text-zinc-900">
-            {row.fullName}{' '}
-            <span className="text-xs font-normal text-muted-foreground">
-              @{row.username}
-            </span>
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {row.pendingSettlementOrderCount}{' '}
-            {t('managerCustody.ordersSettled')}
-          </p>
-        </div>
-      </div>
-      <div className="flex items-center gap-3">
-        <div className="text-end">
-          <p className="text-xs text-muted-foreground">
-            {t('managerCustody.colAmount')}
-          </p>
-          <p className="text-base font-semibold tabular-nums text-zinc-900">
-            {formatKwdLabel(row.heldCashTotal)}
-          </p>
-        </div>
-        <Button
-          type="button"
-          size="sm"
-          className="gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
-          disabled={approving || disabled}
-          onClick={onConfirm}
-        >
-          {approving ? (
-            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-          ) : (
-            <CheckSquare className="h-4 w-4" aria-hidden />
-          )}
-          {t('managerCustody.confirmReceiptCta')}
-        </Button>
-      </div>
-    </div>
   );
 }
 

@@ -1,31 +1,33 @@
 import type { NavGroup } from '@/modules/shared/nav/nav-types';
 import { G } from '@/modules/shared/nav/nav-groups';
 import {
+  accountantDashboardItem,
   accountantInventoryItem,
   accountantStockInItem,
   allInvoicesItem,
   attendanceItem,
+  carExpensesItem,
+  customersItem,
   debtTransfersItem,
   driverCashTraceItem,
+  cashReconciliationItem,
   expenseApprovalItem,
+  expenseReportsItem,
   inventoryCatalogItem,
   inventoryLowStockItem,
   inventoryMovementsItem,
   inventoryOperationsItem,
   operationalReportsHubItem,
   purchaseOrdersItem,
-  invoicesDataItem,
   invoiceAuditItem,
   knetAuditItem,
   managerCustodyAgingItem,
   moneyFlowStatementItem,
   payrollItem,
+  salesSummaryReportItem,
   shiftsItem,
-  staffDebtsItem,
   unifiedLedgerItem,
   unpaidInvoicesItem,
-  vehicleExpensesApprovalItem,
-  vehicleExpensesReportItem,
 } from '@/modules/shared/nav/nav-items';
 
 /**
@@ -39,51 +41,58 @@ import {
  */
 export const accountantSidebarNavGroups: NavGroup[] = [
   {
-    ...G.invoices,
-    items: [allInvoicesItem],
+    ...G.customersSubs,
+    items: [customersItem],
   },
   {
     ...G.finance,
     items: [
+      allInvoicesItem,
       unifiedLedgerItem,
+      accountantDashboardItem,
       knetAuditItem,
       moneyFlowStatementItem,
+      salesSummaryReportItem,
       invoiceAuditItem,
-      expenseApprovalItem,
-      vehicleExpensesApprovalItem,
-      vehicleExpensesReportItem,
-      debtTransfersItem,
       operationalReportsHubItem,
     ],
   },
   {
-    ...G.paymentCollection,
+    ...G.expenses,
     items: [
-      invoicesDataItem,
+      expenseApprovalItem,
+      expenseReportsItem,
+      carExpensesItem,
+    ],
+  },
+  {
+    ...G.cashDebt,
+    items: [
       managerCustodyAgingItem,
       driverCashTraceItem,
+      cashReconciliationItem,
       unpaidInvoicesItem,
-      staffDebtsItem,
+      debtTransfersItem,
     ],
   },
   {
     ...G.inventoryOps,
     items: [
       accountantInventoryItem,
-      accountantStockInItem,
       inventoryLowStockItem,
-      inventoryOperationsItem,
       inventoryMovementsItem,
-      inventoryCatalogItem,
       purchaseOrdersItem,
+      inventoryCatalogItem,
+      inventoryOperationsItem,
+      accountantStockInItem,
     ],
   },
   {
     ...G.operations,
-    items: [shiftsItem],
+    items: [shiftsItem, attendanceItem],
   },
   {
     ...G.adminSettings,
-    items: [payrollItem, attendanceItem],
+    items: [payrollItem],
   },
 ];

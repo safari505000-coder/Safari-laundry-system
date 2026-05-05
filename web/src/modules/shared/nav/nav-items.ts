@@ -29,7 +29,6 @@ import {
   PackagePlus,
   PhoneIncoming,
   Radar,
-  Receipt,
   ReceiptText,
   Settings,
   ShieldAlert,
@@ -44,12 +43,14 @@ import {
   Wrench,
 } from 'lucide-react';
 import type { NavItem } from '@/modules/shared/nav/nav-types';
+import { AppPermission } from '@/modules/shared/auth/app-permissions';
 
 export const posItem: NavItem = {
   to: '/pos',
   labelKey: 'nav.pos',
   icon: ShoppingCart,
   roles: ['DRIVER', 'MANAGER'],
+  permission: AppPermission.CREATE_INVOICE,
 };
 
 export const manageItemsItem: NavItem = {
@@ -57,13 +58,15 @@ export const manageItemsItem: NavItem = {
   labelKey: 'nav.manageItems',
   icon: ClipboardList,
   roles: ['OWNER', 'GENERAL_MANAGER'],
+  permission: AppPermission.MANAGE_SETTINGS,
 };
 
-export const ownerDashboardItem: NavItem = {
-  to: '/financials',
-  labelKey: 'nav.ownerDashboard',
-  icon: LayoutDashboard,
+export const auditLogsItem: NavItem = {
+  to: '/audit-logs',
+  labelKey: 'nav.auditLogs',
+  icon: FileText,
   roles: ['OWNER', 'GENERAL_MANAGER'],
+  permission: AppPermission.VIEW_AUDIT_LOGS,
 };
 
 export const myDepositsItem: NavItem = {
@@ -71,6 +74,7 @@ export const myDepositsItem: NavItem = {
   labelKey: 'nav.myDeposits',
   icon: CircleDollarSign,
   roles: ['DRIVER'],
+  permission: AppPermission.VIEW_CASH,
 };
 
 /**
@@ -84,6 +88,7 @@ export const myCashReceiptsItem: NavItem = {
   labelKey: 'nav.myCashReceipts',
   icon: ReceiptText,
   roles: ['DRIVER'],
+  permission: AppPermission.VIEW_CASH,
 };
 
 export const myDailySalesItem: NavItem = {
@@ -91,6 +96,7 @@ export const myDailySalesItem: NavItem = {
   labelKey: 'nav.myDailySales',
   icon: LayoutDashboard,
   roles: ['DRIVER'],
+  permission: AppPermission.VIEW_OPERATIONS,
 };
 
 export const dashboardItem: NavItem = {
@@ -101,13 +107,12 @@ export const dashboardItem: NavItem = {
     'OWNER',
     'GENERAL_MANAGER',
     'MANAGER',
-    'DRIVER',
-    'CALL_CENTER',
     'CALL_CENTER_SUPERVISOR',
     'ACCOUNTANT',
     'SUPERVISOR',
     'VIEWER',
   ],
+  permission: AppPermission.VIEW_REPORTS,
 };
 
 // V19.4 — CC cleanup. `/subscriptions` is now the plan-catalog page for
@@ -118,6 +123,7 @@ export const subscriptionsItem: NavItem = {
   labelKey: 'nav.subscriptions',
   icon: Sparkles,
   roles: ['OWNER', 'GENERAL_MANAGER'],
+  permission: AppPermission.VIEW_CUSTOMERS,
 };
 
 export const subscribersItem: NavItem = {
@@ -125,23 +131,34 @@ export const subscribersItem: NavItem = {
   labelKey: 'nav.subscribers',
   icon: ListOrdered,
   roles: ['OWNER', 'GENERAL_MANAGER', 'CALL_CENTER', 'CALL_CENTER_SUPERVISOR'],
+  permission: AppPermission.VIEW_CUSTOMERS,
 };
 
 export const customersItem: NavItem = {
   to: '/customers',
   labelKey: 'nav.customers',
   icon: Users,
-  // CRM + PBX handoff: CC pair، مدير الفرع، التنفيذي.
+  // CRM + PBX exec oversight; branch managers use POS (`/api/pos/customers/*`).
   roles: [
     'OWNER',
     'GENERAL_MANAGER',
-    'MANAGER',
     'CALL_CENTER',
     'CALL_CENTER_SUPERVISOR',
+    'ACCOUNTANT',
   ],
+  permission: AppPermission.VIEW_CUSTOMERS,
 };
 
-/** PBX / dialer deep-link handoff — مركز الاتصال + المشرف + مدير الفرع + التنفيذي. */
+/** B2C portal — Customer 360 scoped by JWT `linkedCustomerId`. */
+export const customerPortal360Item: NavItem = {
+  to: '/my-customer-360',
+  labelKey: 'nav.customerAccount',
+  icon: Users,
+  roles: ['CUSTOMER'],
+  permission: AppPermission.VIEW_CUSTOMERS,
+};
+
+/** PBX / dialer deep-link handoff — مركز الاتصال + المشرف + التنفيذي. */
 export const callIncomingItem: NavItem = {
   to: '/call-incoming',
   labelKey: 'nav.callIncoming',
@@ -149,25 +166,26 @@ export const callIncomingItem: NavItem = {
   roles: [
     'OWNER',
     'GENERAL_MANAGER',
-    'MANAGER',
     'CALL_CENTER',
     'CALL_CENTER_SUPERVISOR',
   ],
+  permission: AppPermission.VIEW_CUSTOMERS,
 };
 
 export const collectionsItem: NavItem = {
   to: '/collections',
   labelKey: 'nav.customerDebtTracker',
   icon: MessageSquare,
-  // Dastur §5 + field follow-up: CC pair, owner/exec, branch manager, driver.
+  /**
+   * 🔒 SECURITY LOCK - DO NOT MODIFY
+   * Unauthorized roles must NEVER access collections or WhatsApp tools.
+   */
   roles: [
     'OWNER',
-    'GENERAL_MANAGER',
     'CALL_CENTER',
     'CALL_CENTER_SUPERVISOR',
-    'MANAGER',
-    'DRIVER',
   ],
+  permission: AppPermission.VIEW_DEBTS,
 };
 
 /**
@@ -180,20 +198,23 @@ export const feedbackInboxItem: NavItem = {
   labelKey: 'nav.feedbackInbox',
   icon: MessageSquare,
   roles: ['OWNER', 'GENERAL_MANAGER', 'CALL_CENTER', 'CALL_CENTER_SUPERVISOR'],
+  permission: AppPermission.VIEW_CUSTOMERS,
 };
 
 export const whatsappToolsItem: NavItem = {
   to: '/whatsapp-tools',
   labelKey: 'nav.whatsappTools',
   icon: MessageCircle,
+  /**
+   * 🔒 SECURITY LOCK - DO NOT MODIFY
+   * Unauthorized roles must NEVER access collections or WhatsApp tools.
+   */
   roles: [
     'OWNER',
-    'GENERAL_MANAGER',
     'CALL_CENTER',
     'CALL_CENTER_SUPERVISOR',
-    'MANAGER',
-    'DRIVER',
   ],
+  permission: AppPermission.VIEW_CUSTOMERS,
 };
 
 /** DRIVER — تسجيل وقود/تكاليف ميدان (نفس المسار؛ الأيقونة + التسمية للقائمة الرئيسية). */
@@ -202,6 +223,7 @@ export const driverFieldExpensesItem: NavItem = {
   labelKey: 'nav.driverFieldExpenses',
   icon: CirclePlus,
   roles: ['DRIVER'],
+  permission: AppPermission.CREATE_EXPENSES,
 };
 
 /**
@@ -216,6 +238,7 @@ export const driverPendingInvoicesItem: NavItem = {
   labelKey: 'nav.driverPendingInvoices',
   icon: ClipboardCheck,
   roles: ['DRIVER'],
+  permission: AppPermission.VIEW_INVOICES,
 };
 
 export const driverMonitorItem: NavItem = {
@@ -227,6 +250,7 @@ export const driverMonitorItem: NavItem = {
   // for OWNER until the dedicated CC/GM endpoint is wired; see the
   // comment on `driverMonitor.view` in access-matrix.ts.
   roles: ['OWNER', 'GENERAL_MANAGER', 'CALL_CENTER', 'CALL_CENTER_SUPERVISOR'],
+  permission: AppPermission.VIEW_OPERATIONS,
 };
 
 /** Dastur §4 — Owner / GM view of the Smart Inventory report (read-only). */
@@ -235,6 +259,7 @@ export const ownerInventoryItem: NavItem = {
   labelKey: 'nav.inventoryReport',
   icon: Warehouse,
   roles: ['OWNER', 'GENERAL_MANAGER'],
+  permission: AppPermission.VIEW_INVENTORY,
 };
 
 /** Dastur §4 — Accountant view of the Smart Inventory report (+ Stock-In access). */
@@ -243,6 +268,7 @@ export const accountantInventoryItem: NavItem = {
   labelKey: 'nav.inventoryReport',
   icon: Warehouse,
   roles: ['ACCOUNTANT', 'OWNER', 'GENERAL_MANAGER'],
+  permission: AppPermission.VIEW_INVENTORY,
 };
 
 /** Dastur §4 — Accountant-only Stock-In form. */
@@ -251,6 +277,7 @@ export const accountantStockInItem: NavItem = {
   labelKey: 'nav.stockIn',
   icon: PackagePlus,
   roles: ['ACCOUNTANT'],
+  permission: AppPermission.VIEW_INVENTORY,
 };
 
 /** Stage-E — inventory catalog maintenance (items, categories, suppliers). */
@@ -259,6 +286,7 @@ export const inventoryCatalogItem: NavItem = {
   labelKey: 'nav.inventoryCatalog',
   icon: Settings,
   roles: ['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT'],
+  permission: AppPermission.VIEW_INVENTORY,
 };
 
 /** Stage-E — stock-out / adjustment / transfer / stocktake workbench. */
@@ -267,6 +295,7 @@ export const inventoryOperationsItem: NavItem = {
   labelKey: 'nav.inventoryOperations',
   icon: ArrowLeftRight,
   roles: ['ACCOUNTANT', 'MANAGER'],
+  permission: AppPermission.VIEW_INVENTORY,
 };
 
 /** Stage-E — full stock movements audit log. */
@@ -275,6 +304,7 @@ export const inventoryMovementsItem: NavItem = {
   labelKey: 'nav.inventoryMovements',
   icon: History,
   roles: ['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT'],
+  permission: AppPermission.VIEW_INVENTORY,
 };
 
 /** Stage-E — live low-stock/out-of-stock list. */
@@ -283,6 +313,7 @@ export const inventoryLowStockItem: NavItem = {
   labelKey: 'nav.inventoryLowStock',
   icon: AlertTriangle,
   roles: ['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT'],
+  permission: AppPermission.VIEW_INVENTORY,
 };
 
 /** Stage-F Cosmetic — Purchase Orders (supplier → PO → receive). */
@@ -291,6 +322,7 @@ export const purchaseOrdersItem: NavItem = {
   labelKey: 'nav.purchaseOrders',
   icon: FileText,
   roles: ['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT', 'MANAGER'],
+  permission: AppPermission.VIEW_INVENTORY,
 };
 
 export const ordersItem: NavItem = {
@@ -308,19 +340,7 @@ export const ordersItem: NavItem = {
     'SUPERVISOR',
     'VIEWER',
   ],
-};
-
-/**
- * Dastur §2.2 — Sidebar entry for the Invoices Data hub (same route as
- * `/orders`, but surfaced to OWNER + ACCOUNTANT with a dedicated
- * "بيانات الفواتير" label so it replaces the old Dashboard quick-action
- * card). Keep `ordersItem` intact for MANAGER/DRIVER/CALL_CENTER flows.
- */
-export const invoicesDataItem: NavItem = {
-  to: '/orders',
-  labelKey: 'nav.invoicesData',
-  icon: Receipt,
-  roles: ['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT'],
+  permission: AppPermission.VIEW_INVOICES,
 };
 
 /**
@@ -333,6 +353,7 @@ export const ccPerformanceItem: NavItem = {
   labelKey: 'nav.ccPerformance',
   icon: LineChart,
   roles: ['OWNER', 'GENERAL_MANAGER', 'CALL_CENTER_SUPERVISOR'],
+  permission: AppPermission.VIEW_REPORTS,
 };
 
 /**
@@ -345,6 +366,7 @@ export const invoiceAuditItem: NavItem = {
   labelKey: 'nav.invoiceAudit',
   icon: FileSignature,
   roles: ['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT'],
+  permission: AppPermission.AUDIT_INVOICE,
 };
 
 /**
@@ -367,6 +389,7 @@ export const allInvoicesItem: NavItem = {
     'CALL_CENTER_SUPERVISOR',
     'ACCOUNTANT',
   ],
+  permission: AppPermission.VIEW_INVOICES,
 };
 
 export const shiftsItem: NavItem = {
@@ -382,6 +405,7 @@ export const shiftsItem: NavItem = {
     'ACCOUNTANT',
     'VIEWER',
   ],
+  permission: AppPermission.VIEW_OPERATIONS,
 };
 
 export const financialsItem: NavItem = {
@@ -389,6 +413,7 @@ export const financialsItem: NavItem = {
   labelKey: 'nav.financials',
   icon: Banknote,
   roles: ['OWNER', 'GENERAL_MANAGER'],
+  permission: AppPermission.VIEW_FINANCIAL_REPORTS,
 };
 
 /**
@@ -404,6 +429,16 @@ export const monthlySummaryItem: NavItem = {
   labelKey: 'nav.monthlySummary',
   icon: CalendarRange,
   roles: ['OWNER', 'GENERAL_MANAGER'],
+  permission: AppPermission.VIEW_FINANCIAL_REPORTS,
+};
+
+/** V19.32 — Accountant command center (dashboard-summary API). */
+export const accountantDashboardItem: NavItem = {
+  to: '/accountant-dashboard',
+  labelKey: 'nav.accountantDashboard',
+  icon: BrainCircuit,
+  roles: ['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT'],
+  permission: AppPermission.VIEW_FINANCIAL_REPORTS,
 };
 
 /** V19.24 — وارد / خصومات / مصروفات + تفصيل الدفاتر. */
@@ -412,6 +447,7 @@ export const moneyFlowStatementItem: NavItem = {
   labelKey: 'nav.moneyFlowStatement',
   icon: ArrowLeftRight,
   roles: ['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT'],
+  permission: AppPermission.VIEW_FINANCIAL_REPORTS,
 };
 
 /*
@@ -426,7 +462,8 @@ export const myCustodyItem: NavItem = {
   to: '/manager/custody',
   labelKey: 'nav.myCustody',
   icon: Landmark,
-  roles: ['MANAGER'],
+  roles: ['MANAGER', 'OWNER', 'GENERAL_MANAGER'],
+  permission: AppPermission.VIEW_CASH,
 };
 
 /**
@@ -439,6 +476,7 @@ export const myDocumentsItem: NavItem = {
   labelKey: 'nav.myDocuments',
   icon: FileCheck2,
   roles: ['MANAGER'],
+  permission: AppPermission.VIEW_EXPENSES,
 };
 
 /**
@@ -452,6 +490,7 @@ export const driverOversightItem: NavItem = {
   labelKey: 'nav.driverOversight',
   icon: Radar,
   roles: ['MANAGER'],
+  permission: AppPermission.VIEW_OPERATIONS,
 };
 
 /** Dastur §3 — Owner / Accountant aging report "Cash Held by Managers". */
@@ -460,6 +499,7 @@ export const managerCustodyAgingItem: NavItem = {
   labelKey: 'nav.managerCustodyAging',
   icon: ShieldAlert,
   roles: ['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT'],
+  permission: AppPermission.VIEW_CASH,
 };
 
 /**
@@ -472,6 +512,7 @@ export const staffDebtsItem: NavItem = {
   labelKey: 'nav.staffDebts',
   icon: HandCoins,
   roles: ['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT'],
+  permission: AppPermission.VIEW_DEBTS,
 };
 
 /**
@@ -485,6 +526,7 @@ export const knetAuditItem: NavItem = {
   labelKey: 'nav.knetAudit',
   icon: FileCheck2,
   roles: ['ACCOUNTANT'],
+  permission: AppPermission.AUDIT_INVOICE,
 };
 
 /**
@@ -498,13 +540,63 @@ export const knetAuditReportItem: NavItem = {
   labelKey: 'nav.knetAuditReport',
   icon: FileSpreadsheet,
   roles: ['OWNER', 'GENERAL_MANAGER'],
+  permission: AppPermission.AUDIT_INVOICE,
 };
 
 export const expenseApprovalItem: NavItem = {
-  to: '/expense-approval',
+  to: '/expenses/approval',
   labelKey: 'nav.expenseVerification',
   icon: FileCheck2,
   roles: ['ACCOUNTANT', 'OWNER', 'GENERAL_MANAGER'],
+  permission: AppPermission.APPROVE_EXPENSES,
+};
+
+/**
+ * STRICT ROLE-BASED EXPENSE DESIGN — Part 3 + Part 7.
+ *
+ * Expense Reports (analytics, totals, breakdowns, insights) is a
+ * FINANCIAL surface — branch managers are explicitly excluded. Only
+ * OWNER, GENERAL_MANAGER and ACCOUNTANT see this nav entry.
+ */
+export const expenseReportsItem: NavItem = {
+  to: '/expenses/reports',
+  labelKey: 'nav.expenseReports',
+  icon: FileSpreadsheet,
+  roles: ['ACCOUNTANT', 'OWNER', 'GENERAL_MANAGER'],
+  permission: AppPermission.VIEW_EXPENSES,
+};
+
+/**
+ * STRICT ROLE-BASED EXPENSE DESIGN — Part 1.
+ *
+ * Vehicle / car expenses do NOT belong to a branch manager (they own
+ * no vehicles — fleet does). Removed from the MANAGER role list so
+ * the nav entry never surfaces; the backend already restricts
+ * `POST /vehicle-expenses` to FLEET_SUPERVISOR.
+ */
+export const carExpensesItem: NavItem = {
+  to: '/expenses/cars',
+  labelKey: 'nav.carExpenses',
+  icon: Car,
+  roles: ['ACCOUNTANT', 'OWNER', 'GENERAL_MANAGER'],
+  permission: AppPermission.VIEW_EXPENSES,
+};
+
+/**
+ * STRICT ROLE-BASED EXPENSE DESIGN — Part 2 (Input vs Report Separation).
+ *
+ * Branch-manager-only entry that points at the input-only expenses
+ * page (`<ExpensesPage mode="input" />`). The page does NOT render
+ * any analytics, totals or charts for MANAGER — those surfaces are
+ * gated to OWNER / GENERAL_MANAGER / ACCOUNTANT via
+ * `expenseReportsItem` above.
+ */
+export const expenseInputItem: NavItem = {
+  to: '/expenses',
+  labelKey: 'nav.expenseInput',
+  icon: FileSpreadsheet,
+  roles: ['MANAGER'],
+  permission: AppPermission.CREATE_EXPENSES,
 };
 
 /**
@@ -518,6 +610,7 @@ export const vehicleExpensesMineItem: NavItem = {
   labelKey: 'nav.vehicleExpenses',
   icon: Car,
   roles: ['FLEET_SUPERVISOR'],
+  permission: AppPermission.CREATE_EXPENSES,
 };
 
 export const vehicleExpensesApprovalItem: NavItem = {
@@ -525,6 +618,7 @@ export const vehicleExpensesApprovalItem: NavItem = {
   labelKey: 'nav.vehicleExpensesApproval',
   icon: Wrench,
   roles: ['ACCOUNTANT', 'OWNER', 'GENERAL_MANAGER'],
+  permission: AppPermission.APPROVE_EXPENSES,
 };
 
 export const vehicleExpensesReportItem: NavItem = {
@@ -532,6 +626,7 @@ export const vehicleExpensesReportItem: NavItem = {
   labelKey: 'nav.vehicleExpensesReport',
   icon: Fuel,
   roles: ['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT'],
+  permission: AppPermission.VIEW_EXPENSES,
 };
 
 export const financialCycleReportItem: NavItem = {
@@ -539,6 +634,7 @@ export const financialCycleReportItem: NavItem = {
   labelKey: 'nav.financialCycleReport',
   icon: FileSpreadsheet,
   roles: ['OWNER', 'GENERAL_MANAGER'],
+  permission: AppPermission.VIEW_FINANCIAL_REPORTS,
 };
 
 export const driverCashTraceItem: NavItem = {
@@ -546,6 +642,15 @@ export const driverCashTraceItem: NavItem = {
   labelKey: 'nav.driverCashTrace',
   icon: Truck,
   roles: ['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT'],
+  permission: AppPermission.VIEW_CASH,
+};
+
+export const cashReconciliationItem: NavItem = {
+  to: '/cash-reconciliation',
+  labelKey: 'nav.cashReconciliation',
+  icon: ArrowLeftRight,
+  roles: ['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT'],
+  permission: AppPermission.VIEW_CASH,
 };
 
 // V19.10 — "قائمة مديونيات الفواتير". Every invoice that still carries
@@ -561,20 +666,15 @@ export const unpaidInvoicesItem: NavItem = {
     'CALL_CENTER',
     'CALL_CENTER_SUPERVISOR',
   ],
+  permission: AppPermission.VIEW_DEBTS,
 };
 
-export const reportsItem: NavItem = {
-  to: '/reports',
-  labelKey: 'nav.reports',
-  icon: FileSpreadsheet,
+export const salesSummaryReportItem: NavItem = {
+  to: '/reports/sales-summary',
+  labelKey: 'nav.salesSummaryReport',
+  icon: LineChart,
   roles: ['ACCOUNTANT', 'OWNER', 'GENERAL_MANAGER'],
-};
-
-export const financialReportsItem: NavItem = {
-  to: '/reports',
-  labelKey: 'nav.financialReports',
-  icon: FileSpreadsheet,
-  roles: ['ACCOUNTANT', 'OWNER', 'GENERAL_MANAGER'],
+  permission: AppPermission.VIEW_REPORTS,
 };
 
 /**
@@ -589,6 +689,7 @@ export const financialReportsHubItem: NavItem = {
   labelKey: 'nav.financialReports',
   icon: FileSpreadsheet,
   roles: ['OWNER', 'GENERAL_MANAGER'],
+  permission: AppPermission.VIEW_FINANCIAL_REPORTS,
 };
 
 /**
@@ -600,6 +701,7 @@ export const operationalReportsHubItem: NavItem = {
   labelKey: 'nav.operationalReportsHub',
   icon: ClipboardList,
   roles: ['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT', 'MANAGER'],
+  permission: AppPermission.VIEW_REPORTS,
 };
 
 /**
@@ -611,6 +713,7 @@ export const ownerSerialsItem: NavItem = {
   labelKey: 'nav.ownerSerials',
   icon: Hash,
   roles: ['OWNER', 'GENERAL_MANAGER'],
+  permission: AppPermission.MANAGE_SETTINGS,
 };
 
 /**
@@ -622,6 +725,7 @@ export const debtRecoveryReportItem: NavItem = {
   labelKey: 'nav.debtRecoveryReport',
   icon: LineChart,
   roles: ['OWNER', 'GENERAL_MANAGER'],
+  permission: AppPermission.VIEW_DEBTS,
 };
 
 /**
@@ -635,6 +739,7 @@ export const driverAuditRadarItem: NavItem = {
   labelKey: 'nav.driverAuditRadar',
   icon: Radar,
   roles: ['OWNER'],
+  permission: AppPermission.VIEW_OPERATIONS,
 };
 
 export const unifiedLedgerItem: NavItem = {
@@ -642,6 +747,7 @@ export const unifiedLedgerItem: NavItem = {
   labelKey: 'nav.unifiedLedger',
   icon: BookText,
   roles: ['ACCOUNTANT', 'OWNER', 'GENERAL_MANAGER'],
+  permission: AppPermission.VIEW_FINANCIAL_REPORTS,
 };
 
 /**
@@ -656,6 +762,7 @@ export const debtTransfersItem: NavItem = {
   labelKey: 'nav.debtTransfers',
   icon: ArrowLeftRight,
   roles: ['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT'],
+  permission: AppPermission.VIEW_DEBTS,
 };
 
 /** Driver inbox: transfers awaiting my signature (source or target). */
@@ -664,6 +771,7 @@ export const myDebtTransfersItem: NavItem = {
   labelKey: 'nav.debtTransfers',
   icon: FileSignature,
   roles: ['DRIVER'],
+  permission: AppPermission.VIEW_DEBTS,
 };
 
 export const expensesItem: NavItem = {
@@ -671,6 +779,7 @@ export const expensesItem: NavItem = {
   labelKey: 'nav.expenses',
   icon: WalletCards,
   roles: ['MANAGER', 'OWNER', 'GENERAL_MANAGER'],
+  permission: AppPermission.VIEW_EXPENSES,
 };
 
 export const payrollItem: NavItem = {
@@ -678,6 +787,7 @@ export const payrollItem: NavItem = {
   labelKey: 'nav.payroll',
   icon: Users,
   roles: ['OWNER', 'GENERAL_MANAGER'],
+  permission: AppPermission.VIEW_PAYROLL,
 };
 
 // V19.16 — Settings dashboard + commission / debt-hold surfaces.
@@ -686,6 +796,7 @@ export const systemSettingsItem: NavItem = {
   labelKey: 'nav.systemSettings',
   icon: Settings,
   roles: ['OWNER', 'GENERAL_MANAGER'],
+  permission: AppPermission.MANAGE_SETTINGS,
 };
 
 export const commissionRulesItem: NavItem = {
@@ -693,6 +804,7 @@ export const commissionRulesItem: NavItem = {
   labelKey: 'nav.commissionRules',
   icon: HandCoins,
   roles: ['OWNER', 'GENERAL_MANAGER'],
+  permission: AppPermission.MANAGE_SETTINGS,
 };
 
 export const commissionPayoutsItem: NavItem = {
@@ -700,6 +812,7 @@ export const commissionPayoutsItem: NavItem = {
   labelKey: 'nav.commissionPayouts',
   icon: CircleDollarSign,
   roles: ['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT', 'MANAGER'],
+  permission: AppPermission.VIEW_PAYROLL,
 };
 
 export const debtHoldsItem: NavItem = {
@@ -707,6 +820,7 @@ export const debtHoldsItem: NavItem = {
   labelKey: 'nav.debtHolds',
   icon: ShieldAlert,
   roles: ['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT', 'MANAGER'],
+  permission: AppPermission.VIEW_DEBTS,
 };
 
 /**
@@ -719,6 +833,7 @@ export const attendanceItem: NavItem = {
   labelKey: 'nav.attendance',
   icon: Clock,
   roles: ['OWNER', 'GENERAL_MANAGER', 'MANAGER', 'ACCOUNTANT'],
+  permission: AppPermission.VIEW_OPERATIONS,
 };
 
 /*
@@ -736,13 +851,15 @@ export const fixedExpensesItem: NavItem = {
   labelKey: 'nav.fixedExpenses',
   icon: Building2,
   roles: ['OWNER', 'GENERAL_MANAGER'],
+  permission: AppPermission.VIEW_EXPENSES,
 };
 
 export const teamItem: NavItem = {
-  to: '/owner-dashboard',
+  to: '/users-management',
   labelKey: 'nav.usersManagement',
   icon: Users,
   roles: ['OWNER', 'GENERAL_MANAGER'],
+  permission: AppPermission.MANAGE_STAFF,
 };
 
 /**
@@ -758,6 +875,7 @@ export const staffHubItem: NavItem = {
   labelKey: 'nav.staffHub',
   icon: Briefcase,
   roles: ['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT', 'MANAGER'],
+  permission: AppPermission.VIEW_PAYROLL,
 };
 
 /**
@@ -769,6 +887,7 @@ export const branchesItem: NavItem = {
   labelKey: 'nav.branches',
   icon: Building2,
   roles: ['OWNER', 'GENERAL_MANAGER'],
+  permission: AppPermission.MANAGE_SETTINGS,
 };
 
 /**
@@ -783,4 +902,5 @@ export const insightsAiItem: NavItem = {
   labelKey: 'nav.insightsAi',
   icon: BrainCircuit,
   roles: ['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT', 'MANAGER'],
+  permission: AppPermission.VIEW_REPORTS,
 };
