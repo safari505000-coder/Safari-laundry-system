@@ -32,19 +32,35 @@ export class LoginUserDto {
   linkedCustomerId?: string | null;
 }
 
+/**
+ * Normal login: `accessToken` + `refreshToken`.
+ * Forced password change: `requiresPasswordChange` + `tempToken` only (no refresh row).
+ */
 export class LoginResponseDto {
-  @ApiProperty({
+  @ApiPropertyOptional({
     description:
-      'Short-lived bearer token (default 15 min) — use Authorization: Bearer <token> for protected routes (e.g. management reports)',
+      'When true, client must call POST /api/auth/change-password with Bearer tempToken.',
   })
-  accessToken: string;
+  requiresPasswordChange?: boolean;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     description:
-      'Opaque refresh token (default 7 days). Send to POST /api/auth/refresh-token to get a fresh access token without re-hashing the password.',
+      'Short-lived JWT with PASSWORD_CHANGE_ONLY scope until POST /api/auth/change-password succeeds.',
   })
-  refreshToken: string;
+  tempToken?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Short-lived bearer token (default 15 min) — use Authorization: Bearer <token> for protected routes',
+  })
+  accessToken?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Opaque refresh token (default 7 days). Send to POST /api/auth/refresh-token.',
+  })
+  refreshToken?: string;
 
   @ApiProperty({ type: LoginUserDto })
-  user: LoginUserDto;
+  user!: LoginUserDto;
 }

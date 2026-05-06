@@ -5,10 +5,12 @@ import {
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DispatchStatus, SafariRole } from '@prisma/client';
+import type { Dispatch } from '@prisma/client';
 import {
   computeElapsedMinutes,
   DispatchService,
   severityFor,
+  slaToneDispatch,
 } from './dispatch.service';
 import type { OrderCreatedEventPayload } from './dispatch.events';
 
@@ -28,13 +30,16 @@ import type { OrderCreatedEventPayload } from './dispatch.events';
  */
 
 type PrismaMock = {
+  $transaction: jest.Mock;
   customer: { findUnique: jest.Mock };
   user: { findUnique: jest.Mock; findMany: jest.Mock };
   dispatch: {
     create: jest.Mock;
     findUnique: jest.Mock;
+    findFirst: jest.Mock;
     findMany: jest.Mock;
     updateMany: jest.Mock;
+    update: jest.Mock;
     groupBy: jest.Mock;
   };
 };
@@ -44,15 +49,25 @@ function buildService(): {
   prisma: PrismaMock;
   audit: { log: jest.Mock; logFinancialEvent: jest.Mock };
   events: EventEmitter2;
+  metrics: {
+    incrementAssigned: jest.Mock;
+    recordAcknowledged: jest.Mock;
+    recordCompletion: jest.Mock;
+  };
 } {
   const prisma: PrismaMock = {
+    $transaction: jest.fn(async (fn: (tx: PrismaMock) => unknown) =>
+      fn(prisma),
+    ),
     customer: { findUnique: jest.fn() },
     user: { findUnique: jest.fn(), findMany: jest.fn() },
     dispatch: {
       create: jest.fn(),
       findUnique: jest.fn(),
+      findFirst: jest.fn(),
       findMany: jest.fn(),
       updateMany: jest.fn(),
+      update: jest.fn(),
       groupBy: jest.fn(),
     },
   };
@@ -61,8 +76,18 @@ function buildService(): {
     logFinancialEvent: jest.fn(),
   };
   const events = new EventEmitter2();
-  const service = new DispatchService(prisma as never, audit as never, events);
-  return { service, prisma, audit, events };
+  const metrics = {
+    incrementAssigned: jest.fn().mockResolvedValue(undefined),
+    recordAcknowledged: jest.fn().mockResolvedValue(undefined),
+    recordCompletion: jest.fn().mockResolvedValue(undefined),
+  };
+  const service = new DispatchService(
+    prisma as never,
+    audit as never,
+    events,
+    metrics as never,
+  );
+  return { service, prisma, audit, events, metrics };
 }
 
 describe('DispatchService.create — operational invariants', () => {
@@ -164,6 +189,7 @@ describe('DispatchService.create — operational invariants', () => {
       isActive: true,
       safariRole: SafariRole.DRIVER,
     });
+    prisma.dispatch.findFirst.mockResolvedValueOnce(null);
     // createdAt = "now" so elapsed math yields ON_TIME deterministically.
     prisma.dispatch.create.mockResolvedValueOnce({
       id: 'disp-1',
@@ -205,6 +231,53 @@ describe('DispatchService.create — operational invariants', () => {
     );
     expect(captured).toMatchObject({ id: 'disp-1', status: 'ASSIGNED' });
   });
+
+  test('non–call-center actor does not stamp createdByUserId (not a CC dispatch)', async () => {
+    const { service, prisma } = buildService();
+    prisma.customer.findUnique.mockResolvedValueOnce({
+      id: 'c1',
+      isBlocked: false,
+      blockReason: null,
+      displayName: 'Acme',
+      phone: '+96598888888',
+    });
+    prisma.user.findUnique.mockResolvedValueOnce({
+      id: 'd1',
+      fullName: 'Driver One',
+      username: 'driver1',
+      isActive: true,
+      safariRole: SafariRole.DRIVER,
+    });
+    prisma.dispatch.findFirst.mockResolvedValueOnce(null);
+    prisma.dispatch.create.mockResolvedValueOnce({
+      id: 'disp-owner',
+      customerId: 'c1',
+      driverId: 'd1',
+      status: DispatchStatus.ASSIGNED,
+      instructionNote: null,
+      createdByUserId: null,
+      createdAt: new Date(),
+      completedAt: null,
+      completedByOrderId: null,
+    });
+
+    await service.create({
+      customerId: 'c1',
+      driverId: 'd1',
+      instructionNote: null,
+      actorUserId: 'owner-1',
+      actorRole: SafariRole.OWNER,
+    });
+
+    expect(prisma.dispatch.create).toHaveBeenCalledWith({
+      data: {
+        customerId: 'c1',
+        driverId: 'd1',
+        instructionNote: null,
+        createdByUserId: null,
+      },
+    });
+  });
 });
 
 describe('DispatchService.handleOrderCreated — auto completion', () => {
@@ -222,19 +295,35 @@ describe('DispatchService.handleOrderCreated — auto completion', () => {
 
   test('marks ASSIGNED → COMPLETED + audits + emits dispatch.completed once', async () => {
     const { service, prisma, audit, events } = buildService();
+    prisma.dispatch.findUnique
+      .mockResolvedValueOnce({
+        id: 'disp-1',
+        createdAt: new Date('2026-05-04T08:00:00Z'),
+        driverId: 'd1',
+        customerId: 'c1',
+      })
+      .mockResolvedValueOnce({
+        id: 'disp-1',
+        customerId: 'c1',
+        driverId: 'd1',
+        status: DispatchStatus.COMPLETED,
+        instructionNote: null,
+        createdByUserId: null,
+        parentDispatchId: null,
+        createdAt: new Date('2026-05-04T08:00:00Z'),
+        acknowledgedAt: null,
+        startedAt: null,
+        firstAlertAt: null,
+        escalatedAt: null,
+        breachedAt: null,
+        ackMinutes: null,
+        totalMinutes: 90,
+        completedAt: new Date('2026-05-04T08:30:00Z'),
+        completedByOrderId: 'o1',
+        customer: { displayName: 'C', phone: '+965' },
+        driver: { fullName: 'D', username: 'd' },
+      });
     prisma.dispatch.updateMany.mockResolvedValueOnce({ count: 1 });
-    prisma.dispatch.findUnique.mockResolvedValueOnce({
-      id: 'disp-1',
-      customerId: 'c1',
-      driverId: 'd1',
-      status: DispatchStatus.COMPLETED,
-      instructionNote: null,
-      createdAt: new Date('2026-05-04T08:00:00Z'),
-      completedAt: new Date('2026-05-04T08:30:00Z'),
-      completedByOrderId: 'o1',
-      customer: { displayName: 'C', phone: '+965' },
-      driver: { fullName: 'D', username: 'd' },
-    });
 
     let completedFire = 0;
     events.on('dispatch.completed', () => {
@@ -249,10 +338,16 @@ describe('DispatchService.handleOrderCreated — auto completion', () => {
     });
 
     expect(prisma.dispatch.updateMany).toHaveBeenCalledWith({
-      where: { id: 'disp-1', status: DispatchStatus.ASSIGNED },
+      where: {
+        id: 'disp-1',
+        status: {
+          in: [DispatchStatus.ASSIGNED, DispatchStatus.IN_PROGRESS],
+        },
+      },
       data: expect.objectContaining({
         status: DispatchStatus.COMPLETED,
         completedByOrderId: 'o1',
+        totalMinutes: expect.any(Number),
       }) as unknown,
     });
     expect(audit.log).toHaveBeenCalledWith(
@@ -263,6 +358,12 @@ describe('DispatchService.handleOrderCreated — auto completion', () => {
 
   test('idempotent: second event for the same dispatch is a silent no-op', async () => {
     const { service, prisma, audit } = buildService();
+    prisma.dispatch.findUnique.mockResolvedValueOnce({
+      id: 'disp-1',
+      createdAt: new Date(),
+      driverId: 'd1',
+      customerId: 'c1',
+    });
     prisma.dispatch.updateMany.mockResolvedValueOnce({ count: 0 });
     await service.handleOrderCreated({
       orderId: 'o2',
@@ -270,12 +371,18 @@ describe('DispatchService.handleOrderCreated — auto completion', () => {
       actorUserId: 'd1',
       occurredAtIso: new Date().toISOString(),
     });
-    expect(prisma.dispatch.findUnique).not.toHaveBeenCalled();
+    expect(prisma.dispatch.findUnique).toHaveBeenCalled();
     expect(audit.log).not.toHaveBeenCalled();
   });
 
   test('listener never throws, even when DB blows up (financial isolation)', async () => {
     const { service, prisma } = buildService();
+    prisma.dispatch.findUnique.mockResolvedValueOnce({
+      id: 'disp-x',
+      createdAt: new Date(),
+      driverId: 'd1',
+      customerId: 'c1',
+    });
     prisma.dispatch.updateMany.mockRejectedValueOnce(new Error('boom'));
     await expect(
       service.handleOrderCreated({
@@ -315,131 +422,42 @@ describe('Severity helpers — pure functions', () => {
     const end = new Date('2026-05-04T08:11:30Z');
     expect(computeElapsedMinutes(start, end)).toBe(11);
   });
+
+  test('slaTone — ASSIGNED uses SLA tiers', () => {
+    const fresh = {
+      status: DispatchStatus.ASSIGNED,
+      breachedAt: null,
+      escalatedAt: null,
+      firstAlertAt: null,
+    } as Dispatch;
+    expect(slaToneDispatch(fresh, 1)).toBe('NORMAL');
+    expect(slaToneDispatch(fresh, 3)).toBe('LATE');
+    expect(slaToneDispatch(fresh, 7)).toBe('LATE');
+    expect(slaToneDispatch(fresh, 11)).toBe('BREACH');
+  });
 });
 
 // =============================================================================
-// V19.x — Auto-escalation / reassign / reconciliation reliability suite.
+// V19.x — SLA monitor / reconciliation reliability suite.
 // =============================================================================
 
-describe('DispatchService.runEscalationOnce — auto escalation', () => {
-  test('promotes 30-min-stale dispatch to a successor on a different driver', async () => {
-    const { service, prisma, audit } = buildService();
-    const oldParent = {
-      id: 'disp-old',
-      customerId: 'c1',
-      driverId: 'd1',
-      instructionNote: null,
-    };
-    prisma.dispatch.findMany.mockResolvedValueOnce([oldParent]);
-    prisma.user.findMany.mockResolvedValueOnce([{ id: 'd2' }]);
-    prisma.dispatch.groupBy.mockResolvedValueOnce([]);
-    const successorRow = {
-      id: 'disp-new',
-      customerId: 'c1',
-      driverId: 'd2',
-      status: DispatchStatus.ASSIGNED,
-      instructionNote: 'تصعيد تلقائي بعد 30 دقيقة',
-      createdByUserId: null,
-      parentDispatchId: 'disp-old',
-      createdAt: new Date(),
-      completedAt: null,
-      completedByOrderId: null,
-    };
-    prisma.dispatch.create.mockResolvedValueOnce(successorRow);
-
-    const result = await service.runEscalationOnce({ minAgeMinutes: 30 });
-
-    expect(result).toEqual({ inspected: 1, escalated: 1, skipped: 0 });
-    expect(prisma.dispatch.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          status: DispatchStatus.ASSIGNED,
-          children: { none: {} },
-        }) as unknown,
-      }) as unknown,
-    );
-    expect(prisma.dispatch.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        customerId: 'c1',
-        driverId: 'd2',
-        parentDispatchId: 'disp-old',
-      }) as unknown,
-    });
-    expect(audit.log).toHaveBeenCalledWith(
-      expect.objectContaining({
-        action: 'DISPATCH_ESCALATED',
-        source: 'AUTO_ESCALATION_CRON',
-      }),
-    );
-  });
-
-  test('idempotent: candidate query already filters parents with children — second tick does nothing', async () => {
-    const { service, prisma, audit } = buildService();
+describe('DispatchService.runSlaMonitorOnce', () => {
+  test('returns zeros when there are no ASSIGNED rows', async () => {
+    const { service, prisma } = buildService();
     prisma.dispatch.findMany.mockResolvedValueOnce([]);
-
-    const result = await service.runEscalationOnce({ minAgeMinutes: 30 });
-
-    expect(result).toEqual({ inspected: 0, escalated: 0, skipped: 0 });
-    expect(prisma.dispatch.create).not.toHaveBeenCalled();
-    expect(audit.log).not.toHaveBeenCalled();
-  });
-
-  test('skips (no escalate) when no alternate driver is available', async () => {
-    const { service, prisma, audit } = buildService();
-    prisma.dispatch.findMany.mockResolvedValueOnce([
-      {
-        id: 'disp-1',
-        customerId: 'c1',
-        driverId: 'd1',
-        instructionNote: null,
-      },
-    ]);
-    prisma.user.findMany.mockResolvedValueOnce([]); // no other drivers
-
-    const result = await service.runEscalationOnce({ minAgeMinutes: 30 });
-
-    expect(result).toEqual({ inspected: 1, escalated: 0, skipped: 1 });
-    expect(prisma.dispatch.create).not.toHaveBeenCalled();
-    expect(audit.log).not.toHaveBeenCalled();
-  });
-
-  test('alternate driver picker prefers the LEAST loaded driver', async () => {
-    const { service, prisma } = buildService();
-    prisma.user.findMany.mockResolvedValueOnce([{ id: 'd2' }, { id: 'd3' }]);
-    prisma.dispatch.groupBy.mockResolvedValueOnce([
-      { driverId: 'd2', _count: { _all: 5 } },
-      { driverId: 'd3', _count: { _all: 1 } },
-    ]);
-
-    const next = await service.pickAlternateDriver('d1');
-    expect(next?.id).toBe('d3');
+    const result = await service.runSlaMonitorOnce({});
+    expect(result).toEqual({
+      inspected: 0,
+      firstAlerts: 0,
+      escalations: 0,
+      breaches: 0,
+    });
   });
 });
 
-describe('DispatchService.reassign — manual call-center reassign', () => {
-  test('rejects when dispatch is missing (404 DISPATCH_NOT_FOUND)', async () => {
-    const { service, prisma } = buildService();
-    prisma.dispatch.findUnique.mockResolvedValueOnce(null);
-    await expect(
-      service.reassign({
-        dispatchId: 'missing',
-        newDriverId: 'd2',
-        reason: null,
-        actorUserId: 'agent-1',
-        actorRole: SafariRole.CALL_CENTER,
-      }),
-    ).rejects.toBeInstanceOf(NotFoundException);
-  });
-
-  test('rejects when dispatch is already COMPLETED (400 DISPATCH_NOT_ASSIGNED)', async () => {
-    const { service, prisma } = buildService();
-    prisma.dispatch.findUnique.mockResolvedValueOnce({
-      id: 'disp-1',
-      status: DispatchStatus.COMPLETED,
-      customerId: 'c1',
-      driverId: 'd1',
-      instructionNote: null,
-    });
+describe('DispatchService.reassign — disabled', () => {
+  test('always rejects with 403 DISPATCH_REASSIGN_FORBIDDEN', async () => {
+    const { service } = buildService();
     await expect(
       service.reassign({
         dispatchId: 'disp-1',
@@ -448,85 +466,13 @@ describe('DispatchService.reassign — manual call-center reassign', () => {
         actorUserId: 'agent-1',
         actorRole: SafariRole.CALL_CENTER,
       }),
-    ).rejects.toBeInstanceOf(BadRequestException);
-  });
-
-  test('rejects when newDriverId equals current driver (400 DRIVER_UNCHANGED)', async () => {
-    const { service, prisma } = buildService();
-    prisma.dispatch.findUnique.mockResolvedValueOnce({
-      id: 'disp-1',
-      status: DispatchStatus.ASSIGNED,
-      customerId: 'c1',
-      driverId: 'd1',
-      instructionNote: null,
-    });
-    await expect(
-      service.reassign({
-        dispatchId: 'disp-1',
-        newDriverId: 'd1',
-        reason: null,
-        actorUserId: 'agent-1',
-        actorRole: SafariRole.CALL_CENTER,
-      }),
-    ).rejects.toBeInstanceOf(BadRequestException);
-  });
-
-  test('happy path: creates successor with parentDispatchId + audits DISPATCH_REASSIGNED', async () => {
-    const { service, prisma, audit } = buildService();
-    prisma.dispatch.findUnique.mockResolvedValueOnce({
-      id: 'disp-old',
-      status: DispatchStatus.ASSIGNED,
-      customerId: 'c1',
-      driverId: 'd1',
-      instructionNote: 'بريد سريع',
-    });
-    prisma.user.findUnique.mockResolvedValueOnce({
-      id: 'd2',
-      isActive: true,
-      safariRole: SafariRole.DRIVER,
-    });
-    prisma.dispatch.create.mockResolvedValueOnce({
-      id: 'disp-new',
-      customerId: 'c1',
-      driverId: 'd2',
-      status: DispatchStatus.ASSIGNED,
-      instructionNote: 'لم يصل خلال 25 دقيقة',
-      createdByUserId: 'agent-1',
-      parentDispatchId: 'disp-old',
-      createdAt: new Date(),
-      completedAt: null,
-      completedByOrderId: null,
-    });
-
-    const successor = await service.reassign({
-      dispatchId: 'disp-old',
-      newDriverId: 'd2',
-      reason: 'لم يصل خلال 25 دقيقة',
-      actorUserId: 'agent-1',
-      actorRole: SafariRole.CALL_CENTER,
-    });
-
-    expect(successor.id).toBe('disp-new');
-    expect(prisma.dispatch.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        customerId: 'c1',
-        driverId: 'd2',
-        parentDispatchId: 'disp-old',
-        instructionNote: 'لم يصل خلال 25 دقيقة',
-      }) as unknown,
-    });
-    expect(audit.log).toHaveBeenCalledWith(
-      expect.objectContaining({
-        action: 'DISPATCH_REASSIGNED',
-        source: 'CALL_CENTER_MANUAL',
-      }),
-    );
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 });
 
 describe('DispatchService.runReconciliationOnce — event-loss safety net', () => {
   test('closes a stuck ASSIGNED dispatch that has a matching Order', async () => {
-    const { service, prisma, audit } = buildService();
+    const { service, prisma, audit, metrics } = buildService();
     prisma.dispatch.findMany.mockResolvedValueOnce([
       {
         id: 'disp-stuck',
@@ -534,6 +480,32 @@ describe('DispatchService.runReconciliationOnce — event-loss safety net', () =
         orders: [{ id: 'order-1' }],
       },
     ]);
+    prisma.dispatch.findUnique
+      .mockResolvedValueOnce({
+        createdAt: new Date('2026-05-04T08:00:00Z'),
+        driverId: 'd1',
+      })
+      .mockResolvedValueOnce({
+        id: 'disp-stuck',
+        customerId: 'c1',
+        driverId: 'd1',
+        status: DispatchStatus.COMPLETED,
+        instructionNote: null,
+        createdByUserId: null,
+        createdAt: new Date('2026-05-04T08:00:00Z'),
+        acknowledgedAt: null,
+        startedAt: null,
+        firstAlertAt: null,
+        escalatedAt: null,
+        breachedAt: null,
+        ackMinutes: null,
+        totalMinutes: 120,
+        completedAt: new Date(),
+        completedByOrderId: 'order-1',
+        parentDispatchId: null,
+        customer: { displayName: 'C', phone: '+965' },
+        driver: { fullName: 'D', username: 'd' },
+      });
     prisma.dispatch.updateMany.mockResolvedValueOnce({ count: 1 });
 
     const result = await service.runReconciliationOnce();
@@ -542,13 +514,17 @@ describe('DispatchService.runReconciliationOnce — event-loss safety net', () =
     expect(prisma.dispatch.updateMany).toHaveBeenCalledWith({
       where: {
         id: 'disp-stuck',
-        status: DispatchStatus.ASSIGNED,
+        status: {
+          in: [DispatchStatus.ASSIGNED, DispatchStatus.IN_PROGRESS],
+        },
       },
       data: expect.objectContaining({
         status: DispatchStatus.COMPLETED,
         completedByOrderId: 'order-1',
+        totalMinutes: expect.any(Number),
       }) as unknown,
     });
+    expect(metrics.recordCompletion).toHaveBeenCalled();
     expect(audit.log).toHaveBeenCalledWith(
       expect.objectContaining({
         action: 'DISPATCH_RECONCILED',
@@ -596,5 +572,88 @@ describe('DispatchService.runReconciliationOnce — event-loss safety net', () =
     const result = await service.runReconciliationOnce();
     expect(result).toEqual({ inspected: 0, closed: 0 });
     expect(prisma.dispatch.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('DispatchService.listAvailableDrivers — call-center driver picker', () => {
+  test('filters Prisma query to safariRole=DRIVER AND isActive=true', async () => {
+    const { service, prisma } = buildService();
+    prisma.user.findMany.mockResolvedValueOnce([]);
+    await service.listAvailableDrivers();
+    expect(prisma.user.findMany).toHaveBeenCalledTimes(1);
+    const arg = prisma.user.findMany.mock.calls[0][0];
+    expect(arg).toEqual(
+      expect.objectContaining({
+        where: { safariRole: SafariRole.DRIVER, isActive: true },
+        select: expect.objectContaining({
+          id: true,
+          fullName: true,
+          username: true,
+          isActive: true,
+        }) as unknown,
+      }),
+    );
+    // Defensive: must NEVER select sensitive fields the call-center
+    // role is not authorised to see.
+    expect(arg.select).not.toHaveProperty('phone');
+    expect(arg.select).not.toHaveProperty('roleId');
+    expect(arg.select).not.toHaveProperty('linkedCustomerId');
+  });
+
+  test('returns [] without a second round-trip when no drivers exist', async () => {
+    const { service, prisma } = buildService();
+    prisma.user.findMany.mockResolvedValueOnce([]);
+    const out = await service.listAvailableDrivers();
+    expect(out).toEqual([]);
+    // No drivers ⇒ no point counting their workload.
+    expect(prisma.dispatch.groupBy).not.toHaveBeenCalled();
+  });
+
+  test('falls back to username when fullName is empty', async () => {
+    const { service, prisma } = buildService();
+    prisma.user.findMany.mockResolvedValueOnce([
+      { id: 'd1', fullName: '   ', username: 'driver1', isActive: true },
+    ]);
+    prisma.dispatch.groupBy.mockResolvedValueOnce([]);
+    const out = await service.listAvailableDrivers();
+    expect(out).toEqual([
+      { id: 'd1', name: 'driver1', isActive: true, activeLoad: 0 },
+    ]);
+  });
+
+  test('sorts by ascending workload, ties broken by name', async () => {
+    const { service, prisma } = buildService();
+    prisma.user.findMany.mockResolvedValueOnce([
+      { id: 'd-busy', fullName: 'Busy Driver', username: 'busy', isActive: true },
+      { id: 'd-mid', fullName: 'Mid Driver', username: 'mid', isActive: true },
+      { id: 'd-free', fullName: 'Anan', username: 'anan', isActive: true },
+      { id: 'd-tie', fullName: 'Bilal', username: 'bilal', isActive: true },
+    ]);
+    prisma.dispatch.groupBy.mockResolvedValueOnce([
+      { driverId: 'd-busy', _count: { _all: 5 } },
+      { driverId: 'd-mid', _count: { _all: 2 } },
+      // d-free and d-tie both have 0 — alphabetical wins.
+    ]);
+
+    const out = await service.listAvailableDrivers();
+    expect(out.map((r) => r.id)).toEqual(['d-free', 'd-tie', 'd-mid', 'd-busy']);
+    expect(out.map((r) => r.activeLoad)).toEqual([0, 0, 2, 5]);
+  });
+
+  test('every returned row exposes ONLY {id, name, isActive, activeLoad}', async () => {
+    const { service, prisma } = buildService();
+    prisma.user.findMany.mockResolvedValueOnce([
+      {
+        id: 'd1',
+        fullName: 'Driver One',
+        username: 'driver1',
+        isActive: true,
+      },
+    ]);
+    prisma.dispatch.groupBy.mockResolvedValueOnce([]);
+    const [row] = await service.listAvailableDrivers();
+    expect(Object.keys(row).sort()).toEqual(
+      ['activeLoad', 'id', 'isActive', 'name'].sort(),
+    );
   });
 });

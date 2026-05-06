@@ -42,6 +42,7 @@ const exports_module_1 = require("./exports/exports.module");
 const fixed_expense_module_1 = require("./fixed-expenses/fixed-expense.module");
 const payroll_module_1 = require("./payroll/payroll.module");
 const finance_module_1 = require("./finance/finance.module");
+const outstanding_module_1 = require("./finance/outstanding/outstanding.module");
 const health_module_1 = require("./health/health.module");
 const insights_module_1 = require("./insights/insights.module");
 const inventory_module_1 = require("./inventory/inventory.module");
@@ -121,6 +122,7 @@ exports.AppModule = AppModule = __decorate([
             cash_intelligence_module_1.CashIntelligenceModule,
             cash_monitor_module_1.CashMonitorModule,
             finance_module_1.FinanceModule,
+            outstanding_module_1.OutstandingModule,
             auth_module_1.AuthModule,
             safari_stream_module_1.SafariStreamModule,
             users_module_1.UsersModule,

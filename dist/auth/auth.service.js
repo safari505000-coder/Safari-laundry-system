@@ -43,7 +43,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 var AuthService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.AuthService = void 0;
+exports.AuthService = exports.INSTITUTIONAL_ROLES = void 0;
 const common_1 = require("@nestjs/common");
 const jwt_1 = require("@nestjs/jwt");
 const client_1 = require("@prisma/client");
@@ -52,8 +52,9 @@ const finance_service_1 = require("../finance/finance.service");
 const prisma_service_1 = require("../prisma/prisma.service");
 const kuwait_time_1 = require("../common/time/kuwait-time");
 const operating_hours_service_1 = require("../system/operating-hours.service");
+const users_service_1 = require("../users/users.service");
 const bcrypt_service_1 = require("./bcrypt.service");
-const INSTITUTIONAL_ROLES = [
+exports.INSTITUTIONAL_ROLES = [
     client_1.SafariRole.OWNER,
     client_1.SafariRole.GENERAL_MANAGER,
     client_1.SafariRole.MANAGER,
@@ -73,6 +74,7 @@ const FIELD_OPERATOR_ROLES = [
 ];
 const FIELD_OPERATOR_WINDOW_START_HOUR = 7;
 const ACCESS_TOKEN_TTL = process.env.AUTH_ACCESS_TOKEN_TTL ?? '15m';
+const PASSWORD_CHANGE_TOKEN_TTL = process.env.AUTH_PASSWORD_CHANGE_TOKEN_TTL ?? '15m';
 const REFRESH_TOKEN_DAYS = Number.parseInt(process.env.AUTH_REFRESH_TOKEN_DAYS ?? '7', 10);
 function isWorkingHoursBypassed() {
     const raw = (process.env.AUTH_BYPASS_WORKING_HOURS ?? '').trim().toLowerCase();
@@ -90,13 +92,15 @@ let AuthService = AuthService_1 = class AuthService {
     financeService;
     bcryptService;
     operatingHours;
+    usersService;
     logger = new common_1.Logger(AuthService_1.name);
-    constructor(prisma, jwt, financeService, bcryptService, operatingHours) {
+    constructor(prisma, jwt, financeService, bcryptService, operatingHours, usersService) {
         this.prisma = prisma;
         this.jwt = jwt;
         this.financeService = financeService;
         this.bcryptService = bcryptService;
         this.operatingHours = operatingHours;
+        this.usersService = usersService;
     }
     async login(dto) {
         const handle = dto.username.trim();
@@ -119,10 +123,11 @@ let AuthService = AuthService_1 = class AuthService {
             throw new common_1.UnauthorizedException('Invalid username or password');
         }
         const roleName = user.role.name;
-        if (!INSTITUTIONAL_ROLES.includes(roleName)) {
+        if (!exports.INSTITUTIONAL_ROLES.includes(roleName)) {
             throw new common_1.UnauthorizedException('Account role is not authorized');
         }
-        if (FIELD_OPERATOR_ROLES.includes(roleName) && this.operatingHours.isLockEnabled()) {
+        if (FIELD_OPERATOR_ROLES.includes(roleName) &&
+            this.operatingHours.isLockEnabled()) {
             const hour = (0, kuwait_time_1.kuwaitHour)(new Date());
             const bypass = isWorkingHoursBypassed();
             if (hour < FIELD_OPERATOR_WINDOW_START_HOUR && !bypass) {
@@ -149,32 +154,40 @@ let AuthService = AuthService_1 = class AuthService {
                 data: { safariRole: roleName },
             });
         }
-        if (roleName === client_1.SafariRole.DRIVER) {
-            await this.financeService.ensureOpenShiftForDriver(user.id);
+        const authUser = user;
+        if (authUser.mustChangePassword === true) {
+            const payload = {
+                sub: user.id,
+                role: roleName,
+                branchId: user.branchId ?? undefined,
+                linkedCustomerId: user.linkedCustomerId ?? undefined,
+                tokenPurpose: 'PASSWORD_CHANGE_ONLY',
+            };
+            const tempToken = await this.jwt.signAsync(payload, {
+                expiresIn: PASSWORD_CHANGE_TOKEN_TTL,
+            });
+            return {
+                requiresPasswordChange: true,
+                tempToken,
+                user: this.buildLoginUserDto(authUser, roleName),
+            };
         }
-        const payload = {
-            sub: user.id,
-            role: roleName,
-            branchId: user.branchId ?? undefined,
-            linkedCustomerId: user.linkedCustomerId ?? undefined,
-        };
-        const accessToken = await this.jwt.signAsync(payload, {
-            expiresIn: ACCESS_TOKEN_TTL,
+        return this.issueAuthenticatedSession(authUser, roleName);
+    }
+    async changePassword(userId, dto) {
+        await this.usersService.forceChangePassword(userId, dto.oldPassword, dto.newPassword);
+        const user = await this.prisma.user.findUnique({
+            where: { id: userId },
+            include: { role: true },
         });
-        const refreshToken = await this.issueRefreshToken(user.id);
-        return {
-            accessToken,
-            refreshToken,
-            user: {
-                id: user.id,
-                username: user.username,
-                fullName: user.fullName,
-                phone: user.phone,
-                safariRole: roleName,
-                branchId: user.branchId,
-                linkedCustomerId: user.linkedCustomerId,
-            },
-        };
+        if (!user) {
+            throw new common_1.UnauthorizedException('User not found');
+        }
+        if (user.isActive === false) {
+            throw new common_1.UnauthorizedException('This account is deactivated');
+        }
+        const roleName = user.role.name;
+        return this.issueAuthenticatedSession(user, roleName);
     }
     async refreshAccessToken(rawToken) {
         const tokenHash = sha256Hex(rawToken);
@@ -206,6 +219,17 @@ let AuthService = AuthService_1 = class AuthService {
                 data: { revokedAt: new Date() },
             });
             throw new common_1.UnauthorizedException('This account is deactivated');
+        }
+        if (user.mustChangePassword === true) {
+            await this.prisma.refreshToken.update({
+                where: { id: row.id },
+                data: { revokedAt: new Date() },
+            });
+            throw new common_1.UnauthorizedException({
+                statusCode: 401,
+                message: 'Password change is required — sign in with username and temporary password, then complete change-password.',
+                errorCode: 'PASSWORD_CHANGE_REQUIRED',
+            });
         }
         const roleName = user.role.name;
         const payload = {
@@ -246,6 +270,37 @@ let AuthService = AuthService_1 = class AuthService {
         })
             .catch(() => undefined);
     }
+    buildLoginUserDto(user, roleName) {
+        return {
+            id: user.id,
+            username: user.username,
+            fullName: user.fullName,
+            phone: user.phone,
+            safariRole: roleName,
+            branchId: user.branchId,
+            linkedCustomerId: user.linkedCustomerId,
+        };
+    }
+    async issueAuthenticatedSession(user, roleName) {
+        if (roleName === client_1.SafariRole.DRIVER) {
+            await this.financeService.ensureOpenShiftForDriver(user.id);
+        }
+        const payload = {
+            sub: user.id,
+            role: roleName,
+            branchId: user.branchId ?? undefined,
+            linkedCustomerId: user.linkedCustomerId ?? undefined,
+        };
+        const accessToken = await this.jwt.signAsync(payload, {
+            expiresIn: ACCESS_TOKEN_TTL,
+        });
+        const refreshToken = await this.issueRefreshToken(user.id);
+        return {
+            accessToken,
+            refreshToken,
+            user: this.buildLoginUserDto(user, roleName),
+        };
+    }
     async issueRefreshToken(userId) {
         const raw = generateRefreshTokenRaw();
         const hash = sha256Hex(raw);
@@ -280,6 +335,7 @@ exports.AuthService = AuthService = AuthService_1 = __decorate([
         jwt_1.JwtService,
         finance_service_1.FinanceService,
         bcrypt_service_1.BcryptService,
-        operating_hours_service_1.OperatingHoursService])
+        operating_hours_service_1.OperatingHoursService,
+        users_service_1.UsersService])
 ], AuthService);
 //# sourceMappingURL=auth.service.js.map

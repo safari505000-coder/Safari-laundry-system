@@ -28,5 +28,6 @@ var AppPermission;
     AppPermission["MANAGE_DISPATCH"] = "dispatch.manage";
     AppPermission["VIEW_DISPATCH"] = "dispatch.view";
     AppPermission["MANAGE_CUSTOMER_BLOCK"] = "customers.block.manage";
+    AppPermission["MANAGE_USERS"] = "users.manage";
 })(AppPermission || (exports.AppPermission = AppPermission = {}));
 //# sourceMappingURL=permissions.enum.js.map

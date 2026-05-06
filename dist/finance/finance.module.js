@@ -16,6 +16,7 @@ const bank_deposits_service_1 = require("./bank-deposits.service");
 const deposits_controller_1 = require("./deposits.controller");
 const deposits_service_1 = require("./deposits.service");
 const finance_controller_1 = require("./finance.controller");
+const journal_controller_1 = require("./journal.controller");
 const finance_service_1 = require("./finance.service");
 const cash_service_1 = require("./services/cash.service");
 const debt_service_1 = require("./services/debt.service");
@@ -37,6 +38,7 @@ exports.FinanceModule = FinanceModule = __decorate([
         imports: [prisma_module_1.PrismaModule, payments_module_1.PaymentsModule, general_ledger_module_1.GeneralLedgerModule],
         controllers: [
             finance_controller_1.FinanceController,
+            journal_controller_1.JournalController,
             bank_deposits_controller_1.BankDepositsController,
             deposits_controller_1.DepositsController,
             ledger_controller_1.LedgerController,

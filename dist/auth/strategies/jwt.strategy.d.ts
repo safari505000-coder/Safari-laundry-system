@@ -5,6 +5,7 @@ export type JwtPayload = {
     branchId?: string | null;
     scope?: 'ALL' | 'BRANCH' | 'OWN';
     linkedCustomerId?: string | null;
+    tokenPurpose?: 'PASSWORD_CHANGE_ONLY';
 };
 declare const JwtStrategy_base: new (...args: [opt: import("passport-jwt").StrategyOptionsWithRequest] | [opt: import("passport-jwt").StrategyOptionsWithoutRequest]) => Strategy & {
     validate(...args: any[]): unknown;
@@ -17,6 +18,7 @@ export declare class JwtStrategy extends JwtStrategy_base {
         branchId: string | null;
         scope?: 'ALL' | 'BRANCH' | 'OWN';
         linkedCustomerId: string | null;
+        tokenPurpose?: 'PASSWORD_CHANGE_ONLY';
     };
 }
 export {};

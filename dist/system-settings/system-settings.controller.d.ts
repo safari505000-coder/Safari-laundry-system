@@ -15,8 +15,8 @@ export declare class SystemSettingsController {
     setToggle(dto: UpdateToggleDto, user: JwtUser): Promise<{
         updatedAt: Date;
         key: import(".prisma/client").$Enums.SystemToggleKey;
-        isEnabled: boolean;
         updatedBy: string | null;
+        isEnabled: boolean;
     }>;
     getPolicy(): Promise<{
         id: string;

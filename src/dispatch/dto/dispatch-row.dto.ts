@@ -18,12 +18,15 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
  */
 export type DispatchSeverity = 'ON_TIME' | 'LATE' | 'CRITICAL' | 'COMPLETED';
 
+/** Traffic-light SLA tier for monitoring dashboards (ACK delay / assignment stall). */
+export type DispatchSlaTone = 'NORMAL' | 'LATE' | 'BREACH';
+
 export class DispatchRowDto {
   @ApiProperty({ example: '33333333-3333-3333-3333-333333333333' })
   id!: string;
 
-  @ApiProperty({ enum: ['ASSIGNED', 'COMPLETED'] })
-  status!: 'ASSIGNED' | 'COMPLETED';
+  @ApiProperty({ enum: ['ASSIGNED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'] })
+  status!: 'ASSIGNED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
 
   @ApiProperty({
     description:
@@ -60,10 +63,38 @@ export class DispatchRowDto {
   createdAtIso!: string;
 
   @ApiPropertyOptional({ nullable: true })
+  acknowledgedAtIso!: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
   completedAtIso!: string | null;
 
   @ApiPropertyOptional({ nullable: true })
   completedByOrderId!: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  startedAtIso!: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  firstAlertAtIso!: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  escalatedAtIso!: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  breachedAtIso!: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  ackMinutes!: number | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  totalMinutes!: number | null;
+
+  @ApiPropertyOptional({
+    enum: ['NORMAL', 'LATE', 'BREACH'],
+    description:
+      'Assignment SLA tone for live monitors (green / yellow / red thresholds).',
+  })
+  slaTone!: DispatchSlaTone;
 }
 
 /**

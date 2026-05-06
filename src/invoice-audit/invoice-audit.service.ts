@@ -17,8 +17,10 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
+import { DoubleEntryJournalService } from '../general-ledger/double-entry-journal.service';
 import { CustomerNotificationsService } from '../customer-notifications/customer-notifications.service';
 import { buildPublicInvoicePdfUrl } from '../orders/invoice-pdf.util';
+import { traceDebtLedgerPaymentWrite } from '../finance/debt-ledger-payment-origin.util';
 import {
   isSameKuwaitDay,
   kuwaitDayIso,
@@ -50,6 +52,7 @@ export class InvoiceAuditService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly generalLedger: GeneralLedgerService,
+    private readonly journal: DoubleEntryJournalService,
     private readonly customerNotifications: CustomerNotificationsService,
     private readonly jwt: JwtService,
   ) {}
@@ -177,6 +180,20 @@ export class InvoiceAuditService {
       // counting the voided invoice as open. Without this mirror, ledger
       // open-debt drifts from wallet.debt over time.
       if (order.id) {
+        const sourceRef = `ADJUSTMENT:INVOICE_AUDIT_VOID:${order.id}:${Date.now()}`;
+        traceDebtLedgerPaymentWrite({
+          sourceFile: 'src/invoice-audit/invoice-audit.service.ts',
+          functionName: 'reverseWalletForOrder',
+          payload: {
+            amount: order.totalPrice.toString(),
+            customerId: order.customerId,
+            orderId: order.id,
+            source: 'PAYMENT',
+            actorUserId: actorUserId ?? null,
+            sourceRef,
+            metadata: { origin: 'INVOICE_AUDIT_VOID_NON_MONEY' },
+          },
+        });
         await tx.debtLedgerEntry.create({
           data: {
             customerId: order.customerId,
@@ -185,9 +202,27 @@ export class InvoiceAuditService {
             category: 'BRANCH',
             amount: order.totalPrice,
             actorUserId: actorUserId ?? null,
+            sourceRef,
             note: 'Debt reversed by invoice void / edit (supervisor)',
           },
         });
+        if (actorUserId) {
+          await this.journal.mirrorDebtLedgerEntry(tx, {
+            source: 'PAYMENT',
+            amount: order.totalPrice,
+            sourceRef,
+            actorUserId,
+            customerId: order.customerId,
+            orderId: order.id,
+            note: 'Debt reversed by invoice void / edit (supervisor)',
+          });
+        } else {
+          console.error('[JOURNAL_DRIFT]', {
+            customerId: order.customerId,
+            orderId: order.id,
+            reason: 'INVOICE_AUDIT_VOID_MISSING_ACTOR',
+          });
+        }
       }
     } else if (method === PosPaymentMethod.SUBSCRIPTION_WALLET) {
       await tx.customerWallet.update({

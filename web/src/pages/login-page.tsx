@@ -186,6 +186,9 @@ export function LoginPage() {
   const [forgotOpen, setForgotOpen] = useState(false);
 
   if (token && user) {
+    if (loc.state?.from?.pathname === '/force-change-password') {
+      return <Navigate to="/force-change-password" replace />;
+    }
     const dest = user.safariRole === 'DRIVER' ? '/pos' : from;
     return <Navigate to={dest} replace />;
   }
@@ -195,6 +198,10 @@ export function LoginPage() {
     setLoading(true);
     try {
       const me = await login(username, password, rememberMe);
+      if (me.requiresPasswordChange === true) {
+        navigate('/force-change-password', { replace: true });
+        return;
+      }
       toast.success(t('login.signedIn'));
       navigate(me.safariRole === 'DRIVER' ? '/pos' : from, { replace: true });
     } catch (err) {

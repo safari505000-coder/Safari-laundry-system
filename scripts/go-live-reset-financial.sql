@@ -45,6 +45,24 @@ DELETE FROM "DebtLedgerEntry";
 DELETE FROM "TransactionHistory";
 
 -- ---------------------------------------------------------------------------
+-- 3b) Double-entry journal rows. Keep "Account" chart of accounts.
+--     Conditional because older deployments may not have the journal migration yet.
+-- ---------------------------------------------------------------------------
+DO $$
+BEGIN
+  IF to_regclass('public."JournalLine"') IS NOT NULL THEN
+    ALTER TABLE "JournalLine" DISABLE TRIGGER USER;
+    DELETE FROM "JournalLine";
+    ALTER TABLE "JournalLine" ENABLE TRIGGER USER;
+  END IF;
+  IF to_regclass('public."JournalEntry"') IS NOT NULL THEN
+    ALTER TABLE "JournalEntry" DISABLE TRIGGER USER;
+    DELETE FROM "JournalEntry";
+    ALTER TABLE "JournalEntry" ENABLE TRIGGER USER;
+  END IF;
+END $$;
+
+-- ---------------------------------------------------------------------------
 -- 4) Orders — children first where FK is RESTRICT
 -- ---------------------------------------------------------------------------
 DELETE FROM "InvoiceAuditLog";
@@ -53,6 +71,10 @@ DELETE FROM "OrderLineItem";
 
 DELETE FROM "DebtTransferOrder";
 DELETE FROM "DebtTransfer";
+
+-- Call-center dispatch work is operational launch data, not master data.
+DELETE FROM "Dispatch";
+DELETE FROM "DriverMetrics";
 
 -- ---------------------------------------------------------------------------
 -- 5) Cash custody / driver deposits (Shift rows deleted in step 9 after Orders)

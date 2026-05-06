@@ -3,6 +3,7 @@ import { AuditLogsModule } from '../audit-logs/audit-logs.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { DispatchController } from './dispatch.controller';
 import { DispatchEscalationJob } from './dispatch.escalation.job';
+import { DispatchMetricsService } from './dispatch-metrics.service';
 import { DispatchReconciliationJob } from './dispatch.reconciliation.job';
 import { DispatchService } from './dispatch.service';
 
@@ -12,8 +13,8 @@ import { DispatchService } from './dispatch.service';
  * Wires:
  *   - the create/list/SSE/reassign controller;
  *   - the auto-completion listener (Order = the only completer);
- *   - the AUTO-ESCALATION cron (every 1 minute, ≥30 min ASSIGNED →
- *     create successor on a different driver);
+ *   - the SLA MONITOR cron (every minute: ASSIGNED thresholds → alerts,
+ *     no driver reassignment);
  *   - the RECONCILIATION cron (every 2 minutes, closes ASSIGNED
  *     dispatches whose Order already exists but whose listener
  *     never fired).
@@ -33,6 +34,7 @@ import { DispatchService } from './dispatch.service';
   controllers: [DispatchController],
   providers: [
     DispatchService,
+    DispatchMetricsService,
     DispatchEscalationJob,
     DispatchReconciliationJob,
   ],

@@ -59,20 +59,34 @@ __decorate([
     __metadata("design:type", Object)
 ], LoginUserDto.prototype, "linkedCustomerId", void 0);
 class LoginResponseDto {
+    requiresPasswordChange;
+    tempToken;
     accessToken;
     refreshToken;
     user;
 }
 exports.LoginResponseDto = LoginResponseDto;
 __decorate([
-    (0, swagger_1.ApiProperty)({
-        description: 'Short-lived bearer token (default 15 min) — use Authorization: Bearer <token> for protected routes (e.g. management reports)',
+    (0, swagger_1.ApiPropertyOptional)({
+        description: 'When true, client must call POST /api/auth/change-password with Bearer tempToken.',
+    }),
+    __metadata("design:type", Boolean)
+], LoginResponseDto.prototype, "requiresPasswordChange", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({
+        description: 'Short-lived JWT with PASSWORD_CHANGE_ONLY scope until POST /api/auth/change-password succeeds.',
+    }),
+    __metadata("design:type", String)
+], LoginResponseDto.prototype, "tempToken", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({
+        description: 'Short-lived bearer token (default 15 min) — use Authorization: Bearer <token> for protected routes',
     }),
     __metadata("design:type", String)
 ], LoginResponseDto.prototype, "accessToken", void 0);
 __decorate([
-    (0, swagger_1.ApiProperty)({
-        description: 'Opaque refresh token (default 7 days). Send to POST /api/auth/refresh-token to get a fresh access token without re-hashing the password.',
+    (0, swagger_1.ApiPropertyOptional)({
+        description: 'Opaque refresh token (default 7 days). Send to POST /api/auth/refresh-token.',
     }),
     __metadata("design:type", String)
 ], LoginResponseDto.prototype, "refreshToken", void 0);

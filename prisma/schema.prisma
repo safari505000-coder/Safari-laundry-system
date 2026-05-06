@@ -151,6 +151,14 @@ enum DebtEntityCategory {
   CALL_CENTER
 }
 
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+}
+
 /**
  * Manager shift-end bank paperwork for accountant reconciliation.
  */
@@ -211,6 +219,13 @@ model User {
    */
   username          String     @unique
   password          String
+  /**
+   * Set true after an admin/system-generated reset — next login yields a
+   * restricted JWT until POST /auth/change-password succeeds.
+   */
+  mustChangePassword Boolean    @default(false)
+  /** Clock when password hash last changed (admin reset or user change). */
+  passwordUpdatedAt  DateTime?
   fullName          String
   /**
    * Legacy corporate employee number (optional).
@@ -387,10 +402,19 @@ model User {
    */
   driverDispatches                 Dispatch[]             @relation("DispatchDriver")
   /**
+   * V19.x — Daily dispatch SLA aggregates per driver (Kuwait calendar day).
+   */
+  driverMetrics                    DriverMetrics[]
+  /**
    * V19.x — Dispatches the user authored as a CALL_CENTER agent.
    * Audit attribution only.
    */
   createdDispatches                Dispatch[]             @relation("DispatchCreatedBy")
+  /**
+   * V19.x — Outstanding-payments / AR audit attribution. Back-relation
+   * for `CustomerCollectionStatus.updatedBy`.
+   */
+  customerCollectionStatusUpdates  CustomerCollectionStatus[] @relation("CustomerCollectionStatusUpdatedBy")
 }
 
 /**
@@ -640,6 +664,11 @@ model Customer {
   debtLedgerEntries  DebtLedgerEntry[]
   subscriptions      CustomerSubscription[]
   dispatches         Dispatch[]
+  /**
+   * V19.x — Outstanding-payments / Accounts-Receivable status row.
+   * Owned by the AR module; does NOT replace `isBlocked`.
+   */
+  collectionStatus   CustomerCollectionStatus?
 
   @@index([phone])
   @@index([phone2])
@@ -913,6 +942,13 @@ model Order {
    * Invoice is the FINANCIAL TRUTH (Dispatch ≠ Order).
    */
   dispatchId                  String?          @db.Uuid
+  /**
+   * V19.x — Outstanding-Payments / AR. Optional payment-due date used by
+   * the Outstanding module to compute `daysLate` and the priority score.
+   * Pure metadata: nothing in the system auto-blocks or auto-cancels when
+   * `dueDate` lapses — collection is a manual call-centre workflow.
+   */
+  dueDate                     DateTime?
   createdAt                   DateTime         @default(now())
   updatedAt                   DateTime         @updatedAt
 
@@ -959,6 +995,9 @@ model Order {
   @@index([transferredFromDriverId])
   @@index([serialNumber])
   @@index([subscriptionId])
+  @@index([customerId, driverId, createdAt])
+  @@index([customerId, cashStatus])
+  @@index([dueDate])
   @@index([posGatewayTrackId])
 }
 
@@ -1612,6 +1651,51 @@ model GeneralLedgerEntry {
   @@index([actorUserId, createdAt])
   @@index([orderId])
   @@index([expenseId])
+}
+
+model Account {
+  id        String      @id @default(uuid()) @db.Uuid
+  code      String      @unique
+  name      String
+  type      AccountType
+  isActive  Boolean     @default(true)
+  createdAt DateTime    @default(now())
+
+  journalLines JournalLine[]
+
+  @@index([type, isActive])
+}
+
+model JournalEntry {
+  id          String   @id @default(uuid()) @db.Uuid
+  source      String
+  sourceRef   String   @unique
+  actorUserId String   @db.Uuid
+  customerId  String?  @db.Uuid
+  orderId     String?  @db.Uuid
+  createdAt   DateTime @default(now())
+
+  lines JournalLine[]
+
+  @@index([source, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([customerId, createdAt])
+  @@index([orderId])
+}
+
+model JournalLine {
+  id        String   @id @default(uuid()) @db.Uuid
+  entryId   String   @db.Uuid
+  accountId String   @db.Uuid
+  debit     Decimal  @default(0) @db.Decimal(19, 4)
+  credit    Decimal  @default(0) @db.Decimal(19, 4)
+  meta      Json?
+
+  entry   JournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  account Account      @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@index([entryId])
+  @@index([accountId])
 }
 
 // ─── Inventory & Stock (Dastur §4 Smart Inventory) ───────────────────────────
@@ -2412,7 +2496,8 @@ model SystemConfig {
 /// Call-Center → Driver dispatch instruction. STRICT semantics:
 ///   - Dispatch ≠ Order. A Dispatch is a non-financial instruction
 ///     to a specific driver to visit a specific customer.
-///   - The driver CANNOT accept or reject. There is no ACCEPTED state.
+///   - The driver can acknowledge receipt of the instruction, moving it
+///     from ASSIGNED to IN_PROGRESS. This is NOT completion.
 ///   - The dispatch is closed only by the appearance of an Order
 ///     that links back via `Order.dispatchId` (see DispatchService
 ///     `handleOrderCreated` listener). There is no manual close path.
@@ -2423,13 +2508,28 @@ model Dispatch {
   id                 String         @id @default(uuid()) @db.Uuid
   customerId         String         @db.Uuid
   driverId           String         @db.Uuid
-  /// ASSIGNED → COMPLETED. (LATE is derived on read, never stored.)
+  /// ASSIGNED → IN_PROGRESS → COMPLETED. (LATE is derived on read, never stored.)
   status             DispatchStatus @default(ASSIGNED)
   /// Free-text instruction the agent leaves for the driver (optional).
   instructionNote    String?
   /// CALL_CENTER user who created the dispatch — audit attribution only.
   createdByUserId    String?        @db.Uuid
   createdAt          DateTime       @default(now())
+  /// Driver acknowledgement timestamp. This never closes the dispatch;
+  /// the Order/Invoice remains the only completion trigger.
+  acknowledgedAt     DateTime?
+  /// When the driver started execution (ACK transitions ASSIGNED → IN_PROGRESS).
+  startedAt          DateTime?
+  /// First SLA alert threshold crossed while still ASSIGNED (no reassignment).
+  firstAlertAt       DateTime?
+  /// Second SLA tier — escalated (operations visibility).
+  escalatedAt        DateTime?
+  /// Third SLA tier — breach.
+  breachedAt         DateTime?
+  /// Whole minutes from `createdAt` until acknowledgement (`acknowledgedAt`).
+  ackMinutes         Int?
+  /// Whole minutes from `createdAt` until invoice closure (`completedAt`).
+  totalMinutes       Int?
   /// Stamped exactly once when an Order with this `dispatchId` is
   /// created. Idempotent: re-emit of the event is a no-op.
   completedAt        DateTime?
@@ -2457,13 +2557,72 @@ model Dispatch {
   /// order is the canonical closer recorded on `completedByOrderId`).
   orders    Order[]    @relation("DispatchOrders")
 
+  @@index([driverId, status])
   @@index([driverId, status, createdAt])
   @@index([customerId, createdAt])
   @@index([status, createdAt])
   @@index([parentDispatchId])
 }
 
+/// Per-driver per-calendar-day (Kuwait) dispatch counters for reporting.
+model DriverMetrics {
+  id                  String   @id @default(uuid()) @db.Uuid
+  driverId            String   @db.Uuid
+  /// Kuwait-local calendar date (stored as DATE).
+  date                DateTime @db.Date
+  assignedCount       Int      @default(0)
+  acknowledgedCount   Int      @default(0)
+  completedCount      Int      @default(0)
+  lateCount           Int      @default(0)
+  breachedCount       Int      @default(0)
+  avgAckMinutes       Float?
+  avgTotalMinutes     Float?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  driver User @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@unique([driverId, date])
+  @@index([driverId])
+}
+
 enum DispatchStatus {
   ASSIGNED
+  IN_PROGRESS
   COMPLETED
+  CANCELLED
+}
+
+/// V19.x — Outstanding-payments / Accounts-Receivable status flag per
+/// customer. Set by call-centre agents only; nothing in the system
+/// auto-flips this enum from a cron / order hook.
+enum CustomerCollectionStatusKind {
+  NORMAL
+  LATE
+  RISK
+}
+
+/// V19.x — Outstanding-payments collection rail (Accounts-Receivable).
+/// One row per customer; isolated from `Customer.isBlocked` so the
+/// AR module owns its own status colour without contending with the
+/// existing customer-blocking flow. Blocking remains MANUAL only —
+/// nothing in this codebase auto-flips `blocked` from a cron / order
+/// hook (the manual call-centre toggle in `OutstandingService.update
+/// CollectionStatus` is the single writer).
+model CustomerCollectionStatus {
+  id          String                       @id @default(uuid()) @db.Uuid
+  customerId  String                       @unique @db.Uuid
+  status      CustomerCollectionStatusKind @default(NORMAL)
+  /// Mirror of `Customer.isBlocked` for the AR view ONLY. Always set
+  /// through the manual call-centre toggle (no automation writes here).
+  blocked     Boolean                      @default(false)
+  note        String?                      @db.Text
+  updatedAt   DateTime                     @updatedAt
+  updatedById String?                      @db.Uuid
+
+  customer  Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  updatedBy User?    @relation("CustomerCollectionStatusUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([blocked])
 }

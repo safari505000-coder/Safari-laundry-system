@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -9,7 +10,8 @@ export type UserPublic = Prisma.UserGetPayload<{
 export declare class UsersService {
     private readonly prisma;
     private readonly permissionsService;
-    constructor(prisma: PrismaService, permissionsService: PermissionsService);
+    private readonly auditLogs;
+    constructor(prisma: PrismaService, permissionsService: PermissionsService, auditLogs: AuditLogsService);
     private resolveRoleId;
     create(dto: CreateUserDto): Promise<UserPublic>;
     findAll(): Promise<UserPublic[]>;
@@ -27,4 +29,9 @@ export declare class UsersService {
         id: string;
         deleted: boolean;
     }>;
+    resetPassword(targetUserId: string, newPassword: string, actorUserId: string, actorRole: string): Promise<UserPublic>;
+    resetPasswordsBulk(userIds: string[], newPassword: string, actorUserId: string, actorRole: string): Promise<{
+        updated: number;
+    }>;
+    forceChangePassword(userId: string, oldPassword: string, newPassword: string): Promise<void>;
 }

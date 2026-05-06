@@ -9,7 +9,9 @@ export declare class LoginUserDto {
     linkedCustomerId?: string | null;
 }
 export declare class LoginResponseDto {
-    accessToken: string;
-    refreshToken: string;
+    requiresPasswordChange?: boolean;
+    tempToken?: string;
+    accessToken?: string;
+    refreshToken?: string;
     user: LoginUserDto;
 }

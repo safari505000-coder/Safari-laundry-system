@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
+import type { Request } from 'express';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { JWT_SECRET_DEV_FALLBACK } from '../../common/constants/jwt-secret-fallback';
 
@@ -11,13 +12,24 @@ export type JwtPayload = {
   scope?: 'ALL' | 'BRANCH' | 'OWN';
   /** B2C portal user — must match Customer id in path for `/customers/:id/360`. */
   linkedCustomerId?: string | null;
+  /**
+   * When set, this bearer may only call `POST /api/auth/change-password`
+   * until a full session is issued ({@link PasswordChangeScopeGuard}).
+   */
+  tokenPurpose?: 'PASSWORD_CHANGE_ONLY';
 };
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor() {
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      jwtFromRequest: ExtractJwt.fromExtractors([
+        ExtractJwt.fromAuthHeaderAsBearerToken(),
+        (request: Request): string | null => {
+          const raw = request?.query?.access_token;
+          return typeof raw === 'string' && raw.trim() ? raw.trim() : null;
+        },
+      ]),
       ignoreExpiration: false,
       secretOrKey: process.env.JWT_SECRET ?? JWT_SECRET_DEV_FALLBACK,
     });
@@ -29,6 +41,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     branchId: string | null;
     scope?: 'ALL' | 'BRANCH' | 'OWN';
     linkedCustomerId: string | null;
+    tokenPurpose?: 'PASSWORD_CHANGE_ONLY';
   } {
     const role =
       typeof payload.role === 'string' && payload.role.trim() ?
@@ -44,6 +57,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       branchId: payload.branchId ?? null,
       scope: payload.scope,
       linkedCustomerId: linked,
+      tokenPurpose:
+        payload.tokenPurpose === 'PASSWORD_CHANGE_ONLY' ?
+          'PASSWORD_CHANGE_ONLY'
+        : undefined,
     };
   }
 }

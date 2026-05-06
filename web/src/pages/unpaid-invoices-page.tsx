@@ -57,11 +57,16 @@ const UNPAID_INVOICES_POLL_MS = 8_000;
 
 type Scope = 'open' | 'all';
 type UnpaidRow = UnpaidInvoicesResponse['rows'][number];
+type UnpaidKpis = UnpaidInvoicesResponse['kpis'];
 
 function lineKeyUnpaid(
   r: Pick<UnpaidRow, 'orderId' | 'debtSource'>,
 ): string {
   return `${r.orderId}::${r.debtSource ?? 'INVOICE_SHORTFALL'}`;
+}
+
+function receivablesHeadlineKd(kpis: UnpaidKpis | null | undefined): string {
+  return kpis?.openDebtKd ?? kpis?.totalMarketUnpaidKd ?? '0';
 }
 
 function debtSourceSortRank(
@@ -575,9 +580,7 @@ export function UnpaidInvoicesPage() {
           <KpiCard
             tone="red"
             label={t('unpaidInvoices.kpiOpenDebt', 'Receivables')}
-            value={formatKwdLabel(
-              kpis?.totalMarketUnpaidKd ?? kpis?.openDebtKd ?? '0',
-            )}
+            value={formatKwdLabel(receivablesHeadlineKd(kpis))}
             icon={<AlertTriangle className="h-4 w-4" />}
             deltaBadge={
               <span className="text-[10px] text-muted-foreground tabular-nums">
@@ -1150,7 +1153,7 @@ function printReport(args: {
     <div class="kpis">
       <div class="kpi red">
         <div class="k">${esc(t('unpaidInvoices.printOpenDebt', 'Receivables'))}</div>
-        <div class="v">${money(kpis?.totalMarketUnpaidKd ?? kpis?.openDebtKd)} KD</div>
+        <div class="v">${money(receivablesHeadlineKd(kpis))} KD</div>
       </div>
       <div class="kpi">
         <div class="k">${esc(t('unpaidInvoices.printTotalPaid', 'Collected'))}</div>

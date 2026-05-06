@@ -27,7 +27,11 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { APP_BRAND } from '../common/constants/branding';
 import { assertInstitutionalMutationAllowed } from '../auth/institutional-mutation.util';
+import { AppPermission } from '../auth/permissions/permissions.enum';
+import { Permissions } from '../auth/permissions/permissions.decorator';
 import { PermissionsService } from '../permissions/permissions.service';
+import { BulkResetPasswordBodyDto } from './dto/bulk-reset-password-body.dto';
+import { ResetPasswordBodyDto } from './dto/reset-password-body.dto';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateSalaryDefaultsDto } from './dto/update-salary-defaults.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -115,6 +119,73 @@ export class UsersController {
         actorRole: user.role,
         targetUserId: row.id,
         targetRole: row.safariRole,
+      }),
+    );
+    return row;
+  }
+
+  @Post('reset-passwords-bulk')
+  @Permissions(AppPermission.MANAGE_USERS)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: `Bulk reset passwords (${APP_BRAND})`,
+    description:
+      'MANAGE_USERS. Applies one temporary password to many accounts; revokes refresh tokens and sets must-change on next login.',
+  })
+  @ApiBody({ type: BulkResetPasswordBodyDto })
+  async resetPasswordsBulk(
+    @Body() dto: BulkResetPasswordBodyDto,
+    @CurrentUser() user: JwtUser,
+    @Req() req: { headers?: Record<string, unknown>; id?: string },
+  ) {
+    await this.assertCanMutateStaffDirectory(user);
+    const out = await this.usersService.resetPasswordsBulk(
+      dto.userIds,
+      dto.newPassword,
+      user.userId,
+      user.role,
+    );
+    this.logger.log(
+      JSON.stringify({
+        event: 'staff.password_reset_bulk',
+        requestId: this.requestId(req),
+        actorUserId: user.userId,
+        actorRole: user.role,
+        updated: out.updated,
+      }),
+    );
+    return out;
+  }
+
+  @Post(':id/reset-password')
+  @Permissions(AppPermission.MANAGE_USERS)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: `Reset user password (${APP_BRAND})`,
+    description:
+      'MANAGE_USERS. Sets a temporary password; user must change it at next login.',
+  })
+  @ApiBody({ type: ResetPasswordBodyDto })
+  async resetPassword(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ResetPasswordBodyDto,
+    @CurrentUser() user: JwtUser,
+    @Req() req: { headers?: Record<string, unknown>; id?: string },
+  ) {
+    await this.assertCanMutateStaffDirectory(user);
+    const row = await this.usersService.resetPassword(
+      id,
+      dto.newPassword,
+      user.userId,
+      user.role,
+    );
+    this.logger.log(
+      JSON.stringify({
+        event: 'staff.password_reset',
+        requestId: this.requestId(req),
+        actorUserId: user.userId,
+        actorRole: user.role,
+        targetUserId: row.id,
       }),
     );
     return row;

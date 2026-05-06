@@ -15,9 +15,11 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.DispatchController = void 0;
 const common_1 = require("@nestjs/common");
 const swagger_1 = require("@nestjs/swagger");
+const client_1 = require("@prisma/client");
 const rxjs_1 = require("rxjs");
 const operators_1 = require("rxjs/operators");
 const current_user_decorator_1 = require("../auth/decorators/current-user.decorator");
+const roles_decorator_1 = require("../auth/decorators/roles.decorator");
 const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
 const roles_guard_1 = require("../auth/guards/roles.guard");
 const permissions_decorator_1 = require("../auth/permissions/permissions.decorator");
@@ -43,6 +45,12 @@ let DispatchController = class DispatchController {
         const limit = limitRaw ? Number.parseInt(limitRaw, 10) : undefined;
         return this.dispatch.listActive({ limit });
     }
+    listDrivers() {
+        return this.dispatch.listAvailableDrivers();
+    }
+    monitor() {
+        return this.dispatch.monitorForCallCenter();
+    }
     reassign(id, dto, user) {
         return this.dispatch.reassign({
             dispatchId: id,
@@ -58,14 +66,23 @@ let DispatchController = class DispatchController {
     pollMine(user) {
         return this.dispatch.listForDriver(user.userId);
     }
+    acknowledge(id, user) {
+        return this.dispatch.acknowledge({
+            dispatchId: id,
+            driverId: user.userId,
+        });
+    }
     stream(user) {
         const subject = this.dispatch.subscribeDriverStream(user.userId);
-        return subject.asObservable().pipe((0, operators_1.map)((payload) => ({
-            type: payload.status === 'COMPLETED'
-                ? 'dispatch.completed'
-                : 'dispatch.created',
-            data: payload,
-        })), (0, operators_1.finalize)(() => {
+        const heartbeats = (0, rxjs_1.interval)(25_000).pipe((0, operators_1.map)(() => ({
+            type: 'heartbeat',
+            data: { ok: true, ts: new Date().toISOString() },
+        })));
+        const dispatchFeed = subject.pipe((0, operators_1.map)((env) => ({
+            type: env.event,
+            data: env.row ?? {},
+        })));
+        return (0, rxjs_1.merge)(heartbeats, dispatchFeed).pipe((0, operators_1.finalize)(() => {
             this.dispatch.unsubscribeDriverStream(user.userId, subject);
         }));
     }
@@ -91,13 +108,45 @@ __decorate([
     (0, common_1.Get)('call-center/dispatch/active'),
     (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.MANAGE_DISPATCH),
     (0, swagger_1.ApiOperation)({
-        summary: 'List ACTIVE (ASSIGNED) dispatches for the call-center board',
+        summary: 'List ASSIGNED dispatches visible on the CC board (Kuwait today, recent window)',
+        description: 'Creators: safariRole CALL_CENTER or CALL_CENTER_SUPERVISOR only. ' +
+            'Same rolling window as the monitor (today Kuwait, assignments created ' +
+            'within the last ~4 hours). Excludes IN_PROGRESS, historical rows, ' +
+            'OWNER/admin/system creators.',
     }),
     __param(0, (0, common_1.Query)('limit')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
 ], DispatchController.prototype, "listActive", null);
+__decorate([
+    (0, common_1.Get)('call-center/drivers'),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.MANAGE_DISPATCH),
+    (0, swagger_1.ApiOperation)({
+        summary: 'List active DRIVER users available for dispatch assignment',
+        description: 'Returns only users with safariRole=DRIVER AND isActive=true. ' +
+            'Sorted by ascending count of ASSIGNED dispatches visible on the CC ' +
+            'dashboard (Kuwait today, assignments created within the last ~4 hours; ' +
+            'CALL_CENTER or CALL_CENTER_SUPERVISOR creator only). Lightweight payload — ' +
+            'no phone, no employee id, no financial fields.',
+    }),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], DispatchController.prototype, "listDrivers", null);
+__decorate([
+    (0, common_1.Get)('call-center/dispatch/monitor'),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.MANAGE_DISPATCH),
+    (0, swagger_1.ApiOperation)({
+        summary: 'Live driver workload + SLA slices for call-center monitoring',
+        description: 'Same predicate as GET /call-center/dispatch/active: ASSIGNED only, ' +
+            'Kuwait calendar day with rolling ~4h freshness cutoff, creator ' +
+            'CALL_CENTER or CALL_CENTER_SUPERVISOR.',
+    }),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], DispatchController.prototype, "monitor", null);
 __decorate([
     (0, common_1.Post)('call-center/dispatch/:id/reassign'),
     (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.MANAGE_DISPATCH),
@@ -138,7 +187,21 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], DispatchController.prototype, "pollMine", null);
 __decorate([
+    (0, common_1.Post)('driver/dispatch/:id/acknowledge'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.DRIVER),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.VIEW_DISPATCH),
+    (0, swagger_1.ApiOperation)({
+        summary: 'Driver acknowledges an ASSIGNED dispatch',
+    }),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, current_user_decorator_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", Promise)
+], DispatchController.prototype, "acknowledge", null);
+__decorate([
     (0, common_1.Sse)('driver/dispatch/stream'),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.DRIVER),
     (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.VIEW_DISPATCH),
     (0, common_1.HttpCode)(common_1.HttpStatus.OK),
     (0, swagger_1.ApiOperation)({

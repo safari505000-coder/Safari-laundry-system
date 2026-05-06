@@ -24,9 +24,11 @@ export type LoginUser = {
 };
 
 export type LoginResponse = {
-  accessToken: string;
+  requiresPasswordChange?: boolean;
+  tempToken?: string;
+  accessToken?: string;
   /** Single-use refresh token (rotated on every `/auth/refresh-token`). Long-lived. */
-  refreshToken: string;
+  refreshToken?: string;
   user: LoginUser;
 };
 
@@ -353,10 +355,23 @@ export async function apiJson<T>(
   return json.data as T;
 }
 
+export const apiFetch = apiJson;
+
 export function postLogin(username: string, password: string) {
   return apiJson<LoginResponse>('/api/auth/login', {
     method: 'POST',
     body: JSON.stringify({ username: username.trim(), password }),
+  });
+}
+
+export function postChangePassword(
+  token: string,
+  body: { oldPassword: string; newPassword: string },
+) {
+  return apiJson<LoginResponse>('/api/auth/change-password', {
+    method: 'POST',
+    token,
+    body: JSON.stringify(body),
   });
 }
 
@@ -3700,7 +3715,33 @@ export type TeamUserRow = {
   /** V19.27 — Salary transfer / printed roster. */
   bankName?: string | null;
   bankIban?: string | null;
+  mustChangePassword?: boolean;
+  passwordUpdatedAt?: string | null;
 };
+
+export function resetUserPassword(
+  token: string,
+  userId: string,
+  newPassword: string,
+) {
+  return apiJson<TeamUserRow>(`/api/users/${userId}/reset-password`, {
+    method: 'POST',
+    token,
+    body: JSON.stringify({ newPassword }),
+  });
+}
+
+export function resetUserPasswordsBulk(
+  token: string,
+  userIds: string[],
+  newPassword: string,
+) {
+  return apiJson<{ updated: number }>('/api/users/reset-passwords-bulk', {
+    method: 'POST',
+    token,
+    body: JSON.stringify({ userIds, newPassword }),
+  });
+}
 
 /**
  * V19.17 — Patch salary defaults on a user. OWNER + GM only. Pass

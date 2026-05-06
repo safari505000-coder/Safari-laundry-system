@@ -15,6 +15,7 @@ const client_1 = require("@prisma/client");
 const prisma_service_1 = require("../../prisma/prisma.service");
 const subscription_service_1 = require("./subscription.service");
 const debt_customer_aggregates_util_1 = require("../debt-customer-aggregates.util");
+const debt_ledger_payment_origin_util_1 = require("../debt-ledger-payment-origin.util");
 function orderBranchWhereForMarketDebt(branchId) {
     const b = branchId?.trim();
     if (!b)
@@ -219,6 +220,7 @@ let DebtService = class DebtService {
         };
     }
     async getUnpaidInvoices(query) {
+        await this.logSuspiciousDebtPayments();
         const from = query.from ? new Date(query.from) : null;
         const to = query.to ? new Date(query.to) : null;
         if (from && Number.isNaN(from.getTime())) {
@@ -361,40 +363,58 @@ let DebtService = class DebtService {
         }
         const orderIds = Array.from(byOrder.keys());
         const customerIds = Array.from(new Set(Array.from(byOrder.values()).map((x) => x.row.customerId)));
-        const [paymentsByOrder, customerLedgerTotals] = await Promise.all([
+        const [paymentEntries, customerLedgerTotals] = await Promise.all([
             orderIds.length
-                ? this.prisma.debtLedgerEntry.groupBy({
-                    by: ['orderId'],
+                ? this.prisma.debtLedgerEntry.findMany({
                     where: {
                         source: client_1.DebtSource.PAYMENT,
                         orderId: { in: orderIds },
                     },
-                    _sum: { amount: true },
+                    select: {
+                        orderId: true,
+                        source: true,
+                        amount: true,
+                        actorUserId: true,
+                        sourceRef: true,
+                        note: true,
+                    },
                 })
                 : Promise.resolve([]),
             customerIds.length
-                ? this.prisma.debtLedgerEntry.groupBy({
-                    by: ['customerId', 'source'],
+                ? this.prisma.debtLedgerEntry.findMany({
                     where: { customerId: { in: customerIds } },
-                    _sum: { amount: true },
+                    select: {
+                        customerId: true,
+                        source: true,
+                        amount: true,
+                        actorUserId: true,
+                        sourceRef: true,
+                        note: true,
+                    },
                 })
                 : Promise.resolve([]),
         ]);
         const paidByOrder = new Map();
-        for (const g of paymentsByOrder) {
+        for (const g of paymentEntries) {
             if (!g.orderId)
                 continue;
-            const paid = Number.parseFloat(g._sum.amount?.toString() ?? '0');
-            paidByOrder.set(g.orderId, Number.isFinite(paid) ? paid : 0);
+            if (!(0, debt_ledger_payment_origin_util_1.isRealDebtLedgerPayment)(g))
+                continue;
+            const paid = Number.parseFloat(g.amount?.toString() ?? '0');
+            if (!Number.isFinite(paid))
+                continue;
+            paidByOrder.set(g.orderId, (paidByOrder.get(g.orderId) ?? 0) + paid);
         }
         const perCustomer = new Map();
         for (const g of customerLedgerTotals) {
             const cur = perCustomer.get(g.customerId) ?? { debt: 0, payment: 0 };
-            const v = Number.parseFloat(g._sum.amount?.toString() ?? '0');
+            const v = Number.parseFloat(g.amount?.toString() ?? '0');
             if (!Number.isFinite(v))
                 continue;
-            if (g.source === client_1.DebtSource.PAYMENT)
-                cur.payment += v;
+            if (g.source === client_1.DebtSource.PAYMENT) {
+                if ((0, debt_ledger_payment_origin_util_1.isRealDebtLedgerPayment)(g))
+                    cur.payment += v;
+            }
             else
                 cur.debt += v;
             perCustomer.set(g.customerId, cur);
@@ -591,18 +611,26 @@ let DebtService = class DebtService {
                 .map((o) => o.customerId)
                 .filter((cid) => !perCustomer.has(cid))));
             if (needCust.length) {
-                const moreTotals = await this.prisma.debtLedgerEntry.groupBy({
-                    by: ['customerId', 'source'],
+                const moreTotals = await this.prisma.debtLedgerEntry.findMany({
                     where: { customerId: { in: needCust } },
-                    _sum: { amount: true },
+                    select: {
+                        customerId: true,
+                        source: true,
+                        amount: true,
+                        actorUserId: true,
+                        sourceRef: true,
+                        note: true,
+                    },
                 });
                 for (const g of moreTotals) {
                     const cur = perCustomer.get(g.customerId) ?? { debt: 0, payment: 0 };
-                    const v = Number.parseFloat(g._sum.amount?.toString() ?? '0');
+                    const v = Number.parseFloat(g.amount?.toString() ?? '0');
                     if (!Number.isFinite(v))
                         continue;
-                    if (g.source === client_1.DebtSource.PAYMENT)
-                        cur.payment += v;
+                    if (g.source === client_1.DebtSource.PAYMENT) {
+                        if ((0, debt_ledger_payment_origin_util_1.isRealDebtLedgerPayment)(g))
+                            cur.payment += v;
+                    }
                     else
                         cur.debt += v;
                     perCustomer.set(g.customerId, cur);
@@ -753,20 +781,59 @@ let DebtService = class DebtService {
             rows: finalRows,
         };
     }
+    async logSuspiciousDebtPayments() {
+        const suspicious = await this.prisma.debtLedgerEntry.findMany({
+            where: {
+                source: client_1.DebtSource.PAYMENT,
+                OR: [
+                    { orderId: null },
+                    { actorUserId: null },
+                    { sourceRef: null },
+                    { note: null },
+                    { amount: new client_1.Prisma.Decimal('0.5000') },
+                ],
+            },
+            select: {
+                id: true,
+                customerId: true,
+                orderId: true,
+                amount: true,
+                actorUserId: true,
+                sourceRef: true,
+                note: true,
+                createdAt: true,
+            },
+            orderBy: { createdAt: 'desc' },
+            take: 50,
+        });
+        for (const entry of suspicious) {
+            console.error('[SUSPICIOUS_PAYMENT]', {
+                ...entry,
+                amount: entry.amount.toString(),
+                createdAt: entry.createdAt.toISOString(),
+            });
+        }
+    }
     async getCustomerNetDebtFromDebtLedger(customerId, tx) {
         const db = tx ?? this.prisma;
         return (0, debt_customer_aggregates_util_1.getCustomerNetDebtFromDebtLedgerAgg)(db, customerId);
     }
     async getLedgerOpenDebtByCategory(whereExtra) {
         const z = new client_1.Prisma.Decimal(0);
-        const rows = await this.prisma.debtLedgerEntry.groupBy({
-            by: ['customerId', 'source'],
+        const rows = await this.prisma.debtLedgerEntry.findMany({
             where: whereExtra ?? {},
-            _sum: { amount: true },
+            select: {
+                customerId: true,
+                source: true,
+                amount: true,
+                actorUserId: true,
+                sourceRef: true,
+                note: true,
+            },
         });
         const byCustomer = new Map();
         for (const r of rows) {
-            const amt = new client_1.Prisma.Decimal(r._sum.amount?.toString() ?? '0');
+            const amt = new client_1.Prisma.Decimal(r.amount?.toString() ?? '0');
             const cur = byCustomer.get(r.customerId) ?? {
                 inv: new client_1.Prisma.Decimal(0),
                 sub: new client_1.Prisma.Decimal(0),
@@ -776,7 +843,7 @@ let DebtService = class DebtService {
                 cur.inv = cur.inv.add(amt);
             else if (r.source === client_1.DebtSource.SUBSCRIPTION_OVERUSE)
                 cur.sub = cur.sub.add(amt);
-            else if (r.source === client_1.DebtSource.PAYMENT)
+            else if (r.source === client_1.DebtSource.PAYMENT && (0, debt_ledger_payment_origin_util_1.isRealDebtLedgerPayment)(r))
                 cur.pay = cur.pay.add(amt);
             byCustomer.set(r.customerId, cur);
         }
@@ -851,34 +918,53 @@ let DebtService = class DebtService {
         }
         const customerIds = Array.from(new Set(orders.map((o) => o.customerId)));
         const [paymentsByOrder, perCustomerTotals] = await Promise.all([
-            this.prisma.debtLedgerEntry.groupBy({
-                by: ['orderId'],
+            this.prisma.debtLedgerEntry.findMany({
                 where: {
                     source: client_1.DebtSource.PAYMENT,
                     orderId: { in: orders.map((o) => o.orderId) },
                 },
-                _sum: { amount: true },
+                select: {
+                    orderId: true,
+                    source: true,
+                    amount: true,
+                    actorUserId: true,
+                    sourceRef: true,
+                    note: true,
+                },
             }),
-            this.prisma.debtLedgerEntry.groupBy({
-                by: ['customerId', 'source'],
+            this.prisma.debtLedgerEntry.findMany({
                 where: { customerId: { in: customerIds } },
-                _sum: { amount: true },
+                select: {
+                    customerId: true,
+                    source: true,
+                    amount: true,
+                    actorUserId: true,
+                    sourceRef: true,
+                    note: true,
+                },
             }),
         ]);
         const paidByOrder = new Map();
         for (const g of paymentsByOrder) {
             if (!g.orderId)
                 continue;
-            paidByOrder.set(g.orderId, Number.parseFloat(g._sum.amount?.toString() ?? '0'));
+            if (!(0, debt_ledger_payment_origin_util_1.isRealDebtLedgerPayment)(g))
+                continue;
+            const amount = Number.parseFloat(g.amount?.toString() ?? '0');
+            if (!Number.isFinite(amount))
+                continue;
+            paidByOrder.set(g.orderId, (paidByOrder.get(g.orderId) ?? 0) + amount);
         }
         const perCustomer = new Map();
         for (const g of perCustomerTotals) {
             const cur = perCustomer.get(g.customerId) ?? { debt: 0, payment: 0 };
-            const v = Number.parseFloat(g._sum.amount?.toString() ?? '0');
+            const v = Number.parseFloat(g.amount?.toString() ?? '0');
             if (!Number.isFinite(v))
                 continue;
-            if (g.source === client_1.DebtSource.PAYMENT)
-                cur.payment += v;
+            if (g.source === client_1.DebtSource.PAYMENT) {
+                if ((0, debt_ledger_payment_origin_util_1.isRealDebtLedgerPayment)(g))
+                    cur.payment += v;
+            }
             else
                 cur.debt += v;
             perCustomer.set(g.customerId, cur);

@@ -6,12 +6,17 @@ import { GeneralManagerReadOnlyGuard } from './general-manager-read-only.guard';
 function mockContext(
   method: string,
   role?: string,
+  originalUrl = '/api/users',
 ): ExecutionContext {
   return {
     getHandler: () => ({}),
     getClass: () => ({}),
     switchToHttp: () => ({
-      getRequest: () => ({ method, user: role ? { role } : undefined }),
+      getRequest: () => ({
+        method,
+        originalUrl,
+        user: role ? { role } : undefined,
+      }),
     }),
   } as unknown as ExecutionContext;
 }
@@ -56,6 +61,19 @@ describe('GeneralManagerReadOnlyGuard', () => {
     expect(() =>
       guard.canActivate(mockContext('POST', SafariRole.GENERAL_MANAGER)),
     ).toThrow(ForbiddenException);
+  });
+
+  it('allows GENERAL_MANAGER to post own password change', () => {
+    getAllAndOverride.mockReturnValue(undefined);
+    expect(
+      guard.canActivate(
+        mockContext(
+          'POST',
+          SafariRole.GENERAL_MANAGER,
+          '/api/auth/change-password',
+        ),
+      ),
+    ).toBe(true);
   });
 
   it('forbids PATCH for GENERAL_MANAGER', () => {

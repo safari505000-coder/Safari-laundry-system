@@ -23,7 +23,11 @@ const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
 const roles_guard_1 = require("../auth/guards/roles.guard");
 const branding_1 = require("../common/constants/branding");
 const institutional_mutation_util_1 = require("../auth/institutional-mutation.util");
+const permissions_enum_1 = require("../auth/permissions/permissions.enum");
+const permissions_decorator_1 = require("../auth/permissions/permissions.decorator");
 const permissions_service_1 = require("../permissions/permissions.service");
+const bulk_reset_password_body_dto_1 = require("./dto/bulk-reset-password-body.dto");
+const reset_password_body_dto_1 = require("./dto/reset-password-body.dto");
 const create_user_dto_1 = require("./dto/create-user.dto");
 const update_salary_defaults_dto_1 = require("./dto/update-salary-defaults.dto");
 const update_user_dto_1 = require("./dto/update-user.dto");
@@ -78,6 +82,30 @@ let UsersController = UsersController_1 = class UsersController {
             actorRole: user.role,
             targetUserId: row.id,
             targetRole: row.safariRole,
+        }));
+        return row;
+    }
+    async resetPasswordsBulk(dto, user, req) {
+        await this.assertCanMutateStaffDirectory(user);
+        const out = await this.usersService.resetPasswordsBulk(dto.userIds, dto.newPassword, user.userId, user.role);
+        this.logger.log(JSON.stringify({
+            event: 'staff.password_reset_bulk',
+            requestId: this.requestId(req),
+            actorUserId: user.userId,
+            actorRole: user.role,
+            updated: out.updated,
+        }));
+        return out;
+    }
+    async resetPassword(id, dto, user, req) {
+        await this.assertCanMutateStaffDirectory(user);
+        const row = await this.usersService.resetPassword(id, dto.newPassword, user.userId, user.role);
+        this.logger.log(JSON.stringify({
+            event: 'staff.password_reset',
+            requestId: this.requestId(req),
+            actorUserId: user.userId,
+            actorRole: user.role,
+            targetUserId: row.id,
         }));
         return row;
     }
@@ -152,6 +180,39 @@ __decorate([
     __metadata("design:paramtypes", [create_user_dto_1.CreateUserDto, Object, Object]),
     __metadata("design:returntype", Promise)
 ], UsersController.prototype, "create", null);
+__decorate([
+    (0, common_1.Post)('reset-passwords-bulk'),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.MANAGE_USERS),
+    (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    (0, swagger_1.ApiOperation)({
+        summary: `Bulk reset passwords (${branding_1.APP_BRAND})`,
+        description: 'MANAGE_USERS. Applies one temporary password to many accounts; revokes refresh tokens and sets must-change on next login.',
+    }),
+    (0, swagger_1.ApiBody)({ type: bulk_reset_password_body_dto_1.BulkResetPasswordBodyDto }),
+    __param(0, (0, common_1.Body)()),
+    __param(1, (0, current_user_decorator_1.CurrentUser)()),
+    __param(2, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [bulk_reset_password_body_dto_1.BulkResetPasswordBodyDto, Object, Object]),
+    __metadata("design:returntype", Promise)
+], UsersController.prototype, "resetPasswordsBulk", null);
+__decorate([
+    (0, common_1.Post)(':id/reset-password'),
+    (0, permissions_decorator_1.Permissions)(permissions_enum_1.AppPermission.MANAGE_USERS),
+    (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    (0, swagger_1.ApiOperation)({
+        summary: `Reset user password (${branding_1.APP_BRAND})`,
+        description: 'MANAGE_USERS. Sets a temporary password; user must change it at next login.',
+    }),
+    (0, swagger_1.ApiBody)({ type: reset_password_body_dto_1.ResetPasswordBodyDto }),
+    __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
+    __param(1, (0, common_1.Body)()),
+    __param(2, (0, current_user_decorator_1.CurrentUser)()),
+    __param(3, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, reset_password_body_dto_1.ResetPasswordBodyDto, Object, Object]),
+    __metadata("design:returntype", Promise)
+], UsersController.prototype, "resetPassword", null);
 __decorate([
     (0, common_1.Get)(),
     (0, swagger_1.ApiOperation)({ summary: `List users (${branding_1.APP_BRAND})` }),

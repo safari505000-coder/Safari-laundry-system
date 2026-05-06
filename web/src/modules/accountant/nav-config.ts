@@ -20,6 +20,7 @@ import {
   operationalReportsHubItem,
   purchaseOrdersItem,
   invoiceAuditItem,
+  journalStatementItem,
   knetAuditItem,
   managerCustodyAgingItem,
   moneyFlowStatementItem,
@@ -42,7 +43,7 @@ import {
 export const accountantSidebarNavGroups: NavGroup[] = [
   {
     ...G.customersSubs,
-    items: [customersItem],
+    items: [customersItem, journalStatementItem],
   },
   {
     ...G.finance,

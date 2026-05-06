@@ -62,6 +62,7 @@ const EXACT: Record<string, string> = {
   '/reports-hub': 'reportsHub',
   '/operational-reports-hub': 'operationalReportsHub',
   '/unified-ledger': 'unifiedLedger',
+  '/customer-statement-journal': 'journalStatement',
   '/payroll': 'payroll',
   '/settings/dashboard': 'systemSettings',
   '/settings/commission-rules': 'commissionRules',

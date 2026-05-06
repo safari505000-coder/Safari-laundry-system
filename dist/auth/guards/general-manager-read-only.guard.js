@@ -15,6 +15,13 @@ const core_1 = require("@nestjs/core");
 const client_1 = require("@prisma/client");
 const roles_decorator_1 = require("../decorators/roles.decorator");
 const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+function normalizedPath(req) {
+    const raw = (typeof req.originalUrl === 'string' && req.originalUrl) ||
+        (typeof req.url === 'string' && req.url) ||
+        (typeof req.path === 'string' && req.path) ||
+        '';
+    return raw.split('?')[0] ?? '';
+}
 let GeneralManagerReadOnlyGuard = class GeneralManagerReadOnlyGuard {
     reflector;
     constructor(reflector) {
@@ -35,6 +42,10 @@ let GeneralManagerReadOnlyGuard = class GeneralManagerReadOnlyGuard {
         }
         const method = (req.method ?? 'GET').toUpperCase();
         if (READ_METHODS.has(method)) {
+            return true;
+        }
+        const path = normalizedPath(req);
+        if (method === 'POST' && path.endsWith('/auth/change-password')) {
             return true;
         }
         throw new common_1.ForbiddenException('GENERAL_MANAGER is read-only.');

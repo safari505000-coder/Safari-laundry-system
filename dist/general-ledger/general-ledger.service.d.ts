@@ -16,10 +16,10 @@ export declare class GeneralLedgerService {
         id: string;
         createdAt: Date;
         customerId: string | null;
+        actorUserId: string | null;
+        orderId: string | null;
         entryType: import(".prisma/client").$Enums.GeneralLedgerEntryType;
         memo: string | null;
-        orderId: string | null;
         expenseId: string | null;
-        actorUserId: string | null;
     }, never, import("@prisma/client/runtime/client").DefaultArgs, Prisma.PrismaClientOptions>;
 }

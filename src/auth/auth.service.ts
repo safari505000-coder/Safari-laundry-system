@@ -10,13 +10,16 @@ import { FinanceService } from '../finance/finance.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { kuwaitHour } from '../common/time/kuwait-time';
 import { OperatingHoursService } from '../system/operating-hours.service';
+import { UsersService } from '../users/users.service';
 import { BcryptService } from './bcrypt.service';
+import { ChangePasswordBodyDto } from './dto/change-password-body.dto';
 import { LoginDto } from './dto/login.dto';
 import { LoginResponseDto } from './dto/login-response.dto';
 import { RefreshTokenResponseDto } from './dto/refresh-token.dto';
 import { JwtPayload } from './strategies/jwt.strategy';
 
-const INSTITUTIONAL_ROLES: readonly SafariRole[] = [
+/** Institutional roles allowed at corporate login and password-change endpoint. */
+export const INSTITUTIONAL_ROLES: readonly SafariRole[] = [
   SafariRole.OWNER,
   SafariRole.GENERAL_MANAGER,
   SafariRole.MANAGER,
@@ -41,6 +44,8 @@ const FIELD_OPERATOR_WINDOW_START_HOUR = 7;
 // Cast to `any` because @nestjs/jwt exposes `StringValue` (branded `ms` type)
 // and refuses a plain `string`. At runtime it's the same value.
 const ACCESS_TOKEN_TTL: any = process.env.AUTH_ACCESS_TOKEN_TTL ?? '15m';
+const PASSWORD_CHANGE_TOKEN_TTL: any =
+  process.env.AUTH_PASSWORD_CHANGE_TOKEN_TTL ?? '15m';
 const REFRESH_TOKEN_DAYS = Number.parseInt(
   process.env.AUTH_REFRESH_TOKEN_DAYS ?? '7',
   10,
@@ -60,6 +65,19 @@ function generateRefreshTokenRaw(): string {
   return crypto.randomBytes(48).toString('base64url');
 }
 
+type UserAuthRow = {
+  id: string;
+  username: string;
+  fullName: string;
+  phone: string | null;
+  safariRole: SafariRole;
+  branchId: string | null;
+  linkedCustomerId: string | null;
+  password: string;
+  mustChangePassword: boolean;
+  role: { name: SafariRole };
+};
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -70,15 +88,10 @@ export class AuthService {
     private readonly financeService: FinanceService,
     private readonly bcryptService: BcryptService,
     private readonly operatingHours: OperatingHoursService,
+    private readonly usersService: UsersService,
   ) {}
 
   async login(dto: LoginDto): Promise<LoginResponseDto> {
-    // The login form is labelled "اسم المستخدم أو رقم الموظف" (username
-    // or employee number). We must honour both: try `username` first
-    // (the canonical login handle), then fall back to `employeeId` so
-    // legacy staff who still type their corporate employee number can
-    // authenticate. Same generic error message either way to avoid
-    // user enumeration.
     const handle = dto.username.trim();
     const user =
       (await this.prisma.user.findUnique({
@@ -103,7 +116,10 @@ export class AuthService {
     if (!INSTITUTIONAL_ROLES.includes(roleName)) {
       throw new UnauthorizedException('Account role is not authorized');
     }
-    if (FIELD_OPERATOR_ROLES.includes(roleName) && this.operatingHours.isLockEnabled()) {
+    if (
+      FIELD_OPERATOR_ROLES.includes(roleName) &&
+      this.operatingHours.isLockEnabled()
+    ) {
       const hour = kuwaitHour(new Date());
       const bypass = isWorkingHoursBypassed();
       if (hour < FIELD_OPERATOR_WINDOW_START_HOUR && !bypass) {
@@ -137,43 +153,53 @@ export class AuthService {
         data: { safariRole: roleName },
       });
     }
-    if (roleName === SafariRole.DRIVER) {
-      await this.financeService.ensureOpenShiftForDriver(user.id);
-    }
-    const payload: JwtPayload = {
-      sub: user.id,
-      role: roleName,
-      branchId: user.branchId ?? undefined,
-      linkedCustomerId: user.linkedCustomerId ?? undefined,
-    };
-    const accessToken = await this.jwt.signAsync(payload, {
-      expiresIn: ACCESS_TOKEN_TTL,
-    });
-    const refreshToken = await this.issueRefreshToken(user.id);
 
-    return {
-      accessToken,
-      refreshToken,
-      user: {
-        id: user.id,
-        username: user.username,
-        fullName: user.fullName,
-        phone: user.phone,
-        safariRole: roleName,
-        branchId: user.branchId,
-        linkedCustomerId: user.linkedCustomerId,
-      },
-    };
+    const authUser = user as UserAuthRow;
+
+    if (authUser.mustChangePassword === true) {
+      const payload: JwtPayload = {
+        sub: user.id,
+        role: roleName,
+        branchId: user.branchId ?? undefined,
+        linkedCustomerId: user.linkedCustomerId ?? undefined,
+        tokenPurpose: 'PASSWORD_CHANGE_ONLY',
+      };
+      const tempToken = await this.jwt.signAsync(payload, {
+        expiresIn: PASSWORD_CHANGE_TOKEN_TTL,
+      });
+      return {
+        requiresPasswordChange: true,
+        tempToken,
+        user: this.buildLoginUserDto(authUser, roleName),
+      };
+    }
+
+    return this.issueAuthenticatedSession(authUser, roleName);
   }
 
-  /**
-   * V19.12 — refresh-token rotation.
-   *   1. Look up stored hash; reject if missing / expired / revoked.
-   *   2. If the token was already used → REPLAY: revoke the entire family
-   *      for this user (logout-all-sessions defence).
-   *   3. Otherwise stamp `usedAt`, issue a fresh refresh token row linked via
-   *      `replacedById`, and return a fresh access token with no bcrypt.
-   */
+  async changePassword(
+    userId: string,
+    dto: ChangePasswordBodyDto,
+  ): Promise<LoginResponseDto> {
+    await this.usersService.forceChangePassword(
+      userId,
+      dto.oldPassword,
+      dto.newPassword,
+    );
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { role: true },
+    });
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+    if ((user as { isActive?: boolean }).isActive === false) {
+      throw new UnauthorizedException('This account is deactivated');
+    }
+    const roleName = user.role.name as SafariRole;
+    return this.issueAuthenticatedSession(user as UserAuthRow, roleName);
+  }
+
   async refreshAccessToken(
     rawToken: string,
   ): Promise<RefreshTokenResponseDto> {
@@ -192,7 +218,6 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token expired');
     }
     if (row.usedAt) {
-      // replay detected — revoke every outstanding token for this user
       await this.prisma.refreshToken.updateMany({
         where: { userId: row.userId, revokedAt: null },
         data: { revokedAt: new Date() },
@@ -203,13 +228,26 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token replay detected');
     }
 
-    const user = row.user;
+    const user = row.user as UserAuthRow;
     if ((user as { isActive?: boolean }).isActive === false) {
       await this.prisma.refreshToken.update({
         where: { id: row.id },
         data: { revokedAt: new Date() },
       });
       throw new UnauthorizedException('This account is deactivated');
+    }
+
+    if (user.mustChangePassword === true) {
+      await this.prisma.refreshToken.update({
+        where: { id: row.id },
+        data: { revokedAt: new Date() },
+      });
+      throw new UnauthorizedException({
+        statusCode: 401,
+        message:
+          'Password change is required — sign in with username and temporary password, then complete change-password.',
+        errorCode: 'PASSWORD_CHANGE_REQUIRED',
+      });
     }
 
     const roleName = user.role.name as SafariRole;
@@ -255,6 +293,54 @@ export class AuthService {
         data: { revokedAt: new Date() },
       })
       .catch(() => undefined);
+  }
+
+  private buildLoginUserDto(
+    user: Pick<
+      UserAuthRow,
+      | 'id'
+      | 'username'
+      | 'fullName'
+      | 'phone'
+      | 'branchId'
+      | 'linkedCustomerId'
+    >,
+    roleName: SafariRole,
+  ) {
+    return {
+      id: user.id,
+      username: user.username,
+      fullName: user.fullName,
+      phone: user.phone,
+      safariRole: roleName,
+      branchId: user.branchId,
+      linkedCustomerId: user.linkedCustomerId,
+    };
+  }
+
+  private async issueAuthenticatedSession(
+    user: UserAuthRow,
+    roleName: SafariRole,
+  ): Promise<LoginResponseDto> {
+    if (roleName === SafariRole.DRIVER) {
+      await this.financeService.ensureOpenShiftForDriver(user.id);
+    }
+    const payload: JwtPayload = {
+      sub: user.id,
+      role: roleName,
+      branchId: user.branchId ?? undefined,
+      linkedCustomerId: user.linkedCustomerId ?? undefined,
+    };
+    const accessToken = await this.jwt.signAsync(payload, {
+      expiresIn: ACCESS_TOKEN_TTL,
+    });
+    const refreshToken = await this.issueRefreshToken(user.id);
+
+    return {
+      accessToken,
+      refreshToken,
+      user: this.buildLoginUserDto(user, roleName),
+    };
   }
 
   private async issueRefreshToken(userId: string): Promise<string> {

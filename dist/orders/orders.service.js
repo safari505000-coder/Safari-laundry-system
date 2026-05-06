@@ -24,6 +24,7 @@ const client_1 = require("@prisma/client");
 const dispatch_events_1 = require("../dispatch/dispatch.events");
 const audit_logs_service_1 = require("../audit-logs/audit-logs.service");
 const customer_blocking_service_1 = require("../common/services/customer-blocking.service");
+const outstanding_service_1 = require("../finance/outstanding/outstanding.service");
 const payments_service_1 = require("../common/services/payments.service");
 const customer_notifications_service_1 = require("../customer-notifications/customer-notifications.service");
 const customer_ledger_service_1 = require("../customer-ledger/customer-ledger.service");
@@ -34,6 +35,7 @@ const finance_money_1 = require("../finance/finance-money");
 const inventory_service_1 = require("../inventory/inventory.service");
 const administrative_branch_util_1 = require("../branches/administrative-branch.util");
 const debt_customer_aggregates_util_1 = require("../finance/debt-customer-aggregates.util");
+const debt_ledger_payment_origin_util_1 = require("../finance/debt-ledger-payment-origin.util");
 const debt_kd_breakdown_util_1 = require("./debt-kd-breakdown.util");
 const prisma_service_1 = require("../prisma/prisma.service");
 const serial_counter_service_1 = require("../serials/serial-counter.service");
@@ -109,10 +111,11 @@ let OrdersService = OrdersService_1 = class OrdersService {
     inventory;
     jwt;
     customerBlocking;
+    outstanding;
     auditLogs;
     events;
     log = new common_1.Logger(OrdersService_1.name);
-    constructor(prisma, customerLedger, paymentsService, customerNotifications, generalLedger, serialCounter, inventory, jwt, customerBlocking, auditLogs, events) {
+    constructor(prisma, customerLedger, paymentsService, customerNotifications, generalLedger, serialCounter, inventory, jwt, customerBlocking, outstanding, auditLogs, events) {
         this.prisma = prisma;
         this.customerLedger = customerLedger;
         this.paymentsService = paymentsService;
@@ -122,6 +125,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
         this.inventory = inventory;
         this.jwt = jwt;
         this.customerBlocking = customerBlocking;
+        this.outstanding = outstanding;
         this.auditLogs = auditLogs;
         this.events = events;
     }
@@ -384,6 +388,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
         const phoneCompact = dto.customerPhone.replace(/[\s-]/g, '').trim();
         const order = await this.prisma.$transaction(async (tx) => {
             const customerId = await this.resolveQuickOrderCustomerId(tx, dto, phoneCompact);
+            await this.outstanding.assertNotBlocked(customerId);
             const serialNumber = await this.serialCounter.stampOrderSerial(tx, driverUserId);
             const posPaymentMethodNormalized = dto.posPaymentMethod === client_1.PosPaymentMethod.PAYMENT_LINK
                 ? client_1.PosPaymentMethod.ONLINE
@@ -435,6 +440,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
             const totalPriceDecimal = new client_1.Prisma.Decimal(totalPriceNum.toFixed(4));
             const orderId = await this.prisma.$transaction(async (tx) => {
                 const customerId = await this.resolveQuickOrderCustomerId(tx, dto, phoneCompact);
+                await this.outstanding.assertNotBlocked(customerId);
                 const walletRow = await tx.customerWallet.findUnique({
                     where: { customerId },
                 });
@@ -631,6 +637,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
         };
         const bundleId = await this.prisma.$transaction(async (tx) => {
             const customerId = await this.resolveQuickOrderCustomerId(tx, customerDto, phoneCompact);
+            await this.outstanding.assertNotBlocked(customerId);
             const bundle = await tx.posPaymentBundle.create({
                 data: {
                     driverId: driverUserId,
@@ -743,6 +750,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
                         address: dto.customerAddress?.trim() || null,
                     },
                 });
+            await this.outstanding.assertNotBlocked(customer.id);
             const serialNumber = await this.serialCounter.stampOrderSerial(tx, dto.driverId ?? null);
             return tx.order.create({
                 data: {
@@ -901,6 +909,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
         });
     }
     async sumCollectionsDebtTotalKd(branchId = null, actor) {
+        console.log('[ORDERS SCOPE]', branchId, actor?.role ?? null);
         const isDriver = actor?.role === client_1.SafariRole.DRIVER;
         const effectiveBranchId = isDriver ? null
             : branchId ??
@@ -947,6 +956,80 @@ let OrdersService = OrdersService_1 = class OrdersService {
             .filter((d) => openDebtOrderIds.has(d.id))
             .reduce((acc, d) => acc.plus(d.totalPrice), new client_1.Prisma.Decimal(0));
         return (unpaidAgg._sum.totalPrice ?? new client_1.Prisma.Decimal(0)).plus(debtOpenTotal);
+    }
+    async listCollectionsReceivableAggOrders(args) {
+        const { branchId, actor, createdAt, driverId, customerId } = args;
+        console.log('[ORDERS SCOPE]', branchId, actor?.role ?? null);
+        const isDriver = actor?.role === client_1.SafariRole.DRIVER;
+        const effectiveBranchId = isDriver ? null
+            : branchId ??
+                (actor?.role === client_1.SafariRole.MANAGER && actor.branchId ?
+                    actor.branchId
+                    : null);
+        const branchWhere = isDriver
+            ? { driverId: actor.userId }
+            : effectiveBranchId
+                ? {
+                    OR: [
+                        { driver: { is: { branchId: effectiveBranchId } } },
+                        {
+                            driverId: null,
+                            customer: { is: { originBranchId: effectiveBranchId } },
+                        },
+                    ],
+                }
+                : undefined;
+        const createdFilter = createdAt && (createdAt.gte || createdAt.lte)
+            ? {
+                createdAt: {
+                    ...(createdAt.gte ? { gte: createdAt.gte } : {}),
+                    ...(createdAt.lte ? { lte: createdAt.lte } : {}),
+                },
+            }
+            : {};
+        const rows = await this.prisma.order.findMany({
+            where: {
+                status: { not: client_1.OrderStatus.CANCELED },
+                OR: [
+                    { cashStatus: client_1.CashStatus.UNPAID },
+                    { posPaymentMethod: client_1.PosPaymentMethod.DEBT_ON_ACCOUNT },
+                ],
+                ...(branchWhere ?? {}),
+                ...createdFilter,
+                ...(driverId ? { driverId } : {}),
+                ...(customerId ? { customerId } : {}),
+            },
+            select: {
+                id: true,
+                customerId: true,
+                driverId: true,
+                totalPrice: true,
+                cashStatus: true,
+                posPaymentMethod: true,
+                createdAt: true,
+                dueDate: true,
+            },
+            orderBy: { createdAt: 'desc' },
+        });
+        const debtCandidates = rows.filter((r) => r.posPaymentMethod === client_1.PosPaymentMethod.DEBT_ON_ACCOUNT);
+        const openDebtOrderIds = await this.resolveOpenDebtOrderIds(debtCandidates.map((r) => ({ orderId: r.id, customerId: r.customerId })));
+        return rows
+            .filter((r) => {
+            if (r.cashStatus === client_1.CashStatus.UNPAID)
+                return true;
+            if (r.posPaymentMethod === client_1.PosPaymentMethod.DEBT_ON_ACCOUNT) {
+                return openDebtOrderIds.has(r.id);
+            }
+            return false;
+        })
+            .map((r) => ({
+            id: r.id,
+            customerId: r.customerId,
+            driverId: r.driverId,
+            totalPrice: r.totalPrice,
+            createdAt: r.createdAt,
+            dueDate: r.dueDate,
+        }));
     }
     isOrderInCollectionsUncollectedScope(r, debtOnAccountStillOpenIds) {
         if (r.cashStatus === client_1.CashStatus.UNPAID)
@@ -1319,34 +1402,50 @@ let OrdersService = OrdersService_1 = class OrdersService {
         const allOrderIds = Array.from(perOrder.keys());
         if (allOrderIds.length === 0)
             return openIds;
-        const perOrderPayments = await db.debtLedgerEntry.groupBy({
-            by: ['orderId'],
+        const perOrderPayments = await db.debtLedgerEntry.findMany({
             where: {
                 source: client_1.DebtSource.PAYMENT,
                 orderId: { in: allOrderIds },
             },
-            _sum: { amount: true },
+            select: {
+                orderId: true,
+                source: true,
+                amount: true,
+                actorUserId: true,
+                sourceRef: true,
+                note: true,
+            },
         });
         for (const g of perOrderPayments) {
             if (!g.orderId)
                 continue;
-            const paid = Number.parseFloat(g._sum.amount?.toString() ?? '0');
+            if (!(0, debt_ledger_payment_origin_util_1.isRealDebtLedgerPayment)(g))
+                continue;
+            const paid = Number.parseFloat(g.amount?.toString() ?? '0');
             const cur = perOrder.get(g.orderId);
             if (cur && Number.isFinite(paid))
-                cur.paid = paid;
+                cur.paid += paid;
         }
-        const customerTotals = await db.debtLedgerEntry.groupBy({
-            by: ['customerId', 'source'],
+        const customerTotals = await db.debtLedgerEntry.findMany({
             where: { customerId: { in: customerIds } },
-            _sum: { amount: true },
+            select: {
+                customerId: true,
+                source: true,
+                amount: true,
+                actorUserId: true,
+                sourceRef: true,
+                note: true,
+            },
         });
         const debtByCust = new Map();
         const paidByCust = new Map();
         for (const g of customerTotals) {
-            const v = Number.parseFloat(g._sum.amount?.toString() ?? '0');
+            const v = Number.parseFloat(g.amount?.toString() ?? '0');
             if (!Number.isFinite(v))
                 continue;
             if (g.source === client_1.DebtSource.PAYMENT) {
+                if (!(0, debt_ledger_payment_origin_util_1.isRealDebtLedgerPayment)(g))
+                    continue;
                 paidByCust.set(g.customerId, (paidByCust.get(g.customerId) ?? 0) + v);
             }
             else {
@@ -1761,6 +1860,7 @@ exports.OrdersService = OrdersService;
 exports.OrdersService = OrdersService = OrdersService_1 = __decorate([
     (0, common_1.Injectable)(),
     __param(1, (0, common_1.Inject)((0, common_1.forwardRef)(() => customer_ledger_service_1.CustomerLedgerService))),
+    __param(9, (0, common_1.Inject)((0, common_1.forwardRef)(() => outstanding_service_1.OutstandingService))),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
         customer_ledger_service_1.CustomerLedgerService,
         payments_service_1.PaymentsService,
@@ -1770,6 +1870,7 @@ exports.OrdersService = OrdersService = OrdersService_1 = __decorate([
         inventory_service_1.InventoryService,
         jwt_1.JwtService,
         customer_blocking_service_1.CustomerBlockingService,
+        outstanding_service_1.OutstandingService,
         audit_logs_service_1.AuditLogsService,
         event_emitter_1.EventEmitter2])
 ], OrdersService);

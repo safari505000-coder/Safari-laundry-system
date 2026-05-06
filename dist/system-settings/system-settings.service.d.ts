@@ -16,8 +16,8 @@ export declare class SystemSettingsService {
     setToggle(actorRole: SafariRole, actorUserId: string, key: SystemToggleKey, isEnabled: boolean): Promise<{
         updatedAt: Date;
         key: import(".prisma/client").$Enums.SystemToggleKey;
-        isEnabled: boolean;
         updatedBy: string | null;
+        isEnabled: boolean;
     }>;
     isEnabled(key: SystemToggleKey): Promise<boolean>;
     getDebtHoldPolicy(): Promise<{

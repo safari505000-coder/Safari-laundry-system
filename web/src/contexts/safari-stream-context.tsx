@@ -19,12 +19,12 @@ type SafariStreamContextValue = {
 const SafariStreamContext = createContext<SafariStreamContextValue | null>(null);
 
 export function SafariStreamProvider({ children }: { children: ReactNode }) {
-  const { token } = useAuth();
+  const { token, sessionKind } = useAuth();
   const [snapshot, setSnapshot] = useState<SafariStreamSnapshot | null>(null);
   const [loading, setLoading] = useState(false);
 
   const refresh = useCallback(async () => {
-    if (!token) {
+    if (!token || sessionKind === 'password-change') {
       setSnapshot(null);
       return;
     }
@@ -42,19 +42,19 @@ export function SafariStreamProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [sessionKind, token]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
   useEffect(() => {
-    if (!token) return;
+    if (!token || sessionKind === 'password-change') return;
     const id = window.setInterval(() => {
       void refresh();
     }, 45_000);
     return () => window.clearInterval(id);
-  }, [token, refresh]);
+  }, [sessionKind, token, refresh]);
 
   const value = useMemo(
     () => ({ snapshot, loading, refresh }),

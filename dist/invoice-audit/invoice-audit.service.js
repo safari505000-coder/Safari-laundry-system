@@ -15,17 +15,21 @@ const client_1 = require("@prisma/client");
 const jwt_1 = require("@nestjs/jwt");
 const prisma_service_1 = require("../prisma/prisma.service");
 const general_ledger_service_1 = require("../general-ledger/general-ledger.service");
+const double_entry_journal_service_1 = require("../general-ledger/double-entry-journal.service");
 const customer_notifications_service_1 = require("../customer-notifications/customer-notifications.service");
 const invoice_pdf_util_1 = require("../orders/invoice-pdf.util");
+const debt_ledger_payment_origin_util_1 = require("../finance/debt-ledger-payment-origin.util");
 const kuwait_time_1 = require("../common/time/kuwait-time");
 let InvoiceAuditService = class InvoiceAuditService {
     prisma;
     generalLedger;
+    journal;
     customerNotifications;
     jwt;
-    constructor(prisma, generalLedger, customerNotifications, jwt) {
+    constructor(prisma, generalLedger, journal, customerNotifications, jwt) {
         this.prisma = prisma;
         this.generalLedger = generalLedger;
+        this.journal = journal;
         this.customerNotifications = customerNotifications;
         this.jwt = jwt;
     }
@@ -96,6 +100,20 @@ let InvoiceAuditService = class InvoiceAuditService {
                 },
             });
             if (order.id) {
+                const sourceRef = `ADJUSTMENT:INVOICE_AUDIT_VOID:${order.id}:${Date.now()}`;
+                (0, debt_ledger_payment_origin_util_1.traceDebtLedgerPaymentWrite)({
+                    sourceFile: 'src/invoice-audit/invoice-audit.service.ts',
+                    functionName: 'reverseWalletForOrder',
+                    payload: {
+                        amount: order.totalPrice.toString(),
+                        customerId: order.customerId,
+                        orderId: order.id,
+                        source: 'PAYMENT',
+                        actorUserId: actorUserId ?? null,
+                        sourceRef,
+                        metadata: { origin: 'INVOICE_AUDIT_VOID_NON_MONEY' },
+                    },
+                });
                 await tx.debtLedgerEntry.create({
                     data: {
                         customerId: order.customerId,
@@ -104,9 +122,28 @@ let InvoiceAuditService = class InvoiceAuditService {
                         category: 'BRANCH',
                         amount: order.totalPrice,
                         actorUserId: actorUserId ?? null,
+                        sourceRef,
                         note: 'Debt reversed by invoice void / edit (supervisor)',
                     },
                 });
+                if (actorUserId) {
+                    await this.journal.mirrorDebtLedgerEntry(tx, {
+                        source: 'PAYMENT',
+                        amount: order.totalPrice,
+                        sourceRef,
+                        actorUserId,
+                        customerId: order.customerId,
+                        orderId: order.id,
+                        note: 'Debt reversed by invoice void / edit (supervisor)',
+                    });
+                }
+                else {
+                    console.error('[JOURNAL_DRIFT]', {
+                        customerId: order.customerId,
+                        orderId: order.id,
+                        reason: 'INVOICE_AUDIT_VOID_MISSING_ACTOR',
+                    });
+                }
             }
         }
         else if (method === client_1.PosPaymentMethod.SUBSCRIPTION_WALLET) {
@@ -737,6 +774,7 @@ exports.InvoiceAuditService = InvoiceAuditService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
         general_ledger_service_1.GeneralLedgerService,
+        double_entry_journal_service_1.DoubleEntryJournalService,
         customer_notifications_service_1.CustomerNotificationsService,
         jwt_1.JwtService])
 ], InvoiceAuditService);

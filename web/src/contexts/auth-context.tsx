@@ -10,6 +10,7 @@ import {
 } from 'react';
 import type { LoginUser, SafariRole } from '@/lib/api';
 import {
+  postChangePassword,
   postLogin,
   postLogout,
   postRefreshToken,
@@ -19,6 +20,7 @@ import {
 const TOKEN_KEY = 'safari_erp_token';
 const REFRESH_TOKEN_KEY = 'safari_erp_refresh_token';
 const USER_KEY = 'safari_erp_user';
+const SESSION_KIND_KEY = 'safari_erp_session_kind';
 const OWNER_BRANCH_KEY = 'safari_erp_owner_branch_id';
 const RBAC_POLICY_VERSION_KEY = 'safari_erp_rbac_policy_version';
 const RBAC_POLICY_VERSION = 'customer-360-portal-v1';
@@ -28,6 +30,7 @@ const REMEMBER_USERNAME_KEY = 'safari_erp_remember_username';
 type AuthContextValue = {
   token: string | null;
   user: LoginUser | null;
+  sessionKind: 'authenticated' | 'password-change' | null;
   /**
    * `rememberMe=true` keeps the username in localStorage for next launch.
    * Password is never stored.
@@ -36,6 +39,10 @@ type AuthContextValue = {
     username: string,
     password: string,
     rememberMe?: boolean,
+  ) => Promise<LoginUser & { requiresPasswordChange?: boolean }>;
+  changePassword: (
+    oldPassword: string,
+    newPassword: string,
   ) => Promise<LoginUser>;
   logout: () => void;
   hasRole: (...roles: SafariRole[]) => boolean;
@@ -61,6 +68,15 @@ function readStoredUser(): LoginUser | null {
 function readStoredToken(): string | null {
   try {
     return localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function readStoredSessionKind(): AuthContextValue['sessionKind'] {
+  try {
+    const v = localStorage.getItem(SESSION_KIND_KEY);
+    return v === 'authenticated' || v === 'password-change' ? v : null;
   } catch {
     return null;
   }
@@ -100,6 +116,7 @@ function ensureFreshRbacPolicy(): void {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(REFRESH_TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
+    localStorage.removeItem(SESSION_KIND_KEY);
     localStorage.removeItem(OWNER_BRANCH_KEY);
     localStorage.setItem(RBAC_POLICY_VERSION_KEY, RBAC_POLICY_VERSION);
   } catch {
@@ -111,6 +128,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   ensureFreshRbacPolicy();
   const [token, setToken] = useState<string | null>(readStoredToken);
   const [user, setUser] = useState<LoginUser | null>(readStoredUser);
+  const [sessionKind, setSessionKind] =
+    useState<AuthContextValue['sessionKind']>(readStoredSessionKind);
   const [ownerBranchId, setOwnerBranchIdState] = useState<string | null>(
     readOwnerBranchId,
   );
@@ -130,6 +149,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         localStorage.setItem(TOKEN_KEY, newAccessToken);
         localStorage.setItem(REFRESH_TOKEN_KEY, newRefreshToken);
+        localStorage.setItem(SESSION_KIND_KEY, 'authenticated');
         localStorage.setItem(RBAC_POLICY_VERSION_KEY, RBAC_POLICY_VERSION);
         if (nextUser) {
           localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
@@ -139,6 +159,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       refreshTokenRef.current = newRefreshToken;
       setToken(newAccessToken);
+      setSessionKind('authenticated');
       if (nextUser) setUser(nextUser);
     },
     [],
@@ -149,6 +170,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem(TOKEN_KEY);
       localStorage.removeItem(REFRESH_TOKEN_KEY);
       localStorage.removeItem(USER_KEY);
+      localStorage.removeItem(SESSION_KIND_KEY);
       localStorage.removeItem(OWNER_BRANCH_KEY);
     } catch {
       /* ignore */
@@ -156,13 +178,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refreshTokenRef.current = null;
     setToken(null);
     setUser(null);
+    setSessionKind(null);
     setOwnerBranchIdState(null);
   }, []);
 
   const login = useCallback(
     async (username: string, password: string, rememberMe = true) => {
       const res = await postLogin(username, password);
-      persistSession(res.accessToken, res.refreshToken, res.user);
+      if (res.requiresPasswordChange === true && res.tempToken) {
+        try {
+          localStorage.setItem(TOKEN_KEY, res.tempToken);
+          localStorage.setItem(USER_KEY, JSON.stringify(res.user));
+          localStorage.setItem(SESSION_KIND_KEY, 'password-change');
+          localStorage.removeItem(REFRESH_TOKEN_KEY);
+          localStorage.removeItem(OWNER_BRANCH_KEY);
+        } catch {
+          /* storage quota / disabled — session stays in memory */
+        }
+        refreshTokenRef.current = null;
+        setToken(res.tempToken);
+        setUser(res.user);
+        setSessionKind('password-change');
+        setOwnerBranchIdState(null);
+        return { ...res.user, requiresPasswordChange: true };
+      } else if (res.accessToken && res.refreshToken) {
+        persistSession(res.accessToken, res.refreshToken, res.user);
+      } else {
+        throw new Error('Invalid login response');
+      }
       try {
         if (rememberMe) {
           localStorage.setItem(REMEMBER_USERNAME_KEY, username.trim());
@@ -183,6 +226,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return res.user;
     },
     [persistSession],
+  );
+
+  const changePassword = useCallback(
+    async (oldPassword: string, newPassword: string) => {
+      if (!token) {
+        throw new Error('Missing password-change token');
+      }
+      const res = await postChangePassword(token, { oldPassword, newPassword });
+      if (!res.accessToken || !res.refreshToken) {
+        throw new Error('Invalid change-password response');
+      }
+      persistSession(res.accessToken, res.refreshToken, res.user);
+      if (res.user.safariRole !== 'OWNER') {
+        try {
+          localStorage.removeItem(OWNER_BRANCH_KEY);
+        } catch {
+          /* ignore */
+        }
+        setOwnerBranchIdState(null);
+      }
+      return res.user;
+    },
+    [persistSession, token],
   );
 
   const setOwnerBranchId = useCallback((branchId: string | null) => {
@@ -243,7 +309,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       token,
       user,
+      sessionKind,
       login,
+      changePassword,
       logout,
       hasRole,
       ownerBranchId,
@@ -253,7 +321,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [
       token,
       user,
+      sessionKind,
       login,
+      changePassword,
       logout,
       hasRole,
       ownerBranchId,

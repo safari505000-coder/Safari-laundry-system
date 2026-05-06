@@ -18,7 +18,9 @@ const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
 const cash_status_for_method_1 = require("../common/utils/cash-status-for-method");
 const finance_money_1 = require("../finance/finance-money");
+const debt_ledger_payment_origin_util_1 = require("../finance/debt-ledger-payment-origin.util");
 const general_ledger_service_1 = require("../general-ledger/general-ledger.service");
+const double_entry_journal_service_1 = require("../general-ledger/double-entry-journal.service");
 const inventory_service_1 = require("../inventory/inventory.service");
 const orders_service_1 = require("../orders/orders.service");
 const prisma_service_1 = require("../prisma/prisma.service");
@@ -26,12 +28,14 @@ const activate_subscription_dto_1 = require("../call-center/dto/activate-subscri
 let CustomerLedgerService = CustomerLedgerService_1 = class CustomerLedgerService {
     prisma;
     generalLedger;
+    journal;
     inventory;
     orders;
     logger = new common_1.Logger(CustomerLedgerService_1.name);
-    constructor(prisma, generalLedger, inventory, orders) {
+    constructor(prisma, generalLedger, journal, inventory, orders) {
         this.prisma = prisma;
         this.generalLedger = generalLedger;
+        this.journal = journal;
         this.inventory = inventory;
         this.orders = orders;
     }
@@ -300,6 +304,7 @@ let CustomerLedgerService = CustomerLedgerService_1 = class CustomerLedgerServic
         });
         const debtCategory = this.resolveDebtCategory(actor.safariRole);
         if (addedInvoiceDebtMinor > 0n) {
+            const sourceRef = `INVOICE:${orderId}:SHORTFALL:${Date.now()}`;
             await tx.debtLedgerEntry.create({
                 data: {
                     customerId: o.customerId,
@@ -309,8 +314,18 @@ let CustomerLedgerService = CustomerLedgerService_1 = class CustomerLedgerServic
                     amount: this.decimalFromMinor(addedInvoiceDebtMinor),
                     branchId: actor.branchId,
                     actorUserId: actor.id,
+                    sourceRef,
                     note: 'Invoice shortfall recorded as receivable',
                 },
+            });
+            await this.journal.mirrorDebtLedgerEntry(tx, {
+                source: client_1.DebtSource.INVOICE_SHORTFALL,
+                amount: this.decimalFromMinor(addedInvoiceDebtMinor),
+                sourceRef,
+                actorUserId: actor.id,
+                customerId: o.customerId,
+                orderId,
+                note: 'Invoice shortfall recorded as receivable',
             });
             await this.generalLedger.append(tx, {
                 entryType: client_1.GeneralLedgerEntryType.DEBT_ADJUSTMENT,
@@ -327,6 +342,7 @@ let CustomerLedgerService = CustomerLedgerService_1 = class CustomerLedgerServic
             });
         }
         if (addedSubscriptionDebtMinor > 0n) {
+            const sourceRef = `INVOICE:${orderId}:SUBSCRIPTION_OVERUSE:${Date.now()}`;
             await tx.debtLedgerEntry.create({
                 data: {
                     customerId: o.customerId,
@@ -336,8 +352,18 @@ let CustomerLedgerService = CustomerLedgerService_1 = class CustomerLedgerServic
                     amount: this.decimalFromMinor(addedSubscriptionDebtMinor),
                     branchId: actor.branchId,
                     actorUserId: actor.id,
+                    sourceRef,
                     note: 'Subscription balance allowed to go negative',
                 },
+            });
+            await this.journal.mirrorDebtLedgerEntry(tx, {
+                source: client_1.DebtSource.SUBSCRIPTION_OVERUSE,
+                amount: this.decimalFromMinor(addedSubscriptionDebtMinor),
+                sourceRef,
+                actorUserId: actor.id,
+                customerId: o.customerId,
+                orderId,
+                note: 'Subscription balance allowed to go negative',
             });
             await this.generalLedger.append(tx, {
                 entryType: client_1.GeneralLedgerEntryType.DEBT_ADJUSTMENT,
@@ -358,6 +384,33 @@ let CustomerLedgerService = CustomerLedgerService_1 = class CustomerLedgerServic
             data: { walletSettledAt: new Date() },
         });
         if (debtPaydownFromSettlementMinor > 0n) {
+            const trigger = extraMetadata?.debtSettlementViaCallCenter === true
+                ? 'CALL_CENTER_MANUAL'
+                : extraMetadata?.debtSettlementViaLink === true
+                    ? 'PAYMENT_LINK_CALLBACK'
+                    : 'WALLET_SETTLEMENT';
+            const origin = o.posPaymentMethod === client_1.PosPaymentMethod.CASH ||
+                o.posPaymentMethod === client_1.PosPaymentMethod.KNET ||
+                o.posPaymentMethod === client_1.PosPaymentMethod.ONLINE ||
+                o.posPaymentMethod === client_1.PosPaymentMethod.PAYMENT_LINK
+                ? o.posPaymentMethod
+                : trigger;
+            const sourceRef = `PAYMENT:${origin}:${orderId}:${Date.now()}`;
+            const paymentPayload = {
+                amount: this.decimalFromMinor(debtPaydownFromSettlementMinor).toString(),
+                customerId: o.customerId,
+                orderId,
+                source: client_1.DebtSource.PAYMENT,
+                actorUserId: actor.id,
+                sourceRef,
+                metadata: { origin, trigger },
+            };
+            (0, debt_ledger_payment_origin_util_1.assertDebtLedgerPaymentWrite)(paymentPayload);
+            (0, debt_ledger_payment_origin_util_1.traceDebtLedgerPaymentWrite)({
+                sourceFile: 'src/customer-ledger/customer-ledger.service.ts',
+                functionName: 'applyOrderWalletSettlementForCompletedOrder',
+                payload: paymentPayload,
+            });
             await tx.debtLedgerEntry.create({
                 data: {
                     customerId: o.customerId,
@@ -367,8 +420,19 @@ let CustomerLedgerService = CustomerLedgerService_1 = class CustomerLedgerServic
                     amount: this.decimalFromMinor(debtPaydownFromSettlementMinor),
                     branchId: actor.branchId,
                     actorUserId: actor.id,
+                    sourceRef,
                     note: 'Invoice debt settled (wallet settlement)',
                 },
+            });
+            await this.journal.mirrorDebtLedgerEntry(tx, {
+                source: client_1.DebtSource.PAYMENT,
+                amount: this.decimalFromMinor(debtPaydownFromSettlementMinor),
+                sourceRef,
+                actorUserId: actor.id,
+                customerId: o.customerId,
+                orderId,
+                paymentMethod: o.posPaymentMethod,
+                note: 'Invoice debt settled (wallet settlement)',
             });
             await this.generalLedger.append(tx, {
                 entryType: client_1.GeneralLedgerEntryType.DEBT_ADJUSTMENT,
@@ -381,11 +445,7 @@ let CustomerLedgerService = CustomerLedgerService_1 = class CustomerLedgerServic
                     source: client_1.DebtSource.PAYMENT,
                     category: debtCategory,
                     branchId: actor.branchId,
-                    trigger: extraMetadata?.debtSettlementViaCallCenter === true
-                        ? 'CALL_CENTER_MANUAL'
-                        : extraMetadata?.debtSettlementViaLink === true
-                            ? 'PAYMENT_LINK_CALLBACK'
-                            : 'WALLET_SETTLEMENT',
+                    trigger,
                     declaredDebtSettled: debtSettledStr,
                 },
             });
@@ -648,26 +708,72 @@ let CustomerLedgerService = CustomerLedgerService_1 = class CustomerLedgerServic
                 coveredMinor += (0, finance_money_1.toMinorFromFixed4)(amt);
             }
             if (closedInvoiceIds.length > 0) {
-                await tx.debtLedgerEntry.createMany({
-                    data: closedInvoiceIds.flatMap((invoiceId) => {
-                        const amt = closedInvoiceAmountById.get(invoiceId);
-                        if (!amt)
-                            return [];
-                        return {
+                const paymentRows = closedInvoiceIds.flatMap((invoiceId) => {
+                    const amt = closedInvoiceAmountById.get(invoiceId);
+                    if (!amt)
+                        return [];
+                    const sourceRef = `PAYMENT:SUBSCRIPTION_ACTIVATION:${newSubscription.id}:${invoiceId}`;
+                    const payload = {
+                        customerId: params.customerId,
+                        orderId: invoiceId,
+                        source: client_1.DebtSource.PAYMENT,
+                        category,
+                        amount: amt,
+                        branchId: subsidyBranchId,
+                        actorUserId: params.performedByUserId,
+                        sourceRef,
+                        note: 'Invoice closed by subscription activation (FIFO)',
+                    };
+                    (0, debt_ledger_payment_origin_util_1.assertDebtLedgerPaymentWrite)(payload);
+                    (0, debt_ledger_payment_origin_util_1.traceDebtLedgerPaymentWrite)({
+                        sourceFile: 'src/customer-ledger/customer-ledger.service.ts',
+                        functionName: 'activateSubscriptionPlan.closedInvoices',
+                        payload: {
+                            amount: amt.toString(),
                             customerId: params.customerId,
                             orderId: invoiceId,
                             source: client_1.DebtSource.PAYMENT,
-                            category,
-                            amount: amt,
-                            branchId: subsidyBranchId,
                             actorUserId: params.performedByUserId,
-                            note: 'Invoice closed by subscription activation (FIFO)',
-                        };
-                    }),
+                            sourceRef,
+                            metadata: { origin: 'SUBSCRIPTION_ACTIVATION' },
+                        },
+                    });
+                    return payload;
                 });
+                await tx.debtLedgerEntry.createMany({
+                    data: paymentRows,
+                });
+                for (const row of paymentRows) {
+                    await this.journal.mirrorDebtLedgerEntry(tx, {
+                        source: client_1.DebtSource.PAYMENT,
+                        amount: row.amount,
+                        sourceRef: row.sourceRef,
+                        actorUserId: row.actorUserId,
+                        customerId: row.customerId,
+                        orderId: row.orderId,
+                        paymentMethod: params.paymentMethod,
+                        note: row.note,
+                    });
+                }
             }
             const residualMinor = debtPaidMinor - coveredMinor;
             if (residualMinor > 0n) {
+                const sourceRef = `PAYMENT:SUBSCRIPTION_ACTIVATION:${newSubscription.id}:RESIDUAL`;
+                const paymentPayload = {
+                    amount: this.decimalFromMinor(residualMinor).toString(),
+                    customerId: params.customerId,
+                    orderId: null,
+                    source: client_1.DebtSource.PAYMENT,
+                    actorUserId: params.performedByUserId,
+                    sourceRef,
+                    metadata: { origin: 'SUBSCRIPTION_ACTIVATION' },
+                };
+                (0, debt_ledger_payment_origin_util_1.assertDebtLedgerPaymentWrite)(paymentPayload);
+                (0, debt_ledger_payment_origin_util_1.traceDebtLedgerPaymentWrite)({
+                    sourceFile: 'src/customer-ledger/customer-ledger.service.ts',
+                    functionName: 'activateSubscriptionPlan.residual',
+                    payload: paymentPayload,
+                });
                 await tx.debtLedgerEntry.create({
                     data: {
                         customerId: params.customerId,
@@ -677,8 +783,19 @@ let CustomerLedgerService = CustomerLedgerService_1 = class CustomerLedgerServic
                         amount: this.decimalFromMinor(residualMinor),
                         branchId: subsidyBranchId,
                         actorUserId: params.performedByUserId,
+                        sourceRef,
                         note: 'Residual debt cleared by subscription activation',
                     },
+                });
+                await this.journal.mirrorDebtLedgerEntry(tx, {
+                    source: client_1.DebtSource.PAYMENT,
+                    amount: this.decimalFromMinor(residualMinor),
+                    sourceRef,
+                    actorUserId: params.performedByUserId,
+                    customerId: params.customerId,
+                    orderId: null,
+                    paymentMethod: params.paymentMethod,
+                    note: 'Residual debt cleared by subscription activation',
                 });
             }
         }
@@ -805,6 +922,25 @@ let CustomerLedgerService = CustomerLedgerService_1 = class CustomerLedgerServic
                 },
             },
         });
+        const sourceRef = `PAYMENT:CC_DEBT_INVOICE_PHYSICAL:${orderId}:${performedByUserId}:${Date.now()}`;
+        const paymentPayload = {
+            amount: this.decimalFromMinor(paydownMinor).toString(),
+            customerId: order.customerId,
+            orderId,
+            source: client_1.DebtSource.PAYMENT,
+            actorUserId: performedByUserId,
+            sourceRef,
+            metadata: {
+                origin: 'CC_DEBT_INVOICE_PHYSICAL',
+                confirmedPaymentMethod: confirmedMethod,
+            },
+        };
+        (0, debt_ledger_payment_origin_util_1.assertDebtLedgerPaymentWrite)(paymentPayload);
+        (0, debt_ledger_payment_origin_util_1.traceDebtLedgerPaymentWrite)({
+            sourceFile: 'src/customer-ledger/customer-ledger.service.ts',
+            functionName: 'recordDebtInvoiceCollectedAtCallCenter',
+            payload: paymentPayload,
+        });
         await tx.debtLedgerEntry.create({
             data: {
                 customerId: order.customerId,
@@ -814,8 +950,19 @@ let CustomerLedgerService = CustomerLedgerService_1 = class CustomerLedgerServic
                 amount: this.decimalFromMinor(paydownMinor),
                 branchId,
                 actorUserId: performedByUserId,
+                sourceRef,
                 note: 'Debt-on-account invoice collected at Call Center',
             },
+        });
+        await this.journal.mirrorDebtLedgerEntry(tx, {
+            source: client_1.DebtSource.PAYMENT,
+            amount: this.decimalFromMinor(paydownMinor),
+            sourceRef,
+            actorUserId: performedByUserId,
+            customerId: order.customerId,
+            orderId,
+            paymentMethod: confirmedMethod,
+            note: 'Debt-on-account invoice collected at Call Center',
         });
         await this.generalLedger.append(tx, {
             entryType: client_1.GeneralLedgerEntryType.DEBT_ADJUSTMENT,
@@ -964,6 +1111,25 @@ let CustomerLedgerService = CustomerLedgerService_1 = class CustomerLedgerServic
                         note: params.note ?? null,
                     },
                 });
+                const sourceRef = `PAYMENT:CC_PARTIAL_DEBT_PAYMENT:${params.customerId}:${params.performedByUserId}:${Date.now()}`;
+                const paymentPayload = {
+                    amount: this.decimalFromMinor(amountMinor).toString(),
+                    customerId: params.customerId,
+                    orderId: null,
+                    source: client_1.DebtSource.PAYMENT,
+                    actorUserId: params.performedByUserId,
+                    sourceRef,
+                    metadata: {
+                        origin: 'CC_PARTIAL_DEBT_PAYMENT',
+                        posPaymentMethod: params.paymentMethod,
+                    },
+                };
+                (0, debt_ledger_payment_origin_util_1.assertDebtLedgerPaymentWrite)(paymentPayload);
+                (0, debt_ledger_payment_origin_util_1.traceDebtLedgerPaymentWrite)({
+                    sourceFile: 'src/customer-ledger/customer-ledger.service.ts',
+                    functionName: 'recordPartialDebtPayment',
+                    payload: paymentPayload,
+                });
                 await tx.debtLedgerEntry.create({
                     data: {
                         customerId: params.customerId,
@@ -973,8 +1139,19 @@ let CustomerLedgerService = CustomerLedgerService_1 = class CustomerLedgerServic
                         amount: this.decimalFromMinor(amountMinor),
                         branchId,
                         actorUserId: params.performedByUserId,
+                        sourceRef,
                         note: params.note ?? 'Partial debt payment collected via Call Center',
                     },
+                });
+                await this.journal.mirrorDebtLedgerEntry(tx, {
+                    source: client_1.DebtSource.PAYMENT,
+                    amount: this.decimalFromMinor(amountMinor),
+                    sourceRef,
+                    actorUserId: params.performedByUserId,
+                    customerId: params.customerId,
+                    orderId: null,
+                    paymentMethod: params.paymentMethod,
+                    note: params.note ?? 'Partial debt payment collected via Call Center',
                 });
             }
             if (discountMinor > 0n) {
@@ -1128,9 +1305,10 @@ let CustomerLedgerService = CustomerLedgerService_1 = class CustomerLedgerServic
 exports.CustomerLedgerService = CustomerLedgerService;
 exports.CustomerLedgerService = CustomerLedgerService = CustomerLedgerService_1 = __decorate([
     (0, common_1.Injectable)(),
-    __param(3, (0, common_1.Inject)((0, common_1.forwardRef)(() => orders_service_1.OrdersService))),
+    __param(4, (0, common_1.Inject)((0, common_1.forwardRef)(() => orders_service_1.OrdersService))),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
         general_ledger_service_1.GeneralLedgerService,
+        double_entry_journal_service_1.DoubleEntryJournalService,
         inventory_service_1.InventoryService,
         orders_service_1.OrdersService])
 ], CustomerLedgerService);

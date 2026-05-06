@@ -11,9 +11,15 @@ import {
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import type { BranchRow, SafariRole, TeamUserRow } from '@/lib/api';
-import { apiJson, ApiError } from '@/lib/api';
+import {
+  apiJson,
+  ApiError,
+  resetUserPassword,
+  resetUserPasswordsBulk,
+} from '@/lib/api';
 import { Button } from '@/modules/shared/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/modules/shared/components/ui/card';
+import { Checkbox } from '@/modules/shared/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -66,6 +72,12 @@ export function StaffControlReactor({ token }: Props) {
   const [open, setOpen] = useState(false);
   const [actionBusyId, setActionBusyId] = useState<string | null>(null);
   const [branchDraftByUser, setBranchDraftByUser] = useState<Record<string, string>>({});
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+  const [resetTarget, setResetTarget] = useState<TeamUserRow | null>(null);
+  const [bulkResetOpen, setBulkResetOpen] = useState(false);
+  const [resetNewPassword, setResetNewPassword] = useState('');
+  const [resetConfirmPassword, setResetConfirmPassword] = useState('');
+  const [resetSaving, setResetSaving] = useState(false);
 
   const [fullName, setFullName] = useState('');
   const [username, setUsername] = useState('');
@@ -79,6 +91,12 @@ export function StaffControlReactor({ token }: Props) {
     () => fullName.trim().length >= 2 && username.trim().length >= 2 && password.length >= 1 && branchId.length > 0,
     [branchId, fullName, password.length, username],
   );
+
+  const passwordResetToast =
+    'تم إعادة تعيين كلمة المرور ويجب تغييرها عند تسجيل الدخول';
+
+  const resetPasswordMatches =
+    resetNewPassword.length >= 6 && resetNewPassword === resetConfirmPassword;
 
   // V19.0 — resolve branch UUID → human name so the Select trigger never falls
   // back to the raw id. If branches haven't loaded yet the placeholder shows.
@@ -105,6 +123,9 @@ export function StaffControlReactor({ token }: Props) {
       const data = await apiJson<TeamUserRow[]>('/api/users', { token });
       const safe = Array.isArray(data) ? data : [];
       setUsers(safe);
+      setSelectedUserIds((prev) =>
+        prev.filter((id) => safe.some((u) => u.id === id)),
+      );
       const drafts: Record<string, string> = {};
       for (const u of safe) {
         drafts[u.id] = u.branchId ?? '';
@@ -288,31 +309,72 @@ export function StaffControlReactor({ token }: Props) {
     }
   }
 
-  async function resetPassword(u: TeamUserRow) {
-    if (!token) return;
-    const next = window.prompt('أدخل كلمة المرور الجديدة');
-    if (!next || next.trim().length < 1) return;
-    const nextBranchId = branchDraftByUser[u.id] ?? u.branchId ?? '';
-    if (!nextBranchId) {
-      toast.error('اختيار الفرع إلزامي');
+  function openResetPassword(u: TeamUserRow) {
+    setResetTarget(u);
+    setResetNewPassword('');
+    setResetConfirmPassword('');
+  }
+
+  function closePasswordDialogs() {
+    setResetTarget(null);
+    setBulkResetOpen(false);
+    setResetNewPassword('');
+    setResetConfirmPassword('');
+  }
+
+  async function submitSinglePasswordReset(e: FormEvent) {
+    e.preventDefault();
+    if (!token || !resetTarget) return;
+    if (!resetPasswordMatches) {
+      toast.error('تأكد من أن كلمة المرور 6 أحرف على الأقل ومتطابقة');
       return;
     }
-    setActionBusyId(u.id);
+    setResetSaving(true);
+    setActionBusyId(resetTarget.id);
     try {
-      await apiJson<TeamUserRow>(`/api/users/${u.id}`, {
-        method: 'PATCH',
-        token,
-        body: JSON.stringify({
-          password: next,
-          branchId: nextBranchId,
-        }),
-      });
-      toast.success('تمت إعادة تعيين كلمة المرور');
+      await resetUserPassword(token, resetTarget.id, resetNewPassword);
+      toast.success(passwordResetToast);
+      closePasswordDialogs();
+      await loadUsers();
     } catch (e) {
       if (e instanceof ApiError) toast.error(e.message);
     } finally {
+      setResetSaving(false);
       setActionBusyId(null);
     }
+  }
+
+  async function submitBulkPasswordReset(e: FormEvent) {
+    e.preventDefault();
+    if (!token) return;
+    if (selectedUserIds.length === 0) {
+      toast.error('اختر مستخدماً واحداً على الأقل');
+      return;
+    }
+    if (!resetPasswordMatches) {
+      toast.error('تأكد من أن كلمة المرور 6 أحرف على الأقل ومتطابقة');
+      return;
+    }
+    setResetSaving(true);
+    try {
+      await resetUserPasswordsBulk(token, selectedUserIds, resetNewPassword);
+      toast.success(passwordResetToast);
+      closePasswordDialogs();
+      setSelectedUserIds([]);
+      await loadUsers();
+    } catch (e) {
+      if (e instanceof ApiError) toast.error(e.message);
+    } finally {
+      setResetSaving(false);
+    }
+  }
+
+  function toggleSelected(userId: string, checked: boolean) {
+    setSelectedUserIds((prev) =>
+      checked ?
+        [...new Set([...prev, userId])]
+      : prev.filter((id) => id !== userId),
+    );
   }
 
   return (
@@ -322,10 +384,25 @@ export function StaffControlReactor({ token }: Props) {
           <Users className="h-4 w-4" />
           إدارة الموظفين
         </CardTitle>
-        <Button className="bg-slate-900 text-white hover:bg-slate-800" onClick={() => setOpen(true)}>
-          <UserPlus className="me-2 h-4 w-4" />
-          إضافة مستخدم
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            className="border-amber-500 text-amber-900"
+            disabled={selectedUserIds.length === 0}
+            onClick={() => {
+              setResetNewPassword('');
+              setResetConfirmPassword('');
+              setBulkResetOpen(true);
+            }}
+          >
+            <RotateCcwKey className="me-2 h-4 w-4" />
+            إعادة تعيين جماعي ({selectedUserIds.length})
+          </Button>
+          <Button className="bg-slate-900 text-white hover:bg-slate-800" onClick={() => setOpen(true)}>
+            <UserPlus className="me-2 h-4 w-4" />
+            إضافة مستخدم
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
         {loading ? (
@@ -337,6 +414,17 @@ export function StaffControlReactor({ token }: Props) {
             <Table>
               <TableHeader>
                 <TableRow className="bg-slate-100/90 hover:bg-slate-100/90">
+                  <TableHead className="w-10 font-bold text-slate-950">
+                    <Checkbox
+                      checked={
+                        users.length > 0 && selectedUserIds.length === users.length
+                      }
+                      onCheckedChange={(v) => {
+                        setSelectedUserIds(v === true ? users.map((u) => u.id) : []);
+                      }}
+                      aria-label="تحديد كل المستخدمين"
+                    />
+                  </TableHead>
                   <TableHead className="font-bold text-slate-950">Name</TableHead>
                   <TableHead className="font-bold text-slate-950">Username</TableHead>
                   <TableHead className="font-bold text-slate-950">المهنة</TableHead>
@@ -349,6 +437,13 @@ export function StaffControlReactor({ token }: Props) {
               <TableBody>
                 {users.map((u) => (
                   <TableRow key={u.id}>
+                    <TableCell>
+                      <Checkbox
+                        checked={selectedUserIds.includes(u.id)}
+                        onCheckedChange={(v) => toggleSelected(u.id, v === true)}
+                        aria-label={`تحديد ${u.fullName}`}
+                      />
+                    </TableCell>
                     <TableCell className="font-semibold text-slate-900">{u.fullName}</TableCell>
                     <TableCell className="text-slate-800">
                       <div className="inline-flex items-center gap-1.5">
@@ -449,7 +544,7 @@ export function StaffControlReactor({ token }: Props) {
                           variant="outline"
                           className="border-amber-500 text-amber-900"
                           disabled={actionBusyId === u.id}
-                          onClick={() => void resetPassword(u)}
+                          onClick={() => openResetPassword(u)}
                         >
                           <RotateCcwKey className="me-1 h-4 w-4" />
                           إعادة تعيين كلمة المرور
@@ -533,6 +628,106 @@ export function StaffControlReactor({ token }: Props) {
               <Button type="submit" disabled={!canSubmit || saving} className="bg-slate-900 text-white hover:bg-slate-800">
                 {saving ? <Loader2 className="me-2 h-4 w-4 animate-spin" /> : null}
                 إنشاء
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={resetTarget !== null} onOpenChange={(v) => !v && closePasswordDialogs()}>
+        <DialogContent className="sm:max-w-md [font-family:'Tajawal',sans-serif]">
+          <form onSubmit={submitSinglePasswordReset}>
+            <DialogHeader>
+              <DialogTitle>إعادة تعيين كلمة المرور</DialogTitle>
+            </DialogHeader>
+            <div className="grid gap-3 py-3">
+              <p className="text-sm text-slate-600">
+                المستخدم: <span className="font-bold text-slate-900">{resetTarget?.fullName}</span>
+              </p>
+              <div className="space-y-1.5">
+                <Label>كلمة المرور الجديدة</Label>
+                <Input
+                  type="password"
+                  minLength={6}
+                  value={resetNewPassword}
+                  onChange={(e) => setResetNewPassword(e.target.value)}
+                  autoComplete="new-password"
+                  required
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>تأكيد كلمة المرور</Label>
+                <Input
+                  type="password"
+                  minLength={6}
+                  value={resetConfirmPassword}
+                  onChange={(e) => setResetConfirmPassword(e.target.value)}
+                  autoComplete="new-password"
+                  required
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={closePasswordDialogs}>
+                إلغاء
+              </Button>
+              <Button
+                type="submit"
+                disabled={!resetPasswordMatches || resetSaving}
+                className="bg-slate-900 text-white hover:bg-slate-800"
+              >
+                {resetSaving ? <Loader2 className="me-2 h-4 w-4 animate-spin" /> : null}
+                إعادة التعيين
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={bulkResetOpen} onOpenChange={(v) => !v && closePasswordDialogs()}>
+        <DialogContent className="sm:max-w-md [font-family:'Tajawal',sans-serif]">
+          <form onSubmit={submitBulkPasswordReset}>
+            <DialogHeader>
+              <DialogTitle>إعادة تعيين جماعي لكلمات المرور</DialogTitle>
+            </DialogHeader>
+            <div className="grid gap-3 py-3">
+              <p className="text-sm text-slate-600">
+                سيتم تطبيق كلمة مرور مؤقتة على {selectedUserIds.length} مستخدم/مستخدمين، وسيُطلب تغييرها عند تسجيل الدخول.
+              </p>
+              <div className="space-y-1.5">
+                <Label>كلمة المرور الجديدة</Label>
+                <Input
+                  type="password"
+                  minLength={6}
+                  value={resetNewPassword}
+                  onChange={(e) => setResetNewPassword(e.target.value)}
+                  autoComplete="new-password"
+                  required
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>تأكيد كلمة المرور</Label>
+                <Input
+                  type="password"
+                  minLength={6}
+                  value={resetConfirmPassword}
+                  onChange={(e) => setResetConfirmPassword(e.target.value)}
+                  autoComplete="new-password"
+                  required
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={closePasswordDialogs}>
+                إلغاء
+              </Button>
+              <Button
+                type="submit"
+                disabled={!resetPasswordMatches || resetSaving || selectedUserIds.length === 0}
+                className="bg-slate-900 text-white hover:bg-slate-800"
+              >
+                {resetSaving ? <Loader2 className="me-2 h-4 w-4 animate-spin" /> : null}
+                تطبيق على الجميع
               </Button>
             </DialogFooter>
           </form>

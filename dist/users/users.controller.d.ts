@@ -1,5 +1,7 @@
 import { type JwtUser } from '../auth/decorators/current-user.decorator';
 import { PermissionsService } from '../permissions/permissions.service';
+import { BulkResetPasswordBodyDto } from './dto/bulk-reset-password-body.dto';
+import { ResetPasswordBodyDto } from './dto/reset-password-body.dto';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateSalaryDefaultsDto } from './dto/update-salary-defaults.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -34,11 +36,27 @@ export declare class UsersController {
             isAdministrative: boolean;
             payrollRosterSortOrder: number | null;
         } | null;
+        driverMetrics: {
+            driverId: string;
+            date: Date;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            lateCount: number;
+            assignedCount: number;
+            acknowledgedCount: number;
+            completedCount: number;
+            breachedCount: number;
+            avgAckMinutes: number | null;
+            avgTotalMinutes: number | null;
+        }[];
         branchId: string | null;
         linkedCustomerId: string | null;
         password: string;
         id: string;
         username: string;
+        mustChangePassword: boolean;
+        passwordUpdatedAt: Date | null;
         fullName: string;
         employeeId: string | null;
         jobTitle: string | null;
@@ -93,9 +111,9 @@ export declare class UsersController {
             createdAt: Date;
             updatedAt: Date;
             customerId: string | null;
+            source: string | null;
             orderId: string | null;
             actorId: string | null;
-            source: string | null;
             action: string;
             resource: string;
             ip: string | null;
@@ -134,6 +152,7 @@ export declare class UsersController {
             transferredFromDriverId: string | null;
             subscriptionId: string | null;
             dispatchId: string | null;
+            dueDate: Date | null;
         }[];
         shiftsAsDriver: {
             status: import(".prisma/client").$Enums.ShiftStatus;
@@ -219,12 +238,12 @@ export declare class UsersController {
             updatedAt: Date;
             note: string | null;
             customerId: string;
-            orderId: string | null;
-            actorUserId: string | null;
-            category: import(".prisma/client").$Enums.DebtEntityCategory;
-            source: import(".prisma/client").$Enums.DebtSource;
-            refEntryId: string | null;
             sourceRef: string | null;
+            source: import(".prisma/client").$Enums.DebtSource;
+            actorUserId: string | null;
+            orderId: string | null;
+            category: import(".prisma/client").$Enums.DebtEntityCategory;
+            refEntryId: string | null;
         }[];
         bankDepositsUploaded: {
             status: import(".prisma/client").$Enums.BankDepositStatus;
@@ -435,9 +454,9 @@ export declare class UsersController {
             cancelledReason: string | null;
             sourceDriverId: string;
             targetDriverId: string;
-            executedById: string;
             totalAmount: import("@prisma/client-runtime-utils/dist").Decimal;
             orderCount: number;
+            executedById: string;
             executedByRole: import(".prisma/client").$Enums.SafariRole;
             sourceSignedAt: Date | null;
             targetSignedAt: Date | null;
@@ -456,9 +475,9 @@ export declare class UsersController {
             cancelledReason: string | null;
             sourceDriverId: string;
             targetDriverId: string;
-            executedById: string;
             totalAmount: import("@prisma/client-runtime-utils/dist").Decimal;
             orderCount: number;
+            executedById: string;
             executedByRole: import(".prisma/client").$Enums.SafariRole;
             sourceSignedAt: Date | null;
             targetSignedAt: Date | null;
@@ -477,9 +496,9 @@ export declare class UsersController {
             cancelledReason: string | null;
             sourceDriverId: string;
             targetDriverId: string;
-            executedById: string;
             totalAmount: import("@prisma/client-runtime-utils/dist").Decimal;
             orderCount: number;
+            executedById: string;
             executedByRole: import(".prisma/client").$Enums.SafariRole;
             sourceSignedAt: Date | null;
             targetSignedAt: Date | null;
@@ -498,9 +517,9 @@ export declare class UsersController {
             cancelledReason: string | null;
             sourceDriverId: string;
             targetDriverId: string;
-            executedById: string;
             totalAmount: import("@prisma/client-runtime-utils/dist").Decimal;
             orderCount: number;
+            executedById: string;
             executedByRole: import(".prisma/client").$Enums.SafariRole;
             sourceSignedAt: Date | null;
             targetSignedAt: Date | null;
@@ -535,6 +554,7 @@ export declare class UsersController {
             transferredFromDriverId: string | null;
             subscriptionId: string | null;
             dispatchId: string | null;
+            dueDate: Date | null;
         }[];
         attendanceLogs: {
             userId: string;
@@ -561,8 +581,8 @@ export declare class UsersController {
             endDate: Date;
             approvedById: string | null;
             approvedAt: Date | null;
-            rejectedReason: string | null;
             daysCount: number;
+            rejectedReason: string | null;
         }[];
         leaveApprovals: {
             status: import(".prisma/client").$Enums.LeaveStatus;
@@ -576,8 +596,8 @@ export declare class UsersController {
             endDate: Date;
             approvedById: string | null;
             approvedAt: Date | null;
-            rejectedReason: string | null;
             daysCount: number;
+            rejectedReason: string | null;
         }[];
         employeeLoans: {
             status: import(".prisma/client").$Enums.LoanStatus;
@@ -589,10 +609,10 @@ export declare class UsersController {
             reason: string | null;
             approvedById: string | null;
             approvedAt: Date | null;
+            rejectedReason: string | null;
             installmentCount: number;
             monthlyDeduction: import("@prisma/client-runtime-utils/dist").Decimal;
             remaining: import("@prisma/client-runtime-utils/dist").Decimal;
-            rejectedReason: string | null;
             lastDeductionYearMonth: string | null;
         }[];
         loanApprovals: {
@@ -605,10 +625,10 @@ export declare class UsersController {
             reason: string | null;
             approvedById: string | null;
             approvedAt: Date | null;
+            rejectedReason: string | null;
             installmentCount: number;
             monthlyDeduction: import("@prisma/client-runtime-utils/dist").Decimal;
             remaining: import("@prisma/client-runtime-utils/dist").Decimal;
-            rejectedReason: string | null;
             lastDeductionYearMonth: string | null;
         }[];
         invoiceAuditEntries: {
@@ -731,11 +751,18 @@ export declare class UsersController {
             driverId: string;
             id: string;
             createdAt: Date;
+            startedAt: Date | null;
             customerId: string;
             completedAt: Date | null;
             instructionNote: string | null;
-            createdByUserId: string | null;
             completedByOrderId: string | null;
+            ackMinutes: number | null;
+            totalMinutes: number | null;
+            createdByUserId: string | null;
+            acknowledgedAt: Date | null;
+            firstAlertAt: Date | null;
+            escalatedAt: Date | null;
+            breachedAt: Date | null;
             parentDispatchId: string | null;
         }[];
         createdDispatches: {
@@ -743,12 +770,28 @@ export declare class UsersController {
             driverId: string;
             id: string;
             createdAt: Date;
+            startedAt: Date | null;
             customerId: string;
             completedAt: Date | null;
             instructionNote: string | null;
-            createdByUserId: string | null;
             completedByOrderId: string | null;
+            ackMinutes: number | null;
+            totalMinutes: number | null;
+            createdByUserId: string | null;
+            acknowledgedAt: Date | null;
+            firstAlertAt: Date | null;
+            escalatedAt: Date | null;
+            breachedAt: Date | null;
             parentDispatchId: string | null;
+        }[];
+        customerCollectionStatusUpdates: {
+            status: import(".prisma/client").$Enums.CustomerCollectionStatusKind;
+            id: string;
+            updatedAt: Date;
+            note: string | null;
+            customerId: string;
+            blocked: boolean;
+            updatedById: string | null;
         }[];
         _count: {
             role: number;
@@ -793,7 +836,841 @@ export declare class UsersController {
             debtHolds: number;
             debtHoldsDisbursed: number;
             driverDispatches: number;
+            driverMetrics: number;
             createdDispatches: number;
+            customerCollectionStatusUpdates: number;
+        };
+    }>;
+    resetPasswordsBulk(dto: BulkResetPasswordBodyDto, user: JwtUser, req: {
+        headers?: Record<string, unknown>;
+        id?: string;
+    }): Promise<{
+        updated: number;
+    }>;
+    resetPassword(id: string, dto: ResetPasswordBodyDto, user: JwtUser, req: {
+        headers?: Record<string, unknown>;
+        id?: string;
+    }): Promise<{
+        role: {
+            name: string;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+        };
+        branch: {
+            name: string;
+            id: string;
+            phone: string | null;
+            isActive: boolean;
+            createdAt: Date;
+            updatedAt: Date;
+            location: string;
+            isAdministrative: boolean;
+            payrollRosterSortOrder: number | null;
+        } | null;
+        driverMetrics: {
+            driverId: string;
+            date: Date;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            lateCount: number;
+            assignedCount: number;
+            acknowledgedCount: number;
+            completedCount: number;
+            breachedCount: number;
+            avgAckMinutes: number | null;
+            avgTotalMinutes: number | null;
+        }[];
+        branchId: string | null;
+        linkedCustomerId: string | null;
+        password: string;
+        id: string;
+        username: string;
+        mustChangePassword: boolean;
+        passwordUpdatedAt: Date | null;
+        fullName: string;
+        employeeId: string | null;
+        jobTitle: string | null;
+        phone: string | null;
+        vehicleLabel: string | null;
+        lastKnownLocation: string | null;
+        driverPrefix: string | null;
+        safariRole: import(".prisma/client").$Enums.SafariRole;
+        isActive: boolean;
+        roleId: string;
+        createdAt: Date;
+        updatedAt: Date;
+        civilId: string | null;
+        nationality: string | null;
+        address: string | null;
+        bankName: string | null;
+        bankIban: string | null;
+        hireDate: Date | null;
+        basicMonthlySalary: import("@prisma/client-runtime-utils/dist").Decimal | null;
+        monthlyAllowances: import("@prisma/client-runtime-utils/dist").Decimal | null;
+        payrollRosterLineOrder: number | null;
+        linkedCustomer: {
+            id: string;
+            phone: string;
+            createdAt: Date;
+            updatedAt: Date;
+            address: string | null;
+            phone2: string | null;
+            motherContact: string | null;
+            wifeContact: string | null;
+            sonContact: string | null;
+            displayName: string | null;
+            addressArea: string | null;
+            addressBlock: string | null;
+            addressStreet: string | null;
+            addressAvenue: string | null;
+            addressHouse: string | null;
+            originBranchId: string | null;
+            isBlocked: boolean;
+            blockReason: string | null;
+            blockedAt: Date | null;
+        } | null;
+        auditLogs: {
+            endpoint: string | null;
+            method: string | null;
+            status: import(".prisma/client").$Enums.AuditStatus;
+            role: string | null;
+            userId: string | null;
+            amount: import("@prisma/client-runtime-utils/dist").Decimal | null;
+            timestamp: Date;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            customerId: string | null;
+            source: string | null;
+            orderId: string | null;
+            actorId: string | null;
+            action: string;
+            resource: string;
+            ip: string | null;
+            userAgent: string | null;
+            requestId: string | null;
+            suspicious: boolean;
+            changes: import("@prisma/client/runtime/client").JsonValue;
+            payload: import("@prisma/client/runtime/client").JsonValue | null;
+            hash: string | null;
+            prevHash: string | null;
+        }[];
+        ordersAsDriver: {
+            status: import(".prisma/client").$Enums.OrderStatus;
+            driverId: string | null;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            serviceType: import(".prisma/client").$Enums.ServiceType;
+            totalPrice: import("@prisma/client-runtime-utils/dist").Decimal;
+            cashStatus: import(".prisma/client").$Enums.CashStatus;
+            invoiceNumber: string | null;
+            serialNumber: string | null;
+            reminderCount: number;
+            lastReminderAt: Date | null;
+            ccCollectionPaymentWaLocked: boolean;
+            notes: string | null;
+            customerId: string;
+            posPaymentMethod: import(".prisma/client").$Enums.PosPaymentMethod;
+            completedAt: Date | null;
+            walletSettledAt: Date | null;
+            posPaymentBundleId: string | null;
+            posHostedPaymentUrl: string | null;
+            posGatewayTrackId: string | null;
+            posGatewayMetadata: import("@prisma/client/runtime/client").JsonValue | null;
+            handoverShiftId: string | null;
+            transferredFromDriverId: string | null;
+            subscriptionId: string | null;
+            dispatchId: string | null;
+            dueDate: Date | null;
+        }[];
+        shiftsAsDriver: {
+            status: import(".prisma/client").$Enums.ShiftStatus;
+            driverId: string;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            startedAt: Date;
+            endedAt: Date | null;
+            declaredHandoverTotal: import("@prisma/client-runtime-utils/dist").Decimal | null;
+            systemHandoverTotal: import("@prisma/client-runtime-utils/dist").Decimal | null;
+            ordersSettledCount: number | null;
+            bankDepositReceiptUrl: string | null;
+            confirmedByManagerId: string | null;
+            confirmedAt: Date | null;
+        }[];
+        shiftConfirmations: {
+            status: import(".prisma/client").$Enums.ShiftStatus;
+            driverId: string;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            startedAt: Date;
+            endedAt: Date | null;
+            declaredHandoverTotal: import("@prisma/client-runtime-utils/dist").Decimal | null;
+            systemHandoverTotal: import("@prisma/client-runtime-utils/dist").Decimal | null;
+            ordersSettledCount: number | null;
+            bankDepositReceiptUrl: string | null;
+            confirmedByManagerId: string | null;
+            confirmedAt: Date | null;
+        }[];
+        ledgerTransactions: {
+            metadata: import("@prisma/client/runtime/client").JsonValue | null;
+            type: import(".prisma/client").$Enums.LedgerTransactionType;
+            amount: import("@prisma/client-runtime-utils/dist").Decimal;
+            id: string;
+            createdAt: Date;
+            customerId: string;
+            subscriptionId: string | null;
+            orderId: string | null;
+            balanceBefore: import("@prisma/client-runtime-utils/dist").Decimal;
+            balanceAfter: import("@prisma/client-runtime-utils/dist").Decimal;
+            debtBefore: import("@prisma/client-runtime-utils/dist").Decimal;
+            debtAfter: import("@prisma/client-runtime-utils/dist").Decimal;
+            performedById: string | null;
+        }[];
+        expensesRecorded: {
+            status: import(".prisma/client").$Enums.ExpenseStatus;
+            branchId: string | null;
+            title: string;
+            amount: import("@prisma/client-runtime-utils/dist").Decimal;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            note: string | null;
+            receiptUrl: string | null;
+            category: import(".prisma/client").$Enums.ExpenseCategory;
+            recordedById: string;
+            expenseMethod: import(".prisma/client").$Enums.ExpenseMethod;
+            expenseDate: Date;
+        }[];
+        payrolls: {
+            status: import(".prisma/client").$Enums.PayrollStatus;
+            userId: string;
+            branchId: string;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            basicSalary: import("@prisma/client-runtime-utils/dist").Decimal;
+            allowances: import("@prisma/client-runtime-utils/dist").Decimal;
+            deductions: import("@prisma/client-runtime-utils/dist").Decimal;
+            commissionAmount: import("@prisma/client-runtime-utils/dist").Decimal;
+            debtHoldAmount: import("@prisma/client-runtime-utils/dist").Decimal;
+            debtReleaseAmount: import("@prisma/client-runtime-utils/dist").Decimal;
+            loanDeduction: import("@prisma/client-runtime-utils/dist").Decimal;
+            paymentDate: Date;
+        }[];
+        debtLedgerEntries: {
+            branchId: string | null;
+            amount: import("@prisma/client-runtime-utils/dist").Decimal;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            note: string | null;
+            customerId: string;
+            sourceRef: string | null;
+            source: import(".prisma/client").$Enums.DebtSource;
+            actorUserId: string | null;
+            orderId: string | null;
+            category: import(".prisma/client").$Enums.DebtEntityCategory;
+            refEntryId: string | null;
+        }[];
+        bankDepositsUploaded: {
+            status: import(".prisma/client").$Enums.BankDepositStatus;
+            shiftId: string | null;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            amountKd: import("@prisma/client-runtime-utils/dist").Decimal;
+            verifiedByAccountantId: string | null;
+            verifiedAt: Date | null;
+            depositType: import(".prisma/client").$Enums.BankDepositType;
+            receiptImageUrl: string;
+            managerCashCustodyId: string | null;
+            uploadedById: string;
+        }[];
+        bankDepositsVerifiedAsAccountant: {
+            status: import(".prisma/client").$Enums.BankDepositStatus;
+            shiftId: string | null;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            amountKd: import("@prisma/client-runtime-utils/dist").Decimal;
+            verifiedByAccountantId: string | null;
+            verifiedAt: Date | null;
+            depositType: import(".prisma/client").$Enums.BankDepositType;
+            receiptImageUrl: string;
+            managerCashCustodyId: string | null;
+            uploadedById: string;
+        }[];
+        depositsRequested: {
+            status: import(".prisma/client").$Enums.DepositStatus;
+            type: import(".prisma/client").$Enums.DepositType;
+            amount: import("@prisma/client-runtime-utils/dist").Decimal;
+            driverId: string;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            auditComment: string | null;
+            receiptImage: string;
+            auditedById: string | null;
+        }[];
+        depositsAudited: {
+            status: import(".prisma/client").$Enums.DepositStatus;
+            type: import(".prisma/client").$Enums.DepositType;
+            amount: import("@prisma/client-runtime-utils/dist").Decimal;
+            driverId: string;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            auditComment: string | null;
+            receiptImage: string;
+            auditedById: string | null;
+        }[];
+        posPaymentBundlesLed: {
+            driverId: string;
+            id: string;
+            createdAt: Date;
+            totalAmountKd: import("@prisma/client-runtime-utils/dist").Decimal;
+        }[];
+        stockMovementsRecorded: {
+            branchId: string;
+            type: import(".prisma/client").$Enums.StockMovementType;
+            id: string;
+            createdAt: Date;
+            note: string | null;
+            stockItemId: string;
+            reference: string | null;
+            quantity: import("@prisma/client-runtime-utils/dist").Decimal;
+            unitCost: import("@prisma/client-runtime-utils/dist").Decimal | null;
+            supplierId: string | null;
+            receiptUrl: string | null;
+            totalCost: import("@prisma/client-runtime-utils/dist").Decimal | null;
+            recordedById: string;
+        }[];
+        purchaseOrdersCreated: {
+            status: import(".prisma/client").$Enums.PurchaseOrderStatus;
+            branchId: string;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            notes: string | null;
+            supplierId: string;
+            totalKd: import("@prisma/client-runtime-utils/dist").Decimal;
+            poNumber: string;
+            expectedAt: Date | null;
+            createdById: string;
+            approvedById: string | null;
+            approvedAt: Date | null;
+            cancelledAt: Date | null;
+            cancelledReason: string | null;
+        }[];
+        purchaseOrdersApproved: {
+            status: import(".prisma/client").$Enums.PurchaseOrderStatus;
+            branchId: string;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            notes: string | null;
+            supplierId: string;
+            totalKd: import("@prisma/client-runtime-utils/dist").Decimal;
+            poNumber: string;
+            expectedAt: Date | null;
+            createdById: string;
+            approvedById: string | null;
+            approvedAt: Date | null;
+            cancelledAt: Date | null;
+            cancelledReason: string | null;
+        }[];
+        purchaseOrderReceipts: {
+            id: string;
+            createdAt: Date;
+            note: string | null;
+            purchaseOrderId: string;
+            receivedById: string;
+        }[];
+        managerCustodyBagsHeld: {
+            status: import(".prisma/client").$Enums.ManagerCashCustodyStatus;
+            branchId: string | null;
+            driverId: string;
+            shiftId: string | null;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            managerId: string;
+            amountKd: import("@prisma/client-runtime-utils/dist").Decimal;
+            settledOrderCount: number;
+            receivedFromDriverAt: Date;
+            slipUploadedAt: Date | null;
+            depositSlipUrl: string | null;
+            verifiedByAccountantId: string | null;
+            verifiedAt: Date | null;
+            rejectedByAccountantId: string | null;
+            rejectedAt: Date | null;
+            rejectionReason: string | null;
+            note: string | null;
+        }[];
+        managerCustodyBagsHandedOver: {
+            status: import(".prisma/client").$Enums.ManagerCashCustodyStatus;
+            branchId: string | null;
+            driverId: string;
+            shiftId: string | null;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            managerId: string;
+            amountKd: import("@prisma/client-runtime-utils/dist").Decimal;
+            settledOrderCount: number;
+            receivedFromDriverAt: Date;
+            slipUploadedAt: Date | null;
+            depositSlipUrl: string | null;
+            verifiedByAccountantId: string | null;
+            verifiedAt: Date | null;
+            rejectedByAccountantId: string | null;
+            rejectedAt: Date | null;
+            rejectionReason: string | null;
+            note: string | null;
+        }[];
+        managerCustodyVerifications: {
+            status: import(".prisma/client").$Enums.ManagerCashCustodyStatus;
+            branchId: string | null;
+            driverId: string;
+            shiftId: string | null;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            managerId: string;
+            amountKd: import("@prisma/client-runtime-utils/dist").Decimal;
+            settledOrderCount: number;
+            receivedFromDriverAt: Date;
+            slipUploadedAt: Date | null;
+            depositSlipUrl: string | null;
+            verifiedByAccountantId: string | null;
+            verifiedAt: Date | null;
+            rejectedByAccountantId: string | null;
+            rejectedAt: Date | null;
+            rejectionReason: string | null;
+            note: string | null;
+        }[];
+        managerCustodyRejections: {
+            status: import(".prisma/client").$Enums.ManagerCashCustodyStatus;
+            branchId: string | null;
+            driverId: string;
+            shiftId: string | null;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            managerId: string;
+            amountKd: import("@prisma/client-runtime-utils/dist").Decimal;
+            settledOrderCount: number;
+            receivedFromDriverAt: Date;
+            slipUploadedAt: Date | null;
+            depositSlipUrl: string | null;
+            verifiedByAccountantId: string | null;
+            verifiedAt: Date | null;
+            rejectedByAccountantId: string | null;
+            rejectedAt: Date | null;
+            rejectionReason: string | null;
+            note: string | null;
+        }[];
+        debtTransfersAsSource: {
+            status: import(".prisma/client").$Enums.DebtTransferStatus;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            notes: string | null;
+            reason: string | null;
+            cancelledAt: Date | null;
+            cancelledReason: string | null;
+            sourceDriverId: string;
+            targetDriverId: string;
+            totalAmount: import("@prisma/client-runtime-utils/dist").Decimal;
+            orderCount: number;
+            executedById: string;
+            executedByRole: import(".prisma/client").$Enums.SafariRole;
+            sourceSignedAt: Date | null;
+            targetSignedAt: Date | null;
+            finalizedAt: Date | null;
+            cancelledById: string | null;
+            systemSignature: string | null;
+        }[];
+        debtTransfersAsTarget: {
+            status: import(".prisma/client").$Enums.DebtTransferStatus;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            notes: string | null;
+            reason: string | null;
+            cancelledAt: Date | null;
+            cancelledReason: string | null;
+            sourceDriverId: string;
+            targetDriverId: string;
+            totalAmount: import("@prisma/client-runtime-utils/dist").Decimal;
+            orderCount: number;
+            executedById: string;
+            executedByRole: import(".prisma/client").$Enums.SafariRole;
+            sourceSignedAt: Date | null;
+            targetSignedAt: Date | null;
+            finalizedAt: Date | null;
+            cancelledById: string | null;
+            systemSignature: string | null;
+        }[];
+        debtTransfersExecuted: {
+            status: import(".prisma/client").$Enums.DebtTransferStatus;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            notes: string | null;
+            reason: string | null;
+            cancelledAt: Date | null;
+            cancelledReason: string | null;
+            sourceDriverId: string;
+            targetDriverId: string;
+            totalAmount: import("@prisma/client-runtime-utils/dist").Decimal;
+            orderCount: number;
+            executedById: string;
+            executedByRole: import(".prisma/client").$Enums.SafariRole;
+            sourceSignedAt: Date | null;
+            targetSignedAt: Date | null;
+            finalizedAt: Date | null;
+            cancelledById: string | null;
+            systemSignature: string | null;
+        }[];
+        debtTransfersCancelled: {
+            status: import(".prisma/client").$Enums.DebtTransferStatus;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            notes: string | null;
+            reason: string | null;
+            cancelledAt: Date | null;
+            cancelledReason: string | null;
+            sourceDriverId: string;
+            targetDriverId: string;
+            totalAmount: import("@prisma/client-runtime-utils/dist").Decimal;
+            orderCount: number;
+            executedById: string;
+            executedByRole: import(".prisma/client").$Enums.SafariRole;
+            sourceSignedAt: Date | null;
+            targetSignedAt: Date | null;
+            finalizedAt: Date | null;
+            cancelledById: string | null;
+            systemSignature: string | null;
+        }[];
+        ordersTransferredFrom: {
+            status: import(".prisma/client").$Enums.OrderStatus;
+            driverId: string | null;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            serviceType: import(".prisma/client").$Enums.ServiceType;
+            totalPrice: import("@prisma/client-runtime-utils/dist").Decimal;
+            cashStatus: import(".prisma/client").$Enums.CashStatus;
+            invoiceNumber: string | null;
+            serialNumber: string | null;
+            reminderCount: number;
+            lastReminderAt: Date | null;
+            ccCollectionPaymentWaLocked: boolean;
+            notes: string | null;
+            customerId: string;
+            posPaymentMethod: import(".prisma/client").$Enums.PosPaymentMethod;
+            completedAt: Date | null;
+            walletSettledAt: Date | null;
+            posPaymentBundleId: string | null;
+            posHostedPaymentUrl: string | null;
+            posGatewayTrackId: string | null;
+            posGatewayMetadata: import("@prisma/client/runtime/client").JsonValue | null;
+            handoverShiftId: string | null;
+            transferredFromDriverId: string | null;
+            subscriptionId: string | null;
+            dispatchId: string | null;
+            dueDate: Date | null;
+        }[];
+        attendanceLogs: {
+            userId: string;
+            branchId: string | null;
+            date: Date;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            note: string | null;
+            source: import(".prisma/client").$Enums.AttendanceSource;
+            checkInAt: Date | null;
+            checkOutAt: Date | null;
+            externalRef: string | null;
+        }[];
+        leaveRequests: {
+            status: import(".prisma/client").$Enums.LeaveStatus;
+            userId: string;
+            type: import(".prisma/client").$Enums.LeaveType;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            reason: string | null;
+            startDate: Date;
+            endDate: Date;
+            approvedById: string | null;
+            approvedAt: Date | null;
+            daysCount: number;
+            rejectedReason: string | null;
+        }[];
+        leaveApprovals: {
+            status: import(".prisma/client").$Enums.LeaveStatus;
+            userId: string;
+            type: import(".prisma/client").$Enums.LeaveType;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            reason: string | null;
+            startDate: Date;
+            endDate: Date;
+            approvedById: string | null;
+            approvedAt: Date | null;
+            daysCount: number;
+            rejectedReason: string | null;
+        }[];
+        employeeLoans: {
+            status: import(".prisma/client").$Enums.LoanStatus;
+            userId: string;
+            amount: import("@prisma/client-runtime-utils/dist").Decimal;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            reason: string | null;
+            approvedById: string | null;
+            approvedAt: Date | null;
+            rejectedReason: string | null;
+            installmentCount: number;
+            monthlyDeduction: import("@prisma/client-runtime-utils/dist").Decimal;
+            remaining: import("@prisma/client-runtime-utils/dist").Decimal;
+            lastDeductionYearMonth: string | null;
+        }[];
+        loanApprovals: {
+            status: import(".prisma/client").$Enums.LoanStatus;
+            userId: string;
+            amount: import("@prisma/client-runtime-utils/dist").Decimal;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            reason: string | null;
+            approvedById: string | null;
+            approvedAt: Date | null;
+            rejectedReason: string | null;
+            installmentCount: number;
+            monthlyDeduction: import("@prisma/client-runtime-utils/dist").Decimal;
+            remaining: import("@prisma/client-runtime-utils/dist").Decimal;
+            lastDeductionYearMonth: string | null;
+        }[];
+        invoiceAuditEntries: {
+            id: string;
+            createdAt: Date;
+            orderId: string;
+            reason: string | null;
+            actorId: string;
+            action: import(".prisma/client").$Enums.InvoiceAuditAction;
+            actorRole: import(".prisma/client").$Enums.SafariRole;
+            actorName: string;
+            beforeSnapshot: import("@prisma/client/runtime/client").JsonValue;
+            afterSnapshot: import("@prisma/client/runtime/client").JsonValue;
+            changedFields: string[];
+            financialImpactFils: bigint;
+            kuwaitDay: string;
+        }[];
+        vehicleExpensesSubmitted: {
+            description: string | null;
+            status: import(".prisma/client").$Enums.VehicleExpenseStatus;
+            amount: import("@prisma/client-runtime-utils/dist").Decimal;
+            id: string;
+            vehicleLabel: string | null;
+            createdAt: Date;
+            updatedAt: Date;
+            rejectionReason: string | null;
+            receiptUrl: string;
+            expenseDate: Date;
+            vehiclePlate: string;
+            expenseType: import(".prisma/client").$Enums.VehicleExpenseType;
+            odometerKm: number | null;
+            vendorName: string | null;
+            submittedById: string;
+            reviewedById: string | null;
+            reviewedAt: Date | null;
+        }[];
+        vehicleExpensesReviewed: {
+            description: string | null;
+            status: import(".prisma/client").$Enums.VehicleExpenseStatus;
+            amount: import("@prisma/client-runtime-utils/dist").Decimal;
+            id: string;
+            vehicleLabel: string | null;
+            createdAt: Date;
+            updatedAt: Date;
+            rejectionReason: string | null;
+            receiptUrl: string;
+            expenseDate: Date;
+            vehiclePlate: string;
+            expenseType: import(".prisma/client").$Enums.VehicleExpenseType;
+            odometerKm: number | null;
+            vendorName: string | null;
+            submittedById: string;
+            reviewedById: string | null;
+            reviewedAt: Date | null;
+        }[];
+        refreshTokens: {
+            userId: string;
+            id: string;
+            createdAt: Date;
+            ip: string | null;
+            userAgent: string | null;
+            expiresAt: Date;
+            tokenHash: string;
+            usedAt: Date | null;
+            revokedAt: Date | null;
+            replacedById: string | null;
+        }[];
+        commissionPayouts: {
+            status: import(".prisma/client").$Enums.CommissionPayoutStatus;
+            amount: import("@prisma/client-runtime-utils/dist").Decimal;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            mode: import(".prisma/client").$Enums.CommissionMode;
+            cancelledAt: Date | null;
+            ruleId: string;
+            earnerUserId: string;
+            basisAmount: import("@prisma/client-runtime-utils/dist").Decimal;
+            percentage: import("@prisma/client-runtime-utils/dist").Decimal;
+            sourceOrderId: string | null;
+            sourceDebtEntryId: string | null;
+            payrollId: string | null;
+            earnedAt: Date;
+            releasedAt: Date | null;
+            paidAt: Date | null;
+            cancelReason: string | null;
+        }[];
+        debtHolds: {
+            status: import(".prisma/client").$Enums.DebtHoldStatus;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            note: string | null;
+            payrollId: string | null;
+            employeeUserId: string;
+            debtAmount: import("@prisma/client-runtime-utils/dist").Decimal;
+            holdAmount: import("@prisma/client-runtime-utils/dist").Decimal;
+            releasedAmount: import("@prisma/client-runtime-utils/dist").Decimal;
+            releaseDate: Date | null;
+            disbursedAt: Date | null;
+            disbursedById: string | null;
+        }[];
+        debtHoldsDisbursed: {
+            status: import(".prisma/client").$Enums.DebtHoldStatus;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            note: string | null;
+            payrollId: string | null;
+            employeeUserId: string;
+            debtAmount: import("@prisma/client-runtime-utils/dist").Decimal;
+            holdAmount: import("@prisma/client-runtime-utils/dist").Decimal;
+            releasedAmount: import("@prisma/client-runtime-utils/dist").Decimal;
+            releaseDate: Date | null;
+            disbursedAt: Date | null;
+            disbursedById: string | null;
+        }[];
+        driverDispatches: {
+            status: import(".prisma/client").$Enums.DispatchStatus;
+            driverId: string;
+            id: string;
+            createdAt: Date;
+            startedAt: Date | null;
+            customerId: string;
+            completedAt: Date | null;
+            instructionNote: string | null;
+            completedByOrderId: string | null;
+            ackMinutes: number | null;
+            totalMinutes: number | null;
+            createdByUserId: string | null;
+            acknowledgedAt: Date | null;
+            firstAlertAt: Date | null;
+            escalatedAt: Date | null;
+            breachedAt: Date | null;
+            parentDispatchId: string | null;
+        }[];
+        createdDispatches: {
+            status: import(".prisma/client").$Enums.DispatchStatus;
+            driverId: string;
+            id: string;
+            createdAt: Date;
+            startedAt: Date | null;
+            customerId: string;
+            completedAt: Date | null;
+            instructionNote: string | null;
+            completedByOrderId: string | null;
+            ackMinutes: number | null;
+            totalMinutes: number | null;
+            createdByUserId: string | null;
+            acknowledgedAt: Date | null;
+            firstAlertAt: Date | null;
+            escalatedAt: Date | null;
+            breachedAt: Date | null;
+            parentDispatchId: string | null;
+        }[];
+        customerCollectionStatusUpdates: {
+            status: import(".prisma/client").$Enums.CustomerCollectionStatusKind;
+            id: string;
+            updatedAt: Date;
+            note: string | null;
+            customerId: string;
+            blocked: boolean;
+            updatedById: string | null;
+        }[];
+        _count: {
+            role: number;
+            branch: number;
+            linkedCustomer: number;
+            auditLogs: number;
+            ordersAsDriver: number;
+            shiftsAsDriver: number;
+            shiftConfirmations: number;
+            ledgerTransactions: number;
+            expensesRecorded: number;
+            payrolls: number;
+            debtLedgerEntries: number;
+            bankDepositsUploaded: number;
+            bankDepositsVerifiedAsAccountant: number;
+            depositsRequested: number;
+            depositsAudited: number;
+            posPaymentBundlesLed: number;
+            stockMovementsRecorded: number;
+            purchaseOrdersCreated: number;
+            purchaseOrdersApproved: number;
+            purchaseOrderReceipts: number;
+            managerCustodyBagsHeld: number;
+            managerCustodyBagsHandedOver: number;
+            managerCustodyVerifications: number;
+            managerCustodyRejections: number;
+            debtTransfersAsSource: number;
+            debtTransfersAsTarget: number;
+            debtTransfersExecuted: number;
+            debtTransfersCancelled: number;
+            ordersTransferredFrom: number;
+            attendanceLogs: number;
+            leaveRequests: number;
+            leaveApprovals: number;
+            employeeLoans: number;
+            loanApprovals: number;
+            invoiceAuditEntries: number;
+            vehicleExpensesSubmitted: number;
+            vehicleExpensesReviewed: number;
+            refreshTokens: number;
+            commissionPayouts: number;
+            debtHolds: number;
+            debtHoldsDisbursed: number;
+            driverDispatches: number;
+            driverMetrics: number;
+            createdDispatches: number;
+            customerCollectionStatusUpdates: number;
         };
     }>;
     findAll(user: JwtUser): Promise<{
@@ -814,11 +1691,27 @@ export declare class UsersController {
             isAdministrative: boolean;
             payrollRosterSortOrder: number | null;
         } | null;
+        driverMetrics: {
+            driverId: string;
+            date: Date;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            lateCount: number;
+            assignedCount: number;
+            acknowledgedCount: number;
+            completedCount: number;
+            breachedCount: number;
+            avgAckMinutes: number | null;
+            avgTotalMinutes: number | null;
+        }[];
         branchId: string | null;
         linkedCustomerId: string | null;
         password: string;
         id: string;
         username: string;
+        mustChangePassword: boolean;
+        passwordUpdatedAt: Date | null;
         fullName: string;
         employeeId: string | null;
         jobTitle: string | null;
@@ -873,9 +1766,9 @@ export declare class UsersController {
             createdAt: Date;
             updatedAt: Date;
             customerId: string | null;
+            source: string | null;
             orderId: string | null;
             actorId: string | null;
-            source: string | null;
             action: string;
             resource: string;
             ip: string | null;
@@ -914,6 +1807,7 @@ export declare class UsersController {
             transferredFromDriverId: string | null;
             subscriptionId: string | null;
             dispatchId: string | null;
+            dueDate: Date | null;
         }[];
         shiftsAsDriver: {
             status: import(".prisma/client").$Enums.ShiftStatus;
@@ -999,12 +1893,12 @@ export declare class UsersController {
             updatedAt: Date;
             note: string | null;
             customerId: string;
-            orderId: string | null;
-            actorUserId: string | null;
-            category: import(".prisma/client").$Enums.DebtEntityCategory;
-            source: import(".prisma/client").$Enums.DebtSource;
-            refEntryId: string | null;
             sourceRef: string | null;
+            source: import(".prisma/client").$Enums.DebtSource;
+            actorUserId: string | null;
+            orderId: string | null;
+            category: import(".prisma/client").$Enums.DebtEntityCategory;
+            refEntryId: string | null;
         }[];
         bankDepositsUploaded: {
             status: import(".prisma/client").$Enums.BankDepositStatus;
@@ -1215,9 +2109,9 @@ export declare class UsersController {
             cancelledReason: string | null;
             sourceDriverId: string;
             targetDriverId: string;
-            executedById: string;
             totalAmount: import("@prisma/client-runtime-utils/dist").Decimal;
             orderCount: number;
+            executedById: string;
             executedByRole: import(".prisma/client").$Enums.SafariRole;
             sourceSignedAt: Date | null;
             targetSignedAt: Date | null;
@@ -1236,9 +2130,9 @@ export declare class UsersController {
             cancelledReason: string | null;
             sourceDriverId: string;
             targetDriverId: string;
-            executedById: string;
             totalAmount: import("@prisma/client-runtime-utils/dist").Decimal;
             orderCount: number;
+            executedById: string;
             executedByRole: import(".prisma/client").$Enums.SafariRole;
             sourceSignedAt: Date | null;
             targetSignedAt: Date | null;
@@ -1257,9 +2151,9 @@ export declare class UsersController {
             cancelledReason: string | null;
             sourceDriverId: string;
             targetDriverId: string;
-            executedById: string;
             totalAmount: import("@prisma/client-runtime-utils/dist").Decimal;
             orderCount: number;
+            executedById: string;
             executedByRole: import(".prisma/client").$Enums.SafariRole;
             sourceSignedAt: Date | null;
             targetSignedAt: Date | null;
@@ -1278,9 +2172,9 @@ export declare class UsersController {
             cancelledReason: string | null;
             sourceDriverId: string;
             targetDriverId: string;
-            executedById: string;
             totalAmount: import("@prisma/client-runtime-utils/dist").Decimal;
             orderCount: number;
+            executedById: string;
             executedByRole: import(".prisma/client").$Enums.SafariRole;
             sourceSignedAt: Date | null;
             targetSignedAt: Date | null;
@@ -1315,6 +2209,7 @@ export declare class UsersController {
             transferredFromDriverId: string | null;
             subscriptionId: string | null;
             dispatchId: string | null;
+            dueDate: Date | null;
         }[];
         attendanceLogs: {
             userId: string;
@@ -1341,8 +2236,8 @@ export declare class UsersController {
             endDate: Date;
             approvedById: string | null;
             approvedAt: Date | null;
-            rejectedReason: string | null;
             daysCount: number;
+            rejectedReason: string | null;
         }[];
         leaveApprovals: {
             status: import(".prisma/client").$Enums.LeaveStatus;
@@ -1356,8 +2251,8 @@ export declare class UsersController {
             endDate: Date;
             approvedById: string | null;
             approvedAt: Date | null;
-            rejectedReason: string | null;
             daysCount: number;
+            rejectedReason: string | null;
         }[];
         employeeLoans: {
             status: import(".prisma/client").$Enums.LoanStatus;
@@ -1369,10 +2264,10 @@ export declare class UsersController {
             reason: string | null;
             approvedById: string | null;
             approvedAt: Date | null;
+            rejectedReason: string | null;
             installmentCount: number;
             monthlyDeduction: import("@prisma/client-runtime-utils/dist").Decimal;
             remaining: import("@prisma/client-runtime-utils/dist").Decimal;
-            rejectedReason: string | null;
             lastDeductionYearMonth: string | null;
         }[];
         loanApprovals: {
@@ -1385,10 +2280,10 @@ export declare class UsersController {
             reason: string | null;
             approvedById: string | null;
             approvedAt: Date | null;
+            rejectedReason: string | null;
             installmentCount: number;
             monthlyDeduction: import("@prisma/client-runtime-utils/dist").Decimal;
             remaining: import("@prisma/client-runtime-utils/dist").Decimal;
-            rejectedReason: string | null;
             lastDeductionYearMonth: string | null;
         }[];
         invoiceAuditEntries: {
@@ -1511,11 +2406,18 @@ export declare class UsersController {
             driverId: string;
             id: string;
             createdAt: Date;
+            startedAt: Date | null;
             customerId: string;
             completedAt: Date | null;
             instructionNote: string | null;
-            createdByUserId: string | null;
             completedByOrderId: string | null;
+            ackMinutes: number | null;
+            totalMinutes: number | null;
+            createdByUserId: string | null;
+            acknowledgedAt: Date | null;
+            firstAlertAt: Date | null;
+            escalatedAt: Date | null;
+            breachedAt: Date | null;
             parentDispatchId: string | null;
         }[];
         createdDispatches: {
@@ -1523,12 +2425,28 @@ export declare class UsersController {
             driverId: string;
             id: string;
             createdAt: Date;
+            startedAt: Date | null;
             customerId: string;
             completedAt: Date | null;
             instructionNote: string | null;
-            createdByUserId: string | null;
             completedByOrderId: string | null;
+            ackMinutes: number | null;
+            totalMinutes: number | null;
+            createdByUserId: string | null;
+            acknowledgedAt: Date | null;
+            firstAlertAt: Date | null;
+            escalatedAt: Date | null;
+            breachedAt: Date | null;
             parentDispatchId: string | null;
+        }[];
+        customerCollectionStatusUpdates: {
+            status: import(".prisma/client").$Enums.CustomerCollectionStatusKind;
+            id: string;
+            updatedAt: Date;
+            note: string | null;
+            customerId: string;
+            blocked: boolean;
+            updatedById: string | null;
         }[];
         _count: {
             role: number;
@@ -1573,7 +2491,9 @@ export declare class UsersController {
             debtHolds: number;
             debtHoldsDisbursed: number;
             driverDispatches: number;
+            driverMetrics: number;
             createdDispatches: number;
+            customerCollectionStatusUpdates: number;
         };
     }[]>;
     findOne(id: string, user: JwtUser): Promise<{
@@ -1594,11 +2514,27 @@ export declare class UsersController {
             isAdministrative: boolean;
             payrollRosterSortOrder: number | null;
         } | null;
+        driverMetrics: {
+            driverId: string;
+            date: Date;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            lateCount: number;
+            assignedCount: number;
+            acknowledgedCount: number;
+            completedCount: number;
+            breachedCount: number;
+            avgAckMinutes: number | null;
+            avgTotalMinutes: number | null;
+        }[];
         branchId: string | null;
         linkedCustomerId: string | null;
         password: string;
         id: string;
         username: string;
+        mustChangePassword: boolean;
+        passwordUpdatedAt: Date | null;
         fullName: string;
         employeeId: string | null;
         jobTitle: string | null;
@@ -1653,9 +2589,9 @@ export declare class UsersController {
             createdAt: Date;
             updatedAt: Date;
             customerId: string | null;
+            source: string | null;
             orderId: string | null;
             actorId: string | null;
-            source: string | null;
             action: string;
             resource: string;
             ip: string | null;
@@ -1694,6 +2630,7 @@ export declare class UsersController {
             transferredFromDriverId: string | null;
             subscriptionId: string | null;
             dispatchId: string | null;
+            dueDate: Date | null;
         }[];
         shiftsAsDriver: {
             status: import(".prisma/client").$Enums.ShiftStatus;
@@ -1779,12 +2716,12 @@ export declare class UsersController {
             updatedAt: Date;
             note: string | null;
             customerId: string;
-            orderId: string | null;
-            actorUserId: string | null;
-            category: import(".prisma/client").$Enums.DebtEntityCategory;
-            source: import(".prisma/client").$Enums.DebtSource;
-            refEntryId: string | null;
             sourceRef: string | null;
+            source: import(".prisma/client").$Enums.DebtSource;
+            actorUserId: string | null;
+            orderId: string | null;
+            category: import(".prisma/client").$Enums.DebtEntityCategory;
+            refEntryId: string | null;
         }[];
         bankDepositsUploaded: {
             status: import(".prisma/client").$Enums.BankDepositStatus;
@@ -1995,9 +2932,9 @@ export declare class UsersController {
             cancelledReason: string | null;
             sourceDriverId: string;
             targetDriverId: string;
-            executedById: string;
             totalAmount: import("@prisma/client-runtime-utils/dist").Decimal;
             orderCount: number;
+            executedById: string;
             executedByRole: import(".prisma/client").$Enums.SafariRole;
             sourceSignedAt: Date | null;
             targetSignedAt: Date | null;
@@ -2016,9 +2953,9 @@ export declare class UsersController {
             cancelledReason: string | null;
             sourceDriverId: string;
             targetDriverId: string;
-            executedById: string;
             totalAmount: import("@prisma/client-runtime-utils/dist").Decimal;
             orderCount: number;
+            executedById: string;
             executedByRole: import(".prisma/client").$Enums.SafariRole;
             sourceSignedAt: Date | null;
             targetSignedAt: Date | null;
@@ -2037,9 +2974,9 @@ export declare class UsersController {
             cancelledReason: string | null;
             sourceDriverId: string;
             targetDriverId: string;
-            executedById: string;
             totalAmount: import("@prisma/client-runtime-utils/dist").Decimal;
             orderCount: number;
+            executedById: string;
             executedByRole: import(".prisma/client").$Enums.SafariRole;
             sourceSignedAt: Date | null;
             targetSignedAt: Date | null;
@@ -2058,9 +2995,9 @@ export declare class UsersController {
             cancelledReason: string | null;
             sourceDriverId: string;
             targetDriverId: string;
-            executedById: string;
             totalAmount: import("@prisma/client-runtime-utils/dist").Decimal;
             orderCount: number;
+            executedById: string;
             executedByRole: import(".prisma/client").$Enums.SafariRole;
             sourceSignedAt: Date | null;
             targetSignedAt: Date | null;
@@ -2095,6 +3032,7 @@ export declare class UsersController {
             transferredFromDriverId: string | null;
             subscriptionId: string | null;
             dispatchId: string | null;
+            dueDate: Date | null;
         }[];
         attendanceLogs: {
             userId: string;
@@ -2121,8 +3059,8 @@ export declare class UsersController {
             endDate: Date;
             approvedById: string | null;
             approvedAt: Date | null;
-            rejectedReason: string | null;
             daysCount: number;
+            rejectedReason: string | null;
         }[];
         leaveApprovals: {
             status: import(".prisma/client").$Enums.LeaveStatus;
@@ -2136,8 +3074,8 @@ export declare class UsersController {
             endDate: Date;
             approvedById: string | null;
             approvedAt: Date | null;
-            rejectedReason: string | null;
             daysCount: number;
+            rejectedReason: string | null;
         }[];
         employeeLoans: {
             status: import(".prisma/client").$Enums.LoanStatus;
@@ -2149,10 +3087,10 @@ export declare class UsersController {
             reason: string | null;
             approvedById: string | null;
             approvedAt: Date | null;
+            rejectedReason: string | null;
             installmentCount: number;
             monthlyDeduction: import("@prisma/client-runtime-utils/dist").Decimal;
             remaining: import("@prisma/client-runtime-utils/dist").Decimal;
-            rejectedReason: string | null;
             lastDeductionYearMonth: string | null;
         }[];
         loanApprovals: {
@@ -2165,10 +3103,10 @@ export declare class UsersController {
             reason: string | null;
             approvedById: string | null;
             approvedAt: Date | null;
+            rejectedReason: string | null;
             installmentCount: number;
             monthlyDeduction: import("@prisma/client-runtime-utils/dist").Decimal;
             remaining: import("@prisma/client-runtime-utils/dist").Decimal;
-            rejectedReason: string | null;
             lastDeductionYearMonth: string | null;
         }[];
         invoiceAuditEntries: {
@@ -2291,11 +3229,18 @@ export declare class UsersController {
             driverId: string;
             id: string;
             createdAt: Date;
+            startedAt: Date | null;
             customerId: string;
             completedAt: Date | null;
             instructionNote: string | null;
-            createdByUserId: string | null;
             completedByOrderId: string | null;
+            ackMinutes: number | null;
+            totalMinutes: number | null;
+            createdByUserId: string | null;
+            acknowledgedAt: Date | null;
+            firstAlertAt: Date | null;
+            escalatedAt: Date | null;
+            breachedAt: Date | null;
             parentDispatchId: string | null;
         }[];
         createdDispatches: {
@@ -2303,12 +3248,28 @@ export declare class UsersController {
             driverId: string;
             id: string;
             createdAt: Date;
+            startedAt: Date | null;
             customerId: string;
             completedAt: Date | null;
             instructionNote: string | null;
-            createdByUserId: string | null;
             completedByOrderId: string | null;
+            ackMinutes: number | null;
+            totalMinutes: number | null;
+            createdByUserId: string | null;
+            acknowledgedAt: Date | null;
+            firstAlertAt: Date | null;
+            escalatedAt: Date | null;
+            breachedAt: Date | null;
             parentDispatchId: string | null;
+        }[];
+        customerCollectionStatusUpdates: {
+            status: import(".prisma/client").$Enums.CustomerCollectionStatusKind;
+            id: string;
+            updatedAt: Date;
+            note: string | null;
+            customerId: string;
+            blocked: boolean;
+            updatedById: string | null;
         }[];
         _count: {
             role: number;
@@ -2353,7 +3314,9 @@ export declare class UsersController {
             debtHolds: number;
             debtHoldsDisbursed: number;
             driverDispatches: number;
+            driverMetrics: number;
             createdDispatches: number;
+            customerCollectionStatusUpdates: number;
         };
     }>;
     update(id: string, dto: UpdateUserDto, user: JwtUser, req: {
@@ -2377,11 +3340,27 @@ export declare class UsersController {
             isAdministrative: boolean;
             payrollRosterSortOrder: number | null;
         } | null;
+        driverMetrics: {
+            driverId: string;
+            date: Date;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            lateCount: number;
+            assignedCount: number;
+            acknowledgedCount: number;
+            completedCount: number;
+            breachedCount: number;
+            avgAckMinutes: number | null;
+            avgTotalMinutes: number | null;
+        }[];
         branchId: string | null;
         linkedCustomerId: string | null;
         password: string;
         id: string;
         username: string;
+        mustChangePassword: boolean;
+        passwordUpdatedAt: Date | null;
         fullName: string;
         employeeId: string | null;
         jobTitle: string | null;
@@ -2436,9 +3415,9 @@ export declare class UsersController {
             createdAt: Date;
             updatedAt: Date;
             customerId: string | null;
+            source: string | null;
             orderId: string | null;
             actorId: string | null;
-            source: string | null;
             action: string;
             resource: string;
             ip: string | null;
@@ -2477,6 +3456,7 @@ export declare class UsersController {
             transferredFromDriverId: string | null;
             subscriptionId: string | null;
             dispatchId: string | null;
+            dueDate: Date | null;
         }[];
         shiftsAsDriver: {
             status: import(".prisma/client").$Enums.ShiftStatus;
@@ -2562,12 +3542,12 @@ export declare class UsersController {
             updatedAt: Date;
             note: string | null;
             customerId: string;
-            orderId: string | null;
-            actorUserId: string | null;
-            category: import(".prisma/client").$Enums.DebtEntityCategory;
-            source: import(".prisma/client").$Enums.DebtSource;
-            refEntryId: string | null;
             sourceRef: string | null;
+            source: import(".prisma/client").$Enums.DebtSource;
+            actorUserId: string | null;
+            orderId: string | null;
+            category: import(".prisma/client").$Enums.DebtEntityCategory;
+            refEntryId: string | null;
         }[];
         bankDepositsUploaded: {
             status: import(".prisma/client").$Enums.BankDepositStatus;
@@ -2778,9 +3758,9 @@ export declare class UsersController {
             cancelledReason: string | null;
             sourceDriverId: string;
             targetDriverId: string;
-            executedById: string;
             totalAmount: import("@prisma/client-runtime-utils/dist").Decimal;
             orderCount: number;
+            executedById: string;
             executedByRole: import(".prisma/client").$Enums.SafariRole;
             sourceSignedAt: Date | null;
             targetSignedAt: Date | null;
@@ -2799,9 +3779,9 @@ export declare class UsersController {
             cancelledReason: string | null;
             sourceDriverId: string;
             targetDriverId: string;
-            executedById: string;
             totalAmount: import("@prisma/client-runtime-utils/dist").Decimal;
             orderCount: number;
+            executedById: string;
             executedByRole: import(".prisma/client").$Enums.SafariRole;
             sourceSignedAt: Date | null;
             targetSignedAt: Date | null;
@@ -2820,9 +3800,9 @@ export declare class UsersController {
             cancelledReason: string | null;
             sourceDriverId: string;
             targetDriverId: string;
-            executedById: string;
             totalAmount: import("@prisma/client-runtime-utils/dist").Decimal;
             orderCount: number;
+            executedById: string;
             executedByRole: import(".prisma/client").$Enums.SafariRole;
             sourceSignedAt: Date | null;
             targetSignedAt: Date | null;
@@ -2841,9 +3821,9 @@ export declare class UsersController {
             cancelledReason: string | null;
             sourceDriverId: string;
             targetDriverId: string;
-            executedById: string;
             totalAmount: import("@prisma/client-runtime-utils/dist").Decimal;
             orderCount: number;
+            executedById: string;
             executedByRole: import(".prisma/client").$Enums.SafariRole;
             sourceSignedAt: Date | null;
             targetSignedAt: Date | null;
@@ -2878,6 +3858,7 @@ export declare class UsersController {
             transferredFromDriverId: string | null;
             subscriptionId: string | null;
             dispatchId: string | null;
+            dueDate: Date | null;
         }[];
         attendanceLogs: {
             userId: string;
@@ -2904,8 +3885,8 @@ export declare class UsersController {
             endDate: Date;
             approvedById: string | null;
             approvedAt: Date | null;
-            rejectedReason: string | null;
             daysCount: number;
+            rejectedReason: string | null;
         }[];
         leaveApprovals: {
             status: import(".prisma/client").$Enums.LeaveStatus;
@@ -2919,8 +3900,8 @@ export declare class UsersController {
             endDate: Date;
             approvedById: string | null;
             approvedAt: Date | null;
-            rejectedReason: string | null;
             daysCount: number;
+            rejectedReason: string | null;
         }[];
         employeeLoans: {
             status: import(".prisma/client").$Enums.LoanStatus;
@@ -2932,10 +3913,10 @@ export declare class UsersController {
             reason: string | null;
             approvedById: string | null;
             approvedAt: Date | null;
+            rejectedReason: string | null;
             installmentCount: number;
             monthlyDeduction: import("@prisma/client-runtime-utils/dist").Decimal;
             remaining: import("@prisma/client-runtime-utils/dist").Decimal;
-            rejectedReason: string | null;
             lastDeductionYearMonth: string | null;
         }[];
         loanApprovals: {
@@ -2948,10 +3929,10 @@ export declare class UsersController {
             reason: string | null;
             approvedById: string | null;
             approvedAt: Date | null;
+            rejectedReason: string | null;
             installmentCount: number;
             monthlyDeduction: import("@prisma/client-runtime-utils/dist").Decimal;
             remaining: import("@prisma/client-runtime-utils/dist").Decimal;
-            rejectedReason: string | null;
             lastDeductionYearMonth: string | null;
         }[];
         invoiceAuditEntries: {
@@ -3074,11 +4055,18 @@ export declare class UsersController {
             driverId: string;
             id: string;
             createdAt: Date;
+            startedAt: Date | null;
             customerId: string;
             completedAt: Date | null;
             instructionNote: string | null;
-            createdByUserId: string | null;
             completedByOrderId: string | null;
+            ackMinutes: number | null;
+            totalMinutes: number | null;
+            createdByUserId: string | null;
+            acknowledgedAt: Date | null;
+            firstAlertAt: Date | null;
+            escalatedAt: Date | null;
+            breachedAt: Date | null;
             parentDispatchId: string | null;
         }[];
         createdDispatches: {
@@ -3086,12 +4074,28 @@ export declare class UsersController {
             driverId: string;
             id: string;
             createdAt: Date;
+            startedAt: Date | null;
             customerId: string;
             completedAt: Date | null;
             instructionNote: string | null;
-            createdByUserId: string | null;
             completedByOrderId: string | null;
+            ackMinutes: number | null;
+            totalMinutes: number | null;
+            createdByUserId: string | null;
+            acknowledgedAt: Date | null;
+            firstAlertAt: Date | null;
+            escalatedAt: Date | null;
+            breachedAt: Date | null;
             parentDispatchId: string | null;
+        }[];
+        customerCollectionStatusUpdates: {
+            status: import(".prisma/client").$Enums.CustomerCollectionStatusKind;
+            id: string;
+            updatedAt: Date;
+            note: string | null;
+            customerId: string;
+            blocked: boolean;
+            updatedById: string | null;
         }[];
         _count: {
             role: number;
@@ -3136,7 +4140,9 @@ export declare class UsersController {
             debtHolds: number;
             debtHoldsDisbursed: number;
             driverDispatches: number;
+            driverMetrics: number;
             createdDispatches: number;
+            customerCollectionStatusUpdates: number;
         };
     }>;
     setStatus(id: string, dto: UpdateUserStatusDto, user: JwtUser, req: {
@@ -3160,11 +4166,27 @@ export declare class UsersController {
             isAdministrative: boolean;
             payrollRosterSortOrder: number | null;
         } | null;
+        driverMetrics: {
+            driverId: string;
+            date: Date;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            lateCount: number;
+            assignedCount: number;
+            acknowledgedCount: number;
+            completedCount: number;
+            breachedCount: number;
+            avgAckMinutes: number | null;
+            avgTotalMinutes: number | null;
+        }[];
         branchId: string | null;
         linkedCustomerId: string | null;
         password: string;
         id: string;
         username: string;
+        mustChangePassword: boolean;
+        passwordUpdatedAt: Date | null;
         fullName: string;
         employeeId: string | null;
         jobTitle: string | null;
@@ -3219,9 +4241,9 @@ export declare class UsersController {
             createdAt: Date;
             updatedAt: Date;
             customerId: string | null;
+            source: string | null;
             orderId: string | null;
             actorId: string | null;
-            source: string | null;
             action: string;
             resource: string;
             ip: string | null;
@@ -3260,6 +4282,7 @@ export declare class UsersController {
             transferredFromDriverId: string | null;
             subscriptionId: string | null;
             dispatchId: string | null;
+            dueDate: Date | null;
         }[];
         shiftsAsDriver: {
             status: import(".prisma/client").$Enums.ShiftStatus;
@@ -3345,12 +4368,12 @@ export declare class UsersController {
             updatedAt: Date;
             note: string | null;
             customerId: string;
-            orderId: string | null;
-            actorUserId: string | null;
-            category: import(".prisma/client").$Enums.DebtEntityCategory;
-            source: import(".prisma/client").$Enums.DebtSource;
-            refEntryId: string | null;
             sourceRef: string | null;
+            source: import(".prisma/client").$Enums.DebtSource;
+            actorUserId: string | null;
+            orderId: string | null;
+            category: import(".prisma/client").$Enums.DebtEntityCategory;
+            refEntryId: string | null;
         }[];
         bankDepositsUploaded: {
             status: import(".prisma/client").$Enums.BankDepositStatus;
@@ -3561,9 +4584,9 @@ export declare class UsersController {
             cancelledReason: string | null;
             sourceDriverId: string;
             targetDriverId: string;
-            executedById: string;
             totalAmount: import("@prisma/client-runtime-utils/dist").Decimal;
             orderCount: number;
+            executedById: string;
             executedByRole: import(".prisma/client").$Enums.SafariRole;
             sourceSignedAt: Date | null;
             targetSignedAt: Date | null;
@@ -3582,9 +4605,9 @@ export declare class UsersController {
             cancelledReason: string | null;
             sourceDriverId: string;
             targetDriverId: string;
-            executedById: string;
             totalAmount: import("@prisma/client-runtime-utils/dist").Decimal;
             orderCount: number;
+            executedById: string;
             executedByRole: import(".prisma/client").$Enums.SafariRole;
             sourceSignedAt: Date | null;
             targetSignedAt: Date | null;
@@ -3603,9 +4626,9 @@ export declare class UsersController {
             cancelledReason: string | null;
             sourceDriverId: string;
             targetDriverId: string;
-            executedById: string;
             totalAmount: import("@prisma/client-runtime-utils/dist").Decimal;
             orderCount: number;
+            executedById: string;
             executedByRole: import(".prisma/client").$Enums.SafariRole;
             sourceSignedAt: Date | null;
             targetSignedAt: Date | null;
@@ -3624,9 +4647,9 @@ export declare class UsersController {
             cancelledReason: string | null;
             sourceDriverId: string;
             targetDriverId: string;
-            executedById: string;
             totalAmount: import("@prisma/client-runtime-utils/dist").Decimal;
             orderCount: number;
+            executedById: string;
             executedByRole: import(".prisma/client").$Enums.SafariRole;
             sourceSignedAt: Date | null;
             targetSignedAt: Date | null;
@@ -3661,6 +4684,7 @@ export declare class UsersController {
             transferredFromDriverId: string | null;
             subscriptionId: string | null;
             dispatchId: string | null;
+            dueDate: Date | null;
         }[];
         attendanceLogs: {
             userId: string;
@@ -3687,8 +4711,8 @@ export declare class UsersController {
             endDate: Date;
             approvedById: string | null;
             approvedAt: Date | null;
-            rejectedReason: string | null;
             daysCount: number;
+            rejectedReason: string | null;
         }[];
         leaveApprovals: {
             status: import(".prisma/client").$Enums.LeaveStatus;
@@ -3702,8 +4726,8 @@ export declare class UsersController {
             endDate: Date;
             approvedById: string | null;
             approvedAt: Date | null;
-            rejectedReason: string | null;
             daysCount: number;
+            rejectedReason: string | null;
         }[];
         employeeLoans: {
             status: import(".prisma/client").$Enums.LoanStatus;
@@ -3715,10 +4739,10 @@ export declare class UsersController {
             reason: string | null;
             approvedById: string | null;
             approvedAt: Date | null;
+            rejectedReason: string | null;
             installmentCount: number;
             monthlyDeduction: import("@prisma/client-runtime-utils/dist").Decimal;
             remaining: import("@prisma/client-runtime-utils/dist").Decimal;
-            rejectedReason: string | null;
             lastDeductionYearMonth: string | null;
         }[];
         loanApprovals: {
@@ -3731,10 +4755,10 @@ export declare class UsersController {
             reason: string | null;
             approvedById: string | null;
             approvedAt: Date | null;
+            rejectedReason: string | null;
             installmentCount: number;
             monthlyDeduction: import("@prisma/client-runtime-utils/dist").Decimal;
             remaining: import("@prisma/client-runtime-utils/dist").Decimal;
-            rejectedReason: string | null;
             lastDeductionYearMonth: string | null;
         }[];
         invoiceAuditEntries: {
@@ -3857,11 +4881,18 @@ export declare class UsersController {
             driverId: string;
             id: string;
             createdAt: Date;
+            startedAt: Date | null;
             customerId: string;
             completedAt: Date | null;
             instructionNote: string | null;
-            createdByUserId: string | null;
             completedByOrderId: string | null;
+            ackMinutes: number | null;
+            totalMinutes: number | null;
+            createdByUserId: string | null;
+            acknowledgedAt: Date | null;
+            firstAlertAt: Date | null;
+            escalatedAt: Date | null;
+            breachedAt: Date | null;
             parentDispatchId: string | null;
         }[];
         createdDispatches: {
@@ -3869,12 +4900,28 @@ export declare class UsersController {
             driverId: string;
             id: string;
             createdAt: Date;
+            startedAt: Date | null;
             customerId: string;
             completedAt: Date | null;
             instructionNote: string | null;
-            createdByUserId: string | null;
             completedByOrderId: string | null;
+            ackMinutes: number | null;
+            totalMinutes: number | null;
+            createdByUserId: string | null;
+            acknowledgedAt: Date | null;
+            firstAlertAt: Date | null;
+            escalatedAt: Date | null;
+            breachedAt: Date | null;
             parentDispatchId: string | null;
+        }[];
+        customerCollectionStatusUpdates: {
+            status: import(".prisma/client").$Enums.CustomerCollectionStatusKind;
+            id: string;
+            updatedAt: Date;
+            note: string | null;
+            customerId: string;
+            blocked: boolean;
+            updatedById: string | null;
         }[];
         _count: {
             role: number;
@@ -3919,7 +4966,9 @@ export declare class UsersController {
             debtHolds: number;
             debtHoldsDisbursed: number;
             driverDispatches: number;
+            driverMetrics: number;
             createdDispatches: number;
+            customerCollectionStatusUpdates: number;
         };
     }>;
     updateSalaryDefaults(id: string, dto: UpdateSalaryDefaultsDto, user: JwtUser, req: {
@@ -3943,11 +4992,27 @@ export declare class UsersController {
             isAdministrative: boolean;
             payrollRosterSortOrder: number | null;
         } | null;
+        driverMetrics: {
+            driverId: string;
+            date: Date;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            lateCount: number;
+            assignedCount: number;
+            acknowledgedCount: number;
+            completedCount: number;
+            breachedCount: number;
+            avgAckMinutes: number | null;
+            avgTotalMinutes: number | null;
+        }[];
         branchId: string | null;
         linkedCustomerId: string | null;
         password: string;
         id: string;
         username: string;
+        mustChangePassword: boolean;
+        passwordUpdatedAt: Date | null;
         fullName: string;
         employeeId: string | null;
         jobTitle: string | null;
@@ -4002,9 +5067,9 @@ export declare class UsersController {
             createdAt: Date;
             updatedAt: Date;
             customerId: string | null;
+            source: string | null;
             orderId: string | null;
             actorId: string | null;
-            source: string | null;
             action: string;
             resource: string;
             ip: string | null;
@@ -4043,6 +5108,7 @@ export declare class UsersController {
             transferredFromDriverId: string | null;
             subscriptionId: string | null;
             dispatchId: string | null;
+            dueDate: Date | null;
         }[];
         shiftsAsDriver: {
             status: import(".prisma/client").$Enums.ShiftStatus;
@@ -4128,12 +5194,12 @@ export declare class UsersController {
             updatedAt: Date;
             note: string | null;
             customerId: string;
-            orderId: string | null;
-            actorUserId: string | null;
-            category: import(".prisma/client").$Enums.DebtEntityCategory;
-            source: import(".prisma/client").$Enums.DebtSource;
-            refEntryId: string | null;
             sourceRef: string | null;
+            source: import(".prisma/client").$Enums.DebtSource;
+            actorUserId: string | null;
+            orderId: string | null;
+            category: import(".prisma/client").$Enums.DebtEntityCategory;
+            refEntryId: string | null;
         }[];
         bankDepositsUploaded: {
             status: import(".prisma/client").$Enums.BankDepositStatus;
@@ -4344,9 +5410,9 @@ export declare class UsersController {
             cancelledReason: string | null;
             sourceDriverId: string;
             targetDriverId: string;
-            executedById: string;
             totalAmount: import("@prisma/client-runtime-utils/dist").Decimal;
             orderCount: number;
+            executedById: string;
             executedByRole: import(".prisma/client").$Enums.SafariRole;
             sourceSignedAt: Date | null;
             targetSignedAt: Date | null;
@@ -4365,9 +5431,9 @@ export declare class UsersController {
             cancelledReason: string | null;
             sourceDriverId: string;
             targetDriverId: string;
-            executedById: string;
             totalAmount: import("@prisma/client-runtime-utils/dist").Decimal;
             orderCount: number;
+            executedById: string;
             executedByRole: import(".prisma/client").$Enums.SafariRole;
             sourceSignedAt: Date | null;
             targetSignedAt: Date | null;
@@ -4386,9 +5452,9 @@ export declare class UsersController {
             cancelledReason: string | null;
             sourceDriverId: string;
             targetDriverId: string;
-            executedById: string;
             totalAmount: import("@prisma/client-runtime-utils/dist").Decimal;
             orderCount: number;
+            executedById: string;
             executedByRole: import(".prisma/client").$Enums.SafariRole;
             sourceSignedAt: Date | null;
             targetSignedAt: Date | null;
@@ -4407,9 +5473,9 @@ export declare class UsersController {
             cancelledReason: string | null;
             sourceDriverId: string;
             targetDriverId: string;
-            executedById: string;
             totalAmount: import("@prisma/client-runtime-utils/dist").Decimal;
             orderCount: number;
+            executedById: string;
             executedByRole: import(".prisma/client").$Enums.SafariRole;
             sourceSignedAt: Date | null;
             targetSignedAt: Date | null;
@@ -4444,6 +5510,7 @@ export declare class UsersController {
             transferredFromDriverId: string | null;
             subscriptionId: string | null;
             dispatchId: string | null;
+            dueDate: Date | null;
         }[];
         attendanceLogs: {
             userId: string;
@@ -4470,8 +5537,8 @@ export declare class UsersController {
             endDate: Date;
             approvedById: string | null;
             approvedAt: Date | null;
-            rejectedReason: string | null;
             daysCount: number;
+            rejectedReason: string | null;
         }[];
         leaveApprovals: {
             status: import(".prisma/client").$Enums.LeaveStatus;
@@ -4485,8 +5552,8 @@ export declare class UsersController {
             endDate: Date;
             approvedById: string | null;
             approvedAt: Date | null;
-            rejectedReason: string | null;
             daysCount: number;
+            rejectedReason: string | null;
         }[];
         employeeLoans: {
             status: import(".prisma/client").$Enums.LoanStatus;
@@ -4498,10 +5565,10 @@ export declare class UsersController {
             reason: string | null;
             approvedById: string | null;
             approvedAt: Date | null;
+            rejectedReason: string | null;
             installmentCount: number;
             monthlyDeduction: import("@prisma/client-runtime-utils/dist").Decimal;
             remaining: import("@prisma/client-runtime-utils/dist").Decimal;
-            rejectedReason: string | null;
             lastDeductionYearMonth: string | null;
         }[];
         loanApprovals: {
@@ -4514,10 +5581,10 @@ export declare class UsersController {
             reason: string | null;
             approvedById: string | null;
             approvedAt: Date | null;
+            rejectedReason: string | null;
             installmentCount: number;
             monthlyDeduction: import("@prisma/client-runtime-utils/dist").Decimal;
             remaining: import("@prisma/client-runtime-utils/dist").Decimal;
-            rejectedReason: string | null;
             lastDeductionYearMonth: string | null;
         }[];
         invoiceAuditEntries: {
@@ -4640,11 +5707,18 @@ export declare class UsersController {
             driverId: string;
             id: string;
             createdAt: Date;
+            startedAt: Date | null;
             customerId: string;
             completedAt: Date | null;
             instructionNote: string | null;
-            createdByUserId: string | null;
             completedByOrderId: string | null;
+            ackMinutes: number | null;
+            totalMinutes: number | null;
+            createdByUserId: string | null;
+            acknowledgedAt: Date | null;
+            firstAlertAt: Date | null;
+            escalatedAt: Date | null;
+            breachedAt: Date | null;
             parentDispatchId: string | null;
         }[];
         createdDispatches: {
@@ -4652,12 +5726,28 @@ export declare class UsersController {
             driverId: string;
             id: string;
             createdAt: Date;
+            startedAt: Date | null;
             customerId: string;
             completedAt: Date | null;
             instructionNote: string | null;
-            createdByUserId: string | null;
             completedByOrderId: string | null;
+            ackMinutes: number | null;
+            totalMinutes: number | null;
+            createdByUserId: string | null;
+            acknowledgedAt: Date | null;
+            firstAlertAt: Date | null;
+            escalatedAt: Date | null;
+            breachedAt: Date | null;
             parentDispatchId: string | null;
+        }[];
+        customerCollectionStatusUpdates: {
+            status: import(".prisma/client").$Enums.CustomerCollectionStatusKind;
+            id: string;
+            updatedAt: Date;
+            note: string | null;
+            customerId: string;
+            blocked: boolean;
+            updatedById: string | null;
         }[];
         _count: {
             role: number;
@@ -4702,7 +5792,9 @@ export declare class UsersController {
             debtHolds: number;
             debtHoldsDisbursed: number;
             driverDispatches: number;
+            driverMetrics: number;
             createdDispatches: number;
+            customerCollectionStatusUpdates: number;
         };
     }>;
     remove(id: string, user: JwtUser, req: {

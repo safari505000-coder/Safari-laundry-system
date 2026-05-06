@@ -18,6 +18,7 @@ const serials_module_1 = require("../serials/serials.module");
 const audit_service_1 = require("../common/audit/audit.service");
 const customer_block_guard_1 = require("../common/guards/customer-block.guard");
 const customer_blocking_service_1 = require("../common/services/customer-blocking.service");
+const outstanding_module_1 = require("../finance/outstanding/outstanding.module");
 const orders_controller_1 = require("./orders.controller");
 const public_invoice_controller_1 = require("./public-invoice.controller");
 const orders_service_1 = require("./orders.service");
@@ -35,6 +36,7 @@ exports.OrdersModule = OrdersModule = __decorate([
             customer_notifications_module_1.CustomerNotificationsModule,
             serials_module_1.SerialsModule,
             inventory_module_1.InventoryModule,
+            (0, common_1.forwardRef)(() => outstanding_module_1.OutstandingModule),
         ],
         controllers: [orders_controller_1.OrdersController, public_invoice_controller_1.PublicInvoiceController],
         providers: [

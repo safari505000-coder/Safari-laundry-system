@@ -1,6 +1,7 @@
 import type { NavGroup } from '@/modules/shared/nav/nav-types';
 import { G } from '@/modules/shared/nav/nav-groups';
 import {
+  driverTasksItem,
   driverFieldExpensesItem,
   driverPendingInvoicesItem,
   myCashReceiptsItem,
@@ -26,6 +27,7 @@ export const driverSidebarNavGroups: NavGroup[] = [
   {
     ...G.main,
     items: [
+      driverTasksItem,
       posItem,
       myDepositsItem,
       myCashReceiptsItem,

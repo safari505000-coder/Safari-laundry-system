@@ -1,5 +1,6 @@
 import { PosPaymentMethod, Prisma } from "@prisma/client";
 import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
+import { DoubleEntryJournalService } from '../general-ledger/double-entry-journal.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { OrdersService } from '../orders/orders.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -16,10 +17,11 @@ export type OrderWalletSettlementPrefetch = {
 export declare class CustomerLedgerService {
     private readonly prisma;
     private readonly generalLedger;
+    private readonly journal;
     private readonly inventory;
     private readonly orders;
     private readonly logger;
-    constructor(prisma: PrismaService, generalLedger: GeneralLedgerService, inventory: InventoryService, orders: OrdersService);
+    constructor(prisma: PrismaService, generalLedger: GeneralLedgerService, journal: DoubleEntryJournalService, inventory: InventoryService, orders: OrdersService);
     private resolveFallbackOwnerIdTx;
     autoReconcileUnpaidInvoicesFromPrepaidBalanceTx(tx: PrismaTx, customerId: string, performedByUserId: string | null | undefined): Promise<{
         paidOrderIds: string[];

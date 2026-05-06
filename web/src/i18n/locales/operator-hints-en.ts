@@ -118,6 +118,8 @@ export const operatorHints = {
       'Invoice/cash operational reports and AI insights. Each tab enforces its own permissions and date rules.',
     unifiedLedger:
       'Append-only financial event stream. Filters help audit; exports for accountants.',
+    journalStatement:
+      'Double-entry customer statement preview. Dev-enabled; production can gate it with VITE_ENABLE_JOURNAL_STATEMENT=true.',
     payroll:
       'Payroll batches and roster print. Payslip print opens in a new tab without sidebar.',
     systemSettings:

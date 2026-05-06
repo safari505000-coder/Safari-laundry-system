@@ -13,6 +13,7 @@ import {
   ClipboardList,
   FileText,
   Hash,
+  Headphones,
   History,
   CirclePlus,
   FileCheck2,
@@ -37,6 +38,7 @@ import {
   Sparkles,
   Truck,
   Users,
+  Wallet,
   WalletCards,
   Car,
   Fuel,
@@ -51,6 +53,14 @@ export const posItem: NavItem = {
   icon: ShoppingCart,
   roles: ['DRIVER', 'MANAGER'],
   permission: AppPermission.CREATE_INVOICE,
+};
+
+export const driverTasksItem: NavItem = {
+  to: '/driver/tasks',
+  labelKey: 'nav.driverTasks',
+  icon: ClipboardList,
+  roles: ['DRIVER'],
+  permission: AppPermission.VIEW_OPERATIONS,
 };
 
 export const manageItemsItem: NavItem = {
@@ -156,6 +166,29 @@ export const customerPortal360Item: NavItem = {
   icon: Users,
   roles: ['CUSTOMER'],
   permission: AppPermission.VIEW_CUSTOMERS,
+};
+
+/**
+ * V19.x — Call-Center Customer 360 Dashboard. Single-entry workspace
+ * for CC + supervisor: customer search → 360 with tabs (Overview /
+ * Dispatch / Risk / Audit). Sits at the top of the CC sidebar so
+ * agents reach it as the first surface every shift.
+ */
+export const ccDashboardItem: NavItem = {
+  to: '/cc/dashboard',
+  labelKey: 'nav.ccDashboard',
+  icon: Headphones,
+  roles: ['CALL_CENTER', 'CALL_CENTER_SUPERVISOR'],
+  permission: AppPermission.VIEW_CUSTOMERS,
+};
+
+/** V19.x — AR / workload snapshot tower (read-only aggregates). */
+export const controlTowerItem: NavItem = {
+  to: '/cc/control-tower',
+  labelKey: 'nav.controlTower',
+  icon: Radar,
+  roles: ['OWNER', 'CALL_CENTER', 'CALL_CENTER_SUPERVISOR'],
+  permission: AppPermission.VIEW_DEBTS,
 };
 
 /** PBX / dialer deep-link handoff — مركز الاتصال + المشرف + التنفيذي. */
@@ -669,6 +702,26 @@ export const unpaidInvoicesItem: NavItem = {
   permission: AppPermission.VIEW_DEBTS,
 };
 
+/**
+ * V19.x — "الذمم المدينة" (Outstanding Payments) — customer-level
+ * Accounts-Receivable view used daily by the Call-Center for manual
+ * collections triage. Read access mirrors `unpaidInvoicesItem`; the
+ * page is the single mutation surface for the manual block toggle.
+ */
+export const outstandingPaymentsItem: NavItem = {
+  to: '/cc/outstanding',
+  labelKey: 'nav.outstandingPayments',
+  icon: Wallet,
+  roles: [
+    'OWNER',
+    'GENERAL_MANAGER',
+    'ACCOUNTANT',
+    'CALL_CENTER',
+    'CALL_CENTER_SUPERVISOR',
+  ],
+  permission: AppPermission.VIEW_DEBTS,
+};
+
 export const salesSummaryReportItem: NavItem = {
   to: '/reports/sales-summary',
   labelKey: 'nav.salesSummaryReport',
@@ -748,6 +801,14 @@ export const unifiedLedgerItem: NavItem = {
   icon: BookText,
   roles: ['ACCOUNTANT', 'OWNER', 'GENERAL_MANAGER'],
   permission: AppPermission.VIEW_FINANCIAL_REPORTS,
+};
+
+export const journalStatementItem: NavItem = {
+  to: '/customer-statement-journal',
+  labelKey: 'nav.journalStatement',
+  icon: BookText,
+  roles: ['CALL_CENTER', 'ACCOUNTANT', 'GENERAL_MANAGER'],
+  permission: AppPermission.VIEW_DEBTS,
 };
 
 /**

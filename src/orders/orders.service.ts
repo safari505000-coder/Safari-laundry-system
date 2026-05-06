@@ -28,6 +28,7 @@ import {
 import type { CreatePaymentLinkResult } from '../common/services/payments.service';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { CustomerBlockingService } from '../common/services/customer-blocking.service';
+import { OutstandingService } from '../finance/outstanding/outstanding.service';
 import { PaymentsService } from '../common/services/payments.service';
 import { CustomerNotificationsService } from '../customer-notifications/customer-notifications.service';
 import { CustomerLedgerService } from '../customer-ledger/customer-ledger.service';
@@ -42,6 +43,7 @@ import {
   getCustomerDebtSnapshotTotalKd,
   getCustomerNetDebtFromDebtLedgerAgg,
 } from '../finance/debt-customer-aggregates.util';
+import { isRealDebtLedgerPayment } from '../finance/debt-ledger-payment-origin.util';
 import {
   buildDebtKdBreakdownTrace,
   type DebtKdBreakdownTrace,
@@ -192,6 +194,8 @@ export class OrdersService {
     private readonly inventory: InventoryService,
     private readonly jwt: JwtService,
     private readonly customerBlocking: CustomerBlockingService,
+    @Inject(forwardRef(() => OutstandingService))
+    private readonly outstanding: OutstandingService,
     private readonly auditLogs: AuditLogsService,
     private readonly events: EventEmitter2,
   ) {}
@@ -617,6 +621,10 @@ export class OrdersService {
         dto,
         phoneCompact,
       );
+      // V19.x — Outstanding Payments fail-closed gate: refuse to
+      // create an invoice for a manually-blocked customer. Manual
+      // toggling is the ONLY path that flips this flag.
+      await this.outstanding.assertNotBlocked(customerId);
       const serialNumber = await this.serialCounter.stampOrderSerial(
         tx,
         driverUserId,
@@ -711,6 +719,7 @@ export class OrdersService {
             dto,
             phoneCompact,
           );
+          await this.outstanding.assertNotBlocked(customerId);
 
           const walletRow = await tx.customerWallet.findUnique({
             where: { customerId },
@@ -1005,6 +1014,7 @@ export class OrdersService {
           customerDto,
           phoneCompact,
         );
+        await this.outstanding.assertNotBlocked(customerId);
 
         const bundle = await tx.posPaymentBundle.create({
           data: {
@@ -1155,6 +1165,7 @@ export class OrdersService {
               address: dto.customerAddress?.trim() || null,
             },
           });
+      await this.outstanding.assertNotBlocked(customer.id);
       const serialNumber = await this.serialCounter.stampOrderSerial(
         tx,
         dto.driverId ?? null,
@@ -1458,6 +1469,7 @@ export class OrdersService {
     branchId: string | null = null,
     actor?: JwtUser,
   ): Promise<Prisma.Decimal> {
+    console.log('[ORDERS SCOPE]', branchId, actor?.role ?? null);
     const isDriver = actor?.role === SafariRole.DRIVER;
     const effectiveBranchId =
       isDriver ? null
@@ -1516,6 +1528,112 @@ export class OrdersService {
     return (unpaidAgg._sum.totalPrice ?? new Prisma.Decimal(0)).plus(
       debtOpenTotal,
     );
+  }
+
+  /**
+   * Minimal order rows feeding AR / Outstanding grouping — **same membership**
+   * as {@link listUnpaidCollectionOrders} (`filteredRows`). Optional bounds
+   * narrow the set for UI filters; omit `createdAt` for all-time (aligns with
+   * {@link sumCollectionsDebtTotalKd} / red KPI).
+   */
+  async listCollectionsReceivableAggOrders(args: {
+    branchId: string | null;
+    actor?: JwtUser;
+    createdAt?: { gte?: Date; lte?: Date };
+    driverId?: string;
+    customerId?: string;
+  }): Promise<
+    Array<{
+      id: string;
+      customerId: string;
+      driverId: string | null;
+      totalPrice: Prisma.Decimal;
+      createdAt: Date;
+      dueDate: Date | null;
+    }>
+  > {
+    const { branchId, actor, createdAt, driverId, customerId } = args;
+    console.log('[ORDERS SCOPE]', branchId, actor?.role ?? null);
+    const isDriver = actor?.role === SafariRole.DRIVER;
+    const effectiveBranchId =
+      isDriver ? null
+      : branchId ??
+        (actor?.role === SafariRole.MANAGER && actor.branchId ?
+          actor.branchId
+        : null);
+
+    const branchWhere: Prisma.OrderWhereInput | undefined = isDriver
+      ? { driverId: actor!.userId }
+      : effectiveBranchId
+        ? {
+            OR: [
+              { driver: { is: { branchId: effectiveBranchId } } },
+              {
+                driverId: null,
+                customer: { is: { originBranchId: effectiveBranchId } },
+              },
+            ],
+          }
+        : undefined;
+
+    const createdFilter =
+      createdAt && (createdAt.gte || createdAt.lte)
+        ? ({
+            createdAt: {
+              ...(createdAt.gte ? { gte: createdAt.gte } : {}),
+              ...(createdAt.lte ? { lte: createdAt.lte } : {}),
+            },
+          } satisfies Prisma.OrderWhereInput)
+        : {};
+
+    const rows = await this.prisma.order.findMany({
+      where: {
+        status: { not: OrderStatus.CANCELED },
+        OR: [
+          { cashStatus: CashStatus.UNPAID },
+          { posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT },
+        ],
+        ...(branchWhere ?? {}),
+        ...createdFilter,
+        ...(driverId ? { driverId } : {}),
+        ...(customerId ? { customerId } : {}),
+      },
+      select: {
+        id: true,
+        customerId: true,
+        driverId: true,
+        totalPrice: true,
+        cashStatus: true,
+        posPaymentMethod: true,
+        createdAt: true,
+        dueDate: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const debtCandidates = rows.filter(
+      (r) => r.posPaymentMethod === PosPaymentMethod.DEBT_ON_ACCOUNT,
+    );
+    const openDebtOrderIds = await this.resolveOpenDebtOrderIds(
+      debtCandidates.map((r) => ({ orderId: r.id, customerId: r.customerId })),
+    );
+
+    return rows
+      .filter((r) => {
+        if (r.cashStatus === CashStatus.UNPAID) return true;
+        if (r.posPaymentMethod === PosPaymentMethod.DEBT_ON_ACCOUNT) {
+          return openDebtOrderIds.has(r.id);
+        }
+        return false;
+      })
+      .map((r) => ({
+        id: r.id,
+        customerId: r.customerId,
+        driverId: r.driverId,
+        totalPrice: r.totalPrice,
+        createdAt: r.createdAt,
+        dueDate: r.dueDate,
+      }));
   }
 
   /**
@@ -2232,33 +2350,47 @@ export class OrdersService {
     if (allOrderIds.length === 0) return openIds;
 
     // 2) Per-order direct PAYMENTs.
-    const perOrderPayments = await db.debtLedgerEntry.groupBy({
-      by: ['orderId'],
+    const perOrderPayments = await db.debtLedgerEntry.findMany({
       where: {
         source: DebtSource.PAYMENT,
         orderId: { in: allOrderIds },
       },
-      _sum: { amount: true },
+      select: {
+        orderId: true,
+        source: true,
+        amount: true,
+        actorUserId: true,
+        sourceRef: true,
+        note: true,
+      },
     });
     for (const g of perOrderPayments) {
       if (!g.orderId) continue;
-      const paid = Number.parseFloat(g._sum.amount?.toString() ?? '0');
+      if (!isRealDebtLedgerPayment(g)) continue;
+      const paid = Number.parseFloat(g.amount?.toString() ?? '0');
       const cur = perOrder.get(g.orderId);
-      if (cur && Number.isFinite(paid)) cur.paid = paid;
+      if (cur && Number.isFinite(paid)) cur.paid += paid;
     }
 
     // 3) Customer-wide totals to derive the still-unallocated pool.
-    const customerTotals = await db.debtLedgerEntry.groupBy({
-      by: ['customerId', 'source'],
+    const customerTotals = await db.debtLedgerEntry.findMany({
       where: { customerId: { in: customerIds } },
-      _sum: { amount: true },
+      select: {
+        customerId: true,
+        source: true,
+        amount: true,
+        actorUserId: true,
+        sourceRef: true,
+        note: true,
+      },
     });
     const debtByCust = new Map<string, number>();
     const paidByCust = new Map<string, number>();
     for (const g of customerTotals) {
-      const v = Number.parseFloat(g._sum.amount?.toString() ?? '0');
+      const v = Number.parseFloat(g.amount?.toString() ?? '0');
       if (!Number.isFinite(v)) continue;
       if (g.source === DebtSource.PAYMENT) {
+        if (!isRealDebtLedgerPayment(g)) continue;
         paidByCust.set(g.customerId, (paidByCust.get(g.customerId) ?? 0) + v);
       } else {
         debtByCust.set(g.customerId, (debtByCust.get(g.customerId) ?? 0) + v);

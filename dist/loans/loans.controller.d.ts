@@ -34,10 +34,10 @@ export declare class LoansController {
         reason: string | null;
         approvedById: string | null;
         approvedAt: Date | null;
+        rejectedReason: string | null;
         installmentCount: number;
         monthlyDeduction: import("@prisma/client-runtime-utils/dist").Decimal;
         remaining: import("@prisma/client-runtime-utils/dist").Decimal;
-        rejectedReason: string | null;
         lastDeductionYearMonth: string | null;
     }>;
     list(q: ListLoansQueryDto, user: JwtUser): Promise<({
@@ -68,10 +68,10 @@ export declare class LoansController {
         reason: string | null;
         approvedById: string | null;
         approvedAt: Date | null;
+        rejectedReason: string | null;
         installmentCount: number;
         monthlyDeduction: import("@prisma/client-runtime-utils/dist").Decimal;
         remaining: import("@prisma/client-runtime-utils/dist").Decimal;
-        rejectedReason: string | null;
         lastDeductionYearMonth: string | null;
     })[]>;
     mine(user: JwtUser): Promise<({
@@ -102,10 +102,10 @@ export declare class LoansController {
         reason: string | null;
         approvedById: string | null;
         approvedAt: Date | null;
+        rejectedReason: string | null;
         installmentCount: number;
         monthlyDeduction: import("@prisma/client-runtime-utils/dist").Decimal;
         remaining: import("@prisma/client-runtime-utils/dist").Decimal;
-        rejectedReason: string | null;
         lastDeductionYearMonth: string | null;
     })[]>;
     findOne(id: string, user: JwtUser): Promise<{
@@ -136,10 +136,10 @@ export declare class LoansController {
         reason: string | null;
         approvedById: string | null;
         approvedAt: Date | null;
+        rejectedReason: string | null;
         installmentCount: number;
         monthlyDeduction: import("@prisma/client-runtime-utils/dist").Decimal;
         remaining: import("@prisma/client-runtime-utils/dist").Decimal;
-        rejectedReason: string | null;
         lastDeductionYearMonth: string | null;
     }>;
     approve(id: string, user: JwtUser): Promise<{
@@ -170,10 +170,10 @@ export declare class LoansController {
         reason: string | null;
         approvedById: string | null;
         approvedAt: Date | null;
+        rejectedReason: string | null;
         installmentCount: number;
         monthlyDeduction: import("@prisma/client-runtime-utils/dist").Decimal;
         remaining: import("@prisma/client-runtime-utils/dist").Decimal;
-        rejectedReason: string | null;
         lastDeductionYearMonth: string | null;
     }>;
     reject(id: string, dto: RejectLoanDto, user: JwtUser): Promise<{
@@ -204,10 +204,10 @@ export declare class LoansController {
         reason: string | null;
         approvedById: string | null;
         approvedAt: Date | null;
+        rejectedReason: string | null;
         installmentCount: number;
         monthlyDeduction: import("@prisma/client-runtime-utils/dist").Decimal;
         remaining: import("@prisma/client-runtime-utils/dist").Decimal;
-        rejectedReason: string | null;
         lastDeductionYearMonth: string | null;
     }>;
     deduct(id: string, dto: DeductLoanDto, user: JwtUser): Promise<{
@@ -238,10 +238,10 @@ export declare class LoansController {
         reason: string | null;
         approvedById: string | null;
         approvedAt: Date | null;
+        rejectedReason: string | null;
         installmentCount: number;
         monthlyDeduction: import("@prisma/client-runtime-utils/dist").Decimal;
         remaining: import("@prisma/client-runtime-utils/dist").Decimal;
-        rejectedReason: string | null;
         lastDeductionYearMonth: string | null;
     }>;
 }

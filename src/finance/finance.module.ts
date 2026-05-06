@@ -7,6 +7,7 @@ import { BankDepositsService } from './bank-deposits.service';
 import { DepositsController } from './deposits.controller';
 import { DepositsService } from './deposits.service';
 import { FinanceController } from './finance.controller';
+import { JournalController } from './journal.controller';
 import { FinanceService } from './finance.service';
 import { CashService } from './services/cash.service';
 import { DebtService } from './services/debt.service';
@@ -25,6 +26,7 @@ import { LedgerProjectionService } from './ledger/ledger-projection.service';
   imports: [PrismaModule, PaymentsModule, GeneralLedgerModule],
   controllers: [
     FinanceController,
+    JournalController,
     BankDepositsController,
     DepositsController,
     LedgerController,

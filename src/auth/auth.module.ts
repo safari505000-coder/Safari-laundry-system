@@ -6,11 +6,13 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { JWT_SECRET_DEV_FALLBACK } from '../common/constants/jwt-secret-fallback';
 import { FinanceModule } from '../finance/finance.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { UsersModule } from '../users/users.module';
 import { OperatingHoursModule } from '../system/operating-hours.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { BcryptService } from './bcrypt.service';
 import { GeneralManagerReadOnlyGuard } from './guards/general-manager-read-only.guard';
+import { PasswordChangeScopeGuard } from './guards/password-change-scope.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { PermissionsGuard } from './permissions/permissions.guard';
@@ -21,6 +23,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     PrismaModule,
     FinanceModule,
     OperatingHoursModule,
+    UsersModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.register({
       secret: process.env.JWT_SECRET ?? JWT_SECRET_DEV_FALLBACK,
@@ -50,6 +53,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     BcryptService,
     JwtStrategy,
     JwtAuthGuard,
+    PasswordChangeScopeGuard,
     GeneralManagerReadOnlyGuard,
     RolesGuard,
     PermissionsGuard,
@@ -60,6 +64,10 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: PasswordChangeScopeGuard,
     },
     {
       provide: APP_GUARD,

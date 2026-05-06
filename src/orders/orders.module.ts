@@ -9,6 +9,7 @@ import { SerialsModule } from '../serials/serials.module';
 import { AuditService } from '../common/audit/audit.service';
 import { CustomerBlockGuard } from '../common/guards/customer-block.guard';
 import { CustomerBlockingService } from '../common/services/customer-blocking.service';
+import { OutstandingModule } from '../finance/outstanding/outstanding.module';
 import { OrdersController } from './orders.controller';
 import { PublicInvoiceController } from './public-invoice.controller';
 import { OrdersService } from './orders.service';
@@ -23,6 +24,7 @@ import { StaleQuickOrdersCronService } from './stale-quick-orders.cron';
     CustomerNotificationsModule,
     SerialsModule,
     InventoryModule,
+    forwardRef(() => OutstandingModule),
   ],
   controllers: [OrdersController, PublicInvoiceController],
   providers: [

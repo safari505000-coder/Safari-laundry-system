@@ -3,10 +3,14 @@ import { G } from '@/modules/shared/nav/nav-groups';
 import {
   allInvoicesItem,
   callIncomingItem,
+  ccDashboardItem,
+  controlTowerItem,
   collectionsItem,
   customersItem,
   driverMonitorItem,
   feedbackInboxItem,
+  journalStatementItem,
+  outstandingPaymentsItem,
   subscribersItem,
   unpaidInvoicesItem,
 } from '@/modules/shared/nav/nav-items';
@@ -33,7 +37,14 @@ export const callCenterSidebarNavGroups: NavGroup[] = [
   {
     ...G.main,
     items: [
+      // V19.x — single-entry CC dashboard sits at the top: search →
+      // 360 with dispatch / risk / audit tabs. Everything below is
+      // legacy / specialised (CRM directory, PBX, debt tracker, etc.)
+      // and stays for power users until parity with the new dashboard.
+      ccDashboardItem,
+      controlTowerItem,
       customersItem,
+      journalStatementItem,
       callIncomingItem,
       collectionsItem,
       feedbackInboxItem,
@@ -42,7 +53,10 @@ export const callCenterSidebarNavGroups: NavGroup[] = [
   },
   {
     ...G.invoices,
-    items: [allInvoicesItem, unpaidInvoicesItem],
+    // V19.x — Outstanding Payments lives next to the unpaid-invoices
+    // tracker so the CC can pivot between per-invoice and per-customer
+    // collection workflows without leaving the Invoices group.
+    items: [allInvoicesItem, unpaidInvoicesItem, outstandingPaymentsItem],
   },
   // V19.14 — driver tracking map. Call Center supervises field ops, so
   // seeing which drivers are on shift / where they were last anchored

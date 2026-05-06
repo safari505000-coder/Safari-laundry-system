@@ -36,4 +36,7 @@ export enum AppPermission {
   MANAGE_DISPATCH = 'dispatch.manage',
   VIEW_DISPATCH = 'dispatch.view',
   MANAGE_CUSTOMER_BLOCK = 'customers.block.manage',
+
+  /** Reset staff passwords (single/bulk); does NOT grant unrelated HR edits. */
+  MANAGE_USERS = 'users.manage',
 }

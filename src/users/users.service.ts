@@ -4,13 +4,16 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
-import { Prisma, SafariRole } from '@prisma/client';
+import { AuditStatus, Prisma, SafariRole } from '@prisma/client';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { assertPasswordStrength } from './password-policy';
 
 const userPublicSelect = {
   id: true,
@@ -32,6 +35,8 @@ const userPublicSelect = {
   payrollRosterLineOrder: true,
   bankName: true,
   bankIban: true,
+  mustChangePassword: true,
+  passwordUpdatedAt: true,
   role: { select: { id: true, name: true } },
   branch: { select: { id: true, name: true, location: true } },
 };
@@ -43,6 +48,7 @@ export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly permissionsService: PermissionsService,
+    private readonly auditLogs: AuditLogsService,
   ) {}
 
   private async resolveRoleId(safariRole: SafariRole): Promise<string> {
@@ -209,7 +215,10 @@ export class UsersService {
         { connect: { id: branchPatch } };
     }
     if (dto.password !== undefined) {
+      assertPasswordStrength(dto.password);
       data.password = await bcrypt.hash(dto.password, 10);
+      data.mustChangePassword = false;
+      data.passwordUpdatedAt = new Date();
     }
     if (dto.payrollRosterLineOrder !== undefined) {
       data.payrollRosterLineOrder = dto.payrollRosterLineOrder;
@@ -359,5 +368,123 @@ export class UsersService {
       throw e;
     }
     return { id, deleted: true };
+  }
+
+  async resetPassword(
+    targetUserId: string,
+    newPassword: string,
+    actorUserId: string,
+    actorRole: string,
+  ): Promise<UserPublic> {
+    assertPasswordStrength(newPassword);
+    const target = await this.prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: { id: true, safariRole: true },
+    });
+    if (!target) {
+      throw new NotFoundException('User not found');
+    }
+    if (target.safariRole === SafariRole.OWNER) {
+      const actor = await this.prisma.user.findUnique({
+        where: { id: actorUserId },
+        select: { safariRole: true },
+      });
+      if (actor?.safariRole !== SafariRole.OWNER) {
+        throw new ForbiddenException(
+          'Only OWNER may reset another OWNER password.',
+        );
+      }
+    }
+    const hash = await bcrypt.hash(newPassword, 10);
+    const now = new Date();
+    await this.prisma.$transaction([
+      this.prisma.refreshToken.updateMany({
+        where: { userId: targetUserId, revokedAt: null },
+        data: { revokedAt: now },
+      }),
+      this.prisma.user.update({
+        where: { id: targetUserId },
+        data: {
+          password: hash,
+          mustChangePassword: true,
+          passwordUpdatedAt: now,
+        },
+      }),
+    ]);
+    this.auditLogs.log({
+      userId: actorUserId,
+      role: actorRole,
+      action: 'USER_PASSWORD_RESET',
+      resource: 'users',
+      endpoint: null,
+      method: null,
+      status: AuditStatus.SUCCESS,
+      changes: {
+        actorUserId,
+        targetUserId,
+      },
+    });
+    return this.findOne(targetUserId);
+  }
+
+  async resetPasswordsBulk(
+    userIds: string[],
+    newPassword: string,
+    actorUserId: string,
+    actorRole: string,
+  ): Promise<{ updated: number }> {
+    const unique = [...new Set(userIds)];
+    let updated = 0;
+    for (const id of unique) {
+      await this.resetPassword(id, newPassword, actorUserId, actorRole);
+      updated += 1;
+    }
+    return { updated };
+  }
+
+  async forceChangePassword(
+    userId: string,
+    oldPassword: string,
+    newPassword: string,
+  ): Promise<void> {
+    assertPasswordStrength(newPassword);
+    const row = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, password: true },
+    });
+    if (!row) {
+      throw new NotFoundException('User not found');
+    }
+    const valid = await bcrypt.compare(oldPassword, row.password);
+    if (!valid) {
+      throw new UnauthorizedException('Current password is incorrect');
+    }
+    const hash = await bcrypt.hash(newPassword, 10);
+    const now = new Date();
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        password: hash,
+        mustChangePassword: false,
+        passwordUpdatedAt: now,
+      },
+    });
+    const actor = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { safariRole: true },
+    });
+    this.auditLogs.log({
+      userId,
+      role: actor?.safariRole ?? null,
+      action: 'USER_PASSWORD_CHANGED',
+      resource: 'auth',
+      endpoint: null,
+      method: null,
+      status: AuditStatus.SUCCESS,
+      changes: {
+        actorUserId: userId,
+        targetUserId: userId,
+      },
+    });
   }
 }

@@ -35,8 +35,8 @@ export declare class LeavesController {
         endDate: Date;
         approvedById: string | null;
         approvedAt: Date | null;
-        rejectedReason: string | null;
         daysCount: number;
+        rejectedReason: string | null;
     }>;
     list(q: ListLeavesQueryDto, user: JwtUser): Promise<({
         user: {
@@ -68,8 +68,8 @@ export declare class LeavesController {
         endDate: Date;
         approvedById: string | null;
         approvedAt: Date | null;
-        rejectedReason: string | null;
         daysCount: number;
+        rejectedReason: string | null;
     })[]>;
     mine(user: JwtUser): Promise<({
         user: {
@@ -101,8 +101,8 @@ export declare class LeavesController {
         endDate: Date;
         approvedById: string | null;
         approvedAt: Date | null;
-        rejectedReason: string | null;
         daysCount: number;
+        rejectedReason: string | null;
     })[]>;
     findOne(id: string, user: JwtUser): Promise<{
         user: {
@@ -134,8 +134,8 @@ export declare class LeavesController {
         endDate: Date;
         approvedById: string | null;
         approvedAt: Date | null;
-        rejectedReason: string | null;
         daysCount: number;
+        rejectedReason: string | null;
     }>;
     approve(id: string, user: JwtUser): Promise<{
         user: {
@@ -167,8 +167,8 @@ export declare class LeavesController {
         endDate: Date;
         approvedById: string | null;
         approvedAt: Date | null;
-        rejectedReason: string | null;
         daysCount: number;
+        rejectedReason: string | null;
     }>;
     reject(id: string, dto: RejectLeaveDto, user: JwtUser): Promise<{
         user: {
@@ -200,8 +200,8 @@ export declare class LeavesController {
         endDate: Date;
         approvedById: string | null;
         approvedAt: Date | null;
-        rejectedReason: string | null;
         daysCount: number;
+        rejectedReason: string | null;
     }>;
     cancel(id: string, user: JwtUser): Promise<{
         user: {
@@ -233,7 +233,7 @@ export declare class LeavesController {
         endDate: Date;
         approvedById: string | null;
         approvedAt: Date | null;
-        rejectedReason: string | null;
         daysCount: number;
+        rejectedReason: string | null;
     }>;
 }

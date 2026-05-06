@@ -3,24 +3,30 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.getCustomerNetDebtFromDebtLedgerAgg = getCustomerNetDebtFromDebtLedgerAgg;
 exports.getCustomerDebtSnapshotTotalKd = getCustomerDebtSnapshotTotalKd;
 const client_1 = require("@prisma/client");
+const debt_ledger_payment_origin_util_1 = require("./debt-ledger-payment-origin.util");
 const Z = () => new client_1.Prisma.Decimal(0);
 async function getCustomerNetDebtFromDebtLedgerAgg(db, customerId) {
     const z = Z();
-    const rows = await db.debtLedgerEntry.groupBy({
-        by: ['source'],
+    const rows = await db.debtLedgerEntry.findMany({
         where: { customerId },
-        _sum: { amount: true },
+        select: {
+            source: true,
+            amount: true,
+            actorUserId: true,
+            sourceRef: true,
+            note: true,
+        },
     });
     let inv = z;
     let sub = z;
     let pay = z;
     for (const r of rows) {
-        const amt = new client_1.Prisma.Decimal(r._sum.amount?.toString() ?? '0');
+        const amt = new client_1.Prisma.Decimal(r.amount?.toString() ?? '0');
         if (r.source === client_1.DebtSource.INVOICE_SHORTFALL)
             inv = inv.add(amt);
         else if (r.source === client_1.DebtSource.SUBSCRIPTION_OVERUSE)
             sub = sub.add(amt);
-        else if (r.source === client_1.DebtSource.PAYMENT)
+        else if (r.source === client_1.DebtSource.PAYMENT && (0, debt_ledger_payment_origin_util_1.isRealDebtLedgerPayment)(r))
             pay = pay.add(amt);
     }
     const invPaid = inv.lessThanOrEqualTo(pay) ? inv : pay;

@@ -4,6 +4,7 @@ import { CashStatus, OrderStatus, PosPaymentMethod, Prisma } from "@prisma/clien
 import type { CreatePaymentLinkResult } from '../common/services/payments.service';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { CustomerBlockingService } from '../common/services/customer-blocking.service';
+import { OutstandingService } from '../finance/outstanding/outstanding.service';
 import { PaymentsService } from '../common/services/payments.service';
 import { CustomerNotificationsService } from '../customer-notifications/customer-notifications.service';
 import { CustomerLedgerService } from '../customer-ledger/customer-ledger.service';
@@ -106,10 +107,11 @@ export declare class OrdersService {
     private readonly inventory;
     private readonly jwt;
     private readonly customerBlocking;
+    private readonly outstanding;
     private readonly auditLogs;
     private readonly events;
     private readonly log;
-    constructor(prisma: PrismaService, customerLedger: CustomerLedgerService, paymentsService: PaymentsService, customerNotifications: CustomerNotificationsService, generalLedger: GeneralLedgerService, serialCounter: SerialCounterService, inventory: InventoryService, jwt: JwtService, customerBlocking: CustomerBlockingService, auditLogs: AuditLogsService, events: EventEmitter2);
+    constructor(prisma: PrismaService, customerLedger: CustomerLedgerService, paymentsService: PaymentsService, customerNotifications: CustomerNotificationsService, generalLedger: GeneralLedgerService, serialCounter: SerialCounterService, inventory: InventoryService, jwt: JwtService, customerBlocking: CustomerBlockingService, outstanding: OutstandingService, auditLogs: AuditLogsService, events: EventEmitter2);
     private emitOrderCreated;
     private auditOrderCreated;
     private auditOrderPayment;
@@ -160,6 +162,23 @@ export declare class OrdersService {
         }[];
     }[]>;
     sumCollectionsDebtTotalKd(branchId?: string | null, actor?: JwtUser): Promise<Prisma.Decimal>;
+    listCollectionsReceivableAggOrders(args: {
+        branchId: string | null;
+        actor?: JwtUser;
+        createdAt?: {
+            gte?: Date;
+            lte?: Date;
+        };
+        driverId?: string;
+        customerId?: string;
+    }): Promise<Array<{
+        id: string;
+        customerId: string;
+        driverId: string | null;
+        totalPrice: Prisma.Decimal;
+        createdAt: Date;
+        dueDate: Date | null;
+    }>>;
     private isOrderInCollectionsUncollectedScope;
     getCollectionsReceivableSnapshotForCustomer(customerId: string, tx?: Prisma.TransactionClient): Promise<{
         totalKd: Prisma.Decimal;

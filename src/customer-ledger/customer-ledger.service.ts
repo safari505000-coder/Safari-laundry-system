@@ -23,7 +23,12 @@ import {
   minorToAmountString,
   toMinorFromFixed4,
 } from '../finance/finance-money';
+import {
+  assertDebtLedgerPaymentWrite,
+  traceDebtLedgerPaymentWrite,
+} from '../finance/debt-ledger-payment-origin.util';
 import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
+import { DoubleEntryJournalService } from '../general-ledger/double-entry-journal.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { OrdersService } from '../orders/orders.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -53,6 +58,7 @@ export class CustomerLedgerService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly generalLedger: GeneralLedgerService,
+    private readonly journal: DoubleEntryJournalService,
     private readonly inventory: InventoryService,
     @Inject(forwardRef(() => OrdersService))
     private readonly orders: OrdersService,
@@ -453,6 +459,7 @@ export class CustomerLedgerService {
 
     const debtCategory = this.resolveDebtCategory(actor.safariRole);
     if (addedInvoiceDebtMinor > 0n) {
+      const sourceRef = `INVOICE:${orderId}:SHORTFALL:${Date.now()}`;
       await tx.debtLedgerEntry.create({
         data: {
           customerId: o.customerId,
@@ -462,8 +469,18 @@ export class CustomerLedgerService {
           amount: this.decimalFromMinor(addedInvoiceDebtMinor),
           branchId: actor.branchId,
           actorUserId: actor.id,
+          sourceRef,
           note: 'Invoice shortfall recorded as receivable',
         },
+      });
+      await this.journal.mirrorDebtLedgerEntry(tx, {
+        source: DebtSource.INVOICE_SHORTFALL,
+        amount: this.decimalFromMinor(addedInvoiceDebtMinor),
+        sourceRef,
+        actorUserId: actor.id,
+        customerId: o.customerId,
+        orderId,
+        note: 'Invoice shortfall recorded as receivable',
       });
       // Dastur §5 — mirror the debt change onto the unified GL so every
       // financial movement surfaces on one audit stream.
@@ -482,6 +499,7 @@ export class CustomerLedgerService {
       });
     }
     if (addedSubscriptionDebtMinor > 0n) {
+      const sourceRef = `INVOICE:${orderId}:SUBSCRIPTION_OVERUSE:${Date.now()}`;
       await tx.debtLedgerEntry.create({
         data: {
           customerId: o.customerId,
@@ -491,8 +509,18 @@ export class CustomerLedgerService {
           amount: this.decimalFromMinor(addedSubscriptionDebtMinor),
           branchId: actor.branchId,
           actorUserId: actor.id,
+          sourceRef,
           note: 'Subscription balance allowed to go negative',
         },
+      });
+      await this.journal.mirrorDebtLedgerEntry(tx, {
+        source: DebtSource.SUBSCRIPTION_OVERUSE,
+        amount: this.decimalFromMinor(addedSubscriptionDebtMinor),
+        sourceRef,
+        actorUserId: actor.id,
+        customerId: o.customerId,
+        orderId,
+        note: 'Subscription balance allowed to go negative',
       });
       await this.generalLedger.append(tx, {
         entryType: GeneralLedgerEntryType.DEBT_ADJUSTMENT,
@@ -521,6 +549,35 @@ export class CustomerLedgerService {
     // as a PAYMENT row. Amount may be less than `debtSettled` when the
     // customer had no open debt.
     if (debtPaydownFromSettlementMinor > 0n) {
+      const trigger =
+        extraMetadata?.debtSettlementViaCallCenter === true
+          ? 'CALL_CENTER_MANUAL'
+          : extraMetadata?.debtSettlementViaLink === true
+            ? 'PAYMENT_LINK_CALLBACK'
+            : 'WALLET_SETTLEMENT';
+      const origin =
+        o.posPaymentMethod === PosPaymentMethod.CASH ||
+        o.posPaymentMethod === PosPaymentMethod.KNET ||
+        o.posPaymentMethod === PosPaymentMethod.ONLINE ||
+        o.posPaymentMethod === PosPaymentMethod.PAYMENT_LINK
+          ? o.posPaymentMethod
+          : trigger;
+      const sourceRef = `PAYMENT:${origin}:${orderId}:${Date.now()}`;
+      const paymentPayload = {
+        amount: this.decimalFromMinor(debtPaydownFromSettlementMinor).toString(),
+        customerId: o.customerId,
+        orderId,
+        source: DebtSource.PAYMENT,
+        actorUserId: actor.id,
+        sourceRef,
+        metadata: { origin, trigger },
+      };
+      assertDebtLedgerPaymentWrite(paymentPayload);
+      traceDebtLedgerPaymentWrite({
+        sourceFile: 'src/customer-ledger/customer-ledger.service.ts',
+        functionName: 'applyOrderWalletSettlementForCompletedOrder',
+        payload: paymentPayload,
+      });
       await tx.debtLedgerEntry.create({
         data: {
           customerId: o.customerId,
@@ -530,8 +587,19 @@ export class CustomerLedgerService {
           amount: this.decimalFromMinor(debtPaydownFromSettlementMinor),
           branchId: actor.branchId,
           actorUserId: actor.id,
+          sourceRef,
           note: 'Invoice debt settled (wallet settlement)',
         },
+      });
+      await this.journal.mirrorDebtLedgerEntry(tx, {
+        source: DebtSource.PAYMENT,
+        amount: this.decimalFromMinor(debtPaydownFromSettlementMinor),
+        sourceRef,
+        actorUserId: actor.id,
+        customerId: o.customerId,
+        orderId,
+        paymentMethod: o.posPaymentMethod,
+        note: 'Invoice debt settled (wallet settlement)',
       });
       await this.generalLedger.append(tx, {
         entryType: GeneralLedgerEntryType.DEBT_ADJUSTMENT,
@@ -544,12 +612,7 @@ export class CustomerLedgerService {
           source: DebtSource.PAYMENT,
           category: debtCategory,
           branchId: actor.branchId,
-          trigger:
-            extraMetadata?.debtSettlementViaCallCenter === true
-              ? 'CALL_CENTER_MANUAL'
-              : extraMetadata?.debtSettlementViaLink === true
-                ? 'PAYMENT_LINK_CALLBACK'
-                : 'WALLET_SETTLEMENT',
+          trigger,
           declaredDebtSettled: debtSettledStr,
         },
       });
@@ -963,25 +1026,71 @@ export class CustomerLedgerService {
         coveredMinor += toMinorFromFixed4(amt);
       }
       if (closedInvoiceIds.length > 0) {
-        await tx.debtLedgerEntry.createMany({
-          data: closedInvoiceIds.flatMap((invoiceId) => {
-            const amt = closedInvoiceAmountById.get(invoiceId);
-            if (!amt) return [];
-            return {
+        const paymentRows = closedInvoiceIds.flatMap((invoiceId) => {
+          const amt = closedInvoiceAmountById.get(invoiceId);
+          if (!amt) return [];
+          const sourceRef = `PAYMENT:SUBSCRIPTION_ACTIVATION:${newSubscription.id}:${invoiceId}`;
+          const payload = {
+            customerId: params.customerId,
+            orderId: invoiceId,
+            source: DebtSource.PAYMENT,
+            category,
+            amount: amt,
+            branchId: subsidyBranchId,
+            actorUserId: params.performedByUserId,
+            sourceRef,
+            note: 'Invoice closed by subscription activation (FIFO)',
+          };
+          assertDebtLedgerPaymentWrite(payload);
+          traceDebtLedgerPaymentWrite({
+            sourceFile: 'src/customer-ledger/customer-ledger.service.ts',
+            functionName: 'activateSubscriptionPlan.closedInvoices',
+            payload: {
+              amount: amt.toString(),
               customerId: params.customerId,
               orderId: invoiceId,
               source: DebtSource.PAYMENT,
-              category,
-              amount: amt,
-              branchId: subsidyBranchId,
               actorUserId: params.performedByUserId,
-              note: 'Invoice closed by subscription activation (FIFO)',
-            };
-          }),
+              sourceRef,
+              metadata: { origin: 'SUBSCRIPTION_ACTIVATION' },
+            },
+          });
+          return payload;
         });
+        await tx.debtLedgerEntry.createMany({
+          data: paymentRows,
+        });
+        for (const row of paymentRows) {
+          await this.journal.mirrorDebtLedgerEntry(tx, {
+            source: DebtSource.PAYMENT,
+            amount: row.amount,
+            sourceRef: row.sourceRef,
+            actorUserId: row.actorUserId,
+            customerId: row.customerId,
+            orderId: row.orderId,
+            paymentMethod: params.paymentMethod,
+            note: row.note,
+          });
+        }
       }
       const residualMinor = debtPaidMinor - coveredMinor;
       if (residualMinor > 0n) {
+        const sourceRef = `PAYMENT:SUBSCRIPTION_ACTIVATION:${newSubscription.id}:RESIDUAL`;
+        const paymentPayload = {
+          amount: this.decimalFromMinor(residualMinor).toString(),
+          customerId: params.customerId,
+          orderId: null,
+          source: DebtSource.PAYMENT,
+          actorUserId: params.performedByUserId,
+          sourceRef,
+          metadata: { origin: 'SUBSCRIPTION_ACTIVATION' },
+        };
+        assertDebtLedgerPaymentWrite(paymentPayload);
+        traceDebtLedgerPaymentWrite({
+          sourceFile: 'src/customer-ledger/customer-ledger.service.ts',
+          functionName: 'activateSubscriptionPlan.residual',
+          payload: paymentPayload,
+        });
         await tx.debtLedgerEntry.create({
           data: {
             customerId: params.customerId,
@@ -991,8 +1100,19 @@ export class CustomerLedgerService {
             amount: this.decimalFromMinor(residualMinor),
             branchId: subsidyBranchId,
             actorUserId: params.performedByUserId,
+            sourceRef,
             note: 'Residual debt cleared by subscription activation',
           },
+        });
+        await this.journal.mirrorDebtLedgerEntry(tx, {
+          source: DebtSource.PAYMENT,
+          amount: this.decimalFromMinor(residualMinor),
+          sourceRef,
+          actorUserId: params.performedByUserId,
+          customerId: params.customerId,
+          orderId: null,
+          paymentMethod: params.paymentMethod,
+          note: 'Residual debt cleared by subscription activation',
         });
       }
     }
@@ -1171,6 +1291,25 @@ export class CustomerLedgerService {
       },
     });
 
+    const sourceRef = `PAYMENT:CC_DEBT_INVOICE_PHYSICAL:${orderId}:${performedByUserId}:${Date.now()}`;
+    const paymentPayload = {
+      amount: this.decimalFromMinor(paydownMinor).toString(),
+      customerId: order.customerId,
+      orderId,
+      source: DebtSource.PAYMENT,
+      actorUserId: performedByUserId,
+      sourceRef,
+      metadata: {
+        origin: 'CC_DEBT_INVOICE_PHYSICAL',
+        confirmedPaymentMethod: confirmedMethod,
+      },
+    };
+    assertDebtLedgerPaymentWrite(paymentPayload);
+    traceDebtLedgerPaymentWrite({
+      sourceFile: 'src/customer-ledger/customer-ledger.service.ts',
+      functionName: 'recordDebtInvoiceCollectedAtCallCenter',
+      payload: paymentPayload,
+    });
     await tx.debtLedgerEntry.create({
       data: {
         customerId: order.customerId,
@@ -1180,8 +1319,19 @@ export class CustomerLedgerService {
         amount: this.decimalFromMinor(paydownMinor),
         branchId,
         actorUserId: performedByUserId,
+        sourceRef,
         note: 'Debt-on-account invoice collected at Call Center',
       },
+    });
+    await this.journal.mirrorDebtLedgerEntry(tx, {
+      source: DebtSource.PAYMENT,
+      amount: this.decimalFromMinor(paydownMinor),
+      sourceRef,
+      actorUserId: performedByUserId,
+      customerId: order.customerId,
+      orderId,
+      paymentMethod: confirmedMethod,
+      note: 'Debt-on-account invoice collected at Call Center',
     });
 
     await this.generalLedger.append(tx, {
@@ -1429,6 +1579,25 @@ export class CustomerLedgerService {
           // specific invoice. The discount portion is intentionally NOT
           // mirrored here: it reduces `wallet.debt` but is recorded as a
           // DEBT_DISCOUNT GL entry only, so collection KPIs stay clean.
+          const sourceRef = `PAYMENT:CC_PARTIAL_DEBT_PAYMENT:${params.customerId}:${params.performedByUserId}:${Date.now()}`;
+          const paymentPayload = {
+            amount: this.decimalFromMinor(amountMinor).toString(),
+            customerId: params.customerId,
+            orderId: null,
+            source: DebtSource.PAYMENT,
+            actorUserId: params.performedByUserId,
+            sourceRef,
+            metadata: {
+              origin: 'CC_PARTIAL_DEBT_PAYMENT',
+              posPaymentMethod: params.paymentMethod,
+            },
+          };
+          assertDebtLedgerPaymentWrite(paymentPayload);
+          traceDebtLedgerPaymentWrite({
+            sourceFile: 'src/customer-ledger/customer-ledger.service.ts',
+            functionName: 'recordPartialDebtPayment',
+            payload: paymentPayload,
+          });
           await tx.debtLedgerEntry.create({
             data: {
               customerId: params.customerId,
@@ -1438,9 +1607,21 @@ export class CustomerLedgerService {
               amount: this.decimalFromMinor(amountMinor),
               branchId,
               actorUserId: params.performedByUserId,
+              sourceRef,
               note:
                 params.note ?? 'Partial debt payment collected via Call Center',
             },
+          });
+          await this.journal.mirrorDebtLedgerEntry(tx, {
+            source: DebtSource.PAYMENT,
+            amount: this.decimalFromMinor(amountMinor),
+            sourceRef,
+            actorUserId: params.performedByUserId,
+            customerId: params.customerId,
+            orderId: null,
+            paymentMethod: params.paymentMethod,
+            note:
+              params.note ?? 'Partial debt payment collected via Call Center',
           });
         }
 

@@ -45,11 +45,13 @@ import { DriverCashTracePage } from '@/pages/driver-cash-trace-page';
 import { CashReconciliationPage } from '@/pages/cash-reconciliation-page';
 import { AccountantDashboardPage } from '@/pages/accountant-dashboard-page';
 import { UnpaidInvoicesPage } from '@/pages/unpaid-invoices-page';
+import { CustomerStatementJournalPage } from '@/pages/customer-statement-journal-page';
 import { ReportsPage } from '@/pages/reports-page';
 import { SalesSummaryReportPage } from '@/pages/sales-summary-report-page';
 import { FinancialReportsHubPage } from '@/pages/financial-reports-hub-page';
 import { OperationalReportsHubPage } from '@/pages/operational-reports-hub-page';
 import { LoginPage } from '@/pages/login-page';
+import { ForceChangePasswordPage } from '@/pages/force-change-password';
 import { OrdersPage } from '@/pages/orders-page';
 import { MyCustodyPage } from '@/modules/manager/pages/MyCustodyPage';
 import { MyDocumentsPage } from '@/modules/manager/pages/MyDocumentsPage';
@@ -67,9 +69,14 @@ import { StaffHubPage } from '@/pages/staff-hub-page';
 import { FixedExpensesPage } from '@/pages/fixed-expenses-page';
 import { CollectionsPage } from '@/modules/call-center/pages/collections-page';
 import { CustomersPage } from '@/modules/call-center/pages/customers-page';
+import { CcDashboardPage } from '@/modules/call-center/dashboard/pages/cc-dashboard-page';
+import { CcCustomer360Page } from '@/modules/call-center/dashboard/pages/cc-customer-360-page';
+import { CcOutstandingPage } from '@/modules/call-center/outstanding/pages/cc-outstanding-page';
+import { ControlTowerPage } from '@/modules/call-center/control-tower/pages/control-tower-page';
 import { CustomerPortal360Page } from '@/pages/customer-portal-360-page';
 import { CallIncomingPage } from '@/pages/call-incoming-page';
 import { PosRoute } from '@/pages/pos-route';
+import { DriverTasksPage } from '@/modules/driver/tasks/pages/driver-tasks-page';
 import { MyDailySalesPage } from '@/modules/driver/pages/my-daily-sales-page';
 import { DriverFieldExpensesPage } from '@/modules/driver/pages/driver-field-expenses-page';
 import { DriverPendingInvoicesPage } from '@/modules/driver/pages/driver-pending-invoices-page';
@@ -122,7 +129,11 @@ function IndexRoute() {
     case 'DRIVER':
       return <Navigate to="/pos" replace />;
     case 'CALL_CENTER':
-      return <Navigate to="/call-incoming" replace />;
+      // V19.x — CC agents land on the new Customer 360 Dashboard.
+      // The legacy `/call-incoming` PBX handoff still works via deep-link
+      // (PBX integrations may post URLs at it directly), but the search-
+      // first dashboard is the new home base for every shift.
+      return <Navigate to="/cc/dashboard" replace />;
     case 'CALL_CENTER_SUPERVISOR':
       return <Navigate to="/cc-performance" replace />;
     default:
@@ -145,6 +156,19 @@ function RequireOwnerOrGeneralManager({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+function RequireRole({
+  role,
+  children,
+}: {
+  role: Parameters<ReturnType<typeof useAuth>['hasRole']>[0];
+  children: ReactNode;
+}) {
+  const { user, hasRole } = useAuth();
+  if (!user) return <Navigate to="/login" replace />;
+  if (!hasRole(role)) return <Navigate to="/" replace />;
+  return <>{children}</>;
+}
+
 export default function App() {
   return (
     <ErrorBoundary>
@@ -155,6 +179,7 @@ export default function App() {
           <OfflineGlobalAlerts />
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/force-change-password" element={<ForceChangePasswordPage />} />
             {/*
               V19.8.9 — Public customer statement view.
               Rendered for a link the Call Center sends over WhatsApp.
@@ -207,6 +232,14 @@ export default function App() {
                 </RequireAuth>
               }
             >
+              <Route
+                path="/driver/tasks"
+                element={
+                  <RequireRole role="DRIVER">
+                    <DriverTasksPage />
+                  </RequireRole>
+                }
+              />
               <Route
                 path="/pos"
                 element={
@@ -394,6 +427,63 @@ export default function App() {
                   element={
                     <RequireAccess access="customers.view">
                       <CustomersPage />
+                    </RequireAccess>
+                  }
+                />
+                {/*
+                  V19.x — Call Center → Customer 360 Dashboard.
+                  Single-entry workspace for CC agents and supervisors:
+                    - /cc/dashboard           → search landing
+                    - /cc/customers/:id       → 360 + tabs (Overview /
+                                                Dispatch / Risk / Audit)
+                  Gated by `ccDashboard.view` (CC + CC supervisor +
+                  exec pair). The 360 backend endpoint is CC-only at
+                  the controller layer, so OWNER/GM landing here
+                  through deep-links would still get 403 from the
+                  server — the matrix mirrors that intent.
+                */}
+                <Route
+                  path="cc/dashboard"
+                  element={
+                    <RequireAccess access="ccDashboard.view">
+                      <CcDashboardPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="cc/customers/:customerId"
+                  element={
+                    <RequireAccess access="ccDashboard.view">
+                      <CcCustomer360Page />
+                    </RequireAccess>
+                  }
+                />
+                {/* V19.x — Outstanding Payments / Accounts-Receivable.
+                  Visible to CC + CC Supervisor + Owner/GM/Accountant.
+                  Mutations (status change, manual block toggle) are
+                  restricted server-side to CC/CC-supervisor/Owner.
+                */}
+                <Route
+                  path="cc/control-tower"
+                  element={
+                    <RequireAccess access="controlTower.view">
+                      <ControlTowerPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="cc/outstanding"
+                  element={
+                    <RequireAccess access="outstanding.view">
+                      <CcOutstandingPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="customer-statement-journal"
+                  element={
+                    <RequireAccess access="journalStatement.view">
+                      <CustomerStatementJournalPage />
                     </RequireAccess>
                   }
                 />

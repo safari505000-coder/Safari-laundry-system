@@ -12,6 +12,7 @@ const audit_logs_module_1 = require("../audit-logs/audit-logs.module");
 const prisma_module_1 = require("../prisma/prisma.module");
 const dispatch_controller_1 = require("./dispatch.controller");
 const dispatch_escalation_job_1 = require("./dispatch.escalation.job");
+const dispatch_metrics_service_1 = require("./dispatch-metrics.service");
 const dispatch_reconciliation_job_1 = require("./dispatch.reconciliation.job");
 const dispatch_service_1 = require("./dispatch.service");
 let DispatchModule = class DispatchModule {
@@ -23,6 +24,7 @@ exports.DispatchModule = DispatchModule = __decorate([
         controllers: [dispatch_controller_1.DispatchController],
         providers: [
             dispatch_service_1.DispatchService,
+            dispatch_metrics_service_1.DispatchMetricsService,
             dispatch_escalation_job_1.DispatchEscalationJob,
             dispatch_reconciliation_job_1.DispatchReconciliationJob,
         ],

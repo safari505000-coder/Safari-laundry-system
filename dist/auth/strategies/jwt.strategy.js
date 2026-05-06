@@ -17,7 +17,13 @@ const jwt_secret_fallback_1 = require("../../common/constants/jwt-secret-fallbac
 let JwtStrategy = class JwtStrategy extends (0, passport_1.PassportStrategy)(passport_jwt_1.Strategy) {
     constructor() {
         super({
-            jwtFromRequest: passport_jwt_1.ExtractJwt.fromAuthHeaderAsBearerToken(),
+            jwtFromRequest: passport_jwt_1.ExtractJwt.fromExtractors([
+                passport_jwt_1.ExtractJwt.fromAuthHeaderAsBearerToken(),
+                (request) => {
+                    const raw = request?.query?.access_token;
+                    return typeof raw === 'string' && raw.trim() ? raw.trim() : null;
+                },
+            ]),
             ignoreExpiration: false,
             secretOrKey: process.env.JWT_SECRET ?? jwt_secret_fallback_1.JWT_SECRET_DEV_FALLBACK,
         });
@@ -35,6 +41,9 @@ let JwtStrategy = class JwtStrategy extends (0, passport_1.PassportStrategy)(pas
             branchId: payload.branchId ?? null,
             scope: payload.scope,
             linkedCustomerId: linked,
+            tokenPurpose: payload.tokenPurpose === 'PASSWORD_CHANGE_ONLY' ?
+                'PASSWORD_CHANGE_ONLY'
+                : undefined,
         };
     }
 };

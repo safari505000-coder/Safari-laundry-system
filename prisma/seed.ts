@@ -19,7 +19,7 @@ import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
 import * as bcrypt from 'bcrypt';
 import { Pool } from 'pg';
-import { PrismaClient, SafariRole } from '@prisma/client';
+import { AccountType, PrismaClient, SafariRole } from '@prisma/client';
 import { CANONICAL_PAYMENT_METHOD_FEE_CONFIG } from '../src/payment-method-fees/canonical-payment-fee-config';
 import {
   ACCOUNTANT_PERMISSION_KEYS,
@@ -51,7 +51,56 @@ const CALL_CENTER_PASSWORD =
 const CALL_CENTER_FULL_NAME =
   process.env.SEED_CALL_CENTER_FULL_NAME ?? 'Call Center Agent';
 
+/**
+ * V19.x — PASSWORD RESET BUG FIX (post-mortem in CHANGELOG).
+ *
+ * BACKGROUND
+ *   `package.json` runs `npx prisma db seed` on every `npm start`.
+ *   The earlier upserts below carried `password: passwordHash` in
+ *   their `update` branch, which silently overwrote whatever
+ *   password the Owner had set through the Users page on every
+ *   single restart. Users reported "كلمة سر admin ترجع admin
+ *   لحالها".
+ *
+ * FIX
+ *   - In production (`NODE_ENV=production`) the seed NEVER touches
+ *     `password`, period. The bootstrap admin is created with
+ *     `'admin'` only when no admin row exists at all (the `create`
+ *     branch); after that, the Owner's chosen password is the only
+ *     truth.
+ *   - In development the seed still resets `password` so a fresh
+ *     `prisma migrate reset` brings the well-known credentials back.
+ *
+ * Also enforces that the admin row's `safariRole` + `roleId` cannot
+ * be downgraded by accident — those are institutional invariants,
+ * not user preferences, so the seed re-asserts them on every run
+ * regardless of environment.
+ */
+const SEED_RESET_PASSWORDS = process.env.NODE_ENV !== 'production';
+
 async function main(): Promise<void> {
+  const chartOfAccounts = [
+    { code: '1100', name: 'CASH', type: AccountType.ASSET },
+    { code: '1200', name: 'BANK_KNET', type: AccountType.ASSET },
+    { code: '1210', name: 'BANK_ONLINE', type: AccountType.ASSET },
+    { code: '1300', name: 'ACCOUNTS_RECEIVABLE', type: AccountType.ASSET },
+    { code: '4100', name: 'REVENUE', type: AccountType.REVENUE },
+    { code: '5100', name: 'ADJUSTMENTS', type: AccountType.EXPENSE },
+  ] as const;
+
+  for (const account of chartOfAccounts) {
+    await prisma.account.upsert({
+      where: { code: account.code },
+      create: account,
+      update: {
+        name: account.name,
+        type: account.type,
+        isActive: true,
+      },
+    });
+  }
+  console.info('Ensured double-entry chart of accounts.');
+
   for (const key of ALL_PERMISSION_KEYS) {
     await prisma.permission.upsert({
       where: { key },
@@ -294,8 +343,12 @@ async function main(): Promise<void> {
       roleId: ownerRole.id,
     },
     update: {
-      password: passwordHash,
-      fullName: ADMIN_FULL_NAME,
+      // Production: NEVER overwrite the Owner's chosen password.
+      // Dev: spread reapplies the seed credentials so a fresh DB
+      // boots with the well-known admin/admin combination.
+      ...(SEED_RESET_PASSWORDS ? { password: passwordHash } : {}),
+      // Institutional invariants — re-asserted unconditionally so
+      // an accidental role downgrade is healed on the next boot.
       safariRole: SafariRole.OWNER,
       roleId: ownerRole.id,
     },
@@ -313,13 +366,20 @@ async function main(): Promise<void> {
         roleId: callCenterRole.id,
       },
       update: {
-        password: ccHash,
-        fullName: CALL_CENTER_FULL_NAME,
+        // Same rule as the admin upsert: never reset the password
+        // in production. The agent's own password change from the
+        // Users page must outlive every restart.
+        ...(SEED_RESET_PASSWORDS ? { password: ccHash } : {}),
         safariRole: SafariRole.CALL_CENTER,
         roleId: callCenterRole.id,
       },
     });
-    console.info(`Seeded CALL_CENTER user: ${CALL_CENTER_USERNAME}`);
+    console.info(
+      `Seeded CALL_CENTER user: ${CALL_CENTER_USERNAME}` +
+        (SEED_RESET_PASSWORDS
+          ? ' (password re-applied — dev mode)'
+          : ' (password preserved — production safe-guard)'),
+    );
   }
 
   const forceCanonicalFees =
@@ -340,7 +400,9 @@ async function main(): Promise<void> {
   console.info('Seeded laundry price list (PDF tariff).');
 
   console.info(
-    `Corporate seed complete — OWNER login is username "${ADMIN_USERNAME}" with configured seed password.`,
+    SEED_RESET_PASSWORDS
+      ? `Corporate seed complete — DEV mode. OWNER login is "${ADMIN_USERNAME}" / "${ADMIN_PASSWORD}" (password re-applied this run).`
+      : `Corporate seed complete — PRODUCTION mode. OWNER row reaffirmed; existing password PRESERVED.`,
   );
 }
 

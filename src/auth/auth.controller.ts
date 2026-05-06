@@ -1,8 +1,9 @@
 import { Body, Controller, HttpCode, Post, Req } from '@nestjs/common';
-import { AuditStatus } from '@prisma/client';
+import { AuditStatus, SafariRole } from '@prisma/client';
 import type { Request } from 'express';
 import {
   ApiBadRequestResponse,
+  ApiBearerAuth,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
@@ -11,8 +12,11 @@ import {
 import { Throttle } from '@nestjs/throttler';
 import { APP_BRAND } from '../common/constants/branding';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { CurrentUser, type JwtUser } from './decorators/current-user.decorator';
 import { Public } from './decorators/roles.decorator';
-import { AuthService } from './auth.service';
+import { Roles } from './decorators/roles.decorator';
+import { INSTITUTIONAL_ROLES, AuthService } from './auth.service';
+import { ChangePasswordBodyDto } from './dto/change-password-body.dto';
 import { LoginDto } from './dto/login.dto';
 import { LoginResponseDto } from './dto/login-response.dto';
 import {
@@ -22,17 +26,15 @@ import {
 
 @ApiTags('auth')
 @Controller('auth')
-@Public('Authentication endpoints must be reachable before a JWT exists.')
+@ApiBearerAuth('bearer')
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly auditLogs: AuditLogsService,
   ) {}
 
+  @Public('Login must be reachable before a JWT exists.')
   @Post('login')
-  // 5 login attempts per IP per minute (brute-force defence). Override via
-  // `AUTH_LOGIN_THROTTLE_LIMIT` — load tests run all VUs from 127.0.0.1 so
-  // they bump the ceiling; production keeps the default.
   @Throttle({
     default: {
       limit:
@@ -56,6 +58,21 @@ export class AuthController {
   ): Promise<LoginResponseDto> {
     try {
       const res = await this.authService.login(dto);
+      if (res.requiresPasswordChange === true && res.tempToken) {
+        this.auditLogs.log({
+          userId: res.user.id,
+          role: res.user.safariRole,
+          action: 'LOGIN_PASSWORD_CHANGE_REQUIRED',
+          resource: 'auth',
+          endpoint: req.originalUrl ?? req.url,
+          method: req.method,
+          status: AuditStatus.SUCCESS,
+          ip: this.ip(req),
+          userAgent: this.userAgent(req),
+          requestId: req.requestId ?? null,
+        });
+        return res;
+      }
       this.auditLogs.log({
         userId: res.user.id,
         role: res.user.safariRole,
@@ -86,6 +103,7 @@ export class AuthController {
     }
   }
 
+  @Public('Refresh-token exchange must work without a valid access JWT.')
   @Post('refresh-token')
   @HttpCode(200)
   @ApiOperation({
@@ -104,6 +122,7 @@ export class AuthController {
     return this.authService.refreshAccessToken(dto.refreshToken);
   }
 
+  @Public('Logout revokes refresh tokens without requiring access JWT.')
   @Post('logout')
   @HttpCode(204)
   @ApiOperation({
@@ -126,6 +145,37 @@ export class AuthController {
       userAgent: this.userAgent(req),
       requestId: req.requestId ?? null,
     });
+  }
+
+  @Post('change-password')
+  @Roles(...([...INSTITUTIONAL_ROLES] as SafariRole[]))
+  @Throttle({
+    default: {
+      limit:
+        Number.parseInt(
+          process.env.AUTH_CHANGE_PASSWORD_THROTTLE_LIMIT ?? '',
+          10,
+        ) || 10,
+      ttl:
+        Number.parseInt(
+          process.env.AUTH_CHANGE_PASSWORD_THROTTLE_TTL_MS ?? '',
+          10,
+        ) || 60_000,
+    },
+  })
+  @HttpCode(200)
+  @ApiOperation({
+    summary: `Change password (${APP_BRAND})`,
+    description:
+      'Authenticated users (including PASSWORD_CHANGE_ONLY temp JWT after login). Returns a full access + refresh pair on success.',
+  })
+  @ApiOkResponse({ type: LoginResponseDto })
+  @ApiUnauthorizedResponse({ description: 'Wrong current password or JWT' })
+  async changePassword(
+    @CurrentUser() jwtUser: JwtUser,
+    @Body() dto: ChangePasswordBodyDto,
+  ): Promise<LoginResponseDto> {
+    return this.authService.changePassword(jwtUser.userId, dto);
   }
 
   private ip(req: Request): string | null {

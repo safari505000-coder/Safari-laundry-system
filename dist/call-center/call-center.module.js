@@ -17,6 +17,7 @@ const finance_module_1 = require("../finance/finance.module");
 const prisma_module_1 = require("../prisma/prisma.module");
 const call_center_controller_1 = require("./call-center.controller");
 const call_center_service_1 = require("./call-center.service");
+const control_tower_module_1 = require("./control-tower/control-tower.module");
 const daily_collections_reconciliation_cron_1 = require("./daily-collections-reconciliation.cron");
 const public_statement_controller_1 = require("./public-statement.controller");
 let CallCenterModule = class CallCenterModule {
@@ -26,6 +27,7 @@ exports.CallCenterModule = CallCenterModule = __decorate([
     (0, common_1.Module)({
         imports: [
             prisma_module_1.PrismaModule,
+            control_tower_module_1.ControlTowerModule,
             auth_module_1.AuthModule,
             customer_ledger_module_1.CustomerLedgerModule,
             finance_module_1.FinanceModule,
@@ -33,7 +35,10 @@ exports.CallCenterModule = CallCenterModule = __decorate([
             orders_module_1.OrdersModule,
             customer_notifications_module_1.CustomerNotificationsModule,
         ],
-        controllers: [call_center_controller_1.CallCenterController, public_statement_controller_1.PublicStatementController],
+        controllers: [
+            call_center_controller_1.CallCenterController,
+            public_statement_controller_1.PublicStatementController,
+        ],
         providers: [call_center_service_1.CallCenterService, daily_collections_reconciliation_cron_1.DailyCollectionsReconciliationCronService],
     })
 ], CallCenterModule);

@@ -33,6 +33,7 @@ import { ExportsModule } from './exports/exports.module';
 import { FixedExpenseModule } from './fixed-expenses/fixed-expense.module';
 import { PayrollModule } from './payroll/payroll.module';
 import { FinanceModule } from './finance/finance.module';
+import { OutstandingModule } from './finance/outstanding/outstanding.module';
 import { HealthModule } from './health/health.module';
 import { InsightsModule } from './insights/insights.module';
 import { InventoryModule } from './inventory/inventory.module';
@@ -108,6 +109,7 @@ const spaStaticModule = serveSpaFromApi
     CashIntelligenceModule,
     CashMonitorModule,
     FinanceModule,
+    OutstandingModule,
     AuthModule,
     SafariStreamModule,
     UsersModule,

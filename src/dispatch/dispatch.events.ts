@@ -16,6 +16,8 @@
  * to refactor.
  */
 
+import type { DispatchRowDto } from './dto/dispatch-row.dto';
+
 /**
  * Fired exactly once when a new Order row is committed. Payload tells
  * the dispatch listener which dispatch to close (if any). The order
@@ -56,11 +58,30 @@ export const DISPATCH_CREATED_EVENT = 'dispatch.created' as const;
  */
 export const DISPATCH_COMPLETED_EVENT = 'dispatch.completed' as const;
 
+/**
+ * Fired when the assigned driver acknowledges the instruction. This is
+ * operational state only; the dispatch still closes exclusively via Order.
+ */
+export const DISPATCH_ACKNOWLEDGED_EVENT = 'dispatch.acknowledged' as const;
+
+/** Internal payloads for legacy listeners / tooling (prefer SSE envelopes for drivers). */
 export type DispatchStreamEventPayload = {
   dispatchId: string;
   driverId: string;
   customerId: string;
-  status: 'ASSIGNED' | 'COMPLETED';
+  status: 'ASSIGNED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
   createdAtIso: string;
+  acknowledgedAtIso?: string | null;
   completedAtIso: string | null;
+};
+
+export type DriverDispatchSseEvent =
+  | 'dispatch:new'
+  | 'dispatch:update'
+  | 'dispatch:alert'
+  | 'heartbeat';
+
+export type DriverDispatchSseEnvelope = {
+  event: DriverDispatchSseEvent;
+  row?: DispatchRowDto;
 };

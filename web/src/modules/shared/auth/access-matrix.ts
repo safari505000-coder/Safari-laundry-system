@@ -250,6 +250,46 @@ export const ACCESS = {
     'CALL_CENTER',
     'CALL_CENTER_SUPERVISOR',
   ] satisfies readonly SafariRole[],
+  /**
+   * V19.x — Call-Center Customer 360 Dashboard (`/cc/dashboard` +
+   * `/cc/customers/:id`). The backend Customer 360 endpoint is
+   * CALL_CENTER + CALL_CENTER_SUPERVISOR + CUSTOMER only, so the
+   * matrix mirrors that intent: the operational dashboard is for
+   * call-centre staff. OWNER / GM keep their financial dashboards;
+   * they do not need the dispatch/blocking workspace.
+   */
+  'ccDashboard.view': [
+    'CALL_CENTER',
+    'CALL_CENTER_SUPERVISOR',
+  ] satisfies readonly SafariRole[],
+  /**
+   * V19.x — Outstanding Payments / Accounts-Receivable view. Read access
+   * mirrors the call-centre + finance-oversight pair. Mutations (status
+   * change / manual block toggle) are restricted SERVER-side to
+   * CALL_CENTER / CALL_CENTER_SUPERVISOR / OWNER — there is no
+   * frontend-only privilege escalation possible here.
+   */
+  'outstanding.view': [
+    'OWNER',
+    'GENERAL_MANAGER',
+    'ACCOUNTANT',
+    'CALL_CENTER',
+    'CALL_CENTER_SUPERVISOR',
+  ] satisfies readonly SafariRole[],
+  'journalStatement.view': [
+    'GENERAL_MANAGER',
+    'ACCOUNTANT',
+    'CALL_CENTER',
+  ] satisfies readonly SafariRole[],
+  /**
+   * V19.x — Call Center Control Tower (`/cc/control-tower`). Mirrors
+   * `ControlTowerController` roles: operational CC + supervisor + Owner.
+   */
+  'controlTower.view': [
+    'OWNER',
+    'CALL_CENTER',
+    'CALL_CENTER_SUPERVISOR',
+  ] satisfies readonly SafariRole[],
   /** B2C — Customer 360 for the JWT-linked profile only (`/my-customer-360`). */
   'customer360.self': ['CUSTOMER'] satisfies readonly SafariRole[],
   /**

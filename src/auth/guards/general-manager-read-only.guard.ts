@@ -6,9 +6,19 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { SafariRole } from '@prisma/client';
+import type { Request } from 'express';
 import { IS_PUBLIC_KEY } from '../decorators/roles.decorator';
 
 const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+function normalizedPath(req: Pick<Request, 'originalUrl' | 'url' | 'path'>): string {
+  const raw =
+    (typeof req.originalUrl === 'string' && req.originalUrl) ||
+    (typeof req.url === 'string' && req.url) ||
+    (typeof req.path === 'string' && req.path) ||
+    '';
+  return raw.split('?')[0] ?? '';
+}
 
 /**
  * V19.30 — GENERAL_MANAGER is a read-only oversight role at the HTTP layer.
@@ -29,10 +39,9 @@ export class GeneralManagerReadOnlyGuard implements CanActivate {
       return true;
     }
 
-    const req = context.switchToHttp().getRequest<{
-      method?: string;
-      user?: { role?: string };
-    }>();
+    const req = context.switchToHttp().getRequest<
+      Request & { user?: { role?: string } }
+    >();
     const role = req.user?.role;
     if (role !== SafariRole.GENERAL_MANAGER) {
       return true;
@@ -40,6 +49,11 @@ export class GeneralManagerReadOnlyGuard implements CanActivate {
 
     const method = (req.method ?? 'GET').toUpperCase();
     if (READ_METHODS.has(method)) {
+      return true;
+    }
+
+    const path = normalizedPath(req);
+    if (method === 'POST' && path.endsWith('/auth/change-password')) {
       return true;
     }
 

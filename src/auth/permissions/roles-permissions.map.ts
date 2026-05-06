@@ -28,6 +28,7 @@ export const ROLE_PERMISSIONS = {
     ...financialOversight,
     AppPermission.VIEW_CUSTOMERS,
     AppPermission.VIEW_DISPATCH,
+    AppPermission.MANAGE_USERS,
   ],
   [SafariRole.ACCOUNTANT]: [
     ...invoiceRead,
@@ -49,6 +50,7 @@ export const ROLE_PERMISSIONS = {
     AppPermission.CREATE_OPERATIONAL_DATA,
     AppPermission.UPDATE_OPERATIONAL_DATA,
     AppPermission.VIEW_DISPATCH,
+    AppPermission.MANAGE_USERS,
   ],
   // DRIVER may GET /expenses only for own rows (listForUser scopes by recordedById).
   [SafariRole.DRIVER]: [
@@ -90,6 +92,7 @@ export const ROLE_PERMISSIONS = {
     AppPermission.VIEW_CUSTOMERS,
     AppPermission.UPDATE_INVOICE,
     AppPermission.UPDATE_OPERATIONAL_DATA,
+    AppPermission.MANAGE_USERS,
   ],
   [SafariRole.VIEWER]: [
     ...invoiceRead,

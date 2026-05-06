@@ -6,22 +6,27 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
-import { Dispatch, DispatchStatus, SafariRole } from '@prisma/client';
+import { Dispatch, DispatchStatus, Prisma, SafariRole } from '@prisma/client';
 import { Subject } from 'rxjs';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { DispatchMetricsService } from './dispatch-metrics.service';
 import {
+  DISPATCH_ACKNOWLEDGED_EVENT,
   DISPATCH_CREATED_EVENT,
   DISPATCH_COMPLETED_EVENT,
   DispatchStreamEventPayload,
+  DriverDispatchSseEnvelope,
   ORDER_CREATED_EVENT,
   OrderCreatedEventPayload,
 } from './dispatch.events';
 import {
   DispatchRowDto,
   DispatchSeverity,
+  DispatchSlaTone,
   DispatchSnapshotDto,
 } from './dto/dispatch-row.dto';
+import { DispatchMonitorSnapshotDto } from './dto/dispatch-monitor.dto';
 
 /**
  * V19.x — Dispatch service. Owns:
@@ -34,8 +39,8 @@ import {
  *   - No manual completion path. The Invoice (Order row) is the only
  *     truth that can close a dispatch.
  *   - No money fields. Dispatch carries no Decimal columns.
- *   - No background cron. The LATE / CRITICAL severities are always
- *     derived live so the UI matches the wall clock to the second.
+ *   - SLA monitor cron persists first alert / escalation / breach
+ *     timestamps on ASSIGNED rows only — never reassigns the driver.
  */
 @Injectable()
 export class DispatchService {
@@ -51,14 +56,138 @@ export class DispatchService {
    */
   private readonly driverStreams = new Map<
     string,
-    Subject<DispatchStreamEventPayload>
+    Subject<DriverDispatchSseEnvelope>
   >();
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditLogs: AuditLogsService,
     private readonly events: EventEmitter2,
+    private readonly metrics: DispatchMetricsService,
   ) {}
+
+  /** Kuwait calendar day in UTC instants (Asia/Kuwait is UTC+3 year-round). */
+  private kuwaitCalendarDayBoundsUtc(now: Date): {
+    dayStart: Date;
+    dayEndExclusive: Date;
+  } {
+    const KUWAIT_OFFSET_MS = 3 * 60 * 60 * 1000;
+    const MS_PER_DAY = 86_400_000;
+    const shifted = new Date(now.getTime() + KUWAIT_OFFSET_MS);
+    const y = shifted.getUTCFullYear();
+    const m = shifted.getUTCMonth();
+    const d = shifted.getUTCDate();
+    const dayStart = new Date(Date.UTC(y, m, d) - KUWAIT_OFFSET_MS);
+    const dayEndExclusive = new Date(dayStart.getTime() + MS_PER_DAY);
+    return { dayStart, dayEndExclusive };
+  }
+
+  /** Roles allowed to create “call center” dispatches (same RBAC lane as MANAGE_DISPATCH). */
+  private static readonly CC_CREATOR_ROLES: SafariRole[] = [
+    SafariRole.CALL_CENTER,
+    SafariRole.CALL_CENTER_SUPERVISOR,
+  ];
+
+  /**
+   * Rolling ceiling on how far back the CC dashboard/monitor counts “current”
+   * ASSIGNED rows (within the Kuwait calendar day). Stale open assignments
+   * from earlier in the shift drop off the board so only relatively fresh CC
+   * hand-offs remain visible.
+   */
+  private static readonly CC_DASHBOARD_MAX_ASSIGNMENT_AGE_MS =
+    4 * 60 * 60 * 1000;
+
+  /**
+   * Call-center **dashboard** predicate: ASSIGNED, creator is **call-center staff**
+   * (`CALL_CENTER` or `CALL_CENTER_SUPERVISOR`), created **today** (Kuwait)
+   * **and** no older than {@link DispatchService.CC_DASHBOARD_MAX_ASSIGNMENT_AGE_MS}.
+   */
+  private ccTrackedDispatchWhere(now: Date = new Date()): Prisma.DispatchWhereInput {
+    const { dayStart, dayEndExclusive } = this.kuwaitCalendarDayBoundsUtc(now);
+    const recentCutoff = new Date(
+      now.getTime() - DispatchService.CC_DASHBOARD_MAX_ASSIGNMENT_AGE_MS,
+    );
+    const createdFrom =
+      recentCutoff.getTime() > dayStart.getTime() ? recentCutoff : dayStart;
+    return {
+      status: DispatchStatus.ASSIGNED,
+      createdAt: {
+        gte: createdFrom,
+        lt: dayEndExclusive,
+      },
+      createdBy: {
+        is: {
+          safariRole: { in: DispatchService.CC_CREATOR_ROLES },
+        },
+      },
+    };
+  }
+
+  /**
+   * Driver poll/SSE fallback: active instructions from CC lane staff (agent +
+   * supervisor), ASSIGNED or IN_PROGRESS — **no** “today only” cut (ops must
+   * not lose overnight assignments when acknowledging).
+   */
+  private driverQueueDispatchWhere(): Prisma.DispatchWhereInput {
+    return {
+      status: {
+        in: [DispatchStatus.ASSIGNED, DispatchStatus.IN_PROGRESS],
+      },
+      createdBy: {
+        is: {
+          safariRole: { in: DispatchService.CC_CREATOR_ROLES },
+        },
+      },
+    };
+  }
+
+  private isCallCenterCreatorRole(actorRole: string | null): boolean {
+    if (!actorRole) return false;
+    return (DispatchService.CC_CREATOR_ROLES as readonly string[]).includes(
+      actorRole,
+    );
+  }
+
+  /**
+   * Hard failsafe before returning dispatch lists: valid IDs, allowed status,
+   * dedupe. CC dashboard rows must be ASSIGNED-only; driver queue keeps IN_PROGRESS.
+   */
+  private finalizeCcDispatchRows<
+    T extends {
+      id: string;
+      driverId: string;
+      customerId: string;
+      status: DispatchStatus;
+    },
+  >(
+    context: string,
+    raw: T[],
+    policy: 'cc_dashboard_strict' | 'driver_queue',
+  ): T[] {
+    const before = raw.length;
+    const allowed =
+      policy === 'cc_dashboard_strict'
+        ? new Set<DispatchStatus>([DispatchStatus.ASSIGNED])
+        : new Set<DispatchStatus>([
+            DispatchStatus.ASSIGNED,
+            DispatchStatus.IN_PROGRESS,
+          ]);
+    const seen = new Set<string>();
+    const out: T[] = [];
+    for (const r of raw) {
+      if (!r.driverId?.trim() || !r.customerId?.trim()) continue;
+      if (!allowed.has(r.status)) continue;
+      if (seen.has(r.id)) continue;
+      seen.add(r.id);
+      out.push(r);
+    }
+    console.log('[CC STRICT FILTER]', {
+      context,
+      before,
+      after: out.length,
+    });
+    return out;
+  }
 
   // ---------------------------------------------------------------------------
   // CALL-CENTER WRITE PATH
@@ -134,13 +263,46 @@ export class DispatchService {
         actualRole: driver.safariRole,
       });
     }
+    if (!driver.id?.trim()) {
+      throw new BadRequestException({
+        code: 'INVALID_DRIVER_ASSIGNMENT',
+        message: 'Invalid driverId assignment',
+      });
+    }
+
+    const duplicate = await this.prisma.dispatch.findFirst({
+      where: {
+        customerId: customer.id,
+        driverId: driver.id,
+        status: DispatchStatus.ASSIGNED,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (duplicate) {
+      this.logger.warn(
+        `dispatch_duplicate_create_prevented customerId=${customer.id} driverId=${driver.id} dispatchId=${duplicate.id}`,
+      );
+      return this.toRowDto(
+        duplicate,
+        {
+          customerDisplay: customer.displayName?.trim() || customer.phone,
+          customerPhone: customer.phone,
+          driverName: driver.fullName?.trim() || driver.username,
+        },
+        new Date(),
+      );
+    }
+
+    const isCallCenterDispatch = this.isCallCenterCreatorRole(input.actorRole);
+    const createdByUserId =
+      isCallCenterDispatch && input.actorUserId ? input.actorUserId : null;
 
     const dispatch = await this.prisma.dispatch.create({
       data: {
         customerId: input.customerId,
-        driverId: input.driverId,
+        driverId: driver.id,
         instructionNote: input.instructionNote?.trim() || null,
-        createdByUserId: input.actorUserId,
+        createdByUserId,
         // status + createdAt take their defaults (ASSIGNED + now()).
       },
     });
@@ -154,7 +316,7 @@ export class DispatchService {
       customerId: input.customerId,
       changes: {
         dispatchId: dispatch.id,
-        driverId: input.driverId,
+        driverId: driver.id,
         instructionNote: dispatch.instructionNote,
       },
     });
@@ -172,16 +334,22 @@ export class DispatchService {
       new Date(),
     );
 
+    try {
+      await this.metrics.incrementAssigned(driver.id, dispatch.createdAt);
+    } catch (error: unknown) {
+      this.logger.warn(
+        `dispatch_metrics_assigned_increment_failed driverId=${driver.id} reason=${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+
     // Broadcast to the driver's SSE channel (ignored if nobody is
     // listening yet — they will pick the new row up on next dashboard
     // pull anyway).
-    this.broadcastToDriver(input.driverId, {
-      dispatchId: dispatch.id,
-      driverId: dispatch.driverId,
-      customerId: dispatch.customerId,
-      status: dispatch.status,
-      createdAtIso: dispatch.createdAt.toISOString(),
-      completedAtIso: dispatch.completedAt?.toISOString() ?? null,
+    this.broadcastDriverEnvelope(driver.id, {
+      event: 'dispatch:new',
+      row,
     });
     // App-level event so the call-center dashboard websocket / future
     // listeners can pick it up.
@@ -210,18 +378,54 @@ export class DispatchService {
   async handleOrderCreated(payload: OrderCreatedEventPayload): Promise<void> {
     if (!payload?.dispatchId) return;
     try {
+      const closedAt = (() => {
+        const parsed = new Date(payload.occurredAtIso);
+        return Number.isFinite(parsed.getTime()) ? parsed : new Date();
+      })();
+
+      const before = await this.prisma.dispatch.findUnique({
+        where: { id: payload.dispatchId },
+        select: {
+          id: true,
+          createdAt: true,
+          driverId: true,
+          customerId: true,
+        },
+      });
+      if (!before) return;
+
+      const totalMinutes = computeElapsedMinutes(before.createdAt, closedAt);
+
       const result = await this.prisma.dispatch.updateMany({
-        where: { id: payload.dispatchId, status: DispatchStatus.ASSIGNED },
+        where: {
+          id: payload.dispatchId,
+          status: { in: [DispatchStatus.ASSIGNED, DispatchStatus.IN_PROGRESS] },
+        },
         data: {
           status: DispatchStatus.COMPLETED,
-          completedAt: new Date(),
+          completedAt: closedAt,
           completedByOrderId: payload.orderId,
+          totalMinutes,
         },
       });
       if (result.count === 0) {
         // Dispatch already closed (or never existed). Either is fine
         // — duplicate event is a no-op.
         return;
+      }
+
+      try {
+        await this.metrics.recordCompletion({
+          driverId: before.driverId,
+          at: closedAt,
+          totalMinutes,
+        });
+      } catch (error: unknown) {
+        this.logger.warn(
+          `dispatch_metrics_completion_failed dispatchId=${payload.dispatchId} reason=${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
       }
 
       const closed = await this.prisma.dispatch.findUnique({
@@ -245,19 +449,27 @@ export class DispatchService {
           driverId: closed.driverId,
           completedAt: closed.completedAt?.toISOString() ?? null,
           completedByOrderId: closed.completedByOrderId,
+          totalMinutes,
         },
       });
 
-      const stream: DispatchStreamEventPayload = {
-        dispatchId: closed.id,
-        driverId: closed.driverId,
-        customerId: closed.customerId,
-        status: closed.status,
-        createdAtIso: closed.createdAt.toISOString(),
-        completedAtIso: closed.completedAt?.toISOString() ?? null,
-      };
-      this.broadcastToDriver(closed.driverId, stream);
-      this.events.emit(DISPATCH_COMPLETED_EVENT, stream);
+      const now = new Date();
+      const row = this.toRowDto(
+        closed,
+        {
+          customerDisplay:
+            closed.customer.displayName?.trim() || closed.customer.phone,
+          customerPhone: closed.customer.phone,
+          driverName:
+            closed.driver.fullName?.trim() || closed.driver.username,
+        },
+        now,
+      );
+      this.broadcastDriverEnvelope(closed.driverId, {
+        event: 'dispatch:update',
+        row,
+      });
+      this.events.emit(DISPATCH_COMPLETED_EVENT, this.rowToStreamPayload(row));
     } catch (error: unknown) {
       // Never let a dispatch-side bug roll back the order itself. Log
       // loudly and move on — the audit row is the recovery path.
@@ -274,10 +486,9 @@ export class DispatchService {
   // ---------------------------------------------------------------------------
 
   /**
-   * Active dispatches for the call-center dashboard. Only ASSIGNED
-   * rows are returned; COMPLETED rows have their own history endpoint
-   * (intentionally not implemented here — the UI is a live ops queue,
-   * not a journal).
+   * Call-center dashboard board: ASSIGNED only, creator **CALL_CENTER** or
+   * **CALL_CENTER_SUPERVISOR**, created **today** (Kuwait) **and** within the
+   * rolling freshness window (see `CC_DASHBOARD_MAX_ASSIGNMENT_AGE_MS`).
    */
   async listActive(
     input: {
@@ -285,8 +496,9 @@ export class DispatchService {
     } = {},
   ): Promise<DispatchSnapshotDto> {
     const limit = clampPositive(input.limit, 200, 50);
+    const now = new Date();
     const rows = await this.prisma.dispatch.findMany({
-      where: { status: DispatchStatus.ASSIGNED },
+      where: this.ccTrackedDispatchWhere(now),
       orderBy: { createdAt: 'asc' },
       take: limit,
       include: {
@@ -294,10 +506,15 @@ export class DispatchService {
         driver: { select: { fullName: true, username: true } },
       },
     });
-    const now = new Date();
+    const cleaned = this.finalizeCcDispatchRows(
+      'listActive',
+      rows,
+      'cc_dashboard_strict',
+    );
+    console.log('[CC API HIT]', cleaned.length);
     return {
       generatedAtIso: now.toISOString(),
-      rows: rows.map((r) =>
+      rows: cleaned.map((r) =>
         this.toRowDto(
           r,
           {
@@ -312,34 +529,35 @@ export class DispatchService {
   }
 
   /**
-   * Driver's own queue. We only show ASSIGNED rows + the most recent
-   * COMPLETED ones (so the driver sees what was just closed without
-   * the page jumping). The driver CANNOT modify any field — read
-   * only.
+   * Driver queue: ASSIGNED + IN_PROGRESS from CC lane creators (agent +
+   * supervisor). Intentionally **not** “today only” so existing assignments are
+   * still actionable after midnight Kuwait time.
    */
   async listForDriver(driverId: string): Promise<DispatchSnapshotDto> {
     const rows = await this.prisma.dispatch.findMany({
       where: {
         driverId,
-        OR: [
-          { status: DispatchStatus.ASSIGNED },
-          {
-            status: DispatchStatus.COMPLETED,
-            completedAt: { gte: oneHourAgo() },
-          },
-        ],
+        ...this.driverQueueDispatchWhere(),
       },
       orderBy: { createdAt: 'desc' },
-      take: 50,
+      take: 20,
       include: {
         customer: { select: { displayName: true, phone: true } },
         driver: { select: { fullName: true, username: true } },
       },
     });
+    const deduped = this.finalizeCcDispatchRows(
+      'listForDriver',
+      rows,
+      'driver_queue',
+    );
+    this.logger.debug(
+      `driver_dispatch_poll driverId=${driverId} count=${deduped.length}`,
+    );
     const now = new Date();
     return {
       generatedAtIso: now.toISOString(),
-      rows: rows.map((r) =>
+      rows: deduped.map((r) =>
         this.toRowDto(
           r,
           {
@@ -353,38 +571,193 @@ export class DispatchService {
     };
   }
 
+  async acknowledge(input: {
+    dispatchId: string;
+    driverId: string;
+  }): Promise<DispatchRowDto> {
+    const now = new Date();
+
+    const presentationSelect = {
+      customer: { select: { displayName: true, phone: true } },
+      driver: { select: { fullName: true, username: true } },
+    } as const;
+
+    const existing = await this.prisma.dispatch.findUnique({
+      where: { id: input.dispatchId },
+      include: presentationSelect,
+    });
+
+    if (!existing) {
+      throw new NotFoundException({
+        code: 'DISPATCH_NOT_FOUND',
+        dispatchId: input.dispatchId,
+      });
+    }
+
+    if (existing.driverId !== input.driverId) {
+      throw new ForbiddenException({
+        code: 'DISPATCH_DRIVER_MISMATCH',
+        dispatchId: input.dispatchId,
+      });
+    }
+
+    if (existing.status !== DispatchStatus.ASSIGNED) {
+      return this.toRowDto(
+        existing,
+        {
+          customerDisplay:
+            existing.customer.displayName?.trim() || existing.customer.phone,
+          customerPhone: existing.customer.phone,
+          driverName:
+            existing.driver.fullName?.trim() || existing.driver.username,
+        },
+        now,
+      );
+    }
+
+    const ackMinutes = computeElapsedMinutes(existing.createdAt, now);
+
+    const result = await this.prisma.dispatch.updateMany({
+      where: {
+        id: input.dispatchId,
+        driverId: input.driverId,
+        status: DispatchStatus.ASSIGNED,
+      },
+      data: {
+        status: DispatchStatus.IN_PROGRESS,
+        acknowledgedAt: now,
+        startedAt: now,
+        ackMinutes,
+      },
+    });
+
+    const latest = await this.prisma.dispatch.findUnique({
+      where: { id: input.dispatchId },
+      include: presentationSelect,
+    });
+
+    if (!latest) {
+      throw new NotFoundException({
+        code: 'DISPATCH_NOT_FOUND',
+        dispatchId: input.dispatchId,
+      });
+    }
+
+    if (result.count === 0) {
+      return this.toRowDto(
+        latest,
+        {
+          customerDisplay:
+            latest.customer.displayName?.trim() || latest.customer.phone,
+          customerPhone: latest.customer.phone,
+          driverName:
+            latest.driver.fullName?.trim() || latest.driver.username,
+        },
+        now,
+      );
+    }
+
+    try {
+      await this.metrics.recordAcknowledged(
+        latest.driverId,
+        now,
+        ackMinutes,
+      );
+    } catch (error: unknown) {
+      this.logger.warn(
+        `dispatch_metrics_ack_failed dispatchId=${latest.id} reason=${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+
+    this.auditLogs.log({
+      action: 'DISPATCH_ACKNOWLEDGED',
+      resource: 'dispatch',
+      status: 'SUCCESS',
+      userId: input.driverId,
+      customerId: latest.customerId,
+      changes: {
+        dispatchId: latest.id,
+        driverId: latest.driverId,
+        acknowledgedAt: latest.acknowledgedAt?.toISOString() ?? null,
+        ackMinutes,
+      },
+    });
+
+    const row = this.toRowDto(
+      latest,
+      {
+        customerDisplay:
+          latest.customer.displayName?.trim() || latest.customer.phone,
+        customerPhone: latest.customer.phone,
+        driverName:
+          latest.driver.fullName?.trim() || latest.driver.username,
+      },
+      now,
+    );
+    this.broadcastDriverEnvelope(latest.driverId, {
+      event: 'dispatch:update',
+      row,
+    });
+    this.events.emit(
+      DISPATCH_ACKNOWLEDGED_EVENT,
+      this.rowToStreamPayload(row),
+    );
+
+    return row;
+  }
+
   // ---------------------------------------------------------------------------
-  // ESCALATION + REASSIGNMENT (Part 1, Part 4 of the reliability brief)
+  // SLA MONITOR (cron — no driver reassignment)
   // ---------------------------------------------------------------------------
 
   /**
-   * Pick a single ASSIGNED driver other than `excludeDriverId`. Tie-
-   * breaks on the driver who currently holds the FEWEST ASSIGNED
-   * dispatches (lightweight load-balancer; cheap because the count
-   * comes from the same indexed `(driverId, status, createdAt)`
-   * tuple). Returns `null` when no alternative driver exists — the
-   * caller must skip the escalation in that case rather than create
-   * a self-loop.
+   * V19.x — Public roster of drivers eligible to receive a dispatch.
+   *
+   * Filter rules (kept deliberately tight so the call-center picker
+   * never offers an unusable assignee):
+   *   - `safariRole = DRIVER` only (managers, supervisors, etc. are
+   *     never valid dispatch targets — see `create()` validation).
+   *   - `isActive = true` (Owner-disabled accounts cannot sign in,
+   *     so dispatching to them would silently rot in their queue).
+   *
+   * Output is intentionally minimal: id, name, isActive. We do NOT
+   * include phone, employeeId, branch, custody balances, or any
+   * financial column — the dispatch picker needs a label and a
+   * sortable identifier, nothing more. Adding more fields here would
+   * leak data the CALL_CENTER role is not supposed to see (per the
+   * RBAC matrix, CC has VIEW_DISPATCH but not VIEW_PAYROLL or
+   * staff-directory access on `/api/users`).
+   *
+   * Sort: ascending by **dashboard-visible** ASSIGNED load (CC lane creations,
+   * Kuwait calendar day, rolling ~4h freshness window), ties broken by name on the server so
+   * every picker sees the same order.
    */
-  async pickAlternateDriver(
-    excludeDriverId: string,
-  ): Promise<{ id: string } | null> {
-    const candidates = await this.prisma.user.findMany({
+  async listAvailableDrivers(): Promise<
+    Array<{ id: string; name: string; isActive: boolean; activeLoad: number }>
+  > {
+    const drivers = await this.prisma.user.findMany({
       where: {
         safariRole: SafariRole.DRIVER,
         isActive: true,
-        id: { not: excludeDriverId },
       },
-      select: { id: true },
+      select: {
+        id: true,
+        fullName: true,
+        username: true,
+        isActive: true,
+      },
+      orderBy: { fullName: 'asc' },
     });
-    if (candidates.length === 0) return null;
+    if (drivers.length === 0) return [];
 
-    // One round-trip groupBy keeps us from N+1.
+    const clock = new Date();
     const loads = await this.prisma.dispatch.groupBy({
       by: ['driverId'],
       where: {
-        status: DispatchStatus.ASSIGNED,
-        driverId: { in: candidates.map((c) => c.id) },
+        ...this.ccTrackedDispatchWhere(clock),
+        driverId: { in: drivers.map((d) => d.id) },
       },
       _count: { _all: true },
     });
@@ -392,240 +765,285 @@ export class DispatchService {
       loads.map((row) => [row.driverId, row._count._all]),
     );
 
-    return candidates
-      .map((c) => ({ id: c.id, load: loadById.get(c.id) ?? 0 }))
-      .sort((a, b) => a.load - b.load)[0];
+    return drivers
+      .map((d) => ({
+        id: d.id,
+        // Fall back to username when fullName is empty so the picker
+        // never renders an unlabelled option.
+        name: d.fullName?.trim() || d.username,
+        isActive: d.isActive,
+        activeLoad: loadById.get(d.id) ?? 0,
+      }))
+      .sort((a, b) => {
+        const loadDelta = a.activeLoad - b.activeLoad;
+        if (loadDelta !== 0) return loadDelta;
+        return a.name.localeCompare(b.name);
+      });
   }
 
   /**
-   * Find the ASSIGNED dispatches that are eligible for auto-
-   * escalation: older than `minAgeMinutes` AND have no successor
-   * yet. The "no successor" predicate (`children: { none: {} }`) is
-   * the application-level idempotency key — without it the cron
-   * would fan out a new dispatch every tick.
+   * SLA monitor — ASSIGNED rows only. Minutes since `createdAt`:
+   * ≥2 → `firstAlertAt` + driver SSE `dispatch:alert`;
+   * ≥5 → `escalatedAt` + audit / internal notify hooks;
+   * ≥10 → `breachedAt` + audit / manager hooks.
+   *
+   * Idempotent: each tier writes once (NULL-check in the patch).
+   *
+   * Only considers ASSIGNED rows that match the strict CC dashboard predicate
+   * (CALL_CENTER lane creator, Kuwait calendar day, rolling freshness window).
    */
-  async findEscalationCandidates(
-    minAgeMinutes: number,
-    limit = 50,
-  ): Promise<
-    Array<Pick<Dispatch, 'id' | 'customerId' | 'driverId' | 'instructionNote'>>
-  > {
-    const cutoff = new Date(Date.now() - minAgeMinutes * 60_000);
-    return this.prisma.dispatch.findMany({
-      where: {
-        status: DispatchStatus.ASSIGNED,
-        createdAt: { lt: cutoff },
-        children: { none: {} },
-      },
+  async runSlaMonitorOnce(input: {
+    limit?: number;
+  }): Promise<{
+    inspected: number;
+    firstAlerts: number;
+    escalations: number;
+    breaches: number;
+  }> {
+    const limit = input.limit ?? 200;
+    const now = new Date();
+
+    const rowsRaw = await this.prisma.dispatch.findMany({
+      where: this.ccTrackedDispatchWhere(now),
       orderBy: { createdAt: 'asc' },
       take: limit,
-      select: {
-        id: true,
-        customerId: true,
-        driverId: true,
-        instructionNote: true,
+      include: {
+        customer: { select: { displayName: true, phone: true } },
+        driver: { select: { fullName: true, username: true } },
       },
     });
-  }
-
-  /**
-   * Promote a single overdue dispatch to a successor row pointing at
-   * a fresh driver. The original is intentionally LEFT in ASSIGNED —
-   * Order is still the only completer. Used by both the auto-
-   * escalation cron and the manual call-center reassign endpoint.
-   *
-   * Returns `null` when no alternative driver could be found, so the
-   * cron can skip + log instead of crashing.
-   */
-  async createSuccessor(input: {
-    parent: Pick<
-      Dispatch,
-      'id' | 'customerId' | 'driverId' | 'instructionNote'
-    >;
-    newDriverId: string;
-    instructionNote: string | null;
-    actorUserId: string | null;
-  }): Promise<Dispatch> {
-    return this.prisma.dispatch.create({
-      data: {
-        customerId: input.parent.customerId,
-        driverId: input.newDriverId,
-        instructionNote: input.instructionNote?.trim() || null,
-        createdByUserId: input.actorUserId,
-        parentDispatchId: input.parent.id,
-        // status + createdAt take their defaults (ASSIGNED, now()).
-      },
-    });
-  }
-
-  /**
-   * AUTO-ESCALATION (cron). Wraps the candidate fetch + per-row
-   * successor creation + audit + SSE broadcast. Returns the count of
-   * dispatches actually escalated (not just inspected) so the caller
-   * can record reliability metrics.
-   *
-   * Idempotent: a parent that already has any child is filtered out
-   * by `findEscalationCandidates`. A second cron tick for the same
-   * parent is a guaranteed no-op.
-   */
-  async runEscalationOnce(input: {
-    minAgeMinutes: number;
-    limit?: number;
-  }): Promise<{ inspected: number; escalated: number; skipped: number }> {
-    const candidates = await this.findEscalationCandidates(
-      input.minAgeMinutes,
-      input.limit ?? 50,
+    const rows = this.finalizeCcDispatchRows(
+      'runSlaMonitorOnce',
+      rowsRaw,
+      'cc_dashboard_strict',
     );
-    let escalated = 0;
-    let skipped = 0;
-    for (const parent of candidates) {
-      const next = await this.pickAlternateDriver(parent.driverId);
-      if (!next) {
-        skipped += 1;
+
+    let firstAlerts = 0;
+    let escalations = 0;
+    let breaches = 0;
+
+    for (const row of rows) {
+      const ageMin = computeElapsedMinutes(row.createdAt, now);
+      const needsPatch =
+        (ageMin >= 2 && !row.firstAlertAt) ||
+        (ageMin >= 5 && !row.escalatedAt) ||
+        (ageMin >= 10 && !row.breachedAt);
+      if (!needsPatch) continue;
+
+      const hadFirst = !!row.firstAlertAt;
+      const hadEsc = !!row.escalatedAt;
+      const hadBr = !!row.breachedAt;
+
+      try {
+        await this.prisma.$transaction(async (tx) => {
+          const cur = await tx.dispatch.findUnique({
+            where: { id: row.id },
+            select: {
+              id: true,
+              status: true,
+              firstAlertAt: true,
+              escalatedAt: true,
+              breachedAt: true,
+            },
+          });
+          if (!cur || cur.status !== DispatchStatus.ASSIGNED) return;
+
+          const patch: Prisma.DispatchUpdateInput = {};
+          if (ageMin >= 2 && !cur.firstAlertAt) patch.firstAlertAt = now;
+          if (ageMin >= 5 && !cur.escalatedAt) patch.escalatedAt = now;
+          if (ageMin >= 10 && !cur.breachedAt) patch.breachedAt = now;
+          if (Object.keys(patch).length === 0) return;
+
+          await tx.dispatch.update({
+            where: { id: cur.id },
+            data: patch,
+          });
+        });
+      } catch (error: unknown) {
         this.logger.warn(
-          `dispatch_escalation_skipped reason=NO_ALTERNATE_DRIVER parentId=${parent.id}`,
+          `dispatch_sla_monitor_row_failed dispatchId=${row.id} reason=${
+            error instanceof Error ? error.message : String(error)
+          }`,
         );
         continue;
       }
-      const successor = await this.createSuccessor({
-        parent,
-        newDriverId: next.id,
-        instructionNote: `تصعيد تلقائي بعد ${input.minAgeMinutes} دقيقة`,
-        actorUserId: null, // system actor
-      });
-      this.auditLogs.log({
-        action: 'DISPATCH_ESCALATED',
-        resource: 'dispatch',
-        status: 'SUCCESS',
-        userId: null,
-        role: 'SYSTEM',
-        customerId: parent.customerId,
-        source: 'AUTO_ESCALATION_CRON',
-        changes: {
-          parentDispatchId: parent.id,
-          successorDispatchId: successor.id,
-          previousDriverId: parent.driverId,
-          newDriverId: next.id,
-          minAgeMinutes: input.minAgeMinutes,
+
+      const fresh = await this.prisma.dispatch.findUnique({
+        where: { id: row.id },
+        include: {
+          customer: { select: { displayName: true, phone: true } },
+          driver: { select: { fullName: true, username: true } },
         },
       });
-      this.broadcastToDriver(next.id, {
-        dispatchId: successor.id,
-        driverId: successor.driverId,
-        customerId: successor.customerId,
-        status: successor.status,
-        createdAtIso: successor.createdAt.toISOString(),
-        completedAtIso: null,
+      if (!fresh || fresh.status !== DispatchStatus.ASSIGNED) continue;
+
+      const alertNew = !hadFirst && !!fresh.firstAlertAt;
+      const escNew = !hadEsc && !!fresh.escalatedAt;
+      const brNew = !hadBr && !!fresh.breachedAt;
+
+      if (!alertNew && !escNew && !brNew) continue;
+
+      if (alertNew) firstAlerts += 1;
+      if (escNew) escalations += 1;
+      if (brNew) breaches += 1;
+
+      const pres = {
+        customerDisplay:
+          fresh.customer.displayName?.trim() || fresh.customer.phone,
+        customerPhone: fresh.customer.phone,
+        driverName: fresh.driver.fullName?.trim() || fresh.driver.username,
+      };
+      const dto = this.toRowDto(fresh, pres, now);
+
+      this.broadcastDriverEnvelope(fresh.driverId, {
+        event: 'dispatch:alert',
+        row: dto,
       });
-      this.events.emit(DISPATCH_CREATED_EVENT, successor);
-      escalated += 1;
+
+      if (escNew) {
+        this.events.emit('dispatch.sla.escalated', {
+          dispatchId: fresh.id,
+          driverId: fresh.driverId,
+          customerId: fresh.customerId,
+          escalatedAtIso: fresh.escalatedAt?.toISOString() ?? null,
+        });
+        void this.auditLogs.log({
+          action: 'DISPATCH_SLA_ESCALATED',
+          resource: 'dispatch',
+          status: 'SUCCESS',
+          userId: null,
+          role: 'SYSTEM',
+          customerId: fresh.customerId,
+          source: 'SLA_MONITOR_CRON',
+          changes: {
+            dispatchId: fresh.id,
+            driverId: fresh.driverId,
+            escalatedAt: fresh.escalatedAt?.toISOString() ?? null,
+          },
+        });
+      }
+
+      if (brNew) {
+        this.events.emit('dispatch.sla.breach', {
+          dispatchId: fresh.id,
+          driverId: fresh.driverId,
+          customerId: fresh.customerId,
+          breachedAtIso: fresh.breachedAt?.toISOString() ?? null,
+        });
+        void this.auditLogs.log({
+          action: 'DISPATCH_SLA_BREACH',
+          resource: 'dispatch',
+          status: 'SUCCESS',
+          userId: null,
+          role: 'SYSTEM',
+          customerId: fresh.customerId,
+          source: 'SLA_MONITOR_CRON',
+          changes: {
+            dispatchId: fresh.id,
+            driverId: fresh.driverId,
+            breachedAt: fresh.breachedAt?.toISOString() ?? null,
+          },
+        });
+      }
     }
-    return { inspected: candidates.length, escalated, skipped };
+
+    return {
+      inspected: rows.length,
+      firstAlerts,
+      escalations,
+      breaches,
+    };
+  }
+
+  async monitorForCallCenter(): Promise<DispatchMonitorSnapshotDto> {
+    const now = new Date();
+    const rows = await this.prisma.dispatch.findMany({
+      where: this.ccTrackedDispatchWhere(now),
+      orderBy: { createdAt: 'asc' },
+      take: 500,
+      include: {
+        customer: { select: { displayName: true, phone: true } },
+        driver: { select: { id: true, fullName: true, username: true } },
+      },
+    });
+
+    const cleanedRows = this.finalizeCcDispatchRows(
+      'monitorForCallCenter',
+      rows,
+      'cc_dashboard_strict',
+    );
+    console.log('[CC API HIT]', cleanedRows.length);
+
+    const driverNameById = new Map<string, string>();
+    const delayedByDispatchId = new Map<string, DispatchRowDto>();
+
+    const allTasks = cleanedRows.map((r) => {
+      const pres = {
+        customerDisplay: r.customer.displayName?.trim() || r.customer.phone,
+        customerPhone: r.customer.phone,
+        driverName: r.driver.fullName?.trim() || r.driver.username,
+      };
+      driverNameById.set(r.driverId, pres.driverName);
+      const dto = this.toRowDto(r, pres, now);
+
+      // “Delayed” strip: escalation tier (≥5 min SLA) or breach — not every row
+      // that merely passed the 2‑minute first-alert threshold (that matched
+      // almost all assignments and looked like junk data).
+      const showInDelayedSection =
+        dto.slaTone === 'BREACH' ||
+        (dto.slaTone === 'LATE' && dto.elapsedMinutes >= 5);
+      if (showInDelayedSection) {
+        delayedByDispatchId.set(dto.id, dto);
+      }
+      return dto;
+    });
+    console.log('=== RAW TASKS ===');
+    console.log(
+      cleanedRows.map((t) => ({
+        id: t.id,
+        driverId: t.driverId,
+        driverRelationId: t.driver.id,
+        customerId: t.customerId,
+        createdBy: t.createdByUserId,
+      })),
+    );
+
+    const drivers = [...driverNameById.entries()].map(([driverId, driverName]) => {
+      const assignedTasks = allTasks.filter((t) => t.driverId === driverId);
+      console.log('[DRIVER TASKS]', driverId, assignedTasks.length);
+      return {
+        driverId,
+        driverName,
+        activeAssignedCount: assignedTasks.length,
+        lateCount: assignedTasks.filter((t) => t.slaTone === 'LATE').length,
+        breachCount: assignedTasks.filter((t) => t.slaTone === 'BREACH').length,
+        assignedTasks,
+      };
+    });
+
+    return {
+      generatedAtIso: now.toISOString(),
+      drivers,
+      delayedDriversSection: [...delayedByDispatchId.values()],
+    };
   }
 
   /**
-   * MANUAL REASSIGN by CALL_CENTER agent (Part 4 of brief).
-   *
-   * Validates:
-   *   - dispatch exists AND is still ASSIGNED;
-   *   - new driver exists, is active, and has SafariRole DRIVER;
-   *   - new driver != current driver.
-   *
-   * Mutation:
-   *   - creates a successor (parentDispatchId = current.id);
-   *   - leaves the original in ASSIGNED (Order remains the only
-   *     completer for either row).
+   * Manual reassignment is disabled: each customer/driver assignment is fixed
+   * for the lifetime of the dispatch; escalation is visibility-only (SLA stamps).
    */
-  async reassign(input: {
+  async reassign(_input: {
     dispatchId: string;
     newDriverId: string;
     reason: string | null;
     actorUserId: string | null;
     actorRole: string | null;
   }): Promise<Dispatch> {
-    const current = await this.prisma.dispatch.findUnique({
-      where: { id: input.dispatchId },
-      select: {
-        id: true,
-        status: true,
-        customerId: true,
-        driverId: true,
-        instructionNote: true,
-      },
+    throw new ForbiddenException({
+      code: 'DISPATCH_REASSIGN_FORBIDDEN',
+      message:
+        'إعادة إسناد المهمة غير مسموحة — المهمة تبقى عند نفس السائق حتى إغلاق الفاتورة.',
     });
-    if (!current) {
-      throw new NotFoundException({
-        code: 'DISPATCH_NOT_FOUND',
-        dispatchId: input.dispatchId,
-      });
-    }
-    if (current.status !== DispatchStatus.ASSIGNED) {
-      throw new BadRequestException({
-        code: 'DISPATCH_NOT_ASSIGNED',
-        dispatchId: current.id,
-        currentStatus: current.status,
-      });
-    }
-    if (current.driverId === input.newDriverId) {
-      throw new BadRequestException({
-        code: 'DRIVER_UNCHANGED',
-        dispatchId: current.id,
-      });
-    }
-    const newDriver = await this.prisma.user.findUnique({
-      where: { id: input.newDriverId },
-      select: { id: true, isActive: true, safariRole: true },
-    });
-    if (!newDriver || !newDriver.isActive) {
-      throw new NotFoundException({
-        code: 'DRIVER_NOT_FOUND',
-        driverId: input.newDriverId,
-      });
-    }
-    if (newDriver.safariRole !== SafariRole.DRIVER) {
-      throw new BadRequestException({
-        code: 'DRIVER_ROLE_MISMATCH',
-        driverId: newDriver.id,
-        actualRole: newDriver.safariRole,
-      });
-    }
-
-    const successor = await this.createSuccessor({
-      parent: current,
-      newDriverId: input.newDriverId,
-      instructionNote:
-        input.reason?.trim() || `إعادة توجيه يدوي من قِبل مركز الاتصال`,
-      actorUserId: input.actorUserId,
-    });
-
-    this.auditLogs.log({
-      action: 'DISPATCH_REASSIGNED',
-      resource: 'dispatch',
-      status: 'SUCCESS',
-      userId: input.actorUserId,
-      role: input.actorRole,
-      customerId: current.customerId,
-      source: 'CALL_CENTER_MANUAL',
-      changes: {
-        parentDispatchId: current.id,
-        successorDispatchId: successor.id,
-        previousDriverId: current.driverId,
-        newDriverId: input.newDriverId,
-        reason: input.reason,
-      },
-    });
-
-    this.broadcastToDriver(successor.driverId, {
-      dispatchId: successor.id,
-      driverId: successor.driverId,
-      customerId: successor.customerId,
-      status: successor.status,
-      createdAtIso: successor.createdAt.toISOString(),
-      completedAtIso: null,
-    });
-    this.events.emit(DISPATCH_CREATED_EVENT, successor);
-
-    return successor;
   }
 
   // ---------------------------------------------------------------------------
@@ -644,7 +1062,7 @@ export class DispatchService {
   ): Promise<Array<{ id: string; customerId: string; orderId: string }>> {
     const rows = await this.prisma.dispatch.findMany({
       where: {
-        status: DispatchStatus.ASSIGNED,
+        status: { in: [DispatchStatus.ASSIGNED, DispatchStatus.IN_PROGRESS] },
         orders: { some: {} },
       },
       orderBy: { createdAt: 'asc' },
@@ -679,20 +1097,74 @@ export class DispatchService {
     orderId: string;
     customerId: string;
   }): Promise<{ closed: boolean }> {
+    const snapshot = await this.prisma.dispatch.findUnique({
+      where: { id: input.dispatchId },
+      select: { createdAt: true, driverId: true },
+    });
+    if (!snapshot) {
+      return { closed: false };
+    }
+
+    const completedAt = new Date();
+    const totalMinutes = computeElapsedMinutes(snapshot.createdAt, completedAt);
+
     const result = await this.prisma.dispatch.updateMany({
       where: {
         id: input.dispatchId,
-        status: DispatchStatus.ASSIGNED,
+        status: { in: [DispatchStatus.ASSIGNED, DispatchStatus.IN_PROGRESS] },
       },
       data: {
         status: DispatchStatus.COMPLETED,
-        completedAt: new Date(),
+        completedAt,
         completedByOrderId: input.orderId,
+        totalMinutes,
       },
     });
     if (result.count === 0) {
       return { closed: false };
     }
+
+    try {
+      await this.metrics.recordCompletion({
+        driverId: snapshot.driverId,
+        at: completedAt,
+        totalMinutes,
+      });
+    } catch (error: unknown) {
+      this.logger.warn(
+        `dispatch_metrics_reconcile_completion_failed dispatchId=${input.dispatchId} reason=${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+
+    const closedRow = await this.prisma.dispatch.findUnique({
+      where: { id: input.dispatchId },
+      include: {
+        customer: { select: { displayName: true, phone: true } },
+        driver: { select: { fullName: true, username: true } },
+      },
+    });
+    if (closedRow) {
+      const now = new Date();
+      const row = this.toRowDto(
+        closedRow,
+        {
+          customerDisplay:
+            closedRow.customer.displayName?.trim() || closedRow.customer.phone,
+          customerPhone: closedRow.customer.phone,
+          driverName:
+            closedRow.driver.fullName?.trim() || closedRow.driver.username,
+        },
+        now,
+      );
+      this.broadcastDriverEnvelope(closedRow.driverId, {
+        event: 'dispatch:update',
+        row,
+      });
+      this.events.emit(DISPATCH_COMPLETED_EVENT, this.rowToStreamPayload(row));
+    }
+
     this.auditLogs.log({
       action: 'DISPATCH_RECONCILED',
       resource: 'dispatch',
@@ -705,6 +1177,7 @@ export class DispatchService {
       changes: {
         dispatchId: input.dispatchId,
         completedByOrderId: input.orderId,
+        totalMinutes,
       },
     });
     return { closed: true };
@@ -737,30 +1210,33 @@ export class DispatchService {
   // ---------------------------------------------------------------------------
 
   /** Subscribe a driver's SSE controller to push events. */
-  subscribeDriverStream(driverId: string): Subject<DispatchStreamEventPayload> {
+  subscribeDriverStream(driverId: string): Subject<DriverDispatchSseEnvelope> {
     const existing = this.driverStreams.get(driverId);
     if (existing) return existing;
-    const subject = new Subject<DispatchStreamEventPayload>();
+    const subject = new Subject<DriverDispatchSseEnvelope>();
     this.driverStreams.set(driverId, subject);
     return subject;
   }
 
   /** Tear down the driver's SSE channel when nobody is listening. */
-  unsubscribeDriverStream(driverId: string, subject: Subject<unknown>): void {
+  unsubscribeDriverStream(
+    driverId: string,
+    subject: Subject<DriverDispatchSseEnvelope>,
+  ): void {
     const current = this.driverStreams.get(driverId);
     if (current && current === subject) {
       this.driverStreams.delete(driverId);
     }
   }
 
-  private broadcastToDriver(
+  private broadcastDriverEnvelope(
     driverId: string,
-    payload: DispatchStreamEventPayload,
+    envelope: DriverDispatchSseEnvelope,
   ): void {
     const subject = this.driverStreams.get(driverId);
     if (!subject) return;
     try {
-      subject.next(payload);
+      subject.next(envelope);
     } catch (error: unknown) {
       this.logger.warn(
         `dispatch_sse_broadcast_failed driverId=${driverId} reason=${
@@ -768,6 +1244,18 @@ export class DispatchService {
         }`,
       );
     }
+  }
+
+  private rowToStreamPayload(row: DispatchRowDto): DispatchStreamEventPayload {
+    return {
+      dispatchId: row.id,
+      driverId: row.driverId,
+      customerId: row.customerId,
+      status: row.status,
+      createdAtIso: row.createdAtIso,
+      acknowledgedAtIso: row.acknowledgedAtIso,
+      completedAtIso: row.completedAtIso,
+    };
   }
 
   // ---------------------------------------------------------------------------
@@ -788,6 +1276,7 @@ export class DispatchService {
       d.status === DispatchStatus.COMPLETED ? (d.completedAt ?? now) : now,
     );
     const severity = severityFor(d.status, elapsedMinutes);
+    const slaTone = slaToneDispatch(d, elapsedMinutes);
     return {
       id: d.id,
       status: d.status,
@@ -800,8 +1289,16 @@ export class DispatchService {
       driverName: presentation.driverName,
       instructionNote: d.instructionNote,
       createdAtIso: d.createdAt.toISOString(),
+      acknowledgedAtIso: d.acknowledgedAt?.toISOString() ?? null,
       completedAtIso: d.completedAt?.toISOString() ?? null,
       completedByOrderId: d.completedByOrderId,
+      startedAtIso: d.startedAt?.toISOString() ?? null,
+      firstAlertAtIso: d.firstAlertAt?.toISOString() ?? null,
+      escalatedAtIso: d.escalatedAt?.toISOString() ?? null,
+      breachedAtIso: d.breachedAt?.toISOString() ?? null,
+      ackMinutes: d.ackMinutes ?? null,
+      totalMinutes: d.totalMinutes ?? null,
+      slaTone,
     };
   }
 }
@@ -835,6 +1332,21 @@ export function severityFor(
   return 'ON_TIME';
 }
 
+/**
+ * Assignment SLA traffic-light (persisted stamps + live age fallback).
+ */
+export function slaToneDispatch(
+  d: Dispatch,
+  elapsedMinutesSinceCreated: number,
+): DispatchSlaTone {
+  if (d.status === DispatchStatus.COMPLETED) return 'NORMAL';
+  if (d.status === DispatchStatus.IN_PROGRESS) return 'NORMAL';
+  if (d.breachedAt || elapsedMinutesSinceCreated >= 10) return 'BREACH';
+  if (d.escalatedAt || elapsedMinutesSinceCreated >= 5) return 'LATE';
+  if (d.firstAlertAt || elapsedMinutesSinceCreated >= 2) return 'LATE';
+  return 'NORMAL';
+}
+
 function clampPositive(
   value: number | undefined,
   max: number,
@@ -844,12 +1356,6 @@ function clampPositive(
     return fallback;
   }
   return Math.min(Math.floor(value), max);
-}
-
-function oneHourAgo(): Date {
-  const d = new Date();
-  d.setMinutes(d.getMinutes() - 60);
-  return d;
 }
 
 // Re-export the Dispatch row type so consumers can import it from

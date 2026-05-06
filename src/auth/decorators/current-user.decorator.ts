@@ -7,6 +7,7 @@ export type JwtUser = {
   scope?: 'ALL' | 'BRANCH' | 'OWN';
   /** B2C portal — must equal `Customer.id` when role is CUSTOMER. */
   linkedCustomerId?: string | null;
+  tokenPurpose?: 'PASSWORD_CHANGE_ONLY';
 };
 
 export const CurrentUser = createParamDecorator(

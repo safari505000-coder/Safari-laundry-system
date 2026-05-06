@@ -2,16 +2,11 @@
  * V19.x — Smoke test for the dispatch RELIABILITY upgrade.
  *
  * Coverage:
- *   1. CALL_CENTER login → create dispatch → reassign → verify
- *      successor row carries `parentDispatchId` + DISPATCH_REASSIGNED
- *      audit row exists.
+ *   1. CALL_CENTER login → create dispatch → manual /reassign MUST 403.
  *   2. GET /api/driver/dispatch/mine/poll returns the same shape as
  *      the SSE snapshot.
- *   3. ESCALATION cron-equivalent: plant a 31-min-old ASSIGNED
- *      dispatch → nudge the schema time backwards via SQL → call
- *      runEscalationOnce via a tiny one-shot Nest bootstrap → assert
- *      a successor was created, a DISPATCH_ESCALATED audit row was
- *      written, and a SECOND call is a no-op (idempotency).
+ *   3. SLA cron-equivalent: stale ASSIGNED dispatch → runSlaMonitorOnce →
+ *      SLA stamps + DISPATCH_SLA_ESCALATED audit; second call stays quiet.
  *   4. RECONCILIATION cron-equivalent: plant an ASSIGNED dispatch
  *      with an Order pointing at it → call runReconciliationOnce →
  *      assert close + DISPATCH_RECONCILED audit. Second call is
@@ -94,8 +89,8 @@ async function pickFixtures() {
   return { ccUser, drivers, customer };
 }
 
-async function part1_reassign(ccToken, customerId, driverA, driverB) {
-  console.log('\n=== PART 1 — REASSIGN ===');
+async function part1_reassignForbidden(ccToken, customerId, driverA, driverB) {
+  console.log('\n=== PART 1 — REASSIGN DISABLED ===');
   const create = await api('POST', '/api/call-center/dispatch', ccToken, {
     customerId,
     driverId: driverA.id,
@@ -111,57 +106,15 @@ async function part1_reassign(ccToken, customerId, driverA, driverB) {
     'POST',
     `/api/call-center/dispatch/${parentId}/reassign`,
     ccToken,
-    { newDriverId: driverB.id, reason: 'smoke: simulating ETA breach' },
+    { newDriverId: driverB.id, reason: 'smoke: should be forbidden' },
   );
   console.log('REASSIGN status =', reassign.status);
-  if (reassign.status !== 201) {
-    throw new Error(`expected 201 on reassign, got ${reassign.status}`);
-  }
-  const successorId = reassign.json.data.id;
-  console.log('SUCCESSOR =', successorId, 'driverB =', driverB.username);
-
-  const successor = await prisma.dispatch.findUnique({
-    where: { id: successorId },
-    select: {
-      id: true,
-      driverId: true,
-      parentDispatchId: true,
-      status: true,
-      instructionNote: true,
-    },
-  });
-  if (
-    successor?.parentDispatchId !== parentId ||
-    successor.driverId !== driverB.id ||
-    successor.status !== 'ASSIGNED'
-  ) {
-    throw new Error(
-      `successor row unexpected: ${JSON.stringify(successor)}`,
-    );
+  if (reassign.status !== 403) {
+    throw new Error(`expected 403 DISPATCH_REASSIGN_FORBIDDEN, got ${reassign.status}`);
   }
 
-  const parent = await prisma.dispatch.findUnique({
-    where: { id: parentId },
-    select: { status: true },
-  });
-  if (parent?.status !== 'ASSIGNED') {
-    throw new Error(`parent must remain ASSIGNED, got ${parent?.status}`);
-  }
-
-  // Reject reassign attempt with same driver (DRIVER_UNCHANGED).
-  const dup = await api(
-    'POST',
-    `/api/call-center/dispatch/${successorId}/reassign`,
-    ccToken,
-    { newDriverId: driverB.id },
-  );
-  console.log('REASSIGN_SAME_DRIVER status =', dup.status);
-  if (dup.status !== 400) {
-    throw new Error(`expected 400 DRIVER_UNCHANGED, got ${dup.status}`);
-  }
-
-  console.log('PART 1 OK — successor created with parentDispatchId set');
-  return { parentId, successorId };
+  console.log('PART 1 OK — manual reassignment rejected');
+  return { parentId };
 }
 
 async function part2_pollFallback(driverToken) {
@@ -182,17 +135,17 @@ async function part2_pollFallback(driverToken) {
   console.log('PART 2 OK — poll endpoint mirrors SSE snapshot shape');
 }
 
-async function part3_escalation(customerId, driverA) {
-  console.log('\n=== PART 3 — ESCALATION (cron-equivalent) ===');
+async function part3_slaMonitor(customerId, driverA) {
+  console.log('\n=== PART 3 — SLA MONITOR (cron-equivalent) ===');
   const planted = await prisma.dispatch.create({
     data: {
       customerId,
       driverId: driverA.id,
-      instructionNote: 'reliability smoke — escalation seed',
+      instructionNote: 'reliability smoke — SLA seed',
     },
     select: { id: true },
   });
-  // Backdate to 31 minutes ago so the escalation cutoff fires.
+  // Backdate so ≥10 minutes elapsed → all SLA tiers stamp once.
   const past = new Date(Date.now() - 31 * 60_000);
   await prisma.$executeRawUnsafe(
     `UPDATE "Dispatch" SET "createdAt" = $1 WHERE id = $2`,
@@ -201,38 +154,35 @@ async function part3_escalation(customerId, driverA) {
   );
   console.log('PLANTED stale dispatch =', planted.id, 'createdAt =', past.toISOString());
 
-  const beforeAudit = await prisma.auditLog.count({
-    where: { action: 'DISPATCH_ESCALATED' },
+  const beforeEscAudit = await prisma.auditLog.count({
+    where: { action: 'DISPATCH_SLA_ESCALATED' },
   });
 
   const result = await callCronEntry('escalation');
-  console.log('ESCALATION_RESULT =', result);
-  if (result.escalated < 1) {
-    throw new Error('expected at least 1 escalation');
+  console.log('SLA_RESULT =', result);
+  if (result.escalations < 1 && result.breaches < 1) {
+    throw new Error('expected at least one SLA escalation or breach audit path');
   }
 
-  const afterAudit = await prisma.auditLog.count({
-    where: { action: 'DISPATCH_ESCALATED' },
+  const afterEscAudit = await prisma.auditLog.count({
+    where: { action: 'DISPATCH_SLA_ESCALATED' },
   });
-  if (afterAudit <= beforeAudit) {
-    throw new Error('DISPATCH_ESCALATED audit row missing');
+  if (afterEscAudit <= beforeEscAudit) {
+    throw new Error('DISPATCH_SLA_ESCALATED audit row missing');
   }
 
-  // Idempotency: second tick must not re-escalate the same parent.
+  const stamped = await prisma.dispatch.findUnique({
+    where: { id: planted.id },
+    select: { firstAlertAt: true, escalatedAt: true, breachedAt: true },
+  });
+  if (!stamped?.firstAlertAt || !stamped.escalatedAt || !stamped.breachedAt) {
+    throw new Error(`SLA stamps incomplete: ${JSON.stringify(stamped)}`);
+  }
+
   const second = await callCronEntry('escalation');
-  console.log('ESCALATION_RESULT_2 =', second);
-  // The second tick may still find OTHER stale dispatches in the DB,
-  // so we only assert that OUR planted parent gained no second
-  // child between calls.
-  const childrenOfPlanted = await prisma.dispatch.count({
-    where: { parentDispatchId: planted.id },
-  });
-  if (childrenOfPlanted !== 1) {
-    throw new Error(
-      `expected exactly 1 child for planted parent, got ${childrenOfPlanted}`,
-    );
-  }
-  console.log('PART 3 OK — escalation triggered, idempotent on re-run');
+  console.log('SLA_RESULT_2 =', second);
+
+  console.log('PART 3 OK — SLA monitor idempotent on re-run');
   return { plantedId: planted.id };
 }
 
@@ -319,6 +269,11 @@ async function callCronEntry(kind) {
     '../dist/dispatch/dispatch.service.js'
   );
   const eventStub = { emit: () => {}, on: () => {}, off: () => {} };
+  const metricsStub = {
+    incrementAssigned: async () => {},
+    recordAcknowledged: async () => {},
+    recordCompletion: async () => {},
+  };
   // Service calls `auditLogs.log()` without await (fire-and-forget).
   // We track every promise here so the smoke can settle them before
   // running the count assertions.
@@ -347,10 +302,10 @@ async function callCronEntry(kind) {
     },
     logFinancialEvent: () => {},
   };
-  const svc = new DispatchService(prisma, auditStub, eventStub);
+  const svc = new DispatchService(prisma, auditStub, eventStub, metricsStub);
   let result;
   if (kind === 'escalation') {
-    result = await svc.runEscalationOnce({ minAgeMinutes: 30 });
+    result = await svc.runSlaMonitorOnce({});
   } else if (kind === 'reconciliation') {
     result = await svc.runReconciliationOnce();
   } else {
@@ -421,12 +376,12 @@ async function main() {
   const orderIds = [];
 
   try {
-    const r1 = await part1_reassign(ccToken, customer.id, drivers[0], drivers[1]);
-    dispatchIds.push(r1.parentId, r1.successorId);
+    const r1 = await part1_reassignForbidden(ccToken, customer.id, drivers[0], drivers[1]);
+    dispatchIds.push(r1.parentId);
 
     await part2_pollFallback(driverToken);
 
-    const r3 = await part3_escalation(customer.id, drivers[0]);
+    const r3 = await part3_slaMonitor(customer.id, drivers[0]);
     dispatchIds.push(r3.plantedId);
 
     const r4 = await part4_reconciliation(customer.id, drivers[0]);

@@ -40,6 +40,7 @@ export declare class DebtService {
         settledOrderCount: number;
     }>;
     getUnpaidInvoices(query: UnpaidInvoicesQueryDto): Promise<UnpaidInvoicesResponseDto>;
+    private logSuspiciousDebtPayments;
     getCustomerNetDebtFromDebtLedger(customerId: string, tx?: Prisma.TransactionClient): Promise<{
         outstandingInvoiceDebtKd: Prisma.Decimal;
         outstandingSubscriptionDebtKd: Prisma.Decimal;

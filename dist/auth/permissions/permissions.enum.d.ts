@@ -23,5 +23,6 @@ export declare enum AppPermission {
     APPROVE_EXPENSES = "expenses.approve",
     MANAGE_DISPATCH = "dispatch.manage",
     VIEW_DISPATCH = "dispatch.view",
-    MANAGE_CUSTOMER_BLOCK = "customers.block.manage"
+    MANAGE_CUSTOMER_BLOCK = "customers.block.manage",
+    MANAGE_USERS = "users.manage"
 }

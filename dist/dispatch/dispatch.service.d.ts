@@ -3,15 +3,25 @@ import { Dispatch, DispatchStatus } from "@prisma/client";
 import { Subject } from "rxjs";
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { DispatchStreamEventPayload, OrderCreatedEventPayload } from './dispatch.events';
-import { DispatchRowDto, DispatchSeverity, DispatchSnapshotDto } from './dto/dispatch-row.dto';
+import { DispatchMetricsService } from './dispatch-metrics.service';
+import { DriverDispatchSseEnvelope, OrderCreatedEventPayload } from './dispatch.events';
+import { DispatchRowDto, DispatchSeverity, DispatchSlaTone, DispatchSnapshotDto } from './dto/dispatch-row.dto';
+import { DispatchMonitorSnapshotDto } from './dto/dispatch-monitor.dto';
 export declare class DispatchService {
     private readonly prisma;
     private readonly auditLogs;
     private readonly events;
+    private readonly metrics;
     private readonly logger;
     private readonly driverStreams;
-    constructor(prisma: PrismaService, auditLogs: AuditLogsService, events: EventEmitter2);
+    constructor(prisma: PrismaService, auditLogs: AuditLogsService, events: EventEmitter2, metrics: DispatchMetricsService);
+    private kuwaitCalendarDayBoundsUtc;
+    private static readonly CC_CREATOR_ROLES;
+    private static readonly CC_DASHBOARD_MAX_ASSIGNMENT_AGE_MS;
+    private ccTrackedDispatchWhere;
+    private driverQueueDispatchWhere;
+    private isCallCenterCreatorRole;
+    private finalizeCcDispatchRows;
     create(input: {
         customerId: string;
         driverId: string;
@@ -24,25 +34,26 @@ export declare class DispatchService {
         limit?: number;
     }): Promise<DispatchSnapshotDto>;
     listForDriver(driverId: string): Promise<DispatchSnapshotDto>;
-    pickAlternateDriver(excludeDriverId: string): Promise<{
+    acknowledge(input: {
+        dispatchId: string;
+        driverId: string;
+    }): Promise<DispatchRowDto>;
+    listAvailableDrivers(): Promise<Array<{
         id: string;
-    } | null>;
-    findEscalationCandidates(minAgeMinutes: number, limit?: number): Promise<Array<Pick<Dispatch, 'id' | 'customerId' | 'driverId' | 'instructionNote'>>>;
-    createSuccessor(input: {
-        parent: Pick<Dispatch, 'id' | 'customerId' | 'driverId' | 'instructionNote'>;
-        newDriverId: string;
-        instructionNote: string | null;
-        actorUserId: string | null;
-    }): Promise<Dispatch>;
-    runEscalationOnce(input: {
-        minAgeMinutes: number;
+        name: string;
+        isActive: boolean;
+        activeLoad: number;
+    }>>;
+    runSlaMonitorOnce(input: {
         limit?: number;
     }): Promise<{
         inspected: number;
-        escalated: number;
-        skipped: number;
+        firstAlerts: number;
+        escalations: number;
+        breaches: number;
     }>;
-    reassign(input: {
+    monitorForCallCenter(): Promise<DispatchMonitorSnapshotDto>;
+    reassign(_input: {
         dispatchId: string;
         newDriverId: string;
         reason: string | null;
@@ -67,11 +78,13 @@ export declare class DispatchService {
         inspected: number;
         closed: number;
     }>;
-    subscribeDriverStream(driverId: string): Subject<DispatchStreamEventPayload>;
-    unsubscribeDriverStream(driverId: string, subject: Subject<unknown>): void;
-    private broadcastToDriver;
+    subscribeDriverStream(driverId: string): Subject<DriverDispatchSseEnvelope>;
+    unsubscribeDriverStream(driverId: string, subject: Subject<DriverDispatchSseEnvelope>): void;
+    private broadcastDriverEnvelope;
+    private rowToStreamPayload;
     private toRowDto;
 }
 export declare function computeElapsedMinutes(start: Date, end: Date): number;
 export declare function severityFor(status: DispatchStatus, elapsedMinutes: number): DispatchSeverity;
+export declare function slaToneDispatch(d: Dispatch, elapsedMinutesSinceCreated: number): DispatchSlaTone;
 export type { Dispatch };

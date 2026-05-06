@@ -15,9 +15,11 @@
  *
  * `DELETE-OPERATIONAL-DATA` — تصفير البيانات التشغيلية وفق مواصفة «مسح المدخلات فقط»:
  *   • فواتير/طلبات/بنود/اشتراكات عملاء + كل السجلات المرتبطة بالمبيعات والذمم
+ *   • مهام الإسناد Dispatch ومؤشرات DriverMetrics
  *   • مسيرات الرواتب، السلف، مصاريف الفروع/السيارات/الجداول الثابتة، محافظ الفروع،
  *     حقول الراتب على `User`، وتصفير محافظ العملاء
  *   • سجلات الحضور والانصراف فقط (لا تُمسّ `LeaveRequest`)
+ *   • JournalEntry/JournalLine (القيد المزدوج) تُمسح، Account/Chart يبقى
  *   يُبقى: الإعدادات، قوائم الأسعار والتصنيفات، المستخدمون والصلاحيات، المخزون
  *   وأوامر الشراء، `AuditLog`، جلسات الدخول (`RefreshToken`)، قواعد العمولة.
  *   أرقام الفواتير: يُصفَّر `SerialCounter` (الفاتورة التالية تُطبع كـ 1). المفاتيح
@@ -29,11 +31,13 @@
  *
  * What the core mode deletes (in FK-safe order inside a single transaction):
  *  - DebtTransferOrder + DebtTransfer          (Restrict blocker on Order)
+ *  - Dispatch + DriverMetrics                  (call-center assignment work)
  *  - CommissionPayout                          (order-derived earnings)
  *  - InvoiceAuditLog                           (cascade would work, explicit for safety)
  *  - OrderLineItem                             (cascade would work)
  *  - TransactionHistory                        (customer ledger)
  *  - DebtLedgerEntry                           (append-only trigger disabled for this txn)
+ *  - JournalLine + JournalEntry                (double-entry journal; chart Account kept)
  *  - GeneralLedgerEntry                        (invoice-related GL rows)
  *  - ManagerCashCustody + BankDepositLog + Deposit + DebtHold
  *  - Shift + PosPaymentBundle
@@ -77,17 +81,41 @@ if (!connectionString) {
 const pool = new Pool({ connectionString });
 const prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
 
+type RawDb = {
+  $queryRawUnsafe<T = unknown>(query: string, ...values: unknown[]): Promise<T>;
+};
+
+async function tableExists(db: RawDb, tableName: string): Promise<boolean> {
+  const rows = await db.$queryRawUnsafe<Array<{ exists: boolean }>>(
+    `SELECT to_regclass($1) IS NOT NULL AS "exists"`,
+    `public."${tableName}"`,
+  );
+  return rows[0]?.exists === true;
+}
+
+async function optionalTableCount(tableName: string): Promise<number> {
+  if (!(await tableExists(prisma, tableName))) return 0;
+  const rows = await prisma.$queryRawUnsafe<Array<{ count: bigint | number | string }>>(
+    `SELECT COUNT(*)::bigint AS "count" FROM "${tableName}"`,
+  );
+  return Number(rows[0]?.count ?? 0);
+}
+
 async function countAll() {
   const [
     orders,
     orderLineItems,
     orderFeedback,
     invoiceAudit,
+    dispatches,
+    driverMetrics,
     debtTransferOrders,
     debtTransfers,
     commissionPayouts,
     transactionHistory,
     debtLedger,
+    journalEntries,
+    journalLines,
     generalLedger,
     managerCash,
     bankDeposits,
@@ -115,11 +143,15 @@ async function countAll() {
     prisma.orderLineItem.count(),
     prisma.orderFeedback.count(),
     prisma.invoiceAuditLog.count(),
+    prisma.dispatch.count(),
+    prisma.driverMetrics.count(),
     prisma.debtTransferOrder.count(),
     prisma.debtTransfer.count(),
     prisma.commissionPayout.count(),
     prisma.transactionHistory.count(),
     prisma.debtLedgerEntry.count(),
+    optionalTableCount('JournalEntry'),
+    optionalTableCount('JournalLine'),
     prisma.generalLedgerEntry.count(),
     prisma.managerCashCustody.count(),
     prisma.bankDepositLog.count(),
@@ -149,11 +181,15 @@ async function countAll() {
     orderLineItems,
     orderFeedback,
     invoiceAudit,
+    dispatches,
+    driverMetrics,
     debtTransferOrders,
     debtTransfers,
     commissionPayouts,
     transactionHistory,
     debtLedger,
+    journalEntries,
+    journalLines,
     generalLedger,
     managerCash,
     bankDeposits,
@@ -187,11 +223,15 @@ function printCounts(label: string, c: Awaited<ReturnType<typeof countAll>>) {
   console.log(`  OrderLineItem               : ${fmt(c.orderLineItems)}`);
   console.log(`  OrderFeedback               : ${fmt(c.orderFeedback)}`);
   console.log(`  InvoiceAuditLog             : ${fmt(c.invoiceAudit)}`);
+  console.log(`  Dispatch                    : ${fmt(c.dispatches)}`);
+  console.log(`  DriverMetrics               : ${fmt(c.driverMetrics)}`);
   console.log(`  DebtTransferOrder           : ${fmt(c.debtTransferOrders)}`);
   console.log(`  DebtTransfer                : ${fmt(c.debtTransfers)}`);
   console.log(`  CommissionPayout            : ${fmt(c.commissionPayouts)}`);
   console.log(`  TransactionHistory          : ${fmt(c.transactionHistory)}`);
   console.log(`  DebtLedgerEntry (append-only): ${fmt(c.debtLedger)}`);
+  console.log(`  JournalEntry (append-only)  : ${fmt(c.journalEntries)}`);
+  console.log(`  JournalLine (append-only)   : ${fmt(c.journalLines)}`);
   console.log(`  GeneralLedgerEntry          : ${fmt(c.generalLedger)}`);
   console.log(`  ManagerCashCustody          : ${fmt(c.managerCash)}`);
   console.log(`  BankDepositLog              : ${fmt(c.bankDeposits)}`);
@@ -346,20 +386,39 @@ async function main() {
       // `DISABLE TRIGGER USER` keeps FK triggers intact (those are system
       // triggers), so cascades still work.
       await tx.$executeRawUnsafe('ALTER TABLE "DebtLedgerEntry" DISABLE TRIGGER USER');
+      const hasJournalEntry = await tableExists(tx, 'JournalEntry');
+      const hasJournalLine = await tableExists(tx, 'JournalLine');
+      if (hasJournalEntry) {
+        await tx.$executeRawUnsafe('ALTER TABLE "JournalEntry" DISABLE TRIGGER USER');
+      }
+      if (hasJournalLine) {
+        await tx.$executeRawUnsafe('ALTER TABLE "JournalLine" DISABLE TRIGGER USER');
+      }
 
       // 1. Tables that BLOCK Order deletion (FK Restrict).
       await tx.debtTransferOrder.deleteMany();
       await tx.debtTransfer.deleteMany();
 
-      // 2. Order-derived earnings + audit trail.
+      // 2. Dispatch instructions are operational work, not master data.
+      // Orders point to Dispatch with SetNull, so clear dispatch before orders.
+      await tx.dispatch.deleteMany();
+      await tx.driverMetrics.deleteMany();
+
+      // 3. Order-derived earnings + audit trail.
       await tx.commissionPayout.deleteMany();
       await tx.invoiceAuditLog.deleteMany();
 
-      // 3. Customer financial ledgers (both forms).
+      // 4. Customer financial ledgers (both forms).
       await tx.transactionHistory.deleteMany();
       await tx.debtLedgerEntry.deleteMany();
+      if (hasJournalLine) {
+        await tx.$executeRawUnsafe('DELETE FROM "JournalLine"');
+      }
+      if (hasJournalEntry) {
+        await tx.$executeRawUnsafe('DELETE FROM "JournalEntry"');
+      }
 
-      // 4. Company-side GL + cash-flow records.
+      // 5. Company-side GL + cash-flow records. Account/chart rows stay.
       await tx.generalLedgerEntry.deleteMany();
       await tx.managerCashCustody.deleteMany();
       await tx.bankDepositLog.deleteMany();
@@ -441,6 +500,12 @@ async function main() {
         await tx.refreshToken.deleteMany();
       }
 
+      if (hasJournalLine) {
+        await tx.$executeRawUnsafe('ALTER TABLE "JournalLine" ENABLE TRIGGER USER');
+      }
+      if (hasJournalEntry) {
+        await tx.$executeRawUnsafe('ALTER TABLE "JournalEntry" ENABLE TRIGGER USER');
+      }
       await tx.$executeRawUnsafe('ALTER TABLE "DebtLedgerEntry" ENABLE TRIGGER USER');
     },
     { timeout: 120_000, maxWait: 15_000 },

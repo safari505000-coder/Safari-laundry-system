@@ -17,14 +17,13 @@ const dispatch_service_1 = require("./dispatch.service");
 let DispatchEscalationJob = DispatchEscalationJob_1 = class DispatchEscalationJob {
     dispatch;
     logger = new common_1.Logger(DispatchEscalationJob_1.name);
-    escalateAfterMinutes = Number.parseInt(process.env.DISPATCH_ESCALATE_AFTER_MINUTES ?? '30', 10);
     isRunning = false;
     constructor(dispatch) {
         this.dispatch = dispatch;
     }
     async tick() {
         if (this.isRunning) {
-            this.logger.debug('dispatch_escalation_skipped reason=ALREADY_RUNNING');
+            this.logger.debug('dispatch_sla_skipped reason=ALREADY_RUNNING');
             return;
         }
         this.isRunning = true;
@@ -36,27 +35,27 @@ let DispatchEscalationJob = DispatchEscalationJob_1 = class DispatchEscalationJo
         }
     }
     async runOnce() {
-        const minAge = Number.isFinite(this.escalateAfterMinutes)
-            ? this.escalateAfterMinutes
-            : 30;
         try {
-            const result = await this.dispatch.runEscalationOnce({
-                minAgeMinutes: minAge,
-            });
-            if (result.inspected > 0) {
-                this.logger.log(`dispatch_escalation_tick inspected=${result.inspected} escalated=${result.escalated} skipped=${result.skipped} minAgeMinutes=${minAge}`);
+            const result = await this.dispatch.runSlaMonitorOnce({});
+            if (result.inspected > 0 && result.firstAlerts + result.escalations + result.breaches > 0) {
+                this.logger.log(`dispatch_sla_tick inspected=${result.inspected} firstAlerts=${result.firstAlerts} escalations=${result.escalations} breaches=${result.breaches}`);
             }
             return result;
         }
         catch (error) {
-            this.logger.error(`dispatch_escalation_failed reason=${error instanceof Error ? error.message : String(error)}`);
-            return { inspected: 0, escalated: 0, skipped: 0 };
+            this.logger.error(`dispatch_sla_failed reason=${error instanceof Error ? error.message : String(error)}`);
+            return {
+                inspected: 0,
+                firstAlerts: 0,
+                escalations: 0,
+                breaches: 0,
+            };
         }
     }
 };
 exports.DispatchEscalationJob = DispatchEscalationJob;
 __decorate([
-    (0, schedule_1.Cron)(schedule_1.CronExpression.EVERY_MINUTE, { name: 'dispatch.escalate' }),
+    (0, schedule_1.Cron)(schedule_1.CronExpression.EVERY_MINUTE, { name: 'dispatch.sla' }),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", Promise)

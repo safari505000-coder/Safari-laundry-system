@@ -23,8 +23,16 @@ class DispatchRowDto {
     driverName;
     instructionNote;
     createdAtIso;
+    acknowledgedAtIso;
     completedAtIso;
     completedByOrderId;
+    startedAtIso;
+    firstAlertAtIso;
+    escalatedAtIso;
+    breachedAtIso;
+    ackMinutes;
+    totalMinutes;
+    slaTone;
 }
 exports.DispatchRowDto = DispatchRowDto;
 __decorate([
@@ -32,7 +40,7 @@ __decorate([
     __metadata("design:type", String)
 ], DispatchRowDto.prototype, "id", void 0);
 __decorate([
-    (0, swagger_1.ApiProperty)({ enum: ['ASSIGNED', 'COMPLETED'] }),
+    (0, swagger_1.ApiProperty)({ enum: ['ASSIGNED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'] }),
     __metadata("design:type", String)
 ], DispatchRowDto.prototype, "status", void 0);
 __decorate([
@@ -79,11 +87,46 @@ __decorate([
 __decorate([
     (0, swagger_1.ApiPropertyOptional)({ nullable: true }),
     __metadata("design:type", Object)
+], DispatchRowDto.prototype, "acknowledgedAtIso", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ nullable: true }),
+    __metadata("design:type", Object)
 ], DispatchRowDto.prototype, "completedAtIso", void 0);
 __decorate([
     (0, swagger_1.ApiPropertyOptional)({ nullable: true }),
     __metadata("design:type", Object)
 ], DispatchRowDto.prototype, "completedByOrderId", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ nullable: true }),
+    __metadata("design:type", Object)
+], DispatchRowDto.prototype, "startedAtIso", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ nullable: true }),
+    __metadata("design:type", Object)
+], DispatchRowDto.prototype, "firstAlertAtIso", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ nullable: true }),
+    __metadata("design:type", Object)
+], DispatchRowDto.prototype, "escalatedAtIso", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ nullable: true }),
+    __metadata("design:type", Object)
+], DispatchRowDto.prototype, "breachedAtIso", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ nullable: true }),
+    __metadata("design:type", Object)
+], DispatchRowDto.prototype, "ackMinutes", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ nullable: true }),
+    __metadata("design:type", Object)
+], DispatchRowDto.prototype, "totalMinutes", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({
+        enum: ['NORMAL', 'LATE', 'BREACH'],
+        description: 'Assignment SLA tone for live monitors (green / yellow / red thresholds).',
+    }),
+    __metadata("design:type", String)
+], DispatchRowDto.prototype, "slaTone", void 0);
 class DispatchSnapshotDto {
     generatedAtIso;
     rows;

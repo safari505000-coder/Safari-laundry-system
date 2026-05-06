@@ -27,6 +27,7 @@ exports.ROLE_PERMISSIONS = {
         ...financialOversight,
         permissions_enum_1.AppPermission.VIEW_CUSTOMERS,
         permissions_enum_1.AppPermission.VIEW_DISPATCH,
+        permissions_enum_1.AppPermission.MANAGE_USERS,
     ],
     [client_1.SafariRole.ACCOUNTANT]: [
         ...invoiceRead,
@@ -48,6 +49,7 @@ exports.ROLE_PERMISSIONS = {
         permissions_enum_1.AppPermission.CREATE_OPERATIONAL_DATA,
         permissions_enum_1.AppPermission.UPDATE_OPERATIONAL_DATA,
         permissions_enum_1.AppPermission.VIEW_DISPATCH,
+        permissions_enum_1.AppPermission.MANAGE_USERS,
     ],
     [client_1.SafariRole.DRIVER]: [
         ...invoiceRead,
@@ -88,6 +90,7 @@ exports.ROLE_PERMISSIONS = {
         permissions_enum_1.AppPermission.VIEW_CUSTOMERS,
         permissions_enum_1.AppPermission.UPDATE_INVOICE,
         permissions_enum_1.AppPermission.UPDATE_OPERATIONAL_DATA,
+        permissions_enum_1.AppPermission.MANAGE_USERS,
     ],
     [client_1.SafariRole.VIEWER]: [
         ...invoiceRead,

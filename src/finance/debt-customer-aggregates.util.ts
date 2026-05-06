@@ -3,6 +3,7 @@
  * avoids importing FinanceModule into OrdersModule (Payments → Ledger → Orders cycle).
  */
 import { DebtSource, Prisma } from '@prisma/client';
+import { isRealDebtLedgerPayment } from './debt-ledger-payment-origin.util';
 
 type Db = {
   debtLedgerEntry: Prisma.DebtLedgerEntryDelegate;
@@ -21,20 +22,26 @@ export async function getCustomerNetDebtFromDebtLedgerAgg(
   netOpenDebtKd: Prisma.Decimal;
 }> {
   const z = Z();
-  const rows = await db.debtLedgerEntry.groupBy({
-    by: ['source'],
+  const rows = await db.debtLedgerEntry.findMany({
     where: { customerId },
-    _sum: { amount: true },
+    select: {
+      source: true,
+      amount: true,
+      actorUserId: true,
+      sourceRef: true,
+      note: true,
+    },
   });
   let inv = z;
   let sub = z;
   let pay = z;
   for (const r of rows) {
-    const amt = new Prisma.Decimal(r._sum.amount?.toString() ?? '0');
+    const amt = new Prisma.Decimal(r.amount?.toString() ?? '0');
     if (r.source === DebtSource.INVOICE_SHORTFALL) inv = inv.add(amt);
     else if (r.source === DebtSource.SUBSCRIPTION_OVERUSE)
       sub = sub.add(amt);
-    else if (r.source === DebtSource.PAYMENT) pay = pay.add(amt);
+    else if (r.source === DebtSource.PAYMENT && isRealDebtLedgerPayment(r))
+      pay = pay.add(amt);
   }
   const invPaid = inv.lessThanOrEqualTo(pay) ? inv : pay;
   const payAfterInv = pay.sub(invPaid);
