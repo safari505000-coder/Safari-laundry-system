@@ -1,87 +1,124 @@
-import { useTranslation } from 'react-i18next';
-import { Headphones, Search, ShieldCheck, Truck } from 'lucide-react';
+import { useCallback, useState } from 'react';
+import { Headphones } from 'lucide-react';
 import { CustomerSearch } from '../components/customer-search';
 import { DispatchMonitorPanel } from '../components/dispatch-monitor-panel';
+import { KpiStrip } from '../components/kpi-strip';
+import { AlertsPanel } from '../components/alerts-panel';
+import { CallQueue } from '../components/call-queue';
+import { CustomerPanel } from '../components/customer-panel';
+import { ActivityFeed } from '../components/activity-feed';
+import { useOutstanding } from '@/modules/call-center/outstanding/hooks/use-outstanding';
+import type { OutstandingRow } from '@/modules/call-center/outstanding/api/outstanding-api';
+import { useCcOperationsSummary } from '../hooks/use-cc-operations-summary';
 
-const FEATURE_BULLETS: {
-  id: string;
-  icon: typeof Search;
-  titleKey: string;
-  titleDefault: string;
-  descKey: string;
-  descDefault: string;
-}[] = [
-  {
-    id: 'search',
-    icon: Search,
-    titleKey: 'callCenterDashboard.intro.featureSearchTitle',
-    titleDefault: 'بحث ذكي بالعميل',
-    descKey: 'callCenterDashboard.intro.featureSearchDesc',
-    descDefault:
-      'ابحث برقم الهاتف، الاسم، أو معرف العميل مباشرةً. النتائج تظهر فور التوقّف عن الكتابة.',
-  },
-  {
-    id: 'dispatch',
-    icon: Truck,
-    titleKey: 'callCenterDashboard.intro.featureDispatchTitle',
-    titleDefault: 'إسناد لحظي للسائقين',
-    descKey: 'callCenterDashboard.intro.featureDispatchDesc',
-    descDefault:
-      'أصدر مهمة جديدة للسائق المناسب وراقب حالة كل مهمة (في الوقت / متأخّرة / حرجة) بالتحديث التلقائي.',
-  },
-  {
-    id: 'risk',
-    icon: ShieldCheck,
-    titleKey: 'callCenterDashboard.intro.featureRiskTitle',
-    titleDefault: 'تقييم المخاطر قبل الإصدار',
-    descKey: 'callCenterDashboard.intro.featureRiskDesc',
-    descDefault:
-      'مؤشّر مخاطرة، إشارات تشغيلية (تعرّض نقدي / إعادات إسناد / تأخّر)، ولافتة تحذير عند السلوك غير الاعتيادي.',
-  },
-];
+const EMPTY_FILTERS = Object.freeze({}) as Record<string, never>;
 
+/**
+ * Call Center Command Cockpit — `/cc/dashboard`.
+ *
+ * Five live zones, all driven by existing read-only APIs:
+ *  1. Sticky KPI strip — debt, customers, today's collections, invoices.
+ *  2. Smart Alerts panel — risk / very-late / stale-contact / blocked.
+ *  3. Priority Call Queue — server-sorted by `priorityScore`.
+ *  4. Customer 360 side panel — wraps the existing ledger panel.
+ *  5. Live Activity Feed + dispatch monitor.
+ *
+ * STRICT FINANCIAL RULES (DO NOT BREAK):
+ *  - `data.totalDueKd` from `/api/finance/outstanding` is rendered
+ *    EXACTLY as returned. Per-row `totalDueKd` (number) is rendered
+ *    via `Intl.NumberFormat` only — never recomputed or summed.
+ *  - `summary.debtRecoveredTodayKd` from
+ *    `/api/call-center/operations-summary` is rendered as-is.
+ *  - We never call `reduce()` on rows, never cache totals, never
+ *    duplicate any backend financial logic.
+ *  - The cockpit is a visual layer only; financial truth remains in
+ *    `OrdersService.sumCollectionsDebtTotalKd()`.
+ */
 export function CcDashboardPage() {
-  const { t } = useTranslation();
+  // No filters by default — the cockpit shows the full call-center
+  // worklist; per-page filters live on `/cc/outstanding`.
+  const outstanding = useOutstanding(EMPTY_FILTERS);
+  const summary = useCcOperationsSummary({ pollMs: 30_000 });
+
+  // Hard guard required by the cockpit contract (never break this).
+  if (
+    outstanding.data &&
+    typeof outstanding.data.totalDueKd !== 'string' &&
+    typeof outstanding.data.totalDueKd !== 'number'
+  ) {
+    throw new Error('Invalid totalDue source');
+  }
+
+  const [openRow, setOpenRow] = useState<OutstandingRow | null>(null);
+  const handleOpen = useCallback((row: OutstandingRow) => {
+    setOpenRow(row);
+  }, []);
+  const handleClose = useCallback(() => setOpenRow(null), []);
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-4 py-10 lg:py-16">
-      <header className="space-y-3 text-center">
-        <div className="mx-auto flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-          <Headphones className="size-6" aria-hidden />
-        </div>
-        <h1 className="font-heading text-3xl font-semibold">
-          {t('callCenterDashboard.intro.title', {
-            defaultValue: 'لوحة مركز الاتصال',
-          })}
-        </h1>
-        <p className="mx-auto max-w-xl text-sm text-muted-foreground">
-          {t('callCenterDashboard.intro.subtitle', {
-            defaultValue:
-              'ابدأ بالبحث عن العميل لفتح ملفه الكامل (٣٦٠) وإسناد المهمات وإدارة الحظر — كل شيء من نقطة دخول واحدة.',
-          })}
-        </p>
-      </header>
-
-      <CustomerSearch autoFocus />
-
-      <DispatchMonitorPanel />
-
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        {FEATURE_BULLETS.map(({ id, icon: Icon, titleKey, titleDefault, descKey, descDefault }) => (
-          <div
-            key={id}
-            className="rounded-xl border border-border bg-card p-4 shadow-sm"
-          >
-            <Icon className="size-5 text-primary" aria-hidden />
-            <h2 className="mt-2 text-sm font-medium">
-              {t(titleKey, { defaultValue: titleDefault })}
-            </h2>
-            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-              {t(descKey, { defaultValue: descDefault })}
+    <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-6 sm:px-6">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="flex size-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+            <Headphones className="size-5" aria-hidden />
+          </div>
+          <div>
+            <h1 className="font-heading text-xl font-semibold">
+              لوحة قيادة الكول سنتر
+            </h1>
+            <p className="text-xs text-muted-foreground">
+              صورة فوريّة لحالة التحصيل — اعرف من تتّصل به، شو تقوله، ونفّذ بضغطة واحدة.
             </p>
           </div>
-        ))}
-      </section>
+        </div>
+        <div className="w-full sm:w-80">
+          <CustomerSearch />
+        </div>
+      </header>
+
+      <KpiStrip
+        outstanding={outstanding.data}
+        summary={summary.data}
+        refreshing={outstanding.refreshing || summary.loading}
+        onRefresh={() => {
+          outstanding.refresh();
+          summary.refresh();
+        }}
+      />
+
+      {outstanding.error ? (
+        <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+          {outstanding.error}
+        </div>
+      ) : null}
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="flex flex-col gap-4 lg:col-span-2">
+          <CallQueue
+            outstanding={outstanding.data}
+            loading={outstanding.loading}
+            onOpenCustomer={handleOpen}
+          />
+          <DispatchMonitorPanel />
+        </div>
+        <div className="flex flex-col gap-4">
+          <AlertsPanel
+            outstanding={outstanding.data}
+            loading={outstanding.loading}
+            onOpenCustomer={handleOpen}
+          />
+          <ActivityFeed
+            outstanding={outstanding.data}
+            onOpenCustomer={handleOpen}
+          />
+        </div>
+      </div>
+
+      <CustomerPanel
+        open={openRow !== null}
+        row={openRow}
+        onClose={handleClose}
+      />
     </div>
   );
 }
