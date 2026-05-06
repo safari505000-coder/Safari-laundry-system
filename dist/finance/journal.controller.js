@@ -46,7 +46,7 @@ let JournalController = class JournalController {
 exports.JournalController = JournalController;
 __decorate([
     (0, common_1.Get)('customers/:customerId/balance'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.GENERAL_MANAGER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.CALL_CENTER_SUPERVISOR),
     (0, swagger_1.ApiOperation)({ summary: 'Journal AR balance for one customer' }),
     __param(0, (0, common_1.Param)('customerId', common_1.ParseUUIDPipe)),
     __metadata("design:type", Function),
@@ -55,7 +55,7 @@ __decorate([
 ], JournalController.prototype, "getCustomerBalance", null);
 __decorate([
     (0, common_1.Get)('customers/:customerId/statement'),
-    (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.ACCOUNTANT, client_1.SafariRole.GENERAL_MANAGER),
+    (0, roles_decorator_1.Roles)(client_1.SafariRole.CALL_CENTER, client_1.SafariRole.CALL_CENTER_SUPERVISOR),
     (0, swagger_1.ApiOperation)({ summary: 'Journal-based customer AR statement' }),
     __param(0, (0, common_1.Param)('customerId', common_1.ParseUUIDPipe)),
     __metadata("design:type", Function),

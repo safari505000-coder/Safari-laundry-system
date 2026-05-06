@@ -807,7 +807,7 @@ export const journalStatementItem: NavItem = {
   to: '/customer-statement-journal',
   labelKey: 'nav.journalStatement',
   icon: BookText,
-  roles: ['CALL_CENTER', 'ACCOUNTANT', 'GENERAL_MANAGER'],
+  roles: ['CALL_CENTER', 'CALL_CENTER_SUPERVISOR'],
   permission: AppPermission.VIEW_DEBTS,
 };
 

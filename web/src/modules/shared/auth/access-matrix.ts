@@ -277,9 +277,8 @@ export const ACCESS = {
     'CALL_CENTER_SUPERVISOR',
   ] satisfies readonly SafariRole[],
   'journalStatement.view': [
-    'GENERAL_MANAGER',
-    'ACCOUNTANT',
     'CALL_CENTER',
+    'CALL_CENTER_SUPERVISOR',
   ] satisfies readonly SafariRole[],
   /**
    * V19.x — Call Center Control Tower (`/cc/control-tower`). Mirrors

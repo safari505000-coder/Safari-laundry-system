@@ -18,7 +18,10 @@ export class JournalController {
   ) {}
 
   @Get('customers/:customerId/balance')
-  @Roles(SafariRole.CALL_CENTER, SafariRole.ACCOUNTANT, SafariRole.GENERAL_MANAGER)
+  @Roles(
+    SafariRole.CALL_CENTER,
+    SafariRole.CALL_CENTER_SUPERVISOR,
+  )
   @ApiOperation({ summary: 'Journal AR balance for one customer' })
   async getCustomerBalance(
     @Param('customerId', ParseUUIDPipe) customerId: string,
@@ -35,7 +38,10 @@ export class JournalController {
   }
 
   @Get('customers/:customerId/statement')
-  @Roles(SafariRole.CALL_CENTER, SafariRole.ACCOUNTANT, SafariRole.GENERAL_MANAGER)
+  @Roles(
+    SafariRole.CALL_CENTER,
+    SafariRole.CALL_CENTER_SUPERVISOR,
+  )
   @ApiOperation({ summary: 'Journal-based customer AR statement' })
   getCustomerStatement(@Param('customerId', ParseUUIDPipe) customerId: string) {
     return this.journal.getCustomerStatement(customerId);

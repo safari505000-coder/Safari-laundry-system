@@ -37,8 +37,7 @@ type StatementState = JournalStatementResponse & {
 };
 
 const ENABLED =
-  import.meta.env.DEV ||
-  (import.meta.env.VITE_ENABLE_JOURNAL_STATEMENT ?? '').toLowerCase() === 'true';
+  (import.meta.env.VITE_ENABLE_JOURNAL_STATEMENT ?? 'true').toLowerCase() !== 'false';
 const USE_JOURNAL_API =
   (import.meta.env.VITE_USE_JOURNAL_API ?? '').toLowerCase() === 'true';
 

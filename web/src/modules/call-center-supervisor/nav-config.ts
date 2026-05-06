@@ -9,6 +9,7 @@ import {
   customersItem,
   driverMonitorItem,
   feedbackInboxItem,
+  journalStatementItem,
   outstandingPaymentsItem,
   subscribersItem,
   unpaidInvoicesItem,
@@ -43,6 +44,7 @@ export const callCenterSupervisorSidebarNavGroups: NavGroup[] = [
     ...G.main,
     items: [
       customersItem,
+      journalStatementItem,
       callIncomingItem,
       collectionsItem,
       controlTowerItem,
