@@ -13,6 +13,7 @@ import {
   type SalesDebtPeriodKind,
   type SalesDebtPeriodMode,
 } from '@/lib/sales-debt-analytics';
+import type { SalesDebtInsightTarget } from '@/lib/sales-debt-insights';
 import { Button } from '@/modules/shared/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/modules/shared/components/ui/card';
 import {
@@ -323,7 +324,7 @@ export function SalesSummaryReportPage() {
 
       <SalesDebtInsightsPanel
         analytics={analytics}
-        onDrillDown={(target) => switchTab(target)}
+        onDrillDown={(target: SalesDebtInsightTarget) => switchTab(target)}
       />
 
       <Card>
