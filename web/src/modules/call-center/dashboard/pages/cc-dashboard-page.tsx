@@ -36,7 +36,7 @@ const EMPTY_FILTERS = Object.freeze({}) as Record<string, never>;
  */
 export function CcDashboardPage() {
   // No filters by default — the cockpit shows the full call-center
-  // worklist; per-page filters live on `/cc/outstanding`.
+  // worklist; per-page filters live on `/cc/collections-report`.
   const outstanding = useOutstanding(EMPTY_FILTERS);
   const summary = useCcOperationsSummary({ pollMs: 30_000 });
 

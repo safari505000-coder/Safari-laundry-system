@@ -61,7 +61,7 @@ export const en = {
     auditLogs: 'Audit logs',
     accountantDashboard: 'Accountant dashboard',
     unpaidInvoices: 'Receivables',
-    outstandingPayments: 'Outstanding Payments',
+    outstandingPayments: 'Collections Dashboard',
     controlTower: 'Control Tower',
     collectDriverCash: 'Collect driver cash',
     bankDeposits: 'Bank deposits log',

@@ -71,7 +71,7 @@ import { CollectionsPage } from '@/modules/call-center/pages/collections-page';
 import { CustomersPage } from '@/modules/call-center/pages/customers-page';
 import { CcDashboardPage } from '@/modules/call-center/dashboard/pages/cc-dashboard-page';
 import { CcCustomer360Page } from '@/modules/call-center/dashboard/pages/cc-customer-360-page';
-import { CcOutstandingPage } from '@/modules/call-center/outstanding/pages/cc-outstanding-page';
+import { CollectionsReportPage } from '@/modules/call-center/collections-report/pages/collections-report-page';
 import { ControlTowerPage } from '@/modules/call-center/control-tower/pages/control-tower-page';
 import { CustomerPortal360Page } from '@/pages/customer-portal-360-page';
 import { CallIncomingPage } from '@/pages/call-incoming-page';
@@ -471,13 +471,21 @@ export default function App() {
                     </RequireAccess>
                   }
                 />
+                {/* V20.x — لوحة التحصيل (Collections Report) replaces the
+                  legacy "Outstanding (AR)" page. The old `/cc/outstanding`
+                  path keeps redirecting here so existing bookmarks /
+                  permalinks don't 404. */}
                 <Route
-                  path="cc/outstanding"
+                  path="cc/collections-report"
                   element={
                     <RequireAccess access="outstanding.view">
-                      <CcOutstandingPage />
+                      <CollectionsReportPage />
                     </RequireAccess>
                   }
+                />
+                <Route
+                  path="cc/outstanding"
+                  element={<Navigate to="/cc/collections-report" replace />}
                 />
                 <Route
                   path="customer-statement-journal"

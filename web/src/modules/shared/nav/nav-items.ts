@@ -703,13 +703,15 @@ export const unpaidInvoicesItem: NavItem = {
 };
 
 /**
- * V19.x — "الذمم المدينة" (Outstanding Payments) — customer-level
- * Accounts-Receivable view used daily by the Call-Center for manual
- * collections triage. Read access mirrors `unpaidInvoicesItem`; the
- * page is the single mutation surface for the manual block toggle.
+ * V20.x — "لوحة التحصيل" (Collections Operations Dashboard) —
+ * replaces the legacy "Outstanding (AR)" page. Pure UI layer over the
+ * existing `/api/finance/outstanding` and
+ * `/api/orders/collections/unpaid-online` endpoints with smart
+ * filters, per-driver / per-branch sub-views, and unpaid-link
+ * tracking. Roles mirror the previous outstanding view.
  */
 export const outstandingPaymentsItem: NavItem = {
-  to: '/cc/outstanding',
+  to: '/cc/collections-report',
   labelKey: 'nav.outstandingPayments',
   icon: Wallet,
   roles: [
