@@ -31,10 +31,9 @@ import {
  *
  * Operational consumers — Subscribers list, Outstanding,
  * Customer 360, dashboards, call-center widgets — MUST go
- * through this service. Direct reads of `wallet.debt`,
- * `Order.totalPrice`, `cashStatus`, or `JournalLine.findMany`
- * are forbidden in UI/aggregate paths (see V20.3.2 inspector
- * + scanner).
+ * through this service. The displayed debt figure is always
+ * overlaid from live Journal AR; snapshots may supply counts
+ * and timestamps, but never the final visible money amount.
  *
  * Falls back gracefully:
  *   1. Try the read-side projection (`FinancialSnapshot`).
@@ -71,7 +70,7 @@ export class DebtVisibilityService {
       if (snapshot.canonicalSource !== 'JOURNAL_AR') {
         return this.rebuildJournalSnapshotOrLive(customerId);
       }
-      return this.mapSnapshotToVisibleDebt(snapshot);
+      return this.overlayLiveJournalDebt(this.mapSnapshotToVisibleDebt(snapshot));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.warn(
@@ -101,7 +100,7 @@ export class DebtVisibilityService {
     for (const id of customerIds) {
       const row = projections.get(id);
       if (row?.canonicalSource === 'JOURNAL_AR') {
-        out.set(id, this.mapSnapshotToVisibleDebt(row));
+        out.set(id, await this.overlayLiveJournalDebt(this.mapSnapshotToVisibleDebt(row)));
       } else {
         missing.push(id);
       }
@@ -287,9 +286,29 @@ export class DebtVisibilityService {
       'CRON_RECONCILE',
     );
     if (refreshed.canonicalSource === 'JOURNAL_AR') {
-      return this.mapSnapshotToVisibleDebt(refreshed);
+      return this.overlayLiveJournalDebt(this.mapSnapshotToVisibleDebt(refreshed));
     }
     return this.computeVisibleDebtLive(customerId);
+  }
+
+  private async overlayLiveJournalDebt(
+    debt: CustomerVisibleDebt,
+  ): Promise<CustomerVisibleDebt> {
+    try {
+      const journalAr = await this.journalSource.getCustomerDebtFromJournalAR(
+        debt.customerId,
+      );
+      const remainingDebtKd = journalAr.toFixed(4);
+      return {
+        ...debt,
+        remainingDebtKd,
+        journalArBalanceKd: remainingDebtKd,
+        hasDebt: journalAr.greaterThan(TOL),
+        canonicalSource: 'JOURNAL_AR',
+      };
+    } catch {
+      return debt;
+    }
   }
 
   /**

@@ -79,22 +79,31 @@ function makeJournalSource() {
       arBalanceKd: dec('0'),
       walletLiabilityKd: dec('0'),
     })),
-    getCustomerDebtFromJournalAR: jest.fn(async () => dec('0')),
+    getCustomerDebtFromJournalAR: jest.fn(async () => dec('170.0000')),
   };
 }
 
 describe('DebtVisibilityService', () => {
-  it('returns the canonical view from the read-side projection', async () => {
-    const snap = makeSnapshotsService(makeSnapshotRow());
+  it('overlays live Journal AR over stale projection money', async () => {
+    const snap = makeSnapshotsService(
+      makeSnapshotRow({
+        journalArBalanceKd: dec('30.2500'),
+        remainingDebtKd: dec('30.2500'),
+      }),
+    );
+    const journal = makeJournalSource();
+    journal.getCustomerDebtFromJournalAR.mockResolvedValueOnce(dec('5.2500'));
     const svc = new DebtVisibilityService(
       makePrisma() as never,
       snap as never,
-      makeJournalSource() as never,
+      journal as never,
     );
     const v = await svc.getCustomerVisibleDebt(CUST);
     expect(v.customerId).toBe(CUST);
     expect(v.fromSnapshot).toBe(true);
-    expect(v.remainingDebtKd).toBe('170.0000');
+    expect(v.remainingDebtKd).toBe('5.2500');
+    expect(v.journalArBalanceKd).toBe('5.2500');
+    expect(v.canonicalSource).toBe('JOURNAL_AR');
     expect(v.partiallyPaidInvoicesCount).toBe(1);
     expect(v.unpaidInvoicesCount).toBe(1);
     expect(v.hasDebt).toBe(true);
@@ -146,10 +155,11 @@ describe('DebtVisibilityService', () => {
 
   it('batch path rebuilds stale non-journal snapshots and falls back live for cold rows', async () => {
     const snap = makeSnapshotsService(makeSnapshotRow());
+    const journal = makeJournalSource();
     const svc = new DebtVisibilityService(
       makePrisma() as never,
       snap as never,
-      makeJournalSource() as never,
+      journal as never,
     );
     jest
       .spyOn(svc as unknown as { computeVisibleDebtLive: () => Promise<unknown> }, 'computeVisibleDebtLive')
@@ -174,9 +184,10 @@ describe('DebtVisibilityService', () => {
       });
     const rebuilt = makeSnapshotRow({
       canonicalSource: 'JOURNAL_AR',
-      journalArBalanceKd: dec('5.2500'),
-      remainingDebtKd: dec('5.2500'),
+      journalArBalanceKd: dec('30.2500'),
+      remainingDebtKd: dec('30.2500'),
     });
+    journal.getCustomerDebtFromJournalAR.mockResolvedValueOnce(dec('5.2500'));
     snap.setRow(makeSnapshotRow({ canonicalSource: 'PARTIAL_PAYMENT_REMAINING' }));
     snap.refreshOne.mockResolvedValueOnce(rebuilt);
     const out = await svc.getCustomerVisibleDebtBatch([CUST, COLD_CUST]);
@@ -189,13 +200,15 @@ describe('DebtVisibilityService', () => {
   it('collections snapshot folds through visible debt, not raw projection sums', async () => {
     const snap = makeSnapshotsService(makeSnapshotRow());
     const prisma = makePrisma();
+    const journal = makeJournalSource();
+    journal.getCustomerDebtFromJournalAR.mockResolvedValueOnce(dec('5.2500'));
     const svc = new DebtVisibilityService(
       prisma as never,
       snap as never,
-      makeJournalSource() as never,
+      journal as never,
     );
     const k = await svc.getCollectionsSnapshot();
-    expect(k.totalRemainingDebtKd).toBe('170.0000');
+    expect(k.totalRemainingDebtKd).toBe('5.2500');
     expect(k.customersWithDebt).toBe(1);
     expect(k.unpaidInvoices).toBe(1);
   });

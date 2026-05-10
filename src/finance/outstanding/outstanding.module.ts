@@ -1,5 +1,6 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { OrdersModule } from '../../orders/orders.module';
+import { DebtVisibilityModule } from '../debt-visibility/debt-visibility.module';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { OutstandingController } from './outstanding.controller';
 import { OutstandingExportService } from './outstanding-export.service';
@@ -16,7 +17,7 @@ import { OutstandingSnapshotCron } from './outstanding-snapshot.cron';
  * @Global() AuditLogsModule, no extra import needed here.
  */
 @Module({
-  imports: [PrismaModule, forwardRef(() => OrdersModule)],
+  imports: [PrismaModule, DebtVisibilityModule, forwardRef(() => OrdersModule)],
   controllers: [OutstandingController],
   providers: [
     OutstandingService,

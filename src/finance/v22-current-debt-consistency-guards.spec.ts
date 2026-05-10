@@ -40,7 +40,7 @@ describe('V22 current-debt consistency guards', () => {
     expect(eventAt).toBeGreaterThan(txEnd);
   });
 
-  it('collections list filters and displays invoices by remaining balance, not gross total', () => {
+  it('collections list filters by invoice remaining but displays banking-core capped debt', () => {
     const src = read('src/orders/orders.service.ts');
     const method = src.slice(
       src.indexOf('async listUnpaidCollectionOrders('),
@@ -50,7 +50,9 @@ describe('V22 current-debt consistency guards', () => {
     expect(method).toContain('computeOrderRemainingBalancesBatch');
     expect(method).toContain('remaining.lessThanOrEqualTo(tol)');
     expect(method).toContain('return false');
-    expect(method).toContain("amountKd: (remainingByOrder.get(r.id) ?? r.totalPrice).toFixed(3)");
+    expect(method).toContain('debtVisibility.getCustomerVisibleDebtBatch');
+    expect(method).toContain('displayRemaining.toFixed(3)');
+    expect(method).not.toContain("amountKd: (remainingByOrder.get(r.id) ?? r.totalPrice).toFixed(3)");
     expect(method).not.toContain('UNPAID rows are always kept');
     expect(method).not.toContain('amountKd: r.totalPrice.toFixed(3)');
   });
@@ -68,11 +70,36 @@ describe('V22 current-debt consistency guards', () => {
     expect(method).not.toContain('sumCollectionsDebtTotalKd');
   });
 
+  it('outstanding report headline and rows use banking-core visibility', () => {
+    const src = read('src/finance/outstanding/outstanding.service.ts');
+    expect(src).toContain('DebtVisibilityService');
+    expect(src).toContain('debtVisibility.getCollectionsSnapshot()');
+    expect(src).toContain('debtVisibility.getCustomerVisibleDebtBatch(customerIds)');
+    expect(src).not.toContain('sumCollectionsDebtTotalKd(');
+    expect(src).not.toContain('sumCollectionsDebtRemainingKd(');
+  });
+
   it('Customer 360 reads visible debt from the banking core facade', () => {
     const src = read('src/customers/customer-360.service.ts');
     expect(src).toContain('DebtVisibilityService');
     expect(src).toContain('debtVisibility.getCustomerVisibleDebt(customerId)');
     expect(src).toContain('financials.canonicalDebtKd = visibleDebt.remainingDebtKd');
+  });
+
+  it('DebtVisibility overlays live Journal AR over snapshot money for displayed debt', () => {
+    const src = read('src/finance/debt-visibility/debt-visibility.service.ts');
+    expect(src).toContain('overlayLiveJournalDebt');
+    expect(src).toContain('journalSource.getCustomerDebtFromJournalAR');
+    expect(src).toContain('remainingDebtKd,');
+    expect(src).toContain("canonicalSource: 'JOURNAL_AR'");
+  });
+
+  it('collections read model does not display raw FinancialSnapshot remainingDebtKd', () => {
+    const src = read('src/read-models/collections-read-model/collections-read-model.service.ts');
+    expect(src).toContain('visibility.getCustomerVisibleDebtBatch');
+    expect(src).toContain("account: { code: '1300' }");
+    expect(src).not.toContain('remainingDebtKd.toFixed(4)');
+    expect(src).not.toContain("orderBy: [{ remainingDebtKd: 'desc' }");
   });
 
   it('V25 exposes pending hosted-link amount from the server summary', () => {

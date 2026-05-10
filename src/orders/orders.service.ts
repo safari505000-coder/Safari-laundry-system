@@ -35,6 +35,7 @@ import { CustomerLedgerService } from '../customer-ledger/customer-ledger.servic
 import { cashStatusForPaymentMethod } from '../common/utils/cash-status-for-method';
 import { resolveCustomerPhoneForNotify } from '../common/validation/kuwait-customer-phone';
 import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
+import { DebtVisibilityService } from '../finance/debt-visibility/debt-visibility.service';
 import { toDbPosPaymentMethod } from '../finance/canonical-payment-method';
 import {
   computeCanonicalDriverPendingInvoiceProjection,
@@ -213,6 +214,7 @@ export class OrdersService {
     private readonly outstanding: OutstandingService,
     private readonly auditLogs: AuditLogsService,
     private readonly events: EventEmitter2,
+    private readonly debtVisibility: DebtVisibilityService,
   ) {}
 
   /**
@@ -1392,7 +1394,30 @@ export class OrdersService {
     // the `canRemindNow` flag that greys out the Send-payment-link
     // button on the table until 2.5 h after the last reminder.
     const ORDER_REMINDER_COOLDOWN_MS = 2.5 * 60 * 60 * 1000;
-    return filteredRows.map((r) => {
+    const visibleDebtByCustomer =
+      await this.debtVisibility.getCustomerVisibleDebtBatch(
+        Array.from(new Set(filteredRows.map((r) => r.customerId))),
+      );
+    const visibleBudgetByCustomer = new Map<string, Prisma.Decimal>();
+    for (const [customerId, debt] of visibleDebtByCustomer) {
+      visibleBudgetByCustomer.set(
+        customerId,
+        new Prisma.Decimal(debt.remainingDebtKd),
+      );
+    }
+    return filteredRows.flatMap((r) => {
+      const rawRemaining = remainingByOrder.get(r.id) ?? r.totalPrice;
+      const customerBudget =
+        visibleBudgetByCustomer.get(r.customerId) ?? new Prisma.Decimal(0);
+      if (customerBudget.lessThanOrEqualTo(tol)) return [];
+      const displayRemaining =
+        rawRemaining.lessThanOrEqualTo(customerBudget)
+          ? rawRemaining
+          : customerBudget;
+      visibleBudgetByCustomer.set(
+        r.customerId,
+        customerBudget.minus(displayRemaining),
+      );
       const phone =
         r.customer.phone?.replace(/[\s-]/g, '').trim() ||
         r.customer.phone2?.replace(/[\s-]/g, '').trim() ||
@@ -1439,10 +1464,10 @@ export class OrdersService {
         invoiceNumber: r.invoiceNumber ?? null,
         customerName: name,
         customerPhone: phone,
-        // V1.6.5 — KWD standard uses 3 decimal places (fils). The Red-
-        // card aggregate formats with the same precision so the table
-        // footer equals the KPI to the last fils.
-        amountKd: (remainingByOrder.get(r.id) ?? r.totalPrice).toFixed(3),
+        // Displayed collections money is capped by the live banking-core
+        // customer AR balance. Per-order remaining only allocates that
+        // canonical balance across visible invoice rows.
+        amountKd: displayRemaining.toFixed(3),
         paymentMethod: r.posPaymentMethod,
         paymentUrl: r.posHostedPaymentUrl ?? null,
         createdAtIso: r.createdAt.toISOString(),

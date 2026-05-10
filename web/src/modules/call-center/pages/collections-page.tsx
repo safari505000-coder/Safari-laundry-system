@@ -31,7 +31,7 @@ import {
   ApiError,
   recheckOrderPayment,
 } from '@/lib/api';
-import { formatKwdLabelGrouped, sumKwdStringsPrecise } from '@/lib/kwd';
+import { formatKwdLabelGrouped } from '@/lib/kwd';
 import {
   buildCollectionsUnpaidWhatsAppText,
   whatsappChatNumber,
@@ -451,7 +451,6 @@ export function CollectionsPage() {
     if (filteredRows.length === 0) return null;
     const cid = filteredRows[0]?.customerId;
     if (!cid || filteredRows.some((r) => r.customerId !== cid)) return null;
-    const total = sumKwdStringsPrecise(filteredRows.map((r) => r.amountKd));
     const first = filteredRows[0]!;
     const phone = first.customerPhone?.trim() ?? '';
     const name = first.customerName?.trim() ?? '';
@@ -459,10 +458,10 @@ export function CollectionsPage() {
       phone.length > 0 ? phone : name.length > 0 ? name : first.customerId;
     return {
       customerName: name || '—',
-      invoiceTotalKd: total,
+      invoiceTotalKd: summary?.totalMarketDebtKd ?? '0.0000',
       subscribersQuery: qForLink,
     };
-  }, [filteredRows]);
+  }, [filteredRows, summary?.totalMarketDebtKd]);
 
   if (!allowed) {
     return <Navigate to="/" replace />;
@@ -1028,17 +1027,8 @@ export function CollectionsPage() {
                 <TableCell colSpan={4} className="text-end">
                   {t('collections.totalFooter')}
                 </TableCell>
-                {/* V23.1 — Footer sum migrated to BigInt micro-fils via
-                    `sumKwdStringsPrecise`. The 3dp display rounding lives
-                    inside `formatKwdLabelGrouped`, so the table footer
-                    still equals the Red-card KPI under the same branch
-                    scope but no float drift can creep in. */}
                 <TableCell className="text-end tabular-nums">
-                  {formatKwdLabelGrouped(
-                    sumKwdStringsPrecise(
-                      filteredRows.map((r) => r.amountKd),
-                    ),
-                  )}
+                  {formatKwdLabelGrouped(summary?.totalMarketDebtKd ?? '0.0000')}
                 </TableCell>
                 <TableCell
                   colSpan={

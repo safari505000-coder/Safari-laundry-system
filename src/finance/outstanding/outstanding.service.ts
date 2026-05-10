@@ -17,6 +17,7 @@ import type { JwtUser } from '../../auth/decorators/current-user.decorator';
 import { AuditLogsService } from '../../audit-logs/audit-logs.service';
 import { OrdersService } from '../../orders/orders.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { DebtVisibilityService } from '../debt-visibility/debt-visibility.service';
 import {
   computeOrderRemainingBalancesBatch,
   INVOICE_REMAINING_TOLERANCE_KD,
@@ -71,6 +72,7 @@ export class OutstandingService {
     private readonly auditLogs: AuditLogsService,
     @Inject(forwardRef(() => OrdersService))
     private readonly orders: OrdersService,
+    private readonly debtVisibility: DebtVisibilityService,
   ) {}
 
   async listOutstanding(
@@ -121,27 +123,10 @@ export class OutstandingService {
     console.log('[AR BRANCH]', effectiveBranchId, actor?.role ?? null);
     console.log('[BRANCH_SCOPE]', effectiveBranchId, actor?.role ?? null);
 
-    const canonicalTotalKdDec = await this.orders.sumCollectionsDebtTotalKd(
-      effectiveBranchId,
-      actor ?? undefined,
-    );
-    const canonicalTotalDueKd = canonicalTotalKdDec
-        .toDecimalPlaces(4, Prisma.Decimal.ROUND_HALF_EVEN)
-        .toFixed(4);
-      console.log('[AR CANONICAL]', canonicalTotalDueKd);
-
-    // V20.3.1 — partial-payment-aware red KPI. Differs from the
-    // gross headline whenever an in-scope invoice has prior
-    // partial payments. Surfaced additively so existing UIs that
-    // read `totalDueKd` keep working.
-    const canonicalRemainingKdDec = await this.orders.sumCollectionsDebtRemainingKd(
-      effectiveBranchId,
-      actor ?? undefined,
-    );
-    const canonicalRemainingDueKd = canonicalRemainingKdDec
-        .toDecimalPlaces(4, Prisma.Decimal.ROUND_HALF_EVEN)
-        .toFixed(4);
-      console.log('[AR CANONICAL_REMAINING]', canonicalRemainingDueKd);
+    const collectionsSnapshot = await this.debtVisibility.getCollectionsSnapshot();
+    const canonicalTotalDueKd = collectionsSnapshot.totalRemainingDebtKd;
+    const canonicalRemainingDueKd = collectionsSnapshot.totalRemainingDebtKd;
+    console.log('[AR CANONICAL]', canonicalTotalDueKd);
 
     console.log('[AR ROW SOURCE START]');
     const aggOrders = await this.orders.listCollectionsReceivableAggOrders({
@@ -244,6 +229,8 @@ export class OutstandingService {
     // the UI can render an independent SUBSCRIBER badge.
     const subscriptionStateByCustomer =
       await getCustomerSubscriptionStateBatch(this.prisma, customerIds);
+    const visibleDebtByCustomer =
+      await this.debtVisibility.getCustomerVisibleDebtBatch(customerIds);
 
     const now = Date.now();
     const allRows: OutstandingRowDto[] = [];
@@ -280,13 +267,21 @@ export class OutstandingService {
           earliestDue = order.dueDate;
         }
       }
-      const totalDueKd = round4Kd(totalDueDec);
-        const remainingDueKd = round4Kd(remainingDueDec);
-        const remainingDueDecRounded = remainingDueDec.toDecimalPlaces(
-          4,
-          Prisma.Decimal.ROUND_HALF_EVEN,
-        );
-        const paidKd = round4Kd(totalDueDec.sub(remainingDueDec));
+      const visibleDebt = visibleDebtByCustomer.get(customerId);
+      const visibleRemainingDec = visibleDebt
+        ? new Prisma.Decimal(visibleDebt.remainingDebtKd)
+        : remainingDueDec;
+      const totalDueKd = round4Kd(visibleRemainingDec);
+      const remainingDueKd = round4Kd(visibleRemainingDec);
+      const remainingDueDecRounded = visibleRemainingDec.toDecimalPlaces(
+        4,
+        Prisma.Decimal.ROUND_HALF_EVEN,
+      );
+      const paidKd = round4Kd(
+        totalDueDec.sub(visibleRemainingDec).greaterThan(0)
+          ? totalDueDec.sub(visibleRemainingDec)
+          : new Prisma.Decimal(0),
+      );
       const daysLate = earliestDue
         ? Math.max(
             0,

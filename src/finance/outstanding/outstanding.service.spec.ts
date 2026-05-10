@@ -11,6 +11,7 @@ import { OutstandingService } from './outstanding.service';
 type PrismaMock = ReturnType<typeof buildPrisma>;
 type AuditMock = ReturnType<typeof buildAudit>;
 type OrdersMock = ReturnType<typeof buildOrders>;
+type DebtVisibilityMock = ReturnType<typeof buildDebtVisibility>;
 
 const CUSTOMER_A = '11111111-1111-4111-8111-111111111111';
 const CUSTOMER_B = '22222222-2222-4222-8222-222222222222';
@@ -51,15 +52,21 @@ function buildAudit() {
 
 function buildOrders() {
   return {
-    sumCollectionsDebtTotalKd: jest
-      .fn()
-      .mockResolvedValue(new Prisma.Decimal(0)),
-    // V20.3.1 — partial-payment-aware red KPI; called alongside
-    // the legacy gross sum.
-    sumCollectionsDebtRemainingKd: jest
-      .fn()
-      .mockResolvedValue(new Prisma.Decimal(0)),
     listCollectionsReceivableAggOrders: jest.fn().mockResolvedValue([]),
+  };
+}
+
+function buildDebtVisibility() {
+  return {
+    getCollectionsSnapshot: jest.fn().mockResolvedValue({
+      totalRemainingDebtKd: '0.0000',
+      customersWithDebt: 0,
+      partiallyPaidInvoices: 0,
+      unpaidInvoices: 0,
+      overdueInvoices: 0,
+      generatedAt: new Date().toISOString(),
+    }),
+    getCustomerVisibleDebtBatch: jest.fn().mockResolvedValue(new Map()),
   };
 }
 
@@ -68,22 +75,25 @@ function build(): {
   prisma: PrismaMock;
   audit: AuditMock;
   orders: OrdersMock;
+  debtVisibility: DebtVisibilityMock;
 } {
   const prisma = buildPrisma();
   const audit = buildAudit();
   const orders = buildOrders();
+  const debtVisibility = buildDebtVisibility();
   const service = new OutstandingService(
     prisma as any,
     audit as any,
     orders as any,
+    debtVisibility as any,
   );
-  return { service, prisma, audit, orders };
+  return { service, prisma, audit, orders, debtVisibility };
 }
 
 describe('OutstandingService', () => {
   describe('listOutstanding', () => {
     it('returns an empty envelope when no orders are open', async () => {
-      const { service, prisma, orders } = build();
+      const { service, prisma, orders, debtVisibility } = build();
 
       const out = await service.listOutstanding({});
 
@@ -95,11 +105,16 @@ describe('OutstandingService', () => {
       expect(orders.listCollectionsReceivableAggOrders).toHaveBeenCalled();
     });
 
-    it('uses OrdersService as the single source even when no rows are returned', async () => {
-      const { service, orders } = build();
-      orders.sumCollectionsDebtTotalKd.mockResolvedValueOnce(
-        new Prisma.Decimal('3.250'),
-      );
+    it('uses DebtVisibilityService as the single source even when no rows are returned', async () => {
+      const { service, debtVisibility } = build();
+      debtVisibility.getCollectionsSnapshot.mockResolvedValueOnce({
+        totalRemainingDebtKd: '3.2500',
+        customersWithDebt: 1,
+        partiallyPaidInvoices: 0,
+        unpaidInvoices: 1,
+        overdueInvoices: 0,
+        generatedAt: new Date().toISOString(),
+      });
 
       const out = await service.listOutstanding({});
 
@@ -109,7 +124,7 @@ describe('OutstandingService', () => {
     });
 
     it('aggregates totalDueKd, invoicesCount, lastOrderAt and earliestDueDate per customer', async () => {
-      const { service, prisma, orders } = build();
+      const { service, prisma, orders, debtVisibility } = build();
       const now = new Date('2026-05-06T00:00:00.000Z');
       const olderDue = new Date('2026-04-26T00:00:00.000Z');
       const newerDue = new Date('2026-05-01T00:00:00.000Z');
@@ -132,8 +147,39 @@ describe('OutstandingService', () => {
           dueDate: newerDue,
         },
       ]);
-      orders.sumCollectionsDebtTotalKd.mockResolvedValueOnce(
-        new Prisma.Decimal('12.5'),
+      debtVisibility.getCollectionsSnapshot.mockResolvedValueOnce({
+        totalRemainingDebtKd: '5.2500',
+        customersWithDebt: 1,
+        partiallyPaidInvoices: 1,
+        unpaidInvoices: 1,
+        overdueInvoices: 0,
+        generatedAt: new Date().toISOString(),
+      });
+      debtVisibility.getCustomerVisibleDebtBatch.mockResolvedValueOnce(
+        new Map([
+          [
+            CUSTOMER_A,
+            {
+              customerId: CUSTOMER_A,
+              remainingDebtKd: '5.2500',
+              paidTotalKd: '7.2500',
+              totalInvoicesKd: '12.5000',
+              journalArBalanceKd: '5.2500',
+              walletLiabilityKd: '0.0000',
+              walletBalanceKd: '0.0000',
+              unpaidInvoicesCount: 1,
+              partiallyPaidInvoicesCount: 1,
+              activeInvoicesCount: 2,
+              overdueInvoicesCount: 0,
+              hasDebt: true,
+              lastPaymentAt: null,
+              lastInvoiceAt: null,
+              canonicalSource: 'JOURNAL_AR',
+              fromSnapshot: false,
+              snapshotRefreshedAt: null,
+            },
+          ],
+        ]),
       );
       prisma.customer.findMany.mockResolvedValueOnce([
         {
@@ -160,13 +206,13 @@ describe('OutstandingService', () => {
       // V23.3 — `OutstandingRow.totalDueKd` is now a canonical 4dp
         // KWD string. Numeric closeness checks were replaced with an
         // exact string equality assertion.
-        expect(row.totalDueKd).toBe('12.5000');
-        expect(out.totalDueKd).toBe('12.5000');
+        expect(row.totalDueKd).toBe('5.2500');
+        expect(out.totalDueKd).toBe('5.2500');
       expect(out.source).toBe('COLLECTIONS_ENGINE');
       expect(row.driverName).toBe('Driver X');
       expect(row.earliestDueDate).toBe(olderDue.toISOString());
       expect(row.daysLate).toBe(10);
-      expect(row.priorityScore).toBeCloseTo(12.5 * 0.6 + 10 * 0.4, 4);
+      expect(row.priorityScore).toBeCloseTo(5.25 * 0.6 + 10 * 0.4, 4);
       expect(row.status).toBe(CustomerCollectionStatusKind.NORMAL);
       expect(out.driverSummaries).toEqual([
         {
@@ -174,7 +220,7 @@ describe('OutstandingService', () => {
           driverName: 'Driver X',
           customers: 1,
           invoices: 2,
-          totalRemainingKd: '12.500',
+          totalRemainingKd: '5.250',
           maxDaysLate: 10,
         },
       ]);
@@ -209,8 +255,8 @@ describe('OutstandingService', () => {
       ).rejects.toThrow(/from.*before.*to/i);
     });
 
-    it('filters rows while totalDueKd remains canonical from OrdersService', async () => {
-      const { service, prisma, orders } = build();
+    it('filters rows while totalDueKd remains canonical from DebtVisibilityService', async () => {
+      const { service, prisma, orders, debtVisibility } = build();
       orders.listCollectionsReceivableAggOrders.mockResolvedValueOnce([
         {
           id: 'o1',
@@ -229,8 +275,61 @@ describe('OutstandingService', () => {
           dueDate: null,
         },
       ]);
-      orders.sumCollectionsDebtTotalKd.mockResolvedValueOnce(
-        new Prisma.Decimal(3),
+      debtVisibility.getCollectionsSnapshot.mockResolvedValueOnce({
+        totalRemainingDebtKd: '1.2500',
+        customersWithDebt: 1,
+        partiallyPaidInvoices: 0,
+        unpaidInvoices: 1,
+        overdueInvoices: 0,
+        generatedAt: new Date().toISOString(),
+      });
+      debtVisibility.getCustomerVisibleDebtBatch.mockResolvedValueOnce(
+        new Map([
+          [
+            CUSTOMER_A,
+            {
+              customerId: CUSTOMER_A,
+              remainingDebtKd: '0.0000',
+              paidTotalKd: '1.0000',
+              totalInvoicesKd: '1.0000',
+              journalArBalanceKd: '0.0000',
+              walletLiabilityKd: '0.0000',
+              walletBalanceKd: '0.0000',
+              unpaidInvoicesCount: 0,
+              partiallyPaidInvoicesCount: 0,
+              activeInvoicesCount: 0,
+              overdueInvoicesCount: 0,
+              hasDebt: false,
+              lastPaymentAt: null,
+              lastInvoiceAt: null,
+              canonicalSource: 'JOURNAL_AR',
+              fromSnapshot: false,
+              snapshotRefreshedAt: null,
+            },
+          ],
+          [
+            CUSTOMER_B,
+            {
+              customerId: CUSTOMER_B,
+              remainingDebtKd: '1.2500',
+              paidTotalKd: '0.7500',
+              totalInvoicesKd: '2.0000',
+              journalArBalanceKd: '1.2500',
+              walletLiabilityKd: '0.0000',
+              walletBalanceKd: '0.0000',
+              unpaidInvoicesCount: 1,
+              partiallyPaidInvoicesCount: 1,
+              activeInvoicesCount: 1,
+              overdueInvoicesCount: 0,
+              hasDebt: true,
+              lastPaymentAt: null,
+              lastInvoiceAt: null,
+              canonicalSource: 'JOURNAL_AR',
+              fromSnapshot: false,
+              snapshotRefreshedAt: null,
+            },
+          ],
+        ]),
       );
       prisma.customer.findMany.mockResolvedValueOnce([
         {
@@ -265,7 +364,7 @@ describe('OutstandingService', () => {
       expect(onlyBlocked.rows.map((r) => r.customerId)).toEqual([CUSTOMER_B]);
       expect(onlyBlocked.blockedCount).toBe(1);
       expect(onlyBlocked.riskCount).toBe(1);
-      expect(onlyBlocked.totalDueKd).toBe('3.0000');
+      expect(onlyBlocked.totalDueKd).toBe('1.2500');
       expect(onlyBlocked.source).toBe('COLLECTIONS_ENGINE');
     });
 
