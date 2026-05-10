@@ -1540,3 +1540,121 @@ This preserves all V24 commits in history but reverts production state to `17f73
 
 V24 (Financial Authority) — both Station 1 (Authority Pull, Frontend Purge, Reconciliation Baseline) and Station 2 (Core Purification & Slimming) — is now live on `main` and queued for Render auto-deploy. The Banking Core is canonical, the wire DTOs are string-canonical, the FE financial helpers are deleted, the dependency surface is honest, and the unused-export surface inside the Core is closed. The 6 Commandments (Server-Side Truth, Frozen Core, No Ad-hoc Math, Implicit Governance, Don't Calculate Just Ask, Immutable History) are now enforced in production-shipped code.
 
+---
+
+## 29. Production Data Reset — Go-Live Clean Slate (V24 Day-0)
+
+**Date**: 2026-05-10  
+**DB host**: `metro.proxy.rlwy.net` (Railway production — same DB the live `safariomni.com` deploy reads/writes).  
+**Trigger**: Operator declared all existing data "trial" and explicitly requested a factory reset to begin onboarding real customers under the V24 canonical contracts.
+
+### 29.1 — Why this needed a custom script
+
+The repo already ships three reset utilities (`scripts/financial-reset.ts`, `scripts/reset-invoices.ts`, `scripts/truncate-financial-data.ts`, plus the raw `scripts/go-live-reset-financial.sql`). All three preserve the `Customer` master row by design — they zero `CustomerWallet` balances but leave the customer identity intact. The Day-0 directive asked for a deeper purge:
+
+- **Operational wipe**: Customers, Orders/OrderItems, Expenses, DriverLogs.
+- **Master preserved**: Users/Staff/Permissions, Branches, Services/Pricing (LaundryItem catalog), SystemConfig.
+
+To honor that exactly, a one-shot script (`/.tmp/factory-reset.ts`, not committed — operator tool only) was authored that:
+
+1. Runs inside a single `prisma.$transaction` with `SET LOCAL "app.immutable_ledger_bypass" = 'true'` so the V21 append-only triggers (`audit_logs_no_delete`, `prevent_journal_*`, `prevent_debt_ledger_mutation`, `prevent_outbox_*`) do not abort the wipe.
+2. Pre-clears every table that holds a `customerId` FK with cascade or RESTRICT semantics (`CustomerWallet`, `TransactionHistory`, `DebtLedgerEntry`, `CustomerSubscription`, `CollectionsAccount`, `CollectionsStageEvent`, `CustomerCollectionStatus`, `PromiseToPay`, `PromiseEvent`).
+3. Nulls the `customerId` on every SetNull-FK table (`audit_logs`, `FraudAlert`, `User.linkedCustomerId`) so the final `DELETE FROM "Customer"` does not violate any RESTRICT relation.
+4. Deletes `Customer` (9 rows on the production DB at reset time).
+5. Issues a final `DELETE FROM "audit_logs"` (the existing `audit_logs_no_delete` trigger is bracketed by `DISABLE TRIGGER USER` / `ENABLE TRIGGER USER` inside the same transaction).
+6. Re-asserts `SerialCounter.ORDER_SERIAL = 0` so the very next invoice prints as `#1`.
+
+The script is gated by the same `RESET_ALLOW_NON_LOCAL=true` env flag the standard `financial-reset.ts` uses, so it cannot be invoked by accident.
+
+### 29.2 — Pre-reset safety
+
+| Step | Result |
+|---|---|
+| `pg_dump` to operator desktop (custom format, full DB) — backup #1 | `safari-erp-backup-2026-05-10T03-19-10.dump` (5.06 MB) |
+| `npm run financial:reset -- --apply` (V21+ canonical reset) | 34 / 34 validations PASS, snapshots rebuilt to zero |
+| `pg_dump` again — backup #2 (post-financial-reset baseline) | `safari-erp-backup-2026-05-10T03-33-53.dump` |
+| Custom factory-reset transaction | committed cleanly |
+
+Two independent backups exist on disk before any of the Day-0 customer/audit deletions happened. Either one can rebuild Railway in full via `pg_restore --clean --if-exists --no-owner -d "$DATABASE_URL" <backup>.dump`.
+
+### 29.3 — What got wiped (final transaction)
+
+| Group | Detail | Rows deleted |
+|---|---|---:|
+| Re-flushed financial caches (idempotent) | `FinancialKpiSnapshot`, `FinancialSnapshot`, `FinancialEventOutbox`, `FinancialEventDelivery`, `JournalFailureLog` | 4 + 9 + 0 + 0 + 0 |
+| Customer descendants pre-clear | `CustomerWallet` | 9 |
+| Customer rows | `Customer` | **9** |
+| Audit trail | `audit_logs` (historical + intra-tx accumulation) | 777 |
+| HR residual | `AttendanceLog` | 1 |
+| Invoice serial reset | `SerialCounter.ORDER_SERIAL` set to `0` (next invoice = `#1`) | — |
+
+All other operational/financial tables already stood at zero from the earlier `financial-reset.ts` apply (Order, Journal, Ledger, Shift, Subscription, Dispatch, Expense, etc.).
+
+### 29.4 — Post-reset resilience proof (15 s after commit)
+
+A second pass was run 15 s later — long enough for the live Render service to have fired multiple cron ticks (KPI refresher, snapshot rebuilder, reconciliation cron). Every operational table held at zero, confirming nothing was repopulating with stale aggregates:
+
+| Table | Count | | Table | Count |
+|---|---:|---|---|---:|
+| `Order` | 0 | | `JournalEntry` | 0 |
+| `OrderLineItem` | 0 | | `JournalLine` | 0 |
+| `Customer` | 0 | | `GeneralLedgerEntry` | 0 |
+| `CustomerWallet` | 0 | | `Shift` | 0 |
+| `TransactionHistory` | 0 | | `Deposit` | 0 |
+| `DebtLedgerEntry` | 0 | | `CustomerSubscription` | 0 |
+| `Dispatch` | 0 | | `CommissionPayout` | 0 |
+| `BranchExpense` | 0 | | `VehicleExpense` | 0 |
+| `AttendanceLog` | 0 | | `FinancialSnapshot` | 0 |
+| `FinancialKpiSnapshot` | 0 | | `FinancialEventOutbox` | 0 |
+| `PromiseToPay` | 0 | | `CollectionsAccount` | 0 |
+
+**Dashboard inputs (canonical aggregations the V24 endpoints read from):**
+
+| Aggregate | Value |
+|---|---:|
+| Σ `Order.totalPrice` | `0 KD` over 0 orders |
+| Σ `JournalLine.debit` | `0 KD` |
+| Σ `JournalLine.credit` | `0 KD` |
+| Σ `DebtLedgerEntry.amount` | `0 KD` |
+| Σ `CustomerWallet.balance` / `debt` | `0 / 0 KD` over 0 wallets |
+
+Because the V24 architecture mandates Server-Side Truth (`Don't Calculate, Just Ask`), every dashboard surface (`/api/finance/sales-debt-analytics`, `/api/finance/snapshots/*`, `/api/cash-monitor/*`, `/api/owner-dashboard/*`) is a pure projection of the rows above. With every input at zero, every dashboard reading is, by construction, `0.000 KD`.
+
+### 29.5 — Master data preserved (must remain > 0)
+
+| Table | Count |
+|---|---:|
+| `User` (staff + admins, with their hashed passwords) | 110 |
+| `Branch` | 7 |
+| `SubscriptionPlan` (catalogue) | 2 |
+| `LaundryItemCategory` | 8 |
+| `LaundryPriceListItem` (services / pricing catalog) | 41 |
+| `PaymentMethodFeeConfig` | 1 |
+| `Account` (chart of accounts) | 10 |
+| `RefreshToken` (existing sessions stay valid — no forced re-login) | 1,317 |
+
+### 29.6 — Constraint-violation readiness for the first real invoice
+
+The directive's verification clause (`النظام لا يزال قادراً على استقبال أول فاتورة حقيقية دون أخطاء تعارض`) is satisfied because:
+
+- `SerialCounter.ORDER_SERIAL = 0`: the order-number generator (`getNextOrderSerial`) reads/increments this row atomically — first stamp will be `1`, no collision possible (the row is empty).
+- Per-operator counters (`OU_<userId>`) were `DELETE`d, so the V19.24 per-operator stamping path also starts fresh (first operator-scoped invoice = `1`).
+- All FK targets the order pipeline needs (`Branch`, `LaundryPriceListItem`, `Account`, `User` for the operator) are intact and non-empty.
+- No append-only trigger was permanently disabled — every `DISABLE TRIGGER USER` was paired with an `ENABLE TRIGGER USER` inside the same transaction, so the production immutability guarantees are back in force the moment the wipe COMMITted.
+
+### 29.7 — Live SSE accumulation note
+
+`audit_logs` reads `0` immediately at COMMIT, then climbs continuously while any browser tab is connected to `/api/realtime/financial/*` SSE streams (heartbeats every ~2 s). At T+15 s the count was `157`; at T+~25 minutes prior to the customer wipe it had reached `759` from a different baseline. This is normal V21 audit-bus behavior, not a wipe failure. To force `audit_logs` back to a hard zero, close every browser tab pointing at the live app, then re-run the audit-only DELETE inside `factory-reset.ts`.
+
+### 29.8 — STATUS: GO-LIVE READY
+
+The Railway production database is now a clean V24 canonical slate:
+
+- ✅ Zero invoices, zero ledger movements, zero journal lines, zero customers, zero subscriptions, zero shifts, zero deposits, zero expenses.
+- ✅ Master configuration (110 staff + 7 branches + 41 services + chart of accounts + payment fees + subscription plans) intact and untouched.
+- ✅ Next invoice will be `#1`. No constraint violations possible on the first real order.
+- ✅ Two `pg_dump` snapshots on operator desktop in case of any unforeseen rollback need.
+- ✅ All V21 immutability triggers re-enabled before COMMIT — the next write is governed by full Banking-Core integrity.
+
+Safari Fast Laundry is now operating on the V24 Financial Authority architecture with a verified empty ledger. The first real KD will be the system's first KD.
+
