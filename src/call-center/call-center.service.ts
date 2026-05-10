@@ -1192,6 +1192,7 @@ export class CallCenterService {
       todaysSettlementRows,
       todaysSubscriptionActivationRows,
       pendingLinksCount,
+      pendingLinksAggregate,
       ledgerDebtSplit,
     ] = await Promise.all([
       this.orders.sumCollectionsDebtRemainingKd(effectiveBranchId, actor ?? undefined),
@@ -1219,6 +1220,15 @@ export class CallCenterService {
           ...orderBranch,
         },
       }),
+      this.prisma.order.aggregate({
+        where: {
+          cashStatus: CashStatus.UNPAID,
+          status: { not: OrderStatus.CANCELED },
+          posHostedPaymentUrl: { not: null },
+          ...orderBranch,
+        },
+        _sum: { totalPrice: true },
+      }),
       this.debt.getLedgerOpenDebtByCategory(ledgerBranchFilter),
     ]);
 
@@ -1229,10 +1239,14 @@ export class CallCenterService {
     //   • CC partial debt payment (`debtPaymentOnly=true`)
     //   • Any driver-led POS completion that set `debtSettled` on its row
     let collectedTodayFromOrders = new Prisma.Decimal(0);
+    let linkCollectedToday = new Prisma.Decimal(0);
     for (const r of todaysSettlementRows) {
       const debtSettled = extractDebtSettled(r.metadata);
       if (debtSettled.gt(0)) {
         collectedTodayFromOrders = collectedTodayFromOrders.plus(debtSettled);
+        if (isDebtViaLinkRow(r.metadata)) {
+          linkCollectedToday = linkCollectedToday.plus(debtSettled);
+        }
       }
     }
 
@@ -1260,8 +1274,12 @@ export class CallCenterService {
         new Prisma.Decimal(ledgerDebtSplit.outstandingSubscriptionDebtKd),
       ),
       debtCollectedTodayKd: KWD_DP(collectedTodayFromOrders),
+      linkCollectedTodayKd: KWD_DP(linkCollectedToday),
       debtRecoveredTodayKd: KWD_DP(recoveredToday),
       pendingLinksCount,
+      pendingLinksKd: KWD_DP(
+        pendingLinksAggregate._sum.totalPrice ?? new Prisma.Decimal(0),
+      ),
       dayIso: dayIsoLocal,
       branchId: effectiveBranchId ?? null,
     };

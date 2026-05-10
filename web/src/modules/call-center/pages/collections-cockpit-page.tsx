@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, Navigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import { useAuth } from '@/contexts/auth-context';
 import { can } from '@/modules/shared/auth/access-matrix';
 import {
@@ -12,19 +13,58 @@ import {
 } from '@/modules/collections-workflow';
 import { useOperatorPresence, PresenceRibbon, getActiveOperators, type PresenceHeartbeat } from '@/modules/presence';
 import {
-  AgingBadge,
   QueueHealthBadge,
   classifyAging,
-  groupByAgingBucket,
-  type AgingBucket,
 } from '@/modules/workflow-intelligence';
 import { useRealtimeFinancialFeed } from '@/modules/finance';
 import { RealtimeStatusBadge } from '@/modules/realtime-observability';
-import { apiJson, type CollectionUnpaidOnlineRow } from '@/lib/api';
+import {
+  ApiError,
+  apiJson,
+  type ActivateSubscriptionResponse,
+  type CallCenterOperationsSummary,
+  type CollectionUnpaidOnlineRow,
+  type DebtConversionOptionsResponse,
+  type DebtConversionPlanOption,
+} from '@/lib/api';
 import { formatKwdLabelGrouped } from '@/lib/kwd';
 import { Button } from '@/modules/shared/components/ui/button';
 import { Badge } from '@/modules/shared/components/ui/badge';
-import { Loader2, ArrowLeft, RefreshCw, Phone, ClipboardList, ShieldAlert } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/modules/shared/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/modules/shared/components/ui/select';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/modules/shared/components/ui/table';
+import {
+  Loader2,
+  ArrowLeft,
+  RefreshCw,
+  Phone,
+  ClipboardList,
+  ShieldAlert,
+  ArrowLeftRight,
+  Banknote,
+  Link2,
+  Wallet,
+  RadioTower,
+} from 'lucide-react';
 
 void React;
 
@@ -66,19 +106,49 @@ type FetchState =
   | { kind: 'ready'; rows: CollectionUnpaidOnlineRow[]; fetchedAt: number }
   | { kind: 'error'; message: string };
 
+type SummaryState =
+  | { kind: 'idle' }
+  | { kind: 'loading' }
+  | { kind: 'ready'; data: CallCenterOperationsSummary; fetchedAt: number }
+  | { kind: 'error'; message: string };
+
+type SubscriptionActivationPaymentMethod =
+  | 'CASH'
+  | 'KNET'
+  | 'PAYMENT_LINK'
+  | 'ONLINE'
+  | 'DEBT_ON_ACCOUNT';
+
+const ACTIVATION_PAYMENT_METHODS: SubscriptionActivationPaymentMethod[] = [
+  'CASH',
+  'KNET',
+  'PAYMENT_LINK',
+  'ONLINE',
+  'DEBT_ON_ACCOUNT',
+];
+
 export function CollectionsCockpitPage(): React.ReactElement {
-  const { t, i18n } = useTranslation();
+  const { i18n } = useTranslation();
   const isAr = i18n.language?.startsWith('ar') ?? true;
   const locale = (isAr ? 'ar' : 'en') as 'ar' | 'en';
-  const { user, token } = useAuth();
+  const { user, token, ownerBranchId } = useAuth();
 
   const allowed = user != null && can(user, 'collections.view');
+  const canAct = user != null && can(user, 'collections.act');
+  const canManageSubscribers = user != null && can(user, 'subscribers.manage');
 
   const [queue, setQueue] = useState<FetchState>({ kind: 'idle' });
+  const [summary, setSummary] = useState<SummaryState>({ kind: 'idle' });
   const [focusedRowId, setFocusedRowId] = useState<string | null>(null);
   const [modalKind, setModalKind] = useState<WorkflowKind | null>(null);
+  const [convertRow, setConvertRow] = useState<CollectionUnpaidOnlineRow | null>(
+    null,
+  );
 
-  const branchId = user?.branchId ?? null;
+  const branchId =
+    user?.safariRole === 'MANAGER' && user.branchId ?
+      user.branchId
+    : (ownerBranchId ?? null);
 
   const workflow = useCollectionsWorkflow({ branchId, enabled: allowed });
 
@@ -114,9 +184,14 @@ export function CollectionsCockpitPage(): React.ReactElement {
   }, [allowed, token, user?.id]);
 
   const realtimeState = useRealtimeFinancialFeed({
-    channel: 'dashboards',
+    channel: 'collections',
     accessToken: token ?? null,
     enabled: Boolean(token),
+    onEvent: () => {
+      void refreshQueue();
+      void refreshSummary();
+      void workflow.refresh();
+    },
   });
 
   const refreshQueue = useCallback(async () => {
@@ -125,37 +200,50 @@ export function CollectionsCockpitPage(): React.ReactElement {
       prev.kind === 'ready' ? prev : { kind: 'loading' as const },
     );
     try {
+      const qs = branchId ? `?branchId=${encodeURIComponent(branchId)}` : '';
       const data = await apiJson<{ rows: CollectionUnpaidOnlineRow[] }>(
-        '/api/orders/collection/unpaid-online',
+        `/api/orders/collections/unpaid-online${qs}`,
         { token },
       );
-      setQueue({ kind: 'ready', rows: data.rows, fetchedAt: Date.now() });
+      const rows = Array.isArray(data) ? data : data.rows;
+      setQueue({ kind: 'ready', rows: rows ?? [], fetchedAt: Date.now() });
     } catch (err) {
       setQueue({
         kind: 'error',
         message: err instanceof Error ? err.message : 'queue_fetch_failed',
       });
     }
-  }, [token, allowed]);
+  }, [token, allowed, branchId]);
+
+  const refreshSummary = useCallback(async () => {
+    if (!token || !allowed) return;
+    setSummary((prev) =>
+      prev.kind === 'ready' ? prev : { kind: 'loading' as const },
+    );
+    try {
+      const qs = branchId ? `?branchId=${encodeURIComponent(branchId)}` : '';
+      const data = await apiJson<CallCenterOperationsSummary>(
+        `/api/call-center/operations-summary${qs}`,
+        { token },
+      );
+      setSummary({ kind: 'ready', data, fetchedAt: Date.now() });
+    } catch (err) {
+      setSummary({
+        kind: 'error',
+        message: err instanceof Error ? err.message : 'summary_fetch_failed',
+      });
+    }
+  }, [token, allowed, branchId]);
 
   useEffect(() => {
     if (!allowed) return;
     void refreshQueue();
+    void refreshSummary();
     const id = window.setInterval(refreshQueue, QUEUE_POLL_MS);
     return () => window.clearInterval(id);
-  }, [refreshQueue, allowed]);
+  }, [refreshQueue, refreshSummary, allowed]);
 
   const queueRows = queue.kind === 'ready' ? queue.rows : [];
-
-  // Aging-bucket grouping for the bottom list.
-  const grouped = useMemo(
-    () =>
-      groupByAgingBucket(
-        queueRows,
-        (row) => (row as { createdAt?: string }).createdAt ?? new Date().toISOString(),
-      ),
-    [queueRows],
-  );
 
   const queueHealth = useMemo(() => {
     const counts = { critical: 0, overdue: 0 };
@@ -173,6 +261,8 @@ export function CollectionsCockpitPage(): React.ReactElement {
     if (!focusedRowId) return queueRows[0] ?? null;
     return queueRows.find((r) => r.orderId === focusedRowId) ?? queueRows[0] ?? null;
   }, [focusedRowId, queueRows]);
+
+  const summaryData = summary.kind === 'ready' ? summary.data : null;
 
   // Keyboard shortcuts.
   useEffect(() => {
@@ -303,6 +393,7 @@ export function CollectionsCockpitPage(): React.ReactElement {
             size="sm"
             onClick={() => {
               void refreshQueue();
+              void refreshSummary();
               void workflow.refresh();
             }}
           >
@@ -317,6 +408,65 @@ export function CollectionsCockpitPage(): React.ReactElement {
           </Link>
         </div>
       </header>
+
+      <section className="grid gap-3 md:grid-cols-3" aria-label="V25 debt command KPIs">
+        <DebtKpiCard
+          tone="danger"
+          icon={<Wallet className="h-5 w-5" />}
+          label={isAr ? 'إجمالي المديونية' : 'Outstanding'}
+          value={
+            summaryData ?
+              formatKwdLabelGrouped(summaryData.totalMarketDebtKd)
+            : '—'
+          }
+          hint={
+            isAr ?
+              'كل الفواتير المفتوحة من السيرفر'
+            : 'All open invoices from server authority'
+          }
+          loading={summary.kind === 'loading'}
+        />
+        <DebtKpiCard
+          tone="success"
+          icon={<Banknote className="h-5 w-5" />}
+          label={isAr ? 'المحصل عبر الروابط' : 'Link collected'}
+          value={
+            summaryData ?
+              formatKwdLabelGrouped(summaryData.linkCollectedTodayKd ?? '0')
+            : '—'
+          }
+          hint={
+            isAr ?
+              'تحصيل اليوم المؤكد من سجل العمليات'
+            : 'Today confirmed from the ledger stream'
+          }
+          loading={summary.kind === 'loading'}
+        />
+        <DebtKpiCard
+          tone="warning"
+          icon={<Link2 className="h-5 w-5" />}
+          label={isAr ? 'قيد الانتظار' : 'Pending links'}
+          value={
+            summaryData ?
+              formatKwdLabelGrouped(summaryData.pendingLinksKd ?? '0')
+            : '—'
+          }
+          hint={
+            summaryData ?
+              isAr ?
+                `${summaryData.pendingLinksCount} رابط دفع لم يُحصّل بعد`
+              : `${summaryData.pendingLinksCount} payment links awaiting capture`
+            : isAr ? 'روابط الدفع المفتوحة' : 'Open hosted payment links'
+          }
+          loading={summary.kind === 'loading'}
+        />
+      </section>
+
+      {summary.kind === 'error' ? (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+          {summary.message}
+        </p>
+      ) : null}
 
       {/* Workflow lanes */}
       <WorkflowLanes
@@ -358,19 +508,14 @@ export function CollectionsCockpitPage(): React.ReactElement {
               {isAr ? 'لا توجد فواتير مستحقة' : 'No unpaid invoices'}
             </p>
           ) : null}
-          <div className="space-y-3">
-            {grouped.map((group) => (
-              <AgingGroup
-                key={group.bucket}
-                bucket={group.bucket}
-                rows={group.rows as CollectionUnpaidOnlineRow[]}
-                focusedRowId={focusedRow?.orderId ?? null}
-                onFocus={(orderId) => setFocusedRowId(orderId)}
-                locale={locale}
-                t={t}
-              />
-            ))}
-          </div>
+          <SmartDebtTable
+            rows={queueRows}
+            focusedRowId={focusedRow?.orderId ?? null}
+            locale={locale}
+            canConvert={canManageSubscribers && canAct}
+            onFocus={(orderId) => setFocusedRowId(orderId)}
+            onConvert={(row) => setConvertRow(row)}
+          />
         </div>
 
         {/* Sticky operational rail */}
@@ -409,6 +554,14 @@ export function CollectionsCockpitPage(): React.ReactElement {
                 icon={<ShieldAlert className="h-3 w-3" />}
                 onClick={() => setModalKind('ESCALATION')}
               />
+              {canManageSubscribers && canAct ? (
+                <ShortcutButton
+                  shortcut="V25"
+                  label={isAr ? 'تحويل للاشتراك' : 'Convert to subscription'}
+                  icon={<ArrowLeftRight className="h-3 w-3" />}
+                  onClick={() => setConvertRow(focusedRow)}
+                />
+              ) : null}
             </div>
           ) : (
             <p className="mt-2 text-xs text-slate-500">
@@ -441,7 +594,54 @@ export function CollectionsCockpitPage(): React.ReactElement {
           }}
         />
       ) : null}
+
+      <DebtConversionDialog
+        open={Boolean(convertRow)}
+        row={convertRow}
+        token={token}
+        locale={locale}
+        onOpenChange={(next) => {
+          if (!next) setConvertRow(null);
+        }}
+        onConverted={async () => {
+          await refreshQueue();
+          await refreshSummary();
+          await workflow.refresh();
+        }}
+      />
     </div>
+  );
+}
+
+function DebtKpiCard(props: {
+  tone: 'danger' | 'success' | 'warning';
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  hint: string;
+  loading: boolean;
+}): React.ReactElement {
+  const tone =
+    props.tone === 'danger' ?
+      'border-red-200 bg-red-50 text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-100'
+    : props.tone === 'success' ?
+      'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-100'
+    : 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100';
+  return (
+    <article className={`rounded-2xl border p-4 shadow-sm ${tone}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold opacity-80">{props.label}</p>
+          <p className="mt-1 font-mono text-2xl font-bold tabular-nums">
+            {props.loading ? '—' : props.value}
+          </p>
+          <p className="mt-1 text-[0.7rem] opacity-75">{props.hint}</p>
+        </div>
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/60 dark:bg-black/20">
+          {props.icon}
+        </span>
+      </div>
+    </article>
   );
 }
 
@@ -468,63 +668,354 @@ function ShortcutButton(props: {
   );
 }
 
-function AgingGroup(props: {
-  bucket: AgingBucket;
+function SmartDebtTable(props: {
   rows: CollectionUnpaidOnlineRow[];
   focusedRowId: string | null;
-  onFocus: (orderId: string) => void;
   locale: 'en' | 'ar';
-  t: ReturnType<typeof useTranslation>['t'];
-}): React.ReactElement | null {
-  if (props.rows.length === 0) return null;
+  canConvert: boolean;
+  onFocus: (orderId: string) => void;
+  onConvert: (row: CollectionUnpaidOnlineRow) => void;
+}): React.ReactElement {
   const isAr = props.locale === 'ar';
-  const sample = props.rows[0];
-  const opened = (sample as { createdAt?: string }).createdAt ?? new Date().toISOString();
-  const aging = classifyAging({ openedAtIso: opened });
-  void aging;
+  if (props.rows.length === 0) {
+    return <div className="hidden" />;
+  }
   return (
-    <div data-testid={`aging-group-${props.bucket}`}>
-      <div className="mb-1.5 flex items-center gap-2">
-        <AgingBadge openedAtIso={opened} />
-        <span className="text-[0.7rem] text-slate-500 dark:text-slate-400">
-          {props.rows.length} {isAr ? 'فاتورة' : 'invoices'}
-        </span>
-      </div>
-      <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200 dark:divide-slate-800 dark:border-slate-700">
-        {props.rows.map((row) => {
-          const focused = row.orderId === props.focusedRowId;
-          return (
-            <li
-              key={row.orderId}
-              data-testid="cockpit-queue-row"
-              tabIndex={0}
-              onClick={() => props.onFocus(row.orderId)}
-              onFocus={() => props.onFocus(row.orderId)}
-              className={`flex cursor-pointer items-center justify-between gap-3 px-3 py-2 text-xs transition focus:outline-none ${
-                focused
-                  ? 'bg-sky-50 ring-2 ring-sky-300 dark:bg-sky-900/30'
+    <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{isAr ? 'الإشارة' : 'Signal'}</TableHead>
+            <TableHead>{isAr ? 'العميل' : 'Customer'}</TableHead>
+            <TableHead>{isAr ? 'الفاتورة' : 'Invoice'}</TableHead>
+            <TableHead>{isAr ? 'العمر' : 'Age'}</TableHead>
+            <TableHead>{isAr ? 'الحالة' : 'Status'}</TableHead>
+            <TableHead className="text-end">{isAr ? 'المبلغ' : 'Amount'}</TableHead>
+            <TableHead className="text-end">{isAr ? 'إجراء' : 'Action'}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {props.rows.map((row) => {
+            const focused = row.orderId === props.focusedRowId;
+            const signal = classifyDebtSignal(row, isAr);
+            return (
+              <TableRow
+                key={row.orderId}
+                data-testid="debt-command-row"
+                className={
+                  focused ?
+                    'bg-sky-50 dark:bg-sky-950/30'
                   : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
-              }`}
-              aria-selected={focused}
-            >
-              <div className="min-w-0">
-                <div className="truncate font-semibold text-slate-700 dark:text-slate-100">
-                  {row.customerName || row.readableId}
-                </div>
-                <div className="text-[0.65rem] text-slate-500 dark:text-slate-400">
-                  {row.readableId} • {row.customerPhone || '—'}
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Badge variant="outline">{row.paymentMethod}</Badge>
-                <span className="font-mono font-semibold text-slate-800 dark:text-slate-100">
+                }
+                onClick={() => props.onFocus(row.orderId)}
+              >
+                <TableCell>
+                  <span
+                    className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[0.68rem] font-semibold ${signal.className}`}
+                  >
+                    <span className="h-2 w-2 rounded-full bg-current" />
+                    {signal.label}
+                  </span>
+                </TableCell>
+                <TableCell>
+                  <div className="min-w-40">
+                    <div className="font-semibold text-slate-800 dark:text-slate-100">
+                      {row.customerName || '—'}
+                    </div>
+                    <div className="text-[0.68rem] text-slate-500">
+                      {row.customerPhone || '—'}
+                    </div>
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div className="font-mono text-xs">{row.readableId}</div>
+                  <div className="text-[0.68rem] text-slate-500">
+                    {row.branchName ?? '—'} · {row.driverName ?? '—'}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  {row.invoiceAgeDays} {isAr ? 'يوم' : 'days'}
+                </TableCell>
+                <TableCell>
+                  <Badge variant="outline">{row.paymentMethod ?? 'UNSET'}</Badge>
+                </TableCell>
+                <TableCell className="text-end font-mono font-bold">
                   {formatKwdLabelGrouped(row.amountKd)}
-                </span>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
+                </TableCell>
+                <TableCell className="text-end">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={!props.canConvert}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      props.onFocus(row.orderId);
+                      props.onConvert(row);
+                    }}
+                  >
+                    <ArrowLeftRight className="me-1 h-3.5 w-3.5" />
+                    {isAr ? 'تحويل للاشتراك' : 'Convert'}
+                  </Button>
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+function classifyDebtSignal(
+  row: CollectionUnpaidOnlineRow,
+  isAr: boolean,
+): { label: string; className: string } {
+  const hasPendingLink =
+    row.paymentUrl != null ||
+    row.paymentMethod === 'PAYMENT_LINK' ||
+    row.paymentMethod === 'ONLINE';
+  if (row.invoiceAgeDays >= 60) {
+    return {
+      label: isAr ? 'متأخر' : 'Overdue',
+      className:
+        'bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-200',
+    };
+  }
+  if (hasPendingLink) {
+    return {
+      label: isAr ? 'رابط مرسل' : 'Link sent',
+      className:
+        'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-200',
+    };
+  }
+  return {
+    label: isAr ? 'مفتوح' : 'Open',
+    className:
+      'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200',
+  };
+}
+
+function DebtConversionDialog(props: {
+  open: boolean;
+  row: CollectionUnpaidOnlineRow | null;
+  token: string | null;
+  locale: 'en' | 'ar';
+  onOpenChange: (next: boolean) => void;
+  onConverted: () => Promise<void>;
+}): React.ReactElement | null {
+  const isAr = props.locale === 'ar';
+  const [loading, setLoading] = useState(false);
+  const [data, setData] = useState<DebtConversionOptionsResponse | null>(null);
+  const [selectedPlanId, setSelectedPlanId] = useState('');
+  const [paymentMethod, setPaymentMethod] =
+    useState<SubscriptionActivationPaymentMethod>('PAYMENT_LINK');
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!props.open || !props.row || !props.token) {
+      setData(null);
+      setSelectedPlanId('');
+      setPaymentMethod('PAYMENT_LINK');
+      return;
+    }
+    const customerId = props.row.customerId;
+    let alive = true;
+    setLoading(true);
+    void (async () => {
+      try {
+        const res = await apiJson<DebtConversionOptionsResponse>(
+          `/api/call-center/customers/${customerId}/debt-conversion-options?paymentMethod=${encodeURIComponent(paymentMethod)}`,
+          { token: props.token },
+        );
+        if (!alive) return;
+        setData(res);
+        setSelectedPlanId(res.options.find((o) => o.recommended)?.planId ?? '');
+      } catch (err) {
+        if (err instanceof ApiError) toast.error(err.message);
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [props.open, props.row, props.token, paymentMethod]);
+
+  const selected = useMemo<DebtConversionPlanOption | null>(() => {
+    if (!data || !selectedPlanId) return null;
+    return data.options.find((o) => o.planId === selectedPlanId) ?? null;
+  }, [data, selectedPlanId]);
+
+  const submit = useCallback(async () => {
+    if (!props.row || !props.token || !selected) return;
+    setSubmitting(true);
+    try {
+      const res = await apiJson<ActivateSubscriptionResponse>(
+        '/api/call-center/subscriptions/activate',
+        {
+          method: 'POST',
+          token: props.token,
+          body: JSON.stringify({
+            customerId: props.row.customerId,
+            planId: selected.planId,
+            autoCloseInvoices: true,
+            paymentMethod,
+          }),
+        },
+      );
+      toast.success(
+        isAr ?
+          `تم تحويل المديونية للاشتراك: سُوي ${formatKwdLabelGrouped(res.settlement.debtSettled)}`
+        : `Debt converted: settled ${formatKwdLabelGrouped(res.settlement.debtSettled)}`,
+      );
+      props.onOpenChange(false);
+      await props.onConverted();
+    } catch (err) {
+      if (err instanceof ApiError) toast.error(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }, [props, selected, paymentMethod, isAr]);
+
+  if (!props.open) return null;
+  return (
+    <Dialog open={props.open} onOpenChange={props.onOpenChange}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <ArrowLeftRight className="h-5 w-5 text-indigo-600" />
+            {isAr ? 'تحويل المديونية إلى اشتراك' : 'Convert Debt to Subscription'}
+          </DialogTitle>
+          <DialogDescription>
+            {isAr ?
+              'النواة المالية ستغلق الفواتير المفتوحة وتفتح اشتراكاً جديداً مع أثر تدقيق غير قابل للكسر.'
+            : 'The financial core closes open invoices and opens a new subscription with immutable audit trail.'}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs dark:border-slate-700 dark:bg-slate-900/60">
+          <div className="font-semibold">
+            {props.row?.customerName ?? '—'} · {props.row?.customerPhone ?? '—'}
+          </div>
+          <div className="mt-1 text-slate-500">
+            {isAr ? 'الفاتورة المختارة' : 'Selected invoice'}:{' '}
+            {props.row?.readableId ?? '—'} ·{' '}
+            {formatKwdLabelGrouped(props.row?.amountKd ?? '0')}
+          </div>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="space-y-1 text-xs font-medium">
+            <span>{isAr ? 'طريقة تحصيل قيمة الاشتراك' : 'Subscription sale method'}</span>
+            <Select
+              value={paymentMethod}
+              onValueChange={(v) =>
+                setPaymentMethod(v as SubscriptionActivationPaymentMethod)
+              }
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {ACTIVATION_PAYMENT_METHODS.map((m) => (
+                  <SelectItem key={m} value={m}>
+                    {m}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </label>
+          <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-xs text-indigo-900 dark:border-indigo-900/60 dark:bg-indigo-950/30 dark:text-indigo-100">
+            <RadioTower className="mb-1 h-4 w-4" />
+            {isAr ?
+              'V25 يستخدم نفس محرك التفعيل الحالي: autoCloseInvoices=true، وTransactionHistory + DebtLedgerEntry تحفظ أرقام الفواتير القديمة.'
+            : 'V25 uses the existing activation engine: autoCloseInvoices=true, with TransactionHistory + DebtLedgerEntry preserving old invoice refs.'}
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="flex items-center justify-center py-8 text-sm text-slate-500">
+            <Loader2 className="me-2 h-4 w-4 animate-spin" />
+            {isAr ? 'تحميل خيارات الاشتراك…' : 'Loading subscription options…'}
+          </div>
+        ) : !data || data.options.length === 0 ? (
+          <p className="rounded-lg border border-dashed p-4 text-sm text-slate-500">
+            {isAr ? 'لا توجد باقات مناسبة حالياً.' : 'No subscription plans available.'}
+          </p>
+        ) : (
+          <div className="grid gap-2">
+            {data.options.map((option) => {
+              const selectedOption = option.planId === selectedPlanId;
+              return (
+                <button
+                  type="button"
+                  key={option.planId}
+                  onClick={() => setSelectedPlanId(option.planId)}
+                  className={`rounded-xl border p-3 text-start text-xs transition ${
+                    selectedOption ?
+                      'border-indigo-500 bg-indigo-50 ring-2 ring-indigo-200 dark:bg-indigo-950/30'
+                    : option.recommended ?
+                      'border-emerald-300 bg-emerald-50/70 dark:border-emerald-900/60 dark:bg-emerald-950/20'
+                    : 'border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/50'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-semibold">{option.planName}</div>
+                      <div className="mt-1 text-slate-500">
+                        {option.planValidityDays} {isAr ? 'يوم' : 'days'} ·{' '}
+                        {isAr ? 'قيمة الاشتراك' : 'Sale'}{' '}
+                        {formatKwdLabelGrouped(option.cashRequiredKd)}
+                      </div>
+                    </div>
+                    {option.recommended ? (
+                      <Badge variant="secondary">
+                        {isAr ? 'موصى به' : 'Recommended'}
+                      </Badge>
+                    ) : null}
+                  </div>
+                  <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                    <MiniMoney label={isAr ? 'يسوي' : 'Settles'} value={option.debtToSettleKd} />
+                    <MiniMoney label={isAr ? 'المتبقي' : 'Remaining'} value={option.remainingDebtKd} />
+                    <MiniMoney label={isAr ? 'رصيد جديد' : 'Credit'} value={option.creditedToBalanceKd} />
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="flex flex-col-reverse gap-2 border-t pt-3 sm:flex-row sm:justify-end">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => props.onOpenChange(false)}
+            disabled={submitting}
+          >
+            {isAr ? 'إلغاء' : 'Cancel'}
+          </Button>
+          <Button
+            type="button"
+            onClick={() => void submit()}
+            disabled={!selected || submitting}
+          >
+            {submitting ? <Loader2 className="me-2 h-4 w-4 animate-spin" /> : null}
+            {isAr ? 'تنفيذ التحويل' : 'Convert now'}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function MiniMoney(props: { label: string; value: string }): React.ReactElement {
+  return (
+    <div className="rounded-lg bg-white/70 p-2 dark:bg-black/20">
+      <div className="text-[0.65rem] text-slate-500">{props.label}</div>
+      <div className="font-mono font-semibold">
+        {formatKwdLabelGrouped(props.value)}
+      </div>
     </div>
   );
 }

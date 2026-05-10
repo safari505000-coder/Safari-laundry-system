@@ -2360,6 +2360,8 @@ export type CallCenterOperationsSummary = {
   outstandingSubscriptionDebtKd: string;
   /** Narrow "collected via payment link today" — historical green KPI. */
   debtCollectedTodayKd: string;
+  /** V25 — Strict digital-link collection total (`debtSettlementViaLink=true`). */
+  linkCollectedTodayKd: string;
   /**
    * A3.D10 — broad "debt recovered today" matching the Owner Debt
    * Recovery Report formula (ORDER_WALLET_SETTLEMENT +
@@ -2369,6 +2371,8 @@ export type CallCenterOperationsSummary = {
    */
   debtRecoveredTodayKd: string;
   pendingLinksCount: number;
+  /** V25 — Sum of pending hosted payment-link amounts. Server-authoritative; do not sum rows client-side. */
+  pendingLinksKd: string;
   /** Reference day in Kuwait-local (UTC+3) timezone, YYYY-MM-DD. */
   dayIso: string;
   /** V1.6.1 — echoed branch filter; `null` = "All Branches". */

@@ -62,7 +62,7 @@ export const ar = {
     auditLogs: 'سجل التدقيق',
     accountantDashboard: 'داشبورد المحاسب',
     unpaidInvoices: 'المديونية',
-    outstandingPayments: 'لوحة التحصيل',
+    outstandingPayments: 'تتبع المديونية والتحصيل',
     controlTower: 'برج التحكم',
     collectDriverCash: 'تحصيل كاش السائق',
     bankDeposits: 'سجل الإيداعات البنكية',

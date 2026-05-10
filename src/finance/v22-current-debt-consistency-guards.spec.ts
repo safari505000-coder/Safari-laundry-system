@@ -66,6 +66,25 @@ describe('V22 current-debt consistency guards', () => {
     expect(method).not.toContain('sumCollectionsDebtTotalKd');
   });
 
+  it('V25 exposes pending hosted-link amount from the server summary', () => {
+    const dto = read('src/call-center/dto/operations-summary.dto.ts');
+    const api = read('web/src/lib/api.ts');
+    const service = read('src/call-center/call-center.service.ts');
+    const cockpit = read(
+      'web/src/modules/call-center/pages/collections-cockpit-page.tsx',
+    );
+
+    expect(dto).toContain('pendingLinksKd!: string');
+    expect(dto).toContain('linkCollectedTodayKd!: string');
+    expect(api).toContain('pendingLinksKd: string');
+    expect(api).toContain('linkCollectedTodayKd: string');
+    expect(service).toContain('_sum: { totalPrice: true }');
+    expect(service).toContain('linkCollectedToday = linkCollectedToday.plus');
+    expect(service).toContain('pendingLinksKd: KWD_DP(');
+    expect(cockpit).toContain('summaryData.pendingLinksKd');
+    expect(cockpit).toContain('summaryData.linkCollectedTodayKd');
+  });
+
   it('deprecated effectiveDebtKd does not reappear in runtime source', () => {
     const roots = [join(repoRoot, 'src'), join(repoRoot, 'web/src')];
     const offenders = roots

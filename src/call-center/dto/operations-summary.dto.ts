@@ -41,6 +41,13 @@ export class CallCenterOperationsSummaryDto {
 
   @ApiProperty({
     description:
+      'V25 — Strict digital-link collection total: subset of today’s ORDER_WALLET_SETTLEMENT rows where `metadata.debtSettlementViaLink=true`. This powers the Debt Command Center "Link Collected" card without mixing cash/manual collections.',
+    example: '42.250',
+  })
+  linkCollectedTodayKd!: string;
+
+  @ApiProperty({
+    description:
       'A3.D10 — Broad "debt recovered today" metric matching the Owner Debt Recovery Report formula: sum of `metadata.debtSettled` across both ORDER_WALLET_SETTLEMENT (via link + manual call-center + driver checkout shortfall) and SUBSCRIPTION_ACTIVATION rows, today (Kuwait local). This is the value the Owner report sums per day; exposed here so both surfaces can display identical numbers for the same window.',
     example: '95.000',
   })
@@ -52,6 +59,13 @@ export class CallCenterOperationsSummaryDto {
     example: 12,
   })
   pendingLinksCount!: number;
+
+  @ApiProperty({
+    description:
+      'V25 — Sum of open (non-canceled, UNPAID) hosted payment-link amounts waiting for customer action. Scoped by `branchId` when provided. Serialized in KWD 3-decimal precision so the Debt Command Center never sums link amounts client-side.',
+    example: '25.750',
+  })
+  pendingLinksKd!: string;
 
   @ApiProperty({
     description:
