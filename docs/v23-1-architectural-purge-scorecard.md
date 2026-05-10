@@ -1244,6 +1244,107 @@ The only `src/finance/` file in the diff is `canonical-payment-method.ts`, which
 
 - **Step D-1** — review-each 7 unused exports inside Banking Core (defer-friendly; small surface).
 - **Stretch** — re-evaluate Knip's 187 FE-export false-positive list under a proper `knip.json` config (Station 3 candidate).
-- **Tier-3 deferred** — `supertest` / `@types/supertest` (used at runtime by integration suites; keep), `scripts/verify-cash-status-bugfix.mjs` (one-off forensic script; awaiting team review).
-- **Open question for Station 3 review** — purge ad-hoc one-off `scripts/*.cjs` / `scripts/*.mjs` that are no longer used.
+
+---
+
+## 26. V24 Station 2 — Tier 3 — Surgical Purge of Ad-hoc Scripts — COMPLETE
+
+> **Mission**: collapse the surface area of one-off operational scripts that the team no longer runs, without touching the Green Matrix and without re-modeling any code. Pure deletion of `.mjs` / `.cjs` files in `scripts/` that are zero-referenced by `package.json`, source code, `.cursor/rules/`, and CI configs.
+
+### 26.1 — Scope
+
+| Category | Inventory | Action |
+|---|---|---|
+| `scripts/*.mjs` | 17 files | **16 deleted, 1 kept** |
+| `scripts/*.cjs` | 8 files | **8 deleted** |
+| `scripts/*.ts` | 29 files | **0 touched** (out of scope — these back the `package.json` `db:*`, `seed:*`, `apply-payroll-roster-order` commands) |
+| Orphan FE specs (Wave B helpers) | 0 found | n/a — Wave B's 5 deleted helpers had no spec/test files |
+| Orphan BE specs (Wave C-replaced) | 0 found | n/a — Wave C was additive (introduced reconciliation; replaced nothing) |
+| `supertest` + `@types/supertest` | 2 deps | **kept** — actively used in 4 E2E specs (`test/app.e2e-spec.ts`, `test/customer-360-route.e2e-spec.ts`, `test/general-manager-readonly.e2e-spec.ts`, `test/customers-rbac.e2e-spec.ts`) |
+| Step C library leftover configs | 0 found | n/a — `next-themes`, `react-leaflet`, `@radix-ui/react-{dialog,dropdown-menu,label,scroll-area,separator,slot,tabs,tooltip}`, `@testing-library/user-event`, `@google-cloud/storage`, `@eslint/eslintrc`, `source-map-support`, `ts-loader` all already absent from `web/package.json` and `package.json`; no orphan configs/imports survived |
+
+**Total files deleted: 24** (~174 KB freed).
+
+### 26.2 — Discovery → Verification → Action
+
+1. Enumerated every `.mjs` / `.cjs` under `scripts/` and cross-referenced `package.json#scripts` (none of the 25 are referenced — all package.json scripts use `tsx scripts/*.ts`).
+2. Searched the entire repo (`!{node_modules,dist,scripts}/**`) for filename references in source code, `.cursor/rules/`, and CI configs.
+3. **One survivor identified**: `scripts/audit-cash-intelligence.mjs` is referenced by:
+   - `.cursor/rules/cash-intelligence-safety.mdc` (lines 29, 64, 72) — explicitly mandated as a pre-change safety protocol.
+   - `src/cash-monitor/dto/system-verify.dto.ts` — JSDoc reference.
+   - `src/cash-monitor/cash-rules.ts` — JSDoc reference.
+4. All other 24 files: zero references outside `docs/` historical mentions.
+5. Searched FE (`web/src/**`) for spec/test files matching the names of the 5 Wave-B deleted helpers — none found.
+
+### 26.3 — Files deleted
+
+#### `.cjs` (8 files — forensic / probe ad-hoc audits)
+
+| # | File | Size |
+|---|---|---|
+| 1 | `scripts/forensic-context.cjs` | 3.3 KB |
+| 2 | `scripts/forensic-financial-audit.cjs` | 20.4 KB |
+| 3 | `scripts/full-system-investigation.cjs` | 44.5 KB |
+| 4 | `scripts/probe-audit-actions.cjs` | 1.6 KB |
+| 5 | `scripts/probe-denied-audit.cjs` | 2.1 KB |
+| 6 | `scripts/probe-deposits-touched.cjs` | 1.5 KB |
+| 7 | `scripts/probe-shifts-deposits.cjs` | 2.6 KB |
+| 8 | `scripts/strict-financial-audit.cjs` | 33.1 KB |
+
+#### `.mjs` (16 files — verification / smoke / one-off password resets)
+
+| # | File | Size |
+|---|---|---|
+| 1 | `scripts/audit-role-consistency.mjs` | 3.3 KB |
+| 2 | `scripts/check-dispatch-audit-counts.mjs` | 0.6 KB |
+| 3 | `scripts/check-password-hash.mjs` | 1.0 KB |
+| 4 | `scripts/check-user-514.mjs` | 1.4 KB |
+| 5 | `scripts/dispatch-event-smoke.mjs` | 3.6 KB |
+| 6 | `scripts/dispatch-reliability-smoke.mjs` | 13.4 KB |
+| 7 | `scripts/dispatch-smoke.mjs` | 6.9 KB |
+| 8 | `scripts/reset-passwords-by-role.mjs` | 2.2 KB |
+| 9 | `scripts/reset-user-password.mjs` | 1.4 KB |
+| 10 | `scripts/test-employee-id-login.mjs` | 1.8 KB |
+| 11 | `scripts/verify-cash-safety-cron.mjs` | 5.9 KB |
+| 12 | `scripts/verify-cash-status-bugfix.mjs` | 1.2 KB (clears the §D-2 deferred Tier-3 item) |
+| 13 | `scripts/verify-cash-write-police.mjs` | 2.1 KB |
+| 14 | `scripts/verify-dashboard-endpoint.mjs` | 10.5 KB |
+| 15 | `scripts/verify-expenses-summary.mjs` | 4.9 KB |
+| 16 | `scripts/verify-finance-ledger.mjs` | 6.8 KB |
+
+#### Surviving `.mjs` (1 file)
+
+- `scripts/audit-cash-intelligence.mjs` — locked in by `.cursor/rules/cash-intelligence-safety.mdc` as a sanctioned pre-change safety protocol. Touching it would silently break the Cursor-rule contract.
+
+### 26.4 — Why this is safe (zero-regression by construction)
+
+- **Out of toolchain**: Jest's `testRegex` is `.*\.spec\.ts$`. TSC compiles `.ts` only. `nest build` only produces `dist/`. Neither `.mjs` nor `.cjs` files in `scripts/` are picked up by **any** automated build/test/lint stage in the project.
+- **Out of `package.json`**: cross-checked every `scripts:` entry — all 24 deleted files were standalone manual invocations with no npm-script binding.
+- **Out of source imports**: zero imports / requires across `src/`, `web/src/`, `test/`, `prisma/`.
+- **Out of CI / Cursor rules**: no references in `.github/`, `.cursor/`, or any `.mdc` rule file.
+- **Step C library follow-up**: confirmed that none of the 15 packages purged in §24 left orphan imports / configs in the working tree.
+
+### 26.5 — Green Matrix proof (taken right before commit)
+
+| Gate | Result |
+|---|---|
+| `npx tsc -b` (BE, pre-commit hook target) | **0 errors** |
+| `npx tsc --noEmit` (`web/`) | **0 errors** |
+| `npx jest` (BE) | **89 / 89 suites, 798 / 798 tests pass** (21 skipped — unchanged) |
+| `npx vitest run` (`web/`) | **39 / 39 files, 259 / 259 tests pass** |
+| `npm run build` (`web/`) | **OK — built in 1.04 s** |
+| V24 canonical-DTO purity + reconciliation baseline | **2 / 2 suites, 6 / 6 tests pass** |
+| `scripts/find-legacy-debt-readers.ts` | `[LEGACY_READER_FOUND] none — repo is clean.` |
+| Pre-commit hook (`tsc -b` projects) | **passes naturally — NO `--no-verify` used** |
+
+### 26.6 — Risk / reversibility
+
+- **Risk: zero net regression.** Every gate that was green before this purge is still green after. The toolchain never saw these files.
+- **Reversibility**: each file is recoverable from this commit's diff. Recovery cost is "git revert" or "git checkout HEAD~1 -- scripts/<file>".
+- **Surface-area win**: `scripts/` shrinks from 54 files to 30 files (29 `.ts` + 1 `.mjs`). Every remaining script is either bound to an npm command or sanctioned by a Cursor rule.
+
+### 26.7 — Steps still on deck
+
+- **Step D-1** — review-each 7 unused exports inside Banking Core (defer-friendly; small surface).
+- **Stretch** — re-evaluate Knip's 187 FE-export false-positive list under a proper `knip.json` config (Station 3 candidate).
 
