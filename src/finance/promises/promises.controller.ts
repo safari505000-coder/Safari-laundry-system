@@ -45,7 +45,7 @@ type CreatePromiseBody = {
 
 type ResolveBody = { notes?: string | null };
 
-@Controller('api/collections/promises')
+@Controller('collections/promises')
 @UseGuards(JwtAuthGuard)
 export class PromisesToPayController {
   constructor(private readonly svc: PromisesToPayService) {}

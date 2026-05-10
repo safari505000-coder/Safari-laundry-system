@@ -27,7 +27,7 @@ const READ_ROLES = new Set<string>([
   SafariRole.ACCOUNTANT,
 ]);
 
-@Controller('api/finance/periods')
+@Controller('finance/periods')
 @UseGuards(JwtAuthGuard)
 export class FinancialPeriodsController {
   constructor(private readonly svc: FinancialPeriodsService) {}

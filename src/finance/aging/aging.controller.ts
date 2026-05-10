@@ -55,7 +55,7 @@ function parseAsOf(raw: string | undefined): Date | undefined {
   return v;
 }
 
-@Controller('api/finance/aging')
+@Controller('finance/aging')
 @UseGuards(JwtAuthGuard)
 export class AgingController {
   constructor(private readonly aging: AgingService) {}

@@ -33,7 +33,7 @@ const SUPERVISOR_ROLES = new Set<string>([
   SafariRole.CALL_CENTER_SUPERVISOR,
 ]);
 
-@Controller('api/collections/accounts')
+@Controller('collections/accounts')
 @UseGuards(JwtAuthGuard)
 export class CollectionsWorkflowController {
   constructor(private readonly svc: CollectionsWorkflowService) {}

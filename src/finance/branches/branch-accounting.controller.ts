@@ -26,7 +26,7 @@ function parseDate(s?: string): Date | undefined {
   return v;
 }
 
-@Controller('api/finance/branches')
+@Controller('finance/branches')
 @UseGuards(JwtAuthGuard)
 export class BranchAccountingController {
   constructor(private readonly svc: BranchAccountingService) {}

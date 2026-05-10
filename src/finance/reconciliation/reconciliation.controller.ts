@@ -32,7 +32,7 @@ const ALLOWED_ROLES = new Set<string>([
   SafariRole.CALL_CENTER_SUPERVISOR,
 ]);
 
-@Controller('api/finance/reconciliation')
+@Controller('finance/reconciliation')
 @UseGuards(JwtAuthGuard)
 export class ReconciliationController {
   constructor(private readonly reconciliation: ReconciliationService) {}

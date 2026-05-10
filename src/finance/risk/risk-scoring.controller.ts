@@ -22,7 +22,7 @@ const READ_ROLES = new Set<string>([
   SafariRole.CALL_CENTER_SUPERVISOR,
 ]);
 
-@Controller('api/finance/risk')
+@Controller('finance/risk')
 @UseGuards(JwtAuthGuard)
 export class RiskScoringController {
   constructor(private readonly svc: RiskScoringService) {}

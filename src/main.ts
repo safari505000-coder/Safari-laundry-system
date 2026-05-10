@@ -196,6 +196,8 @@ async function bootstrap() {
   await ensureDefaultOwner(prisma);
   assertProductionJwtSecret();
 
+  // Deployment sync: controllers define paths without `/api`; Render rebuilds
+  // this bootstrap so the single global prefix remains the only `/api` source.
   app.setGlobalPrefix('api');
 
   app.enableCors({

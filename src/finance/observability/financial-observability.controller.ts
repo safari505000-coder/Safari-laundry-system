@@ -26,7 +26,7 @@ const ALLOWED_ROLES = new Set<string>([
  * `/overview` for the KPI strip and pull `/drift`, `/reconciliation`,
  * `/performance` on demand for incident response.
  */
-@Controller('api/finance/observability')
+@Controller('finance/observability')
 @UseGuards(JwtAuthGuard)
 export class FinancialObservabilityController {
   constructor(private readonly svc: FinancialObservabilityService) {}

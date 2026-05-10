@@ -29,7 +29,7 @@ const RESOLVE_ROLES = new Set<string>([
   SafariRole.ACCOUNTANT,
 ]);
 
-@Controller('api/finance/fraud-alerts')
+@Controller('finance/fraud-alerts')
 @UseGuards(JwtAuthGuard)
 export class FraudDetectionController {
   constructor(private readonly svc: FraudDetectionService) {}
