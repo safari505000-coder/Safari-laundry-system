@@ -54,8 +54,12 @@ export class FinancialTimelineController {
    * journal entries on top of the V20.4 sources. Same response
    * shape as the legacy endpoint so UIs can swap routes
    * incrementally without changing rendering code.
+   *
+   * V25 fix: removed erroneous `api/` prefix in route decorator;
+   * global prefix `api` already provides `/api/`, so the correct
+   * path is `customers/:id/financial-timeline`.
    */
-  @Get('api/customers/:id/financial-timeline')
+  @Get('customers/:id/financial-timeline')
   @Roles(...TIMELINE_READ_ROLES)
   @ApiOperation({
     summary:

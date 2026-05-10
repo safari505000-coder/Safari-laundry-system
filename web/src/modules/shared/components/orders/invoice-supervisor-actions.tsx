@@ -295,6 +295,11 @@ function EditInvoiceDialog({
     };
   }, [open, order.id, token]);
 
+  // V25 — @V24-LEGACY-MATH exemption: this is a live in-dialog line editor.
+  // The supervisor types quantity/unitPrice per line; computedTotal shows a
+  // real-time preview before submit. The server recomputes the authoritative
+  // total on POST and rejects mismatches — this math is PREVIEW-ONLY and
+  // never feeds downstream state or a displayed "current invoice total".
   const computedTotal = useMemo(() => {
     if (!lines) return 0;
     return lines.reduce((sum, r) => {
