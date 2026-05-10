@@ -1,11 +1,14 @@
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   AlertTriangle,
   Banknote,
   Building2,
   CalendarDays,
+  ChevronDown,
+  ChevronUp,
   Filter,
+  Link2,
   Loader2,
   MessageCircle,
   Phone,
@@ -16,10 +19,20 @@ import {
   Users,
   Wallet,
 } from 'lucide-react';
+import { toast } from 'sonner';
+import { useAuth } from '@/contexts/auth-context';
+import { useRealtimeFinancialFeed } from '@/modules/finance';
+import {
+  ApiError,
+  apiJson,
+  type GenerateSettlementLinkResult,
+  type OutstandingDebtWithoutLinkRow,
+} from '@/lib/api';
 import { useOutstanding } from '@/modules/call-center/outstanding/hooks/use-outstanding';
 import type { OutstandingRow } from '@/modules/call-center/outstanding/api/outstanding-api';
 import { useCcDrivers } from '@/modules/call-center/dashboard/hooks/use-cc-drivers';
 import { Button, buttonVariants } from '@/modules/shared/components/ui/button';
+import { Checkbox } from '@/modules/shared/components/ui/checkbox';
 import { Input } from '@/modules/shared/components/ui/input';
 import {
   Select,
@@ -33,11 +46,12 @@ import {
   collectionsUnpaidWhatsAppHref,
   whatsappChatNumber,
 } from '@/modules/shared/lib/whatsapp-links';
-import { compareKwdStrings, formatKwdLabel } from '@/lib/kwd';
+import { compareKwdStrings, formatKwdLabel, sumKwdStringsPrecise } from '@/lib/kwd';
 import {
   useCollectionsFilters,
   type CollectionsFilters,
 } from '../hooks/use-collections-filters';
+import { usePendingDebtsWithoutLinks } from '../hooks/use-pending-debts-without-links';
 import { useUnpaidOnline } from '../hooks/use-unpaid-online';
 import { DATE_PRESET_OPTIONS } from '../utils/date-presets';
 
@@ -127,12 +141,24 @@ function KpiTile({
  */
 export function CollectionsReportPage() {
   const { t } = useTranslation();
+  const { token } = useAuth();
   const filters = useCollectionsFilters();
   const outstanding = useOutstanding(filters.apiFilters);
   const drivers = useCcDrivers();
   const unpaid = useUnpaidOnline({
     branchId: filters.effective.branchId || null,
   });
+  const pendingDebts = usePendingDebtsWithoutLinks({
+    branchId: filters.effective.branchId || null,
+  });
+  const [expandedDebtCustomerId, setExpandedDebtCustomerId] = useState<
+    string | null
+  >(null);
+  const [busyDebtCustomerId, setBusyDebtCustomerId] = useState<string | null>(
+    null,
+  );
+  const [selectedInvoiceIdsByCustomer, setSelectedInvoiceIdsByCustomer] =
+    useState<Record<string, string[]>>({});
 
   // Hard safety guard — required by the cockpit contract.
   if (
@@ -147,10 +173,124 @@ export function CollectionsReportPage() {
 
   const paymentLinkRows = unpaid.paymentLinkRows;
 
-  const refreshAll = () => {
+  useEffect(() => {
+    setSelectedInvoiceIdsByCustomer((prev) => {
+      const next: Record<string, string[]> = {};
+      for (const row of pendingDebts.rows) {
+        const valid = new Set(row.invoices.map((inv) => inv.invoiceId));
+        const selected = (prev[row.customerId] ?? []).filter((id) => valid.has(id));
+        if (selected.length > 0) {
+          next[row.customerId] = selected;
+        }
+      }
+      return next;
+    });
+    setExpandedDebtCustomerId((current) => {
+      if (!current) return current;
+      return pendingDebts.rows.some((row) => row.customerId === current)
+        ? current
+        : null;
+    });
+  }, [pendingDebts.rows]);
+
+  const refreshAll = useCallback(() => {
     outstanding.refresh();
     unpaid.refresh();
-  };
+    pendingDebts.refresh();
+  }, [outstanding.refresh, unpaid.refresh, pendingDebts.refresh]);
+
+  useRealtimeFinancialFeed({
+    channel: 'collections',
+    accessToken: token,
+    enabled: Boolean(token),
+    onEvent: () => {
+      refreshAll();
+    },
+  });
+
+  const handleToggleInvoice = useCallback(
+    (customerId: string, invoiceId: string, checked: boolean) => {
+      setSelectedInvoiceIdsByCustomer((prev) => {
+        const existing = prev[customerId] ?? [];
+        const nextForCustomer = checked
+          ? Array.from(new Set([...existing, invoiceId]))
+          : existing.filter((id) => id !== invoiceId);
+        const next = { ...prev };
+        if (nextForCustomer.length === 0) {
+          delete next[customerId];
+        } else {
+          next[customerId] = nextForCustomer;
+        }
+        return next;
+      });
+    },
+    [],
+  );
+
+  const handleToggleSelectAllInvoices = useCallback(
+    (customerId: string, invoiceIds: string[], checked: boolean) => {
+      setSelectedInvoiceIdsByCustomer((prev) => {
+        const next = { ...prev };
+        if (!checked || invoiceIds.length === 0) {
+          delete next[customerId];
+        } else {
+          next[customerId] = Array.from(new Set(invoiceIds));
+        }
+        return next;
+      });
+    },
+    [],
+  );
+
+  const handleGenerateAndSendDebtLink = useCallback(
+    async (row: OutstandingDebtWithoutLinkRow) => {
+      if (!token) return;
+      const invoiceIds = selectedInvoiceIdsByCustomer[row.customerId] ?? [];
+      if (invoiceIds.length === 0) {
+        toast.warning('اختر فاتورة واحدة على الأقل قبل إنشاء رابط التسوية.');
+        return;
+      }
+
+      setBusyDebtCustomerId(row.customerId);
+      try {
+        // @V25-QUARANTINE: frontend sends only ids; backend re-validates
+        // ownership/status and recalculates total before creating gateway link.
+        const res = await apiJson<GenerateSettlementLinkResult>(
+          '/api/finance/generate-settlement-link',
+          {
+            method: 'POST',
+            token,
+            body: JSON.stringify({
+              customerId: row.customerId,
+              invoiceIds,
+            }),
+          },
+        );
+
+        if (res.serverPush) {
+          toast.success('تم إنشاء رابط التسوية وإرساله بنجاح.');
+        } else {
+          toast.info('تم إنشاء الرابط. الخادم لم يؤكد الإرسال التلقائي.');
+        }
+
+        setSelectedInvoiceIdsByCustomer((prev) => {
+          const next = { ...prev };
+          delete next[row.customerId];
+          return next;
+        });
+        refreshAll();
+      } catch (error) {
+        toast.error(
+          error instanceof ApiError
+            ? error.message
+            : 'تعذّر إنشاء رابط التسوية وإرساله.',
+        );
+      } finally {
+        setBusyDebtCustomerId(null);
+      }
+    },
+    [token, selectedInvoiceIdsByCustomer, refreshAll],
+  );
 
   const handlePrint = () => {
     if (typeof window !== 'undefined') window.print();
@@ -306,6 +446,25 @@ export function CollectionsReportPage() {
         <PaymentLinksTable
           rows={paymentLinkRows}
           loading={unpaid.loading && unpaid.rows.length === 0}
+        />
+
+        <PendingDebtsWithoutLinksTable
+          rows={pendingDebts.rows}
+          loading={pendingDebts.loading}
+          error={pendingDebts.error}
+          expandedCustomerId={expandedDebtCustomerId}
+          onToggleExpanded={(customerId) => {
+            setExpandedDebtCustomerId((current) =>
+              current === customerId ? null : customerId,
+            );
+          }}
+          busyCustomerId={busyDebtCustomerId}
+          selectedInvoiceIdsByCustomer={selectedInvoiceIdsByCustomer}
+          onToggleInvoice={handleToggleInvoice}
+          onToggleSelectAllInvoices={handleToggleSelectAllInvoices}
+          onGenerateAndSend={(row) => {
+            void handleGenerateAndSendDebtLink(row);
+          }}
         />
       </div>
     </div>
@@ -804,6 +963,206 @@ function PaymentLinksTable({
               })}
             </tbody>
           </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function PendingDebtsWithoutLinksTable({
+  rows,
+  loading,
+  error,
+  expandedCustomerId,
+  onToggleExpanded,
+  busyCustomerId,
+  selectedInvoiceIdsByCustomer,
+  onToggleInvoice,
+  onToggleSelectAllInvoices,
+  onGenerateAndSend,
+}: {
+  rows: OutstandingDebtWithoutLinkRow[];
+  loading: boolean;
+  error: string | null;
+  expandedCustomerId: string | null;
+  onToggleExpanded: (customerId: string) => void;
+  busyCustomerId: string | null;
+  selectedInvoiceIdsByCustomer: Record<string, string[]>;
+  onToggleInvoice: (
+    customerId: string,
+    invoiceId: string,
+    checked: boolean,
+  ) => void;
+  onToggleSelectAllInvoices: (
+    customerId: string,
+    invoiceIds: string[],
+    checked: boolean,
+  ) => void;
+  onGenerateAndSend: (row: OutstandingDebtWithoutLinkRow) => void;
+}) {
+  return (
+    <section
+      className="rounded-2xl border border-amber-200 bg-amber-50/40 p-4 shadow-sm dark:border-amber-900/60 dark:bg-amber-950/20"
+      aria-label="pending-debts-without-links"
+    >
+      <header className="mb-3 flex items-center gap-2">
+        <Link2 className="size-4 text-amber-700 dark:text-amber-300" aria-hidden />
+        <h2 className="text-sm font-semibold">Pending Debts for Collection</h2>
+        <span className="ms-auto text-[11px] text-muted-foreground">
+          ديون مفتوحة بلا روابط دفع نشطة
+        </span>
+      </header>
+
+      {error ? (
+        <div className="mb-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+          {error}
+        </div>
+      ) : null}
+
+      {loading ? (
+        <Loader2 className="mx-auto size-4 animate-spin text-muted-foreground" aria-hidden />
+      ) : rows.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-border bg-background/70 p-6 text-center text-sm text-muted-foreground">
+          لا توجد مديونيات معلّقة بلا روابط دفع حالياً.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {rows.map((row) => {
+            const busy = busyCustomerId === row.customerId;
+            const expanded = expandedCustomerId === row.customerId;
+            const selectedIds = selectedInvoiceIdsByCustomer[row.customerId] ?? [];
+            const selectedSet = new Set(selectedIds);
+            const invoiceIds = row.invoices.map((inv) => inv.invoiceId);
+            const allSelected =
+              row.invoices.length > 0 && invoiceIds.every((id) => selectedSet.has(id));
+            const selectedCount = selectedIds.length;
+            const runningTotalKd = sumKwdStringsPrecise(
+              row.invoices
+                .filter((inv) => selectedSet.has(inv.invoiceId))
+                .map((inv) => inv.amountKd),
+            );
+            return (
+              <article
+                key={row.customerId}
+                className="rounded-xl border border-amber-200/80 bg-white/80 shadow-sm dark:border-amber-900/50 dark:bg-slate-950/30"
+              >
+                <button
+                  type="button"
+                  onClick={() => onToggleExpanded(row.customerId)}
+                  className="flex w-full items-center gap-3 px-3 py-3 text-start hover:bg-amber-50/40 dark:hover:bg-amber-900/10"
+                  aria-expanded={expanded}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-semibold">{row.customerName}</div>
+                    <div className="mt-0.5 text-[11px] text-muted-foreground">
+                      إجمالي المديونية: {formatKwd(row.totalDebt)} · آخر طلب:{' '}
+                      {formatRelativeAr(row.lastOrderDate)} · فواتير: {row.invoices.length}
+                    </div>
+                  </div>
+                  <div className="text-xs text-amber-800 dark:text-amber-200">
+                    {selectedCount > 0 ? `${selectedCount} محددة` : 'بدون تحديد'}
+                  </div>
+                  {expanded ? (
+                    <ChevronUp className="size-4 text-amber-700 dark:text-amber-300" aria-hidden />
+                  ) : (
+                    <ChevronDown
+                      className="size-4 text-amber-700 dark:text-amber-300"
+                      aria-hidden
+                    />
+                  )}
+                </button>
+
+                {expanded ? (
+                  <div className="border-t border-amber-100/80 px-3 py-3 dark:border-amber-900/40">
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                      <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                        <Checkbox
+                          checked={allSelected}
+                          onCheckedChange={(v) =>
+                            onToggleSelectAllInvoices(
+                              row.customerId,
+                              invoiceIds,
+                              v === true,
+                            )
+                          }
+                          aria-label={`تحديد كل فواتير ${row.customerName}`}
+                        />
+                        Select All
+                      </label>
+                      <div className="text-xs text-amber-900 dark:text-amber-100">
+                        Running Total: <span className="font-semibold">{formatKwd(runningTotalKd)}</span>
+                      </div>
+                    </div>
+
+                    <div className="max-h-64 overflow-y-auto rounded-lg border border-amber-100/80 bg-amber-50/40 dark:border-amber-900/40 dark:bg-amber-950/10">
+                      <table className="min-w-full text-sm">
+                        <thead className="bg-amber-100/60 text-[11px] uppercase tracking-wide text-amber-900/80 dark:bg-amber-900/20 dark:text-amber-100/80">
+                          <tr>
+                            <th className="p-2 text-start">تحديد</th>
+                            <th className="p-2 text-start">الفاتورة</th>
+                            <th className="p-2 text-end">المبلغ</th>
+                            <th className="p-2 text-end">التاريخ</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-amber-100/70 dark:divide-amber-900/30">
+                          {row.invoices.map((inv) => {
+                            const checked = selectedSet.has(inv.invoiceId);
+                            return (
+                              <tr
+                                key={inv.invoiceId}
+                                className={cn(
+                                  'hover:bg-amber-50/50 dark:hover:bg-amber-900/10',
+                                  checked && 'bg-amber-100/40 dark:bg-amber-900/20',
+                                )}
+                              >
+                                <td className="p-2">
+                                  <Checkbox
+                                    checked={checked}
+                                    onCheckedChange={(v) =>
+                                      onToggleInvoice(
+                                        row.customerId,
+                                        inv.invoiceId,
+                                        v === true,
+                                      )
+                                    }
+                                    aria-label={`تحديد الفاتورة ${inv.invoiceLabel}`}
+                                  />
+                                </td>
+                                <td className="p-2 font-medium">{inv.invoiceLabel}</td>
+                                <td className="p-2 text-end tabular-nums font-semibold text-amber-800 dark:text-amber-200">
+                                  {formatKwd(inv.amountKd)}
+                                </td>
+                                <td className="p-2 text-end text-xs text-muted-foreground">
+                                  {formatRelativeAr(inv.issuedAt)}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div className="mt-3 flex justify-end">
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={selectedCount === 0 || busy}
+                        onClick={() => onGenerateAndSend(row)}
+                        className="min-w-[185px] bg-amber-600 text-white hover:bg-amber-700 disabled:bg-amber-300/80"
+                      >
+                        {busy ? (
+                          <Loader2 className="me-1 size-3.5 animate-spin" aria-hidden />
+                        ) : (
+                          <Link2 className="me-1 size-3.5" aria-hidden />
+                        )}
+                        Generate & Send Link
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+              </article>
+            );
+          })}
         </div>
       )}
     </section>

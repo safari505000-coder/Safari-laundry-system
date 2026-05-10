@@ -41,6 +41,7 @@ import { APP_BRAND } from '../common/constants/branding';
 import { CashWriteEndpoint } from '../cash-monitor/cash-write-police.guard';
 import { ConfirmHandoverDto } from './dto/confirm-handover.dto';
 import { DebtByCategoryQueryDto } from './dto/debt-by-category-query.dto';
+import { GenerateSettlementLinkDto } from './dto/generate-settlement-link.dto';
 import {
   OpenDebtByIssuerQueryDto,
   OpenDebtByIssuerResponseDto,
@@ -369,6 +370,41 @@ export class FinanceController {
     @Query() query: UnpaidInvoicesQueryDto,
   ): Promise<UnpaidInvoicesResponseDto> {
     return this.financeService.getUnpaidInvoices(query);
+  }
+
+  @Get('outstanding-debts-without-links')
+  @Permissions(AppPermission.VIEW_DEBTS)
+  @ApiOperation({
+    summary: `Outstanding debts without active links (${APP_BRAND})`,
+    description:
+      'V25 — One row per customer with open UNPAID invoices and no active hosted payment link. Returns server-authoritative totalDebt (KWD 3dp) and lastOrderDate for collections operations.',
+  })
+  getOutstandingDebtsWithoutLinks(
+    @Query('branchId') branchId: string | undefined,
+  ) {
+    const raw = (branchId ?? '').trim();
+    const uuidRe =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const scoped = raw && uuidRe.test(raw) ? raw : null;
+    return this.financeService.getOutstandingDebtsWithoutLinks(scoped);
+  }
+
+  @Post('generate-settlement-link')
+  @Permissions(AppPermission.VIEW_DEBTS)
+  @ApiOperation({
+    summary: `Generate one payment link for selected unpaid invoices (${APP_BRAND})`,
+    description:
+      'V25 — validates that invoiceIds belong to the customer and are still OPEN/UNPAID, re-calculates total on the server, creates one hosted settlement link, and persists settlement metadata for invoice fan-out on payment callback.',
+  })
+  generateSettlementLink(
+    @Body() dto: GenerateSettlementLinkDto,
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.financeService.generateSettlementLink(
+      dto.customerId,
+      dto.invoiceIds,
+      user.userId,
+    );
   }
 
   @Get('dashboard-summary')

@@ -27,6 +27,10 @@ import {
 } from '../debt-customer-aggregates.util';
 import { isRealDebtLedgerPayment } from '../debt-ledger-payment-origin.util';
 import { JournalSourceService } from '../../general-ledger/journal-source.service';
+import { PaymentsService } from '../../common/services/payments.service';
+import { CustomerNotificationsService } from '../../customer-notifications/customer-notifications.service';
+import { resolveCustomerPhoneForNotify } from '../../common/validation/kuwait-customer-phone';
+import { buildCollectionsPaymentLinkTextAr } from '../../call-center/collections-whatsapp-text';
 import { getCustomerSubscriptionStateBatch } from '../../subscribers/subscription-state.util';
 import { attachCanonicalRunningRemaining } from '../canonical-financial-projection';
 
@@ -89,6 +93,8 @@ export class DebtService {
     private readonly prisma: PrismaService,
     private readonly subscriptionService: SubscriptionService,
     private readonly journalSource: JournalSourceService,
+    private readonly paymentsService: PaymentsService,
+    private readonly customerNotifications: CustomerNotificationsService,
   ) {}
 
   async getOwnerCustomerWalletSummary() {
@@ -188,6 +194,363 @@ export class DebtService {
   async getTotalDebt(): Promise<string> {
     const s = await this.getOwnerCustomerWalletSummary();
     return s.totalCustomerDebts;
+  }
+
+  /**
+   * V25 — Customers with open receivable orders but no active hosted link.
+   *
+   * Server-authoritative aggregation:
+   * - universe: `Order.cashStatus=UNPAID` and `status!=CANCELED`
+   * - excluded: any customer that already has an UNPAID order with
+   *   `posHostedPaymentUrl != null` (active/unpaid link exists)
+   * - grouped by customer: Σ `Order.totalPrice` with KWD 3dp precision
+   */
+  async getOutstandingDebtsWithoutLinks(
+    branchId: string | null = null,
+  ): Promise<
+    Array<{
+      customerId: string;
+      customerName: string;
+      totalDebt: string;
+      lastOrderDate: string | null;
+      invoices: Array<{
+        invoiceId: string;
+        invoiceLabel: string;
+        amountKd: string;
+        issuedAt: string;
+      }>;
+    }>
+  > {
+    const branchWhere = orderBranchWhereForMarketDebt(branchId ?? undefined);
+
+    const customersWithActiveLinks = await this.prisma.order.findMany({
+      where: {
+        cashStatus: CashStatus.UNPAID,
+        status: OrderStatus.PENDING,
+        posHostedPaymentUrl: { not: null },
+        ...(branchWhere ?? {}),
+      },
+      select: { customerId: true },
+      distinct: ['customerId'],
+    });
+    const blockedCustomerIds = customersWithActiveLinks.map((r) => r.customerId);
+
+    const openInvoices = await this.prisma.order.findMany({
+      where: {
+        cashStatus: CashStatus.UNPAID,
+        status: OrderStatus.PENDING,
+        posHostedPaymentUrl: null,
+        ...(branchWhere ?? {}),
+        ...(blockedCustomerIds.length > 0
+          ? { customerId: { notIn: blockedCustomerIds } }
+          : {}),
+      },
+      select: {
+        id: true,
+        customerId: true,
+        serialNumber: true,
+        invoiceNumber: true,
+        totalPrice: true,
+        createdAt: true,
+      },
+      orderBy: [{ customerId: 'asc' }, { createdAt: 'asc' }],
+    });
+
+    if (openInvoices.length === 0) {
+      return [];
+    }
+
+    const customerIds = Array.from(new Set(openInvoices.map((o) => o.customerId)));
+    const customers = await this.prisma.customer.findMany({
+      where: { id: { in: customerIds } },
+      select: {
+        id: true,
+        displayName: true,
+        phone: true,
+      },
+    });
+    const customerNameById = new Map(
+      customers.map((c) => [c.id, c.displayName?.trim() || c.phone || '—']),
+    );
+
+    const byCustomer = new Map<
+      string,
+      {
+        total: Prisma.Decimal;
+        lastOrderDate: Date | null;
+        invoices: Array<{
+          invoiceId: string;
+          invoiceLabel: string;
+          amountKd: string;
+          issuedAt: string;
+        }>;
+      }
+    >();
+
+    for (const order of openInvoices) {
+      const bucket = byCustomer.get(order.customerId) ?? {
+        total: new Prisma.Decimal(0),
+        lastOrderDate: null,
+        invoices: [],
+      };
+      bucket.total = bucket.total.add(order.totalPrice);
+      if (
+        !bucket.lastOrderDate ||
+        order.createdAt.getTime() > bucket.lastOrderDate.getTime()
+      ) {
+        bucket.lastOrderDate = order.createdAt;
+      }
+      bucket.invoices.push({
+        invoiceId: order.id,
+        invoiceLabel:
+          order.serialNumber?.trim() ||
+          order.invoiceNumber?.trim() ||
+          `#${order.id.slice(-6).toUpperCase()}`,
+        amountKd: order.totalPrice.toFixed(3),
+        issuedAt: order.createdAt.toISOString(),
+      });
+      byCustomer.set(order.customerId, bucket);
+    }
+
+    return Array.from(byCustomer.entries())
+      .map(([customerId, bucket]) => {
+        return {
+          customerId,
+          customerName: customerNameById.get(customerId) ?? '—',
+          totalDebt: bucket.total.toFixed(3),
+          lastOrderDate: bucket.lastOrderDate?.toISOString() ?? null,
+          invoices: bucket.invoices,
+        };
+      })
+      .filter((row) => new Prisma.Decimal(row.totalDebt).gt(0))
+      .sort((a, b) =>
+        new Prisma.Decimal(b.totalDebt).comparedTo(new Prisma.Decimal(a.totalDebt)),
+      );
+  }
+
+  async generateSettlementLink(params: {
+    customerId: string;
+    invoiceIds: string[];
+    actorUserId: string;
+  }): Promise<{
+    bundleId: string;
+    customerId: string;
+    invoiceIds: string[];
+    invoiceCount: number;
+    totalAmountKd: string;
+    paymentUrl: string;
+    trackId: string | null;
+    serverPush: boolean;
+  }> {
+    const customerId = params.customerId.trim();
+    const invoiceIds = Array.from(
+      new Set(params.invoiceIds.map((id) => id.trim()).filter(Boolean)),
+    );
+    if (!customerId) {
+      throw new BadRequestException('customerId is required');
+    }
+    if (invoiceIds.length === 0) {
+      throw new BadRequestException('invoiceIds must contain at least one id');
+    }
+
+    const customer = await this.prisma.customer.findUnique({
+      where: { id: customerId },
+      select: {
+        id: true,
+        phone: true,
+        phone2: true,
+        displayName: true,
+      },
+    });
+    if (!customer) {
+      throw new BadRequestException('Customer not found');
+    }
+
+    const selectedOrders = await this.prisma.order.findMany({
+      where: { id: { in: invoiceIds } },
+      select: {
+        id: true,
+        customerId: true,
+        status: true,
+        cashStatus: true,
+        walletSettledAt: true,
+        totalPrice: true,
+        posHostedPaymentUrl: true,
+        posPaymentBundleId: true,
+        serialNumber: true,
+        invoiceNumber: true,
+        createdAt: true,
+      },
+    });
+    if (selectedOrders.length !== invoiceIds.length) {
+      throw new BadRequestException('Some invoiceIds do not exist');
+    }
+
+    for (const order of selectedOrders) {
+      if (order.customerId !== customerId) {
+        throw new BadRequestException(
+          'All selected invoiceIds must belong to the provided customerId',
+        );
+      }
+      if (order.status !== OrderStatus.PENDING) {
+        throw new BadRequestException(
+          `Invoice ${order.id} is not open (status must be PENDING)`,
+        );
+      }
+      if (order.cashStatus !== CashStatus.UNPAID || order.walletSettledAt) {
+        throw new BadRequestException(`Invoice ${order.id} is already paid`);
+      }
+      if (order.posHostedPaymentUrl?.trim()) {
+        throw new BadRequestException(
+          `Invoice ${order.id} already has an active payment link`,
+        );
+      }
+      if (order.posPaymentBundleId) {
+        throw new BadRequestException(
+          `Invoice ${order.id} is already linked to another settlement bundle`,
+        );
+      }
+    }
+
+    const totalAmount = selectedOrders.reduce(
+      (acc, row) => acc.add(row.totalPrice),
+      new Prisma.Decimal(0),
+    );
+    if (totalAmount.lte(0)) {
+      throw new BadRequestException('Selected invoice total must be greater than zero');
+    }
+
+    const customerPhone = resolveCustomerPhoneForNotify(customer.phone, customer.phone2);
+    if (!customerPhone.trim()) {
+      throw new BadRequestException(
+        'No customer phone available to send the settlement link',
+      );
+    }
+
+    const bundleId = await this.prisma.$transaction(async (tx) => {
+      const bundle = await tx.posPaymentBundle.create({
+        data: {
+          driverId: params.actorUserId,
+          totalAmountKd: totalAmount,
+        },
+        select: { id: true },
+      });
+      const claim = await tx.order.updateMany({
+        where: {
+          id: { in: invoiceIds },
+          customerId,
+          status: OrderStatus.PENDING,
+          cashStatus: CashStatus.UNPAID,
+          walletSettledAt: null,
+          posHostedPaymentUrl: null,
+          posPaymentBundleId: null,
+        },
+        data: {
+          posPaymentBundleId: bundle.id,
+        },
+      });
+      if (claim.count !== invoiceIds.length) {
+        throw new BadRequestException(
+          'Some invoices changed state during settlement generation; refresh and retry',
+        );
+      }
+      return bundle.id;
+    });
+
+    let paymentLink: { url: string; trackId?: string };
+    try {
+      paymentLink = await this.paymentsService.createPaymentLink({
+        orderId: bundleId,
+        amount: totalAmount,
+        customerPhone,
+        customerName: customer.displayName ?? undefined,
+        customerUniqueId: customer.id.slice(0, 20),
+      });
+    } catch (error) {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.order.updateMany({
+          where: { id: { in: invoiceIds }, posPaymentBundleId: bundleId },
+          data: { posPaymentBundleId: null },
+        });
+        await tx.posPaymentBundle.delete({ where: { id: bundleId } });
+      });
+      throw error;
+    }
+
+    const nowIso = new Date().toISOString();
+    await this.prisma.order.updateMany({
+      where: { id: { in: invoiceIds }, posPaymentBundleId: bundleId },
+      data: {
+        posHostedPaymentUrl: paymentLink.url,
+        posGatewayTrackId: paymentLink.trackId ?? null,
+        ccCollectionPaymentWaLocked: true,
+        posGatewayMetadata: {
+          charge: {
+            provider: 'upayments',
+            trackId: paymentLink.trackId ?? null,
+            link: paymentLink.url,
+            createdAt: nowIso,
+            source: 'finance.generateSettlementLink',
+          },
+          settlement: {
+            kind: 'multi_invoice',
+            bundleId,
+            customerId,
+            invoiceIds,
+            invoiceCount: invoiceIds.length,
+            totalAmountKd: totalAmount.toFixed(3),
+            createdAt: nowIso,
+          },
+        } as Prisma.InputJsonValue,
+      },
+    });
+
+    const message = buildCollectionsPaymentLinkTextAr(
+      {
+        orderId: bundleId,
+        readableId: `SET-${bundleId.slice(-6).toUpperCase()}`,
+        invoiceNumber: null,
+        customerName: customer.displayName?.trim() || customer.phone || 'عميلنا العزيز',
+        amountKd: totalAmount.toFixed(3),
+        lineItems: selectedOrders
+          .slice()
+          .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+          .map((order) => ({
+            label:
+              order.serialNumber?.trim() ||
+              order.invoiceNumber?.trim() ||
+              `فاتورة ${order.id.slice(-6).toUpperCase()}`,
+            quantity: '1',
+            lineTotalKd: order.totalPrice.toFixed(3),
+          })),
+        branchName: null,
+        driverName: null,
+      },
+      paymentLink.url,
+    );
+    let serverPush = false;
+    try {
+      serverPush = await this.customerNotifications.deliverCollectionsPaymentLinkNow(
+        {
+          customerPhone,
+          orderId: selectedOrders[0]?.id ?? bundleId,
+          message,
+        },
+      );
+    } catch {
+      serverPush = false;
+    }
+
+    return {
+      bundleId,
+      customerId,
+      invoiceIds,
+      invoiceCount: invoiceIds.length,
+      totalAmountKd: totalAmount.toFixed(3),
+      paymentUrl: paymentLink.url,
+      trackId: paymentLink.trackId ?? null,
+      serverPush,
+    };
   }
 
   async getCustomerDebtSnapshot(customerId: string): Promise<{

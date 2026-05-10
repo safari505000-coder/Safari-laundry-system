@@ -147,6 +147,46 @@ describe('V22 current-debt consistency guards', () => {
     expect(cockpit).toContain('summaryData.linkCollectedTodayKd');
   });
 
+  it('V25 pending debts without links stay backend-authoritative', () => {
+    const financeController = read('src/finance/finance.controller.ts');
+    const financeService = read('src/finance/finance.service.ts');
+    const debtService = read('src/finance/services/debt.service.ts');
+    const reportPage = read(
+      'web/src/modules/call-center/collections-report/pages/collections-report-page.tsx',
+    );
+
+    expect(financeController).toContain(
+      "@Get('outstanding-debts-without-links')",
+    );
+    expect(financeService).toContain('getOutstandingDebtsWithoutLinks');
+    expect(debtService).toContain('getOutstandingDebtsWithoutLinks');
+    expect(debtService).toContain('total.toFixed(3)');
+    expect(reportPage).toContain('Pending Debts for Collection');
+    expect(reportPage).toContain('formatKwd(row.totalDebt)');
+    expect(reportPage).not.toContain('Number.parseFloat(row.totalDebt)');
+    expect(reportPage).not.toContain('parseFloat(row.totalDebt)');
+  });
+
+  it('V25 multi-invoice settlement link stays backend-authoritative', () => {
+    const financeController = read('src/finance/finance.controller.ts');
+    const financeService = read('src/finance/finance.service.ts');
+    const debtService = read('src/finance/services/debt.service.ts');
+    const reportPage = read(
+      'web/src/modules/call-center/collections-report/pages/collections-report-page.tsx',
+    );
+
+    expect(financeController).toContain("@Post('generate-settlement-link')");
+    expect(financeService).toContain('generateSettlementLink(');
+    expect(debtService).toContain('async generateSettlementLink(');
+    expect(debtService).toContain('totalAmount.toFixed(3)');
+    expect(debtService).toContain(
+      'All selected invoiceIds must belong to the provided customerId',
+    );
+    expect(reportPage).toContain('sumKwdStringsPrecise');
+    expect(reportPage).toContain('Running Total');
+    expect(reportPage).toContain('/api/finance/generate-settlement-link');
+  });
+
   it('deprecated effectiveDebtKd does not reappear in runtime source', () => {
     const roots = [join(repoRoot, 'src'), join(repoRoot, 'web/src')];
     const offenders = roots

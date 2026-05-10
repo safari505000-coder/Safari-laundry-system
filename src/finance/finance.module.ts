@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { CustomerNotificationsModule } from '../customer-notifications/customer-notifications.module';
 import { GeneralLedgerModule } from '../general-ledger/general-ledger.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { PrismaModule } from '../prisma/prisma.module';
@@ -50,7 +51,12 @@ import { FinancialObservabilityService } from './observability/financial-observa
 import { FinancialObservabilityController } from './observability/financial-observability.controller';
 
 @Module({
-  imports: [PrismaModule, PaymentsModule, GeneralLedgerModule],
+  imports: [
+    PrismaModule,
+    PaymentsModule,
+    GeneralLedgerModule,
+    CustomerNotificationsModule,
+  ],
   controllers: [
     FinanceController,
     JournalController,

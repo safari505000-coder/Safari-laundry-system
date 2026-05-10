@@ -156,6 +156,22 @@ export class FinanceService {
     return this.debtService.getUnpaidInvoices(query);
   }
 
+  async getOutstandingDebtsWithoutLinks(branchId: string | null = null) {
+    return this.debtService.getOutstandingDebtsWithoutLinks(branchId);
+  }
+
+  async generateSettlementLink(
+    customerId: string,
+    invoiceIds: string[],
+    actorUserId: string,
+  ) {
+    return this.debtService.generateSettlementLink({
+      customerId,
+      invoiceIds,
+      actorUserId,
+    });
+  }
+
   /**
    * A3.D8 — single endpoint that aggregates every pool of KD cash the
    * institution holds right now. Fixes the Owner's "I have three

@@ -2107,6 +2107,40 @@ export type CollectionUnpaidOnlineReportResponse = {
 };
 
 /**
+ * V25 — `GET /api/finance/outstanding-debts-without-links`.
+ * Server-side aggregate only; frontend must render `totalDebt` as-is.
+ */
+export type OutstandingDebtWithoutLinkRow = {
+  customerId: string;
+  customerName: string;
+  /** KWD 3-decimal precision (fils), e.g. "12.750". */
+  totalDebt: string;
+  lastOrderDate: string | null;
+  invoices: Array<{
+    invoiceId: string;
+    invoiceLabel: string;
+    amountKd: string;
+    issuedAt: string;
+  }>;
+};
+
+export type GenerateSettlementLinkPayload = {
+  customerId: string;
+  invoiceIds: string[];
+};
+
+export type GenerateSettlementLinkResult = {
+  bundleId: string;
+  customerId: string;
+  invoiceIds: string[];
+  invoiceCount: number;
+  totalAmountKd: string;
+  paymentUrl: string;
+  trackId: string | null;
+  serverPush: boolean;
+};
+
+/**
  * V3.8 — Driver island "Field Collection Tracker" row
  * (`GET /api/orders/driver/pending-invoices`).
  *
