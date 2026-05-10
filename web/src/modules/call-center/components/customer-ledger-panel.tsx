@@ -297,17 +297,27 @@ export function CustomerLedgerPanel({ customerId, token }: Props) {
             })}
           </p>
           {/* Carried balance from a PREVIOUS subscription period only */}
-          {data.activeSubscription.carriedBalanceKd !== '0.0000' ? (
-            <p className="mt-1 text-xs text-blue-900/80 dark:text-blue-100/80">
-              {t('customerLedger.carried')}:{' '}
-              <span className="font-semibold tabular-nums text-blue-950 dark:text-blue-50">
-                {formatKwdLabel(data.activeSubscription.carriedBalanceKd)}
-              </span>
-              <span className="ms-1 text-[11px] text-blue-800/80 dark:text-blue-200/80">
-                — {t('customerLedger.subCarriedHint')}
-              </span>
-            </p>
-          ) : null}
+          {data.activeSubscription.carriedBalanceKd !== '0.0000' ? (() => {
+            const isCarriedDebt = data.activeSubscription!.carriedBalanceKd.startsWith('-');
+            return (
+              <p className="mt-1 text-xs text-blue-900/80 dark:text-blue-100/80">
+                <span className={isCarriedDebt ? 'text-rose-700 dark:text-rose-300' : ''}>
+                  {isCarriedDebt
+                    ? t('customerLedger.activationBreakdown.carriedDebt')
+                    : t('customerLedger.carried')}
+                  {': '}
+                  <span className="font-semibold tabular-nums">
+                    {formatKwdLabel(data.activeSubscription!.carriedBalanceKd)}
+                  </span>
+                </span>
+                <span className="ms-1 text-[11px] text-blue-800/80 dark:text-blue-200/80">
+                  — {isCarriedDebt
+                    ? t('customerLedger.subCarriedDebtHint')
+                    : t('customerLedger.subCarriedHint')}
+                </span>
+              </p>
+            );
+          })() : null}
         </div>
       ) : null}
 

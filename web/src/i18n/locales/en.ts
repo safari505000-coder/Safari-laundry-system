@@ -2264,6 +2264,8 @@ export const en = {
     carried: 'Carried balance',
     subCarriedHint:
       'Amount carried from a previous plan or settlement; it is spent when orders are paid from the subscription wallet.',
+    subCarriedDebtHint:
+      'Debt that existed in the wallet before this subscription was activated — shows how much was outstanding at activation time.',
     tabOverview: 'Overview',
     tabInvoices: 'Invoices ({{count}})',
     tabTimeline: 'Timeline ({{count}})',

@@ -2283,6 +2283,8 @@ export const ar = {
     carried: 'رصيد مرحّل',
     subCarriedHint:
       'مبلغ أُرسل من اشتراك أو تسوية سابقة ويُستهلك عند خصم فواتير من باقتك.',
+    subCarriedDebtHint:
+      'دَين كان موجوداً على المحفظة قبل تفعيل هذا الاشتراك — يُخصَم منه المبلغ الذي تمّت تسويته.',
     tabOverview: 'ملخّص',
     tabInvoices: 'الفواتير ({{count}})',
     tabTimeline: 'سجل الحركة ({{count}})',
