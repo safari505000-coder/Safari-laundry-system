@@ -72,7 +72,7 @@ export function CollectionsCockpitPage(): React.ReactElement {
   const locale = (isAr ? 'ar' : 'en') as 'ar' | 'en';
   const { user, token } = useAuth();
 
-  const allowed = user != null && can(user.role, 'collections.view');
+  const allowed = user != null && can(user, 'collections.view');
 
   const [queue, setQueue] = useState<FetchState>({ kind: 'idle' });
   const [focusedRowId, setFocusedRowId] = useState<string | null>(null);
@@ -99,7 +99,7 @@ export function CollectionsCockpitPage(): React.ReactElement {
         const res = await getActiveOperators(token);
         if (cancelled) return;
         setActiveOperators(
-          res.operators.filter((op) => op.userId !== user?.userId),
+          res.operators.filter((op) => op.userId !== user?.id),
         );
       } catch {
         /* presence is best-effort */
@@ -111,7 +111,7 @@ export function CollectionsCockpitPage(): React.ReactElement {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [allowed, token, user?.userId]);
+  }, [allowed, token, user?.id]);
 
   const realtimeState = useRealtimeFinancialFeed({
     channel: 'dashboards',
@@ -323,7 +323,7 @@ export function CollectionsCockpitPage(): React.ReactElement {
         snapshot={workflow.snapshot}
         loading={workflow.loading}
         error={workflow.error}
-        currentOperatorId={user?.userId ?? null}
+        currentOperatorId={user?.id ?? null}
         locale={locale}
         onQuickAdd={(kind) => {
           if (focusedRow) setModalKind(kind);
@@ -485,7 +485,7 @@ function AgingGroup(props: {
   return (
     <div data-testid={`aging-group-${props.bucket}`}>
       <div className="mb-1.5 flex items-center gap-2">
-        <AgingBadge bucket={props.bucket} ageDays={null} />
+        <AgingBadge openedAtIso={opened} />
         <span className="text-[0.7rem] text-slate-500 dark:text-slate-400">
           {props.rows.length} {isAr ? 'فاتورة' : 'invoices'}
         </span>
