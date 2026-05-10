@@ -50,6 +50,7 @@
  *   is caught here too, not just on the next CI run.
  */
 import { Injectable, Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { CashClassifierService } from './cash-classifier.service';
 import { CashExecutiveService } from './cash-executive.service';
 import {
@@ -265,15 +266,18 @@ function assertScenarioContract(
   logger: Logger,
   classified: CashClassifiedResponseDto,
 ): void {
-  const FLOOR_KD = classified.rules?.smallAmountFloorKd ?? 5;
+  // V24 — `smallAmountFloorKd` is a canonical 4dp KWD string.
+  // Compare via Prisma.Decimal instead of JS number coercion.
+  const floorKdStr = classified.rules?.smallAmountFloorKd ?? '5.0000';
+  const FLOOR_KD = new Prisma.Decimal(floorKdStr);
   const GRACE_HOURS = classified.rules?.gracePeriodHours ?? 24;
 
   const violations: string[] = [];
   for (const a of classified.financialAlerts) {
-    const amountKd = parseAmount(a.amount);
-    if (amountKd < FLOOR_KD) {
+    const amountKd = new Prisma.Decimal(a.amount);
+    if (amountKd.lessThan(FLOOR_KD)) {
       violations.push(
-        `financial alert ${a.type} (${a.amount} KD) below ${FLOOR_KD} KD floor`,
+        `financial alert ${a.type} (${a.amount} KD) below ${floorKdStr} KD floor`,
       );
     }
     if (a.cashAgeHours < GRACE_HOURS) {
@@ -299,15 +303,12 @@ function assertScenarioContract(
   }
 }
 
-/**
- * Local raw-amount reader for the runtime scenario assertions only.
- * Named `parseAmount` (not `parseFloat`) so the SSoT lint rule allows
- * it: this is NOT a money producer, it is a contract validator.
- */
-function parseAmount(s: string): number {
-  const n = Number(s);
-  return Number.isFinite(n) ? n : 0;
-}
+// V24 — `parseAmount` (legacy raw `Number(s)` reader) was removed
+// when `assertScenarioContract` migrated to `Prisma.Decimal` for
+// every money comparison. Keeping a `Number()`-based reader here
+// would be exactly the kind of ad-hoc math the V24 Commandment #3
+// ("No Ad-hoc Math") forbids; the Decimal path is now the only
+// way the dashboard reads alert amounts.
 
 /**
  * Project the ledger response into the dashboard's branch slice.

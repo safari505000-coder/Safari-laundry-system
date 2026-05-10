@@ -20,6 +20,7 @@ import {
   Users,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
+import { compareKwdStrings } from '@/lib/kwd';
 import {
   ApiError,
   type CommissionCalculationBase,
@@ -1020,10 +1021,11 @@ function KnetPaymentFeeEditor({
   onSaved: (c: PaymentMethodFeeConfig) => void;
 }) {
   const { token } = useAuth();
+  // V23.1 — KNET fee form. The KD-shaped field (`knetFlatKd`) stays as a
+  // canonical KWD string the whole way through. Percentage fields are
+  // rates (not money) so they stay as parsed numbers.
   const [knetRule, setKnetRule] = useState<KnetCommissionRule>(value.knetRule);
-  const [knetFlatKd, setKnetFlatKd] = useState(
-    Number.parseFloat(value.knetFlatKd).toString(),
-  );
+  const [knetFlatKdInput, setKnetFlatKdInput] = useState(value.knetFlatKd);
   const [knetPercentOfGross, setKnetPercentOfGross] = useState(
     Number.parseFloat(value.knetPercentOfGross).toString(),
   );
@@ -1034,7 +1036,7 @@ function KnetPaymentFeeEditor({
 
   useEffect(() => {
     setKnetRule(value.knetRule);
-    setKnetFlatKd(Number.parseFloat(value.knetFlatKd).toString());
+    setKnetFlatKdInput(value.knetFlatKd);
     setKnetPercentOfGross(
       Number.parseFloat(value.knetPercentOfGross).toString(),
     );
@@ -1048,12 +1050,19 @@ function KnetPaymentFeeEditor({
     return Number.isFinite(n) ? n : NaN;
   };
 
-  const flatN = parseNum(knetFlatKd);
+  const flatN = parseNum(knetFlatKdInput);
   const knetPctN = parseNum(knetPercentOfGross);
   const cardPctN = parseNum(cardPercentOfGross);
+  const knetFlatKdNormalized = knetFlatKdInput.trim().replace(',', '.');
+  // V24 — canonical 4dp KWD pattern enforced server-side too. The
+  // form keeps a numeric validation gate (parseNum) for the input
+  // UX, but the wire payload must be the canonical string itself —
+  // never the parsed JS number.
+  const KNET_FLAT_KD_PATTERN = /^\d+(\.\d{1,4})?$/;
+  const knetFlatKdValid = KNET_FLAT_KD_PATTERN.test(knetFlatKdNormalized);
   const dirty =
     knetRule !== value.knetRule ||
-    Math.abs(flatN - Number.parseFloat(value.knetFlatKd)) > 1e-6 ||
+    compareKwdStrings(knetFlatKdNormalized, value.knetFlatKd) !== 0 ||
     Math.abs(knetPctN - Number.parseFloat(value.knetPercentOfGross)) > 1e-7 ||
     Math.abs(cardPctN - Number.parseFloat(value.cardPercentOfGross)) > 1e-7;
 
@@ -1065,11 +1074,18 @@ function KnetPaymentFeeEditor({
       toast.error('تأكد من إدخال أرقام صحيحة (صفر فأعلى).');
       return;
     }
+    if (!knetFlatKdValid) {
+      toast.error(
+        'مبلغ كي نت الثابت يجب أن يكون رقماً بحد أقصى 4 خانات عشرية.',
+      );
+      return;
+    }
     setSaving(true);
     try {
       const saved = await updatePaymentMethodFeeConfig(token, {
         knetRule,
-        knetFlatKd: flatN,
+        // V24 — submit the canonical KWD string directly (NOT flatN).
+        knetFlatKd: knetFlatKdNormalized,
         knetPercentOfGross: knetPctN,
         cardPercentOfGross: cardPctN,
       });
@@ -1125,8 +1141,8 @@ function KnetPaymentFeeEditor({
               inputMode="decimal"
               className="font-mono tabular-nums"
               dir="ltr"
-              value={knetFlatKd}
-              onChange={(e) => setKnetFlatKd(e.target.value)}
+              value={knetFlatKdInput}
+              onChange={(e) => setKnetFlatKdInput(e.target.value)}
             />
             <p className="text-xs text-muted-foreground">
               مثال: 0.100 — يُستخدم حسب الطريقة أعلاه.

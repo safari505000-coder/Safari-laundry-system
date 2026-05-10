@@ -17,7 +17,7 @@
  * STRICT contract: read-only, advisory-only, never mutates.
  */
 import { Injectable } from '@nestjs/common';
-import { SafariRole } from '@prisma/client';
+import { Prisma, SafariRole } from '@prisma/client';
 import { CashIntelligenceV2Service } from '../cash-intelligence/cash-intelligence-v2.service';
 import {
   CashIntelligenceAnalysisDto,
@@ -227,15 +227,29 @@ export class CashClassifierService {
       drivers,
     });
 
+    /*
+     * V21 Phase 5 — precompute Σ drivers[].amount in 4dp so the
+     * dashboard renders a single canonical figure without re-running
+     * `parseFloat` + `reduce` on the client. Driver amounts are
+     * already stringified at 4dp above; we sum them through the same
+     * `parseAmount` helper for consistency.
+     */
+    const totalCashAmount = drivers.reduce(
+      (s, d) => s + parseAmount(d.amount),
+      0,
+    );
     return {
       systemStatus,
       financialAlerts: sortAlerts(financialAlerts),
       complianceAlerts: sortAlerts(complianceAlerts),
       drivers: drivers.sort(driverSorter),
+      totalCashKd: totalCashAmount.toFixed(4),
       finalDecision,
       rules: {
         gracePeriodHours: GRACE_PERIOD_HOURS,
-        smallAmountFloorKd: SMALL_AMOUNT_FLOOR_KD,
+        smallAmountFloorKd: new Prisma.Decimal(
+          SMALL_AMOUNT_FLOOR_KD,
+        ).toFixed(4),
         financialChainTypes: Array.from(FINANCIAL_CHAIN_TYPES),
         complianceTypes: Array.from(COMPLIANCE_TYPES),
         shiftFinancialSeverityCap: 'WARNING',
