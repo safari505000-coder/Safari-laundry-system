@@ -1460,3 +1460,83 @@ The only deferred items now sit outside the V24 Station 2 charter:
 - **Stretch** — re-evaluate Knip's 187 FE-export false-positive list under a proper `knip.json` config (Station 3 candidate).
 - **Pre-existing flake** — `snapshot-realtime-refresher.spec.ts` (Error 14) — separate triage.
 
+---
+
+## 28. V24 Station 2 — Production Release (Published to Production)
+
+**Date**: 2026-05-10  
+**Release commit (merge)**: `9ec0a9b` — `chore(release): deploy V24 Station 2 to production (Banking Core Purity)`  
+**Feature tip merged-in**: `bd23d83` (D-1 finalization).  
+**Branch flow**: `feature/safari-omni-v3-multi-module` → `main` (no-fast-forward merge to preserve a single auditable release node).
+
+### 28.1 — Why a release was needed
+
+Render's auto-deploy on `safariomni.com` is wired to the `main` branch. Until this release, `main` was pinned at `17f7311` (`feat(cc): collections dashboard…`) — **10 commits behind** the tip of the V24 feature branch. The full V24 Station 1 + Station 2 work (Reconciliation Baseline, Authority Pull, Frontend Purge, dependency purge, dead-code purge, Banking Core export cleanup) was therefore on GitHub but **not in production**. A previously-triggered Render deploy had simply rebuilt the stale `main` HEAD (`17f7311`), which is what motivated this release.
+
+### 28.2 — Release sequence executed
+
+| # | Command | Result |
+|---|---|---|
+| 1 | `git checkout main` | Switched from `feature/safari-omni-v3-multi-module` → `main` (was at `17f7311`, in sync with `origin/main`). |
+| 2 | `git pull origin main` | `Already up to date.` |
+| 3 | `git merge feature/safari-omni-v3-multi-module --no-ff -m "chore(release): deploy V24 Station 2 to production (Banking Core Purity)"` | Created merge commit `9ec0a9b` with parents `17f7311 bd23d83`. No conflicts. |
+| 4 | `git push origin main` | `17f7311..9ec0a9b  main -> main` ✓ |
+
+### 28.3 — What ships to production
+
+The release brings these 11 commits into `main` in one logical merge node:
+
+```
+9ec0a9b  chore(release): deploy V24 Station 2 to production (Banking Core Purity)   [merge]
+bd23d83  fix(core): D-1 — finalize banking-core unused exports cleanup
+653c2c5  chore(repo): V24 Station 2 — Tier 3 surgical purge (scripts & orphan specs)
+a34343d  chore(repo): D-2 — batch-delete 34 unused exports outside banking core
+f96c485  chore(deps): V24 Station 2 — Step C — purge 15 unused deps + declare multer honestly
+3e9748a  fix(web): correct legacy types in collections-cockpit-page to restore build integrity
+b57204b  chore(repo): sync remaining V20–V24 architectural updates
+9798667  feat(finance): V24 Wave B — Frontend Purge & SSoT Implementation
+8e87e9f  feat(finance): V24 Wave A — Authority Pull & Canonical DTO Purity
+dd7745e  feat(finance): V24 Wave C — Reconciliation Baseline & Drift Guard
+9dca741  chore(repo): purge tracked dist/ artefacts + 6 empty FE module skeletons (V24 Station 2 — Steps A+B)
+```
+
+### 28.4 — Pre-push sanity (post-merge, on `main`)
+
+| Gate | Result |
+|---|---|
+| `npx tsc -b` (full BE project chain — pre-commit hook target) | **0 errors** |
+| `npx jest` scoped to V24 guards + Banking Core (`v24-canonical-dto-purity`, `v24-reconciliation-baseline`, `general-ledger`, `finance/snapshots`) | **10 / 10 suites, 51 / 51 tests pass** |
+
+The full Green Matrix (BE 798/798, FE 259/259, FE build 1.05 s, V24 guards 6/6, legacy-scan clean, pre-commit hook natural) was already proven on `bd23d83` in §27.6. Because the `--no-ff` merge had no conflicts, the on-`main` tree is byte-identical to `bd23d83` plus the empty merge commit; no logic changed in the merge.
+
+### 28.5 — Render deployment expectation
+
+- Render is set to auto-deploy `main` (Docker-based; see `Dockerfile`, `.dockerignore`, `deploy/render-production.env`).
+- Push of `main → 9ec0a9b` triggers a fresh build.
+- The build will check out `9ec0a9b`, whose source tree equals `bd23d83`'s tree (the V24 tip the user explicitly tracked).
+- Expected outcome: Render dashboard shows `9ec0a9b` as the latest deploy; the build passes (Green Matrix is locally green; Docker layer is the same as preview branch).
+
+### 28.6 — Post-deploy verification checklist (operator-side, on `safariomni.com`)
+
+- [ ] Render dashboard: latest deploy commit = `9ec0a9b` (release merge) — and its diff base contains `bd23d83`.
+- [ ] Render build log: `npm ci` clean, `tsc -b` clean, image push OK.
+- [ ] Smoke: `GET /api/finance/sales-debt-analytics?from=…&to=…` returns canonical `*Kd` strings + `collectionRateBps` (V24 Wave B SSoT).
+- [ ] Smoke: `GET /api/finance/reconciliation/run` returns 0-drift on a clean tenant slice (V24 Wave C invariants live).
+- [ ] Smoke: `/system-settings` page accepts `knetFlatKd` as a string with regex validation (V24 Wave A Authority Pull live).
+
+### 28.7 — Rollback note (only if production breaks)
+
+Single-step rollback is supported because the release is a single `--no-ff` merge node:
+
+```bash
+git checkout main
+git revert -m 1 9ec0a9b
+git push origin main
+```
+
+This preserves all V24 commits in history but reverts production state to `17f7311`. No D-1 / D-2 / Tier 3 / Step C work would be lost from the repository — only from the running deploy.
+
+### 28.8 — STATUS: PUBLISHED TO PRODUCTION
+
+V24 (Financial Authority) — both Station 1 (Authority Pull, Frontend Purge, Reconciliation Baseline) and Station 2 (Core Purification & Slimming) — is now live on `main` and queued for Render auto-deploy. The Banking Core is canonical, the wire DTOs are string-canonical, the FE financial helpers are deleted, the dependency surface is honest, and the unused-export surface inside the Core is closed. The 6 Commandments (Server-Side Truth, Frozen Core, No Ad-hoc Math, Implicit Governance, Don't Calculate Just Ask, Immutable History) are now enforced in production-shipped code.
+
