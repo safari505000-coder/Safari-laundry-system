@@ -68,7 +68,7 @@ export class CriticalJournalFailureError extends Error {
 
 /** V20.1-v4 — Phase 16 circuit-breaker tuning. */
 export const CRITICAL_FAILURE_THRESHOLD = 3;
-export const CRITICAL_FAILURE_WINDOW_MS = 5 * 60 * 1000;
+const CRITICAL_FAILURE_WINDOW_MS = 5 * 60 * 1000;
 
 type Db = PrismaService | Prisma.TransactionClient;
 

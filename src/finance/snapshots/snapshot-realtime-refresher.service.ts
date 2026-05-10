@@ -39,9 +39,9 @@ import type { SnapshotRefreshSource } from './financial-snapshot.types';
  * after scheduling — never awaits the actual refresh.
  */
 
-export const DEFAULT_DEBOUNCE_MS = 500;
-export const DEFAULT_MIN_INTERVAL_MS = 1000;
-export const DEFAULT_MAX_CONCURRENCY = 10;
+const DEFAULT_DEBOUNCE_MS = 500;
+const DEFAULT_MIN_INTERVAL_MS = 1000;
+const DEFAULT_MAX_CONCURRENCY = 10;
 
 type PendingState = {
   source: SnapshotRefreshSource;

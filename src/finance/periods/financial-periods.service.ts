@@ -1,7 +1,6 @@
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   Injectable,
   Logger,
 } from '@nestjs/common';
@@ -295,4 +294,3 @@ export function periodForDate(d: Date): { year: number; month: number } {
   };
 }
 
-export { ForbiddenException }; // re-exported for controller convenience

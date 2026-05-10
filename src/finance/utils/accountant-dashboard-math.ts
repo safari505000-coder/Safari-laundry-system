@@ -4,7 +4,7 @@
  */
 
 /** UI/status uses 4dp KD amounts; treat |Δ| below this as balanced (GREEN). */
-export const RECONCILIATION_BALANCE_EPS = 0.0001;
+const RECONCILIATION_BALANCE_EPS = 0.0001;
 
 export type ReconciliationDisplayStatus = 'GREEN' | 'RED' | 'YELLOW';
 

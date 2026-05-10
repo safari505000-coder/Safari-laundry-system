@@ -1345,6 +1345,118 @@ The only `src/finance/` file in the diff is `canonical-payment-method.ts`, which
 
 ### 26.7 — Steps still on deck
 
-- **Step D-1** — review-each 7 unused exports inside Banking Core (defer-friendly; small surface).
 - **Stretch** — re-evaluate Knip's 187 FE-export false-positive list under a proper `knip.json` config (Station 3 candidate).
+
+---
+
+## 27. V24 Station 2 — Step D-1 — Banking Core Final Export Cleanup — COMPLETE
+
+> **Mission**: close the last open item in V24 Station 2 by reviewing — under the strictest microscopic protocol — the unused exports inside the Banking Core (§2.1.a). Either remove the `export` keyword (symbol stays internal), or delete the entire symbol/re-export when it has zero callers anywhere. **Frozen Core Policy**: every change is per-file, per-symbol, with a TSC + Jest gate after each edit; any single failing gate triggers immediate revert.
+
+### 27.1 — Scope (Banking Core only)
+
+The §2.1.a table listed **10 candidate exports across 7 files** inside the Banking Core layer:
+
+- `src/general-ledger/`
+- `src/finance/snapshots/`
+- `src/finance/utils/`
+- `src/finance/periods/`
+- `src/finance/invoice-payment-status.service.ts`
+- `src/finance/finance-money.ts`
+- `src/finance/debt-ledger-payment-origin.util.ts`
+
+### 27.2 — Microscope verdict matrix (per export)
+
+| # | File | Symbol | External consumers | Verdict |
+|---|---|---|---|---|
+| 1 | `general-ledger/double-entry-journal.service.ts` | `CRITICAL_FAILURE_WINDOW_MS` | 0 (internal: lines 51, 325, 420, 428) | **REMOVE EXPORT** |
+| 2 | `finance/snapshots/snapshot-realtime-refresher.service.ts` | `DEFAULT_DEBOUNCE_MS` | 0 (internal: line 128) | **REMOVE EXPORT** |
+| 3 | (same file) | `DEFAULT_MIN_INTERVAL_MS` | 0 (internal: line 105) | **REMOVE EXPORT** |
+| 4 | (same file) | `DEFAULT_MAX_CONCURRENCY` | 0 (internal: line 202) | **REMOVE EXPORT** |
+| 5 | `finance/invoice-payment-status.service.ts` | `INVOICE_REMAINING_TOLERANCE_KD` re-export | 1 (`canonical-invoice-status.ts:7-12` — V21 Canonical Banking Core contract) | **KEEP** (Knip false positive) |
+| 6 | `finance/utils/accountant-dashboard-math.ts` | `RECONCILIATION_BALANCE_EPS` | 0 (internal: lines 33, 36, 39) | **REMOVE EXPORT** |
+| 7 | `finance/periods/financial-periods.service.ts` | `ForbiddenException` re-export | 0 — controller imports from `@nestjs/common` directly | **DELETE LINE + orphan import cleanup** |
+| 8 | `finance/finance-money.ts` | `HANDOVER_TOLERANCE_MINOR` | 1 (`canonical-money.ts:14` — V21 contract) | **KEEP** (Knip false positive) |
+| 9 | (same file) | `declaredNumberToMinor` | 1 (`canonical-money.ts:10` — V21 contract) | **KEEP** (Knip false positive) |
+| 10 | `finance/debt-ledger-payment-origin.util.ts` | `ALLOWED_PAYMENT_SOURCE_REF_PREFIXES` | 0 (internal: line 149) | **REMOVE EXPORT** |
+
+**Net actions**: **6 `export` removals + 1 line deletion (re-export) + 1 ancillary orphan-import cleanup** across **5 files**. **3 KEEPs** preserve V21 Canonical Banking Core re-export contracts (`canonical-invoice-status.ts` and `canonical-money.ts`).
+
+### 27.3 — Why the 3 KEEPs are non-negotiable
+
+Each of the 3 KEEPs is part of the **V21 Canonical Banking Core re-export layer**:
+
+- `src/finance/canonical-invoice-status.ts` (V21 invoice-status contract) re-exports `INVOICE_REMAINING_TOLERANCE_KD` from `invoice-payment-status.service.ts` so 10+ downstream services have a single canonical import path.
+- `src/finance/canonical-money.ts` (V21 money contract) re-exports `HANDOVER_TOLERANCE_MINOR` and `declaredNumberToMinor` from `finance-money.ts` for the same reason.
+
+Knip cannot follow `export ... from 'X'` chains across two hops, so it flagged the leaf-level exports as unused. Deleting them would break the canonical contract layer that V21 deliberately introduced.
+
+### 27.4 — Frozen Core gate-check protocol — followed verbatim
+
+Per-file: edit → `npx tsc -b` → scoped `npx jest <relevant-dir>` → next file. Each cycle:
+
+| File | TSC | Scoped Jest result |
+|---|---|---|
+| 1. `double-entry-journal.service.ts` | 0 errors | `general-ledger`: 6 / 6 suites, 35 / 35 tests |
+| 2. `snapshot-realtime-refresher.service.ts` | 0 errors | `snapshots`: 2 / 2 suites, 10 / 10 tests (after re-run — see flake note below) |
+| 3. `accountant-dashboard-math.ts` | 0 errors | `utils + accounting`: 2 / 2 suites, 21 / 21 tests |
+| 4. `financial-periods.service.ts` | 0 errors | `periods + period-lock`: 3 / 3 suites, 26 / 26 tests |
+| 5. `debt-ledger-payment-origin.util.ts` | 0 errors | `debt-ledger-payment-origin`: 1 / 1 suite, 11 / 11 tests |
+
+### 27.5 — Pre-existing flake noted (NOT introduced by D-1)
+
+During the gate for file 2 (snapshots), `snapshot-realtime-refresher.spec.ts` failed on the first run (1 / 10 failure) but passed on subsequent runs. To rule out the D-1 edit as cause, a controlled experiment was performed:
+
+1. `git stash` the D-1 edit.
+2. Run the spec 5 consecutive times against the **pre-D-1** code.
+3. Result: **1 failure / 5 runs** even WITHOUT the D-1 edit.
+4. `git stash pop` to restore the D-1 edit.
+
+→ The flake is **pre-existing** (already documented as Error 14 in the V24 session journal). The D-1 work neither caused nor exacerbated it. Tracking it for separate triage is appropriate; blocking D-1 on it is not.
+
+### 27.6 — Final Green Matrix proof
+
+| Gate | Result |
+|---|---|
+| `npx tsc -b` (BE, pre-commit hook target) | **0 errors** |
+| `npx tsc --noEmit` (`web/`) | **0 errors** |
+| `npx jest` (BE, full suite) | **89 / 89 suites, 798 / 798 tests pass** (21 skipped — unchanged) |
+| `npx vitest run` (`web/`) | **39 / 39 files, 259 / 259 tests pass** |
+| `npm run build` (`web/`) | **OK — built in 1.05 s** |
+| V24 canonical-DTO purity + reconciliation baseline | **2 / 2 suites, 6 / 6 tests pass** |
+| `scripts/find-legacy-debt-readers.ts` | `[LEGACY_READER_FOUND] none — repo is clean.` |
+| Pre-commit hook | **passes naturally — NO `--no-verify` used** |
+
+### 27.7 — Files touched (5 source files + 1 doc)
+
+| # | Path | Edit |
+|---|---|---|
+| 1 | `src/general-ledger/double-entry-journal.service.ts` | `export const CRITICAL_FAILURE_WINDOW_MS` → `const CRITICAL_FAILURE_WINDOW_MS` |
+| 2 | `src/finance/snapshots/snapshot-realtime-refresher.service.ts` | 3× `export const DEFAULT_*` → `const DEFAULT_*` |
+| 3 | `src/finance/utils/accountant-dashboard-math.ts` | `export const RECONCILIATION_BALANCE_EPS` → `const RECONCILIATION_BALANCE_EPS` |
+| 4 | `src/finance/periods/financial-periods.service.ts` | Deleted `export { ForbiddenException }` line + removed orphan `ForbiddenException` from `@nestjs/common` import |
+| 5 | `src/finance/debt-ledger-payment-origin.util.ts` | `export const ALLOWED_PAYMENT_SOURCE_REF_PREFIXES` → `const ALLOWED_PAYMENT_SOURCE_REF_PREFIXES` |
+| 6 | `docs/v23-1-architectural-purge-scorecard.md` | This section appended |
+
+### 27.8 — Risk / reversibility
+
+- **Risk: zero net regression.** Every gate that was green before D-1 is still green after.
+- **Reversibility**: each `export` keyword removal is a one-character revert. The single line-deletion (ForbiddenException re-export) is recoverable from this commit's diff.
+- **Banking Core contracts intact**: `canonical-invoice-status.ts` and `canonical-money.ts` re-exports verified to still resolve via TSC and to still be exercised by the V21+ test suites.
+
+### 27.9 — V24 Station 2 — STATUS: COMPLETE
+
+With D-1 closed, every step in V24 Station 2 is now done:
+
+- ✅ Step A — `dist/` artefact purge from git index.
+- ✅ Step B — empty FE module skeleton deletion.
+- ✅ Step C — dependency purge (15 packages) + `multer` honesty.
+- ✅ Step D-2 — 42 unused non-core exports purged.
+- ✅ Step D-1 — 7 Banking Core unused exports purged (3 false-positive KEEPs preserved).
+- ✅ Tier 3 — 24 ad-hoc `.mjs` / `.cjs` scripts purged.
+
+The only deferred items now sit outside the V24 Station 2 charter:
+
+- **Stretch** — re-evaluate Knip's 187 FE-export false-positive list under a proper `knip.json` config (Station 3 candidate).
+- **Pre-existing flake** — `snapshot-realtime-refresher.spec.ts` (Error 14) — separate triage.
 

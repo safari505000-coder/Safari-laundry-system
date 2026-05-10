@@ -42,7 +42,7 @@ export const WALLET_ABSORPTION_SOURCE_REF_PREFIXES = [
 ] as const;
 
 /** Union of every prefix that is allowed at a PAYMENT write site. */
-export const ALLOWED_PAYMENT_SOURCE_REF_PREFIXES = [
+const ALLOWED_PAYMENT_SOURCE_REF_PREFIXES = [
   ...REAL_PAYMENT_SOURCE_REF_PREFIXES,
   ...WALLET_ABSORPTION_SOURCE_REF_PREFIXES,
 ] as const;
