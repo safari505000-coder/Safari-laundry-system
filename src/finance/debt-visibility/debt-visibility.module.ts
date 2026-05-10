@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { AuthModule } from '../../auth/auth.module';
 import { GeneralLedgerModule } from '../../general-ledger/general-ledger.module';
 import { PrismaModule } from '../../prisma/prisma.module';
@@ -16,7 +16,9 @@ import { DebtVisibilityService } from './debt-visibility.service';
  */
 @Module({
   imports: [
-    AuthModule,
+    // AuthModule imports FinanceModule → … → OrdersModule → DebtVisibilityModule.
+    // Defer AuthModule resolution so Nest never sees `undefined` at imports[0].
+    forwardRef(() => AuthModule),
     PrismaModule,
     GeneralLedgerModule,
     FinancialSnapshotsModule,
