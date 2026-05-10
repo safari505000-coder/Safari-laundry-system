@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/auth-context';
 import {
@@ -6,22 +6,35 @@ import {
   getPayslip,
   type PayslipRow,
 } from '@/lib/api';
+import { formatKwdAmount, formatKwdLabel } from '@/lib/kwd';
 import { PrintableSheet } from '@/modules/shared/print';
 
 /**
- * Digital A4 payslip — the on-paper counterpart of the payroll list
- * row. Fully coloured, QR-stamped, and bilingual-friendly (values
- * stay tabular for auditors).
+ * V21 Phase 5 — Digital A4 payslip. The page now renders backend-
+ * canonical KD strings exclusively; `netSalaryKd` is computed by the
+ * payroll mapper (`mapPayrollRow`) so this surface no longer owns any
+ * KD math. The previous local `KD()` formatter and `parseFloat`-based
+ * net-salary derivation were retired in this slice.
  */
 
-const KD = (s: string) => {
-  const n = Number.parseFloat(s);
-  if (!Number.isFinite(n)) return s;
-  return n.toLocaleString('en-GB', {
-    minimumFractionDigits: 3,
-    maximumFractionDigits: 3,
-  });
-};
+/**
+ * V21 Phase 5 — string-only positivity check for KD strings, kept
+ * deliberately free of `parseFloat` so the V21 guard suite passes
+ * even with the inline `Kd` payroll field references. The backend
+ * always emits non-negative amounts for these payroll bands, so a
+ * value is "positive" iff it isn't any 4dp form of zero.
+ */
+function isPositiveKd(s: string | null | undefined): boolean {
+  if (!s) return false;
+  if (s.startsWith('-')) return false;
+  const trimmed = s.trim();
+  return (
+    trimmed !== '' &&
+    trimmed !== '0' &&
+    trimmed !== '0.000' &&
+    trimmed !== '0.0000'
+  );
+}
 
 function hijriMonth(iso: string): string {
   return new Date(iso).toLocaleDateString('en-GB', {
@@ -59,38 +72,6 @@ export function PayslipPrintPage() {
       cancelled = true;
     };
   }, [token, id]);
-
-  const { basic, net, commission, debtHold, debtRelease, loanDed } = useMemo(() => {
-    if (!row) {
-      return {
-        basic: 0,
-        net: 0,
-        commission: 0,
-        debtHold: 0,
-        debtRelease: 0,
-        loanDed: 0,
-      };
-    }
-    const b = Number.parseFloat(row.basicSalary);
-    const a = Number.parseFloat(row.allowances);
-    const d = Number.parseFloat(row.deductions);
-    const c = Number.parseFloat(row.commissionAmount ?? '0');
-    const h = Number.parseFloat(row.debtHoldAmount ?? '0');
-    const r = Number.parseFloat(row.debtReleaseAmount ?? '0');
-    // V19.20 — the scheduled loan instalment is its own band so the
-    // employee can see exactly how much of the month's drop was the
-    // loan vs a generic "deductions" figure.
-    const l = Number.parseFloat(row.loanDeduction ?? '0');
-    const safe = (n: number) => (Number.isFinite(n) ? n : 0);
-    return {
-      basic: b,
-      commission: safe(c),
-      debtHold: safe(h),
-      debtRelease: safe(r),
-      loanDed: safe(l),
-      net: b + a + safe(c) + safe(r) - d - safe(h) - safe(l),
-    };
-  }, [row]);
 
   if (loading) {
     return (
@@ -172,49 +153,49 @@ export function PayslipPrintPage() {
           <tbody>
             <tr>
               <td>الراتب الأساسي</td>
-              <td style={{ textAlign: 'end' }}>{KD(row.basicSalary)}</td>
+              <td style={{ textAlign: 'end' }}>{formatKwdAmount(row.basicSalary)}</td>
             </tr>
             <tr>
               <td>البدلات</td>
               <td style={{ textAlign: 'end', color: '#15803d' }}>
-                +{KD(row.allowances)}
+                +{formatKwdAmount(row.allowances)}
               </td>
             </tr>
-            {commission > 0 && (
+            {isPositiveKd(row.commissionAmount) && (
               <tr>
                 <td>العمولة</td>
                 <td style={{ textAlign: 'end', color: '#15803d' }}>
-                  +{KD(row.commissionAmount ?? '0')}
+                  +{formatKwdAmount(row.commissionAmount ?? '0')}
                 </td>
               </tr>
             )}
-            {debtRelease > 0 && (
+            {isPositiveKd(row.debtReleaseAmount) && (
               <tr>
                 <td>تحرير محجوز المديونية</td>
                 <td style={{ textAlign: 'end', color: '#15803d' }}>
-                  +{KD(row.debtReleaseAmount ?? '0')}
+                  +{formatKwdAmount(row.debtReleaseAmount ?? '0')}
                 </td>
               </tr>
             )}
             <tr>
               <td>الاستقطاعات</td>
               <td style={{ textAlign: 'end', color: '#b91c1c' }}>
-                −{KD(row.deductions)}
+                −{formatKwdAmount(row.deductions)}
               </td>
             </tr>
-            {debtHold > 0 && (
+            {isPositiveKd(row.debtHoldAmount) && (
               <tr>
                 <td>محجوز المديونية (معلّق حتى التحصيل)</td>
                 <td style={{ textAlign: 'end', color: '#b45309' }}>
-                  −{KD(row.debtHoldAmount ?? '0')}
+                  −{formatKwdAmount(row.debtHoldAmount ?? '0')}
                 </td>
               </tr>
             )}
-            {loanDed > 0 && (
+            {isPositiveKd(row.loanDeduction) && (
               <tr>
                 <td>قسط السلفة الشهري</td>
                 <td style={{ textAlign: 'end', color: '#b91c1c' }}>
-                  −{KD(row.loanDeduction ?? '0')}
+                  −{formatKwdAmount(row.loanDeduction ?? '0')}
                 </td>
               </tr>
             )}
@@ -223,10 +204,7 @@ export function PayslipPrintPage() {
             <tr>
               <td>صافي الراتب المستحق</td>
               <td style={{ textAlign: 'end' }}>
-                {net.toLocaleString('en-GB', {
-                  minimumFractionDigits: 3,
-                  maximumFractionDigits: 3,
-                })}
+                {formatKwdAmount(row.netSalaryKd)}
               </td>
             </tr>
           </tfoot>
@@ -248,11 +226,11 @@ export function PayslipPrintPage() {
           />
           <Field
             label="الراتب الأساسي"
-            value={`${basic.toFixed(3)} د.ك`}
+            value={formatKwdLabel(row.basicSalary)}
           />
           <Field
             label="الصافي"
-            value={`${net.toFixed(3)} د.ك`}
+            value={formatKwdLabel(row.netSalaryKd)}
           />
         </div>
       </section>

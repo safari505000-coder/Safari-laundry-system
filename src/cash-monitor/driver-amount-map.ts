@@ -64,7 +64,7 @@ export function getDriverAmountKd(
  * composeOperational, executive auditReference, and the SSoT
  * assertion.
  */
-export function sumClassifiedKd(classified: ClassifiedLike): number {
+function sumClassifiedKd(classified: ClassifiedLike): number {
   let s = 0;
   for (const d of classified.drivers) {
     const n = Number(d.amount);
@@ -77,25 +77,3 @@ export function sumClassifiedKdLabel(classified: ClassifiedLike): string {
   return sumClassifiedKd(classified).toFixed(4);
 }
 
-/**
- * Canonical SSoT read API. This is the ONLY function any future
- * consumer should call when it needs "the cash for this driver".
- *
- * It is a thin alias over `getDriverAmountStr` (kept for API stability
- * with existing callers). The renamed export gives the system
- * constitution a single, easy-to-grep name:
- *
- *   import { getDriverAmountFromSSoT } from '../cash-monitor/driver-amount-map';
- *   const cashKd = getDriverAmountFromSSoT(amountMap, driverId);
- *
- * Returns the verbatim 4-decimal KD string from the classifier
- * (`'0.0000'` when the driver is unknown). NEVER parses, never sums,
- * never reformats. Anything beyond a verbatim read MUST live inside
- * `CashClassifierService` so the SSoT remains a single producer.
- */
-export function getDriverAmountFromSSoT(
-  map: DriverAmountMap,
-  driverId: string,
-): string {
-  return getDriverAmountStr(map, driverId);
-}

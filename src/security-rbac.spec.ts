@@ -66,7 +66,11 @@ describe('collections and WhatsApp RBAC security lock', () => {
 
   it('direct API routes expose only the call-center security roles', () => {
     const callCenter = new CallCenterController({} as any);
-    const orders = new OrdersController({} as any);
+    // V23.3 — `OrdersController` constructor gained an `AuditService`
+    // dependency. Stub it with an empty object — this RBAC test only
+    // walks the metadata via `Reflect.getMetadata`, never invokes
+    // a method that would hit `audit.log`.
+    const orders = new OrdersController({} as any, {} as any);
 
     for (const method of [
       'operationsSummary',
@@ -131,7 +135,14 @@ describe('collections and WhatsApp RBAC security lock', () => {
     expect(authLayout).toContain("'/collections'");
     expect(authLayout).toContain("'/whatsapp-tools'");
     expect(authLayout).toContain('SECURITY_LOCKED_PATHS.has(pathname)');
-    expect(appRoutes).toContain('path="/403"');
+    // V23.3 — `App.tsx` declares the route as `path="403"` (relative)
+    // because it sits inside an outer parent `<Routes>`. The runtime
+    // navigation target is `/403` (absolute, asserted above on
+    // `requireAccess`). Match either form so the spec is stable
+    // across React-Router restructurings.
+    expect(
+      appRoutes.includes('path="/403"') || appRoutes.includes('path="403"'),
+    ).toBe(true);
   });
 
   it('sanitizes customer financial fields for MANAGER and DRIVER roles', async () => {

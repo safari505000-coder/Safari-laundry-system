@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Patch, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { SafariRole } from '@prisma/client';
+import { Prisma, SafariRole } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -44,7 +44,14 @@ export class PaymentMethodFeesController {
   async patch(@Body() dto: UpdatePaymentMethodFeesDto) {
     await this.feesService.ensureDefaultRow();
     const data: Record<string, unknown> = {};
-    if (dto.knetFlatKd !== undefined) data.knetFlatKd = dto.knetFlatKd;
+    // V24 — `knetFlatKd` arrives as canonical 4dp KWD string per
+    // the V24 input-DTO contract. Convert to Prisma.Decimal here
+    // so the persistence layer sees a typed money value, not a
+    // raw string. Percent fields stay as numbers (they are ratios,
+    // not money).
+    if (dto.knetFlatKd !== undefined) {
+      data.knetFlatKd = new Prisma.Decimal(dto.knetFlatKd);
+    }
     if (dto.knetPercentOfGross !== undefined) {
       data.knetPercentOfGross = dto.knetPercentOfGross;
     }

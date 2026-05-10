@@ -32,7 +32,7 @@ function deepSanitizeCopy(input: unknown): unknown {
   return out;
 }
 
-export function buildCustomerFriendlySummary(statement: Customer360StatementDto): string {
+function buildCustomerFriendlySummary(statement: Customer360StatementDto): string {
   const f = statement.financials;
   const subscriptionValue = Number.parseFloat(f.subscriptionValueKd);
   const subscriptionText =
@@ -40,9 +40,15 @@ export function buildCustomerFriendlySummary(statement: Customer360StatementDto)
       `قيمة الاشتراك ${f.subscriptionValueKd} د.ك، والمستهلك ${f.subscriptionConsumedKd} د.ك، ` +
       `والمتبقي من الاشتراك ${f.subscriptionRemainingKd} د.ك.`
     : 'لا يوجد اشتراك.';
+  // V23.2 — prefer the explicit breakdown's operatorHint when
+  // available (server-canonical sentence); fallback uses the
+  // canonical receivable debt (was the now-removed `totalDueKd`).
+  const breakdownLine =
+    f.breakdown?.operatorHint
+    ?? `المبلغ المطلوب دفعه حالياً ${f.canonicalDebtKd} د.ك.`;
   return (
     `إجمالي الفواتير ${f.totalInvoicesKd} د.ك، والمدفوع ${f.totalPaymentsKd} د.ك. ` +
-    `المبلغ المطلوب دفعه حالياً ${f.totalDueKd} د.ك. ` +
+    `${breakdownLine} ` +
     subscriptionText
   );
 }

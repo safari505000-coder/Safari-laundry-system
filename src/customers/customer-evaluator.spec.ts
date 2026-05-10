@@ -6,7 +6,7 @@ describe('customer evaluator', () => {
       evaluateCustomer({
         consumedKd: '0.0000',
         subscriptionValueKd: '0.0000',
-        totalDueKd: '0.0000',
+        canonicalDebtKd: '0.0000',
         isBlocked: true,
       }),
     ).toBe('BLOCKED');
@@ -17,7 +17,7 @@ describe('customer evaluator', () => {
       evaluateCustomer({
         consumedKd: '0.0000',
         subscriptionValueKd: '0.0000',
-        totalDueKd: '500.0100',
+        canonicalDebtKd: '500.0100',
       }),
     ).toBe('BLOCKED');
 
@@ -25,7 +25,7 @@ describe('customer evaluator', () => {
       evaluateCustomer({
         consumedKd: '1200.0000',
         subscriptionValueKd: '999.9900',
-        totalDueKd: '0.0000',
+        canonicalDebtKd: '0.0000',
       }),
     ).toBe('BLOCKED');
   });
@@ -35,7 +35,7 @@ describe('customer evaluator', () => {
       evaluateCustomer({
         consumedKd: '0.0000',
         subscriptionValueKd: '0.0000',
-        totalDueKd: '50.0100',
+        canonicalDebtKd: '50.0100',
       }),
     ).toBe('WATCH');
 
@@ -43,7 +43,7 @@ describe('customer evaluator', () => {
       evaluateCustomer({
         consumedKd: '70.1000',
         subscriptionValueKd: '50.0000',
-        totalDueKd: '0.0000',
+        canonicalDebtKd: '0.0000',
       }),
     ).toBe('WATCH');
 
@@ -51,7 +51,7 @@ describe('customer evaluator', () => {
       evaluateCustomer({
         consumedKd: '20.0000',
         subscriptionValueKd: '100.0000',
-        totalDueKd: '0.0000',
+        canonicalDebtKd: '0.0000',
       }),
     ).toBe('GOOD');
   });
@@ -60,7 +60,7 @@ describe('customer evaluator', () => {
     const fin = {
       consumedKd: '0.0000',
       subscriptionValueKd: '0.0000',
-      totalDueKd: '0.0000',
+      canonicalDebtKd: '0.0000',
     };
     expect(buildInsight(fin, 'BLOCKED')).toContain('العميل موقوف');
     expect(buildInsight(fin, 'WATCH')).toContain('يحتاج متابعة');

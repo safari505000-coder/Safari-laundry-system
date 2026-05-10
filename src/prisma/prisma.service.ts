@@ -115,6 +115,33 @@ export class PrismaService
     const auditDelegate = this.auditLog;
     (this as unknown as { auditLog: typeof auditDelegate }).auditLog =
       guardAppendOnlyDelegate(auditDelegate, 'AuditLog');
+
+    // V20.4 — Phase 3 application-layer journal append-only guard.
+    //
+    // The DB trigger `Journal_append_only_guard` (shipped in
+    // 20260506160000_double_entry_journal_foundation) is the
+    // ultimate enforcement, but it only fires at COMMIT time. By
+    // throwing in the application BEFORE the SQL is sent, we
+    // catch the bug at the call site (clean stack trace, no
+    // engine error noise) and we also protect any flow that
+    // batches the mutation with a non-mutating preceding query.
+    //
+    // We can't use the Prisma 7 client extension API on the
+    // PrismaService instance itself (the driver-adapter pool would
+    // be re-wrapped per delegate call and lose `$on` listeners),
+    // so we install the same Proxy strategy used for `auditLog`
+    // — which is safe because journalEntry/journalLine writers
+    // always sit inside DoubleEntryJournalService.appendBalanced
+    // and never participate in driver-adapter parallel batches.
+    const journalEntryDelegate = this.journalEntry;
+    (this as unknown as { journalEntry: typeof journalEntryDelegate }).journalEntry =
+      guardJournalDelegate(journalEntryDelegate, 'JournalEntry');
+    const journalLineDelegate = this.journalLine;
+    (this as unknown as { journalLine: typeof journalLineDelegate }).journalLine =
+      guardJournalDelegate(journalLineDelegate, 'JournalLine');
+    PrismaService.logger.log(
+      'JournalEntry / JournalLine append-only enforcement = DB trigger + app-layer guard',
+    );
   }
 
   async onModuleInit(): Promise<void> {
@@ -141,4 +168,51 @@ export class PrismaService
  * append-only guard applied to a bespoke PrismaClient instance without
  * going through Nest DI.
  */
-export { guardAppendOnlyDelegate };
+
+/**
+ * V20.4 — Phase 3 journal append-only guard.
+ *
+ * Intercepts mutating verbs on the Journal delegates so application
+ * code that accidentally tries to UPDATE or DELETE a journal row
+ * fails with a clear `JOURNAL_APPEND_ONLY_VIOLATION` exception
+ * BEFORE the SQL hits Postgres. The DB trigger
+ * `Journal_append_only_guard` is the ultimate enforcement, but it
+ * fires inside the engine and produces a noisy P2010 / SQL error
+ * stack with no caller context.
+ *
+ * Allowed verbs: every read (`findMany`, `findUnique`, `findFirst`,
+ * `count`, `aggregate`) plus the two append verbs
+ * (`create`, `createMany`). Everything else throws.
+ */
+const JOURNAL_FORBIDDEN_VERBS = [
+  'update',
+  'updateMany',
+  'delete',
+  'deleteMany',
+  'upsert',
+] as const;
+
+export function guardJournalDelegate<T extends object>(
+  delegate: T,
+  label: string,
+): T {
+  return new Proxy(delegate, {
+    get(target, prop) {
+      if (
+        typeof prop === 'string' &&
+        (JOURNAL_FORBIDDEN_VERBS as readonly string[]).includes(prop)
+      ) {
+        return () => {
+          throw new ForbiddenException(
+            `JOURNAL_APPEND_ONLY_VIOLATION — ${label}.${prop} is forbidden. Use a reversal entry via DoubleEntryJournalService.`,
+          );
+        };
+      }
+      const value = Reflect.get(target, prop, target) as unknown;
+      if (typeof value === 'function') {
+        return (value as (...args: unknown[]) => unknown).bind(target);
+      }
+      return value;
+    },
+  });
+}

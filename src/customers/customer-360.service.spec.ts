@@ -14,7 +14,13 @@ describe('Customer360Service', () => {
     findWallet: unknown;
     findManySubs: unknown[];
     aggregateFeedback: unknown;
+    findManyTransactionHistory: unknown[];
   }>) {
+    // V23.3 — Mock returns the union of every column either the
+    // Customer 360 service OR the financial engine ever reads
+    // (`displayName/phone/phone2` for the panel, and
+    // `isBlocked/blockReason/blockedAt` for the engine), so the same
+    // jest.fn handles both selectors transparently.
     const prisma = {
       customer: {
         findUnique: jest.fn().mockResolvedValue(
@@ -23,6 +29,9 @@ describe('Customer360Service', () => {
             displayName: 'X',
             phone: '500',
             phone2: null,
+            isBlocked: false,
+            blockReason: null,
+            blockedAt: null,
           },
         ),
       },
@@ -53,6 +62,7 @@ describe('Customer360Service', () => {
           overrides?.findFirstSub ?? {
             id: 'sub-1',
             planActualBalanceSnapshot: { toString: () => '10' },
+            activatedAt: new Date('2026-01-01T00:00:00.000Z'),
           },
         ),
         findMany: jest.fn().mockResolvedValue(overrides?.findManySubs ?? []),
@@ -69,6 +79,15 @@ describe('Customer360Service', () => {
         aggregate: jest.fn().mockResolvedValue(
           overrides?.aggregateFeedback ?? { _avg: { rating: 5 } },
         ),
+      },
+      // V23.3 — Required by `computeCustomer360FinancialCore` which
+      // reads SUBSCRIPTION_ACTIVATION transaction history rows to
+      // attribute activation-time debt settlements. Default `[]` is
+      // correct for tests that don't exercise that code path.
+      transactionHistory: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue(overrides?.findManyTransactionHistory ?? []),
       },
     };
     const customerBlocking = {
@@ -116,8 +135,21 @@ describe('Customer360Service', () => {
     expect(res.statement.financials.totalPaymentsKd).toBe('1.0000');
     expect(res.statement.financials.subscriptionValueKd).toBe('10.0000');
     expect(res.subscription.subscriptionValueKd).toBe('10.0000');
-    expect(res.statement.financials.totalDueKd).toBe('2.0000');
-    expect(res.friendlySummary).toContain('3.0000');
+    // V23.2 — `totalDueKd` removed from the wire DTO. The canonical
+    // receivable replaces it for every assertion across the codebase.
+    // V23.3 — `canonicalDebtKd` is derived from
+    // `computeCanonicalCustomerDebt` (per-open-invoice remaining
+    // balance + customer RESIDUAL FIFO), NOT the legacy
+    // `totalInvoices − totalPayments` formula. The ledger PAYMENT row
+    // in this fixture is unattached (no `orderId`), so the open UNPAID
+    // order's full `totalPrice` of 3.0000 is the canonical receivable.
+    expect(res.statement.financials.canonicalDebtKd).toBe('3.0000');
+    // V23.3 — `friendlySummary` lives only on the `Customer360SanitizedDto`
+    // arm of the union returned by `get360`; CUSTOMER role always lands
+    // on that arm, so narrow the union explicitly to satisfy `tsc`.
+    expect('friendlySummary' in res ? res.friendlySummary : '').toContain(
+      '3.0000',
+    );
   });
 
   it('CUSTOMER cannot access another customer id', async () => {

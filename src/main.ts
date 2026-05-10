@@ -41,6 +41,7 @@ import { APP_VERSION } from './common/constants/app-version';
 import { MetricsService } from './observability/metrics.service';
 import { validatePermissionCoverage } from './auth/permissions/validate-permissions';
 import { logDebugCustomer360Routes } from './bootstrap/log-express-routes';
+import { warnIfV20_4HybridMode } from './bootstrap/v20-4-final-ledger-warning';
 
 const DEFAULT_ADMIN_USERNAME = 'admin';
 const DEFAULT_ADMIN_PASSWORD = 'admin';
@@ -124,6 +125,7 @@ async function ensureDefaultOwner(prisma: PrismaService): Promise<void> {
 async function bootstrap() {
   validateProductionConfig();
   validatePermissionCoverage();
+  warnIfV20_4HybridMode();
   /** Default Nest/express.json limit is 100kb — fuel receipts are data URLs and exceed it, yielding a misleading 404. */
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bodyParser: false,

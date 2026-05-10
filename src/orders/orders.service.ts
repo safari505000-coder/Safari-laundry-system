@@ -35,13 +35,20 @@ import { CustomerLedgerService } from '../customer-ledger/customer-ledger.servic
 import { cashStatusForPaymentMethod } from '../common/utils/cash-status-for-method';
 import { resolveCustomerPhoneForNotify } from '../common/validation/kuwait-customer-phone';
 import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
+import { toDbPosPaymentMethod } from '../finance/canonical-payment-method';
+import {
+  computeCanonicalDriverPendingInvoiceProjection,
+  computeCanonicalUnpaidOnlineReportProjection,
+} from '../finance/canonical-financial-projection';
 import { parseFixed4ToMinor, toMinorFromFixed4 } from '../finance/finance-money';
 import { InventoryService } from '../inventory/inventory.service';
 import type { JwtUser } from '../auth/decorators/current-user.decorator';
 import { assertUserNotOnAdministrativeBranchForSales } from '../branches/administrative-branch.util';
 import {
+  computeOrderRemainingBalancesBatch,
   getCustomerDebtSnapshotTotalKd,
   getCustomerNetDebtFromDebtLedgerAgg,
+  INVOICE_REMAINING_TOLERANCE_KD,
 } from '../finance/debt-customer-aggregates.util';
 import { isRealDebtLedgerPayment } from '../finance/debt-ledger-payment-origin.util';
 import {
@@ -85,9 +92,17 @@ const PAYMENT_LINK_VALIDITY_MS = PAYMENT_LINK_VALIDITY_HOURS * 60 * 60 * 1000;
  * `OrdersService.listStaleQuickOrderRisks()` and the daily
  * `StaleQuickOrdersCron` audit job.
  */
-export const STALE_QUICK_ORDER_THRESHOLD_HOURS = 24;
-export const STALE_QUICK_ORDER_THRESHOLD_MS =
+const STALE_QUICK_ORDER_THRESHOLD_HOURS = 24;
+const STALE_QUICK_ORDER_THRESHOLD_MS =
   STALE_QUICK_ORDER_THRESHOLD_HOURS * 60 * 60 * 1000;
+
+export function resolveOperationalDebtKd(input: {
+  ledgerNetKd: Prisma.Decimal;
+  snapshotFromWalletKd: Prisma.Decimal;
+  orderMarketScopeKd: Prisma.Decimal;
+}): Prisma.Decimal {
+  return Prisma.Decimal.max(input.ledgerNetKd, input.snapshotFromWalletKd);
+}
 
 const orderDetailSelect = {
   id: true,
@@ -217,6 +232,30 @@ export class OrdersService {
       actorUserId,
       occurredAtIso: order.createdAt.toISOString(),
     } satisfies OrderCreatedEventPayload);
+  }
+
+  /**
+   * V20.4 — Phase 5 typed financial event. Mirrors the
+   * dispatch broadcast above so the read-side projection
+   * refreshes within milliseconds of an invoice landing in
+   * the database. Goes through `customerLedger.emitFinancialEvent`
+   * which absorbs missing-publisher conditions for tests.
+   */
+  private emitInvoiceIssued(
+    order: Pick<
+      OrderDetail,
+      'id' | 'createdAt' | 'totalPrice' | 'posPaymentMethod' | 'customer'
+    >,
+  ): void {
+    if (!order.customer?.id) return;
+    this.customerLedger.emitFinancialEvent('finance.invoice.issued', {
+      customerId: order.customer.id,
+      orderId: order.id,
+      correlationId: order.id,
+      occurredAt: order.createdAt.toISOString(),
+      invoiceTotalKd: order.totalPrice.toString(),
+      posPaymentMethod: order.posPaymentMethod ?? null,
+    });
   }
 
   private auditOrderCreated(order: OrderDetail, actorUserId: string | null): void {
@@ -445,43 +484,12 @@ export class OrdersService {
     }
   }
 
-  /**
-   * Wallet covers full total → SUBSCRIPTION_WALLET. Otherwise require external
-   * settlement (CASH / KNET / PAYMENT_LINK / DEBT_ON_ACCOUNT).
-   */
-  /** Maps client input to DB enum values (PostgreSQL enum is UPPERCASE). */
+  /** Maps public/client payment input to DB enum values. */
   private resolvePosCheckoutPaymentMethod(
-    shortfallMinor: bigint,
+    _shortfallMinor: bigint,
     raw: PosPaymentMethod | string | undefined,
   ): PosPaymentMethod {
-    if (shortfallMinor === 0n) {
-      return PosPaymentMethod.SUBSCRIPTION_WALLET;
-    }
-    const s = String(raw ?? 'CASH')
-      .trim()
-      .toUpperCase()
-      .replace(/-/g, '_')
-      .replace(/\s+/g, '');
-    if (s === 'KNET') {
-      return PosPaymentMethod.KNET;
-    }
-    if (
-      s === 'ONLINE' ||
-      s === 'PAYMENT_LINK' ||
-      s === 'LINK' ||
-      s === 'PAYMENTLINK'
-    ) {
-      return PosPaymentMethod.ONLINE;
-    }
-    if (
-      s === 'DEBT_ON_ACCOUNT' ||
-      s === 'ON_ACCOUNT' ||
-      s === 'DEBT' ||
-      s === 'CREDIT'
-    ) {
-      return PosPaymentMethod.DEBT_ON_ACCOUNT;
-    }
-    return PosPaymentMethod.CASH;
+    return toDbPosPaymentMethod(raw) ?? PosPaymentMethod.CASH;
   }
 
   private reconcileLineItems(
@@ -899,6 +907,7 @@ export class OrdersService {
         const merged: PosCheckoutOrderDetail = { ...detail, paymentLink };
         this.auditOrderCreated(merged, driverUserId);
         this.emitOrderCreated(merged, driverUserId);
+        this.emitInvoiceIssued(merged);
         await this.posInvoiceNotifyToCustomer(merged, phoneCompact);
         await this.prisma.order.update({
           where: { id: detail.id },
@@ -918,6 +927,7 @@ export class OrdersService {
       );
       this.auditOrderCreated(detail, driverUserId);
       this.emitOrderCreated(detail, driverUserId);
+      this.emitInvoiceIssued(detail);
       this.auditOrderPayment(detail, driverUserId);
       await this.customerBlocking.autoBlockIfNeeded(detail.customer.id);
       return detail;
@@ -1351,18 +1361,24 @@ export class OrdersService {
       // table-footer sum from the "Market Debt Total" card.
     });
 
-    // V1.7.4 — FIFO-allocate customer-level payments so a DEBT_ON_ACCOUNT
-    // invoice drops off the collections list the instant it is settled
-    // (same rule the Driver Field-Tracker + Owner Debt Recovery Report
-    // already use). UNPAID rows are always kept — their own pathway
-    // (hosted link / cash mark) flips `cashStatus` back on settlement.
+    // V20.8.1 — every row, including cashStatus=UNPAID, is filtered by
+    // canonical remaining balance. Subscription activation and partial
+    // payments may reduce an invoice without flipping cashStatus immediately,
+    // so gross status alone is not enough for Collections visibility.
     const debtCandidates = rows.filter(
       (r) => r.posPaymentMethod === PosPaymentMethod.DEBT_ON_ACCOUNT,
     );
     const openDebtOrderIds = await this.resolveOpenDebtOrderIds(
       debtCandidates.map((r) => ({ orderId: r.id, customerId: r.customerId })),
     );
+    const remainingByOrder = await computeOrderRemainingBalancesBatch(
+      this.prisma,
+      rows.map((r) => r.id),
+    );
+    const tol = new Prisma.Decimal(INVOICE_REMAINING_TOLERANCE_KD);
     const filteredRows = rows.filter((r) => {
+      const remaining = remainingByOrder.get(r.id) ?? r.totalPrice;
+      if (remaining.lessThanOrEqualTo(tol)) return false;
       if (r.cashStatus === CashStatus.UNPAID) return true;
       if (r.posPaymentMethod === PosPaymentMethod.DEBT_ON_ACCOUNT) {
         return openDebtOrderIds.has(r.id);
@@ -1426,7 +1442,7 @@ export class OrdersService {
         // V1.6.5 — KWD standard uses 3 decimal places (fils). The Red-
         // card aggregate formats with the same precision so the table
         // footer equals the KPI to the last fils.
-        amountKd: r.totalPrice.toFixed(3),
+        amountKd: (remainingByOrder.get(r.id) ?? r.totalPrice).toFixed(3),
         paymentMethod: r.posPaymentMethod,
         paymentUrl: r.posHostedPaymentUrl ?? null,
         createdAtIso: r.createdAt.toISOString(),
@@ -1443,6 +1459,32 @@ export class OrdersService {
         lineItems,
       };
     });
+  }
+
+  async listUnpaidCollectionOrdersReport(
+    branchId: string | null = null,
+    actor?: JwtUser,
+  ): Promise<{
+    rows: Awaited<ReturnType<OrdersService['listUnpaidCollectionOrders']>>;
+    paymentLinkRows: Awaited<ReturnType<OrdersService['listUnpaidCollectionOrders']>>;
+    branchSummaries: ReturnType<
+      typeof computeCanonicalUnpaidOnlineReportProjection
+    >['branchSummaries'];
+    paymentLinkSummary: ReturnType<
+      typeof computeCanonicalUnpaidOnlineReportProjection
+    >['paymentLinkSummary'];
+  }> {
+    const rows = await this.listUnpaidCollectionOrders(branchId, actor);
+    const projection = computeCanonicalUnpaidOnlineReportProjection(rows);
+    return {
+      rows,
+      paymentLinkRows: projection.paymentLinkRowIndexes
+        .slice(0, 50)
+        .map((index) => rows[index])
+        .filter((row): row is (typeof rows)[number] => Boolean(row)),
+      branchSummaries: projection.branchSummaries,
+      paymentLinkSummary: projection.paymentLinkSummary,
+    };
   }
 
   /**
@@ -1528,6 +1570,103 @@ export class OrdersService {
     return (unpaidAgg._sum.totalPrice ?? new Prisma.Decimal(0)).plus(
       debtOpenTotal,
     );
+  }
+
+  /**
+   * V20.3.1 — partial-payment-aware red KPI.
+   *
+   * Returns Σ(remaining_balance) over every order that contributes
+   * to the Collections / red-debt scope. Differs from
+   * {@link sumCollectionsDebtTotalKd} which sums gross
+   * `Order.totalPrice` and therefore overstates exposure for any
+   * invoice with prior partial payments.
+   *
+   * Migration plan: dashboards / red KPI / Outstanding header
+   * should call this method. The legacy `sumCollectionsDebtTotalKd`
+   * stays in place to avoid forcing every consumer to migrate at
+   * once. When `V20_3_TRUE_ACCOUNTING=true` the canonical debt
+   * value is the journal AR balance — see
+   * `JournalSourceService.getCustomerDebtFromJournalAR()` for the
+   * per-customer breakdown — but the per-order red KPI still
+   * derives from the DebtLedger waterfall here so the operator
+   * panel can drill from "red total" to "list of open invoices".
+   */
+  async sumCollectionsDebtRemainingKd(
+    branchId: string | null = null,
+    actor?: JwtUser,
+  ): Promise<Prisma.Decimal> {
+    const isDriver = actor?.role === SafariRole.DRIVER;
+    const effectiveBranchId =
+      isDriver ? null
+      : branchId ??
+        (actor?.role === SafariRole.MANAGER && actor.branchId ?
+          actor.branchId
+        : null);
+
+    const branchWhere: Prisma.OrderWhereInput | undefined = isDriver
+      ? { driverId: actor!.userId }
+      : effectiveBranchId
+        ? {
+            OR: [
+              { driver: { is: { branchId: effectiveBranchId } } },
+              {
+                driverId: null,
+                customer: { is: { originBranchId: effectiveBranchId } },
+              },
+            ],
+          }
+        : undefined;
+
+    const rows = await this.prisma.order.findMany({
+      where: {
+        status: { not: OrderStatus.CANCELED },
+        OR: [
+          { cashStatus: CashStatus.UNPAID },
+          { posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT },
+        ],
+        ...(branchWhere ?? {}),
+      },
+      select: {
+        id: true,
+        customerId: true,
+        totalPrice: true,
+        cashStatus: true,
+        posPaymentMethod: true,
+      },
+    });
+    if (rows.length === 0) return new Prisma.Decimal(0);
+
+    const debtCandidates = rows.filter(
+      (r) => r.posPaymentMethod === PosPaymentMethod.DEBT_ON_ACCOUNT,
+    );
+    const openDebtOrderIds = await this.resolveOpenDebtOrderIds(
+      debtCandidates.map((d) => ({
+        orderId: d.id,
+        customerId: d.customerId,
+      })),
+    );
+
+    const inScope = rows.filter((r) => {
+      if (r.cashStatus === CashStatus.UNPAID) return true;
+      if (r.posPaymentMethod === PosPaymentMethod.DEBT_ON_ACCOUNT) {
+        return openDebtOrderIds.has(r.id);
+      }
+      return false;
+    });
+    if (inScope.length === 0) return new Prisma.Decimal(0);
+
+    const remainingByOrder = await computeOrderRemainingBalancesBatch(
+      this.prisma,
+      inScope.map((r) => r.id),
+    );
+    const tol = new Prisma.Decimal(INVOICE_REMAINING_TOLERANCE_KD);
+    let total = new Prisma.Decimal(0);
+    for (const r of inScope) {
+      const rem = remainingByOrder.get(r.id) ?? r.totalPrice;
+      if (rem.lessThanOrEqualTo(tol)) continue;
+      total = total.plus(rem);
+    }
+    return total;
   }
 
   /**
@@ -1669,6 +1808,14 @@ export class OrdersService {
     tx?: Prisma.TransactionClient,
   ): Promise<{
     totalKd: Prisma.Decimal;
+    /**
+     * V20.3.1 — Σ(remaining_balance) over the same in-scope rows.
+     * Differs from `totalKd` whenever an in-scope invoice has prior
+     * partial payments. Use this for red KPI / Outstanding header /
+     * collections views; `totalKd` is preserved for callers that
+     * still need the gross figure.
+     */
+    remainingKd: Prisma.Decimal;
     openOrderIds: Set<string>;
   }> {
     const db = tx ?? this.prisma;
@@ -1701,14 +1848,29 @@ export class OrdersService {
     );
     let totalKd = new Prisma.Decimal(0);
     const openOrderIds = new Set<string>();
+    const inScopeIds: string[] = [];
     for (const r of rows) {
       if (!this.isOrderInCollectionsUncollectedScope(r, openDebtOrderIds)) {
         continue;
       }
       totalKd = totalKd.plus(r.totalPrice);
       openOrderIds.add(r.id);
+      inScopeIds.push(r.id);
     }
-    return { totalKd, openOrderIds };
+    let remainingKd = new Prisma.Decimal(0);
+    if (inScopeIds.length > 0) {
+      const remainingByOrder = await computeOrderRemainingBalancesBatch(
+        db,
+        inScopeIds,
+      );
+      const tol = new Prisma.Decimal(INVOICE_REMAINING_TOLERANCE_KD);
+      for (const id of inScopeIds) {
+        const rem = remainingByOrder.get(id);
+        if (!rem || rem.lessThanOrEqualTo(tol)) continue;
+        remainingKd = remainingKd.plus(rem);
+      }
+    }
+    return { totalKd, remainingKd, openOrderIds };
   }
 
   /**
@@ -1752,8 +1914,6 @@ export class OrdersService {
     walletDebtKd: Prisma.Decimal;
     collectionsReceivableKd: Prisma.Decimal;
     operationalDebtKd: Prisma.Decimal;
-    /** @deprecated Use operationalDebtKd. Kept for API compatibility. */
-    effectiveDebtKd: Prisma.Decimal;
     collectionsOpenOrderIds: Set<string>;
     /** Present when env `EXPOSE_DEBT_BREAKDOWN=1`: three inputs + winners. */
     trace?: DebtKdBreakdownTrace;
@@ -1784,11 +1944,25 @@ export class OrdersService {
     const ledgerNetKd = ledgerOpen.netOpenDebtKd;
     /** نفس «قديم effective»: دين المحفظة + ذمم التحصيل الظاهرة في القائمة. */
     const orderMarketScopeKd = walletDebtKd.plus(collectionsSnap.totalKd);
-    const operationalDebtKd = Prisma.Decimal.max(
+
+    // V20.1 → V22 — Operational debt double-count fix.
+    //
+    // Legacy behaviour: `operationalDebtKd = max(ledgerNet, walletSnapshot,
+    // walletDebt + Σ Order.totalPrice of open DEBT_ON_ACCOUNT)`. The
+    // third term double-counts: `walletDebt` already reflects the
+    // post-wallet shortfall, while `collectionsSnap.totalKd` adds the
+    // FULL `Order.totalPrice` of every open DEBT_ON_ACCOUNT row. For a
+    // customer with walletDebt=30.250 and one open debt-on-account
+    // invoice for 30.250, the customer card reported 60.500.
+    //
+    // V22 makes the ledger/wallet path final because the canonical
+    // sources (`DebtLedgerEntry` and the wallet snapshot) already carry
+    // the receivable once. The old inflated comparator is fully retired.
+    const operationalDebtKd = resolveOperationalDebtKd({
       ledgerNetKd,
       snapshotFromWalletKd,
       orderMarketScopeKd,
-    );
+    });
 
     const collectionsReceivableKd = Prisma.Decimal.max(
       operationalDebtKd.sub(walletDebtKd),
@@ -1828,19 +2002,9 @@ export class OrdersService {
       walletDebtKd,
       collectionsReceivableKd,
       operationalDebtKd,
-      effectiveDebtKd: operationalDebtKd,
       collectionsOpenOrderIds,
       trace,
     };
-  }
-
-  /** @deprecated Use getOperationalDebtKdBreakdown. */
-  async getEffectiveDebtKdBreakdown(
-    customerId: string,
-    embeddedWalletDebt?: Prisma.Decimal | null,
-    tx?: Prisma.TransactionClient,
-  ) {
-    return this.getOperationalDebtKdBreakdown(customerId, embeddedWalletDebt, tx);
   }
 
   /** Every order id for this customer that is still counted as Collections debt. */
@@ -1952,15 +2116,6 @@ export class OrdersService {
   }
 
   /**
-   * @deprecated Use {@link listUnpaidCollectionOrders}. Retained as a
-   * thin alias so that legacy callers (if any) keep compiling while
-   * callers migrate to the widened, payment-method-agnostic query.
-   */
-  async listUnpaidOnlinePaymentOrders() {
-    return this.listUnpaidCollectionOrders(null, undefined);
-  }
-
-  /**
    * V3.8 — Driver island: "Field Collection Tracker" (كشف المتابعة
    * الميدانية). READ-ONLY list of the driver's own unpaid invoices so
    * they can see what's still outstanding without ever crossing into
@@ -2006,8 +2161,8 @@ export class OrdersService {
    * `TransactionHistory`, `PaymentLink` metadata, or the collections
    * aggregates — it is a pure `Order` projection.
    */
-  async listDriverPendingInvoices(userId: string): Promise<
-    {
+  async listDriverPendingInvoices(userId: string, search?: string | null): Promise<{
+    rows: {
       orderId: string;
       readableId: string;
       invoiceNumber: string | null;
@@ -2033,8 +2188,11 @@ export class OrdersService {
        */
       linkStatus: 'PENDING' | 'EXPIRED' | null;
       createdAtIso: string;
-    }[]
-  > {
+    }[];
+    totalAmountKd: string;
+    filteredCount: number;
+    totalCount: number;
+  }> {
     const rows = await this.prisma.order.findMany({
       where: {
         driverId: userId,
@@ -2088,7 +2246,7 @@ export class OrdersService {
     });
 
     const now = Date.now();
-    return filtered.map((r) => {
+    const projected = filtered.map((r) => {
       const phone =
         r.customer.phone?.replace(/[\s-]/g, '').trim() ||
         r.customer.phone2?.replace(/[\s-]/g, '').trim() ||
@@ -2119,7 +2277,7 @@ export class OrdersService {
           ageMs <= PAYMENT_LINK_VALIDITY_MS ? 'PENDING' : 'EXPIRED';
       }
 
-      return {
+      const row = {
         orderId: r.id,
         readableId,
         invoiceNumber: r.invoiceNumber ?? null,
@@ -2132,7 +2290,24 @@ export class OrdersService {
         linkStatus,
         createdAtIso: r.createdAt.toISOString(),
       };
+      return {
+        ...row,
+        searchableText: [
+          row.readableId,
+          row.invoiceNumber ?? '',
+          row.customerName,
+          row.customerPhone,
+          row.notes ?? '',
+        ].join(' '),
+      };
     });
+    const result = computeCanonicalDriverPendingInvoiceProjection(projected, search);
+    return {
+      rows: result.rows.map(({ searchableText: _searchableText, ...row }) => row),
+      totalAmountKd: result.totalAmountKd,
+      filteredCount: result.filteredCount,
+      totalCount: result.totalCount,
+    };
   }
 
   /**

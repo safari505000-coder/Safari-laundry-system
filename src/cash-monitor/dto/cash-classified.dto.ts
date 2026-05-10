@@ -117,8 +117,12 @@ export class ClassifiedRulesDto {
   @ApiProperty()
   gracePeriodHours!: number;
 
-  @ApiProperty({ description: 'Minimum amount (KD) required to ever cross WARNING.' })
-  smallAmountFloorKd!: number;
+  @ApiProperty({
+    description:
+      'V24 — Minimum amount (canonical 4dp KWD string) required to ever cross WARNING. Compare via Decimal/compareKwdStrings, never coerce to JS number.',
+    example: '5.0000',
+  })
+  smallAmountFloorKd!: string;
 
   @ApiProperty({ description: 'Anomaly types treated as FINANCIAL chain breaks.' })
   financialChainTypes!: string[];
@@ -155,6 +159,21 @@ export class CashClassifiedResponseDto {
 
   @ApiProperty({ type: () => ClassifiedDriverDto, isArray: true })
   drivers!: ClassifiedDriverDto[];
+
+  /**
+   * V21 Phase 5 — Σ `drivers[].amount` precomputed in 4dp on the SSoT
+   * classifier so dashboards never re-aggregate driver amounts via
+   * `parseFloat` + `reduce` on the client. The sum mirrors the scope
+   * of the classifier — when a manager-scoped controller path calls
+   * `scopeClassifiedByBranch`, this field is recomputed against the
+   * clamped driver list.
+   */
+  @ApiProperty({
+    description:
+      'Σ classified.drivers[].amount in 4dp. Backend-computed sum of every cash holder amount in scope.',
+    example: '12.5000',
+  })
+  totalCashKd!: string;
 
   @ApiProperty({ description: 'One-line decision summary for the operator.' })
   finalDecision!: string;

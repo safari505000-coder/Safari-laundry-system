@@ -22,6 +22,12 @@ import { CreatePayrollAdhocLineDto } from './dto/create-payroll-adhoc-line.dto';
 import { CreatePayrollDto } from './dto/create-payroll.dto';
 import { PayrollQueryDto } from './dto/payroll-query.dto';
 import { UpdatePayrollAdhocLineDto } from './dto/update-payroll-adhoc-line.dto';
+import {
+  mapPayrollAdHocLine,
+  mapPayrollAdHocLines,
+  mapPayrollRow,
+  mapPayrollRows,
+} from './payroll.response';
 import { PayrollService } from './payroll.service';
 
 @ApiTags('payroll')
@@ -34,18 +40,23 @@ export class PayrollController {
   @Post()
   @Roles(SafariRole.OWNER, SafariRole.MANAGER)
   @ApiOperation({ summary: `Create payroll line (${APP_BRAND})` })
-  create(@Body() dto: CreatePayrollDto, @CurrentUser() user: JwtUser) {
-    return this.payrollService.create(user.role as SafariRole, dto);
+  async create(@Body() dto: CreatePayrollDto, @CurrentUser() user: JwtUser) {
+    const row = await this.payrollService.create(user.role as SafariRole, dto);
+    return mapPayrollRow(row);
   }
 
   @Patch(':id/mark-paid')
   @Roles(SafariRole.OWNER, SafariRole.MANAGER)
   @ApiOperation({ summary: `Mark payroll as paid (${APP_BRAND})` })
-  markPaid(
+  async markPaid(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: JwtUser,
   ) {
-    return this.payrollService.markPaid(user.role as SafariRole, id);
+    const row = await this.payrollService.markPaid(
+      user.role as SafariRole,
+      id,
+    );
+    return mapPayrollRow(row);
   }
 
   /**
@@ -63,14 +74,15 @@ export class PayrollController {
     description:
       'Pulls the scheduled monthly instalment(s) into this payroll row for loans that have never been consumed by a payroll. Only touches PENDING rows.',
   })
-  recalcLoan(
+  async recalcLoan(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: JwtUser,
   ) {
-    return this.payrollService.recalcLoanDeduction(
+    const row = await this.payrollService.recalcLoanDeduction(
       user.role as SafariRole,
       id,
     );
+    return mapPayrollRow(row);
   }
 
   @Get()
@@ -81,13 +93,14 @@ export class PayrollController {
     SafariRole.ACCOUNTANT,
   )
   @ApiOperation({ summary: `List payroll in date range (${APP_BRAND})` })
-  list(@Query() q: PayrollQueryDto, @CurrentUser() user: JwtUser) {
-    return this.payrollService.list(
+  async list(@Query() q: PayrollQueryDto, @CurrentUser() user: JwtUser) {
+    const rows = await this.payrollService.list(
       user.role as SafariRole,
       q.from,
       q.to,
       q.branchId,
     );
+    return mapPayrollRows(rows);
   }
 
   /**
@@ -101,41 +114,47 @@ export class PayrollController {
     SafariRole.ACCOUNTANT,
   )
   @ApiOperation({ summary: `List manual payroll roster lines for YYYY-MM` })
-  listAdHoc(
+  async listAdHoc(
     @Query('ym') ym: string,
     @Query('branchId') branchId: string | undefined,
     @CurrentUser() user: JwtUser,
   ) {
-    return this.payrollService.listAdHocLines(
+    const rows = await this.payrollService.listAdHocLines(
       user.role as SafariRole,
       ym,
       branchId,
     );
+    return mapPayrollAdHocLines(rows);
   }
 
   @Post('adhoc-lines')
   @Roles(SafariRole.OWNER, SafariRole.MANAGER)
   @ApiOperation({ summary: `Create manual payroll roster line` })
-  createAdHoc(
+  async createAdHoc(
     @Body() dto: CreatePayrollAdhocLineDto,
     @CurrentUser() user: JwtUser,
   ) {
-    return this.payrollService.createAdHocLine(user.role as SafariRole, dto);
+    const row = await this.payrollService.createAdHocLine(
+      user.role as SafariRole,
+      dto,
+    );
+    return mapPayrollAdHocLine(row);
   }
 
   @Patch('adhoc-lines/:id')
   @Roles(SafariRole.OWNER, SafariRole.MANAGER)
   @ApiOperation({ summary: `Update manual payroll roster line` })
-  updateAdHoc(
+  async updateAdHoc(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdatePayrollAdhocLineDto,
     @CurrentUser() user: JwtUser,
   ) {
-    return this.payrollService.updateAdHocLine(
+    const row = await this.payrollService.updateAdHocLine(
       user.role as SafariRole,
       id,
       dto,
     );
+    return mapPayrollAdHocLine(row);
   }
 
   @Delete('adhoc-lines/:id')
@@ -165,14 +184,15 @@ export class PayrollController {
     description:
       'Stage-D — used by the printable payslip. Non-admin roles can only fetch their own payroll rows.',
   })
-  findOne(
+  async findOne(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: JwtUser,
   ) {
-    return this.payrollService.findOne(
+    const row = await this.payrollService.findOne(
       user.role as SafariRole,
       user.userId,
       id,
     );
+    return mapPayrollRow(row);
   }
 }

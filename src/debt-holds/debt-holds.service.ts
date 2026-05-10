@@ -8,6 +8,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemSettingsService } from '../system-settings/system-settings.service';
+import { summariseDebtHolds } from './debt-holds.summary';
 import { ListDebtHoldsDto } from './dto/list-debt-holds.dto';
 
 /**
@@ -265,7 +266,7 @@ export class DebtHoldsService {
           : {}
         : { employeeUserId: actorUserId }),
     };
-    return this.prisma.debtHold.findMany({
+    const rows = await this.prisma.debtHold.findMany({
       where,
       include: {
         employee: { select: { id: true, fullName: true, username: true } },
@@ -274,6 +275,7 @@ export class DebtHoldsService {
       },
       orderBy: { createdAt: 'desc' },
     });
+    return summariseDebtHolds(rows);
   }
 
   // ─── Manual holds (V19.17) ────────────────────────────────────────

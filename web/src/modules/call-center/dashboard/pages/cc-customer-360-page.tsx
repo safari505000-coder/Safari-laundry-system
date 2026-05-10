@@ -15,6 +15,7 @@ import {
   TabsTrigger,
 } from '@/modules/shared/components/ui/tabs';
 import { useAuth } from '@/contexts/auth-context';
+import { useRealtimeFinancialFeed } from '@/modules/finance';
 import { useCcCustomer360 } from '../hooks/use-cc-customer-360';
 import { useCcActiveDispatches } from '../hooks/use-cc-active-dispatches';
 import { Customer360Header } from '../components/customer-360-header';
@@ -52,7 +53,7 @@ export function CcCustomer360Page() {
   const { customerId } = useParams<{ customerId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, token } = useAuth();
 
   // All hooks live above any early return — React's rules-of-hooks
   // require unconditional invocation order across renders. Inputs that
@@ -75,6 +76,30 @@ export function CcCustomer360Page() {
   const dispatches = useCcActiveDispatches({
     customerId: safeCustomerId,
     pollMs: 10_000,
+  });
+
+  // V22 Phase 5 — Realtime adoption.
+  //
+  // Subscribe to the canonical `customer360` SSE channel scoped
+  // to the current customer. The hook ONLY invalidates the
+  // `financial:*` cache prefixes — it never reads `payload.*Kd`
+  // and never sets cache values directly (locked in by
+  // `v21-phase4-realtime-purity.test.ts`).
+  //
+  // The subsequent canonical refetch flows through
+  // `useCcCustomer360` → `useFinancialQuery` → backend canonical
+  // projection, preserving the V21 financial-truth invariant.
+  useRealtimeFinancialFeed({
+    channel: 'customer360',
+    customerId: safeCustomerId,
+    accessToken: token,
+    enabled: Boolean(safeCustomerId && token),
+    onEvent: () => {
+      // Trigger a follow-up canonical fetch — the cache marker
+      // was already moved to fetchedAt=0 by the hook itself, so
+      // this just kicks the in-flight reload.
+      customer360.reload();
+    },
   });
 
   // Whenever the 360 reloads (after block/unblock/create dispatch),

@@ -132,6 +132,28 @@ export class OrdersController {
    * 🔒 SECURITY LOCK - DO NOT MODIFY
    * Unauthorized roles must NEVER access collections or WhatsApp tools.
    */
+  @Get('collections/unpaid-online/report')
+  @UseGuards(RolesGuard)
+  @Roles(
+    SafariRole.CALL_CENTER,
+    SafariRole.CALL_CENTER_SUPERVISOR,
+  )
+  @ApiOperation({
+    summary: `Debt-Tracking report projection (${APP_BRAND})`,
+    description:
+      'V21 Phase 2: Read-only envelope for the Collections Report. Returns the legacy unpaid-online rows plus canonical backend summaries so the report UI does not group or sum financial rows locally.',
+  })
+  listCollectionsUnpaidOnlineReport(
+    @Query('branchId') branchId: string | undefined,
+    @CurrentUser() user: JwtUser,
+  ) {
+    const raw = (branchId ?? '').trim();
+    const uuidRe =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const scoped = raw && uuidRe.test(raw) ? raw : null;
+    return this.ordersService.listUnpaidCollectionOrdersReport(scoped, user);
+  }
+
   @Get('collections/unpaid-online')
   @UseGuards(RolesGuard)
   @Roles(
@@ -176,8 +198,11 @@ export class OrdersController {
     description:
       'V3.8 (Driver island): READ-ONLY list of the authenticated driver\'s own non-canceled orders that still need field follow-up. Filter: `driverId === me` AND (`cashStatus === UNPAID` OR (`posPaymentMethod === DEBT_ON_ACCOUNT` AND FIFO ledger allocation says the invoice still has open debt)). DEBT invoices vanish the moment the customer settles through any channel (hosted link, CC partial-debt payment, office cash recorded by the Accountant) so drivers never chase already-settled paper. Sort: `createdAt DESC`. Amounts serialized at 3 decimals (KWD standard). Strictly isolated from the Call Center debt-recovery workflow — no WhatsApp / Payment-Link side-effects, and the aggregated KPIs in `/api/call-center/operations-summary` remain untouched.',
   })
-  listDriverPendingInvoices(@CurrentUser() user: JwtUser) {
-    return this.ordersService.listDriverPendingInvoices(user.userId);
+  listDriverPendingInvoices(
+    @CurrentUser() user: JwtUser,
+    @Query('search') search?: string,
+  ) {
+    return this.ordersService.listDriverPendingInvoices(user.userId, search);
   }
 
   @Post(':id/invoice-share-link')

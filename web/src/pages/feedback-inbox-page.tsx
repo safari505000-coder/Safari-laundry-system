@@ -9,6 +9,7 @@ import {
   type FeedbackListResponse,
   type FeedbackListRow,
 } from '@/lib/api';
+import { formatKwdAmount } from '@/lib/kwd';
 
 /**
  * V19.22 — Customer Ratings inbox for Owner / GM / Call-Center.
@@ -238,10 +239,10 @@ function FeedbackCard({
     }
   }, [row.submittedAt]);
 
-  const totalLabel = useMemo(() => {
-    const n = Number.parseFloat(row.order.totalKd);
-    return Number.isFinite(n) ? n.toFixed(3) : row.order.totalKd;
-  }, [row.order.totalKd]);
+  const totalLabel = useMemo(
+    () => formatKwdAmount(row.order.totalKd),
+    [row.order.totalKd],
+  );
 
   const ringColor = isLow
     ? 'border-red-200 bg-red-50/40'

@@ -50,6 +50,13 @@ export class DebtRecoveryDayRowDto {
 
   @ApiProperty({ example: 2 })
   subscriptionCount!: number;
+
+  @ApiProperty({
+    example: 50,
+    description:
+      'Readonly chart ratio 0..100 computed by the canonical projection layer.',
+  })
+  trendRatio!: number;
 }
 
 export class DebtRecoveryReportDto {
@@ -70,6 +77,15 @@ export class DebtRecoveryReportDto {
 
   @ApiProperty({ example: '250.0000' })
   totalRecoveredWalletKd!: string;
+
+  @ApiProperty({ example: 12 })
+  totalSettlements!: number;
+
+  @ApiProperty({ example: 3 })
+  totalSubscriptions!: number;
+
+  @ApiProperty({ example: '120.5000' })
+  maxRecoveredKd!: string;
 
   @ApiProperty({ type: [DebtRecoveryDayRowDto] })
   days!: DebtRecoveryDayRowDto[];

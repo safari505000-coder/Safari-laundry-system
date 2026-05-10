@@ -26,10 +26,16 @@ export class SubscribersController {
   @ApiOperation({
     summary: `Subscriber list (${APP_BRAND})`,
     description:
-      'Live list of customers with subscription history or an active subscription window. ' +
-      'Accepts optional `?q=` to search by phone or display name (V19.4 CC pack #3).',
+      'V20.3.2 — by default, returns ONLY customers with a currently-active ' +
+      'CustomerSubscription (status === ACTIVE AND expiresAt > now). Debt / ' +
+      'payment / wallet state never determines membership. Pass ' +
+      '`?includeInactive=true` to fall back to the legacy behaviour that ' +
+      'also returns customers with subscription history but no current ' +
+      'active subscription. `?q=` filters by phone or display name.',
   })
   list(@Query() query: ListSubscribersQueryDto): Promise<SubscriberListRow[]> {
-    return this.subscribersService.list(query.q);
+    return this.subscribersService.list(query.q, {
+      includeInactive: query.includeInactive ?? false,
+    });
   }
 }

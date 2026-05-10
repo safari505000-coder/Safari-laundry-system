@@ -28,7 +28,7 @@ import {
   type DriverCashTraceDriver,
   type DriverCashTraceResponse,
 } from '@/lib/api';
-import { formatKwdLabel } from '@/lib/kwd';
+import { addKwdStrings, formatKwdLabel, isPositiveKd } from '@/lib/kwd';
 import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
 import { Badge } from '@/modules/shared/components/ui/badge';
 import { Button } from '@/modules/shared/components/ui/button';
@@ -430,10 +430,10 @@ export function DriverCashTracePage() {
           value={
             data
               ? formatKwdLabel(
-                  (
-                    Number(data.kpis.totalPendingAtManagerKd) +
-                    Number(data.kpis.totalAwaitingVerificationKd)
-                  ).toFixed(4),
+                  addKwdStrings(
+                    data.kpis.totalPendingAtManagerKd,
+                    data.kpis.totalAwaitingVerificationKd,
+                  ),
                 )
               : '—'
           }
@@ -459,7 +459,7 @@ export function DriverCashTracePage() {
           loading={loading}
           value={data ? formatKwdLabel(data.kpis.totalAtBankKd) : '—'}
           deltaBadge={
-            data && Number(data.kpis.totalRejectedKd) > 0
+            data && isPositiveKd(data.kpis.totalRejectedKd)
               ? t(
                   'driverCashTrace.kpiRejectedHint',
                   'Rejected: {{amount}}',
@@ -557,10 +557,10 @@ function DriverRow(props: {
 }) {
   const { t } = useTranslation();
   const { driver, isOpen, onToggle, fmtDateTime } = props;
-  const pendingWithDriver = Number(driver.pendingWithDriverKd);
-  const pendingTotalManager =
-    Number(driver.pendingAtManagerKd) +
-    Number(driver.awaitingVerificationKd);
+  const pendingTotalManagerKd = addKwdStrings(
+    driver.pendingAtManagerKd,
+    driver.awaitingVerificationKd,
+  );
 
   return (
     <>
@@ -608,7 +608,7 @@ function DriverRow(props: {
         <TableCell
           className={cn(
             'py-2 text-end font-medium tabular-nums',
-            pendingWithDriver > 0
+            isPositiveKd(driver.pendingWithDriverKd)
               ? 'text-rose-600 dark:text-rose-400'
               : 'text-muted-foreground',
           )}
@@ -616,7 +616,7 @@ function DriverRow(props: {
           {formatKwdLabel(driver.pendingWithDriverKd)}
         </TableCell>
         <TableCell className="py-2 text-end tabular-nums">
-          {formatKwdLabel(pendingTotalManager.toFixed(4))}
+          {formatKwdLabel(pendingTotalManagerKd)}
         </TableCell>
         <TableCell className="py-2 text-end tabular-nums">
           <span className="font-semibold text-emerald-700 dark:text-emerald-400">

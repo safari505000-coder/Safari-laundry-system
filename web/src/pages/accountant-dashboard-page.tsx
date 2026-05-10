@@ -30,7 +30,11 @@ import {
   getFinanceInsights,
   getFinanceReconciliationApi,
 } from '@/lib/api';
-import { formatKwdLabel } from '@/lib/kwd';
+import {
+  absKwdString,
+  chartScalarFromKwdString,
+  formatKwdLabel,
+} from '@/lib/kwd';
 import { MetricCard } from '@/components/dashboard/metric-card';
 import {
   PageHeader,
@@ -81,7 +85,7 @@ function reconStatusBadgeClass(s: FinanceReconciliationDto['status']) {
 }
 
 function reconCashGapKd(recon: FinanceReconciliationDto): string {
-  return Math.abs(Number(recon.shortfallKd)).toFixed(4);
+  return absKwdString(recon.shortfallKd);
 }
 
 function SimpleLineChart({
@@ -257,15 +261,17 @@ export function AccountantDashboardPage() {
 
   const profitPts = useMemo(() => {
     if (!summary?.charts.profitOverTime.length) return [];
-    const nums = summary.charts.profitOverTime.map((p) => Number(p.netKd));
-    return nums.map((y, i) => ({ x: i, y }));
+    return summary.charts.profitOverTime.map((p, i) => ({
+      x: i,
+      y: chartScalarFromKwdString(p.netKd),
+    }));
   }, [summary?.charts.profitOverTime]);
 
   const salesExpRows = useMemo(() => {
     if (!summary) return [];
     return summary.charts.salesVsExpenses.map((r) => ({
-      sales: Number(r.salesKd),
-      exp: Number(r.expensesKd),
+      sales: chartScalarFromKwdString(r.salesKd),
+      exp: chartScalarFromKwdString(r.expensesKd),
     }));
   }, [summary?.charts.salesVsExpenses]);
 
@@ -640,7 +646,7 @@ export function AccountantDashboardPage() {
                 <SimpleLineChart
                   points={summary.charts.cashStagesTrend.map((p, i) => ({
                     x: i,
-                    y: Number(p.collectedKd),
+                    y: chartScalarFromKwdString(p.collectedKd),
                   }))}
                 />
                 <p className="mt-2 text-[10px] text-muted-foreground">

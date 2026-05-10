@@ -147,7 +147,7 @@ const UPAYMENTS_TRACK_LIKE_KEYS: readonly string[] = [
 ];
 
 /** Pure-digit UPayments `trans_id` / inquiry ids are short; longer runs are wrong-field picks or corrupted JSON. */
-export const UPAYMENTS_MAX_DIGIT_ONLY_INQUIRY_LEN = 32;
+const UPAYMENTS_MAX_DIGIT_ONLY_INQUIRY_LEN = 32;
 
 function isPlausibleTrackValue(s: string, key: string): boolean {
   if (s.length < 5 || s.length > 128) {
@@ -2291,6 +2291,33 @@ export class PaymentsService implements OnModuleInit {
         userId: performedByUserId,
       });
       this.emitPaymentConfirmedNotify(orderId, 'debt_receipt');
+      // V20.3.2 — Phase 5 post-commit consistency log. Manual
+      // mark-paid is a `PAYMENT` event when CASH/KNET reduces a
+      // standard invoice and a `DEBT_COLLECTION` event when the
+      // call-center desk physically collects on a previously
+      // booked DEBT_ON_ACCOUNT row. The audit-action enum already
+      // distinguishes these two, so we mirror it here.
+      this.customerLedger.postWriteUiConsistencyAssert(
+        result.customerId,
+        {
+          source:
+            result.auditAction === 'DEBT_PAYMENT'
+              ? 'DEBT_COLLECTION'
+              : 'PAYMENT',
+          correlationId: result.orderId,
+        },
+      );
+      // V20.4 — Phase 5 typed event so the snapshot projection
+      // refreshes immediately. The listener catches up the read
+      // side without the cron 5-minute lag.
+      this.customerLedger.emitFinancialEvent('finance.payment.captured', {
+        customerId: result.customerId,
+        orderId: result.orderId,
+        correlationId: result.orderId,
+        occurredAt: new Date().toISOString(),
+        amountKd: result.amountKd,
+        paymentMethod: result.posPaymentMethod,
+      });
     }
     return {
       orderId: result.orderId,

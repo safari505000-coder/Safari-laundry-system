@@ -12,9 +12,24 @@ uploads/
 tsconfig.build.tsbuildinfo
 tsconfig.tsbuildinfo
 
+# V21 Phase 2 — Compiled NestJS output. Regenerated on every
+# `nest build` / `tsc -p tsconfig.build.json`. Tracking it pollutes
+# every PR diff with thousands of unrelated `dist/*.js` and
+# `dist/*.d.ts` lines and hides the real source change. Production
+# deployments rebuild from `src/`; the repo never reads `dist/`.
+dist/
+web/dist/
+
 # Local script/lint/test output dumps (audit, lint, jest, smoke, tsc, etc.).
 # These are scratch outputs from local commands and must never be committed.
 *.out
 audit.log
 strict-audit.json
 reports/
+
+# V22 — Append-only JSON audit log written by
+# `scripts/truncate-financial-data.ts` and any future destructive
+# reset script. Each run records host + mode + before/after counts
+# locally; the file MUST NOT be committed because it can leak DB
+# host names and row counts.
+.reset-audit/

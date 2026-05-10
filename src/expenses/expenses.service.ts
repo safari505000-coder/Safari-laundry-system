@@ -23,7 +23,9 @@ import type {
   ExpensesSummaryAlertDto,
   ExpensesSummaryByBranchDto,
   ExpensesSummaryByCategoryDto,
+  ExpensesSummaryByDriverDto,
   ExpensesSummaryByOwnerDto,
+  ExpensesSummaryCarBreakdownDto,
   ExpensesSummaryMonthlyDto,
   ExpensesSummaryResponseDto,
 } from './dto/expenses-summary.dto';
@@ -36,7 +38,7 @@ import type {
  * and the `/expenses-summary` aggregate so the same definition is used
  * everywhere — no two callers can disagree.
  */
-export function deriveOwnerType(
+function deriveOwnerType(
   recordedByRole: SafariRole | null | undefined,
   branchId: string | null,
 ): ExpenseOwnerType {
@@ -65,7 +67,7 @@ export function deriveOwnerType(
  * via the same endpoint (DRIVER role passes this check; their cash
  * spendability check is enforced separately by `ExpensesService.create`).
  */
-export const DRIVER_ONLY_CATEGORIES: ReadonlySet<ExpenseCategory> = new Set([
+const DRIVER_ONLY_CATEGORIES: ReadonlySet<ExpenseCategory> = new Set([
   ExpenseCategory.FUEL,
 ]);
 
@@ -474,7 +476,13 @@ export class ExpensesService {
         branchId: true,
         expenseDate: true,
         branch: { select: { name: true } },
-        recordedBy: { select: { safariRole: true } },
+        // V24 Wave B — surface recorder identity so the per-driver
+        // breakdown can replace the deleted FE `expense-analytics`
+        // helper without a second query.
+        recordedById: true,
+        recordedBy: {
+          select: { safariRole: true, fullName: true, username: true },
+        },
       },
     });
 
@@ -505,6 +513,20 @@ export class ExpensesService {
         company: Prisma.Decimal;
       }
     >();
+    // V24 Wave B — per-recorder breakdown + car/other split.
+    const driverTotals = new Map<
+      string,
+      {
+        recordedById: string;
+        recordedByName: string;
+        kd: Prisma.Decimal;
+        count: number;
+      }
+    >();
+    let carTotalKd = new Prisma.Decimal(0);
+    let otherTotalKd = new Prisma.Decimal(0);
+    let carCount = 0;
+    let otherCount = 0;
 
     for (const row of rows) {
       const amount = row.amount;
@@ -558,6 +580,27 @@ export class ExpensesService {
       else if (ownerType === 'BRANCH') monthSlot.branch = monthSlot.branch.add(amount);
       else monthSlot.company = monthSlot.company.add(amount);
       monthly.set(monthKey, monthSlot);
+
+      // V24 Wave B — accumulate per-recorder + car/other split.
+      const driverName =
+        row.recordedBy.fullName?.trim() || row.recordedBy.username || row.recordedById;
+      const driverSlot = driverTotals.get(row.recordedById) ?? {
+        recordedById: row.recordedById,
+        recordedByName: driverName,
+        kd: new Prisma.Decimal(0),
+        count: 0,
+      };
+      driverSlot.kd = driverSlot.kd.add(amount);
+      driverSlot.count += 1;
+      driverTotals.set(row.recordedById, driverSlot);
+
+      if (row.category === ExpenseCategory.FUEL) {
+        carTotalKd = carTotalKd.add(amount);
+        carCount += 1;
+      } else {
+        otherTotalKd = otherTotalKd.add(amount);
+        otherCount += 1;
+      }
     }
 
     const byOwnerType: ExpensesSummaryByOwnerDto[] = (
@@ -577,7 +620,12 @@ export class ExpensesService {
         totalKd: slot.kd.toFixed(4),
         count: slot.count,
       }))
-      .sort((a, b) => Number(b.totalKd) - Number(a.totalKd));
+      // V23.2 — Decimal-precise sort; the prior `Number(...) - Number(...)`
+      // collapsed money strings through JS doubles which silently
+      // disagreed at the 4th-decimal boundary on long ledgers.
+      .sort((a, b) =>
+        new Prisma.Decimal(b.totalKd).comparedTo(new Prisma.Decimal(a.totalKd)),
+      );
 
     const byBranch: ExpensesSummaryByBranchDto[] = [...branchTotals.values()]
       .map((slot) => ({
@@ -586,7 +634,9 @@ export class ExpensesService {
         totalKd: slot.kd.toFixed(4),
         count: slot.count,
       }))
-      .sort((a, b) => Number(b.totalKd) - Number(a.totalKd));
+      .sort((a, b) =>
+        new Prisma.Decimal(b.totalKd).comparedTo(new Prisma.Decimal(a.totalKd)),
+      );
 
     const monthlyOut: ExpensesSummaryMonthlyDto[] = [...monthly.entries()]
       .map(([month, slot]) => ({
@@ -598,7 +648,38 @@ export class ExpensesService {
       }))
       .sort((a, b) => a.month.localeCompare(b.month));
 
-    const alerts = this.buildSummaryAlerts(monthlyOut, totalApprovedKd);
+    // V24 Wave B — sorted per-driver breakdown + car/other split.
+    const byDriver: ExpensesSummaryByDriverDto[] = [...driverTotals.values()]
+      .map((slot) => ({
+        recordedById: slot.recordedById,
+        recordedByName: slot.recordedByName,
+        totalKd: slot.kd.toFixed(4),
+        count: slot.count,
+      }))
+      .sort((a, b) =>
+        new Prisma.Decimal(b.totalKd).comparedTo(new Prisma.Decimal(a.totalKd)),
+      );
+
+    const carBreakdown: ExpensesSummaryCarBreakdownDto = {
+      carTotalKd: carTotalKd.toFixed(4),
+      carCount,
+      otherTotalKd: otherTotalKd.toFixed(4),
+      otherCount,
+      carShareBps: totalApprovedKd.gt(0)
+        ? carTotalKd
+            .div(totalApprovedKd)
+            .mul(10000)
+            .toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_EVEN)
+            .toNumber()
+        : 0,
+    };
+
+    const alerts = this.buildSummaryAlerts(
+      monthlyOut,
+      totalApprovedKd,
+      byDriver,
+      carBreakdown,
+    );
 
     return {
       source: 'api/finance/expenses-summary',
@@ -611,6 +692,8 @@ export class ExpensesService {
       byOwnerType,
       byCategory,
       byBranch,
+      byDriver,
+      carBreakdown,
       monthly: monthlyOut,
       alerts,
     };
@@ -620,10 +703,18 @@ export class ExpensesService {
    * Server-side trend/spike detection — replaces the frontend
    * `expense-insights.ts` heuristics so dashboards never recompute
    * percentages client-side.
+   *
+   * V24 — Wave B (Frontend Purge): extended with car-share badge
+   * and top-driver concentration badge so the deleted FE
+   * `expense-insights.ts` and `weekly-expense-report.ts` modules
+   * have a one-to-one server replacement (Commandment #5).
+   * Messages are localised in Arabic to match the FE behaviour.
    */
   private buildSummaryAlerts(
     monthly: ExpensesSummaryMonthlyDto[],
     totalApproved: Prisma.Decimal,
+    byDriver: ExpensesSummaryByDriverDto[] = [],
+    carBreakdown?: ExpensesSummaryCarBreakdownDto,
   ): ExpensesSummaryAlertDto[] {
     const alerts: ExpensesSummaryAlertDto[] = [];
     if (monthly.length >= 2) {
@@ -637,28 +728,49 @@ export class ExpensesService {
           alerts.push({
             id: 'expenses-monthly-spike',
             severity: 'critical',
-            message: `Monthly expenses spiked +${growth.mul(100).toFixed(0)}% (${prev.month} → ${last.month}).`,
+            message: `🚨 قفزة مفاجئة في مصروفات شهر ${last.month} (+${growth.mul(100).toFixed(0)}%).`,
           });
         } else if (growth.gt(0.3)) {
           alerts.push({
             id: 'expenses-monthly-growth',
             severity: 'warning',
-            message: `Monthly expenses grew +${growth.mul(100).toFixed(0)}% (${prev.month} → ${last.month}).`,
+            message: `⚠️ المصروفات ارتفعت بنسبة ${growth.mul(100).toFixed(0)}% (${prev.month} → ${last.month}).`,
           });
         } else if (growth.lt(-0.5)) {
           alerts.push({
             id: 'expenses-monthly-drop',
             severity: 'info',
-            message: `Monthly expenses dropped ${growth.mul(100).toFixed(0)}% (${prev.month} → ${last.month}).`,
+            message: `📉 انخفاض غير معتاد في المصروفات (${prev.month} → ${last.month}, ${growth.mul(100).toFixed(0)}%).`,
           });
         }
       }
     }
+
+    if (carBreakdown && carBreakdown.carShareBps >= 5000) {
+      alerts.push({
+        id: 'expenses-car-share-high',
+        severity: 'warning',
+        message: `🚗 ${(carBreakdown.carShareBps / 100).toFixed(0)}% من المصروفات الحالية لمصروفات السيارات`,
+      });
+    }
+
+    if (byDriver.length > 0 && totalApproved.gt(0)) {
+      const top = byDriver[0];
+      const share = new Prisma.Decimal(top.totalKd).div(totalApproved);
+      if (share.gt(0.4)) {
+        alerts.push({
+          id: `expenses-top-driver-${top.recordedById}`,
+          severity: share.gt(0.65) ? 'warning' : 'info',
+          message: `👤 أعلى موظف من حيث المصروفات: ${top.recordedByName}`,
+        });
+      }
+    }
+
     if (totalApproved.lte(0)) {
       alerts.push({
         id: 'expenses-empty-window',
         severity: 'info',
-        message: 'No approved expenses in the selected window.',
+        message: '✅ لا توجد بيانات كافية للتحليل في الفترة الحالية',
       });
     }
     return alerts;

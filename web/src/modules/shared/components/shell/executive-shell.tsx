@@ -5,6 +5,7 @@ import { GeneralManagerReadOnlyOversightStrip } from '@/modules/shared/component
 import { ExecutiveHeader } from '@/modules/shared/components/shell/executive-header';
 import { OperatorRouteHint } from '@/modules/shared/components/shell/operator-route-hint';
 import { ExecutiveSidebar } from '@/modules/shared/components/shell/executive-sidebar';
+import { GlobalCommandPalette } from '@/modules/shared/components/command/GlobalCommandPalette';
 import { shellGuidanceForRole } from '@/modules/shared/shell/resolve-shell-guidance';
 import { useAuth } from '@/contexts/auth-context';
 
@@ -68,6 +69,13 @@ export function ExecutiveShell() {
 
   return (
     <div className="flex min-h-svh max-w-[100vw] overflow-x-hidden bg-muted/40">
+      {/*
+        V21 Phase 3 — Global command palette (Ctrl/Cmd+K).
+        Mounted once at shell level so it is available on every
+        authenticated route. The palette renders nothing until
+        opened, so the cost is one effect registration.
+      */}
+      <GlobalCommandPalette />
       <ExecutiveSidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         <ExecutiveHeader />

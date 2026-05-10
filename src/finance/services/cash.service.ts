@@ -9,6 +9,7 @@ import {
   ManagerCashCustodyStatus,
   OrderStatus,
   PosPaymentMethod,
+  Prisma,
   SafariRole,
   ShiftStatus,
 } from '@prisma/client';
@@ -33,6 +34,7 @@ import {
   minorToAmountString,
   sumOrderMinors,
 } from '../finance-money';
+import { computeCanonicalDriverCashCustodySummary } from '../canonical-financial-projection';
 import type { CashReconciliationSnapshotDto } from '../dto/cash-reconciliation.dto';
 
 function sumKd(values: string[]): string {
@@ -220,6 +222,25 @@ export class CashService {
       });
     }
     return { drivers: rows };
+  }
+
+  async getMyDriverCashCustodySummary(driverId: string): Promise<{
+    cashTotalKd: string;
+    cashOrderCount: number;
+    grandTotalKd: string;
+  }> {
+    const rows = await this.prisma.order.findMany({
+      where: {
+        driverId,
+        status: OrderStatus.COMPLETED,
+        cashStatus: CashStatus.PAID_TO_DRIVER,
+        posPaymentMethod: PosPaymentMethod.CASH,
+      },
+      select: { totalPrice: true },
+    });
+    return computeCanonicalDriverCashCustodySummary(
+      rows.map((row) => ({ amountKd: row.totalPrice })),
+    );
   }
 
   async getTotalCashWithDrivers(): Promise<string> {
@@ -614,8 +635,16 @@ export class CashService {
         list.filter((b) => b.status === 'REJECTED').map((b) => b.amountKd),
       );
 
-      const diff = Number(collected.kd) - Number(handedToManagerKd);
-      const pendingWithDriverKd = diff > 0 ? diff.toFixed(4) : '0.0000';
+      // V23.2 — Decimal-precise pending-with-driver computation.
+      // The prior `Number(...) - Number(...)` boundary collapsed
+      // both money strings through JS double precision and could
+      // mis-classify residues of fractional fils as "pending."
+      const diffDecimal = new Prisma.Decimal(collected.kd).minus(
+        new Prisma.Decimal(handedToManagerKd),
+      );
+      const pendingWithDriverKd = diffDecimal.greaterThan(0)
+        ? diffDecimal.toFixed(4)
+        : '0.0000';
 
       return {
         driverId: d.id,
@@ -636,10 +665,12 @@ export class CashService {
       };
     });
 
-    // Drop drivers with zero activity to keep the table scannable.
+    // V23.2 — Decimal-precise activity threshold; the prior
+    // `Number(d.collectedKd) > 0` boundary tripped on tiny rounding
+    // noise (e.g. 0.0001 fils carry-overs).
     const active = drivers.filter(
       (d) =>
-        Number(d.collectedKd) > 0 ||
+        new Prisma.Decimal(d.collectedKd).greaterThan(0) ||
         d.bags.length > 0 ||
         d.collectedOrderCount > 0,
     );

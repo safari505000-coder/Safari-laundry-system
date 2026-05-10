@@ -11,6 +11,7 @@ import {
 import { Button, buttonVariants } from '@/modules/shared/components/ui/button';
 import { Input } from '@/modules/shared/components/ui/input';
 import { cn } from '@/lib/utils';
+import { formatKwdLabel } from '@/lib/kwd';
 import type {
   CustomerCollectionStatusKind,
   OutstandingResponse,
@@ -33,14 +34,6 @@ const RISK_OPTIONS: { id: RiskFilter; label: string }[] = [
 ];
 
 const PAGE_SIZE = 10;
-
-function formatKwd(value: number): string {
-  if (!Number.isFinite(value)) return '0.000';
-  return new Intl.NumberFormat('ar-KW', {
-    minimumFractionDigits: 3,
-    maximumFractionDigits: 3,
-  }).format(value);
-}
 
 function formatLastOrder(iso: string | null): string {
   if (!iso) return '—';
@@ -95,7 +88,7 @@ export function CallQueue({ outstanding, loading, onOpenCustomer }: Props) {
   const [search, setSearch] = useState('');
   const [showAll, setShowAll] = useState(false);
 
-  const rowsAll = outstanding?.rows ?? [];
+  const rowsAll = useMemo(() => outstanding?.rows ?? [], [outstanding?.rows]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -229,7 +222,7 @@ export function CallQueue({ outstanding, loading, onOpenCustomer }: Props) {
 
                 <div className="flex shrink-0 flex-col items-end gap-1">
                   <span className="font-heading text-base font-semibold tabular-nums text-rose-700 dark:text-rose-300">
-                    {formatKwd(row.totalDueKd)} د.ك
+                    {formatKwdLabel(row.totalDueKd)}
                   </span>
                   <div className="flex items-center gap-1">
                     <a

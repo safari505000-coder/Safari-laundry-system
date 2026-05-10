@@ -8,11 +8,11 @@
 
 /** Customer-facing trade name (receipts, invoices, public documents).
  *  V6.8 — corrected to plural "مجموعة مصابغ" to match the legal trade form. */
-export const BRAND_CUSTOMER_EN = 'Safari Express Laundries Group';
+const BRAND_CUSTOMER_EN = 'Safari Express Laundries Group';
 export const BRAND_CUSTOMER_AR = 'مجموعة مصابغ سفاري السريعة';
 
 /** Internal system / product name (dashboards, admin tools, audit logs). */
-export const BRAND_SYSTEM_EN = 'Safari Omni';
+const BRAND_SYSTEM_EN = 'Safari Omni';
 export const BRAND_SYSTEM_AR = 'سفاري أوميني';
 
 /** Legacy aliases kept so existing imports do not break mid-migration. */

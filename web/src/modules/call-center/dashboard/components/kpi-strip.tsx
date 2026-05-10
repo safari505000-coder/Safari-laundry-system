@@ -1,6 +1,7 @@
 import { Banknote, Loader2, RefreshCw, Users, Wallet, FileWarning } from 'lucide-react';
 import { Button } from '@/modules/shared/components/ui/button';
 import { cn } from '@/lib/utils';
+import { formatKwdLabel } from '@/lib/kwd';
 import type { OutstandingResponse } from '@/modules/call-center/outstanding/api/outstanding-api';
 import type { CallCenterOperationsSummary } from '@/lib/api';
 
@@ -15,12 +16,7 @@ type Props = {
 
 function formatKwd(input: string | number | null | undefined): string {
   if (input === null || input === undefined) return '—';
-  const n = typeof input === 'number' ? input : Number.parseFloat(input);
-  if (!Number.isFinite(n)) return '—';
-  return new Intl.NumberFormat('ar-KW', {
-    minimumFractionDigits: 3,
-    maximumFractionDigits: 3,
-  }).format(n);
+  return formatKwdLabel(input);
 }
 
 function toneClasses(tone: Tone): string {
@@ -143,7 +139,7 @@ export function KpiStrip({
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
         <Tile
-          label="إجمالي الذمم المدينة (د.ك)"
+          label="إجمالي الذمم المدينة"
           value={outstanding ? formatKwd(outstanding.totalDueKd) : '—'}
           caption={
             outstanding
@@ -165,7 +161,7 @@ export function KpiStrip({
           tone="primary"
         />
         <Tile
-          label="تمّ تحصيله اليوم (د.ك)"
+          label="تمّ تحصيله اليوم"
           value={summary ? formatKwd(summary.debtRecoveredTodayKd) : '—'}
           caption={
             summary

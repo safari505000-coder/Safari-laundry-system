@@ -1,7 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 import { seedLaundryPriceList } from './laundry-price-list.seed';
 
-export const BUSINESS_NAME_AR = 'مجموعة مصابغ سفاري السريعة';
+const BUSINESS_NAME_AR = 'مجموعة مصابغ سفاري السريعة';
 
 /**
  * Fresh-install: apply the **same** PDF tariff as `prisma db seed` / Owner UI.

@@ -14,7 +14,7 @@ import {
 } from '@/lib/api';
 import { requestExecutiveSummaryRefresh } from '@/lib/executive-summary-refresh';
 import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
-import { formatKwdLabel, sumKwdStrings } from '@/lib/kwd';
+import { formatKwdLabel, isPositiveKd, sumKwdStrings } from '@/lib/kwd';
 import { Badge } from '@/modules/shared/components/ui/badge';
 import { Button } from '@/modules/shared/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/modules/shared/components/ui/card';
@@ -568,22 +568,22 @@ export function PayrollPage() {
                           {p.branch.name}
                         </TableCell>
                         <TableCell className="text-end tabular-nums text-emerald-600">
-                          {Number.parseFloat(p.commissionAmount ?? '0') > 0
+                          {isPositiveKd(p.commissionAmount ?? '0')
                             ? formatKwdLabel(p.commissionAmount ?? '0')
                             : '—'}
                         </TableCell>
                         <TableCell className="text-end tabular-nums text-amber-600">
-                          {Number.parseFloat(p.debtHoldAmount ?? '0') > 0
+                          {isPositiveKd(p.debtHoldAmount ?? '0')
                             ? formatKwdLabel(p.debtHoldAmount ?? '0')
                             : '—'}
                         </TableCell>
                         <TableCell className="text-end tabular-nums text-emerald-600">
-                          {Number.parseFloat(p.debtReleaseAmount ?? '0') > 0
+                          {isPositiveKd(p.debtReleaseAmount ?? '0')
                             ? formatKwdLabel(p.debtReleaseAmount ?? '0')
                             : '—'}
                         </TableCell>
                         <TableCell className="text-end tabular-nums text-rose-600">
-                          {Number.parseFloat(p.loanDeduction ?? '0') > 0
+                          {isPositiveKd(p.loanDeduction ?? '0')
                             ? '−' + formatKwdLabel(p.loanDeduction ?? '0')
                             : '—'}
                         </TableCell>

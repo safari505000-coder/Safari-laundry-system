@@ -21,6 +21,7 @@ import {
 import { Input } from '@/modules/shared/components/ui/input';
 import { Label } from '@/modules/shared/components/ui/label';
 import { useAuth } from '@/contexts/auth-context';
+import { chartScalarFromKwdString } from '@/lib/kwd';
 import { can } from '@/modules/shared/auth/access-matrix';
 import {
   ApiError,
@@ -380,7 +381,11 @@ function EditInvoiceDialog({
       maximumFractionDigits: 3,
     });
 
-  const originalTotalNum = Number.parseFloat(order.totalKd) || 0;
+  // V23.1 — `chartScalarFromKwdString` is the canonical RENDERING-ONLY
+  // escape hatch used here to compute a UI-side delta indicator (red/green
+  // chip + "+ X.XXX" label). The result never participates in any further
+  // money math — the delta is computed once for display, then discarded.
+  const originalTotalNum = chartScalarFromKwdString(order.totalKd);
   const delta = computedTotal - originalTotalNum;
   const hasDelta = Math.abs(delta) > 0.0005;
 

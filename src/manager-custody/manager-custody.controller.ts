@@ -34,7 +34,10 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { APP_BRAND } from '../common/constants/branding';
 import { ApproveReceiptFromDriverDto } from './dto/approve-receipt-from-driver.dto';
-import { ListCustodyQueryDto } from './dto/list-custody-query.dto';
+import {
+  ListCustodyQueryDto,
+  StaffDebtsQueryDto,
+} from './dto/list-custody-query.dto';
 import { RejectCustodyDto } from './dto/reject-custody.dto';
 import { UploadDepositSlipDto } from './dto/upload-deposit-slip.dto';
 import { VerifyCustodyDto } from './dto/verify-custody.dto';
@@ -208,6 +211,17 @@ export class ManagerCustodyController {
   })
   aging(@Query() q: ListCustodyQueryDto) {
     return this.svc.listAging(q);
+  }
+
+  @Get('staff-debts')
+  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.ACCOUNTANT)
+  @ApiOperation({
+    summary: `Staff debts canonical readonly projection (${APP_BRAND})`,
+    description:
+      'V21 Phase 2: combined filter-aware projection for driver balances + manager custody aging. Rows and totals are computed from the same filtered dataset.',
+  })
+  staffDebts(@Query() q: StaffDebtsQueryDto) {
+    return this.svc.getStaffDebtsProjection(q);
   }
 
   /**

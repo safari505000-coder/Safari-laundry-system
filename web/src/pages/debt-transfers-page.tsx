@@ -17,6 +17,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
+import { sumKwdStrings } from '@/lib/kwd';
 import {
   ApiError,
   cancelDebtTransfer,
@@ -473,13 +474,21 @@ function CreateDebtTransferDialog({
       });
   }, [token, sourceId]);
 
+  /**
+   * V21 Phase 5 — selection-driven sum routed through the single
+   * canonical `sumKwdStrings` helper from `@/lib/kwd`. This is the
+   * one allowed flavour of frontend math: it operates on what the
+   * USER picked via the order checkboxes, so the backend cannot
+   * pre-compute it. The previous local `reduce`+`parseFloat` block
+   * was retired in favour of the canonical helper so all KD math
+   * funnels through one tested implementation.
+   */
   const totalSelected = useMemo(() => {
     if (!outstanding) return '0.000';
-    const sum = outstanding.orders.reduce((acc, o) => {
-      if (!selectedOrders.has(o.id)) return acc;
-      return acc + Number.parseFloat(o.totalPrice);
-    }, 0);
-    return sum.toFixed(3);
+    const selectedPrices = outstanding.orders
+      .filter((o) => selectedOrders.has(o.id))
+      .map((o) => o.totalPrice);
+    return sumKwdStrings(selectedPrices);
   }, [outstanding, selectedOrders]);
 
   const submit = async (e: FormEvent) => {

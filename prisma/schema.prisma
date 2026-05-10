@@ -213,61 +213,64 @@ enum ManagerCashCustodyStatus {
 }
 
 model User {
-  id                String     @id @default(uuid()) @db.Uuid
+  id                 String     @id @default(uuid()) @db.Uuid
   /**
    * Unique login handle (staff ID / username).
    */
-  username          String     @unique
-  password          String
+  username           String     @unique
+  password           String
   /**
    * Set true after an admin/system-generated reset — next login yields a
    * restricted JWT until POST /auth/change-password succeeds.
    */
   mustChangePassword Boolean    @default(false)
-  /** Clock when password hash last changed (admin reset or user change). */
+  /**
+   * Clock when password hash last changed (admin reset or user change).
+   */
   passwordUpdatedAt  DateTime?
-  fullName          String
+  fullName           String
   /**
    * Legacy corporate employee number (optional).
    */
-  employeeId        String?    @unique
+  employeeId         String?    @unique
   /**
    * Legacy job title (optional).
    */
-  jobTitle          String?
-  phone             String?    @unique
+  jobTitle           String?
+  phone              String?    @unique
   /**
    * Optional vehicle display label for tracking UI (e.g. Toyota LC300).
    */
-  vehicleLabel      String?
+  vehicleLabel       String?
   /**
    * Last GPS point as "lat,lng".
    */
-  lastKnownLocation String?
+  lastKnownLocation  String?
   /**
    * Dastur §1 (V1.5) + V19.24 — Owner-assigned single-letter operator prefix
    * ("A", "B", ...). Stamped on invoices as `prefix-n` with **n monotonic
    * per user** (SerialCounter `OU_<userId>`), not a single global counter.
    * Optional; drivers and branch managers (who can issue) may have one.
    */
-  driverPrefix      String?    @unique
-  safariRole        SafariRole @default(DRIVER)
+  driverPrefix       String?    @unique
+  safariRole         SafariRole @default(DRIVER)
   /**
    * When `safariRole=CUSTOMER`, login JWT scopes this user to exactly one
    * `Customer` id (must match `/customers/:id/360` path param).
    */
-  linkedCustomerId  String?    @db.Uuid
+  linkedCustomerId   String?    @db.Uuid
   /**
    * Owner toggle: inactive users cannot sign in.
    */
-  isActive          Boolean    @default(true)
-  roleId            String     @db.Uuid
-  branchId          String?    @db.Uuid
-  createdAt         DateTime   @default(now())
-  updatedAt         DateTime   @updatedAt
+  isActive           Boolean    @default(true)
+  roleId             String     @db.Uuid
+  branchId           String?    @db.Uuid
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
 
   // ─── HR master-data (Stage D) ─────────────────────────────────────
   /**
+   * /**
    * /**
    * /**
    * /**
@@ -298,109 +301,109 @@ model User {
    */
   payrollRosterLineOrder Int?
 
-  role                             Role                   @relation(fields: [roleId], references: [id])
-  branch                           Branch?                @relation(fields: [branchId], references: [id])
-  linkedCustomer                   Customer?              @relation("CustomerPortalUser", fields: [linkedCustomerId], references: [id], onDelete: SetNull)
+  role                             Role                       @relation(fields: [roleId], references: [id])
+  branch                           Branch?                    @relation(fields: [branchId], references: [id])
+  linkedCustomer                   Customer?                  @relation("CustomerPortalUser", fields: [linkedCustomerId], references: [id], onDelete: SetNull)
   auditLogs                        AuditLog[]
-  ordersAsDriver                   Order[]                @relation("OrderDriver")
-  shiftsAsDriver                   Shift[]                @relation("ShiftDriver")
-  shiftConfirmations               Shift[]                @relation("ShiftConfirmedBy")
-  ledgerTransactions               TransactionHistory[]   @relation("LedgerPerformedBy")
-  expensesRecorded                 BranchExpense[]        @relation("ExpenseRecordedBy")
+  ordersAsDriver                   Order[]                    @relation("OrderDriver")
+  shiftsAsDriver                   Shift[]                    @relation("ShiftDriver")
+  shiftConfirmations               Shift[]                    @relation("ShiftConfirmedBy")
+  ledgerTransactions               TransactionHistory[]       @relation("LedgerPerformedBy")
+  expensesRecorded                 BranchExpense[]            @relation("ExpenseRecordedBy")
   payrolls                         Payroll[]
-  debtLedgerEntries                DebtLedgerEntry[]      @relation("DebtEntryActor")
-  bankDepositsUploaded             BankDepositLog[]       @relation("BankDepositUploadedBy")
-  bankDepositsVerifiedAsAccountant BankDepositLog[]       @relation("BankDepositVerifiedBy")
-  depositsRequested                Deposit[]              @relation("DepositDriver")
-  depositsAudited                  Deposit[]              @relation("DepositAuditedBy")
-  posPaymentBundlesLed             PosPaymentBundle[]     @relation("PosPaymentBundleDriver")
-  stockMovementsRecorded           StockMovement[]        @relation("StockMovementRecordedBy")
-  purchaseOrdersCreated            PurchaseOrder[]        @relation("PurchaseOrderCreatedBy")
-  purchaseOrdersApproved           PurchaseOrder[]        @relation("PurchaseOrderApprovedBy")
-  purchaseOrderReceipts            PurchaseOrderReceipt[] @relation("PurchaseOrderReceivedBy")
+  debtLedgerEntries                DebtLedgerEntry[]          @relation("DebtEntryActor")
+  bankDepositsUploaded             BankDepositLog[]           @relation("BankDepositUploadedBy")
+  bankDepositsVerifiedAsAccountant BankDepositLog[]           @relation("BankDepositVerifiedBy")
+  depositsRequested                Deposit[]                  @relation("DepositDriver")
+  depositsAudited                  Deposit[]                  @relation("DepositAuditedBy")
+  posPaymentBundlesLed             PosPaymentBundle[]         @relation("PosPaymentBundleDriver")
+  stockMovementsRecorded           StockMovement[]            @relation("StockMovementRecordedBy")
+  purchaseOrdersCreated            PurchaseOrder[]            @relation("PurchaseOrderCreatedBy")
+  purchaseOrdersApproved           PurchaseOrder[]            @relation("PurchaseOrderApprovedBy")
+  purchaseOrderReceipts            PurchaseOrderReceipt[]     @relation("PurchaseOrderReceivedBy")
   /**
    * Cash "bags" the user received from drivers while acting as Branch Manager.
    */
-  managerCustodyBagsHeld           ManagerCashCustody[]   @relation("ManagerCustodyManager")
+  managerCustodyBagsHeld           ManagerCashCustody[]       @relation("ManagerCustodyManager")
   /**
    * Cash bags attributed to the user as the source driver (historical, even after handover).
    */
-  managerCustodyBagsHandedOver     ManagerCashCustody[]   @relation("ManagerCustodyDriver")
+  managerCustodyBagsHandedOver     ManagerCashCustody[]       @relation("ManagerCustodyDriver")
   /**
    * Accountant verifications on manager custody bags.
    */
-  managerCustodyVerifications      ManagerCashCustody[]   @relation("ManagerCustodyVerifiedBy")
+  managerCustodyVerifications      ManagerCashCustody[]       @relation("ManagerCustodyVerifiedBy")
   /**
    * Accountant rejections on manager custody bags.
    */
-  managerCustodyRejections         ManagerCashCustody[]   @relation("ManagerCustodyRejectedBy")
+  managerCustodyRejections         ManagerCashCustody[]       @relation("ManagerCustodyRejectedBy")
   /**
    * Debt transfers where this user is the departing (source) driver.
    */
-  debtTransfersAsSource            DebtTransfer[]         @relation("DebtTransferSource")
+  debtTransfersAsSource            DebtTransfer[]             @relation("DebtTransferSource")
   /**
    * Debt transfers where this user is the replacement (target) driver.
    */
-  debtTransfersAsTarget            DebtTransfer[]         @relation("DebtTransferTarget")
+  debtTransfersAsTarget            DebtTransfer[]             @relation("DebtTransferTarget")
   /**
    * Debt transfers initiated by this user (GM or ACCOUNTANT).
    */
-  debtTransfersExecuted            DebtTransfer[]         @relation("DebtTransferExecutor")
+  debtTransfersExecuted            DebtTransfer[]             @relation("DebtTransferExecutor")
   /**
    * Debt transfers cancelled by this user.
    */
-  debtTransfersCancelled           DebtTransfer[]         @relation("DebtTransferCanceller")
+  debtTransfersCancelled           DebtTransfer[]             @relation("DebtTransferCanceller")
   /**
    * Orders whose cash responsibility was transferred FROM this driver (audit only).
    */
-  ordersTransferredFrom            Order[]                @relation("OrderTransferredFromDriver")
+  ordersTransferredFrom            Order[]                    @relation("OrderTransferredFromDriver")
   /**
    * HR — daily attendance rows for this user.
    */
   attendanceLogs                   AttendanceLog[]
-  leaveRequests                    LeaveRequest[]         @relation("LeaveRequestUser")
-  leaveApprovals                   LeaveRequest[]         @relation("LeaveRequestApprover")
-  employeeLoans                    EmployeeLoan[]         @relation("EmployeeLoanUser")
-  loanApprovals                    EmployeeLoan[]         @relation("EmployeeLoanApprover")
+  leaveRequests                    LeaveRequest[]             @relation("LeaveRequestUser")
+  leaveApprovals                   LeaveRequest[]             @relation("LeaveRequestApprover")
+  employeeLoans                    EmployeeLoan[]             @relation("EmployeeLoanUser")
+  loanApprovals                    EmployeeLoan[]             @relation("EmployeeLoanApprover")
   /**
    * V19.9 — Call-Center Supervisor invoice edits/voids authored by
    * this user. Back-relation of `InvoiceAuditLog.actor`.
    */
-  invoiceAuditEntries              InvoiceAuditLog[]      @relation("InvoiceAuditActor")
+  invoiceAuditEntries              InvoiceAuditLog[]          @relation("InvoiceAuditActor")
   /**
    * V19.10 — Fleet expense submissions authored by this user
    * (FLEET_SUPERVISOR) and review actions (APPROVED / REJECTED) taken
    * by this user (ACCOUNTANT / OWNER / GENERAL_MANAGER).
    */
-  vehicleExpensesSubmitted         VehicleExpense[]       @relation("VehicleExpenseSubmittedBy")
-  vehicleExpensesReviewed          VehicleExpense[]       @relation("VehicleExpenseReviewedBy")
+  vehicleExpensesSubmitted         VehicleExpense[]           @relation("VehicleExpenseSubmittedBy")
+  vehicleExpensesReviewed          VehicleExpense[]           @relation("VehicleExpenseReviewedBy")
   /**
    * V19.12 — refresh-token rotation (access token short-lived, refresh token
    * long-lived and single-use with revocation audit). Back-relation of
    * `RefreshToken.user`.
    */
-  refreshTokens                    RefreshToken[]         @relation("RefreshTokenUser")
+  refreshTokens                    RefreshToken[]             @relation("RefreshTokenUser")
   /**
    * V19.16 — commission payouts earned by this user (SALE or COLLECTION).
    * Back-relation of `CommissionPayout.earner`.
    */
-  commissionPayouts                CommissionPayout[]     @relation("CommissionEarner")
+  commissionPayouts                CommissionPayout[]         @relation("CommissionEarner")
   /**
    * V19.16 — salary debt-hold slips tied to this employee's outstanding
    * customer debt. Back-relation of `DebtHold.employee`.
    */
-  debtHolds                        DebtHold[]             @relation("DebtHoldEmployee")
+  debtHolds                        DebtHold[]                 @relation("DebtHoldEmployee")
   /**
    * V19.17 — debt-hold release vouchers this user stamped as disbursed.
    * Back-relation of `DebtHold.disbursedBy`.
    */
-  debtHoldsDisbursed               DebtHold[]             @relation("DebtHoldDisbursedBy")
+  debtHoldsDisbursed               DebtHold[]                 @relation("DebtHoldDisbursedBy")
   /**
    * V19.x — Call-Center dispatches assigned to this driver (DRIVER role).
    * Read-only on the driver side; the driver cannot accept/reject — the
    * dispatch is an instruction, never a contract.
    */
-  driverDispatches                 Dispatch[]             @relation("DispatchDriver")
+  driverDispatches                 Dispatch[]                 @relation("DispatchDriver")
   /**
    * V19.x — Daily dispatch SLA aggregates per driver (Kuwait calendar day).
    */
@@ -409,12 +412,57 @@ model User {
    * V19.x — Dispatches the user authored as a CALL_CENTER agent.
    * Audit attribution only.
    */
-  createdDispatches                Dispatch[]             @relation("DispatchCreatedBy")
+  createdDispatches                Dispatch[]                 @relation("DispatchCreatedBy")
   /**
    * V19.x — Outstanding-payments / AR audit attribution. Back-relation
    * for `CustomerCollectionStatus.updatedBy`.
    */
   customerCollectionStatusUpdates  CustomerCollectionStatus[] @relation("CustomerCollectionStatusUpdatedBy")
+  /**
+   * V20.5 — Phase 2 Promise-to-Pay records this user opened (collector).
+   */
+  promisesAsCollector              PromiseToPay[]             @relation("PromiseCollector")
+  /**
+   * V20.5 — Phase 2 Promise-to-Pay records this user resolved
+   * (KEPT / BROKEN / CANCELLED transition actor).
+   */
+  promisesResolved                 PromiseToPay[]             @relation("PromiseResolver")
+  /**
+   * V20.5 — Phase 2 Promise-to-Pay event-log audit attribution.
+   */
+  promiseEvents                    PromiseEvent[]             @relation("PromiseEventActor")
+  /**
+   * V20.5 — Phase 3 Collections accounts assigned to this user.
+   */
+  collectionsAccounts              CollectionsAccount[]       @relation("CollectionsAccountCollector")
+  /**
+   * V20.5 — Phase 3 Collections accounts whose stage this user last updated.
+   */
+  collectionsStageUpdates          CollectionsAccount[]       @relation("CollectionsAccountStageActor")
+  /**
+   * V20.5 — Phase 3 Collections stage transitions audit attribution.
+   */
+  collectionsStageEvents           CollectionsStageEvent[]    @relation("CollectionsStageEventActor")
+  /**
+   * V20.5 — Phase 5 Financial periods this user closed.
+   */
+  financialPeriodsLocked           FinancialPeriod[]          @relation("FinancialPeriodLocker")
+  /**
+   * V20.5 — Phase 5 Financial periods this user reopened.
+   */
+  financialPeriodsReopened         FinancialPeriod[]          @relation("FinancialPeriodReopener")
+  /**
+   * V20.5 — Phase 5 Period-lock violation audit attribution.
+   */
+  financialPeriodViolations        FinancialPeriodViolation[] @relation("FinancialPeriodViolationActor")
+  /**
+   * V20.5 — Phase 8 Fraud alerts attributed to this user as actor.
+   */
+  fraudAlertsAsActor               FraudAlert[]               @relation("FraudAlertActor")
+  /**
+   * V20.5 — Phase 8 Fraud alerts this user resolved.
+   */
+  fraudAlertsResolved              FraudAlert[]               @relation("FraudAlertResolver")
 }
 
 /**
@@ -655,9 +703,9 @@ model Customer {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  originBranch       Branch?                @relation("CustomerOriginBranch", fields: [originBranchId], references: [id], onDelete: SetNull)
-  portalUsers        User[]                 @relation("CustomerPortalUser")
-  auditLogs          AuditLog[]             @relation("AuditLogCustomer")
+  originBranch       Branch?                   @relation("CustomerOriginBranch", fields: [originBranchId], references: [id], onDelete: SetNull)
+  portalUsers        User[]                    @relation("CustomerPortalUser")
+  auditLogs          AuditLog[]                @relation("AuditLogCustomer")
   orders             Order[]
   wallet             CustomerWallet?
   transactionHistory TransactionHistory[]
@@ -669,6 +717,23 @@ model Customer {
    * Owned by the AR module; does NOT replace `isBlocked`.
    */
   collectionStatus   CustomerCollectionStatus?
+  /**
+   * V20.4 — Phase 1 read-side projection of the canonical financial state.
+   * One row per customer; rebuildable from journal + ledger + orders.
+   */
+  financialSnapshot  FinancialSnapshot?
+  /**
+   * V20.5 — Phase 2 Promise-to-Pay records (operator commitments).
+   */
+  promisesToPay      PromiseToPay[]
+  /**
+   * V20.5 — Phase 3 Collections lifecycle account (one per customer).
+   */
+  collectionsAccount CollectionsAccount?
+  /**
+   * V20.5 — Phase 8 Fraud alerts raised on this customer.
+   */
+  fraudAlerts        FraudAlert[]
 
   @@index([phone])
   @@index([phone2])
@@ -982,6 +1047,10 @@ model Order {
    * order — re-submissions update the existing row (idempotent).
    */
   feedback              OrderFeedback?
+  /**
+   * V20.5 — Phase 2 Promise-to-Pay records linked to this invoice.
+   */
+  promisesToPay         PromiseToPay[]        @relation("OrderPromisesToPay")
 
   @@index([driverId])
   @@index([status])
@@ -1350,6 +1419,11 @@ model Branch {
   managerCustodyBags    ManagerCashCustody[]     @relation("BranchManagerCustody")
   attendanceLogs        AttendanceLog[]
   purchaseOrders        PurchaseOrder[]
+  /**
+   * V20.5 — Phase 9 journal entries attributed to this branch
+   * (nullable on JournalEntry — pre-Phase 9 history is unattributed).
+   */
+  journalEntries        JournalEntry[]           @relation("JournalEntryBranch")
 }
 
 /**
@@ -1673,22 +1747,28 @@ model JournalEntry {
   actorUserId String   @db.Uuid
   customerId  String?  @db.Uuid
   orderId     String?  @db.Uuid
+  /// V20.5 — Phase 9 branch attribution. Nullable so historical
+  /// entries (pre-Phase 9) keep working unchanged. Writers populate
+  /// from `Order.handoverShift.branchId` ➝ `User.branchId` ➝ null.
+  branchId    String?  @db.Uuid
   createdAt   DateTime @default(now())
 
-  lines JournalLine[]
+  lines  JournalLine[]
+  branch Branch?       @relation("JournalEntryBranch", fields: [branchId], references: [id], onDelete: SetNull)
 
   @@index([source, createdAt])
   @@index([actorUserId, createdAt])
   @@index([customerId, createdAt])
   @@index([orderId])
+  @@index([branchId, createdAt])
 }
 
 model JournalLine {
-  id        String   @id @default(uuid()) @db.Uuid
-  entryId   String   @db.Uuid
-  accountId String   @db.Uuid
-  debit     Decimal  @default(0) @db.Decimal(19, 4)
-  credit    Decimal  @default(0) @db.Decimal(19, 4)
+  id        String  @id @default(uuid()) @db.Uuid
+  entryId   String  @db.Uuid
+  accountId String  @db.Uuid
+  debit     Decimal @default(0) @db.Decimal(19, 4)
+  credit    Decimal @default(0) @db.Decimal(19, 4)
   meta      Json?
 
   entry   JournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
@@ -1696,6 +1776,475 @@ model JournalLine {
 
   @@index([entryId])
   @@index([accountId])
+}
+
+/// V20.1-v4 — Phase 16: persistent log of journal mirror failures.
+/// Every `[JOURNAL_WRITE_FAILED]` event from `mirrorDebtLedgerEntrySafe`
+/// also persists a row here. Used by the circuit breaker (>3 failures
+/// in 5 min for the same customer triggers `CriticalJournalFailureError`)
+/// and by the `/finance/audit/reconcile` triage view. Append-only; covered
+/// by the Phase 19 immutability extension.
+model JournalFailureLog {
+  id           String   @id @default(uuid()) @db.Uuid
+  customerId   String?  @db.Uuid
+  orderId      String?  @db.Uuid
+  source       String?
+  sourceRef    String?
+  amount       Decimal? @db.Decimal(19, 4)
+  errorCode    String?
+  errorMessage String
+  context      Json?
+  createdAt    DateTime @default(now())
+
+  @@index([customerId, createdAt])
+  @@index([sourceRef])
+  @@index([createdAt])
+}
+
+/// V20.1-v4 — Phase 21: backfill validation lock.
+/// Singleton row (`id = 'singleton'`) updated by the wallet-payment
+/// backfill script after a successful run. On application boot
+/// `BackfillAuditLockGuard` recomputes the checksums and aborts startup
+/// if they no longer match `checksumLedger` / `checksumWallet`. Bypass
+/// with env `BACKFILL_AUDIT_LOCK_BYPASS=true` for legitimate migrations.
+model BackfillAuditLock {
+  id              String    @id @default("singleton")
+  isLocked        Boolean   @default(false)
+  checksumLedger  String?
+  checksumWallet  String?
+  lockedAt        DateTime?
+  lockedByActorId String?   @db.Uuid
+  note            String?
+  updatedAt       DateTime  @updatedAt
+  createdAt       DateTime  @default(now())
+}
+
+/// V20.4 — Phase 1 / Phase 4 read-side projection of every customer's
+/// canonical financial state.
+///
+/// This table is a DERIVED, REBUILDABLE projection. The double-entry
+/// journal + DebtLedger remain the only sources of truth; rows here
+/// are upserted by `FinancialSnapshotService` from those primaries
+/// after every debt-mutating event AND on a 5-minute reconciliation
+/// cron. Nothing in the financial-write path depends on this table —
+/// dropping it and rebuilding from primaries MUST yield identical
+/// numbers (deterministic rebuild guarantee).
+///
+/// Operational reads (Subscribers list, Outstanding, Customer 360,
+/// dashboards) consume this table via `DebtVisibilityService` so they
+/// never aggregate JournalLine / DebtLedgerEntry / Order live and
+/// can scale to hundreds of thousands of rows without table-scan
+/// pressure on the financial primaries.
+///
+/// `version` is incremented every time the projection schema changes;
+/// `FinancialSnapshotService.rebuild()` writes the current schema
+/// version so consumers can detect a stale row written by an older
+/// projector and force-recompute.
+model FinancialSnapshot {
+  id                         String    @id @default(uuid()) @db.Uuid
+  customerId                 String    @unique @db.Uuid
+  /// Live AR balance on account 1300 (Journal source under V20.3).
+  journalArBalanceKd         Decimal   @default(0) @db.Decimal(19, 4)
+  /// V20.3.1 partial-payment-aware Σ remaining_balance over open invoices.
+  remainingDebtKd            Decimal   @default(0) @db.Decimal(19, 4)
+  /// Cumulative Σ of paid amounts across in-scope invoices.
+  paidTotalKd                Decimal   @default(0) @db.Decimal(19, 4)
+  /// Σ Order.totalPrice across in-scope invoices (gross billed).
+  totalInvoicesKd            Decimal   @default(0) @db.Decimal(19, 4)
+  /// Number of in-scope invoices that are fully UNPAID (paid = 0).
+  unpaidInvoicesCount        Int       @default(0)
+  /// Number of in-scope invoices with 0 < paid < total (partial-paid).
+  partiallyPaidInvoicesCount Int       @default(0)
+  /// Total open in-scope invoices (= unpaid + partiallyPaid).
+  activeInvoicesCount        Int       @default(0)
+  /// Open invoices whose dueDate < now (overdue subset of activeInvoicesCount).
+  overdueInvoicesCount       Int       @default(0)
+  /// Live Wallet (prepaid balance, not debt).
+  walletBalanceKd            Decimal   @default(0) @db.Decimal(19, 4)
+  /// Net wallet liability on account 2100 (V20.2).
+  walletLiabilityKd          Decimal   @default(0) @db.Decimal(19, 4)
+  /// Most-recent real PAYMENT row recorded for this customer.
+  lastPaymentAt              DateTime?
+  /// Most-recent issued invoice for this customer.
+  lastInvoiceAt              DateTime?
+  /// Provenance — JOURNAL_AR | PARTIAL_PAYMENT_REMAINING | JOURNAL_AR_FALLBACK.
+  canonicalSource            String    @default("PARTIAL_PAYMENT_REMAINING")
+  /// V20.3 flag state at projection time (true iff USE_JOURNAL_AS_SOURCE was on).
+  v20_3TrueAccountingActive  Boolean   @default(false)
+  /// Schema version of this projection row. Bumped when fields are added
+  /// so consumers can force a rebuild for stale rows.
+  schemaVersion              Int       @default(1)
+  /// When this projection was last refreshed.
+  refreshedAt                DateTime  @default(now())
+  /// Append-only context for the refresh (event source, correlation id, …).
+  refreshContext             Json?
+  createdAt                  DateTime  @default(now())
+  updatedAt                  DateTime  @updatedAt
+  /// V20.5 — Phase 7 materialised aging bucket (CURRENT/LATE/CRITICAL/LEGAL).
+  agingBucket                String    @default("CURRENT")
+  /// V20.5 — Phase 7 materialised risk level (LOW/MEDIUM/HIGH/CRITICAL).
+  riskLevel                  String    @default("LOW")
+  /// V20.5 — Phase 7 materialised numeric risk score (0..100).
+  riskScore                  Int       @default(0)
+  /// V20.5 — Phase 7 materialised collections lifecycle stage.
+  collectionsStage           String    @default("NEW")
+  /// V20.5 — Phase 7 sum of remaining on overdue invoices.
+  overdueAmountKd            Decimal   @default(0) @db.Decimal(19, 4)
+  /// V20.5 — Phase 7 days the oldest overdue invoice is past due.
+  oldestOverdueDays          Int       @default(0)
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([refreshedAt])
+  @@index([remainingDebtKd])
+  @@index([overdueInvoicesCount])
+  @@index([lastPaymentAt])
+  @@index([riskLevel])
+  @@index([agingBucket])
+  @@index([collectionsStage])
+}
+
+/// V20.4 — Phase 4 materialised KPI snapshot tier.
+///
+/// One row per (kpiKey, scope) combination. Scope is a short string
+/// (`global`, `branch:<id>`, `driver:<id>`, …) so a single table can
+/// back the global red KPI card AND the per-branch / per-driver
+/// dashboard tiles without a join. `payload` carries the full snapshot
+/// shape (varies per kpiKey) and is JSON for forward-compat.
+///
+/// Refreshed every 5 minutes by `FinancialKpiSnapshotCron` and
+/// incrementally invalidated by domain events
+/// (`PAYMENT_CAPTURED`, `INVOICE_ISSUED`, …).
+model FinancialKpiSnapshot {
+  id            String   @id @default(uuid()) @db.Uuid
+  kpiKey        String
+  scope         String   @default("global")
+  payload       Json
+  computedAt    DateTime @default(now())
+  computedFor   DateTime
+  schemaVersion Int      @default(1)
+  /// SHA-256 of the inputs that produced this snapshot — operators can
+  /// detect "same value computed twice" vs "value actually changed".
+  inputDigest   String?
+
+  @@unique([kpiKey, scope])
+  @@index([computedAt])
+}
+
+/// V20.5 — Phase 2 Promise-to-Pay status enum.
+///
+/// The state machine:
+///   ACTIVE    →  KEPT       (customer paid by promisedDate)
+///   ACTIVE    →  BROKEN     (cron flips on promisedDate + tolerance day)
+///   ACTIVE    →  CANCELLED  (operator cancels manually)
+///
+/// All transitions write a PromiseEvent row. Append-only; no
+/// retroactive edit allowed (use a CANCELLED + new ACTIVE pair).
+enum PromiseToPayStatus {
+  ACTIVE
+  KEPT
+  BROKEN
+  CANCELLED
+}
+
+/// V20.5 — Phase 2 Promise-to-Pay record.
+///
+/// Captures one operator commitment ("customer will pay 30 KD on
+/// May 12"). Lives outside the financial primaries — does NOT
+/// drive AR / wallet / journal. Used by collections workbench
+/// for follow-up scheduling and by the risk-scoring engine
+/// (Phase 6) to penalise broken-promise customers.
+///
+/// `idempotencyKey` is the call-center session token + customer
+/// id; the partial unique index makes double-submits a no-op.
+model PromiseToPay {
+  id              String             @id @default(uuid()) @db.Uuid
+  customerId      String             @db.Uuid
+  invoiceId       String?            @db.Uuid
+  promisedAmount  Decimal            @db.Decimal(19, 4)
+  promisedDate    DateTime
+  status          PromiseToPayStatus @default(ACTIVE)
+  collectorId     String             @db.Uuid
+  notes           String?
+  idempotencyKey  String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  resolvedAt      DateTime?
+  resolvedById    String?            @db.Uuid
+  resolutionNotes String?
+
+  customer   Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  invoice    Order?         @relation("OrderPromisesToPay", fields: [invoiceId], references: [id], onDelete: SetNull)
+  collector  User           @relation("PromiseCollector", fields: [collectorId], references: [id], onDelete: Restrict)
+  resolvedBy User?          @relation("PromiseResolver", fields: [resolvedById], references: [id], onDelete: Restrict)
+  events     PromiseEvent[]
+
+  @@unique([idempotencyKey])
+  @@index([customerId, status])
+  @@index([status, promisedDate])
+  @@index([collectorId, status])
+  @@index([invoiceId])
+}
+
+/// V20.5 — Phase 2 Promise-to-Pay append-only audit row.
+///
+/// One PromiseEvent per state transition. `kind` examples:
+/// CREATED, KEPT, BROKEN, CANCELLED, EDITED. `payload` snapshots
+/// the relevant before/after fields so the supervisor can audit
+/// without a separate diff query.
+///
+/// DB-level append-only trigger blocks UPDATE/DELETE.
+model PromiseEvent {
+  id        String   @id @default(uuid()) @db.Uuid
+  promiseId String   @db.Uuid
+  kind      String
+  actorId   String?  @db.Uuid
+  payload   Json?
+  createdAt DateTime @default(now())
+
+  promise PromiseToPay @relation(fields: [promiseId], references: [id], onDelete: Cascade)
+  actor   User?        @relation("PromiseEventActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([promiseId, createdAt])
+  @@index([kind, createdAt])
+}
+
+/// V20.5 — Phase 3 Collections lifecycle stage enum.
+///
+/// One stage per CollectionsAccount; transitions are recorded in
+/// CollectionsStageEvent (append-only). The lifecycle is intended
+/// to mirror real-world collections desks; CLOSED is terminal.
+enum CollectionsStage {
+  NEW
+  CONTACTED
+  FOLLOW_UP
+  PROMISE_TO_PAY
+  ESCALATED
+  LEGAL
+  WRITTEN_OFF
+  CLOSED
+}
+
+/// V20.5 — Phase 3 Collections account.
+///
+/// One per customer (UNIQUE customerId). Holds the lifecycle
+/// stage, assigned collector, escalation level, SLA timers, and
+/// (for terminal WRITTEN_OFF) the write-off amount.
+///
+/// Additive — does NOT replace `CustomerCollectionStatus`. The
+/// older table is the simple block/normal flag consumed by the
+/// legacy AR view; this table powers the new collections
+/// workbench and the risk-scoring engine.
+model CollectionsAccount {
+  id                  String           @id @default(uuid()) @db.Uuid
+  customerId          String           @unique @db.Uuid
+  currentStage        CollectionsStage @default(NEW)
+  stageUpdatedAt      DateTime         @default(now())
+  stageUpdatedById    String?          @db.Uuid
+  assignedCollectorId String?          @db.Uuid
+  escalationLevel     Int              @default(0)
+  openedAt            DateTime         @default(now())
+  closedAt            DateTime?
+  lastContactAt       DateTime?
+  nextActionDueAt     DateTime?
+  writeOffAmountKd    Decimal?         @db.Decimal(19, 4)
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  customer        Customer                @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  assignedTo      User?                   @relation("CollectionsAccountCollector", fields: [assignedCollectorId], references: [id], onDelete: SetNull)
+  stageUpdatedBy  User?                   @relation("CollectionsAccountStageActor", fields: [stageUpdatedById], references: [id], onDelete: SetNull)
+  stageEvents     CollectionsStageEvent[]
+
+  @@index([currentStage])
+  @@index([assignedCollectorId])
+  @@index([nextActionDueAt])
+}
+
+/// V20.5 — Phase 3 Collections stage transition (append-only).
+///
+/// Records who flipped which stage when, with optional reason
+/// and a payload snapshot of any side effects (escalation level
+/// change, due-date change, etc.). DB-level trigger blocks
+/// UPDATE/DELETE.
+model CollectionsStageEvent {
+  id                    String            @id @default(uuid()) @db.Uuid
+  accountId             String            @db.Uuid
+  fromStage             CollectionsStage?
+  toStage               CollectionsStage
+  actorId               String?           @db.Uuid
+  reason                String?
+  payload               Json?
+  escalationLevelBefore Int?
+  escalationLevelAfter  Int?
+  createdAt             DateTime          @default(now())
+
+  account CollectionsAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  actor   User?              @relation("CollectionsStageEventActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([accountId, createdAt])
+  @@index([toStage, createdAt])
+}
+
+/// V20.5 — Phase 5 Financial Period close status.
+///
+/// OPEN  — period accepts mutations normally.
+/// CLOSED — period is locked: only reversal entries (with the
+///          `allowReversal` flag set on the writer) may add new
+///          journal rows; any other write is rejected and a
+///          FinancialPeriodViolation is logged.
+enum FinancialPeriodStatus {
+  OPEN
+  CLOSED
+}
+
+/// V20.5 — Phase 5 Monthly Financial Closing.
+///
+/// One row per (year, month) tuple. Lifecycle:
+///
+///     [implicitly OPEN] ─► closePeriod()  ─► CLOSED
+///     CLOSED            ─► reopenPeriod() ─► OPEN
+///
+/// Lock / reopen require Owner or Accountant role + double
+/// confirmation (idempotency token). Every action is audit-logged
+/// in the period itself (lockedAt/lockedById/lockNotes,
+/// reopenedAt/reopenedById/reopenReason).
+model FinancialPeriod {
+  id           String                @id @default(uuid()) @db.Uuid
+  year         Int
+  month        Int
+  status       FinancialPeriodStatus @default(OPEN)
+  lockedAt     DateTime?
+  lockedById   String?               @db.Uuid
+  lockNotes    String?
+  reopenedAt   DateTime?
+  reopenedById String?               @db.Uuid
+  reopenReason String?
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+
+  lockedBy   User?                       @relation("FinancialPeriodLocker", fields: [lockedById], references: [id], onDelete: SetNull)
+  reopenedBy User?                       @relation("FinancialPeriodReopener", fields: [reopenedById], references: [id], onDelete: SetNull)
+  violations FinancialPeriodViolation[]
+
+  @@unique([year, month])
+  @@index([status])
+}
+
+/// V20.5 — Phase 5 Period violation audit (append-only).
+///
+/// Every write attempt blocked by `PeriodLockGuard` appends one
+/// row here so the supervisor / auditor can see who tried what
+/// after a lock. DB-level trigger blocks UPDATE/DELETE.
+model FinancialPeriodViolation {
+  id          String   @id @default(uuid()) @db.Uuid
+  periodId    String   @db.Uuid
+  attemptedAt DateTime @default(now())
+  actorUserId String?  @db.Uuid
+  writerName  String
+  sourceRef   String?
+  payload     Json?
+
+  period FinancialPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  actor  User?           @relation("FinancialPeriodViolationActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([periodId, attemptedAt])
+  @@index([writerName])
+}
+
+/// V20.5 — Phase 8 Fraud alert severity.
+enum FraudAlertSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+/// V20.5 — Phase 8 Fraud alert lifecycle.
+enum FraudAlertStatus {
+  OPEN
+  INVESTIGATING
+  RESOLVED_FALSE_POSITIVE
+  RESOLVED_CONFIRMED
+}
+
+/// V20.5 — Phase 8 Fraud Detection alert.
+///
+/// Append-only on the detection-time dimensions; status / resolution
+/// fields can be updated by the supervisor as the alert is worked.
+/// Detection-time immutability enforced by the
+/// `FraudAlert_append_only_guard` DB trigger.
+model FraudAlert {
+  id              String             @id @default(uuid()) @db.Uuid
+  type            String
+  severity        FraudAlertSeverity @default(MEDIUM)
+  status          FraudAlertStatus   @default(OPEN)
+  customerId      String?            @db.Uuid
+  actorId         String?            @db.Uuid
+  payload         Json?
+  fingerprint     String             @unique
+  detectedAt      DateTime           @default(now())
+  resolvedAt      DateTime?
+  resolvedById    String?            @db.Uuid
+  resolutionNotes String?
+
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  actor      User?     @relation("FraudAlertActor", fields: [actorId], references: [id], onDelete: SetNull)
+  resolvedBy User?     @relation("FraudAlertResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@index([status, severity])
+  @@index([customerId, detectedAt])
+  @@index([type, detectedAt])
+}
+
+/**
+ * V20.6 — Phase 4 financial event outbox.
+ *
+ * One row per published `finance.*` domain event. The publisher
+ * writes to this table BEFORE emitting on `EventEmitter2`, so:
+ *   • Re-publish under the same business cause is idempotent
+ *     (UNIQUE eventId — second insert returns existing row).
+ *   • Future migration to Kafka/NATS only changes the dispatcher;
+ *     the outbox stays as the on-disk audit + replay surface.
+ *   • Append-only via DB trigger — only attempts/deliveredAt/
+ *     lastError fields can mutate after creation.
+ */
+model FinancialEventOutbox {
+  id            String    @id @default(uuid()) @db.Uuid
+  eventId       String    @unique
+  eventName     String
+  customerId    String?   @db.Uuid
+  correlationId String?
+  occurredAt    DateTime
+  publishedAt   DateTime  @default(now())
+  deliveredAt   DateTime?
+  attempts      Int       @default(0)
+  lastError     String?
+  payload       Json
+
+  @@index([customerId, publishedAt(sort: Desc)])
+  @@index([eventName, publishedAt(sort: Desc)])
+}
+
+/**
+ * V20.6 — Phase 4 idempotent consumer log.
+ *
+ * One row per (eventId, consumerName) pair processed. Replay-safe
+ * consumers `INSERT ... ON CONFLICT DO NOTHING` — if the row already
+ * exists, the event was already processed and the consumer skips.
+ * Append-only via DB trigger — once recorded, processing facts
+ * cannot be rewritten.
+ */
+model FinancialEventDelivery {
+  id           String   @id @default(uuid()) @db.Uuid
+  eventId      String
+  consumerName String
+  processedAt  DateTime @default(now())
+  status       String   @default("OK")
+  errorMessage String?
+
+  @@unique([eventId, consumerName], name: "FinancialEventDelivery_event_consumer_uq")
+  @@index([consumerName, processedAt(sort: Desc)])
 }
 
 // ─── Inventory & Stock (Dastur §4 Smart Inventory) ───────────────────────────
@@ -2566,19 +3115,19 @@ model Dispatch {
 
 /// Per-driver per-calendar-day (Kuwait) dispatch counters for reporting.
 model DriverMetrics {
-  id                  String   @id @default(uuid()) @db.Uuid
-  driverId            String   @db.Uuid
+  id                String   @id @default(uuid()) @db.Uuid
+  driverId          String   @db.Uuid
   /// Kuwait-local calendar date (stored as DATE).
-  date                DateTime @db.Date
-  assignedCount       Int      @default(0)
-  acknowledgedCount   Int      @default(0)
-  completedCount      Int      @default(0)
-  lateCount           Int      @default(0)
-  breachedCount       Int      @default(0)
-  avgAckMinutes       Float?
-  avgTotalMinutes     Float?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  date              DateTime @db.Date
+  assignedCount     Int      @default(0)
+  acknowledgedCount Int      @default(0)
+  completedCount    Int      @default(0)
+  lateCount         Int      @default(0)
+  breachedCount     Int      @default(0)
+  avgAckMinutes     Float?
+  avgTotalMinutes   Float?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   driver User @relation(fields: [driverId], references: [id], onDelete: Cascade)
 

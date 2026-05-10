@@ -27,6 +27,7 @@ import {
 } from './dto/create-loan.dto';
 import { DeductLoanDto } from './dto/deduct-loan.dto';
 import { ListLoansQueryDto } from './dto/list-loans-query.dto';
+import { mapLoanResponse, mapLoanResponses } from './loans.response';
 import { LoansService } from './loans.service';
 
 /**
@@ -61,8 +62,13 @@ export class LoansController {
     SafariRole.VIEWER,
   )
   @ApiOperation({ summary: `Create loan request (${APP_BRAND})` })
-  create(@Body() dto: CreateLoanDto, @CurrentUser() user: JwtUser) {
-    return this.loans.create(user.role as SafariRole, user.userId, dto);
+  async create(@Body() dto: CreateLoanDto, @CurrentUser() user: JwtUser) {
+    const row = await this.loans.create(
+      user.role as SafariRole,
+      user.userId,
+      dto,
+    );
+    return mapLoanResponse(row);
   }
 
   @Get()
@@ -72,8 +78,13 @@ export class LoansController {
     SafariRole.ACCOUNTANT,
   )
   @ApiOperation({ summary: `List loans (${APP_BRAND})` })
-  list(@Query() q: ListLoansQueryDto, @CurrentUser() user: JwtUser) {
-    return this.loans.list(user.role as SafariRole, user.userId, q);
+  async list(@Query() q: ListLoansQueryDto, @CurrentUser() user: JwtUser) {
+    const rows = await this.loans.list(
+      user.role as SafariRole,
+      user.userId,
+      q,
+    );
+    return mapLoanResponses(rows);
   }
 
   @Get('mine')
@@ -87,8 +98,9 @@ export class LoansController {
     SafariRole.VIEWER,
   )
   @ApiOperation({ summary: `My loans (${APP_BRAND})` })
-  mine(@CurrentUser() user: JwtUser) {
-    return this.loans.listMine(user.userId);
+  async mine(@CurrentUser() user: JwtUser) {
+    const rows = await this.loans.listMine(user.userId);
+    return mapLoanResponses(rows);
   }
 
   @Get(':id')
@@ -102,37 +114,48 @@ export class LoansController {
     SafariRole.VIEWER,
   )
   @ApiOperation({ summary: `Fetch single loan row (${APP_BRAND})` })
-  findOne(
+  async findOne(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: JwtUser,
   ) {
-    return this.loans.findOne(user.role as SafariRole, user.userId, id);
+    const row = await this.loans.findOne(
+      user.role as SafariRole,
+      user.userId,
+      id,
+    );
+    return mapLoanResponse(row);
   }
 
   @Patch(':id/approve')
   @Roles(SafariRole.OWNER, SafariRole.ACCOUNTANT)
   @ApiOperation({ summary: `Approve loan (${APP_BRAND})` })
-  approve(
+  async approve(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: JwtUser,
   ) {
-    return this.loans.approve(user.role as SafariRole, user.userId, id);
+    const row = await this.loans.approve(
+      user.role as SafariRole,
+      user.userId,
+      id,
+    );
+    return mapLoanResponse(row);
   }
 
   @Patch(':id/reject')
   @Roles(SafariRole.OWNER, SafariRole.ACCOUNTANT)
   @ApiOperation({ summary: `Reject loan (${APP_BRAND})` })
-  reject(
+  async reject(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: RejectLoanDto,
     @CurrentUser() user: JwtUser,
   ) {
-    return this.loans.reject(
+    const row = await this.loans.reject(
       user.role as SafariRole,
       user.userId,
       id,
       dto.reason,
     );
+    return mapLoanResponse(row);
   }
 
   /**
@@ -145,16 +168,17 @@ export class LoansController {
     description:
       'OWNER only. Clamps to remaining and marks SETTLED when it reaches zero.',
   })
-  deduct(
+  async deduct(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: DeductLoanDto,
     @CurrentUser() user: JwtUser,
   ) {
-    return this.loans.deductManual(
+    const row = await this.loans.deductManual(
       user.role as SafariRole,
       id,
       dto.amount,
       dto.note,
     );
+    return mapLoanResponse(row);
   }
 }

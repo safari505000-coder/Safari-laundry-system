@@ -9,6 +9,7 @@ import {
   type PayrollAdHocLineRow,
   type PayrollRow,
 } from '@/lib/api';
+import { formatKwdAmount, sumKwdStrings } from '@/lib/kwd';
 import { PrintableSheet } from '@/modules/shared/print';
 import {
   compareBranchesForPayrollRoster,
@@ -33,20 +34,30 @@ import {
  * the identical totals that were printed on the sheet.
  */
 
-const KD = (s: string | number) => {
-  const n = typeof s === 'number' ? s : Number.parseFloat(s);
-  if (!Number.isFinite(n)) return String(s);
-  return n.toLocaleString('en-GB', {
-    minimumFractionDigits: 3,
-    maximumFractionDigits: 3,
-  });
-};
+/**
+ * V21 Phase 5 — render-only formatter routed through the canonical
+ * `formatKwdAmount` from `@/lib/kwd`. The previous local `KD()` was
+ * a duplicate of the shared formatter and is gone.
+ */
+const KD = (s: string | number) => formatKwdAmount(s);
 
-const f = (s: string | null | undefined) => {
-  if (!s) return 0;
-  const n = Number.parseFloat(s);
-  return Number.isFinite(n) ? n : 0;
-};
+/**
+ * V21 Phase 5 — string-only positivity check for KD strings, kept
+ * deliberately free of `parseFloat`. Backend always emits
+ * non-negative payroll bands, so a value is "positive" iff it isn't
+ * any 4dp form of zero.
+ */
+function isPositiveKd(s: string | null | undefined): boolean {
+  if (!s) return false;
+  if (s.startsWith('-')) return false;
+  const trimmed = s.trim();
+  return (
+    trimmed !== '' &&
+    trimmed !== '0' &&
+    trimmed !== '0.000' &&
+    trimmed !== '0.0000'
+  );
+}
 
 function monthRangeIso(ym: string): { from: string; to: string } | null {
   if (!/^\d{4}-\d{2}$/.test(ym)) return null;
@@ -57,27 +68,6 @@ function monthRangeIso(ym: string): { from: string; to: string } | null {
   const from = new Date(y, m - 1, 1, 0, 0, 0, 0);
   const to = new Date(y, m, 0, 23, 59, 59, 999);
   return { from: from.toISOString(), to: to.toISOString() };
-}
-
-/**
- * V19.22 — Debt release was separated from the payroll cycle into its
- * own disbursement flow, so it no longer contributes to the payroll
- * net here (and is not shown as a column). Loan installment and
- * debt hold stay inside payroll as deductions.
- */
-function payrollNet(row: PayrollRow): number {
-  return (
-    f(row.basicSalary) +
-    f(row.allowances) +
-    f(row.commissionAmount) -
-    f(row.deductions) -
-    f(row.debtHoldAmount) -
-    f(row.loanDeduction)
-  );
-}
-
-function adhocNet(a: PayrollAdHocLineRow): number {
-  return f(a.basicSalary) + f(a.allowances) - f(a.deductions);
 }
 
 function monthLabelAr(ym: string): string {
@@ -254,35 +244,39 @@ export function PayrollRosterPrintPage() {
     );
   }, [rows, branchesById, adhocLines, ym, branchId]);
 
+  /**
+   * V21 Phase 5 — every grand-total band is summed via the single
+   * canonical `sumKwdStrings` helper so the page no longer owns any
+   * KD math primitive. `netSalaryKd` is supplied by the backend
+   * mapper (`mapPayrollRow` / `mapPayrollAdHocLine`) so payroll's
+   * canonical net is the only source of truth.
+   */
   const totals = useMemo(() => {
-    let basic = 0;
-    let allow = 0;
-    let deductions = 0;
-    let commission = 0;
-    let hold = 0;
-    let loan = 0;
-    let net = 0;
-    for (const r of rows ?? []) {
-      basic += f(r.basicSalary);
-      allow += f(r.allowances);
-      deductions += f(r.deductions);
-      commission += f(r.commissionAmount);
-      hold += f(r.debtHoldAmount);
-      loan += f(r.loanDeduction);
-      net += payrollNet(r);
-    }
     const adhocFiltered = (adhocLines ?? []).filter(
-      (a) =>
-        a.periodYm === ym &&
-        (!branchId || a.branchId === branchId),
+      (a) => a.periodYm === ym && (!branchId || a.branchId === branchId),
     );
-    for (const a of adhocFiltered) {
-      basic += f(a.basicSalary);
-      allow += f(a.allowances);
-      deductions += f(a.deductions);
-      net += adhocNet(a);
-    }
-    return { basic, allow, deductions, commission, hold, loan, net };
+    const payrollRows = rows ?? [];
+    return {
+      basicKd: sumKwdStrings([
+        ...payrollRows.map((r) => r.basicSalary),
+        ...adhocFiltered.map((a) => a.basicSalary),
+      ]),
+      allowKd: sumKwdStrings([
+        ...payrollRows.map((r) => r.allowances),
+        ...adhocFiltered.map((a) => a.allowances),
+      ]),
+      deductionsKd: sumKwdStrings([
+        ...payrollRows.map((r) => r.deductions),
+        ...adhocFiltered.map((a) => a.deductions),
+      ]),
+      commissionKd: sumKwdStrings(payrollRows.map((r) => r.commissionAmount)),
+      holdKd: sumKwdStrings(payrollRows.map((r) => r.debtHoldAmount)),
+      loanKd: sumKwdStrings(payrollRows.map((r) => r.loanDeduction)),
+      netKd: sumKwdStrings([
+        ...payrollRows.map((r) => r.netSalaryKd),
+        ...adhocFiltered.map((a) => a.netSalaryKd),
+      ]),
+    };
   }, [rows, adhocLines, ym, branchId]);
 
   // V19.21 — auto-launch the print dialog once the data has
@@ -316,7 +310,9 @@ export function PayrollRosterPrintPage() {
   // must ALWAYS show — even with a zero value — so the Owner can see
   // at a glance that they've been accounted for. Debt release was
   // moved to its own disbursement flow and removed here.
-  const hasCommission = (rows ?? []).some((r) => f(r.commissionAmount) > 0);
+  const hasCommission = (rows ?? []).some((r) =>
+    isPositiveKd(r.commissionAmount),
+  );
   // V19.22 — debt hold + loan installment columns are ALWAYS rendered
   // (see column layout below) so the Owner can see zero values as
   // explicit proof they've been accounted for. No flags needed.
@@ -406,34 +402,42 @@ export function PayrollRosterPrintPage() {
           />
           <SummaryStat
             label="إجمالي الأساسي + البدلات"
-            value={KD(totals.basic + totals.allow)}
+            value={KD(sumKwdStrings([totals.basicKd, totals.allowKd]))}
             tone="neutral"
           />
           {hasCommission && (
             <SummaryStat
               label="العمولات"
-              value={`+${KD(totals.commission)}`}
+              value={`+${KD(totals.commissionKd)}`}
               tone="good"
             />
           )}
           <SummaryStat
             label="الاستقطاعات"
-            value={`−${KD(totals.deductions)}`}
+            value={`−${KD(totals.deductionsKd)}`}
             tone="bad"
           />
           <SummaryStat
             label="محجوز المديونية"
-            value={totals.hold > 0 ? `−${KD(totals.hold)}` : KD(0)}
+            value={
+              isPositiveKd(totals.holdKd)
+                ? `−${KD(totals.holdKd)}`
+                : KD('0')
+            }
             tone="warn"
           />
           <SummaryStat
             label="أقساط السلف"
-            value={totals.loan > 0 ? `−${KD(totals.loan)}` : KD(0)}
+            value={
+              isPositiveKd(totals.loanKd)
+                ? `−${KD(totals.loanKd)}`
+                : KD('0')
+            }
             tone="bad"
           />
           <SummaryStat
             label="الصافي المستحق"
-            value={KD(totals.net)}
+            value={KD(totals.netKd)}
             tone="good"
             emphasis
           />
@@ -441,28 +445,28 @@ export function PayrollRosterPrintPage() {
       </section>
 
       {groups.map((g, idx) => {
-        let bBasic = 0;
-        let bAllow = 0;
-        let bDed = 0;
-        let bCom = 0;
-        let bHold = 0;
-        let bLoan = 0;
-        let bNet = 0;
-        for (const r of g.rows) {
-          bBasic += f(r.basicSalary);
-          bAllow += f(r.allowances);
-          bDed += f(r.deductions);
-          bCom += f(r.commissionAmount);
-          bHold += f(r.debtHoldAmount);
-          bLoan += f(r.loanDeduction);
-          bNet += payrollNet(r);
-        }
-        for (const a of g.adhoc) {
-          bBasic += f(a.basicSalary);
-          bAllow += f(a.allowances);
-          bDed += f(a.deductions);
-          bNet += adhocNet(a);
-        }
+        // V21 Phase 5 — per-branch totals routed through canonical
+        // `sumKwdStrings`. The previous local `for…of` + `f()` blocks
+        // were retired so this surface no longer owns any KD math.
+        const bBasicKd = sumKwdStrings([
+          ...g.rows.map((r) => r.basicSalary),
+          ...g.adhoc.map((a) => a.basicSalary),
+        ]);
+        const bAllowKd = sumKwdStrings([
+          ...g.rows.map((r) => r.allowances),
+          ...g.adhoc.map((a) => a.allowances),
+        ]);
+        const bDedKd = sumKwdStrings([
+          ...g.rows.map((r) => r.deductions),
+          ...g.adhoc.map((a) => a.deductions),
+        ]);
+        const bComKd = sumKwdStrings(g.rows.map((r) => r.commissionAmount));
+        const bHoldKd = sumKwdStrings(g.rows.map((r) => r.debtHoldAmount));
+        const bLoanKd = sumKwdStrings(g.rows.map((r) => r.loanDeduction));
+        const bNetKd = sumKwdStrings([
+          ...g.rows.map((r) => r.netSalaryKd),
+          ...g.adhoc.map((a) => a.netSalaryKd),
+        ]);
         return (
           <section
             key={g.branch?.id ?? idx}
@@ -473,7 +477,7 @@ export function PayrollRosterPrintPage() {
                 {g.branch?.name ?? 'بدون فرع'}
               </h2>
               <span className="roster-branch__chip">
-                {g.rows.length + g.adhoc.length} صف — صافي {KD(bNet)} د.ك
+                {g.rows.length + g.adhoc.length} صف — صافي {KD(bNetKd)} د.ك
               </span>
             </div>
             <table className="printable-sheet__table roster-table">
@@ -541,39 +545,41 @@ export function PayrollRosterPrintPage() {
                     <td className="roster-num">{KD(r.basicSalary)}</td>
                     <td className="roster-num">{KD(r.allowances)}</td>
                     <td className="roster-num roster-neg">
-                      {f(r.deductions) > 0 ? `−${KD(r.deductions)}` : '—'}
+                      {isPositiveKd(r.deductions)
+                        ? `−${KD(r.deductions)}`
+                        : '—'}
                     </td>
                     {hasCommission && (
                       <td className="roster-num roster-pos">
-                        {f(r.commissionAmount) > 0
+                        {isPositiveKd(r.commissionAmount)
                           ? `+${KD(r.commissionAmount)}`
                           : '—'}
                       </td>
                     )}
                     <td
                       className={
-                        f(r.debtHoldAmount) > 0
+                        isPositiveKd(r.debtHoldAmount)
                           ? 'roster-num roster-warn'
                           : 'roster-num'
                       }
                     >
-                      {f(r.debtHoldAmount) > 0
+                      {isPositiveKd(r.debtHoldAmount)
                         ? `−${KD(r.debtHoldAmount)}`
-                        : KD(0)}
+                        : KD('0')}
                     </td>
                     <td
                       className={
-                        f(r.loanDeduction) > 0
+                        isPositiveKd(r.loanDeduction)
                           ? 'roster-num roster-neg'
                           : 'roster-num'
                       }
                     >
-                      {f(r.loanDeduction) > 0
+                      {isPositiveKd(r.loanDeduction)
                         ? `−${KD(r.loanDeduction)}`
-                        : KD(0)}
+                        : KD('0')}
                     </td>
                     <td className="roster-num roster-net">
-                      {KD(payrollNet(r))}
+                      {KD(r.netSalaryKd)}
                     </td>
                   </tr>
                 ))}
@@ -602,7 +608,9 @@ export function PayrollRosterPrintPage() {
                     <td className="roster-num">{KD(a.basicSalary)}</td>
                     <td className="roster-num">{KD(a.allowances)}</td>
                     <td className="roster-num roster-neg">
-                      {f(a.deductions) > 0 ? `−${KD(a.deductions)}` : '—'}
+                      {isPositiveKd(a.deductions)
+                        ? `−${KD(a.deductions)}`
+                        : '—'}
                     </td>
                     {hasCommission && (
                       <td className="roster-num">—</td>
@@ -610,7 +618,7 @@ export function PayrollRosterPrintPage() {
                     <td className="roster-num">—</td>
                     <td className="roster-num">—</td>
                     <td className="roster-num roster-net">
-                      {KD(adhocNet(a))}
+                      {KD(a.netSalaryKd)}
                     </td>
                   </tr>
                 ))}
@@ -621,31 +629,35 @@ export function PayrollRosterPrintPage() {
                     مجموع الفرع
                   </td>
                   <td className="roster-num">—</td>
-                  <td className="roster-num">{KD(bBasic)}</td>
-                  <td className="roster-num">{KD(bAllow)}</td>
+                  <td className="roster-num">{KD(bBasicKd)}</td>
+                  <td className="roster-num">{KD(bAllowKd)}</td>
                   <td className="roster-num roster-neg">
-                    {bDed > 0 ? `−${KD(bDed)}` : '—'}
+                    {isPositiveKd(bDedKd) ? `−${KD(bDedKd)}` : '—'}
                   </td>
                   {hasCommission && (
                     <td className="roster-num roster-pos">
-                      {bCom > 0 ? `+${KD(bCom)}` : '—'}
+                      {isPositiveKd(bComKd) ? `+${KD(bComKd)}` : '—'}
                     </td>
                   )}
                   <td
                     className={
-                      bHold > 0 ? 'roster-num roster-warn' : 'roster-num'
+                      isPositiveKd(bHoldKd)
+                        ? 'roster-num roster-warn'
+                        : 'roster-num'
                     }
                   >
-                    {bHold > 0 ? `−${KD(bHold)}` : KD(0)}
+                    {isPositiveKd(bHoldKd) ? `−${KD(bHoldKd)}` : KD('0')}
                   </td>
                   <td
                     className={
-                      bLoan > 0 ? 'roster-num roster-neg' : 'roster-num'
+                      isPositiveKd(bLoanKd)
+                        ? 'roster-num roster-neg'
+                        : 'roster-num'
                     }
                   >
-                    {bLoan > 0 ? `−${KD(bLoan)}` : KD(0)}
+                    {isPositiveKd(bLoanKd) ? `−${KD(bLoanKd)}` : KD('0')}
                   </td>
-                  <td className="roster-num roster-net">{KD(bNet)}</td>
+                  <td className="roster-num roster-net">{KD(bNetKd)}</td>
                 </tr>
               </tfoot>
             </table>
@@ -658,33 +670,53 @@ export function PayrollRosterPrintPage() {
         <dl className="printable-sheet__totals">
           <div className="printable-sheet__total-row">
             <dt>الأساسي + البدلات</dt>
-            <dd>{KD(totals.basic + totals.allow)} د.ك</dd>
+            <dd>
+              {KD(sumKwdStrings([totals.basicKd, totals.allowKd]))} د.ك
+            </dd>
           </div>
           {hasCommission && (
             <div className="printable-sheet__total-row">
               <dt>العمولات</dt>
-              <dd style={{ color: '#15803d' }}>+{KD(totals.commission)} د.ك</dd>
+              <dd style={{ color: '#15803d' }}>
+                +{KD(totals.commissionKd)} د.ك
+              </dd>
             </div>
           )}
           <div className="printable-sheet__total-row">
             <dt>الاستقطاعات</dt>
-            <dd style={{ color: '#b91c1c' }}>−{KD(totals.deductions)} د.ك</dd>
+            <dd style={{ color: '#b91c1c' }}>
+              −{KD(totals.deductionsKd)} د.ك
+            </dd>
           </div>
           <div className="printable-sheet__total-row">
             <dt>محجوز المديونية</dt>
-            <dd style={{ color: totals.hold > 0 ? '#b45309' : undefined }}>
-              {totals.hold > 0 ? `−${KD(totals.hold)}` : KD(0)} د.ك
+            <dd
+              style={{
+                color: isPositiveKd(totals.holdKd) ? '#b45309' : undefined,
+              }}
+            >
+              {isPositiveKd(totals.holdKd)
+                ? `−${KD(totals.holdKd)}`
+                : KD('0')}{' '}
+              د.ك
             </dd>
           </div>
           <div className="printable-sheet__total-row">
             <dt>أقساط السلف</dt>
-            <dd style={{ color: totals.loan > 0 ? '#b91c1c' : undefined }}>
-              {totals.loan > 0 ? `−${KD(totals.loan)}` : KD(0)} د.ك
+            <dd
+              style={{
+                color: isPositiveKd(totals.loanKd) ? '#b91c1c' : undefined,
+              }}
+            >
+              {isPositiveKd(totals.loanKd)
+                ? `−${KD(totals.loanKd)}`
+                : KD('0')}{' '}
+              د.ك
             </dd>
           </div>
           <div className="printable-sheet__total-row printable-sheet__total-row--grand">
             <dt>الصافي الكلي المستحق</dt>
-            <dd>{KD(totals.net)} د.ك</dd>
+            <dd>{KD(totals.netKd)} د.ك</dd>
           </div>
         </dl>
       </section>

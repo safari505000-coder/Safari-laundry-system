@@ -411,13 +411,14 @@ export function DriverPOS() {
             <p className="text-[11px] font-medium text-muted-foreground">
               {t('pos.payment.title')}
             </p>
-            <div className="grid grid-cols-4 gap-1.5">
+            <div className="grid grid-cols-5 gap-1.5">
               {(
                 [
                   ['CASH', t('pos.payment.cash')],
                   ['KNET', t('pos.payment.knet')],
                   ['PAYMENT_LINK', t('pos.payment.online')],
                   ['DEBT_ON_ACCOUNT', t('pos.payment.debt')],
+                  ['SUBSCRIPTION', t('pos.pay.SUBSCRIPTION_WALLET')],
                 ] as const
               ).map(([m, label]) => (
                 <button
@@ -429,7 +430,8 @@ export function DriverPOS() {
                         | 'CASH'
                         | 'KNET'
                         | 'PAYMENT_LINK'
-                        | 'DEBT_ON_ACCOUNT',
+                        | 'DEBT_ON_ACCOUNT'
+                        | 'SUBSCRIPTION',
                     )
                   }
                   className={cn(

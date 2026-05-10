@@ -3,6 +3,7 @@ import { Loader2, MessageCircle, Phone, Receipt } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/auth-context';
 import { ACCESS } from '@/modules/shared/auth/access-matrix';
+import { formatKwdLabel } from '@/lib/kwd';
 import {
   Table,
   TableBody,
@@ -16,13 +17,6 @@ import type {
   ControlTowerRow,
   ControlTowerSlaStatus,
 } from '../api/control-tower-api';
-
-function fmtKd(v: number): string {
-  return new Intl.NumberFormat('ar-KW', {
-    minimumFractionDigits: 3,
-    maximumFractionDigits: 3,
-  }).format(v);
-}
 
 function buildWhatsAppLink(phone: string): string {
   const digits = phone.replace(/[^\d]/g, '');
@@ -125,7 +119,7 @@ export function ControlTowerRiskTable({
                   </TableCell>
                   <TableCell className="tabular-nums">{row.phone}</TableCell>
                   <TableCell>{row.driverName}</TableCell>
-                  <TableCell className="text-end tabular-nums">{fmtKd(row.totalDue)}</TableCell>
+                  <TableCell className="text-end tabular-nums">{formatKwdLabel(row.totalDue)}</TableCell>
                   <TableCell className="text-end tabular-nums">{row.daysLate}</TableCell>
                   <TableCell>
                     <span

@@ -24,10 +24,10 @@ import { CashStatus, PosPaymentMethod } from '@prisma/client';
  *   • `PAID_ONLINE`   — money settled electronically (KNET terminal,
  *     hosted payment link, generic ONLINE callback). No handover ever
  *     required; these orders should NOT appear in driver-cash trails.
- *   • `PAID_TO_DRIVER` — everything else, including CASH, DEBT_ON_ACCOUNT
- *     (the driver holds the paper trail and must eventually reconcile),
- *     and subscription-wallet closures (the driver is still accountable
- *     for the service delivery). Legacy behaviour preserved.
+ *   • `PAID_TO_DRIVER` — CASH and DEBT_ON_ACCOUNT, where the driver holds
+ *     either money or a paper trail that must be reconciled.
+ *   • `PAID_ONLINE` is also used for SUBSCRIPTION_WALLET because subscription
+ *     credit is a book payment method, not driver-held cash.
  *
  * All new writes to `Order.cashStatus` should go through this helper so
  * future payment-method additions are forced to make an explicit choice.
@@ -39,10 +39,10 @@ export function cashStatusForPaymentMethod(
     case PosPaymentMethod.KNET:
     case PosPaymentMethod.PAYMENT_LINK:
     case PosPaymentMethod.ONLINE:
+    case PosPaymentMethod.SUBSCRIPTION_WALLET:
       return CashStatus.PAID_ONLINE;
     case PosPaymentMethod.CASH:
     case PosPaymentMethod.DEBT_ON_ACCOUNT:
-    case PosPaymentMethod.SUBSCRIPTION_WALLET:
     default:
       return CashStatus.PAID_TO_DRIVER;
   }
@@ -59,6 +59,7 @@ export function isElectronicMethod(
   return (
     method === PosPaymentMethod.KNET ||
     method === PosPaymentMethod.PAYMENT_LINK ||
-    method === PosPaymentMethod.ONLINE
+    method === PosPaymentMethod.ONLINE ||
+    method === PosPaymentMethod.SUBSCRIPTION_WALLET
   );
 }

@@ -1,5 +1,6 @@
 import type { CollectionUnpaidOnlineRow, CustomerDirectoryRow } from '@/lib/api';
 import { BRAND } from '@/lib/brand';
+import { isPositiveKd } from '@/lib/kwd';
 
 /** Normalize Kuwait-style numbers for wa.me links. */
 export function whatsappChatNumber(phone: string): string | null {
@@ -254,13 +255,8 @@ export type CustomerStatementWhatsAppArgs = {
   customerId: string;
   walletBalanceKd: string;
   walletDebtKd: string;
-  /**
-   * Operational debt basis from ledger / CC. This is NOT the canonical
-   * Customer 360 financial number.
-   */
-  operationalDebtKd?: string;
-  /** @deprecated Use operationalDebtKd. Kept for older callers. */
-  effectiveDebtKd?: string;
+  /** Canonical current receivable debt shown to the customer. */
+  remainingDebtKd?: string;
   invoiceCount: number;
   openInvoiceCount: number;
   activeSubscription: {
@@ -296,7 +292,7 @@ export function buildCustomerStatementWhatsAppText(
           ? `📅 الفترة: حتى ${a.to}`
           : '📅 الفترة: كامل السجل';
 
-  const eff = (a.operationalDebtKd ?? a.effectiveDebtKd)?.trim();
+  const eff = a.remainingDebtKd?.trim();
   const debtLineKd =
     eff !== undefined && eff !== '' ? eff : a.walletDebtKd;
 
@@ -357,8 +353,8 @@ export function customerDirectoryBalanceWhatsAppHref(row: CustomerDirectoryRow):
   if (!n) return null;
 
   const name = row.customer.displayName?.trim() || row.customer.phone;
-  const debt = Number.parseFloat(row.debt.totalDebt ?? '0');
-  const isDebt = Number.isFinite(debt) && debt > 0;
+  // allow-legacy-debt-reader (V20.6 Phase 2: server-canonical aggregate; row.debt.totalDebt is bound by /api/customers DebtVisibility surface)
+  const isDebt = isPositiveKd(row.debt.totalDebt);
   const amount = isDebt ? row.debt.totalDebt : row.subscription.walletBalance;
   const link = customerPayPortalUrl();
 

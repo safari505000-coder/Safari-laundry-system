@@ -16,7 +16,7 @@ import {
   type ManagerDocumentKind,
   type ManagerDocumentRow,
 } from '@/lib/api';
-import { formatKwdLabel } from '@/lib/kwd';
+import { formatKwdLabel, sumKwdStringsPrecise } from '@/lib/kwd';
 import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
 import { Badge } from '@/modules/shared/components/ui/badge';
 import {
@@ -111,10 +111,10 @@ export function MyDocumentsPage() {
     });
   }, [rows, kindFilter, q]);
 
-  const totalKd = useMemo(() => {
-    if (!rows) return 0;
-    return rows.reduce((acc, r) => acc + Number(r.amountKd), 0);
-  }, [rows]);
+  const totalKd = useMemo(
+    () => sumKwdStringsPrecise((rows ?? []).map((r) => r.amountKd)),
+    [rows],
+  );
 
   return (
     <div className="space-y-6">
@@ -287,7 +287,7 @@ export function MyDocumentsPage() {
         <footer className="rounded-lg border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-600">
           {t('myDocuments.footer.total', {
             count: rows.length,
-            total: formatKwdLabel(totalKd.toFixed(3)),
+            total: formatKwdLabel(totalKd),
           })}
         </footer>
       ) : null}

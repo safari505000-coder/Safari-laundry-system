@@ -1,17 +1,26 @@
-import { useMemo } from 'react';
+/**
+ * V24 — Wave B (Frontend Purge).
+ *
+ * Pre-V24 this panel imported `generateSalesDebtInsights` from the
+ * deleted FE helper and ran it client-side over a locally-aggregated
+ * `SalesDebtAnalytics` object. V24 Commandment #5 ("Don't Calculate,
+ * Just Ask") moves the badge-generation logic to the backend
+ * (`SalesDebtAnalyticsService.generateInsights`); this component is
+ * now a pure renderer over the server-supplied
+ * `SalesDebtInsight[]` array.
+ */
 import { AlertTriangle, Info, Siren } from 'lucide-react';
-import type { SalesDebtAnalytics } from '@/lib/sales-debt-analytics';
-import {
-  generateSalesDebtInsights,
-  type SalesDebtInsightSeverity,
-  type SalesDebtInsightTarget,
-} from '@/lib/sales-debt-insights';
+import type {
+  SalesDebtInsight,
+  SalesDebtInsightSeverity,
+  SalesDebtInsightTarget,
+} from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { Button } from '@/modules/shared/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/modules/shared/components/ui/card';
 
 type SalesDebtInsightsPanelProps = {
-  analytics: SalesDebtAnalytics;
+  insights: SalesDebtInsight[];
   onDrillDown?: (target: SalesDebtInsightTarget) => void;
 };
 
@@ -22,11 +31,9 @@ function severityIcon(severity: SalesDebtInsightSeverity) {
 }
 
 export function SalesDebtInsightsPanel({
-  analytics,
+  insights,
   onDrillDown,
 }: SalesDebtInsightsPanelProps) {
-  const insights = useMemo(() => generateSalesDebtInsights(analytics), [analytics]);
-
   if (insights.length === 0) {
     return (
       <Card>

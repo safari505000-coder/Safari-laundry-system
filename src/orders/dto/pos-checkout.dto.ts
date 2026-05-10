@@ -1,16 +1,17 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { PosPaymentMethod } from '@prisma/client';
 import { Transform } from 'class-transformer';
-import { IsEnum, IsOptional, IsUUID } from 'class-validator';
+import { IsIn, IsOptional, IsUUID } from 'class-validator';
+import { CANONICAL_PAYMENT_METHODS } from '../../finance/canonical-payment-method';
 import { CreateOrderQuickDto } from './create-order-quick.dto';
 
 /** Driver POS: completes order in one step and records payment / wallet settlement. */
 export class PosCheckoutDto extends CreateOrderQuickDto {
   @ApiPropertyOptional({
-    enum: PosPaymentMethod,
-    enumName: 'PosPaymentMethod',
+    enum: CANONICAL_PAYMENT_METHODS,
+    enumName: 'CanonicalPosPaymentMethod',
     description:
-      'When prepaid balance covers the full total, defaults to SUBSCRIPTION_WALLET. Otherwise required: CASH, KNET, ONLINE, or DEBT_ON_ACCOUNT.',
+      'Payment method: CASH, KNET, ONLINE, DEBT_ON_ACCOUNT, or SUBSCRIPTION. Legacy SUBSCRIPTION_WALLET is accepted for compatibility.',
   })
   @Transform(({ value }: { value: unknown }) => {
     if (value === '' || value === null || value === undefined) {
@@ -30,7 +31,10 @@ export class PosCheckoutDto extends CreateOrderQuickDto {
   // keeps TypeScript compatible with the parent's property shape
   // while replacing its class-validator decorators below.
   @IsOptional()
-  @IsEnum(PosPaymentMethod)
+  @IsIn([...CANONICAL_PAYMENT_METHODS, PosPaymentMethod.SUBSCRIPTION_WALLET], {
+    message:
+      'posPaymentMethod must be CASH, KNET, ONLINE, PAYMENT_LINK, DEBT_ON_ACCOUNT, or SUBSCRIPTION',
+  })
   declare posPaymentMethod?: PosPaymentMethod;
 
   /**

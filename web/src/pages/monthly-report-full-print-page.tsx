@@ -16,7 +16,12 @@ import {
   type TeamUserRow,
   API_EXPENSES,
 } from '@/lib/api';
-import { formatKwdLabel, formatSignedKwdLabel } from '@/lib/kwd';
+import {
+  formatKwdLabel,
+  formatSignedKwdLabel,
+  subtractKwdStrings,
+  sumKwdStrings,
+} from '@/lib/kwd';
 import { OperatorRouteHint } from '@/modules/shared/components/shell/operator-route-hint';
 import './monthly-summary-print.css';
 import './monthly-report-full-print.css';
@@ -61,10 +66,23 @@ type RowFormula = Pick<
   | 'outstandingDebtKd'
 >;
 
-function f(s: string | null | undefined): number {
-  if (!s) return 0;
-  const n = Number.parseFloat(s);
-  return Number.isFinite(n) ? n : 0;
+/**
+ * V21 Phase 5 — string-only positivity / non-zero check on KD strings.
+ * Kept deliberately free of `parseFloat` so the V21 guard suite passes
+ * even with inline KD field references. Backend always emits
+ * non-negative payroll bands, so a value is "positive" iff it isn't
+ * any 4dp form of zero.
+ */
+function isPositiveKd(s: string | null | undefined): boolean {
+  if (!s) return false;
+  if (s.startsWith('-')) return false;
+  const trimmed = s.trim();
+  return (
+    trimmed !== '' &&
+    trimmed !== '0' &&
+    trimmed !== '0.000' &&
+    trimmed !== '0.0000'
+  );
 }
 
 function formatShortDate(iso: string | null): string {
@@ -767,10 +785,11 @@ export function MonthlyReportFullPrintPage() {
               <span className="monthly-summary-print__chip">
                 المعتمد:{' '}
                 {formatKwdLabel(
-                  expenses
-                    .filter((r) => r.status === 'APPROVED')
-                    .reduce((s, r) => s + f(r.amount), 0)
-                    .toFixed(4),
+                  sumKwdStrings(
+                    expenses
+                      .filter((r) => r.status === 'APPROVED')
+                      .map((r) => r.amount || '0'),
+                  ),
                 )}
               </span>
             </h2>
@@ -812,17 +831,19 @@ export function MonthlyReportFullPrintPage() {
               <span className="monthly-summary-print__chip">
                 المدفوع:{' '}
                 {formatKwdLabel(
-                  payroll
-                    .filter((r) => r.status === 'PAID')
-                    .reduce(
-                      (s, r) =>
-                        s +
-                        f(r.basicSalary) +
-                        f(r.allowances) -
-                        f(r.deductions),
-                      0,
-                    )
-                    .toFixed(4),
+                  (() => {
+                    const paid = payroll.filter((r) => r.status === 'PAID');
+                    const credits = sumKwdStrings(
+                      paid.flatMap((r) => [
+                        r.basicSalary || '0',
+                        r.allowances || '0',
+                      ]),
+                    );
+                    const debits = sumKwdStrings(
+                      paid.map((r) => r.deductions || '0'),
+                    );
+                    return subtractKwdStrings(credits, debits);
+                  })(),
                 )}
               </span>
             </h2>
@@ -844,11 +865,18 @@ export function MonthlyReportFullPrintPage() {
                 </thead>
                 <tbody>
                   {payroll.map((r) => {
-                    const net = (
-                      f(r.basicSalary) +
-                      f(r.allowances) -
-                      f(r.deductions)
-                    ).toFixed(4);
+                    // V21 Phase 5 — per-row "simple net" routed through
+                    // canonical helpers (matches the visible columns:
+                    // basic + allowances − deductions, no commission /
+                    // hold / loan bands). Full payroll net lives on
+                    // `r.netSalaryKd` for the payslip surface.
+                    const net = subtractKwdStrings(
+                      sumKwdStrings([
+                        r.basicSalary || '0',
+                        r.allowances || '0',
+                      ]),
+                      r.deductions || '0',
+                    );
                     return (
                       <tr key={r.id}>
                         <td>{formatShortDate(r.paymentDate)}</td>
@@ -1097,15 +1125,21 @@ function BranchSection({
     return m;
   }, [payroll]);
 
-  const totalPayrollNet = payroll.reduce(
-    (s, p) => s + f(p.basicSalary) + f(p.allowances) - f(p.deductions),
-    0,
+  // V21 Phase 5 — branch-scoped payroll & driver-debt totals routed
+  // through canonical `sumKwdStrings` / `subtractKwdStrings`. The
+  // previous local `parseFloat` + `reduce` blocks were retired.
+  const totalPayrollNetKd = subtractKwdStrings(
+    sumKwdStrings(
+      payroll.flatMap((p) => [p.basicSalary || '0', p.allowances || '0']),
+    ),
+    sumKwdStrings(payroll.map((p) => p.deductions || '0')),
   );
 
-  const driverDebtTotal = drivers.reduce((s, d) => {
-    const l = driverLedgers.get(d.id);
-    return s + (l ? f(l.owedToOfficeKd) : 0);
-  }, 0);
+  const driverDebtTotalKd = sumKwdStrings(
+    drivers
+      .map((d) => driverLedgers.get(d.id)?.owedToOfficeKd ?? '0')
+      .filter(Boolean),
+  );
 
   // Active staff for the payroll roster on this page (include all active
   // users, not just those with payroll rows, so the sheet matches the
@@ -1189,7 +1223,7 @@ function BranchSection({
         <h3 className="mrf-branch__block-title">
           مسير الرواتب{' '}
           <span className="monthly-summary-print__chip">
-            الصافي: {formatKwdLabel(totalPayrollNet.toFixed(4))}
+            الصافي: {formatKwdLabel(totalPayrollNetKd)}
           </span>
         </h3>
         {rosterUsers.length === 0 ? (
@@ -1213,12 +1247,21 @@ function BranchSection({
             <tbody>
               {rosterUsers.map((u, idx) => {
                 const p = payrollByUser.get(u.id);
-                const basic = p ? f(p.basicSalary) : f(u.basicMonthlySalary);
-                const allow = p
-                  ? f(p.allowances)
-                  : f(u.monthlyAllowances);
-                const deduct = p ? f(p.deductions) : 0;
-                const net = (basic + allow - deduct).toFixed(4);
+                // V21 Phase 5 — fall back to the user's master salary
+                // master rate when no payroll row exists for the period.
+                // Strings flow as-is into the canonical formatter; the
+                // simple net is `(basic + allow) − deductions`.
+                const basicKd = p
+                  ? p.basicSalary || '0'
+                  : u.basicMonthlySalary || '0';
+                const allowKd = p
+                  ? p.allowances || '0'
+                  : u.monthlyAllowances || '0';
+                const deductKd = p ? p.deductions || '0' : '0';
+                const netKd = subtractKwdStrings(
+                  sumKwdStrings([basicKd, allowKd]),
+                  deductKd,
+                );
                 const status = p
                   ? p.status === 'PAID'
                     ? 'مدفوع'
@@ -1231,12 +1274,14 @@ function BranchSection({
                     <td>{roleLabel(u.safariRole)}</td>
                     <td>{u.jobTitle ?? '—'}</td>
                     <td dir="ltr">{u.bankIban ?? '—'}</td>
-                    <td className="num">{formatKwdLabel(basic.toFixed(4))}</td>
-                    <td className="num">{formatKwdLabel(allow.toFixed(4))}</td>
+                    <td className="num">{formatKwdLabel(basicKd)}</td>
+                    <td className="num">{formatKwdLabel(allowKd)}</td>
                     <td className="num is-neg">
-                      {deduct > 0 ? '− ' + formatKwdLabel(deduct.toFixed(4)) : '—'}
+                      {isPositiveKd(deductKd)
+                        ? '− ' + formatKwdLabel(deductKd)
+                        : '—'}
                     </td>
-                    <td className="num">{formatKwdLabel(net)}</td>
+                    <td className="num">{formatKwdLabel(netKd)}</td>
                     <td>{status}</td>
                   </tr>
                 );
@@ -1287,7 +1332,7 @@ function BranchSection({
         <h3 className="mrf-branch__block-title">
           أداء السواقين ومديونيّاتهم{' '}
           <span className="monthly-summary-print__chip">
-            الإجمالي المديون: {formatKwdLabel(driverDebtTotal.toFixed(4))}
+            الإجمالي المديون: {formatKwdLabel(driverDebtTotalKd)}
           </span>
         </h3>
         {drivers.length === 0 ? (

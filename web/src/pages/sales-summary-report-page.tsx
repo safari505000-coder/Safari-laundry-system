@@ -1,19 +1,34 @@
+/**
+ * V24 — Wave B (Frontend Purge).
+ *
+ * Pre-V24 this page fetched all invoices for a date range via
+ * `getInvoices()` and ran `buildSalesDebtAnalytics(orders, ...)`
+ * locally, then handed the result to `SalesDebtInsightsPanel`
+ * which ran another local pass to generate insights.
+ *
+ * V24 Commandment #5 ("Don't Calculate, Just Ask") moves both
+ * passes to the server. The page now fetches a single
+ * `SalesDebtAnalyticsResponse` from
+ * `GET /api/finance/sales-debt-analytics` and renders the
+ * canonical 4dp KWD strings + pre-rendered Arabic insights as-is.
+ *
+ * No KWD strings are ever passed through `Number(...)` here —
+ * tables and KPIs render the canonical string verbatim, and the
+ * collection rate uses the integer basis-points field exposed by
+ * the backend.
+ */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Download, FileSpreadsheet, Loader2, RefreshCw } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { SalesDebtInsightsPanel } from '@/components/reports/sales-debt-insights-panel';
 import { useAuth } from '@/contexts/auth-context';
-import { type OrderRow, getInvoices } from '@/lib/api';
-import { formatKwdLabel } from '@/lib/kwd';
 import {
-  buildSalesDebtAnalytics,
-  resolveSalesDebtRange,
-  type SalesDebtAnalytics,
-  type SalesDebtGroupRow,
-  type SalesDebtPeriodKind,
-  type SalesDebtPeriodMode,
-} from '@/lib/sales-debt-analytics';
-import type { SalesDebtInsightTarget } from '@/lib/sales-debt-insights';
+  getFinanceSalesDebtAnalytics,
+  type SalesDebtAnalyticsGroup,
+  type SalesDebtAnalyticsResponse,
+  type SalesDebtInsightTarget,
+} from '@/lib/api';
+import { formatKwdLabel } from '@/lib/kwd';
 import { Button } from '@/modules/shared/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/modules/shared/components/ui/card';
 import {
@@ -33,6 +48,67 @@ import {
 } from '@/modules/shared/components/ui/table';
 
 type ActiveTab = 'branch' | 'driver';
+type PeriodKind = 'weekly' | 'monthly';
+type PeriodMode = 'last7Days' | 'calendarWeek' | 'currentMonth' | 'previousMonth';
+
+type DateRange = { from: Date; to: Date };
+
+function startOfDay(date: Date): Date {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
+
+function endOfDay(date: Date): Date {
+  const next = new Date(date);
+  next.setHours(23, 59, 59, 999);
+  return next;
+}
+
+/**
+ * The period selector is a pure UX affordance — it picks the
+ * `from`/`to` window that gets sent to the backend. All money
+ * arithmetic stays on the server; this is just date math.
+ */
+function resolveRange(kind: PeriodKind, mode: PeriodMode, now = new Date()): DateRange {
+  if (kind === 'monthly') {
+    const month = mode === 'previousMonth' ? now.getMonth() - 1 : now.getMonth();
+    const from = new Date(now.getFullYear(), month, 1);
+    const to = new Date(now.getFullYear(), month + 1, 0);
+    return { from: startOfDay(from), to: endOfDay(to) };
+  }
+
+  if (mode === 'calendarWeek') {
+    const today = startOfDay(now);
+    const day = today.getDay();
+    const daysSinceMonday = (day + 6) % 7;
+    const from = new Date(today);
+    from.setDate(today.getDate() - daysSinceMonday);
+    const to = new Date(from);
+    to.setDate(from.getDate() + 6);
+    return { from, to: endOfDay(to) };
+  }
+
+  const to = endOfDay(now);
+  const from = startOfDay(now);
+  from.setDate(from.getDate() - 6);
+  return { from, to };
+}
+
+const EMPTY_ANALYTICS: SalesDebtAnalyticsResponse = {
+  source: 'api/finance/sales-debt-analytics',
+  period: { fromIso: '', toIso: '' },
+  totals: {
+    totalSalesKd: '0.0000',
+    totalCollectedKd: '0.0000',
+    totalDebtKd: '0.0000',
+    collectionRateBps: 0,
+    invoiceCount: 0,
+  },
+  byBranch: [],
+  byDriver: [],
+  insights: [],
+};
 
 function csvEscape(value: string | number | null | undefined): string {
   const raw = String(value ?? '');
@@ -51,50 +127,50 @@ function downloadFile(filename: string, content: string, type: string): void {
   URL.revokeObjectURL(url);
 }
 
-function buildCsv(analytics: SalesDebtAnalytics): string {
+function buildCsv(analytics: SalesDebtAnalyticsResponse): string {
   const rows = [
     ['section', 'name', 'totalSales', 'totalCollected', 'totalDebt', 'invoiceCount'],
     [
       'totals',
       'TOTAL',
-      analytics.totals.totalSales.toFixed(4),
-      analytics.totals.totalCollected.toFixed(4),
-      analytics.totals.totalDebt.toFixed(4),
+      analytics.totals.totalSalesKd,
+      analytics.totals.totalCollectedKd,
+      analytics.totals.totalDebtKd,
       analytics.totals.invoiceCount,
     ],
     ...analytics.byBranch.map((row) => [
       'branch',
       row.name,
-      row.totalSales.toFixed(4),
-      row.totalCollected.toFixed(4),
-      row.totalDebt.toFixed(4),
+      row.totalSalesKd,
+      row.totalCollectedKd,
+      row.totalDebtKd,
       row.invoiceCount,
     ]),
     ...analytics.byDriver.map((row) => [
       'driver',
       row.name,
-      row.totalSales.toFixed(4),
-      row.totalCollected.toFixed(4),
-      row.totalDebt.toFixed(4),
+      row.totalSalesKd,
+      row.totalCollectedKd,
+      row.totalDebtKd,
       row.invoiceCount,
     ]),
   ];
   return rows.map((row) => row.map(csvEscape).join(',')).join('\n');
 }
 
-function printPdf(analytics: SalesDebtAnalytics): void {
+function printPdf(analytics: SalesDebtAnalyticsResponse): void {
   const popup = window.open('', '_blank', 'noopener,noreferrer');
   if (!popup) return;
   const branchRows = analytics.byBranch
     .map(
       (row) =>
-        `<tr><td>${row.name}</td><td>${row.invoiceCount}</td><td>${formatKwdLabel(row.totalSales.toFixed(4))}</td><td>${formatKwdLabel(row.totalCollected.toFixed(4))}</td><td>${formatKwdLabel(row.totalDebt.toFixed(4))}</td></tr>`,
+        `<tr><td>${row.name}</td><td>${row.invoiceCount}</td><td>${formatKwdLabel(row.totalSalesKd)}</td><td>${formatKwdLabel(row.totalCollectedKd)}</td><td>${formatKwdLabel(row.totalDebtKd)}</td></tr>`,
     )
     .join('');
   const driverRows = analytics.byDriver
     .map(
       (row) =>
-        `<tr><td>${row.name}</td><td>${row.invoiceCount}</td><td>${formatKwdLabel(row.totalSales.toFixed(4))}</td><td>${formatKwdLabel(row.totalCollected.toFixed(4))}</td><td>${formatKwdLabel(row.totalDebt.toFixed(4))}</td></tr>`,
+        `<tr><td>${row.name}</td><td>${row.invoiceCount}</td><td>${formatKwdLabel(row.totalSalesKd)}</td><td>${formatKwdLabel(row.totalCollectedKd)}</td><td>${formatKwdLabel(row.totalDebtKd)}</td></tr>`,
     )
     .join('');
 
@@ -121,11 +197,11 @@ function printPdf(analytics: SalesDebtAnalytics): void {
       <body>
         <button onclick="window.print()">طباعة / حفظ PDF</button>
         <h1>تقرير المبيعات والتحصيل والمديونية</h1>
-        <p class="muted">من ${new Date(analytics.period.from).toLocaleDateString('ar-KW')} إلى ${new Date(analytics.period.to).toLocaleDateString('ar-KW')}</p>
+        <p class="muted">من ${analytics.period.fromIso ? new Date(analytics.period.fromIso).toLocaleDateString('ar-KW') : ''} إلى ${analytics.period.toIso ? new Date(analytics.period.toIso).toLocaleDateString('ar-KW') : ''}</p>
         <div class="kpis">
-          <div class="card"><div class="label">إجمالي المبيعات</div><div class="value">${formatKwdLabel(analytics.totals.totalSales.toFixed(4))}</div></div>
-          <div class="card"><div class="label">إجمالي المحصل</div><div class="value">${formatKwdLabel(analytics.totals.totalCollected.toFixed(4))}</div></div>
-          <div class="card"><div class="label">إجمالي المديونية</div><div class="value">${formatKwdLabel(analytics.totals.totalDebt.toFixed(4))}</div></div>
+          <div class="card"><div class="label">إجمالي المبيعات</div><div class="value">${formatKwdLabel(analytics.totals.totalSalesKd)}</div></div>
+          <div class="card"><div class="label">إجمالي المحصل</div><div class="value">${formatKwdLabel(analytics.totals.totalCollectedKd)}</div></div>
+          <div class="card"><div class="label">إجمالي المديونية</div><div class="value">${formatKwdLabel(analytics.totals.totalDebtKd)}</div></div>
         </div>
         <h2>حسب الفرع</h2>
         <table><thead><tr><th>الاسم</th><th>الفواتير</th><th>المبيعات</th><th>المحصل</th><th>المديونية</th></tr></thead><tbody>${branchRows}</tbody></table>
@@ -149,7 +225,7 @@ function KpiCard({ label, value }: { label: string; value: string }) {
   );
 }
 
-function GroupTable({ rows }: { rows: SalesDebtGroupRow[] }) {
+function GroupTable({ rows }: { rows: SalesDebtAnalyticsGroup[] }) {
   if (rows.length === 0) {
     return <p className="py-8 text-center text-sm text-muted-foreground">لا توجد بيانات للفترة المحددة</p>;
   }
@@ -170,13 +246,13 @@ function GroupTable({ rows }: { rows: SalesDebtGroupRow[] }) {
             <TableCell className="font-medium">{row.name}</TableCell>
             <TableCell>{row.invoiceCount}</TableCell>
             <TableCell className="text-end tabular-nums">
-              {formatKwdLabel(row.totalSales.toFixed(4))}
+              {formatKwdLabel(row.totalSalesKd)}
             </TableCell>
             <TableCell className="text-end tabular-nums">
-              {formatKwdLabel(row.totalCollected.toFixed(4))}
+              {formatKwdLabel(row.totalCollectedKd)}
             </TableCell>
             <TableCell className="text-end tabular-nums">
-              {formatKwdLabel(row.totalDebt.toFixed(4))}
+              {formatKwdLabel(row.totalDebtKd)}
             </TableCell>
           </TableRow>
         ))}
@@ -188,37 +264,28 @@ function GroupTable({ rows }: { rows: SalesDebtGroupRow[] }) {
 export function SalesSummaryReportPage() {
   const { token } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [orders, setOrders] = useState<OrderRow[]>([]);
+  const [analytics, setAnalytics] = useState<SalesDebtAnalyticsResponse>(EMPTY_ANALYTICS);
   const [loading, setLoading] = useState(false);
-  const [periodKind, setPeriodKind] = useState<SalesDebtPeriodKind>('weekly');
-  const [periodMode, setPeriodMode] = useState<SalesDebtPeriodMode>('last7Days');
+  const [periodKind, setPeriodKind] = useState<PeriodKind>('weekly');
+  const [periodMode, setPeriodMode] = useState<PeriodMode>('last7Days');
   const [activeTab, setActiveTab] = useState<ActiveTab>(() =>
     searchParams.get('tab') === 'driver' ? 'driver' : 'branch',
   );
 
   const range = useMemo(
-    () => resolveSalesDebtRange(periodKind, periodMode),
+    () => resolveRange(periodKind, periodMode),
     [periodKind, periodMode],
-  );
-  const analytics = useMemo(
-    () =>
-      buildSalesDebtAnalytics(orders, {
-        kind: periodKind,
-        mode: periodMode,
-        range,
-      }),
-    [orders, periodKind, periodMode, range],
   );
 
   const load = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     try {
-      const rows = await getInvoices(token, {
+      const next = await getFinanceSalesDebtAnalytics(token, {
         from: range.from.toISOString(),
         to: range.to.toISOString(),
       });
-      setOrders(rows);
+      setAnalytics(next);
     } finally {
       setLoading(false);
     }
@@ -283,7 +350,7 @@ export function SalesSummaryReportPage() {
           <Select
             value={periodKind}
             onValueChange={(value) => {
-              const next = value as SalesDebtPeriodKind;
+              const next = value as PeriodKind;
               setPeriodKind(next);
               setPeriodMode(next === 'weekly' ? 'last7Days' : 'currentMonth');
             }}
@@ -296,7 +363,7 @@ export function SalesSummaryReportPage() {
           </Select>
           <Select
             value={periodMode}
-            onValueChange={(value) => setPeriodMode(value as SalesDebtPeriodMode)}
+            onValueChange={(value) => setPeriodMode(value as PeriodMode)}
           >
             <SelectTrigger className="w-[210px]"><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -317,13 +384,13 @@ export function SalesSummaryReportPage() {
       </Card>
 
       <div className="grid gap-3 md:grid-cols-3">
-        <KpiCard label="إجمالي المبيعات" value={formatKwdLabel(analytics.totals.totalSales.toFixed(4))} />
-        <KpiCard label="إجمالي المحصل" value={formatKwdLabel(analytics.totals.totalCollected.toFixed(4))} />
-        <KpiCard label="إجمالي المديونية" value={formatKwdLabel(analytics.totals.totalDebt.toFixed(4))} />
+        <KpiCard label="إجمالي المبيعات" value={formatKwdLabel(analytics.totals.totalSalesKd)} />
+        <KpiCard label="إجمالي المحصل" value={formatKwdLabel(analytics.totals.totalCollectedKd)} />
+        <KpiCard label="إجمالي المديونية" value={formatKwdLabel(analytics.totals.totalDebtKd)} />
       </div>
 
       <SalesDebtInsightsPanel
-        analytics={analytics}
+        insights={analytics.insights}
         onDrillDown={(target: SalesDebtInsightTarget) => switchTab(target)}
       />
 

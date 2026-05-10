@@ -2,7 +2,8 @@ import { useCallback, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Loader2, Phone, Printer, RefreshCw, Search } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
-import { apiJson, type CustomerLedgerResponse } from '@/lib/api';
+import { apiJson } from '@/lib/api';
+import { formatKwdAmount, formatKwdLabel } from '@/lib/kwd';
 import {
   useCcCustomerSearch,
   type CustomerSearchHit,
@@ -15,6 +16,21 @@ import {
   type DataTableColumn,
 } from '@/modules/shared/components/page';
 import { TableCell, TableRow } from '@/modules/shared/components/ui/table';
+import {
+  FullJournalEntriesPanel,
+  type FullJournalEntry,
+} from '@/modules/finance/components/FullJournalEntriesPanel';
+
+/**
+ * V21 Phase 5 — pure render-only customer journal statement page.
+ *
+ * Reads the canonical journal-statement endpoint exclusively. The
+ * legacy `ledgerToStatement` reconstruction (parseFloat, signed
+ * delta math, running balance derivation, per-event description
+ * fabrication) was removed — every displayed value is now produced
+ * by the backend canonical journal layer at 4dp Decimal precision
+ * and rendered through `lib/kwd` formatters.
+ */
 
 type JournalStatementRow = {
   entryId: string;
@@ -30,16 +46,14 @@ type JournalStatementResponse = {
   rows: JournalStatementRow[];
 };
 
-type StatementSource = 'journal' | 'ledger';
-
-type StatementState = JournalStatementResponse & {
-  source: StatementSource;
+type FullEntriesResponse = {
+  customerId: string;
+  entries: FullJournalEntry[];
 };
 
 const ENABLED =
-  (import.meta.env.VITE_ENABLE_JOURNAL_STATEMENT ?? 'true').toLowerCase() !== 'false';
-const USE_JOURNAL_API =
-  (import.meta.env.VITE_USE_JOURNAL_API ?? '').toLowerCase() === 'true';
+  (import.meta.env.VITE_ENABLE_JOURNAL_STATEMENT ?? 'true').toLowerCase() !==
+  'false';
 
 const columns: DataTableColumn[] = [
   { key: 'date', label: 'التاريخ' },
@@ -49,224 +63,49 @@ const columns: DataTableColumn[] = [
   { key: 'balance', label: 'الرصيد' },
 ];
 
-function formatKd(value: string | number | null | undefined): string {
-  const n = Number.parseFloat(String(value ?? '0'));
-  return Number.isFinite(n) ? n.toFixed(3) : '0.000';
-}
-
-function signedDeltaToDebitCredit(delta: number): { debit: string; credit: string } {
-  if (delta > 0) return { debit: delta.toFixed(3), credit: '0.000' };
-  if (delta < 0) return { debit: '0.000', credit: Math.abs(delta).toFixed(3) };
-  return { debit: '0.000', credit: '0.000' };
-}
-
-function paymentMethodLabel(
-  method: CustomerLedgerResponse['events'][number]['paymentMethod'],
-): string {
-  switch (method) {
-    case 'CASH':
-      return 'كاش';
-    case 'KNET':
-      return 'كي نت';
-    case 'ONLINE':
-      return 'أونلاين';
-    case 'PAYMENT_LINK':
-      return 'رابط دفع';
-    case 'SUBSCRIPTION_WALLET':
-      return 'من رصيد الاشتراك';
-    case 'DEBT_ON_ACCOUNT':
-      return 'على الحساب';
-    default:
-      return 'غير محدد';
-  }
-}
-
-function orderLabel(event: CustomerLedgerResponse['events'][number]): string {
-  return event.orderSerial ? `فاتورة رقم ${event.orderSerial}` : 'فاتورة';
-}
-
-function eventDescription(event: CustomerLedgerResponse['events'][number]): string {
-  switch (event.kind) {
-    case 'SUBSCRIPTION_ACTIVATION':
-      return `تفعيل اشتراك${event.subscriptionLabel ? ` - ${event.subscriptionLabel}` : ''}`;
-    case 'SUBSCRIPTION_CANCELLATION':
-      return 'إلغاء اشتراك';
-    case 'SUBSCRIPTION_ROLLOVER_CARRY':
-      return `ترحيل رصيد اشتراك${event.subscriptionLabel ? ` - ${event.subscriptionLabel}` : ''}`;
-    case 'ORDER_SETTLEMENT_SUBSCRIPTION':
-      return `خصم ${orderLabel(event)} من الاشتراك`;
-    case 'ORDER_PAID_IN_FULL':
-      return `تسديد كامل ${orderLabel(event)} - ${paymentMethodLabel(event.paymentMethod)}`;
-    case 'ORDER_INVOICE_PARTIAL_PAYMENT':
-      return `تسديد جزئي ${orderLabel(event)} - ${paymentMethodLabel(event.paymentMethod)}`;
-    case 'ORDER_INVOICE_ON_ACCOUNT':
-      return `إضافة ${orderLabel(event)} على الحساب`;
-    case 'PARTIAL_DEBT_PAYMENT':
-      return `تسديد جزئي من المديونية - ${paymentMethodLabel(event.paymentMethod)}`;
-    default:
-      break;
-  }
-  return event.note ?? 'حركة مالية';
-}
-
-function nonZeroNumber(...values: Array<string | number | null | undefined>): number {
-  for (const value of values) {
-    const n = Number.parseFloat(String(value ?? '0'));
-    if (Number.isFinite(n) && Math.abs(n) > 0.0001) return n;
-  }
-  return 0;
-}
-
-function eventDebitCredit(event: CustomerLedgerResponse['events'][number]): {
-  debit: string;
-  credit: string;
-  affectsBalance: boolean;
-} {
-  const before = Number.parseFloat(event.debtBeforeKd ?? '0');
-  const after = Number.parseFloat(event.debtAfterKd ?? '0');
-  const delta = Number.isFinite(after - before) ? after - before : 0;
-  if (Math.abs(delta) > 0.0001) {
-    return { ...signedDeltaToDebitCredit(delta), affectsBalance: true };
-  }
-
-  if (event.kind === 'ORDER_INVOICE_ON_ACCOUNT') {
-    const amount = nonZeroNumber(event.amountKd, event.debtSettledKd);
-    return { debit: formatKd(amount), credit: '0.000', affectsBalance: false };
-  }
-
-  if (
-    event.kind === 'ORDER_PAID_IN_FULL' ||
-    event.kind === 'ORDER_INVOICE_PARTIAL_PAYMENT' ||
-    event.kind === 'ORDER_SETTLEMENT_SUBSCRIPTION' ||
-    event.kind === 'PARTIAL_DEBT_PAYMENT' ||
-    event.rawType === 'ORDER_WALLET_SETTLEMENT'
-  ) {
-    const paid = nonZeroNumber(event.debtSettledKd, event.amountKd);
-    return { debit: '0.000', credit: formatKd(paid), affectsBalance: false };
-  }
-
-  if (event.rawType === 'SUBSCRIPTION_ACTIVATION') {
-    const settled = nonZeroNumber(event.debtSettledKd);
-    if (settled > 0) {
-      return { debit: '0.000', credit: formatKd(settled), affectsBalance: false };
-    }
-    return {
-      debit: formatKd(event.amountKd),
-      credit: '0.000',
-      affectsBalance: false,
-    };
-  }
-
-  if (event.rawType === 'SUBSCRIPTION_CANCELLATION') {
-    const amount = nonZeroNumber(event.amountKd, event.debtDiscountKd);
-    return { debit: '0.000', credit: formatKd(amount), affectsBalance: false };
-  }
-
-  return {
-    debit: formatKd(event.amountKd),
-    credit: '0.000',
-    affectsBalance: false,
-  };
-}
-
-function ledgerToStatement(ledger: CustomerLedgerResponse): StatementState {
-  let running = Number.parseFloat(
-    ledger.customer.operationalDebtKd ??
-      ledger.customer.effectiveDebtKd ??
-      ledger.customer.walletDebtKd ??
-      '0',
-  );
-
-  const eventRows = [...ledger.events]
-    .sort((a, b) => new Date(a.atIso).getTime() - new Date(b.atIso).getTime())
-    .map((event) => {
-      const before = Number.parseFloat(event.debtBeforeKd ?? '0');
-      const after = Number.parseFloat(event.debtAfterKd ?? '0');
-      const delta = Number.isFinite(after - before) ? after - before : 0;
-      const parts = eventDebitCredit(event);
-      if (parts.affectsBalance) {
-        running = Number.isFinite(after) ? after : running + delta;
-      }
-      return {
-        entryId: event.id,
-        date: event.atIso,
-        description: eventDescription(event),
-        debit: parts.debit,
-        credit: parts.credit,
-        balance: formatKd(running),
-      };
-    });
-
-  const rows =
-    eventRows.length > 0
-      ? eventRows
-      : ledger.invoices.map((invoice) => ({
-          entryId: invoice.id,
-          date: invoice.completedAtIso ?? invoice.createdAtIso,
-          description: `فاتورة${invoice.serial ? ` رقم ${invoice.serial}` : ''}`,
-          debit: formatKd(invoice.totalKd),
-          credit: '0.000',
-          balance: invoice.openDebt ? formatKd(invoice.totalKd) : '0.000',
-        }));
-
-  return {
-    source: 'ledger',
-    balance: formatKd(
-      ledger.customer.operationalDebtKd ??
-        ledger.customer.effectiveDebtKd ??
-        ledger.customer.walletDebtKd,
-    ),
-    rows,
-  };
-}
-
 export function CustomerStatementJournalPage() {
   const { token } = useAuth();
   const [customerId, setCustomerId] = useState('');
   const [query, setQuery] = useState('');
   const [selectedCustomer, setSelectedCustomer] =
     useState<CustomerSearchHit | null>(null);
-  const [data, setData] = useState<StatementState | null>(null);
+  const [data, setData] = useState<JournalStatementResponse | null>(null);
+  const [fullEntries, setFullEntries] = useState<FullEntriesResponse | null>(
+    null,
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const customerSearch = useCcCustomerSearch(query);
 
-  const loadStatement = useCallback(async (nextCustomerId?: string) => {
-    const trimmed = (nextCustomerId ?? customerId).trim();
-    if (!trimmed || !token) return;
-    setLoading(true);
-    setError(null);
-    try {
-      if (USE_JOURNAL_API) {
-        const res = await apiJson<JournalStatementResponse>(
-          `/api/finance/journal/customers/${trimmed}/statement`,
-          { token },
-        );
-        if (res.rows.length > 0) {
-          setData({ ...res, source: 'journal' });
-          return;
-        }
-      }
-      const legacy = await apiJson<CustomerLedgerResponse>(
-        `/api/call-center/customers/${trimmed}/ledger`,
-        { token },
-      );
-      setData(ledgerToStatement(legacy));
-    } catch {
+  const loadStatement = useCallback(
+    async (nextCustomerId?: string) => {
+      const trimmed = (nextCustomerId ?? customerId).trim();
+      if (!trimmed || !token) return;
+      setLoading(true);
+      setError(null);
       try {
-        const legacy = await apiJson<CustomerLedgerResponse>(
-          `/api/call-center/customers/${trimmed}/ledger`,
-          { token },
-        );
-        setData(ledgerToStatement(legacy));
+        const [statement, full] = await Promise.all([
+          apiJson<JournalStatementResponse>(
+            `/api/finance/journal/customers/${trimmed}/statement`,
+            { token },
+          ),
+          apiJson<FullEntriesResponse>(
+            `/api/finance/journal/customers/${trimmed}/full-entries`,
+            { token },
+          ),
+        ]);
+        setData(statement);
+        setFullEntries(full);
       } catch {
-        setError('تعذر تحميل التقرير. تحقق من اتصال قاعدة البيانات ثم حاول مرة أخرى.');
-        return;
+        setError(
+          'تعذر تحميل التقرير. تحقق من اتصال قاعدة البيانات ثم حاول مرة أخرى.',
+        );
+      } finally {
+        setLoading(false);
       }
-    } finally {
-      setLoading(false);
-    }
-  }, [customerId, token]);
+    },
+    [customerId, token],
+  );
 
   const handleSelectCustomer = useCallback(
     (hit: CustomerSearchHit) => {
@@ -360,7 +199,7 @@ export function CustomerStatementJournalPage() {
                     </span>
                   </span>
                   <span className="text-sm font-semibold text-destructive">
-                    {hit.totalDebtKd} KD
+                    {formatKwdLabel(hit.totalDebtKd)}
                   </span>
                 </button>
               ))}
@@ -379,77 +218,117 @@ export function CustomerStatementJournalPage() {
           ) : null}
 
           <div className="flex flex-col gap-3 md:flex-row md:items-center">
-          <Button
-            onClick={() => void loadStatement()}
-            disabled={loading || !customerId.trim()}
-          >
-            {loading ? (
-              <Loader2 className="me-2 h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="me-2 h-4 w-4" />
-            )}
-            تحميل الكشف
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={handlePrint}
-            disabled={!data || data.rows.length === 0}
-          >
-            <Printer className="me-2 h-4 w-4" />
-            طباعة
-          </Button>
+            <Button
+              onClick={() => void loadStatement()}
+              disabled={loading || !customerId.trim()}
+            >
+              {loading ? (
+                <Loader2 className="me-2 h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="me-2 h-4 w-4" />
+              )}
+              تحميل الكشف
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handlePrint}
+              disabled={!data || data.rows.length === 0}
+            >
+              <Printer className="me-2 h-4 w-4" />
+              طباعة
+            </Button>
           </div>
         </div>
         {customerSearch.error ? (
-          <p className="mt-3 text-sm text-destructive">{customerSearch.error}</p>
+          <p className="mt-3 text-sm text-destructive">
+            {customerSearch.error}
+          </p>
         ) : null}
-        {error ? <p className="mt-3 text-sm text-destructive">{error}</p> : null}
+        {error ? (
+          <p className="mt-3 text-sm text-destructive">{error}</p>
+        ) : null}
       </div>
 
       <div id="journal-statement-print" className="space-y-4">
-      <div className="hidden border-b pb-4 print:block">
-        <h1 className="text-2xl font-bold">تقرير العميل</h1>
-        <p className="mt-1 text-sm">
-          العميل:{' '}
-          {selectedCustomer
-            ? `${selectedCustomer.displayName} / ${selectedCustomer.phone}`
-            : customerId || '-'}
-        </p>
-        <p className="text-sm">تاريخ الطباعة: {new Date().toLocaleString()}</p>
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-xl border bg-card p-4 shadow-sm">
-          <h2 className="text-base font-semibold">مصدر التقرير</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {data?.source === 'journal'
-              ? 'القيد المزدوج الجديد'
-              : 'كشف العميل التشغيلي الحالي'}
+        <div className="hidden border-b pb-4 print:block">
+          <h1 className="text-2xl font-bold">تقرير العميل</h1>
+          <p className="mt-1 text-sm">
+            العميل:{' '}
+            {selectedCustomer
+              ? `${selectedCustomer.displayName} / ${selectedCustomer.phone}`
+              : customerId || '-'}
+          </p>
+          <p className="text-sm">
+            تاريخ الطباعة: {new Date().toLocaleString()}
           </p>
         </div>
-        <div className="rounded-xl border bg-card p-4 shadow-sm">
-          <h2 className="text-base font-semibold">رصيد العميل</h2>
-          <p className="mt-2 text-2xl font-bold">{data?.balance ?? '0.000'} KD</p>
-          <p className="text-sm text-muted-foreground">حسب التقرير المحمّل.</p>
-        </div>
-      </div>
 
-      <DataTableShell
-        columns={columns}
-        empty={(data?.rows.length ?? 0) === 0}
-        emptyState="لا توجد حركات لهذا العميل."
-      >
-        {(data?.rows ?? []).map((row) => (
-          <TableRow key={row.entryId}>
-            <TableCell>{new Date(row.date).toLocaleString()}</TableCell>
-            <TableCell className="max-w-xl truncate">{row.description}</TableCell>
-            <TableCell>{row.debit}</TableCell>
-            <TableCell>{row.credit}</TableCell>
-            <TableCell className="font-semibold">{row.balance}</TableCell>
-          </TableRow>
-        ))}
-      </DataTableShell>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="rounded-xl border bg-card p-4 shadow-sm">
+            <h2 className="text-base font-semibold">مصدر التقرير</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              قيد دفتر اليومية المزدوج (المصدر القانوني)
+            </p>
+          </div>
+          <div className="rounded-xl border bg-card p-4 shadow-sm">
+            <h2 className="text-base font-semibold">رصيد العميل</h2>
+            <p className="mt-2 text-2xl font-bold">
+              {formatKwdLabel(data?.balance ?? '0')}
+            </p>
+            <p className="text-sm text-muted-foreground">حسب التقرير المحمّل.</p>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-baseline justify-between">
+            <h3 className="text-sm font-semibold">
+              كشف العميل (جانب ذمم العملاء فقط)
+            </h3>
+            <span className="text-xs text-muted-foreground">
+              عرض جانب الذمم لكل قيد مع الرصيد التراكمي.
+            </span>
+          </div>
+          <DataTableShell
+            columns={columns}
+            empty={(data?.rows.length ?? 0) === 0}
+            emptyState="لا توجد حركات لهذا العميل."
+          >
+            {(data?.rows ?? []).map((row) => (
+              <TableRow key={row.entryId}>
+                <TableCell>{new Date(row.date).toLocaleString()}</TableCell>
+                <TableCell className="max-w-xl truncate">
+                  {row.description}
+                </TableCell>
+                <TableCell className="tabular-nums">
+                  {formatKwdAmount(row.debit)}
+                </TableCell>
+                <TableCell className="tabular-nums">
+                  {formatKwdAmount(row.credit)}
+                </TableCell>
+                <TableCell className="font-semibold tabular-nums">
+                  {formatKwdAmount(row.balance)}
+                </TableCell>
+              </TableRow>
+            ))}
+          </DataTableShell>
+        </div>
+
+        <div className="space-y-3">
+          <div className="flex items-baseline justify-between">
+            <h3 className="text-sm font-semibold">
+              القيد المزدوج الكامل (مدين + دائن لكل حساب)
+            </h3>
+            <span className="text-xs text-muted-foreground">
+              كل قيد يعرض كافة الأطراف (الصندوق، البنك، الإيرادات،
+              الذمم، …) مع تحقق توازن مدين = دائن.
+            </span>
+          </div>
+          <FullJournalEntriesPanel
+            entries={fullEntries?.entries ?? []}
+            loading={loading && !fullEntries}
+          />
+        </div>
       </div>
     </section>
   );

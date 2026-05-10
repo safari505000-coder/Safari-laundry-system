@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate } from 'react-router-dom';
 import { Loader2, RefreshCw, Search } from 'lucide-react';
@@ -6,10 +6,12 @@ import { toast } from 'sonner';
 import { useAuth } from '@/contexts/auth-context';
 import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
 import {
+  type DriverPendingInvoicesResponse,
   type DriverPendingInvoiceRow,
   ApiError,
   apiJson,
 } from '@/lib/api';
+import { formatKwdLabel } from '@/lib/kwd';
 import { Badge } from '@/modules/shared/components/ui/badge';
 import { Button } from '@/modules/shared/components/ui/button';
 import {
@@ -47,14 +49,6 @@ import {
  *     hit the server in ISO and `toLocaleString` resolves to the
  *     browser's Kuwait offset for staff on `Asia/Kuwait`.
  */
-
-/** KWD 3dp formatter (local to this island; mirrors collections-page). */
-const KWD_SUFFIX = ' د.ك';
-function formatKwd3(value: string | number): string {
-  const n = typeof value === 'number' ? value : Number.parseFloat(value);
-  if (!Number.isFinite(n)) return `0.000${KWD_SUFFIX}`;
-  return `${n.toFixed(3)}${KWD_SUFFIX}`;
-}
 
 /**
  * Arabic / English labels for `PosPaymentMethod`. Fallback to the raw
@@ -113,6 +107,9 @@ export function DriverPendingInvoicesPage() {
   const locale = useAppLocale();
 
   const [rows, setRows] = useState<DriverPendingInvoiceRow[]>([]);
+  const [totalAmountKd, setTotalAmountKd] = useState('0.000');
+  const [filteredCount, setFilteredCount] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [q, setQ] = useState('');
 
@@ -121,18 +118,23 @@ export function DriverPendingInvoicesPage() {
       if (!token) return;
       if (!opts.silent) setLoading(true);
       try {
-        const data = await apiJson<DriverPendingInvoiceRow[]>(
-          '/api/orders/driver/pending-invoices',
+        const qs =
+          q.trim() ? `?search=${encodeURIComponent(q.trim())}` : '';
+        const data = await apiJson<DriverPendingInvoicesResponse>(
+          `/api/orders/driver/pending-invoices${qs}`,
           { token },
         );
-        setRows(data);
+        setRows(data.rows);
+        setTotalAmountKd(data.totalAmountKd);
+        setFilteredCount(data.filteredCount);
+        setTotalCount(data.totalCount);
       } catch (e) {
         if (e instanceof ApiError) toast.error(e.message);
       } finally {
         if (!opts.silent) setLoading(false);
       }
     },
-    [token],
+    [token, q],
   );
 
   useEffect(() => {
@@ -141,32 +143,6 @@ export function DriverPendingInvoicesPage() {
 
   // Gate LAST so the hooks above always run in the same order.
   if (!hasRole('DRIVER')) return <Navigate to="/" replace />;
-
-  const filtered = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    if (!needle) return rows;
-    return rows.filter((r) => {
-      const hay = [
-        r.readableId,
-        r.invoiceNumber ?? '',
-        r.customerName,
-        r.customerPhone,
-        r.notes ?? '',
-      ]
-        .join(' ')
-        .toLowerCase();
-      return hay.includes(needle);
-    });
-  }, [rows, q]);
-
-  const totalKd = useMemo(
-    () =>
-      filtered.reduce(
-        (s, r) => s + (Number.parseFloat(r.amountKd) || 0),
-        0,
-      ),
-    [filtered],
-  );
 
   return (
     <div className="space-y-6">
@@ -211,21 +187,24 @@ export function DriverPendingInvoicesPage() {
           <div className="text-sm text-muted-foreground">
             {t('driverPending.totalLabel')}{' '}
             <span className="font-semibold tabular-nums text-foreground">
-              {formatKwd3(totalKd)}
+              {formatKwdLabel(totalAmountKd)}
+            </span>
+            <span className="ms-2 text-xs">
+              {filteredCount} / {totalCount}
             </span>
           </div>
         </CardHeader>
         <CardContent className="p-0 sm:p-4">
           {/* Mobile: card-style list (readability on phones in the field). */}
           <ul className="space-y-3 p-4 sm:hidden">
-            {filtered.length === 0 ? (
+            {rows.length === 0 ? (
               <li className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
                 {q.trim()
                   ? t('driverPending.emptySearch')
                   : t('driverPending.empty')}
               </li>
             ) : (
-              filtered.map((row) => (
+              rows.map((row) => (
                 <li
                   key={row.orderId}
                   className="rounded-xl border border-border bg-card p-4 shadow-sm"
@@ -260,7 +239,7 @@ export function DriverPendingInvoicesPage() {
                       {formatPaymentMethod(row.paymentMethod, t)}
                     </span>
                     <span className="text-sm font-semibold tabular-nums text-foreground">
-                      {formatKwd3(row.amountKd)}
+                      {formatKwdLabel(row.amountKd)}
                     </span>
                   </div>
                   {row.notes ? (
@@ -296,7 +275,7 @@ export function DriverPendingInvoicesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.length === 0 ? (
+                {rows.length === 0 ? (
                   <TableRow>
                     <TableCell
                       colSpan={8}
@@ -308,7 +287,7 @@ export function DriverPendingInvoicesPage() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filtered.map((row) => (
+                  rows.map((row) => (
                     <TableRow key={row.orderId}>
                       <TableCell
                         className="font-mono text-xs"
@@ -323,7 +302,7 @@ export function DriverPendingInvoicesPage() {
                         {row.customerPhone || '—'}
                       </TableCell>
                       <TableCell className="text-end font-semibold tabular-nums">
-                        {formatKwd3(row.amountKd)}
+                        {formatKwdLabel(row.amountKd)}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {formatPaymentMethod(row.paymentMethod, t)}

@@ -4,7 +4,7 @@ import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 
 const endpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT?.trim();
 
-export const otelSdk =
+const otelSdk =
   endpoint ?
     new NodeSDK({
       traceExporter: new OTLPTraceExporter({ url: `${endpoint.replace(/\/$/, '')}/v1/traces` }),

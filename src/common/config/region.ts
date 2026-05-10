@@ -1,10 +1,6 @@
-/** REGION=primary|secondary — secondary regions should minimize writers; workers safe with BullMQ. */
+/** REGION env tag — surfaced on /healthz so blue/green and primary/secondary deploys are distinguishable in dashboards. */
 export function deploymentRegion(): string {
   return (process.env.REGION ?? 'primary').toLowerCase();
-}
-
-export function isSecondaryRegion(): boolean {
-  return deploymentRegion() === 'secondary';
 }
 
 export function deploymentColor(): string {

@@ -27,7 +27,7 @@ import { parseKuwaitMobile965 } from '../common/validation/kuwait-customer-phone
  * Stable id for the canonical singleton row. Migration seeds this id;
  * the service only ever upserts on the same key.
  */
-export const SYSTEM_CONFIG_ID = 'GLOBAL';
+const SYSTEM_CONFIG_ID = 'GLOBAL';
 
 export type GuardianPhoneSource = 'database' | 'env' | 'none';
 

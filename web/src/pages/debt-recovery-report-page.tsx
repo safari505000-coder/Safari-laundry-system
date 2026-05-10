@@ -112,17 +112,6 @@ export function DebtRecoveryReportPage() {
   }
 
   const days = report?.days ?? [];
-  const totalSettlements = days.reduce((acc, d) => acc + d.settlementCount, 0);
-  const totalSubscriptions = days.reduce(
-    (acc, d) => acc + d.subscriptionCount,
-    0,
-  );
-
-  // Compute the max recovered value for a simple inline bar scale.
-  const maxRecovered = days.reduce((acc, d) => {
-    const n = Number.parseFloat(d.recoveredKd);
-    return Number.isFinite(n) && n > acc ? n : acc;
-  }, 0);
 
   return (
     <div className="mx-auto max-w-5xl space-y-4 px-2 py-4 sm:space-y-6 sm:px-4">
@@ -177,7 +166,7 @@ export function DebtRecoveryReportPage() {
                 {t('debtRecovery.settlementsCount')}
               </p>
               <p className="text-2xl font-semibold tabular-nums">
-                {report ? totalSettlements : '—'}
+                {report ? report.totalSettlements : '—'}
               </p>
             </div>
           </div>
@@ -192,7 +181,7 @@ export function DebtRecoveryReportPage() {
                 {t('debtRecovery.subscriptionsCount')}
               </p>
               <p className="text-2xl font-semibold tabular-nums">
-                {report ? totalSubscriptions : '—'}
+                {report ? report.totalSubscriptions : '—'}
               </p>
             </div>
           </div>
@@ -273,9 +262,6 @@ export function DebtRecoveryReportPage() {
               </TableRow>
             ) : (
               days.map((d) => {
-                const n = Number.parseFloat(d.recoveredKd);
-                const ratio =
-                  maxRecovered > 0 && Number.isFinite(n) ? n / maxRecovered : 0;
                 const displayDate = (() => {
                   const dt = new Date(`${d.dayIso}T00:00:00.000Z`);
                   return Number.isNaN(dt.getTime())
@@ -293,7 +279,7 @@ export function DebtRecoveryReportPage() {
                     <TableCell
                       className={cn(
                         'text-end tabular-nums font-medium',
-                        n > 0 && 'text-emerald-700 dark:text-emerald-200',
+                        d.trendRatio > 0 && 'text-emerald-700 dark:text-emerald-200',
                       )}
                     >
                       {formatKwdLabel(d.recoveredKd)}
@@ -312,9 +298,9 @@ export function DebtRecoveryReportPage() {
                         <div
                           className={cn(
                             'absolute inset-y-0 start-0 rounded-full transition-[width]',
-                            n > 0 ? 'bg-emerald-500' : 'bg-transparent',
+                            d.trendRatio > 0 ? 'bg-emerald-500' : 'bg-transparent',
                           )}
-                          style={{ width: `${Math.round(ratio * 100)}%` }}
+                          style={{ width: `${d.trendRatio}%` }}
                         />
                       </div>
                     </TableCell>

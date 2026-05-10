@@ -32,7 +32,7 @@ import {
   type StockItemRow,
   type SupplierRow,
 } from '@/lib/api';
-import { formatKwdLabel } from '@/lib/kwd';
+import { formatKwdLabel, sumKwdStringsPrecise } from '@/lib/kwd';
 import { Button } from '@/modules/shared/components/ui/button';
 import {
   Card,
@@ -243,11 +243,10 @@ export default function PurchaseOrdersPage() {
       RECEIVED: 0,
       CANCELLED: 0,
     };
-    let totalKd = 0;
     for (const r of rows) {
       byStatus[r.status] = (byStatus[r.status] ?? 0) + 1;
-      totalKd += Number(r.totalKd);
     }
+    const totalKd = sumKwdStringsPrecise(rows.map((r) => r.totalKd));
     return { byStatus, totalKd };
   }, [rows]);
 
@@ -317,7 +316,7 @@ export default function PurchaseOrdersPage() {
         />
         <StatTile
           label="إجمالي قيمة الطلبات"
-          value={`${totals.totalKd.toFixed(3)} د.ك`}
+          value={formatKwdLabel(totals.totalKd)}
           tone="primary"
           size="compact"
           mono
@@ -402,7 +401,7 @@ export default function PurchaseOrdersPage() {
                         </span>
                       </TableCell>
                       <TableCell className="text-end font-mono tabular-nums">
-                        {Number(r.totalKd).toFixed(3)} د.ك
+                        {formatKwdLabel(r.totalKd)}
                       </TableCell>
                       <TableCell className="text-end tabular-nums">
                         {Math.round(r.receivedRatio * 100)}%

@@ -8,6 +8,7 @@ import {
   type ManagerCashCustodyRow,
   listMyDriverCashReceipts,
 } from '@/lib/api';
+import { formatKwdAmount, formatKwdLabel, sumKwdStrings } from '@/lib/kwd';
 import { Badge } from '@/modules/shared/components/ui/badge';
 import {
   Button,
@@ -54,15 +55,6 @@ const STATUS_TONE: Record<
   REJECTED: { label: 'مرفوض', variant: 'destructive' },
 };
 
-function formatKd(v: string): string {
-  const n = Number.parseFloat(v);
-  if (!Number.isFinite(n)) return v;
-  return n.toLocaleString('en-GB', {
-    minimumFractionDigits: 3,
-    maximumFractionDigits: 3,
-  });
-}
-
 function formatDateTime(iso: string): string {
   const d = new Date(iso);
   return `${d.toLocaleDateString('en-GB')} ${d.toLocaleTimeString('en-GB', {
@@ -94,11 +86,20 @@ export function MyCashReceiptsPage() {
     void load();
   }, [load]);
 
+  /**
+   * V21 Phase 5 — totals routed through the single canonical
+   * `sumKwdStrings` helper from `@/lib/kwd`. The previous local
+   * `for…of` + `Number.parseFloat` block was retired so this page no
+   * longer owns any KD math primitive. The helper returns a 4dp-input
+   * 3dp-output decimal string, which the canonical `formatKwdLabel`
+   * then renders.
+   */
   const totals = useMemo(() => {
-    if (!rows) return { count: 0, amount: 0 };
-    let amount = 0;
-    for (const r of rows) amount += Number.parseFloat(r.amountKd) || 0;
-    return { count: rows.length, amount };
+    if (!rows) return { count: 0, amountKd: '0.000' };
+    return {
+      count: rows.length,
+      amountKd: sumKwdStrings(rows.map((r) => r.amountKd)),
+    };
   }, [rows]);
 
   return (
@@ -139,11 +140,7 @@ export function MyCashReceiptsPage() {
                 إجمالي المبالغ المُسلَّمة
               </div>
               <div className="text-xl font-semibold">
-                {totals.amount.toLocaleString('en-GB', {
-                  minimumFractionDigits: 3,
-                  maximumFractionDigits: 3,
-                })}{' '}
-                د.ك
+                {formatKwdLabel(totals.amountKd)}
               </div>
             </div>
           </div>
@@ -188,7 +185,7 @@ export function MyCashReceiptsPage() {
                         <TableCell>{row.managerName}</TableCell>
                         <TableCell>{row.branchName ?? '—'}</TableCell>
                         <TableCell className="text-end font-mono">
-                          {formatKd(row.amountKd)}
+                          {formatKwdAmount(row.amountKd)}
                         </TableCell>
                         <TableCell className="text-center">
                           {row.settledOrderCount}

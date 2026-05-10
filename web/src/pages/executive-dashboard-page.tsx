@@ -115,16 +115,15 @@ export function ExecutiveDashboardPage() {
   );
   const topRisk = intel.executive?.topRisk ?? null;
 
-  // SSoT: the header KD figure is Σ classified.drivers[].amount. We
-  // never source it from executive.auditReference.totalCashInFlight —
-  // that field exists for backwards compatibility but the truth lives
-  // in `/classified`.
-  const totalCashKd = useMemo(() => {
-    if (!intel.classified) return null;
-    return intel.classified.drivers
-      .reduce((s, d) => s + (parseFloat(d.amount) || 0), 0)
-      .toFixed(4);
-  }, [intel.classified]);
+  /*
+   * V21 Phase 5 — the dashboard now reads the canonical
+   * `totalCashKd` field exposed by the SSoT classifier (computed in
+   * 4dp on the backend in `cash-classifier.service`/`scope-by-branch`).
+   * Previously this used to be a `parseFloat`+`reduce` over
+   * `intel.classified.drivers[].amount` — that was the last cash-
+   * intelligence number derived on the client.
+   */
+  const totalCashKd = intel.classified?.totalCashKd ?? null;
 
   const hasAlerts = financialAlerts.length > 0 || complianceAlerts.length > 0;
 

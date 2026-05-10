@@ -17,7 +17,7 @@ import {
  * and must be resolved through their own workflows (activation /
  * plan extension), not an ad-hoc collection.
  */
-export const DEBT_PAYMENT_METHODS = [
+const DEBT_PAYMENT_METHODS = [
   'CASH',
   'KNET',
   'PAYMENT_LINK',

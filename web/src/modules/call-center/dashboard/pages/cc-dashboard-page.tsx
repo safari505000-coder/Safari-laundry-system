@@ -10,6 +10,8 @@ import { ActivityFeed } from '../components/activity-feed';
 import { useOutstanding } from '@/modules/call-center/outstanding/hooks/use-outstanding';
 import type { OutstandingRow } from '@/modules/call-center/outstanding/api/outstanding-api';
 import { useCcOperationsSummary } from '../hooks/use-cc-operations-summary';
+import { useAuth } from '@/contexts/auth-context';
+import { useRealtimeFinancialFeed } from '@/modules/finance';
 
 const EMPTY_FILTERS = Object.freeze({}) as Record<string, never>;
 
@@ -25,8 +27,9 @@ const EMPTY_FILTERS = Object.freeze({}) as Record<string, never>;
  *
  * STRICT FINANCIAL RULES (DO NOT BREAK):
  *  - `data.totalDueKd` from `/api/finance/outstanding` is rendered
- *    EXACTLY as returned. Per-row `totalDueKd` (number) is rendered
- *    via `Intl.NumberFormat` only — never recomputed or summed.
+ *    EXACTLY as returned. V23.3: per-row `totalDueKd` is now a
+ *    canonical 4dp KWD STRING (was `number` pre-V23.3); it is
+ *    rendered via `formatKwdLabel` only — never recomputed or summed.
  *  - `summary.debtRecoveredTodayKd` from
  *    `/api/call-center/operations-summary` is rendered as-is.
  *  - We never call `reduce()` on rows, never cache totals, never
@@ -39,6 +42,28 @@ export function CcDashboardPage() {
   // worklist; per-page filters live on `/cc/collections-report`.
   const outstanding = useOutstanding(EMPTY_FILTERS);
   const summary = useCcOperationsSummary({ pollMs: 30_000 });
+  const { token } = useAuth();
+
+  // V22 Phase 5 — Realtime adoption.
+  //
+  // Subscribe to the canonical `dashboards` SSE channel for the
+  // CC cockpit. The hook ONLY invalidates `financial:*` cache
+  // prefixes — it never reads `payload.*Kd` and never sets cache
+  // values directly (locked in by `v21-phase4-realtime-purity.test.ts`).
+  //
+  // The two `refresh()` callbacks re-run the canonical projections
+  // (`useOutstanding` + `useCcOperationsSummary`), preserving the
+  // V21 financial-truth invariant. The 30-second polling fallback
+  // stays in place for connection-drop resilience.
+  useRealtimeFinancialFeed({
+    channel: 'dashboards',
+    accessToken: token,
+    enabled: Boolean(token),
+    onEvent: () => {
+      outstanding.refresh();
+      summary.refresh();
+    },
+  });
 
   // Hard guard required by the cockpit contract (never break this).
   if (

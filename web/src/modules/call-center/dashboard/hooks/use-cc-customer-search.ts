@@ -67,6 +67,7 @@ export function useCcCustomerSearch(rawQuery: string, delayMs = 250) {
             displayName: r.customer.displayName ?? r.customer.phone,
             phone: r.customer.phone,
             phone2: r.customer.phone2 ?? null,
+            // allow-legacy-debt-reader (V20.6 Phase 2: server-canonical aggregate from /api/customers/search; the server already binds canonical AR via DebtVisibilityService)
             totalDebtKd: r.debt?.totalDebt ?? '0.0000',
           }));
         setState({ hits, loading: false, error: null });

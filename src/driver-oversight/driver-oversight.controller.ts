@@ -21,10 +21,12 @@ import {
 } from './driver-oversight.service';
 
 /**
- * Forbidden cash-shaped fields. Driver cash is exposed ONLY by
- * `GET /api/cash-intelligence/dashboard` (SSoT). The
- * `assertNoForbiddenCashFields` guard below blocks any future
- * regression that re-introduces a competing per-driver cash number.
+ * V23.2 — Forbidden cash-shaped fields. Driver cash is exposed
+ * ONLY by `GET /api/cash-intelligence/dashboard` (SSoT). The keys
+ * below were physically removed from `DriverOversightCard` (V23.2);
+ * the `assertNoForbiddenCashFields` guard remains as a runtime
+ * defence so a future change that re-introduces either name (e.g.
+ * via a typed-cast bypass) will still be caught and logged.
  */
 const SSOT_FORBIDDEN_CASH_FIELDS = ['heldCashKd', 'cashTodayKd'] as const;
 
@@ -70,15 +72,16 @@ export class DriverOversightController {
 
   /**
    * Runtime SSoT guard: every row published by this endpoint MUST
-   * have a `null` value for every field listed in
-   * `SSOT_FORBIDDEN_CASH_FIELDS`. The fields are kept in the response
-   * shape (so old clients don't crash on a missing key) but their
-   * values are nullified at the service layer.
+   * NOT carry any field listed in `SSOT_FORBIDDEN_CASH_FIELDS`.
    *
-   * If a future change accidentally restores a cash number on this
-   * endpoint, the guard logs a CRITICAL alert in production and throws
-   * in development — preserving the lesson that `/api/cash-intelligence/dashboard`
-   * is the only sanctioned source of driver cash.
+   * V23.2 — the fields are now physically removed from the
+   * `DriverOversightCard` shape, so this loop should always observe
+   * `undefined` and exit cleanly. It remains in place as a runtime
+   * safety net — if a future change re-introduces either field via
+   * a type cast or dynamic property write, the guard logs a CRITICAL
+   * alert in production and throws in development, preserving the
+   * lesson that `/api/cash-intelligence/dashboard` is the only
+   * sanctioned source of driver cash.
    */
   private assertNoForbiddenCashFields(rows: DriverOversightCard[]): void {
     const offenders: Array<{

@@ -31,6 +31,7 @@ import {
   SelectValue,
 } from '@/modules/shared/components/ui/select';
 import { Skeleton } from '@/modules/shared/components/ui/skeleton';
+import { formatKwdLabel } from '@/lib/kwd';
 import {
   Table,
   TableBody,
@@ -65,15 +66,6 @@ function monthRangeIso(ym: string): { from: string; to: string } {
   const from = new Date(y, m - 1, 1, 0, 0, 0, 0);
   const to = new Date(y, m, 0, 23, 59, 59, 999);
   return { from: from.toISOString(), to: to.toISOString() };
-}
-
-function formatKd(v: string): string {
-  const n = Number.parseFloat(v);
-  if (!Number.isFinite(n)) return v;
-  return n.toLocaleString('en-GB', {
-    minimumFractionDigits: 3,
-    maximumFractionDigits: 3,
-  });
 }
 
 export function CommissionPayoutsPage() {
@@ -234,22 +226,22 @@ export function CommissionPayoutsPage() {
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
           <TotalsCard
             label="جاهز للصرف"
-            kd={sumField(data, 'releasedKd')}
+            kd={data.summaryTotals.releasedKd}
             tone="success"
           />
           <TotalsCard
             label="مدفوع"
-            kd={sumField(data, 'paidKd')}
+            kd={data.summaryTotals.paidKd}
             tone="muted"
           />
           <TotalsCard
             label="معلّق"
-            kd={sumField(data, 'pendingKd')}
+            kd={data.summaryTotals.pendingKd}
             tone="warning"
           />
           <TotalsCard
             label="ملغي"
-            kd={sumField(data, 'cancelledKd')}
+            kd={data.summaryTotals.cancelledKd}
             tone="destructive"
           />
         </div>
@@ -278,9 +270,9 @@ export function CommissionPayoutsPage() {
                   {isAdmin && <TableHead>الموظف</TableHead>}
                   <TableHead>القاعدة</TableHead>
                   <TableHead>النمط</TableHead>
-                  <TableHead className="text-center">الأساس (د.ك)</TableHead>
+                  <TableHead className="text-center">الأساس</TableHead>
                   <TableHead className="text-center">النسبة</TableHead>
-                  <TableHead className="text-center">المبلغ (د.ك)</TableHead>
+                  <TableHead className="text-center">المبلغ</TableHead>
                   <TableHead>التوقيت</TableHead>
                   <TableHead>الحالة</TableHead>
                   <TableHead>الفاتورة</TableHead>
@@ -303,13 +295,13 @@ export function CommissionPayoutsPage() {
                     <TableCell>{r.rule.name}</TableCell>
                     <TableCell>{MODE_LABEL[r.mode]}</TableCell>
                     <TableCell className="text-center font-mono">
-                      {formatKd(r.basisAmount)}
+                      {formatKwdLabel(r.basisAmount)}
                     </TableCell>
                     <TableCell className="text-center font-mono">
-                      {Number.parseFloat(r.percentage).toFixed(2)}%
+                      {r.percentage}%
                     </TableCell>
                     <TableCell className="text-center font-mono font-semibold">
-                      {formatKd(r.amount)}
+                      {formatKwdLabel(r.amount)}
                     </TableCell>
                     <TableCell>
                       {TIMING_SHORT[r.rule.payoutTiming]}
@@ -333,21 +325,6 @@ export function CommissionPayoutsPage() {
   );
 }
 
-function sumField(
-  data: CommissionPayoutsResponse,
-  key: 'pendingKd' | 'releasedKd' | 'paidKd' | 'cancelledKd',
-): string {
-  let sum = 0;
-  for (const t of data.totals) {
-    const n = Number.parseFloat(t[key]);
-    if (Number.isFinite(n)) sum += n;
-  }
-  return sum.toLocaleString('en-GB', {
-    minimumFractionDigits: 3,
-    maximumFractionDigits: 3,
-  });
-}
-
 function TotalsCard({
   label,
   kd,
@@ -367,7 +344,7 @@ function TotalsCard({
     <Card>
       <CardContent className="py-3">
         <div className="text-xs text-muted-foreground">{label}</div>
-        <div className={`text-xl font-bold ${toneClass}`}>{kd} د.ك</div>
+        <div className={`text-xl font-bold ${toneClass}`}>{formatKwdLabel(kd)}</div>
       </CardContent>
     </Card>
   );

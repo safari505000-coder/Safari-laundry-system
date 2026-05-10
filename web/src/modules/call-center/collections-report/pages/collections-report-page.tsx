@@ -33,28 +33,19 @@ import {
   collectionsUnpaidWhatsAppHref,
   whatsappChatNumber,
 } from '@/modules/shared/lib/whatsapp-links';
+import { compareKwdStrings, formatKwdLabel } from '@/lib/kwd';
 import {
   useCollectionsFilters,
   type CollectionsFilters,
 } from '../hooks/use-collections-filters';
 import { useUnpaidOnline } from '../hooks/use-unpaid-online';
-import {
-  filterUnpaidLinks,
-  groupOutstandingByDriver,
-  groupUnpaidByBranch,
-} from '../utils/grouping';
 import { DATE_PRESET_OPTIONS } from '../utils/date-presets';
 
 const OVERDUE_DAYS = 7;
 
 function formatKwd(value: number | string | null | undefined): string {
   if (value === null || value === undefined) return '—';
-  const n = typeof value === 'number' ? value : Number.parseFloat(value);
-  if (!Number.isFinite(n)) return '—';
-  return new Intl.NumberFormat('ar-KW', {
-    minimumFractionDigits: 3,
-    maximumFractionDigits: 3,
-  }).format(n);
+  return formatKwdLabel(value);
 }
 
 function formatRelativeAr(iso: string | null | undefined): string {
@@ -131,9 +122,8 @@ function KpiTile({
  * Replaces the legacy "Outstanding (AR)" page. Pure UI layer — totals
  * are taken directly from `OutstandingResponse.totalDueKd` (which the
  * backend computes from `OrdersService.sumCollectionsDebtTotalKd`).
- * No `reduce()` over `rows` to recompute the canonical aggregate;
- * the only sums in this file are per-driver / per-branch derived
- * sub-views, clearly labelled as breakdowns.
+ * No `reduce()` over `rows` to recompute the canonical aggregate. Driver
+ * summaries are read from the backend `driverSummaries` projection.
  */
 export function CollectionsReportPage() {
   const { t } = useTranslation();
@@ -153,23 +143,9 @@ export function CollectionsReportPage() {
     throw new Error('Missing financial source');
   }
 
-  const driverAggregates = useMemo(() => {
-    if (!outstanding.data) return [];
-    return groupOutstandingByDriver(outstanding.data.rows, unpaid.rows);
-  }, [outstanding.data, unpaid.rows]);
+  const driverSummaries = outstanding.data?.driverSummaries ?? [];
 
-  const branchAggregates = useMemo(
-    () => groupUnpaidByBranch(unpaid.rows),
-    [unpaid.rows],
-  );
-
-  const paymentLinkRows = useMemo(
-    () =>
-      filterUnpaidLinks(unpaid.rows, {
-        onlyWithLink: filters.effective.hasPaymentLink,
-      }).slice(0, 50),
-    [unpaid.rows, filters.effective.hasPaymentLink],
-  );
+  const paymentLinkRows = unpaid.paymentLinkRows;
 
   const refreshAll = () => {
     outstanding.refresh();
@@ -180,14 +156,15 @@ export function CollectionsReportPage() {
     if (typeof window !== 'undefined') window.print();
   };
 
-  // Print roster: a clean per-customer list — exactly what the agent
-  // needs on paper for a calling round (Name · Phone · Amount). The
-  // sort matches the on-screen Priority / Outstanding ordering: highest
-  // remaining first.
+  // Print roster is a display ordering over backend Outstanding rows.
+  // The row amounts and headline total remain backend-canonical.
+  // V23.3 — `OutstandingRow.totalDueKd` is a canonical 4dp KWD string.
+  // The print-roster sort delegates to `compareKwdStrings` so the
+  // ordering is exact at micro-fil precision (no JS float drift).
   const printRoster = useMemo(() => {
     if (!outstanding.data) return [];
-    return [...outstanding.data.rows].sort(
-      (a, b) => b.totalDueKd - a.totalDueKd,
+    return [...outstanding.data.rows].sort((a, b) =>
+      compareKwdStrings(b.totalDueKd, a.totalDueKd),
     );
   }, [outstanding.data]);
 
@@ -257,7 +234,7 @@ export function CollectionsReportPage() {
       <FiltersBar
         filters={filters}
         drivers={drivers.drivers.map((d) => ({ id: d.id, name: d.name }))}
-        branchOptions={branchAggregates.map((b) => ({
+        branchOptions={unpaid.branchSummaries.map((b) => ({
           id: b.branchName,
           name: b.branchName,
         }))}
@@ -268,7 +245,7 @@ export function CollectionsReportPage() {
         aria-label="kpi"
       >
         <KpiTile
-          label="إجمالي المديونية (د.ك)"
+          label="إجمالي المديونية"
           value={outstanding.data ? formatKwd(outstanding.data.totalDueKd) : '—'}
           caption={
             outstanding.data
@@ -302,8 +279,8 @@ export function CollectionsReportPage() {
         />
         <KpiTile
           label="روابط دفع متابعة"
-          value={String(paymentLinkRows.length)}
-          caption={`من ${unpaid.rows.length} فاتورة عبر القنوات الإلكترونية`}
+          value={String(unpaid.paymentLinkSummary.actionableRows)}
+          caption={`من ${unpaid.paymentLinkSummary.totalRows} فاتورة عبر القنوات الإلكترونية`}
           tone="success"
           icon={MessageCircle}
         />
@@ -317,12 +294,12 @@ export function CollectionsReportPage() {
 
       <div className="contents print:hidden">
         <DriversTable
-          rows={driverAggregates}
+          rows={driverSummaries}
           loading={outstanding.loading && !outstanding.data}
         />
 
         <BranchTable
-          rows={branchAggregates}
+          rows={unpaid.branchSummaries}
           loading={unpaid.loading && unpaid.rows.length === 0}
         />
 
@@ -338,7 +315,7 @@ export function CollectionsReportPage() {
 /**
  * Hidden on screen, visible only when the agent fires the browser
  * print dialog. Renders the call-roster the field team actually
- * carries to the round: Customer · Phone · Outstanding (د.ك). Sorted
+ * carries to the round: Customer · Phone · Outstanding. Sorted
  * by remaining (highest first) to mirror the on-screen Priority view.
  */
 function PrintRoster({
@@ -361,7 +338,7 @@ function PrintRoster({
         </div>
         <div className="text-end text-xs">
           <div>عدد العملاء: <span className="font-semibold">{totalCustomers}</span></div>
-          <div>إجمالي المستحق: <span className="font-semibold">{formatKwd(totalDueKd)} د.ك</span></div>
+          <div>إجمالي المستحق: <span className="font-semibold">{formatKwd(totalDueKd)}</span></div>
         </div>
       </header>
 
@@ -374,7 +351,7 @@ function PrintRoster({
               <th className="p-2 text-start" style={{ width: '6%' }}>#</th>
               <th className="p-2 text-start" style={{ width: '38%' }}>اسم العميل</th>
               <th className="p-2 text-start" style={{ width: '22%' }}>رقم الهاتف</th>
-              <th className="p-2 text-end" style={{ width: '18%' }}>المبلغ (د.ك)</th>
+              <th className="p-2 text-end" style={{ width: '18%' }}>المبلغ</th>
               <th className="p-2 text-start" style={{ width: '16%' }}>ملاحظة المتّصل</th>
             </tr>
           </thead>
@@ -556,7 +533,9 @@ function DriversTable({
   rows,
   loading,
 }: {
-  rows: ReturnType<typeof groupOutstandingByDriver>;
+  rows: NonNullable<
+    NonNullable<ReturnType<typeof useOutstanding>['data']>['driverSummaries']
+  >;
   loading: boolean;
 }) {
   return (
@@ -586,8 +565,7 @@ function DriversTable({
                 <th className="p-2 text-start">السائق</th>
                 <th className="p-2 text-end">عملاء</th>
                 <th className="p-2 text-end">فواتير</th>
-                <th className="p-2 text-end">المتبقّي (د.ك)</th>
-                <th className="p-2 text-end">روابط دفع</th>
+                <th className="p-2 text-end">المتبقّي</th>
                 <th className="p-2 text-end">أقصى تأخير</th>
               </tr>
             </thead>
@@ -611,9 +589,6 @@ function DriversTable({
                     </td>
                     <td className="p-2 text-end tabular-nums font-semibold text-rose-700 dark:text-rose-300">
                       {formatKwd(row.totalRemainingKd)}
-                    </td>
-                    <td className="p-2 text-end tabular-nums">
-                      {row.unpaidLinks}
                     </td>
                     <td className="p-2 text-end tabular-nums">
                       <span
@@ -645,7 +620,7 @@ function BranchTable({
   rows,
   loading,
 }: {
-  rows: ReturnType<typeof groupUnpaidByBranch>;
+  rows: ReturnType<typeof useUnpaidOnline>['branchSummaries'];
   loading: boolean;
 }) {
   return (
@@ -674,7 +649,7 @@ function BranchTable({
               <tr>
                 <th className="p-2 text-start">الفرع</th>
                 <th className="p-2 text-end">فواتير</th>
-                <th className="p-2 text-end">المتبقّي (د.ك)</th>
+                <th className="p-2 text-end">المتبقّي</th>
                 <th className="p-2 text-end">عدد السائقين</th>
               </tr>
             </thead>
@@ -703,7 +678,7 @@ function PaymentLinksTable({
   rows,
   loading,
 }: {
-  rows: ReturnType<typeof filterUnpaidLinks>;
+  rows: ReturnType<typeof useUnpaidOnline>['rows'];
   loading: boolean;
 }) {
   return (
@@ -733,7 +708,7 @@ function PaymentLinksTable({
                 <th className="p-2 text-start">العميل</th>
                 <th className="p-2 text-start">الهاتف</th>
                 <th className="p-2 text-start">الفاتورة</th>
-                <th className="p-2 text-end">المبلغ (د.ك)</th>
+                <th className="p-2 text-end">المبلغ</th>
                 <th className="p-2 text-end">آخر تذكير</th>
                 <th className="p-2 text-end">العمر</th>
                 <th className="p-2 text-end">إجراءات</th>

@@ -15,10 +15,22 @@ describe('OwnerFinancialDashboardService', () => {
       subscriptionConsumedKd: '0.0000',
       subscriptionRemainingKd: '0.0000',
       totalPaymentsKd: '2.0000',
-      totalDueKd: '8.0000',
+      // V23.2 — DTO returns canonical receivable directly. The legacy
+      // `totalDueKd` field was dropped; the rollup reads
+      // `canonicalDebtKd` for both the per-customer row and the
+      // aggregate `canonicalDebtTotal`.
+      canonicalDebtKd: '8.0000',
+      canonicalDebtSource: 'PARTIAL_PAYMENT_REMAINING',
       isBlocked: false,
       blockReason: null,
       blockedAtIso: null,
+      breakdown: {
+        receivableDebtKd: '8.0000',
+        subscriptionRemainingKd: '0.0000',
+        walletPrepaidCreditKd: '0.0000',
+        paidTotalKd: '2.0000',
+        operatorHint: 'العميل مدين بمبلغ 8.0000 د.ك',
+      },
     });
     const prisma = {
       order: {
@@ -89,14 +101,14 @@ describe('OwnerFinancialDashboardService', () => {
     expect(result).toMatchObject({
       totalInvoicesToday: '10.0000',
       totalPaymentsToday: '2.0000',
-      totalDueTotal: '8.0000',
+      canonicalDebtTotal: '8.0000',
       cashInDrivers: '4.0000',
       cashInOffice: '3.0000',
       reconciliationDifference: '1.0000',
     });
     expect(result.topCustomers[0]).toMatchObject({
       customerId: 'customer-1',
-      totalDueKd: '8.0000',
+      canonicalDebtKd: '8.0000',
       customerHealth: 'WATCH',
     });
   });

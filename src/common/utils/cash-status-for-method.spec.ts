@@ -45,10 +45,10 @@ describe('cashStatusForPaymentMethod', () => {
     );
   });
 
-  it('keeps SUBSCRIPTION_WALLET on PAID_TO_DRIVER (book entry; service delivered by driver)', () => {
+  it('routes SUBSCRIPTION_WALLET to PAID_ONLINE (book payment, no driver cash)', () => {
     expect(
       cashStatusForPaymentMethod(PosPaymentMethod.SUBSCRIPTION_WALLET),
-    ).toBe(CashStatus.PAID_TO_DRIVER);
+    ).toBe(CashStatus.PAID_ONLINE);
   });
 
   it('defaults null / undefined to PAID_TO_DRIVER (legacy safety)', () => {
@@ -60,18 +60,16 @@ describe('cashStatusForPaymentMethod', () => {
 });
 
 describe('isElectronicMethod', () => {
-  it('identifies KNET, PAYMENT_LINK, ONLINE as electronic', () => {
+  it('identifies KNET, PAYMENT_LINK, ONLINE, and subscription as non-cash methods', () => {
     expect(isElectronicMethod(PosPaymentMethod.KNET)).toBe(true);
     expect(isElectronicMethod(PosPaymentMethod.PAYMENT_LINK)).toBe(true);
     expect(isElectronicMethod(PosPaymentMethod.ONLINE)).toBe(true);
+    expect(isElectronicMethod(PosPaymentMethod.SUBSCRIPTION_WALLET)).toBe(true);
   });
 
-  it('excludes CASH, DEBT_ON_ACCOUNT, SUBSCRIPTION_WALLET', () => {
+  it('excludes CASH and DEBT_ON_ACCOUNT', () => {
     expect(isElectronicMethod(PosPaymentMethod.CASH)).toBe(false);
     expect(isElectronicMethod(PosPaymentMethod.DEBT_ON_ACCOUNT)).toBe(false);
-    expect(isElectronicMethod(PosPaymentMethod.SUBSCRIPTION_WALLET)).toBe(
-      false,
-    );
   });
 
   it('excludes null / undefined', () => {
@@ -98,6 +96,7 @@ describe('KNET end-to-end invariants (V19.11.3)', () => {
       PosPaymentMethod.KNET,
       PosPaymentMethod.PAYMENT_LINK,
       PosPaymentMethod.ONLINE,
+      PosPaymentMethod.SUBSCRIPTION_WALLET,
     ];
     for (const m of electronic) {
       expect(cashStatusForPaymentMethod(m)).toBe(CashStatus.PAID_ONLINE);
@@ -112,12 +111,9 @@ describe('KNET end-to-end invariants (V19.11.3)', () => {
         cashStatusForPaymentMethod(m) === CashStatus.PAID_TO_DRIVER &&
         !isElectronicMethod(m),
     );
-    expect(paidToDriverNonElectronic).toEqual(
-      expect.arrayContaining([
-        PosPaymentMethod.CASH,
-        PosPaymentMethod.DEBT_ON_ACCOUNT,
-        PosPaymentMethod.SUBSCRIPTION_WALLET,
-      ]),
-    );
+    expect(paidToDriverNonElectronic).toEqual([
+      PosPaymentMethod.CASH,
+      PosPaymentMethod.DEBT_ON_ACCOUNT,
+    ]);
   });
 });

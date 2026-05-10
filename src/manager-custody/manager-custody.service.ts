@@ -26,6 +26,7 @@ import {
   minorToAmountString,
   parseFixed4ToMinor,
 } from '../finance/finance-money';
+import type { DriverBalanceRowDto } from '../finance/dto/driver-balance.dto';
 import { ApproveReceiptFromDriverDto } from './dto/approve-receipt-from-driver.dto';
 import { ListCustodyQueryDto } from './dto/list-custody-query.dto';
 import { RejectCustodyDto } from './dto/reject-custody.dto';
@@ -152,10 +153,123 @@ export type ManagerCashStatusSnapshotDto = {
   generatedAt: string;
 };
 
+type StaffDebtsStatusFilter = 'ALL' | 'OVERDUE' | 'CURRENT';
+
+export type StaffDebtsQuery = {
+  branch?: string | null;
+  name?: string | null;
+  employee?: string | null;
+  status?: StaffDebtsStatusFilter | null;
+};
+
+export type StaffDebtsEmployeeOption = {
+  value: string;
+  label: string;
+  branchId: string | null;
+  kind: 'driver' | 'manager';
+};
+
+export type StaffDebtsDriverRow = DriverBalanceRowDto & {
+  isOverdue: boolean;
+  shiftAgeHours: number | null;
+};
+
+export type StaffDebtsManagerRow = CustodyRowDto;
+
+export type StaffDebtsEnvelopeDto = {
+  drivers: StaffDebtsDriverRow[];
+  managers: StaffDebtsManagerRow[];
+  branches: Array<{ id: string; name: string }>;
+  employeeOptions: StaffDebtsEmployeeOption[];
+  selectedEmployee: StaffDebtsEmployeeOption | null;
+  showBranchFilter: boolean;
+  appliedFilters: {
+    branch: string;
+    name: string;
+    employee: string;
+    status: StaffDebtsStatusFilter;
+  };
+  totals: {
+    pipelineTotalKd: string;
+    driverTotalKd: string;
+    managerTotalKd: string;
+    driverBreakdown: {
+      cashKd: string;
+      knetKd: string;
+      linkKd: string;
+      onlineKd: string;
+    };
+    overdueDriverCount: number;
+    overdueManagerCount: number;
+    totalOverdueCount: number;
+    driverRowCount: number;
+    managerRowCount: number;
+  };
+  generatedAt: string;
+};
+
 function riskRank(r: DriverHandoverSummaryDto['riskLevel']): number {
   if (r === 'CRITICAL') return 2;
   if (r === 'WARNING') return 1;
   return 0;
+}
+
+function parseStaffDebtsEmployeeFilter(
+  raw: string,
+): { kind: 'driver' | 'manager'; id: string } | null {
+  if (!raw || raw === 'ALL') return null;
+  const [kind, id] = raw.split(':');
+  if ((kind === 'driver' || kind === 'manager') && id) return { kind, id };
+  return null;
+}
+
+function decimalGt(value: string | number | Prisma.Decimal, threshold: number): boolean {
+  return new Prisma.Decimal(value ?? 0).greaterThan(threshold);
+}
+
+function staffDebtDriverShiftAgeHours(row: DriverBalanceRowDto, now: number): number | null {
+  if (!row.shiftStartedAt) return null;
+  const started = new Date(row.shiftStartedAt).getTime();
+  if (!Number.isFinite(started)) return null;
+  return Math.floor(Math.max(0, now - started) / 3_600_000);
+}
+
+function isStaffDebtDriverOverdue(row: DriverBalanceRowDto, now: number): boolean {
+  if (!decimalGt(row.pendingTotalKd, 0)) return false;
+  if (!row.currentShiftId) return true;
+  const ageHours = staffDebtDriverShiftAgeHours(row, now);
+  return ageHours !== null && ageHours >= 24;
+}
+
+function buildStaffDebtEmployeeOptions(
+  drivers: ReadonlyArray<StaffDebtsDriverRow>,
+  managers: ReadonlyArray<StaffDebtsManagerRow>,
+): StaffDebtsEmployeeOption[] {
+  const seen = new Set<string>();
+  const out: StaffDebtsEmployeeOption[] = [];
+  for (const driver of drivers) {
+    const value = `driver:${driver.driverId}`;
+    if (seen.has(value)) continue;
+    seen.add(value);
+    out.push({
+      value,
+      label: driver.fullName,
+      branchId: driver.branchId,
+      kind: 'driver',
+    });
+  }
+  for (const manager of managers) {
+    const value = `manager:${manager.managerId}`;
+    if (seen.has(value)) continue;
+    seen.add(value);
+    out.push({
+      value,
+      label: manager.managerName,
+      branchId: manager.branchId,
+      kind: 'manager',
+    });
+  }
+  return out;
 }
 
 function classifyActivity(e: {
@@ -681,6 +795,136 @@ export class ManagerCustodyService {
 
     const decorated = rows.map((r) => this.toRow(r));
     return { rows: decorated, summary: this.summarise(decorated) };
+  }
+
+  async getStaffDebtsProjection(query: StaffDebtsQuery): Promise<StaffDebtsEnvelopeDto> {
+    const branchFilter = query.branch?.trim() || 'ALL';
+    const nameFilter = query.name?.trim() || '';
+    const trimmedName = nameFilter.toLocaleLowerCase();
+    const employeeFilter = query.employee?.trim() || 'ALL';
+    const statusFilter =
+      query.status === 'OVERDUE' || query.status === 'CURRENT' ? query.status : 'ALL';
+    const employeePick = parseStaffDebtsEmployeeFilter(employeeFilter);
+    const now = Date.now();
+
+    const [driverBalances, aging, branchRows] = await Promise.all([
+      this.cashService.getDriverBalances(),
+      this.listAging({}),
+      this.prisma.branch.findMany({
+        where: {},
+        orderBy: { name: 'asc' },
+        select: { id: true, name: true },
+      }),
+    ]);
+
+    const rawDrivers = driverBalances.drivers
+      .filter((d) => decimalGt(d.pendingTotalKd, 0))
+      .map((d): StaffDebtsDriverRow => ({
+        ...d,
+        isOverdue: isStaffDebtDriverOverdue(d, now),
+        shiftAgeHours: staffDebtDriverShiftAgeHours(d, now),
+      }));
+    const rawManagers = aging.rows.filter((row) => row.status !== ManagerCashCustodyStatus.VERIFIED);
+
+    const allEmployeeOptions = buildStaffDebtEmployeeOptions(rawDrivers, rawManagers);
+    const employeeOptions = (
+      branchFilter !== 'ALL' ?
+        allEmployeeOptions.filter((option) => option.branchId === branchFilter)
+      : allEmployeeOptions
+    ).sort((a, b) => a.label.localeCompare(b.label, 'ar'));
+    const selectedEmployee =
+      employeePick ?
+        allEmployeeOptions.find(
+          (option) => option.value === `${employeePick.kind}:${employeePick.id}`,
+        ) ?? null
+      : null;
+
+    const drivers = rawDrivers.filter((driver) => {
+      if (employeePick) {
+        if (employeePick.kind !== 'driver') return false;
+        if (driver.driverId !== employeePick.id) return false;
+      } else if (branchFilter !== 'ALL' && driver.branchId !== branchFilter) {
+        return false;
+      }
+      if (trimmedName && !driver.fullName.toLocaleLowerCase().includes(trimmedName)) {
+        return false;
+      }
+      if (statusFilter === 'OVERDUE' && !driver.isOverdue) return false;
+      if (statusFilter === 'CURRENT' && driver.isOverdue) return false;
+      return true;
+    });
+
+    const managers = rawManagers.filter((row) => {
+      if (employeePick) {
+        if (employeePick.kind !== 'manager') return false;
+        if (row.managerId !== employeePick.id) return false;
+      } else if (branchFilter !== 'ALL' && row.branchId !== branchFilter) {
+        return false;
+      }
+      if (trimmedName && !row.managerName.toLocaleLowerCase().includes(trimmedName)) {
+        return false;
+      }
+      if (statusFilter === 'OVERDUE' && !row.isOverdue) return false;
+      if (statusFilter === 'CURRENT' && row.isOverdue) return false;
+      return true;
+    });
+
+    const driverBreakdown = drivers.reduce(
+      (acc, row) => ({
+        cash: acc.cash.plus(row.pendingCashKd),
+        knet: acc.knet.plus(row.pendingKnetKd),
+        link: acc.link.plus(row.pendingLinkKd),
+        online: acc.online.plus(row.pendingOnlineKd),
+      }),
+      {
+        cash: new Prisma.Decimal(0),
+        knet: new Prisma.Decimal(0),
+        link: new Prisma.Decimal(0),
+        online: new Prisma.Decimal(0),
+      },
+    );
+    const driverTotal = driverBreakdown.cash
+      .plus(driverBreakdown.knet)
+      .plus(driverBreakdown.link)
+      .plus(driverBreakdown.online);
+    const managerTotal = managers.reduce(
+      (sum, row) => sum.plus(row.amountKd),
+      new Prisma.Decimal(0),
+    );
+    const overdueDriverCount = drivers.filter((row) => row.isOverdue).length;
+    const overdueManagerCount = managers.filter((row) => row.isOverdue).length;
+
+    return {
+      drivers,
+      managers,
+      branches: branchRows,
+      employeeOptions,
+      selectedEmployee,
+      showBranchFilter: !employeePick,
+      appliedFilters: {
+        branch: branchFilter,
+        name: nameFilter,
+        employee: employeeFilter,
+        status: statusFilter,
+      },
+      totals: {
+        pipelineTotalKd: driverTotal.plus(managerTotal).toFixed(4),
+        driverTotalKd: driverTotal.toFixed(4),
+        managerTotalKd: managerTotal.toFixed(4),
+        driverBreakdown: {
+          cashKd: driverBreakdown.cash.toFixed(4),
+          knetKd: driverBreakdown.knet.toFixed(4),
+          linkKd: driverBreakdown.link.toFixed(4),
+          onlineKd: driverBreakdown.online.toFixed(4),
+        },
+        overdueDriverCount,
+        overdueManagerCount,
+        totalOverdueCount: overdueDriverCount + overdueManagerCount,
+        driverRowCount: drivers.length,
+        managerRowCount: managers.length,
+      },
+      generatedAt: new Date(now).toISOString(),
+    };
   }
 
   /**

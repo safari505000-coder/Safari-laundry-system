@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import {
   ExternalLink,
   Lightbulb,
@@ -11,6 +11,7 @@ import { useAuth } from '@/contexts/auth-context';
 import { Button, buttonVariants } from '@/modules/shared/components/ui/button';
 import { CustomerLedgerPanel } from '@/modules/call-center/components/customer-ledger-panel';
 import { cn } from '@/lib/utils';
+import { formatKwdLabel } from '@/lib/kwd';
 import type { OutstandingRow } from '@/modules/call-center/outstanding/api/outstanding-api';
 
 type Props = {
@@ -18,14 +19,6 @@ type Props = {
   row: OutstandingRow | null;
   onClose: () => void;
 };
-
-function formatKwd(value: number): string {
-  if (!Number.isFinite(value)) return '0.000';
-  return new Intl.NumberFormat('ar-KW', {
-    minimumFractionDigits: 3,
-    maximumFractionDigits: 3,
-  }).format(value);
-}
 
 function normalisePhoneForLink(phone: string): string {
   const digits = phone.replace(/[^\d+]/g, '');
@@ -39,18 +32,18 @@ function normalisePhoneForLink(phone: string): string {
 
 function buildSuggestion(row: OutstandingRow): string {
   const name = row.name ?? row.phone;
-  const debt = formatKwd(row.totalDueKd);
+  const debt = formatKwdLabel(row.totalDueKd);
   const inv = row.invoicesCount;
   if (row.blocked) {
-    return `الأخ/الأخت ${name} حسابك متوقّف عن الإصدار حالياً، وعليه ${debt} د.ك (${inv} فاتورة). سدّد المبلغ ليُفعَّل الحساب فوراً.`;
+    return `الأخ/الأخت ${name} حسابك متوقّف عن الإصدار حالياً، وعليه ${debt} (${inv} فاتورة). سدّد المبلغ ليُفعَّل الحساب فوراً.`;
   }
   if (row.status === 'RISK' || row.daysLate >= 14) {
-    return `الأخ/الأخت ${name} لاحظنا تأخّر ${row.daysLate} يوم وعليك ${debt} د.ك (${inv} فاتورة). نرسل لك رابط الدفع الآن لتسديد سريع وتفادي الإيقاف.`;
+    return `الأخ/الأخت ${name} لاحظنا تأخّر ${row.daysLate} يوم وعليك ${debt} (${inv} فاتورة). نرسل لك رابط الدفع الآن لتسديد سريع وتفادي الإيقاف.`;
   }
   if (row.daysLate >= 7) {
-    return `الأخ/الأخت ${name} يوجد لديك مبلغ مستحق ${debt} د.ك (${inv} فاتورة). تفضّل بالسداد عبر الكاش، K-NET، أو رابط الدفع.`;
+    return `الأخ/الأخت ${name} يوجد لديك مبلغ مستحق ${debt} (${inv} فاتورة). تفضّل بالسداد عبر الكاش، K-NET، أو رابط الدفع.`;
   }
-  return `الأخ/الأخت ${name} هذه مكالمة تذكير ودّيّة. لديك ${debt} د.ك (${inv} فاتورة) — هل تفضّل السداد كاشاً، K-NET، أم رابط دفع عبر واتساب؟`;
+  return `الأخ/الأخت ${name} هذه مكالمة تذكير ودّيّة. لديك ${debt} (${inv} فاتورة) — هل تفضّل السداد كاشاً، K-NET، أم رابط دفع عبر واتساب؟`;
 }
 
 /**
@@ -64,22 +57,17 @@ function buildSuggestion(row: OutstandingRow): string {
  */
 export function CustomerPanel({ open, row, onClose }: Props) {
   const { token } = useAuth();
-  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    if (open) {
-      setMounted(true);
-      const onKey = (e: KeyboardEvent) => {
-        if (e.key === 'Escape') onClose();
-      };
-      window.addEventListener('keydown', onKey);
-      return () => window.removeEventListener('keydown', onKey);
-    }
-    const t = window.setTimeout(() => setMounted(false), 200);
-    return () => window.clearTimeout(t);
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
-  if (!mounted && !open) return null;
+  if (!open) return null;
 
   const phoneLink = row ? `tel:${normalisePhoneForLink(row.phone)}` : '#';
   const waLink = row
@@ -171,7 +159,7 @@ export function CustomerPanel({ open, row, onClose }: Props) {
           ) : null}
           {row ? (
             <span className="ms-auto rounded-full bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-800 dark:bg-rose-900/40 dark:text-rose-100">
-              مستحق: {formatKwd(row.totalDueKd)} د.ك
+              مستحق: {formatKwdLabel(row.totalDueKd)}
             </span>
           ) : null}
         </div>

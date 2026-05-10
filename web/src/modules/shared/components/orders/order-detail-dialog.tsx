@@ -79,6 +79,7 @@ export function OrderDetailDialog({ open, onOpenChange, order, onChanged }: Prop
               <div className="flex justify-between gap-2">
                 <dt className="text-muted-foreground">{t('orders.colTotal')}</dt>
                 <dd className="font-semibold tabular-nums">
+                  {/* allow-legacy-debt-reader (V20.6 Phase 2: rendering the GROSS invoice total — the canonical primary, not a derived debt — under the explicit "Total" label; the partial-payment debt is shown separately in the financial timeline / outstanding view) */}
                   {formatKwdLabel(order.totalPrice)}
                 </dd>
               </div>
@@ -88,6 +89,7 @@ export function OrderDetailDialog({ open, onOpenChange, order, onChanged }: Prop
                 id: order.id,
                 createdAtIso: order.createdAt,
                 status: order.status,
+                // allow-legacy-debt-reader (V20.6 Phase 2: passing gross invoice total to supervisor actions which use it as the upper bound for refund / void operations)
                 totalKd: order.totalPrice,
                 paymentMethod: order.posPaymentMethod ?? null,
                 notes: order.notes ?? null,

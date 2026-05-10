@@ -469,6 +469,12 @@ export type DriverBalanceResponse = {
   drivers: DriverBalanceRow[];
 };
 
+export type DriverCashCustodySummary = {
+  cashTotalKd: string;
+  cashOrderCount: number;
+  grandTotalKd: string;
+};
+
 export type FinanceRealtimeTotals = {
   totalCash: string;
   totalOnline: string;
@@ -1213,7 +1219,14 @@ export type OwnerFinancialDashboard = {
   generatedAt: string;
   totalInvoicesToday: string;
   totalPaymentsToday: string;
-  totalDueTotal: string;
+  /**
+   * V23.2 — Σ canonical receivable debt across all active customers
+   * in the rollup. Renamed from `totalDueTotal` so the wire field
+   * name reflects that the number is sourced from the canonical
+   * banking layer (V20.4 `computeCanonicalCustomerDebt`), not the
+   * legacy "invoices − payments" gross.
+   */
+  canonicalDebtTotal: string;
   cashInDrivers: string;
   cashInOffice: string;
   reconciliationDifference: string;
@@ -1227,7 +1240,8 @@ export type OwnerFinancialDashboard = {
   topCustomers: {
     customerId: string;
     displayName: string | null;
-    totalDueKd: string;
+    /** V23.2 — canonical receivable per customer (replaces legacy totalDueKd). */
+    canonicalDebtKd: string;
     totalInvoicesKd: string;
     totalPaymentsKd: string;
     customerHealth: 'GOOD' | 'WATCH' | 'RISK' | 'BLOCKED';
@@ -1295,6 +1309,7 @@ export type UnpaidInvoiceRow = {
   debtAmountKd: string;
   paidKd: string;
   remainingKd: string;
+  customerRunningRemainingKd: string;
   entryCount: number;
   currentCustomerDebtKd: string;
   isOpen: boolean;
@@ -1303,6 +1318,23 @@ export type UnpaidInvoiceRow = {
   debtSource: 'INVOICE_SHORTFALL' | 'SUBSCRIPTION_OVERUSE' | 'OPEN_UNPAID_ORDER';
   /** Mirrors `Order.posPaymentMethod` — e.g. PAYMENT_LINK for WhatsApp payment links */
   posPaymentMethod?: string | null;
+  /**
+   * V20.3.1 — canonical payment status. Drives the chip color
+   * (UNPAID = red, PARTIALLY_PAID = orange, PAID = green) and
+   * is computed server-side from `remainingKd` against the
+   * tolerance — never derive locally.
+   */
+  paymentStatus?: 'UNPAID' | 'PARTIALLY_PAID' | 'PAID';
+  isPartiallyPaid?: boolean;
+  isFullyPaid?: boolean;
+  /**
+   * V20.3.2 — independent subscription dimension. True iff the
+   * customer currently holds an ACTIVE CustomerSubscription
+   * with `expiresAt > now`. Set this for the SUBSCRIBER badge —
+   * NEVER derive subscriber state from debt fields.
+   */
+  hasActiveSubscription?: boolean;
+  subscriptionExpiresAt?: string | null;
 };
 
 export type UnpaidInvoicesKpis = {
@@ -1738,10 +1770,10 @@ export type SubscriberListRow = {
   debt: string;
   /** UNPAID totals with `walletSettledAt=null` (before posted to wallet). */
   unsettledUnpaidKd?: string;
+  /** Canonical current receivable debt after partial payments and subscription conversion. */
+  remainingDebtKd?: string;
   /** Operational debt basis. This is NOT the canonical Customer 360 financial number. */
   operationalDebtKd?: string;
-  /** @deprecated Use operationalDebtKd. Kept for older API responses. */
-  effectiveDebtKd?: string;
   rowStatus: 'active_ok' | 'active_warn' | 'expired' | 'open_credit';
   /** Days since the subscription was last activated. Null if unknown. */
   invoiceAgeDays: number | null;
@@ -1763,8 +1795,6 @@ export type SubscriberListRow = {
     walletSnapshotKd: string;
     orderMarketScopeKd: string;
     operationalDebtKd?: string;
-    /** @deprecated Use operationalDebtKd. */
-    effectiveDebtKd: string;
     winningSources: Array<'ledger' | 'walletSnapshot' | 'orderMarket'>;
   };
 };
@@ -1908,6 +1938,7 @@ export type CustomerDirectoryRow = {
 };
 
 export type PosPaymentMethod =
+  | 'SUBSCRIPTION'
   | 'SUBSCRIPTION_WALLET'
   | 'CASH'
   | 'KNET'
@@ -2039,6 +2070,23 @@ export type CollectionUnpaidOnlineRow = {
   }[];
 };
 
+export type CollectionUnpaidOnlineBranchSummary = {
+  branchName: string;
+  invoices: number;
+  totalRemainingKd: string;
+  driversCount: number;
+};
+
+export type CollectionUnpaidOnlineReportResponse = {
+  rows: CollectionUnpaidOnlineRow[];
+  paymentLinkRows: CollectionUnpaidOnlineRow[];
+  branchSummaries: CollectionUnpaidOnlineBranchSummary[];
+  paymentLinkSummary: {
+    totalRows: number;
+    actionableRows: number;
+  };
+};
+
 /**
  * V3.8 — Driver island "Field Collection Tracker" row
  * (`GET /api/orders/driver/pending-invoices`).
@@ -2087,6 +2135,13 @@ export type DriverPendingInvoiceRow = {
    */
   linkStatus: 'PENDING' | 'EXPIRED' | null;
   createdAtIso: string;
+};
+
+export type DriverPendingInvoicesResponse = {
+  rows: DriverPendingInvoiceRow[];
+  totalAmountKd: string;
+  filteredCount: number;
+  totalCount: number;
 };
 
 /**
@@ -2195,21 +2250,13 @@ export type DriverOversightCard = {
   shiftStatus: DriverOversightShiftStatus;
   shiftStartedAt: string | null;
   ordersTodayCount: number;
-  /**
-   * @deprecated SSoT-locked. Always `null` on the wire. Read driver
-   *   cash from `getCashIntelligenceDashboard()` (single source of
-   *   truth). Kept on the type so old consumers do not crash on a
-   *   missing key.
-   */
-  cashTodayKd: null;
   pendingInvoicesCount: number;
-  /**
-   * @deprecated SSoT-locked. Always `null` on the wire. Read driver
-   *   cash from `getCashIntelligenceDashboard()` (single source of
-   *   truth). Kept on the type so old consumers do not crash on a
-   *   missing key.
-   */
-  heldCashKd: null;
+  // V23.2 — `cashTodayKd` and `heldCashKd` were deleted from this
+  // card. Driver cash is exposed EXCLUSIVELY by
+  // `getCashIntelligenceDashboard()` (SSoT). The keys no longer
+  // exist on the wire, so dynamic property access yields
+  // `undefined`; dedicated runtime guards on the backend continue
+  // to refuse any attempt to re-introduce them.
   staleQuickCount: number;
   staleQuickKd: string;
   atRisk: boolean;
@@ -2326,12 +2373,16 @@ export type DebtRecoveryDayRow = {
   recoveredKd: string;
   settlementCount: number;
   subscriptionCount: number;
+  trendRatio: number;
 };
 
 export type DebtRecoveryReport = {
   from: string;
   to: string;
   totalRecoveredKd: string;
+  totalSettlements: number;
+  totalSubscriptions: number;
+  maxRecoveredKd: string;
   days: DebtRecoveryDayRow[];
 };
 
@@ -2482,6 +2533,14 @@ export type CustomerLedgerClosedInvoice = {
   createdAtIso: string;
 };
 
+export type CustomerLedgerEventProjection = {
+  isCredit: boolean;
+  effectiveDebtAfterKd: string;
+  hasDebtDiscount: boolean;
+  hasDebtSettled: boolean;
+  closedInvoicesTotalKd: string;
+};
+
 export type CustomerLedgerEvent = {
   id: string;
   atIso: string;
@@ -2512,6 +2571,7 @@ export type CustomerLedgerEvent = {
   note: string | null;
   activationBreakdown: CustomerLedgerActivationBreakdown | null;
   closedInvoices: CustomerLedgerClosedInvoice[];
+  projection: CustomerLedgerEventProjection;
 };
 
 export type CustomerLedgerInvoice = {
@@ -2543,6 +2603,7 @@ export type CustomerLedgerInvoice = {
   subscriptionLabel: string | null;
   issuedWhileCutOff: boolean;
   openDebt: boolean;
+  projectionGroup: 'UNPAID' | 'PAID' | 'CANCELED';
   feedbackRating: number | null;
   feedbackSubmittedAtIso: string | null;
 };
@@ -2571,10 +2632,10 @@ export type CustomerLedgerResponse = {
     walletDebtKd: string;
     /** Σ uncollection aligned with `/collections` (invoice scope). */
     collectionsReceivableKd?: string;
+    /** Canonical current receivable debt shown to operators/customers. */
+    remainingDebtKd?: string;
     /** Operational debt basis. This is NOT the canonical Customer 360 financial number. */
     operationalDebtKd?: string;
-    /** @deprecated Use operationalDebtKd. Kept for older API responses. */
-    effectiveDebtKd?: string;
   };
   activeSubscription: {
     id: string;
@@ -2599,10 +2660,31 @@ export type CustomerLedgerResponse = {
     eventCount: number;
     invoiceCount: number;
     openInvoiceCount: number;
+    totalInvoicedKd: string;
+    totalPaidInvoicesKd: string;
+    totalOpenInvoicesKd: string;
+    unpaidInvoiceCount: number;
+    paidInvoiceCount: number;
+    canceledInvoiceCount: number;
     totalCollectedKd: string;
     totalDiscountedKd: string;
   };
   feedbackSummary: CustomerLedgerFeedbackSummary;
+  /**
+   * V21 Phase 3 — Canonical Banking snapshot envelope.
+   * Hash-verifiable, lineage-tagged metadata over the statement payload.
+   * Optional for backwards compatibility with older clients that have
+   * not yet been deployed against the new server build.
+   */
+  snapshot?: CustomerLedgerSnapshot;
+};
+
+export type CustomerLedgerSnapshot = {
+  snapshotVersion: string;
+  generatedAtIso: string;
+  canonicalHash: string;
+  sourceEventIds: ReadonlyArray<string>;
+  sourceInvoiceIds: ReadonlyArray<string>;
 };
 
 /**
@@ -2670,7 +2752,38 @@ export type Customer360Financials = {
   subscriptionConsumedKd: string;
   subscriptionRemainingKd: string;
   totalPaymentsKd: string;
-  totalDueKd: string;
+  /**
+   * V20.4 Phase 2 + V23.1 Final — canonical receivable debt for the
+   * customer. Single source of truth for "how much does this customer
+   * owe us right now"; computed by `computeCanonicalCustomerDebt` on
+   * the backend (Σ remaining_balance per open invoice, partial-payment
+   * + customer-level RESIDUAL aware, clamped at zero).
+   *
+   * EVERY customer 360 surface MUST render THIS field for any "unpaid"
+   * / "debt" / "إجمالي المديونية" tile. Do NOT fall back to the legacy
+   * `totalDueKd` because the legacy number is `totalInvoices − totalPayments`
+   * which ignores subscription absorption + RESIDUAL FIFO and therefore
+   * disagrees with `/api/orders/collections/unpaid-online` and the V23.1
+   * cockpit by exactly the amount the wallet/subscription has absorbed.
+   */
+  canonicalDebtKd: string;
+  /** Provenance of `canonicalDebtKd`. */
+  canonicalDebtSource:
+    | 'JOURNAL_AR'
+    | 'PARTIAL_PAYMENT_REMAINING'
+    | 'JOURNAL_AR_FALLBACK';
+  // V23.2 — `totalDueKd` was removed from the wire DTO; the engine
+  // still computes "totalInvoices − totalPayments" internally for
+  // its own invariants but the value never leaves the backend. Every
+  // UI surface reads `canonicalDebtKd` instead (V23.1 migration).
+  breakdown?: {
+    /** Equal to `canonicalDebtKd`. */
+    receivableDebtKd: string;
+    subscriptionRemainingKd: string;
+    walletPrepaidCreditKd: string;
+    paidTotalKd: string;
+    operatorHint: string;
+  };
   isBlocked: boolean;
   blockReason: string | null;
   blockedAtIso: string | null;
@@ -3824,6 +3937,16 @@ export type IssuedInvoicesReport = {
   from: string;
   to: string;
   count: number;
+  /**
+   * V21 Phase 5 — server-computed totals so the frontend renders only.
+   * `totalKd` is summed in Decimal precision on the backend; `cashCount`
+   * and `knetCount` are tallied per `posPaymentMethod`.
+   */
+  totals: {
+    totalKd: string;
+    cashCount: number;
+    knetCount: number;
+  };
   rows: Array<{
     id: string;
     status: string;
@@ -3876,6 +3999,13 @@ export type DailyCashClosingReport = {
   grossCashSalesKd: string;
   expensesTotalKd: string;
   netCashAfterExpensesKd: string;
+  /**
+   * V21 Phase 5 — backend-computed sign so the frontend never has to
+   * coerce the net-cash KWD string into a Number for the negative-tone
+   * tinting. Use this boolean directly (or `isNegativeKd` on the
+   * canonical helper) instead of reading the sign off the value itself.
+   */
+  netCashIsNegative: boolean;
   cashOrderCount: number;
 };
 
@@ -3953,6 +4083,36 @@ export type ExpensesSummaryAlert = {
   message: string;
 };
 
+/**
+ * V24 — Wave B (Frontend Purge) addition.
+ *
+ * Per-recorder breakdown returned by the SSoT endpoint. Replaces
+ * the per-driver bucket the deleted FE `expense-analytics.ts`
+ * helper used to compute by reducing over `ExpenseRow[]`.
+ */
+export type ExpensesSummaryByDriver = {
+  recordedById: string;
+  recordedByName: string;
+  totalKd: string;
+  count: number;
+};
+
+/**
+ * V24 — Wave B (Frontend Purge) addition.
+ *
+ * Server-computed car-vs-other split. Frontends MUST render this
+ * directly instead of re-classifying rows via `isCarExpense(row)`.
+ * `carShareBps` is basis-points integer (0..10000); divide by 100
+ * for percent.
+ */
+export type ExpensesSummaryCarBreakdown = {
+  carTotalKd: string;
+  carCount: number;
+  otherTotalKd: string;
+  otherCount: number;
+  carShareBps: number;
+};
+
 export type ExpensesSummaryResponse = {
   source: 'api/finance/expenses-summary';
   rangeFromIso: string;
@@ -3964,6 +4124,8 @@ export type ExpensesSummaryResponse = {
   byOwnerType: ExpensesSummaryByOwner[];
   byCategory: ExpensesSummaryByCategory[];
   byBranch: ExpensesSummaryByBranch[];
+  byDriver: ExpensesSummaryByDriver[];
+  carBreakdown: ExpensesSummaryCarBreakdown;
   monthly: ExpensesSummaryMonthly[];
   alerts: ExpensesSummaryAlert[];
 };
@@ -3978,6 +4140,67 @@ export function getExpensesSummary(
   if (params.branchId) qs.set('branchId', params.branchId);
   return apiJson<ExpensesSummaryResponse>(
     `${API_EXPENSES_SUMMARY}?${qs.toString()}`,
+    { token },
+  );
+}
+
+// ─── V24 Wave B — Sales / Debt analytics SSoT ───────────────────────
+// Replaces the deleted FE `sales-debt-analytics.ts` and
+// `sales-debt-insights.ts` helpers. Frontends MUST consume this
+// pre-computed view (Commandment #5: Don't Calculate, Just Ask).
+export type SalesDebtAnalyticsPeriod = {
+  fromIso: string;
+  toIso: string;
+};
+
+export type SalesDebtAnalyticsTotals = {
+  totalSalesKd: string;
+  totalCollectedKd: string;
+  totalDebtKd: string;
+  /** Collection rate as basis points (integer 0..10000); divide by 100 for percent. */
+  collectionRateBps: number;
+  invoiceCount: number;
+};
+
+export type SalesDebtAnalyticsGroup = {
+  id: string;
+  name: string;
+  totalSalesKd: string;
+  totalCollectedKd: string;
+  totalDebtKd: string;
+  /** Per-group collection rate as basis points (integer 0..10000). */
+  collectionRateBps: number;
+  invoiceCount: number;
+};
+
+export type SalesDebtInsightSeverity = 'info' | 'warning' | 'critical';
+export type SalesDebtInsightTarget = 'branch' | 'driver';
+
+export type SalesDebtInsight = {
+  id: string;
+  severity: SalesDebtInsightSeverity;
+  message: string;
+  target?: SalesDebtInsightTarget;
+};
+
+export type SalesDebtAnalyticsResponse = {
+  source: 'api/finance/sales-debt-analytics';
+  period: SalesDebtAnalyticsPeriod;
+  totals: SalesDebtAnalyticsTotals;
+  byBranch: SalesDebtAnalyticsGroup[];
+  byDriver: SalesDebtAnalyticsGroup[];
+  insights: SalesDebtInsight[];
+};
+
+export const API_SALES_DEBT_ANALYTICS = '/api/finance/sales-debt-analytics';
+
+export function getFinanceSalesDebtAnalytics(
+  token: string,
+  params: { from: string; to: string },
+) {
+  const qs = new URLSearchParams({ from: params.from, to: params.to });
+  return apiJson<SalesDebtAnalyticsResponse>(
+    `${API_SALES_DEBT_ANALYTICS}?${qs.toString()}`,
     { token },
   );
 }
@@ -4414,6 +4637,14 @@ export type PayrollRow = {
    * so re-saving the same month leaves the already-booked figure.
    */
   loanDeduction: string;
+  /**
+   * V21 Phase 5 — backend-computed net salary (4dp Decimal):
+   *   basic + allowances + commission + debtRelease
+   *   − deductions − debtHold − loanDeduction
+   * Print pages render this verbatim through `formatKwdLabel`; never
+   * recompute on the client.
+   */
+  netSalaryKd: string;
   paymentDate: string;
   status: PayrollStatus;
   createdAt: string;
@@ -4444,6 +4675,12 @@ export type PayrollAdHocLineRow = {
   basicSalary: string;
   allowances: string;
   deductions: string;
+  /**
+   * V21 Phase 5 — backend-computed net salary at 4dp Decimal:
+   *   basic + allowances − deductions
+   * Renders verbatim on the roster print sheet; never recompute.
+   */
+  netSalaryKd: string;
   note: string | null;
   createdAt: string;
   updatedAt: string;
@@ -4518,6 +4755,50 @@ export type ManagerCustodyAgingSummary = {
 export type ManagerCustodyAgingResponse = {
   rows: ManagerCashCustodyRow[];
   summary: ManagerCustodyAgingSummary;
+};
+
+export type StaffDebtsEmployeeOption = {
+  value: string;
+  label: string;
+  branchId: string | null;
+  kind: 'driver' | 'manager';
+};
+
+export type StaffDebtsDriverRow = DriverBalanceRow & {
+  isOverdue: boolean;
+  shiftAgeHours: number | null;
+};
+
+export type StaffDebtsResponse = {
+  drivers: StaffDebtsDriverRow[];
+  managers: ManagerCashCustodyRow[];
+  branches: Pick<BranchRow, 'id' | 'name'>[];
+  employeeOptions: StaffDebtsEmployeeOption[];
+  selectedEmployee: StaffDebtsEmployeeOption | null;
+  showBranchFilter: boolean;
+  appliedFilters: {
+    branch: string;
+    name: string;
+    employee: string;
+    status: 'ALL' | 'OVERDUE' | 'CURRENT';
+  };
+  totals: {
+    pipelineTotalKd: string;
+    driverTotalKd: string;
+    managerTotalKd: string;
+    driverBreakdown: {
+      cashKd: string;
+      knetKd: string;
+      linkKd: string;
+      onlineKd: string;
+    };
+    overdueDriverCount: number;
+    overdueManagerCount: number;
+    totalOverdueCount: number;
+    driverRowCount: number;
+    managerRowCount: number;
+  };
+  generatedAt: string;
 };
 
 /**
@@ -5138,6 +5419,12 @@ export type LoanRow = {
   installmentCount: number;
   monthlyDeduction: string;
   remaining: string;
+  /**
+   * V21 Phase 5 — backend-computed `paidKd = max(0, amount − remaining)` at
+   * 4dp. The print page renders this directly through the canonical
+   * `formatKwdLabel`; never recompute on the client.
+   */
+  paidKd: string;
   reason: string | null;
   status: LoanStatusApi;
   approvedById: string | null;
@@ -5244,6 +5531,12 @@ export type PayslipRow = {
   debtReleaseAmount: string;
   /** V19.20 — scheduled loan instalment consumed by this payroll. */
   loanDeduction: string;
+  /**
+   * V21 Phase 5 — backend-computed net salary at 4dp Decimal:
+   *   basic + allowances + commission + debtRelease
+   *   − deductions − debtHold − loanDeduction
+   */
+  netSalaryKd: string;
   paymentDate: string;
   status: PayrollStatus;
   createdAt: string;
@@ -5468,6 +5761,7 @@ export type EditInvoiceLineItemInput = {
 export type EditInvoiceBody = {
   totalPrice?: string;
   posPaymentMethod?:
+    | 'SUBSCRIPTION'
     | 'CASH'
     | 'KNET'
     | 'PAYMENT_LINK'
@@ -5768,7 +6062,8 @@ export function getPaymentMethodFeeConfig(token: string) {
 export function updatePaymentMethodFeeConfig(
   token: string,
   dto: {
-    knetFlatKd?: number;
+    /** V24 — canonical 4dp KWD string (e.g. '0.1000'). NEVER a number. */
+    knetFlatKd?: string;
     knetPercentOfGross?: number;
     knetRule?: KnetCommissionRule;
     cardPercentOfGross?: number;
@@ -5930,6 +6225,7 @@ export type CommissionPayoutsTotals = {
 export type CommissionPayoutsResponse = {
   rows: CommissionPayoutRow[];
   totals: CommissionPayoutsTotals[];
+  summaryTotals: Omit<CommissionPayoutsTotals, 'earnerUserId'>;
 };
 
 export function listCommissionPayouts(
@@ -5977,6 +6273,28 @@ export type DebtHoldRow = {
     | null;
 };
 
+export type DebtHoldTotals = {
+  heldKd: string;
+  pendingKd: string;
+  disbursedKd: string;
+};
+
+export type DebtHoldEmployeeBucket = {
+  employeeUserId: string;
+  fullName: string;
+  heldKd: string;
+  pendingKd: string;
+  disbursedKd: string;
+  heldIds: string[];
+  pendingIds: string[];
+};
+
+export type DebtHoldsListResponse = {
+  rows: DebtHoldRow[];
+  totals: DebtHoldTotals;
+  perEmployee: DebtHoldEmployeeBucket[];
+};
+
 export function listDebtHolds(
   token: string,
   query: {
@@ -5992,7 +6310,7 @@ export function listDebtHolds(
   if (query.employeeUserId) q.set('employeeUserId', query.employeeUserId);
   if (query.status) q.set('status', query.status);
   const qs = q.toString();
-  return apiJson<DebtHoldRow[]>(
+  return apiJson<DebtHoldsListResponse>(
     `/api/debt-holds${qs ? `?${qs}` : ''}`,
     { token },
   );
@@ -6323,10 +6641,16 @@ export type CashIntelClassifiedResponse = {
   financialAlerts: CashIntelClassifiedAlert[];
   complianceAlerts: CashIntelClassifiedAlert[];
   drivers: CashIntelClassifiedDriver[];
+  /**
+   * V21 Phase 5 — backend-precomputed Σ `drivers[].amount` in 4dp.
+   * Dashboards read this verbatim; the previous frontend reduce was
+   * retired so the UI never re-derives the canonical cash total.
+   */
+  totalCashKd: string;
   finalDecision: string;
   rules: {
     gracePeriodHours: number;
-    smallAmountFloorKd: number;
+    smallAmountFloorKd: string;
     financialChainTypes: string[];
     complianceTypes: string[];
     shiftFinancialSeverityCap: CashIntelAlertSeverity;

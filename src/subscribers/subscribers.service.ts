@@ -1,8 +1,22 @@
 import { Injectable } from '@nestjs/common';
-import { CashStatus, LedgerTransactionType, OrderStatus, Prisma } from '@prisma/client';
+import {
+  CashStatus,
+  CustomerSubscriptionStatus,
+  LedgerTransactionType,
+  OrderStatus,
+  Prisma,
+} from '@prisma/client';
 import { OrdersService } from '../orders/orders.service';
 import type { DebtKdBreakdownTrace } from '../orders/debt-kd-breakdown.util';
+import { INVOICE_REMAINING_TOLERANCE_KD } from '../finance/debt-customer-aggregates.util';
+import { computeCanonicalCustomerDebt } from '../finance/canonical-customer-debt.util';
+import { DebtVisibilityService } from '../finance/debt-visibility/debt-visibility.service';
+import { JournalSourceService } from '../general-ledger/journal-source.service';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  getCustomerSubscriptionStateBatch,
+  isStrictSubscriberMembershipEnabled,
+} from './subscription-state.util';
 
 type ActivationMeta = {
   planId?: string;
@@ -23,7 +37,7 @@ export type SubscriberListRow = {
   balance: string;
   /**
    * Signed net wallet position vs operational debt: `wallet.balance −
-   * operationalDebtKd`. Positive = prepaid ahead of owed amount; negative = owes
+   * remainingDebtKd`. Positive = prepaid ahead of owed amount; negative = owes
    * more than credit on the wallet.
    */
   balanceDisplayKd: string;
@@ -46,14 +60,39 @@ export type SubscriberListRow = {
    * This is NOT the canonical Customer 360 financial number.
    */
   operationalDebtKd: string;
-  /** @deprecated Use operationalDebtKd. Kept for client compatibility. */
-  effectiveDebtKd: string;
   rowStatus: 'active_ok' | 'active_warn' | 'expired' | 'open_credit';
   /**
    * Dastur §5 (V1.5) — days elapsed since the last activation (a.k.a.
    * "invoice age"). Null when no activation date is known.
    */
   invoiceAgeDays: number | null;
+  /**
+   * V20.3.2 — true iff a `CustomerSubscription` row exists for
+   * this customer with `status === ACTIVE` AND `expiresAt > now`.
+   * This is the canonical "is a subscriber" answer; debt /
+   * payment / wallet state are explicitly NOT inputs.
+   */
+  isActiveSubscriber: boolean;
+  /**
+   * V20.3.2 — status of the canonical `CustomerSubscription`
+   * row (the active-future one if any, else the most recently
+   * created). Null when the customer has no subscription row.
+   */
+  subscriptionStatus: CustomerSubscriptionStatus | null;
+  /**
+   * V20.3.2 — true iff the customer's net open debt (from the
+   * V20.3.1 collections snapshot) is greater than the standard
+   * tolerance. Independent dimension from `isActiveSubscriber`.
+   */
+  hasDebt: boolean;
+  /**
+   * V20.3.2 — remaining debt KD, sourced from the V20.3.1
+   * partial-payment-aware aggregator (`Σ remaining_balance` over
+   * the customer's open in-scope orders). Mirrors the new red
+   * KPI semantics; back-compat siblings live in `debt`,
+   * `unsettledUnpaidKd`, `operationalDebtKd`.
+   */
+  remainingDebtKd: string;
   /** Cumulative 24h-guarded reminders sent for this subscriber's wallet. */
   reminderCount: number;
   lastReminderAtIso: string | null;
@@ -117,6 +156,14 @@ export class SubscribersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly orders: OrdersService,
+    private readonly journalSource: JournalSourceService,
+    /**
+     * V20.4 — Phase 3 / Phase 16. Canonical visibility façade.
+     * Optional so tests built before V20.4 can still construct
+     * the service with the legacy 3-arg signature; production
+     * always wires it (see {@link SubscribersModule}).
+     */
+    private readonly visibility?: DebtVisibilityService,
   ) {}
 
   /**
@@ -133,10 +180,20 @@ export class SubscribersService {
    *                    ship a server-side regex-replace. Cheap because
    *                    the ILIKE filter already collapses the result set.
    */
-  async list(q?: string): Promise<SubscriberListRow[]> {
+  async list(
+    q?: string,
+    options?: { includeInactive?: boolean },
+  ): Promise<SubscriberListRow[]> {
     const needle = q?.trim() ?? '';
     const hasNeedle = needle.length > 0;
     const digits = hasNeedle ? needle.replace(/\D+/g, '') : '';
+    // V20.3.2 — strict membership default. When the env opts out
+    // (`STRICT_SUBSCRIBER_MEMBERSHIP=false`) OR the request asks
+    // for `?includeInactive=true`, the legacy "ever-had-a-
+    // subscription-history-row" membership is preserved.
+    const wantStrict =
+      isStrictSubscriberMembershipEnabled() &&
+      options?.includeInactive !== true;
 
     const subscriptionWhere: {
       OR: Array<Record<string, unknown>>;
@@ -188,6 +245,58 @@ export class SubscribersService {
 
     const customerIds = customers.map((c) => c.id);
     const customerById = new Map(customers.map((c) => [c.id, c]));
+
+    // V20.3.2 — canonical "currently an active subscriber?"
+    // resolved from `CustomerSubscription` (status === ACTIVE
+    // AND expiresAt > now). Wallet snapshot fields above and
+    // historical SUBSCRIPTION_ACTIVATION rows are deliberately
+    // NOT inputs; they're audit / display data only.
+    const subscriptionStateByCustomer =
+      await getCustomerSubscriptionStateBatch(this.prisma, customerIds);
+
+    // V20.4 — Phase 3 / Phase 16. Canonical debt per row sourced
+    // through `DebtVisibilityService` (read-side projection
+    // first; live canonical helper as fallback). Same number
+    // Outstanding / Customer 360 / drift inspector show, but
+    // backed by `FinancialSnapshot` for O(1)-per-row reads
+    // instead of N live computations.
+    //
+    // Legacy fallback (V20.3.2 inline helper) kept for tests
+    // that construct the service without the visibility
+    // dependency injected.
+    const canonicalDebtByCustomer = new Map<string, Prisma.Decimal>();
+    if (customerIds.length > 0) {
+      if (this.visibility) {
+        const visibleByCustomer =
+          await this.visibility.getCustomerVisibleDebtBatch(customerIds);
+        for (const id of customerIds) {
+          const v = visibleByCustomer.get(id);
+          canonicalDebtByCustomer.set(
+            id,
+            v
+              ? new Prisma.Decimal(v.remainingDebtKd)
+              : new Prisma.Decimal(0),
+          );
+        }
+      } else {
+        const snaps = await Promise.all(
+          customerIds.map((id) =>
+            computeCanonicalCustomerDebt(
+              this.prisma,
+              this.journalSource,
+              id,
+            ).catch(() => null),
+          ),
+        );
+        for (let i = 0; i < customerIds.length; i += 1) {
+          canonicalDebtByCustomer.set(
+            customerIds[i],
+            snaps[i]?.canonicalDebtKd ?? new Prisma.Decimal(0),
+          );
+        }
+      }
+    }
+
     const debtBreakdownByCustomer =
       customerIds.length === 0 ?
         new Map<
@@ -378,7 +487,6 @@ export class SubscribersService {
       const debtD = bd.walletDebtKd;
       const totalOwedD = bd.operationalDebtKd;
       const balanceD = w?.balance ?? new Prisma.Decimal(0);
-      const balanceDisplayKd = balanceD.minus(totalOwedD).toFixed(4);
 
       const collectionLink = collectionLinkStats.get(c.id)!;
       const collectionPendingHostedLinkAgeDays =
@@ -388,6 +496,33 @@ export class SubscribersService {
             (now - collectionLink.minHostedLinkCreated.getTime()) /
               (24 * 60 * 60 * 1000),
           );
+
+      // V20.3.2 — canonical subscription snapshot for this row.
+      // Default stub keeps types tidy when the customer has no
+      // CustomerSubscription rows yet (legacy wallet-only set).
+      const subState =
+        subscriptionStateByCustomer.get(c.id) ?? {
+          customerId: c.id,
+          isActiveSubscriber: false,
+          subscriptionStatus: null as CustomerSubscriptionStatus | null,
+          subscriptionExpiresAtIso: null as string | null,
+          subscriptionActivatedAtIso: null as string | null,
+          planNameSnapshot: null as string | null,
+        };
+      // V20.3.2 — Phase 3 canonical debt source. `remainingDebtKd`
+      // is now ALWAYS the canonical number (Σ remaining_balance
+      // over open invoices, OR Journal AR when V20_3_TRUE_ACCOUNTING
+      // is on). Same number Outstanding / Customer 360 / drift
+      // inspector show — `wallet.debt`, `operationalDebtKd`, and
+      // `collectionsReceivableKd` are no longer inputs to the
+      // displayed debt figure (they remain on the row for ledger
+      // diagnostics + back-compat consumers).
+      const remainingDebtD =
+        canonicalDebtByCustomer.get(c.id) ?? new Prisma.Decimal(0);
+      const balanceDisplayKd = balanceD.minus(remainingDebtD).toFixed(4);
+      const hasDebt = remainingDebtD.greaterThan(
+        new Prisma.Decimal(INVOICE_REMAINING_TOLERANCE_KD),
+      );
 
       rows.push({
         customerId: c.id,
@@ -403,8 +538,11 @@ export class SubscribersService {
         debt: debtD.toFixed(4),
         unsettledUnpaidKd: openReceivable.toFixed(4),
         operationalDebtKd: totalOwedD.toFixed(4),
-        effectiveDebtKd: totalOwedD.toFixed(4),
         rowStatus,
+        isActiveSubscriber: subState.isActiveSubscriber,
+        subscriptionStatus: subState.subscriptionStatus,
+        hasDebt,
+        remainingDebtKd: remainingDebtD.toFixed(4),
         invoiceAgeDays,
         reminderCount,
         lastReminderAtIso: lastReminderAt?.toISOString() ?? null,
@@ -415,7 +553,18 @@ export class SubscribersService {
       });
     }
 
-    rows.sort((a, b) => {
+    // V20.3.2 — strict membership filter. Default ON unless the
+    // operator opts out via `STRICT_SUBSCRIBER_MEMBERSHIP=false`
+    // OR the call passes `includeInactive: true`. This is THE
+    // line that fixes the "partially-paid debt customer leaks
+    // into Subscribers" bug — `hasDebt`, `wallet.balance`,
+    // `cashStatus`, and `posPaymentMethod` are intentionally
+    // ignored here; only the canonical subscription state matters.
+    const visibleRows = wantStrict
+      ? rows.filter((r) => r.isActiveSubscriber === true)
+      : rows;
+
+    visibleRows.sort((a, b) => {
       const ar = a.remainingDays;
       const br = b.remainingDays;
       if (ar === null && br === null) {
@@ -433,6 +582,6 @@ export class SubscribersService {
       return a.customerName.localeCompare(b.customerName);
     });
 
-    return rows;
+    return visibleRows;
   }
 }

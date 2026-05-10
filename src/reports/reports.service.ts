@@ -159,10 +159,30 @@ export class ReportsService {
         },
       },
     });
+    /*
+     * V21 Phase 5 — `totals` is computed in Decimal precision on the
+     * server so the UI never re-aggregates `totalPrice` strings via
+     * `parseFloat`. The frontend simply renders `totals.totalKd` plus
+     * the per-method counts; no display-side reduction remains.
+     */
+    const totalKd = minorToAmountString(
+      sumOrderMinors(rows.map((r) => ({ totalPrice: r.totalPrice }))),
+    );
+    let cashCount = 0;
+    let knetCount = 0;
+    for (const r of rows) {
+      if (r.posPaymentMethod === PosPaymentMethod.CASH) cashCount += 1;
+      else if (r.posPaymentMethod === PosPaymentMethod.KNET) knetCount += 1;
+    }
     return {
       from: from.toISOString(),
       to: to.toISOString(),
       count: rows.length,
+      totals: {
+        totalKd,
+        cashCount,
+        knetCount,
+      },
       rows: rows.map((r) => ({
         ...r,
         totalPrice: r.totalPrice.toString(),
@@ -334,6 +354,12 @@ export class ReportsService {
       grossCashSalesKd: minorToAmountString(grossMinor),
       expensesTotalKd: expensesTotal,
       netCashAfterExpensesKd: minorToAmountString(netMinor),
+      /**
+       * V21 Phase 5 — backend-computed sign so the frontend never has
+       * to `parseFloat(netCashAfterExpensesKd)` for the negative-tone
+       * tinting on the closing card.
+       */
+      netCashIsNegative: netMinor < 0n,
       cashOrderCount: cashOrders.length,
     };
   }

@@ -8,6 +8,8 @@ import { LanguageToggle } from '@/components/i18n/language-toggle';
 import { ThemeToggle } from '@/modules/shared/theme/theme-toggle';
 import { Button } from '@/modules/shared/components/ui/button';
 import { useAuth } from '@/contexts/auth-context';
+import { useRealtimeFinancialFeed } from '@/modules/finance';
+import { RealtimeStatusBadge } from '@/modules/realtime-observability';
 
 /**
  * V19.9.5 — Slim executive header.
@@ -38,9 +40,37 @@ export function ExecutiveHeader() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const { hasRole } = useAuth();
+  const { hasRole, token, user } = useAuth();
   const isOwner = hasRole('OWNER');
   const rtl = i18n.language?.startsWith('ar') ?? false;
+
+  // V23 Phase 6 — shell-level realtime telemetry. The dashboards channel
+  // is open to OWNER / GENERAL_MANAGER / MANAGER / ACCOUNTANT and customer360
+  // is open to CALL_CENTER roles. The hook itself is a no-op when the user's
+  // role is not allowed; the badge then renders an offline state which is
+  // accurate for those operators.
+  const realtimeChannel:
+    | 'dashboards'
+    | 'customer360'
+    | null = (() => {
+    const role = user?.safariRole;
+    if (!role) return null;
+    if (role === 'CALL_CENTER' || role === 'CALL_CENTER_SUPERVISOR')
+      return 'customer360';
+    if (
+      role === 'OWNER' ||
+      role === 'GENERAL_MANAGER' ||
+      role === 'MANAGER' ||
+      role === 'ACCOUNTANT'
+    )
+      return 'dashboards';
+    return null;
+  })();
+  const realtimeState = useRealtimeFinancialFeed({
+    channel: realtimeChannel ?? 'dashboards',
+    accessToken: token,
+    enabled: Boolean(realtimeChannel && token),
+  });
 
   const [clock, setClock] = useState(() => new Date());
   useEffect(() => {
@@ -89,6 +119,12 @@ export function ExecutiveHeader() {
       </div>
       <div className="flex min-w-0 shrink-0 items-center gap-2 sm:gap-3">
         <ConnectivityBadge className="hidden min-[420px]:flex" />
+        {realtimeChannel ? (
+          <RealtimeStatusBadge
+            state={realtimeState}
+            className="hidden md:inline-flex"
+          />
+        ) : null}
         {isOwner ? (
           <Button
             type="button"

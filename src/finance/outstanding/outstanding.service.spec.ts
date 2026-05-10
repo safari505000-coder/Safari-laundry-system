@@ -25,6 +25,20 @@ function buildPrisma() {
       findUnique: jest.fn(),
       upsert: jest.fn(),
     },
+    // V20.3.1 — `OutstandingService.listOutstanding` now batches
+    // per-order remaining-balance reads through the canonical
+    // helper, which calls `order.findMany` + `debtLedgerEntry.findMany`.
+    // Default to empty rows so existing tests continue to assert
+    // the legacy `totalDueKd` (gross) without computing remaining.
+    order: { findMany: jest.fn().mockResolvedValue([]) },
+    debtLedgerEntry: { findMany: jest.fn().mockResolvedValue([]) },
+    // V20.3.2 — Outstanding now batch-loads subscription state
+    // for each customer in the page (used to attach
+    // `hasActiveSubscription` / `subscriptionExpiresAt` to each
+    // row). Default to empty so existing assertions are unaffected.
+    customerSubscription: {
+      findMany: jest.fn().mockResolvedValue([]),
+    },
   };
 }
 
@@ -38,6 +52,11 @@ function buildAudit() {
 function buildOrders() {
   return {
     sumCollectionsDebtTotalKd: jest
+      .fn()
+      .mockResolvedValue(new Prisma.Decimal(0)),
+    // V20.3.1 — partial-payment-aware red KPI; called alongside
+    // the legacy gross sum.
+    sumCollectionsDebtRemainingKd: jest
       .fn()
       .mockResolvedValue(new Prisma.Decimal(0)),
     listCollectionsReceivableAggOrders: jest.fn().mockResolvedValue([]),
@@ -70,7 +89,7 @@ describe('OutstandingService', () => {
 
       expect(out.rows).toHaveLength(0);
       expect(out.totalCustomers).toBe(0);
-      expect(out.totalDueKd).toBe('0.000');
+      expect(out.totalDueKd).toBe('0.0000');
       expect(out.source).toBe('COLLECTIONS_ENGINE');
       expect(prisma.customer.findMany).not.toHaveBeenCalled();
       expect(orders.listCollectionsReceivableAggOrders).toHaveBeenCalled();
@@ -85,7 +104,7 @@ describe('OutstandingService', () => {
       const out = await service.listOutstanding({});
 
       expect(out.rows).toHaveLength(0);
-      expect(out.totalDueKd).toBe('3.250');
+      expect(out.totalDueKd).toBe('3.2500');
       expect(out.source).toBe('COLLECTIONS_ENGINE');
     });
 
@@ -138,14 +157,27 @@ describe('OutstandingService', () => {
       const row = out.rows[0];
       expect(row.customerId).toBe(CUSTOMER_A);
       expect(row.invoicesCount).toBe(2);
-      expect(row.totalDueKd).toBeCloseTo(12.5, 4);
-      expect(out.totalDueKd).toBe('12.500');
+      // V23.3 — `OutstandingRow.totalDueKd` is now a canonical 4dp
+        // KWD string. Numeric closeness checks were replaced with an
+        // exact string equality assertion.
+        expect(row.totalDueKd).toBe('12.5000');
+        expect(out.totalDueKd).toBe('12.5000');
       expect(out.source).toBe('COLLECTIONS_ENGINE');
       expect(row.driverName).toBe('Driver X');
       expect(row.earliestDueDate).toBe(olderDue.toISOString());
       expect(row.daysLate).toBe(10);
       expect(row.priorityScore).toBeCloseTo(12.5 * 0.6 + 10 * 0.4, 4);
       expect(row.status).toBe(CustomerCollectionStatusKind.NORMAL);
+      expect(out.driverSummaries).toEqual([
+        {
+          driverId: DRIVER_X,
+          driverName: 'Driver X',
+          customers: 1,
+          invoices: 2,
+          totalRemainingKd: '12.500',
+          maxDaysLate: 10,
+        },
+      ]);
     });
 
     it('passes explicit createdAt bounds + driverId into Orders collections helper', async () => {
@@ -233,7 +265,7 @@ describe('OutstandingService', () => {
       expect(onlyBlocked.rows.map((r) => r.customerId)).toEqual([CUSTOMER_B]);
       expect(onlyBlocked.blockedCount).toBe(1);
       expect(onlyBlocked.riskCount).toBe(1);
-      expect(onlyBlocked.totalDueKd).toBe('3.000');
+      expect(onlyBlocked.totalDueKd).toBe('3.0000');
       expect(onlyBlocked.source).toBe('COLLECTIONS_ENGINE');
     });
 

@@ -24,7 +24,7 @@ export type DiscordEmbed = {
 
 export const DISCORD_ALERT_QUEUE = 'discord-alerts';
 export const DISCORD_ALERT_DLQ_QUEUE = 'alerts:failed';
-export const CRITICAL_DISCORD_EVENT = 'captured_payment_not_finalized';
+const CRITICAL_DISCORD_EVENT = 'captured_payment_not_finalized';
 /** Must never be shed under queue backpressure (financial integrity). */
 export const PAYMENT_CONSISTENCY_CRITICAL_EVENT = 'payment_consistency_stale_wallet';
 

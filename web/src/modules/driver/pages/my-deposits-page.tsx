@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   AlertTriangle,
@@ -13,7 +13,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/auth-context';
-import { ApiError, apiJson, type OrderRow } from '@/lib/api';
+import { ApiError, apiJson, type DriverCashCustodySummary } from '@/lib/api';
+import { formatKwdLabel } from '@/lib/kwd';
 import { Button } from '@/modules/shared/components/ui/button';
 import {
   Card,
@@ -59,28 +60,6 @@ import { cn } from '@/lib/utils';
  *  - Reconciling KNET sales against Z-reports remains an accountant
  *    job handled on the KNET Audit page — not here.
  */
-
-/**
- * V3.8 constitution: all KWD amounts on this page render with exactly
- * three decimals (fils). Scoped to this file so we don't disturb the
- * shared `formatKwdLabel` helper which other screens still rely on with
- * its 2–4 dp tolerance.
- */
-const KWD_SUFFIX = ' د.ك';
-function formatKwd3(value: string | number): string {
-  const n = typeof value === 'number' ? value : Number.parseFloat(value || '0');
-  if (!Number.isFinite(n)) return `${String(value)}${KWD_SUFFIX}`;
-  return `${n.toLocaleString('en-GB', {
-    minimumFractionDigits: 3,
-    maximumFractionDigits: 3,
-  })}${KWD_SUFFIX}`;
-}
-
-function sumTotals(list: OrderRow[]): number {
-  let n = 0;
-  for (const r of list) n += Number.parseFloat(r.totalPrice) || 0;
-  return n;
-}
 
 /**
  * Local settlement-status state machine.
@@ -141,7 +120,7 @@ function writeHandoverFlag(userId: string | undefined, iso: string | null) {
 function MyCustodyContent() {
   const { t } = useTranslation();
   const { token, user } = useAuth();
-  const [orders, setOrders] = useState<OrderRow[] | null>(null);
+  const [summary, setSummary] = useState<DriverCashCustodySummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [notifyOpen, setNotifyOpen] = useState(false);
   const [sentAtIso, setSentAtIso] = useState<string | null>(() =>
@@ -152,8 +131,11 @@ function MyCustodyContent() {
     if (!token) return;
     setLoading(true);
     try {
-      const data = await apiJson<OrderRow[]>('/api/orders', { token });
-      setOrders(data);
+      const data = await apiJson<DriverCashCustodySummary>(
+        '/api/finance/driver/my-cash-custody',
+        { token },
+      );
+      setSummary(data);
     } catch (e) {
       if (e instanceof ApiError) toast.error(e.message);
     } finally {
@@ -170,27 +152,9 @@ function MyCustodyContent() {
   }, [user?.id]);
 
   /*
-   * "Pending" = orders the driver has collected cash for but hasn't yet
-   * handed to the branch manager. Per the Invoice Constitution
-   * (docs/DUSTUR_TASHGHIL_SAFARI.md §3) that is exactly cashStatus ===
-   * 'PAID_TO_DRIVER'. The additional `status === 'COMPLETED'` guard is
-   * preserved so a partially-progressed order (PICKED_UP / IN_PROGRESS)
-   * never surfaces here even if an upstream bug ever flips its
-   * cashStatus early.
+   * "Pending" is now a backend canonical readonly projection:
+   * CASH + COMPLETED + PAID_TO_DRIVER for the authenticated driver.
    */
-  const pending = useMemo(
-    () =>
-      (orders ?? []).filter(
-        (o) =>
-          o.status === 'COMPLETED' && o.cashStatus === 'PAID_TO_DRIVER',
-      ),
-    [orders],
-  );
-
-  const cashRows = useMemo(
-    () => pending.filter((o) => o.posPaymentMethod === 'CASH'),
-    [pending],
-  );
   // V1.7.0 — Dastur "custody = CASH only". KNET receipts never sit in
   // the driver's physical bag (funds route through the KNET terminal
   // straight to the merchant account), so they are intentionally not
@@ -199,18 +163,18 @@ function MyCustodyContent() {
   // Payment-link invoices remain excluded for the same reason
   // (customer → gateway → ledger, driver never holds the money).
 
-  const cashTotal = useMemo(() => sumTotals(cashRows), [cashRows]);
-  const grandTotal = cashTotal;
-
-  const hasAnyPending = grandTotal > 0;
+  const cashTotalKd = summary?.cashTotalKd ?? '0.000';
+  const cashOrderCount = summary?.cashOrderCount ?? 0;
+  const grandTotalKd = summary?.grandTotalKd ?? '0.000';
+  const hasAnyPending = cashOrderCount > 0;
 
   useEffect(() => {
     // Manager approved → balance cleared → retire the local "Sent" flag.
-    if (orders !== null && !hasAnyPending && sentAtIso) {
+    if (summary !== null && !hasAnyPending && sentAtIso) {
       writeHandoverFlag(user?.id, null);
       setSentAtIso(null);
     }
-  }, [orders, hasAnyPending, sentAtIso, user?.id]);
+  }, [summary, hasAnyPending, sentAtIso, user?.id]);
 
   // Placeholder for a future "manager rejected your handover" signal.
   // There is no backing record today, so this stays null and the pill
@@ -282,8 +246,8 @@ function MyCustodyContent() {
         <MethodTile
           icon={<HandCoins className="h-4 w-4" aria-hidden />}
           label={t('myDeposits.methodCash')}
-          total={cashTotal}
-          count={cashRows.length}
+          total={cashTotalKd}
+          count={cashOrderCount}
           tone="amber"
         />
         {/*
@@ -300,14 +264,14 @@ function MyCustodyContent() {
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <div className="text-lg font-semibold tabular-nums text-zinc-900">
-            {formatKwd3(grandTotal)}
+            {formatKwdLabel(grandTotalKd)}
           </div>
           <SettlementStatusPill status={status} />
           <Button
             type="button"
             className="gap-1.5 bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50"
             disabled={
-              !hasAnyPending || orders === null || status.kind === 'pending'
+              !hasAnyPending || summary === null || status.kind === 'pending'
             }
             onClick={() => setNotifyOpen(true)}
           >
@@ -334,8 +298,8 @@ function MyCustodyContent() {
             <div className="space-y-2 rounded-lg border bg-muted/30 p-3 tabular-nums">
               <DialogLine
                 label={t('myDeposits.methodCash')}
-                value={cashTotal}
-                count={cashRows.length}
+                value={cashTotalKd}
+                count={cashOrderCount}
               />
               {/*
                 V1.7.0 — KNET and Payment-Link lines are intentionally
@@ -345,7 +309,7 @@ function MyCustodyContent() {
               <div className="h-px bg-border" />
               <div className="flex items-center justify-between text-sm font-semibold">
                 <span>{t('myDeposits.grandTotalLabel')}</span>
-                <span>{formatKwd3(grandTotal)}</span>
+                <span>{formatKwdLabel(grandTotalKd)}</span>
               </div>
             </div>
             <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
@@ -423,7 +387,7 @@ function MethodTile({
 }: {
   icon: React.ReactNode;
   label: string;
-  total: number;
+  total: string;
   count: number;
   tone: 'amber' | 'sky' | 'violet';
 }) {
@@ -447,7 +411,7 @@ function MethodTile({
           <div>
             <p className="text-xs opacity-80">{label}</p>
             <p className="text-lg font-semibold tabular-nums text-foreground">
-              {formatKwd3(total)}
+              {formatKwdLabel(total)}
             </p>
           </div>
         </div>
@@ -465,7 +429,7 @@ function DialogLine({
   count,
 }: {
   label: string;
-  value: number;
+  value: string;
   count: number;
 }) {
   const { t } = useTranslation();
@@ -477,7 +441,7 @@ function DialogLine({
           ({count} {t('myDeposits.invoiceCountSuffix')})
         </span>
       </span>
-      <span>{formatKwd3(value)}</span>
+      <span>{formatKwdLabel(value)}</span>
     </div>
   );
 }
