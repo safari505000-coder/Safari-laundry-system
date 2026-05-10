@@ -153,10 +153,14 @@ describe('collections and WhatsApp RBAC security lock', () => {
     };
     const debt = { getCustomerDebtSnapshot: jest.fn() };
     const subscription = { getCustomerSubscriptionSnapshot: jest.fn() };
+    const journal = { getCustomerDebtFromJournalAR: jest.fn() };
+    const prisma = { order: { findMany: jest.fn() }, debtLedgerEntry: { findMany: jest.fn() } };
     const service = new CustomersService(
       core as any,
       debt as any,
       subscription as any,
+      journal as any,
+      prisma as any,
     );
 
     await expect(service.list('', SafariRole.MANAGER)).resolves.toEqual([

@@ -68,6 +68,9 @@ export class DebtVisibilityService {
         customerId,
         'CRON_RECONCILE',
       );
+      if (snapshot.canonicalSource !== 'JOURNAL_AR') {
+        return this.rebuildJournalSnapshotOrLive(customerId);
+      }
       return this.mapSnapshotToVisibleDebt(snapshot);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -97,7 +100,7 @@ export class DebtVisibilityService {
     const missing: string[] = [];
     for (const id of customerIds) {
       const row = projections.get(id);
-      if (row) {
+      if (row?.canonicalSource === 'JOURNAL_AR') {
         out.set(id, this.mapSnapshotToVisibleDebt(row));
       } else {
         missing.push(id);
@@ -108,7 +111,11 @@ export class DebtVisibilityService {
       // failure is absorbed and surfaced as a zero-debt row so the
       // page still renders.
       const live = await Promise.all(
-        missing.map((id) => this.computeVisibleDebtLive(id).catch(() => null)),
+        missing.map((id) =>
+          this.rebuildJournalSnapshotOrLive(id).catch(() =>
+            this.computeVisibleDebtLive(id).catch(() => null),
+          ),
+        ),
       );
       for (let i = 0; i < missing.length; i += 1) {
         const row = live[i];
@@ -232,15 +239,20 @@ export class DebtVisibilityService {
     canonicalSource: CustomerVisibleDebt['canonicalSource'];
     refreshedAt: Date;
   }): CustomerVisibleDebt {
-    const remaining = new Prisma.Decimal(
+    const journalAr = new Prisma.Decimal(snapshot.journalArBalanceKd.toString());
+    const projectedRemaining = new Prisma.Decimal(
       snapshot.remainingDebtKd.toString(),
     );
+    const remaining =
+      snapshot.canonicalSource === 'JOURNAL_AR'
+        ? journalAr
+        : projectedRemaining;
     return {
       customerId: snapshot.customerId,
-      remainingDebtKd: snapshot.remainingDebtKd.toFixed(4),
+      remainingDebtKd: remaining.toFixed(4),
       paidTotalKd: snapshot.paidTotalKd.toFixed(4),
       totalInvoicesKd: snapshot.totalInvoicesKd.toFixed(4),
-      journalArBalanceKd: snapshot.journalArBalanceKd.toFixed(4),
+      journalArBalanceKd: journalAr.toFixed(4),
       walletLiabilityKd: snapshot.walletLiabilityKd.toFixed(4),
       walletBalanceKd: snapshot.walletBalanceKd.toFixed(4),
       unpaidInvoicesCount: snapshot.unpaidInvoicesCount,
@@ -254,6 +266,19 @@ export class DebtVisibilityService {
       fromSnapshot: true,
       snapshotRefreshedAt: snapshot.refreshedAt.toISOString(),
     };
+  }
+
+  private async rebuildJournalSnapshotOrLive(
+    customerId: string,
+  ): Promise<CustomerVisibleDebt> {
+    const refreshed = await this.snapshots.refreshOne(
+      customerId,
+      'CRON_RECONCILE',
+    );
+    if (refreshed.canonicalSource === 'JOURNAL_AR') {
+      return this.mapSnapshotToVisibleDebt(refreshed);
+    }
+    return this.computeVisibleDebtLive(customerId);
   }
 
   /**

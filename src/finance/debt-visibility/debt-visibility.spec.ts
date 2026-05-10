@@ -26,7 +26,7 @@ function makeSnapshotRow(overrides: Partial<FinancialSnapshotRow> = {}) {
     overdueInvoicesCount: 1,
     lastPaymentAt: now,
     lastInvoiceAt: now,
-    canonicalSource: 'PARTIAL_PAYMENT_REMAINING' as const,
+    canonicalSource: 'JOURNAL_AR' as const,
     v20_3TrueAccountingActive: false,
     schemaVersion: 1,
     refreshedAt: now,
@@ -143,7 +143,7 @@ describe('DebtVisibilityService', () => {
     expect(v.remainingDebtKd).toBe('42.0000');
   });
 
-  it('batch path mixes snapshot rows and live fallback', async () => {
+  it('batch path rebuilds stale non-journal snapshots and falls back live for cold rows', async () => {
     const snap = makeSnapshotsService(makeSnapshotRow());
     const svc = new DebtVisibilityService(
       makePrisma() as never,
@@ -171,9 +171,17 @@ describe('DebtVisibilityService', () => {
         fromSnapshot: false,
         snapshotRefreshedAt: null,
       });
+    const rebuilt = makeSnapshotRow({
+      canonicalSource: 'JOURNAL_AR',
+      journalArBalanceKd: dec('5.2500'),
+      remainingDebtKd: dec('5.2500'),
+    });
+    snap.setRow(makeSnapshotRow({ canonicalSource: 'PARTIAL_PAYMENT_REMAINING' }));
+    snap.refreshOne.mockResolvedValueOnce(rebuilt);
     const out = await svc.getCustomerVisibleDebtBatch([CUST, COLD_CUST]);
     expect(out.size).toBe(2);
     expect(out.get(CUST)?.fromSnapshot).toBe(true);
+    expect(out.get(CUST)?.remainingDebtKd).toBe('5.2500');
     expect(out.get(COLD_CUST)?.fromSnapshot).toBe(false);
   });
 

@@ -3,6 +3,9 @@ import { SafariRole } from '@prisma/client';
 import type { CustomerCoreRow } from './customer-core.service';
 import { DebtService } from '../finance/services/debt.service';
 import { SubscriptionService } from '../finance/services/subscription.service';
+import { computeCanonicalCustomerDebt } from '../finance/canonical-customer-debt.util';
+import { JournalSourceService } from '../general-ledger/journal-source.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { CustomerCoreService } from './customer-core.service';
 import type {
   CustomerFinancialDTO,
@@ -25,6 +28,8 @@ export class CustomersService {
     private readonly core: CustomerCoreService,
     private readonly debt: DebtService,
     private readonly subscription: SubscriptionService,
+    private readonly journalSource: JournalSourceService,
+    private readonly prisma: PrismaService,
   ) {}
 
   /**
@@ -44,11 +49,12 @@ export class CustomersService {
     }
     const snapshots = await Promise.all(
       customers.map(async (customer): Promise<CustomerFinancialDTO> => {
-        const [debt, subscription] = await Promise.all([
+        const [debt, subscription, canonicalDebt] = await Promise.all([
           this.debt.getCustomerDebtSnapshot(customer.id),
           this.subscription.getCustomerSubscriptionSnapshot(customer.id),
+          computeCanonicalCustomerDebt(this.prisma, this.journalSource, customer.id),
         ]);
-        return this.toFinancialDto(customer, debt, subscription);
+        return this.toFinancialDto(customer, debt, subscription, canonicalDebt);
       }),
     );
     return snapshots;
@@ -103,11 +109,12 @@ export class CustomersService {
     if (!canSeeFinancials) {
       return this.toPublicDto(customer);
     }
-    const [debt, subscription] = await Promise.all([
+    const [debt, subscription, canonicalDebt] = await Promise.all([
       this.debt.getCustomerDebtSnapshot(customerId),
       this.subscription.getCustomerSubscriptionSnapshot(customerId),
+      computeCanonicalCustomerDebt(this.prisma, this.journalSource, customerId),
     ]);
-    return this.toFinancialDto(customer, debt, subscription);
+    return this.toFinancialDto(customer, debt, subscription, canonicalDebt);
   }
 
   private canSeeFinancials(role?: SafariRole | string): boolean {
@@ -122,7 +129,18 @@ export class CustomersService {
     customer: CustomerCoreRow,
     debt: Awaited<ReturnType<DebtService['getCustomerDebtSnapshot']>>,
     subscription: Awaited<ReturnType<SubscriptionService['getCustomerSubscriptionSnapshot']>>,
+    canonicalDebt: Awaited<ReturnType<typeof computeCanonicalCustomerDebt>>,
   ): CustomerFinancialDTO {
-    return { customer, debt, subscription };
+    return {
+      customer,
+      debt: {
+        ...debt,
+        totalDebt: canonicalDebt.canonicalDebtKd.toFixed(4),
+        journalArDebtKd: canonicalDebt.journalArKd?.toFixed(4),
+        debtSource: canonicalDebt.source === 'JOURNAL_AR' ? 'JOURNAL_AR' : 'WALLET',
+      },
+      subscription,
+    };
   }
+
 }

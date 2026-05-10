@@ -2,7 +2,6 @@ import { CashStatus, OrderStatus, PosPaymentMethod, Prisma } from '@prisma/clien
 import {
   computeOrderRemainingBalancesBatch,
   INVOICE_REMAINING_TOLERANCE_KD,
-  isV20_3TrueAccountingEnabled,
 } from './debt-customer-aggregates.util';
 
 /**
@@ -13,14 +12,12 @@ import {
  * tiles, dashboards) MUST display when it shows a customer's
  * outstanding balance.
  *
- *   • When `V20_3_TRUE_ACCOUNTING=true` it equals the live
+ *   • When a journal reader is available it equals the live
  *     Journal AR balance (account 1300, clamped at zero) — the
- *     bank-grade number per V20.3 Phase 35.
- *   • Otherwise it equals the V20.3.1 partial-payment-aware
- *     `Σ remaining_balance` over the customer's in-collections
- *     orders (mirrors `OrdersService.getCollectionsReceivableSnapshotForCustomer`
- *     so subscribers / collections / outstanding all read the
- *     same waterfall result without a service-level dependency).
+ *     bank-grade number the customer statement exposes.
+ *   • If the journal read is unavailable it falls back to the V20.3.1
+ *     partial-payment-aware `Σ remaining_balance` over the customer's
+ *     in-collections orders.
  *
  * The function is pure (delegate-typed `db`) and journal-side
  * is optional, so it can be called from any module / from
@@ -73,11 +70,10 @@ export type CanonicalDebtSnapshot = {
  * Compute the canonical debt for one customer.
  *
  * @param db                Prisma delegate-shaped reader.
- * @param journal           Optional journal reader. When the
- *                          V20.3 flag is on, journal AR wins;
- *                          otherwise it's only used to populate
- *                          `journalArKd` for inspector / drift
- *                          comparison.
+ * @param journal           Optional journal reader. When provided,
+ *                          Journal AR is the authoritative customer
+ *                          debt. If it fails, the helper degrades to
+ *                          remaining-balance projection.
  * @param customerId
  */
 export async function computeCanonicalCustomerDebt(
@@ -133,7 +129,7 @@ export async function computeCanonicalCustomerDebt(
   if (journal) {
     try {
       journalArKd = await journal.getCustomerDebtFromJournalAR(customerId);
-      if (isV20_3TrueAccountingEnabled() && journalArKd != null) {
+      if (journalArKd != null) {
         canonicalDebtKd = journalArKd;
         source = 'JOURNAL_AR';
       }
@@ -141,9 +137,7 @@ export async function computeCanonicalCustomerDebt(
       // Journal read failed; degrade to remaining-payment sum.
       // We tag the source so the inspector can flag the row as
       // operating under a degraded read.
-      if (isV20_3TrueAccountingEnabled()) {
-        source = 'JOURNAL_AR_FALLBACK';
-      }
+      source = 'JOURNAL_AR_FALLBACK';
     }
   }
 

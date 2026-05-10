@@ -14,7 +14,7 @@ import { FinancialSnapshotService } from './financial-snapshot.service';
  * `computeSnapshotInput` MUST classify each invoice correctly
  * (`unpaidInvoicesCount`, `partiallyPaidInvoicesCount`,
  * `activeInvoicesCount`) and return the canonical `remainingDebtKd`
- * sourced from the V20.3.1 partial-payment-aware aggregator.
+ * sourced from Journal AR when the journal is available.
  */
 
 const CUSTOMER = '11111111-1111-4111-8111-111111111111';
@@ -212,13 +212,28 @@ describe('FinancialSnapshotService.computeSnapshotInput', () => {
     expect(input.walletLiabilityKd.toString()).toBe('12.5');
     // Journal AR pulled through.
     expect(input.journalArBalanceKd.toString()).toBe('170');
-    // Canonical source — depends on V20_3 flag; default is the
-    // partial-payment aggregator.
-    expect([
-      'PARTIAL_PAYMENT_REMAINING',
-      'JOURNAL_AR',
-      'JOURNAL_AR_FALLBACK',
-    ]).toContain(input.canonicalSource);
+    expect(input.remainingDebtKd.toString()).toBe('170');
+    expect(input.canonicalSource).toBe('JOURNAL_AR');
+  });
+
+  it('uses customer statement Journal AR after subscription settlement residual', async () => {
+    const now = new Date('2026-05-15T12:00:00.000Z');
+    const prisma = makePrisma(now) as never;
+    const journal = {
+      getCustomerDebtFromJournalAR: jest.fn(async () => dec('5.2500')),
+      getCustomerArSnapshot: jest.fn(async () => ({
+        arBalanceKd: dec('5.2500'),
+        walletLiabilityKd: dec('0.0000'),
+      })),
+    } as never;
+    const repo = makeRepo() as never;
+    const svc = new FinancialSnapshotService(prisma, journal, repo);
+
+    const input = await svc.computeSnapshotInput(CUSTOMER);
+
+    expect(input.journalArBalanceKd.toFixed(4)).toBe('5.2500');
+    expect(input.remainingDebtKd.toFixed(4)).toBe('5.2500');
+    expect(input.canonicalSource).toBe('JOURNAL_AR');
   });
 
   it('is deterministic — same inputs produce identical inputs across calls', async () => {
