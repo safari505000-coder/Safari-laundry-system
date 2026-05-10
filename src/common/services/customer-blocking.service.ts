@@ -1,9 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { Request } from 'express';
 import { AuditLogsService } from '../../audit-logs/audit-logs.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { computeCustomer360FinancialCore } from '../../customers/customer-360-financials';
+import { JournalSourceService } from '../../general-ledger/journal-source.service';
 
 type RequestUser = {
   userId?: string | null;
@@ -27,6 +28,8 @@ export class CustomerBlockingService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditLogs: AuditLogsService,
+    @Optional()
+    private readonly journalSource?: JournalSourceService,
   ) {}
 
   async findCustomerForRequest(
@@ -295,7 +298,11 @@ export class CustomerBlockingService {
    * referenced the (now-removed) `Customer360Financials.totalDueKd`.
    */
   private async computeCanonicalDebtKd(customerId: string): Promise<Prisma.Decimal> {
-    const fin = await computeCustomer360FinancialCore(this.prisma, customerId);
+    const fin = await computeCustomer360FinancialCore(
+      this.prisma,
+      customerId,
+      this.journalSource ?? null,
+    );
     try {
       return new Prisma.Decimal(fin.canonicalDebtKd);
     } catch {

@@ -26,10 +26,9 @@ export default function Customer360Smart({ data }: { data: Customer360SmartData 
   const blockReason = data.blockReason ?? fin.blockReason;
   // V23.1 Final — read canonical receivable debt directly. See the
   // long-form rationale on Customer360Financials.canonicalDebtKd in
-  // `web/src/lib/api.ts`. Both "unpaid" and "payable now" tiles now
-  // render the same canonical number that the Collections cockpit
-  // and the Subscribers list use.
-  const unpaidInvoicesKd = fin.canonicalDebtKd;
+  // `web/src/lib/api.ts`. This is the current customer receivable,
+  // not a separate client-side sum of unpaid invoice rows.
+  const currentReceivableKd = fin.canonicalDebtKd;
   const payableNowKd = fin.canonicalDebtKd;
 
   return (
@@ -85,7 +84,7 @@ export default function Customer360Smart({ data }: { data: Customer360SmartData 
       </div>
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-        <div>🧾 الفواتير غير مدفوعة: {formatKwdLabel(unpaidInvoicesKd)}</div>
+        <div>🧾 المديونية الحالية: {formatKwdLabel(currentReceivableKd)}</div>
         <div>💳 المدفوع: {formatKwdLabel(fin.totalPaymentsKd)}</div>
         <div>📌 المطلوب: {formatKwdLabel(payableNowKd)}</div>
       </div>

@@ -80,15 +80,9 @@ export function Customer360Panel(props: {
   const f = data.statement.financials;
   const displayName = data.customer.displayName || data.customer.phone;
   // V23.1 Final — Customer 360 financial state sync.
-  // Read the canonical receivable debt directly. The legacy `totalDueKd`
-  // is `Σ totalInvoices − Σ totalPayments` which ignores wallet/
-  // subscription absorption + customer-level RESIDUAL FIFO; it
-  // historically caused this card to show 35.000 KWD while the
-  // Collections cockpit (which uses the canonical waterfall) showed
-  // 10.000 KWD for the same customer. canonicalDebtKd is what every
-  // V20.4+ canonical surface (Collections cockpit, Subscribers list,
-  // Outstanding) renders, so this card now agrees with all of them.
-  const unpaidInvoicesKd = f.canonicalDebtKd;
+  // Read the canonical receivable debt directly. This is the current
+  // banking-core AR balance, not a separate sum of invoice rows.
+  const currentReceivableKd = f.canonicalDebtKd;
   const payableNowKd = f.canonicalDebtKd;
 
   return (
@@ -117,7 +111,7 @@ export function Customer360Panel(props: {
           <CardTitle className="text-base">الملخص المالي</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-2 text-sm sm:grid-cols-2">
-          <Metric label="الفواتير غير مدفوعة" value={unpaidInvoicesKd} />
+          <Metric label="المديونية الحالية" value={currentReceivableKd} />
           <Metric label="إجمالي الفواتير" value={f.totalInvoicesKd} />
           <Metric label="المدفوع" value={f.totalPaymentsKd} />
           <Metric label="المبلغ المطلوب دفعه" value={payableNowKd} />

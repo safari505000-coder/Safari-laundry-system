@@ -300,10 +300,9 @@ export function CcCustomer360V2Page() {
   const displayName = data.customer.displayName ?? data.customer.phone;
   const score = is360Internal(data) ? data.score.value : null;
   const insight = data.insight;
-  // V23.1 Final — read canonical receivable debt directly. See the
-  // long-form rationale on Customer360Financials.canonicalDebtKd in
-  // `web/src/lib/api.ts`.
-  const unpaidInvoicesKd = f.canonicalDebtKd;
+  // V23.1 Final — read canonical receivable debt directly. This is the
+  // current AR balance, not a separate sum of invoice rows.
+  const currentReceivableKd = f.canonicalDebtKd;
   const payableNowKd = f.canonicalDebtKd;
 
   // Action bar — every action just navigates to the v1 page with the
@@ -441,8 +440,8 @@ export function CcCustomer360V2Page() {
         >
           <div id="financial" className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
             <FinancialStatCard
-              label={t('customer360v2.stats.unpaidInvoices', { defaultValue: 'الفواتير غير مدفوعة' })}
-              value={unpaidInvoicesKd}
+              label={t('customer360v2.stats.currentReceivable', { defaultValue: 'المديونية الحالية' })}
+              value={currentReceivableKd}
               unit="د.ك"
             />
             <FinancialStatCard

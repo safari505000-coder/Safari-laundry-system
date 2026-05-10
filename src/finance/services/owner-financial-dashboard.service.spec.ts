@@ -92,12 +92,19 @@ describe('OwnerFinancialDashboardService', () => {
         buildAlerts: jest.fn().mockResolvedValue([]),
       } as any,
       cache as any,
+      { getCustomerDebtFromJournalAR: jest.fn().mockResolvedValue(new Prisma.Decimal('8.0000')) } as any,
     );
 
     const result = await service.getDashboard();
 
     expect(cache.wrapJson).toHaveBeenCalledWith('owner-key', expect.any(Function));
-    expect(computeCustomer360FinancialCore).toHaveBeenCalledWith(prisma, 'customer-1');
+    expect(computeCustomer360FinancialCore).toHaveBeenCalledWith(
+      prisma,
+      'customer-1',
+      expect.objectContaining({
+        getCustomerDebtFromJournalAR: expect.any(Function),
+      }),
+    );
     expect(result).toMatchObject({
       totalInvoicesToday: '10.0000',
       totalPaymentsToday: '2.0000',

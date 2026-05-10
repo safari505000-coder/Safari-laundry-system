@@ -74,10 +74,9 @@ function formatDateTimeAr(iso: string | null | undefined): string {
 export function OverviewTab({ data, latestDispatch }: Props) {
   const { t } = useTranslation();
   const f = data.statement.financials;
-  // V23.1 Final — read canonical receivable debt directly. See the
-  // long-form rationale on Customer360Financials.canonicalDebtKd in
-  // `web/src/lib/api.ts`.
-  const unpaidInvoicesKd = f.canonicalDebtKd;
+  // V23.1 Final — read canonical receivable debt directly. This is the
+  // current AR balance, not a separate sum of invoice rows.
+  const currentReceivableKd = f.canonicalDebtKd;
   const payableNowKd = f.canonicalDebtKd;
   const hasDebt = isMaterialKd(payableNowKd);
 
@@ -91,9 +90,9 @@ export function OverviewTab({ data, latestDispatch }: Props) {
         <MetricCard
           icon={Receipt}
           label={t('callCenterDashboard.overview.totalInvoices', {
-            defaultValue: 'الفواتير غير مدفوعة',
+            defaultValue: 'المديونية الحالية',
           })}
-          value={formatKwdLabel(unpaidInvoicesKd)}
+          value={formatKwdLabel(currentReceivableKd)}
         />
         <MetricCard
           icon={Wallet}

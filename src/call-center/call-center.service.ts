@@ -1867,11 +1867,13 @@ export class CallCenterService {
       }
     }
 
-    const collectionsDebtBasis =
-      await this.orders.getOperationalDebtKdBreakdown(
+    const [collectionsDebtBasis, visibleDebt] = await Promise.all([
+      this.orders.getOperationalDebtKdBreakdown(
         customerId,
         customer.wallet?.debt,
-      );
+      ),
+      this.debtVisibility.getCustomerVisibleDebt(customerId),
+    ]);
 
     const mappedEvents: CustomerLedgerEventDto[] = events.map((e) => {
       const rawMethod =
@@ -2042,8 +2044,10 @@ export class CallCenterService {
     const openInvoiceCount = mappedInvoices.filter((i) => i.openDebt).length;
     const statementInvoiceTotals =
       computeCanonicalStatementTotals(mappedInvoices);
+    // Statement invoices are historical/details; the header debt sent to UI/WhatsApp
+    // must be the current banking-core AR value used by Collections/Outstanding.
     const statementRemainingDebtKd = new Prisma.Decimal(
-      statementInvoiceTotals.totalOpenInvoicesKd,
+      visibleDebt.remainingDebtKd,
     );
 
     const customerHeader = {

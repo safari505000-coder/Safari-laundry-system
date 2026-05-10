@@ -86,6 +86,32 @@ describe('V22 current-debt consistency guards', () => {
     expect(src).toContain('financials.canonicalDebtKd = visibleDebt.remainingDebtKd');
   });
 
+  it('automatic customer blocking computes debt with a Journal AR reader when available', () => {
+    const service = read('src/common/services/customer-blocking.service.ts');
+    const customersModule = read('src/customers/customers.module.ts');
+    const posModule = read('src/pos/pos.module.ts');
+
+    expect(service).toContain('JournalSourceService');
+    expect(service).toContain('this.journalSource ?? null');
+    expect(customersModule).toContain('GeneralLedgerModule');
+    expect(posModule).toContain('GeneralLedgerModule');
+  });
+
+  it('customer ledger header and statement WhatsApp use banking-core visible debt', () => {
+    const src = read('src/call-center/call-center.service.ts');
+    const method = src.slice(
+      src.indexOf('async getCustomerLedger('),
+      src.indexOf('async createStatementShareLink('),
+    );
+
+    expect(method).toContain('debtVisibility.getCustomerVisibleDebt(customerId)');
+    expect(method).toContain('visibleDebt.remainingDebtKd');
+    expect(method).toContain('remainingDebtKd: FOUR_DP(statementRemainingDebtKd)');
+    expect(method).not.toContain(
+      'statementRemainingDebtKd = new Prisma.Decimal(\n      statementInvoiceTotals.totalOpenInvoicesKd',
+    );
+  });
+
   it('DebtVisibility overlays live Journal AR over snapshot money for displayed debt', () => {
     const src = read('src/finance/debt-visibility/debt-visibility.service.ts');
     expect(src).toContain('overlayLiveJournalDebt');

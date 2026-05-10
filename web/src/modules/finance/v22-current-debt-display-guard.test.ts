@@ -23,7 +23,7 @@ function listSourceFiles(root: string): string[] {
 }
 
 describe('V22 current debt display guard', () => {
-  test('Customer360 unpaid cards use canonical receivable debt, not historical invoice totals', () => {
+  test('Customer360 current receivable cards use canonical debt, not invoice-row totals', () => {
     const smart = read('web/src/modules/customers/components/Customer360Smart.tsx');
     const panel = read('web/src/modules/call-center/components/customer-360-panel.tsx');
     const overview = read('web/src/modules/call-center/dashboard/components/tabs/overview-tab.tsx');
@@ -45,10 +45,13 @@ describe('V22 current debt display guard', () => {
       expect(src).not.toMatch(/غير مدفوعة["'}\s,]*value=\{(?:f|fin)\.totalInvoicesKd\}/);
     }
 
-    expect(smart).toMatch(/الفواتير غير مدفوعة[\s\S]{0,120}unpaidInvoicesKd/);
-    expect(panel).toMatch(/label="الفواتير غير مدفوعة"\s+value=\{unpaidInvoicesKd\}/);
-    expect(overview).toMatch(/defaultValue:\s*'الفواتير غير مدفوعة'[\s\S]{0,180}formatKwdLabel\(unpaidInvoicesKd\)/);
-    expect(v2).toMatch(/customer360v2\.stats\.unpaidInvoices[\s\S]{0,180}value=\{unpaidInvoicesKd\}/);
+    expect(smart).toMatch(/المديونية الحالية[\s\S]{0,120}currentReceivableKd/);
+    expect(panel).toMatch(/label="المديونية الحالية"\s+value=\{currentReceivableKd\}/);
+    expect(overview).toMatch(/defaultValue:\s*'المديونية الحالية'[\s\S]{0,180}formatKwdLabel\(currentReceivableKd\)/);
+    expect(v2).toMatch(/customer360v2\.stats\.currentReceivable[\s\S]{0,180}value=\{currentReceivableKd\}/);
+    for (const src of [smart, panel, overview, v2]) {
+      expect(src).not.toContain('unpaidInvoicesKd');
+    }
   });
 
   test('Subscribers page uses remainingDebtKd as the visible and actionable debt', () => {
