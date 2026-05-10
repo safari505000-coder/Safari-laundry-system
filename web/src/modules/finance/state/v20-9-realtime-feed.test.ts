@@ -10,14 +10,23 @@
  *   3. Auto-reconnect: when EventSource emits `error`, the hook
  *      schedules a reconnect (counter increments).
  *   4. Disabling tears down the EventSource cleanly.
+ *   5. (V24+) Silent refresh: on EventSource error, the hook calls
+ *      `tryRefreshAccessToken()` BEFORE scheduling backoff so an
+ *      expired JWT is rotated without disturbing the operator.
  */
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { renderHook, act, cleanup } from '@testing-library/react';
 import {
   financialCache,
   invalidateFinancial,
   keyOf,
 } from './financial-cache';
+
+const mockTryRefreshAccessToken = vi.fn<[], Promise<string | null>>();
+vi.mock('@/lib/api', () => ({
+  tryRefreshAccessToken: () => mockTryRefreshAccessToken(),
+}));
+
 import { useRealtimeFinancialFeed } from './financial-realtime-feed';
 
 type EsListener = (ev: { data: string }) => void;
@@ -73,6 +82,7 @@ beforeAll(() => {
 afterEach(() => {
   FakeEventSource.instances = [];
   invalidateFinancial('finance');
+  mockTryRefreshAccessToken.mockReset();
   cleanup();
 });
 
@@ -191,5 +201,68 @@ describe('V20.9 — realtime feed hook', () => {
 
     rerender({ enabled: false });
     expect(es.closed).toBe(true);
+  });
+
+  // V24+ silent-refresh contract — the hook MUST consult
+  // tryRefreshAccessToken on every EventSource error so an expired
+  // JWT is rotated transparently (no operator-visible disconnect).
+  test('5. on error, silent-refresh is attempted exactly once per failure', async () => {
+    mockTryRefreshAccessToken.mockResolvedValueOnce('jwt-rotated');
+
+    renderHook(() =>
+      useRealtimeFinancialFeed({
+        channel: 'collections',
+        accessToken: 'jwt-stale',
+      }),
+    );
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+
+    await act(async () => {
+      FakeEventSource.instances[0].__error();
+      await new Promise((r) => setTimeout(r, 5));
+    });
+
+    expect(mockTryRefreshAccessToken).toHaveBeenCalledTimes(1);
+  });
+
+  // When the refresh handler returns null (e.g. no handler registered,
+  // or the refresh token itself was rejected) the hook MUST fall back
+  // to the original exponential-backoff reconnect path so a transient
+  // network blip still self-heals without operator intervention.
+  test('6. when silent-refresh returns null, exponential backoff still fires', async () => {
+    mockTryRefreshAccessToken.mockResolvedValue(null);
+    vi.useFakeTimers();
+    try {
+      renderHook(() =>
+        useRealtimeFinancialFeed({
+          channel: 'collections',
+          accessToken: 'jwt-test',
+        }),
+      );
+      // Initial connect (microtask + 0ms timer in FakeEventSource).
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5);
+      });
+      expect(FakeEventSource.instances.length).toBe(1);
+
+      // First error → silent refresh attempt → null → schedule backoff (1s).
+      await act(async () => {
+        FakeEventSource.instances[0].__error();
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      // Backoff timer not yet elapsed.
+      expect(FakeEventSource.instances.length).toBe(1);
+
+      // Advance past the 1s backoff → connect() fires → new EventSource.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1100);
+      });
+      expect(FakeEventSource.instances.length).toBe(2);
+      expect(mockTryRefreshAccessToken).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

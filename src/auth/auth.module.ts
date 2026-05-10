@@ -27,11 +27,15 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.register({
       secret: process.env.JWT_SECRET ?? JWT_SECRET_DEV_FALLBACK,
-      // V19.12 — access tokens are short-lived (default 15 min); override per
-      // call via `jwt.signAsync(payload, { expiresIn })`. Kept as a sane
-      // default for anything that does not override.
+      // V19.12 — access tokens are short-lived; override per call via
+      // `jwt.signAsync(payload, { expiresIn })`. Default raised in V24+ to
+      // 24h to match the operator session expectation (one full working day
+      // without forced re-auth). The refresh-token rotation contract is
+      // unchanged: `AUTH_REFRESH_TOKEN_DAYS` (default 7 days) still gates the
+      // long-lived session, and rotated single-use refresh tokens still trip
+      // the replay-detection cascade. Override via `AUTH_ACCESS_TOKEN_TTL`.
       signOptions: {
-        expiresIn: (process.env.AUTH_ACCESS_TOKEN_TTL ?? '15m') as unknown as number,
+        expiresIn: (process.env.AUTH_ACCESS_TOKEN_TTL ?? '24h') as unknown as number,
       },
     }),
     // V19.12 — anti brute-force on POST /api/auth/login. The explicit

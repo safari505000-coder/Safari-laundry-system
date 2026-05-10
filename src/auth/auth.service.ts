@@ -40,10 +40,16 @@ const FIELD_OPERATOR_ROLES: readonly SafariRole[] = [
 ];
 const FIELD_OPERATOR_WINDOW_START_HOUR = 7;
 
-/** V19.12 — short access token, long refresh token (both driven by env). */
+/**
+ * V19.12 — short access token, long refresh token (both driven by env).
+ * V24+ — default access TTL raised from `15m` to `24h` so an operator can
+ * keep a single browser tab open through a full working day without the
+ * SSE/dashboard streams being torn down by a 401. The refresh-token
+ * rotation + replay-detection contract is unchanged.
+ */
 // Cast to `any` because @nestjs/jwt exposes `StringValue` (branded `ms` type)
 // and refuses a plain `string`. At runtime it's the same value.
-const ACCESS_TOKEN_TTL: any = process.env.AUTH_ACCESS_TOKEN_TTL ?? '15m';
+const ACCESS_TOKEN_TTL: any = process.env.AUTH_ACCESS_TOKEN_TTL ?? '24h';
 const PASSWORD_CHANGE_TOKEN_TTL: any =
   process.env.AUTH_PASSWORD_CHANGE_TOKEN_TTL ?? '15m';
 const REFRESH_TOKEN_DAYS = Number.parseInt(

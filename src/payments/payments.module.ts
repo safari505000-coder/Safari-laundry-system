@@ -27,9 +27,12 @@ import { PaymentsController } from './payments.controller';
     // (which would create a dependency cycle: Orders → Payments → Orders).
     JwtModule.register({
       secret: process.env.JWT_SECRET ?? JWT_SECRET_DEV_FALLBACK,
+      // V24+ — default access TTL is `24h` (see auth.module.ts for rationale).
+      // Invoice-share tokens that need a tighter lifetime sign per-call with
+      // an explicit `expiresIn` and are unaffected by this default.
       signOptions: {
         expiresIn: (process.env.AUTH_ACCESS_TOKEN_TTL ??
-          '15m') as unknown as number,
+          '24h') as unknown as number,
       },
     }),
   ],

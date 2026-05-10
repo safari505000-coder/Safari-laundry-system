@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { tryRefreshAccessToken } from '@/lib/api';
 import { invalidateFinancial } from './financial-cache';
 
 /**
@@ -22,6 +23,16 @@ import { invalidateFinancial } from './financial-cache';
  * Channel routing decisions (which prefixes to invalidate per
  * event class) live HERE, not in the backend, so a future event
  * class only needs a single-file update.
+ *
+ * V24+ silent-refresh: when an SSE stream errors (most often because
+ * the access JWT expired mid-session), the hook now first asks the
+ * shared `tryRefreshAccessToken()` pipeline for a rotated access
+ * token. On success the parent's `accessToken` prop changes, the
+ * useEffect cleans up the dead EventSource, and a fresh connection
+ * is opened with the new token — no manual backoff timer needed.
+ * On failure (no handler registered, or refresh rejected by the
+ * server) the hook falls back to the original exponential-backoff
+ * reconnect path so a transient network blip still self-heals.
  */
 export type RealtimeChannelId =
   | 'collections'
@@ -183,9 +194,39 @@ export function useRealtimeFinancialFeed(
           // ignore
         }
         if (cancelled) return;
-        const wait = Math.min(backoffMs, 30_000);
-        backoffMs = Math.min(backoffMs * 2, 30_000);
-        window.setTimeout(connect, wait);
+
+        // V24+ silent refresh.
+        // EventSource never exposes the underlying HTTP status, so we
+        // cannot prove this onerror was a 401. We instead opportunistically
+        // ask the shared refresh pipeline (single-flight, deduped across
+        // every channel) for a rotated access token. Three outcomes:
+        //
+        //   1. Refresh returns a NEW token → the parent's React state
+        //      updates, useEffect cleanup tears this dead EventSource
+        //      down, a fresh useEffect opens a new connection with the
+        //      new token. We skip the manual backoff timer entirely.
+        //   2. Refresh returns the SAME or stale token → drop into the
+        //      exponential backoff so a transient blip still self-heals.
+        //   3. No handler registered (tests / public-portal / pre-V24+
+        //      hosts) → identical to (2): pure backoff path.
+        void (async () => {
+          let rotated: string | null = null;
+          try {
+            rotated = await tryRefreshAccessToken();
+          } catch {
+            rotated = null;
+          }
+          if (cancelled) return;
+          if (rotated && rotated !== opts.accessToken) {
+            // Parent will re-render with the new token; useEffect handles the rest.
+            // Reset our local backoff so the next failure (if any) starts at 1s.
+            backoffMs = 1000;
+            return;
+          }
+          const wait = Math.min(backoffMs, 30_000);
+          backoffMs = Math.min(backoffMs * 2, 30_000);
+          window.setTimeout(connect, wait);
+        })();
       };
     };
 

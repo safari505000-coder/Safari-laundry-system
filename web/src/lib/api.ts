@@ -408,7 +408,18 @@ export function setTokenRefreshHandler(handler: RefreshHandler | null): void {
   tokenRefreshHandler = handler;
 }
 
-async function tryRefreshAccessToken(): Promise<string | null> {
+/**
+ * Single-flight silent refresh. Multiple concurrent 401s (or, post-V24+,
+ * multiple SSE channels going stale at the same wall-clock minute) collapse
+ * onto a single network round-trip via `inFlightRefresh`. Returns the new
+ * access token on success, `null` if no handler is registered or the refresh
+ * was rejected by the server.
+ *
+ * Exported so non-`apiJson` consumers (notably the SSE realtime hook in
+ * `modules/finance/state/financial-realtime-feed.ts`) can opt in to the same
+ * refresh pipeline without duplicating the handler/dedupe machinery.
+ */
+export async function tryRefreshAccessToken(): Promise<string | null> {
   if (!tokenRefreshHandler) return null;
   if (inFlightRefresh) return inFlightRefresh;
   inFlightRefresh = (async () => {
