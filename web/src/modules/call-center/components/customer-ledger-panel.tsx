@@ -277,9 +277,15 @@ export function CustomerLedgerPanel({ customerId, token }: Props) {
 
       {data.activeSubscription ? (
         <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-3 text-sm dark:border-blue-900/60 dark:bg-blue-950/20">
-          <p className="font-medium text-blue-900 dark:text-blue-100">
-            {data.activeSubscription.planNameSnapshot}
-          </p>
+          {/* Header: plan name + actual usable balance */}
+          <div className="flex items-start justify-between gap-2">
+            <p className="font-medium text-blue-900 dark:text-blue-100">
+              {data.activeSubscription.planNameSnapshot}
+            </p>
+            <span className="shrink-0 rounded bg-blue-100/80 px-1.5 py-0.5 text-xs font-semibold tabular-nums text-blue-900 dark:bg-blue-900/60 dark:text-blue-100">
+              {formatKwdLabel(data.activeSubscription.planActualBalanceKd)}
+            </span>
+          </div>
           <p className="mt-1 text-xs text-blue-900/80 dark:text-blue-100/80">
             {t('customerLedger.subWindow', {
               from: fmtDate.format(
@@ -290,6 +296,7 @@ export function CustomerLedgerPanel({ customerId, token }: Props) {
               ),
             })}
           </p>
+          {/* Carried balance from a PREVIOUS subscription period only */}
           {data.activeSubscription.carriedBalanceKd !== '0.0000' ? (
             <p className="mt-1 text-xs text-blue-900/80 dark:text-blue-100/80">
               {t('customerLedger.carried')}:{' '}
@@ -393,8 +400,14 @@ export function CustomerLedgerPanel({ customerId, token }: Props) {
                 {eventKpis.activations}
               </p>
               <p className="text-[11px] text-muted-foreground">
-                {t('customerLedger.kpiSettlements')}: {eventKpis.settlements} ·{' '}
-                {t('customerLedger.kpiRollover')}: {eventKpis.rollovers}
+                {t('customerLedger.kpiSettlements')}: {eventKpis.settlements}
+                {(eventKpis.settlements > 0 || eventKpis.activations > 0) &&
+                data.totals.totalCollectedKd !== '0.0000' ? (
+                  <span className="ms-1 font-medium text-emerald-700 dark:text-emerald-400">
+                    ({formatKwdLabel(data.totals.totalCollectedKd)})
+                  </span>
+                ) : null}
+                {' · '}{t('customerLedger.kpiRollover')}: {eventKpis.rollovers}
               </p>
             </div>
           </div>
