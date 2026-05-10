@@ -40,7 +40,7 @@ import type {
 export const RESOLVED_RETENTION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 /** Hard cap on the live registry to bound memory under burst-create scenarios. */
-export const MAX_LIVE_ITEMS = 5_000;
+const MAX_LIVE_ITEMS = 5_000;
 
 @Injectable()
 export class CollectionsWorkflowService {

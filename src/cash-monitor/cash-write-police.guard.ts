@@ -44,7 +44,7 @@ import { Reflector } from '@nestjs/core';
 import { SafariRole } from '@prisma/client';
 import { JwtUser } from '../auth/decorators/current-user.decorator';
 
-export const CASH_WRITE_ENDPOINT_KEY = 'cash-write-endpoint:roles';
+const CASH_WRITE_ENDPOINT_KEY = 'cash-write-endpoint:roles';
 
 /**
  * Mark a controller method as a cash-touching write endpoint and pin

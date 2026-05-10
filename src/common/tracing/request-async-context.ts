@@ -28,7 +28,7 @@ function paramOrderId(v: unknown): string | undefined {
   return undefined;
 }
 
-export function pickOrderIdFromRequest(req: {
+function pickOrderIdFromRequest(req: {
   params?: Record<string, string | string[] | undefined>;
   body?: Record<string, unknown>;
   query?: Record<string, unknown>;

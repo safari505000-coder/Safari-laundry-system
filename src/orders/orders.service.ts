@@ -92,8 +92,8 @@ const PAYMENT_LINK_VALIDITY_MS = PAYMENT_LINK_VALIDITY_HOURS * 60 * 60 * 1000;
  * `OrdersService.listStaleQuickOrderRisks()` and the daily
  * `StaleQuickOrdersCron` audit job.
  */
-export const STALE_QUICK_ORDER_THRESHOLD_HOURS = 24;
-export const STALE_QUICK_ORDER_THRESHOLD_MS =
+const STALE_QUICK_ORDER_THRESHOLD_HOURS = 24;
+const STALE_QUICK_ORDER_THRESHOLD_MS =
   STALE_QUICK_ORDER_THRESHOLD_HOURS * 60 * 60 * 1000;
 
 export function resolveOperationalDebtKd(input: {

@@ -58,7 +58,7 @@ type InternalEntry = PresenceHeartbeat & { expiresAt: number };
 export const PRESENCE_STALE_AFTER_MS = 45_000;
 
 /** How often the in-memory sweep runs to evict stale entries. */
-export const PRESENCE_SWEEP_INTERVAL_MS = 30_000;
+const PRESENCE_SWEEP_INTERVAL_MS = 30_000;
 
 @Injectable()
 export class PresenceService {

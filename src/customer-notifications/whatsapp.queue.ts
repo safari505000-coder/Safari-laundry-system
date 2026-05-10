@@ -20,7 +20,7 @@ export type WhatsAppJob = WhatsAppPaymentConfirmedJob;
 export const WHATSAPP_QUEUE = 'whatsapp';
 export const WHATSAPP_DLQ_QUEUE = 'whatsapp:failed';
 export const WHATSAPP_ATTEMPTS = 5;
-export const WHATSAPP_BACKOFF_MS = 1_000;
+const WHATSAPP_BACKOFF_MS = 1_000;
 export const WHATSAPP_MAX_QUEUE_SIZE = 5_000;
 
 export const whatsappRedisConnection = discordRedisConnection;

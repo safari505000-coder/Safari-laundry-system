@@ -1,14 +1,9 @@
 import { context, trace, TraceFlags } from '@opentelemetry/api';
-import type { Request } from 'express';
 
 export function currentTraceId(): string | undefined {
   const span = trace.getActiveSpan();
   const traceId = span?.spanContext().traceId;
   return traceId && traceId !== '0'.repeat(32) ? traceId : undefined;
-}
-
-export function requestTraceId(req: Request & { requestId?: string }): string {
-  return currentTraceId() ?? req.requestId ?? 'n/a';
 }
 
 export async function runWithJobTraceAsync<T>(

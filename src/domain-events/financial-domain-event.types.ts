@@ -14,8 +14,6 @@
  * Naming convention is `noun.past-tense` so wildcard subscribers
  * (`finance.*`) can fan out without having to enumerate types.
  */
-export const FINANCIAL_DOMAIN_EVENT_PREFIX = 'finance';
-
 export type FinancialDomainEventName =
   | 'finance.invoice.issued'
   | 'finance.invoice.reversed'   // V20.6 — Phase 4

@@ -168,7 +168,6 @@ export class PrismaService
  * append-only guard applied to a bespoke PrismaClient instance without
  * going through Nest DI.
  */
-export { guardAppendOnlyDelegate };
 
 /**
  * V20.4 — Phase 3 journal append-only guard.

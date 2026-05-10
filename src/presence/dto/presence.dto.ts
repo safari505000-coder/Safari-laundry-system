@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsIn, IsString, MinLength } from 'class-validator';
 
-export const PRESENCE_SCOPE_KINDS = [
+const PRESENCE_SCOPE_KINDS = [
   'customer',
   'collection-row',
   'reconciliation-row',

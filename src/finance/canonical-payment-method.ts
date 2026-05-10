@@ -24,7 +24,7 @@ export const CANONICAL_PAYMENT_METHODS: readonly CanonicalPaymentMethod[] = [
   'SUBSCRIPTION',
 ] as const;
 
-export function normalizePaymentMethodInput(
+function normalizePaymentMethodInput(
   raw: PosPaymentMethod | CanonicalPaymentMethod | string | null | undefined,
 ): string {
   return String(raw ?? '')

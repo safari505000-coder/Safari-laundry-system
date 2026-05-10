@@ -487,7 +487,7 @@ function appendPaymentLinkIfAny(
 const LINE_BRAND_SAFA_RI_FOOTER_AR = 'مصبغة سفاري 🇰🇼';
 
 /** Human سند reference from central `TransactionHistory.id` (DB uuid). */
-export function formatStandaloneReceiptLabelFromHistoryId(
+function formatStandaloneReceiptLabelFromHistoryId(
   transactionHistoryId: string,
 ): string {
   const hex = transactionHistoryId.replace(/-/g, '').slice(0, 12).toUpperCase();

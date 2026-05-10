@@ -4,7 +4,7 @@ import { registerDecorator, ValidationOptions } from 'class-validator';
  * Kuwait mobile: 8-digit local part must start with 5, 6, or 9.
  * Optional country prefix +965 / 965; spaces/hyphens stripped before check.
  */
-export const KUWAIT_CUSTOMER_PHONE_PATTERN = /^(\+?965)?[569]\d{7}$/;
+const KUWAIT_CUSTOMER_PHONE_PATTERN = /^(\+?965)?[569]\d{7}$/;
 
 /**
  * Kuwait mobile as 965 + 8 digits (5/6/9…), for UPayments / Moatmt / notify.
@@ -32,7 +32,7 @@ export function parseKuwaitMobile965(phone: string): string | null {
  * `phone2` on Customer). Stops a landline/foreign primary `phone` from
  * blocking UPayments/notify when `phone2` is the only valid mobile.
  */
-export function pickFirstKuwaitMobileForWhatsApp(
+function pickFirstKuwaitMobileForWhatsApp(
   ...candidates: Array<string | null | undefined>
 ): string | null {
   for (const c of candidates) {

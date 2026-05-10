@@ -8,7 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { parseKuwaitMobile965 } from '../common/validation/kuwait-customer-phone';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 
-export const customerCoreSelect = {
+const customerCoreSelect = {
   id: true,
   phone: true,
   phone2: true,

@@ -32,7 +32,7 @@ function deepSanitizeCopy(input: unknown): unknown {
   return out;
 }
 
-export function buildCustomerFriendlySummary(statement: Customer360StatementDto): string {
+function buildCustomerFriendlySummary(statement: Customer360StatementDto): string {
   const f = statement.financials;
   const subscriptionValue = Number.parseFloat(f.subscriptionValueKd);
   const subscriptionText =

@@ -81,7 +81,7 @@ const SUPERVISOR_ROLES: ReadonlyArray<RealtimeRole> = [
   'CALL_CENTER_SUPERVISOR',
 ];
 
-export const REALTIME_CHANNELS: ReadonlyArray<RealtimeChannel> = [
+const REALTIME_CHANNELS: ReadonlyArray<RealtimeChannel> = [
   {
     id: 'collections',
     requiredRoles: COLLECTOR_ROLES,

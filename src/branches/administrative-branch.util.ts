@@ -3,7 +3,7 @@ import { SafariRole } from '@prisma/client';
 import type { PrismaService } from '../prisma/prisma.service';
 
 /** Roles that may see administrative branches in `/api/branches` and use them in finance UIs. */
-export const ROLES_THAT_SEE_ADMINISTRATIVE_BRANCHES: SafariRole[] = [
+const ROLES_THAT_SEE_ADMINISTRATIVE_BRANCHES: SafariRole[] = [
   SafariRole.OWNER,
   SafariRole.GENERAL_MANAGER,
   SafariRole.ACCOUNTANT,

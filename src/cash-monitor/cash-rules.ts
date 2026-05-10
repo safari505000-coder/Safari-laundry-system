@@ -25,7 +25,7 @@
  * dashboard. Crossing the gate (>=) is what unlocks aging-based
  * classification (STUCK_AT_DRIVER, HANDOVER_DELAY, etc.).
  */
-export const GRACE_HOURS = 24;
+const GRACE_HOURS = 24;
 
 /**
  * Hard amount floor (in KD) below which an aged-cash anomaly never
@@ -39,7 +39,7 @@ export const GRACE_HOURS = 24;
  * caps severity for chain-break anomalies whose amount is below the
  * floor (CRITICAL → WARNING).
  */
-export const MIN_CRITICAL_AMOUNT_KD = 5;
+const MIN_CRITICAL_AMOUNT_KD = 5;
 
 /**
  * Open-shift duration cap. When a driver's open shift exceeds this
@@ -48,13 +48,12 @@ export const MIN_CRITICAL_AMOUNT_KD = 5;
  * SHIFT_OVERDUE reclassification rules require BOTH the cap AND
  * material aged cash before promoting to FINANCIAL.
  */
-export const SHIFT_CAP_HOURS = 16;
+const SHIFT_CAP_HOURS = 16;
 
 /**
- * Convenience export to the same numbers under a single namespace.
- * Use the named exports above when you only need one value; use
- * `CASH_RULES.X` when documenting that the call site obeys the
- * full contract.
+ * Single sanctioned namespace for the cash thresholds. All consumers
+ * MUST go through `CASH_RULES.X` so policy intent is explicit at the
+ * call site and a single tweak here propagates atomically.
  */
 export const CASH_RULES = Object.freeze({
   GRACE_HOURS,

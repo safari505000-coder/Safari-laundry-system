@@ -12,7 +12,7 @@ import { IsIn } from 'class-validator';
  * represent credit movements that must be resolved through their own
  * workflows (activation / debt-pay-off), not a "mark as paid" flag.
  */
-export const MARK_PAID_METHODS = [
+const MARK_PAID_METHODS = [
   'CASH',
   'KNET',
   'PAYMENT_LINK',

@@ -16,15 +16,15 @@ import type {
   WorkflowStatus,
 } from '../collections-workflow.types';
 
-export const WORKFLOW_KINDS = ['CALLBACK', 'PROMISE', 'ESCALATION'] as const;
-export const WORKFLOW_STATUSES = [
+const WORKFLOW_KINDS = ['CALLBACK', 'PROMISE', 'ESCALATION'] as const;
+const WORKFLOW_STATUSES = [
   'OPEN',
   'IN_PROGRESS',
   'COMPLETED',
   'BROKEN',
   'CANCELLED',
 ] as const;
-export const WORKFLOW_PRIORITIES = ['LOW', 'NORMAL', 'HIGH', 'URGENT'] as const;
+const WORKFLOW_PRIORITIES = ['LOW', 'NORMAL', 'HIGH', 'URGENT'] as const;
 
 export class CreateWorkflowItemDto {
   @ApiProperty({ enum: WORKFLOW_KINDS })

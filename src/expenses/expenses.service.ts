@@ -38,7 +38,7 @@ import type {
  * and the `/expenses-summary` aggregate so the same definition is used
  * everywhere — no two callers can disagree.
  */
-export function deriveOwnerType(
+function deriveOwnerType(
   recordedByRole: SafariRole | null | undefined,
   branchId: string | null,
 ): ExpenseOwnerType {
@@ -67,7 +67,7 @@ export function deriveOwnerType(
  * via the same endpoint (DRIVER role passes this check; their cash
  * spendability check is enforced separately by `ExpensesService.create`).
  */
-export const DRIVER_ONLY_CATEGORIES: ReadonlySet<ExpenseCategory> = new Set([
+const DRIVER_ONLY_CATEGORIES: ReadonlySet<ExpenseCategory> = new Set([
   ExpenseCategory.FUEL,
 ]);
 

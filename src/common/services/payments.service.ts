@@ -147,7 +147,7 @@ const UPAYMENTS_TRACK_LIKE_KEYS: readonly string[] = [
 ];
 
 /** Pure-digit UPayments `trans_id` / inquiry ids are short; longer runs are wrong-field picks or corrupted JSON. */
-export const UPAYMENTS_MAX_DIGIT_ONLY_INQUIRY_LEN = 32;
+const UPAYMENTS_MAX_DIGIT_ONLY_INQUIRY_LEN = 32;
 
 function isPlausibleTrackValue(s: string, key: string): boolean {
   if (s.length < 5 || s.length > 128) {

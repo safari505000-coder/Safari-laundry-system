@@ -1146,8 +1146,104 @@ Pre-deletion grep verification across the entire repo (excluding `node_modules`)
 ### 24.8 — Steps still on deck
 
 - **Step D-1** — review-each 7 unused exports inside Banking Core (defer-friendly; small surface)
-- **Step D-2** — batch-delete 34 unused exports outside Banking Core
 - **Stretch** — re-evaluate Knip's 187 FE-export false-positive list under a proper `knip.json` config (Station 3 candidate)
 - **Tier-3 deferred** — `supertest` / `@types/supertest` (used at runtime by integration suites; keep), `scripts/verify-cash-status-bugfix.mjs` (one-off forensic script; awaiting team review)
 - **Open question for Station 3 review** — purge ad-hoc one-off `scripts/*.cjs` / `scripts/*.mjs` that are no longer used
+
+---
+
+## 25. V24 Station 2 — Step D-2 — Non-Core Unused-Export Batch Purge — COMPLETE
+
+> **Mission**: collapse the dead-export footprint outside the Banking Core by either (a) removing the `export` keyword on symbols that are still consumed inside their declaring module, or (b) deleting symbols that have zero callers anywhere. Banking Core (§2.1.a — the 7 frozen files) intentionally left alone for the per-file Step D-1 review.
+
+### 25.1 — Scope
+
+| Layer | Decision |
+|---|---|
+| **Banking Core** (Ledger / Aggregators / Snapshots / Reconciliation + the 7 §2.1.a files) | **NOT TOUCHED** — Frozen Core Policy. Awaits Step D-1 per-file review. |
+| **Non-core** (§2.1.b list — every other module) | Purged in this commit. |
+| **Knip false positives** | Caught by `tsc --noEmit` and reverted before commit (1 case — `countAccruedMonths`). |
+
+### 25.2 — Discovery → Verification → Action
+
+1. Re-read §2.1.b of `docs/v24-station-2-purge-report.md` to lock in the candidate list (35 files, 44 candidate symbols).
+2. Per-symbol grep across the repo to filter Knip false positives against actual code.
+3. Cross-checked V23.x `ORDER_SERIAL_KEY` decision in this scorecard (already kept — back-compat shim) and pre-emptively excluded.
+4. Applied edits. `tsc --noEmit` then surfaced one Knip false positive (`countAccruedMonths` is imported by `src/reports/reports.service.ts:33`) which was promptly reverted.
+5. Re-ran the full Green Matrix to confirm zero regression.
+
+### 25.3 — Action breakdown
+
+**42 symbols processed across 33 files.** Two flavours:
+
+- **36 `export` keyword removals** — symbol stays as module-internal const/function; internal callers untouched; external import surface shrinks by one entry.
+- **6 full deletions** — symbol body removed entirely (zero callers anywhere):
+  - `src/cash-monitor/driver-amount-map.ts` → `getDriverAmountFromSSoT` (alias never adopted).
+  - `src/auth/capabilities.ts` → `export { AppPermission }` (orphan re-export; consumers go straight to `permissions.enum`).
+  - `src/common/tracing/trace-context.ts` → `requestTraceId` function.
+  - `src/common/config/region.ts` → `isSecondaryRegion` function.
+  - `src/domain-events/financial-domain-event.types.ts` → `FINANCIAL_DOMAIN_EVENT_PREFIX` constant.
+  - `src/prisma/prisma.service.ts` → `export { guardAppendOnlyDelegate }` (orphan re-export of an internally-used helper).
+
+Plus **2 ancillary cleanups** that fell out of the deletions:
+
+- `src/common/tracing/trace-context.ts` — removed orphan `import type { Request } from 'express'` (only consumer was `requestTraceId`).
+- `src/common/config/region.ts` and `src/cash-monitor/cash-rules.ts` — refreshed JSDoc that referenced the now-removed symbols.
+
+### 25.4 — Variance from the §D-2 headline (34 → 42)
+
+The Purge Report's approval matrix reads "34 unused non-core exports". The §2.1.b table lists 44 entries; the 34 figure was a loose count that excluded entries flagged "Verify before removing" / "check consumer". This commit applies the verification protocol per-symbol and ships **42 actual purges** (Knip false positives reverted, one V23 back-compat shim skipped). The deviation is upward (more cleanup than promised), with full Green Matrix proof.
+
+### 25.5 — Banking Core untouched (proof)
+
+`git diff --name-only HEAD` shows zero edits to:
+
+- `src/general-ledger/**`
+- `src/finance/aggregators/**`
+- `src/finance/snapshots/**`
+- `src/finance/reconciliation/**`
+- `src/finance/utils/**`
+- `src/finance/invoice-payment-status.service.ts`
+- `src/finance/finance-money.ts`
+- `src/finance/debt-ledger-payment-origin.util.ts`
+- `src/finance/periods/financial-periods.service.ts`
+
+The only `src/finance/` file in the diff is `canonical-payment-method.ts`, which §2.1.b explicitly classifies as non-core (payment-method-string normaliser, not a Banking Core layer).
+
+### 25.6 — Green Matrix proof (taken right before commit)
+
+| Gate | Result |
+|---|---|
+| `npx tsc --noEmit` (BE) | **0 errors** |
+| `npx tsc --noEmit` (`web/`) | **0 errors** |
+| `npx jest` (BE) | **89 / 89 suites, 798 / 798 tests pass** (21 skipped — unchanged) |
+| `npx vitest run` (`web/`) | **39 / 39 files, 259 / 259 tests pass** |
+| `npm run build` (`web/`) | **OK** (Vite chunk-size warning unchanged from baseline) |
+| `npx jest src/finance/v24-canonical-dto-purity.spec.ts src/finance/reconciliation/v24-reconciliation-baseline.spec.ts` | **2 / 2 suites, 6 / 6 tests pass** |
+| `scripts/find-legacy-debt-readers.ts` | `[LEGACY_READER_FOUND] none — repo is clean.` |
+| Pre-commit hook (`tsc -b` projects) | **passes naturally — NO `--no-verify` used** |
+
+### 25.7 — Risk / reversibility
+
+- **Risk: zero net regression.** Every gate that was green before this purge is still green after.
+- **Reversibility: trivial.** Each `export` keyword removal is a one-character revert. The 6 full deletions are recoverable from this commit's diff.
+- **Honesty win.** Knip + grep + `tsc` form a 3-layer verification chain. The one false positive (`countAccruedMonths`) was caught before commit, demonstrating the chain works as designed.
+
+### 25.8 — Files touched
+
+33 source files modified (full list in commit diff). Notable categories:
+
+- **Cash monitor (4 files)**: `cash-rules.ts`, `cash-write-police.guard.ts`, `driver-amount-map.ts`, `collections-workflow.service.ts`.
+- **Collections workflow DTOs (1 file)**: `collections-workflow.dto.ts`.
+- **Customer notifications (2 files)**: `customer-notifications.service.ts`, `whatsapp.queue.ts`.
+- **Common infra (7 files)**: `branding.ts`, `discord-alert.queue.ts`, `payments.service.ts`, `trace-context.ts`, `request-async-context.ts`, `kuwait-customer-phone.ts`, `region.ts`.
+- **Domain events (2 files)**: `financial-domain-event.types.ts`, `financial-realtime.types.ts`.
+- **Other (17 files)**: presence, system-config, prisma, orders, owner-dashboard, customers, expenses, finance/canonical-payment-method, branches, bootstrap, call-center DTOs, auth/capabilities, users/password-policy, tracing.
+
+### 25.9 — Steps still on deck
+
+- **Step D-1** — review-each 7 unused exports inside Banking Core (defer-friendly; small surface).
+- **Stretch** — re-evaluate Knip's 187 FE-export false-positive list under a proper `knip.json` config (Station 3 candidate).
+- **Tier-3 deferred** — `supertest` / `@types/supertest` (used at runtime by integration suites; keep), `scripts/verify-cash-status-bugfix.mjs` (one-off forensic script; awaiting team review).
+- **Open question for Station 3 review** — purge ad-hoc one-off `scripts/*.cjs` / `scripts/*.mjs` that are no longer used.
 

@@ -7,8 +7,6 @@ export const CREATE_CUSTOMER = 'create_customer' as const;
 /** Driver-only: read own completed POS totals for dashboard payment split (see RolesGuard + finance daily-pos-sales). */
 export const FINANCE_DAILY_POS_SALES_OWN = 'finance:daily_pos_sales:own' as const;
 
-export { AppPermission };
-
 /**
  * Temporary capability map until dynamic policy assignment is fully rolled out.
  * Current assignment: OWNER only.
