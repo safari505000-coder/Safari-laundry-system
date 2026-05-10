@@ -21,6 +21,7 @@ import { sumLinesKd, DELIVERY_FEE_KD } from '@/utils/finance-engine';
 import { usePosEngine } from '@/modules/shared/hooks/use-pos-engine';
 import { usePriceList } from '@/modules/shared/hooks/use-price-list';
 import { PosAuxiliaryUi } from '@/modules/shared/components/pos/pos-auxiliary-ui';
+import { formatKwdAmount, formatKwdLabel } from '@/lib/kwd';
 
 /** Branch / back-office POS (MANAGER only). Drivers use `DriverPOS`. */
 export function PosPage() {
@@ -56,7 +57,6 @@ export function PosPage() {
     loadCatalog,
     defaultVisual,
     basePriceKd,
-    kwdSuffix,
     openServiceModal,
     subOrders,
     activeSubOrderIndex,
@@ -72,7 +72,6 @@ export function PosPage() {
     firstFilledSubOrderIndex,
     isSubscriptionOrder,
     grandTotal,
-    dateLocale,
     addAttachedOrder,
     posPaymentMethod,
     setPosPaymentMethod,
@@ -256,7 +255,7 @@ export function PosPage() {
                     )}
                   >
                     <span className="absolute top-4 text-lg font-bold tabular-nums text-primary end-4">
-                      {price.toFixed(3)} {kwdSuffix}
+                      {formatKwdLabel(price)}
                     </span>
                     <div
                       className={cn(
@@ -340,8 +339,7 @@ export function PosPage() {
                         isBalanceWarning && 'text-red-700 ring-red-300',
                       )}
                     >
-                      {Number.parseFloat(billing.remainingBalance).toFixed(3)}{' '}
-                      {kwdSuffix}
+                      {formatKwdLabel(billing.remainingBalance)}
                     </span>
                   </div>
                   <p className="text-muted-foreground">
@@ -359,8 +357,7 @@ export function PosPage() {
                     <span className="font-medium text-foreground">
                       {t('pos.subscription.balance')}:
                     </span>{' '}
-                    {Number.parseFloat(billing.remainingBalance).toFixed(3)}{' '}
-                    {kwdSuffix}
+                    {formatKwdLabel(billing.remainingBalance)}
                   </p>
                   <p
                     className={cn(
@@ -371,7 +368,7 @@ export function PosPage() {
                     <span className="font-medium text-foreground">
                       {t('pos.subscription.debt')}:
                     </span>{' '}
-                    {Number.parseFloat(billing.debt).toFixed(3)} {kwdSuffix}
+                    {formatKwdLabel(billing.debt)}
                   </p>
                   {isBalanceWarning ?
                     <p className="text-[11px] font-semibold leading-snug text-red-700">
@@ -408,7 +405,7 @@ export function PosPage() {
                         {line.nameAr}
                       </p>
                       <p className="tabular-nums text-xs text-muted-foreground">
-                        {line.unitPrice.toFixed(3)} ×
+                        {formatKwdAmount(line.unitPrice)} ×
                         <input
                           type="number"
                           min={1}
@@ -425,7 +422,7 @@ export function PosPage() {
                       </p>
                     </div>
                     <span className="shrink-0 tabular-nums font-semibold text-foreground">
-                      {(line.quantity * line.unitPrice).toFixed(3)}
+                      {formatKwdAmount(line.quantity * line.unitPrice)}
                     </span>
                   </div>
                 ))
@@ -442,11 +439,7 @@ export function PosPage() {
           <div className="text-lg font-bold tabular-nums text-foreground">
             <span className="text-muted-foreground">{t('pos.totalKwd')}:</span>{' '}
             <span className="text-primary">
-              {grandTotal.toLocaleString(dateLocale, {
-                minimumFractionDigits: 3,
-                maximumFractionDigits: 3,
-              })}{' '}
-              {kwdSuffix}
+              {formatKwdLabel(grandTotal)}
             </span>
           </div>
           <div className="flex w-full flex-col gap-2 rounded-xl border border-border bg-card p-2 sm:w-auto sm:min-w-[300px]">
@@ -488,7 +481,7 @@ export function PosPage() {
                       <div className="mt-0.5 flex justify-between text-muted-foreground">
                         <span>{t('pos.multiOrder.linesTotal')}</span>
                         <span className="tabular-nums">
-                          {lineSum.toFixed(3)} {kwdSuffix}
+                          {formatKwdLabel(lineSum)}
                         </span>
                       </div>
                       <div className="flex justify-between text-muted-foreground">
@@ -500,7 +493,7 @@ export function PosPage() {
                           )}
                         >
                           {dFee > 0 ?
-                            `${dFee.toFixed(3)} ${kwdSuffix}`
+                            formatKwdLabel(dFee)
                           : t('pos.multiOrder.freeDeliveryAttached')}
                         </span>
                       </div>
@@ -531,7 +524,7 @@ export function PosPage() {
                         </span>
                         <span className="tabular-nums">
                           {vipOn
-                            ? `+1.000 ${kwdSuffix}`
+                            ? `+${formatKwdLabel(1)}`
                             : t('pos.vip.off')}
                         </span>
                       </button>
@@ -544,7 +537,7 @@ export function PosPage() {
               <div className="flex items-center justify-between text-muted-foreground">
                 <span>{t('pos.subtotalLabel')}</span>
                 <span className="tabular-nums">
-                  {combinedLineSubtotal.toFixed(3)} {kwdSuffix}
+                  {formatKwdLabel(combinedLineSubtotal)}
                 </span>
               </div>
               <div className="flex items-center justify-between text-muted-foreground">
@@ -552,21 +545,21 @@ export function PosPage() {
                 <span className="tabular-nums">
                   {sessionDeliveryCharge <= 0 ?
                     t('pos.freeDelivery')
-                  : `${sessionDeliveryCharge.toFixed(3)} ${kwdSuffix}`}
+                  : formatKwdLabel(sessionDeliveryCharge)}
                 </span>
               </div>
               {combinedVipSurcharge > 0 ?
                 <div className="flex items-center justify-between text-amber-800">
                   <span>{t('pos.vip.lineLabel')}</span>
                   <span className="tabular-nums">
-                    {combinedVipSurcharge.toFixed(3)} {kwdSuffix}
+                    {formatKwdLabel(combinedVipSurcharge)}
                   </span>
                 </div>
               : null}
               <div className="flex items-center justify-between border-t border-border pt-1 text-sm font-semibold text-foreground">
                 <span>{t('pos.grandTotalLabel')}</span>
                 <span className="tabular-nums">
-                  {grandTotal.toFixed(3)} {kwdSuffix}
+                  {formatKwdLabel(grandTotal)}
                 </span>
               </div>
             </div>

@@ -35,6 +35,7 @@ import type {
   DebtRecoveryDayRowDto,
   DebtRecoveryReportDto,
 } from './dto/debt-recovery-report.dto';
+import { computeCanonicalDebtRecoverySummary } from '../finance/canonical-financial-projection';
 import type { ReminderResultDto } from './dto/reminder-result.dto';
 import type { SubscriptionRolloverPreviewDto } from './dto/subscription-rollover-preview.dto';
 import type {
@@ -65,6 +66,15 @@ import type {
   ReconciliationCheckDto,
   ReconciliationStatus,
 } from './dto/daily-collections-reconciliation.dto';
+import {
+  canonicalStatementInvoiceGroup,
+  computeCanonicalStatementEventProjection,
+  computeCanonicalStatementTotals,
+} from '../finance/canonical-financial-projection';
+import {
+  buildCanonicalSnapshot,
+  CANONICAL_SNAPSHOT_VERSION,
+} from '../finance/canonical-snapshot';
 
 /** Block call-center duplicate WA only inside the 2.5h cooldown when the field already notified. */
 function assertCallCenterMaySendCollectionPaymentWa(
@@ -786,7 +796,16 @@ export class CallCenterService {
 
     const walletFinal = await this.prisma.customerWallet.findUniqueOrThrow({
       where: { customerId: dto.customerId },
-      select: { balance: true, debt: true },
+      select: { balance: true, debt: true, subscriptionExpiresAt: true },
+    });
+
+    this.customerLedger.emitFinancialEvent('finance.subscription.activated', {
+      customerId: dto.customerId,
+      orderId: null,
+      correlationId: core.settlement.subscriptionId,
+      occurredAt: new Date().toISOString(),
+      planId: core.plan.id,
+      expiresAt: walletFinal.subscriptionExpiresAt?.toISOString() ?? new Date().toISOString(),
     });
 
     return {
@@ -1166,8 +1185,8 @@ export class CallCenterService {
     //   • `cashStatus = UNPAID` rows (pending link / cash arrears), AND
     //   • `posPaymentMethod = DEBT_ON_ACCOUNT` rows with still-open
     //     FIFO debt in the ledger.
-    // This is delegated to OrdersService.sumCollectionsDebtTotalKd so
-    // the card and the table footer stay identical to the last fils.
+    // This is delegated to OrdersService.sumCollectionsDebtRemainingKd so
+    // the card and the table rows use the same remaining-balance truth.
     const [
       redCardTotal,
       todaysSettlementRows,
@@ -1175,7 +1194,7 @@ export class CallCenterService {
       pendingLinksCount,
       ledgerDebtSplit,
     ] = await Promise.all([
-      this.orders.sumCollectionsDebtTotalKd(effectiveBranchId, actor ?? undefined),
+      this.orders.sumCollectionsDebtRemainingKd(effectiveBranchId, actor ?? undefined),
       this.prisma.transactionHistory.findMany({
         where: {
           type: LedgerTransactionType.ORDER_WALLET_SETTLEMENT,
@@ -1307,6 +1326,7 @@ export class CallCenterService {
         recoveredWalletKd: '0.0000',
         settlementCount: 0,
         subscriptionCount: 0,
+        trendRatio: 0,
       });
     }
 
@@ -1383,6 +1403,12 @@ export class CallCenterService {
       }
     }
 
+    const days = Array.from(buckets.values());
+    const summary = computeCanonicalDebtRecoverySummary(days);
+    days.forEach((day, index) => {
+      day.trendRatio = summary.trendRatios[index] ?? 0;
+    });
+
     return {
       from: fromDayStr,
       to: toDayStr,
@@ -1390,7 +1416,10 @@ export class CallCenterService {
       totalRecoveredCashKd: FOUR_DP(totalCash),
       totalRecoveredElectronicKd: FOUR_DP(totalElectronic),
       totalRecoveredWalletKd: FOUR_DP(totalWallet),
-      days: Array.from(buckets.values()),
+      totalSettlements: summary.totalSettlements,
+      totalSubscriptions: summary.totalSubscriptions,
+      maxRecoveredKd: summary.maxRecoveredKd,
+      days,
     };
   }
 
@@ -1944,6 +1973,15 @@ export class CallCenterService {
         note: readMetaString(e.metadata, 'note'),
         activationBreakdown,
         closedInvoices: closedInvoicesForEvent,
+        projection: computeCanonicalStatementEventProjection({
+          kind,
+          amountKd: e.amount,
+          balanceAfterKd: e.balanceAfter,
+          debtAfterKd: e.debtAfter,
+          debtSettledKd: debtSettled,
+          debtDiscountKd: debtDiscount,
+          closedInvoices: closedInvoicesForEvent,
+        }),
       };
     });
 
@@ -1967,6 +2005,10 @@ export class CallCenterService {
         issuedWhileCutOff:
           o.subscription?.status === CustomerSubscriptionStatus.CUT_OFF,
         openDebt,
+        projectionGroup: canonicalStatementInvoiceGroup({
+          status: o.status,
+          openDebt,
+        }),
         feedbackRating: fr?.rating ?? null,
         feedbackSubmittedAtIso: fr?.submittedAt.toISOString() ?? null,
       };
@@ -1981,57 +2023,106 @@ export class CallCenterService {
       new Prisma.Decimal(0),
     );
     const openInvoiceCount = mappedInvoices.filter((i) => i.openDebt).length;
+    const statementInvoiceTotals =
+      computeCanonicalStatementTotals(mappedInvoices);
+    const statementRemainingDebtKd = new Prisma.Decimal(
+      statementInvoiceTotals.totalOpenInvoicesKd,
+    );
+
+    const customerHeader = {
+      id: customer.id,
+      displayName: customer.displayName ?? null,
+      phone: customer.phone ?? null,
+      phone2: customer.phone2 ?? null,
+      originBranchId: customer.originBranchId ?? null,
+      originBranchName: customer.originBranch?.name ?? null,
+      walletBalanceKd: FOUR_DP(
+        customer.wallet?.balance ?? new Prisma.Decimal(0),
+      ),
+      walletDebtKd: FOUR_DP(collectionsDebtBasis.walletDebtKd),
+      collectionsReceivableKd: FOUR_DP(
+        collectionsDebtBasis.collectionsReceivableKd,
+      ),
+      remainingDebtKd: FOUR_DP(statementRemainingDebtKd),
+      operationalDebtKd: FOUR_DP(collectionsDebtBasis.operationalDebtKd),
+    };
+
+    const activeSubscription =
+      latestSub && latestSub.status === CustomerSubscriptionStatus.ACTIVE
+        ? {
+            id: latestSub.id,
+            status: latestSub.status,
+            planNameSnapshot: latestSub.planNameSnapshot,
+            planSalePriceKd: FOUR_DP(latestSub.planSalePriceSnapshot),
+            planActualBalanceKd: FOUR_DP(latestSub.planActualBalanceSnapshot),
+            planValidityDays: latestSub.planValidityDaysSnapshot,
+            carriedBalanceKd: FOUR_DP(latestSub.carriedBalanceKd),
+            parentSubscriptionId: latestSub.parentSubscriptionId,
+            activatedAtIso: latestSub.activatedAt.toISOString(),
+            expiresAtIso: latestSub.expiresAt.toISOString(),
+            closedAtIso: latestSub.closedAt?.toISOString() ?? null,
+            closedReason: latestSub.closedReason ?? null,
+          }
+        : null;
+
+    const totals = {
+      eventCount: mappedEvents.length,
+      invoiceCount: mappedInvoices.length,
+      openInvoiceCount,
+      totalInvoicedKd: statementInvoiceTotals.totalInvoicedKd,
+      totalPaidInvoicesKd: statementInvoiceTotals.totalPaidInvoicesKd,
+      totalOpenInvoicesKd: statementInvoiceTotals.totalOpenInvoicesKd,
+      unpaidInvoiceCount: statementInvoiceTotals.unpaidInvoiceCount,
+      paidInvoiceCount: statementInvoiceTotals.paidInvoiceCount,
+      canceledInvoiceCount: statementInvoiceTotals.canceledInvoiceCount,
+      totalCollectedKd: FOUR_DP(totalCollected),
+      totalDiscountedKd: FOUR_DP(totalDiscounted),
+    };
+
+    // V21 Phase 3 — derive an audit-grade snapshot envelope over the
+    // canonical statement payload (customer header, subscription,
+    // invoices, events, totals, feedback). Hash is deterministic so two
+    // identical statements always produce the same envelope.
+    const sortedEvents = [...mappedEvents].sort((a, b) => {
+      const at = a.atIso.localeCompare(b.atIso);
+      return at !== 0 ? at : a.id.localeCompare(b.id);
+    });
+    const sortedInvoices = [...mappedInvoices].sort((a, b) =>
+      a.id.localeCompare(b.id),
+    );
+    const snapshotEnvelope = buildCanonicalSnapshot({
+      payload: {
+        customer: customerHeader,
+        activeSubscription,
+        isCutOff: latestSub?.status === CustomerSubscriptionStatus.CUT_OFF,
+        fromIso,
+        toIso,
+        events: sortedEvents,
+        invoices: sortedInvoices,
+        totals,
+      },
+      sourceEventIds: mappedEvents.map((e) => e.id),
+      sourceInvoiceIds: mappedInvoices.map((i) => i.id),
+      snapshotVersion: CANONICAL_SNAPSHOT_VERSION,
+    });
 
     return {
-      customer: {
-        id: customer.id,
-        displayName: customer.displayName ?? null,
-        phone: customer.phone ?? null,
-        phone2: customer.phone2 ?? null,
-        originBranchId: customer.originBranchId ?? null,
-        originBranchName: customer.originBranch?.name ?? null,
-        walletBalanceKd: FOUR_DP(
-          customer.wallet?.balance ?? new Prisma.Decimal(0),
-        ),
-        walletDebtKd: FOUR_DP(collectionsDebtBasis.walletDebtKd),
-        collectionsReceivableKd: FOUR_DP(
-          collectionsDebtBasis.collectionsReceivableKd,
-        ),
-        operationalDebtKd: FOUR_DP(collectionsDebtBasis.operationalDebtKd),
-        effectiveDebtKd: FOUR_DP(collectionsDebtBasis.operationalDebtKd),
-      },
-      activeSubscription:
-        latestSub && latestSub.status === CustomerSubscriptionStatus.ACTIVE
-          ? {
-              id: latestSub.id,
-              status: latestSub.status,
-              planNameSnapshot: latestSub.planNameSnapshot,
-              planSalePriceKd: FOUR_DP(latestSub.planSalePriceSnapshot),
-              planActualBalanceKd: FOUR_DP(
-                latestSub.planActualBalanceSnapshot,
-              ),
-              planValidityDays: latestSub.planValidityDaysSnapshot,
-              carriedBalanceKd: FOUR_DP(latestSub.carriedBalanceKd),
-              parentSubscriptionId: latestSub.parentSubscriptionId,
-              activatedAtIso: latestSub.activatedAt.toISOString(),
-              expiresAtIso: latestSub.expiresAt.toISOString(),
-              closedAtIso: latestSub.closedAt?.toISOString() ?? null,
-              closedReason: latestSub.closedReason ?? null,
-            }
-          : null,
+      customer: customerHeader,
+      activeSubscription,
       isCutOff: latestSub?.status === CustomerSubscriptionStatus.CUT_OFF,
       fromIso,
       toIso,
       events: mappedEvents,
       invoices: mappedInvoices,
-      totals: {
-        eventCount: mappedEvents.length,
-        invoiceCount: mappedInvoices.length,
-        openInvoiceCount,
-        totalCollectedKd: FOUR_DP(totalCollected),
-        totalDiscountedKd: FOUR_DP(totalDiscounted),
-      },
+      totals,
       feedbackSummary,
+      snapshot: {
+        snapshotVersion: snapshotEnvelope.snapshotVersion,
+        generatedAtIso: snapshotEnvelope.generatedAtIso,
+        canonicalHash: snapshotEnvelope.canonicalHash,
+        sourceEventIds: snapshotEnvelope.sourceEventIds,
+        sourceInvoiceIds: snapshotEnvelope.sourceInvoiceIds,
+      },
     };
   }
 

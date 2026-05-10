@@ -41,8 +41,14 @@ export class CustomerIntelligenceService {
       }),
     ]);
 
+    // V23.2 — `paymentConsistency` is a 0..1 ratio rendered as a
+    // percentage in the dashboard. Both inputs are kept as numbers
+    // here only because the result is intentionally lossy (a ratio,
+    // not money). The numerator and denominator both come from the
+    // canonical Customer 360 financials; the previous version read
+    // the legacy `totalDueKd`, this version reads `canonicalDebtKd`.
     const invoices = money(financials.consumedKd);
-    const due = money(financials.totalDueKd);
+    const due = money(financials.canonicalDebtKd);
     const paymentConsistency = invoices <= 0 ? 1 : (invoices - due) / invoices;
     const avgPaymentDelayHours =
       paidOrders.length === 0 ?

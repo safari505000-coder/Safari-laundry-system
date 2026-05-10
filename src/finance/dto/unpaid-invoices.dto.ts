@@ -158,6 +158,12 @@ export class UnpaidInvoiceRowDto {
   remainingKd: string;
 
   @ApiProperty({
+    description:
+      'Canonical customer running receivable after this timeline row, ordered by issuedAt/order/debtSource (KWD, fixed-4). UI must display this instead of recomputing cumulative balances.',
+  })
+  customerRunningRemainingKd: string;
+
+  @ApiProperty({
     description: 'Number of DebtLedgerEntry rows rolled into this invoice.',
   })
   entryCount: number;
@@ -172,6 +178,44 @@ export class UnpaidInvoiceRowDto {
       '`true` when this invoice still has a non-zero remaining balance after payment allocation.',
   })
   isOpen: boolean;
+
+  @ApiPropertyOptional({
+    enum: ['UNPAID', 'PARTIALLY_PAID', 'PAID'],
+    description:
+      'V20.3.1 — derived payment status. PAID when `remainingKd <= 0.001`; PARTIALLY_PAID when `paidKd > 0` and remaining > tolerance; UNPAID otherwise.',
+  })
+  paymentStatus?: 'UNPAID' | 'PARTIALLY_PAID' | 'PAID';
+
+  @ApiPropertyOptional({
+    description:
+      'V20.3.1 — convenience boolean mirror of `paymentStatus === "PARTIALLY_PAID"`.',
+  })
+  isPartiallyPaid?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'V20.3.1 — convenience boolean mirror of `paymentStatus === "PAID"`.',
+  })
+  isFullyPaid?: boolean;
+
+  /**
+   * V20.3.2 — true iff a `CustomerSubscription` row exists for
+   * the customer with `status === ACTIVE` AND `expiresAt > now`.
+   * Independent of debt — having an open invoice does NOT make a
+   * customer a subscriber, and an active subscription does NOT
+   * exempt them from being in the debt list.
+   */
+  @ApiPropertyOptional({
+    description:
+      'V20.3.2 — true iff customer currently holds an ACTIVE CustomerSubscription with `expiresAt > now`. Independent of debt state.',
+  })
+  hasActiveSubscription?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'V20.3.2 — ISO expiry timestamp of the active CustomerSubscription. Null when customer is not currently an active subscriber.',
+  })
+  subscriptionExpiresAt?: string | null;
 
   @ApiProperty({
     enum: ['INVOICE_SHORTFALL', 'SUBSCRIPTION_OVERUSE', 'OPEN_UNPAID_ORDER'],

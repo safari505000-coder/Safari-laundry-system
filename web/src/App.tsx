@@ -1,7 +1,8 @@
-import type { ReactNode } from 'react';
+import { Suspense, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { ErrorBoundary } from '@/components/error-boundary';
+import { lazyPage, RouteSuspenseFallback } from '@/modules/shared/lazy';
 import { OfflineGlobalAlerts } from '@/offline/offline-global-alerts';
 import { OfflineSyncProvider } from '@/offline/offline-sync-context';
 import { AuthProvider, useAuth } from '@/contexts/auth-context';
@@ -15,15 +16,36 @@ import { ExecutiveDashboardPage } from '@/pages/executive-dashboard-page';
 import { DebtTransfersPage } from '@/pages/debt-transfers-page';
 import { MyDebtTransfersPage } from '@/pages/my-debt-transfers-page';
 import { AttendancePage } from '@/pages/attendance-page';
-import { AttendanceReportPrintPage } from '@/pages/attendance-report-print-page';
-import { PayslipPrintPage } from '@/pages/payslip-print-page';
-import { PayrollRosterPrintPage } from '@/pages/payroll-roster-print-page';
+const AttendanceReportPrintPage = lazyPage(
+  () => import('@/pages/attendance-report-print-page'),
+  'AttendanceReportPrintPage',
+);
+const PayslipPrintPage = lazyPage(
+  () => import('@/pages/payslip-print-page'),
+  'PayslipPrintPage',
+);
+const PayrollRosterPrintPage = lazyPage(
+  () => import('@/pages/payroll-roster-print-page'),
+  'PayrollRosterPrintPage',
+);
 import { LeavesPage } from '@/pages/leaves-page';
-import { LeaveRequestPrintPage } from '@/pages/leave-request-print-page';
+const LeaveRequestPrintPage = lazyPage(
+  () => import('@/pages/leave-request-print-page'),
+  'LeaveRequestPrintPage',
+);
 import { LoansPage } from '@/pages/loans-page';
-import { LoanPrintPage } from '@/pages/loan-print-page';
-import { InvoicePrintPage } from '@/pages/invoice-print-page';
-import { StatementPrintPage } from '@/pages/statement-print-page';
+const LoanPrintPage = lazyPage(
+  () => import('@/pages/loan-print-page'),
+  'LoanPrintPage',
+);
+const InvoicePrintPage = lazyPage(
+  () => import('@/pages/invoice-print-page'),
+  'InvoicePrintPage',
+);
+const StatementPrintPage = lazyPage(
+  () => import('@/pages/statement-print-page'),
+  'StatementPrintPage',
+);
 import { PublicStatementPage } from '@/pages/public-statement-page';
 import { PublicInvoicePage } from '@/pages/public-invoice-page';
 import { FeedbackPublicPage } from '@/pages/feedback-public-page';
@@ -36,20 +58,56 @@ import {
 import { ExpensesPage } from '@/pages/expenses-page';
 import { FinancialsPage } from '@/pages/financials-page';
 import { MonthlySummaryPage } from '@/pages/monthly-summary-page';
-import { MonthlySummaryPrintPage } from '@/pages/monthly-summary-print-page';
-import { MonthlyReportFullPrintPage } from '@/pages/monthly-report-full-print-page';
-import { MoneyFlowStatementPage } from '@/pages/money-flow-statement-page';
-import { InsightsAiPage } from '@/pages/insights-ai-page';
-import { FinancialCycleReportPage } from '@/pages/financial-cycle-report-page';
-import { DriverCashTracePage } from '@/pages/driver-cash-trace-page';
-import { CashReconciliationPage } from '@/pages/cash-reconciliation-page';
+const MonthlySummaryPrintPage = lazyPage(
+  () => import('@/pages/monthly-summary-print-page'),
+  'MonthlySummaryPrintPage',
+);
+const MonthlyReportFullPrintPage = lazyPage(
+  () => import('@/pages/monthly-report-full-print-page'),
+  'MonthlyReportFullPrintPage',
+);
+const MoneyFlowStatementPage = lazyPage(
+  () => import('@/pages/money-flow-statement-page'),
+  'MoneyFlowStatementPage',
+);
+const InsightsAiPage = lazyPage(
+  () => import('@/pages/insights-ai-page'),
+  'InsightsAiPage',
+);
+const FinancialCycleReportPage = lazyPage(
+  () => import('@/pages/financial-cycle-report-page'),
+  'FinancialCycleReportPage',
+);
+const DriverCashTracePage = lazyPage(
+  () => import('@/pages/driver-cash-trace-page'),
+  'DriverCashTracePage',
+);
+const CashReconciliationPage = lazyPage(
+  () => import('@/pages/cash-reconciliation-page'),
+  'CashReconciliationPage',
+);
 import { AccountantDashboardPage } from '@/pages/accountant-dashboard-page';
-import { UnpaidInvoicesPage } from '@/pages/unpaid-invoices-page';
+const UnpaidInvoicesPage = lazyPage(
+  () => import('@/pages/unpaid-invoices-page'),
+  'UnpaidInvoicesPage',
+);
 import { CustomerStatementJournalPage } from '@/pages/customer-statement-journal-page';
-import { ReportsPage } from '@/pages/reports-page';
-import { SalesSummaryReportPage } from '@/pages/sales-summary-report-page';
-import { FinancialReportsHubPage } from '@/pages/financial-reports-hub-page';
-import { OperationalReportsHubPage } from '@/pages/operational-reports-hub-page';
+const ReportsPage = lazyPage(
+  () => import('@/pages/reports-page'),
+  'ReportsPage',
+);
+const SalesSummaryReportPage = lazyPage(
+  () => import('@/pages/sales-summary-report-page'),
+  'SalesSummaryReportPage',
+);
+const FinancialReportsHubPage = lazyPage(
+  () => import('@/pages/financial-reports-hub-page'),
+  'FinancialReportsHubPage',
+);
+const OperationalReportsHubPage = lazyPage(
+  () => import('@/pages/operational-reports-hub-page'),
+  'OperationalReportsHubPage',
+);
 import { LoginPage } from '@/pages/login-page';
 import { ForceChangePasswordPage } from '@/pages/force-change-password';
 import { OrdersPage } from '@/pages/orders-page';
@@ -68,9 +126,14 @@ import { DebtHoldsPage } from '@/pages/debt-holds-page';
 import { StaffHubPage } from '@/pages/staff-hub-page';
 import { FixedExpensesPage } from '@/pages/fixed-expenses-page';
 import { CollectionsPage } from '@/modules/call-center/pages/collections-page';
+const CollectionsCockpitPage = lazyPage(
+  () => import('@/modules/call-center/pages/collections-cockpit-page'),
+  'CollectionsCockpitPage',
+);
 import { CustomersPage } from '@/modules/call-center/pages/customers-page';
 import { CcDashboardPage } from '@/modules/call-center/dashboard/pages/cc-dashboard-page';
 import { CcCustomer360Page } from '@/modules/call-center/dashboard/pages/cc-customer-360-page';
+import { CcCustomer360V2Page } from '@/modules/call-center/dashboard/pages/cc-customer-360-v2-page';
 import { CollectionsReportPage } from '@/modules/call-center/collections-report/pages/collections-report-page';
 import { ControlTowerPage } from '@/modules/call-center/control-tower/pages/control-tower-page';
 import { CustomerPortal360Page } from '@/pages/customer-portal-360-page';
@@ -83,32 +146,90 @@ import { DriverPendingInvoicesPage } from '@/modules/driver/pages/driver-pending
 import { DriverMonitorPage } from '@/pages/driver-monitor-page';
 import { ExpenseApprovalPage } from '@/pages/expense-approval-page';
 import { LiveMonitorPage } from '@/pages/live-monitor-page';
-import { KnetAudit } from '@/modules/accountant/pages/KnetAudit';
-import AccountantInventoryReportPage from '@/modules/accountant/pages/InventoryReport';
-import AccountantStockInPage from '@/modules/accountant/pages/StockIn';
-import InventoryCatalogPage from '@/pages/inventory-catalog-page';
-import InventoryOperationsPage from '@/pages/inventory-operations-page';
-import InventoryMovementsPage from '@/pages/inventory-movements-page';
-import InventoryLowStockPage from '@/pages/inventory-low-stock-page';
-import PurchaseOrdersPage from '@/pages/purchase-orders-page';
-import { UnifiedLedgerPage } from '@/pages/unified-ledger-page';
-import { FinanceLedgerReportsPage } from '@/pages/finance-ledger-reports-page';
+const KnetAudit = lazyPage(
+  () => import('@/modules/accountant/pages/KnetAudit'),
+  'KnetAudit',
+);
+const AccountantInventoryReportPage = lazyPage(
+  () => import('@/modules/accountant/pages/InventoryReport'),
+);
+const AccountantStockInPage = lazyPage(
+  () => import('@/modules/accountant/pages/StockIn'),
+);
+const InventoryCatalogPage = lazyPage(
+  () => import('@/pages/inventory-catalog-page'),
+);
+const InventoryOperationsPage = lazyPage(
+  () => import('@/pages/inventory-operations-page'),
+);
+const InventoryMovementsPage = lazyPage(
+  () => import('@/pages/inventory-movements-page'),
+);
+const InventoryLowStockPage = lazyPage(
+  () => import('@/pages/inventory-low-stock-page'),
+);
+const PurchaseOrdersPage = lazyPage(
+  () => import('@/pages/purchase-orders-page'),
+);
+const UnifiedLedgerPage = lazyPage(
+  () => import('@/pages/unified-ledger-page'),
+  'UnifiedLedgerPage',
+);
+const FinanceLedgerReportsPage = lazyPage(
+  () => import('@/pages/finance-ledger-reports-page'),
+  'FinanceLedgerReportsPage',
+);
 import { CcPerformancePage } from '@/pages/cc-performance-page';
-import { InvoiceAuditLogPage } from '@/pages/invoice-audit-log-page';
-import { AllInvoicesPage } from '@/pages/all-invoices-page';
+const InvoiceAuditLogPage = lazyPage(
+  () => import('@/pages/invoice-audit-log-page'),
+  'InvoiceAuditLogPage',
+);
+const AllInvoicesPage = lazyPage(
+  () => import('@/pages/all-invoices-page'),
+  'AllInvoicesPage',
+);
 import { MyDepositsPage } from '@/modules/driver/pages/my-deposits-page';
 import { MyCashReceiptsPage } from '@/modules/driver/pages/my-cash-receipts-page';
-import { CashReceiptPrintPage } from '@/pages/cash-receipt-print-page';
+const CashReceiptPrintPage = lazyPage(
+  () => import('@/pages/cash-receipt-print-page'),
+  'CashReceiptPrintPage',
+);
 import { WhatsappToolsPage } from '@/modules/call-center/pages/whatsapp-tools-page';
-import { ManageItems } from '@/modules/owner/pages/ManageItems';
-import { OwnerDashboard } from '@/modules/owner/pages/OwnerDashboard';
-import { AuditLogsPage } from '@/pages/audit-logs-page';
-import OwnerInventoryReportPage from '@/modules/owner/pages/InventoryReport';
-import { ManagerCustodyAgingPage } from '@/pages/manager-custody-aging-page';
-import { StaffDebtsPage } from '@/pages/staff-debts-page';
-import { DebtRecoveryReportPage } from '@/pages/debt-recovery-report-page';
-import { OwnerSerialsPage } from '@/pages/owner-serials-page';
-import { BranchesPage } from '@/pages/branches-page';
+const ManageItems = lazyPage(
+  () => import('@/modules/owner/pages/ManageItems'),
+  'ManageItems',
+);
+const OwnerDashboard = lazyPage(
+  () => import('@/modules/owner/pages/OwnerDashboard'),
+  'OwnerDashboard',
+);
+const AuditLogsPage = lazyPage(
+  () => import('@/pages/audit-logs-page'),
+  'AuditLogsPage',
+);
+const OwnerInventoryReportPage = lazyPage(
+  () => import('@/modules/owner/pages/InventoryReport'),
+);
+const ManagerCustodyAgingPage = lazyPage(
+  () => import('@/pages/manager-custody-aging-page'),
+  'ManagerCustodyAgingPage',
+);
+const StaffDebtsPage = lazyPage(
+  () => import('@/pages/staff-debts-page'),
+  'StaffDebtsPage',
+);
+const DebtRecoveryReportPage = lazyPage(
+  () => import('@/pages/debt-recovery-report-page'),
+  'DebtRecoveryReportPage',
+);
+const OwnerSerialsPage = lazyPage(
+  () => import('@/pages/owner-serials-page'),
+  'OwnerSerialsPage',
+);
+const BranchesPage = lazyPage(
+  () => import('@/pages/branches-page'),
+  'BranchesPage',
+);
 /**
  * Unified-dashboard era:
  *   - OWNER / GENERAL_MANAGER / MANAGER / ACCOUNTANT land on
@@ -177,6 +298,7 @@ export default function App() {
         <SafariStreamProvider>
         <BrowserRouter>
           <OfflineGlobalAlerts />
+          <Suspense fallback={<RouteSuspenseFallback />}>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/force-change-password" element={<ForceChangePasswordPage />} />
@@ -458,6 +580,24 @@ export default function App() {
                     </RequireAccess>
                   }
                 />
+                {/*
+                  V22 Phase 5 — Customer360 v2 (Operational Command
+                  Center). Additive sibling of the v1 tabbed page
+                  above. Same access gate, different layout: 3-pane
+                  command-center with a sticky action bar, smart
+                  hints, and live SSE refresh on the canonical
+                  `customer360` channel. The v1 page still owns
+                  every mutation dialog, so v2 is read-first while
+                  we observe adoption.
+                */}
+                <Route
+                  path="cc/customers/:customerId/360"
+                  element={
+                    <RequireAccess access="ccDashboard.view">
+                      <CcCustomer360V2Page />
+                    </RequireAccess>
+                  }
+                />
                 {/* V19.x — Outstanding Payments / Accounts-Receivable.
                   Visible to CC + CC Supervisor + Owner/GM/Accountant.
                   Mutations (status change, manual block toggle) are
@@ -511,11 +651,28 @@ export default function App() {
                     </RequireAccess>
                   }
                 />
+                {/* V23.1 Phase 7 — /cc/collections is now an alias that
+                    forwards to the operational cockpit. The classic
+                    table-only page (CollectionsPage) is preserved at
+                    /cc/collections/classic for rollback safety: revert
+                    this redirect block to restore the previous default. */}
                 <Route
                   path="collections"
+                  element={<Navigate to="/cc/collections/cockpit" replace />}
+                />
+                <Route
+                  path="collections/classic"
                   element={
                     <RequireAccess access="collections.view">
                       <CollectionsPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="collections/cockpit"
+                  element={
+                    <RequireAccess access="collections.view">
+                      <CollectionsCockpitPage />
                     </RequireAccess>
                   }
                 />
@@ -1083,6 +1240,7 @@ export default function App() {
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          </Suspense>
         </BrowserRouter>
         <AppToaster />
         </SafariStreamProvider>

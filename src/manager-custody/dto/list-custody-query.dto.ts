@@ -19,3 +19,25 @@ export class ListCustodyQueryDto {
   @IsString()
   branchId?: string;
 }
+
+export class StaffDebtsQueryDto {
+  @ApiPropertyOptional({ description: 'Branch id or ALL' })
+  @IsOptional()
+  @IsString()
+  branch?: string;
+
+  @ApiPropertyOptional({ description: 'Name search' })
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @ApiPropertyOptional({ description: 'ALL | driver:<id> | manager:<id>' })
+  @IsOptional()
+  @IsString()
+  employee?: string;
+
+  @ApiPropertyOptional({ enum: ['ALL', 'OVERDUE', 'CURRENT'] })
+  @IsOptional()
+  @IsString()
+  status?: 'ALL' | 'OVERDUE' | 'CURRENT';
+}

@@ -16,7 +16,7 @@ import {
   type DailyCollectionsResponse,
   type DailyCollectionsReconciliationResponse,
 } from '@/lib/api';
-import { formatKwdLabel } from '@/lib/kwd';
+import { formatKwdLabel, isPositiveKd } from '@/lib/kwd';
 import { Button } from '@/modules/shared/components/ui/button';
 import {
   Card,
@@ -198,8 +198,7 @@ export function DailyCollectorPanel({ token }: Props) {
             <>
               <ul className="space-y-2">
                 {visibleEvents.map((e) => {
-                  const isDiscount =
-                    Number.parseFloat(e.discountAppliedKd) > 0;
+                  const isDiscount = isPositiveKd(e.discountAppliedKd);
                   return (
                     <li
                       key={e.id}

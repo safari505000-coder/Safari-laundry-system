@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/auth-context';
 import { ApiError, getLoan, type LoanRow } from '@/lib/api';
+import { formatKwdLabel } from '@/lib/kwd';
 import { PrintableSheet } from '@/modules/shared/print';
 
 /**
@@ -46,10 +47,6 @@ export function LoanPrintPage() {
   }
 
   const docNumber = `LN-${row.id.slice(0, 8).toUpperCase()}`;
-  const amount = Number(row.amount);
-  const monthly = Number(row.monthlyDeduction);
-  const remaining = Number(row.remaining);
-  const paid = Math.max(0, amount - remaining);
 
   return (
     <PrintableSheet
@@ -78,7 +75,7 @@ export function LoanPrintPage() {
         <div className="printable-sheet__grid-3">
           <Field
             label="المبلغ الإجمالي"
-            value={`${amount.toFixed(3)} د.ك`}
+            value={formatKwdLabel(row.amount)}
             mono
           />
           <Field
@@ -87,17 +84,17 @@ export function LoanPrintPage() {
           />
           <Field
             label="القسط الشهري"
-            value={`${monthly.toFixed(3)} د.ك`}
+            value={formatKwdLabel(row.monthlyDeduction)}
             mono
           />
           <Field
             label="المدفوع حتى الآن"
-            value={`${paid.toFixed(3)} د.ك`}
+            value={formatKwdLabel(row.paidKd)}
             mono
           />
           <Field
             label="المتبقي"
-            value={`${remaining.toFixed(3)} د.ك`}
+            value={formatKwdLabel(row.remaining)}
             mono
           />
           <Field

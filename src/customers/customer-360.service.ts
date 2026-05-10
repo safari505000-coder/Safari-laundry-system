@@ -1,12 +1,15 @@
 import {
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
-import { SafariRole } from '@prisma/client';
+import { Prisma, SafariRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { JwtUser } from '../auth/decorators/current-user.decorator';
 import { CustomerBlockingService } from '../common/services/customer-blocking.service';
+import { JournalSourceService } from '../general-ledger/journal-source.service';
 import { computeCustomer360FinancialCore } from './customer-360-financials';
 import { buildInsight, evaluateCustomer } from './customer-evaluator';
 import { sanitizeCustomerView } from './sanitize-customer-360-view';
@@ -33,6 +36,16 @@ export class Customer360Service {
   constructor(
     private readonly prisma: PrismaService,
     private readonly customerBlocking: CustomerBlockingService,
+    /**
+     * V20.4 — Phase 2 optional injection. The journal source is
+     * optional so legacy unit tests that construct this service
+     * with `(prisma, blocking)` keep compiling; production DI
+     * always provides the reader so Customer 360 reports the
+     * canonical bank-grade debt number.
+     */
+    @Optional()
+    @Inject(JournalSourceService)
+    private readonly journalSource?: JournalSourceService,
   ) {}
 
   async get360(customerId: string, user: JwtUser): Promise<Customer360ResponseDto> {
@@ -52,10 +65,14 @@ export class Customer360Service {
       throw new NotFoundException('Customer not found');
     }
 
-    const financials = await computeCustomer360FinancialCore(this.prisma, customerId);
+    const financials = await computeCustomer360FinancialCore(
+      this.prisma,
+      customerId,
+      this.journalSource ?? null,
+    );
     const blocked = await this.customerBlocking.applyAutoBlockFromFinancials(
       customerId,
-      financials.totalDueKd,
+      financials.canonicalDebtKd,
     );
     if (blocked) {
       financials.isBlocked = blocked.isBlocked;
@@ -108,7 +125,7 @@ export class Customer360Service {
     const statement: Customer360StatementDto = {
       financials,
       narrativeLines: [
-        `قراءة داخلية: المبلغ المطلوب دفعه ${financials.totalDueKd} د.ك مقارنة بالمدفوعات.`,
+        `قراءة داخلية: المبلغ المطلوب دفعه ${financials.canonicalDebtKd} د.ك مقارنة بالمدفوعات.`,
         'راقب تجاوز الاشتراك مقارنة بقيمة الباقة الفعلية لهذا العميل.',
       ],
     };
@@ -119,12 +136,20 @@ export class Customer360Service {
       subscriptionRemainingKd: financials.subscriptionRemainingKd,
     };
 
+    // V23.2 — score formula migrated to canonical receivable + Decimal
+    // arithmetic. The score is a 0..100 reputation index, NOT money;
+    // the cast to `number` happens once via Prisma.Decimal.toNumber()
+    // which is the documented escape hatch for purely-numeric outputs.
+    // Feedback average is already a number (rating column is integer).
+    const debtPenalty = new Prisma.Decimal(financials.canonicalDebtKd)
+      .times(2)
+      .toNumber();
     const score: Customer360ScoreDto = {
       value: Math.max(
         0,
         Math.min(
           100,
-          85 - Number.parseFloat(financials.totalDueKd) * 2 + (feedbackAverage ?? 0) * 2,
+          85 - debtPenalty + (feedbackAverage ?? 0) * 2,
         ),
       ),
       feedbackAverage,

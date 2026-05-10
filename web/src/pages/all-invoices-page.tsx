@@ -315,6 +315,7 @@ export function AllInvoicesPage() {
                   so agents spot every debt row without reading the
                   method column.
                 */}
+                {/* allow-legacy-debt-reader (V20.6 Phase 2: cashStatus is the server-canonical settlement flag set when the invoice was issued; UI uses it as a render branch, not as a debt computation) */}
                 {o.status !== 'CANCELED' &&
                 (o.cashStatus === 'UNPAID' ||
                   o.posPaymentMethod === 'DEBT_ON_ACCOUNT') ? (

@@ -21,12 +21,7 @@ import { can } from '@/modules/shared/auth/access-matrix';
 import {
   ApiError,
   apiJson,
-  getManagerCustodyAging,
-  type BranchRow,
-  type DriverBalanceResponse,
-  type DriverBalanceRow,
-  type ManagerCashCustodyRow,
-  type ManagerCustodyAgingResponse,
+  type StaffDebtsResponse,
 } from '@/lib/api';
 import { formatKwdLabel } from '@/lib/kwd';
 import { Badge } from '@/modules/shared/components/ui/badge';
@@ -64,46 +59,6 @@ import { cn } from '@/lib/utils';
 
 type DebtStatus = 'ALL' | 'OVERDUE' | 'CURRENT';
 
-const HOUR_MS = 60 * 60 * 1000;
-const OVERDUE_MS = 24 * HOUR_MS;
-
-function toNum(v: string | number | null | undefined): number {
-  if (v == null) return 0;
-  if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function driverShiftAgeMs(row: DriverBalanceRow, now: number): number | null {
-  if (!row.shiftStartedAt) return null;
-  const started = Date.parse(row.shiftStartedAt);
-  if (!Number.isFinite(started)) return null;
-  return Math.max(0, now - started);
-}
-
-/**
- * Dastur §3 — Combined "pending invoice" liability per driver: every
- * COMPLETED invoice (CASH + K-Net + Payment Link + Online) that is still in
- * PAID_TO_DRIVER state (not yet accountant-verified). Returns the total in KD.
- */
-function driverPendingTotalKd(row: DriverBalanceRow): number {
-  return toNum(row.pendingTotalKd);
-}
-
-/**
- * Dastur §3 — Driver is "overdue" if they still have ANY pending unverified
- * invoice AND either:
- *   • no active shift (shift ended without reconciliation), OR
- *   • the active shift has been running for ≥ 24h without reconciliation.
- * Otherwise, any non-zero pending total is flagged as "current" (in-flight).
- */
-function isDriverOverdue(row: DriverBalanceRow, now: number): boolean {
-  if (driverPendingTotalKd(row) <= 0) return false;
-  if (!row.currentShiftId) return true;
-  const age = driverShiftAgeMs(row, now);
-  return age != null && age >= OVERDUE_MS;
-}
-
 /**
  * Dastur §3 — Staff Debts page (ACCOUNTANT + OWNER).
  * Strict scope: internal cash liabilities only.
@@ -121,9 +76,7 @@ export function StaffDebtsPage() {
   // exactly one place.
   const allowed = can(user, 'staffDebts.view');
 
-  const [drivers, setDrivers] = useState<DriverBalanceRow[] | null>(null);
-  const [custody, setCustody] = useState<ManagerCashCustodyRow[] | null>(null);
-  const [branches, setBranches] = useState<BranchRow[] | null>(null);
+  const [report, setReport] = useState<StaffDebtsResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
   const [searchParams, setSearchParams] = useSearchParams();
@@ -167,217 +120,43 @@ export function StaffDebtsPage() {
     if (!token || !allowed) return;
     setLoading(true);
     try {
-      const [drv, agingRes, branchRows] = await Promise.all([
-        apiJson<DriverBalanceResponse>('/api/finance/driver-balance', { token }),
-        getManagerCustodyAging(token),
-        apiJson<BranchRow[]>('/api/branches', { token }),
-      ]);
-      setDrivers(drv.drivers ?? []);
-      setCustody(
-        (agingRes as ManagerCustodyAgingResponse).rows.filter(
-          (r) => r.status !== 'VERIFIED',
-        ),
+      const params = new URLSearchParams();
+      if (branchFilter && branchFilter !== 'ALL') params.set('branch', branchFilter);
+      if (nameFilter.trim()) params.set('name', nameFilter.trim());
+      if (employeeFilter && employeeFilter !== 'ALL') {
+        params.set('employee', employeeFilter);
+      }
+      if (statusFilter !== 'ALL') params.set('status', statusFilter);
+      const qs = params.toString();
+      const data = await apiJson<StaffDebtsResponse>(
+        `/api/manager-custody/staff-debts${qs ? `?${qs}` : ''}`,
+        { token },
       );
-      setBranches(branchRows ?? []);
+      setReport(data);
     } catch (e) {
       if (e instanceof ApiError) toast.error(e.message);
     } finally {
       setLoading(false);
     }
-  }, [token, allowed]);
+  }, [token, allowed, branchFilter, nameFilter, employeeFilter, statusFilter]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  const now = useMemo(() => Date.now(), [drivers, custody]);
-
+  const [expandedDriver, setExpandedDriver] = useState<string | null>(null);
+  const driverRows = report?.drivers ?? [];
+  const managerRows = report?.managers ?? [];
+  const branches = useMemo(() => report?.branches ?? [], [report?.branches]);
+  const employeeOptions = report?.employeeOptions ?? [];
+  const selectedEmployee = report?.selectedEmployee ?? null;
+  const showBranchFilter = report?.showBranchFilter ?? employeeFilter === 'ALL';
+  const totals = report?.totals;
   const branchNameById = useMemo(() => {
     const map = new Map<string, string>();
-    for (const b of branches ?? []) map.set(b.id, b.name);
+    for (const branch of branches) map.set(branch.id, branch.name);
     return map;
   }, [branches]);
-
-  const trimmedName = nameFilter.trim().toLocaleLowerCase();
-
-  /*
-   * V19.4 — Decode employeeFilter once so downstream logic doesn't repeat
-   * the string split. 'ALL' → no employee constraint; otherwise one of
-   * { kind: 'driver' | 'manager', id }.
-   */
-  const employeePick = useMemo<
-    { kind: 'driver' | 'manager'; id: string } | null
-  >(() => {
-    if (!employeeFilter || employeeFilter === 'ALL') return null;
-    const [kind, id] = employeeFilter.split(':');
-    if ((kind === 'driver' || kind === 'manager') && id) {
-      return { kind, id };
-    }
-    return null;
-  }, [employeeFilter]);
-
-  /*
-   * V19.4 — Unified employee picker. Drivers with pending balance and
-   * unique managers with open custody are merged, deduped by (kind, id),
-   * and narrowed to the active branch if one is selected. This is what
-   * populates the "الموظف" dropdown; when a branch is picked, only
-   * employees belonging to that branch remain, exactly as requested.
-   */
-  type EmployeeOption = {
-    value: string;
-    label: string;
-    branchId: string | null;
-    kind: 'driver' | 'manager';
-  };
-
-  const employeeOptions = useMemo<EmployeeOption[]>(() => {
-    const seen = new Set<string>();
-    const out: EmployeeOption[] = [];
-    for (const d of drivers ?? []) {
-      if (driverPendingTotalKd(d) <= 0) continue;
-      const value = `driver:${d.driverId}`;
-      if (seen.has(value)) continue;
-      seen.add(value);
-      out.push({
-        value,
-        label: d.fullName,
-        branchId: d.branchId,
-        kind: 'driver',
-      });
-    }
-    for (const c of custody ?? []) {
-      const value = `manager:${c.managerId}`;
-      if (seen.has(value)) continue;
-      seen.add(value);
-      out.push({
-        value,
-        label: c.managerName,
-        branchId: c.branchId,
-        kind: 'manager',
-      });
-    }
-    const scoped =
-      branchFilter !== 'ALL'
-        ? out.filter((o) => o.branchId === branchFilter)
-        : out;
-    return scoped.sort((a, b) => a.label.localeCompare(b.label, 'ar'));
-  }, [drivers, custody, branchFilter]);
-
-  const selectedEmployee = useMemo<EmployeeOption | null>(() => {
-    if (!employeePick) return null;
-    return (
-      employeeOptions.find((o) => o.value === employeeFilter) ??
-      // fall back: the employee may belong to a branch that has since
-      // been excluded by the branch filter; look them up globally so
-      // the picked row still renders correctly.
-      (() => {
-        for (const d of drivers ?? []) {
-          if (employeePick.kind === 'driver' && d.driverId === employeePick.id)
-            return {
-              value: employeeFilter,
-              label: d.fullName,
-              branchId: d.branchId,
-              kind: 'driver' as const,
-            };
-        }
-        for (const c of custody ?? []) {
-          if (
-            employeePick.kind === 'manager' &&
-            c.managerId === employeePick.id
-          )
-            return {
-              value: employeeFilter,
-              label: c.managerName,
-              branchId: c.branchId,
-              kind: 'manager' as const,
-            };
-        }
-        return null;
-      })()
-    );
-  }, [employeeOptions, employeeFilter, employeePick, drivers, custody]);
-
-  /*
-   * V19.4 — When an employee is picked, hide the branch select entirely
-   * (the employee's branch is implicit). Accountant/GM still see the
-   * branch on each row in the table, so no information is lost.
-   */
-  const showBranchFilter = !employeePick;
-
-  const driverRows = useMemo(() => {
-    const list = (drivers ?? []).filter((d) => driverPendingTotalKd(d) > 0);
-    return list.filter((d) => {
-      // Employee lock trumps every other filter in its own section.
-      if (employeePick) {
-        if (employeePick.kind !== 'driver') return false;
-        if (d.driverId !== employeePick.id) return false;
-      } else if (branchFilter !== 'ALL' && d.branchId !== branchFilter) {
-        return false;
-      }
-      if (trimmedName && !d.fullName.toLocaleLowerCase().includes(trimmedName))
-        return false;
-      const overdue = isDriverOverdue(d, now);
-      if (statusFilter === 'OVERDUE' && !overdue) return false;
-      if (statusFilter === 'CURRENT' && overdue) return false;
-      return true;
-    });
-  }, [drivers, branchFilter, employeePick, trimmedName, statusFilter, now]);
-
-  const managerRows = useMemo(() => {
-    return (custody ?? []).filter((c) => {
-      if (employeePick) {
-        if (employeePick.kind !== 'manager') return false;
-        if (c.managerId !== employeePick.id) return false;
-      } else if (branchFilter !== 'ALL' && c.branchId !== branchFilter) {
-        return false;
-      }
-      if (
-        trimmedName &&
-        !c.managerName.toLocaleLowerCase().includes(trimmedName)
-      )
-        return false;
-      if (statusFilter === 'OVERDUE' && !c.isOverdue) return false;
-      if (statusFilter === 'CURRENT' && c.isOverdue) return false;
-      return true;
-    });
-  }, [custody, branchFilter, employeePick, trimmedName, statusFilter]);
-
-  const driverTotal = useMemo(
-    () => driverRows.reduce((sum, r) => sum + driverPendingTotalKd(r), 0),
-    [driverRows],
-  );
-
-  const driverBreakdownTotals = useMemo(() => {
-    return driverRows.reduce(
-      (acc, r) => {
-        acc.cash += toNum(r.pendingCashKd);
-        acc.knet += toNum(r.pendingKnetKd);
-        acc.link += toNum(r.pendingLinkKd);
-        acc.online += toNum(r.pendingOnlineKd);
-        return acc;
-      },
-      { cash: 0, knet: 0, link: 0, online: 0 },
-    );
-  }, [driverRows]);
-
-  const [expandedDriver, setExpandedDriver] = useState<string | null>(null);
-
-  const managerTotal = useMemo(
-    () => managerRows.reduce((sum, r) => sum + toNum(r.amountKd), 0),
-    [managerRows],
-  );
-
-  const pipelineTotal = driverTotal + managerTotal;
-
-  const overdueDriverCount = useMemo(
-    () => driverRows.filter((d) => isDriverOverdue(d, now)).length,
-    [driverRows, now],
-  );
-  const overdueManagerCount = useMemo(
-    () => managerRows.filter((c) => c.isOverdue).length,
-    [managerRows],
-  );
-  const totalOverdueCount = overdueDriverCount + overdueManagerCount;
 
   /*
    * Dastur §3 — QR verification URL.
@@ -444,8 +223,8 @@ export function StaffDebtsPage() {
   ]);
 
   const generatedAtLabel = useMemo(
-    () => new Date(now).toLocaleString('en-GB'),
-    [now],
+    () => new Date(report?.generatedAt ?? Date.now()).toLocaleString('en-GB'),
+    [report?.generatedAt],
   );
 
   const handlePrint = useCallback(() => {
@@ -564,15 +343,15 @@ export function StaffDebtsPage() {
           <KpiCard
             tone="orange"
             label={t('staffDebts.kpiTotalPipeline', 'النقد قيد المسار')}
-            value={formatKwdLabel(pipelineTotal.toFixed(4))}
+            value={formatKwdLabel(totals?.pipelineTotalKd ?? '0.0000')}
             icon={<Banknote className="h-4 w-4" aria-hidden />}
-            loading={loading && drivers === null}
+            loading={loading && report === null}
             deltaBadge={
               <span className="text-[10px] tabular-nums text-muted-foreground">
                 {t('staffDebts.kpiPipelineHint', {
                   defaultValue: '{{d}} سائق · {{m}} مدير/عهدة',
-                  d: String(driverRows.length),
-                  m: String(managerRows.length),
+                  d: String(totals?.driverRowCount ?? 0),
+                  m: String(totals?.managerRowCount ?? 0),
                 })}
               </span>
             }
@@ -580,9 +359,9 @@ export function StaffDebtsPage() {
           <KpiCard
             tone="blue"
             label={t('staffDebts.kpiWithDrivers', 'عند السائقين')}
-            value={formatKwdLabel(driverTotal.toFixed(4))}
+            value={formatKwdLabel(totals?.driverTotalKd ?? '0.0000')}
             icon={<Truck className="h-4 w-4" aria-hidden />}
-            loading={loading && drivers === null}
+            loading={loading && report === null}
             deltaBadge={
               <span className="text-[10px] tabular-nums text-muted-foreground">
                 {t('staffDebts.kpiDriversHint', {
@@ -594,9 +373,9 @@ export function StaffDebtsPage() {
           <KpiCard
             tone="purple"
             label={t('staffDebts.kpiWithManagers', 'عهدة المدراء')}
-            value={formatKwdLabel(managerTotal.toFixed(4))}
+            value={formatKwdLabel(totals?.managerTotalKd ?? '0.0000')}
             icon={<Building2 className="h-4 w-4" aria-hidden />}
-            loading={loading && custody === null}
+            loading={loading && report === null}
             deltaBadge={
               <span className="text-[10px] tabular-nums text-muted-foreground">
                 {t('staffDebts.kpiManagersHint', {
@@ -608,15 +387,15 @@ export function StaffDebtsPage() {
           <KpiCard
             tone="red"
             label={t('staffDebts.kpiOverdue', 'يحتاج متابعة عاجلة')}
-            value={String(totalOverdueCount)}
+            value={String(totals?.totalOverdueCount ?? 0)}
             icon={<AlertTriangle className="h-4 w-4" aria-hidden />}
-            loading={loading && (drivers === null || custody === null)}
+            loading={loading && report === null}
             deltaBadge={
               <span className="text-[10px] tabular-nums text-muted-foreground">
                 {t('staffDebts.kpiOverdueHint', {
                   defaultValue: '{{d}} سائق · {{m}} مدير',
-                  d: String(overdueDriverCount),
-                  m: String(overdueManagerCount),
+                  d: String(totals?.overdueDriverCount ?? 0),
+                  m: String(totals?.overdueManagerCount ?? 0),
                 })}
               </span>
             }
@@ -777,33 +556,33 @@ export function StaffDebtsPage() {
             <p className="text-sm font-semibold tabular-nums text-foreground/80">
               {t('staffDebts.sectionTotal')}:{' '}
               <span className="text-foreground">
-                {formatKwdLabel(driverTotal.toFixed(4))}
+                {formatKwdLabel(totals?.driverTotalKd ?? '0.0000')}
               </span>
             </p>
             <p className="flex flex-wrap justify-end gap-x-3 text-xs tabular-nums text-muted-foreground">
               <span>
                 {t('staffDebts.methodCash')}:{' '}
                 <span className="text-foreground/90">
-                  {formatKwdLabel(driverBreakdownTotals.cash.toFixed(4))}
+                  {formatKwdLabel(totals?.driverBreakdown.cashKd ?? '0.0000')}
                 </span>
               </span>
               <span>
                 {t('staffDebts.methodKnet')}:{' '}
                 <span className="text-foreground/90">
-                  {formatKwdLabel(driverBreakdownTotals.knet.toFixed(4))}
+                  {formatKwdLabel(totals?.driverBreakdown.knetKd ?? '0.0000')}
                 </span>
               </span>
               <span>
                 {t('staffDebts.methodLink')}:{' '}
                 <span className="text-foreground/90">
-                  {formatKwdLabel(driverBreakdownTotals.link.toFixed(4))}
+                  {formatKwdLabel(totals?.driverBreakdown.linkKd ?? '0.0000')}
                 </span>
               </span>
-              {driverBreakdownTotals.online > 0 ? (
+              {totals?.driverBreakdown.onlineKd !== '0.0000' ? (
                 <span>
                   {t('staffDebts.methodOnline')}:{' '}
                   <span className="text-foreground/90">
-                    {formatKwdLabel(driverBreakdownTotals.online.toFixed(4))}
+                    {formatKwdLabel(totals?.driverBreakdown.onlineKd ?? '0.0000')}
                   </span>
                 </span>
               ) : null}
@@ -811,7 +590,7 @@ export function StaffDebtsPage() {
           </div>
         </CardHeader>
         <CardContent className="p-0 sm:p-6 sm:pt-0">
-          {loading && !drivers ? (
+          {loading && !report ? (
             <div className="p-6">
               <Skeleton className="h-24 w-full rounded" />
             </div>
@@ -838,18 +617,18 @@ export function StaffDebtsPage() {
               </TableHeader>
               <TableBody>
                 {driverRows.map((d) => {
-                  const overdue = isDriverOverdue(d, now);
-                  const total = driverPendingTotalKd(d);
-                  const cash = toNum(d.pendingCashKd);
-                  const knet = toNum(d.pendingKnetKd);
-                  const link = toNum(d.pendingLinkKd);
-                  const online = toNum(d.pendingOnlineKd);
+                  const overdue = d.isOverdue;
+                  const total = d.pendingTotalKd;
+                  const cash = d.pendingCashKd;
+                  const knet = d.pendingKnetKd;
+                  const link = d.pendingLinkKd;
+                  const online = d.pendingOnlineKd;
                   const breakdownTitle = [
-                    `${t('staffDebts.methodCash')}: ${formatKwdLabel(cash.toFixed(4))}`,
-                    `${t('staffDebts.methodKnet')}: ${formatKwdLabel(knet.toFixed(4))}`,
-                    `${t('staffDebts.methodLink')}: ${formatKwdLabel(link.toFixed(4))}`,
-                    online > 0
-                      ? `${t('staffDebts.methodOnline')}: ${formatKwdLabel(online.toFixed(4))}`
+                    `${t('staffDebts.methodCash')}: ${formatKwdLabel(cash)}`,
+                    `${t('staffDebts.methodKnet')}: ${formatKwdLabel(knet)}`,
+                    `${t('staffDebts.methodLink')}: ${formatKwdLabel(link)}`,
+                    online !== '0.0000'
+                      ? `${t('staffDebts.methodOnline')}: ${formatKwdLabel(online)}`
                       : null,
                   ]
                     .filter(Boolean)
@@ -897,7 +676,7 @@ export function StaffDebtsPage() {
                           className="text-end font-semibold tabular-nums"
                           title={`${t('staffDebts.breakdownTooltip')} — ${breakdownTitle}`}
                         >
-                          {formatKwdLabel(total.toFixed(4))}
+                          {formatKwdLabel(total)}
                         </TableCell>
                         <TableCell className="sd-screen-only text-end tabular-nums">
                           {d.pendingInvoiceCount}
@@ -911,26 +690,26 @@ export function StaffDebtsPage() {
                               <span className="text-muted-foreground">
                                 {t('staffDebts.methodCash')}:
                               </span>{' '}
-                              {formatKwdLabel(cash.toFixed(4))}
+                              {formatKwdLabel(cash)}
                             </span>
                             <span>
                               <span className="text-muted-foreground">
                                 {t('staffDebts.methodKnet')}:
                               </span>{' '}
-                              {formatKwdLabel(knet.toFixed(4))}
+                              {formatKwdLabel(knet)}
                             </span>
                             <span>
                               <span className="text-muted-foreground">
                                 {t('staffDebts.methodLink')}:
                               </span>{' '}
-                              {formatKwdLabel(link.toFixed(4))}
+                              {formatKwdLabel(link)}
                             </span>
-                            {online > 0 ? (
+                            {online !== '0.0000' ? (
                               <span>
                                 <span className="text-muted-foreground">
                                   {t('staffDebts.methodOnline')}:
                                 </span>{' '}
-                                {formatKwdLabel(online.toFixed(4))}
+                                {formatKwdLabel(online)}
                               </span>
                             ) : null}
                           </span>
@@ -1003,12 +782,12 @@ export function StaffDebtsPage() {
           <p className="text-sm font-semibold tabular-nums text-foreground/80">
             {t('staffDebts.sectionTotal')}:{' '}
             <span className="text-foreground">
-              {formatKwdLabel(managerTotal.toFixed(4))}
+              {formatKwdLabel(totals?.managerTotalKd ?? '0.0000')}
             </span>
           </p>
         </CardHeader>
         <CardContent className="p-0 sm:p-6 sm:pt-0">
-          {loading && !custody ? (
+          {loading && !report ? (
             <div className="p-6">
               <Skeleton className="h-24 w-full rounded" />
             </div>
@@ -1119,12 +898,12 @@ export function StaffDebtsPage() {
  * Renders a labelled, tabular-aligned amount so every method sits in a
  * consistent grid regardless of which methods are non-zero.
  */
-function BreakdownItem({ label, value }: { label: string; value: number }) {
+function BreakdownItem({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded border border-border bg-card px-3 py-2 text-xs">
       <div className="text-muted-foreground">{label}</div>
       <div className="mt-1 font-semibold tabular-nums text-foreground">
-        {formatKwdLabel(value.toFixed(4))}
+        {formatKwdLabel(value)}
       </div>
     </div>
   );

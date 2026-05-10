@@ -258,6 +258,17 @@ export class FinanceController {
     return this.financeService.getDriverBalances();
   }
 
+  @Get('driver/my-cash-custody')
+  @Roles(SafariRole.DRIVER)
+  @ApiOperation({
+    summary: `Driver — my cash custody summary (${APP_BRAND})`,
+    description:
+      'Read-only driver-facing cash custody projection: CASH completed orders still PAID_TO_DRIVER. Does not mutate handover state.',
+  })
+  getMyDriverCashCustody(@CurrentUser() user: JwtUser) {
+    return this.financeService.getMyDriverCashCustodySummary(user.userId);
+  }
+
   @Get('driver-monitoring')
   @Roles(
     SafariRole.OWNER,

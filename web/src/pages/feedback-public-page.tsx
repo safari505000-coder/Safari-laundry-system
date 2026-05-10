@@ -8,6 +8,7 @@ import {
   type PublicFeedbackOrder,
 } from '@/lib/api';
 import { BRAND } from '@/lib/brand';
+import { formatKwdAmount } from '@/lib/kwd';
 
 /**
  * V19.22 — Public customer feedback page.
@@ -74,8 +75,7 @@ export function FeedbackPublicPage() {
 
   const prettyTotal = useMemo(() => {
     if (!order) return '-';
-    const n = Number.parseFloat(order.totalKd);
-    return Number.isFinite(n) ? n.toFixed(3) : order.totalKd;
+    return formatKwdAmount(order.totalKd);
   }, [order]);
 
   const prettyDate = useMemo(() => {

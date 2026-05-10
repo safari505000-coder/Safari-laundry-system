@@ -36,8 +36,16 @@ export class OwnerTopCustomerDto {
   @ApiPropertyOptional({ nullable: true })
   displayName!: string | null;
 
+  /**
+   * V23.2 — canonical receivable debt per customer. Replaces the
+   * legacy `totalDueKd` field which previously fed alerts and
+   * sorting from the gross "invoices − payments" formula. The
+   * canonical number is sourced from the V20.4 banking layer
+   * (`computeCanonicalCustomerDebt`) so threshold-driven alerts
+   * fire on the same number the cockpit displays.
+   */
   @ApiProperty()
-  totalDueKd!: string;
+  canonicalDebtKd!: string;
 
   @ApiProperty()
   totalInvoicesKd!: string;
@@ -88,8 +96,9 @@ export class OwnerFinancialDashboardDto {
   @ApiProperty()
   totalPaymentsToday!: string;
 
+  /** V23.2 — Σ canonical receivable across all rolled-up customers. */
   @ApiProperty()
-  totalDueTotal!: string;
+  canonicalDebtTotal!: string;
 
   @ApiProperty()
   cashInDrivers!: string;

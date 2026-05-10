@@ -22,7 +22,23 @@ export type OutstandingRow = {
   phone2: string | null;
   driverId: string | null;
   driverName: string | null;
-  totalDueKd: number;
+  /**
+   * V23.3 — Canonical KWD string (4dp, banker-rounded). Type changed
+   * from `number` to `string` for canonical-money-purity alignment.
+   * Sort comparators MUST use `compareKwdStrings` rather than raw
+   * subtraction.
+   */
+  totalDueKd: string;
+  /**
+   * V20.3.1 / V23.3 — Σ remaining (gross − payments − wallet
+   * absorption), canonical 4dp KWD string.
+   */
+  remainingDueKd?: string;
+  /**
+   * V20.3.1 / V23.3 — Σ paid (real PAYMENT rows; excludes wallet
+   * absorption), canonical 4dp KWD string.
+   */
+  paidKd?: string;
   invoicesCount: number;
   lastOrderAt: string | null;
   earliestDueDate: string | null;
@@ -31,12 +47,22 @@ export type OutstandingRow = {
   status: CustomerCollectionStatusKind;
   blocked: boolean;
   note: string | null;
+  hasActiveSubscription?: boolean;
+  subscriptionExpiresAt?: string | null;
 };
 
 export type OutstandingResponse = {
   rows: OutstandingRow[];
   totalCustomers: number;
   totalInvoices: number;
+  driverSummaries?: Array<{
+    driverId: string | null;
+    driverName: string;
+    customers: number;
+    invoices: number;
+    totalRemainingKd: string;
+    maxDaysLate: number;
+  }>;
   totalDueKd: string;
   source: 'COLLECTIONS_ENGINE';
   blockedCount: number;
@@ -150,7 +176,7 @@ export function listOutstanding(
         reason: 'Invalid totalDue source',
         response,
       });
-      response.totalDueKd = '0.000';
+      response.totalDueKd = '0.0000';
     }
     if (response.source !== 'COLLECTIONS_ENGINE') {
       console.error('OUTSTANDING ERROR', {

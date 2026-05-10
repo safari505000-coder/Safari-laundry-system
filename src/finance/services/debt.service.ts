@@ -21,8 +21,14 @@ import type {
   OpenDebtByIssuerResponseDto,
   OpenDebtByIssuerRowDto,
 } from '../dto/open-debt-by-issuer.dto';
-import { getCustomerNetDebtFromDebtLedgerAgg } from '../debt-customer-aggregates.util';
+import {
+  getCustomerNetDebtFromDebtLedgerAgg,
+  isV20_3TrueAccountingEnabled,
+} from '../debt-customer-aggregates.util';
 import { isRealDebtLedgerPayment } from '../debt-ledger-payment-origin.util';
+import { JournalSourceService } from '../../general-ledger/journal-source.service';
+import { getCustomerSubscriptionStateBatch } from '../../subscribers/subscription-state.util';
+import { attachCanonicalRunningRemaining } from '../canonical-financial-projection';
 
 /**
  * Same branch scoping as `CallCenterService.getOperationsSummary` red KPI
@@ -82,6 +88,7 @@ export class DebtService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly subscriptionService: SubscriptionService,
+    private readonly journalSource: JournalSourceService,
   ) {}
 
   async getOwnerCustomerWalletSummary() {
@@ -187,6 +194,27 @@ export class DebtService {
     walletDebt: string;
     subscriptionOveruseDebt: string;
     totalDebt: string;
+    /**
+     * V20.3.1 — when `V20_3_TRUE_ACCOUNTING=true`, this is the
+     * journal AR balance (clamped at 0). Otherwise undefined.
+     * Surfaced additively so existing UIs can switch to it
+     * without breaking the back-compat fields above.
+     */
+    journalArDebtKd?: string;
+    /** V20.3.1 — which source backed `totalDebt`. */
+    debtSource?: 'JOURNAL_AR' | 'WALLET';
+    /**
+     * V20.3.2 — independent subscription dimension. True iff a
+     * `CustomerSubscription` row exists with `status === ACTIVE`
+     * AND `expiresAt > now`. Having debt does NOT make a
+     * customer a subscriber, and vice-versa.
+     */
+    hasActiveSubscription?: boolean;
+    /**
+     * V20.3.2 — ISO expiry timestamp of the active subscription.
+     * Null when the customer has no active subscription row.
+     */
+    subscriptionExpiresAt?: string | null;
   }> {
     const wallet = await this.prisma.customerWallet.findUnique({
       where: { customerId },
@@ -196,11 +224,61 @@ export class DebtService {
     const balance = Number.parseFloat(wallet?.balance?.toString?.() ?? '0');
     const subscriptionOveruseDebt =
       Number.isFinite(balance) && balance < 0 ? Math.abs(balance) : 0;
-    const totalDebt = (Number.isFinite(walletDebt) ? walletDebt : 0) + subscriptionOveruseDebt;
+    const walletTotalDebt =
+      (Number.isFinite(walletDebt) ? walletDebt : 0) + subscriptionOveruseDebt;
+
+    // V20.3 — Phase 35. When the operator opts into the true
+    // accounting model, the canonical debt is the live AR balance
+    // on account 1300, not the wallet.debt snapshot. We still
+    // expose the wallet figure for back-compat (the dual-write
+    // remains active), but `totalDebt` follows the journal so
+    // collections / debt views show the same number as the
+    // journal-based audit endpoints.
+    let journalArDebtKd: string | undefined;
+    let totalDebt = walletTotalDebt;
+    let debtSource: 'JOURNAL_AR' | 'WALLET' = 'WALLET';
+    if (isV20_3TrueAccountingEnabled()) {
+      try {
+        const arBal =
+          await this.journalSource.getCustomerDebtFromJournalAR(customerId);
+        const arBalNum = Number.parseFloat(arBal.toString());
+        if (Number.isFinite(arBalNum)) {
+          journalArDebtKd = arBalNum.toFixed(4);
+          totalDebt = arBalNum;
+          debtSource = 'JOURNAL_AR';
+        }
+      } catch {
+        // Journal read failures are non-fatal — fall back to the
+        // wallet figure so the customer 360 panel keeps rendering.
+      }
+    }
+
+    // V20.3.2 — independent subscription state. Read here so
+    // every Customer 360 / debt-snapshot consumer gets the same
+    // canonical "is currently a subscriber" answer without
+    // having to hit a second endpoint. Failure is non-fatal —
+    // the snapshot still renders without the subscription badge.
+    let hasActiveSubscription: boolean | undefined;
+    let subscriptionExpiresAt: string | null | undefined;
+    try {
+      const subs = await getCustomerSubscriptionStateBatch(this.prisma, [
+        customerId,
+      ]);
+      const state = subs.get(customerId);
+      hasActiveSubscription = state?.isActiveSubscriber ?? false;
+      subscriptionExpiresAt = state?.subscriptionExpiresAtIso ?? null;
+    } catch {
+      // ignore — additive field, never blocks the snapshot
+    }
+
     return {
       walletDebt: (Number.isFinite(walletDebt) ? walletDebt : 0).toFixed(4),
       subscriptionOveruseDebt: subscriptionOveruseDebt.toFixed(4),
       totalDebt: totalDebt.toFixed(4),
+      journalArDebtKd,
+      debtSource,
+      hasActiveSubscription,
+      subscriptionExpiresAt,
     };
   }
 
@@ -404,6 +482,7 @@ export class DebtService {
         debtAmountKd: '0',
         paidKd: '0',
         remainingKd: '0',
+        customerRunningRemainingKd: '0',
         entryCount: 1,
         currentCustomerDebtKd: '0',
         isOpen: true,
@@ -483,6 +562,14 @@ export class DebtService {
       else cur.debt += v;
       perCustomer.set(g.customerId, cur);
     }
+
+    // V20.3.2 — single batch fetch for subscription state across
+    // every customer in the page. NEVER used to filter who shows
+    // up in the unpaid-invoice list (debt visibility is independent
+    // of subscription state); only attached to each row so the UI
+    // can render an independent SUBSCRIBER badge.
+    const subscriptionStateByCustomer =
+      await getCustomerSubscriptionStateBatch(this.prisma, customerIds);
 
     const finalRows: UnpaidInvoiceRowDto[] = [];
     let totalDebt = 0;
@@ -582,20 +669,56 @@ export class DebtService {
         const fifo = perOrderNet - share;
         const invoicePaid = directPart + fifo;
         const remaining = share;
-        const invTotal = Number.parseFloat(x.agg.row.invoiceTotalKd);
-        if (Number.isFinite(invTotal) && !orderInvTallied.has(x.agg.row.orderId)) {
-          totalInvOrderSum += invTotal;
+        // V23.2 — Decimal-parsed invoice total. The legacy
+        // `Number.parseFloat(invoiceTotalKd)` boundary collapsed the
+        // 4dp money string through a JS double; the Decimal path
+        // keeps the precision for the running sum and falls back to
+        // 0 if the source string is malformed.
+        let invTotalNum = 0;
+        try {
+          invTotalNum = new Prisma.Decimal(x.agg.row.invoiceTotalKd).toNumber();
+        } catch {
+          invTotalNum = 0;
+        }
+        if (
+          Number.isFinite(invTotalNum) &&
+          !orderInvTallied.has(x.agg.row.orderId)
+        ) {
+          totalInvOrderSum += invTotalNum;
           orderInvTallied.add(x.agg.row.orderId);
         }
         const isOpen = remaining > 0.0001;
+        // V20.3.1 — derived payment status (additive, kept in sync
+        // with `InvoicePaymentStatusService.statusFromRemaining`).
+        // Tolerance is `0.001` KD (4-dp arithmetic). Status is
+        // PAID when remaining ≤ tolerance; PARTIALLY_PAID when
+        // anything has been applied AND remaining is above
+        // tolerance; UNPAID otherwise.
+        const TOL = 0.001;
+        let paymentStatus: 'UNPAID' | 'PARTIALLY_PAID' | 'PAID';
+        if (remaining <= TOL) paymentStatus = 'PAID';
+        else if (invoicePaid > TOL || gross - remaining > TOL) {
+          paymentStatus = 'PARTIALLY_PAID';
+        } else paymentStatus = 'UNPAID';
+        // V20.3.2 — independent subscription state attached to
+        // each row. Never filters the row out; pure UX hint.
+        const subState = subscriptionStateByCustomer.get(
+          x.agg.row.customerId,
+        );
         const r: UnpaidInvoiceRowDto = {
           ...x.agg.row,
           debtSource: kind,
           debtAmountKd: gross.toFixed(4),
           paidKd: invoicePaid.toFixed(4),
           remainingKd: remaining.toFixed(4),
+        customerRunningRemainingKd: '0',
           currentCustomerDebtKd: custOpen.toFixed(4),
           isOpen,
+          paymentStatus,
+          isPartiallyPaid: paymentStatus === 'PARTIALLY_PAID',
+          isFullyPaid: paymentStatus === 'PAID',
+          hasActiveSubscription: subState?.isActiveSubscriber ?? false,
+          subscriptionExpiresAt: subState?.subscriptionExpiresAtIso ?? null,
           entryCount,
           lastEntryAt: lastAt || x.agg.row.issuedAt,
         };
@@ -790,6 +913,26 @@ export class DebtService {
       }
     }
 
+    // V20.3.2 — extend the subscription-state map to cover any
+    // OPEN_UNPAID_ORDER customers that didn't appear in the
+    // ledger-row scan above. Cheap one-shot batch.
+    const extraSubCustomerIds = Array.from(
+      new Set(
+        unlinkedUnpaid
+          .map((o) => o.customerId)
+          .filter((id) => !subscriptionStateByCustomer.has(id)),
+      ),
+    );
+    if (extraSubCustomerIds.length > 0) {
+      const extraStates = await getCustomerSubscriptionStateBatch(
+        this.prisma,
+        extraSubCustomerIds,
+      );
+      for (const [k, v] of extraStates) {
+        subscriptionStateByCustomer.set(k, v);
+      }
+    }
+
     for (const o of unlinkedUnpaid) {
       const tot = Number.parseFloat(o.totalPrice.toString());
       if (!Number.isFinite(tot) || tot <= 0) continue;
@@ -809,6 +952,7 @@ export class DebtService {
       const issued = (o.completedAt ?? o.createdAt).toISOString();
       const ct = perCustomer.get(o.customerId) ?? { debt: 0, payment: 0 };
       const custOpen = Math.max(ct.debt - ct.payment, 0);
+      const subState = subscriptionStateByCustomer.get(o.customerId);
       const row: UnpaidInvoiceRowDto = {
         orderId: o.id,
         serialNumber: o.serialNumber ?? null,
@@ -827,6 +971,7 @@ export class DebtService {
         debtAmountKd: tot.toFixed(4),
         paidKd: '0.0000',
         remainingKd: tot.toFixed(4),
+        customerRunningRemainingKd: '0',
         entryCount: 0,
         currentCustomerDebtKd: custOpen.toFixed(4),
         isOpen: true,
@@ -835,6 +980,14 @@ export class DebtService {
         posPaymentMethod: o.posPaymentMethod
           ? String(o.posPaymentMethod)
           : null,
+        // V20.3.2 — UNPAID order with no ledger row counts as
+        // "fully unpaid", so the V20.3.1 status is UNPAID. The
+        // independent subscription dimension still attaches.
+        paymentStatus: 'UNPAID' as const,
+        isPartiallyPaid: false,
+        isFullyPaid: false,
+        hasActiveSubscription: subState?.isActiveSubscriber ?? false,
+        subscriptionExpiresAt: subState?.subscriptionExpiresAtIso ?? null,
       };
       finalRows.push(row);
       totalDebt += tot;
@@ -861,8 +1014,10 @@ export class DebtService {
       return debtSourceSortRank(a.debtSource) - debtSourceSortRank(b.debtSource);
     });
 
-    const invoiceCount = finalRows.length;
-    const customerCount = new Set(finalRows.map((r) => r.customerId)).size;
+    const withRunningRemaining = attachCanonicalRunningRemaining(finalRows);
+
+    const invoiceCount = withRunningRemaining.length;
+    const customerCount = new Set(withRunningRemaining.map((r) => r.customerId)).size;
     const avgDebtPerInvoice =
       invoiceCount > 0 ? totalDebt / invoiceCount : 0;
 
@@ -917,7 +1072,7 @@ export class DebtService {
         marketUnpaidByMethod,
         avgDebtPerInvoiceKd: avgDebtPerInvoice.toFixed(4),
       },
-      rows: finalRows,
+      rows: withRunningRemaining,
     };
   }
 

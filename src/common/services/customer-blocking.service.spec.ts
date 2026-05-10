@@ -27,7 +27,7 @@ describe('CustomerBlockingService auto blocking', () => {
     return { service, prisma, auditLogs };
   }
 
-  it('does not block when canonical totalDueKd is 499', async () => {
+  it('does not block when canonical receivable debt is 499', async () => {
     const { service, prisma, auditLogs } = makeService();
 
     const result = await service.applyAutoBlockFromFinancials('customer-1', '499.0000');
@@ -37,9 +37,15 @@ describe('CustomerBlockingService auto blocking', () => {
     expect(auditLogs.logFinancialEvent).not.toHaveBeenCalled();
   });
 
-  it('blocks when canonical totalDueKd is 501', async () => {
+  it('blocks when canonical receivable debt is 501', async () => {
     const { service, prisma, auditLogs } = makeService();
-    jest.spyOn(service as any, 'computeTotalDueKd').mockResolvedValue(501);
+    // V23.2 — internal helper renamed from `computeTotalDueKd` to
+    // `computeCanonicalDebtKd` and now returns a `Prisma.Decimal`,
+    // not a number. The spy returns the Decimal-shaped fixture.
+    const { Prisma } = await import('@prisma/client');
+    jest
+      .spyOn(service as any, 'computeCanonicalDebtKd')
+      .mockResolvedValue(new Prisma.Decimal('501'));
 
     const result = await service.applyAutoBlockFromFinancials('customer-1', '501.0000');
 

@@ -165,6 +165,17 @@ export class InvoiceAuditService {
       select: { id: true, balance: true, debt: true },
     });
     if (!wallet) return;
+    // V20.4 — Phase 5 row-level lock so the void's
+    // read-modify-write of `wallet.debt` / `wallet.balance` is
+    // serialised against any concurrent customer-ledger writer
+    // (CC settlement, partial-debt-payment, subscription
+    // activation). Best-effort: a non-PG engine swallows.
+    try {
+      await tx.$queryRaw`SELECT 1 FROM "CustomerWallet" WHERE "id" = ${wallet.id}::uuid FOR UPDATE`;
+    } catch {
+      // engine doesn't support FOR UPDATE (tests) — Prisma's
+      // implicit row lock at UPDATE time remains the final gate.
+    }
     const method = order.posPaymentMethod;
     if (method === PosPaymentMethod.DEBT_ON_ACCOUNT) {
       const newDebt = wallet.debt.sub(order.totalPrice);
@@ -180,7 +191,11 @@ export class InvoiceAuditService {
       // counting the voided invoice as open. Without this mirror, ledger
       // open-debt drifts from wallet.debt over time.
       if (order.id) {
-        const sourceRef = `ADJUSTMENT:INVOICE_AUDIT_VOID:${order.id}:${Date.now()}`;
+        // V20.4 — Phase 5 deterministic sourceRef. Keyed on the
+        // orderId only because an order can be voided at most
+        // once (the function rejects re-void attempts at the
+        // status check). Idempotent retry → P2002 swallow.
+        const sourceRef = `ADJUSTMENT:INVOICE_AUDIT_VOID:${order.id}`;
         traceDebtLedgerPaymentWrite({
           sourceFile: 'src/invoice-audit/invoice-audit.service.ts',
           functionName: 'reverseWalletForOrder',
@@ -194,20 +209,29 @@ export class InvoiceAuditService {
             metadata: { origin: 'INVOICE_AUDIT_VOID_NON_MONEY' },
           },
         });
-        await tx.debtLedgerEntry.create({
-          data: {
-            customerId: order.customerId,
-            orderId: order.id,
-            source: 'PAYMENT',
-            category: 'BRANCH',
-            amount: order.totalPrice,
-            actorUserId: actorUserId ?? null,
-            sourceRef,
-            note: 'Debt reversed by invoice void / edit (supervisor)',
-          },
-        });
+        try {
+          await tx.debtLedgerEntry.create({
+            data: {
+              customerId: order.customerId,
+              orderId: order.id,
+              source: 'PAYMENT',
+              category: 'BRANCH',
+              amount: order.totalPrice,
+              actorUserId: actorUserId ?? null,
+              sourceRef,
+              note: 'Debt reversed by invoice void / edit (supervisor)',
+            },
+          });
+        } catch (err) {
+          if (
+            !(err instanceof Prisma.PrismaClientKnownRequestError) ||
+            err.code !== 'P2002'
+          ) {
+            throw err;
+          }
+        }
         if (actorUserId) {
-          await this.journal.mirrorDebtLedgerEntry(tx, {
+          await this.journal.mirrorDebtLedgerEntrySafe(tx, {
             source: 'PAYMENT',
             amount: order.totalPrice,
             sourceRef,
@@ -217,18 +241,75 @@ export class InvoiceAuditService {
             note: 'Debt reversed by invoice void / edit (supervisor)',
           });
         } else {
-          console.error('[JOURNAL_DRIFT]', {
-            customerId: order.customerId,
-            orderId: order.id,
-            reason: 'INVOICE_AUDIT_VOID_MISSING_ACTOR',
-          });
+          // V20.4 — Phase 1 turn the silent drift into an explicit
+          // hard failure. No actor → no audit trail → must abort.
+          throw new Error(
+            'INVOICE_AUDIT_VOID_MISSING_ACTOR — actorUserId is required to reverse a wallet debt',
+          );
         }
       }
     } else if (method === PosPaymentMethod.SUBSCRIPTION_WALLET) {
+      // V20.4 — Phase 1 close the SUBSCRIPTION_WALLET ledger gap.
+      //
+      // Pre-V20.4 this branch wrote `wallet.balance` with NO trail
+      // anywhere. We now (a) require an actor, (b) write a balanced
+      // journal entry that restores WALLET_LIABILITY and reverses
+      // the prior REVENUE recognition, and (c) emit a PAYMENT-style
+      // DebtLedgerEntry so audit views can find the void.
+      if (!actorUserId) {
+        throw new Error(
+          'INVOICE_AUDIT_VOID_MISSING_ACTOR — actorUserId is required to reverse a subscription-wallet absorption',
+        );
+      }
       await tx.customerWallet.update({
         where: { id: wallet.id },
         data: { balance: wallet.balance.add(order.totalPrice) },
       });
+      const sourceRef = `ADJUSTMENT:INVOICE_AUDIT_SUBSCRIPTION_WALLET_VOID:${order.id ?? 'NO_ORDER_ID'}`;
+      if (order.id) {
+        try {
+          await tx.debtLedgerEntry.create({
+            data: {
+              customerId: order.customerId,
+              orderId: order.id,
+              source: 'PAYMENT',
+              category: 'BRANCH',
+              amount: order.totalPrice,
+              actorUserId,
+              sourceRef,
+              note: 'Subscription-wallet absorption reversed (supervisor void)',
+            },
+          });
+        } catch (err) {
+          // P2002 → this void was already audited; the wallet
+          // restoration above is the idempotent intent. Swallow.
+          if (
+            !(err instanceof Prisma.PrismaClientKnownRequestError) ||
+            err.code !== 'P2002'
+          ) {
+            throw err;
+          }
+        }
+        await this.journal.appendBalanced(tx, {
+          source: 'WALLET_ABSORPTION_VOID',
+          sourceRef: `JOURNAL:WALLET_ABSORPTION_VOID:${order.id}`,
+          actorUserId,
+          customerId: order.customerId,
+          orderId: order.id,
+          lines: [
+            {
+              accountCode: '4200', // REVENUE_RETURNS
+              debit: order.totalPrice,
+              meta: { event: 'WALLET_ABSORPTION_VOID', orderId: order.id },
+            },
+            {
+              accountCode: '2100', // WALLET_LIABILITY
+              credit: order.totalPrice,
+              meta: { event: 'WALLET_ABSORPTION_VOID', orderId: order.id },
+            },
+          ],
+        });
+      }
     }
   }
 
@@ -261,6 +342,13 @@ export class InvoiceAuditService {
       update: {},
       select: { id: true, balance: true, debt: true },
     });
+    // V20.4 — Phase 5 row-level lock for the invoice-edit
+    // re-apply path (mirror of `reverseWalletForOrder`).
+    try {
+      await tx.$queryRaw`SELECT 1 FROM "CustomerWallet" WHERE "id" = ${wallet.id}::uuid FOR UPDATE`;
+    } catch {
+      /* tests / non-PG */
+    }
     if (method === PosPaymentMethod.DEBT_ON_ACCOUNT) {
       await tx.customerWallet.update({
         where: { id: wallet.id },
@@ -708,7 +796,31 @@ export class InvoiceAuditService {
           },
         });
 
-        // 3) Post a single reversal GL entry tagged as a void.
+        // 3a) V20.4 — Phase 1 canonical journal reversal.
+        //
+        // Pre-V20.4 the only ledger trace of an invoice void was a
+        // single-entry GL row. The journal AR balance kept the
+        // original DR from the issuance entry, so canceled invoices
+        // permanently inflated AR.
+        //
+        // We now compute the order's CURRENT journal AR balance
+        // (issuance debit minus any payment credits) and post the
+        // contra entry: DR REVENUE_RETURNS / CR ACCOUNTS_RECEIVABLE
+        // for that exact remainder. Idempotent on
+        // `JOURNAL:INVOICE_CANCELED:<orderId>`.
+        const orderArAtVoid = await this.journal.getOrderArBalance(order.id);
+        if (orderArAtVoid.greaterThan(0)) {
+          await this.journal.appendInvoiceCancellationEntrySafe(tx, {
+            customerId: order.customerId,
+            orderId: order.id,
+            actorUserId: actorId,
+            remainingArAmount: orderArAtVoid,
+            reason: reason.slice(0, 200),
+          });
+        }
+
+        // 3b) Post a single reversal GL entry tagged as a void.
+        // Kept for backward compat with the legacy KPI tile.
         await this.generalLedger.append(tx, {
           entryType: GeneralLedgerEntryType.POS_SALE_COMPLETED,
           amount: order.totalPrice.neg(),
@@ -980,7 +1092,10 @@ export class InvoiceAuditService {
         activationsCount: a.activationsCount,
         customersServed: a.customerIds.size,
       }))
-      .sort((a, b) => Number(b.collectedKd) - Number(a.collectedKd));
+      // V23.2 — Decimal-precise sort (was Number(...) - Number(...)).
+      .sort((a, b) =>
+        new Prisma.Decimal(b.collectedKd).comparedTo(new Prisma.Decimal(a.collectedKd)),
+      );
 
     const totals = agents.reduce(
       (acc, a) => ({

@@ -17,6 +17,12 @@ import type { JwtUser } from '../../auth/decorators/current-user.decorator';
 import { AuditLogsService } from '../../audit-logs/audit-logs.service';
 import { OrdersService } from '../../orders/orders.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  computeOrderRemainingBalancesBatch,
+  INVOICE_REMAINING_TOLERANCE_KD,
+} from '../debt-customer-aggregates.util';
+import { computeCanonicalOutstandingDriverSummaries } from '../canonical-financial-projection';
+import { getCustomerSubscriptionStateBatch } from '../../subscribers/subscription-state.util';
 import { OutstandingQueryDto } from './dto/outstanding-query.dto';
 import {
   OutstandingResponseDto,
@@ -119,8 +125,23 @@ export class OutstandingService {
       effectiveBranchId,
       actor ?? undefined,
     );
-    const canonicalTotalDueKd = canonicalTotalKdDec.toFixed(3);
-    console.log('[AR CANONICAL]', canonicalTotalDueKd);
+    const canonicalTotalDueKd = canonicalTotalKdDec
+        .toDecimalPlaces(4, Prisma.Decimal.ROUND_HALF_EVEN)
+        .toFixed(4);
+      console.log('[AR CANONICAL]', canonicalTotalDueKd);
+
+    // V20.3.1 — partial-payment-aware red KPI. Differs from the
+    // gross headline whenever an in-scope invoice has prior
+    // partial payments. Surfaced additively so existing UIs that
+    // read `totalDueKd` keep working.
+    const canonicalRemainingKdDec = await this.orders.sumCollectionsDebtRemainingKd(
+      effectiveBranchId,
+      actor ?? undefined,
+    );
+    const canonicalRemainingDueKd = canonicalRemainingKdDec
+        .toDecimalPlaces(4, Prisma.Decimal.ROUND_HALF_EVEN)
+        .toFixed(4);
+      console.log('[AR CANONICAL_REMAINING]', canonicalRemainingDueKd);
 
     console.log('[AR ROW SOURCE START]');
     const aggOrders = await this.orders.listCollectionsReceivableAggOrders({
@@ -137,6 +158,7 @@ export class OutstandingService {
         bounds.fromIso,
         bounds.toIso,
         canonicalTotalDueKd,
+        canonicalRemainingDueKd,
       );
       this.traceDebtTotals({
         fromOrdersService: canonicalTotalDueKd,
@@ -156,6 +178,7 @@ export class OutstandingService {
         bounds.fromIso,
         bounds.toIso,
         canonicalTotalDueKd,
+        canonicalRemainingDueKd,
       );
       this.traceDebtTotals({
         fromOrdersService: canonicalTotalDueKd,
@@ -206,6 +229,22 @@ export class OutstandingService {
     const driverById = new Map(drivers.map((d) => [d.id, d]));
     const statusById = new Map(statuses.map((s) => [s.customerId, s]));
 
+    // V20.3.1 — single batch fetch for per-order remaining balances
+    // across every row in the page. Avoids N round-trips and keeps
+    // the list endpoint O(1) DB calls regardless of customer count.
+    const remainingByOrder = await computeOrderRemainingBalancesBatch(
+      this.prisma,
+      rows.map((r) => r.id),
+    );
+    const remainingTol = new Prisma.Decimal(INVOICE_REMAINING_TOLERANCE_KD);
+
+    // V20.3.2 — single batch fetch for subscription state. NEVER
+    // used to filter who appears in Outstanding (a non-subscriber
+    // with debt MUST still show up); only attached to each row so
+    // the UI can render an independent SUBSCRIBER badge.
+    const subscriptionStateByCustomer =
+      await getCustomerSubscriptionStateBatch(this.prisma, customerIds);
+
     const now = Date.now();
     const allRows: OutstandingRowDto[] = [];
 
@@ -217,10 +256,20 @@ export class OutstandingService {
       const driver = driverId ? driverById.get(driverId) ?? null : null;
 
       let totalDueDec = new Prisma.Decimal(0);
+      let remainingDueDec = new Prisma.Decimal(0);
       let lastOrderAt: Date | null = null;
       let earliestDue: Date | null = null;
       for (const order of orders) {
         totalDueDec = totalDueDec.plus(order.totalPrice);
+        // V20.3.1 — fall back to gross when the helper has no
+        // entry for this order (e.g. no payments recorded yet, or
+        // the order wasn't reachable via the batch query). Never
+        // silently report a smaller number than the canonical
+        // remaining; for the no-payments case gross == remaining.
+        const rem = remainingByOrder.get(order.id) ?? order.totalPrice;
+        if (rem.greaterThan(remainingTol)) {
+          remainingDueDec = remainingDueDec.plus(rem);
+        }
         if (!lastOrderAt || order.createdAt > lastOrderAt) {
           lastOrderAt = order.createdAt;
         }
@@ -231,7 +280,13 @@ export class OutstandingService {
           earliestDue = order.dueDate;
         }
       }
-      const totalDueKd = round3Kd(totalDueDec);
+      const totalDueKd = round4Kd(totalDueDec);
+        const remainingDueKd = round4Kd(remainingDueDec);
+        const remainingDueDecRounded = remainingDueDec.toDecimalPlaces(
+          4,
+          Prisma.Decimal.ROUND_HALF_EVEN,
+        );
+        const paidKd = round4Kd(totalDueDec.sub(remainingDueDec));
       const daysLate = earliestDue
         ? Math.max(
             0,
@@ -239,6 +294,7 @@ export class OutstandingService {
           )
         : 0;
 
+      const subState = subscriptionStateByCustomer.get(customerId);
       allRows.push({
         customerId,
         name: customer.displayName ?? null,
@@ -247,14 +303,22 @@ export class OutstandingService {
         driverId,
         driverName: driver?.fullName ?? null,
         totalDueKd,
+        remainingDueKd,
+        paidKd,
         invoicesCount: orders.length,
         lastOrderAt: lastOrderAt?.toISOString() ?? null,
         earliestDueDate: earliestDue?.toISOString() ?? null,
         daysLate,
-        priorityScore: round4(totalDueKd * 0.6 + daysLate * 0.4),
+        // V20.3.1 — priority based on what is still owed, not what
+          // V23.3 — `priorityScore` is a non-canonical operator hint
+          // computed via Prisma.Decimal to keep the multiplications
+          // free of floating-point drift before the final 4dp round.
+          priorityScore: computePriorityScore(remainingDueDecRounded, daysLate),
         status: status?.status ?? CustomerCollectionStatusKind.NORMAL,
         blocked: status?.blocked ?? customer.isBlocked,
         note: status?.note ?? null,
+        hasActiveSubscription: subState?.isActiveSubscriber ?? false,
+        subscriptionExpiresAt: subState?.subscriptionExpiresAtIso ?? null,
       });
     }
 
@@ -291,7 +355,9 @@ export class OutstandingService {
       rows: filtered,
       totalCustomers: filtered.length,
       totalInvoices: totals.totalInvoices,
+      driverSummaries: computeCanonicalOutstandingDriverSummaries(filtered),
       totalDueKd: canonicalTotalDueKd,
+      remainingDueKd: canonicalRemainingDueKd,
       source: 'COLLECTIONS_ENGINE',
       blockedCount: totals.blockedCount,
       lateCount: totals.lateCount,
@@ -530,13 +596,15 @@ export class OutstandingService {
   private emptyResponse(
     fromIso: string,
     toIso: string,
-    totalDueKd = '0.000',
+    totalDueKd = '0.0000',
+      remainingDueKd = '0.0000',
   ): OutstandingResponseDto {
     return {
       rows: [],
       totalCustomers: 0,
       totalInvoices: 0,
       totalDueKd,
+      remainingDueKd,
       source: 'COLLECTIONS_ENGINE',
       blockedCount: 0,
       lateCount: 0,
@@ -591,10 +659,31 @@ export class OutstandingService {
   }
 }
 
-function round3Kd(d: Prisma.Decimal): number {
-  return parseFloat(d.toFixed(3));
-}
+/**
+   * V23.3 — Canonical 4dp KWD string formatter (banker-rounded).
+   * Replaces the V19.x `round3Kd` which lossily round-tripped through
+   * `parseFloat`. Producing a string here means the Outstanding row
+   * crosses the wire as a canonical KWD literal, preserving micro-fil
+   * precision for downstream sort comparators (`compareKwdStrings`).
+   */
+  function round4Kd(d: Prisma.Decimal): string {
+    return d.toDecimalPlaces(4, Prisma.Decimal.ROUND_HALF_EVEN).toFixed(4);
+  }
 
-function round4(value: number): number {
-  return Math.round(value * 10_000) / 10_000;
-}
+  /**
+   * V23.3 — Decimal-precise priority-score helper.
+   * `priorityScore` is intentionally a non-canonical operator hint
+   * (NOT money), so a JS `number` is appropriate. The Decimal pipeline
+   * just keeps the multiplications free of floating-point drift before
+   * the final 4dp round.
+   */
+  function computePriorityScore(
+    remainingDueDec: Prisma.Decimal,
+    daysLate: number,
+  ): number {
+    return remainingDueDec
+      .times(new Prisma.Decimal('0.6'))
+      .plus(new Prisma.Decimal(daysLate).times(new Prisma.Decimal('0.4')))
+      .toDecimalPlaces(4, Prisma.Decimal.ROUND_HALF_EVEN)
+      .toNumber();
+  }

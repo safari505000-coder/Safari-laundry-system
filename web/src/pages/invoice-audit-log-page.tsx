@@ -28,7 +28,7 @@ import {
   type InvoiceAuditAction,
   type InvoiceAuditLogResponse,
 } from '@/lib/api';
-import { formatKwdLabel } from '@/lib/kwd';
+import { formatKwdLabel, sumKwdStringsPrecise } from '@/lib/kwd';
 
 function isoDay(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -88,16 +88,17 @@ export function InvoiceAuditLogPage() {
   }, [load]);
 
   const totals = useMemo(() => {
-    if (!data) return { edits: 0, voids: 0, impact: 0 };
+    if (!data) return { edits: 0, voids: 0, impactKd: '0.0000' };
     let edits = 0;
     let voids = 0;
-    let impact = 0;
     for (const r of data.rows) {
       if (r.action === 'EDIT') edits += 1;
       else voids += 1;
-      impact += Number(r.financialImpactKd);
     }
-    return { edits, voids, impact };
+    const impactKd = sumKwdStringsPrecise(
+      data.rows.map((r) => r.financialImpactKd),
+    );
+    return { edits, voids, impactKd };
   }, [data]);
 
   if (!allowed) return <Navigate to="/" replace />;
@@ -184,7 +185,7 @@ export function InvoiceAuditLogPage() {
             صافي الأثر المالي
           </div>
           <div className="text-2xl font-bold text-amber-800 dark:text-amber-200">
-            {formatKwdLabel(totals.impact.toFixed(3))}
+            {formatKwdLabel(totals.impactKd)}
           </div>
         </div>
       </div>

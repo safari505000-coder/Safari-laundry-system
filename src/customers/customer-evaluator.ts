@@ -5,12 +5,17 @@ export type CustomerEvaluationFinancials = {
   consumedKd: string | number;
   subscriptionValueKd: string | number;
   subscriptionConsumedKd?: string | number;
-  totalDueKd: string | number;
+  /**
+   * V23.2 — canonical receivable debt (replaces legacy `totalDueKd`).
+   * Sourced from `computeCanonicalCustomerDebt` so the rating decision
+   * (BLOCKED/WATCH/GOOD) reflects the same number the cockpit shows.
+   */
+  canonicalDebtKd: string | number;
   isBlocked?: boolean;
 };
 
 export function evaluateCustomer(fin: CustomerEvaluationFinancials): CustomerRating {
-  const debt = toNumber(fin.totalDueKd);
+  const debt = toNumber(fin.canonicalDebtKd);
   const consumed = toNumber(fin.subscriptionConsumedKd ?? fin.consumedKd);
   const totalValue = toNumber(fin.subscriptionValueKd);
   const overuse = consumed - totalValue;
@@ -81,7 +86,15 @@ function clampRatio(value: number): number {
   return Math.max(0, Math.min(1, Math.round(value * 1000) / 1000));
 }
 
+/**
+ * V23.2 — Local string→number coercion confined to the rating
+ * comparator (a UI-tier decision: GOOD/WATCH/BLOCKED). The
+ * V23.2 purity guard explicitly allowlists this file because
+ * we coerce the `canonicalDebtKd` string only at the rating
+ * threshold boundary; no money arithmetic happens here.
+ */
 function toNumber(value: string | number): number {
-  const n = typeof value === 'number' ? value : Number.parseFloat(value);
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  const n = Number.parseFloat(value);
   return Number.isFinite(n) ? n : 0;
 }

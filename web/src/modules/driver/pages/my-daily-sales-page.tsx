@@ -4,7 +4,7 @@ import { Link, Navigate } from 'react-router-dom';
 import { Printer } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
-import { formatKwdLabel } from '@/lib/kwd';
+import { formatKwdLabel, sumKwdStrings } from '@/lib/kwd';
 import { apiJson, type OrderRow } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/modules/shared/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/modules/shared/components/ui/table';
@@ -28,7 +28,11 @@ export function MyDailySalesPage() {
   const rows = (orders ?? []).filter((o) =>
     o.status === 'COMPLETED' && o.createdAt.slice(0, 10) === today,
   );
-  const total = rows.reduce((s, r) => s + Number.parseFloat(r.totalPrice || '0'), 0);
+  // V21 Phase 5 — date-filter-driven total routed through the single
+  // canonical `sumKwdStrings` helper from `@/lib/kwd`. The previous
+  // local `reduce`+`parseFloat` was retired so the page no longer
+  // owns any KD math primitive.
+  const totalKd = sumKwdStrings(rows.map((r) => r.totalPrice || '0'));
 
   return (
     <div className="space-y-6">
@@ -38,7 +42,7 @@ export function MyDailySalesPage() {
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">{t('driverDailySales.goal')}</p>
-          <p className="mt-3 text-2xl font-bold text-primary">{formatKwdLabel(total.toFixed(4))}</p>
+          <p className="mt-3 text-2xl font-bold text-primary">{formatKwdLabel(totalKd)}</p>
         </CardContent>
       </Card>
       <Card>

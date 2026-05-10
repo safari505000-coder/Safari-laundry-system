@@ -312,7 +312,8 @@ export function PayrollUnifiedPage() {
       setBranches(Array.isArray(b) ? b : []);
       setAdhocLines(Array.isArray(ad) ? ad : []);
       const heldMap = new Map<string, number>();
-      for (const row of Array.isArray(h) ? h : []) {
+      const holdRows = Array.isArray(h) ? h : h?.rows ?? [];
+      for (const row of holdRows) {
         heldMap.set(
           row.employeeUserId,
           (heldMap.get(row.employeeUserId) ?? 0) + f(row.holdAmount),

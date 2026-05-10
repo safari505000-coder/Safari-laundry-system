@@ -35,7 +35,7 @@ import {
   type ManagerCashStatusResponse,
 } from '@/lib/api';
 import { formatRelativeTime } from '@/modules/shared/hooks/use-relative-time';
-import { formatKwdLabel } from '@/lib/kwd';
+import { compareKwdStrings, formatKwdLabel } from '@/lib/kwd';
 import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
 import { Badge } from '@/modules/shared/components/ui/badge';
 import {
@@ -579,8 +579,8 @@ function DriverSection({
   // `heldCashKd` strings.
   const sortedDrivers = useMemo(
     () =>
-      [...(drivers ?? [])].sort(
-        (a, b) => Number(b.heldCashKd) - Number(a.heldCashKd),
+      [...(drivers ?? [])].sort((a, b) =>
+        compareKwdStrings(b.heldCashKd, a.heldCashKd),
       ),
     [drivers],
   );

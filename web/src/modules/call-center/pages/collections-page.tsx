@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/auth-context';
+import { useRealtimeFinancialFeed } from '@/modules/finance';
 import { can } from '@/modules/shared/auth/access-matrix';
 import {
   type CallCenterOperationsSummary,
@@ -30,6 +31,7 @@ import {
   ApiError,
   recheckOrderPayment,
 } from '@/lib/api';
+import { formatKwdLabelGrouped, sumKwdStringsPrecise } from '@/lib/kwd';
 import {
   buildCollectionsUnpaidWhatsAppText,
   whatsappChatNumber,
@@ -54,25 +56,14 @@ import {
 } from '@/modules/shared/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { DailyCollectorPanel } from '@/modules/call-center/components/daily-collector-panel';
+import { QueueHealthBadge } from '@/modules/workflow-intelligence';
 
 /**
- * V1.6.5 — KWD standard = 3 decimal places (fils). The Collections
- * island is the source of truth for debt-tracking precision, so we
- * format locally instead of reaching for the shared 4dp helper (which
- * stays intact for legacy screens that depend on it).
- *
- * Accepts both decimal strings (backend DTO) and plain numbers (local
- * reductions). Returns "<n>.nnn د.ك" — e.g. "2.400 د.ك".
+ * V21 Phase 4 — single canonical KWD formatter. Previously this page
+ * defined a local `formatKwd3` + `KWD_SUFFIX`; both have been collapsed
+ * into the shared `formatKwdLabelGrouped` from `@/lib/kwd` so the entire
+ * system runs through one money-formatting standard.
  */
-const KWD_SUFFIX = ' د.ك';
-function formatKwd3(value: string | number): string {
-  const raw = typeof value === 'number' ? value : Number.parseFloat(value || '0');
-  if (!Number.isFinite(raw)) return `${String(value)}${KWD_SUFFIX}`;
-  return `${raw.toLocaleString('en-GB', {
-    minimumFractionDigits: 3,
-    maximumFractionDigits: 3,
-  })}${KWD_SUFFIX}`;
-}
 
 /** Faster refresh so the debt-radar reflects new/cleared invoices quickly. */
 const POLL_MS = 8_000;
@@ -301,6 +292,26 @@ export function CollectionsPage() {
     return () => window.clearInterval(id);
   }, [token, allowed, loadSummary]);
 
+  // V22 Phase 5 — Realtime adoption.
+  //
+  // Subscribe to the canonical `collections` SSE channel.
+  // The hook ONLY invalidates `financial:*` cache prefixes —
+  // it never reads `payload.*Kd` and never sets cache values
+  // directly (locked in by `v21-phase4-realtime-purity.test.ts`).
+  //
+  // The follow-up `load({ silent: true })` re-runs the canonical
+  // collections query so every displayed financial value stays
+  // server-canonical.
+  useRealtimeFinancialFeed({
+    channel: 'collections',
+    accessToken: token,
+    enabled: Boolean(token && allowed),
+    onEvent: () => {
+      void load({ silent: true });
+      void loadSummary({ silent: true });
+    },
+  });
+
   /**
    * Dastur V1.5.2 + V1.6.6 — "Send Payment Link" flow.
    *
@@ -440,10 +451,7 @@ export function CollectionsPage() {
     if (filteredRows.length === 0) return null;
     const cid = filteredRows[0]?.customerId;
     if (!cid || filteredRows.some((r) => r.customerId !== cid)) return null;
-    let total = 0;
-    for (const r of filteredRows) {
-      total += Number.parseFloat(r.amountKd || '0') || 0;
-    }
+    const total = sumKwdStringsPrecise(filteredRows.map((r) => r.amountKd));
     const first = filteredRows[0]!;
     const phone = first.customerPhone?.trim() ?? '';
     const name = first.customerName?.trim() ?? '';
@@ -451,7 +459,7 @@ export function CollectionsPage() {
       phone.length > 0 ? phone : name.length > 0 ? name : first.customerId;
     return {
       customerName: name || '—',
-      invoiceTotalKd: total.toFixed(3),
+      invoiceTotalKd: total,
       subscribersQuery: qForLink,
     };
   }, [filteredRows]);
@@ -460,10 +468,27 @@ export function CollectionsPage() {
     return <Navigate to="/" replace />;
   }
 
+  // V23 Phase 6 — derive a glanceable queue health summary from row aging
+  // (visibility-only — counts the operational *pressure*, never a money value).
+  const queueHealthSnapshot = useMemo(() => {
+    let critical = 0;
+    let overdue = 0;
+    for (const r of filteredRows) {
+      const age = r.invoiceAgeDays | 0;
+      if (age >= 90) critical += 1;
+      else if (age >= 60) overdue += 1;
+    }
+    return {
+      total: filteredRows.length,
+      criticalCount: critical,
+      overdueCount: overdue,
+    };
+  }, [filteredRows]);
+
   // V1.6.5 — KPI cards and amount columns render with 3dp (fils).
-  const kpiMarketDebt = summary ? formatKwd3(summary.totalMarketDebtKd) : '—';
+  const kpiMarketDebt = summary ? formatKwdLabelGrouped(summary.totalMarketDebtKd) : '—';
   const kpiCollectedToday = summary
-    ? formatKwd3(summary.debtCollectedTodayKd)
+    ? formatKwdLabelGrouped(summary.debtCollectedTodayKd)
     : '—';
   const kpiPendingLinks = summary ? String(summary.pendingLinksCount) : '—';
 
@@ -483,6 +508,25 @@ export function CollectionsPage() {
           <p className="mt-1 text-xs text-muted-foreground">
             {t('collections.debtRadarHint', { seconds: POLL_MS / 1000 })}
           </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <QueueHealthBadge
+              total={queueHealthSnapshot.total}
+              criticalCount={queueHealthSnapshot.criticalCount}
+              overdueCount={queueHealthSnapshot.overdueCount}
+              ariaLabel={t('collections.queueHealthAria', {
+                defaultValue: 'صحة الطابور التشغيلي',
+              })}
+            />
+            <Link
+              to="/cc/collections/cockpit"
+              className="inline-flex items-center gap-1 rounded-md border border-sky-300 bg-sky-50 px-2 py-1 text-xs font-medium text-sky-800 hover:bg-sky-100 dark:border-sky-700 dark:bg-sky-900/30 dark:text-sky-200"
+            >
+              <Sparkles className="h-3 w-3" />
+              {t('collections.openCockpit', {
+                defaultValue: 'افتح قمرة القيادة (V23.1)',
+              })}
+            </Link>
+          </div>
         </div>
         <Button
           type="button"
@@ -535,10 +579,10 @@ export function CollectionsPage() {
       {summary && !summaryLoading ? (
         <p className="text-xs leading-relaxed text-muted-foreground">
           {t('collections.ledgerStripLine', {
-            inv: formatKwd3(
+            inv: formatKwdLabelGrouped(
               summary.outstandingInvoiceDebtKd ?? '0',
             ),
-            sub: formatKwd3(
+            sub: formatKwdLabelGrouped(
               summary.outstandingSubscriptionDebtKd ?? '0',
             ),
           })}
@@ -576,7 +620,7 @@ export function CollectionsPage() {
           <p className="text-sm leading-relaxed text-foreground">
             {t('collections.singleCustomerDebtAlignmentHint', {
               name: singleCustomerInvoiceScope.customerName,
-              invoicesTotal: formatKwd3(
+              invoicesTotal: formatKwdLabelGrouped(
                 singleCustomerInvoiceScope.invoiceTotalKd,
               ),
             })}
@@ -649,7 +693,7 @@ export function CollectionsPage() {
                   </p>
                 : null}
                 <p className="mt-2 text-lg font-bold tabular-nums text-foreground">
-                  {formatKwd3(row.amountKd)}
+                  {formatKwdLabelGrouped(row.amountKd)}
                 </p>
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
                   {row.paymentMethod ? (
@@ -859,7 +903,7 @@ export function CollectionsPage() {
                     )}
                   </TableCell>
                   <TableCell className="text-end tabular-nums font-semibold">
-                    {formatKwd3(row.amountKd)}
+                    {formatKwdLabelGrouped(row.amountKd)}
                   </TableCell>
                   <TableCell
                     className={cn('text-end tabular-nums font-medium', ageTone)}
@@ -984,15 +1028,15 @@ export function CollectionsPage() {
                 <TableCell colSpan={4} className="text-end">
                   {t('collections.totalFooter')}
                 </TableCell>
-                {/* V1.6.5 — 3dp footer sum. Reducing in JS number space
-                    is safe for display (< 1e15 KWD) and the KWD-3 helper
-                    rounds half-to-even at the last fils so the footer
-                    equals the Red-card KPI under the same branch scope. */}
+                {/* V23.1 — Footer sum migrated to BigInt micro-fils via
+                    `sumKwdStringsPrecise`. The 3dp display rounding lives
+                    inside `formatKwdLabelGrouped`, so the table footer
+                    still equals the Red-card KPI under the same branch
+                    scope but no float drift can creep in. */}
                 <TableCell className="text-end tabular-nums">
-                  {formatKwd3(
-                    filteredRows.reduce(
-                      (acc, r) => acc + (Number.parseFloat(r.amountKd) || 0),
-                      0,
+                  {formatKwdLabelGrouped(
+                    sumKwdStringsPrecise(
+                      filteredRows.map((r) => r.amountKd),
                     ),
                   )}
                 </TableCell>
@@ -1036,7 +1080,7 @@ export function CollectionsPage() {
                     </span>
                     {' — '}
                     <span className="font-semibold tabular-nums">
-                      {formatKwd3(markPaidRow.amountKd)}
+                      {formatKwdLabelGrouped(markPaidRow.amountKd)}
                     </span>
                   </span>
                 </>

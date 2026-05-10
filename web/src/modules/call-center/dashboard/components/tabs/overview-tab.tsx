@@ -7,6 +7,7 @@ import {
   CardTitle,
 } from '@/modules/shared/components/ui/card';
 import { cn } from '@/lib/utils';
+import { formatKwdLabel, isMaterialKd, isPositiveKd } from '@/lib/kwd';
 import type { Customer360Data } from '../../hooks/use-cc-customer-360';
 import type { DispatchRow } from '../../api/cc-dashboard-api';
 
@@ -73,9 +74,12 @@ function formatDateTimeAr(iso: string | null | undefined): string {
 export function OverviewTab({ data, latestDispatch }: Props) {
   const { t } = useTranslation();
   const f = data.statement.financials;
-
-  const totalDueKd = Number.parseFloat(f.totalDueKd);
-  const hasDebt = Number.isFinite(totalDueKd) && totalDueKd > 0.0001;
+  // V23.1 Final — read canonical receivable debt directly. See the
+  // long-form rationale on Customer360Financials.canonicalDebtKd in
+  // `web/src/lib/api.ts`.
+  const unpaidInvoicesKd = f.canonicalDebtKd;
+  const payableNowKd = f.canonicalDebtKd;
+  const hasDebt = isMaterialKd(payableNowKd);
 
   // Total invoices count is not exposed directly — the closest proxy
   // here is "active subscriptions" which already comes through 360.
@@ -87,16 +91,16 @@ export function OverviewTab({ data, latestDispatch }: Props) {
         <MetricCard
           icon={Receipt}
           label={t('callCenterDashboard.overview.totalInvoices', {
-            defaultValue: 'إجمالي الفواتير',
+            defaultValue: 'الفواتير غير مدفوعة',
           })}
-          value={`${f.totalInvoicesKd} د.ك`}
+          value={formatKwdLabel(unpaidInvoicesKd)}
         />
         <MetricCard
           icon={Wallet}
           label={t('callCenterDashboard.overview.outstanding', {
             defaultValue: 'المستحق على العميل',
           })}
-          value={`${f.totalDueKd} د.ك`}
+          value={formatKwdLabel(payableNowKd)}
           tone={hasDebt ? 'warning' : 'default'}
           hint={t('callCenterDashboard.overview.readOnlyHint', {
             defaultValue: 'للقراءة فقط — لا يُحرر من هنا',
@@ -149,7 +153,7 @@ export function OverviewTab({ data, latestDispatch }: Props) {
       </div>
 
       {data.subscription &&
-      Number.parseFloat(data.subscription.subscriptionValueKd) > 0 ? (
+      isPositiveKd(data.subscription.subscriptionValueKd) ? (
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base">
@@ -166,7 +170,7 @@ export function OverviewTab({ data, latestDispatch }: Props) {
                 })}
               </p>
               <p className="font-medium">
-                {data.subscription.subscriptionValueKd} د.ك
+                {formatKwdLabel(data.subscription.subscriptionValueKd)}
               </p>
             </div>
             <div>
@@ -176,7 +180,7 @@ export function OverviewTab({ data, latestDispatch }: Props) {
                 })}
               </p>
               <p className="font-medium">
-                {data.subscription.subscriptionConsumedKd} د.ك
+                {formatKwdLabel(data.subscription.subscriptionConsumedKd)}
               </p>
             </div>
             <div>
@@ -186,7 +190,7 @@ export function OverviewTab({ data, latestDispatch }: Props) {
                 })}
               </p>
               <p className="font-medium">
-                {data.subscription.subscriptionRemainingKd} د.ك
+                {formatKwdLabel(data.subscription.subscriptionRemainingKd)}
               </p>
             </div>
           </CardContent>

@@ -61,17 +61,13 @@ export type DriverOversightCard = {
   /** ISO timestamp of the currently-open shift's start, if any. */
   shiftStartedAt: string | null;
   ordersTodayCount: number;
-  /**
-   * @deprecated SSoT-locked. Always `null`. Driver cash is exposed
-   *   only by `GET /api/cash-intelligence/dashboard`.
-   */
-  cashTodayKd: null;
   pendingInvoicesCount: number;
-  /**
-   * @deprecated SSoT-locked. Always `null`. Driver cash is exposed
-   *   only by `GET /api/cash-intelligence/dashboard`.
-   */
-  heldCashKd: null;
+  // V23.2 — `cashTodayKd` and `heldCashKd` are GONE from the wire
+  // shape entirely. They were nulled out for back-compat back when
+  // the SSoT cash source moved to /api/cash-intelligence/dashboard;
+  // V23.2 deletes the keys completely so no consumer can access them
+  // even via dynamic property reads. The `assertNoForbiddenCashFields`
+  // controller guard remains as a defensive runtime check.
   staleQuickCount: number;
   /**
    * Stale-quick capture amount (NOT a cash-residue field — it is the
@@ -245,13 +241,11 @@ export class DriverOversightService {
         shiftStatus: shiftStart ? 'ON_SHIFT' : 'OFF',
         shiftStartedAt: shiftStart ? shiftStart.toISOString() : null,
         ordersTodayCount: today?._count._all ?? 0,
-        // SSoT-locked. See module header — driver cash is published
-        // ONLY by GET /api/cash-intelligence/dashboard.
-        cashTodayKd: null,
         pendingInvoicesCount: pendingCount,
-        // SSoT-locked. See module header — driver cash is published
-        // ONLY by GET /api/cash-intelligence/dashboard.
-        heldCashKd: null,
+        // V23.2 — driver cash is published EXCLUSIVELY by
+        // GET /api/cash-intelligence/dashboard. The legacy
+        // `cashTodayKd` / `heldCashKd` keys have been removed from
+        // this card entirely (previously published as `null`).
         staleQuickCount: staleCount,
         staleQuickKd: staleKd.toFixed(3),
         atRisk,

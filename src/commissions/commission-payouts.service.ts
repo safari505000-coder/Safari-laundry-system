@@ -5,6 +5,7 @@ import {
   SafariRole,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { computeCanonicalCommissionPayoutSummaryTotals } from '../finance/canonical-financial-projection';
 import { ListCommissionPayoutsDto } from './dto/list-commission-payouts.dto';
 
 /**
@@ -88,7 +89,11 @@ export class CommissionPayoutsService {
       cancelledKd: b.CANCELLED.toFixed(4),
     }));
 
-    return { rows, totals };
+    return {
+      rows,
+      totals,
+      summaryTotals: computeCanonicalCommissionPayoutSummaryTotals(totals),
+    };
   }
 
   /**

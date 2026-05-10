@@ -44,10 +44,16 @@ export class StaleQuickOrdersCronService {
     try {
       const risks = await this.orders.listStaleQuickOrderRisks();
       const count = risks.length;
-      const totalKd = risks.reduce(
-        (sum, r) => sum + Number.parseFloat(r.amountKd),
-        0,
+      // V23.2 — Decimal-precise accumulator. The prior
+      // `sum + Number.parseFloat(r.amountKd)` reduce collapsed every
+      // amountKd string through JS doubles (lossy at the 4dp boundary
+      // on long lists). The accumulator now stays in Decimal land and
+      // only converts to a number/string at the audit-log boundary.
+      const totalKdDecimal = risks.reduce(
+        (sum, r) => sum.plus(new Prisma.Decimal(r.amountKd)),
+        new Prisma.Decimal(0),
       );
+      const totalKd = totalKdDecimal.toNumber();
 
       const action = count === 0 ? AUDIT_ACTION_CLEAN : AUDIT_ACTION_FLAG;
       const payload = {

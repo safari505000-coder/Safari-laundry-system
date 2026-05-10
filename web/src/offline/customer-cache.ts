@@ -40,6 +40,7 @@ function normalizeSearchRow(r: CustomerSearchRow): CustomerSearchRow {
       r.wallet ?
         {
           balance: String(r.wallet.balance),
+          // allow-legacy-debt-reader (V20.6 Phase 2: IndexedDB offline cache mirrors the server's wallet shape verbatim; no UI computation)
           debt: String(r.wallet.debt),
         }
       : null,

@@ -43,7 +43,11 @@ function makeDashboardService(
   const cash = {
     getTotalCashWithDrivers: jest.fn(async () => '0.0000'),
   } as unknown as CashService;
-  return new AccountantDashboardService(prisma, cash, cache);
+  // V23.3 — Cast: `PrismaClient` (the test container's raw client)
+  // and `PrismaService` are structurally identical at the call-site
+  // level used by the dashboard service. The cast keeps `tsc --noEmit`
+  // green without altering integration-test semantics.
+  return new AccountantDashboardService(prisma as never, cash, cache);
 }
 
 /** Kuwait “today” window includes this instant when used with matching fake clock. */
@@ -666,7 +670,7 @@ describeIntegration('AccountantDashboardService — Integration with Prisma', ()
       const cash = {
         getTotalCashWithDrivers: jest.fn(async () => '0.0000'),
       } as unknown as CashService;
-      const service = new AccountantDashboardService(ctx.prisma, cash, cache);
+      const service = new AccountantDashboardService(ctx.prisma as never, cash, cache);
       try {
         await insertCompletedCashOrder(ctx, {
           driverId: ctx.driverAId,
@@ -711,7 +715,7 @@ describeIntegration('AccountantDashboardService — Integration with Prisma', ()
       const cash = {
         getTotalCashWithDrivers: jest.fn(async () => '0.0000'),
       } as unknown as CashService;
-      const service = new AccountantDashboardService(ctx.prisma, cash, cache);
+      const service = new AccountantDashboardService(ctx.prisma as never, cash, cache);
       try {
         await insertCompletedCashOrder(ctx, {
           driverId: ctx.driverAId,

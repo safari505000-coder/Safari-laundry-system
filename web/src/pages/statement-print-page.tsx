@@ -14,7 +14,6 @@ import {
   type CustomerLedgerInvoice,
   type CustomerLedgerResponse,
 } from '@/lib/api';
-import { parseLedgerOperationalDebtKd } from '@/lib/customer-ledger-parse';
 import { formatKwdLabel } from '@/lib/kwd';
 import { OperatorRouteHint } from '@/modules/shared/components/shell/operator-route-hint';
 import { PrintableSheet } from '@/modules/shared/print/PrintableSheet';
@@ -34,11 +33,6 @@ import './statement-print.css';
  * link (`/public/statement/:token`) can render byte-identical output
  * without duplicating the JSX.
  */
-
-const KD_FMT_4 = (v: string | number | null | undefined) => {
-  const n = typeof v === 'string' ? Number.parseFloat(v) : (v ?? 0);
-  return formatKwdLabel(Number.isFinite(n) ? n : 0);
-};
 
 function formatDateTime(iso: string): string {
   const d = new Date(iso);
@@ -144,7 +138,7 @@ function StatementInvoiceSubTable({
                 ) : null}
               </td>
               <td style={{ textAlign: 'end' }}>
-                <strong>{KD_FMT_4(inv.totalKd)}</strong>
+                <strong>{formatKwdLabel(inv.totalKd)}</strong>
               </td>
             </tr>
           ))}
@@ -171,53 +165,38 @@ export function StatementSheet({
   rangeLabel: string;
   onBack?: () => void;
 }) {
-  const totals = useMemo(() => {
-    let totalInvoiced = 0;
-    let totalPaid = 0;
-    let totalOpenDebt = 0;
-    for (const inv of data.invoices) {
-      if (inv.status === 'CANCELED') continue;
-      const v = Number.parseFloat(inv.totalKd) || 0;
-      totalInvoiced += v;
-      if (inv.openDebt) totalOpenDebt += v;
-      else totalPaid += v;
-    }
-    return { totalInvoiced, totalPaid, totalOpenDebt };
-  }, [data]);
-
   const invBuckets = useMemo(() => {
     const unpaid: CustomerLedgerInvoice[] = [];
     const paid: CustomerLedgerInvoice[] = [];
     const canceled: CustomerLedgerInvoice[] = [];
     for (const inv of data.invoices) {
-      if (inv.status === 'CANCELED') {
+      if (inv.projectionGroup === 'CANCELED') {
         canceled.push(inv);
         continue;
       }
-      if (inv.openDebt) unpaid.push(inv);
+      if (inv.projectionGroup === 'UNPAID') unpaid.push(inv);
       else paid.push(inv);
     }
     return { unpaid, paid, canceled };
   }, [data]);
 
-  /**
-   * Full Σ uncollection matches `/collections` (server field). Fallback:
-   * sum `openDebt` rows on **this page** only when legacy responses omit it.
-   */
   const collectionsReceivableFromApi = data.customer.collectionsReceivableKd;
   const openInvoicesKdForTile =
     collectionsReceivableFromApi !== undefined &&
     collectionsReceivableFromApi.trim() !== ''
-      ? Number.parseFloat(collectionsReceivableFromApi) || 0
-      : totals.totalOpenDebt;
+      ? collectionsReceivableFromApi
+      : data.totals.totalOpenInvoicesKd;
 
   const issuedAtIso = new Date().toISOString();
   const customerName = data.customer.displayName ?? '—';
   const customerPhone = data.customer.phone ?? '—';
   const branchName = data.customer.originBranchName ?? '—';
   const sub = data.activeSubscription;
-  const debtK = parseLedgerOperationalDebtKd(data.customer);
-  const balK = Number.parseFloat(data.customer.walletBalanceKd) || 0;
+  const balK = data.customer.walletBalanceKd;
+  const debtK =
+    data.customer.remainingDebtKd ?? data.customer.collectionsReceivableKd ?? '0.0000';
+  const hasDebt = debtK !== '0.0000';
+  const hasBalance = data.customer.walletBalanceKd !== '0.0000';
   const docNumber = `STMT-${data.customer.id.slice(0, 8).toUpperCase()}`;
 
   const subtitle = `${customerName} — ${customerPhone} • ${rangeLabel}`;
@@ -225,9 +204,9 @@ export function StatementSheet({
   const status: {
     label: string;
     kind: 'approved' | 'rejected' | 'pending' | 'paid';
-  } = debtK > 0
+  } = hasDebt
     ? { label: `مديونية: ${formatKwdLabel(debtK)}`, kind: 'rejected' }
-    : balK > 0
+    : hasBalance
       ? { label: `رصيد: ${formatKwdLabel(balK)}`, kind: 'paid' }
       : { label: 'حساب متوازن', kind: 'approved' };
 
@@ -271,7 +250,7 @@ export function StatementSheet({
               <span className="stmt-snapshot-value">{formatKwdLabel(balK)}</span>
             </div>
             <div
-              className={`stmt-snapshot-tile ${debtK > 0 ? 'stmt-tone-debt' : 'stmt-tone-clear'}`}
+              className={`stmt-snapshot-tile ${hasDebt ? 'stmt-tone-debt' : 'stmt-tone-clear'}`}
             >
               <span className="stmt-snapshot-label">المديونية الحالية</span>
               <span className="stmt-snapshot-value">{formatKwdLabel(debtK)}</span>
@@ -282,7 +261,7 @@ export function StatementSheet({
                 {formatKwdLabel(openInvoicesKdForTile)}
               </span>
               <span className="stmt-snapshot-sub">
-                من إجمالي {formatKwdLabel(totals.totalInvoiced)}
+                من إجمالي {formatKwdLabel(data.totals.totalInvoicedKd)}
               </span>
             </div>
           </div>
@@ -309,7 +288,7 @@ export function StatementSheet({
                 <div>
                   <span className="printable-sheet__label">قيمة الرصيد</span>
                   <span className="printable-sheet__value">
-                    {KD_FMT_4(sub.planActualBalanceKd)}
+                    {formatKwdLabel(sub.planActualBalanceKd)}
                   </span>
                 </div>
                 <div>
@@ -319,13 +298,13 @@ export function StatementSheet({
                   </span>
                 </div>
               </div>
-              {Number.parseFloat(sub.carriedBalanceKd) !== 0 ? (
+              {sub.carriedBalanceKd !== '0.0000' ? (
                 <div className="stmt-sub-carried">
                   <span className="stmt-sub-carried-label">
                     رصيد مرحّل (من اشتراك/تسوية سابقة)
                   </span>
                   <span className="stmt-sub-carried-value">
-                    {KD_FMT_4(sub.carriedBalanceKd)}
+                    {formatKwdLabel(sub.carriedBalanceKd)}
                   </span>
                 </div>
               ) : null}
@@ -355,12 +334,7 @@ export function StatementSheet({
                       <tr>
                         <td colSpan={4}>إجمالي غير المسدّد (هذا القسم)</td>
                         <td style={{ textAlign: 'end', color: '#b91c1c' }}>
-                          {formatKwdLabel(
-                            invBuckets.unpaid.reduce(
-                              (s, i) => s + (Number.parseFloat(i.totalKd) || 0),
-                              0,
-                            ),
-                          )}
+                          {formatKwdLabel(data.totals.totalOpenInvoicesKd)}
                         </td>
                       </tr>
                     </tfoot>
@@ -530,11 +504,10 @@ function EventRows({ event: e }: { event: CustomerLedgerEvent }) {
   const label = EVENT_KIND_AR[e.kind] ?? e.kind;
   const planTag = e.subscriptionLabel ? ` — ${e.subscriptionLabel}` : '';
   const ref = e.orderSerial ? `#${e.orderSerial}` : '—';
-  const balanceAfter = Number.parseFloat(e.balanceAfterKd) || 0;
-  const debtAfter =
-    (Number.parseFloat(e.debtAfterKd) || 0) + Math.max(-balanceAfter, 0);
   const showBreakdown =
     e.kind === 'SUBSCRIPTION_ACTIVATION' && e.activationBreakdown;
+  const effectiveDebtAfterExists =
+    e.projection.effectiveDebtAfterKd !== '0.0000';
 
   return (
     <>
@@ -544,13 +517,13 @@ function EventRows({ event: e }: { event: CustomerLedgerEvent }) {
           <span className="stmt-event-kind">{label}</span>
           <span className="stmt-event-plan">{planTag}</span>
         </td>
-        <td className="stmt-num">{KD_FMT_4(e.amountKd)}</td>
-        <td className="stmt-num">{KD_FMT_4(e.balanceAfterKd)}</td>
+        <td className="stmt-num">{formatKwdLabel(e.amountKd)}</td>
+        <td className="stmt-num">{formatKwdLabel(e.balanceAfterKd)}</td>
         <td
           className="stmt-num"
-          style={debtAfter > 0 ? { color: '#b91c1c' } : undefined}
+          style={effectiveDebtAfterExists ? { color: '#b91c1c' } : undefined}
         >
-          {KD_FMT_4(debtAfter)}
+          {formatKwdLabel(e.projection.effectiveDebtAfterKd)}
         </td>
         <td>{ref}</td>
       </tr>
@@ -564,56 +537,53 @@ function EventRows({ event: e }: { event: CustomerLedgerEvent }) {
               <dl className="stmt-breakdown-grid">
                 <BreakdownItem
                   label="مدفوع من العميل"
-                  value={KD_FMT_4(e.activationBreakdown.totalCollectedKd)}
+                  value={formatKwdLabel(e.activationBreakdown.totalCollectedKd)}
                 />
                 <BreakdownItem
                   label="قيمة الرصيد المضاف للاشتراك"
-                  value={KD_FMT_4(e.activationBreakdown.actualBalanceKd)}
+                  value={formatKwdLabel(e.activationBreakdown.actualBalanceKd)}
                   tone="info"
                 />
-                {Number.parseFloat(e.activationBreakdown.subsidyKd) > 0 ? (
+                {e.activationBreakdown.subsidyKd !== '0.0000' ? (
                   <BreakdownItem
                     label="دعم الفرع"
-                    value={KD_FMT_4(e.activationBreakdown.subsidyKd)}
+                    value={formatKwdLabel(e.activationBreakdown.subsidyKd)}
                   />
                 ) : null}
-                {Number.parseFloat(e.activationBreakdown.debtSettledKd) >
-                0 ? (
+                {e.activationBreakdown.debtSettledKd !== '0.0000' ? (
                   <BreakdownItem
                     label="خُصم من المديونية السابقة"
-                    value={KD_FMT_4(e.activationBreakdown.debtSettledKd)}
+                    value={formatKwdLabel(e.activationBreakdown.debtSettledKd)}
                     tone="success"
                   />
                 ) : null}
-                {Number.parseFloat(e.activationBreakdown.creditedToBalanceKd) >
-                0 ? (
+                {e.activationBreakdown.creditedToBalanceKd !== '0.0000' ? (
                   <BreakdownItem
                     label="أُضيف لرصيد المحفظة"
-                    value={KD_FMT_4(e.activationBreakdown.creditedToBalanceKd)}
+                    value={formatKwdLabel(
+                      e.activationBreakdown.creditedToBalanceKd,
+                    )}
                   />
                 ) : null}
-                {Number.parseFloat(e.activationBreakdown.carriedBalanceKd) !==
-                0 ? (
+                {e.activationBreakdown.carriedBalanceKd !== '0.0000' ? (
                   <BreakdownItem
                     label={
-                      Number.parseFloat(
-                        e.activationBreakdown.carriedBalanceKd,
-                      ) < 0
+                      e.activationBreakdown.carriedBalanceKd.startsWith('-')
                         ? 'دين مرحّل قبل التفعيل'
                         : 'رصيد مرحّل قبل التفعيل'
                     }
-                    value={KD_FMT_4(e.activationBreakdown.carriedBalanceKd)}
+                    value={formatKwdLabel(e.activationBreakdown.carriedBalanceKd)}
                   />
                 ) : null}
                 <BreakdownItem
                   label="الرصيد بعد التفعيل"
-                  value={KD_FMT_4(e.balanceAfterKd)}
-                  tone={balanceAfter < 0 ? 'danger' : 'success'}
+                  value={formatKwdLabel(e.balanceAfterKd)}
+                  tone={e.balanceAfterKd.startsWith('-') ? 'danger' : 'success'}
                 />
                 <BreakdownItem
                   label="المديونية بعد التفعيل"
-                  value={KD_FMT_4(debtAfter)}
-                  tone={debtAfter > 0 ? 'danger' : undefined}
+                  value={formatKwdLabel(e.projection.effectiveDebtAfterKd)}
+                  tone={effectiveDebtAfterExists ? 'danger' : undefined}
                 />
               </dl>
               {e.closedInvoices.length > 0 ? (
@@ -636,7 +606,7 @@ function EventRows({ event: e }: { event: CustomerLedgerEvent }) {
                           <td>#{inv.serial ?? inv.id.slice(0, 8)}</td>
                           <td>{formatDate(inv.createdAtIso)}</td>
                           <td style={{ textAlign: 'end' }}>
-                            {KD_FMT_4(inv.totalKd)}
+                            {formatKwdLabel(inv.totalKd)}
                           </td>
                         </tr>
                       ))}
@@ -648,20 +618,14 @@ function EventRows({ event: e }: { event: CustomerLedgerEvent }) {
                         </td>
                         <td style={{ textAlign: 'end' }}>
                           <strong>
-                            {formatKwdLabel(
-                              e.closedInvoices.reduce(
-                                (s, x) =>
-                                  s + (Number.parseFloat(x.totalKd) || 0),
-                                0,
-                              ),
-                            )}
+                            {formatKwdLabel(e.projection.closedInvoicesTotalKd)}
                           </strong>
                         </td>
                       </tr>
                     </tfoot>
                   </table>
                 </div>
-              ) : Number.parseFloat(e.activationBreakdown.debtSettledKd) > 0 ? (
+              ) : e.activationBreakdown.debtSettledKd !== '0.0000' ? (
                 <p className="stmt-closed-note">
                   المبلغ خُصم من إجمالي المديونية في المحفظة — لم تُقفل
                   فواتير بعينها بشكل كامل.

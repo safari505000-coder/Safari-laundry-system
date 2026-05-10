@@ -1,13 +1,7 @@
 import type { Customer360Financials } from '@/lib/api';
+import { formatKwdLabel } from '@/lib/kwd';
 
 export type CustomerRating = 'GOOD' | 'WATCH' | 'BLOCKED';
-
-export function formatArabicKwd(value: string | number): string {
-  const n = typeof value === 'number' ? value : Number.parseFloat(value);
-  return new Intl.NumberFormat('ar-KW', {
-    minimumFractionDigits: 3,
-  }).format(Number.isFinite(n) ? n : 0);
-}
 
 export function getArabicStatus(rating: CustomerRating): string {
   if (rating === 'BLOCKED') return '🚫 عميل موقوف';
@@ -16,11 +10,11 @@ export function getArabicStatus(rating: CustomerRating): string {
 }
 
 export function getArabicInsight(
-  fin: Pick<Customer360Financials, 'totalDueKd'>,
+  fin: Pick<Customer360Financials, 'canonicalDebtKd'>,
   rating: CustomerRating,
 ): string {
   if (rating === 'BLOCKED') {
-    return `🚫 المبلغ المطلوب دفعه من العميل ${formatArabicKwd(fin.totalDueKd)} د.ك. يجب إيقاف الطلبات والتواصل معه فورًا.`;
+    return `🚫 المبلغ المطلوب دفعه من العميل ${formatKwdLabel(fin.canonicalDebtKd)}. يجب إيقاف الطلبات والتواصل معه فورًا.`;
   }
 
   if (rating === 'WATCH') {

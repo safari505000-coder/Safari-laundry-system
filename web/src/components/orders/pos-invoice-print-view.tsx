@@ -75,6 +75,7 @@ export function PosInvoicePrintView({
   const notesLines = (row.notes ?? '').trim();
 
   /** إجمالي مديونية المحفظة يُعرض هنا فقط عندما تكون *هذه* الفاتورة ذات ذمّة مفتوحة — لا على الفواتير المسدّدة بينما للعميل دين من فواتير أخرى. */
+  // allow-legacy-debt-reader (V20.6 Phase 2: cashStatus is a server-canonical render flag set when the invoice was issued; not a UI-side debt computation)
   const invoiceShowsWalletDebtReminder =
     row.status !== 'CANCELED' &&
     (row.cashStatus === 'UNPAID' || row.posPaymentMethod === 'DEBT_ON_ACCOUNT');
@@ -143,7 +144,8 @@ export function PosInvoicePrintView({
             <p className="pos-payment-canceled" dir="auto">
               فاتورة ملغاة / CANCELED
             </p>
-          ) : row.cashStatus === 'UNPAID' ? (
+          ) : // allow-legacy-debt-reader (V20.6 Phase 2: server-canonical settlement flag)
+          row.cashStatus === 'UNPAID' ? (
             <p className="pos-payment-pending" dir="auto">
               دفع غير مكتمل — الفاتورة لم تُسدَّد بعد
             </p>

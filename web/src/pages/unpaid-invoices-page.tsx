@@ -25,9 +25,10 @@ import {
   type BranchRow,
   type UnpaidInvoicesResponse,
 } from '@/lib/api';
-import { formatKwdLabel } from '@/lib/kwd';
+import { formatKwdAmount, formatKwdLabel, isMaterialKd } from '@/lib/kwd';
 import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
 import { Badge } from '@/modules/shared/components/ui/badge';
+import { PaymentStatusChip } from '@/modules/finance/components/PaymentStatusChip';
 import { Button } from '@/modules/shared/components/ui/button';
 import { Input } from '@/modules/shared/components/ui/input';
 import {
@@ -76,37 +77,6 @@ function debtSourceSortRank(
   if (s === 'SUBSCRIPTION_OVERUSE') return 1;
   if (s === 'OPEN_UNPAID_ORDER') return 2;
   return 0;
-}
-
-/**
- * Cumulative sum of `remainingKd` per customer in chronological order
- * (shortfall line for an order before subscription line when both exist).
- */
-function cumulativeRemainingByLine(rows: UnpaidRow[]): Map<string, string> {
-  const byCustomer = new Map<string, UnpaidRow[]>();
-  for (const r of rows) {
-    const list = byCustomer.get(r.customerId) ?? [];
-    list.push(r);
-    byCustomer.set(r.customerId, list);
-  }
-  const out = new Map<string, string>();
-  for (const list of byCustomer.values()) {
-    const sorted = [...list].sort((a, b) => {
-      const ta = new Date(a.issuedAt).getTime();
-      const tb = new Date(b.issuedAt).getTime();
-      if (ta !== tb) return ta - tb;
-      const c = a.orderId.localeCompare(b.orderId);
-      if (c !== 0) return c;
-      return debtSourceSortRank(a.debtSource) - debtSourceSortRank(b.debtSource);
-    });
-    let acc = 0;
-    for (const r of sorted) {
-      const rem = Number.parseFloat(r.remainingKd || '0');
-      acc += Number.isFinite(rem) ? rem : 0;
-      out.set(lineKeyUnpaid(r), acc.toFixed(4));
-    }
-  }
-  return out;
 }
 
 function startOfDay(iso: string): string {
@@ -258,11 +228,6 @@ export function UnpaidInvoicesPage() {
     if (scope === 'open') return rows.filter((r) => r.isOpen);
     return rows;
   }, [data, scope]);
-
-  const cumulativeByLine = useMemo(
-    () => cumulativeRemainingByLine(visibleRows),
-    [visibleRows],
-  );
 
   /** Newest debt line first (`issuedAt` desc); tie-break by order id and debt source. */
   const displayRows = useMemo(() => {
@@ -831,11 +796,33 @@ export function UnpaidInvoicesPage() {
                 {formatKwdLabel(r.paidKd)}
               </TableCell>
               <TableCell className="text-end font-semibold tabular-nums text-yellow-600 dark:text-yellow-400">
-                {formatKwdLabel(r.remainingKd)}
+                <div className="flex flex-col items-end gap-1">
+                  <span>{formatKwdLabel(r.remainingKd)}</span>
+                  {/*
+                    V23.2 — canonical PaymentStatusChip from the
+                    V20.7 Financial UI Kit. Status is server-derived
+                    (V20.3.1 InvoicePaymentStatusService); never
+                    reconstruct from totalPrice − paid here. The
+                    legacy enum value `PARTIALLY_PAID` maps to the
+                    canonical `PARTIAL`. When the server omits the
+                    status (legacy invoice), we hide the chip
+                    entirely instead of rendering an em-dash so the
+                    operator does not mistake unknown for unpaid.
+                  */}
+                  {r.paymentStatus ? (
+                    <PaymentStatusChip
+                      status={
+                        r.paymentStatus === 'PARTIALLY_PAID'
+                          ? 'PARTIAL'
+                          : r.paymentStatus
+                      }
+                    />
+                  ) : null}
+                </div>
               </TableCell>
               <TableCell className="text-end font-semibold tabular-nums text-red-600 dark:text-red-400">
                 {formatKwdLabel(
-                  cumulativeByLine.get(lineKeyUnpaid(r)) ?? r.remainingKd,
+                  r.customerRunningRemainingKd ?? r.remainingKd,
                 )}
               </TableCell>
               <TableCell className="w-[1%] whitespace-nowrap">
@@ -895,7 +882,6 @@ function printReport(args: {
   };
 }) {
   const { t, locale, rows, kpis, filters } = args;
-  const printCumulative = cumulativeRemainingByLine(rows);
   // NOTE: do NOT pass `noopener`/`noreferrer` in the features string —
   // Chromium returns `null` from `window.open()` in that case, so we
   // lose the handle to the new window and the whole print flow goes
@@ -921,9 +907,7 @@ function printReport(args: {
     );
 
   const money = (kd: string | number | null | undefined) => {
-    const n = Number.parseFloat(String(kd ?? '0'));
-    if (!Number.isFinite(n)) return '0.000';
-    return n.toFixed(3);
+    return formatKwdAmount(kd ?? '0');
   };
 
   const fmtDate = (iso: string | null | undefined) =>
@@ -964,7 +948,7 @@ function printReport(args: {
         ${methodPrintRow(t('unpaidInvoices.methodKnet', 'KNET'), m.knetKd)}
         ${methodPrintRow(t('unpaidInvoices.methodOnline', 'Online'), m.onlineKd)}
         ${methodPrintRow(t('unpaidInvoices.methodPaymentLink', 'Payment link'), m.paymentLinkKd)}
-        ${Number.parseFloat(m.otherKd || '0') >= 0.0001 ? methodPrintRow(t('unpaidInvoices.methodOther', 'Other'), m.otherKd) : ''}
+        ${isMaterialKd(m.otherKd) ? methodPrintRow(t('unpaidInvoices.methodOther', 'Other'), m.otherKd) : ''}
       </div>
     </div>`
       : '';
@@ -992,7 +976,7 @@ function printReport(args: {
         <td class="num">${money(r.invoiceTotalKd)}</td>
         <td class="num paid">${money(r.paidKd)}</td>
         <td class="num rem">${money(r.remainingKd)}</td>
-        <td class="num cum">${money(printCumulative.get(lineKeyUnpaid(r)) ?? r.remainingKd)}</td>
+        <td class="num cum">${money(r.customerRunningRemainingKd ?? r.remainingKd)}</td>
       </tr>`,
           )
           .join('')

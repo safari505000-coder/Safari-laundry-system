@@ -25,13 +25,25 @@ import {
 } from '../finance/finance-money';
 import {
   assertDebtLedgerPaymentWrite,
+  isRealDebtLedgerPayment,
   traceDebtLedgerPaymentWrite,
 } from '../finance/debt-ledger-payment-origin.util';
+import {
+  computeOrderRemainingBalancesBatch,
+  INVOICE_REMAINING_TOLERANCE_KD,
+  isV20_3TrueAccountingEnabled,
+} from '../finance/debt-customer-aggregates.util';
 import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
 import { DoubleEntryJournalService } from '../general-ledger/double-entry-journal.service';
+import { JournalSourceService } from '../general-ledger/journal-source.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { OrdersService } from '../orders/orders.service';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  assertUiConsistency,
+  type UiConsistencyContext,
+} from '../finance/audit/assert-ui-consistency';
+import { FinancialDomainEventPublisher } from '../domain-events/financial-domain-event.publisher';
 import { SUBSCRIPTION_ACTIVATION_PAYMENT_METHODS } from '../call-center/dto/activate-subscription.dto';
 import type { SubscriptionActivationPaymentMethod } from '../call-center/dto/activate-subscription.dto';
 import type {
@@ -59,10 +71,58 @@ export class CustomerLedgerService {
     private readonly prisma: PrismaService,
     private readonly generalLedger: GeneralLedgerService,
     private readonly journal: DoubleEntryJournalService,
+    private readonly journalSource: JournalSourceService,
     private readonly inventory: InventoryService,
     @Inject(forwardRef(() => OrdersService))
     private readonly orders: OrdersService,
+    /**
+     * V20.4 — Phase 5 typed financial-event bus. Optional so
+     * existing tests built against the V20.3 5-arg signature
+     * can construct the service without wiring the publisher;
+     * production injection always provides it via
+     * {@link DomainEventsModule}.
+     */
+    private readonly events?: FinancialDomainEventPublisher,
   ) {}
+
+  /**
+   * V20.4 — Phase 5 typed event-fan-out helper. Centralised so
+   * each call site stays a single line and the absence of a
+   * wired publisher (legacy tests) silently skips. Failures
+   * inside `publish()` are absorbed by the publisher itself.
+   */
+  emitFinancialEvent: FinancialDomainEventPublisher['publish'] = ((
+    name: Parameters<FinancialDomainEventPublisher['publish']>[0],
+    payload: Parameters<FinancialDomainEventPublisher['publish']>[1],
+  ): void => {
+    this.events?.publish(name, payload);
+  }) as FinancialDomainEventPublisher['publish'];
+
+  /**
+   * V20.3.2 — Phase 5 fire-and-forget UI consistency log.
+   *
+   * MUST be called from outside any active transaction (i.e.
+   * after the `$transaction` callback has returned), because
+   * the helper reads the OUTER `this.prisma` which only sees
+   * committed data. Calling from inside a tx will read pre-
+   * commit state and produce noisy false positives.
+   *
+   * Wrapped here so external call sites stay one-liner. Never
+   * throws, never blocks the caller longer than the assertion
+   * itself; failures are absorbed by {@link assertUiConsistency}
+   * (logged as `[UI_CONSISTENCY_CHECK_FAILED]`).
+   */
+  postWriteUiConsistencyAssert(
+    customerId: string,
+    context: UiConsistencyContext,
+  ): void {
+    void assertUiConsistency({
+      db: this.prisma,
+      journal: this.journalSource,
+      customerId,
+      context,
+    });
+  }
 
   private async resolveFallbackOwnerIdTx(tx: PrismaTx): Promise<string | null> {
     const owner = await tx.user.findFirst({
@@ -212,7 +272,7 @@ export class CustomerLedgerService {
     customerId: string,
     performedByUserId?: string | null,
   ): Promise<{ paidOrderIds: string[] }> {
-    return this.prisma.$transaction(
+    const result = await this.prisma.$transaction(
       async (tx) =>
         this.autoReconcileUnpaidInvoicesFromPrepaidBalanceTx(
           tx,
@@ -221,6 +281,27 @@ export class CustomerLedgerService {
         ),
       { maxWait: 15_000, timeout: 45_000 },
     );
+    // V20.3.2 — Phase 5 post-commit consistency log. Wallet
+    // absorption changes both the canonical AR balance and the
+    // remaining-balance sum, so it's a high-signal hook.
+    this.postWriteUiConsistencyAssert(customerId, {
+      source: 'WALLET_ABSORPTION',
+      correlationId:
+        result.paidOrderIds.length > 0 ? result.paidOrderIds[0] : null,
+    });
+    // V20.4 — Phase 5 fan-out. Listener side
+    // (`FinancialSnapshotListener`) refreshes the projection
+    // for this customer; never blocks the caller.
+    if (result.paidOrderIds.length > 0) {
+      this.emitFinancialEvent('finance.wallet.absorbed', {
+        customerId,
+        orderId: result.paidOrderIds[0],
+        correlationId: result.paidOrderIds[0],
+        occurredAt: new Date().toISOString(),
+        amountKd: '0.0000',
+      });
+    }
+    return result;
   }
 
   private decimalFromMinor(minor: bigint): Prisma.Decimal {
@@ -248,6 +329,37 @@ export class CustomerLedgerService {
         });
       }
       throw e;
+    }
+  }
+
+  /**
+   * V20.1-v2 — Phase 13 concurrency safety helper.
+   *
+   * Acquires a row-level lock on the `CustomerWallet` row for the
+   * duration of the enclosing transaction (PostgreSQL `SELECT … FOR
+   * UPDATE`). Any other transaction attempting `SELECT … FOR UPDATE`
+   * or `UPDATE` on the same row will block until commit/rollback,
+   * eliminating the race between concurrent wallet settlements.
+   *
+   * Best-effort: errors (e.g. non-PG engine in tests, transient
+   * connection error) are swallowed and logged; the downstream
+   * `tx.customerWallet.update` is the final integrity gate.
+   */
+  private async lockCustomerWalletForUpdateTx(
+    tx: PrismaTx,
+    walletId: string,
+  ): Promise<void> {
+    try {
+      await tx.$queryRaw`SELECT 1 FROM "CustomerWallet" WHERE "id" = ${walletId}::uuid FOR UPDATE`;
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[WALLET_FOR_UPDATE_LOCK_FAILED]',
+        JSON.stringify({
+          walletId,
+          message: (err as Error)?.message ?? String(err),
+        }),
+      );
     }
   }
 
@@ -330,23 +442,76 @@ export class CustomerLedgerService {
     }
 
     const wallet = await this.getOrCreateWalletTx(tx, o.customerId);
+
+    // V20.1-v2 — Phase 13 concurrency safety.
+    //
+    // Acquire a row-level lock on the wallet for the rest of this
+    // transaction. Without this, two concurrent settlement attempts
+    // (e.g. driver finalises POS while CC manually marks the same
+    // order paid) could both observe the same `balance` snapshot and
+    // both deduct, double-spending the wallet credit.
+    //
+    // `tx.customerWallet.update` would also acquire a row-level lock,
+    // but only at write time — between `findUnique`/`upsert` and
+    // `update` there is a small race window. An explicit `FOR UPDATE`
+    // closes the window: any other transaction touching this wallet
+    // will block until this one commits or rolls back.
+    //
+    // Best-effort: silently skipped on engines that don't support
+    // it (e.g. tests with non-PG mocks). The downstream `update`
+    // remains the final integrity gate.
+    await this.lockCustomerWalletForUpdateTx(tx, wallet.id);
+
     const balanceMinor = toMinorFromFixed4(wallet.balance);
     const debtMinor = toMinorFromFixed4(wallet.debt);
 
-    const takeMinor = balanceMinor < totalMinor ? balanceMinor : totalMinor;
-    const shortfallMinor = totalMinor - takeMinor;
-    const beforeSubscriptionDebtMinor = balanceMinor < 0n ? -balanceMinor : 0n;
+    // V20.1 — Wallet drain hotfix.
+    //
+    // Pre-V20.1, `takeMinor = min(balance, total)` was applied for ANY
+    // posPaymentMethod, so the wallet was silently debited even when
+    // the customer was paying externally (CASH/KNET/ONLINE/PAYMENT_LINK).
+    // No compensating DebtLedgerEntry was written for the drained portion,
+    // making the wallet leak invisible to AR / Customer-360 / Subscribers.
+    // See V20-FORENSIC §C-1, §C-2.
+    //
+    // The wallet may now be touched ONLY when the resolved payment
+    // method is one that legitimately settles against wallet credit:
+    //   • SUBSCRIPTION_WALLET — operator explicitly chose to settle from
+    //     the wallet (POS auto-resolved when wallet covers the full total).
+    //   • DEBT_ON_ACCOUNT     — invoice is going on the customer's tab;
+    //     wallet credit (if any) absorbs the matching portion first.
+    //
+    // For every other method, the wallet stays untouched here. POS
+    // operators wanting to mix wallet + external on the same invoice
+    // is a UX change deferred to V20.3 (see Phase 4 deferred note).
     const isSubscriptionWalletPayment =
       o.posPaymentMethod === PosPaymentMethod.SUBSCRIPTION_WALLET;
-    const newBalanceMinor =
-      isSubscriptionWalletPayment ? balanceMinor - totalMinor : balanceMinor - takeMinor;
+    const isDebtOnAccount =
+      o.posPaymentMethod === PosPaymentMethod.DEBT_ON_ACCOUNT;
+    const shouldUseWallet = isSubscriptionWalletPayment || isDebtOnAccount;
+
+    // V20.1 (v2 audit) — DELIBERATE rename `takeMinor` → `safeTakeMinor`.
+    // The pre-V20.1 codebase used `takeMinor = min(balance, total)` as the
+    // single source of "wallet portion to consume", and that variable name
+    // is still searched-for by older diagnostic queries / SQL probes. The
+    // new name is the load-bearing one going forward; downstream math
+    // MUST use `safeTakeMinor` ONLY. Do not reintroduce a `takeMinor`
+    // alias — it was the seat of V20-FORENSIC §C-1.
+    const safeTakeMinor =
+      shouldUseWallet && balanceMinor > 0n
+        ? (balanceMinor < totalMinor ? balanceMinor : totalMinor)
+        : 0n;
+    const shortfallMinor = totalMinor - safeTakeMinor;
+    const beforeSubscriptionDebtMinor = balanceMinor < 0n ? -balanceMinor : 0n;
+    const newBalanceMinor = balanceMinor - safeTakeMinor;
     const externalCoversShortfall =
       o.posPaymentMethod === PosPaymentMethod.CASH ||
       o.posPaymentMethod === PosPaymentMethod.KNET ||
       o.posPaymentMethod === PosPaymentMethod.ONLINE ||
       o.posPaymentMethod === PosPaymentMethod.PAYMENT_LINK;
     const addInvoiceDebt =
-      o.posPaymentMethod === PosPaymentMethod.DEBT_ON_ACCOUNT ||
+      isDebtOnAccount ||
+      isSubscriptionWalletPayment ||
       (!isSubscriptionWalletPayment && !externalCoversShortfall);
     let newDebtMinor =
       addInvoiceDebt && shortfallMinor > 0n ? debtMinor + shortfallMinor : debtMinor;
@@ -385,6 +550,7 @@ export class CustomerLedgerService {
 
     const afterSubscriptionDebtMinor = newBalanceMinor < 0n ? -newBalanceMinor : 0n;
     const addedSubscriptionDebtMinor =
+      isSubscriptionWalletPayment &&
       afterSubscriptionDebtMinor > beforeSubscriptionDebtMinor
         ? afterSubscriptionDebtMinor - beforeSubscriptionDebtMinor
         : 0n;
@@ -434,7 +600,7 @@ export class CustomerLedgerService {
         debtAfter: this.decimalFromMinor(newDebtMinor),
         performedById: performedByUserId,
         metadata: {
-          appliedFromWallet: minorToAmountString(takeMinor),
+          appliedFromWallet: minorToAmountString(safeTakeMinor),
           orderTotal: o.totalPrice.toString(),
           addedToDebt: minorToAmountString(addedInvoiceDebtMinor),
           addedSubscriptionDebt: minorToAmountString(addedSubscriptionDebtMinor),
@@ -458,36 +624,101 @@ export class CustomerLedgerService {
     });
 
     const debtCategory = this.resolveDebtCategory(actor.safariRole);
-    if (addedInvoiceDebtMinor > 0n) {
-      const sourceRef = `INVOICE:${orderId}:SHORTFALL:${Date.now()}`;
-      await tx.debtLedgerEntry.create({
-        data: {
-          customerId: o.customerId,
-          orderId,
-          source: DebtSource.INVOICE_SHORTFALL,
-          category: debtCategory,
-          amount: this.decimalFromMinor(addedInvoiceDebtMinor),
-          branchId: actor.branchId,
-          actorUserId: actor.id,
-          sourceRef,
-          note: 'Invoice shortfall recorded as receivable',
-        },
-      });
-      await this.journal.mirrorDebtLedgerEntry(tx, {
-        source: DebtSource.INVOICE_SHORTFALL,
-        amount: this.decimalFromMinor(addedInvoiceDebtMinor),
-        sourceRef,
-        actorUserId: actor.id,
+
+    // V20.3 — Phase 31 invoice issuance entry.
+    //
+    // Under the true-accounting model, every invoice — regardless
+    // of whether it has a shortfall — is recognised in the journal
+    // at the FULL invoice amount on issuance:
+    //
+    //   DR ACCOUNTS_RECEIVABLE = totalPrice
+    //   CR REVENUE             = totalPrice
+    //
+    // Subsequent payments (wallet absorption + external) credit AR
+    // back down. Invoice issuance is idempotent on `orderId` via
+    // the deterministic sourceRef inside the journal service, so
+    // re-entry from `walletSettledAt` resets is a no-op.
+    //
+    // Default V20.2 model: skip — the SHORTFALL mirror below already
+    // writes AR for the post-wallet remainder.
+    const trueAccounting = isV20_3TrueAccountingEnabled();
+    if (trueAccounting && totalMinor > 0n) {
+      await this.journal.appendInvoiceIssuanceEntrySafe(tx, {
         customerId: o.customerId,
         orderId,
-        note: 'Invoice shortfall recorded as receivable',
+        actorUserId: actor.id,
+        amount: o.totalPrice,
       });
+    }
+
+    // V20.3 — Phase 32 SHORTFALL semantic change.
+    //
+    // Under true-accounting the SHORTFALL row records the FULL
+    // invoice amount (not the post-wallet remainder), so the
+    // DebtLedgerEntry stream reflects gross billing. Wallet
+    // absorption and external payments are PAYMENT rows that
+    // drive the net down — same shape as the journal.
+    //
+    // The journal mirror is SKIPPED under V20.3 because Phase 31
+    // already wrote the full invoice to AR. Mirroring SHORTFALL
+    // again would double-count.
+    const recordedShortfallMinor = trueAccounting
+      ? addInvoiceDebt && totalMinor > 0n
+        ? totalMinor
+        : 0n
+      : addedInvoiceDebtMinor;
+    if (recordedShortfallMinor > 0n) {
+      // V20.4 — Phase 5 deterministic sourceRef. The function is
+      // idempotent on `order.walletSettledAt` so the SHORTFALL
+      // row is at most written once per order; on a transaction
+      // retry the unique-index P2002 path returns the existing
+      // row instead of creating a duplicate.
+      const sourceRef = `INVOICE:${orderId}:SHORTFALL`;
+      try {
+        await tx.debtLedgerEntry.create({
+          data: {
+            customerId: o.customerId,
+            orderId,
+            source: DebtSource.INVOICE_SHORTFALL,
+            category: debtCategory,
+            amount: this.decimalFromMinor(recordedShortfallMinor),
+            branchId: actor.branchId,
+            actorUserId: actor.id,
+            sourceRef,
+            note: trueAccounting
+              ? 'Invoice issued (full receivable)'
+              : 'Invoice shortfall recorded as receivable',
+          },
+        });
+      } catch (err) {
+        if (
+          !(err instanceof Prisma.PrismaClientKnownRequestError) ||
+          err.code !== 'P2002'
+        ) {
+          throw err;
+        }
+        // Idempotent retry — row already exists for this orderId
+        // SHORTFALL. Continue without re-writing.
+      }
+      if (!trueAccounting) {
+        await this.journal.mirrorDebtLedgerEntrySafe(tx, {
+          source: DebtSource.INVOICE_SHORTFALL,
+          amount: this.decimalFromMinor(recordedShortfallMinor),
+          sourceRef,
+          actorUserId: actor.id,
+          customerId: o.customerId,
+          orderId,
+          note: 'Invoice shortfall recorded as receivable',
+        });
+      }
       // Dastur §5 — mirror the debt change onto the unified GL so every
       // financial movement surfaces on one audit stream.
       await this.generalLedger.append(tx, {
         entryType: GeneralLedgerEntryType.DEBT_ADJUSTMENT,
-        amount: this.decimalFromMinor(addedInvoiceDebtMinor),
-        memo: 'Invoice shortfall recorded as receivable',
+        amount: this.decimalFromMinor(recordedShortfallMinor),
+        memo: trueAccounting
+          ? 'Invoice issued (full receivable)'
+          : 'Invoice shortfall recorded as receivable',
         customerId: o.customerId,
         orderId,
         actorUserId: actor.id,
@@ -495,25 +726,37 @@ export class CustomerLedgerService {
           source: DebtSource.INVOICE_SHORTFALL,
           category: debtCategory,
           branchId: actor.branchId,
+          v20_3: trueAccounting,
         },
       });
     }
     if (addedSubscriptionDebtMinor > 0n) {
-      const sourceRef = `INVOICE:${orderId}:SUBSCRIPTION_OVERUSE:${Date.now()}`;
-      await tx.debtLedgerEntry.create({
-        data: {
-          customerId: o.customerId,
-          orderId,
-          source: DebtSource.SUBSCRIPTION_OVERUSE,
-          category: debtCategory,
-          amount: this.decimalFromMinor(addedSubscriptionDebtMinor),
-          branchId: actor.branchId,
-          actorUserId: actor.id,
-          sourceRef,
-          note: 'Subscription balance allowed to go negative',
-        },
-      });
-      await this.journal.mirrorDebtLedgerEntry(tx, {
+      // V20.4 — Phase 5 deterministic sourceRef.
+      const sourceRef = `INVOICE:${orderId}:SUBSCRIPTION_OVERUSE`;
+      try {
+        await tx.debtLedgerEntry.create({
+          data: {
+            customerId: o.customerId,
+            orderId,
+            source: DebtSource.SUBSCRIPTION_OVERUSE,
+            category: debtCategory,
+            amount: this.decimalFromMinor(addedSubscriptionDebtMinor),
+            branchId: actor.branchId,
+            actorUserId: actor.id,
+            sourceRef,
+            note: 'Subscription balance allowed to go negative',
+          },
+        });
+      } catch (err) {
+        if (
+          !(err instanceof Prisma.PrismaClientKnownRequestError) ||
+          err.code !== 'P2002'
+        ) {
+          throw err;
+        }
+        // Idempotent retry — row already exists.
+      }
+      await this.journal.mirrorDebtLedgerEntrySafe(tx, {
         source: DebtSource.SUBSCRIPTION_OVERUSE,
         amount: this.decimalFromMinor(addedSubscriptionDebtMinor),
         sourceRef,
@@ -535,6 +778,157 @@ export class CustomerLedgerService {
           branchId: actor.branchId,
         },
       });
+    }
+
+    // V20.1 — Wallet-absorption audit row.
+    //
+    // When the wallet was legitimately used (DEBT_ON_ACCOUNT or
+    // SUBSCRIPTION_WALLET path), record the wallet portion as a
+    // DebtSource.PAYMENT row tagged with `PAYMENT:WALLET:` so the
+    // wallet credit applied to this invoice is visible to AR /
+    // Customer-360 / Subscribers / statements.
+    //
+    // CRITICAL: this row IS audit evidence; it is NOT subtracted from
+    // outstanding debt. `isRealDebtLedgerPayment()` excludes the
+    // `PAYMENT:WALLET:` prefix precisely because the matching
+    // INVOICE_SHORTFALL is already the post-wallet remainder; counting
+    // wallet PAYMENT against AR would double-credit the customer.
+    //
+    // V20.1-v2 — Phase 3.1 deterministic + idempotent.
+    // The sourceRef is now `PAYMENT:WALLET:<orderId>:APPLIED` (no
+    // timestamp). Together with the existing `@@unique` on
+    // `DebtLedgerEntry.sourceRef`, this makes the insert idempotent
+    // by construction: a second call (e.g. caused by the V20-FORENSIC
+    // §C-8 `walletSettledAt: null` reset path in
+    // `manuallyMarkOrderPaidByMethod`) cannot create a duplicate row.
+    // We catch P2002 explicitly and log+continue.
+    //
+    // Journal mirroring is intentionally skipped for this prefix
+    // (see DoubleEntryJournalService.mirrorDebtLedgerEntry) — see V20.2
+    // follow-up for full revenue recognition into the journal.
+    if (safeTakeMinor > 0n) {
+      const walletSourceRef = `PAYMENT:WALLET:${orderId}:APPLIED`;
+      const walletPaymentPayload = {
+        amount: this.decimalFromMinor(safeTakeMinor).toString(),
+        customerId: o.customerId,
+        orderId,
+        source: DebtSource.PAYMENT,
+        actorUserId: actor.id,
+        sourceRef: walletSourceRef,
+        metadata: {
+          origin: 'WALLET_ABSORPTION',
+          posPaymentMethod: o.posPaymentMethod ?? null,
+        },
+      };
+      assertDebtLedgerPaymentWrite(walletPaymentPayload);
+      traceDebtLedgerPaymentWrite({
+        sourceFile: 'src/customer-ledger/customer-ledger.service.ts',
+        functionName: 'applyOrderWalletSettlementForCompletedOrder.walletAbsorption',
+        payload: walletPaymentPayload,
+      });
+      try {
+        await tx.debtLedgerEntry.create({
+          data: {
+            customerId: o.customerId,
+            orderId,
+            source: DebtSource.PAYMENT,
+            category: debtCategory,
+            amount: this.decimalFromMinor(safeTakeMinor),
+            branchId: actor.branchId,
+            actorUserId: actor.id,
+            sourceRef: walletSourceRef,
+            note: 'Wallet credit applied to invoice (audit only — not AR-reducing)',
+          },
+        });
+      } catch (err) {
+        // V20.1-v2 — Phase 3.1 idempotency guard.
+        // P2002 = unique constraint violation on `sourceRef`. Means a
+        // wallet-absorption row for this order already exists (re-entry
+        // after walletSettledAt reset, or concurrent settlement that
+        // raced past the FOR UPDATE lock by skipping the lock helper).
+        // Treat as success — the historical row is the source of truth.
+        const isUniqueViolation =
+          err instanceof Prisma.PrismaClientKnownRequestError &&
+          err.code === 'P2002';
+        if (!isUniqueViolation) throw err;
+        // eslint-disable-next-line no-console
+        console.warn(
+          '[WALLET_ABSORPTION_DUPLICATE_SKIPPED]',
+          JSON.stringify({
+            orderId,
+            customerId: o.customerId,
+            sourceRef: walletSourceRef,
+            safeTakeMinor: minorToAmountString(safeTakeMinor),
+          }),
+        );
+      }
+      // Intentionally NOT appending to GeneralLedger here — the
+      // DebtLedgerEntry above is the audit record. A zero-amount
+      // DEBT_ADJUSTMENT row would pollute KPI sums, and a non-zero
+      // value would risk double-counting against POS_SALE_COMPLETED /
+      // INVOICE_SHORTFALL totals already on the GeneralLedger stream.
+
+      // V20.1-v3 — Phase 9 invariant guard.
+      //
+      // FINAL PRINCIPLE: "Every wallet deduction must have a ledger
+      // PAYMENT." We just deducted the wallet (newBalanceMinor below
+      // is committed at the end of this tx) and either created the
+      // PAYMENT:WALLET:<orderId>:APPLIED row above, or accepted that
+      // a prior identical row exists (P2002). Re-read inside the same
+      // transaction to confirm — if the row is missing despite both
+      // paths, the only explanation is a future refactor bug or a
+      // race that bypassed our controls. Abort the entire settlement
+      // so the wallet update is rolled back together.
+      const auditExists = await tx.debtLedgerEntry.findUnique({
+        where: { sourceRef: walletSourceRef },
+        select: { id: true },
+      });
+      if (!auditExists) {
+        // eslint-disable-next-line no-console
+        console.error(
+          '[INVALID_PAYMENT]',
+          JSON.stringify({
+            reason: 'WALLET_DEDUCTION_WITHOUT_PAYMENT_RECORD',
+            orderId,
+            customerId: o.customerId,
+            sourceRef: walletSourceRef,
+            safeTakeMinor: minorToAmountString(safeTakeMinor),
+          }),
+        );
+        throw new Error('WALLET_DEDUCTION_WITHOUT_PAYMENT_RECORD');
+      }
+
+      // V20.3 — Phase 33 wallet absorption journal entry (true model).
+      //
+      // Under V20.3, the issuance entry above already DEBITED AR by
+      // the FULL invoice, so wallet absorption can correctly CREDIT
+      // AR by the wallet portion: DR WALLET_LIABILITY / CR AR. The
+      // resulting AR balance equals the customer's actual debt.
+      //
+      // V20.2 fallback: AR was only debited for the post-wallet
+      // remainder via the SHORTFALL mirror, so wallet absorption
+      // must stay AR-neutral (DR WALLET_LIABILITY / CR REVENUE).
+      //
+      // "NO MONEY MOVES WITHOUT 3 ENTRIES" — TransactionHistory was
+      // written above (line ~478), the DebtLedgerEntry PAYMENT:WALLET:
+      // was written/asserted above, and the third entry (Journal) is
+      // written here. The Safe variant feeds the Phase 16 circuit
+      // breaker on failure but does not abort this transaction.
+      if (trueAccounting) {
+        await this.journal.appendWalletAbsorptionEntryV3Safe(tx, {
+          customerId: o.customerId,
+          orderId,
+          actorUserId: actor.id,
+          amount: this.decimalFromMinor(safeTakeMinor),
+        });
+      } else {
+        await this.journal.appendWalletAbsorptionEntrySafe(tx, {
+          customerId: o.customerId,
+          orderId,
+          actorUserId: actor.id,
+          amount: this.decimalFromMinor(safeTakeMinor),
+        });
+      }
     }
 
     await tx.order.updateMany({
@@ -562,7 +956,11 @@ export class CustomerLedgerService {
         o.posPaymentMethod === PosPaymentMethod.PAYMENT_LINK
           ? o.posPaymentMethod
           : trigger;
-      const sourceRef = `PAYMENT:${origin}:${orderId}:${Date.now()}`;
+      // V20.4 — Phase 5 deterministic sourceRef. The function is
+      // idempotent on `walletSettledAt`, so the PAYMENT row is at
+      // most written once per (orderId, origin, trigger). Retry
+      // safely lands on P2002 → no-op.
+      const sourceRef = `PAYMENT:${origin}:${orderId}:${trigger}`;
       const paymentPayload = {
         amount: this.decimalFromMinor(debtPaydownFromSettlementMinor).toString(),
         customerId: o.customerId,
@@ -578,29 +976,58 @@ export class CustomerLedgerService {
         functionName: 'applyOrderWalletSettlementForCompletedOrder',
         payload: paymentPayload,
       });
-      await tx.debtLedgerEntry.create({
-        data: {
+      try {
+        await tx.debtLedgerEntry.create({
+          data: {
+            customerId: o.customerId,
+            orderId,
+            source: DebtSource.PAYMENT,
+            category: debtCategory,
+            amount: this.decimalFromMinor(debtPaydownFromSettlementMinor),
+            branchId: actor.branchId,
+            actorUserId: actor.id,
+            sourceRef,
+            note: 'Invoice debt settled (wallet settlement)',
+          },
+        });
+      } catch (err) {
+        if (
+          !(err instanceof Prisma.PrismaClientKnownRequestError) ||
+          err.code !== 'P2002'
+        ) {
+          throw err;
+        }
+        // Idempotent retry — PAYMENT row already recorded.
+      }
+      // V20.3 — Phase 34 external payment journal entry.
+      //
+      // Under true-accounting, every external payment writes
+      // DR <CASH/BANK> / CR ACCOUNTS_RECEIVABLE keyed on a
+      // payment-event-level paymentRef (vs the legacy DebtLedger
+      // sourceRef-keyed mirror). The legacy mirror is skipped to
+      // avoid a double credit on AR.
+      if (trueAccounting && o.posPaymentMethod) {
+        await this.journal.appendExternalPaymentEntrySafe(tx, {
           customerId: o.customerId,
           orderId,
-          source: DebtSource.PAYMENT,
-          category: debtCategory,
-          amount: this.decimalFromMinor(debtPaydownFromSettlementMinor),
-          branchId: actor.branchId,
           actorUserId: actor.id,
-          sourceRef,
+          amount: this.decimalFromMinor(debtPaydownFromSettlementMinor),
+          paymentMethod: o.posPaymentMethod,
+          paymentRef: `${orderId}:${o.posPaymentMethod}:${trigger}`,
           note: 'Invoice debt settled (wallet settlement)',
-        },
-      });
-      await this.journal.mirrorDebtLedgerEntry(tx, {
-        source: DebtSource.PAYMENT,
-        amount: this.decimalFromMinor(debtPaydownFromSettlementMinor),
-        sourceRef,
-        actorUserId: actor.id,
-        customerId: o.customerId,
-        orderId,
-        paymentMethod: o.posPaymentMethod,
-        note: 'Invoice debt settled (wallet settlement)',
-      });
+        });
+      } else {
+        await this.journal.mirrorDebtLedgerEntrySafe(tx, {
+          source: DebtSource.PAYMENT,
+          amount: this.decimalFromMinor(debtPaydownFromSettlementMinor),
+          sourceRef,
+          actorUserId: actor.id,
+          customerId: o.customerId,
+          orderId,
+          paymentMethod: o.posPaymentMethod,
+          note: 'Invoice debt settled (wallet settlement)',
+        });
+      }
       await this.generalLedger.append(tx, {
         entryType: GeneralLedgerEntryType.DEBT_ADJUSTMENT,
         amount: `-${minorToAmountString(debtPaydownFromSettlementMinor)}`,
@@ -616,6 +1043,290 @@ export class CustomerLedgerService {
           declaredDebtSettled: debtSettledStr,
         },
       });
+    }
+
+    // V20.1-v4 — Phase 18 real-time drift blocker.
+    //
+    // After ALL writes are queued in this transaction (wallet update,
+    // SHORTFALL/OVERUSE rows, wallet absorption PAYMENT, journal
+    // entries, debt-paydown PAYMENT), recompute the customer's
+    // ledger-net debt and compare to the wallet.debt that's about to
+    // commit. They MUST match within 0.001 KD — otherwise this
+    // transaction would commit a state that already has a known drift.
+    //
+    // Throwing here forces the entire transaction to roll back:
+    //   • CustomerWallet.balance / debt update      → reverted
+    //   • New DebtLedgerEntry rows                   → reverted
+    //   • New JournalEntry / JournalLine rows        → reverted
+    //   • New TransactionHistory row                 → reverted
+    //   • Order.walletSettledAt update               → reverted
+    //
+    // Cost: one DebtLedgerEntry aggregation query per settlement —
+    // unavoidable to satisfy the v4 invariant. If profiling shows
+    // this becomes a hot path, the aggregation can be replaced by
+    // an in-process accumulator that tracks deltas as we go.
+    await this.assertSettlementInvariantTx(tx, o.customerId);
+
+    // V20.2 — Phase 29 journal-ledger lockstep.
+    //
+    // Compare the live DebtLedger AR (computed from
+    // assertSettlementInvariantTx scope: SHORTFALL+OVERUSE − real
+    // PAYMENT) to the journal AR balance for this customer (sum of
+    // debits − credits on account 1300). Within the same tx, both
+    // numbers reflect the about-to-commit state. If they diverge by
+    // more than 0.001 KD this transaction is committing a known
+    // ledger/journal split — refuse and roll everything back so the
+    // operator must triage before more drift accumulates.
+    //
+    // Failure modes captured here:
+    //   • A `mirrorDebtLedgerEntrySafe` write silently dropped (and
+    //     the breaker hasn't tripped yet because the failure window
+    //     was below threshold).
+    //   • A new SHORTFALL prefix introduced by future code that
+    //     forgot to mirror to the journal.
+    //   • A wallet-absorption journal entry that accidentally hit
+    //     AR (V20.3 refactor regression).
+    await this.assertJournalLedgerLockstepTx(tx, o.customerId);
+
+    // V20.2 — Phase 28 hard global invariant.
+    //
+    // Recompute walletBalance + totalPayments + totalDebt vs
+    // totalInvoices for this customer using the still-uncommitted
+    // tx view. The historical baseline is loud (wallet balances
+    // were never recorded as a counter-entry in DebtLedger), so the
+    // STRICT enforcement (throw) is gated on
+    // `STRICT_GLOBAL_INVARIANT=true`. By default we LOG only — the
+    // existing audit endpoint stays the source of truth for
+    // operators triaging legacy data.
+    await this.assertGlobalInvariantTx(tx, o.customerId);
+  }
+
+  /**
+   * V20.2 — Phase 29 lockstep helper.
+   *
+   * Within the open transaction, recomputes the DebtLedger net AR
+   * (the same waterfall used by the v4 Phase 18 assertion) and the
+   * journal AR balance (Σ(debit) − Σ(credit) on account 1300 for
+   * this customer). Throws `LEDGER_JOURNAL_DIVERGENCE` when
+   * `|delta| > 0.001 KD`, rolling the transaction back.
+   *
+   * V20.3 — under `V20_3_TRUE_ACCOUNTING=true` the SHORTFALL row is
+   * gross and wallet PAYMENTs reduce AR, matching the journal side.
+   */
+  private async assertJournalLedgerLockstepTx(
+    tx: PrismaTx,
+    customerId: string,
+  ): Promise<void> {
+    const trueAccounting = isV20_3TrueAccountingEnabled();
+    const rows = await tx.debtLedgerEntry.findMany({
+      where: { customerId },
+      select: {
+        source: true,
+        amount: true,
+        actorUserId: true,
+        sourceRef: true,
+        note: true,
+      },
+    });
+    let inv = new Prisma.Decimal(0);
+    let sub = new Prisma.Decimal(0);
+    let pay = new Prisma.Decimal(0);
+    for (const r of rows) {
+      const amt = new Prisma.Decimal(r.amount?.toString() ?? '0');
+      if (r.source === DebtSource.INVOICE_SHORTFALL) inv = inv.add(amt);
+      else if (r.source === DebtSource.SUBSCRIPTION_OVERUSE) sub = sub.add(amt);
+      else if (r.source === DebtSource.PAYMENT) {
+        if (trueAccounting || isRealDebtLedgerPayment(r)) pay = pay.add(amt);
+      }
+    }
+    const invPaid = inv.lessThanOrEqualTo(pay) ? inv : pay;
+    const payAfterInv = pay.sub(invPaid);
+    const subPaid = sub.lessThanOrEqualTo(payAfterInv) ? sub : payAfterInv;
+    const ledgerNet = inv.sub(invPaid).add(sub.sub(subPaid));
+
+    const lines = await tx.journalLine.findMany({
+      where: {
+        entry: { customerId },
+        account: { code: '1300' },
+      },
+      select: { debit: true, credit: true },
+    });
+    let journalAr = new Prisma.Decimal(0);
+    for (const line of lines) {
+      journalAr = journalAr
+        .add(new Prisma.Decimal(line.debit.toString()))
+        .sub(new Prisma.Decimal(line.credit.toString()));
+    }
+
+    const delta = ledgerNet.sub(journalAr).abs();
+    if (delta.greaterThan(new Prisma.Decimal('0.001'))) {
+      // eslint-disable-next-line no-console
+      console.error(
+        '[LEDGER_JOURNAL_DIVERGENCE]',
+        JSON.stringify({
+          customerId,
+          ledgerNetKd: ledgerNet.toFixed(4),
+          journalArKd: journalAr.toFixed(4),
+          deltaKd: delta.toFixed(4),
+          v20_3: trueAccounting,
+        }),
+      );
+      throw new Error('LEDGER_JOURNAL_DIVERGENCE');
+    }
+  }
+
+  /**
+   * V20.2 — Phase 28 global invariant helper.
+   *
+   * Recomputes the customer's `walletBalance + totalPayments +
+   * totalDebt` versus `totalInvoices` from the in-tx view. By
+   * default this is a LOG-only signal (mirrors the v4
+   * `checkGlobalInvariant` audit endpoint) because the historical
+   * baseline is noisy: wallet balances were never recorded as a
+   * counter-entry in DebtLedger when the system was first seeded,
+   * so legacy customers can show non-zero drift even with perfectly
+   * consistent live writes.
+   *
+   * To enable the literal V20.2 contract (THROW
+   * "GLOBAL_INVARIANT_VIOLATION"), set
+   * `STRICT_GLOBAL_INVARIANT=true`. Operators are expected to
+   * verify the audit endpoint shows zero violations before
+   * flipping the flag, otherwise every wallet settlement will
+   * roll back.
+   */
+  private async assertGlobalInvariantTx(
+    tx: PrismaTx,
+    customerId: string,
+  ): Promise<void> {
+    const wallet = await tx.customerWallet.findUnique({
+      where: { customerId },
+      select: { balance: true, debt: true },
+    });
+    if (!wallet) return;
+    const rows = await tx.debtLedgerEntry.findMany({
+      where: { customerId },
+      select: { source: true, amount: true, sourceRef: true },
+    });
+    let invoices = new Prisma.Decimal(0);
+    let payments = new Prisma.Decimal(0);
+    for (const r of rows) {
+      const amt = new Prisma.Decimal(r.amount?.toString() ?? '0');
+      if (
+        r.source === DebtSource.INVOICE_SHORTFALL ||
+        r.source === DebtSource.SUBSCRIPTION_OVERUSE
+      ) {
+        invoices = invoices.add(amt);
+      } else if (r.source === DebtSource.PAYMENT) {
+        payments = payments.add(amt);
+      }
+    }
+    const walletBalance = new Prisma.Decimal(wallet.balance.toString());
+    const walletDebt = new Prisma.Decimal(wallet.debt.toString());
+    const lhs = walletBalance.add(payments).add(walletDebt);
+    const rhs = invoices;
+    const delta = lhs.sub(rhs).abs();
+    if (delta.greaterThan(new Prisma.Decimal('0.001'))) {
+      const strict =
+        (process.env.STRICT_GLOBAL_INVARIANT ?? '').toString().trim() ===
+          'true' ||
+        (process.env.STRICT_GLOBAL_INVARIANT ?? '').toString().trim() === '1';
+      const payload = JSON.stringify({
+        customerId,
+        walletBalanceKd: walletBalance.toFixed(4),
+        totalPaymentsKd: payments.toFixed(4),
+        totalDebtKd: walletDebt.toFixed(4),
+        totalInvoicesKd: invoices.toFixed(4),
+        lhsKd: lhs.toFixed(4),
+        rhsKd: rhs.toFixed(4),
+        deltaKd: delta.toFixed(4),
+        strict,
+      });
+      // eslint-disable-next-line no-console
+      console.error('[GLOBAL_INVARIANT_VIOLATION]', payload);
+      if (strict) {
+        throw new Error('GLOBAL_INVARIANT_VIOLATION');
+      }
+    }
+  }
+
+  /**
+   * V20.1-v4 — Phase 18 invariant assertion helper.
+   *
+   * Computes the live ledgerNet for the customer (using the
+   * still-uncommitted transaction view) and asserts it equals
+   * the wallet.debt that's about to commit. Throws
+   * `FINANCIAL_INCONSISTENCY_DETECTED` on mismatch — the only safe
+   * action when wallet and ledger disagree.
+   *
+   * V20.3 — when `V20_3_TRUE_ACCOUNTING=true` the SHORTFALL row
+   * carries the FULL invoice amount and wallet PAYMENT rows
+   * actively reduce AR (because the issuance entry already
+   * debited AR for the full invoice). To keep this invariant
+   * meaningful we must therefore COUNT wallet PAYMENT rows in
+   * the deduction side.
+   */
+  private async assertSettlementInvariantTx(
+    tx: PrismaTx,
+    customerId: string,
+  ): Promise<void> {
+    const wallet = await tx.customerWallet.findUnique({
+      where: { customerId },
+      select: { debt: true, balance: true },
+    });
+    if (!wallet) return;
+    const walletDebt = new Prisma.Decimal(wallet.debt.toString());
+    const balance = new Prisma.Decimal(wallet.balance.toString());
+    const subscriptionOveruseDebt = balance.lessThan(0)
+      ? balance.abs()
+      : new Prisma.Decimal(0);
+    const totalWalletDebtKd = walletDebt.plus(subscriptionOveruseDebt);
+
+    const trueAccounting = isV20_3TrueAccountingEnabled();
+    const rows = await tx.debtLedgerEntry.findMany({
+      where: { customerId },
+      select: {
+        source: true,
+        amount: true,
+        actorUserId: true,
+        sourceRef: true,
+        note: true,
+      },
+    });
+    let inv = new Prisma.Decimal(0);
+    let sub = new Prisma.Decimal(0);
+    let pay = new Prisma.Decimal(0);
+    for (const r of rows) {
+      const amt = new Prisma.Decimal(r.amount?.toString() ?? '0');
+      if (r.source === DebtSource.INVOICE_SHORTFALL) inv = inv.add(amt);
+      else if (r.source === DebtSource.SUBSCRIPTION_OVERUSE)
+        sub = sub.add(amt);
+      else if (r.source === DebtSource.PAYMENT) {
+        // Under V20.3 the wallet PAYMENT row is a true reducer
+        // of AR (the issuance entry credited AR for the gross
+        // invoice). Count every PAYMENT, not just the v2 "real"
+        // subset (which excluded `PAYMENT:WALLET:`).
+        if (trueAccounting || isRealDebtLedgerPayment(r)) pay = pay.add(amt);
+      }
+    }
+    const invPaid = inv.lessThanOrEqualTo(pay) ? inv : pay;
+    const payAfterInv = pay.sub(invPaid);
+    const subPaid = sub.lessThanOrEqualTo(payAfterInv) ? sub : payAfterInv;
+    const ledgerNet = inv.sub(invPaid).add(sub.sub(subPaid));
+
+    const drift = totalWalletDebtKd.sub(ledgerNet).abs();
+    if (drift.greaterThan(new Prisma.Decimal('0.001'))) {
+      // eslint-disable-next-line no-console
+      console.error(
+        '[FINANCIAL_INCONSISTENCY_DETECTED]',
+        JSON.stringify({
+          customerId,
+          walletDebtKd: totalWalletDebtKd.toFixed(4),
+          ledgerNetKd: ledgerNet.toFixed(4),
+          driftKd: drift.toFixed(4),
+          v20_3: trueAccounting,
+        }),
+      );
+      throw new Error('FINANCIAL_INCONSISTENCY_DETECTED');
     }
   }
 
@@ -668,6 +1379,14 @@ export class CustomerLedgerService {
     }
 
     const wallet = await this.getOrCreateWalletTx(tx, params.customerId);
+    // V20.4 — Phase 5 row-level lock. Closes the lost-update race
+    // between concurrent activations and concurrent invoice
+    // settlements on the same customer. Without this, two CC
+    // agents activating on the same wallet can both read the
+    // pre-balance and overwrite each other's update, producing a
+    // wallet that's off by exactly one activation amount while
+    // the journal carries both entries.
+    await this.lockCustomerWalletForUpdateTx(tx, wallet.id);
     const actor = await tx.user.findUnique({
       where: { id: params.performedByUserId },
       select: { id: true, branchId: true, safariRole: true },
@@ -950,8 +1669,8 @@ export class CustomerLedgerService {
     // PAID_TO_DRIVER is a pure status flag change and does NOT touch
     // the wallet balance again.
     const closedInvoiceIds: string[] = [];
-    /** Amounts picked from FIFO scan — avoids N `findUnique` round trips when writing ledger rows. */
-    const closedInvoiceAmountById = new Map<string, Prisma.Decimal>();
+    /** FIFO allocation by invoice, including partial allocations. */
+    const invoicePaymentAmountById = new Map<string, Prisma.Decimal>();
     if (params.autoCloseInvoices === true && debtPaidMinor > 0n) {
       const candidates = await tx.order.findMany({
         where: {
@@ -962,18 +1681,33 @@ export class CustomerLedgerService {
         select: { id: true, totalPrice: true },
         orderBy: { createdAt: 'asc' },
       });
+      // V20.3.1 — measure each candidate against its REMAINING
+      // balance (gross − payments − wallet) instead of the gross
+      // `totalPrice`. Without this, an invoice that already
+      // received a partial payment outside the activation flow
+      // could never be auto-closed by a budget that is short of
+      // the gross but enough to cover the remaining.
+      const remainingByOrder = await computeOrderRemainingBalancesBatch(
+        tx,
+        candidates.map((c) => c.id),
+      );
+      const tolMinor = toMinorFromFixed4(
+        new Prisma.Decimal(INVOICE_REMAINING_TOLERANCE_KD),
+      );
       let remainingMinor = debtPaidMinor;
       for (const inv of candidates) {
         if (remainingMinor <= 0n) break;
-        const invMinor = toMinorFromFixed4(inv.totalPrice);
-        if (invMinor <= 0n) continue;
-        // Only close invoices we can cover in full. A partial close
-        // would require mutating `totalPrice` or introducing a
-        // "partiallyPaid" state the rest of the system doesn't model.
-        if (invMinor > remainingMinor) continue;
-        closedInvoiceIds.push(inv.id);
-        closedInvoiceAmountById.set(inv.id, inv.totalPrice);
-        remainingMinor -= invMinor;
+        const invRem = remainingByOrder.get(inv.id) ?? inv.totalPrice;
+        if (invRem.lessThanOrEqualTo(0)) continue;
+        const invRemMinor = toMinorFromFixed4(invRem);
+        if (invRemMinor <= tolMinor) continue;
+        const appliedMinor =
+          invRemMinor < remainingMinor ? invRemMinor : remainingMinor;
+        invoicePaymentAmountById.set(inv.id, this.decimalFromMinor(appliedMinor));
+        remainingMinor -= appliedMinor;
+        if (appliedMinor >= invRemMinor) {
+          closedInvoiceIds.push(inv.id);
+        }
       }
       if (closedInvoiceIds.length > 0) {
         // One UPDATE instead of N sequential updates — critical on high-
@@ -1013,21 +1747,20 @@ export class CustomerLedgerService {
         },
       });
 
-      // V19.11 — Unified DebtLedgerEntry. FIFO-write one PAYMENT row per
-      // invoice closed by this activation, plus a residual customer-level
-      // PAYMENT for any debt covered without closing a specific invoice.
-      // Each row carries the invoice's total as the amount because FIFO
-      // only closes invoices it can cover *in full* (no partials).
+      // V19.11/V22 — Unified DebtLedgerEntry. FIFO-write one PAYMENT row per
+      // invoice allocation, including partial allocations, plus a residual
+      // customer-level PAYMENT only when the settled debt had no invoice row
+      // to attach to. This keeps Customer360/order remaining balances aligned:
+      // a 30.250 invoice settled by 25.000 subscription credit now shows
+      // 5.250 remaining instead of looking either fully unpaid or detached.
       const category = this.resolveDebtCategory(actor.safariRole);
       let coveredMinor = 0n;
-      for (const invoiceId of closedInvoiceIds) {
-        const amt = closedInvoiceAmountById.get(invoiceId);
+      for (const [, amt] of invoicePaymentAmountById) {
         if (!amt) continue;
         coveredMinor += toMinorFromFixed4(amt);
       }
-      if (closedInvoiceIds.length > 0) {
-        const paymentRows = closedInvoiceIds.flatMap((invoiceId) => {
-          const amt = closedInvoiceAmountById.get(invoiceId);
+      if (invoicePaymentAmountById.size > 0) {
+        const paymentRows = Array.from(invoicePaymentAmountById.entries()).flatMap(([invoiceId, amt]) => {
           if (!amt) return [];
           const sourceRef = `PAYMENT:SUBSCRIPTION_ACTIVATION:${newSubscription.id}:${invoiceId}`;
           const payload = {
@@ -1061,7 +1794,7 @@ export class CustomerLedgerService {
           data: paymentRows,
         });
         for (const row of paymentRows) {
-          await this.journal.mirrorDebtLedgerEntry(tx, {
+          await this.journal.mirrorDebtLedgerEntrySafe(tx, {
             source: DebtSource.PAYMENT,
             amount: row.amount,
             sourceRef: row.sourceRef,
@@ -1104,7 +1837,7 @@ export class CustomerLedgerService {
             note: 'Residual debt cleared by subscription activation',
           },
         });
-        await this.journal.mirrorDebtLedgerEntry(tx, {
+        await this.journal.mirrorDebtLedgerEntrySafe(tx, {
           source: DebtSource.PAYMENT,
           amount: this.decimalFromMinor(residualMinor),
           sourceRef,
@@ -1235,6 +1968,13 @@ export class CustomerLedgerService {
     }
 
     const wallet = await this.getOrCreateWalletTx(tx, order.customerId);
+    // V20.4 — Phase 5 row-level lock for the CC debt-invoice
+    // collection path. Without it, two CC agents settling debt
+    // for the same customer can both read `wallet.debt` at the
+    // same value, both deduct, and both write the same lower
+    // value — losing one of the payments at the wallet layer
+    // even though both PAYMENT rows land in the journal.
+    await this.lockCustomerWalletForUpdateTx(tx, wallet.id);
     const debtMinor = toMinorFromFixed4(wallet.debt);
     const remainingMinor = toMinorFromFixed4(remaining);
     const paydownMinor =
@@ -1291,7 +2031,12 @@ export class CustomerLedgerService {
       },
     });
 
-    const sourceRef = `PAYMENT:CC_DEBT_INVOICE_PHYSICAL:${orderId}:${performedByUserId}:${Date.now()}`;
+    // V20.4 — Phase 5 deterministic sourceRef. Keyed on the
+    // (orderId, confirmedMethod) tuple — calling this method
+    // again for the same invoice + method (e.g. a transaction
+    // retry inside the controller) lands on the existing PAYMENT
+    // row via P2002 instead of double-crediting the customer.
+    const sourceRef = `PAYMENT:CC_DEBT_INVOICE_PHYSICAL:${orderId}:${confirmedMethod}`;
     const paymentPayload = {
       amount: this.decimalFromMinor(paydownMinor).toString(),
       customerId: order.customerId,
@@ -1310,20 +2055,30 @@ export class CustomerLedgerService {
       functionName: 'recordDebtInvoiceCollectedAtCallCenter',
       payload: paymentPayload,
     });
-    await tx.debtLedgerEntry.create({
-      data: {
-        customerId: order.customerId,
-        orderId,
-        source: DebtSource.PAYMENT,
-        category,
-        amount: this.decimalFromMinor(paydownMinor),
-        branchId,
-        actorUserId: performedByUserId,
-        sourceRef,
-        note: 'Debt-on-account invoice collected at Call Center',
-      },
-    });
-    await this.journal.mirrorDebtLedgerEntry(tx, {
+    try {
+      await tx.debtLedgerEntry.create({
+        data: {
+          customerId: order.customerId,
+          orderId,
+          source: DebtSource.PAYMENT,
+          category,
+          amount: this.decimalFromMinor(paydownMinor),
+          branchId,
+          actorUserId: performedByUserId,
+          sourceRef,
+          note: 'Debt-on-account invoice collected at Call Center',
+        },
+      });
+    } catch (err) {
+      if (
+        !(err instanceof Prisma.PrismaClientKnownRequestError) ||
+        err.code !== 'P2002'
+      ) {
+        throw err;
+      }
+      // Idempotent retry — already collected for this orderId+method.
+    }
+    await this.journal.mirrorDebtLedgerEntrySafe(tx, {
       source: DebtSource.PAYMENT,
       amount: this.decimalFromMinor(paydownMinor),
       sourceRef,
@@ -1350,13 +2105,25 @@ export class CustomerLedgerService {
       },
     });
 
-    await tx.order.update({
-      where: { id: orderId },
-      data: {
-        posPaymentMethod: confirmedMethod,
-        cashStatus: cashStatusForPaymentMethod(confirmedMethod),
-      },
-    });
+    // V20.3.1 — only close the invoice when the paydown actually
+    // clears the remaining balance. Earlier code unconditionally
+    // flipped `cashStatus` after any pay-down, so when wallet.debt
+    // was smaller than the invoice's open balance (paydown <
+    // remaining) the invoice was wrongly marked as PAID even
+    // though the ledger still showed an open shortfall. After this
+    // fix, a partial pay-down preserves `cashStatus` on the order
+    // — collections, red KPI, and Outstanding keep showing the
+    // row, and the next collection event will close it once
+    // remaining ≤ tolerance.
+    if (paydownMinor >= remainingMinor) {
+      await tx.order.update({
+        where: { id: orderId },
+        data: {
+          posPaymentMethod: confirmedMethod,
+          cashStatus: cashStatusForPaymentMethod(confirmedMethod),
+        },
+      });
+    }
 
     return { kind: 'applied' };
   }
@@ -1415,7 +2182,7 @@ export class CustomerLedgerService {
     // second, but connection-pool contention was causing P2028 aborts
     // mid-call. Aligns with the 10/15 s budget used elsewhere for the
     // same atomic 3-table invariant.
-    return this.prisma.$transaction(
+    const result = await this.prisma.$transaction(
       async (tx) => {
         const customer = await tx.customer.findUnique({
           where: { id: params.customerId },
@@ -1433,6 +2200,13 @@ export class CustomerLedgerService {
         }
 
         const wallet = await this.getOrCreateWalletTx(tx, params.customerId);
+        // V20.4 — Phase 5 row-level lock for the customer-level
+        // partial-debt-payment path (CC "تم الدفع"). Without it
+        // 1000 concurrent partial payments would lose updates
+        // (forensic stress test, V20.3.4 §9). The lock serialises
+        // the read-modify-write at the wallet level; journal
+        // writes already serialise via the unique sourceRef.
+        await this.lockCustomerWalletForUpdateTx(tx, wallet.id);
         const amountMinor = toMinorFromFixed4(
           new Prisma.Decimal(params.amountKd),
         );
@@ -1478,11 +2252,24 @@ export class CustomerLedgerService {
           data: { debt: this.decimalFromMinor(newDebtMinor) },
         });
 
-        // Same FIFO shape as `activateSubscriptionPlan` (`autoCloseInvoices`):
-        // UNPAID + not canceled, oldest first, full invoices only. Budget
-        // is the full `debtPaidMinor` so collections rows can reconcile with
-        // the same effective-debt ceiling used for the cap above.
+        // V20.3.1 — Partial-payment correctness patch.
+        //
+        // Pre-V20.3.1 this loop measured each invoice against
+        // `inv.totalPrice` (the gross), which silently broke the
+        // partial-payment lifecycle: an invoice paid down 30 / 100
+        // earlier today could never be auto-closed by a later 70 KD
+        // call-center payment because the loop kept comparing the
+        // gross 100 against the new 70 budget and skipping it.
+        //
+        // The fix uses per-invoice REMAINING balance (gross −
+        // payments − wallet absorption, clamped at 0) sourced from
+        // the canonical helper in `debt-customer-aggregates.util`.
+        // An invoice is only closed when its remaining ≤ tolerance.
+        // Same FIFO ordering as before (oldest first), same budget
+        // (`debtPaidMinor`) so reconciliation against the
+        // operational debt ceiling above is unchanged.
         const closedInvoiceIds: string[] = [];
+        const invoicePaymentAmountById = new Map<string, Prisma.Decimal>();
         if (debtPaidMinor > 0n) {
           const candidates = await tx.order.findMany({
             where: {
@@ -1493,18 +2280,34 @@ export class CustomerLedgerService {
             select: { id: true, totalPrice: true },
             orderBy: { createdAt: 'asc' },
           });
+          const remainingByOrder = await computeOrderRemainingBalancesBatch(
+            tx,
+            candidates.map((c) => c.id),
+          );
+          const tolMinor = toMinorFromFixed4(
+            new Prisma.Decimal(INVOICE_REMAINING_TOLERANCE_KD),
+          );
           let remainingMinor = debtPaidMinor;
           for (const inv of candidates) {
             if (remainingMinor <= 0n) break;
-            const invMinor = toMinorFromFixed4(inv.totalPrice);
-            if (invMinor <= 0n) continue;
-            if (invMinor > remainingMinor) continue;
-            await tx.order.update({
-              where: { id: inv.id },
-              data: { cashStatus: CashStatus.PAID_TO_DRIVER },
-            });
-            closedInvoiceIds.push(inv.id);
-            remainingMinor -= invMinor;
+            const invRem = remainingByOrder.get(inv.id);
+            if (!invRem || invRem.lessThanOrEqualTo(0)) continue;
+            const invRemMinor = toMinorFromFixed4(invRem);
+            if (invRemMinor <= tolMinor) continue;
+            const appliedMinor =
+              invRemMinor < remainingMinor ? invRemMinor : remainingMinor;
+            invoicePaymentAmountById.set(
+              inv.id,
+              this.decimalFromMinor(appliedMinor),
+            );
+            remainingMinor -= appliedMinor;
+            if (appliedMinor >= invRemMinor) {
+              await tx.order.update({
+                where: { id: inv.id },
+                data: { cashStatus: CashStatus.PAID_TO_DRIVER },
+              });
+              closedInvoiceIds.push(inv.id);
+            }
           }
         }
 
@@ -1579,50 +2382,86 @@ export class CustomerLedgerService {
           // specific invoice. The discount portion is intentionally NOT
           // mirrored here: it reduces `wallet.debt` but is recorded as a
           // DEBT_DISCOUNT GL entry only, so collection KPIs stay clean.
-          const sourceRef = `PAYMENT:CC_PARTIAL_DEBT_PAYMENT:${params.customerId}:${params.performedByUserId}:${Date.now()}`;
-          const paymentPayload = {
-            amount: this.decimalFromMinor(amountMinor).toString(),
-            customerId: params.customerId,
-            orderId: null,
-            source: DebtSource.PAYMENT,
-            actorUserId: params.performedByUserId,
-            sourceRef,
-            metadata: {
-              origin: 'CC_PARTIAL_DEBT_PAYMENT',
-              posPaymentMethod: params.paymentMethod,
-            },
-          };
-          assertDebtLedgerPaymentWrite(paymentPayload);
-          traceDebtLedgerPaymentWrite({
-            sourceFile: 'src/customer-ledger/customer-ledger.service.ts',
-            functionName: 'recordPartialDebtPayment',
-            payload: paymentPayload,
-          });
-          await tx.debtLedgerEntry.create({
-            data: {
+          // V20.4 — Phase 5 deterministic sourceRef. Keyed on the
+          // TransactionHistory row id we just created above
+          // (`thDebtRow.id`) — that id is generated atomically in
+          // the same transaction, so retries get a fresh id only
+          // after a full rollback (legitimate new operation), and
+          // duplicate submissions inside one tx attempt land on
+          // the existing PAYMENT row via P2002.
+          let allocatedMinor = 0n;
+          for (const [, amt] of invoicePaymentAmountById) {
+            allocatedMinor += toMinorFromFixed4(amt);
+          }
+          const paymentRows: Array<{
+            customerId: string;
+            orderId: string | null;
+            source: DebtSource;
+            category: ReturnType<CustomerLedgerService['resolveDebtCategory']>;
+            amount: Prisma.Decimal;
+            branchId: string | null;
+            actorUserId: string;
+            sourceRef: string;
+            note: string;
+          }> = Array.from(invoicePaymentAmountById.entries()).map(
+            ([invoiceId, amt]) => ({
+              customerId: params.customerId,
+              orderId: invoiceId,
+              source: DebtSource.PAYMENT,
+              category,
+              amount: amt,
+              branchId,
+              actorUserId: params.performedByUserId,
+              sourceRef: `PAYMENT:CC_PARTIAL_DEBT_PAYMENT:${thDebtRow.id}:${invoiceId}`,
+              note: params.note ?? 'Partial debt payment collected via Call Center',
+            }),
+          );
+          const residualPaymentMinor = amountMinor - allocatedMinor;
+          if (residualPaymentMinor > 0n) {
+            paymentRows.push({
               customerId: params.customerId,
               orderId: null,
               source: DebtSource.PAYMENT,
               category,
-              amount: this.decimalFromMinor(amountMinor),
+              amount: this.decimalFromMinor(residualPaymentMinor),
               branchId,
               actorUserId: params.performedByUserId,
-              sourceRef,
+              sourceRef: `PAYMENT:CC_PARTIAL_DEBT_PAYMENT:${thDebtRow.id}:RESIDUAL`,
               note:
                 params.note ?? 'Partial debt payment collected via Call Center',
-            },
-          });
-          await this.journal.mirrorDebtLedgerEntry(tx, {
-            source: DebtSource.PAYMENT,
-            amount: this.decimalFromMinor(amountMinor),
-            sourceRef,
-            actorUserId: params.performedByUserId,
-            customerId: params.customerId,
-            orderId: null,
-            paymentMethod: params.paymentMethod,
-            note:
-              params.note ?? 'Partial debt payment collected via Call Center',
-          });
+            });
+          }
+          for (const row of paymentRows) {
+            const paymentPayload = {
+              amount: row.amount.toString(),
+              customerId: row.customerId,
+              orderId: row.orderId,
+              source: row.source,
+              actorUserId: row.actorUserId,
+              sourceRef: row.sourceRef,
+              metadata: {
+                origin: 'CC_PARTIAL_DEBT_PAYMENT',
+                posPaymentMethod: params.paymentMethod,
+              },
+            };
+            assertDebtLedgerPaymentWrite(paymentPayload);
+            traceDebtLedgerPaymentWrite({
+              sourceFile: 'src/customer-ledger/customer-ledger.service.ts',
+              functionName: 'recordPartialDebtPayment',
+              payload: paymentPayload,
+            });
+            await tx.debtLedgerEntry.create({ data: row });
+            await this.journal.mirrorDebtLedgerEntrySafe(tx, {
+              source: DebtSource.PAYMENT,
+              amount: row.amount,
+              sourceRef: row.sourceRef,
+              actorUserId: row.actorUserId,
+              customerId: row.customerId,
+              orderId: row.orderId,
+              paymentMethod: params.paymentMethod,
+              note: row.note,
+            });
+          }
         }
 
         // Discount GL entry — separate so it never pollutes collections.
@@ -1641,6 +2480,23 @@ export class CustomerLedgerService {
               note: params.note ?? null,
             },
           });
+
+          // V20.4 — Phase 1 mirror the discount as a true
+          // double-entry journal write so AR comes down by the
+          // discounted amount and the goodwill cost shows up on
+          // its own P&L line (5200 DEBT_DISCOUNTS).
+          //
+          // sourceRef is keyed on the TransactionHistory row id
+          // we already created above, so it's deterministic per
+          // collection event and idempotent on retry.
+          await this.journal.appendDebtDiscountEntrySafe(tx, {
+            customerId: params.customerId,
+            orderId: null,
+            actorUserId: params.performedByUserId,
+            amount: this.decimalFromMinor(discountMinor),
+            discountRef: `${params.customerId}:${thDebtRow.id}`,
+            note: params.note ?? null,
+          });
         }
 
         return {
@@ -1656,6 +2512,24 @@ export class CustomerLedgerService {
       },
       { maxWait: 10_000, timeout: 15_000 },
     );
+    // V20.3.2 — Phase 5 post-commit consistency log. Fire-and-
+    // forget; never blocks the caller, never throws.
+    this.postWriteUiConsistencyAssert(params.customerId, {
+      source: 'DEBT_COLLECTION',
+      correlationId: result.transactionHistoryId,
+    });
+    // V20.4 — Phase 5 typed event so the snapshot projection
+    // refreshes immediately for this customer. The listener
+    // catches up the read side without the cron 5-minute lag.
+    this.emitFinancialEvent('finance.payment.partial', {
+      customerId: params.customerId,
+      orderId: null,
+      correlationId: result.transactionHistoryId,
+      occurredAt: new Date().toISOString(),
+      amountKd: result.amountCollectedKd,
+      paymentMethod: params.paymentMethod,
+    });
+    return result;
   }
 
   /**
@@ -1692,6 +2566,12 @@ export class CustomerLedgerService {
     if (!wallet) {
       throw new NotFoundException('Customer wallet not found');
     }
+    // V20.4 — Phase 5 row-level lock for the subscription
+    // cancellation refund path. Serialises the wallet read so a
+    // concurrent invoice settlement cannot race the
+    // gift-removal / cash-refund computation against a stale
+    // `wallet.balance`.
+    await this.lockCustomerWalletForUpdateTx(tx, wallet.id);
 
     const now = new Date();
     if (now.getTime() >= sub.expiresAt.getTime()) {
@@ -1808,6 +2688,28 @@ export class CustomerLedgerService {
         subscriptionPlanId: null,
         subscriptionPlanName: null,
       },
+    });
+
+    // V20.4 — Phase 1 close the journal gap on subscription
+    // cancellation. Pre-V20.4 the refund only landed in
+    // `GeneralLedgerEntry` (single-entry KPI tag) and
+    // `TransactionHistory`, leaving `JournalEntry` /
+    // `WALLET_LIABILITY` / `CASH` accounts permanently out of
+    // sync with `wallet.balance` after every cancel-refund.
+    //
+    // The Safe variant feeds the Phase 16 circuit breaker on
+    // failure; idempotent on `JOURNAL:SUBSCRIPTION_REFUND:<subId>`,
+    // so a retried cancellation won't double-credit CASH.
+    await this.journal.appendSubscriptionRefundEntrySafe(tx, {
+      customerId: params.customerId,
+      subscriptionId: sub.id,
+      actorUserId: params.performedByUserId,
+      giftRemovalAmount: this.decimalFromMinor(giftRemovalMinor),
+      cashRefundAmount: this.decimalFromMinor(cashRefundMinor),
+      reason:
+        params.reason && params.reason.trim().length > 0
+          ? params.reason.trim()
+          : null,
     });
 
     return {

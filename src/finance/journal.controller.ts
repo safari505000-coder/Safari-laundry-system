@@ -46,4 +46,27 @@ export class JournalController {
   getCustomerStatement(@Param('customerId', ParseUUIDPipe) customerId: string) {
     return this.journal.getCustomerStatement(customerId);
   }
+
+  /**
+   * V22 Phase 6 — full balanced double-entry view per entry.
+   *
+   * Operators kept asking "where is the matching double-entry?" because
+   * the AR-only statement above shows just one side. This endpoint
+   * returns every JournalEntry tied to the customer with ALL of its
+   * lines (every account, debit and credit), so the audit trail proves
+   * Σ Dr = Σ Cr per entry.
+   */
+  @Get('customers/:customerId/full-entries')
+  @Roles(
+    SafariRole.CALL_CENTER,
+    SafariRole.CALL_CENTER_SUPERVISOR,
+  )
+  @ApiOperation({
+    summary: 'Full balanced double-entry journal entries for a customer',
+  })
+  getCustomerFullEntries(
+    @Param('customerId', ParseUUIDPipe) customerId: string,
+  ) {
+    return this.journal.getCustomerJournalEntries(customerId);
+  }
 }

@@ -6,6 +6,11 @@ import {
   PosPaymentMethod,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  computeCanonicalCustomerDebt,
+  type JournalReader,
+} from '../finance/canonical-customer-debt.util';
+import { computeSubscriptionConsumption } from './subscription-consumption.projection';
 import type { Customer360FinancialsDto } from './customer-360.types';
 
 type MoneyLike = number | string | { toString(): string } | null | undefined;
@@ -38,7 +43,35 @@ export type CustomerFinancialInput = {
     id?: string | null;
     value?: MoneyLike;
     planActualBalanceSnapshot?: MoneyLike;
+    /**
+     * V20.8.1 — subscription window start. When provided, only
+     * wallet-absorption ledger rows created on/after this instant
+     * count toward the active-subscription consumption. Older
+     * activations remain frozen in the historical record.
+     */
+    activatedAt?: Date | null;
   } | null;
+  /**
+   * V20.8.1 — wallet-absorption history (`PAYMENT:WALLET:` rows).
+   * Optional — pre-V20.8.1 callers that omit this field get the
+   * legacy (direct-orders-only) consumption number, which is the
+   * exact pre-change behaviour. Production callers SHOULD pass the
+   * ledger so absorbed invoices reflect into subscription
+   * consumption.
+   */
+  walletAbsorptionLedger?: ReadonlyArray<{
+    id?: string;
+    source: DebtSource | string;
+    sourceRef?: string | null;
+    amount: MoneyLike;
+    createdAt: Date;
+  }>;
+  activationDebtSettlements?: ReadonlyArray<{
+    id?: string;
+    subscriptionId?: string | null;
+    amount: MoneyLike;
+    createdAt: Date;
+  }>;
 };
 
 export type CustomerFinancialEngineResult = {
@@ -178,18 +211,50 @@ export function computeCustomerFinancials(
     data.subscription ?
       round(money(data.subscription.value ?? data.subscription.planActualBalanceSnapshot))
     : 0;
-  const subscriptionConsumedKd =
-    data.subscription ?
-      round(
-        activeOrders
-          .filter((o) => isSubscriptionPaidOrder(o, subscriptionId))
-          .reduce((sum, o) => sum + orderAmount(o), 0),
-      )
-    : 0;
-  const subscriptionRemainingKd =
-    data.subscription ?
-      Math.max(round(subscriptionValueKd - subscriptionConsumedKd), 0)
-    : 0;
+
+  // V20.8.1 — canonical subscription consumption.
+  //
+  // Includes BOTH:
+  //   (1) directly subscription-paid orders (pre-V20.8.1 path)
+  //   (2) wallet-absorption ledger rows since `activatedAt`
+  //
+  // The pre-V20.8.1 callers that didn't pass `walletAbsorptionLedger`
+  // get the same `consumedKd` they had before — so this is byte-
+  // identical for legacy paths and additive for the canonical path.
+  const directSubscriptionOrders = activeOrders
+    .filter((o) => isSubscriptionPaidOrder(o, subscriptionId))
+    .map((o) => ({
+      id: o.id,
+      subscriptionId: o.subscriptionId ?? null,
+      amount: orderAmount(o),
+    }));
+  const walletAbsorptionInput = (data.walletAbsorptionLedger ?? []).map(
+    (l) => ({
+      id: l.id,
+      source: l.source,
+      sourceRef: l.sourceRef ?? null,
+      amount: money(l.amount),
+      createdAt: l.createdAt,
+    }),
+  );
+  const activationDebtSettlementInput = (
+    data.activationDebtSettlements ?? []
+  ).map((s) => ({
+    id: s.id,
+    subscriptionId: s.subscriptionId ?? null,
+    amount: money(s.amount),
+    createdAt: s.createdAt,
+  }));
+  const subscriptionProjection = computeSubscriptionConsumption({
+    subscriptionId,
+    planActualBalanceKd: subscriptionValueKd,
+    activatedAt: data.subscription?.activatedAt ?? null,
+    directOrders: directSubscriptionOrders,
+    walletAbsorptionLedger: walletAbsorptionInput,
+    activationDebtSettlements: activationDebtSettlementInput,
+  });
+  const subscriptionConsumedKd = subscriptionProjection.consumedKd;
+  const subscriptionRemainingKd = subscriptionProjection.remainingKd;
   const anomalyFlags = detectCustomerFinancialAnomalies(data, paidOrderIds, {
     totalInvoicesKd,
     totalPaymentsKd,
@@ -269,8 +334,19 @@ function detectCustomerFinancialAnomalies(
 export async function computeCustomer360FinancialCore(
   prisma: PrismaService,
   customerId: string,
+  /**
+   * V20.4 — Phase 2 optional journal reader. When provided, the
+   * Customer 360 response carries the bank-grade canonical debt
+   * value alongside the legacy `totalDueKd`; otherwise the
+   * canonical falls back to the partial-payment Σ remaining
+   * source (still safer than the legacy sum). The dependency is
+   * optional so the function stays usable in tests / call sites
+   * that haven't been wired through Nest DI yet.
+   */
+  journal?: JournalReader | null,
 ): Promise<Customer360FinancialsDto> {
-  const [orders, ledger, activeSub, customer] = await Promise.all([
+  const [orders, ledger, activeSub, customer, wallet, activationRows] =
+    await Promise.all([
     prisma.order.findMany({
       where: { customerId, status: { not: OrderStatus.CANCELED } },
       select: {
@@ -284,18 +360,53 @@ export async function computeCustomer360FinancialCore(
     }),
     prisma.debtLedgerEntry.findMany({
       where: { customerId },
-      select: { orderId: true, source: true, amount: true },
+      // V20.8.1 — additionally select sourceRef + createdAt so the
+      // engine can attribute wallet-absorption to the active
+      // subscription window. The pre-V20.8.1 select shape is
+      // preserved (orderId/source/amount) and existing consumers
+      // ignore the new fields.
+      select: {
+        orderId: true,
+        source: true,
+        amount: true,
+        sourceRef: true,
+        createdAt: true,
+      },
     }),
     prisma.customerSubscription.findFirst({
       where: { customerId, status: 'ACTIVE' },
       orderBy: { createdAt: 'desc' },
-      select: { id: true, planActualBalanceSnapshot: true },
+      // V20.8.1 — also fetch `activatedAt` so the projection can
+      // exclude historical absorptions tied to prior subscriptions.
+      select: {
+        id: true,
+        planActualBalanceSnapshot: true,
+        activatedAt: true,
+      },
     }),
     prisma.customer.findUnique({
       where: { id: customerId },
       select: { isBlocked: true, blockReason: true, blockedAt: true },
     }),
-  ]);
+    // V20.8.1 — wallet balance for the explicit `walletPrepaidCreditKd`
+    // field. Read-only — we never mutate the wallet here.
+      prisma.customerWallet.findUnique({
+        where: { customerId },
+        select: { balance: true },
+      }),
+      prisma.transactionHistory.findMany({
+        where: {
+          customerId,
+          type: 'SUBSCRIPTION_ACTIVATION',
+        },
+        select: {
+          id: true,
+          subscriptionId: true,
+          metadata: true,
+          createdAt: true,
+        },
+      }),
+    ]);
 
   const fin = computeCustomerFinancials({
     orders: orders.map((order) => ({
@@ -304,9 +415,68 @@ export async function computeCustomer360FinancialCore(
     })),
     debtLedger: ledger,
     subscription: activeSub,
+    walletAbsorptionLedger: ledger
+      .filter(
+        (l): l is typeof l & { sourceRef: string; createdAt: Date } =>
+          typeof l.sourceRef === 'string' &&
+          l.sourceRef.startsWith('PAYMENT:WALLET:') &&
+          l.createdAt instanceof Date,
+      )
+      .map((l) => ({
+        source: l.source,
+        sourceRef: l.sourceRef,
+        amount: l.amount,
+        createdAt: l.createdAt,
+      })),
+    activationDebtSettlements: activationRows.flatMap((row) => {
+      const metadata = row.metadata as Record<string, unknown> | null;
+      const amount = metadata?.debtSettled;
+      if (amount === undefined || amount === null) return [];
+      return [{
+        id: row.id,
+        subscriptionId: row.subscriptionId,
+        amount: String(amount),
+        createdAt: row.createdAt,
+      }];
+    }),
   });
   await logFinancialAnomalies(prisma, customerId, fin.anomalyFlags);
 
+  // V20.4 — Phase 2 single canonical debt read. Always computed
+  // so the response shape is stable; under V20.3+journal flag
+  // this is the bank-grade number, otherwise it equals the
+  // partial-payment Σ remaining_balance.
+  const canonical = await computeCanonicalCustomerDebt(
+    prisma,
+    journal ?? null,
+    customerId,
+  );
+
+  // V20.8.1 — explicit financial breakdown for UI clarity.
+  const walletBalanceKd = wallet ? money(wallet.balance) : 0;
+  const subscriptionRemainingNum = money(fin.subscription.remaining);
+  // Wallet may carry both subscription-credit AND non-subscription
+  // prepaid credit; the prepaid bucket is whatever is left over.
+  const walletPrepaidCreditKd = Math.max(
+    round(walletBalanceKd - subscriptionRemainingNum),
+    0,
+  );
+  const breakdown = {
+    receivableDebtKd: canonical.canonicalDebtKd.toFixed(4),
+    subscriptionRemainingKd: fin.subscription.remaining,
+    walletPrepaidCreditKd: fourDp(walletPrepaidCreditKd),
+    paidTotalKd: fin.totalPaymentsKd,
+    operatorHint: buildOperatorHint({
+      receivableDebtKd: canonical.canonicalDebtKd.toString(),
+      subscriptionRemainingKd: subscriptionRemainingNum,
+      walletPrepaidCreditKd,
+    }),
+  };
+
+  // V23.2 — `totalDueKd` (legacy "invoices − payments" gross) was
+  // removed from the public DTO. The engine still computes it
+  // internally for its own arithmetic invariants but it never
+  // crosses the wire; consumers read `canonicalDebtKd` instead.
   return {
     consumedKd: fin.consumedKd,
     totalInvoicesKd: fin.totalInvoicesKd,
@@ -314,12 +484,48 @@ export async function computeCustomer360FinancialCore(
     subscriptionConsumedKd: fin.subscription.consumed,
     subscriptionRemainingKd: fin.subscription.remaining,
     totalPaymentsKd: fin.totalPaymentsKd,
-    totalDueKd: fin.totalDueKd,
+    canonicalDebtKd: canonical.canonicalDebtKd.toFixed(4),
+    canonicalDebtSource: canonical.source,
     overpaymentBalanceKd: fin.overpaymentBalanceKd,
     isBlocked: customer?.isBlocked ?? false,
     blockReason: customer?.blockReason ?? null,
     blockedAtIso: customer?.blockedAt?.toISOString() ?? null,
+    breakdown,
   };
+}
+
+/**
+ * V20.8.1 — Plain-language operator hint summarising the breakdown.
+ *
+ * The hint is server-rendered (not a client transformation) so all
+ * UI surfaces — call-center 360, subscriber portal, statement —
+ * speak the same words for the same financial state.
+ */
+function buildOperatorHint(input: {
+  receivableDebtKd: number | string;
+  subscriptionRemainingKd: number;
+  walletPrepaidCreditKd: number;
+}): string {
+  const debt = typeof input.receivableDebtKd === 'string'
+    ? Number.parseFloat(input.receivableDebtKd)
+    : input.receivableDebtKd;
+  const segments: string[] = [];
+  if (debt > 0) {
+    segments.push(`العميل مدين بمبلغ ${debt.toFixed(4)} د.ك`);
+  } else {
+    segments.push('لا توجد مديونية على العميل');
+  }
+  if (input.subscriptionRemainingKd > 0) {
+    segments.push(
+      `رصيد الباقة المتبقي ${input.subscriptionRemainingKd.toFixed(4)} د.ك`,
+    );
+  }
+  if (input.walletPrepaidCreditKd > 0) {
+    segments.push(
+      `رصيد مدفوع مسبقاً ${input.walletPrepaidCreditKd.toFixed(4)} د.ك`,
+    );
+  }
+  return segments.join(' · ');
 }
 
 async function logFinancialAnomalies(

@@ -11,11 +11,71 @@ export type Customer360FinancialsDto = {
   subscriptionConsumedKd: string;
   subscriptionRemainingKd: string;
   totalPaymentsKd: string;
-  totalDueKd: string;
+  /**
+   * V20.4 Phase 2 + V23.2 — canonical receivable debt. The single
+   * number every UI surface (Customer 360, Subscribers list,
+   * Outstanding, Collections, dashboards) MUST display for any
+   * "outstanding balance" / "إجمالي المديونية" tile.
+   *
+   * Sourced from {@link computeCanonicalCustomerDebt} so it equals
+   * the live Journal AR (`USE_JOURNAL_AS_SOURCE=true` + V20.3) or
+   * the partial-payment-aware Σ remaining_balance otherwise.
+   *
+   * V23.2 — the legacy `totalDueKd` field (= `totalInvoices −
+   * totalPayments`) was removed from this DTO entirely. The engine
+   * still computes the gross internally for invariant tests, but
+   * the value never crosses the wire so consumers can NEVER fall
+   * back to it. Every consumer now reads `canonicalDebtKd`.
+   */
+  canonicalDebtKd: string;
+  /** Provenance — JOURNAL_AR | PARTIAL_PAYMENT_REMAINING | JOURNAL_AR_FALLBACK. */
+  canonicalDebtSource: 'JOURNAL_AR' | 'PARTIAL_PAYMENT_REMAINING' | 'JOURNAL_AR_FALLBACK';
   overpaymentBalanceKd: string;
   isBlocked: boolean;
   blockReason: string | null;
   blockedAtIso: string | null;
+  /**
+   * V20.8.1 — explicit financial breakdown.
+   *
+   * Pre-V20.8.1 the UI mixed three orthogonal concepts under one
+   * "balance" label, which led to operator confusion (e.g. seeing
+   * `balance = 0` next to an active subscription with prepaid
+   * value remaining). The breakdown surfaces them separately so
+   * every UI can render the right label per concept WITHOUT
+   * doing arithmetic in the client.
+   *
+   * Concepts (all server-canonical strings, never recomputed
+   * client-side):
+   *   • `receivableDebtKd`       — what the customer owes us
+   *                                (= `canonicalDebtKd`).
+   *   • `subscriptionRemainingKd` — usable balance inside the
+   *                                active subscription package.
+   *   • `walletPrepaidCreditKd`  — non-subscription prepaid
+   *                                credit on file
+   *                                (max(0, walletBalance - subscriptionRemaining)).
+   *   • `paidTotalKd`            — historical settlements
+   *                                (= `totalPaymentsKd`).
+   */
+  breakdown: Customer360FinancialBreakdownDto;
+};
+
+/**
+ * V20.8.1 — explicit per-concept financial breakdown. Canonical
+ * source of truth for the V20.8.1 UI rewrites; consumers MUST
+ * pick the field that matches the concept they want to render
+ * and never sum/subtract them client-side.
+ */
+export type Customer360FinancialBreakdownDto = {
+  /** What the customer OWES us (canonical receivable debt). */
+  receivableDebtKd: string;
+  /** Usable balance inside the active subscription package. */
+  subscriptionRemainingKd: string;
+  /** Non-subscription prepaid credit on file (excludes subscription). */
+  walletPrepaidCreditKd: string;
+  /** Historical total of payments that have settled. */
+  paidTotalKd: string;
+  /** Plain-language operator hint summarising the four numbers. */
+  operatorHint: string;
 };
 
 export type Customer360StatementDto = {

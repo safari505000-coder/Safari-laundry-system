@@ -12,7 +12,12 @@ import {
   type MonthlySummaryReport,
   type PayrollRow,
 } from '@/lib/api';
-import { formatKwdLabel, formatSignedKwdLabel } from '@/lib/kwd';
+import {
+  formatKwdLabel,
+  formatSignedKwdLabel,
+  subtractKwdStrings,
+  sumKwdStrings,
+} from '@/lib/kwd';
 import { OperatorRouteHint } from '@/modules/shared/components/shell/operator-route-hint';
 import './monthly-summary-print.css';
 
@@ -412,24 +417,33 @@ export function MonthlySummaryPrintPage() {
   const generatedAt = useMemo(() => new Date(), []);
   const brandName = 'Safari Laundry';
 
-  const expensesApprovedTotal = useMemo(() => {
-    let sum = 0;
-    for (const r of expenses) {
-      if (r.status === 'APPROVED') sum += Number.parseFloat(r.amount || '0');
-    }
-    return sum.toFixed(4);
-  }, [expenses]);
+  /**
+   * V21 Phase 5 — totals routed through the canonical `sumKwdStrings`
+   * helper from `@/lib/kwd`. The per-row "simple net" used by this
+   * monthly summary view is `basic + allowances − deductions` (which
+   * is intentionally distinct from `PayrollRow.netSalaryKd`, the full
+   * payroll net that also folds in commission / debt-hold / loan).
+   * The simple-net path stays here because it's a UI display artifact
+   * specific to the columns shown on this sheet, not a financial
+   * truth derivation.
+   */
+  const expensesApprovedTotal = useMemo(
+    () =>
+      sumKwdStrings(
+        expenses
+          .filter((r) => r.status === 'APPROVED')
+          .map((r) => r.amount || '0'),
+      ),
+    [expenses],
+  );
 
   const payrollPaidTotal = useMemo(() => {
-    let sum = 0;
-    for (const r of payroll) {
-      if (r.status !== 'PAID') continue;
-      const b = Number.parseFloat(r.basicSalary || '0');
-      const a = Number.parseFloat(r.allowances || '0');
-      const d = Number.parseFloat(r.deductions || '0');
-      sum += b + a - d;
-    }
-    return sum.toFixed(4);
+    const paid = payroll.filter((r) => r.status === 'PAID');
+    const basicAllow = sumKwdStrings(
+      paid.flatMap((r) => [r.basicSalary || '0', r.allowances || '0']),
+    );
+    const deductions = sumKwdStrings(paid.map((r) => r.deductions || '0'));
+    return subtractKwdStrings(basicAllow, deductions);
   }, [payroll]);
 
   if (error) {
@@ -684,10 +698,16 @@ export function MonthlySummaryPrintPage() {
               </thead>
               <tbody>
                 {payroll.map((r) => {
-                  const b = Number.parseFloat(r.basicSalary || '0');
-                  const a = Number.parseFloat(r.allowances || '0');
-                  const d = Number.parseFloat(r.deductions || '0');
-                  const net = (b + a - d).toFixed(4);
+                  // V21 Phase 5 — per-row "simple net" routed through
+                  // canonical helpers (matches the visible columns:
+                  // basic + allowances − deductions, no commission /
+                  // hold / loan bands). The full payroll net lives on
+                  // `r.netSalaryKd`; this view intentionally renders
+                  // the simpler sum that ties to the displayed cells.
+                  const net = subtractKwdStrings(
+                    sumKwdStrings([r.basicSalary || '0', r.allowances || '0']),
+                    r.deductions || '0',
+                  );
                   return (
                     <tr key={r.id}>
                       <td>{formatShortDate(r.paymentDate)}</td>

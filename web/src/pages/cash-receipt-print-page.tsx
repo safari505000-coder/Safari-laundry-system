@@ -6,6 +6,7 @@ import {
   getCashReceipt,
   type ManagerCashCustodyRow,
 } from '@/lib/api';
+import { formatKwdLabel } from '@/lib/kwd';
 import { PrintableSheet } from '@/modules/shared/print';
 
 /**
@@ -32,15 +33,6 @@ const STATUS_STAMP: Record<
   VERIFIED: { label: 'مُدقَّق', kind: 'approved' },
   REJECTED: { label: 'مرفوض', kind: 'rejected' },
 };
-
-function formatKwd3(v: string | number): string {
-  const n = typeof v === 'number' ? v : Number.parseFloat(v || '0');
-  if (!Number.isFinite(n)) return `${String(v)} د.ك`;
-  return `${n.toLocaleString('en-GB', {
-    minimumFractionDigits: 3,
-    maximumFractionDigits: 3,
-  })} د.ك`;
-}
 
 export function CashReceiptPrintPage() {
   const { id = '' } = useParams<{ id: string }>();
@@ -104,7 +96,7 @@ export function CashReceiptPrintPage() {
         <div className="printable-sheet__grid-3">
           <Field
             label="المبلغ المُستلم"
-            value={formatKwd3(row.amountKd)}
+            value={formatKwdLabel(row.amountKd)}
             mono
           />
           <Field
@@ -147,7 +139,7 @@ export function CashReceiptPrintPage() {
           }}
         >
           أقرّ أنا مدير الفرع الموقّع أدناه باستلام مبلغ{' '}
-          <strong>{formatKwd3(row.amountKd)}</strong> نقداً من السائق{' '}
+          <strong>{formatKwdLabel(row.amountKd)}</strong> نقداً من السائق{' '}
           <strong>{row.driverName}</strong> كاملاً ومطابقاً لسجل الطلبات النقدية
           المُسوّاة في النظام بتاريخ{' '}
           <strong>{received.toLocaleDateString('en-GB')}</strong>. بهذا التوقيع

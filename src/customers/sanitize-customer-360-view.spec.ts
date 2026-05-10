@@ -23,10 +23,23 @@ describe('sanitizeCustomerView', () => {
         subscriptionConsumedKd: '10.0000',
         subscriptionRemainingKd: '30.0000',
         totalPaymentsKd: '2.0000',
-        totalDueKd: '8.0000',
+        // V20.4 — Phase 2 canonical debt fields. V23.2 dropped the
+        // legacy `totalDueKd` (= invoices − payments) from the wire
+        // DTO; the canonical receivable below is the only debt field.
+        canonicalDebtKd: '8.0000',
+        canonicalDebtSource: 'PARTIAL_PAYMENT_REMAINING',
+        overpaymentBalanceKd: '0.0000',
         isBlocked: false,
         blockReason: null,
         blockedAtIso: null,
+        // V20.8.1 — Phase 4 explicit financial breakdown
+        breakdown: {
+          receivableDebtKd: '8.0000',
+          subscriptionRemainingKd: '30.0000',
+          walletPrepaidCreditKd: '0.0000',
+          paidTotalKd: '2.0000',
+          operatorHint: 'العميل مدين بمبلغ 8.0000 د.ك · رصيد الباقة المتبقي 30.0000 د.ك',
+        },
       },
       narrativeLines: ['Line about debt and overuse for staff'],
     },

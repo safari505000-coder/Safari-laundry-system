@@ -9,7 +9,7 @@ import {
 } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/modules/shared/components/ui/card';
 import Customer360Smart from '@/modules/customers/components/Customer360Smart';
-import { formatArabicKwd } from '@/lib/arabic-customer-text';
+import { formatKwdLabel } from '@/lib/kwd';
 
 function isInternal360(
   r: Customer360ResponseInternal | Customer360ResponseSanitized,
@@ -79,6 +79,17 @@ export function Customer360Panel(props: {
 
   const f = data.statement.financials;
   const displayName = data.customer.displayName || data.customer.phone;
+  // V23.1 Final — Customer 360 financial state sync.
+  // Read the canonical receivable debt directly. The legacy `totalDueKd`
+  // is `Σ totalInvoices − Σ totalPayments` which ignores wallet/
+  // subscription absorption + customer-level RESIDUAL FIFO; it
+  // historically caused this card to show 35.000 KWD while the
+  // Collections cockpit (which uses the canonical waterfall) showed
+  // 10.000 KWD for the same customer. canonicalDebtKd is what every
+  // V20.4+ canonical surface (Collections cockpit, Subscribers list,
+  // Outstanding) renders, so this card now agrees with all of them.
+  const unpaidInvoicesKd = f.canonicalDebtKd;
+  const payableNowKd = f.canonicalDebtKd;
 
   return (
     <div className="space-y-4" dir="rtl">
@@ -106,10 +117,11 @@ export function Customer360Panel(props: {
           <CardTitle className="text-base">الملخص المالي</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-2 text-sm sm:grid-cols-2">
-          <Metric label="الفواتير" value={f.totalInvoicesKd} />
+          <Metric label="الفواتير غير مدفوعة" value={unpaidInvoicesKd} />
+          <Metric label="إجمالي الفواتير" value={f.totalInvoicesKd} />
           <Metric label="المدفوع" value={f.totalPaymentsKd} />
-          <Metric label="المبلغ المطلوب دفعه" value={f.totalDueKd} />
-          {Number.parseFloat(data.subscription.subscriptionValueKd) > 0 ?
+          <Metric label="المبلغ المطلوب دفعه" value={payableNowKd} />
+          {data.subscription.subscriptionValueKd !== '0.0000' ?
             <>
               <Metric label="قيمة الاشتراك" value={data.subscription.subscriptionValueKd} />
               <Metric
@@ -227,7 +239,7 @@ function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex justify-between gap-3 border-b border-border/60 pb-1 last:border-0">
       <span className="text-muted-foreground">{label}</span>
-      <span className="tabular-nums font-medium">{formatArabicKwd(value)} د.ك</span>
+      <span className="tabular-nums font-medium">{formatKwdLabel(value)}</span>
     </div>
   );
 }

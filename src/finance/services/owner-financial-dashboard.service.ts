@@ -87,7 +87,7 @@ export class OwnerFinancialDashboardService {
       generatedAt: now.toISOString(),
       totalInvoicesToday,
       totalPaymentsToday,
-      totalDueTotal: customerRollup.totalDueTotal,
+      canonicalDebtTotal: customerRollup.canonicalDebtTotal,
       cashInDrivers,
       cashInOffice,
       reconciliationDifference: reconciliation.differenceKd,
@@ -162,7 +162,7 @@ export class OwnerFinancialDashboardService {
   }
 
   private async customerRollup(): Promise<{
-    totalDueTotal: string;
+    canonicalDebtTotal: string;
     topCustomers: OwnerTopCustomerDto[];
   }> {
     const customers = await this.prisma.customer.findMany({
@@ -177,12 +177,14 @@ export class OwnerFinancialDashboardService {
       take: CUSTOMER_LIMIT,
     });
 
-    const rows: OwnerTopCustomerDto[] = [];
-    let totalDue = new Prisma.Decimal(0);
+    const rows: Array<OwnerTopCustomerDto & { _due: Prisma.Decimal }> = [];
+    let canonicalDebtTotal = new Prisma.Decimal(0);
     for (const customer of customers) {
       const financials = await computeCustomer360FinancialCore(this.prisma, customer.id);
-      const due = new Prisma.Decimal(financials.totalDueKd);
-      totalDue = totalDue.plus(due);
+      // V23.2 — single canonical receivable read; replaces the
+      // legacy `financials.totalDueKd` (now removed from the wire DTO).
+      const due = new Prisma.Decimal(financials.canonicalDebtKd);
+      canonicalDebtTotal = canonicalDebtTotal.plus(due);
       if (due.lte(0)) continue;
       const intelligence = await this.customerIntelligence.buildCustomerIntelligence(
         customer.id,
@@ -191,24 +193,30 @@ export class OwnerFinancialDashboardService {
       rows.push({
         customerId: customer.id,
         displayName: customer.displayName ?? customer.phone ?? null,
-        totalDueKd: financials.totalDueKd,
+        canonicalDebtKd: financials.canonicalDebtKd,
         totalInvoicesKd: financials.totalInvoicesKd,
         totalPaymentsKd: financials.totalPaymentsKd,
         customerHealth: intelligence.customerHealth,
         paymentConsistency: intelligence.paymentConsistency,
         avgPaymentDelayHours: intelligence.avgPaymentDelayHours,
         lifetimeValueKd: intelligence.lifetimeValueKd,
+        _due: due,
       });
     }
 
+    // V23.2 — Decimal-precise sort, no JS double coercion. The `_due`
+    // sidecar field is stripped by `_, ...rest` before returning so
+    // the public DTO shape stays identical.
     rows.sort(
       (a, b) =>
-        Number.parseFloat(b.totalDueKd) - Number.parseFloat(a.totalDueKd) ||
-        a.customerId.localeCompare(b.customerId),
+        b._due.comparedTo(a._due) || a.customerId.localeCompare(b.customerId),
     );
     return {
-      totalDueTotal: totalDue.toFixed(4),
-      topCustomers: rows.slice(0, 10),
+      canonicalDebtTotal: canonicalDebtTotal.toFixed(4),
+      topCustomers: rows
+        .slice(0, 10)
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        .map(({ _due, ...row }) => row),
     };
   }
 }
@@ -218,7 +226,7 @@ function financialsForEvaluator(financials: Customer360FinancialsDto) {
     consumedKd: financials.consumedKd,
     subscriptionValueKd: financials.subscriptionValueKd,
     subscriptionConsumedKd: financials.subscriptionConsumedKd,
-    totalDueKd: financials.totalDueKd,
+    canonicalDebtKd: financials.canonicalDebtKd,
     isBlocked: financials.isBlocked,
   };
 }

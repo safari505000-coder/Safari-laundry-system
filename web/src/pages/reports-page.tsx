@@ -291,20 +291,19 @@ export function ReportsPage() {
     URL.revokeObjectURL(url);
   }, [invoices, from]);
 
-  const invoiceTotals = useMemo(() => {
-    if (!invoices?.rows.length) {
-      return { count: 0, total: 0, cash: 0, knet: 0 };
-    }
-    let total = 0;
-    let cash = 0;
-    let knet = 0;
-    for (const r of invoices.rows) {
-      total += Number.parseFloat(r.totalPrice ?? '0') || 0;
-      if (r.posPaymentMethod === 'CASH') cash += 1;
-      else if (r.posPaymentMethod === 'KNET') knet += 1;
-    }
-    return { count: invoices.rows.length, total, cash, knet };
-  }, [invoices]);
+  /**
+   * V21 Phase 5 — `invoiceTotals` is a thin readonly projection of the
+   * backend `IssuedInvoicesReport.totals`. The frontend no longer
+   * aggregates `totalPrice` strings via `parseFloat`; the backend
+   * `ReportsService.issuedInvoices` computes `totalKd` in Decimal
+   * precision plus per-method counts.
+   */
+  const invoiceTotals = invoices?.totals ?? {
+    totalKd: '0.000',
+    cashCount: 0,
+    knetCount: 0,
+  };
+  const invoiceCount = invoices?.count ?? 0;
 
   const hasExportable = !!invoices?.rows.length;
 
@@ -548,25 +547,25 @@ export function ReportsPage() {
                     tone="blue"
                     icon={<Receipt className="h-4 w-4" />}
                     label={t('reports.kpiInvoices')}
-                    value={invoiceTotals.count}
+                    value={invoiceCount}
                   />
                   <KpiCard
                     tone="green"
                     icon={<Wallet className="h-4 w-4" />}
                     label={t('reports.kpiTotal')}
-                    value={formatKwdLabel(invoiceTotals.total.toFixed(3))}
+                    value={formatKwdLabel(invoiceTotals.totalKd)}
                   />
                   <KpiCard
                     tone="orange"
                     icon={<Banknote className="h-4 w-4" />}
                     label={t('reports.kpiCashCount')}
-                    value={invoiceTotals.cash}
+                    value={invoiceTotals.cashCount}
                   />
                   <KpiCard
                     tone="purple"
                     icon={<CreditCard className="h-4 w-4" />}
                     label={t('reports.kpiKnetCount')}
-                    value={invoiceTotals.knet}
+                    value={invoiceTotals.knetCount}
                   />
                 </div>
                 <p className="text-xs text-muted-foreground tabular-nums">
@@ -721,7 +720,7 @@ export function ReportsPage() {
                   size="sm"
                   className={cn(
                     'flex-row items-start justify-between gap-3 border-primary/40 bg-primary/5 px-4',
-                    Number.parseFloat(closing.netCashAfterExpensesKd) < 0 &&
+                    closing.netCashIsNegative &&
                       'border-destructive/40 bg-destructive/5',
                   )}
                 >
@@ -732,8 +731,7 @@ export function ReportsPage() {
                     <p
                       className={cn(
                         'mt-1 text-xl font-bold tabular-nums text-foreground',
-                        Number.parseFloat(closing.netCashAfterExpensesKd) <
-                          0 && 'text-destructive',
+                        closing.netCashIsNegative && 'text-destructive',
                       )}
                     >
                       {formatKwdLabel(closing.netCashAfterExpensesKd)}
@@ -742,8 +740,8 @@ export function ReportsPage() {
                   <div
                     className={cn(
                       'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary',
-                      Number.parseFloat(closing.netCashAfterExpensesKd) <
-                        0 && 'bg-destructive/10 text-destructive',
+                      closing.netCashIsNegative &&
+                        'bg-destructive/10 text-destructive',
                     )}
                   >
                     <Wallet className="h-4 w-4" />

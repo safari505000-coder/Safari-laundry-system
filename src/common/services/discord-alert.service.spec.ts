@@ -258,7 +258,10 @@ describe('DiscordAlertWorker BullMQ processor', () => {
     await Promise.all([p1, p2]);
 
     expect(mockedAxios.post).toHaveBeenCalledTimes(1);
-    const [, body] = mockedAxios.post.mock.calls[0];
+    const [, body] = mockedAxios.post.mock.calls[0] as [
+      string,
+      { embeds: unknown[] },
+    ];
     expect(body.embeds).toHaveLength(2);
   });
 

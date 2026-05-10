@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { BRAND_CUSTOMER_AR } from '../common/constants/branding';
 import { parseKuwaitMobile965 } from '../common/validation/kuwait-customer-phone';
 
@@ -511,18 +512,33 @@ function appendNewPosOrderOptionalWalletLines(
     );
   }
   if (v === 'standard') {
-    const debt = Number.parseFloat(params.walletDebtKd ?? '');
+    // V23.2 — Decimal-precise debt-positivity check; the prior
+    // `Number.parseFloat` boundary collapsed money strings via JS
+    // doubles. The empty-string guard is preserved.
     if (
-      Number.isFinite(debt) &&
-      debt > 0 &&
       params.walletDebtKd != null &&
-      params.walletDebtKd.trim() !== ''
+      params.walletDebtKd.trim() !== '' &&
+      isPositiveKwdString(params.walletDebtKd)
     ) {
       lines.push('');
       lines.push(
         `📌 المديونية الحالية على حسابكم: *${params.walletDebtKd} د.ك*`,
       );
     }
+  }
+}
+
+/**
+ * V23.2 — Decimal-precise positivity check for a KWD-formatted string.
+ * Replaces the legacy `Number.parseFloat(s) > 0` boundary so that
+ * `0.00009` (rounding noise below the 4dp scale) does NOT trigger a
+ * customer-facing "debt" line. Returns `false` on any parse failure.
+ */
+function isPositiveKwdString(value: string): boolean {
+  try {
+    return new Prisma.Decimal(value).greaterThan(0);
+  } catch {
+    return false;
   }
 }
 

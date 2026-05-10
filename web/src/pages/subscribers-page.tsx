@@ -69,7 +69,16 @@ import {
   ApiError,
 } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { formatKwdLabel, formatSignedKwdLabel } from '@/lib/kwd';
+import {
+  addKwdStrings,
+  compareKwdStrings,
+  formatKwdLabel,
+  formatSignedKwdLabel,
+  isPositiveKd,
+  kwdToMicroFils,
+  microFilsToKwd,
+  subtractKwdStrings,
+} from '@/lib/kwd';
 
 /** Isolates LTR amounts (+ digits + د.ك) inside RTL pages — avoids bidi “floating” digits. */
 function RtlSafeMoney({
@@ -155,9 +164,12 @@ function subscriberListBalanceDisplay(r: SubscriberListRow): string {
   return r.balanceDisplayKd ?? r.balance;
 }
 
-/** Operational debt basis from API. This is NOT the canonical Customer 360 totalDueKd. */
-function subscriberOperationalDebtKdNumber(r: SubscriberListRow): number {
-  const s = (r.operationalDebtKd ?? r.effectiveDebtKd)?.trim() ?? '';
+function subscriberRemainingDebtKd(r: SubscriberListRow | null | undefined): string {
+  return r?.remainingDebtKd ?? r?.debt ?? '0';
+}
+
+function subscriberRemainingDebtKdNumber(r: SubscriberListRow): number {
+  const s = subscriberRemainingDebtKd(r).trim();
   if (!s) return 0;
   const n = Number.parseFloat(s);
   return Number.isFinite(n) ? n : 0;
@@ -264,7 +276,7 @@ function SubscriberCard({
             </RtlSafeMoney>
           </dd>
         </div>
-        {subscriberOperationalDebtKdNumber(r) > 0.0005 ?
+        {subscriberRemainingDebtKdNumber(r) > 0.0005 ?
           <div className="min-w-0">
             <dt className="text-muted-foreground">{t('subscribers.colTotalOwed')}</dt>
             <dd
@@ -275,7 +287,7 @@ function SubscriberCard({
                 block={false}
                 className="font-mono text-base font-semibold text-amber-800 dark:text-amber-200 sm:text-sm"
               >
-                {formatKwdLabel(r.operationalDebtKd ?? r.effectiveDebtKd ?? '0')}
+                {formatKwdLabel(subscriberRemainingDebtKd(r))}
               </RtlSafeMoney>
             </dd>
           </div>
@@ -364,15 +376,9 @@ function ManageAccountDialog({
 }) {
   const { t } = useTranslation();
   const canExtend = Boolean(subscriber?.planId);
-  const walletDebtKd = Number.parseFloat(subscriber?.debt ?? '0') || 0;
-  const operationalDebtKd =
-    subscriber?.operationalDebtKd !== undefined && subscriber.operationalDebtKd.trim() !== ''
-      ? Number.parseFloat(subscriber.operationalDebtKd) || 0
-      : subscriber?.effectiveDebtKd !== undefined && subscriber.effectiveDebtKd.trim() !== ''
-        ? Number.parseFloat(subscriber.effectiveDebtKd) || 0
-      : walletDebtKd;
-  const showPayDebtPartial = operationalDebtKd > 0;
-  const showConvertDebt = operationalDebtKd > 0;
+  const currentDebtKdString = subscriberRemainingDebtKd(subscriber);
+  const showPayDebtPartial = isPositiveKd(currentDebtKdString);
+  const showConvertDebt = isPositiveKd(currentDebtKdString);
   const expiryMs = subscriber?.expiryDate?.trim()
     ? new Date(subscriber.expiryDate).getTime()
     : NaN;
@@ -453,9 +459,7 @@ function ManageAccountDialog({
                 </span>
                 <span className="mt-1 block text-xs text-muted-foreground">
                   {t('subscribers.managePayDebtHint', {
-                    debt: formatKwdLabel(
-                      String(subscriber.operationalDebtKd ?? subscriber.effectiveDebtKd ?? subscriber.debt),
-                    ),
+                    debt: formatKwdLabel(subscriberRemainingDebtKd(subscriber)),
                   })}
                 </span>
               </span>
@@ -480,9 +484,7 @@ function ManageAccountDialog({
                 </span>
                 <span className="mt-1 block text-xs text-muted-foreground">
                   {t('subscribers.manageConvertDebtHint', {
-                    effectiveDebt: formatKwdLabel(
-                      String(subscriber.operationalDebtKd ?? subscriber.effectiveDebtKd ?? subscriber.debt),
-                    ),
+                    effectiveDebt: formatKwdLabel(subscriberRemainingDebtKd(subscriber)),
                   })}
                 </span>
               </span>
@@ -867,6 +869,7 @@ function IssueSubscriptionDialog({
                           </span>
                           {c.wallet ? (
                             <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                              {/* allow-legacy-debt-reader (V20.6 Phase 2: c.wallet.debt is the server-canonical CustomerWallet field bound by SubscribersService.list) */}
                               {t('subscribers.issueDebtShort', {
                                 amount: formatKwdLabel(c.wallet.debt),
                               })}
@@ -1025,36 +1028,39 @@ function DebtPaymentDialog({
     }
   }, [open]);
 
-  const operationalDebtKd =
-    subscriber?.operationalDebtKd !== undefined &&
-    subscriber.operationalDebtKd.trim() !== ''
-      ? Number.parseFloat(subscriber.operationalDebtKd) || 0
-      : subscriber?.effectiveDebtKd !== undefined &&
-          subscriber.effectiveDebtKd.trim() !== ''
-        ? Number.parseFloat(subscriber.effectiveDebtKd) || 0
-      : Number.parseFloat(subscriber?.debt ?? '0') || 0;
-  const debtNum = operationalDebtKd;
-  const amountNum = Number.parseFloat(amount || '0') || 0;
-  const discountNum = Number.parseFloat(discount || '0') || 0;
-  const totalReduction = amountNum + discountNum;
-  const remaining = Math.max(0, debtNum - totalReduction);
-  const overCap = totalReduction > debtNum + 1e-9;
+  // V23.1 — canonical money math via BigInt micro-fils. The form fields
+  // (`amount`, `discount`) are user-typed strings; we never coerce them
+  // through `Number()` / `parseFloat`. `addKwdStrings` / `subtractKwdStrings`
+  // produce 4dp canonical strings that match the backend Prisma.Decimal scale.
+  const debtKdString = subscriberRemainingDebtKd(subscriber);
+  const amountKdString = amount.trim() === '' ? '0' : amount.trim();
+  const discountKdString = discount.trim() === '' ? '0' : discount.trim();
+  const totalReductionKd = addKwdStrings(amountKdString, discountKdString);
+  const remainingKd = (() => {
+    const diff = subtractKwdStrings(debtKdString, totalReductionKd);
+    return isPositiveKd(diff) ? diff : '0.0000';
+  })();
+  const overCap = compareKwdStrings(totalReductionKd, debtKdString) > 0;
   const disabled =
     submitting ||
     overCap ||
-    totalReduction <= 0 ||
-    amountNum < 0 ||
-    discountNum < 0;
+    !isPositiveKd(totalReductionKd) ||
+    compareKwdStrings(amountKdString, '0') < 0 ||
+    compareKwdStrings(discountKdString, '0') < 0;
 
   async function submit() {
     if (!subscriber || disabled) return;
     setSubmitting(true);
     try {
+      // Canonicalize the user-typed strings to 4dp KWD via BigInt
+      // micro-fils so the API receives the exact same scale as Prisma.Decimal.
+      const amountCanonical = microFilsToKwd(kwdToMicroFils(amountKdString));
+      const discountCanonical = microFilsToKwd(kwdToMicroFils(discountKdString));
       const body: RecordPartialDebtPaymentRequest = {
-        amountKd: amountNum.toFixed(4),
+        amountKd: amountCanonical,
         paymentMethod: method,
       };
-      if (discountNum > 0) body.discountKd = discountNum.toFixed(4);
+      if (isPositiveKd(discountCanonical)) body.discountKd = discountCanonical;
       if (note.trim()) body.note = note.trim();
       const res = await apiJson<RecordPartialDebtPaymentResponse>(
         `/api/call-center/customers/${subscriber.customerId}/partial-debt-payment`,
@@ -1087,9 +1093,7 @@ function DebtPaymentDialog({
           <DialogDescription>
             {t('subscribers.debtPayHint', {
               name: subscriber?.customerName ?? '',
-              debt: formatKwdLabel(
-                String(subscriber?.operationalDebtKd ?? subscriber?.effectiveDebtKd ?? subscriber?.debt ?? '0'),
-              ),
+              debt: formatKwdLabel(subscriberRemainingDebtKd(subscriber)),
             })}
           </DialogDescription>
         </DialogHeader>
@@ -1171,7 +1175,7 @@ function DebtPaymentDialog({
                 {t('subscribers.debtPayTotalReduction')}
               </div>
               <div className="font-medium text-foreground">
-                {formatKwdLabel(totalReduction.toFixed(4))}
+                {formatKwdLabel(totalReductionKd)}
               </div>
             </div>
             <div>
@@ -1179,7 +1183,7 @@ function DebtPaymentDialog({
                 {t('subscribers.debtPayRemaining')}
               </div>
               <div className="font-medium text-foreground">
-                {formatKwdLabel(remaining.toFixed(4))}
+                {formatKwdLabel(remainingKd)}
               </div>
             </div>
             <div>
@@ -1187,9 +1191,7 @@ function DebtPaymentDialog({
                 {t('subscribers.debtPayCurrentDebt')}
               </div>
               <div className="font-medium text-foreground">
-                {formatKwdLabel(
-                  String(subscriber?.operationalDebtKd ?? subscriber?.effectiveDebtKd ?? subscriber?.debt ?? '0'),
-                )}
+                {formatKwdLabel(subscriberRemainingDebtKd(subscriber))}
               </div>
             </div>
           </div>
@@ -1508,7 +1510,7 @@ function DebtConvertDialog({
                           <span
                             className={cn(
                               'shrink-0 font-medium tabular-nums',
-                              Number.parseFloat(opt.remainingDebtKd) > 0
+                              isPositiveKd(opt.remainingDebtKd)
                                 ? 'text-red-700 dark:text-red-300'
                                 : 'text-emerald-700 dark:text-emerald-300',
                             )}
@@ -1822,7 +1824,7 @@ export function SubscribersPage() {
     const key = JSON.stringify(
       traced.map((r) => [
         r.customerId,
-        r.operationalDebtKd ?? r.effectiveDebtKd,
+        r.operationalDebtKd,
         r.debtKdBreakdownTrace?.winningSources,
       ]),
     );
@@ -1834,7 +1836,7 @@ export function SubscribersPage() {
     console.table(
       traced.map((r) => ({
         name: r.customerName,
-        operational: r.operationalDebtKd ?? r.effectiveDebtKd,
+        operational: r.operationalDebtKd,
         ledger: r.debtKdBreakdownTrace?.ledgerNetKd,
         walletSnap: r.debtKdBreakdownTrace?.walletSnapshotKd,
         orderMarket: r.debtKdBreakdownTrace?.orderMarketScopeKd,
@@ -2063,8 +2065,8 @@ export function SubscribersPage() {
         return (av - bv) * mult;
       }
       if (numSort.key === 'effectiveDebt') {
-        const av = subscriberOperationalDebtKdNumber(a);
-        const bv = subscriberOperationalDebtKdNumber(b);
+        const av = subscriberRemainingDebtKdNumber(a);
+        const bv = subscriberRemainingDebtKdNumber(b);
         return (av - bv) * mult;
       }
       const av = Number.parseFloat(subscriberListBalanceDisplay(a));
@@ -2338,13 +2340,13 @@ export function SubscribersPage() {
                     <RtlSafeMoney
                       className={cn(
                         'font-mono text-xs sm:text-sm',
-                        subscriberOperationalDebtKdNumber(r) > 0.0005 ?
+                        subscriberRemainingDebtKdNumber(r) > 0.0005 ?
                           'font-medium text-amber-800 dark:text-amber-200'
                         : 'text-muted-foreground',
                       )}
                       title={t('subscribers.colTotalOwedHint')}
                     >
-                      {formatKwdLabel(r.operationalDebtKd ?? r.effectiveDebtKd ?? '0')}
+                      {formatKwdLabel(subscriberRemainingDebtKd(r))}
                     </RtlSafeMoney>
                   </TableCell>
                   <TableCell

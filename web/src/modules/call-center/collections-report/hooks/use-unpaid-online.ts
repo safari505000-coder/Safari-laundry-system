@@ -2,12 +2,16 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ApiError,
   apiJson,
+  type CollectionUnpaidOnlineReportResponse,
   type CollectionUnpaidOnlineRow,
 } from '@/lib/api';
 import { useAuth } from '@/contexts/auth-context';
 
 export type UseUnpaidOnlineState = {
   rows: CollectionUnpaidOnlineRow[];
+  paymentLinkRows: CollectionUnpaidOnlineRow[];
+  branchSummaries: CollectionUnpaidOnlineReportResponse['branchSummaries'];
+  paymentLinkSummary: CollectionUnpaidOnlineReportResponse['paymentLinkSummary'];
   loading: boolean;
   error: string | null;
   refresh: () => void;
@@ -27,6 +31,13 @@ export function useUnpaidOnline(opts?: {
   const { token } = useAuth();
   const branchId = opts?.branchId ?? null;
   const [rows, setRows] = useState<CollectionUnpaidOnlineRow[]>([]);
+  const [paymentLinkRows, setPaymentLinkRows] = useState<CollectionUnpaidOnlineRow[]>([]);
+  const [branchSummaries, setBranchSummaries] = useState<
+    CollectionUnpaidOnlineReportResponse['branchSummaries']
+  >([]);
+  const [paymentLinkSummary, setPaymentLinkSummary] = useState<
+    CollectionUnpaidOnlineReportResponse['paymentLinkSummary']
+  >({ totalRows: 0, actionableRows: 0 });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -42,12 +53,17 @@ export function useUnpaidOnline(opts?: {
       const qs = branchId
         ? `?branchId=${encodeURIComponent(branchId)}`
         : '';
-      const data = await apiJson<CollectionUnpaidOnlineRow[]>(
-        `/api/orders/collections/unpaid-online${qs}`,
+      const data = await apiJson<CollectionUnpaidOnlineReportResponse>(
+        `/api/orders/collections/unpaid-online/report${qs}`,
         { token, signal: ctrl.signal },
       );
       if (ctrl.signal.aborted) return;
-      setRows(Array.isArray(data) ? data : []);
+      setRows(Array.isArray(data.rows) ? data.rows : []);
+      setPaymentLinkRows(Array.isArray(data.paymentLinkRows) ? data.paymentLinkRows : []);
+      setBranchSummaries(Array.isArray(data.branchSummaries) ? data.branchSummaries : []);
+      setPaymentLinkSummary(
+        data.paymentLinkSummary ?? { totalRows: 0, actionableRows: 0 },
+      );
       setError(null);
     } catch (e) {
       if (ctrl.signal.aborted) return;
@@ -57,6 +73,9 @@ export function useUnpaidOnline(opts?: {
           : 'تعذّر تحميل قائمة روابط الدفع غير المدفوعة';
       setError(msg);
       setRows([]);
+      setPaymentLinkRows([]);
+      setBranchSummaries([]);
+      setPaymentLinkSummary({ totalRows: 0, actionableRows: 0 });
     } finally {
       if (!ctrl.signal.aborted) setLoading(false);
       if (inFlight.current === ctrl) inFlight.current = null;
@@ -73,5 +92,13 @@ export function useUnpaidOnline(opts?: {
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
-  return { rows, loading, error, refresh };
+  return {
+    rows,
+    paymentLinkRows,
+    branchSummaries,
+    paymentLinkSummary,
+    loading,
+    error,
+    refresh,
+  };
 }

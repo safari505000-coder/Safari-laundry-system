@@ -15,8 +15,6 @@ export type DebtKdBreakdownTrace = {
   orderMarketScopeKd: string;
   /** Operational debt only. This is NOT the canonical financial number. */
   operationalDebtKd: string;
-  /** @deprecated Use operationalDebtKd. Kept for API compatibility. */
-  effectiveDebtKd: string;
   winningSources: DebtKdBreakdownWinner[];
 };
 
@@ -39,7 +37,6 @@ export function buildDebtKdBreakdownTrace(
     walletSnapshotKd: walletSnapshotKd.toFixed(4),
     orderMarketScopeKd: orderMarketScopeKd.toFixed(4),
     operationalDebtKd: effectiveKd.toFixed(4),
-    effectiveDebtKd: effectiveKd.toFixed(4),
     winningSources,
   };
 }

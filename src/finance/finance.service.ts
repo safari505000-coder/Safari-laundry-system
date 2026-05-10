@@ -105,6 +105,10 @@ export class FinanceService {
     return this.cashService.getDriverBalances();
   }
 
+  async getMyDriverCashCustodySummary(driverId: string) {
+    return this.cashService.getMyDriverCashCustodySummary(driverId);
+  }
+
   async getDriverMonitoring(branchId: string | null = null) {
     return this.cashService.getDriverMonitoring(branchId);
   }

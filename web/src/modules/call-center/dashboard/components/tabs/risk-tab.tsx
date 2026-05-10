@@ -16,6 +16,7 @@ import {
   CardTitle,
 } from '@/modules/shared/components/ui/card';
 import { cn } from '@/lib/utils';
+import { compareKwdStrings, formatKwdLabel } from '@/lib/kwd';
 import { is360Internal, type Customer360Data } from '../../hooks/use-cc-customer-360';
 import type { DispatchRow } from '../../api/cc-dashboard-api';
 
@@ -76,22 +77,26 @@ export function RiskTab({ data, customerDispatches }: Props) {
   const flags = useMemo<Flag[]>(() => {
     const result: Flag[] = [];
 
-    // 1) Outstanding balance (cash exposure proxy)
-    const due = Number.parseFloat(f.totalDueKd);
-    if (Number.isFinite(due)) {
-      if (due >= 50) {
-        result.push({
-          id: 'highCashExposure',
-          label: t('callCenterDashboard.risk.flag.highCash.label', {
-            defaultValue: 'تعرّض نقدي مرتفع',
-          }),
-          description: t('callCenterDashboard.risk.flag.highCash.desc', {
-            value: f.totalDueKd,
-            defaultValue: `مستحق على العميل ${f.totalDueKd} د.ك — تحقّق قبل أي مهمة جديدة.`,
-          }),
-          level: due >= 100 ? 'RED' : 'YELLOW',
-        });
-      }
+    // 1) Outstanding balance (cash exposure proxy). V23.1 Final —
+    // canonical receivable debt is the only money number compared
+    // against the 50/100 KWD thresholds. The legacy `totalDueKd`
+    // would over-trigger the high-cash-exposure flag against gross
+    // invoice totals that wallet/subscription absorption already
+    // settled.
+    const dueAtLeast50 = compareKwdStrings(f.canonicalDebtKd, '50') >= 0;
+    const dueAtLeast100 = compareKwdStrings(f.canonicalDebtKd, '100') >= 0;
+    if (dueAtLeast50) {
+      result.push({
+        id: 'highCashExposure',
+        label: t('callCenterDashboard.risk.flag.highCash.label', {
+          defaultValue: 'تعرّض نقدي مرتفع',
+        }),
+        description: t('callCenterDashboard.risk.flag.highCash.desc', {
+          value: formatKwdLabel(f.canonicalDebtKd),
+          defaultValue: `مستحق على العميل ${formatKwdLabel(f.canonicalDebtKd)} — تحقّق قبل أي مهمة جديدة.`,
+        }),
+        level: dueAtLeast100 ? 'RED' : 'YELLOW',
+      });
     }
 
     // 2) Frequent reassignments — derived from successor chain
@@ -154,7 +159,7 @@ export function RiskTab({ data, customerDispatches }: Props) {
 
     return result;
   }, [
-    f.totalDueKd,
+    f.canonicalDebtKd,
     f.isBlocked,
     f.blockReason,
     customerDispatches,

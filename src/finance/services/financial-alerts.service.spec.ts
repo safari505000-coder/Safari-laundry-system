@@ -12,7 +12,11 @@ describe('FinancialAlertsService', () => {
         {
           customerId: 'customer-1',
           displayName: 'Customer One',
-          totalDueKd: '501.0000',
+          // V23.2 — alerts now consume `canonicalDebtKd`. The
+          // threshold (500 KWD) and message string are unchanged;
+          // only the source field name changed to reflect the
+          // canonical-banking single source of truth.
+          canonicalDebtKd: '501.0000',
           totalInvoicesKd: '600.0000',
           totalPaymentsKd: '99.0000',
           customerHealth: 'RISK',

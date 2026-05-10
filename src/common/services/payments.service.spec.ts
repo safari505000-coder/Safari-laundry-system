@@ -58,6 +58,10 @@ function makeService(tx = makeTx()) {
   const inventory = { applyOrderStockDecrement: jest.fn().mockResolvedValue(undefined) };
   const whatsappQueue = { enqueuePaymentConfirmed: jest.fn() };
   const discordAlerts = { enqueue: jest.fn() };
+  // V23.3 — `PaymentsService` constructor gained an `AuditLogsService`
+  // dependency (and an optional `MetricsService`) after V21.x. Stub
+  // the new params so the spec compiles and behaves identically.
+  const auditLogs = { append: jest.fn().mockResolvedValue(undefined) };
   const service = new PaymentsService(
     prisma,
     customerLedger as any,
@@ -65,6 +69,7 @@ function makeService(tx = makeTx()) {
     inventory as any,
     whatsappQueue as any,
     discordAlerts as any,
+    auditLogs as any,
   );
   jest.spyOn(service as any, 'emitPaymentConfirmedNotify').mockImplementation(() => undefined);
   return { service, prisma, tx, customerLedger, generalLedger, inventory, discordAlerts };

@@ -1,12 +1,6 @@
 import { useTranslation } from 'react-i18next';
+import { formatKwdLabel } from '@/lib/kwd';
 import type { ControlTowerKpis } from '../api/control-tower-api';
-
-function fmtKd(v: number): string {
-  return new Intl.NumberFormat('ar-KW', {
-    minimumFractionDigits: 3,
-    maximumFractionDigits: 3,
-  }).format(v);
-}
 
 function Tile({
   label,
@@ -45,7 +39,7 @@ export function ControlTowerKpiCards({ kpis }: { kpis: ControlTowerKpis | null }
     >
       <Tile
         label={t('controlTower.kpi.totalDue')}
-        value={kpis ? fmtKd(kpis.totalDue) : '—'}
+        value={kpis ? formatKwdLabel(kpis.totalDue) : '—'}
         tone="primary"
       />
       <Tile

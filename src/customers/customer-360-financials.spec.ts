@@ -68,6 +68,52 @@ describe('computeCustomerFinancials', () => {
     expect(fin.totalDueKd).toBe('0.5000');
   });
 
+  it('shows subscription activation debt settlement as consumed subscription credit', () => {
+    const fin = computeCustomerFinancials({
+      orders: [
+        {
+          id: 'debt-order',
+          status: OrderStatus.COMPLETED,
+          totalPrice: '30.2500',
+          cashStatus: CashStatus.UNPAID,
+          posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT,
+          paymentSource: 'WALLET',
+        },
+      ],
+      debtLedger: [
+        {
+          orderId: 'debt-order',
+          source: DebtSource.INVOICE_SHORTFALL,
+          amount: '30.2500',
+        },
+        {
+          orderId: 'debt-order',
+          source: DebtSource.PAYMENT,
+          amount: '25.0000',
+        },
+      ],
+      subscription: {
+        id: 'sub-convert',
+        planActualBalanceSnapshot: '25.0000',
+        activatedAt: new Date('2026-05-01T00:00:00Z'),
+      },
+      activationDebtSettlements: [
+        {
+          id: 'activation-history',
+          subscriptionId: 'sub-convert',
+          amount: '25.0000',
+          createdAt: new Date('2026-05-01T00:01:00Z'),
+        },
+      ],
+    });
+
+    expect(fin.totalInvoicesKd).toBe('30.2500');
+    expect(fin.totalPaymentsKd).toBe('25.0000');
+    expect(fin.totalDueKd).toBe('5.2500');
+    expect(fin.subscription.consumed).toBe('25.0000');
+    expect(fin.subscription.remaining).toBe('0.0000');
+  });
+
   it('keeps subscription zeroed when the customer has no subscription', () => {
     const fin = computeCustomerFinancials({
       orders: [

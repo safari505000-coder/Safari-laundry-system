@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import type { Request } from 'express';
 import { AuditLogsService } from '../../audit-logs/audit-logs.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -18,6 +19,8 @@ export type CustomerBlockSnapshot = {
 };
 
 const HIGH_DEBT_BLOCK_THRESHOLD = 500;
+/** V23.2 — Decimal mirror of {@link HIGH_DEBT_BLOCK_THRESHOLD} for canonical compares. */
+const HIGH_DEBT_BLOCK_THRESHOLD_KD = new Prisma.Decimal(HIGH_DEBT_BLOCK_THRESHOLD);
 
 @Injectable()
 export class CustomerBlockingService {
@@ -98,7 +101,7 @@ export class CustomerBlockingService {
   async autoBlockIfNeeded(
     customerId: string,
   ): Promise<CustomerBlockSnapshot | null> {
-    const [customer, totalDueKd] = await Promise.all([
+    const [customer, canonicalDebtKd] = await Promise.all([
       this.prisma.customer.findUnique({
         where: { id: customerId },
         select: {
@@ -108,10 +111,16 @@ export class CustomerBlockingService {
           blockedAt: true,
         },
       }),
-      this.computeTotalDueKd(customerId),
+      this.computeCanonicalDebtKd(customerId),
     ]);
     if (!customer) return null;
-    if (totalDueKd <= HIGH_DEBT_BLOCK_THRESHOLD || customer.isBlocked) {
+    // V23.2 — Decimal compare; the legacy `<= number` path silently
+    // coerced via JS double precision and could miss boundary cases
+    // around 500.0000–500.0001 KWD on partial-payment ledgers.
+    if (
+      canonicalDebtKd.lessThanOrEqualTo(HIGH_DEBT_BLOCK_THRESHOLD_KD) ||
+      customer.isBlocked
+    ) {
       return customer;
     }
     const blocked = await this.prisma.customer.update({
@@ -133,7 +142,7 @@ export class CustomerBlockingService {
       customerId,
       source: 'AUTO_HIGH_DEBT',
       changes: {
-        totalDueKd,
+        canonicalDebtKd: canonicalDebtKd.toFixed(4),
         blockReason: blocked.blockReason,
         blockedAt: blocked.blockedAt?.toISOString() ?? null,
       },
@@ -141,12 +150,22 @@ export class CustomerBlockingService {
     return blocked;
   }
 
+  /**
+   * V23.2 — Auto-block trigger that consumes the Customer-360 canonical
+   * debt directly. Renamed from the legacy `(_, totalDueKd)` signature
+   * to make the SSoT explicit. Threshold compare is Decimal-based.
+   */
   async applyAutoBlockFromFinancials(
     customerId: string,
-    totalDueKd: string,
+    canonicalDebtKd: string,
   ): Promise<CustomerBlockSnapshot | null> {
-    const due = Number.parseFloat(totalDueKd);
-    if (!Number.isFinite(due) || due <= HIGH_DEBT_BLOCK_THRESHOLD) {
+    let due: Prisma.Decimal;
+    try {
+      due = new Prisma.Decimal(canonicalDebtKd);
+    } catch {
+      due = new Prisma.Decimal(0);
+    }
+    if (due.lessThanOrEqualTo(HIGH_DEBT_BLOCK_THRESHOLD_KD)) {
       return this.prisma.customer.findUnique({
         where: { id: customerId },
         select: {
@@ -270,10 +289,18 @@ export class CustomerBlockingService {
     return after;
   }
 
-  private async computeTotalDueKd(customerId: string): Promise<number> {
+  /**
+   * V23.2 — Decimal-precise canonical receivable read. Replaces the
+   * legacy `computeTotalDueKd` which coerced through JS doubles and
+   * referenced the (now-removed) `Customer360Financials.totalDueKd`.
+   */
+  private async computeCanonicalDebtKd(customerId: string): Promise<Prisma.Decimal> {
     const fin = await computeCustomer360FinancialCore(this.prisma, customerId);
-    const due = Number.parseFloat(fin.totalDueKd);
-    return Number.isFinite(due) ? due : 0;
+    try {
+      return new Prisma.Decimal(fin.canonicalDebtKd);
+    } catch {
+      return new Prisma.Decimal(0);
+    }
   }
 }
 

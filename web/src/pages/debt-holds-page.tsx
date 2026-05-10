@@ -4,10 +4,13 @@ import { toast } from 'sonner';
 import { ArrowLeft, Banknote, Loader2, Printer, Undo2 } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { BRAND } from '@/lib/brand';
+import { formatKwdAmount } from '@/lib/kwd';
 import { DocumentQR } from '@/modules/shared/print/DocumentQR';
 import {
   ApiError,
+  type DebtHoldEmployeeBucket,
   type DebtHoldRow,
+  type DebtHoldTotals,
   type TeamUserRow,
   apiJson,
   disburseDebtHold,
@@ -50,14 +53,14 @@ function monthRangeIso(ym: string): { from: string; to: string } {
   return { from: from.toISOString(), to: to.toISOString() };
 }
 
-function formatKd(v: string): string {
-  const n = Number.parseFloat(v);
-  if (!Number.isFinite(n)) return v;
-  return n.toLocaleString('en-GB', {
-    minimumFractionDigits: 3,
-    maximumFractionDigits: 3,
-  });
-}
+/**
+ * V21 Phase 5 — every KD render on this page now flows through the
+ * canonical `formatKwdAmount` from `@/lib/kwd`. The previous local
+ * `formatKd` helper (a duplicate of `formatKwdAmount`) was deleted.
+ * All financial truth (totals + per-employee buckets) is supplied by
+ * the backend `DebtHoldsListResponse`; no display-side aggregation
+ * remains anywhere in this file.
+ */
 
 /** All calendar columns in the details grid use en-GB (dd/mm/yyyy). */
 function formatDateEn(iso: string | null | undefined): string {
@@ -153,17 +156,17 @@ function DebtHoldVoucher({
             <tbody>
               <tr>
                 <th>إجمالي المديونية</th>
-                <td>{formatKd(hold.debtAmount)} د.ك</td>
+                <td>{formatKwdAmount(hold.debtAmount)} د.ك</td>
               </tr>
               <tr>
                 <th>المبلغ المحجوز من الراتب</th>
-                <td>{formatKd(hold.holdAmount)} د.ك</td>
+                <td>{formatKwdAmount(hold.holdAmount)} د.ك</td>
               </tr>
               <tr className="voucher-table-highlight">
                 <th>
                   {kind === 'RELEASE' ? 'المبلغ المُحرَّر' : 'المبلغ المصروف'}
                 </th>
-                <td>{formatKd(amount)} د.ك</td>
+                <td>{formatKwdAmount(amount)} د.ك</td>
               </tr>
               {hold.note ? (
                 <tr>
@@ -304,6 +307,10 @@ export function DebtHoldsPage() {
   >('ALL');
   const [users, setUsers] = useState<TeamUserRow[] | null>(null);
   const [rows, setRows] = useState<DebtHoldRow[] | null>(null);
+  const [totals, setTotals] = useState<DebtHoldTotals | null>(null);
+  const [perEmployee, setPerEmployee] = useState<
+    DebtHoldEmployeeBucket[] | null
+  >(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -334,13 +341,15 @@ export function DebtHoldsPage() {
           isAdmin && employeeUserId !== 'ALL' ? employeeUserId : undefined,
         status: serverStatus,
       });
-      const filtered =
+      const filteredRows =
         stage === 'PENDING_DISBURSE'
-          ? d.filter((r) => r.status === 'RELEASED' && !r.disbursedAt)
+          ? d.rows.filter((r) => r.status === 'RELEASED' && !r.disbursedAt)
           : stage === 'DISBURSED'
-          ? d.filter((r) => r.status === 'RELEASED' && !!r.disbursedAt)
-          : d;
-      setRows(filtered);
+          ? d.rows.filter((r) => r.status === 'RELEASED' && !!r.disbursedAt)
+          : d.rows;
+      setRows(filteredRows);
+      setTotals(d.totals);
+      setPerEmployee(d.perEmployee);
     } catch (e) {
       if (e instanceof ApiError) toast.error(e.message);
     } finally {
@@ -359,69 +368,20 @@ export function DebtHoldsPage() {
   // releaseDebtHold / disburseDebtHold are still imported for those
   // bulk handlers to call per-row inside a loop.
 
-  const totals = useMemo(() => {
-    let held = 0;
-    let pending = 0;
-    let disbursed = 0;
-    for (const r of rows ?? []) {
-      const h = Number.parseFloat(r.holdAmount);
-      const x = Number.parseFloat(r.releasedAmount);
-      if (r.status === 'HELD' && Number.isFinite(h)) held += h;
-      else if (r.status === 'RELEASED' && Number.isFinite(x)) {
-        if (r.disbursedAt) disbursed += x;
-        else pending += x;
-      }
-    }
-    return { held, pending, disbursed };
-  }, [rows]);
-
   /**
-   * V19.17 — per-employee summary. The detail table lists every single
-   * hold, but the Owner usually thinks in employee buckets ("release
-   * everything Saad has"). We roll the rows up here so the summary
-   * card above the table shows one row per employee with totals + a
-   * one-click «تحرير الكل» button that releases every HELD slip the
-   * employee currently has.
+   * V21 Phase 5 — `totalsView` / `perEmployeeView` are read-only
+   * projections of the canonical `DebtHoldsListResponse.totals` and
+   * `DebtHoldsListResponse.perEmployee` produced by the backend
+   * `summariseDebtHolds` aggregator. The frontend never recomputes
+   * any of these monetary fields locally; the previous reduce/
+   * parseFloat blocks were retired in this slice.
    */
-  const perEmployee = useMemo(() => {
-    const map = new Map<
-      string,
-      {
-        employeeUserId: string;
-        name: string;
-        held: number;
-        pending: number;
-        disbursed: number;
-        heldIds: string[];
-        pendingIds: string[];
-      }
-    >();
-    for (const r of rows ?? []) {
-      const e = map.get(r.employeeUserId) ?? {
-        employeeUserId: r.employeeUserId,
-        name: r.employee.fullName,
-        held: 0,
-        pending: 0,
-        disbursed: 0,
-        heldIds: [],
-        pendingIds: [],
-      };
-      const h = Number.parseFloat(r.holdAmount);
-      const x = Number.parseFloat(r.releasedAmount);
-      if (r.status === 'HELD' && Number.isFinite(h)) {
-        e.held += h;
-        e.heldIds.push(r.id);
-      } else if (r.status === 'RELEASED' && Number.isFinite(x)) {
-        if (r.disbursedAt) e.disbursed += x;
-        else {
-          e.pending += x;
-          e.pendingIds.push(r.id);
-        }
-      }
-      map.set(r.employeeUserId, e);
-    }
-    return Array.from(map.values()).sort((a, b) => b.held - a.held);
-  }, [rows]);
+  const totalsView = totals ?? {
+    heldKd: '0.0000',
+    pendingKd: '0.0000',
+    disbursedKd: '0.0000',
+  };
+  const perEmployeeView = perEmployee ?? [];
 
   const [bulkBusyFor, setBulkBusyFor] = useState<string | null>(null);
 
@@ -741,11 +701,7 @@ export function DebtHoldsPage() {
               محجوز نشط
             </div>
             <div className="text-xl font-bold text-amber-600">
-              {totals.held.toLocaleString('en-GB', {
-                minimumFractionDigits: 3,
-                maximumFractionDigits: 3,
-              })}{' '}
-              د.ك
+              {formatKwdAmount(totalsView.heldKd)} د.ك
             </div>
           </CardContent>
         </Card>
@@ -755,11 +711,7 @@ export function DebtHoldsPage() {
               جاهز للصرف (مُحرَّر)
             </div>
             <div className="text-xl font-bold text-sky-600">
-              {totals.pending.toLocaleString('en-GB', {
-                minimumFractionDigits: 3,
-                maximumFractionDigits: 3,
-              })}{' '}
-              د.ك
+              {formatKwdAmount(totalsView.pendingKd)} د.ك
             </div>
           </CardContent>
         </Card>
@@ -769,17 +721,13 @@ export function DebtHoldsPage() {
               مصروف للموظف
             </div>
             <div className="text-xl font-bold text-emerald-600">
-              {totals.disbursed.toLocaleString('en-GB', {
-                minimumFractionDigits: 3,
-                maximumFractionDigits: 3,
-              })}{' '}
-              د.ك
+              {formatKwdAmount(totalsView.disbursedKd)} د.ك
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {isAdmin && perEmployee.length > 0 && (
+      {isAdmin && perEmployeeView.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>ملخّص حسب الموظف</CardTitle>
@@ -808,7 +756,7 @@ export function DebtHoldsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {perEmployee.map((e) => {
+                {perEmployeeView.map((e) => {
                   const busy = bulkBusyFor === e.employeeUserId;
                   const hasHeld = e.heldIds.length > 0;
                   const hasPending = e.pendingIds.length > 0;
@@ -816,8 +764,8 @@ export function DebtHoldsPage() {
                     <TableRow key={e.employeeUserId}>
                       <TableCell className="font-medium">
                         {user?.id === e.employeeUserId
-                          ? `${e.name} (أنت)`
-                          : e.name}
+                          ? `${e.fullName} (أنت)`
+                          : e.fullName}
                       </TableCell>
                       {canRelease && (
                         <TableCell data-action-col="true">
@@ -877,22 +825,13 @@ export function DebtHoldsPage() {
                         </TableCell>
                       )}
                       <TableCell className="text-center font-mono font-semibold text-amber-600">
-                        {e.held.toLocaleString('en-GB', {
-                          minimumFractionDigits: 3,
-                          maximumFractionDigits: 3,
-                        })}
+                        {formatKwdAmount(e.heldKd)}
                       </TableCell>
                       <TableCell className="text-center font-mono font-semibold text-sky-600">
-                        {e.pending.toLocaleString('en-GB', {
-                          minimumFractionDigits: 3,
-                          maximumFractionDigits: 3,
-                        })}
+                        {formatKwdAmount(e.pendingKd)}
                       </TableCell>
                       <TableCell className="text-center font-mono font-semibold text-emerald-600">
-                        {e.disbursed.toLocaleString('en-GB', {
-                          minimumFractionDigits: 3,
-                          maximumFractionDigits: 3,
-                        })}
+                        {formatKwdAmount(e.disbursedKd)}
                       </TableCell>
                     </TableRow>
                   );
@@ -997,10 +936,10 @@ export function DebtHoldsPage() {
                         </TableCell>
                       )}
                       <TableCell className="text-center font-mono">
-                        {formatKd(r.debtAmount)}
+                        {formatKwdAmount(r.debtAmount)}
                       </TableCell>
                       <TableCell className="text-center font-mono font-semibold text-amber-600">
-                        {formatKd(r.holdAmount)}
+                        {formatKwdAmount(r.holdAmount)}
                       </TableCell>
                       <TableCell className="font-mono text-sm tabular-nums">
                         {r.payroll

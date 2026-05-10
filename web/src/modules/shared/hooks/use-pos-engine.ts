@@ -363,7 +363,7 @@ export function usePosEngine(opts: PosEngineOptions) {
   const [billing, setBilling] = useState<CustomerBillingProfile | null>(null);
   const [billingLoading, setBillingLoading] = useState(false);
   const [posPaymentMethod, setPosPaymentMethod] = useState<
-    'CASH' | 'KNET' | 'PAYMENT_LINK' | 'DEBT_ON_ACCOUNT'
+    'CASH' | 'KNET' | 'PAYMENT_LINK' | 'DEBT_ON_ACCOUNT' | 'SUBSCRIPTION'
   >('CASH');
 
   useEffect(() => {
@@ -967,7 +967,9 @@ export function usePosEngine(opts: PosEngineOptions) {
           ? Number.parseFloat(billingSnapshot.remainingBalance)
           : NaN;
         const walletCoversLinesOnly =
-          Number.isFinite(bal) && bal + 1e-9 >= lineSum;
+          posPaymentMethod === 'SUBSCRIPTION' &&
+          Number.isFinite(bal) &&
+          bal + 1e-9 >= lineSum;
         // Collection-trip delivery rule:
         //   k === 0 → 0.250 KWD (subject to subscription waiver)
         //   k > 0  → 0.000 KWD free-tier row
@@ -983,9 +985,7 @@ export function usePosEngine(opts: PosEngineOptions) {
             !Number.isFinite(bal) ||
             bal + 1e-9 < netTotal);
         const checkoutPayMethod = posPaymentMethod;
-        const extMethod: PosPaymentMethod | undefined = needsExt
-          ? checkoutPayMethod
-          : undefined;
+        const extMethod: PosPaymentMethod | undefined = checkoutPayMethod;
 
         // Garment lines first, service rows after — keeps the Arabic receipt
         // reading naturally. Always emit the delivery row (even at 0.000) so
@@ -1023,7 +1023,8 @@ export function usePosEngine(opts: PosEngineOptions) {
           serviceType: 'NORMAL',
         };
         if (extMethod) {
-          checkoutBody.posPaymentMethod = extMethod;
+          checkoutBody.posPaymentMethod =
+            extMethod === 'SUBSCRIPTION' ? 'SUBSCRIPTION_WALLET' : extMethod;
         }
 
         let created: PosCheckoutResponse;
@@ -1062,13 +1063,15 @@ export function usePosEngine(opts: PosEngineOptions) {
         }));
 
         const paymentLabelForOrder =
-          needsExt ?
+          posPaymentMethod === 'SUBSCRIPTION' ?
+            t('pos.pay.SUBSCRIPTION_WALLET')
+          : needsExt ?
             posPaymentMethod === 'PAYMENT_LINK' ?
               t('pos.payment.online')
             : posPaymentMethod === 'DEBT_ON_ACCOUNT' ?
               t('pos.payment.debt')
             : t(`pos.pay.${posPaymentMethod}` as const)
-          : t('pos.pay.SUBSCRIPTION_WALLET');
+          : t(`pos.pay.${posPaymentMethod}` as const);
 
         const attachedInvoice = nonEmptyOrdered.length > 1 && k > 0;
         const paymentLinkUrl = created.paymentLink?.url?.trim();

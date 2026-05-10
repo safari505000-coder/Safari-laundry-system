@@ -296,12 +296,21 @@ export function scopeClassifiedByBranch(
       ? 'YELLOW'
       : 'GREEN';
 
+  // V21 Phase 5 — recompute the precomputed total against the scoped
+  // driver list so a manager sees the canonical Σ for HIS branch only.
+  const totalCashKd = drivers
+    .reduce((s, d) => {
+      const n = Number.parseFloat(d.amount);
+      return Number.isFinite(n) ? s + n : s;
+    }, 0)
+    .toFixed(4);
   return {
     ...res,
     systemStatus,
     financialAlerts,
     complianceAlerts,
     drivers,
+    totalCashKd,
   };
 }
 

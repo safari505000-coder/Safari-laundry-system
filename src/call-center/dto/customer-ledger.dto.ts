@@ -70,10 +70,10 @@ export class CustomerLedgerHeaderDto {
   @ApiProperty({ example: '0.0000' }) walletDebtKd!: string;
   /** Σ uncollection per `/collections` (UNPAID ∪ open DEBT_ON_ACCOUNT FIFO). */
   @ApiProperty({ example: '0.0000' }) collectionsReceivableKd!: string;
+  /** Canonical current receivable debt shown to operators/customers. */
+  @ApiProperty({ example: '0.0000' }) remainingDebtKd!: string;
   /** Operational debt basis. This is NOT the canonical Customer 360 financial number. */
   @ApiProperty({ example: '0.0000' }) operationalDebtKd!: string;
-  /** @deprecated Use operationalDebtKd. Kept for client compatibility. */
-  @ApiProperty({ example: '0.0000' }) effectiveDebtKd!: string;
 }
 
 export class CustomerLedgerSubscriptionDto {
@@ -134,6 +134,14 @@ export class CustomerLedgerClosedInvoiceDto {
   @ApiProperty({ nullable: true }) serial!: string | null;
   @ApiProperty({ example: '0.6000' }) totalKd!: string;
   @ApiProperty() createdAtIso!: string;
+}
+
+export class CustomerLedgerEventProjectionDto {
+  @ApiProperty() isCredit!: boolean;
+  @ApiProperty({ example: '0.0000' }) effectiveDebtAfterKd!: string;
+  @ApiProperty() hasDebtDiscount!: boolean;
+  @ApiProperty() hasDebtSettled!: boolean;
+  @ApiProperty({ example: '0.0000' }) closedInvoicesTotalKd!: string;
 }
 
 export class CustomerLedgerEventDto {
@@ -198,6 +206,9 @@ export class CustomerLedgerEventDto {
    */
   @ApiProperty({ type: [CustomerLedgerClosedInvoiceDto] })
   closedInvoices!: CustomerLedgerClosedInvoiceDto[];
+
+  @ApiProperty({ type: CustomerLedgerEventProjectionDto })
+  projection!: CustomerLedgerEventProjectionDto;
 }
 
 export class CustomerLedgerInvoiceDto {
@@ -226,6 +237,8 @@ export class CustomerLedgerInvoiceDto {
       'True if the invoice still has money owed (UNPAID / PENDING-ish cash status and not CANCELED).',
   })
   openDebt!: boolean;
+  @ApiProperty({ enum: ['UNPAID', 'PAID', 'CANCELED'] })
+  projectionGroup!: 'UNPAID' | 'PAID' | 'CANCELED';
   @ApiProperty({
     nullable: true,
     description: '1..5 from customer feedback (QR / rating page) for this order.',
@@ -250,6 +263,20 @@ export class CustomerLedgerFeedbackSummaryDto {
   @ApiProperty() ratedCount!: number;
   @ApiProperty({ type: CustomerLedgerFeedbackLastDto, nullable: true })
   lastFeedback!: CustomerLedgerFeedbackLastDto | null;
+}
+
+/**
+ * V21 Phase 3 — Canonical Banking Snapshot envelope metadata for the
+ * customer statement. Hash-verifiable, lineage-tagged, deterministic.
+ * Defined here (above the response DTO) so the response DTO can
+ * reference it without a forward-declaration error.
+ */
+export class CustomerLedgerSnapshotDto {
+  @ApiProperty({ example: 'v21.3.0' }) snapshotVersion!: string;
+  @ApiProperty() generatedAtIso!: string;
+  @ApiProperty({ example: 'a1b2…sha256…' }) canonicalHash!: string;
+  @ApiProperty({ type: [String] }) sourceEventIds!: ReadonlyArray<string>;
+  @ApiProperty({ type: [String] }) sourceInvoiceIds!: ReadonlyArray<string>;
 }
 
 export class CustomerLedgerResponseDto {
@@ -282,10 +309,35 @@ export class CustomerLedgerResponseDto {
     eventCount: number;
     invoiceCount: number;
     openInvoiceCount: number;
+    totalInvoicedKd: string;
+    totalPaidInvoicesKd: string;
+    totalOpenInvoicesKd: string;
+    unpaidInvoiceCount: number;
+    paidInvoiceCount: number;
+    canceledInvoiceCount: number;
     totalCollectedKd: string;
     totalDiscountedKd: string;
   };
 
   @ApiProperty({ type: CustomerLedgerFeedbackSummaryDto })
   feedbackSummary!: CustomerLedgerFeedbackSummaryDto;
+
+  /**
+   * V21 Phase 3 — Canonical Banking Snapshot envelope.
+   *
+   * Wraps the statement payload with audit-grade metadata:
+   *  - `snapshotVersion`: schema version pin
+   *  - `generatedAtIso`: snapshot timestamp
+   *  - `canonicalHash`: SHA-256 over the deterministically-canonicalised
+   *    statement payload (events + invoices + totals + customer header).
+   *    Same logical state ⇒ same hash, regardless of object key order.
+   *  - `sourceEventIds`: ledger event IDs the statement was derived from
+   *  - `sourceInvoiceIds`: invoice IDs the statement was derived from
+   *
+   * This field is purely additive — it does not change any existing
+   * statement field. UI / print / export consumers may use the hash to
+   * verify they are rendering an untampered projection.
+   */
+  @ApiProperty({ type: CustomerLedgerSnapshotDto })
+  snapshot!: CustomerLedgerSnapshotDto;
 }

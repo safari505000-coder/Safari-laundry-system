@@ -8,7 +8,7 @@ function d(value: string) {
 function order(
   id: string,
   amount: string,
-  cashStatus = CashStatus.HANDED_OVER_TO_OFFICE,
+  cashStatus: CashStatus = CashStatus.HANDED_OVER_TO_OFFICE,
   driverId = 'driver-1',
 ) {
   return {

@@ -32,7 +32,7 @@ import {
   apiJson,
   ApiError,
 } from '@/lib/api';
-import { formatKwdLabel, sumKwdStrings } from '@/lib/kwd';
+import { formatKwdLabel, isNegativeKd, sumKwdStrings } from '@/lib/kwd';
 import { MetricCard } from '@/components/dashboard/metric-card';
 import { Card, CardContent, CardHeader, CardTitle } from '@/modules/shared/components/ui/card';
 import { Separator } from '@/modules/shared/components/ui/separator';
@@ -496,7 +496,7 @@ export function FinancialsPage() {
               <p
                 className={cn(
                   'text-2xl font-bold tabular-nums',
-                  Number.parseFloat(executive.netProfitKd ?? '0') < 0 ?
+                  isNegativeKd(executive.netProfitKd ?? '0') ?
                     'text-destructive'
                   : 'text-amber-950',
                 )}
@@ -693,6 +693,7 @@ export function FinancialsPage() {
                       <td className="safari-table-primary">{r.category}</td>
                       <td>{r.source}</td>
                       <td className="text-end tabular-nums">{r.entryCount}</td>
+                      {/* allow-legacy-debt-reader (V20.6 Phase 2: r.totalDebt is the GeneralLedgerEntry-backed aggregate computed server-side by FinanceService.debtBreakdown — server-canonical) */}
                       <td className="text-end font-semibold tabular-nums">
                         {formatKwdLabel(r.totalDebt)}
                       </td>

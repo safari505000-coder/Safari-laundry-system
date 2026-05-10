@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Loader2, Phone, Search, UserSearch } from 'lucide-react';
 import { Input } from '@/modules/shared/components/ui/input';
 import { cn } from '@/lib/utils';
+import { formatKwdLabel, isPositiveKd } from '@/lib/kwd';
 import { useCcCustomerSearch } from '../hooks/use-cc-customer-search';
 
 type Props = {
@@ -154,8 +155,7 @@ export function CustomerSearch({
           ) : (
             <ul className="py-1">
               {hits.map((hit, idx) => {
-                const debt = Number.parseFloat(hit.totalDebtKd);
-                const hasDebt = Number.isFinite(debt) && debt > 0;
+                const hasDebt = isPositiveKd(hit.totalDebtKd);
                 const active = idx === safeHighlightIdx;
                 return (
                   <li key={hit.id}>
@@ -190,7 +190,7 @@ export function CustomerSearch({
                       </div>
                       {hasDebt ? (
                         <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
-                          {hit.totalDebtKd} د.ك
+                          {formatKwdLabel(hit.totalDebtKd)}
                         </span>
                       ) : null}
                     </button>
