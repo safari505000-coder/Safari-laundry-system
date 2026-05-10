@@ -296,22 +296,8 @@ export function CustomerLedgerPanel({ customerId, token }: Props) {
               ),
             })}
           </p>
-          {/* Only show positive carried balance (credit from a previous subscription).
-              Negative carriedBalanceKd = debt at activation time — this was already
-              settled and the current debt is shown in the page header; showing the
-              pre-settlement snapshot here is misleading to operators. */}
-          {data.activeSubscription.carriedBalanceKd !== '0.0000' &&
-          !data.activeSubscription.carriedBalanceKd.startsWith('-') ? (
-            <p className="mt-1 text-xs text-blue-900/80 dark:text-blue-100/80">
-              {t('customerLedger.carried')}:{' '}
-              <span className="font-semibold tabular-nums text-blue-950 dark:text-blue-50">
-                {formatKwdLabel(data.activeSubscription.carriedBalanceKd)}
-              </span>
-              <span className="ms-1 text-[11px] text-blue-800/80 dark:text-blue-200/80">
-                — {t('customerLedger.subCarriedHint')}
-              </span>
-            </p>
-          ) : null}
+          {/* carriedBalanceKd intentionally not shown — misleading in all cases.
+              Settlement details are visible in the overview KPI cards below. */}
         </div>
       ) : null}
 
