@@ -78,7 +78,7 @@ export class FinancialRealtimeController {
     @Param('channel') channelId: string,
     @Query('customer') customerScope: string | undefined,
     @Query('branch') branchScope: string | undefined,
-    @Req() req: { user?: { safariRole?: string } },
+    @Req() req: { user?: { role?: string } },
   ): Observable<MessageEvent> {
     const channel = channelById(channelId as RealtimeChannelId);
     if (!channel) {
@@ -86,7 +86,7 @@ export class FinancialRealtimeController {
         `Unknown realtime channel: ${channelId}`,
       );
     }
-    const role = (req.user?.safariRole ?? '') as RealtimeRole;
+    const role = (req.user?.role ?? '') as RealtimeRole;
     if (!isRoleAllowed(role, channel)) {
       throw new ForbiddenException(
         `Role ${role} is not allowed on channel ${channelId}`,

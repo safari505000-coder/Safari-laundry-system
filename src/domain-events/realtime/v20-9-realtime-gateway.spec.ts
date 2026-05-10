@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { firstValueFrom, take, timeout, Observable, type Subscription } from 'rxjs';
 import { FinancialRealtimeGateway } from './financial-realtime.gateway';
 import type { RealtimeFanoutEnvelope } from './financial-realtime.types';
@@ -132,5 +134,14 @@ describe('V20.9 — REALTIME GATEWAY', () => {
     const sub = gw.subscribe({ channel: 'risk', role: 'OWNER' }).subscribe();
     expect(gw.metrics.activeSubscribers).toBe(1);
     sub.unsubscribe();
+  });
+
+  it('8. SSE controller reads Passport JWT role, not LoginUser safariRole', () => {
+    const src = readFileSync(
+      join(__dirname, 'financial-realtime.controller.ts'),
+      'utf8',
+    );
+    expect(src).toContain('req.user?.role');
+    expect(src).not.toContain('req.user?.safariRole');
   });
 });
