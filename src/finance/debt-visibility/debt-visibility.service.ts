@@ -161,32 +161,43 @@ export class DebtVisibilityService {
 
   /**
    * Aggregate snapshot used by collections / red-KPI cards.
-   * Uses the projection table when available (instant); falls
-   * back to the canonical sums for cold-start environments.
+   * The final money total is folded through `getCustomerVisibleDebtBatch`
+   * so stale projection rows are upgraded to Journal AR before they can
+   * feed any KPI.
    */
   async getCollectionsSnapshot(): Promise<CollectionsSnapshot> {
-    const agg = await this.prisma.financialSnapshot.aggregate({
-      _sum: { remainingDebtKd: true },
-      _count: { _all: true },
-      where: { remainingDebtKd: { gt: TOL } },
-    });
-    const counts = await this.prisma.financialSnapshot.aggregate({
-      _sum: {
-        partiallyPaidInvoicesCount: true,
-        unpaidInvoicesCount: true,
-        overdueInvoicesCount: true,
+    const candidates = await this.prisma.financialSnapshot.findMany({
+      where: {
+        OR: [
+          { remainingDebtKd: { gt: TOL } },
+          { journalArBalanceKd: { gt: TOL } },
+        ],
       },
-      where: { remainingDebtKd: { gt: TOL } },
+      select: { customerId: true },
     });
-    const totalRemaining =
-      agg._sum.remainingDebtKd ?? new Prisma.Decimal(0);
+    const debts = await this.getCustomerVisibleDebtBatch(
+      candidates.map((row) => row.customerId),
+    );
+    let totalRemaining = new Prisma.Decimal(0);
+    let customersWithDebt = 0;
+    let partiallyPaidInvoices = 0;
+    let unpaidInvoices = 0;
+    let overdueInvoices = 0;
+    for (const debt of debts.values()) {
+      const remaining = new Prisma.Decimal(debt.remainingDebtKd);
+      if (remaining.lessThanOrEqualTo(TOL)) continue;
+      totalRemaining = totalRemaining.plus(remaining);
+      customersWithDebt += 1;
+      partiallyPaidInvoices += debt.partiallyPaidInvoicesCount;
+      unpaidInvoices += debt.unpaidInvoicesCount;
+      overdueInvoices += debt.overdueInvoicesCount;
+    }
     return {
       totalRemainingDebtKd: totalRemaining.toFixed(4),
-      customersWithDebt: agg._count._all ?? 0,
-      partiallyPaidInvoices:
-        counts._sum.partiallyPaidInvoicesCount ?? 0,
-      unpaidInvoices: counts._sum.unpaidInvoicesCount ?? 0,
-      overdueInvoices: counts._sum.overdueInvoicesCount ?? 0,
+      customersWithDebt,
+      partiallyPaidInvoices,
+      unpaidInvoices,
+      overdueInvoices,
       generatedAt: new Date().toISOString(),
     };
   }

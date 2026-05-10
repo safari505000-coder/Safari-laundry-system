@@ -64,6 +64,7 @@ function makePrisma() {
     order: { findUnique: jest.fn() },
     debtLedgerEntry: { findMany: jest.fn(async () => []) },
     financialSnapshot: {
+      findMany: jest.fn(async () => [{ customerId: CUST }]),
       aggregate: jest.fn(async () => ({
         _sum: { remainingDebtKd: dec('1234.0000') },
         _count: { _all: 7 },
@@ -185,7 +186,7 @@ describe('DebtVisibilityService', () => {
     expect(out.get(COLD_CUST)?.fromSnapshot).toBe(false);
   });
 
-  it('collections snapshot reads from the projection table', async () => {
+  it('collections snapshot folds through visible debt, not raw projection sums', async () => {
     const snap = makeSnapshotsService(makeSnapshotRow());
     const prisma = makePrisma();
     const svc = new DebtVisibilityService(
@@ -194,7 +195,8 @@ describe('DebtVisibilityService', () => {
       makeJournalSource() as never,
     );
     const k = await svc.getCollectionsSnapshot();
-    expect(k.totalRemainingDebtKd).toBe('1234.0000');
-    expect(k.customersWithDebt).toBe(7);
+    expect(k.totalRemainingDebtKd).toBe('170.0000');
+    expect(k.customersWithDebt).toBe(1);
+    expect(k.unpaidInvoices).toBe(1);
   });
 });

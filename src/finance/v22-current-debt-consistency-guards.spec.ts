@@ -55,15 +55,24 @@ describe('V22 current-debt consistency guards', () => {
     expect(method).not.toContain('amountKd: r.totalPrice.toFixed(3)');
   });
 
-  it('call-center red KPI uses remaining debt, not gross invoice totals', () => {
+  it('call-center red KPI uses banking-core visibility, not local order sums', () => {
     const src = read('src/call-center/call-center.service.ts');
     const method = src.slice(
       src.indexOf('async getOperationsSummary('),
       src.indexOf('Dastur §5 — Owner Debt Recovery Report'),
     );
 
-    expect(method).toContain('sumCollectionsDebtRemainingKd');
+    expect(method).toContain('debtVisibility.getCollectionsSnapshot()');
+    expect(method).toContain('collectionsSnapshot.totalRemainingDebtKd');
+    expect(method).not.toContain('sumCollectionsDebtRemainingKd');
     expect(method).not.toContain('sumCollectionsDebtTotalKd');
+  });
+
+  it('Customer 360 reads visible debt from the banking core facade', () => {
+    const src = read('src/customers/customer-360.service.ts');
+    expect(src).toContain('DebtVisibilityService');
+    expect(src).toContain('debtVisibility.getCustomerVisibleDebt(customerId)');
+    expect(src).toContain('financials.canonicalDebtKd = visibleDebt.remainingDebtKd');
   });
 
   it('V25 exposes pending hosted-link amount from the server summary', () => {

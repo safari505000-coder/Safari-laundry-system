@@ -10,6 +10,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import type { JwtUser } from '../auth/decorators/current-user.decorator';
 import { CustomerBlockingService } from '../common/services/customer-blocking.service';
 import { JournalSourceService } from '../general-ledger/journal-source.service';
+import { DebtVisibilityService } from '../finance/debt-visibility/debt-visibility.service';
 import { computeCustomer360FinancialCore } from './customer-360-financials';
 import { buildInsight, evaluateCustomer } from './customer-evaluator';
 import { sanitizeCustomerView } from './sanitize-customer-360-view';
@@ -46,6 +47,9 @@ export class Customer360Service {
     @Optional()
     @Inject(JournalSourceService)
     private readonly journalSource?: JournalSourceService,
+    @Optional()
+    @Inject(DebtVisibilityService)
+    private readonly debtVisibility?: DebtVisibilityService,
   ) {}
 
   async get360(customerId: string, user: JwtUser): Promise<Customer360ResponseDto> {
@@ -70,6 +74,14 @@ export class Customer360Service {
       customerId,
       this.journalSource ?? null,
     );
+    if (this.debtVisibility) {
+      const visibleDebt = await this.debtVisibility.getCustomerVisibleDebt(customerId);
+      financials.canonicalDebtKd = visibleDebt.remainingDebtKd;
+      financials.canonicalDebtSource = visibleDebt.canonicalSource;
+      if (financials.breakdown) {
+        financials.breakdown.receivableDebtKd = visibleDebt.remainingDebtKd;
+      }
+    }
     const blocked = await this.customerBlocking.applyAutoBlockFromFinancials(
       customerId,
       financials.canonicalDebtKd,

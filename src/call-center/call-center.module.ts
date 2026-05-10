@@ -5,6 +5,7 @@ import { CustomerNotificationsModule } from '../customer-notifications/customer-
 import { OrdersModule } from '../orders/orders.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { FinanceModule } from '../finance/finance.module';
+import { DebtVisibilityModule } from '../finance/debt-visibility/debt-visibility.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { CallCenterController } from './call-center.controller';
 import { CallCenterService } from './call-center.service';
@@ -19,6 +20,7 @@ import { PublicStatementController } from './public-statement.controller';
     AuthModule,
     CustomerLedgerModule,
     FinanceModule,
+    DebtVisibilityModule,
     PaymentsModule,
     OrdersModule,
     CustomerNotificationsModule,

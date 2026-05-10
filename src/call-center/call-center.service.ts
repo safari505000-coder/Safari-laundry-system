@@ -22,6 +22,7 @@ import { CustomerLedgerService } from '../customer-ledger/customer-ledger.servic
 import { PaymentsService } from '../common/services/payments.service';
 import { CustomerNotificationsService } from '../customer-notifications/customer-notifications.service';
 import { DebtService } from '../finance/services/debt.service';
+import { DebtVisibilityService } from '../finance/debt-visibility/debt-visibility.service';
 import { OrdersService } from '../orders/orders.service';
 import { resolveCustomerPhoneForNotify } from '../common/validation/kuwait-customer-phone';
 import { buildCollectionsPaymentLinkTextAr } from './collections-whatsapp-text';
@@ -478,6 +479,7 @@ export class CallCenterService {
     private readonly orders: OrdersService,
     private readonly customerNotifications: CustomerNotificationsService,
     private readonly debt: DebtService,
+    private readonly debtVisibility: DebtVisibilityService,
   ) {}
 
   /**
@@ -1180,22 +1182,17 @@ export class CallCenterService {
     //   only fire when a pre-existing debt is paid down, so fresh ONLINE
     //   payment-link sales never surfaced on the card — see bug A-48.)
 
-    // V1.7.4 — Widened Red KPI to mirror the widened Collections list
-    // (`listUnpaidCollectionOrders`). The sum now covers:
-    //   • `cashStatus = UNPAID` rows (pending link / cash arrears), AND
-    //   • `posPaymentMethod = DEBT_ON_ACCOUNT` rows with still-open
-    //     FIFO debt in the ledger.
-    // This is delegated to OrdersService.sumCollectionsDebtRemainingKd so
-    // the card and the table rows use the same remaining-balance truth.
+    // Red KPI: banking-core visibility facade only. Do not aggregate
+    // orders here; the facade owns the canonical customer debt read.
     const [
-      redCardTotal,
+      collectionsSnapshot,
       todaysSettlementRows,
       todaysSubscriptionActivationRows,
       pendingLinksCount,
       pendingLinksAggregate,
       ledgerDebtSplit,
     ] = await Promise.all([
-      this.orders.sumCollectionsDebtRemainingKd(effectiveBranchId, actor ?? undefined),
+      this.debtVisibility.getCollectionsSnapshot(),
       this.prisma.transactionHistory.findMany({
         where: {
           type: LedgerTransactionType.ORDER_WALLET_SETTLEMENT,
@@ -1266,7 +1263,9 @@ export class CallCenterService {
     );
 
     return {
-      totalMarketDebtKd: KWD_DP(redCardTotal),
+      totalMarketDebtKd: KWD_DP(
+        new Prisma.Decimal(collectionsSnapshot.totalRemainingDebtKd),
+      ),
       outstandingInvoiceDebtKd: KWD_DP(
         new Prisma.Decimal(ledgerDebtSplit.outstandingInvoiceDebtKd),
       ),
