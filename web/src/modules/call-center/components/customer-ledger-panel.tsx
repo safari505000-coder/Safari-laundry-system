@@ -804,6 +804,9 @@ function ActivationBreakdownBlock({
           />
         ) : null}
         {carriedExists ? (
+          // carriedBalanceKd is from a PRIOR subscription period, not newly created.
+          // When negative it means the previous subscription was overconsumed.
+          // Show as 'muted' even when negative so it is not mistaken for new activation debt.
           <BreakdownRow
             label={
               carriedIsDebt
@@ -811,7 +814,7 @@ function ActivationBreakdownBlock({
                 : t('customerLedger.activationBreakdown.carriedCredit')
             }
             value={formatKwdLabel(breakdown.carriedBalanceKd)}
-            tone={carriedIsDebt ? 'danger' : 'muted'}
+            tone="muted"
           />
         ) : null}
         <BreakdownRow
