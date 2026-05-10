@@ -2270,7 +2270,9 @@ export const en = {
     overviewHint:
       'At a glance: open vs paid bills, and how many renewal / wallet-settlement entries appear in the ledger.',
     kpiUnpaid: 'Open invoice total',
-    kpiPaid: 'Paid invoices',
+    kpiPaid: 'Fully paid invoices',
+    kpiTotalCollected: 'Total collected',
+    kpiTotalCollectedDesc: 'Subscription settlements: {{settlements}} · Paid full: {{paidFull}} · Partial: {{partial}}',
     kpiSettlements: 'Settlements from subscription wallet',
     kpiSubActivations: 'Subscription renewal / activation',
     kpiRollover: 'Carry-over',

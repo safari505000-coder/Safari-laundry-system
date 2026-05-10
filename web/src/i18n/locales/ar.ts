@@ -2289,7 +2289,9 @@ export const ar = {
     overviewHint:
       'نظرة سريعة: ما هو غير مدفوع، ما سُدّد، وعدد حركات التجديد والتسوية في السجل.',
     kpiUnpaid: 'إجمالي الفواتير المفتوحة',
-    kpiPaid: 'فواتير مدفوعة',
+    kpiPaid: 'فواتير مكتملة الدفع',
+    kpiTotalCollected: 'إجمالي المُحصَّل',
+    kpiTotalCollectedDesc: 'تسوية اشتراك: {{settlements}} · مدفوع بالكامل: {{paidFull}} · جزئي: {{partial}}',
     kpiSettlements: 'تسوية من رصيد الاشتراك',
     kpiSubActivations: 'تجديد / تفعيل اشتراك',
     kpiRollover: 'ترحيل رصيد',

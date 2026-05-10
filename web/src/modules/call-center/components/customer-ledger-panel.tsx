@@ -328,6 +328,8 @@ export function CustomerLedgerPanel({ customerId, token }: Props) {
           <p className="mb-3 text-xs text-muted-foreground">
             {t('customerLedger.overviewHint')}
           </p>
+
+          {/* Row 1: open invoices + total collected — the two numbers that matter most */}
           <div className="grid gap-2 sm:grid-cols-2">
             <div
               className={cn(
@@ -349,6 +351,27 @@ export function CustomerLedgerPanel({ customerId, token }: Props) {
                 })}
               </p>
             </div>
+
+            {/* Total collected: cash payments + subscription settlements */}
+            <div className="rounded-lg border border-emerald-200/80 bg-emerald-50/30 p-3 text-sm dark:border-emerald-900/50 dark:bg-emerald-950/20">
+              <p className="text-xs font-medium text-emerald-900/90 dark:text-emerald-100/90">
+                {t('customerLedger.kpiTotalCollected')}
+              </p>
+              <p className="mt-1 text-lg font-semibold tabular-nums text-emerald-800 dark:text-emerald-200">
+                {formatKwdLabel(data.totals.totalCollectedKd)}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                {t('customerLedger.kpiTotalCollectedDesc', {
+                  settlements: eventKpis.settlements,
+                  paidFull: eventKpis.paidFull,
+                  partial: eventKpis.partialPay,
+                })}
+              </p>
+            </div>
+          </div>
+
+          {/* Row 2: fully-paid invoices + sub activations — supporting detail */}
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
             <div className="rounded-lg border border-border bg-card p-3 text-sm">
               <p className="text-xs font-medium text-muted-foreground">
                 {t('customerLedger.kpiPaid')}
@@ -362,17 +385,6 @@ export function CustomerLedgerPanel({ customerId, token }: Props) {
                 })}
               </p>
             </div>
-            <div className="rounded-lg border border-amber-200/80 bg-amber-50/30 p-3 text-sm dark:border-amber-900/50 dark:bg-amber-950/20">
-              <p className="text-xs font-medium text-amber-900/90 dark:text-amber-100/90">
-                {t('customerLedger.kpiSettlements')}
-              </p>
-              <p className="mt-1 text-lg font-semibold tabular-nums text-amber-950 dark:text-amber-100">
-                {eventKpis.settlements}
-              </p>
-              <p className="text-[11px] text-muted-foreground">
-                {t('customerLedger.kpiSettlementsDesc')}
-              </p>
-            </div>
             <div className="rounded-lg border border-blue-200/80 bg-blue-50/30 p-3 text-sm dark:border-blue-900/50 dark:bg-blue-950/20">
               <p className="text-xs font-medium text-blue-900/90 dark:text-blue-100/90">
                 {t('customerLedger.kpiSubActivations')}
@@ -381,12 +393,12 @@ export function CustomerLedgerPanel({ customerId, token }: Props) {
                 {eventKpis.activations}
               </p>
               <p className="text-[11px] text-muted-foreground">
-                {t('customerLedger.kpiOrderPaidFull')}: {eventKpis.paidFull} ·{' '}
-                {t('customerLedger.kpiRollover')}: {eventKpis.rollovers} ·{' '}
-                {t('customerLedger.kpiPartialDebt')}: {eventKpis.partialPay}
+                {t('customerLedger.kpiSettlements')}: {eventKpis.settlements} ·{' '}
+                {t('customerLedger.kpiRollover')}: {eventKpis.rollovers}
               </p>
             </div>
           </div>
+
           <p className="mt-3 text-center text-[11px] text-muted-foreground">
             {t('customerLedger.overviewSeeTabs')}
           </p>
