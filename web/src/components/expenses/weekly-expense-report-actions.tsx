@@ -1,18 +1,36 @@
-import { useMemo, useState } from 'react';
+/**
+ * V24 — Wave B (Frontend Purge).
+ *
+ * Pre-V24 this component received raw `ExpenseRow[]` and ran
+ * `buildWeeklyReport(rows)` locally — which itself called
+ * `buildExpenseAnalytics()` and `generateExpenseInsights()` on the
+ * client. Three FE helpers were chained to recompute totals,
+ * car/other split, monthly trend, top-driver concentration and
+ * insight badges in JS over `Number.parseFloat(row.amount)`.
+ *
+ * V24 Commandment #5 ("Don't Calculate, Just Ask") moves every
+ * aggregate to the server. The server-side
+ * `ExpensesService.summarize` now returns:
+ *   - `totalApprovedKd`, `byBranch`, `byCategory` — pre-existing
+ *   - `byDriver`, `carBreakdown` — added in Wave B
+ *   - `alerts` (Arabic insight badges) — added in Wave B
+ * and this component renders that response verbatim. Raw `rows` are
+ * used ONLY to build the line-item table in the printable PDF/CSV
+ * (no money math).
+ */
+import { useState } from 'react';
 import { Download, FileSpreadsheet, Loader2, RefreshCw } from 'lucide-react';
-import type { ExpenseRow } from '@/lib/api';
+import type { ExpenseRow, ExpensesSummaryResponse } from '@/lib/api';
 import { formatKwdLabel } from '@/lib/kwd';
-import {
-  buildWeeklyReport,
-  type WeeklyExpenseReport,
-} from '@/lib/weekly-expense-report';
 import { Button } from '@/modules/shared/components/ui/button';
 import { Card, CardContent } from '@/modules/shared/components/ui/card';
 
 const LAST_REPORT_KEY = 'expenses-weekly-report-last-generated-at';
+const REPORT_TITLE = 'التقرير الأسبوعي للمصروفات';
 
 type WeeklyExpenseReportActionsProps = {
   rows: ExpenseRow[];
+  summary: ExpensesSummaryResponse | null;
 };
 
 function csvEscape(value: string | number | null | undefined): string {
@@ -32,17 +50,21 @@ function downloadFile(filename: string, content: string, type: string): void {
   URL.revokeObjectURL(url);
 }
 
-function buildCsv(report: WeeklyExpenseReport): string {
-  const summaryRows = [
+function buildCsv(
+  summary: ExpensesSummaryResponse,
+  rows: ExpenseRow[],
+): string {
+  const carPercent = (summary.carBreakdown.carShareBps / 100).toFixed(1);
+  const summaryRows: (string | number)[][] = [
     ['section', 'metric', 'value'],
-    ['summary', 'total', report.analytics.total.toFixed(4)],
-    ['summary', 'car', report.analytics.carTotal.toFixed(4)],
-    ['summary', 'other', report.analytics.otherTotal.toFixed(4)],
-    ['summary', 'carPercent', report.analytics.percentage.toFixed(2)],
+    ['summary', 'total', summary.totalApprovedKd],
+    ['summary', 'car', summary.carBreakdown.carTotalKd],
+    ['summary', 'other', summary.carBreakdown.otherTotalKd],
+    ['summary', 'carPercent', carPercent],
     [],
     ['id', 'date', 'title', 'category', 'status', 'branch', 'recordedBy', 'amount'],
   ];
-  const rowLines = report.rows.map((row) => [
+  const rowLines = rows.map((row) => [
     row.id,
     row.expenseDate,
     row.title,
@@ -58,32 +80,33 @@ function buildCsv(report: WeeklyExpenseReport): string {
     .join('\n');
 }
 
-function printPdf(report: WeeklyExpenseReport): void {
+function printPdf(summary: ExpensesSummaryResponse): void {
   const popup = window.open('', '_blank', 'noopener,noreferrer');
   if (!popup) return;
 
-  const insights = report.insights.length
-    ? report.insights.map((insight) => `<li>${insight.message}</li>`).join('')
+  const insights = summary.alerts.length
+    ? summary.alerts.map((alert) => `<li>${alert.message}</li>`).join('')
     : '<li>لا توجد بيانات كافية للتحليل</li>';
-  const branchRows = report.analytics.byBranch
+  const branchRows = summary.byBranch
     .map(
       (row) =>
-        `<tr><td>${row.label}</td><td>${row.count}</td><td>${formatKwdLabel(row.amount.toFixed(4))}</td></tr>`,
+        `<tr><td>${row.branchName ?? 'بدون فرع'}</td><td>${row.count}</td><td>${formatKwdLabel(row.totalKd)}</td></tr>`,
     )
     .join('');
-  const typeRows = report.analytics.byType
+  const typeRows = summary.byCategory
     .map(
       (row) =>
-        `<tr><td>${row.label}</td><td>${row.count}</td><td>${formatKwdLabel(row.amount.toFixed(4))}</td></tr>`,
+        `<tr><td>${row.category}</td><td>${row.count}</td><td>${formatKwdLabel(row.totalKd)}</td></tr>`,
     )
     .join('');
+  const carPercent = (summary.carBreakdown.carShareBps / 100).toFixed(1);
 
   popup.document.write(`
     <!doctype html>
     <html lang="ar" dir="rtl">
       <head>
         <meta charset="utf-8" />
-        <title>${report.title}</title>
+        <title>${REPORT_TITLE}</title>
         <style>
           body { font-family: Arial, sans-serif; padding: 24px; color: #111827; }
           h1 { margin: 0 0 8px; font-size: 24px; }
@@ -100,13 +123,13 @@ function printPdf(report: WeeklyExpenseReport): void {
       </head>
       <body>
         <button onclick="window.print()">طباعة / حفظ PDF</button>
-        <h1>${report.title}</h1>
-        <p class="muted">من ${new Date(report.range.from).toLocaleDateString('ar-KW')} إلى ${new Date(report.range.to).toLocaleDateString('ar-KW')}</p>
+        <h1>${REPORT_TITLE}</h1>
+        <p class="muted">من ${new Date(summary.rangeFromIso).toLocaleDateString('ar-KW')} إلى ${new Date(summary.rangeToIso).toLocaleDateString('ar-KW')}</p>
         <div class="kpis">
-          <div class="card"><div class="label">إجمالي المصروفات</div><div class="value">${formatKwdLabel(report.analytics.total.toFixed(4))}</div></div>
-          <div class="card"><div class="label">مصروفات السيارات</div><div class="value">${formatKwdLabel(report.analytics.carTotal.toFixed(4))}</div></div>
-          <div class="card"><div class="label">مصروفات أخرى</div><div class="value">${formatKwdLabel(report.analytics.otherTotal.toFixed(4))}</div></div>
-          <div class="card"><div class="label">نسبة السيارات</div><div class="value">${report.analytics.percentage.toFixed(1)}%</div></div>
+          <div class="card"><div class="label">إجمالي المصروفات</div><div class="value">${formatKwdLabel(summary.totalApprovedKd)}</div></div>
+          <div class="card"><div class="label">مصروفات السيارات</div><div class="value">${formatKwdLabel(summary.carBreakdown.carTotalKd)}</div></div>
+          <div class="card"><div class="label">مصروفات أخرى</div><div class="value">${formatKwdLabel(summary.carBreakdown.otherTotalKd)}</div></div>
+          <div class="card"><div class="label">نسبة السيارات</div><div class="value">${carPercent}%</div></div>
         </div>
         <h2>الرؤى</h2>
         <ul>${insights}</ul>
@@ -123,6 +146,7 @@ function printPdf(report: WeeklyExpenseReport): void {
 
 export function WeeklyExpenseReportActions({
   rows,
+  summary,
 }: WeeklyExpenseReportActionsProps) {
   const [loading, setLoading] = useState<'pdf' | 'csv' | 'regenerate' | null>(null);
   const [lastGeneratedAt, setLastGeneratedAt] = useState<string | null>(() => {
@@ -132,8 +156,12 @@ export function WeeklyExpenseReportActions({
       return null;
     }
   });
-  const report = useMemo(() => buildWeeklyReport(rows), [rows]);
-  const hasData = report.rows.length > 0;
+
+  // The server-side `summarize()` already restricts the window via
+  // the `from`/`to` it received from the parent dashboard, so the
+  // "has data" decision is governed by the canonical
+  // `approvedCount` field — never by the raw rows length.
+  const hasData = !!summary && summary.approvedCount > 0;
 
   function markGenerated(): void {
     const now = new Date().toISOString();
@@ -146,19 +174,19 @@ export function WeeklyExpenseReportActions({
   }
 
   function exportPdf(): void {
-    if (!hasData) return;
+    if (!hasData || !summary) return;
     setLoading('pdf');
-    printPdf(report);
+    printPdf(summary);
     markGenerated();
     setLoading(null);
   }
 
   function exportCsv(): void {
-    if (!hasData) return;
+    if (!hasData || !summary) return;
     setLoading('csv');
     downloadFile(
       'weekly-expenses-report.csv',
-      buildCsv(report),
+      buildCsv(summary, rows),
       'text/csv;charset=utf-8',
     );
     markGenerated();
@@ -175,7 +203,7 @@ export function WeeklyExpenseReportActions({
     <Card>
       <CardContent className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <p className="text-sm font-semibold">التقرير الأسبوعي للمصروفات</p>
+          <p className="text-sm font-semibold">{REPORT_TITLE}</p>
           <p className="text-xs text-muted-foreground">
             {hasData
               ? `آخر تقرير: ${

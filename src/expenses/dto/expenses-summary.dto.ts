@@ -60,6 +60,40 @@ export class ExpensesSummaryByBranchDto {
   count!: number;
 }
 
+/**
+ * V24 — Wave B (Frontend Purge) addition.
+ *
+ * Per-driver / per-recorder breakdown so the dashboard and the
+ * weekly printable report can render the "أعلى موظف من حيث
+ * المصروفات" badge without the FE re-aggregating raw expense rows
+ * (which was the job of the deleted `expense-analytics.ts`).
+ */
+export class ExpensesSummaryByDriverDto {
+  recordedById!: string;
+  recordedByName!: string;
+  totalKd!: string;
+  count!: number;
+}
+
+/**
+ * V24 — Wave B (Frontend Purge) addition.
+ *
+ * Car-vs-other split that the FE used to compute via
+ * `isCarExpense(row)` for every row before reducing. Backend
+ * derives the same split by treating `FUEL` as the "car" bucket
+ * (the only car-shaped value in the actual `ExpenseCategory`
+ * enum). Percentages travel as basis points (integer 0..10000) to
+ * keep the wire shape canonical.
+ */
+export class ExpensesSummaryCarBreakdownDto {
+  carTotalKd!: string;
+  carCount!: number;
+  otherTotalKd!: string;
+  otherCount!: number;
+  /** Car share of approved expenses, in basis points (0..10000). */
+  carShareBps!: number;
+}
+
 export class ExpensesSummaryMonthlyDto {
   month!: string; // YYYY-MM
   totalKd!: string;
@@ -87,6 +121,8 @@ export class ExpensesSummaryResponseDto {
   byOwnerType!: ExpensesSummaryByOwnerDto[];
   byCategory!: ExpensesSummaryByCategoryDto[];
   byBranch!: ExpensesSummaryByBranchDto[];
+  byDriver!: ExpensesSummaryByDriverDto[];
+  carBreakdown!: ExpensesSummaryCarBreakdownDto;
   monthly!: ExpensesSummaryMonthlyDto[];
   alerts!: ExpensesSummaryAlertDto[];
 }

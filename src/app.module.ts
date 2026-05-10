@@ -17,6 +17,7 @@ import { BranchesModule } from './branches/branches.module';
 import { CallCenterModule } from './call-center/call-center.module';
 import { CashIntelligenceModule } from './cash-intelligence/cash-intelligence.module';
 import { CashMonitorModule } from './cash-monitor/cash-monitor.module';
+import { CollectionsWorkflowModule } from './collections-workflow/collections-workflow.module';
 import { CommissionsModule } from './commissions/commissions.module';
 import { DebtHoldsModule } from './debt-holds/debt-holds.module';
 import { InvoiceAuditModule } from './invoice-audit/invoice-audit.module';
@@ -33,7 +34,16 @@ import { ExportsModule } from './exports/exports.module';
 import { FixedExpenseModule } from './fixed-expenses/fixed-expense.module';
 import { PayrollModule } from './payroll/payroll.module';
 import { FinanceModule } from './finance/finance.module';
+import { PeriodsModule } from './finance/periods/periods.module';
 import { OutstandingModule } from './finance/outstanding/outstanding.module';
+import { FinancialSnapshotsModule } from './finance/snapshots/snapshots.module';
+import { DebtVisibilityModule } from './finance/debt-visibility/debt-visibility.module';
+import { FinancialTimelineModule } from './finance/timeline/timeline.module';
+import { CollectionsIntelligenceModule } from './finance/collections-intelligence/collections-intelligence.module';
+import { SalesDebtAnalyticsModule } from './finance/sales-debt-analytics/sales-debt-analytics.module';
+import { ReadModelsModule } from './read-models/read-models.module';
+import { DomainEventsModule } from './domain-events/domain-events.module';
+import { FinancialSnapshotListener } from './domain-events/handlers/financial-snapshot.listener';
 import { HealthModule } from './health/health.module';
 import { InsightsModule } from './insights/insights.module';
 import { InventoryModule } from './inventory/inventory.module';
@@ -53,6 +63,7 @@ import { PaymentsModule } from './payments/payments.module';
 import { PermissionsModule } from './permissions/permissions.module';
 import { PosModule } from './pos/pos.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { PresenceModule } from './presence/presence.module';
 import { SafariStreamModule } from './safari-stream/safari-stream.module';
 import { ReportsModule } from './reports/reports.module';
 import { SerialsModule } from './serials/serials.module';
@@ -109,9 +120,23 @@ const spaStaticModule = serveSpaFromApi
     CashIntelligenceModule,
     CashMonitorModule,
     FinanceModule,
+    // V20.6 — Phase 1: PeriodsModule is @Global() so its
+    // FinancialPeriodsService is reachable from
+    // DoubleEntryJournalService without an import cycle.
+    PeriodsModule,
     OutstandingModule,
+    // V20.4 — Phase 1 / 3 / 4 / 8 / 9 read-side architecture.
+    DomainEventsModule,
+    FinancialSnapshotsModule,
+    DebtVisibilityModule,
+    ReadModelsModule,
+    FinancialTimelineModule,
+    CollectionsIntelligenceModule,
+    SalesDebtAnalyticsModule,
     AuthModule,
     SafariStreamModule,
+    PresenceModule,
+    CollectionsWorkflowModule,
     UsersModule,
     ReportsModule,
     PaymentMethodFeesModule,
@@ -161,7 +186,16 @@ const spaStaticModule = serveSpaFromApi
     ...spaStaticModule,
   ],
   controllers: [AppController],
-  providers: [AppService, AuditLogsMiddleware, HttpDrainService],
+  providers: [
+    AppService,
+    AuditLogsMiddleware,
+    HttpDrainService,
+    // V20.4 — Phase 5 wildcard listener that wires every
+    // `finance.*` domain event into `FinancialSnapshotService`.
+    // Lives in AppModule so the cross-module dependency stays
+    // contained at the composition root.
+    FinancialSnapshotListener,
+  ],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {

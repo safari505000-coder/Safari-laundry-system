@@ -22,7 +22,7 @@ import {
   type ExpensesSummaryResponse,
 } from '@/lib/api';
 import { WeeklyExpenseReportActions } from '@/components/expenses/weekly-expense-report-actions';
-import { formatKwdLabel } from '@/lib/kwd';
+import { chartScalarFromKwdString, formatKwdLabel } from '@/lib/kwd';
 import { Card, CardContent, CardHeader, CardTitle } from '@/modules/shared/components/ui/card';
 import { cn } from '@/lib/utils';
 
@@ -104,13 +104,12 @@ function HorizontalBars({
   if (rows.length === 0) {
     return <p className="text-sm text-muted-foreground">{emptyLabel}</p>;
   }
-  const maxKd = rows[0]?.totalKd ?? '0';
-  const max = Number(maxKd);
+  const max = chartScalarFromKwdString(rows[0]?.totalKd);
 
   return (
     <div className="space-y-3">
       {rows.map((row) => {
-        const value = Number(row.totalKd);
+        const value = chartScalarFromKwdString(row.totalKd);
         const width = max > 0 ? Math.max(6, (value / max) * 100) : 0;
         return (
           <div key={row.key} className="space-y-1">
@@ -143,17 +142,17 @@ function MonthlyTrendBars({
   if (rows.length === 0) {
     return <p className="text-sm text-muted-foreground">{emptyLabel}</p>;
   }
-  const maxTotal = rows.reduce(
-    (m, r) => (Number(r.totalKd) > m ? Number(r.totalKd) : m),
-    0,
-  );
+  const maxTotal = rows.reduce((m, r) => {
+    const v = chartScalarFromKwdString(r.totalKd);
+    return v > m ? v : m;
+  }, 0);
   return (
     <div className="space-y-3">
       {rows.map((row) => {
-        const total = Number(row.totalKd);
-        const branch = Number(row.branchKd);
-        const driver = Number(row.driverKd);
-        const company = Number(row.companyKd);
+        const total = chartScalarFromKwdString(row.totalKd);
+        const branch = chartScalarFromKwdString(row.branchKd);
+        const driver = chartScalarFromKwdString(row.driverKd);
+        const company = chartScalarFromKwdString(row.companyKd);
         const totalWidth = maxTotal > 0 ? Math.max(8, (total / maxTotal) * 100) : 0;
         const branchPct = total > 0 ? (branch / total) * 100 : 0;
         const driverPct = total > 0 ? (driver / total) * 100 : 0;
@@ -319,7 +318,7 @@ export function ExpensesAnalyticsDashboard({
 
   return (
     <div className="space-y-4">
-      <WeeklyExpenseReportActions rows={rows} />
+      <WeeklyExpenseReportActions rows={rows} summary={summary} />
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <KpiCard
