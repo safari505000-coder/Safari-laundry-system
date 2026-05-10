@@ -1048,8 +1048,106 @@ These dirs were the V20.6 Phase 6A scaffolding — declared in the domain charte
 
 ### 23.7 — Steps still on deck (per Purge Report's approval matrix)
 
-- **Step C** — uninstall 11 unused FE deps + 5 unused BE deps + add the missing `multer`
+- **Step C** — uninstall 11 FE + 5 BE deps + add `multer` → **✅ DONE in §24 below** (executed as 11 FE + 4 BE + add `multer`; `tsconfig-paths` retained as test:debug-script dependency)
 - **Step D-1** — review-each 7 unused exports inside Banking Core
 - **Step D-2** — batch-delete 34 unused exports outside Banking Core
 - All gated by the same Green Matrix.
+
+---
+
+## 24. V24 Station 2 — Step C (Dependency Purge & multer Honesty)
+
+> **Status: ✅ EXECUTED — all gates passed naturally without `--no-verify`; pre-commit safety hook is back in full force.**
+
+### 24.1 — Pre-flight: surgical fix to restore build integrity
+
+Before Step C could run under the user-mandated "no `--no-verify`" protocol, the pre-existing 5 tsc-build-mode errors in `web/src/modules/call-center/pages/collections-cockpit-page.tsx` (inherited from V20.x → V23.x backlog and surfaced after the Wave-A/B/C/Remaining recording in §22+§23) had to be closed. They were fixed in commit `3e9748a` (`fix(web): correct legacy types in collections-cockpit-page to restore build integrity`):
+
+| # | Error | Fix |
+|---|---|---|
+| 1 | `can(user.role, ...)` — `LoginUser.role` doesn't exist | `can(user, ...)` (helper signature is `Pick<LoginUser, 'safariRole'>`) |
+| 2 | `op.userId !== user?.userId` — `LoginUser.userId` doesn't exist | `op.userId !== user?.id` (canonical id field is `LoginUser.id`) |
+| 3 | `[allowed, token, user?.userId]` (effect deps) | `[allowed, token, user?.id]` |
+| 4 | `currentOperatorId={user?.userId ?? null}` | `currentOperatorId={user?.id ?? null}` |
+| 5 | `<AgingBadge bucket={...} ageDays={null} />` — wrong props for the imported variant | `<AgingBadge openedAtIso={opened} />` (workflow-intelligence variant is `openedAtIso`-shaped; finance variant is `bucket`-shaped — page imports the workflow-intelligence one) |
+
+Pre-fix `npm run build` → 5 errors. Post-fix → `✓ built in 1.06s`. Vitest 259/259 PASS unchanged.
+
+### 24.2 — Canonical Check (Banking Core untouched)
+
+Pre-deletion grep verification across the entire repo (excluding `node_modules`):
+
+| Package | Source-code matches | Banking Core matches |
+|---|---|---|
+| All 8 `@radix-ui/react-*` slated for removal | 0 | 0 |
+| `next-themes` | 0 | 0 |
+| `react-leaflet` | 0 | 0 |
+| `@testing-library/user-event` | 0 | 0 |
+| `@google-cloud/storage` | 0 | 0 |
+| `@eslint/eslintrc` (incl. `FlatCompat` / `compat.*`) | 0 | 0 |
+| `source-map-support` | 0 (only transitive in `node_modules`) | 0 |
+| `ts-loader` | 0 (only transitive in `node_modules`) | 0 |
+| `tsconfig-paths` | **1 reference in `package.json:28`** (`test:debug` npm script: `node -r tsconfig-paths/register …`) | n/a |
+
+→ `tsconfig-paths` was DELIBERATELY RETAINED to preserve the `test:debug` developer-only debugging script. The Purge Report's classification was a true positive at the import-level but missed the npm-script reference. **Net BE deletions: 4 (not 5).**
+
+### 24.3 — Execution
+
+| Batch | Command | Result |
+|---|---|---|
+| **FE — 11 deletions** | `cd web && npm uninstall @radix-ui/react-dialog @radix-ui/react-dropdown-menu @radix-ui/react-label @radix-ui/react-scroll-area @radix-ui/react-separator @radix-ui/react-slot @radix-ui/react-tabs @radix-ui/react-tooltip next-themes react-leaflet @testing-library/user-event` | **53 packages removed in 1s** (11 declared + 42 transitive) |
+| **FE Gate** | `tsc --noEmit` + `vitest run` + `npm run build` | ✅ tsc 0 errors · vitest 259/259 PASS · build `✓ 1.01s` |
+| **BE — 4 deletions** | `npm uninstall @google-cloud/storage @eslint/eslintrc source-map-support ts-loader` | **46 packages removed in 2s** (4 declared + 42 transitive) |
+| **BE Gate** | `tsc --noEmit` + `jest --silent` | ✅ tsc 0 errors · jest 89/89 suites · 798/798 PASS |
+| **BE — 1 addition** | `npm install multer --save` (`@types/multer ^2.1.0` was already declared) | **`multer ^2.1.1` added in `dependencies`** ("up to date in 2s" — runtime was already provided transitively via `@nestjs/platform-express`; this commit makes the dependency honest) |
+| **Multer Gate** | `tsc --noEmit` + `jest --silent` + verify `cash-flow-aliases.controller.ts` import | ✅ tsc 0 errors · jest 798/798 PASS · `import { diskStorage } from 'multer'` resolves to the explicit declaration |
+
+### 24.4 — Final Green Matrix (V24 Station 2 — Step C)
+
+| Check | Pre-C | Post-C |
+|---|---|---|
+| `npx tsc --noEmit` (backend) | 0 errors | **0 errors** |
+| `cd web && npx tsc --noEmit` | 0 errors | **0 errors** |
+| `cd web && npx vitest run` | 259/259 PASS | **259/259 PASS** (39 files) |
+| `npx jest --silent` (full backend) | 89/89 · 798/798 PASS | **89/89 · 798/798 PASS** (21 skipped — unchanged) |
+| `cd web && npm run build` (`tsc -b && vite build`) | 5 errors (pre-§24.1 fix) | **`✓ built in 1.01s`** (0 errors) |
+| Backend purity guards | 6/6 | **6/6** |
+| Frontend purity guard | 14/14 | **14/14** |
+| `find-legacy-debt-readers` scanner | clean | **clean** |
+| Pre-commit hook | bypass-only path (Wave A/B/Remaining) | **passes naturally** ✅ |
+
+### 24.5 — Pre / Post numbers
+
+| Metric | Pre-C | Post-C | Δ |
+|---|---|---|---|
+| FE declared deps in `web/package.json` | 53 | **42** | **−11** |
+| BE declared deps in `package.json` | 71 | **68** | **−3** (−4 + 1 new = `multer`) |
+| Total transitive packages removed | n/a | **99** | (53 FE + 46 BE) |
+| `package-lock.json` size delta | — | **−560 lines** | (massive transitive cleanup) |
+| `web/package-lock.json` size delta | — | **−1,076 lines** | (Radix-leftovers) |
+| Aggregate diff | — | **+6 / −1,640 lines** across 4 files | (only package.json + locks) |
+
+### 24.6 — Files touched
+
+| # | Path | Type |
+|---|---|---|
+| 1 | `package.json` | EDITED — 4 deps removed, 1 added (`multer`) |
+| 2 | `package-lock.json` | EDITED — transitive cleanup (−560 lines) |
+| 3 | `web/package.json` | EDITED — 11 deps removed |
+| 4 | `web/package-lock.json` | EDITED — transitive cleanup (−1,076 lines) |
+| 5 | `docs/v23-1-architectural-purge-scorecard.md` | EDITED — this section |
+
+### 24.7 — Risk / reversibility
+
+- **Risk: zero net regression.** All Green-Matrix gates pass unchanged. Pre-commit hook now passes naturally without `--no-verify`.
+- **Reversibility: trivial.** A single `npm install <package>@<version>` reinstates any removed dep; the lockfile diff is the canonical record.
+- **Honesty win.** `multer` is now an explicit `dependencies` entry. If `@nestjs/platform-express` ever drops the transitive in a future major, the runtime won't silently break — npm will resolve the version we asked for.
+
+### 24.8 — Steps still on deck
+
+- **Step D-1** — review-each 7 unused exports inside Banking Core (defer-friendly; small surface)
+- **Step D-2** — batch-delete 34 unused exports outside Banking Core
+- **Stretch** — re-evaluate Knip's 187 FE-export false-positive list under a proper `knip.json` config (Station 3 candidate)
+- **Tier-3 deferred** — `supertest` / `@types/supertest` (used at runtime by integration suites; keep), `scripts/verify-cash-status-bugfix.mjs` (one-off forensic script; awaiting team review)
+- **Open question for Station 3 review** — purge ad-hoc one-off `scripts/*.cjs` / `scripts/*.mjs` that are no longer used
 
