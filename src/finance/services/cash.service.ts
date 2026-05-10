@@ -118,17 +118,44 @@ export class CashService {
       _sum: { totalPrice: true },
       _count: true,
     });
+    const mappedRows = rows.map((r) => ({
+      posPaymentMethod: r.posPaymentMethod,
+      orderCount: r._count,
+      totalRevenue:
+        r._sum?.totalPrice !== null && r._sum?.totalPrice !== undefined
+          ? r._sum.totalPrice.toFixed(4)
+          : '0.0000',
+    }));
+
+    // V25 — pre-compute aggregates so the frontend renders-only.
+    let totalKd = new Prisma.Decimal(0);
+    let collectedKd = new Prisma.Decimal(0);
+    let onAccountKd = new Prisma.Decimal(0);
+    for (const r of mappedRows) {
+      const v = new Prisma.Decimal(r.totalRevenue);
+      totalKd = totalKd.plus(v);
+      if (r.posPaymentMethod === 'DEBT_ON_ACCOUNT') {
+        onAccountKd = onAccountKd.plus(v);
+      } else {
+        collectedKd = collectedKd.plus(v);
+      }
+    }
+    const collectionRateBps =
+      totalKd.gt(0)
+        ? collectedKd.div(totalKd).times(10000).toDecimalPlaces(0).toNumber()
+        : 0;
+
     return {
       from: from.toISOString(),
       to: to.toISOString(),
-      rows: rows.map((r) => ({
-          posPaymentMethod: r.posPaymentMethod,
-          orderCount: r._count,
-          totalRevenue:
-            r._sum?.totalPrice !== null && r._sum?.totalPrice !== undefined
-              ? r._sum.totalPrice.toString()
-              : '0',
-        })),
+      totals: {
+        totalKd: totalKd.toFixed(3),
+        collectedKd: collectedKd.toFixed(3),
+        onAccountKd: onAccountKd.toFixed(3),
+        /** Collection rate in basis points (bps ÷ 100 = %). */
+        collectionRateBps,
+      },
+      rows: mappedRows,
     };
   }
 

@@ -1,38 +1,54 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, Navigate } from 'react-router-dom';
 import { Printer } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
-import { formatKwdLabel, sumKwdStrings } from '@/lib/kwd';
-import { apiJson, type OrderRow } from '@/lib/api';
+import { formatKwdLabel } from '@/lib/kwd';
+import { apiJson, type IssuedInvoicesReport } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/modules/shared/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/modules/shared/components/ui/table';
 import { Badge } from '@/modules/shared/components/ui/badge';
 import { buttonVariants } from '@/modules/shared/components/ui/button';
 import { cn } from '@/lib/utils';
 
+// @V24-LEGACY-MATH: was fetching /api/orders (all) then filtering+summing client-side.
+// V25: uses /api/reports/issued-invoices?driverId=me&from=today&to=today
+// which returns rows scoped to this driver + today, with server-computed totals.
+
+function todayKuwaitRange(): { from: string; to: string } {
+  // Kuwait is UTC+3 year-round.
+  const now = new Date(Date.now() + 3 * 60 * 60 * 1000);
+  const y = now.getUTCFullYear();
+  const m = String(now.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(now.getUTCDate()).padStart(2, '0');
+  const day = `${y}-${m}-${d}`;
+  return { from: `${day}T00:00:00.000Z`, to: `${day}T23:59:59.999Z` };
+}
+
 export function MyDailySalesPage() {
   const { t } = useTranslation();
-  const { hasRole, token } = useAuth();
+  const { hasRole, token, user } = useAuth();
   const locale = useAppLocale();
-  const [orders, setOrders] = useState<OrderRow[] | null>(null);
+  const [report, setReport] = useState<IssuedInvoicesReport | null>(null);
+
   if (!hasRole('DRIVER')) return <Navigate to="/" replace />;
 
   useEffect(() => {
     if (!token) return;
-    void apiJson<OrderRow[]>('/api/orders', { token }).then(setOrders);
-  }, [token]);
+    const { from, to } = todayKuwaitRange();
+    const qs = new URLSearchParams({ from, to });
+    // V25 — driver scoped to own ID; server filters + returns totals.totalKd.
+    if (user?.id) qs.set('driverId', user.id);
+    void apiJson<IssuedInvoicesReport>(
+      `/api/reports/issued-invoices?${qs.toString()}`,
+      { token },
+    ).then(setReport);
+  }, [token, user?.id]);
 
-  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
-  const rows = (orders ?? []).filter((o) =>
-    o.status === 'COMPLETED' && o.createdAt.slice(0, 10) === today,
-  );
-  // V21 Phase 5 — date-filter-driven total routed through the single
-  // canonical `sumKwdStrings` helper from `@/lib/kwd`. The previous
-  // local `reduce`+`parseFloat` was retired so the page no longer
-  // owns any KD math primitive.
-  const totalKd = sumKwdStrings(rows.map((r) => r.totalPrice || '0'));
+  const rows = report?.rows ?? [];
+  // V25 — use server-computed total; no local sum.
+  const totalKd = report?.totals?.totalKd ?? '0.000';
 
   return (
     <div className="space-y-6">
@@ -70,13 +86,13 @@ export function MyDailySalesPage() {
                 {rows.map((r) => (
                   <TableRow key={r.id}>
                     <TableCell>{r.customer.displayName || r.customer.phone}</TableCell>
-                    <TableCell>{r.customer.phone || r.customer.phone2 || '-'}</TableCell>
+                    <TableCell>{r.customer.phone || '-'}</TableCell>
                     <TableCell className="whitespace-nowrap">{new Date(r.createdAt).toLocaleString(locale)}</TableCell>
                     <TableCell className="text-end whitespace-nowrap">{formatKwdLabel(r.totalPrice)}</TableCell>
                     <TableCell className="text-center">
-                      {r.hasSupervisorEdit ? (
+                      {r.posPaymentMethod ? (
                         <Badge variant="secondary" className="whitespace-nowrap text-xs">
-                          {t('driverDailySales.badgeEdited')}
+                          {r.posPaymentMethod}
                         </Badge>
                       ) : (
                         <span className="text-xs text-muted-foreground">—</span>

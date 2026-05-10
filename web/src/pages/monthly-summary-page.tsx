@@ -26,10 +26,12 @@ import {
   apiJson,
   ApiError,
   API_EXPENSES,
+  API_EXPENSES_SUMMARY,
   type ExpenseRow,
   type MonthlySummaryLedgerRollup,
   type MonthlySummaryReport,
   type PayrollRow,
+  type ExpensesSummaryResponse,
 } from '@/lib/api';
 import { formatKwdLabel, formatSignedKwdLabel } from '@/lib/kwd';
 import {
@@ -595,20 +597,24 @@ function SummaryCardSkeleton() {
   );
 }
 
-export function ExpensesTab({ rows, loading }: { rows: ExpenseRow[]; loading: boolean }) {
+export function ExpensesTab({
+  rows,
+  loading,
+  totalApprovedKd = '0.000',
+}: {
+  rows: ExpenseRow[];
+  loading: boolean;
+  /** V25 — server-computed approved total from API_EXPENSES_SUMMARY. */
+  totalApprovedKd?: string;
+}) {
   const { t } = useTranslation();
-
-  const approved = useMemo(
-    () => rows.filter((r) => r.status === 'APPROVED'),
-    [rows],
-  );
-  const totalApprovedKd = useMemo(
-    () =>
-      approved
-        .reduce((acc, r) => acc + Number.parseFloat(r.amount || '0'), 0)
-        .toFixed(4),
-    [approved],
-  );
+  // @V24-LEGACY-MATH: approved total was computed locally with reduce+parseFloat.
+  // const approved = useMemo(() => rows.filter((r) => r.status === 'APPROVED'), [rows]);
+  // const totalApprovedKd = useMemo(
+  //   () => approved.reduce((acc, r) => acc + Number.parseFloat(r.amount || '0'), 0).toFixed(4),
+  //   [approved],
+  // );
+  // V25: totalApprovedKd is now a required prop passed in from API_EXPENSES_SUMMARY.
 
   return (
     <div className="space-y-3">
@@ -864,6 +870,7 @@ export function MonthlySummaryPage() {
   const [to, setTo] = useState<string>(() => endOfMonthIso(new Date()));
   const [data, setData] = useState<MonthlySummaryReport | null>(null);
   const [expenses, setExpenses] = useState<ExpenseRow[]>([]);
+  const [expensesSummary, setExpensesSummary] = useState<ExpensesSummaryResponse | null>(null);
   const [payroll, setPayroll] = useState<PayrollRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [detailsLoading, setDetailsLoading] = useState(true);
@@ -875,16 +882,22 @@ export function MonthlySummaryPage() {
     setDetailsLoading(true);
     const qs = new URLSearchParams({ from, to });
     try {
-      const [summary, expensesResp, payrollResp] = await Promise.all([
+      const [summary, expensesResp, expSummaryResp, payrollResp] = await Promise.all([
         apiJson<MonthlySummaryReport>(
           `/api/reports/monthly-summary?${qs.toString()}`,
           { token },
         ),
         apiJson<ExpenseRow[]>(`${API_EXPENSES}?${qs.toString()}`, { token }),
+        // V25 — server-computed expense totals; feeds ExpensesTab.totalApprovedKd.
+        apiJson<ExpensesSummaryResponse>(
+          `${API_EXPENSES_SUMMARY}?${qs.toString()}`,
+          { token },
+        ).catch(() => null),
         apiJson<PayrollRow[]>(`/api/payroll?${qs.toString()}`, { token }),
       ]);
       setData(summary);
       setExpenses(Array.isArray(expensesResp) ? expensesResp : []);
+      setExpensesSummary(expSummaryResp ?? null);
       setPayroll(Array.isArray(payrollResp) ? payrollResp : []);
     } catch (e) {
       setData(null);
@@ -1139,7 +1152,11 @@ export function MonthlySummaryPage() {
         </TabsContent>
 
         <TabsContent value="expenses" className="mt-4">
-          <ExpensesTab rows={expenses} loading={detailsLoading} />
+          <ExpensesTab
+            rows={expenses}
+            loading={detailsLoading}
+            totalApprovedKd={expensesSummary?.totalApprovedKd}
+          />
         </TabsContent>
 
         <TabsContent value="payroll" className="mt-4">

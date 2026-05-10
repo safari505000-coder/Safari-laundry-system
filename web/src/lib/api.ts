@@ -1960,6 +1960,14 @@ export type PosPaymentMethod =
 export type DailyPosSalesByPaymentMethodReport = {
   from: string;
   to: string;
+  /** V25 — server-computed aggregates. Frontend MUST use these, not re-sum rows. */
+  totals: {
+    totalKd: string;
+    collectedKd: string;
+    onAccountKd: string;
+    /** Collection rate × 100 = percentage. */
+    collectionRateBps: number;
+  };
   rows: Array<{
     posPaymentMethod: PosPaymentMethod;
     orderCount: number;

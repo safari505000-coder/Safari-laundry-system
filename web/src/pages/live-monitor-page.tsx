@@ -70,9 +70,14 @@ function isPulseVisibleBranchName(name: string | undefined | null): boolean {
   return !PULSE_EXCLUDED_BRANCH_NAMES.has(n);
 }
 
+// @V24-LEGACY-MATH: summed rows locally. Now uses issuedReport.totals.totalKd from server.
+// function sumIssuedKd(inv: IssuedInvoicesReport | null): number {
+//   if (!inv?.rows?.length) return 0;
+//   return inv.rows.reduce((acc, r) => acc + toNum(r.totalPrice), 0);
+// }
 function sumIssuedKd(inv: IssuedInvoicesReport | null): number {
-  if (!inv?.rows?.length) return 0;
-  return inv.rows.reduce((acc, r) => acc + toNum(r.totalPrice), 0);
+  // V25 — read server-computed total; fall back to 0 when report is absent.
+  return toNum(inv?.totals?.totalKd);
 }
 
 type PosDayMetrics = {
@@ -88,13 +93,20 @@ type PosDayMetrics = {
   collectionRatePct: number;
 };
 
+// @V24-LEGACY-MATH: aggregated totals locally across rows.
+// V25: posTotalKd, collectedKd, onAccountKd, collectionRatePct now read from
+// pos.totals (server-computed). Per-method details still pivoted from rows.
 function computePosDayMetrics(
   pos: DailyPosSalesByPaymentMethodReport | null,
 ): PosDayMetrics {
   const rows = pos?.rows ?? [];
-  let posTotalKd = 0;
-  let onAccountKd = 0;
-  let collectedKd = 0;
+  // V25 — read server aggregates directly.
+  const posTotalKd = toNum(pos?.totals?.totalKd);
+  const collectedKd = toNum(pos?.totals?.collectedKd);
+  const onAccountKd = toNum(pos?.totals?.onAccountKd);
+  const collectionRatePct = (pos?.totals?.collectionRateBps ?? 0) / 100;
+
+  // Per-method detail pivot (not math; just reorganising server rows by key).
   let subscriptionWalletKd = 0;
   let paymentLinkKd = 0;
   let paymentLinkOrders = 0;
@@ -105,12 +117,6 @@ function computePosDayMetrics(
   for (const r of rows) {
     const v = toNum(r.totalRevenue);
     const oc = r.orderCount ?? 0;
-    posTotalKd += v;
-    if (r.posPaymentMethod === 'DEBT_ON_ACCOUNT') {
-      onAccountKd += v;
-    } else {
-      collectedKd += v;
-    }
     switch (r.posPaymentMethod) {
       case 'SUBSCRIPTION_WALLET':
         subscriptionWalletKd += v;
@@ -128,8 +134,6 @@ function computePosDayMetrics(
         break;
     }
   }
-  const collectionRatePct =
-    posTotalKd > 0 ? (collectedKd / posTotalKd) * 100 : 0;
   return {
     posTotalKd,
     collectedKd,
