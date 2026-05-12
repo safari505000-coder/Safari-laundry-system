@@ -160,9 +160,13 @@ describe('V22 current-debt consistency guards', () => {
     );
     expect(financeService).toContain('getOutstandingDebtsWithoutLinks');
     expect(debtService).toContain('getOutstandingDebtsWithoutLinks');
-    expect(debtService).toContain('total.toFixed(3)');
-    expect(reportPage).toContain('Pending Debts for Collection');
+    expect(debtService).toContain('computeOrderRemainingBalancesBatch');
+    expect(debtService).toContain('remaining.toFixed(3)');
+    expect(debtService).toContain('settlementStatus');
+    expect(reportPage).toContain('المديونيات المعلّقة للتحصيل');
     expect(reportPage).toContain('formatKwd(row.totalDebt)');
+    expect(reportPage).toContain('الأصلي:');
+    expect(reportPage).toContain('remainingBalanceKd');
     expect(reportPage).not.toContain('Number.parseFloat(row.totalDebt)');
     expect(reportPage).not.toContain('parseFloat(row.totalDebt)');
   });
@@ -183,7 +187,7 @@ describe('V22 current-debt consistency guards', () => {
       'All selected invoiceIds must belong to the provided customerId',
     );
     expect(reportPage).toContain('sumKwdStringsPrecise');
-    expect(reportPage).toContain('Running Total');
+    expect(reportPage).toContain('الإجمالي المحدد');
     expect(reportPage).toContain('/api/finance/generate-settlement-link');
   });
 

@@ -981,6 +981,36 @@ function IssueSubscriptionDialog({
   );
 }
 
+function partialDebtJournalAssetI18nKey(
+  method: RecordPartialDebtPaymentRequest['paymentMethod'],
+):
+  | 'debtPayJournalAssetCash'
+  | 'debtPayJournalAssetKnet'
+  | 'debtPayJournalAssetOnline' {
+  if (method === 'KNET') return 'debtPayJournalAssetKnet';
+  if (method === 'ONLINE' || method === 'PAYMENT_LINK') {
+    return 'debtPayJournalAssetOnline';
+  }
+  return 'debtPayJournalAssetCash';
+}
+
+function JournalPreviewLine({
+  label,
+  amountKd,
+}: {
+  label: string;
+  amountKd: string;
+}) {
+  return (
+    <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-sm tabular-nums">
+      <span className="min-w-0 text-[13px] text-muted-foreground">{label}</span>
+      <span className="shrink-0 font-medium text-foreground">
+        {formatKwdLabel(amountKd)}
+      </span>
+    </div>
+  );
+}
+
 /**
  * V19.4 — CC pack #1. Partial debt payment dialog.
  *
@@ -988,7 +1018,9 @@ function IssueSubscriptionDialog({
  * The agent types the cash collected, an optional goodwill discount,
  * and the payment method; the server validates `amount + discount`
  * against operational debt and writes
- * a TransactionHistory + two GL entries
+ * a TransactionHistory + collection/discount paths on the legacy GL
+ * plus balanced journal lines: DR payment asset / CR AR for the collected
+ * amount, and DR debt-discount expense / CR AR for any goodwill discount
  * (see `CustomerLedgerService.recordPartialDebtPayment`).
  *
  * Intentionally kept as a separate dialog rather than inline inside
@@ -1084,7 +1116,7 @@ function DebtPaymentDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-red-700 dark:text-red-300">
             <CircleDollarSign className="h-5 w-5" aria-hidden />
@@ -1169,24 +1201,8 @@ function DebtPaymentDialog({
             />
           </div>
 
-          <div className="grid grid-cols-3 gap-3 rounded-md border border-dashed border-red-300 bg-muted/40 px-3 py-2 text-sm tabular-nums dark:border-red-900/60">
-            <div>
-              <div className="text-[11px] text-muted-foreground">
-                {t('subscribers.debtPayTotalReduction')}
-              </div>
-              <div className="font-medium text-foreground">
-                {formatKwdLabel(totalReductionKd)}
-              </div>
-            </div>
-            <div>
-              <div className="text-[11px] text-muted-foreground">
-                {t('subscribers.debtPayRemaining')}
-              </div>
-              <div className="font-medium text-foreground">
-                {formatKwdLabel(remainingKd)}
-              </div>
-            </div>
-            <div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="rounded-md border border-dashed border-red-300 bg-muted/40 px-3 py-2 text-sm tabular-nums dark:border-red-900/60">
               <div className="text-[11px] text-muted-foreground">
                 {t('subscribers.debtPayCurrentDebt')}
               </div>
@@ -1194,7 +1210,79 @@ function DebtPaymentDialog({
                 {formatKwdLabel(subscriberRemainingDebtKd(subscriber))}
               </div>
             </div>
+            <div className="rounded-md border border-dashed border-red-300 bg-muted/40 px-3 py-2 text-sm tabular-nums dark:border-red-900/60">
+              <div className="text-[11px] text-muted-foreground">
+                {t('subscribers.debtPayTotalReduction')}
+              </div>
+              <div className="font-medium text-foreground">
+                {formatKwdLabel(totalReductionKd)}
+              </div>
+            </div>
+            <div className="rounded-md border border-dashed border-red-300 bg-muted/40 px-3 py-2 text-sm tabular-nums dark:border-red-900/60">
+              <div className="text-[11px] text-muted-foreground">
+                {t('subscribers.debtPayRemaining')}
+              </div>
+              <div className="font-medium text-foreground">
+                {formatKwdLabel(remainingKd)}
+              </div>
+            </div>
           </div>
+
+          {isPositiveKd(totalReductionKd) && !overCap ? (
+            <div className="space-y-3 rounded-lg border border-border bg-card/60 px-3 py-3 text-sm shadow-sm">
+              <div>
+                <div className="text-xs font-semibold text-foreground">
+                  {t('subscribers.debtPayJournalTitle')}
+                </div>
+                <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                  {t('subscribers.debtPayJournalHint')}
+                </p>
+              </div>
+
+              {isPositiveKd(amountKdString) ? (
+                <div className="space-y-2">
+                  <div className="text-xs font-medium text-foreground">
+                    {t('subscribers.debtPayJournalLegCollection')}
+                  </div>
+                  <div className="grid gap-1.5 rounded-md border-s-2 border-emerald-600/55 bg-emerald-500/[0.06] py-2 ps-3 dark:border-emerald-500/50">
+                    <JournalPreviewLine
+                      label={`${t('subscribers.debtPayJournalDebit')} — ${t(`subscribers.${partialDebtJournalAssetI18nKey(method)}`)}`}
+                      amountKd={amountKdString}
+                    />
+                    <JournalPreviewLine
+                      label={`${t('subscribers.debtPayJournalCredit')} — ${t('subscribers.debtPayJournalArAccount')}`}
+                      amountKd={amountKdString}
+                    />
+                  </div>
+                </div>
+              ) : null}
+
+              {isPositiveKd(discountKdString) ? (
+                <div className="space-y-2">
+                  <div className="text-xs font-medium text-foreground">
+                    {t('subscribers.debtPayJournalLegDiscount')}
+                  </div>
+                  <div className="grid gap-1.5 rounded-md border-s-2 border-amber-600/50 bg-amber-500/[0.06] py-2 ps-3 dark:border-amber-500/45">
+                    <JournalPreviewLine
+                      label={`${t('subscribers.debtPayJournalDebit')} — ${t('subscribers.debtPayJournalGoodwillExpense')}`}
+                      amountKd={discountKdString}
+                    />
+                    <JournalPreviewLine
+                      label={`${t('subscribers.debtPayJournalCredit')} — ${t('subscribers.debtPayJournalArAccount')}`}
+                      amountKd={discountKdString}
+                    />
+                  </div>
+                </div>
+              ) : null}
+
+              <p className="border-t border-border pt-2 text-[11px] text-muted-foreground">
+                {t('subscribers.debtPayJournalFoot', {
+                  total: formatKwdLabel(totalReductionKd),
+                })}
+              </p>
+            </div>
+          ) : null}
+
           {overCap ? (
             <p className="text-xs text-red-700 dark:text-red-300">
               {t('subscribers.debtPayOverCap')}

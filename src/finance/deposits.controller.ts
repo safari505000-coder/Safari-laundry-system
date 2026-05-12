@@ -124,13 +124,13 @@ export class DepositsController {
     if (!file?.filename) {
       throw new BadRequestException('Receipt file is required');
     }
-    const amount = Number.parseFloat(amountRaw ?? '');
-    if (!Number.isFinite(amount)) {
-      throw new BadRequestException('amount must be a number');
+    // V25 Controller Math Purge: raw string forwarded to service; Decimal parsing inside DepositsService.
+    if (!amountRaw?.trim()) {
+      throw new BadRequestException('amount is required');
     }
     const type = parseDepositType(typeRaw);
     const url = `/uploads/deposits/${file.filename}`;
-    return this.depositsService.createByDriver(user.userId, amount, type, url);
+    return this.depositsService.createByDriver(user.userId, amountRaw, type, url);
   }
 
   @Patch(':id/status')

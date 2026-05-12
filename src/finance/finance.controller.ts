@@ -377,7 +377,7 @@ export class FinanceController {
   @ApiOperation({
     summary: `Outstanding debts without active links (${APP_BRAND})`,
     description:
-      'V25 — One row per customer with open UNPAID invoices and no active hosted payment link. Returns server-authoritative totalDebt (KWD 3dp) and lastOrderDate for collections operations.',
+      'V25 — One row per customer with collectible open balance (UNPAID + PARTIAL) and no active hosted payment link on those invoices. Returns server-authoritative remaining totalDebt (KWD 3dp) and lastOrderDate for collections operations.',
   })
   getOutstandingDebtsWithoutLinks(
     @Query('branchId') branchId: string | undefined,
@@ -392,7 +392,7 @@ export class FinanceController {
   @Post('generate-settlement-link')
   @Permissions(AppPermission.VIEW_DEBTS)
   @ApiOperation({
-    summary: `Generate one payment link for selected unpaid invoices (${APP_BRAND})`,
+    summary: `Generate one payment link for selected invoice balances (${APP_BRAND})`,
     description:
       'V25 — validates that invoiceIds belong to the customer and are still OPEN/UNPAID, re-calculates total on the server, creates one hosted settlement link, and persists settlement metadata for invoice fan-out on payment callback.',
   })

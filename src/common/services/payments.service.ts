@@ -1108,6 +1108,27 @@ export class PaymentsService implements OnModuleInit {
    * Case-insensitive so we don't get caught by provider casing
    * quirks.
    */
+  /**
+   * V25 Controller Math Purge — expose KWD→minor comparison as a service
+   * method so controllers never hold financial parsing logic themselves.
+   *
+   * Returns `'match'` when both amounts resolve to the same minor-unit
+   * integer (fils), `'mismatch'` when they differ, or `'indeterminate'`
+   * when either amount is missing / unparseable. The controller uses the
+   * returned discriminant to decide whether to block finalization without
+   * duplicating `parseKwdMinor` or `Math.round` logic.
+   */
+  compareGatewayAmount(
+    gatewayRaw: string | number | undefined | null,
+    orderTotal: string | number,
+  ): 'match' | 'mismatch' | 'indeterminate' {
+    const gatewayMinor = parseKwdMinor(gatewayRaw);
+    const orderMinor = parseKwdMinor(orderTotal);
+    if (gatewayMinor === null) return 'indeterminate';
+    if (orderMinor === null) return 'indeterminate';
+    return gatewayMinor === orderMinor ? 'match' : 'mismatch';
+  }
+
   normalizeCallbackStatus(status: string): 'success' | 'failed' {
     const raw = (status ?? '').trim();
     if (!raw) {

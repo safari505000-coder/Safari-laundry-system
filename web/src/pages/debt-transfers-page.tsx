@@ -475,13 +475,13 @@ function CreateDebtTransferDialog({
   }, [token, sourceId]);
 
   /**
-   * V21 Phase 5 — selection-driven sum routed through the single
-   * canonical `sumKwdStrings` helper from `@/lib/kwd`. This is the
-   * one allowed flavour of frontend math: it operates on what the
-   * USER picked via the order checkboxes, so the backend cannot
-   * pre-compute it. The previous local `reduce`+`parseFloat` block
-   * was retired in favour of the canonical helper so all KD math
-   * funnels through one tested implementation.
+   * V21 Phase 5 / @V24-LEGACY-MATH-EXEMPTION — selection-driven sum.
+   * The backend cannot pre-compute this because the total depends on
+   * which orders the operator selects in real-time. The value is used
+   * only for a UI preview; the actual transfer amount is re-validated
+   * server-side when `createDebtTransfer` is called. Uses the canonical
+   * `sumKwdStrings` helper (no raw arithmetic) as the single tested
+   * KWD-string summation path.
    */
   const totalSelected = useMemo(() => {
     if (!outstanding) return '0.000';

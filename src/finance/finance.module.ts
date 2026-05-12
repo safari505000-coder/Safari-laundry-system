@@ -22,6 +22,7 @@ import { FinancialAlertsService } from './services/financial-alerts.service';
 import { OwnerFinancialDashboardService } from './services/owner-financial-dashboard.service';
 import { LedgerController } from './ledger/ledger.controller';
 import { LedgerProjectionService } from './ledger/ledger-projection.service';
+import { LedgerBankStatementService } from './ledger/ledger-bank-statement.service';
 import { FinancialAuditController } from './audit/financial-audit.controller';
 import { FinancialAuditService } from './audit/financial-audit.service';
 import { UiDriftInspectorService } from './audit/ui-drift-inspector.service';
@@ -90,6 +91,7 @@ import { FinancialObservabilityController } from './observability/financial-obse
     FinancialAlertsService,
     OwnerFinancialDashboardService,
     LedgerProjectionService,
+    LedgerBankStatementService,
     FinancialAuditService,
     UiDriftInspectorService,
     InvoicePaymentStatusService,

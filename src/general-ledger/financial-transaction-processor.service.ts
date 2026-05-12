@@ -75,6 +75,124 @@ type JournalLine = {
 export class FinancialTransactionProcessorService {
   constructor(private readonly journal: DoubleEntryJournalService) {}
 
+  /**
+   * V25 Deposit-then-Settle — double-entry journal entry for funding a
+   * customer wallet from an external payment + optional company subsidy.
+   *
+   * The double-entry produced for a 20 KWD payment + 5 KWD subsidy is:
+   *   DR CASH / BANK              20.0000   (payment received)
+   *   DR PROMOTIONAL_EXPENSE      5.0000    (marketing support)
+   *   CR WALLET_LIABILITY (2100)  25.0000   (total deposited to wallet)
+   *
+   * This mirrors the semantics of the plan subscription flow:
+   * `plan.salePrice` = customer payment, `plan.actualBalance` = total credit.
+   * The credit leg targets WALLET_LIABILITY (2100) rather than
+   * ACCOUNTS_RECEIVABLE (1300) because we are creating a liability to
+   * the customer (prepaid wallet balance), not reducing a receivable.
+   */
+  async processWalletFundingTransaction(
+    db: Db,
+    input: {
+      actorUserId: string;
+      customerId: string;
+      subscriptionId: string;
+      /** Payment received from customer (goes to CASH / BANK / ONLINE). */
+      paymentAmountKd: Prisma.Decimal;
+      /** Payment channel — maps to the asset account debited. */
+      paymentMethod: StrictFinancialPaymentMethod;
+      /**
+       * Company marketing-support / subsidy amount debited to
+       * PROMOTIONAL_EXPENSE. Pass `Decimal(0)` when there is no subsidy.
+       */
+      supportAmountKd: Prisma.Decimal;
+      /** Total wallet credit = paymentAmountKd + supportAmountKd. */
+      totalFundingKd: Prisma.Decimal;
+      memo: string;
+      branchId?: string | null;
+    },
+  ): Promise<ProcessTransactionResult> {
+    const { paymentAmountKd, supportAmountKd, totalFundingKd } = input;
+    const tol = new Prisma.Decimal('0.001');
+    const computedTotal = paymentAmountKd.add(supportAmountKd);
+    if (totalFundingKd.sub(computedTotal).abs().gt(tol)) {
+      throw new Error(
+        `WALLET_FUNDING_UNBALANCED: payment(${paymentAmountKd}) + support(${supportAmountKd}) ` +
+          `= ${computedTotal} ≠ totalFunding(${totalFundingKd})`,
+      );
+    }
+    if (totalFundingKd.lte(0)) {
+      throw new Error('WALLET_FUNDING_AMOUNT_MUST_BE_POSITIVE');
+    }
+
+    const lines: JournalLine[] = [];
+
+    // DEBIT: Cash / Bank (payment received from customer)
+    if (paymentAmountKd.gt(0)) {
+      lines.push({
+        accountCode: this.paymentAccount(input.paymentMethod),
+        debit: paymentAmountKd,
+        meta: {
+          transaction_type: 'PAYMENT',
+          reference_type: 'SUBSCRIPTION',
+          reference_id: input.subscriptionId,
+          customer_id: input.customerId,
+          payment_method: input.paymentMethod,
+        },
+      });
+    }
+
+    // DEBIT: Promotional Expense (company subsidy / marketing support)
+    if (supportAmountKd.gt(0)) {
+      lines.push({
+        accountCode: JOURNAL_ACCOUNTS.PROMOTIONAL_EXPENSE,
+        debit: supportAmountKd,
+        meta: {
+          transaction_type: 'SUBSIDY',
+          reference_type: 'SUBSCRIPTION',
+          reference_id: input.subscriptionId,
+          customer_id: input.customerId,
+          is_refundable: false,
+          fraud_control: 'SUBSIDY_NO_CASH_OUT',
+        },
+      });
+    }
+
+    // CREDIT: Wallet Liability (we now owe this balance to the customer)
+    lines.push({
+      accountCode: JOURNAL_ACCOUNTS.WALLET_LIABILITY,
+      credit: totalFundingKd,
+      meta: {
+        transaction_type: 'RENEWAL',
+        reference_type: 'SUBSCRIPTION',
+        reference_id: input.subscriptionId,
+        customer_id: input.customerId,
+        total_funding: totalFundingKd.toFixed(4),
+      },
+    });
+
+    this.assertZeroSum(lines);
+
+    const sourceRef = `WALLET_FUNDING:SUBSCRIPTION:${input.subscriptionId}`;
+    const entry = await this.journal.appendBalanced(db, {
+      source: 'PROCESS_TRANSACTION',
+      sourceRef,
+      actorUserId: input.actorUserId,
+      customerId: input.customerId,
+      orderId: null,
+      branchId: input.branchId ?? null,
+      effectiveAt: null,
+      allowReversal: false,
+      lines,
+    });
+
+    const totals = this.lineTotals(lines);
+    return {
+      journalEntryId: entry.id,
+      totalDebitKd: totals.debit.toFixed(4),
+      totalCreditKd: totals.credit.toFixed(4),
+    };
+  }
+
   async processTransaction(
     db: Db,
     input: ProcessTransactionInput,

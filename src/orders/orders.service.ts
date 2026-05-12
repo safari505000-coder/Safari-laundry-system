@@ -50,6 +50,7 @@ import {
   getCustomerDebtSnapshotTotalKd,
   getCustomerNetDebtFromDebtLedgerAgg,
   INVOICE_REMAINING_TOLERANCE_KD,
+  isJournalAsSourceEnabled,
 } from '../finance/debt-customer-aggregates.util';
 import { isRealDebtLedgerPayment } from '../finance/debt-ledger-payment-origin.util';
 import {
@@ -83,6 +84,14 @@ import { PassThrough } from 'node:stream';
  */
 const PAYMENT_LINK_VALIDITY_HOURS = 24;
 const PAYMENT_LINK_VALIDITY_MS = PAYMENT_LINK_VALIDITY_HOURS * 60 * 60 * 1000;
+
+/**
+ * Prisma interactive `$transaction` budget for POS / completion paths.
+ * Wallet row locks + inventory decrement can exceed 15s on slow local
+ * Postgres or under contention; otherwise the API surfaces P2028 as
+ * «انتهت مهلة معاملة قاعدة البيانات».
+ */
+const POS_ORDER_INTERACTIVE_TX = { maxWait: 20_000, timeout: 45_000 } as const;
 
 /**
  * V19.22.4 — Stale Quick-Capture threshold (milliseconds).
@@ -400,6 +409,46 @@ export class OrdersService {
     });
   }
 
+  private async autoSendDirectPaymentLink(
+    order: OrderDetail,
+    fallbackPhone?: string,
+  ): Promise<void> {
+    if (
+      order.status === OrderStatus.CANCELED ||
+      order.cashStatus !== CashStatus.UNPAID
+    ) {
+      return;
+    }
+    if (
+      order.posPaymentMethod !== PosPaymentMethod.ONLINE &&
+      order.posPaymentMethod !== PosPaymentMethod.PAYMENT_LINK
+    ) {
+      return;
+    }
+    const phone = resolveCustomerPhoneForNotify(
+      order.customer.phone,
+      order.customer.phone2,
+      fallbackPhone,
+    );
+    if (!phone.trim()) {
+      return;
+    }
+    const link = await this.paymentsService.ensurePaymentLinkForUnpaidOrder(order.id);
+    const lineItemsSummary = this.formatLineItemsBlockForNotify(order);
+    await this.customerNotifications.deliverInvoiceIssuedNow({
+      customerPhone: phone,
+      orderId: order.id,
+      invoiceLabel: this.invoiceLabelForCustomerNotify(order),
+      amountKd: order.totalPrice.toFixed(3),
+      paymentUrl: link.url,
+      lineItemsSummary: lineItemsSummary || undefined,
+    });
+    await this.prisma.order.update({
+      where: { id: order.id },
+      data: { ccCollectionPaymentWaLocked: true },
+    });
+  }
+
   private isManagerOrOwner(role: string): boolean {
     return (
       role === SafariRole.OWNER ||
@@ -669,6 +718,13 @@ export class OrdersService {
       });
     });
     this.auditOrderCreated(order, driverUserId);
+    if (order.posPaymentMethod === PosPaymentMethod.ONLINE) {
+      try {
+        await this.autoSendDirectPaymentLink(order, phoneCompact);
+      } catch (e) {
+        this.log.warn(`auto direct payment-link send failed (createQuick): ${e}`);
+      }
+    }
     await this.customerBlocking.autoBlockIfNeeded(order.customer.id);
     return order;
   }
@@ -868,7 +924,7 @@ export class OrdersService {
 
           return created.id;
         },
-        { maxWait: 10_000, timeout: 15_000 },
+        POS_ORDER_INTERACTIVE_TX,
       );
 
       const detail = await this.prisma.order.findUniqueOrThrow({
@@ -1070,7 +1126,7 @@ export class OrdersService {
 
         return bundle.id;
       },
-      { maxWait: 10_000, timeout: 15_000 },
+      POS_ORDER_INTERACTIVE_TX,
     );
 
     const orders = await this.prisma.order.findMany({
@@ -1310,6 +1366,8 @@ export class OrdersService {
         OR: [
           { cashStatus: CashStatus.UNPAID },
           { posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT },
+          { posPaymentMethod: PosPaymentMethod.ONLINE },
+          { posPaymentMethod: PosPaymentMethod.PAYMENT_LINK },
         ],
         ...(branchWhere ?? {}),
       },
@@ -1382,6 +1440,12 @@ export class OrdersService {
       const remaining = remainingByOrder.get(r.id) ?? r.totalPrice;
       if (remaining.lessThanOrEqualTo(tol)) return false;
       if (r.cashStatus === CashStatus.UNPAID) return true;
+      if (
+        r.posPaymentMethod === PosPaymentMethod.ONLINE ||
+        r.posPaymentMethod === PosPaymentMethod.PAYMENT_LINK
+      ) {
+        return true;
+      }
       if (r.posPaymentMethod === PosPaymentMethod.DEBT_ON_ACCOUNT) {
         return openDebtOrderIds.has(r.id);
       }
@@ -1398,11 +1462,24 @@ export class OrdersService {
       await this.debtVisibility.getCustomerVisibleDebtBatch(
         Array.from(new Set(filteredRows.map((r) => r.customerId))),
       );
+    const rawRemainingByCustomer = new Map<string, Prisma.Decimal>();
+    for (const row of filteredRows) {
+      const rem = remainingByOrder.get(row.id) ?? row.totalPrice;
+      const prev = rawRemainingByCustomer.get(row.customerId) ?? new Prisma.Decimal(0);
+      rawRemainingByCustomer.set(row.customerId, prev.plus(rem));
+    }
     const visibleBudgetByCustomer = new Map<string, Prisma.Decimal>();
-    for (const [customerId, debt] of visibleDebtByCustomer) {
+    for (const customerId of new Set(filteredRows.map((r) => r.customerId))) {
+      const visibleDebt = new Prisma.Decimal(
+        visibleDebtByCustomer.get(customerId)?.remainingDebtKd ?? '0',
+      );
+      const rawDebt = rawRemainingByCustomer.get(customerId) ?? new Prisma.Decimal(0);
+      // V25 — never hide valid collectible invoices because a snapshot/journal
+      // budget has not caught up yet. Keep canonical cap when it is higher,
+      // otherwise fall back to real-time per-order remaining sum.
       visibleBudgetByCustomer.set(
         customerId,
-        new Prisma.Decimal(debt.remainingDebtKd),
+        visibleDebt.greaterThan(rawDebt) ? visibleDebt : rawDebt,
       );
     }
     return filteredRows.flatMap((r) => {
@@ -1648,6 +1725,8 @@ export class OrdersService {
         OR: [
           { cashStatus: CashStatus.UNPAID },
           { posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT },
+          { posPaymentMethod: PosPaymentMethod.ONLINE },
+          { posPaymentMethod: PosPaymentMethod.PAYMENT_LINK },
         ],
         ...(branchWhere ?? {}),
       },
@@ -1673,6 +1752,12 @@ export class OrdersService {
 
     const inScope = rows.filter((r) => {
       if (r.cashStatus === CashStatus.UNPAID) return true;
+      if (
+        r.posPaymentMethod === PosPaymentMethod.ONLINE ||
+        r.posPaymentMethod === PosPaymentMethod.PAYMENT_LINK
+      ) {
+        return true;
+      }
       if (r.posPaymentMethod === PosPaymentMethod.DEBT_ON_ACCOUNT) {
         return openDebtOrderIds.has(r.id);
       }
@@ -1756,6 +1841,8 @@ export class OrdersService {
         OR: [
           { cashStatus: CashStatus.UNPAID },
           { posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT },
+          { posPaymentMethod: PosPaymentMethod.ONLINE },
+          { posPaymentMethod: PosPaymentMethod.PAYMENT_LINK },
         ],
         ...(branchWhere ?? {}),
         ...createdFilter,
@@ -1781,10 +1868,23 @@ export class OrdersService {
     const openDebtOrderIds = await this.resolveOpenDebtOrderIds(
       debtCandidates.map((r) => ({ orderId: r.id, customerId: r.customerId })),
     );
+    const remainingByOrder = await computeOrderRemainingBalancesBatch(
+      this.prisma,
+      rows.map((r) => r.id),
+    );
+    const tol = new Prisma.Decimal(INVOICE_REMAINING_TOLERANCE_KD);
 
     return rows
       .filter((r) => {
+        const rem = remainingByOrder.get(r.id) ?? r.totalPrice;
+        if (rem.lessThanOrEqualTo(tol)) return false;
         if (r.cashStatus === CashStatus.UNPAID) return true;
+        if (
+          r.posPaymentMethod === PosPaymentMethod.ONLINE ||
+          r.posPaymentMethod === PosPaymentMethod.PAYMENT_LINK
+        ) {
+          return true;
+        }
         if (r.posPaymentMethod === PosPaymentMethod.DEBT_ON_ACCOUNT) {
           return openDebtOrderIds.has(r.id);
         }
@@ -2497,6 +2597,24 @@ export class OrdersService {
     const openIds = new Set<string>();
     if (candidates.length === 0) return openIds;
 
+    // V20.4 — Journal path: per-order net on account 1300 (from R3) directly
+    // answers "is this DEBT_ON_ACCOUNT invoice still open?".  The 130-line FIFO
+    // loop below is only needed for the legacy DebtLedger waterfall.
+    if (isJournalAsSourceEnabled()) {
+      const orderIds = candidates.map((c) => c.orderId);
+      const remainingByOrder = await computeOrderRemainingBalancesBatch(
+        db,
+        orderIds,
+      );
+      const tol = new Prisma.Decimal(INVOICE_REMAINING_TOLERANCE_KD);
+      for (const { orderId } of candidates) {
+        const rem = remainingByOrder.get(orderId) ?? new Prisma.Decimal(0);
+        if (rem.greaterThan(tol)) openIds.add(orderId);
+      }
+      return openIds;
+    }
+
+    // Legacy DebtLedger path — preserved as fallback for pre-backfill data.
     const customerIds = Array.from(
       new Set(candidates.map((c) => c.customerId)),
     );
@@ -3002,7 +3120,15 @@ export class OrdersService {
       dto.status !== order.status &&
       order.cashStatus === CashStatus.UNPAID
     ) {
-      data.cashStatus = cashStatusForPaymentMethod(order.posPaymentMethod);
+      // Gateway-backed methods stay UNPAID until provider callback confirms
+      // settlement. Marking them PAID_ONLINE on delivery completion hides
+      // still-unpaid links from Collections follow-up rails.
+      const keepUnpaidUntilGateway =
+        order.posPaymentMethod === PosPaymentMethod.ONLINE ||
+        order.posPaymentMethod === PosPaymentMethod.PAYMENT_LINK;
+      if (!keepUnpaidUntilGateway) {
+        data.cashStatus = cashStatusForPaymentMethod(order.posPaymentMethod);
+      }
     }
     if (dto.status === OrderStatus.COMPLETED && dto.status !== order.status) {
       data.completedAt = new Date();
@@ -3031,12 +3157,36 @@ export class OrdersService {
             userId,
           );
         }
+        // V25 Ledger Enforcement: emit POS_SALE_COMPLETED when this
+        // path transitions the order to COMPLETED — matches what
+        // posCheckout and PaymentsService finalize already do so the
+        // Unified Ledger / Executive P&L never under-count revenue.
+        // Gateway-backed methods (ONLINE / PAYMENT_LINK) are skipped
+        // because their revenue is recognised by the gateway callback.
+        if (
+          transitionedToCompleted &&
+          order.posPaymentMethod !== PosPaymentMethod.ONLINE &&
+          order.posPaymentMethod !== PosPaymentMethod.PAYMENT_LINK
+        ) {
+          await this.generalLedger.append(tx, {
+            entryType: GeneralLedgerEntryType.POS_SALE_COMPLETED,
+            amount: order.totalPrice,
+            memo: 'POS checkout (driver/manager completion)',
+            orderId,
+            customerId: order.customerId,
+            actorUserId: userId,
+            metadata: {
+              posPaymentMethod: order.posPaymentMethod ?? 'CASH',
+              source: 'UPDATE_ORDER_COMPLETION',
+            },
+          });
+        }
         return tx.order.findUniqueOrThrow({
           where: { id: orderId },
           select: orderDetailSelect,
         });
       },
-      { maxWait: 10_000, timeout: 15_000 },
+      POS_ORDER_INTERACTIVE_TX,
     );
 
     if (notifyDriverManualCollection) {
@@ -3055,6 +3205,17 @@ export class OrdersService {
           amountKd: updated.totalPrice.toFixed(3),
           paymentMethodLabelAr,
         });
+      }
+    }
+    if (
+      transitionedToCompleted &&
+      (updated.posPaymentMethod === PosPaymentMethod.ONLINE ||
+        updated.posPaymentMethod === PosPaymentMethod.PAYMENT_LINK)
+    ) {
+      try {
+        await this.autoSendDirectPaymentLink(updated);
+      } catch (e) {
+        this.log.warn(`auto direct payment-link send failed (updateOrder): ${e}`);
       }
     }
 

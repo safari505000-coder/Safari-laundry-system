@@ -288,6 +288,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         persistSession(fresh.accessToken, fresh.refreshToken);
         return fresh.accessToken;
       } catch {
+        // Multi-tab safety: another tab may have already rotated the single-use
+        // refresh token. Try once with the latest value from localStorage
+        // before forcing a logout in this tab.
+        const latest = readStoredRefreshToken();
+        if (latest && latest !== rt) {
+          refreshTokenRef.current = latest;
+          try {
+            const fresh = await postRefreshToken(latest);
+            persistSession(fresh.accessToken, fresh.refreshToken);
+            return fresh.accessToken;
+          } catch {
+            // fall through to clearSession below
+          }
+        }
         clearSession();
         return null;
       }
@@ -296,6 +310,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setTokenRefreshHandler(null);
     };
   }, [persistSession, clearSession]);
+
+  // Cross-tab auth sync:
+  // keep access/refresh/user/sessionKind aligned across open tabs so
+  // single-use refresh-token rotation in one tab doesn't unexpectedly
+  // log out another active tab.
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (
+        event.key !== null &&
+        event.key !== TOKEN_KEY &&
+        event.key !== REFRESH_TOKEN_KEY &&
+        event.key !== USER_KEY &&
+        event.key !== SESSION_KIND_KEY &&
+        event.key !== OWNER_BRANCH_KEY
+      ) {
+        return;
+      }
+      const nextToken = readStoredToken();
+      const nextUser = readStoredUser();
+      const nextSessionKind = readStoredSessionKind();
+      const nextOwnerBranchId = readOwnerBranchId();
+      const nextRefreshToken = readStoredRefreshToken();
+      refreshTokenRef.current = nextRefreshToken;
+      setToken(nextToken);
+      setUser(nextUser);
+      setSessionKind(nextSessionKind);
+      setOwnerBranchIdState(nextOwnerBranchId);
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
 
   const hasRole = useCallback(
     (...roles: SafariRole[]) => {

@@ -1,9 +1,10 @@
 /**
  * LedgerController — Stage A double-entry projection API.
  *
- * Five endpoints, all read-only, all OWNER / GENERAL_MANAGER /
+ * Six endpoints, all read-only, all OWNER / GENERAL_MANAGER /
  * ACCOUNTANT only:
  *
+ *   GET /api/finance/ledger/bank-statement/:entityId — customer AR (1300) journal view
  *   GET /api/finance/ledger/summary               — global + per-account totals
  *   GET /api/finance/ledger/driver/:id            — DRIVER_<id> account view
  *   GET /api/finance/ledger/manager/:id           — MANAGER_<id> account view
@@ -49,6 +50,7 @@ import {
   LedgerTransactionsResponseDto,
 } from './dto/ledger-response.dto';
 import { LedgerProjectionService } from './ledger-projection.service';
+import { LedgerBankStatementService } from './ledger-bank-statement.service';
 
 const FINANCE_ROLES: SafariRole[] = [
   SafariRole.OWNER,
@@ -87,7 +89,23 @@ function ensureFinanceRole(user: JwtUser): void {
 @Roles(...FINANCE_ROLES)
 @Permissions(AppPermission.VIEW_FINANCIAL_REPORTS)
 export class LedgerController {
-  constructor(private readonly projection: LedgerProjectionService) {}
+  constructor(
+    private readonly projection: LedgerProjectionService,
+    private readonly bankStatement: LedgerBankStatementService,
+  ) {}
+
+  @Get('bank-statement/:entityId')
+  @ApiOkResponse({
+    description:
+      'Read-only AR (1300) journal lines for a customer with running balance.',
+  })
+  async getBankStatement(
+    @CurrentUser() user: JwtUser,
+    @Param('entityId', ParseUUIDPipe) entityId: string,
+  ) {
+    ensureFinanceRole(user);
+    return this.bankStatement.getBankStatement(entityId);
+  }
 
   @Get('summary')
   @ApiOkResponse({ type: LedgerSummaryResponseDto })

@@ -67,7 +67,8 @@ export class BankDepositsService {
     managerId: string,
     fileUrl: string,
     depositType: BankDepositType,
-    amountKd: number,
+    /** V25 Controller Math Purge: accepts string or number; Prisma.Decimal conversion happens here. */
+    amountKdRaw: string | number,
     shiftId?: string | null,
     /**
      * Actor role from JWT. Optional for backwards compatibility with
@@ -77,7 +78,13 @@ export class BankDepositsService {
      */
     actorRole?: string | null,
   ) {
-    if (!Number.isFinite(amountKd) || amountKd < 0) {
+    let amountKd: Prisma.Decimal;
+    try {
+      amountKd = new Prisma.Decimal(amountKdRaw.toString());
+    } catch {
+      throw new BadRequestException('Invalid amount');
+    }
+    if (!amountKd.isFinite() || amountKd.lt(0)) {
       throw new BadRequestException('Invalid amount');
     }
     if (shiftId) {
@@ -106,7 +113,7 @@ export class BankDepositsService {
     };
     if (
       depositType === BankDepositType.CASH_DEPOSIT_SLIP &&
-      amountKd > 0
+      amountKd.gt(0)
     ) {
       const heldAgg = await this.prisma.managerCashCustody.aggregate({
         where: {
@@ -124,8 +131,7 @@ export class BankDepositsService {
       const heldDec = heldAgg._sum.amountKd
         ? new Prisma.Decimal(heldAgg._sum.amountKd.toString())
         : new Prisma.Decimal(0);
-      const amountDec = new Prisma.Decimal(amountKd.toFixed(4));
-      const gapDec = amountDec.minus(heldDec);
+      const gapDec = amountKd.minus(heldDec);
       coverage = {
         heldKd: heldDec.toFixed(4),
         heldBagCount: heldAgg._count._all,
@@ -137,7 +143,7 @@ export class BankDepositsService {
     const row = await this.prisma.bankDepositLog.create({
       data: {
         depositType,
-        amountKd: new Prisma.Decimal(amountKd.toFixed(4)),
+        amountKd: amountKd.toDecimalPlaces(4, Prisma.Decimal.ROUND_HALF_EVEN),
         receiptImageUrl: fileUrl,
         shiftId: shiftId ?? null,
         uploadedById: managerId,

@@ -10,6 +10,10 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SystemSettingsService } from '../system-settings/system-settings.service';
 import { summariseDebtHolds } from './debt-holds.summary';
 import { ListDebtHoldsDto } from './dto/list-debt-holds.dto';
+import {
+  computeOrderRemainingBalancesBatch,
+  isJournalAsSourceEnabled,
+} from '../finance/debt-customer-aggregates.util';
 
 /**
  * V19.16 / V19.17 — the debt-hold domain.
@@ -78,7 +82,20 @@ export class DebtHoldsService {
     }
     const orderIds = orders.map((o) => o.id);
 
-    // Debt created AGAINST this employee's orders, grouped by source.
+    // V20.4 — Journal path: per-order net on account 1300 via R3.
+    if (isJournalAsSourceEnabled()) {
+      const remainingByOrder = await computeOrderRemainingBalancesBatch(
+        this.prisma,
+        orderIds,
+      );
+      let total = new Prisma.Decimal(0);
+      for (const rem of remainingByOrder.values()) {
+        if (rem.greaterThan(0)) total = total.add(rem);
+      }
+      return { debt: total, debtKd: total.toFixed(4) };
+    }
+
+    // Legacy DebtLedger path — preserved as fallback for pre-backfill data.
     const ledger = await this.prisma.debtLedgerEntry.findMany({
       where: { orderId: { in: orderIds } },
       select: {

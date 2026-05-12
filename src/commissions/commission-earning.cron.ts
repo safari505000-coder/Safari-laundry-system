@@ -10,6 +10,10 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemSettingsService } from '../system-settings/system-settings.service';
 import { CommissionEarningService } from './commission-earning.service';
+import {
+  computeOrderRemainingBalancesBatch,
+  isJournalAsSourceEnabled,
+} from '../finance/debt-customer-aggregates.util';
 
 /**
  * V19.16 — idempotent cron that turns existing Order / DebtLedger
@@ -178,6 +182,21 @@ export class CommissionEarningCron {
 
     for (const c of candidates) {
       if (!c.sourceOrderId) continue;
+
+      // V20.4 — Journal path: per-order net on 1300 (from R3) tells us
+      // whether the order is cleared without reading DebtLedger.
+      if (isJournalAsSourceEnabled()) {
+        const remMap = await computeOrderRemainingBalancesBatch(this.prisma, [
+          c.sourceOrderId,
+        ]);
+        const rem = remMap.get(c.sourceOrderId)?.toNumber() ?? 0;
+        if (rem <= 0.001) {
+          await this.earning.releaseAfterCollectionForOrder(c.sourceOrderId);
+        }
+        continue;
+      }
+
+      // Legacy DebtLedger path — fallback for pre-backfill data.
       const agg = await this.prisma.debtLedgerEntry.groupBy({
         by: ['source'],
         where: { orderId: c.sourceOrderId },

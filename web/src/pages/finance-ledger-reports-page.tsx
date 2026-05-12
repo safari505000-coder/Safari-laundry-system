@@ -20,7 +20,7 @@
  * re-asserts OWNER / GENERAL_MANAGER / ACCOUNTANT on every endpoint.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Loader2, RefreshCw, ShieldCheck, ShieldAlert } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
@@ -401,6 +401,14 @@ export function FinanceLedgerReportsPage() {
         })}
         tone="blue"
       />
+      <p className="text-sm">
+        <Link
+          to="/finance/ledger/bank-statement"
+          className="text-primary underline underline-offset-4"
+        >
+          كشف ذمم عميل (عرض بنكي — قراءة فقط)
+        </Link>
+      </p>
 
       <Card>
         <CardHeader className="pb-3">

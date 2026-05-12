@@ -6,6 +6,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  Matches,
   IsUUID,
 } from 'class-validator';
 
@@ -60,4 +61,31 @@ export class ActivateSubscriptionDto {
   @IsNotEmpty()
   @IsIn(SUBSCRIPTION_ACTIVATION_PAYMENT_METHODS as unknown as string[])
   paymentMethod!: SubscriptionActivationPaymentMethod;
+
+  /**
+   * V25 Deposit-then-Settle — optional override for the company subsidy
+   * (marketing support) amount credited alongside the customer's payment.
+   *
+   * When omitted the system derives the subsidy from the plan:
+   *   subsidy = max(0, plan.actualBalance − plan.salePrice)
+   *
+   * Providing an explicit value lets the operator record a custom support
+   * amount (e.g. a promotional campaign beyond the standard plan subsidy)
+   * without requiring a dedicated plan. The value MUST satisfy:
+   *   paymentReceived + companySupportAmountKd = totalWalletFunding
+   * which is validated server-side before any wallet mutation.
+   *
+   * Must be a canonical 4dp KWD string ("0.0000" to suppress subsidy).
+   */
+  @ApiPropertyOptional({
+    example: '5.0000',
+    description:
+      'V25 — Company marketing-support subsidy in KWD (4dp). Defaults to max(0, plan.actualBalance − plan.salePrice).',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d+(\.\d{1,4})?$/, {
+    message: 'companySupportAmountKd must be a canonical KWD string with up to 4 decimal places',
+  })
+  companySupportAmountKd?: string;
 }

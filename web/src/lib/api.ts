@@ -2119,6 +2119,13 @@ export type OutstandingDebtWithoutLinkRow = {
   invoices: Array<{
     invoiceId: string;
     invoiceLabel: string;
+    /** Gross invoice total before partial settlements. */
+    originalTotalKd: string;
+    /** Remaining collectible balance (server-authoritative). */
+    remainingBalanceKd: string;
+    /** Derived server-side payment state for collections visibility. */
+    settlementStatus: 'UNPAID' | 'PARTIAL';
+    /** Back-compat alias used by existing running-total UI (equals remaining). */
     amountKd: string;
     issuedAt: string;
   }>;
@@ -4001,6 +4008,11 @@ export type IssuedInvoicesReport = {
    */
   totals: {
     totalKd: string;
+    /**
+     * V25 Frontend Purge — server-computed gross KNET total so KnetAudit
+     * never reduces price strings locally with parseFloat.
+     */
+    knetTotalKd: string;
     cashCount: number;
     knetCount: number;
   };
@@ -7113,6 +7125,27 @@ export function getLedgerReconciliation(
 ) {
   return apiJson<LedgerReconciliationResponse>(
     `/api/finance/ledger/reconciliation${buildLedgerQs(params)}`,
+    { token },
+  );
+}
+
+/** V25 — read-only customer AR bank statement (journal 1300 lines). */
+export type LedgerBankStatementResponse = {
+  entityId: string;
+  closingBalanceKd: string;
+  rows: Array<{
+    lineId: string;
+    entryId: string;
+    dateIso: string;
+    description: string;
+    movementKd: string;
+    runningBalanceKd: string;
+  }>;
+};
+
+export function getLedgerBankStatement(token: string, entityId: string) {
+  return apiJson<LedgerBankStatementResponse>(
+    `/api/finance/ledger/bank-statement/${entityId}`,
     { token },
   );
 }

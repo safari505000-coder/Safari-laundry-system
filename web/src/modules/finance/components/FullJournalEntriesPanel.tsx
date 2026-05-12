@@ -34,6 +34,10 @@ export type FullJournalEntry = {
   entryId: string;
   source: string;
   sourceRef: string;
+  /** Arabic expansion of `sourceRef` from API (optional for older servers). */
+  referenceLabel?: string;
+  /** When resolvable: `الباقة: … · الدفع: …`. */
+  contextLabel?: string;
   description: string;
   createdAt: string;
   totalDebitKd: string;
@@ -49,14 +53,14 @@ const ARABIC_ACCOUNT_NAME: Record<string, string> = {
   ACCOUNTS_RECEIVABLE: 'ذمم العملاء',
   WALLET_LIABILITY: 'رصيد عملاء (التزام)',
   REVENUE: 'إيرادات',
-  REVENUE_RETURNS: 'مرتجعات الإيرادات',
-  ADJUSTMENTS: 'تسويات',
-  DEBT_DISCOUNTS: 'خصومات الديون (مصروف)',
+  REVENUE_RETURNS: 'عكس إيراد / مرتجعات',
+  ADJUSTMENTS: 'حساب تسويات',
+  DEBT_DISCOUNTS: 'خصومات الديون (حسن نية)',
   PROMOTIONAL_EXPENSE: 'مصروف ترويجي',
 };
 
 function arabicAccountLabel(code: string, name: string): string {
-  return ARABIC_ACCOUNT_NAME[name] ?? `${name} (${code})`;
+  return ARABIC_ACCOUNT_NAME[name] ?? `حساب ${code}`;
 }
 
 function FullJournalEntryRow({
@@ -85,8 +89,24 @@ function FullJournalEntryRow({
       >
         <div className="flex flex-col gap-1">
           <span className="text-sm font-semibold">{entry.description}</span>
+          {entry.contextLabel?.trim() ? (
+            <span className="text-xs font-medium leading-relaxed text-sky-900/90 dark:text-sky-200/90">
+              {entry.contextLabel.trim()}
+            </span>
+          ) : null}
           <span className="text-xs text-muted-foreground">
-            {date.toLocaleString()} · <span dir="ltr">{entry.sourceRef}</span>
+            {date.toLocaleString('ar-KW', {
+              dateStyle: 'short',
+              timeStyle: 'medium',
+            })}{' '}
+            ·{' '}
+            <span
+              dir="rtl"
+              className="inline-block max-w-[min(100%,72ch)] break-words"
+              title={`مرجع تقني: ${entry.sourceRef}`}
+            >
+              {entry.referenceLabel?.trim() || entry.sourceRef}
+            </span>
           </span>
         </div>
         <div className="flex items-center gap-3">
@@ -132,10 +152,10 @@ function FullJournalEntryRow({
                         {arabicAccountLabel(line.accountCode, line.accountName)}
                       </span>
                       <span
-                        className="text-[11px] text-muted-foreground"
+                        className="text-[11px] text-muted-foreground tabular-nums"
                         dir="ltr"
                       >
-                        {line.accountCode} · {line.accountName}
+                        رمز الحساب {line.accountCode}
                       </span>
                     </div>
                   </td>

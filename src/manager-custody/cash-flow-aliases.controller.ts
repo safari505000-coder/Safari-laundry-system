@@ -248,16 +248,16 @@ export class CashFlowAliasesController {
       throw new BadRequestException('Receipt file is required');
     }
     const depositType = parseDepositType(depositTypeRaw);
-    const amount = Number.parseFloat(amountRaw ?? '');
-    if (!Number.isFinite(amount)) {
-      throw new BadRequestException('amount is required and must be a number');
+    // V25 Controller Math Purge: raw string forwarded; Decimal parsing inside BankDepositsService.
+    if (!amountRaw?.trim()) {
+      throw new BadRequestException('amount is required');
     }
     const url = `/uploads/bank-deposits/${file.filename}`;
     return this.bankDeposits.createFromUpload(
       user.userId,
       url,
       depositType,
-      amount,
+      amountRaw,
       shiftId?.trim() || undefined,
       user.role,
     );

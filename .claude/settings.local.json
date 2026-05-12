@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir D:\\\\Safari-ERP *)",
+      "Bash(dir D:\\\\Safari-ERP\\\\src *)",
+      "Bash(dir D:\\\\Safari-ERP\\\\web\\\\src *)",
+      "Bash(dir D:\\\\Safari-ERP\\\\web\\\\src\\\\modules *)",
+      "Bash(Get-Content *)",
+      "Bash(dir D:\\\\Safari-ERP\\\\src\\\\auth *)",
+      "Bash(dir D:\\\\Safari-ERP\\\\src\\\\permissions *)",
+      "Bash(dir \"D:\\\\Safari-ERP\\\\web\\\\src\\\\modules\\\\owner\")",
+      "Bash(dir \"D:\\\\Safari-ERP\\\\web\\\\src\\\\modules\\\\accountant\")",
+      "Bash(dir \"D:\\\\Safari-ERP\\\\web\\\\src\\\\modules\\\\driver\")",
+      "Bash(dir \"D:\\\\Safari-ERP\\\\web\\\\src\\\\modules\\\\call-center\")",
+      "Bash(dir \"D:\\\\Safari-ERP\\\\web\\\\src\\\\modules\\\\manager\")",
+      "Bash(dir \"D:\\\\Safari-ERP\\\\web\\\\src\\\\modules\\\\finance\")",
+      "Bash(dir \"D:\\\\Safari-ERP\\\\web\\\\src\\\\modules\\\\owner\\\\pages\")",
+      "Bash(dir \"D:\\\\Safari-ERP\\\\web\\\\src\\\\modules\\\\accountant\\\\pages\")",
+      "Bash(dir \"D:\\\\Safari-ERP\\\\web\\\\src\\\\modules\\\\driver\\\\pages\")",
+      "Bash(dir \"D:\\\\Safari-ERP\\\\web\\\\src\\\\modules\\\\call-center\\\\pages\")",
+      "Bash(dir \"D:\\\\Safari-ERP\\\\web\\\\src\\\\modules\\\\manager\\\\pages\")",
+      "Bash(dir \"D:\\\\Safari-ERP\\\\web\\\\src\\\\modules\\\\collections\\\\pages\")",
+      "Bash(dir \"D:\\\\Safari-ERP\\\\web\\\\src\\\\modules\\\\collections-workflow\\\\pages\")",
+      "Bash(dir \"D:\\\\Safari-ERP\\\\web\\\\src\\\\modules\\\\shared\")",
+      "Bash(dir \"D:\\\\Safari-ERP\\\\web\\\\src\\\\modules\\\\fleet-supervisor\")"
+    ]
+  }
+}

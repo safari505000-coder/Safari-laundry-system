@@ -46,22 +46,14 @@ function monthRangeIso(ym: string): { from: string; to: string } {
   return { from: from.toISOString(), to: to.toISOString() };
 }
 
+/**
+ * V25 Frontend Purge — local payroll-net calculation removed.
+ * The backend already returns `PayrollRow.netSalaryKd` (V21 Phase 5,
+ * computed via `mapPayrollRow` in `src/payroll/payroll.response.ts`).
+ * All call sites now read the server-authoritative value directly.
+ */
 function payrollNetKd(row: PayrollRow): string {
-  const b = Number.parseFloat(row.basicSalary);
-  const a = Number.parseFloat(row.allowances);
-  const d = Number.parseFloat(row.deductions);
-  // V19.20 — mirrors backend `PayrollService.netPay`. Loan instalment
-  // subtracts alongside deductions + debt-hold; commission + release
-  // add. Totals must match the A4 payslip to the 4th decimal.
-  const c = Number.parseFloat(row.commissionAmount ?? '0');
-  const h = Number.parseFloat(row.debtHoldAmount ?? '0');
-  const r = Number.parseFloat(row.debtReleaseAmount ?? '0');
-  const l = Number.parseFloat(row.loanDeduction ?? '0');
-  const safe = (n: number) => (Number.isFinite(n) ? n : 0);
-  const n =
-    safe(b) + safe(a) + safe(c) + safe(r) - safe(d) - safe(h) - safe(l);
-  if (!Number.isFinite(n)) return '0.0000';
-  return n.toFixed(4);
+  return row.netSalaryKd ?? '0.0000';
 }
 
 export function PayrollPage() {

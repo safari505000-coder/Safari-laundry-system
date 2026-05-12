@@ -1,0 +1,20 @@
+[33m293ceb3[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m feat(v25): add multi-invoice settlement link workflow
+[33m0d49a49[m fix(ux): remove carriedBalanceKd from subscription box entirely — cards below suffice
+[33m7509612[m fix(ux): hide negative carriedBalanceKd from subscription box — pre-settlement snapshot is misleading
+[33meecb320[m fix(ux): show accurate hint for negative carriedBalanceKd in subscription box
+[33m4db787c[m feat(ux): show plan actual balance in subscription box + settlement amount inline
+[33m06d4a4b[m feat(ux): add total-collected card to ledger overview — shows subscription settlements clearly
+[33m5e571a1[m fix(ux): clarify subscription activation carriedBalance labels and tone
+[33m8acbaf4[m fix(v25): correct /api/api/ double-prefix in timeline controller + document editor exemption
+[33m5b11083[m feat(v25): enforce server-authoritative financial math — frontend purge
+[33me153d45[m fix(finance): align customer debt displays with banking core
+[33m2e39024[m fix(di): break AuthModule cycle via DebtVisibility forwardRef
+[33me0f52fe[m fix(finance): enforce live Journal AR for debt UI surfaces
+[33m74abc09[m fix(finance): force 360 and collections to banking core debt
+[33m540ade0[m fix(finance): make Journal AR the canonical customer debt source
+[33m94c6d3e[m fix(realtime): read JWT role for financial SSE streams
+[33md6022b0[m fix(deploy): force rebuild and sync V25 logic
+[33m7339a07[m feat(finance): rebuild debt center with smart
+[33mf94662e[m security(auth): extend JWT expiration to 24h & implement silent-refresh for SSE
+[33m80811ca[m docs(scorecard): §29 — Production Data Reset (V24 Day-0 go-live)
+[33meb31475[m docs(scorecard): §28 — V24 Station 2 Published to Production

@@ -166,7 +166,7 @@ export function CollectionsReportPage() {
     typeof outstanding.data.totalDueKd !== 'string' &&
     typeof outstanding.data.totalDueKd !== 'number'
   ) {
-    throw new Error('Missing financial source');
+    throw new Error('المصدر المالي غير متاح');
   }
 
   const driverSummaries = outstanding.data?.driverSummaries ?? [];
@@ -309,7 +309,7 @@ export function CollectionsReportPage() {
   }, [outstanding.data]);
 
   const printDateLabel = useMemo(() => {
-    return new Intl.DateTimeFormat('en-GB', {
+    return new Intl.DateTimeFormat('ar-KW', {
       dateStyle: 'medium',
       timeStyle: 'short',
     }).format(new Date());
@@ -382,7 +382,7 @@ export function CollectionsReportPage() {
 
       <section
         className="grid grid-cols-2 gap-3 print:hidden sm:grid-cols-4"
-        aria-label="kpi"
+        aria-label="مؤشرات التحصيل"
       >
         <KpiTile
           label="إجمالي المديونية"
@@ -553,7 +553,7 @@ function FiltersBar({
   return (
     <section
       className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 shadow-sm print:hidden"
-      aria-label="filters"
+      aria-label="مرشحات التحصيل"
     >
       <div className="flex items-center gap-2 text-sm font-semibold">
         <Filter className="size-4" aria-hidden />
@@ -700,7 +700,7 @@ function DriversTable({
   return (
     <section
       className="rounded-2xl border border-border bg-card p-4 shadow-sm"
-      aria-label="drivers-summary"
+      aria-label="ملخص التحصيل حسب السائق"
     >
       <header className="mb-3 flex items-center gap-2">
         <Truck className="size-4 text-primary" aria-hidden />
@@ -785,7 +785,7 @@ function BranchTable({
   return (
     <section
       className="rounded-2xl border border-border bg-card p-4 shadow-sm"
-      aria-label="branches-summary"
+      aria-label="ملخص التحصيل حسب الفرع"
     >
       <header className="mb-3 flex items-center gap-2">
         <Building2 className="size-4 text-primary" aria-hidden />
@@ -843,13 +843,13 @@ function PaymentLinksTable({
   return (
     <section
       className="rounded-2xl border border-border bg-card p-4 shadow-sm"
-      aria-label="payment-links"
+      aria-label="روابط الدفع غير المحصلة"
     >
       <header className="mb-3 flex items-center gap-2">
         <MessageCircle className="size-4 text-emerald-600" aria-hidden />
         <h2 className="text-sm font-semibold">روابط الدفع غير المحصّلة</h2>
         <span className="ms-auto text-[11px] text-muted-foreground">
-          أزرار الإجراءات تستخدم نفس قنوات WhatsApp و الاتصال الحالية
+          أزرار الإجراءات تستخدم نفس قنوات واتساب والاتصال الحالية
         </span>
       </header>
 
@@ -1003,11 +1003,11 @@ function PendingDebtsWithoutLinksTable({
   return (
     <section
       className="rounded-2xl border border-amber-200 bg-amber-50/40 p-4 shadow-sm dark:border-amber-900/60 dark:bg-amber-950/20"
-      aria-label="pending-debts-without-links"
+      aria-label="مديونيات معلقة بلا روابط دفع"
     >
       <header className="mb-3 flex items-center gap-2">
         <Link2 className="size-4 text-amber-700 dark:text-amber-300" aria-hidden />
-        <h2 className="text-sm font-semibold">Pending Debts for Collection</h2>
+        <h2 className="text-sm font-semibold">المديونيات المعلّقة للتحصيل</h2>
         <span className="ms-auto text-[11px] text-muted-foreground">
           ديون مفتوحة بلا روابط دفع نشطة
         </span>
@@ -1036,6 +1036,11 @@ function PendingDebtsWithoutLinksTable({
             const allSelected =
               row.invoices.length > 0 && invoiceIds.every((id) => selectedSet.has(id));
             const selectedCount = selectedIds.length;
+            // @V24-LEGACY-MATH-EXEMPTION: selection-driven running total.
+            // The backend cannot pre-compute this — it reflects which
+            // invoices the operator has checked in real-time.
+            // The actual settlement amount is re-validated server-side by
+            // `POST /api/finance/generate-settlement-link`.
             const runningTotalKd = sumKwdStringsPrecise(
               row.invoices
                 .filter((inv) => selectedSet.has(inv.invoiceId))
@@ -1087,10 +1092,11 @@ function PendingDebtsWithoutLinksTable({
                           }
                           aria-label={`تحديد كل فواتير ${row.customerName}`}
                         />
-                        Select All
+                        تحديد الكل
                       </label>
                       <div className="text-xs text-amber-900 dark:text-amber-100">
-                        Running Total: <span className="font-semibold">{formatKwd(runningTotalKd)}</span>
+                        الإجمالي المحدد:{' '}
+                        <span className="font-semibold">{formatKwd(runningTotalKd)}</span>
                       </div>
                     </div>
 
@@ -1100,7 +1106,7 @@ function PendingDebtsWithoutLinksTable({
                           <tr>
                             <th className="p-2 text-start">تحديد</th>
                             <th className="p-2 text-start">الفاتورة</th>
-                            <th className="p-2 text-end">المبلغ</th>
+                            <th className="p-2 text-end">المتبقي</th>
                             <th className="p-2 text-end">التاريخ</th>
                           </tr>
                         </thead>
@@ -1128,9 +1134,15 @@ function PendingDebtsWithoutLinksTable({
                                     aria-label={`تحديد الفاتورة ${inv.invoiceLabel}`}
                                   />
                                 </td>
-                                <td className="p-2 font-medium">{inv.invoiceLabel}</td>
+                                <td className="p-2">
+                                  <div className="font-medium">{inv.invoiceLabel}</div>
+                                  <div className="text-[11px] text-muted-foreground">
+                                    الأصلي: {formatKwd(inv.originalTotalKd)} · المتبقي:{' '}
+                                    {formatKwd(inv.remainingBalanceKd)}
+                                  </div>
+                                </td>
                                 <td className="p-2 text-end tabular-nums font-semibold text-amber-800 dark:text-amber-200">
-                                  {formatKwd(inv.amountKd)}
+                                  {formatKwd(inv.remainingBalanceKd)}
                                 </td>
                                 <td className="p-2 text-end text-xs text-muted-foreground">
                                   {formatRelativeAr(inv.issuedAt)}
@@ -1155,7 +1167,7 @@ function PendingDebtsWithoutLinksTable({
                         ) : (
                           <Link2 className="me-1 size-3.5" aria-hidden />
                         )}
-                        Generate & Send Link
+                        إنشاء وإرسال الرابط
                       </Button>
                     </div>
                   </div>

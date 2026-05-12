@@ -188,6 +188,51 @@ export function absKwdString(s: string | number | null | undefined): string {
 }
 
 /**
+ * صافي رصيد ذمم العميل من اليومية (مجموع مدين − دائن على 1300)، للعرض فقط.
+ * - مدين: الرصيد التراكمي موجبًا (العميل عليه ذمم للشركة).
+ * - دائن: سالب (رصيد لصالح العميل).
+ * - متوازن: صفر.
+ */
+export function formatArCustomerBalanceWithSide(
+  kd: string | null | undefined,
+): {
+  amountDisplay: string;
+  sideLabel: string;
+  fullLabel: string;
+} {
+  const micro = kwdToMicroFils(kd);
+  const abs4 = absKwdString(kd);
+  const amountDisplay = formatKwdAmount(abs4);
+  if (micro === 0n) {
+    return {
+      amountDisplay,
+      sideLabel: 'متوازن',
+      fullLabel: `${amountDisplay} متوازن`,
+    };
+  }
+  if (micro > 0n) {
+    return {
+      amountDisplay,
+      sideLabel: 'مدين',
+      fullLabel: `${amountDisplay} مدين`,
+    };
+  }
+  return {
+    amountDisplay,
+    sideLabel: 'دائن',
+    fullLabel: `${amountDisplay} دائن`,
+  };
+}
+
+/** سطر واحد للملخص مع لاحقة د.ك الصياغية. */
+export function formatArCustomerBalanceSummaryLine(
+  kd: string | null | undefined,
+): string {
+  const { amountDisplay, sideLabel } = formatArCustomerBalanceWithSide(kd);
+  return `${amountDisplay}${KWD_SUFFIX} · ${sideLabel}`;
+}
+
+/**
  * RENDERING-ONLY scalar conversion of a KWD string for chart geometry.
  *
  * SVG/canvas/chart libraries need a finite Number for pixel positioning.

@@ -748,6 +748,8 @@ export class CallCenterService {
           autoCloseInvoices: dto.autoCloseInvoices === true,
           paymentMethod: dto.paymentMethod,
           skipPrepaidAutoReconcile: true,
+          // V25 Deposit-then-Settle: forward optional company support override.
+          companySupportAmountKd: dto.companySupportAmountKd,
         });
         const customer = await tx.customer.findUniqueOrThrow({
           where: { id: dto.customerId },

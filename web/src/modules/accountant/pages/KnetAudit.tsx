@@ -177,15 +177,16 @@ export function KnetAudit() {
     if (!report) {
       return { gross: 0, feeEst: 0 };
     }
-    const knet = report.rows.filter((r) => r.posPaymentMethod === 'KNET');
-    const prices = knet.map((r) => r.totalPrice);
-    const gross = prices.reduce(
-      (a, s) => a + Number.parseFloat(s || '0'),
-      0,
-    );
+    // V25 Frontend Purge: use server-computed knetTotalKd instead of
+    // local reduce + parseFloat. Fee estimate still needs individual
+    // prices for per-transaction rule application.
+    const gross = Number.parseFloat(report.totals.knetTotalKd ?? '0') || 0;
+    const knetPrices = report.rows
+      .filter((r) => r.posPaymentMethod === 'KNET')
+      .map((r) => r.totalPrice);
     const feeEst =
       feeConfig ?
-        sumEstimatedKnetFees(prices, {
+        sumEstimatedKnetFees(knetPrices, {
           knetFlatKd: feeConfig.knetFlatKd,
           knetPercentOfGross: feeConfig.knetPercentOfGross,
           knetRule: feeConfig.knetRule,

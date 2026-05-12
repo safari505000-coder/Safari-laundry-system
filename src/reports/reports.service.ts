@@ -168,6 +168,15 @@ export class ReportsService {
     const totalKd = minorToAmountString(
       sumOrderMinors(rows.map((r) => ({ totalPrice: r.totalPrice }))),
     );
+    // V25 Frontend Purge: compute KNET gross total server-side so KnetAudit
+    // page never needs a client-side reduce + parseFloat on price strings.
+    const knetTotalKd = minorToAmountString(
+      sumOrderMinors(
+        rows
+          .filter((r) => r.posPaymentMethod === PosPaymentMethod.KNET)
+          .map((r) => ({ totalPrice: r.totalPrice })),
+      ),
+    );
     let cashCount = 0;
     let knetCount = 0;
     for (const r of rows) {
@@ -180,6 +189,7 @@ export class ReportsService {
       count: rows.length,
       totals: {
         totalKd,
+        knetTotalKd,
         cashCount,
         knetCount,
       },

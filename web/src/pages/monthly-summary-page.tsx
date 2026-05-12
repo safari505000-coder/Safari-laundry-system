@@ -33,7 +33,7 @@ import {
   type PayrollRow,
   type ExpensesSummaryResponse,
 } from '@/lib/api';
-import { formatKwdLabel, formatSignedKwdLabel } from '@/lib/kwd';
+import { formatKwdLabel, formatSignedKwdLabel, sumKwdStrings } from '@/lib/kwd';
 import {
   FilterBar,
   FilterField,
@@ -735,16 +735,12 @@ export function PayrollTab({
     () => rows.filter((r) => r.status === 'PAID'),
     [rows],
   );
-  const totalNetKd = useMemo(() => {
-    let sum = 0;
-    for (const r of paid) {
-      const b = Number.parseFloat(r.basicSalary || '0');
-      const a = Number.parseFloat(r.allowances || '0');
-      const d = Number.parseFloat(r.deductions || '0');
-      sum += b + a - d;
-    }
-    return sum.toFixed(4);
-  }, [paid]);
+  // V25 Frontend Purge: use server-computed netSalaryKd from backend mapPayrollRow.
+  // Never reconstruct b+a-d locally — that path is now deleted.
+  const totalNetKd = useMemo(
+    () => sumKwdStrings(paid.map((r) => r.netSalaryKd ?? '0')),
+    [paid],
+  );
 
   return (
     <div className="space-y-3">
@@ -808,12 +804,7 @@ export function PayrollTab({
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r) => {
-                    const b = Number.parseFloat(r.basicSalary || '0');
-                    const a = Number.parseFloat(r.allowances || '0');
-                    const d = Number.parseFloat(r.deductions || '0');
-                    const net = (b + a - d).toFixed(4);
-                    return (
+                  {rows.map((r) => (
                       <tr
                         key={r.id}
                         className="border-b border-border/50 last:border-b-0"
@@ -832,8 +823,9 @@ export function PayrollTab({
                         <td className="py-2 text-end tabular-nums text-rose-600 dark:text-rose-400">
                           − {formatKwdLabel(r.deductions)}
                         </td>
+                        {/* V25 Frontend Purge: use server-computed netSalaryKd */}
                         <td className="py-2 text-end font-semibold tabular-nums">
-                          {formatKwdLabel(net)}
+                          {formatKwdLabel(r.netSalaryKd ?? '0')}
                         </td>
                         <td className="py-2 text-xs">
                           <span
@@ -851,8 +843,7 @@ export function PayrollTab({
                           </span>
                         </td>
                       </tr>
-                    );
-                  })}
+                  ))}
                 </tbody>
               </table>
             </div>

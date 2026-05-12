@@ -318,6 +318,9 @@ export function DriverPOS() {
             )}
 
             {/* Per-order breakdown with VIP toggle */}
+            {/* @V24-LEGACY-MATH-EXEMPTION: POS pre-checkout preview only.
+                sumLinesKd builds the lineItems/totalPrice request payload;
+                the confirmed total is authoritative from the server response. */}
             {subOrders.some((o) => sumLinesKd(o.lines) > 0) ? (
               <div className="mt-3 rounded-lg border border-border/80 bg-muted/15 p-2.5 text-[10px]">
                 <p className="font-semibold text-foreground">

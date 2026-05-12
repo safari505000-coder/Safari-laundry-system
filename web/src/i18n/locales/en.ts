@@ -93,7 +93,7 @@ export const en = {
     allInvoices: 'All invoices',
     groupInvoices: 'Invoices',
     unifiedLedger: 'Unified ledger',
-    journalStatement: 'Customer reports',
+    journalStatement: 'Customer AR statement',
     myCustody: 'Cash awaiting deposit',
     myDocuments: 'My documents',
     driverOversight: 'Driver oversight',
@@ -1906,6 +1906,20 @@ export const en = {
     debtPaySubmitting: 'Recording…',
     debtPaySuccess:
       'Collected {{collected}} · discount {{discount}} · remaining debt {{remaining}}.',
+    debtPayJournalTitle: 'Double-entry preview (as posted)',
+    debtPayJournalHint:
+      'Each slice you enter is posted as its own balanced journal entry on the server — debits and credits match within that entry; the UI does not re-sum money.',
+    debtPayJournalLegCollection: '1 — Collection (payment asset ↔ AR)',
+    debtPayJournalLegDiscount: '2 — Goodwill discount (discount expense ↔ AR)',
+    debtPayJournalDebit: 'Debit',
+    debtPayJournalCredit: 'Credit',
+    debtPayJournalArAccount: 'Accounts receivable (customer)',
+    debtPayJournalGoodwillExpense: 'Debt discount / goodwill expense',
+    debtPayJournalAssetCash: 'Cash on hand',
+    debtPayJournalAssetKnet: 'Bank — KNET clearing',
+    debtPayJournalAssetOnline: 'Bank — online / payment link',
+    debtPayJournalFoot:
+      'Credits to AR across the entries above total {{total}} — same as «Total reduction».',
     extendDialogTitle: 'Extend current subscription',
     extendDialogDescription:
       'Add days to {{name}}\'s current subscription. No payment is taken — only the expiry date is pushed forward.',

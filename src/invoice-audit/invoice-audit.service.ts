@@ -209,27 +209,7 @@ export class InvoiceAuditService {
             metadata: { origin: 'INVOICE_AUDIT_VOID_NON_MONEY' },
           },
         });
-        try {
-          await tx.debtLedgerEntry.create({
-            data: {
-              customerId: order.customerId,
-              orderId: order.id,
-              source: 'PAYMENT',
-              category: 'BRANCH',
-              amount: order.totalPrice,
-              actorUserId: actorUserId ?? null,
-              sourceRef,
-              note: 'Debt reversed by invoice void / edit (supervisor)',
-            },
-          });
-        } catch (err) {
-          if (
-            !(err instanceof Prisma.PrismaClientKnownRequestError) ||
-            err.code !== 'P2002'
-          ) {
-            throw err;
-          }
-        }
+        // V20.4 FINAL — DebtLedgerEntry write removed; journal mirror preserved.
         if (actorUserId) {
           await this.journal.mirrorDebtLedgerEntrySafe(tx, {
             source: 'PAYMENT',
@@ -267,29 +247,7 @@ export class InvoiceAuditService {
       });
       const sourceRef = `ADJUSTMENT:INVOICE_AUDIT_SUBSCRIPTION_WALLET_VOID:${order.id ?? 'NO_ORDER_ID'}`;
       if (order.id) {
-        try {
-          await tx.debtLedgerEntry.create({
-            data: {
-              customerId: order.customerId,
-              orderId: order.id,
-              source: 'PAYMENT',
-              category: 'BRANCH',
-              amount: order.totalPrice,
-              actorUserId,
-              sourceRef,
-              note: 'Subscription-wallet absorption reversed (supervisor void)',
-            },
-          });
-        } catch (err) {
-          // P2002 → this void was already audited; the wallet
-          // restoration above is the idempotent intent. Swallow.
-          if (
-            !(err instanceof Prisma.PrismaClientKnownRequestError) ||
-            err.code !== 'P2002'
-          ) {
-            throw err;
-          }
-        }
+        // V20.4 FINAL — DebtLedgerEntry write removed; journal write preserved.
         await this.journal.appendBalanced(tx, {
           source: 'WALLET_ABSORPTION_VOID',
           sourceRef: `JOURNAL:WALLET_ABSORPTION_VOID:${order.id}`,
@@ -355,30 +313,60 @@ export class InvoiceAuditService {
         data: { debt: wallet.debt.add(order.totalPrice) },
       });
 
-      // V19.11 — edit flow writes back a new INVOICE_SHORTFALL so the
-      // ledger mirrors the restored wallet.debt. Pair with the PAYMENT
-      // row emitted during the prior `reverseWalletForOrder` call.
-      if (order.id) {
-        await tx.debtLedgerEntry.create({
-          data: {
-            customerId: order.customerId,
-            orderId: order.id,
-            source: 'INVOICE_SHORTFALL',
-            category: 'BRANCH',
-            amount: order.totalPrice,
-            actorUserId: actorUserId ?? null,
-            note: 'Debt re-applied by invoice edit (new amount/method)',
-          },
+      // V19.11 — edit flow restores the AR balance so the journal reflects
+      // the restored wallet.debt. Pairs with the PAYMENT mirror from the
+      // prior `reverseWalletForOrder` call.
+      // V20.4 FINAL — DebtLedgerEntry write removed; journal mirror added.
+      if (order.id && actorUserId) {
+        await this.journal.mirrorDebtLedgerEntrySafe(tx, {
+          source: 'INVOICE_SHORTFALL',
+          amount: order.totalPrice,
+          sourceRef: `INVOICE:${order.id}:SHORTFALL_REAPPLY`,
+          actorUserId,
+          customerId: order.customerId,
+          orderId: order.id,
+          note: 'Debt re-applied by invoice edit (new amount/method)',
         });
       }
     } else {
-      const newBalance = wallet.balance.sub(order.totalPrice);
+      // SUBSCRIPTION_WALLET re-apply: debit WALLET_LIABILITY (2100) and
+      // credit REVENUE (4100) to mirror the original wallet absorption.
+      // This is the inverse of reverseWalletForOrder's
+      // WALLET_ABSORPTION_VOID (REVENUE_RETURNS DR / WALLET_LIABILITY CR).
+      const actualDeducted = wallet.balance.gte(order.totalPrice)
+        ? order.totalPrice
+        : wallet.balance;
+      const newBalance = wallet.balance.sub(actualDeducted);
       await tx.customerWallet.update({
         where: { id: wallet.id },
         data: {
           balance: newBalance.lt(0) ? new Prisma.Decimal(0) : newBalance,
         },
       });
+      // V25 Ledger Enforcement: post the WALLET_LIABILITY → REVENUE
+      // journal entry so the WALLET_LIABILITY (2100) account tracks
+      // every wallet-absorption re-apply, not just voids.
+      if (order.id && actorUserId && actualDeducted.gt(0)) {
+        await this.journal.appendBalanced(tx, {
+          source: 'WALLET_ABSORPTION',
+          sourceRef: `JOURNAL:WALLET_ABSORPTION:${order.id}:REAPPLY_EDIT`,
+          actorUserId,
+          customerId: order.customerId,
+          orderId: order.id,
+          lines: [
+            {
+              accountCode: '2100', // WALLET_LIABILITY — we owe customer less
+              debit: actualDeducted,
+              meta: { event: 'WALLET_ABSORPTION_REAPPLY', orderId: order.id },
+            },
+            {
+              accountCode: '4100', // REVENUE — re-recognise revenue
+              credit: actualDeducted,
+              meta: { event: 'WALLET_ABSORPTION_REAPPLY', orderId: order.id },
+            },
+          ],
+        });
+      }
     }
   }
 

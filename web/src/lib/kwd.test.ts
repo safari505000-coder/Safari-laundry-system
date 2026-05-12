@@ -4,6 +4,8 @@ import {
   addKwdStrings,
   chartScalarFromKwdString,
   compareKwdStrings,
+  formatArCustomerBalanceSummaryLine,
+  formatArCustomerBalanceWithSide,
   formatKwdLabel,
   formatKwdLabelGrouped,
   formatSignedKwdLabel,
@@ -149,6 +151,26 @@ describe('BigInt-precise KWD arithmetic', () => {
       expect(absKwdString('12.500')).toBe('12.5000');
       expect(absKwdString('0.000')).toBe('0.0000');
       expect(absKwdString(null)).toBe('0.0000');
+    });
+  });
+
+  describe('formatArCustomerBalanceWithSide', () => {
+    it('labels debit / credit / zero net AR for customer statement', () => {
+      expect(formatArCustomerBalanceWithSide('6.2500').fullLabel).toBe(
+        '6.250 مدين',
+      );
+      expect(formatArCustomerBalanceWithSide('-1.5000').fullLabel).toBe(
+        '1.500 دائن',
+      );
+      expect(formatArCustomerBalanceWithSide('0.0000').fullLabel).toBe(
+        '0.000 متوازن',
+      );
+    });
+
+    it('summary line includes KWD suffix', () => {
+      expect(formatArCustomerBalanceSummaryLine('3')).toBe(
+        '3.000 د.ك · مدين',
+      );
     });
   });
 

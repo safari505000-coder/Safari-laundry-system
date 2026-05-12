@@ -23,6 +23,13 @@ type Db = {
 type OrderDb = {
   order: Prisma.OrderDelegate;
   debtLedgerEntry: Prisma.DebtLedgerEntryDelegate;
+  /**
+   * V20.4 — When provided and `isJournalAsSourceEnabled()` is on,
+   * `computeOrderRemainingBalancesBatch` reads per-order AR balance
+   * from JournalLine account 1300 instead of the DebtLedger waterfall.
+   * Orders with no journal entries fall back to DebtLedger automatically.
+   */
+  journalLine?: Prisma.JournalLineDelegate;
 };
 
 type RemainingOrderRow = {
@@ -252,18 +259,19 @@ export async function getCustomerNetDebtFromDebtLedgerAgg(
  * "what does this invoice still owe?". Avoids a circular dep
  * between `FinanceModule` and `CustomerLedgerModule`.
  *
- * Formula:
+ * V20.4 — When `isJournalAsSourceEnabled()` is true and `db.journalLine`
+ * is present, the function reads per-order AR balance from JournalLine
+ * (account 1300) instead of the DebtLedger waterfall. Orders with no
+ * journal entries (pre-backfill data) fall back to DebtLedger automatically.
+ *
+ * Formula (DebtLedger path):
  *   remaining = max(0, Order.totalPrice − Σ realPayments − Σ walletAbsorption)
  *
- * Why `Order.totalPrice` and not `Σ INVOICE_SHORTFALL`:
- *   under V20.2, SHORTFALL is "remainder after wallet" (NOT the
- *   gross invoice). Summing it would understate the gross billed
- *   amount. Under V20.3, SHORTFALL == gross, so this still works.
- *   The order's `totalPrice` is the canonical gross figure.
+ * Formula (Journal path):
+ *   remaining = max(0, Σ debit_1300(orderId) − Σ credit_1300(orderId))
+ *   + FIFO allocation of customer-level orderId=null credits (residual CC payments)
  *
- * Returns `0` for canceled orders and unknown order ids — never
- * negative. Overpayment surfaces as a positive credit in the
- * audit module, not as a negative remaining balance here.
+ * Returns `0` for canceled orders and unknown order ids — never negative.
  */
 export async function computeOrderRemainingBalancesBatch(
   db: OrderDb,
@@ -272,10 +280,11 @@ export async function computeOrderRemainingBalancesBatch(
   const out = new Map<string, Prisma.Decimal>();
   if (orderIds.length === 0) return out;
 
-  const orders = await db.order.findMany({
+  const orders = (await db.order.findMany({
     where: { id: { in: orderIds } },
     select: { id: true, customerId: true, totalPrice: true, status: true },
-  }) as RemainingOrderRow[];
+  })) as RemainingOrderRow[];
+
   const totalById = new Map<string, Prisma.Decimal>();
   const customerByOrderId = new Map<string, string>();
   for (const o of orders) {
@@ -288,8 +297,150 @@ export async function computeOrderRemainingBalancesBatch(
   }
   if (totalById.size === 0) return out;
 
+  const activeOrderIds = Array.from(totalById.keys());
+  const activeOrders = orders.filter((o) => o.status !== OrderStatus.CANCELED);
+
+  // ── V20.4 JOURNAL PATH ────────────────────────────────────────────────
+  // Used when the operator has enabled the banking-core flags AND the caller
+  // passes a db object that exposes journalLine (PrismaClient / tx always do).
+  if (db.journalLine && isJournalAsSourceEnabled()) {
+    // Step 1: per-order net on account 1300.
+    const perOrderLines = await (db.journalLine as Prisma.JournalLineDelegate).findMany({
+      where: {
+        entry: { orderId: { in: activeOrderIds } },
+        account: { code: '1300' },
+      },
+      select: {
+        debit: true,
+        credit: true,
+        entry: { select: { orderId: true } },
+      },
+    });
+
+    const journalNetByOrder = new Map<string, Prisma.Decimal>();
+    for (const line of perOrderLines) {
+      const oid = (line.entry as { orderId: string | null }).orderId;
+      if (!oid) continue;
+      journalNetByOrder.set(
+        oid,
+        (journalNetByOrder.get(oid) ?? Z())
+          .add(new Prisma.Decimal(line.debit.toString()))
+          .sub(new Prisma.Decimal(line.credit.toString())),
+      );
+    }
+
+    // Orders that have no journal lines yet (pre-backfill) — fall back to
+    // DebtLedger for those specific orders so we never silently show the
+    // gross totalPrice as "still owed".
+    const preBackfillIds = activeOrderIds.filter(
+      (id) => !journalNetByOrder.has(id),
+    );
+
+    // Step 2: customer-level orderId=null credits on 1300 (residual CC
+    // partial-payments recorded as a single credit without a per-order link).
+    const customerIds = Array.from(new Set(customerByOrderId.values()));
+    if (customerIds.length > 0) {
+      const customerCreditLines = await (db.journalLine as Prisma.JournalLineDelegate).findMany({
+        where: {
+          entry: { customerId: { in: customerIds }, orderId: null },
+          account: { code: '1300' },
+          credit: { gt: new Prisma.Decimal(0) },
+        },
+        select: {
+          credit: true,
+          entry: { select: { customerId: true } },
+        },
+      });
+
+      const creditByCustomer = new Map<string, Prisma.Decimal>();
+      for (const line of customerCreditLines) {
+        const cid = (line.entry as { customerId: string | null }).customerId;
+        if (!cid) continue;
+        creditByCustomer.set(
+          cid,
+          (creditByCustomer.get(cid) ?? Z()).add(
+            new Prisma.Decimal(line.credit.toString()),
+          ),
+        );
+      }
+
+      // Step 3: FIFO — apply residual credits only to journal-tracked orders
+      // (pre-backfill orders are excluded; their credits come via DebtLedger).
+      for (const customerId of customerIds) {
+        let budget = creditByCustomer.get(customerId) ?? Z();
+        if (budget.lessThanOrEqualTo(0)) continue;
+        const invoicesForCustomer = activeOrders
+          .filter(
+            (o) =>
+              customerByOrderId.get(o.id) === customerId &&
+              journalNetByOrder.has(o.id),
+          )
+          .map((o) => o.id);
+        for (const oid of invoicesForCustomer) {
+          if (budget.lessThanOrEqualTo(0)) break;
+          const net = journalNetByOrder.get(oid) ?? Z();
+          if (net.lessThanOrEqualTo(0)) continue;
+          const applied = Prisma.Decimal.min(budget, net);
+          journalNetByOrder.set(oid, net.sub(applied));
+          budget = budget.sub(applied);
+        }
+      }
+    }
+
+    // Step 4: write journal-based results.
+    for (const oid of activeOrderIds) {
+      if (preBackfillIds.includes(oid)) continue;
+      const net = journalNetByOrder.get(oid) ?? Z();
+      out.set(oid, net.lessThan(0) ? Z() : net);
+    }
+
+    // Step 5: DebtLedger fallback for pre-backfill orders.
+    if (preBackfillIds.length > 0) {
+      const preBackfillTotalById = new Map<string, Prisma.Decimal>();
+      for (const id of preBackfillIds) preBackfillTotalById.set(id, totalById.get(id)!);
+      await computeRemainingFromLedger(
+        db,
+        preBackfillIds,
+        preBackfillTotalById,
+        customerByOrderId,
+        activeOrders,
+        out,
+      );
+    }
+
+    return out;
+  }
+
+  // ── DEBT LEDGER PATH (legacy / fallback) ─────────────────────────────
+  await computeRemainingFromLedger(
+    db,
+    activeOrderIds,
+    totalById,
+    customerByOrderId,
+    activeOrders,
+    out,
+  );
+  return out;
+}
+
+/**
+ * Internal: compute per-order remaining from the DebtLedger waterfall for
+ * a subset of orders. Extracted so the journal path can call it as a
+ * targeted fallback for pre-backfill orders without re-querying the whole
+ * order set.
+ */
+async function computeRemainingFromLedger(
+  db: OrderDb,
+  subsetOrderIds: string[],
+  totalById: Map<string, Prisma.Decimal>,
+  customerByOrderId: Map<string, string>,
+  allActiveOrders: RemainingOrderRow[],
+  out: Map<string, Prisma.Decimal>,
+): Promise<void> {
+  if (subsetOrderIds.length === 0) return;
+
   const ledgerRows = await db.debtLedgerEntry.findMany({
-    where: { orderId: { in: Array.from(totalById.keys()) } },
+    where: { orderId: { in: subsetOrderIds } },
     select: {
       orderId: true,
       source: true,
@@ -313,20 +464,21 @@ export async function computeOrderRemainingBalancesBatch(
     }
   }
 
-  // V22 — legacy/customer-level payment allocation.
+  // V22 — customer-level payment allocation (FIFO).
   //
   // Historical CC partial-payment and subscription-conversion rows may
   // be recorded with `orderId = null` (e.g. `...:RESIDUAL`) even though
-  // the customer had open invoice rows. If remaining-balance readers
-  // only subtract order-linked payments, the wallet/journal says debt
-  // was reduced but Customer360/collections still show the invoice as
-  // unpaid. Allocate those customer-level real payments FIFO across
-  // the requested invoices for that same customer. This is read-only:
-  // it fixes projections without rewriting immutable ledger history.
-  const customerIds = Array.from(new Set(customerByOrderId.values()));
-  if (customerIds.length > 0) {
+  // the customer had open invoice rows.
+  const subsetCustomerIds = Array.from(
+    new Set(
+      subsetOrderIds
+        .map((id) => customerByOrderId.get(id))
+        .filter((c): c is string => !!c),
+    ),
+  );
+  if (subsetCustomerIds.length > 0) {
     const customerLevelRows = await db.debtLedgerEntry.findMany({
-      where: { customerId: { in: customerIds }, orderId: null },
+      where: { customerId: { in: subsetCustomerIds }, orderId: null },
       select: {
         customerId: true,
         orderId: true,
@@ -348,14 +500,15 @@ export async function computeOrderRemainingBalancesBatch(
         (customerPaymentById.get(customerId) ?? Z()).add(amt),
       );
     }
-    for (const customerId of customerIds) {
+    for (const customerId of subsetCustomerIds) {
       let budget = customerPaymentById.get(customerId) ?? Z();
       if (budget.lessThanOrEqualTo(0)) continue;
-      const invoiceIds = orders
+      const invoiceIds = allActiveOrders
         .filter(
           (o) =>
             o.status !== OrderStatus.CANCELED &&
-            customerByOrderId.get(o.id) === customerId,
+            customerByOrderId.get(o.id) === customerId &&
+            subsetOrderIds.includes(o.id),
         )
         .map((o) => o.id);
       for (const orderId of invoiceIds) {
@@ -363,9 +516,7 @@ export async function computeOrderRemainingBalancesBatch(
         const alreadyPaid = (paidById.get(orderId) ?? Z()).add(
           walletById.get(orderId) ?? Z(),
         );
-        const remainingBeforeCustomerLevel = totalById
-          .get(orderId)!
-          .sub(alreadyPaid);
+        const remainingBeforeCustomerLevel = totalById.get(orderId)!.sub(alreadyPaid);
         if (remainingBeforeCustomerLevel.lessThanOrEqualTo(0)) continue;
         const applied = Prisma.Decimal.min(budget, remainingBeforeCustomerLevel);
         paidById.set(orderId, (paidById.get(orderId) ?? Z()).add(applied));
@@ -374,14 +525,14 @@ export async function computeOrderRemainingBalancesBatch(
     }
   }
 
-  for (const [orderId, total] of totalById) {
+  for (const orderId of subsetOrderIds) {
+    const total = totalById.get(orderId)!;
     const paid = paidById.get(orderId) ?? Z();
     const wallet = walletById.get(orderId) ?? Z();
     let remaining = total.sub(paid).sub(wallet);
     if (remaining.lessThan(0)) remaining = Z();
     out.set(orderId, remaining);
   }
-  return out;
 }
 
 /** Single-order convenience wrapper around the batch helper. */

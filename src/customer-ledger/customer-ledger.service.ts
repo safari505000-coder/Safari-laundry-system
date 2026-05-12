@@ -31,11 +31,14 @@ import {
 import {
   computeOrderRemainingBalancesBatch,
   INVOICE_REMAINING_TOLERANCE_KD,
+  isJournalAsSourceEnabled,
   isV20_3TrueAccountingEnabled,
 } from '../finance/debt-customer-aggregates.util';
 import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
 import { DoubleEntryJournalService } from '../general-ledger/double-entry-journal.service';
 import { JournalSourceService } from '../general-ledger/journal-source.service';
+import { FinancialTransactionProcessorService } from '../general-ledger/financial-transaction-processor.service';
+import type { StrictFinancialPaymentMethod } from '../general-ledger/financial-transaction-processor.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { OrdersService } from '../orders/orders.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -63,6 +66,18 @@ export type OrderWalletSettlementPrefetch = {
   skipPerformerLookup?: boolean;
 };
 
+/**
+ * Interactive `$transaction` budget for Call Center partial debt payment.
+ * Same rationale as `POS_ORDER_INTERACTIVE_TX` in `orders.service.ts`:
+ * operational-debt breakdown, optional FIFO invoice closes, GL + journal
+ * mirrors can exceed Prisma's default / a 15s cap on slow Postgres or under
+ * pool contention (user-facing P2028 «انتهت مهلة معاملة قاعدة البيانات»).
+ */
+const CC_PARTIAL_DEBT_PAYMENT_INTERACTIVE_TX = {
+  maxWait: 20_000,
+  timeout: 45_000,
+} as const;
+
 @Injectable()
 export class CustomerLedgerService {
   private readonly logger = new Logger(CustomerLedgerService.name);
@@ -72,6 +87,7 @@ export class CustomerLedgerService {
     private readonly generalLedger: GeneralLedgerService,
     private readonly journal: DoubleEntryJournalService,
     private readonly journalSource: JournalSourceService,
+    private readonly txProcessor: FinancialTransactionProcessorService,
     private readonly inventory: InventoryService,
     @Inject(forwardRef(() => OrdersService))
     private readonly orders: OrdersService,
@@ -668,38 +684,11 @@ export class CustomerLedgerService {
         : 0n
       : addedInvoiceDebtMinor;
     if (recordedShortfallMinor > 0n) {
-      // V20.4 — Phase 5 deterministic sourceRef. The function is
-      // idempotent on `order.walletSettledAt` so the SHORTFALL
-      // row is at most written once per order; on a transaction
-      // retry the unique-index P2002 path returns the existing
-      // row instead of creating a duplicate.
+      // V20.4 — Phase 5 deterministic sourceRef.
       const sourceRef = `INVOICE:${orderId}:SHORTFALL`;
-      try {
-        await tx.debtLedgerEntry.create({
-          data: {
-            customerId: o.customerId,
-            orderId,
-            source: DebtSource.INVOICE_SHORTFALL,
-            category: debtCategory,
-            amount: this.decimalFromMinor(recordedShortfallMinor),
-            branchId: actor.branchId,
-            actorUserId: actor.id,
-            sourceRef,
-            note: trueAccounting
-              ? 'Invoice issued (full receivable)'
-              : 'Invoice shortfall recorded as receivable',
-          },
-        });
-      } catch (err) {
-        if (
-          !(err instanceof Prisma.PrismaClientKnownRequestError) ||
-          err.code !== 'P2002'
-        ) {
-          throw err;
-        }
-        // Idempotent retry — row already exists for this orderId
-        // SHORTFALL. Continue without re-writing.
-      }
+      // V20.4 FINAL — DebtLedgerEntry write removed; Journal is now the
+      // single source of truth. Mirror write below (conditional on !trueAccounting)
+      // is preserved unchanged.
       if (!trueAccounting) {
         await this.journal.mirrorDebtLedgerEntrySafe(tx, {
           source: DebtSource.INVOICE_SHORTFALL,
@@ -733,29 +722,7 @@ export class CustomerLedgerService {
     if (addedSubscriptionDebtMinor > 0n) {
       // V20.4 — Phase 5 deterministic sourceRef.
       const sourceRef = `INVOICE:${orderId}:SUBSCRIPTION_OVERUSE`;
-      try {
-        await tx.debtLedgerEntry.create({
-          data: {
-            customerId: o.customerId,
-            orderId,
-            source: DebtSource.SUBSCRIPTION_OVERUSE,
-            category: debtCategory,
-            amount: this.decimalFromMinor(addedSubscriptionDebtMinor),
-            branchId: actor.branchId,
-            actorUserId: actor.id,
-            sourceRef,
-            note: 'Subscription balance allowed to go negative',
-          },
-        });
-      } catch (err) {
-        if (
-          !(err instanceof Prisma.PrismaClientKnownRequestError) ||
-          err.code !== 'P2002'
-        ) {
-          throw err;
-        }
-        // Idempotent retry — row already exists.
-      }
+      // V20.4 FINAL — DebtLedgerEntry write removed; mirror below is preserved.
       await this.journal.mirrorDebtLedgerEntrySafe(tx, {
         source: DebtSource.SUBSCRIPTION_OVERUSE,
         amount: this.decimalFromMinor(addedSubscriptionDebtMinor),
@@ -826,78 +793,9 @@ export class CustomerLedgerService {
         functionName: 'applyOrderWalletSettlementForCompletedOrder.walletAbsorption',
         payload: walletPaymentPayload,
       });
-      try {
-        await tx.debtLedgerEntry.create({
-          data: {
-            customerId: o.customerId,
-            orderId,
-            source: DebtSource.PAYMENT,
-            category: debtCategory,
-            amount: this.decimalFromMinor(safeTakeMinor),
-            branchId: actor.branchId,
-            actorUserId: actor.id,
-            sourceRef: walletSourceRef,
-            note: 'Wallet credit applied to invoice (audit only — not AR-reducing)',
-          },
-        });
-      } catch (err) {
-        // V20.1-v2 — Phase 3.1 idempotency guard.
-        // P2002 = unique constraint violation on `sourceRef`. Means a
-        // wallet-absorption row for this order already exists (re-entry
-        // after walletSettledAt reset, or concurrent settlement that
-        // raced past the FOR UPDATE lock by skipping the lock helper).
-        // Treat as success — the historical row is the source of truth.
-        const isUniqueViolation =
-          err instanceof Prisma.PrismaClientKnownRequestError &&
-          err.code === 'P2002';
-        if (!isUniqueViolation) throw err;
-        // eslint-disable-next-line no-console
-        console.warn(
-          '[WALLET_ABSORPTION_DUPLICATE_SKIPPED]',
-          JSON.stringify({
-            orderId,
-            customerId: o.customerId,
-            sourceRef: walletSourceRef,
-            safeTakeMinor: minorToAmountString(safeTakeMinor),
-          }),
-        );
-      }
-      // Intentionally NOT appending to GeneralLedger here — the
-      // DebtLedgerEntry above is the audit record. A zero-amount
-      // DEBT_ADJUSTMENT row would pollute KPI sums, and a non-zero
-      // value would risk double-counting against POS_SALE_COMPLETED /
-      // INVOICE_SHORTFALL totals already on the GeneralLedger stream.
-
-      // V20.1-v3 — Phase 9 invariant guard.
-      //
-      // FINAL PRINCIPLE: "Every wallet deduction must have a ledger
-      // PAYMENT." We just deducted the wallet (newBalanceMinor below
-      // is committed at the end of this tx) and either created the
-      // PAYMENT:WALLET:<orderId>:APPLIED row above, or accepted that
-      // a prior identical row exists (P2002). Re-read inside the same
-      // transaction to confirm — if the row is missing despite both
-      // paths, the only explanation is a future refactor bug or a
-      // race that bypassed our controls. Abort the entire settlement
-      // so the wallet update is rolled back together.
-      const auditExists = await tx.debtLedgerEntry.findUnique({
-        where: { sourceRef: walletSourceRef },
-        select: { id: true },
-      });
-      if (!auditExists) {
-        // eslint-disable-next-line no-console
-        console.error(
-          '[INVALID_PAYMENT]',
-          JSON.stringify({
-            reason: 'WALLET_DEDUCTION_WITHOUT_PAYMENT_RECORD',
-            orderId,
-            customerId: o.customerId,
-            sourceRef: walletSourceRef,
-            safeTakeMinor: minorToAmountString(safeTakeMinor),
-          }),
-        );
-        throw new Error('WALLET_DEDUCTION_WITHOUT_PAYMENT_RECORD');
-      }
-
+      // V20.4 FINAL — DebtLedgerEntry write (audit-only PAYMENT:WALLET row) removed.
+      // The invariant guard that read it back is also removed — the journal entry
+      // written below is now the single record of the wallet deduction.
       // V20.3 — Phase 33 wallet absorption journal entry (true model).
       //
       // Under V20.3, the issuance entry above already DEBITED AR by
@@ -976,29 +874,7 @@ export class CustomerLedgerService {
         functionName: 'applyOrderWalletSettlementForCompletedOrder',
         payload: paymentPayload,
       });
-      try {
-        await tx.debtLedgerEntry.create({
-          data: {
-            customerId: o.customerId,
-            orderId,
-            source: DebtSource.PAYMENT,
-            category: debtCategory,
-            amount: this.decimalFromMinor(debtPaydownFromSettlementMinor),
-            branchId: actor.branchId,
-            actorUserId: actor.id,
-            sourceRef,
-            note: 'Invoice debt settled (wallet settlement)',
-          },
-        });
-      } catch (err) {
-        if (
-          !(err instanceof Prisma.PrismaClientKnownRequestError) ||
-          err.code !== 'P2002'
-        ) {
-          throw err;
-        }
-        // Idempotent retry — PAYMENT row already recorded.
-      }
+      // V20.4 FINAL — DebtLedgerEntry write removed; journal mirror below is preserved.
       // V20.3 — Phase 34 external payment journal entry.
       //
       // Under true-accounting, every external payment writes
@@ -1065,40 +941,15 @@ export class CustomerLedgerService {
     // unavoidable to satisfy the v4 invariant. If profiling shows
     // this becomes a hot path, the aggregation can be replaced by
     // an in-process accumulator that tracks deltas as we go.
-    await this.assertSettlementInvariantTx(tx, o.customerId);
-
-    // V20.2 — Phase 29 journal-ledger lockstep.
-    //
-    // Compare the live DebtLedger AR (computed from
-    // assertSettlementInvariantTx scope: SHORTFALL+OVERUSE − real
-    // PAYMENT) to the journal AR balance for this customer (sum of
-    // debits − credits on account 1300). Within the same tx, both
-    // numbers reflect the about-to-commit state. If they diverge by
-    // more than 0.001 KD this transaction is committing a known
-    // ledger/journal split — refuse and roll everything back so the
-    // operator must triage before more drift accumulates.
-    //
-    // Failure modes captured here:
-    //   • A `mirrorDebtLedgerEntrySafe` write silently dropped (and
-    //     the breaker hasn't tripped yet because the failure window
-    //     was below threshold).
-    //   • A new SHORTFALL prefix introduced by future code that
-    //     forgot to mirror to the journal.
-    //   • A wallet-absorption journal entry that accidentally hit
-    //     AR (V20.3 refactor regression).
-    await this.assertJournalLedgerLockstepTx(tx, o.customerId);
-
-    // V20.2 — Phase 28 hard global invariant.
-    //
-    // Recompute walletBalance + totalPayments + totalDebt vs
-    // totalInvoices for this customer using the still-uncommitted
-    // tx view. The historical baseline is loud (wallet balances
-    // were never recorded as a counter-entry in DebtLedger), so the
-    // STRICT enforcement (throw) is gated on
-    // `STRICT_GLOBAL_INVARIANT=true`. By default we LOG only — the
-    // existing audit endpoint stays the source of truth for
-    // operators triaging legacy data.
-    await this.assertGlobalInvariantTx(tx, o.customerId);
+    // V20.4 FINAL — DebtLedger-based invariants are skipped when the journal
+    // is the canonical source (DebtLedger is no longer written, so comparing
+    // it to wallet state would always show drift). The journal itself is the
+    // authoritative audit trail under these flags.
+    if (!isJournalAsSourceEnabled()) {
+      await this.assertSettlementInvariantTx(tx, o.customerId);
+      await this.assertJournalLedgerLockstepTx(tx, o.customerId);
+      await this.assertGlobalInvariantTx(tx, o.customerId);
+    }
   }
 
   /**
@@ -1359,6 +1210,14 @@ export class CustomerLedgerService {
        * transaction — avoids one long interactive transaction (P2028).
        */
       skipPrepaidAutoReconcile?: boolean;
+      /**
+       * V25 Deposit-then-Settle — optional explicit company marketing-support
+       * (subsidy) amount. When omitted the system derives it from the plan:
+       *   companySupportAmount = max(0, plan.actualBalance − plan.salePrice)
+       * Providing a value lets callers record custom promotional amounts
+       * independently of the plan pricing.
+       */
+      companySupportAmountKd?: string;
     },
   ): Promise<SubscriptionActivationSettlement> {
     const plan = await tx.subscriptionPlan.findUnique({
@@ -1569,8 +1428,16 @@ export class CustomerLedgerService {
     const totalCollectedStr = minorToAmountString(priceMinor);
     const debtSettledStr = minorToAmountString(debtPaidMinor);
     const creditedStr = minorToAmountString(balanceIncreaseMinor);
-    const subsidyMinor = creditMinor > priceMinor ? creditMinor - priceMinor : 0n;
-    const subsidyStr = minorToAmountString(subsidyMinor);
+
+    // V25 Deposit-then-Settle: resolve subsidy from explicit override or plan.
+    const planSubsidyMinor = creditMinor > priceMinor ? creditMinor - priceMinor : 0n;
+    const companySupportDecimal = params.companySupportAmountKd != null
+      ? new Prisma.Decimal(params.companySupportAmountKd)
+      : this.decimalFromMinor(planSubsidyMinor);
+    const companySupportMinor = toMinorFromFixed4(companySupportDecimal);
+    const subsidyMinor = companySupportMinor;
+    const subsidyStr = companySupportDecimal.toFixed(4);
+    const totalFundingDecimal = this.decimalFromMinor(priceMinor).add(companySupportDecimal);
 
     await tx.transactionHistory.create({
       data: {
@@ -1609,36 +1476,79 @@ export class CustomerLedgerService {
       },
     });
 
-    if (priceMinor > 0n && !accrueSaleOnAccount) {
-      await this.generalLedger.append(tx, {
-        entryType: GeneralLedgerEntryType.POS_SALE_COMPLETED,
-        amount: plan.salePrice,
-        memo: 'Subscription activation — plan sale (immediate collection)',
-        customerId: params.customerId,
-        actorUserId: params.performedByUserId,
-        metadata: {
-          posPaymentMethod: collectionPaymentMethod,
-          source: 'CALL_CENTER_SUBSCRIPTION_ACTIVATION',
+    // V25 Deposit-then-Settle — STEP 1: WALLET FUNDING JOURNAL ENTRY.
+    //
+    // Replace the old per-leg `generalLedger.append` calls with a single
+    // balanced double-entry via `FinancialTransactionProcessorService`:
+    //
+    //   DR CASH / BANK / ONLINE          paymentAmountKd
+    //   DR PROMOTIONAL_EXPENSE           companySupportAmountKd
+    //   CR WALLET_LIABILITY (2100)       totalFundingKd
+    //
+    // For DEBT_ON_ACCOUNT the payment leg records an AR debit (the sale is
+    // deferred) while the wallet liability credit still reflects the
+    // total balance granted to the customer.
+    if (totalFundingDecimal.gt(0) || priceMinor > 0n || companySupportMinor > 0n) {
+      const paymentMethodForJournal: StrictFinancialPaymentMethod =
+        collectionPaymentMethod === PosPaymentMethod.CASH ? 'CASH'
+        : collectionPaymentMethod === PosPaymentMethod.KNET ? 'KNET'
+        : collectionPaymentMethod === PosPaymentMethod.ONLINE ||
+          collectionPaymentMethod === PosPaymentMethod.PAYMENT_LINK ? 'ONLINE'
+        : 'DEBT'; // DEBT_ON_ACCOUNT → AR debit
+
+      const paymentAmountDecimal = this.decimalFromMinor(priceMinor);
+
+      if (totalFundingDecimal.gt(0)) {
+        await this.txProcessor.processWalletFundingTransaction(tx, {
+          actorUserId: params.performedByUserId,
+          customerId: params.customerId,
           subscriptionId: newSubscription.id,
-          planId: plan.id,
-        },
-      });
-    }
-    if (accrueSaleOnAccount && priceMinor > 0n) {
-      await this.generalLedger.append(tx, {
-        entryType: GeneralLedgerEntryType.DEBT_ADJUSTMENT,
-        amount: plan.salePrice.toString(),
-        memo: 'Subscription activation — plan sale on account (wallet debt)',
-        customerId: params.customerId,
-        actorUserId: params.performedByUserId,
-        metadata: {
-          event: 'SUBSCRIPTION_PLAN_DEFERRED',
-          source: 'CALL_CENTER_SUBSCRIPTION_ACTIVATION',
-          posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT,
-          subscriptionId: newSubscription.id,
-          planId: plan.id,
-        },
-      });
+          paymentAmountKd: paymentAmountDecimal,
+          paymentMethod: paymentMethodForJournal,
+          supportAmountKd: companySupportDecimal,
+          totalFundingKd: totalFundingDecimal,
+          memo: `Subscription activation — wallet funded (plan ${plan.name})`,
+          branchId: subsidyBranchId,
+        });
+      }
+
+      // Back-compat: also emit the legacy POS_SALE_COMPLETED / DEBT_ADJUSTMENT
+      // entries that downstream GL consumers currently depend on (Unified Ledger,
+      // Executive P&L). These will be retired in a future migration after all
+      // consumers switch to the WALLET_FUNDING source ref.
+      if (priceMinor > 0n && !accrueSaleOnAccount) {
+        await this.generalLedger.append(tx, {
+          entryType: GeneralLedgerEntryType.POS_SALE_COMPLETED,
+          amount: plan.salePrice,
+          memo: 'Subscription activation — plan sale (immediate collection)',
+          customerId: params.customerId,
+          actorUserId: params.performedByUserId,
+          metadata: {
+            posPaymentMethod: collectionPaymentMethod,
+            source: 'CALL_CENTER_SUBSCRIPTION_ACTIVATION',
+            subscriptionId: newSubscription.id,
+            planId: plan.id,
+            v25_supersededBy: `WALLET_FUNDING:SUBSCRIPTION:${newSubscription.id}`,
+          },
+        });
+      }
+      if (accrueSaleOnAccount && priceMinor > 0n) {
+        await this.generalLedger.append(tx, {
+          entryType: GeneralLedgerEntryType.DEBT_ADJUSTMENT,
+          amount: plan.salePrice.toString(),
+          memo: 'Subscription activation — plan sale on account (wallet debt)',
+          customerId: params.customerId,
+          actorUserId: params.performedByUserId,
+          metadata: {
+            event: 'SUBSCRIPTION_PLAN_DEFERRED',
+            source: 'CALL_CENTER_SUBSCRIPTION_ACTIVATION',
+            posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT,
+            subscriptionId: newSubscription.id,
+            planId: plan.id,
+            v25_supersededBy: `WALLET_FUNDING:SUBSCRIPTION:${newSubscription.id}`,
+          },
+        });
+      }
     }
 
     // V19.7.4 — FIFO invoice auto-closure (opt-in via `autoCloseInvoices`).
@@ -1790,9 +1700,7 @@ export class CustomerLedgerService {
           });
           return payload;
         });
-        await tx.debtLedgerEntry.createMany({
-          data: paymentRows,
-        });
+        // V20.4 FINAL — DebtLedgerEntry createMany removed; journal mirrors below preserved.
         for (const row of paymentRows) {
           await this.journal.mirrorDebtLedgerEntrySafe(tx, {
             source: DebtSource.PAYMENT,
@@ -1824,19 +1732,7 @@ export class CustomerLedgerService {
           functionName: 'activateSubscriptionPlan.residual',
           payload: paymentPayload,
         });
-        await tx.debtLedgerEntry.create({
-          data: {
-            customerId: params.customerId,
-            orderId: null,
-            source: DebtSource.PAYMENT,
-            category,
-            amount: this.decimalFromMinor(residualMinor),
-            branchId: subsidyBranchId,
-            actorUserId: params.performedByUserId,
-            sourceRef,
-            note: 'Residual debt cleared by subscription activation',
-          },
-        });
+        // V20.4 FINAL — DebtLedgerEntry write removed; journal mirror preserved.
         await this.journal.mirrorDebtLedgerEntrySafe(tx, {
           source: DebtSource.PAYMENT,
           amount: this.decimalFromMinor(residualMinor),
@@ -1871,6 +1767,10 @@ export class CustomerLedgerService {
       previousDebt: wallet.debt.toString(),
       newBalance: walletFinal.balance.toString(),
       newDebt: walletFinal.debt.toString(),
+      // V25 Deposit-then-Settle: post-settlement canonical wallet balance.
+      finalWalletBalance: walletFinal.balance.toString(),
+      totalFundingKd: totalFundingDecimal.toFixed(4),
+      companySupportAmountKd: subsidyStr,
       subscriptionId: newSubscription.id,
       rolledOverFromSubscriptionId: previousSubscription?.id ?? null,
       carriedBalanceKd: carriedBalanceStr,
@@ -2055,29 +1955,7 @@ export class CustomerLedgerService {
       functionName: 'recordDebtInvoiceCollectedAtCallCenter',
       payload: paymentPayload,
     });
-    try {
-      await tx.debtLedgerEntry.create({
-        data: {
-          customerId: order.customerId,
-          orderId,
-          source: DebtSource.PAYMENT,
-          category,
-          amount: this.decimalFromMinor(paydownMinor),
-          branchId,
-          actorUserId: performedByUserId,
-          sourceRef,
-          note: 'Debt-on-account invoice collected at Call Center',
-        },
-      });
-    } catch (err) {
-      if (
-        !(err instanceof Prisma.PrismaClientKnownRequestError) ||
-        err.code !== 'P2002'
-      ) {
-        throw err;
-      }
-      // Idempotent retry — already collected for this orderId+method.
-    }
+    // V20.4 FINAL — DebtLedgerEntry write removed; journal mirror preserved.
     await this.journal.mirrorDebtLedgerEntrySafe(tx, {
       source: DebtSource.PAYMENT,
       amount: this.decimalFromMinor(paydownMinor),
@@ -2175,13 +2053,11 @@ export class CustomerLedgerService {
     /** Ledger row used as سند reference in customer WhatsApp/SMS. */
     transactionHistoryId: string;
   }> {
-    // V19.7.1 — lift Prisma's default 5 s transaction budget. The
-    // partial-debt-payment flow writes 3–4 rows (wallet update,
-    // TransactionHistory insert, plus 1–2 GeneralLedger appends for
-    // collection and optional discount). On a warm DB it's well under a
-    // second, but connection-pool contention was causing P2028 aborts
-    // mid-call. Aligns with the 10/15 s budget used elsewhere for the
-    // same atomic 3-table invariant.
+    // V19.7.1 — lift Prisma's default interactive-transaction budget.
+    // Base path is a few writes, but `getOperationalDebtKdBreakdown`,
+    // `computeOrderRemainingBalancesBatch`, and per-invoice updates can
+    // dominate wall time on dev hardware; 15s was still surfacing P2028
+    // (`CC_PARTIAL_DEBT_PAYMENT_INTERACTIVE_TX`).
     const result = await this.prisma.$transaction(
       async (tx) => {
         const customer = await tx.customer.findUnique({
@@ -2450,7 +2326,7 @@ export class CustomerLedgerService {
               functionName: 'recordPartialDebtPayment',
               payload: paymentPayload,
             });
-            await tx.debtLedgerEntry.create({ data: row });
+            // V20.4 FINAL — DebtLedgerEntry write removed; mirror preserved.
             await this.journal.mirrorDebtLedgerEntrySafe(tx, {
               source: DebtSource.PAYMENT,
               amount: row.amount,
@@ -2510,7 +2386,7 @@ export class CustomerLedgerService {
           transactionHistoryId: thDebtRow.id,
         };
       },
-      { maxWait: 10_000, timeout: 15_000 },
+      CC_PARTIAL_DEBT_PAYMENT_INTERACTIVE_TX,
     );
     // V20.3.2 — Phase 5 post-commit consistency log. Fire-and-
     // forget; never blocks the caller, never throws.

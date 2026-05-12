@@ -61,7 +61,7 @@ function makePrisma() {
     customerSubscription: {
       findFirst: jest.fn(async () => null),
     },
-    order: { findUnique: jest.fn() },
+    order: { findUnique: jest.fn(), findMany: jest.fn(async () => []) },
     debtLedgerEntry: { findMany: jest.fn(async () => []) },
     financialSnapshot: {
       findMany: jest.fn(async () => [{ customerId: CUST }]),

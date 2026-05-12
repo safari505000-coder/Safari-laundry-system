@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { CashStatus, OrderStatus, PosPaymentMethod, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JournalSourceService } from '../../general-ledger/journal-source.service';
 import {
@@ -165,31 +165,72 @@ export class DebtVisibilityService {
    * feed any KPI.
    */
   async getCollectionsSnapshot(): Promise<CollectionsSnapshot> {
-    const candidates = await this.prisma.financialSnapshot.findMany({
-      where: {
-        OR: [
-          { remainingDebtKd: { gt: TOL } },
-          { journalArBalanceKd: { gt: TOL } },
-        ],
-      },
-      select: { customerId: true },
-    });
-    const debts = await this.getCustomerVisibleDebtBatch(
-      candidates.map((row) => row.customerId),
+    const [snapshotCandidates, receivableOrders] = await Promise.all([
+      this.prisma.financialSnapshot.findMany({
+        where: {
+          OR: [
+            { remainingDebtKd: { gt: TOL } },
+            { journalArBalanceKd: { gt: TOL } },
+          ],
+        },
+        select: { customerId: true },
+      }),
+      this.prisma.order.findMany({
+        where: {
+          status: { not: OrderStatus.CANCELED },
+          OR: [
+            { cashStatus: CashStatus.UNPAID },
+            { posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT },
+            { posPaymentMethod: PosPaymentMethod.ONLINE },
+            { posPaymentMethod: PosPaymentMethod.PAYMENT_LINK },
+          ],
+        },
+        select: {
+          id: true,
+          customerId: true,
+          totalPrice: true,
+        },
+      }),
+    ]);
+    const candidateCustomerIds = Array.from(
+      new Set([
+        ...snapshotCandidates.map((row) => row.customerId),
+        ...receivableOrders.map((row) => row.customerId),
+      ]),
     );
+    const debts = await this.getCustomerVisibleDebtBatch(candidateCustomerIds);
+    const remainingByOrder = await computeOrderRemainingBalancesBatch(
+      this.prisma,
+      receivableOrders.map((row) => row.id),
+    );
+    const orderRemainingByCustomer = new Map<string, Prisma.Decimal>();
+    for (const order of receivableOrders) {
+      const rem = remainingByOrder.get(order.id) ?? order.totalPrice;
+      if (rem.lessThanOrEqualTo(TOL)) continue;
+      const prev = orderRemainingByCustomer.get(order.customerId) ?? new Prisma.Decimal(0);
+      orderRemainingByCustomer.set(order.customerId, prev.plus(rem));
+    }
     let totalRemaining = new Prisma.Decimal(0);
     let customersWithDebt = 0;
     let partiallyPaidInvoices = 0;
     let unpaidInvoices = 0;
     let overdueInvoices = 0;
-    for (const debt of debts.values()) {
-      const remaining = new Prisma.Decimal(debt.remainingDebtKd);
+    for (const customerId of candidateCustomerIds) {
+      const debt = debts.get(customerId);
+      const visibleRemaining = new Prisma.Decimal(debt?.remainingDebtKd ?? '0');
+      const orderRemaining =
+        orderRemainingByCustomer.get(customerId) ?? new Prisma.Decimal(0);
+      // V25 — if snapshot/journal overlays lag right after invoice issuance,
+      // keep the KPI truthful by falling back to real-time order remaining.
+      const remaining = visibleRemaining.greaterThan(orderRemaining)
+        ? visibleRemaining
+        : orderRemaining;
       if (remaining.lessThanOrEqualTo(TOL)) continue;
       totalRemaining = totalRemaining.plus(remaining);
       customersWithDebt += 1;
-      partiallyPaidInvoices += debt.partiallyPaidInvoicesCount;
-      unpaidInvoices += debt.unpaidInvoicesCount;
-      overdueInvoices += debt.overdueInvoicesCount;
+      partiallyPaidInvoices += debt?.partiallyPaidInvoicesCount ?? 0;
+      unpaidInvoices += debt?.unpaidInvoicesCount ?? 0;
+      overdueInvoices += debt?.overdueInvoicesCount ?? 0;
     }
     return {
       totalRemainingDebtKd: totalRemaining.toFixed(4),

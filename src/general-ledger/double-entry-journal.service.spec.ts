@@ -2,6 +2,7 @@ import { DebtSource, PosPaymentMethod, Prisma } from '@prisma/client';
 import {
   DoubleEntryJournalService,
   JOURNAL_ACCOUNTS,
+  aggregateJournalEntryForBankColumns,
 } from './double-entry-journal.service';
 
 function mockDb() {
@@ -128,5 +129,108 @@ describe('DoubleEntryJournalService', () => {
         customerId,
       }),
     ).rejects.toThrow('JOURNAL_ACTOR_REQUIRED');
+  });
+});
+
+describe('aggregateJournalEntryForBankColumns', () => {
+  it('sums subscription-style wallet funding: cash + promo liability credit', () => {
+    const lines = [
+      {
+        debit: new Prisma.Decimal('10.0000'),
+        credit: new Prisma.Decimal(0),
+        account: { code: JOURNAL_ACCOUNTS.CASH },
+      },
+      {
+        debit: new Prisma.Decimal('5.0000'),
+        credit: new Prisma.Decimal(0),
+        account: { code: JOURNAL_ACCOUNTS.PROMOTIONAL_EXPENSE },
+      },
+      {
+        debit: new Prisma.Decimal(0),
+        credit: new Prisma.Decimal('15.0000'),
+        account: { code: JOURNAL_ACCOUNTS.WALLET_LIABILITY },
+      },
+    ];
+    expect(aggregateJournalEntryForBankColumns(lines)).toEqual({
+      customerPaidKd: '10.0000',
+      companySupportKd: '5.0000',
+      debtGoodwillDiscountKd: '0.0000',
+      walletCreditKd: '15.0000',
+      walletDebitKd: '0.0000',
+      arDebitKd: '0.0000',
+      arCreditKd: '0.0000',
+    });
+  });
+
+  it('classifies KNET pay-in and AR credit on collection', () => {
+    const lines = [
+      {
+        debit: new Prisma.Decimal('2.5000'),
+        credit: new Prisma.Decimal(0),
+        account: { code: JOURNAL_ACCOUNTS.BANK_KNET },
+      },
+      {
+        debit: new Prisma.Decimal(0),
+        credit: new Prisma.Decimal('2.5000'),
+        account: { code: JOURNAL_ACCOUNTS.ACCOUNTS_RECEIVABLE },
+      },
+    ];
+    expect(aggregateJournalEntryForBankColumns(lines)).toEqual({
+      customerPaidKd: '2.5000',
+      companySupportKd: '0.0000',
+      debtGoodwillDiscountKd: '0.0000',
+      walletCreditKd: '0.0000',
+      walletDebitKd: '0.0000',
+      arDebitKd: '0.0000',
+      arCreditKd: '2.5000',
+    });
+  });
+
+  it('wallet absorption: debit wallet, credit AR', () => {
+    const lines = [
+      {
+        debit: new Prisma.Decimal('3.0000'),
+        credit: new Prisma.Decimal(0),
+        account: { code: JOURNAL_ACCOUNTS.WALLET_LIABILITY },
+      },
+      {
+        debit: new Prisma.Decimal(0),
+        credit: new Prisma.Decimal('3.0000'),
+        account: { code: JOURNAL_ACCOUNTS.ACCOUNTS_RECEIVABLE },
+      },
+    ];
+    expect(aggregateJournalEntryForBankColumns(lines)).toEqual({
+      customerPaidKd: '0.0000',
+      companySupportKd: '0.0000',
+      debtGoodwillDiscountKd: '0.0000',
+      walletCreditKd: '0.0000',
+      walletDebitKd: '3.0000',
+      arDebitKd: '0.0000',
+      arCreditKd: '3.0000',
+    });
+  });
+
+  it('surfaces CC goodwill debt discount on expense account 5200', () => {
+    const lines = [
+      {
+        debit: new Prisma.Decimal('1.0000'),
+        credit: new Prisma.Decimal(0),
+        account: { code: JOURNAL_ACCOUNTS.DEBT_DISCOUNTS },
+      },
+      {
+        debit: new Prisma.Decimal(0),
+        credit: new Prisma.Decimal('1.0000'),
+        account: { code: JOURNAL_ACCOUNTS.ACCOUNTS_RECEIVABLE },
+      },
+    ];
+    expect(aggregateJournalEntryForBankColumns(lines)).toEqual({
+      customerPaidKd: '0.0000',
+      companySupportKd: '0.0000',
+      debtGoodwillDiscountKd: '1.0000',
+      walletCreditKd: '0.0000',
+      walletDebitKd: '0.0000',
+      arDebitKd: '0.0000',
+      arCreditKd: '1.0000',
+    });
   });
 });

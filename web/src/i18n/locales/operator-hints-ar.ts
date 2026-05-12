@@ -117,7 +117,7 @@ export const operatorHints = {
     unifiedLedger:
       'سجل أحداث مالي مُلحق فقط. التصفية للتدقيق؛ التصدير للمحاسب.',
     journalStatement:
-      'معاينة كشف عميل بنظام القيد المزدوج. مفعّل في التطوير؛ وفي الإنتاج عبر VITE_ENABLE_JOURNAL_STATEMENT=true.',
+      'كشف ذمم واحد للعميل (مركز الاتصال): حركات حساب 1300 مع الباقة ووسيلة الدفع عند التوفر. مفعّل ما لم يُضبط VITE_ENABLE_JOURNAL_STATEMENT=false.',
     payroll:
       'مسير الرواتب وطباعة الكشوف. كشف الراتب يفتح في تاب بدون الشريط.',
     systemSettings:

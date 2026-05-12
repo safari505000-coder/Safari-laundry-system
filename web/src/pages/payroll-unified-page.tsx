@@ -183,19 +183,15 @@ function readYmFromSearch(sp: URLSearchParams): string | null {
   return null;
 }
 
+/**
+ * V25 Frontend Purge — local payroll-net calculation removed.
+ * The backend returns `PayrollRow.netSalaryKd` (V21 Phase 5,
+ * computed via `mapPayrollRow` in `src/payroll/payroll.response.ts`).
+ * Returns a number purely for summing purposes via `sumKwdStrings`;
+ * display sites must use `row.netSalaryKd` directly.
+ */
 function payrollNet(row: PayrollRow): number {
-  // V19.20 — mirrors backend `PayrollService.netPay`. The loan
-  // instalment is subtracted alongside deductions + debt-hold so the
-  // grid, totals, and the A4 payslip all agree to 4 decimals.
-  return (
-    f(row.basicSalary) +
-    f(row.allowances) +
-    f(row.commissionAmount) +
-    f(row.debtReleaseAmount) -
-    f(row.deductions) -
-    f(row.debtHoldAmount) -
-    f(row.loanDeduction)
-  );
+  return f(row.netSalaryKd ?? '0');
 }
 
 interface EditBuffer {
@@ -1766,7 +1762,8 @@ function SavedRow({
         </TableCell>
       )}
       <TableCell className="text-end tabular-nums font-bold">
-        {formatKwdLabel(payrollNet(row).toFixed(4))}
+        {/* V25 Frontend Purge: render server-authoritative netSalaryKd directly */}
+        {formatKwdLabel(row.netSalaryKd ?? '0')}
       </TableCell>
       <TableCell className="text-end" data-row-actions="true">
         <div className="flex flex-wrap justify-end gap-1">

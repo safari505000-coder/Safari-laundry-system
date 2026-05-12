@@ -37,6 +37,24 @@ import { GatewayTrackHintDto } from './dto/gateway-track-hint.dto';
 import { PaymentCallbackDto } from './dto/payment-callback.dto';
 
 /**
+ * V25 Controller Math Purge — canonical KWD serialization helper.
+ * Formats a Prisma.Decimal (or numeric string) as a 3dp KWD string for
+ * API responses WITHOUT performing arithmetic. Replaces inline
+ * `kwdStr(order.totalPrice)` scattered across response-shaping blocks
+ * so formatting stays in one tested location.
+ */
+function kwdStr(value: { toFixed: (n: number) => string } | string | number): string {
+  if (typeof value === 'string') {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed.toFixed(3) : '0.000';
+  }
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value.toFixed(3) : '0.000';
+  }
+  return value.toFixed(3);
+}
+
+/**
  * V1.7.0 — Public DTO returned by `GET /api/payments/status/:orderId`.
  * Exposed ONLY to the customer-facing /payment/success & /payment/failed
  * pages so they can poll for settlement confirmation without needing a
@@ -442,24 +460,23 @@ document.getElementById('go').onclick = async function () {
         inquiry.data.result ?? '',
       );
       let willFinalize = outcome === 'success' && inquiry.ok;
-      const gatewayAmountMinor = parseKwdMinor(inquiry.data.amount);
-      const orderAmountMinor = parseKwdMinor(order.totalPrice.toString());
+      // V25 Controller Math Purge: amount comparison delegated to PaymentsService.
+      const amountComparison = this.paymentsService.compareGatewayAmount(
+        inquiry.data.amount,
+        order.totalPrice.toString(),
+      );
       let blockedReason: string | null = null;
-      if (willFinalize && gatewayAmountMinor === null) {
+      if (willFinalize && amountComparison === 'indeterminate') {
         willFinalize = false;
         blockedReason = 'amount-missing';
         this.logger.warn(
           `UPayments callback: gateway success without amount; not finalizing orderId=${order.id} trackIdPrefix=${gatewayInquiryId.slice(0, 16)}`,
         );
-      } else if (
-        willFinalize &&
-        orderAmountMinor !== null &&
-        gatewayAmountMinor !== orderAmountMinor
-      ) {
+      } else if (willFinalize && amountComparison === 'mismatch') {
         willFinalize = false;
         blockedReason = 'amount-mismatch';
         this.logger.warn(
-          `UPayments callback: amount mismatch orderId=${order.id} expectedMinor=${orderAmountMinor} gatewayMinor=${gatewayAmountMinor} trackIdPrefix=${gatewayInquiryId.slice(0, 16)}`,
+          `UPayments callback: amount mismatch orderId=${order.id} trackIdPrefix=${gatewayInquiryId.slice(0, 16)}`,
         );
       }
       this.logger.log(
@@ -776,7 +793,7 @@ document.getElementById('go').onclick = async function () {
       status,
       isPaid,
       paid: isPaid,
-      amountKd: order.totalPrice.toFixed(3),
+      amountKd: kwdStr(order.totalPrice),
       serialNumber: order.serialNumber ?? null,
       invoiceNumber: order.invoiceNumber ?? null,
       pdfUrl: share.pdfUrl,
@@ -902,7 +919,7 @@ document.getElementById('go').onclick = async function () {
         status,
         isPaid: true,
         paid: true,
-        amountKd: order.totalPrice.toFixed(3),
+        amountKd: kwdStr(order.totalPrice),
         trackIdPresent: Boolean(order.posGatewayTrackId),
         gatewayResult: null,
         settledNow: false,
@@ -952,7 +969,7 @@ document.getElementById('go').onclick = async function () {
             status: OrderStatus.COMPLETED,
             isPaid: true,
             paid: true,
-            amountKd: order.totalPrice.toFixed(3),
+            amountKd: kwdStr(order.totalPrice),
             trackIdPresent: true,
             gatewayResult: gatewayResultRaw,
             settledNow: true,
@@ -981,7 +998,7 @@ document.getElementById('go').onclick = async function () {
         status,
         isPaid: false,
         paid: false,
-        amountKd: order.totalPrice.toFixed(3),
+        amountKd: kwdStr(order.totalPrice),
         trackIdPresent: false,
         gatewayResult: null,
         settledNow: false,
@@ -1031,7 +1048,7 @@ document.getElementById('go').onclick = async function () {
         status,
         isPaid: false,
         paid: false,
-        amountKd: order.totalPrice.toFixed(3),
+        amountKd: kwdStr(order.totalPrice),
         trackIdPresent: Boolean(returnTrack || order.posGatewayTrackId),
         gatewayResult: null,
         settledNow: false,
@@ -1059,7 +1076,7 @@ document.getElementById('go').onclick = async function () {
       status,
       isPaid,
       paid: isPaid,
-      amountKd: order.totalPrice.toFixed(3),
+      amountKd: kwdStr(order.totalPrice),
       trackIdPresent: Boolean(returnTrack || order.posGatewayTrackId),
       gatewayResult,
       settledNow,
@@ -1496,12 +1513,8 @@ function parseSafariOrderUuid(raw: string | undefined | null): string | null {
   return SAFARI_ORDER_UUID_RE.test(t) ? t : null;
 }
 
-function parseKwdMinor(raw: string | number | undefined | null): number | null {
-  if (raw === undefined || raw === null) return null;
-  const value = typeof raw === 'number' ? raw : Number(raw);
-  if (!Number.isFinite(value)) return null;
-  return Math.round(value * 1000);
-}
+// V25 Controller Math Purge: parseKwdMinor removed from controller.
+// Amount parsing and comparison are now handled entirely by PaymentsService.compareGatewayAmount.
 
 /** Extract `orderId=<uuid>` from UPayments' `customerExtraData`. */
 function extractOrderIdFromExtraData(raw: string | undefined): string | null {

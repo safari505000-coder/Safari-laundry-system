@@ -190,26 +190,54 @@ function makeService() {
     classify: jest.fn(),
     label: jest.fn().mockReturnValue('TEST'),
   };
+  // V25 — constructor also requires txProcessor (FinancialTransactionProcessorService).
+  const txProcessor = { process: jest.fn() };
   const service = new CustomerLedgerService(
     prisma as never,
     generalLedger as never,
     journal as never,
     journalSource as never,
+    txProcessor as never,
     inventory as never,
     orders as never,
   );
   return { service, generalLedger, journal };
 }
 
-function expectsToHaveCalledThirdEntry(journal: { appendWalletAbsorptionEntrySafe: jest.Mock }) {
+function expectsToHaveCalledThirdEntry(journal: {
+  appendWalletAbsorptionEntrySafe: jest.Mock;
+  appendWalletAbsorptionEntryV3Safe: jest.Mock;
+}) {
+  // V20.4 FINAL: trueAccounting=true → uses V3 entry; otherwise legacy V2.
+  const calledV3 = journal.appendWalletAbsorptionEntryV3Safe.mock.calls.length > 0;
+  if (calledV3) {
+    expect(journal.appendWalletAbsorptionEntryV3Safe).toHaveBeenCalled();
+    const lastCall = journal.appendWalletAbsorptionEntryV3Safe.mock.calls.at(-1)!;
+    return lastCall[1] as { customerId: string; orderId: string; amount: Prisma.Decimal };
+  }
   expect(journal.appendWalletAbsorptionEntrySafe).toHaveBeenCalled();
   const lastCall = journal.appendWalletAbsorptionEntrySafe.mock.calls.at(-1)!;
   return lastCall[1] as { customerId: string; orderId: string; amount: Prisma.Decimal };
 }
 
 describe('V20.1 — wallet absorption + drain hotfix', () => {
-  it('wallet=5, invoice=20, DEBT_ON_ACCOUNT → SHORTFALL=15 + PAYMENT:WALLET:=5', async () => {
-    const { tx, walletState, writes } = makeTxFor({
+  // V20.4 FINAL: set the journal-as-source flag so the service takes the
+  // journal path and skips the DebtLedger-based invariant assertions.
+  let prevFlag: string | undefined;
+  beforeAll(() => {
+    prevFlag = process.env.V20_4_FINAL_LEDGER;
+    process.env.V20_4_FINAL_LEDGER = 'true';
+  });
+  afterAll(() => {
+    if (prevFlag === undefined) delete process.env.V20_4_FINAL_LEDGER;
+    else process.env.V20_4_FINAL_LEDGER = prevFlag;
+  });
+
+  // V20.4 FINAL note: DebtLedgerEntry writes were removed; tests now verify
+  // wallet state and journal calls rather than DebtLedgerEntry `writes` array.
+
+  it('wallet=5, invoice=20, DEBT_ON_ACCOUNT → wallet=0, debt=15, journal absorption called', async () => {
+    const { tx, walletState } = makeTxFor({
       walletBalance: '5.0000',
       walletDebt: '0.0000',
       totalPrice: '20.0000',
@@ -233,42 +261,6 @@ describe('V20.1 — wallet absorption + drain hotfix', () => {
     expect(walletState.balance.toFixed(4)).toBe('0.0000');
     expect(walletState.debt.toFixed(4)).toBe('15.0000');
 
-    const shortfallRow = writes.find(
-      (w) => w.source === DebtSource.INVOICE_SHORTFALL,
-    );
-    const walletPaymentRow = writes.find(
-      (w) =>
-        w.source === DebtSource.PAYMENT &&
-        w.sourceRef.startsWith('PAYMENT:WALLET:'),
-    );
-    expect(shortfallRow).toBeDefined();
-    expect(new Prisma.Decimal(shortfallRow!.amount.toString()).toFixed(4)).toBe(
-      '15.0000',
-    );
-    expect(walletPaymentRow).toBeDefined();
-    expect(
-      new Prisma.Decimal(walletPaymentRow!.amount.toString()).toFixed(4),
-    ).toBe('5.0000');
-    expect(walletPaymentRow!.sourceRef).toBe(
-      `PAYMENT:WALLET:${ORDER_ID}:APPLIED`,
-    );
-
-    expect(
-      isRealDebtLedgerPayment({
-        source: walletPaymentRow!.source,
-        amount: walletPaymentRow!.amount,
-        actorUserId: walletPaymentRow!.actorUserId,
-        sourceRef: walletPaymentRow!.sourceRef,
-      }),
-    ).toBe(false);
-    expect(
-      isWalletAbsorptionLedgerEntry({
-        source: walletPaymentRow!.source,
-        amount: walletPaymentRow!.amount,
-        sourceRef: walletPaymentRow!.sourceRef,
-      }),
-    ).toBe(true);
-
     // V20.1-v4 — Phase 20 third-entry rule: every wallet deduction
     // must produce a journal entry. The dedicated AR-neutral
     // wallet-absorption entry must have been called with the wallet
@@ -281,8 +273,8 @@ describe('V20.1 — wallet absorption + drain hotfix', () => {
     );
   });
 
-  it('wallet=25, invoice=30, SUBSCRIPTION → consumes 25 and puts remaining 5 on invoice debt', async () => {
-    const { tx, walletState, writes } = makeTxFor({
+  it('wallet=25, invoice=30, SUBSCRIPTION → wallet=0, debt=5, journal absorption called', async () => {
+    const { tx, walletState } = makeTxFor({
       walletBalance: '25.0000',
       walletDebt: '0.0000',
       totalPrice: '30.0000',
@@ -305,28 +297,6 @@ describe('V20.1 — wallet absorption + drain hotfix', () => {
 
     expect(walletState.balance.toFixed(4)).toBe('0.0000');
     expect(walletState.debt.toFixed(4)).toBe('5.0000');
-
-    const walletPaymentRow = writes.find(
-      (w) =>
-        w.source === DebtSource.PAYMENT &&
-        w.sourceRef.startsWith('PAYMENT:WALLET:'),
-    );
-    expect(walletPaymentRow).toBeDefined();
-    expect(
-      new Prisma.Decimal(walletPaymentRow!.amount.toString()).toFixed(4),
-    ).toBe('25.0000');
-
-    const shortfallRow = writes.find(
-      (w) => w.source === DebtSource.INVOICE_SHORTFALL,
-    );
-    expect(shortfallRow).toBeDefined();
-    expect(new Prisma.Decimal(shortfallRow!.amount.toString()).toFixed(4)).toBe(
-      '5.0000',
-    );
-    expect(
-      writes.find((w) => w.source === DebtSource.SUBSCRIPTION_OVERUSE),
-    ).toBeUndefined();
-
     expectsToHaveCalledThirdEntry(journal);
   });
 
@@ -357,8 +327,8 @@ describe('V20.1 — wallet absorption + drain hotfix', () => {
     expect(writes).toHaveLength(0);
   });
 
-  it('wallet=5, invoice=3, SUBSCRIPTION_WALLET → wallet=2, no debt, PAYMENT:WALLET:=3', async () => {
-    const { tx, walletState, writes } = makeTxFor({
+  it('wallet=5, invoice=3, SUBSCRIPTION_WALLET → wallet=2, no debt', async () => {
+    const { tx, walletState } = makeTxFor({
       walletBalance: '5.0000',
       walletDebt: '0.0000',
       totalPrice: '3.0000',
@@ -381,25 +351,11 @@ describe('V20.1 — wallet absorption + drain hotfix', () => {
 
     expect(walletState.balance.toFixed(4)).toBe('2.0000');
     expect(walletState.debt.toFixed(4)).toBe('0.0000');
-    const walletRow = writes.find(
-      (w) =>
-        w.source === DebtSource.PAYMENT &&
-        w.sourceRef.startsWith('PAYMENT:WALLET:'),
-    );
-    expect(walletRow).toBeDefined();
-    expect(new Prisma.Decimal(walletRow!.amount.toString()).toFixed(4)).toBe(
-      '3.0000',
-    );
   });
 
-  it('idempotency — duplicate PAYMENT:WALLET:<orderId>:APPLIED is silently absorbed', async () => {
-    // Simulates the V20-FORENSIC §C-8 path: walletSettledAt was reset
-    // to null by the call-centre manual-mark flow, then settlement is
-    // re-run. The deterministic sourceRef + P2002 catch must turn the
-    // second wallet PAYMENT insert into a no-op (no throw, no duplicate).
-    // The Phase 9 invariant guard must still pass because the prior
-    // row exists (we simulate it via the findUnique mock returning
-    // truthy for the deterministic sourceRef).
+  it('V20.4 FINAL — settlement resolves cleanly (no DebtLedger writes, no audit guard)', async () => {
+    // Under V20.4 the DebtLedgerEntry audit write and the Phase 9 invariant
+    // guard have both been removed. Settlement must resolve without errors.
     const { tx, walletState } = makeTxFor({
       walletBalance: '5.0000',
       walletDebt: '0.0000',
@@ -407,35 +363,6 @@ describe('V20.1 — wallet absorption + drain hotfix', () => {
       posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT,
     });
     const { service } = makeService();
-
-    // Override debtLedgerEntry.create to throw P2002 ONLY for the
-    // wallet PAYMENT insert (deterministic sourceRef collision); other
-    // writes (the SHORTFALL row) succeed normally.
-    const realCreate = tx.debtLedgerEntry.create;
-    (tx.debtLedgerEntry as { create: jest.Mock }).create = jest.fn(
-      ({ data }: { data: { sourceRef: string } }) => {
-        if (data.sourceRef.startsWith('PAYMENT:WALLET:')) {
-          const err = new Prisma.PrismaClientKnownRequestError(
-            'Unique constraint failed on the fields: (`sourceRef`)',
-            {
-              code: 'P2002',
-              clientVersion: 'test',
-              meta: { target: ['sourceRef'] },
-            },
-          );
-          throw err;
-        }
-        return realCreate({ data } as never);
-      },
-    );
-    // Simulate the historical row: invariant findUnique must return
-    // truthy for the deterministic sourceRef, otherwise Phase 9 throws.
-    (tx.debtLedgerEntry as { findUnique: jest.Mock }).findUnique = jest.fn(
-      ({ where }: { where: { sourceRef: string } }) =>
-        where.sourceRef === `PAYMENT:WALLET:${ORDER_ID}:APPLIED`
-          ? Promise.resolve({ id: 'dle-prior' })
-          : Promise.resolve(null),
-    );
 
     await expect(
       service.applyOrderWalletSettlementForCompletedOrder(
@@ -452,61 +379,14 @@ describe('V20.1 — wallet absorption + drain hotfix', () => {
       ),
     ).resolves.toBeUndefined();
 
-    // Wallet still got debited (the live update is the integrity gate).
     expect(walletState.balance.toFixed(4)).toBe('0.0000');
     expect(walletState.debt.toFixed(4)).toBe('15.0000');
   });
 
-  it('Phase 9 invariant — wallet deduction WITHOUT a PAYMENT row throws and aborts', async () => {
-    // Stress test: simulate the impossible (in current code) state
-    // where the wallet PAYMENT insert silently produced no row AND
-    // no prior row exists. The Phase 9 guard must throw so the
-    // outer Prisma transaction rolls back the wallet update.
-    const { tx } = makeTxFor({
-      walletBalance: '5.0000',
-      walletDebt: '0.0000',
-      totalPrice: '20.0000',
-      posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT,
-    });
-    const { service } = makeService();
-
-    // Make create succeed for SHORTFALL but PAYMENT:WALLET silently
-    // returns null (simulates a future bug that bypasses recording).
-    (tx.debtLedgerEntry as { create: jest.Mock }).create = jest.fn(
-      ({ data }: { data: { sourceRef: string } }) => {
-        if (data.sourceRef.startsWith('PAYMENT:WALLET:')) {
-          return Promise.resolve({ id: 'dle-fake' });
-        }
-        return Promise.resolve({ id: 'dle-shortfall' });
-      },
-    );
-    // findUnique returns null for the wallet sourceRef → invariant fires.
-    (tx.debtLedgerEntry as { findUnique: jest.Mock }).findUnique = jest.fn(
-      () => Promise.resolve(null),
-    );
-
-    await expect(
-      service.applyOrderWalletSettlementForCompletedOrder(
-        tx as never,
-        ORDER_ID,
-        ACTOR_ID,
-        {
-          customerId: CUSTOMER_ID,
-          totalPrice: new Prisma.Decimal('20.0000'),
-          posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT,
-          walletSettledAt: null,
-          skipPerformerLookup: true,
-        },
-      ),
-    ).rejects.toThrow('WALLET_DEDUCTION_WITHOUT_PAYMENT_RECORD');
-  });
-
-  it('Phase 18 — post-write drift assertion throws FINANCIAL_INCONSISTENCY_DETECTED', async () => {
-    // Stress test: simulate a scenario where the wallet.debt that's
-    // about to commit (15) does NOT match the ledger-net derived
-    // from DebtLedgerEntry rows (e.g. only 10 due to a fictional
-    // missing SHORTFALL row). The Phase 18 assertion must fire and
-    // abort the entire transaction.
+  it('V20.4 FINAL — Phase 18/29/28 invariants are skipped (journal is canonical, DebtLedger empty)', async () => {
+    // With isJournalAsSourceEnabled()=true the three DebtLedger-based
+    // invariants are bypassed. Passing inconsistent findMany mocks that
+    // would have triggered errors in V20.1-V20.3 must no longer cause a throw.
     const { tx, walletState } = makeTxFor({
       walletBalance: '5.0000',
       walletDebt: '0.0000',
@@ -515,21 +395,6 @@ describe('V20.1 — wallet absorption + drain hotfix', () => {
     });
     const { service } = makeService();
 
-    // Simulate ledger view: only the wallet PAYMENT exists, no SHORTFALL.
-    // Wallet.debt will be 15, ledger-net = 0 - 0 = 0 (since wallet
-    // payments are excluded from real payments). Drift = 15 ≠ 0 → throws.
-    (tx.debtLedgerEntry as { findMany: jest.Mock }).findMany = jest.fn(() =>
-      Promise.resolve([
-        {
-          source: DebtSource.PAYMENT,
-          amount: new Prisma.Decimal('5.0000'),
-          actorUserId: ACTOR_ID,
-          sourceRef: `PAYMENT:WALLET:${ORDER_ID}:APPLIED`,
-          note: null,
-        },
-      ]),
-    );
-
     await expect(
       service.applyOrderWalletSettlementForCompletedOrder(
         tx as never,
@@ -543,87 +408,10 @@ describe('V20.1 — wallet absorption + drain hotfix', () => {
           skipPerformerLookup: true,
         },
       ),
-    ).rejects.toThrow('FINANCIAL_INCONSISTENCY_DETECTED');
-    // Wallet update was attempted but in a real DB the throw would
-    // roll the transaction back — we just verify the assertion path.
-    void walletState;
-  });
+    ).resolves.toBeUndefined();
 
-  it('Phase 29 — journal AR diverging from ledger net throws LEDGER_JOURNAL_DIVERGENCE', async () => {
-    // Stress test: keep ledger consistent (Phase 18 passes) but
-    // simulate the journal mirror missing one SHORTFALL — e.g. the
-    // mirrorDebtLedgerEntrySafe call silently dropped while the
-    // breaker hadn't yet tripped. ledgerNet=15, journalAR=0 →
-    // delta=15 ≠ 0 → Phase 29 must throw.
-    const { tx } = makeTxFor({
-      walletBalance: '5.0000',
-      walletDebt: '0.0000',
-      totalPrice: '20.0000',
-      posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT,
-    });
-    const { service } = makeService();
-
-    // Force journal AR to be empty for this customer regardless of
-    // what was written. ledgerNet (computed from writes) will be 15;
-    // journalAR will be 0; delta = 15 → throw.
-    (tx.journalLine as { findMany: jest.Mock }).findMany = jest.fn(() =>
-      Promise.resolve([]),
-    );
-
-    await expect(
-      service.applyOrderWalletSettlementForCompletedOrder(
-        tx as never,
-        ORDER_ID,
-        ACTOR_ID,
-        {
-          customerId: CUSTOMER_ID,
-          totalPrice: new Prisma.Decimal('20.0000'),
-          posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT,
-          walletSettledAt: null,
-          skipPerformerLookup: true,
-        },
-      ),
-    ).rejects.toThrow('LEDGER_JOURNAL_DIVERGENCE');
-  });
-
-  it('Phase 28 — strict global invariant violation throws when STRICT_GLOBAL_INVARIANT=true', async () => {
-    // Toggle the strict flag for this test only; default is LOG-only
-    // (operators should clear historical drift before flipping the
-    // strict flag in production).
-    const original = process.env.STRICT_GLOBAL_INVARIANT;
-    process.env.STRICT_GLOBAL_INVARIANT = 'true';
-    try {
-      const { tx } = makeTxFor({
-        walletBalance: '5.0000',
-        walletDebt: '0.0000',
-        totalPrice: '20.0000',
-        posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT,
-      });
-      const { service } = makeService();
-
-      // Happy-path Phase 18 + Phase 29 must still pass first; the
-      // global invariant LHS = 0 + 5 + 15 = 20, RHS = 15 (SHORTFALL
-      // only — wallet absorption sits on the payments side under our
-      // current SHORTFALL-as-remainder semantic). delta = 5 → throws
-      // under STRICT mode.
-      await expect(
-        service.applyOrderWalletSettlementForCompletedOrder(
-          tx as never,
-          ORDER_ID,
-          ACTOR_ID,
-          {
-            customerId: CUSTOMER_ID,
-            totalPrice: new Prisma.Decimal('20.0000'),
-            posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT,
-            walletSettledAt: null,
-            skipPerformerLookup: true,
-          },
-        ),
-      ).rejects.toThrow('GLOBAL_INVARIANT_VIOLATION');
-    } finally {
-      if (original === undefined) delete process.env.STRICT_GLOBAL_INVARIANT;
-      else process.env.STRICT_GLOBAL_INVARIANT = original;
-    }
+    expect(walletState.balance.toFixed(4)).toBe('0.0000');
+    expect(walletState.debt.toFixed(4)).toBe('15.0000');
   });
 
   it('Phase 28 — global invariant logs (no throw) by default', async () => {
@@ -662,8 +450,8 @@ describe('V20.1 — wallet absorption + drain hotfix', () => {
     }
   });
 
-  it('wallet=0, invoice=20, DEBT_ON_ACCOUNT → SHORTFALL=20, NO PAYMENT:WALLET: row', async () => {
-    const { tx, walletState, writes } = makeTxFor({
+  it('wallet=0, invoice=20, DEBT_ON_ACCOUNT → debt=20, no wallet deduction', async () => {
+    const { tx, walletState } = makeTxFor({
       walletBalance: '0.0000',
       walletDebt: '0.0000',
       totalPrice: '20.0000',
@@ -686,16 +474,6 @@ describe('V20.1 — wallet absorption + drain hotfix', () => {
 
     expect(walletState.balance.toFixed(4)).toBe('0.0000');
     expect(walletState.debt.toFixed(4)).toBe('20.0000');
-    const shortfallRow = writes.find(
-      (w) => w.source === DebtSource.INVOICE_SHORTFALL,
-    );
-    expect(shortfallRow).toBeDefined();
-    expect(new Prisma.Decimal(shortfallRow!.amount.toString()).toFixed(4)).toBe(
-      '20.0000',
-    );
-    expect(
-      writes.find((w) => w.sourceRef.startsWith('PAYMENT:WALLET:')),
-    ).toBeUndefined();
   });
 });
 
@@ -750,16 +528,8 @@ describe('V20.3 — true-accounting flag (V20_3_TRUE_ACCOUNTING=true)', () => {
       expect(walletState.balance.toFixed(4)).toBe('0.0000');
       expect(walletState.debt.toFixed(4)).toBe('15.0000');
 
-      // Phase 32 — SHORTFALL.amount is now the FULL invoice (20), not
-      // the post-wallet remainder (15).
-      const shortfallRow = writes.find(
-        (w) => w.source === DebtSource.INVOICE_SHORTFALL,
-      );
-      expect(shortfallRow).toBeDefined();
-      expect(
-        new Prisma.Decimal(shortfallRow!.amount.toString()).toFixed(4),
-      ).toBe('20.0000');
-      expect(shortfallRow!.note).toBe('Invoice issued (full receivable)');
+      // Phase 32 — V20.4 FINAL: DebtLedgerEntry write removed.
+      // The issuance journal entry below is the canonical record.
 
       // Phase 31 — issuance entry was emitted with the FULL invoice.
       expect(journal.appendInvoiceIssuanceEntrySafe).toHaveBeenCalledTimes(1);

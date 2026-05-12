@@ -94,7 +94,7 @@ export const ar = {
     allInvoices: 'كل الفواتير',
     groupInvoices: 'الفواتير',
     unifiedLedger: 'الدفتر الموحد',
-    journalStatement: 'تقارير العميل',
+    journalStatement: 'كشف ذمم العميل',
     myCustody: 'كاش بانتظار الإيداع',
     myDocuments: 'مستنداتي',
     driverOversight: 'مراقبة السائقين',
@@ -1929,6 +1929,20 @@ export const ar = {
     debtPaySubmitting: 'جارٍ التسجيل…',
     debtPaySuccess:
       'تم تحصيل {{collected}} · خصم {{discount}} · المديونية المتبقية {{remaining}}.',
+    debtPayJournalTitle: 'معاينة القيد المزدوج (كما يُسجَّل في الدفتر)',
+    debtPayJournalHint:
+      'كل مبلغ أدخلته هنا يُحمَل كقيد متوازن منفصل على الخادم: مدين ودائن بنفس القيمة — بدون أي جمع إضافي في الواجهة.',
+    debtPayJournalLegCollection: '١ — تحصيل الذمة (أصل الدفع ↔ ذمم العميل)',
+    debtPayJournalLegDiscount: '٢ — خصم حسنة (مصروف الخصم ↔ ذمم العميل)',
+    debtPayJournalDebit: 'مدين',
+    debtPayJournalCredit: 'دائن',
+    debtPayJournalArAccount: 'ذمم مدينة (حساب العميل)',
+    debtPayJournalGoodwillExpense: 'مصروف خصومات ذمم / هدايا حسنة',
+    debtPayJournalAssetCash: 'صندوق / نقد',
+    debtPayJournalAssetKnet: 'بنك — كي نت',
+    debtPayJournalAssetOnline: 'بنك — تحصيل إلكتروني أو رابط دفع',
+    debtPayJournalFoot:
+      'مجموع دائن «الذمم المدينة» في القيود أعلاه يساوي {{total}} — نفس «إجمالي التخفيض».',
     extendDialogTitle: 'تمديد الاشتراك الحالي',
     extendDialogDescription:
       'إضافة أيام إلى اشتراك {{name}} الحالي. لا يُحصَّل أي مبلغ — فقط يُمدَّد تاريخ انتهاء الاشتراك.',

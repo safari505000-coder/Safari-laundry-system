@@ -27,6 +27,7 @@ type FakeEntry = {
     debit: Prisma.Decimal;
     credit: Prisma.Decimal;
     account: { code: string; name: string };
+    meta?: Prisma.JsonValue;
   }>;
 };
 
@@ -34,6 +35,9 @@ function makeFakePrisma(entries: FakeEntry[]) {
   return {
     journalEntry: {
       findMany: jest.fn().mockImplementation(async () => entries),
+    },
+    customerSubscription: {
+      findMany: jest.fn().mockResolvedValue([]),
     },
   };
 }
@@ -91,6 +95,7 @@ describe('V22 Phase 6 — getCustomerJournalEntries', () => {
     const invoice = out.entries[0];
     expect(invoice.entryId).toBe('entry-invoice');
     expect(invoice.source).toBe('INVOICE');
+    expect(invoice.referenceLabel.length).toBeGreaterThan(0);
     expect(invoice.balanced).toBe(true);
     expect(invoice.totalDebitKd).toBe('35.0000');
     expect(invoice.totalCreditKd).toBe('35.0000');
@@ -164,5 +169,63 @@ describe('V22 Phase 6 — getCustomerJournalEntries', () => {
     const out = await svc.getCustomerJournalEntries(customerId);
 
     expect(out).toEqual({ customerId, entries: [] });
+  });
+
+  it('enriches contextLabel with subscription plan + payment channel when resolvable', async () => {
+    const subId = '761c27db-3284-42bc-82d5-fdf3c24c336d';
+    const fakeEntries: FakeEntry[] = [
+      {
+        id: 'entry-fund',
+        source: 'PROCESS_TRANSACTION',
+        sourceRef: `WALLET_FUNDING:SUBSCRIPTION:${subId}`,
+        createdAt: new Date('2026-05-12T08:53:16.000Z'),
+        lines: [
+          {
+            debit: new Prisma.Decimal('20.0000'),
+            credit: new Prisma.Decimal('0'),
+            account: {
+              code: JOURNAL_ACCOUNTS.BANK_ONLINE,
+              name: 'BANK_ONLINE',
+            },
+            meta: { payment_method: 'ONLINE' },
+          },
+          {
+            debit: new Prisma.Decimal('5.0000'),
+            credit: new Prisma.Decimal('0'),
+            account: {
+              code: JOURNAL_ACCOUNTS.PROMOTIONAL_EXPENSE,
+              name: 'PROMOTIONAL_EXPENSE',
+            },
+            meta: {},
+          },
+          {
+            debit: new Prisma.Decimal('0'),
+            credit: new Prisma.Decimal('25.0000'),
+            account: {
+              code: JOURNAL_ACCOUNTS.WALLET_LIABILITY,
+              name: 'WALLET_LIABILITY',
+            },
+            meta: {},
+          },
+        ],
+      },
+    ];
+    const prisma = {
+      journalEntry: {
+        findMany: jest.fn().mockResolvedValue(fakeEntries),
+      },
+      customerSubscription: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([{ id: subId, planNameSnapshot: 'ذهبي — سنوي' }]),
+      },
+    };
+    const svc = new DoubleEntryJournalService(prisma as never);
+    const out = await svc.getCustomerJournalEntries(customerId);
+    expect(out.entries).toHaveLength(1);
+    expect(out.entries[0].contextLabel).toContain('ذهبي');
+    expect(out.entries[0].contextLabel).toContain('الباقة:');
+    expect(out.entries[0].contextLabel).toContain('الدفع:');
+    expect(out.entries[0].contextLabel).toContain('أونلاين');
   });
 });

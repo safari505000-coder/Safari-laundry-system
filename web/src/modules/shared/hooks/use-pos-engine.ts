@@ -50,6 +50,11 @@ import { useOfflineSyncOptional } from '@/offline/offline-sync-context';
 import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';
 import type { PriceListBridge } from '@/modules/shared/hooks/use-price-list';
 
+// @V24-LEGACY-MATH-EXEMPTION: billingFromCachedWallet converts offline-cached
+// wallet snapshot strings to a preview billing profile for the POS UI before
+// an order is submitted. These values are never displayed as settled financial
+// amounts — they drive the "wallet covers cart?" UX gate only. The committed
+// amount is always recalculated and authoritative on the backend.
 function billingFromCachedWallet(
   w: NonNullable<CustomerSearchRow['wallet']>,
 ): CustomerBillingProfile {
@@ -438,11 +443,18 @@ export function usePosEngine(opts: PosEngineOptions) {
 
   const cart = subOrders[activeSubOrderIndex]?.lines ?? [];
 
+  // @V24-LEGACY-MATH-EXEMPTION: combinedLineSubtotal is a pre-submission cart
+  // preview used to decide whether the wallet covers the current basket. It
+  // is NOT the committed invoice total — that is computed server-side upon
+  // checkout and returned in the order response.
   const combinedLineSubtotal = useMemo(
     () => subOrders.reduce((s, o) => s + sumLinesKd(o.lines), 0),
     [subOrders],
   );
 
+  // @V24-LEGACY-MATH-EXEMPTION: balanceNum / debtNum are UI-gate previews
+  // parsed from the billing snapshot (server-fetched KWD strings). Used to
+  // show the "low balance" badge — never for settled financial display.
   const balanceNum = billing
     ? Number.parseFloat(billing.remainingBalance)
     : NaN;

@@ -84,11 +84,18 @@ export class DepositsService {
 
   async createByDriver(
     driverId: string,
-    amount: number,
+    /** V25 Controller Math Purge: accepts canonical KWD string; Decimal parsing happens here. */
+    amount: string | number,
     type: DepositType,
     receiptImageUrl: string,
   ) {
-    if (!Number.isFinite(amount) || amount <= 0) {
+    let amountDecimal: Prisma.Decimal;
+    try {
+      amountDecimal = new Prisma.Decimal(amount.toString());
+    } catch {
+      throw new BadRequestException('amount must be a valid number');
+    }
+    if (!amountDecimal.isFinite() || amountDecimal.lte(0)) {
       throw new BadRequestException('amount must be positive');
     }
     const driver = await this.prisma.user.findUnique({
@@ -101,7 +108,7 @@ export class DepositsService {
     const row = await this.prisma.deposit.create({
       data: {
         driverId,
-        amount: new Prisma.Decimal(amount.toFixed(4)),
+        amount: amountDecimal.toDecimalPlaces(4, Prisma.Decimal.ROUND_HALF_EVEN),
         type,
         receiptImage: receiptImageUrl,
         status: DepositStatus.PENDING,
@@ -161,9 +168,14 @@ export class DepositsService {
         },
       });
       if (dto.status === DepositStatus.APPROVED) {
-        const amountNum = Number.parseFloat(updated.amount.toString());
-        // Integration rule: approved deposit must reduce driver liability.
-        await this.debtService.applyDriverDepositSettlement(row.driverId, amountNum);
+        // V25 Journal Enforcement: use Prisma.Decimal to avoid float drift.
+        const amountDecimal = updated.amount;
+        const amountNum = amountDecimal.toNumber();
+
+        // V25 Journal Enforcement: pass `tx` so the order cashStatus flip
+        // is atomic with the wallet update and GL entry — no partial commits.
+        await this.debtService.applyDriverDepositSettlement(row.driverId, amountNum, tx);
+
         // Integration rule: approved deposit increases cash/bank custody balance.
         const branchId = row.driver.branchId;
         if (branchId) {
@@ -175,7 +187,7 @@ export class DepositsService {
             await tx.wallet.update({
               where: { id: existing.id },
               data: {
-                balance: existing.balance.add(new Prisma.Decimal(amountNum.toFixed(4))),
+                balance: existing.balance.add(amountDecimal),
               },
             });
           } else {
@@ -183,23 +195,20 @@ export class DepositsService {
               data: {
                 branchId,
                 currency: 'KWD',
-                balance: new Prisma.Decimal(amountNum.toFixed(4)),
+                balance: amountDecimal,
               },
             });
           }
         }
 
         // A3.D3 — Approved driver deposits move real cash into the branch
-        // wallet and settle CASH order liabilities. The corresponding
-        // order-level settlement is already captured via
-        // applyDriverDepositSettlement (which flips cashStatus), but the
-        // event itself had no GL footprint. We now emit a zero-amount
-        // WALLET_SETTLEMENT audit row so the Unified Ledger stream
-        // surfaces the deposit without double-counting the underlying
-        // order totals already logged as POS_SALE_COMPLETED.
+        // wallet and settle CASH order liabilities. The underlying order
+        // revenue is already captured via POS_SALE_COMPLETED at checkout;
+        // this WALLET_SETTLEMENT marks the physical cash handover event
+        // on the GL with the real amount so the cash-flow trail is complete.
         await this.generalLedger.append(tx, {
           entryType: GeneralLedgerEntryType.WALLET_SETTLEMENT,
-          amount: 0,
+          amount: amountDecimal,
           memo: `driver-deposit:${updated.type.toLowerCase()}:approved`,
           actorUserId: auditorId,
           metadata: {

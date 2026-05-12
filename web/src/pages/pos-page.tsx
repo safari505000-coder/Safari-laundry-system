@@ -454,6 +454,10 @@ export function PosPage() {
               <Layers className="me-2 h-4 w-4 shrink-0" aria-hidden />
               {t('pos.multiOrder.addAttached')}
             </Button>
+            {/* @V24-LEGACY-MATH-EXEMPTION: POS pre-checkout preview only.
+                sumLinesKd is used to build the lineItems/totalPrice payload
+                sent TO the backend, not to display a final settled amount.
+                The confirmed total is authoritative from the server response. */}
             {subOrders.some((o) => sumLinesKd(o.lines) > 0) ?
               <div className="space-y-1.5 rounded-lg border border-border/80 bg-muted/15 p-2 text-[11px]">
                 <p className="font-semibold text-foreground">

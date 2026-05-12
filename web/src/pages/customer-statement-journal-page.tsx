@@ -3,7 +3,13 @@ import { Navigate } from 'react-router-dom';
 import { Loader2, Phone, Printer, RefreshCw, Search } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { apiJson } from '@/lib/api';
-import { formatKwdAmount, formatKwdLabel } from '@/lib/kwd';
+import {
+  formatArCustomerBalanceSummaryLine,
+  formatArCustomerBalanceWithSide,
+  formatKwdAmount,
+  formatKwdLabel,
+  isZeroKd,
+} from '@/lib/kwd';
 import {
   useCcCustomerSearch,
   type CustomerSearchHit,
@@ -16,40 +22,36 @@ import {
   type DataTableColumn,
 } from '@/modules/shared/components/page';
 import { TableCell, TableRow } from '@/modules/shared/components/ui/table';
-import {
-  FullJournalEntriesPanel,
-  type FullJournalEntry,
-} from '@/modules/finance/components/FullJournalEntriesPanel';
 
 /**
- * V21 Phase 5 — pure render-only customer journal statement page.
- *
- * Reads the canonical journal-statement endpoint exclusively. The
- * legacy `ledgerToStatement` reconstruction (parseFloat, signed
- * delta math, running balance derivation, per-event description
- * fabrication) was removed — every displayed value is now produced
- * by the backend canonical journal layer at 4dp Decimal precision
- * and rendered through `lib/kwd` formatters.
+ * V25 — كشف موحّد لمركز الاتصال: جدول ذمم العميل الواحد مع بيان عربي
+ * وسطر سياق (باقة + دفع) من الخادم. بدون لوحة القيد المزدوج الكامل —
+ * الصفحة مقصورة على أدوار CC في الـ API.
  */
 
-type JournalStatementRow = {
+type BankStatementRow = {
   entryId: string;
   date: string;
   description: string;
-  debit: string;
-  credit: string;
-  balance: string;
+  contextLabel?: string;
+  customerPaidKd: string;
+  companySupportKd: string;
+  debtGoodwillDiscountKd: string;
+  walletCreditKd: string;
+  walletDebitKd: string;
+  arDebitKd: string;
+  arCreditKd: string;
+  arBalanceKd: string;
 };
 
-type JournalStatementResponse = {
+type BankStatementResponse = {
   balance: string;
-  rows: JournalStatementRow[];
+  rows: BankStatementRow[];
 };
 
-type FullEntriesResponse = {
-  customerId: string;
-  entries: FullJournalEntry[];
-};
+function bankCellKd(s: string): string {
+  return isZeroKd(s) ? '—' : formatKwdAmount(s);
+}
 
 const ENABLED =
   (import.meta.env.VITE_ENABLE_JOURNAL_STATEMENT ?? 'true').toLowerCase() !==
@@ -58,9 +60,14 @@ const ENABLED =
 const columns: DataTableColumn[] = [
   { key: 'date', label: 'التاريخ' },
   { key: 'description', label: 'البيان' },
-  { key: 'debit', label: 'مدين' },
-  { key: 'credit', label: 'دائن' },
-  { key: 'balance', label: 'الرصيد' },
+  { key: 'customerPaidKd', label: 'دفع عميل' },
+  { key: 'companySupportKd', label: 'دعم شركة' },
+  { key: 'debtGoodwillDiscountKd', label: 'خصم ذمم حسنة' },
+  { key: 'walletCreditKd', label: 'إضافة محفظة' },
+  { key: 'walletDebitKd', label: 'خصم محفظة' },
+  { key: 'arDebitKd', label: 'مدين ذمم' },
+  { key: 'arCreditKd', label: 'دائن ذمم' },
+  { key: 'arBalanceKd', label: 'صافي الرصيد' },
 ];
 
 export function CustomerStatementJournalPage() {
@@ -69,10 +76,7 @@ export function CustomerStatementJournalPage() {
   const [query, setQuery] = useState('');
   const [selectedCustomer, setSelectedCustomer] =
     useState<CustomerSearchHit | null>(null);
-  const [data, setData] = useState<JournalStatementResponse | null>(null);
-  const [fullEntries, setFullEntries] = useState<FullEntriesResponse | null>(
-    null,
-  );
+  const [data, setData] = useState<BankStatementResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const customerSearch = useCcCustomerSearch(query);
@@ -84,18 +88,11 @@ export function CustomerStatementJournalPage() {
       setLoading(true);
       setError(null);
       try {
-        const [statement, full] = await Promise.all([
-          apiJson<JournalStatementResponse>(
-            `/api/finance/journal/customers/${trimmed}/statement`,
-            { token },
-          ),
-          apiJson<FullEntriesResponse>(
-            `/api/finance/journal/customers/${trimmed}/full-entries`,
-            { token },
-          ),
-        ]);
+        const statement = await apiJson<BankStatementResponse>(
+          `/api/finance/journal/customers/${trimmed}/call-center-bank-statement`,
+          { token },
+        );
         setData(statement);
-        setFullEntries(full);
       } catch {
         setError(
           'تعذر تحميل التقرير. تحقق من اتصال قاعدة البيانات ثم حاول مرة أخرى.',
@@ -147,8 +144,8 @@ export function CustomerStatementJournalPage() {
         }
       `}</style>
       <PageHeader
-        title="تقارير العميل"
-        subtitle="بحث برقم التلفون، كشف حساب العميل، وطباعة التقرير."
+        title="كشف ذمم العميل"
+        subtitle="كشف بنكي لمركز الاتصال — دفع العميل، دعم الشركة، حركة المحفظة، وذمم متتابعة مع الباقة ووسيلة الدفع عند توفرها."
       />
 
       <div className="rounded-xl border bg-card p-4 shadow-sm print:hidden">
@@ -252,7 +249,7 @@ export function CustomerStatementJournalPage() {
 
       <div id="journal-statement-print" className="space-y-4">
         <div className="hidden border-b pb-4 print:block">
-          <h1 className="text-2xl font-bold">تقرير العميل</h1>
+          <h1 className="text-2xl font-bold">كشف ذمم العميل</h1>
           <p className="mt-1 text-sm">
             العميل:{' '}
             {selectedCustomer
@@ -260,74 +257,91 @@ export function CustomerStatementJournalPage() {
               : customerId || '-'}
           </p>
           <p className="text-sm">
-            تاريخ الطباعة: {new Date().toLocaleString()}
+            تاريخ الطباعة: {new Date().toLocaleString('ar-KW')}
           </p>
         </div>
 
         <div className="grid gap-4 lg:grid-cols-2">
           <div className="rounded-xl border bg-card p-4 shadow-sm">
-            <h2 className="text-base font-semibold">مصدر التقرير</h2>
+            <h2 className="text-base font-semibold">المصدر</h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              قيد دفتر اليومية المزدوج (المصدر القانوني)
+              دفتر اليومية — صف لكل قيد كامل (دفع، دعم، محفظة، ذمم) بترتيب زمني.
             </p>
           </div>
           <div className="rounded-xl border bg-card p-4 shadow-sm">
-            <h2 className="text-base font-semibold">رصيد العميل</h2>
-            <p className="mt-2 text-2xl font-bold">
-              {formatKwdLabel(data?.balance ?? '0')}
+            <h2 className="text-base font-semibold">صافي رصيد الذمم</h2>
+            <p className="mt-2 text-2xl font-bold tabular-nums">
+              {formatArCustomerBalanceSummaryLine(data?.balance ?? '0')}
             </p>
-            <p className="text-sm text-muted-foreground">حسب التقرير المحمّل.</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              مدين = على العميل ذمم؛ دائن = لصالح العميل؛ متوازن = صفر.
+            </p>
           </div>
         </div>
 
         <div className="space-y-2">
           <div className="flex items-baseline justify-between">
-            <h3 className="text-sm font-semibold">
-              كشف العميل (جانب ذمم العملاء فقط)
-            </h3>
+            <h3 className="text-sm font-semibold">كشف الحركات</h3>
             <span className="text-xs text-muted-foreground">
-              عرض جانب الذمم لكل قيد مع الرصيد التراكمي.
+              الأرقام من الخادم؛ المبالغ الصفرية تُعرض كشرطة (—). عمود الصافي:
+              المبلغ المطلق + مدين / دائن / متوازن حسب تراكم الذمم.
             </span>
           </div>
-          <DataTableShell
-            columns={columns}
-            empty={(data?.rows.length ?? 0) === 0}
-            emptyState="لا توجد حركات لهذا العميل."
-          >
-            {(data?.rows ?? []).map((row) => (
-              <TableRow key={row.entryId}>
-                <TableCell>{new Date(row.date).toLocaleString()}</TableCell>
-                <TableCell className="max-w-xl truncate">
-                  {row.description}
-                </TableCell>
-                <TableCell className="tabular-nums">
-                  {formatKwdAmount(row.debit)}
-                </TableCell>
-                <TableCell className="tabular-nums">
-                  {formatKwdAmount(row.credit)}
-                </TableCell>
-                <TableCell className="font-semibold tabular-nums">
-                  {formatKwdAmount(row.balance)}
-                </TableCell>
-              </TableRow>
-            ))}
-          </DataTableShell>
-        </div>
-
-        <div className="space-y-3">
-          <div className="flex items-baseline justify-between">
-            <h3 className="text-sm font-semibold">
-              القيد المزدوج الكامل (مدين + دائن لكل حساب)
-            </h3>
-            <span className="text-xs text-muted-foreground">
-              كل قيد يعرض كافة الأطراف (الصندوق، البنك، الإيرادات،
-              الذمم، …) مع تحقق توازن مدين = دائن.
-            </span>
+          <div className="overflow-x-auto rounded-xl border">
+            <DataTableShell
+              columns={columns}
+              empty={(data?.rows.length ?? 0) === 0}
+              emptyState="لا توجد حركات لهذا العميل."
+            >
+              {(data?.rows ?? []).map((row) => (
+                <TableRow key={row.entryId}>
+                  <TableCell className="whitespace-nowrap">
+                    {new Date(row.date).toLocaleString('ar-KW', {
+                      dateStyle: 'short',
+                      timeStyle: 'short',
+                    })}
+                  </TableCell>
+                  <TableCell className="max-w-xl">
+                    <div className="flex flex-col gap-1">
+                      <span className="font-medium">{row.description}</span>
+                      {row.contextLabel?.trim() ? (
+                        <span className="text-xs text-sky-800 dark:text-sky-200">
+                          {row.contextLabel.trim()}
+                        </span>
+                      ) : null}
+                    </div>
+                  </TableCell>
+                  <TableCell className="tabular-nums">
+                    {bankCellKd(row.customerPaidKd)}
+                  </TableCell>
+                  <TableCell className="tabular-nums">
+                    {bankCellKd(row.companySupportKd)}
+                  </TableCell>
+                  <TableCell className="tabular-nums">
+                    {bankCellKd(row.debtGoodwillDiscountKd)}
+                  </TableCell>
+                  <TableCell className="tabular-nums">
+                    {bankCellKd(row.walletCreditKd)}
+                  </TableCell>
+                  <TableCell className="tabular-nums">
+                    {bankCellKd(row.walletDebitKd)}
+                  </TableCell>
+                  <TableCell className="tabular-nums">
+                    {bankCellKd(row.arDebitKd)}
+                  </TableCell>
+                  <TableCell className="tabular-nums">
+                    {bankCellKd(row.arCreditKd)}
+                  </TableCell>
+                  <TableCell className="font-semibold tabular-nums">
+                    {
+                      formatArCustomerBalanceWithSide(row.arBalanceKd)
+                        .fullLabel
+                    }
+                  </TableCell>
+                </TableRow>
+              ))}
+            </DataTableShell>
           </div>
-          <FullJournalEntriesPanel
-            entries={fullEntries?.entries ?? []}
-            loading={loading && !fullEntries}
-          />
         </div>
       </div>
     </section>

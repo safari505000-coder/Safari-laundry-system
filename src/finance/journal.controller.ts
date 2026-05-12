@@ -47,6 +47,21 @@ export class JournalController {
     return this.journal.getCustomerStatement(customerId);
   }
 
+  @Get('customers/:customerId/call-center-bank-statement')
+  @Roles(
+    SafariRole.CALL_CENTER,
+    SafariRole.CALL_CENTER_SUPERVISOR,
+  )
+  @ApiOperation({
+    summary:
+      'Call-center bank-style journal statement (pay-in, subsidy, wallet, AR running balance)',
+  })
+  getCustomerCallCenterBankStatement(
+    @Param('customerId', ParseUUIDPipe) customerId: string,
+  ) {
+    return this.journal.getCustomerCallCenterBankStatement(customerId);
+  }
+
   /**
    * V22 Phase 6 — full balanced double-entry view per entry.
    *

@@ -268,18 +268,24 @@ export class OutstandingService {
         }
       }
       const visibleDebt = visibleDebtByCustomer.get(customerId);
-      const visibleRemainingDec = visibleDebt
-        ? new Prisma.Decimal(visibleDebt.remainingDebtKd)
+      const visibleRemainingDec = new Prisma.Decimal(
+        visibleDebt?.remainingDebtKd ?? '0',
+      );
+      // V25 — prevent UI undercount when snapshot/journal overlay lags behind
+      // real-time per-order remaining balances (e.g. freshly issued invoice).
+      // Keep visible debt as source when it is present and > tolerance.
+      const rowRemainingDec = visibleRemainingDec.greaterThan(remainingTol)
+        ? visibleRemainingDec
         : remainingDueDec;
-      const totalDueKd = round4Kd(visibleRemainingDec);
-      const remainingDueKd = round4Kd(visibleRemainingDec);
-      const remainingDueDecRounded = visibleRemainingDec.toDecimalPlaces(
+      const totalDueKd = round4Kd(rowRemainingDec);
+      const remainingDueKd = round4Kd(rowRemainingDec);
+      const remainingDueDecRounded = rowRemainingDec.toDecimalPlaces(
         4,
         Prisma.Decimal.ROUND_HALF_EVEN,
       );
       const paidKd = round4Kd(
-        totalDueDec.sub(visibleRemainingDec).greaterThan(0)
-          ? totalDueDec.sub(visibleRemainingDec)
+        totalDueDec.sub(rowRemainingDec).greaterThan(0)
+          ? totalDueDec.sub(rowRemainingDec)
           : new Prisma.Decimal(0),
       );
       const daysLate = earliestDue

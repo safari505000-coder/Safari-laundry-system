@@ -53,6 +53,9 @@ function buildAudit() {
 function buildOrders() {
   return {
     listCollectionsReceivableAggOrders: jest.fn().mockResolvedValue([]),
+    sumCollectionsDebtRemainingKd: jest
+      .fn()
+      .mockResolvedValue(new Prisma.Decimal(0)),
   };
 }
 

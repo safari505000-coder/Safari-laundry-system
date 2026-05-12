@@ -22,7 +22,10 @@ import type {
   OpenDebtByIssuerRowDto,
 } from '../dto/open-debt-by-issuer.dto';
 import {
+  computeOrderRemainingBalancesBatch,
   getCustomerNetDebtFromDebtLedgerAgg,
+  INVOICE_REMAINING_TOLERANCE_KD,
+  isJournalAsSourceEnabled,
   isV20_3TrueAccountingEnabled,
 } from '../debt-customer-aggregates.util';
 import { isRealDebtLedgerPayment } from '../debt-ledger-payment-origin.util';
@@ -197,13 +200,13 @@ export class DebtService {
   }
 
   /**
-   * V25 — Customers with open receivable orders but no active hosted link.
+   * V25 — Customers with collectible invoice balance but no active hosted link.
    *
    * Server-authoritative aggregation:
-   * - universe: `Order.cashStatus=UNPAID` and `status!=CANCELED`
-   * - excluded: any customer that already has an UNPAID order with
-   *   `posHostedPaymentUrl != null` (active/unpaid link exists)
-   * - grouped by customer: Σ `Order.totalPrice` with KWD 3dp precision
+   * - universe: invoices not canceled (`Order.status!=CANCELED`)
+   * - remaining per invoice: `Order.totalPrice - applied payments` (partial-aware)
+   * - excluded rows: invoices with active hosted links (duplicate-link guard)
+   * - grouped by customer: Σ remaining balance with KWD 3dp precision
    */
   async getOutstandingDebtsWithoutLinks(
     branchId: string | null = null,
@@ -217,33 +220,19 @@ export class DebtService {
         invoiceId: string;
         invoiceLabel: string;
         amountKd: string;
+        originalTotalKd: string;
+        remainingBalanceKd: string;
+        settlementStatus: 'UNPAID' | 'PARTIAL';
         issuedAt: string;
       }>;
     }>
   > {
     const branchWhere = orderBranchWhereForMarketDebt(branchId ?? undefined);
 
-    const customersWithActiveLinks = await this.prisma.order.findMany({
-      where: {
-        cashStatus: CashStatus.UNPAID,
-        status: OrderStatus.PENDING,
-        posHostedPaymentUrl: { not: null },
-        ...(branchWhere ?? {}),
-      },
-      select: { customerId: true },
-      distinct: ['customerId'],
-    });
-    const blockedCustomerIds = customersWithActiveLinks.map((r) => r.customerId);
-
     const openInvoices = await this.prisma.order.findMany({
       where: {
-        cashStatus: CashStatus.UNPAID,
-        status: OrderStatus.PENDING,
-        posHostedPaymentUrl: null,
+        status: { not: OrderStatus.CANCELED },
         ...(branchWhere ?? {}),
-        ...(blockedCustomerIds.length > 0
-          ? { customerId: { notIn: blockedCustomerIds } }
-          : {}),
       },
       select: {
         id: true,
@@ -251,6 +240,8 @@ export class DebtService {
         serialNumber: true,
         invoiceNumber: true,
         totalPrice: true,
+        posPaymentMethod: true,
+        posHostedPaymentUrl: true,
         createdAt: true,
       },
       orderBy: [{ customerId: 'asc' }, { createdAt: 'asc' }],
@@ -272,6 +263,11 @@ export class DebtService {
     const customerNameById = new Map(
       customers.map((c) => [c.id, c.displayName?.trim() || c.phone || '—']),
     );
+    const remainingByOrder = await computeOrderRemainingBalancesBatch(
+      this.prisma,
+      openInvoices.map((o) => o.id),
+    );
+    const tol = new Prisma.Decimal(INVOICE_REMAINING_TOLERANCE_KD);
 
     const byCustomer = new Map<
       string,
@@ -282,18 +278,39 @@ export class DebtService {
           invoiceId: string;
           invoiceLabel: string;
           amountKd: string;
+          originalTotalKd: string;
+          remainingBalanceKd: string;
+          settlementStatus: 'UNPAID' | 'PARTIAL';
           issuedAt: string;
         }>;
       }
     >();
 
     for (const order of openInvoices) {
+      const remaining = remainingByOrder.get(order.id) ?? new Prisma.Decimal(0);
+      if (remaining.lessThanOrEqualTo(tol)) {
+        continue;
+      }
+      // @V25-QUARANTINE: duplicate link guard is applied per invoice row.
+      // If this invoice already has an active hosted link, it stays hidden.
+      if (order.posHostedPaymentUrl?.trim()) {
+        continue;
+      }
+      // Keep LINK/ONLINE invoices in the payment-link follow-up rail
+      // (Collections report "روابط الدفع غير المحصّلة"), not in
+      // the "without links" settlement rail.
+      if (
+        order.posPaymentMethod === PosPaymentMethod.PAYMENT_LINK ||
+        order.posPaymentMethod === PosPaymentMethod.ONLINE
+      ) {
+        continue;
+      }
       const bucket = byCustomer.get(order.customerId) ?? {
         total: new Prisma.Decimal(0),
         lastOrderDate: null,
         invoices: [],
       };
-      bucket.total = bucket.total.add(order.totalPrice);
+      bucket.total = bucket.total.add(remaining);
       if (
         !bucket.lastOrderDate ||
         order.createdAt.getTime() > bucket.lastOrderDate.getTime()
@@ -306,7 +323,10 @@ export class DebtService {
           order.serialNumber?.trim() ||
           order.invoiceNumber?.trim() ||
           `#${order.id.slice(-6).toUpperCase()}`,
-        amountKd: order.totalPrice.toFixed(3),
+        amountKd: remaining.toFixed(3),
+        originalTotalKd: order.totalPrice.toFixed(3),
+        remainingBalanceKd: remaining.toFixed(3),
+        settlementStatus: remaining.lessThan(order.totalPrice) ? 'PARTIAL' : 'UNPAID',
         issuedAt: order.createdAt.toISOString(),
       });
       byCustomer.set(order.customerId, bucket);
@@ -372,8 +392,6 @@ export class DebtService {
         id: true,
         customerId: true,
         status: true,
-        cashStatus: true,
-        walletSettledAt: true,
         totalPrice: true,
         posHostedPaymentUrl: true,
         posPaymentBundleId: true,
@@ -385,6 +403,11 @@ export class DebtService {
     if (selectedOrders.length !== invoiceIds.length) {
       throw new BadRequestException('Some invoiceIds do not exist');
     }
+    const remainingByOrder = await computeOrderRemainingBalancesBatch(
+      this.prisma,
+      selectedOrders.map((o) => o.id),
+    );
+    const tol = new Prisma.Decimal(INVOICE_REMAINING_TOLERANCE_KD);
 
     for (const order of selectedOrders) {
       if (order.customerId !== customerId) {
@@ -392,13 +415,10 @@ export class DebtService {
           'All selected invoiceIds must belong to the provided customerId',
         );
       }
-      if (order.status !== OrderStatus.PENDING) {
+      if (order.status === OrderStatus.CANCELED) {
         throw new BadRequestException(
-          `Invoice ${order.id} is not open (status must be PENDING)`,
+          `Invoice ${order.id} is canceled and cannot be settled`,
         );
-      }
-      if (order.cashStatus !== CashStatus.UNPAID || order.walletSettledAt) {
-        throw new BadRequestException(`Invoice ${order.id} is already paid`);
       }
       if (order.posHostedPaymentUrl?.trim()) {
         throw new BadRequestException(
@@ -410,10 +430,15 @@ export class DebtService {
           `Invoice ${order.id} is already linked to another settlement bundle`,
         );
       }
+      const remaining = remainingByOrder.get(order.id) ?? new Prisma.Decimal(0);
+      if (remaining.lessThanOrEqualTo(tol)) {
+        throw new BadRequestException(`Invoice ${order.id} has no remaining balance`);
+      }
     }
 
     const totalAmount = selectedOrders.reduce(
-      (acc, row) => acc.add(row.totalPrice),
+      (acc, row) =>
+        acc.add(remainingByOrder.get(row.id) ?? new Prisma.Decimal(0)),
       new Prisma.Decimal(0),
     );
     if (totalAmount.lte(0)) {
@@ -439,9 +464,7 @@ export class DebtService {
         where: {
           id: { in: invoiceIds },
           customerId,
-          status: OrderStatus.PENDING,
-          cashStatus: CashStatus.UNPAID,
-          walletSettledAt: null,
+          status: { not: OrderStatus.CANCELED },
           posHostedPaymentUrl: null,
           posPaymentBundleId: null,
         },
@@ -516,12 +539,23 @@ export class DebtService {
           .slice()
           .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
           .map((order) => ({
-            label:
-              order.serialNumber?.trim() ||
-              order.invoiceNumber?.trim() ||
-              `فاتورة ${order.id.slice(-6).toUpperCase()}`,
+            label: (() => {
+              const invoiceRef =
+                order.serialNumber?.trim() ||
+                order.invoiceNumber?.trim() ||
+                `فاتورة ${order.id.slice(-6).toUpperCase()}`;
+              const remaining = remainingByOrder
+                .get(order.id)
+                ?.toFixed(3);
+              const original = order.totalPrice.toFixed(3);
+              return remaining && remaining !== original
+                ? `${invoiceRef} (الأصلي ${original} / المتبقي ${remaining})`
+                : invoiceRef;
+            })(),
             quantity: '1',
-            lineTotalKd: order.totalPrice.toFixed(3),
+            lineTotalKd: (
+              remainingByOrder.get(order.id) ?? new Prisma.Decimal(0)
+            ).toFixed(3),
           })),
         branchName: null,
         driverName: null,
@@ -652,12 +686,20 @@ export class DebtService {
   async applyDriverDepositSettlement(
     driverId: string,
     approvedAmountKd: number,
+    /**
+     * V25 Journal Enforcement — optional Prisma transaction client.
+     * When provided, the cash-status flip is performed atomically inside
+     * the caller's transaction so the deposit approval and the order
+     * settlement cannot partially commit independently.
+     */
+    tx?: Prisma.TransactionClient,
   ): Promise<{ settledAmountKd: string; settledOrderCount: number }> {
+    const db = tx ?? this.prisma;
     const amount = Number.isFinite(approvedAmountKd) && approvedAmountKd > 0 ? approvedAmountKd : 0;
     if (amount <= 0) {
       return { settledAmountKd: '0.0000', settledOrderCount: 0 };
     }
-    const pending = await this.prisma.order.findMany({
+    const pending = await db.order.findMany({
       where: {
         driverId,
         status: OrderStatus.COMPLETED,
@@ -682,7 +724,7 @@ export class DebtService {
       if (remaining <= 0.0001) break;
     }
     if (settleIds.length > 0) {
-      await this.prisma.order.updateMany({
+      await db.order.updateMany({
         where: { id: { in: settleIds }, cashStatus: CashStatus.PAID_TO_DRIVER },
         data: { cashStatus: CashStatus.HANDED_OVER_TO_OFFICE },
       });
@@ -694,17 +736,32 @@ export class DebtService {
   }
 
   /**
-   * Receivables / "المديونية" — all `INVOICE_SHORTFALL` / `SUBSCRIPTION_OVERUSE`
-   * lines with `orderId` (any actor), aggregated per order. Each open amount is
-   * owed by the customer and attributed to `actorUser*` (who issued / settled
-   * the ticket — driver, branch manager, call center, etc.). `remaining` deducts
-   * recorded `PAYMENT` (incl. FIFO on customer-level payments). Subscription
-   * overage uses the same customer-level FIFO as the monthly P&amp;L split.
+   * Receivables / "المديونية" — aggregated per order, open amounts attributed
+   * to the issuer (driver / CC / branch manager). Deducts payments incl. FIFO
+   * on customer-level CC residuals.
+   *
+   * V20.4 — when `isJournalAsSourceEnabled()` is on, dispatches to
+   * `getUnpaidInvoicesFromJournal` which reads per-order remaining directly from
+   * JournalLine (account 1300) via `computeOrderRemainingBalancesBatch`. Orders
+   * with no journal entries (pre-backfill) are excluded from the journal path
+   * because R3 falls back to DebtLedger for them, but discovery still relies on
+   * JournalEntry.source. Pre-backfill data continues to appear via the
+   * OPEN_UNPAID_ORDER merge in Phase 5 (unchanged in both paths).
    */
   async getUnpaidInvoices(
     query: UnpaidInvoicesQueryDto,
   ): Promise<UnpaidInvoicesResponseDto> {
     await this.logSuspiciousDebtPayments();
+    if (isJournalAsSourceEnabled()) {
+      return this.getUnpaidInvoicesFromJournal(query);
+    }
+    return this.getUnpaidInvoicesFromLedger(query);
+  }
+
+  /** V20.4 — Legacy DebtLedger path, preserved as fallback for pre-backfill data. */
+  private async getUnpaidInvoicesFromLedger(
+    query: UnpaidInvoicesQueryDto,
+  ): Promise<UnpaidInvoicesResponseDto> {
     const from = query.from ? new Date(query.from) : null;
     const to = query.to ? new Date(query.to) : null;
     if (from && Number.isNaN(from.getTime())) {
@@ -1400,6 +1457,665 @@ export class DebtService {
     // `posPaymentMethod`. Every uncollected field total is receivable on the
     // customer and attributed to whoever issued/settled the ticket (see table
     // «المُصدِّر»); do not restrict to DRIVER/MANAGER shortfall rows only.
+    const [marketAgg, byMethod] = await Promise.all([
+      this.prisma.order.aggregate({
+        where: marketBaseWhere,
+        _sum: { totalPrice: true },
+      }),
+      this.prisma.order.groupBy({
+        by: ['posPaymentMethod'],
+        where: marketBaseWhere,
+        _sum: { totalPrice: true },
+      }),
+    ]);
+    const totalMarketUnpaidKd = (
+      marketAgg._sum.totalPrice ?? new Prisma.Decimal(0)
+    ).toFixed(4);
+    const marketUnpaidByMethod = foldMarketUnpaidByMethod(byMethod);
+
+    return {
+      from: from ? from.toISOString() : null,
+      to: to ? to.toISOString() : null,
+      kpis: {
+        invoiceCount,
+        openInvoiceCount,
+        customerCount,
+        openCustomerCount: openCustomers.size,
+        totalInvoicesKd: totalInvOrderSum.toFixed(4),
+        totalDebtKd: totalDebt.toFixed(4),
+        totalPaidKd: totalPaid.toFixed(4),
+        openDebtKd: openDebt.toFixed(4),
+        openShortfallDebtKd: openShortfallDebt.toFixed(4),
+        openSubscriptionOveruseDebtKd: openSubDebt.toFixed(4),
+        openUnpaidOrderBalanceKd: openUnpaidOrderBalance.toFixed(4),
+        totalMarketUnpaidKd,
+        marketUnpaidByMethod,
+        avgDebtPerInvoiceKd: avgDebtPerInvoice.toFixed(4),
+      },
+      rows: withRunningRemaining,
+    };
+  }
+
+  /**
+   * V20.4 — Journal path for `getUnpaidInvoices`.
+   *
+   * Discovers invoiced orders via `JournalEntry.source IN ['ORDER_INVOICE','INVOICE']`
+   * (same createdAt / actorUser / customer filters as the ledger path). Per-order
+   * remaining comes from `computeOrderRemainingBalancesBatch` (R3) which already
+   * reads JournalLine account 1300 when the flag is on.
+   *
+   * Simplifications vs the ledger path:
+   *   • No FIFO payment-allocation loop — the journal net per order IS the remaining.
+   *   • `currentCustomerDebtKd` = batch JournalLine 1300 net for the customer
+   *     (whole history, not scoped to the date filter).
+   *
+   * Phase 5 (OPEN_UNPAID_ORDER merge) and Phase 6 (market KPIs) are structurally
+   * identical to the ledger path — they query the Order table directly.
+   */
+  private async getUnpaidInvoicesFromJournal(
+    query: UnpaidInvoicesQueryDto,
+  ): Promise<UnpaidInvoicesResponseDto> {
+    const from = query.from ? new Date(query.from) : null;
+    const to = query.to ? new Date(query.to) : null;
+    if (from && Number.isNaN(from.getTime())) {
+      throw new BadRequestException('Invalid `from` date');
+    }
+    if (to && Number.isNaN(to.getTime())) {
+      throw new BadRequestException('Invalid `to` date');
+    }
+    const phone = (query.customerPhone ?? '').replace(/\D+/g, '').trim();
+    const TOLERANCE_KD = new Prisma.Decimal(INVOICE_REMAINING_TOLERANCE_KD);
+    const TOL_N = 0.001;
+
+    // ── Pre-filter A: customer IDs by phone ─────────────────────────────────
+    // JournalEntry has customerId but no customer relation, so we pre-resolve.
+    let customerIdFilter: string[] | undefined;
+    if (phone) {
+      const customers = await this.prisma.customer.findMany({
+        where: {
+          OR: [{ phone: { contains: phone } }, { phone2: { contains: phone } }],
+        },
+        select: { id: true },
+      });
+      customerIdFilter = customers.map((c) => c.id);
+      // Empty array → JournalEntry query returns zero rows (Prisma IN () = FALSE).
+    }
+
+    // ── Pre-filter B: order IDs by branch ────────────────────────────────────
+    // JournalEntry.branchId is nullable (pre-V20.5 entries lack it), so branch
+    // scoping goes through the Order table — same rule as Phase 5 unlinked rows.
+    let branchOrderIdArray: string[] | undefined;
+    if (query.branchId?.trim()) {
+      const branchOrders = await this.prisma.order.findMany({
+        where: { ...(orderBranchWhereForMarketDebt(query.branchId) ?? {}) },
+        select: { id: true },
+        take: 50_000,
+      });
+      branchOrderIdArray = branchOrders.map((o) => o.id);
+    }
+
+    // ── Phase 1 (journal): discover invoiced orders ──────────────────────────
+    // 'ORDER_INVOICE' → V20.3 issuance (DR 1300 = totalPrice)
+    // 'INVOICE'       → legacy shortfall/overuse mirror (DR 1300 = shortfall amt)
+    const journalWhere: Prisma.JournalEntryWhereInput = {
+      source: { in: ['ORDER_INVOICE', 'INVOICE'] },
+      orderId: { not: null },
+      ...(from || to
+        ? {
+            createdAt: {
+              ...(from ? { gte: from } : {}),
+              ...(to ? { lte: to } : {}),
+            },
+          }
+        : {}),
+      ...(query.actorUserId ? { actorUserId: query.actorUserId } : {}),
+      ...(customerIdFilter !== undefined
+        ? { customerId: { in: customerIdFilter } }
+        : {}),
+      ...(branchOrderIdArray !== undefined
+        ? { orderId: { in: branchOrderIdArray } }
+        : {}),
+    };
+
+    const rawEntries = await this.prisma.journalEntry.findMany({
+      where: journalWhere,
+      orderBy: { createdAt: 'desc' },
+      take: 20_000,
+      select: {
+        id: true,
+        source: true,
+        sourceRef: true,
+        orderId: true,
+        customerId: true,
+        actorUserId: true,
+        createdAt: true,
+      },
+    });
+
+    // De-duplicate by orderId — keep the entry that identifies SUBSCRIPTION_OVERUSE
+    // if present; otherwise keep the first (most recent) entry per order.
+    const orderIdToEntry = new Map<string, (typeof rawEntries)[0]>();
+    for (const e of rawEntries) {
+      if (!e.orderId) continue;
+      const existing = orderIdToEntry.get(e.orderId);
+      if (!existing) {
+        orderIdToEntry.set(e.orderId, e);
+      } else if ((e.sourceRef ?? '').toUpperCase().includes('SUBSCRIPTION_OVERUSE')) {
+        orderIdToEntry.set(e.orderId, e);
+      }
+    }
+
+    const orderIdsWithJournal = Array.from(orderIdToEntry.keys());
+
+    // ── Phase 2 (journal): per-order remaining via R3 ───────────────────────
+    const remainingByOrder =
+      orderIdsWithJournal.length > 0
+        ? await computeOrderRemainingBalancesBatch(this.prisma, orderIdsWithJournal)
+        : new Map<string, Prisma.Decimal>();
+
+    // Filter to open orders (remaining > tolerance).
+    const openOrderIds = orderIdsWithJournal.filter((id) => {
+      const rem = remainingByOrder.get(id) ?? new Prisma.Decimal(0);
+      return rem.greaterThan(TOLERANCE_KD);
+    });
+
+    // ── Fetch Order details (serial, customer, driver, branch) ────────────────
+    const orderDetails =
+      openOrderIds.length > 0
+        ? await this.prisma.order.findMany({
+            where: { id: { in: openOrderIds } },
+            select: {
+              id: true,
+              serialNumber: true,
+              invoiceNumber: true,
+              totalPrice: true,
+              createdAt: true,
+              completedAt: true,
+              posPaymentMethod: true,
+              customerId: true,
+              driverId: true,
+              customer: {
+                select: {
+                  id: true,
+                  displayName: true,
+                  phone: true,
+                  phone2: true,
+                  originBranch: { select: { id: true, name: true } },
+                },
+              },
+              driver: {
+                select: {
+                  id: true,
+                  fullName: true,
+                  username: true,
+                  safariRole: true,
+                  branch: { select: { id: true, name: true } },
+                },
+              },
+            },
+          })
+        : [];
+    const orderDetailById = new Map(orderDetails.map((o) => [o.id, o]));
+
+    // ── Fetch actor users (for orders without a driver) ──────────────────────
+    const journalActorIds = Array.from(
+      new Set(
+        openOrderIds
+          .map((id) => orderIdToEntry.get(id)?.actorUserId)
+          .filter((id): id is string => !!id),
+      ),
+    );
+    const actorUsersForJournal =
+      journalActorIds.length > 0
+        ? await this.prisma.user.findMany({
+            where: { id: { in: journalActorIds } },
+            select: { id: true, fullName: true, username: true, safariRole: true },
+          })
+        : [];
+    const actorById = new Map(actorUsersForJournal.map((u) => [u.id, u]));
+
+    // ── Phase 3 (journal): batch customer total AR on account 1300 ───────────
+    // This is the customer's ENTIRE AR balance (not scoped to the date filter)
+    // so it matches what `custOpen` represents in the ledger path.
+    const allCustomerIds = Array.from(
+      new Set(
+        openOrderIds
+          .map((id) => orderDetailById.get(id)?.customerId)
+          .filter((id): id is string => !!id),
+      ),
+    );
+    const customerTotalAr = new Map<string, Prisma.Decimal>();
+    if (allCustomerIds.length > 0) {
+      const arLines = await this.prisma.journalLine.findMany({
+        where: {
+          entry: { customerId: { in: allCustomerIds } },
+          account: { code: '1300' },
+        },
+        select: {
+          debit: true,
+          credit: true,
+          entry: { select: { customerId: true } },
+        },
+      });
+      for (const line of arLines) {
+        const cid = (line.entry as { customerId: string | null }).customerId;
+        if (!cid) continue;
+        const cur = customerTotalAr.get(cid) ?? new Prisma.Decimal(0);
+        customerTotalAr.set(
+          cid,
+          cur
+            .add(new Prisma.Decimal(line.debit.toString()))
+            .sub(new Prisma.Decimal(line.credit.toString())),
+        );
+      }
+      for (const [cid, net] of customerTotalAr) {
+        if (net.lessThan(0)) customerTotalAr.set(cid, new Prisma.Decimal(0));
+      }
+    }
+
+    const subscriptionStateByCustomer = await getCustomerSubscriptionStateBatch(
+      this.prisma,
+      allCustomerIds,
+    );
+
+    // ── Build rows for journal-discovered invoices ───────────────────────────
+    const finalRows: UnpaidInvoiceRowDto[] = [];
+    let totalDebt = 0;
+    let totalPaid = 0;
+    let openDebt = 0;
+    let openShortfallDebt = 0;
+    let openSubDebt = 0;
+    let openUnpaidOrderBalance = 0;
+    let totalInvOrderSum = 0;
+    const orderInvTallied = new Set<string>();
+    let openInvoiceCount = 0;
+    const openCustomers = new Set<string>();
+
+    for (const orderId of openOrderIds) {
+      const entry = orderIdToEntry.get(orderId);
+      if (!entry) continue;
+      const o = orderDetailById.get(orderId);
+      if (!o) continue;
+
+      const rem = remainingByOrder.get(orderId) ?? new Prisma.Decimal(0);
+      const grossDec = new Prisma.Decimal(o.totalPrice.toString());
+      const paidDec = Prisma.Decimal.max(
+        grossDec.sub(rem),
+        new Prisma.Decimal(0),
+      );
+      const gross = grossDec.toNumber();
+      const remaining = rem.toNumber();
+      const paid = paidDec.toNumber();
+      const custOpen = Prisma.Decimal.max(
+        customerTotalAr.get(o.customerId) ?? new Prisma.Decimal(0),
+        new Prisma.Decimal(0),
+      ).toNumber();
+
+      // SUBSCRIPTION_OVERUSE when sourceRef contains the keyword; else INVOICE_SHORTFALL.
+      const debtSource: 'INVOICE_SHORTFALL' | 'SUBSCRIPTION_OVERUSE' = (
+        entry.sourceRef ?? ''
+      )
+        .toUpperCase()
+        .includes('SUBSCRIPTION_OVERUSE')
+        ? 'SUBSCRIPTION_OVERUSE'
+        : 'INVOICE_SHORTFALL';
+
+      // Actor: prefer Order's driver; fall back to journal entry's actorUser.
+      const driver = o.driver;
+      const journalActor = entry.actorUserId ? actorById.get(entry.actorUserId) : null;
+      const actorUserId = driver?.id ?? journalActor?.id ?? null;
+      const actorUserName =
+        driver?.fullName?.trim() ?? journalActor?.fullName?.trim() ?? null;
+      const actorUserRole =
+        driver?.safariRole != null
+          ? String(driver.safariRole)
+          : journalActor?.safariRole != null
+            ? String(journalActor.safariRole)
+            : null;
+
+      // Branch: prefer driver's branch, then customer origin branch.
+      // JournalEntry.branchId is unreliable (nullable), so resolved from Order.
+      const branchId =
+        driver?.branch?.id ?? o.customer.originBranch?.id ?? null;
+      const branchName =
+        driver?.branch?.name?.trim() ||
+        o.customer.originBranch?.name?.trim() ||
+        null;
+
+      let paymentStatus: 'UNPAID' | 'PARTIALLY_PAID' | 'PAID';
+      if (remaining <= TOL_N) paymentStatus = 'PAID';
+      else if (paid > TOL_N) paymentStatus = 'PARTIALLY_PAID';
+      else paymentStatus = 'UNPAID';
+
+      const issued = (o.completedAt ?? o.createdAt).toISOString();
+      const subState = subscriptionStateByCustomer.get(o.customerId);
+      const isOpen = remaining > TOL_N;
+
+      const row: UnpaidInvoiceRowDto = {
+        orderId: o.id,
+        serialNumber: o.serialNumber ?? null,
+        invoiceNumber: o.invoiceNumber ?? null,
+        issuedAt: issued,
+        customerId: o.customerId,
+        customerName: o.customer.displayName?.trim() || o.customer.phone || '—',
+        customerPhone: o.customer.phone ?? null,
+        customerPhone2: o.customer.phone2 ?? null,
+        branchId,
+        branchName,
+        actorUserId,
+        actorUserName,
+        actorUserRole,
+        invoiceTotalKd: o.totalPrice.toString(),
+        debtAmountKd: gross.toFixed(4),
+        paidKd: paid.toFixed(4),
+        remainingKd: remaining.toFixed(4),
+        customerRunningRemainingKd: '0',
+        entryCount: 1,
+        currentCustomerDebtKd: custOpen.toFixed(4),
+        isOpen,
+        lastEntryAt: entry.createdAt.toISOString(),
+        debtSource,
+        posPaymentMethod: o.posPaymentMethod ? String(o.posPaymentMethod) : null,
+        paymentStatus,
+        isPartiallyPaid: paymentStatus === 'PARTIALLY_PAID',
+        isFullyPaid: paymentStatus === 'PAID',
+        hasActiveSubscription: subState?.isActiveSubscriber ?? false,
+        subscriptionExpiresAt: subState?.subscriptionExpiresAtIso ?? null,
+      };
+
+      totalDebt += gross;
+      totalPaid += paid;
+      if (isOpen) {
+        openDebt += remaining;
+        openInvoiceCount += 1;
+        openCustomers.add(o.customerId);
+        if (debtSource === 'INVOICE_SHORTFALL') openShortfallDebt += remaining;
+        else openSubDebt += remaining;
+      }
+      if (!orderInvTallied.has(o.id)) {
+        totalInvOrderSum += gross;
+        orderInvTallied.add(o.id);
+      }
+      finalRows.push(row);
+    }
+
+    // ── Phase 5: merge OPEN_UNPAID_ORDER rows (identical to ledger path) ─────
+    const orderIdsCovered = new Set(finalRows.map((r) => r.orderId));
+    const listScope =
+      query.branchId?.trim() || query.marketKpiBranchId?.trim() || null;
+    const orderDateWhere: Prisma.OrderWhereInput | undefined =
+      from || to
+        ? {
+            OR: [
+              {
+                completedAt: {
+                  ...(from ? { gte: from } : {}),
+                  ...(to ? { lte: to } : {}),
+                },
+              },
+              {
+                AND: [
+                  { completedAt: null },
+                  {
+                    createdAt: {
+                      ...(from ? { gte: from } : {}),
+                      ...(to ? { lte: to } : {}),
+                    },
+                  },
+                ],
+              },
+            ],
+          }
+        : undefined;
+    const phoneWhere: Prisma.OrderWhereInput | undefined = phone
+      ? {
+          customer: {
+            OR: [
+              { phone: { contains: phone } },
+              { phone2: { contains: phone } },
+            ],
+          },
+        }
+      : undefined;
+    const baseOrderUnpaid: Prisma.OrderWhereInput = {
+      cashStatus: CashStatus.UNPAID,
+      status: { not: OrderStatus.CANCELED },
+      ...(orderBranchWhereForMarketDebt(listScope ?? undefined) ?? {}),
+      ...(orderDateWhere ?? {}),
+      ...(phoneWhere ?? {}),
+    };
+    if (orderIdsCovered.size > 0) {
+      (baseOrderUnpaid as { id?: { notIn: string[] } }).id = {
+        notIn: Array.from(orderIdsCovered),
+      };
+    }
+    if (query.actorUserId) {
+      const actor = await this.prisma.user.findUnique({
+        where: { id: query.actorUserId },
+        select: { safariRole: true },
+      });
+      if (actor?.safariRole === SafariRole.DRIVER) {
+        (baseOrderUnpaid as { driverId: string }).driverId = query.actorUserId;
+      }
+    }
+    const unlinkedUnpaid = await this.prisma.order.findMany({
+      where: baseOrderUnpaid,
+      take: 5_000,
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        totalPrice: true,
+        createdAt: true,
+        completedAt: true,
+        serialNumber: true,
+        invoiceNumber: true,
+        posPaymentMethod: true,
+        customerId: true,
+        driverId: true,
+        customer: {
+          select: {
+            id: true,
+            displayName: true,
+            phone: true,
+            phone2: true,
+            originBranch: { select: { id: true, name: true } },
+          },
+        },
+        driver: {
+          select: {
+            id: true,
+            fullName: true,
+            username: true,
+            safariRole: true,
+            branch: { select: { id: true, name: true } },
+          },
+        },
+      },
+    });
+
+    if (unlinkedUnpaid.length > 0) {
+      // Extend customerTotalAr to cover new customers from unlinked orders.
+      const newCustIds = Array.from(
+        new Set(
+          unlinkedUnpaid
+            .map((o) => o.customerId)
+            .filter((cid) => !customerTotalAr.has(cid)),
+        ),
+      );
+      if (newCustIds.length > 0) {
+        const extraArLines = await this.prisma.journalLine.findMany({
+          where: {
+            entry: { customerId: { in: newCustIds } },
+            account: { code: '1300' },
+          },
+          select: {
+            debit: true,
+            credit: true,
+            entry: { select: { customerId: true } },
+          },
+        });
+        for (const line of extraArLines) {
+          const cid = (line.entry as { customerId: string | null }).customerId;
+          if (!cid) continue;
+          const cur = customerTotalAr.get(cid) ?? new Prisma.Decimal(0);
+          customerTotalAr.set(
+            cid,
+            cur
+              .add(new Prisma.Decimal(line.debit.toString()))
+              .sub(new Prisma.Decimal(line.credit.toString())),
+          );
+        }
+        for (const cid of newCustIds) {
+          const net = customerTotalAr.get(cid) ?? new Prisma.Decimal(0);
+          if (net.lessThan(0)) customerTotalAr.set(cid, new Prisma.Decimal(0));
+        }
+      }
+
+      // Settlement actor for orders without a driver.
+      const ordersWithoutDriver = unlinkedUnpaid
+        .filter((o) => !o.driverId)
+        .map((o) => o.id);
+      const issuerFromSettlement = new Map<
+        string,
+        { id: string; fullName: string | null; safariRole: SafariRole | null }
+      >();
+      if (ordersWithoutDriver.length > 0) {
+        const settlements = await this.prisma.transactionHistory.findMany({
+          where: {
+            orderId: { in: ordersWithoutDriver },
+            type: LedgerTransactionType.ORDER_WALLET_SETTLEMENT,
+            performedById: { not: null },
+          },
+          orderBy: { createdAt: 'desc' },
+          select: {
+            orderId: true,
+            performedBy: {
+              select: { id: true, fullName: true, safariRole: true },
+            },
+          },
+        });
+        for (const h of settlements) {
+          if (!h.orderId || !h.performedBy) continue;
+          if (!issuerFromSettlement.has(h.orderId)) {
+            issuerFromSettlement.set(h.orderId, h.performedBy);
+          }
+        }
+      }
+
+      // Extend subscription state to cover unlinked-order customers.
+      const extraSubCustIds = Array.from(
+        new Set(
+          unlinkedUnpaid
+            .map((o) => o.customerId)
+            .filter((id) => !subscriptionStateByCustomer.has(id)),
+        ),
+      );
+      if (extraSubCustIds.length > 0) {
+        const extraStates = await getCustomerSubscriptionStateBatch(
+          this.prisma,
+          extraSubCustIds,
+        );
+        for (const [k, v] of extraStates) subscriptionStateByCustomer.set(k, v);
+      }
+
+      for (const o of unlinkedUnpaid) {
+        const tot = Number.parseFloat(o.totalPrice.toString());
+        if (!Number.isFinite(tot) || tot <= 0) continue;
+        const branchName =
+          o.driver?.branch?.name?.trim() ||
+          o.customer.originBranch?.name?.trim() ||
+          null;
+        const branchId =
+          o.driver?.branch?.id?.trim() ?? o.customer.originBranch?.id ?? null;
+        const settlementActor = issuerFromSettlement.get(o.id);
+        const actorUserId = o.driver?.id ?? settlementActor?.id ?? null;
+        const actorUserName =
+          o.driver?.fullName?.trim() ?? settlementActor?.fullName?.trim() ?? null;
+        const actorUserRole =
+          o.driver?.safariRole != null
+            ? String(o.driver.safariRole)
+            : settlementActor?.safariRole != null
+              ? String(settlementActor.safariRole)
+              : null;
+        const issued = (o.completedAt ?? o.createdAt).toISOString();
+        const custOpen = Prisma.Decimal.max(
+          customerTotalAr.get(o.customerId) ?? new Prisma.Decimal(0),
+          new Prisma.Decimal(0),
+        ).toNumber();
+        const subState = subscriptionStateByCustomer.get(o.customerId);
+        const row: UnpaidInvoiceRowDto = {
+          orderId: o.id,
+          serialNumber: o.serialNumber ?? null,
+          invoiceNumber: o.invoiceNumber ?? null,
+          issuedAt: issued,
+          customerId: o.customerId,
+          customerName: o.customer.displayName?.trim() || o.customer.phone,
+          customerPhone: o.customer.phone,
+          customerPhone2: o.customer.phone2 ?? null,
+          branchId,
+          branchName,
+          actorUserId,
+          actorUserName,
+          actorUserRole,
+          invoiceTotalKd: o.totalPrice.toString(),
+          debtAmountKd: tot.toFixed(4),
+          paidKd: '0.0000',
+          remainingKd: tot.toFixed(4),
+          customerRunningRemainingKd: '0',
+          entryCount: 0,
+          currentCustomerDebtKd: custOpen.toFixed(4),
+          isOpen: true,
+          lastEntryAt: issued,
+          debtSource: 'OPEN_UNPAID_ORDER',
+          posPaymentMethod: o.posPaymentMethod ? String(o.posPaymentMethod) : null,
+          paymentStatus: 'UNPAID',
+          isPartiallyPaid: false,
+          isFullyPaid: false,
+          hasActiveSubscription: subState?.isActiveSubscriber ?? false,
+          subscriptionExpiresAt: subState?.subscriptionExpiresAtIso ?? null,
+        };
+        finalRows.push(row);
+        totalDebt += tot;
+        totalInvOrderSum += tot;
+        orderInvTallied.add(o.id);
+        openDebt += tot;
+        openUnpaidOrderBalance += tot;
+        openInvoiceCount += 1;
+        openCustomers.add(o.customerId);
+      }
+    }
+
+    // ── Sort (identical to ledger path) ─────────────────────────────────────
+    const debtSourceSortRank = (s: UnpaidInvoiceRowDto['debtSource']) => {
+      if (s === 'INVOICE_SHORTFALL') return 0;
+      if (s === 'SUBSCRIPTION_OVERUSE') return 1;
+      return 2;
+    };
+    finalRows.sort((a, b) => {
+      if (a.isOpen !== b.isOpen) return a.isOpen ? -1 : 1;
+      const tb = new Date(b.issuedAt).getTime();
+      const ta = new Date(a.issuedAt).getTime();
+      if (tb !== ta) return tb - ta;
+      if (a.orderId !== b.orderId) return a.orderId.localeCompare(b.orderId);
+      if (a.debtSource === b.debtSource) return 0;
+      return debtSourceSortRank(a.debtSource) - debtSourceSortRank(b.debtSource);
+    });
+
+    const withRunningRemaining = attachCanonicalRunningRemaining(finalRows);
+    const invoiceCount = withRunningRemaining.length;
+    const customerCount = new Set(
+      withRunningRemaining.map((r) => r.customerId),
+    ).size;
+    const avgDebtPerInvoice = invoiceCount > 0 ? totalDebt / invoiceCount : 0;
+
+    // ── Phase 6: market KPIs (identical — queries Order table) ───────────────
+    const marketKpiScope =
+      query.marketKpiBranchId?.trim() || query.branchId?.trim() || null;
+    const marketBaseWhere: Prisma.OrderWhereInput = {
+      cashStatus: CashStatus.UNPAID,
+      status: { not: OrderStatus.CANCELED },
+      ...(orderBranchWhereForMarketDebt(marketKpiScope ?? undefined) ?? {}),
+    };
     const [marketAgg, byMethod] = await Promise.all([
       this.prisma.order.aggregate({
         where: marketBaseWhere,

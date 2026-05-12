@@ -179,6 +179,9 @@ const FinanceLedgerReportsPage = lazyPage(
   () => import('@/pages/finance-ledger-reports-page'),
   'FinanceLedgerReportsPage',
 );
+const LedgerBankStatementPage = lazyPage(
+  () => import('@/pages/ledger-bank-statement-page'),
+);
 import { CcPerformancePage } from '@/pages/cc-performance-page';
 const InvoiceAuditLogPage = lazyPage(
   () => import('@/pages/invoice-audit-log-page'),
@@ -1145,6 +1148,14 @@ export default function App() {
                   element={
                     <RequireAccess access="financeLedgerReports.view">
                       <FinanceLedgerReportsPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="finance/ledger/bank-statement"
+                  element={
+                    <RequireAccess access="financeLedgerReports.view">
+                      <LedgerBankStatementPage />
                     </RequireAccess>
                   }
                 />

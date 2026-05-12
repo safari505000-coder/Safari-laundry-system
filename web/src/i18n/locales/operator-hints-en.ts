@@ -119,7 +119,7 @@ export const operatorHints = {
     unifiedLedger:
       'Append-only financial event stream. Filters help audit; exports for accountants.',
     journalStatement:
-      'Double-entry customer statement preview. Dev-enabled; production can gate it with VITE_ENABLE_JOURNAL_STATEMENT=true.',
+      'Call Center–focused single AR (1300) statement with plan + payment context when available; disable with VITE_ENABLE_JOURNAL_STATEMENT=false if needed.',
     payroll:
       'Payroll batches and roster print. Payslip print opens in a new tab without sidebar.',
     systemSettings:
