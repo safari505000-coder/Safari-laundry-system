@@ -161,7 +161,7 @@ describe('V22 current-debt consistency guards', () => {
     expect(financeService).toContain('getOutstandingDebtsWithoutLinks');
     expect(debtService).toContain('getOutstandingDebtsWithoutLinks');
     expect(debtService).toContain('computeOrderRemainingBalancesBatch');
-    expect(debtService).toContain('remaining.toFixed(3)');
+    expect(debtService).toContain('remaining.toFixed(4)'); // V25 P0 fix: 3dp→4dp canonical KWD
     expect(debtService).toContain('settlementStatus');
     expect(reportPage).toContain('المديونيات المعلّقة للتحصيل');
     expect(reportPage).toContain('formatKwd(row.totalDebt)');
@@ -182,7 +182,7 @@ describe('V22 current-debt consistency guards', () => {
     expect(financeController).toContain("@Post('generate-settlement-link')");
     expect(financeService).toContain('generateSettlementLink(');
     expect(debtService).toContain('async generateSettlementLink(');
-    expect(debtService).toContain('totalAmount.toFixed(3)');
+    expect(debtService).toContain('totalAmount.toFixed(4)'); // V25 P0 fix: 3dp→4dp canonical KWD
     expect(debtService).toContain(
       'All selected invoiceIds must belong to the provided customerId',
     );

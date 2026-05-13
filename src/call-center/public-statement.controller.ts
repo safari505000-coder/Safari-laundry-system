@@ -1,4 +1,5 @@
 import { Controller, Get, Param } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Public } from '../auth/decorators/roles.decorator';
 import { CallCenterService } from './call-center.service';
@@ -28,6 +29,8 @@ import { CallCenterService } from './call-center.service';
 @ApiTags('public-statement')
 @Controller('public/statement')
 @Public('Signed statement-share token scopes access without a staff JWT.')
+// 10 requests / minute / IP — explicit limit since global ceiling is MAX_SAFE_INTEGER.
+@Throttle({ default: { limit: 10, ttl: 60_000 } })
 export class PublicStatementController {
   constructor(private readonly callCenter: CallCenterService) {}
 

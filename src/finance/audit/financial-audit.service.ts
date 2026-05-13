@@ -154,10 +154,15 @@ export class FinancialAuditService {
     let doubleCountCount = 0;
     let sumAbsDrift = new Prisma.Decimal(0);
 
+    // V25 perf — batch journal AR query (1 query for all customers).
+    const journalArBatch = await this.journal.getCustomerBalancesBatch(
+      wallets.map((w) => w.customerId),
+    );
+
     for (const w of wallets) {
       try {
         // V20.4 — Journal AR is now the canonical source; DebtLedger removed.
-        const journalArKd = await this.journal.getCustomerBalanceFromJournal(w.customerId);
+        const journalArKd = journalArBatch.get(w.customerId) ?? new Prisma.Decimal(0);
         const walletDebtKd = await getCustomerDebtSnapshotTotalKd(
           this.prisma,
           w.customerId,
@@ -253,10 +258,16 @@ export class FinancialAuditService {
     let drift = 0;
     let over = 0;
     let dc = 0;
+
+    // V25 perf — batch journal AR query (1 query for all customers).
+    const journalArBatchAlerts = await this.journal.getCustomerBalancesBatch(
+      wallets.map((w) => w.customerId),
+    );
+
     for (const w of wallets) {
       try {
         // V20.4 — Compare Journal AR vs wallet snapshot.
-        const journalArKd = await this.journal.getCustomerBalanceFromJournal(w.customerId);
+        const journalArKd = journalArBatchAlerts.get(w.customerId) ?? new Prisma.Decimal(0);
         const walletDebtKd = await getCustomerDebtSnapshotTotalKd(
           this.prisma,
           w.customerId,
@@ -366,10 +377,15 @@ export class FinancialAuditService {
     let criticalCount = 0;
     const CRITICAL = new Prisma.Decimal('1.0000');
 
+    // V25 perf — batch journal AR query (1 query for all customers).
+    const journalArBatchReconcile = await this.journal.getCustomerBalancesBatch(
+      wallets.map((w) => w.customerId),
+    );
+
     for (const w of wallets) {
       try {
         // V20.4 — DebtLedger removed; reconcile is now Journal AR vs wallet.
-        const journalAr = await this.journal.getCustomerBalanceFromJournal(w.customerId);
+        const journalAr = journalArBatchReconcile.get(w.customerId) ?? new Prisma.Decimal(0);
         const walletDebtKd = await getCustomerDebtSnapshotTotalKd(
           this.prisma,
           w.customerId,
@@ -476,10 +492,16 @@ export class FinancialAuditService {
     // V20.4 — DebtLedger removed; invariant is now Journal AR vs wallet.debt.
     // LHS = wallet.debt, RHS = Journal AR (account 1300 net for customer).
     const rows: GlobalInvariantRow[] = [];
+
+    // V25 perf — batch journal AR query (1 query for all customers).
+    const journalArBatchInvariant = await this.journal
+      .getCustomerBalancesBatch(wallets.map((w) => w.customerId))
+      .catch(() => new Map<string, Prisma.Decimal>());
+
     for (const w of wallets) {
       const walletBalance = new Prisma.Decimal(w.balance.toString());
       const walletDebt = new Prisma.Decimal(w.debt.toString());
-      const journalAr = await this.journal.getCustomerBalanceFromJournal(w.customerId).catch(() => new Prisma.Decimal(0));
+      const journalAr = journalArBatchInvariant.get(w.customerId) ?? new Prisma.Decimal(0);
       const drift = walletDebt.sub(journalAr);
       const ok = drift.abs().lessThanOrEqualTo(DRIFT_THRESHOLD);
       if (!ok) {

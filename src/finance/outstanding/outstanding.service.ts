@@ -80,16 +80,6 @@ export class OutstandingService {
     query: OutstandingQueryDto,
     actor?: JwtUser | null,
   ): Promise<OutstandingResponseDto> {
-    console.log('[AR ENTRY]', {
-      from: query.from ?? null,
-      to: query.to ?? null,
-      driverId: query.driverId ?? null,
-      customerId: query.customerId ?? null,
-      branchId: query.branchId ?? null,
-      status: query.status ?? null,
-      search: query.search ?? null,
-      blocked: query.blocked ?? null,
-    });
     const bounds = this.resolveReportingBounds(query.from, query.to);
 
     const queryBranch = query.branchId?.trim() || null;
@@ -110,26 +100,9 @@ export class OutstandingService {
       Boolean((query.search ?? '').trim());
     const noFilters = !hasOrderFilters && !hasPostFilters;
 
-    console.log('[FILTERS]', {
-      from: query.from ?? null,
-      to: query.to ?? null,
-      driverId: query.driverId ?? null,
-      customerId: query.customerId ?? null,
-      branchId: query.branchId ?? null,
-      status: query.status ?? null,
-      search: query.search ?? null,
-      blocked: query.blocked ?? null,
-      noFilters,
-    });
-    console.log('[AR BRANCH]', effectiveBranchId, actor?.role ?? null);
-    console.log('[BRANCH_SCOPE]', effectiveBranchId, actor?.role ?? null);
-
     const collectionsSnapshot = await this.debtVisibility.getCollectionsSnapshot();
     const canonicalTotalDueKd = collectionsSnapshot.totalRemainingDebtKd;
     const canonicalRemainingDueKd = collectionsSnapshot.totalRemainingDebtKd;
-    console.log('[AR CANONICAL]', canonicalTotalDueKd);
-
-    console.log('[AR ROW SOURCE START]');
     const aggOrders = await this.orders.listCollectionsReceivableAggOrders({
       branchId: effectiveBranchId,
       actor: actor ?? undefined,
@@ -139,7 +112,6 @@ export class OutstandingService {
     });
 
     if (!aggOrders) {
-      console.log('[AR ROW COUNT]', 0);
       const response = this.emptyResponse(
         bounds.fromIso,
         bounds.toIso,
@@ -156,8 +128,6 @@ export class OutstandingService {
       });
       return response;
     }
-
-    console.log('[AR ROW COUNT]', aggOrders.length);
 
     if (aggOrders.length === 0) {
       const response = this.emptyResponse(
@@ -374,11 +344,7 @@ export class OutstandingService {
     fromOrdersService: string;
     finalReturned: string;
   }): void {
-    console.log('[DEBT TRACE]', {
-      fromOrdersService: input.fromOrdersService,
-      fromRows: 'DISABLED_SINGLE_SOURCE',
-      finalReturned: input.finalReturned,
-    });
+    void input; // tracing removed — was logging PII and financial data
   }
 
   private assertCanonicalTotal(input: {

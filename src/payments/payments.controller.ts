@@ -46,12 +46,12 @@ import { PaymentCallbackDto } from './dto/payment-callback.dto';
 function kwdStr(value: { toFixed: (n: number) => string } | string | number): string {
   if (typeof value === 'string') {
     const parsed = Number.parseFloat(value);
-    return Number.isFinite(parsed) ? parsed.toFixed(3) : '0.000';
+    return Number.isFinite(parsed) ? parsed.toFixed(4) : '0.0000';
   }
   if (typeof value === 'number') {
-    return Number.isFinite(value) ? value.toFixed(3) : '0.000';
+    return Number.isFinite(value) ? value.toFixed(4) : '0.0000';
   }
-  return value.toFixed(3);
+  return value.toFixed(4);
 }
 
 /**

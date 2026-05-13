@@ -293,9 +293,9 @@ export class DebtService {
           order.serialNumber?.trim() ||
           order.invoiceNumber?.trim() ||
           `#${order.id.slice(-6).toUpperCase()}`,
-        amountKd: remaining.toFixed(3),
-        originalTotalKd: order.totalPrice.toFixed(3),
-        remainingBalanceKd: remaining.toFixed(3),
+        amountKd: remaining.toFixed(4),
+        originalTotalKd: order.totalPrice.toFixed(4),
+        remainingBalanceKd: remaining.toFixed(4),
         settlementStatus: remaining.lessThan(order.totalPrice) ? 'PARTIAL' : 'UNPAID',
         issuedAt: order.createdAt.toISOString(),
       });
@@ -307,7 +307,7 @@ export class DebtService {
         return {
           customerId,
           customerName: customerNameById.get(customerId) ?? '—',
-          totalDebt: bucket.total.toFixed(3),
+          totalDebt: bucket.total.toFixed(4),
           lastOrderDate: bucket.lastOrderDate?.toISOString() ?? null,
           invoices: bucket.invoices,
         };
@@ -491,7 +491,7 @@ export class DebtService {
             customerId,
             invoiceIds,
             invoiceCount: invoiceIds.length,
-            totalAmountKd: totalAmount.toFixed(3),
+            totalAmountKd: totalAmount.toFixed(4),
             createdAt: nowIso,
           },
         } as Prisma.InputJsonValue,
@@ -504,7 +504,7 @@ export class DebtService {
         readableId: `SET-${bundleId.slice(-6).toUpperCase()}`,
         invoiceNumber: null,
         customerName: customer.displayName?.trim() || customer.phone || 'عميلنا العزيز',
-        amountKd: totalAmount.toFixed(3),
+        amountKd: totalAmount.toFixed(4),
         lineItems: selectedOrders
           .slice()
           .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
@@ -516,8 +516,8 @@ export class DebtService {
                 `فاتورة ${order.id.slice(-6).toUpperCase()}`;
               const remaining = remainingByOrder
                 .get(order.id)
-                ?.toFixed(3);
-              const original = order.totalPrice.toFixed(3);
+                ?.toFixed(4);
+              const original = order.totalPrice.toFixed(4);
               return remaining && remaining !== original
                 ? `${invoiceRef} (الأصلي ${original} / المتبقي ${remaining})`
                 : invoiceRef;
@@ -525,7 +525,7 @@ export class DebtService {
             quantity: '1',
             lineTotalKd: (
               remainingByOrder.get(order.id) ?? new Prisma.Decimal(0)
-            ).toFixed(3),
+            ).toFixed(4),
           })),
         branchName: null,
         driverName: null,
@@ -550,7 +550,7 @@ export class DebtService {
       customerId,
       invoiceIds,
       invoiceCount: invoiceIds.length,
-      totalAmountKd: totalAmount.toFixed(3),
+      totalAmountKd: totalAmount.toFixed(4),
       paymentUrl: paymentLink.url,
       trackId: paymentLink.trackId ?? null,
       serverPush,

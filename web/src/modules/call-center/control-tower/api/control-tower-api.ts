@@ -92,6 +92,5 @@ export async function getControlTowerSnapshot(
       headers: CONTROL_TOWER_FETCH_HEADERS,
     },
   );
-  console.log('DASHBOARD API RESPONSE', data);
   return data;
 }

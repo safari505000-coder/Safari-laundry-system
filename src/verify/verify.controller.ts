@@ -1,4 +1,5 @@
 import { Controller, Get, Param } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Public } from '../auth/decorators/roles.decorator';
 import { VerifyService } from './verify.service';
@@ -22,6 +23,9 @@ import { VerifyService } from './verify.service';
 @ApiTags('verify')
 @Controller('verify')
 @Public('Printed-document QR verification returns only data already visible on paper.')
+// 10 requests / minute / IP — public endpoint needs explicit limit since global
+// ThrottlerModule ceiling is MAX_SAFE_INTEGER (intentionally generous for auth traffic).
+@Throttle({ default: { limit: 10, ttl: 60_000 } })
 export class VerifyController {
   constructor(private readonly verify: VerifyService) {}
 

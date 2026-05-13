@@ -71,7 +71,7 @@ export class VerifyService {
       summary: {
         paymentDateIso: row.paymentDate.toISOString(),
         status: row.status,
-        netPayKd: net.toFixed(3),
+        netPayKd: net.toFixed(4),
         branch: row.branch?.name ?? null,
       },
     };
@@ -145,8 +145,8 @@ export class VerifyService {
         employeeId: null,
       },
       summary: {
-        walletBalanceKd: row.wallet?.balance.toFixed(3) ?? '0.000',
-        walletDebtKd: row.wallet?.debt.toFixed(3) ?? '0.000',
+        walletBalanceKd: row.wallet?.balance.toFixed(4) ?? '0.0000',
+        walletDebtKd: row.wallet?.debt.toFixed(4) ?? '0.0000',
         activePlan: row.wallet?.subscriptionPlanName ?? null,
         activePlanExpiresIso:
           row.wallet?.subscriptionExpiresAt?.toISOString() ?? null,
@@ -189,9 +189,9 @@ export class VerifyService {
       },
       summary: {
         stage,
-        debtKd: row.debtAmount.toFixed(3),
-        holdKd: row.holdAmount.toFixed(3),
-        releasedKd: row.releasedAmount.toFixed(3),
+        debtKd: row.debtAmount.toFixed(4),
+        holdKd: row.holdAmount.toFixed(4),
+        releasedKd: row.releasedAmount.toFixed(4),
         releaseDateIso: row.releaseDate?.toISOString() ?? null,
         disbursedAtIso: row.disbursedAt?.toISOString() ?? null,
       },
@@ -228,7 +228,7 @@ export class VerifyService {
         employeeId: row.driver.employeeId,
       },
       summary: {
-        amountKd: row.amountKd.toFixed(3),
+        amountKd: row.amountKd.toFixed(4),
         settledOrderCount: row.settledOrderCount,
         managerName: row.manager.fullName,
         managerUsername: row.manager.username,
@@ -342,14 +342,14 @@ export class VerifyService {
         branch: branchLabel,
         employeeCount: rows.length,
         paidCount,
-        basicKd: basic.toFixed(3),
-        allowancesKd: allow.toFixed(3),
-        commissionKd: commission.toFixed(3),
-        debtReleaseKd: release.toFixed(3),
-        debtHoldKd: hold.toFixed(3),
-        loanKd: loan.toFixed(3),
-        deductionsKd: deductions.toFixed(3),
-        netKd: net.toFixed(3),
+        basicKd: basic.toFixed(4),
+        allowancesKd: allow.toFixed(4),
+        commissionKd: commission.toFixed(4),
+        debtReleaseKd: release.toFixed(4),
+        debtHoldKd: hold.toFixed(4),
+        loanKd: loan.toFixed(4),
+        deductionsKd: deductions.toFixed(4),
+        netKd: net.toFixed(4),
       },
     };
   }
@@ -375,10 +375,10 @@ export class VerifyService {
         employeeId: row.user.employeeId,
       },
       summary: {
-        amountKd: row.amount.toFixed(3),
+        amountKd: row.amount.toFixed(4),
         installmentCount: row.installmentCount,
-        monthlyDeductionKd: row.monthlyDeduction.toFixed(3),
-        remainingKd: row.remaining.toFixed(3),
+        monthlyDeductionKd: row.monthlyDeduction.toFixed(4),
+        remainingKd: row.remaining.toFixed(4),
         status: row.status,
       },
     };

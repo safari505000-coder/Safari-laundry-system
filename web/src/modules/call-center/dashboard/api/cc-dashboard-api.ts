@@ -168,7 +168,6 @@ export function sanitizeDispatchMonitorSnapshot(
         (task) => task.driverId === d.driverId,
       );
       const isolatedAssignedTasks = [...assignedTasks];
-      console.log('ROW TASKS', d.driverId, isolatedAssignedTasks.length);
       let lateCount = 0;
       let breachCount = 0;
       for (const t of isolatedAssignedTasks) {
@@ -213,7 +212,6 @@ export async function listActiveDispatches(
     generatedAtIso: raw.generatedAtIso,
     rows: sanitizeCcDispatchTasks(rowsIn),
   };
-  console.log('DASHBOARD API RESPONSE', out);
   return out;
 }
 
@@ -237,7 +235,6 @@ export async function fetchDispatchMonitor(
       : [],
   };
   const sanitized = sanitizeDispatchMonitorSnapshot(safe);
-  console.log('DASHBOARD API RESPONSE', sanitized);
   return sanitized;
 }
 
@@ -257,7 +254,6 @@ export async function listCcDrivers(
     headers: CC_DASHBOARD_FETCH_HEADERS,
   });
   const rows = Array.isArray(data) ? data : [];
-  console.log('DASHBOARD API RESPONSE', rows);
   return rows;
 }
 

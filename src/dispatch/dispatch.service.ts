@@ -181,11 +181,6 @@ export class DispatchService {
       seen.add(r.id);
       out.push(r);
     }
-    console.log('[CC STRICT FILTER]', {
-      context,
-      before,
-      after: out.length,
-    });
     return out;
   }
 
@@ -511,7 +506,6 @@ export class DispatchService {
       rows,
       'cc_dashboard_strict',
     );
-    console.log('[CC API HIT]', cleaned.length);
     return {
       generatedAtIso: now.toISOString(),
       rows: cleaned.map((r) =>
@@ -972,8 +966,6 @@ export class DispatchService {
       rows,
       'cc_dashboard_strict',
     );
-    console.log('[CC API HIT]', cleanedRows.length);
-
     const driverNameById = new Map<string, string>();
     const delayedByDispatchId = new Map<string, DispatchRowDto>();
 
@@ -997,20 +989,8 @@ export class DispatchService {
       }
       return dto;
     });
-    console.log('=== RAW TASKS ===');
-    console.log(
-      cleanedRows.map((t) => ({
-        id: t.id,
-        driverId: t.driverId,
-        driverRelationId: t.driver.id,
-        customerId: t.customerId,
-        createdBy: t.createdByUserId,
-      })),
-    );
-
     const drivers = [...driverNameById.entries()].map(([driverId, driverName]) => {
       const assignedTasks = allTasks.filter((t) => t.driverId === driverId);
-      console.log('[DRIVER TASKS]', driverId, assignedTasks.length);
       return {
         driverId,
         driverName,

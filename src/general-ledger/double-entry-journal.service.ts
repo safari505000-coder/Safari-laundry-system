@@ -1871,6 +1871,60 @@ export class DoubleEntryJournalService {
     );
   }
 
+  /**
+   * Batch variant of {@link getCustomerBalanceFromJournal}.
+   *
+   * Fetches account-1300 (AR) lines for all requested customers in a
+   * SINGLE query, aggregates in-process, and returns a Map keyed by
+   * customerId. Customers with no journal history are included in the
+   * Map with a zero balance so callers don't need to null-guard.
+   *
+   * Use this instead of calling `getCustomerBalanceFromJournal` inside
+   * a loop — converts an N-query pattern to 1 query.
+   */
+  async getCustomerBalancesBatch(
+    customerIds: string[],
+  ): Promise<Map<string, Prisma.Decimal>> {
+    const map = new Map<string, Prisma.Decimal>();
+    if (customerIds.length === 0) return map;
+
+    const lines = await this.prisma.journalLine.findMany({
+      where: {
+        entry: { customerId: { in: customerIds } },
+        account: { code: JOURNAL_ACCOUNTS.ACCOUNTS_RECEIVABLE },
+      },
+      select: {
+        debit: true,
+        credit: true,
+        entry: { select: { customerId: true } },
+      },
+    });
+
+    for (const line of lines) {
+      const cid = (line.entry as { customerId: string | null }).customerId;
+      if (!cid) continue;
+      const cur = map.get(cid) ?? new Prisma.Decimal(0);
+      map.set(
+        cid,
+        cur
+          .add(new Prisma.Decimal(line.debit.toString()))
+          .sub(new Prisma.Decimal(line.credit.toString())),
+      );
+    }
+
+    // Clamp negatives to 0 (mirrors getCustomerBalanceFromJournal behaviour).
+    for (const [cid, bal] of map) {
+      if (bal.lessThan(0)) map.set(cid, new Prisma.Decimal(0));
+    }
+
+    // Ensure every requested ID has an entry (default 0 if no AR history).
+    for (const cid of customerIds) {
+      if (!map.has(cid)) map.set(cid, new Prisma.Decimal(0));
+    }
+
+    return map;
+  }
+
   async logCustomerDrift(
     customerId: string,
     ledgerBalance: Prisma.Decimal | string | number,

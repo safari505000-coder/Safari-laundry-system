@@ -133,11 +133,6 @@ export function listOutstanding(
       } catch {
         body = text;
       }
-      console.log('OUTSTANDING RESPONSE RAW', {
-        status: res.status,
-        ok: res.ok,
-        body,
-      });
       if (!res.ok) {
         console.error('OUTSTANDING ERROR', {
           status: res.status,
