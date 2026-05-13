@@ -201,7 +201,7 @@ export function FeedbackPublicPage() {
               <div className="mt-4 flex justify-center gap-1">
                 {Array.from({ length: 5 }, (_, i) => i + 1).map((i) => (
                   <Star
-                    key={i}
+                    key={`star-display-${i}`}
                     className={`h-6 w-6 ${
                       i <= rating
                         ? 'fill-amber-400 text-amber-400'
@@ -239,7 +239,7 @@ export function FeedbackPublicPage() {
                   const active = (hoverRating || rating) >= i;
                   return (
                     <button
-                      key={i}
+                      key={`star-btn-${i}`}
                       type="button"
                       onMouseEnter={() => setHoverRating(i)}
                       onMouseLeave={() => setHoverRating(0)}
@@ -314,8 +314,8 @@ export function FeedbackPublicPage() {
           {termsOpen ? (
             <div className="border-t border-slate-100 px-5 py-4">
               <ol className="list-decimal space-y-2 pe-5 text-[13px] leading-relaxed text-slate-700">
-                {TERMS_AR.map((t, i) => (
-                  <li key={i}>{t}</li>
+                {TERMS_AR.map((t) => (
+                  <li key={t}>{t}</li>
                 ))}
               </ol>
             </div>

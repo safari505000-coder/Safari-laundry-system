@@ -496,7 +496,7 @@ export function PayrollRosterPrintPage() {
                     <col style={{ width: '14%' }} />
                     {Array.from({ length: nCurr }, (_, i) => (
                       <col
-                        key={i}
+                        key={`col-${i}`}
                         style={{ width: `${wRest.toFixed(2)}%` }}
                       />
                     ))}

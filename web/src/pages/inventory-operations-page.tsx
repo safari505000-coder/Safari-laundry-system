@@ -354,15 +354,17 @@ function TransferForm({ token, items, branches }: CommonProps) {
   );
 }
 
-type StocktakeEntry = { stockItemId: string; countedQuantity: string; note: string };
+type StocktakeEntry = { clientId: string; stockItemId: string; countedQuantity: string; note: string };
+
+function mkLine(): StocktakeEntry {
+  return { clientId: crypto.randomUUID(), stockItemId: '', countedQuantity: '', note: '' };
+}
 
 function StocktakeForm({ token, items, branches }: CommonProps) {
   const [branchId, setBranchId] = useState('');
   const [reference, setReference] = useState('');
   const [note, setNote] = useState('');
-  const [lines, setLines] = useState<StocktakeEntry[]>([
-    { stockItemId: '', countedQuantity: '', note: '' },
-  ]);
+  const [lines, setLines] = useState<StocktakeEntry[]>([mkLine()]);
   const [busy, setBusy] = useState(false);
 
   const valid = useMemo(
@@ -401,7 +403,7 @@ function StocktakeForm({ token, items, branches }: CommonProps) {
       toast.success(
         `تم الجرد (${res.reference}) · ${res.adjustedLines}/${res.totalLines} سطر عدّل.`,
       );
-      setLines([{ stockItemId: '', countedQuantity: '', note: '' }]);
+      setLines([mkLine()]);
       setReference('');
       setNote('');
     } catch (e) {
@@ -432,7 +434,7 @@ function StocktakeForm({ token, items, branches }: CommonProps) {
 
           <div className="space-y-2">
             {lines.map((l, i) => (
-              <div key={i} className="grid gap-2 rounded border p-2 md:grid-cols-12">
+              <div key={l.clientId} className="grid gap-2 rounded border p-2 md:grid-cols-12">
                 <div className="md:col-span-6">
                   <ItemPicker
                     value={l.stockItemId}
@@ -471,7 +473,7 @@ function StocktakeForm({ token, items, branches }: CommonProps) {
               type="button"
               variant="outline"
               onClick={() =>
-                setLines((ls) => [...ls, { stockItemId: '', countedQuantity: '', note: '' }])
+                setLines((ls) => [...ls, mkLine()])
               }
             >
               + إضافة سطر

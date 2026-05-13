@@ -35,24 +35,7 @@ import { withPaymentFinalizeSpan } from '../common/tracing/payment-finalize-span
 import { buildPublicInvoicePdfUrl } from '../orders/invoice-pdf.util';
 import { GatewayTrackHintDto } from './dto/gateway-track-hint.dto';
 import { PaymentCallbackDto } from './dto/payment-callback.dto';
-
-/**
- * V25 Controller Math Purge — canonical KWD serialization helper.
- * Formats a Prisma.Decimal (or numeric string) as a 3dp KWD string for
- * API responses WITHOUT performing arithmetic. Replaces inline
- * `kwdStr(order.totalPrice)` scattered across response-shaping blocks
- * so formatting stays in one tested location.
- */
-function kwdStr(value: { toFixed: (n: number) => string } | string | number): string {
-  if (typeof value === 'string') {
-    const parsed = Number.parseFloat(value);
-    return Number.isFinite(parsed) ? parsed.toFixed(4) : '0.0000';
-  }
-  if (typeof value === 'number') {
-    return Number.isFinite(value) ? value.toFixed(4) : '0.0000';
-  }
-  return value.toFixed(4);
-}
+import { kwdStr } from '../finance/utils/kwd-format.util';
 
 /**
  * V1.7.0 — Public DTO returned by `GET /api/payments/status/:orderId`.

@@ -942,7 +942,7 @@ function PayrollSettingsEditor({
             </SelectTrigger>
             <SelectContent>
               {Array.from({ length: 28 }).map((_, i) => (
-                <SelectItem key={i + 1} value={String(i + 1)}>
+                <SelectItem key={`day-${i + 1}`} value={String(i + 1)}>
                   اليوم {i + 1}
                 </SelectItem>
               ))}

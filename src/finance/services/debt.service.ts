@@ -34,6 +34,7 @@ import { resolveCustomerPhoneForNotify } from '../../common/validation/kuwait-cu
 import { buildCollectionsPaymentLinkTextAr } from '../../call-center/collections-whatsapp-text';
 import { getCustomerSubscriptionStateBatch } from '../../subscribers/subscription-state.util';
 import { attachCanonicalRunningRemaining } from '../canonical-financial-projection';
+import { kwdStr } from '../utils/kwd-format.util';
 
 /**
  * Same branch scoping as `CallCenterService.getOperationsSummary` red KPI
@@ -78,13 +79,12 @@ function foldMarketUnpaidByMethod(
     else if (p === PosPaymentMethod.PAYMENT_LINK) link += n;
     else other += n;
   }
-  const f = (x: number) => x.toFixed(4);
   return {
-    cashKd: f(cash),
-    knetKd: f(knet),
-    onlineKd: f(online),
-    paymentLinkKd: f(link),
-    otherKd: f(other),
+    cashKd: kwdStr(cash),
+    knetKd: kwdStr(knet),
+    onlineKd: kwdStr(online),
+    paymentLinkKd: kwdStr(link),
+    otherKd: kwdStr(other),
   };
 }
 

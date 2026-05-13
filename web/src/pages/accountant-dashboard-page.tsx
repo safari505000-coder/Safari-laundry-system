@@ -136,7 +136,7 @@ function GroupedBarMini({
   return (
     <div className={cn('flex h-32 items-end gap-0.5', className)}>
       {rows.map((r, i) => (
-        <div key={i} className="flex flex-1 flex-col items-stretch justify-end gap-0.5">
+        <div key={`bar-${i}`} className="flex flex-1 flex-col items-stretch justify-end gap-0.5">
           <div
             className="w-full rounded-sm bg-primary/80"
             style={{ height: `${(r.sales / max) * 100}%`, minHeight: r.sales > 0 ? 4 : 0 }}
@@ -582,7 +582,7 @@ export function AccountantDashboardPage() {
             <CardContent className="space-y-2 text-sm">
               {insights?.lines.length ?
                 insights.lines.map((line, i) => (
-                  <p key={i} className="rounded-md border border-border/60 bg-muted/30 px-3 py-2">
+                  <p key={`insight-${i}`} className="rounded-md border border-border/60 bg-muted/30 px-3 py-2">
                     {line}
                   </p>
                 ))
@@ -758,7 +758,7 @@ export function AccountantDashboardPage() {
                 })}
               </p>
               {explain.narratives.map((n, i) => (
-                <p key={i} className="rounded-md border bg-muted/30 px-3 py-2">
+                <p key={`narrative-${i}`} className="rounded-md border bg-muted/30 px-3 py-2">
                   {n}
                 </p>
               ))}
