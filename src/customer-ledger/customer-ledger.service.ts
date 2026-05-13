@@ -1929,7 +1929,10 @@ export class CustomerLedgerService {
             if (appliedMinor >= invRemMinor) {
               await tx.order.update({
                 where: { id: inv.id },
-                data: { cashStatus: CashStatus.PAID_TO_DRIVER },
+                data: {
+                  cashStatus: CashStatus.PAID_TO_DRIVER,
+                  posPaymentMethod: PosPaymentMethod.CASH,
+                },
               });
               closedInvoiceIds.push(inv.id);
             }
