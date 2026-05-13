@@ -127,15 +127,14 @@ import { DebtHoldsPage } from '@/pages/debt-holds-page';
 import { StaffHubPage } from '@/pages/staff-hub-page';
 import { FixedExpensesPage } from '@/pages/fixed-expenses-page';
 import { CollectionsPage } from '@/modules/call-center/pages/collections-page';
-const CollectionsCockpitPage = lazyPage(
-  () => import('@/modules/call-center/pages/collections-cockpit-page'),
-  'CollectionsCockpitPage',
+const CollectionsCenterPage = lazyPage(
+  () => import('@/modules/call-center/pages/collections-center-page'),
+  'CollectionsCenterPage',
 );
 import { CustomersPage } from '@/modules/call-center/pages/customers-page';
 import { CcDashboardPage } from '@/modules/call-center/dashboard/pages/cc-dashboard-page';
 import { CcCustomer360Page } from '@/modules/call-center/dashboard/pages/cc-customer-360-page';
 import { CcCustomer360V2Page } from '@/modules/call-center/dashboard/pages/cc-customer-360-v2-page';
-import { CollectionsReportPage } from '@/modules/call-center/collections-report/pages/collections-report-page';
 import { ControlTowerPage } from '@/modules/call-center/control-tower/pages/control-tower-page';
 import { CustomerPortal360Page } from '@/pages/customer-portal-360-page';
 import { CallIncomingPage } from '@/pages/call-incoming-page';
@@ -295,19 +294,16 @@ function RequireRole({
 }
 
 /**
- * `/collections` nav entry — capability-based default:
- *   • collections.view → operational cockpit
- *   • else outstanding.view → لوحة التحصيل (GM / ACCOUNTANT / etc.)
- *   • else home (sidebar should not expose the link without access)
+ * `/collections` — capability-based default tab on the unified hub.
  */
 function CollectionsDefaultRedirect() {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
   if (can(user, 'collections.view')) {
-    return <Navigate to="/collections/cockpit" replace />;
+    return <Navigate to="/collections/center?tab=work" replace />;
   }
   if (can(user, 'outstanding.view')) {
-    return <Navigate to="/cc/collections-report" replace />;
+    return <Navigate to="/collections/center?tab=report" replace />;
   }
   return <Navigate to="/" replace />;
 }
@@ -639,15 +635,11 @@ export default function App() {
                   permalinks don't 404. */}
                 <Route
                   path="cc/collections-report"
-                  element={
-                    <RequireAccess access="outstanding.view">
-                      <CollectionsReportPage />
-                    </RequireAccess>
-                  }
+                  element={<Navigate to="/collections/center?tab=report" replace />}
                 />
                 <Route
                   path="cc/outstanding"
-                  element={<Navigate to="/cc/collections-report" replace />}
+                  element={<Navigate to="/collections/center?tab=report" replace />}
                 />
                 <Route
                   path="customer-statement-journal"
@@ -673,9 +665,16 @@ export default function App() {
                     </RequireAccess>
                   }
                 />
-                {/* V23.1 — `/collections` sends CC/Owner to the cockpit;
-                    GM/Accountant (outstanding only) land on collections-report. */}
+                {/* Unified collections hub + legacy redirects */}
                 <Route path="collections" element={<CollectionsDefaultRedirect />} />
+                <Route
+                  path="collections/center"
+                  element={
+                    <RequireAccess access="outstanding.view">
+                      <CollectionsCenterPage />
+                    </RequireAccess>
+                  }
+                />
                 <Route
                   path="collections/classic"
                   element={
@@ -686,11 +685,7 @@ export default function App() {
                 />
                 <Route
                   path="collections/cockpit"
-                  element={
-                    <RequireAccess access="collections.view">
-                      <CollectionsCockpitPage />
-                    </RequireAccess>
-                  }
+                  element={<Navigate to="/collections/center?tab=work" replace />}
                 />
                 <Route
                   path="my-deposits"
@@ -986,7 +981,11 @@ export default function App() {
                 />
                 <Route
                   path="payroll/:id/print"
-                  element={<PayslipPrintPage />}
+                  element={
+                    <RequireAccess access="payroll.view">
+                      <PayslipPrintPage />
+                    </RequireAccess>
+                  }
                 />
                 {/*
                   V19.21 — Monthly payroll roster (مسير الرواتب الشهري).

@@ -517,7 +517,7 @@ export function CollectionsPage() {
               })}
             />
             <Link
-              to="/cc/collections/cockpit"
+              to="/collections/center?tab=work"
               className="inline-flex items-center gap-1 rounded-md border border-sky-300 bg-sky-50 px-2 py-1 text-xs font-medium text-sky-800 hover:bg-sky-100 dark:border-sky-700 dark:bg-sky-900/30 dark:text-sky-200"
             >
               <Sparkles className="h-3 w-3" />

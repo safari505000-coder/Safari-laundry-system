@@ -30,6 +30,8 @@ export interface WorkflowLanesProps extends WorkflowLaneActions {
   currentOperatorId?: string | null;
   locale?: 'en' | 'ar';
   className?: string;
+  /** When true, lane cards are display-only (no footer actions, no per-lane add). */
+  readOnly?: boolean;
   /** Whether to render the per-lane "+ add" hint button. */
   onQuickAdd?: (kind: WorkflowKind) => void;
 }
@@ -90,7 +92,7 @@ export function WorkflowLanes(props: WorkflowLanesProps): React.ReactElement {
                   {rows.length}
                 </span>
               </h3>
-              {props.onQuickAdd ? (
+              {props.onQuickAdd && !props.readOnly ? (
                 <button
                   type="button"
                   onClick={() => props.onQuickAdd?.(kind)}
@@ -120,6 +122,7 @@ export function WorkflowLanes(props: WorkflowLanesProps): React.ReactElement {
                     key={item.id}
                     item={item}
                     currentOperatorId={props.currentOperatorId}
+                    readOnly={props.readOnly}
                     onOpen={props.onOpen}
                     onClaim={props.onClaim}
                     onRelease={props.onRelease}

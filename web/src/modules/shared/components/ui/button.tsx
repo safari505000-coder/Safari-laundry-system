@@ -2,7 +2,7 @@ import { Button as ButtonPrimitive } from "@base-ui/react/button"
 import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
-import { useAuth } from "@/contexts/auth-context"
+import { useOptionalAuth } from "@/contexts/auth-context"
 import {
   hasAppPermission,
   NO_PERMISSION_TOOLTIP,
@@ -62,7 +62,8 @@ function Button({
   title,
   ...props
 }: ButtonProps) {
-  const { user } = useAuth()
+  const auth = useOptionalAuth()
+  const user = auth?.user ?? null
   const lacksPermission = Boolean(permission && !hasAppPermission(user, permission))
 
   return (

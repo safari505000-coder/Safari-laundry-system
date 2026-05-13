@@ -24,6 +24,8 @@ export interface WorkflowItemCardProps {
   onBreak?: (item: WorkflowItem) => void;
   onCancel?: (item: WorkflowItem) => void;
   locale?: 'en' | 'ar';
+  /** Hide all card footer actions when true. */
+  readOnly?: boolean;
 }
 
 const KIND_LABELS: Record<WorkflowKind, { ar: string; en: string }> = {
@@ -99,7 +101,7 @@ function relativeTime(targetIso: string | null, locale: 'en' | 'ar', now: number
 }
 
 export function WorkflowItemCard(props: WorkflowItemCardProps): React.ReactElement {
-  const { item, currentOperatorId, locale = 'ar' } = props;
+  const { item, currentOperatorId, locale = 'ar', readOnly = false } = props;
   const isAr = locale === 'ar';
   const ownedBySomeoneElse =
     Boolean(item.ownedById) &&
@@ -207,6 +209,8 @@ export function WorkflowItemCard(props: WorkflowItemCardProps): React.ReactEleme
       </div>
 
       <footer className="flex flex-wrap items-center gap-1.5">
+        {readOnly ? null : (
+          <>
         {props.onOpen ? (
           <button
             type="button"
@@ -261,6 +265,8 @@ export function WorkflowItemCard(props: WorkflowItemCardProps): React.ReactEleme
             {isAr ? 'إلغاء' : 'Cancel'}
           </button>
         ) : null}
+          </>
+        )}
       </footer>
     </article>
   );

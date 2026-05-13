@@ -4,13 +4,12 @@ import {
   allInvoicesItem,
   callIncomingItem,
   ccDashboardItem,
+  collectionsCenterItem,
   controlTowerItem,
-  collectionsItem,
   customersItem,
   driverMonitorItem,
   feedbackInboxItem,
   journalStatementItem,
-  outstandingPaymentsItem,
   subscribersItem,
   unpaidInvoicesItem,
 } from '@/modules/shared/nav/nav-items';
@@ -46,7 +45,7 @@ export const callCenterSidebarNavGroups: NavGroup[] = [
       customersItem,
       journalStatementItem,
       callIncomingItem,
-      collectionsItem,
+      collectionsCenterItem,
       feedbackInboxItem,
       subscribersItem,
     ],
@@ -56,7 +55,7 @@ export const callCenterSidebarNavGroups: NavGroup[] = [
     // V19.x — Outstanding Payments lives next to the unpaid-invoices
     // tracker so the CC can pivot between per-invoice and per-customer
     // collection workflows without leaving the Invoices group.
-    items: [allInvoicesItem, unpaidInvoicesItem, outstandingPaymentsItem],
+    items: [allInvoicesItem, unpaidInvoicesItem],
   },
   // V19.14 — driver tracking map. Call Center supervises field ops, so
   // seeing which drivers are on shift / where they were last anchored

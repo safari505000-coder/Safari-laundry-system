@@ -724,6 +724,21 @@ export const outstandingPaymentsItem: NavItem = {
   permission: AppPermission.VIEW_DEBTS,
 };
 
+/** V26 — unified collections hub (cockpit + AR report). */
+export const collectionsCenterItem: NavItem = {
+  to: '/collections/center',
+  labelKey: 'nav.collectionsCenter',
+  icon: MessageSquare,
+  roles: [
+    'OWNER',
+    'GENERAL_MANAGER',
+    'ACCOUNTANT',
+    'CALL_CENTER',
+    'CALL_CENTER_SUPERVISOR',
+  ],
+  permission: AppPermission.VIEW_DEBTS,
+};
+
 export const salesSummaryReportItem: NavItem = {
   to: '/reports/sales-summary',
   labelKey: 'nav.salesSummaryReport',

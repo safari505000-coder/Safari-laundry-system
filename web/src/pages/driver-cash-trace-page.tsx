@@ -207,7 +207,7 @@ export function DriverCashTracePage() {
   }, [data, selectedDriverId]);
 
   return (
-    <div className="space-y-5">
+    <div id="driver-cash-trace-print-root" className="space-y-5">
       <PageHeader
         tone="blue"
         title={t('driverCashTrace.title', 'Driver Cash Trace')}

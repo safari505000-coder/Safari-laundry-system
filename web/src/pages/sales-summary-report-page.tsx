@@ -18,6 +18,7 @@
  * the backend.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
 import { Download, FileSpreadsheet, Loader2, RefreshCw } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { SalesDebtInsightsPanel } from '@/components/reports/sales-debt-insights-panel';
@@ -160,7 +161,10 @@ function buildCsv(analytics: SalesDebtAnalyticsResponse): string {
 
 function printPdf(analytics: SalesDebtAnalyticsResponse): void {
   const popup = window.open('', '_blank', 'noopener,noreferrer');
-  if (!popup) return;
+  if (!popup) {
+    toast.error('تعذّر فتح نافذة الطباعة. يرجى السماح بالنوافذ المنبثقة في المتصفح.');
+    return;
+  }
   const branchRows = analytics.byBranch
     .map(
       (row) =>

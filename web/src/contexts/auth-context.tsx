@@ -395,3 +395,12 @@ export function useAuth(): AuthContextValue {
   }
   return ctx;
 }
+
+/**
+ * Same context as `useAuth`, but returns `null` when no provider is mounted.
+ * For shared UI primitives (e.g. `Button` with optional `permission`) that
+ * may render in tests or rare trees without `AuthProvider`.
+ */
+export function useOptionalAuth(): AuthContextValue | null {
+  return useContext(AuthContext);
+}

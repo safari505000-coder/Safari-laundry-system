@@ -63,6 +63,7 @@ export const ar = {
     accountantDashboard: 'داشبورد المحاسب',
     unpaidInvoices: 'المديونية',
     outstandingPayments: 'تتبع المديونية والتحصيل',
+    collectionsCenter: 'مركز التحصيل',
     controlTower: 'برج التحكم',
     collectDriverCash: 'تحصيل كاش السائق',
     bankDeposits: 'سجل الإيداعات البنكية',
@@ -124,6 +125,12 @@ export const ar = {
     collapseSidebar: 'طي القائمة',
     expandSidebar: 'توسيع القائمة',
     back: 'رجوع',
+  },
+  collectionsCenter: {
+    title: 'مركز التحصيل',
+    subtitle: 'مسارات التحصيل التشغيلية وتقرير المديونية في صفحة واحدة.',
+    tabWork: 'قمرة التحصيل',
+    tabReport: 'تقرير المديونية',
   },
   radar: {
     totalCash: 'إجمالي الكاش',

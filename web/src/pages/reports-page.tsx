@@ -409,6 +409,7 @@ export function ReportsPage() {
 
   return (
     <div
+      id="reports-print-root"
       className={cn(
         'flex flex-col gap-6 xl:flex-row xl:items-start',
         pulseOpen ? 'xl:gap-8' : 'xl:gap-6',

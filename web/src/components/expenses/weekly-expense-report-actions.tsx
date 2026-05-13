@@ -19,6 +19,7 @@
  * (no money math).
  */
 import { useState } from 'react';
+import { toast } from 'sonner';
 import { Download, FileSpreadsheet, Loader2, RefreshCw } from 'lucide-react';
 import type { ExpenseRow, ExpensesSummaryResponse } from '@/lib/api';
 import { formatKwdLabel } from '@/lib/kwd';
@@ -82,7 +83,10 @@ function buildCsv(
 
 function printPdf(summary: ExpensesSummaryResponse): void {
   const popup = window.open('', '_blank', 'noopener,noreferrer');
-  if (!popup) return;
+  if (!popup) {
+    toast.error('تعذّر فتح نافذة الطباعة. يرجى السماح بالنوافذ المنبثقة في المتصفح.');
+    return;
+  }
 
   const insights = summary.alerts.length
     ? summary.alerts.map((alert) => `<li>${alert.message}</li>`).join('')

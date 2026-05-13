@@ -62,6 +62,7 @@ export const en = {
     accountantDashboard: 'Accountant dashboard',
     unpaidInvoices: 'Receivables',
     outstandingPayments: 'Debt Tracking & Collections',
+    collectionsCenter: 'Collections hub',
     controlTower: 'Control Tower',
     collectDriverCash: 'Collect driver cash',
     bankDeposits: 'Bank deposits log',
@@ -123,6 +124,12 @@ export const en = {
     collapseSidebar: 'Collapse sidebar',
     expandSidebar: 'Expand sidebar',
     back: 'Back',
+  },
+  collectionsCenter: {
+    title: 'Collections hub',
+    subtitle: 'Operational collections cockpit and AR report in one place.',
+    tabWork: 'Operations cockpit',
+    tabReport: 'AR report',
   },
   radar: {
     totalCash: 'Total cash',

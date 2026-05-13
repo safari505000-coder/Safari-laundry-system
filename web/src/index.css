@@ -344,7 +344,32 @@ body {
    * the banner + `.print-hide` rules take care of layout polish.
    */
   #debt-holds-print-root,
-  #debt-holds-print-root * {
+  #debt-holds-print-root *,
+  /*
+   * V26 — Collections AR report (لوحة التحصيل) page-level print.
+   * The page calls `window.print()` on the current tab; without
+   * whitelisting here the nuclear `body *` rule above hides everything.
+   */
+  #collections-report-print-root,
+  #collections-report-print-root *,
+  /*
+   * V26 — Customer AR journal (كشف ذمم العميل). The page has its own
+   * inline @media print block with `#journal-statement-print`, but the
+   * `!important` on the nuclear rule above overrides it. Whitelisting
+   * here restores visibility with proper specificity.
+   */
+  #journal-statement-print,
+  #journal-statement-print *,
+  /*
+   * V26 — Driver cash trace page-level print snapshot.
+   */
+  #driver-cash-trace-print-root,
+  #driver-cash-trace-print-root *,
+  /*
+   * V26 — Reports hub page-level print (dropdown "طباعة").
+   */
+  #reports-print-root,
+  #reports-print-root * {
     visibility: visible !important;
   }
   #hr-hub-print-root {
@@ -1264,5 +1289,78 @@ body {
   body:has(#debt-hold-voucher-root) #debt-holds-print-root * {
     display: none !important;
     visibility: hidden !important;
+  }
+
+  /* V26 — Collections AR report: lift past ancestor clipping. */
+  #collections-report-print-root {
+    position: fixed !important;
+    inset: 0 auto auto 0 !important;
+    width: 100% !important;
+    min-height: 100vh !important;
+    margin: 0 !important;
+    padding: 1rem !important;
+    background: #fff !important;
+    color: #111827 !important;
+    z-index: 9999 !important;
+    overflow: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  #collections-report-print-root button,
+  #collections-report-print-root [data-print-hidden='true'] {
+    display: none !important;
+  }
+
+  /* V26 — Customer AR journal: upgrade inline absolute to fixed so
+   * hidden ancestors don't clip the subtree in Chrome/Edge. */
+  #journal-statement-print {
+    position: fixed !important;
+    inset: 0 auto auto 0 !important;
+    width: 100% !important;
+    min-height: 100vh !important;
+    margin: 0 !important;
+    padding: 24px !important;
+    background: #fff !important;
+    color: #000 !important;
+    z-index: 9999 !important;
+    overflow: visible !important;
+  }
+
+  /* V26 — Driver cash trace: lift past ancestor clipping. */
+  #driver-cash-trace-print-root {
+    position: fixed !important;
+    inset: 0 auto auto 0 !important;
+    width: 100% !important;
+    min-height: 100vh !important;
+    margin: 0 !important;
+    padding: 2rem !important;
+    background: #fff !important;
+    color: #111827 !important;
+    z-index: 9999 !important;
+    overflow: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  #driver-cash-trace-print-root button {
+    display: none !important;
+  }
+
+  /* V26 — Reports hub: lift past ancestor clipping. */
+  #reports-print-root {
+    position: fixed !important;
+    inset: 0 auto auto 0 !important;
+    width: 100% !important;
+    min-height: 100vh !important;
+    margin: 0 !important;
+    padding: 2rem !important;
+    background: #fff !important;
+    color: #111827 !important;
+    z-index: 9999 !important;
+    overflow: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  #reports-print-root button {
+    display: none !important;
   }
 }
