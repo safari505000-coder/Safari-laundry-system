@@ -70,11 +70,6 @@ function isPulseVisibleBranchName(name: string | undefined | null): boolean {
   return !PULSE_EXCLUDED_BRANCH_NAMES.has(n);
 }
 
-// @V24-LEGACY-MATH: summed rows locally. Now uses issuedReport.totals.totalKd from server.
-// function sumIssuedKd(inv: IssuedInvoicesReport | null): number {
-//   if (!inv?.rows?.length) return 0;
-//   return inv.rows.reduce((acc, r) => acc + toNum(r.totalPrice), 0);
-// }
 function sumIssuedKd(inv: IssuedInvoicesReport | null): number {
   // V25 — read server-computed total; fall back to 0 when report is absent.
   return toNum(inv?.totals?.totalKd);

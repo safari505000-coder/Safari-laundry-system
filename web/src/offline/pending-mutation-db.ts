@@ -80,3 +80,28 @@ export function getOfflineQueueDb(): SafariOfflineQueueDb {
   }
   return dbInstance;
 }
+
+/**
+ * Clears every table in the offline database on logout.
+ *
+ * Called fire-and-forget from `clearSession` in AuthContext so PII
+ * (customersCache) and pending mutations from the previous session
+ * cannot be read by the next user on the same device.
+ *
+ * Uses Promise.allSettled so a failure on one table does not prevent
+ * the others from being cleared. Silently swallows all errors because
+ * the access token is already invalid by the time this runs.
+ */
+export async function clearOfflineDb(): Promise<void> {
+  try {
+    const db = getOfflineQueueDb();
+    await Promise.allSettled([
+      db.pendingMutations.clear(),
+      db.customersCache.clear(),
+      db.posMetadata.clear(),
+    ]);
+  } catch {
+    // Silently swallow — tokens are already cleared; DB clear is
+    // best-effort to remove PII and stale mutations.
+  }
+}

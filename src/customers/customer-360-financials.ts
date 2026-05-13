@@ -3,8 +3,10 @@ import {
   CashStatus,
   DebtSource,
   OrderStatus,
+  Prisma,
   PosPaymentMethod,
 } from '@prisma/client';
+import { round4Kd } from '../finance/utils/round4kd.util';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   computeCanonicalCustomerDebt,
@@ -205,7 +207,11 @@ export function computeCustomerFinancials(
     totalPaymentsKd > totalInvoicesKd + OVERPAYMENT_TOLERANCE_KD ?
       round(totalPaymentsKd - totalInvoicesKd)
     : 0;
-  const totalDueKd = Math.max(round(totalInvoicesKd - totalPaymentsKd), 0);
+  // V23.3+ — use Prisma.Decimal with ROUND_HALF_EVEN instead of JS float
+  // arithmetic (Math.round + EPSILON) to avoid micro-fil drift.
+  const totalDueDec = new Prisma.Decimal(totalInvoicesKd.toString()).sub(
+    new Prisma.Decimal(totalPaymentsKd.toString()),
+  );
   const subscriptionId = data.subscription?.id ?? null;
   const subscriptionValueKd =
     data.subscription ?
@@ -264,7 +270,7 @@ export function computeCustomerFinancials(
   return {
     totalInvoicesKd: fourDp(totalInvoicesKd),
     totalPaymentsKd: fourDp(totalPaymentsKd),
-    totalDueKd: fourDp(totalDueKd),
+    totalDueKd: round4Kd(totalDueDec.lessThan(0) ? new Prisma.Decimal(0) : totalDueDec),
     consumedKd: fourDp(totalInvoicesKd),
     subscriptionRemainingKd: fourDp(subscriptionRemainingKd),
     subscription: {

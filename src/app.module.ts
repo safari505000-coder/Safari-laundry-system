@@ -77,8 +77,6 @@ import { SubscribersModule } from './subscribers/subscribers.module';
 import { UsersModule } from './users/users.module';
 import { VehicleExpensesModule } from './vehicle-expenses/vehicle-expenses.module';
 import { VerifyModule } from './verify/verify.module';
-import { WalletsModule } from './wallets/wallets.module';
-
 const webDistPath = join(process.cwd(), 'web', 'dist');
 /** Set `DISABLE_SPA_STATIC=1` to rule out `@nestjs/serve-static` when debugging API-only 404s. */
 const serveSpaFromApi =
@@ -154,7 +152,6 @@ const spaStaticModule = serveSpaFromApi
     OwnerDashboardModule,
     PaymentsModule,
     BranchesModule,
-    WalletsModule,
     AuditLogsModule,
     SubscriptionPlansModule,
     SubscribersModule,

@@ -16,6 +16,7 @@ import {
   postRefreshToken,
   setTokenRefreshHandler,
 } from '@/lib/api';
+import { clearOfflineDb } from '@/offline/pending-mutation-db';
 
 const TOKEN_KEY = 'safari_erp_token';
 const REFRESH_TOKEN_KEY = 'safari_erp_refresh_token';
@@ -175,6 +176,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       /* ignore */
     }
+    // Security: clear IndexedDB so PII (customersCache) and pending
+    // mutations from the previous session cannot be read by the next
+    // user on the same device. Fire-and-forget — tokens are already
+    // invalid above. Covers both explicit logout and JWT refresh failure.
+    void clearOfflineDb();
     refreshTokenRef.current = null;
     setToken(null);
     setUser(null);

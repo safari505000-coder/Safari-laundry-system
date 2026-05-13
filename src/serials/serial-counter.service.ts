@@ -26,9 +26,6 @@ import { PrismaService } from '../prisma/prisma.service';
  */
 @Injectable()
 export class SerialCounterService {
-  /** @deprecated Stamping now uses per-user keys only. Kept for old DBs. */
-  private static readonly ORDER_SERIAL_KEY = 'ORDER_SERIAL';
-
   /**
    * Row key: `OU_` + user UUID. Must match `deleteMany` in reset-invoices
    * and `scanGaps` prefix filters.
@@ -136,18 +133,6 @@ export class SerialCounterService {
       );
     }
     return row.value;
-  }
-
-  /**
-   * Non-transactional read of a `SerialCounter` row (e.g. legacy
-   * `ORDER_SERIAL` — not used for stamping after V19.24).
-   */
-  async peek(key = SerialCounterService.ORDER_SERIAL_KEY): Promise<number> {
-    const row = await this.prisma.serialCounter.findUnique({
-      where: { key },
-      select: { value: true },
-    });
-    return row?.value ?? 0;
   }
 
   /** For Owner "serial log" — how many rows carry a stamped serial. */

@@ -608,12 +608,6 @@ export function ExpensesTab({
   totalApprovedKd?: string;
 }) {
   const { t } = useTranslation();
-  // @V24-LEGACY-MATH: approved total was computed locally with reduce+parseFloat.
-  // const approved = useMemo(() => rows.filter((r) => r.status === 'APPROVED'), [rows]);
-  // const totalApprovedKd = useMemo(
-  //   () => approved.reduce((acc, r) => acc + Number.parseFloat(r.amount || '0'), 0).toFixed(4),
-  //   [approved],
-  // );
   // V25: totalApprovedKd is now a required prop passed in from API_EXPENSES_SUMMARY.
 
   return (

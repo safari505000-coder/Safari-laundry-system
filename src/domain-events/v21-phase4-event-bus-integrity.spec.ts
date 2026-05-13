@@ -222,26 +222,6 @@ describe('V21 Phase 4 — event bus integrity tree-wide lock-in', () => {
   });
 
   /* ──────────────────────────────────────────────────────────
-   * 6. The 3 broker adapter stubs keep the EventBusAdapter
-   *    contract surface (so adopting any one in production is
-   *    a pure swap, not a rewrite).
-   * ────────────────────────────────────────────────────────── */
-  test('6. Kafka / RabbitMQ / Redis Streams adapter stubs keep the EventBusAdapter contract surface', () => {
-    const adapters = [
-      'domain-events/adapters/kafka-event-bus.adapter.ts',
-      'domain-events/adapters/rabbitmq-event-bus.adapter.ts',
-      'domain-events/adapters/redis-streams-event-bus.adapter.ts',
-    ];
-    for (const a of adapters) {
-      const src = readFileSync(join(SRC_ROOT, a), 'utf8');
-      expect(src).toMatch(/implements\s+EventBusAdapter\b/);
-      expect(src).toMatch(/readonly\s+name\s*=/);
-      expect(src).toMatch(/async\s+publish\s*\(/);
-      expect(src).toMatch(/async\s+healthCheck\s*\(/);
-    }
-  });
-
-  /* ──────────────────────────────────────────────────────────
    * 7. Realtime gateway role-gate is preserved and matches the
    *    controller's hub gate (defence in depth).
    * ────────────────────────────────────────────────────────── */

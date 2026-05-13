@@ -23,6 +23,7 @@ import {
   INVOICE_REMAINING_TOLERANCE_KD,
 } from '../debt-customer-aggregates.util';
 import { computeCanonicalOutstandingDriverSummaries } from '../canonical-financial-projection';
+import { round4Kd } from '../utils/round4kd.util';
 import { getCustomerSubscriptionStateBatch } from '../../subscribers/subscription-state.util';
 import { OutstandingQueryDto } from './dto/outstanding-query.dto';
 import {
@@ -659,17 +660,6 @@ export class OutstandingService {
     };
   }
 }
-
-/**
-   * V23.3 — Canonical 4dp KWD string formatter (banker-rounded).
-   * Replaces the V19.x `round3Kd` which lossily round-tripped through
-   * `parseFloat`. Producing a string here means the Outstanding row
-   * crosses the wire as a canonical KWD literal, preserving micro-fil
-   * precision for downstream sort comparators (`compareKwdStrings`).
-   */
-  function round4Kd(d: Prisma.Decimal): string {
-    return d.toDecimalPlaces(4, Prisma.Decimal.ROUND_HALF_EVEN).toFixed(4);
-  }
 
   /**
    * V23.3 — Decimal-precise priority-score helper.
