@@ -1,6 +1,31 @@
 # Safari Fast Group ERP — System Architecture Reference
 
-> **Version:** 1.5.5 | **Generated:** 2026-05-13 | **Based on:** full codebase analysis
+> **Version:** 1.6.0 | **Generated:** 2026-05-13 | **Based on:** full codebase analysis
+
+---
+
+## ✅ Sprint Log
+
+### v1.6.0 — Banking Core + Legacy Cleanup (2026-05-13)
+**Banking Core:**
+- Journal AR (account 1300) is now the sole canonical source for all live debt
+- V20 flags enabled: V20_4_FINAL_LEDGER, USE_JOURNAL_AS_SOURCE, V20_3_TRUE_ACCOUNTING
+- All DebtLedgerEntry writes removed — table is archive-only
+
+**Security:**
+- Dexie IndexedDB cleared on logout (PII + pending mutations protected)
+
+**Code cleanup:**
+- Event bus stubs deleted (Kafka, RabbitMQ, Redis Streams)
+- V24 legacy math comment blocks removed
+- Serial Counter deprecated constant + peek() removed
+- Empty WalletsModule deleted
+- round4Kd unified to shared util (Prisma.Decimal ROUND_HALF_EVEN)
+
+**Pending (next sprint):**
+- DROP TABLE debt_ledger_entry (blocked by CommissionPayout FK)
+- Decouple CommissionPayout.sourceDebtEntryId
+- Convert DebtSource to TypeScript enum
 
 ---
 
