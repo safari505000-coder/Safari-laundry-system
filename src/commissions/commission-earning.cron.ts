@@ -44,6 +44,13 @@ export class CommissionEarningCron {
    */
   private static readonly SCAN_MINUTES = 30;
 
+  /**
+   * Guards against concurrent ticks: if the previous scan is still
+   * executing when the next EVERY_10_MINUTES tick fires, the new tick
+   * exits immediately so we never queue up duplicate earning rows.
+   */
+  private isRunning = false;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly earning: CommissionEarningService,
@@ -52,6 +59,19 @@ export class CommissionEarningCron {
 
   @Cron(CronExpression.EVERY_10_MINUTES)
   async scan(): Promise<void> {
+    if (this.isRunning) {
+      this.logger.warn('[CommissionCron] scan already in progress — skipping tick');
+      return;
+    }
+    this.isRunning = true;
+    try {
+      await this.doScan();
+    } finally {
+      this.isRunning = false;
+    }
+  }
+
+  private async doScan(): Promise<void> {
     const enabled = await this.settings.isEnabled(SystemToggleKey.COMMISSION);
     if (!enabled) return;
 
