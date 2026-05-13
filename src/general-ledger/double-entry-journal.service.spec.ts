@@ -1,4 +1,5 @@
-import { DebtSource, PosPaymentMethod, Prisma } from '@prisma/client';
+import { PosPaymentMethod, Prisma } from '@prisma/client';
+import { DebtSource } from '../finance/enums/debt-source.enum';
 import {
   DoubleEntryJournalService,
   JOURNAL_ACCOUNTS,

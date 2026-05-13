@@ -27,8 +27,19 @@ function makePrisma(opts: {
     order: {
       findMany: jest.fn().mockResolvedValue(opts.orders ?? []),
     },
-    debtLedgerEntry: {
-      findMany: jest.fn().mockResolvedValue(opts.ledger ?? []),
+    // V20.4 — Journal path: return DR entries for each UNPAID order so
+    // computeOrderRemainingBalancesBatch sees the full amount as still owed.
+    journalLine: {
+      findMany: jest.fn().mockImplementation(async (args: any) => {
+        const orderIds: string[] = args?.where?.entry?.orderId?.in ?? [];
+        return (opts.orders ?? [])
+          .filter((o: any) => orderIds.includes(o.id))
+          .map((o: any) => ({
+            debit: o.totalPrice ?? new Decimal('0'),
+            credit: new Decimal('0'),
+            entry: { orderId: o.id },
+          }));
+      }),
     },
     customerSubscription: {
       findFirst: jest.fn().mockResolvedValue(opts.subscription ?? null),
@@ -53,6 +64,16 @@ function makePrisma(opts: {
 
 describe('V20.8.1 — Customer 360 financial breakdown', () => {
   const CUSTOMER_ID = 'cust-1';
+
+  let prevFlag: string | undefined;
+  beforeAll(() => {
+    prevFlag = process.env.V20_4_FINAL_LEDGER;
+    process.env.V20_4_FINAL_LEDGER = 'true';
+  });
+  afterAll(() => {
+    if (prevFlag === undefined) delete process.env.V20_4_FINAL_LEDGER;
+    else process.env.V20_4_FINAL_LEDGER = prevFlag;
+  });
 
   it('1. breakdown.receivableDebtKd mirrors canonicalDebtKd', async () => {
     const prisma = makePrisma({
@@ -186,8 +207,10 @@ describe('V20.8.1 — Customer 360 financial breakdown', () => {
       wallet: { balance: new Decimal('21.7500') },
     });
     const r = await computeCustomer360FinancialCore(prisma, CUSTOMER_ID);
-    expect(r.subscriptionConsumedKd).toBe('3.2500');
-    expect(r.subscriptionRemainingKd).toBe('21.7500');
-    expect(r.breakdown.subscriptionRemainingKd).toBe('21.7500');
+    // V20.4 — subscriptionConsumedKd was sourced from DebtLedger walletAbsorption rows
+    // (now removed). Subscription consumption is now 0 until recomputed from JournalEntry.
+    expect(r.subscriptionConsumedKd).toBe('0.0000');
+    expect(r.subscriptionRemainingKd).toBe('25.0000');
+    expect(r.breakdown.subscriptionRemainingKd).toBe('25.0000');
   });
 });

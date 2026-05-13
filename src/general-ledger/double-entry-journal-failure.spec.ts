@@ -7,7 +7,8 @@
  *   3) trips CriticalJournalFailureError once recent failure count
  *      for the same customer exceeds the threshold
  */
-import { DebtSource, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import { DebtSource } from '../finance/enums/debt-source.enum';
 import {
   CRITICAL_FAILURE_THRESHOLD,
   CriticalJournalFailureError,

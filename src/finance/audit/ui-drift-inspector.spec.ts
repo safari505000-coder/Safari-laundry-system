@@ -3,11 +3,11 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   CashStatus,
-  DebtSource,
   OrderStatus,
   PosPaymentMethod,
   Prisma,
 } from '@prisma/client';
+import { DebtSource } from '../enums/debt-source.enum';
 import {
   assertUiConsistency,
 } from './assert-ui-consistency';
@@ -234,7 +234,7 @@ describe('V20.3.2 — UI drift inspector + assertion (Phase 8)', () => {
       expect(row.subscriberDebtKd).toBe('100.0000');
       expect(row.collectionsDebtKd).toBe('100.0000');
       expect(row.walletDebtKd).toBe('100.0000');
-      expect(row.ledgerDebtKd).toBe('100.0000');
+      expect(row.ledgerDebtKd).toBe('0.0000'); // V20.4 — DebtLedger removed; field hardcoded to '0.0000'
       expect(row.journalDebtKd).toBe('100.0000');
       expect(row.maxDeltaKd).toBe('0.0000');
     });
@@ -284,7 +284,9 @@ describe('V20.3.2 — UI drift inspector + assertion (Phase 8)', () => {
       const journal = buildJournalSource(new Map([[C_BETA, D('70')]]));
       const snap = await computeCanonicalCustomerDebt(prisma, journal, C_BETA);
       expect(snap.canonicalDebtKd.toFixed(4)).toBe('70.0000');
-      expect(snap.remainingFromInvoicesKd.toFixed(4)).toBe('70.0000');
+      // V20.4 — remainingFromInvoicesKd is 0 (no per-order journal lines in mock);
+      // canonicalDebtKd comes from journal AR reader (70.0000) which is the truth.
+      expect(snap.remainingFromInvoicesKd.toFixed(4)).toBe('0.0000');
       const inspector = new UiDriftInspectorService(prisma, journal as any);
       const out = await inspector.scan({ limit: 10 });
       const row = out.rows[0];
@@ -444,7 +446,10 @@ describe('V20.3.2 — UI drift inspector + assertion (Phase 8)', () => {
       expect(out.summary.legacyReader).toBe(1);
     });
 
-    it('classifies CRITICAL when journalAR ≠ ledgerNet', async () => {
+    it('V20.4 — wallet stale vs journal AR classifies as LEGACY_READER (ledger removed)', async () => {
+      // Pre-V20.4 this tested journal-vs-ledger drift → CRITICAL.
+      // After DebtLedger removal, the same setup (journal=30, wallet=75)
+      // surfaces as wallet stale → LEGACY_READER.
       const orders: OrderRow[] = [
         {
           id: 'o-7',
@@ -455,39 +460,20 @@ describe('V20.3.2 — UI drift inspector + assertion (Phase 8)', () => {
           posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT,
         },
       ];
-      const ledger: LedgerRow[] = [
-        {
-          orderId: 'o-7',
-          customerId: C_GAMMA,
-          source: DebtSource.INVOICE_SHORTFALL,
-          amount: D('100'),
-          actorUserId: null,
-          sourceRef: null,
-          note: null,
-        },
-        {
-          orderId: 'o-7',
-          customerId: C_GAMMA,
-          source: DebtSource.PAYMENT,
-          amount: D('25'),
-          actorUserId: 'user-cc-1',
-          sourceRef: 'PAYMENT:CC_PARTIAL_DEBT_PAYMENT:o-7',
-          note: 'partial',
-        },
-      ];
-      // Ledger net = 100 − 25 = 75. Journal AR returns 30 (drift).
+      const ledger: LedgerRow[] = [];
       const prisma = buildPrisma({
         orders,
         ledger,
         customers: [{ id: C_GAMMA, displayName: 'Gamma', phone: null }],
         wallets: [{ customerId: C_GAMMA, debt: D('75') }],
       });
+      // Journal says 30; wallet says 75 → wallet is stale → LEGACY_READER.
       const journal = buildJournalSource(new Map([[C_GAMMA, D('30')]]));
       const inspector = new UiDriftInspectorService(prisma, journal as any);
       const out = await inspector.scan({ limit: 10 });
       const row = out.rows[0];
-      expect(row.status).toBe('CRITICAL');
-      expect(out.summary.critical).toBe(1);
+      expect(row.status).toBe('LEGACY_READER');
+      expect(out.summary.legacyReader).toBe(1);
     });
 
     it('respects status filter — only returns CRITICAL rows', async () => {

@@ -1,15 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
   CustomerSubscriptionStatus,
-  DebtSource,
   GeneralLedgerEntryType,
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import {
-  isRealDebtLedgerPayment,
-  isWalletAbsorptionLedgerEntry,
-} from '../debt-ledger-payment-origin.util';
 
 /**
  * V20.4 — Phase 8 unified customer financial timeline.
@@ -191,50 +186,56 @@ export class FinancialTimelineService {
     before: Date | null,
     limit: number,
   ): Promise<FinancialTimelineEvent[]> {
-    const rows = await this.prisma.debtLedgerEntry.findMany({
+    // V20.4 — DebtLedger removed; read payment/debt events from JournalEntry.
+    // Amount = CR on 1300 (PAYMENT events) or DR on 1300 (issuance/accrual).
+    const entries = await this.prisma.journalEntry.findMany({
       where: {
         customerId,
+        source: { in: ['PAYMENT', 'INVOICE', 'ORDER_INVOICE', 'DEBT_DISCOUNT', 'ADJUSTMENT'] },
         ...(before ? { createdAt: { lt: before } } : {}),
       },
       orderBy: { createdAt: 'desc' },
       take: limit,
       select: {
         id: true,
-        orderId: true,
-        amount: true,
         source: true,
         sourceRef: true,
+        orderId: true,
         actorUserId: true,
-        note: true,
         createdAt: true,
+        lines: {
+          where: { account: { code: '1300' } },
+          select: { debit: true, credit: true },
+        },
       },
     });
-    return rows.map((r) => {
-      const amountKd = new Prisma.Decimal(r.amount?.toString() ?? '0').toFixed(
-        4,
-      );
+    return entries.map((e) => {
+      const arCredit = e.lines.reduce((s, l) => s.add(l.credit), new Prisma.Decimal(0));
+      const arDebit  = e.lines.reduce((s, l) => s.add(l.debit),  new Prisma.Decimal(0));
+      const isPayment = e.source === 'PAYMENT';
+      const amountKd = (isPayment ? arCredit : arDebit).toFixed(4);
       let kind: FinancialTimelineEventKind;
-      if (r.source === DebtSource.PAYMENT) {
-        kind = isRealDebtLedgerPayment(r)
-          ? 'PAYMENT_RECORDED'
-          : isWalletAbsorptionLedgerEntry(r)
-            ? 'WALLET_ABSORBED'
-            : 'PARTIAL_PAYMENT';
+      if (isPayment) {
+        kind = (e.sourceRef ?? '').startsWith('PAYMENT:WALLET:')
+          ? 'WALLET_ABSORBED'
+          : 'PAYMENT_RECORDED';
+      } else if (e.source === 'DEBT_DISCOUNT') {
+        kind = 'PARTIAL_PAYMENT';
       } else {
         kind = 'DEBT_ACCRUED';
       }
       return {
         kind,
-        id: `ledger:${r.id}`,
-        occurredAt: r.createdAt.toISOString(),
+        id: `journal:${e.id}`,
+        occurredAt: e.createdAt.toISOString(),
         amountKd,
-        note: r.note ?? null,
-        orderId: r.orderId ?? null,
-        source: 'DebtLedgerEntry',
+        note: null,
+        orderId: e.orderId ?? null,
+        source: 'JournalEntry',
         metadata: {
-          ledgerSource: r.source,
-          sourceRef: r.sourceRef ?? null,
-          actorUserId: r.actorUserId ?? null,
+          journalSource: e.source,
+          sourceRef: e.sourceRef ?? null,
+          actorUserId: e.actorUserId ?? null,
         },
       };
     });

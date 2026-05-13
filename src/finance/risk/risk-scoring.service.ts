@@ -2,13 +2,11 @@ import { Injectable, Logger } from '@nestjs/common';
 import {
   CashStatus,
   CollectionsStage,
-  DebtSource,
   OrderStatus,
   Prisma,
   PromiseToPayStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { isRealDebtLedgerPayment } from '../debt-ledger-payment-origin.util';
 import { AgingService } from '../aging/aging.service';
 
 /**
@@ -274,7 +272,8 @@ export class RiskScoringService {
   }
 
   private async ledgerStats(customerId: string, since: Date) {
-    const [invoices, ledgerRows] = await Promise.all([
+    // V20.4 — DebtLedger removed; read payment events from JournalEntry.
+    const [invoices, journalPayments] = await Promise.all([
       this.prisma.order.count({
         where: {
           customerId,
@@ -282,27 +281,23 @@ export class RiskScoringService {
           status: { not: OrderStatus.CANCELED },
         },
       }),
-      this.prisma.debtLedgerEntry.findMany({
+      this.prisma.journalEntry.findMany({
         where: {
           customerId,
-          source: DebtSource.PAYMENT,
+          source: 'PAYMENT',
+          orderId: { not: null },
           createdAt: { gte: since },
+          NOT: { sourceRef: { startsWith: 'PAYMENT:WALLET:' } },
         },
-        select: { amount: true, source: true, sourceRef: true, note: true },
+        select: {
+          lines: { where: { account: { code: '1300' } }, select: { credit: true } },
+        },
       }),
     ]);
     let partials = 0;
-    for (const r of ledgerRows) {
-      if (!isRealDebtLedgerPayment(r as any)) continue;
-      // Heuristic — partial payments are smaller than the average
-      // invoice for the customer over the window. If we have no
-      // invoices, all rows count as partial.
-      if (invoices === 0) {
-        partials += 1;
-        continue;
-      }
-      const amount = new Prisma.Decimal((r.amount ?? 0).toString());
-      if (amount.lessThan(50)) partials += 1; // sub-50 KD heuristic
+    for (const e of journalPayments) {
+      const cr = e.lines.reduce((s, l) => s.add(new Prisma.Decimal(l.credit.toString())), new Prisma.Decimal(0));
+      if (invoices === 0 || cr.lessThan(50)) partials += 1;
     }
     return { invoicesLastWindow: invoices, partialPayments: partials };
   }

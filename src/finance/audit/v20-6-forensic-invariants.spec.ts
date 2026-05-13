@@ -70,9 +70,10 @@ describe('V20.6 — Phase 8 Final Forensic Validation', () => {
     it('canonical-customer-debt.util.ts is the single canonical reader', () => {
       expect(exists('src/finance/canonical-customer-debt.util.ts')).toBe(true);
     });
-    it('FinancialAuditService recomputes from the ledger, not from cached fields', () => {
+    it('FinancialAuditService recomputes from Journal AR, not from cached fields (V20.4)', () => {
       const audit = read('src/finance/audit/financial-audit.service.ts');
-      expect(audit).toMatch(/getCustomerNetDebtFromDebtLedgerOnly|DebtLedgerEntry/);
+      // V20.4 — DebtLedger removed; FinancialAuditService now reads from Journal AR.
+      expect(audit).toMatch(/getCustomerBalanceFromJournal|journalArKd|Journal AR/);
     });
   });
 
@@ -185,12 +186,12 @@ describe('V20.6 — Phase 8 Final Forensic Validation', () => {
       expect(block).not.toBeNull();
       expect(block![0]).toMatch(/sourceRef[^\n]*@unique/);
     });
-    it('DebtLedgerEntry.sourceRef has @@unique in the Prisma schema', () => {
+    it('DebtLedgerEntry removed (V20.4) — JournalEntry.sourceRef is the deduplication key', () => {
       const schema = read('prisma/schema.prisma');
-      const block = schema.match(/model DebtLedgerEntry \{[\s\S]*?\n\}/);
-      expect(block).not.toBeNull();
-      // Either inline `@unique` or model-level `@@unique([sourceRef])`
-      expect(block![0]).toMatch(/sourceRef[^\n]*@unique|@@unique\(\[\s*sourceRef\s*\]\)/);
+      // DebtLedgerEntry table dropped in V20.4; JournalEntry.sourceRef is @unique.
+      const journalBlock = schema.match(/model JournalEntry \{[\s\S]*?\n\}/);
+      expect(journalBlock).not.toBeNull();
+      expect(journalBlock![0]).toMatch(/sourceRef[^\n]*@unique/);
     });
     it('Phase 5 deterministic sourceRef contract is locked by spec', () => {
       expect(exists('src/customer-ledger/concurrent-partial-payment.spec.ts')).toBe(

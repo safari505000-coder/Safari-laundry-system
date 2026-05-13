@@ -9,8 +9,6 @@ import {
 import {
   CashStatus,
   CustomerSubscriptionStatus,
-  DebtEntityCategory,
-  DebtSource,
   GeneralLedgerEntryType,
   LedgerTransactionType,
   OrderStatus,
@@ -18,6 +16,8 @@ import {
   Prisma,
   SafariRole,
 } from '@prisma/client';
+import { DebtSource } from '../finance/enums/debt-source.enum';
+import { DebtEntityCategory } from '../finance/enums/debt-entity-category.enum';
 import { cashStatusForPaymentMethod } from '../common/utils/cash-status-for-method';
 import {
   minorToAmountString,
@@ -945,241 +945,8 @@ export class CustomerLedgerService {
     // is the canonical source (DebtLedger is no longer written, so comparing
     // it to wallet state would always show drift). The journal itself is the
     // authoritative audit trail under these flags.
-    if (!isJournalAsSourceEnabled()) {
-      await this.assertSettlementInvariantTx(tx, o.customerId);
-      await this.assertJournalLedgerLockstepTx(tx, o.customerId);
-      await this.assertGlobalInvariantTx(tx, o.customerId);
-    }
   }
 
-  /**
-   * V20.2 — Phase 29 lockstep helper.
-   *
-   * Within the open transaction, recomputes the DebtLedger net AR
-   * (the same waterfall used by the v4 Phase 18 assertion) and the
-   * journal AR balance (Σ(debit) − Σ(credit) on account 1300 for
-   * this customer). Throws `LEDGER_JOURNAL_DIVERGENCE` when
-   * `|delta| > 0.001 KD`, rolling the transaction back.
-   *
-   * V20.3 — under `V20_3_TRUE_ACCOUNTING=true` the SHORTFALL row is
-   * gross and wallet PAYMENTs reduce AR, matching the journal side.
-   */
-  private async assertJournalLedgerLockstepTx(
-    tx: PrismaTx,
-    customerId: string,
-  ): Promise<void> {
-    const trueAccounting = isV20_3TrueAccountingEnabled();
-    const rows = await tx.debtLedgerEntry.findMany({
-      where: { customerId },
-      select: {
-        source: true,
-        amount: true,
-        actorUserId: true,
-        sourceRef: true,
-        note: true,
-      },
-    });
-    let inv = new Prisma.Decimal(0);
-    let sub = new Prisma.Decimal(0);
-    let pay = new Prisma.Decimal(0);
-    for (const r of rows) {
-      const amt = new Prisma.Decimal(r.amount?.toString() ?? '0');
-      if (r.source === DebtSource.INVOICE_SHORTFALL) inv = inv.add(amt);
-      else if (r.source === DebtSource.SUBSCRIPTION_OVERUSE) sub = sub.add(amt);
-      else if (r.source === DebtSource.PAYMENT) {
-        if (trueAccounting || isRealDebtLedgerPayment(r)) pay = pay.add(amt);
-      }
-    }
-    const invPaid = inv.lessThanOrEqualTo(pay) ? inv : pay;
-    const payAfterInv = pay.sub(invPaid);
-    const subPaid = sub.lessThanOrEqualTo(payAfterInv) ? sub : payAfterInv;
-    const ledgerNet = inv.sub(invPaid).add(sub.sub(subPaid));
-
-    const lines = await tx.journalLine.findMany({
-      where: {
-        entry: { customerId },
-        account: { code: '1300' },
-      },
-      select: { debit: true, credit: true },
-    });
-    let journalAr = new Prisma.Decimal(0);
-    for (const line of lines) {
-      journalAr = journalAr
-        .add(new Prisma.Decimal(line.debit.toString()))
-        .sub(new Prisma.Decimal(line.credit.toString()));
-    }
-
-    const delta = ledgerNet.sub(journalAr).abs();
-    if (delta.greaterThan(new Prisma.Decimal('0.001'))) {
-      // eslint-disable-next-line no-console
-      console.error(
-        '[LEDGER_JOURNAL_DIVERGENCE]',
-        JSON.stringify({
-          customerId,
-          ledgerNetKd: ledgerNet.toFixed(4),
-          journalArKd: journalAr.toFixed(4),
-          deltaKd: delta.toFixed(4),
-          v20_3: trueAccounting,
-        }),
-      );
-      throw new Error('LEDGER_JOURNAL_DIVERGENCE');
-    }
-  }
-
-  /**
-   * V20.2 — Phase 28 global invariant helper.
-   *
-   * Recomputes the customer's `walletBalance + totalPayments +
-   * totalDebt` versus `totalInvoices` from the in-tx view. By
-   * default this is a LOG-only signal (mirrors the v4
-   * `checkGlobalInvariant` audit endpoint) because the historical
-   * baseline is noisy: wallet balances were never recorded as a
-   * counter-entry in DebtLedger when the system was first seeded,
-   * so legacy customers can show non-zero drift even with perfectly
-   * consistent live writes.
-   *
-   * To enable the literal V20.2 contract (THROW
-   * "GLOBAL_INVARIANT_VIOLATION"), set
-   * `STRICT_GLOBAL_INVARIANT=true`. Operators are expected to
-   * verify the audit endpoint shows zero violations before
-   * flipping the flag, otherwise every wallet settlement will
-   * roll back.
-   */
-  private async assertGlobalInvariantTx(
-    tx: PrismaTx,
-    customerId: string,
-  ): Promise<void> {
-    const wallet = await tx.customerWallet.findUnique({
-      where: { customerId },
-      select: { balance: true, debt: true },
-    });
-    if (!wallet) return;
-    const rows = await tx.debtLedgerEntry.findMany({
-      where: { customerId },
-      select: { source: true, amount: true, sourceRef: true },
-    });
-    let invoices = new Prisma.Decimal(0);
-    let payments = new Prisma.Decimal(0);
-    for (const r of rows) {
-      const amt = new Prisma.Decimal(r.amount?.toString() ?? '0');
-      if (
-        r.source === DebtSource.INVOICE_SHORTFALL ||
-        r.source === DebtSource.SUBSCRIPTION_OVERUSE
-      ) {
-        invoices = invoices.add(amt);
-      } else if (r.source === DebtSource.PAYMENT) {
-        payments = payments.add(amt);
-      }
-    }
-    const walletBalance = new Prisma.Decimal(wallet.balance.toString());
-    const walletDebt = new Prisma.Decimal(wallet.debt.toString());
-    const lhs = walletBalance.add(payments).add(walletDebt);
-    const rhs = invoices;
-    const delta = lhs.sub(rhs).abs();
-    if (delta.greaterThan(new Prisma.Decimal('0.001'))) {
-      const strict =
-        (process.env.STRICT_GLOBAL_INVARIANT ?? '').toString().trim() ===
-          'true' ||
-        (process.env.STRICT_GLOBAL_INVARIANT ?? '').toString().trim() === '1';
-      const payload = JSON.stringify({
-        customerId,
-        walletBalanceKd: walletBalance.toFixed(4),
-        totalPaymentsKd: payments.toFixed(4),
-        totalDebtKd: walletDebt.toFixed(4),
-        totalInvoicesKd: invoices.toFixed(4),
-        lhsKd: lhs.toFixed(4),
-        rhsKd: rhs.toFixed(4),
-        deltaKd: delta.toFixed(4),
-        strict,
-      });
-      // eslint-disable-next-line no-console
-      console.error('[GLOBAL_INVARIANT_VIOLATION]', payload);
-      if (strict) {
-        throw new Error('GLOBAL_INVARIANT_VIOLATION');
-      }
-    }
-  }
-
-  /**
-   * V20.1-v4 — Phase 18 invariant assertion helper.
-   *
-   * Computes the live ledgerNet for the customer (using the
-   * still-uncommitted transaction view) and asserts it equals
-   * the wallet.debt that's about to commit. Throws
-   * `FINANCIAL_INCONSISTENCY_DETECTED` on mismatch — the only safe
-   * action when wallet and ledger disagree.
-   *
-   * V20.3 — when `V20_3_TRUE_ACCOUNTING=true` the SHORTFALL row
-   * carries the FULL invoice amount and wallet PAYMENT rows
-   * actively reduce AR (because the issuance entry already
-   * debited AR for the full invoice). To keep this invariant
-   * meaningful we must therefore COUNT wallet PAYMENT rows in
-   * the deduction side.
-   */
-  private async assertSettlementInvariantTx(
-    tx: PrismaTx,
-    customerId: string,
-  ): Promise<void> {
-    const wallet = await tx.customerWallet.findUnique({
-      where: { customerId },
-      select: { debt: true, balance: true },
-    });
-    if (!wallet) return;
-    const walletDebt = new Prisma.Decimal(wallet.debt.toString());
-    const balance = new Prisma.Decimal(wallet.balance.toString());
-    const subscriptionOveruseDebt = balance.lessThan(0)
-      ? balance.abs()
-      : new Prisma.Decimal(0);
-    const totalWalletDebtKd = walletDebt.plus(subscriptionOveruseDebt);
-
-    const trueAccounting = isV20_3TrueAccountingEnabled();
-    const rows = await tx.debtLedgerEntry.findMany({
-      where: { customerId },
-      select: {
-        source: true,
-        amount: true,
-        actorUserId: true,
-        sourceRef: true,
-        note: true,
-      },
-    });
-    let inv = new Prisma.Decimal(0);
-    let sub = new Prisma.Decimal(0);
-    let pay = new Prisma.Decimal(0);
-    for (const r of rows) {
-      const amt = new Prisma.Decimal(r.amount?.toString() ?? '0');
-      if (r.source === DebtSource.INVOICE_SHORTFALL) inv = inv.add(amt);
-      else if (r.source === DebtSource.SUBSCRIPTION_OVERUSE)
-        sub = sub.add(amt);
-      else if (r.source === DebtSource.PAYMENT) {
-        // Under V20.3 the wallet PAYMENT row is a true reducer
-        // of AR (the issuance entry credited AR for the gross
-        // invoice). Count every PAYMENT, not just the v2 "real"
-        // subset (which excluded `PAYMENT:WALLET:`).
-        if (trueAccounting || isRealDebtLedgerPayment(r)) pay = pay.add(amt);
-      }
-    }
-    const invPaid = inv.lessThanOrEqualTo(pay) ? inv : pay;
-    const payAfterInv = pay.sub(invPaid);
-    const subPaid = sub.lessThanOrEqualTo(payAfterInv) ? sub : payAfterInv;
-    const ledgerNet = inv.sub(invPaid).add(sub.sub(subPaid));
-
-    const drift = totalWalletDebtKd.sub(ledgerNet).abs();
-    if (drift.greaterThan(new Prisma.Decimal('0.001'))) {
-      // eslint-disable-next-line no-console
-      console.error(
-        '[FINANCIAL_INCONSISTENCY_DETECTED]',
-        JSON.stringify({
-          customerId,
-          walletDebtKd: totalWalletDebtKd.toFixed(4),
-          ledgerNetKd: ledgerNet.toFixed(4),
-          driftKd: drift.toFixed(4),
-          v20_3: trueAccounting,
-        }),
-      );
-      throw new Error('FINANCIAL_INCONSISTENCY_DETECTED');
-    }
-  }
 
   /**
    * Subscription / top-up: cash collected (`plan.salePrice`) retires customer debt first
@@ -1835,26 +1602,8 @@ export class CustomerLedgerService {
       );
     }
 
-    const [shortAgg, payAgg] = await Promise.all([
-      tx.debtLedgerEntry.aggregate({
-        where: {
-          orderId,
-          source: DebtSource.INVOICE_SHORTFALL,
-        },
-        _sum: { amount: true },
-      }),
-      tx.debtLedgerEntry.aggregate({
-        where: {
-          orderId,
-          source: DebtSource.PAYMENT,
-        },
-        _sum: { amount: true },
-      }),
-    ]);
-
-    const shortfall = new Prisma.Decimal(shortAgg._sum.amount?.toString() ?? '0');
-    const paidDirect = new Prisma.Decimal(payAgg._sum.amount?.toString() ?? '0');
-    const remaining = shortfall.minus(paidDirect);
+    const remainingMap = await computeOrderRemainingBalancesBatch(tx, [orderId]);
+    const remaining = remainingMap.get(orderId) ?? new Prisma.Decimal(0);
 
     if (remaining.lessThanOrEqualTo(new Prisma.Decimal(0))) {
       await tx.order.update({

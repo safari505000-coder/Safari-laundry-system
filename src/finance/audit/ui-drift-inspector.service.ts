@@ -7,7 +7,6 @@ import {
   UI_DEBT_CONSISTENCY_TOLERANCE_KD,
   type CanonicalDebtSource,
 } from '../canonical-customer-debt.util';
-import { getCustomerNetDebtFromDebtLedgerOnly } from '../debt-customer-aggregates.util';
 
 /**
  * V20.3.2 — Phase 1 / Phase 2 UI drift inspector.
@@ -234,10 +233,10 @@ export class UiDriftInspectorService {
     phone?: string | null;
   }): Promise<UiDriftRow> {
     const customerId = customer.id;
+    // V20.4 — DebtLedger removed; ledgerSnap (source 5) dropped from comparison.
     const [
       canonicalSnap,
       walletRow,
-      ledgerSnap,
       journalDebt,
     ] = await Promise.all([
       computeCanonicalCustomerDebt(this.prisma, this.journalSource, customerId),
@@ -245,7 +244,6 @@ export class UiDriftInspectorService {
         where: { customerId },
         select: { debt: true },
       }),
-      getCustomerNetDebtFromDebtLedgerOnly(this.prisma, customerId),
       this.journalSource
         .getCustomerDebtFromJournalAR(customerId)
         .catch(() => new Prisma.Decimal(0)),
@@ -261,37 +259,15 @@ export class UiDriftInspectorService {
     const walletDebtKd = walletRow?.debt
       ? new Prisma.Decimal(walletRow.debt.toString())
       : new Prisma.Decimal(0);
-    const ledgerDebtKd = ledgerSnap.netOpenDebtKd;
-
-    // V20.3.2 spec defines maxDeltaKd as the largest pairwise
-    // delta across ALL six sources (including wallet) — kept for
-    // the UI to surface the worst single number on the row.
-    const sources = [
-      canonicalDebtKd,
-      subscriberDebtKd,
-      collectionsDebtKd,
-      walletDebtKd,
-      ledgerDebtKd,
-      journalDebt,
-    ];
+    // V20.4 — DebtLedger removed; 5-source comparison (was 6).
+    const ledgerDebtKd = new Prisma.Decimal(0); // kept for DTO compat, always 0
+    const sources = [canonicalDebtKd, subscriberDebtKd, collectionsDebtKd, walletDebtKd, journalDebt];
     const maxDelta = maxAbsDelta(sources);
 
-    // CRITICAL triggers on the bank-grade integrity sources
-    // ONLY (canonical + subscriber + collections + ledger +
-    // journal). A stale `wallet.debt` column is captured as
-    // LEGACY_READER instead — escalating to CRITICAL on every
-    // legacy column drift would mislabel an operational fix-it
-    // as a financial integrity break.
-    const criticalSources = [
-      canonicalDebtKd,
-      subscriberDebtKd,
-      collectionsDebtKd,
-      ledgerDebtKd,
-      journalDebt,
-    ];
+    const criticalSources = [canonicalDebtKd, subscriberDebtKd, collectionsDebtKd, journalDebt];
     const maxCriticalDelta = maxAbsDelta(criticalSources);
 
-    const journalLedgerDelta = journalDebt.minus(ledgerDebtKd).abs();
+    const journalLedgerDelta = new Prisma.Decimal(0); // no longer meaningful
     const walletCanonicalDelta = walletDebtKd.minus(canonicalDebtKd).abs();
     const subCanonicalDelta = subscriberDebtKd.minus(canonicalDebtKd).abs();
     const colCanonicalDelta = collectionsDebtKd.minus(canonicalDebtKd).abs();
@@ -299,9 +275,7 @@ export class UiDriftInspectorService {
     let status: UiDriftStatus = 'OK';
     const notes: string[] = [];
 
-    const isCritical =
-      journalLedgerDelta.greaterThan(TOL) ||
-      maxCriticalDelta.greaterThan(CRITICAL_DELTA);
+    const isCritical = maxCriticalDelta.greaterThan(CRITICAL_DELTA);
     const isLegacyReader = walletCanonicalDelta.greaterThan(TOL);
     const isUiDrift =
       subCanonicalDelta.greaterThan(TOL) ||
@@ -309,11 +283,6 @@ export class UiDriftInspectorService {
 
     if (isCritical) {
       status = 'CRITICAL';
-      if (journalLedgerDelta.greaterThan(TOL)) {
-        notes.push(
-          `journal_vs_ledger_delta=${fmt(journalLedgerDelta)}KD (>${UI_DEBT_CONSISTENCY_TOLERANCE_KD})`,
-        );
-      }
       if (maxCriticalDelta.greaterThan(CRITICAL_DELTA)) {
         notes.push(
           `max_canonical_pairwise_delta=${fmt(maxCriticalDelta)}KD (>1KD)`,
@@ -340,7 +309,7 @@ export class UiDriftInspectorService {
 
     if (status === 'CRITICAL') {
       this.logger.error(
-        `[CRITICAL_DEBT_MISMATCH] customerId=${customerId} maxDelta=${fmt(maxDelta)}KD journalLedger=${fmt(journalLedgerDelta)}KD ${notes.join('; ')}`,
+        `[CRITICAL_DEBT_MISMATCH] customerId=${customerId} maxDelta=${fmt(maxDelta)}KD ${notes.join('; ')}`,
       );
     } else if (status === 'LEGACY_READER') {
       this.logger.warn(

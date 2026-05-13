@@ -1,4 +1,5 @@
-import { DebtSource, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import { DebtSource } from '../finance/enums/debt-source.enum';
 
 /**
  * V20.8.1 — Canonical subscription consumption projection.

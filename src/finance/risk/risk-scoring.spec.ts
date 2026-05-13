@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { CollectionsStage, PromiseToPayStatus } from '@prisma/client';
+import { CollectionsStage, Prisma, PromiseToPayStatus } from '@prisma/client';
 import { AgingService } from '../aging/aging.service';
 import { RiskScoringService } from './risk-scoring.service';
 
@@ -43,6 +43,16 @@ function makePrismaForRisk(overrides: Partial<{
     },
     debtLedgerEntry: {
       findMany: jest.fn(async () => overrides.partialLedgerRows ?? []),
+    },
+    // V20.4 — ledgerStats now reads payment events from JournalEntry.
+    // Map partialLedgerRows to journal entries with a credit line so the
+    // partial-ratio component receives the correct payment amounts.
+    journalEntry: {
+      findMany: jest.fn(async () =>
+        (overrides.partialLedgerRows ?? []).map((r) => ({
+          lines: [{ credit: new Prisma.Decimal(String(r.amount)) }],
+        })),
+      ),
     },
     transactionHistory: {
       count: jest.fn(async () => overrides.failedPaymentCount ?? 0),

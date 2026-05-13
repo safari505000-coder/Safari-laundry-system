@@ -127,30 +127,6 @@ enum StarchOption {
   STARCH_25
 }
 
-/**
- * V19.11 — DebtLedgerEntry is the unified accounting book:
- * • SUBSCRIPTION_OVERUSE, INVOICE_SHORTFALL  (+) debt created
- * • PAYMENT                                  (−) debt settled
- * `amount` is ALWAYS a positive decimal. The sign is implied by the
- * source (creation vs settlement). The "open" balance per order /
- * customer is therefore:
- * SUM(INVOICE_SHORTFALL + SUBSCRIPTION_OVERUSE) − SUM(PAYMENT)
- * The table is append-only by convention and enforced at the service
- * layer (a Prisma middleware rejects update / delete / deleteMany).
- */
-enum DebtSource {
-  SUBSCRIPTION_OVERUSE
-  INVOICE_SHORTFALL
-  PAYMENT
-}
-
-enum DebtEntityCategory {
-  BRANCH
-  DRIVER
-  OWNER
-  CALL_CENTER
-}
-
 enum AccountType {
   ASSET
   LIABILITY
@@ -311,7 +287,6 @@ model User {
   ledgerTransactions               TransactionHistory[]       @relation("LedgerPerformedBy")
   expensesRecorded                 BranchExpense[]            @relation("ExpenseRecordedBy")
   payrolls                         Payroll[]
-  debtLedgerEntries                DebtLedgerEntry[]          @relation("DebtEntryActor")
   bankDepositsUploaded             BankDepositLog[]           @relation("BankDepositUploadedBy")
   bankDepositsVerifiedAsAccountant BankDepositLog[]           @relation("BankDepositVerifiedBy")
   depositsRequested                Deposit[]                  @relation("DepositDriver")
@@ -709,7 +684,6 @@ model Customer {
   orders             Order[]
   wallet             CustomerWallet?
   transactionHistory TransactionHistory[]
-  debtLedgerEntries  DebtLedgerEntry[]
   subscriptions      CustomerSubscription[]
   dispatches         Dispatch[]
   /**
@@ -1026,7 +1000,6 @@ model Order {
   dispatch              Dispatch?             @relation("DispatchOrders", fields: [dispatchId], references: [id], onDelete: SetNull)
   lineItems             OrderLineItem[]
   transactionHistory    TransactionHistory[]
-  debtLedgerEntries     DebtLedgerEntry[]
   debtTransferLineItems DebtTransferOrder[]
   /**
    * V19.9 — audit trail of Call-Center Supervisor same-day edits and
@@ -1251,47 +1224,6 @@ model OrderLineItem {
   @@index([stockItemId])
 }
 
-model DebtLedgerEntry {
-  id          String             @id @default(uuid()) @db.Uuid
-  customerId  String             @db.Uuid
-  orderId     String?            @db.Uuid
-  source      DebtSource
-  category    DebtEntityCategory
-  amount      Decimal            @db.Decimal(19, 4)
-  branchId    String?            @db.Uuid
-  actorUserId String?            @db.Uuid
-  note        String?
-  /// V19.11 — optional FK to the debt-creating entry this PAYMENT
-  /// settles (FIFO allocation). `null` for the creation sources and
-  /// for lump-sum payments that aren't tied to a specific invoice.
-  refEntryId  String?            @db.Uuid
-  /// V19.11 — idempotency / cross-reference key for backfill and
-  /// dual-write. E.g. TransactionHistory.id of the settlement row
-  /// that produced this PAYMENT entry. Enforced unique when present.
-  sourceRef   String?
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
-
-  customer          Customer           @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  order             Order?             @relation(fields: [orderId], references: [id], onDelete: SetNull)
-  actorUser         User?              @relation("DebtEntryActor", fields: [actorUserId], references: [id], onDelete: SetNull)
-  branch            Branch?            @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  refEntry          DebtLedgerEntry?   @relation("DebtLedgerEntryRef", fields: [refEntryId], references: [id], onDelete: SetNull)
-  refChildren       DebtLedgerEntry[]  @relation("DebtLedgerEntryRef")
-  /**
-   * V19.16 — commission payouts generated from this PAYMENT entry
-   * (COLLECTION mode). Back-relation of `CommissionPayout.sourceDebtEntry`.
-   */
-  commissionPayouts CommissionPayout[] @relation("DebtEntryCommissionPayouts")
-
-  @@unique([sourceRef])
-  @@index([customerId, createdAt])
-  @@index([source, category, createdAt])
-  @@index([orderId])
-  @@index([branchId])
-  @@index([refEntryId])
-}
-
 /**
  * Logical grouping for POS / manager item screens (not a second price source).
  */
@@ -1411,7 +1343,6 @@ model Branch {
    */
   payrollAdHocLines     PayrollAdHocLine[]
   fixedExpenseSchedules FixedExpenseSchedule[]
-  debtLedgerEntries     DebtLedgerEntry[]
   originCustomers       Customer[]               @relation("CustomerOriginBranch")
   laundryBranchPrices   LaundryBranchItemPrice[]
   stockLevels           BranchStockLevel[]
@@ -1753,8 +1684,10 @@ model JournalEntry {
   branchId    String?  @db.Uuid
   createdAt   DateTime @default(now())
 
-  lines  JournalLine[]
-  branch Branch?       @relation("JournalEntryBranch", fields: [branchId], references: [id], onDelete: SetNull)
+  lines             JournalLine[]
+  branch            Branch?           @relation("JournalEntryBranch", fields: [branchId], references: [id], onDelete: SetNull)
+  /// V20.4 — back-relation for COLLECTION commissions keyed on this journal entry.
+  commissionPayouts CommissionPayout[] @relation("JournalEntryCommissionPayouts")
 
   @@index([source, createdAt])
   @@index([actorUserId, createdAt])
@@ -2812,8 +2745,9 @@ model CommissionPayout {
   amount            Decimal                @db.Decimal(19, 4)
   status            CommissionPayoutStatus @default(PENDING)
   sourceOrderId     String?                @db.Uuid
-  sourceDebtEntryId String?                @db.Uuid
-  payrollId         String?                @db.Uuid
+  /// Replaces sourceDebtEntryId (V20.4) — JournalEntry.id is the new idempotency key.
+  sourceJournalEntryId String?             @db.Uuid
+  payrollId            String?             @db.Uuid
   earnedAt          DateTime               @default(now())
   releasedAt        DateTime?
   paidAt            DateTime?
@@ -2824,12 +2758,12 @@ model CommissionPayout {
 
   rule            CommissionRule   @relation(fields: [ruleId], references: [id])
   earner          User             @relation("CommissionEarner", fields: [earnerUserId], references: [id])
-  sourceOrder     Order?           @relation("OrderCommissionPayouts", fields: [sourceOrderId], references: [id], onDelete: SetNull)
-  sourceDebtEntry DebtLedgerEntry? @relation("DebtEntryCommissionPayouts", fields: [sourceDebtEntryId], references: [id], onDelete: SetNull)
-  payroll         Payroll?         @relation(fields: [payrollId], references: [id], onDelete: SetNull)
+  sourceOrder        Order?        @relation("OrderCommissionPayouts", fields: [sourceOrderId], references: [id], onDelete: SetNull)
+  sourceJournalEntry JournalEntry? @relation("JournalEntryCommissionPayouts", fields: [sourceJournalEntryId], references: [id], onDelete: SetNull)
+  payroll            Payroll?      @relation(fields: [payrollId], references: [id], onDelete: SetNull)
 
   @@unique([sourceOrderId, ruleId, earnerUserId], name: "uniq_commission_payout_per_order")
-  @@unique([sourceDebtEntryId, ruleId, earnerUserId], name: "uniq_commission_payout_per_debt_entry")
+  @@unique([sourceJournalEntryId, ruleId, earnerUserId], name: "uniq_commission_payout_per_journal_entry")
   @@index([earnerUserId, earnedAt])
   @@index([status])
   @@index([ruleId])

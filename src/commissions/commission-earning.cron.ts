@@ -3,7 +3,6 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import {
   CommissionMode,
   CommissionPayoutTiming,
-  DebtSource,
   OrderStatus,
   SystemToggleKey,
 } from '@prisma/client';
@@ -69,7 +68,7 @@ export class CommissionEarningCron {
       );
     }
     try {
-      await this.scanDebtPayments(since);
+      await this.scanJournalPayments(since);
     } catch (err) {
       this.logger.error(
         `COLLECTION scan failed: ${(err as Error).message}`,
@@ -130,10 +129,15 @@ export class CommissionEarningCron {
     );
   }
 
-  private async scanDebtPayments(since: Date): Promise<void> {
-    const entries = await this.prisma.debtLedgerEntry.findMany({
+  /**
+   * V20.4 — Scans JournalEntry instead of DebtLedgerEntry for COLLECTION
+   * commissions. JournalEntry.source='PAYMENT' with orderId set corresponds
+   * to a real cash / KNET / online debt payment mirrored by the banking core.
+   */
+  private async scanJournalPayments(since: Date): Promise<void> {
+    const entries = await this.prisma.journalEntry.findMany({
       where: {
-        source: DebtSource.PAYMENT,
+        source: 'PAYMENT',
         orderId: { not: null },
         createdAt: { gte: since },
       },
@@ -144,16 +148,16 @@ export class CommissionEarningCron {
     let earned = 0;
     for (const e of entries) {
       try {
-        await this.earning.earnForDebtPayment(e.id);
+        await this.earning.earnForJournalPayment(e.id);
         earned++;
       } catch (err) {
         this.logger.warn(
-          `earnForDebtPayment(${e.id}) failed: ${(err as Error).message}`,
+          `earnForJournalPayment(${e.id}) failed: ${(err as Error).message}`,
         );
       }
     }
     this.logger.debug(
-      `COLLECTION scan processed ${entries.length} PAYMENTs (earned ${earned})`,
+      `COLLECTION scan processed ${entries.length} journal PAYMENTs (earned ${earned})`,
     );
   }
 
@@ -196,24 +200,11 @@ export class CommissionEarningCron {
         continue;
       }
 
-      // Legacy DebtLedger path — fallback for pre-backfill data.
-      const agg = await this.prisma.debtLedgerEntry.groupBy({
-        by: ['source'],
-        where: { orderId: c.sourceOrderId },
-        _sum: { amount: true },
-      });
-      let created = 0;
-      let paid = 0;
-      for (const g of agg) {
-        const amt = Number(g._sum.amount ?? 0);
-        if (g.source === DebtSource.PAYMENT) {
-          paid += Math.abs(amt);
-        } else {
-          created += Math.abs(amt);
-        }
-      }
-      const open = created - paid;
-      if (open <= 0) {
+      const remMapFallback = await computeOrderRemainingBalancesBatch(this.prisma, [
+        c.sourceOrderId,
+      ]);
+      const remFallback = remMapFallback.get(c.sourceOrderId)?.toNumber() ?? 0;
+      if (remFallback <= 0.001) {
         await this.earning.releaseAfterCollectionForOrder(c.sourceOrderId);
       }
     }

@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import {
   CashStatus,
-  DebtSource,
   ManagerCashCustodyStatus,
   OrderStatus,
   PosPaymentMethod,
@@ -128,21 +127,26 @@ export class OwnerFinancialDashboardService {
       take: 5000,
     });
     const paidOrderIds = paidOrders.map((order) => order.id);
-    const ledgerPayments = await this.prisma.debtLedgerEntry.findMany({
+    // V20.4 — DebtLedger removed; count CR on account 1300 (AR reductions = payments received).
+    const journalLines = await this.prisma.journalLine.findMany({
       where: {
-        source: DebtSource.PAYMENT,
-        createdAt: { gte: from, lte: to },
-        ...(paidOrderIds.length > 0 ? { orderId: { notIn: paidOrderIds } } : {}),
+        account: { code: '1300' },
+        credit: { gt: new Prisma.Decimal(0) },
+        entry: {
+          source: 'PAYMENT',
+          createdAt: { gte: from, lte: to },
+          ...(paidOrderIds.length > 0 ? { orderId: { notIn: paidOrderIds } } : {}),
+        },
       },
-      select: { amount: true },
+      select: { credit: true },
       take: 5000,
     });
     const orderTotal = paidOrders.reduce(
       (sum, order) => sum.plus(order.totalPrice),
       new Prisma.Decimal(0),
     );
-    const ledgerTotal = ledgerPayments.reduce(
-      (sum, row) => sum.plus(row.amount.abs()),
+    const ledgerTotal = journalLines.reduce(
+      (sum, l) => sum.plus(new Prisma.Decimal(l.credit.toString())),
       new Prisma.Decimal(0),
     );
     return orderTotal.plus(ledgerTotal).toFixed(4);
@@ -169,10 +173,7 @@ export class OwnerFinancialDashboardService {
   }> {
     const customers = await this.prisma.customer.findMany({
       where: {
-        OR: [
-          { orders: { some: { status: { not: OrderStatus.CANCELED } } } },
-          { debtLedgerEntries: { some: {} } },
-        ],
+        orders: { some: { status: { not: OrderStatus.CANCELED } } },
       },
       select: { id: true, displayName: true, phone: true },
       orderBy: { updatedAt: 'desc' },

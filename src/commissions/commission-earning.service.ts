@@ -4,7 +4,6 @@ import {
   CommissionMode,
   CommissionPayoutStatus,
   CommissionPayoutTiming,
-  DebtSource,
   PosPaymentMethod,
   Prisma,
   SafariRole,
@@ -147,12 +146,21 @@ export class CommissionEarningService {
   }
 
   /**
-   * Generate COLLECTION payouts for a freshly-persisted debt PAYMENT.
-   * Silently no-ops when toggle is off, the PAYMENT has no order
-   * attribution, or no active COLLECTION rule matches.
+   * Generate COLLECTION payouts for a payment captured in the Journal.
+   *
+   * V20.4 — replaces the legacy `earnForDebtPayment(debtEntryId)` which
+   * used DebtLedgerEntry.id as the idempotency key. The Journal-based path
+   * uses JournalEntry.id so DebtLedgerEntry can be fully removed.
+   *
+   * The commission basis (amount) is derived from the CR on account 1300
+   * (Accounts Receivable) in the journal entry — that credit equals the
+   * cash received from the customer.
+   *
+   * Silently no-ops when the toggle is off, the entry has no order
+   * attribution, the AR credit is zero, or no active COLLECTION rule matches.
    */
-  async earnForDebtPayment(
-    debtEntryId: string,
+  async earnForJournalPayment(
+    journalEntryId: string,
     tx?: Prisma.TransactionClient,
   ): Promise<void> {
     const enabled = await this.systemSettings.isEnabled(
@@ -161,17 +169,26 @@ export class CommissionEarningService {
     if (!enabled) return;
 
     const db = tx ?? this.prisma;
-    const entry = await db.debtLedgerEntry.findUnique({
-      where: { id: debtEntryId },
+    const entry = await db.journalEntry.findUnique({
+      where: { id: journalEntryId },
       select: {
         id: true,
         source: true,
-        amount: true,
         orderId: true,
+        lines: {
+          where: { account: { code: '1300' } },
+          select: { credit: true },
+        },
       },
     });
-    if (!entry || entry.source !== DebtSource.PAYMENT) return;
+    if (!entry || entry.source !== 'PAYMENT') return;
     if (!entry.orderId) return;
+
+    // Commission basis = CR on AR (account 1300) — the amount the
+    // customer actually paid, net of any wallet offset.
+    const basis = entry.lines
+      .reduce((sum, l) => sum.add(new Prisma.Decimal(l.credit.toString())), new Prisma.Decimal(0));
+    if (basis.lessThanOrEqualTo(0)) return;
 
     const order = await db.order.findUnique({
       where: { id: entry.orderId },
@@ -197,10 +214,6 @@ export class CommissionEarningService {
     );
     if (rules.length === 0) return;
 
-    // PAYMENT rows store the settled amount as a positive Decimal.
-    // Commission basis is the raw collection amount.
-    const basis = new Prisma.Decimal(entry.amount.toString()).abs();
-
     for (const rule of rules) {
       if (basis.lessThan(rule.minInvoiceAmount)) continue;
       const amount = basis.mul(rule.percentage).div(100);
@@ -214,7 +227,7 @@ export class CommissionEarningService {
             basisAmount: basis.toFixed(4),
             percentage: rule.percentage,
             amount: amount.toFixed(4),
-            sourceDebtEntryId: entry.id,
+            sourceJournalEntryId: entry.id,
             status: releaseNow
               ? CommissionPayoutStatus.RELEASED
               : CommissionPayoutStatus.PENDING,
@@ -227,7 +240,7 @@ export class CommissionEarningService {
           err.code === 'P2002'
         ) {
           this.logger.debug(
-            `COLLECTION payout already exists for debtEntry=${entry.id} rule=${rule.id}; skipping replay`,
+            `COLLECTION payout already exists for journalEntry=${entry.id} rule=${rule.id}; skipping replay`,
           );
           continue;
         }

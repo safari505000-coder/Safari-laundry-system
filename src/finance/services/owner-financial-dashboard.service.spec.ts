@@ -44,6 +44,10 @@ describe('OwnerFinancialDashboardService', () => {
       debtLedgerEntry: {
         findMany: jest.fn().mockResolvedValue([]),
       },
+      // V20.4 — totalPayments now reads CR on account 1300 from JournalLine.
+      journalLine: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
       managerCashCustody: {
         aggregate: jest.fn().mockResolvedValue({
           _sum: { amountKd: new Prisma.Decimal('3.0000') },

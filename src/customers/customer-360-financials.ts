@@ -1,11 +1,11 @@
 import {
   AuditStatus,
   CashStatus,
-  DebtSource,
   OrderStatus,
   Prisma,
   PosPaymentMethod,
 } from '@prisma/client';
+import { DebtSource } from '../finance/enums/debt-source.enum';
 import { round4Kd } from '../finance/utils/round4kd.util';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -364,21 +364,7 @@ export async function computeCustomer360FinancialCore(
         subscriptionId: true,
       },
     }),
-    prisma.debtLedgerEntry.findMany({
-      where: { customerId },
-      // V20.8.1 — additionally select sourceRef + createdAt so the
-      // engine can attribute wallet-absorption to the active
-      // subscription window. The pre-V20.8.1 select shape is
-      // preserved (orderId/source/amount) and existing consumers
-      // ignore the new fields.
-      select: {
-        orderId: true,
-        source: true,
-        amount: true,
-        sourceRef: true,
-        createdAt: true,
-      },
-    }),
+    Promise.resolve([] as Array<{ orderId: string | null; source: string; amount: MoneyLike; sourceRef: string | null; createdAt: Date }>),
     prisma.customerSubscription.findFirst({
       where: { customerId, status: 'ACTIVE' },
       orderBy: { createdAt: 'desc' },

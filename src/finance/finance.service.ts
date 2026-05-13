@@ -1,10 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import {
-  DebtEntityCategory,
   ManagerCashCustodyStatus,
   Prisma,
   SafariRole,
 } from '@prisma/client';
+import { DebtEntityCategory } from './enums/debt-entity-category.enum';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConfirmHandoverDto } from './dto/confirm-handover.dto';
 import type {

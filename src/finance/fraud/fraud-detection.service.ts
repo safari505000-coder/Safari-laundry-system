@@ -1,7 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import {
-  DebtSource,
   FraudAlertSeverity,
   FraudAlertStatus,
   GeneralLedgerEntryType,
@@ -221,15 +220,22 @@ export class FraudDetectionService {
 
   private async detectRepeatedPayments(windowMs: number): Promise<number> {
     const since = new Date(Date.now() - windowMs);
-    const rows = await this.prisma.debtLedgerEntry.findMany({
-      where: {
-        source: DebtSource.PAYMENT,
-        createdAt: { gte: since },
-        orderId: { not: null },
+    // V20.4 — DebtLedger removed; read from JournalEntry source='PAYMENT'.
+    const entries = await this.prisma.journalEntry.findMany({
+      where: { source: 'PAYMENT', createdAt: { gte: since }, orderId: { not: null } },
+      select: {
+        customerId: true, orderId: true, createdAt: true,
+        lines: { where: { account: { code: '1300' } }, select: { credit: true } },
       },
-      select: { customerId: true, orderId: true, amount: true, createdAt: true },
     });
-    const byOrder = new Map<string, typeof rows>();
+    type RowLike = { customerId: string | null; orderId: string | null; amount: Prisma.Decimal; createdAt: Date };
+    const rows: RowLike[] = entries.map(e => ({
+      customerId: e.customerId,
+      orderId: e.orderId,
+      amount: e.lines.reduce((s, l) => s.add(l.credit), new Prisma.Decimal(0)),
+      createdAt: e.createdAt,
+    }));
+    const byOrder = new Map<string, RowLike[]>();
     for (const r of rows) {
       if (!r.orderId) continue;
       const list = byOrder.get(r.orderId) ?? [];
@@ -292,15 +298,22 @@ export class FraudDetectionService {
 
   private async detectPaymentSplitting(windowMs: number): Promise<number> {
     const since = new Date(Date.now() - windowMs);
-    const rows = await this.prisma.debtLedgerEntry.findMany({
-      where: {
-        source: DebtSource.PAYMENT,
-        createdAt: { gte: since },
-        orderId: { not: null },
+    // V20.4 — DebtLedger removed; read from JournalEntry source='PAYMENT'.
+    const entries = await this.prisma.journalEntry.findMany({
+      where: { source: 'PAYMENT', createdAt: { gte: since }, orderId: { not: null } },
+      select: {
+        customerId: true, orderId: true, createdAt: true,
+        lines: { where: { account: { code: '1300' } }, select: { credit: true } },
       },
-      select: { customerId: true, orderId: true, amount: true, createdAt: true },
     });
-    const byOrder = new Map<string, typeof rows>();
+    type RowLike = { customerId: string | null; orderId: string | null; amount: Prisma.Decimal; createdAt: Date };
+    const rows: RowLike[] = entries.map(e => ({
+      customerId: e.customerId,
+      orderId: e.orderId,
+      amount: e.lines.reduce((s, l) => s.add(l.credit), new Prisma.Decimal(0)),
+      createdAt: e.createdAt,
+    }));
+    const byOrder = new Map<string, RowLike[]>();
     for (const r of rows) {
       if (!r.orderId) continue;
       const list = byOrder.get(r.orderId) ?? [];

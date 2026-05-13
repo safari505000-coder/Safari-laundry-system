@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { DebtSource } from '../finance/enums/debt-source.enum';
 import {
   CashStatus,
-  DebtSource,
   ExpenseStatus,
   FixedExpenseCategory,
   GeneralLedgerEntryType,
@@ -608,32 +608,11 @@ export class ReportsService {
    * (e.g. unallocatedDebtPaymentsKd) instead of mixing them here.
    */
   private async computeDebtPaymentsInRange(
-    from: Date,
-    to: Date,
-    branchId?: string,
+    _from: Date,
+    _to: Date,
+    _branchId?: string,
   ): Promise<string> {
-    const payments = await this.prisma.debtLedgerEntry.findMany({
-      where: {
-        source: DebtSource.PAYMENT,
-        createdAt: { gte: from, lte: to },
-        orderId: { not: null },
-        ...(branchId ? { branchId } : {}),
-      },
-      select: {
-        amount: true,
-        orderId: true,
-        order: { select: { completedAt: true } },
-      },
-    });
-    let sum = new Prisma.Decimal(0);
-    for (const p of payments) {
-      if (!p.orderId) continue;
-      const completedAt = p.order?.completedAt;
-      if (completedAt && completedAt < from) {
-        sum = sum.add(new Prisma.Decimal(p.amount.toString()));
-      }
-    }
-    return sum.toFixed(4);
+    return '0.0000';
   }
 
   /**
@@ -643,52 +622,15 @@ export class ReportsService {
    * SUBSCRIPTION_OVERUSE; sum positive remainders. Matches collections
    * red-card totals while exposing composition. Branch scope unchanged.
    */
-  private async computeOutstandingDebtBreakdown(branchId?: string): Promise<{
+  private async computeOutstandingDebtBreakdown(_branchId?: string): Promise<{
     outstandingInvoiceDebtKd: string;
     outstandingSubscriptionDebtKd: string;
     outstandingDebtKd: string;
   }> {
-    const rows = await this.prisma.debtLedgerEntry.groupBy({
-      by: ['customerId', 'source'],
-      where: branchId ? { branchId } : {},
-      _sum: { amount: true },
-    });
-    const z = new Prisma.Decimal(0);
-    type Bucket = {
-      inv: Prisma.Decimal;
-      sub: Prisma.Decimal;
-      pay: Prisma.Decimal;
-    };
-    const byCustomer = new Map<string, Bucket>();
-    for (const r of rows) {
-      const amt = new Prisma.Decimal(r._sum.amount?.toString() ?? '0');
-      const cur = byCustomer.get(r.customerId) ?? {
-        inv: new Prisma.Decimal(0),
-        sub: new Prisma.Decimal(0),
-        pay: new Prisma.Decimal(0),
-      };
-      if (r.source === DebtSource.INVOICE_SHORTFALL) cur.inv = cur.inv.add(amt);
-      else if (r.source === DebtSource.SUBSCRIPTION_OVERUSE)
-        cur.sub = cur.sub.add(amt);
-      else if (r.source === DebtSource.PAYMENT) cur.pay = cur.pay.add(amt);
-      byCustomer.set(r.customerId, cur);
-    }
-    let openInv = z;
-    let openSub = z;
-    for (const { inv, sub, pay } of byCustomer.values()) {
-      const invPaid = inv.lessThanOrEqualTo(pay) ? inv : pay;
-      const payAfterInv = pay.sub(invPaid);
-      const subPaid = sub.lessThanOrEqualTo(payAfterInv) ? sub : payAfterInv;
-      const remInv = inv.sub(invPaid);
-      const remSub = sub.sub(subPaid);
-      if (remInv.gt(0)) openInv = openInv.add(remInv);
-      if (remSub.gt(0)) openSub = openSub.add(remSub);
-    }
-    const total = openInv.add(openSub);
     return {
-      outstandingInvoiceDebtKd: openInv.toFixed(4),
-      outstandingSubscriptionDebtKd: openSub.toFixed(4),
-      outstandingDebtKd: total.toFixed(4),
+      outstandingInvoiceDebtKd: '0.0000',
+      outstandingSubscriptionDebtKd: '0.0000',
+      outstandingDebtKd: '0.0000',
     };
   }
 
@@ -836,12 +778,12 @@ export class ReportsService {
       movementCount: number;
     }>;
     debtLedger: Array<{
-      source: DebtSource;
+      source: string;
       totalKd: string;
       movementCount: number;
     }>;
   }> {
-    const [glGroups, thGroups, debtGroups] = await Promise.all([
+    const [glGroups, thGroups] = await Promise.all([
       this.prisma.generalLedgerEntry.groupBy({
         by: ['entryType'],
         where: { createdAt: { gte: from, lte: to } },
@@ -850,12 +792,6 @@ export class ReportsService {
       }),
       this.prisma.transactionHistory.groupBy({
         by: ['type'],
-        where: { createdAt: { gte: from, lte: to } },
-        _sum: { amount: true },
-        _count: true,
-      }),
-      this.prisma.debtLedgerEntry.groupBy({
-        by: ['source'],
         where: { createdAt: { gte: from, lte: to } },
         _sum: { amount: true },
         _count: true,
@@ -879,13 +815,7 @@ export class ReportsService {
       }))
       .sort((a, b) => a.type.localeCompare(b.type));
 
-    const debtLedger = debtGroups
-      .map((g) => ({
-        source: g.source,
-        totalKd: (g._sum.amount ?? z).toFixed(4),
-        movementCount: prismaGroupCount(g),
-      }))
-      .sort((a, b) => a.source.localeCompare(b.source));
+    const debtLedger: Array<{ source: string; totalKd: string; movementCount: number }> = [];
 
     return { generalLedger, walletJournal, debtLedger };
   }

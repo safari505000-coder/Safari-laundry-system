@@ -25,11 +25,11 @@
  */
 import {
   CashStatus,
-  DebtSource,
   PosPaymentMethod,
   Prisma,
   SafariRole,
 } from '@prisma/client';
+import { DebtSource } from '../finance/enums/debt-source.enum';
 import { CustomerLedgerService } from './customer-ledger.service';
 import {
   isRealDebtLedgerPayment,

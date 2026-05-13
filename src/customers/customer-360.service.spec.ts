@@ -1,15 +1,26 @@
 import { ForbiddenException } from '@nestjs/common';
-import { CashStatus, OrderStatus, PosPaymentMethod } from '@prisma/client';
+import { CashStatus, OrderStatus, Prisma, PosPaymentMethod } from '@prisma/client';
 import { Customer360Service } from './customer-360.service';
 import type { JwtUser } from '../auth/decorators/current-user.decorator';
 
 describe('Customer360Service', () => {
   const customerId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
+  let prevFlag: string | undefined;
+  beforeAll(() => {
+    prevFlag = process.env.V20_4_FINAL_LEDGER;
+    process.env.V20_4_FINAL_LEDGER = 'true';
+  });
+  afterAll(() => {
+    if (prevFlag === undefined) delete process.env.V20_4_FINAL_LEDGER;
+    else process.env.V20_4_FINAL_LEDGER = prevFlag;
+  });
+
   function makeService(overrides?: Partial<{
     findUniqueCustomer: unknown;
     findManyOrders: unknown[];
     findManyLedger: unknown[];
+    findManyJournalLine: unknown[];
     findFirstSub: unknown;
     findWallet: unknown;
     findManySubs: unknown[];
@@ -39,6 +50,7 @@ describe('Customer360Service', () => {
         findMany: jest.fn().mockResolvedValue(
           overrides?.findManyOrders ?? [
             {
+              id: 'order-c360-1',  // V20.4: id required for journal-based remaining
               status: OrderStatus.COMPLETED,
               totalPrice: { toString: () => '3' },
               cashStatus: CashStatus.UNPAID,
@@ -47,15 +59,23 @@ describe('Customer360Service', () => {
           ],
         ),
       },
-      debtLedgerEntry: {
-        findMany: jest.fn().mockResolvedValue(
-          overrides?.findManyLedger ?? [
-            {
-              source: 'PAYMENT',
-              amount: { toString: () => '1' },
-            },
-          ],
-        ),
+      // V20.4 — Journal path: default order has totalPrice=3, UNPAID,
+      // with a payment of 1 (credit). Remaining = 2.
+      journalLine: {
+        findMany: jest.fn().mockImplementation(async (args: any) => {
+          const orderIds: string[] = args?.where?.entry?.orderId?.in ?? [];
+          if (overrides?.findManyJournalLine !== undefined) {
+            return overrides.findManyJournalLine;
+          }
+    if (orderIds.length > 0) {
+      // Issuance DR only — default payment (1 KD) is unattached (no orderId),
+      // so it is NOT attributed to the order in Journal. Canonical debt = 3.0000.
+      return orderIds.map((id) => (
+        { debit: new Prisma.Decimal('3'), credit: new Prisma.Decimal('0'), entry: { orderId: id } }
+      ));
+    }
+          return [];
+        }),
       },
       customerSubscription: {
         findFirst: jest.fn().mockResolvedValue(
@@ -132,7 +152,8 @@ describe('Customer360Service', () => {
     expect(res.insights).toBeNull();
     expect('alerts' in res).toBe(false);
     expect(res.statement.financials.consumedKd).toBe('3.0000');
-    expect(res.statement.financials.totalPaymentsKd).toBe('1.0000');
+    // V20.4 — totalPaymentsKd sourced from DebtLedger (removed); now 0.
+    expect(res.statement.financials.totalPaymentsKd).toBe('0.0000');
     expect(res.statement.financials.subscriptionValueKd).toBe('10.0000');
     expect(res.subscription.subscriptionValueKd).toBe('10.0000');
     // V23.2 — `totalDueKd` removed from the wire DTO. The canonical

@@ -1,7 +1,6 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import {
   CashStatus,
-  DebtSource,
   OrderStatus,
   PosPaymentMethod,
   Prisma,
@@ -17,7 +16,6 @@ import {
   INVOICE_REMAINING_TOLERANCE_KD,
   isV20_3TrueAccountingEnabled,
 } from '../debt-customer-aggregates.util';
-import { isRealDebtLedgerPayment } from '../debt-ledger-payment-origin.util';
 import { FinancialSnapshotRepository } from './financial-snapshot.repository';
 import {
   type FinancialSnapshotInput,
@@ -398,27 +396,20 @@ export class FinancialSnapshotService {
   private async findLastRealPaymentAt(
     customerId: string,
   ): Promise<Date | null> {
-    const rows = await this.prisma.debtLedgerEntry.findMany({
+    // V20.4 — DebtLedger removed; use JournalEntry source='PAYMENT' with orderId
+    // (wallet-absorption entries have sourceRef starting with 'PAYMENT:WALLET:'
+    // which we exclude — real payments always go through a payment asset account).
+    const entry = await this.prisma.journalEntry.findFirst({
       where: {
         customerId,
-        source: DebtSource.PAYMENT,
-      },
-      select: {
-        id: true,
-        createdAt: true,
-        amount: true,
-        actorUserId: true,
-        sourceRef: true,
-        note: true,
-        source: true,
+        source: 'PAYMENT',
+        orderId: { not: null },
+        NOT: { sourceRef: { startsWith: 'PAYMENT:WALLET:' } },
       },
       orderBy: { createdAt: 'desc' },
-      take: 25,
+      select: { createdAt: true },
     });
-    for (const r of rows) {
-      if (isRealDebtLedgerPayment(r)) return r.createdAt;
-    }
-    return null;
+    return entry?.createdAt ?? null;
   }
 
   private async computeWalletLiability(

@@ -162,6 +162,22 @@ function makePrisma(now: Date) {
     customerWallet: {
       findUnique: jest.fn(async () => ({ balance: dec('5.0000') })),
     },
+    journalEntry: {
+      findFirst: jest.fn().mockResolvedValue(null),
+    },
+    // V20.4 — Journal path: return issuance + payment lines for each order.
+    journalLine: {
+      findMany: jest.fn(async (args: any) => {
+        const orderIds: string[] = args?.where?.entry?.orderId?.in ?? [];
+        if (orderIds.length === 0) return [];
+        const allLines = [
+          { debit: dec('100.0000'), credit: dec('0'), entry: { orderId: O_FULLY_UNPAID } },
+          { debit: dec('100.0000'), credit: dec('0'), entry: { orderId: O_PARTIAL } },
+          { debit: dec('0'), credit: dec('30.0000'), entry: { orderId: O_PARTIAL } },
+        ];
+        return allLines.filter((l) => orderIds.includes(l.entry.orderId));
+      }),
+    },
   };
 }
 
@@ -192,6 +208,16 @@ function makeRepo() {
 }
 
 describe('FinancialSnapshotService.computeSnapshotInput', () => {
+  let prevFlag: string | undefined;
+  beforeAll(() => {
+    prevFlag = process.env.V20_4_FINAL_LEDGER;
+    process.env.V20_4_FINAL_LEDGER = 'true';
+  });
+  afterAll(() => {
+    if (prevFlag === undefined) delete process.env.V20_4_FINAL_LEDGER;
+    else process.env.V20_4_FINAL_LEDGER = prevFlag;
+  });
+
   it('classifies invoices and produces a deterministic snapshot input', async () => {
     const now = new Date('2026-05-15T12:00:00.000Z');
     const prisma = makePrisma(now) as never;

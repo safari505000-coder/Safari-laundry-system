@@ -1,4 +1,5 @@
-import { DebtSource, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import { DebtSource } from './enums/debt-source.enum';
 import {
   assertDebtLedgerPaymentWrite,
   isRealDebtLedgerPayment,

@@ -12,7 +12,6 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { JwtService } from '@nestjs/jwt';
 import {
   CashStatus,
-  DebtSource,
   GeneralLedgerEntryType,
   InvoiceAuditAction,
   OrderStatus,
@@ -50,9 +49,7 @@ import {
   getCustomerDebtSnapshotTotalKd,
   getCustomerNetDebtFromDebtLedgerAgg,
   INVOICE_REMAINING_TOLERANCE_KD,
-  isJournalAsSourceEnabled,
 } from '../finance/debt-customer-aggregates.util';
-import { isRealDebtLedgerPayment } from '../finance/debt-ledger-payment-origin.util';
 import {
   buildDebtKdBreakdownTrace,
   type DebtKdBreakdownTrace,
@@ -2597,147 +2594,13 @@ export class OrdersService {
     const openIds = new Set<string>();
     if (candidates.length === 0) return openIds;
 
-    // V20.4 — Journal path: per-order net on account 1300 (from R3) directly
-    // answers "is this DEBT_ON_ACCOUNT invoice still open?".  The 130-line FIFO
-    // loop below is only needed for the legacy DebtLedger waterfall.
-    if (isJournalAsSourceEnabled()) {
-      const orderIds = candidates.map((c) => c.orderId);
-      const remainingByOrder = await computeOrderRemainingBalancesBatch(
-        db,
-        orderIds,
-      );
-      const tol = new Prisma.Decimal(INVOICE_REMAINING_TOLERANCE_KD);
-      for (const { orderId } of candidates) {
-        const rem = remainingByOrder.get(orderId) ?? new Prisma.Decimal(0);
-        if (rem.greaterThan(tol)) openIds.add(orderId);
-      }
-      return openIds;
+    const orderIds = candidates.map((c) => c.orderId);
+    const remainingByOrder = await computeOrderRemainingBalancesBatch(db, orderIds);
+    const tol = new Prisma.Decimal(INVOICE_REMAINING_TOLERANCE_KD);
+    for (const { orderId } of candidates) {
+      const rem = remainingByOrder.get(orderId) ?? new Prisma.Decimal(0);
+      if (rem.greaterThan(tol)) openIds.add(orderId);
     }
-
-    // Legacy DebtLedger path — preserved as fallback for pre-backfill data.
-    const customerIds = Array.from(
-      new Set(candidates.map((c) => c.customerId)),
-    );
-
-    // 1) Every SHORTFALL entry for the affected customers — we need the
-    //    FULL picture (other drivers' invoices too) so FIFO allocation
-    //    applies to the correct oldest-first order across all of them.
-    const shortfallEntries = await db.debtLedgerEntry.findMany({
-      where: {
-        source: DebtSource.INVOICE_SHORTFALL,
-        customerId: { in: customerIds },
-        orderId: { not: null },
-      },
-      select: {
-        orderId: true,
-        customerId: true,
-        amount: true,
-        order: {
-          select: { id: true, createdAt: true, completedAt: true },
-        },
-      },
-    });
-
-    type Agg = {
-      orderId: string;
-      customerId: string;
-      issuedAt: Date;
-      shortfall: number;
-      paid: number;
-    };
-    const perOrder = new Map<string, Agg>();
-    for (const e of shortfallEntries) {
-      if (!e.orderId || !e.order) continue;
-      const amount = Number.parseFloat(e.amount.toString());
-      if (!Number.isFinite(amount)) continue;
-      const cur = perOrder.get(e.orderId);
-      if (cur) {
-        cur.shortfall += amount;
-      } else {
-        perOrder.set(e.orderId, {
-          orderId: e.orderId,
-          customerId: e.customerId,
-          issuedAt: e.order.completedAt ?? e.order.createdAt,
-          shortfall: amount,
-          paid: 0,
-        });
-      }
-    }
-
-    const allOrderIds = Array.from(perOrder.keys());
-    if (allOrderIds.length === 0) return openIds;
-
-    // 2) Per-order direct PAYMENTs.
-    const perOrderPayments = await db.debtLedgerEntry.findMany({
-      where: {
-        source: DebtSource.PAYMENT,
-        orderId: { in: allOrderIds },
-      },
-      select: {
-        orderId: true,
-        source: true,
-        amount: true,
-        actorUserId: true,
-        sourceRef: true,
-        note: true,
-      },
-    });
-    for (const g of perOrderPayments) {
-      if (!g.orderId) continue;
-      if (!isRealDebtLedgerPayment(g)) continue;
-      const paid = Number.parseFloat(g.amount?.toString() ?? '0');
-      const cur = perOrder.get(g.orderId);
-      if (cur && Number.isFinite(paid)) cur.paid += paid;
-    }
-
-    // 3) Customer-wide totals to derive the still-unallocated pool.
-    const customerTotals = await db.debtLedgerEntry.findMany({
-      where: { customerId: { in: customerIds } },
-      select: {
-        customerId: true,
-        source: true,
-        amount: true,
-        actorUserId: true,
-        sourceRef: true,
-        note: true,
-      },
-    });
-    const debtByCust = new Map<string, number>();
-    const paidByCust = new Map<string, number>();
-    for (const g of customerTotals) {
-      const v = Number.parseFloat(g.amount?.toString() ?? '0');
-      if (!Number.isFinite(v)) continue;
-      if (g.source === DebtSource.PAYMENT) {
-        if (!isRealDebtLedgerPayment(g)) continue;
-        paidByCust.set(g.customerId, (paidByCust.get(g.customerId) ?? 0) + v);
-      } else {
-        debtByCust.set(g.customerId, (debtByCust.get(g.customerId) ?? 0) + v);
-      }
-    }
-
-    // 4) Bucket the aggregated per-order rows by customer, oldest-first,
-    //    and allocate customer-level open-pool FIFO. An invoice is open
-    //    iff its FIFO share is materially positive (>0.0001 KWD, same
-    //    tolerance as DebtService to stay in lock-step).
-    const byCustomer = new Map<string, Agg[]>();
-    for (const agg of perOrder.values()) {
-      const arr = byCustomer.get(agg.customerId) ?? [];
-      arr.push(agg);
-      byCustomer.set(agg.customerId, arr);
-    }
-    for (const [cid, arr] of byCustomer) {
-      arr.sort((a, b) => a.issuedAt.getTime() - b.issuedAt.getTime());
-      const debtTotal = debtByCust.get(cid) ?? 0;
-      const paidTotal = paidByCust.get(cid) ?? 0;
-      let remainingOpen = Math.max(debtTotal - paidTotal, 0);
-      for (const item of arr) {
-        const perOrderNet = Math.max(item.shortfall - item.paid, 0);
-        const share = Math.min(perOrderNet, remainingOpen);
-        if (share > 0.0001) openIds.add(item.orderId);
-        remainingOpen -= share;
-      }
-    }
-
     return openIds;
   }
 

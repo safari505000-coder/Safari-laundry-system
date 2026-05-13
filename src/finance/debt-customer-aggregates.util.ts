@@ -2,32 +2,23 @@
  * Stateless debt aggregations reused by Finance (DebtService) and Orders —
  * avoids importing FinanceModule into OrdersModule (Payments → Ledger → Orders cycle).
  */
-import { DebtSource, OrderStatus, Prisma } from '@prisma/client';
-import {
-  isRealDebtLedgerPayment,
-  isWalletAbsorptionLedgerEntry,
-} from './debt-ledger-payment-origin.util';
+import { OrderStatus, Prisma } from '@prisma/client';
 
 type Db = {
-  debtLedgerEntry: Prisma.DebtLedgerEntryDelegate;
   customerWallet: Prisma.CustomerWalletDelegate;
   /**
    * V20.2 — Phase 30. Optional journal access so the read switch can
    * upgrade `getCustomerNetDebtFromDebtLedgerAgg` to journal-derived AR.
-   * The aggregator falls back to the DebtLedger waterfall when not
-   * provided OR when the flag is off, preserving every existing caller.
    */
   journalLine?: Prisma.JournalLineDelegate;
 };
 
 type OrderDb = {
   order: Prisma.OrderDelegate;
-  debtLedgerEntry: Prisma.DebtLedgerEntryDelegate;
   /**
    * V20.4 — When provided and `isJournalAsSourceEnabled()` is on,
    * `computeOrderRemainingBalancesBatch` reads per-order AR balance
    * from JournalLine account 1300 instead of the DebtLedger waterfall.
-   * Orders with no journal entries fall back to DebtLedger automatically.
    */
   journalLine?: Prisma.JournalLineDelegate;
 };
@@ -150,73 +141,11 @@ export function isV20_4FinalLedgerEnabled(): boolean {
 }
 
 /**
- * V20.2 — Phase 30 read-source for the DebtLedger waterfall.
+ * Customer net open debt from journal AR (account 1300).
  *
- * Always reads from `DebtLedgerEntry`, never from the journal. Use
- * this when you specifically need the legacy waterfall: drift
- * detection, audit reconciliation, post-write invariant assertions.
- * Consumers that should *follow* the read switch must call
- * {@link getCustomerNetDebtFromDebtLedgerAgg} instead.
- */
-export async function getCustomerNetDebtFromDebtLedgerOnly(
-  db: Db,
-  customerId: string,
-): Promise<{
-  outstandingInvoiceDebtKd: Prisma.Decimal;
-  outstandingSubscriptionDebtKd: Prisma.Decimal;
-  netOpenDebtKd: Prisma.Decimal;
-}> {
-  const z = Z();
-  const rows = await db.debtLedgerEntry.findMany({
-    where: { customerId },
-    select: {
-      source: true,
-      amount: true,
-      actorUserId: true,
-      sourceRef: true,
-      note: true,
-    },
-  });
-  let inv = z;
-  let sub = z;
-  let pay = z;
-  for (const r of rows) {
-    const amt = new Prisma.Decimal(r.amount?.toString() ?? '0');
-    if (r.source === DebtSource.INVOICE_SHORTFALL) inv = inv.add(amt);
-    else if (r.source === DebtSource.SUBSCRIPTION_OVERUSE)
-      sub = sub.add(amt);
-    else if (r.source === DebtSource.PAYMENT && isRealDebtLedgerPayment(r))
-      pay = pay.add(amt);
-  }
-  const invPaid = inv.lessThanOrEqualTo(pay) ? inv : pay;
-  const payAfterInv = pay.sub(invPaid);
-  const subPaid = sub.lessThanOrEqualTo(payAfterInv) ? sub : payAfterInv;
-  const remInv = inv.sub(invPaid);
-  const remSub = sub.sub(subPaid);
-  return {
-    outstandingInvoiceDebtKd: remInv,
-    outstandingSubscriptionDebtKd: remSub,
-    netOpenDebtKd: remInv.add(remSub),
-  };
-}
-
-/**
- * Same waterfall as `DebtLedgerEntry` global rollup, one customer.
- *
- * V20.2 — Phase 30. When `USE_JOURNAL_AS_SOURCE=true` AND the caller
- * passed a `journalLine` delegate, the net is computed from
- * JournalEntry/JournalLine on account 1300 (ACCOUNTS_RECEIVABLE)
- * instead of the DebtLedger waterfall. The breakdown
- * (`outstandingInvoiceDebtKd` vs `outstandingSubscriptionDebtKd`) is
- * not separately tracked in the journal, so under the read switch
- * both fields collapse into `netOpenDebtKd` (subscription overuse
- * lives in the same AR balance there). Consumers that need the
- * pre-v4 breakdown should keep using the DebtLedger waterfall via
- * {@link getCustomerNetDebtFromDebtLedgerOnly}.
- *
- * Audit / drift / invariant code MUST call
- * {@link getCustomerNetDebtFromDebtLedgerOnly} so the comparison
- * sides stay independent.
+ * Journal is always the canonical source. Both breakdown fields
+ * collapse into `netOpenDebtKd` because the journal does not
+ * separately track invoice vs subscription overuse.
  */
 export async function getCustomerNetDebtFromDebtLedgerAgg(
   db: Db,
@@ -226,7 +155,7 @@ export async function getCustomerNetDebtFromDebtLedgerAgg(
   outstandingSubscriptionDebtKd: Prisma.Decimal;
   netOpenDebtKd: Prisma.Decimal;
 }> {
-  if (db.journalLine && isJournalAsSourceEnabled()) {
+  if (db.journalLine) {
     const lines = await db.journalLine.findMany({
       where: {
         entry: { customerId },
@@ -247,8 +176,11 @@ export async function getCustomerNetDebtFromDebtLedgerAgg(
       netOpenDebtKd: bal,
     };
   }
-
-  return getCustomerNetDebtFromDebtLedgerOnly(db, customerId);
+  return {
+    outstandingInvoiceDebtKd: Z(),
+    outstandingSubscriptionDebtKd: Z(),
+    netOpenDebtKd: Z(),
+  };
 }
 
 /**
@@ -394,146 +326,21 @@ export async function computeOrderRemainingBalancesBatch(
       out.set(oid, net.lessThan(0) ? Z() : net);
     }
 
-    // Step 5: DebtLedger fallback for pre-backfill orders.
-    if (preBackfillIds.length > 0) {
-      const preBackfillTotalById = new Map<string, Prisma.Decimal>();
-      for (const id of preBackfillIds) preBackfillTotalById.set(id, totalById.get(id)!);
-      await computeRemainingFromLedger(
-        db,
-        preBackfillIds,
-        preBackfillTotalById,
-        customerByOrderId,
-        activeOrders,
-        out,
-      );
+    // Step 5: pre-backfill orders have no journal history — treat as paid/cleared.
+    for (const oid of preBackfillIds) {
+      out.set(oid, Z());
     }
 
     return out;
   }
 
-  // ── DEBT LEDGER PATH (legacy / fallback) ─────────────────────────────
-  await computeRemainingFromLedger(
-    db,
-    activeOrderIds,
-    totalById,
-    customerByOrderId,
-    activeOrders,
-    out,
-  );
+  // ── No journal delegate — all orders treated as cleared. ─────────────
+  for (const oid of activeOrderIds) {
+    out.set(oid, Z());
+  }
   return out;
 }
 
-/**
- * Internal: compute per-order remaining from the DebtLedger waterfall for
- * a subset of orders. Extracted so the journal path can call it as a
- * targeted fallback for pre-backfill orders without re-querying the whole
- * order set.
- */
-async function computeRemainingFromLedger(
-  db: OrderDb,
-  subsetOrderIds: string[],
-  totalById: Map<string, Prisma.Decimal>,
-  customerByOrderId: Map<string, string>,
-  allActiveOrders: RemainingOrderRow[],
-  out: Map<string, Prisma.Decimal>,
-): Promise<void> {
-  if (subsetOrderIds.length === 0) return;
-
-  const ledgerRows = await db.debtLedgerEntry.findMany({
-    where: { orderId: { in: subsetOrderIds } },
-    select: {
-      orderId: true,
-      source: true,
-      amount: true,
-      actorUserId: true,
-      sourceRef: true,
-      note: true,
-    },
-  });
-
-  const paidById = new Map<string, Prisma.Decimal>();
-  const walletById = new Map<string, Prisma.Decimal>();
-  for (const r of ledgerRows) {
-    if (!r.orderId) continue;
-    if (r.source !== DebtSource.PAYMENT) continue;
-    const amt = new Prisma.Decimal(r.amount?.toString() ?? '0');
-    if (isRealDebtLedgerPayment(r)) {
-      paidById.set(r.orderId, (paidById.get(r.orderId) ?? Z()).add(amt));
-    } else if (isWalletAbsorptionLedgerEntry(r)) {
-      walletById.set(r.orderId, (walletById.get(r.orderId) ?? Z()).add(amt));
-    }
-  }
-
-  // V22 — customer-level payment allocation (FIFO).
-  //
-  // Historical CC partial-payment and subscription-conversion rows may
-  // be recorded with `orderId = null` (e.g. `...:RESIDUAL`) even though
-  // the customer had open invoice rows.
-  const subsetCustomerIds = Array.from(
-    new Set(
-      subsetOrderIds
-        .map((id) => customerByOrderId.get(id))
-        .filter((c): c is string => !!c),
-    ),
-  );
-  if (subsetCustomerIds.length > 0) {
-    const customerLevelRows = await db.debtLedgerEntry.findMany({
-      where: { customerId: { in: subsetCustomerIds }, orderId: null },
-      select: {
-        customerId: true,
-        orderId: true,
-        source: true,
-        amount: true,
-        actorUserId: true,
-        sourceRef: true,
-        note: true,
-      },
-    });
-    const customerPaymentById = new Map<string, Prisma.Decimal>();
-    for (const r of customerLevelRows) {
-      if (!isRealDebtLedgerPayment(r)) continue;
-      const customerId = r.customerId;
-      if (!customerId) continue;
-      const amt = new Prisma.Decimal(r.amount?.toString() ?? '0');
-      customerPaymentById.set(
-        customerId,
-        (customerPaymentById.get(customerId) ?? Z()).add(amt),
-      );
-    }
-    for (const customerId of subsetCustomerIds) {
-      let budget = customerPaymentById.get(customerId) ?? Z();
-      if (budget.lessThanOrEqualTo(0)) continue;
-      const invoiceIds = allActiveOrders
-        .filter(
-          (o) =>
-            o.status !== OrderStatus.CANCELED &&
-            customerByOrderId.get(o.id) === customerId &&
-            subsetOrderIds.includes(o.id),
-        )
-        .map((o) => o.id);
-      for (const orderId of invoiceIds) {
-        if (budget.lessThanOrEqualTo(0)) break;
-        const alreadyPaid = (paidById.get(orderId) ?? Z()).add(
-          walletById.get(orderId) ?? Z(),
-        );
-        const remainingBeforeCustomerLevel = totalById.get(orderId)!.sub(alreadyPaid);
-        if (remainingBeforeCustomerLevel.lessThanOrEqualTo(0)) continue;
-        const applied = Prisma.Decimal.min(budget, remainingBeforeCustomerLevel);
-        paidById.set(orderId, (paidById.get(orderId) ?? Z()).add(applied));
-        budget = budget.sub(applied);
-      }
-    }
-  }
-
-  for (const orderId of subsetOrderIds) {
-    const total = totalById.get(orderId)!;
-    const paid = paidById.get(orderId) ?? Z();
-    const wallet = walletById.get(orderId) ?? Z();
-    let remaining = total.sub(paid).sub(wallet);
-    if (remaining.lessThan(0)) remaining = Z();
-    out.set(orderId, remaining);
-  }
-}
 
 /** Single-order convenience wrapper around the batch helper. */
 export async function computeOrderRemainingBalance(

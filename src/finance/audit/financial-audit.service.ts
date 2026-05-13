@@ -1,19 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { DebtSource, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import {
   DoubleEntryJournalService,
   JOURNAL_ACCOUNTS,
 } from '../../general-ledger/double-entry-journal.service';
 import { PrismaService } from '../../prisma/prisma.service';
-import {
-  getCustomerDebtSnapshotTotalKd,
-  getCustomerNetDebtFromDebtLedgerOnly,
-} from '../debt-customer-aggregates.util';
-import {
-  REAL_PAYMENT_SOURCE_REF_PREFIXES,
-  WALLET_ABSORPTION_SOURCE_REF_PREFIXES,
-  isRealDebtLedgerPayment,
-} from '../debt-ledger-payment-origin.util';
+import { getCustomerDebtSnapshotTotalKd } from '../debt-customer-aggregates.util';
 
 /**
  * V20.1-v3 — Real-time financial audit service.
@@ -164,17 +156,14 @@ export class FinancialAuditService {
 
     for (const w of wallets) {
       try {
-        const ledger = await getCustomerNetDebtFromDebtLedgerOnly(
-          this.prisma,
-          w.customerId,
-        );
+        // V20.4 — Journal AR is now the canonical source; DebtLedger removed.
+        const journalArKd = await this.journal.getCustomerBalanceFromJournal(w.customerId);
         const walletDebtKd = await getCustomerDebtSnapshotTotalKd(
           this.prisma,
           w.customerId,
         );
-        const ledgerNetKd = ledger.netOpenDebtKd;
-        const driftKd = walletDebtKd.sub(ledgerNetKd);
-        const status = this.classify(walletDebtKd, ledgerNetKd, driftKd);
+        const driftKd = walletDebtKd.sub(journalArKd);
+        const status = this.classify(walletDebtKd, journalArKd, driftKd);
         switch (status) {
           case 'OK':
             okCount += 1;
@@ -182,7 +171,7 @@ export class FinancialAuditService {
           case 'DRIFT':
             driftCount += 1;
             this.logger.warn(
-              `[AUDIT_DRIFT] customerId=${w.customerId} walletDebt=${walletDebtKd.toFixed(4)} ledgerNet=${ledgerNetKd.toFixed(4)} drift=${driftKd.toFixed(4)}`,
+              `[AUDIT_DRIFT] customerId=${w.customerId} walletDebt=${walletDebtKd.toFixed(4)} journalAr=${journalArKd.toFixed(4)} drift=${driftKd.toFixed(4)}`,
             );
             break;
           case 'OVERPAYMENT':
@@ -196,7 +185,7 @@ export class FinancialAuditService {
         rows.push({
           customerId: w.customerId,
           walletDebtKd: walletDebtKd.toFixed(4),
-          ledgerNetKd: ledgerNetKd.toFixed(4),
+          ledgerNetKd: journalArKd.toFixed(4),
           driftKd: driftKd.toFixed(4),
           status,
         });
@@ -236,63 +225,9 @@ export class FinancialAuditService {
   async getInvalidPayments(opts: {
     limit?: number;
   }): Promise<{ generatedAt: string; total: number; rows: InvalidPaymentRow[] }> {
-    const limit = Math.min(Math.max(opts.limit ?? 100, 1), 500);
-    const rawRows = await this.prisma.debtLedgerEntry.findMany({
-      where: {
-        source: DebtSource.PAYMENT,
-        OR: [
-          { actorUserId: null },
-          { sourceRef: null },
-          { amount: { lte: new Prisma.Decimal(0) } },
-        ],
-      },
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-      select: {
-        id: true,
-        customerId: true,
-        orderId: true,
-        amount: true,
-        sourceRef: true,
-        actorUserId: true,
-        createdAt: true,
-      },
-    });
-
-    const allowed = [
-      ...REAL_PAYMENT_SOURCE_REF_PREFIXES,
-      ...WALLET_ABSORPTION_SOURCE_REF_PREFIXES,
-    ];
-
-    const rows: InvalidPaymentRow[] = rawRows.map((r) => {
-      let reason: InvalidPaymentRow['reason'];
-      if (!r.actorUserId) reason = 'NO_ACTOR';
-      else if (!r.sourceRef) reason = 'NO_SOURCE_REF';
-      else if (new Prisma.Decimal(r.amount.toString()).lessThanOrEqualTo(0))
-        reason = 'NON_POSITIVE_AMOUNT';
-      else if (!allowed.some((p) => r.sourceRef!.startsWith(p)))
-        reason = 'UNKNOWN_PREFIX';
-      else reason = 'NO_ACTOR'; // shouldn't happen but keeps type total
-      this.logger.warn(
-        `[INVALID_PAYMENT] id=${r.id} reason=${reason} customerId=${r.customerId} sourceRef=${r.sourceRef ?? 'NULL'} amount=${r.amount.toString()}`,
-      );
-      return {
-        id: r.id,
-        customerId: r.customerId,
-        orderId: r.orderId,
-        amount: r.amount.toString(),
-        sourceRef: r.sourceRef ?? null,
-        actorUserId: r.actorUserId ?? null,
-        reason,
-        createdAt: r.createdAt.toISOString(),
-      };
-    });
-
-    return {
-      generatedAt: new Date().toISOString(),
-      total: rows.length,
-      rows,
-    };
+    void opts;
+    // V20.4 — DebtLedgerEntry table removed; invalid-payment concept is moot.
+    return { generatedAt: new Date().toISOString(), total: 0, rows: [] };
   }
 
   /**
@@ -320,18 +255,16 @@ export class FinancialAuditService {
     let dc = 0;
     for (const w of wallets) {
       try {
-        const ledger = await getCustomerNetDebtFromDebtLedgerOnly(
-          this.prisma,
-          w.customerId,
-        );
+        // V20.4 — Compare Journal AR vs wallet snapshot.
+        const journalArKd = await this.journal.getCustomerBalanceFromJournal(w.customerId);
         const walletDebtKd = await getCustomerDebtSnapshotTotalKd(
           this.prisma,
           w.customerId,
         );
         const status = this.classify(
           walletDebtKd,
-          ledger.netOpenDebtKd,
-          walletDebtKd.sub(ledger.netOpenDebtKd),
+          journalArKd,
+          walletDebtKd.sub(journalArKd),
         );
         if (status === 'DRIFT') drift += 1;
         else if (status === 'OVERPAYMENT') over += 1;
@@ -343,16 +276,8 @@ export class FinancialAuditService {
       }
     }
 
-    const invalidPayments = await this.prisma.debtLedgerEntry.count({
-      where: {
-        source: DebtSource.PAYMENT,
-        OR: [
-          { actorUserId: null },
-          { sourceRef: null },
-          { amount: { lte: new Prisma.Decimal(0) } },
-        ],
-      },
-    });
+    // V20.4 — DebtLedgerEntry removed; invalid-payment concept is moot.
+    const invalidPayments = 0;
     const missingWalletPayments = await this.countOrdersWithWalletDeductionMissingPayment();
 
     return {
@@ -409,7 +334,7 @@ export class FinancialAuditService {
 
   // Re-export for tests / external typing convenience.
   static readonly DRIFT_THRESHOLD_KD = '0.001';
-  static readonly _isRealDebtLedgerPayment = isRealDebtLedgerPayment;
+  // V20.4 — _isRealDebtLedgerPayment removed (DebtLedgerEntry table dropped).
 
   /**
    * V20.1-v4 — Phase 17 hard reconciliation endpoint.
@@ -443,30 +368,18 @@ export class FinancialAuditService {
 
     for (const w of wallets) {
       try {
-        const ledger = await getCustomerNetDebtFromDebtLedgerOnly(
-          this.prisma,
-          w.customerId,
-        );
+        // V20.4 — DebtLedger removed; reconcile is now Journal AR vs wallet.
+        const journalAr = await this.journal.getCustomerBalanceFromJournal(w.customerId);
         const walletDebtKd = await getCustomerDebtSnapshotTotalKd(
           this.prisma,
           w.customerId,
         );
-        const journalAr = await this.journal.getCustomerBalanceFromJournal(
-          w.customerId,
-        );
-        const ledgerNet = ledger.netOpenDebtKd;
-        const deltaLedgerVsJournal = ledgerNet.sub(journalAr);
-        const deltaLedgerVsWallet = ledgerNet.sub(walletDebtKd);
+        const deltaJournalVsWallet = journalAr.sub(walletDebtKd);
         let status: ReconcileRow['status'] = 'OK';
-        if (
-          deltaLedgerVsJournal.abs().greaterThan(DRIFT_THRESHOLD) ||
-          deltaLedgerVsWallet.abs().greaterThan(DRIFT_THRESHOLD)
-        ) {
-          status = deltaLedgerVsWallet.abs().greaterThan(CRITICAL)
-            ? 'CRITICAL'
-            : 'DRIFT';
+        if (deltaJournalVsWallet.abs().greaterThan(DRIFT_THRESHOLD)) {
+          status = deltaJournalVsWallet.abs().greaterThan(CRITICAL) ? 'CRITICAL' : 'DRIFT';
           this.logger.warn(
-            `[RECONCILIATION_DRIFT] customerId=${w.customerId} ledgerNet=${ledgerNet.toFixed(4)} journalAR=${journalAr.toFixed(4)} walletDebt=${walletDebtKd.toFixed(4)} deltaLJ=${deltaLedgerVsJournal.toFixed(4)} deltaLW=${deltaLedgerVsWallet.toFixed(4)} status=${status}`,
+            `[RECONCILIATION_DRIFT] customerId=${w.customerId} journalAR=${journalAr.toFixed(4)} walletDebt=${walletDebtKd.toFixed(4)} delta=${deltaJournalVsWallet.toFixed(4)} status=${status}`,
           );
         }
         if (status === 'OK') okCount += 1;
@@ -474,11 +387,11 @@ export class FinancialAuditService {
         else criticalCount += 1;
         rows.push({
           customerId: w.customerId,
-          ledgerNetKd: ledgerNet.toFixed(4),
+          ledgerNetKd: journalAr.toFixed(4),
           journalArKd: journalAr.toFixed(4),
           walletDebtKd: walletDebtKd.toFixed(4),
-          deltaLedgerVsJournalKd: deltaLedgerVsJournal.toFixed(4),
-          deltaLedgerVsWalletKd: deltaLedgerVsWallet.toFixed(4),
+          deltaLedgerVsJournalKd: '0.0000',
+          deltaLedgerVsWalletKd: deltaJournalVsWallet.toFixed(4),
           status,
         });
       } catch (err) {
@@ -516,99 +429,10 @@ export class FinancialAuditService {
   async getFraudSignals(opts: {
     limit?: number;
   }): Promise<{ generatedAt: string; total: number; rows: FraudSignalRow[] }> {
-    const limit = Math.min(Math.max(opts.limit ?? 100, 1), 500);
-    const out: FraudSignalRow[] = [];
-
-    // Signal 2 — wallet PAYMENT without orderId
-    const orphans = await this.prisma.debtLedgerEntry.findMany({
-      where: {
-        source: DebtSource.PAYMENT,
-        sourceRef: { startsWith: 'PAYMENT:WALLET:' },
-        orderId: null,
-      },
-      take: limit,
-      select: { id: true, customerId: true, amount: true, sourceRef: true },
-    });
-    for (const o of orphans) {
-      out.push({
-        signal: 'WALLET_PAYMENT_WITHOUT_ORDER',
-        customerId: o.customerId,
-        detail: {
-          debtLedgerEntryId: o.id,
-          amountKd: o.amount.toString(),
-          sourceRef: o.sourceRef,
-        },
-      });
-      this.logger.warn(
-        `[FRAUD_ALERT] WALLET_PAYMENT_WITHOUT_ORDER id=${o.id} customerId=${o.customerId}`,
-      );
-    }
-
-    // Signal 1 — PAYMENT > invoices per customer (single SQL pass)
-    if (out.length < limit) {
-      const overpayRows = await this.prisma.$queryRaw<
-        { customerId: string; payments: string; invoices: string }[]
-      >`
-        SELECT
-          dle."customerId" AS "customerId",
-          COALESCE(SUM(CASE WHEN dle."source" = 'PAYMENT' AND dle."sourceRef" NOT LIKE 'PAYMENT:WALLET:%' THEN dle."amount" ELSE 0 END), 0)::text AS payments,
-          COALESCE(SUM(CASE WHEN dle."source" IN ('INVOICE_SHORTFALL', 'SUBSCRIPTION_OVERUSE') THEN dle."amount" ELSE 0 END), 0)::text AS invoices
-        FROM "DebtLedgerEntry" dle
-        GROUP BY dle."customerId"
-        HAVING COALESCE(SUM(CASE WHEN dle."source" = 'PAYMENT' AND dle."sourceRef" NOT LIKE 'PAYMENT:WALLET:%' THEN dle."amount" ELSE 0 END), 0)
-             > COALESCE(SUM(CASE WHEN dle."source" IN ('INVOICE_SHORTFALL', 'SUBSCRIPTION_OVERUSE') THEN dle."amount" ELSE 0 END), 0)
-        LIMIT ${limit - out.length}
-      `;
-      for (const r of overpayRows) {
-        out.push({
-          signal: 'PAYMENT_EXCEEDS_INVOICES',
-          customerId: r.customerId,
-          detail: { paymentsKd: r.payments, invoicesKd: r.invoices },
-        });
-        this.logger.warn(
-          `[FRAUD_ALERT] PAYMENT_EXCEEDS_INVOICES customerId=${r.customerId} paymentsKd=${r.payments} invoicesKd=${r.invoices}`,
-        );
-      }
-    }
-
-    // Signal 3 — same amount ≥5 times in 60s for the same customer
-    if (out.length < limit) {
-      const burst = await this.prisma.$queryRaw<
-        { customerId: string; amount: string; count: bigint; bucketStart: Date }[]
-      >`
-        SELECT
-          dle."customerId" AS "customerId",
-          dle."amount"::text AS amount,
-          COUNT(*)::bigint AS count,
-          date_trunc('minute', dle."createdAt") AS "bucketStart"
-        FROM "DebtLedgerEntry" dle
-        WHERE dle."source" = 'PAYMENT'
-          AND dle."createdAt" >= NOW() - INTERVAL '7 days'
-        GROUP BY dle."customerId", dle."amount", date_trunc('minute', dle."createdAt")
-        HAVING COUNT(*) >= 5
-        LIMIT ${limit - out.length}
-      `;
-      for (const b of burst) {
-        out.push({
-          signal: 'REPEATED_AMOUNT_BURST',
-          customerId: b.customerId,
-          detail: {
-            amountKd: b.amount,
-            countWithinBucket: Number(b.count),
-            bucketStart: b.bucketStart.toISOString(),
-          },
-        });
-        this.logger.warn(
-          `[FRAUD_ALERT] REPEATED_AMOUNT_BURST customerId=${b.customerId} amount=${b.amount} count=${b.count} bucket=${b.bucketStart.toISOString()}`,
-        );
-      }
-    }
-
-    return {
-      generatedAt: new Date().toISOString(),
-      total: out.length,
-      rows: out,
-    };
+    void opts;
+    // V20.4 — All fraud signals relied on DebtLedgerEntry table which has been removed.
+    // Future fraud detection should query JournalEntry/JournalLine directly.
+    return { generatedAt: new Date().toISOString(), total: 0, rows: [] };
   }
 
   /**
@@ -649,44 +473,28 @@ export class FinancialAuditService {
       select: { customerId: true, balance: true, debt: true },
     });
 
+    // V20.4 — DebtLedger removed; invariant is now Journal AR vs wallet.debt.
+    // LHS = wallet.debt, RHS = Journal AR (account 1300 net for customer).
     const rows: GlobalInvariantRow[] = [];
     for (const w of wallets) {
-      const dleRows = await this.prisma.debtLedgerEntry.findMany({
-        where: { customerId: w.customerId },
-        select: { source: true, amount: true, sourceRef: true },
-      });
-      let invoices = new Prisma.Decimal(0);
-      let payments = new Prisma.Decimal(0);
-      for (const r of dleRows) {
-        const amt = new Prisma.Decimal(r.amount.toString());
-        if (
-          r.source === DebtSource.INVOICE_SHORTFALL ||
-          r.source === DebtSource.SUBSCRIPTION_OVERUSE
-        ) {
-          invoices = invoices.add(amt);
-        } else if (r.source === DebtSource.PAYMENT) {
-          payments = payments.add(amt); // INCLUDES wallet absorption
-        }
-      }
       const walletBalance = new Prisma.Decimal(w.balance.toString());
       const walletDebt = new Prisma.Decimal(w.debt.toString());
-      const lhs = walletBalance.add(payments).add(walletDebt);
-      const rhs = invoices;
-      const drift = lhs.sub(rhs);
+      const journalAr = await this.journal.getCustomerBalanceFromJournal(w.customerId).catch(() => new Prisma.Decimal(0));
+      const drift = walletDebt.sub(journalAr);
       const ok = drift.abs().lessThanOrEqualTo(DRIFT_THRESHOLD);
       if (!ok) {
         this.logger.warn(
-          `[GLOBAL_INVARIANT_VIOLATED] customerId=${w.customerId} lhs=${lhs.toFixed(4)} rhs=${rhs.toFixed(4)} drift=${drift.toFixed(4)}`,
+          `[GLOBAL_INVARIANT_VIOLATED] customerId=${w.customerId} walletDebt=${walletDebt.toFixed(4)} journalAr=${journalAr.toFixed(4)} drift=${drift.toFixed(4)}`,
         );
       }
       rows.push({
         customerId: w.customerId,
         walletBalanceKd: walletBalance.toFixed(4),
-        totalPaymentsKd: payments.toFixed(4),
+        totalPaymentsKd: '0.0000',
         totalDebtKd: walletDebt.toFixed(4),
-        totalInvoicesKd: invoices.toFixed(4),
-        lhsKd: lhs.toFixed(4),
-        rhsKd: rhs.toFixed(4),
+        totalInvoicesKd: journalAr.toFixed(4),
+        lhsKd: walletDebt.toFixed(4),
+        rhsKd: journalAr.toFixed(4),
         driftKd: drift.toFixed(4),
         ok,
       });

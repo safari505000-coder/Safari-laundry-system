@@ -20,30 +20,6 @@ function makePrisma(now: Date) {
         },
       ]),
     },
-    debtLedgerEntry: {
-      findMany: jest.fn(async () => [
-        {
-          id: 'l-1',
-          orderId: 'o-1',
-          amount: dec('10.0000'),
-          source: 'PAYMENT',
-          sourceRef: 'PAYMENT:CASH:o-1',
-          actorUserId: 'u-1',
-          note: null,
-          createdAt: new Date(now.getTime() - 30 * 60 * 1000),
-        },
-        {
-          id: 'l-2',
-          orderId: 'o-1',
-          amount: dec('20.0000'),
-          source: 'INVOICE_SHORTFALL',
-          sourceRef: 'SHORTFALL:o-1',
-          actorUserId: 'u-1',
-          note: null,
-          createdAt: new Date(now.getTime() - 24 * 60 * 60 * 1000),
-        },
-      ]),
-    },
     customerSubscription: {
       findMany: jest.fn(async () => [
         {
@@ -68,8 +44,29 @@ function makePrisma(now: Date) {
     collectionsStageEvent: {
       findMany: jest.fn(async () => []),
     },
+    // fetchLedgerEvents and fetchJournalEvents both call journalEntry.findMany.
+    // Entries include `lines` so fetchLedgerEvents can compute AR debit/credit.
     journalEntry: {
-      findMany: jest.fn(async () => []),
+      findMany: jest.fn(async () => [
+        {
+          id: 'je-1',
+          source: 'PAYMENT',
+          sourceRef: 'PAYMENT:CASH:o-1',
+          orderId: 'o-1',
+          actorUserId: 'u-1',
+          createdAt: new Date(now.getTime() - 30 * 60 * 1000),
+          lines: [{ debit: dec('0'), credit: dec('10.0000') }],
+        },
+        {
+          id: 'je-2',
+          source: 'INVOICE',
+          sourceRef: 'INVOICE:o-1',
+          orderId: 'o-1',
+          actorUserId: 'u-1',
+          createdAt: new Date(now.getTime() - 24 * 60 * 60 * 1000),
+          lines: [{ debit: dec('20.0000'), credit: dec('0') }],
+        },
+      ]),
     },
   };
 }
@@ -148,6 +145,8 @@ describe('FinancialTimelineService', () => {
         sourceRef: 'JOURNAL:INVOICE_ISSUED:o-1',
         createdAt: new Date(now.getTime() - 120_000),
         orderId: 'o-1',
+        // lines required so fetchLedgerEvents can compute AR credit/debit
+        lines: [],
       },
     ]);
     const svc = new FinancialTimelineService(prisma as never);

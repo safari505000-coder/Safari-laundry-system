@@ -1,5 +1,6 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
-import { DebtSource, PosPaymentMethod, Prisma } from '@prisma/client';
+import { PosPaymentMethod, Prisma } from '@prisma/client';
+import { DebtSource } from '../finance/enums/debt-source.enum';
 import { PrismaService } from '../prisma/prisma.service';
 import { FinancialPeriodsService } from '../finance/periods/financial-periods.service';
 

@@ -1,4 +1,5 @@
-import { DebtSource, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import { DebtSource } from './enums/debt-source.enum';
 
 /**
  * V20.1 — "Real money" PAYMENT prefixes. A row tagged with one of these

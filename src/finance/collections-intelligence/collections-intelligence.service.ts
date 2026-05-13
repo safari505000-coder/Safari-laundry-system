@@ -179,45 +179,10 @@ export class CollectionsIntelligenceService {
   }
 
   private async computeHistoricalPaymentSpeedDays(
-    customerId: string,
+    _customerId: string,
   ): Promise<number | null> {
-    const payments = await this.prisma.debtLedgerEntry.findMany({
-      where: { customerId, source: 'PAYMENT' },
-      select: {
-        createdAt: true,
-        orderId: true,
-        actorUserId: true,
-        sourceRef: true,
-        note: true,
-        source: true,
-        amount: true,
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 25,
-    });
-    const real = payments.filter((p) => isRealDebtLedgerPayment(p));
-    if (real.length === 0) return null;
-    const orderIds = real
-      .map((p) => p.orderId)
-      .filter((id): id is string => typeof id === 'string');
-    if (orderIds.length === 0) return null;
-    const orders = await this.prisma.order.findMany({
-      where: { id: { in: orderIds } },
-      select: { id: true, createdAt: true },
-    });
-    const orderById = new Map(orders.map((o) => [o.id, o.createdAt] as const));
-    const speeds: number[] = [];
-    for (const p of real) {
-      if (!p.orderId) continue;
-      const issuedAt = orderById.get(p.orderId);
-      if (!issuedAt) continue;
-      const diff = p.createdAt.getTime() - issuedAt.getTime();
-      if (diff <= 0) continue;
-      speeds.push(Math.floor(diff / (24 * 60 * 60 * 1000)));
-    }
-    if (speeds.length === 0) return null;
-    const avg = speeds.reduce((a, b) => a + b, 0) / speeds.length;
-    return Math.round(avg);
+    // DebtLedgerEntry table removed — no historical payment speed available.
+    return null;
   }
 
   private scoreFromSignals(

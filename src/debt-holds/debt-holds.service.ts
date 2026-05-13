@@ -2,7 +2,6 @@ import { ForbiddenException, Injectable } from '@nestjs/common';
 import {
   DebtHoldMode,
   DebtHoldStatus,
-  DebtSource,
   Prisma,
   SafariRole,
 } from '@prisma/client';
@@ -95,43 +94,7 @@ export class DebtHoldsService {
       return { debt: total, debtKd: total.toFixed(4) };
     }
 
-    // Legacy DebtLedger path — preserved as fallback for pre-backfill data.
-    const ledger = await this.prisma.debtLedgerEntry.findMany({
-      where: { orderId: { in: orderIds } },
-      select: {
-        orderId: true,
-        source: true,
-        amount: true,
-      },
-    });
-
-    const perOrder = new Map<
-      string,
-      { created: Prisma.Decimal; paid: Prisma.Decimal }
-    >();
-    for (const e of ledger) {
-      if (!e.orderId) continue;
-      const row = perOrder.get(e.orderId) ?? {
-        created: new Prisma.Decimal(0),
-        paid: new Prisma.Decimal(0),
-      };
-      const amt = new Prisma.Decimal(e.amount.toString()).abs();
-      if (e.source === DebtSource.PAYMENT) {
-        row.paid = row.paid.add(amt);
-      } else {
-        // INVOICE_SHORTFALL, SUBSCRIPTION_OVERUSE, and legacy sources
-        // all count as debt creation.
-        row.created = row.created.add(amt);
-      }
-      perOrder.set(e.orderId, row);
-    }
-
-    let total = new Prisma.Decimal(0);
-    for (const row of perOrder.values()) {
-      const open = row.created.sub(row.paid);
-      if (open.greaterThan(0)) total = total.add(open);
-    }
-    return { debt: total, debtKd: total.toFixed(4) };
+    return { debt: new Prisma.Decimal(0), debtKd: '0.0000' };
   }
 
   /**

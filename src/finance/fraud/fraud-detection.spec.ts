@@ -1,11 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import {
-  DebtSource,
   FraudAlertSeverity,
   FraudAlertStatus,
   GeneralLedgerEntryType,
   Prisma,
 } from '@prisma/client';
+import { DebtSource } from '../enums/debt-source.enum';
 import { FraudDetectionService } from './fraud-detection.service';
 
 function makePrismaForFraud(seed: {
@@ -33,6 +33,22 @@ function makePrismaForFraud(seed: {
         if (where?.source) return Promise.resolve(rows.filter((r) => r.source === where.source));
         return Promise.resolve(rows);
       }),
+    },
+    // V20.4 — detectRepeatedPayments and detectPaymentSplitting now read
+    // from JournalEntry source='PAYMENT'. Map ledgerRows to journal entries
+    // with a credit line on account 1300 so amount detection still fires.
+    journalEntry: {
+      findMany: jest.fn(() =>
+        Promise.resolve(
+          (seed.ledgerRows ?? []).map((r) => ({
+            source: r.source,
+            customerId: r.customerId,
+            orderId: r.orderId,
+            createdAt: r.createdAt,
+            lines: [{ credit: new Prisma.Decimal(r.amount.toString()) }],
+          })),
+        ),
+      ),
     },
     order: {
       findMany: jest.fn(() => Promise.resolve(seed.cancelledOrders ?? [])),

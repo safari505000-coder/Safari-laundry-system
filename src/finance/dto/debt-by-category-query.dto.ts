@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { DebtEntityCategory } from '@prisma/client';
+import { DebtEntityCategory } from '../enums/debt-entity-category.enum';
 import { IsDateString, IsEnum, IsOptional, IsUUID } from 'class-validator';
 
 export class DebtByCategoryQueryDto {

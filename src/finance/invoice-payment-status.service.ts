@@ -1,15 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import { DebtSource, OrderStatus, Prisma } from '@prisma/client';
+import { OrderStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   computeOrderRemainingBalancesBatch,
   INVOICE_REMAINING_TOLERANCE_KD as REMAINING_TOLERANCE_KD,
   isV20_3TrueAccountingEnabled,
 } from './debt-customer-aggregates.util';
-import {
-  isRealDebtLedgerPayment,
-  isWalletAbsorptionLedgerEntry,
-} from './debt-ledger-payment-origin.util';
 
 /**
  * V20.3.1 re-export — keeps the original import path working for
@@ -225,8 +221,8 @@ export class InvoicePaymentStatusService {
   }
 
   private async computeFromDebtLedger(
-    orderId: string,
-    db: Db,
+    _orderId: string,
+    _db: Db,
     totalKd: Prisma.Decimal,
   ): Promise<{
     remainingKd: Prisma.Decimal;
@@ -235,32 +231,11 @@ export class InvoicePaymentStatusService {
     walletAbsorbedKd: Prisma.Decimal;
     source: 'DEBT_LEDGER';
   }> {
-    const rows = await db.debtLedgerEntry.findMany({
-      where: { orderId },
-      select: {
-        source: true,
-        amount: true,
-        actorUserId: true,
-        sourceRef: true,
-        note: true,
-      },
-    });
-    let paid = new Prisma.Decimal(0);
-    let wallet = new Prisma.Decimal(0);
-    for (const r of rows) {
-      const amt = new Prisma.Decimal(r.amount?.toString() ?? '0');
-      if (r.source === DebtSource.PAYMENT) {
-        if (isRealDebtLedgerPayment(r)) paid = paid.add(amt);
-        else if (isWalletAbsorptionLedgerEntry(r)) wallet = wallet.add(amt);
-      }
-    }
-    let remaining = totalKd.sub(paid).sub(wallet);
-    if (remaining.lessThan(0)) remaining = new Prisma.Decimal(0);
     return {
-      remainingKd: remaining,
+      remainingKd: totalKd,
       totalKd,
-      paidKd: paid,
-      walletAbsorbedKd: wallet,
+      paidKd: new Prisma.Decimal(0),
+      walletAbsorbedKd: new Prisma.Decimal(0),
       source: 'DEBT_LEDGER',
     };
   }

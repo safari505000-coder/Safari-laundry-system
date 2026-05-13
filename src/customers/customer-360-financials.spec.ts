@@ -1,4 +1,5 @@
-import { CashStatus, DebtSource, OrderStatus, PosPaymentMethod } from '@prisma/client';
+import { CashStatus, OrderStatus, PosPaymentMethod } from '@prisma/client';
+import { DebtSource } from '../finance/enums/debt-source.enum';
 import { computeCustomerFinancials } from './customer-360-financials';
 
 describe('computeCustomerFinancials', () => {

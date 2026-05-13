@@ -29,7 +29,6 @@ import {
 
 type Db = {
   order: Prisma.OrderDelegate;
-  debtLedgerEntry: Prisma.DebtLedgerEntryDelegate;
 };
 
 export type JournalReader = {

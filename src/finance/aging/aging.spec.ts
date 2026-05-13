@@ -64,6 +64,17 @@ describe('V20.5 — Phase 1 Aging types (pure helpers)', () => {
 describe('V20.5 — Phase 1 AgingService (mocked Prisma)', () => {
   const asOf = new Date('2026-05-07T12:00:00.000Z');
 
+  // V20.4 — set flags so computeOrderRemainingBalancesBatch uses journal path.
+  let prevFlag: string | undefined;
+  beforeAll(() => {
+    prevFlag = process.env.V20_4_FINAL_LEDGER;
+    process.env.V20_4_FINAL_LEDGER = 'true';
+  });
+  afterAll(() => {
+    if (prevFlag === undefined) delete process.env.V20_4_FINAL_LEDGER;
+    else process.env.V20_4_FINAL_LEDGER = prevFlag;
+  });
+
   /**
    * Build a Prisma mock that handles BOTH `findMany` patterns:
    *
@@ -123,14 +134,25 @@ describe('V20.5 — Phase 1 AgingService (mocked Prisma)', () => {
           );
         }),
       },
-      // The helper also queries DebtLedgerEntry to subtract
-      // payments and journalLine to read AR; both empty in this
-      // test means remaining == totalPrice.
-      debtLedgerEntry: {
-        findMany: jest.fn().mockResolvedValue([]),
-      },
+      // V20.4 — Journal path: return DR entries matching each order's remaining
+      // so computeOrderRemainingBalancesBatch returns the expected remaining amount.
       journalLine: {
-        findMany: jest.fn().mockResolvedValue([]),
+        findMany: jest.fn().mockImplementation((args: any) => {
+          const orderIds: string[] = args?.where?.entry?.orderId?.in ?? [];
+          if (orderIds.length > 0) {
+            return Promise.resolve(
+              orders
+                .filter((o) => orderIds.includes(o.id) && !o.cancelled)
+                .map((o) => ({
+                  debit: new Prisma.Decimal(o.remaining),
+                  credit: new Prisma.Decimal(0),
+                  entry: { orderId: o.id },
+                  customerId: o.customerId ?? null,
+                })),
+            );
+          }
+          return Promise.resolve([]);
+        }),
       },
     } as any;
   }

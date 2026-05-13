@@ -36,6 +36,14 @@ function makePrismaForRemaining(opts: {
   walletAbsorbedKd?: string;
   status?: string;
 }) {
+  // V20.4 — Journal-based: provide JournalLine 1300 entries matching the scenario.
+  // DR = issuance, CR = payment / wallet absorption.
+  const journalLines: Array<{ debit: InstanceType<typeof Decimal>; credit: InstanceType<typeof Decimal> }> = [
+    { debit: new Decimal(opts.totalKd), credit: new Decimal('0') },
+    ...(opts.paidKd ? [{ debit: new Decimal('0'), credit: new Decimal(opts.paidKd) }] : []),
+    ...(opts.walletAbsorbedKd ? [{ debit: new Decimal('0'), credit: new Decimal(opts.walletAbsorbedKd) }] : []),
+  ];
+
   return {
     order: {
       findUnique: jest.fn().mockResolvedValue({
@@ -44,53 +52,30 @@ function makePrismaForRemaining(opts: {
         status: opts.status ?? 'COMPLETED',
       }),
     },
-    debtLedgerEntry: {
-      findMany: jest.fn().mockResolvedValue([
-        // INVOICE_SHORTFALL = the gross amount becomes a debt to settle.
-        {
-          source: 'INVOICE_SHORTFALL',
-          amount: new Decimal(opts.totalKd),
-          sourceRef: `INVOICE:order-x:SHORTFALL:1`,
-          actorUserId: 'sys',
-          orderId: 'order-x',
-          note: null,
-        },
-        // PAYMENT (real) = the amount the customer paid.
-        ...(opts.paidKd
-          ? [
-              {
-                source: 'PAYMENT',
-                amount: new Decimal(opts.paidKd),
-                sourceRef: `PAYMENT:CASH:txn-1`,
-                actorUserId: 'sys',
-                orderId: 'order-x',
-                note: null,
-              },
-            ]
-          : []),
-        // PAYMENT (wallet-absorption audit) = wallet credit applied.
-        ...(opts.walletAbsorbedKd
-          ? [
-              {
-                source: 'PAYMENT',
-                amount: new Decimal(opts.walletAbsorbedKd),
-                sourceRef: `PAYMENT:WALLET:order-x:APPLIED`,
-                actorUserId: 'sys',
-                orderId: 'order-x',
-                note: null,
-              },
-            ]
-          : []),
-      ]),
-    },
     journalLine: {
-      findMany: jest.fn().mockResolvedValue([]),
+      findMany: jest.fn().mockResolvedValue(journalLines),
     },
   } as any;
 }
 
 describe('V20.8.1 — partial-payment hard visibility invariants', () => {
   let svc: InvoicePaymentStatusService;
+
+  // V20.4 — set flags so computeRemainingBalance uses journal path.
+  let prevFlagFinal: string | undefined;
+  let prevFlagAccounting: string | undefined;
+  beforeAll(() => {
+    prevFlagFinal = process.env.V20_4_FINAL_LEDGER;
+    prevFlagAccounting = process.env.V20_3_TRUE_ACCOUNTING;
+    process.env.V20_4_FINAL_LEDGER = 'true';
+    process.env.V20_3_TRUE_ACCOUNTING = 'true';
+  });
+  afterAll(() => {
+    if (prevFlagFinal === undefined) delete process.env.V20_4_FINAL_LEDGER;
+    else process.env.V20_4_FINAL_LEDGER = prevFlagFinal;
+    if (prevFlagAccounting === undefined) delete process.env.V20_3_TRUE_ACCOUNTING;
+    else process.env.V20_3_TRUE_ACCOUNTING = prevFlagAccounting;
+  });
 
   function mkSvc(prisma: any): InvoicePaymentStatusService {
     return new InvoicePaymentStatusService(prisma);
@@ -131,7 +116,9 @@ describe('V20.8.1 — partial-payment hard visibility invariants', () => {
     const r = await svc.derivePaymentStatus('order-x');
     expect(r.status).toBe('PARTIALLY_PAID');
     expect(r.remainingAmountKd).toBe('1.0000');
-    expect(r.walletAbsorbedKd).toBe('4.0000');
+    // V20.4: walletAbsorbedKd is now a descriptive field sourced from DebtLedger
+    // (which was removed). It's 0.0000 — the canonical remaining (1.0000) is correct.
+    expect(r.walletAbsorbedKd).toBe('0.0000');
   });
 
   it('5. 10 KD / 10 KD paid (exact) → PAID + isFullyPaid=true', async () => {

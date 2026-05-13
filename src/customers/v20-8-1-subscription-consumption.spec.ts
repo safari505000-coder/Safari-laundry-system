@@ -1,4 +1,4 @@
-import { DebtSource } from '@prisma/client';
+import { DebtSource } from '../finance/enums/debt-source.enum';
 import { computeSubscriptionConsumption } from './subscription-consumption.projection';
 
 /**
