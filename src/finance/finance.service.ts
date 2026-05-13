@@ -32,6 +32,11 @@ import { SubscriptionService } from './services/subscription.service';
  * the institution currently holds. Returned by
  * GET /api/finance/consolidated-cash for the Owner dashboard.
  */
+/**
+ * لقطة موحدة لجميع مجمّعات النقد المؤسسية بالدينار الكويتي
+ * Consolidated snapshot of every KD-denominated cash pool in the institution.
+ * Used by the Owner dashboard `GET /api/finance/consolidated-cash`.
+ */
 export type ConsolidatedCashSnapshotDto = {
   atIso: string;
   driverFieldCashKd: string;
@@ -51,6 +56,12 @@ export type ConsolidatedCashSnapshotDto = {
   };
 };
 
+/**
+ * خدمة المالية الرئيسية — واجهة موحدة تُفوّض إلى الخدمات المتخصصة
+ * Top-level finance service acting as a unified facade delegating to
+ * CashService, DebtService, OnlinePaymentService, and SubscriptionService.
+ * Owns the consolidated cash snapshot and the finance module's entry points.
+ */
 @Injectable()
 export class FinanceService {
   constructor(

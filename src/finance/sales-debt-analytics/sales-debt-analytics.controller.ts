@@ -20,6 +20,14 @@ import { SalesDebtAnalyticsService } from './sales-debt-analytics.service';
  * crunch the result locally; per V24 Commandment #5 it now asks
  * here for the pre-computed view.
  */
+/**
+ * متحكم تحليلات المبيعات والديون — نقطة نهاية التحليلات المُجمَّعة من السرفر
+ * Sales-debt analytics REST controller providing server-aggregated sales, collection,
+ * and debt totals with per-branch/driver breakdowns and Arabic insight badges.
+ * Replaces FE-side aggregation (V24 Commandment #5).
+ * Mounted at `/api/finance/sales-debt-analytics`.
+ * @since V24
+ */
 @ApiTags('finance')
 @ApiBearerAuth('bearer')
 @Controller('finance/sales-debt-analytics')
@@ -39,6 +47,10 @@ export class SalesDebtAnalyticsController {
       'MUST consume this endpoint instead of fetching raw orders and ' +
       'aggregating in the browser (V24 Commandment #5).',
   })
+  /**
+   * يُرجع تحليلات المبيعات والديون المُجمَّعة للفترة المحددة
+   * Returns pre-computed sales/collection/debt analytics for the given date range.
+   */
   getAnalytics(
     @Query() q: SalesDebtAnalyticsQueryDto,
   ): Promise<SalesDebtAnalyticsResponseDto> {

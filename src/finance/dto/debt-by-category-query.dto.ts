@@ -2,6 +2,10 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { DebtEntityCategory } from '../enums/debt-entity-category.enum';
 import { IsDateString, IsEnum, IsOptional, IsUUID } from 'class-validator';
 
+/**
+ * معايير استعلام الديون حسب الفئة مع التصفية بالتاريخ والفئة والفرع والسائق
+ * Query DTO for debt breakdown by entity category with date range and optional filters.
+ */
 export class DebtByCategoryQueryDto {
   @ApiProperty({ example: '2026-04-15T00:00:00.000Z' })
   @IsDateString()

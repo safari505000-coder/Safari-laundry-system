@@ -26,12 +26,24 @@ import { FinancialSnapshotService } from './financial-snapshot.service';
 const STALENESS_WINDOW_MS = 60 * 60 * 1000;
 const PAGE_SIZE = 200;
 
+/**
+ * Cron اللقطة المالية — يُجدّد اللقطات القديمة كل 5 دقائق
+ * 5-minute safety-net cron refreshing stale snapshot rows and backfilling missing ones.
+ * Domain-event listeners handle immediate refreshes; this cron catches missed events.
+ * Disabled via FINANCIAL_SNAPSHOT_CRON_DISABLED=true.
+ * @since V20.4 Phase 1/4
+ */
 @Injectable()
 export class FinancialSnapshotCron {
   private readonly logger = new Logger(FinancialSnapshotCron.name);
 
   constructor(private readonly snapshots: FinancialSnapshotService) {}
 
+  /**
+   * يُشغّل دورة تحديث اللقطات القديمة كل 5 دقائق
+   * Runs the stale-snapshot refresh sweep every 5 minutes.
+   * Refreshes rows older than 1 hour and backfills missing rows.
+   */
   @Cron(CronExpression.EVERY_5_MINUTES)
   async reconcile(): Promise<void> {
     if (this.isDisabled()) return;

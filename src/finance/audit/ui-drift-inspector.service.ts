@@ -42,12 +42,20 @@ import {
  * the sweep never aborts mid-page.
  */
 
+/**
+ * حالة انحراف واجهة المستخدم لعميل واحد
+ * UI drift status classification for a single customer comparison run.
+ */
 export type UiDriftStatus =
   | 'OK'
   | 'UI_DRIFT'
   | 'LEGACY_READER'
   | 'CRITICAL';
 
+/**
+ * صف مقارنة الانحراف لعميل واحد عبر جميع قارئات الديون
+ * Per-customer drift comparison row across all six debt readers.
+ */
 export type UiDriftRow = {
   customerId: string;
   customerName: string | null;
@@ -73,6 +81,10 @@ export type UiDriftRow = {
   notes?: string[];
 };
 
+/**
+ * ملخص نتائج فحص انحراف واجهة المستخدم لصفحة كاملة
+ * Summary counts for a UI drift inspection sweep page.
+ */
 export type UiDriftSummary = {
   ok: number;
   uiDrift: number;
@@ -82,6 +94,10 @@ export type UiDriftSummary = {
   scannedCount: number;
 };
 
+/**
+ * استجابة فحص انحراف واجهة المستخدم مع ملخص الصفحة والصفوف
+ * Full UI drift inspection response with summary and per-customer rows.
+ */
 export type UiDriftResponse = {
   summary: UiDriftSummary;
   cursor: string | null;
@@ -106,6 +122,14 @@ function maxAbsDelta(values: Prisma.Decimal[]): Prisma.Decimal {
   return max;
 }
 
+/**
+ * خدمة فحص انحراف واجهة المستخدم — تقارن 6 قارئات ديون لكل عميل
+ * UI drift inspector comparing six legacy debt readers against the canonical source.
+ * Classification: OK, UI_DRIFT, LEGACY_READER, CRITICAL.
+ * Read-only and idempotent; per-customer failures surface as CRITICAL rows.
+ *
+ * @since V20.3.2 Phase 1/2
+ */
 @Injectable()
 export class UiDriftInspectorService {
   private readonly logger = new Logger(UiDriftInspectorService.name);
@@ -120,6 +144,16 @@ export class UiDriftInspectorService {
    * meaningfully cover hundreds of customers without exhausting
    * connections. Default page size is 100, max 500 — same shape
    * as the existing financial-audit overview.
+   */
+  /**
+   * يفحص صفحة من العملاء ويُقارن قارئات الديون الست لكل منهم
+   * Scans a paginated page of customers comparing all six debt readers.
+   *
+   * @param opts.limit - عدد الصفوف (افتراضي: 100، أقصى: 500) | Row limit
+   * @param opts.cursor - مؤشر الصفحة (معرف العميل الأخير) | Last customerId cursor
+   * @param opts.statusFilter - تصفية حسب الحالة (اختياري) | Optional status filter
+   * @param opts.search - بحث نصي في الاسم/الهاتف | Optional name/phone search
+   * @returns استجابة الفحص مع الملخص والصفوف | Drift inspection response
    */
   async scan(opts: {
     limit?: number;

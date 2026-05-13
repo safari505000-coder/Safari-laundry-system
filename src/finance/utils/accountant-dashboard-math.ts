@@ -1,11 +1,16 @@
 /**
- * Pure helpers for the accountant dashboard — easy to unit test and
- * identical to the reconciliation badge logic in AccountantDashboardService.
+ * دوال مساعدة بحتة للوحة معلومات المحاسب — قابلة للاختبار الوحدوي بسهولة
+ * Pure helpers for the accountant dashboard (reconciliation status, badges, KPI trends).
+ * Easy to unit test and shared with AccountantDashboardService.
  */
 
 /** UI/status uses 4dp KD amounts; treat |Δ| below this as balanced (GREEN). */
 const RECONCILIATION_BALANCE_EPS = 0.0001;
 
+/**
+ * حالة التسوية المرئية في لوحة المعلومات
+ * Reconciliation display status for the accountant dashboard badge.
+ */
 export type ReconciliationDisplayStatus = 'GREEN' | 'RED' | 'YELLOW';
 
 /**
@@ -17,6 +22,15 @@ export type ReconciliationDisplayStatus = 'GREEN' | 'RED' | 'YELLOW';
  * YELLOW office ahead / timing (delta>0).
  *
  * Legacy {@link reconciliationBadgeFromDiff} on `handed - collected` is unchanged for API `badge`.
+ */
+/**
+ * يحسب فروق التسوية بالدينار الكويتي وحالة العرض
+ * Computes canonical reconciliation delta/shortfall amounts and display status.
+ * GREEN = balanced, RED = drivers holding (shortfall > 0), YELLOW = office ahead.
+ *
+ * @param collectedKd - المبلغ المُحصَّل بالدينار | Collected amount KD
+ * @param handedKd - المبلغ المُسلَّم بالدينار | Handed-in amount KD
+ * @returns فروق التسوية وحالة العرض | Reconciliation deltas and display status
  */
 export function reconciliationDeltaKds(
   collectedKd: number,
@@ -42,12 +56,27 @@ export function reconciliationDeltaKds(
   return { deltaKd, shortfallKd, status: 'GREEN' };
 }
 
+/**
+ * يُحدد شارة التسوية بناءً على الفرق (موجب = أحمر، سالب = أصفر، صفر = أخضر)
+ * Returns the reconciliation badge color from the raw diff (handed - collected).
+ *
+ * @param diff - الفرق الخام (مُسلَّم − مُحصَّل) | Raw diff (handed - collected)
+ * @returns لون الشارة | Badge color: 'green' | 'yellow' | 'red'
+ */
 export function reconciliationBadgeFromDiff(diff: number): 'green' | 'yellow' | 'red' {
   if (diff > 0.0001) return 'red';
   if (diff < -0.0001) return 'yellow';
   return 'green';
 }
 
+/**
+ * يحسب اتجاه الاتجاه ونسبة التغيير لمؤشرات الأداء الرئيسية
+ * Computes the KPI trend direction (up/down/flat) and percentage vs previous period.
+ *
+ * @param curr - القيمة الحالية | Current period value
+ * @param prev - القيمة السابقة | Previous period value
+ * @returns اتجاه الاتجاه والنسبة | Trend direction and percentage change
+ */
 export function kpiTrendDirection(
   curr: number,
   prev: number,

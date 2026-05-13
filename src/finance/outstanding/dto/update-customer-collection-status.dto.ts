@@ -14,6 +14,12 @@ import {
  * The single mutation surface for the AR module. `blocked` is the
  * MANUAL block toggle: never written by automation.
  */
+/**
+ * DTO تحديث حالة تحصيل العميل — مُتحكم الحظر اليدوي
+ * DTO for the AR collection status mutation endpoint.
+ * `blocked` is the MANUAL block toggle — never written by automation.
+ * @since V19.x
+ */
 export class UpdateCustomerCollectionStatusDto {
   @ApiProperty({ enum: CustomerCollectionStatusKind })
   @IsEnum(CustomerCollectionStatusKind)

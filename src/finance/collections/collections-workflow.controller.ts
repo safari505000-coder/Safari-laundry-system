@@ -33,12 +33,22 @@ const SUPERVISOR_ROLES = new Set<string>([
   SafariRole.CALL_CENTER_SUPERVISOR,
 ]);
 
+/**
+ * متحكم سير عمل التحصيل — نقاط نهاية إدارة حسابات التحصيل
+ * Collections workflow REST controller managing CollectionsAccount lifecycle:
+ * open/get, transition, assign, record contact, reopen, and list overdue SLA.
+ * Mounted at `/api/collections/accounts/*`.
+ */
 @Controller('collections/accounts')
 @UseGuards(JwtAuthGuard)
 export class CollectionsWorkflowController {
   constructor(private readonly svc: CollectionsWorkflowService) {}
 
   @Get('overdue-sla')
+  /**
+   * يُرجع حسابات التحصيل المتجاوزة SLA مرتبة بالأقدم أولاً
+   * Lists collections accounts overdue for next action, sorted by oldest first.
+   */
   async listOverdueSla(
     @CurrentUser() user: JwtUser,
     @Query('limit') limit?: string,

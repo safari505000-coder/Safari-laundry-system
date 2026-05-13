@@ -23,8 +23,16 @@
  * Each detector returns a green/amber/red classification.
  */
 
+/**
+ * مستوى خطورة تقرير الشذوذ المصرفي
+ * Severity classification for a banking anomaly detector report.
+ */
 export type Severity = 'green' | 'amber' | 'red';
 
+/**
+ * تقرير شذوذ مصرفي يصف عدد الحالات ومستوى الخطورة والعينات
+ * Banking anomaly detector report with count, health classification, and sample anomalies.
+ */
 export interface AnomalyReport<T = unknown> {
   /** ISO timestamp at detection time. */
   at: string;
@@ -55,12 +63,20 @@ function classify(
 //  Detector 1 — duplicate sourceRefs
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * صف قيد دفتر اليومية المُستخدم في فحص المراجع المكررة
+ * Minimal JournalEntry projection needed by the duplicate-sourceRef detector.
+ */
 export interface JournalEntryRowForDuplicateScan {
   sourceRef: string;
   source: string;
   createdAt: Date;
 }
 
+/**
+ * عينة مرجع مصدر مكرر في تقرير كاشف الشذوذات
+ * Sample of a duplicate sourceRef found by the detector.
+ */
 export interface DuplicateSourceRefSample {
   sourceRef: string;
   source: string;
@@ -70,12 +86,14 @@ export interface DuplicateSourceRefSample {
 }
 
 /**
- * Walks a recent slice of `JournalEntry` rows and surfaces any
- * `sourceRef` appearing more than once. Because `sourceRef` is
- * `@unique` in the schema, a duplicate here is **a database-level
- * impossibility** — finding any anomaly indicates either schema
- * drift, a corrupted backup restore, or a manual SQL injection of
- * a duplicate row. In all cases: page on RED.
+ * يفحص شرائح دفتر اليومية بحثاً عن مراجع مصدر مكررة — مستحيل قاعدياً لذا يُنبّه فوراً
+ * Walks a recent slice of JournalEntry rows and surfaces any sourceRef appearing more than once.
+ * Because sourceRef is @unique in the schema, any duplicate is a database-level impossibility
+ * indicating schema drift, corrupted backup, or manual SQL injection. Always RED.
+ *
+ * @param input.rows - صفوف دفتر اليومية المُراد فحصها | Journal entry rows to scan
+ * @param input.at - وقت أخذ العينة (اختياري) | Optional ISO timestamp
+ * @returns تقرير الشذوذ مع العينات | Anomaly report with samples
  */
 export function detectDuplicateSourceRefs(input: {
   rows: ReadonlyArray<JournalEntryRowForDuplicateScan>;
@@ -119,6 +137,10 @@ export function detectDuplicateSourceRefs(input: {
 //  Detector 2 — orphan outbox events (event without canonical journal entry)
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * صف حدث Outbox المُستخدم في فحص الأحداث اليتيمة
+ * Minimal outbox event projection needed by the orphan-wallet-event detector.
+ */
 export interface OutboxEventForOrphanScan {
   id: string;
   eventType: string;
@@ -126,6 +148,10 @@ export interface OutboxEventForOrphanScan {
   emittedAt: Date;
 }
 
+/**
+ * عينة حدث يتيم لا يقابله قيد في دفتر اليومية
+ * Sample of an orphan outbox event with no matching journal entry.
+ */
 export interface OrphanEventSample {
   outboxId: string;
   eventType: string;
@@ -134,17 +160,16 @@ export interface OrphanEventSample {
 }
 
 /**
- * An event sourced from `FinancialEventOutbox` whose `sourceRef`
- * does not match any `JournalEntry.sourceRef` is an *orphan*: the
- * event was emitted but no journal entry was committed. This points
- * to one of:
+ * يكتشف أحداث Outbox التي لا يقابلها قيد في دفتر اليومية (أحداث يتيمة)
+ * Detects FinancialEventOutbox events whose sourceRef has no matching JournalEntry.
+ * An orphan event means the event was emitted outside the canonical appendBalanced transaction.
+ * >0 = amber, >5 = red.
  *
- *   • A producer that emitted the event outside the canonical
- *     `appendBalanced` transaction.
- *   • A snapshot listener firing before the journal commit.
- *   • A test fixture leak into production data.
- *
- * Anything > 0 is YELLOW; > 5 is RED.
+ * @param input.outbox - صفوف Outbox المُراد فحصها | Outbox event rows to scan
+ * @param input.journalSourceRefs - مجموعة مراجع دفتر اليومية في نفس النافذة | Journal sourceRef set
+ * @param input.at - وقت أخذ العينة (اختياري) | Optional ISO timestamp
+ * @param input.thresholds - حدود تصنيف الخطورة | Optional custom severity thresholds
+ * @returns تقرير الشذوذ مع العينات | Anomaly report with orphan samples
  */
 export function detectOrphanWalletEvents(input: {
   outbox: ReadonlyArray<OutboxEventForOrphanScan>;
@@ -191,17 +216,25 @@ export function detectOrphanWalletEvents(input: {
 //  Detector 3 — stale snapshots
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * صف لقطة مالية مُستخدَم في فحص اللقطات القديمة
+ * Minimal snapshot projection needed by the stale-snapshot detector.
+ */
 export interface SnapshotRowForStaleScan {
   customerId: string;
   generatedAt: Date;
 }
 
 /**
- * Surfaces snapshots whose age exceeds the SLA. Default SLA = 1 hour.
- * The reconciliation cron refreshes every snapshot every 5 minutes;
- * a snapshot older than 1 hour is a strong signal that the cron is
- * not running, the consumer dropped, or the customer was deleted
- * mid-projection.
+ * يكتشف اللقطات المالية التي تجاوزت عمرها المسموح (SLA)
+ * Surfaces snapshots whose age exceeds the SLA threshold (default 1 hour).
+ * A snapshot older than 1 hour indicates the cron is not running or a customer was deleted mid-projection.
+ *
+ * @param input.rows - صفوف اللقطات المُراد فحصها | Snapshot rows to scan
+ * @param input.at - وقت أخذ العينة (اختياري) | Optional ISO timestamp
+ * @param input.maxAgeSec - الحد الأقصى لعمر اللقطة بالثواني (افتراضي: 3600) | Max age in seconds
+ * @param input.thresholds - حدود تصنيف الخطورة | Optional severity thresholds
+ * @returns تقرير الشذوذ مع العينات | Anomaly report
  */
 export function detectStaleSnapshots(input: {
   rows: ReadonlyArray<SnapshotRowForStaleScan>;
@@ -243,6 +276,10 @@ export function detectStaleSnapshots(input: {
 //  Detector 4 — duplicate settlements
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * صف تسوية مُستخدَم في فحص التسويات المكررة
+ * Minimal settlement row projection for the duplicate-settlement detector.
+ */
 export interface SettlementRowForDupScan {
   orderId: string;
   amountKd: string;
@@ -250,12 +287,15 @@ export interface SettlementRowForDupScan {
 }
 
 /**
- * Detects two settlement rows for the same `orderId` whose
- * `settledAt` falls within a 60-second window. This is the
- * smoking-gun signature for a double-claim race against the
- * `walletSettledAt: null` predicate. Should be impossible
- * (Prisma `updateMany` with the predicate is atomic) but worth
- * monitoring as a banking-grade tripwire.
+ * يكتشف تسويتين للطلب نفسه ضمن نافذة زمنية قصيرة — دليل على سباق مزدوج
+ * Detects two settlement rows for the same orderId within a 60-second window.
+ * This is the smoking-gun for a double-claim race. Should be impossible given atomic updateMany.
+ *
+ * @param input.rows - صفوف التسوية المُراد فحصها | Settlement rows to scan
+ * @param input.at - وقت أخذ العينة (اختياري) | Optional ISO timestamp
+ * @param input.windowSec - النافذة الزمنية للكشف بالثواني (افتراضي: 60) | Detection window in seconds
+ * @param input.thresholds - حدود تصنيف الخطورة | Optional severity thresholds
+ * @returns تقرير الشذوذ مع العينات | Anomaly report
  */
 export function detectDuplicateSettlements(input: {
   rows: ReadonlyArray<SettlementRowForDupScan>;
@@ -326,6 +366,10 @@ export function detectDuplicateSettlements(input: {
 //  Detector 5 — replay anomaly (canonical hash mismatch)
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * عينة اختبار إعادة التشغيل مع الهاش المتوقع والفعلي
+ * Sample of a snapshot replay mismatch (expectedHash vs actualHash).
+ */
 export interface ReplayCheckSample {
   customerId: string;
   expectedHash: string;
@@ -333,10 +377,13 @@ export interface ReplayCheckSample {
 }
 
 /**
- * Inputs are pre-computed `(customerId, expectedHash, actualHash)`
- * triples — produced by the snapshot replay test harness. Detector
- * surfaces any mismatch as an immediate RED signal: a snapshot is
- * not deterministically reproducible from the journal.
+ * يكتشف عدم تطابق هاش إعادة التشغيل بين اللقطات المتوقعة والفعلية
+ * Surfaces snapshot replay mismatches from pre-computed hash triples.
+ * Any mismatch is an immediate RED signal: the snapshot is not deterministically reproducible.
+ *
+ * @param input.triples - ثلاثيات الهاش المُسبَق الحساب | Pre-computed hash triples
+ * @param input.at - وقت أخذ العينة (اختياري) | Optional ISO timestamp
+ * @returns تقرير الشذوذ مع عينات التطابق الفاشل | Anomaly report with mismatch samples
  */
 export function detectReplayAnomaly(input: {
   triples: ReadonlyArray<{

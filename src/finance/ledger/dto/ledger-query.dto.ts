@@ -5,6 +5,12 @@ import { Type } from 'class-transformer';
 const MAX_RANGE_DAYS = 90;
 const DEFAULT_RANGE_DAYS = 30;
 
+/**
+ * يُرجع تاريخ البداية الافتراضي لدفتر الأستاذ (30 يوم قبل اليوم)
+ * Returns the default ledger query from-date (30 days ago at UTC midnight).
+ *
+ * @returns تاريخ البداية الافتراضي بتنسيق ISO | Default from-date ISO string
+ */
 export function defaultFromIso(): string {
   const d = new Date();
   d.setUTCDate(d.getUTCDate() - DEFAULT_RANGE_DAYS);
@@ -12,12 +18,26 @@ export function defaultFromIso(): string {
   return d.toISOString();
 }
 
+/**
+ * يُرجع تاريخ النهاية الافتراضي لدفتر الأستاذ (نهاية اليوم الحالي)
+ * Returns the default ledger query to-date (end of current UTC day).
+ *
+ * @returns تاريخ النهاية الافتراضي بتنسيق ISO | Default to-date ISO string
+ */
 export function defaultToIso(): string {
   const d = new Date();
   d.setUTCHours(23, 59, 59, 999);
   return d.toISOString();
 }
 
+/**
+ * يتحقق من أن النطاق الزمني لا يتجاوز الحد الأقصى المسموح (90 يوماً)
+ * Asserts the date range does not exceed MAX_RANGE_DAYS (90 days).
+ *
+ * @param fromIso - تاريخ البداية بتنسيق ISO | Start date ISO string
+ * @param toIso - تاريخ النهاية بتنسيق ISO | End date ISO string
+ * @throws Error إذا تجاوز النطاق الحد الأقصى | If range exceeds MAX_RANGE_DAYS
+ */
 export function assertWithinMaxRange(fromIso: string, toIso: string): void {
   const from = new Date(fromIso);
   const to = new Date(toIso);
@@ -30,6 +50,10 @@ export function assertWithinMaxRange(fromIso: string, toIso: string): void {
   }
 }
 
+/**
+ * معايير استعلام نطاق دفتر الأستاذ — من وإلى بتنسيق ISO مع قيم افتراضية
+ * Ledger range query DTO with optional from/to dates defaulting to the last 30 days.
+ */
 export class LedgerRangeQueryDto {
   @ApiPropertyOptional({ description: 'ISO8601 from (default: 30d ago)' })
   @IsOptional()
@@ -42,6 +66,10 @@ export class LedgerRangeQueryDto {
   to?: string;
 }
 
+/**
+ * معايير استعلام معاملات دفتر الأستاذ مع تصفية الحساب والحد الأقصى للصفوف
+ * Ledger transactions query DTO extending range with accountId prefix filter and take limit.
+ */
 export class LedgerTransactionsQueryDto extends LedgerRangeQueryDto {
   @ApiPropertyOptional({ description: 'Filter by accountId prefix (e.g. DRIVER_ or BANK_ACCOUNT)' })
   @IsOptional()

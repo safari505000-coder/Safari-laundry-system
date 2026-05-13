@@ -50,6 +50,14 @@ type PendingState = {
   timer: NodeJS.Timeout | null;
 };
 
+/**
+ * خدمة التحديث الفوري للقطات المالية — نموذج قائم على الأحداث بحماية ثلاثية
+ * Near-realtime event-driven snapshot refresher with three protection layers:
+ * debounce (per-customer), cooldown (per-customer), and global concurrency cap.
+ * `request()` returns synchronously — never blocks the financial write path.
+ *
+ * @since V20.6 Phase 5
+ */
 @Injectable()
 export class SnapshotRealtimeRefresher {
   private readonly logger = new Logger(SnapshotRealtimeRefresher.name);

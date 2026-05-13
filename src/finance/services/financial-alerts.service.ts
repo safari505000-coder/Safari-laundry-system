@@ -16,10 +16,28 @@ const CASH_MISMATCH_TOLERANCE_KD = new Prisma.Decimal('0.001');
 /** V23.2 — Cash mismatch escalation threshold (HIGH severity). */
 const CASH_MISMATCH_HIGH_KD = new Prisma.Decimal('10');
 
+/**
+ * خدمة التنبيهات المالية — تُنشئ تنبيهات ذكية من بيانات لوحة المعلومات
+ * Financial alerts builder generating high-debt, cash-mismatch, expense-spike,
+ * and risky-driver alerts for the owner dashboard.
+ * @since V23.2
+ */
 @Injectable()
 export class FinancialAlertsService {
   constructor(private readonly driverRisk: DriverRiskService) {}
 
+  /**
+   * يُنشئ قائمة التنبيهات المالية بناءً على بيانات العملاء والسائقين والتسوية
+   * Builds financial alerts from top customers (high debt), risky drivers,
+   * cash reconciliation difference, and expense spike detection.
+   *
+   * @param input.topCustomers - أبرز عملاء الديون | Top debtors
+   * @param input.riskyDrivers - السائقون ذوو المخاطر (اختياري) | Optional risky driver list
+   * @param input.reconciliationDifferenceKd - فارق التسوية بالدينار | Reconciliation diff
+   * @param input.expenseCurrentKd - مصروفات الفترة الحالية | Current period expenses
+   * @param input.expensePreviousKd - مصروفات الفترة السابقة | Previous period expenses
+   * @returns قائمة التنبيهات المالية | Financial alert list
+   */
   async buildAlerts(input: {
     topCustomers: OwnerTopCustomerDto[];
     riskyDrivers?: RiskyDriverDto[];

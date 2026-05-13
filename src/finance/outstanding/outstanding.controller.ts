@@ -54,6 +54,13 @@ const MUTATE_ROLES = [
  * Routes are registered without an explicit `/api` prefix because the
  * Nest app is bootstrapped with `setGlobalPrefix('api')`.
  */
+/**
+ * متحكم المدفوعات المعلقة — نقاط نهاية AR والتصدير وإدارة الحظر
+ * Outstanding-Payments (Accounts-Receivable) REST controller providing list, export,
+ * collection status update, and customer block/unblock operations.
+ * Mounted at `/api/finance/outstanding` and `/api/finance/outstanding/*`.
+ * @since V19.x
+ */
 @ApiTags('finance.outstanding')
 @ApiBearerAuth('bearer')
 @Controller()

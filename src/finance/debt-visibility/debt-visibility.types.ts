@@ -7,6 +7,12 @@
  * projection guarantees every screen picks it up automatically.
  */
 
+/**
+ * الدين المرئي للعميل — الرقم الوحيد الذي تعرضه جميع واجهات المستخدم
+ * Canonical visible debt for a customer — the single KD figure every UI MUST render.
+ * Includes invoice counts, wallet balances, payment history, and source provenance.
+ * @since V20.4 Phase 3/16
+ */
 export type CustomerVisibleDebt = {
   customerId: string;
   /** Canonical KD figure every UI MUST render. 4-dp string. */
@@ -37,6 +43,10 @@ export type CustomerVisibleDebt = {
   snapshotRefreshedAt: string | null;
 };
 
+/**
+ * لقطة التحصيل الإجمالية — مُستخدَمة في بطاقات KPI الحمراء
+ * Aggregate collections snapshot used by the collections red-KPI cards.
+ */
 export type CollectionsSnapshot = {
   /** Σ remainingDebtKd across all in-scope customers. */
   totalRemainingDebtKd: string;
@@ -47,6 +57,10 @@ export type CollectionsSnapshot = {
   generatedAt: string;
 };
 
+/**
+ * لقطة ديون المشترك — تُجمع الدين الكانوني مع حالة الاشتراك النشط
+ * Subscriber debt snapshot joining canonical debt with active-subscription state.
+ */
 export type SubscriberDebtSnapshot = {
   customerId: string;
   remainingDebtKd: string;
@@ -55,6 +69,10 @@ export type SubscriberDebtSnapshot = {
   hasActiveSubscription: boolean;
 };
 
+/**
+ * رؤية الفاتورة — حالة دفع الفاتورة مع المبالغ المُسددة والمتبقية
+ * Invoice visibility DTO with payment status and paid/remaining amounts.
+ */
 export type InvoiceVisibility = {
   orderId: string;
   totalKd: string;

@@ -15,6 +15,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import type { BankDepositsListQueryDto } from './dto/bank-deposits-list-query.dto';
 
+/**
+ * خدمة الإيداعات البنكية — تدير سجلات الإيداع من المدير إلى البنك
+ * Bank deposit management service handling the manager→bank cash transfer lifecycle:
+ * upload slip, verify deposit, approve/reject, and link to the general ledger.
+ */
 @Injectable()
 export class BankDepositsService {
   constructor(
@@ -23,6 +28,14 @@ export class BankDepositsService {
     private readonly auditLogs: AuditLogsService,
   ) {}
 
+  /**
+   * يُرجع قائمة سجلات الإيداع البنكي ضمن نطاق تاريخي محدد
+   * Lists bank deposit logs within the specified date range with uploader and verifier info.
+   *
+   * @param q - معايير الاستعلام (النطاق الزمني، عدد الصفوف) | Query parameters
+   * @returns قائمة سجلات الإيداع | Bank deposit log list
+   * @throws BadRequestException عند نطاق تاريخ غير صالح | On invalid date range
+   */
   async list(q: BankDepositsListQueryDto) {
     const take = q.take ?? 100;
     const to = q.to ? new Date(q.to) : new Date();
@@ -63,6 +76,20 @@ export class BankDepositsService {
     };
   }
 
+  /**
+   * يُنشئ سجل إيداع بنكي من رفع صورة إيصال الإيداع
+   * Creates a bank deposit record from a slip upload with coverage check and GL entry.
+   *
+   * @param managerId - معرف المدير | Manager user ID
+   * @param fileUrl - رابط صورة الإيصال | Deposit slip image URL
+   * @param depositType - نوع الإيداع | Deposit type
+   * @param amountKdRaw - المبلغ (نص أو رقم) | Amount as string or number
+   * @param shiftId - معرف الوردية (اختياري) | Optional shift ID
+   * @param actorRole - دور المستخدم الفاعل (اختياري) | Optional actor role from JWT
+   * @returns سجل الإيداع المُنشأ | Created deposit log record
+   * @throws BadRequestException عند مبلغ غير صالح | On invalid amount
+   * @throws NotFoundException إذا لم تُوجد الوردية | If shift not found
+   */
   async createFromUpload(
     managerId: string,
     fileUrl: string,

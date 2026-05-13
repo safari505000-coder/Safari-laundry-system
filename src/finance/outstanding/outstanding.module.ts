@@ -8,13 +8,10 @@ import { OutstandingService } from './outstanding.service';
 import { OutstandingSnapshotCron } from './outstanding-snapshot.cron';
 
 /**
- * V19.x — Outstanding-Payments / Accounts-Receivable module.
- *
- * Exports {@link OutstandingService} so the orders pipeline can call
- * `assertNotBlocked()` before issuing a new invoice (see
- * `OrdersService.createQuick / posCheckout / createPosPaymentBundleOrders /
- * createDirect`). `AuditLogsService` is provided globally by the
- * @Global() AuditLogsModule, no extra import needed here.
+ * وحدة المدفوعات المعلقة / الحسابات المستحقة القبض — تُصدّر OutstandingService لحارس الطلبات
+ * V19.x Outstanding-Payments / Accounts-Receivable module.
+ * Exports OutstandingService so the orders pipeline can call assertNotBlocked() before
+ * issuing a new invoice. AuditLogsService is provided globally by AuditLogsModule.
  */
 @Module({
   imports: [PrismaModule, DebtVisibilityModule, forwardRef(() => OrdersModule)],

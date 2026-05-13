@@ -14,6 +14,10 @@
 
 import { FinancialPeriodStatus } from '@prisma/client';
 
+/**
+ * لقطة صحة قفل الفترة المالية مع تفاصيل الانتهاكات والحالة
+ * Period lock health snapshot with violation counts and health classification.
+ */
 export interface PeriodHealthSnapshot {
   /** ISO timestamp at which the snapshot was computed. */
   at: string;
@@ -48,6 +52,10 @@ export interface PeriodHealthSnapshot {
   reason: string;
 }
 
+/**
+ * مدخلات مراقب صحة قفل الفترة — البيانات المُحمَّلة مسبقاً من قبل المُستدعي
+ * Pre-hydrated inputs for the period lock health projection (no Prisma calls inside).
+ */
 export interface PeriodHealthInput {
   /** `process.env.PERIOD_LOCK_ENFORCE === 'true'` at sample time. */
   enforcementMode: 'enforcing' | 'monitoring';
@@ -72,10 +80,13 @@ function isReversal(payload: unknown): boolean {
 }
 
 /**
+ * يُسقط بيانات الفترات والانتهاكات إلى لقطة صحة قابلة للتنبيه
  * Pure projection of period + violation data into a health snapshot.
- * No Prisma calls — the caller is expected to have already hydrated
- * the inputs (typically via `FinancialPeriodsService.list()` and
- * `FinancialPeriodsService.listViolations({ limit: 200 })`).
+ * No Prisma calls — caller pre-hydrates inputs from FinancialPeriodsService.
+ *
+ * @param input - مدخلات الفترات والانتهاكات المُحمَّلة مسبقاً | Pre-hydrated periods and violations
+ * @returns لقطة صحة قفل الفترة | Period lock health snapshot
+ * @since V21 Phase 4
  */
 export function projectPeriodHealth(
   input: PeriodHealthInput,

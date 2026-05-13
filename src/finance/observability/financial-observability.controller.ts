@@ -26,12 +26,23 @@ const ALLOWED_ROLES = new Set<string>([
  * `/overview` for the KPI strip and pull `/drift`, `/reconciliation`,
  * `/performance` on demand for incident response.
  */
+/**
+ * متحكم مراقبة النظام المالي — نقاط نهاية نظرة عامة والانحراف والتسوية والأداء
+ * Financial observability REST controller providing overview, drift, reconciliation,
+ * and performance endpoints for the KPI strip and incident response.
+ * Mounted at `/api/finance/observability/*`. Read-only.
+ * @since V20.6 Phase 3
+ */
 @Controller('finance/observability')
 @UseGuards(JwtAuthGuard)
 export class FinancialObservabilityController {
   constructor(private readonly svc: FinancialObservabilityService) {}
 
   @Get('overview')
+  /**
+   * يُرجع نظرة عامة على صحة النظام المالي مع نقاط الصحة المُركّبة
+   * Returns the financial system health overview with composite health score.
+   */
   async getOverview(
     @CurrentUser() user: JwtUser,
     @Query('windowHours') windowHours?: string,

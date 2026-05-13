@@ -55,6 +55,13 @@ const UI_DRIFT_STATUSES = new Set<UiDriftStatus>([
   'CRITICAL',
 ]);
 
+/**
+ * متحكم التدقيق المالي — نقاط نهاية التدقيق في الوقت الحقيقي (للقراءة فقط)
+ * Real-time financial audit REST controller. READ-ONLY endpoints surfacing drift,
+ * reconciliation, fraud signals, and UI-drift inspection.
+ * Mounted at `/api/finance/audit/*`.
+ * @since V20.1-v3
+ */
 @ApiTags('finance.audit')
 @ApiBearerAuth('bearer')
 @Controller('finance/audit')
@@ -71,6 +78,10 @@ export class FinancialAuditController {
     summary:
       'V20.1-v3 — per-customer wallet vs ledger drift + classification (paginated)',
   })
+  /**
+   * يُرجع نظرة عامة على انحراف المحافظ مقابل دفتر اليومية لكل عميل
+   * Returns paginated per-customer wallet vs journal-AR drift overview.
+   */
   getOverview(
     @Query('limit') limit?: string,
     @Query('cursor') cursor?: string,

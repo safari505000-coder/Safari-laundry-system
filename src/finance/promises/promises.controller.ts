@@ -45,6 +45,13 @@ type CreatePromiseBody = {
 
 type ResolveBody = { notes?: string | null };
 
+/**
+ * متحكم التعهدات بالدفع — نقاط نهاية إنشاء وإدارة تعهدات العملاء
+ * Promise-to-Pay REST controller providing create, list, resolve (KEPT/BROKEN/CANCELLED),
+ * and per-customer history endpoints.
+ * Mounted at `/api/collections/promises/*`.
+ * @since V20.5 Phase 2
+ */
 @Controller('collections/promises')
 @UseGuards(JwtAuthGuard)
 export class PromisesToPayController {

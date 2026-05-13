@@ -32,6 +32,13 @@ const VISIBILITY_READ_ROLES = [
   SafariRole.SUPERVISOR,
 ] as const;
 
+/**
+ * متحكم رؤية الديون — نقاط نهاية القراءة الكانونية للديون واللقطات والفواتير
+ * Read-only debt visibility REST controller backing frontend hooks
+ * (useCustomerDebt, useFinancialSnapshot, useInvoiceStatus, useCollectionsSummary).
+ * Mounted at `/api/finance/visibility/*`.
+ * @since V20.4 Phase 3/12
+ */
 @ApiTags('finance.visibility')
 @ApiBearerAuth('bearer')
 @Controller('finance/visibility')

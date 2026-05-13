@@ -81,6 +81,12 @@ const HANDOVER_RECEIPT_MIMES = new Set([
   'image/webp',
 ]);
 
+/**
+ * المتحكم المالي الرئيسي — نقاط نهاية المالية للسائقين والمحاسبين والملاك
+ * Main finance controller exposing driver shifts, cash handovers, debt reports,
+ * owner dashboard, settlement links, and driver monitoring endpoints.
+ * Mounted at `/api/finance/*`.
+ */
 @ApiTags('finance')
 @ApiBearerAuth('bearer')
 @Controller('finance')
@@ -99,6 +105,10 @@ export class FinanceController {
     description:
       'Driver-only. Ensures exactly one OPEN shift and auto-locks yesterday shift at 23:59:59 Kuwait when crossing midnight.',
   })
+  /**
+   * يضمن وجود وردية مفتوحة للسائق (تدوير تلقائي عند منتصف الليل)
+   * Ensures exactly one OPEN shift for the driver with auto-rollover at Kuwait midnight.
+   */
   async driverEnsureShift(@CurrentUser() user: JwtUser) {
     await this.financeService.ensureOpenShiftForDriver(user.userId);
     return { ok: true };
@@ -111,6 +121,10 @@ export class FinanceController {
     description:
       'OWNER only. Aggregates CustomerWallet balance (prepaid credit owed) and debt across all customers.',
   })
+  /**
+   * يُرجع ملخص محافظ العملاء (للمالك) مع إجماليات الالتزامات والديون
+   * Returns the owner's customer wallet liabilities and debt totals.
+   */
   getOwnerCustomerWalletSummary(): Promise<OwnerCustomerWalletSummaryDto> {
     return this.financeService.getOwnerCustomerWalletSummary();
   }
@@ -123,6 +137,10 @@ export class FinanceController {
     description:
       'Decision layer on top of canonical customer financials, cached with the finance dashboard cache.',
   })
+  /**
+   * يُرجع لوحة معلومات الذكاء المالي للمالك
+   * Returns the owner financial intelligence dashboard (cached).
+   */
   getOwnerFinancialDashboard() {
     return this.ownerFinancialDashboard.getDashboard();
   }
@@ -134,6 +152,10 @@ export class FinanceController {
     description:
       'A3.D8 — every pool of KD cash the institution currently holds: driver field cash + manager custody bags (PENDING_DEPOSIT / AWAITING_VERIFICATION) + branch wallets + unverified bank deposit logs. Used by the Owner/Accountant control-panel card so the total is the single source of truth.',
   })
+  /**
+   * يُرجع لقطة موحدة لجميع أحواض النقد المؤسسية
+   * Returns the consolidated cash snapshot across all institutional cash pools.
+   */
   getConsolidatedCashSnapshot() {
     return this.financeService.getConsolidatedCashSnapshot();
   }
@@ -152,6 +174,10 @@ export class FinanceController {
     description:
       'Aggregates completed POS orders with recorded PosPaymentMethod (subscription wallet, cash, KNET, ONLINE, DEBT_ON_ACCOUNT) for financial reporting.',
   })
+  /**
+   * يُرجع مبيعات نقاط البيع اليومية مُجمَّعة حسب طريقة الدفع
+   * Returns daily POS sales grouped by payment method for financial reporting.
+   */
   getDailyPosSales(
     @Query() q: DailyPosSalesQueryDto,
     @CurrentUser() user: JwtUser,

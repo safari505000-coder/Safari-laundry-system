@@ -33,6 +33,10 @@ import {
  * canonical projection plus an envelope ready for hashing.
  */
 
+/**
+ * مدخلات فاتورة إعادة التشغيل — الحد الأدنى من بيانات الفاتورة اللازمة للإسقاط
+ * Minimal invoice data required by the replay engine for canonical projection.
+ */
 export type ReplayInvoiceInput = {
   id: string;
   totalKd: string | number | Prisma.Decimal;
@@ -40,6 +44,10 @@ export type ReplayInvoiceInput = {
   openDebt: boolean;
 };
 
+/**
+ * مدخلات حدث إعادة التشغيل — بيانات الحدث اللازمة للإسقاط الكانوني
+ * Ledger event data required by the replay engine for canonical projection.
+ */
 export type ReplayEventInput = {
   id: string;
   atIso: string;
@@ -55,14 +63,26 @@ export type ReplayEventInput = {
   }>;
 };
 
+/**
+ * فاتورة مُعاد تشغيلها مع مجموعة الإسقاط الكانونية
+ * Replayed invoice enriched with its canonical statement invoice group.
+ */
 export type ReplayedInvoice = ReplayInvoiceInput & {
   projectionGroup: CanonicalStatementInvoiceGroup;
 };
 
+/**
+ * حدث مُعاد تشغيله مع إسقاطه الكانوني
+ * Replayed event enriched with its canonical statement event projection.
+ */
 export type ReplayedEvent = ReplayEventInput & {
   projection: CanonicalStatementEventProjection;
 };
 
+/**
+ * إسقاط كشف الحساب المُعاد تشغيله مع الفواتير والأحداث والإجماليات
+ * Full replayed statement projection containing invoices, events, and totals.
+ */
 export type ReplayedStatementProjection = {
   invoices: ReadonlyArray<ReplayedInvoice>;
   events: ReadonlyArray<ReplayedEvent>;
@@ -70,10 +90,15 @@ export type ReplayedStatementProjection = {
 };
 
 /**
+ * يُعيد بناء إسقاط كشف الحساب الكانوني من صفوف دفتر الأستاذ الخام
  * Reconstructs a canonical statement projection from raw ledger rows.
- * Outputs are deterministic: same inputs ⇒ byte-identical replay,
- * regardless of the input array order (events are sorted by ascending
- * `atIso` then `id`; invoices by ascending `id`).
+ * Deterministic: same inputs → byte-identical replay regardless of input order.
+ * Events sorted by atIso then id; invoices by id.
+ *
+ * @param invoices - صفوف الفواتير الخام | Raw invoice input rows
+ * @param events - صفوف الأحداث الخام | Raw event input rows
+ * @returns إسقاط كشف الحساب المُعاد تشغيله | Replayed statement projection
+ * @since V21 Phase 3
  */
 export function replayStatementProjection(
   invoices: ReadonlyArray<ReplayInvoiceInput>,

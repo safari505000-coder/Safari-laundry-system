@@ -52,6 +52,11 @@ function parseDepositType(raw: string | undefined): BankDepositType {
   );
 }
 
+/**
+ * متحكم الإيداعات البنكية — نقاط نهاية إدارة دورة الإيداع البنكي
+ * Bank deposits REST controller managing the manager→bank cash transfer lifecycle:
+ * list, upload, verify, approve, and reject. Mounted at `/api/finance/bank-deposits/*`.
+ */
 @ApiTags('finance')
 @ApiBearerAuth('bearer')
 @Controller('finance/bank-deposits')

@@ -2,15 +2,14 @@ import { Prisma } from '@prisma/client';
 import { round4Kd } from './round4kd.util';
 
 /**
+ * يُسلسل قيمة KWD إلى سلسلة بـ 4 منازل عشرية لاستجابات API
  * Canonical 4dp KWD string serialiser for API responses.
+ * Accepts Prisma.Decimal (banker-rounded), JS number, or string.
+ * Single source of truth for all response-shaping sites (V25 Controller Math Purge).
  *
- * Accepts the three value shapes that appear across backend response
- * builders: `Prisma.Decimal` (uses banker-rounded `round4Kd`), plain
- * JS `number`, and `string` KWD values from intermediate aggregations.
- *
- * Single source of truth — extracted from `payments.controller.ts`
- * (V25 Controller Math Purge) and `debt.service.ts` so that every
- * response-shaping site uses the same rounding and fallback logic.
+ * @param value - القيمة المالية بأي صيغة | Financial value in any supported format
+ * @returns سلسلة KWD بـ 4 منازل عشرية | 4dp KWD string
+ * @since V25
  */
 export function kwdStr(
   value:

@@ -38,6 +38,10 @@ const logger = new Logger('UiConsistency');
 
 type Db = Parameters<typeof computeCanonicalCustomerDebt>[0];
 
+/**
+ * سياق فحص اتساق واجهة المستخدم — يحدد مصدر الاتصال للتسجيل
+ * Context for UI consistency assertion identifying the call site for log triage.
+ */
 export type UiConsistencyContext = {
   /** Where this assertion fired from (caller hint for log triage). */
   source:
@@ -51,6 +55,10 @@ export type UiConsistencyContext = {
   correlationId?: string | null;
 };
 
+/**
+ * نتيجة فحص اتساق واجهة المستخدم مع المبالغ الثلاثة والانحراف الأقصى
+ * Result of the UI consistency assertion with three debt numbers and max pairwise delta.
+ */
 export type UiConsistencyResult = {
   customerId: string;
   ok: boolean;
@@ -81,6 +89,19 @@ const TOL = new Prisma.Decimal(UI_DEBT_CONSISTENCY_TOLERANCE_KD);
  * Never throws. Failures inside the helper are caught and
  * downgraded to a `[UI_CONSISTENCY_CHECK_FAILED]` warn log so
  * write-paths are never destabilised.
+ */
+/**
+ * يتحقق من اتساق أرقام الديون عبر الواجهات الثلاث ويُسجّل التحذيرات عند الانحراف
+ * Log-only UI consistency assertion comparing canonical debt vs subscriber vs collections views.
+ * Never throws — failures are logged as [UI_CONSISTENCY_MISMATCH] and return {ok: false}.
+ * Safe to call from hot transactional paths.
+ *
+ * @param args.db - قاعدة البيانات أو العميل داخل المعاملة | DB or transaction client
+ * @param args.journal - قارئ دفتر اليومية (اختياري) | Optional journal reader
+ * @param args.customerId - معرف العميل | Customer ID
+ * @param args.context - سياق التشخيص | Diagnostic context
+ * @returns نتيجة الفحص مع حالة النجاح | Consistency check result
+ * @since V20.3.2 Phase 5
  */
 export async function assertUiConsistency(args: {
   db: Db;

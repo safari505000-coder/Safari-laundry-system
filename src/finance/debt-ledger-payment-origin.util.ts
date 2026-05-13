@@ -12,6 +12,12 @@ import { DebtSource } from './enums/debt-source.enum';
  * INVOICE_SHORTFALL is already recorded as the *remainder* (post-wallet),
  * not the gross invoice. Counting them as AR-reducing would double-credit.
  */
+/**
+ * بادئات مراجع مصادر المدفوعات النقدية الحقيقية التي تُخفّض المديونية
+ * Real cash-equivalent payment sourceRef prefixes that reduce customer AR.
+ * Wallet absorption rows are intentionally excluded (see WALLET_ABSORPTION_SOURCE_REF_PREFIXES).
+ * @since V20.1
+ */
 export const REAL_PAYMENT_SOURCE_REF_PREFIXES = [
   'PAYMENT:CASH:',
   'PAYMENT:KNET:',
@@ -36,6 +42,11 @@ export const REAL_PAYMENT_SOURCE_REF_PREFIXES = [
  * DebtLedger entry, so the wallet drain was invisible to AR /
  * Customer-360 / Subscribers. These rows close that gap without
  * re-counting any money against the receivable.
+ */
+/**
+ * بادئات مراجع مصادر امتصاص المحفظة — للتدقيق فقط ولا تُخفّض المديونية
+ * Wallet absorption tracking PAYMENT sourceRef prefixes. Audit-only; never reduce AR.
+ * @since V20.1
  */
 export const WALLET_ABSORPTION_SOURCE_REF_PREFIXES = [
   'PAYMENT:WALLET:',
@@ -64,6 +75,10 @@ const NON_MONEY_NOTE_PATTERNS = [
   'migration',
 ] as const;
 
+/**
+ * نوع صف المدفوعات الشبيهة بدفتر الالتزام للتحقق من الأصل
+ * Duck-typed payment entry structure for payment-origin validation functions.
+ */
 export type DebtPaymentLike = {
   source: DebtSource | string;
   amount: Prisma.Decimal | number | string;
@@ -72,6 +87,15 @@ export type DebtPaymentLike = {
   note?: string | null;
 };
 
+/**
+ * يتحقق من أن صف دفتر الالتزام هو دفعة نقدية حقيقية تُخفّض المديونية
+ * Returns true when the entry is a cash-equivalent payment that reduces customer AR.
+ * Wallet absorption rows return false — they are valid audit entries but not AR-reducing.
+ *
+ * @param entry - صف المدفوعات للتحقق منه | Payment entry to validate
+ * @returns true إذا كانت دفعة حقيقية | Whether this is a real AR-reducing payment
+ * @since V20.1
+ */
 export function isRealDebtLedgerPayment(entry: DebtPaymentLike): boolean {
   if (entry.source !== DebtSource.PAYMENT && entry.source !== 'PAYMENT') {
     return false;
@@ -121,6 +145,15 @@ export function isRealDebtLedgerPayment(entry: DebtPaymentLike): boolean {
  * (audit-only; not subtracted from debt). Reports/UI use this to
  * answer "how much of this invoice was paid from wallet credit?".
  */
+/**
+ * يتحقق من أن صف دفتر الالتزام هو قيد امتصاص محفظة للتدقيق فقط
+ * Returns true when the entry is a wallet-absorption tracking PAYMENT (audit-only;
+ * not subtracted from AR/debt).
+ *
+ * @param entry - صف المدفوعات للتحقق منه | Payment entry to check
+ * @returns true إذا كان قيد امتصاص محفظة | Whether this is a wallet absorption entry
+ * @since V20.1
+ */
 export function isWalletAbsorptionLedgerEntry(entry: DebtPaymentLike): boolean {
   if (entry.source !== DebtSource.PAYMENT && entry.source !== 'PAYMENT') {
     return false;
@@ -132,6 +165,14 @@ export function isWalletAbsorptionLedgerEntry(entry: DebtPaymentLike): boolean {
   );
 }
 
+/**
+ * يتحقق من صحة كتابة المدفوعات في دفتر الالتزام — يرمي استثناء عند الانتهاك
+ * Asserts that a PAYMENT write to the debt ledger has a valid sourceRef and actorUserId.
+ * Throws on invalid or missing payment origin. Never mutates state.
+ *
+ * @param input - بيانات الكتابة للتحقق منها | Write input to validate
+ * @throws Error إذا كان المرجع أو المستخدم مفقوداً أو غير صالح | On missing/invalid origin
+ */
 export function assertDebtLedgerPaymentWrite(input: {
   source: DebtSource | string;
   actorUserId?: string | null;
@@ -155,6 +196,12 @@ export function assertDebtLedgerPaymentWrite(input: {
   }
 }
 
+/**
+ * يُسجّل عملية كتابة في دفتر الالتزام للتتبع والتدقيق
+ * Traces a debt ledger payment write for observability (console warn/log).
+ *
+ * @param input - بيانات التتبع | Trace input
+ */
 export function traceDebtLedgerPaymentWrite(input: {
   sourceFile: string;
   functionName: string;

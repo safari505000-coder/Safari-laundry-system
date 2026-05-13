@@ -42,6 +42,15 @@ import { PrismaService } from '../../prisma/prisma.service';
  *     writer commits and the close sees one extra row — which
  *     is fine, the close moves the lock cursor forward).
  */
+/**
+ * خدمة الفترات المالية — تدير إغلاق وفتح الفترات المحاسبية الشهرية
+ * Financial period management service owning the FinancialPeriod table and
+ * the `assertWriteAllowed` guard called by every journal writer.
+ * OPEN is implicit (no row). Closing upserts a CLOSED row and rejects
+ * back-dated financial mutations for that period.
+ *
+ * @since V20.5 Phase 5
+ */
 @Injectable()
 export class FinancialPeriodsService {
   private readonly logger = new Logger(FinancialPeriodsService.name);
@@ -52,6 +61,13 @@ export class FinancialPeriodsService {
    * Public API — list every recorded period (closed or open).
    * Implicit OPEN periods are NOT enumerated; the caller can
    * compute them from the calendar if needed.
+   */
+  /**
+   * يُرجع قائمة جميع الفترات المسجلة (مغلقة أو مفتوحة)
+   * Lists all recorded financial periods sorted by year/month descending.
+   * Implicit OPEN periods (no row) are NOT enumerated.
+   *
+   * @returns قائمة الفترات المالية | Financial period list
    */
   async list() {
     return this.prisma.financialPeriod.findMany({

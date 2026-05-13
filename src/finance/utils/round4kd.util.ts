@@ -1,12 +1,13 @@
 import { Prisma } from '@prisma/client';
 
 /**
- * Canonical 4dp KWD string formatter — banker-rounded (ROUND_HALF_EVEN).
+ * يُنسّق Decimal إلى سلسلة KWD بـ 4 منازل عشرية مع تقريب المحاسب
+ * Canonical 4dp KWD string formatter using banker rounding (ROUND_HALF_EVEN).
+ * Single source of truth for Decimal → KWD string conversion across Finance services.
  *
- * Single source of truth for Decimal → KWD string conversion across
- * Finance services. Extracted from `outstanding.service.ts` (V23.3)
- * so `customer-360-financials.ts` and future consumers share it without
- * duplicating the rounding algorithm.
+ * @param d - قيمة Decimal المُراد تنسيقها | Decimal value to format
+ * @returns سلسلة KWD بـ 4 منازل عشرية | 4dp KWD string
+ * @since V23.3
  */
 export function round4Kd(d: Prisma.Decimal): string {
   return d.toDecimalPlaces(4, Prisma.Decimal.ROUND_HALF_EVEN).toFixed(4);

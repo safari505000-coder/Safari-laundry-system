@@ -43,12 +43,25 @@ function toKd(d: Prisma.Decimal | null | undefined): string {
   return d.toFixed(4);
 }
 
+/**
+ * يمثل النافذة الزمنية المحلولة للوحة معلومات المحاسب
+ * Represents the resolved time window for the accountant dashboard,
+ * including the current and previous period ISO ranges.
+ */
 export type ResolvedDashboardWindow = {
   period: AccountantDashboardPeriod;
   current: { fromIso: string; toIso: string };
   previous: { fromIso: string; toIso: string };
 };
 
+/**
+ * خدمة لوحة معلومات المحاسب — تجمع مؤشرات الأداء المالية والتسويات والتنبيهات
+ * Accountant dashboard service: aggregates KPIs (sales, cash, deposits, profit),
+ * cash-pipeline stages, reconciliation status, and alert feeds.
+ *
+ * Every public endpoint delegates to a private `build*` method that is wrapped
+ * in {@link FinanceDashboardCacheService} for short-TTL caching.
+ */
 @Injectable()
 export class AccountantDashboardService {
   constructor(
@@ -57,6 +70,15 @@ export class AccountantDashboardService {
     private readonly cache: FinanceDashboardCacheService,
   ) {}
 
+  /**
+   * يُحدد النوافذ الزمنية الحالية والسابقة بناءً على الفترة المطلوبة
+   * Resolves the current and previous time windows for a dashboard period
+   * (TODAY, WEEK, or MONTH) relative to the given reference timestamp.
+   *
+   * @param period - الفترة الزمنية المختارة | Dashboard period enum value
+   * @param now - الوقت المرجعي (افتراضي: الآن) | Reference time (defaults to now)
+   * @returns نافذتان زمنيتان: الحالية والسابقة | Current and previous date ranges
+   */
   resolveWindow(
     period: AccountantDashboardPeriod,
     now = new Date(),
@@ -107,6 +129,14 @@ export class AccountantDashboardService {
     };
   }
 
+  /**
+   * يُرجع ملخص لوحة معلومات المحاسب مع مؤشرات الأداء الرئيسية والمخططات
+   * Returns the full accountant dashboard summary including KPIs, cash pipeline,
+   * expense insights, and daily time-series charts. Cached short-TTL.
+   *
+   * @param q - معايير استعلام اللوحة | Dashboard query parameters
+   * @returns ملخص شامل للوحة المعلومات | Full dashboard summary
+   */
   async getDashboardSummary(q: AccountantDashboardQueryDto) {
     const key = this.cache.cacheKey('summary', {
       period: q.period,
@@ -208,6 +238,14 @@ export class AccountantDashboardService {
     };
   }
 
+  /**
+   * يُرجع تقرير تسوية النقدية للفترة الزمنية المحددة
+   * Returns a cash reconciliation report comparing collected vs handed-in amounts
+   * for the selected dashboard window. Cached short-TTL.
+   *
+   * @param q - معايير استعلام اللوحة | Dashboard query parameters
+   * @returns تقرير التسوية مع الفوارق والشارات | Reconciliation report with diff and badge
+   */
   async getReconciliation(q: AccountantDashboardQueryDto) {
     const key = this.cache.cacheKey('recon', {
       period: q.period,
@@ -254,6 +292,14 @@ export class AccountantDashboardService {
     };
   }
 
+  /**
+   * يُقدم تفسيراً مفصلاً لتسوية النقدية مع تفصيل حسب اليوم والسائق والمدير
+   * Provides a detailed breakdown of the reconciliation by Kuwait day, driver, and manager
+   * with narrative hints explaining timing gaps. Cached short-TTL.
+   *
+   * @param q - معايير استعلام اللوحة | Dashboard query parameters
+   * @returns تفصيل التسوية مع الروايات التفسيرية | Detailed reconciliation with narratives
+   */
   async explainReconciliation(q: AccountantDashboardQueryDto) {
     const key = this.cache.cacheKey('explain', {
       period: q.period,
@@ -394,6 +440,14 @@ export class AccountantDashboardService {
     };
   }
 
+  /**
+   * يُرجع قائمة التنبيهات المالية النشطة مصنفة حسب الأولوية
+   * Returns active financial alerts sorted by severity: late driver cash,
+   * rejected custody bags, and expense spikes. Cached short-TTL.
+   *
+   * @param q - معايير استعلام اللوحة | Dashboard query parameters
+   * @returns قائمة التنبيهات مع الأولوية والتفاصيل | Alerts list with severity and detail
+   */
   async getAlerts(q: AccountantDashboardQueryDto) {
     const key = this.cache.cacheKey('alerts', {
       period: q.period,
@@ -537,6 +591,14 @@ export class AccountantDashboardService {
     return { alerts, generatedAt: new Date().toISOString() };
   }
 
+  /**
+   * يُولّد رؤى مالية نصية استناداً إلى بيانات الفترة المحددة
+   * Generates natural-language financial insight lines (profit trends, expense ratios,
+   * reconciliation status, oldest unhanded cash) for the selected period.
+   *
+   * @param q - معايير استعلام اللوحة | Dashboard query parameters
+   * @returns قائمة رؤى نصية وتوقيت توليدها | Array of insight strings and generatedAt timestamp
+   */
   async getInsights(q: AccountantDashboardQueryDto) {
     const key = this.cache.cacheKey('insights', {
       period: q.period,

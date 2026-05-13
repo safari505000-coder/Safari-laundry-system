@@ -48,6 +48,11 @@ function parseDepositType(raw: string | undefined): DepositType {
   throw new BadRequestException('type must be CASH or KNET');
 }
 
+/**
+ * متحكم الودائع — نقاط نهاية قائمة الودائع وتحديث الحالة والرفض
+ * Deposits REST controller providing driver/accountant deposit management:
+ * list, create, approve, reject. Mounted at `/api/finance/deposits/*`.
+ */
 @ApiTags('finance')
 @ApiBearerAuth('bearer')
 @Controller('finance/deposits')

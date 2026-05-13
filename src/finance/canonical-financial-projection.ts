@@ -1,21 +1,54 @@
 import { OrderStatus, Prisma } from '@prisma/client';
 
 /**
+ * عقد إسقاطات النواة المصرفية الرسمية — V21.
+ *
+ * يحتوي هذا الملف على مُختارات (selectors) قابلة للإعادة الاستخدام لإجماليات الكشوف،
+ * وأرصدة تشغيلية تراكمية، وملخصات مالية للقراءة فقط. لا يُنفِّذ أي كتابة
+ * في دفتر الأستاذ أو اليومية — قراءة صرفة.
+ *
  * V21 Canonical Banking Core projection contract.
  *
- * This file owns reusable projection selectors for statement totals, report
- * running balances, and other read-model-only financial summaries. It must stay
- * read-only and must not write ledger/journal rows.
+ * Owns reusable projection selectors for statement totals, running balances,
+ * and other read-model-only financial summaries. Must stay read-only — must
+ * not write any ledger or journal rows.
+ *
+ * @since V21
  */
 
+/**
+ * مدخلات فاتورة واحدة لحساب إجماليات الكشف الرسمي.
+ * `openDebt` يُحدد إن كانت الفاتورة ما زالت مستحقة أم سُددت.
+ *
+ * Single invoice input for computing canonical statement totals.
+ * `openDebt` indicates whether the invoice is still outstanding or settled.
+ *
+ * @since V21
+ */
 export type CanonicalStatementInvoiceInput = {
   totalKd: string | number | Prisma.Decimal;
   status: OrderStatus | string;
   openDebt: boolean;
 };
 
+/**
+ * تصنيف الفاتورة في الكشف: غير مسددة / مسددة / ملغاة.
+ *
+ * Invoice classification for statement display: unpaid / paid / canceled.
+ *
+ * @since V21
+ */
 export type CanonicalStatementInvoiceGroup = 'UNPAID' | 'PAID' | 'CANCELED';
 
+/**
+ * إجماليات الكشف الرسمي: إجمالي الفوترة، المسدد، المفتوح، وعدادات الفئات.
+ * جميع القيم المالية نصية 4dp KWD من الخادم — بدون حسابات في الواجهة.
+ *
+ * Canonical statement totals: total invoiced, paid, open, and category counts.
+ * All monetary values are 4dp KWD strings from the server — no client arithmetic.
+ *
+ * @since V21
+ */
 export type CanonicalStatementTotals = {
   totalInvoicedKd: string;
   totalPaidInvoicesKd: string;
@@ -25,6 +58,17 @@ export type CanonicalStatementTotals = {
   canceledInvoiceCount: number;
 };
 
+/**
+ * يُصنِّف فاتورة واحدة إلى مجموعة الكشف (غير مسددة / مسددة / ملغاة).
+ * تأخذ الأولوية للحالة `CANCELED` بصرف النظر عن `openDebt`.
+ *
+ * Classifies a single invoice into its statement group (UNPAID / PAID / CANCELED).
+ * CANCELED status takes priority over the `openDebt` flag.
+ *
+ * @param invoice - حالة الفاتورة ومؤشر الدين المفتوح | Invoice status and open-debt flag
+ * @returns تصنيف المجموعة | Statement group classification
+ * @since V21
+ */
 export function canonicalStatementInvoiceGroup(
   invoice: Pick<CanonicalStatementInvoiceInput, 'status' | 'openDebt'>,
 ): CanonicalStatementInvoiceGroup {
@@ -34,6 +78,19 @@ export function canonicalStatementInvoiceGroup(
   return invoice.openDebt ? 'UNPAID' : 'PAID';
 }
 
+/**
+ * يحسب إجماليات الكشف الرسمي من مصفوفة فواتير.
+ * الفواتير الملغاة تُحتسب في العداد فقط — لا تُضاف لأي إجمالي مالي.
+ * جميع الحسابات تجري بـ `Prisma.Decimal` — لا `parseFloat`.
+ *
+ * Computes canonical statement totals from an array of invoices.
+ * Canceled invoices only count towards the counter — excluded from all monetary totals.
+ * All arithmetic uses `Prisma.Decimal` — no `parseFloat`.
+ *
+ * @param invoices - قائمة مدخلات الفواتير | Invoice input array
+ * @returns إجماليات الكشف الرسمية | Canonical statement totals
+ * @since V21
+ */
 export function computeCanonicalStatementTotals(
   invoices: ReadonlyArray<CanonicalStatementInvoiceInput>,
 ): CanonicalStatementTotals {
@@ -73,6 +130,14 @@ export function computeCanonicalStatementTotals(
   };
 }
 
+/**
+ * مدخلات حدث واحد من كشف العميل (تفعيل اشتراك، دفعة، إلخ) لحساب إسقاط الحدث.
+ *
+ * Single customer statement event input for projection computation
+ * (subscription activation, payment, etc.).
+ *
+ * @since V21
+ */
 export type CanonicalStatementEventInput = {
   kind: string;
   amountKd: string | number | Prisma.Decimal;
@@ -83,6 +148,15 @@ export type CanonicalStatementEventInput = {
   closedInvoices?: ReadonlyArray<{ totalKd: string | number | Prisma.Decimal }>;
 };
 
+/**
+ * إسقاط حدث الكشف: هل هو قيد دائن؟ الذمة الفعلية بعد الحدث، ومؤشرات الخصم والتسوية.
+ * يُستخدم في واجهات Customer 360 وكشف حساب مركز الاتصال.
+ *
+ * Statement event projection: credit indicator, effective debt after event,
+ * and discount/settlement flags. Used in Customer 360 and CC statement UIs.
+ *
+ * @since V21
+ */
 export type CanonicalStatementEventProjection = {
   isCredit: boolean;
   effectiveDebtAfterKd: string;
@@ -91,6 +165,19 @@ export type CanonicalStatementEventProjection = {
   closedInvoicesTotalKd: string;
 };
 
+/**
+ * يحسب إسقاط حدث كشف العميل من مدخلاته.
+ * الذمة الفعلية = ذمة بعد الحدث + الرصيد السالب المطلق (إن وُجد).
+ * إجمالي الفواتير المغلقة يُحسب من مصفوفة `closedInvoices`.
+ *
+ * Computes the canonical statement event projection from event inputs.
+ * Effective debt = debt-after + |negative balance| (if any).
+ * Closed invoices total aggregated from the `closedInvoices` array.
+ *
+ * @param event - بيانات الحدث | Event input data
+ * @returns إسقاط الحدث | Event projection
+ * @since V21
+ */
 export function computeCanonicalStatementEventProjection(
   event: CanonicalStatementEventInput,
 ): CanonicalStatementEventProjection {
@@ -116,6 +203,14 @@ export function computeCanonicalStatementEventProjection(
   };
 }
 
+/**
+ * صف واحد من مدخلات الرصيد التراكمي المتبقي للعميل (حسب الطلب وتاريخ الإصدار).
+ *
+ * Single row input for computing the customer's chronological running remaining balance
+ * (per order and issuance date).
+ *
+ * @since V21
+ */
 export type CanonicalRunningRemainingInput = {
   customerId: string;
   orderId: string;
@@ -124,10 +219,25 @@ export type CanonicalRunningRemainingInput = {
   remainingKd: string | number | Prisma.Decimal;
 };
 
+/**
+ * نتيجة صف مُثرّى برصيد تراكمي متبقٍ للعميل (`customerRunningRemainingKd`).
+ *
+ * Row enriched with the customer's running remaining KD balance after this row.
+ *
+ * @since V21
+ */
 export type CanonicalRunningRemainingResult<T> = T & {
   customerRunningRemainingKd: string;
 };
 
+/**
+ * مدخلات صف سائق لملخص الذمم المستحقة (عدد الفواتير، الإجمالي، التأخر).
+ *
+ * Driver row input for the outstanding debt driver summary
+ * (invoice count, total due, days late).
+ *
+ * @since V21
+ */
 export type CanonicalOutstandingDriverInput = {
   driverId?: string | null;
   driverName?: string | null;
@@ -136,6 +246,13 @@ export type CanonicalOutstandingDriverInput = {
   daysLate: number;
 };
 
+/**
+ * ملخص سائق واحد في تقرير الذمم المستحقة (مجمَّع من طلباته).
+ *
+ * Aggregated driver summary in the outstanding debt report.
+ *
+ * @since V21
+ */
 export type CanonicalOutstandingDriverSummary = {
   driverId: string | null;
   driverName: string;
@@ -145,6 +262,13 @@ export type CanonicalOutstandingDriverSummary = {
   maxDaysLate: number;
 };
 
+/**
+ * صف فاتورة غير مسددة بقناة إلكترونية (رابط دفع / أونلاين) لإسقاط التقرير.
+ *
+ * Unpaid-online invoice row for the payment-link/online report projection.
+ *
+ * @since V21
+ */
 export type CanonicalUnpaidOnlineReportRow = {
   amountKd: string | number | Prisma.Decimal;
   branchName?: string | null;
@@ -154,6 +278,13 @@ export type CanonicalUnpaidOnlineReportRow = {
   paymentMethod?: string | null;
 };
 
+/**
+ * ملخص فرع واحد في تقرير الفواتير الإلكترونية غير المسددة.
+ *
+ * Single branch summary in the unpaid-online invoice report.
+ *
+ * @since V21
+ */
 export type CanonicalUnpaidOnlineBranchSummary = {
   branchName: string;
   invoices: number;
@@ -161,23 +292,53 @@ export type CanonicalUnpaidOnlineBranchSummary = {
   driversCount: number;
 };
 
+/**
+ * ملخص روابط الدفع القابلة للإجراء مقابل الإجمالي الكلي.
+ *
+ * Summary of actionable payment-link rows vs. total row count.
+ *
+ * @since V21
+ */
 export type CanonicalUnpaidOnlinePaymentLinkSummary = {
   totalRows: number;
   actionableRows: number;
 };
 
+/**
+ * الإسقاط الكامل لتقرير الفواتير الإلكترونية غير المسددة:
+ * ملخصات الفروع + ملخص روابط الدفع + مؤشرات أسطر روابط الدفع.
+ *
+ * Full projection for the unpaid-online report:
+ * branch summaries + payment-link summary + actionable row indexes.
+ *
+ * @since V21
+ */
 export type CanonicalUnpaidOnlineReportProjection = {
   branchSummaries: CanonicalUnpaidOnlineBranchSummary[];
   paymentLinkSummary: CanonicalUnpaidOnlinePaymentLinkSummary;
   paymentLinkRowIndexes: number[];
 };
 
+/**
+ * مدخلات يوم واحد من تقرير تعافي الديون (المحصَّل، عدد التسويات، عدد الاشتراكات).
+ *
+ * Single day input for the debt recovery report (recovered amount, settlement and subscription counts).
+ *
+ * @since V21
+ */
 export type CanonicalDebtRecoveryDayInput = {
   recoveredKd: string | number | Prisma.Decimal;
   settlementCount: number;
   subscriptionCount: number;
 };
 
+/**
+ * ملخص تقرير تعافي الديون: إجماليات وأعلى يوم وتوجهات نسبية (0–100).
+ *
+ * Debt recovery report summary: totals, peak day, and relative trend ratios (0–100).
+ *
+ * @since V21
+ */
 export type CanonicalDebtRecoverySummary = {
   totalSettlements: number;
   totalSubscriptions: number;
@@ -185,6 +346,13 @@ export type CanonicalDebtRecoverySummary = {
   trendRatios: number[];
 };
 
+/**
+ * مدخلات إجماليات مدفوعات العمولة (معلقة / محررة / مدفوعة / ملغاة).
+ *
+ * Commission payout totals input (pending / released / paid / cancelled).
+ *
+ * @since V21
+ */
 export type CanonicalCommissionPayoutTotalsInput = {
   pendingKd: string | number | Prisma.Decimal;
   releasedKd: string | number | Prisma.Decimal;
@@ -192,6 +360,13 @@ export type CanonicalCommissionPayoutTotalsInput = {
   cancelledKd: string | number | Prisma.Decimal;
 };
 
+/**
+ * إجماليات ملخص مدفوعات العمولة كقيم نصية 4dp KWD.
+ *
+ * Commission payout summary totals as 4dp KWD strings.
+ *
+ * @since V21
+ */
 export type CanonicalCommissionPayoutSummaryTotals = {
   pendingKd: string;
   releasedKd: string;
@@ -199,11 +374,25 @@ export type CanonicalCommissionPayoutSummaryTotals = {
   cancelledKd: string;
 };
 
+/**
+ * صف مدخلات فاتورة سائق معلقة (المبلغ + النص القابل للبحث للتصفية).
+ *
+ * Driver pending invoice input row (amount + searchable text for filtering).
+ *
+ * @since V21
+ */
 export type CanonicalDriverPendingInvoiceInput = {
   amountKd: string | number | Prisma.Decimal;
   searchableText: string;
 };
 
+/**
+ * إسقاط قائمة فواتير السائق المعلقة مع دعم البحث النصي والإجمالي.
+ *
+ * Projection of driver pending invoices with text search support and totals.
+ *
+ * @since V21
+ */
 export type CanonicalDriverPendingInvoiceProjection<T> = {
   rows: T[];
   totalAmountKd: string;
@@ -211,10 +400,24 @@ export type CanonicalDriverPendingInvoiceProjection<T> = {
   totalCount: number;
 };
 
+/**
+ * مدخلات صف كاش سائق (المبلغ) لحساب ملخص العهدة النقدية.
+ *
+ * Driver cash custody row input (amount) for computing the custody summary.
+ *
+ * @since V21
+ */
 export type CanonicalDriverCashCustodyInput = {
   amountKd: string | number | Prisma.Decimal;
 };
 
+/**
+ * ملخص العهدة النقدية للسائق: إجمالي الكاش، عدد الطلبات، والإجمالي الكلي.
+ *
+ * Driver cash custody summary: cash total, order count, and grand total.
+ *
+ * @since V21
+ */
 export type CanonicalDriverCashCustodySummary = {
   cashTotalKd: string;
   cashOrderCount: number;
@@ -227,6 +430,19 @@ const debtSourceSortRank = (source: string | null | undefined): number => {
   return 2;
 };
 
+/**
+ * يُضيف الرصيد التراكمي المتبقي للعميل إلى كل صف بترتيب زمني.
+ * الصفوف بنفس تاريخ الإصدار تُرتَّب بـ `orderId` ثم مصدر الدين
+ * (`INVOICE_SHORTFALL` أولًا) للحصول على تراكم حتمي ومتكرر.
+ *
+ * Attaches a customer-scoped running remaining balance to every row in chronological order.
+ * Rows with the same issuance date are sub-sorted by `orderId` then debt source
+ * (`INVOICE_SHORTFALL` first) for a deterministic, repeatable accumulation.
+ *
+ * @param rows - صفوف مرتبة بأي ترتيب | Rows in any order
+ * @returns نفس الصفوف مُثرَّاة بـ `customerRunningRemainingKd` | Same rows enriched with running balance
+ * @since V21
+ */
 export function attachCanonicalRunningRemaining<
   T extends CanonicalRunningRemainingInput,
 >(rows: ReadonlyArray<T>): Array<CanonicalRunningRemainingResult<T>> {
@@ -260,6 +476,17 @@ export function attachCanonicalRunningRemaining<
 const NO_DRIVER_LABEL = 'بدون سائق';
 const NO_BRANCH_LABEL = 'بدون فرع';
 
+/**
+ * يُجمِّع صفوف الذمم المستحقة إلى ملخصات حسب السائق مرتبة تنازليًا بالمبلغ.
+ * السائقون بلا معرف يُجمَّعون تحت تسمية `بدون سائق`.
+ *
+ * Aggregates outstanding debt rows into per-driver summaries sorted by amount descending.
+ * Rows without a driver ID are grouped under `بدون سائق`.
+ *
+ * @param rows - صفوف مدخلات السائقين | Driver input rows
+ * @returns ملخصات السائقين مرتبة | Sorted driver summaries
+ * @since V21
+ */
 export function computeCanonicalOutstandingDriverSummaries(
   rows: ReadonlyArray<CanonicalOutstandingDriverInput>,
 ): CanonicalOutstandingDriverSummary[] {
@@ -313,6 +540,20 @@ export function computeCanonicalOutstandingDriverSummaries(
     });
 }
 
+/**
+ * يُنتج إسقاط تقرير الفواتير الإلكترونية غير المسددة:
+ * ملخصات الفروع مرتبة تنازليًا + ملخص روابط الدفع + مؤشرات الأسطر القابلة للإجراء.
+ * صف قابل للإجراء = مبلغ موجب + رابط دفع أو تذكير سابق أو وسيلة دفع إلكترونية.
+ *
+ * Produces the unpaid-online report projection:
+ * branch summaries sorted descending + payment-link summary + actionable row indexes.
+ * A row is actionable if it has a positive amount with a payment URL, prior reminder,
+ * or electronic payment method.
+ *
+ * @param rows - صفوف الفواتير غير المسددة بقناة إلكترونية | Unpaid-online invoice rows
+ * @returns إسقاط التقرير الكامل | Full report projection
+ * @since V21
+ */
 export function computeCanonicalUnpaidOnlineReportProjection(
   rows: ReadonlyArray<CanonicalUnpaidOnlineReportRow>,
 ): CanonicalUnpaidOnlineReportProjection {
@@ -386,6 +627,17 @@ function isCanonicalPaymentLinkActionable(
   return row.paymentMethod === 'PAYMENT_LINK' || row.paymentMethod === 'ONLINE';
 }
 
+/**
+ * يُلخِّص بيانات تعافي الديون اليومية: الإجماليات، أعلى يوم محصَّل، والنسب التوجهية.
+ * النسب توجهية (0–100) تُقاس نسبةً للقيمة اليومية القصوى للرسوم البيانية.
+ *
+ * Summarises daily debt recovery data: totals, peak recovered day, and trend ratios.
+ * Trend ratios (0–100) are relative to the maximum daily value for charting.
+ *
+ * @param days - بيانات أيام تعافي الديون | Debt recovery day data
+ * @returns ملخص تعافي الديون | Debt recovery summary
+ * @since V21
+ */
 export function computeCanonicalDebtRecoverySummary(
   days: ReadonlyArray<CanonicalDebtRecoveryDayInput>,
 ): CanonicalDebtRecoverySummary {
@@ -411,6 +663,17 @@ export function computeCanonicalDebtRecoverySummary(
   };
 }
 
+/**
+ * يحسب إجماليات ملخص مدفوعات العمولة من صفوف متعددة.
+ * الجمع بـ `Prisma.Decimal` — لا `parseFloat`.
+ *
+ * Computes commission payout summary totals from multiple rows.
+ * Aggregation uses `Prisma.Decimal` — no `parseFloat`.
+ *
+ * @param totals - صفوف المدخلات | Input rows
+ * @returns إجماليات ملخص العمولة | Commission summary totals
+ * @since V21
+ */
 export function computeCanonicalCommissionPayoutSummaryTotals(
   totals: ReadonlyArray<CanonicalCommissionPayoutTotalsInput>,
 ): CanonicalCommissionPayoutSummaryTotals {
@@ -436,6 +699,20 @@ export function computeCanonicalCommissionPayoutSummaryTotals(
   };
 }
 
+/**
+ * يُصفِّي فواتير السائق المعلقة بنص البحث ويُحسب الإجمالي والعدادات.
+ * البحث غير حساس لحالة الأحرف ويقارن بحقل `searchableText` المُعدَّ مسبقًا.
+ * إذا كان البحث فارغًا تُعاد جميع الصفوف.
+ *
+ * Filters driver pending invoices by search text and computes total and counts.
+ * Case-insensitive match against the pre-computed `searchableText` field.
+ * Returns all rows when search is empty.
+ *
+ * @param rows - صفوف الفواتير المعلقة | Pending invoice rows
+ * @param search - نص البحث (اختياري) | Search text (optional)
+ * @returns إسقاط الفواتير المصفّاة مع الإجمالي | Filtered invoice projection with totals
+ * @since V21
+ */
 export function computeCanonicalDriverPendingInvoiceProjection<
   T extends CanonicalDriverPendingInvoiceInput,
 >(
@@ -460,6 +737,17 @@ export function computeCanonicalDriverPendingInvoiceProjection<
   };
 }
 
+/**
+ * يحسب ملخص العهدة النقدية للسائق من صفوف الكاش.
+ * `grandTotalKd` = `cashTotalKd` (لا توجد قنوات أخرى في هذا الإسقاط حاليًا).
+ *
+ * Computes the driver cash custody summary from cash rows.
+ * `grandTotalKd` equals `cashTotalKd` (no other channels in this projection currently).
+ *
+ * @param rows - صفوف الكاش | Cash rows
+ * @returns ملخص العهدة النقدية | Cash custody summary
+ * @since V21
+ */
 export function computeCanonicalDriverCashCustodySummary(
   rows: ReadonlyArray<CanonicalDriverCashCustodyInput>,
 ): CanonicalDriverCashCustodySummary {

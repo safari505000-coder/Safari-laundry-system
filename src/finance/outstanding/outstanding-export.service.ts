@@ -18,10 +18,25 @@ const STATUS_LABEL: Record<string, string> = {
  * totals). Returns a `Readable` so the controller can pipe it through
  * a Nest `StreamableFile`.
  */
+/**
+ * خدمة تصدير المديونيات المعلقة — تُولّد ملف Excel مطابق لعرض الشاشة
+ * Excel exporter for the Outstanding-Payments view.
+ * Reuses OutstandingService.listOutstanding so the workbook is a 1-for-1 mirror
+ * of the on-screen table (same filters, same totals).
+ * @since V19.x
+ */
 @Injectable()
 export class OutstandingExportService {
   constructor(private readonly outstanding: OutstandingService) {}
 
+  /**
+   * يُصدّر بيانات المديونيات المعلقة إلى ملف Excel مع التنسيق العربي
+   * Exports outstanding payments data to an XLSX workbook stream with Arabic RTL formatting.
+   *
+   * @param query - معايير التصفية (نفس `listOutstanding`) | Outstanding filter query
+   * @param actor - المستخدم الحالي لتحديد نطاق الفرع | Current user for branch scoping
+   * @returns تدفق Excel واسم الملف | Excel stream and filename
+   */
   async toXlsx(
     query: OutstandingQueryDto,
     actor?: JwtUser | null,

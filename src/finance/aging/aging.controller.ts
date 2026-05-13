@@ -55,12 +55,22 @@ function parseAsOf(raw: string | undefined): Date | undefined {
   return v;
 }
 
+/**
+ * متحكم تحليل أعمار الديون — نقاط نهاية التقرير والعملاء والفواتير
+ * Aging REST controller providing the portfolio report, per-customer summary,
+ * and per-invoice rows. Mounted at `/api/finance/aging/*`.
+ * @since V20.5 Phase 1
+ */
 @Controller('finance/aging')
 @UseGuards(JwtAuthGuard)
 export class AgingController {
   constructor(private readonly aging: AgingService) {}
 
   @Get('report')
+  /**
+   * يُرجع تقرير أعمار الديون على مستوى المحفظة بالشرائح والإجماليات
+   * Returns the banking-grade portfolio aging report with bucket totals and headline KPIs.
+   */
   async getReport(
     @CurrentUser() user: JwtUser,
     @Query('asOf') asOf?: string,

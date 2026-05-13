@@ -4,12 +4,10 @@ import { FinancialSnapshotsModule } from '../snapshots/snapshots.module';
 import { CollectionsIntelligenceService } from './collections-intelligence.service';
 
 /**
- * V20.4 — Phase 9 collections intelligence module.
- *
- * Pure read; consumes `FinancialSnapshot` + ledger / order
- * primaries. Exported so the Collections page / call-center
- * dashboards can fan out priority computations across a
- * paginated set of customer ids.
+ * وحدة استخبارات التحصيل — حساب درجات الأولوية والمخاطر للعملاء
+ * V20.4 Phase 9 collections intelligence module.
+ * Pure read: consumes FinancialSnapshot + ledger/order primaries.
+ * Exported for Collections page and call-center dashboards.
  */
 @Module({
   imports: [PrismaModule, FinancialSnapshotsModule],

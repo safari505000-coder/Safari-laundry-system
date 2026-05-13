@@ -61,6 +61,10 @@ import {
 
 const TOLERANCE_KD = new Prisma.Decimal('0.001');
 
+/**
+ * اسم ثابت التسوية المالية المدعوم في محرك التسوية
+ * Name of a supported financial reconciliation invariant.
+ */
 export type ReconciliationInvariant =
   | 'TRIAL_BALANCE'
   | 'ASSETS_EQ_LIAB_PLUS_EQUITY'
@@ -68,6 +72,10 @@ export type ReconciliationInvariant =
   | 'AR_INTEGRITY'
   | 'SNAPSHOT_AR_MATCH';
 
+/**
+ * نتيجة ثابت تسوية واحد مع القيم المتوقعة والفعلية والانحراف
+ * Result row for a single reconciliation invariant with expected/actual/delta values.
+ */
 export type ReconciliationResultRow = {
   invariant: ReconciliationInvariant;
   expectedKd: string;
@@ -77,6 +85,10 @@ export type ReconciliationResultRow = {
   detail?: string;
 };
 
+/**
+ * تقرير التسوية الكامل يشمل جميع الثوابت والوقت والتفاوت
+ * Full reconciliation report with all invariant rows, timing, tolerance, and pass/fail.
+ */
 export type ReconciliationReport = {
   generatedAt: string;
   durationMs: number;
@@ -86,8 +98,16 @@ export type ReconciliationReport = {
   ok: boolean;
 };
 
+/**
+ * اسم حدث الانحراف المالي المُرسَل عبر EventEmitter2 عند فشل أي ثابت
+ * EventEmitter2 event name emitted when any reconciliation invariant fails.
+ */
 export const FINANCE_DRIFT_EVENT = 'finance.drift.detected';
 
+/**
+ * حمولة حدث الانحراف المالي المُرسَل عبر EventEmitter2
+ * Payload for the `finance.drift.detected` domain event.
+ */
 export type FinanceDriftPayload = {
   invariant: ReconciliationInvariant;
   expectedKd: string;
@@ -97,6 +117,15 @@ export type FinanceDriftPayload = {
   generatedAt: string;
 };
 
+/**
+ * محرك التسوية المالية — يُشغّل الثوابت المحاسبية ويُرسل أحداث الانحراف
+ * Financial reconciliation engine running five banking-grade invariants
+ * (Trial Balance, Balance Sheet Identity, Wallet Liability Match, AR Integrity,
+ * Snapshot AR Match). Emits `finance.drift.detected` events on failures.
+ * Read-only and idempotent; safe alongside live traffic.
+ *
+ * @since V20.4 Phase 6 / V24 Station 1
+ */
 @Injectable()
 export class ReconciliationService {
   private readonly logger = new Logger(ReconciliationService.name);
@@ -151,6 +180,13 @@ export class ReconciliationService {
    * The HTTP endpoint and the cron both call this. Each invariant
    * is independent — one failure does not prevent the others from
    * running.
+   */
+  /**
+   * يُشغّل جميع ثوابت التسوية مرة واحدة ويُرجع تقريراً موحداً
+   * Runs all five reconciliation invariants independently and returns a unified report.
+   * Emits one `finance.drift.detected` event per failing invariant.
+   *
+   * @returns تقرير التسوية الكامل | Full reconciliation report
    */
   async runOnce(): Promise<ReconciliationReport> {
     const startedAt = Date.now();

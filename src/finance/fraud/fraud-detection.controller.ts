@@ -29,6 +29,12 @@ const RESOLVE_ROLES = new Set<string>([
   SafariRole.ACCOUNTANT,
 ]);
 
+/**
+ * متحكم كشف الاحتيال — نقاط نهاية قائمة التنبيهات وتشغيل الفحص وحل التنبيهات
+ * Fraud detection REST controller providing alert list, manual sweep trigger, and resolution.
+ * Mounted at `/api/finance/fraud-alerts/*`.
+ * @since V20.5 Phase 8
+ */
 @Controller('finance/fraud-alerts')
 @UseGuards(JwtAuthGuard)
 export class FraudDetectionController {

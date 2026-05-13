@@ -44,6 +44,15 @@ import {
  *     their open invoices — operators care about "worst case", not
  *     average exposure.
  */
+/**
+ * محرك تحليل أعمار الديون — يصنّف الفواتير المفتوحة حسب شرائح الأعمار
+ * Pure-read aging engine classifying open invoices into banking-standard buckets
+ * (CURRENT / LATE / CRITICAL / LEGAL) based on days overdue.
+ * Never writes; computed from primaries on demand. Parameterised "as of" date
+ * enables historical snapshot generation for period-end reports.
+ *
+ * @since V20.5 Phase 1
+ */
 @Injectable()
 export class AgingService {
   private readonly logger = new Logger(AgingService.name);
@@ -57,6 +66,14 @@ export class AgingService {
    *
    * Sorted descending by `overdueDays` so the LEGAL rows surface
    * first; downstream pagination is the caller's concern.
+   */
+  /**
+   * يُرجع قائمة أعمار الفواتير المفتوحة مُصنفة حسب شريحة الأيام
+   * Returns per-invoice aging rows for all open invoices sorted by overdue days descending.
+   *
+   * @param opts.asOf - تاريخ الحساب (افتراضي: الآن) | "As of" date (defaults to now)
+   * @param opts.customerId - تصفية بالعميل (اختياري) | Optional customer filter
+   * @returns صفوف أعمار الفواتير مُرتبة تنازلياً | Invoice aging rows sorted descending
    */
   async listInvoiceAging(opts?: {
     asOf?: Date;

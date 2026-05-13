@@ -1,6 +1,14 @@
 /**
- * Stateless debt aggregations reused by Finance (DebtService) and Orders —
- * avoids importing FinanceModule into OrdersModule (Payments → Ledger → Orders cycle).
+ * مجموعات ديون بلا حالة تُعاد مشاركتها بين Finance (DebtService) وOrders.
+ * الهدف الرئيسي تفادي استيراد `FinanceModule` من `OrdersModule` والدوري الدائري
+ * (Payments → Ledger → Orders). جميع الدوال قراءة فقط — لا تعديلات على البيانات.
+ *
+ * Stateless debt aggregation utilities shared by Finance (DebtService) and Orders.
+ * Primary goal: avoid importing `FinanceModule` into `OrdersModule` which would
+ * create a circular dependency (Payments → Ledger → Orders). All functions are
+ * read-only — no data mutations.
+ *
+ * @since V20.2
  */
 import { OrderStatus, Prisma } from '@prisma/client';
 
@@ -31,25 +39,35 @@ type RemainingOrderRow = {
 };
 
 /**
- * V20.3.1 — tolerance under which an invoice is considered fully
- * paid. Keeps trailing 4-dp arithmetic from leaving a 0.0001 KD
- * residual "open" forever. Lives in the util file (and not in
- * `invoice-payment-status.service.ts`) so customer-ledger /
- * orders / outstanding can import it without pulling in the
- * service class and creating module cycles.
+ * هامش التسامح تحته تُعتبر الفاتورة مسددة بالكامل (V20.3.1).
+ * يمنع بقاء رصيد 0.0001 د.ك كـ"فاتورة مفتوحة" بسبب تقريب الأرقام العشرية.
+ * يقع في ملف الأدوات (لا في `invoice-payment-status.service.ts`) حتى تتمكن
+ * وحدات `customer-ledger` و`orders` و`outstanding` من استيراده بدون دوريات.
+ *
+ * Tolerance below which an invoice is considered fully paid (V20.3.1).
+ * Prevents 0.0001 KWD trailing-arithmetic residuals from leaving an invoice
+ * permanently "open". Lives in the util file so `customer-ledger`, `orders`,
+ * and `outstanding` modules can import it without creating circular deps.
+ *
+ * @since V20.3
  */
 export const INVOICE_REMAINING_TOLERANCE_KD = '0.001';
 
 const Z = () => new Prisma.Decimal(0);
 
 /**
- * V20.2 — Phase 30 read-switch helper.
+ * مفتاح قراءة اليومية كمصدر رئيسي للذمم — V20.2 المرحلة 30.
+ * يُعيد `true` فقط عند تفعيل `USE_JOURNAL_AS_SOURCE=true` أو `V20_4_FINAL_LEDGER=true`.
+ * يُقرأ عند كل استدعاء حتى يسري تغيير البيئة دون إعادة تشغيل.
+ * هذه الدالة هي النقطة الوحيدة التي يستشيرها الكود لتحديد مرجعية اليومية.
  *
- * Returns true only when the operator explicitly opts in via
- * `USE_JOURNAL_AS_SOURCE=true`. Re-read on every call so flipping
- * the env (e.g. via `kubectl set env`) takes effect without a
- * deploy. This is the single function downstream code consults
- * before deciding whether to treat the journal as authoritative.
+ * V20.2 Phase 30 read-switch. Returns `true` only when the operator opts in via
+ * `USE_JOURNAL_AS_SOURCE=true` or the master `V20_4_FINAL_LEDGER=true`.
+ * Re-read on every call so env changes take effect without a restart.
+ * Single source of truth for "is the journal authoritative for reads?".
+ *
+ * @returns `true` إذا كانت اليومية مرجعية للقراءة | `true` if journal is the read source
+ * @since V20.2
  */
 export function isJournalAsSourceEnabled(): boolean {
   // V20.4 — Phase 4/7 master switch overrides the per-feature flag.
@@ -77,32 +95,26 @@ function isV20_4FinalLedgerEnabledNoCycle(): boolean {
 }
 
 /**
- * V20.3 — true-accounting write-switch helper.
+ * مفتاح المحاسبة الحقيقية للكتابة — V20.3.
+ * عند تفعيله (`V20_3_TRUE_ACCOUNTING=true`) تُعدَّل مسارات الدفع وتسوية المحفظة لـ:
+ *   - إصدار قيد إصدار فاتورة كاملة عند إنشاء الطلب (المرحلة 31).
+ *   - كتابة `INVOICE_SHORTFALL.amount` بالمبلغ الكامل لا المتبقي (المرحلة 32).
+ *   - استخدام قيد امتصاص المحفظة V3 (مدين 2100 / دائن 1300 — المرحلة 33).
+ *   - إصدار `appendExternalPaymentEntry` لكل دفعة خارجية (المرحلة 34).
+ *   - اشتقاق الدين من رصيد حساب 1300 في اليومية بدلًا من `wallet.debt` (المرحلة 35).
+ * مُعطَّل افتراضيًا — يتطلب رجوعًا (`backfill`) ثم مطابقة قبل التفعيل.
  *
- * Returns true only when the operator explicitly opts in via
- * `V20_3_TRUE_ACCOUNTING=true`. When ON, the wallet-settlement and
- * payment paths:
- *   • emit a full-invoice issuance journal entry on order creation
- *     (`appendInvoiceIssuanceEntry` — Phase 31);
- *   • write `INVOICE_SHORTFALL.amount` as the FULL invoice amount
- *     instead of the post-wallet remainder (Phase 32);
- *   • use the V3 wallet absorption journal entry
- *     (`appendWalletAbsorptionEntryV3` — DR WALLET_LIABILITY /
- *     CR ACCOUNTS_RECEIVABLE — Phase 33);
- *   • emit `appendExternalPaymentEntry` for every external payment
- *     (CASH / KNET / ONLINE / PAYMENT_LINK — Phase 34);
- *   • derive customer debt from journal AR balance instead of the
- *     legacy `wallet.debt` snapshot (Phase 35).
+ * V20.3 true-accounting write-switch.
+ * When enabled (`V20_3_TRUE_ACCOUNTING=true`), payment and wallet-settlement paths:
+ *   • emit full invoice issuance entry on order creation (Phase 31).
+ *   • write full invoice amount to INVOICE_SHORTFALL (Phase 32).
+ *   • use V3 wallet absorption entry (DR 2100 / CR 1300 — Phase 33).
+ *   • emit external payment entry for every payment (Phase 34).
+ *   • derive debt from journal AR instead of `wallet.debt` (Phase 35).
+ * Default OFF — requires backfill + reconciliation before enabling.
  *
- * Default OFF. Operators are expected to:
- *   1. Run `scripts/backfill-v20-3-true-accounting.ts` to backfill
- *      historical invoice-issuance journal entries first.
- *   2. Verify via `GET /api/finance/audit/reconcile` that the
- *      journal AR matches `wallet.debt` for every customer.
- *   3. Flip the flag.
- *
- * Re-read on every call so the env can be flipped without a
- * process restart.
+ * @returns `true` إذا كانت المحاسبة الحقيقية مفعّلة | `true` if V20.3 accounting is on
+ * @since V20.3
  */
 export function isV20_3TrueAccountingEnabled(): boolean {
   // V20.4 — Phase 7 master switch. Setting V20_4_FINAL_LEDGER=true
@@ -119,18 +131,24 @@ export function isV20_3TrueAccountingEnabled(): boolean {
 }
 
 /**
- * V20.4 — FINAL CANONICAL BANKING CORE master switch.
+ * مفتاح النواة المصرفية الرسمية النهائية — V20.4.
+ * عند تفعيله (`V20_4_FINAL_LEDGER=true`) يُلزَم النظام بـ:
+ *   - محاسبة V20.3 الحقيقية (إصدار فاتورة إجمالية + ذمم من اليومية فقط).
+ *   - اليومية كمصدر الحقيقة الوحيد لكل القراءات.
+ *   - `DebtLedgerEntry` محوّل لأغراض التدقيق فقط (لا عرض في الواجهة).
+ *   - فرض المعادلة المحاسبية الإجمالية (Σ أصول = Σ التزامات + حقوق ملكية).
+ * مُعطَّل افتراضيًا حتى تُنفِّذ محرك المطابقة V20.4 أولًا.
  *
- * When set, the system commits to:
- *   • V20.3 true accounting (gross invoice issuance + AR-only debt).
- *   • Journal as the single source of truth for every read.
- *   • DebtLedgerEntry demoted to audit-only (no read-driven UI).
- *   • Strict global invariant (Σ Assets = Σ Liabilities + Equity)
- *     enforced post-write.
+ * V20.4 FINAL CANONICAL BANKING CORE master switch.
+ * When set (`V20_4_FINAL_LEDGER=true`), the system commits to:
+ *   • V20.3 true accounting (gross issuance + AR-only debt).
+ *   • Journal as single source of truth for all reads.
+ *   • `DebtLedgerEntry` demoted to audit-only.
+ *   • Global balance equation enforced post-write.
+ * Default OFF — run the V20.4 reconciliation engine first.
  *
- * Default OFF so existing deployments keep their current behaviour
- * until operators explicitly flip the flag after running the
- * V20.4 reconciliation engine.
+ * @returns `true` إذا كانت النواة المصرفية النهائية مفعّلة | `true` if final ledger is active
+ * @since V20.4
  */
 export function isV20_4FinalLedgerEnabled(): boolean {
   const v = (process.env.V20_4_FINAL_LEDGER ?? '')
@@ -141,11 +159,22 @@ export function isV20_4FinalLedgerEnabled(): boolean {
 }
 
 /**
- * Customer net open debt from journal AR (account 1300).
+ * يُعيد صافي الدين المفتوح للعميل من حساب الذمم (1300) في اليومية.
+ * اليومية هي المصدر الرسمي الوحيد — كلا حقلَي `outstandingInvoiceDebtKd`
+ * و`outstandingSubscriptionDebtKd` ينهاران إلى `netOpenDebtKd` لأن اليومية
+ * لا تُتابع تجاوز الاشتراك منفصلًا عن مديونية الفواتير.
+ * إذا لم يُمرَّر `db.journalLine` يُعيد صفرًا لكل الحقول.
  *
- * Journal is always the canonical source. Both breakdown fields
- * collapse into `netOpenDebtKd` because the journal does not
- * separately track invoice vs subscription overuse.
+ * Returns the customer's net open debt from journal AR (account 1300).
+ * Journal is the canonical source. Both breakdown fields collapse into
+ * `netOpenDebtKd` because the journal does not separately track invoice vs
+ * subscription overuse debt. Returns zero for all fields when `db.journalLine`
+ * is not provided.
+ *
+ * @param db - عميل Prisma يحتوي على `journalLine` اختياريًا | Prisma client with optional `journalLine`
+ * @param customerId - معرف العميل | Customer ID
+ * @returns صافي الدين المفتوح من اليومية | Net open debt from journal
+ * @since V20.2
  */
 export async function getCustomerNetDebtFromDebtLedgerAgg(
   db: Db,
@@ -342,7 +371,18 @@ export async function computeOrderRemainingBalancesBatch(
 }
 
 
-/** Single-order convenience wrapper around the batch helper. */
+/**
+ * يحسب الرصيد المتبقي لطلب واحد (غلاف مريح حول الدالة الدفعية).
+ * يُعيد صفرًا للطلبات الملغاة أو غير الموجودة.
+ *
+ * Computes the remaining balance for a single order (convenience wrapper
+ * around the batch helper). Returns zero for canceled or unknown orders.
+ *
+ * @param db - عميل قاعدة البيانات | Database client
+ * @param orderId - معرف الطلب | Order ID
+ * @returns الرصيد المتبقي (≥ 0) | Remaining balance (≥ 0)
+ * @since V20.3
+ */
 export async function computeOrderRemainingBalance(
   db: OrderDb,
   orderId: string,
@@ -351,7 +391,21 @@ export async function computeOrderRemainingBalance(
   return m.get(orderId) ?? Z();
 }
 
-/** Mirrors `DebtService.getCustomerDebtSnapshot` totalDebt as Decimal. */
+/**
+ * يُعيد إجمالي ديون العميل من `CustomerWallet` (debt + التزام رصيد سالب).
+ * يعكس سلوك `DebtService.getCustomerDebtSnapshot` كـ`Prisma.Decimal`
+ * لتجنب الاستيراد من `FinanceModule` في وحدات أخرى.
+ *
+ * Returns the customer's total debt from `CustomerWallet`
+ * (wallet.debt + negative-balance obligation).
+ * Mirrors `DebtService.getCustomerDebtSnapshot` as `Prisma.Decimal`
+ * to avoid importing `FinanceModule` from other modules.
+ *
+ * @param db - عميل Prisma يحتوي على `customerWallet` | Prisma client with `customerWallet`
+ * @param customerId - معرف العميل | Customer ID
+ * @returns إجمالي الدين (≥ 0) | Total debt (≥ 0)
+ * @since V20.3
+ */
 export async function getCustomerDebtSnapshotTotalKd(
   db: Db,
   customerId: string,

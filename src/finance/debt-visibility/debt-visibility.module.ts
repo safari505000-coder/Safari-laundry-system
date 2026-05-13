@@ -7,12 +7,10 @@ import { DebtVisibilityController } from './debt-visibility.controller';
 import { DebtVisibilityService } from './debt-visibility.service';
 
 /**
- * V20.4 — Phase 3 / Phase 16 visibility façade module.
- *
- * The single approved upstream for any operational read of
- * customer debt. Exports the service so other feature modules
- * (Subscribers, Outstanding, Customer 360, finance dashboards)
- * can inject it without re-importing the snapshot internals.
+ * وحدة رؤية الديون — الواجهة الكانونية الوحيدة المعتمدة لقراءة ديون العملاء
+ * V20.4 Phase 3/16 debt visibility façade module.
+ * Single approved upstream for any operational customer debt read.
+ * Exports DebtVisibilityService for Subscribers, Outstanding, Customer 360, and dashboards.
  */
 @Module({
   imports: [

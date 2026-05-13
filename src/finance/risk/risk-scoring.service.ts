@@ -46,8 +46,16 @@ import { AgingService } from '../aging/aging.service';
  * where baseLimit defaults to 200 KD (operator override per
  * customer is a future feature).
  */
+/**
+ * مستوى مخاطر العميل المالي المُحتسب
+ * Financial risk level for a customer (0–29 LOW, 30–54 MEDIUM, 55–79 HIGH, 80–100 CRITICAL).
+ */
 export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 
+/**
+ * مكوّن درجة مخاطرة واحد مع وزنه والقيمة المُعيَّرة
+ * Single risk-score component with its weight, raw value, and normalised contribution.
+ */
 export type RiskComponent = {
   key: string;
   weight: number;
@@ -56,6 +64,10 @@ export type RiskComponent = {
   contribution: number; // weight × normalised
 };
 
+/**
+ * درجة مخاطرة العميل الكاملة مع المكونات والحد الائتماني الموصى به
+ * Full customer risk score with component breakdown and recommended debt limit.
+ */
 export type RiskScore = {
   customerId: string;
   score: number; // 0..100
@@ -65,6 +77,14 @@ export type RiskScore = {
   computedAtIso: string;
 };
 
+/**
+ * محرك تسجيل مخاطر العملاء الماليين — يحسب درجة من 0 إلى 100 بناءً على 7 مؤشرات
+ * Financial risk scoring engine computing a 0–100 risk score per customer from
+ * canonical primaries (aging, broken promises, collections stage, partial payments,
+ * refunds, failed payments, total exposure). No new tables; re-computable on demand.
+ *
+ * @since V20.5 Phase 6
+ */
 @Injectable()
 export class RiskScoringService {
   private readonly logger = new Logger(RiskScoringService.name);
@@ -87,6 +107,13 @@ export class RiskScoringService {
     private readonly aging: AgingService,
   ) {}
 
+  /**
+   * يُحدد مستوى المخاطرة بناءً على الدرجة العددية
+   * Maps a numeric score (0–100) to the corresponding RiskLevel.
+   *
+   * @param score - الدرجة العددية للمخاطرة | Numeric risk score
+   * @returns مستوى المخاطرة | Risk level
+   */
   static levelForScore(score: number): RiskLevel {
     if (score >= 80) return 'CRITICAL';
     if (score >= 55) return 'HIGH';
@@ -94,6 +121,13 @@ export class RiskScoringService {
     return 'LOW';
   }
 
+  /**
+   * يحسب درجة مخاطرة العميل من المؤشرات الأولية
+   * Computes the risk score for a customer from 7 weighted components.
+   *
+   * @param customerId - معرف العميل | Customer ID
+   * @returns درجة المخاطرة الكاملة مع المكونات | Full risk score with component breakdown
+   */
   async getScore(customerId: string): Promise<RiskScore> {
     const since = new Date(
       Date.now() - RiskScoringService.WINDOW_DAYS * 24 * 60 * 60 * 1000,
@@ -222,6 +256,14 @@ export class RiskScoringService {
   /**
    * Portfolio-wide top-risk list (CRITICAL first, then HIGH).
    * Used by the dashboard tile and the supervisor watch-list.
+   */
+  /**
+   * يُرجع قائمة العملاء ذوي المخاطر العالية مُرتبة تنازلياً بالدرجة
+   * Returns the top at-risk customers (HIGH or CRITICAL) sorted by score descending.
+   * Used by the dashboard risk tile and supervisor watch-list.
+   *
+   * @param opts.limit - عدد الصفوف (افتراضي: 50، أقصى: 500) | Row limit
+   * @returns قائمة العملاء ذوي المخاطر العالية | At-risk customer list
    */
   async listAtRiskCustomers(opts?: { limit?: number }) {
     const limit = Math.min(Math.max(opts?.limit ?? 50, 1), 500);

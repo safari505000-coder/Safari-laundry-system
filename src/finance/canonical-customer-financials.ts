@@ -1,8 +1,9 @@
 /**
+ * نقطة الدخول الكانونية للبيانات المالية للعميل — إعادة تصدير موحدة
  * V21 Canonical Banking Core customer financial contract.
- *
  * Customer-facing financial summaries must expose canonical AR/debt and
  * server-projected breakdowns from this boundary.
+ * All re-exports from canonical-customer-debt.util and customer-360-financials.
  */
 export {
   computeCanonicalCustomerDebt,

@@ -7,6 +7,11 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { DoubleEntryJournalService } from '../general-ledger/double-entry-journal.service';
 import { DebtService } from './services/debt.service';
 
+/**
+ * متحكم دفتر اليومية — نقاط نهاية القراءة من حساب AR وكشف الحساب للعميل
+ * Journal REST controller providing AR balance and statement endpoints for customers.
+ * Mounted at `/api/finance/journal/*`.
+ */
 @ApiTags('finance-journal')
 @ApiBearerAuth('bearer')
 @Controller('finance/journal')
@@ -23,6 +28,10 @@ export class JournalController {
     SafariRole.CALL_CENTER_SUPERVISOR,
   )
   @ApiOperation({ summary: 'Journal AR balance for one customer' })
+  /**
+   * يُرجع رصيد AR من دفتر اليومية مقارنةً بالرصيد من دفتر الالتزام
+   * Returns the journal AR balance vs ledger balance for a customer with drift logging.
+   */
   async getCustomerBalance(
     @Param('customerId', ParseUUIDPipe) customerId: string,
   ) {

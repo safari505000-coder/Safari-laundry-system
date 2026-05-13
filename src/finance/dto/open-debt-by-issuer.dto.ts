@@ -1,6 +1,10 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsOptional, IsUUID } from 'class-validator';
 
+/**
+ * معايير استعلام الديون المفتوحة حسب جهة الإصدار
+ * Query DTO for open debt by issuer type (DRIVER / BRANCH / OTHER).
+ */
 export class OpenDebtByIssuerQueryDto {
   @ApiPropertyOptional({
     description:
@@ -25,6 +29,11 @@ export class OpenDebtByIssuerQueryDto {
  * The dashboard "توزيع الديون" chart consumes this endpoint so
  * operators never see conflicting numbers across screens.
  */
+/**
+ * DTO صف الدين المفتوح حسب جهة الإصدار — يُستخدم في مخطط "توزيع الديون"
+ * Open debt row grouped by issuer type for the "توزيع الديون" dashboard chart.
+ * @since V19.11.4
+ */
 export class OpenDebtByIssuerRowDto {
   /** DRIVER | BRANCH | OTHER — issuer role bucket. */
   @ApiProperty()
@@ -40,6 +49,10 @@ export class OpenDebtByIssuerRowDto {
   openCustomerCount!: number;
 }
 
+/**
+ * DTO استجابة الديون المفتوحة حسب جهة الإصدار — مجموع الصفوف والإجماليات
+ * Open debt by issuer response DTO with rows and global totals.
+ */
 export class OpenDebtByIssuerResponseDto {
   @ApiProperty({ type: [OpenDebtByIssuerRowDto] })
   rows!: OpenDebtByIssuerRowDto[];

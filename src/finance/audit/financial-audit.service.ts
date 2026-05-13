@@ -24,12 +24,20 @@ import { getCustomerDebtSnapshotTotalKd } from '../debt-customer-aggregates.util
  * front-end-visible drift the v3 prompt cares about.
  */
 
+/**
+ * حالة تدقيق العميل — نتيجة مقارنة رصيد المحفظة برصيد دفتر اليومية
+ * Audit status for a single customer comparing wallet debt vs journal AR balance.
+ */
 export type AuditCustomerStatus =
   | 'OK'
   | 'DRIFT'
   | 'OVERPAYMENT'
   | 'DOUBLE_COUNT';
 
+/**
+ * صف تدقيق عميل واحد يوضح قيمة المحفظة ورصيد دفتر اليومية والانحراف
+ * Single-customer audit row showing wallet debt, journal AR, and computed drift.
+ */
 export type AuditCustomerRow = {
   customerId: string;
   walletDebtKd: string;
@@ -38,6 +46,10 @@ export type AuditCustomerRow = {
   status: AuditCustomerStatus;
 };
 
+/**
+ * استجابة نظرة عامة على التدقيق المالي مع الصفوف وملخص الإحصاءات
+ * Financial audit overview response with per-customer rows and summary counts.
+ */
 export type AuditOverviewResponse = {
   generatedAt: string;
   total: number;
@@ -52,6 +64,10 @@ export type AuditOverviewResponse = {
   };
 };
 
+/**
+ * صف مدفوعات غير صالحة — (V20.4: مُزال، يُرجع دائماً مصفوفة فارغة)
+ * Invalid payment row type — V20.4: DebtLedgerEntry removed; always returns empty array.
+ */
 export type InvalidPaymentRow = {
   id: string;
   customerId: string;
@@ -69,6 +85,10 @@ export type InvalidPaymentRow = {
 
 const DRIFT_THRESHOLD = new Prisma.Decimal('0.001');
 
+/**
+ * صف تسوية ثلاثي — يقارن رصيد دفتر الالتزام بدفتر اليومية ومحفظة العميل
+ * Three-way reconciliation row comparing journal AR, wallet debt, and ledger net.
+ */
 export type ReconcileRow = {
   customerId: string;
   ledgerNetKd: string;
@@ -79,6 +99,10 @@ export type ReconcileRow = {
   status: 'OK' | 'DRIFT' | 'CRITICAL';
 };
 
+/**
+ * استجابة التسوية ثلاثية الأبعاد مع الصفوف والملخص
+ * Three-way reconciliation response with rows and summary counts.
+ */
 export type ReconcileResponse = {
   generatedAt: string;
   total: number;
@@ -91,6 +115,10 @@ export type ReconcileResponse = {
   };
 };
 
+/**
+ * صف إشارة احتيال — (V20.4: يُرجع دائماً مصفوفة فارغة بعد إزالة DebtLedgerEntry)
+ * Fraud signal row — V20.4: always empty after DebtLedgerEntry removal.
+ */
 export type FraudSignalRow = {
   signal:
     | 'PAYMENT_EXCEEDS_INVOICES'
@@ -100,6 +128,10 @@ export type FraudSignalRow = {
   detail: Record<string, string | number | null>;
 };
 
+/**
+ * صف ثابت عالمي — يتحقق من تناسق الميزانية العمومية للعميل
+ * Global invariant check row for a single customer verifying LHS == RHS financial balance.
+ */
 export type GlobalInvariantRow = {
   customerId: string;
   walletBalanceKd: string;
@@ -112,6 +144,13 @@ export type GlobalInvariantRow = {
   ok: boolean;
 };
 
+/**
+ * خدمة التدقيق المالي — تدقيق حقيقي الوقت لانحرافات المحافظ والتسوية والمخاطر
+ * Real-time financial audit service powering the audit overview, reconciliation,
+ * fraud signals, and global invariant checks. Read-only, no caching.
+ *
+ * @since V20.1-v3
+ */
 @Injectable()
 export class FinancialAuditService {
   private readonly logger = new Logger(FinancialAuditService.name);
@@ -244,6 +283,14 @@ export class FinancialAuditService {
    * customer book — call sparingly (e.g. once per minute on the
    * dashboard, not per UI render).
    */
+  /**
+   * يُرجع عدد تنبيهات التدقيق المصنفة حسب النوع لعرض الشارات على لوحة المعلومات
+   * Returns badge counts for each alert class without paginating the full customer book.
+   * Heavier than getOverview — call sparingly (e.g. once per minute).
+   *
+   * @returns ملخص إحصاء التنبيهات | Alert count summary
+   * @since V20.1-v3 Phase 6
+   */
   async getAlertsSummary(): Promise<{
     generatedAt: string;
     driftCount: number;
@@ -356,6 +403,16 @@ export class FinancialAuditService {
    * is reserved for ledger-vs-wallet drift > 1.000 KD (a value
    * the operator definitely cares about).
    */
+  /**
+   * يُجري مقارنة ثلاثية بين دفتر الالتزام ودفتر اليومية ومحفظة العميل
+   * Three-way comparison: ledger net vs journal AR vs CustomerWallet.debt.
+   * CRITICAL reserved for wallet drift > 1.000 KD.
+   *
+   * @param opts.limit - عدد الصفوف لكل صفحة (افتراضي: 100، أقصى: 500) | Rows per page
+   * @param opts.cursor - مؤشر الصفحة الأخير | Last customerId cursor
+   * @returns استجابة التسوية ثلاثية الأبعاد | Three-way reconcile response
+   * @since V20.1-v4 Phase 17
+   */
   async getReconcile(opts: {
     limit?: number;
     cursor?: string | null;
@@ -442,6 +499,15 @@ export class FinancialAuditService {
    *
    * Each signal emits `[FRAUD_ALERT]` log line.
    */
+  /**
+   * يكتشف إشارات الاحتيال المالي (V20.4: يُرجع دائماً مصفوفة فارغة)
+   * Detects fraud signals (payment exceeds invoices, wallet payment without order,
+   * repeated-amount burst). V20.4: always empty after DebtLedgerEntry removal.
+   *
+   * @param opts.limit - عدد الصفوف | Row limit
+   * @returns إشارات الاحتيال المكتشفة | Detected fraud signal rows
+   * @since V20.1-v4 Phase 23
+   */
   async getFraudSignals(opts: {
     limit?: number;
   }): Promise<{ generatedAt: string; total: number; rows: FraudSignalRow[] }> {
@@ -468,6 +534,16 @@ export class FinancialAuditService {
    * sides (vacuously satisfied).
    *
    * Detection-only — never throws. Use the result to triage.
+   */
+  /**
+   * يتحقق من الثابت المالي العالمي لكل عميل (رصيد المحفظة == رصيد دفتر اليومية)
+   * Checks the global invariant per customer: wallet.debt == journal AR (account 1300 net).
+   * Detection-only — never throws.
+   *
+   * @param opts.limit - عدد الصفوف | Row limit (max 500)
+   * @param opts.cursor - مؤشر الصفحة | Page cursor
+   * @returns نتائج التحقق من الثابت العالمي | Global invariant check results
+   * @since V20.1-v4 Phase 24
    */
   async checkGlobalInvariant(opts: {
     limit?: number;

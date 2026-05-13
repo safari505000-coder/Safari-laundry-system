@@ -24,6 +24,13 @@ import {
  *     wallet flips back to zero. (Operators who truly need to
  *     clear a row run the deterministic rebuild instead.)
  */
+/**
+ * مستودع اللقطة المالية — طبقة تخزين نقية بدون منطق أعمال
+ * Pure persistence layer for the FinancialSnapshot read-side projection.
+ * No business logic, no journal reads. Append/update only — no delete paths.
+ * FinancialSnapshotService owns rebuild rules; this class handles Prisma upserts and queries.
+ * @since V20.4 Phase 1
+ */
 @Injectable()
 export class FinancialSnapshotRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -37,6 +44,16 @@ export class FinancialSnapshotRepository {
    * `{ source, correlationId }` envelope without losing earlier
    * keys (e.g. a previous projector dropped a `priorBalance` for
    * forensic comparison).
+   */
+  /**
+   * يُحدّث أو يُنشئ لقطة مالية لعميل واحد بشكل أمن وقابل للتكرار
+   * Idempotent upsert of one customer's snapshot projection.
+   * Always sets schemaVersion to CURRENT_SCHEMA_VERSION so stale rows are detectable.
+   *
+   * @param input - مدخلات اللقطة المحسوبة | Computed snapshot input
+   * @param source - مصدر التحديث | Refresh trigger source
+   * @param correlationId - معرف الارتباط (اختياري) | Optional correlation ID
+   * @returns صف اللقطة المُحفوظ | Persisted snapshot row
    */
   async upsert(
     input: FinancialSnapshotInput,

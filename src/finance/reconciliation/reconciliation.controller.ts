@@ -32,12 +32,22 @@ const ALLOWED_ROLES = new Set<string>([
   SafariRole.CALL_CENTER_SUPERVISOR,
 ]);
 
+/**
+ * متحكم التسوية المالية — نقطة نهاية تشغيل الثوابت المحاسبية
+ * Financial reconciliation REST controller providing the single on-demand reconciliation run.
+ * Mounted at `/api/finance/reconciliation/*`. Returns ≤5 invariant rows.
+ * @since V20.4 Phase 6
+ */
 @Controller('finance/reconciliation')
 @UseGuards(JwtAuthGuard)
 export class ReconciliationController {
   constructor(private readonly reconciliation: ReconciliationService) {}
 
   @Get('run')
+  /**
+   * يُشغّل جميع ثوابت التسوية المالية ويُرجع التقرير فوراً
+   * Runs all financial reconciliation invariants synchronously and returns the full report.
+   */
   async runOnce(@CurrentUser() user: JwtUser): Promise<ReconciliationReport> {
     const role = (user.role ?? '').trim().toUpperCase();
     if (!ALLOWED_ROLES.has(role)) {

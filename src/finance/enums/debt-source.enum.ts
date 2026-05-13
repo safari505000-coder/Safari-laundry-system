@@ -1,13 +1,8 @@
 /**
- * V20.4 — TypeScript-native DebtSource enum.
- *
- * Identical values to the former Prisma enum of the same name.
- * Decoupled from `@prisma/client` so the DebtLedgerEntry table can be
- * fully dropped without breaking the type system.
- *
- * The string values match the PostgreSQL enum literals (`PAYMENT`, etc.)
- * so Prisma WHERE clauses that still reference `DebtLedgerEntry.source`
- * during the migration window continue to work via string compatibility.
+ * مُعرِّف مصدر دين قاعدة البيانات — مُستقل عن Prisma بعد إزالة جدول DebtLedgerEntry
+ * TypeScript-native DebtSource enum matching PostgreSQL enum values.
+ * Decoupled from @prisma/client so DebtLedgerEntry can be dropped without breaking the type system.
+ * @since V20.4
  */
 export enum DebtSource {
   SUBSCRIPTION_OVERUSE = 'SUBSCRIPTION_OVERUSE',

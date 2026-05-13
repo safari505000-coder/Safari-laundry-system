@@ -28,6 +28,12 @@ import { IsISO8601, IsOptional, IsUUID } from 'class-validator';
  * cash the driver still physically holds. This is the number that
  * answers the owner's real question: "who still has my cash?"
  */
+/**
+ * معايير استعلام تقرير تتبع نقد السائق — يتتبع رحلة النقد من السائق إلى البنك
+ * Query DTO for the Driver Cash Trace report tracing cash from driver to bank.
+ * Supports date range, driver, and branch filtering.
+ * @since V19.10
+ */
 export class DriverCashTraceQueryDto {
   @ApiProperty({
     description: 'Inclusive lower bound of the reporting window (ISO-8601).',
@@ -60,6 +66,10 @@ export class DriverCashTraceQueryDto {
   branchId?: string;
 }
 
+/**
+ * DTO حقيبة نقدية في تقرير تتبع نقد السائق — تمثل تسليماً واحداً إلى المدير
+ * Driver Cash Trace bag DTO representing a single cash handover to a branch manager.
+ */
 export class DriverCashTraceBagDto {
   @ApiProperty({ format: 'uuid' })
   id: string;
@@ -116,6 +126,10 @@ export class DriverCashTraceBagDto {
   rejectionReason: string | null;
 }
 
+/**
+ * DTO بيانات السائق في تقرير تتبع النقد — ملخص كامل للدورة النقدية
+ * Driver Cash Trace driver DTO with full cash cycle summary per driver.
+ */
 export class DriverCashTraceDriverDto {
   @ApiProperty({ format: 'uuid' })
   driverId: string;
@@ -171,6 +185,10 @@ export class DriverCashTraceDriverDto {
   bags: DriverCashTraceBagDto[];
 }
 
+/**
+ * DTO مؤشرات الأداء الرئيسية لتقرير تتبع نقد السائقين
+ * KPI totals DTO for the Driver Cash Trace report across all active drivers.
+ */
 export class DriverCashTraceKpisDto {
   @ApiProperty() totalCollectedKd: string;
   @ApiProperty() totalHandedToManagerKd: string;
@@ -183,11 +201,20 @@ export class DriverCashTraceKpisDto {
   @ApiProperty() totalBagCount: number;
 }
 
+/**
+ * DTO النطاق الزمني لتقرير تتبع نقد السائق
+ * Date range DTO for the Driver Cash Trace report.
+ */
 export class DriverCashTraceRangeDto {
   @ApiProperty() from: string;
   @ApiProperty() to: string;
 }
 
+/**
+ * DTO استجابة تقرير تتبع نقد السائقين — يشمل النطاق ومؤشرات الأداء وبيانات السائقين
+ * Driver Cash Trace response DTO with date range, KPIs, and per-driver data.
+ * @since V19.10
+ */
 export class DriverCashTraceResponseDto {
   @ApiProperty({ type: DriverCashTraceRangeDto })
   range: DriverCashTraceRangeDto;

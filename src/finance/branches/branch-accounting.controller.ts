@@ -26,12 +26,22 @@ function parseDate(s?: string): Date | undefined {
   return v;
 }
 
+/**
+ * متحكم محاسبة الفروع — نقاط نهاية ميزان المراجعة والأرباح والخسائر والمستحقات
+ * Multi-branch accounting REST controller providing trial balance, P&L, and receivables.
+ * Mounted at `/api/finance/branches/*`.
+ * @since V20.5 Phase 9
+ */
 @Controller('finance/branches')
 @UseGuards(JwtAuthGuard)
 export class BranchAccountingController {
   constructor(private readonly svc: BranchAccountingService) {}
 
   @Get('trial-balance')
+  /**
+   * يُرجع ميزان المراجعة لكل فرع
+   * Returns the per-branch trial balance with debit/credit totals.
+   */
   async trialBalance(
     @CurrentUser() user: JwtUser,
     @Query('asOf') asOf?: string,

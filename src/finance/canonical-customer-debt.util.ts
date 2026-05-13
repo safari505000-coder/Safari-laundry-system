@@ -31,10 +31,18 @@ type Db = {
   order: Prisma.OrderDelegate;
 };
 
+/**
+ * واجهة قارئ دفتر اليومية المُمرَّرة لحساب ديون العملاء
+ * Journal reader interface passed to canonical debt computation for decoupled journal access.
+ */
 export type JournalReader = {
   getCustomerDebtFromJournalAR: (customerId: string) => Promise<Prisma.Decimal>;
 };
 
+/**
+ * مصدر الدين الكانوني — يُحدد مصدر بيانات الحساب المُستخدَم
+ * Source identifier for the canonical debt computation path.
+ */
 export type CanonicalDebtSource =
   /** V20.3 — live Journal AR balance on account 1300. */
   | 'JOURNAL_AR'
@@ -43,6 +51,11 @@ export type CanonicalDebtSource =
   /** Journal lookup failed; degraded back to remaining-payment sum. */
   | 'JOURNAL_AR_FALLBACK';
 
+/**
+ * لقطة الدين الكانوني للعميل — النتيجة الشاملة لحساب الدين الموحد
+ * Canonical debt snapshot for a customer, containing the single display-ready number
+ * and all diagnostic fields for the drift inspector.
+ */
 export type CanonicalDebtSnapshot = {
   customerId: string;
   /** The single canonical number every UI MUST render. KD, 4-dp. */
@@ -66,14 +79,16 @@ export type CanonicalDebtSnapshot = {
 };
 
 /**
- * Compute the canonical debt for one customer.
+ * يحسب الدين الكانوني لعميل واحد من المصدر الأكثر دقة المتاح
+ * Computes the canonical debt for a single customer.
+ * Prefers journal AR (account 1300) when the journal reader is provided;
+ * degrades to partial-payment-aware remaining sum on journal read failure.
  *
- * @param db                Prisma delegate-shaped reader.
- * @param journal           Optional journal reader. When provided,
- *                          Journal AR is the authoritative customer
- *                          debt. If it fails, the helper degrades to
- *                          remaining-balance projection.
- * @param customerId
+ * @param db - قاعدة البيانات أو عميل المعاملة | Prisma delegate-shaped reader
+ * @param journal - قارئ دفتر اليومية (اختياري) | Optional journal reader
+ * @param customerId - معرف العميل | Customer ID
+ * @returns لقطة الدين الكانوني | Canonical debt snapshot
+ * @since V20.3.2
  */
 export async function computeCanonicalCustomerDebt(
   db: Db,
@@ -153,8 +168,8 @@ export async function computeCanonicalCustomerDebt(
 }
 
 /**
- * Tolerance used by every drift comparison in the V20.3.2 stack.
- * Single import path so the inspector, the runtime assertion,
- * and the subscribers / collections KPIs stay in lockstep.
+ * تسامح الانحراف المُستخدَم في جميع مقارنات الاتساق في المكدس V20.3.2
+ * Tolerance for every drift comparison in the V20.3.2 consistency stack (0.001 KD).
+ * Single import path keeping inspector, runtime assertion, and KPIs in lockstep.
  */
 export const UI_DEBT_CONSISTENCY_TOLERANCE_KD = '0.001';

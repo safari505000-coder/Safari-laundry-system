@@ -48,6 +48,17 @@ import { PrismaService } from '../../prisma/prisma.service';
  *   • Returns the count of NEW alerts written so the cron can
  *     log throughput.
  */
+/**
+ * محرك كشف الاحتيال المالي — يفحص الأنماط الشاذة ويُصدر تنبيهات
+ * Fraud detection engine scanning financial primaries on a schedule and on demand.
+ * SINGLE WRITER to the FraudAlert table; no other service should write FraudAlert directly.
+ * Idempotency guaranteed via SHA-256 fingerprint + unique index (P2002 catch = no-op).
+ *
+ * Detectors: RAPID_REVERSALS, REPEATED_PAYMENT_ATTEMPTS, SUSPICIOUS_REFUND,
+ * PAYMENT_SPLITTING, EXCESSIVE_WALLET_ADJ.
+ *
+ * @since V20.5 Phase 8
+ */
 @Injectable()
 export class FraudDetectionService {
   private readonly logger = new Logger(FraudDetectionService.name);
@@ -58,6 +69,14 @@ export class FraudDetectionService {
    * Run all detectors over the configured window and return a
    * summary. Safe to call concurrently with itself — the unique
    * fingerprint index serialises duplicate inserts.
+   */
+  /**
+   * يُشغّل جميع أجهزة الكشف على نافذة زمنية محددة ويُرجع ملخص النتائج
+   * Runs all fraud detectors over the given window and returns a summary.
+   * Safe to call concurrently — the fingerprint unique index serialises duplicates.
+   *
+   * @param opts.windowMs - نافذة الزمن بالميللي ثانية (افتراضي: 24 ساعة) | Detection window in ms
+   * @returns عدد التنبيهات المُدرجة لكل جهاز كشف | Inserted count per detector
    */
   async runAll(opts?: { windowMs?: number }): Promise<{
     inserted: number;
@@ -106,6 +125,16 @@ export class FraudDetectionService {
     );
   }
 
+  /**
+   * يُرجع قائمة تنبيهات الاحتيال مع تصفية اختيارية بالحالة والخطورة والعميل
+   * Returns fraud alerts ordered by severity then detection date.
+   *
+   * @param opts.status - حالة التنبيه للتصفية | Optional status filter
+   * @param opts.severity - مستوى الخطورة للتصفية | Optional severity filter
+   * @param opts.customerId - معرف العميل للتصفية | Optional customer filter
+   * @param opts.limit - عدد الصفوف (افتراضي: 100، أقصى: 500) | Row limit
+   * @returns قائمة تنبيهات الاحتيال | Fraud alert list
+   */
   async list(opts?: {
     status?: FraudAlertStatus;
     severity?: FraudAlertSeverity;
@@ -124,6 +153,17 @@ export class FraudDetectionService {
     });
   }
 
+  /**
+   * يُحدّث حالة تنبيه الاحتيال إلى محلول أو قيد التحقيق
+   * Resolves or updates a fraud alert status (INVESTIGATING, RESOLVED_FALSE_POSITIVE, RESOLVED_CONFIRMED).
+   *
+   * @param input.alertId - معرف تنبيه الاحتيال | Fraud alert ID
+   * @param input.actorId - معرف المستخدم الفاعل | Actor user ID
+   * @param input.status - الحالة الجديدة | New alert status
+   * @param input.notes - ملاحظات الحل (اختياري) | Resolution notes
+   * @returns التنبيه المحدّث | Updated fraud alert row
+   * @throws NotFoundException إذا لم يُوجد التنبيه | If alert not found
+   */
   async resolve(input: {
     alertId: string;
     actorId: string;

@@ -4,9 +4,8 @@ import { FinancialPeriodsService } from './financial-periods.service';
 import { FinancialPeriodsController } from './financial-periods.controller';
 
 /**
- * V20.6 — Phase 1.
- *
- * Global module that owns the {@link FinancialPeriodsService} so it
+ * وحدة الفترات المالية (عالمية) — تكسر دورة الاستيراد بين FinanceModule وGeneralLedgerModule
+ * V20.6 Phase 1 @Global module owning FinancialPeriodsService so it
  * can be injected by `DoubleEntryJournalService` (in
  * `general-ledger`) without creating an import cycle through
  * `FinanceModule`.

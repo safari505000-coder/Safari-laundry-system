@@ -36,6 +36,12 @@ const INVOICE_STATUS_READ_ROLES = [
   SafariRole.CALL_CENTER,
 ] as const;
 
+/**
+ * متحكم حالة دفع الفاتورة — نقطة نهاية الرصيد المتبقي الكانوني
+ * Invoice payment status REST controller providing the canonical remaining-balance computation.
+ * Read-only. Mounted at `/api/finance/invoices/*`.
+ * @since V20.3.1
+ */
 @ApiTags('finance.invoices')
 @ApiBearerAuth('bearer')
 @Controller('finance/invoices')
@@ -51,6 +57,10 @@ export class InvoicePaymentStatusController {
       'V20.3.1 — canonical payment status for an invoice/order ' +
       '(remaining = totalPrice − payments − wallet absorption)',
   })
+  /**
+   * يُرجع حالة دفع الفاتورة مع الرصيد المتبقي الكانوني
+   * Returns the canonical payment status for an invoice/order.
+   */
   async getPaymentStatus(@Param('orderId') orderId: string) {
     if (!orderId || orderId.trim().length === 0) {
       throw new BadRequestException('orderId required');

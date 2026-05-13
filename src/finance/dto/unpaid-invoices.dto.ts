@@ -25,6 +25,11 @@ import {
  * balance so the UI can hide invoices whose owners have since cleared
  * everything (see ?onlyOpen=true).
  */
+/**
+ * معايير استعلام الفواتير غير المدفوعة مع دعم التصفية بالتاريخ والفرع والسائق والعميل
+ * Query DTO for the unpaid-invoices (المديونية) report.
+ * Supports filtering by date range, branch, driver, customer phone, and market KPI scope.
+ */
 export class UnpaidInvoicesQueryDto {
   @ApiPropertyOptional({
     description:
@@ -78,6 +83,10 @@ export class UnpaidInvoicesQueryDto {
   customerPhone?: string;
 }
 
+/**
+ * DTO صف الفاتورة غير المدفوعة — بيانات فاتورة واحدة في تقرير المديونية
+ * Single unpaid invoice row with customer info, amounts, actor, branch, and debt source.
+ */
 export class UnpaidInvoiceRowDto {
   @ApiProperty({ format: 'uuid' })
   orderId: string;
@@ -236,8 +245,8 @@ export class UnpaidInvoiceRowDto {
 }
 
 /**
- * UNPAID `Order.totalPrice` grouped by `posPaymentMethod` — full market scope
- * (same filter as `totalMarketUnpaidKd`), not only driver/manager ledger rows.
+ * DTO إجماليات الفواتير غير المدفوعة في السوق مجمّعة حسب طريقة الدفع
+ * UNPAID Order.totalPrice grouped by posPaymentMethod for the full market scope.
  */
 export class MarketUnpaidByMethodDto {
   @ApiProperty({ description: 'CASH' })
@@ -252,6 +261,10 @@ export class MarketUnpaidByMethodDto {
   otherKd: string;
 }
 
+/**
+ * DTO مؤشرات الأداء الرئيسية لتقرير الفواتير غير المدفوعة
+ * KPI summary DTO for the unpaid invoices report with invoice/customer counts and debt totals.
+ */
 export class UnpaidInvoicesKpisDto {
   @ApiProperty() invoiceCount: number;
   @ApiProperty() openInvoiceCount: number;
@@ -302,6 +315,10 @@ export class UnpaidInvoicesKpisDto {
   @ApiProperty() avgDebtPerInvoiceKd: string;
 }
 
+/**
+ * DTO استجابة الفواتير غير المدفوعة — مؤشرات الأداء والصفوف المفصلة
+ * Unpaid invoices response DTO with KPIs and detailed per-invoice rows.
+ */
 export class UnpaidInvoicesResponseDto {
   @ApiProperty({ format: 'date-time', nullable: true })
   from: string | null;

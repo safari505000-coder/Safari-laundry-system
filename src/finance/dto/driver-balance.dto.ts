@@ -1,5 +1,9 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
+/**
+ * DTO صف رصيد السائق — يشمل أرصدة النقد والمدفوعات الرقمية المعلقة
+ * Driver balance row with pending cash and digital payment amounts by method.
+ */
 export class DriverBalanceRowDto {
   @ApiProperty({ format: 'uuid' })
   driverId: string;
@@ -83,11 +87,19 @@ export class DriverBalanceRowDto {
   pendingInvoiceCount: number;
 }
 
+/**
+ * DTO استجابة أرصدة السائقين — قائمة بجميع السائقين وأرصدتهم المعلقة
+ * Driver balance response DTO wrapping the list of all driver balance rows.
+ */
 export class DriverBalanceResponseDto {
   @ApiProperty({ type: [DriverBalanceRowDto] })
   drivers: DriverBalanceRowDto[];
 }
 
+/**
+ * DTO نتيجة تأكيد التسليم النقدي من السائق إلى المدير
+ * Cash handover confirmation result DTO with settled order count and system total.
+ */
 export class HandoverResultDto {
   @ApiProperty()
   settledOrderCount: number;

@@ -34,6 +34,15 @@ import { PrismaService } from '../../prisma/prisma.service';
  * account is allowed via `reopen()` which moves it back to
  * NEW with an escalation-level reset.
  */
+/**
+ * محرك سير عمل التحصيل — يدير دورة حياة حساب التحصيل للعميل
+ * Collections workflow engine managing the per-customer CollectionsAccount lifecycle
+ * and append-only stage event trail.
+ * Stage graph: NEW→CONTACTED→FOLLOW_UP→PROMISE_TO_PAY→ESCALATED→LEGAL→WRITTEN_OFF/CLOSED.
+ * Forward-only by default; reopening via `reopen()` only.
+ *
+ * @since V20.5 Phase 3
+ */
 @Injectable()
 export class CollectionsWorkflowService {
   private readonly logger = new Logger(CollectionsWorkflowService.name);
@@ -48,6 +57,10 @@ export class CollectionsWorkflowService {
    *   • PROMISE_TO_PAY  — verify on / after promised date
    *   • ESCALATED       — supervisor review within 24h
    *   • LEGAL           — legal team weekly cadence
+   */
+  /**
+   * مواعيد اتفاقية مستوى الخدمة لكل مرحلة تحصيل بالساعات
+   * Default SLA hours per collections stage for computing `nextActionDueAt`.
    */
   static readonly STAGE_SLA_HOURS: Record<CollectionsStage, number> = {
     [CollectionsStage.NEW]: 24,
@@ -66,6 +79,10 @@ export class CollectionsWorkflowService {
    * top rank; reopening goes through `reopen()` which writes a
    * `REOPENED` audit row instead of a stage transition.
    */
+  /**
+   * ترتيب المراحل الرقمي لفرض قاعدة التقدم الأمامي فقط
+   * Numeric stage rank used to enforce forward-only transition validation.
+   */
   static readonly STAGE_RANK: Record<CollectionsStage, number> = {
     [CollectionsStage.NEW]: 0,
     [CollectionsStage.CONTACTED]: 1,
@@ -83,6 +100,15 @@ export class CollectionsWorkflowService {
    * Idempotent — returns the existing account or creates a NEW
    * one. Used by the collections workbench when an operator
    * opens a customer profile that has never been worked.
+   */
+  /**
+   * يفتح حساب تحصيل جديد للعميل أو يُرجع الحساب الموجود
+   * Idempotent — returns the existing account or creates a NEW one.
+   *
+   * @param input.customerId - معرف العميل | Customer ID
+   * @param input.actorId - معرف المستخدم الفاعل (اختياري) | Optional actor ID
+   * @param input.assignedCollectorId - معرف المحصّل المعين (اختياري) | Optional collector
+   * @returns حساب التحصيل الموجود أو المُنشأ | Existing or newly created collections account
    */
   async openOrGet(input: {
     customerId: string;
@@ -145,6 +171,19 @@ export class CollectionsWorkflowService {
    * terminal states. Always writes one CollectionsStageEvent
    * row in the same transaction so the audit trail and the
    * account state can never diverge.
+   */
+  /**
+   * يُحوّل حساب التحصيل إلى مرحلة أمامية جديدة مع تسجيل أثر التدقيق
+   * Transitions the collections account to a new stage (forward-only).
+   * Bumps escalationLevel on ESCALATED/LEGAL. Writes one CollectionsStageEvent atomically.
+   *
+   * @param input.customerId - معرف العميل | Customer ID
+   * @param input.toStage - المرحلة الجديدة | Target collections stage
+   * @param input.actorId - معرف المستخدم الفاعل | Actor user ID
+   * @param input.reason - سبب التحويل (اختياري) | Optional transition reason
+   * @returns نتيجة التحويل مع المرحلة السابقة والجديدة | Transition result
+   * @throws BadRequestException عند محاولة التراجع أو تكرار نفس المرحلة | On regression or same-stage
+   * @throws NotFoundException إذا لم يُوجد الحساب | If account not found
    */
   async transition(input: {
     customerId: string;
@@ -243,6 +282,16 @@ export class CollectionsWorkflowService {
     });
   }
 
+  /**
+   * يُعيّن محصّلاً لحساب التحصيل مع تسجيل الحدث
+   * Assigns or re-assigns a collector to the collections account.
+   *
+   * @param input.customerId - معرف العميل | Customer ID
+   * @param input.collectorId - معرف المحصّل (null لإلغاء التعيين) | Collector ID or null
+   * @param input.actorId - معرف المستخدم الفاعل | Actor user ID
+   * @returns نتيجة التعيين | Assignment result
+   * @throws NotFoundException إذا لم يُوجد الحساب | If account not found
+   */
   async assign(input: {
     customerId: string;
     collectorId: string | null;
@@ -276,6 +325,16 @@ export class CollectionsWorkflowService {
     });
   }
 
+  /**
+   * يُسجّل تواصل مع العميل ويُحوّل المرحلة تلقائياً من NEW إلى CONTACTED
+   * Records a contact attempt and auto-transitions from NEW to CONTACTED if still in NEW stage.
+   *
+   * @param input.customerId - معرف العميل | Customer ID
+   * @param input.actorId - معرف المستخدم الفاعل | Actor user ID
+   * @param input.notes - ملاحظات التواصل (اختياري) | Optional contact notes
+   * @returns نتيجة تسجيل التواصل | Contact record result
+   * @throws NotFoundException إذا لم يُوجد الحساب | If account not found
+   */
   async recordContact(input: {
     customerId: string;
     actorId: string | null;
@@ -390,6 +449,13 @@ export class CollectionsWorkflowService {
     });
   }
 
+  /**
+   * يُرجع حساب التحصيل للعميل مع آخر 25 حدثاً من أثر التدقيق
+   * Returns the collections account with the last 25 stage events and assigned collector.
+   *
+   * @param customerId - معرف العميل | Customer ID
+   * @returns حساب التحصيل أو null إذا لم يُوجد | Collections account or null
+   */
   async getAccount(customerId: string) {
     return this.prisma.collectionsAccount.findUnique({
       where: { customerId },
@@ -400,6 +466,13 @@ export class CollectionsWorkflowService {
     });
   }
 
+  /**
+   * يُرجع الحسابات التي تجاوزت ميعاد الإجراء التالي المحدد
+   * Returns active collections accounts whose nextActionDueAt has passed.
+   *
+   * @param opts.limit - عدد الصفوف (افتراضي: 100، أقصى: 500) | Row limit
+   * @returns قائمة الحسابات متجاوزة SLA مرتبة بالأقدم أولاً | Overdue SLA accounts
+   */
   async listOverdueSla(opts?: { limit?: number }) {
     const limit = Math.min(Math.max(opts?.limit ?? 100, 1), 500);
     return this.prisma.collectionsAccount.findMany({

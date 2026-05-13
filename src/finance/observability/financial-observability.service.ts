@@ -25,12 +25,20 @@ import { ReconciliationService } from '../reconciliation/reconciliation.service'
  * vector. Same inputs ⇒ same score (idempotent).
  */
 
+/**
+ * مستوى خطورة مقياس المراقبة المالية
+ * Severity level for a single observability metric.
+ */
 export type ObservabilitySeverity =
   | 'HEALTHY'
   | 'DEGRADED'
   | 'WARNING'
   | 'CRITICAL';
 
+/**
+ * قسم مراقبة فردي يمثل بُعداً واحداً من أبعاد صحة النظام المالي
+ * A single observability section representing one health dimension (reconciliation, fraud, etc.).
+ */
 export type ObservabilitySection = {
   key: string;
   label: string;
@@ -39,6 +47,10 @@ export type ObservabilitySection = {
   detail?: string;
 };
 
+/**
+ * نظرة عامة على صحة النظام المالي مع نقاط الصحة الإجمالية والأقسام المفصلة
+ * High-level health overview with a composite 0–100 health score and per-dimension sections.
+ */
 export type ObservabilityOverview = {
   generatedAt: string;
   windowHours: number;
@@ -47,6 +59,10 @@ export type ObservabilityOverview = {
   sections: ObservabilitySection[];
 };
 
+/**
+ * تقرير الانحراف المالي مع انتهاكات الفترة وتفاصيل التسوية
+ * Financial drift report listing reconciliation deviations and recent period violations.
+ */
 export type ObservabilityDrift = {
   generatedAt: string;
   reconciliationOk: boolean;
@@ -66,6 +82,10 @@ export type ObservabilityDrift = {
   }>;
 };
 
+/**
+ * نتيجة تسوية المراقبة المالية مع تفاصيل الثوابت
+ * Full reconciliation run result with invariant-level detail rows.
+ */
 export type ObservabilityReconciliation = {
   generatedAt: string;
   durationMs: number;
@@ -81,6 +101,11 @@ export type ObservabilityReconciliation = {
   }>;
 };
 
+/**
+ * مقاييس أداء المراقبة المالية تشمل أعمار اللقطات وإخفاقات دفتر اليومية والتنبيهات
+ * Performance metrics covering snapshot lag, journal write failures, fraud alerts,
+ * promise-to-pay status, and collections SLA.
+ */
 export type ObservabilityPerformance = {
   generatedAt: string;
   windowHours: number;
@@ -115,6 +140,14 @@ const WINDOW_HOURS_DEFAULT = 24;
 const SNAPSHOT_STALE_MIN = 10;
 const SNAPSHOT_VERY_STALE_MIN = 60;
 
+/**
+ * خدمة مراقبة النظام المالي — مُجمّع قراءة شامل لإشارات صحة النظام
+ * Read-only aggregator for all V20.4/V20.5/V20.6 operational health signals
+ * (reconciliation, fraud, period violations, snapshot lag, journal failures, collections SLA).
+ * Computes a deterministic 0–100 health score. Never writes to the database.
+ *
+ * @since V20.6
+ */
 @Injectable()
 export class FinancialObservabilityService {
   private readonly logger = new Logger(FinancialObservabilityService.name);
@@ -136,6 +169,15 @@ export class FinancialObservabilityService {
    *   snapshot lag:      15%
    *   journal failures:  15%
    *   collections SLA:   10%
+   */
+  /**
+   * يُنتج نظرة عامة على صحة النظام المالي مع نقاط الصحة المُركّبة
+   * Produces a high-level health overview with a composite weighted health score
+   * (reconciliation 35%, fraud 15%, period violations 10%, snapshot lag 15%,
+   * journal failures 15%, collections SLA 10%).
+   *
+   * @param windowHours - نافذة الزمن بالساعات (افتراضي: 24) | Rolling window in hours (default 24)
+   * @returns نظرة عامة على صحة النظام | Observability overview with sections and health score
    */
   async overview(windowHours = WINDOW_HOURS_DEFAULT): Promise<ObservabilityOverview> {
     const generatedAt = new Date().toISOString();
@@ -344,6 +386,13 @@ export class FinancialObservabilityService {
     };
   }
 
+  /**
+   * يُرجع تفاصيل انحراف التسوية المالية وانتهاكات الفترة الأخيرة
+   * Returns reconciliation drift details and recent period violations within the given window.
+   *
+   * @param windowHours - نافذة الزمن بالساعات | Rolling window in hours
+   * @returns تقرير الانحراف المالي | Financial drift report
+   */
   async drift(windowHours = WINDOW_HOURS_DEFAULT): Promise<ObservabilityDrift> {
     const generatedAt = new Date().toISOString();
     const since = new Date(Date.now() - windowHours * 60 * 60 * 1000);
@@ -398,6 +447,13 @@ export class FinancialObservabilityService {
     };
   }
 
+  /**
+   * يُشغّل دورة تسوية كاملة ويُرجع نتائجها المفصلة
+   * Runs a full reconciliation cycle via ReconciliationService.runOnce() and
+   * returns the structured invariant-level result.
+   *
+   * @returns تقرير التسوية المفصّل | Detailed reconciliation report
+   */
   async reconciliationReport(): Promise<ObservabilityReconciliation> {
     const recon = await this.reconciliation.runOnce();
     return {
@@ -416,6 +472,15 @@ export class FinancialObservabilityService {
     };
   }
 
+  /**
+   * يُرجع مقاييس أداء النظام المالي خلال النافذة الزمنية المحددة
+   * Returns detailed performance metrics covering snapshot lag percentiles,
+   * journal write failure counts, fraud alert breakdown, promise-to-pay status,
+   * and collections SLA.
+   *
+   * @param windowHours - نافذة الزمن بالساعات | Rolling window in hours
+   * @returns مقاييس الأداء المالي | Financial performance metrics
+   */
   async performance(windowHours = WINDOW_HOURS_DEFAULT): Promise<ObservabilityPerformance> {
     const generatedAt = new Date().toISOString();
     const since = new Date(Date.now() - windowHours * 60 * 60 * 1000);

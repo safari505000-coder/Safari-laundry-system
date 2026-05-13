@@ -22,6 +22,12 @@ const TIMELINE_READ_ROLES = [
   SafariRole.MANAGER,
 ] as const;
 
+/**
+ * متحكم الجدول الزمني المالي — نقطة نهاية الجدول الزمني الموحد للعميل
+ * Financial timeline REST controller providing the unified customer financial timeline.
+ * Mounted at `/api/finance/timeline/:customerId`.
+ * @since V20.4 Phase 8
+ */
 @ApiTags('finance.timeline')
 @ApiBearerAuth('bearer')
 @Controller()
@@ -38,6 +44,10 @@ export class FinancialTimelineController {
     summary:
       'V20.4 — Phase 8 unified financial timeline for a customer (invoice, payment, partial, wallet, debt, subscription, reversals)',
   })
+  /**
+   * يُرجع الجدول الزمني المالي للعميل (مسار متوافق مع الإصدارات السابقة)
+   * Returns the customer's unified financial timeline (V20.4 back-compat route).
+   */
   async getTimelineLegacy(
     @Param('customerId') customerId: string,
     @Query('limit') limit?: string,

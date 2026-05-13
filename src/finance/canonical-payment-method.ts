@@ -7,6 +7,10 @@ import { PosPaymentMethod } from '@prisma/client';
  * stores the legacy value `SUBSCRIPTION_WALLET`; do not expose that name in
  * new API/UI code.
  */
+/**
+ * طريقة الدفع الكانونية المرئية للمشغّل — تُخفي اسم قاعدة البيانات القديم
+ * Public, operator-facing payment method type. SUBSCRIPTION maps to legacy SUBSCRIPTION_WALLET.
+ */
 export type CanonicalPaymentMethod =
   | 'CASH'
   | 'KNET'
@@ -15,6 +19,10 @@ export type CanonicalPaymentMethod =
   | 'DEBT_ON_ACCOUNT'
   | 'SUBSCRIPTION';
 
+/**
+ * قائمة طرق الدفع الكانونية المدعومة بالترتيب الثابت
+ * Ordered readonly array of all supported canonical payment methods.
+ */
 export const CANONICAL_PAYMENT_METHODS: readonly CanonicalPaymentMethod[] = [
   'CASH',
   'KNET',
@@ -35,6 +43,13 @@ function normalizePaymentMethodInput(
     .replace(/_+/g, '_');
 }
 
+/**
+ * يُحوّل طريقة الدفع الكانونية إلى قيمة قاعدة البيانات المقابلة
+ * Converts a canonical payment method to the corresponding DB PosPaymentMethod enum value.
+ *
+ * @param raw - طريقة الدفع بأي صيغة | Payment method in any format
+ * @returns قيمة PosPaymentMethod أو null إذا كانت غير معروفة | DB enum value or null
+ */
 export function toDbPosPaymentMethod(
   raw: PosPaymentMethod | CanonicalPaymentMethod | string | null | undefined,
 ): PosPaymentMethod | null {
@@ -65,6 +80,14 @@ export function toDbPosPaymentMethod(
   return null;
 }
 
+/**
+ * يُحوّل قيمة قاعدة البيانات إلى طريقة الدفع الكانونية المقابلة
+ * Converts a DB PosPaymentMethod to the canonical payment method name.
+ * SUBSCRIPTION_WALLET → 'SUBSCRIPTION' (canonical name).
+ *
+ * @param method - قيمة PosPaymentMethod | DB PosPaymentMethod value
+ * @returns طريقة الدفع الكانونية أو null | Canonical payment method or null
+ */
 export function fromDbPosPaymentMethod(
   method: PosPaymentMethod | string | null | undefined,
 ): CanonicalPaymentMethod | null {

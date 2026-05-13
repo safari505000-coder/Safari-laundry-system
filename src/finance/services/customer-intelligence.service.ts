@@ -6,10 +6,23 @@ import {
 } from '../../customers/customer-evaluator';
 import { PrismaService } from '../../prisma/prisma.service';
 
+/**
+ * خدمة استخبارات العملاء — تحسب مؤشرات الاتساق المالي وتسلسل الدفع
+ * Customer intelligence service computing payment consistency, lifetime value,
+ * and behavioral signals for the owner dashboard customer rollup.
+ */
 @Injectable()
 export class CustomerIntelligenceService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * يبني بيانات استخبارات العميل من السجلات المالية الكانونية
+   * Builds customer intelligence signals from canonical financial records.
+   *
+   * @param customerId - معرف العميل | Customer ID
+   * @param financials - البيانات المالية الكانونية للعميل | Customer canonical financials
+   * @returns بيانات استخبارات العميل | Customer intelligence payload
+   */
   async buildCustomerIntelligence(
     customerId: string,
     financials: CustomerEvaluationFinancials,

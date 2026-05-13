@@ -36,18 +36,17 @@ import {
 } from './dto/update-customer-collection-status.dto';
 
 /**
- * V19.x — Outstanding-Payments / Accounts-Receivable read-side aggregator
- * + the single mutation surface for collection status / manual blocking.
+ * خدمة المدفوعات المعلقة — مُجمِّع الحسابات المستحقة القبض وإدارة حالة التحصيل
+ * Outstanding-Payments / Accounts-Receivable read-side aggregator
+ * plus the single mutation surface for collection status and manual blocking.
  *
  * Design rules (DO NOT relax):
- * - Customer blocking is MANUAL ONLY. Nothing here auto-flips `blocked`.
+ * - Customer blocking is MANUAL ONLY. Nothing auto-flips `blocked`.
  * - Order creation hooks call {@link assertNotBlocked} to fail-closed.
- * - `priorityScore` and `daysLate` are informational; no automation
- *   triggers off them.
- * - Every status mutation produces a `CUSTOMER_COLLECTION_UPDATED`
- *   audit row, plus a paired `CUSTOMER_BLOCKED` / `CUSTOMER_UNBLOCKED`
- *   financial event when the manual toggle changes the customer's
- *   block status.
+ * - `priorityScore` and `daysLate` are informational; no automation triggers.
+ * - Every status mutation produces an audit row plus optional BLOCKED/UNBLOCKED events.
+ *
+ * @since V19.x
  */
 const STATUS_MUTATION_ROLES = new Set<string>([
   'CALL_CENTER',
@@ -66,6 +65,13 @@ type AggRow = {
   dueDate: Date | null;
 };
 
+/**
+ * خدمة المدفوعات المعلقة والحسابات المستحقة القبض
+ * Manages outstanding invoice aggregation, collection status mutations,
+ * and customer blocking in the AR (accounts-receivable) rail.
+ *
+ * @since V19.x
+ */
 @Injectable()
 export class OutstandingService {
   constructor(
@@ -76,6 +82,17 @@ export class OutstandingService {
     private readonly debtVisibility: DebtVisibilityService,
   ) {}
 
+  /**
+   * يُرجع قائمة العملاء ذوي المديونيات المعلقة مع مؤشرات الأولوية والتصفية
+   * Returns all customers with outstanding receivables, enriched with priority scores,
+   * collection statuses, subscription state, and driver summaries.
+   *
+   * @param query - معايير التصفية والبحث والنطاق الزمني | Filter, search, and date range query
+   * @param actor - المستخدم الحالي (لتحديد نطاق الفرع) | Current user for branch scoping
+   * @returns قائمة المديونيات المعلقة مع المؤشرات | Outstanding receivables response with KPIs
+   * @throws BadRequestException عند تمرير نطاق تاريخ غير صالح | On invalid date range
+   * @since V19.x
+   */
   async listOutstanding(
     query: OutstandingQueryDto,
     actor?: JwtUser | null,
@@ -371,6 +388,20 @@ export class OutstandingService {
     });
   }
 
+  /**
+   * يُحدّث حالة التحصيل للعميل ويُسجّل التغيير في سجل التدقيق
+   * Updates the collection status (and optional manual block) for a customer.
+   * Restricted to CALL_CENTER, CALL_CENTER_SUPERVISOR, and OWNER roles.
+   * Emits CUSTOMER_BLOCKED / CUSTOMER_UNBLOCKED financial events on block toggle.
+   *
+   * @param input.customerId - معرف العميل | Customer ID
+   * @param input.body - بيانات التحديث (الحالة، الحظر، الملاحظة) | Update payload
+   * @param input.actorUserId - معرف المستخدم الفاعل | Actor user ID
+   * @param input.actorRole - دور المستخدم الفاعل | Actor role string
+   * @returns حالة التحصيل المحدّثة | Updated collection status DTO
+   * @throws ForbiddenException إذا لم يكن للمستخدم صلاحية التحديث | On insufficient role
+   * @throws NotFoundException إذا لم يُوجد العميل | If customer not found
+   */
   async updateCollectionStatus(input: {
     customerId: string;
     body: UpdateCustomerCollectionStatusDto;
@@ -472,6 +503,15 @@ export class OutstandingService {
     return this.toStatusDto(after);
   }
 
+  /**
+   * يُرجع حالة التحصيل الحالية لعميل محدد
+   * Returns the current collection status for a customer, falling back to NORMAL/unblocked
+   * when no explicit record exists.
+   *
+   * @param customerId - معرف العميل | Customer ID
+   * @returns حالة التحصيل الحالية | Current collection status DTO
+   * @throws NotFoundException إذا لم يُوجد العميل | If customer not found
+   */
   async getCollectionStatus(
     customerId: string,
   ): Promise<CustomerCollectionStatusDto> {
@@ -497,9 +537,13 @@ export class OutstandingService {
   }
 
   /**
-   * Fail-closed guard for order creation paths. Throws a
-   * `ForbiddenException` whenever the customer is manually blocked in
-   * the AR rail. NEVER auto-blocks; only enforces the manual flag.
+   * حارس فشل آمن لمسارات إنشاء الطلبات — يرفض الطلبات للعملاء المحظورين
+   * Fail-closed guard for order creation paths. Throws a ForbiddenException
+   * whenever the customer is manually blocked in the AR rail.
+   * NEVER auto-blocks; only enforces the manual flag.
+   *
+   * @param customerId - معرف العميل | Customer ID
+   * @throws ForbiddenException إذا كان العميل محظوراً | If customer is manually blocked
    */
   async assertNotBlocked(customerId: string): Promise<void> {
     const status = await this.prisma.customerCollectionStatus.findUnique({

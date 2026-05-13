@@ -1,6 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsDateString } from 'class-validator';
 
+/**
+ * معايير استعلام مبيعات نقاط البيع اليومية
+ * Query DTO for daily POS sales report with ISO date range.
+ */
 export class DailyPosSalesQueryDto {
   @ApiProperty({ example: '2026-04-15T00:00:00.000Z' })
   @IsDateString()

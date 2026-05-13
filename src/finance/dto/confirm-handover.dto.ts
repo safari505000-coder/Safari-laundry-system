@@ -2,6 +2,11 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsNumber, IsOptional, IsPositive, IsString, IsUUID, MinLength } from 'class-validator';
 
+/**
+ * DTO تأكيد تسليم النقدية من السائق إلى المدير
+ * DTO for the cash handover confirmation from driver to branch manager.
+ * Optional depositReceiptUrl enables the slip-first legacy flow.
+ */
 export class ConfirmHandoverDto {
   @ApiProperty({ format: 'uuid' })
   @IsUUID('4')

@@ -6,6 +6,12 @@ import { CustomerCollectionStatusKind } from '@prisma/client';
  * `priorityScore` is intentionally informational — nothing in the
  * codebase escalates, blocks, or messages off the back of it.
  */
+/**
+ * DTO صف العميل المُجمَّع في قائمة المديونيات المعلقة
+ * Aggregated customer row in the Outstanding (AR) view with priority score,
+ * collection status, subscription state, and canonical debt amounts.
+ * @since V19.x
+ */
 export class OutstandingRowDto {
   @ApiProperty()
   customerId!: string;
@@ -107,6 +113,10 @@ export class OutstandingRowDto {
   subscriptionExpiresAt?: string | null;
 }
 
+/**
+ * DTO استجابة المديونيات المعلقة — صفوف العملاء والإجماليات وتوزيع السائقين
+ * Outstanding (AR) response DTO with customer rows, totals, driver summaries, and headline KPIs.
+ */
 export class OutstandingResponseDto {
   @ApiProperty({ type: [OutstandingRowDto] })
   rows!: OutstandingRowDto[];

@@ -23,10 +23,29 @@ import { Prisma } from '@prisma/client';
  *    drop optional fields without changing the hash.
  *  - Non-finite numbers throw — banking-safe systems never hash NaN.
  */
+/**
+ * يُحوّل قيمة إلى JSON كانونية قابلة للمقارنة بغض النظر عن ترتيب المفاتيح
+ * Converts a value to deterministic, key-order-independent canonical JSON string.
+ * Decimals are stringified at exactly 4dp; undefined/null normalize to null.
+ *
+ * @param value - القيمة المُراد تحويلها | Value to canonicalize
+ * @returns سلسلة JSON كانونية | Canonical JSON string
+ * @throws Error إذا كان الرقم غير محدود | If value contains a non-finite number
+ * @since V21 Phase 3
+ */
 export function canonicalJsonStringify(value: unknown): string {
   return JSON.stringify(canonicalize(value));
 }
 
+/**
+ * يُنتج هاش SHA-256 لقيمة مُستخدَمًا التسلسل الكانوني
+ * Produces a SHA-256 hex hash of any value using canonical JSON serialisation.
+ * Same logical state → same hash regardless of object key order.
+ *
+ * @param value - القيمة المُراد تشفيرها | Value to hash
+ * @returns هاش SHA-256 بالنظام الست عشري | SHA-256 hex string
+ * @since V21 Phase 3
+ */
 export function canonicalHash(value: unknown): string {
   const json = canonicalJsonStringify(value);
   return createHash('sha256').update(json, 'utf8').digest('hex');

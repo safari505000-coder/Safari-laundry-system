@@ -25,6 +25,12 @@ import { FinancialAlertsService } from './financial-alerts.service';
 const CUSTOMER_LIMIT =
   Number.parseInt(process.env.FINANCE_OWNER_DASHBOARD_CUSTOMER_LIMIT ?? '500', 10) || 500;
 
+/**
+ * خدمة لوحة معلومات المالك المالية — توفر نظرة شاملة على الأداء المالي اليومي
+ * Owner financial dashboard service providing a comprehensive view of daily financial
+ * performance including KPIs, customer rollup, driver risk, and cash position.
+ * Cached with short TTL via FinanceDashboardCacheService.
+ */
 @Injectable()
 export class OwnerFinancialDashboardService {
   constructor(
@@ -38,6 +44,13 @@ export class OwnerFinancialDashboardService {
     private readonly journalSource: JournalSourceService,
   ) {}
 
+  /**
+   * يُرجع لوحة معلومات المالك المالية الشاملة مع مؤشرات الأداء والعملاء والسائقين
+   * Returns the owner financial dashboard with KPIs, customer rollup, driver risk,
+   * and cash position. Short-TTL cached.
+   *
+   * @returns لوحة معلومات المالك المالية | Owner financial dashboard DTO
+   */
   getDashboard(): Promise<OwnerFinancialDashboardDto> {
     const key = this.cache.cacheKey('owner-financial-dashboard', {
       v: '1',

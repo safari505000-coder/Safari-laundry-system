@@ -22,12 +22,22 @@ const READ_ROLES = new Set<string>([
   SafariRole.CALL_CENTER_SUPERVISOR,
 ]);
 
+/**
+ * متحكم تسجيل المخاطر — نقاط نهاية درجات المخاطرة وقائمة العملاء المعرضين للخطر
+ * Risk scoring REST controller providing individual risk scores and at-risk customer lists.
+ * Mounted at `/api/finance/risk/*`.
+ * @since V20.5 Phase 6
+ */
 @Controller('finance/risk')
 @UseGuards(JwtAuthGuard)
 export class RiskScoringController {
   constructor(private readonly svc: RiskScoringService) {}
 
   @Get('customers/:id')
+  /**
+   * يُرجع درجة المخاطرة لعميل واحد مع تفاصيل المكونات
+   * Returns the risk score for a single customer with component breakdown.
+   */
   async getOne(
     @CurrentUser() user: JwtUser,
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -37,6 +47,10 @@ export class RiskScoringController {
   }
 
   @Get('at-risk')
+  /**
+   * يُرجع قائمة العملاء ذوي المخاطر العالية والحرجة
+   * Returns at-risk customers (HIGH/CRITICAL) sorted by score descending.
+   */
   async listAtRisk(
     @CurrentUser() user: JwtUser,
     @Query('limit') limit?: string,

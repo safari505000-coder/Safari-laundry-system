@@ -42,6 +42,10 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
+/**
+ * قيد دفتر الأستاذ المُتوقَّع — زوج مدين/دائن من مصدر بيانات كانونية
+ * Projected double-entry ledger record — one side of a balanced debit/credit pair.
+ */
 export type LedgerEntry = {
   /** Stable, deterministic transaction id grouping ≥2 entries that balance. */
   txId: string;
@@ -58,6 +62,10 @@ export type LedgerEntry = {
   meta: Record<string, unknown>;
 };
 
+/**
+ * صف رصيد حساب مُجمَّع من قيود دفتر الأستاذ المُتوقَّعة
+ * Aggregated account balance row derived from projected ledger entries.
+ */
 export type AccountBalanceRow = {
   accountId: string;
   totalDebit: string;
@@ -67,6 +75,10 @@ export type AccountBalanceRow = {
   entryCount: number;
 };
 
+/**
+ * تقرير التسوية للقيود المُتوقَّعة — يتحقق من توازن المجاميع المدينة والدائنة
+ * Reconciliation report for the projected ledger verifying Σdebit == Σcredit.
+ */
 export type ReconciliationReport = {
   status: 'PASS' | 'FAIL';
   fromIso: string;
@@ -87,6 +99,10 @@ export type ReconciliationReport = {
   generatedAt: string;
 };
 
+/**
+ * مدخلات إسقاط دفتر الأستاذ — النطاق الزمني للقيود المُتوقَّعة
+ * Date range input for the ledger projection computation.
+ */
 export type LedgerProjectionInput = {
   fromIso: string;
   toIso: string;
@@ -135,6 +151,15 @@ function pair(
   ];
 }
 
+/**
+ * خدمة إسقاط دفتر الأستاذ — قراءة فقط، إسقاط قيود مزدوجة حتمية
+ * Strictly read-only double-entry projection service.
+ * Projects canonical source tables (GeneralLedgerEntry, ManagerCashCustody, etc.)
+ * into balanced DR/CR LedgerEntry pairs satisfying Σdebit == Σcredit by construction.
+ * Never writes to the database. The projection is a pure function of the date range.
+ *
+ * @since Stage A of the strict-ledger migration
+ */
 @Injectable()
 export class LedgerProjectionService {
   constructor(private readonly prisma: PrismaService) {}
@@ -455,7 +480,13 @@ export class LedgerProjectionService {
     return entries;
   }
 
-  /** Aggregate per-account balances over a projection. */
+  /**
+   * يُجمّع أرصدة الحسابات من مجموعة قيود الإسقاط
+   * Aggregates debit/credit sums per account from a set of projected entries.
+   *
+   * @param entries - قيود الإسقاط المُولَّدة من `project()` | Projected LedgerEntry array
+   * @returns صفوف أرصدة الحسابات مرتبة أبجدياً | Account balance rows sorted by accountId
+   */
   aggregateAccounts(entries: LedgerEntry[]): AccountBalanceRow[] {
     const acc = new Map<
       string,

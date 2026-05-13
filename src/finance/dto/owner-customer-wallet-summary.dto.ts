@@ -1,5 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
 
+/**
+ * DTO ملخص محافظ عملاء المالك — يُجمّع الالتزامات والديون والإحصاءات
+ * Owner customer wallet summary DTO aggregating total wallet liabilities, customer debts,
+ * subscription usage, and debt settled by subscriptions.
+ */
 export class OwnerCustomerWalletSummaryDto {
   @ApiProperty({
     description:

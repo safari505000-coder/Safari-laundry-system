@@ -70,6 +70,13 @@ function parseLatLng(input?: string | null): { lat: number; lng: number } | null
   return { lat, lng };
 }
 
+/**
+ * خدمة النقدية — تدير دورة حياة النقد من السائق إلى البنك
+ * Cash-cycle service covering: driver cash balances, handover confirmation,
+ * cash trace reports, reconciliation snapshots, and driver GPS monitoring.
+ *
+ * @since V19 (extended through V23.2)
+ */
 @Injectable()
 export class CashService {
   constructor(
@@ -98,6 +105,17 @@ export class CashService {
     });
   }
 
+  /**
+   * يُرجع مبيعات نقاط البيع اليومية مجمّعة حسب طريقة الدفع
+   * Returns daily POS sales grouped by payment method with collection-rate KPIs
+   * (total, collected, on-account, collectionRateBps).
+   *
+   * @param fromIso - تاريخ البداية بتنسيق ISO | Start date ISO string
+   * @param toIso - تاريخ النهاية بتنسيق ISO | End date ISO string
+   * @param scopedDriverId - معرف السائق للتصفية (اختياري) | Optional driver scope
+   * @returns مبيعات الفترة مصنفة حسب طريقة الدفع | Payment-method breakdown with totals
+   * @throws BadRequestException عند تمرير نطاق تاريخ غير صالح | On invalid date range
+   */
   async getDailyPosSalesByPaymentMethod(
     fromIso: string,
     toIso: string,
@@ -159,6 +177,13 @@ export class CashService {
     };
   }
 
+  /**
+   * يُرجع أرصدة جميع السائقين مقسمة حسب طريقة الدفع
+   * Returns all drivers' pending cash balances broken down by payment method
+   * (CASH, KNET, PAYMENT_LINK, ONLINE) with order counts.
+   *
+   * @returns قائمة السائقين مع أرصدتهم المعلقة | Driver balance list with pending amounts
+   */
   async getDriverBalances(): Promise<DriverBalanceResponseDto> {
     const drivers = await this.prisma.user.findMany({
       where: { safariRole: SafariRole.DRIVER },
@@ -251,6 +276,13 @@ export class CashService {
     return { drivers: rows };
   }
 
+  /**
+   * يُرجع ملخص نقدية السائق من الطلبات المكتملة غير المسلّمة
+   * Returns the current driver's cash custody summary (COMPLETED, PAID_TO_DRIVER, CASH orders).
+   *
+   * @param driverId - معرف السائق | Driver user ID
+   * @returns ملخص نقدية السائق الإجمالي | Driver cash custody summary
+   */
   async getMyDriverCashCustodySummary(driverId: string): Promise<{
     cashTotalKd: string;
     cashOrderCount: number;
@@ -270,6 +302,12 @@ export class CashService {
     );
   }
 
+  /**
+   * يُرجع إجمالي النقدية الموجودة لدى جميع السائقين حالياً
+   * Returns the global sum of all CASH orders with cashStatus=PAID_TO_DRIVER.
+   *
+   * @returns إجمالي النقدية بالدينار الكويتي (4 منازل عشرية) | Total KWD string (4dp)
+   */
   async getTotalCashWithDrivers(): Promise<string> {
     const rows = await this.prisma.order.findMany({
       where: {
@@ -282,6 +320,15 @@ export class CashService {
     return minorToAmountString(sumOrderMinors(rows));
   }
 
+  /**
+   * يُرجع بيانات المراقبة الحية للسائقين مع مواقعهم الجغرافية
+   * Returns live driver monitoring data for drivers with an open shift,
+   * including GPS location (falling back to branch location when unavailable).
+   *
+   * @param branchId - معرف الفرع للتصفية (اختياري، null = جميع الأسطول) | Optional branch scope
+   * @returns قائمة السائقين النشطين مع بياناتهم الجغرافية | Active driver list with locations
+   * @since V19.22.5
+   */
   async getDriverMonitoring(branchId: string | null = null) {
     const activeDrivers = await this.prisma.user.findMany({
       where: {
@@ -323,6 +370,16 @@ export class CashService {
     };
   }
 
+  /**
+   * يُحدّث موقع السائق الجغرافي وبيانات المركبة
+   * Updates a driver's last known GPS location and/or vehicle label.
+   *
+   * @param driverId - معرف السائق | Driver user ID
+   * @param dto - بيانات التحديث (الموقع، المركبة) | Update payload
+   * @returns بيانات السائق المحدّثة | Updated driver fields
+   * @throws NotFoundException إذا لم يُوجد السائق | If driver not found
+   * @throws BadRequestException إذا كان تنسيق الإحداثيات غير صالح | On invalid lat/lng format
+   */
   async updateDriverTracking(driverId: string, dto: UpdateDriverTrackingDto) {
     const driver = await this.prisma.user.findUnique({
       where: { id: driverId },
@@ -730,6 +787,15 @@ export class CashService {
   /**
    * V19.31 — Reconciliation snapshot: window events vs open balances (now).
    */
+  /**
+   * يُرجع لقطة تسوية نقدية تجمع بين البيانات القائمة على الأحداث والحالة اللحظية
+   * Returns a hybrid cash reconciliation snapshot combining event-based in-window
+   * aggregates (collected/handed) with the current state-based open balances.
+   *
+   * @param query - معايير نطاق التتبع | Date range and optional driver/branch filter
+   * @returns لقطة التسوية النقدية | Cash reconciliation snapshot DTO
+   * @since V19.31
+   */
   async getCashReconciliationSnapshot(
     query: DriverCashTraceQueryDto,
   ): Promise<CashReconciliationSnapshotDto> {
@@ -787,6 +853,13 @@ export class CashService {
     };
   }
 
+  /**
+   * يُرجع تقرير دورة السيولة المالية الكاملة للمالك
+   * Returns the owner's financial cycle report linking cash orders to handover events,
+   * custody bags, and bank deposit verifications.
+   *
+   * @returns سجل كامل للدورة المالية مع مسار التدقيق | Full cycle report with audit trail
+   */
   async getOwnerFinancialCycleReport() {
     // Dastur §3 — handover info (who collected & when) now lives on the
     // ManagerCashCustody bag, since cash is independent of shift lifecycle.

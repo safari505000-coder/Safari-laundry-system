@@ -1,9 +1,8 @@
 /**
+ * نقطة الدخول الكانونية للعمليات المالية بالدينار الكويتي — إعادة تصدير الدوال المُراجَعة
  * V21 Canonical Banking Core money contract.
- *
- * This module is the only backend money display contract new financial
- * consumers should import. It deliberately re-exports the existing audited
- * money helpers; it does not change accounting scale or ledger arithmetic.
+ * The ONLY backend money display contract new financial consumers should import.
+ * Re-exports audited money helpers from finance-money.ts without changing arithmetic.
  */
 export {
   assertDeclaredMatchesLedgerMinor,

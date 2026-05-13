@@ -11,6 +11,11 @@ import {
  * V20.3.1 re-export — keeps the original import path working for
  * callers that already adopted the service-side constant.
  */
+/**
+ * تسامح المبلغ المتبقي للفاتورة بالدينار الكويتي — إعادة تصدير للتوافق مع الإصدارات السابقة
+ * Re-export of INVOICE_REMAINING_TOLERANCE_KD for backwards-compatible import paths.
+ * @since V20.3.1
+ */
 export const INVOICE_REMAINING_TOLERANCE_KD = REMAINING_TOLERANCE_KD;
 
 /**
@@ -37,8 +42,16 @@ export const INVOICE_REMAINING_TOLERANCE_KD = REMAINING_TOLERANCE_KD;
  * the result is `<= TOLERANCE_KD`.
  */
 
+/**
+ * حالة دفع الفاتورة — المصدر الوحيد للحقيقة لحالة تسوية الفاتورة
+ * Invoice payment status — single source of truth for invoice settlement state.
+ */
 export type InvoicePaymentStatus = 'UNPAID' | 'PARTIALLY_PAID' | 'PAID';
 
+/**
+ * صف حالة دفع الفاتورة مع المبالغ المُسددة والمتبقية والمصدر
+ * Invoice payment status row with paid/remaining amounts and computation source.
+ */
 export type InvoicePaymentStatusRow = {
   orderId: string;
   totalAmountKd: string;
@@ -58,6 +71,15 @@ export type InvoicePaymentStatusRow = {
 
 type Db = PrismaService | Prisma.TransactionClient;
 
+/**
+ * خدمة حالة دفع الفاتورة — المصدر الوحيد للحقيقة لحالة تسوية الفواتير
+ * Single source of truth for invoice settlement state.
+ * Computes remaining balance via journal AR (V20.3+) or DebtLedger waterfall (V20.2).
+ * Never mutates any row — all call-sites deciding "should I close this invoice?"
+ * must call computeRemainingBalance and only flip cashStatus when result <= TOLERANCE_KD.
+ *
+ * @since V20.3.1
+ */
 @Injectable()
 export class InvoicePaymentStatusService {
   constructor(private readonly prisma: PrismaService) {}
@@ -77,6 +99,15 @@ export class InvoicePaymentStatusService {
    *
    * Clamped at 0 (never negative — overpayment surfaces as a
    * positive credit elsewhere via the audit module).
+   */
+  /**
+   * يحسب الرصيد المتبقي لفاتورة واحدة من المصدر الكانوني
+   * Computes the remaining balance for a single invoice/order.
+   * Prefers journal AR (V20.3+), falls back to DebtLedger waterfall.
+   *
+   * @param orderId - معرف الطلب/الفاتورة | Order/invoice ID
+   * @param db - عميل Prisma اختياري (لدعم المعاملات) | Optional Prisma client for transaction support
+   * @returns الرصيد المتبقي والمُسدَّد والمُمتَص ومصدر الحساب | Remaining, paid, absorbed amounts and source
    */
   async computeRemainingBalance(
     orderId: string,

@@ -15,6 +15,10 @@ import { OutstandingService } from './outstanding.service';
  * Intentionally informational only so the night-shift can see whether
  * the AR queue is stable, with zero risk of cron-driven side-effects.
  */
+/**
+ * نتيجة تشغيل Cron اللقطة اليومية للمديونيات المعلقة
+ * Result type for the daily outstanding AR snapshot cron run.
+ */
 export type OutstandingSnapshotResult = {
   ranAtIso: string;
   fromIso: string;
@@ -28,6 +32,12 @@ export type OutstandingSnapshotResult = {
   error?: string;
 };
 
+/**
+ * Cron يومي للقطة AR — يُسجّل ملخصاً معلوماتياً للمديونيات كل صباح
+ * Daily AR snapshot cron running at 06:00 UTC. Informational only —
+ * never mutates customer state, sends notifications, or blocks customers.
+ * @since V19.x
+ */
 @Injectable()
 export class OutstandingSnapshotCron {
   private readonly logger = new Logger(OutstandingSnapshotCron.name);

@@ -29,6 +29,10 @@ import { PrismaService } from '../../prisma/prisma.service';
  * entry's lines straddle branches (rare; only happens for explicit
  * cross-branch transfers). The org-wide pair always balances.
  */
+/**
+ * ميزان المراجعة للفرع — مجموع المدين والدائن والانحراف لكل فرع
+ * Trial balance per branch with total debit, credit, and drift amounts.
+ */
 export type BranchTrialBalance = {
   branchId: string | 'UNATTRIBUTED';
   branchName: string | null;
@@ -37,6 +41,10 @@ export type BranchTrialBalance = {
   driftKd: string;
 };
 
+/**
+ * بيان الأرباح والخسائر للفرع — إيرادات ومصروفات وصافي الدخل
+ * Branch P&L statement with revenue, expense, and net income.
+ */
 export type BranchPnl = {
   branchId: string | 'UNATTRIBUTED';
   branchName: string | null;
@@ -45,6 +53,10 @@ export type BranchPnl = {
   netIncomeKd: string;
 };
 
+/**
+ * الحسابات المستحقة القبض للفرع من حساب 1300
+ * Branch receivables aggregated from account 1300 (AR) net balance.
+ */
 export type BranchReceivables = {
   branchId: string | 'UNATTRIBUTED';
   branchName: string | null;
@@ -52,6 +64,14 @@ export type BranchReceivables = {
   cashKd: string;
 };
 
+/**
+ * خدمة محاسبة الفروع — تُجمّع دفتر اليومية حسب الفرع لإنتاج تقارير مالية مُوزَّعة
+ * Multi-branch accounting service aggregating the canonical journal by branch to produce
+ * per-branch trial balance, P&L, receivables, and cash positions.
+ * Pure read; never writes. Historical entries with NULL branchId aggregate as UNATTRIBUTED.
+ *
+ * @since V20.5 Phase 9
+ */
 @Injectable()
 export class BranchAccountingService {
   private readonly logger = new Logger(BranchAccountingService.name);
@@ -62,6 +82,14 @@ export class BranchAccountingService {
    * Per-branch trial balance over the optional time window.
    * Returns one row per branch (plus "UNATTRIBUTED" for legacy
    * entries) sorted by `branchName`.
+   */
+  /**
+   * يُرجع ميزان المراجعة لكل فرع ضمن النافذة الزمنية المحددة
+   * Returns per-branch trial balance with total debit, credit, and drift.
+   *
+   * @param opts.asOf - تاريخ الإغلاق (اختياري) | Optional as-of date
+   * @param opts.sinceDate - تاريخ البداية (اختياري) | Optional start date
+   * @returns ميزان المراجعة لكل فرع | Branch trial balance rows
    */
   async trialBalance(opts?: {
     asOf?: Date;

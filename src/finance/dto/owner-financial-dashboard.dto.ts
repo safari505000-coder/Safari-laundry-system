@@ -1,17 +1,37 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
+/**
+ * نوع التنبيه المالي للمالك
+ * Financial alert type for the owner dashboard.
+ */
 export type FinancialAlertType =
   | 'HIGH_DEBT'
   | 'DRIVER_DELAY'
   | 'EXPENSE_SPIKE'
   | 'CASH_MISMATCH';
 
+/**
+ * مستوى خطورة التنبيه المالي
+ * Financial alert severity level.
+ */
 export type FinancialAlertSeverity = 'LOW' | 'MEDIUM' | 'HIGH';
 
+/**
+ * مستوى مخاطر السائق المالية
+ * Driver financial risk level for the owner dashboard.
+ */
 export type DriverRiskLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'WARNING';
 
+/**
+ * حالة صحة العميل المالية
+ * Customer financial health classification for the owner dashboard.
+ */
 export type CustomerHealth = 'GOOD' | 'WATCH' | 'RISK' | 'BLOCKED';
 
+/**
+ * DTO التنبيه المالي للمالك
+ * Financial alert DTO for the owner dashboard.
+ */
 export class FinancialAlertDto {
   @ApiProperty({ enum: ['HIGH_DEBT', 'DRIVER_DELAY', 'EXPENSE_SPIKE', 'CASH_MISMATCH'] })
   type!: FinancialAlertType;
@@ -29,6 +49,10 @@ export class FinancialAlertDto {
   createdAt!: string;
 }
 
+/**
+ * DTO أبرز عملاء المالك بالديون — يتضمن الدين الكانوني وبيانات الذكاء
+ * Top customer DTO for the owner dashboard with canonical debt and intelligence fields.
+ */
 export class OwnerTopCustomerDto {
   @ApiProperty()
   customerId!: string;

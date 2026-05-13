@@ -35,6 +35,10 @@ import { PrismaService } from '../../prisma/prisma.service';
  * (ISO timestamp) for cheap "load older" UI behavior.
  */
 
+/**
+ * نوع حدث الجدول الزمني المالي — يُصنّف كل حدث في مسار العميل المالي
+ * Kind discriminator for a financial timeline event across all merged sources.
+ */
 export type FinancialTimelineEventKind =
   | 'INVOICE_ISSUED'
   | 'PAYMENT_RECORDED'
@@ -55,6 +59,10 @@ export type FinancialTimelineEventKind =
   | 'COLLECTIONS_STAGE_CHANGED'
   | 'JOURNAL_ENTRY';
 
+/**
+ * حدث في الجدول الزمني المالي للعميل مع تفاصيل المبلغ والمصدر
+ * A single financial timeline event for a customer with amount, source, and metadata.
+ */
 export type FinancialTimelineEvent = {
   kind: FinancialTimelineEventKind;
   /** Stable id within its source table (orderId, ledgerRowId, …). */
@@ -71,6 +79,10 @@ export type FinancialTimelineEvent = {
   metadata?: Record<string, string | number | null>;
 };
 
+/**
+ * استجابة الجدول الزمني المالي مع مؤشر الترقيم بالتاريخ
+ * Financial timeline response with events and a before-cursor for pagination.
+ */
 export type FinancialTimelineResponse = {
   customerId: string;
   generatedAt: string;
@@ -82,6 +94,15 @@ export type FinancialTimelineResponse = {
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;
 
+/**
+ * خدمة الجدول الزمني المالي — يدمج جميع الأحداث المالية للعميل في تيار زمني واحد
+ * Unified customer financial timeline service merging orders, journal entries,
+ * subscriptions, GL entries, promises, collections stage events, and raw journal entries
+ * into a single reverse-chronological event stream.
+ * Pure read; no mutations. Paginated by before-cursor.
+ *
+ * @since V20.4 Phase 8
+ */
 @Injectable()
 export class FinancialTimelineService {
   private readonly logger = new Logger(FinancialTimelineService.name);
@@ -94,6 +115,16 @@ export class FinancialTimelineService {
    * `before` returns events strictly older than the given ISO
    * timestamp, enabling efficient "load older" pagination
    * without offset arithmetic.
+   */
+  /**
+   * يُرجع الجدول الزمني المالي للعميل بترتيب زمني عكسي مع دعم الترقيم
+   * Returns the customer's financial timeline (newest first) merged from all sources.
+   * Pass `before` as the previous response's `nextBeforeCursor` for pagination.
+   *
+   * @param customerId - معرف العميل | Customer ID
+   * @param opts.limit - عدد الأحداث لكل صفحة (افتراضي: 100، أقصى: 500) | Events per page
+   * @param opts.before - مؤشر التاريخ لتحميل الأحداث الأقدم | ISO timestamp before-cursor
+   * @returns الجدول الزمني المالي المُدمج | Merged financial timeline response
    */
   async getTimeline(
     customerId: string,

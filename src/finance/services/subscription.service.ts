@@ -2,10 +2,21 @@ import { Injectable } from '@nestjs/common';
 import { LedgerTransactionType, OrderStatus, PosPaymentMethod } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
+/**
+ * خدمة الاشتراكات المالية — تحسب استخدام الاشتراك والديون المُسوَّاة به
+ * Subscription financial service computing subscription usage totals
+ * and debt settled through subscription activations.
+ */
 @Injectable()
 export class SubscriptionService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * يُرجع إجمالي الاستخدام عبر الاشتراكات والديون المُسوَّاة بها
+   * Returns total subscription wallet usage and total debt settled by subscriptions.
+   *
+   * @returns إجمالي الاستخدام والديون المُسوَّاة | Subscription usage and settled debt totals
+   */
   async getUsageAndSettledDebtTotals(): Promise<{
     totalSubscriptionUsage: string;
     debtSettledBySubscriptions: string;

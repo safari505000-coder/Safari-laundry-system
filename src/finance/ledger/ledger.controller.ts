@@ -82,6 +82,12 @@ function ensureFinanceRole(user: JwtUser): void {
   }
 }
 
+/**
+ * متحكم دفتر الأستاذ — نقاط نهاية إسقاط القيود المزدوجة (للقراءة فقط)
+ * Stage A double-entry projection REST controller.
+ * Provides 6 read-only endpoints: bank-statement, summary, driver/manager accounts,
+ * transactions, and reconciliation. Mounted at `/api/finance/ledger/*`.
+ */
 @ApiTags('finance-ledger')
 @ApiBearerAuth('bearer')
 @Controller('finance/ledger')
@@ -99,6 +105,10 @@ export class LedgerController {
     description:
       'Read-only AR (1300) journal lines for a customer with running balance.',
   })
+  /**
+   * يُرجع كشف حساب بنكي بأسلوب AR لعميل محدد
+   * Returns a bank-statement-style AR (1300) journal view for a customer with running balance.
+   */
   async getBankStatement(
     @CurrentUser() user: JwtUser,
     @Param('entityId', ParseUUIDPipe) entityId: string,

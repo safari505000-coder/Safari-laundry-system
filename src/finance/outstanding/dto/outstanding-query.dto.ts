@@ -17,6 +17,12 @@ import { CustomerCollectionStatusKind } from '@prisma/client';
  * Headline `totalDueKd` matches the Collections red KPI when no narrowing
  * filters are applied (branch scope follows JWT + optional `branchId`).
  */
+/**
+ * معايير استعلام قائمة المديونيات المعلقة — للقراءة فقط
+ * Outstanding (AR) list query DTO. Pure read-side filters applied after aggregation.
+ * Headline totalDueKd matches Collections red KPI when no narrowing filters are applied.
+ * @since V19.x
+ */
 export class OutstandingQueryDto {
   @ApiPropertyOptional({
     description: 'Inclusive ISO-8601 lower bound on Order.createdAt.',

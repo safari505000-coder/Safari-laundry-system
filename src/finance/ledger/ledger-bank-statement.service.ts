@@ -9,6 +9,14 @@ const AR_ACCOUNT_CODE = '1300';
 /**
  * Maps journal `source` / `sourceRef` to Arabic bank-statement description (V25 read-only UI).
  */
+/**
+ * يُحوّل مصدر قيد اليومية إلى وصف كشف حساب بنكي بالعربية
+ * Maps journal source/sourceRef to an Arabic bank-statement description for the V25 UI.
+ *
+ * @param source - مصدر قيد اليومية | Journal entry source
+ * @param sourceRef - مرجع قيد اليومية | Journal entry sourceRef
+ * @returns وصف عربي لكشف الحساب | Arabic bank-statement description
+ */
 export function bankStatementDescriptionFromJournalSource(
   source: string,
   sourceRef: string,
@@ -43,6 +51,10 @@ export function bankStatementDescriptionFromJournalSource(
   return 'عملية مالية';
 }
 
+/**
+ * صف كشف حساب بنكي مُشتق من قيود دفتر اليومية مع الرصيد الجاري
+ * Bank-statement-style row derived from AR (1300) journal lines with running balance.
+ */
 export type LedgerBankStatementRow = {
   lineId: string;
   entryId: string;
@@ -52,6 +64,12 @@ export type LedgerBankStatementRow = {
   runningBalanceKd: string;
 };
 
+/**
+ * خدمة كشف الحساب البنكي من دفتر اليومية — عرض AR للعميل بأسلوب البنك
+ * Read-only bank-statement view of AR (1300) journal lines for a customer
+ * with running balance. Designed for the V25 Customer 360 statement tab.
+ * @since V25
+ */
 @Injectable()
 export class LedgerBankStatementService {
   constructor(private readonly prisma: PrismaService) {}
@@ -59,6 +77,15 @@ export class LedgerBankStatementService {
   /**
    * V25 — Safe read-only bank-style view: AR (1300) lines for one customer,
    * chronological, with running balance = previous + debit − credit.
+   */
+  /**
+   * يُرجع كشف حساب بنكي بأسلوب AR لعميل محدد من قيود دفتر اليومية
+   * Returns a bank-statement-style AR view for a customer with chronological lines
+   * and running balance computed from account 1300 journal lines.
+   *
+   * @param entityId - معرف العميل | Customer/entity ID
+   * @returns كشف الحساب مع الرصيد الختامي والصفوف | Bank statement with closing balance and rows
+   * @since V25
    */
   async getBankStatement(entityId: string): Promise<{
     entityId: string;

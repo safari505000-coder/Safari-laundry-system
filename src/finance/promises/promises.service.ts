@@ -42,6 +42,15 @@ import { PrismaService } from '../../prisma/prisma.service';
  *     `count===0` and is told "promise already resolved".
  *   • The auto-broken cron uses the same conditional UPDATE.
  */
+/**
+ * خدمة التعهدات بالدفع — تدير سجلات التزامات العملاء بالسداد
+ * Promise-to-Pay workflow service managing customer payment commitments.
+ * State machine: ACTIVE → KEPT | BROKEN | CANCELLED (all terminal).
+ * Idempotent via idempotencyKey. Auto-broken by hourly cron after grace period.
+ * Does NOT drive canonical financial state — CRM/follow-up layer only.
+ *
+ * @since V20.5 Phase 2
+ */
 @Injectable()
 export class PromisesToPayService {
   private readonly logger = new Logger(PromisesToPayService.name);
@@ -64,6 +73,20 @@ export class PromisesToPayService {
    *   • collector is an active user.
    *
    * Writes a `CREATED` PromiseEvent in the same transaction.
+   */
+  /**
+   * يُنشئ سجل تعهد بالدفع جديد مع التحقق من المبلغ والتاريخ والمفتاح الفريد
+   * Creates a new Promise-to-Pay record with validation and idempotency support.
+   *
+   * @param input.customerId - معرف العميل | Customer ID
+   * @param input.invoiceId - معرف الفاتورة (اختياري) | Optional invoice ID
+   * @param input.promisedAmount - المبلغ المتعهد به (0 < amount ≤ 100,000) | Promised amount
+   * @param input.promisedDate - تاريخ الوفاء بالتعهد (اليوم أو المستقبل) | Promise date
+   * @param input.collectorId - معرف المحصّل | Collector user ID
+   * @param input.notes - ملاحظات (اختياري) | Optional notes
+   * @param input.idempotencyKey - مفتاح التكرار الأمن (اختياري) | Optional idempotency key
+   * @returns معرف التعهد وحالته وما إذا كان جديداً | Promise ID, status, and created flag
+   * @throws BadRequestException عند بيانات غير صالحة | On invalid input
    */
   async create(input: {
     customerId: string;

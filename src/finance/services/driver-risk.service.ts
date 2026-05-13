@@ -10,10 +10,22 @@ import {
 import type { RiskyDriverDto, DriverRiskLevel } from '../dto/owner-financial-dashboard.dto';
 import { PrismaService } from '../../prisma/prisma.service';
 
+/**
+ * خدمة مخاطر السائقين — تُحدد السائقين ذوي المخاطر المالية العالية
+ * Driver risk service identifying drivers with excessive cash holdings or slow handover.
+ * Used by the owner financial dashboard risk alerts.
+ */
 @Injectable()
 export class DriverRiskService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * يُرجع قائمة السائقين ذوي المخاطر المالية العالية مُرتبة حسب درجة المخاطرة
+   * Returns at-risk drivers sorted by risk level (HIGH first), capped at `take`.
+   *
+   * @param take - عدد السائقين للإرجاع (افتراضي: 10) | Max drivers to return
+   * @returns قائمة السائقين ذوي المخاطر | At-risk driver list
+   */
   async getRiskyDrivers(take = 10): Promise<RiskyDriverDto[]> {
     const drivers = await this.prisma.user.findMany({
       where: { safariRole: SafariRole.DRIVER },

@@ -7,8 +7,18 @@ import {
 /**
  * V19.31 — One-screen reconciliation: event-based (window) vs state-based (open balances).
  */
+/**
+ * معايير استعلام تسوية النقدية — يرث من استعلام تتبع نقد السائق
+ * Cash reconciliation query DTO extending DriverCashTraceQueryDto with same date/driver scope.
+ * @since V19.31
+ */
 export class CashReconciliationQueryDto extends DriverCashTraceQueryDto {}
 
+/**
+ * لقطة تسوية النقدية — تجمع الأحداث المبنية على الوقت مع الأرصدة اللحظية
+ * Cash reconciliation snapshot combining event-based in-window aggregates with state-based open balances.
+ * @since V19.31
+ */
 export type CashReconciliationSnapshotDto = {
   range: { from: string; to: string };
   notes: string[];

@@ -19,6 +19,11 @@ import { FinancialSnapshotService } from '../snapshots/financial-snapshot.servic
  * priority first).
  */
 
+/**
+ * درجة الاستخبارات التحصيلية لعميل — تشمل المخاطر والأولوية والإشارات التفصيلية
+ * Collections intelligence score bundle for a customer, including risk, payment probability,
+ * aging severity, behavioral score, and detailed signals.
+ */
 export type CollectionsScore = {
   customerId: string;
   /** 0..100 — risk of non-payment. */
@@ -52,6 +57,14 @@ const W = {
   size: 12,
 };
 
+/**
+ * خدمة استخبارات التحصيل — تحسب درجات القابلية للتحصيل وأولوية التواصل
+ * Deterministic collections intelligence service computing explainable 0–100 scores
+ * (risk, payment probability, aging severity, priority) from canonical financial primaries.
+ * NOT machine-learned — weights are explicit constants for full auditability.
+ *
+ * @since V20.4 Phase 9
+ */
 @Injectable()
 export class CollectionsIntelligenceService {
   constructor(
@@ -65,11 +78,26 @@ export class CollectionsIntelligenceService {
    * Cheap enough to run live for a single Customer 360 view; the
    * collections list calls {@link computeBatch} with paged ids.
    */
+  /**
+   * يحسب درجة استخبارات التحصيل لعميل واحد
+   * Computes the full collections intelligence score for a single customer.
+   *
+   * @param customerId - معرف العميل | Customer ID
+   * @returns درجة التحصيل الكاملة مع الإشارات | Full collections score with signals
+   */
   async computeCustomerScore(customerId: string): Promise<CollectionsScore> {
     const signals = await this.collectSignals(customerId);
     return this.scoreFromSignals(customerId, signals);
   }
 
+  /**
+   * يحسب درجات الاستخبارات التحصيلية لمجموعة عملاء بشكل متسلسل
+   * Computes scores for a batch of customers sequentially to keep DB load predictable.
+   * Per-customer failures are absorbed and omitted from the result map.
+   *
+   * @param customerIds - قائمة معرفات العملاء | List of customer IDs
+   * @returns خريطة من معرف العميل إلى درجة التحصيل | Map of customerId to collections score
+   */
   async computeBatch(
     customerIds: string[],
   ): Promise<Map<string, CollectionsScore>> {

@@ -45,6 +45,14 @@ import {
 
 const TOL = new Prisma.Decimal(UI_DEBT_CONSISTENCY_TOLERANCE_KD);
 
+/**
+ * واجهة رؤية الديون الكانونية — المرجع الوحيد لأرقام الديون المعروضة في الواجهة
+ * Single approved entry point for "what number does the UI show?".
+ * Wraps FinancialSnapshot projection, Journal AR live read, and canonical helper fallback.
+ * All operational consumers (Subscribers, Outstanding, Customer 360) MUST go through this.
+ *
+ * @since V20.4 Phase 3/16
+ */
 @Injectable()
 export class DebtVisibilityService {
   private readonly logger = new Logger(DebtVisibilityService.name);
@@ -58,6 +66,14 @@ export class DebtVisibilityService {
   /**
    * Single-customer canonical view. The result is what every
    * Customer 360 / subscriber row / outstanding row MUST render.
+   */
+  /**
+   * يُرجع رصيد الدين الكانوني المرئي لعميل واحد
+   * Returns the canonical visible debt for a single customer.
+   * Tries the snapshot projection first, falls back to live Journal AR, then canonical helper.
+   *
+   * @param customerId - معرف العميل | Customer ID
+   * @returns رصيد الدين الكانوني المرئي | Canonical visible debt for the customer
    */
   async getCustomerVisibleDebt(
     customerId: string,
@@ -84,6 +100,14 @@ export class DebtVisibilityService {
    * Batch path used by Subscribers list / Outstanding to keep
    * page reads O(1) DB calls. Falls back to live computation
    * for any customer the projection doesn't cover yet.
+   */
+  /**
+   * يُرجع أرصدة الديون الكانونية لمجموعة من العملاء في استعلام واحد
+   * Batch path for paginated APIs. Falls back to live computation for missing rows.
+   * O(1) DB calls for the hot path (snapshot exists).
+   *
+   * @param customerIds - قائمة معرفات العملاء | List of customer IDs
+   * @returns خريطة من معرف العميل إلى الدين المرئي | Map of customerId to visible debt
    */
   async getCustomerVisibleDebtBatch(
     customerIds: string[],
@@ -128,6 +152,15 @@ export class DebtVisibilityService {
    * V20.3.1 partial-payment status for a single invoice. Single
    * source of truth for the chip color (UNPAID/PARTIALLY_PAID/PAID).
    */
+  /**
+   * يُرجع حالة الدفع لفاتورة واحدة (مدفوعة / مدفوعة جزئياً / غير مدفوعة)
+   * Returns partial-payment status for a single invoice.
+   * Single source of truth for invoice chip colour in the UI.
+   *
+   * @param orderId - معرف الطلب/الفاتورة | Order/invoice ID
+   * @returns رؤية الفاتورة أو null إذا لم تُوجد | Invoice visibility or null
+   * @since V20.3.1
+   */
   async getInvoiceStatus(orderId: string): Promise<InvoiceVisibility | null> {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
@@ -163,6 +196,13 @@ export class DebtVisibilityService {
    * The final money total is folded through `getCustomerVisibleDebtBatch`
    * so stale projection rows are upgraded to Journal AR before they can
    * feed any KPI.
+   */
+  /**
+   * يُرجع لقطة تجميعية للتحصيل تُستخدم في بطاقات KPI الحمراء
+   * Returns an aggregate collections snapshot used by the collections red-KPI cards.
+   * The final money total is overlaid through live Journal AR to prevent stale display.
+   *
+   * @returns لقطة التحصيل الشاملة | Aggregate collections snapshot
    */
   async getCollectionsSnapshot(): Promise<CollectionsSnapshot> {
     const [snapshotCandidates, receivableOrders] = await Promise.all([
@@ -247,6 +287,15 @@ export class DebtVisibilityService {
    * {@link getCustomerVisibleDebt} only in that it joins on
    * the active-subscription dimension so the Subscribers list
    * can decide chip visibility without a second query.
+   */
+  /**
+   * يُرجع لقطة ديون المشترك مع حالة الاشتراك النشط
+   * Lightweight subscriber-debt projection joining visible debt with active-subscription state.
+   * Used by the Subscribers list to decide chip visibility without a second query.
+   *
+   * @param customerId - معرف العميل | Customer ID
+   * @param now - وقت مرجعي (افتراضي: الآن) | Reference time for subscription expiry check
+   * @returns لقطة ديون المشترك | Subscriber debt snapshot
    */
   async getSubscriberDebtSnapshot(
     customerId: string,

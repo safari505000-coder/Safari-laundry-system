@@ -9,6 +9,12 @@ const TTL_SEC =
  * V19.32 — Optional Redis cache for accountant dashboard payloads.
  * Falls back to in-memory TTL map when REDIS_URL is unset or Redis errors.
  */
+/**
+ * خدمة التخزين المؤقت للوحة معلومات المالية — Redis مع احتياطي في الذاكرة
+ * Optional Redis cache for accountant and owner dashboard payloads.
+ * Falls back to in-memory TTL map when REDIS_URL is unset or Redis errors.
+ * @since V19.32
+ */
 @Injectable()
 export class FinanceDashboardCacheService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(FinanceDashboardCacheService.name);

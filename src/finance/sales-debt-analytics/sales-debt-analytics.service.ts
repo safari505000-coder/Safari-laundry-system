@@ -116,12 +116,27 @@ function arabicPercent(bpsValue: number): string {
   return `${(bpsValue / 100).toFixed(0)}%`;
 }
 
+/**
+ * خدمة تحليلات المبيعات والديون — تُجمّع بيانات المبيعات والتحصيل لكل فرع وسائق
+ * Sales-debt analytics service aggregating per-branch and per-driver sales/collection totals
+ * in canonical Prisma.Decimal arithmetic (V24 server-side replacement for FE reduce logic).
+ * @since V24
+ */
 @Injectable()
 export class SalesDebtAnalyticsService {
   private readonly logger = new Logger(SalesDebtAnalyticsService.name);
 
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * يُرجع تحليلات المبيعات والديون مُجمَّعة حسب الفرع والسائق مع الرؤى
+   * Returns sales-debt analytics grouped by branch and driver with insights.
+   * Computes collection rate, debt totals, and insight badges server-side.
+   *
+   * @param fromIso - تاريخ البداية بتنسيق ISO | Start date ISO string
+   * @param toIso - تاريخ النهاية بتنسيق ISO | End date ISO string
+   * @returns تحليلات المبيعات والديون مع الرؤى | Sales-debt analytics response with insights
+   */
   async getAnalytics(
     fromIso: string,
     toIso: string,

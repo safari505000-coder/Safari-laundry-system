@@ -16,6 +16,10 @@
  * via {@link AGING_SEVERITY_RANK}.
  */
 
+/**
+ * شريحة عمر الدين المحاسبية — تصنيف المديونية وفق معايير بنكية
+ * Banking-grade aging bucket: CURRENT (0–30d), LATE (31–60d), CRITICAL (61–90d), LEGAL (90+d).
+ */
 export type AgingBucket = 'CURRENT' | 'LATE' | 'CRITICAL' | 'LEGAL';
 
 /**
@@ -46,6 +50,10 @@ export const AGING_SEVERITY_RANK: Record<AgingBucket, number> = {
  * doesn't change every time a customer's oldest invoice ticks
  * across a day boundary.
  */
+/**
+ * مستوى مخاطر عمر الدين — أقل تفصيلاً من الشريحة لاستقرار ألوان لوحة المعلومات
+ * Aging risk level for UI badges (less granular than bucket for stable colour mapping).
+ */
 export type AgingRiskLevel = 'NONE' | 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 
 export const RISK_FOR_BUCKET: Record<AgingBucket, AgingRiskLevel> = {
@@ -55,6 +63,10 @@ export const RISK_FOR_BUCKET: Record<AgingBucket, AgingRiskLevel> = {
   LEGAL: 'CRITICAL',
 };
 
+/**
+ * صف عمر فاتورة واحدة — يتضمن الرصيد المتبقي وعدد الأيام والشريحة
+ * Per-invoice aging row with remaining balance, overdue days, and bucket classification.
+ */
 export type InvoiceAgingRow = {
   invoiceId: string;
   invoiceNumber: string | null;
@@ -67,6 +79,10 @@ export type InvoiceAgingRow = {
   riskLevel: AgingRiskLevel;
 };
 
+/**
+ * ملخص أعمار ديون العميل — أسوأ شريحة وإجمالي الحسابات المستحقة
+ * Per-customer aging summary with worst bucket, total receivable, and risk level.
+ */
 export type CustomerAgingSummary = {
   customerId: string;
   customerName: string | null;
@@ -78,6 +94,10 @@ export type CustomerAgingSummary = {
   openInvoiceCount: number;
 };
 
+/**
+ * إجمالي شريحة عمر الديون — عدد العملاء والفواتير والإجمالي
+ * Aggregate total for a single aging bucket across the portfolio.
+ */
 export type AgingBucketTotal = {
   bucket: AgingBucket;
   customersCount: number;
@@ -85,6 +105,10 @@ export type AgingBucketTotal = {
   totalReceivableKd: string;
 };
 
+/**
+ * تقرير أعمار الديون على مستوى المحفظة — إجماليات وشرائح
+ * Portfolio-level aging report with global totals and per-bucket breakdown.
+ */
 export type AgingReport = {
   generatedAtIso: string;
   asOfIso: string;
@@ -96,8 +120,12 @@ export type AgingReport = {
 };
 
 /**
- * Pure function — given an "overdue days" integer, return the
- * canonical bucket. Source of truth for every other helper.
+ * يُحدد شريحة عمر الدين الكانونية من عدد الأيام المتأخرة
+ * Pure function mapping overdue days to the canonical aging bucket.
+ * Source of truth for every aging consumer.
+ *
+ * @param days - عدد الأيام المتأخرة | Overdue days count
+ * @returns الشريحة الكانونية | Canonical aging bucket
  */
 export function bucketForOverdueDays(days: number): AgingBucket {
   if (!Number.isFinite(days) || days < 0) return 'CURRENT';
@@ -108,10 +136,13 @@ export function bucketForOverdueDays(days: number): AgingBucket {
 }
 
 /**
- * Pure function — overdue days between an invoice date and a
- * reference "as of" date (defaults to now). Floor-divided so a
- * 23-hour-old invoice still reports 0 days overdue (banking-day
- * convention).
+ * يحسب عدد الأيام المتأخرة بين تاريخ الفاتورة وتاريخ المرجع
+ * Pure function computing overdue days between invoice date and reference date.
+ * Floor-divided (banking-day convention: 23h = 0 days).
+ *
+ * @param invoiceDate - تاريخ إصدار الفاتورة | Invoice issuance date
+ * @param asOf - تاريخ الحساب (افتراضي: الآن) | Reference date (defaults to now)
+ * @returns عدد الأيام المتأخرة | Overdue days count
  */
 export function overdueDaysBetween(
   invoiceDate: Date,

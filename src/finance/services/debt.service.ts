@@ -37,8 +37,12 @@ import { attachCanonicalRunningRemaining } from '../canonical-financial-projecti
 import { kwdStr } from '../utils/kwd-format.util';
 
 /**
- * Same branch scoping as `CallCenterService.getOperationsSummary` red KPI
- * (`order.aggregate` on UNPAID orders). Driver branch OR customer origin.
+ * يحدد فلتر الفرع على مستوى الطلبات للمديونية السوقية
+ * Builds a branch-scoped Prisma where-clause for market-debt queries.
+ * Same scoping as `CallCenterService.getOperationsSummary` red KPI.
+ *
+ * @param branchId - معرف الفرع (اختياري) | Optional branch id to filter by
+ * @returns فلتر Prisma لحقل Branch | Prisma OrderWhereInput scoped to the branch or undefined
  */
 function orderBranchWhereForMarketDebt(
   branchId: string | null | undefined,
@@ -56,6 +60,13 @@ function orderBranchWhereForMarketDebt(
   };
 }
 
+/**
+ * يطوي نتائج تجميع الطلبات غير المدفوعة حسب طريقة الدفع
+ * Folds Prisma groupBy aggregates into a strongly-typed breakdown by POS payment method.
+ *
+ * @param groups - صفوف التجميع من Prisma groupBy | Prisma groupBy rows keyed by posPaymentMethod
+ * @returns كائن يحتوي إجماليات بالدينار لكل طريقة دفع | Object with KD totals per payment method
+ */
 function foldMarketUnpaidByMethod(
   groups: Array<{
     posPaymentMethod: PosPaymentMethod | null;
@@ -88,6 +99,13 @@ function foldMarketUnpaidByMethod(
   };
 }
 
+/**
+ * خدمة إدارة المديونية — المحور المركزي لحسابات الديون في النظام
+ * Central debt-management service: outstanding balances, settlement links,
+ * unpaid invoice reports, and per-customer debt snapshots.
+ *
+ * @since V19 (extended through V25)
+ */
 @Injectable()
 export class DebtService {
   constructor(
@@ -98,6 +116,12 @@ export class DebtService {
     private readonly customerNotifications: CustomerNotificationsService,
   ) {}
 
+  /**
+   * يجمع ملخص محافظ العملاء الإجمالي للمالك
+   * Aggregates global customer wallet liabilities and debt totals for the owner dashboard.
+   *
+   * @returns ملخص شامل يتضمن إجمالي المديونيات والالتزامات | Wallet liability + debt summary object
+   */
   async getOwnerCustomerWalletSummary() {
     const agg = await this.prisma.customerWallet.aggregate({
       _sum: { balance: true, debt: true },
@@ -140,6 +164,18 @@ export class DebtService {
     };
   }
 
+  /**
+   * يوفر تفصيلاً للديون حسب الفئة والمصدر ضمن نطاق تاريخي محدد
+   * Returns debt rows grouped by entity category and source within the given date range.
+   *
+   * @param fromIso - تاريخ البداية بتنسيق ISO | Start date ISO string
+   * @param toIso - تاريخ النهاية بتنسيق ISO | End date ISO string
+   * @param _category - فئة الكيان (اختياري) | Optional entity category filter
+   * @param _branchId - معرف الفرع (اختياري) | Optional branch id filter
+   * @param _actorUserId - معرف المستخدم الفاعل (اختياري) | Optional actor user id
+   * @returns تقرير مفصّل للديون | Debt breakdown report
+   * @throws BadRequestException عند تمرير نطاق تاريخ غير صالح | On invalid date range
+   */
   async getDebtBreakdownByCategory(
     fromIso: string,
     toIso: string,
@@ -164,6 +200,12 @@ export class DebtService {
     };
   }
 
+  /**
+   * يُرجع إجمالي الديون المفتوحة لجميع العملاء كقيمة بالدينار الكويتي
+   * Returns the global total customer debt as a KWD string (4 decimal places).
+   *
+   * @returns إجمالي الديون بالدينار الكويتي | Total debt KD string (4dp)
+   */
   async getTotalDebt(): Promise<string> {
     const s = await this.getOwnerCustomerWalletSummary();
     return s.totalCustomerDebts;
@@ -557,6 +599,15 @@ export class DebtService {
     };
   }
 
+  /**
+   * يُرجع لقطة شاملة لديون عميل محدد من جميع المصادر
+   * Returns a comprehensive debt snapshot for a single customer including wallet debt,
+   * subscription overuse debt, and (when V20_3_TRUE_ACCOUNTING=true) journal AR balance.
+   *
+   * @param customerId - معرف العميل | Customer ID
+   * @returns لقطة الديون متعددة المصادر | Multi-source debt snapshot
+   * @since V20.3.1
+   */
   async getCustomerDebtSnapshot(customerId: string): Promise<{
     walletDebt: string;
     subscriptionOveruseDebt: string;
@@ -717,6 +768,15 @@ export class DebtService {
    * because R3 falls back to DebtLedger for them, but discovery still relies on
    * JournalEntry.source. Pre-backfill data continues to appear via the
    * OPEN_UNPAID_ORDER merge in Phase 5 (unchanged in both paths).
+   */
+  /**
+   * يُرجع قائمة الفواتير غير المدفوعة مع مؤشرات الأداء الرئيسية للسوق
+   * Returns all open invoices with per-row remaining balances, KPIs, and market totals.
+   * Dispatches to the journal path (V20.4+) when `isJournalAsSourceEnabled()` is on.
+   *
+   * @param query - معايير البحث والتصفية | Filter and pagination query object
+   * @returns استجابة الفواتير غير المدفوعة مع مؤشرات الأداء | Unpaid invoices response with KPIs
+   * @since V20.4
    */
   async getUnpaidInvoices(
     query: UnpaidInvoicesQueryDto,
@@ -1398,6 +1458,15 @@ export class DebtService {
    * INVOICE_SHORTFALL→SUBSCRIPTION_OVERUSE waterfall as {@link getLedgerOpenDebtByCategory}.
    * This is what Ops «ذمم دفتر الالتزام» / financial strip sums to globally.
    */
+  /**
+   * يحسب صافي الديون المفتوحة لعميل محدد من دفتر الالتزام
+   * Computes the net open debt for a customer from DebtLedgerEntry using the
+   * PAYMENT→INVOICE_SHORTFALL→SUBSCRIPTION_OVERUSE waterfall.
+   *
+   * @param customerId - معرف العميل | Customer ID
+   * @param tx - معاملة Prisma اختيارية | Optional Prisma transaction client
+   * @returns تفصيل ديون العميل الصافية | Customer net debt breakdown (invoice + subscription)
+   */
   async getCustomerNetDebtFromDebtLedger(
     customerId: string,
     tx?: Prisma.TransactionClient,
@@ -1410,6 +1479,13 @@ export class DebtService {
     return getCustomerNetDebtFromDebtLedgerAgg(db, customerId);
   }
 
+  /**
+   * يُرجع إجمالي الديون المفتوحة مقسمة بين ديون الفواتير وديون الاشتراكات
+   * Returns total open debt split between invoice shortfall and subscription overuse.
+   *
+   * @param _whereExtra - فلاتر إضافية (اختياري) | Optional extra Prisma where clauses
+   * @returns إجماليات الديون المصنفة | Categorised open debt totals
+   */
   async getLedgerOpenDebtByCategory(
     _whereExtra?: Record<string, unknown>,
   ): Promise<{
@@ -1428,6 +1504,15 @@ export class DebtService {
    * INVOICE_SHORTFALL role is in one bucket. `getUnpaidInvoices().kpis.openDebtKd`
    * uses the same per-order FIFO; the market red KPI is
    * `getUnpaidInvoices().kpis.totalMarketUnpaidKd`.
+   */
+  /**
+   * يُرجع توزيع الديون المفتوحة حسب جهة الإصدار (سائق / فرع / أخرى)
+   * Returns net open debt grouped by the invoice's original issuer role.
+   * Used by the executive dashboard "توزيع الديون" tile.
+   *
+   * @param _branchId - معرف الفرع للتصفية (اختياري) | Optional branch filter
+   * @returns صفوف الديون مقسمة حسب الجهة المُصدِرة | Debt rows by issuer type
+   * @since V19.11.4
    */
   async getOpenDebtByIssuer(
     _branchId?: string,

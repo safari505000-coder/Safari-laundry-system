@@ -17,6 +17,11 @@ import { DepositsListQueryDto } from './dto/deposits-list-query.dto';
 import { UpdateDepositStatusDto } from './dto/update-deposit-status.dto';
 import { DebtService } from './services/debt.service';
 
+/**
+ * خدمة الودائع — تدير سجلات الإيداع النقدي من السائقين
+ * Deposits service managing the Deposit model lifecycle
+ * (list, create, approve, reject) with GL entries and debt settlement.
+ */
 @Injectable()
 export class DepositsService {
   constructor(
@@ -25,6 +30,15 @@ export class DepositsService {
     private readonly generalLedger: GeneralLedgerService,
   ) {}
 
+  /**
+   * يُرجع قائمة الودائع للمستخدم الحالي مع دعم الفلاتر
+   * Lists deposits for the given user (drivers see only their own; managers/owners see all).
+   *
+   * @param userId - معرف المستخدم | User ID
+   * @param role - دور المستخدم | User role
+   * @param query - معايير التصفية | Filter query parameters
+   * @returns قائمة الودائع | Deposit list
+   */
   async listForUser(
     userId: string,
     role: string,

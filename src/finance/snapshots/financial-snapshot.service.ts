@@ -56,6 +56,15 @@ import { RiskScoringService } from '../risk/risk-scoring.service';
 
 const TOL = new Prisma.Decimal(INVOICE_REMAINING_TOLERANCE_KD);
 
+/**
+ * خدمة اللقطة المالية — تُوّلد وتُحدّث الصورة الكانونية لديون كل عميل
+ * Deterministic projection service that reads from financial primaries
+ * (Journal, Order, CustomerWallet) and persists derived rows into FinancialSnapshot.
+ * Same primaries always produce the same snapshot row (rebuild guarantee).
+ * Failures are non-fatal — the 5-minute cron retries automatically.
+ *
+ * @since V20.4 Phase 1/4
+ */
 @Injectable()
 export class FinancialSnapshotService {
   private readonly logger = new Logger(FinancialSnapshotService.name);
@@ -96,6 +105,14 @@ export class FinancialSnapshotService {
    * missing row should fan out to the live computation
    * fallback in {@link DebtVisibilityService}.
    */
+  /**
+   * يُرجع لقطات مالية موجودة لمجموعة من معرفات العملاء دون إنشاء لقطات جديدة
+   * Batch read accessor — returns existing snapshot rows for the given customer IDs.
+   * Missing rows are NOT auto-built to avoid serialising paginated APIs.
+   *
+   * @param customerIds - قائمة معرفات العملاء | List of customer IDs
+   * @returns خريطة من معرف العميل إلى صف اللقطة | Map of customerId to snapshot row
+   */
   async findExistingByCustomerIds(
     customerIds: string[],
   ): Promise<Map<string, FinancialSnapshotRow>> {
@@ -109,6 +126,16 @@ export class FinancialSnapshotService {
    * Caller passes the {@link SnapshotRefreshSource} so the
    * projection row's `refreshContext.source` reflects what
    * triggered the refresh (event, cron, manual rebuild, …).
+   */
+  /**
+   * يُجدّد لقطة عميل واحد ويحفظها في قاعدة البيانات
+   * Projects and persists the snapshot for a single customer.
+   * Re-throws on error so event-hook callers can fall back to live computation.
+   *
+   * @param customerId - معرف العميل | Customer ID
+   * @param source - مصدر التحديث (حدث، cron، يدوي) | Refresh trigger source
+   * @param correlationId - معرف الارتباط للتتبع (اختياري) | Optional correlation ID
+   * @returns صف اللقطة المحدّث | Updated snapshot row
    */
   async refreshOne(
     customerId: string,
@@ -136,6 +163,15 @@ export class FinancialSnapshotService {
    * Logs failures but never propagates them — the next cron
    * sweep will reconcile.
    */
+  /**
+   * يُجدّد لقطة عميل في الخلفية دون انتظار النتيجة
+   * Fire-and-forget wrapper for event listeners and post-commit hooks.
+   * Logs failures but never propagates them.
+   *
+   * @param customerId - معرف العميل | Customer ID
+   * @param source - مصدر التحديث | Refresh trigger source
+   * @param correlationId - معرف الارتباط (اختياري) | Optional correlation ID
+   */
   refreshOneInBackground(
     customerId: string,
     source: SnapshotRefreshSource,
@@ -154,6 +190,15 @@ export class FinancialSnapshotService {
   /**
    * Cron-driven page of stale rows. Returns the number of rows
    * refreshed so the cron can log "throughput per cycle".
+   */
+  /**
+   * يُعيد بناء صفوف اللقطات القديمة أو المفقودة بشكل تدريجي
+   * Cron-driven page refresh of stale or missing snapshot rows.
+   *
+   * @param opts.staleAfter - حد القِدَم للصفوف المستهدفة | Staleness threshold date
+   * @param opts.limit - عدد الصفوف في الدورة الواحدة | Rows per cron cycle
+   * @param opts.source - مصدر التحديث | Refresh source label
+   * @returns عدد الصفوف المُحدَّثة في هذه الدورة | Count of rows refreshed in this cycle
    */
   async rebuildStale(opts: {
     staleAfter: Date;
@@ -186,6 +231,15 @@ export class FinancialSnapshotService {
    * `scripts/rebuild-financial-snapshots.ts` and after a projector
    * version bump. Page size defaults to 200 to keep transactions
    * short; the operator can scale up via the parameter.
+   */
+  /**
+   * يُعيد بناء جميع لقطات العملاء من الصفر بشكل صفحي
+   * Full drop-and-rebuild walk over the entire customer book.
+   * Used after projector version bumps or manual backfill.
+   *
+   * @param opts.pageSize - حجم الصفحة (افتراضي: 200، أقصى: 1000) | Page size
+   * @param opts.source - مصدر إعادة البناء | Rebuild source label
+   * @returns إحصاء عمليات الفحص والتحديث والفشل | Scan/refreshed/failed counts
    */
   async rebuildAll(opts?: {
     pageSize?: number;
@@ -227,6 +281,14 @@ export class FinancialSnapshotService {
   /**
    * Pure mapper: primaries → snapshot input. Exposed so unit tests
    * can call it without going through the repository.
+   */
+  /**
+   * يحسب مدخلات اللقطة المالية للعميل من المصادر الأولية
+   * Pure mapper computing the full FinancialSnapshotInput from primaries.
+   * Exposed for unit testing without going through the repository.
+   *
+   * @param customerId - معرف العميل | Customer ID
+   * @returns مدخلات اللقطة المالية الكاملة | Full snapshot input object
    */
   async computeSnapshotInput(
     customerId: string,

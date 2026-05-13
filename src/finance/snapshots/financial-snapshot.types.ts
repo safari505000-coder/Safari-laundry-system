@@ -17,8 +17,18 @@ import type { Prisma } from '@prisma/client';
 // oldestOverdueDays). The cron-based reconciler force-rebuilds
 // any row whose schemaVersion is below this number so old V20.4
 // rows are upgraded automatically.
+/**
+ * إصدار مخطط اللقطة المالية الحالي — يُستخدم لإعادة البناء التلقائي عند الترقية
+ * Current schema version for the financial snapshot. Bump to force cron rebuild of all rows.
+ */
 export const CURRENT_SCHEMA_VERSION = 2;
 
+/**
+ * مدخلات اللقطة المالية — كل ما يحتاجه المستودع لتحديث صف واحد
+ * Financial snapshot input containing all fields needed to upsert a single snapshot row.
+ * Fields mirror the Prisma model 1:1 for mechanical projection.
+ * @since V20.4 Phase 1
+ */
 export type FinancialSnapshotInput = {
   customerId: string;
   journalArBalanceKd: Prisma.Decimal;
@@ -57,6 +67,10 @@ export type FinancialSnapshotInput = {
   oldestOverdueDays?: number;
 };
 
+/**
+ * صف اللقطة المالية المُخزَّن — يُضيف الإصدار والتواريخ إلى المدخلات
+ * Financial snapshot row as stored in the database, extending the input with metadata fields.
+ */
 export type FinancialSnapshotRow = FinancialSnapshotInput & {
   id: string;
   schemaVersion: number;
@@ -69,6 +83,10 @@ export type FinancialSnapshotRow = FinancialSnapshotInput & {
  * Why a refresh fired. Echoed into `refreshContext.source` so operators
  * can grep `[FINANCIAL_SNAPSHOT_REFRESH] source=PAYMENT_CAPTURED` in
  * production logs.
+ */
+/**
+ * مصدر تحديث اللقطة المالية — يُسجَّل في سياق التحديث للتشخيص
+ * Snapshot refresh source identifier echoed into refreshContext for log grepping.
  */
 export type SnapshotRefreshSource =
   | 'PAYMENT_CAPTURED'

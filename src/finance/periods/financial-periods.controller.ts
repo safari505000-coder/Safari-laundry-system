@@ -27,18 +27,32 @@ const READ_ROLES = new Set<string>([
   SafariRole.ACCOUNTANT,
 ]);
 
+/**
+ * متحكم الفترات المالية — نقاط نهاية إغلاق وفتح الفترات المحاسبية
+ * Financial periods REST controller for listing, closing, reopening, and checking
+ * status of accounting periods. Mounted at `/api/finance/periods/*`.
+ * @since V20.5 Phase 5
+ */
 @Controller('finance/periods')
 @UseGuards(JwtAuthGuard)
 export class FinancialPeriodsController {
   constructor(private readonly svc: FinancialPeriodsService) {}
 
   @Get()
+  /**
+   * يُرجع قائمة جميع الفترات المالية المسجلة
+   * Lists all recorded financial periods (closed or explicitly open).
+   */
   async list(@CurrentUser() user: JwtUser) {
     this.assertRead(user);
     return this.svc.list();
   }
 
   @Get('status')
+  /**
+   * يُرجع حالة فترة مالية محددة (السنة والشهر)
+   * Returns the status of a specific financial period by year and month.
+   */
   async status(
     @CurrentUser() user: JwtUser,
     @Query('year') year: string,

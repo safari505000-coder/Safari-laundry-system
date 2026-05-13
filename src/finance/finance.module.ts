@@ -51,6 +51,12 @@ import { BranchAccountingController } from './branches/branch-accounting.control
 import { FinancialObservabilityService } from './observability/financial-observability.service';
 import { FinancialObservabilityController } from './observability/financial-observability.controller';
 
+/**
+ * وحدة المالية الرئيسية — تجمع جميع الخدمات والمتحكمات المالية في النظام
+ * Main finance module registering all finance controllers, services, and sub-modules.
+ * Entry point for the entire finance domain: cash, debt, ledger, audit, dashboards,
+ * aging, risk, fraud, collections, observability, and branch accounting.
+ */
 @Module({
   imports: [
     PrismaModule,

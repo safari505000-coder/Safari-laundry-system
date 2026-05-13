@@ -4,10 +4,9 @@ import { FinancialTimelineController } from './financial-timeline.controller';
 import { FinancialTimelineService } from './financial-timeline.service';
 
 /**
- * V20.4 — Phase 8 unified timeline module.
- *
- * Owns the read-only `GET /api/finance/timeline/:customerId`
- * endpoint and its supporting service.
+ * وحدة الجدول الزمني المالي — تمتلك نقطة نهاية الجدول الزمني الموحد للعميل
+ * V20.4 Phase 8 unified financial timeline module.
+ * Owns the read-only GET /api/finance/timeline/:customerId endpoint and its service.
  */
 @Module({
   imports: [PrismaModule],

@@ -1,6 +1,10 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsOptional, IsString, MaxLength } from 'class-validator';
 
+/**
+ * DTO تحديث تتبع السائق — الموقع الجغرافي ولافتة المركبة
+ * DTO for updating driver GPS location and vehicle label.
+ */
 export class UpdateDriverTrackingDto {
   @ApiPropertyOptional({ example: 'Toyota LC300' })
   @IsOptional()

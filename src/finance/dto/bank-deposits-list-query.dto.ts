@@ -2,6 +2,10 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsDateString, IsInt, IsOptional, Max, Min } from 'class-validator';
 
+/**
+ * معايير استعلام قائمة الإيداعات البنكية مع التصفية بالتاريخ وعدد الصفوف
+ * Query DTO for the bank deposits list with date range and pagination limit.
+ */
 export class BankDepositsListQueryDto {
   @ApiPropertyOptional()
   @IsOptional()

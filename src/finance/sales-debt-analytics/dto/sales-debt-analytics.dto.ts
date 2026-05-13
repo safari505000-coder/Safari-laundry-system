@@ -19,6 +19,11 @@ import { IsISO8601 } from 'class-validator';
  * to avoid float rounding on the wire.
  */
 
+/**
+ * معايير استعلام تحليلات المبيعات والديون — نطاق تاريخي
+ * Sales-debt analytics query DTO with ISO date range.
+ * @since V24
+ */
 export class SalesDebtAnalyticsQueryDto {
   @ApiProperty({ example: '2026-01-01T00:00:00.000Z' })
   @IsISO8601()
@@ -29,6 +34,10 @@ export class SalesDebtAnalyticsQueryDto {
   to!: string;
 }
 
+/**
+ * DTO فترة تحليلات المبيعات والديون — نطاق التاريخ المُستخدَم في التحليل
+ * Period DTO for the sales-debt analytics response showing the actual window used.
+ */
 export class SalesDebtAnalyticsPeriodDto {
   @ApiProperty({ description: 'Inclusive ISO start of the requested window (UTC).' })
   fromIso!: string;
@@ -37,6 +46,10 @@ export class SalesDebtAnalyticsPeriodDto {
   toIso!: string;
 }
 
+/**
+ * DTO إجماليات تحليلات المبيعات والديون للفترة المحددة
+ * Sales-debt analytics totals DTO with canonical KWD amounts and collection rate BPS.
+ */
 export class SalesDebtAnalyticsTotalsDto {
   @ApiProperty({ description: 'Σ gross sales over the period (canonical 4dp KWD).', example: '1250.0000' })
   totalSalesKd!: string;
@@ -58,6 +71,10 @@ export class SalesDebtAnalyticsTotalsDto {
   invoiceCount!: number;
 }
 
+/**
+ * DTO مجموعة تحليلات المبيعات والديون — فرع أو سائق
+ * Sales-debt analytics group DTO for branch or driver breakdown.
+ */
 export class SalesDebtAnalyticsGroupDto {
   @ApiProperty({ description: 'Group identifier (branchId / driverId / sentinel "no-branch" / "no-driver").' })
   id!: string;
@@ -84,9 +101,21 @@ export class SalesDebtAnalyticsGroupDto {
   invoiceCount!: number;
 }
 
+/**
+ * مستوى خطورة رؤية تحليلات المبيعات والديون
+ * Sales-debt analytics insight severity level.
+ */
 export type SalesDebtInsightSeverity = 'info' | 'warning' | 'critical';
+/**
+ * هدف التعمق في رؤية تحليلات المبيعات والديون
+ * Drill-down target for a sales-debt analytics insight.
+ */
 export type SalesDebtInsightTarget = 'branch' | 'driver';
 
+/**
+ * DTO رؤية تحليلات المبيعات والديون — شارة عربية جاهزة للعرض
+ * Sales-debt analytics insight DTO with Arabic message badge and optional drill-down target.
+ */
 export class SalesDebtInsightDto {
   @ApiProperty({ description: 'Stable insight id (used as React key).' })
   id!: string;
@@ -105,6 +134,11 @@ export class SalesDebtInsightDto {
   target?: SalesDebtInsightTarget;
 }
 
+/**
+ * DTO استجابة تحليلات المبيعات والديون — مصدر موحد للحقيقة
+ * Sales-debt analytics full response DTO with period, totals, by-branch, by-driver, and insights.
+ * @since V24
+ */
 export class SalesDebtAnalyticsResponseDto {
   @ApiProperty({ example: 'api/finance/sales-debt-analytics' })
   source!: 'api/finance/sales-debt-analytics';
