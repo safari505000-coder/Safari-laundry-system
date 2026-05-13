@@ -4,6 +4,17 @@ import { DebtSource } from '../finance/enums/debt-source.enum';
 import { PrismaService } from '../prisma/prisma.service';
 import { FinancialPeriodsService } from '../finance/periods/financial-periods.service';
 
+/**
+ * أرقام الحسابات المحاسبية الرسمية لدفتر اليومية مزدوج القيد.
+ * يجب أن تكون هذه الأرقام متطابقة مع تهيئة الحسابات في قاعدة البيانات
+ * (جدول `Account.code`) وإلا يرفض `appendBalanced` القيد بخطأ `JOURNAL_ACCOUNT_NOT_FOUND`.
+ *
+ * Canonical chart-of-accounts codes used by every double-entry write.
+ * These must match seeded `Account.code` values in the database;
+ * `appendBalanced` throws `JOURNAL_ACCOUNT_NOT_FOUND` if any code is missing.
+ *
+ * @since V20.2
+ */
 export const JOURNAL_ACCOUNTS = {
   CASH: '1100',
   BANK_KNET: '1200',
@@ -48,9 +59,17 @@ const UUID_SEGMENT =
   '([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})';
 
 /**
- * Some historical exports / intermediates used hyphenated `sourceRef`
- * shapes. Normalise them so {@link describeJournalEntry} and subscription
- * parsing match canonical colon forms.
+ * يُحوِّل تنسيقات `sourceRef` التاريخية (بالشرطة `-`) إلى الشكل المعياري (بالنقطتين `:`).
+ * استُخدم تنسيق الشرطة في الإصدارات الأولى قبل توحيد المرجع؛ هذه الدالة تضمن
+ * أن `describeJournalEntry` وباقي محللات المرجع تعمل بشكل صحيح مع السجلات القديمة.
+ *
+ * Normalises legacy hyphen-separated `sourceRef` shapes to the canonical
+ * colon-delimited form. Older records used `-` as a separator; this ensures
+ * `describeJournalEntry` and subscription ID parsers match both old and new forms.
+ *
+ * @param sourceRef - المرجع الخام من `JournalEntry.sourceRef` | Raw value from `JournalEntry.sourceRef`
+ * @returns المرجع بعد التوحيد، أو الأصل إذا لم يتغير | Normalised ref, or the original if unchanged
+ * @since V20.1
  */
 export function normalizeLegacyJournalSourceRef(sourceRef: string): string {
   const r = sourceRef.trim();
@@ -82,8 +101,19 @@ export function normalizeLegacyJournalSourceRef(sourceRef: string): string {
 }
 
 /**
- * Best-effort subscription id for journal rows tied to
- * `WALLET_FUNDING:SUBSCRIPTION` or `SUBSCRIPTION_ACTIVATION` payments.
+ * يستخرج معرف الاشتراك (UUID) من `sourceRef` لقيود من نوع
+ * `WALLET_FUNDING:SUBSCRIPTION` أو `SUBSCRIPTION_ACTIVATION`.
+ * تُستخدم النتيجة لتحليل سياق الاشتراك في كشفي الحساب
+ * (`getCustomerStatement`, `getCustomerCallCenterBankStatement`).
+ *
+ * Best-effort extraction of the subscription UUID from a journal `sourceRef`.
+ * Used by statement builders to enrich rows with plan name context.
+ * Returns `null` when the ref pattern does not encode a subscription.
+ *
+ * @param source - قيمة `JournalEntry.source` | `JournalEntry.source` value
+ * @param sourceRef - قيمة `JournalEntry.sourceRef` (خام أو موحّد) | Raw or normalised `sourceRef`
+ * @returns معرف UUID للاشتراك، أو `null` | Subscription UUID or `null`
+ * @since V20.1
  */
 export function parseSubscriptionIdFromJournalRef(
   source: string,
@@ -113,9 +143,20 @@ export function parseSubscriptionIdFromJournalRef(
 }
 
 /**
- * Order id embedded in `INVOICE:<uuid>:SHORTFALL` /
- * `INVOICE:<uuid>:SUBSCRIPTION_OVERUSE` journal `sourceRef` values
- * (after {@link normalizeLegacyJournalSourceRef}).
+ * يستخرج معرف الطلب (orderId) من قيود الذمم من نوع
+ * `INVOICE:<uuid>:SHORTFALL` أو `INVOICE:<uuid>:SUBSCRIPTION_OVERUSE`
+ * بعد تطبيق `normalizeLegacyJournalSourceRef`.
+ * تُستخدم النتيجة في `resolveOrderRefLabelByOrderId` لإظهار رقم الطلب
+ * بدلًا من UUID في واجهات العميل.
+ *
+ * Extracts the order UUID from invoice-shortfall or subscription-overuse
+ * `sourceRef` values. Used by statement builders to replace raw UUIDs
+ * with human-readable order serial numbers in customer-facing views.
+ *
+ * @param source - قيمة `JournalEntry.source` | `JournalEntry.source` value
+ * @param sourceRef - قيمة `JournalEntry.sourceRef` | `JournalEntry.sourceRef` value
+ * @returns معرف UUID للطلب، أو `null` إذا لم ينطبق النمط | Order UUID or `null`
+ * @since V20.1
  */
 export function parseOrderIdFromInvoiceJournalRef(
   source: string,
@@ -152,8 +193,19 @@ function paymentMethodLabelFromMeta(meta: Prisma.JsonValue | null | undefined): 
 }
 
 /**
- * Prefer explicit `payment_method` from journal line `meta`; otherwise
- * infer from asset account codes (and promotional subsidy lines).
+ * يُحدد وسيلة الدفع باللغة العربية اعتمادًا على أسطر القيد المحاسبي.
+ * يعطي الأولوية للحقل `payment_method` في `meta` إن وُجد، ثم يستنتج
+ * وسيلة الدفع من رمز الحساب الأصل (نقدي / كي‌نت / أونلاين) أو الدعم الترويجي.
+ * تُستخدم النتيجة في كشف الكول سنتر البنكي لعمود "الدفع".
+ *
+ * Derives an Arabic payment-channel label from journal line data.
+ * Prefers an explicit `payment_method` in line `meta`; falls back to
+ * asset account codes (cash/knet/online) or promotional expense marking.
+ * Result is used in CC bank statement rows and customer-facing descriptions.
+ *
+ * @param lines - أسطر القيد الكاملة مع حسابها | Full journal lines with their account
+ * @returns وسيلة الدفع بالعربية، أو `null` إذا تعذّر الاستنتاج | Arabic payment label or `null`
+ * @since V22
  */
 export function inferPaymentChannelArFromJournalLines(
   lines: Array<{
@@ -193,14 +245,18 @@ export function inferPaymentChannelArFromJournalLines(
 }
 
 /**
- * V20.1-v4 — Phase 16 circuit-breaker error.
+ * خطأ قاطع الدائرة للقيود المحاسبية — الإصدار V20.1 المرحلة 16.
+ * يُرمى من `mirrorDebtLedgerEntrySafe` عندما تتجاوز إخفاقات اليومية
+ * للعميل ذاته الحد `CRITICAL_FAILURE_THRESHOLD` خلال نافذة زمنية قصيرة،
+ * مما يُشير إلى انحراف كبير في الأرصدة يستوجب تدخلًا فوريًا.
  *
- * Thrown by `mirrorDebtLedgerEntrySafe` when the same customer has
- * accumulated more than {@link CRITICAL_FAILURE_THRESHOLD} journal
- * failures in {@link CRITICAL_FAILURE_WINDOW_MS}. The intent is to
- * trip a hard error in the calling business flow once journal
- * divergence has reached a level that operators will not catch via
- * the daily drift cron.
+ * Circuit-breaker error for the double-entry journal — V20.1 Phase 16.
+ * Thrown by `mirrorDebtLedgerEntrySafe` when the same customer accumulates
+ * more than {@link CRITICAL_FAILURE_THRESHOLD} journal failures within
+ * {@link CRITICAL_FAILURE_WINDOW_MS}, signalling systematic divergence
+ * that the daily drift cron will not catch in time.
+ *
+ * @since V20.1
  */
 export class CriticalJournalFailureError extends Error {
   constructor(
@@ -215,7 +271,15 @@ export class CriticalJournalFailureError extends Error {
   }
 }
 
-/** V20.1-v4 — Phase 16 circuit-breaker tuning. */
+/**
+ * الحد الأقصى لإخفاقات اليومية قبل إطلاق قاطع الدائرة للعميل ذاته.
+ * عند تجاوزه تُرمى `CriticalJournalFailureError` لإيقاف العملية.
+ *
+ * Maximum consecutive journal failures for the same customer before
+ * {@link CriticalJournalFailureError} is thrown. V20.1 Phase 16 tuning.
+ *
+ * @since V20.1
+ */
 export const CRITICAL_FAILURE_THRESHOLD = 3;
 const CRITICAL_FAILURE_WINDOW_MS = 5 * 60 * 1000;
 
@@ -276,6 +340,17 @@ type MirrorDebtLedgerInput = {
   note?: string | null;
 };
 
+/**
+ * صف واحد من كشف الحساب المحاسبي (مدين / دائن / رصيد تراكمي).
+ * يُعاد من `getCustomerStatement` ويُعرض في واجهة العميل وكشفي الحساب.
+ * جميع القيم المالية بصيغة نصية `4dp KWD` من الخادم — بدون حسابات في الواجهة.
+ *
+ * A single row from the customer AR statement (debit / credit / running balance).
+ * Returned by `getCustomerStatement`. All monetary values are canonical
+ * server-side 4dp KWD strings — no client-side arithmetic.
+ *
+ * @since V21
+ */
 export type JournalStatementRow = {
   entryId: string;
   date: string;
@@ -287,7 +362,19 @@ export type JournalStatementRow = {
   balance: string;
 };
 
-/** صف واحد لكل قيد — أسلوب كشف بنكي لمركز الاتصال (دفع / دعم / محفظة / ذمم). */
+/**
+ * صف واحد لكل قيد محاسبي كامل — بأسلوب الكشف البنكي لمركز الاتصال.
+ * يُميّز بين ما دفعه العميل فعليًا (نقدي/بنك)، والدعم الذي قدمته الشركة،
+ * وحركات محفظة الاشتراك، والجانبَين المحاسبيَّين لحساب الذمم مع رصيد تراكمي.
+ * يُعاد من `getCustomerCallCenterBankStatement`.
+ *
+ * One row per complete journal entry — CC bank-statement style.
+ * Separates customer cash payments, company promotional support,
+ * wallet movements and AR debit/credit sides with a running AR balance.
+ * Returned by `getCustomerCallCenterBankStatement`.
+ *
+ * @since V22
+ */
 export type CallCenterBankStatementRow = {
   entryId: string;
   date: string;
@@ -320,7 +407,18 @@ const BANK_STATEMENT_PAY_IN_CODES = new Set<string>([
 ]);
 
 /**
- * يشتق أعمدة الكشف البنكي من أسطر القيد كاملة (خادم فقط — بدون رياضيات في الواجهة).
+ * يُجمِّع أسطر القيد الكاملة إلى الأعمدة السبعة للكشف البنكي لمركز الاتصال.
+ * العمليات الحسابية تجري كليًا على الخادم بـ `Prisma.Decimal` — لا تُمرَّر أرقام للواجهة.
+ * تُستدعى بواسطة `getCustomerCallCenterBankStatement` لكل قيد.
+ *
+ * Aggregates full journal entry lines into the seven CC bank-statement columns
+ * (customer paid, company support, goodwill discount, wallet credit/debit, AR debit/credit).
+ * All arithmetic is server-side using `Prisma.Decimal` — no numbers are sent to the frontend.
+ * Called per entry by `getCustomerCallCenterBankStatement`.
+ *
+ * @param lines - أسطر القيد الكاملة مع رموز الحسابات | Full journal lines with account codes
+ * @returns قاموس بالأعمدة السبعة كقيم نصية `4dp KWD` | Map of 7 columns as 4dp KWD strings
+ * @since V22
  */
 export function aggregateJournalEntryForBankColumns(
   lines: ReadonlyArray<{
@@ -383,9 +481,18 @@ function entryRefTail(sourceRef: string): string {
 }
 
 /**
- * V21 Phase 5 — Arabic-friendly one-line title for a journal entry,
- * derived from `(source, sourceRef)`. Customer journal UIs render this
- * verbatim (no English `source` enums in the default path).
+ * يُنتج عنوانًا عربيًا مختصرًا لقيد اليومية بناءً على `(source, sourceRef)`.
+ * يُعرض مباشرةً في واجهات العميل بدون ترجمة إضافية.
+ * الإصدار V21 المرحلة 5 — جميع أنواع المصادر مُغطَّاة بـ `switch/case`.
+ *
+ * Produces a concise Arabic one-line title for a journal entry from
+ * `(source, sourceRef)`. Rendered verbatim in customer UIs — no English
+ * `source` enum values appear in the default output path.
+ *
+ * @param source - قيمة `JournalEntry.source` | `JournalEntry.source` enum value
+ * @param sourceRef - قيمة `JournalEntry.sourceRef` | `JournalEntry.sourceRef` value
+ * @returns وصف عربي قصير | Short Arabic description
+ * @since V21
  */
 export function describeJournalEntry(
   source: string,
@@ -497,9 +604,17 @@ export function describeJournalEntry(
 }
 
 /**
- * يستخرج اسم الباقة من سطر السياق الذي يبنيه
- * {@link DoubleEntryJournalService.resolveContextLabelsByEntryId}
- * (صيغة `الباقة: … · الدفع: …`).
+ * يستخرج اسم الباقة من سطر السياق المُركَّب الذي تُنتجه
+ * `resolveContextLabelsByEntryId` بصيغة `الباقة: … · الدفع: …`.
+ * تُستخدم النتيجة لإثراء أوصاف الكشف الموجهة للعميل.
+ *
+ * Extracts the plan name from a context label string built by
+ * `resolveContextLabelsByEntryId` in the form `الباقة: X · الدفع: Y`.
+ * Used to enrich customer-facing statement descriptions with plan names.
+ *
+ * @param contextLabel - سطر السياق كاملًا أو `null` | Full context label or `null`
+ * @returns اسم الباقة أو `null` إذا لم يوجد | Plan name or `null`
+ * @since V22
  */
 export function parsePlanNameFromContextLabel(
   contextLabel: string | null | undefined,
@@ -512,9 +627,21 @@ export function parsePlanNameFromContextLabel(
 }
 
 /**
- * أوصاف كشف العميل / الكول سنتر: استبدال ذيل UUID قصير بمرجع الطلب أو
- * الفاتورة الورقية ({@link DoubleEntryJournalService.resolveOrderRefLabelByOrderId})
- * أو اسم الباقة (`subscriptionPlanLabel`) لقيود الاشتراك.
+ * يُنتج وصفًا عربيًا موجهًا للعميل بجودة أعلى من `describeJournalEntry`:
+ * يُستبدَل ذيل UUID القصير بمرجع الطلب الورقي أو اسم الباقة أو وسيلة الدفع
+ * عند توافرها. يُستدعى من `getCustomerStatement` و`getCustomerCallCenterBankStatement`.
+ *
+ * Produces an enhanced Arabic customer-facing description by replacing
+ * short UUID tails with human-readable order references, plan names,
+ * or payment channel labels when available. Called by both statement builders.
+ *
+ * @param source - قيمة `JournalEntry.source` | `JournalEntry.source`
+ * @param sourceRef - قيمة `JournalEntry.sourceRef` | `JournalEntry.sourceRef`
+ * @param orderRefLabel - مرجع الطلب الورقي إن وُجد (`طلب 1234`) | Human-readable order ref if resolved
+ * @param subscriptionPlanLabel - اسم الباقة إن وُجد | Subscription plan name if resolved
+ * @param paymentChannelAr - وسيلة الدفع بالعربية من أسطر القيد | Arabic payment channel from lines
+ * @returns وصف عربي جاهز للعرض | Display-ready Arabic description
+ * @since V22
  */
 export function describeJournalEntryForCustomerFacing(
   source: string,
@@ -576,8 +703,19 @@ export function describeJournalEntryForCustomerFacing(
 }
 
 /**
- * Arabic detail line for the technical `sourceRef` (shown under the title in UI).
- * Keeps UUID / trace fragments short; full ref remains available via API `sourceRef`.
+ * يُحوِّل `sourceRef` التقني إلى سطر تفصيل عربي مختصر يُعرض تحت العنوان في الواجهة.
+ * يُقصِّر UUID إلى 8 أحرف مع علامة `…`، ويُترجم الأنواع الرئيسية إلى مصطلحات عربية.
+ * المرجع الكامل `sourceRef` يبقى متاحًا عبر API للمطورين.
+ *
+ * Converts a technical `sourceRef` to a short Arabic detail line shown
+ * below the entry title in customer UIs. UUIDs are shortened to 8 chars + `…`;
+ * major source types are translated to Arabic terms. Full `sourceRef`
+ * remains accessible via the API for developers.
+ *
+ * @param source - قيمة `JournalEntry.source` | `JournalEntry.source`
+ * @param sourceRef - قيمة `JournalEntry.sourceRef` | `JournalEntry.sourceRef`
+ * @returns سطر تفصيل عربي قصير | Short Arabic detail line
+ * @since V22
  */
 export function humanizeJournalSourceRef(
   source: string,
@@ -656,6 +794,36 @@ export function humanizeJournalSourceRef(
   return describeJournalEntry(source, ref);
 }
 
+/**
+ * خدمة دفتر اليومية مزدوج القيد — النواة المحاسبية للنظام.
+ *
+ * تكتب كل العمليات المالية (إصدار فواتير، تسديدات، خصومات، استردادات، إلغاءات)
+ * كقيود متوازنة (مجموع المدين = مجموع الدائن ± 0.001 د.ك) في جدول `JournalEntry`.
+ * جميع القيود غير قابلة للتغيير بعد الكتابة؛ أي تصحيح يتم عبر قيد عكسي منفصل.
+ *
+ * المبادئ الثابتة (invariants):
+ * - كل كتابة تمر عبر `appendBalanced` الذي يتحقق من التوازن ورموز الحسابات.
+ * - `sourceRef` حتمي لكل قيد → الكتابة مرنة بالكامل (idempotent on retry).
+ * - الطرق المنتهية بـ `Safe` لا توقف التدفق التجاري عند الإخفاق؛ تُسجِّل الفشل
+ *   وتُفعِّل قاطع الدائرة عند تجاوز العتبة.
+ * - قراءة الأرصدة تُجرى فقط من `JournalLine` (حساب 1300 — الذمم).
+ *
+ * The double-entry journal service — the system's accounting core.
+ *
+ * Writes every financial operation (invoice issuance, payments, discounts,
+ * refunds, cancellations) as a balanced entry (Σ debit = Σ credit ± 0.001 KWD)
+ * into the `JournalEntry` table. All entries are append-only; corrections
+ * require a separate reversal entry.
+ *
+ * Invariants:
+ * - Every write goes through `appendBalanced`, which enforces balance and account codes.
+ * - `sourceRef` is deterministic per operation → fully idempotent on retry.
+ * - Methods ending in `Safe` never abort the surrounding business transaction;
+ *   they log failures and trip the circuit breaker on threshold breach.
+ * - Balance reads query only `JournalLine` (account 1300 — AR).
+ *
+ * @since V20.1
+ */
 @Injectable()
 export class DoubleEntryJournalService {
   private readonly logger = new Logger(DoubleEntryJournalService.name);
@@ -680,6 +848,29 @@ export class DoubleEntryJournalService {
     private readonly periodGuard: FinancialPeriodsService | null = null,
   ) {}
 
+  /**
+   * يكتب قيدًا محاسبيًا متوازنًا في دفتر اليومية.
+   * يتحقق من: وجود مُنفِّذ العملية، صحة `sourceRef`، ووجود سطرَين على الأقل،
+   * عدم سلبية القيم، توازن المدين والدائن (±0.001 د.ك)، وصحة رموز الحسابات.
+   * القيد مكرر (idempotent): إذا وُجد `sourceRef` في قاعدة البيانات يُعيد القيد القائم.
+   * يطبّق قفل الفترة المحاسبية إذا كان `PERIOD_LOCK_ENFORCE=true`.
+   *
+   * Writes a balanced double-entry journal record.
+   * Validates: actor present, non-empty `sourceRef`, at least two lines,
+   * no negative values, debit/credit balance (±0.001 KWD), all account codes exist.
+   * Idempotent on `sourceRef` — returns the existing entry on duplicate.
+   * Applies period-lock guard when `PERIOD_LOCK_ENFORCE=true`.
+   *
+   * @param db - عميل Prisma أو معاملة نشطة | Prisma client or active transaction
+   * @param input - بيانات القيد (المصدر، المرجع، الأسطر، إلخ) | Entry data
+   * @returns معرف القيد المُنشأ أو القائم | ID of created or existing entry
+   * @throws `JOURNAL_ACTOR_REQUIRED` إذا كان `actorUserId` فارغًا
+   * @throws `JOURNAL_SOURCE_REF_REQUIRED` إذا كان `sourceRef` فارغًا
+   * @throws `JOURNAL_MINIMUM_TWO_LINES` إذا كانت الأسطر أقل من اثنين
+   * @throws `UNBALANCED_JOURNAL` إذا لم يتوازن المدين مع الدائن
+   * @throws `JOURNAL_ACCOUNT_NOT_FOUND:<code>` إذا كان رمز الحساب غير موجود في قاعدة البيانات
+   * @since V20.1
+   */
   async appendBalanced(
     db: Db,
     input: AppendJournalInput,
@@ -1364,6 +1555,28 @@ export class DoubleEntryJournalService {
     }
   }
 
+  /**
+   * يُنشئ قيد اليومية المقابل لقيد دفتر الديون (DebtLedgerEntry).
+   * يُعالج نوعَي المصدر: `PAYMENT` (مدين حساب الأصول / دائن الذمم)
+   * و`INVOICE_SHORTFALL / SUBSCRIPTION_OVERUSE` (مدين الذمم / دائن الإيرادات).
+   * يتجاهل مدفوعات المحفظة (`PAYMENT:WALLET:`) لأن `appendWalletAbsorptionEntry`
+   * تتولى معالجتها بشكل منفصل.
+   * تُستخدم بشكل رئيسي في مسار V20.1 - V20.2؛ مسار V20.3+ يُفضّل
+   * `appendExternalPaymentEntry` و`appendInvoiceIssuanceEntry`.
+   *
+   * Creates a journal entry mirroring a `DebtLedgerEntry` mutation.
+   * Handles two source types: `PAYMENT` (DR asset / CR AR) and
+   * `INVOICE_SHORTFALL / SUBSCRIPTION_OVERUSE` (DR AR / CR REVENUE).
+   * Wallet payments (`PAYMENT:WALLET:`) are skipped — handled separately
+   * by `appendWalletAbsorptionEntry`. Primarily used in V20.1–V20.2 path;
+   * V20.3+ prefers `appendExternalPaymentEntry` / `appendInvoiceIssuanceEntry`.
+   *
+   * @param db - عميل Prisma أو معاملة نشطة | Prisma client or active transaction
+   * @param input - بيانات مرآة قيد الدين | Debt ledger mirror input
+   * @returns معرف القيد المُنشأ، أو `null` إذا تجاهلت العملية | Entry ID or `null` if skipped
+   * @throws `JOURNAL_ACTOR_REQUIRED` إذا كان `actorUserId` غائبًا
+   * @since V20.1
+   */
   async mirrorDebtLedgerEntry(
     db: Db,
     input: MirrorDebtLedgerInput,
@@ -1531,6 +1744,20 @@ export class DoubleEntryJournalService {
     });
   }
 
+  /**
+   * النسخة الآمنة من `appendInvoiceCancellationEntry` — عقد المرحلة 16 ذاته:
+   * يُسجِّل الإخفاق في `JournalFailureLog` ويُفعِّل قاطع الدائرة، ولا يُوقف
+   * العملية التجارية مباشرةً إلا عند تجاوز عتبة القاطع.
+   *
+   * Safe variant of `appendInvoiceCancellationEntry` — same Phase 16 contract:
+   * logs failures to `JournalFailureLog`, trips the circuit breaker on threshold,
+   * never directly aborts the surrounding business transaction.
+   *
+   * @param db - عميل Prisma أو معاملة نشطة | Prisma client or active transaction
+   * @param input - بيانات إلغاء الفاتورة | Invoice cancellation input
+   * @returns معرف القيد أو `null` إذا أُهملت العملية أو فشلت | Entry ID or `null`
+   * @since V20.4
+   */
   async appendInvoiceCancellationEntrySafe(
     db: Db,
     input: {
@@ -1632,6 +1859,16 @@ export class DoubleEntryJournalService {
     });
   }
 
+  /**
+   * النسخة الآمنة من `appendDebtDiscountEntry` — عقد المرحلة 16.
+   *
+   * Safe variant of `appendDebtDiscountEntry` — Phase 16 contract.
+   *
+   * @param db - عميل Prisma أو معاملة نشطة | Prisma client or active transaction
+   * @param input - بيانات خصم الديون | Debt discount input
+   * @returns معرف القيد أو `null` | Entry ID or `null`
+   * @since V20.4
+   */
   async appendDebtDiscountEntrySafe(
     db: Db,
     input: {
@@ -1773,6 +2010,16 @@ export class DoubleEntryJournalService {
     });
   }
 
+  /**
+   * النسخة الآمنة من `appendSubscriptionRefundEntry` — عقد المرحلة 16.
+   *
+   * Safe variant of `appendSubscriptionRefundEntry` — Phase 16 contract.
+   *
+   * @param db - عميل Prisma أو معاملة نشطة | Prisma client or active transaction
+   * @param input - بيانات استرداد الاشتراك | Subscription refund input
+   * @returns معرف القيد أو `null` | Entry ID or `null`
+   * @since V20.4
+   */
   async appendSubscriptionRefundEntrySafe(
     db: Db,
     input: {
@@ -1855,6 +2102,19 @@ export class DoubleEntryJournalService {
     return balance.lessThan(0) ? new Prisma.Decimal(0) : balance;
   }
 
+  /**
+   * يُحسب رصيد الذمم الحالي للعميل من سجل اليومية (حساب 1300).
+   * يُجمع جميع الأسطر المدينة والدائنة لحساب الذمم ويُعيد الرصيد الإيجابي
+   * (الحد الأدنى صفر — لا يُعيد أرقامًا سالبة).
+   *
+   * Reads the customer's current AR balance from the journal (account 1300).
+   * Sums all debit and credit lines for the AR account and returns the
+   * net balance clamped to zero (negative balances return 0).
+   *
+   * @param customerId - معرف العميل | Customer ID
+   * @returns رصيد الذمم كـ `Prisma.Decimal` (≥ 0) | AR balance as `Prisma.Decimal` (≥ 0)
+   * @since V20.4
+   */
   async getCustomerBalanceFromJournal(
     customerId: string,
   ): Promise<Prisma.Decimal> {
@@ -1925,6 +2185,19 @@ export class DoubleEntryJournalService {
     return map;
   }
 
+  /**
+   * يُسجِّل في السجل انحرافًا بين رصيد دفتر الديون القديم ورصيد اليومية.
+   * تُستخدم في Cron الفحص اليومي — لا تُوقف أي عملية، فقط تُصدر `console.error`.
+   * الانحراف المسموح به ±0.001 د.ك (نفس حد `appendBalanced`).
+   *
+   * Logs an AR drift warning when the legacy debt-ledger balance differs
+   * from the journal AR balance. Used by the daily drift cron — never
+   * throws, only emits `console.error`. Tolerance is ±0.001 KWD.
+   *
+   * @param customerId - معرف العميل | Customer ID
+   * @param ledgerBalance - رصيد دفتر الديون القديم | Legacy debt-ledger balance
+   * @since V20.4
+   */
   async logCustomerDrift(
     customerId: string,
     ledgerBalance: Prisma.Decimal | string | number,
@@ -2025,6 +2298,19 @@ export class DoubleEntryJournalService {
     return ids;
   }
 
+  /**
+   * يُعيد كشف الحساب المحاسبي للعميل: صف واحد لكل سطر في حساب الذمم (1300)
+   * مع وصف عربي وسياق الباقة ووسيلة الدفع ورصيد تراكمي بعد كل حركة.
+   * مُصمَّم لصفحة "كشف الحساب" في واجهة المستخدم.
+   *
+   * Returns the customer AR statement: one row per AR journal line (account 1300)
+   * with Arabic description, subscription/payment context, and running balance.
+   * Designed for the customer "كشف الحساب" statement UI.
+   *
+   * @param customerId - معرف العميل | Customer ID
+   * @returns الرصيد الحالي + صفوف الكشف | Current balance + statement rows
+   * @since V21
+   */
   async getCustomerStatement(
     customerId: string,
   ): Promise<{ balance: string; rows: JournalStatementRow[] }> {
@@ -2208,6 +2494,21 @@ export class DoubleEntryJournalService {
    * Append-only / read-side: this is a pure SELECT that reuses the
    * existing `JournalEntry_customerId_createdAt_idx`. No mutation,
    * no derived calculation — every value is canonical Decimal(19,4).
+   */
+  /**
+   * يُعيد كشف القيود المزدوجة الكاملة للعميل: قيد واحد لكل `JournalEntry`
+   * مع جميع أسطره (المدين والدائن) وأسماء الحسابات ومجاميع التوازن.
+   * يُستخدم في واجهة مراجعة الكول سنتر البنكية والتدقيق المحاسبي.
+   * قراءة فقط من `JournalEntry_customerId_createdAt_idx` — بدون حسابات مشتقة.
+   *
+   * Returns the full double-entry view for a customer: one record per `JournalEntry`
+   * with all its lines, account names, and per-entry balance verification.
+   * Used by the CC bank statement and accounting audit views.
+   * Read-only via `JournalEntry_customerId_createdAt_idx` — no derived arithmetic.
+   *
+   * @param customerId - معرف العميل | Customer ID
+   * @returns القيود الكاملة مع الأسطر والحسابات | Full entries with lines and accounts
+   * @since V22
    */
   async getCustomerJournalEntries(
     customerId: string,

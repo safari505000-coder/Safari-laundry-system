@@ -4,21 +4,30 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
- * V20.1-v4 — Phase 21 backfill validation lock.
+ * حارس قفل التدقيق للبيانات المُرتَّجَعة — الإصدار V20.1 المرحلة 21.
  *
- * Singleton guard that runs at application bootstrap. If the
- * `BackfillAuditLock` row exists with `isLocked = true`, the
- * stored `checksumLedger` and `checksumWallet` are recomputed
- * and compared. On mismatch the process aborts (`process.exit(2)`)
- * so a corrupted dataset cannot serve traffic.
+ * يعمل عند تشغيل التطبيق (`OnApplicationBootstrap`) ويتحقق من سلامة
+ * البيانات المالية قبل قبول أي طلبات. إذا وُجد سجل `BackfillAuditLock`
+ * مُفعَّل (`isLocked = true`)، يُعيد حساب بصمات `DebtLedgerEntry` و`CustomerWallet`
+ * ويقارنها بالمخزّن — وعند عدم التطابق يُوقف العملية (`process.exit(2)`)
+ * لمنع خدمة بيانات فاسدة.
  *
- * Bypass with env `BACKFILL_AUDIT_LOCK_BYPASS=true` (e.g. during
- * a legitimate migration that's expected to change the checksums).
+ * للتجاوز أثناء ترحيل مقصود: `BACKFILL_AUDIT_LOCK_BYPASS=true`.
+ * البصمات خشنة متعمدًا (SHA-256 مُقتطَع) — كافية للكشف عن أي تغيير مالي
+ * وسريعة بما يكفي لاستكمال التشغيل خلال ~1 ثانية.
  *
- * Checksums are deliberately coarse (truncated SHA-256 of the
- * sorted aggregate sums) — fine enough to detect any committed
- * change to the financial tables, fast enough to compute at boot
- * without delaying startup more than ~1s.
+ * V20.1 Phase 21 backfill validation lock guard.
+ *
+ * Runs at application bootstrap to verify financial data integrity before
+ * accepting traffic. If `BackfillAuditLock.isLocked = true`, recomputes
+ * checksums for `DebtLedgerEntry` and `CustomerWallet` and compares against
+ * the stored values — a mismatch aborts the process (`process.exit(2)`).
+ *
+ * Bypass during intentional migrations: `BACKFILL_AUDIT_LOCK_BYPASS=true`.
+ * Checksums are coarse by design (truncated SHA-256) — sensitive enough
+ * to detect any financial mutation, fast enough to complete at boot in ~1s.
+ *
+ * @since V20.1
  */
 @Injectable()
 export class BackfillAuditLockGuard implements OnApplicationBootstrap {
@@ -26,6 +35,18 @@ export class BackfillAuditLockGuard implements OnApplicationBootstrap {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * يُنفَّذ تلقائيًا عند تشغيل التطبيق. يقرأ سجل `BackfillAuditLock` ويُعيد حساب
+   * بصمات جداول الديون والمحافظ ويُقارنها. في حال التناقض يُوقف العملية بكود `2`.
+   * إذا لم يوجد سجل أو كان `isLocked = false` يمر الاختبار بشكل صامت.
+   *
+   * Runs automatically at application bootstrap. Reads the `BackfillAuditLock`
+   * singleton, recomputes ledger and wallet checksums, and compares them against
+   * stored values. Aborts with exit code 2 on mismatch. Passes silently if no
+   * lock exists or `isLocked = false`.
+   *
+   * @since V20.1
+   */
   async onApplicationBootstrap(): Promise<void> {
     if (process.env.BACKFILL_AUDIT_LOCK_BYPASS === 'true') {
       this.logger.warn(
@@ -79,10 +100,17 @@ export class BackfillAuditLockGuard implements OnApplicationBootstrap {
   }
 
   /**
-   * Compute a coarse checksum of the DebtLedgerEntry book.
-   * Aggregates per-customer sums of SHORTFALL+OVERUSE-PAYMENT and
-   * hashes the sorted result. Detects ANY net change to a customer's
-   * AR position.
+   * يحسب بصمة SHA-256 خشنة لدفتر الديون (`DebtLedgerEntry`).
+   * يُجمِّع صافي الذمم لكل عميل (مديونية − مدفوعات) ويُشفِّر القائمة المُرتَّبة.
+   * أي تغيير في صافي ذمة أي عميل يُغيِّر البصمة وينكشف عند التحقق.
+   *
+   * Computes a coarse SHA-256 checksum of the `DebtLedgerEntry` book.
+   * Aggregates net AR per customer (shortfall+overuse − non-wallet payments)
+   * and hashes the sorted result. Any net change to any customer's AR
+   * position changes the checksum and is detected at boot.
+   *
+   * @returns أول 32 حرف من SHA-256 | First 32 chars of SHA-256 hex
+   * @since V20.1
    */
   async computeLedgerChecksum(): Promise<string> {
     const rows = await this.prisma.$queryRaw<
@@ -109,8 +137,16 @@ export class BackfillAuditLockGuard implements OnApplicationBootstrap {
   }
 
   /**
-   * Compute a coarse checksum of the CustomerWallet book.
-   * Hashes the sorted (customerId, balance, debt) tuples.
+   * يحسب بصمة SHA-256 خشنة لجدول المحافظ (`CustomerWallet`).
+   * يُشفِّر أزواج (customerId, balance, debt) المُرتَّبة بدقة 4 منازل عشرية.
+   * أي تغيير في رصيد محفظة أي عميل يُغيِّر البصمة.
+   *
+   * Computes a coarse SHA-256 checksum of the `CustomerWallet` table.
+   * Hashes sorted (customerId, balance, debt) tuples at 4dp precision.
+   * Any wallet balance change changes the checksum.
+   *
+   * @returns أول 32 حرف من SHA-256 | First 32 chars of SHA-256 hex
+   * @since V20.1
    */
   async computeWalletChecksum(): Promise<string> {
     const rows = await this.prisma.customerWallet.findMany({
@@ -127,9 +163,16 @@ export class BackfillAuditLockGuard implements OnApplicationBootstrap {
   }
 
   /**
-   * Acquire the lock — typically called by the backfill script
-   * after a successful run to "freeze" the dataset's checksums.
-   * NOT exposed via REST; only used by tooling.
+   * يُنشئ أو يُحدِّث سجل القفل بعد ترحيل ناجح لـ"تجميد" البصمات الحالية.
+   * لا يُكشَف عبر REST — يُستخدم فقط من سكريبتات الترحيل والأدوات الداخلية.
+   *
+   * Creates or updates the audit lock record after a successful backfill,
+   * "freezing" the current checksums as the baseline for future boot checks.
+   * Not exposed via REST — internal tooling only.
+   *
+   * @param actorUserId - معرف المستخدم المُنفِّذ للترحيل | ID of the migration actor
+   * @param note - ملاحظة توضيحية تُخزَّن مع سجل القفل | Descriptive note stored with the lock
+   * @since V20.1
    */
   async acquireLock(actorUserId: string, note: string): Promise<void> {
     const checksumLedger = await this.computeLedgerChecksum();

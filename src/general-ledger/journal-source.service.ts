@@ -7,24 +7,38 @@ import {
 } from './double-entry-journal.service';
 
 /**
- * V20.2 — Phase 26 / Phase 30 helper.
+ * خدمة القراءة من اليومية كمصدر رئيسي للذمم — V20.2 المرحلة 26 / 30.
+ *
+ * "اليومية = المصدر الأول. DebtLedgerEntry = عرض مشتق."
+ *
+ * واجهة القراءة الموحّدة لجميع المجاميع المحاسبية عند تفعيل علامة الميزة
+ * `USE_JOURNAL_AS_SOURCE=true` أو `V20_4_FINAL_LEDGER=true`.
+ * لا تُنفِّذ أي كتابة — جميع التعديلات تمر عبر `DoubleEntryJournalService`.
+ * العلامة تُقرأ عند كل استدعاء لتمكين التبديل الحي بدون إعادة تشغيل.
+ *
+ * V20.2 Phase 26/30 journal-as-source read layer.
  *
  * "Journal = PRIMARY SOURCE. DebtLedgerEntry = derived view."
  *
- * This service is the single, well-typed read surface for all
- * journal-authoritative aggregates that downstream APIs (Customer
- * 360, Subscribers list, Outstanding) call when the `Phase 30`
- * feature flag is on. It deliberately does NOT mutate; writes
- * still go through {@link DoubleEntryJournalService} and the
- * existing flows.
+ * Unified read surface for all journal-authoritative AR aggregates.
+ * Active when `USE_JOURNAL_AS_SOURCE=true` or `V20_4_FINAL_LEDGER=true`.
+ * Read-only — all writes go through `DoubleEntryJournalService`.
+ * Flags are re-read per call to allow live toggle without restart.
  *
- * The flag is read once per call via {@link isJournalAsSourceEnabled}
- * so operators can enable/disable at runtime via env without a
- * deploy. Default behaviour is to read from `DebtLedgerEntry`
- * (preserves the v4 contract) — flipping the flag to `true` makes
- * the journal authoritative for the listed APIs.
+ * @since V20.2
  */
 
+/**
+ * لقطة ملخص من اليومية لحساب عميل واحد: رصيد الذمم والتزام المحفظة والإيراد المُعترَف به.
+ * تُعيدها `getCustomerArSnapshot` وتُستخدم في Customer 360 وقوائم المشتركين
+ * عند تفعيل `USE_JOURNAL_AS_SOURCE=true` أو `V20_4_FINAL_LEDGER=true`.
+ *
+ * Journal-derived AR snapshot for a single customer: AR balance, wallet
+ * liability and recognised revenue. Returned by `getCustomerArSnapshot` and
+ * used by Customer 360 and Subscribers list when journal-as-source is enabled.
+ *
+ * @since V20.2
+ */
 export type JournalCustomerArSnapshot = {
   /** Net AR balance from JournalEntry/JournalLine (debits − credits on 1300). */
   arBalanceKd: Prisma.Decimal;
@@ -126,6 +140,19 @@ export class JournalSourceService {
    * tiles want. Overpayment surfacing is a separate signal handled
    * by the audit module.
    */
+  /**
+   * يُعيد الذمة المستحقة من اليومية مع تثبيت القيم السالبة عند الصفر.
+   * القيم السالبة تعني دفع زائدًا من العميل — تُعالَج في وحدة التدقيق.
+   * تُستخدم في صفحات "المديونية" و"المشتركين" كمصدر موحّد للذمة.
+   *
+   * Returns customer outstanding debt from journal AR, clamping negatives to 0.
+   * Negative values indicate overpayment — handled by the audit module.
+   * Used by Outstanding and Subscribers pages as the unified debt source.
+   *
+   * @param customerId - معرف العميل | Customer ID
+   * @returns الذمة المستحقة (≥ 0) | Outstanding debt (≥ 0)
+   * @since V20.2
+   */
   async getCustomerOutstandingFromJournal(
     customerId: string,
   ): Promise<Prisma.Decimal> {
@@ -136,13 +163,17 @@ export class JournalSourceService {
   }
 
   /**
-   * V20.3 — Phase 35 canonical debt accessor.
+   * المصدر الرسمي لرصيد الديون في V20.3 — قراءة حساب 1300 من اليومية.
+   * يستبدل كل استهلاك `wallet.debt` الذي يتطلب الرقم المصرفي الدقيق.
+   * يُثبِّت عند الصفر (القيم السالبة تُعرض عبر `getCustomerArSnapshot`).
    *
-   * The "true" customer debt under V20.3 is the live AR balance
-   * on account 1300. Replaces every `wallet.debt` consumer that
-   * wants the bank-grade number; also clamps at 0 (overpayments
-   * surface via {@link getCustomerArSnapshot} for consumers that
-   * want the signed value).
+   * V20.3 Phase 35 canonical debt accessor — reads live AR on account 1300.
+   * Replaces `wallet.debt` consumers needing the bank-grade figure.
+   * Clamped at 0; signed values available via `getCustomerArSnapshot`.
+   *
+   * @param customerId - معرف العميل | Customer ID
+   * @returns رصيد الدين الرسمي (≥ 0) | Canonical debt balance (≥ 0)
+   * @since V20.3
    */
   async getCustomerDebtFromJournalAR(
     customerId: string,

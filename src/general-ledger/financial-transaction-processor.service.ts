@@ -8,6 +8,15 @@ import { PrismaService } from '../prisma/prisma.service';
 
 type Db = PrismaService | Prisma.TransactionClient;
 
+/**
+ * نوع المعاملة المالية في مسار `processTransaction`.
+ * يُحدد الجانب المحاسبي للعملية: دفعة، دعم، خصم، تجديد، أو استرداد.
+ *
+ * Financial transaction type used by `processTransaction`.
+ * Determines the accounting treatment of the operation.
+ *
+ * @since V25
+ */
 export type FinancialTransactionType =
   | 'PAYMENT'
   | 'SUBSIDY'
@@ -15,10 +24,38 @@ export type FinancialTransactionType =
   | 'RENEWAL'
   | 'REFUND';
 
+/**
+ * نوع كيان المرجع المرتبط بالمعاملة المالية (فاتورة / اشتراك / عميل).
+ * يُضاف إلى `meta` في كل سطر قيد لتتبع مصدر المعاملة.
+ *
+ * Entity type of the financial reference (invoice / subscription / customer).
+ * Stored in line `meta` for traceability.
+ *
+ * @since V25
+ */
 export type FinancialReferenceType = 'INVOICE' | 'SUBSCRIPTION' | 'CUSTOMER';
 
+/**
+ * وسائل الدفع المدعومة في معالج المعاملات المالية.
+ * `DEBT` تعني تسجيل المبلغ كذمة على العميل (لا تُنشئ سطرًا في الأصول).
+ *
+ * Supported payment methods in the financial transaction processor.
+ * `DEBT` records the amount as AR — no asset account debit is created.
+ *
+ * @since V25
+ */
 export type StrictFinancialPaymentMethod = 'CASH' | 'KNET' | 'ONLINE' | 'DEBT';
 
+/**
+ * مصدر التمويل في معاملة مالية: دفعة نقدية/إلكترونية، دعم شركة، أو خصم ذمة.
+ * يُولِّد المعالج سطر قيد مدين منفصل لكل مصدر تمويل.
+ *
+ * Funding source for a financial transaction: cash/electronic payment,
+ * company subsidy, or debt discount. The processor generates one debit
+ * journal line per funding source.
+ *
+ * @since V25
+ */
 export type FundingSource =
   | {
       kind: 'PAYMENT';
@@ -37,6 +74,17 @@ export type FundingSource =
       metadata?: Prisma.InputJsonObject;
     };
 
+/**
+ * مدخلات معالجة معاملة مالية في `processTransaction`.
+ * تُجمِّع مصادر التمويل (دفعات + دعم + خصومات) مع حركة دفتر الأستاذ للعميل
+ * في قيد واحد متوازن.
+ *
+ * Input for `processTransaction`. Combines funding sources (payments,
+ * subsidies, discounts) with the customer ledger movement into one
+ * balanced journal entry.
+ *
+ * @since V25
+ */
 export type ProcessTransactionInput = {
   transactionType: FinancialTransactionType;
   referenceType: FinancialReferenceType;
@@ -58,6 +106,13 @@ export type ProcessTransactionInput = {
   metadata?: Prisma.InputJsonObject;
 };
 
+/**
+ * نتيجة معالجة المعاملة المالية: معرف القيد + مجاميع المدين والدائن للتحقق.
+ *
+ * Result of `processTransaction`: journal entry ID + debit/credit totals for verification.
+ *
+ * @since V25
+ */
 export type ProcessTransactionResult = {
   journalEntryId: string;
   totalDebitKd: string;
@@ -71,6 +126,26 @@ type JournalLine = {
   meta: Prisma.InputJsonObject;
 };
 
+/**
+ * معالج المعاملات المالية عالي المستوى — يُنسِّق بين مصادر التمويل ودفتر اليومية.
+ *
+ * يُحوِّل المعاملة التجارية (دفعة / اشتراك / استرداد) إلى قيد مزدوج متوازن
+ * يُكتب عبر `DoubleEntryJournalService.appendBalanced`. يتحقق من توازن المبالغ
+ * قبل الكتابة ويُعيد معرف القيد ومجاميع التوازن للتحقق.
+ *
+ * مثال — تمويل محفظة اشتراك (20 د.ك دفع + 5 د.ك دعم شركة):
+ *   مدين  نقدي/بنك            20.0000 (دفع العميل)
+ *   مدين  مصروف ترويجي         5.0000  (دعم الشركة)
+ *   دائن  التزام محفظة (2100) 25.0000 (الرصيد المضاف للمحفظة)
+ *
+ * High-level financial transaction processor — orchestrates funding sources
+ * and the journal service. Converts a business transaction (payment /
+ * subscription / refund) into a balanced double-entry journal write via
+ * `DoubleEntryJournalService.appendBalanced`. Validates balance before
+ * writing and returns the entry ID + totals for caller verification.
+ *
+ * @since V25
+ */
 @Injectable()
 export class FinancialTransactionProcessorService {
   constructor(private readonly journal: DoubleEntryJournalService) {}
@@ -193,6 +268,26 @@ export class FinancialTransactionProcessorService {
     };
   }
 
+  /**
+   * يُنشئ قيد اليومية المزدوج لمعاملة مالية عامة (دفعة / خصم / دعم / استرداد).
+   * يُولِّد أسطر المدين من `fundingSources` وسطر دائن واحد لحساب الذمم (أو مدين إذا كان الاسترداد).
+   * يتحقق من توازن القيد قبل الكتابة.
+   *
+   * Writes a balanced double-entry for a general financial transaction
+   * (payment / discount / subsidy / refund). Generates debit lines from
+   * `fundingSources` and one AR credit (or debit for refunds). Validates
+   * balance before committing.
+   *
+   * @param db - عميل Prisma أو معاملة نشطة | Prisma client or active transaction
+   * @param input - بيانات المعاملة | Transaction input
+   * @returns معرف القيد + مجاميع التوازن | Entry ID + balance totals
+   * @throws `PROCESS_TRANSACTION_ACTOR_REQUIRED` إذا كان `actorUserId` فارغًا
+   * @throws `PROCESS_TRANSACTION_REFERENCE_REQUIRED` إذا كان `referenceId` فارغًا
+   * @throws `PROCESS_TRANSACTION_FUNDING_REQUIRED` إذا كانت `fundingSources` فارغة
+   * @throws `PROCESS_TRANSACTION_LEDGER_AMOUNT_REQUIRED` إذا كان المبلغ صفرًا
+   * @throws `PROCESS_TRANSACTION_UNBALANCED` إذا لم يتوازن القيد
+   * @since V25
+   */
   async processTransaction(
     db: Db,
     input: ProcessTransactionInput,
