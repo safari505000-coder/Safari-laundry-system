@@ -2113,8 +2113,8 @@ export type CollectionUnpaidOnlineReportResponse = {
 export type OutstandingDebtWithoutLinkRow = {
   customerId: string;
   customerName: string;
-  /** KWD 3-decimal precision (fils), e.g. "12.750". */
-  totalDebt: string;
+  /** Canonical remaining collectible balance (4dp KWD). Renamed from `totalDebt` in V25. */
+  remainingDueKd: string;
   lastOrderDate: string | null;
   invoices: Array<{
     invoiceId: string;

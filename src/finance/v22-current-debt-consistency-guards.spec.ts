@@ -164,11 +164,12 @@ describe('V22 current-debt consistency guards', () => {
     expect(debtService).toContain('remaining.toFixed(4)'); // V25 P0 fix: 3dp→4dp canonical KWD
     expect(debtService).toContain('settlementStatus');
     expect(reportPage).toContain('المديونيات المعلّقة للتحصيل');
-    expect(reportPage).toContain('formatKwd(row.totalDebt)');
+    expect(reportPage).toContain('formatKwd(row.remainingDueKd)'); // V25: renamed from totalDebt
     expect(reportPage).toContain('الأصلي:');
     expect(reportPage).toContain('remainingBalanceKd');
     expect(reportPage).not.toContain('Number.parseFloat(row.totalDebt)');
     expect(reportPage).not.toContain('parseFloat(row.totalDebt)');
+    expect(reportPage).not.toContain('row.totalDebt'); // V25: field renamed to remainingDueKd
   });
 
   it('V25 multi-invoice settlement link stays backend-authoritative', () => {

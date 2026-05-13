@@ -1060,7 +1060,7 @@ function PendingDebtsWithoutLinksTable({
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-semibold">{row.customerName}</div>
                     <div className="mt-0.5 text-[11px] text-muted-foreground">
-                      إجمالي المديونية: {formatKwd(row.totalDebt)} · آخر طلب:{' '}
+                      إجمالي المديونية: {formatKwd(row.remainingDueKd)} · آخر طلب:{' '}
                       {formatRelativeAr(row.lastOrderDate)} · فواتير: {row.invoices.length}
                     </div>
                   </div>

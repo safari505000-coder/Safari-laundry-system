@@ -184,7 +184,7 @@ export class DebtService {
     Array<{
       customerId: string;
       customerName: string;
-      totalDebt: string;
+      remainingDueKd: string;
       lastOrderDate: string | null;
       invoices: Array<{
         invoiceId: string;
@@ -307,14 +307,14 @@ export class DebtService {
         return {
           customerId,
           customerName: customerNameById.get(customerId) ?? '—',
-          totalDebt: bucket.total.toFixed(4),
+          remainingDueKd: bucket.total.toFixed(4),
           lastOrderDate: bucket.lastOrderDate?.toISOString() ?? null,
           invoices: bucket.invoices,
         };
       })
-      .filter((row) => new Prisma.Decimal(row.totalDebt).gt(0))
+      .filter((row) => new Prisma.Decimal(row.remainingDueKd).gt(0))
       .sort((a, b) =>
-        new Prisma.Decimal(b.totalDebt).comparedTo(new Prisma.Decimal(a.totalDebt)),
+        new Prisma.Decimal(b.remainingDueKd).comparedTo(new Prisma.Decimal(a.remainingDueKd)),
       );
   }
 

@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { CashStatus, OrderStatus, PosPaymentMethod, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { computeOrderRemainingBalancesBatch } from '../debt-customer-aggregates.util';
-import { isRealDebtLedgerPayment } from '../debt-ledger-payment-origin.util';
 import { FinancialSnapshotService } from '../snapshots/financial-snapshot.service';
 
 /**
@@ -178,11 +177,74 @@ export class CollectionsIntelligenceService {
     return 0;
   }
 
+  /**
+   * V20.4 — Rewritten to read from JournalEntry now that DebtLedgerEntry
+   * is removed. Computes the average number of days between invoice issuance
+   * (source=INVOICE) and the first cash/KNET payment (source=PAYMENT) for
+   * this customer over the last 90 days.
+   *
+   * Returns null when there are no qualifying payments in the window.
+   */
   private async computeHistoricalPaymentSpeedDays(
-    _customerId: string,
+    customerId: string,
   ): Promise<number | null> {
-    // DebtLedgerEntry table removed — no historical payment speed available.
-    return null;
+    const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+
+    // Step 1 — find real PAYMENT journal entries (exclude wallet absorptions
+    // which have no 1300 credit). We cap at 100 to keep the window cheap.
+    const payments = await this.prisma.journalEntry.findMany({
+      where: {
+        customerId,
+        source: 'PAYMENT',
+        orderId: { not: null },
+        createdAt: { gte: since },
+      },
+      select: { id: true, orderId: true, createdAt: true },
+      orderBy: { createdAt: 'asc' },
+      take: 100,
+    });
+    if (payments.length === 0) return null;
+
+    // Step 2 — find the earliest INVOICE journal entry per order so we can
+    // compute the invoice → payment gap.
+    const orderIds = payments
+      .map((p) => p.orderId)
+      .filter(Boolean) as string[];
+
+    const invoices = await this.prisma.journalEntry.findMany({
+      where: {
+        customerId,
+        source: 'INVOICE',
+        orderId: { in: orderIds },
+      },
+      select: { orderId: true, createdAt: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    // Build orderId → earliest invoice date map.
+    const invoiceDateByOrder = new Map<string, Date>();
+    for (const inv of invoices) {
+      if (!inv.orderId) continue;
+      if (!invoiceDateByOrder.has(inv.orderId)) {
+        invoiceDateByOrder.set(inv.orderId, inv.createdAt);
+      }
+    }
+
+    // Step 3 — compute per-payment speed in days.
+    const speedDays: number[] = [];
+    for (const payment of payments) {
+      if (!payment.orderId) continue;
+      const invoiceDate = invoiceDateByOrder.get(payment.orderId);
+      if (!invoiceDate) continue;
+      const diffMs = payment.createdAt.getTime() - invoiceDate.getTime();
+      if (diffMs < 0) continue; // data anomaly — payment precedes invoice
+      speedDays.push(diffMs / (24 * 60 * 60 * 1000));
+    }
+
+    if (speedDays.length === 0) return null;
+
+    const avg = speedDays.reduce((s, d) => s + d, 0) / speedDays.length;
+    return Math.round(avg);
   }
 
   private scoreFromSignals(

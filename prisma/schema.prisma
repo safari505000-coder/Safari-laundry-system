@@ -438,6 +438,8 @@ model User {
    * V20.5 — Phase 8 Fraud alerts this user resolved.
    */
   fraudAlertsResolved              FraudAlert[]               @relation("FraudAlertResolver")
+
+  @@index([linkedCustomerId])
 }
 
 /**
@@ -713,6 +715,7 @@ model Customer {
   @@index([phone2])
   @@index([displayName])
   @@index([originBranchId])
+  @@index([isBlocked])
 }
 
 model SubscriptionPlan {
@@ -1632,6 +1635,7 @@ model AuditLog {
   @@index([orderId, timestamp])
   @@index([ip, timestamp])
   @@index([status, timestamp])
+  @@index([actorId, action, timestamp])
   @@map("audit_logs")
 }
 
@@ -2768,6 +2772,7 @@ model CommissionPayout {
   @@index([status])
   @@index([ruleId])
   @@index([payrollId])
+  @@index([sourceJournalEntryId])
 }
 
 /**
