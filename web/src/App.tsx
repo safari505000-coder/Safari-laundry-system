@@ -10,6 +10,7 @@ import { SafariStreamProvider } from '@/contexts/safari-stream-context';
 import { AuthLayout } from '@/modules/shared/components/shell/auth-layout';
 import { ExecutiveShell } from '@/modules/shared/components/shell/executive-shell';
 import { RequireAccess } from '@/modules/shared/components/require-access';
+import { can } from '@/modules/shared/auth/access-matrix';
 import { RequireAuth } from '@/components/require-auth';
 import { Toaster } from '@/modules/shared/components/ui/sonner';
 import { ExecutiveDashboardPage } from '@/pages/executive-dashboard-page';
@@ -291,6 +292,24 @@ function RequireRole({
   if (!user) return <Navigate to="/login" replace />;
   if (!hasRole(role)) return <Navigate to="/" replace />;
   return <>{children}</>;
+}
+
+/**
+ * `/collections` nav entry — capability-based default:
+ *   • collections.view → operational cockpit
+ *   • else outstanding.view → لوحة التحصيل (GM / ACCOUNTANT / etc.)
+ *   • else home (sidebar should not expose the link without access)
+ */
+function CollectionsDefaultRedirect() {
+  const { user } = useAuth();
+  if (!user) return <Navigate to="/login" replace />;
+  if (can(user, 'collections.view')) {
+    return <Navigate to="/collections/cockpit" replace />;
+  }
+  if (can(user, 'outstanding.view')) {
+    return <Navigate to="/cc/collections-report" replace />;
+  }
+  return <Navigate to="/" replace />;
 }
 
 export default function App() {
@@ -654,15 +673,9 @@ export default function App() {
                     </RequireAccess>
                   }
                 />
-                {/* V23.1 Phase 7 — /cc/collections is now an alias that
-                    forwards to the operational cockpit. The classic
-                    table-only page (CollectionsPage) is preserved at
-                    /cc/collections/classic for rollback safety: revert
-                    this redirect block to restore the previous default. */}
-                <Route
-                  path="collections"
-                  element={<Navigate to="/cc/collections/cockpit" replace />}
-                />
+                {/* V23.1 — `/collections` sends CC/Owner to the cockpit;
+                    GM/Accountant (outstanding only) land on collections-report. */}
+                <Route path="collections" element={<CollectionsDefaultRedirect />} />
                 <Route
                   path="collections/classic"
                   element={

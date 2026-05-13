@@ -400,7 +400,7 @@ export function CollectionsCockpitPage(): React.ReactElement {
             <RefreshCw className="me-1 h-3.5 w-3.5" />
             {isAr ? 'تحديث (Alt+R)' : 'Refresh (Alt+R)'}
           </Button>
-          <Link to="/cc/collections">
+          <Link to="/collections/classic">
             <Button variant="ghost" size="sm">
               <ArrowLeft className="me-1 h-3.5 w-3.5" />
               {isAr ? 'العرض الكلاسيكي' : 'Classic view'}
