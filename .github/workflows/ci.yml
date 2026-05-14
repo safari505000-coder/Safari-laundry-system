@@ -45,9 +45,9 @@ jobs:
       postgres:
         image: postgres:16
         env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
           POSTGRES_DB: safari_erp_test
-          POSTGRES_USER: safari_test
-          POSTGRES_PASSWORD: safari_test
         ports:
           - 5432:5432
         options: >-
@@ -74,12 +74,13 @@ jobs:
       - name: Run Prisma migrations on test DB
         run: npx prisma migrate deploy
         env:
-          DATABASE_URL: postgresql://safari_test:safari_test@localhost:5432/safari_erp_test
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/safari_erp_test
+          NODE_ENV: test
 
       - name: Run integration tests
         run: npm run test:integration
         env:
-          DATABASE_URL: postgresql://safari_test:safari_test@localhost:5432/safari_erp_test
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/safari_erp_test
           NODE_ENV: test
           V20_4_FINAL_LEDGER: 'true'
           V20_3_TRUE_ACCOUNTING: 'true'

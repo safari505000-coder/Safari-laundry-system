@@ -4,17 +4,22 @@ import { PrismaClient } from '@prisma/client';
 import { config as loadEnv } from 'dotenv';
 import { Pool } from 'pg';
 
-loadEnv({ path: '.env.test', override: !process.env.DATABASE_URL });
+// Always prefer `.env.test` so a prior `dotenv/config` (e.g. from api.helper) cannot pin production/Railway URLs.
+loadEnv({ path: '.env.test', override: true });
 
 const databaseUrl =
   process.env.DATABASE_URL ??
-  'postgresql://user:pass@localhost:5432/safari_erp_test';
+  'postgresql://postgres:postgres@localhost:5432/safari_erp_test';
 
-if (!databaseUrl.includes('safari_erp_test')) {
-  throw new Error(
-    `Refusing to run integration tests against non-test database: ${databaseUrl}`,
-  );
+function assertSafeIntegrationDatabaseUrl(url: string): void {
+  if (!url.includes('safari_erp_test') && !url.includes('localhost')) {
+    throw new Error(
+      `SAFETY: Refusing to run integration tests against non-test database. URL: ${url.slice(0, 40)}`,
+    );
+  }
 }
+
+assertSafeIntegrationDatabaseUrl(databaseUrl);
 
 process.env.DATABASE_URL = databaseUrl;
 
@@ -41,6 +46,13 @@ export function runMigrations(): void {
 }
 
 export async function resetDb(): Promise<void> {
+  const url = process.env.DATABASE_URL ?? '';
+  if (!url.includes('safari_erp_test') && !url.includes('localhost')) {
+    throw new Error(
+      `SAFETY: Refusing to reset non-test DB. URL: ${url.slice(0, 40)}`,
+    );
+  }
+
   await prisma.financialEventDelivery.deleteMany();
   await prisma.financialEventOutbox.deleteMany();
   await prisma.collectionsStageEvent.deleteMany();
@@ -51,6 +63,7 @@ export async function resetDb(): Promise<void> {
   await prisma.journalLine.deleteMany();
   await prisma.commissionPayout.deleteMany();
   await prisma.journalEntry.deleteMany();
+  // `GeneralLedgerEntry` is still a first-class model in schema.prisma (read-path / legacy windows).
   await prisma.generalLedgerEntry.deleteMany();
   await prisma.invoiceAuditLog.deleteMany();
   await prisma.auditLog.deleteMany();

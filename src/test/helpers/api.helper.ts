@@ -14,7 +14,7 @@ export async function createTestApp(): Promise<INestApplication<App>> {
   process.env.BCRYPT_WORKERS = '0';
   process.env.DATABASE_URL =
     process.env.DATABASE_URL ??
-    'postgresql://user:pass@localhost:5432/safari_erp_test';
+    'postgresql://postgres:postgres@localhost:5432/safari_erp_test';
 
   const { AppModule } = await import('../../app.module');
 
