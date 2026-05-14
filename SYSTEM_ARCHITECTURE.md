@@ -1,10 +1,61 @@
 # Safari Fast Group ERP — System Architecture Reference
 
-> **Version:** 1.6.0 | **Generated:** 2026-05-13 | **Based on:** full codebase analysis
+> **Version:** 1.7.0 | **Generated:** 2026-05-14 | **Based on:** full codebase analysis
 
 ---
 
 ## ✅ Sprint Log
+
+### v1.7.0 — Banking Security Hardening + CI/CD (2026-05-14)
+
+#### Security Posture — 18 Penetration Test Findings Resolved
+
+**💀 STEAL fixes (3 critical):**
+- STEAL-1: `companySupportAmountKd` capped at `plan.actualBalance` — prevents unbounded company P&L inflation via subscription activation
+- STEAL-2: Prisma.Decimal arithmetic in driver deposit settlement — eliminates float epsilon attack that allowed settling beyond approved amount
+- STEAL-3: `CALL_CENTER` role branch-scoped like MANAGER — closes silent bypass that let any CC agent clear any customer's invoice
+
+**🔴 CORRUPT fixes (7):**
+- CORRUPT-1: `performedByUserId` validated against whitelisted `SafariRole` set inside transaction
+- CORRUPT-2: Wallet re-read after `FOR UPDATE` lock in CC debt collection (pre-lock state was used for deduction calculation)
+- CORRUPT-3: Auto-reconcile order selection uses `SELECT … FOR UPDATE SKIP LOCKED` (prevents double-settlement in parallel calls)
+- CORRUPT-4: All 8 journal `*Safe` wrappers re-throw period lock `ConflictException` (was silently swallowed, allowing back-dated writes)
+- CORRUPT-5: Commission basis excludes wallet-absorption AR credits — SUBSCRIPTION_WALLET invoices no longer generate false cash collection commission
+- CORRUPT-6: Settlement link ownership re-verified inside `$transaction` with `FOR UPDATE` (TOCTOU window closed)
+- CORRUPT-7: `getCustomerDebtSnapshot` uses `Prisma.Decimal` throughout — no more `Number.parseFloat` on money fields
+
+**🟡 INFLATE fixes (5):**
+- INFLATE-1: Period lookup uses Kuwait local time (UTC+3) — midnight payments no longer land in the wrong accounting month
+- INFLATE-2: `AFTER_COLLECTION` commission release skips `SUBSCRIPTION_WALLET` orders (wallet credit ≠ cash collection)
+- INFLATE-3: CC debt collection idempotent across all `confirmedMethod` values — second call with different method rejected
+- INFLATE-4: Journal `DEGRADED` state surfaced in `debtSource` field — API consumers can detect and gate financial decisions
+- INFLATE-5: `completedAt` fallback uses `order.createdAt` (service delivery date) not `new Date()` (reconcile date)
+
+**🟠 DEGRADE fixes (3):**
+- DEGRADE-1: All 5 reconciliation invariants run inside one `SERIALIZABLE` transaction (consistent snapshot)
+- DEGRADE-2: Statement share tokens carry JTI claim; `revokeStatementToken()` blacklists in-process
+- DEGRADE-3: Subscription activation + prepaid FIFO reconcile in single atomic `$transaction` (partial-commit gap closed)
+
+#### CommissionPayout FK Enforcement
+- DB `CHECK` constraint: `COLLECTION` mode payouts require `sourceJournalEntryId IS NOT NULL`
+- Service-level guard added in `earnForJournalPayment`
+- Migration: `20260515130000_commission_payout_journal_required`
+- Resolves "DROP TABLE debt_ledger_entry" blocker from v1.6.0
+
+#### Architectural Cleanup
+- `appendJournalMirrorEntrySafe` alias added for `mirrorDebtLedgerEntrySafe` (DebtLedger removed, name now accurate)
+- `appendWalletAbsorptionEntrySafe` marked `@deprecated` — prefer V3 variant under `V20_3_TRUE_ACCOUNTING=true`
+- `logCustomerDrift` marked `@deprecated` — now compares Journal vs Journal (no-op since DebtLedger removal)
+- Architecture note documenting `JournalSourceService` vs `debt-customer-aggregates.util.ts` relationship
+
+#### CI/CD Pipeline Live
+- `.github/workflows/ci.yml` — backend tsc + jest + frontend tsc on push/PR to main
+- `.github/workflows/security.yml` — weekly npm audit at high severity
+- Status badges added to README.md
+
+**Tests:** 28 new security tests added; 883 total passing, 0 failures.
+
+---
 
 ### v1.6.0 — Banking Core + Legacy Cleanup (2026-05-13)
 **Banking Core:**
@@ -22,10 +73,10 @@
 - Empty WalletsModule deleted
 - round4Kd unified to shared util (Prisma.Decimal ROUND_HALF_EVEN)
 
-**Pending (next sprint):**
-- DROP TABLE debt_ledger_entry (blocked by CommissionPayout FK)
-- Decouple CommissionPayout.sourceDebtEntryId
-- Convert DebtSource to TypeScript enum
+**Resolved in v1.7.0 ✅:**
+- CommissionPayout FK enforcement (CHECK constraint added)
+- `appendJournalMirrorEntrySafe` alias for DebtLedger-era method name
+- CI/CD pipeline live on GitHub Actions
 
 ---
 
@@ -774,4 +825,41 @@ User ──────────────── Order (driverId) ───
 
 ---
 
-*End of SYSTEM_ARCHITECTURE.md*
+## 7. Security Posture (v1.7.0)
+
+### Banking Core — Resolved Vulnerabilities
+
+| ID | Severity | Description | Status |
+|---|---|---|---|
+| STEAL-1 | 💀 | `companySupportAmountKd` unbounded | ✅ Fixed v1.7.0 |
+| STEAL-2 | 💀 | Float epsilon in driver deposit settlement | ✅ Fixed v1.7.0 |
+| STEAL-3 | 💀 | CC agent collection scope bypass | ✅ Fixed v1.7.0 |
+| CORRUPT-1 | 🔴 | Unvalidated `performedByUserId` role | ✅ Fixed v1.7.0 |
+| CORRUPT-2 | 🔴 | Pre-lock wallet snapshot used for deduction | ✅ Fixed v1.7.0 |
+| CORRUPT-3 | 🔴 | Auto-reconcile race condition (no FOR UPDATE) | ✅ Fixed v1.7.0 |
+| CORRUPT-4 | 🔴 | Period lock swallowed in Safe wrappers | ✅ Fixed v1.7.0 |
+| CORRUPT-5 | 🔴 | Commission inflated by wallet-absorption credits | ✅ Fixed v1.7.0 |
+| CORRUPT-6 | 🔴 | Settlement link TOCTOU ownership check | ✅ Fixed v1.7.0 |
+| CORRUPT-7 | 🔴 | Float arithmetic in debt snapshot | ✅ Fixed v1.7.0 |
+| INFLATE-1 | 🟡 | Wrong accounting period (UTC vs Kuwait time) | ✅ Fixed v1.7.0 |
+| INFLATE-2 | 🟡 | Wallet-funded orders inflate collection commission | ✅ Fixed v1.7.0 |
+| INFLATE-3 | 🟡 | Double CC debt collection via different methods | ✅ Fixed v1.7.0 |
+| INFLATE-4 | 🟡 | Journal DEGRADED state not surfaced to callers | ✅ Fixed v1.7.0 |
+| INFLATE-5 | 🟡 | `completedAt` set to reconcile time (wrong period) | ✅ Fixed v1.7.0 |
+| DEGRADE-1 | 🟠 | Reconciliation reads inconsistent snapshot | ✅ Fixed v1.7.0 |
+| DEGRADE-2 | 🟠 | Statement tokens not revocable | ✅ Fixed v1.7.0 |
+| DEGRADE-3 | 🟠 | Activation + reconcile not atomic | ✅ Fixed v1.7.0 |
+
+### Known Technical Debt (remaining after v1.7.0)
+
+| Item | Priority | Notes |
+|---|---|---|
+| Convert `DebtSource` to TypeScript enum | Low | Currently plain string constants |
+| Full merge JournalSourceService + debt-customer-aggregates.util.ts | Low | Both read journal account 1300; deferred due to DI constraints |
+| Remove `appendWalletAbsorptionEntrySafe` (V20.2 path) | Low | Safe to delete once all deploys have `V20_3_TRUE_ACCOUNTING=true` |
+| Remove `logCustomerDrift` + journal.controller.ts endpoint | Low | No-op since DebtLedger removal; remove in v1.8.0 |
+| DROP TABLE `debt_ledger_entry` | Medium | Archive-only since V20.4; schedule DROP after data retention period |
+
+---
+
+*End of SYSTEM_ARCHITECTURE.md — v1.7.0*
