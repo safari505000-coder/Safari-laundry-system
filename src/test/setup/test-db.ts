@@ -86,9 +86,6 @@ export async function resetDb(prismaInst: PrismaClient): Promise<void> {
       // Permit deleteMany() on all append-only guarded tables for this transaction.
       await tx.$executeRaw`SET LOCAL "app.immutable_ledger_bypass" = 'true'`;
 
-      // ── RESTRICT → Order: must precede Order ──────────────────────────────
-      await tx.debtTransferOrder.deleteMany();
-
       // ── RESTRICT → User: all must precede User ────────────────────────────
       await tx.debtTransfer.deleteMany();
       await tx.invoiceAuditLog.deleteMany();
