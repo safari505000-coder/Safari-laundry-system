@@ -50,9 +50,8 @@ export function runMigrations(): void {
 
 export async function resetDb(prisma: any) {
   try {
-    // This command tells Prisma to drop the DB and re-create it from migrations
-    // --force avoids the confirmation prompt, --skip-generate saves time
-    execSync('npx prisma migrate reset --force --skip-generate', {
+    // Corrected command: removed invalid flag and added --skip-seed for speed
+    execSync('npx prisma migrate reset --force --skip-seed', {
       env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL },
       stdio: 'inherit'
     });
