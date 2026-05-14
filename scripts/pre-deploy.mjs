@@ -44,6 +44,10 @@ console.log(`[pre-deploy] BOM scan complete (${bomStripped} file(s) cleaned).`);
 
 // --- 2. Resolve any failed migration ------------------------------------
 const RESOLVE_AS_ROLLED_BACK = [
+  // Column was added to production without a migration during V20.4 development.
+  // The new backfill migration fails on production with 42701 (column already exists).
+  // Resolving as rolled-back lets migrate deploy skip it and continue.
+  '20260508150000_commission_payout_add_source_journal_entry_id',
   '20260515130000_commission_payout_journal_required',
 ];
 
