@@ -1,5 +1,6 @@
 import './load-env-test';
 import { execFileSync } from 'node:child_process';
+import { execSync } from 'child_process';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
 import { Pool } from 'pg';
@@ -48,25 +49,16 @@ export function runMigrations(): void {
 }
 
 export async function resetDb(prisma: any) {
-  // 1. Get all base tables
-  const tablerows = await prisma.$queryRaw`
-    SELECT table_name 
-    FROM information_schema.tables 
-    WHERE table_schema = 'public' 
-    AND table_type = 'BASE TABLE' 
-    AND table_name <> '_prisma_migrations';
-  `;
-
-  const tables = tablerows.map((t: any) => `"${t.table_name}"`).join(', ');
-
-  if (tables.length > 0) {
-    // 2. We use a single $executeRawUnsafe to ensure the bypass and truncate 
-    // run in the exact same database session/connection.
-    await prisma.$executeRawUnsafe(`
-      SET app.immutable_ledger_bypass = true;
-      TRUNCATE TABLE ${tables} RESTART IDENTITY CASCADE;
-      SET app.immutable_ledger_bypass = false;
-    `);
+  try {
+    // This command tells Prisma to drop the DB and re-create it from migrations
+    // --force avoids the confirmation prompt, --skip-generate saves time
+    execSync('npx prisma migrate reset --force --skip-generate', {
+      env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL },
+      stdio: 'inherit'
+    });
+  } catch (error) {
+    console.error('Failed to reset database using prisma migrate reset:', error);
+    throw error;
   }
 }
 
