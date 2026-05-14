@@ -77,6 +77,44 @@ ALTER TABLE "TransactionHistory"
     FOREIGN KEY ("subscriptionId") REFERENCES "CustomerSubscription"("id")
     ON DELETE SET NULL ON UPDATE CASCADE;
 
+-- 3b. SubscriptionPlan naming bridge ---------------------------------
+-- Fresh databases created from the historical init migration still have
+-- `price` / `creditAmount`; current code and this backfill read
+-- `salePrice` / `actualBalance`. Add and backfill the canonical columns
+-- before the CustomerSubscription snapshot query references them.
+ALTER TABLE "SubscriptionPlan"
+  ADD COLUMN IF NOT EXISTS "salePrice" DECIMAL(19,4) NOT NULL DEFAULT 0;
+
+ALTER TABLE "SubscriptionPlan"
+  ADD COLUMN IF NOT EXISTS "actualBalance" DECIMAL(19,4) NOT NULL DEFAULT 0;
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'SubscriptionPlan'
+      AND column_name = 'price'
+  ) THEN
+    UPDATE "SubscriptionPlan"
+    SET "salePrice" = "price"
+    WHERE "salePrice" = 0;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'SubscriptionPlan'
+      AND column_name = 'creditAmount'
+  ) THEN
+    UPDATE "SubscriptionPlan"
+    SET "actualBalance" = "creditAmount"
+    WHERE "actualBalance" = 0;
+  END IF;
+END $$;
+
 -- 4. Backfill --------------------------------------------------------
 -- Option 3-A: one CustomerSubscription row per currently-known wallet
 -- activation (i.e. wallets that have a non-null subscriptionActivatedAt
