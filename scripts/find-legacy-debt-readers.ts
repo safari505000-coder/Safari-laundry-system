@@ -197,8 +197,38 @@ type Hit = {
   suggested: string;
 };
 
+/**
+ * V25 — Test-infrastructure exclusion.
+ *
+ * Files under `src/test/` are integration test scaffolding (factories,
+ * helpers, setup, financial / RBAC / security `.integration-spec.ts`
+ * specs). They legitimately read `wallet.debt` and `order.totalPrice`
+ * as DB-invariant assertions against the seeded test database — they
+ * are NOT UI render paths or aggregate read paths. The legacy reader
+ * scanner is meant to police production code, so we exclude the entire
+ * test infrastructure tree.
+ *
+ * Naming history: the existing `walk()` filter excludes `*.spec.ts` /
+ * `*.test.ts`, but the new integration suite uses
+ * `*.integration-spec.ts` (dash before "spec"), which `endsWith('.spec.ts')`
+ * does not match because the preceding char is `-`, not `.`. Adding
+ * `src/test/` to the path skip-list catches the suite by directory
+ * regardless of file naming.
+ */
+const TEST_INFRA_PREFIXES = [
+  'src/test/setup/',
+  'src/test/factories/',
+  'src/test/helpers/',
+  'src/test/financial/',
+  'src/test/rbac/',
+  'src/test/security/',
+] as const;
+
 function shouldSkipPath(path: string): boolean {
   if (PATH_ALLOWLIST_RE.test(path)) return true;
+  for (const prefix of TEST_INFRA_PREFIXES) {
+    if (path.startsWith(prefix)) return true;
+  }
   return false;
 }
 
