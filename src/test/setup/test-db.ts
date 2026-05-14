@@ -48,7 +48,7 @@ export function runMigrations(): void {
 }
 
 export async function resetDb(prisma: any) {
-  // 1. Get all base tables in public schema
+  // 1. Get all base tables
   const tablerows = await prisma.$queryRaw`
     SELECT table_name 
     FROM information_schema.tables 
@@ -57,22 +57,16 @@ export async function resetDb(prisma: any) {
     AND table_name <> '_prisma_migrations';
   `;
 
-  const tables = tablerows
-    .map((t: any) => `"${t.table_name}"`)
-    .join(', ');
+  const tables = tablerows.map((t: any) => `"${t.table_name}"`).join(', ');
 
   if (tables.length > 0) {
-    // 2. Execute within a transaction: Disable the ledger protection, truncate, then re-enable
-    await prisma.$transaction([
-      // Bypass immutable ledger check for this session
-      prisma.$executeRawUnsafe(`SET app.immutable_ledger_bypass = true;`),
-
-      // Perform the truncation
-      prisma.$executeRawUnsafe(`TRUNCATE TABLE ${tables} RESTART IDENTITY CASCADE;`),
-
-      // Re-enable protection (good practice)
-      prisma.$executeRawUnsafe(`SET app.immutable_ledger_bypass = false;`),
-    ]);
+    // 2. We use a single $executeRawUnsafe to ensure the bypass and truncate 
+    // run in the exact same database session/connection.
+    await prisma.$executeRawUnsafe(`
+      SET app.immutable_ledger_bypass = true;
+      TRUNCATE TABLE ${tables} RESTART IDENTITY CASCADE;
+      SET app.immutable_ledger_bypass = false;
+    `);
   }
 }
 
