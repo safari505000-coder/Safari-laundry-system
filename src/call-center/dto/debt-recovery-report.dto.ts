@@ -3,6 +3,10 @@ import { IsOptional, IsString, Matches } from 'class-validator';
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+/**
+ * استعلام تقرير تحصيل الديون — نطاق تاريخ اختياري (YYYY-MM-DD).
+ * Debt-recovery report query DTO — optional date range (YYYY-MM-DD format).
+ */
 export class DebtRecoveryQueryDto {
   @ApiProperty({ required: false, example: '2026-04-01' })
   @IsOptional()
@@ -17,6 +21,10 @@ export class DebtRecoveryQueryDto {
   to?: string;
 }
 
+/**
+ * صف يومي لتحصيل الديون — مبالغ مُستردة مُصنَّفة حسب النقد والإلكتروني والمحفظة.
+ * Daily debt-recovery row — recovered amounts broken down by cash, electronic, and wallet.
+ */
 export class DebtRecoveryDayRowDto {
   @ApiProperty({ example: '2026-04-18' })
   dayIso!: string;
@@ -59,6 +67,10 @@ export class DebtRecoveryDayRowDto {
   trendRatio!: number;
 }
 
+/**
+ * تقرير تحصيل الديون — ملخص إجمالي مع تفاصيل يومية.
+ * Debt-recovery report DTO — aggregate totals with per-day breakdown rows.
+ */
 export class DebtRecoveryReportDto {
   @ApiProperty({ example: '2026-04-01' })
   from!: string;

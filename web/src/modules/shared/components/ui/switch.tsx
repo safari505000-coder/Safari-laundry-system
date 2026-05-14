@@ -1,5 +1,9 @@
 "use client"
 
+/**
+ * مكون مفتاح التبديل — زر تبديل ثنائي الحالة مبني على Base UI Switch.
+ * Switch component — binary toggle built on Base UI Switch with consistent styling.
+ */
 import { Switch as SwitchPrimitive } from "@base-ui/react/switch"
 
 import { cn } from "@/lib/utils"

@@ -1,3 +1,7 @@
+/**
+ * محول الفروع — يتيح للمستخدم التبديل بين الفروع مع عرض حالة العمليات الحية.
+ * BranchSwitcher — lets users switch the active branch and shows live operations status per branch.
+ */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Building2, Loader2 } from 'lucide-react';

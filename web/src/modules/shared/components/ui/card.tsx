@@ -1,3 +1,7 @@
+/**
+ * مكون البطاقة — حاوية مرنة لعرض المحتوى مع رأس وجسم وتذييل ووصف.
+ * Card component — flexible content container with header, body, footer, and description sub-components.
+ */
 import * as React from "react"
 
 import { cn } from "@/lib/utils"

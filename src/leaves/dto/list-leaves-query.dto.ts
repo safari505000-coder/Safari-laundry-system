@@ -1,3 +1,7 @@
+/**
+ * استعلام قائمة الإجازات — فلاتر اختيارية للحالة والنوع والمستخدم والنطاق الزمني.
+ * List-leaves query DTO — optional filters for status, type, user, and date range.
+ */
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { LeaveStatus, LeaveType } from '@prisma/client';
 import {

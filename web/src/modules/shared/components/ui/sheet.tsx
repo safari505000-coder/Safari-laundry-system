@@ -1,5 +1,9 @@
 "use client"
 
+/**
+ * مكون الصفحة الجانبية — لوحة منزلقة من أحد جوانب الشاشة مع رأس وعنوان وتذييل.
+ * Sheet component — sliding side panel (drawer) built on Base UI Dialog with header, title, and footer.
+ */
 import * as React from "react"
 import { Dialog as SheetPrimitive } from "@base-ui/react/dialog"
 

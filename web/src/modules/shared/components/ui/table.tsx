@@ -1,3 +1,7 @@
+/**
+ * مكون الجدول — جدول HTML كامل مع رأس وجسم وتذييل وصفوف وخلايا منسَّقة.
+ * Table component — full HTML table with styled header, body, footer, rows, and cells sub-components.
+ */
 import * as React from "react"
 
 import { cn } from "@/lib/utils"

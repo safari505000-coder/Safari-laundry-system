@@ -5,6 +5,10 @@ import { Avatar as AvatarPrimitive } from "@base-ui/react/avatar"
 
 import { cn } from "@/lib/utils"
 
+/**
+ * مكون الصورة الرمزية — حلقة مستديرة مع دعم الصورة والبديل والشارة والمجموعة.
+ * Avatar component — circular avatar ring with image, fallback, badge, and group support.
+ */
 function Avatar({
   className,
   size = "default",

@@ -6,6 +6,10 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { CustomerLedgerService } from './customer-ledger.service';
 import { PrepaidAutoReconcileCronService } from './prepaid-auto-reconcile.cron';
 
+/**
+ * وحدة دفتر حسابات العملاء — تجمع خدمة الدفتر وجدولة التسوية التلقائية للمدفوع مسبقاً.
+ * Customer-ledger module — bundles the ledger service and prepaid auto-reconcile cron.
+ */
 @Module({
   imports: [
     PrismaModule,

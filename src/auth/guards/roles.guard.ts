@@ -15,6 +15,11 @@ import {
 import { PERMISSIONS_KEY } from '../permissions/permissions.decorator';
 import { PermissionsService } from '../../permissions/permissions.service';
 
+/**
+ * حارس الأدوار — يتحقق من دور JWT مقابل @Roles المطلوبة ويمنح صلاحية OWNER دائماً.
+ * Roles guard — checks the JWT role against @Roles metadata; OWNER always passes.
+ * Routes with @Permissions bypass this guard; routes with neither @Roles nor @Public throw 403.
+ */
 @Injectable()
 export class RolesGuard implements CanActivate {
   constructor(

@@ -1,3 +1,7 @@
+/**
+ * مكون القائمة المنسدلة — قائمة سياق قابلة للتخصيص مع عناصر ومجموعات وفواصل.
+ * Dropdown-menu component — context menu built on Base UI Menu with items, groups, separators, and sub-menus.
+ */
 import * as React from "react"
 import { Menu as MenuPrimitive } from "@base-ui/react/menu"
 

@@ -1,3 +1,7 @@
+/**
+ * وحدة العمولات — تضم خدمات وجداول ومتحكمات العمولات.
+ * Commissions module — bundles commission rules, payouts, and earning cron services.
+ */
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { PaymentMethodFeesModule } from '../payment-method-fees/payment-method-fees.module';

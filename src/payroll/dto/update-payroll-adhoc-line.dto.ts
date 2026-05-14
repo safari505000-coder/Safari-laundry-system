@@ -1,3 +1,7 @@
+/**
+ * تعديل سطر راتب مخصص — جميع الحقول اختيارية للتعديل الجزئي.
+ * Update payroll ad-hoc line DTO — all fields optional for partial updates.
+ */
 import { Type } from 'class-transformer';
 import {
   IsInt,

@@ -1,3 +1,8 @@
+/**
+ * سياق Safari Stream — يوفر لقطة لوحة التحكم التشغيلية مع تحديث تلقائي كل 45 ثانية.
+ * Safari Stream context — provides the operational dashboard snapshot with auto-refresh every 45 seconds.
+ * Exposes SafariStreamProvider and the useSafariStream hook.
+ */
 import {
   createContext,
   useCallback,
@@ -18,6 +23,10 @@ type SafariStreamContextValue = {
 
 const SafariStreamContext = createContext<SafariStreamContextValue | null>(null);
 
+/**
+ * مزود سياق Safari Stream — يلف الشجرة ويوفر اللقطة والتحكم فيها.
+ * SafariStreamProvider — wraps the component tree and supplies the snapshot value and refresh control.
+ */
 export function SafariStreamProvider({ children }: { children: ReactNode }) {
   const { token, sessionKind } = useAuth();
   const [snapshot, setSnapshot] = useState<SafariStreamSnapshot | null>(null);
@@ -66,6 +75,11 @@ export function SafariStreamProvider({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * خطاف useSafariStream — يُتيح الوصول إلى لقطة Safari Stream ودالة التحديث.
+ * useSafariStream hook — returns the current snapshot, loading state, and refresh function.
+ * Must be used inside SafariStreamProvider.
+ */
 export function useSafariStream(): SafariStreamContextValue {
   const ctx = useContext(SafariStreamContext);
   if (!ctx) {

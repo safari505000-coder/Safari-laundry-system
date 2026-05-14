@@ -1,3 +1,7 @@
+/**
+ * وحدة التقارير — تجمع خدمة التقارير ومتحكمها مع خدمات المصاريف والرواتب والرسوم.
+ * Reports module — bundles the reports service and controller with expenses, payroll, and fees modules.
+ */
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { ExpensesModule } from '../expenses/expenses.module';

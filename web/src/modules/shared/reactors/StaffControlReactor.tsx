@@ -1,3 +1,7 @@
+/**
+ * مفاعل إدارة الموظفين — واجهة إنشاء وتعديل وتعطيل الموظفين مع إعادة تعيين كلمة المرور.
+ * StaffControlReactor — full CRUD panel for staff management: create, edit, activate/deactivate, and password reset.
+ */
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import {
   Loader2,

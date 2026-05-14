@@ -1,3 +1,7 @@
+/**
+ * وحدة المدفوعات — تجمع متحكم المدفوعات وخدمة الاتساق وتوفر خدمة المدفوعات للوحدات الأخرى.
+ * Payments module — bundles the payments controller, consistency watchdog, and exports PaymentsService.
+ */
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ThrottlerModule } from '@nestjs/throttler';

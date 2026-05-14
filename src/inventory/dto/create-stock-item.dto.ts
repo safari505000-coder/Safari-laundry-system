@@ -1,3 +1,7 @@
+/**
+ * إنشاء عنصر مخزون — رمز وأسماء ووحدة وفئة ونقطة إعادة الطلب الافتراضية.
+ * Create stock-item DTO — code, names, unit, category, and default reorder point.
+ */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {

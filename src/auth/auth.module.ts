@@ -1,3 +1,7 @@
+/**
+ * وحدة المصادقة — تسجّل الحراس العالميين (JWT والأدوار والصلاحيات ومدير الوصول للقراءة فقط).
+ * Auth module — registers global guards (JWT, roles, permissions, GM read-only) and exports auth services.
+ */
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';

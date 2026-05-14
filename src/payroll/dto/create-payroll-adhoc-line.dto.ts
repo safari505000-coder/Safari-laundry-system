@@ -1,3 +1,7 @@
+/**
+ * إنشاء سطر راتب مخصص — سطر راتب خارج المسار الطبيعي للموظفين المؤقتين أو الاستثنائيين.
+ * Create payroll ad-hoc line DTO — non-staff payroll row for external/temporary beneficiaries.
+ */
 import { Type } from 'class-transformer';
 import {
   IsInt,

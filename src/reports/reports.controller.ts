@@ -15,6 +15,10 @@ import { LiveFeedQueryDto } from './dto/live-feed-query.dto';
 import { ReportsRangeQueryDto } from './dto/reports-range-query.dto';
 import { ReportsService } from './reports.service';
 
+/**
+ * متحكم التقارير — نقاط نهاية الفواتير المُصدَرة والتغذية الحية ودفتر السائق وإغلاق النقد اليومي.
+ * Reports controller — issued invoices, live feed, driver ledger, daily cash closing, and executive summary endpoints.
+ */
 @ApiTags('reports')
 @ApiBearerAuth('bearer')
 @Controller('reports')

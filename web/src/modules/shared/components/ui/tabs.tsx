@@ -1,3 +1,7 @@
+/**
+ * مكون التبويبات — تبويبات قابلة للوصول مبنية على Base UI Tabs مع متغيري line وpills.
+ * Tabs component — accessible tabbed navigation built on Base UI Tabs with "line" and "pills" variants.
+ */
 import { Tabs as TabsPrimitive } from "@base-ui/react/tabs"
 import { cva, type VariantProps } from "class-variance-authority"
 

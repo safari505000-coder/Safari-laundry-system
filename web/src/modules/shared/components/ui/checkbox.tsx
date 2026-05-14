@@ -1,3 +1,7 @@
+/**
+ * مكون خانة الاختيار — غلاف Base UI مع تصميم متسق وأيقونة علامة الاختيار.
+ * Checkbox component — Base UI wrapper with consistent styling and checkmark icon.
+ */
 import { Checkbox as CheckboxPrimitive } from "@base-ui/react/checkbox"
 
 import { cn } from "@/lib/utils"

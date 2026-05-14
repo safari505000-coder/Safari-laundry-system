@@ -1,3 +1,7 @@
+/**
+ * إنشاء فئة المخزون — رمز الفئة واسمها بالعربية والإنجليزية وترتيب الفرز.
+ * Create inventory-category DTO — category code, Arabic/English names, and sort order.
+ */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {

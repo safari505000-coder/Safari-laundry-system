@@ -1,3 +1,7 @@
+/**
+ * مكون القائمة المنسدلة للاختيار — قائمة اختيار كاملة الوصول مع نافذة منبثقة وعناصر.
+ * Select component — accessible selection dropdown built on Base UI with popup, items, and groups.
+ */
 import * as React from "react"
 import { Select as SelectPrimitive } from "@base-ui/react/select"
 

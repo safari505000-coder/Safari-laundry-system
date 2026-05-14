@@ -1,3 +1,8 @@
+/**
+ * يُعيد نص التوجيه المناسب لدور المستخدم الحالي في الواجهة الرئيسية.
+ * Returns the shell guidance text appropriate for the given SafariRole.
+ * Used in the operator route hint and executive shell to provide role-specific context.
+ */
 import type { SafariRole } from '@/lib/api';
 import { ACCOUNTANT_SHELL_GUIDANCE } from '@/modules/accountant/shell-guidance';
 import { CALL_CENTER_SHELL_GUIDANCE } from '@/modules/call-center/shell-guidance';
@@ -12,6 +17,10 @@ const OWNER_SHELL_GUIDANCE =
 const FALLBACK_SHELL_GUIDANCE =
   'اتبع صلاحيات دورك للحفاظ على سلامة البيانات.';
 
+/**
+ * يُعيد نص التوجيه الخاص بالدور الوظيفي للعرض في شريط التلميح.
+ * Returns the role-specific shell guidance string for display in the operator hint strip.
+ */
 export function shellGuidanceForRole(role?: SafariRole): string {
   switch (role) {
     case 'DRIVER':

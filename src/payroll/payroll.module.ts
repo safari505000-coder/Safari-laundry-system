@@ -7,6 +7,10 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { PayrollController } from './payroll.controller';
 import { PayrollService } from './payroll.service';
 
+/**
+ * وحدة الرواتب — تجمع متحكم الرواتب والخدمة مع وحدات العمولات والقروض وتجميد الديون.
+ * Payroll module — bundles the payroll controller and service with commissions, loans, and debt-holds modules.
+ */
 // V19.20 — LoansModule is RE-imported so the payroll transaction can
 // book the scheduled monthly instalment against each ACTIVE loan via
 // `LoansService.bookPayrollInstalmentsFor`. Unlike the V19.18 flow,

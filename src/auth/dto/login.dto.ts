@@ -1,6 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsString, Matches, MinLength } from 'class-validator';
 
+/**
+ * بيانات تسجيل الدخول — اسم المستخدم وكلمة المرور للموظفين.
+ * Login DTO — staff username and password for corporate authentication.
+ */
 export class LoginDto {
   @ApiProperty({ example: 'admin', description: 'Staff username / staff ID' })
   @IsString()

@@ -1,3 +1,8 @@
+/**
+ * خريطة صلاحيات الأدوار — تربط كل دور بمجموعة AppPermission المسموح بها.
+ * Roles-permissions map — binds each SafariRole to its granted AppPermission set.
+ * permissionsForRole() is the canonical helper consumed by PermissionsGuard.
+ */
 import { SafariRole } from '@prisma/client';
 import { AppPermission } from './permissions.enum';
 
@@ -103,6 +108,10 @@ export const ROLE_PERMISSIONS = {
   [SafariRole.WORKER]: [],
 } satisfies Record<SafariRole, readonly AppPermission[]>;
 
+/**
+ * يُعيد مجموعة الصلاحيات الممنوحة للدور المُعطى، أو مصفوفة فارغة إذا كان الدور غير معروف.
+ * Returns the AppPermission set granted to the given role, or an empty array for unknown roles.
+ */
 export function permissionsForRole(
   role: string | null | undefined,
 ): readonly AppPermission[] {
@@ -114,6 +123,10 @@ export function permissionsForRole(
   return ROLE_PERMISSIONS[key as SafariRole];
 }
 
+/**
+ * يتحقق مما إذا كان الدور يملك صلاحية محددة.
+ * Checks whether the given role has been granted a specific AppPermission.
+ */
 export function roleHasAppPermission(
   role: string | null | undefined,
   permission: AppPermission,

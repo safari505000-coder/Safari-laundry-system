@@ -1,3 +1,7 @@
+/**
+ * وحدة مركز الاتصال — تضم متحكمات الخدمة والكشوفات العامة وبرج المراقبة وجدول التسوية اليومية.
+ * Call-center module — bundles the main service, public-statement controller, control tower, and daily reconciliation cron.
+ */
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { CustomerLedgerModule } from '../customer-ledger/customer-ledger.module';

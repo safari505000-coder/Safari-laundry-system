@@ -1,6 +1,10 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 
+/**
+ * إلغاء الاشتراك — معرّف العميل وملاحظة تدقيق اختيارية توضح سبب الإلغاء.
+ * Cancel-subscription DTO — customer ID and optional audit note explaining the cancellation reason.
+ */
 export class CancelSubscriptionDto {
   @ApiProperty({
     format: 'uuid',

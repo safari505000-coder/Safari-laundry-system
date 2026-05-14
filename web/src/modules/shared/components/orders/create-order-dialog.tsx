@@ -1,4 +1,8 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react';
+﻿/**
+ * حوار إنشاء طلب — واجهة إنشاء طلب كامل باختيار العميل والعناصر وطريقة الدفع.
+ * CreateOrderDialog — full order creation flow: customer selection, line items, and payment method.
+ */
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Loader2, Plus, Trash2 } from 'lucide-react';

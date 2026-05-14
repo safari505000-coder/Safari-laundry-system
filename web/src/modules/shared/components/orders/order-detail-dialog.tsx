@@ -1,3 +1,7 @@
+/**
+ * حوار تفاصيل الطلب — عرض بيانات الطلب الكاملة مع العناصر والمبالغ وحالة الطلب.
+ * OrderDetailDialog — read-only order detail view with line items, totals, and status information.
+ */
 import { useTranslation } from 'react-i18next';
 import type { OrderRow } from '@/lib/api';
 import { useAppLocale } from '@/modules/shared/hooks/use-app-locale';

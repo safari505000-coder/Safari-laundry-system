@@ -23,6 +23,11 @@ import { CommissionRulesService } from './commission-rules.service';
 import { CreateCommissionRuleDto } from './dto/create-commission-rule.dto';
 import { UpdateCommissionRuleDto } from './dto/update-commission-rule.dto';
 
+/**
+ * متحكم قواعد العمولات — إدارة قواعد احتساب العمولات (إنشاء وتعديل وحذف).
+ * Commission-rules controller — CRUD management for commission calculation rules.
+ * Only OWNER may write; OWNER/GM/ACCOUNTANT may read.
+ */
 @ApiTags('commission-rules')
 @ApiBearerAuth('bearer')
 @Controller('commission-rules')

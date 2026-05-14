@@ -1,5 +1,9 @@
 import { ApiProperty } from '@nestjs/swagger';
 
+/**
+ * مساهمة سائق واحد — عدد الطلبات المكتملة والإيراد المنسوب إليه.
+ * Per-driver contribution row — completed order count and attributed revenue.
+ */
 export class DriverContributionDto {
   @ApiProperty({ format: 'uuid' })
   driverId: string;
@@ -22,6 +26,10 @@ export class DriverContributionDto {
   completedRevenue: string;
 }
 
+/**
+ * لوحة تحكم المدير — نظرة عامة على الطلبات النشطة والإيرادات المكتملة ومساهمات السائقين.
+ * Manager dashboard DTO — active order count, completed revenue, and per-driver contributions.
+ */
 export class ManagerDashboardDto {
   @ApiProperty({
     description:

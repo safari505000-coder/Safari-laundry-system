@@ -1,3 +1,7 @@
+/**
+ * مكون الإشعارات — غلاف Sonner مُخصَّص مع أيقونات متسقة وألوان تصميم المشروع.
+ * Toaster component — branded Sonner wrapper with project-consistent icons and theme variables.
+ */
 import type { CSSProperties } from 'react';
 import { Toaster as Sonner, type ToasterProps } from 'sonner';
 import {

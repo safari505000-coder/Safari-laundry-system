@@ -1,3 +1,7 @@
+/**
+ * إنشاء مورد — اسم المورد مع بيانات اتصال واختيار التفعيل اختيارية.
+ * Create-supplier DTO — supplier name with optional phone, address, and active flag.
+ */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,

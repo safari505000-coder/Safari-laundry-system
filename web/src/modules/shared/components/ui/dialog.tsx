@@ -1,3 +1,7 @@
+/**
+ * مكون الحوار — نافذة حوار قابلة للتخصيص مع رأس وعنوان ووصف وتذييل.
+ * Dialog component — accessible modal dialog with header, title, description, and footer sub-components.
+ */
 import * as React from "react"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 

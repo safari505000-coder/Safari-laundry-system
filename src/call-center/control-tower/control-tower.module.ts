@@ -1,3 +1,7 @@
+/**
+ * وحدة برج المراقبة — تجمع خدمة البث والخدمة الأساسية ومتحكم برج المراقبة.
+ * Control-tower module — bundles the stream service, core service, and controller for real-time dispatch oversight.
+ */
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { ControlTowerController } from './control-tower.controller';

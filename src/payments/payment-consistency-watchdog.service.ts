@@ -8,6 +8,11 @@ import { DiscordAlertService } from '../common/services/discord-alert.service';
 import { APP_VERSION } from '../common/constants/app-version';
 import { PrismaService } from '../prisma/prisma.service';
 
+/**
+ * حارس اتساق المدفوعات — يفحص كل 3 دقائق الطلبات المكتملة التي لم تُسوَّ في المحفظة ويُرسل تنبيهاً.
+ * Payment-consistency watchdog — runs every 3 minutes; alerts on COMPLETED orders with no wallet settlement.
+ * Enqueues a Discord critical alert for each anomaly found.
+ */
 @Injectable()
 export class PaymentConsistencyWatchdogService {
   private readonly logger = new Logger(PaymentConsistencyWatchdogService.name);

@@ -1,3 +1,7 @@
+/**
+ * مكون منطقة التمرير — غلاف Base UI للتمرير مع شريط تمرير مخصص.
+ * ScrollArea component — Base UI scroll-area wrapper with a styled custom scrollbar.
+ */
 import { ScrollArea as ScrollAreaPrimitive } from "@base-ui/react/scroll-area"
 
 import { cn } from "@/lib/utils"

@@ -1,6 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsNotEmpty, IsString, Length } from 'class-validator';
 
+/**
+ * طلب تجديد التوكن — الرمز المميز المعتم (single-use) للحصول على access token جديد.
+ * Refresh-token request DTO — opaque single-use refresh token to exchange for a new access token.
+ */
 export class RefreshTokenRequestDto {
   @ApiProperty({
     description:
@@ -12,6 +16,10 @@ export class RefreshTokenRequestDto {
   refreshToken: string;
 }
 
+/**
+ * استجابة تجديد التوكن — access token جديد ورمز تحديث دوار.
+ * Refresh-token response DTO — fresh short-lived access token and a rotated refresh token.
+ */
 export class RefreshTokenResponseDto {
   @ApiProperty({
     description:

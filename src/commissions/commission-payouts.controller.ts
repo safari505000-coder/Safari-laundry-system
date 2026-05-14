@@ -10,6 +10,11 @@ import { APP_BRAND } from '../common/constants/branding';
 import { CommissionPayoutsService } from './commission-payouts.service';
 import { ListCommissionPayoutsDto } from './dto/list-commission-payouts.dto';
 
+/**
+ * متحكم مدفوعات العمولات — يتيح للموظفين وأصحاب العمل الاطلاع على مدفوعات العمولات.
+ * Commission-payouts controller — allows employees and admins to query commission payout records.
+ * Admin roles see all payouts; individual employees see only their own.
+ */
 @ApiTags('commission-payouts')
 @ApiBearerAuth('bearer')
 @Controller('commission-payouts')

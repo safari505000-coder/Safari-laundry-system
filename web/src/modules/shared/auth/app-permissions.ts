@@ -1,5 +1,14 @@
+/**
+ * صلاحيات التطبيق — خريطة الصلاحيات والأدوار لطبقة الواجهة الأمامية.
+ * Frontend app-permissions — permission constants, role-permission map, and utility helpers.
+ * Mirrors the backend AppPermission enum so UI can gate access without additional API calls.
+ */
 import type { LoginUser, SafariRole } from '@/lib/api';
 
+/**
+ * ثوابت صلاحيات التطبيق — مطابقة لـ AppPermission في الخلفية.
+ * Frontend AppPermission constants — mirror of the backend enum used for UI gating.
+ */
 export const AppPermission = {
   VIEW_INVOICES: 'invoices.view',
   CREATE_INVOICE: 'invoices.create',
@@ -125,6 +134,10 @@ export const ROLE_APP_PERMISSIONS: Record<SafariRole, readonly AppPermission[]> 
   CUSTOMER: [AppPermission.VIEW_CUSTOMERS],
 };
 
+/**
+ * يتحقق مما إذا كان المستخدم الحالي يملك صلاحية محددة.
+ * Checks whether the logged-in user has a specific AppPermission.
+ */
 export function hasAppPermission(
   user: LoginUser | null | undefined,
   permission: AppPermission,
@@ -133,4 +146,5 @@ export function hasAppPermission(
   return (ROLE_APP_PERMISSIONS[user.safariRole] ?? []).includes(permission);
 }
 
+/** رسالة تلميح افتراضية للأزرار والعناصر المحظورة. Default tooltip for disabled/restricted UI elements. */
 export const NO_PERMISSION_TOOLTIP = 'ليس لديك صلاحية';

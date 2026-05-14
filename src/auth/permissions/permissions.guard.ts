@@ -19,6 +19,10 @@ type PermissionRequest = RequestWithId &
     user?: { userId?: string; sub?: string; role?: string };
   };
 
+/**
+ * حارس الصلاحيات — يتحقق من صلاحيات AppPermission المحددة على نقطة النهاية ويسجّل الوصول المالي.
+ * Permissions guard — validates AppPermission requirements and audit-logs financial access events.
+ */
 @Injectable()
 export class PermissionsGuard implements CanActivate {
   constructor(

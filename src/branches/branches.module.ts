@@ -1,3 +1,7 @@
+/**
+ * وحدة الفروع — تجمع متحكم الفروع وخدمتها وتُصدّر الخدمة للوحدات الأخرى.
+ * Branches module — bundles the branches controller and service; exports BranchesService.
+ */
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { PrismaModule } from '../prisma/prisma.module';

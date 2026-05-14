@@ -1,5 +1,9 @@
 "use client"
 
+/**
+ * مكون التسمية — تسمية نموذج قابلة للتخصيص مع دعم الحالات.
+ * Label component — form label with consistent styling and disabled/invalid state support.
+ */
 import * as React from "react"
 
 import { cn } from "@/lib/utils"

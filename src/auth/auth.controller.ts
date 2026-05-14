@@ -24,6 +24,11 @@ import {
   RefreshTokenResponseDto,
 } from './dto/refresh-token.dto';
 
+/**
+ * متحكم المصادقة — نقاط نهاية تسجيل الدخول وتجديد التوكن وتسجيل الخروج وتغيير كلمة المرور.
+ * Auth controller — login, token refresh, logout, and change-password endpoints.
+ * All sensitive operations are throttled and audit-logged.
+ */
 @ApiTags('auth')
 @Controller('auth')
 @ApiBearerAuth('bearer')

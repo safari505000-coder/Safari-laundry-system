@@ -1,3 +1,7 @@
+/**
+ * استعلام قائمة الحضور — فلاتر اختيارية للنطاق الزمني والمستخدم والفرع والمصدر.
+ * List-attendance query DTO — optional date range, user, branch, and source filters.
+ */
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { AttendanceSource } from '@prisma/client';
 import { IsEnum, IsISO8601, IsOptional, IsUUID } from 'class-validator';

@@ -1,3 +1,7 @@
+/**
+ * مكون حقل الإدخال — غلاف Base UI مع تصميم متسق ودعم RTL.
+ * Input component — Base UI input wrapper with consistent styling and RTL support.
+ */
 import * as React from "react"
 import { Input as InputPrimitive } from "@base-ui/react/input"
 

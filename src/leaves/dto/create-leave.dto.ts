@@ -1,3 +1,7 @@
+/**
+ * طلب إجازة — نوع الإجازة وتواريخ البدء والانتهاء وسبب اختياري.
+ * Create-leave DTO — leave type, start/end dates (YYYY-MM-DD), and optional reason.
+ */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { LeaveType } from '@prisma/client';
 import {
@@ -28,6 +32,10 @@ export class CreateLeaveDto {
   reason?: string;
 }
 
+/**
+ * رفض طلب إجازة — سبب الرفض المطلوب لإخطار الموظف.
+ * Reject-leave DTO — mandatory reason string explaining why the leave request was denied.
+ */
 export class RejectLeaveDto {
   @ApiProperty()
   @IsString()

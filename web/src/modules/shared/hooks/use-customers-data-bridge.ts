@@ -1,3 +1,7 @@
+/**
+ * خطاف useCustomersDataBridge — جلب قائمة العملاء مع تأخير 300ms للبحث وإعادة التحميل اليدوي.
+ * useCustomersDataBridge hook — fetches customer directory with 300ms debounce on search query and manual reload.
+ */
 import { useCallback, useEffect, useState } from 'react';
 import { ApiError, apiJson, type CustomerDirectoryRow } from '@/lib/api';
 

@@ -1,3 +1,7 @@
+/**
+ * مكون منطقة النص — حقل إدخال متعدد الأسطر مع تصميم متسق.
+ * Textarea component — multi-line text input with consistent project styling.
+ */
 import * as React from "react"
 
 import { cn } from "@/lib/utils"

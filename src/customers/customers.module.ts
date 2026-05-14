@@ -1,3 +1,7 @@
+/**
+ * وحدة العملاء — تجمع متحكم العملاء وخدمات العميل الأساسية و360 درجة.
+ * Customers module — bundles the customers controller and core/360/blocking services.
+ */
 import { Module } from '@nestjs/common';
 import { FinanceModule } from '../finance/finance.module';
 import { DebtVisibilityModule } from '../finance/debt-visibility/debt-visibility.module';

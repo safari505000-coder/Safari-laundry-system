@@ -8,6 +8,10 @@ function trimOrUndefined({ value }: { value: unknown }): unknown {
   return value.trim();
 }
 
+/**
+ * تعديل بيانات العميل — اسم العرض والهواتف وعناصر العنوان وجهات الاتصال العائلية كلها اختيارية.
+ * Update-customer DTO — display name, phones, address fields, and family contacts are all optional patches.
+ */
 export class UpdateCustomerDto {
   @ApiPropertyOptional()
   @IsOptional()

@@ -1,6 +1,10 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { LedgerTransactionType } from '@prisma/client';
 
+/**
+ * صف تاريخ التسوية — يمثل معاملة واحدة في سجل دفتر حسابات العميل.
+ * Settlement history row DTO — represents a single transaction in a customer's ledger history.
+ */
 export class SettlementHistoryRowDto {
   @ApiProperty({ format: 'uuid' })
   id: string;

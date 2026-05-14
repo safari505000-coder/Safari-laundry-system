@@ -1,3 +1,7 @@
+/**
+ * وحدة الطلبات — تجمع متحكمات الطلبات والفواتير والخدمات المساعدة وجداول التنظيف.
+ * Orders module — bundles order/invoice controllers, the orders service, and stale-order cleanup cron.
+ */
 import { Module, forwardRef } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { CustomerLedgerModule } from '../customer-ledger/customer-ledger.module';

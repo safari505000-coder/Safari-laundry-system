@@ -1,3 +1,7 @@
+/**
+ * مكون الزر — زر متعدد المتغيرات مع دعم صلاحيات AppPermission (يُعطَّل تلقائياً عند غياب الصلاحية).
+ * Button component — multi-variant button with built-in AppPermission gating; auto-disables when permission is absent.
+ */
 import { Button as ButtonPrimitive } from "@base-ui/react/button"
 import { cva, type VariantProps } from "class-variance-authority"
 

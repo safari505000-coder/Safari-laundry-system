@@ -1,3 +1,7 @@
+/**
+ * مكون الشارة — عنصر صغير متعدد المتغيرات (default، secondary، destructive، outline، ghost، link).
+ * Badge component — small inline label with multiple style variants for status, categories, and labels.
+ */
 import { mergeProps } from "@base-ui/react/merge-props"
 import { useRender } from "@base-ui/react/use-render"
 import { cva, type VariantProps } from "class-variance-authority"

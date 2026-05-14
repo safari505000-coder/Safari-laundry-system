@@ -1,5 +1,9 @@
 "use client"
 
+/**
+ * مكون الفاصل — خط أفقي أو رأسي لتقسيم المحتوى.
+ * Separator component — horizontal or vertical divider for visually separating content sections.
+ */
 import { Separator as SeparatorPrimitive } from "@base-ui/react/separator"
 
 import { cn } from "@/lib/utils"

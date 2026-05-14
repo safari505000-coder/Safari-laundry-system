@@ -1,4 +1,8 @@
-﻿import { useCallback, useState } from 'react';
+﻿/**
+ * حقل مسح الباركود — يقبل معرّف الطلب يدوياً أو بالمسح الضوئي ويجلب الطلب فور إدخاله.
+ * OrderScanInput — accepts an order ID by keyboard or barcode scan and fetches the order on Enter.
+ */
+import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { ScanBarcode } from 'lucide-react';

@@ -1,3 +1,7 @@
+/**
+ * وحدة الحضور — تجمع متحكم الحضور وخدمته وتُصدّر الخدمة للوحدات الأخرى.
+ * Attendance module — bundles the attendance controller and service; exports AttendanceService.
+ */
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AuthModule } from '../auth/auth.module';

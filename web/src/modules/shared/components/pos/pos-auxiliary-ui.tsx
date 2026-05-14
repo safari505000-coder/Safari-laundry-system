@@ -1,3 +1,7 @@
+/**
+ * واجهة نقطة البيع المساعدة — مكونات الكمية وتفاصيل الطلب وباركود الطباعة لشاشة POS.
+ * POS auxiliary UI — quantity controls, order detail dialog, and print barcode components for the POS screen.
+ */
 import { useMemo } from 'react';
 import { Loader2, Minus, Plus } from 'lucide-react';
 import { OrderDetailDialog } from '@/modules/shared/components/orders/order-detail-dialog';

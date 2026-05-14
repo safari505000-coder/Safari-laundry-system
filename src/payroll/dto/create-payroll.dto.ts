@@ -1,5 +1,9 @@
 import { IsISO8601, IsNumber, IsOptional, IsUUID, Min } from 'class-validator';
 
+/**
+ * إنشاء راتب — بيانات صرف راتب الموظف شاملة الراتب الأساسي والبدلات والاستقطاعات.
+ * Create-payroll DTO — employee salary record with basic salary, allowances, deductions, and payment date.
+ */
 export class CreatePayrollDto {
   @IsUUID()
   userId!: string;
