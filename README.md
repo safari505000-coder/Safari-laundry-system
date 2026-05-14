@@ -1,3 +1,8 @@
+# Safari ERP — Laundry Management System
+
+[![CI](https://github.com/safari505000-coder/Safari-laundry-system/actions/workflows/ci.yml/badge.svg)](https://github.com/safari505000-coder/Safari-laundry-system/actions/workflows/ci.yml)
+[![Security](https://github.com/safari505000-coder/Safari-laundry-system/actions/workflows/security.yml/badge.svg)](https://github.com/safari505000-coder/Safari-laundry-system/actions/workflows/security.yml)
+
 <p align="center">
   <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
 </p>
