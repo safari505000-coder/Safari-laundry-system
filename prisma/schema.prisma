@@ -2750,6 +2750,8 @@ model CommissionPayout {
   status            CommissionPayoutStatus @default(PENDING)
   sourceOrderId     String?                @db.Uuid
   /// Replaces sourceDebtEntryId (V20.4) — JournalEntry.id is the new idempotency key.
+  /// Nullable by design: SALE mode payouts use sourceOrderId; COLLECTION mode payouts
+  /// use sourceJournalEntryId. DB CHECK constraint enforces COLLECTION → NOT NULL.
   sourceJournalEntryId String?             @db.Uuid
   payrollId            String?             @db.Uuid
   earnedAt          DateTime               @default(now())

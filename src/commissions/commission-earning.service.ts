@@ -223,6 +223,16 @@ export class CommissionEarningService {
     );
     if (rules.length === 0) return;
 
+    // Phase-3 guard: COLLECTION payouts MUST carry a sourceJournalEntryId.
+    // This mirrors the DB CHECK constraint and provides a clear error before
+    // the DB rejects the write.
+    if (!entry.id) {
+      this.logger.error(
+        `[COMMISSION_INTEGRITY] earnForJournalPayment called with no journal entry id — skipping`,
+      );
+      return;
+    }
+
     for (const rule of rules) {
       if (basis.lessThan(rule.minInvoiceAmount)) continue;
       const amount = basis.mul(rule.percentage).div(100);
