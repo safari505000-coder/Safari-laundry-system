@@ -48,7 +48,7 @@ export function runMigrations(): void {
 }
 
 export async function resetDb(prisma: any) {
-  // Query the database directly for all real table names in the public schema
+  // 1. Get all base tables in public schema
   const tablerows = await prisma.$queryRaw`
     SELECT table_name 
     FROM information_schema.tables 
@@ -62,8 +62,17 @@ export async function resetDb(prisma: any) {
     .join(', ');
 
   if (tables.length > 0) {
-    // Truncate only the tables that actually exist in the DB
-    await prisma.$executeRawUnsafe(`TRUNCATE TABLE ${tables} RESTART IDENTITY CASCADE;`);
+    // 2. Execute within a transaction: Disable the ledger protection, truncate, then re-enable
+    await prisma.$transaction([
+      // Bypass immutable ledger check for this session
+      prisma.$executeRawUnsafe(`SET app.immutable_ledger_bypass = true;`),
+
+      // Perform the truncation
+      prisma.$executeRawUnsafe(`TRUNCATE TABLE ${tables} RESTART IDENTITY CASCADE;`),
+
+      // Re-enable protection (good practice)
+      prisma.$executeRawUnsafe(`SET app.immutable_ledger_bypass = false;`),
+    ]);
   }
 }
 
