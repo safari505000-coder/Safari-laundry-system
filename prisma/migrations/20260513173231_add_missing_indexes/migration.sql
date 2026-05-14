@@ -1,4 +1,4 @@
-﻿-- V25: add missing database indexes
+-- V25: add missing database indexes
 -- CommissionPayout: faster lookup by sourceJournalEntryId
 CREATE INDEX IF NOT EXISTS "CommissionPayout_sourceJournalEntryId_idx" ON "CommissionPayout"("sourceJournalEntryId");
 -- Customer: fast filter for blocked customers

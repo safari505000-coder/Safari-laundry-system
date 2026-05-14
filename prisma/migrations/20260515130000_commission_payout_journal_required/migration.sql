@@ -1,4 +1,4 @@
-﻿-- PHASE 3: Enforce that COLLECTION mode CommissionPayouts always have a sourceJournalEntryId.
+-- PHASE 3: Enforce that COLLECTION mode CommissionPayouts always have a sourceJournalEntryId.
 -- SALE mode payouts link via sourceOrderId (no journal entry needed), so we use
 -- a conditional CHECK rather than making the column globally NOT NULL.
 --
