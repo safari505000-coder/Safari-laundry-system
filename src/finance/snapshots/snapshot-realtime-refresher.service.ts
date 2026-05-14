@@ -76,6 +76,16 @@ export class SnapshotRealtimeRefresher {
 
   private inflightCount = 0;
 
+  /**
+   * Tracks ALL active execute() calls — including those still waiting for
+   * a concurrency-cap slot (they are NOT in `inflight` yet). Without this,
+   * drain() can see inflight.size=0 / pending.size=0 / cooldownQueued.size=0
+   * and exit prematurely while 90 coroutines are still sitting in the
+   * `while (inflightCount >= cap)` sleep loop, causing the stress test to
+   * see only 84 of 100 distinct customers refreshed on a slow CI host.
+   */
+  private executingCount = 0;
+
   // Counters exposed for observability + tests.
   private readonly stats = {
     requested: 0,
@@ -164,7 +174,10 @@ export class SnapshotRealtimeRefresher {
     while (
       (this.pending.size > 0 ||
         this.inflight.size > 0 ||
-        this.cooldownQueued.size > 0) &&
+        this.cooldownQueued.size > 0 ||
+        // Also wait for execute() calls that are in the concurrency-cap
+        // sleep loop — they are NOT yet in `inflight` but are still alive.
+        this.executingCount > 0) &&
       Date.now() - start < maxWaitMs
     ) {
       await new Promise((res) => setTimeout(res, 5));
@@ -198,7 +211,11 @@ export class SnapshotRealtimeRefresher {
     const state = this.pending.get(customerId);
     if (!state) return;
     this.pending.delete(customerId);
-    void this.execute(customerId, state.source, state.correlationId);
+    // Increment before the call so drain() sees the work immediately.
+    this.executingCount += 1;
+    void this.execute(customerId, state.source, state.correlationId).finally(
+      () => { this.executingCount -= 1; },
+    );
   }
 
   private async execute(

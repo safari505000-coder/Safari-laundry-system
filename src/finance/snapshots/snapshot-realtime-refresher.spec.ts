@@ -173,6 +173,32 @@ describe('V20.6 — SNAPSHOT REALTIME REFRESHER', () => {
     expect(fx.refreshLog).toHaveLength(1);
   });
 
+  it('drain() waits for execute() calls that are still waiting for a concurrency-cap slot', async () => {
+    // Regression test for the CI flakiness where drain() exited prematurely
+    // because it only checked `inflight.size` (customers actively refreshing)
+    // and missed the N-cap coroutines sleeping in the `while(inflightCount>=cap)` loop.
+    //
+    // Scenario: 20 customers, cap=2, latency=10ms.
+    // After flushing, 2 are inflight and 18 are waiting for a cap slot.
+    // Without executingCount, drain() could see inflight=[2], then [0] after the
+    // first pair finishes, and exit before the remaining 18 get their turn.
+    const CUSTOMERS = 20;
+    const CAP = 2;
+    const fx = makeFakeSnapshotService({ latencyMs: 10 });
+    const r = new SnapshotRealtimeRefresher(fx.svc, {
+      debounceMs: 5,
+      minIntervalMs: 200,
+      maxConcurrency: CAP,
+    });
+    for (let i = 0; i < CUSTOMERS; i += 1) {
+      r.request(`cust-${i}`, 'PAYMENT_CAPTURED');
+    }
+    await r.drain(10000);
+    const distinct = new Set(fx.refreshLog.map((l) => l.customerId));
+    expect(distinct.size).toBe(CUSTOMERS);
+    expect(r.getStats().refreshed).toBe(CUSTOMERS);
+  });
+
   it('idempotent under empty customerId — silently ignored', async () => {
     const fx = makeFakeSnapshotService();
     const r = new SnapshotRealtimeRefresher(fx.svc, {
