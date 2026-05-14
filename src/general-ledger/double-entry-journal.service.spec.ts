@@ -181,6 +181,26 @@ describe('DoubleEntryJournalService', () => {
     expect(db.journalEntry.create).toHaveBeenCalledTimes(1);
   });
 
+  it('CORRUPT-4: mirrorDebtLedgerEntrySafe re-throws ConflictException from period lock', async () => {
+    const db = mockDb();
+    const { ConflictException: CE } = await import('@nestjs/common');
+    db.journalEntry.create.mockRejectedValueOnce(
+      new CE('Financial period 2026-03 is CLOSED — write rejected by PeriodLockGuard'),
+    );
+    await expect(
+      service.mirrorDebtLedgerEntrySafe(db as never, {
+        source: DebtSource.PAYMENT,
+        amount: '1.0000',
+        sourceRef: 'PAYMENT:CASH:period-lock-test',
+        actorUserId,
+        customerId,
+        paymentMethod: PosPaymentMethod.CASH,
+      }),
+    ).rejects.toBeInstanceOf(CE);
+    // Must NOT have been silently swallowed
+    expect(db.journalEntry.create).toHaveBeenCalledTimes(1);
+  });
+
   it('treats P2002 on sourceRef as idempotent success in safe mirror writes', async () => {
     const db = mockDb();
     const duplicate = new Prisma.PrismaClientKnownRequestError(

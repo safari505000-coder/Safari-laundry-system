@@ -1,4 +1,4 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, Optional } from '@nestjs/common';
 import { PosPaymentMethod, Prisma } from '@prisma/client';
 import { DebtSource } from '../finance/enums/debt-source.enum';
 import { PrismaService } from '../prisma/prisma.service';
@@ -842,6 +842,21 @@ export class DoubleEntryJournalService {
     return process.env.PERIOD_LOCK_ENFORCE === 'true';
   }
 
+  /**
+   * CORRUPT-4: Re-throw period lock ConflictException from every Safe wrapper.
+   * A ConflictException whose message includes 'CLOSED' or 'period' is a
+   * period-lock rejection — it MUST abort the surrounding business transaction
+   * so the journal, wallet, and order state stay consistent.
+   */
+  private rethrowIfPeriodLock(err: unknown): void {
+    if (err instanceof ConflictException) {
+      const msg = (err.message ?? '').toLowerCase();
+      if (msg.includes('closed') || msg.includes('period')) {
+        throw err;
+      }
+    }
+  }
+
   constructor(
     private readonly prisma: PrismaService,
     @Optional()
@@ -1004,6 +1019,7 @@ export class DoubleEntryJournalService {
     try {
       return await this.mirrorDebtLedgerEntry(db, input);
     } catch (err) {
+      this.rethrowIfPeriodLock(err);
       const sourceRef = input.sourceRef?.trim();
       if (
         sourceRef &&
@@ -1181,6 +1197,7 @@ export class DoubleEntryJournalService {
     try {
       return await this.appendInvoiceIssuanceEntry(db, input);
     } catch (err) {
+      this.rethrowIfPeriodLock(err);
       const message = (err as Error)?.message ?? String(err);
       const errorCode =
         err instanceof Prisma.PrismaClientKnownRequestError ? err.code : null;
@@ -1281,6 +1298,7 @@ export class DoubleEntryJournalService {
     try {
       return await this.appendWalletAbsorptionEntryV3(db, input);
     } catch (err) {
+      this.rethrowIfPeriodLock(err);
       const message = (err as Error)?.message ?? String(err);
       const errorCode =
         err instanceof Prisma.PrismaClientKnownRequestError ? err.code : null;
@@ -1393,6 +1411,7 @@ export class DoubleEntryJournalService {
     try {
       return await this.appendExternalPaymentEntry(db, input);
     } catch (err) {
+      this.rethrowIfPeriodLock(err);
       const message = (err as Error)?.message ?? String(err);
       const errorCode =
         err instanceof Prisma.PrismaClientKnownRequestError ? err.code : null;
@@ -1531,6 +1550,7 @@ export class DoubleEntryJournalService {
     try {
       return await this.appendWalletAbsorptionEntry(db, input);
     } catch (err) {
+      this.rethrowIfPeriodLock(err);
       const message = (err as Error)?.message ?? String(err);
       const errorCode =
         err instanceof Prisma.PrismaClientKnownRequestError ? err.code : null;
@@ -1784,6 +1804,7 @@ export class DoubleEntryJournalService {
     try {
       return await this.appendInvoiceCancellationEntry(db, input);
     } catch (err) {
+      this.rethrowIfPeriodLock(err);
       const message = (err as Error)?.message ?? String(err);
       const errorCode =
         err instanceof Prisma.PrismaClientKnownRequestError ? err.code : null;
@@ -1896,6 +1917,7 @@ export class DoubleEntryJournalService {
     try {
       return await this.appendDebtDiscountEntry(db, input);
     } catch (err) {
+      this.rethrowIfPeriodLock(err);
       const message = (err as Error)?.message ?? String(err);
       const errorCode =
         err instanceof Prisma.PrismaClientKnownRequestError ? err.code : null;
@@ -2047,6 +2069,7 @@ export class DoubleEntryJournalService {
     try {
       return await this.appendSubscriptionRefundEntry(db, input);
     } catch (err) {
+      this.rethrowIfPeriodLock(err);
       const message = (err as Error)?.message ?? String(err);
       const errorCode =
         err instanceof Prisma.PrismaClientKnownRequestError ? err.code : null;

@@ -461,6 +461,26 @@ export class DebtService {
     }
 
     const bundleId = await this.prisma.$transaction(async (tx) => {
+      // CORRUPT-6: re-verify ownership inside the locked transaction.
+      // FOR UPDATE serialises against concurrent order transfers.
+      type OrderOwnerRow = { id: string; customerId: string };
+      const lockedOrders = await tx.$queryRaw<OrderOwnerRow[]>`
+        SELECT id, "customerId"
+        FROM "Order"
+        WHERE id = ANY(${invoiceIds}::uuid[])
+        FOR UPDATE
+      `;
+      if (lockedOrders.length !== invoiceIds.length) {
+        throw new BadRequestException('Some invoiceIds not found — cannot create settlement bundle');
+      }
+      for (const o of lockedOrders) {
+        if (o.customerId !== customerId) {
+          throw new BadRequestException(
+            'All selected invoiceIds must belong to the provided customerId',
+          );
+        }
+      }
+
       const bundle = await tx.posPaymentBundle.create({
         data: {
           driverId: params.actorUserId,
@@ -688,12 +708,11 @@ export class DebtService {
       where: { customerId },
       select: { balance: true, debt: true },
     });
-    const walletDebt = Number.parseFloat(wallet?.debt?.toString?.() ?? '0');
-    const balance = Number.parseFloat(wallet?.balance?.toString?.() ?? '0');
-    const subscriptionOveruseDebt =
-      Number.isFinite(balance) && balance < 0 ? Math.abs(balance) : 0;
-    const walletTotalDebt =
-      (Number.isFinite(walletDebt) ? walletDebt : 0) + subscriptionOveruseDebt;
+    // CORRUPT-7: use Prisma.Decimal throughout — no Number.parseFloat
+    const walletDebt = new Prisma.Decimal(wallet?.debt?.toString() ?? '0');
+    const balance = new Prisma.Decimal(wallet?.balance?.toString() ?? '0');
+    const subscriptionOveruseDebt = balance.lt(0) ? balance.abs() : new Prisma.Decimal(0);
+    const walletTotalDebt = walletDebt.plus(subscriptionOveruseDebt);
 
     // V20.3 — Phase 35. When the operator opts into the true
     // accounting model, the canonical debt is the live AR balance
@@ -709,16 +728,20 @@ export class DebtService {
       try {
         const arBal =
           await this.journalSource.getCustomerDebtFromJournalAR(customerId);
-        const arBalNum = Number.parseFloat(arBal.toString());
-        if (Number.isFinite(arBalNum)) {
-          journalArDebtKd = arBalNum.toFixed(4);
-          totalDebt = arBalNum;
-          debtSource = 'JOURNAL_AR';
-        }
+        // CORRUPT-7: Decimal arithmetic for journal AR too
+        const arBalDecimal = new Prisma.Decimal(arBal.toString());
+        journalArDebtKd = arBalDecimal.toFixed(4);
+        totalDebt = arBalDecimal;
+        debtSource = 'JOURNAL_AR';
       } catch {
+        // INFLATE-4: mark the source as DEGRADED so callers can detect this
+        // and block financial decisions that depend on accurate AR numbers.
         debtSource = 'DEGRADED';
       }
     }
+
+    // INFLATE-4: expose a helper so API controllers can gate financial mutations.
+    // getCustomerDebtSnapshot already returns debtSource; callers check it.
 
     // V20.3.2 — independent subscription state. Read here so
     // every Customer 360 / debt-snapshot consumer gets the same
@@ -739,9 +762,9 @@ export class DebtService {
     }
 
     return {
-      walletDebt: (Number.isFinite(walletDebt) ? walletDebt : 0).toFixed(4),
+      walletDebt: walletDebt.toFixed(4),
       subscriptionOveruseDebt: subscriptionOveruseDebt.toFixed(4),
-      totalDebt: totalDebt.toFixed(4),
+      totalDebt: (totalDebt instanceof Prisma.Decimal ? totalDebt : new Prisma.Decimal(totalDebt)).toFixed(4),
       journalArDebtKd,
       debtSource,
       hasActiveSubscription,
@@ -765,8 +788,11 @@ export class DebtService {
     tx?: Prisma.TransactionClient,
   ): Promise<{ settledAmountKd: string; settledOrderCount: number }> {
     const db = tx ?? this.prisma;
-    const amount = Number.isFinite(approvedAmountKd) && approvedAmountKd > 0 ? approvedAmountKd : 0;
-    if (amount <= 0) {
+    const approvedDecimal =
+      Number.isFinite(approvedAmountKd) && approvedAmountKd > 0
+        ? new Prisma.Decimal(approvedAmountKd.toString())
+        : new Prisma.Decimal(0);
+    if (approvedDecimal.lte(0)) {
       return { settledAmountKd: '0.0000', settledOrderCount: 0 };
     }
     const pending = await db.order.findMany({
@@ -780,18 +806,20 @@ export class DebtService {
       select: { id: true, totalPrice: true },
       take: 5000,
     });
-    let remaining = amount;
+    // STEAL-2: use Prisma.Decimal throughout — no float arithmetic, no epsilon tricks.
+    let remaining = approvedDecimal;
     const settleIds: string[] = [];
-    let settledAmount = 0;
+    let settledAmount = new Prisma.Decimal(0);
+    const TOL = new Prisma.Decimal('0.0001');
     for (const row of pending) {
-      const v = Number.parseFloat(row.totalPrice.toString());
-      if (!Number.isFinite(v) || v <= 0) continue;
-      if (v <= remaining + 0.0001) {
+      const v = new Prisma.Decimal(row.totalPrice.toString());
+      if (v.lte(0)) continue;
+      if (v.lte(remaining.plus(TOL))) {
         settleIds.push(row.id);
-        settledAmount += v;
-        remaining -= v;
+        settledAmount = settledAmount.plus(v);
+        remaining = remaining.minus(v);
       }
-      if (remaining <= 0.0001) break;
+      if (remaining.lte(new Prisma.Decimal(0))) break;
     }
     if (settleIds.length > 0) {
       await db.order.updateMany({

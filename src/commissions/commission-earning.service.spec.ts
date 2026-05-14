@@ -311,6 +311,23 @@ describe('CommissionEarningService.earnForJournalPayment()', () => {
     expect(prisma.commissionPayout.create).not.toHaveBeenCalled();
   });
 
+  it('INFLATE-2: does not release AFTER_COLLECTION commissions for wallet-funded (SUBSCRIPTION_WALLET) orders', async () => {
+    const prisma = makePrisma();
+    (prisma.commissionPayout as { updateMany: jest.Mock }).updateMany = jest
+      .fn()
+      .mockResolvedValue({ count: 0 });
+    const svc = makeService(prisma, makeSettings(), makePaymentMethodFees());
+
+    prisma.order.findUnique.mockResolvedValue({
+      posPaymentMethod: 'SUBSCRIPTION_WALLET',
+    });
+
+    const count = await svc.releaseAfterCollectionForOrder(ORDER_ID);
+
+    expect(count).toBe(0);
+    expect(prisma.commissionPayout.updateMany).not.toHaveBeenCalled();
+  });
+
   it('uses role-specific commission rules instead of also applying catch-all rules', async () => {
     const prisma = makePrisma();
     const svc = makeService(prisma, makeSettings(), makePaymentMethodFees());

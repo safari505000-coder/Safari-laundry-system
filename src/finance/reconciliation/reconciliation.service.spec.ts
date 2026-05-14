@@ -88,6 +88,9 @@ describe('ReconciliationService (V20.4 Phase 6)', () => {
         }
         return Promise.resolve([]);
       }),
+      // DEGRADE-1: ReconciliationService now wraps all checks in a SERIALIZABLE
+      // $transaction; mock it to pass through the callback.
+      $transaction: jest.fn().mockImplementation(async (fn: () => Promise<unknown>) => fn()),
     } as any;
   }
 

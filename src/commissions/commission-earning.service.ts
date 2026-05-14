@@ -177,16 +177,25 @@ export class CommissionEarningService {
         orderId: true,
         lines: {
           where: { account: { code: '1300' } },
-          select: { credit: true },
+          select: { credit: true, meta: true },
         },
       },
     });
     if (!entry || entry.source !== 'PAYMENT') return;
     if (!entry.orderId) return;
 
-    // Commission basis = CR on AR (account 1300) — the amount the
-    // customer actually paid, net of any wallet offset.
+    // Commission basis = CR on AR (account 1300) — the amount the customer
+    // actually paid in cash. CORRUPT-5: exclude wallet-absorption credits
+    // (DR WALLET_LIABILITY / CR AR) — those are not real cash collection events.
     const basis = entry.lines
+      .filter((l) => {
+        const m = l.meta as Record<string, unknown> | null;
+        return (
+          m?.origin !== 'WALLET_ABSORPTION' &&
+          m?.event !== 'WALLET_ABSORPTION' &&
+          m?.event !== 'WALLET_ABSORPTION_V3'
+        );
+      })
       .reduce((sum, l) => sum.add(new Prisma.Decimal(l.credit.toString())), new Prisma.Decimal(0));
     if (basis.lessThanOrEqualTo(0)) return;
 
@@ -261,6 +270,19 @@ export class CommissionEarningService {
     tx?: Prisma.TransactionClient,
   ): Promise<number> {
     const db = tx ?? this.prisma;
+    // INFLATE-2: don't release AFTER_COLLECTION commissions when the order was
+    // settled entirely from wallet credit (SUBSCRIPTION_WALLET). Wallet payments
+    // are not real cash collection events and should not trigger collection commission.
+    const order = await db.order.findUnique({
+      where: { id: orderId },
+      select: { posPaymentMethod: true },
+    });
+    if (order?.posPaymentMethod === PosPaymentMethod.SUBSCRIPTION_WALLET) {
+      this.logger.debug(
+        `[COMMISSION] Skipping AFTER_COLLECTION release for wallet-funded order=${orderId}`,
+      );
+      return 0;
+    }
     const res = await db.commissionPayout.updateMany({
       where: {
         sourceOrderId: orderId,

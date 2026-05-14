@@ -191,13 +191,21 @@ export class ReconciliationService {
   async runOnce(): Promise<ReconciliationReport> {
     const startedAt = Date.now();
     const generatedAt = new Date().toISOString();
-    const rows: ReconciliationResultRow[] = [];
 
-    rows.push(await this.checkTrialBalance());
-    rows.push(await this.checkBalanceSheetIdentity());
-    rows.push(await this.checkWalletLiabilityMatch());
-    rows.push(await this.checkArIntegrity());
-    rows.push(await this.checkSnapshotArMatch());
+    // DEGRADE-1: run all five checks inside a single SERIALIZABLE read-only
+    // transaction so they observe a consistent database snapshot. Without this,
+    // concurrent financial writes between checks produce phantom pass/fail results
+    // (Trial Balance passes before the write; Wallet Liability fails after it).
+    const rows = await this.prisma.$transaction(
+      async () => [
+        await this.checkTrialBalance(),
+        await this.checkBalanceSheetIdentity(),
+        await this.checkWalletLiabilityMatch(),
+        await this.checkArIntegrity(),
+        await this.checkSnapshotArMatch(),
+      ],
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
 
     const failing = rows.filter((r) => !r.ok);
     for (const row of failing) {

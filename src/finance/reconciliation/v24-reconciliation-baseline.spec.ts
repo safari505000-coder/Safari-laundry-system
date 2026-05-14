@@ -139,6 +139,9 @@ describe('V24 Reconciliation Baseline (Station 1 lock-in)', () => {
         }
         return Promise.resolve([]);
       }),
+      // DEGRADE-1: ReconciliationService now wraps all checks in a SERIALIZABLE
+      // $transaction; mock it to pass through the callback.
+      $transaction: jest.fn().mockImplementation(async (fn: () => Promise<unknown>) => fn()),
     } as any;
   }
 

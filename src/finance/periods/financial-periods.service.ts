@@ -230,8 +230,13 @@ export class FinancialPeriodsService {
     allowReversal?: boolean;
     payload?: Record<string, unknown> | null;
   }): Promise<{ allowed: boolean; periodId: string | null }> {
-    const year = input.effectiveAt.getUTCFullYear();
-    const month = input.effectiveAt.getUTCMonth() + 1;
+    // INFLATE-1: use Kuwait local time (UTC+3) for period determination,
+    // not UTC, so a payment at 23:30 Kuwait time on Mar 31 maps to March,
+    // and a payment at 00:15 Kuwait time on Apr 1 maps to April.
+    const KUWAIT_OFFSET_MS = 3 * 60 * 60 * 1000;
+    const kuwaitDate = new Date(input.effectiveAt.getTime() + KUWAIT_OFFSET_MS);
+    const year = kuwaitDate.getUTCFullYear();
+    const month = kuwaitDate.getUTCMonth() + 1;
     const period = await this.prisma.financialPeriod.findUnique({
       where: { year_month: { year, month } },
     });

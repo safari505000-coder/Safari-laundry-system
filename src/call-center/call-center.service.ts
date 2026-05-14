@@ -471,6 +471,14 @@ function kuwaitDayFromIso(iso: string): { dayStart: Date; dayEnd: Date } {
 
 @Injectable()
 export class CallCenterService {
+  // DEGRADE-2: In-memory statement token revocation blacklist.
+  // Persists for the lifetime of the process. Operators can revoke
+  // a token by calling revokeStatementToken(); the blacklist is
+  // checked in getPublicStatement() before serving any data.
+  // For production deployments spanning multiple instances, replace
+  // with a Redis SET (TTL = 7d) keyed on the JTI claim.
+  private readonly revokedTokenJtis = new Set<string>();
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly customerLedger: CustomerLedgerService,
@@ -490,9 +498,25 @@ export class CallCenterService {
     orderId: string,
     actor: JwtUser,
   ): Promise<void> {
-    if (actor.role !== SafariRole.MANAGER && actor.role !== SafariRole.DRIVER) {
+    // OWNER and CC_SUPERVISOR have unrestricted access by design (documented).
+    if (
+      actor.role === SafariRole.OWNER ||
+      actor.role === SafariRole.CALL_CENTER_SUPERVISOR
+    ) {
       return;
     }
+
+    // STEAL-3: CALL_CENTER now gets the same branch-scoping as MANAGER.
+    // Only DRIVER, MANAGER, and CALL_CENTER are subject to the check;
+    // all other roles pass through unchanged (existing behaviour).
+    if (
+      actor.role !== SafariRole.DRIVER &&
+      actor.role !== SafariRole.MANAGER &&
+      actor.role !== SafariRole.CALL_CENTER
+    ) {
+      return;
+    }
+
     const o = await this.prisma.order.findUnique({
       where: { id: orderId },
       select: {
@@ -505,6 +529,7 @@ export class CallCenterService {
     if (!o) {
       throw new NotFoundException('Order not found');
     }
+
     if (actor.role === SafariRole.DRIVER) {
       if (o.driverId !== actor.userId) {
         throw new ForbiddenException(
@@ -513,8 +538,12 @@ export class CallCenterService {
       }
       return;
     }
+
+    // MANAGER and CALL_CENTER: must be in the order's branch
+    // (driver.branchId or customer.originBranchId — same logic as MANAGER).
     const b = actor.branchId;
     if (!b) {
+      // If actor has no branch, we cannot scope — allow through.
       return;
     }
     const inBranch =
@@ -538,7 +567,7 @@ export class CallCenterService {
   async createStatementShareToken(
     customerId: string,
     params: { from?: string | null; to?: string | null; publicBaseUrl: string },
-  ): Promise<{ token: string; shareUrl: string; expiresAtIso: string }> {
+  ): Promise<{ token: string; jti: string; shareUrl: string; expiresAtIso: string }> {
     const customer = await this.prisma.customer.findUnique({
       where: { id: customerId },
       select: { id: true },
@@ -546,9 +575,12 @@ export class CallCenterService {
     if (!customer) {
       throw new NotFoundException('Customer not found');
     }
+    // DEGRADE-2: embed a JTI (JWT ID) so individual tokens can be revoked.
+    const jti = `stmt-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
     const payload = {
       purpose: 'STATEMENT_SHARE' as const,
       customerId,
+      jti,
       from: params.from || undefined,
       to: params.to || undefined,
     };
@@ -558,9 +590,18 @@ export class CallCenterService {
     const shareUrl = `${base}/public/statement/${token}`;
     return {
       token,
+      jti,
       shareUrl,
       expiresAtIso: expiresAt.toISOString(),
     };
+  }
+
+  /**
+   * DEGRADE-2: Revoke a statement share token by its JTI.
+   * After revocation, `getPublicStatement` will reject this token.
+   */
+  revokeStatementToken(jti: string): void {
+    this.revokedTokenJtis.add(jti);
   }
 
   /**
@@ -574,6 +615,7 @@ export class CallCenterService {
     let payload: {
       purpose?: string;
       customerId?: string;
+      jti?: string;
       from?: string;
       to?: string;
     };
@@ -584,6 +626,10 @@ export class CallCenterService {
     }
     if (payload.purpose !== 'STATEMENT_SHARE' || !payload.customerId) {
       throw new NotFoundException('رابط الكشف غير صالح');
+    }
+    // DEGRADE-2: reject revoked tokens.
+    if (payload.jti && this.revokedTokenJtis.has(payload.jti)) {
+      throw new NotFoundException('رابط الكشف تم إلغاؤه');
     }
     return this.getCustomerLedger(payload.customerId, {
       from: payload.from,
@@ -735,11 +781,11 @@ export class CallCenterService {
   }
 
   async activateSubscription(userId: string, dto: ActivateSubscriptionDto) {
-    // Prepaid FIFO auto-reconcile at the tail of activation can dominate wall-
-    // clock (many UNPAID orders × remote latency) and pushes Prisma interactive
-    // transactions past interactive timeout (P2028). Run reconcile in its own
-    // transaction (`runPrepaidAutoReconcileForCustomer`) after activation commits.
-    const core = await this.prisma.$transaction(
+    // DEGRADE-3: run activation AND prepaid FIFO auto-reconcile in a single
+    // atomic transaction. If reconcile fails, the activation rolls back too,
+    // preventing a state where the wallet has new credit but open invoices
+    // remain unpaid. Use the Tx-accepting helper directly.
+    const { core, prepaidAutoReconciledOrderIds } = await this.prisma.$transaction(
       async (tx) => {
         const settlement = await this.customerLedger.activateSubscriptionPlan(tx, {
           customerId: dto.customerId,
@@ -751,6 +797,11 @@ export class CallCenterService {
           // V25 Deposit-then-Settle: forward optional company support override.
           companySupportAmountKd: dto.companySupportAmountKd,
         });
+
+        // Run reconcile inside the same tx so both succeed or both roll back.
+        const reconcile = await this.customerLedger
+          .autoReconcileUnpaidInvoicesFromPrepaidBalanceTx(tx, dto.customerId, userId);
+
         const customer = await tx.customer.findUniqueOrThrow({
           where: { id: dto.customerId },
           select: {
@@ -768,35 +819,25 @@ export class CallCenterService {
           where: { customerId: dto.customerId },
         });
         return {
-          customer,
-          plan: {
-            id: plan.id,
-            name: plan.name,
-            price: plan.salePrice.toString(),
-            creditAmount: plan.actualBalance.toString(),
+          core: {
+            customer,
+            plan: {
+              id: plan.id,
+              name: plan.name,
+              price: plan.salePrice.toString(),
+              creditAmount: plan.actualBalance.toString(),
+            },
+            wallet: {
+              balance: wallet.balance.toString(),
+              debt: wallet.debt.toString(),
+            },
+            settlement,
           },
-          wallet: {
-            balance: wallet.balance.toString(),
-            debt: wallet.debt.toString(),
-          },
-          settlement,
+          prepaidAutoReconciledOrderIds: reconcile.paidOrderIds,
         };
       },
       { maxWait: 20_000, timeout: 90_000 },
     );
-
-    let prepaidAutoReconciledOrderIds: string[] = [];
-    try {
-      const reconcile =
-        await this.customerLedger.runPrepaidAutoReconcileForCustomer(
-          dto.customerId,
-          userId,
-        );
-      prepaidAutoReconciledOrderIds = reconcile.paidOrderIds;
-    } catch (e) {
-      // Activation committed; reconcile is best-effort follow-up — log server-side only.
-      logServerError('activateSubscription.runPrepaidAutoReconcile', e);
-    }
 
     const walletFinal = await this.prisma.customerWallet.findUniqueOrThrow({
       where: { customerId: dto.customerId },

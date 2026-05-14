@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Inject,
   Injectable,
   Logger,
@@ -181,24 +182,40 @@ export class CustomerLedgerService {
       const balanceMinor = toMinorFromFixed4(wallet.balance);
       if (balanceMinor <= 0n) break;
 
-      const next = await tx.order.findFirst({
-        where: {
-          customerId,
-          cashStatus: CashStatus.UNPAID,
-          status: { not: OrderStatus.CANCELED },
-          walletSettledAt: null,
-          posPaymentBundleId: null,
-        },
-        orderBy: { createdAt: 'asc' },
-        select: {
-          id: true,
-          totalPrice: true,
-          status: true,
-          completedAt: true,
-          driverId: true,
-          customerId: true,
-        },
-      });
+      // CORRUPT-3: use FOR UPDATE SKIP LOCKED so parallel auto-reconcile calls
+      // on the same customer don't both pick the same order and double-settle.
+      type OrderLockRow = {
+        id: string;
+        totalPrice: string;
+        status: string;
+        completedAt: Date | null;
+        createdAt: Date;
+        driverId: string | null;
+        customerId: string;
+      };
+      const locked = await tx.$queryRaw<OrderLockRow[]>`
+        SELECT id, "totalPrice"::text, status, "completedAt", "createdAt", "driverId", "customerId"
+        FROM "Order"
+        WHERE "customerId" = ${customerId}::uuid
+          AND "cashStatus" = 'UNPAID'
+          AND status != 'CANCELED'
+          AND "walletSettledAt" IS NULL
+          AND "posPaymentBundleId" IS NULL
+        ORDER BY "createdAt" ASC
+        LIMIT 1
+        FOR UPDATE SKIP LOCKED
+      `;
+      if (!locked.length) break;
+      const lockRow = locked[0];
+      const next = {
+        id: lockRow.id,
+        totalPrice: new Prisma.Decimal(lockRow.totalPrice),
+        status: lockRow.status as OrderStatus,
+        completedAt: lockRow.completedAt,
+        createdAt: lockRow.createdAt,
+        driverId: lockRow.driverId,
+        customerId: lockRow.customerId,
+      };
       if (!next) break;
 
       const invMinor = toMinorFromFixed4(next.totalPrice);
@@ -211,7 +228,10 @@ export class CustomerLedgerService {
         where: { id: next.id },
         data: {
           status: OrderStatus.COMPLETED,
-          completedAt: next.completedAt ?? new Date(),
+          // INFLATE-5: preserve service delivery date for revenue recognition.
+          // Using new Date() (reconcile time) causes revenue to appear in the
+          // wrong financial period for invoices settled weeks after delivery.
+          completedAt: next.completedAt ?? next.createdAt,
           posPaymentMethod: PosPaymentMethod.SUBSCRIPTION_WALLET,
           cashStatus: cashStatusForPaymentMethod(
             PosPaymentMethod.SUBSCRIPTION_WALLET,
@@ -438,6 +458,21 @@ export class CustomerLedgerService {
         'Performing user not found — cannot record wallet settlement',
       );
     }
+    // CORRUPT-1: ensure the performer has a recognised financial role.
+    const ALLOWED_SETTLEMENT_ROLES: readonly SafariRole[] = [
+      SafariRole.OWNER,
+      SafariRole.DRIVER,
+      SafariRole.CALL_CENTER,
+      SafariRole.CALL_CENTER_SUPERVISOR,
+      SafariRole.MANAGER,
+      SafariRole.ACCOUNTANT,
+    ];
+    if (!ALLOWED_SETTLEMENT_ROLES.includes(actor.safariRole as SafariRole)) {
+      throw new BadRequestException(
+        `Role "${actor.safariRole}" is not authorised to perform wallet settlements`,
+      );
+    }
+
     await this.ensureCustomerOriginBranchTx(tx, o.customerId, actor.branchId);
 
     const totalMinor = toMinorFromFixed4(o.totalPrice);
@@ -1214,6 +1249,18 @@ export class CustomerLedgerService {
     const companySupportDecimal = params.companySupportAmountKd != null
       ? new Prisma.Decimal(params.companySupportAmountKd)
       : this.decimalFromMinor(planSubsidyMinor);
+
+    // STEAL-1 guard: companySupportAmountKd must be ≥ 0 and ≤ plan.actualBalance.
+    if (companySupportDecimal.isNegative()) {
+      throw new BadRequestException('companySupportAmountKd cannot be negative');
+    }
+    const maxAllowedSupport = this.decimalFromMinor(creditMinor);
+    if (companySupportDecimal.gt(maxAllowedSupport)) {
+      throw new BadRequestException(
+        `companySupportAmountKd (${companySupportDecimal.toFixed(4)}) cannot exceed plan actualBalance (${maxAllowedSupport.toFixed(4)} KD)`,
+      );
+    }
+
     const companySupportMinor = toMinorFromFixed4(companySupportDecimal);
     const subsidyMinor = companySupportMinor;
     const subsidyStr = companySupportDecimal.toFixed(4);
@@ -1602,8 +1649,30 @@ export class CustomerLedgerService {
     // same value, both deduct, and both write the same lower
     // value — losing one of the payments at the wallet layer
     // even though both PAYMENT rows land in the journal.
+    // INFLATE-3: reject a second collection attempt on the same order, regardless
+    // of confirmedMethod. Without this check, two CC calls with different methods
+    // (CASH then KNET) each generate a valid sourceRef and double-credit the AR.
+    const existingCollection = await tx.journalEntry.findFirst({
+      where: {
+        orderId,
+        source: 'PAYMENT',
+        sourceRef: { startsWith: 'PAYMENT:CC_DEBT_INVOICE_PHYSICAL:' },
+      },
+      select: { id: true, sourceRef: true },
+    });
+    if (existingCollection) {
+      throw new ConflictException(
+        `Order ${orderId} already has a CC collection journal entry (${existingCollection.id}). No duplicate settlement permitted.`,
+      );
+    }
+
     await this.lockCustomerWalletForUpdateTx(tx, wallet.id);
-    const debtMinor = toMinorFromFixed4(wallet.debt);
+    // CORRUPT-2: re-read wallet state AFTER acquiring the FOR UPDATE lock so
+    // concurrent CC payments see each other's committed deductions.
+    const lockedWallet = await tx.customerWallet.findUniqueOrThrow({
+      where: { id: wallet.id },
+    });
+    const debtMinor = toMinorFromFixed4(lockedWallet.debt);
     const remainingMinor = toMinorFromFixed4(remaining);
     const paydownMinor =
       remainingMinor < debtMinor ? remainingMinor : debtMinor;
@@ -1644,9 +1713,10 @@ export class CustomerLedgerService {
         orderId,
         subscriptionId: null,
         amount: this.decimalFromMinor(paydownMinor),
-        balanceBefore: wallet.balance,
-        balanceAfter: wallet.balance,
-        debtBefore: wallet.debt,
+        // CORRUPT-2: use lockedWallet (post-lock read) for accurate before-snapshots
+        balanceBefore: lockedWallet.balance,
+        balanceAfter: lockedWallet.balance,
+        debtBefore: lockedWallet.debt,
         debtAfter: this.decimalFromMinor(newDebtMinor),
         performedById: performedByUserId,
         metadata: {

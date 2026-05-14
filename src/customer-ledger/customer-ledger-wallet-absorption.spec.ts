@@ -738,3 +738,146 @@ describe('V20.3 — true-accounting flag (V20_3_TRUE_ACCOUNTING=true)', () => {
     }
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STEAL-1: companySupportAmountKd ceiling — activateSubscriptionPlan guard
+// ─────────────────────────────────────────────────────────────────────────────
+describe('STEAL-1 — companySupportAmountKd ceiling on activateSubscriptionPlan', () => {
+  const PLAN_ID = 'plan-55555555-5555-4555-8555-555555555555';
+  const ACTOR_ID_2 = '66666666-6666-4666-8666-666666666666';
+  const CUST_ID_2 = '77777777-7777-4777-8777-777777777777';
+
+  const zeroWallet = {
+    id: WALLET_ID,
+    customerId: CUST_ID_2,
+    balance: new Prisma.Decimal('0.0000'),
+    debt: new Prisma.Decimal('0.0000'),
+  };
+
+  function makeActivateTx(planActualBalance: string) {
+    return {
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      subscriptionPlan: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: PLAN_ID,
+          name: 'Test Plan',
+          isActive: true,
+          salePrice: new Prisma.Decimal('20.0000'),
+          actualBalance: new Prisma.Decimal(planActualBalance),
+          validityDays: 30,
+        }),
+      },
+      customer: {
+        findUnique: jest.fn().mockResolvedValue({ id: CUST_ID_2, originBranchId: null }),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      customerWallet: {
+        upsert: jest.fn().mockResolvedValue(zeroWallet),
+        update: jest.fn().mockResolvedValue(zeroWallet),
+        findUnique: jest.fn().mockResolvedValue(zeroWallet),
+        findUniqueOrThrow: jest.fn().mockResolvedValue(zeroWallet),
+      },
+      user: {
+        findFirst: jest.fn().mockResolvedValue({ id: ACTOR_ID_2 }),
+        findUnique: jest.fn().mockResolvedValue({
+          id: ACTOR_ID_2,
+          safariRole: SafariRole.DRIVER,
+          branchId: null,
+        }),
+      },
+      customerSubscription: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'sub-1' }),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      order: {
+        findMany: jest.fn().mockResolvedValue([]),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      transactionHistory: { create: jest.fn().mockResolvedValue({ id: 'th-1' }) },
+    };
+  }
+
+  function makeActivateService(planActualBalance: string) {
+    const txSpy = makeActivateTx(planActualBalance);
+    const ordersStub = {
+      getOperationalDebtKdBreakdown: jest.fn().mockResolvedValue({
+        operationalDebtKd: new Prisma.Decimal('0.0000'),
+        collectionsReceivableKd: new Prisma.Decimal('0.0000'),
+        walletDebtKd: new Prisma.Decimal('0.0000'),
+      }),
+    };
+    const journalStub = {
+      mirrorDebtLedgerEntrySafe: jest.fn().mockResolvedValue(null),
+      appendInvoiceIssuanceEntrySafe: jest.fn().mockResolvedValue(null),
+      appendWalletAbsorptionEntryV3Safe: jest.fn().mockResolvedValue(null),
+      appendExternalPaymentEntrySafe: jest.fn().mockResolvedValue(null),
+      appendWalletAbsorptionEntrySafe: jest.fn().mockResolvedValue(null),
+      appendDebtDiscountEntrySafe: jest.fn().mockResolvedValue(null),
+      appendSubscriptionRefundEntrySafe: jest.fn().mockResolvedValue(null),
+      appendInvoiceCancellationEntrySafe: jest.fn().mockResolvedValue(null),
+    };
+    const svc = new CustomerLedgerService(
+      { $transaction: jest.fn() } as never,
+      { append: jest.fn().mockResolvedValue(undefined) } as never,
+      journalStub as never,
+      { classify: jest.fn(), label: jest.fn().mockReturnValue('TEST') } as never,
+      { processWalletFundingTransaction: jest.fn().mockResolvedValue(undefined) } as never,
+      { applyOrderStockDecrement: jest.fn().mockResolvedValue(undefined) } as never,
+      ordersStub as never,
+    );
+    return { svc, txSpy };
+  }
+
+  let prevFlag: string | undefined;
+  beforeAll(() => {
+    prevFlag = process.env.V20_4_FINAL_LEDGER;
+    process.env.V20_4_FINAL_LEDGER = 'true';
+  });
+  afterAll(() => {
+    if (prevFlag === undefined) delete process.env.V20_4_FINAL_LEDGER;
+    else process.env.V20_4_FINAL_LEDGER = prevFlag;
+  });
+
+  it('rejects companySupportAmountKd larger than plan actualBalance', async () => {
+    const { svc, txSpy } = makeActivateService('25.0000');
+
+    await expect(
+      svc.activateSubscriptionPlan(txSpy as never, {
+        customerId: CUST_ID_2,
+        planId: PLAN_ID,
+        performedByUserId: ACTOR_ID_2,
+        paymentMethod: PosPaymentMethod.CASH,
+        companySupportAmountKd: '999999.0000',
+      }),
+    ).rejects.toThrow('companySupportAmountKd');
+  });
+
+  it('rejects negative companySupportAmountKd', async () => {
+    const { svc, txSpy } = makeActivateService('25.0000');
+
+    await expect(
+      svc.activateSubscriptionPlan(txSpy as never, {
+        customerId: CUST_ID_2,
+        planId: PLAN_ID,
+        performedByUserId: ACTOR_ID_2,
+        paymentMethod: PosPaymentMethod.CASH,
+        companySupportAmountKd: '-5.0000',
+      }),
+    ).rejects.toThrow('companySupportAmountKd cannot be negative');
+  });
+
+  it('accepts companySupportAmountKd equal to plan actualBalance', async () => {
+    const { svc, txSpy } = makeActivateService('25.0000');
+
+    await expect(
+      svc.activateSubscriptionPlan(txSpy as never, {
+        customerId: CUST_ID_2,
+        planId: PLAN_ID,
+        performedByUserId: ACTOR_ID_2,
+        paymentMethod: PosPaymentMethod.CASH,
+        companySupportAmountKd: '25.0000',
+      }),
+    ).resolves.toBeDefined();
+  });
+});
