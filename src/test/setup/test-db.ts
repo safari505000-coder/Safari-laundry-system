@@ -87,7 +87,6 @@ export async function resetDb(prismaInst: PrismaClient): Promise<void> {
       await tx.$executeRaw`SET LOCAL "app.immutable_ledger_bypass" = 'true'`;
 
       // ── RESTRICT → User: all must precede User ────────────────────────────
-      await tx.invoiceAuditLog.deleteMany();
       await tx.bankDepositLog.deleteMany();
       await tx.managerCashCustody.deleteMany();
       await tx.promiseEvent.deleteMany();
