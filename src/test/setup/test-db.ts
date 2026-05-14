@@ -1,28 +1,7 @@
 import './load-env-test';
-import { execFileSync } from 'node:child_process';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
 import { Pool } from 'pg';
-
-/**
- * Integration test database bootstrap (`setupFilesAfterEnv`).
- *
- * Why CI / local integration runs used to cascade into “every suite exits 1”:
- * - Anything that kills the subprocess (migrate reset/deploy/invalid Prisma CLI flags)
- *   runs before assertions; Jest treats that as fatal setup.
- * - `migrate reset` terminates server backends; pooled `pg` clients can look “up” until
- *   the next checkout. Disconnect + reconnect aligns the singleton Prisma client with
- *   the freshly recreated schema without swapping the exported reference importers hold.
- *
- * We use schema reset via `migrate reset` (not `db push`): this repo relies on migrations
- * for production parity and append-only ledger triggers that block naive TRUNCATE.
- *
- * `--force`: non-interactive reset (CI / Jest has no TTY).
- * Omit invalid flags (e.g. `--skip-generate` on migrate reset): Prisma exits non‑zero → all suites abort.
- *
- * Subprocess: `execFileSync('npx', ['prisma', …])` avoids brittle shell-string parsing while still using
- * `stdio: 'inherit'` and an explicit subprocess `DATABASE_URL` (parity with CI env).
- */
 
 const missingDatabaseUrlMessage = [
   'DATABASE_URL is required for integration tests.',
@@ -90,31 +69,128 @@ export const prisma = new PrismaClient({
   adapter: new PrismaPg(pool),
 });
 
-function prismaSubprocessEnv(database: string): NodeJS.ProcessEnv {
-  return { ...process.env, DATABASE_URL: database };
-}
-
 /**
- * Fully resets the Integration DB (`migrate reset` reapplies migrations, clears failed state).
- * Postgres drops existing connections — refresh this PrismaClient so importers keep a valid pool.
+ * Clears every table between tests using deleteMany() in FK-safe order.
+ *
+ * Append-only guarded tables (JournalEntry, TransactionHistory, DebtLedgerEntry, …)
+ * block DELETE by default.  Setting the session flag
+ * `app.immutable_ledger_bypass = 'true'` (migration 20260518150000) makes every
+ * guard function allow the delete for the lifetime of this transaction only.
+ *
+ * Prerequisite: the schema must already be deployed
+ * (`npx prisma migrate deploy`) before the test suite runs.
  */
 export async function resetDb(prismaInst: PrismaClient): Promise<void> {
-  if (process.env.CI) {
-    console.log('[integration][test-db] migrate reset (force, skip seed) …');
-  }
-  try {
-    execFileSync('npx', ['prisma', 'migrate', 'reset', '--force', '--skip-seed'], {
-      env: prismaSubprocessEnv(databaseUrl),
-      stdio: 'inherit',
-      shell: process.platform === 'win32',
-    });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error('[integration][test-db] Database reset failed:', message);
-    throw error;
-  }
-  await prismaInst.$disconnect().catch(() => undefined);
-  await prismaInst.$connect();
+  await prismaInst.$transaction(
+    async (tx) => {
+      // Permit deleteMany() on all append-only guarded tables for this transaction.
+      await tx.$executeRaw`SET LOCAL "app.immutable_ledger_bypass" = 'true'`;
+
+      // ── RESTRICT → Order: must precede Order ──────────────────────────────
+      await tx.debtTransferOrder.deleteMany();
+
+      // ── RESTRICT → User: all must precede User ────────────────────────────
+      await tx.debtTransfer.deleteMany();
+      await tx.invoiceAuditLog.deleteMany();
+      await tx.bankDepositLog.deleteMany();
+      await tx.managerCashCustody.deleteMany();
+      await tx.promiseEvent.deleteMany();
+      await tx.promiseToPay.deleteMany();
+
+      // ── Append-only tables (bypass active) ───────────────────────────────
+      await tx.collectionsStageEvent.deleteMany();
+      await tx.financialPeriodViolation.deleteMany();
+      await tx.financialEventDelivery.deleteMany();
+      await tx.financialEventOutbox.deleteMany();
+      await tx.journalLine.deleteMany(); // also RESTRICT → Account
+      await tx.journalEntry.deleteMany();
+      await tx.journalFailureLog.deleteMany();
+      await tx.transactionHistory.deleteMany();
+      await tx.auditLog.deleteMany();
+      await tx.fraudAlert.deleteMany();
+
+      // ── Account: safe now journalLine is cleared ──────────────────────────
+      await tx.account.deleteMany();
+
+      // ── Financial ─────────────────────────────────────────────────────────
+      await tx.generalLedgerEntry.deleteMany();
+      await tx.financialSnapshot.deleteMany();
+      await tx.financialKpiSnapshot.deleteMany();
+      await tx.financialPeriod.deleteMany();
+
+      // ── HR / Payroll ──────────────────────────────────────────────────────
+      await tx.debtHold.deleteMany();
+      await tx.commissionPayout.deleteMany();
+      await tx.payrollAdHocLine.deleteMany();
+      await tx.payroll.deleteMany();
+      await tx.commissionRule.deleteMany();
+      await tx.leaveRequest.deleteMany();
+      await tx.employeeLoan.deleteMany();
+      await tx.attendanceLog.deleteMany();
+
+      // ── Order children then Order ─────────────────────────────────────────
+      await tx.orderFeedback.deleteMany();
+      await tx.orderLineItem.deleteMany();
+      await tx.order.deleteMany(); // cascades DebtLedgerEntry via Customer FK (bypass active)
+
+      // ── Shifts / POS ──────────────────────────────────────────────────────
+      await tx.shift.deleteMany();
+      await tx.posPaymentBundle.deleteMany();
+      await tx.deposit.deleteMany();
+
+      // ── Customer-owned tables ─────────────────────────────────────────────
+      await tx.customerWallet.deleteMany();
+      await tx.customerSubscription.deleteMany();
+      await tx.collectionsAccount.deleteMany();
+      await tx.customerCollectionStatus.deleteMany();
+
+      // ── Inventory / procurement ───────────────────────────────────────────
+      await tx.purchaseOrderReceiptLine.deleteMany();
+      await tx.purchaseOrderReceipt.deleteMany();
+      await tx.purchaseOrderLine.deleteMany();
+      await tx.purchaseOrder.deleteMany();
+      await tx.stockMovement.deleteMany();
+      await tx.branchStockLevel.deleteMany();
+      await tx.stockItem.deleteMany();
+      await tx.inventoryCategory.deleteMany();
+      await tx.supplier.deleteMany();
+
+      // ── Laundry pricing ───────────────────────────────────────────────────
+      await tx.laundryBranchItemPrice.deleteMany();
+      await tx.laundryPriceListItem.deleteMany();
+      await tx.laundryItemCategory.deleteMany();
+
+      // ── Expenses ──────────────────────────────────────────────────────────
+      await tx.branchExpense.deleteMany();
+      await tx.vehicleExpense.deleteMany();
+
+      // ── Dispatch / drivers ────────────────────────────────────────────────
+      await tx.driverMetrics.deleteMany();
+      await tx.dispatch.deleteMany();
+
+      // ── Miscellaneous singletons / leaf tables ────────────────────────────
+      await tx.refreshToken.deleteMany();
+      await tx.serialCounter.deleteMany();
+      await tx.backfillAuditLock.deleteMany();
+      await tx.paymentMethodFeeConfig.deleteMany();
+      await tx.cashIntelExecutionEvent.deleteMany();
+      await tx.fixedExpenseSchedule.deleteMany();
+      await tx.wallet.deleteMany();
+      await tx.systemConfig.deleteMany();
+      await tx.systemToggle.deleteMany();
+      await tx.payrollSettings.deleteMany();
+      await tx.debtHoldPolicy.deleteMany();
+
+      // ── Core entities last ────────────────────────────────────────────────
+      // User first: has non-cascade FK to Role and Branch.
+      await tx.user.deleteMany();
+      await tx.branch.deleteMany();
+      await tx.customer.deleteMany();
+      await tx.permission.deleteMany();
+      await tx.role.deleteMany();
+    },
+    { timeout: 60_000 },
+  );
 }
 
 export async function closeDb(): Promise<void> {
