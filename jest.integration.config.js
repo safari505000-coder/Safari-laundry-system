@@ -1,3 +1,5 @@
+require('dotenv').config({ path: '.env.test', override: true });
+
 module.exports = {
   moduleFileExtensions: ['js', 'json', 'ts'],
   rootDir: '.',

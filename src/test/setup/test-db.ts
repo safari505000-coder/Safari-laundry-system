@@ -1,11 +1,8 @@
+import './load-env-test';
 import { execFileSync } from 'node:child_process';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
-import { config as loadEnv } from 'dotenv';
 import { Pool } from 'pg';
-
-// Always prefer `.env.test` so a prior `dotenv/config` (e.g. from api.helper) cannot pin production/Railway URLs.
-loadEnv({ path: '.env.test', override: true });
 
 const databaseUrl =
   process.env.DATABASE_URL ??

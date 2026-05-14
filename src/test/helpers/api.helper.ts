@@ -1,5 +1,5 @@
+import '../setup/load-env-test';
 import 'reflect-metadata';
-import 'dotenv/config';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
