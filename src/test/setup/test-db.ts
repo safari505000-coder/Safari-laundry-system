@@ -1,7 +1,7 @@
 import './load-env-test';
 import { execFileSync } from 'node:child_process';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { Prisma, PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import { Pool } from 'pg';
 
 const databaseUrl =
@@ -48,13 +48,22 @@ export function runMigrations(): void {
 }
 
 export async function resetDb(prisma: any) {
-  // Get explicit table names from Prisma schema only
-  const models = Prisma.dmmf.datamodel.models.map((m) => `"${m.dbName || m.name}"`);
+  // Query the database directly for all real table names in the public schema
+  const tablerows = await prisma.$queryRaw`
+    SELECT table_name 
+    FROM information_schema.tables 
+    WHERE table_schema = 'public' 
+    AND table_type = 'BASE TABLE' 
+    AND table_name <> '_prisma_migrations';
+  `;
 
-  if (models.length > 0) {
-    const tableNames = models.join(', ');
-    // Safely truncate only these specific tables
-    await prisma.$executeRawUnsafe(`TRUNCATE TABLE ${tableNames} RESTART IDENTITY CASCADE;`);
+  const tables = tablerows
+    .map((t: any) => `"${t.table_name}"`)
+    .join(', ');
+
+  if (tables.length > 0) {
+    // Truncate only the tables that actually exist in the DB
+    await prisma.$executeRawUnsafe(`TRUNCATE TABLE ${tables} RESTART IDENTITY CASCADE;`);
   }
 }
 
