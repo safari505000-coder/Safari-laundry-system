@@ -1,3 +1,13 @@
+/**
+ * Architecture note (V1.7.0):
+ * `JournalSourceService` and `debt-customer-aggregates.util.ts` both read AR
+ * balance from the Journal (account 1300). They serve different DI contexts:
+ *   • JournalSourceService — NestJS injectable, uses bound PrismaService.
+ *   • debt-customer-aggregates.util.ts — standalone utility, takes db as param.
+ * A full merge is deferred; the canonical logic lives in JournalSourceService.
+ * `getCustomerNetDebtFromDebtLedgerAgg` in the util already delegates to
+ * journal lines (DebtLedger was removed in V20.4).
+ */
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';

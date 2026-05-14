@@ -1012,6 +1012,14 @@ export class DoubleEntryJournalService {
    * not the transaction client `db`, so the failure log persists
    * even if the surrounding transaction rolls back.
    */
+  /**
+   * @alias appendJournalMirrorEntrySafe — canonical name since V1.7.0.
+   * DebtLedger is deleted; the method now appends a balanced journal
+   * mirror entry (DR asset/AR / CR AR/revenue). The old name is kept
+   * to avoid a disruptive rename across 15+ callers.
+   */
+  appendJournalMirrorEntrySafe = this.mirrorDebtLedgerEntrySafe.bind(this);
+
   async mirrorDebtLedgerEntrySafe(
     db: Db,
     input: MirrorDebtLedgerInput,
@@ -1534,9 +1542,10 @@ export class DoubleEntryJournalService {
   }
 
   /**
-   * Safe variant of {@link appendWalletAbsorptionEntry} — uses the
-   * same Phase 16 failure log + breaker contract as
-   * {@link mirrorDebtLedgerEntrySafe}.
+   * @deprecated V1.7.0 — prefer {@link appendWalletAbsorptionEntryV3Safe} when
+   * `V20_3_TRUE_ACCOUNTING=true`. This V20.2 path (DR WALLET_LIABILITY / CR REVENUE)
+   * remains active for non-true-accounting deployments. Do not delete until
+   * all deployments have `V20_3_TRUE_ACCOUNTING=true`.
    */
   async appendWalletAbsorptionEntrySafe(
     db: Db,
@@ -2235,6 +2244,16 @@ export class DoubleEntryJournalService {
    * @param ledgerBalance - رصيد دفتر الديون القديم | Legacy debt-ledger balance
    * @since V20.4
    */
+  /**
+   * @deprecated V1.7.0 — DebtLedgerEntry table removed in V20.4.
+   * The `ledgerBalance` param is now itself read from Journal via
+   * `getCustomerNetDebtFromDebtLedgerAgg`, so this method always
+   * compares Journal vs Journal — the drift it was meant to surface
+   * (Journal vs DebtLedger) no longer exists.
+   *
+   * Retained as a no-op so existing callers don't break; remove together
+   * with the journal.controller.ts endpoint that invokes it.
+   */
   async logCustomerDrift(
     customerId: string,
     ledgerBalance: Prisma.Decimal | string | number,
@@ -2242,7 +2261,7 @@ export class DoubleEntryJournalService {
     const journalBalance = await this.getCustomerBalanceFromJournal(customerId);
     const ledger = this.decimal(ledgerBalance);
     if (ledger.sub(journalBalance).abs().gt(new Prisma.Decimal('0.001'))) {
-      console.error('[JOURNAL_DRIFT]', {
+      this.logger.warn('[JOURNAL_DRIFT] (deprecated — now comparing Journal vs Journal)', {
         customerId,
         ledgerBalance: ledger.toFixed(4),
         journalBalance: journalBalance.toFixed(4),
