@@ -109,7 +109,6 @@ export async function resetDb(prismaInst: PrismaClient): Promise<void> {
       await tx.account.deleteMany();
 
       // ── Financial ─────────────────────────────────────────────────────────
-      await tx.generalLedgerEntry.deleteMany();
       await tx.financialSnapshot.deleteMany();
       await tx.financialKpiSnapshot.deleteMany();
       await tx.financialPeriod.deleteMany();
@@ -132,7 +131,6 @@ export async function resetDb(prismaInst: PrismaClient): Promise<void> {
       // ── Shifts / POS ──────────────────────────────────────────────────────
       await tx.shift.deleteMany();
       await tx.posPaymentBundle.deleteMany();
-      await tx.deposit.deleteMany();
 
       // ── Customer-owned tables ─────────────────────────────────────────────
       await tx.customerWallet.deleteMany();
@@ -170,7 +168,6 @@ export async function resetDb(prismaInst: PrismaClient): Promise<void> {
       await tx.backfillAuditLock.deleteMany();
       await tx.paymentMethodFeeConfig.deleteMany();
       await tx.cashIntelExecutionEvent.deleteMany();
-      await tx.fixedExpenseSchedule.deleteMany();
       await tx.wallet.deleteMany();
       await tx.systemConfig.deleteMany();
       await tx.systemToggle.deleteMany();
