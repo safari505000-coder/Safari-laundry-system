@@ -41,22 +41,37 @@ export function runMigrations(): void {
 }
 
 export async function resetDb(): Promise<void> {
-  const rows = await prisma.$queryRaw<Array<{ tablename: string }>>`
-    SELECT tablename
-    FROM pg_tables
-    WHERE schemaname = 'public'
-      AND tablename <> '_prisma_migrations'
-  `;
-
-  if (rows.length === 0) {
-    return;
-  }
-
-  const tableList = rows
-    .map(({ tablename }) => `"public"."${tablename.replace(/"/g, '""')}"`)
-    .join(', ');
-
-  await prisma.$executeRawUnsafe(`TRUNCATE TABLE ${tableList} RESTART IDENTITY CASCADE`);
+  await prisma.financialEventDelivery.deleteMany();
+  await prisma.financialEventOutbox.deleteMany();
+  await prisma.collectionsStageEvent.deleteMany();
+  await prisma.promiseEvent.deleteMany();
+  await prisma.financialPeriodViolation.deleteMany();
+  await prisma.fraudAlert.deleteMany();
+  await prisma.journalFailureLog.deleteMany();
+  await prisma.journalLine.deleteMany();
+  await prisma.commissionPayout.deleteMany();
+  await prisma.journalEntry.deleteMany();
+  await prisma.generalLedgerEntry.deleteMany();
+  await prisma.invoiceAuditLog.deleteMany();
+  await prisma.auditLog.deleteMany();
+  await prisma.orderFeedback.deleteMany();
+  await prisma.orderLineItem.deleteMany();
+  await prisma.transactionHistory.deleteMany();
+  await prisma.promiseToPay.deleteMany();
+  await prisma.collectionsAccount.deleteMany();
+  await prisma.customerCollectionStatus.deleteMany();
+  await prisma.financialSnapshot.deleteMany();
+  await prisma.customerSubscription.deleteMany();
+  await prisma.customerWallet.deleteMany();
+  await prisma.order.deleteMany();
+  await prisma.posPaymentBundle.deleteMany();
+  await prisma.refreshToken.deleteMany();
+  await prisma.financialPeriod.deleteMany();
+  await prisma.account.deleteMany();
+  await prisma.subscriptionPlan.deleteMany();
+  await prisma.user.deleteMany();
+  await prisma.role.deleteMany();
+  await prisma.branch.deleteMany();
 }
 
 export async function closeDb(): Promise<void> {
