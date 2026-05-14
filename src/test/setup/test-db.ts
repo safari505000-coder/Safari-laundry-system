@@ -20,7 +20,12 @@ assertSafeIntegrationDatabaseUrl(databaseUrl);
 
 process.env.DATABASE_URL = databaseUrl;
 
-const pool = new Pool({ connectionString: databaseUrl });
+const pool = new Pool({
+  connectionString: databaseUrl,
+  max: 10,
+  connectionTimeoutMillis: 30_000,
+  idleTimeoutMillis: 10_000,
+});
 let closed = false;
 
 export const prisma = new PrismaClient({
@@ -42,6 +47,14 @@ export function runMigrations(): void {
   migrationsApplied = true;
 }
 
+/**
+ * Resets integration DB state without walking every FK edge manually.
+ *
+ * Sequential `deleteMany()` over a partial table list misses relations on models
+ * that were added in schema but not listed here (CI then throws FK violations or
+ * exhausts the pool). A single `TRUNCATE … CASCADE` matches what `migrate reset`
+ * would do for data: clear all application tables while keeping `_prisma_migrations`.
+ */
 export async function resetDb(): Promise<void> {
   const url = process.env.DATABASE_URL ?? '';
   if (!url.includes('safari_erp_test') && !url.includes('localhost')) {
@@ -50,45 +63,40 @@ export async function resetDb(): Promise<void> {
     );
   }
 
-  await prisma.financialEventDelivery.deleteMany();
-  await prisma.financialEventOutbox.deleteMany();
-  await prisma.collectionsStageEvent.deleteMany();
-  await prisma.promiseEvent.deleteMany();
-  await prisma.financialPeriodViolation.deleteMany();
-  await prisma.fraudAlert.deleteMany();
-  await prisma.journalFailureLog.deleteMany();
-  await prisma.journalLine.deleteMany();
-  await prisma.commissionPayout.deleteMany();
-  await prisma.journalEntry.deleteMany();
-  await prisma.invoiceAuditLog.deleteMany();
-  await prisma.auditLog.deleteMany();
-  await prisma.orderFeedback.deleteMany();
-  await prisma.orderLineItem.deleteMany();
-  await prisma.transactionHistory.deleteMany();
-  await prisma.promiseToPay.deleteMany();
-  await prisma.collectionsAccount.deleteMany();
-  await prisma.customerCollectionStatus.deleteMany();
-  await prisma.financialSnapshot.deleteMany();
-  await prisma.customerSubscription.deleteMany();
-  await prisma.customerWallet.deleteMany();
-  await prisma.order.deleteMany();
-  await prisma.posPaymentBundle.deleteMany();
-  await prisma.refreshToken.deleteMany();
-  await prisma.financialPeriod.deleteMany();
-  await prisma.account.deleteMany();
-  await prisma.subscriptionPlan.deleteMany();
-  await prisma.user.deleteMany();
-  await prisma.role.deleteMany();
-  await prisma.branch.deleteMany();
+  await prisma.$executeRawUnsafe(`
+DO $$
+DECLARE
+  stmt text;
+BEGIN
+  SELECT 'TRUNCATE TABLE ' ||
+    string_agg(
+      format('%I.%I', n.nspname::text, c.relname::text),
+      ', ' ORDER BY n.nspname::text, c.relname::text
+    )
+    || ' RESTART IDENTITY CASCADE'
+  INTO stmt
+  FROM pg_class c
+  INNER JOIN pg_namespace n ON n.oid = c.relnamespace
+  WHERE n.nspname = 'public'
+    AND c.relkind = 'r'::"char"
+    AND c.relname::text <> '_prisma_migrations';
+  IF stmt IS NOT NULL THEN
+    EXECUTE stmt;
+  END IF;
+END $$;
+`);
 }
 
 export async function closeDb(): Promise<void> {
   if (closed) {
     return;
   }
-  await prisma.$disconnect();
-  await pool.end();
-  closed = true;
+  try {
+    await prisma.$disconnect();
+  } finally {
+    await pool.end();
+    closed = true;
+  }
 }
 
 beforeAll(async () => {

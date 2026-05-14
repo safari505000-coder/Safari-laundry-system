@@ -11,4 +11,6 @@ module.exports = {
   setupFiles: ['<rootDir>/src/test/setup/jest-node-env.ts'],
   setupFilesAfterEnv: ['<rootDir>/src/test/setup/test-db.ts'],
   testTimeout: 30000,
+  /** Pool + Postgres client can briefly outlive Jest; matches unit-test CI runner. */
+  forceExit: true,
 };
