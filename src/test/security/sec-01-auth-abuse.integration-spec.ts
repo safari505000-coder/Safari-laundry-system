@@ -16,7 +16,7 @@ describe('SEC-01: Authentication Abuse', () => {
   });
 
   beforeEach(async () => {
-    await resetDb();
+    await resetDb(prisma);
     const branch = await createBranch(prisma);
     owner = await createUser(prisma, SafariRole.OWNER, branch.id);
   });

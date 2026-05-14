@@ -34,7 +34,7 @@ describe('FIN-04: Idempotent Payments', () => {
   });
 
   beforeEach(async () => {
-    await resetDb();
+    await resetDb(prisma);
     await seedJournalAccounts(prisma);
     branch = await createBranch(prisma);
     driver = await createUser(prisma, SafariRole.DRIVER, branch.id);

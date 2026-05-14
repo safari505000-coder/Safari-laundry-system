@@ -34,7 +34,7 @@ describe('FIN-03: Decimal Precision', () => {
   });
 
   beforeEach(async () => {
-    await resetDb();
+    await resetDb(prisma);
     await seedJournalAccounts(prisma);
     branch = await createBranch(prisma);
     driver = await createUser(prisma, SafariRole.DRIVER, branch.id);

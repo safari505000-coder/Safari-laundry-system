@@ -45,7 +45,7 @@ describe('FIN-01: Ledger Integrity', () => {
   });
 
   beforeEach(async () => {
-    await resetDb();
+    await resetDb(prisma);
     await seedJournalAccounts(prisma);
     branch = await createBranch(prisma);
     owner = await createUser(prisma, SafariRole.OWNER, branch.id);

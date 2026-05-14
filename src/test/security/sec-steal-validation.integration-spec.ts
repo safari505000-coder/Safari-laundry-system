@@ -30,7 +30,7 @@ describe('SEC: Penetration Test STEAL Fix Verification', () => {
   });
 
   beforeEach(async () => {
-    await resetDb();
+    await resetDb(prisma);
     await seedJournalAccounts(prisma);
     branch1 = await createBranch(prisma);
     branch2 = await createBranch(prisma);

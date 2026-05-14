@@ -35,7 +35,7 @@ describe('FIN-02: Canonical Customer Debt', () => {
   });
 
   beforeEach(async () => {
-    await resetDb();
+    await resetDb(prisma);
     await seedJournalAccounts(prisma);
     branch = await createBranch(prisma);
     driver = await createUser(prisma, SafariRole.DRIVER, branch.id);

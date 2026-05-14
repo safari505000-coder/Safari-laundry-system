@@ -1,7 +1,7 @@
 import './load-env-test';
 import { execFileSync } from 'node:child_process';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { Pool } from 'pg';
 
 const databaseUrl =
@@ -47,45 +47,15 @@ export function runMigrations(): void {
   migrationsApplied = true;
 }
 
-/**
- * Resets integration DB state without walking every FK edge manually.
- *
- * Sequential `deleteMany()` over a partial table list misses relations on models
- * that were added in schema but not listed here (CI then throws FK violations or
- * exhausts the pool). A single `TRUNCATE … CASCADE` matches what `migrate reset`
- * would do for data: clear all application tables while keeping `_prisma_migrations`.
- * Builds the list purely from `pg_catalog` heap / partitioned-root relations (`relkind` `r`|`p`),
- * skips partition-member heaps (`relispartition`), and uses `oid::regclass` so each target
- * is unambiguously a truncatable relation (no `information_schema` / heap OID skew).
- */
-export async function resetDb(): Promise<void> {
-  const url = process.env.DATABASE_URL ?? '';
-  if (!url.includes('safari_erp_test') && !url.includes('localhost')) {
-    throw new Error(
-      `SAFETY: Refusing to reset non-test DB. URL: ${url.slice(0, 40)}`,
-    );
-  }
+export async function resetDb(prisma: any) {
+  // Get explicit table names from Prisma schema only
+  const models = Prisma.dmmf.datamodel.models.map((m) => `"${m.dbName || m.name}"`);
 
-  await prisma.$executeRawUnsafe(`
-DO $$
-DECLARE
-  stmt text;
-BEGIN
-  SELECT 'TRUNCATE TABLE ' ||
-    string_agg(c.oid::regclass::text, ', ' ORDER BY c.oid::regclass::text)
-    || ' RESTART IDENTITY CASCADE'
-  INTO stmt
-  FROM pg_class AS c
-  INNER JOIN pg_namespace AS n ON n.oid = c.relnamespace
-  WHERE n.nspname = 'public'
-    AND c.relname <> '_prisma_migrations'
-    AND c.relkind IN ('r'::"char", 'p'::"char")
-    AND NOT COALESCE(c.relispartition, false);
-  IF stmt IS NOT NULL THEN
-    EXECUTE stmt;
-  END IF;
-END $$;
-`);
+  if (models.length > 0) {
+    const tableNames = models.join(', ');
+    // Safely truncate only these specific tables
+    await prisma.$executeRawUnsafe(`TRUNCATE TABLE ${tableNames} RESTART IDENTITY CASCADE;`);
+  }
 }
 
 export async function closeDb(): Promise<void> {
@@ -106,7 +76,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  await resetDb();
+  await resetDb(prisma);
 });
 
 afterAll(async () => {

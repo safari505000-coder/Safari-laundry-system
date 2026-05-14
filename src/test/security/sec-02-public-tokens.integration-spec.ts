@@ -14,7 +14,7 @@ describe('SEC-02: Public Share Tokens', () => {
   });
 
   beforeEach(async () => {
-    await resetDb();
+    await resetDb(prisma);
     await seedJournalAccounts(prisma);
   });
 

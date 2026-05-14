@@ -68,7 +68,7 @@ describe('RBAC Matrix', () => {
 
   beforeAll(async () => {
     app = await createTestApp();
-    await resetDb();
+    await resetDb(prisma);
     await seedJournalAccounts(prisma);
     const branch = await createBranch(prisma);
     users = new Map();
