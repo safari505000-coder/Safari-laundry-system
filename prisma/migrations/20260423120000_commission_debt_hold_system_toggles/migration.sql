@@ -16,6 +16,10 @@
 
 -- ─── Enums ───────────────────────────────────────────────────────────
 DO $$ BEGIN
+  CREATE TYPE "PayrollStatus" AS ENUM ('PENDING', 'PAID');
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+DO $$ BEGIN
   CREATE TYPE "CommissionMode" AS ENUM ('SALE', 'COLLECTION');
 EXCEPTION WHEN duplicate_object THEN null; END $$;
 
@@ -62,6 +66,51 @@ DO $$ BEGIN
     'ATTENDANCE'
   );
 EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+-- ─── Payroll base table ──────────────────────────────────────────────
+-- Some fresh databases reach this migration without an earlier Payroll
+-- table creation migration. Create the canonical table before adding
+-- commission/debt-hold columns and FKs that reference it.
+CREATE TABLE IF NOT EXISTS "Payroll" (
+  "id"          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  "userId"      UUID NOT NULL,
+  "branchId"    UUID NOT NULL,
+  "basicSalary" DECIMAL(19, 4) NOT NULL,
+  "allowances"  DECIMAL(19, 4) NOT NULL DEFAULT 0,
+  "deductions"  DECIMAL(19, 4) NOT NULL DEFAULT 0,
+  "paymentDate" TIMESTAMP(3) NOT NULL,
+  "status"      "PayrollStatus" NOT NULL DEFAULT 'PENDING',
+  "createdAt"   TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt"   TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'Payroll_userId_fkey'
+  ) THEN
+    ALTER TABLE "Payroll"
+      ADD CONSTRAINT "Payroll_userId_fkey"
+      FOREIGN KEY ("userId") REFERENCES "User"("id")
+      ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'Payroll_branchId_fkey'
+  ) THEN
+    ALTER TABLE "Payroll"
+      ADD CONSTRAINT "Payroll_branchId_fkey"
+      FOREIGN KEY ("branchId") REFERENCES "Branch"("id")
+      ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS "Payroll_branchId_paymentDate_idx"
+  ON "Payroll" ("branchId", "paymentDate");
+CREATE INDEX IF NOT EXISTS "Payroll_userId_paymentDate_idx"
+  ON "Payroll" ("userId", "paymentDate");
+CREATE INDEX IF NOT EXISTS "Payroll_status_idx"
+  ON "Payroll" ("status");
 
 -- ─── Payroll additive columns ────────────────────────────────────────
 ALTER TABLE "Payroll"
