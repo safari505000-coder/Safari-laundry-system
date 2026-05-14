@@ -54,8 +54,9 @@ export function runMigrations(): void {
  * that were added in schema but not listed here (CI then throws FK violations or
  * exhausts the pool). A single `TRUNCATE … CASCADE` matches what `migrate reset`
  * would do for data: clear all application tables while keeping `_prisma_migrations`.
- * Targets `information_schema.tables` (`BASE TABLE` / `PARTITIONED TABLE`) joined to
- * `pg_class` (`relkind` heap or partition root, excludes partition leaves via `relispartition`).
+ * Builds the list purely from `pg_catalog` heap / partitioned-root relations (`relkind` `r`|`p`),
+ * skips partition-member heaps (`relispartition`), and uses `oid::regclass` so each target
+ * is unambiguously a truncatable relation (no `information_schema` / heap OID skew).
  */
 export async function resetDb(): Promise<void> {
   const url = process.env.DATABASE_URL ?? '';
@@ -71,18 +72,13 @@ DECLARE
   stmt text;
 BEGIN
   SELECT 'TRUNCATE TABLE ' ||
-    string_agg(
-      format('%I.%I', tbl.table_schema::text, tbl.table_name::text),
-      ', ' ORDER BY tbl.table_schema::text, tbl.table_name::text
-    )
+    string_agg(c.oid::regclass::text, ', ' ORDER BY c.oid::regclass::text)
     || ' RESTART IDENTITY CASCADE'
   INTO stmt
-  FROM information_schema.tables AS tbl
-  INNER JOIN pg_namespace AS nc ON nc.nspname::text = tbl.table_schema::text
-  INNER JOIN pg_class AS c ON c.relnamespace = nc.oid AND c.relname::text = tbl.table_name::text
-  WHERE tbl.table_schema = 'public'
-    AND tbl.table_name <> '_prisma_migrations'
-    AND tbl.table_type IN ('BASE TABLE', 'PARTITIONED TABLE')
+  FROM pg_class AS c
+  INNER JOIN pg_namespace AS n ON n.oid = c.relnamespace
+  WHERE n.nspname = 'public'
+    AND c.relname <> '_prisma_migrations'
     AND c.relkind IN ('r'::"char", 'p'::"char")
     AND NOT COALESCE(c.relispartition, false);
   IF stmt IS NOT NULL THEN
