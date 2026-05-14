@@ -60,8 +60,6 @@ export async function resetDb(): Promise<void> {
   await prisma.journalLine.deleteMany();
   await prisma.commissionPayout.deleteMany();
   await prisma.journalEntry.deleteMany();
-  // `GeneralLedgerEntry` is still a first-class model in schema.prisma (read-path / legacy windows).
-  await prisma.generalLedgerEntry.deleteMany();
   await prisma.invoiceAuditLog.deleteMany();
   await prisma.auditLog.deleteMany();
   await prisma.orderFeedback.deleteMany();
