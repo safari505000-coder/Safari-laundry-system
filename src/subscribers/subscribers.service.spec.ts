@@ -194,7 +194,13 @@ function makeJournalSource() {
   return {
     getCustomerDebtFromJournalAR: jest
       .fn()
-      .mockResolvedValue(new Prisma.Decimal(0)),
+      .mockImplementation((customerId: string) =>
+        Promise.resolve(
+          customerId === C_ACTIVE_WITH_DEBT
+            ? new Prisma.Decimal('10.0000')
+            : new Prisma.Decimal(0),
+        ),
+      ),
   } as any;
 }
 

@@ -12,6 +12,7 @@ function makeController() {
       return s === 'captured' || s === 'success' ? 'success' : 'failed';
     }),
     fetchGatewayStatus: jest.fn(),
+    compareGatewayAmount: jest.fn(() => 'match'),
     findOrderByTrackId: jest.fn(),
     finalizePaidOrderFromGateway: jest.fn().mockResolvedValue(undefined),
     verifyIntegratedCallback: jest.fn().mockReturnValue(false),
@@ -161,6 +162,7 @@ describe('PaymentsController callback webhook safety', () => {
   it('force finalizes captured payment even when gateway amount mismatches the order', async () => {
     const { controller, paymentsService, prisma } = makeController();
     paymentsService.fetchGatewayStatus.mockResolvedValue(gatewaySuccess('9.000'));
+    paymentsService.compareGatewayAmount.mockReturnValueOnce('mismatch');
     paymentsService.findOrderByTrackId.mockResolvedValue(ORDER_ID);
     prisma.order.findUnique.mockResolvedValue({
       id: ORDER_ID,

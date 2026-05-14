@@ -73,29 +73,27 @@ function foldMarketUnpaidByMethod(
     _sum: { totalPrice: Prisma.Decimal | null };
   }>,
 ): MarketUnpaidByMethodDto {
-  let cash = 0;
-  let knet = 0;
-  let online = 0;
-  let link = 0;
-  let other = 0;
+  let cash = new Prisma.Decimal(0);
+  let knet = new Prisma.Decimal(0);
+  let online = new Prisma.Decimal(0);
+  let link = new Prisma.Decimal(0);
+  let other = new Prisma.Decimal(0);
   for (const g of groups) {
-    const n = Number.parseFloat(
-      (g._sum.totalPrice ?? new Prisma.Decimal(0)).toString(),
-    );
-    if (!Number.isFinite(n) || n === 0) continue;
+    const n = new Prisma.Decimal(g._sum.totalPrice ?? 0);
+    if (n.isZero()) continue;
     const p = g.posPaymentMethod;
-    if (p === PosPaymentMethod.CASH) cash += n;
-    else if (p === PosPaymentMethod.KNET) knet += n;
-    else if (p === PosPaymentMethod.ONLINE) online += n;
-    else if (p === PosPaymentMethod.PAYMENT_LINK) link += n;
-    else other += n;
+    if (p === PosPaymentMethod.CASH) cash = cash.plus(n);
+    else if (p === PosPaymentMethod.KNET) knet = knet.plus(n);
+    else if (p === PosPaymentMethod.ONLINE) online = online.plus(n);
+    else if (p === PosPaymentMethod.PAYMENT_LINK) link = link.plus(n);
+    else other = other.plus(n);
   }
   return {
-    cashKd: kwdStr(cash),
-    knetKd: kwdStr(knet),
-    onlineKd: kwdStr(online),
-    paymentLinkKd: kwdStr(link),
-    otherKd: kwdStr(other),
+    cashKd: cash.toFixed(4),
+    knetKd: knet.toFixed(4),
+    onlineKd: online.toFixed(4),
+    paymentLinkKd: link.toFixed(4),
+    otherKd: other.toFixed(4),
   };
 }
 
@@ -130,29 +128,27 @@ export class DebtService {
       where: { balance: { lt: 0 } },
       select: { balance: true },
     });
-    const subscriptionDebt = negativeBalanceRows.reduce((acc, row) => {
-      const x = Number.parseFloat(row.balance.toString());
-      if (!Number.isFinite(x) || x >= 0) return acc;
-      return acc + Math.abs(x);
-    }, 0);
-    const debtFromIssuedInvoices = 0;
-    const debtFromSubscriptionOveruse = 0;
-    const debtByBranch = 0;
-    const debtByDriver = 0;
-    const debtByOwner = 0;
-    const debtByCallCenter = 0;
-    const standardInvoiceDebt = Number.parseFloat(
-      agg._sum.debt !== null && agg._sum.debt !== undefined
-        ? agg._sum.debt.toString()
-        : '0',
+    const subscriptionDebt = negativeBalanceRows.reduce(
+      (acc, row) => {
+        const x = new Prisma.Decimal(row.balance.toString());
+        return x.lt(0) ? acc.plus(x.abs()) : acc;
+      },
+      new Prisma.Decimal(0),
     );
+    const debtFromIssuedInvoices = new Prisma.Decimal(0);
+    const debtFromSubscriptionOveruse = new Prisma.Decimal(0);
+    const debtByBranch = new Prisma.Decimal(0);
+    const debtByDriver = new Prisma.Decimal(0);
+    const debtByOwner = new Prisma.Decimal(0);
+    const debtByCallCenter = new Prisma.Decimal(0);
+    const standardInvoiceDebt = new Prisma.Decimal(agg._sum.debt ?? 0);
     const sub = await this.subscriptionService.getUsageAndSettledDebtTotals();
     return {
       totalWalletLiabilities:
         agg._sum.balance !== null && agg._sum.balance !== undefined
           ? agg._sum.balance.toString()
           : '0',
-      totalCustomerDebts: (standardInvoiceDebt + subscriptionDebt).toFixed(4),
+      totalCustomerDebts: standardInvoiceDebt.plus(subscriptionDebt).toFixed(4),
       debtFromIssuedInvoices: debtFromIssuedInvoices.toFixed(4),
       debtFromSubscriptionOveruse: debtFromSubscriptionOveruse.toFixed(4),
       debtSettledBySubscriptions: sub.debtSettledBySubscriptions,
@@ -600,6 +596,60 @@ export class DebtService {
   }
 
   /**
+   * Releases stale settlement bundles that claimed invoices but never received
+   * a hosted URL/track id. Use from cron or operator repair tooling.
+   */
+  async cleanupDeadSettlementBundles(
+    olderThanMinutes = 15,
+  ): Promise<{ releasedBundleCount: number; releasedInvoiceCount: number }> {
+    const cutoff = new Date(Date.now() - Math.max(1, olderThanMinutes) * 60_000);
+    return this.prisma.$transaction(async (tx) => {
+      const bundles = await tx.posPaymentBundle.findMany({
+        where: {
+          createdAt: { lt: cutoff },
+          orders: {
+            some: {
+              posHostedPaymentUrl: null,
+              posGatewayTrackId: null,
+            },
+          },
+        },
+        select: {
+          id: true,
+          orders: {
+            select: {
+              id: true,
+              posHostedPaymentUrl: true,
+              posGatewayTrackId: true,
+            },
+          },
+        },
+      });
+
+      let releasedBundleCount = 0;
+      let releasedInvoiceCount = 0;
+      for (const bundle of bundles) {
+        const allOrdersDead = bundle.orders.every(
+          (order) => !order.posHostedPaymentUrl && !order.posGatewayTrackId,
+        );
+        if (!allOrdersDead) continue;
+        const claim = await tx.order.updateMany({
+          where: { posPaymentBundleId: bundle.id },
+          data: {
+            posPaymentBundleId: null,
+            ccCollectionPaymentWaLocked: false,
+          },
+        });
+        await tx.posPaymentBundle.delete({ where: { id: bundle.id } });
+        releasedBundleCount += 1;
+        releasedInvoiceCount += claim.count;
+      }
+
+      return { releasedBundleCount, releasedInvoiceCount };
+    });
+  }
+
+  /**
    * يُرجع لقطة شاملة لديون عميل محدد من جميع المصادر
    * Returns a comprehensive debt snapshot for a single customer including wallet debt,
    * subscription overuse debt, and (when V20_3_TRUE_ACCOUNTING=true) journal AR balance.
@@ -620,7 +670,7 @@ export class DebtService {
      */
     journalArDebtKd?: string;
     /** V20.3.1 — which source backed `totalDebt`. */
-    debtSource?: 'JOURNAL_AR' | 'WALLET';
+    debtSource?: 'JOURNAL_AR' | 'WALLET' | 'DEGRADED';
     /**
      * V20.3.2 — independent subscription dimension. True iff a
      * `CustomerSubscription` row exists with `status === ACTIVE`
@@ -654,7 +704,7 @@ export class DebtService {
     // journal-based audit endpoints.
     let journalArDebtKd: string | undefined;
     let totalDebt = walletTotalDebt;
-    let debtSource: 'JOURNAL_AR' | 'WALLET' = 'WALLET';
+    let debtSource: 'JOURNAL_AR' | 'WALLET' | 'DEGRADED' = 'WALLET';
     if (isV20_3TrueAccountingEnabled()) {
       try {
         const arBal =
@@ -666,8 +716,7 @@ export class DebtService {
           debtSource = 'JOURNAL_AR';
         }
       } catch {
-        // Journal read failures are non-fatal — fall back to the
-        // wallet figure so the customer 360 panel keeps rendering.
+        debtSource = 'DEGRADED';
       }
     }
 
@@ -1010,13 +1059,13 @@ export class DebtService {
 
     // ── Build rows for journal-discovered invoices ───────────────────────────
     const finalRows: UnpaidInvoiceRowDto[] = [];
-    let totalDebt = 0;
-    let totalPaid = 0;
-    let openDebt = 0;
-    let openShortfallDebt = 0;
-    let openSubDebt = 0;
-    let openUnpaidOrderBalance = 0;
-    let totalInvOrderSum = 0;
+    let totalDebt = new Prisma.Decimal(0);
+    let totalPaid = new Prisma.Decimal(0);
+    let openDebt = new Prisma.Decimal(0);
+    let openShortfallDebt = new Prisma.Decimal(0);
+    let openSubDebt = new Prisma.Decimal(0);
+    let openUnpaidOrderBalance = new Prisma.Decimal(0);
+    let totalInvOrderSum = new Prisma.Decimal(0);
     const orderInvTallied = new Set<string>();
     let openInvoiceCount = 0;
     const openCustomers = new Set<string>();
@@ -1033,13 +1082,13 @@ export class DebtService {
         grossDec.sub(rem),
         new Prisma.Decimal(0),
       );
-      const gross = grossDec.toNumber();
-      const remaining = rem.toNumber();
-      const paid = paidDec.toNumber();
+      const gross = grossDec;
+      const remaining = rem;
+      const paid = paidDec;
       const custOpen = Prisma.Decimal.max(
         customerTotalAr.get(o.customerId) ?? new Prisma.Decimal(0),
         new Prisma.Decimal(0),
-      ).toNumber();
+      );
 
       // SUBSCRIPTION_OVERUSE when sourceRef contains the keyword; else INVOICE_SHORTFALL.
       const debtSource: 'INVOICE_SHORTFALL' | 'SUBSCRIPTION_OVERUSE' = (
@@ -1073,13 +1122,13 @@ export class DebtService {
         null;
 
       let paymentStatus: 'UNPAID' | 'PARTIALLY_PAID' | 'PAID';
-      if (remaining <= TOL_N) paymentStatus = 'PAID';
-      else if (paid > TOL_N) paymentStatus = 'PARTIALLY_PAID';
+      if (remaining.lte(TOL_N)) paymentStatus = 'PAID';
+      else if (paid.gt(TOL_N)) paymentStatus = 'PARTIALLY_PAID';
       else paymentStatus = 'UNPAID';
 
       const issued = (o.completedAt ?? o.createdAt).toISOString();
       const subState = subscriptionStateByCustomer.get(o.customerId);
-      const isOpen = remaining > TOL_N;
+      const isOpen = remaining.gt(TOL_N);
 
       const row: UnpaidInvoiceRowDto = {
         orderId: o.id,
@@ -1113,17 +1162,20 @@ export class DebtService {
         subscriptionExpiresAt: subState?.subscriptionExpiresAtIso ?? null,
       };
 
-      totalDebt += gross;
-      totalPaid += paid;
+      totalDebt = totalDebt.plus(gross);
+      totalPaid = totalPaid.plus(paid);
       if (isOpen) {
-        openDebt += remaining;
+        openDebt = openDebt.plus(remaining);
         openInvoiceCount += 1;
         openCustomers.add(o.customerId);
-        if (debtSource === 'INVOICE_SHORTFALL') openShortfallDebt += remaining;
-        else openSubDebt += remaining;
+        if (debtSource === 'INVOICE_SHORTFALL') {
+          openShortfallDebt = openShortfallDebt.plus(remaining);
+        } else {
+          openSubDebt = openSubDebt.plus(remaining);
+        }
       }
       if (!orderInvTallied.has(o.id)) {
-        totalInvOrderSum += gross;
+        totalInvOrderSum = totalInvOrderSum.plus(gross);
         orderInvTallied.add(o.id);
       }
       finalRows.push(row);
@@ -1309,8 +1361,8 @@ export class DebtService {
       }
 
       for (const o of unlinkedUnpaid) {
-        const tot = Number.parseFloat(o.totalPrice.toString());
-        if (!Number.isFinite(tot) || tot <= 0) continue;
+        const tot = new Prisma.Decimal(o.totalPrice.toString());
+        if (tot.lte(0)) continue;
         const branchName =
           o.driver?.branch?.name?.trim() ||
           o.customer.originBranch?.name?.trim() ||
@@ -1331,7 +1383,7 @@ export class DebtService {
         const custOpen = Prisma.Decimal.max(
           customerTotalAr.get(o.customerId) ?? new Prisma.Decimal(0),
           new Prisma.Decimal(0),
-        ).toNumber();
+        );
         const subState = subscriptionStateByCustomer.get(o.customerId);
         const row: UnpaidInvoiceRowDto = {
           orderId: o.id,
@@ -1365,11 +1417,11 @@ export class DebtService {
           subscriptionExpiresAt: subState?.subscriptionExpiresAtIso ?? null,
         };
         finalRows.push(row);
-        totalDebt += tot;
-        totalInvOrderSum += tot;
+        totalDebt = totalDebt.plus(tot);
+        totalInvOrderSum = totalInvOrderSum.plus(tot);
         orderInvTallied.add(o.id);
-        openDebt += tot;
-        openUnpaidOrderBalance += tot;
+        openDebt = openDebt.plus(tot);
+        openUnpaidOrderBalance = openUnpaidOrderBalance.plus(tot);
         openInvoiceCount += 1;
         openCustomers.add(o.customerId);
       }
@@ -1396,7 +1448,10 @@ export class DebtService {
     const customerCount = new Set(
       withRunningRemaining.map((r) => r.customerId),
     ).size;
-    const avgDebtPerInvoice = invoiceCount > 0 ? totalDebt / invoiceCount : 0;
+    const avgDebtPerInvoice =
+      invoiceCount > 0
+        ? totalDebt.div(invoiceCount)
+        : new Prisma.Decimal(0);
 
     // ── Phase 6: market KPIs (identical — queries Order table) ───────────────
     const marketKpiScope =

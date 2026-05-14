@@ -29,7 +29,11 @@ export type Customer360FinancialsDto = {
    */
   canonicalDebtKd: string;
   /** Provenance — JOURNAL_AR | PARTIAL_PAYMENT_REMAINING | JOURNAL_AR_FALLBACK. */
-  canonicalDebtSource: 'JOURNAL_AR' | 'PARTIAL_PAYMENT_REMAINING' | 'JOURNAL_AR_FALLBACK';
+  canonicalDebtSource:
+    | 'JOURNAL_AR'
+    | 'PARTIAL_PAYMENT_REMAINING'
+    | 'JOURNAL_AR_FALLBACK'
+    | 'SNAPSHOT_FALLBACK';
   overpaymentBalanceKd: string;
   isBlocked: boolean;
   blockReason: string | null;

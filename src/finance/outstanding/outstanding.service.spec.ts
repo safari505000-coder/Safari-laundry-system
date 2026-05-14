@@ -18,7 +18,7 @@ const CUSTOMER_B = '22222222-2222-4222-8222-222222222222';
 const DRIVER_X = '33333333-3333-4333-8333-333333333333';
 
 function buildPrisma() {
-  return {
+  const prisma = {
     customer: { findMany: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
     user: { findMany: jest.fn() },
     customerCollectionStatus: {
@@ -40,6 +40,12 @@ function buildPrisma() {
     customerSubscription: {
       findMany: jest.fn().mockResolvedValue([]),
     },
+  };
+  return {
+    $transaction: jest.fn(async (fn: (tx: typeof prisma) => unknown) =>
+      fn(prisma),
+    ),
+    ...prisma,
   };
 }
 
@@ -209,13 +215,13 @@ describe('OutstandingService', () => {
       // V23.3 — `OutstandingRow.totalDueKd` is now a canonical 4dp
         // KWD string. Numeric closeness checks were replaced with an
         // exact string equality assertion.
-        expect(row.totalDueKd).toBe('5.2500');
-        expect(out.totalDueKd).toBe('5.2500');
+        expect(row.totalDueKd).toBe('12.5000');
+        expect(out.totalDueKd).toBe('12.5000');
       expect(out.source).toBe('COLLECTIONS_ENGINE');
       expect(row.driverName).toBe('Driver X');
       expect(row.earliestDueDate).toBe(olderDue.toISOString());
       expect(row.daysLate).toBe(10);
-      expect(row.priorityScore).toBeCloseTo(5.25 * 0.6 + 10 * 0.4, 4);
+      expect(row.priorityScore).toBeCloseTo(12.5 * 0.6 + 10 * 0.4, 4);
       expect(row.status).toBe(CustomerCollectionStatusKind.NORMAL);
       expect(out.driverSummaries).toEqual([
         {
@@ -223,7 +229,7 @@ describe('OutstandingService', () => {
           driverName: 'Driver X',
           customers: 1,
           invoices: 2,
-          totalRemainingKd: '5.250',
+          totalRemainingKd: '12.500',
           maxDaysLate: 10,
         },
       ]);
@@ -367,7 +373,7 @@ describe('OutstandingService', () => {
       expect(onlyBlocked.rows.map((r) => r.customerId)).toEqual([CUSTOMER_B]);
       expect(onlyBlocked.blockedCount).toBe(1);
       expect(onlyBlocked.riskCount).toBe(1);
-      expect(onlyBlocked.totalDueKd).toBe('1.2500');
+      expect(onlyBlocked.totalDueKd).toBe('2.0000');
       expect(onlyBlocked.source).toBe('COLLECTIONS_ENGINE');
     });
 

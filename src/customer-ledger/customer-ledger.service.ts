@@ -357,26 +357,14 @@ export class CustomerLedgerService {
    * or `UPDATE` on the same row will block until commit/rollback,
    * eliminating the race between concurrent wallet settlements.
    *
-   * Best-effort: errors (e.g. non-PG engine in tests, transient
-   * connection error) are swallowed and logged; the downstream
-   * `tx.customerWallet.update` is the final integrity gate.
+   * Lock failures are fatal. Continuing without this lock can
+   * double-spend wallet credit during concurrent settlement.
    */
   private async lockCustomerWalletForUpdateTx(
     tx: PrismaTx,
     walletId: string,
   ): Promise<void> {
-    try {
-      await tx.$queryRaw`SELECT 1 FROM "CustomerWallet" WHERE "id" = ${walletId}::uuid FOR UPDATE`;
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn(
-        '[WALLET_FOR_UPDATE_LOCK_FAILED]',
-        JSON.stringify({
-          walletId,
-          message: (err as Error)?.message ?? String(err),
-        }),
-      );
-    }
+    await tx.$queryRaw`SELECT 1 FROM "CustomerWallet" WHERE "id" = ${walletId}::uuid FOR UPDATE`;
   }
 
   private resolveDebtCategory(role: SafariRole): DebtEntityCategory {
@@ -473,13 +461,25 @@ export class CustomerLedgerService {
     // closes the window: any other transaction touching this wallet
     // will block until this one commits or rolls back.
     //
-    // Best-effort: silently skipped on engines that don't support
-    // it (e.g. tests with non-PG mocks). The downstream `update`
-    // remains the final integrity gate.
     await this.lockCustomerWalletForUpdateTx(tx, wallet.id);
 
-    const balanceMinor = toMinorFromFixed4(wallet.balance);
-    const debtMinor = toMinorFromFixed4(wallet.debt);
+    const freshOrder = await tx.order.findUnique({
+      where: { id: orderId },
+      select: { walletSettledAt: true },
+    });
+    if (freshOrder?.walletSettledAt) {
+      return;
+    }
+
+    const lockedWallet = await tx.customerWallet.findUnique({
+      where: { id: wallet.id },
+    });
+    if (!lockedWallet) {
+      throw new NotFoundException('Customer wallet not found');
+    }
+
+    const balanceMinor = toMinorFromFixed4(lockedWallet.balance);
+    const debtMinor = toMinorFromFixed4(lockedWallet.debt);
 
     // V20.1 — Wallet drain hotfix.
     //
@@ -552,6 +552,19 @@ export class CustomerLedgerService {
           ? String(debtSettledRawEarly)
           : null;
     if (debtSettledStr) {
+      const gatewayConfirmedAmount =
+        typeof extraMetadata?.gatewayConfirmedAmountKd === 'string'
+          ? extraMetadata.gatewayConfirmedAmountKd.trim()
+          : null;
+      const trustedDebtSettlement =
+        extraMetadata?.debtSettlementViaCallCenter === true ||
+        (extraMetadata?.debtSettlementViaLink === true &&
+          gatewayConfirmedAmount === debtSettledStr);
+      if (!trustedDebtSettlement) {
+        throw new BadRequestException(
+          'debtSettled requires a verified gateway receipt or call-center collection path',
+        );
+      }
       const declaredSettledMinor = toMinorFromFixed4(
         new Prisma.Decimal(debtSettledStr),
       );
@@ -610,9 +623,9 @@ export class CustomerLedgerService {
         orderId,
         subscriptionId: activeSubscription?.id ?? null,
         amount: o.totalPrice,
-        balanceBefore: wallet.balance,
+        balanceBefore: lockedWallet.balance,
         balanceAfter: this.decimalFromMinor(newBalanceMinor),
-        debtBefore: wallet.debt,
+        debtBefore: lockedWallet.debt,
         debtAfter: this.decimalFromMinor(newDebtMinor),
         performedById: performedByUserId,
         metadata: {
@@ -1279,43 +1292,9 @@ export class CustomerLedgerService {
         });
       }
 
-      // Back-compat: also emit the legacy POS_SALE_COMPLETED / DEBT_ADJUSTMENT
-      // entries that downstream GL consumers currently depend on (Unified Ledger,
-      // Executive P&L). These will be retired in a future migration after all
-      // consumers switch to the WALLET_FUNDING source ref.
-      if (priceMinor > 0n && !accrueSaleOnAccount) {
-        await this.generalLedger.append(tx, {
-          entryType: GeneralLedgerEntryType.POS_SALE_COMPLETED,
-          amount: plan.salePrice,
-          memo: 'Subscription activation — plan sale (immediate collection)',
-          customerId: params.customerId,
-          actorUserId: params.performedByUserId,
-          metadata: {
-            posPaymentMethod: collectionPaymentMethod,
-            source: 'CALL_CENTER_SUBSCRIPTION_ACTIVATION',
-            subscriptionId: newSubscription.id,
-            planId: plan.id,
-            v25_supersededBy: `WALLET_FUNDING:SUBSCRIPTION:${newSubscription.id}`,
-          },
-        });
-      }
-      if (accrueSaleOnAccount && priceMinor > 0n) {
-        await this.generalLedger.append(tx, {
-          entryType: GeneralLedgerEntryType.DEBT_ADJUSTMENT,
-          amount: plan.salePrice.toString(),
-          memo: 'Subscription activation — plan sale on account (wallet debt)',
-          customerId: params.customerId,
-          actorUserId: params.performedByUserId,
-          metadata: {
-            event: 'SUBSCRIPTION_PLAN_DEFERRED',
-            source: 'CALL_CENTER_SUBSCRIPTION_ACTIVATION',
-            posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT,
-            subscriptionId: newSubscription.id,
-            planId: plan.id,
-            v25_supersededBy: `WALLET_FUNDING:SUBSCRIPTION:${newSubscription.id}`,
-          },
-        });
-      }
+      // V25 banking-core fix: the balanced WALLET_FUNDING journal entry above
+      // is the single financial write for subscription funding. Legacy GL
+      // back-compat writes were removed because they double-counted revenue KPIs.
     }
 
     // V19.7.4 — FIFO invoice auto-closure (opt-in via `autoCloseInvoices`).
@@ -1931,7 +1910,7 @@ export class CustomerLedgerService {
                 where: { id: inv.id },
                 data: {
                   cashStatus: CashStatus.PAID_TO_DRIVER,
-                  posPaymentMethod: PosPaymentMethod.CASH,
+                  posPaymentMethod: params.paymentMethod,
                 },
               });
               closedInvoiceIds.push(inv.id);

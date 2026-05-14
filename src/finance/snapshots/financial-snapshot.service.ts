@@ -389,10 +389,7 @@ export class FinancialSnapshotService {
       where: {
         customerId,
         status: { not: OrderStatus.CANCELED },
-        OR: [
-          { cashStatus: CashStatus.UNPAID },
-          { posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT },
-        ],
+        cashStatus: CashStatus.UNPAID,
       },
       select: {
         id: true,

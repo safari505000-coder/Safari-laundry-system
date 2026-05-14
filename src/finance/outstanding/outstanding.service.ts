@@ -256,15 +256,8 @@ export class OutstandingService {
         }
       }
       const visibleDebt = visibleDebtByCustomer.get(customerId);
-      const visibleRemainingDec = new Prisma.Decimal(
-        visibleDebt?.remainingDebtKd ?? '0',
-      );
-      // V25 — prevent UI undercount when snapshot/journal overlay lags behind
-      // real-time per-order remaining balances (e.g. freshly issued invoice).
-      // Keep visible debt as source when it is present and > tolerance.
-      const rowRemainingDec = visibleRemainingDec.greaterThan(remainingTol)
-        ? visibleRemainingDec
-        : remainingDueDec;
+      void visibleDebt;
+      const rowRemainingDec = remainingDueDec;
       const totalDueKd = round4Kd(rowRemainingDec);
       const remainingDueKd = round4Kd(rowRemainingDec);
       const remainingDueDecRounded = rowRemainingDec.toDecimalPlaces(
@@ -316,12 +309,20 @@ export class OutstandingService {
 
     const totals = {
       totalInvoices: 0,
+      totalDueDec: new Prisma.Decimal(0),
+      remainingDueDec: new Prisma.Decimal(0),
       blockedCount: 0,
       lateCount: 0,
       riskCount: 0,
     };
     for (const row of filtered) {
       totals.totalInvoices += row.invoicesCount;
+      totals.totalDueDec = totals.totalDueDec.plus(
+        new Prisma.Decimal(row.totalDueKd),
+      );
+      totals.remainingDueDec = totals.remainingDueDec.plus(
+        new Prisma.Decimal(row.remainingDueKd ?? '0'),
+      );
       if (row.blocked) totals.blockedCount += 1;
       if (row.status === CustomerCollectionStatusKind.LATE) {
         totals.lateCount += 1;
@@ -333,11 +334,11 @@ export class OutstandingService {
 
     this.traceDebtTotals({
       fromOrdersService: canonicalTotalDueKd,
-      finalReturned: canonicalTotalDueKd,
+      finalReturned: totals.totalDueDec.toFixed(4),
     });
     this.assertCanonicalTotal({
       canonicalTotalDueKd,
-      finalReturned: canonicalTotalDueKd,
+      finalReturned: totals.totalDueDec.toFixed(4),
     });
 
     return {
@@ -345,8 +346,8 @@ export class OutstandingService {
       totalCustomers: filtered.length,
       totalInvoices: totals.totalInvoices,
       driverSummaries: computeCanonicalOutstandingDriverSummaries(filtered),
-      totalDueKd: canonicalTotalDueKd,
-      remainingDueKd: canonicalRemainingDueKd,
+      totalDueKd: totals.totalDueDec.toFixed(4),
+      remainingDueKd: totals.remainingDueDec.toFixed(4),
       source: 'COLLECTIONS_ENGINE',
       blockedCount: totals.blockedCount,
       lateCount: totals.lateCount,
@@ -428,32 +429,44 @@ export class OutstandingService {
     const blockedNote = (input.body.note ?? '').trim() || null;
     const wantBlocked = Boolean(input.body.blocked);
 
-    const after = await this.prisma.customerCollectionStatus.upsert({
-      where: { customerId: input.customerId },
-      create: {
-        customerId: input.customerId,
-        status: input.body.status,
-        blocked: wantBlocked,
-        note: blockedNote,
-        updatedById: input.actorUserId,
-      },
-      update: {
-        status: input.body.status,
-        blocked: wantBlocked,
-        note: blockedNote,
-        updatedById: input.actorUserId,
-      },
+    const after = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.customerCollectionStatus.upsert({
+        where: { customerId: input.customerId },
+        create: {
+          customerId: input.customerId,
+          status: input.body.status,
+          blocked: wantBlocked,
+          note: blockedNote,
+          updatedById: input.actorUserId,
+        },
+        update: {
+          status: input.body.status,
+          blocked: wantBlocked,
+          note: blockedNote,
+          updatedById: input.actorUserId,
+        },
+      });
+
+      if (wantBlocked && !customer.isBlocked) {
+        await tx.customer.update({
+          where: { id: input.customerId },
+          data: {
+            isBlocked: true,
+            blockReason: blockedNote ?? 'حظر يدوي - مركز الاتصال',
+            blockedAt: new Date(),
+          },
+        });
+      } else if (!wantBlocked && customer.isBlocked) {
+        await tx.customer.update({
+          where: { id: input.customerId },
+          data: { isBlocked: false, blockReason: null, blockedAt: null },
+        });
+      }
+
+      return updated;
     });
 
     if (wantBlocked && !customer.isBlocked) {
-      await this.prisma.customer.update({
-        where: { id: input.customerId },
-        data: {
-          isBlocked: true,
-          blockReason: blockedNote ?? 'حظر يدوي - مركز الاتصال',
-          blockedAt: new Date(),
-        },
-      });
       this.auditLogs.logFinancialEvent({
         action: 'CUSTOMER_BLOCKED',
         customerId: input.customerId,
@@ -463,10 +476,6 @@ export class OutstandingService {
         changes: { reason: blockedNote },
       });
     } else if (!wantBlocked && customer.isBlocked) {
-      await this.prisma.customer.update({
-        where: { id: input.customerId },
-        data: { isBlocked: false, blockReason: null, blockedAt: null },
-      });
       this.auditLogs.logFinancialEvent({
         action: 'CUSTOMER_UNBLOCKED',
         customerId: input.customerId,

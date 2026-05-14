@@ -67,12 +67,9 @@ function makeTxFor(opts: {
     writes,
     walletState,
     tx: {
-      // V20.1-v2 — Phase 13 lock helper uses tx.$queryRaw FOR UPDATE.
-      // Mock returns an empty result set; the helper swallows errors
-      // anyway, but having this here keeps stderr clean.
       $queryRaw: jest.fn().mockResolvedValue([]),
       order: {
-        findUnique: jest.fn(),
+        findUnique: jest.fn().mockResolvedValue({ walletSettledAt: null }),
         update: jest.fn().mockResolvedValue({ id: ORDER_ID }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
@@ -97,7 +94,11 @@ function makeTxFor(opts: {
           return Promise.resolve({ ...walletState, id: WALLET_ID });
         }),
         findUnique: jest.fn(() =>
-          Promise.resolve({ ...walletState, id: WALLET_ID }),
+          Promise.resolve({
+            ...walletState,
+            id: WALLET_ID,
+            customerId: CUSTOMER_ID,
+          }),
         ),
       },
       customerSubscription: {
@@ -474,6 +475,131 @@ describe('V20.1 — wallet absorption + drain hotfix', () => {
 
     expect(walletState.balance.toFixed(4)).toBe('0.0000');
     expect(walletState.debt.toFixed(4)).toBe('20.0000');
+  });
+
+  it('re-reads walletSettledAt after wallet lock and skips stale concurrent settlement', async () => {
+    const { tx, walletState } = makeTxFor({
+      walletBalance: '5.0000',
+      walletDebt: '0.0000',
+      totalPrice: '20.0000',
+      posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT,
+    });
+    (tx.order.findUnique as jest.Mock).mockResolvedValueOnce({
+      walletSettledAt: new Date(),
+    });
+    const { service, journal, generalLedger } = makeService();
+
+    await service.applyOrderWalletSettlementForCompletedOrder(
+      tx as never,
+      ORDER_ID,
+      ACTOR_ID,
+      {
+        customerId: CUSTOMER_ID,
+        totalPrice: new Prisma.Decimal('20.0000'),
+        posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT,
+        walletSettledAt: null,
+        skipPerformerLookup: true,
+      },
+    );
+
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(walletState.balance.toFixed(4)).toBe('5.0000');
+    expect(walletState.debt.toFixed(4)).toBe('0.0000');
+    expect(tx.customerWallet.update).not.toHaveBeenCalled();
+    expect(tx.transactionHistory.create).not.toHaveBeenCalled();
+    expect(journal.appendWalletAbsorptionEntrySafe).not.toHaveBeenCalled();
+    expect(generalLedger.append).not.toHaveBeenCalled();
+  });
+
+  it('propagates wallet lock failures instead of continuing unlocked', async () => {
+    const { tx } = makeTxFor({
+      walletBalance: '5.0000',
+      walletDebt: '0.0000',
+      totalPrice: '20.0000',
+      posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT,
+    });
+    (tx.$queryRaw as jest.Mock).mockRejectedValueOnce(new Error('lock failed'));
+    const { service } = makeService();
+
+    await expect(
+      service.applyOrderWalletSettlementForCompletedOrder(
+        tx as never,
+        ORDER_ID,
+        ACTOR_ID,
+        {
+          customerId: CUSTOMER_ID,
+          totalPrice: new Prisma.Decimal('20.0000'),
+          posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT,
+          walletSettledAt: null,
+          skipPerformerLookup: true,
+        },
+      ),
+    ).rejects.toThrow('lock failed');
+
+    expect(tx.customerWallet.update).not.toHaveBeenCalled();
+    expect(tx.transactionHistory.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects caller-supplied debtSettled without trusted gateway or call-center proof', async () => {
+    const { tx } = makeTxFor({
+      walletBalance: '0.0000',
+      walletDebt: '10.0000',
+      totalPrice: '10.0000',
+      posPaymentMethod: PosPaymentMethod.ONLINE,
+    });
+    const { service } = makeService();
+
+    await expect(
+      service.applyOrderWalletSettlementForCompletedOrder(
+        tx as never,
+        ORDER_ID,
+        ACTOR_ID,
+        {
+          customerId: CUSTOMER_ID,
+          totalPrice: new Prisma.Decimal('10.0000'),
+          posPaymentMethod: PosPaymentMethod.ONLINE,
+          walletSettledAt: null,
+          skipPerformerLookup: true,
+        },
+        { debtSettled: '10.0000' },
+      ),
+    ).rejects.toThrow(
+      'debtSettled requires a verified gateway receipt or call-center collection path',
+    );
+
+    expect(tx.customerWallet.update).not.toHaveBeenCalled();
+    expect(tx.transactionHistory.create).not.toHaveBeenCalled();
+  });
+
+  it('accepts gateway debtSettled only when it matches confirmed gateway amount', async () => {
+    const { tx, walletState } = makeTxFor({
+      walletBalance: '0.0000',
+      walletDebt: '10.0000',
+      totalPrice: '10.0000',
+      posPaymentMethod: PosPaymentMethod.ONLINE,
+    });
+    const { service } = makeService();
+
+    await service.applyOrderWalletSettlementForCompletedOrder(
+      tx as never,
+      ORDER_ID,
+      ACTOR_ID,
+      {
+        customerId: CUSTOMER_ID,
+        totalPrice: new Prisma.Decimal('10.0000'),
+        posPaymentMethod: PosPaymentMethod.ONLINE,
+        walletSettledAt: null,
+        skipPerformerLookup: true,
+      },
+      {
+        debtSettled: '10.0000',
+        debtSettlementViaLink: true,
+        gatewayConfirmedAmountKd: '10.0000',
+      },
+    );
+
+    expect(walletState.debt.toFixed(4)).toBe('0.0000');
+    expect(tx.transactionHistory.create).toHaveBeenCalledTimes(1);
   });
 });
 

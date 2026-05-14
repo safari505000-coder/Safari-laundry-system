@@ -180,4 +180,39 @@ export class JournalSourceService {
   ): Promise<Prisma.Decimal> {
     return this.getCustomerOutstandingFromJournal(customerId);
   }
+
+  /**
+   * Batch variant for journal AR debt reads. Reads account 1300 once
+   * and groups by customerId so list pages do not issue one query per row.
+   */
+  async getCustomerDebtFromJournalARBatch(
+    customerIds: string[],
+  ): Promise<Map<string, Prisma.Decimal>> {
+    const out = new Map<string, Prisma.Decimal>();
+    const ids = Array.from(new Set(customerIds.filter((id) => id?.trim())));
+    for (const id of ids) out.set(id, new Prisma.Decimal(0));
+    if (ids.length === 0) return out;
+
+    const lines = await this.prisma.journalLine.findMany({
+      where: {
+        entry: { customerId: { in: ids } },
+        account: { code: JOURNAL_ACCOUNTS.ACCOUNTS_RECEIVABLE },
+      },
+      select: {
+        debit: true,
+        credit: true,
+        entry: { select: { customerId: true } },
+      },
+    });
+    for (const line of lines) {
+      const customerId = line.entry.customerId;
+      if (!customerId) continue;
+      const current = out.get(customerId) ?? new Prisma.Decimal(0);
+      out.set(customerId, current.plus(line.debit).minus(line.credit));
+    }
+    for (const [customerId, balance] of out) {
+      if (balance.lt(0)) out.set(customerId, new Prisma.Decimal(0));
+    }
+    return out;
+  }
 }

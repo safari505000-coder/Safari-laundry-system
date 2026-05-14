@@ -120,6 +120,19 @@ describe('DoubleEntryJournalService', () => {
     );
   });
 
+  it('rejects unknown payment methods instead of defaulting to cash', async () => {
+    await expect(
+      service.mirrorDebtLedgerEntry(mockDb() as never, {
+        source: DebtSource.PAYMENT,
+        amount: '1.0000',
+        sourceRef: 'PAYMENT:UNKNOWN:test',
+        actorUserId,
+        customerId,
+        paymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT,
+      }),
+    ).rejects.toThrow('UNKNOWN_PAYMENT_ASSET_ACCOUNT');
+  });
+
   it('requires actor on journal writes', async () => {
     await expect(
       service.mirrorDebtLedgerEntry(mockDb() as never, {
@@ -130,6 +143,70 @@ describe('DoubleEntryJournalService', () => {
         customerId,
       }),
     ).rejects.toThrow('JOURNAL_ACTOR_REQUIRED');
+  });
+
+  it('requires deterministic sourceRef on debt-ledger mirror writes', async () => {
+    await expect(
+      service.mirrorDebtLedgerEntry(mockDb() as never, {
+        source: DebtSource.PAYMENT,
+        amount: '1.0000',
+        actorUserId,
+        customerId,
+      }),
+    ).rejects.toThrow('JOURNAL_SOURCE_REF_REQUIRED');
+  });
+
+  it('treats repeated sourceRef appendBalanced calls as idempotent', async () => {
+    const db = mockDb();
+    db.journalEntry.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'journal-1' });
+
+    const input = {
+      source: 'TEST',
+      sourceRef: 'TEST:IDEMPOTENT',
+      actorUserId,
+      customerId,
+      lines: [
+        { accountCode: JOURNAL_ACCOUNTS.ACCOUNTS_RECEIVABLE, debit: '1.0000' },
+        { accountCode: JOURNAL_ACCOUNTS.REVENUE, credit: '1.0000' },
+      ],
+    };
+
+    const first = await service.appendBalanced(db as never, input);
+    const second = await service.appendBalanced(db as never, input);
+
+    expect(first).toEqual({ id: 'journal-1' });
+    expect(second).toEqual({ id: 'journal-1' });
+    expect(db.journalEntry.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('treats P2002 on sourceRef as idempotent success in safe mirror writes', async () => {
+    const db = mockDb();
+    const duplicate = new Prisma.PrismaClientKnownRequestError(
+      'Unique constraint failed on the fields: (`sourceRef`)',
+      {
+        code: 'P2002',
+        clientVersion: 'test',
+        meta: { target: ['sourceRef'] },
+      },
+    );
+    db.journalEntry.create.mockRejectedValueOnce(duplicate);
+    db.journalEntry.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'journal-existing' });
+
+    const result = await service.mirrorDebtLedgerEntrySafe(db as never, {
+      source: DebtSource.PAYMENT,
+      amount: '1.0000',
+      sourceRef: 'PAYMENT:CASH:IDEMPOTENT',
+      actorUserId,
+      customerId,
+      paymentMethod: PosPaymentMethod.CASH,
+    });
+
+    expect(result).toEqual({ id: 'journal-existing' });
+    expect(db.journalEntry.create).toHaveBeenCalledTimes(1);
   });
 });
 

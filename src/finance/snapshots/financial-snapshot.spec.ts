@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { CashStatus, OrderStatus, PosPaymentMethod, Prisma } from '@prisma/client';
 import { FinancialSnapshotService } from './financial-snapshot.service';
 
 /**
@@ -48,6 +48,16 @@ function makePrisma(now: Date) {
       dueDate: new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000),
       cashStatus: 'UNPAID' as const,
       posPaymentMethod: null,
+    },
+    {
+      id: O_FULLY_PAID,
+      customerId: CUSTOMER,
+      totalPrice: dec('50.0000'),
+      createdAt: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000),
+      dueDate: new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000),
+      cashStatus: CashStatus.PAID_TO_DRIVER,
+      posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT,
+      status: OrderStatus.COMPLETED,
     },
   ];
 
@@ -101,7 +111,15 @@ function makePrisma(now: Date) {
         if (ids) {
           return orders.filter((o) => ids.includes(o.id));
         }
-        return orders;
+        return orders.filter((o) => {
+          if (
+            (where as { cashStatus?: CashStatus }).cashStatus &&
+            o.cashStatus !== (where as { cashStatus: CashStatus }).cashStatus
+          ) {
+            return false;
+          }
+          return true;
+        });
       }),
     },
     debtLedgerEntry: {

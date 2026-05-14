@@ -301,8 +301,13 @@ export class CommissionEarningService {
    * those have already hit a Payroll row and require a manual
    * adjustment entry by Owner.
    */
-  async cancelForOrder(orderId: string, reason: string): Promise<number> {
-    const res = await this.prisma.commissionPayout.updateMany({
+  async cancelForOrder(
+    orderId: string,
+    reason: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<number> {
+    const db = tx ?? this.prisma;
+    const res = await db.commissionPayout.updateMany({
       where: {
         sourceOrderId: orderId,
         status: { not: CommissionPayoutStatus.PAID },
@@ -323,7 +328,7 @@ export class CommissionEarningService {
     mode: CommissionMode,
     earnerRole: SafariRole,
   ) {
-    return db.commissionRule.findMany({
+    const rules = await db.commissionRule.findMany({
       where: {
         mode,
         isActive: true,
@@ -331,6 +336,8 @@ export class CommissionEarningService {
       },
       orderBy: [{ role: 'desc' }, { updatedAt: 'desc' }],
     });
+    const specific = rules.filter((rule) => rule.role === earnerRole);
+    return specific.length > 0 ? specific : rules.filter((rule) => rule.role == null);
   }
 
   /**

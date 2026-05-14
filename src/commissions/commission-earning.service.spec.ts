@@ -55,7 +55,7 @@ function makePrisma() {
     order: { findUnique: jest.fn() },
     user: { findUnique: jest.fn() },
     commissionRule: { findMany: jest.fn() },
-    commissionPayout: { create: jest.fn() },
+    commissionPayout: { create: jest.fn(), updateMany: jest.fn() },
   };
 }
 
@@ -309,5 +309,42 @@ describe('CommissionEarningService.earnForJournalPayment()', () => {
     await svc.earnForJournalPayment(JOURNAL_ENTRY_ID);
 
     expect(prisma.commissionPayout.create).not.toHaveBeenCalled();
+  });
+
+  it('uses role-specific commission rules instead of also applying catch-all rules', async () => {
+    const prisma = makePrisma();
+    const svc = makeService(prisma, makeSettings(), makePaymentMethodFees());
+
+    prisma.journalEntry.findUnique.mockResolvedValue(makeJournalEntry());
+    prisma.order.findUnique.mockResolvedValue({ driverId: DRIVER_ID, transferredFromDriverId: null });
+    prisma.user.findUnique.mockResolvedValue({ id: DRIVER_ID, safariRole: SafariRole.DRIVER });
+    prisma.commissionRule.findMany.mockResolvedValue([
+      makeRule({ id: 'catch-all', role: null, percentage: new Prisma.Decimal('3') }),
+      makeRule({ id: 'driver-only', role: SafariRole.DRIVER, percentage: new Prisma.Decimal('5') }),
+    ]);
+    prisma.commissionPayout.create.mockResolvedValue({});
+
+    await svc.earnForJournalPayment(JOURNAL_ENTRY_ID);
+
+    expect(prisma.commissionPayout.create).toHaveBeenCalledTimes(1);
+    expect(prisma.commissionPayout.create.mock.calls[0][0].data.ruleId).toBe(
+      'driver-only',
+    );
+  });
+
+  it('cancels commissions using the caller transaction when supplied', async () => {
+    const prisma = makePrisma();
+    const tx = {
+      commissionPayout: {
+        updateMany: jest.fn().mockResolvedValue({ count: 2 }),
+      },
+    };
+    const svc = makeService(prisma, makeSettings(), makePaymentMethodFees());
+
+    const count = await svc.cancelForOrder(ORDER_ID, 'voided', tx as never);
+
+    expect(count).toBe(2);
+    expect(tx.commissionPayout.updateMany).toHaveBeenCalledTimes(1);
+    expect(prisma.commissionPayout.updateMany).not.toHaveBeenCalled();
   });
 });

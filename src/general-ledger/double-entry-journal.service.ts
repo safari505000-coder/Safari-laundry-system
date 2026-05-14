@@ -1004,6 +1004,18 @@ export class DoubleEntryJournalService {
     try {
       return await this.mirrorDebtLedgerEntry(db, input);
     } catch (err) {
+      const sourceRef = input.sourceRef?.trim();
+      if (
+        sourceRef &&
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        const existing = await db.journalEntry.findUnique({
+          where: { sourceRef },
+          select: { id: true },
+        });
+        if (existing) return existing;
+      }
       const message = (err as Error)?.message ?? String(err);
       const errorCode =
         err instanceof Prisma.PrismaClientKnownRequestError
@@ -1435,7 +1447,7 @@ export class DoubleEntryJournalService {
       return JOURNAL_ACCOUNTS.BANK_ONLINE;
     }
     if (method === PosPaymentMethod.CASH) return JOURNAL_ACCOUNTS.CASH;
-    return JOURNAL_ACCOUNTS.CASH;
+    throw new Error(`UNKNOWN_PAYMENT_ASSET_ACCOUNT:${method}`);
   }
 
   /**
@@ -1585,9 +1597,10 @@ export class DoubleEntryJournalService {
     const amount = this.decimal(input.amount);
     if (amount.lessThanOrEqualTo(0)) return null;
 
-    const sourceRef =
-      input.sourceRef?.trim() ||
-      `JOURNAL:${input.source}:${input.customerId}:${input.orderId ?? 'CUSTOMER'}:${Date.now()}`;
+    const sourceRef = input.sourceRef?.trim();
+    if (!sourceRef) {
+      throw new Error('JOURNAL_SOURCE_REF_REQUIRED');
+    }
 
     if (input.source === DebtSource.PAYMENT || input.source === 'PAYMENT') {
       // V20.1 — Wallet-absorption PAYMENTs are recorded in DebtLedgerEntry
@@ -2125,10 +2138,11 @@ export class DoubleEntryJournalService {
       },
       select: { debit: true, credit: true },
     });
-    return rows.reduce(
+    const balance = rows.reduce(
       (sum, row) => sum.add(row.debit).sub(row.credit),
       new Prisma.Decimal(0),
     );
+    return balance.lessThan(0) ? new Prisma.Decimal(0) : balance;
   }
 
   /**
@@ -2633,7 +2647,7 @@ export class DoubleEntryJournalService {
     if (ref.startsWith('ADJUSTMENT:') || note.includes('void') || note.includes('edit')) {
       return JOURNAL_ACCOUNTS.ADJUSTMENTS;
     }
-    return JOURNAL_ACCOUNTS.CASH;
+    throw new Error(`UNKNOWN_PAYMENT_ASSET_ACCOUNT:${method || 'NONE'}`);
   }
 
   private decimal(value: Prisma.Decimal | string | number): Prisma.Decimal {

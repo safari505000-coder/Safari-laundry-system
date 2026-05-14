@@ -36,7 +36,11 @@ export type CustomerVisibleDebt = {
   lastPaymentAt: string | null;
   lastInvoiceAt: string | null;
   /** Provenance — was the canonical figure backed by Journal AR or remaining-balance? */
-  canonicalSource: 'JOURNAL_AR' | 'PARTIAL_PAYMENT_REMAINING' | 'JOURNAL_AR_FALLBACK';
+  canonicalSource:
+    | 'JOURNAL_AR'
+    | 'PARTIAL_PAYMENT_REMAINING'
+    | 'JOURNAL_AR_FALLBACK'
+    | 'SNAPSHOT_FALLBACK';
   /** True iff the row was served from the read-side projection. */
   fromSnapshot: boolean;
   /** When the snapshot row was last refreshed (null when computed live). */

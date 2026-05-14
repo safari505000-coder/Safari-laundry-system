@@ -80,6 +80,11 @@ function makeJournalSource() {
       walletLiabilityKd: dec('0'),
     })),
     getCustomerDebtFromJournalAR: jest.fn(async () => dec('170.0000')),
+    getCustomerDebtFromJournalARBatch: jest.fn(async (ids: string[]) => {
+      const m = new Map<string, Prisma.Decimal>();
+      for (const id of ids) m.set(id, dec('170.0000'));
+      return m;
+    }),
   };
 }
 
@@ -202,6 +207,9 @@ describe('DebtVisibilityService', () => {
     const prisma = makePrisma();
     const journal = makeJournalSource();
     journal.getCustomerDebtFromJournalAR.mockResolvedValueOnce(dec('5.2500'));
+    journal.getCustomerDebtFromJournalARBatch.mockResolvedValueOnce(
+      new Map([[CUST, dec('5.2500')]]),
+    );
     const svc = new DebtVisibilityService(
       prisma as never,
       snap as never,

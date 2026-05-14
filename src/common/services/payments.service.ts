@@ -1934,6 +1934,7 @@ export class PaymentsService implements OnModuleInit {
           // is the magic key the green card sums; it MUST be a string so
           // `extractDebtSettled()` picks it up.
           debtSettled: order.totalPrice.toString(),
+          gatewayConfirmedAmountKd: order.totalPrice.toString(),
           debtSettledFlag: true,
           debtSettlementViaLink: true,
           trackId: inquiryCapableTrackId ?? order.posGatewayTrackId,

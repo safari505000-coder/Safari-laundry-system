@@ -121,12 +121,19 @@ export class DebtVisibilityService {
     const projections =
       await this.snapshots.findExistingByCustomerIds(customerIds);
     const missing: string[] = [];
+    const snapshotHits: CustomerVisibleDebt[] = [];
     for (const id of customerIds) {
       const row = projections.get(id);
       if (row?.canonicalSource === 'JOURNAL_AR') {
-        out.set(id, await this.overlayLiveJournalDebt(this.mapSnapshotToVisibleDebt(row)));
+        snapshotHits.push(this.mapSnapshotToVisibleDebt(row));
       } else {
         missing.push(id);
+      }
+    }
+    if (snapshotHits.length > 0) {
+      const overlaid = await this.overlayLiveJournalDebtBatch(snapshotHits);
+      for (const debt of overlaid) {
+        out.set(debt.customerId, debt);
       }
     }
     if (missing.length > 0) {
@@ -397,7 +404,37 @@ export class DebtVisibilityService {
         canonicalSource: 'JOURNAL_AR',
       };
     } catch {
-      return debt;
+      return {
+        ...debt,
+        canonicalSource: 'SNAPSHOT_FALLBACK',
+      };
+    }
+  }
+
+  private async overlayLiveJournalDebtBatch(
+    debts: CustomerVisibleDebt[],
+  ): Promise<CustomerVisibleDebt[]> {
+    if (debts.length === 0) return [];
+    try {
+      const balances = await this.journalSource.getCustomerDebtFromJournalARBatch(
+        debts.map((debt) => debt.customerId),
+      );
+      return debts.map((debt) => {
+        const journalAr = balances.get(debt.customerId) ?? new Prisma.Decimal(0);
+        const remainingDebtKd = journalAr.toFixed(4);
+        return {
+          ...debt,
+          remainingDebtKd,
+          journalArBalanceKd: remainingDebtKd,
+          hasDebt: journalAr.greaterThan(TOL),
+          canonicalSource: 'JOURNAL_AR',
+        };
+      });
+    } catch {
+      return debts.map((debt) => ({
+        ...debt,
+        canonicalSource: 'SNAPSHOT_FALLBACK',
+      }));
     }
   }
 
