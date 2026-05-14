@@ -4,7 +4,6 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { App } from 'supertest/types';
-import { AppModule } from '../../app.module';
 import { GlobalExceptionFilter } from '../../common/filters/global-exception.filter';
 import { BrandingResponseInterceptor } from '../../common/interceptors/branding-response.interceptor';
 import { HttpAdapterHost } from '@nestjs/core';
@@ -16,6 +15,8 @@ export async function createTestApp(): Promise<INestApplication<App>> {
   process.env.DATABASE_URL =
     process.env.DATABASE_URL ??
     'postgresql://user:pass@localhost:5432/safari_erp_test';
+
+  const { AppModule } = await import('../../app.module');
 
   const moduleFixture: TestingModule = await Test.createTestingModule({
     imports: [AppModule],

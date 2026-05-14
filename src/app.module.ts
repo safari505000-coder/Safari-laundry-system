@@ -77,6 +77,23 @@ import { SubscribersModule } from './subscribers/subscribers.module';
 import { UsersModule } from './users/users.module';
 import { VehicleExpensesModule } from './vehicle-expenses/vehicle-expenses.module';
 import { VerifyModule } from './verify/verify.module';
+/**
+ * Circular module edges reported by madge (do not refactor here — use forwardRef / domain
+ * splits in a dedicated sprint):
+ *   npx madge --circular --extensions ts ./src/app.module.ts
+ *
+ * 1) payments.service → customer-ledger.service → orders.service
+ * 2) customer-ledger.service → orders.service
+ * 3) orders.service → outstanding.service
+ * 4) auth.module → finance.module → payments.module → customer-ledger.module → orders.module
+ * 5) customer-ledger.module → orders.module
+ * 6) auth.module → finance.module → payments.module → customer-ledger.module → orders.module
+ *    → debt-visibility.module
+ * 7) orders.module → outstanding.module
+ * 8) payments.module → customer-ledger.module → orders.module
+ * 9) auth.module → finance.module → payments.module → customer-ledger.module → orders.module
+ *    → serials.module
+ */
 const webDistPath = join(process.cwd(), 'web', 'dist');
 /** Set `DISABLE_SPA_STATIC=1` to rule out `@nestjs/serve-static` when debugging API-only 404s. */
 const serveSpaFromApi =
@@ -96,10 +113,13 @@ const spaStaticModule = serveSpaFromApi
     ]
   : [];
 
+const scheduleModuleImports =
+  process.env.NODE_ENV !== 'test' ? [ScheduleModule.forRoot()] : [];
+
 @Module({
   imports: [
     SecretsModule,
-    ScheduleModule.forRoot(),
+    ...scheduleModuleImports,
     // V19.x — In-process pub/sub used for the dispatch auto-completion
     // hook (OrdersService emits → DispatchService listens). Wildcard
     // matching is enabled so future modules can subscribe to namespaced

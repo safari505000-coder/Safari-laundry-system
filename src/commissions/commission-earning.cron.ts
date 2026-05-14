@@ -59,6 +59,7 @@ export class CommissionEarningCron {
 
   @Cron(CronExpression.EVERY_10_MINUTES)
   async scan(): Promise<void> {
+    if (process.env.NODE_ENV === 'test') return;
     if (this.isRunning) {
       this.logger.warn('[CommissionCron] scan already in progress — skipping tick');
       return;

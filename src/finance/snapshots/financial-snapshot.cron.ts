@@ -46,6 +46,7 @@ export class FinancialSnapshotCron {
    */
   @Cron(CronExpression.EVERY_5_MINUTES)
   async reconcile(): Promise<void> {
+    if (process.env.NODE_ENV === 'test') return;
     if (this.isDisabled()) return;
     const startedAt = Date.now();
     try {

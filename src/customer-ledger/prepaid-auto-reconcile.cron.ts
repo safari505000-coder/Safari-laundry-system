@@ -30,6 +30,7 @@ export class PrepaidAutoReconcileCronService {
     timeZone: KUWAIT_TIMEZONE,
   })
   async handleCron(): Promise<void> {
+    if (process.env.NODE_ENV === 'test') return;
     if (process.env.PREPAID_AUTO_RECONCILE_CRON_DISABLED === 'true') {
       return;
     }

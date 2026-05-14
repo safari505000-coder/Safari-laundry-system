@@ -133,6 +133,18 @@ describe('CommissionEarningCron.scanJournalPayments()', () => {
 // ─── isRunning guard ──────────────────────────────────────────────────────────
 
 describe('CommissionEarningCron.scan() — isRunning guard', () => {
+  let previousNodeEnv: string | undefined;
+
+  beforeAll(() => {
+    previousNodeEnv = process.env.NODE_ENV;
+    // scan() intentionally no-ops when NODE_ENV=test; these cases assert the mutex.
+    process.env.NODE_ENV = 'development';
+  });
+
+  afterAll(() => {
+    process.env.NODE_ENV = previousNodeEnv;
+  });
+
   it('skips the second tick if the first scan is still executing', async () => {
     const prisma = makePrisma();
     const earning = makeEarning();

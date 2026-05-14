@@ -19,6 +19,7 @@ export class DispatchEscalationJob {
 
   @Cron(CronExpression.EVERY_MINUTE, { name: 'dispatch.sla' })
   async tick(): Promise<void> {
+    if (process.env.NODE_ENV === 'test') return;
     if (this.isRunning) {
       this.logger.debug('dispatch_sla_skipped reason=ALREADY_RUNNING');
       return;

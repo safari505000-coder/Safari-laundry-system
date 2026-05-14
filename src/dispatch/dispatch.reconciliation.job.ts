@@ -46,6 +46,7 @@ export class DispatchReconciliationJob {
    */
   @Cron('0 */2 * * * *', { name: 'dispatch.reconcile' })
   async tick(): Promise<void> {
+    if (process.env.NODE_ENV === 'test') return;
     if (this.isRunning) {
       this.logger.debug(
         'dispatch_reconciliation_skipped reason=ALREADY_RUNNING',
