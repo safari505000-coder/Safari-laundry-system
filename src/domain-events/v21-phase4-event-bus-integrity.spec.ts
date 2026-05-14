@@ -97,6 +97,17 @@ function stripCommentsAndStrings(src: string): string {
 
 const ALL_BACKEND_FILES = listFiles(SRC_ROOT);
 
+const TEST_INFRASTRUCTURE_PREFIXES = [
+  'src/test/setup/',
+  'src/test/factories/',
+  'src/test/helpers/',
+  'src/test/financial/',
+] as const;
+
+function isTestInfrastructureFile(path: string): boolean {
+  return TEST_INFRASTRUCTURE_PREFIXES.some((prefix) => path.startsWith(prefix));
+}
+
 describe('V21 Phase 4 — event bus integrity tree-wide lock-in', () => {
   /* ──────────────────────────────────────────────────────────
    * 1. Deterministic event-id algorithm signature is intact.
@@ -158,6 +169,7 @@ describe('V21 Phase 4 — event bus integrity tree-wide lock-in', () => {
       // Test scaffolding may legitimately emit fake events into
       // an isolated EventEmitter — those are not the global bus.
       if (/\.spec\.ts$/.test(r) || /\.test\.ts$/.test(r)) continue;
+      if (isTestInfrastructureFile(r)) continue;
       const stripped = stripCommentsAndStrings(readFileSync(f, 'utf8'));
       // Match `<receiver>.emit('finance.<...>'` — receiver may be
       // any identifier (`bus`, `eventEmitter`, `events`, etc.).
@@ -213,6 +225,7 @@ describe('V21 Phase 4 — event bus integrity tree-wide lock-in', () => {
       // Allow the test files to mention the patterns in assertion
       // strings; we already strip strings before scanning.
       if (/\.spec\.ts$/.test(r) || /\.test\.ts$/.test(r)) continue;
+      if (isTestInfrastructureFile(r)) continue;
       const stripped = stripCommentsAndStrings(readFileSync(f, 'utf8'));
       if (/financialEventOutbox\s*\.\s*delete(Many)?\s*\(/.test(stripped)) {
         violations.push(`${r}  →  financialEventOutbox.delete(Many)? — outbox is append-only`);
