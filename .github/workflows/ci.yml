@@ -44,8 +44,22 @@ jobs:
     name: Backend — Integration Tests (PostgreSQL)
     runs-on: ubuntu-latest
     env:
-      DATABASE_URL: ${{ secrets.DATABASE_TEST_URL }}
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/safari_erp_test
       NODE_ENV: test
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: safari_erp_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - uses: actions/checkout@v4
@@ -65,13 +79,13 @@ jobs:
       - name: Run Prisma migrations on test DB
         run: npx prisma migrate deploy
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_TEST_URL }}
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/safari_erp_test
           NODE_ENV: test
 
       - name: Run integration tests
         run: npm run test:integration
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_TEST_URL }}
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/safari_erp_test
           NODE_ENV: test
           V20_4_FINAL_LEDGER: 'true'
           V20_3_TRUE_ACCOUNTING: 'true'
