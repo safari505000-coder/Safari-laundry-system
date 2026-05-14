@@ -1,0 +1,76 @@
+name: Nightly Tests
+
+on:
+  schedule:
+    # 02:00 UTC daily (= 05:00 Kuwait time, AST = UTC+3)
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  full-suite:
+    name: Full Test Suite (Unit + Integration + Security Audit)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: safari_erp_test
+          POSTGRES_USER: safari_test
+          POSTGRES_PASSWORD: safari_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install backend dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: TypeScript typecheck (backend)
+        run: npx tsc --noEmit
+
+      - name: Run backend unit test suite
+        run: npx jest --no-coverage --runInBand --forceExit
+        env:
+          NODE_ENV: test
+          V20_4_FINAL_LEDGER: 'true'
+
+      - name: Apply Prisma migrations on test DB
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://safari_test:safari_test@localhost:5432/safari_erp_test
+
+      - name: Run integration tests
+        run: npm run test:integration
+        env:
+          DATABASE_URL: postgresql://safari_test:safari_test@localhost:5432/safari_erp_test
+          NODE_ENV: test
+          V20_4_FINAL_LEDGER: 'true'
+          V20_3_TRUE_ACCOUNTING: 'true'
+          USE_JOURNAL_AS_SOURCE: 'true'
+          BCRYPT_WORKERS: '0'
+          SYSTEM_GUARDIAN_ENABLED: '0'
+
+      - name: Backend npm audit (critical only — gating)
+        run: npm audit --audit-level=critical
+
+      - name: Frontend npm audit (critical only — gating)
+        run: npm audit --audit-level=critical
+        working-directory: web
