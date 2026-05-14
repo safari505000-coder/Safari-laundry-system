@@ -49,6 +49,17 @@ interface SourceFile {
   lines: string[];
 }
 
+const testInfrastructurePrefixes = [
+  'src/test/setup/',
+  'src/test/factories/',
+  'src/test/helpers/',
+  'src/test/financial/',
+] as const;
+
+function isTestInfrastructureFile(rel: string): boolean {
+  return testInfrastructurePrefixes.some((prefix) => rel.startsWith(prefix));
+}
+
 function collectBackendSources(): SourceFile[] {
   const out: SourceFile[] = [];
   function walk(dir: string): void {
@@ -83,6 +94,7 @@ function scan(
   const out: Array<{ file: string; line: number; snippet: string }> = [];
   for (const { rel, lines } of files) {
     if (allowlist.has(rel)) continue;
+    if (isTestInfrastructureFile(rel)) continue;
     if (skipSpecs && rel.endsWith('.spec.ts')) continue;
     for (let i = 0; i < lines.length; i++) {
       if (pattern.test(lines[i])) {

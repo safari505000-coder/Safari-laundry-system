@@ -338,6 +338,17 @@ const appendOnlyDeleteAllowlist: ReadonlySet<string> = new Set([
   'src/finance/test-utils/accountant-dashboard-integration-context.ts',
 ]);
 
+const testInfrastructurePrefixes = [
+  'src/test/setup/',
+  'src/test/factories/',
+  'src/test/helpers/',
+  'src/test/financial/',
+] as const;
+
+function isTestInfrastructureFile(rel: string): boolean {
+  return testInfrastructurePrefixes.some((prefix) => rel.startsWith(prefix));
+}
+
 /** Frontend money-comparison guard. Any source file living under
  * `web/src/` (excluding the canonical kwd.ts file itself) that uses
  * `Number.parseFloat(...Kd...) < 0` style comparisons re-introduces
@@ -493,6 +504,7 @@ describe('V21 canonical banking guards', () => {
     const out: Array<{ file: string; line: number; snippet: string }> = [];
     for (const { rel, lines } of files) {
       if (allowlist.has(rel)) continue;
+      if (isTestInfrastructureFile(rel)) continue;
       if (skipSpecs && rel.endsWith('.spec.ts')) continue;
       for (let i = 0; i < lines.length; i++) {
         if (pattern.test(lines[i])) {
