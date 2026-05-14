@@ -100,6 +100,7 @@ export class BcryptService implements OnModuleInit, OnModuleDestroy {
 
   private resolvePoolSize(): number {
     const raw = Number.parseInt(process.env.BCRYPT_WORKERS ?? '', 10);
+    if (Number.isFinite(raw) && raw === 0) return 0;
     if (Number.isFinite(raw) && raw > 0) return raw;
     const cpus = os.cpus()?.length ?? 4;
     // Leave 4 cores for the event loop, Prisma query engine, and the rest of
