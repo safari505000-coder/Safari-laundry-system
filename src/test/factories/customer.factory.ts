@@ -5,6 +5,10 @@ type Db = PrismaClient | Prisma.TransactionClient;
 
 export type TestCustomer = Customer & { wallet: CustomerWallet };
 
+function phoneDigitsFromUuid(id: string): string {
+  return id.replace(/\D/g, '').padEnd(7, '0').slice(0, 7);
+}
+
 export async function createCustomer(
   prisma: Db,
   branchId?: string | null,
@@ -13,7 +17,7 @@ export async function createCustomer(
   const id = randomUUID();
   const data = {
     id,
-    phone: `6${id.replace(/-/g, '').slice(0, 7)}`,
+    phone: `6${phoneDigitsFromUuid(id)}`,
     displayName: `Test Customer ${id}`,
     address: 'Test Address',
     originBranch: branchId ? { connect: { id: branchId } } : undefined,

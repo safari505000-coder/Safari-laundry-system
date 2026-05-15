@@ -3,6 +3,10 @@ import { Branch, Prisma, PrismaClient } from '@prisma/client';
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
+function phoneDigitsFromUuid(id: string): string {
+  return id.replace(/\D/g, '').padEnd(7, '0').slice(0, 7);
+}
+
 export async function createBranch(
   prisma: Db,
   overrides: Partial<Prisma.BranchCreateInput> = {},
@@ -12,7 +16,7 @@ export async function createBranch(
     id,
     name: `Test Branch ${id}`,
     location: 'Test Location',
-    phone: `5${id.replace(/-/g, '').slice(0, 7)}`,
+    phone: `5${phoneDigitsFromUuid(id)}`,
     isActive: true,
     ...overrides,
   } as Prisma.BranchCreateInput;

@@ -11,6 +11,10 @@ function roleNameFor(role: SafariRole): string {
   return role;
 }
 
+function phoneDigitsFromUuid(id: string): string {
+  return id.replace(/\D/g, '').padEnd(7, '0').slice(0, 7);
+}
+
 export async function createUser(
   prisma: Db,
   role: SafariRole,
@@ -32,7 +36,7 @@ export async function createUser(
     username: `test-${role.toLowerCase()}-${id}`,
     password: 'test-password-hash',
     fullName: `Test ${role} ${id}`,
-    phone: `9${id.replace(/-/g, '').slice(0, 7)}`,
+    phone: `9${phoneDigitsFromUuid(id)}`,
     safariRole: role,
     role: { connect: { id: roleRecord.id } },
     branch: branchId ? { connect: { id: branchId } } : undefined,
