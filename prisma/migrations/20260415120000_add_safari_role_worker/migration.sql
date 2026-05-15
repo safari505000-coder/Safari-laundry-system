@@ -1,2 +1,2 @@
 -- AlterEnum
-ALTER TYPE "SafariRole" ADD VALUE 'WORKER';
+ALTER TYPE "SafariRole" ADD VALUE IF NOT EXISTS 'WORKER';

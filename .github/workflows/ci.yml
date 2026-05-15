@@ -94,6 +94,11 @@ jobs:
           echo "::error::Postgres did not become reachable on localhost:5432"
           exit 1
 
+      - name: Deploy database schema
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/safari_erp_test
+
       - name: Run integration tests
         run: npm run test:integration
         env:
