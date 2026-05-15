@@ -220,31 +220,52 @@ export class AuditLogsService {
     });
     const prevHash = previous?.hash ?? 'GENESIS';
     const hash = this.auditHash(prevHash, payload);
-    await this.prisma.auditLog.create({
-      data: {
-        userId: input.userId ?? undefined,
-        actorId: input.userId ?? undefined,
-        customerId: input.customerId ?? undefined,
-        orderId: input.orderId ?? undefined,
-        amount:
-          input.amount != null ? new Prisma.Decimal(input.amount) : undefined,
-        source: input.source ?? undefined,
-        role: input.role ?? undefined,
-        action: input.action,
-        resource: input.resource,
-        endpoint: input.endpoint ?? undefined,
-        method: input.method ?? undefined,
-        status: input.status,
-        ip: input.ip ?? undefined,
-        userAgent: input.userAgent ?? undefined,
-        requestId: input.requestId ?? undefined,
-        suspicious: input.suspicious ?? false,
-        changes: (input.changes ?? {}) as Prisma.InputJsonValue,
-        payload: payload as Prisma.InputJsonValue,
-        prevHash,
-        hash,
-      },
-    });
+    const data = {
+      userId: input.userId ?? undefined,
+      actorId: input.userId ?? undefined,
+      customerId: input.customerId ?? undefined,
+      orderId: input.orderId ?? undefined,
+      amount:
+        input.amount != null ? new Prisma.Decimal(input.amount) : undefined,
+      source: input.source ?? undefined,
+      role: input.role ?? undefined,
+      action: input.action,
+      resource: input.resource,
+      endpoint: input.endpoint ?? undefined,
+      method: input.method ?? undefined,
+      status: input.status,
+      ip: input.ip ?? undefined,
+      userAgent: input.userAgent ?? undefined,
+      requestId: input.requestId ?? undefined,
+      suspicious: input.suspicious ?? false,
+      changes: (input.changes ?? {}) as Prisma.InputJsonValue,
+      payload: payload as Prisma.InputJsonValue,
+      prevHash,
+      hash,
+    } satisfies Prisma.AuditLogUncheckedCreateInput;
+
+    try {
+      await this.prisma.auditLog.create({ data });
+    } catch (error) {
+      if (!this.isAuditUserForeignKeyError(error) || !data.userId) {
+        throw error;
+      }
+      await this.prisma.auditLog.create({
+        data: {
+          ...data,
+          userId: undefined,
+          changes: {
+            ...(input.changes ?? {}),
+            missingUserId: data.userId,
+          } as Prisma.InputJsonValue,
+          payload: {
+            ...(payload as Record<string, unknown>),
+            userId: null,
+            missingUserId: data.userId,
+          } as Prisma.InputJsonValue,
+        },
+      });
+    }
   }
 
   async verifyAuditIntegrity(): Promise<{ valid: boolean; checked: number; brokenAt?: string }> {
@@ -304,6 +325,19 @@ export class AuditLogsService {
       .update(prevHash)
       .update(JSON.stringify(payload))
       .digest('hex');
+  }
+
+  private isAuditUserForeignKeyError(error: unknown): boolean {
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      return (
+        error.code === 'P2003' &&
+        String(error.meta?.field_name ?? error.meta?.constraint ?? '').includes(
+          'userId',
+        )
+      );
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    return message.includes('AuditLog_userId_fkey');
   }
 
   private async recordForbidden(req: AuditRequest): Promise<void> {
