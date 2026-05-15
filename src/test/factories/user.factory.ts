@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { JwtService } from '@nestjs/jwt';
 import { Prisma, PrismaClient, SafariRole, User } from '@prisma/client';
+import { JWT_SECRET_DEV_FALLBACK } from '../../common/constants/jwt-secret-fallback';
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -42,7 +43,7 @@ export async function createUser(
   const user = await prisma.user.create({ data });
 
   const jwt = new JwtService({
-    secret: process.env.JWT_SECRET || 'test-jwt-secret',
+    secret: process.env.JWT_SECRET ?? JWT_SECRET_DEV_FALLBACK,
   });
   const jwtToken = jwt.sign({
     sub: user.id,

@@ -43,7 +43,12 @@ const ENDPOINTS: EndpointSpec[] = [
   {
     method: 'get',
     path: '/api/payroll',
-    allowed: [SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.ACCOUNTANT],
+    allowed: [
+      SafariRole.OWNER,
+      SafariRole.GENERAL_MANAGER,
+      SafariRole.MANAGER,
+      SafariRole.ACCOUNTANT,
+    ],
   },
   {
     method: 'post',
@@ -104,6 +109,7 @@ describe('RBAC Matrix', () => {
 
           if (shouldAllow) {
             expect(res.status).not.toBe(403);
+            expect(res.status).not.toBe(401);
           } else {
             expect(res.status).toBe(403);
           }
