@@ -4,7 +4,7 @@ module.exports = {
   moduleFileExtensions: ['js', 'json', 'ts'],
   rootDir: '.',
   testEnvironment: 'node',
-  testMatch: ['**/*.integration-spec.ts'],
+  testMatch: ['**/*.integration-spec.ts', '**/*.integration.spec.ts'],
   transform: {
     '^.+\\.(t|j)s$': 'ts-jest',
   },

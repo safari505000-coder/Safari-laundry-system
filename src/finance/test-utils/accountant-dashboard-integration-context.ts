@@ -42,6 +42,14 @@ function requireTestDbUrl(): string {
   return url;
 }
 
+async function upsertRole(prisma: PrismaClient, role: SafariRole) {
+  return prisma.role.upsert({
+    where: { name: role },
+    create: { name: role },
+    update: {},
+  });
+}
+
 export async function createAccountantDashboardTestContext(): Promise<AccountantDashboardTestContext> {
   const url = requireTestDbUrl();
   const pool = new Pool({ connectionString: url });
@@ -52,22 +60,11 @@ export async function createAccountantDashboardTestContext(): Promise<Accountant
   const suffix = `acct-${runId}`;
   const hash = await bcrypt.hash('test-pass', 4);
 
-  const driverRole = await prisma.role.findFirst({
-    where: { name: SafariRole.DRIVER },
-  });
-  const managerRole = await prisma.role.findFirst({
-    where: { name: SafariRole.MANAGER },
-  });
-  const accountantRole = await prisma.role.findFirst({
-    where: { name: SafariRole.ACCOUNTANT },
-  });
-  if (!driverRole || !managerRole || !accountantRole) {
-    await prisma.$disconnect();
-    await pool.end();
-    throw new Error(
-      'Seed roles DRIVER / MANAGER / ACCOUNTANT missing — run prisma db seed on the test database first.',
-    );
-  }
+  const [driverRole, managerRole, accountantRole] = await Promise.all([
+    upsertRole(prisma, SafariRole.DRIVER),
+    upsertRole(prisma, SafariRole.MANAGER),
+    upsertRole(prisma, SafariRole.ACCOUNTANT),
+  ]);
 
   const branch = await prisma.branch.create({
     data: {

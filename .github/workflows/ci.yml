@@ -103,6 +103,7 @@ jobs:
         run: npm run test:integration
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/safari_erp_test
+          ACCOUNTANT_DASHBOARD_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/safari_erp_test
           NODE_ENV: test
           V20_4_FINAL_LEDGER: 'true'
           V20_3_TRUE_ACCOUNTING: 'true'
