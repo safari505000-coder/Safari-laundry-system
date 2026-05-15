@@ -86,33 +86,34 @@ export async function resetDb(prismaInst: PrismaClient): Promise<void> {
       // Permit deleteMany() on all append-only guarded tables for this transaction.
       await tx.$executeRaw`SET LOCAL "app.immutable_ledger_bypass" = 'true'`;
 
-      // ── RESTRICT → User: all must precede User ────────────────────────────
+      // -- RESTRICT -> User: all must precede User ------------------------------------
       await tx.bankDepositLog.deleteMany();
       await tx.managerCashCustody.deleteMany();
       await tx.promiseEvent.deleteMany();
       await tx.promiseToPay.deleteMany();
 
-      // ── Append-only tables (bypass active) ───────────────────────────────
+      // -- Append-only tables (bypass active) ----------------------------------------
       await tx.collectionsStageEvent.deleteMany();
       await tx.financialPeriodViolation.deleteMany();
       await tx.financialEventDelivery.deleteMany();
       await tx.financialEventOutbox.deleteMany();
-      await tx.journalLine.deleteMany(); // also RESTRICT → Account
+      await tx.journalLine.deleteMany(); // also RESTRICT -> Account
       await tx.journalEntry.deleteMany();
       await tx.journalFailureLog.deleteMany();
       await tx.transactionHistory.deleteMany();
       await tx.auditLog.deleteMany();
       await tx.fraudAlert.deleteMany();
+      await tx.generalLedgerEntry.deleteMany();
 
-      // ── Account: safe now journalLine is cleared ──────────────────────────
+      // -- Account: safe now journalLine is cleared -----------------------------------
       await tx.account.deleteMany();
 
-      // ── Financial ─────────────────────────────────────────────────────────
+      // -- Financial -----------------------------------------------------------------
       await tx.financialSnapshot.deleteMany();
       await tx.financialKpiSnapshot.deleteMany();
       await tx.financialPeriod.deleteMany();
 
-      // ── HR / Payroll ──────────────────────────────────────────────────────
+      // -- HR / Payroll --------------------------------------------------------------
       await tx.debtHold.deleteMany();
       await tx.commissionPayout.deleteMany();
       await tx.payrollAdHocLine.deleteMany();
@@ -122,22 +123,25 @@ export async function resetDb(prismaInst: PrismaClient): Promise<void> {
       await tx.employeeLoan.deleteMany();
       await tx.attendanceLog.deleteMany();
 
-      // ── Order children then Order ─────────────────────────────────────────
+      // -- Order children then Order -------------------------------------------------
+      await tx.debtTransferOrder.deleteMany(); // RESTRICT -> Order
+      await tx.invoiceAuditLog.deleteMany();   // RESTRICT -> User
       await tx.orderFeedback.deleteMany();
       await tx.orderLineItem.deleteMany();
       await tx.order.deleteMany(); // cascades DebtLedgerEntry via Customer FK (bypass active)
 
-      // ── Shifts / POS ──────────────────────────────────────────────────────
+      // -- Shifts / POS --------------------------------------------------------------
       await tx.shift.deleteMany();
       await tx.posPaymentBundle.deleteMany();
 
-      // ── Customer-owned tables ─────────────────────────────────────────────
+      // -- Customer-owned tables -----------------------------------------------------
       await tx.customerWallet.deleteMany();
       await tx.customerSubscription.deleteMany();
+      await tx.subscriptionPlan.deleteMany(); // referenced by CustomerWallet + CustomerSubscription
       await tx.collectionsAccount.deleteMany();
       await tx.customerCollectionStatus.deleteMany();
 
-      // ── Inventory / procurement ───────────────────────────────────────────
+      // -- Inventory / procurement ---------------------------------------------------
       await tx.purchaseOrderReceiptLine.deleteMany();
       await tx.purchaseOrderReceipt.deleteMany();
       await tx.purchaseOrderLine.deleteMany();
@@ -148,20 +152,22 @@ export async function resetDb(prismaInst: PrismaClient): Promise<void> {
       await tx.inventoryCategory.deleteMany();
       await tx.supplier.deleteMany();
 
-      // ── Laundry pricing ───────────────────────────────────────────────────
+      // -- Laundry pricing -----------------------------------------------------------
       await tx.laundryBranchItemPrice.deleteMany();
       await tx.laundryPriceListItem.deleteMany();
       await tx.laundryItemCategory.deleteMany();
 
-      // ── Expenses ──────────────────────────────────────────────────────────
+      // -- Expenses ------------------------------------------------------------------
       await tx.branchExpense.deleteMany();
       await tx.vehicleExpense.deleteMany();
 
-      // ── Dispatch / drivers ────────────────────────────────────────────────
+      // -- Dispatch / drivers --------------------------------------------------------
       await tx.driverMetrics.deleteMany();
       await tx.dispatch.deleteMany();
 
-      // ── Miscellaneous singletons / leaf tables ────────────────────────────
+      // -- Miscellaneous singletons / leaf tables ------------------------------------
+      await tx.debtTransfer.deleteMany();      // RESTRICT -> User
+      await tx.deposit.deleteMany();           // Cascade from User
       await tx.refreshToken.deleteMany();
       await tx.serialCounter.deleteMany();
       await tx.backfillAuditLock.deleteMany();
@@ -173,9 +179,10 @@ export async function resetDb(prismaInst: PrismaClient): Promise<void> {
       await tx.payrollSettings.deleteMany();
       await tx.debtHoldPolicy.deleteMany();
 
-      // ── Core entities last ────────────────────────────────────────────────
+      // -- Core entities last --------------------------------------------------------
       // User first: has non-cascade FK to Role and Branch.
       await tx.user.deleteMany();
+      await tx.fixedExpenseSchedule.deleteMany(); // RESTRICT -> Branch
       await tx.branch.deleteMany();
       await tx.customer.deleteMany();
       await tx.permission.deleteMany();
