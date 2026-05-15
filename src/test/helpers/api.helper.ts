@@ -42,16 +42,26 @@ export async function createTestApp(): Promise<INestApplication<App>> {
   app.useGlobalInterceptors(new BrandingResponseInterceptor());
 
   await app.init();
+  const server = app.getHttpServer() as {
+    close?: (callback?: (error?: Error) => void) => unknown;
+  };
+  const serverClose = server.close?.bind(server);
+  if (serverClose) {
+    server.close = (callback?: (error?: Error) => void) =>
+      serverClose((error?: Error) => {
+        if (isServerNotRunningError(error)) {
+          callback?.();
+          return;
+        }
+        callback?.(error);
+      });
+  }
   const close = app.close.bind(app);
   app.close = async () => {
     try {
       await close();
     } catch (error) {
-      if (
-        error instanceof Error &&
-        ((error as NodeJS.ErrnoException).code === 'ERR_SERVER_NOT_RUNNING' ||
-          error.message === 'Server is not running.')
-      ) {
+      if (isServerNotRunningError(error)) {
         return;
       }
       throw error;
@@ -65,3 +75,13 @@ export function getAuthHeader(token: string): { Authorization: string } {
 }
 
 export { request };
+
+function isServerNotRunningError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  return (
+    (error as NodeJS.ErrnoException).code === 'ERR_SERVER_NOT_RUNNING' ||
+    error.message.includes('Server is not running')
+  );
+}
