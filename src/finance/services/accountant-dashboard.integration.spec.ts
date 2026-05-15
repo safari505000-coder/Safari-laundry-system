@@ -39,7 +39,12 @@ const DEFAULT_FAKE_NOW = new Date('2026-06-10T15:00:00.000Z');
 function makeDashboardService(
   prisma: import('@prisma/client').PrismaClient,
 ): AccountantDashboardService {
-  const cache = new FinanceDashboardCacheService();
+  const cache = {
+    cacheKey: (...args: Parameters<FinanceDashboardCacheService['cacheKey']>) =>
+      new FinanceDashboardCacheService().cacheKey(...args),
+    wrapJson: async <T>(_key: string, compute: () => Promise<T>): Promise<T> =>
+      compute(),
+  } as FinanceDashboardCacheService;
   const cash = {
     getTotalCashWithDrivers: jest.fn(async () => '0.0000'),
   } as unknown as CashService;

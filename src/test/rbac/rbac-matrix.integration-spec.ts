@@ -53,7 +53,11 @@ const ENDPOINTS: EndpointSpec[] = [
   {
     method: 'post',
     path: '/api/call-center/subscriptions/activate',
-    allowed: [SafariRole.CALL_CENTER, SafariRole.CALL_CENTER_SUPERVISOR],
+    allowed: [
+      SafariRole.OWNER,
+      SafariRole.CALL_CENTER,
+      SafariRole.CALL_CENTER_SUPERVISOR,
+    ],
   },
   {
     method: 'get',

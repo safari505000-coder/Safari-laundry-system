@@ -9,6 +9,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { SafariRole } from '@prisma/client';
+import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import {
   CurrentUser,
@@ -39,6 +40,7 @@ export class FinancialPeriodsController {
   constructor(private readonly svc: FinancialPeriodsService) {}
 
   @Get()
+  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.ACCOUNTANT)
   /**
    * يُرجع قائمة جميع الفترات المالية المسجلة
    * Lists all recorded financial periods (closed or explicitly open).
@@ -49,6 +51,7 @@ export class FinancialPeriodsController {
   }
 
   @Get('status')
+  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.ACCOUNTANT)
   /**
    * يُرجع حالة فترة مالية محددة (السنة والشهر)
    * Returns the status of a specific financial period by year and month.
@@ -63,6 +66,7 @@ export class FinancialPeriodsController {
   }
 
   @Get('violations')
+  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER, SafariRole.ACCOUNTANT)
   async violations(
     @CurrentUser() user: JwtUser,
     @Query('periodId') periodId?: string,
@@ -76,6 +80,7 @@ export class FinancialPeriodsController {
   }
 
   @Post('close')
+  @Roles(SafariRole.OWNER, SafariRole.ACCOUNTANT)
   async close(
     @CurrentUser() user: JwtUser,
     @Body()
@@ -93,6 +98,7 @@ export class FinancialPeriodsController {
   }
 
   @Post('reopen')
+  @Roles(SafariRole.OWNER, SafariRole.ACCOUNTANT)
   async reopen(
     @CurrentUser() user: JwtUser,
     @Body()

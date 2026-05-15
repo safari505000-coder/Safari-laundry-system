@@ -86,6 +86,7 @@ jobs:
           USE_JOURNAL_AS_SOURCE: 'true'
           BCRYPT_WORKERS: '0'
           SYSTEM_GUARDIAN_ENABLED: '0'
+          OPERATING_HOURS_LOCK_ENABLED: 'false'
 
       - name: Backend npm audit (critical only — gating)
         run: npm audit --audit-level=critical

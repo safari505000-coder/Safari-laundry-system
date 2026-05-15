@@ -12,6 +12,7 @@ export async function createTestApp(): Promise<INestApplication<App>> {
   process.env.NODE_ENV = 'test';
   process.env.SYSTEM_GUARDIAN_ENABLED = '0';
   process.env.BCRYPT_WORKERS = '0';
+  process.env.OPERATING_HOURS_LOCK_ENABLED = 'false';
   process.env.DATABASE_URL =
     process.env.DATABASE_URL ??
     'postgresql://postgres:postgres@localhost:5432/safari_erp_test';
@@ -48,7 +49,8 @@ export async function createTestApp(): Promise<INestApplication<App>> {
     } catch (error) {
       if (
         error instanceof Error &&
-        (error as NodeJS.ErrnoException).code === 'ERR_SERVER_NOT_RUNNING'
+        ((error as NodeJS.ErrnoException).code === 'ERR_SERVER_NOT_RUNNING' ||
+          error.message === 'Server is not running.')
       ) {
         return;
       }
