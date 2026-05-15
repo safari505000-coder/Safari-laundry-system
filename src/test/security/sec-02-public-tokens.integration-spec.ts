@@ -81,7 +81,11 @@ describe('SEC-02: Public Share Tokens', () => {
 
   it('invoice-share token for one order cannot fetch a different order', async () => {
     const tokenForRandom = jwtSign(
-      { sub: 'random', orderId: 'random-id', purpose: 'INVOICE_SHARE' },
+      {
+        sub: '00000000-0000-0000-0000-000000000001',
+        orderId: '00000000-0000-0000-0000-000000000002',
+        purpose: 'INVOICE_SHARE',
+      },
       { expiresIn: '1h' },
     );
 
