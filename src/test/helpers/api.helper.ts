@@ -41,6 +41,20 @@ export async function createTestApp(): Promise<INestApplication<App>> {
   app.useGlobalInterceptors(new BrandingResponseInterceptor());
 
   await app.init();
+  const close = app.close.bind(app);
+  app.close = async () => {
+    try {
+      await close();
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        (error as NodeJS.ErrnoException).code === 'ERR_SERVER_NOT_RUNNING'
+      ) {
+        return;
+      }
+      throw error;
+    }
+  };
   return app;
 }
 
