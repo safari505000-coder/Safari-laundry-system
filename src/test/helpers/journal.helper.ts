@@ -69,7 +69,7 @@ export async function getArBalance(
 
   const debit = asDecimal(totals._sum.debit);
   const credit = asDecimal(totals._sum.credit);
-  return credit.minus(debit);
+  return debit.minus(credit);
 }
 
 export async function assertJournalEntryCount(

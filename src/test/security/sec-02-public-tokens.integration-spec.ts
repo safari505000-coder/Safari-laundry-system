@@ -19,8 +19,8 @@ describe('SEC-02: Public Share Tokens', () => {
   });
 
   afterAll(async () => {
-    await closeDb();
     await app.close();
+    await closeDb();
   });
 
   function jwtSign(payload: Record<string, unknown>, opts?: { expiresIn?: string }) {

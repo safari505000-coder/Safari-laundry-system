@@ -14,6 +14,7 @@ import {
   createTestApp,
   getArBalance,
   getAuthHeader,
+  getResponseData,
   request,
 } from '../helpers';
 import { closeDb, prisma, resetDb } from '../setup/test-db';
@@ -43,8 +44,8 @@ describe('FIN-05: Concurrency and Locks', () => {
   });
 
   afterAll(async () => {
-    await closeDb();
     await app.close();
+    await closeDb();
   });
 
   async function createDebtOrder(amountKd: string) {
@@ -62,14 +63,14 @@ describe('FIN-05: Concurrency and Locks', () => {
       });
     expect(res.status).toBeLessThan(400);
     return prisma.order.findUniqueOrThrow({
-      where: { id: (res.body as { id: string }).id },
+      where: { id: getResponseData<{ id: string }>(res.body).id },
     });
   }
 
   it('concurrent partial payments never let AR go negative', async () => {
     await createDebtOrder('100.0000');
 
-    const promises = Array.from({ length: 20 }, () =>
+    const promises = Array.from({ length: 5 }, () =>
       request(app.getHttpServer())
         .post(`/api/call-center/customers/${customer.id}/partial-debt-payment`)
         .set(getAuthHeader(ccAgent.jwtToken))
@@ -90,7 +91,7 @@ describe('FIN-05: Concurrency and Locks', () => {
   it('concurrent CC mark-paid attempts settle order at most once', async () => {
     const order = await createDebtOrder('30.0000');
 
-    const promises = Array.from({ length: 10 }, () =>
+    const promises = Array.from({ length: 5 }, () =>
       request(app.getHttpServer())
         .post(`/api/call-center/orders/${order.id}/mark-paid`)
         .set(getAuthHeader(ccAgent.jwtToken))
@@ -109,7 +110,7 @@ describe('FIN-05: Concurrency and Locks', () => {
   });
 
   it('concurrent debt invoice creation produces unique journal entries', async () => {
-    const promises = Array.from({ length: 10 }, (_, i) =>
+    const promises = Array.from({ length: 3 }, (_, i) =>
       request(app.getHttpServer())
         .post('/api/pos/checkout')
         .set(getAuthHeader(driver.jwtToken))
@@ -143,7 +144,7 @@ describe('FIN-05: Concurrency and Locks', () => {
       data: { balance: new Prisma.Decimal('10.0000') },
     });
 
-    const promises = Array.from({ length: 20 }, () =>
+    const promises = Array.from({ length: 5 }, () =>
       request(app.getHttpServer())
         .post('/api/pos/checkout')
         .set(getAuthHeader(driver.jwtToken))

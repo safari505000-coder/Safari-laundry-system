@@ -15,6 +15,7 @@ import {
   createTestApp,
   getArBalance,
   getAuthHeader,
+  getResponseData,
   request,
 } from '../helpers';
 import { closeDb, prisma, resetDb } from '../setup/test-db';
@@ -42,8 +43,8 @@ describe('FIN-03: Decimal Precision', () => {
   });
 
   afterAll(async () => {
-    await closeDb();
     await app.close();
+    await closeDb();
   });
 
   async function checkout(amountKd: string, method: PosPaymentMethod) {
@@ -61,7 +62,7 @@ describe('FIN-03: Decimal Precision', () => {
       });
     expect(res.status).toBeLessThan(400);
     return prisma.order.findUniqueOrThrow({
-      where: { id: (res.body as { id: string }).id },
+      where: { id: getResponseData<{ id: string }>(res.body).id },
     });
   }
 

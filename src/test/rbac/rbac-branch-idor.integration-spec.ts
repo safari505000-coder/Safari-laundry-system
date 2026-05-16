@@ -10,7 +10,7 @@ import {
   TestCustomer,
   TestUser,
 } from '../factories';
-import { createTestApp, getAuthHeader, request } from '../helpers';
+import { createTestApp, getAuthHeader, getResponseData, request } from '../helpers';
 import { closeDb, prisma, resetDb } from '../setup/test-db';
 
 describe('RBAC: Branch IDOR Prevention', () => {
@@ -40,8 +40,8 @@ describe('RBAC: Branch IDOR Prevention', () => {
   });
 
   afterAll(async () => {
-    await closeDb();
     await app.close();
+    await closeDb();
   });
 
   it('STEAL-3: CC agent on branch1 cannot mark-paid order from branch2', async () => {
@@ -59,7 +59,7 @@ describe('RBAC: Branch IDOR Prevention', () => {
       });
     expect(checkout.status).toBeLessThan(400);
     const order = await prisma.order.findUniqueOrThrow({
-      where: { id: (checkout.body as { id: string }).id },
+      where: { id: getResponseData<{ id: string }>(checkout.body).id },
     });
 
     const denied = await request(app.getHttpServer())
@@ -84,7 +84,7 @@ describe('RBAC: Branch IDOR Prevention', () => {
         posPaymentMethod: PosPaymentMethod.CASH,
       });
     expect(otherCheckout.status).toBeLessThan(400);
-    const otherOrderId = (otherCheckout.body as { id: string }).id;
+    const otherOrderId = getResponseData<{ id: string }>(otherCheckout.body).id;
 
     const denied = await request(app.getHttpServer())
       .get(`/api/orders/${otherOrderId}`)
@@ -112,7 +112,10 @@ describe('RBAC: Branch IDOR Prevention', () => {
       .set(getAuthHeader(driver1.jwtToken));
 
     if (list.status === 200) {
-      const rows = list.body as Array<{ driverId?: string }>;
+      const response = getResponseData<{
+        rows?: Array<{ driverId?: string }>;
+      }>(list.body);
+      const rows = response.rows ?? [];
       for (const row of rows) {
         if (row.driverId) {
           expect(row.driverId).toBe(driver1.id);

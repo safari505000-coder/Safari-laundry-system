@@ -47,8 +47,8 @@ describe('FIN-06: Period Lock Authority', () => {
   });
 
   afterAll(async () => {
-    await closeDb();
     await app.close();
+    await closeDb();
   });
 
   function todayKuwait(): { year: number; month: number } {

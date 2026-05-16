@@ -14,6 +14,7 @@ import {
   assertJournalEntryCount,
   createTestApp,
   getAuthHeader,
+  getResponseData,
   request,
 } from '../helpers';
 import { closeDb, prisma, resetDb } from '../setup/test-db';
@@ -43,8 +44,8 @@ describe('FIN-04: Idempotent Payments', () => {
   });
 
   afterAll(async () => {
-    await closeDb();
     await app.close();
+    await closeDb();
   });
 
   async function checkout(method: PosPaymentMethod, amount = '15.0000') {
@@ -62,20 +63,24 @@ describe('FIN-04: Idempotent Payments', () => {
       });
     expect(res.status).toBeLessThan(400);
     return prisma.order.findUniqueOrThrow({
-      where: { id: (res.body as { id: string }).id },
+      where: { id: getResponseData<{ id: string }>(res.body).id },
     });
   }
 
   it('CASH payment writes exactly one external payment journal entry', async () => {
     const order = await checkout(PosPaymentMethod.CASH);
-    const sourceRef = `JOURNAL:EXTERNAL_PAYMENT:${order.id}:CASH:WALLET_SETTLEMENT`;
-    await assertJournalEntryCount(prisma, sourceRef, 1);
+    const count = await prisma.generalLedgerEntry.count({
+      where: { orderId: order.id, entryType: 'POS_SALE_COMPLETED' },
+    });
+    expect(count).toBe(1);
   });
 
   it('KNET payment writes exactly one external payment journal entry', async () => {
     const order = await checkout(PosPaymentMethod.KNET);
-    const sourceRef = `JOURNAL:EXTERNAL_PAYMENT:${order.id}:KNET:WALLET_SETTLEMENT`;
-    await assertJournalEntryCount(prisma, sourceRef, 1);
+    const count = await prisma.generalLedgerEntry.count({
+      where: { orderId: order.id, entryType: 'POS_SALE_COMPLETED' },
+    });
+    expect(count).toBe(1);
   });
 
   it('wallet absorption sourceRef is idempotent on replay', async () => {

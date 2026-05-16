@@ -22,8 +22,8 @@ describe('SEC-01: Authentication Abuse', () => {
   });
 
   afterAll(async () => {
-    await closeDb();
     await app.close();
+    await closeDb();
   });
 
   it('login brute-force is rate-limited (5 per IP per minute)', async () => {

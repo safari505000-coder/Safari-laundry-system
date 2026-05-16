@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
+import { PeriodsModule } from '../finance/periods/periods.module';
 import { BackfillAuditLockGuard } from './backfill-audit-lock.guard';
 import { DoubleEntryJournalService } from './double-entry-journal.service';
 import { FinancialTransactionProcessorService } from './financial-transaction-processor.service';
@@ -28,7 +29,7 @@ import { JournalSourceService } from './journal-source.service';
  * @since V20.1
  */
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, PeriodsModule],
   providers: [
     GeneralLedgerService,
     DoubleEntryJournalService,

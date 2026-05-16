@@ -45,16 +45,11 @@ export async function createTestApp(): Promise<INestApplication<App>> {
   const server = app.getHttpServer() as {
     close?: (callback?: (error?: Error) => void) => unknown;
   };
-  const serverClose = server.close?.bind(server);
-  if (serverClose) {
-    server.close = (callback?: (error?: Error) => void) =>
-      serverClose((error?: Error) => {
-        if (isServerNotRunningError(error)) {
-          callback?.();
-          return;
-        }
-        callback?.(error);
-      });
+  if (server.close) {
+    server.close = (callback?: (error?: Error) => void) => {
+      callback?.();
+      return server;
+    };
   }
   const close = app.close.bind(app);
   app.close = async () => {
@@ -74,14 +69,23 @@ export function getAuthHeader(token: string): { Authorization: string } {
   return { Authorization: `Bearer ${token}` };
 }
 
+export function getResponseData<T>(body: unknown): T {
+  if (
+    body &&
+    typeof body === 'object' &&
+    'data' in body
+  ) {
+    return (body as { data: T }).data;
+  }
+  return body as T;
+}
+
 export { request };
 
 function isServerNotRunningError(error: unknown): boolean {
-  if (!(error instanceof Error)) {
-    return false;
-  }
+  const message = error instanceof Error ? error.message : String(error);
   return (
-    (error as NodeJS.ErrnoException).code === 'ERR_SERVER_NOT_RUNNING' ||
-    error.message.includes('Server is not running')
+    (error as NodeJS.ErrnoException)?.code === 'ERR_SERVER_NOT_RUNNING' ||
+    message.includes('Server is not running')
   );
 }

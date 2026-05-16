@@ -10,7 +10,7 @@ import {
   TestCustomer,
   TestUser,
 } from '../factories';
-import { createTestApp, getAuthHeader, request } from '../helpers';
+import { createTestApp, getAuthHeader, getResponseData, request } from '../helpers';
 import { closeDb, prisma, resetDb } from '../setup/test-db';
 
 describe('SEC: Penetration Test STEAL Fix Verification', () => {
@@ -42,8 +42,8 @@ describe('SEC: Penetration Test STEAL Fix Verification', () => {
   });
 
   afterAll(async () => {
-    await closeDb();
     await app.close();
+    await closeDb();
   });
 
   it('STEAL-1: companySupportAmountKd cannot exceed plan actualBalance', async () => {
@@ -117,7 +117,7 @@ describe('SEC: Penetration Test STEAL Fix Verification', () => {
         posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT,
       });
     expect(checkout.status).toBeLessThan(400);
-    const orderId = (checkout.body as { id: string }).id;
+    const orderId = getResponseData<{ id: string }>(checkout.body).id;
 
     const denied = await request(app.getHttpServer())
       .post(`/api/call-center/orders/${orderId}/mark-paid`)

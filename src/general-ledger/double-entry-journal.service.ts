@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, Logger, Optional } from '@nestjs/common';
+import { ConflictException, Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { PosPaymentMethod, Prisma } from '@prisma/client';
 import { DebtSource } from '../finance/enums/debt-source.enum';
 import { PrismaService } from '../prisma/prisma.service';
@@ -859,6 +859,7 @@ export class DoubleEntryJournalService {
 
   constructor(
     private readonly prisma: PrismaService,
+    @Inject(FinancialPeriodsService)
     @Optional()
     private readonly periodGuard: FinancialPeriodsService | null = null,
   ) {}

@@ -94,14 +94,26 @@ export async function resetDb(prismaInst: PrismaClient): Promise<void> {
 
       // -- Append-only tables (bypass active) ----------------------------------------
       await tx.collectionsStageEvent.deleteMany();
+      await tx.$executeRawUnsafe(
+        'ALTER TABLE "FinancialPeriodViolation" DISABLE TRIGGER "FinancialPeriodViolation_no_delete"',
+      );
       await tx.financialPeriodViolation.deleteMany();
+      await tx.$executeRawUnsafe(
+        'ALTER TABLE "FinancialPeriodViolation" ENABLE TRIGGER "FinancialPeriodViolation_no_delete"',
+      );
       await tx.financialEventDelivery.deleteMany();
       await tx.financialEventOutbox.deleteMany();
       await tx.journalLine.deleteMany(); // also RESTRICT -> Account
       await tx.journalEntry.deleteMany();
       await tx.journalFailureLog.deleteMany();
       await tx.transactionHistory.deleteMany();
+      await tx.$executeRawUnsafe(
+        'ALTER TABLE "audit_logs" DISABLE TRIGGER audit_logs_no_delete',
+      );
       await tx.auditLog.deleteMany();
+      await tx.$executeRawUnsafe(
+        'ALTER TABLE "audit_logs" ENABLE TRIGGER audit_logs_no_delete',
+      );
       await tx.fraudAlert.deleteMany();
       await tx.generalLedgerEntry.deleteMany();
 

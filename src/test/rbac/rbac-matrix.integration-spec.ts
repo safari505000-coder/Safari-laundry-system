@@ -88,8 +88,8 @@ describe('RBAC Matrix', () => {
   });
 
   afterAll(async () => {
-    await closeDb();
     await app.close();
+    await closeDb();
   });
 
   for (const endpoint of ENDPOINTS) {
