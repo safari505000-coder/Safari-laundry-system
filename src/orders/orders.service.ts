@@ -685,17 +685,6 @@ export class OrdersService {
         tx,
         driverUserId,
       );
-      // V19.22.4 — Normalize the declared payment method. Quick
-      // capture is "I'll settle this through channel X later" — not
-      // "cash has already been received". So the cashStatus stays
-      // UNPAID at creation; the actual settlement flips it via
-      // POS checkout (or a subsequent status transition to
-      // COMPLETED that auto-invokes `cashStatusForPaymentMethod`).
-      const posPaymentMethodNormalized =
-        dto.posPaymentMethod === PosPaymentMethod.PAYMENT_LINK
-          ? PosPaymentMethod.ONLINE
-          : dto.posPaymentMethod;
-
       return tx.order.create({
         data: {
           customerId,
@@ -706,7 +695,7 @@ export class OrdersService {
           invoiceNumber: dto.invoiceNumber?.trim() || null,
           serialNumber,
           notes: dto.notes?.trim() || null,
-          posPaymentMethod: posPaymentMethodNormalized,
+          posPaymentMethod: dto.posPaymentMethod,
           ...(lineCreates?.length
             ? { lineItems: { create: lineCreates } }
             : {}),
@@ -715,7 +704,10 @@ export class OrdersService {
       });
     });
     this.auditOrderCreated(order, driverUserId);
-    if (order.posPaymentMethod === PosPaymentMethod.ONLINE) {
+    if (
+      order.posPaymentMethod === PosPaymentMethod.ONLINE ||
+      order.posPaymentMethod === PosPaymentMethod.PAYMENT_LINK
+    ) {
       try {
         await this.autoSendDirectPaymentLink(order, phoneCompact);
       } catch (e) {
@@ -801,7 +793,8 @@ export class OrdersService {
 
           const useHostedPaymentLink =
             shortfallMinor > 0n &&
-            posPaymentMethodResolved === PosPaymentMethod.ONLINE;
+            (posPaymentMethodResolved === PosPaymentMethod.ONLINE ||
+              posPaymentMethodResolved === PosPaymentMethod.PAYMENT_LINK);
 
           if (useHostedPaymentLink) {
             const serialNumber = await this.serialCounter.stampOrderSerial(
@@ -816,7 +809,7 @@ export class OrdersService {
                 totalPrice: totalPriceDecimal,
                 status: OrderStatus.PENDING,
                 cashStatus: CashStatus.UNPAID,
-                posPaymentMethod: PosPaymentMethod.ONLINE,
+                posPaymentMethod: posPaymentMethodResolved,
                 completedAt: null,
                 invoiceNumber: dto.invoiceNumber?.trim() || null,
                 serialNumber,
@@ -930,7 +923,8 @@ export class OrdersService {
       });
 
       if (
-        detail.posPaymentMethod === PosPaymentMethod.ONLINE &&
+        (detail.posPaymentMethod === PosPaymentMethod.ONLINE ||
+          detail.posPaymentMethod === PosPaymentMethod.PAYMENT_LINK) &&
         detail.status === OrderStatus.PENDING
       ) {
         const phone = resolveCustomerPhoneForNotify(
