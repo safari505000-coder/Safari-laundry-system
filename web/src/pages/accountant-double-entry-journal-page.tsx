@@ -34,23 +34,77 @@ const ALL_METHODS: { key: PaymentMethodKey; label: string }[] = [
   { key: 'DEBT_ON_ACCOUNT', label: 'على الحساب (ذمم)' },
 ];
 
+function mapPosPaymentMethodToKey(raw: string): PaymentMethodKey | null {
+  switch (raw) {
+    case 'CASH':
+      return 'CASH';
+    case 'KNET':
+      return 'KNET';
+    case 'ONLINE':
+      return 'ONLINE';
+    case 'PAYMENT_LINK':
+      return 'PAYMENT_LINK';
+    case 'SUBSCRIPTION_WALLET':
+      return 'SUBSCRIPTION_WALLET';
+    case 'DEBT_ON_ACCOUNT':
+      return 'DEBT_ON_ACCOUNT';
+    default:
+      return null;
+  }
+}
+
+function inferElectronicFromSourceRef(
+  ref: string,
+): 'ONLINE' | 'PAYMENT_LINK' | null {
+  if (
+    ref.includes(':PAYMENT_LINK:') ||
+    ref.includes('PAYMENT_LINK_CALLBACK')
+  ) {
+    return 'PAYMENT_LINK';
+  }
+  if (ref.includes(':ONLINE:')) return 'ONLINE';
+  return null;
+}
+
 /**
- * يستنتج وسيلة الدفع من أكواد الحسابات في أسطر القيد.
- * 1100 نقدي — 1200 كي‌نت — 1210 أونلاين/رابط — 2100 محفظة — بدون إيداع = ذمم.
+ * يستنتج وسائل الدفع من أسطر القيد + مرجع المصدر + وسيلة الطلب المرتبطة.
+ * 1210 محاسبيًا واحد لأونلاين ولرابط الدفع — الفلتر يعتمد على المرجع أو الطلب أو السياق.
  */
 function inferMethodsFromEntry(entry: FullJournalEntry): Set<PaymentMethodKey> {
   const codes = new Set(entry.lines.map((l) => l.accountCode));
   const methods = new Set<PaymentMethodKey>();
+
+  const orderMethodKey = entry.posPaymentMethod
+    ? mapPosPaymentMethodToKey(entry.posPaymentMethod)
+    : null;
+
   if (codes.has('1100')) methods.add('CASH');
   if (codes.has('1200')) methods.add('KNET');
+
   if (codes.has('1210')) {
-    methods.add('ONLINE');
-    methods.add('PAYMENT_LINK');
+    const fromRef = inferElectronicFromSourceRef(entry.sourceRef);
+    if (fromRef === 'ONLINE') methods.add('ONLINE');
+    else if (fromRef === 'PAYMENT_LINK') methods.add('PAYMENT_LINK');
+    else if (orderMethodKey === 'ONLINE' || orderMethodKey === 'PAYMENT_LINK') {
+      methods.add(orderMethodKey);
+    } else {
+      const ctx = entry.contextLabel ?? '';
+      if (ctx.includes('رابط دفع')) methods.add('PAYMENT_LINK');
+      else if (ctx.includes('أونلاين') || ctx.includes('بطاقة'))
+        methods.add('ONLINE');
+      else {
+        methods.add('ONLINE');
+        methods.add('PAYMENT_LINK');
+      }
+    }
   }
+
   if (codes.has('2100')) methods.add('SUBSCRIPTION_WALLET');
+
   const hasPayIn = codes.has('1100') || codes.has('1200') || codes.has('1210');
   const hasWallet = codes.has('2100');
   if (!hasPayIn && !hasWallet) methods.add('DEBT_ON_ACCOUNT');
+
   return methods;
 }
 

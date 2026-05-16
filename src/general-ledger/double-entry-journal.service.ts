@@ -2587,6 +2587,11 @@ export class DoubleEntryJournalService {
       referenceLabel: string;
       /** e.g. `الباقة: … · الدفع: …` when resolvable from subscription + journal lines. */
       contextLabel?: string;
+      /**
+       * When the journal row is tied to an Order, the POS payment method on that order.
+       * Lets clients distinguish ONLINE vs PAYMENT_LINK (both post to the same GL bank account).
+       */
+      posPaymentMethod: PosPaymentMethod | null;
       description: string;
       createdAt: string;
       totalDebitKd: string;
@@ -2659,6 +2664,20 @@ export class DoubleEntryJournalService {
       },
     });
 
+    const orderIdsForPaymentMethod = [
+      ...new Set(entries.map((e) => e.orderId).filter((id): id is string => id != null)),
+    ];
+    const ordersForPosMethod =
+      orderIdsForPaymentMethod.length > 0
+        ? await this.prisma.order.findMany({
+            where: { id: { in: orderIdsForPaymentMethod } },
+            select: { id: true, posPaymentMethod: true },
+          })
+        : [];
+    const posPaymentMethodByOrderId = new Map(
+      ordersForPosMethod.map((o) => [o.id, o.posPaymentMethod]),
+    );
+
     const contextByEntry = await this.resolveContextLabelsByEntryId(entries);
 
     const labelByOrder = await this.resolveOrderRefLabelByOrderId(
@@ -2687,6 +2706,9 @@ export class DoubleEntryJournalService {
         parseOrderIdFromInvoiceJournalRef(entry.source, entry.sourceRef);
       const orderRefLabel = oid ? labelByOrder.get(oid) ?? null : null;
       const payCh = inferPaymentChannelArFromJournalLines([...entry.lines]);
+      const posPaymentMethod = entry.orderId
+        ? posPaymentMethodByOrderId.get(entry.orderId) ?? null
+        : null;
 
       return {
         entryId: entry.id,
@@ -2697,6 +2719,7 @@ export class DoubleEntryJournalService {
           entry.sourceRef,
         ),
         contextLabel,
+        posPaymentMethod,
         description: describeJournalEntryForCustomerFacing(
           entry.source,
           entry.sourceRef,

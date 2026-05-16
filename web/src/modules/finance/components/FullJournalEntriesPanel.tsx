@@ -38,6 +38,8 @@ export type FullJournalEntry = {
   referenceLabel?: string;
   /** When resolvable: `الباقة: … · الدفع: …`. */
   contextLabel?: string;
+  /** From linked Order when present — distinguishes ONLINE vs PAYMENT_LINK (same GL 1210). */
+  posPaymentMethod?: string | null;
   description: string;
   createdAt: string;
   totalDebitKd: string;
