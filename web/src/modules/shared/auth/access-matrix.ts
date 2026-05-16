@@ -280,6 +280,8 @@ export const ACCESS = {
     'CALL_CENTER',
     'CALL_CENTER_SUPERVISOR',
   ] satisfies readonly SafariRole[],
+  /** كشف القيد المزدوج للمحاسب والمدير العام — نواة البنكية */
+  'doubleEntryJournal.view': withExec('ACCOUNTANT') satisfies readonly SafariRole[],
   /**
    * V19.x — Call Center Control Tower (`/cc/control-tower`). Mirrors
    * `ControlTowerController` roles: operational CC + supervisor + Owner.

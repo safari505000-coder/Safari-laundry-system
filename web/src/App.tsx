@@ -93,6 +93,7 @@ const UnpaidInvoicesPage = lazyPage(
   'UnpaidInvoicesPage',
 );
 import { CustomerStatementJournalPage } from '@/pages/customer-statement-journal-page';
+import { AccountantDoubleEntryJournalPage } from '@/pages/accountant-double-entry-journal-page';
 const ReportsPage = lazyPage(
   () => import('@/pages/reports-page'),
   'ReportsPage',
@@ -646,6 +647,14 @@ export default function App() {
                   element={
                     <RequireAccess access="journalStatement.view">
                       <CustomerStatementJournalPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="accountant/double-entry-journal"
+                  element={
+                    <RequireAccess access="doubleEntryJournal.view">
+                      <AccountantDoubleEntryJournalPage />
                     </RequireAccess>
                   }
                 />

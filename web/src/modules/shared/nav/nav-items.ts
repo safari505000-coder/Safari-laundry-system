@@ -828,6 +828,14 @@ export const journalStatementItem: NavItem = {
   permission: AppPermission.VIEW_DEBTS,
 };
 
+export const doubleEntryJournalItem: NavItem = {
+  to: '/accountant/double-entry-journal',
+  labelKey: 'nav.doubleEntryJournal',
+  icon: BookText,
+  roles: ['ACCOUNTANT', 'OWNER', 'GENERAL_MANAGER'],
+  permission: AppPermission.VIEW_FINANCIAL_REPORTS,
+};
+
 /**
  * Dastur §5 — Debt Transfer document hub.
  *

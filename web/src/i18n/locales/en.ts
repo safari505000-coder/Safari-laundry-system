@@ -95,6 +95,7 @@ export const en = {
     groupInvoices: 'Invoices',
     unifiedLedger: 'Unified ledger',
     journalStatement: 'Customer AR statement',
+    doubleEntryJournal: 'Double-entry journal',
     myCustody: 'Cash awaiting deposit',
     myDocuments: 'My documents',
     driverOversight: 'Driver oversight',

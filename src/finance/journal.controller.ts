@@ -1,6 +1,6 @@
-import { Controller, Get, Param, ParseUUIDPipe, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { SafariRole } from '@prisma/client';
+import { Controller, Get, Param, ParseUUIDPipe, Query, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { PosPaymentMethod, SafariRole } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -74,23 +74,44 @@ export class JournalController {
   /**
    * V22 Phase 6 — full balanced double-entry view per entry.
    *
-   * Operators kept asking "where is the matching double-entry?" because
-   * the AR-only statement above shows just one side. This endpoint
-   * returns every JournalEntry tied to the customer with ALL of its
+   * Returns every JournalEntry tied to the customer with ALL of its
    * lines (every account, debit and credit), so the audit trail proves
    * Σ Dr = Σ Cr per entry.
+   *
+   * Available to ACCOUNTANT, GENERAL_MANAGER, and OWNER for financial
+   * reporting and audit, in addition to Call Center roles.
+   *
+   * Optional filters:
+   *   - `paymentMethods`: comma-separated PosPaymentMethod values
+   *   - `dateFrom` / `dateTo`: ISO date strings (inclusive)
    */
   @Get('customers/:customerId/full-entries')
   @Roles(
     SafariRole.CALL_CENTER,
     SafariRole.CALL_CENTER_SUPERVISOR,
+    SafariRole.ACCOUNTANT,
+    SafariRole.GENERAL_MANAGER,
+    SafariRole.OWNER,
   )
   @ApiOperation({
-    summary: 'Full balanced double-entry journal entries for a customer',
+    summary: 'Full balanced double-entry journal entries for a customer (finance roles)',
   })
+  @ApiQuery({ name: 'paymentMethods', required: false, description: 'Comma-separated PosPaymentMethod values to filter by' })
+  @ApiQuery({ name: 'dateFrom', required: false, description: 'ISO date string inclusive lower bound' })
+  @ApiQuery({ name: 'dateTo', required: false, description: 'ISO date string inclusive upper bound' })
   getCustomerFullEntries(
     @Param('customerId', ParseUUIDPipe) customerId: string,
+    @Query('paymentMethods') paymentMethodsRaw?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
   ) {
-    return this.journal.getCustomerJournalEntries(customerId);
+    const paymentMethods = paymentMethodsRaw
+      ? (paymentMethodsRaw.split(',').filter((v) => Object.values(PosPaymentMethod).includes(v as PosPaymentMethod)) as PosPaymentMethod[])
+      : undefined;
+    return this.journal.getCustomerJournalEntries(customerId, {
+      paymentMethods: paymentMethods?.length ? paymentMethods : undefined,
+      dateFrom: dateFrom ? new Date(dateFrom) : undefined,
+      dateTo: dateTo ? new Date(dateTo) : undefined,
+    });
   }
 }

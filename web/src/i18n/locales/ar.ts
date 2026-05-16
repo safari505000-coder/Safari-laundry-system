@@ -96,6 +96,7 @@ export const ar = {
     groupInvoices: 'الفواتير',
     unifiedLedger: 'الدفتر الموحد',
     journalStatement: 'كشف ذمم العميل',
+    doubleEntryJournal: 'كشف القيد المزدوج',
     myCustody: 'كاش بانتظار الإيداع',
     myDocuments: 'مستنداتي',
     driverOversight: 'مراقبة السائقين',

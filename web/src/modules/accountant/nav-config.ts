@@ -11,6 +11,7 @@ import {
   debtTransfersItem,
   driverCashTraceItem,
   cashReconciliationItem,
+  doubleEntryJournalItem,
   expenseApprovalItem,
   expenseReportsItem,
   inventoryCatalogItem,
@@ -43,7 +44,7 @@ import {
 export const accountantSidebarNavGroups: NavGroup[] = [
   {
     ...G.customersSubs,
-    items: [customersItem, journalStatementItem],
+    items: [customersItem, journalStatementItem, doubleEntryJournalItem],
   },
   {
     ...G.finance,

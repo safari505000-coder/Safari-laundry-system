@@ -2569,6 +2569,14 @@ export class DoubleEntryJournalService {
    */
   async getCustomerJournalEntries(
     customerId: string,
+    filters?: {
+      /** Filter entries to only those involving orders with these payment methods. */
+      paymentMethods?: PosPaymentMethod[];
+      /** Inclusive lower-bound on `createdAt`. */
+      dateFrom?: Date;
+      /** Inclusive upper-bound on `createdAt` (set to end of day by caller). */
+      dateTo?: Date;
+    },
   ): Promise<{
     customerId: string;
     entries: Array<{
@@ -2592,8 +2600,46 @@ export class DoubleEntryJournalService {
       }>;
     }>;
   }> {
+    const dateFilter =
+      filters?.dateFrom || filters?.dateTo
+        ? {
+            gte: filters.dateFrom,
+            lte: filters.dateTo,
+          }
+        : undefined;
+
+    // When filtering by payment method, first resolve which order IDs match,
+    // then filter JournalEntry by those IDs or by source string for orderless entries.
+    let paymentMethodOrderIds: string[] | undefined;
+    if (filters?.paymentMethods?.length) {
+      const matchingOrders = await this.prisma.order.findMany({
+        where: {
+          customerId,
+          posPaymentMethod: { in: filters.paymentMethods },
+        },
+        select: { id: true },
+      });
+      paymentMethodOrderIds = matchingOrders.map((o) => o.id);
+    }
+
     const entries = await this.prisma.journalEntry.findMany({
-      where: { customerId },
+      where: {
+        customerId,
+        ...(dateFilter ? { createdAt: dateFilter } : {}),
+        ...(paymentMethodOrderIds !== undefined
+          ? {
+              OR: [
+                { orderId: { in: paymentMethodOrderIds } },
+                {
+                  orderId: null,
+                  source: {
+                    in: this.paymentMethodsToSources(filters!.paymentMethods!),
+                  },
+                },
+              ],
+            }
+          : {}),
+      },
       orderBy: { createdAt: 'asc' },
       select: {
         id: true,
@@ -2691,6 +2737,35 @@ export class DoubleEntryJournalService {
       return JOURNAL_ACCOUNTS.ADJUSTMENTS;
     }
     throw new Error(`UNKNOWN_PAYMENT_ASSET_ACCOUNT:${method || 'NONE'}`);
+  }
+
+  /**
+   * Maps requested PosPaymentMethod values to the journal `source` strings
+   * used by entries that have no `orderId` (e.g. direct CC debt payments).
+   * CASH/KNET/ONLINE/PAYMENT_LINK map to the PAYMENT source; wallet-based
+   * entries use WALLET_FUNDING; debt-only entries use INVOICE.
+   */
+  private paymentMethodsToSources(methods: PosPaymentMethod[]): string[] {
+    const sources = new Set<string>();
+    for (const m of methods) {
+      if (
+        m === PosPaymentMethod.CASH ||
+        m === PosPaymentMethod.KNET ||
+        m === PosPaymentMethod.ONLINE ||
+        m === PosPaymentMethod.PAYMENT_LINK
+      ) {
+        sources.add('PAYMENT');
+        sources.add('PROCESS_TRANSACTION');
+      }
+      if (m === PosPaymentMethod.SUBSCRIPTION_WALLET) {
+        sources.add('WALLET_FUNDING');
+        sources.add('PROCESS_TRANSACTION');
+      }
+      if (m === PosPaymentMethod.DEBT_ON_ACCOUNT) {
+        sources.add('INVOICE');
+      }
+    }
+    return [...sources];
   }
 
   private decimal(value: Prisma.Decimal | string | number): Prisma.Decimal {
