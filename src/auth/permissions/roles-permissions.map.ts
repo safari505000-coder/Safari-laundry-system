@@ -90,6 +90,7 @@ export const ROLE_PERMISSIONS = {
   [SafariRole.FLEET_SUPERVISOR]: [
     AppPermission.VIEW_EXPENSES,
     AppPermission.CREATE_EXPENSES,
+    AppPermission.VIEW_DISPATCH,
   ],
   [SafariRole.SUPERVISOR]: [
     ...invoiceRead,
@@ -98,6 +99,7 @@ export const ROLE_PERMISSIONS = {
     AppPermission.UPDATE_INVOICE,
     AppPermission.UPDATE_OPERATIONAL_DATA,
     AppPermission.MANAGE_USERS,
+    AppPermission.VIEW_DISPATCH,
   ],
   [SafariRole.VIEWER]: [
     ...invoiceRead,
@@ -105,7 +107,7 @@ export const ROLE_PERMISSIONS = {
     AppPermission.VIEW_CUSTOMERS,
   ],
   [SafariRole.CUSTOMER]: [AppPermission.VIEW_CUSTOMERS],
-  [SafariRole.WORKER]: [],
+  [SafariRole.WORKER]: [AppPermission.VIEW_DISPATCH],
 } satisfies Record<SafariRole, readonly AppPermission[]>;
 
 /**

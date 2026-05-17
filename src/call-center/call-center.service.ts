@@ -1682,6 +1682,7 @@ export class CallCenterService {
   async getCustomerLedger(
     customerId: string,
     filters: CustomerLedgerQueryDto,
+    actor?: JwtUser,
   ): Promise<CustomerLedgerResponseDto> {
     const customer = await this.prisma.customer.findUnique({
       where: { id: customerId },
@@ -1699,6 +1700,14 @@ export class CallCenterService {
     });
     if (!customer) {
       throw new NotFoundException('Customer not found');
+    }
+    if (
+      actor?.role === SafariRole.CALL_CENTER &&
+      actor.branchId &&
+      customer.originBranchId &&
+      customer.originBranchId !== actor.branchId
+    ) {
+      throw new ForbiddenException('Customer is outside your branch scope');
     }
 
     // Most-recent subscription regardless of status → powers both the

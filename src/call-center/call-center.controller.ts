@@ -71,11 +71,15 @@ export class CallCenterController {
   }
 
   @Get('debt-recovery-report')
-  @Roles(SafariRole.OWNER, SafariRole.GENERAL_MANAGER)
+  @Roles(
+    SafariRole.OWNER,
+    SafariRole.GENERAL_MANAGER,
+    SafariRole.CALL_CENTER_SUPERVISOR,
+  )
   @ApiOperation({
     summary: `Debt recovery over time — owner reporting (${APP_BRAND})`,
     description:
-      'OWNER only. Daily breakdown of debt-settled KWD (from ORDER_WALLET_SETTLEMENT + SUBSCRIPTION_ACTIVATION metadata.debtSettled). Defaults to last 30 days.',
+      'Owner/GM/Supervisor reporting. Daily breakdown of debt-settled KWD (from ORDER_WALLET_SETTLEMENT + SUBSCRIPTION_ACTIVATION metadata.debtSettled). Defaults to last 30 days.',
   })
   debtRecoveryReport(@Query() q: DebtRecoveryQueryDto) {
     return this.callCenterService.getDebtRecoveryReport(q.from, q.to);
@@ -300,8 +304,9 @@ export class CallCenterController {
   getCustomerLedger(
     @Param('customerId', ParseUUIDPipe) customerId: string,
     @Query() q: CustomerLedgerQueryDto,
+    @CurrentUser() user: JwtUser,
   ) {
-    return this.callCenterService.getCustomerLedger(customerId, q);
+    return this.callCenterService.getCustomerLedger(customerId, q, user);
   }
 
   @Post('customers/:customerId/statement-share-link')

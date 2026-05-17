@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { SafariRole } from '@prisma/client';
 import type { CustomerCoreRow } from './customer-core.service';
 import { DebtService } from '../finance/services/debt.service';
@@ -100,11 +100,20 @@ export class CustomersService {
   async getProfileWithFinancials(
     customerId: string,
     role?: SafariRole | string,
+    actorBranchId?: string | null,
   ): Promise<CustomerInternalDTO> {
     const canSeeFinancials = this.canSeeFinancials(role);
     const customer = await this.core.getById(customerId);
     if (!customer) {
       throw new NotFoundException('Customer not found');
+    }
+    if (
+      role === SafariRole.MANAGER &&
+      actorBranchId &&
+      customer.originBranchId &&
+      customer.originBranchId !== actorBranchId
+    ) {
+      throw new ForbiddenException('Customer is outside your branch scope');
     }
     if (!canSeeFinancials) {
       return this.toPublicDto(customer);

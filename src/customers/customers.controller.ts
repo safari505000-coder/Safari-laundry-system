@@ -95,7 +95,11 @@ export class CustomersController {
       'Core profile is served by CustomerCoreService; financial snapshot is fetched via DebtService + SubscriptionService (no finance logic inside customers).',
   })
   getProfile(@Param('id') id: string, @CurrentUser() user: JwtUser) {
-    return this.customersService.getProfileWithFinancials(id, user.role);
+    return this.customersService.getProfileWithFinancials(
+      id,
+      user.role,
+      user.branchId,
+    );
   }
 
   @Patch(':id')

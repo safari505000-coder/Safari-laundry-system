@@ -22,6 +22,7 @@ const customerCoreSelect = {
   motherContact: true,
   wifeContact: true,
   sonContact: true,
+  originBranchId: true,
   createdAt: true,
   updatedAt: true,
 } satisfies Prisma.CustomerSelect;

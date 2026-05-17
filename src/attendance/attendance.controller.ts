@@ -45,6 +45,7 @@ export class AttendanceController {
     SafariRole.GENERAL_MANAGER,
     SafariRole.MANAGER,
     SafariRole.ACCOUNTANT,
+    SafariRole.SUPERVISOR,
   )
   @ApiOperation({
     summary: `List attendance rows (${APP_BRAND})`,
