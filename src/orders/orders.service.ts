@@ -982,14 +982,13 @@ export class OrdersService {
       return detail;
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
-        console.error(
-          'POS_CHECKOUT_ERROR Prisma',
-          error.code,
-          error.meta,
-          error.message,
+        this.log.error(
+          `POS_CHECKOUT_ERROR Prisma code=${error.code} meta=${JSON.stringify(error.meta ?? {})}`,
         );
       } else {
-        console.error('POS_CHECKOUT_ERROR:', error);
+        this.log.error(
+          `POS_CHECKOUT_ERROR ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
       throw error;
     }
@@ -1370,6 +1369,7 @@ export class OrdersService {
         totalPrice: true,
         posPaymentMethod: true,
         posHostedPaymentUrl: true,
+        status: true,
         cashStatus: true,
         createdAt: true,
         reminderCount: true,
@@ -1427,8 +1427,21 @@ export class OrdersService {
       rows.map((r) => r.id),
     );
     const tol = new Prisma.Decimal(INVOICE_REMAINING_TOLERANCE_KD);
-    const filteredRows = rows.filter((r) => {
+    const collectibleRemaining = (r: (typeof rows)[number]) => {
       const remaining = remainingByOrder.get(r.id) ?? r.totalPrice;
+      // Pending invoices do not have revenue/AR journal rows yet. They are still
+      // collectible in Call Center until the gateway callback completes them.
+      if (
+        remaining.lessThanOrEqualTo(tol) &&
+        r.status === OrderStatus.PENDING &&
+        r.cashStatus === CashStatus.UNPAID
+      ) {
+        return r.totalPrice;
+      }
+      return remaining;
+    };
+    const filteredRows = rows.filter((r) => {
+      const remaining = collectibleRemaining(r);
       if (remaining.lessThanOrEqualTo(tol)) return false;
       if (r.cashStatus === CashStatus.UNPAID) return true;
       if (
@@ -1455,7 +1468,7 @@ export class OrdersService {
       );
     const rawRemainingByCustomer = new Map<string, Prisma.Decimal>();
     for (const row of filteredRows) {
-      const rem = remainingByOrder.get(row.id) ?? row.totalPrice;
+      const rem = collectibleRemaining(row);
       const prev = rawRemainingByCustomer.get(row.customerId) ?? new Prisma.Decimal(0);
       rawRemainingByCustomer.set(row.customerId, prev.plus(rem));
     }
@@ -1474,7 +1487,7 @@ export class OrdersService {
       );
     }
     return filteredRows.flatMap((r) => {
-      const rawRemaining = remainingByOrder.get(r.id) ?? r.totalPrice;
+      const rawRemaining = collectibleRemaining(r);
       const customerBudget =
         visibleBudgetByCustomer.get(r.customerId) ?? new Prisma.Decimal(0);
       if (customerBudget.lessThanOrEqualTo(tol)) return [];
@@ -1604,7 +1617,6 @@ export class OrdersService {
     branchId: string | null = null,
     actor?: JwtUser,
   ): Promise<Prisma.Decimal> {
-    console.log('[ORDERS SCOPE]', branchId, actor?.role ?? null);
     const isDriver = actor?.role === SafariRole.DRIVER;
     const effectiveBranchId =
       isDriver ? null
@@ -1793,7 +1805,6 @@ export class OrdersService {
     }>
   > {
     const { branchId, actor, createdAt, driverId, customerId } = args;
-    console.log('[ORDERS SCOPE]', branchId, actor?.role ?? null);
     const isDriver = actor?.role === SafariRole.DRIVER;
     const effectiveBranchId =
       isDriver ? null

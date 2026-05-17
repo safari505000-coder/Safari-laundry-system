@@ -1,7 +1,9 @@
 import type { PrismaClient } from '@prisma/client';
+import { Logger } from '@nestjs/common';
 import { seedLaundryPriceList } from './laundry-price-list.seed';
 
 const BUSINESS_NAME_AR = 'مجموعة مصابغ سفاري السريعة';
+const logger = new Logger('DefaultPriceList');
 
 /**
  * Fresh-install: apply the **same** PDF tariff as `prisma db seed` / Owner UI.
@@ -25,7 +27,7 @@ export async function ensureDefaultPriceList(
 
   await seedLaundryPriceList(prisma);
   const n = await prisma.laundryPriceListItem.count();
-  console.log(
+  logger.log(
     `[${BUSINESS_NAME_AR}] Fresh DB — full laundry tariff applied (${n} rows). ` +
       `Drivers/Managers: use branch-scoped JWT for merged catalog.`,
   );

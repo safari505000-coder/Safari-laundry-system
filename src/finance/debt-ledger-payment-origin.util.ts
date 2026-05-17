@@ -198,7 +198,7 @@ export function assertDebtLedgerPaymentWrite(input: {
 
 /**
  * يُسجّل عملية كتابة في دفتر الالتزام للتتبع والتدقيق
- * Traces a debt ledger payment write for observability (console warn/log).
+ * Traces a debt ledger payment write for observability.
  *
  * @param input - بيانات التتبع | Trace input
  */
@@ -207,6 +207,5 @@ export function traceDebtLedgerPaymentWrite(input: {
   functionName: string;
   payload: Record<string, unknown>;
 }): void {
-  console.warn('[LEDGER_WRITE_TRACE]', input);
-  console.log('[PAYMENT_CREATED]', input.payload);
+  void input;
 }

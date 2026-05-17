@@ -242,8 +242,8 @@ export class CashExecutiveService {
  *   - `NODE_ENV !== 'production'`  → throw `SSoT VIOLATION: CASH DRIFT
  *     DETECTED` with a structured detail line. Tests, `/verify`, and
  *     the audit script all see this immediately.
- *   - production                   → console.error + Logger.error
- *     and let the request complete. A stale status pill or near-miss
+ *   - production                   → Logger.error and let the request complete.
+ *     A stale status pill or near-miss
  *     total is preferable to a 500 on a dashboard the operators
  *     depend on.
  */
@@ -312,13 +312,6 @@ function assertSsotConsistency(input: {
   if (process.env.NODE_ENV !== 'production') {
     throw new Error(msg);
   }
-  // Production: log structured payload (kept on a separate line so log
-  // parsers can pick it up cleanly without the human-readable prefix).
-  console.error('SSoT DRIFT', {
-    expectedStatus,
-    ssotTotalCash,
-    drifts,
-  });
 }
 
 /**

@@ -1,4 +1,7 @@
+import { Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+
+const logger = new Logger('PrismaException');
 
 /** Safe client-facing copy for common Prisma failures (details still logged server-side). */
 export function prismaClientMessage(error: unknown): string {
@@ -47,19 +50,19 @@ export function prismaClientMessage(error: unknown): string {
   return 'Something went wrong. Please try again.';
 }
 
-/** Logs Prisma errors with code/meta; other errors with full payload. */
+/** Logs Prisma errors with bounded diagnostics; never logs full row payloads. */
 export function logServerError(context: string, error: unknown): void {
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
-    console.error(
-      `[${context}] Prisma ${error.code}`,
-      error.meta,
-      error.message,
+    logger.error(
+      `[${context}] Prisma ${error.code} meta=${JSON.stringify(error.meta ?? {})}`,
     );
     return;
   }
   if (error instanceof Prisma.PrismaClientValidationError) {
-    console.error(`[${context}] Prisma validation`, error.message);
+    logger.error(`[${context}] Prisma validation`);
     return;
   }
-  console.error(`[${context}]`, error);
+  logger.error(
+    `[${context}] ${error instanceof Error ? error.message : String(error)}`,
+  );
 }

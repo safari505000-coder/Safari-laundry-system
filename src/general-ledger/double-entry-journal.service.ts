@@ -828,6 +828,15 @@ export function humanizeJournalSourceRef(
 export class DoubleEntryJournalService {
   private readonly logger = new Logger(DoubleEntryJournalService.name);
 
+  private logJournalWriteFailure(
+    errorCode: string | null,
+    message: string,
+  ): void {
+    this.logger.error(
+      `[JOURNAL_WRITE_FAILED] code=${errorCode ?? 'UNKNOWN'} message=${message.slice(0, 240)}`,
+    );
+  }
+
   /**
    * V20.6 — Phase 1 enforcement flag.
    *
@@ -1046,22 +1055,7 @@ export class DoubleEntryJournalService {
         err instanceof Prisma.PrismaClientKnownRequestError
           ? err.code
           : null;
-      // eslint-disable-next-line no-console
-      console.error(
-        '[JOURNAL_WRITE_FAILED]',
-        JSON.stringify({
-          source: input.source,
-          sourceRef: input.sourceRef ?? null,
-          customerId: input.customerId,
-          orderId: input.orderId ?? null,
-          amount:
-            input.amount instanceof Prisma.Decimal
-              ? input.amount.toFixed(4)
-              : String(input.amount),
-          message,
-          errorCode,
-        }),
-      );
+      this.logJournalWriteFailure(errorCode, message);
 
       await this.persistFailure(input, message, errorCode);
       await this.tripBreakerIfNeeded(input.customerId);
@@ -1210,22 +1204,7 @@ export class DoubleEntryJournalService {
       const message = (err as Error)?.message ?? String(err);
       const errorCode =
         err instanceof Prisma.PrismaClientKnownRequestError ? err.code : null;
-      // eslint-disable-next-line no-console
-      console.error(
-        '[JOURNAL_WRITE_FAILED]',
-        JSON.stringify({
-          source: 'INVOICE_ISSUED',
-          sourceRef: `JOURNAL:INVOICE_ISSUED:${input.orderId}`,
-          customerId: input.customerId,
-          orderId: input.orderId,
-          amount:
-            input.amount instanceof Prisma.Decimal
-              ? input.amount.toFixed(4)
-              : String(input.amount),
-          message,
-          errorCode,
-        }),
-      );
+      this.logJournalWriteFailure(errorCode, message);
       await this.persistFailure(
         {
           source: 'INVOICE_ISSUED',
@@ -1311,22 +1290,7 @@ export class DoubleEntryJournalService {
       const message = (err as Error)?.message ?? String(err);
       const errorCode =
         err instanceof Prisma.PrismaClientKnownRequestError ? err.code : null;
-      // eslint-disable-next-line no-console
-      console.error(
-        '[JOURNAL_WRITE_FAILED]',
-        JSON.stringify({
-          source: 'WALLET_ABSORPTION_V3',
-          sourceRef: `JOURNAL:WALLET_ABSORPTION_V3:${input.orderId}:APPLIED`,
-          customerId: input.customerId,
-          orderId: input.orderId,
-          amount:
-            input.amount instanceof Prisma.Decimal
-              ? input.amount.toFixed(4)
-              : String(input.amount),
-          message,
-          errorCode,
-        }),
-      );
+      this.logJournalWriteFailure(errorCode, message);
       await this.persistFailure(
         {
           source: 'WALLET_ABSORPTION_V3',
@@ -1424,23 +1388,7 @@ export class DoubleEntryJournalService {
       const message = (err as Error)?.message ?? String(err);
       const errorCode =
         err instanceof Prisma.PrismaClientKnownRequestError ? err.code : null;
-      // eslint-disable-next-line no-console
-      console.error(
-        '[JOURNAL_WRITE_FAILED]',
-        JSON.stringify({
-          source: 'EXTERNAL_PAYMENT',
-          sourceRef: `JOURNAL:EXTERNAL_PAYMENT:${input.paymentRef}`,
-          customerId: input.customerId,
-          orderId: input.orderId ?? null,
-          amount:
-            input.amount instanceof Prisma.Decimal
-              ? input.amount.toFixed(4)
-              : String(input.amount),
-          paymentMethod: String(input.paymentMethod),
-          message,
-          errorCode,
-        }),
-      );
+      this.logJournalWriteFailure(errorCode, message);
       await this.persistFailure(
         {
           source: 'EXTERNAL_PAYMENT',
@@ -1564,22 +1512,7 @@ export class DoubleEntryJournalService {
       const message = (err as Error)?.message ?? String(err);
       const errorCode =
         err instanceof Prisma.PrismaClientKnownRequestError ? err.code : null;
-      // eslint-disable-next-line no-console
-      console.error(
-        '[JOURNAL_WRITE_FAILED]',
-        JSON.stringify({
-          source: 'WALLET_ABSORPTION',
-          sourceRef: `JOURNAL:WALLET_ABSORPTION:${input.orderId}:APPLIED`,
-          customerId: input.customerId,
-          orderId: input.orderId,
-          amount:
-            input.amount instanceof Prisma.Decimal
-              ? input.amount.toFixed(4)
-              : String(input.amount),
-          message,
-          errorCode,
-        }),
-      );
+      this.logJournalWriteFailure(errorCode, message);
       await this.persistFailure(
         {
           source: 'WALLET_ABSORPTION',
@@ -1818,22 +1751,7 @@ export class DoubleEntryJournalService {
       const message = (err as Error)?.message ?? String(err);
       const errorCode =
         err instanceof Prisma.PrismaClientKnownRequestError ? err.code : null;
-      // eslint-disable-next-line no-console
-      console.error(
-        '[JOURNAL_WRITE_FAILED]',
-        JSON.stringify({
-          source: 'INVOICE_CANCELED',
-          sourceRef: `JOURNAL:INVOICE_CANCELED:${input.orderId}`,
-          customerId: input.customerId,
-          orderId: input.orderId,
-          amount:
-            input.remainingArAmount instanceof Prisma.Decimal
-              ? input.remainingArAmount.toFixed(4)
-              : String(input.remainingArAmount),
-          message,
-          errorCode,
-        }),
-      );
+      this.logJournalWriteFailure(errorCode, message);
       await this.persistFailure(
         {
           source: 'INVOICE_CANCELED',
@@ -1931,17 +1849,7 @@ export class DoubleEntryJournalService {
       const message = (err as Error)?.message ?? String(err);
       const errorCode =
         err instanceof Prisma.PrismaClientKnownRequestError ? err.code : null;
-      // eslint-disable-next-line no-console
-      console.error(
-        '[JOURNAL_WRITE_FAILED]',
-        JSON.stringify({
-          source: 'DEBT_DISCOUNT',
-          sourceRef: `JOURNAL:DEBT_DISCOUNT:${input.discountRef}`,
-          customerId: input.customerId,
-          message,
-          errorCode,
-        }),
-      );
+      this.logJournalWriteFailure(errorCode, message);
       await this.persistFailure(
         {
           source: 'DEBT_DISCOUNT',
@@ -2086,26 +1994,7 @@ export class DoubleEntryJournalService {
       const totalAmount = this.decimal(input.giftRemovalAmount).add(
         this.decimal(input.cashRefundAmount),
       );
-      // eslint-disable-next-line no-console
-      console.error(
-        '[JOURNAL_WRITE_FAILED]',
-        JSON.stringify({
-          source: 'SUBSCRIPTION_REFUND',
-          sourceRef: `JOURNAL:SUBSCRIPTION_REFUND:${input.subscriptionId}`,
-          customerId: input.customerId,
-          subscriptionId: input.subscriptionId,
-          giftAmount:
-            input.giftRemovalAmount instanceof Prisma.Decimal
-              ? input.giftRemovalAmount.toFixed(4)
-              : String(input.giftRemovalAmount),
-          cashAmount:
-            input.cashRefundAmount instanceof Prisma.Decimal
-              ? input.cashRefundAmount.toFixed(4)
-              : String(input.cashRefundAmount),
-          message,
-          errorCode,
-        }),
-      );
+      this.logJournalWriteFailure(errorCode, message);
       await this.persistFailure(
         {
           source: 'SUBSCRIPTION_REFUND',
@@ -2234,12 +2123,12 @@ export class DoubleEntryJournalService {
 
   /**
    * يُسجِّل في السجل انحرافًا بين رصيد دفتر الديون القديم ورصيد اليومية.
-   * تُستخدم في Cron الفحص اليومي — لا تُوقف أي عملية، فقط تُصدر `console.error`.
+   * تُستخدم في Cron الفحص اليومي — لا تُوقف أي عملية، فقط تُصدر تحذيرًا في السجل.
    * الانحراف المسموح به ±0.001 د.ك (نفس حد `appendBalanced`).
    *
    * Logs an AR drift warning when the legacy debt-ledger balance differs
    * from the journal AR balance. Used by the daily drift cron — never
-   * throws, only emits `console.error`. Tolerance is ±0.001 KWD.
+   * throws, only emits a logger warning. Tolerance is ±0.001 KWD.
    *
    * @param customerId - معرف العميل | Customer ID
    * @param ledgerBalance - رصيد دفتر الديون القديم | Legacy debt-ledger balance

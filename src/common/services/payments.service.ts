@@ -1340,7 +1340,7 @@ export class PaymentsService implements OnModuleInit {
       [key: string]: unknown;
     },
   ): void {
-    console.error(
+    this.logger.error(
       JSON.stringify({
         event,
         transId: data.transId ?? null,
@@ -1386,7 +1386,11 @@ export class PaymentsService implements OnModuleInit {
         });
       }
     } catch (err) {
-      console.error('post_payment_self_check_failed', err);
+      this.logger.error(
+        `post_payment_self_check_failed ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
     }
   }
 

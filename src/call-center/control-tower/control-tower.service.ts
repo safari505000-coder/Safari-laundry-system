@@ -249,7 +249,6 @@ export class ControlTowerService {
       const driverDispatches = activeDispatches.filter(
         (d) => d.driverId === driverId,
       );
-      console.log('[DRIVER TASKS]', driverId, driverDispatches.length);
       driversOut.push({
         driverId,
         name: driverNameForWorkload.get(driverId) ?? '—',

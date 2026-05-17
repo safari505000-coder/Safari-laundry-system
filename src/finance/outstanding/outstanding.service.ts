@@ -371,22 +371,12 @@ export class OutstandingService {
   }): void {
     if (input.canonicalTotalDueKd === input.finalReturned) return;
 
-    console.error('[AR MISMATCH]', {
-      totalDueKd: input.finalReturned,
-      canonical: input.canonicalTotalDueKd,
-    });
-
     const diff = Math.abs(
       new Prisma.Decimal(input.finalReturned)
         .sub(input.canonicalTotalDueKd)
         .toNumber(),
     );
     if (diff <= 0.001) return;
-    console.error('[CRITICAL FINANCIAL INCONSISTENCY]', {
-      totalDueKd: input.finalReturned,
-      canonical: input.canonicalTotalDueKd,
-      diff: diff.toFixed(3),
-    });
   }
 
   /**

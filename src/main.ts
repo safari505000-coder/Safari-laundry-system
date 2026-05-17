@@ -81,7 +81,7 @@ async function ensureInstitutionalRoles(prisma: PrismaService): Promise<void> {
       create: { name: roleName },
       update: {},
     });
-    console.log(`Role ${roleName} ensured`);
+    Logger.log(`Role ${roleName} ensured`, 'Bootstrap');
   }
 
   for (const roleName of ADDITIONAL_INSTITUTIONAL_ROLE_NAMES) {
@@ -90,7 +90,7 @@ async function ensureInstitutionalRoles(prisma: PrismaService): Promise<void> {
       create: { name: roleName },
       update: {},
     });
-    console.log(`Role ${roleName} ensured`);
+    Logger.log(`Role ${roleName} ensured`, 'Bootstrap');
   }
 }
 

@@ -1,18 +1,21 @@
 /**
- * Safari ERP — SAFE DEVELOPMENT FINANCIAL RESET.
+ * Safari ERP — SAFE FINANCIAL RESET.
  *
- * Development/test utility only. It clears financial transactional state while
+ * Clears financial transactional state while
  * preserving schema, migrations, users, branches, settings, services, products,
  * permissions, modules, APIs, and business logic.
  *
  * Usage:
  *   npm run financial:reset -- --dry-run
+ *   npm run financial:reset -- --dry-run --scope=full-money
  *   RESET_ALLOW_LOCAL=true npm run financial:reset -- --apply
  *
  * Safety:
  *   - Dry-run is the default and never writes.
  *   - Apply is refused on non-local DATABASE_URL unless
  *     RESET_ALLOW_NON_LOCAL=true.
+ *   - Production-pattern hosts require RESET_ALLOW_PRODUCTION_PATTERN=true
+ *     and RESET_FINAL_CONFIRM=YES_DELETE_CURRENT_PRODUCTION_FINANCIAL_DATA.
  *   - Apply is refused on local DATABASE_URL unless RESET_ALLOW_LOCAL=true.
  *   - All destructive work runs in one transaction.
  *   - Only explicit, dependency-ordered allowlisted tables are deleted.
@@ -23,7 +26,7 @@ import 'dotenv/config';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { Prisma, PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import { Pool } from 'pg';
 
 type RawDb = {
@@ -32,6 +35,11 @@ type RawDb = {
 };
 
 type Mode = 'dry-run' | 'apply';
+type ResetScope = 'financial' | 'full-money';
+type CliOptions = {
+  mode: Mode;
+  scope: ResetScope;
+};
 type TablePlan = {
   table: string;
   reason: string;
@@ -49,7 +57,9 @@ const REPORT_PATH = path.join(
   'docs',
   'financial-reset-report.md',
 );
-const ZERO = new Prisma.Decimal(0);
+const DEFAULT_SCOPE: ResetScope = 'financial';
+const FULL_MONEY_SCOPE: ResetScope = 'full-money';
+const FINAL_PRODUCTION_CONFIRM = 'YES_DELETE_CURRENT_PRODUCTION_FINANCIAL_DATA';
 
 /**
  * Dependency-aware order. Child/restricting tables first, parents later.
@@ -57,7 +67,7 @@ const ZERO = new Prisma.Decimal(0);
  * SubscriptionPlan, Laundry* catalog, Role, Permission, settings, inventory
  * definitions, services/products, and schema/migrations are preserved.
  */
-const DELETE_PLAN: TablePlan[] = [
+const CORE_DELETE_PLAN: TablePlan[] = [
   { table: 'DebtTransferOrder', reason: 'order-linked debt transfer line items' },
   { table: 'CommissionPayout', reason: 'order/debt-entry derived commission accruals' },
   { table: 'InvoiceAuditLog', reason: 'invoice edit/void transactional audit' },
@@ -100,7 +110,16 @@ const DELETE_PLAN: TablePlan[] = [
   { table: 'Order', reason: 'invoices/orders' },
 ];
 
-const RESET_SQL_STEPS: Array<{ label: string; sql: string }> = [
+const FULL_MONEY_DELETE_PLAN: TablePlan[] = [
+  { table: 'PayrollAdHocLine', reason: 'manual payroll roster lines' },
+  { table: 'Payroll', reason: 'payroll runs and payslip financial rows' },
+  { table: 'EmployeeLoan', reason: 'employee loan balances and installment schedules' },
+  { table: 'BranchExpense', reason: 'branch cash/operational expense receipts' },
+  { table: 'VehicleExpense', reason: 'fleet/vehicle expense receipts' },
+  { table: 'FixedExpenseSchedule', reason: 'fixed monthly expense schedules' },
+];
+
+const BASE_RESET_SQL_STEPS: Array<{ label: string; sql: string }> = [
   {
     label: 'zero CustomerWallet balances and subscription runtime fields',
     sql: `
@@ -142,13 +161,63 @@ const RESET_SQL_STEPS: Array<{ label: string; sql: string }> = [
   },
 ];
 
-function parseMode(argv: string[]): Mode {
+const FULL_MONEY_RESET_SQL_STEPS: Array<{ label: string; sql: string }> = [
+  {
+    label: 'zero branch Wallet balances',
+    sql: `
+      UPDATE "Wallet"
+      SET
+        "balance" = 0,
+        "updatedAt" = now()
+    `,
+  },
+  {
+    label: 'clear payroll salary runtime fields on User',
+    sql: `
+      UPDATE "User"
+      SET
+        "basicMonthlySalary" = NULL,
+        "monthlyAllowances" = NULL,
+        "updatedAt" = now()
+    `,
+  },
+];
+
+function deletePlanForScope(scope: ResetScope): TablePlan[] {
+  return scope === FULL_MONEY_SCOPE
+    ? [...CORE_DELETE_PLAN, ...FULL_MONEY_DELETE_PLAN]
+    : CORE_DELETE_PLAN;
+}
+
+function resetSqlStepsForScope(scope: ResetScope): Array<{ label: string; sql: string }> {
+  return scope === FULL_MONEY_SCOPE
+    ? [...BASE_RESET_SQL_STEPS, ...FULL_MONEY_RESET_SQL_STEPS]
+    : BASE_RESET_SQL_STEPS;
+}
+
+function parseCliOptions(argv: string[]): CliOptions {
   const hasApply = argv.includes('--apply');
-  const hasDryRun = argv.includes('--dry-run') || argv.length === 0;
+  const hasDryRun = argv.includes('--dry-run');
   if (hasApply && hasDryRun) {
     throw new Error('Choose either --dry-run or --apply, not both.');
   }
-  return hasApply ? 'apply' : 'dry-run';
+  const scopeArg = argv.find((arg) => arg.startsWith('--scope='));
+  const scopeValue = scopeArg?.split('=')[1]?.trim();
+  const scope =
+    argv.includes('--include-hr-expenses') || scopeValue === FULL_MONEY_SCOPE
+      ? FULL_MONEY_SCOPE
+      : scopeValue === undefined || scopeValue === DEFAULT_SCOPE
+        ? DEFAULT_SCOPE
+        : null;
+
+  if (!scope) {
+    throw new Error('Invalid --scope. Use --scope=financial or --scope=full-money.');
+  }
+
+  return {
+    mode: hasApply ? 'apply' : 'dry-run',
+    scope,
+  };
 }
 
 function connectionString(): string {
@@ -215,9 +284,9 @@ async function tableCount(db: RawDb, tableName: string): Promise<number> {
   return Number(rows[0]?.count ?? 0);
 }
 
-async function collectCounts(db: RawDb): Promise<CountRow[]> {
+async function collectCounts(db: RawDb, scope: ResetScope): Promise<CountRow[]> {
   const rows: CountRow[] = [];
-  for (const plan of DELETE_PLAN) {
+  for (const plan of deletePlanForScope(scope)) {
     rows.push({
       table: plan.table,
       before: await tableCount(db, plan.table),
@@ -234,6 +303,18 @@ async function collectCounts(db: RawDb): Promise<CountRow[]> {
     before: await serialCounterCount(db),
     reason: 'invoice numbering high-water marks reset',
   });
+  if (scope === FULL_MONEY_SCOPE) {
+    rows.push({
+      table: 'Wallet (branch balances zeroed, rows preserved)',
+      before: await tableCount(db, 'Wallet'),
+      reason: 'branch petty-cash wallet balances reset to zero',
+    });
+    rows.push({
+      table: 'User salary fields (cleared, rows preserved)',
+      before: await userSalaryRuntimeCount(db),
+      reason: 'basic monthly salary and monthly allowances cleared',
+    });
+  }
   return rows;
 }
 
@@ -245,34 +326,44 @@ async function serialCounterCount(db: RawDb): Promise<number> {
   return Number(rows[0]?.count ?? 0);
 }
 
-async function disableUserTriggers(db: RawDb): Promise<void> {
-  for (const plan of DELETE_PLAN.filter((p) => p.disableUserTriggers)) {
+async function userSalaryRuntimeCount(db: RawDb): Promise<number> {
+  if (!(await tableExists(db, 'User'))) return 0;
+  const rows = await db.$queryRawUnsafe<Array<{ count: bigint | number | string }>>(
+    `SELECT COUNT(*)::bigint AS "count"
+     FROM "User"
+     WHERE "basicMonthlySalary" IS NOT NULL OR "monthlyAllowances" IS NOT NULL`,
+  );
+  return Number(rows[0]?.count ?? 0);
+}
+
+async function disableUserTriggers(db: RawDb, scope: ResetScope): Promise<void> {
+  for (const plan of deletePlanForScope(scope).filter((p) => p.disableUserTriggers)) {
     if (await tableExists(db, plan.table)) {
       await db.$executeRawUnsafe(`ALTER TABLE ${q(plan.table)} DISABLE TRIGGER USER`);
     }
   }
 }
 
-async function enableUserTriggers(db: RawDb): Promise<void> {
-  for (const plan of [...DELETE_PLAN].reverse().filter((p) => p.disableUserTriggers)) {
+async function enableUserTriggers(db: RawDb, scope: ResetScope): Promise<void> {
+  for (const plan of [...deletePlanForScope(scope)].reverse().filter((p) => p.disableUserTriggers)) {
     if (await tableExists(db, plan.table)) {
       await db.$executeRawUnsafe(`ALTER TABLE ${q(plan.table)} ENABLE TRIGGER USER`);
     }
   }
 }
 
-async function applyReset(prisma: PrismaClient): Promise<CountRow[]> {
+async function applyReset(prisma: PrismaClient, scope: ResetScope): Promise<CountRow[]> {
   const afterCounts = await prisma.$transaction(
     async (tx) => {
-      await disableUserTriggers(tx);
+      await disableUserTriggers(tx, scope);
       let originalError: unknown = null;
       try {
         // DB append-only triggers for financial ledgers intentionally block
-        // DELETE/UPDATE. For this approved development reset only, set the
+        // DELETE/UPDATE. For this explicitly approved reset only, set the
         // documented local transaction bypass. SET LOCAL is scoped to this
         // transaction and is discarded automatically on COMMIT/ROLLBACK.
         await tx.$executeRawUnsafe(`SET LOCAL "app.immutable_ledger_bypass" = 'true'`);
-        for (const plan of DELETE_PLAN) {
+        for (const plan of deletePlanForScope(scope)) {
           if (await tableExists(tx, plan.table)) {
             try {
               await tx.$executeRawUnsafe(`DELETE FROM ${q(plan.table)}`);
@@ -285,7 +376,7 @@ async function applyReset(prisma: PrismaClient): Promise<CountRow[]> {
             }
           }
         }
-        for (const step of RESET_SQL_STEPS) {
+        for (const step of resetSqlStepsForScope(scope)) {
           try {
             await tx.$executeRawUnsafe(step.sql);
           } catch (err) {
@@ -310,7 +401,7 @@ async function applyReset(prisma: PrismaClient): Promise<CountRow[]> {
         throw err;
       } finally {
         try {
-          await enableUserTriggers(tx);
+          await enableUserTriggers(tx, scope);
         } catch (enableErr) {
           if (!originalError) throw enableErr;
           // The transaction may already be aborted; preserve the original
@@ -318,11 +409,11 @@ async function applyReset(prisma: PrismaClient): Promise<CountRow[]> {
         }
       }
 
-      const counts = await collectCounts(tx);
+      const counts = await collectCounts(tx, scope);
       for (const row of counts) row.after = await countAfter(tx, row.table);
       return counts;
     },
-    { timeout: 180_000, maxWait: 20_000 },
+    { timeout: 300_000, maxWait: 20_000 },
   );
   return afterCounts;
 }
@@ -351,6 +442,16 @@ async function countAfter(db: RawDb, logicalTable: string): Promise<number> {
           OR "key" LIKE 'OU_%'`,
     );
     return Number(rows[0]?.count ?? 0);
+  }
+  if (logicalTable === 'Wallet (branch balances zeroed, rows preserved)') {
+    if (!(await tableExists(db, 'Wallet'))) return 0;
+    const rows = await db.$queryRawUnsafe<Array<{ count: bigint | number | string }>>(
+      `SELECT COUNT(*)::bigint AS "count" FROM "Wallet" WHERE "balance" <> 0`,
+    );
+    return Number(rows[0]?.count ?? 0);
+  }
+  if (logicalTable === 'User salary fields (cleared, rows preserved)') {
+    return userSalaryRuntimeCount(db);
   }
   return tableCount(db, logicalTable);
 }
@@ -399,7 +500,7 @@ async function rebuildZeroFinancialSnapshots(db: RawDb): Promise<void> {
       false,
       1,
       now(),
-      jsonb_build_object('source', 'SAFE_DEVELOPMENT_FINANCIAL_RESET'),
+      jsonb_build_object('source', 'SAFE_FINANCIAL_RESET'),
       now(),
       now(),
       'CURRENT',
@@ -426,7 +527,7 @@ async function rebuildZeroFinancialSnapshots(db: RawDb): Promise<void> {
       "v20_3TrueAccountingActive" = false,
       "schemaVersion" = 1,
       "refreshedAt" = now(),
-      "refreshContext" = jsonb_build_object('source', 'SAFE_DEVELOPMENT_FINANCIAL_RESET'),
+      "refreshContext" = jsonb_build_object('source', 'SAFE_FINANCIAL_RESET'),
       "updatedAt" = now(),
       "agingBucket" = 'CURRENT',
       "riskLevel" = 'LOW',
@@ -437,9 +538,9 @@ async function rebuildZeroFinancialSnapshots(db: RawDb): Promise<void> {
   `);
 }
 
-async function validate(db: RawDb): Promise<ValidationResult[]> {
+async function validate(db: RawDb, scope: ResetScope): Promise<ValidationResult[]> {
   const checks: ValidationResult[] = [];
-  const zeroTables = DELETE_PLAN.map((p) => p.table);
+  const zeroTables = deletePlanForScope(scope).map((p) => p.table);
   for (const table of zeroTables) {
     // FinancialSnapshot is intentionally rebuilt after reset: one clean
     // zeroed projection row per customer. Validate its contents below
@@ -469,6 +570,10 @@ async function validate(db: RawDb): Promise<ValidationResult[]> {
   checks.push(await shiftFinancialIsolationValidation(db));
   checks.push(await journalBalanceValidation(db));
   checks.push(await ledgerJournalValidation(db));
+  if (scope === FULL_MONEY_SCOPE) {
+    checks.push(await branchWalletValidation(db));
+    checks.push(await userSalaryValidation(db));
+  }
   return checks;
 }
 
@@ -614,7 +719,44 @@ async function ledgerJournalValidation(db: RawDb): Promise<ValidationResult> {
   };
 }
 
-function assertApplyAllowed(mode: Mode, dbHost: string): void {
+async function branchWalletValidation(db: RawDb): Promise<ValidationResult> {
+  if (!(await tableExists(db, 'Wallet'))) {
+    return { name: 'branch Wallet balances cleared', ok: true, detail: 'Wallet table absent; skipped' };
+  }
+  const rows = await db.$queryRawUnsafe<Array<{ count: bigint | number | string }>>(
+    `SELECT COUNT(*)::bigint AS "count" FROM "Wallet" WHERE "balance" <> 0`,
+  );
+  const count = Number(rows[0]?.count ?? 0);
+  return {
+    name: 'branch Wallet balances cleared',
+    ok: count === 0,
+    detail: `${count} branch wallet row(s) still carry balance`,
+  };
+}
+
+async function userSalaryValidation(db: RawDb): Promise<ValidationResult> {
+  const count = await userSalaryRuntimeCount(db);
+  return {
+    name: 'User salary runtime fields cleared',
+    ok: count === 0,
+    detail: `${count} user row(s) still carry salary fields`,
+  };
+}
+
+function isProductionPatternHost(host: string): boolean {
+  const h = host.toLowerCase();
+  return [
+    'rlwy.net',
+    'railway',
+    'supabase.co',
+    'amazonaws.com',
+    'neon.tech',
+    'planetscale.com',
+    'render.com',
+  ].some((needle) => h.includes(needle));
+}
+
+function assertApplyAllowed(mode: Mode, dbHost: string, scope: ResetScope): void {
   if (mode !== 'apply') return;
   const local = isLocalDatabaseHost(dbHost);
   if (local && !envFlag('RESET_ALLOW_LOCAL')) {
@@ -626,6 +768,24 @@ function assertApplyAllowed(mode: Mode, dbHost: string): void {
     throw new Error(
       `ABORT: non-local destructive reset requires RESET_ALLOW_NON_LOCAL=true (host=${dbHost}).`,
     );
+  }
+  const hasFinalConfirm = process.env.RESET_FINAL_CONFIRM === FINAL_PRODUCTION_CONFIRM;
+  if (scope === FULL_MONEY_SCOPE && !hasFinalConfirm) {
+    throw new Error(
+      `ABORT: full-money reset requires RESET_FINAL_CONFIRM=${FINAL_PRODUCTION_CONFIRM}.`,
+    );
+  }
+  if (isProductionPatternHost(dbHost)) {
+    if (!envFlag('RESET_ALLOW_PRODUCTION_PATTERN')) {
+      throw new Error(
+        `ABORT: production-pattern host requires RESET_ALLOW_PRODUCTION_PATTERN=true (host=${dbHost}).`,
+      );
+    }
+    if (!hasFinalConfirm) {
+      throw new Error(
+        `ABORT: production-pattern host requires RESET_FINAL_CONFIRM=${FINAL_PRODUCTION_CONFIRM}.`,
+      );
+    }
   }
 }
 
@@ -648,22 +808,27 @@ function printValidation(results: ValidationResult[]): void {
 
 async function writeReport(input: {
   mode: Mode;
+  scope: ResetScope;
   dbHost: string;
   before: CountRow[];
   after?: CountRow[];
   validations?: ValidationResult[];
 }): Promise<void> {
   const lines: string[] = [];
-  lines.push('# Safari ERP — Safe Development Financial Reset Report');
+  lines.push('# Safari ERP — Safe Financial Reset Report');
   lines.push('');
   lines.push(`**Generated:** ${new Date().toISOString()}`);
   lines.push(`**Mode:** ${input.mode}`);
+  lines.push(`**Scope:** ${input.scope}`);
   lines.push(`**DB host:** ${input.dbHost}`);
   lines.push('');
   lines.push('## Scope');
   lines.push('');
-  lines.push('- Preserved: schema, migrations, users, branches, settings, services/products, permissions, frontend architecture, modules, APIs, business logic, customer master records, SubscriptionPlan definitions, Account chart.');
+  lines.push('- Preserved: schema, migrations, users, customers, branches, settings, services/products, permissions, frontend architecture, modules, APIs, business logic, customer master records, SubscriptionPlan definitions, Account chart, catalog/price data, inventory master data, login sessions.');
   lines.push('- Cleared/reset: invoices/orders, payment bundles, debt ledger, customer transaction history, journal entries/lines, wallet absorption history, subscription instances, collections state, financial events/outbox, cached financial projections/snapshots, cash custody/deposit financial rows.');
+  if (input.scope === FULL_MONEY_SCOPE) {
+    lines.push('- Full-money scope additionally clears payroll runs, manual payroll lines, employee loans, branch expenses, vehicle expenses, fixed expense schedules, branch wallet balances, and salary runtime fields on users.');
+  }
   lines.push('- AuditLog is preserved; this markdown report is the reset audit artifact.');
   lines.push('');
   lines.push('## Counts');
@@ -693,38 +858,49 @@ async function writeReport(input: {
 }
 
 async function main(): Promise<void> {
-  const mode = parseMode(process.argv.slice(2));
+  const { mode, scope } = parseCliOptions(process.argv.slice(2));
   const dbHost = databaseHostForGuard(connectionString());
-  assertApplyAllowed(mode, dbHost);
+  assertApplyAllowed(mode, dbHost, scope);
 
   const { prisma, pool } = makePrisma();
   try {
     console.log('=============================================================');
-    console.log(' Safari ERP — SAFE DEVELOPMENT FINANCIAL RESET');
+    console.log(' Safari ERP — SAFE FINANCIAL RESET');
     console.log('=============================================================');
     console.log(` DB host: ${dbHost}`);
+    console.log(` Scope  : ${scope}`);
     console.log(` Mode   : ${mode === 'dry-run' ? 'DRY-RUN (no changes)' : 'APPLY (transactional destructive reset)'}`);
+    if (mode === 'apply' && isProductionPatternHost(dbHost)) {
+      console.log(' Production-pattern host detected.');
+      console.log(' Confirm a fresh DB snapshot/backup exists before running this command.');
+    }
     console.log('-------------------------------------------------------------');
 
-    const before = await collectCounts(prisma);
+    const before = await collectCounts(prisma, scope);
     printCounts('DRY-RUN COUNTS / BEFORE', before);
 
     if (mode === 'dry-run') {
-      await writeReport({ mode, dbHost, before });
+      await writeReport({ mode, scope, dbHost, before });
       console.log('\nDry-run only. No rows changed.');
       const applyFlag = isLocalDatabaseHost(dbHost)
         ? 'RESET_ALLOW_LOCAL=true'
         : 'RESET_ALLOW_NON_LOCAL=true';
-      console.log(`Apply with: ${applyFlag} npm run financial:reset -- --apply`);
+      const productionFlags = isProductionPatternHost(dbHost)
+        ? ` RESET_ALLOW_PRODUCTION_PATTERN=true RESET_FINAL_CONFIRM=${FINAL_PRODUCTION_CONFIRM}`
+        : scope === FULL_MONEY_SCOPE
+          ? ` RESET_FINAL_CONFIRM=${FINAL_PRODUCTION_CONFIRM}`
+          : '';
+      console.log('Apply only after a fresh DB snapshot/backup:');
+      console.log(`  ${applyFlag}${productionFlags} npm run financial:reset -- --apply --scope=${scope}`);
       console.log(`Report: ${REPORT_PATH}`);
       return;
     }
 
-    const after = await applyReset(prisma);
+    const after = await applyReset(prisma, scope);
     printCounts('AFTER', after);
-    const validations = await validate(prisma);
+    const validations = await validate(prisma, scope);
     printValidation(validations);
-    await writeReport({ mode, dbHost, before, after, validations });
+    await writeReport({ mode, scope, dbHost, before, after, validations });
 
     const failures = validations.filter((r) => !r.ok);
     if (failures.length > 0) {
