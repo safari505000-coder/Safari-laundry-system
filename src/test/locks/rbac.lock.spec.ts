@@ -87,9 +87,18 @@ function routePath(prefix: string, subPath: string): string {
   return `/${clean}`;
 }
 
+type RbacLockEntry = {
+  method: string;
+  path: string;
+  handler: string;
+  file: string;
+  roles: string[];
+  roleSource: string;
+};
+
 describe('RBAC lock', () => {
   it('freezes every endpoint @Roles decorator', () => {
-    const rows = [];
+    const rows: RbacLockEntry[] = [];
     const routeRe =
       /@(Get|Post|Put|Patch|Delete)\(([^)]*)\)\s*(?:\n\s*@[^\n]+)*\s*(?:async\s+)?([A-Za-z0-9_]+)\s*\(/gs;
     for (const file of walk(srcRoot)) {

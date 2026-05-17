@@ -26,9 +26,16 @@ function routePath(prefix: string, subPath: string): string {
   return `/${[prefix, subPath].filter(Boolean).join('/').replace(/\/+/g, '/').replace(/^\//, '').replace(/\/$/, '')}`;
 }
 
+type ApiEndpointLockEntry = {
+  method: string;
+  path: string;
+  handler: string;
+  file: string;
+};
+
 describe('API contract lock', () => {
   it('freezes public route methods and paths', () => {
-    const endpoints = [];
+    const endpoints: ApiEndpointLockEntry[] = [];
     const routeRe =
       /@(Get|Post|Put|Patch|Delete)\(([^)]*)\)\s*(?:\n\s*@[^\n]+)*\s*(?:async\s+)?([A-Za-z0-9_]+)\s*\(/gs;
     for (const file of walk(srcRoot)) {
