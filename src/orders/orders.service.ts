@@ -543,6 +543,26 @@ export class OrdersService {
     return toDbPosPaymentMethod(raw) ?? PosPaymentMethod.CASH;
   }
 
+  private extractAddedToDebtFromSettlementMetadata(
+    metadata: Prisma.JsonValue | null,
+  ): Prisma.Decimal {
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+      return new Prisma.Decimal(0);
+    }
+    const raw = (metadata as Record<string, unknown>).addedToDebt;
+    try {
+      if (typeof raw === 'string' && raw.trim()) {
+        return new Prisma.Decimal(raw);
+      }
+      if (typeof raw === 'number' && Number.isFinite(raw)) {
+        return new Prisma.Decimal(raw);
+      }
+    } catch {
+      return new Prisma.Decimal(0);
+    }
+    return new Prisma.Decimal(0);
+  }
+
   private reconcileLineItems(
     totalPrice: number,
     lineItems?: OrderLineItemDto[],
@@ -1382,6 +1402,16 @@ export class OrdersService {
           { posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT },
           { posPaymentMethod: PosPaymentMethod.ONLINE },
           { posPaymentMethod: PosPaymentMethod.PAYMENT_LINK },
+          {
+            posPaymentMethod: PosPaymentMethod.SUBSCRIPTION_WALLET,
+            customer: {
+              is: {
+                wallet: {
+                  is: { debt: { gt: new Prisma.Decimal(0) } },
+                },
+              },
+            },
+          },
         ],
         ...(branchWhere ?? {}),
       },
@@ -1446,12 +1476,38 @@ export class OrdersService {
     const openDebtOrderIds = await this.resolveOpenDebtOrderIds(
       debtCandidates.map((r) => ({ orderId: r.id, customerId: r.customerId })),
     );
+    const subscriptionWalletCandidates = rows.filter(
+      (r) => r.posPaymentMethod === PosPaymentMethod.SUBSCRIPTION_WALLET,
+    );
+    const subscriptionShortfallByOrder = new Map<string, Prisma.Decimal>();
+    if (subscriptionWalletCandidates.length > 0) {
+      const shortfallRows = await this.prisma.transactionHistory.findMany({
+        where: {
+          type: 'ORDER_WALLET_SETTLEMENT',
+          orderId: { in: subscriptionWalletCandidates.map((r) => r.id) },
+        },
+        select: { orderId: true, metadata: true },
+      });
+      for (const row of shortfallRows) {
+        if (!row.orderId) continue;
+        const addedToDebt = this.extractAddedToDebtFromSettlementMetadata(
+          row.metadata,
+        );
+        if (addedToDebt.lessThanOrEqualTo(0)) continue;
+        const current =
+          subscriptionShortfallByOrder.get(row.orderId) ?? new Prisma.Decimal(0);
+        subscriptionShortfallByOrder.set(row.orderId, current.plus(addedToDebt));
+      }
+    }
     const remainingByOrder = await computeOrderRemainingBalancesBatch(
       this.prisma,
       rows.map((r) => r.id),
     );
     const tol = new Prisma.Decimal(INVOICE_REMAINING_TOLERANCE_KD);
     const collectibleRemaining = (r: (typeof rows)[number]) => {
+      if (r.posPaymentMethod === PosPaymentMethod.SUBSCRIPTION_WALLET) {
+        return subscriptionShortfallByOrder.get(r.id) ?? new Prisma.Decimal(0);
+      }
       const remaining = remainingByOrder.get(r.id) ?? r.totalPrice;
       // Pending invoices do not have revenue/AR journal rows yet. They are still
       // collectible in Call Center until the gateway callback completes them.
@@ -1476,6 +1532,9 @@ export class OrdersService {
       }
       if (r.posPaymentMethod === PosPaymentMethod.DEBT_ON_ACCOUNT) {
         return openDebtOrderIds.has(r.id);
+      }
+      if (r.posPaymentMethod === PosPaymentMethod.SUBSCRIPTION_WALLET) {
+        return subscriptionShortfallByOrder.has(r.id);
       }
       return false;
     });

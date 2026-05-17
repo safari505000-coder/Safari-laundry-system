@@ -1222,6 +1222,7 @@ export class PaymentsService implements OnModuleInit {
         id: true,
         status: true,
         cashStatus: true,
+        posPaymentMethod: true,
         totalPrice: true,
         walletSettledAt: true,
         posHostedPaymentUrl: true,
@@ -1237,7 +1238,14 @@ export class PaymentsService implements OnModuleInit {
     if (order.status === OrderStatus.CANCELED) {
       throw new BadRequestException('Order is canceled');
     }
-    if (order.cashStatus !== CashStatus.UNPAID || order.walletSettledAt) {
+    const subscriptionShortfallAmount =
+      await this.getOpenSubscriptionShortfallAmount(order);
+    const hasOpenSubscriptionShortfall =
+      subscriptionShortfallAmount.greaterThan(0);
+    if (
+      !hasOpenSubscriptionShortfall &&
+      (order.cashStatus !== CashStatus.UNPAID || order.walletSettledAt)
+    ) {
       throw new BadRequestException('Order is already paid');
     }
     // Idempotent: same URL + trackId. Legacy POS rows (pre-fix) may have a URL
@@ -1258,7 +1266,9 @@ export class PaymentsService implements OnModuleInit {
       order.customer.phone?.trim() || order.customer.phone2?.trim() || '';
     const link = await this.createPaymentLink({
       orderId: order.id,
-      amount: order.totalPrice,
+      amount: hasOpenSubscriptionShortfall
+        ? subscriptionShortfallAmount
+        : order.totalPrice,
       customerPhone: phone,
       customerName: order.customer.displayName ?? undefined,
       customerUniqueId: order.customer.id.slice(0, 20),
@@ -1292,6 +1302,58 @@ export class PaymentsService implements OnModuleInit {
       );
     }
     return link;
+  }
+
+  private async getOpenSubscriptionShortfallAmount(order: {
+    id: string;
+    customer: { id: string };
+    posPaymentMethod: PosPaymentMethod;
+  }): Promise<Prisma.Decimal> {
+    if (order.posPaymentMethod !== PosPaymentMethod.SUBSCRIPTION_WALLET) {
+      return new Prisma.Decimal(0);
+    }
+    const [wallet, rows] = await Promise.all([
+      this.prisma.customerWallet.findUnique({
+        where: { customerId: order.customer.id },
+        select: { debt: true },
+      }),
+      this.prisma.transactionHistory.findMany({
+        where: {
+          orderId: order.id,
+          type: 'ORDER_WALLET_SETTLEMENT',
+        },
+        select: { metadata: true },
+      }),
+    ]);
+    const walletDebt = wallet?.debt ?? new Prisma.Decimal(0);
+    if (walletDebt.lessThanOrEqualTo(0)) return new Prisma.Decimal(0);
+    const shortfall = rows.reduce(
+      (sum, row) =>
+        sum.plus(this.extractAddedToDebtFromSettlementMetadata(row.metadata)),
+      new Prisma.Decimal(0),
+    );
+    if (shortfall.lessThanOrEqualTo(0)) return new Prisma.Decimal(0);
+    return shortfall.lessThanOrEqualTo(walletDebt) ? shortfall : walletDebt;
+  }
+
+  private extractAddedToDebtFromSettlementMetadata(
+    metadata: Prisma.JsonValue | null,
+  ): Prisma.Decimal {
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+      return new Prisma.Decimal(0);
+    }
+    const raw = (metadata as Record<string, unknown>).addedToDebt;
+    try {
+      if (typeof raw === 'string' && raw.trim()) {
+        return new Prisma.Decimal(raw);
+      }
+      if (typeof raw === 'number' && Number.isFinite(raw)) {
+        return new Prisma.Decimal(raw);
+      }
+    } catch {
+      return new Prisma.Decimal(0);
+    }
+    return new Prisma.Decimal(0);
   }
 
   /**
