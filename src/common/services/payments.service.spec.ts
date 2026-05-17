@@ -438,4 +438,58 @@ describe('PaymentsService payment safety', () => {
     expect(generalLedger.append).toHaveBeenCalledTimes(1);
     expect(inventory.applyOrderStockDecrement).toHaveBeenCalledTimes(1);
   });
+
+  it('keeps payment link reusable after immediate debt registration', async () => {
+    const { service, prisma } = makeService();
+    const existingLink = 'https://sandbox.upayments.com/session/test';
+    prisma.order.findUnique.mockResolvedValue({
+      id: ORDER_ID,
+      status: OrderStatus.PENDING,
+      cashStatus: CashStatus.UNPAID,
+      totalPrice: new Prisma.Decimal('10.0000'),
+      walletSettledAt: null,
+      posHostedPaymentUrl: existingLink,
+      posGatewayTrackId: TRANS_ID,
+      customer: {
+        id: CUSTOMER_ID,
+        phone: '51234567',
+        phone2: null,
+        displayName: 'Test Customer',
+      },
+    });
+
+    const link = await service.ensurePaymentLinkForUnpaidOrder(ORDER_ID);
+
+    expect(link).toEqual({ url: existingLink, trackId: TRANS_ID });
+    expect(prisma.order.update).not.toHaveBeenCalled();
+  });
+
+  it('gateway callback pays down immediate PAYMENT_LINK debt without adding debt again', async () => {
+    const tx = makeTx();
+    tx.order.findUnique.mockResolvedValue(pendingOrder());
+    tx.order.updateMany.mockResolvedValue({ count: 1 });
+    tx.customerWallet.findUnique
+      .mockResolvedValueOnce({ debt: new Prisma.Decimal('10.0000') })
+      .mockResolvedValueOnce({ debt: new Prisma.Decimal('0.0000') });
+    const { service, prisma, customerLedger } = makeService(tx);
+    prisma.posPaymentBundle.findUnique.mockResolvedValue(null);
+    customerLedger.applyOrderWalletSettlementForCompletedOrder.mockImplementation(
+      async (
+        _ledgerTx: unknown,
+        _orderId: string,
+        _performerId: string,
+        prefetch: { posPaymentMethod: PosPaymentMethod },
+        extraMetadata: Record<string, unknown>,
+      ) => {
+        expect(prefetch.posPaymentMethod).toBe(PosPaymentMethod.ONLINE);
+        expect(extraMetadata.debtSettled).toBe('10');
+        expect(extraMetadata.debtSettlementViaLink).toBe(true);
+      },
+    );
+
+    await service.finalizePaidOrderFromGateway(ORDER_ID, gatewayMetadata());
+
+    expect(customerLedger.applyOrderWalletSettlementForCompletedOrder).toHaveBeenCalledTimes(1);
+    expect(tx.order.updateMany).toHaveBeenCalledTimes(1);
+  });
 });

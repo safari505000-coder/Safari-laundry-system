@@ -135,6 +135,9 @@ function makeTxFor(opts: {
           ),
         ),
       },
+      journalEntry: {
+        findUnique: jest.fn().mockResolvedValue(null),
+      },
       // V20.2 — Phase 29 lockstep reads journal AR directly.
       // Default mock: synthesise journal lines that mirror the
       // SHORTFALL writes (DR AR for the SHORTFALL amount) so the
@@ -164,6 +167,7 @@ function makeService() {
   const journal = {
     mirrorDebtLedgerEntry: jest.fn().mockResolvedValue(null),
     mirrorDebtLedgerEntrySafe: jest.fn().mockResolvedValue(null),
+    appendBalanced: jest.fn().mockResolvedValue({ id: 'journal-link-recv-1' }),
     // V20.1-v4 — Phase 20 third-entry rule.
     appendWalletAbsorptionEntry: jest.fn().mockResolvedValue(null),
     appendWalletAbsorptionEntrySafe: jest.fn().mockResolvedValue(null),
@@ -203,6 +207,46 @@ function makeService() {
     orders as never,
   );
   return { service, generalLedger, journal };
+}
+
+function makeTxForPaymentLinkReceivable(opts: {
+  walletDebt: string;
+  existingReceivable?: boolean;
+}) {
+  const walletState = {
+    balance: new Prisma.Decimal('0.0000'),
+    debt: new Prisma.Decimal(opts.walletDebt),
+  };
+  const journalEntryFindUnique = jest
+    .fn()
+    .mockResolvedValueOnce(opts.existingReceivable ? { id: 'existing' } : null)
+    .mockResolvedValue(null);
+
+  return {
+    walletState,
+    tx: {
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      customerWallet: {
+        upsert: jest
+          .fn()
+          .mockResolvedValue({ ...walletState, id: WALLET_ID, customerId: CUSTOMER_ID }),
+        findUniqueOrThrow: jest.fn(() =>
+          Promise.resolve({ ...walletState, id: WALLET_ID, customerId: CUSTOMER_ID }),
+        ),
+        update: jest.fn(({ data }: { data: { debt: Prisma.Decimal } }) => {
+          walletState.debt = data.debt;
+          return Promise.resolve({ ...walletState, id: WALLET_ID });
+        }),
+      },
+      journalEntry: {
+        findUnique: journalEntryFindUnique,
+      },
+      order: {
+        updateMany: jest.fn(),
+        update: jest.fn(),
+      },
+    },
+  };
 }
 
 function expectsToHaveCalledThirdEntry(journal: {
@@ -272,6 +316,55 @@ describe('V20.1 — wallet absorption + drain hotfix', () => {
     expect(new Prisma.Decimal(journalCall.amount.toString()).toFixed(4)).toBe(
       '5.0000',
     );
+  });
+
+  it('PAYMENT_LINK order registers debt immediately without settling wallet', async () => {
+    const { tx, walletState } = makeTxForPaymentLinkReceivable({
+      walletDebt: '0.0000',
+    });
+    const { service, journal } = makeService();
+
+    await service.registerPendingPaymentLinkReceivableTx(
+      tx as never,
+      ORDER_ID,
+      CUSTOMER_ID,
+      new Prisma.Decimal('25.0000'),
+    );
+
+    expect(walletState.debt.toString()).toBe('25');
+    expect(tx.customerWallet.update).toHaveBeenCalledWith({
+      where: { id: WALLET_ID },
+      data: { debt: new Prisma.Decimal('25.0000') },
+    });
+    expect(tx.order.updateMany).not.toHaveBeenCalled();
+    expect(journal.appendBalanced).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        source: 'PAYMENT_LINK_RECEIVABLE',
+        sourceRef: `PAYMENT_LINK_RECEIVABLE:${ORDER_ID}`,
+        customerId: CUSTOMER_ID,
+        orderId: ORDER_ID,
+      }),
+    );
+  });
+
+  it('PAYMENT_LINK immediate debt registration is idempotent', async () => {
+    const { tx, walletState } = makeTxForPaymentLinkReceivable({
+      walletDebt: '10.0000',
+      existingReceivable: true,
+    });
+    const { service, journal } = makeService();
+
+    await service.registerPendingPaymentLinkReceivableTx(
+      tx as never,
+      ORDER_ID,
+      CUSTOMER_ID,
+      '25.0000',
+    );
+
+    expect(walletState.debt.toString()).toBe('10');
+    expect(tx.customerWallet.update).not.toHaveBeenCalled();
+    expect(journal.appendBalanced).not.toHaveBeenCalled();
   });
 
   it('wallet=25, invoice=30, SUBSCRIPTION → wallet=0, debt=5, journal absorption called', async () => {

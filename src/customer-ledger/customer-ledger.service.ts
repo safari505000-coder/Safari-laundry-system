@@ -36,7 +36,10 @@ import {
   isV20_3TrueAccountingEnabled,
 } from '../finance/debt-customer-aggregates.util';
 import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
-import { DoubleEntryJournalService } from '../general-ledger/double-entry-journal.service';
+import {
+  DoubleEntryJournalService,
+  JOURNAL_ACCOUNTS,
+} from '../general-ledger/double-entry-journal.service';
 import { JournalSourceService } from '../general-ledger/journal-source.service';
 import { FinancialTransactionProcessorService } from '../general-ledger/financial-transaction-processor.service';
 import type { StrictFinancialPaymentMethod } from '../general-ledger/financial-transaction-processor.service';
@@ -56,6 +59,20 @@ import type {
 } from './subscription-settlement.types';
 
 export type PrismaTx = Prisma.TransactionClient;
+
+const PAYMENT_LINK_RECEIVABLE_SOURCE = 'PAYMENT_LINK_RECEIVABLE';
+
+export function paymentLinkReceivableSourceRef(orderId: string): string {
+  return `${PAYMENT_LINK_RECEIVABLE_SOURCE}:${orderId}`;
+}
+
+export function isPaymentLinkImmediateDebtEnabled(): boolean {
+  const v = (process.env.PAYMENT_LINK_IMMEDIATE_DEBT ?? '')
+    .toString()
+    .trim()
+    .toLowerCase();
+  return v === 'true' || v === '1' || v === 'on' || v === 'yes';
+}
 
 /** When the caller already loaded order fields (e.g. POS checkout), skip extra reads inside the tx. */
 export type OrderWalletSettlementPrefetch = {
@@ -398,6 +415,60 @@ export class CustomerLedgerService {
     return DebtEntityCategory.BRANCH;
   }
 
+  async registerPendingPaymentLinkReceivableTx(
+    tx: PrismaTx,
+    orderId: string,
+    customerId: string,
+    amountKd: Prisma.Decimal | string | number,
+  ): Promise<void> {
+    const amount = new Prisma.Decimal(amountKd);
+    if (amount.lessThanOrEqualTo(0)) return;
+
+    const sourceRef = paymentLinkReceivableSourceRef(orderId);
+    const existing = await tx.journalEntry.findUnique({
+      where: { sourceRef },
+      select: { id: true },
+    });
+    if (existing) return;
+
+    const wallet = await this.getOrCreateWalletTx(tx, customerId);
+    await this.lockCustomerWalletForUpdateTx(tx, wallet.id);
+    const existingAfterLock = await tx.journalEntry.findUnique({
+      where: { sourceRef },
+      select: { id: true },
+    });
+    if (existingAfterLock) return;
+
+    const lockedWallet = await tx.customerWallet.findUniqueOrThrow({
+      where: { id: wallet.id },
+      select: { debt: true },
+    });
+    await tx.customerWallet.update({
+      where: { id: wallet.id },
+      data: { debt: lockedWallet.debt.add(amount) },
+    });
+
+    await this.journal.appendBalanced(tx, {
+      source: PAYMENT_LINK_RECEIVABLE_SOURCE,
+      sourceRef,
+      actorUserId: '00000000-0000-0000-0000-000000000000',
+      customerId,
+      orderId,
+      lines: [
+        {
+          accountCode: JOURNAL_ACCOUNTS.ACCOUNTS_RECEIVABLE,
+          debit: amount,
+          meta: { event: PAYMENT_LINK_RECEIVABLE_SOURCE, orderId },
+        },
+        {
+          accountCode: JOURNAL_ACCOUNTS.REVENUE,
+          credit: amount,
+          meta: { event: PAYMENT_LINK_RECEIVABLE_SOURCE, orderId },
+        },
+      ],
+    });
+  }
+
   /**
    * First transaction attribution: lock customer origin branch once.
    */
@@ -706,7 +777,14 @@ export class CustomerLedgerService {
     // Default V20.2 model: skip — the SHORTFALL mirror below already
     // writes AR for the post-wallet remainder.
     const trueAccounting = isV20_3TrueAccountingEnabled();
-    if (trueAccounting && totalMinor > 0n) {
+    const hasImmediatePaymentLinkReceivable =
+      (o.posPaymentMethod === PosPaymentMethod.ONLINE ||
+        o.posPaymentMethod === PosPaymentMethod.PAYMENT_LINK) &&
+      (await tx.journalEntry.findUnique({
+        where: { sourceRef: paymentLinkReceivableSourceRef(orderId) },
+        select: { id: true },
+      })) !== null;
+    if (trueAccounting && totalMinor > 0n && !hasImmediatePaymentLinkReceivable) {
       await this.journal.appendInvoiceIssuanceEntrySafe(tx, {
         customerId: o.customerId,
         orderId,

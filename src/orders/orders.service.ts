@@ -30,7 +30,10 @@ import { CustomerBlockingService } from '../common/services/customer-blocking.se
 import { OutstandingService } from '../finance/outstanding/outstanding.service';
 import { PaymentsService } from '../common/services/payments.service';
 import { CustomerNotificationsService } from '../customer-notifications/customer-notifications.service';
-import { CustomerLedgerService } from '../customer-ledger/customer-ledger.service';
+import {
+  CustomerLedgerService,
+  isPaymentLinkImmediateDebtEnabled,
+} from '../customer-ledger/customer-ledger.service';
 import { cashStatusForPaymentMethod } from '../common/utils/cash-status-for-method';
 import { resolveCustomerPhoneForNotify } from '../common/validation/kuwait-customer-phone';
 import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
@@ -685,7 +688,7 @@ export class OrdersService {
         tx,
         driverUserId,
       );
-      return tx.order.create({
+      const created = await tx.order.create({
         data: {
           customerId,
           driverId: driverUserId,
@@ -702,6 +705,19 @@ export class OrdersService {
         },
         select: orderDetailSelect,
       });
+      if (
+        isPaymentLinkImmediateDebtEnabled() &&
+        (created.posPaymentMethod === PosPaymentMethod.ONLINE ||
+          created.posPaymentMethod === PosPaymentMethod.PAYMENT_LINK)
+      ) {
+        await this.customerLedger.registerPendingPaymentLinkReceivableTx(
+          tx,
+          created.id,
+          customerId,
+          created.totalPrice,
+        );
+      }
+      return created;
     });
     this.auditOrderCreated(order, driverUserId);
     if (
@@ -831,6 +847,14 @@ export class OrdersService {
             }
             if (created.driverId !== driverUserId) {
               throw new ForbiddenException('Order must be assigned to you');
+            }
+            if (isPaymentLinkImmediateDebtEnabled()) {
+              await this.customerLedger.registerPendingPaymentLinkReceivableTx(
+                tx,
+                created.id,
+                customerId,
+                totalPriceDecimal,
+              );
             }
             return created.id;
           }
