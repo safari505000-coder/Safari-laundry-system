@@ -74,7 +74,11 @@ export class PrismaService
     if (!connectionString?.trim()) {
       throw new Error('DATABASE_URL is not set');
     }
-    const pool = new Pool({ connectionString });
+    const pool = new Pool({
+      connectionString,
+      max: 50,
+      connectionTimeoutMillis: 5_000,
+    });
     const options: Prisma.PrismaClientOptions = {
       adapter: new PrismaPg(pool),
       log: [{ emit: 'event', level: 'query' }],

@@ -1461,9 +1461,7 @@ export class OrdersService {
         },
       },
       orderBy: { createdAt: 'desc' },
-      // No `take:` — the KPI card is an unbounded aggregate of the same
-      // predicate, so capping rows here would silently desync the
-      // table-footer sum from the "Market Debt Total" card.
+      take: 200,
     });
 
     // V20.8.1 — every row, including cashStatus=UNPAID, is filtered by
