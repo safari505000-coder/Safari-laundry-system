@@ -628,6 +628,11 @@ export class PaymentsService implements OnModuleInit {
     return /localhost|127\.0\.0\.1|0\.0\.0\.0/.test(url);
   }
 
+  /**
+   * يتحقق عند التشغيل من إعدادات بوابة الدفع والروابط العامة اللازمة لتحصيل الأموال.
+   * Validates payment-gateway and public callback configuration at startup for money collection flows.
+   * @returns لا تُرجع قيمة / No return value
+   */
   onModuleInit(): void {
     const inProd = process.env.NODE_ENV === 'production';
     if (inProd && !this.isPublicMockCheckoutAvailable()) {
@@ -685,6 +690,12 @@ export class PaymentsService implements OnModuleInit {
     return this.paymentsMockExplicit() || this.usePlaceholderGateway();
   }
 
+  /**
+   * يسمح بنداء callback تجريبي فقط في وضع بوابة الدفع الوهمية للتطوير.
+   * Allows a development mock callback only when the mock payment gateway is enabled.
+   * @param body - جسم الطلب الذي قد يحتوي devMock / Request body that may include devMock
+   * @returns هل يسمح بالـ callback التجريبي / Whether the mock callback is allowed
+   */
   allowDevMockCallback(body: { devMock?: boolean }): boolean {
     return Boolean(body.devMock) && this.isPublicMockCheckoutAvailable();
   }
@@ -1129,6 +1140,12 @@ export class PaymentsService implements OnModuleInit {
     return gatewayMinor === orderMinor ? 'match' : 'mismatch';
   }
 
+  /**
+   * يطبع حالة بوابة الدفع إلى نجاح أو فشل قبل أي أثر مالي على الطلب أو المحفظة.
+   * Normalizes gateway callback status to success or failed before any order, wallet, or ledger effect.
+   * @param status - الحالة الخام القادمة من البوابة / Raw gateway status
+   * @returns الحالة الموحدة للمعالجة / Normalized processing status
+   */
   normalizeCallbackStatus(status: string): 'success' | 'failed' {
     const raw = (status ?? '').trim();
     if (!raw) {
@@ -1456,6 +1473,14 @@ export class PaymentsService implements OnModuleInit {
     }
   }
 
+  /**
+   * يستعلم عن حالة الدفع من البوابة ويكمل التحصيل عند النجاح، بما يشمل إغلاق الطلب وتسوية المحفظة وقيود الدفتر.
+   * Inquires gateway payment status and finalizes successful captures, including order completion, wallet settlement, and ledger effects.
+   * @param transId - معرف الاستعلام لدى بوابة الدفع / Gateway inquiry transaction id
+   * @param expectedOrderId - معرف الطلب المتوقع اختيارياً / Optional expected order id
+   * @param source - مصدر محاولة التحقق أو polling / Verification or polling source label
+   * @returns نتيجة الإكمال وحالة البوابة والرد الخام / Finalization result, gateway status, and raw inquiry payload
+   */
   async checkPaymentStatus(
     transId: string,
     expectedOrderId?: string,

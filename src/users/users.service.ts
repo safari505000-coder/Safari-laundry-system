@@ -63,6 +63,12 @@ export class UsersService {
     return role.id;
   }
 
+  /**
+   * ينشئ مستخدماً جديداً بصلاحية وفرع تشغيلي، مع منع التكرار وتقوية كلمة المرور عبر المسار الإداري.
+   * Creates a new user for an operational branch and role while enforcing uniqueness through the admin user flow.
+   * @param dto - بيانات المستخدم والدور والفرع / User, role, and branch creation payload
+   * @returns سجل المستخدم العام بعد الإنشاء / Newly created public user record
+   */
   async create(dto: CreateUserDto): Promise<UserPublic> {
     const username = dto.username.trim();
     const fullName = dto.fullName.trim();
@@ -139,6 +145,11 @@ export class UsersService {
     }
   }
 
+  /**
+   * يعرض جميع المستخدمين للإدارة مع الدور والفرع وحقول الرواتب العامة.
+   * Lists all users for administration with role, branch, and public payroll defaults.
+   * @returns قائمة المستخدمين العامة مرتبة من الأحدث / Public users ordered newest first
+   */
   async findAll(): Promise<UserPublic[]> {
     return this.prisma.user.findMany({
       select: userPublicSelect as Prisma.UserSelect,
@@ -146,6 +157,12 @@ export class UsersService {
     });
   }
 
+  /**
+   * يجلب مستخدماً واحداً بالمعرف أو يفشل إذا لم يوجد.
+   * Fetches one user by id or fails when the user does not exist.
+   * @param id - معرف المستخدم / User id
+   * @returns سجل المستخدم العام / Public user record
+   */
   async findOne(id: string): Promise<UserPublic> {
     const user = await this.prisma.user.findUnique({
       where: { id },
@@ -157,6 +174,13 @@ export class UsersService {
     return user;
   }
 
+  /**
+   * يحدّث بيانات المستخدم الإدارية مع حماية تكرار الاسم أو الهاتف وربط الدور والفرع.
+   * Updates administrative user fields while protecting username/phone uniqueness and role/branch links.
+   * @param id - معرف المستخدم المراد تعديله / Target user id
+   * @param dto - الحقول المراد تعديلها / Partial user update payload
+   * @returns سجل المستخدم العام بعد التعديل / Updated public user record
+   */
   async update(id: string, dto: UpdateUserDto): Promise<UserPublic> {
     await this.findOne(id);
 
@@ -324,6 +348,12 @@ export class UsersService {
     });
   }
 
+  /**
+   * يحذف مستخدماً غير مالك فقط إذا لم تكن عليه سجلات تشغيلية أو مالية مرتبطة.
+   * Deletes a non-owner user only when no operational or financial records reference it.
+   * @param id - معرف المستخدم المراد حذفه / Target user id
+   * @returns نتيجة الحذف ومعرف المستخدم / Deletion result with the user id
+   */
   async remove(id: string): Promise<{ id: string; deleted: boolean }> {
     const user = await this.prisma.user.findUnique({
       where: { id },
@@ -370,6 +400,15 @@ export class UsersService {
     return { id, deleted: true };
   }
 
+  /**
+   * يعيد تعيين كلمة مرور مستخدم من قبل الإدارة ويلغي جلساته ويفرض تغييرها عند الدخول التالي.
+   * Resets a user's password through an administrative role, revokes sessions, and requires a change on next login.
+   * @param targetUserId - معرف المستخدم الهدف / Target user id
+   * @param newPassword - كلمة المرور الجديدة / New password
+   * @param actorUserId - معرف المستخدم المنفذ / Acting user id
+   * @param actorRole - دور المستخدم المنفذ / Acting user role
+   * @returns سجل المستخدم العام بعد إعادة التعيين / Updated public user record
+   */
   async resetPassword(
     targetUserId: string,
     newPassword: string,
@@ -427,6 +466,15 @@ export class UsersService {
     return this.findOne(targetUserId);
   }
 
+  /**
+   * يعيد تعيين كلمات مرور عدة مستخدمين بنفس قواعد مسار إعادة التعيين الفردي.
+   * Resets passwords for multiple users using the same safeguards as the single-user reset flow.
+   * @param userIds - معرفات المستخدمين المستهدفين / Target user ids
+   * @param newPassword - كلمة المرور الجديدة المشتركة / Shared new password
+   * @param actorUserId - معرف المستخدم المنفذ / Acting user id
+   * @param actorRole - دور المستخدم المنفذ / Acting user role
+   * @returns عدد الحسابات التي تم تحديثها / Number of updated accounts
+   */
   async resetPasswordsBulk(
     userIds: string[],
     newPassword: string,
@@ -442,6 +490,14 @@ export class UsersService {
     return { updated };
   }
 
+  /**
+   * يفرض تغيير كلمة المرور بواسطة صاحب الحساب بعد التحقق من كلمة المرور الحالية.
+   * Forces an account-owner password change after validating the current password.
+   * @param userId - معرف صاحب الحساب / Account owner user id
+   * @param oldPassword - كلمة المرور الحالية / Current password
+   * @param newPassword - كلمة المرور الجديدة / New password
+   * @returns لا تُرجع قيمة / No return value
+   */
   async forceChangePassword(
     userId: string,
     oldPassword: string,

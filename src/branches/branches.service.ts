@@ -137,6 +137,12 @@ export class BranchesService {
     });
   }
 
+  /**
+   * ينشئ فرعاً جديداً ويحدد ما إذا كان تشغيلياً أو إدارياً دون أي أثر مالي مباشر.
+   * Creates a new branch and marks it operational or administrative with no direct financial ledger effect.
+   * @param dto - بيانات الفرع الأساسية وحالة التفعيل / Branch creation fields and active flag
+   * @returns سجل الفرع المنشأ / Newly created branch record
+   */
   async create(dto: {
     name: string;
     location: string;

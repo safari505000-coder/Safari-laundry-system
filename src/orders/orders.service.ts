@@ -1648,6 +1648,13 @@ export class OrdersService {
     });
   }
 
+  /**
+   * يبني تقرير الديون السوقية من صفوف التحصيل المفتوحة مع ملخص روابط الدفع والفروع دون تعديل أي دين.
+   * Builds the market-debt report from open collection rows with payment-link and branch summaries without mutating debt.
+   * @param branchId - معرف الفرع الاختياري لتقييد التقرير / Optional branch id for report scoping
+   * @param actor - المستخدم الحالي لتطبيق نطاق الدور / Current actor used for role-based scoping
+   * @returns صفوف التقرير وملخصات الفروع وروابط الدفع / Report rows plus branch and payment-link summaries
+   */
   async listUnpaidCollectionOrdersReport(
     branchId: string | null = null,
     actor?: JwtUser,
@@ -2706,6 +2713,15 @@ export class OrdersService {
     return agg._sum.totalPrice ?? new Prisma.Decimal(0);
   }
 
+  /**
+   * يعرض الفواتير حسب دور المستخدم: السائق يرى فواتيره، المدير يرى فرعه، وأدوار الإدارة ترى النطاق الكامل.
+   * Lists invoices by actor role: drivers see their own, managers see branch rows, and administrative roles see the full scope.
+   * @param userId - معرف المستخدم الطالب / Requesting user id
+   * @param role - دور المستخدم الطالب / Requesting user role
+   * @param branchId - فرع المستخدم عند الحاجة / Actor branch id when applicable
+   * @param filters - فلاتر الحالة والسائق والتاريخ والبحث / Status, driver, date, and search filters
+   * @returns قائمة الفواتير المسموح رؤيتها مع علامات التحرير / Visible invoice list with edit flags
+   */
   async findAllForActor(
     userId: string,
     role: string,
@@ -2804,6 +2820,14 @@ export class OrdersService {
     }));
   }
 
+  /**
+   * يجلب فاتورة واحدة بعد تطبيق صلاحيات الرؤية حسب الدور والملكية.
+   * Fetches a single invoice after enforcing role and ownership visibility rules.
+   * @param id - معرف الفاتورة / Invoice order id
+   * @param userId - معرف المستخدم الطالب / Requesting user id
+   * @param role - دور المستخدم الطالب / Requesting user role
+   * @returns تفاصيل الفاتورة المسموح بها / Authorized order details
+   */
   async findOneForActor(
     id: string,
     userId: string,
@@ -2957,6 +2981,12 @@ export class OrdersService {
     return { stream, filename };
   }
 
+  /**
+   * يفك رمز مشاركة الفاتورة العامة ويعيد بيانات الفاتورة إذا كان التوقيع والغرض صالحين.
+   * Verifies a public invoice share token and returns order details when the signature and purpose are valid.
+   * @param token - رمز المشاركة الموقع / Signed public invoice token
+   * @returns تفاصيل الفاتورة العامة / Public invoice order details
+   */
   async getOrderForPublicInvoiceToken(token: string): Promise<OrderDetail> {
     const normalized = this.normalizePublicInvoiceTokenParam(token);
     let payload: { purpose?: string; orderId?: string };
@@ -2992,6 +3022,13 @@ export class OrdersService {
     return order;
   }
 
+  /**
+   * يعيّن سائقاً تشغيلياً لفاتورة غير منتهية دون أثر مالي مباشر على المحفظة أو Journal AR.
+   * Assigns an operational driver to a non-terminal order without direct wallet or Journal AR effects.
+   * @param orderId - معرف الفاتورة / Order id
+   * @param dto - بيانات السائق المراد تعيينه / Driver assignment payload
+   * @returns تفاصيل الفاتورة بعد التعيين / Updated order details
+   */
   async assignDriver(
     orderId: string,
     dto: AssignDriverDto,
@@ -3019,6 +3056,15 @@ export class OrdersService {
     });
   }
 
+  /**
+   * يحدّث حالة أو ملاحظات الفاتورة ضمن صلاحيات السائق أو الإدارة، وقد يطلق تسوية المحفظة وقيود البيع عند الإكمال.
+   * Updates order status or notes within driver/admin permissions and may trigger wallet settlement and sale ledger entries on completion.
+   * @param orderId - معرف الفاتورة / Order id
+   * @param dto - حقول الحالة أو الملاحظات / Status or notes update payload
+   * @param userId - معرف المستخدم المنفذ / Acting user id
+   * @param role - دور المستخدم المنفذ / Acting user role
+   * @returns تفاصيل الفاتورة بعد التعديل / Updated order details
+   */
   async updateOrder(
     orderId: string,
     dto: UpdateOrderDto,
@@ -3171,6 +3217,11 @@ export class OrdersService {
     return updated;
   }
 
+  /**
+   * يجمع لوحة المدير التشغيلية من الطلبات النشطة وإيرادات الطلبات المكتملة ومساهمة السائقين.
+   * Aggregates the manager dashboard from active orders, completed-order revenue, and driver contribution metrics.
+   * @returns مؤشرات لوحة المدير / Manager dashboard metrics
+   */
   async getManagerDashboard(): Promise<{
     totalActiveOrders: number;
     revenueCompletedOrders: string;

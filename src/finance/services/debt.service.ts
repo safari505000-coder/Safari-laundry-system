@@ -356,6 +356,12 @@ export class DebtService {
       );
   }
 
+  /**
+   * ينشئ رابط تسوية متعدد الفواتير بعد قفل الفواتير، ويطالبها بحزمة دفع دون تخفيض Journal AR أو دين المحفظة قبل التحصيل.
+   * Creates a multi-invoice settlement link after locking invoices, claiming them in a payment bundle without reducing Journal AR or wallet debt before collection.
+   * @param params - معرف العميل والفواتير والمستخدم المنفذ / Customer, invoice ids, and acting user parameters
+   * @returns بيانات الحزمة ورابط الدفع ومؤشر إرسال الرسالة / Bundle details, payment URL, and delivery flag
+   */
   async generateSettlementLink(params: {
     customerId: string;
     invoiceIds: string[];
@@ -1250,6 +1256,10 @@ export class DebtService {
     const baseOrderUnpaid: Prisma.OrderWhereInput = {
       cashStatus: CashStatus.UNPAID,
       status: { not: OrderStatus.CANCELED },
+      OR: [
+        { walletSettledAt: null },
+        { posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT },
+      ],
       ...(orderBranchWhereForMarketDebt(listScope ?? undefined) ?? {}),
       ...(orderDateWhere ?? {}),
       ...(phoneWhere ?? {}),
@@ -1487,6 +1497,10 @@ export class DebtService {
     const marketBaseWhere: Prisma.OrderWhereInput = {
       cashStatus: CashStatus.UNPAID,
       status: { not: OrderStatus.CANCELED },
+      OR: [
+        { walletSettledAt: null },
+        { posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT },
+      ],
       ...(orderBranchWhereForMarketDebt(marketKpiScope ?? undefined) ?? {}),
     };
     const [marketAgg, byMethod] = await Promise.all([

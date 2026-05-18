@@ -415,6 +415,15 @@ export class CustomerLedgerService {
     return DebtEntityCategory.BRANCH;
   }
 
+  /**
+   * يسجل ذمة مدينة مؤقتة لفاتورة رابط دفع قبل التحصيل، ويزيد دين المحفظة ويقيد Journal AR داخل نفس المعاملة.
+   * Registers a pending payment-link receivable before collection, increasing wallet debt and Journal AR inside the same transaction.
+   * @param tx - عميل معاملة Prisma الحاضن / Parent Prisma transaction client
+   * @param orderId - معرف الطلب المرتبط برابط الدفع / Order id tied to the payment link
+   * @param customerId - معرف العميل صاحب الذمة / Customer id that owns the receivable
+   * @param amountKd - مبلغ الذمة بالدينار الكويتي / Receivable amount in KWD
+   * @returns لا تُرجع قيمة / No return value
+   */
   async registerPendingPaymentLinkReceivableTx(
     tx: PrismaTx,
     orderId: string,

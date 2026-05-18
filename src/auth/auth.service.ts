@@ -97,6 +97,12 @@ export class AuthService {
     private readonly usersService: UsersService,
   ) {}
 
+  /**
+   * يسجّل دخول المستخدمين المصرّح لهم مؤسسياً، ويفرض نافذة العمل للسائقين والمديرين عند تفعيلها.
+   * Authenticates institution-approved roles and enforces field-operator working-hours rules when enabled.
+   * @param dto - بيانات اسم المستخدم وكلمة المرور / Login username and password payload
+   * @returns جلسة دخول أو توكن مؤقت لتغيير كلمة المرور / Authenticated session or password-change-only token
+   */
   async login(dto: LoginDto): Promise<LoginResponseDto> {
     const handle = dto.username.trim();
     const user =
@@ -183,6 +189,13 @@ export class AuthService {
     return this.issueAuthenticatedSession(authUser, roleName);
   }
 
+  /**
+   * يغيّر المستخدم كلمة مروره بنفسه ثم يصدر جلسة دخول جديدة إذا بقي الحساب فعالاً.
+   * Lets the authenticated user change their own password and issues a fresh session when the account remains active.
+   * @param userId - معرف المستخدم الحالي / Current authenticated user id
+   * @param dto - كلمة المرور الحالية والجديدة / Current and new password payload
+   * @returns جلسة دخول جديدة بعد نجاح التغيير / Fresh login session after the password is changed
+   */
   async changePassword(
     userId: string,
     dto: ChangePasswordBodyDto,
@@ -206,6 +219,12 @@ export class AuthService {
     return this.issueAuthenticatedSession(user as UserAuthRow, roleName);
   }
 
+  /**
+   * يدوّر refresh token صالحاً ويصدر access token جديداً مع كشف إعادة الاستخدام وإلغاء الجلسات عند الاشتباه.
+   * Rotates a valid refresh token, issues a new access token, and detects replay by revoking active sessions.
+   * @param rawToken - رمز التحديث الخام من العميل / Raw refresh token presented by the client
+   * @returns access token و refresh token جديدان / Newly issued access and refresh tokens
+   */
   async refreshAccessToken(
     rawToken: string,
   ): Promise<RefreshTokenResponseDto> {
@@ -291,6 +310,12 @@ export class AuthService {
     return { accessToken, refreshToken: newRaw };
   }
 
+  /**
+   * يلغي refresh token محدداً عند تسجيل الخروج دون كشف وجوده للعميل.
+   * Revokes a specific refresh token during logout without leaking whether it existed.
+   * @param rawToken - رمز التحديث الخام المراد إلغاؤه / Raw refresh token to revoke
+   * @returns لا تُرجع قيمة / No return value
+   */
   async revokeRefreshToken(rawToken: string): Promise<void> {
     const tokenHash = sha256Hex(rawToken);
     await this.prisma.refreshToken

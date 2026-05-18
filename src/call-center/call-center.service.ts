@@ -732,6 +732,11 @@ export class CallCenterService {
     });
   }
 
+  /**
+   * يعرض خطط الاشتراك النشطة لموظفي مركز الاتصال قبل أي عملية مالية على محفظة العميل.
+   * Lists active subscription plans for call-center operators before any wallet or debt mutation.
+   * @returns خطط الاشتراك النشطة مرتبة بالاسم / Active subscription plans ordered by name
+   */
   listActiveSubscriptionPlans() {
     return this.prisma.subscriptionPlan.findMany({
       where: { isActive: true },
@@ -745,6 +750,12 @@ export class CallCenterService {
     });
   }
 
+  /**
+   * يبحث عن العملاء لموظفي مركز الاتصال مع إرجاع رصيد المحفظة والدين الحالي للمتابعة.
+   * Searches customers for call-center workflows and includes wallet balance and debt for follow-up.
+   * @param query - نص البحث بالهاتف أو الاسم أو العنوان / Phone, name, or address search text
+   * @returns قائمة مختصرة من العملاء المطابقين / Matching customer summary rows
+   */
   async searchCustomers(query: string) {
     const q = query.trim();
     if (q.length < 2) {
@@ -780,6 +791,13 @@ export class CallCenterService {
     });
   }
 
+  /**
+   * يفعّل اشتراك العميل داخل معاملة واحدة، ويحدّث المحفظة والدين ويغلق الفواتير الممكنة من الرصيد مسبق الدفع.
+   * Activates a customer subscription in one transaction, updating wallet/debt and auto-settling eligible prepaid invoices.
+   * @param userId - معرف موظف مركز الاتصال المنفذ / Acting call-center user id
+   * @param dto - بيانات العميل والخطة وطريقة الدفع / Customer, plan, and payment-method payload
+   * @returns نتيجة التفعيل ورصيد المحفظة والدين بعد التسوية / Activation result with final wallet and debt values
+   */
   async activateSubscription(userId: string, dto: ActivateSubscriptionDto) {
     // DEGRADE-3: run activation AND prepaid FIFO auto-reconcile in a single
     // atomic transaction. If reconcile fails, the activation rolls back too,
@@ -985,6 +1003,13 @@ export class CallCenterService {
     );
   }
 
+  /**
+   * يعرض سجل تسويات العميل من تفعيل الاشتراكات وتسويات الطلبات لمراجعة أثر المحفظة والدين.
+   * Lists customer settlement history from subscription activations and order settlements to review wallet and debt effects.
+   * @param customerId - معرف العميل / Customer id
+   * @param take - الحد الأقصى للصفوف / Maximum number of rows
+   * @returns صفوف سجل التسويات / Settlement history rows
+   */
   async listCustomerSettlementHistory(
     customerId: string,
     take = 40,
