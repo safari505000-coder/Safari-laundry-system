@@ -16,10 +16,8 @@ import {
   Prisma,
   SafariRole,
 } from '@prisma/client';
-import {
-  CustomerLedgerService,
-  type OrderWalletSettlementPrefetch,
-} from '../../customer-ledger/customer-ledger.service';
+import { CustomerLedgerService } from '../../customer-ledger/customer-ledger.service';
+import type { OrderWalletSettlementPrefetch } from '../../customer-ledger/customer-ledger.types';
 import {
   type PaymentConfirmedCustomerScenario,
 } from '../../customer-notifications/customer-notifications.service';

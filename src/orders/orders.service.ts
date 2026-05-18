@@ -30,10 +30,8 @@ import { CustomerBlockingService } from '../common/services/customer-blocking.se
 import { OutstandingService } from '../finance/outstanding/outstanding.service';
 import { PaymentsService } from '../common/services/payments.service';
 import { CustomerNotificationsService } from '../customer-notifications/customer-notifications.service';
-import {
-  CustomerLedgerService,
-  isPaymentLinkImmediateDebtEnabled,
-} from '../customer-ledger/customer-ledger.service';
+import { CustomerLedgerService } from '../customer-ledger/customer-ledger.service';
+import { isPaymentLinkImmediateDebtEnabled } from '../customer-ledger/customer-ledger.types';
 import { cashStatusForPaymentMethod } from '../common/utils/cash-status-for-method';
 import { resolveCustomerPhoneForNotify } from '../common/validation/kuwait-customer-phone';
 import { GeneralLedgerService } from '../general-ledger/general-ledger.service';

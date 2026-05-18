@@ -8,13 +8,14 @@ describe('Banking core lock', () => {
   it('keeps immediate PAYMENT_LINK receivable wired to Journal AR', () => {
     const orders = read('src/orders/orders.service.ts');
     const ledger = read('src/customer-ledger/customer-ledger.service.ts');
+    const ledgerTypes = read('src/customer-ledger/customer-ledger.types.ts');
 
     expect(orders).toContain('isPaymentLinkImmediateDebtEnabled()');
     expect(orders).toContain('registerPendingPaymentLinkReceivableTx');
-    expect(ledger).toContain(
-      "const PAYMENT_LINK_RECEIVABLE_SOURCE = 'PAYMENT_LINK_RECEIVABLE'",
+    expect(ledgerTypes).toContain(
+      "PAYMENT_LINK_RECEIVABLE_SOURCE = 'PAYMENT_LINK_RECEIVABLE'",
     );
-    expect(ledger).toContain('paymentLinkReceivableSourceRef(orderId)');
+    expect(ledgerTypes).toContain('paymentLinkReceivableSourceRef(orderId: string)');
     expect(ledger).toMatch(
       /accountCode:\s*JOURNAL_ACCOUNTS\.ACCOUNTS_RECEIVABLE,[\s\S]*debit:\s*amount/,
     );
