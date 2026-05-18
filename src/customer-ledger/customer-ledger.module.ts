@@ -5,6 +5,7 @@ import { OrdersModule } from '../orders/orders.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { CustomerLedgerService } from './customer-ledger.service';
 import { PrepaidAutoReconcileCronService } from './prepaid-auto-reconcile.cron';
+import { WalletService } from './wallet.service';
 
 /**
  * وحدة دفتر حسابات العملاء — تجمع خدمة الدفتر وجدولة التسوية التلقائية للمدفوع مسبقاً.
@@ -17,7 +18,7 @@ import { PrepaidAutoReconcileCronService } from './prepaid-auto-reconcile.cron';
     InventoryModule,
     forwardRef(() => OrdersModule),
   ],
-  providers: [CustomerLedgerService, PrepaidAutoReconcileCronService],
+  providers: [CustomerLedgerService, WalletService, PrepaidAutoReconcileCronService],
   exports: [CustomerLedgerService],
 })
 export class CustomerLedgerModule {}

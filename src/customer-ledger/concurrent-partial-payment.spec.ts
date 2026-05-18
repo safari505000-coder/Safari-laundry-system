@@ -83,6 +83,15 @@ describe('V20.4 Phase 5 — sourceRef determinism contract', () => {
       ),
       'utf8',
     );
+    const walletService = fs.readFileSync(
+      path.resolve(
+        __dirname,
+        '..',
+        '..',
+        'src/customer-ledger/wallet.service.ts',
+      ),
+      'utf8',
+    );
     const invoiceAudit = fs.readFileSync(
       path.resolve(
         __dirname,
@@ -93,14 +102,17 @@ describe('V20.4 Phase 5 — sourceRef determinism contract', () => {
       'utf8',
     );
 
-    // Customer-ledger: getOrCreateWalletTx in customer-ledger.service.ts is
-    // followed by either lockCustomerWalletForUpdateTx OR is the legacy
+    // Customer-ledger: wallet mutations in customer-ledger.service.ts are
+    // followed by WalletService.lockCustomerWalletForUpdateTx OR are the legacy
     // FIFO loop helper (line ~163). All call sites EXCEPT that loop
     // (which spans multiple iterations of its own lock cycle) must lock.
     const lockSites = (
       customerLedger.match(/lockCustomerWalletForUpdateTx/g) ?? []
     ).length;
     expect(lockSites).toBeGreaterThanOrEqual(4);
+    expect(walletService).toContain(
+      'SELECT 1 FROM "CustomerWallet" WHERE "id" = ${walletId}::uuid FOR UPDATE',
+    );
 
     // Invoice-audit: both reverse and apply paths must FOR UPDATE.
     expect(invoiceAudit).toContain(

@@ -31,6 +31,7 @@ import {
 } from '@prisma/client';
 import { DebtSource } from '../finance/enums/debt-source.enum';
 import { CustomerLedgerService } from './customer-ledger.service';
+import { WalletService } from './wallet.service';
 import {
   isRealDebtLedgerPayment,
   isWalletAbsorptionLedgerEntry,
@@ -50,6 +51,24 @@ type DebtRow = {
   actorUserId: string | null;
   note: string | null;
 };
+
+function makeWalletServiceMock(): Pick<
+  WalletService,
+  'getOrCreateWalletTx' | 'lockCustomerWalletForUpdateTx'
+> {
+  return {
+    getOrCreateWalletTx: jest.fn((tx, customerId) =>
+      tx.customerWallet.upsert({
+        where: { customerId },
+        create: { customerId },
+        update: {},
+      }),
+    ),
+    lockCustomerWalletForUpdateTx: jest.fn((tx, walletId) =>
+      tx.$queryRaw`SELECT 1 FROM "CustomerWallet" WHERE "id" = ${walletId}::uuid FOR UPDATE`,
+    ),
+  };
+}
 
 function makeTxFor(opts: {
   walletBalance: string;
@@ -199,6 +218,7 @@ function makeService() {
   const txProcessor = { process: jest.fn() };
   const service = new CustomerLedgerService(
     prisma as never,
+    makeWalletServiceMock() as never,
     generalLedger as never,
     journal as never,
     journalSource as never,
@@ -912,6 +932,7 @@ describe('STEAL-1 — companySupportAmountKd ceiling on activateSubscriptionPlan
     };
     const svc = new CustomerLedgerService(
       { $transaction: jest.fn() } as never,
+      makeWalletServiceMock() as never,
       { append: jest.fn().mockResolvedValue(undefined) } as never,
       journalStub as never,
       { classify: jest.fn(), label: jest.fn().mockReturnValue('TEST') } as never,

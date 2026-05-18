@@ -313,6 +313,8 @@ const directJournalWritePattern =
 const walletWriteAllowlist: ReadonlySet<string> = new Set([
   // Canonical orchestrator
   'src/customer-ledger/customer-ledger.service.ts',
+  // Phase 1 split: wallet row creation/locking helper used only by the canonical orchestrator.
+  'src/customer-ledger/wallet.service.ts',
   // Reversal-only — paired with appendBalanced
   'src/invoice-audit/invoice-audit.service.ts',
   // Subscription expiry (non-financial mutation; reminder counter)

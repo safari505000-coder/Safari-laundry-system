@@ -64,6 +64,7 @@ import {
   type OrderWalletSettlementPrefetch,
   type PrismaTx,
 } from './customer-ledger.types';
+import { WalletService } from './wallet.service';
 
 @Injectable()
 export class CustomerLedgerService {
@@ -71,6 +72,7 @@ export class CustomerLedgerService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly wallets: WalletService,
     private readonly generalLedger: GeneralLedgerService,
     private readonly journal: DoubleEntryJournalService,
     private readonly journalSource: JournalSourceService,
@@ -164,7 +166,7 @@ export class CustomerLedgerService {
 
     const maxPasses = 50;
     for (let pass = 0; pass < maxPasses; pass++) {
-      const wallet = await this.getOrCreateWalletTx(tx, customerId);
+      const wallet = await this.wallets.getOrCreateWalletTx(tx, customerId);
       const balanceMinor = toMinorFromFixed4(wallet.balance);
       if (balanceMinor <= 0n) break;
 
@@ -330,49 +332,6 @@ export class CustomerLedgerService {
     return new Prisma.Decimal(minorToAmountString(minor));
   }
 
-  /**
-   * Concurrent checkouts for the same new customer can race on `upsert` create;
-   * the second tx may get P2002 on `customerId` unique — re-read the row.
-   */
-  async getOrCreateWalletTx(tx: PrismaTx, customerId: string) {
-    try {
-      return await tx.customerWallet.upsert({
-        where: { customerId },
-        create: { customerId },
-        update: {},
-      });
-    } catch (e) {
-      if (
-        e instanceof Prisma.PrismaClientKnownRequestError &&
-        e.code === 'P2002'
-      ) {
-        return tx.customerWallet.findUniqueOrThrow({
-          where: { customerId },
-        });
-      }
-      throw e;
-    }
-  }
-
-  /**
-   * V20.1-v2 — Phase 13 concurrency safety helper.
-   *
-   * Acquires a row-level lock on the `CustomerWallet` row for the
-   * duration of the enclosing transaction (PostgreSQL `SELECT … FOR
-   * UPDATE`). Any other transaction attempting `SELECT … FOR UPDATE`
-   * or `UPDATE` on the same row will block until commit/rollback,
-   * eliminating the race between concurrent wallet settlements.
-   *
-   * Lock failures are fatal. Continuing without this lock can
-   * double-spend wallet credit during concurrent settlement.
-   */
-  private async lockCustomerWalletForUpdateTx(
-    tx: PrismaTx,
-    walletId: string,
-  ): Promise<void> {
-    await tx.$queryRaw`SELECT 1 FROM "CustomerWallet" WHERE "id" = ${walletId}::uuid FOR UPDATE`;
-  }
-
   private resolveDebtCategory(role: SafariRole): DebtEntityCategory {
     if (role === SafariRole.OWNER) return DebtEntityCategory.OWNER;
     if (role === SafariRole.DRIVER) return DebtEntityCategory.DRIVER;
@@ -409,8 +368,8 @@ export class CustomerLedgerService {
     });
     if (existing) return;
 
-    const wallet = await this.getOrCreateWalletTx(tx, customerId);
-    await this.lockCustomerWalletForUpdateTx(tx, wallet.id);
+    const wallet = await this.wallets.getOrCreateWalletTx(tx, customerId);
+    await this.wallets.lockCustomerWalletForUpdateTx(tx, wallet.id);
     const existingAfterLock = await tx.journalEntry.findUnique({
       where: { sourceRef },
       select: { id: true },
@@ -529,7 +488,7 @@ export class CustomerLedgerService {
       throw new BadRequestException('Order total cannot be negative');
     }
 
-    const wallet = await this.getOrCreateWalletTx(tx, o.customerId);
+    const wallet = await this.wallets.getOrCreateWalletTx(tx, o.customerId);
 
     // V20.1-v2 — Phase 13 concurrency safety.
     //
@@ -545,7 +504,7 @@ export class CustomerLedgerService {
     // closes the window: any other transaction touching this wallet
     // will block until this one commits or rolls back.
     //
-    await this.lockCustomerWalletForUpdateTx(tx, wallet.id);
+    await this.wallets.lockCustomerWalletForUpdateTx(tx, wallet.id);
 
     const freshOrder = await tx.order.findUnique({
       where: { id: orderId },
@@ -1108,7 +1067,7 @@ export class CustomerLedgerService {
       throw new NotFoundException('Customer not found');
     }
 
-    const wallet = await this.getOrCreateWalletTx(tx, params.customerId);
+    const wallet = await this.wallets.getOrCreateWalletTx(tx, params.customerId);
     // V20.4 — Phase 5 row-level lock. Closes the lost-update race
     // between concurrent activations and concurrent invoice
     // settlements on the same customer. Without this, two CC
@@ -1116,7 +1075,7 @@ export class CustomerLedgerService {
     // pre-balance and overwrite each other's update, producing a
     // wallet that's off by exactly one activation amount while
     // the journal carries both entries.
-    await this.lockCustomerWalletForUpdateTx(tx, wallet.id);
+    await this.wallets.lockCustomerWalletForUpdateTx(tx, wallet.id);
     const actor = await tx.user.findUnique({
       where: { id: params.performedByUserId },
       select: { id: true, branchId: true, safariRole: true },
@@ -1698,7 +1657,7 @@ export class CustomerLedgerService {
       return { kind: 'already_cleared' };
     }
 
-    const wallet = await this.getOrCreateWalletTx(tx, order.customerId);
+    const wallet = await this.wallets.getOrCreateWalletTx(tx, order.customerId);
     // V20.4 — Phase 5 row-level lock for the CC debt-invoice
     // collection path. Without it, two CC agents settling debt
     // for the same customer can both read `wallet.debt` at the
@@ -1722,7 +1681,7 @@ export class CustomerLedgerService {
       );
     }
 
-    await this.lockCustomerWalletForUpdateTx(tx, wallet.id);
+    await this.wallets.lockCustomerWalletForUpdateTx(tx, wallet.id);
     // CORRUPT-2: re-read wallet state AFTER acquiring the FOR UPDATE lock so
     // concurrent CC payments see each other's committed deductions.
     const lockedWallet = await tx.customerWallet.findUniqueOrThrow({
@@ -1929,14 +1888,14 @@ export class CustomerLedgerService {
           throw new NotFoundException('Performing user not found');
         }
 
-        const wallet = await this.getOrCreateWalletTx(tx, params.customerId);
+        const wallet = await this.wallets.getOrCreateWalletTx(tx, params.customerId);
         // V20.4 — Phase 5 row-level lock for the customer-level
         // partial-debt-payment path (CC "تم الدفع"). Without it
         // 1000 concurrent partial payments would lose updates
         // (forensic stress test, V20.3.4 §9). The lock serialises
         // the read-modify-write at the wallet level; journal
         // writes already serialise via the unique sourceRef.
-        await this.lockCustomerWalletForUpdateTx(tx, wallet.id);
+        await this.wallets.lockCustomerWalletForUpdateTx(tx, wallet.id);
         const amountMinor = toMinorFromFixed4(
           new Prisma.Decimal(params.amountKd),
         );
@@ -2304,7 +2263,7 @@ export class CustomerLedgerService {
     // concurrent invoice settlement cannot race the
     // gift-removal / cash-refund computation against a stale
     // `wallet.balance`.
-    await this.lockCustomerWalletForUpdateTx(tx, wallet.id);
+    await this.wallets.lockCustomerWalletForUpdateTx(tx, wallet.id);
 
     const now = new Date();
     if (now.getTime() >= sub.expiresAt.getTime()) {
