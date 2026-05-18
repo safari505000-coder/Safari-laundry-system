@@ -315,6 +315,8 @@ const walletWriteAllowlist: ReadonlySet<string> = new Set([
   'src/customer-ledger/customer-ledger.service.ts',
   // Phase 1 split: wallet row creation/locking helper used only by the canonical orchestrator.
   'src/customer-ledger/wallet.service.ts',
+  // Phase 2 split: payment-link receivable debt write paired with Journal AR.
+  'src/customer-ledger/debt-registration.service.ts',
   // Reversal-only — paired with appendBalanced
   'src/invoice-audit/invoice-audit.service.ts',
   // Subscription expiry (non-financial mutation; reminder counter)

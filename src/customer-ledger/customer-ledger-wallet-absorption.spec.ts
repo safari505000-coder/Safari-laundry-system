@@ -31,6 +31,7 @@ import {
 } from '@prisma/client';
 import { DebtSource } from '../finance/enums/debt-source.enum';
 import { CustomerLedgerService } from './customer-ledger.service';
+import { DebtRegistrationService } from './debt-registration.service';
 import { WalletService } from './wallet.service';
 import {
   isRealDebtLedgerPayment,
@@ -66,6 +67,50 @@ function makeWalletServiceMock(): Pick<
     ),
     lockCustomerWalletForUpdateTx: jest.fn((tx, walletId) =>
       tx.$queryRaw`SELECT 1 FROM "CustomerWallet" WHERE "id" = ${walletId}::uuid FOR UPDATE`,
+    ),
+  };
+}
+
+function makeDebtRegistrationServiceMock(journal?: {
+  appendBalanced: jest.Mock;
+}): Pick<
+  DebtRegistrationService,
+  'registerPendingPaymentLinkReceivableTx'
+> {
+  const walletService = makeWalletServiceMock();
+  return {
+    registerPendingPaymentLinkReceivableTx: jest.fn(
+      async (tx, orderId, customerId, amountKd) => {
+        const amount = new Prisma.Decimal(amountKd);
+        if (amount.lessThanOrEqualTo(0)) return;
+        const sourceRef = `PAYMENT_LINK_RECEIVABLE:${orderId}`;
+        const existing = await tx.journalEntry.findUnique({
+          where: { sourceRef },
+          select: { id: true },
+        });
+        if (existing) return;
+        const wallet = await walletService.getOrCreateWalletTx(tx, customerId);
+        await walletService.lockCustomerWalletForUpdateTx(tx, wallet.id);
+        const existingAfterLock = await tx.journalEntry.findUnique({
+          where: { sourceRef },
+          select: { id: true },
+        });
+        if (existingAfterLock) return;
+        const lockedWallet = await tx.customerWallet.findUniqueOrThrow({
+          where: { id: wallet.id },
+          select: { debt: true },
+        });
+        await tx.customerWallet.update({
+          where: { id: wallet.id },
+          data: { debt: lockedWallet.debt.add(amount) },
+        });
+        await journal?.appendBalanced(tx, {
+          source: 'PAYMENT_LINK_RECEIVABLE',
+          sourceRef,
+          customerId,
+          orderId,
+        });
+      },
     ),
   };
 }
@@ -219,6 +264,7 @@ function makeService() {
   const service = new CustomerLedgerService(
     prisma as never,
     makeWalletServiceMock() as never,
+    makeDebtRegistrationServiceMock(journal) as never,
     generalLedger as never,
     journal as never,
     journalSource as never,
@@ -933,6 +979,7 @@ describe('STEAL-1 — companySupportAmountKd ceiling on activateSubscriptionPlan
     const svc = new CustomerLedgerService(
       { $transaction: jest.fn() } as never,
       makeWalletServiceMock() as never,
+      makeDebtRegistrationServiceMock() as never,
       { append: jest.fn().mockResolvedValue(undefined) } as never,
       journalStub as never,
       { classify: jest.fn(), label: jest.fn().mockReturnValue('TEST') } as never,

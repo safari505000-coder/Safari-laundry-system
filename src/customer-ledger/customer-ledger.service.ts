@@ -36,10 +36,7 @@ import {
   isV20_3TrueAccountingEnabled,
 } from '../finance/debt-customer-aggregates.util';
 import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
-import {
-  DoubleEntryJournalService,
-  JOURNAL_ACCOUNTS,
-} from '../general-ledger/double-entry-journal.service';
+import { DoubleEntryJournalService } from '../general-ledger/double-entry-journal.service';
 import { JournalSourceService } from '../general-ledger/journal-source.service';
 import { FinancialTransactionProcessorService } from '../general-ledger/financial-transaction-processor.service';
 import type { StrictFinancialPaymentMethod } from '../general-ledger/financial-transaction-processor.service';
@@ -59,11 +56,11 @@ import type {
 } from './subscription-settlement.types';
 import {
   CC_PARTIAL_DEBT_PAYMENT_INTERACTIVE_TX,
-  PAYMENT_LINK_RECEIVABLE_SOURCE,
   paymentLinkReceivableSourceRef,
   type OrderWalletSettlementPrefetch,
   type PrismaTx,
 } from './customer-ledger.types';
+import { DebtRegistrationService } from './debt-registration.service';
 import { WalletService } from './wallet.service';
 
 @Injectable()
@@ -73,6 +70,7 @@ export class CustomerLedgerService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly wallets: WalletService,
+    private readonly debtRegistration: DebtRegistrationService,
     private readonly generalLedger: GeneralLedgerService,
     private readonly journal: DoubleEntryJournalService,
     private readonly journalSource: JournalSourceService,
@@ -358,52 +356,12 @@ export class CustomerLedgerService {
     customerId: string,
     amountKd: Prisma.Decimal | string | number,
   ): Promise<void> {
-    const amount = new Prisma.Decimal(amountKd);
-    if (amount.lessThanOrEqualTo(0)) return;
-
-    const sourceRef = paymentLinkReceivableSourceRef(orderId);
-    const existing = await tx.journalEntry.findUnique({
-      where: { sourceRef },
-      select: { id: true },
-    });
-    if (existing) return;
-
-    const wallet = await this.wallets.getOrCreateWalletTx(tx, customerId);
-    await this.wallets.lockCustomerWalletForUpdateTx(tx, wallet.id);
-    const existingAfterLock = await tx.journalEntry.findUnique({
-      where: { sourceRef },
-      select: { id: true },
-    });
-    if (existingAfterLock) return;
-
-    const lockedWallet = await tx.customerWallet.findUniqueOrThrow({
-      where: { id: wallet.id },
-      select: { debt: true },
-    });
-    await tx.customerWallet.update({
-      where: { id: wallet.id },
-      data: { debt: lockedWallet.debt.add(amount) },
-    });
-
-    await this.journal.appendBalanced(tx, {
-      source: PAYMENT_LINK_RECEIVABLE_SOURCE,
-      sourceRef,
-      actorUserId: '00000000-0000-0000-0000-000000000000',
-      customerId,
+    return this.debtRegistration.registerPendingPaymentLinkReceivableTx(
+      tx,
       orderId,
-      lines: [
-        {
-          accountCode: JOURNAL_ACCOUNTS.ACCOUNTS_RECEIVABLE,
-          debit: amount,
-          meta: { event: PAYMENT_LINK_RECEIVABLE_SOURCE, orderId },
-        },
-        {
-          accountCode: JOURNAL_ACCOUNTS.REVENUE,
-          credit: amount,
-          meta: { event: PAYMENT_LINK_RECEIVABLE_SOURCE, orderId },
-        },
-      ],
-    });
+      customerId,
+      amountKd,
+    );
   }
 
   /**

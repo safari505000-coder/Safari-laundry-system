@@ -170,6 +170,7 @@ const journalWriteAllowlist: ReadonlySet<string> = new Set([
 const walletWriteAllowlist: ReadonlySet<string> = new Set([
   'src/customer-ledger/customer-ledger.service.ts',
   'src/customer-ledger/wallet.service.ts',
+  'src/customer-ledger/debt-registration.service.ts',
   'src/invoice-audit/invoice-audit.service.ts',
   'src/call-center/call-center.service.ts',
   'src/finance/v21-canonical-banking-guards.spec.ts',

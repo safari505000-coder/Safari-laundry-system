@@ -8,6 +8,9 @@ describe('Banking core lock', () => {
   it('keeps immediate PAYMENT_LINK receivable wired to Journal AR', () => {
     const orders = read('src/orders/orders.service.ts');
     const ledger = read('src/customer-ledger/customer-ledger.service.ts');
+    const debtRegistration = read(
+      'src/customer-ledger/debt-registration.service.ts',
+    );
     const ledgerTypes = read('src/customer-ledger/customer-ledger.types.ts');
 
     expect(orders).toContain('isPaymentLinkImmediateDebtEnabled()');
@@ -16,13 +19,14 @@ describe('Banking core lock', () => {
       "PAYMENT_LINK_RECEIVABLE_SOURCE = 'PAYMENT_LINK_RECEIVABLE'",
     );
     expect(ledgerTypes).toContain('paymentLinkReceivableSourceRef(orderId: string)');
-    expect(ledger).toMatch(
+    expect(ledger).toContain('registerPendingPaymentLinkReceivableTx');
+    expect(debtRegistration).toMatch(
       /accountCode:\s*JOURNAL_ACCOUNTS\.ACCOUNTS_RECEIVABLE,[\s\S]*debit:\s*amount/,
     );
-    expect(ledger).toMatch(
+    expect(debtRegistration).toMatch(
       /accountCode:\s*JOURNAL_ACCOUNTS\.REVENUE,[\s\S]*credit:\s*amount/,
     );
-    expect(ledger).toContain('this.journal.appendBalanced(tx');
+    expect(debtRegistration).toContain('this.journal.appendBalanced(tx');
   });
 
   it('keeps DEBT_ON_ACCOUNT invoice issuance journaled through the canonical writer', () => {
