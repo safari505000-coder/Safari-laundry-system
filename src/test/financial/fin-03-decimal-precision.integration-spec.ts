@@ -56,7 +56,7 @@ describe('FIN-03: Decimal Precision', () => {
         customerPhone: customer.phone,
         customerDisplayName: customer.displayName ?? 'Test',
         customerAddress: customer.address ?? 'Test',
-        totalPrice: Number(amountKd),
+        totalPrice: amountKd,
         invoiceNumber: `INV-${randomUUID()}`,
         posPaymentMethod: method,
       });

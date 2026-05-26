@@ -74,7 +74,7 @@ describe('FIN-99: payment method smoke', () => {
         customerPhone: customer.phone,
         customerDisplayName: customer.displayName ?? 'Smoke Customer',
         customerAddress: customer.address ?? 'Smoke Address',
-        totalPrice: Number(amount),
+        totalPrice: amount,
         invoiceNumber: `SMOKE-${randomUUID()}`,
         posPaymentMethod: method,
       });
@@ -117,6 +117,12 @@ describe('FIN-99: payment method smoke', () => {
     return prisma.journalLine.findMany({
       where: { entryId: entry.id },
       include: { account: { select: { code: true } } },
+    });
+  }
+
+  async function countExternalPaymentEntries(orderId: string): Promise<number> {
+    return prisma.journalEntry.count({
+      where: { orderId, source: 'EXTERNAL_PAYMENT' },
     });
   }
 
@@ -193,6 +199,7 @@ describe('FIN-99: payment method smoke', () => {
         'credit',
         '10.0000',
       );
+      expect(await countExternalPaymentEntries(order.id)).toBe(1);
       assertDecimalEqual(await getArBalance(prisma, customer.id), '0.0000');
     },
   );
@@ -208,6 +215,7 @@ describe('FIN-99: payment method smoke', () => {
       .send({ paymentMethod: 'CASH' });
 
     expect(res.status).toBeLessThan(400);
+    expect(await countExternalPaymentEntries(order.id)).toBe(1);
     expectLine(
       await externalPaymentLinesForOrder(order.id),
       '1100',
@@ -222,6 +230,12 @@ describe('FIN-99: payment method smoke', () => {
 
     const order = await checkout(PosPaymentMethod.SUBSCRIPTION_WALLET, '10.0000');
 
+    expectLine(
+      await linesFor(`JOURNAL:INVOICE_ISSUED:${order.id}`),
+      '1300',
+      'debit',
+      '10.0000',
+    );
     expectLine(
       await linesFor(`JOURNAL:WALLET_ABSORPTION_V3:${order.id}:APPLIED`),
       '2100',
@@ -259,6 +273,7 @@ describe('FIN-99: payment method smoke', () => {
       '4.0000',
     );
     assertDecimalEqual(await getArBalance(prisma, customer.id), '6.0000');
+    expect(await countExternalPaymentEntries(order.id)).toBe(0);
 
     const wallet = await prisma.customerWallet.findUniqueOrThrow({
       where: { customerId: customer.id },
@@ -282,7 +297,7 @@ describe('FIN-99: payment method smoke', () => {
         customerPhone: customer.phone,
         customerDisplayName: customer.displayName ?? 'Smoke Customer',
         customerAddress: customer.address ?? 'Smoke Address',
-        totalPrice: 10,
+        totalPrice: '10.0000',
         invoiceNumber: `SMOKE-${randomUUID()}`,
         posPaymentMethod: PosPaymentMethod.SUBSCRIPTION_WALLET,
       });

@@ -78,7 +78,7 @@ describe('FIN-01: Ledger Integrity', () => {
         customerPhone: customer.phone,
         customerDisplayName: customer.displayName ?? 'Test Customer',
         customerAddress: customer.address ?? 'Test Address',
-        totalPrice: Number(amount),
+        totalPrice: amount,
         invoiceNumber: `INV-${randomUUID()}`,
         posPaymentMethod: paymentMethod,
       });

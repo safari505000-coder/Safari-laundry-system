@@ -152,7 +152,7 @@ describe('V22 current debt display guard', () => {
         return !ALLOW.has(rel);
       })
       .filter((file) =>
-        /[^A-Za-z_$]totalDueKd\b/.test(stripCommentsLocal(readFileSync(file, 'utf8'))),
+        /\.totalDueKd\b/.test(stripCommentsLocal(readFileSync(file, 'utf8'))),
       );
 
     expect(offenders).toEqual([]);

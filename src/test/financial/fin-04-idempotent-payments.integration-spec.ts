@@ -62,7 +62,7 @@ describe('FIN-04: Idempotent Payments', () => {
         customerPhone: customer.phone,
         customerDisplayName: customer.displayName ?? 'Test',
         customerAddress: customer.address ?? 'Test',
-        totalPrice: Number(amount),
+        totalPrice: amount,
         invoiceNumber: `INV-${randomUUID()}`,
         posPaymentMethod: method,
       });

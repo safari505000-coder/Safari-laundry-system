@@ -58,7 +58,7 @@ describe('FIN-02: Canonical Customer Debt', () => {
         customerPhone: customer.phone,
         customerDisplayName: customer.displayName ?? 'Test Customer',
         customerAddress: customer.address ?? 'Test Address',
-        totalPrice: Number(amountKd),
+        totalPrice: amountKd,
         invoiceNumber: `INV-${randomUUID()}`,
         posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT,
       });

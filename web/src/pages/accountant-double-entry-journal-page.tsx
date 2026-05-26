@@ -2,7 +2,11 @@ import { useCallback, useState } from 'react';
 import { Loader2, Phone, Printer, RefreshCw, Search } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { apiJson } from '@/lib/api';
-import { formatKwdAmount, formatKwdLabel } from '@/lib/kwd';
+import {
+  formatKwdAmount,
+  formatKwdLabel,
+  sumKwdStringsPrecise,
+} from '@/lib/kwd';
 import {
   useCcCustomerSearch,
   type CustomerSearchHit,
@@ -414,13 +418,9 @@ export function AccountantDoubleEntryJournalPage() {
               <p className="text-sm text-muted-foreground">إجمالي المدين (د.ك)</p>
               <p className="mt-1 text-2xl font-bold tabular-nums">
                 {formatKwdAmount(
-                  filteredEntries
-                    .reduce(
-                      (sum, e) =>
-                        sum + parseFloat(e.totalDebitKd || '0'),
-                      0,
-                    )
-                    .toFixed(4),
+                  sumKwdStringsPrecise(
+                    filteredEntries.map((e) => e.totalDebitKd),
+                  ),
                 )}
               </p>
             </div>

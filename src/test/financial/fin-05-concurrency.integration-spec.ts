@@ -57,7 +57,7 @@ describe('FIN-05: Concurrency and Locks', () => {
         customerPhone: customer.phone,
         customerDisplayName: customer.displayName ?? 'Test',
         customerAddress: customer.address ?? 'Test',
-        totalPrice: Number(amountKd),
+        totalPrice: amountKd,
         invoiceNumber: `INV-${randomUUID()}`,
         posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT,
       });

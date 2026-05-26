@@ -19,7 +19,7 @@ import {
   isLikelyUnextractableScannedStatement,
   parseStatementSummaryHints,
 } from '@/lib/knet-statement-parse';
-import { formatKwdLabel } from '@/lib/kwd';
+import { chartScalarFromKwdString, formatKwdLabel } from '@/lib/kwd';
 import { can } from '@/modules/shared/auth/access-matrix';
 import { Button } from '@/modules/shared/components/ui/button';
 import {
@@ -180,7 +180,7 @@ export function KnetAudit() {
     // V25 Frontend Purge: use server-computed knetTotalKd instead of
     // local reduce + parseFloat. Fee estimate still needs individual
     // prices for per-transaction rule application.
-    const gross = Number.parseFloat(report.totals.knetTotalKd ?? '0') || 0;
+    const gross = chartScalarFromKwdString(report.totals.knetTotalKd);
     const knetPrices = report.rows
       .filter((r) => r.posPaymentMethod === 'KNET')
       .map((r) => r.totalPrice);

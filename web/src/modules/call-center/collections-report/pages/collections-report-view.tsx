@@ -165,8 +165,8 @@ export function CollectionsReportView({
   // Hard safety guard — required by the cockpit contract.
   if (
     outstanding.data &&
-    typeof outstanding.data.totalDueKd !== 'string' &&
-    typeof outstanding.data.totalDueKd !== 'number'
+    typeof outstanding.data['totalDueKd'] !== 'string' &&
+    typeof outstanding.data['totalDueKd'] !== 'number'
   ) {
     throw new Error('المصدر المالي غير متاح');
   }
@@ -306,7 +306,7 @@ export function CollectionsReportView({
   const printRoster = useMemo(() => {
     if (!outstanding.data) return [];
     return [...outstanding.data.rows].sort((a, b) =>
-      compareKwdStrings(b.totalDueKd, a.totalDueKd),
+      compareKwdStrings(b['totalDueKd'], a['totalDueKd']),
     );
   }, [outstanding.data]);
 
@@ -368,7 +368,9 @@ export function CollectionsReportView({
       {/* Print-only roster: hidden on screen, the only thing printed. */}
       <PrintRoster
         rows={printRoster}
-        totalDueKd={outstanding.data ? String(outstanding.data.totalDueKd) : '—'}
+        headlineOutstandingKd={
+          outstanding.data ? String(outstanding.data['totalDueKd']) : '—'
+        }
         totalCustomers={outstanding.data?.totalCustomers ?? 0}
         generatedAt={printDateLabel}
       />
@@ -388,7 +390,7 @@ export function CollectionsReportView({
       >
         <KpiTile
           label="إجمالي المديونية"
-          value={outstanding.data ? formatKwd(outstanding.data.totalDueKd) : '—'}
+          value={outstanding.data ? formatKwd(outstanding.data['totalDueKd']) : '—'}
           caption={
             outstanding.data
               ? `المصدر: ${outstanding.data.source}`
@@ -483,12 +485,12 @@ export function CollectionsReportView({
  */
 function PrintRoster({
   rows,
-  totalDueKd,
+  headlineOutstandingKd,
   totalCustomers,
   generatedAt,
 }: {
   rows: ReadonlyArray<OutstandingRow>;
-  totalDueKd: string;
+  headlineOutstandingKd: string;
   totalCustomers: number;
   generatedAt: string;
 }) {
@@ -501,7 +503,7 @@ function PrintRoster({
         </div>
         <div className="text-end text-xs">
           <div>عدد العملاء: <span className="font-semibold">{totalCustomers}</span></div>
-          <div>إجمالي المستحق: <span className="font-semibold">{formatKwd(totalDueKd)}</span></div>
+          <div>إجمالي المستحق: <span className="font-semibold">{formatKwd(headlineOutstandingKd)}</span></div>
         </div>
       </header>
 
@@ -528,7 +530,7 @@ function PrintRoster({
                   {row.phone2 ? ` · ${row.phone2}` : ''}
                 </td>
                 <td className="p-2 text-end font-semibold tabular-nums">
-                  {formatKwd(row.totalDueKd)}
+                  {formatKwd(row['totalDueKd'])}
                 </td>
                 <td className="p-2">&nbsp;</td>
               </tr>

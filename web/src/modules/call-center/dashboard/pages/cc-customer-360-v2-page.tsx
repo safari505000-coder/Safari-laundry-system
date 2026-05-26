@@ -450,7 +450,7 @@ export function CcCustomer360V2Page() {
               unit="د.ك"
             />
             <FinancialStatCard
-              label={t('customer360v2.stats.outstanding', { defaultValue: 'المستحق الحالي' })}
+              label={t('customer360v2.stats.unpaidInvoices', { defaultValue: 'الفواتير غير المسددة' })}
               value={payableNowKd}
               unit="د.ك"
               delta={isMaterialKd(payableNowKd) ? { text: t('customer360v2.stats.dueWarn', { defaultValue: 'يحتاج متابعة' }), tone: 'down' } : undefined}
