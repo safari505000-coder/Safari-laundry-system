@@ -10,6 +10,7 @@ import { FINANCE_DAILY_POS_SALES_OWN } from '../capabilities';
 import {
   DRIVER_FINANCE_DAILY_POS_KEY,
   IS_PUBLIC_KEY,
+  NO_OWNER_BYPASS_KEY,
   ROLES_KEY,
 } from '../decorators/roles.decorator';
 import { PERMISSIONS_KEY } from '../permissions/permissions.decorator';
@@ -55,8 +56,12 @@ export class RolesGuard implements CanActivate {
       .switchToHttp()
       .getRequest<{ user?: { role: string }; method?: string }>();
     const role = req.user?.role;
+    const noOwnerBypass = this.reflector.getAllAndOverride<boolean>(
+      NO_OWNER_BYPASS_KEY,
+      [context.getHandler(), context.getClass()],
+    );
     // Global OWNER bypass: full access across all guarded routes/endpoints.
-    if (role === SafariRole.OWNER) {
+    if (role === SafariRole.OWNER && !noOwnerBypass) {
       return true;
     }
     // V19.25 — Second-eye (GENERAL_MANAGER) must not be blocked from the

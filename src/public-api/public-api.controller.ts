@@ -2,7 +2,7 @@ import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/co
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { SafariRole, WebsiteOrderRequestStatus } from '@prisma/client';
 import { CurrentUser, type JwtUser } from '../auth/decorators/current-user.decorator';
-import { Public, Roles } from '../auth/decorators/roles.decorator';
+import { Public, Roles, NoOwnerBypass } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { CreatePublicOrderDto } from './dto/create-public-order.dto';
@@ -66,6 +66,7 @@ export class PublicApiController {
 
   @Get('call-center/website-order-requests')
   @UseGuards(RolesGuard)
+  @NoOwnerBypass()
   @Roles(SafariRole.CALL_CENTER, SafariRole.CALL_CENTER_SUPERVISOR)
   @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Call-center website order intake queue' })
@@ -79,6 +80,7 @@ export class PublicApiController {
 
   @Post('call-center/website-order-requests/:id/status')
   @UseGuards(RolesGuard)
+  @NoOwnerBypass()
   @Roles(SafariRole.CALL_CENTER, SafariRole.CALL_CENTER_SUPERVISOR)
   @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Update website order request review status' })

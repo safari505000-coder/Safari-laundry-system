@@ -1,5 +1,5 @@
 import { INestApplication } from '@nestjs/common';
-import { PosPaymentMethod, Prisma, SafariRole } from '@prisma/client';
+import { PosPaymentMethod, Prisma, SafariRole, CustomerSubscriptionStatus } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { App } from 'supertest/types';
 import {
@@ -117,9 +117,38 @@ describe('FIN-02: Canonical Customer Debt', () => {
   });
 
   it('wallet absorption reduces customer AR debt', async () => {
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const plan = await prisma.subscriptionPlan.create({
+      data: {
+        name: 'FIN-02 wallet absorption',
+        salePrice: new Prisma.Decimal('10.0000'),
+        actualBalance: new Prisma.Decimal('10.0000'),
+        validityDays: 30,
+      },
+    });
+    await prisma.customerSubscription.create({
+      data: {
+        customerId: customer.id,
+        planId: plan.id,
+        status: CustomerSubscriptionStatus.ACTIVE,
+        planNameSnapshot: plan.name,
+        planSalePriceSnapshot: plan.salePrice,
+        planActualBalanceSnapshot: plan.actualBalance,
+        planValidityDaysSnapshot: plan.validityDays,
+        activatedAt: now,
+        expiresAt,
+      },
+    });
     await prisma.customerWallet.update({
       where: { customerId: customer.id },
-      data: { balance: new Prisma.Decimal('30.0000') },
+      data: {
+        balance: new Prisma.Decimal('30.0000'),
+        subscriptionPlanId: plan.id,
+        subscriptionPlanName: plan.name,
+        subscriptionActivatedAt: now,
+        subscriptionExpiresAt: expiresAt,
+      },
     });
 
     const res = await request(app.getHttpServer())

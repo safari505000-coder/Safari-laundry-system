@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { OrderStatus, Prisma, SafariRole } from '@prisma/client';
+import { InvoicePaymentStatusService } from '../finance/invoice-payment-status.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePublicOrderDto } from './dto/create-public-order.dto';
 import { PUBLIC_COMPANY_BRAND } from './public-branding';
@@ -14,6 +15,7 @@ export class PublicApiService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly websiteRequests: WebsiteOrderRequestsService,
+    private readonly invoicePaymentStatus: InvoicePaymentStatusService,
   ) {}
 
   async getCatalog() {
@@ -88,7 +90,6 @@ export class PublicApiService {
             status: true,
             cashStatus: true,
             posPaymentMethod: true,
-            totalPrice: true,
             invoiceNumber: true,
             serialNumber: true,
             createdAt: true,
@@ -101,6 +102,15 @@ export class PublicApiService {
     if (!customer) {
       throw new NotFoundException('Customer was not found.');
     }
+
+    const paymentRows = await Promise.all(
+      customer.orders.map((row) =>
+        this.invoicePaymentStatus.derivePaymentStatus(row.id),
+      ),
+    );
+    const paymentByOrderId = new Map(
+      paymentRows.map((row) => [row.orderId, row]),
+    );
 
     return {
       customer: {
@@ -116,17 +126,23 @@ export class PublicApiService {
         subscriptionExpiresAtIso:
           customer.wallet?.subscriptionExpiresAt?.toISOString() ?? null,
       },
-      recentOrders: customer.orders.map((order) => ({
-        id: order.id,
-        status: order.status,
-        cashStatus: order.cashStatus,
-        posPaymentMethod: order.posPaymentMethod,
-        totalPriceKd: order.totalPrice.toFixed(4),
-        invoiceNumber: order.invoiceNumber,
-        serialNumber: order.serialNumber,
-        createdAtIso: order.createdAt.toISOString(),
-        completedAtIso: order.completedAt?.toISOString() ?? null,
-      })),
+      recentOrders: customer.orders.map((order) => {
+        const payment = paymentByOrderId.get(order.id)!;
+        return {
+          id: order.id,
+          status: order.status,
+          cashStatus: order.cashStatus,
+          posPaymentMethod: order.posPaymentMethod,
+          totalAmountKd: payment.totalAmountKd,
+          paidAmountKd: payment.paidAmountKd,
+          remainingAmountKd: payment.remainingAmountKd,
+          paymentStatus: payment.status,
+          invoiceNumber: order.invoiceNumber,
+          serialNumber: order.serialNumber,
+          createdAtIso: order.createdAt.toISOString(),
+          completedAtIso: order.completedAt?.toISOString() ?? null,
+        };
+      }),
     };
   }
 
