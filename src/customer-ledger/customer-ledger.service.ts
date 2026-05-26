@@ -532,6 +532,7 @@ export class CustomerLedgerService {
       (!isSubscriptionWalletPayment && !externalCoversShortfall);
     let newDebtMinor =
       addInvoiceDebt && shortfallMinor > 0n ? debtMinor + shortfallMinor : debtMinor;
+    const trueAccounting = isV20_3TrueAccountingEnabled();
 
     /**
      * V19.26 — Gateway / CC "debt collected" paths pass `metadata.debtSettled`
@@ -569,7 +570,18 @@ export class CustomerLedgerService {
       const declaredSettledMinor = toMinorFromFixed4(
         new Prisma.Decimal(debtSettledStr),
       );
-      if (declaredSettledMinor > 0n && newDebtMinor > 0n) {
+      if (declaredSettledMinor > 0n && trueAccounting) {
+        const actualReceivableMinor =
+          newDebtMinor > 0n ? newDebtMinor : shortfallMinor;
+        debtPaydownFromSettlementMinor =
+          declaredSettledMinor < actualReceivableMinor
+            ? declaredSettledMinor
+            : actualReceivableMinor;
+        newDebtMinor =
+          newDebtMinor > debtPaydownFromSettlementMinor
+            ? newDebtMinor - debtPaydownFromSettlementMinor
+            : 0n;
+      } else if (declaredSettledMinor > 0n && newDebtMinor > 0n) {
         debtPaydownFromSettlementMinor =
           declaredSettledMinor < newDebtMinor
             ? declaredSettledMinor
@@ -671,7 +683,6 @@ export class CustomerLedgerService {
     //
     // Default V20.2 model: skip — the SHORTFALL mirror below already
     // writes AR for the post-wallet remainder.
-    const trueAccounting = isV20_3TrueAccountingEnabled();
     const hasImmediatePaymentLinkReceivable =
       (o.posPaymentMethod === PosPaymentMethod.ONLINE ||
         o.posPaymentMethod === PosPaymentMethod.PAYMENT_LINK) &&
@@ -861,20 +872,40 @@ export class CustomerLedgerService {
     // aggregate debt pay-down (see `debtPaydownFromSettlementMinor` above)
     // as a PAYMENT row. Amount may be less than `debtSettled` when the
     // customer had no open debt.
+    const trigger =
+      extraMetadata?.debtSettlementViaCallCenter === true
+        ? 'CALL_CENTER_MANUAL'
+        : extraMetadata?.debtSettlementViaLink === true
+          ? 'PAYMENT_LINK_CALLBACK'
+          : 'WALLET_SETTLEMENT';
+    const origin =
+      o.posPaymentMethod === PosPaymentMethod.CASH ||
+      o.posPaymentMethod === PosPaymentMethod.KNET ||
+      o.posPaymentMethod === PosPaymentMethod.ONLINE ||
+      o.posPaymentMethod === PosPaymentMethod.PAYMENT_LINK
+        ? o.posPaymentMethod
+        : trigger;
+    const externalPaymentMinor =
+      trueAccounting && externalCoversShortfall && shortfallMinor > 0n
+        ? shortfallMinor
+        : debtPaydownFromSettlementMinor;
+
+    if (externalPaymentMinor > 0n && o.posPaymentMethod) {
+      await this.journal.appendExternalPaymentEntrySafe(tx, {
+        customerId: o.customerId,
+        orderId,
+        actorUserId: actor.id,
+        amount: this.decimalFromMinor(externalPaymentMinor),
+        paymentMethod: o.posPaymentMethod,
+        paymentRef: `${orderId}:${o.posPaymentMethod}:${trigger}`,
+        note:
+          debtPaydownFromSettlementMinor > 0n
+            ? 'Invoice debt settled (wallet settlement)'
+            : 'External payment settled invoice receivable',
+      });
+    }
+
     if (debtPaydownFromSettlementMinor > 0n) {
-      const trigger =
-        extraMetadata?.debtSettlementViaCallCenter === true
-          ? 'CALL_CENTER_MANUAL'
-          : extraMetadata?.debtSettlementViaLink === true
-            ? 'PAYMENT_LINK_CALLBACK'
-            : 'WALLET_SETTLEMENT';
-      const origin =
-        o.posPaymentMethod === PosPaymentMethod.CASH ||
-        o.posPaymentMethod === PosPaymentMethod.KNET ||
-        o.posPaymentMethod === PosPaymentMethod.ONLINE ||
-        o.posPaymentMethod === PosPaymentMethod.PAYMENT_LINK
-          ? o.posPaymentMethod
-          : trigger;
       // V20.4 — Phase 5 deterministic sourceRef. The function is
       // idempotent on `walletSettledAt`, so the PAYMENT row is at
       // most written once per (orderId, origin, trigger). Retry
@@ -895,25 +926,10 @@ export class CustomerLedgerService {
         functionName: 'applyOrderWalletSettlementForCompletedOrder',
         payload: paymentPayload,
       });
-      // V20.4 FINAL — DebtLedgerEntry write removed; journal mirror below is preserved.
-      // V20.3 — Phase 34 external payment journal entry.
-      //
-      // Under true-accounting, every external payment writes
-      // DR <CASH/BANK> / CR ACCOUNTS_RECEIVABLE keyed on a
-      // payment-event-level paymentRef (vs the legacy DebtLedger
-      // sourceRef-keyed mirror). The legacy mirror is skipped to
-      // avoid a double credit on AR.
-      if (trueAccounting && o.posPaymentMethod) {
-        await this.journal.appendExternalPaymentEntrySafe(tx, {
-          customerId: o.customerId,
-          orderId,
-          actorUserId: actor.id,
-          amount: this.decimalFromMinor(debtPaydownFromSettlementMinor),
-          paymentMethod: o.posPaymentMethod,
-          paymentRef: `${orderId}:${o.posPaymentMethod}:${trigger}`,
-          note: 'Invoice debt settled (wallet settlement)',
-        });
-      } else {
+      // V20.4 FINAL — DebtLedgerEntry write removed. The journal external
+      // payment is written above for both ordinary same-invoice payments and
+      // prior-debt paydowns; legacy mirrors remain only for pre-true-accounting.
+      if (!trueAccounting) {
         await this.journal.mirrorDebtLedgerEntrySafe(tx, {
           source: DebtSource.PAYMENT,
           amount: this.decimalFromMinor(debtPaydownFromSettlementMinor),
@@ -1726,17 +1742,31 @@ export class CustomerLedgerService {
       functionName: 'recordDebtInvoiceCollectedAtCallCenter',
       payload: paymentPayload,
     });
-    // V20.4 FINAL — DebtLedgerEntry write removed; journal mirror preserved.
-    await this.journal.mirrorDebtLedgerEntrySafe(tx, {
-      source: DebtSource.PAYMENT,
-      amount: this.decimalFromMinor(paydownMinor),
-      sourceRef,
-      actorUserId: performedByUserId,
-      customerId: order.customerId,
-      orderId,
-      paymentMethod: confirmedMethod,
-      note: 'Debt-on-account invoice collected at Call Center',
-    });
+    // V20.4 FINAL — DebtLedgerEntry write removed. True-accounting records
+    // the physical collection as an external payment against AR; older modes
+    // keep the legacy DebtLedger mirror shape.
+    if (isV20_3TrueAccountingEnabled()) {
+      await this.journal.appendExternalPaymentEntrySafe(tx, {
+        customerId: order.customerId,
+        orderId,
+        actorUserId: performedByUserId,
+        amount: this.decimalFromMinor(paydownMinor),
+        paymentMethod: confirmedMethod,
+        paymentRef: `${orderId}:${confirmedMethod}:CC_DEBT_INVOICE_PHYSICAL`,
+        note: 'Debt-on-account invoice collected at Call Center',
+      });
+    } else {
+      await this.journal.mirrorDebtLedgerEntrySafe(tx, {
+        source: DebtSource.PAYMENT,
+        amount: this.decimalFromMinor(paydownMinor),
+        sourceRef,
+        actorUserId: performedByUserId,
+        customerId: order.customerId,
+        orderId,
+        paymentMethod: confirmedMethod,
+        note: 'Debt-on-account invoice collected at Call Center',
+      });
+    }
 
     await this.generalLedger.append(tx, {
       entryType: GeneralLedgerEntryType.DEBT_ADJUSTMENT,

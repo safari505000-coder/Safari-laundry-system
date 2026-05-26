@@ -1,5 +1,12 @@
 import { INestApplication } from '@nestjs/common';
-import { CashStatus, Order, PosPaymentMethod, Prisma, SafariRole } from '@prisma/client';
+import {
+  CashStatus,
+  CustomerSubscriptionStatus,
+  Order,
+  PosPaymentMethod,
+  Prisma,
+  SafariRole,
+} from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { App } from 'supertest/types';
 import {
@@ -105,6 +112,42 @@ describe('FIN-01: Ledger Integrity', () => {
     assertDecimalEqual(line![side], amount);
   }
 
+  async function seedActiveSubscription(balance = '25.0000') {
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const plan = await prisma.subscriptionPlan.create({
+      data: {
+        name: `Test Plan ${randomUUID()}`,
+        salePrice: new Prisma.Decimal(balance),
+        actualBalance: new Prisma.Decimal(balance),
+        validityDays: 30,
+      },
+    });
+    await prisma.customerSubscription.create({
+      data: {
+        customerId: customer.id,
+        planId: plan.id,
+        status: CustomerSubscriptionStatus.ACTIVE,
+        planNameSnapshot: plan.name,
+        planSalePriceSnapshot: plan.salePrice,
+        planActualBalanceSnapshot: plan.actualBalance,
+        planValidityDaysSnapshot: plan.validityDays,
+        activatedAt: now,
+        expiresAt,
+      },
+    });
+    await prisma.customerWallet.update({
+      where: { customerId: customer.id },
+      data: {
+        balance: new Prisma.Decimal(balance),
+        subscriptionPlanId: plan.id,
+        subscriptionPlanName: plan.name,
+        subscriptionActivatedAt: now,
+        subscriptionExpiresAt: expiresAt,
+      },
+    });
+  }
+
   it('invoice issuance creates balanced journal entry', async () => {
     const order = await posCheckout(PosPaymentMethod.DEBT_ON_ACCOUNT);
     const sourceRef = `JOURNAL:INVOICE_ISSUED:${order.id}`;
@@ -144,10 +187,7 @@ describe('FIN-01: Ledger Integrity', () => {
   });
 
   it('wallet absorption creates balanced journal entry', async () => {
-    await prisma.customerWallet.update({
-      where: { customerId: customer.id },
-      data: { balance: new Prisma.Decimal('25.0000') },
-    });
+    await seedActiveSubscription('25.0000');
 
     const order = await posCheckout(PosPaymentMethod.SUBSCRIPTION_WALLET);
     const sourceRef = `JOURNAL:WALLET_ABSORPTION_V3:${order.id}:APPLIED`;

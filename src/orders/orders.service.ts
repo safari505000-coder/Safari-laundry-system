@@ -824,6 +824,22 @@ export class OrdersService {
             shortfallMinor,
             dto.posPaymentMethod,
           );
+          if (posPaymentMethodResolved === PosPaymentMethod.SUBSCRIPTION_WALLET) {
+            const now = new Date();
+            const activeSubscription = await tx.customerSubscription.findFirst({
+              where: {
+                customerId,
+                status: 'ACTIVE',
+                expiresAt: { gt: now },
+              },
+              select: { id: true },
+            });
+            if (!activeSubscription) {
+              throw new BadRequestException(
+                'Customer has no active subscription. Choose CASH, KNET, ONLINE, PAYMENT_LINK, or DEBT_ON_ACCOUNT.',
+              );
+            }
+          }
 
           const useHostedPaymentLink =
             shortfallMinor > 0n &&

@@ -1,5 +1,10 @@
 import { INestApplication } from '@nestjs/common';
-import { PosPaymentMethod, Prisma, SafariRole } from '@prisma/client';
+import {
+  CustomerSubscriptionStatus,
+  PosPaymentMethod,
+  Prisma,
+  SafariRole,
+} from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { App } from 'supertest/types';
 import {
@@ -67,6 +72,42 @@ describe('FIN-04: Idempotent Payments', () => {
     });
   }
 
+  async function seedActiveSubscription(balance = '100.0000') {
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const plan = await prisma.subscriptionPlan.create({
+      data: {
+        name: `Test Plan ${randomUUID()}`,
+        salePrice: new Prisma.Decimal(balance),
+        actualBalance: new Prisma.Decimal(balance),
+        validityDays: 30,
+      },
+    });
+    await prisma.customerSubscription.create({
+      data: {
+        customerId: customer.id,
+        planId: plan.id,
+        status: CustomerSubscriptionStatus.ACTIVE,
+        planNameSnapshot: plan.name,
+        planSalePriceSnapshot: plan.salePrice,
+        planActualBalanceSnapshot: plan.actualBalance,
+        planValidityDaysSnapshot: plan.validityDays,
+        activatedAt: now,
+        expiresAt,
+      },
+    });
+    await prisma.customerWallet.update({
+      where: { customerId: customer.id },
+      data: {
+        balance: new Prisma.Decimal(balance),
+        subscriptionPlanId: plan.id,
+        subscriptionPlanName: plan.name,
+        subscriptionActivatedAt: now,
+        subscriptionExpiresAt: expiresAt,
+      },
+    });
+  }
+
   it('CASH payment writes exactly one external payment journal entry', async () => {
     const order = await checkout(PosPaymentMethod.CASH);
     const count = await prisma.generalLedgerEntry.count({
@@ -84,10 +125,7 @@ describe('FIN-04: Idempotent Payments', () => {
   });
 
   it('wallet absorption sourceRef is idempotent on replay', async () => {
-    await prisma.customerWallet.update({
-      where: { customerId: customer.id },
-      data: { balance: new Prisma.Decimal('100.0000') },
-    });
+    await seedActiveSubscription('100.0000');
     const order = await checkout(PosPaymentMethod.SUBSCRIPTION_WALLET, '20.0000');
 
     const sourceRef = `JOURNAL:WALLET_ABSORPTION_V3:${order.id}:APPLIED`;
