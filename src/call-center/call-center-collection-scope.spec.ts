@@ -53,6 +53,7 @@ function makeService(prisma: ReturnType<typeof makePrisma>) {
     null as never,
     null as never,
     null as never,
+    null as never,
   );
   return svc;
 }
