@@ -388,6 +388,7 @@ model User {
    * Audit attribution only.
    */
   createdDispatches                Dispatch[]                 @relation("DispatchCreatedBy")
+  reviewedWebsiteOrderRequests     WebsiteOrderRequest[]      @relation("WebsiteOrderRequestReviewedBy")
   /**
    * V19.x — Outstanding-payments / AR audit attribution. Back-relation
    * for `CustomerCollectionStatus.updatedBy`.
@@ -688,6 +689,7 @@ model Customer {
   transactionHistory TransactionHistory[]
   subscriptions      CustomerSubscription[]
   dispatches         Dispatch[]
+  websiteOrderRequests WebsiteOrderRequest[]
   /**
    * V19.x — Outstanding-payments / Accounts-Receivable status row.
    * Owned by the AR module; does NOT replace `isBlocked`.
@@ -3054,6 +3056,35 @@ model Dispatch {
   @@index([parentDispatchId])
 }
 
+/// Public website intake queue. This is NOT an invoice and has no financial
+/// effect. Call center agents review these rows, contact the customer, then
+/// create a normal ERP order/dispatch only after confirmation.
+model WebsiteOrderRequest {
+  id                  String                    @id @default(uuid()) @db.Uuid
+  /// Customer-facing reference shown on the public website, e.g. W-00042.
+  publicReference     String                    @unique
+  status              WebsiteOrderRequestStatus @default(NEW)
+  customerId          String?                   @db.Uuid
+  customerPhone       String
+  customerDisplayName String?
+  customerAddress     String?
+  serviceType         ServiceType               @default(NORMAL)
+  notes               String?
+  requestedItems      Json?
+  source              String                    @default("public-web")
+  reviewedByUserId    String?                   @db.Uuid
+  reviewedAt          DateTime?
+  createdAt           DateTime                  @default(now())
+  updatedAt           DateTime                  @updatedAt
+
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  reviewedBy User?     @relation("WebsiteOrderRequestReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([customerPhone])
+  @@index([customerId])
+}
+
 /// Per-driver per-calendar-day (Kuwait) dispatch counters for reporting.
 model DriverMetrics {
   id                String   @id @default(uuid()) @db.Uuid
@@ -3080,6 +3111,13 @@ enum DispatchStatus {
   ASSIGNED
   IN_PROGRESS
   COMPLETED
+  CANCELLED
+}
+
+enum WebsiteOrderRequestStatus {
+  NEW
+  CONTACTED
+  CONVERTED
   CANCELLED
 }
 

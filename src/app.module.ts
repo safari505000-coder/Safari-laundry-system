@@ -64,6 +64,7 @@ import { PermissionsModule } from './permissions/permissions.module';
 import { PosModule } from './pos/pos.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { PresenceModule } from './presence/presence.module';
+import { PublicApiModule } from './public-api/public-api.module';
 import { SafariStreamModule } from './safari-stream/safari-stream.module';
 import { ReportsModule } from './reports/reports.module';
 import { SerialsModule } from './serials/serials.module';
@@ -154,6 +155,7 @@ const scheduleModuleImports =
     AuthModule,
     SafariStreamModule,
     PresenceModule,
+    PublicApiModule,
     CollectionsWorkflowModule,
     UsersModule,
     ReportsModule,

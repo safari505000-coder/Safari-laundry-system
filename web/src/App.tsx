@@ -51,6 +51,7 @@ import { PublicStatementPage } from '@/pages/public-statement-page';
 import { PublicInvoicePage } from '@/pages/public-invoice-page';
 import { FeedbackPublicPage } from '@/pages/feedback-public-page';
 import { FeedbackInboxPage } from '@/pages/feedback-inbox-page';
+import { WebsiteOrderRequestsPage } from '@/modules/call-center/pages/website-order-requests-page';
 import { ForbiddenPage } from '@/pages/forbidden-page';
 import {
   PaymentFailedPage,
@@ -860,6 +861,14 @@ export default function App() {
                   element={
                     <RequireAccess access="feedback.view">
                       <FeedbackInboxPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="cc/website-orders"
+                  element={
+                    <RequireAccess access="websiteOrderRequests.view">
+                      <WebsiteOrderRequestsPage />
                     </RequireAccess>
                   }
                 />

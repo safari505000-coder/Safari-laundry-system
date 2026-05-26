@@ -152,6 +152,7 @@ export async function resetDb(prismaInst: PrismaClient): Promise<void> {
       await tx.subscriptionPlan.deleteMany(); // referenced by CustomerWallet + CustomerSubscription
       await tx.collectionsAccount.deleteMany();
       await tx.customerCollectionStatus.deleteMany();
+      await tx.websiteOrderRequest.deleteMany();
 
       // -- Inventory / procurement ---------------------------------------------------
       await tx.purchaseOrderReceiptLine.deleteMany();

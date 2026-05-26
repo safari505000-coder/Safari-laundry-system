@@ -364,6 +364,15 @@ export const ACCESS = {
   // reasons, Call Center (agent + supervisor) see it as the customer-
   // service team. ACCOUNTANT / MANAGER / DRIVER intentionally excluded.
   'feedback.view': withExec('CALL_CENTER', 'CALL_CENTER_SUPERVISOR'),
+  // Public website order intake queue — Call Center agent + supervisor only.
+  'websiteOrderRequests.view': [
+    'CALL_CENTER',
+    'CALL_CENTER_SUPERVISOR',
+  ] satisfies readonly SafariRole[],
+  'websiteOrderRequests.act': [
+    'CALL_CENTER',
+    'CALL_CENTER_SUPERVISOR',
+  ] satisfies readonly SafariRole[],
   // Only MANAGER needs the "Back to Dashboard" shortcut — DRIVER has no
   // dashboard, OWNER/GM never enter POS. Keep this tight so the button
   // never renders for roles that shouldn't see it.

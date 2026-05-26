@@ -41,6 +41,7 @@ import { APP_VERSION } from './common/constants/app-version';
 import { MetricsService } from './observability/metrics.service';
 import { validatePermissionCoverage } from './auth/permissions/validate-permissions';
 import { logDebugCustomer360Routes } from './bootstrap/log-express-routes';
+import { mountPublicCompanyWebsite } from './bootstrap/mount-public-company-web';
 import { warnIfV20_4HybridMode } from './bootstrap/v20-4-final-ledger-warning';
 
 const DEFAULT_ADMIN_USERNAME = 'admin';
@@ -280,6 +281,8 @@ async function bootstrap() {
     .build();
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('docs', app, document);
+
+  mountPublicCompanyWebsite(app);
 
   const parsed = Number.parseInt(process.env.PORT ?? '3000', 10);
   const port = Number.isFinite(parsed) && parsed > 0 ? parsed : 3000;

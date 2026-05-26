@@ -1,0 +1,17 @@
+{
+  "expo": {
+    "name": "Safari ERP Staff",
+    "slug": "safari-erp-staff",
+    "scheme": "safari-erp-staff",
+    "orientation": "portrait",
+    "platforms": ["ios", "android"],
+    "version": "0.1.0",
+    "extra": {
+      "apiBaseUrl": "https://api.example.com/api",
+      "notifications": "expo",
+      "gpsRequired": true,
+      "scanTargets": ["invoice", "order"],
+      "paymentGateway": "upayments"
+    }
+  }
+}

@@ -31,6 +31,7 @@ export class SerialCounterService {
    * and `scanGaps` prefix filters.
    */
   static readonly USER_ORDER_KEY_PREFIX = 'OU_';
+  static readonly WEB_ORDER_REQUEST_KEY = 'WEB_ORDER_REQUEST';
 
   constructor(private readonly prisma: PrismaService) {}
 

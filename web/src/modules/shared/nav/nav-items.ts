@@ -19,6 +19,7 @@ import {
   FileCheck2,
   ClipboardCheck,
   FileSpreadsheet,
+  Globe,
   HandCoins,
   Landmark,
   LayoutDashboard,
@@ -231,6 +232,14 @@ export const feedbackInboxItem: NavItem = {
   labelKey: 'nav.feedbackInbox',
   icon: MessageSquare,
   roles: ['OWNER', 'GENERAL_MANAGER', 'CALL_CENTER', 'CALL_CENTER_SUPERVISOR'],
+  permission: AppPermission.VIEW_CUSTOMERS,
+};
+
+export const websiteOrderRequestsItem: NavItem = {
+  to: '/cc/website-orders',
+  labelKey: 'nav.websiteOrderRequests',
+  icon: Globe,
+  roles: ['CALL_CENTER', 'CALL_CENTER_SUPERVISOR'],
   permission: AppPermission.VIEW_CUSTOMERS,
 };
 

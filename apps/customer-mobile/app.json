@@ -1,0 +1,16 @@
+{
+  "expo": {
+    "name": "مجموعة مصابغ سفاري",
+    "slug": "safari-laundry-customer",
+    "scheme": "safari-laundry",
+    "orientation": "portrait",
+    "platforms": ["ios", "android"],
+    "version": "0.1.0",
+    "extra": {
+      "apiBaseUrl": "https://api.example.com/api",
+      "notifications": "expo",
+      "otpProvider": "whatsapp-disabled",
+      "paymentGateway": "upayments"
+    }
+  }
+}

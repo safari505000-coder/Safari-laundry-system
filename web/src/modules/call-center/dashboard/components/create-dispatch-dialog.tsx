@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Loader2, RefreshCw, Send, ShieldOff } from 'lucide-react';
 import { toast } from 'sonner';
@@ -31,6 +31,8 @@ type Props = {
   customerId: string;
   customerName: string;
   isCustomerBlocked: boolean;
+  /** Pre-filled driver note when opened from website order intake, etc. */
+  defaultInstructionNote?: string;
   /** Called after a successful create — UI should reload the dispatch list. */
   onCreated: () => void;
 };
@@ -41,6 +43,7 @@ export function CreateDispatchDialog({
   customerId,
   customerName,
   isCustomerBlocked,
+  defaultInstructionNote,
   onCreated,
 }: Props) {
   const { t } = useTranslation();
@@ -58,6 +61,12 @@ export function CreateDispatchDialog({
 
   const [driverId, setDriverId] = useState<string>('');
   const [note, setNote] = useState('');
+
+  useEffect(() => {
+    if (open) {
+      setNote((defaultInstructionNote ?? '').slice(0, MAX_NOTE));
+    }
+  }, [open, defaultInstructionNote]);
 
   const handleOpenChange = (next: boolean) => {
     if (!next) {

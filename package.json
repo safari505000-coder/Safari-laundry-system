@@ -44,6 +44,8 @@
     "apply-payroll-roster-order": "tsx scripts/apply-payroll-roster-order.ts",
     "web:dev": "npm run dev --prefix web",
     "web:build": "npm run build --prefix web",
+    "public-web:dev": "npm run dev --prefix apps/public-web",
+    "public-web:build": "npm run build --prefix apps/public-web",
     "check": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/safety-check.ps1 full",
     "check:precommit": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/safety-check.ps1 precommit"
   },

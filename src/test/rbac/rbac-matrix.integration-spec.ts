@@ -69,6 +69,16 @@ const ENDPOINTS: EndpointSpec[] = [
     path: '/api/finance/periods/close',
     allowed: [SafariRole.OWNER, SafariRole.ACCOUNTANT],
   },
+  {
+    method: 'get',
+    path: '/api/public/call-center/website-order-requests',
+    allowed: [SafariRole.CALL_CENTER, SafariRole.CALL_CENTER_SUPERVISOR],
+  },
+  {
+    method: 'post',
+    path: '/api/public/call-center/website-order-requests/00000000-0000-0000-0000-000000000001/status',
+    allowed: [SafariRole.CALL_CENTER, SafariRole.CALL_CENTER_SUPERVISOR],
+  },
 ];
 
 describe('RBAC Matrix', () => {

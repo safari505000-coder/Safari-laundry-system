@@ -1215,6 +1215,30 @@ exports[`API contract lock freezes public route methods and paths 1`] = `
     "path": "/presence/customer/:customerId",
   },
   {
+    "file": "src/public-api/public-api.controller.ts",
+    "handler": "websiteOrderRequests",
+    "method": "GET",
+    "path": "/public/call-center/website-order-requests",
+  },
+  {
+    "file": "src/public-api/public-api.controller.ts",
+    "handler": "catalog",
+    "method": "GET",
+    "path": "/public/catalog",
+  },
+  {
+    "file": "src/public-api/public-api.controller.ts",
+    "handler": "customerPortal",
+    "method": "GET",
+    "path": "/public/customer-portal",
+  },
+  {
+    "file": "src/public-api/public-api.controller.ts",
+    "handler": "s",
+    "method": "GET",
+    "path": "/public/employee/tasks",
+  },
+  {
     "file": "src/orders/public-invoice.controller.ts",
     "handler": "n",
     "method": "GET",
@@ -2247,10 +2271,34 @@ exports[`API contract lock freezes public route methods and paths 1`] = `
     "path": "/presence/heartbeat",
   },
   {
+    "file": "src/public-api/public-api.controller.ts",
+    "handler": "updateWebsiteOrderRequestStatus",
+    "method": "POST",
+    "path": "/public/call-center/website-order-requests/:id/status",
+  },
+  {
+    "file": "src/public-api/public-api.controller.ts",
+    "handler": "requestOtp",
+    "method": "POST",
+    "path": "/public/customer-auth/request-otp",
+  },
+  {
     "file": "src/feedback/public-feedback.controller.ts",
     "handler": "n",
     "method": "POST",
     "path": "/public/orders/:orderId/feedback",
+  },
+  {
+    "file": "src/public-api/public-api.controller.ts",
+    "handler": "createOrderRequest",
+    "method": "POST",
+    "path": "/public/orders/request",
+  },
+  {
+    "file": "src/public-api/public-api.controller.ts",
+    "handler": "s",
+    "method": "POST",
+    "path": "/public/payments/:orderId/intent",
   },
   {
     "file": "src/purchase-orders/purchase-orders.controller.ts",

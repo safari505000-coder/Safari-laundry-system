@@ -3051,6 +3051,69 @@ export function acknowledgeFeedback(
   });
 }
 
+export type WebsiteOrderRequestStatus =
+  | 'NEW'
+  | 'CONTACTED'
+  | 'CONVERTED'
+  | 'CANCELLED';
+
+export type WebsiteOrderRequestRow = {
+  id: string;
+  publicReference: string;
+  status: WebsiteOrderRequestStatus;
+  customerPhone: string;
+  customerDisplayName: string | null;
+  customerAddress: string | null;
+  serviceType: string;
+  notes: string | null;
+  requestedItems: unknown;
+  createdAtIso: string;
+  reviewedAtIso: string | null;
+  customerId: string | null;
+  reviewedBy: {
+    id: string;
+    fullName: string;
+    role: string;
+  } | null;
+};
+
+export type WebsiteOrderRequestsListResponse = {
+  requests: WebsiteOrderRequestRow[];
+};
+
+export function listWebsiteOrderRequests(
+  token: string,
+  opts: { status?: WebsiteOrderRequestStatus } = {},
+): Promise<WebsiteOrderRequestsListResponse> {
+  const qs = new URLSearchParams();
+  if (opts.status) qs.set('status', opts.status);
+  const q = qs.toString();
+  return apiJson<WebsiteOrderRequestsListResponse>(
+    `/api/public/call-center/website-order-requests${q ? `?${q}` : ''}`,
+    { token },
+  );
+}
+
+export function updateWebsiteOrderRequestStatus(
+  id: string,
+  status: WebsiteOrderRequestStatus,
+  token: string,
+): Promise<{
+  id: string;
+  publicReference: string;
+  status: WebsiteOrderRequestStatus;
+  reviewedAtIso: string | null;
+}> {
+  return apiJson(
+    `/api/public/call-center/website-order-requests/${encodeURIComponent(id)}/status`,
+    {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ status }),
+    },
+  );
+}
+
 /**
  * V1.7.0 — Public payment status for the customer-facing
  * /payment/success and /payment/failed return pages. No auth —
