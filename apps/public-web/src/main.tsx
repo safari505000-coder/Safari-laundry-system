@@ -6,9 +6,9 @@ import {
   type ReactNode,
 } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createOrderRequest, getCatalog, getCustomerPortal } from './api';
+import { createOrderRequest, createCustomerPaymentLink, createCustomerBalancePaymentLink, getCatalog, getCustomerPortal } from './api';
 import { companyBrand } from './brand';
-import type { PublicServiceItem } from '../../../packages/shared-api/src';
+import type { CustomerPortalOrder, PublicServiceItem } from '../../../packages/shared-api/src';
 import './styles.css';
 
 type Lang = 'ar' | 'en';
@@ -192,6 +192,24 @@ const T = {
     summaryCustomer: 'العميل',
     summaryDebt: 'الدين الحالي',
     summaryWallet: 'رصيد الاشتراك',
+    trackInvoices: 'الفواتير الأخيرة',
+    trackInvoiceRef: 'المرجع',
+    trackInvoiceAmount: 'المتبقي',
+    trackInvoiceStatus: 'الحالة',
+    trackPayNow: 'ادفع الآن',
+    trackPaying: 'جاري التحويل للدفع...',
+    trackPayError: 'تعذر إنشاء رابط الدفع.',
+    trackNoInvoices: 'لا توجد فواتير معلّقة حالياً.',
+    trackDebtOnly:
+      'يوجد رصيد مستحق على حسابك. يمكنك الدفع مباشرة أو الاتصال على 22200299.',
+    trackPayBalance: 'ادفع الرصيد المستحق',
+    trackPayAll: 'ادفع الكل',
+    trackPayAllHint:
+      'رابط دفع واحد يغطي إجمالي رصيدك ({{amount}} {{currency}}) — بدون الحاجة لدفع كل فاتورة على حدة.',
+    trackPayPerInvoice: 'أو ادفع فاتورة محددة:',
+    trackPaid: 'مدفوعة',
+    trackPartial: 'مدفوعة جزئياً',
+    trackUnpaid: 'غير مدفوعة',
     faqEyebrow: 'الأسئلة الشائعة',
     faqTitle: 'إجابات سريعة قبل ما تطلب.',
     hoursLabel: 'ساعات العمل',
@@ -266,6 +284,24 @@ const T = {
     summaryCustomer: 'Customer',
     summaryDebt: 'Current Balance',
     summaryWallet: 'Subscription Wallet',
+    trackInvoices: 'Recent invoices',
+    trackInvoiceRef: 'Reference',
+    trackInvoiceAmount: 'Remaining',
+    trackInvoiceStatus: 'Status',
+    trackPayNow: 'Pay now',
+    trackPaying: 'Redirecting to payment…',
+    trackPayError: 'Could not create payment link.',
+    trackNoInvoices: 'No outstanding invoices right now.',
+    trackDebtOnly:
+      'Your account has an outstanding balance. Pay online now or call 22200299.',
+    trackPayBalance: 'Pay outstanding balance',
+    trackPayAll: 'Pay all',
+    trackPayAllHint:
+      'One secure link for your full balance ({{amount}} {{currency}}) — no need to pay each invoice separately.',
+    trackPayPerInvoice: 'Or pay a specific invoice:',
+    trackPaid: 'Paid',
+    trackPartial: 'Partially paid',
+    trackUnpaid: 'Unpaid',
     faqEyebrow: 'FAQ',
     faqTitle: 'Quick answers before you order.',
     hoursLabel: 'Working Hours',
@@ -1130,11 +1166,14 @@ function TrackSection({ t }: { t: (typeof T)[Lang] }) {
     debtKd: string;
     walletKd: string;
   } | null>(null);
+  const [orders, setOrders] = useState<CustomerPortalOrder[]>([]);
+  const [payingOrderId, setPayingOrderId] = useState<string | null>(null);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setStatus({ tone: 'idle', text: t.trackSearching });
     setSummary(null);
+    setOrders([]);
     void getCustomerPortal(phone)
       .then((portal) => {
         setStatus({ tone: 'ok', text: t.trackOk });
@@ -1143,9 +1182,58 @@ function TrackSection({ t }: { t: (typeof T)[Lang] }) {
           debtKd: Number(portal.financials.walletDebtKd).toFixed(3),
           walletKd: Number(portal.financials.walletBalanceKd).toFixed(3),
         });
+        setOrders(portal.recentOrders);
       })
       .catch(() => setStatus({ tone: 'error', text: t.trackError }));
   }
+
+  function payOrder(order: CustomerPortalOrder) {
+    if (payingOrderId) return;
+    setPayingOrderId(order.id);
+    setStatus({ tone: 'idle', text: t.trackPaying });
+    void createCustomerPaymentLink({ customerPhone: phone, orderId: order.id })
+      .then((intent) => {
+        if (intent.paymentUrl) {
+          window.location.href = intent.paymentUrl;
+          return;
+        }
+        setStatus({ tone: 'error', text: intent.message || t.trackPayError });
+        setPayingOrderId(null);
+      })
+      .catch((error: unknown) => {
+        setStatus({
+          tone: 'error',
+          text: error instanceof Error ? error.message : t.trackPayError,
+        });
+        setPayingOrderId(null);
+      });
+  }
+
+  function payBalance() {
+    if (payingOrderId) return;
+    setPayingOrderId('balance');
+    setStatus({ tone: 'idle', text: t.trackPaying });
+    void createCustomerBalancePaymentLink(phone)
+      .then((intent) => {
+        if (intent.paymentUrl) {
+          window.location.href = intent.paymentUrl;
+          return;
+        }
+        setStatus({ tone: 'error', text: intent.message || t.trackPayError });
+        setPayingOrderId(null);
+      })
+      .catch((error: unknown) => {
+        setStatus({
+          tone: 'error',
+          text: error instanceof Error ? error.message : t.trackPayError,
+        });
+        setPayingOrderId(null);
+      });
+  }
+
+  const payableOrders = orders.filter(
+    (order) => Number(order.remainingAmountKd) > 0.001,
+  );
 
   return (
     <section id="track" className="border-b border-neutral-100 bg-white">
@@ -1179,10 +1267,86 @@ function TrackSection({ t }: { t: (typeof T)[Lang] }) {
           </div>
 
           {summary ? (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <SummaryCell label={t.summaryCustomer} value={summary.name} />
-              <SummaryCell label={t.summaryDebt} value={summary.debtKd} unit={t.currency} />
-              <SummaryCell label={t.summaryWallet} value={summary.walletKd} unit={t.currency} />
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <SummaryCell label={t.summaryCustomer} value={summary.name} />
+                <SummaryCell label={t.summaryDebt} value={summary.debtKd} unit={t.currency} />
+                <SummaryCell label={t.summaryWallet} value={summary.walletKd} unit={t.currency} />
+              </div>
+
+              <div className="rounded-2xl border border-neutral-100 bg-neutral-50/80 p-5">
+                <p className="mb-4 text-sm font-black text-[#003B95]">{t.trackInvoices}</p>
+
+                {Number(summary.debtKd) > 0.001 ? (
+                  <div className="mb-5 space-y-3 rounded-xl border-2 border-[#003B95]/25 bg-white p-4">
+                    <p className="text-sm leading-relaxed text-gray-600">
+                      {t.trackPayAllHint
+                        .replace('{{amount}}', summary.debtKd)
+                        .replace('{{currency}}', t.currency)}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={payBalance}
+                      disabled={payingOrderId != null}
+                      className="w-full rounded-xl bg-[#003B95] px-6 py-3.5 text-sm font-black text-white transition hover:bg-[#002E73] disabled:opacity-60 sm:w-auto"
+                    >
+                      {payingOrderId === 'balance'
+                        ? t.trackPaying
+                        : `${t.trackPayAll} (${summary.debtKd} ${t.currency})`}
+                    </button>
+                  </div>
+                ) : null}
+
+                {payableOrders.length === 0 ? (
+                  <p className="text-sm text-gray-600">
+                    {Number(summary.debtKd) > 0.001
+                      ? t.trackDebtOnly
+                      : t.trackNoInvoices}
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {payableOrders.length > 0 && Number(summary.debtKd) > 0.001 ? (
+                      <p className="text-xs font-bold uppercase tracking-wide text-gray-500">
+                        {t.trackPayPerInvoice}
+                      </p>
+                    ) : null}
+                    {payableOrders.map((order) => (
+                      <div
+                        key={order.id}
+                        className="flex flex-col gap-3 rounded-xl border border-neutral-100 bg-white p-4 sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <div className="space-y-1 text-sm">
+                          <p className="font-bold text-neutral-900">
+                            {order.invoiceNumber ?? order.serialNumber ?? order.id.slice(0, 8)}
+                          </p>
+                          <p className="text-gray-600">
+                            {t.trackInvoiceAmount}:{' '}
+                            <span className="font-semibold text-[#003B95]">
+                              {Number(order.remainingAmountKd).toFixed(3)} {t.currency}
+                            </span>
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {t.trackInvoiceStatus}:{' '}
+                            {order.paymentStatus === 'PAID'
+                              ? t.trackPaid
+                              : order.paymentStatus === 'PARTIALLY_PAID'
+                                ? t.trackPartial
+                                : t.trackUnpaid}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => payOrder(order)}
+                          disabled={payingOrderId === order.id}
+                          className="rounded-xl bg-[#003B95] px-6 py-3 text-sm font-black text-white transition hover:bg-[#002E73] disabled:opacity-60"
+                        >
+                          {payingOrderId === order.id ? t.trackPaying : t.trackPayNow}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           ) : null}
         </form>

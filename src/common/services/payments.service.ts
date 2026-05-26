@@ -29,6 +29,10 @@ import { AuditLogsService } from '../../audit-logs/audit-logs.service';
 import { MetricsService } from '../../observability/metrics.service';
 import { APP_VERSION } from '../constants/app-version';
 import { cashStatusForPaymentMethod } from '../utils/cash-status-for-method';
+import {
+  computeOrderRemainingBalancesBatch,
+  INVOICE_REMAINING_TOLERANCE_KD,
+} from '../../finance/debt-customer-aggregates.util';
 import { DiscordAlertService } from './discord-alert.service';
 
 export type CreatePaymentLinkParams = {
@@ -1230,6 +1234,7 @@ export class PaymentsService implements OnModuleInit {
    */
   async ensurePaymentLinkForUnpaidOrder(
     orderId: string,
+    chargeAmountKd?: string | Prisma.Decimal,
   ): Promise<CreatePaymentLinkResult> {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
@@ -1242,6 +1247,7 @@ export class PaymentsService implements OnModuleInit {
         walletSettledAt: true,
         posHostedPaymentUrl: true,
         posGatewayTrackId: true,
+        posGatewayMetadata: true,
         customer: {
           select: { id: true, phone: true, phone2: true, displayName: true },
         },
@@ -1253,20 +1259,39 @@ export class PaymentsService implements OnModuleInit {
     if (order.status === OrderStatus.CANCELED) {
       throw new BadRequestException('Order is canceled');
     }
-    const subscriptionShortfallAmount =
-      await this.getOpenSubscriptionShortfallAmount(order);
-    const hasOpenSubscriptionShortfall =
-      subscriptionShortfallAmount.greaterThan(0);
-    if (
-      !hasOpenSubscriptionShortfall &&
-      (order.cashStatus !== CashStatus.UNPAID || order.walletSettledAt)
-    ) {
+
+    const tolerance = new Prisma.Decimal(INVOICE_REMAINING_TOLERANCE_KD);
+    let chargeAmount = chargeAmountKd
+      ? new Prisma.Decimal(chargeAmountKd.toString())
+      : null;
+    if (!chargeAmount || !chargeAmount.isFinite()) {
+      const remainingByOrder = await computeOrderRemainingBalancesBatch(
+        this.prisma,
+        [orderId],
+      );
+      chargeAmount = remainingByOrder.get(orderId) ?? new Prisma.Decimal(0);
+      if (
+        chargeAmount.lessThanOrEqualTo(tolerance) &&
+        order.status === OrderStatus.PENDING &&
+        order.cashStatus === CashStatus.UNPAID &&
+        !order.walletSettledAt
+      ) {
+        chargeAmount = order.totalPrice;
+      }
+    }
+    if (chargeAmount.lessThanOrEqualTo(tolerance)) {
       throw new BadRequestException('Order is already paid');
     }
-    // Idempotent: same URL + trackId. Legacy POS rows (pre-fix) may have a URL
-    // without `posGatewayTrackId` — recheck cannot run; re-mint a gateway session
-    // so Collections "Send payment link" can repair the row.
-    if (order.posHostedPaymentUrl && order.posGatewayTrackId) {
+
+    const storedChargeKd = this.readStoredPaymentLinkChargeKd(
+      order.posGatewayMetadata,
+    );
+    if (
+      order.posHostedPaymentUrl &&
+      order.posGatewayTrackId &&
+      storedChargeKd &&
+      this.paymentLinkChargeMatches(storedChargeKd, chargeAmount, tolerance)
+    ) {
       return {
         url: order.posHostedPaymentUrl,
         trackId: order.posGatewayTrackId,
@@ -1281,24 +1306,30 @@ export class PaymentsService implements OnModuleInit {
       order.customer.phone?.trim() || order.customer.phone2?.trim() || '';
     const link = await this.createPaymentLink({
       orderId: order.id,
-      amount: hasOpenSubscriptionShortfall
-        ? subscriptionShortfallAmount
-        : order.totalPrice,
+      amount: chargeAmount,
       customerPhone: phone,
       customerName: order.customer.displayName ?? undefined,
       customerUniqueId: order.customer.id.slice(0, 20),
     });
     const tid = link.trackId ?? null;
+    const existingMeta =
+      order.posGatewayMetadata &&
+      typeof order.posGatewayMetadata === 'object' &&
+      !Array.isArray(order.posGatewayMetadata)
+        ? (order.posGatewayMetadata as Record<string, unknown>)
+        : {};
     await this.prisma.order.update({
       where: { id: order.id },
       data: {
         posHostedPaymentUrl: link.url,
         posGatewayTrackId: tid,
         posGatewayMetadata: {
+          ...existingMeta,
           charge: {
             provider: 'upayments',
             trackId: tid,
             link: link.url,
+            amountKd: chargeAmount.toFixed(4),
             createdAt: new Date().toISOString(),
           },
         } as Prisma.InputJsonValue,
@@ -1319,45 +1350,17 @@ export class PaymentsService implements OnModuleInit {
     return link;
   }
 
-  private async getOpenSubscriptionShortfallAmount(order: {
-    id: string;
-    customer: { id: string };
-    posPaymentMethod: PosPaymentMethod;
-  }): Promise<Prisma.Decimal> {
-    if (order.posPaymentMethod !== PosPaymentMethod.SUBSCRIPTION_WALLET) {
-      return new Prisma.Decimal(0);
-    }
-    const [wallet, rows] = await Promise.all([
-      this.prisma.customerWallet.findUnique({
-        where: { customerId: order.customer.id },
-        select: { debt: true },
-      }),
-      this.prisma.transactionHistory.findMany({
-        where: {
-          orderId: order.id,
-          type: 'ORDER_WALLET_SETTLEMENT',
-        },
-        select: { metadata: true },
-      }),
-    ]);
-    const walletDebt = wallet?.debt ?? new Prisma.Decimal(0);
-    if (walletDebt.lessThanOrEqualTo(0)) return new Prisma.Decimal(0);
-    const shortfall = rows.reduce(
-      (sum, row) =>
-        sum.plus(this.extractAddedToDebtFromSettlementMetadata(row.metadata)),
-      new Prisma.Decimal(0),
-    );
-    if (shortfall.lessThanOrEqualTo(0)) return new Prisma.Decimal(0);
-    return shortfall.lessThanOrEqualTo(walletDebt) ? shortfall : walletDebt;
-  }
-
-  private extractAddedToDebtFromSettlementMetadata(
+  private readStoredPaymentLinkChargeKd(
     metadata: Prisma.JsonValue | null,
-  ): Prisma.Decimal {
+  ): Prisma.Decimal | null {
     if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
-      return new Prisma.Decimal(0);
+      return null;
     }
-    const raw = (metadata as Record<string, unknown>).addedToDebt;
+    const charge = (metadata as Record<string, unknown>).charge;
+    if (!charge || typeof charge !== 'object' || Array.isArray(charge)) {
+      return null;
+    }
+    const raw = (charge as Record<string, unknown>).amountKd;
     try {
       if (typeof raw === 'string' && raw.trim()) {
         return new Prisma.Decimal(raw);
@@ -1366,9 +1369,17 @@ export class PaymentsService implements OnModuleInit {
         return new Prisma.Decimal(raw);
       }
     } catch {
-      return new Prisma.Decimal(0);
+      return null;
     }
-    return new Prisma.Decimal(0);
+    return null;
+  }
+
+  private paymentLinkChargeMatches(
+    stored: Prisma.Decimal,
+    current: Prisma.Decimal,
+    tolerance: Prisma.Decimal,
+  ): boolean {
+    return stored.sub(current).abs().lessThanOrEqualTo(tolerance);
   }
 
   /**

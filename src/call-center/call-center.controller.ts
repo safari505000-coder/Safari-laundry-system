@@ -186,7 +186,7 @@ export class CallCenterController {
   @ApiOperation({
     summary: `Push payment-link message to customer (Moatmt / webhook) (${APP_BRAND})`,
     description:
-      'Ensures a hosted link, applies the same reminder/cooldown as the Collections page, then sends the Arabic template via MOATMT_* or CUSTOMER_NOTIFY_WEBHOOK_URL so the client receives WhatsApp without opening wa.me. Returns `serverPush: false` if no channel is configured or delivery failed — client should fall back to wa.me.',
+      'Ensures a hosted link, applies the same reminder/cooldown as the Collections page, then sends the Arabic template via MOATMT_* or CUSTOMER_NOTIFY_WEBHOOK_URL. Throws if automatic delivery fails.',
   })
   sendPaymentLinkToCustomerWhatsapp(
     @Param('orderId', ParseUUIDPipe) orderId: string,
@@ -194,6 +194,42 @@ export class CallCenterController {
   ) {
     return this.callCenterService.sendPaymentLinkToCustomerWhatsapp(
       orderId,
+      user,
+    );
+  }
+
+  @Get('customers/:customerId/collection-debt-breakdown')
+  @Roles(
+    SafariRole.CALL_CENTER,
+    SafariRole.CALL_CENTER_SUPERVISOR,
+  )
+  @ApiOperation({
+    summary: 'Itemized open debt lines for full-balance payment links',
+  })
+  getCustomerCollectionDebtBreakdown(
+    @Param('customerId', ParseUUIDPipe) customerId: string,
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.callCenterService.getCustomerCollectionDebtBreakdown(
+      customerId,
+      user,
+    );
+  }
+
+  @Post('customers/:customerId/send-full-balance-payment-link-whatsapp')
+  @Roles(
+    SafariRole.CALL_CENTER,
+    SafariRole.CALL_CENTER_SUPERVISOR,
+  )
+  @ApiOperation({
+    summary: 'Send itemized full-balance UPayments link via WhatsApp',
+  })
+  sendFullBalancePaymentLinkWhatsapp(
+    @Param('customerId', ParseUUIDPipe) customerId: string,
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.callCenterService.sendFullBalancePaymentLinkWhatsapp(
+      customerId,
       user,
     );
   }

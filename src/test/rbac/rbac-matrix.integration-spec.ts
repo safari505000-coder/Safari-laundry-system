@@ -79,6 +79,11 @@ const ENDPOINTS: EndpointSpec[] = [
     path: '/api/public/call-center/website-order-requests/00000000-0000-0000-0000-000000000001/status',
     allowed: [SafariRole.CALL_CENTER, SafariRole.CALL_CENTER_SUPERVISOR],
   },
+  {
+    method: 'get',
+    path: '/api/public/call-center/website-payments',
+    allowed: [SafariRole.CALL_CENTER, SafariRole.CALL_CENTER_SUPERVISOR],
+  },
 ];
 
 describe('RBAC Matrix', () => {

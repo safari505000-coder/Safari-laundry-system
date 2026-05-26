@@ -373,6 +373,15 @@ export const ACCESS = {
     'CALL_CENTER',
     'CALL_CENTER_SUPERVISOR',
   ] satisfies readonly SafariRole[],
+  // Public website customer payment queue — Call Center only.
+  'websiteCustomerPayments.view': [
+    'CALL_CENTER',
+    'CALL_CENTER_SUPERVISOR',
+  ] satisfies readonly SafariRole[],
+  'websiteCustomerPayments.act': [
+    'CALL_CENTER',
+    'CALL_CENTER_SUPERVISOR',
+  ] satisfies readonly SafariRole[],
   // Only MANAGER needs the "Back to Dashboard" shortcut — DRIVER has no
   // dashboard, OWNER/GM never enter POS. Keep this tight so the button
   // never renders for roles that shouldn't see it.

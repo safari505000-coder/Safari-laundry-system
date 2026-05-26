@@ -31,9 +31,8 @@ import {
   ApiError,
   recheckOrderPayment,
 } from '@/lib/api';
-import { formatKwdLabelGrouped } from '@/lib/kwd';
+import { formatKwdLabelGrouped, sumKwdStringsPrecise } from '@/lib/kwd';
 import {
-  buildCollectionsUnpaidWhatsAppText,
   whatsappChatNumber,
 } from '@/modules/shared/lib/whatsapp-links';
 import { Button } from '@/modules/shared/components/ui/button';
@@ -55,6 +54,28 @@ import {
   DialogTitle,
 } from '@/modules/shared/components/ui/dialog';
 import { cn } from '@/lib/utils';
+
+type CustomerCollectionDebtBreakdown = {
+  customerId: string;
+  customerName: string;
+  customerPhone: string;
+  totalDebtKd: string;
+  lines: Array<{
+    orderId: string;
+    readableId: string;
+    invoiceNumber: string | null;
+    amountKd: string;
+    paymentMethod: string | null;
+    orderDateIso: string;
+    reasonAr: string;
+  }>;
+};
+
+type FullBalanceLinkResult = {
+  breakdown: CustomerCollectionDebtBreakdown;
+  paymentUrl: string;
+  serverPush: boolean;
+};
 import { DailyCollectorPanel } from '@/modules/call-center/components/daily-collector-panel';
 import { QueueHealthBadge } from '@/modules/workflow-intelligence';
 
@@ -95,6 +116,27 @@ function waSendButtonTitle(
 
 function canSendCollectionWaRow(row: CollectionUnpaidOnlineRow): boolean {
   return row.canSendCollectionPaymentWa ?? row.canRemindNow;
+}
+
+function rowHasPendingPaymentLink(row: CollectionUnpaidOnlineRow): boolean {
+  return Boolean(row.paymentUrl || row.fullBalancePaymentUrl);
+}
+
+function rowPendingLinkTitle(
+  t: TFunction,
+  row: CollectionUnpaidOnlineRow,
+): string | undefined {
+  if (row.fullBalancePaymentUrl && row.fullBalanceLinkKd) {
+    return String(
+      t('collections.fullBalanceLinkPending', {
+        amount: formatKwdLabelGrouped(row.fullBalanceLinkKd),
+      }),
+    );
+  }
+  if (row.paymentUrl) {
+    return String(t('collections.pendingLinkHint'));
+  }
+  return undefined;
 }
 
 const KPI_TONE: Record<KpiTone, { border: string; bg: string; accent: string; icon: string }> = {
@@ -171,7 +213,7 @@ export function CollectionsPage() {
   const canAct = can(user, 'collections.act');
   const canSubscribers = can(user, 'subscribers.view');
   const canSubscribersManage = can(user, 'subscribers.manage');
-  const tableColCount = 7 + (canSubscribers ? 1 : 0) + (canAct ? 1 : 0);
+  const tableColCount = 7 + (canSubscribers || canAct ? 1 : 0) + (canAct ? 1 : 0);
   const [rows, setRows] = useState<CollectionUnpaidOnlineRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<CallCenterOperationsSummary | null>(
@@ -192,6 +234,12 @@ export function CollectionsPage() {
   );
   const [markPaidBusy, setMarkPaidBusy] = useState<MarkPaidMethod | null>(null);
   const [recheckingOrderId, setRecheckingOrderId] = useState<string | null>(null);
+  const [debtBreakdown, setDebtBreakdown] =
+    useState<CustomerCollectionDebtBreakdown | null>(null);
+  const [breakdownLoading, setBreakdownLoading] = useState(false);
+  const [fullBalanceBusyCustomerId, setFullBalanceBusyCustomerId] = useState<
+    string | null
+  >(null);
 
   const load = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -359,19 +407,7 @@ export function CollectionsPage() {
           return;
         }
 
-        const paymentUrl = res.paymentUrl;
-        setRows((prev) =>
-          prev.map((r) =>
-            r.orderId === row.orderId ? { ...r, paymentUrl } : r,
-          ),
-        );
-        const text = buildCollectionsUnpaidWhatsAppText(
-          { ...row, paymentUrl },
-          paymentUrl,
-        );
-        const href = `https://wa.me/${n}?text=${encodeURIComponent(text)}`;
-        window.open(href, '_blank', 'noopener,noreferrer');
-        toast.info(t('collections.remindSentFallbackWa'));
+        toast.error(t('collections.serverWhatsappFailed'));
         await load({ silent: true });
       } catch (e) {
         if (e instanceof ApiError) toast.error(e.message);
@@ -456,12 +492,63 @@ export function CollectionsPage() {
     const name = first.customerName?.trim() ?? '';
     const qForLink =
       phone.length > 0 ? phone : name.length > 0 ? name : first.customerId;
+    const invoiceTotalKd = sumKwdStringsPrecise(
+      filteredRows.map((r) => r.amountKd),
+    );
     return {
+      customerId: cid,
       customerName: name || '—',
-      invoiceTotalKd: summary?.totalMarketDebtKd ?? '0.0000',
+      invoiceTotalKd,
       subscribersQuery: qForLink,
     };
-  }, [filteredRows, summary?.totalMarketDebtKd]);
+  }, [filteredRows]);
+
+  useEffect(() => {
+    if (!token || !singleCustomerInvoiceScope?.customerId) {
+      setDebtBreakdown(null);
+      return;
+    }
+    let cancelled = false;
+    setBreakdownLoading(true);
+    void apiJson<CustomerCollectionDebtBreakdown>(
+      `/api/call-center/customers/${encodeURIComponent(singleCustomerInvoiceScope.customerId)}/collection-debt-breakdown`,
+      { token },
+    )
+      .then((data) => {
+        if (!cancelled) setDebtBreakdown(data);
+      })
+      .catch(() => {
+        if (!cancelled) setDebtBreakdown(null);
+      })
+      .finally(() => {
+        if (!cancelled) setBreakdownLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, singleCustomerInvoiceScope?.customerId]);
+
+  const handleFullBalanceLink = useCallback(
+    async (customerId: string) => {
+      if (!token || !canAct) return;
+      setFullBalanceBusyCustomerId(customerId);
+      try {
+        await apiJson<FullBalanceLinkResult>(
+          `/api/call-center/customers/${encodeURIComponent(customerId)}/send-full-balance-payment-link-whatsapp`,
+          { method: 'POST', token },
+        );
+        toast.success(t('collections.fullBalanceLinkSent'));
+        await load({ silent: true });
+      } catch (e) {
+        toast.error(
+          e instanceof ApiError ? e.message : t('collections.fullBalanceLinkError'),
+        );
+      } finally {
+        setFullBalanceBusyCustomerId(null);
+      }
+    },
+    [token, canAct, t, load],
+  );
 
   if (!allowed) {
     return <Navigate to="/" replace />;
@@ -615,7 +702,7 @@ export function CollectionsPage() {
       </div>
 
       {singleCustomerInvoiceScope ?
-        <div className="rounded-lg border border-sky-200 bg-sky-50/70 px-3 py-2 text-start dark:border-sky-900/50 dark:bg-sky-950/30">
+        <div className="space-y-3 rounded-lg border border-sky-200 bg-sky-50/70 px-3 py-3 text-start dark:border-sky-900/50 dark:bg-sky-950/30">
           <p className="text-sm leading-relaxed text-foreground">
             {t('collections.singleCustomerDebtAlignmentHint', {
               name: singleCustomerInvoiceScope.customerName,
@@ -624,9 +711,33 @@ export function CollectionsPage() {
               ),
             })}
           </p>
+          {breakdownLoading ?
+            <p className="text-xs text-muted-foreground">
+              {t('collections.debtBreakdownLoading')}
+            </p>
+          : debtBreakdown && debtBreakdown.lines.length > 0 ?
+            <div className="rounded-md border border-sky-100 bg-white/80 p-3 dark:border-sky-900/40 dark:bg-slate-950/40">
+              <p className="mb-2 text-xs font-bold text-foreground">
+                {t('collections.debtBreakdownTitle', {
+                  total: formatKwdLabelGrouped(debtBreakdown.totalDebtKd),
+                })}
+              </p>
+              <ul className="space-y-2 text-xs leading-relaxed text-muted-foreground">
+                {debtBreakdown.lines.map((line) => (
+                  <li key={line.orderId}>
+                    <span className="font-mono font-semibold text-foreground">
+                      {formatKwdLabelGrouped(line.amountKd)}
+                    </span>
+                    {' — '}
+                    {line.reasonAr.replace(/^•\s*/, '')}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          : null}
           {canSubscribers ?
             <Link
-              className="mt-1 inline-block text-sm font-medium text-primary underline-offset-4 hover:underline"
+              className="inline-block text-sm font-medium text-primary underline-offset-4 hover:underline"
               to={`/subscribers?q=${encodeURIComponent(singleCustomerInvoiceScope.subscribersQuery)}`}
             >
               {t('collections.openSubscribersForTotal')}
@@ -664,13 +775,11 @@ export function CollectionsPage() {
                   // hosted payment link awaiting customer action. The
                   // signal is now at row-level (was a tiny pill before),
                   // so it's impossible to miss from across the room.
-                  row.paymentUrl
+                  rowHasPendingPaymentLink(row)
                     ? 'border-amber-300 bg-amber-50 dark:border-amber-800/70 dark:bg-amber-950/30'
                     : 'border-border bg-card',
                 )}
-                title={
-                  row.paymentUrl ? t('collections.pendingLinkHint') : undefined
-                }
+                title={rowPendingLinkTitle(t, row)}
               >
                 <p
                   className="font-mono text-[11px] font-medium tabular-nums text-muted-foreground"
@@ -713,6 +822,13 @@ export function CollectionsPage() {
                   <span className="rounded-md bg-muted px-2 py-0.5 font-medium tabular-nums text-muted-foreground">
                     {t('collections.colReminders')}: {row.reminderCount}
                   </span>
+                  {row.fullBalancePaymentUrl && row.fullBalanceLinkKd ?
+                    <span className="rounded-md bg-amber-200 px-2 py-0.5 text-xs font-bold text-amber-950 dark:bg-amber-900/70 dark:text-amber-100">
+                      {t('collections.fullBalanceLinkBadge', {
+                        amount: formatKwdLabelGrouped(row.fullBalanceLinkKd),
+                      })}
+                    </span>
+                  : null}
                 </div>
                 {canAct ? (
                   <div className="mt-4 flex items-center gap-2">
@@ -769,33 +885,49 @@ export function CollectionsPage() {
                     </Button>
                   </div>
                 ) : null}
-                {canSubscribers ? (
-                  <div className="mt-2">
-                    <Link
-                      to={
-                        canSubscribersManage
-                          ? `/subscribers?${new URLSearchParams({
-                              activateCustomer: row.customerId,
-                              n: row.customerName,
-                              ...(row.customerPhone
-                                ? { p: row.customerPhone }
-                                : {}),
-                            }).toString()}`
-                          : `/subscribers?${new URLSearchParams(
-                              row.customerPhone
-                                ? { q: row.customerPhone }
-                                : { q: row.customerName },
-                            ).toString()}`
-                      }
-                      className="inline-flex w-full min-h-10 items-center justify-center gap-2 rounded-lg border border-indigo-200/80 bg-indigo-50/80 px-3 text-sm font-medium text-indigo-900 hover:bg-indigo-100/90 dark:border-indigo-900/50 dark:bg-indigo-950/30 dark:text-indigo-100"
-                    >
-                      <Sparkles className="h-4 w-4" aria-hidden />
-                      {canSubscribersManage
-                        ? t('collections.subscribersCta')
-                        : t('collections.subscribersCtaView')}
-                    </Link>
+                {canSubscribers || canAct ?
+                  <div className="mt-2 flex flex-col gap-2">
+                    {canSubscribers ?
+                      <Link
+                        to={
+                          canSubscribersManage
+                            ? `/subscribers?${new URLSearchParams({
+                                activateCustomer: row.customerId,
+                                n: row.customerName,
+                                ...(row.customerPhone
+                                  ? { p: row.customerPhone }
+                                  : {}),
+                              }).toString()}`
+                            : `/subscribers?${new URLSearchParams(
+                                row.customerPhone
+                                  ? { q: row.customerPhone }
+                                  : { q: row.customerName },
+                              ).toString()}`
+                        }
+                        className="inline-flex w-full min-h-10 items-center justify-center gap-2 rounded-lg border border-indigo-200/80 bg-indigo-50/80 px-3 text-sm font-medium text-indigo-900 hover:bg-indigo-100/90 dark:border-indigo-900/50 dark:bg-indigo-950/30 dark:text-indigo-100"
+                      >
+                        <Sparkles className="h-4 w-4" aria-hidden />
+                        {canSubscribersManage
+                          ? t('collections.subscribersCta')
+                          : t('collections.subscribersCtaView')}
+                      </Link>
+                    : null}
+                    {canAct ?
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="min-h-10 w-full gap-2"
+                        disabled={fullBalanceBusyCustomerId === row.customerId}
+                        onClick={() => void handleFullBalanceLink(row.customerId)}
+                      >
+                        {fullBalanceBusyCustomerId === row.customerId ?
+                          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                        : <Link2 className="h-4 w-4" aria-hidden />}
+                        {t('collections.fullBalanceLinkShort')}
+                      </Button>
+                    : null}
                   </div>
-                ) : null}
+                : null}
               </li>
             );
           })}
@@ -819,8 +951,8 @@ export function CollectionsPage() {
               <TableHead className="text-end tabular-nums">
                 {t('collections.colReminders')}
               </TableHead>
-              {canSubscribers ? (
-                <TableHead className="w-[100px] text-center text-xs">
+              {canSubscribers || canAct ? (
+                <TableHead className="min-w-[9.5rem] text-center text-xs">
                   {t('collections.colSubscription')}
                 </TableHead>
               ) : null}
@@ -868,12 +1000,10 @@ export function CollectionsPage() {
                 <TableRow
                   key={row.orderId}
                   className={cn(
-                    row.paymentUrl &&
+                    rowHasPendingPaymentLink(row) &&
                       'bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/30 dark:hover:bg-amber-950/50',
                   )}
-                  title={
-                    row.paymentUrl ? t('collections.pendingLinkHint') : undefined
-                  }
+                  title={rowPendingLinkTitle(t, row)}
                 >
                   <TableCell
                     className="font-mono text-xs font-medium tabular-nums"
@@ -902,7 +1032,17 @@ export function CollectionsPage() {
                     )}
                   </TableCell>
                   <TableCell className="text-end tabular-nums font-semibold">
-                    {formatKwdLabelGrouped(row.amountKd)}
+                    <div>{formatKwdLabelGrouped(row.amountKd)}</div>
+                    {row.fullBalancePaymentUrl && row.fullBalanceLinkKd ?
+                      <Badge
+                        variant="outline"
+                        className="mt-1 border-amber-400 bg-amber-100 text-[10px] font-bold text-amber-950 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-100"
+                      >
+                        {t('collections.fullBalanceLinkBadge', {
+                          amount: formatKwdLabelGrouped(row.fullBalanceLinkKd),
+                        })}
+                      </Badge>
+                    : null}
                   </TableCell>
                   <TableCell
                     className={cn('text-end tabular-nums font-medium', ageTone)}
@@ -912,37 +1052,61 @@ export function CollectionsPage() {
                   <TableCell className="text-end tabular-nums">
                     {row.reminderCount}
                   </TableCell>
-                  {canSubscribers ? (
-                    <TableCell className="p-1 text-center">
-                      <Link
-                        to={
-                          canSubscribersManage
-                            ? `/subscribers?${new URLSearchParams({
-                                activateCustomer: row.customerId,
-                                n: row.customerName,
-                                ...(row.customerPhone
-                                  ? { p: row.customerPhone }
-                                  : {}),
-                              }).toString()}`
-                            : `/subscribers?${new URLSearchParams(
-                                row.customerPhone
-                                  ? { q: row.customerPhone }
-                                  : { q: row.customerName },
-                              ).toString()}`
-                        }
-                        className="inline-flex h-8 w-full min-w-0 max-w-full items-center justify-center gap-1 rounded-md border border-border bg-background px-1.5 text-[10px] font-medium text-foreground transition hover:border-indigo-300 hover:bg-indigo-50/80 dark:hover:bg-indigo-950/30"
-                        title={t('collections.subscribersCtaTitle')}
-                      >
-                        <Sparkles
-                          className="h-3 w-3 shrink-0 text-indigo-600 dark:text-indigo-400"
-                          aria-hidden
-                        />
-                        <span className="truncate">
-                          {canSubscribersManage
-                            ? t('collections.subscribersCta')
-                            : t('collections.subscribersCtaView')}
-                        </span>
-                      </Link>
+                  {canSubscribers || canAct ? (
+                    <TableCell className="p-1 text-center align-top">
+                      <div className="flex min-w-[9rem] flex-col gap-1">
+                        {canSubscribers ? (
+                          <Link
+                            to={
+                              canSubscribersManage
+                                ? `/subscribers?${new URLSearchParams({
+                                    activateCustomer: row.customerId,
+                                    n: row.customerName,
+                                    ...(row.customerPhone
+                                      ? { p: row.customerPhone }
+                                      : {}),
+                                  }).toString()}`
+                                : `/subscribers?${new URLSearchParams(
+                                    row.customerPhone
+                                      ? { q: row.customerPhone }
+                                      : { q: row.customerName },
+                                  ).toString()}`
+                            }
+                            className="inline-flex h-8 w-full min-w-0 items-center justify-center gap-1 rounded-md border border-border bg-background px-1.5 text-[10px] font-medium text-foreground transition hover:border-indigo-300 hover:bg-indigo-50/80 dark:hover:bg-indigo-950/30"
+                            title={t('collections.subscribersCtaTitle')}
+                          >
+                            <Sparkles
+                              className="h-3 w-3 shrink-0 text-indigo-600 dark:text-indigo-400"
+                              aria-hidden
+                            />
+                            <span className="truncate">
+                              {canSubscribersManage
+                                ? t('collections.subscribersCta')
+                                : t('collections.subscribersCtaView')}
+                            </span>
+                          </Link>
+                        ) : null}
+                        {canAct ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-8 w-full gap-1 px-1.5 text-[10px] font-medium"
+                            disabled={fullBalanceBusyCustomerId === row.customerId}
+                            title={t('collections.fullBalanceLinkShort')}
+                            onClick={() => void handleFullBalanceLink(row.customerId)}
+                          >
+                            {fullBalanceBusyCustomerId === row.customerId ? (
+                              <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+                            ) : (
+                              <Link2 className="h-3 w-3 shrink-0" aria-hidden />
+                            )}
+                            <span className="truncate">
+                              {t('collections.fullBalanceLinkShort')}
+                            </span>
+                          </Button>
+                        ) : null}
+                      </div>
                     </TableCell>
                   ) : null}
                   {canAct ? (

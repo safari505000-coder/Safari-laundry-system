@@ -541,26 +541,6 @@ export class OrdersService {
     return toDbPosPaymentMethod(raw) ?? PosPaymentMethod.CASH;
   }
 
-  private extractAddedToDebtFromSettlementMetadata(
-    metadata: Prisma.JsonValue | null,
-  ): Prisma.Decimal {
-    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
-      return new Prisma.Decimal(0);
-    }
-    const raw = (metadata as Record<string, unknown>).addedToDebt;
-    try {
-      if (typeof raw === 'string' && raw.trim()) {
-        return new Prisma.Decimal(raw);
-      }
-      if (typeof raw === 'number' && Number.isFinite(raw)) {
-        return new Prisma.Decimal(raw);
-      }
-    } catch {
-      return new Prisma.Decimal(0);
-    }
-    return new Prisma.Decimal(0);
-  }
-
   private reconcileLineItems(
     totalPrice: number,
     lineItems?: OrderLineItemDto[],
@@ -1333,6 +1313,8 @@ export class OrdersService {
   async listUnpaidCollectionOrders(
     branchId: string | null = null,
     actor?: JwtUser,
+    /** When set, returns every open collectible row for one customer (no global take cap). */
+    customerId?: string,
   ): Promise<
     {
       orderId: string;
@@ -1369,6 +1351,10 @@ export class OrdersService {
         unitPriceKd: string;
         lineTotalKd: string;
       }[];
+      /** Live hosted link for the customer's full visible AR (not just this row). */
+      fullBalanceLinkKd: string | null;
+      fullBalancePaymentUrl: string | null;
+      fullBalanceLinkSentAtIso: string | null;
     }[]
   > {
     // Mirrors the helper in `call-center.service.ts` so the two islands
@@ -1408,75 +1394,116 @@ export class OrdersService {
     // off the list the moment the customer settles through any channel
     // (office cash by accountant, CC manual mark, partial debt payment,
     // gateway link, etc.).
-    const rows = await this.prisma.order.findMany({
-      where: {
-        status: { not: OrderStatus.CANCELED },
-        OR: [
-          { cashStatus: CashStatus.UNPAID },
-          { posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT },
-          { posPaymentMethod: PosPaymentMethod.ONLINE },
-          { posPaymentMethod: PosPaymentMethod.PAYMENT_LINK },
-          {
-            posPaymentMethod: PosPaymentMethod.SUBSCRIPTION_WALLET,
-            customer: {
-              is: {
-                wallet: {
-                  is: { debt: { gt: new Prisma.Decimal(0) } },
-                },
-              },
+    const collectiblesOr: Prisma.OrderWhereInput['OR'] = [
+      { cashStatus: CashStatus.UNPAID },
+      { posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT },
+      { posPaymentMethod: PosPaymentMethod.ONLINE },
+      { posPaymentMethod: PosPaymentMethod.PAYMENT_LINK },
+      {
+        posPaymentMethod: PosPaymentMethod.SUBSCRIPTION_WALLET,
+        customer: {
+          is: {
+            wallet: {
+              is: { debt: { gt: new Prisma.Decimal(0) } },
             },
           },
-        ],
+        },
+      },
+    ];
+    const orderSelect = {
+      id: true,
+      customerId: true,
+      serialNumber: true,
+      invoiceNumber: true,
+      totalPrice: true,
+      posPaymentMethod: true,
+      posHostedPaymentUrl: true,
+      status: true,
+      cashStatus: true,
+      createdAt: true,
+      reminderCount: true,
+      lastReminderAt: true,
+      ccCollectionPaymentWaLocked: true,
+      customer: {
+        select: {
+          id: true,
+          displayName: true,
+          phone: true,
+          phone2: true,
+          originBranch: { select: { name: true } },
+        },
+      },
+      driver: {
+        select: {
+          fullName: true,
+          branch: { select: { name: true } },
+        },
+      },
+      lineItems: {
+        select: {
+          label: true,
+          quantity: true,
+          unitPrice: true,
+        },
+        orderBy: { createdAt: 'asc' as const },
+      },
+    };
+    let rows = await this.prisma.order.findMany({
+      where: {
+        status: { not: OrderStatus.CANCELED },
+        ...(customerId ? { customerId } : {}),
+        OR: collectiblesOr,
         ...(branchWhere ?? {}),
       },
-      select: {
-        id: true,
-        customerId: true,
-        serialNumber: true,
-        invoiceNumber: true,
-        totalPrice: true,
-        posPaymentMethod: true,
-        posHostedPaymentUrl: true,
-        status: true,
-        cashStatus: true,
-        createdAt: true,
-        reminderCount: true,
-        lastReminderAt: true,
-        ccCollectionPaymentWaLocked: true,
-        customer: {
-          select: {
-            id: true,
-            displayName: true,
-            phone: true,
-            phone2: true,
-            originBranch: { select: { name: true } },
-          },
-        },
-        // V19.4 — CC pack #5. Driver + branch identity for the
-        // WhatsApp template and the debt dashboard. Prefer the
-        // driver's own branch; fall back to the customer's origin
-        // branch when the invoice was created without a driver.
-        driver: {
-          select: {
-            fullName: true,
-            branch: { select: { name: true } },
-          },
-        },
-        // V1.6.6 — line items feed the WhatsApp template's Items List.
-        // Ordered by createdAt asc so the message renders in the same
-        // sequence the driver/agent entered them at POS time.
-        lineItems: {
-          select: {
-            label: true,
-            quantity: true,
-            unitPrice: true,
-          },
-          orderBy: { createdAt: 'asc' },
-        },
-      },
+      select: orderSelect,
       orderBy: { createdAt: 'desc' },
-      take: 200,
+      ...(customerId ? {} : { take: 200 }),
     });
+
+    type CollectionOrderRow = (typeof rows)[number];
+
+    const mergeCustomerOpenCollectibleRows = async (
+      customerIds: string[],
+      knownIds: Set<string>,
+    ): Promise<CollectionOrderRow[]> => {
+      if (customerIds.length === 0) return [];
+      const extra = await this.prisma.order.findMany({
+        where: {
+          customerId: { in: customerIds },
+          id: { notIn: [...knownIds] },
+          status: { not: OrderStatus.CANCELED },
+        },
+        select: orderSelect,
+        orderBy: { createdAt: 'desc' },
+      });
+      if (extra.length === 0) return [];
+      const remainingMap = await computeOrderRemainingBalancesBatch(
+        this.prisma,
+        extra.map((r) => r.id),
+      );
+      const tolerance = new Prisma.Decimal(INVOICE_REMAINING_TOLERANCE_KD);
+      return extra.filter((r) => {
+        const remaining = remainingMap.get(r.id) ?? r.totalPrice;
+        if (remaining.greaterThan(tolerance)) return true;
+        return (
+          r.status === OrderStatus.PENDING &&
+          r.cashStatus === CashStatus.UNPAID &&
+          r.totalPrice.greaterThan(tolerance)
+        );
+      });
+    };
+
+    // Customer-scoped reads must mirror the public portal: every journal-open
+    // order line, not only rows matching the global collectibles OR predicate.
+    if (customerId) {
+      const merged = await mergeCustomerOpenCollectibleRows(
+        [customerId],
+        new Set(rows.map((r) => r.id)),
+      );
+      if (merged.length > 0) {
+        rows = [...rows, ...merged];
+      }
+    }
 
     // V20.8.1 — every row, including cashStatus=UNPAID, is filtered by
     // canonical remaining balance. Subscription activation and partial
@@ -1485,56 +1512,35 @@ export class OrdersService {
     const debtCandidates = rows.filter(
       (r) => r.posPaymentMethod === PosPaymentMethod.DEBT_ON_ACCOUNT,
     );
-    const openDebtOrderIds = await this.resolveOpenDebtOrderIds(
+    let openDebtOrderIds = await this.resolveOpenDebtOrderIds(
       debtCandidates.map((r) => ({ orderId: r.id, customerId: r.customerId })),
     );
-    const subscriptionWalletCandidates = rows.filter(
-      (r) => r.posPaymentMethod === PosPaymentMethod.SUBSCRIPTION_WALLET,
-    );
-    const subscriptionShortfallByOrder = new Map<string, Prisma.Decimal>();
-    if (subscriptionWalletCandidates.length > 0) {
-      const shortfallRows = await this.prisma.transactionHistory.findMany({
-        where: {
-          type: 'ORDER_WALLET_SETTLEMENT',
-          orderId: { in: subscriptionWalletCandidates.map((r) => r.id) },
-        },
-        select: { orderId: true, metadata: true },
-      });
-      for (const row of shortfallRows) {
-        if (!row.orderId) continue;
-        const addedToDebt = this.extractAddedToDebtFromSettlementMetadata(
-          row.metadata,
-        );
-        if (addedToDebt.lessThanOrEqualTo(0)) continue;
-        const current =
-          subscriptionShortfallByOrder.get(row.orderId) ?? new Prisma.Decimal(0);
-        subscriptionShortfallByOrder.set(row.orderId, current.plus(addedToDebt));
-      }
-    }
-    const remainingByOrder = await computeOrderRemainingBalancesBatch(
+    let remainingByOrder = await computeOrderRemainingBalancesBatch(
       this.prisma,
       rows.map((r) => r.id),
     );
     const tol = new Prisma.Decimal(INVOICE_REMAINING_TOLERANCE_KD);
-    const collectibleRemaining = (r: (typeof rows)[number]) => {
-      if (r.posPaymentMethod === PosPaymentMethod.SUBSCRIPTION_WALLET) {
-        return subscriptionShortfallByOrder.get(r.id) ?? new Prisma.Decimal(0);
-      }
-      const remaining = remainingByOrder.get(r.id) ?? r.totalPrice;
-      // Pending invoices do not have revenue/AR journal rows yet. They are still
-      // collectible in Call Center until the gateway callback completes them.
-      if (
-        remaining.lessThanOrEqualTo(tol) &&
-        r.status === OrderStatus.PENDING &&
-        r.cashStatus === CashStatus.UNPAID
-      ) {
-        return r.totalPrice;
-      }
-      return remaining;
+    const buildCollectibleRemaining = (
+      remainingMap: Map<string, Prisma.Decimal>,
+    ) => {
+      return (r: (typeof rows)[number]) => {
+        const remaining = remainingMap.get(r.id) ?? r.totalPrice;
+        if (
+          remaining.lessThanOrEqualTo(tol) &&
+          r.status === OrderStatus.PENDING &&
+          r.cashStatus === CashStatus.UNPAID
+        ) {
+          return r.totalPrice;
+        }
+        return remaining;
+      };
     };
-    const filteredRows = rows.filter((r) => {
+    let collectibleRemaining = buildCollectibleRemaining(remainingByOrder);
+    let filteredRows = rows.filter((r) => {
       const remaining = collectibleRemaining(r);
       if (remaining.lessThanOrEqualTo(tol)) return false;
+      // Journal-open lines for a customer-scoped read (portal parity).
+      if (customerId) return true;
       if (r.cashStatus === CashStatus.UNPAID) return true;
       if (
         r.posPaymentMethod === PosPaymentMethod.ONLINE ||
@@ -1546,10 +1552,108 @@ export class OrdersService {
         return openDebtOrderIds.has(r.id);
       }
       if (r.posPaymentMethod === PosPaymentMethod.SUBSCRIPTION_WALLET) {
-        return subscriptionShortfallByOrder.has(r.id);
+        return remaining.greaterThan(tol);
       }
       return false;
     });
+
+    // Rows already fetched (e.g. DEBT_ON_ACCOUNT) can fail the legacy
+    // payment-method gates while still carrying journal-open balance.
+    // Pull them back before gap-fetch so 4.250 + 10.250 both surface.
+    if (!customerId && rows.length > 0) {
+      const visibleEarly =
+        await this.debtVisibility.getCustomerVisibleDebtBatch(
+          Array.from(new Set(rows.map((r) => r.customerId))),
+        );
+      for (const cid of new Set(rows.map((r) => r.customerId))) {
+        const visibleDebt = new Prisma.Decimal(
+          visibleEarly.get(cid)?.remainingDebtKd ?? '0',
+        );
+        let rowSum = filteredRows
+          .filter((r) => r.customerId === cid)
+          .reduce(
+            (sum, r) => sum.plus(collectibleRemaining(r)),
+            new Prisma.Decimal(0),
+          );
+        if (visibleDebt.minus(rowSum).lessThanOrEqualTo(tol)) continue;
+        for (const r of rows) {
+          if (r.customerId !== cid) continue;
+          if (filteredRows.some((f) => f.id === r.id)) continue;
+          if (collectibleRemaining(r).greaterThan(tol)) {
+            filteredRows.push(r);
+            rowSum = rowSum.plus(collectibleRemaining(r));
+          }
+        }
+      }
+    }
+
+    // Global queue uses take:200; older open lines for the same customer can
+    // fall outside that window while the KPI still shows full visible AR.
+    if (!customerId && filteredRows.length > 0) {
+      const visibleEarly =
+        await this.debtVisibility.getCustomerVisibleDebtBatch(
+          Array.from(new Set(filteredRows.map((r) => r.customerId))),
+        );
+      const gapCustomerIds: string[] = [];
+      for (const cid of new Set(filteredRows.map((r) => r.customerId))) {
+        const visibleDebt = new Prisma.Decimal(
+          visibleEarly.get(cid)?.remainingDebtKd ?? '0',
+        );
+        const rowSum = filteredRows
+          .filter((r) => r.customerId === cid)
+          .reduce(
+            (sum, r) => sum.plus(collectibleRemaining(r)),
+            new Prisma.Decimal(0),
+          );
+        if (visibleDebt.minus(rowSum).greaterThan(tol)) {
+          gapCustomerIds.push(cid);
+        }
+      }
+      if (gapCustomerIds.length > 0) {
+        const knownIds = new Set(rows.map((r) => r.id));
+        const extraRows = await mergeCustomerOpenCollectibleRows(
+          gapCustomerIds,
+          knownIds,
+        );
+        if (extraRows.length > 0) {
+          rows = [...rows, ...extraRows];
+          const mergedDebtCandidates = rows.filter(
+            (r) => r.posPaymentMethod === PosPaymentMethod.DEBT_ON_ACCOUNT,
+          );
+          openDebtOrderIds = await this.resolveOpenDebtOrderIds(
+            mergedDebtCandidates.map((r) => ({
+              orderId: r.id,
+              customerId: r.customerId,
+            })),
+          );
+          remainingByOrder = await computeOrderRemainingBalancesBatch(
+            this.prisma,
+            rows.map((r) => r.id),
+          );
+          collectibleRemaining = buildCollectibleRemaining(remainingByOrder);
+          filteredRows = rows.filter((r) => {
+            const remaining = collectibleRemaining(r);
+            if (remaining.lessThanOrEqualTo(tol)) return false;
+            if (r.cashStatus === CashStatus.UNPAID) return true;
+            if (
+              r.posPaymentMethod === PosPaymentMethod.ONLINE ||
+              r.posPaymentMethod === PosPaymentMethod.PAYMENT_LINK
+            ) {
+              return true;
+            }
+            if (r.posPaymentMethod === PosPaymentMethod.DEBT_ON_ACCOUNT) {
+              return openDebtOrderIds.has(r.id);
+            }
+            if (r.posPaymentMethod === PosPaymentMethod.SUBSCRIPTION_WALLET) {
+              return remaining.greaterThan(tol);
+            }
+            // Gap merge: journal-open lines for customers with AR drift.
+            if (gapCustomerIds.includes(r.customerId)) return true;
+            return false;
+          });
+        }
+      }
+    }
     const now = Date.now();
     const DAY_MS = 24 * 60 * 60 * 1000;
     // V1.6.8 — Collections recall window (must stay in sync with
@@ -1561,27 +1665,20 @@ export class OrdersService {
       await this.debtVisibility.getCustomerVisibleDebtBatch(
         Array.from(new Set(filteredRows.map((r) => r.customerId))),
       );
-    const rawRemainingByCustomer = new Map<string, Prisma.Decimal>();
-    for (const row of filteredRows) {
-      const rem = collectibleRemaining(row);
-      const prev = rawRemainingByCustomer.get(row.customerId) ?? new Prisma.Decimal(0);
-      rawRemainingByCustomer.set(row.customerId, prev.plus(rem));
-    }
     const visibleBudgetByCustomer = new Map<string, Prisma.Decimal>();
-    for (const customerId of new Set(filteredRows.map((r) => r.customerId))) {
+    for (const cid of new Set(filteredRows.map((r) => r.customerId))) {
       const visibleDebt = new Prisma.Decimal(
-        visibleDebtByCustomer.get(customerId)?.remainingDebtKd ?? '0',
+        visibleDebtByCustomer.get(cid)?.remainingDebtKd ?? '0',
       );
-      const rawDebt = rawRemainingByCustomer.get(customerId) ?? new Prisma.Decimal(0);
-      // V25 — never hide valid collectible invoices because a snapshot/journal
-      // budget has not caught up yet. Keep canonical cap when it is higher,
-      // otherwise fall back to real-time per-order remaining sum.
-      visibleBudgetByCustomer.set(
-        customerId,
-        visibleDebt.greaterThan(rawDebt) ? visibleDebt : rawDebt,
-      );
+      // Cap row display to banking-core customer AR so the table sum matches
+      // the red KPI card (DebtVisibility), even when per-order journal slices
+      // temporarily drift above the aggregate.
+      visibleBudgetByCustomer.set(cid, visibleDebt);
     }
-    return filteredRows.flatMap((r) => {
+    const allocationOrder = [...filteredRows].sort(
+      (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+    );
+    const projectedRows = allocationOrder.flatMap((r) => {
       const rawRemaining = collectibleRemaining(r);
       const customerBudget =
         visibleBudgetByCustomer.get(r.customerId) ?? new Prisma.Decimal(0);
@@ -1660,6 +1757,136 @@ export class OrdersService {
         lineItems,
       };
     });
+    return this.enrichCollectionRowsWithFullBalanceLinkInfo(projectedRows);
+  }
+
+  /**
+   * Surfaces customer-level full-balance payment links on every queue row so
+   * CC agents see when a 14.500 link is live vs a per-invoice 10.250 link.
+   */
+  private async enrichCollectionRowsWithFullBalanceLinkInfo<
+    T extends { customerId: string },
+  >(
+    rows: T[],
+  ): Promise<
+    (T & {
+      fullBalanceLinkKd: string | null;
+      fullBalancePaymentUrl: string | null;
+      fullBalanceLinkSentAtIso: string | null;
+    })[]
+  > {
+    if (rows.length === 0) {
+      return [];
+    }
+    const customerIds = Array.from(new Set(rows.map((r) => r.customerId)));
+    const visibleByCustomer =
+      await this.debtVisibility.getCustomerVisibleDebtBatch(customerIds);
+    const tol = new Prisma.Decimal(INVOICE_REMAINING_TOLERANCE_KD);
+    const linkOrders = await this.prisma.order.findMany({
+      where: {
+        customerId: { in: customerIds },
+        posHostedPaymentUrl: { not: null },
+        posGatewayTrackId: { not: null },
+      },
+      select: {
+        customerId: true,
+        posHostedPaymentUrl: true,
+        posGatewayMetadata: true,
+      },
+    });
+
+    const fullBalanceByCustomer = new Map<
+      string,
+      { amountKd: string; url: string; sentAtIso: string | null }
+    >();
+
+    for (const cid of customerIds) {
+      const visibleDebt = new Prisma.Decimal(
+        visibleByCustomer.get(cid)?.remainingDebtKd ?? '0',
+      );
+      if (visibleDebt.lessThanOrEqualTo(tol)) continue;
+
+      for (const order of linkOrders.filter((o) => o.customerId === cid)) {
+        const meta =
+          order.posGatewayMetadata &&
+          typeof order.posGatewayMetadata === 'object' &&
+          !Array.isArray(order.posGatewayMetadata)
+            ? (order.posGatewayMetadata as Record<string, unknown>)
+            : null;
+        if (!meta || !order.posHostedPaymentUrl) continue;
+
+        const fullBalance = meta.fullBalance;
+        if (
+          fullBalance &&
+          typeof fullBalance === 'object' &&
+          !Array.isArray(fullBalance)
+        ) {
+          const fb = fullBalance as Record<string, unknown>;
+          const amountRaw = fb.amountKd;
+          if (typeof amountRaw === 'string' && amountRaw.trim()) {
+            fullBalanceByCustomer.set(cid, {
+              amountKd: new Prisma.Decimal(amountRaw).toFixed(3),
+              url: order.posHostedPaymentUrl,
+              sentAtIso:
+                typeof fb.sentAt === 'string' ? fb.sentAt : null,
+            });
+            break;
+          }
+        }
+
+        const storedCharge = this.readCollectionPaymentLinkChargeKd(meta);
+        if (
+          storedCharge &&
+          storedCharge.sub(visibleDebt).abs().lessThanOrEqualTo(tol)
+        ) {
+          const charge = meta.charge;
+          const sentAtIso =
+            charge &&
+            typeof charge === 'object' &&
+            !Array.isArray(charge) &&
+            typeof (charge as Record<string, unknown>).createdAt === 'string'
+              ? ((charge as Record<string, unknown>).createdAt as string)
+              : null;
+          fullBalanceByCustomer.set(cid, {
+            amountKd: storedCharge.toFixed(3),
+            url: order.posHostedPaymentUrl,
+            sentAtIso,
+          });
+          break;
+        }
+      }
+    }
+
+    return rows.map((row) => {
+      const fb = fullBalanceByCustomer.get(row.customerId);
+      return {
+        ...row,
+        fullBalanceLinkKd: fb?.amountKd ?? null,
+        fullBalancePaymentUrl: fb?.url ?? null,
+        fullBalanceLinkSentAtIso: fb?.sentAtIso ?? null,
+      };
+    });
+  }
+
+  private readCollectionPaymentLinkChargeKd(
+    metadata: Record<string, unknown>,
+  ): Prisma.Decimal | null {
+    const charge = metadata.charge;
+    if (!charge || typeof charge !== 'object' || Array.isArray(charge)) {
+      return null;
+    }
+    const raw = (charge as Record<string, unknown>).amountKd;
+    try {
+      if (typeof raw === 'string' && raw.trim()) {
+        return new Prisma.Decimal(raw);
+      }
+      if (typeof raw === 'number' && Number.isFinite(raw)) {
+        return new Prisma.Decimal(raw);
+      }
+    } catch {
+      return null;
+    }
+    return null;
   }
 
   /**
@@ -2246,6 +2473,115 @@ export class OrdersService {
   }
 
   /**
+   * Canonical collections charge for one invoice — matches the amount shown
+   * in the CC debt table (`listUnpaidCollectionOrders` → `amountKd`).
+   */
+  async getCollectionChargeKdForOrder(orderId: string): Promise<string> {
+    const rows = await this.listUnpaidCollectionOrders(null, undefined);
+    const row = rows.find((r) => r.orderId === orderId);
+    if (!row) {
+      throw new BadRequestException(
+        'Order is not open for collection (settled, canceled, or not found).',
+      );
+    }
+    return row.amountKd;
+  }
+
+  private collectionDebtReasonAr(
+    paymentMethod: PosPaymentMethod | null,
+    createdAtIso: string,
+    invoiceNumber: string | null,
+    readableId: string,
+  ): string {
+    const d = new Date(createdAtIso);
+    const dateStr = Number.isNaN(d.getTime())
+      ? ''
+      : d.toLocaleDateString('ar-KW', { timeZone: 'Asia/Kuwait' });
+    const ref = invoiceNumber?.trim() || readableId;
+    const noPaper = !invoiceNumber?.trim()
+      ? ' (لا يوجد رقم فاتورة ورقية — مرجع النظام فقط)'
+      : '';
+
+    switch (paymentMethod) {
+      case PosPaymentMethod.DEBT_ON_ACCOUNT:
+        return `• ${ref} — ${dateStr}: «دين على الحساب» — طلب منفصل سُجّل كذمة مباشرة ولم يُغطَّ برصيد الاشتراك${noPaper}.`;
+      case PosPaymentMethod.SUBSCRIPTION_WALLET:
+        return `• ${ref} — ${dateStr}: باقي فاتورة بعد خصم رصيد الاشتراك من المحفظة${noPaper}.`;
+      case PosPaymentMethod.PAYMENT_LINK:
+      case PosPaymentMethod.ONLINE:
+        return `• ${ref} — ${dateStr}: فاتورة بانتظار إتمام الدفع الإلكتروني${noPaper}.`;
+      default:
+        return `• ${ref} — ${dateStr}: رصيد مستحق على الطلب${noPaper}.`;
+    }
+  }
+
+  /**
+   * Itemized open debt for CC «full balance» links — amounts match the
+   * collections table; `reasonAr` explains each line for customer trust.
+   */
+  async getCustomerCollectionDebtBreakdown(customerId: string): Promise<{
+    customerId: string;
+    customerName: string;
+    customerPhone: string;
+    totalDebtKd: string;
+    lines: Array<{
+      orderId: string;
+      readableId: string;
+      invoiceNumber: string | null;
+      amountKd: string;
+      paymentMethod: PosPaymentMethod | null;
+      orderDateIso: string;
+      reasonAr: string;
+    }>;
+  }> {
+    const customer = await this.prisma.customer.findUnique({
+      where: { id: customerId },
+      select: {
+        id: true,
+        displayName: true,
+        phone: true,
+        phone2: true,
+      },
+    });
+    if (!customer) {
+      throw new NotFoundException('Customer not found');
+    }
+
+    const visible = await this.debtVisibility.getCustomerVisibleDebt(customerId);
+    const rows = await this.listUnpaidCollectionOrders(
+      null,
+      undefined,
+      customerId,
+    );
+
+    const phone =
+      customer.phone?.replace(/[\s-]/g, '').trim() ||
+      customer.phone2?.replace(/[\s-]/g, '').trim() ||
+      '';
+
+    return {
+      customerId: customer.id,
+      customerName: customer.displayName?.trim() || phone || 'Customer',
+      customerPhone: phone,
+      totalDebtKd: visible.remainingDebtKd,
+      lines: rows.map((r) => ({
+        orderId: r.orderId,
+        readableId: r.readableId,
+        invoiceNumber: r.invoiceNumber,
+        amountKd: r.amountKd,
+        paymentMethod: r.paymentMethod,
+        orderDateIso: r.createdAtIso,
+        reasonAr: this.collectionDebtReasonAr(
+          r.paymentMethod,
+          r.createdAtIso,
+          r.invoiceNumber,
+          r.readableId,
+        ),
+      })),
+    };
+  }
+
+  /**
    * Single unpaid row for server-side payment-link WhatsApp (Moatmt / webhook),
    * using the same projection as {@link listUnpaidCollectionOrders}.
    */
@@ -2268,10 +2604,15 @@ export class OrdersService {
     branchName: string | null;
     driverName: string | null;
   } | null> {
+    let amountKd: string;
+    try {
+      amountKd = await this.getCollectionChargeKdForOrder(orderId);
+    } catch {
+      return null;
+    }
     const r = await this.prisma.order.findFirst({
       where: {
         id: orderId,
-        cashStatus: CashStatus.UNPAID,
         status: { not: OrderStatus.CANCELED },
       },
       select: {
@@ -2337,7 +2678,7 @@ export class OrdersService {
       customerPhone: phone,
       customerPhone2:
         r.customer.phone2?.replace(/[\s-]/g, '').trim() || null,
-      amountKd: r.totalPrice.toFixed(3),
+      amountKd,
       lineItems,
       branchName,
       driverName,

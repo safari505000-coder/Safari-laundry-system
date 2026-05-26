@@ -32,6 +32,7 @@ export const ar = {
     customerDebtTracker: 'متابعة ديون العملاء',
     feedbackInbox: 'تقييمات العملاء',
     websiteOrderRequests: 'طلبات الموقع',
+    websiteCustomerPayments: 'مدفوعات الموقع',
     driverMonitor: 'مراقبة السائقين',
     myDailySales: 'مبيعاتي اليومية',
     myCashCustody: 'عهدتي النقدية',
@@ -456,6 +457,14 @@ export const ar = {
       'مجموع «المبلغ» هنا لفواتيل {{name}} ({{invoicesTotal}}) يشمل فقط ما ظهر على شكل طلب؛ أما «إجمالي المديونية» في المشتركين فيجمِّع ذلك مع أي دين على محفظة الاشتراك.',
     openSubscribersForTotal:
       'فتح قائمة المشتركين لعرض الإجمالي المعتمد',
+    debtBreakdownTitle: 'تفصيل الرصيد ({{total}})',
+    debtBreakdownLoading: 'جاري تحميل تفصيل الرصيد…',
+    fullBalanceLink: 'إرسال رابط الرصيد الكامل ({{total}})',
+    fullBalanceLinkShort: 'رابط الرصيد الكامل',
+    fullBalanceLinkSent: 'تم إرسال رابط الرصيد الكامل مع التفصيل للعميل.',
+    serverWhatsappFailed:
+      'تعذّر الإرسال التلقائي عبر واتساب. تحقق من إعداد Moatmt على السيرفر.',
+    fullBalanceLinkError: 'تعذّر إنشاء رابط الرصيد الكامل.',
     opsDashboardAria: 'مؤشرات مركز الاتصال',
     kpiMarketDebtLabel: 'إجمالي الديون السوقية',
     kpiMarketDebtSub:
@@ -467,6 +476,8 @@ export const ar = {
     ledgerStripLine:
       'ذمم دفتر الالتزام (غير مرتبطة بصافي UNPAID): فواتير {{inv}} — اشتراك {{sub}}',
     pendingLinkHint: 'يوجد رابط دفع قيد الانتظار لهذا العميل',
+    fullBalanceLinkPending: 'رابط رصيد كامل قيد الانتظار ({{amount}})',
+    fullBalanceLinkBadge: 'رصيد كامل {{amount}}',
     colDaysElapsed: 'الأيام',
     colReminders: 'مرات التذكير',
     colSubscription: 'اشتراك',
@@ -1177,6 +1188,31 @@ export const ar = {
     markCancelled: 'إلغاء',
     convertedHint: 'تم إصدار المهمة — أُغلقت الإجراءات.',
     reviewedAt: 'آخر مراجعة',
+  },
+  websiteCustomerPayments: {
+    title: 'مدفوعات الموقع',
+    subtitle:
+      'طلبات الدفع التي بدأها العميل من الموقع العام. تابع الرابط، اتصل بالعميل، أو افتح ملفه.',
+    refresh: 'تحديث',
+    loading: 'جارٍ التحميل…',
+    empty: 'لا توجد مدفوعات ضمن هذه الفلترة.',
+    loadFailed: 'تعذّر تحميل مدفوعات الموقع.',
+    filter: {
+      PENDING: 'معلّقة',
+      PAID: 'مدفوعة',
+      ALL: 'الكل',
+    },
+    summaryShown: 'معروض الآن',
+    summaryPending: 'معلّقة',
+    summaryFilter: 'الفلتر',
+    remaining: 'المتبقي',
+    total: 'الإجمالي',
+    requestedAt: 'طلب الدفع',
+    openCustomer: 'ملف العميل',
+    call: 'اتصال',
+    copyLink: 'نسخ الرابط',
+    linkCopied: 'تم نسخ رابط الدفع.',
+    openLink: 'فتح الرابط',
   },
   invoicePrint: {
     print: 'طباعة / Print',

@@ -2058,6 +2058,10 @@ export type CollectionUnpaidOnlineRow = {
     | 'ONLINE'
     | null;
   paymentUrl: string | null;
+  /** Customer-level full AR payment link (may differ from row `paymentUrl`). */
+  fullBalanceLinkKd?: string | null;
+  fullBalancePaymentUrl?: string | null;
+  fullBalanceLinkSentAtIso?: string | null;
   createdAtIso: string;
   invoiceAgeDays: number;
   reminderCount: number;
@@ -3111,6 +3115,44 @@ export function updateWebsiteOrderRequestStatus(
       token,
       body: JSON.stringify({ status }),
     },
+  );
+}
+
+export type WebsiteCustomerPaymentFilter = 'PENDING' | 'PAID' | 'ALL';
+
+export type WebsiteCustomerPaymentRow = {
+  orderId: string;
+  invoiceNumber: string | null;
+  serialNumber: string | null;
+  customerId: string;
+  customerPhone: string;
+  customerDisplayName: string | null;
+  totalAmountKd: string;
+  remainingAmountKd: string;
+  paymentStatus: 'UNPAID' | 'PARTIALLY_PAID' | 'PAID';
+  cashStatus: string;
+  orderStatus: string;
+  paymentUrl: string | null;
+  requestedAtIso: string | null;
+  requestedPhone: string | null;
+  createdAtIso: string;
+  completedAtIso: string | null;
+};
+
+export type WebsiteCustomerPaymentsListResponse = {
+  payments: WebsiteCustomerPaymentRow[];
+};
+
+export function listWebsiteCustomerPayments(
+  token: string,
+  opts: { status?: WebsiteCustomerPaymentFilter } = {},
+): Promise<WebsiteCustomerPaymentsListResponse> {
+  const qs = new URLSearchParams();
+  if (opts.status) qs.set('status', opts.status);
+  const q = qs.toString();
+  return apiJson<WebsiteCustomerPaymentsListResponse>(
+    `/api/public/call-center/website-payments${q ? `?${q}` : ''}`,
+    { token },
   );
 }
 

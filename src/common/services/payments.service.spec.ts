@@ -446,10 +446,14 @@ describe('PaymentsService payment safety', () => {
       id: ORDER_ID,
       status: OrderStatus.PENDING,
       cashStatus: CashStatus.UNPAID,
+      posPaymentMethod: PosPaymentMethod.PAYMENT_LINK,
       totalPrice: new Prisma.Decimal('10.0000'),
       walletSettledAt: null,
       posHostedPaymentUrl: existingLink,
       posGatewayTrackId: TRANS_ID,
+      posGatewayMetadata: {
+        charge: { amountKd: '10.0000', trackId: TRANS_ID, link: existingLink },
+      },
       customer: {
         id: CUSTOMER_ID,
         phone: '51234567',
@@ -458,7 +462,7 @@ describe('PaymentsService payment safety', () => {
       },
     });
 
-    const link = await service.ensurePaymentLinkForUnpaidOrder(ORDER_ID);
+    const link = await service.ensurePaymentLinkForUnpaidOrder(ORDER_ID, '10.0000');
 
     expect(link).toEqual({ url: existingLink, trackId: TRANS_ID });
     expect(prisma.order.update).not.toHaveBeenCalled();

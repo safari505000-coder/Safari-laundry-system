@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { SafariRole, WebsiteOrderRequestStatus } from '@prisma/client';
 import { CurrentUser, type JwtUser } from '../auth/decorators/current-user.decorator';
@@ -6,9 +7,12 @@ import { Public, Roles, NoOwnerBypass } from '../auth/decorators/roles.decorator
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { CreatePublicOrderDto } from './dto/create-public-order.dto';
+import { CreateCustomerBalancePaymentLinkDto } from './dto/create-customer-balance-payment-link.dto';
+import { CreateCustomerPaymentLinkDto } from './dto/create-customer-payment-link.dto';
 import { RequestCustomerOtpDto } from './dto/request-customer-otp.dto';
 import { UpdateWebsiteOrderRequestStatusDto } from './dto/website-order-request-status.dto';
 import { PublicApiService } from './public-api.service';
+import { WebsiteCustomerPaymentsService } from './website-customer-payments.service';
 import { WebsiteOrderRequestsService } from './website-order-requests.service';
 
 @ApiTags('public-api')
@@ -18,6 +22,7 @@ export class PublicApiController {
   constructor(
     private readonly publicApi: PublicApiService,
     private readonly websiteRequests: WebsiteOrderRequestsService,
+    private readonly websitePayments: WebsiteCustomerPaymentsService,
   ) {}
 
   @Public('Company website must list public services without a staff session.')
@@ -29,6 +34,14 @@ export class PublicApiController {
 
   @Public('Visitors can submit pickup/order requests before an account exists.')
   @Post('orders/request')
+  @Throttle({
+    default: {
+      ttl: 60_000,
+      limit:
+        Number.parseInt(process.env.PUBLIC_ORDER_REQUEST_THROTTLE_PER_MIN ?? '', 10) ||
+        20,
+    },
+  })
   @ApiOperation({ summary: 'Receive a public website order request' })
   createOrderRequest(@Body() dto: CreatePublicOrderDto) {
     return this.publicApi.createPublicOrderRequest(dto);
@@ -36,6 +49,13 @@ export class PublicApiController {
 
   @Public('Customer portal OTP bootstrap endpoint.')
   @Post('customer-auth/request-otp')
+  @Throttle({
+    default: {
+      ttl: 60_000,
+      limit:
+        Number.parseInt(process.env.PUBLIC_OTP_THROTTLE_PER_MIN ?? '', 10) || 5,
+    },
+  })
   @ApiOperation({ summary: 'Request customer portal OTP' })
   requestOtp(@Body() dto: RequestCustomerOtpDto) {
     return this.publicApi.requestCustomerOtp(dto.phone);
@@ -43,9 +63,54 @@ export class PublicApiController {
 
   @Public('Temporary read-only customer portal preview until OTP provider is enabled.')
   @Get('customer-portal')
+  @Throttle({
+    default: {
+      ttl: 60_000,
+      limit:
+        Number.parseInt(process.env.PUBLIC_PORTAL_LOOKUP_THROTTLE_PER_MIN ?? '', 10) ||
+        10,
+    },
+  })
   @ApiOperation({ summary: 'Read-only customer portal preview by phone' })
   customerPortal(@Query('phone') phone: string) {
     return this.publicApi.getCustomerPortal((phone ?? '').replace(/[\s-]/g, ''));
+  }
+
+  @Public('Customer initiates hosted payment for an owned unpaid invoice.')
+  @Post('customer-portal/payment-link')
+  @Throttle({
+    default: {
+      ttl: 60_000,
+      limit:
+        Number.parseInt(process.env.PUBLIC_PAYMENT_THROTTLE_PER_MIN ?? '', 10) ||
+        30,
+    },
+  })
+  @ApiOperation({ summary: 'Create UPayments link for customer-owned invoice' })
+  createCustomerPaymentLink(@Body() dto: CreateCustomerPaymentLinkDto) {
+    return this.websitePayments.createPaymentLinkFromWebsite(
+      dto.customerPhone,
+      dto.orderId,
+    );
+  }
+
+  @Public('Customer initiates hosted payment for their oldest open invoice.')
+  @Post('customer-portal/pay-balance')
+  @Throttle({
+    default: {
+      ttl: 60_000,
+      limit:
+        Number.parseInt(process.env.PUBLIC_PAYMENT_THROTTLE_PER_MIN ?? '', 10) ||
+        30,
+    },
+  })
+  @ApiOperation({ summary: 'Create UPayments link for customer open balance' })
+  createCustomerBalancePaymentLink(
+    @Body() dto: CreateCustomerBalancePaymentLinkDto,
+  ) {
+    return this.websitePayments.createPaymentLinkForCustomerBalance(
+      dto.customerPhone,
+    );
   }
 
   @Get('employee/tasks')
@@ -90,6 +155,18 @@ export class PublicApiController {
     @CurrentUser() user: JwtUser,
   ) {
     return this.websiteRequests.updateStatus(id, dto.status, user.userId);
+  }
+
+  @Get('call-center/website-payments')
+  @UseGuards(RolesGuard)
+  @NoOwnerBypass()
+  @Roles(SafariRole.CALL_CENTER, SafariRole.CALL_CENTER_SUPERVISOR)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Website-initiated customer payment queue' })
+  websiteCustomerPayments(@Query('status') status?: string) {
+    const filter =
+      status === 'PAID' || status === 'ALL' ? status : ('PENDING' as const);
+    return this.websitePayments.listForCallCenter(filter);
   }
 
   @Post('payments/:orderId/intent')

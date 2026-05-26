@@ -6,6 +6,7 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { CustomerLedgerModule } from '../customer-ledger/customer-ledger.module';
 import { CustomerNotificationsModule } from '../customer-notifications/customer-notifications.module';
+import { PublicApiModule } from '../public-api/public-api.module';
 import { OrdersModule } from '../orders/orders.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { FinanceModule } from '../finance/finance.module';
@@ -28,6 +29,7 @@ import { PublicStatementController } from './public-statement.controller';
     PaymentsModule,
     OrdersModule,
     CustomerNotificationsModule,
+    PublicApiModule,
   ],
   controllers: [
     CallCenterController,

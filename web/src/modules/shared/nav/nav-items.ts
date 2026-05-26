@@ -11,6 +11,7 @@ import {
   Building2,
   CircleDollarSign,
   ClipboardList,
+  CreditCard,
   FileText,
   Hash,
   Headphones,
@@ -239,6 +240,14 @@ export const websiteOrderRequestsItem: NavItem = {
   to: '/cc/website-orders',
   labelKey: 'nav.websiteOrderRequests',
   icon: Globe,
+  roles: ['CALL_CENTER', 'CALL_CENTER_SUPERVISOR'],
+  permission: AppPermission.VIEW_CUSTOMERS,
+};
+
+export const websiteCustomerPaymentsItem: NavItem = {
+  to: '/cc/website-payments',
+  labelKey: 'nav.websiteCustomerPayments',
+  icon: CreditCard,
   roles: ['CALL_CENTER', 'CALL_CENTER_SUPERVISOR'],
   permission: AppPermission.VIEW_CUSTOMERS,
 };

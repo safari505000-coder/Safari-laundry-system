@@ -33,7 +33,10 @@ export type CustomerPortalOrder = {
   status: string;
   cashStatus: string;
   posPaymentMethod: string;
-  totalPriceKd: string;
+  totalAmountKd: string;
+  paidAmountKd: string;
+  remainingAmountKd: string;
+  paymentStatus: 'UNPAID' | 'PARTIALLY_PAID' | 'PAID';
   invoiceNumber: string | null;
   serialNumber: string | null;
   createdAtIso: string;
@@ -97,5 +100,34 @@ export type PaymentIntentResponse = {
   orderId: string;
   paymentUrl: string | null;
   status: 'READY' | 'UNAVAILABLE';
+  remainingAmountKd?: string;
   message: string;
+};
+
+export type CreateCustomerPaymentLinkRequest = {
+  customerPhone: string;
+  orderId: string;
+};
+
+export type WebsiteCustomerPaymentRow = {
+  orderId: string;
+  invoiceNumber: string | null;
+  serialNumber: string | null;
+  customerId: string;
+  customerPhone: string;
+  customerDisplayName: string | null;
+  totalAmountKd: string;
+  remainingAmountKd: string;
+  paymentStatus: 'UNPAID' | 'PARTIALLY_PAID' | 'PAID';
+  cashStatus: string;
+  orderStatus: string;
+  paymentUrl: string | null;
+  requestedAtIso: string | null;
+  requestedPhone: string | null;
+  createdAtIso: string;
+  completedAtIso: string | null;
+};
+
+export type WebsiteCustomerPaymentsListResponse = {
+  payments: WebsiteCustomerPaymentRow[];
 };

@@ -25,8 +25,9 @@ import { DebtService } from '../finance/services/debt.service';
 import { DebtVisibilityService } from '../finance/debt-visibility/debt-visibility.service';
 import { OrdersService } from '../orders/orders.service';
 import { resolveCustomerPhoneForNotify } from '../common/validation/kuwait-customer-phone';
-import { buildCollectionsPaymentLinkTextAr } from './collections-whatsapp-text';
+import { buildCollectionsPaymentLinkTextAr, buildFullBalancePaymentLinkTextAr } from './collections-whatsapp-text';
 import type { SendPaymentLinkWhatsappResultDto } from './dto/send-payment-link-whatsapp.dto';
+import { WebsiteCustomerPaymentsService } from '../public-api/website-customer-payments.service';
 import { ActivateSubscriptionDto } from './dto/activate-subscription.dto';
 import { CancelSubscriptionDto } from './dto/cancel-subscription.dto';
 import { ExtendSubscriptionDto } from './dto/extend-subscription.dto';
@@ -488,6 +489,7 @@ export class CallCenterService {
     private readonly customerNotifications: CustomerNotificationsService,
     private readonly debt: DebtService,
     private readonly debtVisibility: DebtVisibilityService,
+    private readonly websitePayments: WebsiteCustomerPaymentsService,
   ) {}
 
   /**
@@ -651,15 +653,121 @@ export class CallCenterService {
     actor: JwtUser,
   ): Promise<{ url: string }> {
     await this.assertOrderInCollectionScope(orderId, actor);
-    const link = await this.payments.ensurePaymentLinkForUnpaidOrder(orderId);
+    const amountKd = await this.orders.getCollectionChargeKdForOrder(orderId);
+    const link = await this.payments.ensurePaymentLinkForUnpaidOrder(
+      orderId,
+      amountKd,
+    );
     return { url: link.url };
+  }
+
+  async getCustomerCollectionDebtBreakdown(
+    customerId: string,
+    actor: JwtUser,
+  ) {
+    await this.assertCustomerInCollectionScope(customerId, actor);
+    return this.orders.getCustomerCollectionDebtBreakdown(customerId);
+  }
+
+  /**
+   * Mint a hosted link for the customer's full visible AR balance and push
+   * an itemized Arabic WhatsApp explaining each open line (e.g. why 4.250
+   * appears separately from subscription shortfall).
+   */
+  async sendFullBalancePaymentLinkWhatsapp(
+    customerId: string,
+    actor: JwtUser,
+  ): Promise<{
+    breakdown: Awaited<
+      ReturnType<OrdersService['getCustomerCollectionDebtBreakdown']>
+    >;
+    paymentUrl: string;
+    serverPush: boolean;
+  }> {
+    const breakdown = await this.getCustomerCollectionDebtBreakdown(
+      customerId,
+      actor,
+    );
+    if (Number(breakdown.totalDebtKd) <= 0.001) {
+      throw new BadRequestException('No outstanding balance on this account.');
+    }
+    const to = resolveCustomerPhoneForNotify(
+      breakdown.customerPhone,
+      null,
+    );
+    if (!to.trim()) {
+      throw new BadRequestException('No customer phone on file');
+    }
+
+    const link = await this.websitePayments.createPaymentLinkForCustomerBalance(
+      breakdown.customerPhone,
+    );
+    if (!link.paymentUrl) {
+      throw new BadRequestException(
+        link.message ?? 'Could not create payment link.',
+      );
+    }
+
+    await this.websitePayments.recordFullBalanceLinkSent(
+      link.orderId,
+      breakdown.totalDebtKd,
+      actor.userId,
+    );
+
+    const message = buildFullBalancePaymentLinkTextAr(
+      breakdown.customerName,
+      breakdown.totalDebtKd,
+      breakdown.lines.map((line) => ({
+        readableId: line.readableId,
+        amountKd: line.amountKd,
+        reasonAr: line.reasonAr,
+      })),
+      link.paymentUrl,
+      customerId,
+    );
+
+    const serverPush =
+      await this.customerNotifications.deliverCollectionsPaymentLinkNow({
+        customerPhone: to,
+        orderId: breakdown.lines[0]?.orderId ?? customerId,
+        message,
+      });
+    this.assertCollectionsWhatsappDelivered(serverPush);
+
+    return {
+      breakdown,
+      paymentUrl: link.paymentUrl,
+      serverPush: true,
+    };
+  }
+
+  private assertCollectionsWhatsappDelivered(serverPush: boolean): void {
+    if (serverPush) return;
+    throw new BadRequestException(
+      'تعذّر إرسال واتساب تلقائياً للعميل. تحقق من إعداد Moatmt (MOATMT_INSTANCE_ID + MOATMT_ACCESS_TOKEN) على السيرفر.',
+    );
+  }
+
+  private async assertCustomerInCollectionScope(
+    customerId: string,
+    actor: JwtUser,
+  ): Promise<void> {
+    const breakdown =
+      await this.orders.getCustomerCollectionDebtBreakdown(customerId);
+    const anchorOrderId = breakdown.lines[0]?.orderId;
+    if (!anchorOrderId) {
+      throw new BadRequestException(
+        'Customer has no open invoices for collection.',
+      );
+    }
+    await this.assertOrderInCollectionScope(anchorOrderId, actor);
   }
 
   /**
    * Mint/refresh hosted URL, apply reminder/cooldown, then push the same
    * Collections Arabic text through Moatmt or CUSTOMER_NOTIFY_WEBHOOK_URL so
    * the customer receives the link without a manual WhatsApp "Send" tap.
-   * When no server channel is configured, the caller should open `wa.me`.
+   * Throws when no delivery channel succeeds (no wa.me fallback).
    */
   async sendPaymentLinkToCustomerWhatsapp(
     orderId: string,
@@ -676,7 +784,11 @@ export class CallCenterService {
       lockRow?.lastReminderAt ?? null,
       new Date(),
     );
-    const link = await this.payments.ensurePaymentLinkForUnpaidOrder(orderId);
+    const amountKd = await this.orders.getCollectionChargeKdForOrder(orderId);
+    const link = await this.payments.ensurePaymentLinkForUnpaidOrder(
+      orderId,
+      amountKd,
+    );
     const reminder = await this.sendOrderReminder(orderId, actor);
     if (!reminder.sent) {
       return { reminder, serverPush: false, paymentUrl: link.url };
@@ -703,7 +815,8 @@ export class CallCenterService {
         message,
       },
     );
-    return { reminder, serverPush, paymentUrl: link.url };
+    this.assertCollectionsWhatsappDelivered(serverPush);
+    return { reminder, serverPush: true, paymentUrl: link.url };
   }
 
   /**

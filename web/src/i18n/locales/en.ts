@@ -31,6 +31,7 @@ export const en = {
     customerDebtTracker: 'Customer Debt Tracker',
     feedbackInbox: 'Customer Ratings',
     websiteOrderRequests: 'Website orders',
+    websiteCustomerPayments: 'Website payments',
     driverMonitor: 'Driver Monitor',
     myDailySales: 'My Daily Sales',
     myCashCustody: 'My Cash Custody',
@@ -485,6 +486,14 @@ export const en = {
     singleCustomerDebtAlignmentHint:
       'Sum of Amount rows here for {{name}} is {{invoicesTotal}} (invoice-scope only). Subscribers »Total debt« also includes subscription-wallet debt.',
     openSubscribersForTotal: 'Open subscribers list for the full approved total',
+    debtBreakdownTitle: 'Balance breakdown ({{total}})',
+    debtBreakdownLoading: 'Loading balance breakdown…',
+    fullBalanceLink: 'Send full-balance payment link ({{total}})',
+    fullBalanceLinkShort: 'Full balance link',
+    fullBalanceLinkSent: 'Full-balance link with breakdown sent to the customer.',
+    serverWhatsappFailed:
+      'Automatic WhatsApp delivery failed. Check Moatmt configuration on the server.',
+    fullBalanceLinkError: 'Could not create the full-balance payment link.',
     opsDashboardAria: 'Call center KPIs',
     kpiMarketDebtLabel: 'Total market debt',
     kpiMarketDebtSub:
@@ -496,6 +505,8 @@ export const en = {
     ledgerStripLine:
       'Ledger receivables (not the same as UNPAID table total): invoice {{inv}} · subscription {{sub}}',
     pendingLinkHint: 'A payment link is pending for this customer',
+    fullBalanceLinkPending: 'Full-balance link pending ({{amount}})',
+    fullBalanceLinkBadge: 'Full balance {{amount}}',
     pm: {
       SUBSCRIPTION_WALLET: 'Wallet',
       CASH: 'Cash',
@@ -1175,6 +1186,31 @@ export const en = {
     markCancelled: 'Cancel',
     convertedHint: 'Dispatch issued — actions closed.',
     reviewedAt: 'Last review',
+  },
+  websiteCustomerPayments: {
+    title: 'Website payments',
+    subtitle:
+      'Payment requests started by customers on the public website. Follow the link, call the customer, or open their profile.',
+    refresh: 'Refresh',
+    loading: 'Loading…',
+    empty: 'No payments in this filter.',
+    loadFailed: 'Could not load website payments.',
+    filter: {
+      PENDING: 'Pending',
+      PAID: 'Paid',
+      ALL: 'All',
+    },
+    summaryShown: 'Shown now',
+    summaryPending: 'Pending',
+    summaryFilter: 'Filter',
+    remaining: 'Remaining',
+    total: 'Total',
+    requestedAt: 'Payment requested',
+    openCustomer: 'Customer profile',
+    call: 'Call',
+    copyLink: 'Copy link',
+    linkCopied: 'Payment link copied.',
+    openLink: 'Open link',
   },
   invoicePrint: {
     print: 'Print',

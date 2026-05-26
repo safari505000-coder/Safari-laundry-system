@@ -48,13 +48,28 @@ describe('V22 current-debt consistency guards', () => {
     );
 
     expect(method).toContain('computeOrderRemainingBalancesBatch');
+    expect(method).not.toContain('addedToDebt');
+    expect(method).not.toContain('ORDER_WALLET_SETTLEMENT');
     expect(method).toContain('remaining.lessThanOrEqualTo(tol)');
     expect(method).toContain('return false');
     expect(method).toContain('debtVisibility.getCustomerVisibleDebtBatch');
-    expect(method).toContain('displayRemaining.toFixed(3)');
+    expect(method).toContain('visibleBudgetByCustomer.set(');
+    expect(method).not.toContain('visibleDebt.greaterThan(rawDebt)');
     expect(method).not.toContain("amountKd: (remainingByOrder.get(r.id) ?? r.totalPrice).toFixed(3)");
     expect(method).not.toContain('UNPAID rows are always kept');
     expect(method).not.toContain('amountKd: r.totalPrice.toFixed(3)');
+  });
+
+  it('collections payment links charge the canonical table amount and refresh on drift', () => {
+    const payments = read('src/common/services/payments.service.ts');
+    const callCenter = read('src/call-center/call-center.service.ts');
+    const orders = read('src/orders/orders.service.ts');
+
+    expect(payments).toContain('computeOrderRemainingBalancesBatch');
+    expect(payments).toContain('amountKd: chargeAmount.toFixed(4)');
+    expect(payments).toContain('paymentLinkChargeMatches');
+    expect(callCenter).toContain('getCollectionChargeKdForOrder(orderId)');
+    expect(orders).toContain('async getCollectionChargeKdForOrder(orderId: string)');
   });
 
   it('call-center red KPI uses banking-core visibility, not local order sums', () => {
@@ -211,5 +226,21 @@ describe('V22 current-debt consistency guards', () => {
     expect(orders).not.toContain('OPERATIONAL_DEBT_LEGACY_DOUBLE_COUNT');
     expect(orders).not.toContain('getEffectiveDebtKdBreakdown');
     expect(orders).not.toContain('listUnpaidOnlinePaymentOrders');
+  });
+
+  it('public website pay-balance uses visible journal debt and canonical order remaining', () => {
+    const websitePayments = read(
+      'src/public-api/website-customer-payments.service.ts',
+    );
+    const orders = read('src/orders/orders.service.ts');
+
+    expect(websitePayments).toContain(
+      'debtVisibility.getCustomerVisibleDebt',
+    );
+    expect(websitePayments).toContain('computeOrderRemainingBalancesBatch');
+    expect(websitePayments).toContain('createPaymentLinkForCustomerBalance');
+    expect(websitePayments).toContain('ensureCollectiblePaymentLink');
+    expect(orders).toContain('mergeCustomerOpenCollectibleRows');
+    expect(orders).toContain('enrichCollectionRowsWithFullBalanceLinkInfo');
   });
 });

@@ -100,6 +100,22 @@ void React;
 
 const QUEUE_POLL_MS = 12_000;
 
+type CustomerCollectionDebtBreakdown = {
+  customerId: string;
+  customerName: string;
+  customerPhone: string;
+  totalDebtKd: string;
+  lines: Array<{
+    orderId: string;
+    readableId: string;
+    invoiceNumber: string | null;
+    amountKd: string;
+    paymentMethod: string | null;
+    orderDateIso: string;
+    reasonAr: string;
+  }>;
+};
+
 type FetchState =
   | { kind: 'idle' }
   | { kind: 'loading' }
@@ -153,6 +169,12 @@ export function CollectionsCockpitView({
   const [convertRow, setConvertRow] = useState<CollectionUnpaidOnlineRow | null>(
     null,
   );
+  const [fullBalanceBusyCustomerId, setFullBalanceBusyCustomerId] = useState<
+    string | null
+  >(null);
+  const [debtBreakdown, setDebtBreakdown] =
+    useState<CustomerCollectionDebtBreakdown | null>(null);
+  const [breakdownLoading, setBreakdownLoading] = useState(false);
 
   const branchId =
     user?.safariRole === 'MANAGER' && user.branchId ?
@@ -270,6 +292,62 @@ export function CollectionsCockpitView({
     if (!focusedRowId) return queueRows[0] ?? null;
     return queueRows.find((r) => r.orderId === focusedRowId) ?? queueRows[0] ?? null;
   }, [focusedRowId, queueRows]);
+
+  useEffect(() => {
+    if (!token || !dataEnabled || !focusedRow?.customerId) {
+      setDebtBreakdown(null);
+      return;
+    }
+    let cancelled = false;
+    setBreakdownLoading(true);
+    void apiJson<CustomerCollectionDebtBreakdown>(
+      `/api/call-center/customers/${encodeURIComponent(focusedRow.customerId)}/collection-debt-breakdown`,
+      { token },
+    )
+      .then((data) => {
+        if (!cancelled) setDebtBreakdown(data);
+      })
+      .catch(() => {
+        if (!cancelled) setDebtBreakdown(null);
+      })
+      .finally(() => {
+        if (!cancelled) setBreakdownLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, dataEnabled, focusedRow?.customerId]);
+
+  const handleFullBalanceLink = useCallback(
+    async (customerId: string) => {
+      if (!token || !canAct) return;
+      setFullBalanceBusyCustomerId(customerId);
+      try {
+        await apiJson(
+          `/api/call-center/customers/${encodeURIComponent(customerId)}/send-full-balance-payment-link-whatsapp`,
+          { method: 'POST', token },
+        );
+        toast.success(
+          isAr ?
+            'تم إرسال رابط الرصيد الكامل مع التفصيل للعميل.'
+          : 'Full-balance link with breakdown sent to the customer.',
+        );
+        await refreshQueue();
+        await refreshSummary();
+      } catch (e) {
+        toast.error(
+          e instanceof ApiError ?
+            e.message
+          : isAr ?
+            'تعذّر إنشاء رابط الرصيد الكامل.'
+          : 'Could not create the full-balance payment link.',
+        );
+      } finally {
+        setFullBalanceBusyCustomerId(null);
+      }
+    },
+    [token, canAct, isAr, refreshQueue, refreshSummary],
+  );
 
   const summaryData = summary.kind === 'ready' ? summary.data : null;
 
@@ -546,6 +624,30 @@ export function CollectionsCockpitView({
                   {focusedRow.readableId} • {formatKwdLabelGrouped(focusedRow.amountKd)}
                 </div>
               </div>
+              {breakdownLoading ? (
+                <p className="rounded border border-dashed border-sky-200 px-2 py-1.5 text-[0.7rem] text-sky-700 dark:border-sky-900/50 dark:text-sky-300">
+                  {isAr ? 'جاري تحميل تفصيل الرصيد…' : 'Loading balance breakdown…'}
+                </p>
+              ) : debtBreakdown && debtBreakdown.lines.length > 0 ? (
+                <div className="rounded border border-sky-200 bg-sky-50/80 p-2 dark:border-sky-900/50 dark:bg-sky-950/30">
+                  <p className="mb-1.5 text-[0.7rem] font-bold text-slate-800 dark:text-slate-100">
+                    {isAr ?
+                      `تفصيل الرصيد (${formatKwdLabelGrouped(debtBreakdown.totalDebtKd)})`
+                    : `Balance breakdown (${formatKwdLabelGrouped(debtBreakdown.totalDebtKd)})`}
+                  </p>
+                  <ul className="space-y-1 text-[0.65rem] leading-relaxed text-slate-600 dark:text-slate-300">
+                    {debtBreakdown.lines.map((line) => (
+                      <li key={line.orderId}>
+                        <span className="font-mono font-semibold text-slate-800 dark:text-slate-100">
+                          {formatKwdLabelGrouped(line.amountKd)}
+                        </span>
+                        {' — '}
+                        {line.reasonAr.replace(/^•\s*/, '')}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
               {!isReadOnly ? (
                 <>
                   <ShortcutButton
@@ -572,6 +674,20 @@ export function CollectionsCockpitView({
                       label={isAr ? 'تحويل للاشتراك' : 'Convert to subscription'}
                       icon={<ArrowLeftRight className="h-3 w-3" />}
                       onClick={() => setConvertRow(focusedRow)}
+                    />
+                  ) : null}
+                  {canAct ? (
+                    <ShortcutButton
+                      shortcut="V26"
+                      label={isAr ? 'رابط الرصيد الكامل' : 'Full balance link'}
+                      icon={
+                        fullBalanceBusyCustomerId === focusedRow.customerId ?
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        : <Link2 className="h-3 w-3" />
+                      }
+                      onClick={() =>
+                        void handleFullBalanceLink(focusedRow.customerId)
+                      }
                     />
                   ) : null}
                 </>
@@ -796,8 +912,10 @@ function classifyDebtSignal(
   row: CollectionUnpaidOnlineRow,
   isAr: boolean,
 ): { label: string; className: string } {
+  const hasFullBalanceLink = row.fullBalancePaymentUrl != null;
   const hasPendingLink =
     row.paymentUrl != null ||
+    hasFullBalanceLink ||
     row.paymentMethod === 'PAYMENT_LINK' ||
     row.paymentMethod === 'ONLINE';
   if (row.invoiceAgeDays >= 60) {
@@ -805,6 +923,13 @@ function classifyDebtSignal(
       label: isAr ? 'متأخر' : 'Overdue',
       className:
         'bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-200',
+    };
+  }
+  if (hasFullBalanceLink) {
+    return {
+      label: isAr ? 'رابط رصيد كامل' : 'Full balance link',
+      className:
+        'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-200',
     };
   }
   if (hasPendingLink) {

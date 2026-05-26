@@ -172,3 +172,64 @@ export function buildCollectionsPaymentLinkTextAr(
   }
   return buildMinimal(row, paymentUrl);
 }
+
+export type FullBalanceDebtLine = {
+  readableId: string;
+  amountKd: string;
+  reasonAr: string;
+};
+
+export function buildFullBalancePaymentLinkTextAr(
+  customerName: string,
+  totalDebtKd: string,
+  lines: FullBalanceDebtLine[],
+  paymentUrl: string,
+  seed: string,
+): string {
+  const name = customerName?.trim() || 'عميلنا العزيز';
+  const greet = buildGreetingLine(name, seed);
+  const detailBlock =
+    lines.length > 0
+      ? [
+          'تفاصيل الرصيد المستحق:',
+          ...lines.map(
+            (line) => `${line.reasonAr}\n  💰 ${line.amountKd} د.ك`,
+          ),
+        ].join('\n')
+      : '';
+
+  const body = [
+    greet,
+    '',
+    `نسعد بخدمتكم في ${BRAND_CUSTOMER_AR}.`,
+    '',
+    `💰 *إجمالي الرصيد المستحق: ${totalDebtKd} د.ك*`,
+    '',
+    detailBlock,
+    '',
+    '🔒 رابط الدفع الآمن (UPayments):',
+    paymentUrl,
+    '',
+    'الرابط يُحدَّث تلقائياً إذا تغيّر الرصيد قبل الدفع.',
+    '',
+    SAFARI_WHATSAPP_TERMS_AR_COMPACT,
+    '',
+    `فريق ${BRAND_SYSTEM_AR} 🇰🇼`,
+  ]
+    .filter((line) => line !== '')
+    .join('\n');
+
+  if (body.length <= 4_000) {
+    return body;
+  }
+  return [
+    greet,
+    '',
+    `💰 *إجمالي الرصيد: ${totalDebtKd} د.ك*`,
+    lines.map((l) => `${l.readableId}: ${l.amountKd} د.ك`).join('\n'),
+    '',
+    paymentUrl,
+    '',
+    `فريق ${BRAND_SYSTEM_AR} 🇰🇼`,
+  ].join('\n');
+}

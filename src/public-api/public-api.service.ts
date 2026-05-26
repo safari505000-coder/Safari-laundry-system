@@ -1,7 +1,15 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { OrderStatus, Prisma, SafariRole } from '@prisma/client';
+import {
+  CashStatus,
+  OrderStatus,
+  PosPaymentMethod,
+  Prisma,
+  SafariRole,
+} from '@prisma/client';
 import { InvoicePaymentStatusService } from '../finance/invoice-payment-status.service';
+import { DebtVisibilityService } from '../finance/debt-visibility/debt-visibility.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { listPayableOrdersForCustomer } from './customer-portal-payable.util';
 import { CreatePublicOrderDto } from './dto/create-public-order.dto';
 import { PUBLIC_COMPANY_BRAND } from './public-branding';
 import { WebsiteOrderRequestsService } from './website-order-requests.service';
@@ -16,6 +24,7 @@ export class PublicApiService {
     private readonly prisma: PrismaService,
     private readonly websiteRequests: WebsiteOrderRequestsService,
     private readonly invoicePaymentStatus: InvoicePaymentStatusService,
+    private readonly debtVisibility: DebtVisibilityService,
   ) {}
 
   async getCatalog() {
@@ -82,20 +91,6 @@ export class PublicApiService {
             subscriptionExpiresAt: true,
           },
         },
-        orders: {
-          orderBy: { createdAt: 'desc' },
-          take: 10,
-          select: {
-            id: true,
-            status: true,
-            cashStatus: true,
-            posPaymentMethod: true,
-            invoiceNumber: true,
-            serialNumber: true,
-            createdAt: true,
-            completedAt: true,
-          },
-        },
       },
     });
 
@@ -103,13 +98,13 @@ export class PublicApiService {
       throw new NotFoundException('Customer was not found.');
     }
 
-    const paymentRows = await Promise.all(
-      customer.orders.map((row) =>
-        this.invoicePaymentStatus.derivePaymentStatus(row.id),
-      ),
+    const visibleDebt = await this.debtVisibility.getCustomerVisibleDebt(
+      customer.id,
     );
-    const paymentByOrderId = new Map(
-      paymentRows.map((row) => [row.orderId, row]),
+    const payableOrders = await listPayableOrdersForCustomer(
+      this.prisma,
+      this.invoicePaymentStatus,
+      customer.id,
     );
 
     return {
@@ -121,28 +116,12 @@ export class PublicApiService {
       },
       financials: {
         walletBalanceKd: customer.wallet?.balance.toFixed(4) ?? '0.0000',
-        walletDebtKd: customer.wallet?.debt.toFixed(4) ?? '0.0000',
+        walletDebtKd: visibleDebt.remainingDebtKd,
         subscriptionPlanName: customer.wallet?.subscriptionPlanName ?? null,
         subscriptionExpiresAtIso:
           customer.wallet?.subscriptionExpiresAt?.toISOString() ?? null,
       },
-      recentOrders: customer.orders.map((order) => {
-        const payment = paymentByOrderId.get(order.id)!;
-        return {
-          id: order.id,
-          status: order.status,
-          cashStatus: order.cashStatus,
-          posPaymentMethod: order.posPaymentMethod,
-          totalAmountKd: payment.totalAmountKd,
-          paidAmountKd: payment.paidAmountKd,
-          remainingAmountKd: payment.remainingAmountKd,
-          paymentStatus: payment.status,
-          invoiceNumber: order.invoiceNumber,
-          serialNumber: order.serialNumber,
-          createdAtIso: order.createdAt.toISOString(),
-          completedAtIso: order.completedAt?.toISOString() ?? null,
-        };
-      }),
+      recentOrders: payableOrders,
     };
   }
 
