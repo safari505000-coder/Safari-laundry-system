@@ -120,6 +120,12 @@ exports[`API contract lock freezes public route methods and paths 1`] = `
     "file": "src/call-center/call-center.controller.ts",
     "handler": "s",
     "method": "GET",
+    "path": "/call-center/customers/:customerId/collection-debt-breakdown",
+  },
+  {
+    "file": "src/call-center/call-center.controller.ts",
+    "handler": "s",
+    "method": "GET",
     "path": "/call-center/customers/:customerId/debt-conversion-options",
   },
   {
@@ -1222,13 +1228,19 @@ exports[`API contract lock freezes public route methods and paths 1`] = `
   },
   {
     "file": "src/public-api/public-api.controller.ts",
+    "handler": "websiteCustomerPayments",
+    "method": "GET",
+    "path": "/public/call-center/website-payments",
+  },
+  {
+    "file": "src/public-api/public-api.controller.ts",
     "handler": "catalog",
     "method": "GET",
     "path": "/public/catalog",
   },
   {
     "file": "src/public-api/public-api.controller.ts",
-    "handler": "customerPortal",
+    "handler": "e",
     "method": "GET",
     "path": "/public/customer-portal",
   },
@@ -1770,6 +1782,12 @@ exports[`API contract lock freezes public route methods and paths 1`] = `
     "file": "src/call-center/call-center.controller.ts",
     "handler": "s",
     "method": "POST",
+    "path": "/call-center/customers/:customerId/send-full-balance-payment-link-whatsapp",
+  },
+  {
+    "file": "src/call-center/call-center.controller.ts",
+    "handler": "s",
+    "method": "POST",
     "path": "/call-center/customers/:customerId/statement-share-link",
   },
   {
@@ -2278,9 +2296,21 @@ exports[`API contract lock freezes public route methods and paths 1`] = `
   },
   {
     "file": "src/public-api/public-api.controller.ts",
-    "handler": "requestOtp",
+    "handler": "e",
     "method": "POST",
     "path": "/public/customer-auth/request-otp",
+  },
+  {
+    "file": "src/public-api/public-api.controller.ts",
+    "handler": "e",
+    "method": "POST",
+    "path": "/public/customer-portal/pay-balance",
+  },
+  {
+    "file": "src/public-api/public-api.controller.ts",
+    "handler": "e",
+    "method": "POST",
+    "path": "/public/customer-portal/payment-link",
   },
   {
     "file": "src/feedback/public-feedback.controller.ts",
@@ -2290,7 +2320,7 @@ exports[`API contract lock freezes public route methods and paths 1`] = `
   },
   {
     "file": "src/public-api/public-api.controller.ts",
-    "handler": "createOrderRequest",
+    "handler": "e",
     "method": "POST",
     "path": "/public/orders/request",
   },

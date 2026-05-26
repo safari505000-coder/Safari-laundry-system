@@ -18,7 +18,6 @@ type OrderRow = {
   status: OrderStatus;
   cashStatus: CashStatus;
   posPaymentMethod: PosPaymentMethod;
-  totalPrice: Prisma.Decimal;
   invoiceNumber: string | null;
   serialNumber: string | null;
   createdAt: Date;
@@ -87,15 +86,15 @@ function filterOpenOrderIds(
     const order = ordersById.get(orderId);
     if (!order) return false;
     const remaining =
-      remainingByOrder.get(orderId) ??
-      new Prisma.Decimal(order.totalPrice.toString());
+      remainingByOrder.get(orderId) ?? new Prisma.Decimal(0);
     if (remaining.greaterThan(tolerance)) {
       return true;
     }
+    // Pre-journal pending orders may not appear in the remaining map yet.
     return (
       order.status === OrderStatus.PENDING &&
       order.cashStatus === CashStatus.UNPAID &&
-      new Prisma.Decimal(order.totalPrice.toString()).greaterThan(tolerance)
+      !remainingByOrder.has(orderId)
     );
   });
 }
@@ -122,7 +121,6 @@ export async function listPayableOrdersForCustomer(
       status: true,
       cashStatus: true,
       posPaymentMethod: true,
-      totalPrice: true,
       invoiceNumber: true,
       serialNumber: true,
       createdAt: true,
@@ -155,7 +153,6 @@ export async function listPayableOrdersForCustomer(
         status: true,
         cashStatus: true,
         posPaymentMethod: true,
-        totalPrice: true,
         invoiceNumber: true,
         serialNumber: true,
         createdAt: true,
