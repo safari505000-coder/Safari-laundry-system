@@ -1242,6 +1242,12 @@ exports[`API contract lock freezes public route methods and paths 1`] = `
     "file": "src/public-api/public-api.controller.ts",
     "handler": "e",
     "method": "GET",
+    "path": "/public/customer-order-requests",
+  },
+  {
+    "file": "src/public-api/public-api.controller.ts",
+    "handler": "e",
+    "method": "GET",
     "path": "/public/customer-portal",
   },
   {
@@ -1669,6 +1675,12 @@ exports[`API contract lock freezes public route methods and paths 1`] = `
     "handler": "updateAdHoc",
     "method": "PATCH",
     "path": "/payroll/adhoc-lines/:id",
+  },
+  {
+    "file": "src/public-api/public-api.controller.ts",
+    "handler": "updateCustomerProfile",
+    "method": "PATCH",
+    "path": "/public/customer/profile",
   },
   {
     "file": "src/subscription-plans/subscription-plans.controller.ts",
