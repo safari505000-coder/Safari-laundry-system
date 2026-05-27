@@ -16,7 +16,7 @@ import {
   type PosCustomerRow,
 } from '@/api/pos';
 import { useAuth } from '@/auth/auth-context';
-import { MutedText } from '@/components/ui';
+import { MutedText, SurfaceCard } from '@/components/ui';
 import { formatKwdLabel } from '@/lib/kwd';
 import { brand } from '@/theme/brand';
 
@@ -111,23 +111,25 @@ export function PosCustomerBar({
 
   if (selected) {
     return (
-      <View style={styles.selectedBox}>
-        <View style={styles.selectedMeta}>
-          <Text style={styles.selectedName}>
-            {selected.displayName?.trim() || selected.phone}
-          </Text>
-          <Text style={styles.selectedPhone}>{selected.phone}</Text>
-          {billing ? (
-            <MutedText>
-              رصيد: {formatKwdLabel(billing.remainingBalance)} · دين:{' '}
-              {formatKwdLabel(billing.debt)}
-            </MutedText>
-          ) : null}
+      <SurfaceCard>
+        <View style={styles.selectedBox}>
+          <View style={styles.selectedMeta}>
+            <Text style={styles.selectedName}>
+              {selected.displayName?.trim() || selected.phone}
+            </Text>
+            <Text style={styles.selectedPhone}>{selected.phone}</Text>
+            {billing ? (
+              <MutedText>
+                رصيد: {formatKwdLabel(billing.remainingBalance)} · دين:{' '}
+                {formatKwdLabel(billing.debt)}
+              </MutedText>
+            ) : null}
+          </View>
+          <Pressable onPress={() => onSelect(null)}>
+            <Text style={styles.change}>تغيير</Text>
+          </Pressable>
         </View>
-        <Pressable onPress={() => onSelect(null)}>
-          <Text style={styles.change}>تغيير</Text>
-        </Pressable>
-      </View>
+      </SurfaceCard>
     );
   }
 
@@ -209,10 +211,10 @@ export function PosCustomerBar({
 const styles = StyleSheet.create({
   wrap: { gap: 8 },
   input: {
-    backgroundColor: brand.colors.white,
-    borderRadius: 12,
+    backgroundColor: brand.colors.surface,
+    borderRadius: brand.radius.md,
     borderWidth: 1,
-    borderColor: '#D8D8E6',
+    borderColor: brand.colors.border,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 15,
@@ -220,38 +222,35 @@ const styles = StyleSheet.create({
   },
   hits: { maxHeight: 140 },
   hitRow: {
-    backgroundColor: brand.colors.white,
-    borderRadius: 10,
+    backgroundColor: brand.colors.surface,
+    borderRadius: brand.radius.md,
     padding: 10,
     marginBottom: 6,
     alignItems: 'flex-end',
   },
-  hitName: { fontWeight: '700', color: brand.colors.text },
+  hitName: { fontWeight: '900', color: brand.colors.text },
   hitPhone: { color: brand.colors.textMuted, fontSize: 13 },
   newToggle: {
     textAlign: 'right',
     color: brand.colors.primaryBlue,
-    fontWeight: '600',
+    fontWeight: '800',
   },
   newBox: { gap: 8 },
   createBtn: {
     backgroundColor: brand.colors.primaryBlue,
-    borderRadius: 10,
+    borderRadius: brand.radius.md,
     paddingVertical: 10,
     alignItems: 'center',
   },
-  createBtnText: { color: brand.colors.white, fontWeight: '600' },
+  createBtnText: { color: brand.colors.white, fontWeight: '800' },
   selectedBox: {
     flexDirection: 'row-reverse',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: brand.colors.white,
-    borderRadius: 12,
-    padding: 12,
     gap: 8,
   },
   selectedMeta: { flex: 1, alignItems: 'flex-end', gap: 2 },
-  selectedName: { fontSize: 16, fontWeight: '700', color: brand.colors.text },
+  selectedName: { fontSize: 16, fontWeight: '900', color: brand.colors.text },
   selectedPhone: { fontSize: 13, color: brand.colors.textMuted },
-  change: { color: brand.colors.primaryBlue, fontWeight: '600' },
+  change: { color: brand.colors.primaryBlue, fontWeight: '800' },
 });

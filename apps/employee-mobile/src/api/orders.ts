@@ -1,6 +1,11 @@
 import type {
+  CreateExpenseRequest,
+  DebtTransferRow,
   DriverCashCustodySummary,
+  DriverCashReceiptRow,
+  DriverExpenseRow,
   DriverPendingInvoicesResponse,
+  IssuedInvoicesReport,
   OrderDetailRow,
   QuickCreateOrderRequest,
   QuickCreateOrderResponse,
@@ -55,10 +60,76 @@ export function fetchOrderById(
   });
 }
 
+function todayKuwaitRange(): { from: string; to: string } {
+  const now = new Date(Date.now() + 3 * 60 * 60 * 1000);
+  const y = now.getUTCFullYear();
+  const m = String(now.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(now.getUTCDate()).padStart(2, '0');
+  const day = `${y}-${m}-${d}`;
+  return { from: `${day}T00:00:00.000Z`, to: `${day}T23:59:59.999Z` };
+}
+
+export function fetchMyDailySales(
+  token: string,
+  driverId: string,
+): Promise<IssuedInvoicesReport> {
+  const { from, to } = todayKuwaitRange();
+  const qs = new URLSearchParams({ from, to, driverId });
+  return apiJson<IssuedInvoicesReport>(`/reports/driver/my-issued-invoices?${qs}`, {
+    token,
+  });
+}
+
+export function fetchMyCashReceipts(token: string): Promise<DriverCashReceiptRow[]> {
+  return apiJson<DriverCashReceiptRow[]>('/manager-custody/driver/mine', { token });
+}
+
+export function fetchMyExpenses(token: string): Promise<DriverExpenseRow[]> {
+  const { from, to } = todayKuwaitRange();
+  const qs = new URLSearchParams({ from, to });
+  return apiJson<DriverExpenseRow[]>(`/expenses/driver/mine?${qs}`, { token });
+}
+
+export function createMyExpense(
+  token: string,
+  payload: CreateExpenseRequest,
+): Promise<DriverExpenseRow> {
+  return apiJson<DriverExpenseRow>('/expenses', {
+    method: 'POST',
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
+export function fetchMyDebtTransfers(token: string): Promise<{ rows: DebtTransferRow[] }> {
+  return apiJson<{ rows: DebtTransferRow[] }>('/debt-transfers/mine', { token });
+}
+
+export function signDebtTransfer(
+  token: string,
+  transferId: string,
+  side: 'source' | 'target',
+): Promise<DebtTransferRow> {
+  return apiJson<DebtTransferRow>(`/debt-transfers/${transferId}/sign/${side}`, {
+    method: 'POST',
+    token,
+    body: '{}',
+  });
+}
+
 export type {
+  CreateExpenseRequest,
+  DebtTransferRow,
   DriverCashCustodySummary,
+  DriverCashReceiptRow,
+  DriverExpenseRow,
   DriverPendingInvoiceRow,
   DriverPendingInvoicesResponse,
+  ExpenseCategory,
+  ExpenseMethod,
+  ExpenseStatus,
+  IssuedInvoiceReportRow,
+  IssuedInvoicesReport,
   OrderDetailRow,
   QuickCreateOrderRequest,
   QuickCreateOrderResponse,

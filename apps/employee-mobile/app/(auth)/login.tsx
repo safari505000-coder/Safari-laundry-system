@@ -56,12 +56,16 @@ export default function LoginScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.flex}
       >
+        <View style={styles.brandMark}>
+          <Text style={styles.brandInitial}>S</Text>
+        </View>
         <View style={styles.header}>
           <Title>{brand.nameAr}</Title>
-          <Subtitle>تسجيل دخول الموظفين — نفس حساب نظام الويب</Subtitle>
+          <Subtitle>بوابة الموظفين — نفس حساب نظام SAFARI ERP</Subtitle>
         </View>
 
         <Card>
+          <Text style={styles.cardEyebrow}>Staff Access</Text>
           <Text style={styles.label}>اسم المستخدم</Text>
           <TextInput
             value={username}
@@ -110,22 +114,44 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: brand.colors.grayBackground,
   },
-  header: { gap: 8 },
+  brandMark: {
+    alignSelf: 'flex-end',
+    width: 54,
+    height: 54,
+    borderRadius: 18,
+    backgroundColor: brand.colors.primaryBlue,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  brandInitial: {
+    color: brand.colors.white,
+    fontSize: 26,
+    fontWeight: '900',
+  },
+  header: { gap: 8, alignItems: 'flex-end' },
+  cardEyebrow: {
+    color: brand.colors.primaryBlue,
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    textAlign: 'right',
+  },
   label: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '800',
     color: brand.colors.text,
     textAlign: 'right',
   },
   input: {
     borderWidth: 1,
-    borderColor: '#D8D8E6',
-    borderRadius: 12,
+    borderColor: brand.colors.border,
+    borderRadius: brand.radius.md,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 16,
     color: brand.colors.text,
-    backgroundColor: brand.colors.white,
+    backgroundColor: brand.colors.surfaceMuted,
   },
   error: {
     color: brand.colors.danger,

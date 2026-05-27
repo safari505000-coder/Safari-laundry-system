@@ -1,6 +1,6 @@
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { DriverOversightCard } from '@/api/manager-types';
-import { MutedText } from '@/components/ui';
+import { MutedText, StatusPill } from '@/components/ui';
 import { formatKwdLabel } from '@/lib/kwd';
 import { brand } from '@/theme/brand';
 
@@ -23,11 +23,10 @@ export function OversightCard({
           <MutedText>@{row.username}</MutedText>
           {row.branch ? <MutedText>{row.branch.name}</MutedText> : null}
         </View>
-        <View style={[styles.badge, styles[`badge_${tone}`]]}>
-          <Text style={styles.badgeText}>
-            {onShift ? 'على الوردية' : 'خارج الوردية'}
-          </Text>
-        </View>
+        <StatusPill
+          label={onShift ? 'على الوردية' : 'خارج الوردية'}
+          tone={row.atRisk ? 'cancelled' : onShift ? 'completed' : 'neutral'}
+        />
       </View>
 
       <View style={styles.stats}>
@@ -44,7 +43,7 @@ export function OversightCard({
       ) : null}
 
       {row.atRisk ? (
-        <Text style={styles.riskLabel}>⚠ سائق بحاجة متابعة</Text>
+        <Text style={styles.riskLabel}>سائق بحاجة متابعة</Text>
       ) : null}
 
       {row.phone ? (
@@ -80,19 +79,19 @@ function Stat({
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 14,
+    borderRadius: brand.radius.lg,
     padding: 12,
     gap: 10,
     borderWidth: 1,
     overflow: 'hidden',
   },
   card_active: {
-    backgroundColor: brand.colors.white,
+    backgroundColor: brand.colors.surface,
     borderColor: '#A7F3D0',
   },
   card_idle: {
-    backgroundColor: '#F4F4F5',
-    borderColor: '#E4E4E7',
+    backgroundColor: brand.colors.surfaceMuted,
+    borderColor: brand.colors.border,
   },
   card_risk: {
     backgroundColor: '#FFF1F2',
@@ -105,7 +104,7 @@ const styles = StyleSheet.create({
     right: 0,
     height: 3,
   },
-  accent_active: { backgroundColor: brand.colors.success },
+  accent_active: { backgroundColor: brand.colors.primaryBlue },
   accent_idle: { backgroundColor: '#A1A1AA' },
   accent_risk: { backgroundColor: brand.colors.danger },
   header: {
@@ -117,22 +116,9 @@ const styles = StyleSheet.create({
   meta: { flex: 1, alignItems: 'flex-end', gap: 2 },
   name: {
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '900',
     color: brand.colors.text,
     textAlign: 'right',
-  },
-  badge: {
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  badge_active: { backgroundColor: '#D1FAE5' },
-  badge_idle: { backgroundColor: '#E4E4E7' },
-  badge_risk: { backgroundColor: '#FECDD3' },
-  badgeText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: brand.colors.text,
   },
   stats: {
     flexDirection: 'row-reverse',
@@ -143,7 +129,7 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: '30%',
     backgroundColor: 'rgba(255,255,255,0.7)',
-    borderRadius: 10,
+    borderRadius: brand.radius.sm,
     padding: 8,
     alignItems: 'flex-end',
     gap: 2,
@@ -154,7 +140,7 @@ const styles = StyleSheet.create({
   },
   statValue: {
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '900',
     color: brand.colors.text,
   },
   statHighlight: {
@@ -167,7 +153,7 @@ const styles = StyleSheet.create({
   },
   riskLabel: {
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '800',
     color: brand.colors.danger,
     textAlign: 'right',
   },

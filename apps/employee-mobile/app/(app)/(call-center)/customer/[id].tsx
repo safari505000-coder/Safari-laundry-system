@@ -18,7 +18,14 @@ import {
 import type { CustomerCollectionDebtBreakdown } from '@/api/call-center';
 import { useAuth } from '@/auth/auth-context';
 import { CcChrome } from '@/components/call-center/cc-chrome';
-import { MutedText, PrimaryButton, Subtitle, Title } from '@/components/ui';
+import {
+  MutedText,
+  PrimaryButton,
+  SectionHeader,
+  StatTile,
+  SurfaceCard,
+  Title,
+} from '@/components/ui';
 import { formatKwdLabel } from '@/lib/kwd';
 import { brand } from '@/theme/brand';
 
@@ -113,22 +120,26 @@ export default function CallCenterCustomerScreen() {
         </Pressable>
 
         {loading ? (
-          <ActivityIndicator color={brand.colors.darkBlue} size="large" />
+          <ActivityIndicator color={brand.colors.primaryBlue} size="large" />
         ) : error ? (
           <Text style={styles.error}>{error}</Text>
         ) : breakdown ? (
           <>
-            <Title>{breakdown.customerName}</Title>
-            <Pressable
-              onPress={() =>
-                void Linking.openURL(`tel:${breakdown.customerPhone}`)
-              }
-            >
-              <Text style={styles.phone}>{breakdown.customerPhone}</Text>
-            </Pressable>
-            <Text style={styles.total}>
-              إجمالي المديونية: {formatKwdLabel(breakdown.totalDebtKd)}
-            </Text>
+            <SectionHeader
+              eyebrow="Customer Ledger"
+              title={breakdown.customerName}
+              subtitle="ملف التحصيل وروابط الدفع"
+            />
+            <SurfaceCard>
+              <Title>{formatKwdLabel(breakdown.totalDebtKd)}</Title>
+              <Pressable
+                onPress={() =>
+                  void Linking.openURL(`tel:${breakdown.customerPhone}`)
+                }
+              >
+                <Text style={styles.phone}>{breakdown.customerPhone}</Text>
+              </Pressable>
+            </SurfaceCard>
 
             <PrimaryButton
               label={
@@ -138,9 +149,13 @@ export default function CallCenterCustomerScreen() {
               disabled={busy !== null || Number(breakdown.totalDebtKd) <= 0}
             />
 
-            <Subtitle>فواتير مفتوحة</Subtitle>
+            <StatTile
+              label="فواتير مفتوحة"
+              value={String(breakdown.lines.length)}
+              tone={breakdown.lines.length > 0 ? 'warning' : 'completed'}
+            />
             {breakdown.lines.map((line) => (
-              <View key={line.orderId} style={styles.lineCard}>
+              <SurfaceCard key={line.orderId}>
                 <Text style={styles.lineId}>{line.readableId}</Text>
                 <Text style={styles.lineAmount}>
                   {formatKwdLabel(line.amountKd)}
@@ -153,7 +168,7 @@ export default function CallCenterCustomerScreen() {
                   onPress={() => void handleOrderLink(line.orderId)}
                   disabled={busy !== null}
                 />
-              </View>
+              </SurfaceCard>
             ))}
           </>
         ) : null}
@@ -175,29 +190,15 @@ const styles = StyleSheet.create({
     color: brand.colors.primaryBlue,
     textAlign: 'right',
   },
-  total: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: brand.colors.text,
-    textAlign: 'right',
-  },
-  lineCard: {
-    backgroundColor: brand.colors.white,
-    borderRadius: 12,
-    padding: 12,
-    gap: 8,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
   lineId: {
-    fontWeight: '700',
+    fontWeight: '900',
     textAlign: 'right',
     color: brand.colors.text,
   },
   lineAmount: {
     textAlign: 'right',
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: '900',
   },
   error: { color: brand.colors.danger, textAlign: 'right' },
 });

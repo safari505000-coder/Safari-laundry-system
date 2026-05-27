@@ -4,32 +4,28 @@ import type {
   DriverDispatchSeverity,
   DriverDispatchTask,
 } from '@/api/dispatch';
-import { PrimaryButton } from '@/components/ui';
+import { PrimaryButton, StatusPill } from '@/components/ui';
 import { brand } from '@/theme/brand';
 
 const severityStyle: Record<
   DriverDispatchSeverity,
-  { bg: string; text: string; label: string }
+  { label: string; tone: 'completed' | 'warning' | 'cancelled' | 'neutral' }
 > = {
   ON_TIME: {
-    bg: '#DCFCE7',
-    text: '#166534',
     label: 'في الوقت',
+    tone: 'completed',
   },
   LATE: {
-    bg: '#FEF3C7',
-    text: '#92400E',
     label: 'متأخر',
+    tone: 'warning',
   },
   CRITICAL: {
-    bg: '#FEE2E2',
-    text: '#991B1B',
     label: 'حرج',
+    tone: 'cancelled',
   },
   COMPLETED: {
-    bg: '#F1F5F9',
-    text: '#475569',
     label: 'مكتمل',
+    tone: 'neutral',
   },
 };
 
@@ -63,13 +59,7 @@ export function TaskCard({
   return (
     <View style={styles.card}>
       <View style={styles.header}>
-        <View
-          style={[styles.badge, { backgroundColor: severity.bg }]}
-        >
-          <Text style={[styles.badgeText, { color: severity.text }]}>
-            {severity.label}
-          </Text>
-        </View>
+        <StatusPill label={severity.label} tone={severity.tone} />
         <View style={styles.meta}>
           <Text style={styles.customer}>{task.customerDisplay}</Text>
           {task.customerPhone ? (
@@ -88,9 +78,7 @@ export function TaskCard({
       </View>
 
       {task.status === 'ASSIGNED' ? (
-        <View style={styles.newBanner}>
-          <Text style={styles.newBannerText}>مهمة جديدة</Text>
-        </View>
+          <StatusPill label="مهمة جديدة" tone="cancelled" />
       ) : null}
 
       <View style={styles.footer}>
@@ -136,12 +124,12 @@ export function TaskCard({
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: brand.colors.white,
-    borderRadius: 16,
+    backgroundColor: brand.colors.surface,
+    borderRadius: brand.radius.xl,
     padding: 16,
     gap: 12,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: brand.colors.border,
   },
   header: {
     flexDirection: 'row-reverse',
@@ -156,7 +144,7 @@ const styles = StyleSheet.create({
   },
   customer: {
     fontSize: 17,
-    fontWeight: '700',
+    fontWeight: '900',
     color: brand.colors.text,
     textAlign: 'right',
   },
@@ -171,27 +159,6 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     lineHeight: 20,
   },
-  badge: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  badgeText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  newBanner: {
-    alignSelf: 'flex-end',
-    backgroundColor: brand.colors.danger,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  newBannerText: {
-    color: brand.colors.white,
-    fontSize: 13,
-    fontWeight: '700',
-  },
   footer: {
     flexDirection: 'row-reverse',
     justifyContent: 'space-between',
@@ -202,8 +169,8 @@ const styles = StyleSheet.create({
     color: brand.colors.textMuted,
   },
   noteBox: {
-    backgroundColor: brand.colors.grayBackground,
-    borderRadius: 12,
+    backgroundColor: brand.colors.surfaceMuted,
+    borderRadius: brand.radius.md,
     padding: 12,
   },
   note: {
@@ -214,14 +181,14 @@ const styles = StyleSheet.create({
   },
   gpsBlock: {
     gap: 8,
-    backgroundColor: '#FEF3C7',
-    borderRadius: 12,
+    backgroundColor: brand.colors.warningSoft,
+    borderRadius: brand.radius.md,
     padding: 12,
   },
   gpsBlockText: {
     textAlign: 'right',
     color: '#92400E',
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '800',
   },
 });

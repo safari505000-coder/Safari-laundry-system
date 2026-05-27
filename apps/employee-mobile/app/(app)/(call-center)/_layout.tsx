@@ -1,7 +1,8 @@
 import { Redirect, Tabs } from 'expo-router';
 import { useAuth } from '@/auth/auth-context';
 import { resolveMobileAppRole } from '@/auth/roles';
-import { brand } from '@/theme/brand';
+import { ErpBottomTabBar } from '@/components/erp-tab-bar';
+import { erpTabScreenOptions } from '@/components/ui';
 
 export default function CallCenterLayout() {
   const { user } = useAuth();
@@ -11,12 +12,8 @@ export default function CallCenterLayout() {
 
   return (
     <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: brand.colors.darkBlue,
-        tabBarInactiveTintColor: brand.colors.textMuted,
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
-      }}
+      screenOptions={erpTabScreenOptions}
+      tabBar={(props) => <ErpBottomTabBar {...props} />}
     >
       <Tabs.Screen name="index" options={{ title: 'بحث' }} />
       <Tabs.Screen name="collections" options={{ title: 'تحصيل' }} />

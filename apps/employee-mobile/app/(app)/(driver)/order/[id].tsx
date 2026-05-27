@@ -10,7 +10,7 @@ import {
 import { fetchOrderById, type OrderDetailRow } from '@/api/orders';
 import { useAuth } from '@/auth/auth-context';
 import { DriverChrome } from '@/components/driver/driver-chrome';
-import { MutedText } from '@/components/ui';
+import { MutedText, SectionHeader, SurfaceCard } from '@/components/ui';
 import { formatKwdLabel } from '@/lib/kwd';
 import { brand } from '@/theme/brand';
 
@@ -47,7 +47,7 @@ export default function DriverOrderDetailScreen() {
   }, [load]);
 
   const label =
-    order?.serialNumber ?? order?.invoiceNumber ?? order?.id.slice(0, 8);
+    order?.serialNumber ?? order?.invoiceNumber ?? order?.id.slice(0, 8) ?? 'فاتورة';
 
   return (
     <DriverChrome title="تفاصيل الفاتورة">
@@ -56,22 +56,28 @@ export default function DriverOrderDetailScreen() {
       ) : error ? (
         <Text style={styles.error}>{error}</Text>
       ) : order ? (
-        <ScrollView contentContainerStyle={styles.card}>
-          <Text style={styles.title}>{label}</Text>
-          <Text style={styles.amount}>
-            {formatKwdLabel(String(order.totalPrice))}
-          </Text>
-          <Row label="الحالة" value={order.status} />
-          <Row label="التحصيل" value={order.cashStatus} />
-          <Row label="الدفع" value={order.posPaymentMethod ?? '—'} />
-          <Row
-            label="العميل"
-            value={order.customer.displayName ?? order.customer.phone}
+        <ScrollView contentContainerStyle={styles.scroll}>
+          <SectionHeader
+            eyebrow="Invoice Detail"
+            title={label}
+            subtitle="تفاصيل الفاتورة من النظام"
           />
-          <Row label="الجوال" value={order.customer.phone} />
-          <Row label="العنوان" value={order.customer.address ?? '—'} />
-          {order.notes ? <Row label="ملاحظات" value={order.notes} /> : null}
-          <MutedText>المبلغ من السيرفر — بدون حساب محلي</MutedText>
+          <SurfaceCard>
+            <Text style={styles.amount}>
+              {formatKwdLabel(String(order.totalPrice))}
+            </Text>
+            <Row label="الحالة" value={order.status} />
+            <Row label="التحصيل" value={order.cashStatus} />
+            <Row label="الدفع" value={order.posPaymentMethod ?? '—'} />
+            <Row
+              label="العميل"
+              value={order.customer.displayName ?? order.customer.phone}
+            />
+            <Row label="الجوال" value={order.customer.phone} />
+            <Row label="العنوان" value={order.customer.address ?? '—'} />
+            {order.notes ? <Row label="ملاحظات" value={order.notes} /> : null}
+            <MutedText>المبلغ من السيرفر — بدون حساب محلي</MutedText>
+          </SurfaceCard>
         </ScrollView>
       ) : null}
     </DriverChrome>
@@ -88,22 +94,12 @@ function Row({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create({
-  card: {
-    backgroundColor: brand.colors.white,
-    borderRadius: 16,
-    padding: 16,
-    gap: 10,
-    alignItems: 'flex-end',
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: brand.colors.text,
-  },
+  scroll: { gap: 12, paddingBottom: 32 },
   amount: {
-    fontSize: 24,
-    fontWeight: '800',
+    fontSize: 28,
+    fontWeight: '900',
     color: brand.colors.primaryBlue,
+    textAlign: 'right',
   },
   row: { width: '100%', alignItems: 'flex-end', gap: 2 },
   rowLabel: { fontSize: 12, color: brand.colors.textMuted },

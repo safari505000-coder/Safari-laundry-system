@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { CcChrome } from '@/components/call-center/cc-chrome';
-import { MutedText } from '@/components/ui';
+import { MutedText, SectionHeader, SurfaceCard } from '@/components/ui';
 import { useCcCustomerSearch } from '@/hooks/use-cc-customer-search';
 import { formatKwdLabel } from '@/lib/kwd';
 import { brand } from '@/theme/brand';
@@ -22,6 +22,11 @@ export default function CallCenterSearchScreen() {
   return (
     <CcChrome title="بحث عميل">
       <View style={styles.wrap}>
+        <SectionHeader
+          eyebrow="Customer 360"
+          title="بحث العملاء"
+          subtitle="الوصول السريع لملف العميل والمديونية"
+        />
         <TextInput
           value={query}
           onChangeText={setQuery}
@@ -34,7 +39,7 @@ export default function CallCenterSearchScreen() {
         <MutedText>ابحث بالاسم أو رقم الجوال</MutedText>
 
         {loading ? (
-          <ActivityIndicator color={brand.colors.darkBlue} size="large" />
+          <ActivityIndicator color={brand.colors.primaryBlue} size="large" />
         ) : error ? (
           <Text style={styles.error}>{error}</Text>
         ) : queryTooShort ? (
@@ -49,16 +54,17 @@ export default function CallCenterSearchScreen() {
             }
             renderItem={({ item }) => (
               <Pressable
-                style={styles.card}
                 onPress={() =>
                   router.push(`/(app)/(call-center)/customer/${item.id}`)
                 }
               >
-                <Text style={styles.name}>{item.displayName}</Text>
-                <Text style={styles.phone}>{item.phone}</Text>
-                <Text style={styles.debt}>
-                  مديونية: {formatKwdLabel(item.totalDebtKd)}
-                </Text>
+                <SurfaceCard>
+                  <Text style={styles.name}>{item.displayName}</Text>
+                  <Text style={styles.phone}>{item.phone}</Text>
+                  <Text style={styles.debt}>
+                    مديونية: {formatKwdLabel(item.totalDebtKd)}
+                  </Text>
+                </SurfaceCard>
               </Pressable>
             )}
           />
@@ -71,27 +77,19 @@ export default function CallCenterSearchScreen() {
 const styles = StyleSheet.create({
   wrap: { flex: 1, gap: 10 },
   search: {
-    backgroundColor: brand.colors.white,
-    borderRadius: 12,
+    backgroundColor: brand.colors.surface,
+    borderRadius: brand.radius.md,
     borderWidth: 1,
-    borderColor: '#D8D8E6',
+    borderColor: brand.colors.border,
     paddingHorizontal: 14,
     paddingVertical: 10,
     fontSize: 15,
     color: brand.colors.text,
   },
   list: { gap: 10, paddingBottom: 24 },
-  card: {
-    backgroundColor: brand.colors.white,
-    borderRadius: 14,
-    padding: 14,
-    gap: 4,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
   name: {
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '900',
     color: brand.colors.text,
     textAlign: 'right',
   },

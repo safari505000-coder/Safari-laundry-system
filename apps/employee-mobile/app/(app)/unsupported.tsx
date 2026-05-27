@@ -2,8 +2,7 @@ import { router } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useAuth } from '@/auth/auth-context';
 import { roleLabelAr } from '@/auth/roles';
-import { Card, MutedText, PrimaryButton, Screen, Subtitle, Title } from '@/components/ui';
-import { brand } from '@/theme/brand';
+import { MutedText, PrimaryButton, Screen, Subtitle, SurfaceCard, Title } from '@/components/ui';
 
 export default function UnsupportedRoleScreen() {
   const { user, signOut } = useAuth();
@@ -11,7 +10,7 @@ export default function UnsupportedRoleScreen() {
   return (
     <Screen>
       <View style={styles.wrap}>
-        <Card>
+        <SurfaceCard>
           <Title>الدور غير مدعوم بعد</Title>
           <Subtitle>
             حسابك ({user ? roleLabelAr(user.safariRole) : '—'}) لم يُفعّل على
@@ -27,7 +26,7 @@ export default function UnsupportedRoleScreen() {
           <Pressable onPress={() => router.replace('/')}>
             <MutedText>العودة للرئيسية</MutedText>
           </Pressable>
-        </Card>
+        </SurfaceCard>
       </View>
     </Screen>
   );

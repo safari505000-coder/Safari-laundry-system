@@ -1,6 +1,7 @@
 import * as Linking from 'expo-linking';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { DriverPendingInvoiceRow } from '@/api/orders';
+import { StatusPill } from '@/components/ui';
 import { formatKwdLabel } from '@/lib/kwd';
 import { brand } from '@/theme/brand';
 
@@ -13,22 +14,16 @@ const PAYMENT_LABELS: Record<string, string> = {
   SUBSCRIPTION_WALLET: 'محفظة',
 };
 
-function badgeForRow(row: DriverPendingInvoiceRow): {
-  label: string;
-  bg: string;
-  text: string;
-} {
+function badgeForRow(row: DriverPendingInvoiceRow): { label: string; tone: 'pending' | 'cancelled' } {
   if (row.linkStatus === 'PENDING') {
     return {
       label: 'رابط دفع نشط',
-      bg: '#E0F2FE',
-      text: '#075985',
+      tone: 'pending',
     };
   }
   return {
     label: 'غير مدفوع',
-    bg: '#FEE2E2',
-    text: '#991B1B',
+    tone: 'cancelled',
   };
 }
 
@@ -41,11 +36,7 @@ export function PendingInvoiceCard({ row }: { row: DriverPendingInvoiceRow }) {
   return (
     <View style={styles.card}>
       <View style={styles.header}>
-        <View style={[styles.badge, { backgroundColor: badge.bg }]}>
-          <Text style={[styles.badgeText, { color: badge.text }]}>
-            {badge.label}
-          </Text>
-        </View>
+        <StatusPill label={badge.label} tone={badge.tone} />
         <Text style={styles.readableId}>{row.readableId}</Text>
       </View>
       <Text style={styles.customer}>{row.customerName}</Text>
@@ -68,12 +59,12 @@ export function PendingInvoiceCard({ row }: { row: DriverPendingInvoiceRow }) {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: brand.colors.white,
-    borderRadius: 14,
+    backgroundColor: brand.colors.surface,
+    borderRadius: brand.radius.lg,
     padding: 14,
     gap: 6,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: brand.colors.border,
   },
   header: {
     flexDirection: 'row-reverse',
@@ -86,15 +77,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: brand.colors.textMuted,
   },
-  badge: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  badgeText: { fontSize: 11, fontWeight: '700' },
   customer: {
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '900',
     color: brand.colors.text,
     textAlign: 'right',
   },
@@ -111,7 +96,7 @@ const styles = StyleSheet.create({
   },
   amount: {
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '900',
     color: brand.colors.text,
   },
   muted: {
@@ -122,8 +107,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: brand.colors.textMuted,
     textAlign: 'right',
-    backgroundColor: brand.colors.grayBackground,
-    borderRadius: 8,
+    backgroundColor: brand.colors.surfaceMuted,
+    borderRadius: brand.radius.sm,
     padding: 8,
   },
   date: {

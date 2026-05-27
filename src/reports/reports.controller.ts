@@ -52,6 +52,23 @@ export class ReportsController {
     );
   }
 
+  @Get('driver/my-issued-invoices')
+  @Roles(SafariRole.DRIVER)
+  @ApiOperation({
+    summary: `Driver — my issued invoices in period (${APP_BRAND})`,
+  })
+  driverIssuedInvoices(
+    @Query() q: ReportsRangeQueryDto,
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.reportsService.issuedInvoices(
+      q.from,
+      q.to,
+      user.userId,
+      q.posPaymentMethod,
+    );
+  }
+
   @Get('live-feed')
   @Roles(SafariRole.OWNER)
   @ApiOperation({

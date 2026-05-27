@@ -64,6 +64,8 @@ export type PosPaymentMethod =
 
 export type PosCheckoutLineItem = {
   label: string;
+  laundryPriceListItemId?: string;
+  posServiceKey?: PosServiceKey;
   quantity: number;
   unitPrice: number;
 };

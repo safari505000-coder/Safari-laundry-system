@@ -1,8 +1,9 @@
 import { Redirect, Tabs } from 'expo-router';
 import { useAuth } from '@/auth/auth-context';
 import { resolveMobileAppRole } from '@/auth/roles';
+import { ErpBottomTabBar } from '@/components/erp-tab-bar';
+import { erpTabScreenOptions } from '@/components/ui';
 import { DriverGpsProvider } from '@/device/driver-gps-context';
-import { brand } from '@/theme/brand';
 
 export default function DriverLayout() {
   const { user } = useAuth();
@@ -13,18 +14,15 @@ export default function DriverLayout() {
   return (
     <DriverGpsProvider>
       <Tabs
-        screenOptions={{
-          headerShown: false,
-          tabBarActiveTintColor: brand.colors.primaryBlue,
-          tabBarInactiveTintColor: brand.colors.textMuted,
-          tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
-        }}
+        screenOptions={erpTabScreenOptions}
+        tabBar={(props) => <ErpBottomTabBar {...props} />}
       >
         <Tabs.Screen name="tasks" options={{ title: 'مهامي' }} />
         <Tabs.Screen name="scan" options={{ title: 'مسح' }} />
         <Tabs.Screen name="pending-invoices" options={{ title: 'متابعة' }} />
         <Tabs.Screen name="deposits" options={{ title: 'عهدة' }} />
         <Tabs.Screen name="pos" options={{ title: 'POS' }} />
+        <Tabs.Screen name="more" options={{ title: 'المزيد' }} />
         <Tabs.Screen
           name="order/[id]"
           options={{ href: null, title: 'فاتورة' }}

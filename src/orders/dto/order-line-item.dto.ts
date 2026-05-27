@@ -3,6 +3,7 @@ import { StarchOption } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
   IsEnum,
+  IsIn,
   IsNumber,
   IsOptional,
   IsPositive,
@@ -18,6 +19,24 @@ export class OrderLineItemDto {
   @IsString()
   @MaxLength(200)
   label?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Canonical laundry price-list item id. POS checkout uses this to price the line server-side.',
+    example: '9b0a4c77-8cfe-4f8b-90f0-2b4e15a17ad2',
+  })
+  @IsOptional()
+  @IsUUID('4')
+  laundryPriceListItemId?: string;
+
+  @ApiPropertyOptional({
+    enum: ['NORMAL', 'URGENT', 'PRESS_ONLY', 'URGENT_PRESS'],
+    description:
+      'Laundry service tier. POS checkout uses this with laundryPriceListItemId to pick the server price.',
+  })
+  @IsOptional()
+  @IsIn(['NORMAL', 'URGENT', 'PRESS_ONLY', 'URGENT_PRESS'])
+  posServiceKey?: 'NORMAL' | 'URGENT' | 'PRESS_ONLY' | 'URGENT_PRESS';
 
   @ApiProperty({ example: 2 })
   @Type(() => Number)

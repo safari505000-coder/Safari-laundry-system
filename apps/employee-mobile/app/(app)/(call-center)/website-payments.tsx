@@ -16,7 +16,7 @@ import {
 } from '@/api/call-center';
 import { useAuth } from '@/auth/auth-context';
 import { CcChrome } from '@/components/call-center/cc-chrome';
-import { MutedText } from '@/components/ui';
+import { MutedText, SectionHeader } from '@/components/ui';
 import { formatKwdLabel } from '@/lib/kwd';
 import { brand } from '@/theme/brand';
 
@@ -63,6 +63,11 @@ export default function WebsitePaymentsScreen() {
   return (
     <CcChrome title="مدفوعات الموقع">
       <View style={styles.wrap}>
+        <SectionHeader
+          eyebrow="Online Payments"
+          title="مدفوعات الموقع"
+          subtitle="مراجعة الروابط المفتوحة والمدفوعة"
+        />
         <View style={styles.filters}>
           {FILTERS.map((tab) => (
             <Pressable
@@ -83,7 +88,7 @@ export default function WebsitePaymentsScreen() {
         </View>
 
         {loading && rows.length === 0 ? (
-          <ActivityIndicator color={brand.colors.darkBlue} />
+          <ActivityIndicator color={brand.colors.primaryBlue} />
         ) : error && rows.length === 0 ? (
           <Text style={styles.error}>{error}</Text>
         ) : (
@@ -142,9 +147,9 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    backgroundColor: brand.colors.white,
+    backgroundColor: brand.colors.surface,
     borderWidth: 1,
-    borderColor: '#D8D8E6',
+    borderColor: brand.colors.border,
   },
   chipActive: {
     backgroundColor: brand.colors.darkBlue,
@@ -154,16 +159,16 @@ const styles = StyleSheet.create({
   chipTextActive: { color: brand.colors.white, fontWeight: '700' },
   list: { gap: 10, paddingBottom: 24 },
   card: {
-    backgroundColor: brand.colors.white,
-    borderRadius: 14,
+    backgroundColor: brand.colors.surface,
+    borderRadius: brand.radius.lg,
     padding: 12,
     gap: 6,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: brand.colors.border,
   },
   name: {
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '900',
     textAlign: 'right',
     color: brand.colors.text,
   },
@@ -174,7 +179,7 @@ const styles = StyleSheet.create({
   },
   amount: {
     textAlign: 'right',
-    fontWeight: '600',
+    fontWeight: '800',
     color: brand.colors.text,
   },
   link: {

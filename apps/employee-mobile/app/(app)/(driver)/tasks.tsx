@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { TaskCard } from '@/components/driver/task-card';
 import { DriverChrome } from '@/components/driver/driver-chrome';
-import { MutedText, PrimaryButton } from '@/components/ui';
+import { MutedText, PrimaryButton, SectionHeader, StatusPill, SurfaceCard } from '@/components/ui';
 import { useDriverGpsContext } from '@/device/driver-gps-context';
 import { useDriverTasks } from '@/hooks/use-driver-tasks';
 import { brand } from '@/theme/brand';
@@ -47,7 +47,7 @@ export default function DriverTasksScreen() {
     <DriverChrome title="مهامي">
       <View style={styles.wrap}>
         {gpsBlocked ? (
-          <View style={styles.gpsBanner}>
+          <SurfaceCard>
             <Text style={styles.gpsBannerText}>
               الموقع إلزامي لمهام الميدان
             </Text>
@@ -55,7 +55,7 @@ export default function DriverTasksScreen() {
               label="تفعيل الموقع"
               onPress={() => void gps.requestPermission()}
             />
-          </View>
+          </SurfaceCard>
         ) : gps.lastUploadedAt ? (
           <MutedText>
             GPS — آخر رفع: {formatRelativeUpdate(gps.lastUploadedAt)}
@@ -64,7 +64,11 @@ export default function DriverTasksScreen() {
 
         <View style={styles.statusBar}>
           <View style={styles.statusMeta}>
-            <Text style={styles.statusTitle}>Dispatch — تحديث كل 10 ثوانٍ</Text>
+            <SectionHeader
+              eyebrow="Dispatch"
+              title="متابعة المهام"
+              subtitle="تحديث تلقائي كل 10 ثوانٍ"
+            />
             {lastUpdatedIso ? (
               <MutedText>
                 آخر تحديث: {formatRelativeUpdate(lastUpdatedIso)}
@@ -72,9 +76,7 @@ export default function DriverTasksScreen() {
             ) : null}
           </View>
           {hasAssignedAlert ? (
-            <View style={styles.alertPill}>
-              <Text style={styles.alertText}>مهمة جديدة</Text>
-            </View>
+            <StatusPill label="مهمة جديدة" tone="cancelled" />
           ) : null}
         </View>
 
@@ -102,12 +104,12 @@ export default function DriverTasksScreen() {
               />
             }
             ListEmptyComponent={
-              <View style={styles.empty}>
+          <SurfaceCard>
                 <Text style={styles.emptyTitle}>لا توجد مهام حالياً</Text>
                 <MutedText>
                   ستظهر هنا المهام المسندة لك من الكول سنتر تلقائياً.
                 </MutedText>
-              </View>
+          </SurfaceCard>
             }
             renderItem={({ item }) => (
               <TaskCard
@@ -138,16 +140,10 @@ export default function DriverTasksScreen() {
 
 const styles = StyleSheet.create({
   wrap: { flex: 1, gap: 12 },
-  gpsBanner: {
-    backgroundColor: '#FEF3C7',
-    borderRadius: 12,
-    padding: 12,
-    gap: 8,
-  },
   gpsBannerText: {
     textAlign: 'right',
     color: '#92400E',
-    fontWeight: '600',
+    fontWeight: '800',
     fontSize: 14,
   },
   statusBar: {
@@ -163,17 +159,6 @@ const styles = StyleSheet.create({
     color: brand.colors.text,
     textAlign: 'right',
   },
-  alertPill: {
-    backgroundColor: brand.colors.danger,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  alertText: {
-    color: brand.colors.white,
-    fontSize: 12,
-    fontWeight: '700',
-  },
   list: {
     gap: 12,
     paddingBottom: 24,
@@ -188,20 +173,11 @@ const styles = StyleSheet.create({
     color: brand.colors.textMuted,
     fontSize: 14,
   },
-  empty: {
-    borderRadius: 16,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: '#CBD5E1',
-    backgroundColor: brand.colors.white,
-    padding: 24,
-    alignItems: 'center',
-    gap: 8,
-  },
   emptyTitle: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '900',
     color: brand.colors.text,
+    textAlign: 'right',
   },
   errorBox: {
     flex: 1,

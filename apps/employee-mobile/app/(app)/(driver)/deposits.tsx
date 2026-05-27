@@ -17,7 +17,16 @@ import {
   writeHandoverFlag,
 } from '@/auth/handover-flag';
 import { DriverChrome } from '@/components/driver/driver-chrome';
-import { MutedText, PrimaryButton, Subtitle, Title } from '@/components/ui';
+import {
+  MutedText,
+  PrimaryButton,
+  SectionHeader,
+  StatTile,
+  StatusPill as ErpStatusPill,
+  Subtitle,
+  SurfaceCard,
+  Title,
+} from '@/components/ui';
 import { formatKwdLabel } from '@/lib/kwd';
 import { brand } from '@/theme/brand';
 
@@ -92,6 +101,11 @@ export default function DriverDepositsScreen() {
           />
         }
       >
+        <SectionHeader
+          eyebrow="Cash Handover"
+          title="عهدتي النقدية"
+          subtitle="رصيد النقد المطلوب تسليمه للمدير"
+        />
         <View style={styles.alert}>
           <Text style={styles.alertText}>
             العهدة = نقد فقط. سلّم المبلغ للمدير — هو يؤكد الاستلام من
@@ -107,23 +121,24 @@ export default function DriverDepositsScreen() {
           </View>
         ) : (
           <>
-            <View style={styles.tile}>
-              <Text style={styles.tileLabel}>نقد — PAID_TO_DRIVER</Text>
-              <Text style={styles.tileValue}>
-                {formatKwdLabel(cashTotalKd)}
-              </Text>
-              <MutedText>{cashOrderCount} فاتورة</MutedText>
-            </View>
+            <StatTile
+              label="نقد — PAID_TO_DRIVER"
+              value={formatKwdLabel(cashTotalKd)}
+              sub={`${cashOrderCount} فاتورة`}
+              tone="warning"
+            />
 
-            <View style={styles.grandRow}>
-              <View style={styles.grandMeta}>
-                <Text style={styles.grandLabel}>الإجمالي المطلوب تسليمه</Text>
-                <Text style={styles.grandValue}>
-                  {formatKwdLabel(grandTotalKd)}
-                </Text>
+            <SurfaceCard>
+              <View style={styles.grandRow}>
+                <View style={styles.grandMeta}>
+                  <Text style={styles.grandLabel}>الإجمالي المطلوب تسليمه</Text>
+                  <Text style={styles.grandValue}>
+                    {formatKwdLabel(grandTotalKd)}
+                  </Text>
+                </View>
+                <StatusPill status={status} />
               </View>
-              <StatusPill status={status} />
-            </View>
+            </SurfaceCard>
 
             <PrimaryButton
               label="أبلغ المدير — جاهز للتسليم"
@@ -140,7 +155,7 @@ export default function DriverDepositsScreen() {
 
       <Modal visible={modalOpen} transparent animationType="fade">
         <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
+          <SurfaceCard>
             <Title>تأكيد التسليم</Title>
             <Subtitle>
               أنت على وشك إبلاغ المدير أن النقد جاهز للاستلام.
@@ -161,7 +176,7 @@ export default function DriverDepositsScreen() {
                 <Text style={styles.okText}>تأكيد</Text>
               </Pressable>
             </View>
-          </View>
+          </SurfaceCard>
         </View>
       </Modal>
     </DriverChrome>
@@ -171,23 +186,19 @@ export default function DriverDepositsScreen() {
 function StatusPill({ status }: { status: SettlementStatus }) {
   if (status === 'pending') {
     return (
-      <View style={[styles.pill, styles.pillPending]}>
-        <Text style={styles.pillPendingText}>تم الإرسال — بانتظار المدير</Text>
-      </View>
+      <ErpStatusPill label="تم الإرسال — بانتظار المدير" tone="warning" />
     );
   }
   return (
-    <View style={[styles.pill, styles.pillReady]}>
-      <Text style={styles.pillReadyText}>جاهز</Text>
-    </View>
+    <ErpStatusPill label="جاهز" tone="completed" />
   );
 }
 
 const styles = StyleSheet.create({
   wrap: { gap: 14, paddingBottom: 32 },
   alert: {
-    backgroundColor: '#FEF3C7',
-    borderRadius: 12,
+    backgroundColor: brand.colors.warningSoft,
+    borderRadius: brand.radius.md,
     padding: 12,
     borderWidth: 1,
     borderColor: '#FDE68A',
@@ -198,21 +209,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     fontSize: 13,
   },
-  tile: {
-    backgroundColor: brand.colors.white,
-    borderRadius: 14,
-    padding: 16,
-    alignItems: 'flex-end',
-    gap: 4,
-    borderWidth: 1,
-    borderColor: '#FDE68A',
-  },
-  tileLabel: { fontSize: 12, color: brand.colors.textMuted },
-  tileValue: { fontSize: 22, fontWeight: '700', color: brand.colors.text },
   grandRow: {
-    backgroundColor: brand.colors.white,
-    borderRadius: 14,
-    padding: 16,
     flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -220,12 +217,7 @@ const styles = StyleSheet.create({
   },
   grandMeta: { flex: 1, alignItems: 'flex-end', gap: 4 },
   grandLabel: { fontSize: 13, color: brand.colors.textMuted },
-  grandValue: { fontSize: 20, fontWeight: '700', color: brand.colors.text },
-  pill: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 },
-  pillReady: { backgroundColor: '#DCFCE7' },
-  pillReadyText: { color: '#166534', fontSize: 11, fontWeight: '700' },
-  pillPending: { backgroundColor: '#FEF3C7' },
-  pillPendingText: { color: '#92400E', fontSize: 10, fontWeight: '700' },
+  grandValue: { fontSize: 20, fontWeight: '900', color: brand.colors.text },
   errorBox: {
     backgroundColor: '#FEE2E2',
     borderRadius: 12,
@@ -238,22 +230,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 24,
   },
-  modalCard: {
-    backgroundColor: brand.colors.white,
-    borderRadius: 16,
-    padding: 20,
-    gap: 12,
-  },
   modalLines: {
-    backgroundColor: brand.colors.grayBackground,
-    borderRadius: 12,
+    backgroundColor: brand.colors.surfaceMuted,
+    borderRadius: brand.radius.md,
     padding: 12,
     gap: 8,
   },
   modalLine: { textAlign: 'right', color: brand.colors.text, fontSize: 14 },
   modalTotal: {
     textAlign: 'right',
-    fontWeight: '700',
+    fontWeight: '900',
     color: brand.colors.text,
     fontSize: 15,
   },
@@ -267,9 +253,9 @@ const styles = StyleSheet.create({
   cancelText: { color: brand.colors.textMuted, fontWeight: '600' },
   ok: {
     backgroundColor: brand.colors.primaryBlue,
-    borderRadius: 10,
+    borderRadius: brand.radius.md,
     paddingVertical: 10,
     paddingHorizontal: 20,
   },
-  okText: { color: brand.colors.white, fontWeight: '700' },
+  okText: { color: brand.colors.white, fontWeight: '800' },
 });

@@ -13,7 +13,7 @@ import type { DriverPendingInvoiceRow } from '@/api/orders';
 import { useAuth } from '@/auth/auth-context';
 import { DriverChrome } from '@/components/driver/driver-chrome';
 import { PendingInvoiceCard } from '@/components/driver/pending-invoice-card';
-import { MutedText } from '@/components/ui';
+import { MutedText, SectionHeader, SurfaceCard } from '@/components/ui';
 import { formatKwdLabel } from '@/lib/kwd';
 import { brand } from '@/theme/brand';
 
@@ -63,6 +63,11 @@ export default function DriverPendingInvoicesScreen() {
   return (
     <DriverChrome title="كشف المتابعة">
       <View style={styles.wrap}>
+        <SectionHeader
+          eyebrow="Driver Ledger"
+          title="كشف المتابعة"
+          subtitle="الفواتير المعلقة من السيرفر"
+        />
         <TextInput
           value={search}
           onChangeText={setSearch}
@@ -74,7 +79,7 @@ export default function DriverPendingInvoicesScreen() {
           returnKeyType="search"
         />
 
-        <View style={styles.summary}>
+        <SurfaceCard>
           <Text style={styles.summaryLabel}>إجمالي المتابعة</Text>
           <Text style={styles.summaryValue}>
             {formatKwdLabel(totalAmountKd)}
@@ -82,7 +87,7 @@ export default function DriverPendingInvoicesScreen() {
           <MutedText>
             {filteredCount} / {totalCount} فاتورة
           </MutedText>
-        </View>
+        </SurfaceCard>
 
         <MutedText>
           للقراءة فقط — التحصيل والروابط من الكول سنتر أو POS.
@@ -109,11 +114,11 @@ export default function DriverPendingInvoicesScreen() {
               />
             }
             ListEmptyComponent={
-              <View style={styles.empty}>
+          <SurfaceCard>
                 <Text style={styles.emptyText}>
                   {search.trim() ? 'لا نتائج للبحث' : 'لا فواتير معلّقة'}
                 </Text>
-              </View>
+          </SurfaceCard>
             }
             renderItem={({ item }) => <PendingInvoiceCard row={item} />}
           />
@@ -126,43 +131,29 @@ export default function DriverPendingInvoicesScreen() {
 const styles = StyleSheet.create({
   wrap: { flex: 1, gap: 10 },
   search: {
-    backgroundColor: brand.colors.white,
-    borderRadius: 12,
+    backgroundColor: brand.colors.surface,
+    borderRadius: brand.radius.md,
     borderWidth: 1,
-    borderColor: '#D8D8E6',
+    borderColor: brand.colors.border,
     paddingHorizontal: 14,
     paddingVertical: 10,
     fontSize: 15,
     color: brand.colors.text,
   },
-  summary: {
-    backgroundColor: brand.colors.white,
-    borderRadius: 14,
-    padding: 14,
-    alignItems: 'flex-end',
-    gap: 4,
-  },
   summaryLabel: {
     fontSize: 13,
     color: brand.colors.textMuted,
+    textAlign: 'right',
   },
   summaryValue: {
-    fontSize: 20,
-    fontWeight: '700',
+    fontSize: 24,
+    fontWeight: '900',
     color: brand.colors.text,
+    textAlign: 'right',
   },
   list: { gap: 10, paddingBottom: 24 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  empty: {
-    padding: 24,
-    alignItems: 'center',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: '#CBD5E1',
-    backgroundColor: brand.colors.white,
-  },
-  emptyText: { color: brand.colors.textMuted },
+  emptyText: { color: brand.colors.textMuted, textAlign: 'center' },
   errorBox: {
     flex: 1,
     backgroundColor: '#FEE2E2',

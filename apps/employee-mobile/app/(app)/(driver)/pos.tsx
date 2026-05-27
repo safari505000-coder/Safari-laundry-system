@@ -23,7 +23,7 @@ import { PosCatalogGrid } from '@/components/driver/pos/pos-catalog-grid';
 import { PosCustomerBar } from '@/components/driver/pos/pos-customer-bar';
 import { PosServiceSheet } from '@/components/driver/pos/pos-service-sheet';
 import { DriverChrome } from '@/components/driver/driver-chrome';
-import { MutedText } from '@/components/ui';
+import { MutedText, SectionHeader } from '@/components/ui';
 import { usePosPriceList } from '@/hooks/use-pos-price-list';
 import {
   addOrMergeCartLine,
@@ -146,6 +146,11 @@ export default function DriverPosScreen() {
   return (
     <DriverChrome title="POS — قائمة الأسعار">
       <View style={styles.wrap}>
+        <SectionHeader
+          eyebrow="Mobile POS"
+          title="نقطة البيع"
+          subtitle="أسعار مباشرة من النظام وإصدار الفاتورة عبر السيرفر"
+        />
         {operating ? (
           <View
             style={[
@@ -211,6 +216,8 @@ export default function DriverPosScreen() {
       <PosCartSheet
         visible={cartOpen}
         lines={cartLines}
+        hasCustomer={customer !== null}
+        systemClosed={systemClosed}
         paymentMethod={paymentMethod}
         onPaymentChange={setPaymentMethod}
         onClose={() => setCartOpen(false)}
@@ -224,10 +231,10 @@ export default function DriverPosScreen() {
 
 const styles = StyleSheet.create({
   wrap: { flex: 1, gap: 10 },
-  banner: { borderRadius: 12, padding: 10 },
-  bannerOpen: { backgroundColor: '#DCFCE7' },
-  bannerClosed: { backgroundColor: '#FEE2E2' },
-  bannerText: { textAlign: 'right', fontSize: 13, fontWeight: '600' },
+  banner: { borderRadius: brand.radius.md, padding: 10 },
+  bannerOpen: { backgroundColor: brand.colors.successSoft },
+  bannerClosed: { backgroundColor: brand.colors.dangerSoft },
+  bannerText: { textAlign: 'right', fontSize: 13, fontWeight: '800' },
   bannerTextOpen: { color: '#166534' },
   bannerTextClosed: { color: '#991B1B' },
   error: { color: brand.colors.danger, textAlign: 'right' },
@@ -235,9 +242,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    bottom: 8,
+    bottom: 96,
     backgroundColor: brand.colors.darkBlue,
-    borderRadius: 16,
+    borderRadius: brand.radius.lg,
     paddingVertical: 12,
     paddingHorizontal: 16,
     alignItems: 'flex-end',
@@ -246,7 +253,7 @@ const styles = StyleSheet.create({
   peekTotal: {
     color: brand.colors.white,
     fontSize: 20,
-    fontWeight: '800',
+    fontWeight: '900',
   },
   peekMeta: {
     color: brand.colors.lightCyan,

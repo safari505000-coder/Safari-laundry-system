@@ -90,6 +90,17 @@ const PAYMENT_LINK_VALIDITY_MS = PAYMENT_LINK_VALIDITY_HOURS * 60 * 60 * 1000;
  * «انتهت مهلة معاملة قاعدة البيانات».
  */
 const POS_ORDER_INTERACTIVE_TX = { maxWait: 20_000, timeout: 45_000 } as const;
+const POS_DELIVERY_FEE_KD = new Prisma.Decimal('0.2500');
+
+type PosServiceKey = 'NORMAL' | 'URGENT' | 'PRESS_ONLY' | 'URGENT_PRESS';
+
+type PosPricedLineCreate = {
+  label: string | null;
+  starchOption: 'NONE';
+  quantity: string;
+  unitPrice: string;
+  stockItemId: string | null;
+};
 
 /**
  * V19.22.4 — Stale Quick-Capture threshold (milliseconds).
@@ -593,6 +604,137 @@ export class OrdersService {
     }));
   }
 
+  private resolveLaundryTierPrice(
+    item: {
+      priceNormal: Prisma.Decimal;
+      priceUrgent: Prisma.Decimal;
+      pricePressOnly: Prisma.Decimal | null;
+      priceUrgentPress: Prisma.Decimal | null;
+      branchOverrides: {
+        priceNormal: Prisma.Decimal | null;
+        priceUrgent: Prisma.Decimal | null;
+        pricePressOnly: Prisma.Decimal | null;
+        priceUrgentPress: Prisma.Decimal | null;
+      }[];
+    },
+    serviceKey: PosServiceKey,
+  ): Prisma.Decimal {
+    const override = item.branchOverrides[0];
+    const price =
+      serviceKey === 'NORMAL'
+        ? (override?.priceNormal ?? item.priceNormal)
+        : serviceKey === 'URGENT'
+          ? (override?.priceUrgent ?? item.priceUrgent)
+          : serviceKey === 'PRESS_ONLY'
+            ? (override?.pricePressOnly ?? item.pricePressOnly)
+            : (override?.priceUrgentPress ?? item.priceUrgentPress);
+    if (!price || price.lt(0)) {
+      throw new BadRequestException('Selected service is not priced for this item.');
+    }
+    return price;
+  }
+
+  private async pricePosCheckoutLines(
+    tx: Prisma.TransactionClient,
+    actorUserId: string,
+    lineItems?: OrderLineItemDto[],
+  ): Promise<{
+    lineCreates: PosPricedLineCreate[];
+    totalPriceDecimal: Prisma.Decimal;
+  }> {
+    const input = lineItems ?? [];
+    if (input.length === 0) {
+      throw new BadRequestException('POS checkout requires line items.');
+    }
+
+    const actor = await tx.user.findUnique({
+      where: { id: actorUserId },
+      select: { branchId: true },
+    });
+    const branchId = actor?.branchId ?? null;
+    const itemIds = [
+      ...new Set(
+        input
+          .map((line) => line.laundryPriceListItemId)
+          .filter((id): id is string => typeof id === 'string' && id.length > 0),
+      ),
+    ];
+    if (itemIds.length !== input.length) {
+      throw new BadRequestException(
+        'POS checkout lines must reference catalog item ids.',
+      );
+    }
+
+    const items = await tx.laundryPriceListItem.findMany({
+      where: { id: { in: itemIds }, isActive: true },
+      include: {
+        branchOverrides: branchId ? { where: { branchId } } : true,
+      },
+    });
+    const byId = new Map(items.map((item) => [item.id, item]));
+    let total = new Prisma.Decimal(0);
+    const lineCreates: PosPricedLineCreate[] = [];
+
+    for (const line of input) {
+      const serviceKey = line.posServiceKey;
+      if (
+        serviceKey !== 'NORMAL' &&
+        serviceKey !== 'URGENT' &&
+        serviceKey !== 'PRESS_ONLY' &&
+        serviceKey !== 'URGENT_PRESS'
+      ) {
+        throw new BadRequestException('POS checkout lines must include service tier.');
+      }
+      if (!(line.quantity > 0)) {
+        throw new BadRequestException('Each line item must have a positive quantity.');
+      }
+      const item = byId.get(line.laundryPriceListItemId!);
+      if (!item) {
+        throw new BadRequestException('Selected catalog item is inactive or missing.');
+      }
+      if (item.manualEntry) {
+        throw new BadRequestException(
+          'Manual-price catalog items are not allowed in mobile POS checkout.',
+        );
+      }
+      const unitPrice = this.resolveLaundryTierPrice(item, serviceKey);
+      if (unitPrice.lte(0)) {
+        throw new BadRequestException('Selected service has no positive catalog price.');
+      }
+      const quantity = new Prisma.Decimal(Number(line.quantity).toFixed(4));
+      const labelSuffix =
+        serviceKey === 'NORMAL'
+          ? 'غسيل عادي'
+          : serviceKey === 'URGENT'
+            ? 'خدمة سريعة'
+            : serviceKey === 'PRESS_ONLY'
+              ? 'كي فقط'
+              : 'دراي كلين سريع';
+      total = total.plus(quantity.mul(unitPrice));
+      lineCreates.push({
+        label: `${item.nameAr} — ${labelSuffix}`,
+        starchOption: 'NONE',
+        quantity: quantity.toFixed(4),
+        unitPrice: unitPrice.toFixed(4),
+        stockItemId: line.stockItemId ?? null,
+      });
+    }
+
+    total = total.plus(POS_DELIVERY_FEE_KD);
+    lineCreates.push({
+      label: 'توصيل داخل المنطقة',
+      starchOption: 'NONE',
+      quantity: '1.0000',
+      unitPrice: POS_DELIVERY_FEE_KD.toFixed(4),
+      stockItemId: null,
+    });
+
+    return {
+      lineCreates,
+      totalPriceDecimal: new Prisma.Decimal(total.toFixed(4)),
+    };
+  }
+
   private async findCustomerByAnyPhone(
     tx: Prisma.TransactionClient,
     phoneCompact: string,
@@ -755,34 +897,13 @@ export class OrdersService {
         this.prisma,
         driverUserId,
       );
-      if (!Number.isFinite(dto.totalPrice) || dto.totalPrice <= 0) {
-        throw new BadRequestException(
-          'totalPrice must be a finite positive number',
-        );
-      }
-
       const serviceType = dto.serviceType ?? ServiceType.NORMAL;
-      const lineCreates = this.mapPosCheckoutLineItems(dto.lineItems);
-      if (lineCreates) {
-        for (const line of lineCreates) {
-          // `unitPrice >= 0` (not `> 0`) so the POS engine can materialize
-          // the zero-priced `DELIVERY_INSIDE_AREA` / free-tier surcharge
-          // lines on attached invoices of the same collection trip.
-          // Quantity must still be strictly positive — a 0-qty row is bogus.
-          if (!(line.quantity > 0 && line.unitPrice >= 0)) {
-            throw new BadRequestException(
-              'Each line item must have a positive quantity and a non-negative unit price',
-            );
-          }
-        }
-      }
       const phoneCompact = dto.customerPhone.replace(/[\s-]/g, '').trim();
-
-      const totalPriceNum = Number(dto.totalPrice);
-      const totalPriceDecimal = new Prisma.Decimal(totalPriceNum.toFixed(4));
 
       const orderId = await this.prisma.$transaction(
         async (tx) => {
+          const { lineCreates, totalPriceDecimal } =
+            await this.pricePosCheckoutLines(tx, driverUserId, dto.lineItems);
           const customerId = await this.resolveQuickOrderCustomerId(
             tx,
             dto,

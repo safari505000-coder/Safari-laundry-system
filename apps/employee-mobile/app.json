@@ -4,7 +4,10 @@
     "slug": "safari-erp-staff",
     "scheme": "safari-erp-staff",
     "orientation": "portrait",
-    "platforms": ["ios", "android"],
+    "platforms": [
+      "ios",
+      "android"
+    ],
     "version": "0.1.0",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
@@ -26,7 +29,8 @@
           "cameraPermission": "نحتاج الكamera لمسح باركود الفاتورة."
         }
       ],
-      "expo-notifications"
+      "expo-notifications",
+      "expo-asset"
     ],
     "extra": {
       "apiBaseUrl": "http://localhost:3000/api",

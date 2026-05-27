@@ -26,6 +26,8 @@ const PAYMENT_OPTIONS: { value: PosPaymentMethod; label: string }[] = [
 export function PosCartSheet({
   visible,
   lines,
+  hasCustomer,
+  systemClosed,
   paymentMethod,
   onPaymentChange,
   onClose,
@@ -35,6 +37,8 @@ export function PosCartSheet({
 }: {
   visible: boolean;
   lines: PosCartLine[];
+  hasCustomer: boolean;
+  systemClosed: boolean;
   paymentMethod: PosPaymentMethod;
   onPaymentChange: (method: PosPaymentMethod) => void;
   onClose: () => void;
@@ -46,6 +50,13 @@ export function PosCartSheet({
   const delivery = lineSum > 0 ? DELIVERY_FEE_KD : 0;
   const netTotal = lineSum + delivery;
   const pieceCount = lines.reduce((sum, line) => sum + line.quantity, 0);
+  const checkoutBlockedReason = systemClosed
+    ? 'النظام مغلق حالياً، لا يمكن إصدار فاتورة.'
+    : !hasCustomer
+      ? 'اختر العميل أولاً من أعلى شاشة POS قبل إتمام البيع.'
+      : lines.length === 0
+        ? 'السلة فارغة — أضف أصنافاً من القائمة.'
+        : null;
 
   return (
     <Modal visible={visible} animationType="slide" transparent>
@@ -125,10 +136,16 @@ export function PosCartSheet({
             })}
           </View>
 
+          {checkoutBlockedReason ? (
+            <View style={styles.blockedBox}>
+              <Text style={styles.blockedText}>{checkoutBlockedReason}</Text>
+            </View>
+          ) : null}
+
           <PrimaryButton
             label={checkoutBusy ? 'جاري الحفظ…' : 'إتمام البيع'}
             onPress={onCheckout}
-            disabled={checkoutBusy || lines.length === 0}
+            disabled={checkoutBusy || checkoutBlockedReason !== null}
           />
           <Pressable onPress={onClose}>
             <Text style={styles.close}>إغلاق</Text>
@@ -165,16 +182,16 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: brand.colors.white,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    backgroundColor: brand.colors.surface,
+    borderTopLeftRadius: brand.radius.xl,
+    borderTopRightRadius: brand.radius.xl,
     padding: 16,
     gap: 10,
     maxHeight: '88%',
   },
   title: {
     fontSize: 18,
-    fontWeight: '700',
+    fontWeight: '900',
     textAlign: 'right',
     color: brand.colors.text,
   },
@@ -189,14 +206,14 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   lineMeta: { flex: 1, alignItems: 'flex-end', gap: 2 },
-  lineName: { fontSize: 14, fontWeight: '600', color: brand.colors.text },
+  lineName: { fontSize: 14, fontWeight: '800', color: brand.colors.text },
   linePrice: { fontSize: 12, color: brand.colors.textMuted },
   qtyRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   qtyBtn: {
     width: 28,
     height: 28,
-    borderRadius: 8,
-    backgroundColor: brand.colors.grayBackground,
+    borderRadius: brand.radius.sm,
+    backgroundColor: brand.colors.surfaceMuted,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -224,7 +241,7 @@ const styles = StyleSheet.create({
   chip: {
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: '#D8D8E6',
+    borderColor: brand.colors.border,
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
@@ -232,8 +249,22 @@ const styles = StyleSheet.create({
     backgroundColor: brand.colors.primaryBlue,
     borderColor: brand.colors.primaryBlue,
   },
-  chipText: { fontSize: 12, fontWeight: '600', color: brand.colors.text },
+  chipText: { fontSize: 12, fontWeight: '800', color: brand.colors.text },
   chipTextActive: { color: brand.colors.white },
+  blockedBox: {
+    borderRadius: brand.radius.md,
+    backgroundColor: brand.colors.warningSoft,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    padding: 10,
+  },
+  blockedText: {
+    color: '#92400E',
+    fontSize: 13,
+    fontWeight: '800',
+    textAlign: 'right',
+    lineHeight: 20,
+  },
   close: {
     textAlign: 'center',
     color: brand.colors.textMuted,

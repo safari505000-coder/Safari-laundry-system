@@ -18,6 +18,9 @@ export type ServiceOption = {
 };
 
 export function rowShowsInLiveCatalog(row: LaundryPriceListItemRow): boolean {
+  if (row.manualEntry) {
+    return false;
+  }
   const v = row.isActive as unknown;
   if (v === false || v === 0) {
     return false;
@@ -97,14 +100,11 @@ export function buildCheckoutRequest(
     lineItems: [
       ...lines.map((line) => ({
         label: line.nameAr,
+        laundryPriceListItemId: line.laundryId,
+        posServiceKey: line.serviceKey,
         quantity: line.quantity,
         unitPrice: line.unitPrice,
       })),
-      {
-        label: DELIVERY_LINE_LABEL_AR,
-        quantity: 1,
-        unitPrice: deliveryForOrder,
-      },
     ],
     serviceType: 'NORMAL',
     posPaymentMethod: paymentMethod,

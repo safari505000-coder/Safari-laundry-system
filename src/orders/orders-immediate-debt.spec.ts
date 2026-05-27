@@ -48,6 +48,23 @@ function makeService() {
     customerWallet: {
       findUnique: jest.fn().mockResolvedValue(null),
     },
+    user: {
+      findUnique: jest.fn().mockResolvedValue({ id: DRIVER_ID, branchId: null }),
+    },
+    laundryPriceListItem: {
+      findMany: jest.fn().mockResolvedValue([
+        {
+          id: '44444444-4444-4444-8444-444444444444',
+          nameAr: 'جاكيت',
+          manualEntry: false,
+          priceNormal: new Prisma.Decimal('12.3750'),
+          priceUrgent: new Prisma.Decimal('15.0000'),
+          pricePressOnly: new Prisma.Decimal('5.0000'),
+          priceUrgentPress: new Prisma.Decimal('6.0000'),
+          branchOverrides: [],
+        },
+      ]),
+    },
   };
   const prisma = {
     user: {
@@ -86,6 +103,7 @@ function makeService() {
       url: 'https://sandbox.upayments.com/session/test',
       trackId: 'track-1',
     }),
+    schedulePaymentConfirmedCustomerNotify: jest.fn(),
   };
   const service = new OrdersService(
     prisma as never,
@@ -106,6 +124,92 @@ function makeService() {
     {} as never,
   );
   return { service, prisma, tx, customerLedger };
+}
+
+function makePricedPosService() {
+  const created = { id: ORDER_ID, driverId: DRIVER_ID };
+  const detail = orderDetail({
+    status: OrderStatus.COMPLETED,
+    cashStatus: CashStatus.PAID_TO_DRIVER,
+    posPaymentMethod: PosPaymentMethod.CASH,
+    totalPrice: new Prisma.Decimal('3.7500'),
+  });
+  const tx = {
+    user: {
+      findUnique: jest.fn().mockResolvedValue({ id: DRIVER_ID, branchId: null }),
+    },
+    laundryPriceListItem: {
+      findMany: jest.fn().mockResolvedValue([
+        {
+          id: '44444444-4444-4444-8444-444444444444',
+          nameAr: 'جاكيت',
+          manualEntry: false,
+          priceNormal: new Prisma.Decimal('1.7500'),
+          priceUrgent: new Prisma.Decimal('2.2500'),
+          pricePressOnly: new Prisma.Decimal('0.7500'),
+          priceUrgentPress: new Prisma.Decimal('1.2500'),
+          branchOverrides: [],
+        },
+      ]),
+    },
+    customer: {
+      findUnique: jest.fn().mockResolvedValue({
+        id: CUSTOMER_ID,
+        phone: '51234567',
+        phone2: null,
+      }),
+    },
+    customerWallet: {
+      findUnique: jest.fn().mockResolvedValue(null),
+    },
+    order: {
+      create: jest.fn().mockResolvedValue(created),
+    },
+  };
+  const prisma = {
+    user: {
+      findUnique: jest.fn().mockResolvedValue({
+        id: DRIVER_ID,
+        safariRole: 'DRIVER',
+        branchId: null,
+      }),
+    },
+    order: {
+      findUniqueOrThrow: jest.fn().mockResolvedValue(detail),
+      update: jest.fn().mockResolvedValue(detail),
+    },
+    $transaction: jest.fn(async (fn: (txArg: unknown) => Promise<unknown>) =>
+      fn(tx),
+    ),
+  };
+  const customerLedger = {
+    registerPendingPaymentLinkReceivableTx: jest.fn().mockResolvedValue(undefined),
+    applyOrderWalletSettlementForCompletedOrder: jest.fn().mockResolvedValue(undefined),
+    emitFinancialEvent: jest.fn(),
+  };
+  const generalLedger = { append: jest.fn().mockResolvedValue(undefined) };
+  const service = new OrdersService(
+    prisma as never,
+    customerLedger as never,
+    {
+      createPaymentLink: jest.fn(),
+      schedulePaymentConfirmedCustomerNotify: jest.fn(),
+    } as never,
+    {
+      deliverInvoiceIssuedNow: jest.fn().mockResolvedValue(undefined),
+      sendOrderInvoice: jest.fn().mockResolvedValue(undefined),
+    } as never,
+    generalLedger as never,
+    { stampOrderSerial: jest.fn().mockResolvedValue(1001) } as never,
+    { applyOrderStockDecrement: jest.fn().mockResolvedValue(undefined) } as never,
+    {} as never,
+    { autoBlockIfNeeded: jest.fn().mockResolvedValue(undefined) } as never,
+    { assertNotBlocked: jest.fn().mockResolvedValue(undefined) } as never,
+    { logFinancialEvent: jest.fn().mockResolvedValue(undefined) } as never,
+    new EventEmitter2(),
+    {} as never,
+  );
+  return { service, tx, customerLedger, generalLedger };
 }
 
 describe('OrdersService PAYMENT_LINK immediate debt', () => {
@@ -155,6 +259,14 @@ describe('OrdersService PAYMENT_LINK immediate debt', () => {
       customerId: CUSTOMER_ID,
       totalPrice: 25,
       posPaymentMethod: PosPaymentMethod.ONLINE,
+      lineItems: [
+        {
+          laundryPriceListItemId: '44444444-4444-4444-8444-444444444444',
+          posServiceKey: 'NORMAL',
+          quantity: 2,
+          unitPrice: 0.001,
+        },
+      ],
     });
 
     expect(customerLedger.registerPendingPaymentLinkReceivableTx).toHaveBeenCalledWith(
@@ -167,5 +279,59 @@ describe('OrdersService PAYMENT_LINK immediate debt', () => {
     expect(detail.status).toBe(OrderStatus.PENDING);
     expect(detail.cashStatus).toBe(CashStatus.UNPAID);
     expect(detail.walletSettledAt).toBeNull();
+  });
+
+  it('posCheckout prices catalog lines on the server and ignores client totals', async () => {
+    const { service, tx, customerLedger, generalLedger } = makePricedPosService();
+
+    await service.posCheckout(DRIVER_ID, {
+      customerPhone: '51234567',
+      customerId: CUSTOMER_ID,
+      totalPrice: 0.001,
+      posPaymentMethod: PosPaymentMethod.CASH,
+      lineItems: [
+        {
+          laundryPriceListItemId: '44444444-4444-4444-8444-444444444444',
+          posServiceKey: 'NORMAL',
+          label: 'tampered',
+          quantity: 2,
+          unitPrice: 0.001,
+        },
+      ],
+    });
+
+    expect(tx.order.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          totalPrice: new Prisma.Decimal('3.7500'),
+          lineItems: {
+            create: [
+              expect.objectContaining({
+                label: 'جاكيت — غسيل عادي',
+                quantity: '2.0000',
+                unitPrice: '1.7500',
+              }),
+              expect.objectContaining({
+                label: 'توصيل داخل المنطقة',
+                quantity: '1.0000',
+                unitPrice: '0.2500',
+              }),
+            ],
+          },
+        }),
+      }),
+    );
+    expect(
+      customerLedger.applyOrderWalletSettlementForCompletedOrder,
+    ).toHaveBeenCalledWith(
+      tx,
+      ORDER_ID,
+      DRIVER_ID,
+      expect.objectContaining({ totalPrice: new Prisma.Decimal('3.7500') }),
+    );
+    expect(generalLedger.append).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({ amount: new Prisma.Decimal('3.7500') }),
+    );
   });
 });

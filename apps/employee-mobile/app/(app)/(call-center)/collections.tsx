@@ -17,7 +17,7 @@ import {
 } from '@/api/call-center';
 import { useAuth } from '@/auth/auth-context';
 import { CcChrome } from '@/components/call-center/cc-chrome';
-import { MutedText, PrimaryButton } from '@/components/ui';
+import { MutedText, PrimaryButton, SectionHeader, SurfaceCard } from '@/components/ui';
 import { formatKwdLabel } from '@/lib/kwd';
 import { brand } from '@/theme/brand';
 
@@ -72,13 +72,18 @@ export default function CallCenterCollectionsScreen() {
   return (
     <CcChrome title="التحصيل">
       <View style={styles.wrap}>
-        <View style={styles.summary}>
+        <SectionHeader
+          eyebrow="Collections"
+          title="تحصيل الموقع"
+          subtitle="متابعة روابط الدفع المفتوحة"
+        />
+        <SurfaceCard>
           <Text style={styles.summaryText}>{rows.length} فاتورة مفتوحة</Text>
           <MutedText>المبالغ لكل فاتورة من السيرفر</MutedText>
-        </View>
+        </SurfaceCard>
 
         {loading && rows.length === 0 ? (
-          <ActivityIndicator color={brand.colors.darkBlue} size="large" />
+          <ActivityIndicator color={brand.colors.primaryBlue} size="large" />
         ) : error && rows.length === 0 ? (
           <Text style={styles.error}>{error}</Text>
         ) : (
@@ -99,7 +104,7 @@ export default function CallCenterCollectionsScreen() {
               const canSend =
                 item.canSendCollectionPaymentWa ?? item.canRemindNow;
               return (
-                <View style={styles.card}>
+                <SurfaceCard>
                   <Pressable
                     onPress={() =>
                       router.push(
@@ -126,7 +131,7 @@ export default function CallCenterCollectionsScreen() {
                     onPress={() => void sendWa(item.orderId)}
                     disabled={!canSend || busyId !== null}
                   />
-                </View>
+                </SurfaceCard>
               );
             }}
           />
@@ -138,30 +143,16 @@ export default function CallCenterCollectionsScreen() {
 
 const styles = StyleSheet.create({
   wrap: { flex: 1, gap: 10 },
-  summary: {
-    backgroundColor: brand.colors.white,
-    borderRadius: 12,
-    padding: 12,
-    alignItems: 'flex-end',
-    gap: 4,
-  },
   summaryText: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 18,
+    fontWeight: '900',
     color: brand.colors.text,
+    textAlign: 'right',
   },
   list: { gap: 10, paddingBottom: 24 },
-  card: {
-    backgroundColor: brand.colors.white,
-    borderRadius: 14,
-    padding: 12,
-    gap: 10,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
   customer: {
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '900',
     textAlign: 'right',
     color: brand.colors.text,
   },

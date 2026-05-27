@@ -16,6 +16,7 @@ import {
 import { SafariRole } from '@prisma/client';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { JwtUser } from '../auth/decorators/current-user.decorator';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { Permissions } from '../auth/permissions/permissions.decorator';
 import { AppPermission } from '../auth/permissions/permissions.enum';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -64,6 +65,22 @@ export class ExpensesController {
       q.from,
       q.to,
       q.branchId,
+      q.status,
+    );
+  }
+
+  @Get('driver/mine')
+  @Roles(SafariRole.DRIVER)
+  @ApiOperation({
+    summary: `Driver — my field expenses in date range (${APP_BRAND})`,
+  })
+  listDriverMine(@Query() q: ExpensesQueryDto, @CurrentUser() user: JwtUser) {
+    return this.expensesService.listForUser(
+      user.userId,
+      user.role as SafariRole,
+      q.from,
+      q.to,
+      undefined,
       q.status,
     );
   }

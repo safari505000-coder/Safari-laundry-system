@@ -12,7 +12,7 @@ import {
 import { useAuth } from '@/auth/auth-context';
 import { fetchOrderById } from '@/api/orders';
 import { DriverChrome } from '@/components/driver/driver-chrome';
-import { MutedText, PrimaryButton } from '@/components/ui';
+import { MutedText, PrimaryButton, SectionHeader, SurfaceCard } from '@/components/ui';
 import { normalizeScannedOrderId } from '@/lib/order-scan';
 import { brand } from '@/theme/brand';
 
@@ -60,6 +60,11 @@ export default function DriverScanScreen() {
   return (
     <DriverChrome title="مسح فاتورة">
       <View style={styles.wrap}>
+        <SectionHeader
+          eyebrow="Field Scan"
+          title="مسح الفاتورة"
+          subtitle="افتح الطلب من الباركود أو الرقم اليدوي"
+        />
         <MutedText>
           امسح باركود الفاتورة أو أدخل رقم الطلب يدوياً — GET /orders/:id
         </MutedText>
@@ -94,22 +99,24 @@ export default function DriverScanScreen() {
           />
         )}
 
-        <Text style={styles.label}>أو أدخل المعرّف يدوياً</Text>
-        <TextInput
-          value={manual}
-          onChangeText={setManual}
-          textAlign="right"
-          style={styles.input}
-          placeholder="UUID أو رقم الفاتورة"
-          placeholderTextColor={brand.colors.textMuted}
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
-        <PrimaryButton
-          label={busy ? 'جاري البحث…' : 'بحث'}
-          onPress={() => void lookup(manual)}
-          disabled={busy || !manual.trim()}
-        />
+        <SurfaceCard>
+          <Text style={styles.label}>أو أدخل المعرّف يدوياً</Text>
+          <TextInput
+            value={manual}
+            onChangeText={setManual}
+            textAlign="right"
+            style={styles.input}
+            placeholder="UUID أو رقم الفاتورة"
+            placeholderTextColor={brand.colors.textMuted}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <PrimaryButton
+            label={busy ? 'جاري البحث…' : 'بحث'}
+            onPress={() => void lookup(manual)}
+            disabled={busy || !manual.trim()}
+          />
+        </SurfaceCard>
 
         {scanned && !busy ? (
           <Pressable onPress={() => setScanned(false)}>
@@ -127,7 +134,7 @@ const styles = StyleSheet.create({
   wrap: { flex: 1, gap: 12 },
   cameraBox: {
     height: 260,
-    borderRadius: 16,
+    borderRadius: brand.radius.xl,
     overflow: 'hidden',
     backgroundColor: '#000',
   },
@@ -140,15 +147,15 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '800',
     color: brand.colors.text,
     textAlign: 'right',
   },
   input: {
-    backgroundColor: brand.colors.white,
-    borderRadius: 12,
+    backgroundColor: brand.colors.surfaceMuted,
+    borderRadius: brand.radius.md,
     borderWidth: 1,
-    borderColor: '#D8D8E6',
+    borderColor: brand.colors.border,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 16,
@@ -157,7 +164,7 @@ const styles = StyleSheet.create({
   rescan: {
     textAlign: 'center',
     color: brand.colors.primaryBlue,
-    fontWeight: '600',
+    fontWeight: '800',
   },
   error: { color: brand.colors.danger, textAlign: 'right' },
 });
