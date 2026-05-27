@@ -2025,6 +2025,14 @@ exports[`RBAC lock freezes every endpoint @Roles decorator 1`] = `
     "file": "src/public-api/public-api.controller.ts",
     "handler": "e",
     "method": "GET",
+    "path": "/public/customer-order-requests",
+    "roleSource": "none",
+    "roles": [],
+  },
+  {
+    "file": "src/public-api/public-api.controller.ts",
+    "handler": "e",
+    "method": "GET",
     "path": "/public/customer-portal",
     "roleSource": "none",
     "roles": [],
@@ -2718,6 +2726,16 @@ exports[`RBAC lock freezes every endpoint @Roles decorator 1`] = `
     "roles": [
       "MANAGER",
       "OWNER",
+    ],
+  },
+  {
+    "file": "src/public-api/public-api.controller.ts",
+    "handler": "updateCustomerProfile",
+    "method": "PATCH",
+    "path": "/public/customer/profile",
+    "roleSource": "method",
+    "roles": [
+      "CUSTOMER",
     ],
   },
   {
