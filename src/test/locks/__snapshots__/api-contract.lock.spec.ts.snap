@@ -1246,6 +1246,12 @@ exports[`API contract lock freezes public route methods and paths 1`] = `
   },
   {
     "file": "src/public-api/public-api.controller.ts",
+    "handler": "customerPortalMe",
+    "method": "GET",
+    "path": "/public/customer-portal/me",
+  },
+  {
+    "file": "src/public-api/public-api.controller.ts",
     "handler": "s",
     "method": "GET",
     "path": "/public/employee/tasks",
@@ -1273,6 +1279,12 @@ exports[`API contract lock freezes public route methods and paths 1`] = `
     "handler": "n",
     "method": "GET",
     "path": "/public/orders/:orderId",
+  },
+  {
+    "file": "src/public-api/public-api.controller.ts",
+    "handler": "e",
+    "method": "GET",
+    "path": "/public/orders/requests",
   },
   {
     "file": "src/call-center/public-statement.controller.ts",
@@ -1567,6 +1579,12 @@ exports[`API contract lock freezes public route methods and paths 1`] = `
     "handler": "n",
     "method": "PATCH",
     "path": "/finance/driver-monitoring/:driverId",
+  },
+  {
+    "file": "src/finance/finance.controller.ts",
+    "handler": "e",
+    "method": "PATCH",
+    "path": "/finance/driver/location",
   },
   {
     "file": "src/invoice-audit/invoice-audit.controller.ts",
@@ -2304,6 +2322,12 @@ exports[`API contract lock freezes public route methods and paths 1`] = `
     "file": "src/public-api/public-api.controller.ts",
     "handler": "e",
     "method": "POST",
+    "path": "/public/customer-auth/verify-otp",
+  },
+  {
+    "file": "src/public-api/public-api.controller.ts",
+    "handler": "e",
+    "method": "POST",
     "path": "/public/customer-portal/pay-balance",
   },
   {
@@ -2311,6 +2335,18 @@ exports[`API contract lock freezes public route methods and paths 1`] = `
     "handler": "e",
     "method": "POST",
     "path": "/public/customer-portal/payment-link",
+  },
+  {
+    "file": "src/public-api/public-api.controller.ts",
+    "handler": "e",
+    "method": "POST",
+    "path": "/public/customer/push-token",
+  },
+  {
+    "file": "src/public-api/public-api.controller.ts",
+    "handler": "s",
+    "method": "POST",
+    "path": "/public/employee/push-token",
   },
   {
     "file": "src/feedback/public-feedback.controller.ts",

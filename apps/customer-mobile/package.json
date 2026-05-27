@@ -2,11 +2,38 @@
   "name": "@safari-erp/customer-mobile",
   "version": "0.1.0",
   "private": true,
+  "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
-    "ios": "expo start --ios"
+    "ios": "expo start --ios",
+    "typecheck": "tsc --noEmit",
+    "test:logic": "tsx -r tsconfig-paths/register src/test/customer-mobile-logic.test.ts",
+    "build:android": "eas build --platform android --profile production",
+    "build:ios": "eas build --platform ios --profile production"
   },
-  "dependencies": {},
-  "devDependencies": {}
+  "dependencies": {
+    "expo": "^54.0.34",
+    "expo-asset": "~12.0.13",
+    "expo-constants": "~18.0.13",
+    "expo-device": "~8.0.10",
+    "expo-linking": "~8.0.12",
+    "expo-notifications": "~0.32.17",
+    "expo-router": "~6.0.23",
+    "expo-secure-store": "~15.0.8",
+    "expo-status-bar": "~3.0.9",
+    "react": "19.1.0",
+    "react-native": "0.81.5",
+    "react-native-safe-area-context": "~5.6.0",
+    "react-native-screens": "~4.16.0",
+    "react-native-webview": "13.15.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.2",
+    "@types/node": "^25.9.1",
+    "@types/react": "~19.1.0",
+    "babel-plugin-module-resolver": "^5.0.2",
+    "tsx": "^4.22.3",
+    "typescript": "~5.9.2"
+  }
 }

@@ -16,6 +16,7 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBearerAuth,
@@ -61,6 +62,7 @@ import {
 } from './dto/driver-cash-trace.dto';
 import { OwnerCustomerWalletSummaryDto } from './dto/owner-customer-wallet-summary.dto';
 import { UpdateDriverTrackingDto } from './dto/update-driver-tracking.dto';
+import { UpdateDriverLocationDto } from './dto/update-driver-location.dto';
 import {
   UnpaidInvoicesQueryDto,
   UnpaidInvoicesResponseDto,
@@ -112,6 +114,28 @@ export class FinanceController {
   async driverEnsureShift(@CurrentUser() user: JwtUser) {
     await this.financeService.ensureOpenShiftForDriver(user.userId);
     return { ok: true };
+  }
+
+  @Patch('driver/location')
+  @Roles(SafariRole.DRIVER)
+  @Throttle({
+    default: {
+      ttl: 60_000,
+      limit: 120,
+    },
+  })
+  @ApiOperation({
+    summary: `Driver — upload live GPS (${APP_BRAND})`,
+    description:
+      'Driver self-service ping. Updates lastKnownLocation as "lat,lng" for the authenticated driver only.',
+  })
+  updateMyDriverLocation(
+    @CurrentUser() user: JwtUser,
+    @Body() dto: UpdateDriverLocationDto,
+  ) {
+    return this.financeService.updateDriverTracking(user.userId, {
+      lastKnownLocation: dto.lastKnownLocation,
+    });
   }
 
   @Get('owner/customer-wallet-summary')

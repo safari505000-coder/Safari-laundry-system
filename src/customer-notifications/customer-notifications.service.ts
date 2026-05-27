@@ -675,6 +675,14 @@ export class CustomerNotificationsService implements OnModuleInit {
     }
   }
 
+  /** Plain WhatsApp text (OTP, short alerts). Returns false when Moatmt is not configured. */
+  async sendCustomerPlainWhatsApp(
+    rawPhone: string,
+    textMessage: string,
+  ): Promise<boolean> {
+    return this.trySendMoatmt(rawPhone, textMessage, null);
+  }
+
   /**
    * Fire-and-forget Moatmt + optional webhook — never blocks POS.
    */

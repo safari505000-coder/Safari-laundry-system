@@ -49,6 +49,13 @@ export type CustomerPortalMeResponse = {
     phone: string;
     displayName: string | null;
     address: string | null;
+    addresses: Array<{
+      id: string;
+      label: string | null;
+      address: string;
+      isDefault: boolean;
+      updatedAtIso: string;
+    }>;
   };
   financials: {
     walletBalanceKd: string;
@@ -57,6 +64,16 @@ export type CustomerPortalMeResponse = {
     subscriptionExpiresAtIso: string | null;
   };
   recentOrders: CustomerPortalOrder[];
+};
+
+export type UpdateCustomerProfileRequest = {
+  displayName?: string;
+  addresses?: Array<{
+    id?: string;
+    label?: string;
+    address: string;
+    isDefault?: boolean;
+  }>;
 };
 
 export type CreatePublicOrderRequest = {
@@ -78,6 +95,26 @@ export type CreatePublicOrderResponse = {
   requestId: string;
   status: 'RECEIVED';
   message: string;
+};
+
+export type WebsiteOrderRequestStatus =
+  | 'NEW'
+  | 'CONTACTED'
+  | 'CONVERTED'
+  | 'CANCELLED';
+
+export type CustomerWebsiteOrderRequest = {
+  id: string;
+  publicReference: string;
+  status: WebsiteOrderRequestStatus;
+  serviceType: 'NORMAL' | 'EXPRESS' | null;
+  notes: string | null;
+  createdAtIso: string;
+  reviewedAtIso: string | null;
+};
+
+export type CustomerWebsiteOrderRequestsResponse = {
+  requests: CustomerWebsiteOrderRequest[];
 };
 
 export type EmployeeTask = {
@@ -107,6 +144,25 @@ export type PaymentIntentResponse = {
 export type CreateCustomerPaymentLinkRequest = {
   customerPhone: string;
   orderId: string;
+};
+
+export type RequestCustomerOtpResponse = {
+  status: 'OTP_SENT' | 'OTP_PENDING';
+  customerExists: boolean;
+  message: string;
+  delivery?: 'whatsapp' | 'dev';
+  devOtpCode?: string;
+};
+
+export type VerifyCustomerOtpResponse = {
+  status: 'VERIFIED';
+  accessToken: string;
+  expiresIn: string;
+  customer: {
+    id: string;
+    phone: string;
+    displayName: string | null;
+  };
 };
 
 export type WebsiteCustomerPaymentRow = {

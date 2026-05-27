@@ -12,7 +12,11 @@ describe('Public API security guards', () => {
     const controller = read('src/public-api/public-api.controller.ts');
 
     expect(controller).toContain("@Get('customer-portal')");
+    expect(controller).toContain("@Get('orders/requests')");
     expect(controller).toContain("@Post('customer-auth/request-otp')");
+    expect(controller).toContain("@Post('customer-auth/verify-otp')");
+    expect(controller).toContain("@Get('customer-portal/me')");
+    expect(controller).toContain("@Post('customer/push-token')");
     expect(controller).toContain("@Post('customer-portal/payment-link')");
     expect(controller).toContain("@Post('customer-portal/pay-balance')");
     expect(controller).toContain('@Throttle');

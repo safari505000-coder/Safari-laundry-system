@@ -223,6 +223,10 @@ model User {
    */
   lastKnownLocation  String?
   /**
+   * Latest Expo push token for staff mobile notifications.
+   */
+  expoPushToken      String?    @db.VarChar(200)
+  /**
    * Dastur §1 (V1.5) + V19.24 — Owner-assigned single-letter operator prefix
    * ("A", "B", ...). Stamped on invoices as `prefix-n` with **n monotonic
    * per user** (SerialCounter `OU_<userId>`), not a single global counter.
@@ -678,10 +682,15 @@ model Customer {
   isBlocked      Boolean   @default(false)
   blockReason    String?
   blockedAt      DateTime?
+  /**
+   * Expo push token for customer mobile notifications (order status, payment reminders).
+   */
+  expoPushToken  String?   @db.VarChar(200)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
   originBranch       Branch?                   @relation("CustomerOriginBranch", fields: [originBranchId], references: [id], onDelete: SetNull)
+  deliveryAddresses  CustomerDeliveryAddress[]
   portalUsers        User[]                    @relation("CustomerPortalUser")
   auditLogs          AuditLog[]                @relation("AuditLogCustomer")
   orders             Order[]
@@ -718,6 +727,21 @@ model Customer {
   @@index([displayName])
   @@index([originBranchId])
   @@index([isBlocked])
+}
+
+model CustomerDeliveryAddress {
+  id         String   @id @default(uuid()) @db.Uuid
+  customerId String   @db.Uuid
+  label      String?
+  address    String
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@index([isDefault])
 }
 
 model SubscriptionPlan {
@@ -3054,6 +3078,19 @@ model Dispatch {
   @@index([customerId, createdAt])
   @@index([status, createdAt])
   @@index([parentDispatchId])
+}
+
+/// One-time OTP challenges for customer portal login (WhatsApp delivery).
+model CustomerPortalOtpChallenge {
+  id         String    @id @default(uuid()) @db.Uuid
+  phone      String
+  codeHash   String
+  expiresAt  DateTime
+  attempts   Int       @default(0)
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([phone, createdAt(sort: Desc)])
 }
 
 /// Public website intake queue. This is NOT an invoice and has no financial

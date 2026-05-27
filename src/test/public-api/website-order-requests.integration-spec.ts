@@ -29,6 +29,7 @@ describe('Website order requests (public intake + call-center queue)', () => {
   let driver: TestUser;
 
   beforeAll(async () => {
+    process.env.EXPO_PUSH_MOCK = 'true';
     app = await createTestApp();
   });
 
@@ -203,5 +204,27 @@ describe('Website order requests (public intake + call-center queue)', () => {
       .set(getAuthHeader(ccAgent.jwtToken))
       .send({ status: 'NOT_A_STATUS' })
       .expect(400);
+  });
+
+  it('attempts customer expo push when status changes and token exists', async () => {
+    const created = await submitPublicOrder({ customerPhone: '55667788' });
+    const queue = await listQueue(ccAgent.jwtToken);
+    const row = queue.requests.find(
+      (r) => r.publicReference === created.requestReference,
+    )!;
+    expect(row.customerId).toBeTruthy();
+
+    await prisma.customer.update({
+      where: { id: row.customerId! },
+      data: { expoPushToken: 'ExponentPushToken[website-order-status]' },
+    });
+
+    await request(app.getHttpServer())
+      .post(
+        `/api/public/call-center/website-order-requests/${row.id}/status`,
+      )
+      .set(getAuthHeader(ccAgent.jwtToken))
+      .send({ status: 'CONTACTED' })
+      .expect(201);
   });
 });

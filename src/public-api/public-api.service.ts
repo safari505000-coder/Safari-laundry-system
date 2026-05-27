@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   CashStatus,
   OrderStatus,
@@ -11,6 +11,7 @@ import { DebtVisibilityService } from '../finance/debt-visibility/debt-visibilit
 import { PrismaService } from '../prisma/prisma.service';
 import { listPayableOrdersForCustomer } from './customer-portal-payable.util';
 import { CreatePublicOrderDto } from './dto/create-public-order.dto';
+import { UpdateCustomerProfileDto } from './dto/update-customer-profile.dto';
 import { PUBLIC_COMPANY_BRAND } from './public-branding';
 import { WebsiteOrderRequestsService } from './website-order-requests.service';
 
@@ -62,27 +63,36 @@ export class PublicApiService {
     };
   }
 
-  async requestCustomerOtp(phone: string) {
+  async getCustomerPortal(phone: string) {
+    const normalized = phone.replace(/[\s-]/g, '').trim();
     const customer = await this.prisma.customer.findFirst({
-      where: { OR: [{ phone }, { phone2: phone }] },
+      where: { OR: [{ phone: normalized }, { phone2: normalized }] },
       select: { id: true },
     });
-    return {
-      status: 'OTP_PENDING' as const,
-      customerExists: Boolean(customer),
-      message:
-        'تم تسجيل طلب الدخول. يتم تفعيل مزود OTP في مرحلة الإشعارات قبل الإطلاق.',
-    };
+    if (!customer) {
+      throw new NotFoundException('Customer was not found.');
+    }
+    return this.getCustomerPortalByCustomerId(customer.id);
   }
 
-  async getCustomerPortal(phone: string) {
-    const customer = await this.prisma.customer.findFirst({
-      where: { OR: [{ phone }, { phone2: phone }] },
+  async getCustomerPortalByCustomerId(customerId: string) {
+    const customer = await this.prisma.customer.findUnique({
+      where: { id: customerId },
       select: {
         id: true,
         phone: true,
         displayName: true,
         address: true,
+        deliveryAddresses: {
+          orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }],
+          select: {
+            id: true,
+            label: true,
+            address: true,
+            isDefault: true,
+            updatedAt: true,
+          },
+        },
         wallet: {
           select: {
             balance: true,
@@ -113,6 +123,13 @@ export class PublicApiService {
         phone: customer.phone,
         displayName: customer.displayName,
         address: customer.address,
+        addresses: customer.deliveryAddresses.map((address) => ({
+          id: address.id,
+          label: address.label,
+          address: address.address,
+          isDefault: address.isDefault,
+          updatedAtIso: address.updatedAt.toISOString(),
+        })),
       },
       financials: {
         walletBalanceKd: customer.wallet?.balance.toFixed(4) ?? '0.0000',
@@ -123,6 +140,55 @@ export class PublicApiService {
       },
       recentOrders: payableOrders,
     };
+  }
+
+  async updateCustomerProfileByCustomerId(
+    customerId: string,
+    dto: UpdateCustomerProfileDto,
+  ) {
+    const displayName = dto.displayName?.trim();
+    const addresses = dto.addresses?.map((item, index) => ({
+      id: item.id,
+      label: item.label?.trim() || null,
+      address: item.address.trim(),
+      isDefault: item.isDefault === true || index === 0,
+    })).filter((item) => item.address.length > 0);
+
+    const customer = await this.prisma.customer.findUnique({
+      where: { id: customerId },
+      select: { id: true },
+    });
+    if (!customer) {
+      throw new NotFoundException('Customer was not found.');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.customer.update({
+        where: { id: customerId },
+        data: {
+          ...(displayName !== undefined ? { displayName: displayName || null } : {}),
+          ...(addresses && addresses[0] ? { address: addresses[0].address } : {}),
+        },
+      });
+
+      if (addresses) {
+        await tx.customerDeliveryAddress.deleteMany({
+          where: { customerId },
+        });
+        if (addresses.length > 0) {
+          await tx.customerDeliveryAddress.createMany({
+            data: addresses.map((item, index) => ({
+              customerId,
+              label: item.label,
+              address: item.address,
+              isDefault: index === 0 || item.isDefault,
+            })),
+          });
+        }
+      }
+    });
+
+    return this.getCustomerPortalByCustomerId(customerId);
   }
 
   async getEmployeeTasks(userId: string, role: SafariRole) {
@@ -178,6 +244,49 @@ export class PublicApiService {
       status: 'UNAVAILABLE' as const,
       message:
         'إنشاء رابط الدفع العام يحتاج ربط بوابة الدفع النهائية. لا يتم احتساب أي مبلغ في الواجهة.',
+    };
+  }
+
+  async registerEmployeePushToken(userId: string, token: string) {
+    const trimmed = token.trim();
+    if (!trimmed) {
+      throw new BadRequestException('Push token is required');
+    }
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { expoPushToken: trimmed },
+      select: { id: true },
+    });
+    return {
+      ok: true as const,
+      registeredAt: new Date().toISOString(),
+    };
+  }
+
+  async registerCustomerPushToken(phone: string, token: string) {
+    const normalized = phone.replace(/[\s-]/g, '').trim();
+    const trimmed = token.trim();
+    if (!trimmed) {
+      throw new BadRequestException('Push token is required');
+    }
+
+    const customer = await this.prisma.customer.findFirst({
+      where: { OR: [{ phone: normalized }, { phone2: normalized }] },
+      select: { id: true },
+    });
+    if (!customer) {
+      throw new NotFoundException('Customer was not found.');
+    }
+
+    await this.prisma.customer.update({
+      where: { id: customer.id },
+      data: { expoPushToken: trimmed },
+      select: { id: true },
+    });
+
+    return {
+      ok: true as const,
+      registeredAt: new Date().toISOString(),
     };
   }
 }

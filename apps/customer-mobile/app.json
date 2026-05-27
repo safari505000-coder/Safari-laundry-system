@@ -5,12 +5,43 @@
     "scheme": "safari-laundry",
     "orientation": "portrait",
     "platforms": ["ios", "android"],
-    "version": "0.1.0",
+    "version": "1.0.0",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#2D5BEE"
+    },
+    "experiments": {
+      "typedRoutes": true
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-notifications",
+      "expo-asset"
+    ],
     "extra": {
-      "apiBaseUrl": "https://api.example.com/api",
-      "notifications": "expo",
-      "otpProvider": "whatsapp-disabled",
-      "paymentGateway": "upayments"
+      "apiBaseUrl": "https://safariomni.com/api",
+      "otpProvider": "whatsapp-moatmt",
+      "allowPhonePreview": false,
+      "paymentGateway": "upayments",
+      "router": {
+        "origin": false
+      }
+    },
+    "android": {
+      "package": "com.safariomni.customer",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#2D5BEE"
+      }
+    },
+    "ios": {
+      "bundleIdentifier": "com.safariomni.customer",
+      "supportsTablet": true
     }
   }
 }

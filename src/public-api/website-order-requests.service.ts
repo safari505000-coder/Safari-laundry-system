@@ -7,6 +7,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SerialCounterService } from '../serials/serial-counter.service';
 
 import { CreatePublicOrderDto } from './dto/create-public-order.dto';
+import { ExpoPushService } from './expo-push.service';
+import { websiteOrderStatusPushCopy } from './website-order-push-copy';
 
 
 
@@ -19,6 +21,8 @@ export class WebsiteOrderRequestsService {
     private readonly prisma: PrismaService,
 
     private readonly serialCounter: SerialCounterService,
+
+    private readonly expoPush: ExpoPushService,
 
   ) {}
 
@@ -155,6 +159,49 @@ export class WebsiteOrderRequestsService {
   }
 
 
+
+  async listByCustomerPhone(phone: string) {
+    const normalized = phone.replace(/[\s-]/g, '').trim();
+    if (!normalized) {
+      return { requests: [] as const };
+    }
+
+    const requests = await this.prisma.websiteOrderRequest.findMany({
+      where: {
+        OR: [
+          { customerPhone: normalized },
+          {
+            customer: {
+              OR: [{ phone: normalized }, { phone2: normalized }],
+            },
+          },
+        ],
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 30,
+      select: {
+        id: true,
+        publicReference: true,
+        status: true,
+        serviceType: true,
+        notes: true,
+        createdAt: true,
+        reviewedAt: true,
+      },
+    });
+
+    return {
+      requests: requests.map((request) => ({
+        id: request.id,
+        publicReference: request.publicReference,
+        status: request.status,
+        serviceType: request.serviceType,
+        notes: request.notes,
+        createdAtIso: request.createdAt.toISOString(),
+        reviewedAtIso: request.reviewedAt?.toISOString() ?? null,
+      })),
+    };
+  }
 
   async listForCallCenter(status?: WebsiteOrderRequestStatus) {
 
@@ -328,9 +375,15 @@ export class WebsiteOrderRequestsService {
 
         reviewedAt: true,
 
+        customerId: true,
+
       },
 
     });
+
+
+
+    void this.notifyCustomerAboutStatusChange(request);
 
 
 
@@ -345,6 +398,58 @@ export class WebsiteOrderRequestsService {
       reviewedAtIso: request.reviewedAt?.toISOString() ?? null,
 
     };
+
+  }
+
+
+
+  private async notifyCustomerAboutStatusChange(request: {
+
+    customerId: string | null;
+
+    publicReference: string;
+
+    status: WebsiteOrderRequestStatus;
+
+  }) {
+
+    const copy = websiteOrderStatusPushCopy(
+
+      request.status,
+
+      request.publicReference,
+
+    );
+
+    if (!copy || !request.customerId) {
+
+      return;
+
+    }
+
+    const customer = await this.prisma.customer.findUnique({
+
+      where: { id: request.customerId },
+
+      select: { expoPushToken: true },
+
+    });
+
+    await this.expoPush.sendToToken(customer?.expoPushToken, {
+
+      ...copy,
+
+      data: {
+
+        screen: 'track',
+
+        publicReference: request.publicReference,
+
+        status: request.status,
+
+      },
+
+    });
 
   }
 

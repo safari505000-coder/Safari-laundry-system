@@ -15,8 +15,9 @@ export type JwtPayload = {
   /**
    * When set, this bearer may only call `POST /api/auth/change-password`
    * until a full session is issued ({@link PasswordChangeScopeGuard}).
+   * `CUSTOMER_PORTAL` marks B2C portal sessions from OTP verify.
    */
-  tokenPurpose?: 'PASSWORD_CHANGE_ONLY';
+  tokenPurpose?: 'PASSWORD_CHANGE_ONLY' | 'CUSTOMER_PORTAL';
 };
 
 @Injectable()
@@ -41,7 +42,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     branchId: string | null;
     scope?: 'ALL' | 'BRANCH' | 'OWN';
     linkedCustomerId: string | null;
-    tokenPurpose?: 'PASSWORD_CHANGE_ONLY';
+    tokenPurpose?: 'PASSWORD_CHANGE_ONLY' | 'CUSTOMER_PORTAL';
   } {
     const role =
       typeof payload.role === 'string' && payload.role.trim() ?
@@ -60,6 +61,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       tokenPurpose:
         payload.tokenPurpose === 'PASSWORD_CHANGE_ONLY' ?
           'PASSWORD_CHANGE_ONLY'
+        : payload.tokenPurpose === 'CUSTOMER_PORTAL' ?
+          'CUSTOMER_PORTAL'
         : undefined,
     };
   }

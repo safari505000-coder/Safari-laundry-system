@@ -6,12 +6,33 @@
     "orientation": "portrait",
     "platforms": ["ios", "android"],
     "version": "0.1.0",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "experiments": {
+      "typedRoutes": true
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "نحتاج موقعك لتتبع مهام التوصيل."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "نحتاج الكamera لمسح باركود الفاتورة."
+        }
+      ],
+      "expo-notifications"
+    ],
     "extra": {
-      "apiBaseUrl": "https://api.example.com/api",
-      "notifications": "expo",
-      "gpsRequired": true,
-      "scanTargets": ["invoice", "order"],
-      "paymentGateway": "upayments"
+      "apiBaseUrl": "http://localhost:3000/api",
+      "router": {
+        "origin": false
+      }
     }
   }
 }

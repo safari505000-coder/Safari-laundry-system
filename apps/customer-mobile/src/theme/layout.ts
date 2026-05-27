@@ -1,0 +1,63 @@
+/** Apple-inspired layout system for the customer app. */
+export const layout = {
+  spacing: {
+    xs: 4,
+    sm: 8,
+    md: 12,
+    lg: 16,
+    xl: 20,
+    xxl: 28,
+    xxxl: 36,
+  },
+  radius: {
+    xs: 8,
+    sm: 12,
+    md: 16,
+    lg: 22,
+    xl: 28,
+    pill: 999,
+  },
+  typography: {
+    largeTitle: 34,
+    title1: 28,
+    title2: 22,
+    title3: 20,
+    headline: 17,
+    body: 16,
+    callout: 15,
+    subhead: 14,
+    footnote: 13,
+    caption: 12,
+  },
+  shadow: {
+    subtle: {
+      shadowColor: '#000000',
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.06,
+      shadowRadius: 16,
+      elevation: 2,
+    },
+    floating: {
+      shadowColor: '#000000',
+      shadowOffset: { width: 0, height: 10 },
+      shadowOpacity: 0.12,
+      shadowRadius: 24,
+      elevation: 8,
+    },
+    tabBar: {
+      shadowColor: '#000000',
+      shadowOffset: { width: 0, height: -6 },
+      shadowOpacity: 0.08,
+      shadowRadius: 18,
+      elevation: 10,
+    },
+    card: {
+      shadowColor: '#000000',
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.06,
+      shadowRadius: 16,
+      elevation: 2,
+    },
+  },
+  maxContentWidth: 680,
+} as const;
