@@ -1,0 +1,1028 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Safari United | Corporate & Government Profile</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;700;800;900&family=DM+Sans:wght@500;700;900&display=swap");
+
+      :root {
+        --slate: #0f172a;
+        --slate-2: #172033;
+        --blue: #0284c7;
+        --blue-2: #38bdf8;
+        --paper: #f8fafc;
+        --muted: #64748b;
+        --line: rgba(15, 23, 42, 0.1);
+        --radius: 28px;
+        --radius-sm: 18px;
+        --shadow: 0 30px 90px rgba(15, 23, 42, 0.14);
+        --grad: linear-gradient(135deg, var(--slate) 0%, #12375a 54%, var(--blue) 130%);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: var(--slate);
+        font-family: "Cairo", "DM Sans", Arial, sans-serif;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      .latin {
+        direction: ltr;
+        font-family: "DM Sans", "Cairo", sans-serif;
+        letter-spacing: -0.02em;
+      }
+
+      .shell {
+        width: min(1180px, calc(100% - 40px));
+        margin-inline: auto;
+      }
+
+      .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+        background: rgba(15, 23, 42, 0.88);
+        backdrop-filter: blur(18px);
+        color: white;
+      }
+
+      .nav {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 24px;
+        padding: 18px 0;
+      }
+
+      .brand-mark {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .logo-dot {
+        display: grid;
+        width: 44px;
+        height: 44px;
+        place-items: center;
+        border-radius: 16px;
+        background: linear-gradient(135deg, var(--blue), var(--blue-2));
+        color: white;
+        font-family: "DM Sans", sans-serif;
+        font-weight: 900;
+      }
+
+      .brand-title {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 900;
+        line-height: 1.25;
+      }
+
+      .brand-subtitle {
+        margin: 2px 0 0;
+        color: rgba(255, 255, 255, 0.64);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .nav-links {
+        display: flex;
+        gap: 18px;
+        color: rgba(255, 255, 255, 0.72);
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 52px;
+        border: 0;
+        border-radius: 999px;
+        padding: 13px 22px;
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 14px;
+        font-weight: 900;
+        transition: transform 180ms ease, box-shadow 180ms ease, background 180ms ease;
+      }
+
+      .btn:hover {
+        transform: translateY(-2px);
+      }
+
+      .btn-primary {
+        background: var(--blue);
+        color: white;
+        box-shadow: 0 16px 40px rgba(2, 132, 199, 0.3);
+      }
+
+      .btn-dark {
+        background: var(--slate);
+        color: white;
+      }
+
+      .btn-ghost {
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        background: rgba(255, 255, 255, 0.08);
+        color: white;
+      }
+
+      .hero {
+        position: relative;
+        overflow: hidden;
+        background: var(--grad);
+        color: white;
+      }
+
+      .hero::before {
+        position: absolute;
+        inset: 0;
+        background:
+          radial-gradient(circle at 16% 18%, rgba(56, 189, 248, 0.34), transparent 28rem),
+          radial-gradient(circle at 84% 14%, rgba(255, 255, 255, 0.14), transparent 26rem);
+        content: "";
+      }
+
+      .hero-grid {
+        position: relative;
+        display: grid;
+        min-height: 760px;
+        grid-template-columns: 1.1fr 0.9fr;
+        align-items: center;
+        gap: 54px;
+        padding: 92px 0;
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        border-radius: 999px;
+        background: rgba(2, 132, 199, 0.12);
+        color: var(--blue);
+        padding: 8px 14px;
+        font-size: 12px;
+        font-weight: 900;
+        letter-spacing: 0.08em;
+      }
+
+      .hero .eyebrow {
+        background: rgba(255, 255, 255, 0.1);
+        color: var(--blue-2);
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: 0;
+      }
+
+      h1 {
+        margin-bottom: 24px;
+        font-size: clamp(48px, 7vw, 92px);
+        font-weight: 900;
+        letter-spacing: -0.06em;
+        line-height: 0.98;
+      }
+
+      .lead {
+        max-width: 700px;
+        margin-bottom: 36px;
+        color: rgba(255, 255, 255, 0.76);
+        font-size: 21px;
+        font-weight: 600;
+        line-height: 2;
+      }
+
+      .hero-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+      }
+
+      .hero-card {
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 36px;
+        background: rgba(255, 255, 255, 0.1);
+        padding: 28px;
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(20px);
+      }
+
+      .hero-card-inner {
+        min-height: 500px;
+        border-radius: 28px;
+        background: linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.72));
+        color: var(--slate);
+        padding: 34px;
+      }
+
+      .metric-stack {
+        display: grid;
+        gap: 14px;
+        margin-top: 44px;
+      }
+
+      .metric {
+        border: 1px solid var(--line);
+        border-radius: var(--radius-sm);
+        background: white;
+        padding: 22px;
+      }
+
+      .metric strong {
+        display: block;
+        color: var(--blue);
+        font-family: "DM Sans", sans-serif;
+        font-size: 44px;
+        font-weight: 900;
+        line-height: 1;
+      }
+
+      .metric span {
+        display: block;
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 14px;
+        font-weight: 800;
+      }
+
+      .section {
+        padding: 96px 0;
+      }
+
+      .section-head {
+        display: grid;
+        grid-template-columns: 0.85fr 1.15fr;
+        gap: 40px;
+        align-items: end;
+        margin-bottom: 46px;
+      }
+
+      .section-title {
+        margin: 18px 0 0;
+        font-size: clamp(34px, 5vw, 62px);
+        font-weight: 900;
+        letter-spacing: -0.05em;
+        line-height: 1.12;
+      }
+
+      .section-desc {
+        color: var(--muted);
+        font-size: 18px;
+        font-weight: 600;
+        line-height: 2;
+      }
+
+      .stats-grid,
+      .cards-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 18px;
+      }
+
+      .stat-card,
+      .sector-card,
+      .tech-card,
+      .form-card {
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: white;
+        padding: 30px;
+        box-shadow: 0 20px 70px rgba(15, 23, 42, 0.06);
+      }
+
+      .stat-card strong {
+        display: block;
+        color: var(--blue);
+        font-family: "DM Sans", sans-serif;
+        font-size: 54px;
+        font-weight: 900;
+        line-height: 1;
+      }
+
+      .stat-card span,
+      .sector-card p,
+      .tech-card p {
+        color: var(--muted);
+        font-size: 15px;
+        font-weight: 650;
+        line-height: 1.9;
+      }
+
+      .sector-card h3,
+      .tech-card h3 {
+        margin: 18px 0 12px;
+        font-size: 26px;
+        font-weight: 900;
+        letter-spacing: -0.03em;
+      }
+
+      .badge {
+        display: inline-flex;
+        border-radius: 999px;
+        background: #e0f2fe;
+        color: #0369a1;
+        padding: 7px 12px;
+        font-size: 12px;
+        font-weight: 900;
+      }
+
+      .tech-band {
+        background: var(--slate);
+        color: white;
+      }
+
+      .tech-band .section-desc {
+        color: rgba(255, 255, 255, 0.66);
+      }
+
+      .tech-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 18px;
+      }
+
+      .tech-card {
+        border-color: rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.06);
+        box-shadow: none;
+      }
+
+      .tech-card p {
+        color: rgba(255, 255, 255, 0.68);
+      }
+
+      .lead-grid {
+        display: grid;
+        grid-template-columns: 0.86fr 1.14fr;
+        gap: 28px;
+        align-items: start;
+      }
+
+      label {
+        display: block;
+        margin-bottom: 8px;
+        color: var(--slate);
+        font-size: 13px;
+        font-weight: 900;
+      }
+
+      input,
+      select,
+      textarea {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: var(--paper);
+        color: var(--slate);
+        font: inherit;
+        font-weight: 700;
+        outline: 0;
+        padding: 15px 16px;
+      }
+
+      textarea {
+        min-height: 132px;
+        resize: vertical;
+      }
+
+      .form-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 16px;
+      }
+
+      .form-grid .full {
+        grid-column: 1 / -1;
+      }
+
+      .profile-download {
+        border-radius: var(--radius);
+        background: var(--grad);
+        color: white;
+        padding: 34px;
+      }
+
+      .profile-download h3 {
+        font-size: 34px;
+        font-weight: 900;
+        letter-spacing: -0.04em;
+      }
+
+      .profile-download p {
+        color: rgba(255, 255, 255, 0.72);
+        font-weight: 600;
+        line-height: 1.9;
+      }
+
+      .profile-download .btn-primary {
+        background: white;
+        color: var(--slate);
+        box-shadow: 0 18px 45px rgba(255, 255, 255, 0.18);
+      }
+
+      .print-floating {
+        position: fixed;
+        right: 22px;
+        bottom: 22px;
+        z-index: 30;
+        min-height: 58px;
+        padding-inline: 24px;
+      }
+
+      .footer {
+        background: #08111f;
+        color: white;
+        padding: 34px 0;
+      }
+
+      .footer-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 20px;
+        color: rgba(255, 255, 255, 0.62);
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .print-profile {
+        display: none;
+      }
+
+      @media (max-width: 880px) {
+        .nav-links {
+          display: none;
+        }
+
+        .hero-grid,
+        .section-head,
+        .lead-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .stats-grid,
+        .cards-grid,
+        .tech-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .form-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @page {
+        size: A4;
+        margin: 0;
+      }
+
+      @media print {
+        * {
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+
+        body {
+          background: white;
+        }
+
+        .web-page,
+        .topbar,
+        .footer {
+          display: none !important;
+        }
+
+        .print-floating {
+          display: none !important;
+        }
+
+        .print-profile {
+          display: block;
+        }
+
+        .print-page {
+          position: relative;
+          width: 210mm;
+          height: 297mm;
+          overflow: hidden;
+          break-after: page;
+          page-break-after: always;
+          background: #ffffff;
+          color: var(--slate);
+          padding: 24mm 22mm 20mm;
+        }
+
+        .print-page.dark {
+          background: #ffffff;
+          color: var(--slate);
+        }
+
+        .print-page::before {
+          position: absolute;
+          inset: 0 auto 0 0;
+          width: 9mm;
+          background: var(--blue);
+          content: "";
+        }
+
+        .print-page::after {
+          position: absolute;
+          top: 0;
+          right: 0;
+          left: 0;
+          height: 14mm;
+          background: linear-gradient(90deg, var(--blue), var(--slate));
+          content: "";
+        }
+
+        .print-page.dark::before {
+          width: 16mm;
+          background: var(--slate);
+        }
+
+        .print-page.dark::after {
+          height: 22mm;
+          background:
+            linear-gradient(90deg, var(--blue) 0%, var(--slate) 56%, #020617 100%);
+        }
+
+        .print-kicker {
+          display: inline-flex;
+          border-radius: 999px;
+          background: #e0f2fe;
+          color: var(--blue);
+          padding: 7px 12px;
+          font-size: 11px;
+          font-weight: 900;
+          letter-spacing: 0.08em;
+        }
+
+        .dark .print-kicker {
+          background: #e0f2fe;
+          color: var(--blue);
+        }
+
+        .print-title {
+          max-width: 155mm;
+          margin: 20mm 0 8mm;
+          color: var(--slate);
+          font-size: 44px;
+          font-weight: 900;
+          letter-spacing: -0.055em;
+          line-height: 1.04;
+        }
+
+        .print-lead {
+          max-width: 145mm;
+          color: #334155;
+          font-size: 17px;
+          font-weight: 800;
+          line-height: 1.9;
+        }
+
+        .dark .print-lead {
+          color: #334155;
+        }
+
+        .print-grid {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 8mm;
+          margin-top: 14mm;
+        }
+
+        .print-card {
+          border: 1.4px solid rgba(15, 23, 42, 0.16);
+          border-radius: var(--radius);
+          background: #f8fafc;
+          padding: 8mm;
+          box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.8);
+        }
+
+        .print-card h3 {
+          margin: 0 0 4mm;
+          color: var(--slate);
+          font-size: 21px;
+          font-weight: 900;
+          letter-spacing: -0.03em;
+        }
+
+        .print-card p,
+        .print-card li {
+          color: #334155;
+          font-size: 12.5px;
+          font-weight: 750;
+          line-height: 1.8;
+        }
+
+        .print-stat {
+          color: var(--blue);
+          font-family: "DM Sans", sans-serif;
+          font-size: 38px;
+          font-weight: 900;
+          line-height: 1;
+        }
+
+        .print-footer {
+          position: absolute;
+          right: 22mm;
+          bottom: 14mm;
+          left: 22mm;
+          display: flex;
+          justify-content: space-between;
+          border-top: 1.4px solid rgba(15, 23, 42, 0.16);
+          padding-top: 6mm;
+          color: #475569;
+          font-size: 10.5px;
+          font-weight: 900;
+        }
+
+        .dark .print-footer {
+          border-top-color: rgba(15, 23, 42, 0.16);
+          color: #475569;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topbar web-page">
+      <div class="shell nav">
+        <a class="brand-mark" href="#">
+          <span class="logo-dot">S</span>
+          <span>
+            <strong class="brand-title">Safari United General Trading Group</strong>
+            <span class="brand-subtitle">Safari Express Laundry Group · Kuwait · Since 1992</span>
+          </span>
+        </a>
+        <nav class="nav-links">
+          <a href="#sectors">القطاعات</a>
+          <a href="#technology">التقنية</a>
+          <a href="#quote">طلب تأهيل</a>
+          <a href="#profile">ملف الشركة</a>
+        </nav>
+        <a class="btn btn-primary" href="#quote">تواصل مع فريق العقود</a>
+      </div>
+    </header>
+
+    <main class="web-page">
+      <section class="hero">
+        <div class="shell hero-grid">
+          <div>
+            <span class="eyebrow">Safari Omni Corporate Desk</span>
+            <h1>شريك موثوق لعقود الغسيل والعناية المؤسسية منذ 1992</h1>
+            <p class="lead">
+              تمثل مجموعة سفاري المتحدة للتجارة العامة المظلة المؤسسية، بينما
+              تقود مجموعة مصابغ سفاري السريعة عمليات العناية بالملابس والمفروشات
+              للجهات الحكومية والشركات والأفراد عبر تشغيل منظم، أسطول فعّال،
+              ومعايير جودة قابلة للتعاقد.
+            </p>
+            <div class="hero-actions">
+              <a class="btn btn-primary" href="#quote">طلب تواصل مؤسسي</a>
+              <button class="btn btn-ghost" type="button" onclick="window.print()">طباعة / تحميل ملف الشركة</button>
+            </div>
+          </div>
+
+          <aside class="hero-card">
+            <div class="hero-card-inner">
+              <span class="eyebrow">Operational Readiness</span>
+              <h2 class="section-title">جاهزية تشغيلية تناسب الجهات الكبيرة.</h2>
+              <div class="metric-stack">
+                <div class="metric">
+                  <strong>58</strong>
+                  <span>مركبة ضمن منظومة الحركة وخدمة العقود</span>
+                </div>
+                <div class="metric">
+                  <strong>2,000+</strong>
+                  <span>قطعة يومياً كطاقة معالجة تقديرية قابلة للجدولة</span>
+                </div>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="section" id="stats">
+        <div class="shell">
+          <div class="section-head">
+            <div>
+              <span class="eyebrow">Power Stats</span>
+              <h2 class="section-title">مؤشرات تشغيلية مختصرة لصناع القرار.</h2>
+            </div>
+            <p class="section-desc">
+              صُممت هذه الصفحة لتقديم صورة مباشرة عن قدرة سفاري على خدمة العقود
+              المؤسسية والاحتياجات اليومية ذات الحجم المتكرر.
+            </p>
+          </div>
+          <div class="stats-grid">
+            <article class="stat-card">
+              <strong>30+</strong>
+              <span>عاماً من الحضور والخبرة التشغيلية في السوق الكويتي.</span>
+            </article>
+            <article class="stat-card">
+              <strong>58</strong>
+              <span>مركبة لدعم الحركة التشغيلية بين الفروع ومواقع العملاء.</span>
+            </article>
+            <article class="stat-card">
+              <strong>2,000+</strong>
+              <span>قطعة يومياً كطاقة معالجة تقديرية للأحجام المتكررة.</span>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="sectors">
+        <div class="shell">
+          <div class="section-head">
+            <div>
+              <span class="eyebrow">Specialized Sectors</span>
+              <h2 class="section-title">خدمة مصممة لكل قطاع، من التأهيل إلى التشغيل.</h2>
+            </div>
+            <p class="section-desc">
+              نميز بين احتياجات الجهات الرسمية، عقود الشركات، وخدمة الأفراد
+              لضمان خطاب واضح ومستوى خدمة مناسب لكل فئة.
+            </p>
+          </div>
+          <div class="cards-grid">
+            <article class="sector-card">
+              <span class="badge">B2G</span>
+              <h3>الجهات الحكومية</h3>
+              <p>ملفات تأهيل واضحة، بيانات تشغيلية منظمة، واستعداد للتعامل مع متطلبات الجهات الرسمية.</p>
+            </article>
+            <article class="sector-card">
+              <span class="badge">B2B</span>
+              <h3>الشركات والمؤسسات</h3>
+              <p>حلول للزي الموحد، المفروشات، الضيافة، المطاعم، والقطاعات ذات الاحتياج المستمر.</p>
+            </article>
+            <article class="sector-card">
+              <span class="badge">B2C</span>
+              <h3>الأفراد والعائلات</h3>
+              <p>عناية يومية وتنظيف جاف ومفروشات وقطع خاصة بنفس الانضباط التشغيلي للمجموعة.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section tech-band" id="technology">
+        <div class="shell">
+          <div class="section-head">
+            <div>
+              <span class="eyebrow">Tech Focus</span>
+              <h2 class="section-title">تقنية صناعية ومعايير معالجة آمنة.</h2>
+            </div>
+            <p class="section-desc">
+              تجمع سفاري بين معدات تشغيل احترافية ومواد تنظيف معتمدة لضمان
+              عناية ثابتة بالأنسجة ومظهر نهائي يليق بالجهات الرسمية والتجارية.
+            </p>
+          </div>
+          <div class="tech-grid">
+            <article class="tech-card">
+              <span class="badge">Italian Technology</span>
+              <h3>معدات وتشطيب احترافي</h3>
+              <p>منظومات عناية وكي وتشطيب مستندة إلى خبرة صناعية وتقنيات أوروبية متقدمة.</p>
+            </article>
+            <article class="tech-card">
+              <span class="badge">Certified Chemicals</span>
+              <h3>مواد معتمدة للأنسجة</h3>
+              <p>اختيار مواد تنظيف مناسبة لنوع القماش واللون، مع مراعاة السلامة وثبات الجودة.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="quote">
+        <div class="shell lead-grid">
+          <div class="profile-download" id="profile">
+            <span class="eyebrow">Pre-Qualification</span>
+            <h3>ملف الشركة للتأهيل والتعاقد.</h3>
+            <p>
+              ملف موجز ومصمم للطباعة يتضمن نبذة المجموعة، الطاقة التشغيلية،
+              معايير الجودة، البيانات القانونية، ومعلومات فريق العقود.
+            </p>
+            <button class="btn btn-primary" onclick="window.print()">تحميل / طباعة ملف الشركة</button>
+          </div>
+
+          <form class="form-card">
+            <span class="eyebrow">Request a Quote</span>
+            <h2 class="section-title">طلب تواصل من فريق العقود.</h2>
+            <div class="form-grid">
+              <div>
+                <label for="entity">اسم الجهة</label>
+                <input id="entity" name="entity" placeholder="مثال: شركة / جهة حكومية" />
+              </div>
+              <div>
+                <label for="contact">بيانات التواصل</label>
+                <input id="contact" name="contact" placeholder="رقم الهاتف أو البريد" />
+              </div>
+              <div>
+                <label for="sector">القطاع</label>
+                <select id="sector" name="sector">
+                  <option>جهة حكومية</option>
+                  <option>شركة / مؤسسة</option>
+                  <option>فندق / ضيافة</option>
+                  <option>مطعم / مقهى</option>
+                  <option>أفراد</option>
+                </select>
+              </div>
+              <div>
+                <label for="volume">نطاق الاحتياج</label>
+                <input id="volume" name="volume" placeholder="عدد القطع / الجدولة / الفروع" />
+              </div>
+              <div class="full">
+                <label for="requirements">وصف مختصر للاحتياج</label>
+                <textarea id="requirements" name="requirements" placeholder="مثال: زي موحد، مفروشات، عقد دوري، أو تأهيل مورد"></textarea>
+              </div>
+            </div>
+            <button class="btn btn-dark" type="button">إرسال البيانات لفريق العقود</button>
+          </form>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer web-page">
+      <div class="shell footer-row">
+        <span>© Safari United General Trading Group</span>
+        <span class="latin">info@safariomni.com · 22200299 / 92222664</span>
+      </div>
+    </footer>
+
+    <button class="btn btn-primary print-floating web-page" type="button" onclick="window.print()">
+      طباعة ملف الشركة
+    </button>
+
+    <section class="print-profile" aria-label="Printable company profile">
+      <article class="print-page dark">
+        <span class="print-kicker">Official Company Profile</span>
+        <h2 class="print-title">Safari United General Trading Group</h2>
+        <p class="print-lead">
+          الذراع التشغيلي: مجموعة مصابغ سفاري السريعة<br />
+          ملف الشركة للتأهيل والتعاقد مع الجهات الحكومية والشركات
+        </p>
+        <div class="print-grid">
+          <div class="print-card">
+            <h3>Established</h3>
+            <p class="print-stat">1992</p>
+          </div>
+          <div class="print-card">
+            <h3>Operating Arm</h3>
+            <p>Safari Express Laundry Group</p>
+          </div>
+        </div>
+        <footer class="print-footer">
+          <span>Page 1 / 6</span>
+          <span>Safari Omni Corporate Profile</span>
+        </footer>
+      </article>
+
+      <article class="print-page">
+        <span class="print-kicker">About Us</span>
+        <h2 class="print-title">نبذة مؤسسية منذ 1992.</h2>
+        <p class="print-lead">
+          تعمل مجموعة سفاري المتحدة للتجارة العامة كمظلة مؤسسية للسوق الكويتي،
+          وتقود مجموعة مصابغ سفاري السريعة الذراع التشغيلي المتخصص في عناية
+          الملابس والمفروشات للأفراد والشركات والجهات الرسمية.
+        </p>
+        <div class="print-grid">
+          <div class="print-card">
+            <h3>رأس المال</h3>
+            <p class="print-stat">1,000,000 KWD</p>
+            <p>يعكس رأس المال الجدية المؤسسية والقدرة على دعم التزامات تعاقدية منظمة.</p>
+          </div>
+          <div class="print-card">
+            <h3>النطاق</h3>
+            <p>خدمات B2G و B2B و B2C عبر تشغيل منظم وقنوات تنسيق واضحة.</p>
+          </div>
+        </div>
+        <footer class="print-footer">
+          <span>Page 2 / 6</span>
+          <span>About Safari United</span>
+        </footer>
+      </article>
+
+      <article class="print-page">
+        <span class="print-kicker">Operational Strength</span>
+        <h2 class="print-title">قوة تشغيلية قابلة للجدولة.</h2>
+        <div class="print-grid">
+          <div class="print-card">
+            <h3>Fleet</h3>
+            <p class="print-stat">58</p>
+            <p>مركبة ضمن منظومة الحركة التشغيلية وخدمة الفروع ومواقع التعاقد.</p>
+          </div>
+          <div class="print-card">
+            <h3>Daily Capacity</h3>
+            <p class="print-stat">2,000+</p>
+            <p>قطعة يومياً كطاقة معالجة تقديرية للأحجام المتكررة.</p>
+          </div>
+          <div class="print-card">
+            <h3>Coverage</h3>
+            <p>فروع متعددة داخل الكويت مع رقم موحد للتنسيق.</p>
+          </div>
+          <div class="print-card">
+            <h3>Contract Readiness</h3>
+            <p>قابلية للتعامل مع جداول تشغيل للجهات والشركات وفق نطاق العقد.</p>
+          </div>
+        </div>
+        <footer class="print-footer">
+          <span>Page 3 / 6</span>
+          <span>Operational Strength</span>
+        </footer>
+      </article>
+
+      <article class="print-page">
+        <span class="print-kicker">Quality Standards</span>
+        <h2 class="print-title">معايير جودة ومعالجة آمنة.</h2>
+        <div class="print-grid">
+          <div class="print-card">
+            <h3>Italian Machines</h3>
+            <p>معدات معالجة وتشطيب تستند إلى تقنيات أوروبية وخبرة تشغيل صناعية.</p>
+          </div>
+          <div class="print-card">
+            <h3>Institutional Quality</h3>
+            <p>مستوى جودة يناسب الجهات التي تتطلب مظهراً رسمياً وثباتاً في النتائج.</p>
+          </div>
+          <div class="print-card">
+            <h3>Certified Safety</h3>
+            <p>مواد تنظيف معتمدة ومناسبة لنوع القماش واللون ومتطلبات السلامة.</p>
+          </div>
+          <div class="print-card">
+            <h3>Inspection</h3>
+            <p>فحص أولي للقطع، معالجة مناسبة، وتشطيب يحافظ على مظهر القطعة.</p>
+          </div>
+        </div>
+        <footer class="print-footer">
+          <span>Page 4 / 6</span>
+          <span>Quality Standards</span>
+        </footer>
+      </article>
+
+      <article class="print-page">
+        <span class="print-kicker">Legal & HQ</span>
+        <h2 class="print-title">البيانات القانونية والمقر.</h2>
+        <div class="print-grid">
+          <div class="print-card">
+            <h3>Corporate Entity</h3>
+            <p>Safari United General Trading Group</p>
+          </div>
+          <div class="print-card">
+            <h3>Operating Arm</h3>
+            <p>Safari Express Laundry Group<br />مجموعة مصابغ سفاري السريعة</p>
+          </div>
+          <div class="print-card">
+            <h3>HQ Address</h3>
+            <p>Farwaniya, Office 13, Block 3, Al-Khairinj Complex, Kuwait.</p>
+          </div>
+          <div class="print-card">
+            <h3>Service Scope</h3>
+            <p>General trading and laundry care operations for corporate, government, and individual sectors.</p>
+          </div>
+        </div>
+        <footer class="print-footer">
+          <span>Page 5 / 6</span>
+          <span>Legal & Headquarters</span>
+        </footer>
+      </article>
+
+      <article class="print-page dark">
+        <span class="print-kicker">Contact & Contracts</span>
+        <h2 class="print-title">قنوات التواصل والتعاقد.</h2>
+        <p class="print-lead">
+          للتأهيل المسبق، التنسيق المؤسسي، أو التواصل مع فريق العقود، يمكن
+          استخدام البيانات الرسمية التالية.
+        </p>
+        <div class="print-grid">
+          <div class="print-card">
+            <h3>Phone</h3>
+            <p class="print-stat">22200299</p>
+            <p class="print-stat">92222664</p>
+          </div>
+          <div class="print-card">
+            <h3>Email</h3>
+            <p class="latin">info@safariomni.com</p>
+          </div>
+        </div>
+        <footer class="print-footer">
+          <span>Page 6 / 6</span>
+          <span>info@safariomni.com</span>
+        </footer>
+      </article>
+    </section>
+  </body>
+</html>

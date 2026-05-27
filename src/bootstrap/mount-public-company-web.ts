@@ -26,7 +26,10 @@ export function mountPublicCompanyWebsite(
     'Bootstrap',
   );
 
-  const staticFiles = express.static(distDir, { index: false, maxAge: '1h' });
+  const staticFiles = express.static(distDir, {
+    index: false,
+    maxAge: process.env.NODE_ENV === 'production' ? '5m' : 0,
+  });
 
   app.use((req, res, next) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') {
