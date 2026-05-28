@@ -10,7 +10,13 @@ import {
   TestCustomer,
   TestUser,
 } from '../factories';
-import { createTestApp, getAuthHeader, getResponseData, request } from '../helpers';
+import {
+  buildPosCheckoutLineItemsForTotal,
+  createTestApp,
+  getAuthHeader,
+  getResponseData,
+  request,
+} from '../helpers';
 import { closeDb, prisma, resetDb } from '../setup/test-db';
 
 describe('RBAC: Branch IDOR Prevention', () => {
@@ -54,6 +60,7 @@ describe('RBAC: Branch IDOR Prevention', () => {
         customerDisplayName: customer2.displayName ?? 'Test',
         customerAddress: customer2.address ?? 'Test',
         totalPrice: 25,
+        lineItems: await buildPosCheckoutLineItemsForTotal(prisma, 25),
         invoiceNumber: `INV-${randomUUID()}`,
         posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT,
       });
@@ -80,6 +87,7 @@ describe('RBAC: Branch IDOR Prevention', () => {
         customerDisplayName: customer2.displayName ?? 'Test',
         customerAddress: customer2.address ?? 'Test',
         totalPrice: 12,
+        lineItems: await buildPosCheckoutLineItemsForTotal(prisma, 12),
         invoiceNumber: `INV-${randomUUID()}`,
         posPaymentMethod: PosPaymentMethod.CASH,
       });
@@ -103,6 +111,7 @@ describe('RBAC: Branch IDOR Prevention', () => {
         customerDisplayName: customer2.displayName ?? 'Test',
         customerAddress: customer2.address ?? 'Test',
         totalPrice: 9,
+        lineItems: await buildPosCheckoutLineItemsForTotal(prisma, 9),
         invoiceNumber: `INV-${randomUUID()}`,
         posPaymentMethod: PosPaymentMethod.CASH,
       });

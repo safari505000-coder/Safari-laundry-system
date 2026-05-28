@@ -11,6 +11,7 @@ import {
   TestUser,
 } from '../factories';
 import {
+  buildPosCheckoutLineItemsForTotal,
   createTestApp,
   getArBalance,
   getAuthHeader,
@@ -58,6 +59,7 @@ describe('FIN-05: Concurrency and Locks', () => {
         customerDisplayName: customer.displayName ?? 'Test',
         customerAddress: customer.address ?? 'Test',
         totalPrice: amountKd,
+        lineItems: await buildPosCheckoutLineItemsForTotal(prisma, amountKd),
         invoiceNumber: `INV-${randomUUID()}`,
         posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT,
       });
@@ -110,6 +112,7 @@ describe('FIN-05: Concurrency and Locks', () => {
   });
 
   it('concurrent debt invoice creation produces unique journal entries', async () => {
+    const lineItems = await buildPosCheckoutLineItemsForTotal(prisma, 5);
     const promises = Array.from({ length: 3 }, (_, i) =>
       request(app.getHttpServer())
         .post('/api/pos/checkout')
@@ -120,6 +123,7 @@ describe('FIN-05: Concurrency and Locks', () => {
           customerDisplayName: customer.displayName ?? 'Test',
           customerAddress: customer.address ?? 'Test',
           totalPrice: 5,
+          lineItems,
           invoiceNumber: `INV-CONCURRENT-${i}-${randomUUID()}`,
           posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT,
         }),
@@ -144,6 +148,7 @@ describe('FIN-05: Concurrency and Locks', () => {
       data: { balance: new Prisma.Decimal('10.0000') },
     });
 
+    const lineItems = await buildPosCheckoutLineItemsForTotal(prisma, 1);
     const promises = Array.from({ length: 5 }, () =>
       request(app.getHttpServer())
         .post('/api/pos/checkout')
@@ -154,6 +159,7 @@ describe('FIN-05: Concurrency and Locks', () => {
           customerDisplayName: customer.displayName ?? 'Test',
           customerAddress: customer.address ?? 'Test',
           totalPrice: 1,
+          lineItems,
           invoiceNumber: `INV-WAL-${randomUUID()}`,
           posPaymentMethod: PosPaymentMethod.SUBSCRIPTION_WALLET,
         }),

@@ -21,6 +21,7 @@ import {
   assertDecimalEqual,
   assertJournalBalanced,
   assertJournalEntryExists,
+  buildPosCheckoutLineItemsForTotal,
   createTestApp,
   getResponseData,
   getArBalance,
@@ -79,6 +80,7 @@ describe('FIN-01: Ledger Integrity', () => {
         customerDisplayName: customer.displayName ?? 'Test Customer',
         customerAddress: customer.address ?? 'Test Address',
         totalPrice: amount,
+        lineItems: await buildPosCheckoutLineItemsForTotal(prisma, amount),
         invoiceNumber: `INV-${randomUUID()}`,
         posPaymentMethod: paymentMethod,
       });

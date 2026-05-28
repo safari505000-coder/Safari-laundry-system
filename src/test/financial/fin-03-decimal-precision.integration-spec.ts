@@ -12,6 +12,7 @@ import {
 } from '../factories';
 import {
   assertDecimalEqual,
+  buildPosCheckoutLineItemsForTotal,
   createTestApp,
   getArBalance,
   getAuthHeader,
@@ -57,6 +58,7 @@ describe('FIN-03: Decimal Precision', () => {
         customerDisplayName: customer.displayName ?? 'Test',
         customerAddress: customer.address ?? 'Test',
         totalPrice: amountKd,
+        lineItems: await buildPosCheckoutLineItemsForTotal(prisma, amountKd),
         invoiceNumber: `INV-${randomUUID()}`,
         posPaymentMethod: method,
       });
@@ -67,8 +69,8 @@ describe('FIN-03: Decimal Precision', () => {
   }
 
   const edgeCases = [
-    { amount: '0.0010', label: 'sub-fils precision (1 fils)' },
-    { amount: '0.0050', label: 'half-fils boundary' },
+    { amount: '0.2510', label: 'sub-fils precision after delivery fee' },
+    { amount: '0.2550', label: 'half-fils boundary after delivery fee' },
     { amount: '1.2355', label: 'banker rounding boundary' },
     { amount: '999.9999', label: 'near-integer boundary' },
   ];

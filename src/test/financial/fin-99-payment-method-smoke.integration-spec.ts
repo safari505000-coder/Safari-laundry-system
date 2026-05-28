@@ -13,6 +13,7 @@ import {
 import {
   assertDecimalEqual,
   assertJournalBalanced,
+  buildPosCheckoutLineItemsForTotal,
   createTestApp,
   getArBalance,
   getAuthHeader,
@@ -75,6 +76,7 @@ describe('FIN-99: payment method smoke', () => {
         customerDisplayName: customer.displayName ?? 'Smoke Customer',
         customerAddress: customer.address ?? 'Smoke Address',
         totalPrice: amount,
+        lineItems: await buildPosCheckoutLineItemsForTotal(prisma, amount),
         invoiceNumber: `SMOKE-${randomUUID()}`,
         posPaymentMethod: method,
       });
@@ -298,6 +300,7 @@ describe('FIN-99: payment method smoke', () => {
         customerDisplayName: customer.displayName ?? 'Smoke Customer',
         customerAddress: customer.address ?? 'Smoke Address',
         totalPrice: '10.0000',
+        lineItems: await buildPosCheckoutLineItemsForTotal(prisma, '10.0000'),
         invoiceNumber: `SMOKE-${randomUUID()}`,
         posPaymentMethod: PosPaymentMethod.SUBSCRIPTION_WALLET,
       });

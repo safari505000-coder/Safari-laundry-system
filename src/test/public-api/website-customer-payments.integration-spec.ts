@@ -11,6 +11,7 @@ import {
   TestUser,
 } from '../factories';
 import {
+  buildPosCheckoutLineItemsForTotal,
   createTestApp,
   getAuthHeader,
   getResponseData,
@@ -57,6 +58,7 @@ describe('Website customer payments (public pay + call-center queue)', () => {
         customerDisplayName: customer.displayName ?? 'Website Pay Customer',
         customerAddress: customer.address ?? 'Test Address',
         totalPrice: amountKd,
+        lineItems: await buildPosCheckoutLineItemsForTotal(prisma, amountKd),
         invoiceNumber: `INV-${randomUUID()}`,
         posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT,
       });

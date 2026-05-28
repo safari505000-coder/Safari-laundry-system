@@ -13,6 +13,7 @@ import {
   TestUser,
 } from '../factories';
 import {
+  buildPosCheckoutLineItemsForTotal,
   createTestApp,
   getAuthHeader,
   request,
@@ -70,6 +71,7 @@ describe('FIN-06: Period Lock Authority', () => {
         customerDisplayName: customer.displayName ?? 'Test',
         customerAddress: customer.address ?? 'Test',
         totalPrice: 10,
+        lineItems: await buildPosCheckoutLineItemsForTotal(prisma, 10),
         invoiceNumber: `INV-${randomUUID()}`,
         posPaymentMethod: PosPaymentMethod.CASH,
       });
@@ -92,6 +94,7 @@ describe('FIN-06: Period Lock Authority', () => {
         customerDisplayName: customer.displayName ?? 'Test',
         customerAddress: customer.address ?? 'Test',
         totalPrice: 10,
+        lineItems: await buildPosCheckoutLineItemsForTotal(prisma, 10),
         invoiceNumber: `INV-${randomUUID()}`,
         posPaymentMethod: PosPaymentMethod.CASH,
       });
@@ -119,6 +122,7 @@ describe('FIN-06: Period Lock Authority', () => {
         customerDisplayName: customer.displayName ?? 'Test',
         customerAddress: customer.address ?? 'Test',
         totalPrice: 10,
+        lineItems: await buildPosCheckoutLineItemsForTotal(prisma, 10),
         invoiceNumber: `INV-${randomUUID()}`,
         posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT,
       });
@@ -177,6 +181,7 @@ describe('FIN-06: Period Lock Authority', () => {
         customerDisplayName: customer.displayName ?? 'Test',
         customerAddress: customer.address ?? 'Test',
         totalPrice: 5,
+        lineItems: await buildPosCheckoutLineItemsForTotal(prisma, 5),
         invoiceNumber: `INV-${randomUUID()}`,
         posPaymentMethod: PosPaymentMethod.CASH,
       });

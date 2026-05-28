@@ -10,7 +10,13 @@ import {
   TestCustomer,
   TestUser,
 } from '../factories';
-import { createTestApp, getAuthHeader, getResponseData, request } from '../helpers';
+import {
+  buildPosCheckoutLineItemsForTotal,
+  createTestApp,
+  getAuthHeader,
+  getResponseData,
+  request,
+} from '../helpers';
 import { closeDb, prisma, resetDb } from '../setup/test-db';
 
 describe('SEC: Penetration Test STEAL Fix Verification', () => {
@@ -85,6 +91,7 @@ describe('SEC: Penetration Test STEAL Fix Verification', () => {
           customerDisplayName: customer1.displayName ?? 'Test',
           customerAddress: customer1.address ?? 'Test',
           totalPrice: 1.0001,
+          lineItems: await buildPosCheckoutLineItemsForTotal(prisma, 1.0001),
           invoiceNumber: `INV-${randomUUID()}`,
           posPaymentMethod: PosPaymentMethod.CASH,
         });
@@ -113,6 +120,7 @@ describe('SEC: Penetration Test STEAL Fix Verification', () => {
         customerDisplayName: customer2.displayName ?? 'Test',
         customerAddress: customer2.address ?? 'Test',
         totalPrice: 12,
+        lineItems: await buildPosCheckoutLineItemsForTotal(prisma, 12),
         invoiceNumber: `INV-${randomUUID()}`,
         posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT,
       });

@@ -10,6 +10,7 @@ import {
   TestUser,
 } from '../factories';
 import {
+  buildPosCheckoutLineItemsForTotal,
   createTestApp,
   getAuthHeader,
   getResponseData,
@@ -96,6 +97,7 @@ describe('Mobile API smoke (employee + customer)', () => {
         customerDisplayName: customer.displayName ?? 'Portal Smoke Customer',
         customerAddress: customer.address ?? 'Test Address',
         totalPrice: '2.5000',
+        lineItems: await buildPosCheckoutLineItemsForTotal(prisma, '2.5000'),
         invoiceNumber: `INV-${randomUUID()}`,
         posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT,
       });

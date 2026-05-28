@@ -17,6 +17,7 @@ import {
 } from '../factories';
 import {
   assertJournalEntryCount,
+  buildPosCheckoutLineItemsForTotal,
   createTestApp,
   getAuthHeader,
   getResponseData,
@@ -63,6 +64,7 @@ describe('FIN-04: Idempotent Payments', () => {
         customerDisplayName: customer.displayName ?? 'Test',
         customerAddress: customer.address ?? 'Test',
         totalPrice: amount,
+        lineItems: await buildPosCheckoutLineItemsForTotal(prisma, amount),
         invoiceNumber: `INV-${randomUUID()}`,
         posPaymentMethod: method,
       });

@@ -12,6 +12,7 @@ import {
 } from '../factories';
 import {
   assertDecimalEqual,
+  buildPosCheckoutLineItemsForTotal,
   createTestApp,
   getArBalance,
   getAuthHeader,
@@ -59,6 +60,7 @@ describe('FIN-02: Canonical Customer Debt', () => {
         customerDisplayName: customer.displayName ?? 'Test Customer',
         customerAddress: customer.address ?? 'Test Address',
         totalPrice: amountKd,
+        lineItems: await buildPosCheckoutLineItemsForTotal(prisma, amountKd),
         invoiceNumber: `INV-${randomUUID()}`,
         posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT,
       });
@@ -160,6 +162,7 @@ describe('FIN-02: Canonical Customer Debt', () => {
         customerDisplayName: customer.displayName ?? 'Test Customer',
         customerAddress: customer.address ?? 'Test Address',
         totalPrice: 20,
+        lineItems: await buildPosCheckoutLineItemsForTotal(prisma, 20),
         invoiceNumber: `INV-${randomUUID()}`,
         posPaymentMethod: PosPaymentMethod.SUBSCRIPTION_WALLET,
       });
@@ -198,6 +201,7 @@ describe('FIN-02: Canonical Customer Debt', () => {
         customerDisplayName: second.displayName ?? 'Second Customer',
         customerAddress: second.address ?? 'Test Address',
         totalPrice: 70,
+        lineItems: await buildPosCheckoutLineItemsForTotal(prisma, 70),
         invoiceNumber: `INV-${randomUUID()}`,
         posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT,
       });
