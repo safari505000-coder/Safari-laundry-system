@@ -37,6 +37,12 @@ import {
   RECEIPT_MAX_DATA_URL_LENGTH,
   receiptFitsPayloadLimit,
 } from '@/lib/receipt-image';
+import {
+  getEventKindLabelAr,
+  getPaymentMethodLabelAr,
+  getSubscriptionStatusLabelAr,
+  getSubscriptionStatusTone,
+} from '@/lib/call-center';
 
 function test(name: string, run: () => void) {
   run();
@@ -293,4 +299,25 @@ test('delivery action buttons follow server deliveryStatus', () => {
   assert.equal(deliveryStatusLabelAr('OUT_FOR_DELIVERY'), 'جاري التوصيل');
   assert.equal(returnReasonLabelAr('NO_ANSWER'), 'العميل لم يرد');
   assert.equal(RETURN_REASON_OPTIONS.length, 4);
+});
+
+test('call center helper mappings translate event kinds and status values correctly', () => {
+  assert.equal(getEventKindLabelAr('SUBSCRIPTION_ACTIVATION'), 'تفعيل اشتراك جديد');
+  assert.equal(getEventKindLabelAr('PARTIAL_DEBT_PAYMENT'), 'سداد جزء من المديونية');
+  assert.equal(getEventKindLabelAr('UNKNOWN_KIND'), 'UNKNOWN_KIND');
+
+  assert.equal(getSubscriptionStatusLabelAr('ACTIVE'), 'نشط');
+  assert.equal(getSubscriptionStatusLabelAr('CUT_OFF'), 'موقوف');
+
+  assert.equal(getPaymentMethodLabelAr('CASH'), 'كاش');
+  assert.equal(getPaymentMethodLabelAr('KNET'), 'كي نت');
+  assert.equal(getPaymentMethodLabelAr('ONLINE'), 'أونلاين');
+  assert.equal(getPaymentMethodLabelAr('PAYMENT_LINK'), 'رابط دفع');
+  assert.equal(getPaymentMethodLabelAr('DEBT_ON_ACCOUNT'), 'على الحساب');
+  assert.equal(getPaymentMethodLabelAr(null), 'غير محدد');
+
+  assert.equal(getSubscriptionStatusTone('ACTIVE'), 'completed');
+  assert.equal(getSubscriptionStatusTone('CUT_OFF'), 'warning');
+  assert.equal(getSubscriptionStatusTone('CLOSED'), 'cancelled');
+  assert.equal(getSubscriptionStatusTone('UNKNOWN'), 'neutral');
 });
