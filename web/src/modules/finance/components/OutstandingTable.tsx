@@ -1,4 +1,5 @@
 import { type ReactElement } from 'react';
+import { formatKwdAmount } from '@/lib/kwd';
 import { WindowedList } from './WindowedList';
 import { PaymentStatusChip, type PaymentStatus } from './PaymentStatusChip';
 import { AgingBadge, type AgingBucket } from './AgingBadge';
@@ -128,13 +129,13 @@ export function OutstandingTable(props: OutstandingTableProps): ReactElement {
               {new Date(row.issuedAt).toLocaleDateString(isAr ? 'ar' : 'en')}
             </time>
             <span className="text-end font-semibold tabular-nums text-slate-800 dark:text-slate-100">
-              {row.totalKd}
+              {formatKwdAmount(row.totalKd)}
             </span>
             <span className="text-end font-semibold tabular-nums text-emerald-700 dark:text-emerald-300">
-              {row.paidKd}
+              {formatKwdAmount(row.paidKd)}
             </span>
             <span className="text-end font-bold tabular-nums text-rose-700 dark:text-rose-300">
-              {row.remainingKd}
+              {formatKwdAmount(row.remainingKd)}
             </span>
             <PaymentStatusChip status={row.status} locale={props.locale} />
             {row.agingBucket ? (

@@ -229,7 +229,7 @@ describe('OutstandingService', () => {
           driverName: 'Driver X',
           customers: 1,
           invoices: 2,
-          totalRemainingKd: '12.500',
+          totalRemainingKd: '12.5000',
           maxDaysLate: 10,
         },
       ]);

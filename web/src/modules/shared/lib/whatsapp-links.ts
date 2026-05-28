@@ -1,6 +1,6 @@
 import type { CollectionUnpaidOnlineRow, CustomerDirectoryRow } from '@/lib/api';
 import { BRAND } from '@/lib/brand';
-import { isPositiveKd } from '@/lib/kwd';
+import { formatKwdAmount, isPositiveKd } from '@/lib/kwd';
 
 /** Normalize Kuwait-style numbers for wa.me links. */
 export function whatsappChatNumber(phone: string): string | null {
@@ -156,7 +156,7 @@ function buildCollectionsUnpaidWhatsAppTextInner(
     '\n',
   );
 
-  const totalLine = `💰 *الإجمالي: ${row.amountKd} د.ك*`;
+  const totalLine = `💰 *الإجمالي: ${formatKwdAmount(row.amountKd)} د.ك*`;
 
   const actionBlock = url
     ? ['🔒 رابط الدفع (UPayments):', url].join('\n')
@@ -196,7 +196,7 @@ function buildCollectionsUnpaidWhatsAppTextMinimal(
   const pay = url
     ? ['🔒 رابط الدفع (UPayments):', url].join('\n')
     : '📞 للدفع يرجى التواصل معنا.';
-  return [greet, '', `🏷️ ${invoiceRef}`, `💰 *${row.amountKd} د.ك*`, '', pay, '', SAFARI_TEAM_FOOTER_AR].join(
+  return [greet, '', `🏷️ ${invoiceRef}`, `💰 *${formatKwdAmount(row.amountKd)} د.ك*`, '', pay, '', SAFARI_TEAM_FOOTER_AR].join(
     '\n',
   );
 }
