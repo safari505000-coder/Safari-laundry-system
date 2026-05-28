@@ -127,7 +127,7 @@ export default function DriverTasksScreen() {
                 }}
                 onCreateOrder={(task) => {
                   router.push({
-                    pathname: '/(app)/(driver)/pos',
+                    pathname: '/(app)/(driver)/(tabs)/pos',
                     params: { dispatchId: task.id },
                   });
                 }}

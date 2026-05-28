@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
+import { parsePersistedCartLines } from '@/cart/cart-persisted-lines';
 import { estimateCartTotalKd } from '@/cart/cart-totals';
 import { formatKwdLabel } from '@/lib/kwd';
-import { validateOrderGuard } from '@/order/order-guards';
+import { validateOrderGuard, validateTrackPhoneQuery } from '@/order/order-guards';
 import {
   deliveryStatusLabelAr,
   deliveryTimelineActiveIndex,
@@ -44,8 +45,9 @@ test('order guard requires a valid phone', () => {
       phone: '12',
       itemCount: 1,
       serviceMode: 'BRANCH',
+      branch: 'سفاري الجهراء',
     }),
-    'أدخل رقم جوال كويتي صحيح لإكمال الطلب.',
+    'أدخل رقم جوال كويتي صحيح (يبدأ بـ 5 أو 6 أو 9).',
   );
 });
 
@@ -55,6 +57,7 @@ test('order guard requires at least one item', () => {
       phone: '99999999',
       itemCount: 0,
       serviceMode: 'BRANCH',
+      branch: 'سفاري الجهراء',
     }),
     'اختر خدمة واحدة على الأقل قبل تأكيد الطلب.',
   );
@@ -82,6 +85,18 @@ test('order guard requires address and pickup window for courier', () => {
   );
 });
 
+test('order guard accepts complete branch request', () => {
+  assert.equal(
+    validateOrderGuard({
+      phone: '99999999',
+      itemCount: 1,
+      serviceMode: 'BRANCH',
+      branch: 'سفاري الجهراء',
+    }),
+    null,
+  );
+});
+
 test('order guard accepts complete courier request', () => {
   assert.equal(
     validateOrderGuard({
@@ -93,6 +108,29 @@ test('order guard accepts complete courier request', () => {
     }),
     null,
   );
+});
+
+test('track query requires kuwait mobile', () => {
+  assert.equal(validateTrackPhoneQuery('123'), 'أدخل رقم جوال كويتي صحيح (يبدأ بـ 5 أو 6 أو 9).');
+  assert.equal(validateTrackPhoneQuery('51234567'), null);
+});
+
+test('persisted cart ignores invalid rows', () => {
+  const parsed = parsePersistedCartLines(
+    JSON.stringify([
+      {
+        serviceId: 'svc-1',
+        label: 'قميص',
+        quantity: 2,
+        priceNormalKd: '1.000',
+        priceExpressKd: '1.500',
+      },
+      { serviceId: '', quantity: 0 },
+      'bad-row',
+    ]),
+  );
+  assert.equal(parsed.length, 1);
+  assert.equal(parsed[0]?.serviceId, 'svc-1');
 });
 
 test('delivery timeline highlights current ERP invoice status', () => {

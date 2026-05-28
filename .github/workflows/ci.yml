@@ -158,6 +158,12 @@ jobs:
         run: npm ci
         working-directory: apps/customer-mobile
 
+      - name: Typecheck employee-mobile
+        run: npm run employee-mobile:typecheck
+
+      - name: Typecheck customer-mobile
+        run: npm run customer-mobile:typecheck
+
       - name: Run mobile delivery/UI logic tests
         run: npm run mobile:test:logic
 

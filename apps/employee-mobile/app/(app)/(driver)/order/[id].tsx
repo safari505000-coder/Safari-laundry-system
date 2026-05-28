@@ -38,7 +38,7 @@ export default function DriverOrderDetailScreen() {
   }, [params.id]);
 
   if (!isValidOrderId(orderId)) {
-    return <Redirect href="/(app)/(driver)/scan" />;
+    return <Redirect href="/(app)/(driver)/(tabs)/scan" />;
   }
 
   return <DriverOrderDetailContent orderId={orderId} />;

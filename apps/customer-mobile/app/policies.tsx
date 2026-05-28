@@ -19,12 +19,14 @@ export default function PoliciesScreen() {
           <Text style={styles.subtitle}>مجموعة مصابغ سفاري السريعة</Text>
         </View>
       </View>
-      <WebView
-        originWhitelist={['*']}
-        source={{ html: safariPoliciesHtml }}
-        style={styles.webview}
-        showsVerticalScrollIndicator={false}
-      />
+      <View style={[styles.webviewWrap, { paddingBottom: insets.bottom }]}>
+        <WebView
+          originWhitelist={['*']}
+          source={{ html: safariPoliciesHtml }}
+          style={styles.webview}
+          showsVerticalScrollIndicator={false}
+        />
+      </View>
     </View>
   );
 }
@@ -69,6 +71,9 @@ const styles = StyleSheet.create({
     color: luxury.color.slate,
     fontSize: luxury.type.caption,
     textAlign: 'right',
+  },
+  webviewWrap: {
+    flex: 1,
   },
   webview: {
     flex: 1,

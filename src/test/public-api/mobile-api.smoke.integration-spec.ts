@@ -29,6 +29,7 @@ describe('Mobile API smoke (employee + customer)', () => {
     process.env.USE_JOURNAL_AS_SOURCE = 'true';
     process.env.CUSTOMER_OTP_DEV_ECHO = 'true';
     process.env.PUBLIC_CUSTOMER_PORTAL_PHONE_PREVIEW = 'true';
+    process.env.CUSTOMER_PORTAL_DEV_LOGIN = 'true';
     app = await createTestApp();
   });
 
@@ -156,6 +157,33 @@ describe('Mobile API smoke (employee + customer)', () => {
     expect(portalBody.customer.phone).toBe('52345678');
   });
 
+  it('dev-login issues customer portal JWT without OTP', async () => {
+    await createCustomer(prisma, null, { phone: '53456789' });
+
+    const login = await request(app.getHttpServer())
+      .post('/api/public/customer-auth/dev-login')
+      .send({ phone: '53456789' });
+
+    const session = getResponseData<{
+      status: string;
+      accessToken: string;
+      customer: { phone: string };
+    }>(login.body);
+    expect(login.status).toBeLessThan(400);
+    expect(session.status).toBe('VERIFIED');
+    expect(session.accessToken).toBeTruthy();
+
+    const portal = await request(app.getHttpServer())
+      .get('/api/public/customer-portal/me')
+      .set('Authorization', `Bearer ${session.accessToken}`);
+
+    const portalBody = getResponseData<{
+      customer: { phone: string };
+    }>(portal.body);
+    expect(portal.status).toBe(200);
+    expect(portalBody.customer.phone).toBe('53456789');
+  });
+
   it('lists website order requests by customer phone', async () => {
     await request(app.getHttpServer())
       .post('/api/public/orders/request')
@@ -185,6 +213,35 @@ describe('Mobile API smoke (employee + customer)', () => {
     expect(body.requests[0]?.notes).toBe('Smoke track test');
   });
 
+  it('lists website order requests via mobile alias route', async () => {
+    await request(app.getHttpServer())
+      .post('/api/public/orders/request')
+      .send({
+        customerPhone: '53567890',
+        customerDisplayName: 'Mobile Alias',
+        serviceType: 'EXPRESS',
+        notes: 'Alias track test',
+      })
+      .expect((res) => expect(res.status).toBeLessThan(400));
+
+    const res = await request(app.getHttpServer()).get(
+      '/api/public/customer-order-requests?phone=53567890',
+    );
+
+    const body = getResponseData<{
+      requests: Array<{
+        publicReference: string;
+        status: string;
+        notes: string | null;
+      }>;
+    }>(res.body);
+    expect(res.status).toBe(200);
+    expect(body.requests).toHaveLength(1);
+    expect(body.requests[0]?.publicReference).toMatch(/^W-\d{5}$/);
+    expect(body.requests[0]?.status).toBe('NEW');
+    expect(body.requests[0]?.notes).toBe('Alias track test');
+  });
+
   it('registers customer expo push token by phone', async () => {
     const customer = await createCustomer(prisma, null, { phone: '54567890' });
 
@@ -205,5 +262,84 @@ describe('Mobile API smoke (employee + customer)', () => {
       select: { expoPushToken: true },
     });
     expect(row.expoPushToken).toBe('ExponentPushToken[customer-smoke]');
+  });
+
+  it('updates customer profile for authenticated portal session', async () => {
+    await createCustomer(prisma, null, {
+      phone: '54678901',
+      displayName: 'Before Smoke',
+    });
+
+    const login = await request(app.getHttpServer())
+      .post('/api/public/customer-auth/dev-login')
+      .send({ phone: '54678901' });
+
+    const session = getResponseData<{ accessToken: string }>(login.body);
+    expect(login.status).toBeLessThan(400);
+
+    const res = await request(app.getHttpServer())
+      .patch('/api/public/customer/profile')
+      .set('Authorization', `Bearer ${session.accessToken}`)
+      .send({
+        displayName: 'After Smoke',
+        addresses: [{ address: 'السالمية', isDefault: true }],
+      });
+
+    const body = getResponseData<{
+      customer: {
+        displayName: string | null;
+        addresses: Array<{ address: string }>;
+      };
+    }>(res.body);
+    expect(res.status).toBe(200);
+    expect(body.customer.displayName).toBe('After Smoke');
+    expect(body.customer.addresses[0]?.address).toBe('السالمية');
+  });
+
+  it('returns delivery tracking for owned invoice via customer JWT', async () => {
+    await seedJournalAccounts(prisma);
+    const branch = await createBranch(prisma);
+    const customer = await createCustomer(prisma, branch.id, {
+      phone: '54789012',
+    });
+
+    const checkoutRes = await request(app.getHttpServer())
+      .post('/api/pos/checkout')
+      .set(getAuthHeader(driver.jwtToken))
+      .send({
+        customerId: customer.id,
+        customerPhone: customer.phone,
+        customerDisplayName: customer.displayName ?? 'Delivery Smoke',
+        customerAddress: customer.address ?? 'Kuwait City',
+        totalPrice: '2.0000',
+        lineItems: await buildPosCheckoutLineItemsForTotal(prisma, '2.0000'),
+        invoiceNumber: `INV-${randomUUID()}`,
+        posPaymentMethod: PosPaymentMethod.CASH,
+      });
+    expect(checkoutRes.status).toBeLessThan(400);
+    const orderId = getResponseData<{ id: string }>(checkoutRes.body).id;
+
+    const login = await request(app.getHttpServer())
+      .post('/api/public/customer-auth/dev-login')
+      .send({ phone: customer.phone });
+    const token = getResponseData<{ accessToken: string }>(login.body).accessToken;
+
+    await request(app.getHttpServer())
+      .post(`/api/driver/orders/${orderId}/start-delivery`)
+      .set(getAuthHeader(driver.jwtToken))
+      .send({})
+      .expect(200);
+
+    const delivery = await request(app.getHttpServer())
+      .get(`/api/public/customer-portal/orders/${orderId}/delivery`)
+      .set('Authorization', `Bearer ${token}`);
+
+    const body = getResponseData<{
+      deliveryStatus: string;
+      timeline: Array<{ status: string }>;
+    }>(delivery.body);
+    expect(delivery.status).toBe(200);
+    expect(body.deliveryStatus).toBe('OUT_FOR_DELIVERY');
+    expect(body.timeline.length).toBeGreaterThan(0);
   });
 });

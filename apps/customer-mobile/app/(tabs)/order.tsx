@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   StyleSheet,
@@ -34,7 +35,7 @@ import {
 import { useScreenLayout } from '@/hooks/use-screen-layout';
 import { formatKwdLabel } from '@/lib/kwd';
 import { luxury } from '@/design/luxury-tokens';
-import { validateOrderGuard } from '@/order/order-guards';
+import { validateOrderGuard, normalizeKuwaitPhone } from '@/order/order-guards';
 
 const FOOTER_HEIGHT = 88;
 type ServiceMode = 'COURIER' | 'BRANCH';
@@ -75,10 +76,11 @@ export default function OrderRequestScreen() {
   const [pickupWindow, setPickupWindow] = useState(pickupWindows[2]);
   const [selectedCarePreferences, setSelectedCarePreferences] = useState<string[]>([]);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('ON_DELIVERY');
-  const [reviewing, setReviewing] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const estimatedTotal = estimateTotalKd(serviceType);
+  const hasCartItems = lines.length > 0;
 
   useEffect(() => {
     void fetchCatalog()
@@ -132,35 +134,35 @@ export default function OrderRequestScreen() {
   }, [params.service, addService]);
 
   function validateOrder(): string | null {
-    setError(null);
     return validateOrderGuard({
       phone,
       itemCount: lines.length,
       serviceMode,
       address,
       pickupWindow,
+      branch: branch ?? undefined,
     });
   }
 
-  function handleReview() {
+  function openConfirm() {
     const validationError = validateOrder();
     if (validationError) {
       setError(validationError);
       return;
     }
     setError(null);
-    setReviewing(true);
+    setConfirmOpen(true);
   }
 
   async function handleSubmit() {
     const validationError = validateOrder();
     if (validationError) {
       setError(validationError);
-      setReviewing(false);
+      setConfirmOpen(false);
       return;
     }
 
-    const normalizedPhone = phone.replace(/[\s-]/g, '').trim();
+    const normalizedPhone = normalizeKuwaitPhone(phone);
 
     const noteLines = [
       `طريقة الخدمة: ${serviceMode === 'COURIER' ? 'مندوب (استلام/توصيل)' : 'تسليم في الفرع'}`,
@@ -198,13 +200,9 @@ export default function OrderRequestScreen() {
       }
       void registerCustomerPushIfPossible(normalizedPhone);
       clearCart();
-      setName('');
-      setAddress('');
-      setNotes('');
       setSelectedCarePreferences([]);
       setPaymentMethod('ON_DELIVERY');
-      setBranch(null);
-      setReviewing(false);
+      setConfirmOpen(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'تعذر تأكيد الطلب الآن.');
     } finally {
@@ -225,28 +223,58 @@ export default function OrderRequestScreen() {
             style={styles.flex}
             contentContainerStyle={[
               styles.wrap,
-              { paddingBottom: FOOTER_HEIGHT + scrollBottomPad },
+              {
+                paddingBottom: hasCartItems
+                  ? FOOTER_HEIGHT + scrollBottomPad
+                  : scrollBottomPad,
+              },
             ]}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
             <FadeIn>
-              <View style={styles.hero}>
+              <View style={[styles.hero, !hasCartItems && styles.heroCompact]}>
                 <Text style={styles.brand}>ORDER CONCIERGE</Text>
-                <Text style={styles.heroTitle}>رتّب طلبك بهدوء</Text>
+                <Text style={styles.heroTitle}>
+                  {hasCartItems ? 'رتّب طلبك بهدوء' : 'ابدأ باختيار الخدمات'}
+                </Text>
                 <Text style={styles.heroCopy}>
-                  اختر طريقة الاستلام وأضف بياناتك، ثم نبدأ رحلة العناية من باب منزلك.
+                  {hasCartItems
+                    ? 'اختر طريقة الاستلام وأضف بياناتك، ثم نبدأ رحلة العناية من باب منزلك.'
+                    : 'تصفّح الخدمات وأضف ما تحتاجه للسلة — بعدها تكمل بيانات الاستلام والدفع هنا.'}
                 </Text>
               </View>
             </FadeIn>
 
-            {lines.length === 0 ? (
-              <GlassPanel>
+            {!hasCartItems ? (
+              <GlassPanel elevated style={styles.emptyCartPanel}>
+                <View style={styles.emptyCartIcon}>
+                  <Ionicons name="basket-outline" size={28} color={luxury.color.blue600} />
+                </View>
                 <Text style={styles.sectionTitle}>لم تختر أي خدمة بعد</Text>
-                <Text style={styles.muted}>ابدأ من الرئيسية واختر الخدمات التي تحتاجها.</Text>
-                <LuxuryButton label="اختيار الخدمات" variant="secondary" onPress={() => router.push('/(tabs)/services')} />
+                <Text style={styles.muted}>
+                  من تبويب الخدمات أو الرئيسية — اضغط + بجانب أي خدمة لإضافتها للسلة.
+                </Text>
+                <View style={styles.emptySteps}>
+                  <EmptyStep n={1} label="اختر الخدمات من القائمة" />
+                  <EmptyStep n={2} label="عدّل الكميات هنا في السلة" />
+                  <EmptyStep n={3} label="أكمل الاستلام والتأكيد" />
+                </View>
+                <View style={styles.emptyActions}>
+                  <LuxuryButton
+                    label="تصفح الخدمات"
+                    icon="sparkles"
+                    onPress={() => router.push('/(tabs)/services')}
+                  />
+                  <LuxuryButton
+                    label="العودة للرئيسية"
+                    variant="secondary"
+                    onPress={() => router.push('/(tabs)')}
+                  />
+                </View>
               </GlassPanel>
             ) : (
+              <>
               <GlassPanel elevated>
                 <Text style={styles.sectionTitle}>اختياراتك للعناية</Text>
                 {lines.map((line) => (
@@ -290,7 +318,6 @@ export default function OrderRequestScreen() {
                   <Text style={styles.totalLabel}>إجمالي تقديري</Text>
                 </View>
               </GlassPanel>
-            )}
 
             <GlassPanel>
               <Text style={styles.sectionTitle}>طريقة الاستلام</Text>
@@ -448,11 +475,27 @@ export default function OrderRequestScreen() {
               />
             </GlassPanel>
 
-            {reviewing ? (
+            {error ? <Text style={styles.error}>{error}</Text> : null}
+              </>
+            )}
+          </LuxuryScroll>
+
+        <Modal
+          visible={confirmOpen}
+          animationType="slide"
+          transparent
+          onRequestClose={() => setConfirmOpen(false)}
+        >
+          <View style={styles.modalBackdrop}>
+            <View style={[styles.modalSheet, { paddingBottom: scrollBottomPad }]}>
               <GlassPanel elevated>
-                <Text style={styles.sectionTitle}>مراجعة الطلب</Text>
+                <Text style={styles.sectionTitle}>تأكيد الطلب</Text>
+                <Text style={styles.muted}>
+                  راجع التفاصيل قبل الإرسال — سيتواصل معك فريق سفاري لتأكيد الأصناف والوقت.
+                </Text>
                 <ReviewLine label="الخدمات" value={`${totalItems} قطعة`} />
                 <ReviewLine label="الإجمالي التقديري" value={`${estimatedTotal} د.ك`} />
+                <ReviewLine label="الجوال" value={normalizeKuwaitPhone(phone)} />
                 <ReviewLine label="طريقة الدفع" value={paymentMethodLabel(paymentMethod)} />
                 <ReviewLine
                   label="طريقة الاستلام"
@@ -463,12 +506,16 @@ export default function OrderRequestScreen() {
                   value={
                     serviceMode === 'COURIER'
                       ? `${pickupDayLabel(pickupDay)} · ${pickupWindow}`
-                      : branch ?? 'فرع سفاري'
+                      : branch ?? '—'
                   }
                 />
                 <ReviewLine
-                  label="العنوان"
-                  value={serviceMode === 'COURIER' ? address.trim() : branch ?? 'غير محدد'}
+                  label={serviceMode === 'COURIER' ? 'العنوان' : 'الفرع'}
+                  value={
+                    serviceMode === 'COURIER'
+                      ? address.trim()
+                      : branch ?? '—'
+                  }
                 />
                 {selectedCarePreferences.length > 0 ? (
                   <ReviewLine
@@ -478,22 +525,23 @@ export default function OrderRequestScreen() {
                 ) : null}
                 <View style={styles.reviewActions}>
                   <LuxuryButton
-                    label="تعديل"
+                    label="رجوع للتعديل"
                     variant="secondary"
-                    onPress={() => setReviewing(false)}
+                    onPress={() => setConfirmOpen(false)}
+                    disabled={submitting}
                   />
                   <LuxuryButton
-                    label={submitting ? 'نؤكد طلبك…' : 'إرسال الطلب'}
+                    label={submitting ? 'نؤكد طلبك…' : 'إرسال الطلب الآن'}
                     onPress={() => void handleSubmit()}
                     disabled={submitting}
                   />
                 </View>
               </GlassPanel>
-            ) : null}
+            </View>
+          </View>
+        </Modal>
 
-            {error ? <Text style={styles.error}>{error}</Text> : null}
-          </LuxuryScroll>
-
+        {hasCartItems ? (
         <View
           style={[
             styles.footer,
@@ -504,16 +552,13 @@ export default function OrderRequestScreen() {
             label={
               submitting
                 ? 'نؤكد طلبك…'
-                : lines.length > 0
-                  ? reviewing
-                    ? `إرسال الطلب · ${estimatedTotal} د.ك`
-                    : `مراجعة الطلب · ${estimatedTotal} د.ك`
-                  : 'تأكيد الطلب'
+                : `تأكيد الطلب · ${estimatedTotal} د.ك`
             }
-            onPress={reviewing ? () => void handleSubmit() : handleReview}
-            disabled={submitting || lines.length === 0}
+            onPress={openConfirm}
+            disabled={submitting}
           />
         </View>
+        ) : null}
       </KeyboardAvoidingView>
     </LuxuryScreen>
   );
@@ -553,6 +598,17 @@ function ReviewLine({ label, value }: { label: string; value: string }) {
   );
 }
 
+function EmptyStep({ n, label }: { n: number; label: string }) {
+  return (
+    <View style={styles.emptyStep}>
+      <View style={styles.emptyStepBadge}>
+        <Text style={styles.emptyStepBadgeText}>{n}</Text>
+      </View>
+      <Text style={styles.emptyStepLabel}>{label}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   orbTop: { top: -70, right: -80 },
@@ -563,6 +619,9 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     alignItems: 'flex-end',
     gap: luxury.space.sm,
+  },
+  heroCompact: {
+    minHeight: 132,
   },
   brand: {
     color: luxury.color.champagne,
@@ -595,6 +654,55 @@ const styles = StyleSheet.create({
     fontSize: luxury.type.body,
     lineHeight: luxury.lineHeight.body,
     textAlign: 'right',
+  },
+  emptyCartPanel: {
+    gap: luxury.space.md,
+    alignItems: 'flex-end',
+  },
+  emptyCartIcon: {
+    alignSelf: 'center',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: luxury.color.ice100,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: luxury.space.xs,
+  },
+  emptySteps: {
+    width: '100%',
+    gap: luxury.space.sm,
+    marginTop: luxury.space.xs,
+  },
+  emptyStep: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: luxury.space.sm,
+  },
+  emptyStepBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: luxury.color.navy900,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyStepBadgeText: {
+    color: luxury.color.warmWhite,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  emptyStepLabel: {
+    flex: 1,
+    color: luxury.color.graphite,
+    fontSize: luxury.type.callout,
+    fontWeight: '700',
+    textAlign: 'right',
+  },
+  emptyActions: {
+    width: '100%',
+    gap: luxury.space.sm,
+    marginTop: luxury.space.sm,
   },
   cartRow: {
     flexDirection: 'row-reverse',
@@ -692,6 +800,16 @@ const styles = StyleSheet.create({
   },
   reviewActions: {
     gap: luxury.space.sm,
+    marginTop: luxury.space.sm,
+  },
+  modalBackdrop: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(15,17,21,0.45)',
+  },
+  modalSheet: {
+    paddingHorizontal: luxury.space.lg,
+    paddingTop: luxury.space.md,
   },
   error: { color: luxury.color.danger, textAlign: 'right', marginTop: 4 },
   footer: {

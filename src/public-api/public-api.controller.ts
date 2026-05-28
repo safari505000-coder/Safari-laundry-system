@@ -117,6 +117,25 @@ export class PublicApiController {
     return this.customerPortalAuth.verifyOtp(dto.phone, dto.code);
   }
 
+  @Public('Temporary dev-only customer login by phone (disabled in production by default).')
+  @Post('customer-auth/dev-login')
+  @Throttle({
+    default: {
+      ttl: 60_000,
+      limit:
+        Number.parseInt(process.env.PUBLIC_OTP_THROTTLE_PER_MIN ?? '', 10) || 10,
+    },
+  })
+  @ApiOperation({ summary: 'Dev-only customer portal login without OTP' })
+  devLogin(@Body() dto: RequestCustomerOtpDto) {
+    if (!CustomerPortalAuthService.devLoginEnabled()) {
+      throw new UnauthorizedException(
+        'Dev login is disabled — use OTP login.',
+      );
+    }
+    return this.customerPortalAuth.devLoginByPhone(dto.phone);
+  }
+
   @Public('Temporary read-only customer portal preview (disabled in production by default).')
   @Get('customer-portal')
   @Throttle({

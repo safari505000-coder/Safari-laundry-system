@@ -9,15 +9,19 @@ import {
   LuxuryScreen,
   LuxuryScroll,
 } from '@/design/luxury-system';
+import { useScreenLayout } from '@/hooks/use-screen-layout';
 import { luxury } from '@/design/luxury-tokens';
 
 export default function HomeScreen() {
   const { totalItems: cartCount } = useOrderCart();
+  const { scrollBottomPad } = useScreenLayout();
 
   return (
     <LuxuryScreen>
       <CinematicOrb size={240} style={styles.orbTop} />
-      <LuxuryScroll contentContainerStyle={styles.wrap}>
+      <LuxuryScroll
+        contentContainerStyle={[styles.wrap, { paddingBottom: scrollBottomPad }]}
+      >
       <FadeIn>
         <View style={styles.hero}>
           <Text style={styles.brand}>Safari Laundry Group</Text>

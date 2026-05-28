@@ -9,12 +9,15 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import {
   fetchCustomerOrderRequests,
+  fetchCustomerPortalMe,
   type CustomerWebsiteOrderRequest,
 } from '@/api/public';
 import {
   addRatedOrderId,
+  readCustomerAccessToken,
   readRatedOrderIds,
   readSavedPhone,
   writeSavedPhone,
@@ -22,7 +25,6 @@ import {
 import { OrderTimeline } from '@/components/order-timeline';
 import {
   CinematicOrb,
-  FadeIn,
   GlassPanel,
   LuxuryButton,
   LuxuryField,
@@ -34,6 +36,10 @@ import {
   serviceTypeLabel,
   websiteOrderStatusLabel,
 } from '@/lib/order-status';
+import {
+  normalizeKuwaitPhone,
+  validateTrackPhoneQuery,
+} from '@/order/order-guards';
 import { luxury } from '@/design/luxury-tokens';
 import { brand } from '@/theme/brand';
 
@@ -43,13 +49,16 @@ export default function TrackOrdersScreen() {
   const [requests, setRequests] = useState<CustomerWebsiteOrderRequest[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [hasQueried, setHasQueried] = useState(false);
+  const [sessionPhone, setSessionPhone] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ratedOrderIds, setRatedOrderIds] = useState<string[]>([]);
 
   const load = useCallback(async (rawPhone: string, mode?: 'refresh') => {
-    const normalized = rawPhone.replace(/[\s-]/g, '').trim();
-    if (normalized.length < 8) {
-      setError('أدخل رقم الجوال المرتبط بطلبك.');
+    const normalized = normalizeKuwaitPhone(rawPhone);
+    const validationError = validateTrackPhoneQuery(normalized);
+    if (validationError) {
+      setError(validationError);
       return;
     }
     if (mode === 'refresh') {
@@ -61,10 +70,12 @@ export default function TrackOrdersScreen() {
     try {
       const data = await fetchCustomerOrderRequests(normalized);
       setRequests(data.requests ?? []);
+      setHasQueried(true);
       await writeSavedPhone(normalized);
       void registerCustomerPushIfPossible(normalized);
     } catch (err) {
       setRequests([]);
+      setHasQueried(true);
       setError(err instanceof Error ? err.message : 'تعذر عرض طلباتك الآن.');
     } finally {
       setLoading(false);
@@ -73,19 +84,44 @@ export default function TrackOrdersScreen() {
   }, []);
 
   useEffect(() => {
-    void readRatedOrderIds().then(setRatedOrderIds);
-    void readSavedPhone().then((saved) => {
+    void (async () => {
+      setRatedOrderIds(await readRatedOrderIds());
+
+      const token = await readCustomerAccessToken();
+      if (token) {
+        try {
+          const portal = await fetchCustomerPortalMe();
+          const linkedPhone = portal.customer.phone;
+          setSessionPhone(linkedPhone);
+          setPhone(linkedPhone);
+          await load(linkedPhone);
+          return;
+        } catch {
+          setSessionPhone(null);
+        }
+      }
+
+      const saved = await readSavedPhone();
       if (saved) {
         setPhone(saved);
-        void load(saved);
+        await load(saved);
       }
-    });
+    })();
   }, [load]);
 
   const listHeader = (
     <GlassPanel elevated style={styles.searchCard}>
       <Text style={styles.sectionEyebrow}>ORDER TRACKING</Text>
-      <Text style={styles.sectionTitle}>متابعة هادئة لكل طلب</Text>
+      <Text style={styles.sectionTitle}>طلبات السلة (W-xxxxx)</Text>
+      <Text style={styles.hint}>
+        هنا تظهر طلباتك من تبويب السلة بعد التأكيد. الفواتير الصادرة والتوصيل
+        المباشر في تبويب حسابي.
+      </Text>
+      {sessionPhone ? (
+        <Text style={styles.sessionHint}>
+          متصل برقم {sessionPhone} — يمكنك تحديث الطلبات بالسحب للأسفل.
+        </Text>
+      ) : null}
       <LuxuryField
         label="رقم الجوال"
         icon="call-outline"
@@ -107,45 +143,62 @@ export default function TrackOrdersScreen() {
     <LuxuryScreen>
       <CinematicOrb size={240} style={styles.orbTop} />
       <CinematicOrb size={170} delay={420} style={styles.orbBottom} />
-        {loading && requests.length === 0 ? (
-          <View style={styles.loader}>
-            {listHeader}
+      <FlatList
+        style={styles.flexList}
+        data={requests}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={[
+          styles.list,
+          { paddingBottom: scrollBottomPad },
+          requests.length === 0 ? styles.listEmptyGrow : null,
+        ]}
+        ListHeaderComponent={listHeader}
+        ItemSeparatorComponent={() => <View style={styles.separator} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => void load(phone, 'refresh')}
+          />
+        }
+        ListEmptyComponent={
+          loading && !refreshing ? (
             <SkeletonStack />
-          </View>
-        ) : (
-          <FlatList
-            data={requests}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={[
-              styles.list,
-              { paddingBottom: scrollBottomPad },
-            ]}
-            ListHeaderComponent={listHeader}
-            ItemSeparatorComponent={() => <View style={styles.separator} />}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={() => void load(phone, 'refresh')}
-              />
-            }
-            ListEmptyComponent={
-              !loading ? (
-                <GlassPanel>
-                  <Text style={styles.sectionTitle}>لا توجد طلبات بعد</Text>
-                  <Text style={styles.emptyText}>بعد تأكيد أول طلب، ستظهر رحلة العناية هنا خطوة بخطوة.</Text>
-                </GlassPanel>
-              ) : null
-            }
-            renderItem={({ item }) => (
-              <RequestCard
-                request={item}
-                rated={ratedOrderIds.includes(item.id)}
-                onRate={async () => setRatedOrderIds(await addRatedOrderId(item.id))}
-              />
-            )}
+          ) : hasQueried && !loading ? (
+            <TrackEmptyState />
+          ) : null
+        }
+        renderItem={({ item }) => (
+          <RequestCard
+            request={item}
+            rated={ratedOrderIds.includes(item.id)}
+            onRate={async () => setRatedOrderIds(await addRatedOrderId(item.id))}
           />
         )}
+      />
     </LuxuryScreen>
+  );
+}
+
+function TrackEmptyState() {
+  return (
+    <GlassPanel style={styles.emptyCard}>
+      <Text style={styles.sectionTitle}>لا توجد طلبات سلة لهذا الرقم</Text>
+      <Text style={styles.emptyText}>
+        إذا أكّدت طلباً من تبويب السلة، سيظهر هنا برقم متابعة يبدأ بـ W-.
+      </Text>
+      <Text style={styles.emptyText}>
+        الفواتير الصادرة، الدفع، وتتبع التوصيل المباشر — في تبويب حسابي بعد
+        تسجيل الدخول.
+      </Text>
+      <View style={styles.emptyActions}>
+        <LuxuryButton
+          label="تأكيد طلب جديد"
+          variant="secondary"
+          onPress={() => router.push('/(tabs)/order')}
+        />
+        <LuxuryButton label="فتح حسابي" onPress={() => router.push('/(tabs)/account')} />
+      </View>
+    </GlassPanel>
   );
 }
 
@@ -258,9 +311,9 @@ function SkeletonStack() {
 }
 
 const styles = StyleSheet.create({
+  flexList: { flex: 1 },
   orbTop: { top: -70, right: -80 },
   orbBottom: { bottom: 110, left: -70 },
-  loader: { flex: 1, paddingTop: 72, gap: 16, paddingHorizontal: luxury.space.lg },
   searchCard: {
     marginTop: 72,
     marginBottom: 4,
@@ -279,15 +332,36 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     textAlign: 'right',
   },
+  hint: {
+    color: luxury.color.slate,
+    fontSize: luxury.type.caption,
+    lineHeight: luxury.lineHeight.caption,
+    textAlign: 'right',
+  },
+  sessionHint: {
+    color: luxury.color.blue600,
+    fontSize: luxury.type.caption,
+    fontWeight: '700',
+    textAlign: 'right',
+  },
   emptyText: {
     color: luxury.color.slate,
     fontSize: luxury.type.body,
     lineHeight: luxury.lineHeight.body,
     textAlign: 'right',
   },
+  emptyCard: {
+    marginHorizontal: luxury.space.lg,
+    gap: luxury.space.sm,
+  },
+  emptyActions: {
+    gap: luxury.space.sm,
+    marginTop: luxury.space.xs,
+  },
   error: { color: luxury.color.danger, textAlign: 'right' },
   skeletonWrap: {
     gap: luxury.space.sm,
+    marginHorizontal: luxury.space.lg,
   },
   skeletonLineWide: {
     height: 18,
@@ -307,6 +381,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(15,17,21,0.045)',
   },
   list: { paddingTop: 0 },
+  listEmptyGrow: { flexGrow: 1 },
   separator: { height: luxury.space.md },
   card: {
     gap: luxury.space.sm,

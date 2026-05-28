@@ -2,13 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Pressable,
   RefreshControl,
-  ScrollView,
-  SectionList,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { fetchCatalog, type PublicServiceItem } from '@/api/public';
 import {
   readFavoriteServiceIds,
@@ -23,8 +22,10 @@ import {
   LuxuryChip,
   LuxuryField,
   LuxuryScreen,
+  LuxuryScroll,
 } from '@/design/luxury-system';
 import { useScreenLayout } from '@/hooks/use-screen-layout';
+import { formatKwdLabel } from '@/lib/kwd';
 import { luxury } from '@/design/luxury-tokens';
 
 type ServiceSection = {
@@ -122,6 +123,12 @@ export default function ServicesScreen() {
     });
   }
 
+  function clearFilters() {
+    setQuery('');
+    setCategory(null);
+    setFavoritesOnly(false);
+  }
+
   const listHeader = (
     <View style={styles.headerBlock}>
       <FadeIn>
@@ -150,15 +157,14 @@ export default function ServicesScreen() {
       />
 
       {categories.length > 0 ? (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.chipsWrap}
-        >
+        <View style={styles.chipsWrap}>
           <LuxuryChip
             label={`الكل (${services.length})`}
-            active={!category}
-            onPress={() => setCategory(null)}
+            active={!category && !favoritesOnly}
+            onPress={() => {
+              setCategory(null);
+              setFavoritesOnly(false);
+            }}
           />
           <LuxuryChip
             label={`المفضلة (${favoriteIds.length})`}
@@ -170,18 +176,36 @@ export default function ServicesScreen() {
               key={cat}
               label={cat}
               active={category === cat}
-              onPress={() => setCategory(category === cat ? null : cat)}
+              onPress={() => {
+                setFavoritesOnly(false);
+                setCategory(category === cat ? null : cat);
+              }}
             />
           ))}
-        </ScrollView>
+        </View>
       ) : null}
 
       <View style={styles.servicesIntro}>
         <Text style={styles.sectionTitle}>الخدمات</Text>
         <Text style={styles.servicesCount}>
-          {filtered.length > 0 ? `${filtered.length} خدمة متاحة` : 'اختر الخدمة التي تحتاجها'}
+          {loading
+            ? 'نجهّز القائمة…'
+            : filtered.length > 0
+              ? `${filtered.length} خدمة متاحة`
+              : services.length > 0
+                ? 'لا توجد نتائج للفلتر الحالي'
+                : 'لا توجد خدمات نشطة في قائمة الأسعار الآن'}
         </Text>
       </View>
+
+      {!loading && services.length > 0 && filtered.length === 0 ? (
+        <GlassPanel style={styles.filterResetPanel}>
+          <Text style={styles.emptyText}>
+            الفلتر أو البحث الحالي يخفي كل الخدمات ({services.length} في القائمة).
+          </Text>
+          <LuxuryButton label="إظهار كل الخدمات" variant="secondary" onPress={clearFilters} />
+        </GlassPanel>
+      ) : null}
 
       {loading && services.length === 0 ? (
         <GlassPanel><Text style={styles.emptyText}>نجهّز لك قائمة الخدمات…</Text></GlassPanel>
@@ -199,15 +223,14 @@ export default function ServicesScreen() {
   return (
     <LuxuryScreen>
       <CinematicOrb size={220} style={styles.orbTop} />
-      <SectionList
-        sections={sections}
-        keyExtractor={(item) => item.id}
+      <LuxuryScroll
+        style={styles.flexList}
         contentContainerStyle={[
           styles.list,
           { paddingBottom: scrollBottomPad + (cartCount > 0 ? 84 : 0) },
         ]}
-        ListHeaderComponent={listHeader}
-        stickySectionHeadersEnabled={false}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -217,28 +240,39 @@ export default function ServicesScreen() {
             }}
           />
         }
-        renderSectionHeader={({ section }) => (
-          <Text style={styles.sectionHeader}>{section.title}</Text>
-        )}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
-        SectionSeparatorComponent={() => <View style={styles.sectionGap} />}
-        ListEmptyComponent={
-          !loading ? (
-            <GlassPanel style={styles.emptyPanel}>
-              <Text style={styles.emptyText}>لم نجد خدمة بهذا الاسم. جرّب بحثاً آخر.</Text>
-            </GlassPanel>
-          ) : null
-        }
-        renderItem={({ item }) => (
-          <ServiceRow
-            item={item}
-            cartQty={cartQtyById.get(item.id) ?? 0}
-            favorite={favoriteIds.includes(item.id)}
-            onAdd={() => addService(item)}
-            onToggleFavorite={() => toggleFavorite(item.id)}
-          />
-        )}
-      />
+      >
+        {listHeader}
+
+        {sections.map((section) => (
+          <View key={section.title} style={styles.sectionBlock}>
+            <View style={styles.sectionHeaderWrap}>
+              <Text style={styles.sectionHeader}>{section.title}</Text>
+              <Text style={styles.sectionHeaderCount}>{section.data.length} خدمة</Text>
+            </View>
+            {section.data.map((item, index) => (
+              <View key={item.id}>
+                {index > 0 ? <View style={styles.separator} /> : null}
+                <ServiceRow
+                  item={item}
+                  cartQty={cartQtyById.get(item.id) ?? 0}
+                  favorite={favoriteIds.includes(item.id)}
+                  onAdd={() => addService(item)}
+                  onToggleFavorite={() => toggleFavorite(item.id)}
+                />
+              </View>
+            ))}
+          </View>
+        ))}
+
+        {!loading && services.length === 0 && !error ? (
+          <GlassPanel style={styles.emptyPanel}>
+            <Text style={styles.emptyText}>
+              لا توجد أصناف نشطة في النظام. تأكد أن قائمة الأسعار مفعّلة في ERP ثم
+              اسحب للأسفل للتحديث.
+            </Text>
+          </GlassPanel>
+        ) : null}
+      </LuxuryScroll>
       {cartCount > 0 ? (
         <View
           style={[
@@ -274,43 +308,69 @@ function ServiceRow({
   onAdd: () => void;
   onToggleFavorite: () => void;
 }) {
+  const hasExpressPrice =
+    item.priceExpressKd?.trim() !== item.priceNormalKd?.trim();
+
   return (
-    <Pressable style={styles.serviceRow} onPress={onAdd}>
-      <Pressable
-        style={styles.favoriteButton}
-        onPress={onToggleFavorite}
-        hitSlop={8}
-      >
-        <Text style={[styles.favoriteText, favorite && styles.favoriteTextActive]}>
-          {favorite ? '★' : '☆'}
-        </Text>
-      </Pressable>
-      <View style={styles.serviceIcon}>
-        <Text style={styles.serviceIconText}>{item.nameAr.slice(0, 1)}</Text>
+    <View style={styles.serviceCard}>
+      <View style={styles.serviceCardInner}>
+        <View style={styles.serviceIcon}>
+          <Text style={styles.serviceIconText}>{item.nameAr.slice(0, 1)}</Text>
+        </View>
+
+        <View style={styles.serviceMeta}>
+          <View style={styles.serviceNameRow}>
+            <Pressable
+              style={styles.favoriteButton}
+              onPress={onToggleFavorite}
+              hitSlop={8}
+            >
+              <Ionicons
+                name={favorite ? 'star' : 'star-outline'}
+                size={18}
+                color={favorite ? luxury.color.champagne : luxury.color.silver}
+              />
+            </Pressable>
+            <Text style={styles.serviceName} numberOfLines={2}>
+              {item.nameAr}
+            </Text>
+          </View>
+          <Text style={styles.servicePrice}>
+            من {formatKwdLabel(item.priceNormalKd)}
+          </Text>
+          {hasExpressPrice ? (
+            <Text style={styles.servicePriceAlt}>
+              سريع {formatKwdLabel(item.priceExpressKd)}
+            </Text>
+          ) : null}
+        </View>
+
+        <Pressable
+          style={[styles.addButton, cartQty > 0 && styles.addButtonActive]}
+          onPress={onAdd}
+          hitSlop={8}
+        >
+          {cartQty > 0 ? (
+            <Text style={styles.addButtonText}>{cartQty}</Text>
+          ) : (
+            <Ionicons name="add" size={22} color={luxury.color.warmWhite} />
+          )}
+        </Pressable>
       </View>
-      <View style={styles.serviceMeta}>
-        <Text style={styles.serviceName} numberOfLines={2}>
-          {item.nameAr}
-        </Text>
-        <Text style={styles.serviceCategory} numberOfLines={1}>
-          {item.category ?? item.code} · من {item.priceNormalKd} د.ك
-        </Text>
-      </View>
-      <View style={[styles.addButton, cartQty > 0 && styles.addButtonActive]}>
-        <Text style={styles.addButtonText}>{cartQty > 0 ? cartQty : '+'}</Text>
-      </View>
-    </Pressable>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  flexList: { flex: 1 },
   orbTop: { top: -90, right: -100 },
   headerBlock: { gap: luxury.space.lg, paddingTop: 62, paddingHorizontal: luxury.space.lg },
-  list: { paddingTop: 0 },
+  list: { paddingTop: 0, gap: luxury.space.md },
+  sectionBlock: { gap: luxury.space.sm },
   separator: { height: luxury.space.sm },
-  sectionGap: { height: luxury.space.md },
+  filterResetPanel: { gap: luxury.space.sm },
   hero: {
-    minHeight: 150,
+    minHeight: 120,
     justifyContent: 'flex-end',
     alignItems: 'flex-end',
     gap: luxury.space.sm,
@@ -354,70 +414,86 @@ const styles = StyleSheet.create({
   },
   chipsWrap: {
     flexDirection: 'row-reverse',
+    flexWrap: 'wrap',
     gap: luxury.space.sm,
-    paddingLeft: luxury.space.lg,
   },
-  serviceRow: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: luxury.space.md,
+  serviceCard: {
+    marginHorizontal: luxury.space.lg,
     backgroundColor: luxury.color.glassStrong,
     borderRadius: luxury.radius.lg,
     padding: luxury.space.md,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: luxury.color.line,
-    marginHorizontal: luxury.space.lg,
+  },
+  serviceCardInner: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: luxury.space.md,
+  },
+  serviceNameRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'flex-start',
+    gap: luxury.space.xs,
+    width: '100%',
   },
   favoriteButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(15,17,21,0.045)',
-  },
-  favoriteText: {
-    color: luxury.color.silver,
-    fontSize: 18,
-    fontWeight: '900',
-  },
-  favoriteTextActive: {
-    color: luxury.color.champagne,
+    marginTop: 2,
   },
   serviceIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 16,
+    width: 48,
+    height: 48,
+    borderRadius: 14,
     backgroundColor: luxury.color.ice100,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
   serviceIconText: {
     color: luxury.color.blue600,
     fontWeight: '900',
-    fontSize: 20,
+    fontSize: 18,
   },
-  serviceMeta: { flex: 1, alignItems: 'flex-end', minWidth: 0, gap: 4 },
+  serviceMeta: {
+    flex: 1,
+    alignItems: 'flex-end',
+    minWidth: 0,
+    gap: 4,
+  },
   serviceName: {
+    flex: 1,
     color: luxury.color.graphite,
     fontSize: luxury.type.body,
     fontWeight: '800',
     textAlign: 'right',
+  },
+  servicePrice: {
+    color: luxury.color.blue600,
+    fontSize: luxury.type.callout,
+    fontWeight: '800',
+    textAlign: 'right',
     width: '100%',
   },
-  serviceCategory: {
+  servicePriceAlt: {
     color: luxury.color.slate,
     fontSize: luxury.type.caption,
+    fontWeight: '700',
     textAlign: 'right',
     width: '100%',
   },
   addButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: luxury.color.blue600,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
   addButtonActive: {
     backgroundColor: luxury.color.navy900,
@@ -437,14 +513,26 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: luxury.color.warmWhite,
   },
-  sectionHeader: {
+  sectionHeaderWrap: {
     marginHorizontal: luxury.space.lg,
-    marginTop: luxury.space.sm,
+    marginTop: luxury.space.md,
     marginBottom: luxury.space.xs,
+    flexDirection: 'row-reverse',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: luxury.space.sm,
+  },
+  sectionHeader: {
     color: luxury.color.graphite,
     fontSize: luxury.type.headline,
     fontWeight: '900',
     textAlign: 'right',
+    flex: 1,
+  },
+  sectionHeaderCount: {
+    color: luxury.color.slate,
+    fontSize: luxury.type.caption,
+    fontWeight: '700',
   },
   emptyPanel: {
     marginHorizontal: luxury.space.lg,

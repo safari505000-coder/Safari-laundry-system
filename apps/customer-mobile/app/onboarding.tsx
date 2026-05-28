@@ -1,5 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   CinematicOrb,
   FadeIn,
@@ -18,6 +19,8 @@ const steps = [
 ] as const;
 
 export default function OnboardingScreen() {
+  const insets = useSafeAreaInsets();
+
   async function finish() {
     await writeOnboardingCompleted();
     router.replace('/(tabs)');
@@ -26,7 +29,9 @@ export default function OnboardingScreen() {
   return (
     <LuxuryScreen>
       <CinematicOrb size={260} style={styles.orbTop} />
-      <LuxuryScroll contentContainerStyle={styles.wrap}>
+      <LuxuryScroll
+        contentContainerStyle={[styles.wrap, { paddingBottom: insets.bottom + 32 }]}
+      >
         <FadeIn>
           <View style={styles.hero}>
             <Text style={styles.brand}>Safari Laundry Group</Text>

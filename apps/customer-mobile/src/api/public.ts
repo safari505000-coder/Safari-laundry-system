@@ -132,6 +132,26 @@ export function verifyCustomerOtp(
 
 
 
+/** Dev/non-prod only — issues a full customer JWT without OTP. */
+
+export function devLoginCustomer(
+
+  phone: string,
+
+): Promise<VerifyCustomerOtpResponse> {
+
+  return apiJson<VerifyCustomerOtpResponse>('/public/customer-auth/dev-login', {
+
+    method: 'POST',
+
+    body: JSON.stringify({ phone: phone.replace(/[\s-]/g, '').trim() }),
+
+  });
+
+}
+
+
+
 export async function fetchCustomerPortalMe(): Promise<CustomerPortalMeResponse> {
 
   return apiJson<CustomerPortalMeResponse>(

@@ -11,13 +11,15 @@
     "preview": {
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://safariomni.com/api"
+        "EXPO_PUBLIC_API_URL": "https://safariomni.com/api",
+        "NODE_ENV": "production"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://safariomni.com/api"
+        "EXPO_PUBLIC_API_URL": "https://safariomni.com/api",
+        "NODE_ENV": "production"
       }
     }
   },

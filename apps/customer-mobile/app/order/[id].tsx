@@ -1,5 +1,5 @@
-import { useLocalSearchParams, router } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useFocusEffect, useLocalSearchParams, router } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -8,15 +8,17 @@ import {
   View,
 } from 'react-native';
 import { fetchOrderDelivery, type OrderDeliveryTracking } from '@/api/public';
-import { readCustomerAccessToken } from '@/auth/customer-session';
+import { readCustomerAccessToken, readSavedPhone } from '@/auth/customer-session';
 import { InvoiceDeliveryTimeline } from '@/components/invoice-delivery-timeline';
 import {
   CinematicOrb,
   GlassPanel,
+  LuxuryButton,
   LuxuryScreen,
   LuxuryScroll,
 } from '@/design/luxury-system';
 import { deliveryStatusLabelAr, type DeliveryStatus } from '@/lib/delivery-status';
+import { registerCustomerPushIfPossible } from '@/device/use-customer-push';
 import { useScreenLayout } from '@/hooks/use-screen-layout';
 import { luxury } from '@/design/luxury-tokens';
 import { brand } from '@/theme/brand';
@@ -32,33 +34,46 @@ export default function OrderDeliveryTrackScreen() {
   const [tracking, setTracking] = useState<OrderDeliveryTracking | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [needsLogin, setNeedsLogin] = useState(false);
 
   const load = useCallback(async () => {
     if (!orderId) {
+      setNeedsLogin(false);
       setError('معرّف الفاتورة غير صالح');
       setLoading(false);
       return;
     }
+    setLoading(true);
     try {
       const token = await readCustomerAccessToken();
       if (!token) {
+        setNeedsLogin(true);
+        setTracking(null);
         setError('سجّل الدخول من حسابي لتتبع الفاتورة');
-        setLoading(false);
         return;
       }
       const row = await fetchOrderDelivery(orderId);
       setTracking(row);
+      setNeedsLogin(false);
       setError(null);
+      const phone = await readSavedPhone();
+      if (phone) {
+        void registerCustomerPushIfPossible(phone);
+      }
     } catch (err) {
+      setNeedsLogin(false);
+      setTracking(null);
       setError(err instanceof Error ? err.message : 'تعذّر تحميل التتبع');
     } finally {
       setLoading(false);
     }
   }, [orderId]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
 
   return (
     <LuxuryScreen>
@@ -79,6 +94,21 @@ export default function OrderDeliveryTrackScreen() {
         ) : error ? (
           <GlassPanel>
             <Text style={styles.error}>{error}</Text>
+            <View style={styles.errorActions}>
+              {needsLogin ? (
+                <LuxuryButton
+                  label="تسجيل الدخول من حسابي"
+                  icon="log-in"
+                  onPress={() => router.push('/(tabs)/account')}
+                />
+              ) : (
+                <LuxuryButton
+                  label="حاول مرة أخرى"
+                  variant="secondary"
+                  onPress={() => void load()}
+                />
+              )}
+            </View>
           </GlassPanel>
         ) : tracking ? (
           <GlassPanel>
@@ -138,5 +168,8 @@ const styles = StyleSheet.create({
     color: brand.colors.danger,
     textAlign: 'right',
     fontWeight: '600',
+  },
+  errorActions: {
+    marginTop: luxury.space.md,
   },
 });

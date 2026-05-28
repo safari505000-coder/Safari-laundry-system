@@ -1,18 +1,26 @@
-import { Platform, useWindowDimensions } from 'react-native';
-import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { useContext } from 'react';
+import { useWindowDimensions } from 'react-native';
+import { BottomTabBarHeightContext } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { layout } from '@/theme/layout';
-
-const TAB_BASE = Platform.OS === 'ios' ? 49 : 56;
 
 function clampFont(size: number, fontScale: number, maxScale = 1.12) {
   return Math.round(size * Math.min(fontScale, maxScale));
 }
 
+function useResolvedTabBarHeight(insets: { bottom: number }): number {
+  const tabBarHeight = useContext(BottomTabBarHeightContext);
+  if (typeof tabBarHeight === 'number' && tabBarHeight > 0) {
+    return tabBarHeight;
+  }
+  // Stack/modal screens outside Bottom Tab Navigator — safe area only.
+  return insets.bottom;
+}
+
 export function useScreenLayout() {
   const { width, height, fontScale } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const tabBarHeight = useBottomTabBarHeight();
+  const resolvedTabBarHeight = useResolvedTabBarHeight(insets);
 
   const isSmallPhone = width < 360;
   const isTablet = width >= 768;
@@ -24,7 +32,6 @@ export function useScreenLayout() {
     : width - gutter * 2;
 
   const sideInset = isTablet ? Math.max(gutter, (width - contentWidth) / 2) : gutter;
-  const resolvedTabBarHeight = tabBarHeight || TAB_BASE + insets.bottom;
 
   return {
     width,

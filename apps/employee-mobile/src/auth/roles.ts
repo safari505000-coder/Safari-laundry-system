@@ -2,7 +2,7 @@ import type { StaffRole } from '@/api/types';
 
 export type MobileAppRole = 'driver' | 'call-center' | 'manager' | 'unsupported';
 export type MobileHomeHref =
-  | '/(app)/(driver)/tasks'
+  | '/(app)/(driver)/(tabs)/tasks'
   | '/(app)/(call-center)'
   | '/(app)/(manager)'
   | '/(app)/unsupported';
@@ -34,7 +34,7 @@ export function resolveMobileAppRole(role: StaffRole): MobileAppRole {
 export function homeHrefForRole(role: StaffRole): MobileHomeHref {
   switch (resolveMobileAppRole(role)) {
     case 'driver':
-      return '/(app)/(driver)/tasks';
+      return '/(app)/(driver)/(tabs)/tasks';
     case 'call-center':
       return '/(app)/(call-center)';
     case 'manager':

@@ -48,6 +48,18 @@ function isCustomerPortalPhonePreviewEnabled(): boolean {
   return process.env.NODE_ENV !== 'production';
 }
 
+function isCustomerPortalDevLoginEnabled(): boolean {
+  const v =
+    process.env.CUSTOMER_PORTAL_DEV_LOGIN?.trim().toLowerCase() ?? '';
+  if (v === 'false' || v === '0' || v === 'off') {
+    return false;
+  }
+  if (v === 'true' || v === '1' || v === 'on') {
+    return true;
+  }
+  return process.env.NODE_ENV !== 'production';
+}
+
 @Injectable()
 export class CustomerPortalAuthService {
   private readonly logger = new Logger(CustomerPortalAuthService.name);
@@ -60,6 +72,10 @@ export class CustomerPortalAuthService {
 
   static phonePreviewEnabled(): boolean {
     return isCustomerPortalPhonePreviewEnabled();
+  }
+
+  static devLoginEnabled(): boolean {
+    return isCustomerPortalDevLoginEnabled();
   }
 
   async requestOtp(phone: string) {
@@ -166,6 +182,29 @@ export class CustomerPortalAuthService {
       data: { consumedAt: new Date() },
     });
 
+    this.logger.log(
+      `Customer portal OTP verified for ${normalized.slice(0, 2)}****`,
+    );
+
+    return this.issueCustomerPortalSession(normalized);
+  }
+
+  async devLoginByPhone(phone: string) {
+    if (!isCustomerPortalDevLoginEnabled()) {
+      throw new UnauthorizedException(
+        'Dev login is disabled — use OTP login.',
+      );
+    }
+
+    const normalized = normalizePhone(phone);
+    this.logger.warn(
+      `Customer portal DEV login for ${normalized.slice(0, 2)}****`,
+    );
+
+    return this.issueCustomerPortalSession(normalized);
+  }
+
+  private async issueCustomerPortalSession(normalized: string) {
     const customer = await this.prisma.customer.findFirst({
       where: { OR: [{ phone: normalized }, { phone2: normalized }] },
       select: {
@@ -190,10 +229,6 @@ export class CustomerPortalAuthService {
       tokenPurpose: 'CUSTOMER_PORTAL',
     };
     const accessToken = await this.jwt.signAsync(payload, { expiresIn: ttl });
-
-    this.logger.log(
-      `Customer portal OTP verified for ${normalized.slice(0, 2)}****`,
-    );
 
     return {
       status: 'VERIFIED' as const,

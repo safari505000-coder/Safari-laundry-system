@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import { formatKwdLabel, sumKwdStrings } from '@/lib/kwd';
-import type { PosCartLine, PosCustomerRow, PosPaymentMethod } from '@/api/pos-types';
+import type {
+  CustomerBillingProfile,
+  PosCartLine,
+  PosCustomerRow,
+  PosPaymentMethod,
+} from '@/api/pos-types';
 import {
   buildCheckoutRequest,
   buildSubOrderCheckoutRequest,
@@ -36,6 +41,19 @@ import {
 function test(name: string, run: () => void) {
   run();
   console.log(`ok - ${name}`);
+}
+
+function billingProfile(
+  subscriptionActive: boolean,
+  remainingBalance: string,
+): CustomerBillingProfile {
+  return {
+    subscriptionActive,
+    remainingBalance,
+    planType: null,
+    debt: '0.0000',
+    lastSubscriptionAt: null,
+  };
 }
 
 test('KWD label always displays three decimals', () => {
@@ -184,34 +202,22 @@ test('attached invoice skips delivery when subscription wallet covers lines', ()
     lineSum: 2,
     isFirstInSession: false,
     paymentMethod: 'SUBSCRIPTION',
-    subscriptionProfile: {
-      subscriptionActive: true,
-      remainingBalance: '5.0000',
-    },
+    subscriptionProfile: billingProfile(true, '5.0000'),
   });
   assert.equal(delivery, 0);
 });
 
 test('subscription payment is gated by active wallet balance', () => {
   assert.equal(
-    canUseSubscriptionPayment({
-      subscriptionActive: true,
-      remainingBalance: '0.0010',
-    }),
+    canUseSubscriptionPayment(billingProfile(true, '0.0010')),
     true,
   );
   assert.equal(
-    canUseSubscriptionPayment({
-      subscriptionActive: false,
-      remainingBalance: '10.0000',
-    }),
+    canUseSubscriptionPayment(billingProfile(false, '10.0000')),
     false,
   );
   assert.equal(
-    canUseSubscriptionPayment({
-      subscriptionActive: true,
-      remainingBalance: '0.0000',
-    }),
+    canUseSubscriptionPayment(billingProfile(true, '0.0000')),
     false,
   );
 });

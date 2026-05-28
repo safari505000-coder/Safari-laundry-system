@@ -530,6 +530,9 @@ export default function AccountScreen() {
             </GlassPanel>
 
             <Text style={styles.listTitle}>الفواتير الأخيرة</Text>
+            <Text style={styles.listHint}>
+              فواتير ERP الصادرة — لتتبع طلبات السلة (W-xxxxx) افتح تبويب طلباتي.
+            </Text>
             {portal.recentOrders.length === 0 ? (
               <GlassPanel>
                 <Text style={styles.sectionTitle}>لا توجد فواتير حالياً</Text>
@@ -821,6 +824,13 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     textAlign: 'right',
     marginBottom: luxury.space.xs,
+  },
+  listHint: {
+    color: luxury.color.slate,
+    fontSize: luxury.type.caption,
+    lineHeight: luxury.lineHeight.caption,
+    textAlign: 'right',
+    marginBottom: luxury.space.sm,
   },
   orderRow: {
     backgroundColor: luxury.color.glassStrong,

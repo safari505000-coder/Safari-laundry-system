@@ -6,7 +6,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import type { PosPaymentMethod } from '@/api/pos-types';
+import type { CustomerBillingProfile, PosPaymentMethod } from '@/api/pos-types';
 import { MutedText, PrimaryButton } from '@/components/ui';
 import {
   VIP_LINE_LABEL_AR,
@@ -63,10 +63,7 @@ export function PosCartSheet({
   onQtyChange: (lineKey: string, qty: number) => void;
   onCheckout: () => void;
   checkoutBusy: boolean;
-  subscriptionProfile: {
-    subscriptionActive: boolean;
-    remainingBalance: string;
-  } | null;
+  subscriptionProfile: CustomerBillingProfile | null;
 }) {
   const activeOrder = subOrders[activeSubOrderIndex];
   const lines = activeOrder?.lines ?? [];
