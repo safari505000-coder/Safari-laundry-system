@@ -24,7 +24,7 @@
       "expo-asset"
     ],
     "extra": {
-      "apiBaseUrl": "https://safariomni.com/api",
+      "apiBaseUrl": "http://localhost:3000/api",
       "otpProvider": "whatsapp-moatmt",
       "allowPhonePreview": false,
       "paymentGateway": "upayments",
