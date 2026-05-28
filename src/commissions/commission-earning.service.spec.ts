@@ -263,6 +263,26 @@ describe('CommissionEarningService.earnForJournalPayment()', () => {
     expect(prisma.commissionPayout.create).not.toHaveBeenCalled();
   });
 
+  it('no-ops when AR credit is wallet-absorption only — no cash commission', async () => {
+    const prisma = makePrisma();
+    const svc = makeService(prisma, makeSettings(), makePaymentMethodFees());
+
+    prisma.journalEntry.findUnique.mockResolvedValue(
+      makeJournalEntry({
+        lines: [
+          {
+            credit: new Prisma.Decimal('5.0000'),
+            meta: { event: 'WALLET_ABSORPTION' },
+          },
+        ],
+      }),
+    );
+
+    await svc.earnForJournalPayment(JOURNAL_ENTRY_ID);
+
+    expect(prisma.commissionPayout.create).not.toHaveBeenCalled();
+  });
+
   it('no-ops when basis falls below rule minInvoiceAmount', async () => {
     const prisma = makePrisma();
     const svc = makeService(prisma, makeSettings(), makePaymentMethodFees());
