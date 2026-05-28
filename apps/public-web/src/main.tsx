@@ -239,12 +239,20 @@ function SiteHeader() {
             </a>
           ))}
         </nav>
-        <a
-          href={`tel:${companyBrand.phone}`}
-          className="rounded-full bg-[#0f172a] px-5 py-3 text-sm font-black text-white transition hover:bg-[#0284c7]"
-        >
-          {companyBrand.phone}
-        </a>
+        <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+          <a
+            href={companyBrand.staffPortalUrl}
+            className="rounded-full border-2 border-[#0284c7] px-3 py-2.5 text-xs font-black text-[#0284c7] transition hover:bg-[#0284c7] hover:text-white sm:px-4 sm:text-sm lg:py-3"
+          >
+            دخول الموظفين
+          </a>
+          <a
+            href={`tel:${companyBrand.phone}`}
+            className="rounded-full bg-[#0f172a] px-4 py-2.5 text-xs font-black text-white transition hover:bg-[#0284c7] sm:px-5 sm:text-sm lg:py-3"
+          >
+            {companyBrand.phone}
+          </a>
+        </div>
       </div>
     </header>
   );

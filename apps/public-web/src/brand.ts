@@ -17,4 +17,8 @@ export const companyBrand = {
     grayBackground: '#EAEAEA',
     gradient: 'linear-gradient(135deg, #2448C8 0%, #2D5BEE 52%, #5FE7F3 100%)',
   },
+  /** Staff ERP login — www subdomain in production. */
+  staffPortalUrl:
+    import.meta.env.VITE_STAFF_ERP_URL?.trim() ||
+    'https://www.safariomni.com/login',
 } as const;
