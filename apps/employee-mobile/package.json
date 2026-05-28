@@ -4,9 +4,10 @@
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
-    "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "start": "cross-env EXPO_ROUTER_APP_ROOT=app expo start",
+    "start:clear": "cross-env EXPO_ROUTER_APP_ROOT=app expo start --clear",
+    "android": "cross-env EXPO_ROUTER_APP_ROOT=app expo start --android",
+    "ios": "cross-env EXPO_ROUTER_APP_ROOT=app expo start --ios",
     "typecheck": "tsc --noEmit",
     "test:logic": "tsx -r tsconfig-paths/register src/test/employee-mobile-logic.test.ts"
   },
@@ -34,6 +35,7 @@
     "@types/react": "~19.1.10",
     "babel-plugin-module-resolver": "^5.0.2",
     "babel-preset-expo": "~54.0.10",
+    "cross-env": "^10.1.0",
     "tsx": "^4.22.3",
     "typescript": "~5.9.2"
   }
