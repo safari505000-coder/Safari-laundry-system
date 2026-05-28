@@ -8,19 +8,56 @@ import {
   Text,
   View,
 } from 'react-native';
+import * as ImageManipulator from 'expo-image-manipulator';
+import * as ImagePicker from 'expo-image-picker';
 import {
   approveReceiptFromDriver,
   fetchManagerCashStatus,
   listMyManagerCustody,
+  uploadDepositSlipImage,
+  attachDepositSlip,
   type ManagerCashCustodyRow,
   type ManagerCashStatusDriverRow,
   type ManagerCashStatusResponse,
 } from '@/api/manager';
 import { useAuth } from '@/auth/auth-context';
 import { ManagerChrome } from '@/components/manager/manager-chrome';
-import { MutedText, PrimaryButton, SectionHeader, SurfaceCard } from '@/components/ui';
+import { GhostButton, MutedText, PrimaryButton, SectionHeader, SurfaceCard } from '@/components/ui';
 import { formatKwdLabel } from '@/lib/kwd';
+import {
+  RECEIPT_COMPRESS_LEVELS,
+  RECEIPT_RESIZE_WIDTH,
+  receiptFitsPayloadLimit,
+} from '@/lib/receipt-image';
 import { brand } from '@/theme/brand';
+
+async function compressReceiptImage(uri: string): Promise<string> {
+  let lastDataUrl: string | null = null;
+  for (const compress of RECEIPT_COMPRESS_LEVELS) {
+    const result = await ImageManipulator.manipulateAsync(
+      uri,
+      [{ resize: { width: RECEIPT_RESIZE_WIDTH } }],
+      {
+        compress,
+        format: ImageManipulator.SaveFormat.JPEG,
+        base64: true,
+      },
+    );
+    if (!result.base64) {
+      continue;
+    }
+    const dataUrl = `data:image/jpeg;base64,${result.base64}`;
+    lastDataUrl = dataUrl;
+    if (receiptFitsPayloadLimit(dataUrl)) {
+      return dataUrl;
+    }
+  }
+  throw new Error(
+    lastDataUrl
+      ? 'الصورة كبيرة جداً. قرّب على الوصل فقط أو قص الأطراف ثم أعد المحاولة.'
+      : 'تعذر ضغط صورة الوصل.',
+  );
+}
 
 const STATUS_LABEL: Record<ManagerCashCustodyRow['status'], string> = {
   PENDING_DEPOSIT: 'بانتظار الإيداع',
@@ -40,6 +77,7 @@ export default function ManagerCustodyScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [uploadingBagId, setUploadingBagId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -62,6 +100,52 @@ export default function ManagerCustodyScreen() {
       setRefreshing(false);
     }
   }, [getValidAccessToken, isBranchManager]);
+
+  const handleUploadSlip = useCallback(
+    async (bag: ManagerCashCustodyRow) => {
+      setUploadingBagId(bag.id);
+      try {
+        const permission = await ImagePicker.requestCameraPermissionsAsync();
+        if (!permission.granted) {
+          Alert.alert('الصلاحية مطلوبة', 'اسمح للتطبيق باستخدام الكاميرا لتصوير إيصال الإيداع.');
+          return;
+        }
+        const picked = await ImagePicker.launchCameraAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: true,
+          aspect: [16, 9],
+          quality: 1,
+        });
+        if (picked.canceled || !picked.assets[0]?.uri) {
+          return;
+        }
+
+        const compressed = await compressReceiptImage(picked.assets[0].uri);
+
+        const token = await getValidAccessToken();
+        if (!token) {
+          throw new Error('انتهت الجلسة');
+        }
+
+        // Step 1: Upload the slip image
+        const { depositSlipUrl } = await uploadDepositSlipImage(token, compressed);
+
+        // Step 2: Attach it to the custody bag
+        await attachDepositSlip(token, bag.id, {
+          depositSlipUrl,
+          declaredDepositTotal: Number(bag.amountKd),
+        });
+
+        Alert.alert('تم', 'تم رفع إيصال الإيداع بنجاح وتحويل الحقيبة للمحاسب للتدقيق.');
+        await load();
+      } catch (err) {
+        Alert.alert('فشل الرفع', err instanceof Error ? err.message : 'تعذر رفع الإيصال');
+      } finally {
+        setUploadingBagId(null);
+      }
+    },
+    [getValidAccessToken, load],
+  );
 
   useEffect(() => {
     void load();
@@ -192,6 +276,19 @@ export default function ManagerCustodyScreen() {
                 ) : (
                   <MutedText>العمر: {item.ageHours} س</MutedText>
                 )}
+                {item.status === 'PENDING_DEPOSIT' || item.status === 'REJECTED' ? (
+                  <View style={styles.bagAction}>
+                    <GhostButton
+                      label={
+                        uploadingBagId === item.id
+                          ? 'جاري الرفع والربط…'
+                          : 'رفع إيصال الإيداع'
+                      }
+                      onPress={() => void handleUploadSlip(item)}
+                      disabled={uploadingBagId !== null}
+                    />
+                  </View>
+                ) : null}
               </View>
             )}
             ListEmptyComponent={
@@ -280,6 +377,10 @@ const styles = StyleSheet.create({
     color: brand.colors.danger,
     fontSize: 12,
     fontWeight: '600',
+  },
+  bagAction: {
+    width: '100%',
+    marginTop: 6,
   },
   error: { color: brand.colors.danger, textAlign: 'right' },
 });

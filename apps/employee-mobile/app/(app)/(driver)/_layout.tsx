@@ -5,7 +5,8 @@ import { DriverGpsProvider } from '@/device/driver-gps-context';
 
 export default function DriverLayout() {
   const { user } = useAuth();
-  if (user && resolveMobileAppRole(user.safariRole) !== 'driver') {
+  const role = user ? resolveMobileAppRole(user.safariRole) : null;
+  if (role !== 'driver' && role !== 'manager') {
     return <Redirect href="/(app)/unsupported" />;
   }
 

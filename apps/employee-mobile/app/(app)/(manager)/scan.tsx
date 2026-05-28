@@ -1,0 +1,173 @@
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import { router } from 'expo-router';
+import { useCallback, useState } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import { useAuth } from '@/auth/auth-context';
+import { ManagerChrome } from '@/components/manager/manager-chrome';
+import { MutedText, PrimaryButton, SectionHeader, SurfaceCard } from '@/components/ui';
+import {
+  formatOrderLookupError,
+  resolveDriverOrderId,
+} from '@/lib/order-lookup';
+import { brand } from '@/theme/brand';
+
+export default function ManagerScanScreen() {
+  const { getValidAccessToken } = useAuth();
+  const [permission, requestPermission] = useCameraPermissions();
+  const [manual, setManual] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [scanned, setScanned] = useState(false);
+
+  const lookup = useCallback(
+    async (raw: string) => {
+      const trimmed = raw.trim();
+      if (!trimmed) {
+        setError('أدخل رقم الفاتورة أو امسح الباركود');
+        return;
+      }
+      setBusy(true);
+      setError(null);
+      try {
+        const token = await getValidAccessToken();
+        if (!token) {
+          throw new Error('انتهت الجلسة');
+        }
+        const orderId = await resolveDriverOrderId(token, trimmed);
+        router.push(`/(app)/(driver)/order/${orderId}`);
+      } catch (err) {
+        setError(formatOrderLookupError(err));
+        setScanned(false);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [getValidAccessToken],
+  );
+
+  if (!permission) {
+    return (
+      <ManagerChrome title="مسح فاتورة">
+        <ActivityIndicator color={brand.colors.primaryBlue} />
+      </ManagerChrome>
+    );
+  }
+
+  return (
+    <ManagerChrome title="مسح فاتورة">
+      <View style={styles.wrap}>
+        <SectionHeader
+          eyebrow="Field Scan"
+          title="مسح الفاتورة"
+          subtitle="افتح الطلب من الباركود أو رقم التسلسل"
+        />
+        <MutedText>
+          امسح باركود الفاتورة أو أدخل رقم التسلسل الظاهر على الورقة (مثل D2-1045)
+        </MutedText>
+
+        {permission.granted ? (
+          <View style={styles.cameraBox}>
+            <CameraView
+              style={styles.camera}
+              facing="back"
+              barcodeScannerSettings={{
+                barcodeTypes: ['qr', 'code128', 'code39', 'ean13'],
+              }}
+              onBarcodeScanned={
+                scanned || busy
+                  ? undefined
+                  : ({ data }) => {
+                      setScanned(true);
+                      void lookup(data);
+                    }
+              }
+            />
+            {busy ? (
+              <View style={styles.cameraOverlay}>
+                <ActivityIndicator color={brand.colors.white} size="large" />
+              </View>
+            ) : null}
+          </View>
+        ) : (
+          <PrimaryButton
+            label="السماح بالكاميرا"
+            onPress={() => void requestPermission()}
+          />
+        )}
+
+        <SurfaceCard>
+          <Text style={styles.label}>أو أدخل رقم التسلسل يدوياً</Text>
+          <TextInput
+            value={manual}
+            onChangeText={setManual}
+            textAlign="right"
+            style={styles.input}
+            placeholder="مثل D2-1045 أو رقم الفاتورة"
+            placeholderTextColor={brand.colors.textMuted}
+            autoCapitalize="characters"
+            autoCorrect={false}
+          />
+          <PrimaryButton
+            label={busy ? 'جاري البحث…' : 'بحث'}
+            onPress={() => void lookup(manual)}
+            disabled={busy || !manual.trim()}
+          />
+        </SurfaceCard>
+
+        {scanned && !busy ? (
+          <Pressable onPress={() => setScanned(false)}>
+            <Text style={styles.rescan}>مسح مرة أخرى</Text>
+          </Pressable>
+        ) : null}
+
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+      </View>
+    </ManagerChrome>
+  );
+}
+
+const styles = StyleSheet.create({
+  wrap: { flex: 1, gap: 12 },
+  cameraBox: {
+    height: 260,
+    borderRadius: brand.radius.xl,
+    overflow: 'hidden',
+    backgroundColor: '#000',
+  },
+  camera: { flex: 1 },
+  cameraOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  label: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: brand.colors.text,
+    textAlign: 'right',
+  },
+  input: {
+    backgroundColor: brand.colors.surfaceMuted,
+    borderRadius: brand.radius.md,
+    borderWidth: 1,
+    borderColor: brand.colors.border,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: brand.colors.text,
+  },
+  rescan: {
+    textAlign: 'center',
+    color: brand.colors.primaryBlue,
+    fontWeight: '800',
+  },
+  error: { color: brand.colors.danger, textAlign: 'right' },
+});

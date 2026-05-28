@@ -135,6 +135,18 @@ export function fetchMyExpenses(token: string): Promise<DriverExpenseRow[]> {
   return apiJson<DriverExpenseRow[]>(`/expenses/driver/mine?${qs}`, { token });
 }
 
+export function fetchExpenses(
+  token: string,
+  branchId?: string,
+): Promise<DriverExpenseRow[]> {
+  const { from, to } = todayKuwaitRange();
+  const params = new URLSearchParams({ from, to });
+  if (branchId) {
+    params.append('branchId', branchId);
+  }
+  return apiJson<DriverExpenseRow[]>(`/expenses?${params}`, { token });
+}
+
 export function createMyExpense(
   token: string,
   payload: CreateExpenseRequest,

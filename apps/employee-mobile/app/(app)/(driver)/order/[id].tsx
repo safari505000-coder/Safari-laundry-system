@@ -17,6 +17,7 @@ import {
   type OrderDetailRow,
 } from '@/api/orders';
 import { useAuth } from '@/auth/auth-context';
+import { resolveMobileAppRole } from '@/auth/roles';
 import { DriverChrome } from '@/components/driver/driver-chrome';
 import { GhostButton, MutedText, PrimaryButton, SectionHeader, SurfaceCard } from '@/components/ui';
 import {
@@ -31,6 +32,7 @@ import { paymentMethodLabelAr } from '@/lib/payment-methods';
 import { brand } from '@/theme/brand';
 
 export default function DriverOrderDetailScreen() {
+  const { user } = useAuth();
   const params = useLocalSearchParams<{ id: string | string[] }>();
   const orderId = useMemo(() => {
     const raw = Array.isArray(params.id) ? params.id[0] : params.id;
@@ -38,14 +40,16 @@ export default function DriverOrderDetailScreen() {
   }, [params.id]);
 
   if (!isValidOrderId(orderId)) {
-    return <Redirect href="/(app)/(driver)/(tabs)/scan" />;
+    const isManager = user && resolveMobileAppRole(user.safariRole) === 'manager';
+    return <Redirect href={isManager ? "/(app)/(manager)/scan" : "/(app)/(driver)/(tabs)/scan"} />;
   }
 
   return <DriverOrderDetailContent orderId={orderId} />;
 }
 
 function DriverOrderDetailContent({ orderId }: { orderId: string }) {
-  const { getValidAccessToken } = useAuth();
+  const { getValidAccessToken, user } = useAuth();
+  const isDriver = user?.safariRole === 'DRIVER';
   const [order, setOrder] = useState<OrderDetailRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -166,7 +170,7 @@ function DriverOrderDetailContent({ orderId }: { orderId: string }) {
             <MutedText>المبلغ من السيرفر — بدون حساب محلي</MutedText>
           </SurfaceCard>
 
-          {actions.length > 0 ? (
+          {actions.length > 0 && isDriver ? (
             <View style={styles.actions}>
               {actions.includes('start') ? (
                 <PrimaryButton

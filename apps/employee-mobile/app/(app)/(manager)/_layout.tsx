@@ -18,6 +18,8 @@ export default function ManagerLayout() {
       <Tabs.Screen name="index" options={{ title: 'ملخص' }} />
       <Tabs.Screen name="oversight" options={{ title: 'سائقين' }} />
       <Tabs.Screen name="custody" options={{ title: 'عهدة' }} />
+      <Tabs.Screen name="scan" options={{ title: 'مسح فواتير' }} />
+      <Tabs.Screen name="expense" options={{ title: 'مصروف' }} />
     </Tabs>
   );
 }

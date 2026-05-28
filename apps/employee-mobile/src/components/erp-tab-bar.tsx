@@ -27,6 +27,7 @@ const ICON_BY_ROUTE: Record<string, IconKind> = {
   oversight: 'drivers',
   custody: 'cash',
   more: 'more',
+  expense: 'cash',
 };
 
 export function ErpBottomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
