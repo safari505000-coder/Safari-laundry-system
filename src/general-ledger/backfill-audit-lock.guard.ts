@@ -2,13 +2,14 @@ import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { JOURNAL_ACCOUNTS } from './double-entry-journal.service';
 
 /**
  * حارس قفل التدقيق للبيانات المُرتَّجَعة — الإصدار V20.1 المرحلة 21.
  *
  * يعمل عند تشغيل التطبيق (`OnApplicationBootstrap`) ويتحقق من سلامة
  * البيانات المالية قبل قبول أي طلبات. إذا وُجد سجل `BackfillAuditLock`
- * مُفعَّل (`isLocked = true`)، يُعيد حساب بصمات `DebtLedgerEntry` و`CustomerWallet`
+ * مُفعَّل (`isLocked = true`)، يُعيد حساب بصمات اليومية (حساب 1300) و`CustomerWallet`
  * ويقارنها بالمخزّن — وعند عدم التطابق يُوقف العملية (`process.exit(2)`)
  * لمنع خدمة بيانات فاسدة.
  *
@@ -20,7 +21,7 @@ import { PrismaService } from '../prisma/prisma.service';
  *
  * Runs at application bootstrap to verify financial data integrity before
  * accepting traffic. If `BackfillAuditLock.isLocked = true`, recomputes
- * checksums for `DebtLedgerEntry` and `CustomerWallet` and compares against
+ * checksums for journal AR (account 1300) and `CustomerWallet` and compares against
  * the stored values — a mismatch aborts the process (`process.exit(2)`).
  *
  * Bypass during intentional migrations: `BACKFILL_AUDIT_LOCK_BYPASS=true`.
@@ -100,14 +101,14 @@ export class BackfillAuditLockGuard implements OnApplicationBootstrap {
   }
 
   /**
-   * يحسب بصمة SHA-256 خشنة لدفتر الديون (`DebtLedgerEntry`).
-   * يُجمِّع صافي الذمم لكل عميل (مديونية − مدفوعات) ويُشفِّر القائمة المُرتَّبة.
+   * يحسب بصمة SHA-256 خشنة لذمم العملاء من اليومية (حساب 1300).
+   * يُجمِّع صافي المدين − الدائن لكل عميل ويُشفِّر القائمة المُرتَّبة.
    * أي تغيير في صافي ذمة أي عميل يُغيِّر البصمة وينكشف عند التحقق.
    *
-   * Computes a coarse SHA-256 checksum of the `DebtLedgerEntry` book.
-   * Aggregates net AR per customer (shortfall+overuse − non-wallet payments)
-   * and hashes the sorted result. Any net change to any customer's AR
-   * position changes the checksum and is detected at boot.
+   * Computes a coarse SHA-256 checksum of journal AR (account 1300).
+   * Aggregates net debit − credit per customer and hashes the sorted result.
+   * Any net change to any customer's AR position changes the checksum and
+   * is detected at boot.
    *
    * @returns أول 32 حرف من SHA-256 | First 32 chars of SHA-256 hex
    * @since V20.1
@@ -115,20 +116,18 @@ export class BackfillAuditLockGuard implements OnApplicationBootstrap {
   async computeLedgerChecksum(): Promise<string> {
     const rows = await this.prisma.$queryRaw<
       { customerId: string; net: string }[]
-    >`
+    >(Prisma.sql`
       SELECT
-        dle."customerId" AS "customerId",
-        COALESCE(SUM(
-          CASE
-            WHEN dle."source" IN ('INVOICE_SHORTFALL', 'SUBSCRIPTION_OVERUSE') THEN dle."amount"
-            WHEN dle."source" = 'PAYMENT' AND dle."sourceRef" NOT LIKE 'PAYMENT:WALLET:%' THEN -dle."amount"
-            ELSE 0
-          END
-        ), 0)::text AS net
-      FROM "DebtLedgerEntry" dle
-      GROUP BY dle."customerId"
-      ORDER BY dle."customerId" ASC
-    `;
+        je."customerId" AS "customerId",
+        COALESCE(SUM(jl."debit" - jl."credit"), 0)::text AS net
+      FROM "JournalLine" jl
+      INNER JOIN "JournalEntry" je ON je."id" = jl."entryId"
+      INNER JOIN "Account" a ON a."id" = jl."accountId"
+      WHERE a."code" = ${JOURNAL_ACCOUNTS.ACCOUNTS_RECEIVABLE}
+        AND je."customerId" IS NOT NULL
+      GROUP BY je."customerId"
+      ORDER BY je."customerId" ASC
+    `);
     const hash = createHash('sha256');
     for (const r of rows) {
       hash.update(`${r.customerId}|${r.net}\n`);

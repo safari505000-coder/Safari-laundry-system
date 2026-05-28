@@ -352,9 +352,9 @@ export class FinancialAuditService {
    * V20.1-v3 — Phase 1/3 missing-PAYMENT counter.
    *
    * Counts orders where TransactionHistory recorded a positive
-   * `metadata.appliedFromWallet` but no matching `PAYMENT:WALLET:`
-   * row exists in DebtLedgerEntry. This is the gauge that should
-   * tend toward zero as the backfill script runs.
+   * `metadata.appliedFromWallet` but no matching journal mirror
+   * (`sourceRef` starting with `PAYMENT:WALLET:`) exists for the
+   * same order. This gauge should tend toward zero after backfill.
    *
    * Implemented via raw SQL to avoid pulling all wallet-applied
    * TH rows into Node memory.
@@ -367,10 +367,9 @@ export class FinancialAuditService {
         AND th."orderId" IS NOT NULL
         AND COALESCE((th."metadata" ->> 'appliedFromWallet')::numeric, 0) > 0
         AND NOT EXISTS (
-          SELECT 1 FROM "DebtLedgerEntry" dle
-          WHERE dle."orderId" = th."orderId"
-            AND dle."source" = 'PAYMENT'
-            AND dle."sourceRef" LIKE 'PAYMENT:WALLET:%'
+          SELECT 1 FROM "JournalEntry" je
+          WHERE je."orderId" = th."orderId"
+            AND je."sourceRef" LIKE 'PAYMENT:WALLET:%'
         )
     `;
     return Number(rows[0]?.count ?? 0n);
