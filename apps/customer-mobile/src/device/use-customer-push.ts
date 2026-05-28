@@ -6,6 +6,7 @@ import { useEffect, useRef } from 'react';
 import { Platform } from 'react-native';
 import { registerCustomerPushToken } from '@/api/public';
 import { readSavedPhone } from '@/auth/customer-session';
+import { openOrderDeliveryTrack } from '@/lib/routes';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -69,6 +70,11 @@ export function useCustomerPushRegistration() {
     const sub = Notifications.addNotificationResponseReceivedListener(
       (response) => {
         const screen = response.notification.request.content.data?.screen;
+        const orderId = response.notification.request.content.data?.orderId;
+        if (screen === 'order' && typeof orderId === 'string' && orderId.trim()) {
+          openOrderDeliveryTrack(orderId.trim());
+          return;
+        }
         if (screen === 'track') {
           router.push('/(tabs)/track');
         }

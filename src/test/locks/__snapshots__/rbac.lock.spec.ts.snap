@@ -2057,6 +2057,16 @@ exports[`RBAC lock freezes every endpoint @Roles decorator 1`] = `
   },
   {
     "file": "src/public-api/public-api.controller.ts",
+    "handler": "customerOrderDelivery",
+    "method": "GET",
+    "path": "/public/customer-portal/orders/:orderId/delivery",
+    "roleSource": "method",
+    "roles": [
+      "CUSTOMER",
+    ],
+  },
+  {
+    "file": "src/public-api/public-api.controller.ts",
     "handler": "s",
     "method": "GET",
     "path": "/public/employee/tasks",
@@ -3309,6 +3319,42 @@ exports[`RBAC lock freezes every endpoint @Roles decorator 1`] = `
     "roleSource": "method",
     "roles": [
       "MANAGER",
+    ],
+  },
+  {
+    "file": "src/orders/driver-order-delivery.controller.ts",
+    "handler": "completeDelivery",
+    "method": "POST",
+    "path": "/driver/orders/:id/complete-delivery",
+    "roleSource": "class",
+    "roles": [
+      "DRIVER",
+      "MANAGER",
+      "SUPERVISOR",
+    ],
+  },
+  {
+    "file": "src/orders/driver-order-delivery.controller.ts",
+    "handler": "returnToBranch",
+    "method": "POST",
+    "path": "/driver/orders/:id/return-to-branch",
+    "roleSource": "class",
+    "roles": [
+      "DRIVER",
+      "MANAGER",
+      "SUPERVISOR",
+    ],
+  },
+  {
+    "file": "src/orders/driver-order-delivery.controller.ts",
+    "handler": "startDelivery",
+    "method": "POST",
+    "path": "/driver/orders/:id/start-delivery",
+    "roleSource": "class",
+    "roles": [
+      "DRIVER",
+      "MANAGER",
+      "SUPERVISOR",
     ],
   },
   {

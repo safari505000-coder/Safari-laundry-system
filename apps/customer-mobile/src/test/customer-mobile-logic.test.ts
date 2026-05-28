@@ -2,6 +2,10 @@ import assert from 'node:assert/strict';
 import { estimateCartTotalKd } from '@/cart/cart-totals';
 import { formatKwdLabel } from '@/lib/kwd';
 import { validateOrderGuard } from '@/order/order-guards';
+import {
+  deliveryStatusLabelAr,
+  deliveryTimelineActiveIndex,
+} from '@/lib/delivery-status';
 
 function test(name: string, run: () => void) {
   run();
@@ -89,4 +93,11 @@ test('order guard accepts complete courier request', () => {
     }),
     null,
   );
+});
+
+test('delivery timeline highlights current ERP invoice status', () => {
+  assert.equal(deliveryStatusLabelAr('OUT_FOR_DELIVERY'), 'في الطريق إليك');
+  assert.equal(deliveryTimelineActiveIndex('READY'), 0);
+  assert.equal(deliveryTimelineActiveIndex('DELIVERED'), 2);
+  assert.equal(deliveryTimelineActiveIndex('RETURNED_TO_BRANCH'), 1);
 });

@@ -19,6 +19,7 @@ import { UpdateCustomerProfileDto } from './dto/update-customer-profile.dto';
 import { PublicApiService } from './public-api.service';
 import { WebsiteCustomerPaymentsService } from './website-customer-payments.service';
 import { WebsiteOrderRequestsService } from './website-order-requests.service';
+import { OrderDeliveryService } from '../orders/order-delivery.service';
 
 @ApiTags('public-api')
 @Controller('public')
@@ -29,6 +30,7 @@ export class PublicApiController {
     private readonly websiteRequests: WebsiteOrderRequestsService,
     private readonly websitePayments: WebsiteCustomerPaymentsService,
     private readonly customerPortalAuth: CustomerPortalAuthService,
+    private readonly orderDelivery: OrderDeliveryService,
   ) {}
 
   @Public('Company website must list public services without a staff session.')
@@ -146,6 +148,22 @@ export class PublicApiController {
       throw new UnauthorizedException('Customer session is required.');
     }
     return this.publicApi.getCustomerPortalByCustomerId(customerId);
+  }
+
+  @Get('customer-portal/orders/:orderId/delivery')
+  @UseGuards(RolesGuard)
+  @Roles(SafariRole.CUSTOMER)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Delivery timeline for an owned invoice' })
+  customerOrderDelivery(
+    @CurrentUser() user: JwtUser,
+    @Param('orderId') orderId: string,
+  ) {
+    const customerId = user.linkedCustomerId?.trim();
+    if (!customerId || user.role !== SafariRole.CUSTOMER) {
+      throw new UnauthorizedException('Customer session is required.');
+    }
+    return this.orderDelivery.getDeliveryTrackingForCustomer(orderId, customerId);
   }
 
   @Patch('customer/profile')

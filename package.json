@@ -55,6 +55,8 @@
     "customer-mobile:ios": "npm run ios --prefix apps/customer-mobile",
     "customer-mobile:typecheck": "npm run typecheck --prefix apps/customer-mobile",
     "customer-mobile:test:logic": "npm run test:logic --prefix apps/customer-mobile",
+    "employee-mobile:test:logic": "npm run test:logic --prefix apps/employee-mobile",
+    "mobile:test:logic": "npm run employee-mobile:test:logic && npm run customer-mobile:test:logic",
     "customer-mobile:build:android": "npm run build:android --prefix apps/customer-mobile",
     "customer-mobile:build:ios": "npm run build:ios --prefix apps/customer-mobile",
     "check": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/safety-check.ps1 full",

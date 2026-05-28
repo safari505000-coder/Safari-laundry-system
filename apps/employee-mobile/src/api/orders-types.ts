@@ -59,6 +59,11 @@ export type OrderDetailRow = {
   totalPrice: string;
   cashStatus: string;
   posPaymentMethod?: DisplayPaymentMethod | null;
+  deliveryStatus?: DeliveryStatus | null;
+  deliveryStartedAt?: string | null;
+  deliveredAt?: string | null;
+  returnedAt?: string | null;
+  deliveryReturnReason?: DeliveryReturnReason | null;
   invoiceNumber: string | null;
   serialNumber?: string | null;
   notes: string | null;
@@ -73,6 +78,23 @@ export type OrderDetailRow = {
     id: string;
     fullName: string;
   } | null;
+};
+
+export type DeliveryStatus =
+  | 'READY'
+  | 'OUT_FOR_DELIVERY'
+  | 'DELIVERED'
+  | 'RETURNED_TO_BRANCH';
+
+export type DeliveryReturnReason =
+  | 'NO_ANSWER'
+  | 'WRONG_ADDRESS'
+  | 'REFUSED'
+  | 'OTHER';
+
+export type ReturnToBranchRequest = {
+  reason: DeliveryReturnReason;
+  notes?: string;
 };
 
 export type IssuedInvoiceReportRow = {

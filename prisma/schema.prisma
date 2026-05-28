@@ -49,6 +49,24 @@ enum OrderStatus {
   CANCELED
 }
 
+/**
+ * Driver delivery phase — separate from payment / Order.status accounting.
+ * POS may leave Order.status = COMPLETED while garments are still out for delivery.
+ */
+enum DeliveryStatus {
+  READY
+  OUT_FOR_DELIVERY
+  DELIVERED
+  RETURNED_TO_BRANCH
+}
+
+enum DeliveryReturnReason {
+  NO_ANSWER
+  WRONG_ADDRESS
+  REFUSED
+  OTHER
+}
+
 // V19.9 — Invoice audit trail actions. Every EDIT or VOID by a Call-
 // Center Supervisor writes one immutable InvoiceAuditLog row capturing
 // the before/after snapshot and the actor. The report surface (Owner /
@@ -286,6 +304,8 @@ model User {
   linkedCustomer                   Customer?                  @relation("CustomerPortalUser", fields: [linkedCustomerId], references: [id], onDelete: SetNull)
   auditLogs                        AuditLog[]
   ordersAsDriver                   Order[]                    @relation("OrderDriver")
+  ordersAsDeliveryDriver           Order[]                    @relation("OrderDeliveryDriver")
+  orderDeliveryEventsActed         OrderDeliveryEvent[]       @relation("OrderDeliveryEventActor")
   shiftsAsDriver                   Shift[]                    @relation("ShiftDriver")
   shiftConfirmations               Shift[]                    @relation("ShiftConfirmedBy")
   ledgerTransactions               TransactionHistory[]       @relation("LedgerPerformedBy")
@@ -1011,6 +1031,16 @@ model Order {
    */
   dispatchId                  String?          @db.Uuid
   /**
+   * V20.x — Driver delivery tracking (scan → out for delivery → delivered / returned).
+   * Independent from Order.status / cash settlement.
+   */
+  deliveryStatus              DeliveryStatus   @default(READY)
+  deliveryStartedAt           DateTime?
+  deliveredAt                 DateTime?
+  returnedAt                  DateTime?
+  deliveryReturnReason        DeliveryReturnReason?
+  deliveryDriverId            String?          @db.Uuid
+  /**
    * V19.x — Outstanding-Payments / AR. Optional payment-due date used by
    * the Outstanding module to compute `daysLate` and the priority score.
    * Pure metadata: nothing in the system auto-blocks or auto-cancels when
@@ -1027,6 +1057,8 @@ model Order {
   handoverShift         Shift?                @relation("ShiftHandoverOrders", fields: [handoverShiftId], references: [id], onDelete: SetNull)
   subscription          CustomerSubscription? @relation("OrderSubscription", fields: [subscriptionId], references: [id], onDelete: SetNull)
   dispatch              Dispatch?             @relation("DispatchOrders", fields: [dispatchId], references: [id], onDelete: SetNull)
+  deliveryDriver        User?                 @relation("OrderDeliveryDriver", fields: [deliveryDriverId], references: [id], onDelete: SetNull)
+  deliveryEvents        OrderDeliveryEvent[]
   lineItems             OrderLineItem[]
   transactionHistory    TransactionHistory[]
   debtTransferLineItems DebtTransferOrder[]
@@ -1063,6 +1095,8 @@ model Order {
   @@index([posPaymentBundleId])
   @@index([handoverShiftId])
   @@index([dispatchId])
+  @@index([deliveryStatus])
+  @@index([deliveryDriverId])
   @@index([transferredFromDriverId])
   @@index([serialNumber])
   @@index([subscriptionId])
@@ -1070,6 +1104,26 @@ model Order {
   @@index([customerId, cashStatus])
   @@index([dueDate])
   @@index([posGatewayTrackId])
+}
+
+/**
+ * Append-only audit trail for driver delivery status transitions.
+ */
+model OrderDeliveryEvent {
+  id           String                @id @default(uuid()) @db.Uuid
+  orderId      String                @db.Uuid
+  actorUserId  String                @db.Uuid
+  fromStatus   DeliveryStatus
+  toStatus     DeliveryStatus
+  returnReason DeliveryReturnReason?
+  notes        String?               @db.VarChar(500)
+  createdAt    DateTime              @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  actor User  @relation("OrderDeliveryEventActor", fields: [actorUserId], references: [id])
+
+  @@index([orderId, createdAt])
+  @@index([actorUserId])
 }
 
 /**

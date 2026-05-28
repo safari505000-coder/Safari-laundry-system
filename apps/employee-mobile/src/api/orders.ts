@@ -9,6 +9,7 @@ import type {
   OrderDetailRow,
   QuickCreateOrderRequest,
   QuickCreateOrderResponse,
+  ReturnToBranchRequest,
 } from './orders-types';
 import { apiJson } from './client';
 
@@ -58,6 +59,41 @@ export function fetchOrderById(
   return apiJson<OrderDetailRow>(`/orders/${encodeURIComponent(orderId)}`, {
     token,
   });
+}
+
+export function startOrderDelivery(
+  token: string,
+  orderId: string,
+): Promise<OrderDetailRow> {
+  return apiJson<OrderDetailRow>(
+    `/driver/orders/${encodeURIComponent(orderId)}/start-delivery`,
+    { method: 'POST', token, body: '{}' },
+  );
+}
+
+export function completeOrderDelivery(
+  token: string,
+  orderId: string,
+): Promise<OrderDetailRow> {
+  return apiJson<OrderDetailRow>(
+    `/driver/orders/${encodeURIComponent(orderId)}/complete-delivery`,
+    { method: 'POST', token, body: '{}' },
+  );
+}
+
+export function returnOrderToBranch(
+  token: string,
+  orderId: string,
+  payload: ReturnToBranchRequest,
+): Promise<OrderDetailRow> {
+  return apiJson<OrderDetailRow>(
+    `/driver/orders/${encodeURIComponent(orderId)}/return-to-branch`,
+    {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload),
+    },
+  );
 }
 
 export function searchDriverOrders(
@@ -143,4 +179,7 @@ export type {
   QuickCreateOrderRequest,
   QuickCreateOrderResponse,
   QuickPaymentMethod,
+  ReturnToBranchRequest,
+  DeliveryReturnReason,
+  DeliveryStatus,
 } from './orders-types';

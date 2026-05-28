@@ -33,6 +33,11 @@ export type CustomerPortalOrder = {
   status: string;
   cashStatus: string;
   posPaymentMethod: string;
+  deliveryStatus?:
+    | 'READY'
+    | 'OUT_FOR_DELIVERY'
+    | 'DELIVERED'
+    | 'RETURNED_TO_BRANCH';
   totalAmountKd: string;
   paidAmountKd: string;
   remainingAmountKd: string;

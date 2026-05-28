@@ -1,5 +1,6 @@
 import {
   CashStatus,
+  DeliveryStatus,
   OrderStatus,
   PosPaymentMethod,
   Prisma,
@@ -18,6 +19,7 @@ type OrderRow = {
   status: OrderStatus;
   cashStatus: CashStatus;
   posPaymentMethod: PosPaymentMethod;
+  deliveryStatus: DeliveryStatus;
   invoiceNumber: string | null;
   serialNumber: string | null;
   createdAt: Date;
@@ -29,6 +31,7 @@ export type CustomerPortalPayableOrder = {
   status: OrderStatus;
   cashStatus: CashStatus;
   posPaymentMethod: PosPaymentMethod;
+  deliveryStatus: DeliveryStatus;
   totalAmountKd: string;
   paidAmountKd: string;
   remainingAmountKd: string;
@@ -121,6 +124,7 @@ export async function listPayableOrdersForCustomer(
       status: true,
       cashStatus: true,
       posPaymentMethod: true,
+      deliveryStatus: true,
       invoiceNumber: true,
       serialNumber: true,
       createdAt: true,
@@ -153,6 +157,7 @@ export async function listPayableOrdersForCustomer(
         status: true,
         cashStatus: true,
         posPaymentMethod: true,
+        deliveryStatus: true,
         invoiceNumber: true,
         serialNumber: true,
         createdAt: true,
@@ -200,6 +205,7 @@ export async function listPayableOrdersForCustomer(
         status: order.status,
         cashStatus: order.cashStatus,
         posPaymentMethod: order.posPaymentMethod,
+        deliveryStatus: order.deliveryStatus,
         totalAmountKd: payment.totalAmountKd,
         paidAmountKd: paidKd.greaterThan(0)
           ? paidKd.toFixed(4)

@@ -253,6 +253,36 @@ export async function createInvoicePaymentLink(
 
 
 
+export type OrderDeliveryTracking = {
+  orderId: string;
+  invoiceLabel: string;
+  deliveryStatus: string;
+  deliveryStartedAt: string | null;
+  deliveredAt: string | null;
+  returnedAt: string | null;
+  deliveryReturnReason: string | null;
+  timeline: Array<{
+    id: string;
+    fromStatus: string;
+    toStatus: string;
+    returnReason: string | null;
+    notes: string | null;
+    createdAt: string;
+    actorName: string | null;
+  }>;
+};
+
+export async function fetchOrderDelivery(
+  orderId: string,
+): Promise<OrderDeliveryTracking> {
+  return apiJson<OrderDeliveryTracking>(
+    `/public/customer-portal/orders/${encodeURIComponent(orderId)}/delivery`,
+    await withCustomerAuth(),
+  );
+}
+
+
+
 export async function createBalancePaymentLink(
 
   customerPhone: string,

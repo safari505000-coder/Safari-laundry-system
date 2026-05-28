@@ -1264,6 +1264,12 @@ exports[`API contract lock freezes public route methods and paths 1`] = `
   },
   {
     "file": "src/public-api/public-api.controller.ts",
+    "handler": "customerOrderDelivery",
+    "method": "GET",
+    "path": "/public/customer-portal/orders/:orderId/delivery",
+  },
+  {
+    "file": "src/public-api/public-api.controller.ts",
     "handler": "s",
     "method": "GET",
     "path": "/public/employee/tasks",
@@ -2035,6 +2041,24 @@ exports[`API contract lock freezes public route methods and paths 1`] = `
     "handler": "n",
     "method": "POST",
     "path": "/driver/handover-cash",
+  },
+  {
+    "file": "src/orders/driver-order-delivery.controller.ts",
+    "handler": "completeDelivery",
+    "method": "POST",
+    "path": "/driver/orders/:id/complete-delivery",
+  },
+  {
+    "file": "src/orders/driver-order-delivery.controller.ts",
+    "handler": "returnToBranch",
+    "method": "POST",
+    "path": "/driver/orders/:id/return-to-branch",
+  },
+  {
+    "file": "src/orders/driver-order-delivery.controller.ts",
+    "handler": "startDelivery",
+    "method": "POST",
+    "path": "/driver/orders/:id/start-delivery",
   },
   {
     "file": "src/expenses/expenses.controller.ts",

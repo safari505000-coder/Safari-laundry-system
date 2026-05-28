@@ -1,8 +1,9 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { CustomerNotificationsModule } from '../customer-notifications/customer-notifications.module';
 import { DebtVisibilityModule } from '../finance/debt-visibility/debt-visibility.module';
 import { FinanceModule } from '../finance/finance.module';
+import { OrdersModule } from '../orders/orders.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { SerialsModule } from '../serials/serials.module';
@@ -22,6 +23,7 @@ import { ExpoPushService } from './expo-push.service';
     DebtVisibilityModule,
     AuthModule,
     CustomerNotificationsModule,
+    forwardRef(() => OrdersModule),
   ],
   controllers: [PublicApiController],
   providers: [
@@ -31,6 +33,6 @@ import { ExpoPushService } from './expo-push.service';
     WebsiteOrderRequestsService,
     WebsiteCustomerPaymentsService,
   ],
-  exports: [WebsiteCustomerPaymentsService],
+  exports: [WebsiteCustomerPaymentsService, ExpoPushService],
 })
 export class PublicApiModule {}

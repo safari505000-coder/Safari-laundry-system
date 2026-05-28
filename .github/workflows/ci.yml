@@ -134,10 +134,37 @@ jobs:
         run: npx tsc --noEmit
         working-directory: web
 
+  mobile-logic-test:
+    name: Mobile — logic guards (driver + customer)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install backend dependencies (workspace root)
+        run: npm ci
+
+      - name: Install employee-mobile dependencies
+        run: npm ci
+        working-directory: apps/employee-mobile
+
+      - name: Install customer-mobile dependencies
+        run: npm ci
+        working-directory: apps/customer-mobile
+
+      - name: Run mobile delivery/UI logic tests
+        run: npm run mobile:test:logic
+
   deploy:
     name: Deploy to Render (production)
     runs-on: ubuntu-latest
-    needs: [unit-test, integration-test, frontend-check]
+    needs: [unit-test, integration-test, frontend-check, mobile-logic-test]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push' && success()
     environment:
       name: production

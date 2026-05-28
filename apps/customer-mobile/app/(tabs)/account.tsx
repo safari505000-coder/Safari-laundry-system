@@ -44,6 +44,8 @@ import {
 } from '@/design/luxury-system';
 import { useScreenLayout } from '@/hooks/use-screen-layout';
 import { formatKwdLabel } from '@/lib/kwd';
+import { deliveryStatusLabelAr } from '@/lib/delivery-status';
+import { openOrderDeliveryTrack } from '@/lib/routes';
 import { luxury } from '@/design/luxury-tokens';
 import { brand } from '@/theme/brand';
 
@@ -489,6 +491,11 @@ export default function AccountScreen() {
                   busy={busyOrderId === item.id}
                   onPay={() => void payOrder(item)}
                   payEnabled={sessionActive}
+                  onTrack={
+                    sessionActive
+                      ? () => openOrderDeliveryTrack(item.id)
+                      : undefined
+                  }
                 />
               )}
               ListEmptyComponent={
@@ -588,11 +595,13 @@ function OrderRow({
   busy,
   onPay,
   payEnabled,
+  onTrack,
 }: {
   order: CustomerPortalOrder;
   busy: boolean;
   onPay: () => void;
   payEnabled: boolean;
+  onTrack?: () => void;
 }) {
   const label =
     order.serialNumber ?? order.invoiceNumber ?? order.id.slice(0, 8);
@@ -600,6 +609,9 @@ function OrderRow({
     payEnabled &&
     order.paymentStatus !== 'PAID' &&
     Number.parseFloat(order.remainingAmountKd) > 0;
+  const deliveryLabel = order.deliveryStatus
+    ? deliveryStatusLabelAr(order.deliveryStatus)
+    : null;
 
   return (
     <View style={styles.orderRow}>
@@ -608,13 +620,24 @@ function OrderRow({
         <Text style={styles.orderAmount}>
           {formatKwdLabel(order.remainingAmountKd)} · {order.paymentStatus}
         </Text>
-        <Text style={styles.muted}>{order.status}</Text>
+        {deliveryLabel ? (
+          <Text style={styles.deliveryStatus}>{deliveryLabel}</Text>
+        ) : (
+          <Text style={styles.muted}>{order.status}</Text>
+        )}
       </View>
-      {canPay ? (
-        <Pressable style={styles.payBtn} onPress={onPay} disabled={busy}>
-          <Text style={styles.payBtnText}>{busy ? '...' : 'دفع'}</Text>
-        </Pressable>
-      ) : null}
+      <View style={styles.orderActions}>
+        {onTrack ? (
+          <Pressable style={styles.trackBtn} onPress={onTrack}>
+            <Text style={styles.trackBtnText}>تتبع</Text>
+          </Pressable>
+        ) : null}
+        {canPay ? (
+          <Pressable style={styles.payBtn} onPress={onPay} disabled={busy}>
+            <Text style={styles.payBtnText}>{busy ? '...' : 'دفع'}</Text>
+          </Pressable>
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -767,6 +790,25 @@ const styles = StyleSheet.create({
   orderMeta: { flex: 1, alignItems: 'flex-end', gap: 2 },
   orderId: { fontWeight: '900', color: luxury.color.graphite },
   orderAmount: { color: luxury.color.blue600, fontWeight: '800' },
+  deliveryStatus: {
+    color: luxury.color.blue600,
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  orderActions: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+  },
+  trackBtn: {
+    borderRadius: luxury.radius.pill,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: luxury.color.line,
+    backgroundColor: luxury.color.ice100,
+  },
+  trackBtnText: { color: luxury.color.graphite, fontWeight: '800', fontSize: 12 },
   payBtn: {
     backgroundColor: luxury.color.blue600,
     borderRadius: luxury.radius.pill,

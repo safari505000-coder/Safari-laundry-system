@@ -123,7 +123,7 @@ export function resolveOperationalDebtKd(input: {
   return Prisma.Decimal.max(input.ledgerNetKd, input.snapshotFromWalletKd);
 }
 
-const orderDetailSelect = {
+export const orderDetailSelect = {
   id: true,
   status: true,
   serviceType: true,
@@ -137,9 +137,13 @@ const orderDetailSelect = {
   notes: true,
   reminderCount: true,
   lastReminderAt: true,
-  // V19.x — Call-center dispatch back-pointer. Surfaced so the
-  // ORDER_CREATED_EVENT emit knows which dispatch (if any) to close.
   dispatchId: true,
+  deliveryStatus: true,
+  deliveryStartedAt: true,
+  deliveredAt: true,
+  returnedAt: true,
+  deliveryReturnReason: true,
+  deliveryDriverId: true,
   createdAt: true,
   updatedAt: true,
   customer: {

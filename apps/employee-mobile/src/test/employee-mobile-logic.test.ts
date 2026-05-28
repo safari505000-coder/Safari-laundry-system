@@ -23,6 +23,12 @@ import {
 import { pickOrderIdFromSearchResults } from '@/lib/order-search-match';
 import type { OrderDetailRow } from '@/api/orders-types';
 import {
+  RETURN_REASON_OPTIONS,
+  deliveryStatusLabelAr,
+  returnReasonLabelAr,
+  visibleDeliveryActions,
+} from '@/lib/delivery-status';
+import {
   RECEIPT_MAX_DATA_URL_LENGTH,
   receiptFitsPayloadLimit,
 } from '@/lib/receipt-image';
@@ -268,4 +274,17 @@ test('receipt data URL guard stays under backend payload limit', () => {
 
   assert.equal(receiptFitsPayloadLimit(smallReceipt), true);
   assert.equal(receiptFitsPayloadLimit(hugeReceipt), false);
+});
+
+test('delivery action buttons follow server deliveryStatus', () => {
+  assert.deepEqual(visibleDeliveryActions('READY'), ['start']);
+  assert.deepEqual(visibleDeliveryActions('OUT_FOR_DELIVERY'), [
+    'complete',
+    'return',
+  ]);
+  assert.deepEqual(visibleDeliveryActions('RETURNED_TO_BRANCH'), ['start']);
+  assert.deepEqual(visibleDeliveryActions('DELIVERED'), []);
+  assert.equal(deliveryStatusLabelAr('OUT_FOR_DELIVERY'), 'جاري التوصيل');
+  assert.equal(returnReasonLabelAr('NO_ANSWER'), 'العميل لم يرد');
+  assert.equal(RETURN_REASON_OPTIONS.length, 4);
 });
