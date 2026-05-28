@@ -96,9 +96,13 @@ import { VerifyModule } from './verify/verify.module';
  *    → serials.module
  */
 const webDistPath = join(process.cwd(), 'web', 'dist');
+const publicWebDistPath = join(process.cwd(), 'apps', 'public-web', 'dist');
+const publicWebBuilt = existsSync(join(publicWebDistPath, 'index.html'));
 /** Set `DISABLE_SPA_STATIC=1` to rule out `@nestjs/serve-static` when debugging API-only 404s. */
 const serveSpaFromApi =
-  existsSync(webDistPath) && process.env.DISABLE_SPA_STATIC !== '1';
+  existsSync(webDistPath) &&
+  process.env.DISABLE_SPA_STATIC !== '1' &&
+  !publicWebBuilt;
 const spaStaticModule = serveSpaFromApi
   ? [
       ServeStaticModule.forRoot({

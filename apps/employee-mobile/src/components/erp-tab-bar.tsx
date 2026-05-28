@@ -31,6 +31,9 @@ const ICON_BY_ROUTE: Record<string, IconKind> = {
 
 export function ErpBottomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const visibleRoutes = state.routes.filter((route) => {
+    if (route.name.includes('[')) {
+      return false;
+    }
     const options = descriptors[route.key]?.options;
     return (options as { href?: unknown } | undefined)?.href !== null;
   });

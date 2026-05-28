@@ -9,9 +9,11 @@ import { brand } from '@/theme/brand';
 export function RoleShell({
   title,
   children,
+  showBack,
 }: {
   title: string;
   children: ReactNode;
+  showBack?: boolean;
 }) {
   const { user, signOut } = useAuth();
 
@@ -28,15 +30,24 @@ export function RoleShell({
             </View>
           ) : null}
         </View>
-        <Pressable
-          onPress={async () => {
-            await signOut();
-            router.replace('/(auth)/login');
-          }}
-          style={({ pressed }) => [styles.logoutButton, pressed && styles.logoutPressed]}
-        >
-          <Text style={styles.logout}>خروج</Text>
-        </Pressable>
+        {showBack ? (
+          <Pressable
+            onPress={() => router.back()}
+            style={({ pressed }) => [styles.logoutButton, pressed && styles.logoutPressed]}
+          >
+            <Text style={styles.logout}>رجوع</Text>
+          </Pressable>
+        ) : (
+          <Pressable
+            onPress={async () => {
+              await signOut();
+              router.replace('/(auth)/login');
+            }}
+            style={({ pressed }) => [styles.logoutButton, pressed && styles.logoutPressed]}
+          >
+            <Text style={styles.logout}>خروج</Text>
+          </Pressable>
+        )}
       </View>
       <View style={styles.body}>{children}</View>
     </View>

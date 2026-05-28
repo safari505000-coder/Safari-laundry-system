@@ -5,18 +5,22 @@
 | من يفتح | الرابط | ماذا يرى |
 |---------|--------|----------|
 | **العميل** | **https://safariomni.com** | موقع الشركة (أسعار + طلب خدمة) |
-| **الموظف** | **https://www.safariomni.com/login** | تسجيل دخول ERP (كما هو) |
+| **الموظف** | **https://www.safariomni.com/login** | تسجيل دخول ERP |
+| **تنبيه** | **https://safariomni.com/login** | يُحوَّل تلقائياً إلى www (بعد deploy) |
 
 نفس العائلة `safariomni.com` — **ما تحتاج تشتري دومين جديد**.
 
 ---
 
-## كيف يشتغل تقنياً
+## كيف يشتغل تقنياً (بعد V24 host routing)
 
 - **safariomni.com** → السيرver (Render Web Service)
-  - `/` = موقع العملاء
+  - `/` = موقع العملاء (`apps/public-web`)
+  - `/login` → redirect إلى `www.safariomni.com/login`
   - `/api/...` = الـ API
-- **www.safariomni.com** → موقع ERP المنفصل (Render Static Site — موجود اليوم)
+- **www.safariomni.com** → **نفس السيرver** يخدم ERP (`web/dist`) حسب الـ hostname
+  - إذا DNS يشير www إلى Static Site منفصل — يبقى يشتغل كما كان
+  - إذا www و apex على نفس السيرver — الكود يفرّق بينهما تلقائياً
 
 ---
 

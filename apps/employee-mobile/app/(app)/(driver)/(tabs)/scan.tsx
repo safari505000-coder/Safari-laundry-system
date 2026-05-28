@@ -10,10 +10,12 @@ import {
   View,
 } from 'react-native';
 import { useAuth } from '@/auth/auth-context';
-import { fetchOrderById } from '@/api/orders';
 import { DriverChrome } from '@/components/driver/driver-chrome';
 import { MutedText, PrimaryButton, SectionHeader, SurfaceCard } from '@/components/ui';
-import { normalizeScannedOrderId } from '@/lib/order-scan';
+import {
+  formatOrderLookupError,
+  resolveDriverOrderId,
+} from '@/lib/order-lookup';
 import { brand } from '@/theme/brand';
 
 export default function DriverScanScreen() {
@@ -26,8 +28,9 @@ export default function DriverScanScreen() {
 
   const lookup = useCallback(
     async (raw: string) => {
-      const id = normalizeScannedOrderId(raw);
-      if (!id) {
+      const trimmed = raw.trim();
+      if (!trimmed) {
+        setError('أدخل رقم الفاتورة أو امسح الباركود');
         return;
       }
       setBusy(true);
@@ -37,10 +40,10 @@ export default function DriverScanScreen() {
         if (!token) {
           throw new Error('انتهت الجلسة');
         }
-        await fetchOrderById(token, id);
-        router.push(`/(app)/(driver)/order/${id}`);
+        const orderId = await resolveDriverOrderId(token, trimmed);
+        router.push(`/(app)/(driver)/order/${orderId}`);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'لم يُعثر على الفاتورة');
+        setError(formatOrderLookupError(err));
         setScanned(false);
       } finally {
         setBusy(false);
@@ -63,10 +66,10 @@ export default function DriverScanScreen() {
         <SectionHeader
           eyebrow="Field Scan"
           title="مسح الفاتورة"
-          subtitle="افتح الطلب من الباركود أو الرقم اليدوي"
+          subtitle="افتح الطلب من الباركود أو رقم التسلسل"
         />
         <MutedText>
-          امسح باركود الفاتورة أو أدخل رقم الطلب يدوياً — GET /orders/:id
+          امسح باركود الفاتورة أو أدخل رقم التسلسل الظاهر على الورقة (مثل D2-1045)
         </MutedText>
 
         {permission.granted ? (
@@ -100,15 +103,15 @@ export default function DriverScanScreen() {
         )}
 
         <SurfaceCard>
-          <Text style={styles.label}>أو أدخل المعرّف يدوياً</Text>
+          <Text style={styles.label}>أو أدخل رقم التسلسل يدوياً</Text>
           <TextInput
             value={manual}
             onChangeText={setManual}
             textAlign="right"
             style={styles.input}
-            placeholder="UUID أو رقم الفاتورة"
+            placeholder="مثل D2-1045 أو رقم الفاتورة"
             placeholderTextColor={brand.colors.textMuted}
-            autoCapitalize="none"
+            autoCapitalize="characters"
             autoCorrect={false}
           />
           <PrimaryButton

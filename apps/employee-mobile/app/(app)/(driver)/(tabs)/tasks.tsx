@@ -1,3 +1,4 @@
+import { useRouter } from 'expo-router';
 import {
   ActivityIndicator,
   FlatList,
@@ -29,6 +30,7 @@ function formatRelativeUpdate(iso: string | null): string {
 }
 
 export default function DriverTasksScreen() {
+  const router = useRouter();
   const {
     tasks,
     hasAssignedAlert,
@@ -122,6 +124,12 @@ export default function DriverTasksScreen() {
                     return;
                   }
                   void acknowledgeDispatch(id);
+                }}
+                onCreateOrder={(task) => {
+                  router.push({
+                    pathname: '/(app)/(driver)/pos',
+                    params: { dispatchId: task.id },
+                  });
                 }}
               />
             )}

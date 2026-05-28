@@ -43,12 +43,14 @@ function formatCreatedAt(value: string): string {
 export function TaskCard({
   task,
   onAcknowledge,
+  onCreateOrder,
   acknowledgingId,
   gpsBlocked,
   onRequestGps,
 }: {
   task: DriverDispatchTask;
   onAcknowledge: (taskId: string) => void;
+  onCreateOrder?: (task: DriverDispatchTask) => void;
   acknowledgingId: string | null;
   gpsBlocked?: boolean;
   onRequestGps?: () => void;
@@ -117,6 +119,12 @@ export function TaskCard({
             disabled={acknowledgingId !== null}
           />
         )
+      ) : null}
+      {task.status === 'IN_PROGRESS' && !task.completedByOrderId && onCreateOrder ? (
+        <PrimaryButton
+          label="إصدار فاتورة من المهمة"
+          onPress={() => onCreateOrder(task)}
+        />
       ) : null}
     </View>
   );

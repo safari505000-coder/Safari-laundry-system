@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useLocalSearchParams } from 'expo-router';
 import {
   ActivityIndicator,
   Alert,
@@ -10,6 +11,7 @@ import {
 } from 'react-native';
 import { posCheckout } from '@/api/pos';
 import type {
+  CustomerBillingProfile,
   LaundryPriceListItemRow,
   PosCartLine,
   PosCustomerRow,
@@ -36,11 +38,13 @@ import { brand } from '@/theme/brand';
 
 export default function DriverPosScreen() {
   const { getValidAccessToken } = useAuth();
+  const params = useLocalSearchParams<{ dispatchId?: string }>();
   const catalog = usePosPriceList();
   const [operating, setOperating] = useState<OperatingStatusPayload | null>(
     null,
   );
   const [customer, setCustomer] = useState<PosCustomerRow | null>(null);
+  const [billing, setBilling] = useState<CustomerBillingProfile | null>(null);
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [cartLines, setCartLines] = useState<PosCartLine[]>([]);
   const [paymentMethod, setPaymentMethod] =
@@ -108,7 +112,12 @@ export default function DriverPosScreen() {
       if (!token) {
         throw new Error('انتهت الجلسة');
       }
-      const body = buildCheckoutRequest(customer, cartLines, paymentMethod);
+      const body = buildCheckoutRequest(
+        customer,
+        cartLines,
+        paymentMethod,
+        typeof params.dispatchId === 'string' ? params.dispatchId : null,
+      );
       const created = await posCheckout(token, body);
       const label =
         created.serialNumber ??
@@ -140,6 +149,7 @@ export default function DriverPosScreen() {
     customer,
     getValidAccessToken,
     paymentMethod,
+    params.dispatchId,
     systemClosed,
   ]);
 
@@ -171,7 +181,19 @@ export default function DriverPosScreen() {
           </View>
         ) : null}
 
-        <PosCustomerBar selected={customer} onSelect={setCustomer} />
+        <PosCustomerBar
+          selected={customer}
+          onSelect={(nextCustomer) => {
+            setCustomer(nextCustomer);
+            if (!nextCustomer) {
+              setBilling(null);
+              if (paymentMethod === 'SUBSCRIPTION') {
+                setPaymentMethod('CASH');
+              }
+            }
+          }}
+          onBillingChange={setBilling}
+        />
 
         {catalog.loading ? (
           <ActivityIndicator color={brand.colors.primaryBlue} size="large" />
@@ -224,6 +246,7 @@ export default function DriverPosScreen() {
         onQtyChange={changeQty}
         onCheckout={() => void checkout()}
         checkoutBusy={checkoutBusy}
+        subscriptionProfile={billing}
       />
     </DriverChrome>
   );

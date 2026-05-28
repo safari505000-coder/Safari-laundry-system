@@ -85,6 +85,7 @@ export function buildCheckoutRequest(
   customer: PosCustomerRow,
   lines: PosCartLine[],
   paymentMethod: PosPaymentMethod,
+  dispatchId?: string | null,
 ): PosCheckoutRequest {
   const lineSum = sumLinesKd(lines);
   const deliveryForOrder = lineSum > 0 ? DELIVERY_FEE_KD : 0;
@@ -108,6 +109,7 @@ export function buildCheckoutRequest(
     ],
     serviceType: 'NORMAL',
     posPaymentMethod: paymentMethod,
+    dispatchId: dispatchId?.trim() || undefined,
   };
 }
 

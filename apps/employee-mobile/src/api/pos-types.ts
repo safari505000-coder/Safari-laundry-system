@@ -60,7 +60,8 @@ export type PosPaymentMethod =
   | 'KNET'
   | 'PAYMENT_LINK'
   | 'ONLINE'
-  | 'DEBT_ON_ACCOUNT';
+  | 'DEBT_ON_ACCOUNT'
+  | 'SUBSCRIPTION';
 
 export type PosCheckoutLineItem = {
   label: string;

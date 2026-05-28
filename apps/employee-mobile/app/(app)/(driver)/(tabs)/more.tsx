@@ -36,7 +36,8 @@ import {
   StatusPill,
   SurfaceCard,
 } from '@/components/ui';
-import { formatKwdLabel } from '@/lib/kwd';
+import { formatKwdLabel, sumKwdStrings } from '@/lib/kwd';
+import { paymentMethodLabelAr } from '@/lib/payment-methods';
 import {
   RECEIPT_COMPRESS_LEVELS,
   RECEIPT_RESIZE_WIDTH,
@@ -174,7 +175,7 @@ export default function DriverMoreScreen() {
   }, [load]);
 
   const expenseTotal = useMemo(
-    () => expenses.reduce((sum, row) => sum + Number(row.amount ?? 0), 0),
+    () => sumKwdStrings(expenses.map((row) => row.amount)),
     [expenses],
   );
 
@@ -311,7 +312,7 @@ export default function DriverMoreScreen() {
         ) : panel === 'expenses' ? (
           <ExpensesPanel
             rows={expenses}
-            total={expenseTotal.toFixed(3)}
+            total={expenseTotal}
             title={expenseTitle}
             amount={expenseAmount}
             note={expenseNote}
@@ -356,7 +357,10 @@ function SalesPanel({
           <Text style={styles.cardTitle}>{row.customer.displayName ?? row.customer.phone}</Text>
           <Text style={styles.cardAmount}>{formatKwdLabel(row.totalPrice)}</Text>
           <Text style={styles.meta}>{row.serialNumber ?? row.invoiceNumber ?? row.id.slice(0, 8)}</Text>
-          <StatusPill label={row.posPaymentMethod ?? row.status} tone="neutral" />
+          <StatusPill
+            label={row.posPaymentMethod ? paymentMethodLabelAr(row.posPaymentMethod) : row.status}
+            tone="neutral"
+          />
         </SurfaceCard>
       ))}
     </>
@@ -364,7 +368,7 @@ function SalesPanel({
 }
 
 function ReceiptsPanel({ rows }: { rows: DriverCashReceiptRow[] }) {
-  const total = rows.reduce((sum, row) => sum + Number(row.amountKd), 0).toFixed(3);
+  const total = sumKwdStrings(rows.map((row) => row.amountKd));
   return (
     <>
       <StatTile label="سندات الاستلام" value={formatKwdLabel(total)} sub={`${rows.length} سند`} tone="completed" />

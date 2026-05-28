@@ -61,7 +61,7 @@ apps/employee-mobile/
 |-----|-----|
 | **متابعة** | `GET /orders/driver/pending-invoices` (read-only) |
 | **عهدة** | `GET /finance/driver/my-cash-custody` + إشعار مدير محلي |
-| **POS** | `POST /orders/quick` (تقاط سريع) + `GET /system/operating-status` |
+| **POS** | `POST /pos/checkout` (lineItems + تسعير السيرفر) + `GET /system/operating-status` |
 
 ## Phase 2 — Call Center (✅)
 
@@ -88,7 +88,18 @@ apps/employee-mobile/
 |---------|-----|
 | **قائمة أسعار** | `GET /laundry-price-list` + categories |
 | **عميل** | `GET /pos/customers/search` · `POST /pos/customers` |
-| **بيع** | `POST /pos/checkout` (lineItems + delivery row) |
+| **بيع** | `POST /pos/checkout` (lineItems + `posPaymentMethod` canonical) |
+
+وسائل الدفع في POS مطابقة لعقد السيرفر:
+
+- `CASH`
+- `KNET`
+- `PAYMENT_LINK`
+- `ONLINE`
+- `DEBT_ON_ACCOUNT`
+- `SUBSCRIPTION`، والسيرفر يحولها داخلياً إلى `SUBSCRIPTION_WALLET`
+
+التطبيق يعرض الإجمالي كمعاينة فقط. التسعير النهائي ورسوم التوصيل وتطبيق المحفظة/الدين كلها من السيرفر.
 
 ## Phase 4 — Device layer (✅)
 

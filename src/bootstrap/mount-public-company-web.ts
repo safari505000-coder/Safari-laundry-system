@@ -3,28 +3,33 @@ import { join } from 'node:path';
 import { Logger } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import * as express from 'express';
+import {
+  isPublicCompanyWebsiteHost,
+  isStaffErpWebsiteHost,
+  staffErpLoginRedirectUrl,
+} from './website-host-routing';
 
-/**
- * Production: serve `apps/public-web/dist` at `/` on the API host
- * (e.g. https://safariomni.com). Staff ERP stays on www.safariomni.com.
- */
-export function mountPublicCompanyWebsite(
+function apiOrAssetPath(path: string): boolean {
+  return (
+    path.startsWith('/api') ||
+    path.startsWith('/uploads') ||
+    path.startsWith('/docs')
+  );
+}
+
+function mountSpaStaticRoot(
   app: NestExpressApplication,
+  distDir: string,
+  label: string,
+  hostFilter: (hostname: string) => boolean,
 ): void {
-  const distDir = join(process.cwd(), 'apps/public-web/dist');
   const indexHtml = join(distDir, 'index.html');
   if (!existsSync(indexHtml)) {
-    Logger.log(
-      'Public company website not mounted (missing apps/public-web/dist)',
-      'Bootstrap',
-    );
+    Logger.log(`${label} not mounted (missing ${indexHtml})`, 'Bootstrap');
     return;
   }
 
-  Logger.log(
-    'Serving public company website from apps/public-web/dist at /',
-    'Bootstrap',
-  );
+  Logger.log(`Serving ${label} from ${distDir}`, 'Bootstrap');
 
   const staticFiles = express.static(distDir, {
     index: false,
@@ -36,12 +41,12 @@ export function mountPublicCompanyWebsite(
       next();
       return;
     }
-    const path = req.path;
-    if (
-      path.startsWith('/api') ||
-      path.startsWith('/uploads') ||
-      path.startsWith('/docs')
-    ) {
+    const hostname = req.hostname ?? '';
+    if (!hostFilter(hostname)) {
+      next();
+      return;
+    }
+    if (apiOrAssetPath(req.path)) {
       next();
       return;
     }
@@ -57,4 +62,65 @@ export function mountPublicCompanyWebsite(
       res.sendFile(indexHtml);
     });
   });
+}
+
+/**
+ * Host-aware frontends on the API process:
+ *   • apex (safariomni.com) → public company website
+ *   • www → staff ERP SPA
+ *   • /login on apex → redirect to www ERP login
+ */
+export function mountHostAwareWebFrontends(
+  app: NestExpressApplication,
+): void {
+  const publicDir = join(process.cwd(), 'apps/public-web/dist');
+  const erpDir = join(process.cwd(), 'web/dist');
+  const hasPublic = existsSync(join(publicDir, 'index.html'));
+  const hasErp = existsSync(join(erpDir, 'index.html'));
+
+  if (!hasPublic && !hasErp) {
+    Logger.log('No web frontends to mount', 'Bootstrap');
+    return;
+  }
+
+  if (hasPublic) {
+    app.use((req, res, next) => {
+      if (req.method !== 'GET' && req.method !== 'HEAD') {
+        next();
+        return;
+      }
+      const hostname = req.hostname ?? '';
+      if (
+        isPublicCompanyWebsiteHost(hostname) &&
+        req.path === '/login'
+      ) {
+        res.redirect(302, staffErpLoginRedirectUrl());
+        return;
+      }
+      next();
+    });
+
+    mountSpaStaticRoot(
+      app,
+      publicDir,
+      'public company website',
+      isPublicCompanyWebsiteHost,
+    );
+  }
+
+  if (hasErp) {
+    mountSpaStaticRoot(
+      app,
+      erpDir,
+      'staff ERP SPA',
+      isStaffErpWebsiteHost,
+    );
+  }
+}
+
+/** @deprecated Use mountHostAwareWebFrontends — kept as alias for imports. */
+export function mountPublicCompanyWebsite(
+  app: NestExpressApplication,
+): void {
+  mountHostAwareWebFrontends(app);
 }

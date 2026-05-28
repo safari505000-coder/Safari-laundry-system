@@ -11,7 +11,7 @@ export function pollDriverDispatches(
     token,
   }).then((snapshot) => {
     const rows = Array.isArray(snapshot.rows) ? snapshot.rows : [];
-    return rows.filter((row) => row.status === 'ASSIGNED');
+    return rows.filter((row) => row.status === 'ASSIGNED' || row.status === 'IN_PROGRESS');
   });
 }
 

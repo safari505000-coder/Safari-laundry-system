@@ -3,7 +3,10 @@ export type QuickPaymentMethod =
   | 'KNET'
   | 'PAYMENT_LINK'
   | 'ONLINE'
-  | 'DEBT_ON_ACCOUNT';
+  | 'DEBT_ON_ACCOUNT'
+  | 'SUBSCRIPTION';
+
+export type DisplayPaymentMethod = QuickPaymentMethod | 'SUBSCRIPTION_WALLET';
 
 export type DriverPendingInvoiceRow = {
   orderId: string;
@@ -12,7 +15,7 @@ export type DriverPendingInvoiceRow = {
   customerName: string;
   customerPhone: string;
   amountKd: string;
-  paymentMethod: QuickPaymentMethod | 'SUBSCRIPTION_WALLET' | null;
+  paymentMethod: DisplayPaymentMethod | null;
   notes: string | null;
   orderStatus: string;
   linkStatus: 'PENDING' | 'EXPIRED' | null;
@@ -55,7 +58,7 @@ export type OrderDetailRow = {
   status: string;
   totalPrice: string;
   cashStatus: string;
-  posPaymentMethod?: QuickPaymentMethod | null;
+  posPaymentMethod?: DisplayPaymentMethod | null;
   invoiceNumber: string | null;
   serialNumber?: string | null;
   notes: string | null;
@@ -79,7 +82,7 @@ export type IssuedInvoiceReportRow = {
   createdAt: string;
   totalPrice: string;
   status: string;
-  posPaymentMethod: QuickPaymentMethod | 'SUBSCRIPTION_WALLET' | null;
+  posPaymentMethod: DisplayPaymentMethod | null;
   customer: {
     id: string;
     phone: string;
@@ -110,7 +113,7 @@ export type DriverCashReceiptRow = {
 };
 
 export type ExpenseCategory = 'SOAP' | 'FUEL' | 'MISC';
-export type ExpenseMethod = 'CASH' | 'KNET' | 'PREPAID_CARD' | 'BANK_TRANSFER';
+export type ExpenseMethod = 'CASH' | 'PREPAID_CARD';
 export type ExpenseStatus = 'PENDING_ACCOUNTANT' | 'APPROVED' | 'REJECTED' | 'AUDIT';
 
 export type DriverExpenseRow = {

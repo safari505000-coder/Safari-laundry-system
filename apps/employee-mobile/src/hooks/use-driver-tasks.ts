@@ -112,9 +112,10 @@ export function useDriverTasks(): UseDriverTasksResult {
         if (!token) {
           throw new Error('انتهت الجلسة');
         }
-        await acknowledgeDriverDispatch(token, taskId);
-        setTasks((prev) => prev.filter((task) => task.id !== taskId));
-        seenIdsRef.current.delete(taskId);
+        const acknowledged = await acknowledgeDriverDispatch(token, taskId);
+        setTasks((prev) =>
+          prev.map((task) => (task.id === taskId ? acknowledged : task)),
+        );
       } catch (err) {
         setError(
           err instanceof Error ? err.message : 'فشل استلام المهمة',

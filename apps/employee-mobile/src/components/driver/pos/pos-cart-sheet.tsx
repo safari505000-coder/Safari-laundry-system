@@ -13,14 +13,19 @@ import {
   formatPreviewKd,
   sumLinesKd,
 } from '@/lib/pos-pricing';
+import {
+  canUseSubscriptionPayment,
+  paymentMethodLabelAr,
+} from '@/lib/payment-methods';
 import { brand } from '@/theme/brand';
 
 const PAYMENT_OPTIONS: { value: PosPaymentMethod; label: string }[] = [
-  { value: 'CASH', label: 'نقد' },
-  { value: 'KNET', label: 'كي نت' },
-  { value: 'PAYMENT_LINK', label: 'رابط دفع' },
-  { value: 'ONLINE', label: 'أونلاين' },
-  { value: 'DEBT_ON_ACCOUNT', label: 'على الحساب' },
+  { value: 'CASH', label: paymentMethodLabelAr('CASH') },
+  { value: 'KNET', label: paymentMethodLabelAr('KNET') },
+  { value: 'PAYMENT_LINK', label: paymentMethodLabelAr('PAYMENT_LINK') },
+  { value: 'ONLINE', label: paymentMethodLabelAr('ONLINE') },
+  { value: 'DEBT_ON_ACCOUNT', label: paymentMethodLabelAr('DEBT_ON_ACCOUNT') },
+  { value: 'SUBSCRIPTION', label: paymentMethodLabelAr('SUBSCRIPTION') },
 ];
 
 export function PosCartSheet({
@@ -34,6 +39,7 @@ export function PosCartSheet({
   onQtyChange,
   onCheckout,
   checkoutBusy,
+  subscriptionProfile,
 }: {
   visible: boolean;
   lines: PosCartLine[];
@@ -45,17 +51,24 @@ export function PosCartSheet({
   onQtyChange: (lineKey: string, qty: number) => void;
   onCheckout: () => void;
   checkoutBusy: boolean;
+  subscriptionProfile: {
+    subscriptionActive: boolean;
+    remainingBalance: string;
+  } | null;
 }) {
   const lineSum = sumLinesKd(lines);
   const delivery = lineSum > 0 ? DELIVERY_FEE_KD : 0;
   const netTotal = lineSum + delivery;
   const pieceCount = lines.reduce((sum, line) => sum + line.quantity, 0);
+  const subscriptionAllowed = canUseSubscriptionPayment(subscriptionProfile);
   const checkoutBlockedReason = systemClosed
     ? 'النظام مغلق حالياً، لا يمكن إصدار فاتورة.'
     : !hasCustomer
       ? 'اختر العميل أولاً من أعلى شاشة POS قبل إتمام البيع.'
       : lines.length === 0
         ? 'السلة فارغة — أضف أصنافاً من القائمة.'
+        : paymentMethod === 'SUBSCRIPTION' && !subscriptionAllowed
+          ? 'الدفع من الاشتراك يحتاج اشتراكاً نشطاً ورصيداً متاحاً للعميل.'
         : null;
 
   return (
@@ -120,14 +133,28 @@ export function PosCartSheet({
           <View style={styles.chips}>
             {PAYMENT_OPTIONS.map((opt) => {
               const active = paymentMethod === opt.value;
+              const disabled = opt.value === 'SUBSCRIPTION' && !subscriptionAllowed;
               return (
                 <Pressable
                   key={opt.value}
-                  onPress={() => onPaymentChange(opt.value)}
-                  style={[styles.chip, active && styles.chipActive]}
+                  onPress={() => {
+                    if (!disabled) {
+                      onPaymentChange(opt.value);
+                    }
+                  }}
+                  disabled={disabled}
+                  style={[
+                    styles.chip,
+                    active && styles.chipActive,
+                    disabled && styles.chipDisabled,
+                  ]}
                 >
                   <Text
-                    style={[styles.chipText, active && styles.chipTextActive]}
+                    style={[
+                      styles.chipText,
+                      active && styles.chipTextActive,
+                      disabled && styles.chipTextDisabled,
+                    ]}
                   >
                     {opt.label}
                   </Text>
@@ -249,8 +276,13 @@ const styles = StyleSheet.create({
     backgroundColor: brand.colors.primaryBlue,
     borderColor: brand.colors.primaryBlue,
   },
+  chipDisabled: {
+    backgroundColor: brand.colors.surfaceMuted,
+    opacity: 0.55,
+  },
   chipText: { fontSize: 12, fontWeight: '800', color: brand.colors.text },
   chipTextActive: { color: brand.colors.white },
+  chipTextDisabled: { color: brand.colors.textMuted },
   blockedBox: {
     borderRadius: brand.radius.md,
     backgroundColor: brand.colors.warningSoft,

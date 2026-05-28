@@ -60,6 +60,15 @@ export function fetchOrderById(
   });
 }
 
+export function searchDriverOrders(
+  token: string,
+  query: string,
+): Promise<OrderDetailRow[]> {
+  const q = query.trim();
+  const qs = new URLSearchParams({ q });
+  return apiJson<OrderDetailRow[]>(`/orders?${qs}`, { token });
+}
+
 function todayKuwaitRange(): { from: string; to: string } {
   const now = new Date(Date.now() + 3 * 60 * 60 * 1000);
   const y = now.getUTCFullYear();

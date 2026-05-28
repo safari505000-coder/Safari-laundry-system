@@ -3,16 +3,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { DriverPendingInvoiceRow } from '@/api/orders';
 import { StatusPill } from '@/components/ui';
 import { formatKwdLabel } from '@/lib/kwd';
+import { paymentMethodLabelAr } from '@/lib/payment-methods';
 import { brand } from '@/theme/brand';
-
-const PAYMENT_LABELS: Record<string, string> = {
-  CASH: 'نقد',
-  KNET: 'كي نت',
-  PAYMENT_LINK: 'رابط دفع',
-  ONLINE: 'أونلاين',
-  DEBT_ON_ACCOUNT: 'على الحساب',
-  SUBSCRIPTION_WALLET: 'محفظة',
-};
 
 function badgeForRow(row: DriverPendingInvoiceRow): { label: string; tone: 'pending' | 'cancelled' } {
   if (row.linkStatus === 'PENDING') {
@@ -29,9 +21,7 @@ function badgeForRow(row: DriverPendingInvoiceRow): { label: string; tone: 'pend
 
 export function PendingInvoiceCard({ row }: { row: DriverPendingInvoiceRow }) {
   const badge = badgeForRow(row);
-  const pm = row.paymentMethod
-    ? (PAYMENT_LABELS[row.paymentMethod] ?? row.paymentMethod)
-    : '—';
+  const pm = paymentMethodLabelAr(row.paymentMethod);
 
   return (
     <View style={styles.card}>

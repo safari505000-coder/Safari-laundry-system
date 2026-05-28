@@ -23,9 +23,11 @@ import { brand } from '@/theme/brand';
 export function PosCustomerBar({
   selected,
   onSelect,
+  onBillingChange,
 }: {
   selected: PosCustomerRow | null;
   onSelect: (customer: PosCustomerRow | null) => void;
+  onBillingChange?: (profile: CustomerBillingProfile | null) => void;
 }) {
   const { getValidAccessToken } = useAuth();
   const [query, setQuery] = useState('');
@@ -40,6 +42,7 @@ export function PosCustomerBar({
   useEffect(() => {
     if (!selected) {
       setBilling(null);
+      onBillingChange?.(null);
       return;
     }
     let cancelled = false;
@@ -52,17 +55,19 @@ export function PosCustomerBar({
         const profile = await fetchCustomerBilling(token, selected.id);
         if (!cancelled) {
           setBilling(profile);
+          onBillingChange?.(profile);
         }
       } catch {
         if (!cancelled) {
           setBilling(null);
+          onBillingChange?.(null);
         }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [getValidAccessToken, selected]);
+  }, [getValidAccessToken, onBillingChange, selected]);
 
   useEffect(() => {
     const q = query.trim();
