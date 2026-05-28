@@ -1,7 +1,16 @@
 import assert from 'node:assert/strict';
 import { formatKwdLabel, sumKwdStrings } from '@/lib/kwd';
 import type { PosCartLine, PosCustomerRow, PosPaymentMethod } from '@/api/pos-types';
-import { buildCheckoutRequest } from '@/lib/pos-pricing';
+import {
+  buildCheckoutRequest,
+  buildSubOrderCheckoutRequest,
+  createPrimarySubOrder,
+  deliveryForSubOrder,
+  grandTotalKd,
+  VIP_LINE_LABEL_AR,
+  VIP_SURCHARGE_KD,
+  DELIVERY_LINE_LABEL_AR,
+} from '@/lib/pos-pricing';
 import {
   canUseSubscriptionPayment,
   paymentMethodLabelAr,
@@ -72,6 +81,109 @@ test('checkout request carries subscription and dispatch id to server', () => {
   assert.equal(request.posPaymentMethod, 'SUBSCRIPTION');
   assert.equal(request.dispatchId, 'dispatch-1');
   assert.equal(request.lineItems[0].laundryPriceListItemId, 'item-1');
+  assert.equal(request.lineItems[1].label, DELIVERY_LINE_LABEL_AR);
+});
+
+test('VIP surcharge and free delivery on attached invoice match web payload', () => {
+  const customer: PosCustomerRow = {
+    id: 'customer-1',
+    phone: '51234567',
+    displayName: 'Test',
+    address: null,
+    wallet: null,
+  };
+  const primary = createPrimarySubOrder();
+  primary.lines = [
+    {
+      lineKey: 'a',
+      laundryId: 'item-1',
+      nameAr: 'ثوب',
+      serviceKey: 'NORMAL',
+      serviceLabel: 'غسيل عادي',
+      unitPrice: 2.0,
+      quantity: 1,
+    },
+  ];
+  primary.vipEnabled = true;
+  const attached = createPrimarySubOrder();
+  attached.kind = 'attached';
+  attached.lines = [
+    {
+      lineKey: 'b',
+      laundryId: 'item-2',
+      nameAr: 'بنطلون',
+      serviceKey: 'NORMAL',
+      serviceLabel: 'غسيل عادي',
+      unitPrice: 1.5,
+      quantity: 1,
+    },
+  ];
+
+  const primaryReq = buildSubOrderCheckoutRequest(customer, primary, {
+    isFirstInSession: true,
+    paymentMethod: 'CASH',
+    subscriptionProfile: null,
+  });
+  const attachedReq = buildSubOrderCheckoutRequest(customer, attached, {
+    isFirstInSession: false,
+    paymentMethod: 'CASH',
+    subscriptionProfile: null,
+  });
+
+  assert.equal(primaryReq.totalPrice, 2.0 + 0.25 + VIP_SURCHARGE_KD);
+  assert.equal(
+    primaryReq.lineItems.find((l) => l.label === VIP_LINE_LABEL_AR)?.unitPrice,
+    VIP_SURCHARGE_KD,
+  );
+  assert.equal(attachedReq.totalPrice, 1.5);
+  assert.equal(
+    attachedReq.lineItems.find((l) => l.label === DELIVERY_LINE_LABEL_AR)
+      ?.unitPrice,
+    0,
+  );
+});
+
+test('grand total sums multiple sub-orders with one delivery fee', () => {
+  const primary = createPrimarySubOrder();
+  primary.lines = [
+    {
+      lineKey: 'a',
+      laundryId: 'x',
+      nameAr: 'ثوب',
+      serviceKey: 'NORMAL',
+      serviceLabel: 'غسيل',
+      unitPrice: 1,
+      quantity: 2,
+    },
+  ];
+  const attached = createPrimarySubOrder();
+  attached.kind = 'attached';
+  attached.lines = [
+    {
+      lineKey: 'b',
+      laundryId: 'y',
+      nameAr: 'قميص',
+      serviceKey: 'NORMAL',
+      serviceLabel: 'غسيل',
+      unitPrice: 0.5,
+      quantity: 1,
+    },
+  ];
+  const total = grandTotalKd([primary, attached], 'CASH', null);
+  assert.equal(total, 2 + 0.5 + 0.25);
+});
+
+test('attached invoice skips delivery when subscription wallet covers lines', () => {
+  const delivery = deliveryForSubOrder({
+    lineSum: 2,
+    isFirstInSession: false,
+    paymentMethod: 'SUBSCRIPTION',
+    subscriptionProfile: {
+      subscriptionActive: true,
+      remainingBalance: '5.0000',
+    },
+  });
+  assert.equal(delivery, 0);
 });
 
 test('subscription payment is gated by active wallet balance', () => {

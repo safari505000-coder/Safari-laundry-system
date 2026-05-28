@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   FlatList,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -36,8 +37,25 @@ export function PosCustomerBar({
   const [billing, setBilling] = useState<CustomerBillingProfile | null>(null);
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
+  const [newPhone2, setNewPhone2] = useState('');
+  const [newArea, setNewArea] = useState('');
+  const [newBlock, setNewBlock] = useState('');
+  const [newStreet, setNewStreet] = useState('');
+  const [newAvenue, setNewAvenue] = useState('');
+  const [newHouse, setNewHouse] = useState('');
   const [creating, setCreating] = useState(false);
   const [showNew, setShowNew] = useState(false);
+
+  const resetNewForm = useCallback(() => {
+    setNewName('');
+    setNewPhone('');
+    setNewPhone2('');
+    setNewArea('');
+    setNewBlock('');
+    setNewStreet('');
+    setNewAvenue('');
+    setNewHouse('');
+  }, []);
 
   useEffect(() => {
     if (!selected) {
@@ -94,25 +112,49 @@ export function PosCustomerBar({
   }, [getValidAccessToken, query]);
 
   const createCustomer = useCallback(async () => {
+    const name = newName.trim();
+    const phone = newPhone.replace(/[\s-]/g, '').trim();
+    if (name.length < 1 || phone.length < 8) {
+      return;
+    }
     setCreating(true);
     try {
       const token = await getValidAccessToken();
       if (!token) {
         throw new Error('انتهت الجلسة');
       }
-      const phone = newPhone.replace(/[\s-]/g, '').trim();
+      const phone2 = newPhone2.replace(/[\s-]/g, '').trim();
       const customer = await createPosCustomer(token, {
         phone,
-        displayName: newName.trim(),
+        displayName: name,
+        ...(phone2.length >= 8 ? { phone2 } : {}),
+        ...(newArea.trim() ? { addressArea: newArea.trim() } : {}),
+        ...(newBlock.trim() ? { addressBlock: newBlock.trim() } : {}),
+        ...(newStreet.trim() ? { addressStreet: newStreet.trim() } : {}),
+        ...(newAvenue.trim() ? { addressAvenue: newAvenue.trim() } : {}),
+        ...(newHouse.trim() ? { addressHouse: newHouse.trim() } : {}),
       });
       onSelect(customer);
       setShowNew(false);
+      resetNewForm();
       setQuery('');
       setHits([]);
     } finally {
       setCreating(false);
     }
-  }, [getValidAccessToken, newName, newPhone, onSelect]);
+  }, [
+    getValidAccessToken,
+    newArea,
+    newAvenue,
+    newBlock,
+    newHouse,
+    newName,
+    newPhone,
+    newPhone2,
+    newStreet,
+    onSelect,
+    resetNewForm,
+  ]);
 
   if (selected) {
     return (
@@ -180,34 +222,90 @@ export function PosCustomerBar({
         </Text>
       </Pressable>
       {showNew ? (
-        <View style={styles.newBox}>
-          <TextInput
-            value={newName}
-            onChangeText={setNewName}
-            placeholder="الاسم"
-            placeholderTextColor={brand.colors.textMuted}
-            textAlign="right"
-            style={styles.input}
-          />
-          <TextInput
-            value={newPhone}
-            onChangeText={setNewPhone}
-            placeholder="الجوال"
-            keyboardType="phone-pad"
-            placeholderTextColor={brand.colors.textMuted}
-            textAlign="right"
-            style={styles.input}
-          />
-          <Pressable
-            style={styles.createBtn}
-            onPress={() => void createCustomer()}
-            disabled={creating}
-          >
-            <Text style={styles.createBtnText}>
-              {creating ? 'جاري…' : 'حفظ العميل'}
-            </Text>
-          </Pressable>
-        </View>
+        <ScrollView
+          style={styles.newScroll}
+          keyboardShouldPersistTaps="handled"
+          nestedScrollEnabled
+        >
+          <View style={styles.newBox}>
+            <TextInput
+              value={newName}
+              onChangeText={setNewName}
+              placeholder="الاسم *"
+              placeholderTextColor={brand.colors.textMuted}
+              textAlign="right"
+              style={styles.input}
+            />
+            <TextInput
+              value={newPhone}
+              onChangeText={setNewPhone}
+              placeholder="الجوال *"
+              keyboardType="phone-pad"
+              placeholderTextColor={brand.colors.textMuted}
+              textAlign="right"
+              style={styles.input}
+            />
+            <TextInput
+              value={newPhone2}
+              onChangeText={setNewPhone2}
+              placeholder="جوال ثانوي (اختياري)"
+              keyboardType="phone-pad"
+              placeholderTextColor={brand.colors.textMuted}
+              textAlign="right"
+              style={styles.input}
+            />
+            <MutedText>العنوان (اختياري — يمكن تركه فارغاً)</MutedText>
+            <TextInput
+              value={newArea}
+              onChangeText={setNewArea}
+              placeholder="المنطقة"
+              placeholderTextColor={brand.colors.textMuted}
+              textAlign="right"
+              style={styles.input}
+            />
+            <TextInput
+              value={newBlock}
+              onChangeText={setNewBlock}
+              placeholder="القطعة"
+              placeholderTextColor={brand.colors.textMuted}
+              textAlign="right"
+              style={styles.input}
+            />
+            <TextInput
+              value={newStreet}
+              onChangeText={setNewStreet}
+              placeholder="الشارع"
+              placeholderTextColor={brand.colors.textMuted}
+              textAlign="right"
+              style={styles.input}
+            />
+            <TextInput
+              value={newAvenue}
+              onChangeText={setNewAvenue}
+              placeholder="الجادة"
+              placeholderTextColor={brand.colors.textMuted}
+              textAlign="right"
+              style={styles.input}
+            />
+            <TextInput
+              value={newHouse}
+              onChangeText={setNewHouse}
+              placeholder="المنزل"
+              placeholderTextColor={brand.colors.textMuted}
+              textAlign="right"
+              style={styles.input}
+            />
+            <Pressable
+              style={styles.createBtn}
+              onPress={() => void createCustomer()}
+              disabled={creating || newName.trim().length < 1 || newPhone.trim().length < 8}
+            >
+              <Text style={styles.createBtnText}>
+                {creating ? 'جاري…' : 'حفظ العميل'}
+              </Text>
+            </Pressable>
+          </View>
+        </ScrollView>
       ) : null}
     </View>
   );
@@ -240,6 +338,7 @@ const styles = StyleSheet.create({
     color: brand.colors.primaryBlue,
     fontWeight: '800',
   },
+  newScroll: { maxHeight: 320 },
   newBox: { gap: 8 },
   createBtn: {
     backgroundColor: brand.colors.primaryBlue,

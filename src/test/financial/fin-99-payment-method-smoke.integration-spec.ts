@@ -14,6 +14,7 @@ import {
   assertDecimalEqual,
   assertJournalBalanced,
   buildPosCheckoutLineItemsForTotal,
+  buildWebDriverReceiptLineItems,
   createTestApp,
   getArBalance,
   getAuthHeader,
@@ -283,6 +284,67 @@ describe('FIN-99: payment method smoke', () => {
     });
     assertDecimalEqual(wallet.balance, '0.0000');
     assertDecimalEqual(wallet.debt, '6.0000');
+  });
+
+  it('accepts web Driver POS receipt lines without catalog ids', async () => {
+    for (const { method, assetAccount } of externalExpectations) {
+      const res = await request(app.getHttpServer())
+        .post('/api/pos/checkout')
+        .set(getAuthHeader(driver.jwtToken))
+        .send({
+          customerId: customer.id,
+          customerPhone: customer.phone,
+          customerDisplayName: customer.displayName ?? 'Smoke Customer',
+          customerAddress: customer.address ?? 'Smoke Address',
+          totalPrice: '2.0000',
+          lineItems: buildWebDriverReceiptLineItems('2.0000'),
+          invoiceNumber: `WEB-RCPT-${randomUUID()}`,
+          posPaymentMethod: method,
+        });
+
+      expect(res.status).toBeLessThan(400);
+      const order = await prisma.order.findUniqueOrThrow({
+        where: { id: getResponseData<{ id: string }>(res.body).id },
+      });
+      if (
+        method === PosPaymentMethod.ONLINE ||
+        method === PosPaymentMethod.PAYMENT_LINK
+      ) {
+        expect(order.status).toBe('PENDING');
+        continue;
+      }
+      expectLine(
+        await linesFor(
+          `JOURNAL:EXTERNAL_PAYMENT:${order.id}:${method}:WALLET_SETTLEMENT`,
+        ),
+        assetAccount,
+        'debit',
+        '2.0000',
+      );
+    }
+  });
+
+  it('accepts canonical SUBSCRIPTION on POS checkout (maps to wallet)', async () => {
+    await createActiveSubscription();
+    const res = await request(app.getHttpServer())
+      .post('/api/pos/checkout')
+      .set(getAuthHeader(driver.jwtToken))
+      .send({
+        customerId: customer.id,
+        customerPhone: customer.phone,
+        customerDisplayName: customer.displayName ?? 'Smoke Customer',
+        customerAddress: customer.address ?? 'Smoke Address',
+        totalPrice: '2.0000',
+        lineItems: buildWebDriverReceiptLineItems('2.0000'),
+        invoiceNumber: `SUB-${randomUUID()}`,
+        posPaymentMethod: 'SUBSCRIPTION',
+      });
+
+    expect(res.status).toBeLessThan(400);
+    const order = await prisma.order.findUniqueOrThrow({
+      where: { id: getResponseData<{ id: string }>(res.body).id },
+    });
+    expect(order.posPaymentMethod).toBe(PosPaymentMethod.SUBSCRIPTION_WALLET);
   });
 
   it('rejects SUBSCRIPTION_WALLET when the customer has no active subscription', async () => {

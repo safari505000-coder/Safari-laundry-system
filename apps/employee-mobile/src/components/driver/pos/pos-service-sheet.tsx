@@ -42,7 +42,7 @@ export function PosServiceSheet({
 
   useEffect(() => {
     if (visible && item) {
-      setQty({ NORMAL: 1, URGENT: 0, PRESS_ONLY: 0, URGENT_PRESS: 0 });
+      setQty({ NORMAL: 0, URGENT: 0, PRESS_ONLY: 0, URGENT_PRESS: 0 });
       setManualPrice('');
     }
   }, [visible, item]);
@@ -63,6 +63,10 @@ export function PosServiceSheet({
       [key]: Math.max(0, prev[key] + delta),
     }));
   }
+
+  const canAdd =
+    selected.length > 0 &&
+    (!needsManual || (Number.isFinite(manualParsed) && manualParsed > 0));
 
   function confirm() {
     if (!item) {
@@ -138,7 +142,11 @@ export function PosServiceSheet({
             </>
           ) : null}
           <View style={styles.actions}>
-            <PrimaryButton label="إضافة للسلة" onPress={confirm} />
+            <PrimaryButton
+              label="إضافة للسلة"
+              onPress={confirm}
+              disabled={!canAdd}
+            />
             <Pressable onPress={onClose}>
               <Text style={styles.cancel}>إلغاء</Text>
             </Pressable>

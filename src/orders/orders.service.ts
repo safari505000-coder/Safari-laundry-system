@@ -735,6 +735,56 @@ export class OrdersService {
     };
   }
 
+  /**
+   * Driver POS checkout pricing:
+   * - Catalog-only payloads (mobile garment lines) → server-side tier pricing + delivery row.
+   * - Mixed/receipt payloads (VIP, attached-invoice delivery @ 0) → trust client line totals.
+   */
+  private async resolvePosCheckoutPricing(
+    tx: Prisma.TransactionClient,
+    actorUserId: string,
+    dto: PosCheckoutDto,
+  ): Promise<{
+    lineCreates: PosPricedLineCreate[];
+    totalPriceDecimal: Prisma.Decimal;
+  }> {
+    const items = dto.lineItems ?? [];
+    if (items.length === 0) {
+      throw new BadRequestException('POS checkout requires line items.');
+    }
+    const catalogOnly = items.every(
+      (line) =>
+        typeof line.laundryPriceListItemId === 'string' &&
+        line.laundryPriceListItemId.length > 0 &&
+        line.posServiceKey,
+    );
+    if (catalogOnly) {
+      return this.pricePosCheckoutLines(tx, actorUserId, dto.lineItems);
+    }
+    assertLineItemsMatchTotal(dto.totalPrice, items);
+    const mapped = this.mapPosCheckoutLineItems(items);
+    if (!mapped?.length) {
+      throw new BadRequestException('POS checkout requires line items.');
+    }
+    for (const line of mapped) {
+      if (!(line.quantity > 0 && line.unitPrice >= 0)) {
+        throw new BadRequestException(
+          'Each line item must have a positive quantity and a non-negative unit price',
+        );
+      }
+    }
+    return {
+      lineCreates: mapped.map((line) => ({
+        label: line.label,
+        starchOption: 'NONE' as const,
+        quantity: Number(line.quantity).toFixed(4),
+        unitPrice: Number(line.unitPrice).toFixed(4),
+        stockItemId: line.stockItemId,
+      })),
+      totalPriceDecimal: new Prisma.Decimal(Number(dto.totalPrice).toFixed(4)),
+    };
+  }
+
   private async findCustomerByAnyPhone(
     tx: Prisma.TransactionClient,
     phoneCompact: string,
@@ -800,6 +850,15 @@ export class OrdersService {
     driverUserId: string,
     dto: CreateOrderQuickDto,
   ): Promise<OrderDetail> {
+    const quickPayment = toDbPosPaymentMethod(dto.posPaymentMethod);
+    if (
+      !quickPayment ||
+      quickPayment === PosPaymentMethod.SUBSCRIPTION_WALLET
+    ) {
+      throw new BadRequestException(
+        'posPaymentMethod must be CASH, KNET, PAYMENT_LINK, ONLINE, or DEBT_ON_ACCOUNT',
+      );
+    }
     await this.assertDriverUser(driverUserId);
     // CreateOrderQuickDto does not (yet) carry `dispatchId`. The
     // guard therefore falls through for DRIVER actors but blocks any
@@ -838,7 +897,7 @@ export class OrdersService {
           invoiceNumber: dto.invoiceNumber?.trim() || null,
           serialNumber,
           notes: dto.notes?.trim() || null,
-          posPaymentMethod: dto.posPaymentMethod,
+          posPaymentMethod: quickPayment,
           ...(lineCreates?.length
             ? { lineItems: { create: lineCreates } }
             : {}),
@@ -903,7 +962,7 @@ export class OrdersService {
       const orderId = await this.prisma.$transaction(
         async (tx) => {
           const { lineCreates, totalPriceDecimal } =
-            await this.pricePosCheckoutLines(tx, driverUserId, dto.lineItems);
+            await this.resolvePosCheckoutPricing(tx, driverUserId, dto);
           const customerId = await this.resolveQuickOrderCustomerId(
             tx,
             dto,

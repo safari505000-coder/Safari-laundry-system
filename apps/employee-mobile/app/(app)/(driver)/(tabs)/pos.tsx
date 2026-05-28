@@ -29,12 +29,22 @@ import { MutedText, SectionHeader } from '@/components/ui';
 import { usePosPriceList } from '@/hooks/use-pos-price-list';
 import {
   addOrMergeCartLine,
-  buildCheckoutRequest,
-  DELIVERY_FEE_KD,
+  buildSubOrderCheckoutRequest,
+  createPrimarySubOrder,
+  grandTotalKd,
   formatPreviewKd,
-  sumLinesKd,
+  type PosSubOrder,
 } from '@/lib/pos-pricing';
 import { brand } from '@/theme/brand';
+
+function newAttachedSubOrder(): PosSubOrder {
+  return {
+    id: `so-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    kind: 'attached',
+    lines: [],
+    vipEnabled: false,
+  };
+}
 
 export default function DriverPosScreen() {
   const { getValidAccessToken } = useAuth();
@@ -46,7 +56,10 @@ export default function DriverPosScreen() {
   const [customer, setCustomer] = useState<PosCustomerRow | null>(null);
   const [billing, setBilling] = useState<CustomerBillingProfile | null>(null);
   const [categoryId, setCategoryId] = useState<string | null>(null);
-  const [cartLines, setCartLines] = useState<PosCartLine[]>([]);
+  const [subOrders, setSubOrders] = useState<PosSubOrder[]>(() => [
+    createPrimarySubOrder(),
+  ]);
+  const [activeSubOrderIndex, setActiveSubOrderIndex] = useState(0);
   const [paymentMethod, setPaymentMethod] =
     useState<PosPaymentMethod>('CASH');
   const [serviceItem, setServiceItem] =
@@ -65,31 +78,77 @@ export default function DriverPosScreen() {
     })();
   }, [getValidAccessToken]);
 
-  const lineSum = sumLinesKd(cartLines);
-  const delivery = lineSum > 0 ? DELIVERY_FEE_KD : 0;
-  const netTotal = lineSum + delivery;
+  const netTotal = useMemo(
+    () => grandTotalKd(subOrders, paymentMethod, billing),
+    [billing, paymentMethod, subOrders],
+  );
   const pieceCount = useMemo(
-    () => cartLines.reduce((sum, line) => sum + line.quantity, 0),
-    [cartLines],
+    () =>
+      subOrders.reduce(
+        (sum, order) =>
+          sum + order.lines.reduce((n, line) => n + line.quantity, 0),
+        0,
+      ),
+    [subOrders],
   );
 
   const systemClosed =
     operating?.lockEnabled !== false && operating?.isOpen === false;
 
-  const addLines = useCallback((lines: PosCartLine[]) => {
-    setCartLines((prev) =>
-      lines.reduce((acc, line) => addOrMergeCartLine(acc, line), prev),
+  const updateActiveLines = useCallback(
+    (updater: (lines: PosCartLine[]) => PosCartLine[]) => {
+      setSubOrders((prev) =>
+        prev.map((order, idx) =>
+          idx === activeSubOrderIndex
+            ? { ...order, lines: updater(order.lines) }
+            : order,
+        ),
+      );
+    },
+    [activeSubOrderIndex],
+  );
+
+  const addLines = useCallback(
+    (lines: PosCartLine[]) => {
+      updateActiveLines((prev) =>
+        lines.reduce((acc, line) => addOrMergeCartLine(acc, line), prev),
+      );
+    },
+    [updateActiveLines],
+  );
+
+  const changeQty = useCallback(
+    (lineKey: string, qty: number) => {
+      updateActiveLines((prev) =>
+        qty < 1
+          ? prev.filter((line) => line.lineKey !== lineKey)
+          : prev.map((line) =>
+              line.lineKey === lineKey ? { ...line, quantity: qty } : line,
+            ),
+      );
+    },
+    [updateActiveLines],
+  );
+
+  const addAttachedOrder = useCallback(() => {
+    setSubOrders((prev) => {
+      const next = [...prev, newAttachedSubOrder()];
+      setActiveSubOrderIndex(next.length - 1);
+      return next;
+    });
+  }, []);
+
+  const toggleVip = useCallback((index: number) => {
+    setSubOrders((prev) =>
+      prev.map((order, idx) =>
+        idx === index ? { ...order, vipEnabled: !order.vipEnabled } : order,
+      ),
     );
   }, []);
 
-  const changeQty = useCallback((lineKey: string, qty: number) => {
-    setCartLines((prev) =>
-      qty < 1
-        ? prev.filter((line) => line.lineKey !== lineKey)
-        : prev.map((line) =>
-            line.lineKey === lineKey ? { ...line, quantity: qty } : line,
-          ),
-    );
+  const resetSession = useCallback(() => {
+    setSubOrders([createPrimarySubOrder()]);
+    setActiveSubOrderIndex(0);
   }, []);
 
   const checkout = useCallback(async () => {
@@ -97,7 +156,8 @@ export default function DriverPosScreen() {
       Alert.alert('اختر عميلاً', 'يجب اختيار عميل قبل إتمام البيع.');
       return;
     }
-    if (cartLines.length === 0) {
+    const nonEmpty = subOrders.filter((order) => order.lines.length > 0);
+    if (nonEmpty.length === 0) {
       Alert.alert('السلة فارغة', 'أضف أصنافاً من قائمة الأسعار.');
       return;
     }
@@ -112,29 +172,47 @@ export default function DriverPosScreen() {
       if (!token) {
         throw new Error('انتهت الجلسة');
       }
-      const body = buildCheckoutRequest(
-        customer,
-        cartLines,
-        paymentMethod,
-        typeof params.dispatchId === 'string' ? params.dispatchId : null,
-      );
-      const created = await posCheckout(token, body);
+      const dispatchId =
+        typeof params.dispatchId === 'string' ? params.dispatchId : null;
+      const createdLabels: string[] = [];
+      let paymentLinkUrl: string | null = null;
+
+      for (let k = 0; k < nonEmpty.length; k++) {
+        const subOrder = nonEmpty[k];
+        const body = buildSubOrderCheckoutRequest(customer, subOrder, {
+          isFirstInSession: k === 0,
+          paymentMethod,
+          subscriptionProfile: billing,
+          dispatchId: k === 0 ? dispatchId : null,
+        });
+        const created = await posCheckout(token, body);
+        createdLabels.push(
+          created.serialNumber ??
+            created.invoiceNumber ??
+            created.id.slice(0, 8),
+        );
+        if (created.paymentLink?.url) {
+          paymentLinkUrl = created.paymentLink.url;
+        }
+      }
+
       const label =
-        created.serialNumber ??
-        created.invoiceNumber ??
-        created.id.slice(0, 8);
-      if (created.paymentLink?.url) {
+        createdLabels.length === 1
+          ? createdLabels[0]
+          : `${createdLabels.length} فواتير: ${createdLabels.join(' · ')}`;
+
+      if (paymentLinkUrl) {
         Alert.alert('تم — رابط دفع', label, [
           {
             text: 'فتح الرابط',
-            onPress: () => void Linking.openURL(created.paymentLink!.url),
+            onPress: () => void Linking.openURL(paymentLinkUrl!),
           },
           { text: 'حسناً' },
         ]);
       } else {
         Alert.alert('تم البيع', `الفاتورة: ${label}`);
       }
-      setCartLines([]);
+      resetSession();
       setCartOpen(false);
     } catch (err) {
       Alert.alert(
@@ -145,11 +223,13 @@ export default function DriverPosScreen() {
       setCheckoutBusy(false);
     }
   }, [
-    cartLines,
+    billing,
     customer,
     getValidAccessToken,
-    paymentMethod,
     params.dispatchId,
+    paymentMethod,
+    resetSession,
+    subOrders,
     systemClosed,
   ]);
 
@@ -187,6 +267,7 @@ export default function DriverPosScreen() {
             setCustomer(nextCustomer);
             if (!nextCustomer) {
               setBilling(null);
+              resetSession();
               if (paymentMethod === 'SUBSCRIPTION') {
                 setPaymentMethod('CASH');
               }
@@ -219,7 +300,9 @@ export default function DriverPosScreen() {
         >
           <Text style={styles.peekTotal}>{formatPreviewKd(netTotal)}</Text>
           <Text style={styles.peekMeta}>
-            {pieceCount} قطعة · اضغط للسلة والدفع
+            {pieceCount} قطعة
+            {subOrders.length > 1 ? ` · ${subOrders.length} فواتير` : ''}
+            {' · '}اضغط للسلة والدفع
           </Text>
         </Pressable>
 
@@ -237,7 +320,11 @@ export default function DriverPosScreen() {
 
       <PosCartSheet
         visible={cartOpen}
-        lines={cartLines}
+        subOrders={subOrders}
+        activeSubOrderIndex={activeSubOrderIndex}
+        onActiveSubOrderChange={setActiveSubOrderIndex}
+        onAddAttachedOrder={addAttachedOrder}
+        onVipToggle={toggleVip}
         hasCustomer={customer !== null}
         systemClosed={systemClosed}
         paymentMethod={paymentMethod}

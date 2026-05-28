@@ -5,8 +5,6 @@ import {
   ArrayMinSize,
   IsArray,
   IsEnum,
-  IsIn,
-  IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
@@ -148,12 +146,7 @@ export class CreateOrderQuickDto {
     enum: QUICK_PAYMENT_METHODS,
     enumName: 'QuickPaymentMethod',
     description:
-      'Required. Declared settlement channel — one of CASH, KNET, PAYMENT_LINK, ONLINE, DEBT_ON_ACCOUNT.',
-  })
-  @IsNotEmpty({ message: 'posPaymentMethod is required' })
-  @IsIn(QUICK_PAYMENT_METHODS, {
-    message:
-      'posPaymentMethod must be CASH, KNET, PAYMENT_LINK, ONLINE, or DEBT_ON_ACCOUNT',
+      'Required on quick capture. Declared settlement channel — one of CASH, KNET, PAYMENT_LINK, ONLINE, DEBT_ON_ACCOUNT.',
   })
   posPaymentMethod?: PosPaymentMethod;
 }

@@ -58,3 +58,26 @@ export async function buildPosCheckoutLineItemsForTotal(
     },
   ];
 }
+
+/** Web Driver POS payload — label/unitPrice rows + delivery/VIP service rows (no catalog ids). */
+export function buildWebDriverReceiptLineItems(totalKd: string | number) {
+  const total = new Prisma.Decimal(totalKd);
+  const itemPrice = total.minus(POS_DELIVERY_FEE_KD);
+  if (itemPrice.lte(0)) {
+    throw new Error(
+      `Web receipt total ${total.toFixed(4)} must exceed delivery fee ${POS_DELIVERY_FEE_KD.toFixed(4)}`,
+    );
+  }
+  return [
+    {
+      label: 'باكيت — غسيل عادي',
+      quantity: 1,
+      unitPrice: Number(itemPrice.toFixed(4)),
+    },
+    {
+      label: 'توصيل داخل المنطقة',
+      quantity: 1,
+      unitPrice: Number(POS_DELIVERY_FEE_KD.toFixed(4)),
+    },
+  ];
+}

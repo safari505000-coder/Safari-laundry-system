@@ -40,7 +40,16 @@ export function searchPosCustomers(
 
 export function createPosCustomer(
   token: string,
-  body: { phone: string; displayName: string },
+  body: {
+    phone: string;
+    displayName: string;
+    phone2?: string;
+    addressArea?: string;
+    addressBlock?: string;
+    addressStreet?: string;
+    addressAvenue?: string;
+    addressHouse?: string;
+  },
 ): Promise<PosCustomerRow> {
   return apiJson<PosCustomerRow>('/pos/customers', {
     method: 'POST',
@@ -63,10 +72,14 @@ export function posCheckout(
   token: string,
   body: PosCheckoutRequest,
 ): Promise<PosCheckoutResponse> {
+  const posPaymentMethod =
+    body.posPaymentMethod === 'SUBSCRIPTION'
+      ? 'SUBSCRIPTION_WALLET'
+      : body.posPaymentMethod;
   return apiJson<PosCheckoutResponse>('/pos/checkout', {
     method: 'POST',
     token,
-    body: JSON.stringify(body),
+    body: JSON.stringify({ ...body, posPaymentMethod }),
   });
 }
 
