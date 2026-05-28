@@ -8,6 +8,11 @@ import type {
   WebsiteCustomerPaymentRow,
   WebsiteOrderRequestRow,
   WebsiteOrderRequestStatus,
+  CustomerLedgerResponse,
+  SubscriptionPlanDto,
+  ActivateSubscriptionDto,
+  CancelSubscriptionDto,
+  RecordPartialDebtPaymentDto,
 } from './call-center-types';
 
 export function fetchCollectionUnpaidOnline(
@@ -86,6 +91,68 @@ export function listWebsiteCustomerPayments(
   ).then((res) => res.payments ?? []);
 }
 
+export function getCustomerLedger(
+  token: string,
+  customerId: string,
+): Promise<CustomerLedgerResponse> {
+  return apiJson<CustomerLedgerResponse>(
+    `/call-center/customers/${encodeURIComponent(customerId)}/ledger`,
+    { token },
+  );
+}
+
+export function listSubscriptionPlans(
+  token: string,
+): Promise<SubscriptionPlanDto[]> {
+  return apiJson<SubscriptionPlanDto[]>(
+    '/call-center/subscription-plans',
+    { token },
+  ).then((plans) => (Array.isArray(plans) ? plans : []));
+}
+
+export function activateSubscription(
+  token: string,
+  payload: ActivateSubscriptionDto,
+): Promise<any> {
+  return apiJson<any>(
+    '/call-center/subscriptions/activate',
+    {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function cancelSubscription(
+  token: string,
+  payload: CancelSubscriptionDto,
+): Promise<any> {
+  return apiJson<any>(
+    '/call-center/subscriptions/cancel',
+    {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function recordPartialDebtPayment(
+  token: string,
+  customerId: string,
+  payload: RecordPartialDebtPaymentDto,
+): Promise<any> {
+  return apiJson<any>(
+    `/call-center/customers/${encodeURIComponent(customerId)}/partial-debt-payment`,
+    {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
 export type {
   CollectionUnpaidOnlineRow,
   CustomerCollectionDebtBreakdown,
@@ -93,4 +160,15 @@ export type {
   WebsiteCustomerPaymentRow,
   WebsiteOrderRequestRow,
   WebsiteOrderRequestStatus,
+  SubscriptionPlanDto,
+  ActivateSubscriptionDto,
+  CancelSubscriptionDto,
+  RecordPartialDebtPaymentDto,
+  CustomerLedgerHeader,
+  CustomerLedgerSubscription,
+  CustomerLedgerEvent,
+  CustomerLedgerInvoice,
+  CustomerLedgerResponse,
+  CustomerLedgerEventKind,
 } from './call-center-types';
+
