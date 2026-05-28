@@ -93,7 +93,7 @@ export function PosInvoicePrintView({
       >
         <div className="pos-receipt-wrap pos-receipt-sheet" dir="rtl">
           <img
-            src="/logo.png"
+            src={BRAND.brandMarkPath}
             alt={BRAND.customerAr}
             className="pos-receipt-logo"
           />

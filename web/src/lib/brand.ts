@@ -30,6 +30,9 @@ export const BRAND = Object.freeze({
   /** Full copyright suffix — used on login + report footers. */
   copyrightEn: 'Safari Omni © 2026 — All rights reserved to Safari Express Laundries Group.',
   copyrightAr: 'Safari Omni © 2026 — جميع الحقوق محفوظة لمجموعة مصابغ سفاري السريعة.',
+
+  /** Static SVG mark for print surfaces and `<img>` contexts. */
+  brandMarkPath: '/brand-mark.svg',
 });
 
 export type BrandFace = 'customer' | 'system';

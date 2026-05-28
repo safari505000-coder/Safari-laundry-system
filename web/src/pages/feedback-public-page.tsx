@@ -125,7 +125,7 @@ export function FeedbackPublicPage() {
           <div className="absolute -right-8 -bottom-8 h-32 w-32 rounded-full bg-white/10 blur-2xl" />
           <div className="relative flex items-center gap-3">
             <img
-              src="/logo.png"
+              src={BRAND.brandMarkPath}
               alt={BRAND.customerAr}
               className="h-14 w-14 rounded-2xl bg-white/90 object-contain p-1.5 shadow-md"
             />

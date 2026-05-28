@@ -35,6 +35,7 @@ import { sumLinesKd, DELIVERY_FEE_KD } from '@/utils/finance-engine';
 import { usePosEngine } from '@/modules/shared/hooks/use-pos-engine';
 import { usePriceList } from '@/modules/shared/hooks/use-price-list';
 import { PosAuxiliaryUi } from '@/modules/shared/components/pos/pos-auxiliary-ui';
+import { BrandLogo } from '@/modules/shared/components/brand-logo';
 import { useDriverOperatingPoll } from '@/modules/driver/hooks/use-driver-operating-poll';
 
 /**
@@ -533,12 +534,7 @@ export function DriverPOS() {
       {/* ── Compact header (single row) ── */}
       <header className="z-20 shrink-0 border-b border-border bg-card px-3 py-2 shadow-sm">
         <div className="flex items-center gap-2">
-          <img
-            src="/logo.png"
-            alt="Safari"
-            width={96}
-            className="h-9 w-auto max-w-[96px] shrink-0 object-contain"
-          />
+          <BrandLogo compact className="shrink-0" />
           <ConnectivityBadge dense className="hidden min-[380px]:flex" />
 
           <div className="relative min-w-0 flex-1">

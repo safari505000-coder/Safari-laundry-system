@@ -285,7 +285,7 @@ export function PosAuxiliaryUi({ p }: { p: PosEngineApi }) {
             dir="rtl"
           >
             <img
-              src="/logo.png"
+              src={BRAND.brandMarkPath}
               alt={BRAND.customerAr}
               className="pos-receipt-logo"
             />

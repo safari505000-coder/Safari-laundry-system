@@ -21,6 +21,7 @@ import { sumLinesKd, DELIVERY_FEE_KD } from '@/utils/finance-engine';
 import { usePosEngine } from '@/modules/shared/hooks/use-pos-engine';
 import { usePriceList } from '@/modules/shared/hooks/use-price-list';
 import { PosAuxiliaryUi } from '@/modules/shared/components/pos/pos-auxiliary-ui';
+import { BrandLogo } from '@/modules/shared/components/brand-logo';
 import { formatKwdAmount, formatKwdLabel } from '@/lib/kwd';
 
 /** Branch / back-office POS (MANAGER only). Drivers use `DriverPOS`. */
@@ -96,12 +97,7 @@ export function PosPage() {
       <header className="z-20 shrink-0 border-b border-border bg-card px-3 py-2 shadow-sm sm:px-4">
         <div className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-            <img
-              src="/logo.png"
-              alt="Safari Omni"
-              width={140}
-              className="h-10 w-auto max-w-[140px] object-contain"
-            />
+            <BrandLogo compact className="shrink-0" />
             <div className="relative min-w-[160px] flex-1">
               <Input
                 value={searchQ}
