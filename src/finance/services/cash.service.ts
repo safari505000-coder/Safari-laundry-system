@@ -36,6 +36,7 @@ import {
 } from '../finance-money';
 import { computeCanonicalDriverCashCustodySummary } from '../canonical-financial-projection';
 import type { CashReconciliationSnapshotDto } from '../dto/cash-reconciliation.dto';
+import { round4Kd } from '../utils/round4kd.util';
 
 function sumKd(values: string[]): string {
   let total = 0;
@@ -167,9 +168,9 @@ export class CashService {
       from: from.toISOString(),
       to: to.toISOString(),
       totals: {
-        totalKd: totalKd.toFixed(3),
-        collectedKd: collectedKd.toFixed(3),
-        onAccountKd: onAccountKd.toFixed(3),
+        totalKd: round4Kd(totalKd),
+        collectedKd: round4Kd(collectedKd),
+        onAccountKd: round4Kd(onAccountKd),
         /** Collection rate in basis points (bps ÷ 100 = %). */
         collectionRateBps,
       },

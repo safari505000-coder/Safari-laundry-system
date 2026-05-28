@@ -6,7 +6,7 @@ import {
   PosPaymentMethod,
   Prisma,
 } from '@prisma/client';
-import { computeCustomer360FinancialCore } from '../../customers/customer-360-financials';
+import { computeCustomer360FinancialCoreBatch } from '../../customers/customer-360-financials';
 import type { Customer360FinancialsDto } from '../../customers/customer-360.types';
 import { JournalSourceService } from '../../general-ledger/journal-source.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -193,16 +193,20 @@ export class OwnerFinancialDashboardService {
       take: CUSTOMER_LIMIT,
     });
 
+    const customerIds = customers.map((customer) => customer.id);
+    const journalArByCustomer =
+      await this.journalSource.getCustomerDebtFromJournalARBatch(customerIds);
+    const financialsByCustomer = await computeCustomer360FinancialCoreBatch(
+      this.prisma,
+      customerIds,
+      { journalArByCustomer, skipAnomalyLogging: true },
+    );
+
     const rows: Array<OwnerTopCustomerDto & { _due: Prisma.Decimal }> = [];
     let canonicalDebtTotal = new Prisma.Decimal(0);
     for (const customer of customers) {
-      const financials = await computeCustomer360FinancialCore(
-        this.prisma,
-        customer.id,
-        this.journalSource,
-      );
-      // V23.2 — single canonical receivable read. Passing JournalSourceService
-      // keeps Owner dashboard totals on the same Journal AR source as Collections.
+      const financials = financialsByCustomer.get(customer.id);
+      if (!financials) continue;
       const due = new Prisma.Decimal(financials.canonicalDebtKd);
       canonicalDebtTotal = canonicalDebtTotal.plus(due);
       if (due.lte(0)) continue;

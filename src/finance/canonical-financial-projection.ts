@@ -1,4 +1,5 @@
 import { OrderStatus, Prisma } from '@prisma/client';
+import { round4Kd } from './utils/round4kd.util';
 
 /**
  * عقد إسقاطات النواة المصرفية الرسمية — V21.
@@ -528,7 +529,7 @@ export function computeCanonicalOutstandingDriverSummaries(
       driverName: row.driverName,
       customers: row.customers,
       invoices: row.invoices,
-      totalRemainingKd: row.totalRemaining.toFixed(3),
+      totalRemainingKd: round4Kd(row.totalRemaining),
       maxDaysLate: row.maxDaysLate,
     }))
     .sort((a, b) => {
@@ -599,7 +600,7 @@ export function computeCanonicalUnpaidOnlineReportProjection(
       .map((row) => ({
         branchName: row.branchName,
         invoices: row.invoices,
-        totalRemainingKd: row.totalRemaining.toFixed(3),
+        totalRemainingKd: round4Kd(row.totalRemaining),
         driversCount: row.drivers.size,
       }))
       .sort((a, b) => {
@@ -731,7 +732,7 @@ export function computeCanonicalDriverPendingInvoiceProjection<
 
   return {
     rows: filtered,
-    totalAmountKd: total.toFixed(3),
+    totalAmountKd: round4Kd(total),
     filteredCount: filtered.length,
     totalCount: rows.length,
   };
@@ -756,8 +757,8 @@ export function computeCanonicalDriverCashCustodySummary(
     new Prisma.Decimal(0),
   );
   return {
-    cashTotalKd: total.toFixed(3),
+    cashTotalKd: round4Kd(total),
     cashOrderCount: rows.length,
-    grandTotalKd: total.toFixed(3),
+    grandTotalKd: round4Kd(total),
   };
 }

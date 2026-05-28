@@ -10,6 +10,7 @@ import { round4Kd } from '../finance/utils/round4kd.util';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   computeCanonicalCustomerDebt,
+  computeCanonicalCustomerDebtBatch,
   type JournalReader,
 } from '../finance/canonical-customer-debt.util';
 import { computeSubscriptionConsumption } from './subscription-consumption.projection';
@@ -484,6 +485,198 @@ export async function computeCustomer360FinancialCore(
     blockedAtIso: customer?.blockedAt?.toISOString() ?? null,
     breakdown,
   };
+}
+
+export type Customer360FinancialCoreBatchOptions = {
+  /** Pre-fetched journal AR balances (1 query for all customers). */
+  journalArByCustomer?: Map<string, Prisma.Decimal> | null;
+  /** Skip per-customer audit-log writes (owner dashboard batch reads). */
+  skipAnomalyLogging?: boolean;
+};
+
+/**
+ * Batch variant of {@link computeCustomer360FinancialCore} for list/dashboard
+ * surfaces. Loads orders, wallets, subscriptions, and canonical debt in bulk.
+ */
+export async function computeCustomer360FinancialCoreBatch(
+  prisma: PrismaService,
+  customerIds: string[],
+  options: Customer360FinancialCoreBatchOptions = {},
+): Promise<Map<string, Customer360FinancialsDto>> {
+  const out = new Map<string, Customer360FinancialsDto>();
+  const ids = Array.from(new Set(customerIds.filter((id) => id?.trim())));
+  if (ids.length === 0) return out;
+
+  const [
+    orders,
+    wallets,
+    subscriptions,
+    activationRows,
+    customers,
+    canonicalByCustomer,
+  ] = await Promise.all([
+    prisma.order.findMany({
+      where: { customerId: { in: ids }, status: { not: OrderStatus.CANCELED } },
+      select: {
+        id: true,
+        customerId: true,
+        status: true,
+        totalPrice: true,
+        cashStatus: true,
+        posPaymentMethod: true,
+        subscriptionId: true,
+      },
+    }),
+    prisma.customerWallet.findMany({
+      where: { customerId: { in: ids } },
+      select: { customerId: true, balance: true },
+    }),
+    prisma.customerSubscription.findMany({
+      where: { customerId: { in: ids }, status: 'ACTIVE' },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        customerId: true,
+        id: true,
+        planActualBalanceSnapshot: true,
+        activatedAt: true,
+      },
+    }),
+    prisma.transactionHistory.findMany({
+      where: {
+        customerId: { in: ids },
+        type: 'SUBSCRIPTION_ACTIVATION',
+      },
+      select: {
+        id: true,
+        customerId: true,
+        subscriptionId: true,
+        metadata: true,
+        createdAt: true,
+      },
+    }),
+    prisma.customer.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, isBlocked: true, blockReason: true, blockedAt: true },
+    }),
+    computeCanonicalCustomerDebtBatch(
+      prisma,
+      ids,
+      options.journalArByCustomer ?? null,
+    ),
+  ]);
+
+  const ordersByCustomer = groupByCustomerId(orders);
+  const walletByCustomer = new Map(
+    wallets.map((wallet) => [wallet.customerId, wallet]),
+  );
+  const customerById = new Map(customers.map((customer) => [customer.id, customer]));
+  const activeSubByCustomer = new Map<string, (typeof subscriptions)[number]>();
+  for (const sub of subscriptions) {
+    if (!activeSubByCustomer.has(sub.customerId)) {
+      activeSubByCustomer.set(sub.customerId, sub);
+    }
+  }
+  const activationsByCustomer = groupByCustomerId(activationRows);
+
+  for (const customerId of ids) {
+    const customerOrders = ordersByCustomer.get(customerId) ?? [];
+    const ledger = [] as Array<{
+      orderId: string | null;
+      source: string;
+      amount: MoneyLike;
+      sourceRef: string | null;
+      createdAt: Date;
+    }>;
+    const activeSub = activeSubByCustomer.get(customerId);
+    const customer = customerById.get(customerId);
+    const wallet = walletByCustomer.get(customerId);
+    const customerActivations = activationsByCustomer.get(customerId) ?? [];
+
+    const fin = computeCustomerFinancials({
+      orders: customerOrders.map((order) => ({
+        ...order,
+        paymentSource: paymentSourceForOrder(order.posPaymentMethod),
+      })),
+      debtLedger: ledger,
+      subscription: activeSub,
+      walletAbsorptionLedger: [],
+      activationDebtSettlements: customerActivations.flatMap((row) => {
+        const metadata = row.metadata as Record<string, unknown> | null;
+        const amount = metadata?.debtSettled;
+        if (amount === undefined || amount === null) return [];
+        return [
+          {
+            id: row.id,
+            subscriptionId: row.subscriptionId,
+            amount: String(amount),
+            createdAt: row.createdAt,
+          },
+        ];
+      }),
+    });
+
+    if (!options.skipAnomalyLogging) {
+      await logFinancialAnomalies(prisma, customerId, fin.anomalyFlags);
+    }
+
+    const canonical =
+      canonicalByCustomer.get(customerId) ?? {
+        customerId,
+        canonicalDebtKd: new Prisma.Decimal(0),
+        remainingFromInvoicesKd: new Prisma.Decimal(0),
+        journalArKd: null,
+        source: 'PARTIAL_PAYMENT_REMAINING' as const,
+        inScopeOrderIds: new Set<string>(),
+      };
+
+    const walletBalanceKd = wallet ? money(wallet.balance) : 0;
+    const subscriptionRemainingNum = money(fin.subscription.remaining);
+    const walletPrepaidCreditKd = Math.max(
+      round(walletBalanceKd - subscriptionRemainingNum),
+      0,
+    );
+    const breakdown = {
+      receivableDebtKd: canonical.canonicalDebtKd.toFixed(4),
+      subscriptionRemainingKd: fin.subscription.remaining,
+      walletPrepaidCreditKd: fourDp(walletPrepaidCreditKd),
+      paidTotalKd: fin.totalPaymentsKd,
+      operatorHint: buildOperatorHint({
+        receivableDebtKd: canonical.canonicalDebtKd.toString(),
+        subscriptionRemainingKd: subscriptionRemainingNum,
+        walletPrepaidCreditKd,
+      }),
+    };
+
+    out.set(customerId, {
+      consumedKd: fin.consumedKd,
+      totalInvoicesKd: fin.totalInvoicesKd,
+      subscriptionValueKd: fin.subscription.value,
+      subscriptionConsumedKd: fin.subscription.consumed,
+      subscriptionRemainingKd: fin.subscription.remaining,
+      totalPaymentsKd: fin.totalPaymentsKd,
+      canonicalDebtKd: canonical.canonicalDebtKd.toFixed(4),
+      canonicalDebtSource: canonical.source,
+      overpaymentBalanceKd: fin.overpaymentBalanceKd,
+      isBlocked: customer?.isBlocked ?? false,
+      blockReason: customer?.blockReason ?? null,
+      blockedAtIso: customer?.blockedAt?.toISOString() ?? null,
+      breakdown,
+    });
+  }
+
+  return out;
+}
+
+function groupByCustomerId<T extends { customerId: string }>(
+  rows: T[],
+): Map<string, T[]> {
+  const map = new Map<string, T[]>();
+  for (const row of rows) {
+    const bucket = map.get(row.customerId) ?? [];
+    bucket.push(row);
+    map.set(row.customerId, bucket);
+  }
+  return map;
 }
 
 /**

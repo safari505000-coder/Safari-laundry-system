@@ -1,37 +1,40 @@
 import { Prisma } from '@prisma/client';
 import { OwnerFinancialDashboardService } from './owner-financial-dashboard.service';
-import { computeCustomer360FinancialCore } from '../../customers/customer-360-financials';
+import { computeCustomer360FinancialCoreBatch } from '../../customers/customer-360-financials';
 
 jest.mock('../../customers/customer-360-financials', () => ({
-  computeCustomer360FinancialCore: jest.fn(),
+  computeCustomer360FinancialCoreBatch: jest.fn(),
 }));
 
 describe('OwnerFinancialDashboardService', () => {
   it('returns cached dashboard shape using canonical customer financials', async () => {
-    (computeCustomer360FinancialCore as jest.Mock).mockResolvedValue({
-      consumedKd: '10.0000',
-      totalInvoicesKd: '10.0000',
-      subscriptionValueKd: '0.0000',
-      subscriptionConsumedKd: '0.0000',
-      subscriptionRemainingKd: '0.0000',
-      totalPaymentsKd: '2.0000',
-      // V23.2 — DTO returns canonical receivable directly. The legacy
-      // `totalDueKd` field was dropped; the rollup reads
-      // `canonicalDebtKd` for both the per-customer row and the
-      // aggregate `canonicalDebtTotal`.
-      canonicalDebtKd: '8.0000',
-      canonicalDebtSource: 'PARTIAL_PAYMENT_REMAINING',
-      isBlocked: false,
-      blockReason: null,
-      blockedAtIso: null,
-      breakdown: {
-        receivableDebtKd: '8.0000',
-        subscriptionRemainingKd: '0.0000',
-        walletPrepaidCreditKd: '0.0000',
-        paidTotalKd: '2.0000',
-        operatorHint: 'العميل مدين بمبلغ 8.0000 د.ك',
-      },
-    });
+    (computeCustomer360FinancialCoreBatch as jest.Mock).mockResolvedValue(
+      new Map([
+        [
+          'customer-1',
+          {
+            consumedKd: '10.0000',
+            totalInvoicesKd: '10.0000',
+            subscriptionValueKd: '0.0000',
+            subscriptionConsumedKd: '0.0000',
+            subscriptionRemainingKd: '0.0000',
+            totalPaymentsKd: '2.0000',
+            canonicalDebtKd: '8.0000',
+            canonicalDebtSource: 'PARTIAL_PAYMENT_REMAINING',
+            isBlocked: false,
+            blockReason: null,
+            blockedAtIso: null,
+            breakdown: {
+              receivableDebtKd: '8.0000',
+              subscriptionRemainingKd: '0.0000',
+              walletPrepaidCreditKd: '0.0000',
+              paidTotalKd: '2.0000',
+              operatorHint: 'العميل مدين بمبلغ 8.0000 د.ك',
+            },
+          },
+        ],
+      ]),
+    );
     const prisma = {
       order: {
         aggregate: jest.fn().mockResolvedValue({
@@ -96,17 +99,18 @@ describe('OwnerFinancialDashboardService', () => {
         buildAlerts: jest.fn().mockResolvedValue([]),
       } as any,
       cache as any,
-      { getCustomerDebtFromJournalAR: jest.fn().mockResolvedValue(new Prisma.Decimal('8.0000')) } as any,
+      { getCustomerDebtFromJournalARBatch: jest.fn().mockResolvedValue(new Map([['customer-1', new Prisma.Decimal('8.0000')]])) } as any,
     );
 
     const result = await service.getDashboard();
 
     expect(cache.wrapJson).toHaveBeenCalledWith('owner-key', expect.any(Function));
-    expect(computeCustomer360FinancialCore).toHaveBeenCalledWith(
+    expect(computeCustomer360FinancialCoreBatch).toHaveBeenCalledWith(
       prisma,
-      'customer-1',
+      ['customer-1'],
       expect.objectContaining({
-        getCustomerDebtFromJournalAR: expect.any(Function),
+        journalArByCustomer: expect.any(Map),
+        skipAnomalyLogging: true,
       }),
     );
     expect(result).toMatchObject({

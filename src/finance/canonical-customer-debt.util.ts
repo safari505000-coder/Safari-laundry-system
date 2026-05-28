@@ -167,6 +167,94 @@ export async function computeCanonicalCustomerDebt(
   };
 }
 
+type BatchDb = Db & { journalLine?: Prisma.JournalLineDelegate };
+
+/**
+ * Batch variant of {@link computeCanonicalCustomerDebt} — one in-scope order
+ * query + one remaining-balance batch instead of N round-trips per customer.
+ */
+export async function computeCanonicalCustomerDebtBatch(
+  db: BatchDb,
+  customerIds: string[],
+  journalArByCustomer: Map<string, Prisma.Decimal> | null,
+): Promise<Map<string, CanonicalDebtSnapshot>> {
+  const result = new Map<string, CanonicalDebtSnapshot>();
+  const ids = Array.from(new Set(customerIds.filter((id) => id?.trim())));
+  if (ids.length === 0) return result;
+
+  const inScopeRows = await db.order.findMany({
+    where: {
+      customerId: { in: ids },
+      status: { not: OrderStatus.CANCELED },
+      OR: [
+        { cashStatus: CashStatus.UNPAID },
+        { posPaymentMethod: PosPaymentMethod.DEBT_ON_ACCOUNT },
+      ],
+    },
+    select: {
+      id: true,
+      customerId: true,
+      cashStatus: true,
+      posPaymentMethod: true,
+    },
+  });
+
+  const rowsByCustomer = new Map<string, typeof inScopeRows>();
+  for (const row of inScopeRows) {
+    if (!row.customerId) continue;
+    const bucket = rowsByCustomer.get(row.customerId) ?? [];
+    bucket.push(row);
+    rowsByCustomer.set(row.customerId, bucket);
+  }
+
+  const remainingByOrder =
+    inScopeRows.length > 0
+      ? await computeOrderRemainingBalancesBatch(
+          db,
+          inScopeRows.map((row) => row.id),
+        )
+      : new Map<string, Prisma.Decimal>();
+
+  const tol = new Prisma.Decimal(INVOICE_REMAINING_TOLERANCE_KD);
+
+  for (const customerId of ids) {
+    const customerRows = rowsByCustomer.get(customerId) ?? [];
+    const inScopeOrderIds = new Set<string>();
+    let remainingFromInvoicesKd = new Prisma.Decimal(0);
+
+    for (const row of customerRows) {
+      const rem = remainingByOrder.get(row.id);
+      if (!rem) continue;
+      if (rem.lessThanOrEqualTo(tol)) continue;
+      inScopeOrderIds.add(row.id);
+      remainingFromInvoicesKd = remainingFromInvoicesKd.plus(rem);
+    }
+
+    let journalArKd: Prisma.Decimal | null = null;
+    let source: CanonicalDebtSource = 'PARTIAL_PAYMENT_REMAINING';
+    let canonicalDebtKd = remainingFromInvoicesKd;
+
+    if (journalArByCustomer) {
+      journalArKd = journalArByCustomer.get(customerId) ?? new Prisma.Decimal(0);
+      canonicalDebtKd = journalArKd;
+      source = 'JOURNAL_AR';
+    }
+
+    if (canonicalDebtKd.lessThan(0)) canonicalDebtKd = new Prisma.Decimal(0);
+
+    result.set(customerId, {
+      customerId,
+      canonicalDebtKd,
+      remainingFromInvoicesKd,
+      journalArKd,
+      source,
+      inScopeOrderIds,
+    });
+  }
+
+  return result;
+}
+
 /**
  * تسامح الانحراف المُستخدَم في جميع مقارنات الاتساق في المكدس V20.3.2
  * Tolerance for every drift comparison in the V20.3.2 consistency stack (0.001 KD).

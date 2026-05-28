@@ -102,7 +102,7 @@ describe('canonical financial projection selectors', () => {
         driverName: 'Driver A',
         customers: 2,
         invoices: 3,
-        totalRemainingKd: '5.250',
+        totalRemainingKd: '5.2500',
         maxDaysLate: 7,
       },
       {
@@ -110,7 +110,7 @@ describe('canonical financial projection selectors', () => {
         driverName: 'بدون سائق',
         customers: 1,
         invoices: 1,
-        totalRemainingKd: '1.000',
+        totalRemainingKd: '1.0000',
         maxDaysLate: 1,
       },
     ]);
@@ -149,13 +149,13 @@ describe('canonical financial projection selectors', () => {
         {
           branchName: 'بدون فرع',
           invoices: 1,
-          totalRemainingKd: '4.000',
+          totalRemainingKd: '4.0000',
           driversCount: 1,
         },
         {
           branchName: 'Salmiya',
           invoices: 2,
-          totalRemainingKd: '3.250',
+          totalRemainingKd: '3.2500',
           driversCount: 2,
         },
       ],
@@ -231,7 +231,7 @@ describe('canonical financial projection selectors', () => {
           searchableText: 'INV-A Acme 9900 note',
         },
       ],
-      totalAmountKd: '3.250',
+      totalAmountKd: '3.2500',
       filteredCount: 1,
       totalCount: 2,
     });
@@ -244,9 +244,9 @@ describe('canonical financial projection selectors', () => {
         { amountKd: '2.000' },
       ]),
     ).toEqual({
-      cashTotalKd: '3.250',
+      cashTotalKd: '3.2500',
       cashOrderCount: 2,
-      grandTotalKd: '3.250',
+      grandTotalKd: '3.2500',
     });
   });
 
