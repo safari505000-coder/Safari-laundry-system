@@ -1,11 +1,4 @@
-import type {
-  CreatePublicOrderRequest,
-  CreatePublicOrderResponse,
-  CreateCustomerPaymentLinkRequest,
-  CustomerPortalMeResponse,
-  PaymentIntentResponse,
-  PublicCatalogResponse,
-} from '../../../packages/shared-api/src';
+import type { PublicCatalogResponse } from '../../../packages/shared-api/src';
 
 /** Dev: relative `/api` (Vite proxy). Production static site: set `VITE_API_URL` at build time. */
 function resolveApiBase(): string {
@@ -53,39 +46,5 @@ async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
 
 export function getCatalog(): Promise<PublicCatalogResponse> {
   return apiJson<PublicCatalogResponse>('/public/catalog');
-}
-
-export function createOrderRequest(
-  payload: CreatePublicOrderRequest,
-): Promise<CreatePublicOrderResponse> {
-  return apiJson<CreatePublicOrderResponse>('/public/orders/request', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
-}
-
-export function getCustomerPortal(
-  phone: string,
-): Promise<CustomerPortalMeResponse> {
-  const qs = new URLSearchParams({ phone });
-  return apiJson<CustomerPortalMeResponse>(`/public/customer-portal?${qs}`);
-}
-
-export function createCustomerPaymentLink(
-  payload: CreateCustomerPaymentLinkRequest,
-): Promise<PaymentIntentResponse> {
-  return apiJson<PaymentIntentResponse>('/public/customer-portal/payment-link', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
-}
-
-export function createCustomerBalancePaymentLink(
-  customerPhone: string,
-): Promise<PaymentIntentResponse> {
-  return apiJson<PaymentIntentResponse>('/public/customer-portal/pay-balance', {
-    method: 'POST',
-    body: JSON.stringify({ customerPhone }),
-  });
 }
 

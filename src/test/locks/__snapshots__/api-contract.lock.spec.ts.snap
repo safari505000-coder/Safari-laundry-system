@@ -432,6 +432,12 @@ exports[`API contract lock freezes public route methods and paths 1`] = `
     "file": "src/expenses/expenses.controller.ts",
     "handler": "n",
     "method": "GET",
+    "path": "/expenses/driver/mine",
+  },
+  {
+    "file": "src/expenses/expenses.controller.ts",
+    "handler": "n",
+    "method": "GET",
     "path": "/expenses/pending-approval",
   },
   {
@@ -1333,6 +1339,12 @@ exports[`API contract lock freezes public route methods and paths 1`] = `
     "handler": "n",
     "method": "GET",
     "path": "/reports/driver-ledger",
+  },
+  {
+    "file": "src/reports/reports.controller.ts",
+    "handler": "n",
+    "method": "GET",
+    "path": "/reports/driver/my-issued-invoices",
   },
   {
     "file": "src/reports/reports.controller.ts",

@@ -45,15 +45,16 @@ describe('Public API security guards', () => {
     expect(service).toContain('paymentLinkChargeMatches');
   });
 
-  it('public web does not calculate KWD totals locally for portal pay actions', () => {
+  it('public web stays corporate-only and does not calculate KWD totals locally', () => {
     const main = read('apps/public-web/src/main.tsx');
     const api = read('apps/public-web/src/api.ts');
 
-    expect(main).toContain('createCustomerBalancePaymentLink');
-    expect(main).toContain('createCustomerPaymentLink');
+    expect(main).toContain('Safari United General Trading Group');
+    expect(main).not.toContain('createCustomerBalancePaymentLink');
+    expect(main).not.toContain('createCustomerPaymentLink');
     expect(main).not.toMatch(/remainingAmountKd\s*\+/);
     expect(main).not.toMatch(/debtKd\s*\+/);
-    expect(api).toContain('/public/customer-portal/pay-balance');
-    expect(api).toContain('/public/customer-portal/payment-link');
+    expect(api).not.toContain('/public/customer-portal/pay-balance');
+    expect(api).not.toContain('/public/customer-portal/payment-link');
   });
 });

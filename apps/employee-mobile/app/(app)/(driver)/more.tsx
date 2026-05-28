@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
+  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -10,6 +12,8 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import * as ImageManipulator from 'expo-image-manipulator';
+import * as ImagePicker from 'expo-image-picker';
 import {
   createMyExpense,
   fetchMyCashReceipts,
@@ -33,7 +37,13 @@ import {
   SurfaceCard,
 } from '@/components/ui';
 import { formatKwdLabel } from '@/lib/kwd';
+import {
+  RECEIPT_COMPRESS_LEVELS,
+  RECEIPT_RESIZE_WIDTH,
+  receiptFitsPayloadLimit,
+} from '@/lib/receipt-image';
 import { brand } from '@/theme/brand';
+import type { ExpenseMethod } from '@/api/orders';
 
 type Panel = 'sales' | 'receipts' | 'expenses' | 'transfers';
 
@@ -43,6 +53,34 @@ const PANEL_LABELS: Record<Panel, string> = {
   expenses: 'مصروف',
   transfers: 'تحويلات',
 };
+
+async function compressReceiptImage(uri: string): Promise<string> {
+  let lastDataUrl: string | null = null;
+  for (const compress of RECEIPT_COMPRESS_LEVELS) {
+    const result = await ImageManipulator.manipulateAsync(
+      uri,
+      [{ resize: { width: RECEIPT_RESIZE_WIDTH } }],
+      {
+        compress,
+        format: ImageManipulator.SaveFormat.JPEG,
+        base64: true,
+      },
+    );
+    if (!result.base64) {
+      continue;
+    }
+    const dataUrl = `data:image/jpeg;base64,${result.base64}`;
+    lastDataUrl = dataUrl;
+    if (receiptFitsPayloadLimit(dataUrl)) {
+      return dataUrl;
+    }
+  }
+  throw new Error(
+    lastDataUrl
+      ? 'الصورة كبيرة جداً. قرّب على الوصل فقط أو قص الأطراف ثم أعد المحاولة.'
+      : 'تعذر ضغط صورة الوصل.',
+  );
+}
 
 function failureMessage(label: string, reason: unknown) {
   const detail = reason instanceof Error ? reason.message : 'تعذر التحميل';
@@ -63,6 +101,9 @@ export default function DriverMoreScreen() {
   const [expenseTitle, setExpenseTitle] = useState('');
   const [expenseAmount, setExpenseAmount] = useState('');
   const [expenseNote, setExpenseNote] = useState('');
+  const [expenseMethod, setExpenseMethod] = useState<ExpenseMethod>('PREPAID_CARD');
+  const [expenseReceipt, setExpenseReceipt] = useState<string | null>(null);
+  const [expenseReceiptBusy, setExpenseReceiptBusy] = useState(false);
   const [savingExpense, setSavingExpense] = useState(false);
   const [signingId, setSigningId] = useState<string | null>(null);
 
@@ -143,6 +184,10 @@ export default function DriverMoreScreen() {
       Alert.alert('بيانات ناقصة', 'أدخل وصف المصروف والمبلغ.');
       return;
     }
+    if (!expenseReceipt) {
+      Alert.alert('صورة الوصل مطلوبة', 'أرفق صورة واضحة للوصل قبل إرسال المصروف.');
+      return;
+    }
     setSavingExpense(true);
     try {
       const token = await getValidAccessToken();
@@ -153,18 +198,49 @@ export default function DriverMoreScreen() {
         title: expenseTitle.trim(),
         amount,
         category: 'FUEL',
-        expenseMethod: 'CASH',
+        expenseMethod,
         note: expenseNote.trim() || undefined,
+        receiptUrl: expenseReceipt,
       });
       setExpenseTitle('');
       setExpenseAmount('');
       setExpenseNote('');
+      setExpenseReceipt(null);
       await load('refresh');
       Alert.alert('تم', 'تم إرسال المصروف للمحاسب للاعتماد.');
     } catch (err) {
       Alert.alert('فشل', err instanceof Error ? err.message : 'تعذر حفظ المصروف');
     } finally {
       setSavingExpense(false);
+    }
+  }
+
+  async function pickExpenseReceipt() {
+    setExpenseReceiptBusy(true);
+    try {
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('الصلاحية مطلوبة', 'اسمح للتطبيق باستخدام الكاميرا لتصوير الوصل.');
+        return;
+      }
+      const picked = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [16, 9],
+        quality: 1,
+      });
+      if (picked.canceled || !picked.assets[0]?.uri) {
+        return;
+      }
+      const compressed = await compressReceiptImage(picked.assets[0].uri);
+      setExpenseReceipt(compressed);
+    } catch (err) {
+      Alert.alert(
+        'تعذر إرفاق الوصل',
+        err instanceof Error ? err.message : 'حاول بصورة أوضح وأصغر.',
+      );
+    } finally {
+      setExpenseReceiptBusy(false);
     }
   }
 
@@ -239,10 +315,16 @@ export default function DriverMoreScreen() {
             title={expenseTitle}
             amount={expenseAmount}
             note={expenseNote}
+            method={expenseMethod}
+            receipt={expenseReceipt}
+            receiptBusy={expenseReceiptBusy}
             saving={savingExpense}
             onTitle={setExpenseTitle}
             onAmount={setExpenseAmount}
             onNote={setExpenseNote}
+            onMethod={setExpenseMethod}
+            onPickReceipt={() => void pickExpenseReceipt()}
+            onClearReceipt={() => setExpenseReceipt(null)}
             onSave={() => void saveExpense()}
           />
         ) : (
@@ -305,10 +387,16 @@ function ExpensesPanel({
   title,
   amount,
   note,
+  method,
+  receipt,
+  receiptBusy,
   saving,
   onTitle,
   onAmount,
   onNote,
+  onMethod,
+  onPickReceipt,
+  onClearReceipt,
   onSave,
 }: {
   rows: DriverExpenseRow[];
@@ -316,22 +404,109 @@ function ExpensesPanel({
   title: string;
   amount: string;
   note: string;
+  method: ExpenseMethod;
+  receipt: string | null;
+  receiptBusy: boolean;
   saving: boolean;
   onTitle: (value: string) => void;
   onAmount: (value: string) => void;
   onNote: (value: string) => void;
+  onMethod: (value: ExpenseMethod) => void;
+  onPickReceipt: () => void;
+  onClearReceipt: () => void;
   onSave: () => void;
 }) {
+  const [receiptOpen, setReceiptOpen] = useState(false);
+
   return (
     <>
       <SurfaceCard>
         <Text style={styles.cardTitle}>إضافة مصروف ميداني</Text>
-        <Text style={styles.meta}>مطابق لـ my-field-expenses: السائق يسجل FUEL نقداً ويذهب للمحاسب للاعتماد.</Text>
+        <Text style={styles.meta}>مطابق لـ my-field-expenses: السائق يسجل FUEL مع صورة وصل ويذهب للمحاسب للاعتماد.</Text>
         <TextInput value={title} onChangeText={onTitle} placeholder="وصف المصروف" placeholderTextColor={brand.colors.textMuted} textAlign="right" style={styles.input} />
         <TextInput value={amount} onChangeText={onAmount} placeholder="المبلغ" placeholderTextColor={brand.colors.textMuted} keyboardType="decimal-pad" textAlign="right" style={styles.input} />
+        <View style={styles.methodRow}>
+          <Pressable
+            onPress={() => onMethod('PREPAID_CARD')}
+            style={[styles.methodChip, method === 'PREPAID_CARD' && styles.methodChipActive]}
+          >
+            <Text
+              style={[
+                styles.methodChipText,
+                method === 'PREPAID_CARD' && styles.methodChipTextActive,
+              ]}
+            >
+              كرت الشركة
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => onMethod('CASH')}
+            style={[styles.methodChip, method === 'CASH' && styles.methodChipActive]}
+          >
+            <Text
+              style={[
+                styles.methodChipText,
+                method === 'CASH' && styles.methodChipTextActive,
+              ]}
+            >
+              كاش من العهدة
+            </Text>
+          </Pressable>
+        </View>
         <TextInput value={note} onChangeText={onNote} placeholder="ملاحظة اختيارية" placeholderTextColor={brand.colors.textMuted} textAlign="right" style={styles.input} />
-        <PrimaryButton label={saving ? 'جاري الحفظ…' : 'إرسال للمحاسبة'} onPress={onSave} disabled={saving} />
+        <View style={styles.receiptBox}>
+          <View style={styles.receiptTextBlock}>
+            <Text style={styles.receiptTitle}>صورة الوصل</Text>
+            <Text style={styles.receiptHint}>
+              التصوير مباشر فقط، ثم تُضغط الصورة تلقائياً كـ JPEG واضح.
+            </Text>
+          </View>
+          {receipt ? (
+            <Pressable onPress={() => setReceiptOpen(true)}>
+              <Image source={{ uri: receipt }} style={styles.receiptPreview} />
+              <Text style={styles.receiptOpenHint}>اضغط لعرض الوصل بحجم الشاشة</Text>
+            </Pressable>
+          ) : null}
+          <View style={styles.receiptActions}>
+            <GhostButton
+              label={
+                receiptBusy
+                  ? 'جاري تجهيز الصورة…'
+                  : receipt
+                    ? 'إعادة تصوير الوصل'
+                    : 'تصوير الوصل'
+              }
+              onPress={onPickReceipt}
+              disabled={receiptBusy || saving}
+            />
+            {receipt ? (
+              <Pressable onPress={onClearReceipt} disabled={saving}>
+                <Text style={styles.receiptClear}>حذف الوصل</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        </View>
+        <PrimaryButton label={saving ? 'جاري الحفظ…' : 'إرسال للمحاسبة'} onPress={onSave} disabled={saving || receiptBusy} />
       </SurfaceCard>
+      <Modal
+        visible={receiptOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setReceiptOpen(false)}
+      >
+        <View style={styles.receiptModalBackdrop}>
+          <Pressable style={styles.receiptModalClose} onPress={() => setReceiptOpen(false)}>
+            <Text style={styles.receiptModalCloseText}>إغلاق</Text>
+          </Pressable>
+          {receipt ? (
+            <Image
+              source={{ uri: receipt }}
+              resizeMode="contain"
+              style={styles.receiptFullImage}
+            />
+          ) : null}
+        </View>
+      </Modal>
       <StatTile label="مصروفات اليوم" value={formatKwdLabel(total)} sub={`${rows.length} عملية`} tone="warning" />
       {rows.map((row) => (
         <SurfaceCard key={row.id}>
@@ -484,6 +659,100 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 15,
     color: brand.colors.text,
+  },
+  methodRow: {
+    flexDirection: 'row-reverse',
+    gap: 8,
+  },
+  methodChip: {
+    flex: 1,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: brand.colors.border,
+    backgroundColor: brand.colors.surfaceMuted,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  methodChipActive: {
+    backgroundColor: brand.colors.darkBlue,
+    borderColor: brand.colors.darkBlue,
+  },
+  methodChipText: {
+    color: brand.colors.textMuted,
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  methodChipTextActive: {
+    color: brand.colors.white,
+  },
+  receiptBox: {
+    borderRadius: brand.radius.lg,
+    borderWidth: 1,
+    borderColor: brand.colors.border,
+    backgroundColor: brand.colors.surfaceMuted,
+    padding: 12,
+    gap: 10,
+  },
+  receiptTextBlock: { gap: 3 },
+  receiptTitle: {
+    color: brand.colors.text,
+    fontSize: 14,
+    fontWeight: '900',
+    textAlign: 'right',
+  },
+  receiptHint: {
+    color: brand.colors.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: 'right',
+  },
+  receiptPreview: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    borderRadius: brand.radius.md,
+    backgroundColor: brand.colors.surface,
+  },
+  receiptOpenHint: {
+    color: brand.colors.primaryBlue,
+    fontSize: 12,
+    fontWeight: '800',
+    textAlign: 'center',
+    marginTop: 6,
+  },
+  receiptActions: {
+    gap: 8,
+  },
+  receiptClear: {
+    color: brand.colors.danger,
+    fontSize: 13,
+    fontWeight: '800',
+    textAlign: 'center',
+    paddingVertical: 8,
+  },
+  receiptModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(2, 6, 23, 0.96)',
+    padding: 16,
+    justifyContent: 'center',
+  },
+  receiptModalClose: {
+    position: 'absolute',
+    top: 48,
+    left: 18,
+    zIndex: 2,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  receiptModalCloseText: {
+    color: brand.colors.white,
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  receiptFullImage: {
+    width: '100%',
+    aspectRatio: 16 / 9,
   },
   empty: {
     color: brand.colors.textMuted,

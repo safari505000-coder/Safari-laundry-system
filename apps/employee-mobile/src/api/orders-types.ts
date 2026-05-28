@@ -130,6 +130,7 @@ export type CreateExpenseRequest = {
   category: ExpenseCategory;
   expenseMethod?: ExpenseMethod;
   note?: string;
+  receiptUrl?: string;
 };
 
 export type DebtTransferStatus =

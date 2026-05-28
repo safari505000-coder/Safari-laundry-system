@@ -29,6 +29,12 @@
           "cameraPermission": "نحتاج الكamera لمسح باركود الفاتورة."
         }
       ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "نحتاج تصوير وصل المصروف مباشرة لإرساله للمحاسبة."
+        }
+      ],
       "expo-notifications",
       "expo-asset"
     ],

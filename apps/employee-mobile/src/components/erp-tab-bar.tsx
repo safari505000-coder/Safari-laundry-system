@@ -34,10 +34,11 @@ export function ErpBottomTabBar({ state, descriptors, navigation }: BottomTabBar
     const options = descriptors[route.key]?.options;
     return (options as { href?: unknown } | undefined)?.href !== null;
   });
+  const compact = visibleRoutes.length >= 6;
 
   return (
     <View style={styles.wrap}>
-      <View style={styles.rail}>
+      <View style={[styles.rail, compact && styles.railCompact]}>
         {visibleRoutes.map((route) => {
           const descriptor = descriptors[route.key];
           const options = descriptor.options;
@@ -72,13 +73,25 @@ export function ErpBottomTabBar({ state, descriptors, navigation }: BottomTabBar
                   target: route.key,
                 });
               }}
-              style={[styles.item, focused && styles.itemFocused]}
+              style={[
+                styles.item,
+                compact && styles.itemCompact,
+                focused && styles.itemFocused,
+              ]}
             >
               <MiniIcon
                 kind={ICON_BY_ROUTE[route.name] ?? 'dashboard'}
                 focused={focused}
+                compact={compact}
               />
-              <Text style={[styles.label, focused && styles.labelFocused]}>
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.label,
+                  compact && styles.labelCompact,
+                  focused && styles.labelFocused,
+                ]}
+              >
                 {title}
               </Text>
               {focused ? <View style={styles.activeDot} /> : null}
@@ -90,9 +103,23 @@ export function ErpBottomTabBar({ state, descriptors, navigation }: BottomTabBar
   );
 }
 
-function MiniIcon({ kind, focused }: { kind: IconKind; focused: boolean }) {
+function MiniIcon({
+  kind,
+  focused,
+  compact,
+}: {
+  kind: IconKind;
+  focused: boolean;
+  compact: boolean;
+}) {
   return (
-    <View style={[styles.iconBox, focused && styles.iconBoxFocused]}>
+    <View
+      style={[
+        styles.iconBox,
+        compact && styles.iconBoxCompact,
+        focused && styles.iconBoxFocused,
+      ]}
+    >
       {kind === 'tasks' ? <TaskIcon focused={focused} /> : null}
       {kind === 'scan' ? <ScanIcon focused={focused} /> : null}
       {kind === 'invoice' ? <InvoiceIcon focused={focused} /> : null}
@@ -237,6 +264,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     padding: 7,
   },
+  railCompact: {
+    minHeight: 68,
+    borderRadius: 24,
+    padding: 5,
+  },
   item: {
     flex: 1,
     minHeight: 62,
@@ -245,6 +277,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 4,
   },
+  itemCompact: {
+    minHeight: 56,
+    borderRadius: 18,
+    gap: 2,
+  },
   itemFocused: {
     backgroundColor: brand.colors.darkBlue,
   },
@@ -252,6 +289,9 @@ const styles = StyleSheet.create({
     color: brand.colors.textMuted,
     fontSize: 10,
     fontWeight: '800',
+  },
+  labelCompact: {
+    fontSize: 9,
   },
   labelFocused: {
     color: brand.colors.white,
@@ -267,6 +307,11 @@ const styles = StyleSheet.create({
     height: 24,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  iconBoxCompact: {
+    width: 24,
+    height: 20,
+    transform: [{ scale: 0.9 }],
   },
   iconBoxFocused: {
     transform: [{ translateY: -1 }],

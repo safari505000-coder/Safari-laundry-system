@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { estimateCartTotalKd } from '@/cart/cart-totals';
+import { formatKwdLabel } from '@/lib/kwd';
 import { validateOrderGuard } from '@/order/order-guards';
 
 function test(name: string, run: () => void) {
@@ -25,6 +26,12 @@ test('cart total can use express prices', () => {
     ),
     '4.000',
   );
+});
+
+test('KWD label always displays three decimals', () => {
+  assert.equal(formatKwdLabel('2.5'), '2.500 د.ك');
+  assert.equal(formatKwdLabel('2.5000'), '2.500 د.ك');
+  assert.equal(formatKwdLabel('0.25'), '0.250 د.ك');
 });
 
 test('order guard requires a valid phone', () => {

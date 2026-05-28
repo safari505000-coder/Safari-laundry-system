@@ -70,6 +70,8 @@ function deriveOwnerType(
 const DRIVER_ONLY_CATEGORIES: ReadonlySet<ExpenseCategory> = new Set([
   ExpenseCategory.FUEL,
 ]);
+const EXPENSE_RECEIPT_MAX_DATA_URL_LENGTH = 500_000;
+const EXPENSE_RECEIPT_DATA_URL_RE = /^data:image\/(?:jpeg|jpg|png);base64,[A-Za-z0-9+/]+={0,2}$/;
 
 @Injectable()
 export class ExpensesService {
@@ -113,6 +115,26 @@ export class ExpensesService {
         'EXPENSE MUST HAVE OWNER — branch manager has no branch attribution.',
       );
     }
+  }
+
+  private normalizeReceiptForCreate(
+    role: SafariRole,
+    receiptUrl?: string,
+  ): string | null {
+    const receipt = receiptUrl?.trim() ?? '';
+    if (!receipt) {
+      if (role === SafariRole.DRIVER) {
+        throw new BadRequestException('Driver field expense requires a receipt photo.');
+      }
+      return null;
+    }
+    if (receipt.length > EXPENSE_RECEIPT_MAX_DATA_URL_LENGTH) {
+      throw new BadRequestException('Receipt photo is too large.');
+    }
+    if (!EXPENSE_RECEIPT_DATA_URL_RE.test(receipt)) {
+      throw new BadRequestException('Receipt must be a JPEG or PNG image data URL.');
+    }
+    return receipt;
   }
 
   private async computeDriverSpendableCash(
@@ -163,6 +185,7 @@ export class ExpensesService {
     this.assertCategoryMatchesRole(safariRole, dto.category);
     const method = dto.expenseMethod ?? ExpenseMethod.CASH;
     const amountDec = new Prisma.Decimal(Number(dto.amount).toFixed(4));
+    const receiptUrl = this.normalizeReceiptForCreate(safariRole, dto.receiptUrl);
 
     return this.prisma.$transaction(async (tx) => {
       if (safariRole === SafariRole.DRIVER && method === ExpenseMethod.CASH) {
@@ -188,7 +211,7 @@ export class ExpensesService {
           expenseMethod: method,
           status: ExpenseStatus.PENDING_ACCOUNTANT,
           note: dto.note?.trim() || null,
-          receiptUrl: dto.receiptUrl?.trim() || null,
+          receiptUrl,
           recordedById: userId,
           branchId: u?.branchId ?? null,
         },

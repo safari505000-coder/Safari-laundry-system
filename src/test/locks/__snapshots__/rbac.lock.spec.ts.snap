@@ -701,9 +701,19 @@ exports[`RBAC lock freezes every endpoint @Roles decorator 1`] = `
     "file": "src/expenses/expenses.controller.ts",
     "handler": "n",
     "method": "GET",
-    "path": "/expenses/pending-approval",
+    "path": "/expenses/driver/mine",
     "roleSource": "none",
     "roles": [],
+  },
+  {
+    "file": "src/expenses/expenses.controller.ts",
+    "handler": "n",
+    "method": "GET",
+    "path": "/expenses/pending-approval",
+    "roleSource": "method",
+    "roles": [
+      "DRIVER",
+    ],
   },
   {
     "file": "src/exports/exports.controller.ts",
@@ -2163,6 +2173,14 @@ exports[`RBAC lock freezes every endpoint @Roles decorator 1`] = `
     "file": "src/reports/reports.controller.ts",
     "handler": "n",
     "method": "GET",
+    "path": "/reports/driver/my-issued-invoices",
+    "roleSource": "none",
+    "roles": [],
+  },
+  {
+    "file": "src/reports/reports.controller.ts",
+    "handler": "n",
+    "method": "GET",
     "path": "/reports/executive-summary",
     "roleSource": "none",
     "roles": [],
@@ -2180,8 +2198,10 @@ exports[`RBAC lock freezes every endpoint @Roles decorator 1`] = `
     "handler": "n",
     "method": "GET",
     "path": "/reports/live-feed",
-    "roleSource": "none",
-    "roles": [],
+    "roleSource": "method",
+    "roles": [
+      "DRIVER",
+    ],
   },
   {
     "file": "src/reports/reports.controller.ts",
