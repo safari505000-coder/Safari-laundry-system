@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
-  FlatList,
   Linking,
   Pressable,
   RefreshControl,
@@ -18,6 +17,7 @@ import {
   fetchCustomerPortalPreview,
   requestCustomerOtp,
   updateCustomerProfile,
+  devLoginCustomer,
   verifyCustomerOtp,
   type CustomerPortalMeResponse,
   type CustomerPortalOrder,
@@ -51,6 +51,8 @@ import { brand } from '@/theme/brand';
 
 const allowPhonePreview =
   Constants.expoConfig?.extra?.allowPhonePreview === true || __DEV__;
+const allowDevLogin =
+  Constants.expoConfig?.extra?.allowDevLogin === true || __DEV__;
 
 type EditableAddress = {
   id?: string;
@@ -152,6 +154,30 @@ export default function AccountScreen() {
     }
   }
 
+  async function loginWithoutOtp() {
+    const normalized = phone.replace(/[\s-]/g, '').trim();
+    if (normalized.length < 8) {
+      setError('أدخل رقم جوال صحيح.');
+      return;
+    }
+    setVerifyLoading(true);
+    setError(null);
+    try {
+      const res = await devLoginCustomer(normalized);
+      await writeCustomerAccessToken(res.accessToken);
+      await writeSavedPhone(res.customer.phone);
+      setPhone(res.customer.phone);
+      setOtpCode('');
+      setDevOtpHint(null);
+      await loadPortalSession();
+      void registerCustomerPushIfPossible(res.customer.phone);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'تعذر تسجيل الدخول.');
+    } finally {
+      setVerifyLoading(false);
+    }
+  }
+
   async function confirmOtp() {
     const normalized = phone.replace(/[\s-]/g, '').trim();
     const code = otpCode.replace(/\s/g, '').trim();
@@ -225,7 +251,11 @@ export default function AccountScreen() {
   function addProfileAddress() {
     setProfileAddresses((current) => [
       ...current,
-      { address: '', isDefault: current.length === 0 },
+      {
+        id: `temp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+        address: '',
+        isDefault: current.length === 0
+      },
     ]);
   }
 
@@ -236,7 +266,7 @@ export default function AccountScreen() {
     }
     const cleanAddresses = profileAddresses
       .map((item, index) => ({
-        id: item.id,
+        id: item.id?.startsWith('temp-') ? undefined : item.id,
         label: item.label,
         address: item.address.trim(),
         isDefault: index === 0,
@@ -322,7 +352,19 @@ export default function AccountScreen() {
     <LuxuryScreen>
       <CinematicOrb size={240} style={styles.orbTop} />
       <CinematicOrb size={170} delay={420} style={styles.orbBottom} />
-      <LuxuryScroll contentContainerStyle={[styles.wrap, { paddingBottom: scrollBottomPad }]}>
+      <LuxuryScroll
+        contentContainerStyle={[styles.wrap, { paddingBottom: scrollBottomPad }]}
+        refreshControl={
+          portal ? (
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() =>
+                void (sessionActive ? loadPortalSession('refresh') : loadPreview())
+              }
+            />
+          ) : undefined
+        }
+      >
         <FadeIn>
           <View style={styles.hero}>
             <Text style={styles.brand}>PRIVATE ACCOUNT</Text>
@@ -334,40 +376,63 @@ export default function AccountScreen() {
         </FadeIn>
         {!sessionActive || !portal ? (
           <GlassPanel elevated>
-            <Text style={styles.sectionTitle}>دخول آمن عبر واتساب</Text>
-            <Text style={styles.muted}>
-              أدخل رقم جوالك، ثم استخدم رمز الدخول المرسل على واتساب. الرمز صالح لمدة 10 دقائق.
-            </Text>
-            <LuxuryField
-              icon="call-outline"
-              value={phone}
-              onChangeText={setPhone}
-              keyboardType="phone-pad"
-              placeholder="5xxxxxxx"
-            />
-            <LuxuryButton
-              label={otpLoading ? 'نرسل رمز الدخول…' : 'إرسال رمز الدخول'}
-              onPress={() => void sendOtp()}
-              disabled={otpLoading || verifyLoading || loading}
-            />
-            {otpNotice ? <Text style={styles.notice}>{otpNotice}</Text> : null}
-            {devOtpHint ? (
-              <Text style={styles.devHint}>رمز التجربة: {devOtpHint}</Text>
-            ) : null}
-            <LuxuryField
-              value={otpCode}
-              onChangeText={setOtpCode}
-              keyboardType="number-pad"
-              textAlign="center"
-              placeholder="••••••"
-              maxLength={6}
-            />
-            <LuxuryButton
-              label={verifyLoading ? 'نتحقق من الرمز…' : 'تأكيد الدخول'}
-              onPress={() => void confirmOtp()}
-              disabled={verifyLoading || otpLoading || loading}
-            />
-            {allowPhonePreview ? (
+            {allowDevLogin ? (
+              <>
+                <Text style={styles.sectionTitle}>دخول مؤقت (تطوير)</Text>
+                <Text style={styles.muted}>
+                  بدون OTP — للتجربة المحلية فقط. أدخل رقم جوال مسجّل في النظام.
+                </Text>
+                <LuxuryField
+                  icon="call-outline"
+                  value={phone}
+                  onChangeText={setPhone}
+                  keyboardType="phone-pad"
+                  placeholder="5xxxxxxx"
+                />
+                <LuxuryButton
+                  label={verifyLoading ? 'جاري الدخول…' : 'دخول بدون OTP'}
+                  onPress={() => void loginWithoutOtp()}
+                  disabled={verifyLoading || loading}
+                />
+              </>
+            ) : (
+              <>
+                <Text style={styles.sectionTitle}>دخول آمن عبر واتساب</Text>
+                <Text style={styles.muted}>
+                  أدخل رقم جوالك، ثم استخدم رمز الدخول المرسل على واتساب. الرمز صالح لمدة 10 دقائق.
+                </Text>
+                <LuxuryField
+                  icon="call-outline"
+                  value={phone}
+                  onChangeText={setPhone}
+                  keyboardType="phone-pad"
+                  placeholder="5xxxxxxx"
+                />
+                <LuxuryButton
+                  label={otpLoading ? 'نرسل رمز الدخول…' : 'إرسال رمز الدخول'}
+                  onPress={() => void sendOtp()}
+                  disabled={otpLoading || verifyLoading || loading}
+                />
+                {otpNotice ? <Text style={styles.notice}>{otpNotice}</Text> : null}
+                {devOtpHint ? (
+                  <Text style={styles.devHint}>رمز التجربة: {devOtpHint}</Text>
+                ) : null}
+                <LuxuryField
+                  value={otpCode}
+                  onChangeText={setOtpCode}
+                  keyboardType="number-pad"
+                  textAlign="center"
+                  placeholder="••••••"
+                  maxLength={6}
+                />
+                <LuxuryButton
+                  label={verifyLoading ? 'نتحقق من الرمز…' : 'تأكيد الدخول'}
+                  onPress={() => void confirmOtp()}
+                  disabled={verifyLoading || otpLoading || loading}
+                />
+              </>
+            )}
+            {allowPhonePreview && !allowDevLogin ? (
               <Pressable
                 onPress={() => void loadPreview()}
                 disabled={loading || otpLoading || verifyLoading}
@@ -412,7 +477,7 @@ export default function AccountScreen() {
                 </View>
                 <Text style={styles.sectionTitle}>عناوين التوصيل</Text>
                 {profileAddresses.map((item, index) => (
-                  <View key={`${item.id ?? 'new'}-${index}`} style={styles.addressEditor}>
+                  <View key={item.id ?? `temp-${index}`} style={styles.addressEditor}>
                     <LuxuryField
                       label={index === 0 ? 'العنوان الافتراضي' : `عنوان ${index + 1}`}
                       icon="location-outline"
@@ -464,47 +529,28 @@ export default function AccountScreen() {
               ) : null}
             </GlassPanel>
 
-            <FlatList
-              data={portal.recentOrders}
-              keyExtractor={(item) => item.id}
-              style={styles.flexList}
-              contentContainerStyle={[
-                styles.list,
-                { paddingBottom: scrollBottomPad },
-              ]}
-              refreshControl={
-                <RefreshControl
-                  refreshing={refreshing}
-                  onRefresh={() =>
-                    void (sessionActive
-                      ? loadPortalSession('refresh')
-                      : loadPreview())
-                  }
-                />
-              }
-              ListHeaderComponent={
-                <Text style={styles.listTitle}>الفواتير الأخيرة</Text>
-              }
-              renderItem={({ item }) => (
+            <Text style={styles.listTitle}>الفواتير الأخيرة</Text>
+            {portal.recentOrders.length === 0 ? (
+              <GlassPanel>
+                <Text style={styles.sectionTitle}>لا توجد فواتير حالياً</Text>
+                <Text style={styles.muted}>
+                  ستظهر الفواتير هنا بعد تجهيز طلبك وإصداره.
+                </Text>
+              </GlassPanel>
+            ) : (
+              portal.recentOrders.map((item) => (
                 <OrderRow
+                  key={item.id}
                   order={item}
                   busy={busyOrderId === item.id}
                   onPay={() => void payOrder(item)}
                   payEnabled={sessionActive}
                   onTrack={
-                    sessionActive
-                      ? () => openOrderDeliveryTrack(item.id)
-                      : undefined
+                    sessionActive ? () => openOrderDeliveryTrack(item.id) : undefined
                   }
                 />
-              )}
-              ListEmptyComponent={
-                <GlassPanel>
-                  <Text style={styles.sectionTitle}>لا توجد فواتير حالياً</Text>
-                  <Text style={styles.muted}>ستظهر الفواتير هنا بعد تجهيز طلبك وإصداره.</Text>
-                </GlassPanel>
-              }
-            />
+              ))
+            )}
           </>
         ) : null}
 
@@ -672,7 +718,6 @@ const styles = StyleSheet.create({
     lineHeight: luxury.lineHeight.body,
     textAlign: 'right',
   },
-  flexList: { flex: 1 },
   sectionTitle: {
     color: luxury.color.graphite,
     fontSize: luxury.type.headline,

@@ -102,16 +102,18 @@ const STATUS_META: Record<
 };
 
 type DraftLine = {
+  id: string;
   stockItemId: string;
   quantityOrdered: string;
   unitCost: string;
 };
 
-const EMPTY_DRAFT_LINE: DraftLine = {
+const createEmptyDraftLine = (): DraftLine => ({
+  id: `line-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
   stockItemId: '',
   quantityOrdered: '1',
   unitCost: '0.000',
-};
+});
 
 /**
  * Stage-F Cosmetic — Purchase Orders.
@@ -686,7 +688,7 @@ function CreatePoDialog({
 }) {
   const [supplierId, setSupplierId] = useState('');
   const [branchId, setBranchId] = useState('');
-  const [lines, setLines] = useState<DraftLine[]>([{ ...EMPTY_DRAFT_LINE }]);
+  const [lines, setLines] = useState<DraftLine[]>([createEmptyDraftLine()]);
   const [expectedAt, setExpectedAt] = useState('');
   const [notes, setNotes] = useState('');
 
@@ -694,7 +696,7 @@ function CreatePoDialog({
     if (!open) {
       setSupplierId('');
       setBranchId('');
-      setLines([{ ...EMPTY_DRAFT_LINE }]);
+      setLines([createEmptyDraftLine()]);
       setExpectedAt('');
       setNotes('');
     }
@@ -803,7 +805,7 @@ function CreatePoDialog({
                 variant="outline"
                 size="sm"
                 onClick={() =>
-                  setLines((prev) => [...prev, { ...EMPTY_DRAFT_LINE }])
+                  setLines((prev) => [...prev, createEmptyDraftLine()])
                 }
               >
                 <Plus className="ms-1 h-4 w-4" />
@@ -813,7 +815,7 @@ function CreatePoDialog({
             <div className="space-y-2">
               {lines.map((line, idx) => (
                 <div
-                  key={idx}
+                  key={line.id}
                   className="grid grid-cols-12 items-end gap-2 rounded-md border border-border p-2"
                 >
                   <div className="col-span-12 sm:col-span-5">
