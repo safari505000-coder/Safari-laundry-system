@@ -637,6 +637,15 @@ export class PaymentsService implements OnModuleInit {
    */
   onModuleInit(): void {
     const inProd = process.env.NODE_ENV === 'production';
+    if (inProd && this.isPublicMockCheckoutAvailable()) {
+      throw new Error(
+        'FATAL: mock payment gateway is active in production. ' +
+          'Either PAYMENTS_MOCK is true or PAYMENTS_API_BASE_URL is empty — ' +
+          'orders could be finalized as paid without a real gateway. ' +
+          'Set PAYMENTS_API_BASE_URL (e.g. https://apiv2api.upayments.com), ' +
+          'PAYMENTS_API_KEY, PAYMENTS_CALLBACK_PUBLIC_URL, ensure PAYMENTS_MOCK is not true, then redeploy.',
+      );
+    }
     if (inProd && !this.isPublicMockCheckoutAvailable()) {
       if (this.looksLikeLocalHost(this.webAppUrl)) {
         this.logger.error(

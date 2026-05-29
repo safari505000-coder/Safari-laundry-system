@@ -13,8 +13,11 @@ export function assertProductionJwtSecret(): void {
   const s = process.env.JWT_SECRET?.trim();
   if (!s || s === JWT_SECRET_DEV_FALLBACK) {
     Logger.error(
-      'Production: JWT_SECRET is missing or still the dev default. Invoice PDF (INVOICE_SHARE) verification will not match any token signed with another key; set JWT_SECRET in Render to one stable value (min ~32 random chars) and keep it across redeploys.',
+      'Production: JWT_SECRET is missing or still the dev default. Aborting boot — set JWT_SECRET in Render to one stable random value (min ~32 chars) and keep it across redeploys.',
       'Bootstrap',
+    );
+    throw new Error(
+      'FATAL: JWT_SECRET is missing or set to the dev default in production.',
     );
   } else if (s.length < 32) {
     Logger.warn(
