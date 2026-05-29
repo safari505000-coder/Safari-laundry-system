@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import type { Request } from 'express';
 import { ExtractJwt, Strategy } from 'passport-jwt';
-import { JWT_SECRET_DEV_FALLBACK } from '../../common/constants/jwt-secret-fallback';
+import { resolveJwtSecret } from '../../common/constants/jwt-secret-fallback';
 
 export type JwtPayload = {
   sub: string;
@@ -32,7 +32,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         },
       ]),
       ignoreExpiration: false,
-      secretOrKey: process.env.JWT_SECRET ?? JWT_SECRET_DEV_FALLBACK,
+      secretOrKey: resolveJwtSecret(),
     });
   }
 

@@ -219,9 +219,11 @@ export class CustomerPortalAuthService {
       );
     }
 
+    // Interim: 30d balances B2C mobile UX against the old ~10y token. The
+    // portal has no refresh-token flow yet, so customers re-OTP after expiry.
+    // Override via CUSTOMER_PORTAL_TOKEN_TTL; build a refresh flow to shorten.
     const ttl =
-      (process.env.CUSTOMER_PORTAL_TOKEN_TTL?.trim() as `${number}d`) ||
-      '3650d';
+      (process.env.CUSTOMER_PORTAL_TOKEN_TTL?.trim() as `${number}d`) || '30d';
     const payload: JwtPayload = {
       sub: customer.id,
       role: SafariRole.CUSTOMER,

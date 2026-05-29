@@ -7,7 +7,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
-import { JWT_SECRET_DEV_FALLBACK } from '../common/constants/jwt-secret-fallback';
+import { resolveJwtSecret } from '../common/constants/jwt-secret-fallback';
 import { FinanceModule } from '../finance/finance.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { UsersModule } from '../users/users.module';
@@ -30,7 +30,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     UsersModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.register({
-      secret: process.env.JWT_SECRET ?? JWT_SECRET_DEV_FALLBACK,
+      secret: resolveJwtSecret(),
       // V19.12 — access tokens are short-lived; override per call via
       // `jwt.signAsync(payload, { expiresIn })`. Default raised in V24+ to
       // 24h to match the operator session expectation (one full working day
