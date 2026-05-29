@@ -671,7 +671,7 @@ model VehicleExpense {
 
 model Customer {
   id             String    @id @default(uuid()) @db.Uuid
-  phone          String
+  phone          String    @unique
   phone2         String?
   motherContact  String?
   wifeContact    String?
@@ -742,7 +742,6 @@ model Customer {
    */
   fraudAlerts        FraudAlert[]
 
-  @@index([phone])
   @@index([phone2])
   @@index([displayName])
   @@index([originBranchId])
@@ -940,7 +939,7 @@ model Order {
   /**
    * Paper invoice reference when the driver has it; null if not yet recorded.
    */
-  invoiceNumber               String?
+  invoiceNumber               String?          @unique
   /**
    * Dastur §1 (V1.5) + V19.24 — Human-readable, globally-unique string
    * `prefix-n` (per-operator n). Stamped when the order's driver/manager
@@ -1088,7 +1087,6 @@ model Order {
 
   @@index([driverId])
   @@index([status])
-  @@index([invoiceNumber])
   @@index([driverId, cashStatus])
   @@index([completedAt])
   @@index([posPaymentMethod])
