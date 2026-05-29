@@ -741,6 +741,8 @@ model Customer {
    * V20.5 — Phase 8 Fraud alerts raised on this customer.
    */
   fraudAlerts        FraudAlert[]
+  pickupSchedules    CustomerPickupSchedule[]
+  savedCards         SavedPaymentCard[]
 
   @@index([phone2])
   @@index([displayName])
@@ -817,11 +819,44 @@ model CustomerWallet {
   subscriptionLastReminderAt DateTime?
   createdAt                  DateTime  @default(now())
   updatedAt                  DateTime  @updatedAt
+  autoRenewSubscription      Boolean   @default(false)
 
   customer         Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
   subscriptionPlan SubscriptionPlan? @relation("WalletSubscriptionPlan", fields: [subscriptionPlanId], references: [id], onDelete: SetNull)
 
   @@index([subscriptionExpiresAt])
+}
+
+model CustomerPickupSchedule {
+  id         String   @id @default(uuid()) @db.Uuid
+  customerId String   @db.Uuid
+  dayOfWeek  Int      // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+  timeWindow String   // e.g., "18:00-20:00"
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([customerId, dayOfWeek])
+  @@index([customerId])
+}
+
+model SavedPaymentCard {
+  id           String   @id @default(uuid()) @db.Uuid
+  customerId   String   @db.Uuid
+  gatewayToken String
+  cardBrand    String
+  maskedPan    String
+  expiryMonth  Int
+  expiryYear   Int
+  isDefault    Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  customer     Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
 }
 
 /**

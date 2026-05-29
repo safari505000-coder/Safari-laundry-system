@@ -46,4 +46,15 @@ export class WalletService {
   ): Promise<void> {
     await tx.$queryRaw`SELECT 1 FROM "CustomerWallet" WHERE "id" = ${walletId}::uuid FOR UPDATE`;
   }
+
+  async toggleAutoRenewSubscription(
+    tx: PrismaTx,
+    customerId: string,
+    autoRenew: boolean,
+  ) {
+    return tx.customerWallet.update({
+      where: { customerId },
+      data: { autoRenewSubscription: autoRenew },
+    });
+  }
 }
