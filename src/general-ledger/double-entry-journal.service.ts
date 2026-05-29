@@ -805,7 +805,10 @@ export function humanizeJournalSourceRef(
  * - كل كتابة تمر عبر `appendBalanced` الذي يتحقق من التوازن ورموز الحسابات.
  * - `sourceRef` حتمي لكل قيد → الكتابة مرنة بالكامل (idempotent on retry).
  * - الطرق المنتهية بـ `Safe` لا توقف التدفق التجاري عند الإخفاق؛ تُسجِّل الفشل
- *   وتُفعِّل قاطع الدائرة عند تجاوز العتبة.
+ *   وتُفعِّل قاطع الدائرة عند تجاوز العتبة. الاستثناء: عند تفعيل
+ *   `JOURNAL_FAIL_CLOSED_CRITICAL=true` تُعيد الدالتان الحرجتان
+ *   (`appendExternalPaymentEntrySafe` و`appendInvoiceIssuanceEntrySafe`)
+ *   رمي الخطأ بعد التسجيل لإلغاء المعاملة (fail-closed).
  * - قراءة الأرصدة تُجرى فقط من `JournalLine` (حساب 1300 — الذمم).
  *
  * The double-entry journal service — the system's accounting core.
@@ -820,6 +823,9 @@ export function humanizeJournalSourceRef(
  * - `sourceRef` is deterministic per operation → fully idempotent on retry.
  * - Methods ending in `Safe` never abort the surrounding business transaction;
  *   they log failures and trip the circuit breaker on threshold breach.
+ *   Exception: when `JOURNAL_FAIL_CLOSED_CRITICAL=true`, the two CRITICAL
+ *   wrappers (`appendExternalPaymentEntrySafe`, `appendInvoiceIssuanceEntrySafe`)
+ *   re-throw after logging so the transaction rolls back (fail-closed).
  * - Balance reads query only `JournalLine` (account 1300 — AR).
  *
  * @since V20.1
@@ -849,6 +855,32 @@ export class DoubleEntryJournalService {
    */
   private isPeriodLockEnforced(): boolean {
     return process.env.PERIOD_LOCK_ENFORCE === 'true';
+  }
+
+  /**
+   * Fail-closed switch for the two CRITICAL journal wrappers only:
+   * {@link appendExternalPaymentEntrySafe} and
+   * {@link appendInvoiceIssuanceEntrySafe}.
+   *
+   * When `JOURNAL_FAIL_CLOSED_CRITICAL === 'true'`, a journal write
+   * failure on those paths (after period-lock re-throw and P2002
+   * idempotency recovery, and AFTER the failure is logged +
+   * persisted to `JournalFailureLog`) re-throws the original error
+   * so the surrounding business `$transaction` ROLLS BACK — no
+   * payment / invoice is committed without its matching journal
+   * entry.
+   *
+   * When unset / not `'true'`, behaviour is unchanged (swallow +
+   * trip breaker + return null). Read at every call so an operator
+   * can flip the flag without a restart, mirroring
+   * {@link isPeriodLockEnforced}.
+   *
+   * Scope is deliberately limited to the two highest-frequency
+   * money-movement entries; the remaining `*Safe` wrappers keep
+   * the legacy fail-open contract for now.
+   */
+  private isFailClosedCriticalEnabled(): boolean {
+    return process.env.JOURNAL_FAIL_CLOSED_CRITICAL === 'true';
   }
 
   /**
@@ -1134,6 +1166,63 @@ export class DoubleEntryJournalService {
   }
 
   /**
+   * Shared catch-path for the two CRITICAL `*Safe` wrappers
+   * ({@link appendExternalPaymentEntrySafe} and
+   * {@link appendInvoiceIssuanceEntrySafe}). Runs the full Phase 16
+   * safety sequence in a fixed order:
+   *
+   *   1. Re-throw period-lock conflicts (always fail-closed).
+   *   2. P2002 idempotency recovery — a concurrent writer already
+   *      committed this `sourceRef`; return the existing entry so a
+   *      benign race never rolls back a real payment/invoice.
+   *   3. Emit `[JOURNAL_WRITE_FAILED]` + persist a `JournalFailureLog`
+   *      row on the SEPARATE prisma client (survives rollback).
+   *   4. Fail-closed branch ({@link isFailClosedCriticalEnabled}):
+   *      re-throw the original error → the caller's `$transaction`
+   *      rolls back. The breaker is intentionally skipped here — the
+   *      abort already prevents the divergence the breaker guards
+   *      against.
+   *   5. Legacy fail-open branch (flag off): trip the breaker and
+   *      return null (unchanged behaviour).
+   *
+   * @throws the original `err` when fail-closed is enabled and the
+   *         failure is not a recoverable P2002 / period-lock case.
+   */
+  private async handleCriticalSafeFailure(
+    db: Db,
+    err: unknown,
+    failureInput: MirrorDebtLedgerInput,
+  ): Promise<{ id: string } | null> {
+    this.rethrowIfPeriodLock(err);
+
+    const sourceRef = failureInput.sourceRef?.trim();
+    if (
+      sourceRef &&
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      err.code === 'P2002'
+    ) {
+      const existing = await db.journalEntry.findUnique({
+        where: { sourceRef },
+        select: { id: true },
+      });
+      if (existing) return existing;
+    }
+
+    const message = (err as Error)?.message ?? String(err);
+    const errorCode =
+      err instanceof Prisma.PrismaClientKnownRequestError ? err.code : null;
+    this.logJournalWriteFailure(errorCode, message);
+    await this.persistFailure(failureInput, message, errorCode);
+
+    if (this.isFailClosedCriticalEnabled()) {
+      throw err;
+    }
+
+    await this.tripBreakerIfNeeded(failureInput.customerId);
+    return null;
+  }
+
+  /**
    * V20.3 — Phase 31 invoice issuance journal entry.
    *
    * Writes the full invoice amount to AR + REVENUE on order
@@ -1200,25 +1289,15 @@ export class DoubleEntryJournalService {
     try {
       return await this.appendInvoiceIssuanceEntry(db, input);
     } catch (err) {
-      this.rethrowIfPeriodLock(err);
-      const message = (err as Error)?.message ?? String(err);
-      const errorCode =
-        err instanceof Prisma.PrismaClientKnownRequestError ? err.code : null;
-      this.logJournalWriteFailure(errorCode, message);
-      await this.persistFailure(
-        {
-          source: 'INVOICE_ISSUED',
-          sourceRef: `JOURNAL:INVOICE_ISSUED:${input.orderId}`,
-          customerId: input.customerId,
-          orderId: input.orderId,
-          amount: input.amount,
-          actorUserId: input.actorUserId,
-        },
-        message,
-        errorCode,
-      );
-      await this.tripBreakerIfNeeded(input.customerId);
-      return null;
+      // CRITICAL wrapper: fail-closed when JOURNAL_FAIL_CLOSED_CRITICAL=true.
+      return this.handleCriticalSafeFailure(db, err, {
+        source: 'INVOICE_ISSUED',
+        sourceRef: `JOURNAL:INVOICE_ISSUED:${input.orderId}`,
+        customerId: input.customerId,
+        orderId: input.orderId,
+        amount: input.amount,
+        actorUserId: input.actorUserId,
+      });
     }
   }
 
@@ -1384,26 +1463,16 @@ export class DoubleEntryJournalService {
     try {
       return await this.appendExternalPaymentEntry(db, input);
     } catch (err) {
-      this.rethrowIfPeriodLock(err);
-      const message = (err as Error)?.message ?? String(err);
-      const errorCode =
-        err instanceof Prisma.PrismaClientKnownRequestError ? err.code : null;
-      this.logJournalWriteFailure(errorCode, message);
-      await this.persistFailure(
-        {
-          source: 'EXTERNAL_PAYMENT',
-          sourceRef: `JOURNAL:EXTERNAL_PAYMENT:${input.paymentRef}`,
-          customerId: input.customerId,
-          orderId: input.orderId ?? null,
-          amount: input.amount,
-          actorUserId: input.actorUserId,
-          paymentMethod: input.paymentMethod,
-        },
-        message,
-        errorCode,
-      );
-      await this.tripBreakerIfNeeded(input.customerId);
-      return null;
+      // CRITICAL wrapper: fail-closed when JOURNAL_FAIL_CLOSED_CRITICAL=true.
+      return this.handleCriticalSafeFailure(db, err, {
+        source: 'EXTERNAL_PAYMENT',
+        sourceRef: `JOURNAL:EXTERNAL_PAYMENT:${input.paymentRef}`,
+        customerId: input.customerId,
+        orderId: input.orderId ?? null,
+        amount: input.amount,
+        actorUserId: input.actorUserId,
+        paymentMethod: input.paymentMethod,
+      });
     }
   }
 
