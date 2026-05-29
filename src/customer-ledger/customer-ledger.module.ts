@@ -25,6 +25,6 @@ import { WalletService } from './wallet.service';
     DebtRegistrationService,
     PrepaidAutoReconcileCronService,
   ],
-  exports: [CustomerLedgerService],
+  exports: [CustomerLedgerService, WalletService],
 })
 export class CustomerLedgerModule {}

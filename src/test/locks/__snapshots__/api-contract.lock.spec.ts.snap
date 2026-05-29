@@ -9,6 +9,12 @@ exports[`API contract lock freezes public route methods and paths 1`] = `
     "path": "/commission-rules/:id",
   },
   {
+    "file": "src/customers/customer-pickup-schedule.controller.ts",
+    "handler": "deleteSchedule",
+    "method": "DELETE",
+    "path": "/customers/:customerId/pickup-schedule/:dayOfWeek",
+  },
+  {
     "file": "src/laundry-price-list/laundry-price-list.controller.ts",
     "handler": "n",
     "method": "DELETE",
@@ -349,6 +355,12 @@ exports[`API contract lock freezes public route methods and paths 1`] = `
     "handler": "s",
     "method": "GET",
     "path": "/customers/:customerId/360",
+  },
+  {
+    "file": "src/customers/customer-pickup-schedule.controller.ts",
+    "handler": "getSchedules",
+    "method": "GET",
+    "path": "/customers/:customerId/pickup-schedule",
   },
   {
     "file": "src/finance/timeline/financial-timeline.controller.ts",
@@ -1569,6 +1581,12 @@ exports[`API contract lock freezes public route methods and paths 1`] = `
     "path": "/commission-rules/:id",
   },
   {
+    "file": "src/customers/customer-pickup-schedule.controller.ts",
+    "handler": "toggleAutoRenew",
+    "method": "PATCH",
+    "path": "/customers/:customerId/auto-renew",
+  },
+  {
     "file": "src/customers/customers.controller.ts",
     "handler": "s",
     "method": "PATCH",
@@ -1969,6 +1987,12 @@ exports[`API contract lock freezes public route methods and paths 1`] = `
     "handler": "s",
     "method": "POST",
     "path": "/customers",
+  },
+  {
+    "file": "src/customers/customer-pickup-schedule.controller.ts",
+    "handler": "upsertSchedule",
+    "method": "POST",
+    "path": "/customers/:customerId/pickup-schedule",
   },
   {
     "file": "src/customers/customers.controller.ts",
