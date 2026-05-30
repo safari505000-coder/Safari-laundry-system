@@ -26,11 +26,17 @@ import {
   ALL_PERMISSION_KEYS,
   CALL_CENTER_PERMISSION_KEYS,
   DRIVER_PERMISSION_KEYS,
+  GENERAL_MANAGER_PERMISSION_KEYS,
   MANAGER_PERMISSION_KEYS,
   SUPERVISOR_PERMISSION_KEYS,
   VIEWER_PERMISSION_KEYS,
 } from './permission-seeds';
 import { seedLaundryPriceList } from './price-list-seed';
+import {
+  seedBaselineBranches,
+  seedBaselineStaff,
+  seedBaselineSubscriptionPlans,
+} from './baseline-data';
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
@@ -84,8 +90,12 @@ async function main(): Promise<void> {
     { code: '1200', name: 'BANK_KNET', type: AccountType.ASSET },
     { code: '1210', name: 'BANK_ONLINE', type: AccountType.ASSET },
     { code: '1300', name: 'ACCOUNTS_RECEIVABLE', type: AccountType.ASSET },
+    { code: '2100', name: 'WALLET_LIABILITY', type: AccountType.LIABILITY },
     { code: '4100', name: 'REVENUE', type: AccountType.REVENUE },
+    { code: '4200', name: 'REVENUE_RETURNS', type: AccountType.REVENUE },
     { code: '5100', name: 'ADJUSTMENTS', type: AccountType.EXPENSE },
+    { code: '5200', name: 'DEBT_DISCOUNTS', type: AccountType.EXPENSE },
+    { code: '5300', name: 'PROMOTIONAL_EXPENSE', type: AccountType.EXPENSE },
   ] as const;
 
   for (const account of chartOfAccounts) {
@@ -137,6 +147,25 @@ async function main(): Promise<void> {
     update: {
       permissions: {
         set: managerPermissions.map((p) => ({ id: p.id })),
+      },
+    },
+  });
+
+  const generalManagerPermissions = await prisma.permission.findMany({
+    where: { key: { in: [...GENERAL_MANAGER_PERMISSION_KEYS] } },
+  });
+
+  await prisma.role.upsert({
+    where: { name: SafariRole.GENERAL_MANAGER },
+    create: {
+      name: SafariRole.GENERAL_MANAGER,
+      permissions: {
+        connect: generalManagerPermissions.map((p) => ({ id: p.id })),
+      },
+    },
+    update: {
+      permissions: {
+        set: generalManagerPermissions.map((p) => ({ id: p.id })),
       },
     },
   });
@@ -353,6 +382,10 @@ async function main(): Promise<void> {
       roleId: ownerRole.id,
     },
   });
+
+  await seedBaselineBranches(prisma);
+  await seedBaselineStaff(prisma, SEED_RESET_PASSWORDS);
+  await seedBaselineSubscriptionPlans(prisma);
 
   if (CALL_CENTER_USERNAME) {
     const ccHash = await bcrypt.hash(CALL_CENTER_PASSWORD, 12);
