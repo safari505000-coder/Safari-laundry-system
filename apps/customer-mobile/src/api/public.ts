@@ -327,7 +327,62 @@ export async function createBalancePaymentLink(
 
 }
 
+export type CustomerPickupScheduleDto = {
+  id: string;
+  dayOfWeek: number;
+  timeWindow: string;
+  isActive: boolean;
+};
 
+export async function fetchPickupSchedules(
+  customerId: string,
+): Promise<CustomerPickupScheduleDto[]> {
+  return apiJson<CustomerPickupScheduleDto[]>(
+    `/customers/${encodeURIComponent(customerId)}/pickup-schedule`,
+    await withCustomerAuth(),
+  );
+}
+
+export async function upsertPickupSchedule(
+  customerId: string,
+  payload: { dayOfWeek: number; timeWindow: string; isActive?: boolean },
+): Promise<CustomerPickupScheduleDto> {
+  return apiJson<CustomerPickupScheduleDto>(
+    `/customers/${encodeURIComponent(customerId)}/pickup-schedule`,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      ...(await withCustomerAuth()),
+    },
+  );
+}
+
+export async function deletePickupSchedule(
+  customerId: string,
+  dayOfWeek: number,
+): Promise<{ ok: boolean }> {
+  return apiJson(
+    `/customers/${encodeURIComponent(customerId)}/pickup-schedule/${dayOfWeek}`,
+    {
+      method: 'DELETE',
+      ...(await withCustomerAuth()),
+    },
+  );
+}
+
+export async function toggleAutoRenew(
+  customerId: string,
+  autoRenew: boolean,
+): Promise<{ ok: boolean }> {
+  return apiJson(
+    `/customers/${encodeURIComponent(customerId)}/auto-renew`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ autoRenew }),
+      ...(await withCustomerAuth()),
+    },
+  );
+}
 
 export type {
 
