@@ -65,6 +65,12 @@ export const SUPERVISOR_PERMISSION_KEYS: readonly string[] = [
   ...MANAGER_PERMISSION_KEYS,
 ];
 
+/** GENERAL_MANAGER — read-heavy oversight (المدير العام). */
+export const GENERAL_MANAGER_PERMISSION_KEYS: readonly string[] = [
+  ...MANAGER_PERMISSION_KEYS,
+  ...ACCOUNTANT_PERMISSION_KEYS,
+];
+
 /** VIEWER — read-only dashboards & lookups (no write operations). */
 export const VIEWER_PERMISSION_KEYS: readonly string[] = [
   ...ACCOUNTANT_PERMISSION_KEYS,
