@@ -99,6 +99,7 @@ export class PublicApiService {
             debt: true,
             subscriptionPlanName: true,
             subscriptionExpiresAt: true,
+            autoRenewSubscription: true,
           },
         },
       },
@@ -137,6 +138,7 @@ export class PublicApiService {
         subscriptionPlanName: customer.wallet?.subscriptionPlanName ?? null,
         subscriptionExpiresAtIso:
           customer.wallet?.subscriptionExpiresAt?.toISOString() ?? null,
+        autoRenewSubscription: customer.wallet?.autoRenewSubscription ?? false,
       },
       recentOrders: payableOrders,
     };
