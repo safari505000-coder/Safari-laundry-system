@@ -34,3 +34,7 @@ reports/
 # locally; the file MUST NOT be committed because it can leak DB
 # host names and row counts.
 .reset-audit/
+
+# Expo Go dev QR codes — regenerated locally per machine/Wi-Fi (the IP
+# changes), so they churn every diff and must never be committed.
+expo-go-qr.png
