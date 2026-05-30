@@ -67,6 +67,7 @@ export type CustomerPortalMeResponse = {
     walletDebtKd: string;
     subscriptionPlanName: string | null;
     subscriptionExpiresAtIso: string | null;
+    autoRenewSubscription: boolean;
   };
   recentOrders: CustomerPortalOrder[];
 };
