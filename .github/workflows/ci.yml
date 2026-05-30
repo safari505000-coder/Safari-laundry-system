@@ -130,8 +130,12 @@ jobs:
         run: npm ci
         working-directory: web
 
-      - name: TypeScript typecheck (frontend)
-        run: npx tsc --noEmit
+      # `tsc -b` builds the solution (tsconfig.app + tsconfig.node) and is what
+      # the Docker production build runs. Plain `tsc --noEmit` is a no-op here
+      # because web/tsconfig.json is a solution file (`files: []`), so it checks
+      # nothing and lets real type errors reach main.
+      - name: TypeScript build check (frontend)
+        run: npx tsc -b
         working-directory: web
 
   mobile-logic-test:
