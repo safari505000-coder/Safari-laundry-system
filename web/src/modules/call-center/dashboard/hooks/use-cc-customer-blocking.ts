@@ -7,9 +7,14 @@ import {
   type CustomerBlockSnapshot,
 } from '../api/cc-dashboard-api';
 
-export type BlockingActionResult =
-  | { ok: true; data: CustomerBlockSnapshot }
-  | { ok: false; error: string };
+// Flat result bag (not a discriminated union): web/tsconfig has
+// strictNullChecks disabled, under which TS cannot narrow a boolean
+// (`ok`) discriminant. Callers still branch on `ok` at runtime.
+export type BlockingActionResult = {
+  ok: boolean;
+  data?: CustomerBlockSnapshot;
+  error?: string;
+};
 
 /**
  * Block / unblock mutation pair. Both endpoints are idempotent on

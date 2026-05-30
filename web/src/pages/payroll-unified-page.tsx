@@ -136,6 +136,10 @@ function rosterBankExtrasPayload(d: {
         bankIban: string | null;
         bankName: string | null;
       };
+      // `message` is declared (optional) on the success member too so callers
+      // can read `parsed.message` without relying on false-branch narrowing,
+      // which web/tsconfig (strictNullChecks disabled) does not perform.
+      message?: string;
     }
   | { ok: false; message: string } {
   const sortRaw = d.rosterOrder.trim();

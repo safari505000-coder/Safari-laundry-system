@@ -9,9 +9,16 @@ import {
   type ReassignDispatchInput,
 } from '../api/cc-dashboard-api';
 
-export type DispatchActionResult<T> =
-  | { ok: true; data: T }
-  | { ok: false; error: string; status?: number; errorCode?: string };
+// Flat result bag (not a discriminated union): web/tsconfig has
+// strictNullChecks disabled, under which TS cannot narrow a boolean
+// (`ok`) discriminant. Callers still branch on `ok` at runtime.
+export type DispatchActionResult<T> = {
+  ok: boolean;
+  data?: T;
+  error?: string;
+  status?: number;
+  errorCode?: string;
+};
 
 /**
  * Mutation helpers for dispatch create + reassign.
