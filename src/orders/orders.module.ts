@@ -16,6 +16,7 @@ import { DriverOrderDeliveryController } from './driver-order-delivery.controlle
 import { OrdersController } from './orders.controller';
 import { PublicInvoiceController } from './public-invoice.controller';
 import { OrderDeliveryService } from './order-delivery.service';
+import { OrderCustomerNotificationService } from './order-customer-notification.service';
 import { OrdersService } from './orders.service';
 import { StaleQuickOrdersCronService } from './stale-quick-orders.cron';
 
@@ -39,6 +40,7 @@ import { StaleQuickOrdersCronService } from './stale-quick-orders.cron';
   providers: [
     OrdersService,
     OrderDeliveryService,
+    OrderCustomerNotificationService,
     ExpoPushService,
     StaleQuickOrdersCronService,
     AuditService,
