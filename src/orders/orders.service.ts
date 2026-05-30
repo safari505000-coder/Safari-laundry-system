@@ -24,7 +24,6 @@ import {
   ORDER_CREATED_EVENT,
   type OrderCreatedEventPayload,
 } from '../dispatch/dispatch.events';
-import type { CreatePaymentLinkResult } from '../common/services/payments.service';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { CustomerBlockingService } from '../common/services/customer-blocking.service';
 import { OutstandingService } from '../finance/outstanding/outstanding.service';
@@ -36,7 +35,6 @@ import { cashStatusForPaymentMethod } from '../common/utils/cash-status-for-meth
 import { resolveCustomerPhoneForNotify } from '../common/validation/kuwait-customer-phone';
 import { GeneralLedgerService } from '../general-ledger/general-ledger.service';
 import { DebtVisibilityService } from '../finance/debt-visibility/debt-visibility.service';
-import { toDbPosPaymentMethod } from '../finance/canonical-payment-method';
 import {
   computeCanonicalDriverPendingInvoiceProjection,
   computeCanonicalUnpaidOnlineReportProjection,
@@ -66,54 +64,46 @@ import type { DriverContributionDto } from './dto/manager-dashboard.dto';
 import type { OrderLineItemDto } from './dto/order-line-item.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
 import { assertOrderStatusTransition } from './order-status.machine';
-import { assertLineItemsMatchTotal } from './order-total.util';
 import { buildPublicInvoicePdfUrl } from './invoice-pdf.util';
+import {
+  PAYMENT_LINK_VALIDITY_MS,
+  POS_DELIVERY_FEE_KD,
+  POS_ORDER_INTERACTIVE_TX,
+  STALE_QUICK_ORDER_THRESHOLD_MS,
+  terminalStatuses,
+} from './order-constants';
+import {
+  canStaffUpdateOrders,
+  canViewAllOrders,
+} from './order-role-policy';
+import { orderDetailSelect } from './order-selects';
+import {
+  mapPosCheckoutLineItems,
+  reconcileLineItems,
+  resolveLaundryTierPrice,
+  resolvePosCheckoutPaymentMethod,
+} from './order-pos-pricing.util';
+import {
+  collectionDebtReasonAr,
+  formatLineItemsBlockForBundleNotify,
+  formatLineItemsBlockForNotify,
+  invoiceLabelForCustomerNotify,
+} from './order-notification-format.util';
+import {
+  type OrderDetail,
+  type OrderDetailWithListFlags,
+  type PosCheckoutBundleResult,
+  type PosCheckoutOrderDetail,
+  type PosPricedLineCreate,
+  type PosServiceKey,
+  type PrismaOrderDb,
+} from './order-types';
+import { normalizePublicInvoiceTokenParam } from './public-invoice-token.util';
 import PDFDocument from 'pdfkit';
 import { PassThrough } from 'node:stream';
 
-/**
- * V19.22.2 — Payment-link validity window (milliseconds).
- *
- * MUST stay in sync with
- * `PaymentsService.paymentLinkExpiryInMinutes` (see
- * `src/common/services/payments.service.ts`). UPayments enforces the
- * same ceiling, so the Field Collection Tracker's PENDING / EXPIRED
- * badges reflect what the gateway will actually accept.
- */
-const PAYMENT_LINK_VALIDITY_HOURS = 24;
-const PAYMENT_LINK_VALIDITY_MS = PAYMENT_LINK_VALIDITY_HOURS * 60 * 60 * 1000;
-
-/**
- * Prisma interactive `$transaction` budget for POS / completion paths.
- * Wallet row locks + inventory decrement can exceed 15s on slow local
- * Postgres or under contention; otherwise the API surfaces P2028 as
- * «انتهت مهلة معاملة قاعدة البيانات».
- */
-const POS_ORDER_INTERACTIVE_TX = { maxWait: 20_000, timeout: 45_000 } as const;
-const POS_DELIVERY_FEE_KD = new Prisma.Decimal('0.2500');
-
-type PosServiceKey = 'NORMAL' | 'URGENT' | 'PRESS_ONLY' | 'URGENT_PRESS';
-
-type PosPricedLineCreate = {
-  label: string | null;
-  starchOption: 'NONE';
-  quantity: string;
-  unitPrice: string;
-  stockItemId: string | null;
-};
-
-/**
- * V19.22.4 — Stale Quick-Capture threshold (milliseconds).
- *
- * Any Order that has been sitting in PENDING + UNPAID state longer
- * than this is surfaced to the Accountant as an
- * accountability risk. Consumed by
- * `OrdersService.listStaleQuickOrderRisks()` and the daily
- * `StaleQuickOrdersCron` audit job.
- */
-const STALE_QUICK_ORDER_THRESHOLD_HOURS = 24;
-const STALE_QUICK_ORDER_THRESHOLD_MS =
-  STALE_QUICK_ORDER_THRESHOLD_HOURS * 60 * 60 * 1000;
+export { orderDetailSelect } from './order-selects';
+export type { OrderDetail } from './order-types';
 
 export function resolveOperationalDebtKd(input: {
   ledgerNetKd: Prisma.Decimal;
@@ -122,100 +112,6 @@ export function resolveOperationalDebtKd(input: {
 }): Prisma.Decimal {
   return Prisma.Decimal.max(input.ledgerNetKd, input.snapshotFromWalletKd);
 }
-
-export const orderDetailSelect = {
-  id: true,
-  status: true,
-  serviceType: true,
-  totalPrice: true,
-  cashStatus: true,
-  posPaymentMethod: true,
-  completedAt: true,
-  walletSettledAt: true,
-  invoiceNumber: true,
-  serialNumber: true,
-  notes: true,
-  reminderCount: true,
-  lastReminderAt: true,
-  dispatchId: true,
-  deliveryStatus: true,
-  deliveryStartedAt: true,
-  deliveredAt: true,
-  returnedAt: true,
-  deliveryReturnReason: true,
-  deliveryDriverId: true,
-  createdAt: true,
-  updatedAt: true,
-  customer: {
-    select: {
-      id: true,
-      phone: true,
-      phone2: true,
-      address: true,
-      displayName: true,
-      // V19.22 — surface outstanding wallet debt on invoice prints so the
-      // customer (and driver handing over the receipt) immediately sees
-      // any prior debt that is still owed. The print template hides the
-      // line when debt is zero so zero-debt receipts keep the old layout.
-      wallet: { select: { balance: true, debt: true } },
-    },
-  },
-  driver: {
-    select: {
-      id: true,
-      username: true,
-      fullName: true,
-      employeeId: true,
-      jobTitle: true,
-      phone: true,
-      safariRole: true,
-      // V19.9 — surface the issuing driver's branch so the Call-Center
-      // "All Invoices" browser can render an aggregated table without
-      // a secondary fetch. Any consumer that already destructures the
-      // driver object is forward-compatible (extra property is
-      // additive).
-      branch: { select: { id: true, name: true } },
-    },
-  },
-  lineItems: {
-    select: {
-      id: true,
-      label: true,
-      starchOption: true,
-      quantity: true,
-      unitPrice: true,
-    },
-  },
-} satisfies Prisma.OrderSelect;
-
-export type OrderDetail = Prisma.OrderGetPayload<{
-  select: typeof orderDetailSelect;
-}>;
-
-/** V19.26 — set on `GET /api/orders` when any supervisor EDIT row exists. */
-export type OrderDetailWithListFlags = OrderDetail & {
-  hasSupervisorEdit: boolean;
-};
-
-/** POS checkout may attach a hosted payment URL when using ONLINE. */
-export type PosCheckoutOrderDetail = OrderDetail & {
-  paymentLink?: CreatePaymentLinkResult;
-};
-
-/** Multi-invoice POS: one gateway session for several orders. */
-export type PosCheckoutBundleResult = {
-  bundleId: string;
-  orders: OrderDetail[];
-  paymentLink: CreatePaymentLinkResult;
-};
-
-/** Prisma client outside or inside `$transaction`. */
-type PrismaOrderDb = PrismaService | Prisma.TransactionClient;
-
-const terminalStatuses: OrderStatus[] = [
-  OrderStatus.COMPLETED,
-  OrderStatus.CANCELED,
-];
 
 @Injectable()
 export class OrdersService {
@@ -352,54 +248,6 @@ export class OrdersService {
    * so the UPayments link + receipt text is delivered before the HTTP response
    * returns to the POS.
    */
-  /**
-   * V19.27.5 — Text block for customer WhatsApp: line labels + qty × price (3dp KWD).
-   */
-  private formatLineItemsBlockForNotify(detail: OrderDetail): string {
-    if (!detail.lineItems?.length) {
-      return '';
-    }
-    const out: string[] = [];
-    for (const li of detail.lineItems) {
-      const qty = Number(li.quantity);
-      const unit = Number(li.unitPrice);
-      const sub = (qty * unit).toFixed(3);
-      const label = (li.label ?? '—').replace(/\s+/g, ' ').trim();
-      out.push(
-        `• ${label} — العدد ${String(qty)} × ${unit.toFixed(3)} = ${sub} د.ك`,
-      );
-    }
-    return out.join('\n');
-  }
-
-  private formatLineItemsBlockForBundleNotify(orders: OrderDetail[]): string {
-    if (orders.length === 0) {
-      return '';
-    }
-    if (orders.length === 1) {
-      return this.formatLineItemsBlockForNotify(orders[0]!);
-    }
-    const parts: string[] = [];
-    for (const o of orders) {
-      const lab = this.invoiceLabelForCustomerNotify(o);
-      const block = this.formatLineItemsBlockForNotify(o);
-      parts.push(`━━ ${lab} ━━`, block || '—');
-    }
-    return parts.join('\n\n');
-  }
-
-  /**
-   * V19.27.6 — تسلسل السائق (serialNumber، مثلاً D2-1045) كما في الإعدادات/الطابعة
-   * على الفاتورة؛ إن وُجد يُستَخدَم لنص واتساب، ثم رقم الورقي، ثم مُختصَر id.
-   */
-  private invoiceLabelForCustomerNotify(order: OrderDetail): string {
-    return (
-      order.serialNumber?.trim() ||
-      order.invoiceNumber?.trim() ||
-      `#${order.id.slice(0, 8)}`
-    );
-  }
-
   private async posInvoiceNotifyToCustomer(
     detail: PosCheckoutOrderDetail,
     phoneCompact: string,
@@ -409,9 +257,9 @@ export class OrdersService {
       detail.customer.phone2,
       phoneCompact,
     );
-    const inv = this.invoiceLabelForCustomerNotify(detail);
+    const inv = invoiceLabelForCustomerNotify(detail);
     const amt = detail.totalPrice.toFixed(3);
-    const lineItemsSummary = this.formatLineItemsBlockForNotify(detail);
+    const lineItemsSummary = formatLineItemsBlockForNotify(detail);
     await this.customerNotifications.deliverInvoiceIssuedNow({
       customerPhone: phone,
       orderId: detail.id,
@@ -447,11 +295,11 @@ export class OrdersService {
       return;
     }
     const link = await this.paymentsService.ensurePaymentLinkForUnpaidOrder(order.id);
-    const lineItemsSummary = this.formatLineItemsBlockForNotify(order);
+    const lineItemsSummary = formatLineItemsBlockForNotify(order);
     await this.customerNotifications.deliverInvoiceIssuedNow({
       customerPhone: phone,
       orderId: order.id,
-      invoiceLabel: this.invoiceLabelForCustomerNotify(order),
+      invoiceLabel: invoiceLabelForCustomerNotify(order),
       amountKd: order.totalPrice.toFixed(3),
       paymentUrl: link.url,
       lineItemsSummary: lineItemsSummary || undefined,
@@ -460,33 +308,6 @@ export class OrdersService {
       where: { id: order.id },
       data: { ccCollectionPaymentWaLocked: true },
     });
-  }
-
-  private isManagerOrOwner(role: string): boolean {
-    return (
-      role === SafariRole.OWNER ||
-      role === SafariRole.GENERAL_MANAGER ||
-      role === SafariRole.MANAGER
-    );
-  }
-
-  private canViewAllOrders(role: string): boolean {
-    return (
-      this.isManagerOrOwner(role) ||
-      role === SafariRole.CALL_CENTER ||
-      role === SafariRole.CALL_CENTER_SUPERVISOR ||
-      role === SafariRole.ACCOUNTANT ||
-      role === SafariRole.SUPERVISOR ||
-      role === SafariRole.VIEWER
-    );
-  }
-
-  /** Back-office roles that may change order status/notes (excludes owner read-only). */
-  private canStaffUpdateOrders(role: string): boolean {
-    return (
-      role === SafariRole.MANAGER ||
-      role === SafariRole.SUPERVISOR
-    );
   }
 
   private async assertDriverUser(id: string): Promise<void> {
@@ -546,96 +367,6 @@ export class OrdersService {
           'CALL_CENTER actors must supply dispatchId on order creation.',
       });
     }
-  }
-
-  /** Maps public/client payment input to DB enum values. */
-  private resolvePosCheckoutPaymentMethod(
-    _shortfallMinor: bigint,
-    raw: PosPaymentMethod | string | undefined,
-  ): PosPaymentMethod {
-    return toDbPosPaymentMethod(raw) ?? PosPaymentMethod.CASH;
-  }
-
-  private reconcileLineItems(
-    totalPrice: number,
-    lineItems?: OrderLineItemDto[],
-  ):
-    | {
-        label: string | null;
-        quantity: number;
-        unitPrice: number;
-        stockItemId: string | null;
-      }[]
-    | undefined {
-    const items = lineItems ?? [];
-    assertLineItemsMatchTotal(totalPrice, items);
-    if (!items.length) {
-      return undefined;
-    }
-    return items.map((line) => ({
-      label: line.label?.trim() || null,
-      starchOption: line.starchOption ?? 'NONE',
-      quantity: line.quantity,
-      unitPrice: line.unitPrice,
-      stockItemId: line.stockItemId ?? null,
-    }));
-  }
-
-  /**
-   * POS checkout line rows — use plain numbers for Decimal columns (avoids nested
-   * Prisma.Decimal create quirks on some drivers).
-   */
-  private mapPosCheckoutLineItems(
-    lineItems?: OrderLineItemDto[],
-  ):
-    | {
-        label: string | null;
-        quantity: number;
-        unitPrice: number;
-        stockItemId: string | null;
-      }[]
-    | undefined {
-    const items = lineItems ?? [];
-    if (!items.length) {
-      return undefined;
-    }
-    return items.map((line) => ({
-      label: line.label?.trim() || null,
-      starchOption: line.starchOption ?? 'NONE',
-      quantity: Number(line.quantity),
-      unitPrice: Number(line.unitPrice),
-      stockItemId: line.stockItemId ?? null,
-    }));
-  }
-
-  private resolveLaundryTierPrice(
-    item: {
-      priceNormal: Prisma.Decimal;
-      priceUrgent: Prisma.Decimal;
-      pricePressOnly: Prisma.Decimal | null;
-      priceUrgentPress: Prisma.Decimal | null;
-      branchOverrides: {
-        priceNormal: Prisma.Decimal | null;
-        priceUrgent: Prisma.Decimal | null;
-        pricePressOnly: Prisma.Decimal | null;
-        priceUrgentPress: Prisma.Decimal | null;
-      }[];
-    },
-    serviceKey: PosServiceKey,
-  ): Prisma.Decimal {
-    const override = item.branchOverrides[0];
-    const price =
-      serviceKey === 'NORMAL'
-        ? (override?.priceNormal ?? item.priceNormal)
-        : serviceKey === 'URGENT'
-          ? (override?.priceUrgent ?? item.priceUrgent)
-          : serviceKey === 'PRESS_ONLY'
-            ? (override?.pricePressOnly ?? item.pricePressOnly)
-            : (override?.priceUrgentPress ?? item.priceUrgentPress);
-    if (!price || price.lt(0)) {
-      throw new BadRequestException('Selected service is not priced for this item.');
-    }
-    return price;
   }
 
   private async pricePosCheckoutLines(
@@ -701,7 +432,7 @@ export class OrdersService {
           'Manual-price catalog items are not allowed in mobile POS checkout.',
         );
       }
-      const unitPrice = this.resolveLaundryTierPrice(item, serviceKey);
+      const unitPrice = resolveLaundryTierPrice(item, serviceKey);
       if (unitPrice.lte(0)) {
         throw new BadRequestException('Selected service has no positive catalog price.');
       }
@@ -765,8 +496,8 @@ export class OrdersService {
     if (catalogOnly) {
       return this.pricePosCheckoutLines(tx, actorUserId, dto.lineItems);
     }
-    assertLineItemsMatchTotal(dto.totalPrice, items);
-    const mapped = this.mapPosCheckoutLineItems(items);
+    reconcileLineItems(dto.totalPrice, items);
+    const mapped = mapPosCheckoutLineItems(items);
     if (!mapped?.length) {
       throw new BadRequestException('POS checkout requires line items.');
     }
@@ -854,7 +585,7 @@ export class OrdersService {
     driverUserId: string,
     dto: CreateOrderQuickDto,
   ): Promise<OrderDetail> {
-    const quickPayment = toDbPosPaymentMethod(dto.posPaymentMethod);
+    const quickPayment = resolvePosCheckoutPaymentMethod(0n, dto.posPaymentMethod);
     if (
       !quickPayment ||
       quickPayment === PosPaymentMethod.SUBSCRIPTION_WALLET
@@ -874,7 +605,7 @@ export class OrdersService {
       driverUserId,
     );
     const serviceType = dto.serviceType ?? ServiceType.NORMAL;
-    const lineCreates = this.reconcileLineItems(dto.totalPrice, dto.lineItems);
+    const lineCreates = reconcileLineItems(dto.totalPrice, dto.lineItems);
     const phoneCompact = dto.customerPhone.replace(/[\s-]/g, '').trim();
 
     const order = await this.prisma.$transaction(async (tx) => {
@@ -984,7 +715,7 @@ export class OrdersService {
           const shortfallMinor =
             totalMinor > balanceMinor ? totalMinor - balanceMinor : 0n;
 
-          const posPaymentMethodResolved = this.resolvePosCheckoutPaymentMethod(
+          const posPaymentMethodResolved = resolvePosCheckoutPaymentMethod(
             shortfallMinor,
             dto.posPaymentMethod,
           );
@@ -1258,9 +989,9 @@ export class OrdersService {
         );
       }
       if (part.lineItems?.length) {
-        assertLineItemsMatchTotal(part.totalPrice, part.lineItems);
+        reconcileLineItems(part.totalPrice, part.lineItems);
       }
-      const lineCreates = this.mapPosCheckoutLineItems(part.lineItems);
+      const lineCreates = mapPosCheckoutLineItems(part.lineItems);
       if (lineCreates) {
         for (const line of lineCreates) {
           // See note in posCheckout above — `unitPrice >= 0` to admit the
@@ -1382,14 +1113,14 @@ export class OrdersService {
 
     {
       const first = orders[0]!;
-      const lineItemsSummary = this.formatLineItemsBlockForBundleNotify(orders);
+      const lineItemsSummary = formatLineItemsBlockForBundleNotify(orders);
       await this.customerNotifications.deliverInvoiceIssuedNow({
         customerPhone: phone,
         orderId: first.id,
         invoiceLabel:
           orders.length > 1 ?
             `مجموعة ${orders.length} فواتير`
-          : this.invoiceLabelForCustomerNotify(first),
+          : invoiceLabelForCustomerNotify(first),
         amountKd: sumDecimal.toFixed(3),
         paymentUrl: paymentLink.url,
         lineItemsSummary: lineItemsSummary || undefined,
@@ -1427,7 +1158,7 @@ export class OrdersService {
       );
     }
     const serviceType = dto.serviceType ?? ServiceType.NORMAL;
-    const lineCreates = this.reconcileLineItems(dto.totalPrice, dto.lineItems);
+    const lineCreates = reconcileLineItems(dto.totalPrice, dto.lineItems);
     const order = await this.prisma.$transaction(async (tx) => {
       const phoneCompact = dto.customerPhone.replace(/[\s-]/g, '').trim();
       const existingByPhone = await this.findCustomerByAnyPhone(tx, phoneCompact);
@@ -2671,34 +2402,6 @@ export class OrdersService {
     return row.amountKd;
   }
 
-  private collectionDebtReasonAr(
-    paymentMethod: PosPaymentMethod | null,
-    createdAtIso: string,
-    invoiceNumber: string | null,
-    readableId: string,
-  ): string {
-    const d = new Date(createdAtIso);
-    const dateStr = Number.isNaN(d.getTime())
-      ? ''
-      : d.toLocaleDateString('ar-KW', { timeZone: 'Asia/Kuwait' });
-    const ref = invoiceNumber?.trim() || readableId;
-    const noPaper = !invoiceNumber?.trim()
-      ? ' (لا يوجد رقم فاتورة ورقية — مرجع النظام فقط)'
-      : '';
-
-    switch (paymentMethod) {
-      case PosPaymentMethod.DEBT_ON_ACCOUNT:
-        return `• ${ref} — ${dateStr}: «دين على الحساب» — طلب منفصل سُجّل كذمة مباشرة ولم يُغطَّ برصيد الاشتراك${noPaper}.`;
-      case PosPaymentMethod.SUBSCRIPTION_WALLET:
-        return `• ${ref} — ${dateStr}: باقي فاتورة بعد خصم رصيد الاشتراك من المحفظة${noPaper}.`;
-      case PosPaymentMethod.PAYMENT_LINK:
-      case PosPaymentMethod.ONLINE:
-        return `• ${ref} — ${dateStr}: فاتورة بانتظار إتمام الدفع الإلكتروني${noPaper}.`;
-      default:
-        return `• ${ref} — ${dateStr}: رصيد مستحق على الطلب${noPaper}.`;
-    }
-  }
-
   /**
    * Itemized open debt for CC «full balance» links — amounts match the
    * collections table; `reasonAr` explains each line for customer trust.
@@ -2755,7 +2458,7 @@ export class OrdersService {
         amountKd: r.amountKd,
         paymentMethod: r.paymentMethod,
         orderDateIso: r.createdAtIso,
-        reasonAr: this.collectionDebtReasonAr(
+        reasonAr: collectionDebtReasonAr(
           r.paymentMethod,
           r.createdAtIso,
           r.invoiceNumber,
@@ -3289,7 +2992,7 @@ export class OrdersService {
         return [];
       }
       where.driver = { branchId };
-    } else if (!this.canViewAllOrders(role)) {
+    } else if (!canViewAllOrders(role)) {
       return [];
     }
 
@@ -3379,7 +3082,7 @@ export class OrdersService {
     if (!order) {
       throw new NotFoundException('Order not found');
     }
-    if (this.canViewAllOrders(role)) {
+    if (canViewAllOrders(role)) {
       return order;
     }
     if (role === SafariRole.DRIVER && order.driver?.id === userId) {
@@ -3424,22 +3127,6 @@ export class OrdersService {
   }
 
   /**
-   * Public GET for `GET /api/public/invoice/:token` — same `orderDetailSelect`
-   * payload as staff `GET /api/orders/:id` after JWT verification.
-   */
-  private normalizePublicInvoiceTokenParam(raw: string): string {
-    const t = (raw ?? '').trim();
-    if (!t) {
-      return t;
-    }
-    try {
-      return decodeURIComponent(t);
-    } catch {
-      return t;
-    }
-  }
-
-  /**
    * V19.27 — Stream a simple A4 PDF (English labels; numbers match order totals).
    * Moatmt and other clients fetch this URL as `application/pdf` without SPA auth.
    */
@@ -3447,7 +3134,7 @@ export class OrdersService {
     stream: PassThrough;
     filename: string;
   }> {
-    const normalized = this.normalizePublicInvoiceTokenParam(token);
+    const normalized = normalizePublicInvoiceTokenParam(token);
     const order = await this.getOrderForPublicInvoiceToken(normalized);
     const inv =
       order.invoiceNumber?.trim() ||
@@ -3527,7 +3214,7 @@ export class OrdersService {
    * @returns تفاصيل الفاتورة العامة / Public invoice order details
    */
   async getOrderForPublicInvoiceToken(token: string): Promise<OrderDetail> {
-    const normalized = this.normalizePublicInvoiceTokenParam(token);
+    const normalized = normalizePublicInvoiceTokenParam(token);
     let payload: { purpose?: string; orderId?: string };
     try {
       payload = await this.jwt.verifyAsync(normalized);
@@ -3635,7 +3322,7 @@ export class OrdersService {
           'You may only update orders assigned to you',
         );
       }
-    } else if (!this.canStaffUpdateOrders(role)) {
+    } else if (!canStaffUpdateOrders(role)) {
       throw new ForbiddenException('Your role cannot update orders');
     }
     if (dto.status !== undefined && dto.status !== order.status) {
