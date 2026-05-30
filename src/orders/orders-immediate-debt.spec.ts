@@ -118,6 +118,10 @@ function makeService() {
     { applyOrderStockDecrement: jest.fn().mockResolvedValue(undefined) } as never,
     {} as never,
     { autoBlockIfNeeded: jest.fn().mockResolvedValue(undefined) } as never,
+    {
+      sendPosInvoiceIssued: jest.fn().mockResolvedValue(undefined),
+      sendPosBundleInvoiceIssued: jest.fn().mockResolvedValue(undefined),
+    } as never,
     { assertNotBlocked: jest.fn().mockResolvedValue(undefined) } as never,
     { logFinancialEvent: jest.fn().mockResolvedValue(undefined) } as never,
     new EventEmitter2(),
@@ -204,6 +208,10 @@ function makePricedPosService() {
     { applyOrderStockDecrement: jest.fn().mockResolvedValue(undefined) } as never,
     {} as never,
     { autoBlockIfNeeded: jest.fn().mockResolvedValue(undefined) } as never,
+    {
+      sendPosInvoiceIssued: jest.fn().mockResolvedValue(undefined),
+      sendPosBundleInvoiceIssued: jest.fn().mockResolvedValue(undefined),
+    } as never,
     { assertNotBlocked: jest.fn().mockResolvedValue(undefined) } as never,
     { logFinancialEvent: jest.fn().mockResolvedValue(undefined) } as never,
     new EventEmitter2(),

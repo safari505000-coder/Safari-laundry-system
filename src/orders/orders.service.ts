@@ -85,7 +85,6 @@ import {
 } from './order-pos-pricing.util';
 import {
   collectionDebtReasonAr,
-  formatLineItemsBlockForBundleNotify,
   formatLineItemsBlockForNotify,
   invoiceLabelForCustomerNotify,
 } from './order-notification-format.util';
@@ -98,6 +97,7 @@ import {
   type PosServiceKey,
   type PrismaOrderDb,
 } from './order-types';
+import { OrderCustomerNotificationService } from './order-customer-notification.service';
 import { normalizePublicInvoiceTokenParam } from './public-invoice-token.util';
 import PDFDocument from 'pdfkit';
 import { PassThrough } from 'node:stream';
@@ -128,6 +128,7 @@ export class OrdersService {
     private readonly inventory: InventoryService,
     private readonly jwt: JwtService,
     private readonly customerBlocking: CustomerBlockingService,
+    private readonly orderCustomerNotifications: OrderCustomerNotificationService,
     @Inject(forwardRef(() => OutstandingService))
     private readonly outstanding: OutstandingService,
     private readonly auditLogs: AuditLogsService,
@@ -252,22 +253,10 @@ export class OrdersService {
     detail: PosCheckoutOrderDetail,
     phoneCompact: string,
   ): Promise<void> {
-    const phone = resolveCustomerPhoneForNotify(
-      detail.customer.phone,
-      detail.customer.phone2,
+    await this.orderCustomerNotifications.sendPosInvoiceIssued(
+      detail,
       phoneCompact,
     );
-    const inv = invoiceLabelForCustomerNotify(detail);
-    const amt = detail.totalPrice.toFixed(3);
-    const lineItemsSummary = formatLineItemsBlockForNotify(detail);
-    await this.customerNotifications.deliverInvoiceIssuedNow({
-      customerPhone: phone,
-      orderId: detail.id,
-      invoiceLabel: inv,
-      amountKd: amt,
-      paymentUrl: detail.paymentLink?.url,
-      lineItemsSummary: lineItemsSummary || undefined,
-    });
   }
 
   private async autoSendDirectPaymentLink(
@@ -1111,21 +1100,12 @@ export class OrdersService {
       },
     });
 
-    {
-      const first = orders[0]!;
-      const lineItemsSummary = formatLineItemsBlockForBundleNotify(orders);
-      await this.customerNotifications.deliverInvoiceIssuedNow({
-        customerPhone: phone,
-        orderId: first.id,
-        invoiceLabel:
-          orders.length > 1 ?
-            `مجموعة ${orders.length} فواتير`
-          : invoiceLabelForCustomerNotify(first),
-        amountKd: sumDecimal.toFixed(3),
-        paymentUrl: paymentLink.url,
-        lineItemsSummary: lineItemsSummary || undefined,
-      });
-    }
+    await this.orderCustomerNotifications.sendPosBundleInvoiceIssued({
+      orders,
+      customerPhone: phone,
+      amountKd: sumDecimal.toFixed(3),
+      paymentUrl: paymentLink.url,
+    });
     await this.prisma.order.updateMany({
       where: { posPaymentBundleId: bundleId },
       data: { ccCollectionPaymentWaLocked: true },
