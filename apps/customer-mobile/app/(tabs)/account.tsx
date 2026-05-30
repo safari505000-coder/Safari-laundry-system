@@ -19,8 +19,13 @@ import {
   updateCustomerProfile,
   devLoginCustomer,
   verifyCustomerOtp,
+  fetchPickupSchedules,
+  upsertPickupSchedule,
+  deletePickupSchedule,
+  toggleAutoRenew,
   type CustomerPortalMeResponse,
   type CustomerPortalOrder,
+  type CustomerPickupScheduleDto,
 } from '@/api/public';
 import {
   clearCustomerSession,
@@ -79,6 +84,13 @@ export default function AccountScreen() {
   const [profileAddresses, setProfileAddresses] = useState<EditableAddress[]>([]);
   const [profileSaving, setProfileSaving] = useState(false);
 
+  // New features state
+  const [schedules, setSchedules] = useState<CustomerPickupScheduleDto[]>([]);
+  const [autoRenewActive, setAutoRenewActive] = useState(false);
+  const [selectedDay, setSelectedDay] = useState(1); // Default Monday (1)
+  const [timeWindowText, setTimeWindowText] = useState('6:00 PM - 8:00 PM');
+  const [scheduleSaving, setScheduleSaving] = useState(false);
+
   const loadPortalSession = useCallback(async (mode?: 'refresh') => {
     if (mode === 'refresh') {
       setRefreshing(true);
@@ -90,9 +102,18 @@ export default function AccountScreen() {
       const data = await fetchCustomerPortalMe();
       setPortal(data);
       resetProfileDraft(data);
+      setAutoRenewActive(data.financials.autoRenewSubscription);
       setSessionActive(true);
       await writeSavedPhone(data.customer.phone);
       void registerCustomerPushIfPossible(data.customer.phone);
+
+      // Fetch pickup schedules without touching the deferred saved-card flow.
+      try {
+        const schedList = await fetchPickupSchedules(data.customer.id);
+        setSchedules(schedList);
+      } catch (childErr) {
+        console.warn('Failed to load pickup schedules:', childErr);
+      }
     } catch (err) {
       setPortal(null);
       setSessionActive(false);
@@ -215,8 +236,17 @@ export default function AccountScreen() {
       const data = await fetchCustomerPortalPreview(normalized);
       setPortal(data);
       resetProfileDraft(data);
+      setAutoRenewActive(data.financials.autoRenewSubscription);
       setSessionActive(false);
       await writeSavedPhone(normalized);
+
+      // In preview/dev mode, fetch schedules since we bypass token check.
+      try {
+        const schedList = await fetchPickupSchedules(data.customer.id);
+        setSchedules(schedList);
+      } catch (childErr) {
+        console.warn('Failed to load pickup schedules in preview:', childErr);
+      }
     } catch (err) {
       setPortal(null);
       setError(err instanceof Error ? err.message : 'لم نجد حساباً مرتبطاً بهذا الرقم.');
@@ -232,6 +262,67 @@ export default function AccountScreen() {
     setOtpCode('');
     setOtpNotice(null);
     setDevOtpHint(null);
+    setSchedules([]);
+    setAutoRenewActive(false);
+  }
+
+  async function handleToggleAutoRenew(value: boolean) {
+    if (!portal) return;
+    try {
+      setAutoRenewActive(value);
+      await toggleAutoRenew(portal.customer.id, value);
+      Alert.alert('تحديث التجديد التلقائي', value ? 'تم تفعيل تجديد الاشتراك التلقائي بنجاح.' : 'تم إيقاف تجديد الاشتراك التلقائي.');
+    } catch (err) {
+      setAutoRenewActive(!value);
+      Alert.alert('خطأ في التحديث', err instanceof Error ? err.message : 'تعذر تغيير حالة التجديد التلقائي.');
+    }
+  }
+
+  async function handleAddSchedule() {
+    if (!portal) return;
+    if (!timeWindowText.trim()) {
+      Alert.alert('تنبيه', 'يرجى إدخال الفترة الزمنية لجمع الملابس.');
+      return;
+    }
+    setScheduleSaving(true);
+    try {
+      await upsertPickupSchedule(portal.customer.id, {
+        dayOfWeek: selectedDay,
+        timeWindow: timeWindowText.trim(),
+        isActive: true,
+      });
+      const schedList = await fetchPickupSchedules(portal.customer.id);
+      setSchedules(schedList);
+      Alert.alert('تمت الإضافة', 'تمت جدولة موعد جمع الملابس الأسبوعي بنجاح.');
+    } catch (err) {
+      Alert.alert('فشل في الإضافة', err instanceof Error ? err.message : 'تعذر حفظ الجدول الأسبوعي.');
+    } finally {
+      setScheduleSaving(false);
+    }
+  }
+
+  async function handleDeleteSchedule(dayOfWeek: number) {
+    if (!portal) return;
+    Alert.alert(
+      'تأكيد الحذف',
+      'هل تريد فعلاً إلغاء موعد جمع الملابس الأسبوعي لهذا اليوم؟',
+      [
+        { text: 'إلغاء', style: 'cancel' },
+        {
+          text: 'نعم، احذف',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deletePickupSchedule(portal.customer.id, dayOfWeek);
+              const schedList = await fetchPickupSchedules(portal.customer.id);
+              setSchedules(schedList);
+            } catch (err) {
+              Alert.alert('خطأ', err instanceof Error ? err.message : 'تعذر حذف موعد الجدولة.');
+            }
+          },
+        },
+      ],
+    );
   }
 
   function updateProfileAddress(index: number, address: string) {
@@ -527,6 +618,103 @@ export default function AccountScreen() {
               {!sessionActive ? (
                 <Text style={styles.muted}>الدفع يتطلب دخولاً آمناً عبر رمز واتساب.</Text>
               ) : null}
+            </GlassPanel>
+
+            {/* ─── Auto-Renewal Panel ─── */}
+            <GlassPanel elevated>
+              <Text style={styles.sectionTitle}>تجديد الاشتراك</Text>
+              <Text style={styles.muted}>إدارة حالة التجديد التلقائي للاشتراك الشهري.</Text>
+              
+              <View style={styles.toggleRow}>
+                <View style={styles.toggleInfo}>
+                  <Text style={styles.toggleTitle}>التجديد التلقائي للاشتراك</Text>
+                  <Text style={styles.toggleSubtitle}>تفعيل رغبة العميل بالتجديد التلقائي. التحصيل يتم حالياً عبر رابط دفع آمن من خدمة العملاء.</Text>
+                </View>
+                <Pressable
+                  style={[
+                    styles.switchBg,
+                    autoRenewActive ? styles.switchBgOn : styles.switchBgOff
+                  ]}
+                  onPress={() => void handleToggleAutoRenew(!autoRenewActive)}
+                >
+                  <View style={[
+                    styles.switchKnob,
+                    autoRenewActive ? styles.switchKnobOn : styles.switchKnobOff
+                  ]} />
+                </Pressable>
+              </View>
+            </GlassPanel>
+
+            {/* ─── Smart Pickup Schedule Panel ─── */}
+            <GlassPanel elevated>
+              <Text style={styles.sectionTitle}>الجدولة الذكية لجمع الملابس</Text>
+              <Text style={styles.muted}>جدولة مواعيد ثابتة أسبوعياً لجمع الملابس تلقائياً دون الحاجة لطلب الخدمة يدوياً.</Text>
+
+              <Text style={[styles.sectionTitle, { fontSize: 15, marginTop: 12 }]}>إضافة موعد أسبوعي</Text>
+              
+              <Text style={styles.fieldLabelAr}>اختر اليوم:</Text>
+              <View style={styles.chipsRow}>
+                {[1, 2, 3, 4, 5, 6, 0].map((day) => {
+                  const dayNames = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+                  const isSelected = selectedDay === day;
+                  return (
+                    <Pressable
+                      key={day}
+                      style={[
+                        styles.chip,
+                        isSelected ? styles.chipSelected : styles.chipUnselected
+                      ]}
+                      onPress={() => setSelectedDay(day)}
+                    >
+                      <Text style={[
+                        styles.chipText,
+                        isSelected ? styles.chipTextSelected : styles.chipTextUnselected
+                      ]}>
+                        {dayNames[day]}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <LuxuryField
+                label="الفترة الزمنية المفضلة لجمع الملابس"
+                icon="time-outline"
+                value={timeWindowText}
+                onChangeText={setTimeWindowText}
+                placeholder="مثال: 6:00 PM - 8:00 PM"
+              />
+
+              <LuxuryButton
+                label={scheduleSaving ? 'جاري الحفظ…' : 'إضافة الموعد للجدول أسبوعياً'}
+                onPress={() => void handleAddSchedule()}
+                disabled={scheduleSaving}
+              />
+
+              <Text style={[styles.sectionTitle, { fontSize: 15, marginTop: 16 }]}>الجدول الأسبوعي الحالي</Text>
+              {schedules.length === 0 ? (
+                <Text style={[styles.muted, { textAlign: 'right', fontStyle: 'italic' }]}>
+                  لا يوجد مواعيد مجدولة حالياً. اختر يوماً ووقتاً أعلاه لإنشاء موعدك الأسبوعي الأول.
+                </Text>
+              ) : (
+                schedules.map((schedule) => {
+                  const dayNames = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+                  return (
+                    <View key={schedule.id} style={styles.scheduleRow}>
+                      <Pressable
+                        style={styles.schedDeleteBtn}
+                        onPress={() => void handleDeleteSchedule(schedule.dayOfWeek)}
+                      >
+                        <Text style={styles.schedDeleteText}>إلغاء الموعد</Text>
+                      </Pressable>
+                      <View style={styles.schedDetails}>
+                        <Text style={styles.schedDayText}>كل يوم {dayNames[schedule.dayOfWeek]}</Text>
+                        <Text style={styles.schedTimeText}>الفترة: {schedule.timeWindow}</Text>
+                      </View>
+                    </View>
+                  );
+                })
+              )}
             </GlassPanel>
 
             <Text style={styles.listTitle}>الفواتير الأخيرة</Text>
@@ -912,5 +1100,135 @@ const styles = StyleSheet.create({
   localActionText: {
     color: luxury.color.graphite,
     fontWeight: '900',
+  },
+  toggleRow: {
+    flexDirection: 'row-reverse',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: luxury.color.line,
+    gap: 12,
+  },
+  toggleInfo: {
+    flex: 1,
+    alignItems: 'flex-end',
+  },
+  toggleTitle: {
+    color: luxury.color.graphite,
+    fontSize: 15,
+    fontWeight: '800',
+    textAlign: 'right',
+  },
+  toggleSubtitle: {
+    color: luxury.color.slate,
+    fontSize: 11,
+    textAlign: 'right',
+    marginTop: 2,
+  },
+  switchBg: {
+    width: 50,
+    height: 28,
+    borderRadius: 14,
+    padding: 2,
+    justifyContent: 'center',
+  },
+  switchBgOn: {
+    backgroundColor: luxury.color.blue600,
+  },
+  switchBgOff: {
+    backgroundColor: 'rgba(15,17,21,0.15)',
+  },
+  switchKnob: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2.5,
+    elevation: 1.5,
+  },
+  switchKnobOn: {
+    alignSelf: 'flex-end',
+  },
+  switchKnobOff: {
+    alignSelf: 'flex-start',
+  },
+  fieldLabelAr: {
+    color: luxury.color.slate,
+    fontSize: 12,
+    textAlign: 'right',
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  chipsRow: {
+    flexDirection: 'row-reverse',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginVertical: 6,
+    justifyContent: 'flex-start',
+  },
+  chip: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: luxury.radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  chipSelected: {
+    backgroundColor: luxury.color.blue600,
+    borderColor: luxury.color.blue600,
+  },
+  chipUnselected: {
+    backgroundColor: 'rgba(15,17,21,0.03)',
+    borderColor: luxury.color.line,
+  },
+  chipText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  chipTextSelected: {
+    color: luxury.color.warmWhite,
+  },
+  chipTextUnselected: {
+    color: luxury.color.graphite,
+  },
+  scheduleRow: {
+    flexDirection: 'row-reverse',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: 'rgba(15,17,21,0.03)',
+    borderRadius: luxury.radius.md,
+    padding: 12,
+    marginVertical: 4,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: luxury.color.line,
+  },
+  schedDetails: {
+    alignItems: 'flex-end',
+    gap: 2,
+  },
+  schedDayText: {
+    color: luxury.color.graphite,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  schedTimeText: {
+    color: luxury.color.slate,
+    fontSize: 12,
+  },
+  schedDeleteBtn: {
+    backgroundColor: 'transparent',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: luxury.color.danger,
+    borderRadius: luxury.radius.pill,
+  },
+  schedDeleteText: {
+    color: luxury.color.danger,
+    fontSize: 12,
+    fontWeight: '800',
   },
 });
