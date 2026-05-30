@@ -224,7 +224,7 @@ export function LoginPage() {
       <LoginAtmosphere />
       <div className="absolute inset-x-0 top-0 z-20 flex items-center justify-between p-3 sm:p-4">
         <a
-          href="https://safariomni.com"
+          href="https://site.safariomni.com"
           className="inline-flex items-center justify-center rounded-md border border-white/15 bg-slate-950/40 px-3 py-2 text-xs font-semibold text-zinc-200 backdrop-blur-md transition-colors hover:bg-slate-900/50 hover:text-white"
         >
           {isRtl ? '→ العودة للموقع' : '← Back to Website'}
