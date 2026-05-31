@@ -587,6 +587,8 @@ describe('driver and fleet operations RBAC security lock', () => {
       {} as any,
       {} as any,
       {} as any,
+      {} as any,
+      {} as any,
     );
 
     await expect(
@@ -605,6 +607,8 @@ describe('driver and fleet operations RBAC security lock', () => {
     };
     const service = new OrdersService(
       prisma as any,
+      {} as any,
+      {} as any,
       {} as any,
       {} as any,
       {} as any,
@@ -825,6 +829,8 @@ describe('IDOR and cross-branch security lock', () => {
     };
     const service = new OrdersService(
       prisma as any,
+      {} as any,
+      {} as any,
       {} as any,
       {} as any,
       {} as any,

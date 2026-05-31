@@ -19,6 +19,8 @@ import { OrderDeliveryService } from './order-delivery.service';
 import { OrderCustomerNotificationService } from './order-customer-notification.service';
 import { OrderPublicInvoiceService } from './order-public-invoice.service';
 import { OrderCollectionsReadService } from './order-collections-read.service';
+import { OrderPosPricingService } from './order-pos-pricing.service';
+import { OrderCustomerResolverService } from './order-customer-resolver.service';
 import { OrdersService } from './orders.service';
 import { StaleQuickOrdersCronService } from './stale-quick-orders.cron';
 
@@ -45,6 +47,8 @@ import { StaleQuickOrdersCronService } from './stale-quick-orders.cron';
     OrderCustomerNotificationService,
     OrderPublicInvoiceService,
     OrderCollectionsReadService,
+    OrderPosPricingService,
+    OrderCustomerResolverService,
     ExpoPushService,
     StaleQuickOrdersCronService,
     AuditService,
