@@ -743,11 +743,35 @@ model Customer {
   fraudAlerts        FraudAlert[]
   pickupSchedules    CustomerPickupSchedule[]
   savedCards         SavedPaymentCard[]
+  refreshTokens      CustomerRefreshToken[]
 
   @@index([phone2])
   @@index([displayName])
   @@index([originBranchId])
   @@index([isBlocked])
+}
+
+/**
+ * Opaque rotating refresh tokens for the B2C customer portal.
+ * Stores only SHA-256(token); raw tokens are returned once to the client.
+ */
+model CustomerRefreshToken {
+  id           String    @id @default(uuid()) @db.Uuid
+  customerId   String    @db.Uuid
+  tokenHash    String    @unique
+  expiresAt    DateTime
+  usedAt       DateTime?
+  revokedAt    DateTime?
+  replacedById String?   @db.Uuid
+  createdAt    DateTime  @default(now())
+  userAgent    String?
+  ip           String?
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@index([customerId, revokedAt])
+  @@index([expiresAt])
 }
 
 model CustomerDeliveryAddress {

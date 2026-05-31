@@ -12,10 +12,18 @@ import { CustomerNotificationsService } from '../customer-notifications/customer
 import { JWT_SECRET_DEV_FALLBACK } from '../common/constants/jwt-secret-fallback';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtPayload } from '../auth/strategies/jwt.strategy';
+import {
+  generateRefreshTokenRaw,
+  sha256Hex,
+} from '../common/auth/refresh-token.util';
 
 const OTP_TTL_MS = 10 * 60 * 1000;
 const MAX_VERIFY_ATTEMPTS = 5;
 const RESEND_COOLDOWN_MS = 60 * 1000;
+const CUSTOMER_REFRESH_TOKEN_DAYS = Number.parseInt(
+  process.env.CUSTOMER_REFRESH_TOKEN_DAYS ?? '30',
+  10,
+);
 
 function normalizePhone(phone: string): string {
   return phone.replace(/[\s-]/g, '').trim();
@@ -204,6 +212,69 @@ export class CustomerPortalAuthService {
     return this.issueCustomerPortalSession(normalized);
   }
 
+  async refreshCustomerAccessToken(rawToken: string) {
+    const tokenHash = sha256Hex(rawToken);
+    const row = await this.prisma.customerRefreshToken.findUnique({
+      where: { tokenHash },
+      include: { customer: true },
+    });
+    if (!row) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+    if (row.revokedAt) {
+      throw new UnauthorizedException('Refresh token revoked');
+    }
+    if (row.expiresAt <= new Date()) {
+      throw new UnauthorizedException('Refresh token expired');
+    }
+    if (row.usedAt) {
+      await this.prisma.customerRefreshToken.updateMany({
+        where: { customerId: row.customerId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      this.logger.warn(
+        `Customer refresh-token replay detected for customer ${row.customerId}; revoking all sessions.`,
+      );
+      throw new UnauthorizedException('Refresh token replay detected');
+    }
+
+    const accessToken = await this.issueCustomerAccessToken(row.customerId);
+    const newRaw = generateRefreshTokenRaw();
+    const newHash = sha256Hex(newRaw);
+    const newExpiresAt = new Date(
+      Date.now() + CUSTOMER_REFRESH_TOKEN_DAYS * 24 * 60 * 60 * 1000,
+    );
+
+    await this.prisma.$transaction(async (tx) => {
+      const created = await tx.customerRefreshToken.create({
+        data: {
+          customerId: row.customerId,
+          tokenHash: newHash,
+          expiresAt: newExpiresAt,
+        },
+      });
+      await tx.customerRefreshToken.update({
+        where: { id: row.id },
+        data: {
+          usedAt: new Date(),
+          replacedById: created.id,
+        },
+      });
+    });
+
+    return { accessToken, refreshToken: newRaw };
+  }
+
+  async revokeCustomerRefreshToken(rawToken: string): Promise<void> {
+    const tokenHash = sha256Hex(rawToken);
+    await this.prisma.customerRefreshToken
+      .updateMany({
+        where: { tokenHash, revokedAt: null },
+        data: { revokedAt: new Date() },
+      })
+      .catch(() => undefined);
+  }
+
   private async issueCustomerPortalSession(normalized: string) {
     const customer = await this.prisma.customer.findFirst({
       where: { OR: [{ phone: normalized }, { phone2: normalized }] },
@@ -219,22 +290,14 @@ export class CustomerPortalAuthService {
       );
     }
 
-    // Interim: 30d balances B2C mobile UX against the old ~10y token. The
-    // portal has no refresh-token flow yet, so customers re-OTP after expiry.
-    // Override via CUSTOMER_PORTAL_TOKEN_TTL; build a refresh flow to shorten.
-    const ttl =
-      (process.env.CUSTOMER_PORTAL_TOKEN_TTL?.trim() as `${number}d`) || '30d';
-    const payload: JwtPayload = {
-      sub: customer.id,
-      role: SafariRole.CUSTOMER,
-      linkedCustomerId: customer.id,
-      tokenPurpose: 'CUSTOMER_PORTAL',
-    };
-    const accessToken = await this.jwt.signAsync(payload, { expiresIn: ttl });
+    const ttl = this.customerAccessTokenTtl();
+    const accessToken = await this.issueCustomerAccessToken(customer.id);
+    const refreshToken = await this.issueCustomerRefreshToken(customer.id);
 
     return {
       status: 'VERIFIED' as const,
       accessToken,
+      refreshToken,
       expiresIn: ttl,
       customer: {
         id: customer.id,
@@ -242,5 +305,35 @@ export class CustomerPortalAuthService {
         displayName: customer.displayName,
       },
     };
+  }
+
+  private customerAccessTokenTtl(): any {
+    // Keep the rollout backward-compatible until customer-mobile stores and
+    // rotates refresh tokens; operators can shorten via env after client uptake.
+    return process.env.CUSTOMER_PORTAL_TOKEN_TTL?.trim() || '30d';
+  }
+
+  private async issueCustomerAccessToken(customerId: string): Promise<string> {
+    const payload: JwtPayload = {
+      sub: customerId,
+      role: SafariRole.CUSTOMER,
+      linkedCustomerId: customerId,
+      tokenPurpose: 'CUSTOMER_PORTAL',
+    };
+    return this.jwt.signAsync(payload, {
+      expiresIn: this.customerAccessTokenTtl(),
+    });
+  }
+
+  private async issueCustomerRefreshToken(customerId: string): Promise<string> {
+    const raw = generateRefreshTokenRaw();
+    const tokenHash = sha256Hex(raw);
+    const expiresAt = new Date(
+      Date.now() + CUSTOMER_REFRESH_TOKEN_DAYS * 24 * 60 * 60 * 1000,
+    );
+    await this.prisma.customerRefreshToken.create({
+      data: { customerId, tokenHash, expiresAt },
+    });
+    return raw;
   }
 }
