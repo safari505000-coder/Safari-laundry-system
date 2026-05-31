@@ -34,12 +34,17 @@ function makeContext(req = makeReq()) {
 const flushPromises = () => new Promise((resolve) => setImmediate(resolve));
 
 function makeService() {
-  const prisma = {
+  const prisma: any = {
     auditLog: {
       create: jest.fn().mockResolvedValue({}),
       findFirst: jest.fn().mockResolvedValue(null),
       findMany: jest.fn().mockResolvedValue([]),
     },
+    // Advisory-lock acquisition inside appendChained's transaction.
+    $executeRaw: jest.fn().mockResolvedValue(1),
+    // Run the interactive transaction callback against the same mock so the
+    // serialized append still hits the asserted auditLog.create mock.
+    $transaction: jest.fn((cb: (tx: unknown) => unknown) => cb(prisma)),
   };
   const discordAlerts = {
     enqueue: jest.fn(),
@@ -80,7 +85,8 @@ describe('bank-grade audit security layer', () => {
     const { service, prisma } = makeService();
 
     service.logRequest(makeReq(), 403);
-    await Promise.resolve();
+    await flushPromises();
+    await flushPromises();
 
     expect(prisma.auditLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -214,5 +220,44 @@ describe('bank-grade audit security layer', () => {
         timestamp: '2026-05-02T00:00:00.000Z',
       },
     ]);
+  });
+
+  it('serializes appends behind an advisory lock and reads prevHash deterministically', async () => {
+    const { service, prisma } = makeService();
+
+    service.log({
+      action: 'PAYMENT_MADE',
+      resource: 'financial_event',
+      status: AuditStatus.SUCCESS,
+    });
+    await flushPromises();
+    await flushPromises();
+
+    // The chain append must run inside a transaction that first takes the lock.
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
+    // Deterministic "latest row" ordering: createdAt then id (tiebreak).
+    expect(prisma.auditLog.findFirst).toHaveBeenCalledWith({
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      select: { hash: true },
+    });
+    // First-ever row chains from GENESIS with a computed hash.
+    expect(prisma.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        prevHash: 'GENESIS',
+        hash: expect.any(String),
+      }),
+    });
+  });
+
+  it('verifies the chain with the same deterministic ordering used on append', async () => {
+    const { service, prisma } = makeService();
+
+    await service.verifyAuditIntegrity();
+
+    expect(prisma.auditLog.findMany).toHaveBeenCalledWith({
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      select: { id: true, payload: true, hash: true, prevHash: true },
+    });
   });
 });

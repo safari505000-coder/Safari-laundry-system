@@ -41,6 +41,20 @@ const ALERT_COOLDOWN_MS = 60_000;
 const SENSITIVE_IP_LIMIT = 10;
 
 /**
+ * Transaction-scoped Postgres advisory lock key for the audit hash chain.
+ * Every audit append takes this lock before reading prevHash + inserting, so
+ * concurrent writers serialize and can never fork the chain. The value is
+ * arbitrary but MUST stay constant across deploys.
+ */
+const AUDIT_CHAIN_LOCK_KEY = BigInt('874163209');
+
+/** Create payload for an audit row before the chain fields are computed. */
+type AuditChainCreateInput = Omit<
+  Prisma.AuditLogUncheckedCreateInput,
+  'prevHash' | 'hash'
+>;
+
+/**
  * 🔒 BANK-GRADE SECURITY LAYER
  * All access attempts must be audited and protected.
  * Unauthorized behavior must be detected and alerted.
@@ -214,12 +228,6 @@ export class AuditLogsService {
       changes: input.changes ?? {},
       createdAt: new Date().toISOString(),
     };
-    const previous = await this.prisma.auditLog.findFirst({
-      orderBy: { createdAt: 'desc' },
-      select: { hash: true },
-    });
-    const prevHash = previous?.hash ?? 'GENESIS';
-    const hash = this.auditHash(prevHash, payload);
     const data = {
       userId: input.userId ?? undefined,
       actorId: input.userId ?? undefined,
@@ -240,37 +248,70 @@ export class AuditLogsService {
       suspicious: input.suspicious ?? false,
       changes: (input.changes ?? {}) as Prisma.InputJsonValue,
       payload: payload as Prisma.InputJsonValue,
-      prevHash,
-      hash,
-    } satisfies Prisma.AuditLogUncheckedCreateInput;
+    } satisfies AuditChainCreateInput;
 
     try {
-      await this.prisma.auditLog.create({ data });
+      await this.appendChained(data, payload);
     } catch (error) {
       if (!this.isAuditUserForeignKeyError(error) || !data.userId) {
         throw error;
       }
-      await this.prisma.auditLog.create({
-        data: {
+      // Retry without the offending userId FK. The hash is recomputed over the
+      // SANITIZED payload below so the stored hash always matches the stored
+      // payload (otherwise verifyAuditIntegrity would flag this row).
+      const fallbackPayload = {
+        ...(payload as Record<string, unknown>),
+        userId: null,
+        missingUserId: data.userId,
+      };
+      await this.appendChained(
+        {
           ...data,
           userId: undefined,
           changes: {
             ...(input.changes ?? {}),
             missingUserId: data.userId,
           } as Prisma.InputJsonValue,
-          payload: {
-            ...(payload as Record<string, unknown>),
-            userId: null,
-            missingUserId: data.userId,
-          } as Prisma.InputJsonValue,
+          payload: fallbackPayload as Prisma.InputJsonValue,
         },
-      });
+        fallbackPayload,
+      );
     }
+  }
+
+  /**
+   * Append one row to the tamper-evident hash chain.
+   *
+   * The previous-hash read and the insert run inside ONE transaction that first
+   * takes a transaction-scoped Postgres advisory lock. This serializes every
+   * audit append, so two concurrent writers can never read the same prevHash
+   * and fork the chain — the root cause of `audit_chain_corruption`.
+   *
+   * Ordering uses [createdAt, id] so the "latest" row is deterministic even
+   * when two rows share a createdAt; {@link verifyAuditIntegrity} walks the
+   * chain with the identical ordering.
+   */
+  private async appendChained(
+    data: AuditChainCreateInput,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${AUDIT_CHAIN_LOCK_KEY})`;
+      const previous = await tx.auditLog.findFirst({
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        select: { hash: true },
+      });
+      const prevHash = previous?.hash ?? 'GENESIS';
+      const hash = this.auditHash(prevHash, payload);
+      await tx.auditLog.create({
+        data: { ...data, prevHash, hash },
+      });
+    });
   }
 
   async verifyAuditIntegrity(): Promise<{ valid: boolean; checked: number; brokenAt?: string }> {
     const rows = await this.prisma.auditLog.findMany({
-      orderBy: { createdAt: 'asc' },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       select: { id: true, payload: true, hash: true, prevHash: true },
     });
     let prevHash = 'GENESIS';
